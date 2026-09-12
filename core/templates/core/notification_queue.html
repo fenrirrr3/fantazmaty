@@ -1,0 +1,10 @@
+{% extends "core/base.html" %}
+{% block content %}
+<header class="page-header"><h1 class="page-title">{% if scheduled %}Zaplanowane odrzucenia{% else %}Autorzy do powiadomienia{% endif %}</h1></header>
+<p>{% if scheduled %}Ukryte zgłoszenia z przyszłą datą odrzucenia. W podglądzie możesz poprawić błędne zakwalifikowanie.{% else %}Przyjęte lub odrzucone zgłoszenia, których autorzy nie zostali powiadomieni. Przyszłe odrzucenia nie są jeszcze uwzględnione.{% endif %}</p>
+<section class="filters-card"><form method="get" class="filters-form" data-remember-filters="notification-queue"><label>Szukaj <input name="q" value="{{ query }}"></label><button type="submit" class="primary-button">Filtruj</button></form></section>
+<section class="card"><div class="table-container"><table><thead><tr><th>Tytuł</th><th>Antologia</th><th>Autor</th><th>E-mail</th><th>Decyzja</th><th>Termin</th><th>Powiadomienie</th></tr></thead><tbody>
+{% for review in reviews %}<tr><td><a href="{% url 'core:assigned_review_detail' review.pk %}">{{ review.title }}</a></td><td>{{ review.anthology.title }}</td><td>{{ review.author_first_name }} {{ review.author_last_name }}</td><td>{{ review.email }}</td><td>{{ review.get_status_display }}</td><td>{{ review.decision_at|date:'d.m.Y' }}</td><td>{% if scheduled %}Jeszcze nie powiadamiaj{% else %}<a href="{% url 'core:assigned_review_detail' review.pk %}#author-notification-heading">Do powiadomienia</a>{% endif %}</td></tr>
+{% empty %}<tr><td colspan="7"><div class="empty-results-panel"><strong>Brak zgłoszeń wymagających obsługi.</strong><a href="{% url 'core:review_list' %}">Wróć do recenzji</a></div></td></tr>{% endfor %}
+</tbody></table></div></section>{% include "core/includes/table_toolbar.html" %}{% include "core/includes/pagination.html" %}
+{% endblock %}

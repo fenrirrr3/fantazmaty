@@ -1,0 +1,100 @@
+{% load workspace_tags %}
+{% illustrations_allowed user as show_illustrations %}
+{% load static %}
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light">
+    <meta name="theme-color" content="#172434">
+
+    <title>{% block title %}Fantazmaty CMS{% endblock %}</title>
+
+    <link rel="stylesheet" href="{% static 'core/styles.css' %}">
+    <script src="{% static 'core/theme.js' %}"></script>
+    <link rel="stylesheet" href="{% static 'core/themes.css' %}">
+
+    {% block extra_css %}{% endblock %}
+<link rel="stylesheet" href="{% static 'core/workspace.css' %}">
+</head>
+
+<body
+    {% if user.is_authenticated and user.is_active %}
+        data-user-id="{{ user.pk }}"
+    {% endif %}
+>
+    <a href="#main-content" class="skip-link">
+        Przejdź do treści
+    </a>
+
+    <header class="site-header">
+        <div class="navigation container">
+            <a href="{% url 'core:home' %}" class="brand">
+                <span class="brand-mark" aria-hidden="true">F</span>
+                <span class="brand-text">
+                    <strong>Fantazmaty</strong>
+                    <small>System redakcyjny</small>
+                </span>
+            </a>
+
+            {% if user.is_authenticated and user.is_active %}
+                <button
+                    id="menu-button"
+                    class="menu-button"
+                    type="button"
+                    aria-label="Otwórz lub zamknij nawigację"
+                    aria-controls="site-sidebar"
+                    aria-expanded="false"
+                >
+                    <span aria-hidden="true">☰</span>
+                </button>
+            {% else %}
+                <a href="{% url 'login' %}" class="admin-button">
+                    Zaloguj się
+                </a>
+            {% endif %}
+        </div>
+    </header>
+
+    <div{% if user.is_authenticated and user.is_active %} class="app-shell"{% endif %}>
+        {% if user.is_authenticated and user.is_active %}
+            {% include "core/includes/navigation.html" %}
+        {% endif %}
+
+        <main
+            id="main-content"
+            class="page{% if not user.is_authenticated or not user.is_active %} container{% endif %}"
+            tabindex="-1"
+        >
+            {% if messages %}
+                <div class="messages" aria-label="Komunikaty">
+                    {% for message in messages %}
+                        <div
+                            class="message{% if message.tags %} {{ message.tags }}{% endif %}"
+                            role="{% if message.level == 40 %}alert{% else %}status{% endif %}"
+                        >
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <footer class="site-footer">
+        <div class="container footer-content">
+            <span>Fantazmaty CMS</span>
+            <button type="button" class="secondary-button" data-theme-toggle aria-pressed="false">Włącz ciemny motyw</button>
+            <span>{% now "Y" %}</span>
+        </div>
+    </footer>
+
+    <script src="{% static 'core/workspace.js' %}"></script>
+    <script src="{% static 'core/ui.js' %}"></script>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

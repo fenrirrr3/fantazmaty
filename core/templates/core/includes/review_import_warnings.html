@@ -1,0 +1,47 @@
+{% if form.import_warnings or import_warnings %}
+    <section
+        class="message warning"
+        aria-label="Ostrzeżenia przed importem zgłoszeń"
+    >
+        <h2>Sprawdź zgłoszenia przed importem</h2>
+
+        <p>
+            Wykryto informacje wymagające potwierdzenia.
+            Zgłoszenia nie zostały jeszcze dodane.
+        </p>
+
+        <ul>
+            {% for warning in form.import_warnings|default:import_warnings %}
+                <li>{{ warning }}</li>
+            {% endfor %}
+        </ul>
+
+        {{ form.submission_warnings_token }}
+
+        {% for error in form.submission_warnings_token.errors %}
+            <p class="field-error">{{ error }}</p>
+        {% endfor %}
+
+        <div class="form-field">
+            <label
+                for="{{ form.confirm_submission_warnings.id_for_label }}"
+                class="boolean-filter-toggle"
+            >
+                {{ form.confirm_submission_warnings }}
+                <span>
+                    Zapoznałem się z ostrzeżeniami i chcę zaimportować
+                    wskazane zgłoszenia.
+                </span>
+            </label>
+
+            {% for error in form.confirm_submission_warnings.errors %}
+                <p class="field-error">{{ error }}</p>
+            {% endfor %}
+
+            <p class="form-help">
+                Potwierdzenie dotyczy aktualnych danych i ostrzeżeń.
+                Ich zmiana może wymagać ponownego potwierdzenia.
+            </p>
+        </div>
+    </section>
+{% endif %}

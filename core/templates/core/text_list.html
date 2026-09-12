@@ -1,0 +1,341 @@
+{% extends "core/base.html" %}
+
+{% block title %}Teksty | Fantazmaty CMS{% endblock %}
+
+{% block content %}
+    <header class="page-header">
+        <h1 class="page-title">Teksty</h1>
+        <p class="page-description">
+            Teksty w systemie i ich aktualny etap pracy.
+        </p>
+    </header>
+
+    <section class="filters-card" aria-label="Filtry tekstów">
+        <form
+            method="get"
+            action="{% url 'core:text_list' %}"
+            class="filters-form"
+            data-remember-filters="text-list"
+        >
+            <input
+                type="hidden"
+                name="page_size"
+                value="{{ page_obj.selected_page_size }}"
+            >
+
+            <div class="filter-field"><label for="text-query">Wyszukaj</label><input id="text-query" type="search" name="q" value="{{ query }}" placeholder="Tytuł lub antologia"></div>
+            <div class="filter-field">
+                <label for="text-anthology">Antologia</label>
+                <select id="text-anthology" name="anthology">
+                    <option value="">Wszystkie antologie</option>
+                    {% for anthology in anthologies %}
+                        <option
+                            value="{{ anthology.pk }}"
+                            {% if anthology.pk|stringformat:"s" == selected_anthology_id|stringformat:"s" %}selected{% endif %}
+                        >
+                            {{ anthology.title }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            {% if can_view_authors %}
+                <div class="filter-field">
+                    <label for="text-author">Autor</label>
+                    <select id="text-author" name="author">
+                        <option value="">Wszyscy autorzy</option>
+                        {% for author in filter_authors %}
+                            <option
+                                value="{{ author.pk }}"
+                                {% if author.pk|stringformat:"s" == selected_author_id|stringformat:"s" %}selected{% endif %}
+                            >
+                                {{ author.first_name }} {{ author.last_name }}
+                                {% if author.pseudonym %} – {{ author.pseudonym }}{% endif %}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            {% endif %}
+
+            <div class="filter-field">
+                <label for="text-status">Etap pracy</label>
+                <select id="text-status" name="status" multiple>
+                    <option value="">Wszystkie etapy</option>
+                    {% for value, label in status_choices %}
+                        <option
+                            value="{{ value }}"
+                            {% if value in selected_statuses %}selected{% endif %}
+                        >
+                            {{ label }}
+                        </option>
+                    {% endfor %}
+                    {% if show_no_status_filter %}
+                        <option
+                            value="none"
+                            {% if "none" in selected_statuses %}selected{% endif %}
+                        >
+                            Bez otwartego etapu
+                        </option>
+                    {% endif %}
+                </select>
+            </div>
+
+            <div class="filter-field">
+                <label for="text-sort">Sortowanie</label>
+                <select id="text-sort" name="sort">
+                    <option value="anthology" {% if sort == "anthology" %}selected{% endif %}>
+                        Antologia: A–Z
+                    </option>
+                    <option value="-anthology" {% if sort == "-anthology" %}selected{% endif %}>
+                        Antologia: Z–A
+                    </option>
+                    <option value="title" {% if sort == "title" %}selected{% endif %}>
+                        Tytuł: A–Z
+                    </option>
+                    <option value="-title" {% if sort == "-title" %}selected{% endif %}>
+                        Tytuł: Z–A
+                    </option>
+                    <option value="length" {% if sort == "length" %}selected{% endif %}>
+                        Długość: rosnąco
+                    </option>
+                    <option value="-length" {% if sort == "-length" %}selected{% endif %}>
+                        Długość: malejąco
+                    </option>
+                </select>
+            </div>
+
+            <div class="filter-field boolean-filter-field">
+                <input type="hidden" name="hide_ready" value="0">
+                <label class="boolean-filter-toggle" for="text-hide-ready">
+                    <input
+                        id="text-hide-ready"
+                        type="checkbox"
+                        name="hide_ready"
+                        value="1"
+                        {% if hide_ready %}checked{% endif %}
+                    >
+                    <span>Ukryj gotowe teksty</span>
+                </label>
+            </div>
+
+            <div class="filter-actions">
+                <button type="submit" class="primary-button">Filtruj</button>
+                <a
+                    href="{% url 'core:text_list' %}"
+                    class="secondary-button"
+                    data-clear-saved-filters="text-list"
+                >
+                    Wyczyść filtry
+                </a>
+            </div>
+        </form>
+    </section>
+
+    {% if can_perform_bulk_actions and bulk_action_form %}
+        <form
+            id="text-bulk-form"
+            method="post"
+            action="{% url 'core:bulk_text_action' %}"
+            data-bulk-form
+        >
+            {% csrf_token %}
+
+            <details class="bulk-action-panel">
+                <summary class="bulk-action-toggle">
+                    <span>Operacje zbiorcze</span>
+                </summary>
+
+                <div class="bulk-action-content">
+                    <p class="form-help">
+                        Zaznacz teksty w tabeli i wybierz operację.
+                        Zaznaczenie dotyczy bieżącej strony.
+                    </p>
+                    <p>
+                        Zaznaczono:
+                        <strong data-selected-count>0</strong>
+                    </p>
+
+                    {% for error in bulk_action_form.non_field_errors %}
+                        <p class="form-error">{{ error }}</p>
+                    {% endfor %}
+
+                    <div class="bulk-action-fields">
+                        {% for field in bulk_action_form %}
+                            {% if field.is_hidden %}
+                                {{ field }}
+                            {% else %}
+                                <div class="filter-field">
+                                    <label for="{{ field.id_for_label }}">
+                                        {{ field.label }}
+                                    </label>
+                                    {{ field }}
+                                    {% if field.help_text %}
+                                        <p class="form-help">{{ field.help_text }}</p>
+                                    {% endif %}
+                                    {% for error in field.errors %}
+                                        <p class="field-error">{{ error }}</p>
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+
+                    <div class="general-notes-actions">
+                        <button type="submit" class="primary-button">
+                            Wykonaj dla zaznaczonych
+                        </button>
+                    </div>
+                </div>
+            </details>
+        </form>
+    {% endif %}
+
+    <section class="card" aria-label="Lista tekstów">
+        
+
+        <div
+            class="table-container"
+            role="region"
+            aria-label="Tabela tekstów"
+            tabindex="0"
+        >
+            <table id="texts-table" data-server-sort="true">
+                <caption class="visually-hidden">
+                    Teksty spełniające wybrane filtry
+                </caption>
+
+                <thead>
+                    <tr>
+                        {% if can_perform_bulk_actions and bulk_action_form %}
+                            <th scope="col" data-copy="false">
+                                <input
+                                    type="checkbox"
+                                    class="select-all-records"
+                                    form="text-bulk-form"
+                                    data-select-all
+                                    aria-label="Zaznacz wszystkie teksty na tej stronie"
+                                >
+                            </th>
+                        {% endif %}
+
+                        <th scope="col">Antologia</th>
+                        <th scope="col">Tytuł</th>
+
+                        {% if can_view_authors %}
+                            <th scope="col">Autorzy</th>
+                        {% endif %}
+
+                        <th scope="col" class="numeric-cell">Długość</th>
+                        <th scope="col">Etap pracy</th>
+                        <th scope="col">Rozpoczęcie etapu</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for text in texts %}
+                        <tr
+                            class="workflow-stage-row"
+                            data-stage="{{ text.current_stage_type|default:'none' }}"
+                        >
+                            {% if can_perform_bulk_actions and bulk_action_form %}
+                                <td data-copy="false">
+                                    <input
+                                        type="checkbox"
+                                        name="selected_texts"
+                                        value="{{ text.pk }}"
+                                        class="row-selection"
+                                        form="text-bulk-form"
+                                        data-select-item
+                                        aria-label="Zaznacz tekst: {{ text.title }}"
+                                    >
+                                </td>
+                            {% endif %}
+
+                            <td>
+                                {% if text.anthology %}
+                                    {{ text.anthology.title }}
+                                {% else %}
+                                    <span class="muted-text">Brak antologii</span>
+                                {% endif %}
+                            </td>
+
+                            <td data-copy-value="{{ text.title }}">
+                                <a
+                                    href="{% url 'core:assigned_text_detail' text.pk %}"
+                                    class="text-title-link"
+                                >
+                                    <strong>{{ text.title }}</strong>
+                                </a>
+                            </td>
+
+                            {% if can_view_authors %}
+                                <td data-copy-value="{{ text.authors_display }}">
+                                    {% for author in text.authors.all %}
+                                        <a
+                                            href="{% url 'core:author_detail' author.pk %}"
+                                            class="detail-link"
+                                        >
+                                            {{ author.first_name }} {{ author.last_name }}
+                                        </a>{% if not forloop.last %}, {% endif %}
+                                    {% empty %}
+                                        <span class="muted-text">Brak przypisanego autora</span>
+                                    {% endfor %}
+                                </td>
+                            {% endif %}
+
+                            <td
+                                class="numeric-cell"
+                                data-type="number"
+                                data-copy-value="{{ text.length|stringformat:'d' }}"
+                            >
+                                {{ text.length }}
+                            </td>
+
+                            <td>
+                                {% if text.current_status %}
+                                    <span class="workflow-stage-badge">
+                                        {{ text.current_status.get_stage_type_display }}
+                                    </span>
+                                {% else %}
+                                    <span class="muted-text">Bez otwartego etapu</span>
+                                {% endif %}
+                            </td>
+
+                            <td class="date-cell">
+                                {% if text.current_status_started_at %}
+                                    <time datetime="{{ text.current_status_started_at|date:'Y-m-d' }}">
+                                        {{ text.current_status_started_at|date:"d.m.Y" }}
+                                    </time>
+                                {% else %}
+                                    <span class="muted-text">–</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="{% if can_perform_bulk_actions and bulk_action_form %}{% if can_view_authors %}7{% else %}6{% endif %}{% else %}{% if can_view_authors %}6{% else %}5{% endif %}{% endif %}">
+                                <div class="empty-results-panel">
+                                    <strong>Nie znaleziono tekstów.</strong>
+                                    <p>
+                                        Żaden tekst nie spełnia wybranych kryteriów.
+                                        Zmień filtry lub przywróć domyślny widok.
+                                    </p>
+                                    <a
+                                        href="{% url 'core:text_list' %}"
+                                        class="secondary-button"
+                                        data-clear-saved-filters="text-list"
+                                    >
+                                        Wyczyść filtry
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    {% include "core/includes/table_toolbar.html" %}
+    {% include "core/includes/pagination.html" %}
+{% endblock %}

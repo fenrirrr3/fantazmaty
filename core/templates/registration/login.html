@@ -1,0 +1,254 @@
+{% extends "core/base.html" %}
+
+{% block title %}
+    Logowanie | Fantazmaty CMS
+{% endblock %}
+
+{% block content %}
+    <div class="auth-container">
+        <section class="auth-card">
+            <header class="auth-header">
+                <span class="auth-logo">F</span>
+                <h1>Logowanie</h1>
+
+                <p>
+                    Zaloguj się, aby przejść do systemu redakcyjnego.
+                </p>
+            </header>
+
+            {% if form.errors %}
+                <div class="form-error">
+                    Nieprawidłowa nazwa użytkownika lub hasło.
+                </div>
+            {% endif %}
+
+            {% if next and user.is_authenticated %}
+                <div class="form-error">
+                    Twoje konto nie ma dostępu do tej strony.
+                </div>
+            {% endif %}
+
+            <form method="post" class="auth-form">
+                {% csrf_token %}
+
+                <div class="form-group">
+                    <label for="{{ form.username.id_for_label }}">
+                        Nazwa użytkownika
+                    </label>
+
+                    {{ form.username }}
+                </div>
+
+                <div class="form-group">
+                    <label for="{{ form.password.id_for_label }}">
+                        Hasło
+                    </label>
+
+                    {{ form.password }}
+                </div>
+
+                {% if next %}
+                    <input
+                        type="hidden"
+                        name="next"
+                        value="{{ next }}"
+                    >
+                {% endif %}
+
+                <button type="submit" class="primary-button">
+                    Zaloguj się
+                </button>
+            </form>
+
+            <a
+                href="{% url 'password_reset' %}"
+                class="secondary-button auth-password-reset"
+            >
+                Nie pamiętam hasła
+            </a>
+            <blockquote id="login-quote" style="margin: 24px 0 0; text-align: center; color: var(--muted);">
+                <p data-quote-text style="margin: 0; font-style: italic; white-space: pre-line;">„Wchodzący we mnie, zostawcie nadzieję!”</p>
+                <footer style="margin-top: 8px; font-size: 0.8125rem;">
+                    <span data-quote-author>Dante Alighieri</span>,
+                    <cite><a data-quote-source href="https://wolnelektury.pl/katalog/lektura/boska-komedia-pieklo.html" target="_blank" rel="noopener noreferrer" style="color: inherit;">Boska komedia – Piekło</a></cite>
+                    <span data-quote-translator style="display: block;">tłum. Julian Korsak</span>
+                </footer>
+            </blockquote>
+            <script>
+            (() => {
+                "use strict";
+                const quotes = [
+    [
+        "dante",
+        "Wchodzący we mnie, zostawcie nadzieję!",
+        "Dante Alighieri",
+        "Boska komedia – Piekło",
+        "Julian Korsak",
+        "https://wolnelektury.pl/katalog/lektura/boska-komedia-pieklo.html"
+    ],
+    [
+        "hamlet-silence",
+        "Reszta jest milczeniem",
+        "William Shakespeare",
+        "Hamlet",
+        "Józef Paszkowski",
+        "https://wolnelektury.pl/katalog/lektura/hamlet.html"
+    ],
+    [
+        "hamlet-denmark",
+        "Jest coś chorobliwego w państwie duńskim",
+        "William Shakespeare",
+        "Hamlet",
+        "Józef Paszkowski",
+        "https://wolnelektury.pl/katalog/lektura/hamlet.html"
+    ],
+    [
+        "hamlet-being",
+        "Być albo nie być, to wielkie pytanie",
+        "William Shakespeare",
+        "Hamlet",
+        "Józef Paszkowski",
+        "https://wolnelektury.pl/katalog/lektura/hamlet.html"
+    ],
+    [
+        "macbeth",
+        "Kłucie w palcach mi powiada,\nŻe tu złego coś się skrada",
+        "William Shakespeare",
+        "Makbet",
+        "Leon Ulrich",
+        "https://wolnelektury.pl/katalog/lektura/makbet.html"
+    ],
+    [
+        "conrad",
+        "Ohyda! Ohyda!",
+        "Joseph Conrad",
+        "Jądro ciemności",
+        "Aniela Zagórska",
+        "https://pl.wikisource.org/wiki/Jądro_ciemności/III"
+    ],
+    [
+        "dziady-dark",
+        "Ciemno wszędzie, głucho wszędzie,\nCo to będzie, co to będzie?",
+        "Adam Mickiewicz",
+        "Dziady, część II",
+        "",
+        "https://wolnelektury.pl/katalog/lektura/dziady-dziady-poema-dziady-czesc-ii.html"
+    ],
+    [
+        "dziady-away",
+        "A kysz, a kysz!",
+        "Adam Mickiewicz",
+        "Dziady, część II",
+        "",
+        "https://wolnelektury.pl/katalog/lektura/dziady-dziady-poema-dziady-czesc-ii.html"
+    ],
+    [
+        "dziady-silent",
+        "Cóż to, nic nie odpowiada?",
+        "Adam Mickiewicz",
+        "Dziady, część II",
+        "",
+        "https://wolnelektury.pl/katalog/lektura/dziady-dziady-poema-dziady-czesc-ii.html"
+    ],
+    [
+        "zemsta-heaven",
+        "Niech się dzieje wola nieba,\nZ nią się zawsze zgadzać trzeba",
+        "Aleksander Fredro",
+        "Zemsta",
+        "",
+        "https://wolnelektury.pl/katalog/lektura/zemsta.html"
+    ],
+    [
+        "zemsta-good",
+        "Nie ma złego bez dobrego",
+        "Aleksander Fredro",
+        "Zemsta",
+        "",
+        "https://wolnelektury.pl/katalog/lektura/zemsta.html"
+    ],
+    [
+        "zemsta-write",
+        "Maczaj pióro – pisz i kwita",
+        "Aleksander Fredro",
+        "Zemsta",
+        "",
+        "https://wolnelektury.pl/katalog/lektura/zemsta.html"
+    ],
+    [
+        "zemsta-noise",
+        "Mało zysku, dużo krzyku",
+        "Aleksander Fredro",
+        "Zemsta",
+        "",
+        "https://wolnelektury.pl/katalog/lektura/zemsta.html"
+    ],
+    [
+        "zemsta-pieces",
+        "Z tych kawałków trudno będzie",
+        "Aleksander Fredro",
+        "Zemsta",
+        "",
+        "https://wolnelektury.pl/katalog/lektura/zemsta.html"
+    ],
+    [
+        "hamlet-words",
+        "Słowa, słowa, słowa",
+        "William Shakespeare",
+        "Hamlet",
+        "Józef Paszkowski",
+        "https://wolnelektury.pl/katalog/lektura/hamlet.html"
+    ],
+    [
+        "hamlet-method",
+        "Chociaż to wariacja, nie jest jednakże bez metody",
+        "William Shakespeare",
+        "Hamlet",
+        "Józef Paszkowski",
+        "https://wolnelektury.pl/katalog/lektura/hamlet.html"
+    ],
+    [
+        "macbeth-candle",
+        "Zgaśnij, o zgaśnij świeco krótkotrwała!",
+        "William Shakespeare",
+        "Makbet",
+        "Leon Ulrich",
+        "https://wolnelektury.pl/katalog/lektura/makbet.html"
+    ],
+    [
+        "macbeth-shadow",
+        "To życie tylko cieniem jest przelotnym",
+        "William Shakespeare",
+        "Makbet",
+        "Leon Ulrich",
+        "https://wolnelektury.pl/katalog/lektura/makbet.html"
+    ],
+
+];
+                const element = document.getElementById("login-quote");
+                const key = "fantazmaty.login.lastQuote.v1";
+                let previous = null;
+                function showQuote() {
+                    try { previous = localStorage.getItem(key) || previous; } catch (_) {}
+                    const available = quotes.filter(quote => quote[0] !== previous);
+                    const quote = available[Math.floor(Math.random() * available.length)];
+                    element.querySelector("[data-quote-text]").textContent = "„" + quote[1] + "”";
+                    element.querySelector("[data-quote-author]").textContent = quote[2];
+                    const source = element.querySelector("[data-quote-source]");
+                    source.textContent = quote[3];
+                    if (quote[5]) source.href = quote[5];
+                    else source.removeAttribute("href");
+                    const translator = element.querySelector("[data-quote-translator]");
+                    translator.textContent = quote[4] ? "tłum. " + quote[4] : "";
+                    translator.hidden = !quote[4];
+                    previous = quote[0];
+                    try { localStorage.setItem(key, previous); } catch (_) {}
+                }
+                showQuote();
+                window.addEventListener("pageshow", event => {
+                    if (event.persisted) showQuote();
+                });
+            })();
+            </script>
+        </section>
+    </div>
+{% endblock %}

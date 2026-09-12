@@ -1,0 +1,229 @@
+{% extends "core/base.html" %}
+
+{% block title %}Moje teksty | Fantazmaty CMS{% endblock %}
+
+{% block content %}
+    <header class="page-header">
+        <h1 class="page-title">Moje teksty</h1>
+        <p class="page-description">
+            Twoje przydziały i etapy pracy w bieżących cyklach tekstów.
+        </p>
+    </header>
+
+    <nav class="my-texts-filters" aria-label="Widok moich tekstów">
+        <a
+            href="{% url 'core:my_texts' %}?view=active&amp;page_size={{ page_obj.selected_page_size }}"
+            class="my-texts-filter{% if selected_view == 'active' %} is-active{% endif %}"
+            {% if selected_view == "active" %}aria-current="page"{% endif %}
+        >
+            W toku
+        </a>
+        <a
+            href="{% url 'core:my_texts' %}?view=waiting&amp;page_size={{ page_obj.selected_page_size }}"
+            class="my-texts-filter{% if selected_view == 'waiting' %} is-active{% endif %}"
+            {% if selected_view == "waiting" %}aria-current="page"{% endif %}
+        >
+            Oczekujące
+        </a>
+        <a
+            href="{% url 'core:my_texts' %}?view=completed&amp;page_size={{ page_obj.selected_page_size }}"
+            class="my-texts-filter{% if selected_view == 'completed' %} is-active{% endif %}"
+            {% if selected_view == "completed" %}aria-current="page"{% endif %}
+        >
+            Moja praca zakończona
+        </a>
+        <a
+            href="{% url 'core:my_texts' %}?view=all&amp;page_size={{ page_obj.selected_page_size }}"
+            class="my-texts-filter{% if selected_view == 'all' %} is-active{% endif %}"
+            {% if selected_view == "all" %}aria-current="page"{% endif %}
+        >
+            Wszystkie
+        </a>
+    </nav>
+
+    <section class="card" aria-label="Lista moich tekstów">
+        
+
+        <div
+            class="table-container"
+            role="region"
+            aria-label="Tabela moich tekstów"
+            tabindex="0"
+        >
+            <table id="my-texts-table">
+                <caption class="visually-hidden">
+                    Teksty przypisane do ciebie w wybranym widoku
+                </caption>
+
+                <thead>
+                    <tr>
+                        <th scope="col">Antologia</th>
+                        <th scope="col">Tytuł</th>
+
+                        {% if can_view_authors %}
+                            <th scope="col">Autorzy</th>
+                        {% endif %}
+
+                        <th scope="col">Twoje role</th>
+                        <th scope="col">Etap</th>
+                        <th scope="col">Twoja praca</th>
+                        <th scope="col" data-copy="false">Szczegóły</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for text in texts %}
+                        <tr
+                            class="workflow-stage-row"
+                            data-stage="{{ text.current_stage_type|default:'none' }}"
+                        >
+                            <td>
+                                {% if text.anthology %}
+                                    {{ text.anthology.title }}
+                                {% else %}
+                                    <span class="muted-text">Brak antologii</span>
+                                {% endif %}
+                            </td>
+
+                            <td data-copy-value="{{ text.title }}">
+                                <a
+                                    href="{% url 'core:assigned_text_detail' text.pk %}"
+                                    class="text-title-link"
+                                >
+                                    <strong>{{ text.title }}</strong>
+                                </a>
+                            </td>
+
+                            {% if can_view_authors %}
+                                <td data-copy-value="{{ text.authors_display }}">
+                                    {% for author in text.authors.all %}
+                                        <a
+                                            href="{% url 'core:author_detail' author.pk %}"
+                                            class="detail-link"
+                                        >
+                                            {{ author.first_name }} {{ author.last_name }}
+                                        </a>{% if not forloop.last %}, {% endif %}
+                                    {% empty %}
+                                        <span class="muted-text">
+                                            Brak przypisanego autora
+                                        </span>
+                                    {% endfor %}
+                                </td>
+                            {% endif %}
+
+                            <td>
+                                <div class="roles-list">
+                                    {% for assignment in text.user_assignments %}
+                                        <span class="role-badge">
+                                            {{ assignment.get_role_display }}
+                                        </span>
+                                    {% empty %}
+                                        <span class="muted-text">
+                                            Brak przydziału
+                                        </span>
+                                    {% endfor %}
+                                </div>
+                            </td>
+
+                            <td>
+                                {% if text.current_status %}
+                                    <span class="workflow-stage-badge">
+                                        {{ text.current_status.get_stage_type_display }}
+                                    </span>
+                                {% else %}
+                                    <span class="muted-text">
+                                        Bez otwartego etapu
+                                    </span>
+                                {% endif %}
+                            </td>
+
+                            <td>
+                                {% if text.current_stage_type == "withdrawn" %}
+                                    <span class="stage-status withdrawn">
+                                        Tekst wycofany
+                                    </span>
+                                {% elif text.has_active_work %}
+                                    <span class="stage-status active">
+                                        W toku
+                                    </span>
+                                {% elif text.is_waiting_for_other_role %}
+                                    <span class="stage-status pending">
+                                        Oczekiwanie na inną osobę
+                                    </span>
+                                {% elif text.has_reserved_work %}
+                                    <span class="stage-status pending">
+                                        Zarezerwowana
+                                    </span>
+                                {% elif text.has_completed_work %}
+                                    <span class="stage-status completed">
+                                        Zakończona
+                                    </span>
+                                {% elif text.current_stage_type == "ready" %}
+                                    <span class="stage-status completed">
+                                        Tekst gotowy
+                                    </span>
+                                {% else %}
+                                    <span class="muted-text">
+                                        Brak bieżącego zadania
+                                    </span>
+                                {% endif %}
+                            </td>
+
+                            <td data-copy="false">
+                                <a
+                                    href="{% url 'core:assigned_text_detail' text.pk %}"
+                                    class="secondary-button"
+                                    aria-label="Otwórz tekst: {{ text.title }}"
+                                >
+                                    Otwórz
+                                </a>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="{% if can_view_authors %}7{% else %}6{% endif %}">
+                                <div class="empty-results-panel">
+                                    {% if selected_view == "active" %}
+                                        <strong>Nie masz pracy w toku.</strong>
+                                        <p>
+                                            Sprawdź oczekujące zadania lub teksty
+                                            dostępne do przejęcia.
+                                        </p>
+                                    {% elif selected_view == "waiting" %}
+                                        <strong>Nie masz oczekujących zadań.</strong>
+                                        <p>
+                                            Tutaj pojawią się rezerwacje i teksty,
+                                            przy których czekasz na inną osobę.
+                                        </p>
+                                    {% elif selected_view == "completed" %}
+                                        <strong>Brak zakończonych prac w tym widoku.</strong>
+                                        <p>
+                                            Lista uwzględnia twoje zadania
+                                            w bieżących cyklach tekstów.
+                                        </p>
+                                    {% else %}
+                                        <strong>Nie masz przypisanych tekstów.</strong>
+                                        <p>
+                                            Teksty pojawią się tutaj po przypisaniu
+                                            ci roli w procesie.
+                                        </p>
+                                    {% endif %}
+
+                                    <a
+                                        href="{% url 'core:available_texts' %}"
+                                        class="secondary-button"
+                                    >
+                                        Teksty do wzięcia
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    {% include "core/includes/table_toolbar.html" %}
+    {% include "core/includes/pagination.html" %}
+{% endblock %}

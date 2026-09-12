@@ -1,0 +1,222 @@
+{% extends "core/base.html" %}
+
+{% block title %}Teksty do wzięcia | Fantazmaty CMS{% endblock %}
+
+{% block content %}
+    <header class="page-header">
+        <h1 class="page-title">Teksty do wzięcia</h1>
+        <p class="page-description">
+            Dostępne zadania odpowiadające twoim rolom.
+            Wybierz etap i datę rozpoczęcia pracy.
+        </p>
+    </header>
+
+    {% if leave_information %}
+        <div
+            class="leave-warning{% if leave_information.is_active %} is-active{% endif %}"
+            role="status"
+        >
+            <strong>
+                {% if leave_information.is_active %}
+                    Jesteś na urlopie.
+                {% else %}
+                    Masz zaplanowany urlop.
+                {% endif %}
+            </strong>
+
+            <span>
+                Od {{ leave_information.vacation.start_date|date:"d.m.Y" }}
+                {% if leave_information.vacation.until_revoked %}
+                    do odwołania.
+                {% else %}
+                    do {{ leave_information.vacation.end_date|date:"d.m.Y" }}.
+                {% endif %}
+                Uwzględnij tę nieobecność przy podejmowaniu zadania.
+            </span>
+
+            <a href="{% url 'core:my_vacations' %}" class="detail-link">
+                Moje urlopy
+            </a>
+        </div>
+    {% endif %}
+
+    <section class="card" aria-label="Dostępne zadania">
+        
+
+        <div
+            class="table-container"
+            role="region"
+            aria-label="Tabela tekstów dostępnych do przejęcia"
+            tabindex="0"
+        >
+            <table id="available-texts-table">
+                <caption class="visually-hidden">
+                    Dostępne etapy w bieżących cyklach tekstów
+                </caption>
+
+                <thead>
+                    <tr>
+                        <th scope="col">Antologia</th>
+                        <th scope="col">Tytuł</th>
+
+                        {% if can_view_authors %}
+                            <th scope="col">Autorzy</th>
+                        {% endif %}
+
+                        <th scope="col" class="numeric-cell">Długość</th>
+                        <th scope="col">Etap</th>
+                        <th scope="col">Wymagana rola</th>
+                        <th scope="col" data-copy="false">Przejmij</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for stage in available_stages %}
+                        <tr
+                            class="workflow-stage-row"
+                            data-stage="{{ stage.stage_type }}"
+                        >
+                            <td>
+                                {% if stage.text.anthology %}
+                                    {{ stage.text.anthology.title }}
+                                {% else %}
+                                    <span class="muted-text">Brak antologii</span>
+                                {% endif %}
+                            </td>
+
+                            <td data-copy-value="{{ stage.text.title }}">
+                                <a
+                                    href="{% url 'core:assigned_text_detail' stage.text.pk %}"
+                                    class="text-title-link"
+                                >
+                                    <strong>{{ stage.text.title }}</strong>
+                                </a>
+
+                                {% if stage.text.content_warnings %}
+                                    <details class="text-information">
+                                        <summary>Ostrzeżenia dotyczące treści</summary>
+                                        <div>
+                                            {{ stage.text.content_warnings|linebreaksbr }}
+                                        </div>
+                                    </details>
+                                {% endif %}
+                            </td>
+
+                            {% if can_view_authors %}
+                                <td data-copy-value="{{ stage.text.authors_display }}">
+                                    {% for author in stage.text.authors.all %}
+                                        <a
+                                            href="{% url 'core:author_detail' author.pk %}"
+                                            class="detail-link"
+                                        >
+                                            {{ author.first_name }} {{ author.last_name }}
+                                        </a>{% if not forloop.last %}, {% endif %}
+                                    {% empty %}
+                                        <span class="muted-text">
+                                            Brak przypisanego autora
+                                        </span>
+                                    {% endfor %}
+                                </td>
+                            {% endif %}
+
+                            <td
+                                class="numeric-cell"
+                                data-type="number"
+                                data-copy-value="{{ stage.text.length|stringformat:'d' }}"
+                            >
+                                {{ stage.text.length }}
+                            </td>
+
+                            <td>
+                                <span class="workflow-stage-badge">
+                                    {{ stage.get_stage_type_display }}
+                                </span>
+                            </td>
+
+                            <td>
+                                <span class="role-badge">
+                                    {{ stage.required_group }}
+                                </span>
+                            </td>
+
+                            <td class="stage-action-cell" data-copy="false">
+                                <form
+                                    method="post"
+                                    action="{% url 'core:take_workflow_stage' stage.pk %}"
+                                    class="take-stage-form"
+                                    aria-label="Przejmij etap: {{ stage.get_stage_type_display }} – {{ stage.text.title }}"
+                                >
+                                    {% csrf_token %}
+
+                                    {% if stage.stage_type == "first_verification" %}
+                                        <p
+                                            id="reservation-help-{{ stage.pk }}"
+                                            class="form-help"
+                                        >
+                                            Rezerwujesz zadanie. Weryfikację
+                                            rozpoczniesz po przekazaniu tekstu
+                                            przez redaktora.
+                                        </p>
+
+                                        <button
+                                            type="submit"
+                                            class="assign-button"
+                                            aria-describedby="reservation-help-{{ stage.pk }}"
+                                        >
+                                            Zarezerwuj weryfikację
+                                        </button>
+                                    {% else %}
+                                        <button type="submit" class="assign-button">
+                                            Przejmij
+                                        </button>
+<div class="form-field">
+                                            <label for="started-at-{{ stage.pk }}">
+                                                Data rozpoczęcia
+                                            </label>
+
+                                            <input
+                                                id="started-at-{{ stage.pk }}"
+                                                type="date"
+                                                name="started_at"
+                                                class="stage-date-input"
+                                                value="{{ start_stage_form.started_at.value|date:'Y-m-d' }}"
+                                                {% if start_stage_form.started_at.field.widget.attrs.min %}
+                                                    min="{{ start_stage_form.started_at.field.widget.attrs.min }}"
+                                                {% endif %}
+                                                {% if start_stage_form.started_at.field.widget.attrs.max %}
+                                                    max="{{ start_stage_form.started_at.field.widget.attrs.max }}"
+                                                {% endif %}
+                                                required
+                                            >
+                                        </div>
+                                    {% endif %}
+                                </form>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="{% if can_view_authors %}7{% else %}6{% endif %}">
+                                <div class="empty-results-panel">
+                                    <strong>Brak dostępnych zadań dla twoich ról.</strong>
+                                    <p>
+                                        Nowe zadania pojawią się po przygotowaniu
+                                        kolejnych etapów lub zwolnieniu przydziału.
+                                    </p>
+                                    <a
+                                        href="{% url 'core:my_texts' %}?view=all"
+                                        class="secondary-button"
+                                    >
+                                        Moje teksty
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    {% include "core/includes/table_toolbar.html" %}
+    {% include "core/includes/pagination.html" %}
+{% endblock %}

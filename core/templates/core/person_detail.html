@@ -1,0 +1,287 @@
+{% extends "core/base.html" %}
+
+{% block title %}
+    {{ person.first_name }} {{ person.last_name }} | Fantazmaty CMS
+
+{% endblock %}
+
+{% block content %}
+    <header class="page-header">
+        <div class="detail-heading">
+            <div>
+                <p class="eyebrow">Zespół</p>
+                <h1 class="page-title">
+                    {{ person.first_name }} {{ person.last_name }}
+                </h1>
+                {% if person.is_coordinator %}
+                    <p class="page-description">Koordynator zespołu</p>
+                {% endif %}
+            </div>
+
+            <a href="{% url 'core:people_list' %}" class="secondary-button">
+                Wróć do zespołu
+            </a>
+        </div>
+    </header>
+
+    {% if leave_information %}
+        <div
+            class="leave-warning{% if leave_information.is_active %} is-active{% endif %}"
+            role="status"
+        >
+            <strong>
+                {% if leave_information.is_active %}
+                    Osoba jest obecnie na urlopie.
+                {% else %}
+                    Zaplanowany urlop.
+                {% endif %}
+            </strong>
+            <span>
+                Od {{ leave_information.vacation.start_date|date:"d.m.Y" }}
+                {% if leave_information.vacation.until_revoked %}
+                    do odwołania.
+                {% else %}
+                    do {{ leave_information.vacation.end_date|date:"d.m.Y" }}.
+                {% endif %}
+            </span>
+        </div>
+    {% endif %}
+
+    <section class="details-card" aria-labelledby="person-information-heading">
+        <h2 id="person-information-heading">Kontakt i role</h2>
+
+        <dl class="details-grid">
+            <div class="detail-item">
+                <dt>Adres e-mail</dt>
+                <dd>
+                    {% if person.email %}
+                        <a href="mailto:{{ person.email }}" class="detail-link">
+                            {{ person.email }}
+                        </a>
+                    {% else %}
+                        <span class="muted-text">Nie podano</span>
+                    {% endif %}
+                </dd>
+            </div>
+
+            <div class="detail-item">
+                <dt>E-mail Dropboxa</dt>
+                <dd>
+                    {% if person.dropbox_email %}
+                        <a
+                            href="mailto:{{ person.dropbox_email }}"
+                            class="detail-link"
+                        >
+                            {{ person.dropbox_email }}
+                        </a>
+                    {% else %}
+                        <span class="muted-text">Nie podano</span>
+                    {% endif %}
+                </dd>
+            </div>
+
+            <div class="detail-item">
+                <dt>Role w zespole</dt>
+                <dd class="roles-list">
+                    {% if person.is_coordinator %}<span class="role-badge" data-palette="coordinator">Koordynator</span>{% endif %}
+                    {% for role in person.roles.all %}
+                        <span class="role-badge">{{ role.name }}</span>
+                    {% empty %}
+                        <span class="muted-text">Brak przypisanych ról</span>
+                    {% endfor %}
+                </dd>
+            </div>
+
+            <div class="detail-item">
+                <dt>Konto użytkownika</dt>
+                <dd>
+                    {% if person.user %}
+                        {% firstof person.user.get_full_name "Nieuzupełnione dane" %}
+                    {% else %}
+                        <span class="muted-text">Nie powiązano konta</span>
+                    {% endif %}
+                </dd>
+            </div>
+        </dl>
+    </section>
+
+    <section aria-labelledby="person-summary-heading">
+        <h2 id="person-summary-heading">Praca nad tekstami</h2>
+        <p class="muted-text">
+            Podsumowanie przydziałów w bieżących cyklach tekstów.
+        </p>
+
+        <div class="profile-summary-grid">
+            <div class="summary-tile">
+                <span>W toku</span>
+                <strong>{{ person_summary.active|default:0 }}</strong>
+            </div>
+            <div class="summary-tile">
+                <span>Zarezerwowane</span>
+                <strong>{{ person_summary.reserved|default:0 }}</strong>
+            </div>
+            <div class="summary-tile">
+                <span>Zakończone</span>
+                <strong>{{ person_summary.completed|default:0 }}</strong>
+            </div>
+        </div>
+    </section>
+
+    <section class="card" aria-labelledby="person-assignments-heading">
+        <header class="section-header">
+            <div>
+                <h2 id="person-assignments-heading">Przydziały</h2>
+                <p>
+                    Role przypisane tej osobie oraz stan odpowiadających im etapów.
+                </p>
+            </div>
+            <span class="record-counter">{{ assignments|length }}</span>
+        </header>
+
+        
+
+        <div
+            class="table-container"
+            role="region"
+            aria-label="Przydziały członka zespołu"
+            tabindex="0"
+        >
+            <table id="person-assignments-table">
+                <caption class="visually-hidden">
+                    Przydziały: {{ person.first_name }} {{ person.last_name }}
+                </caption>
+
+                <thead>
+                    <tr>
+                        <th scope="col">Przypisano</th>
+                        <th scope="col">Antologia</th>
+                        <th scope="col">Tytuł</th>
+                        {% if can_view_authors %}
+                            <th scope="col">Autorzy</th>
+                        {% endif %}
+                        <th scope="col">Rola</th>
+                        <th scope="col">Etap</th>
+                        <th scope="col">Stan</th>
+                        <th scope="col">Rozpoczęcie</th>
+                        <th scope="col">Zakończenie</th>
+                        <th scope="col" data-copy="false">Szczegóły</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for assignment in assignments %}
+                        <tr>
+                            <td class="date-cell">
+                                {{ assignment.assigned_at|date:"d.m.Y, H:i"|default:"–" }}
+                            </td>
+
+                            <td>
+                                {% if assignment.text.anthology %}
+                                    {{ assignment.text.anthology.title }}
+                                {% else %}
+                                    <span class="muted-text">Brak antologii</span>
+                                {% endif %}
+                            </td>
+
+                            <td data-copy-value="{{ assignment.text.title }}">
+                                <a
+                                    href="{% url 'core:assigned_text_detail' assignment.text.pk %}"
+                                    class="text-title-link"
+                                >
+                                    <strong>{{ assignment.text.title }}</strong>
+                                </a>
+                            </td>
+
+                            {% if can_view_authors %}
+                                <td>
+                                    {% for author in assignment.text.authors.all %}
+                                        <a
+                                            href="{% url 'core:author_detail' author.pk %}"
+                                            class="detail-link"
+                                        >
+                                            {{ author.first_name }} {{ author.last_name }}
+                                        </a>{% if not forloop.last %}, {% endif %}
+                                    {% empty %}
+                                        <span class="muted-text">
+                                            Brak przypisanego autora
+                                        </span>
+                                    {% endfor %}
+                                </td>
+                            {% endif %}
+
+                            <td>
+                                <span class="role-badge">
+                                    {{ assignment.get_role_display }}
+                                </span>
+                            </td>
+
+                            <td>
+                                {% if assignment.latest_stage %}
+                                    {{ assignment.latest_stage.get_stage_type_display }}
+                                {% else %}
+                                    <span class="muted-text">Etap jeszcze nie powstał</span>
+                                {% endif %}
+                            </td>
+
+                            <td>
+                                {% if assignment.is_historical %}
+                                    <span class="role-badge">Historyczne{% if assignment.has_completed_work %} · wykonane{% endif %}</span>
+                                {% elif assignment.is_withdrawn %}
+                                    <span class="stage-status withdrawn">Tekst wycofany</span>
+                                {% elif assignment.is_ready %}
+                                    <span class="stage-status completed">Tekst gotowy</span>
+                                {% elif assignment.has_active_work %}
+                                    <span class="stage-status active">W toku</span>
+                                {% elif assignment.latest_stage.is_scheduled %}
+                                    <span class="stage-status pending">Zaplanowany</span>
+                                {% elif assignment.has_reserved_work %}
+                                    <span class="stage-status pending">Zarezerwowany</span>
+                                {% elif assignment.has_completed_work %}
+                                    <span class="stage-status completed">Zakończony</span>
+                                {% else %}
+                                    <span class="muted-text">Brak bieżącego zadania</span>
+                                {% endif %}
+                            </td>
+
+                            <td class="date-cell">
+                                {{ assignment.latest_stage.started_at|date:"d.m.Y"|default:"–" }}
+                            </td>
+
+                            <td class="date-cell">
+                                {{ assignment.latest_stage.ended_at|date:"d.m.Y"|default:"–" }}
+                            </td>
+
+                            <td data-copy="false">
+                                <a
+                                    href="{% url 'core:assigned_text_detail' assignment.text.pk %}"
+                                    class="secondary-button"
+                                    aria-label="Otwórz tekst: {{ assignment.text.title }}"
+                                >
+                                    Otwórz
+                                </a>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="{% if can_view_authors %}10{% else %}9{% endif %}">
+                                <div class="empty-results-panel">
+                                    <strong>Brak przydziałów w bieżących cyklach.</strong>
+                                    <p>
+                                        {% if person.user %}
+                                            Zadania pojawią się po przypisaniu
+                                            tej osobie roli przy tekście.
+                                        {% else %}
+                                            Powiązanie osoby z kontem użytkownika
+                                            umożliwi przypisywanie jej zadań.
+                                        {% endif %}
+                                    </p>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+{% include "core/includes/table_toolbar.html" %}
+{% endblock %}

@@ -1,0 +1,273 @@
+{% extends "core/base.html" %}
+
+{% block title %}Wyszukiwanie | Fantazmaty CMS{% endblock %}
+
+{% block content %}
+    <header class="page-header">
+        <h1 class="page-title">Wyszukiwanie</h1>
+        <p class="page-description">
+            Znajdź teksty, bieżące recenzje, osoby w zespole i antologie.
+            {% if can_view_authors %}
+                Możesz również wyszukiwać autorów.
+            {% endif %}
+        </p>
+    </header>
+
+    <section class="filters-card" aria-label="Wyszukiwarka">
+        <form
+            method="get"
+            action="{% url 'core:global_search' %}"
+            class="global-search-form"
+            role="search"
+        >
+            {% for error in form.non_field_errors %}
+                <p class="form-error" role="alert">{{ error }}</p>
+            {% endfor %}
+
+            <div class="global-search-field">
+                <label for="{{ form.query.id_for_label }}">
+                    {{ form.query.label }}
+                </label>
+                {{ form.query }}
+
+                {% if form.query.help_text %}
+                    <p class="form-help">{{ form.query.help_text }}</p>
+                {% endif %}
+
+                {% for error in form.query.errors %}
+                    <p class="field-error">{{ error }}</p>
+                {% endfor %}
+            </div>
+
+            <div class="filter-actions">
+                <button type="submit" class="primary-button">
+                    Wyszukaj
+                </button>
+                {% if query %}
+                    <a
+                        href="{% url 'core:global_search' %}"
+                        class="secondary-button"
+                    >
+                        Wyczyść
+                    </a>
+                {% endif %}
+            </div>
+        </form>
+    </section>
+
+    {% if query %}
+        <header class="page-header">
+            <h2>Wyniki dla „{{ query }}”</h2>
+            <p class="muted-text">
+                Wyświetlono maksymalnie {{ result_limit }} wyników w każdej kategorii.
+                Doprecyzuj zapytanie, aby zawęzić wyniki.
+            </p>
+        </header>
+
+        <div class="global-search-results">
+            <section class="card" aria-labelledby="search-texts-heading">
+                <header class="section-header">
+                    <h2 id="search-texts-heading">Teksty</h2>
+                    <span class="record-counter">{{ texts|length }}</span>
+                </header>
+
+                {% if texts %}
+                    <ul class="search-result-list">
+                        {% for text in texts %}
+                            <li class="search-result-item">
+                                <a
+                                    href="{% url 'core:assigned_text_detail' text.pk %}"
+                                    class="detail-link"
+                                >
+                                    <strong>{{ text.title }}</strong>
+                                </a>
+
+                                {% if text.anthology %}
+                                    <div class="muted-text">
+                                        {{ text.anthology.title }}
+                                    </div>
+                                {% endif %}
+
+                                {% if can_view_authors %}
+                                    {% if text.authors.all %}
+                                        <div class="muted-text">
+                                            {% for author in text.authors.all %}
+                                                {{ author }}{% if not forloop.last %}, {% endif %}
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
+                                {% endif %}
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <div class="empty-results-panel">
+                        Brak pasujących tekstów.
+                    </div>
+                {% endif %}
+            </section>
+
+            <section class="card" aria-labelledby="search-reviews-heading">
+                <header class="section-header">
+                    <h2 id="search-reviews-heading">Bieżące recenzje</h2>
+                    <span class="record-counter">{{ reviews|length }}</span>
+                </header>
+
+                {% if reviews %}
+                    <ul class="search-result-list">
+                        {% for review in reviews %}
+                            <li class="search-result-item">
+                                <a
+                                    href="{% url 'core:assigned_review_detail' review.pk %}"
+                                    class="detail-link"
+                                >
+                                    <strong>{{ review.title }}</strong>
+                                </a>
+
+                                {% if review.anthology %}
+                                    <div class="muted-text">
+                                        {{ review.anthology.title }}
+                                    </div>
+                                {% endif %}
+
+                                {% if can_view_authors %}
+                                    <div class="muted-text">
+                                        {{ review.author_first_name }}
+                                        {{ review.author_last_name }}
+                                    </div>
+                                {% endif %}
+
+                                <span class="stage-status {% if review.status == 'accepted' %}completed{% elif review.status == 'rejected' or review.status == 'withdrawn' %}withdrawn{% elif review.status == 'in_review' %}active{% else %}pending{% endif %}">
+                                    {{ review.get_status_display }}
+                                </span>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <div class="empty-results-panel">
+                        Brak pasujących bieżących recenzji.
+                    </div>
+                {% endif %}
+            </section>
+
+            {% if can_view_authors %}
+                <section class="card" aria-labelledby="search-authors-heading">
+                    <header class="section-header">
+                        <h2 id="search-authors-heading">Autorzy</h2>
+                        <span class="record-counter">{{ authors|length }}</span>
+                    </header>
+
+                    {% if authors %}
+                        <ul class="search-result-list">
+                            {% for author in authors %}
+                                <li class="search-result-item">
+                                    <a
+                                        href="{% url 'core:author_detail' author.pk %}"
+                                        class="detail-link"
+                                    >
+                                        <strong>{{ author }}</strong>
+                                    </a>
+
+                                    {% if author.pseudonym %}
+                                        <div class="muted-text">
+                                            Pseudonim: {{ author.pseudonym }}
+                                        </div>
+                                    {% endif %}
+
+                                    {% if author.contact and author.email %}
+                                        <div class="muted-text">{{ author.email }}</div>
+                                    {% elif not author.contact %}
+                                        <div class="muted-text">Kontakt wyłączony</div>
+                                    {% endif %}
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <div class="empty-results-panel">
+                            Brak pasujących autorów.
+                        </div>
+                    {% endif %}
+                </section>
+            {% endif %}
+
+            <section class="card" aria-labelledby="search-people-heading">
+                <header class="section-header">
+                    <h2 id="search-people-heading">Zespół</h2>
+                    <span class="record-counter">{{ people|length }}</span>
+                </header>
+
+                {% if people %}
+                    <ul class="search-result-list">
+                        {% for person in people %}
+                            <li class="search-result-item">
+                                <a
+                                    href="{% url 'core:person_detail' person.pk %}"
+                                    class="detail-link"
+                                >
+                                    <strong>{{ person }}</strong>
+                                </a>
+
+                                {% if person.roles.all %}
+                                    <div class="roles-list">
+                                        {% for role in person.roles.all %}
+                                            <span class="role-badge">{{ role.name }}</span>
+                                        {% endfor %}
+                                    </div>
+                                {% endif %}
+
+                                {% if person.email %}
+                                    <div class="muted-text">{{ person.email }}</div>
+                                {% endif %}
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <div class="empty-results-panel">
+                        Brak pasujących aktywnych członków zespołu.
+                    </div>
+                {% endif %}
+            </section>
+
+            <section class="card" aria-labelledby="search-anthologies-heading">
+                <header class="section-header">
+                    <h2 id="search-anthologies-heading">Antologie</h2>
+                    <span class="record-counter">{{ anthologies|length }}</span>
+                </header>
+
+                {% if anthologies %}
+                    <ul class="search-result-list">
+                        {% for anthology in anthologies %}
+                            <li class="search-result-item">
+                                <a
+                                    href="{% url 'core:text_list' %}?anthology={{ anthology.pk }}&amp;hide_ready=0"
+                                    class="detail-link"
+                                >
+                                    <strong>{{ anthology.title }}</strong>
+                                </a>
+                                <span class="stage-status {% if anthology.status == 'published' %}completed{% elif anthology.status == 'in_preparation' %}active{% else %}pending{% endif %}">
+                                    {{ anthology.get_status_display }}
+                                </span>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <div class="empty-results-panel">
+                        Brak pasujących antologii.
+                    </div>
+                {% endif %}
+            </section>
+        </div>
+    {% elif not form.errors %}
+        <section class="card">
+            <div class="empty-results-panel">
+                <strong>Czego szukasz?</strong>
+                <p>
+                    Wpisz tytuł, nazwę antologii albo dane członka zespołu.
+                    {% if can_view_authors %}
+                        Możesz też podać nazwisko, pseudonim lub e-mail autora.
+                    {% endif %}
+                </p>
+            </div>
+        </section>
+    {% endif %}
+{% endblock %}

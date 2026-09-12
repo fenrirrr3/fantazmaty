@@ -1,0 +1,212 @@
+{% extends "core/base.html" %}
+
+{% block title %}Moje urlopy | Fantazmaty CMS{% endblock %}
+
+{% block content %}
+    <header class="page-header">
+        <h1 class="page-title">Moje urlopy</h1>
+        <p class="page-description">
+            Zgłoś nieobecność, sprawdź zaplanowane urlopy i historię.
+        </p>
+    </header>
+
+    <div class="vacation-layout">
+        <section class="card vacation-form-card" aria-labelledby="vacation-form-heading">
+            <h2 id="vacation-form-heading">Zgłoś urlop</h2>
+
+            <form
+                method="post"
+                action="{% url 'core:my_vacations' %}"
+                class="vacation-form"
+                data-warn-unsaved
+            >
+                {% csrf_token %}
+
+                {% for error in form.non_field_errors %}
+                    <p class="form-error" role="alert">{{ error }}</p>
+                {% endfor %}
+
+                <div class="form-field">
+                    <label for="{{ form.start_date.id_for_label }}">
+                        {{ form.start_date.label }}
+                    </label>
+                    {{ form.start_date }}
+
+                    {% if form.start_date.help_text %}
+                        <p class="form-help">{{ form.start_date.help_text }}</p>
+                    {% endif %}
+
+                    {% for error in form.start_date.errors %}
+                        <p class="field-error">{{ error }}</p>
+                    {% endfor %}
+                </div>
+
+                <div class="form-field">
+                    <label for="{{ form.end_date.id_for_label }}">
+                        {{ form.end_date.label }}
+                    </label>
+                    {{ form.end_date }}
+
+                    {% if form.end_date.help_text %}
+                        <p class="form-help">{{ form.end_date.help_text }}</p>
+                    {% endif %}
+
+                    {% for error in form.end_date.errors %}
+                        <p class="field-error">{{ error }}</p>
+                    {% endfor %}
+                </div>
+
+                <div class="form-field">
+                    <label
+                        for="{{ form.until_revoked.id_for_label }}"
+                        class="vacation-checkbox"
+                    >
+                        {{ form.until_revoked }}
+                        <span>{{ form.until_revoked.label }}</span>
+                    </label>
+
+                    {% for error in form.until_revoked.errors %}
+                        <p class="field-error">{{ error }}</p>
+                    {% endfor %}
+
+                    <p class="form-help">
+                        Jeśli nie znasz terminu powrotu, wybierz urlop
+                        do odwołania. Data zakończenia nie będzie wtedy zapisywana.
+                    </p>
+                </div>
+
+                <div class="dialog-actions">
+                    <button type="submit" class="primary-button">
+                        Zgłoś urlop
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        <section class="card vacation-history" aria-labelledby="vacation-history-heading">
+            <header class="vacation-history-header">
+                <div>
+                    <h2 id="vacation-history-heading">Moje zgłoszenia</h2>
+                    <p class="form-help">
+                        Urlopy trwające, zaplanowane i zakończone.
+                    </p>
+                </div>
+            </header>
+
+            
+
+            <div
+                class="table-container"
+                role="region"
+                aria-label="Tabela moich urlopów"
+                tabindex="0"
+            >
+                <table id="my-vacations-table">
+                    <caption class="visually-hidden">
+                        Urlopy użytkownika, od najpóźniejszej daty rozpoczęcia
+                    </caption>
+
+                    <thead>
+                        <tr>
+                            <th scope="col">Urlop od</th>
+                            <th scope="col">Urlop do</th>
+                            <th scope="col">Status</th>
+                            <th scope="col">Zgłoszono</th>
+                            <th scope="col" data-copy="false">Akcje</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        {% for vacation in vacations %}
+                            <tr{% if vacation.is_active %} class="vacation-row-active"{% elif vacation.is_finished %} class="vacation-row-finished"{% endif %}>
+                                <td class="date-cell">
+                                    <time datetime="{{ vacation.start_date|date:'Y-m-d' }}">
+                                        {{ vacation.start_date|date:"d.m.Y" }}
+                                    </time>
+                                </td>
+
+                                <td class="date-cell">
+                                    {% if vacation.until_revoked %}
+                                        Do odwołania
+                                    {% elif vacation.end_date %}
+                                        <time datetime="{{ vacation.end_date|date:'c' }}">
+                                            {{ vacation.end_date|date:"d.m.Y" }}
+                                        </time>
+                                    {% else %}
+                                        <span class="muted-text">Nie podano</span>
+                                    {% endif %}
+                                </td>
+
+                                <td>
+                                    {% if vacation.is_active %}
+                                        <span class="stage-status active">Trwa</span>
+                                    {% elif vacation.is_upcoming %}
+                                        <span class="stage-status pending">Zaplanowany</span>
+                                    {% elif vacation.is_finished %}
+                                        <span class="stage-status completed">Zakończony</span>
+                                    {% else %}
+                                        <span class="stage-status inactive">Nieaktywny</span>
+                                    {% endif %}
+                                </td>
+
+                                <td class="date-cell">
+                                    {{ vacation.created_at|date:"d.m.Y, H:i" }}
+                                </td>
+
+                                <td data-copy="false">
+                                    <div class="vacation-actions">
+                                        {% if vacation.can_be_edited %}
+                                            <a
+                                                href="{% url 'core:edit_vacation' vacation.pk %}"
+                                                class="secondary-button"
+                                                aria-label="Edytuj urlop rozpoczynający się {{ vacation.start_date|date:'d.m.Y' }}"
+                                            >
+                                                Edytuj
+                                            </a>
+                                        {% endif %}
+
+                                        {% if vacation.can_be_ended %}
+                                            <form
+                                                method="post"
+                                                action="{% url 'core:end_vacation' vacation.pk %}"
+                                                class="vacation-end-form"
+                                            >
+                                                {% csrf_token %}
+                                                <button
+                                                    type="submit"
+                                                    class="vacation-end-button"
+                                                    aria-label="Zakończ teraz urlop rozpoczęty {{ vacation.start_date|date:'d.m.Y' }}"
+                                                >
+                                                    Zakończ teraz
+                                                </button>
+                                            </form>
+                                        {% endif %}
+
+                                        {% if not vacation.can_be_edited and not vacation.can_be_ended %}
+                                            <span class="muted-text">–</span>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="5">
+                                    <div class="empty-results-panel">
+                                        <strong>Nie masz jeszcze zgłoszonych urlopów.</strong>
+                                        <p>
+                                            Wypełnij formularz, aby poinformować
+                                            zespół o planowanej nieobecności.
+                                        </p>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    {% include "core/includes/table_toolbar.html" %}
+    {% include "core/includes/pagination.html" %}
+{% endblock %}

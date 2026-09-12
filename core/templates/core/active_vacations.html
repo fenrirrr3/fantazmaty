@@ -1,0 +1,139 @@
+{% extends "core/base.html" %}
+
+{% block title %}Aktywne urlopy | Fantazmaty CMS{% endblock %}
+
+{% block content %}
+    <header class="page-header">
+        <h1 class="page-title">Aktywne urlopy</h1>
+        <p class="page-description">
+            Trwające urlopy osób, które wciąż są w zespole.
+            Stan na {{ now|date:"d.m.Y, H:i" }}.
+        </p>
+    </header>
+
+    <section class="card" aria-label="Lista aktywnych urlopów">
+        
+
+        <div
+            class="table-container"
+            role="region"
+            aria-label="Tabela aktywnych urlopów zespołu"
+            tabindex="0"
+        >
+            <table id="active-vacations-table">
+                <caption class="visually-hidden">
+                    Trwające urlopy członków zespołu
+                </caption>
+
+                <thead>
+                    <tr>
+                        <th scope="col">Osoba</th>
+                        <th scope="col">Role</th>
+                        <th scope="col">Urlop od</th>
+                        <th scope="col">Urlop do</th>
+                        <th scope="col" data-copy="false">Szczegóły</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for vacation in vacations %}
+                        <tr class="vacation-row-active">
+                            <td data-copy-value="{{ vacation.person.first_name }} {{ vacation.person.last_name }}">
+                                <a
+                                    href="{% url 'core:person_detail' vacation.person.pk %}"
+                                    class="detail-link"
+                                >
+                                    <strong>
+                                        {{ vacation.person.first_name }}
+                                        {{ vacation.person.last_name }}
+                                    </strong>
+                                </a>
+                            </td>
+
+                            <td>
+                                <div class="roles-list">
+                                    {% for role in vacation.person.roles.all %}
+                                        <span class="role-badge">{{ role.name }}</span>
+                                    {% empty %}
+                                        {% if not vacation.person.is_coordinator %}
+                                            <span class="muted-text">
+                                                Brak przypisanych ról
+                                            </span>
+                                        {% endif %}
+                                    {% endfor %}
+                                </div>
+
+                                {% if vacation.person.is_coordinator %}
+                                    <div class="form-help">Koordynator zespołu</div>
+                                {% endif %}
+                            </td>
+
+                            <td class="date-cell">
+                                <time datetime="{{ vacation.start_date|date:'Y-m-d' }}">
+                                    {{ vacation.start_date|date:"d.m.Y" }}
+                                </time>
+                            </td>
+
+                            <td class="date-cell">
+                                {% if vacation.until_revoked %}
+                                    <span class="stage-status pending">
+                                        Do odwołania
+                                    </span>
+                                {% elif vacation.end_date %}
+                                    <time datetime="{{ vacation.end_date|date:'c' }}">
+                                        {{ vacation.end_date|date:"d.m.Y" }}
+                                    </time>
+                                {% else %}
+                                    <span class="muted-text">Nie podano</span>
+                                {% endif %}
+                            </td>
+
+                            <td data-copy="false">
+                                <div class="filter-actions">
+                                    <a
+                                        href="{% url 'core:person_detail' vacation.person.pk %}"
+                                        class="secondary-button"
+                                        aria-label="Otwórz profil: {{ vacation.person.first_name }} {{ vacation.person.last_name }}"
+                                    >
+                                        Profil
+                                    </a>
+
+                                    {% if user.is_superuser or vacation.person.user_id == user.pk %}
+                                        <a
+                                            href="{% url 'core:edit_vacation' vacation.pk %}"
+                                            class="secondary-button"
+                                            aria-label="Edytuj urlop: {{ vacation.person.first_name }} {{ vacation.person.last_name }}"
+                                        >
+                                            Edytuj urlop
+                                        </a>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="5">
+                                <div class="empty-results-panel">
+                                    <strong>Nikt z zespołu nie ma obecnie zgłoszonego urlopu.</strong>
+                                    <p>
+                                        Zaplanowane urlopy pojawią się tutaj
+                                        w dniu ich rozpoczęcia.
+                                    </p>
+                                    <a
+                                        href="{% url 'core:people_list' %}"
+                                        class="secondary-button"
+                                    >
+                                        Przejdź do zespołu
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    {% include "core/includes/table_toolbar.html" %}
+    {% include "core/includes/pagination.html" %}
+{% endblock %}

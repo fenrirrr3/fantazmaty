@@ -1,0 +1,204 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{% block title %}
+    {{ title }} | {{ site_title|default:"Administracja Fantazmaty" }}
+{% endblock %}
+
+{% block branding %}
+    <div id="site-name">
+        <a href="{% url 'admin:index' %}">
+            {{ site_header|default:"Fantazmaty – administracja" }}
+        </a>
+    </div>
+{% endblock %}
+
+{% block nav-global %}
+    {% if user.is_active %}
+        {% if user.is_superuser or user.person_profile.is_active %}
+            <nav class="cms-admin-navigation" aria-label="System redakcyjny">
+                <a href="{% url 'core:home' %}">
+                    Wróć do systemu redakcyjnego
+                </a>
+            </nav>
+        {% endif %}
+    {% endif %}
+{% endblock %}
+
+{% block extrastyle %}
+    {{ block.super }}
+
+    <style>
+        :root,
+        html[data-theme="light"] {
+            --primary: #1761b0;
+            --secondary: #172434;
+            --accent: #ffffff;
+            --primary-fg: #ffffff;
+
+            --header-color: #ffffff;
+            --header-branding-color: #ffffff;
+            --header-bg: #172434;
+            --header-link-color: #e5edf7;
+
+            --breadcrumbs-fg: #e5edf7;
+            --breadcrumbs-link-fg: #ffffff;
+            --breadcrumbs-bg: #263b52;
+
+            --link-fg: #1761b0;
+            --link-hover-color: #114b89;
+            --link-selected-fg: #114b89;
+
+            --button-bg: #1761b0;
+            --button-hover-bg: #114b89;
+            --default-button-bg: #1761b0;
+            --default-button-hover-bg: #114b89;
+
+            --selected-bg: #eaf3ff;
+            --selected-row: #eaf3ff;
+
+            --cms-focus: #1761b0;
+            --cms-copied-bg: #eaf6ef;
+            --cms-copied-fg: #176643;
+            --cms-error: #b12b36;
+        }
+
+        html[data-theme="dark"] {
+            --link-fg: #8bbfff;
+            --link-hover-color: #bedcff;
+            --link-selected-fg: #bedcff;
+            --selected-bg: #253b52;
+            --selected-row: #253b52;
+
+            --cms-focus: #8bbfff;
+            --cms-copied-bg: #183b2b;
+            --cms-copied-fg: #a5e4be;
+            --cms-error: #ff9ca5;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            html[data-theme="auto"] {
+                --link-fg: #8bbfff;
+                --link-hover-color: #bedcff;
+                --link-selected-fg: #bedcff;
+                --selected-bg: #253b52;
+                --selected-row: #253b52;
+
+                --cms-focus: #8bbfff;
+                --cms-copied-bg: #183b2b;
+                --cms-copied-fg: #a5e4be;
+                --cms-error: #ff9ca5;
+            }
+        }
+
+        .cms-admin-navigation {
+            margin: 8px 16px;
+            font-size: 0.8125rem;
+        }
+
+        .cms-admin-navigation a {
+            color: var(--header-link-color);
+            text-underline-offset: 3px;
+        }
+
+        .cms-admin-navigation a:focus-visible {
+            outline: 2px solid var(--header-link-color);
+            outline-offset: 4px;
+        }
+
+        table td,
+        table tbody th {
+            cursor: cell;
+            user-select: text;
+            -webkit-user-select: text;
+        }
+
+        table a,
+        table button,
+        table summary,
+        table select,
+        table input[type="checkbox"] {
+            cursor: pointer;
+        }
+
+        table input:not([type="checkbox"]):not([type="radio"]),
+        table textarea {
+            cursor: text;
+        }
+
+        table [data-copy="false"] {
+            cursor: auto;
+        }
+
+        table td.copied-cell,
+        table th.copied-cell {
+            background: var(--cms-copied-bg) !important;
+            color: var(--cms-copied-fg);
+            outline: 2px solid var(--cms-copied-fg);
+            outline-offset: -2px;
+        }
+
+        table .copy-selected {
+            outline: 2px solid var(--cms-focus);
+            outline-offset: -2px;
+            background: var(--selected-bg) !important;
+        }
+
+        table .copy-error {
+            outline: 2px solid var(--cms-error);
+            outline-offset: -2px;
+        }
+
+        .copy-value-button.is-copied {
+            background: var(--cms-copied-bg);
+            color: var(--cms-copied-fg);
+        }
+
+        .copy-toast {
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            z-index: 10000;
+            max-width: min(380px, calc(100vw - 40px));
+            padding: 12px 18px;
+            border: 1px solid #49617b;
+            border-radius: 6px;
+            background: #172434;
+            color: #ffffff;
+            box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+            font-size: 0.875rem;
+            line-height: 1.5;
+            overflow-wrap: anywhere;
+            pointer-events: none;
+        }
+
+        .copy-toast[hidden] {
+            display: none;
+        }
+
+        .copy-toast.is-error {
+            border-color: var(--cms-error);
+        }
+
+        @media (max-width: 767px) {
+            .cms-admin-navigation {
+                margin: 10px 0;
+                text-align: center;
+            }
+        }
+
+        @media print {
+            .cms-admin-navigation,
+            .copy-toast,
+            .copy-value-button {
+                display: none !important;
+            }
+        }
+    </style>
+{% endblock %}
+
+{% block extrahead %}
+    {{ block.super }}
+    <script src="{% static 'core/admin-inlines.js' %}" defer></script>
+    <script src="{% static 'core/ui.js' %}" defer></script>
+{% endblock %}

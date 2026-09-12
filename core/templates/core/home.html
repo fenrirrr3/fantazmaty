@@ -1,0 +1,222 @@
+{% extends "core/base.html" %}
+
+{% block title %}Pulpit | Fantazmaty CMS{% endblock %}
+
+{% block content %}
+    <header class="page-header">
+        <p class="eyebrow">{{ now|date:"l, j E Y, H:i" }}</p>
+        <h1 class="page-title">Pulpit</h1>
+        <p class="page-description">
+            Twoje bieżące zadania, rezerwacje i recenzje.
+        </p>
+    </header>
+
+    {% if user.is_superuser %}<section class="details-card notification-queue{% if pending_notifications.count %} notification-urgent{% endif %}"><h2>Autorzy do powiadomienia</h2><a class="{% if pending_notifications.count %}notification-alert{% else %}detail-link{% endif %}" href="{% url 'core:notification_queue' %}">Obsłuż zgłoszenia: {{ pending_notifications.count }}</a><p><a href="{% url 'core:scheduled_rejections' %}">Zaplanowane odrzucenia</a></p></section>{% endif %}
+    {% if leave_information %}
+        <div
+            class="leave-warning{% if leave_information.is_active %} is-active{% endif %}"
+            role="status"
+        >
+            <strong>
+                {% if leave_information.is_active %}
+                    Jesteś na urlopie.
+                {% else %}
+                    Masz zaplanowany urlop.
+                {% endif %}
+            </strong>
+
+            <span>
+                Od {{ leave_information.vacation.start_date|date:"d.m.Y" }}
+                {% if leave_information.vacation.until_revoked %}
+                    do odwołania.
+                {% else %}
+                    do {{ leave_information.vacation.end_date|date:"d.m.Y" }}.
+                {% endif %}
+            </span>
+
+            <a href="{% url 'core:my_vacations' %}" class="detail-link">
+                Moje urlopy
+            </a>
+        </div>
+    {% endif %}
+
+    <section aria-label="Podsumowanie twojej pracy">
+        <div class="dashboard-summary">
+            <div class="dashboard-counter">
+                <span>Etapy w toku</span>
+                <strong>{{ active_stage_count|default:0 }}</strong>
+                <a href="{% if reviewer_only %}{% url 'core:my_reviews' %}{% else %}{% url 'core:my_texts' %}{% endif %}?view=active" class="detail-link">
+                    Pokaż aktywne teksty
+                </a>
+            </div>
+
+            <div class="dashboard-counter">
+                <span>Zarezerwowane zadania</span>
+                <strong>{{ reserved_assignment_count|default:0 }}</strong>
+                <a href="{% if reviewer_only %}{% url 'core:my_reviews' %}{% else %}{% url 'core:my_texts' %}{% endif %}?view=waiting" class="detail-link">
+                    Pokaż oczekujące teksty
+                </a>
+            </div>
+
+            <div class="dashboard-counter">
+                <span>Recenzje do ukończenia</span>
+                <strong>{{ reviewer_load.reading|default:0 }}</strong>
+                <span class="muted-text">W bieżących zgłoszeniach</span>
+            </div>
+
+            <div class="dashboard-counter">
+                <span>Oddane recenzje</span>
+                <strong>{{ reviewer_load.completed|default:0 }}</strong>
+                <span class="muted-text">Bez archiwalnych recenzji</span>
+            </div>
+        </div>
+    </section>
+
+    <div class="dashboard-grid">
+        <section class="card" aria-labelledby="active-stages-heading">
+            <header class="section-header">
+                <div>
+                    <h2 id="active-stages-heading">Prace w toku</h2>
+                    <p>{% if reviewer_only %}Teksty, które recenzujesz.{% else %}Przypisane ci rozpoczęte etapy.{% endif %}</p>
+                </div>
+                <span class="record-counter">
+                    {{ active_stage_count|default:0 }}
+                </span>
+            </header>
+
+            {% if reviewer_only %}
+                {% include "core/includes/dashboard_reviews.html" with rows=review_reading empty_message="Nie masz recenzji w toku." %}
+            {% elif active_stages %}
+                <ul class="dashboard-list">
+                    {% for stage in active_stages %}
+                        <li class="dashboard-list-item">
+                            <a
+                                href="{% url 'core:assigned_text_detail' stage.text.pk %}"
+                                class="detail-link"
+                            >
+                                <strong>{{ stage.text.title }}</strong>
+                            </a>
+
+                            {% if stage.text.anthology %}
+                                <div class="muted-text">
+                                    {{ stage.text.anthology.title }}
+                                </div>
+                            {% endif %}
+
+                            <p>
+                                <span class="role-badge">
+                                    {{ stage.get_stage_type_display }}
+                                </span>
+                            </p>
+
+                            <small class="muted-text">
+                                Od {{ stage.started_at|date:"d.m.Y" }}
+                            </small>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <div class="empty-results-panel">
+                    <strong>Nie masz rozpoczętych etapów.</strong>
+                    <p>
+                        Możesz sprawdzić swoje rezerwacje lub teksty dostępne
+                        do przejęcia.
+                    </p>
+                    <a
+                        href="{% url 'core:available_texts' %}"
+                        class="secondary-button"
+                    >
+                        Teksty do wzięcia
+                    </a>
+                </div>
+            {% endif %}
+        </section>
+
+        <section class="card" aria-labelledby="reserved-assignments-heading">
+            <header class="section-header">
+                <div>
+                    <h2 id="reserved-assignments-heading">Rezerwacje</h2>
+                    <p>Zadania, których jeszcze nie wykonujesz.</p>
+                </div>
+                <span class="record-counter">
+                    {{ reserved_assignment_count|default:0 }}
+                </span>
+            </header>
+
+            {% if reviewer_only %}
+                {% include "core/includes/dashboard_reviews.html" with rows=review_reserved empty_message="Nie masz oczekujących recenzji." %}
+            {% elif reserved_assignments %}
+                <ul class="dashboard-list">
+                    {% for assignment in reserved_assignments %}
+                        <li class="dashboard-list-item">
+                            <a
+                                href="{% url 'core:assigned_text_detail' assignment.text.pk %}"
+                                class="detail-link"
+                            >
+                                <strong>{{ assignment.text.title }}</strong>
+                            </a>
+
+                            {% if assignment.text.anthology %}
+                                <div class="muted-text">
+                                    {{ assignment.text.anthology.title }}
+                                </div>
+                            {% endif %}
+
+                            <p>
+                                <span class="role-badge">
+                                    {{ assignment.get_role_display }}
+                                </span>
+                            </p>
+
+                            {% if assignment.assigned_at %}
+                                <small class="muted-text">
+                                    Przypisano
+                                    {{ assignment.assigned_at|date:"d.m.Y" }}
+                                </small>
+                            {% endif %}
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <div class="empty-results-panel">
+                    <strong>Nie masz zarezerwowanych zadań.</strong>
+                    <p>
+                        Przyszłe zadania pojawią się tutaj po przypisaniu
+                        cię do tekstu.
+                    </p>
+                    <a
+                        href="{% url 'core:my_texts' %}?view=all"
+                        class="secondary-button"
+                    >
+                        Wszystkie moje teksty
+                    </a>
+                </div>
+            {% endif %}
+        </section>
+    </div>
+
+    <section class="filters-card" aria-labelledby="dashboard-search-heading">
+        <h2 id="dashboard-search-heading">Wyszukaj w systemie</h2>
+
+        <form
+            method="get"
+            action="{% url 'core:global_search' %}"
+            class="global-search-form"
+            role="search"
+        >
+            <div class="global-search-field">
+                <label class="visually-hidden" for="{{ search_form.query.id_for_label }}">Wyszukaj w systemie</label>
+                {{ search_form.query }}
+
+                {% if search_form.query.help_text %}
+                    <p class="form-help">{{ search_form.query.help_text }}</p>
+                {% endif %}
+            </div>
+
+            <button type="submit" class="primary-button">
+                Wyszukaj
+            </button>
+        </form>
+    </section>
+
+{% endblock %}

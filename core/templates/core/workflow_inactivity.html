@@ -1,0 +1,218 @@
+{% extends "core/base.html" %}
+
+{% block title %}Przestoje | Fantazmaty CMS{% endblock %}
+
+{% block content %}
+    <header class="page-header">
+        <h1 class="page-title">Przestoje</h1>
+        <p class="page-description">
+            Niezakończone etapy trwające co najmniej
+            {{ active_inactivity_days }} dni oraz etapy oczekujące
+            co najmniej {{ waiting_inactivity_days }} dni.
+            Zestawienie pomija teksty gotowe i wycofane.
+        </p>
+    </header>
+
+    <section class="filters-card" aria-label="Filtry przestojów">
+        <form
+            method="get"
+            action="{% url 'core:workflow_inactivity' %}"
+            class="filters-form"
+            data-remember-filters="workflow-inactivity"
+        >
+            <input
+                type="hidden"
+                name="page_size"
+                value="{{ page_obj.selected_page_size }}"
+            >
+
+            <div class="filter-field author-search-field">
+                <label for="inactivity-query">Wyszukaj</label>
+                <input
+                    id="inactivity-query"
+                    type="search"
+                    name="q"
+                    value="{{ query }}"
+                    placeholder="{% if can_view_authors %}Tytuł, antologia, etap lub autor{% else %}Tytuł, antologia lub etap{% endif %}"
+                >
+            </div>
+
+            <div class="filter-field">
+                <label for="inactivity-mode">Rodzaj przestoju</label>
+                <select id="inactivity-mode" name="mode">
+                    <option value="all" {% if mode == "all" %}selected{% endif %}>
+                        Wszystkie
+                    </option>
+                    <option value="active" {% if mode == "active" %}selected{% endif %}>
+                        Przedłużająca się praca
+                    </option>
+                    <option value="waiting" {% if mode == "waiting" %}selected{% endif %}>
+                        Oczekiwanie na rozpoczęcie
+                    </option>
+                </select>
+            </div>
+
+            <div class="filter-field">
+                <span id="inactivity-stage-label" class="filter-label">Etapy pracy</span>
+                <details class="checkbox-dropdown" data-checkbox-dropdown>
+                    <summary aria-labelledby="inactivity-stage-label inactivity-stage-value"><span id="inactivity-stage-value" data-checkbox-summary>Wszystkie etapy</span></summary>
+                    <div class="checkbox-dropdown-options" role="group" aria-labelledby="inactivity-stage-label">
+                        <button type="button" data-checkbox-clear>Wyczyść wybór</button>
+                        {% for value, label in stage_choices %}{% if value != "ready" and value != "withdrawn" %}
+                        <label><input type="checkbox" name="stage" value="{{ value }}" {% if value in selected_stages %}checked{% endif %}>{{ label }}</label>
+                        {% endif %}{% endfor %}
+                    </div>
+                </details>
+            </div>
+
+            <div class="filter-actions">
+                <button type="submit" class="primary-button">Filtruj</button>
+                <a
+                    href="{% url 'core:workflow_inactivity' %}"
+                    class="secondary-button"
+                    data-clear-saved-filters="workflow-inactivity"
+                >
+                    Wyczyść filtry
+                </a>
+            </div>
+        </form>
+    </section>
+
+    <section class="card" aria-label="Lista przestojów">
+        
+
+        <div
+            class="table-container"
+            role="region"
+            aria-label="Tabela przestojów w pracy nad tekstami"
+            tabindex="0"
+        >
+            <table id="workflow-inactivity-table">
+                <caption class="visually-hidden">
+                    Przestoje w bieżących cyklach, od najdłuższego
+                </caption>
+
+                <thead>
+                    <tr>
+                        <th scope="col">Antologia</th>
+                        <th scope="col">Tytuł</th>
+
+                        {% if can_view_authors %}
+                            <th scope="col">Autorzy</th>
+                        {% endif %}
+
+                        <th scope="col">Etap</th>
+                        <th scope="col">Rodzaj przestoju</th>
+                        <th scope="col">Od</th>
+                        <th scope="col" class="numeric-cell">Liczba dni</th>
+                        <th scope="col" data-copy="false">Szczegóły</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for row in rows %}
+                        <tr class="inactivity-row {% if row.inactivity_type == 'active' %}is-active-too-long{% else %}is-waiting-too-long{% endif %}">
+                            <td>
+                                {% if row.text.anthology %}
+                                    {{ row.text.anthology.title }}
+                                {% else %}
+                                    <span class="muted-text">Brak antologii</span>
+                                {% endif %}
+                            </td>
+
+                            <td data-copy-value="{{ row.text.title }}">
+                                <a
+                                    href="{% url 'core:assigned_text_detail' row.text.pk %}"
+                                    class="text-title-link"
+                                >
+                                    <strong>{{ row.text.title }}</strong>
+                                </a>
+                            </td>
+
+                            {% if can_view_authors %}
+                                <td data-copy-value="{{ row.authors }}">
+                                    {% if row.authors %}
+                                        {{ row.authors }}
+                                    {% else %}
+                                        <span class="muted-text">
+                                            Brak przypisanego autora
+                                        </span>
+                                    {% endif %}
+                                </td>
+                            {% endif %}
+
+                            <td>
+                                {{ row.stage.get_stage_type_display }}
+                                <div class="muted-text">
+                                    
+                                </div>
+                            </td>
+
+                            <td>
+                                <span class="inactivity-badge{% if row.inactivity_type == 'active' %} is-active{% endif %}">
+                                    {% if row.inactivity_type == "active" %}
+                                        Przedłużająca się praca
+                                    {% else %}
+                                        Oczekiwanie na rozpoczęcie
+                                    {% endif %}
+                                </span>
+                            </td>
+
+                            <td class="date-cell">
+                                <time datetime="{{ row.since|date:'Y-m-d' }}">
+                                    {{ row.since|date:"d.m.Y" }}
+                                </time>
+                            </td>
+
+                            <td
+                                class="numeric-cell inactivity-days"
+                                data-type="number"
+                                data-copy-value="{{ row.days|stringformat:'d' }}"
+                            >
+                                {{ row.days }}
+                            </td>
+
+                            <td data-copy="false">
+                                <a
+                                    href="{% url 'core:assigned_text_detail' row.text.pk %}"
+                                    class="secondary-button"
+                                    aria-label="Sprawdź przestój tekstu: {{ row.text.title }}"
+                                >
+                                    Sprawdź tekst
+                                </a>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="{% if can_view_authors %}8{% else %}7{% endif %}">
+                                <div class="empty-results-panel">
+                                    <strong>Brak przestojów spełniających kryteria.</strong>
+                                    <p>
+                                        Zmień filtry, aby sprawdzić pozostałe etapy.
+                                    </p>
+                                    <a
+                                        href="{% url 'core:workflow_inactivity' %}"
+                                        class="secondary-button"
+                                        data-clear-saved-filters="workflow-inactivity"
+                                    >
+                                        Wyczyść filtry
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    {% include "core/includes/table_toolbar.html" %}
+    {% include "core/includes/pagination.html" %}
+
+    <p class="form-help">
+        Stan na {{ today|date:"d.m.Y" }}.
+        Dla rozpoczętej pracy dni liczone są od daty rozpoczęcia etapu.
+        Dla oczekiwania – od ostatniego zakończonego etapu w tym samym cyklu.
+        Etapy bez ustalonej daty początku oczekiwania nie trafiają do zestawienia.
+    </p>
+{% endblock %}

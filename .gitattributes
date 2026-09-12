@@ -1,0 +1,63 @@
+# Normalizuj pliki tekstowe do LF.
+* text=auto eol=lf
+
+# Kod i konfiguracja.
+*.py text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.ini text eol=lf
+*.cfg text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.lock text eol=lf
+*.sh text eol=lf
+*.svg text eol=lf
+.env.example text eol=lf
+.python-version text eol=lf
+.gitattributes text eol=lf
+.gitignore text eol=lf
+
+# Skrypty Windows.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Pliki binarne.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.zip binary
+*.gz binary
+*.7z binary
+*.sqlite3 binary
+*.db binary
+
+# Pomijaj dane lokalne w archiwach tworzonych przez git archive.
+# Te reguły nie zastępują .gitignore ani ochrony sekretów.
+.env export-ignore
+.env.* export-ignore
+.env.example -export-ignore
+.venv/ export-ignore
+venv/ export-ignore
+__pycache__/ export-ignore
+.pytest_cache/ export-ignore
+.ruff_cache/ export-ignore
+.mypy_cache/ export-ignore
+.coverage export-ignore
+htmlcov/ export-ignore
+db.sqlite3 export-ignore
+db.sqlite3-* export-ignore
+media/ export-ignore
+staticfiles/ export-ignore

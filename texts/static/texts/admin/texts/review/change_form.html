@@ -1,0 +1,53 @@
+{% extends "admin/change_form.html" %}
+{% load i18n %}
+
+{% block form_top %}
+    {{ block.super }}
+
+    {% if original.old_reviews %}
+        <div class="help" role="note">
+            <p>
+                <strong>Recenzja archiwalna.</strong>
+                Nie jest uwzględniana w statystykach ani w bieżącym
+                przydzielaniu pracy. Oceny i uwagi recenzentów są
+                dostępne tylko do odczytu.
+            </p>
+            <p>
+                Aby przywrócić możliwość ich edycji, odznacz
+                „stare recenzje”, zapisz formularz i otwórz go ponownie.
+            </p>
+        </div>
+    {% endif %}
+
+    {% if adminform.form.submission_warnings %}
+        <section
+            class="review-submission-warnings"
+            aria-labelledby="review-submission-warnings-title"
+            role="alert"
+        >
+            <h2 id="review-submission-warnings-title">
+                Sprawdź zgłoszenie przed zapisem
+            </h2>
+
+            <ul class="errorlist">
+                {% for warning in adminform.form.submission_warnings %}
+                    <li>{{ warning }}</li>
+                {% endfor %}
+            </ul>
+
+            <p>
+                Jeśli po sprawdzeniu chcesz kontynuować, zaznacz
+                <label for="{{ adminform.form.confirm_submission_warnings.id_for_label }}">
+                    „Zapoznałem się z ostrzeżeniami i potwierdzam zapis”
+                </label>
+                w sekcji „Kontrola zgłoszenia” i ponownie zapisz formularz.
+            </p>
+
+            <p class="help">
+                Zmiana autora lub tytułu wymaga ponownego sprawdzenia
+                ostrzeżeń. Samo wyświetlenie tej informacji nie oznacza
+                zapisania zgłoszenia.
+            </p>
+        </section>
+    {% endif %}
+{% endblock %}

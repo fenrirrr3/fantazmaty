@@ -1,0 +1,60 @@
+<div class="section-header">
+    <div>
+        {% if page_obj.paginator %}
+            <p>
+                Wyniki:
+                <strong>{{ page_obj.paginator.count }}</strong>
+                {% if page_obj.paginator.count %}
+                    <span class="muted-text">
+                        · Wyświetlono {{ page_obj.start_index }}–{{ page_obj.end_index }}
+                    </span>
+                {% endif %}
+            </p>
+        {% endif %}
+
+        <p class="form-help">
+            Kliknij dwukrotnie komórkę, aby ją skopiować. Ctrl/⌘ + klik zaznacza komórki, Shift + klik zaznacza zakres; Ctrl/⌘ + C kopiuje zaznaczenie.
+        </p>
+    </div>
+
+    <div class="filter-actions">
+
+
+        {% if page_obj.paginator %}
+            <form
+                method="get"
+                action="{{ request.path }}"
+                class="page-size-form"
+                aria-label="Liczba wyników na stronie"
+            >
+                {% for name, values in request.GET.lists %}
+                    {% if name != "page" and name != "page_size" and name != "csrfmiddlewaretoken" %}
+                        {% for value in values %}
+                            <input
+                                type="hidden"
+                                name="{{ name }}"
+                                value="{{ value }}"
+                            >
+                        {% endfor %}
+                    {% endif %}
+                {% endfor %}
+
+                <label>
+                    <span class="visually-hidden">Wyników na stronie</span>
+                    <select name="page_size" data-auto-submit>
+                        {% for size in page_obj.allowed_page_sizes %}
+                            <option
+                                value="{{ size }}"
+                                {% if page_obj.selected_page_size == size %}selected{% endif %}
+                            >
+                                {{ size }} na stronie
+                            </option>
+                        {% endfor %}
+                    </select>
+                </label>
+
+
+            </form>
+        {% endif %}
+    </div>
+</div>

@@ -1,0 +1,20 @@
+{% extends "core/base.html" %}
+{% block title %}{{ title }} | Fantazmaty CMS{% endblock %}
+{% block content %}
+<header class="page-header"><h1 class="page-title">{{ title }}</h1>
+{% if is_extract %}<a class="primary-button" href="{% url 'core:extract_add' %}">Dodaj ekstrakt</a>{% else %}<a class="primary-button" href="{% url 'core:recruitment_add' %}">Dodaj zgłoszenie</a>{% endif %}</header>
+<section class="filters-card"><form method="get" class="filters-form" data-remember-filters="{{ route }}">
+<label>Wyszukaj <input name="q" type="search" value="{{ query }}"></label>
+<label>Status <select name="status" multiple>{% for value,label in status_choices %}<option value="{{ value }}" {% if value in selected_statuses %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+{% if is_extract %}<label>Antologia <select name="recruitment"><option value="">Wszystkie</option>{% for value in recruitments %}<option value="{{ value }}" {% if value == recruitment %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>{% else %}
+<label>Dział <select name="department"><option value="">Wszystkie</option>{% for value,label in departments %}<option value="{{ value }}" {% if value == selected_department %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>{% endif %}<button type="submit" class="primary-button">Filtruj</button></form></section>
+<section class="card"><div class="table-container"><table><thead><tr>
+{% if is_extract %}<th>Imię i nazwisko</th><th>Adres e-mail</th><th>Numer telefonu</th>{% else %}<th>Imię</th><th>Nazwisko</th><th>E-mail</th>{% endif %}
+{% if is_extract %}<th>Nadesłane tytuły</th><th>Daty nadesłania</th><th>Antologia</th><th>Przyjęte</th><th>Odrzucone</th>{% else %}<th>Dział</th><th>Data nadesłania</th><th>Status</th><th>Czy powiadomiono</th><th>Data powiadomienia</th><th>Uwagi</th><th>Uwagi nieoficjalne</th>{% endif %}<th>Akcje</th></tr></thead><tbody>
+{% for item in items %}{% if is_extract %}{% ifchanged item.recruitment %}<tr class="extract-group"><th colspan="9" scope="rowgroup">{{ item.recruitment }}</th></tr>{% endifchanged %}{% endif %}<tr>{% if is_extract %}<td>{{ item.full_name }}</td><td>{{ item.email }}</td><td>{{ item.phone_number|default:'–' }}</td>{% else %}<td>{{ item.first_name }}</td><td>{{ item.last_name }}</td><td>{{ item.email }}</td>{% endif %}
+{% if is_extract %}<td>{{ item.title|linebreaksbr }}</td><td>{{ item.submission_dates|linebreaksbr }}</td><td>{{ item.recruitment }}</td><td>{{ item.accepted_titles|default:'–'|linebreaksbr }}</td><td>{{ item.rejected_titles|default:'–'|linebreaksbr }}</td><td><a href="{% url 'core:extract_edit' item.pk %}">Edytuj</a></td>
+{% else %}<td>{{ item.get_department_display }}</td><td>{{ item.submitted_at|date:'d.m.Y' }}</td><td><span class="role-badge">{{ item.get_status_display }}</span></td><td>{{ item.notified|yesno:'Tak,Nie' }}</td><td>{{ item.notified_at|date:'d.m.Y H:i'|default:'—' }}</td><td>{{ item.notes|linebreaksbr }}</td><td>{{ item.unofficial_notes|linebreaksbr }}</td><td><a href="{% url 'core:recruitment_edit' item.pk %}">Edytuj</a></td>{% endif %}</tr>
+{% empty %}<tr><td colspan="{% if is_extract %}9{% else %}11{% endif %}">Brak zgłoszeń spełniających kryteria.</td></tr>{% endfor %}
+</tbody></table></div></section>
+{% include "core/includes/table_toolbar.html" %}{% include "core/includes/pagination.html" %}
+{% endblock %}

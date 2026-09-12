@@ -1,0 +1,209 @@
+{% extends "core/base.html" %}
+
+{% block title %}Propozycje okładek | Fantazmaty CMS{% endblock %}
+
+{% block content %}
+    <header class="page-header">
+        <h1 class="page-title">Propozycje okładek</h1>
+        <p class="page-description">
+            Ilustracje zgłoszone do wykorzystania na okładkach i stan kontaktu
+            z ich autorami.
+        </p>
+    </header>
+
+    <section class="details-card" aria-labelledby="proposal-form-heading">
+        <h2 id="proposal-form-heading">Zgłoś propozycję</h2>
+
+        <form
+            method="post"
+            action="{% url 'illustrations:cover_proposal_list' %}"
+            class="general-notes-form"
+            data-warn-unsaved
+        >
+            {% csrf_token %}
+
+            {% for error in form.non_field_errors %}
+                <p class="form-error" role="alert">{{ error }}</p>
+            {% endfor %}
+
+            <div class="details-grid">
+                <div class="form-field">
+                    <label for="{{ form.illustration_author.id_for_label }}">
+                        {{ form.illustration_author.label }}
+                    </label>
+                    {{ form.illustration_author }}
+
+                    {% if form.illustration_author.help_text %}
+                        <p class="form-help">{{ form.illustration_author.help_text }}</p>
+                    {% endif %}
+
+                    {% for error in form.illustration_author.errors %}
+                        <p class="field-error">{{ error }}</p>
+                    {% endfor %}
+                </div>
+
+                <div class="form-field">
+                    <label for="{{ form.illustration_url.id_for_label }}">
+                        {{ form.illustration_url.label }}
+                    </label>
+                    {{ form.illustration_url }}
+
+                    {% if form.illustration_url.help_text %}
+                        <p class="form-help">{{ form.illustration_url.help_text }}</p>
+                    {% endif %}
+
+                    {% for error in form.illustration_url.errors %}
+                        <p class="field-error">{{ error }}</p>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="general-notes-actions">
+                <button type="submit" class="primary-button">
+                    Dodaj propozycję
+                </button>
+            </div>
+
+            <p class="form-help">
+                Propozycja otrzyma status „Oczekujące”.
+                Twoje konto zostanie zapisane jako zgłaszające.
+            </p>
+        </form>
+    </section>
+
+    <section class="card" aria-label="Lista propozycji okładek">
+        
+
+        <div
+            class="table-container"
+            role="region"
+            aria-label="Tabela propozycji okładek"
+            tabindex="0"
+        >
+            <table id="cover-proposals-table">
+                <caption class="visually-hidden">
+                    Propozycje ilustracji okładkowych, od najnowszego zgłoszenia
+                </caption>
+
+                <thead>
+                    <tr>
+                        <th scope="col">Autor ilustracji</th>
+                        <th scope="col">Ilustracja</th>
+                        <th scope="col">Zgłoszone przez</th>
+                        <th scope="col">Data zgłoszenia</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Ostatnia zmiana statusu</th>
+                        {% if can_manage_proposals %}
+                            <th scope="col" data-copy="false">Zmień status</th>
+                        {% endif %}
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for proposal in proposals %}
+                        <tr>
+                            <td data-copy-value="{{ proposal.illustration_author }}">
+                                <strong>{{ proposal.illustration_author }}</strong>
+                            </td>
+
+                            <td data-copy-value="{{ proposal.illustration_url }}">
+                                <a
+                                    href="{{ proposal.illustration_url }}"
+                                    class="detail-link"
+                                    rel="noreferrer"
+                                    aria-label="Otwórz ilustrację autorstwa: {{ proposal.illustration_author }}"
+                                >
+                                    Otwórz ilustrację
+                                </a>
+                                <button
+                                    type="button"
+                                    class="copy-value-button"
+                                    data-copy-value="{{ proposal.illustration_url }}"
+                                    aria-label="Skopiuj link do ilustracji autorstwa: {{ proposal.illustration_author }}"
+                                >
+                                    Kopiuj link
+                                </button>
+                            </td>
+
+                            <td>
+                                {% if proposal.submitted_by %}
+                                    {% firstof proposal.submitted_by.get_full_name "Nieuzupełnione dane" %}
+                                {% else %}
+                                    <span class="muted-text">Usunięte konto</span>
+                                {% endif %}
+                            </td>
+
+                            <td class="date-cell">
+                                {{ proposal.submitted_at|date:"d.m.Y, H:i" }}
+                            </td>
+
+                            <td>
+                                <span class="stage-status {% if proposal.status == 'approved' %}completed{% elif proposal.status == 'rejected' %}withdrawn{% elif proposal.status == 'inquiry_sent' %}active{% elif proposal.status == 'no_contact' %}inactive{% else %}pending{% endif %}">
+                                    {{ proposal.get_status_display }}
+                                </span>
+                            </td>
+
+                            <td class="date-cell">
+                                {{ proposal.status_changed_at|date:"d.m.Y, H:i"|default:"–" }}
+                            </td>
+
+                            {% if can_manage_proposals %}
+                                <td data-copy="false">
+                                    <form
+                                        method="post"
+                                        action="{% url 'illustrations:update_cover_proposal_status' proposal.pk %}"
+                                        class="reviewer-action-form"
+                                    >
+                                        {% csrf_token %}
+
+                                        <div class="form-field">
+                                            <label
+                                                for="proposal-status-{{ proposal.pk }}"
+                                                class="visually-hidden"
+                                            >
+                                                Status propozycji: {{ proposal.illustration_author }}
+                                            </label>
+                                            <select
+                                                id="proposal-status-{{ proposal.pk }}"
+                                                name="status"
+                                                required
+                                            >
+                                                {% for value, label in status_choices %}
+                                                    <option
+                                                        value="{{ value }}"
+                                                        {% if proposal.status == value %}selected{% endif %}
+                                                    >
+                                                        {{ label }}
+                                                    </option>
+                                                {% endfor %}
+                                            </select>
+                                        </div>
+
+                                        <button type="submit" class="secondary-button">
+                                            Zapisz
+                                        </button>
+                                    </form>
+                                </td>
+                            {% endif %}
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="{% if can_manage_proposals %}7{% else %}6{% endif %}">
+                                <div class="empty-results-panel">
+                                    <strong>Nie zgłoszono jeszcze żadnej propozycji.</strong>
+                                    <p>
+                                        Podaj autora i link do ilustracji
+                                        w formularzu powyżej.
+                                    </p>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    {% include "core/includes/table_toolbar.html" %}
+    {% include "core/includes/pagination.html" %}
+{% endblock %}

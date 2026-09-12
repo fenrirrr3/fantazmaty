@@ -1,0 +1,44 @@
+:root { --reviewer-bg:#ccfbf1; --reviewer-fg:#115e59; --coordinator-bg:#ffedd5; --coordinator-fg:#9a3412; }
+:root[data-theme="dark"] { --reviewer-bg:#143d3b; --reviewer-fg:#99f6e4; --coordinator-bg:#492b1b; --coordinator-fg:#fdba74; }
+[data-palette="reviewer"] { --palette-bg:var(--reviewer-bg); --palette-fg:var(--reviewer-fg); }
+[data-palette="coordinator"] { --palette-bg:var(--coordinator-bg); --palette-fg:var(--coordinator-fg); }
+.reviewer-bubble { background:var(--reviewer-bg); color:var(--reviewer-fg); border-color:var(--reviewer-fg); }
+.table-container { max-height:70vh; overflow:auto; isolation:isolate; }
+.table-container thead th { position:sticky; top:0; z-index:3; background:var(--table-header); }
+.table-container .sticky-title { position:sticky; left:0; z-index:2; background:var(--surface); min-width:12rem; }
+.table-container thead .sticky-title { z-index:4; background:var(--table-header); }
+.table-bottom-controls { display:flex; flex-wrap:wrap; justify-content:space-between; gap:12px; padding:12px 0; }
+
+.active-filters { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:12px; }
+.filter-chip { border:1px solid var(--border); border-radius:20px; padding:5px 12px; background:var(--surface); color:var(--text); }
+.global-search-form, .global-search-input { margin-top:12px; }
+.reviewer-action-cell .filter-actions { flex-wrap:nowrap; white-space:nowrap; }
+.reviewer-action-form { margin:0; }
+.stage-status.pending, :root[data-theme="dark"] .stage-status.pending { background:var(--danger-light); color:var(--danger); }
+.stage-status.active { background:var(--warning-light); color:var(--warning); }
+.text-summary { padding:16px; margin-bottom:20px; border:1px solid var(--border-strong); border-left:4px solid var(--primary); border-radius:8px; background:var(--surface); }
+.text-summary p { margin:8px 0; }
+.attention-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
+.attention-grid > div { padding:14px; border:1px solid var(--border); border-radius:8px; background:var(--surface); }
+.attention-grid ul { padding-left:20px; }
+.notification-state { display:block; font-size:.85em; margin-top:5px; }
+tr:has(input[type="checkbox"]:checked) > td { background:var(--primary-light); }
+.audit-value { white-space:pre-wrap; overflow-wrap:anywhere; max-width:40rem; }
+@media(max-width:650px) { .table-container { max-height:65vh; } .sticky-title { max-width:12rem; } }
+
+section[aria-labelledby="dashboard-search-heading"] { margin-top:28px; }
+.stage-leave-warning { display:inline-block; margin:6px 0 0 8px; padding:5px 9px; border-radius:6px; background:var(--danger-light); color:var(--danger); border:1px solid var(--danger); }
+
+/* Pakiet 7: czytelne filtry, statusy i wspólny układ pulpitu. */
+.filter-chip { background:var(--primary-light, #e3edff); border-color:var(--primary, #315fba); color:var(--text); }
+.workflow-stage-row[data-stage="ready_for_editing"] { --workflow-badge-background:var(--ready-edit-bg); --workflow-badge-color:var(--ready-edit-fg); --workflow-badge-border:var(--ready-edit-fg); }
+:root[data-theme="dark"] .workflow-stage-row[data-stage="ready_for_editing"] { --workflow-badge-background:var(--ready-edit-bg); --workflow-badge-color:var(--ready-edit-fg); --workflow-badge-border:var(--ready-edit-fg); }
+.dashboard-grid { align-items:stretch; }
+.dashboard-grid > .card { display:flex; flex-direction:column; margin:0; }
+.dashboard-grid .section-header { min-height:6rem; align-items:flex-start; }
+.dashboard-grid .dashboard-list { margin:0; }
+.dashboard-grid .dashboard-list-item { display:grid; grid-template-rows:auto minmax(1.4rem,auto) auto auto; gap:6px; padding:16px; min-height:160px; }
+.dashboard-grid .dashboard-list-item p { margin:0; }
+.dashboard-grid .role-badge { border:1px solid var(--border-strong); }
+#nowa-uwaga { padding-inline:18px; }
+.filters-form[aria-busy="true"] { opacity:.75; }

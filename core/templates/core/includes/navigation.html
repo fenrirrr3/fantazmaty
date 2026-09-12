@@ -1,0 +1,214 @@
+{% load workspace_tags %}
+{% illustrations_allowed user as show_illustrations %}
+{% coordinator_allowed user as can_coordinate %}
+{% reviewer_allowed user as show_my_reviews %}
+{% if user.is_authenticated and user.is_active %}
+    <aside
+        id="site-sidebar"
+        class="site-sidebar"
+        aria-label="Panel nawigacyjny"
+    >
+        <div class="sidebar-section">
+            <p class="sidebar-heading">Konto</p>
+
+            <p>
+                <strong>{% firstof user.get_full_name "Nieuzupełnione dane" %}</strong>
+            </p>
+
+            {% if user.is_staff %}
+                <a href="{% url 'admin:index' %}" class="sidebar-link">
+                    Panel administracyjny
+                </a>
+            {% endif %}
+
+
+        </div>
+        {% with current=request.resolver_match.url_name namespace=request.resolver_match.namespace %}
+            {% if user.is_superuser or user.person_profile.is_active %}
+                <nav aria-label="Główna nawigacja">
+                    <div class="sidebar-section">
+                        <p class="sidebar-heading">Moja praca</p>
+
+                        <a
+                            href="{% url 'core:home' %}"
+                            class="sidebar-link"
+                            {% if namespace == 'core' and current == 'home' %}aria-current="page"{% endif %}
+                        >
+                            Pulpit
+                        </a>
+
+                        <a
+                            href="{% url 'core:my_texts' %}"
+                            class="sidebar-link"
+                            {% if current == 'my_texts' %}aria-current="page"{% endif %}
+                        >
+                            Moje teksty
+                        </a>
+
+                        <a
+                            href="{% url 'core:available_texts' %}"
+                            class="sidebar-link"
+                            {% if current == 'available_texts' %}aria-current="page"{% endif %}
+                        >
+                            Teksty do wzięcia
+                        </a>
+
+                        {% if show_my_reviews %}<a href="{% url 'core:my_reviews' %}" class="sidebar-link" {% if current == 'my_reviews' %}aria-current="page"{% endif %}>Moje recenzje</a>{% endif %}
+                        {% if user.person_profile.is_active %}
+                            <a
+                                href="{% url 'core:my_vacations' %}"
+                                class="sidebar-link"
+                                {% if current == 'my_vacations' or current == 'edit_vacation' %}aria-current="page"{% endif %}
+                            >
+                                Moje urlopy
+                            </a>
+                        {% endif %}
+                    </div>
+
+                    <div class="sidebar-section">
+                        <p class="sidebar-heading">Publikacje</p>
+
+
+                        <a
+                            href="{% url 'core:text_list' %}"
+                            class="sidebar-link"
+                            {% if current == 'text_list' or current == 'assigned_text_detail' %}aria-current="page"{% endif %}
+                        >
+                            Wszystkie teksty
+                        </a>
+
+                        <a
+                            href="{% url 'core:review_list' %}"
+                            class="sidebar-link"
+                            {% if current == 'review_list' or current == 'assigned_review_detail' %}aria-current="page"{% endif %}
+                        >
+                            Recenzje
+                        </a>
+
+                        <a
+                            href="{% url 'core:workflow_list' %}"
+                            class="sidebar-link"
+                            {% if current == 'workflow_list' %}aria-current="page"{% endif %}
+                        >
+                            Etapy prac
+                        </a>
+
+                        <a
+                            href="{% url 'core:anthology_list' %}"
+                            class="sidebar-link"
+                            {% if current == 'anthology_list' %}aria-current="page"{% endif %}
+                        >
+                            Antologie
+                        </a>
+
+                        {% if show_illustrations %}<a
+                            href="{% url 'illustrations:illustration_list' %}"
+                            class="sidebar-link"
+                            {% if namespace == 'illustrations' and current == 'illustration_list' %}aria-current="page"{% endif %}
+                        >
+                            Ilustracje
+                        </a>{% endif %}
+
+                        <a
+                            href="{% url 'illustrations:cover_proposal_list' %}"
+                            class="sidebar-link"
+                            {% if namespace == 'illustrations' and current == 'cover_proposal_list' %}aria-current="page"{% endif %}
+                        >
+                            Propozycje okładek
+                        </a>
+
+                        <a
+                            href="{% url 'core:audiobooks' %}"
+                            class="sidebar-link"
+                            {% if current == 'audiobooks' %}aria-current="page"{% endif %}
+                        >
+                            Audiobooki
+                        </a>
+<a href="{% url 'core:anthology_corrections' %}" class="sidebar-link" {% if current == 'anthology_corrections' %}aria-current="page"{% endif %}>Uwagi do antologii</a>
+                        {% if can_coordinate %}<a href="{% url 'core:extract_list' %}" class="sidebar-link" {% if current == 'extract_list' or current == 'extract_add' or current == 'extract_edit' %}aria-current="page"{% endif %}>Ekstrakty</a>{% endif %}
+                    </div>
+
+                    <div class="sidebar-section">
+                        <p class="sidebar-heading">Zespół</p>
+
+                        <a
+                            href="{% url 'core:people_list' %}"
+                            class="sidebar-link"
+                            {% if current == 'people_list' or current == 'person_detail' %}aria-current="page"{% endif %}
+                        >
+                            Osoby w zespole
+                        </a>
+
+                        <a
+                            href="{% url 'core:active_vacations' %}"
+                            class="sidebar-link"
+                            {% if current == 'active_vacations' %}aria-current="page"{% endif %}
+                        >
+                            Aktywne urlopy
+                        </a>
+                        {% if can_coordinate %}<a href="{% url 'core:recruitment_list' %}" class="sidebar-link" {% if current == 'recruitment_list' or current == 'recruitment_add' or current == 'recruitment_edit' %}aria-current="page"{% endif %}>Rekrutacja</a>{% endif %}
+                    </div>
+
+                    {% if can_coordinate %}
+                                <div class="sidebar-section">
+                                    <p class="sidebar-heading">Aktywności</p>
+                                    <a href="{% url 'core:workflow_inactivity' %}" class="sidebar-link" {% if current == 'workflow_inactivity' %}aria-current="page"{% endif %}>Przestoje</a>
+                                    <a href="{% url 'core:reviewer_activity' %}" class="sidebar-link" {% if current == 'reviewer_activity' %}aria-current="page"{% endif %}>Aktywność recenzentów</a>
+                                    <a href="{% url 'core:editor_activity' %}" class="sidebar-link" {% if current == 'editor_activity' %}aria-current="page"{% endif %}>Aktywność redaktorów</a>
+                                    <a href="{% url 'core:proofreader_activity' %}" class="sidebar-link" {% if current == 'proofreader_activity' %}aria-current="page"{% endif %}>Aktywność korektorów</a>
+                                    <a href="{% url 'core:verifier_activity' %}" class="sidebar-link" {% if current == 'verifier_activity' %}aria-current="page"{% endif %}>Aktywność weryfikatorów</a>
+                                    {% if user.is_superuser %}
+                                    <a href="{% url 'core:notification_queue' %}" class="sidebar-link" {% if current == 'notification_queue' %}aria-current="page"{% endif %}>Autorzy do powiadomienia</a>
+                                    <a href="{% url 'core:scheduled_rejections' %}" class="sidebar-link" {% if current == 'scheduled_rejections' %}aria-current="page"{% endif %}>Zaplanowane odrzucenia</a>
+                                    {% endif %}
+                                </div>
+                    {% endif %}
+
+
+                    {% if user.is_superuser %}
+                        <div class="sidebar-section">
+                            <p class="sidebar-heading">Autorzy i zgłoszenia</p>
+
+                            <a
+                                href="{% url 'core:author_list' %}"
+                                class="sidebar-link"
+                                {% if current == 'author_list' or current == 'author_detail' %}aria-current="page"{% endif %}
+                            >
+                                Autorzy
+                            </a>
+
+                            <a
+                                href="{% url 'core:review_bulk_import' %}"
+                                class="sidebar-link"
+                                {% if current == 'review_bulk_import' %}aria-current="page"{% endif %}
+                            >
+                                Import zgłoszeń
+                            </a><a class="sidebar-link" href="{% url 'core:review_create' %}">Dodaj do recenzji</a>
+                        </div>
+                    {% endif %}
+
+                    <div class="sidebar-section">
+                        <a
+                            href="{% url 'core:global_search' %}"
+                            class="sidebar-link"
+                            {% if current == 'global_search' %}aria-current="page"{% endif %}
+                        >
+                            Wyszukaj
+                        </a>
+            <form
+                method="post"
+                action="{% url 'logout' %}"
+                class="logout-form"
+            >
+                {% csrf_token %}
+                <button type="submit" class="secondary-button">
+                    Wyloguj się
+                </button>
+            </form>
+                    </div>
+                </nav>
+            {% endif %}
+        {% endwith %}
+
+    </aside>
+{% endif %}

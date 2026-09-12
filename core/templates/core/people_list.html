@@ -1,0 +1,198 @@
+{% extends "core/base.html" %}
+
+{% block title %}Zespół | Fantazmaty CMS{% endblock %}
+
+{% block content %}
+    <header class="page-header">
+        <h1 class="page-title">Zespół</h1>
+        <p class="page-description">
+            Osoby, które wciąż są w ekipie, ich role i dane kontaktowe.
+        </p>
+    </header>
+
+    <section class="filters-card" aria-label="Filtry zespołu">
+        <form
+            method="get"
+            action="{% url 'core:people_list' %}"
+            class="filters-form people-filters-form"
+            data-remember-filters="people-list"
+        >
+            <input
+                type="hidden"
+                name="page_size"
+                value="{{ page_obj.selected_page_size }}"
+            >
+
+            {% for error in filter_form.non_field_errors %}
+                <p class="form-error" role="alert">{{ error }}</p>
+            {% endfor %}
+
+            <div class="filter-field author-search-field">
+                <label for="{{ filter_form.query.id_for_label }}">
+                    Wyszukaj osobę
+                </label>
+                {{ filter_form.query }}
+
+                {% for error in filter_form.query.errors %}
+                    <p class="field-error">{{ error }}</p>
+                {% endfor %}
+            </div>
+
+            <div class="filter-field team-roles-field">
+                <label id="team-roles-label">Role w zespole</label>
+                <details class="checkbox-dropdown" data-checkbox-dropdown data-empty-label="Wszystkie role">
+                    <summary aria-labelledby="team-roles-label team-roles-summary"><span id="team-roles-summary" data-checkbox-summary>Wszystkie role</span></summary>
+                    <div class="checkbox-dropdown-options">
+                        <button type="button" class="secondary-button" data-checkbox-clear>Wyczyść wybór</button>
+                        <div class="multi-filter-options" role="group" aria-labelledby="team-roles-label">
+                            {% for checkbox in filter_form.roles %}
+                                <label class="multi-filter-option" for="{{ checkbox.id_for_label }}">
+                                    {{ checkbox.tag }}<span>{{ checkbox.choice_label }}</span>
+                                </label>
+                            {% empty %}<span class="muted-text">Nie zdefiniowano jeszcze ról.</span>{% endfor %}
+                        </div>
+                        <p class="form-help">Wystarczy dopasowanie jednej z wybranych ról.</p>
+                    </div>
+                </details>
+                {% for error in filter_form.roles.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+            </div>
+
+            <div class="filter-actions">
+                <button type="submit" class="primary-button">Filtruj</button>
+                <a
+                    href="{% url 'core:people_list' %}"
+                    class="secondary-button"
+                    data-clear-saved-filters="people-list"
+                >
+                    Wyczyść filtry
+                </a>
+            </div>
+        </form>
+    </section>
+
+    <section class="card" aria-label="Lista członków zespołu">
+        
+
+        <div
+            class="table-container"
+            role="region"
+            aria-label="Tabela zespołu"
+            tabindex="0"
+        >
+            <table id="people-table">
+                <caption class="visually-hidden">
+                    Aktywni członkowie zespołu spełniający wybrane filtry
+                </caption>
+
+                <thead>
+                    <tr>
+                        <th scope="col">Imię i nazwisko</th>
+                        <th scope="col">Role</th>
+                        <th scope="col">Adres e-mail</th>
+                        <th scope="col">E-mail Dropboxa</th>
+                        <th scope="col" data-copy="false">Szczegóły</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for person in people %}
+                        <tr>
+                            <td data-copy-value="{{ person.first_name }} {{ person.last_name }}">
+                                <a
+                                    href="{% url 'core:person_detail' person.pk %}"
+                                    class="detail-link"
+                                >
+                                    <strong>
+                                        {{ person.first_name }} {{ person.last_name }}
+                                    </strong>
+                                </a>
+                            </td>
+
+                            <td>
+                                <div class="roles-list">
+                                    {% for role in person.roles.all %}
+                                        <span class="role-badge">{{ role.name }}</span>
+                                    {% empty %}
+                                        {% if not person.is_coordinator %}
+                                            <span class="muted-text">
+                                                Brak przypisanych ról
+                                            </span>
+                                        {% endif %}
+                                    {% endfor %}
+                                </div>
+
+                                {% if person.is_coordinator %}
+                                    <span class="role-badge" data-palette="coordinator">Koordynator zespołu</span>
+                                {% endif %}
+                            </td>
+
+                            <td class="email-cell" data-copy-value="{{ person.email }}">
+                                {% if person.email %}
+                                    <a href="mailto:{{ person.email }}" class="detail-link">
+                                        {{ person.email }}
+                                    </a>
+                                {% else %}
+                                    <span class="muted-text">Nie podano</span>
+                                {% endif %}
+                            </td>
+
+                            <td class="email-cell" data-copy-value="{{ person.dropbox_email }}">
+                                {% if person.dropbox_email %}
+                                    <a
+                                        href="mailto:{{ person.dropbox_email }}"
+                                        class="detail-link"
+                                    >
+                                        {{ person.dropbox_email }}
+                                    </a>
+                                {% else %}
+                                    <span class="muted-text">Nie podano</span>
+                                {% endif %}
+                            </td>
+
+                            <td data-copy="false">
+                                <a
+                                    href="{% url 'core:person_detail' person.pk %}"
+                                    class="secondary-button"
+                                    aria-label="Otwórz profil: {{ person.first_name }} {{ person.last_name }}"
+                                >
+                                    Otwórz
+                                </a>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="5">
+                                <div class="empty-results-panel">
+                                    {% if filter_form.errors %}
+                                        <strong>Popraw filtry wyszukiwania.</strong>
+                                        <p>
+                                            Nie można wyświetlić wyników dla
+                                            przesłanych kryteriów.
+                                        </p>
+                                    {% else %}
+                                        <strong>Nie znaleziono osób.</strong>
+                                        <p>
+                                            Żaden aktywny członek zespołu
+                                            nie spełnia wybranych kryteriów.
+                                        </p>
+                                    {% endif %}
+
+                                    <a
+                                        href="{% url 'core:people_list' %}"
+                                        class="secondary-button"
+                                        data-clear-saved-filters="people-list"
+                                    >
+                                        Wyczyść filtry
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    {% include "core/includes/table_toolbar.html" %}
+    {% include "core/includes/pagination.html" %}
+{% endblock %}

@@ -1,0 +1,83 @@
+# Konfiguracja narzędzi deweloperskich.
+# Zależności aplikacji: requirements.txt i requirements.lock.
+# Zależności deweloperskie: requirements-dev.txt.
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = [
+    ".venv",
+    "venv",
+    "**/migrations",
+    "media",
+    "staticfiles",
+    "htmlcov",
+]
+
+[tool.ruff.lint]
+select = [
+    "E4", # Błędy importów.
+    "E7", # Błędy konstrukcji instrukcji.
+    "E9", # Błędy składni i wykonania.
+    "F",  # Niezdefiniowane nazwy, nieużywane importy i zmienne.
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "fantazmaty.settings"
+python_files = [
+    "tests.py",
+    "test_*.py",
+    "*_tests.py",
+]
+testpaths = [
+    "authors",
+    "people",
+    "texts",
+    "workflow",
+    "illustrations",
+    "core",
+]
+addopts = "-ra --strict-markers --strict-config"
+norecursedirs = [
+    ".git",
+    ".venv",
+    "venv",
+    "media",
+    "staticfiles",
+    "htmlcov",
+]
+markers = [
+    "integration: testy współpracy kilku modułów aplikacji",
+]
+
+[tool.coverage.run]
+branch = true
+relative_files = true
+source = [
+    "authors",
+    "people",
+    "texts",
+    "workflow",
+    "illustrations",
+    "core",
+]
+omit = [
+    "*/migrations/*",
+    "*/tests.py",
+    "*/tests/*",
+    "*/test_*.py",
+    "*/*_tests.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+precision = 1
+
+[tool.coverage.html]
+directory = "htmlcov"

@@ -1,0 +1,401 @@
+{% extends "core/base.html" %}
+
+{% block title %}Recenzje | Fantazmaty CMS{% endblock %}
+
+{% block content %}
+    <header class="page-header">
+        <div class="detail-heading">
+            <div>
+                <h1 class="page-title">
+                    {% if old_reviews %}Archiwalne recenzje{% else %}Recenzje{% endif %}
+                </h1>
+                <p class="page-description">
+                    {% if old_reviews %}
+                        Stare zgłoszenia, które nie są już liczone do statystyk.
+                    {% else %}
+                        Zgłoszenia, przydziały recenzentów i decyzje dotyczące tekstów.
+                    {% endif %}
+                </p>
+            </div>
+
+            {% if can_import_reviews %}
+                <a
+                    href="{% url 'core:review_bulk_import' %}"
+                    class="primary-button"
+                >
+                    Importuj zgłoszenia
+                </a>
+            {% endif %}
+        </div>
+    </header>
+
+    {% if can_view_all_reviews %}
+        <nav class="tabs" aria-label="Zakres recenzji">
+            <a
+                href="{% url 'core:review_list' %}?old_reviews=0"
+                class="tab-link{% if not old_reviews %} is-active{% endif %}"
+                {% if not old_reviews %}aria-current="page"{% endif %}
+            >
+                Bieżące
+            </a>
+            <a
+                href="{% url 'core:review_list' %}?old_reviews=1"
+                class="tab-link{% if old_reviews %} is-active{% endif %}"
+                {% if old_reviews %}aria-current="page"{% endif %}
+            >
+                Archiwalne
+            </a>
+        </nav>
+    {% endif %}
+
+    <section class="filters-card" aria-label="Filtry recenzji">
+        <form
+            method="get"
+            action="{% url 'core:review_list' %}"
+            class="filters-form"
+            data-remember-filters="review-list"
+        >
+            <input type="hidden" name="filters_applied" value="1">
+            <input
+                type="hidden"
+                name="page_size"
+                value="{{ page_obj.selected_page_size }}"
+            >
+            {% if can_view_all_reviews %}
+                <input
+                    type="hidden"
+                    name="old_reviews"
+                    value="{% if old_reviews %}1{% else %}0{% endif %}"
+                >
+            {% endif %}
+
+            <div class="filter-field">
+                <label for="review-query">Wyszukaj</label>
+                <input
+                    id="review-query"
+                    type="search"
+                    name="q"
+                    value="{{ query }}"
+                    placeholder="{% if can_view_authors %}Tytuł, antologia, autor lub e-mail{% else %}Tytuł lub antologia{% endif %}"
+                >
+            </div>
+
+            <div class="filter-field">
+                <label for="review-anthology">Antologia</label>
+                <select id="review-anthology" name="anthology">
+                    <option value="">Wszystkie antologie</option>
+                    {% for anthology in anthologies %}
+                        <option
+                            value="{{ anthology.pk }}"
+                            {% if anthology.pk == selected_anthology_id %}selected{% endif %}
+                        >
+                            {{ anthology.title }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="filter-field">
+                <label for="review-completed">Oddane recenzje (0–6)</label>
+<input id="review-completed" type="number" name="completed" min="0" max="6" step="1" value="{{ selected_completed }}" placeholder="Wszystkie">
+            </div>
+
+            <div class="filter-field">
+                <label for="review-sort">Sortowanie</label>
+                <select id="review-sort" name="sort">
+                    <option value="newest" {% if sort == "newest" %}selected{% endif %}>Najnowsze</option>
+                    <option value="oldest" {% if sort == "oldest" %}selected{% endif %}>Najstarsze</option>
+                    <option value="title" {% if sort == "title" %}selected{% endif %}>Tytuł: A–Z</option>
+                    <option value="-title" {% if sort == "-title" %}selected{% endif %}>Tytuł: Z–A</option>
+                    <option value="anthology" {% if sort == "anthology" %}selected{% endif %}>Antologia: A–Z</option>
+                    <option value="-anthology" {% if sort == "-anthology" %}selected{% endif %}>Antologia: Z–A</option>
+                    <option value="length" {% if sort == "length" %}selected{% endif %}>Długość: rosnąco</option>
+                    <option value="-length" {% if sort == "-length" %}selected{% endif %}>Długość: malejąco</option>
+                    <option value="status" {% if sort == "status" %}selected{% endif %}>Status: rosnąco</option>
+                    <option value="-status" {% if sort == "-status" %}selected{% endif %}>Status: malejąco</option>
+                </select>
+            </div>
+
+            <fieldset class="multi-filter-field">
+                <legend>Status zgłoszenia</legend>
+                <details class="checkbox-dropdown" data-checkbox-dropdown data-empty-label="Wszystkie statusy"><summary><span data-checkbox-summary>Statusy</span></summary><div class="checkbox-dropdown-options">
+                    {% for value, label in status_choices %}
+                        <label class="multi-filter-option">
+                            <input
+                                type="checkbox"
+                                name="status"
+                                value="{{ value }}"
+                                {% if value in selected_statuses %}checked{% endif %}
+                            >
+                            <span>{{ label }}</span>
+                        </label>
+                    {% endfor %}
+                </div>
+                </details><p class="form-help">
+                    Możesz wybrać kilka statusów. Brak zaznaczenia oznacza wszystkie.
+                </p>
+            </fieldset>
+
+            <div class="filter-actions">
+                <button type="submit" class="primary-button">Filtruj</button>
+                <a
+                    href="{% url 'core:review_list' %}?old_reviews={% if old_reviews %}1{% else %}0{% endif %}"
+                    class="secondary-button"
+                    data-clear-saved-filters="review-list"
+                >
+                    Wyczyść filtry
+                </a>
+            </div>
+        </form>
+    </section>
+
+    {% if can_perform_bulk_actions and bulk_action_form %}
+        <form
+            id="review-bulk-form"
+            method="post"
+            action="{% url 'core:bulk_review_action' %}"
+            data-bulk-form
+        >
+            {% csrf_token %}
+            <details class="bulk-action-panel">
+                <summary class="bulk-action-toggle">
+                    <span>Operacje zbiorcze</span>
+                </summary>
+
+                <div class="bulk-action-content">
+                    <p class="form-help">
+                        Zaznaczenie dotyczy bieżącej strony.
+                        {% if old_reviews %}
+                            Archiwalne zgłoszenia można wyeksportować.
+                            Zmiana ich statusu jest zablokowana.
+                        {% endif %}
+                    </p>
+                    <p>Zaznaczono: <strong data-selected-count>0</strong></p>
+
+                    {{ bulk_action_form.non_field_errors }}
+
+                    <div class="bulk-action-fields">
+                        {% for field in bulk_action_form %}
+                            {% if field.is_hidden %}
+                                {{ field }}
+                            {% else %}
+                                <div class="filter-field">
+                                    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                                    {{ field }}
+                                    {{ field.errors }}
+                                    {% if field.help_text %}
+                                        <p class="form-help">{{ field.help_text }}</p>
+                                    {% endif %}
+                                </div>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+
+                    <div class="general-notes-actions">
+                        <button type="submit" class="primary-button">
+                            Wykonaj dla zaznaczonych
+                        </button>
+                    </div>
+                </div>
+            </details>
+        </form>
+    {% endif %}
+
+    <section class="card" aria-label="Lista recenzji">
+        
+
+        <div
+            class="table-container"
+            role="region"
+            aria-label="Tabela zgłoszeń do recenzji"
+            tabindex="0"
+        >
+            <table id="reviews-table" data-server-sort="true">
+                <caption class="visually-hidden">
+                    Zgłoszenia spełniające wybrane filtry
+                </caption>
+                <thead>
+                    <tr>
+                        {% if can_perform_bulk_actions and bulk_action_form %}
+                            <th scope="col" data-copy="false">
+                                <input
+                                    type="checkbox"
+                                    form="review-bulk-form"
+                                    class="select-all-records"
+                                    data-select-all
+                                    aria-label="Zaznacz wszystkie zgłoszenia na tej stronie"
+                                >
+                            </th>
+                        {% endif %}
+                        <th scope="col">Antologia</th>
+                        <th scope="col">Tytuł</th>
+                        {% if can_view_authors %}
+                            <th scope="col">Autor</th>
+                        {% endif %}
+                        <th scope="col" class="numeric-cell">Długość</th>
+                        <th scope="col">Recenzenci i opinie</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Data decyzji</th>
+                        <th scope="col" data-copy="false">Akcje</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for review in reviews %}
+                        <tr>
+                            {% if can_perform_bulk_actions and bulk_action_form %}
+                                <td data-copy="false">
+                                    <input
+                                        type="checkbox"
+                                        name="selected_reviews"
+                                        value="{{ review.pk }}"
+                                        form="review-bulk-form"
+                                        class="row-selection"
+                                        data-select-item
+                                        aria-label="Zaznacz zgłoszenie: {{ review.title }}"
+                                    >
+                                </td>
+                            {% endif %}
+
+                            <td>
+                                {% if review.anthology %}
+                                    {{ review.anthology.title }}
+                                {% else %}
+                                    <span class="muted-text">Brak antologii</span>
+                                {% endif %}
+                            </td>
+
+                            <td data-copy-value="{{ review.title }}">
+                                <a
+                                    href="{% url 'core:assigned_review_detail' review.pk %}"
+                                    class="text-title-link"
+                                >
+                                    <strong>{{ review.title }}</strong>
+                                </a>
+                                {% if review.genre %}
+                                    <div class="muted-text">{{ review.genre }}</div>
+                                {% endif %}
+                                {% if review.current_user_slot %}
+                                    <span class="role-badge">Twoja recenzja</span>
+                                {% endif %}
+                            </td>
+
+                            {% if can_view_authors %}
+                                <td>
+                                    {% if review.author_id %}
+                                        <a
+                                            href="{% url 'core:author_detail' review.author_id %}"
+                                            class="detail-link"
+                                        >
+                                            {{ review.author_first_name }} {{ review.author_last_name }}
+                                        </a>
+                                    {% else %}
+                                        {{ review.author_first_name }} {{ review.author_last_name }}
+                                    {% endif %}
+                                </td>
+                            {% endif %}
+
+                            <td
+                                class="numeric-cell"
+                                data-type="number"
+                                data-copy-value="{{ review.length|stringformat:'d' }}"
+                            >
+                                {{ review.length }}
+                            </td>
+
+                            <td>
+                                <div class="reviewers-list">
+                                    {% for assignment in review.assignments %}
+                                        <span class="reviewer-bubble reviewer-opinion-{{ assignment.opinion_value }}">
+                                            <strong>{{ assignment.reviewer_name }}</strong>
+                                            <span>{{ assignment.opinion_display }}</span>
+                                            {% if assignment.opinion_changed_at %}
+                                                <small>
+                                                    {{ assignment.opinion_changed_at|date:"d.m.Y" }}
+                                                </small>
+                                            {% endif %}
+                                        </span>
+                                    {% empty %}
+                                        <span class="muted-text">Brak recenzentów</span>
+                                    {% endfor %}
+                                </div>
+
+                                <p class="form-help">
+                                    Oddane opinie:
+                                    {{ review.completed_reviewer_count }}/{{ review.assigned_reviewer_count }}
+                                    · Zajęte miejsca:
+                                    {{ review.assigned_reviewer_count }}/{{ max_reviewers }}
+                                </p>
+                            </td>
+
+                            <td>
+                                <span class="stage-status {% if review.status == 'accepted' %}completed{% elif review.status == 'rejected' or review.status == 'withdrawn' %}withdrawn{% elif review.status == 'in_review' %}active{% else %}pending{% endif %}">
+                                    {{ review.get_status_display }}
+                                </span>
+                                {% if can_view_authors %}{% if review.status == 'accepted' or review.status == 'rejected' %}
+                                    <span class="notification-state">{% if review.author_notified_at %}Autor powiadomiony: {{ review.author_notified_at|date:'d.m.Y' }}{% elif review.notification_scheduled %}Powiadomienie po terminie decyzji{% else %}Autor niepowiadomiony{% endif %}</span>
+                                {% endif %}{% endif %}
+
+                                {% if review.is_copied_to_text %}
+                                    <div class="form-help">W procesie wydawniczym</div>
+                                {% elif review.status == "in_review" and review.all_reviews_finished and not old_reviews %}
+                                    <div class="form-help">Oczekuje na decyzję</div>
+                                {% endif %}
+
+                                {% if review.old_reviews %}
+                                    <div class="form-help">Archiwalna</div>
+                                {% endif %}
+                            </td>
+
+                            <td class="date-cell">
+                                {{ review.decision_at|date:"d.m.Y"|default:"–" }}
+                            </td>
+
+                            <td class="reviewer-action-cell" data-copy="false">
+                                <div class="filter-actions">
+                                    
+
+                                    {% if review.can_self_assign_review %}
+                                        <form
+                                            method="post"
+                                            action="{% url 'core:assign_reviewer' review.pk %}"
+                                            class="reviewer-action-form"
+                                        >
+                                            {% csrf_token %}
+                                            <button
+                                                type="submit"
+                                                class="assign-button"
+                                                aria-label="Przypisz sobie recenzję: {{ review.title }}"
+                                            >
+                                                Biorę
+                                            </button>
+                                        </form>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="{% if can_perform_bulk_actions and bulk_action_form %}{% if can_view_authors %}9{% else %}8{% endif %}{% else %}{% if can_view_authors %}8{% else %}7{% endif %}{% endif %}">
+                                <div class="empty-results-panel">
+                                    <strong>Nie znaleziono zgłoszeń.</strong>
+                                    <p>Zmień kryteria wyszukiwania lub wyczyść filtry.</p>
+                                    <a
+                                        href="{% url 'core:review_list' %}?old_reviews={% if old_reviews %}1{% else %}0{% endif %}"
+                                        class="secondary-button"
+                                        data-clear-saved-filters="review-list"
+                                    >
+                                        Wyczyść filtry
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    {% include "core/includes/table_toolbar.html" %}
+    {% include "core/includes/pagination.html" %}
+{% endblock %}

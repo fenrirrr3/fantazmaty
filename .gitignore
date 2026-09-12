@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Środowiska wirtualne
+venv/
+.venv/
+env/
+
+# Sekrety i konfiguracja lokalna
+.env
+.env.*
+!.env.example
+
+# Django
+*.sqlite3
+media/
+staticfiles/
+
+# Edytory i system
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+# Konfiguracja lokalna
+.venv-mysql/

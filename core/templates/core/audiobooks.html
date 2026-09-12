@@ -1,0 +1,25 @@
+{% extends "core/base.html" %}
+
+{% block title %}Audiobooki | Fantazmaty CMS{% endblock %}
+
+{% block content %}
+<header class="page-header">
+    <h1 class="page-title">Audiobooki</h1>
+    <p class="page-description">Audiobooki Fantazmatów dostępne na YouTube.</p>
+</header>
+
+<section class="card audiobook-card">
+    <h2 class="card-title">Audiobook</h2>
+
+    <div class="youtube-video">
+        <iframe
+            src="https://www.youtube-nocookie.com/embed/6XzGmdXbZmU"
+            title="Audiobook Fantazmatów"
+            loading="lazy"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            referrerpolicy="strict-origin-when-cross-origin"
+            allowfullscreen
+        ></iframe>
+    </div>
+</section>
+{% endblock %}

@@ -1,0 +1,12 @@
+{% extends "core/base.html" %}
+{% block title %}{{ title }} | Fantazmaty CMS{% endblock %}
+{% block content %}
+<header class="page-header"><h1 class="page-title">{{ title }}</h1></header>
+<section class="details-card">
+<form method="post" class="intake-form" data-warn-unsaved>{% csrf_token %}
+<input type="hidden" name="version" value="{{ version }}">
+{{ form.as_p }}
+{% if form.notified %}<p>Data powiadomienia: {{ notified_at|date:"d.m.Y H:i"|default:"—" }}</p>{% endif %}
+<button class="primary-button" type="submit">Zapisz</button>
+</form></section>
+{% endblock %}

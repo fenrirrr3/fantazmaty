@@ -1,0 +1,272 @@
+{% extends "core/base.html" %}
+
+{% block title %}Aktywność recenzentów | Fantazmaty CMS{% endblock %}
+
+{% block content %}
+    <header class="page-header">
+        <h1 class="page-title">Aktywność recenzentów</h1>
+        <p class="page-description">
+            Przydziały, oceny i daty oddania opinii.
+            Archiwalne recenzje nie są uwzględniane.
+        </p>
+    </header>
+
+    <section class="filters-card" aria-label="Filtry aktywności recenzentów">
+        <form
+            method="get"
+            action="{% url 'core:reviewer_activity' %}"
+            class="filters-form"
+            data-remember-filters="reviewer-activity"
+        >
+            <input
+                type="hidden"
+                name="page_size"
+                value="{{ page_obj.selected_page_size }}"
+            >
+
+            {% for error in filter_form.non_field_errors %}
+                <p class="form-error" role="alert">{{ error }}</p>
+            {% endfor %}
+
+            <div class="filter-field author-search-field">
+                <label for="reviewer-query">Wyszukaj</label>
+                <input
+                    id="reviewer-query"
+                    type="search"
+                    name="q"
+                    value="{{ filter_form.q.value|default_if_none:'' }}"
+                    maxlength="500"
+                    placeholder="{% if can_view_authors %}Tytuł, antologia, recenzent lub autor{% else %}Tytuł, antologia lub recenzent{% endif %}"
+                    {% if filter_form.q.errors %}aria-invalid="true" aria-describedby="reviewer-query-errors"{% endif %}
+                >
+                {% if filter_form.q.errors %}
+                    <div id="reviewer-query-errors" class="field-error">
+                        {{ filter_form.q.errors }}
+                    </div>
+                {% endif %}
+            </div>
+
+            <div class="filter-field">
+                <label for="reviewer-anthology">Antologia</label>
+                <select
+                    id="reviewer-anthology"
+                    name="anthology"
+                    {% if filter_form.anthology.errors %}aria-invalid="true" aria-describedby="reviewer-anthology-errors"{% endif %}
+                >
+                    <option value="">Wszystkie antologie</option>
+                    {% for anthology in anthologies %}
+                        <option
+                            value="{{ anthology.pk }}"
+                            {% if anthology.pk == selected_anthology_id %}selected{% endif %}
+                        >
+                            {{ anthology.title }}
+                        </option>
+                    {% endfor %}
+                </select>
+                {% if filter_form.anthology.errors %}
+                    <div id="reviewer-anthology-errors" class="field-error">
+                        {{ filter_form.anthology.errors }}
+                    </div>
+                {% endif %}
+            </div>
+
+            <div class="filter-field">
+                <label for="reviewer-person">Recenzent</label>
+                <select
+                    id="reviewer-person"
+                    name="person"
+                    {% if filter_form.person.errors %}aria-invalid="true" aria-describedby="reviewer-person-errors"{% endif %}
+                >
+                    <option value="">Wszyscy</option>
+                    {% for person in reviewers %}
+                        <option
+                            value="{{ person.pk }}"
+                            {% if person.pk == selected_person_id %}selected{% endif %}
+                        >
+                            {{ person.first_name }} {{ person.last_name }}
+                        </option>
+                    {% endfor %}
+                </select>
+                {% if filter_form.person.errors %}
+                    <div id="reviewer-person-errors" class="field-error">
+                        {{ filter_form.person.errors }}
+                    </div>
+                {% endif %}
+            </div>
+
+            <div class="filter-field">
+                <label for="reviewer-status">Status zgłoszenia</label>
+                <select id="reviewer-status" name="status" multiple>
+                    <option value="">Wszystkie statusy</option>
+                    {% for value, label in status_choices %}
+                        <option
+                            value="{{ value }}"
+                            {% if value in selected_statuses %}selected{% endif %}
+                        >
+                            {{ label }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="filter-field">
+                <label for="reviewer-date-from">Data oceny od</label>
+                <input
+                    id="reviewer-date-from"
+                    type="date"
+                    name="date_from"
+                    value="{{ date_from }}"
+                    {% if filter_form.date_from.errors %}aria-invalid="true" aria-describedby="reviewer-date-from-errors"{% endif %}
+                >
+                {% if filter_form.date_from.errors %}
+                    <div id="reviewer-date-from-errors" class="field-error">
+                        {{ filter_form.date_from.errors }}
+                    </div>
+                {% endif %}
+            </div>
+
+            <div class="filter-field">
+                <label for="reviewer-date-to">Data oceny do</label>
+                <input
+                    id="reviewer-date-to"
+                    type="date"
+                    name="date_to"
+                    value="{{ date_to }}"
+                    {% if filter_form.date_to.errors %}aria-invalid="true" aria-describedby="reviewer-date-to-errors"{% endif %}
+                >
+                {% if filter_form.date_to.errors %}
+                    <div id="reviewer-date-to-errors" class="field-error">
+                        {{ filter_form.date_to.errors }}
+                    </div>
+                {% endif %}
+            </div>
+
+            <div class="filter-actions">
+                <button type="submit" class="primary-button">Filtruj</button>
+                <a
+                    href="{% url 'core:reviewer_activity' %}"
+                    class="secondary-button"
+                    data-clear-saved-filters="reviewer-activity"
+                >
+                    Wyczyść filtry
+                </a>
+            </div>
+        </form>
+
+        <p class="form-help">
+            Zakres dat dotyczy ostatniej zmiany oceny. Po jego ustawieniu
+            przydziały bez daty oceny nie pojawią się w wynikach.
+            Lista wyboru osób obejmuje aktywnych recenzentów;
+            raport zachowuje również wcześniejsze przydziały.
+        </p>
+    </section>
+
+    <section class="card" aria-label="Wyniki aktywności recenzentów">
+        
+
+        <div
+            class="table-container"
+            role="region"
+            aria-label="Tabela aktywności recenzentów"
+            tabindex="0"
+        >
+            <table id="reviewer-activity-table">
+                <caption class="visually-hidden">
+                    Przydziały recenzentów, od najnowszej daty oceny
+                </caption>
+
+                <thead>
+                    <tr>
+                        <th scope="col">Recenzent</th>
+                        <th scope="col">Antologia</th>
+                        <th scope="col">Tytuł</th>
+                        {% if can_view_authors %}
+                            <th scope="col">Autor</th>
+                        {% endif %}
+                        <th scope="col">Przydział</th>
+                        <th scope="col">Opinia</th>
+                        <th scope="col">Data oceny</th>
+                        <th scope="col">Status zgłoszenia</th>
+                        <th scope="col">Data decyzji</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for row in activity_rows %}
+                        <tr>
+                            <td><span class="role-badge" data-palette="reviewer">{{ row.reviewer_name }}</span></td>
+
+                            <td>
+                                {{ row.anthology_title|default:"Brak antologii" }}
+                            </td>
+
+                            <td data-copy-value="{{ row.title }}">
+                                <a
+                                    href="{% url 'core:assigned_review_detail' row.review_id %}"
+                                    class="text-title-link"
+                                >
+                                    <strong>{{ row.title }}</strong>
+                                </a>
+                            </td>
+
+                            {% if can_view_authors %}
+                                <td>{{ row.author_name|default:"Nie podano" }}</td>
+                            {% endif %}
+
+                            <td>
+                                {{ row.slot }}
+                                <div class="muted-text">
+                                    {{ row.assigned_at|date:"d.m.Y, H:i"|default:"–" }}
+                                </div>
+                            </td>
+
+                            <td>
+                                <span class="reviewer-bubble reviewer-opinion-{{ row.opinion_value }}">
+                                    {{ row.opinion }}
+                                </span>
+                            </td>
+
+                            <td class="date-cell">
+                                {{ row.opinion_at|date:"d.m.Y"|default:"–" }}
+                            </td>
+
+                            <td>
+                                <span class="stage-status {% if row.review_status_value == 'accepted' %}completed{% elif row.review_status_value == 'rejected' or row.review_status_value == 'withdrawn' %}withdrawn{% elif row.review_status_value == 'in_review' %}active{% else %}pending{% endif %}">
+                                    {{ row.review_status }}
+                                </span>
+                            </td>
+
+                            <td class="date-cell">
+                                {{ row.decision_at|date:"d.m.Y"|default:"–" }}
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="{% if can_view_authors %}9{% else %}8{% endif %}">
+                                <div class="empty-results-panel">
+                                    {% if filter_errors %}
+                                        <strong>Popraw filtry raportu.</strong>
+                                        <p>Sprawdź komunikaty przy polach formularza.</p>
+                                    {% else %}
+                                        <strong>Brak przydziałów spełniających kryteria.</strong>
+                                        <p>Zmień wybraną osobę, status lub zakres dat.</p>
+                                    {% endif %}
+                                    <a
+                                        href="{% url 'core:reviewer_activity' %}"
+                                        class="secondary-button"
+                                        data-clear-saved-filters="reviewer-activity"
+                                    >
+                                        Wyczyść filtry
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    {% include "core/includes/table_toolbar.html" %}
+    {% include "core/includes/pagination.html" %}
+{% endblock %}

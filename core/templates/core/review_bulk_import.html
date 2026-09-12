@@ -1,0 +1,129 @@
+{% extends "core/base.html" %}
+
+{% block title %}Import zgłoszeń | Fantazmaty CMS{% endblock %}
+
+{% block content %}
+    <header class="page-header">
+        <div class="detail-heading">
+            <div>
+                <h1 class="page-title">Import zgłoszeń</h1>
+                <p class="page-description">
+                    Dodaj zgłoszenia do wybranej antologii.
+                    Przed zapisem system sprawdzi dane i możliwe duplikaty.
+                </p>
+            </div>
+
+            <a href="{% url 'core:review_list' %}" class="secondary-button">
+                Wróć do recenzji
+            </a>
+        </div>
+    </header>
+
+    <section class="card review-import-card" aria-labelledby="import-form-heading">
+        <h2 id="import-form-heading">Dane do importu</h2>
+
+        <p class="form-help">
+            Zgłoszenia zostaną zapisane razem. Jeśli którykolwiek rekord
+            zawiera błąd, import nie doda żadnego zgłoszenia.
+        </p>
+
+        <form
+            method="post"
+            action="{% url 'core:review_bulk_import' %}"
+            class="review-import-form"
+            data-warn-unsaved
+        >
+            {% csrf_token %}
+            {% if preview_rows %}
+                <input type="hidden" name="preview_token" value="{{ preview_token }}">
+                <h2>Podgląd importu – dane jeszcze nie zostały zapisane</h2>
+                <p>Import jest wspólny dla wszystkich wierszy. Błąd blokuje zapis całości; duplikaty i czarna lista wymagają potwierdzenia.</p>
+                <div class="table-container"><table><thead><tr><th>Wiersz</th><th>Autor / dopasowanie</th><th>Tytuł</th><th>Weryfikacja</th></tr></thead><tbody>
+                {% for row in preview_rows %}<tr><td>{{ row.line }}</td><td>
+                    {% if row.record %}{{ row.record.author_first_name }} {{ row.record.author_last_name }}<br>{{ row.record.email }}
+                    {% for author in row.matched %}<p>W bazie: {{ author.first_name }} {{ author.last_name }}{% if author.is_blacklisted %} – czarna lista, zgłoszenie będzie ukryte{% endif %}</p>{% empty %}<p>Brak dopasowanego autora w bazie</p>{% endfor %}
+                    {% else %}{{ row.raw }}{% endif %}</td><td>{{ row.record.title|default:'–' }}</td><td>
+                    {% for error in row.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+                    {% for warning in row.warnings %}<p>{{ warning }}</p>{% endfor %}
+                    {% if row.ambiguous %}<p class="field-error">Adres pasuje do kilku autorów – popraw dane w panelu.</p>
+                    {% elif row.record and not row.errors and not row.warnings %}Poprawny – zostanie dodany po zatwierdzeniu.{% endif %}
+                    </td></tr>{% endfor %}</tbody></table></div>
+            {% endif %}
+
+            {% if form.errors %}
+                <div class="form-error" role="alert">
+                    <strong>Import nie został wykonany.</strong>
+                    Sprawdź komunikaty i popraw dane lub potwierdź ostrzeżenia.
+                </div>
+            {% endif %}
+
+            {% for error in form.non_field_errors %}
+                <p class="form-error">{{ error }}</p>
+            {% endfor %}
+
+            <div class="form-field">
+                <label for="{{ form.anthology.id_for_label }}">
+                    {{ form.anthology.label }}
+                </label>
+
+                {{ form.anthology }}
+
+                {% if form.anthology.help_text %}
+                    <p class="form-help">{{ form.anthology.help_text }}</p>
+                {% endif %}
+
+                {% for error in form.anthology.errors %}
+                    <p class="field-error">{{ error }}</p>
+                {% endfor %}
+            </div>
+
+            <div class="form-field">
+                <label for="{{ form.records.id_for_label }}">
+                    {{ form.records.label }}
+                </label>
+
+                {% if form.records.help_text %}
+                    <div class="import-format-example">
+                        {{ form.records.help_text|linebreaksbr }}
+                    </div>
+                {% endif %}
+
+                {{ form.records }}
+
+                {% for error in form.records.errors %}
+                    <p class="field-error">{{ error }}</p>
+                {% endfor %}
+            </div>
+
+            {% include "core/includes/review_import_warnings.html" %}
+
+            {% if not form.import_warnings and not import_warnings %}
+                {{ form.submission_warnings_token }}
+
+                {% for error in form.submission_warnings_token.errors %}
+                    <p class="field-error">{{ error }}</p>
+                {% endfor %}
+
+                {% for error in form.confirm_submission_warnings.errors %}
+                    <p class="field-error">{{ error }}</p>
+                {% endfor %}
+            {% endif %}
+
+            <div class="review-import-actions">
+                <button type="submit" class="secondary-button" name="import_action" value="preview">Podgląd</button>
+<button type="submit" class="primary-button" name="import_action" value="import" data-confirm-import {% if not can_import %}disabled{% endif %}>Zatwierdź import</button>
+
+                <a href="{% url 'core:review_list' %}" class="secondary-button">
+                    Anuluj
+                </a>
+            </div>
+
+            <p class="form-help">
+                Zgłoszenie autora z czarnej listy lub możliwy duplikat
+                wymaga potwierdzenia przed dodaniem.
+                Sprawdzanie duplikatów uwzględnia także wcześniejsze nabory
+                i archiwalne recenzje.
+            </p>
+        </form>
+    </section>
+{% endblock %}

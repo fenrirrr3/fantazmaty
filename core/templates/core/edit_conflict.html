@@ -1,0 +1,7 @@
+{% extends "core/base.html" %}
+{% block content %}
+<section class="card"><h1>Rekord został zmieniony</h1>
+<p>Od otwarcia formularza zmieniły się dane lub wygasła jego wersja. Nie zapisano przesłanych zmian.</p>
+<p>Wróć do poprzedniej strony, skopiuj wpisany tekst, a następnie odśwież formularz i porównaj aktualne dane.</p>
+<a class="secondary-button" href="{% url 'core:home' %}">Pulpit</a></section>
+{% endblock %}

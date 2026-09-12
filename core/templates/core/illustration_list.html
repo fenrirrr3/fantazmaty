@@ -1,0 +1,249 @@
+{% extends "core/base.html" %}
+
+{% block title %}Ilustracje | Fantazmaty CMS{% endblock %}
+
+{% block content %}
+    <header class="page-header">
+        <h1 class="page-title">Ilustracje</h1>
+        <p class="page-description">
+            Teksty z niewydanych antologii wymagających ilustracji,
+            przydziały ilustratorów i stan prac.
+        </p>
+    </header>
+
+    <section class="filters-card" aria-label="Filtry ilustracji">
+        <form
+            method="get"
+            action="{% url 'illustrations:illustration_list' %}"
+            class="filters-form"
+            data-remember-filters="illustration-list"
+        >
+            <input
+                type="hidden"
+                name="page_size"
+                value="{{ page_obj.selected_page_size }}"
+            >
+
+            <div class="filter-field">
+                <label for="illustration-anthology">Antologia</label>
+                <select id="illustration-anthology" name="anthology">
+                    <option value="">Wszystkie antologie</option>
+                    {% for anthology in anthologies %}
+                        <option
+                            value="{{ anthology.pk }}"
+                            {% if anthology.pk == selected_anthology_id %}selected{% endif %}
+                        >
+                            {{ anthology.title }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="filter-field">
+                <label for="illustration-status">Status ilustracji</label>
+                <select id="illustration-status" name="status" multiple>
+                    <option value="">Wszystkie statusy</option>
+                    {% for value, label in status_choices %}
+                        <option
+                            value="{{ value }}"
+                            {% if value in selected_statuses %}selected{% endif %}
+                        >
+                            {{ label }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="filter-actions">
+                <button type="submit" class="primary-button">Filtruj</button>
+                <a
+                    href="{% url 'illustrations:illustration_list' %}"
+                    class="secondary-button"
+                    data-clear-saved-filters="illustration-list"
+                >
+                    Wyczyść filtry
+                </a>
+            </div>
+        </form>
+    </section>
+
+    <section class="card" aria-label="Lista ilustracji">
+        
+
+        <div
+            class="table-container"
+            role="region"
+            aria-label="Tabela ilustracji i przydziałów"
+            tabindex="0"
+        >
+            <table id="illustrations-table">
+                <caption class="visually-hidden">
+                    Ilustracje spełniające wybrane filtry
+                </caption>
+
+                <thead>
+                    <tr>
+                        <th scope="col">Antologia</th>
+                        <th scope="col">Tytuł tekstu</th>
+
+                        {% if can_view_authors %}
+                            <th scope="col">Autorzy</th>
+                        {% endif %}
+
+                        <th scope="col">Ilustrator</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Data przypisania</th>
+                        <th scope="col">Ostrzeżenia dotyczące treści</th>
+                        <th scope="col">Opowiadanie</th>
+                        <th scope="col">Ilustrowany fragment</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for illustration in illustrations %}
+                        <tr>
+                            <td>
+                                {{ illustration.text.anthology.title|default:"Brak antologii" }}
+                            </td>
+
+                            <td data-copy-value="{{ illustration.text.title }}">
+                                <a
+                                    href="{% url 'core:assigned_text_detail' illustration.text.pk %}"
+                                    class="text-title-link"
+                                >
+                                    <strong>{{ illustration.text.title }}</strong>
+                                </a>
+                            </td>
+
+                            {% if can_view_authors %}
+                                <td>
+                                    {% for author in illustration.text.authors.all %}
+                                        <div>
+                                            <a
+                                                href="{% url 'core:author_detail' author.pk %}"
+                                                class="detail-link"
+                                            >
+                                                {{ author.first_name }} {{ author.last_name }}
+                                            </a>
+                                            {% if author.pseudonym %}
+                                                <span class="muted-text">
+                                                    ({{ author.pseudonym }})
+                                                </span>
+                                            {% endif %}
+                                        </div>
+                                    {% empty %}
+                                        <span class="muted-text">
+                                            Brak przypisanego autora
+                                        </span>
+                                    {% endfor %}
+                                </td>
+                            {% endif %}
+
+                            <td>
+                                {% if illustration.illustrator %}
+                                    {% if illustration.illustrator.is_active %}
+                                        <a
+                                            href="{% url 'core:person_detail' illustration.illustrator.pk %}"
+                                            class="detail-link"
+                                        >
+                                            {{ illustration.illustrator }}
+                                        </a>
+                                    {% else %}
+                                        {{ illustration.illustrator }}
+                                        <div class="muted-text">
+                                            Poza zespołem
+                                        </div>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="muted-text">Nie przypisano</span>
+                                {% endif %}
+                            </td>
+
+                            <td>
+                                <span class="status">
+                                    {{ illustration.get_status_display }}
+                                </span>
+                            </td>
+
+                            <td class="date-cell">
+                                {{ illustration.assigned_at|date:"d.m.Y"|default:"–" }}
+                            </td>
+
+                            <td>
+                                {% if illustration.trigger_warnings %}
+                                    {{ illustration.trigger_warnings|linebreaksbr }}
+                                {% else %}
+                                    <span class="muted-text">Nie dodano</span>
+                                {% endif %}
+                            </td>
+
+                            <td data-copy-value="{{ illustration.story_url }}">
+                                {% if illustration.story_url %}
+                                    <a
+                                        href="{{ illustration.story_url }}"
+                                        class="detail-link"
+                                        rel="noreferrer"
+                                        aria-label="Otwórz opowiadanie: {{ illustration.text.title }}"
+                                    >
+                                        Otwórz opowiadanie
+                                    </a>
+                                    <button
+                                        type="button"
+                                        class="copy-value-button"
+                                        data-copy-value="{{ illustration.story_url }}"
+                                        aria-label="Skopiuj link do opowiadania: {{ illustration.text.title }}"
+                                    >
+                                        Kopiuj link
+                                    </button>
+                                {% else %}
+                                    <span class="muted-text">Brak linku</span>
+                                {% endif %}
+                            </td>
+
+                            <td>
+                                {% if illustration.illustrated_excerpt %}
+                                    <details class="reviewer-opinion">
+                                        <summary>
+                                            <span>Pokaż fragment</span>
+                                            <span class="dropdown-arrow" aria-hidden="true">▾</span>
+                                        </summary>
+
+                                        <div class="reviewer-opinion-content">
+                                            {{ illustration.illustrated_excerpt|linebreaksbr }}
+                                        </div>
+                                    </details>
+                                {% else %}
+                                    <span class="muted-text">Nie wskazano fragmentu</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="{% if can_view_authors %}9{% else %}8{% endif %}">
+                                <div class="empty-results-panel">
+                                    <strong>Brak ilustracji spełniających kryteria.</strong>
+                                    <p>
+                                        Lista obejmuje teksty z niewydanych antologii
+                                        oznaczonych jako wymagające ilustracji.
+                                    </p>
+                                    {% if selected_anthology_id or selected_status %}
+                                        <a
+                                            href="{% url 'illustrations:illustration_list' %}"
+                                            class="secondary-button"
+                                            data-clear-saved-filters="illustration-list"
+                                        >
+                                            Wyczyść filtry
+                                        </a>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    {% include "core/includes/table_toolbar.html" %}
+    {% include "core/includes/pagination.html" %}
+{% endblock %}

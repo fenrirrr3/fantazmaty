@@ -1,0 +1,63 @@
+{% if page_obj.paginator %}
+    <nav class="pagination-bar" aria-label="Stronicowanie wyników">
+        <span>
+            Strona {{ page_obj.number }} z {{ page_obj.paginator.num_pages }}
+            <span class="muted-text">
+                · Wyniki {{ page_obj.start_index }}–{{ page_obj.end_index }}
+                z {{ page_obj.paginator.count }}
+            </span>
+        </span>
+
+        <div class="pagination-links">
+            {% if page_obj.has_previous %}
+                {% if page_obj.number > 2 %}
+                    <a
+                        class="pagination-link"
+                        href="{{ page_obj.first_url }}"
+                        aria-label="Przejdź do pierwszej strony"
+                    >
+                        Pierwsza
+                    </a>
+                {% endif %}
+
+                <a
+                    class="pagination-link"
+                    href="{{ page_obj.previous_url }}"
+                    rel="prev"
+                    aria-label="Przejdź do poprzedniej strony"
+                >
+                    Poprzednia
+                </a>
+            {% endif %}
+
+            <span
+                class="pagination-current"
+                aria-current="page"
+                aria-label="Bieżąca strona: {{ page_obj.number }}"
+            >
+                {{ page_obj.number }}
+            </span>
+
+            {% if page_obj.has_next %}
+                <a
+                    class="pagination-link"
+                    href="{{ page_obj.next_url }}"
+                    rel="next"
+                    aria-label="Przejdź do następnej strony"
+                >
+                    Następna
+                </a>
+
+                {% if page_obj.next_page_number < page_obj.paginator.num_pages %}
+                    <a
+                        class="pagination-link"
+                        href="{{ page_obj.last_url }}"
+                        aria-label="Przejdź do ostatniej strony"
+                    >
+                        Ostatnia
+                    </a>
+                {% endif %}
+            {% endif %}
+        </div>
+    </nav>
+{% endif %}

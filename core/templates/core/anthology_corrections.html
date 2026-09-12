@@ -1,0 +1,22 @@
+{% extends "core/base.html" %}
+{% load static %}
+{% block title %}Uwagi do antologii | Fantazmaty CMS{% endblock %}
+{% block content %}
+<header class="page-header"><h1 class="page-title">Uwagi do antologii</h1></header>
+<section class="filters-card"><form method="get" class="filters-form" data-remember-filters="corrections">
+<label>Szukaj <input name="q" value="{{ query }}"></label>
+<label>Antologia <select name="anthology"><option value="">Wszystkie</option>{% for a in anthologies %}<option value="{{ a.pk }}" {% if a.pk|stringformat:'s' == selected_anthology %}selected{% endif %}>{{ a.title }}</option>{% endfor %}</select></label>
+<label>Status <select name="status" multiple><option value="">Wszystkie</option>{% for value,label in filter_statuses %}<option value="{{ value }}" {% if value in selected_statuses %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label><button type="submit" class="primary-button">Filtruj</button>
+</form></section>
+{% if user.is_superuser %}<form id="correction-bulk" method="post" action="{% url 'core:correction_status' %}">{% csrf_token %}
+<label>Status zaznaczonych <select name="status">{% for value,label in statuses %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select></label><button class="secondary-button" type="submit">Zmień status zaznaczonych</button></form>{% endif %}
+<section class="card"><div class="table-container"><table><thead><tr>{% if user.is_superuser %}<th><input type="checkbox" data-select-table aria-label="Zaznacz widoczne uwagi"></th>{% endif %}<th>Antologia</th><th>Tytuł opowiadania</th><th>Fragment</th><th>Co jest źle</th><th>Propozycja poprawki</th><th>Status zmiany</th><th>Zgłaszający</th></tr></thead>
+<tbody>{% for item in corrections %}<tr>
+{% if user.is_superuser %}<td><input type="checkbox" name="selected" value="{{ item.pk }}" form="correction-bulk" aria-label="Zaznacz uwagę: {{ item.story_title }}"><input type="hidden" name="version_{{ item.pk }}" value="{{ item.updated_at.isoformat }}" form="correction-bulk"></td>{% endif %}
+<td>{{ item.anthology.title }}</td><td>{{ item.story_title }}</td><td data-copy-value="{{ item.fragment }}">{% if item.fragment|length > 150 %}<details class="long-cell"><summary>{{ item.fragment|truncatechars:150 }} <span class="detail-link">Rozwiń</span></summary><div>{{ item.fragment|linebreaksbr }}</div></details>{% else %}{{ item.fragment|linebreaksbr }}{% endif %}</td><td data-copy-value="{{ item.problem }}">{% if item.problem|length > 150 %}<details class="long-cell"><summary>{{ item.problem|truncatechars:150 }} <span class="detail-link">Rozwiń</span></summary><div>{{ item.problem|linebreaksbr }}</div></details>{% else %}{{ item.problem|linebreaksbr }}{% endif %}</td><td data-copy-value="{{ item.suggestion }}">{% if item.suggestion|length > 150 %}<details class="long-cell"><summary>{{ item.suggestion|truncatechars:150 }} <span class="detail-link">Rozwiń</span></summary><div>{{ item.suggestion|linebreaksbr }}</div></details>{% else %}{{ item.suggestion|linebreaksbr }}{% endif %}</td><td>{{ item.get_status_display }}</td><td>{{ item.submitted_by.get_full_name|default:'Usunięte konto' }}</td></tr>
+{% empty %}<tr><td colspan="{% if user.is_superuser %}8{% else %}7{% endif %}"><div class="empty-results-panel"><strong>Nie ma jeszcze uwag.</strong><a href="#nowa-uwaga">Zgłoś pierwszą uwagę</a></div></td></tr>{% endfor %}</tbody></table></div></section>
+{% include "core/includes/table_toolbar.html" %}{% include "core/includes/pagination.html" %}
+<section class="details-card correction-form-card" id="nowa-uwaga"><h2>Zgłoś uwagę</h2><form method="post" action="{% url 'core:anthology_corrections' %}" data-warn-unsaved data-correction-form>{% csrf_token %}{{ form.as_p }}<button type="submit" class="primary-button">Dodaj uwagę</button><button type="submit" name="action" value="continue" class="secondary-button">Dodaj uwagę i kontynuuj</button></form></section>
+{% endblock %}
+
+{% block scripts %}<script src="{% static 'core/corrections.js' %}"></script>{% endblock %}

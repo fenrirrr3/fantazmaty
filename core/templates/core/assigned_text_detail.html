@@ -1,0 +1,722 @@
+{% extends "core/base.html" %}
+
+{% block title %}{{ text.title }} | Fantazmaty CMS{% endblock %}
+
+{% block content %}
+
+    {% now "Y-m-d" as today_iso %}
+
+    <header class="page-header">
+        <div class="detail-heading">
+            <div>
+                <p class="eyebrow">
+                    {% if text.anthology %}
+                        {{ text.anthology.title }}
+                    {% else %}
+                        Tekst bez antologii
+                    {% endif %}
+                </p>
+                <h1 class="page-title">{{ text.title }}</h1>
+                <p class="page-description">
+                    
+                </p>
+            </div>
+
+            <a href="{% url 'core:text_list' %}" class="secondary-button">
+                Wróć do tekstów
+            </a>
+        </div>
+    </header>
+
+    {% if is_withdrawn %}
+        <div class="message warning" role="status">
+            <strong>Tekst został wycofany.</strong>
+            Dalsza praca w tym cyklu jest zablokowana. Historia pozostaje dostępna.
+        </div>
+    {% elif is_ready %}
+        <div class="message success" role="status">
+            <strong>Tekst jest gotowy.</strong>
+            Praca w tym cyklu została zakończona.
+        </div>
+    {% elif is_read_only %}
+        <div class="message info" role="status">
+            Oglądasz szczegóły tekstu. Nie masz przypisanego zadania w jego bieżącym cyklu.
+        </div>
+    {% endif %}
+
+    <section class="details-card" aria-labelledby="text-information-heading">
+        <h2 id="text-information-heading">Informacje o tekście</h2>
+
+        <dl class="details-grid">
+            <div class="detail-item">
+                <dt>Antologia</dt>
+                <dd>
+                    {% if text.anthology %}
+                        {{ text.anthology.title }}
+                    {% else %}
+                        <span class="muted-text">Brak antologii</span>
+                    {% endif %}
+                </dd>
+            </div>
+
+            <div class="detail-item">
+                <dt>Długość</dt>
+                <dd>{{ text.length }}</dd>
+            </div>
+
+            {% if can_view_authors %}
+                <div class="detail-item">
+                    <dt>Autorzy</dt>
+                    <dd>
+                        {% for author in text.authors.all %}
+                            <a
+                                href="{% url 'core:author_detail' author.pk %}"
+                                class="detail-link"
+                            >
+                                {{ author.first_name }} {{ author.last_name }}
+                            </a>{% if not forloop.last %}, {% endif %}
+                        {% empty %}
+                            <span class="muted-text">Brak przypisanego autora</span>
+                        {% endfor %}
+                    </dd>
+                </div>
+            {% endif %}
+
+            {% if source_review %}
+                <div class="detail-item">
+                    <dt>Gatunek</dt>
+                    <dd>{{ source_review.genre|default:"Nie podano" }}</dd>
+                </div>
+            {% endif %}
+
+            {% if user_assignments %}
+                <div class="detail-item">
+                    <dt>Twoje role</dt>
+                    <dd class="roles-list">
+                        {% for assignment in user_assignments %}
+                            <span class="role-badge">
+                                {{ assignment.get_role_display }}
+                            </span>
+                        {% endfor %}
+                    </dd>
+                </div>
+            {% endif %}
+        </dl>
+    </section>
+
+    <section class="editing-control-card" aria-labelledby="workflow-heading">
+        <header class="editing-control-header">
+            <div>
+                <h2 id="workflow-heading">Etapy pracy</h2>
+                <p>Bieżący stan i ostatnio zakończony etap.</p>
+            </div>
+        </header>
+
+        <div
+            class="table-container"
+            role="region"
+            aria-label="Bieżące etapy tekstu"
+            tabindex="0"
+        >
+            <table>
+                <caption class="visually-hidden">Bieżące etapy pracy nad tekstem</caption>
+                <thead>
+                    <tr>
+                        <th scope="col">Etap</th>
+                        <th scope="col">Osoba</th>
+                        <th scope="col">Rozpoczęcie</th>
+                        <th scope="col">Zakończenie</th>
+                        <th scope="col">Stan</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for stage in visible_stages %}
+                        <tr class="workflow-stage-row" data-stage="{{ stage.stage_type }}">
+                            <td>
+                                <span class="workflow-stage-badge">
+                                    {{ stage.get_stage_type_display }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if stage.assigned_user %}
+                                    {% firstof stage.assigned_user.get_full_name "Nieuzupełnione dane" %}
+                                {% else %}
+                                    <span class="muted-text">Nie przypisano</span>
+                                {% endif %}
+                            </td>
+                            <td class="date-cell">{{ stage.started_at|date:"d.m.Y"|default:"–" }}</td>
+                            <td class="date-cell">{{ stage.ended_at|date:"d.m.Y"|default:"–" }}</td>
+                            <td>
+                                {% if stage.stage_type == "withdrawn" %}
+                                    <span class="stage-status withdrawn">Wycofany</span>
+                                {% elif stage.stage_type == "ready" %}
+                                    <span class="stage-status completed">Gotowy</span>
+                                {% elif stage.is_completed %}
+                                    <span class="stage-status completed">Zakończony</span>
+                                {% elif is_withdrawn or is_ready %}
+                                    <span class="stage-status inactive">Nieaktywny</span>
+                                {% elif stage.started_at %}
+                                    {% if stage.started_at|date:"Y-m-d" > today_iso %}
+                                        <span class="stage-status pending">Zaplanowany</span>
+                                    {% else %}
+                                        <span class="stage-status active">W trakcie</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="stage-status pending">Nierozpoczęty</span>
+                                {% endif %}
+                                {% if not stage.is_completed and stage.leave_information.is_active %}
+                                    <span class="stage-leave-warning">Osoba przypisana jest na urlopie{% if stage.leave_information.vacation.until_revoked %} – do odwołania{% else %} – do {{ stage.leave_information.vacation.end_date|date:'d.m.Y' }}{% endif %}</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="5">
+                                <div class="empty-results-panel">
+                                    <strong>Brak bieżących etapów do wyświetlenia.</strong>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        {% if not is_withdrawn and not is_ready %}
+            <div class="editing-control-content">
+                {% for stage in stages %}
+                    {% if stage.can_complete %}
+                        <div class="quick-stage-card">
+                            <div class="quick-stage-action">
+                                <div class="quick-stage-description">
+                                    <strong>{{ stage.get_stage_type_display }}</strong>
+                                    <p>Zapisz datę zakończenia wykonanej pracy.</p>
+                                </div>
+
+                                <form
+                                    method="post"
+                                    action="{% url 'core:complete_workflow_stage' stage.pk %}"
+                                    class="complete-stage-form"
+                                >
+                                    {% csrf_token %}
+                                    <div class="form-field">
+                                        <label for="end-stage-{{ stage.pk }}">Data zakończenia</label>
+                                        <input
+                                            id="end-stage-{{ stage.pk }}"
+                                            type="date"
+                                            name="ended_at"
+                                            class="stage-date-input"
+                                            value="{{ today_iso }}"
+                                            min="{{ stage.started_at|date:'Y-m-d' }}"
+                                            max="{{ today_iso }}"
+                                            required
+                                        >
+                                    </div>
+                                    <button type="submit" class="complete-stage-button">
+                                        Zakończ etap
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    {% elif stage.can_claim_styling %}
+                        <div class="quick-stage-card">
+                            <div class="quick-stage-action">
+                                <div class="quick-stage-description"><strong>Stylowanie</strong><p>Przejmij stylowanie na swoje konto.</p></div>
+                                <form method="post" action="{% url 'core:take_workflow_stage' stage.pk %}" class="take-stage-form">
+                                    {% csrf_token %}
+                                    <button type="submit" class="primary-button">Przejmij stylowanie</button>
+                                    <div class="form-field"><label for="claim-styling-{{ stage.pk }}">Data rozpoczęcia</label><input id="claim-styling-{{ stage.pk }}" type="date" name="started_at" class="stage-date-input" value="{{ today_iso }}" min="{{ today_iso }}" required></div>
+                                </form>
+                            </div>
+                        </div>
+                    {% elif stage.can_start %}
+                        <div class="quick-stage-card">
+                            <div class="quick-stage-action">
+                                <div class="quick-stage-description">
+                                    <strong>{{ stage.get_stage_type_display }}</strong>
+                                    <p>Wybierz datę rozpoczęcia przypisanego zadania.</p>
+                                </div>
+
+                                <form
+                                    method="post"
+                                    action="{% url 'core:start_assigned_workflow_stage' stage.pk %}"
+                                    class="complete-stage-form"
+                                >
+                                    {% csrf_token %}
+                                    <div class="form-field">
+                                        <label for="start-stage-{{ stage.pk }}">Data rozpoczęcia</label>
+                                        <input
+                                            id="start-stage-{{ stage.pk }}"
+                                            type="date"
+                                            name="started_at"
+                                            class="stage-date-input"
+                                            value="{{ today_iso }}"
+                                            min="{{ today_iso }}"
+                                            {% if start_stage_form.started_at.field.widget.attrs.max %}
+                                                max="{{ start_stage_form.started_at.field.widget.attrs.max }}"
+                                            {% endif %}
+                                            required
+                                        >
+                                    </div>
+                                    <button type="submit" class="primary-button">
+                                        Rozpocznij etap
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    {% endif %}
+                {% endfor %}
+
+                <div class="workflow-action-buttons">
+                    {% if can_send_to_first_verification %}
+                        <form method="post" action="{% url 'core:send_to_first_verification_stage' text.pk %}">
+                            {% csrf_token %}
+                            <button type="submit" class="primary-button">
+                                Przekaż do pierwszej weryfikacji
+                            </button>
+                        </form>
+                    {% endif %}
+
+                    {% if can_resume_editing %}
+                        <form method="post" action="{% url 'core:resume_text_editing' text.pk %}">
+                            {% csrf_token %}
+                            <button type="submit" class="primary-button">
+                                Wznów redakcję
+                            </button>
+                        </form>
+                    {% endif %}
+
+                    {% if can_send_to_author %}
+                        <form method="post" action="{% url 'core:send_text_to_author_stage' text.pk %}">
+                            {% csrf_token %}
+                            <button type="submit" class="secondary-button">
+                                Przekaż tekst autorowi
+                            </button>
+                        </form>
+                    {% endif %}
+
+                    {% if can_send_to_second_verification %}
+                        <form method="post" action="{% url 'core:send_to_second_verification_stage' text.pk %}">
+                            {% csrf_token %}
+                            <button type="submit" class="primary-button">
+                                Przekaż do drugiej weryfikacji
+                            </button>
+                        </form>
+                    {% endif %}
+
+                    {% if can_finish_editing %}
+                        <form method="post" action="{% url 'core:finish_text_editing' text.pk %}">
+                            {% csrf_token %}
+                            <button type="submit" class="complete-stage-button">
+                                Zakończ redakcję i przekaż do kontroli
+                            </button>
+                        </form>
+                    {% endif %}
+                </div>
+            </div>
+        {% endif %}
+    </section>
+
+    <details class="text-team">
+        <summary>
+            <span>Osoby przypisane do tekstu</span>
+            <span class="dropdown-arrow" aria-hidden="true">▾</span>
+        </summary>
+
+        <div class="text-team-grid">
+            {% for member in team_members %}
+                <div class="text-team-member{% if not member.is_assigned %} is-unassigned{% endif %}">
+                    <span class="text-team-member-role">{{ member.label }}{% if member.is_historical %} <span class="muted-text">(historyczne)</span>{% endif %}</span>
+                    {% if member.user %}
+                        <strong>
+                            {% firstof member.user.get_full_name "Nieuzupełnione dane" %}
+                        </strong>
+                    {% else %}
+                        <span>Nie przypisano</span>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        </div>
+    </details>
+
+    <section class="details-card" aria-labelledby="content-notes-heading">
+        <h2 id="content-notes-heading">Informacje do pracy</h2>
+
+        <div class="notes-editor-grid">
+            <div class="notes-editor-panel">
+                <h3>Ostrzeżenia dotyczące treści</h3>
+
+                {% if can_edit_content_warnings and text_content_warnings_form %}
+                    <form
+                        method="post"
+                        action="{% url 'core:update_text_content_warnings' text.pk %}"
+                        class="general-notes-form"
+                        data-autosave="text-warnings-{{ text.pk }}"
+                        data-warn-unsaved
+                    >
+                        {% csrf_token %}
+                        {{ text_content_warnings_form.non_field_errors }}
+
+                        <div class="form-field">
+                            <label for="{{ text_content_warnings_form.content_warnings.id_for_label }}">
+                                {{ text_content_warnings_form.content_warnings.label }}
+                            </label>
+                            {{ text_content_warnings_form.content_warnings }}
+                            {{ text_content_warnings_form.content_warnings.errors }}
+                        </div>
+
+                        <div class="general-notes-actions">
+                            <button type="submit" class="secondary-button">
+                                Zapisz ostrzeżenia
+                            </button>
+                        </div>
+                    </form>
+                {% else %}
+                    <div class="coordinator-note-readonly">
+                        {% if text.content_warnings %}
+                            {{ text.content_warnings|linebreaksbr }}
+                        {% else %}
+                            <span class="muted-text">Nie dodano ostrzeżeń.</span>
+                        {% endif %}
+                    </div>
+                {% endif %}
+            </div>
+
+            {% if show_coordinator_note %}
+                <div class="notes-editor-panel coordinator-note-highlight">
+                    <h3>Notatka koordynatora</h3>
+
+                    {% if can_edit_coordinator_note and coordinator_note_form %}
+                        <form
+                            method="post"
+                            action="{% url 'core:update_coordinator_note' text.pk %}"
+                            class="general-notes-form"
+                            data-autosave="coordinator-note-{{ text.pk }}"
+                            data-warn-unsaved
+                        >
+                            {% csrf_token %}
+                            {{ coordinator_note_form.non_field_errors }}
+
+                            <div class="form-field">
+                                <label for="{{ coordinator_note_form.coordinator_note.id_for_label }}">
+                                    {{ coordinator_note_form.coordinator_note.label }}
+                                </label>
+                                {{ coordinator_note_form.coordinator_note }}
+                                {{ coordinator_note_form.coordinator_note.errors }}
+                            </div>
+
+                            <div class="general-notes-actions">
+                                <button type="submit" class="secondary-button">
+                                    Zapisz notatkę
+                                </button>
+                            </div>
+                        </form>
+                    {% else %}
+                        <div class="coordinator-note-readonly">
+                            {{ text.coordinator_note|linebreaksbr }}
+                        </div>
+                    {% endif %}
+                </div>
+            {% endif %}
+            {% if not show_coordinator_note and can_edit_coordinator_note %}
+                <details class="coordinator-note-create"{% if coordinator_note_form.errors %} open{% endif %}>
+                    <summary>Dodaj notatkę koordynatora</summary>
+                    <form method="post" action="{% url 'core:update_coordinator_note' text.pk %}"
+                          class="general-notes-form" data-warn-unsaved>
+                        {% csrf_token %}
+                        {{ coordinator_note_form.as_p }}
+                        <button type="submit" class="secondary-button">Zapisz notatkę</button>
+                    </form>
+                </details>
+            {% endif %}
+        </div>
+    </section>
+
+    <section class="card" aria-labelledby="text-notes-heading">
+        <header class="section-header">
+            <h2 id="text-notes-heading">Notatki zespołu</h2>
+            <span class="record-counter">{{ text_notes|length }}</span>
+        </header>
+
+        {% if can_add_note and text_note_form %}
+            <form
+                method="post"
+                action="{% url 'core:add_text_note' text.pk %}"
+                class="text-note-form"
+                data-autosave="text-note-{{ text.pk }}"
+                data-warn-unsaved
+            >
+                {% csrf_token %}
+                {{ text_note_form.non_field_errors }}
+
+                <div class="form-field">
+                    <label for="{{ text_note_form.content.id_for_label }}">Nowa notatka</label>
+                    {{ text_note_form.content }}
+                    {{ text_note_form.content.errors }}
+                </div>
+
+                <div class="general-notes-actions">
+                    <label
+                        for="{{ text_note_form.is_important.id_for_label }}"
+                        class="important-note-toggle"
+                    >
+                        {{ text_note_form.is_important }}
+                        <span>Ważna notatka</span>
+                    </label>
+                    <button type="submit" class="primary-button">Dodaj notatkę</button>
+                </div>
+                {{ text_note_form.is_important.errors }}
+            </form>
+        {% endif %}
+
+        <div class="text-notes-list">
+            {% for note in text_notes %}
+                <details class="text-note{% if note.is_important %} is-important{% endif %}"{% if note.is_important %} open{% endif %}>
+                    <summary>
+                        <span class="text-note-author">
+                            <strong>
+                                {% if note.author %}
+                                    {% firstof note.author.get_full_name "Nieuzupełnione dane" %}
+                                {% else %}
+                                    Usunięte konto
+                                {% endif %}
+                            </strong>
+                            <small>{{ note.created_at|date:"d.m.Y, H:i" }}</small>
+                        </span>
+                        {% if note.is_important %}
+                            <span class="important-note-badge">Ważna</span>
+                        {% endif %}
+                        <span class="dropdown-arrow" aria-hidden="true">▾</span>
+                    </summary>
+                    <div class="text-note-content">{{ note.content|linebreaksbr }}</div>
+                </details>
+            {% empty %}
+                <div class="empty-text-notes">Nie dodano jeszcze żadnej notatki.</div>
+            {% endfor %}
+        </div>
+    </section>
+
+    {% if source_review %}
+        <details class="review-summary-details">
+            <summary class="review-summary-toggle">
+                <span>Recenzje źródłowe</span>
+                <span class="dropdown-arrow" aria-hidden="true">▾</span>
+            </summary>
+
+            <div class="review-summary-content">
+                <p>
+                    <a
+                        href="{% url 'core:assigned_review_detail' source_review.pk %}"
+                        class="detail-link"
+                    >
+                        Otwórz zgłoszenie: {{ source_review.title }}
+                    </a>
+                </p>
+
+                {% if source_review.old_reviews %}
+                    <p class="muted-text">
+                        Recenzja archiwalna – nie jest liczona do statystyk.
+                    </p>
+                {% endif %}
+
+                {% if can_view_authors %}
+                    <p>
+                        Autor:
+                        {{ source_review.author_first_name }}
+                        {{ source_review.author_last_name }}
+                    </p>
+                {% endif %}
+
+                {% for opinion in source_review_opinions %}
+                    <details class="reviewer-opinion">
+                        <summary>
+                            <strong>{{ opinion.reviewer_name }}</strong>
+                            <span class="reviewer-bubble reviewer-opinion-{{ opinion.opinion_value }}">
+                                {{ opinion.opinion_display }}
+                            </span>
+                            {% if opinion.status_changed_at %}
+                                <small>{{ opinion.status_changed_at|date:"d.m.Y" }}</small>
+                            {% endif %}
+                        </summary>
+                        <div class="reviewer-opinion-content">
+                            {% if opinion.notes %}
+                                {{ opinion.notes|linebreaksbr }}
+                            {% else %}
+                                <span class="muted-text">Brak treści opinii.</span>
+                            {% endif %}
+                        </div>
+                    </details>
+                {% empty %}
+                    <p class="muted-text">Brak zapisanych opinii.</p>
+                {% endfor %}
+            </div>
+        </details>
+    {% endif %}
+
+    {% if can_view_stage_history %}
+    <details class="archived-stages">
+        <summary>
+            <span>Historia etapów</span>
+            <span class="dropdown-arrow" aria-hidden="true">▾</span>
+        </summary>
+
+        <div class="archived-stages-content">
+            <div
+                class="table-container"
+                role="region"
+                aria-label="Historia pracy nad tekstem"
+                tabindex="0"
+            >
+                <table>
+                    <caption class="visually-hidden">
+                        Pozostałe etapy bieżącego cyklu i wcześniejsze cykle
+                    </caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">Etap</th>
+                            <th scope="col">Rozpoczęcie</th>
+                            <th scope="col">Zakończenie</th>
+                            <th scope="col">Stan</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for stage in archived_stages %}
+                            <tr>
+                                <td>{{ stage.get_stage_type_display }}</td>
+                                <td>{{ stage.started_at|date:"d.m.Y"|default:"–" }}</td>
+                                <td>{{ stage.ended_at|date:"d.m.Y"|default:"–" }}</td>
+                                <td>
+                                    {% if stage.stage_type == "withdrawn" %}
+                                        Wycofany
+                                    {% elif stage.stage_type == "ready" %}
+                                        Gotowy
+                                    {% elif stage.is_completed %}
+                                        Zakończony
+                                    {% elif stage.workflow_cycle != text.current_workflow_cycle %}
+                                        Poprzedni cykl – niezakończony
+                                    {% elif is_withdrawn or is_ready %}
+                                        Nieaktywny
+                                    {% elif stage.started_at %}
+                                        {% if stage.started_at|date:"Y-m-d" > today_iso %}
+                                            Zaplanowany
+                                        {% else %}
+                                            W toku
+                                        {% endif %}
+                                    {% else %}
+                                        Nierozpoczęty
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="4">
+                                    <div class="empty-results-panel">
+                                        Brak dodatkowych etapów w historii.
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </details>
+
+    {% endif %}
+    {% if can_manage_authors or can_manage_workflow or can_restart_workflow %}
+        <details class="text-management-card">
+            <summary class="text-management-toggle">
+                <span>Zarządzanie tekstem</span>
+                <span class="dropdown-arrow" aria-hidden="true">▾</span>
+            </summary>
+
+            <div class="text-management-content">
+                {% if can_manage_authors %}
+                    <div class="management-action">
+                        <div class="management-action-description">
+                            <h3>Autorzy tekstu</h3>
+                            <p>Wybierz przynajmniej jednego autora.</p>
+                        </div>
+
+                        <form
+                            method="post"
+                            action="{% url 'core:set_text_authors' text.pk %}"
+                            class="text-authors-management-form"
+                        >
+                            {% csrf_token %}
+                            <label for="text-authors">Przypisani autorzy</label>
+                            <select
+                                id="text-authors"
+                                name="authors"
+                                class="text-authors-select"
+                                multiple
+                                required
+                            >
+                                {% for author in all_authors %}
+                                    <option
+                                        value="{{ author.pk }}"
+                                        {% if author.pk in selected_author_ids %}selected{% endif %}
+                                    >
+                                        {{ author.first_name }} {{ author.last_name }}
+                                        {% if author.pseudonym %} – {{ author.pseudonym }}{% endif %}
+                                    </option>
+                                {% endfor %}
+                            </select>
+                            <button type="submit" class="secondary-button">
+                                Zapisz autorów
+                            </button>
+                        </form>
+                    </div>
+                {% endif %}
+
+                {% if can_restart_workflow and restart_workflow_form %}
+                    <div class="management-action management-action-restart">
+                        <div class="management-action-description">
+                            <h3>Rozpocznij nowy cykl</h3>
+                            <p>
+                                Wybrany etap rozpocznie nowy przebieg pracy.
+                                Historia poprzedniego cyklu zostanie zachowana.
+                            </p>
+                        </div>
+
+                        <form
+                            method="post"
+                            action="{% url 'core:restart_text_workflow' text.pk %}"
+                            class="restart-workflow-form"
+                        >
+                            {% csrf_token %}
+                            {{ restart_workflow_form.non_field_errors }}
+                            <label for="{{ restart_workflow_form.target_stage.id_for_label }}">
+                                {{ restart_workflow_form.target_stage.label }}
+                            </label>
+                            {{ restart_workflow_form.target_stage }}
+                            {{ restart_workflow_form.target_stage.errors }}
+                            <button type="submit" class="restart-workflow-button">
+                                Rozpocznij nowy cykl
+                            </button>
+                        </form>
+                    </div>
+                {% endif %}
+
+                {% if can_manage_workflow and not is_withdrawn and not is_ready %}
+                    <div class="management-action management-action-danger">
+                        <div class="management-action-description">
+                            <h3>Wycofaj tekst</h3>
+                            <p>
+                                Wycofanie zablokuje dalszą pracę w tym cyklu
+                                i usunie tekst z kolejek zadań.
+                            </p>
+                        </div>
+
+                        <form method="post" action="{% url 'core:withdraw_text' text.pk %}">
+                            {% csrf_token %}
+                            <button type="submit" class="withdraw-text-button">
+                                Wycofaj tekst z procesu
+                            </button>
+                        </form>
+                    </div>
+                {% endif %}
+            </div>
+        </details>
+    {% endif %}
+{% endblock %}

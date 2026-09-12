@@ -1,0 +1,277 @@
+{% extends "core/base.html" %}
+
+{% block title %}Etapy prac | Fantazmaty CMS{% endblock %}
+
+{% block content %}
+    {% now "Y-m-d" as today_iso %}
+
+    <header class="page-header">
+        <h1 class="page-title">Etapy prac</h1>
+        <p class="page-description">
+            Etapy i przydziały w bieżących cyklach tekstów.
+            Historia wcześniejszych cykli jest dostępna w szczegółach tekstu.
+        </p>
+    </header>
+
+    <section class="filters-card" aria-label="Filtry etapów pracy">
+        <form
+            method="get"
+            action="{% url 'core:workflow_list' %}"
+            class="filters-form"
+            data-remember-filters="workflow-list"
+        >
+            <input
+                type="hidden"
+                name="page_size"
+                value="{{ page_obj.selected_page_size }}"
+            >
+
+            <div class="filter-field author-search-field">
+                <label for="workflow-query">Wyszukaj</label>
+                <input
+                    id="workflow-query"
+                    type="search"
+                    name="q"
+                    value="{{ query }}"
+                    placeholder="{% if can_view_authors %}Tytuł, antologia, autor lub e-mail{% else %}Tytuł lub antologia{% endif %}"
+                >
+            </div>
+
+            <div class="filter-field">
+                <span id="workflow-anthology-label" class="filter-label">Antologie</span>
+                <details class="checkbox-dropdown" data-checkbox-dropdown data-empty-label="Wszystkie antologie">
+                    <summary aria-labelledby="workflow-anthology-label workflow-anthology-value">
+                        <span id="workflow-anthology-value" data-checkbox-summary>
+                            {% if selected_anthology_ids %}Wybrano: {{ selected_anthology_ids|length }}{% else %}Wszystkie antologie{% endif %}
+                        </span>
+                    </summary>
+                    <div class="checkbox-dropdown-options" role="group" aria-labelledby="workflow-anthology-label">
+                    <button type="button" class="checkbox-dropdown-clear" data-checkbox-clear>Wyczyść wybór</button>
+                    {% for anthology in anthologies %}
+                        <label>
+                            <input type="checkbox" name="anthology" value="{{ anthology.pk }}"
+                                   {% if anthology.pk in selected_anthology_ids %}checked{% endif %}>
+                            {{ anthology.title }}
+                        </label>
+                    {% endfor %}
+                    </div>
+                </details>
+            </div>
+
+            <div class="filter-field">
+                <span id="workflow-stage-label" class="filter-label">Etapy</span>
+                <details class="checkbox-dropdown" data-checkbox-dropdown>
+                    <summary aria-labelledby="workflow-stage-label workflow-stage-value">
+                        <span id="workflow-stage-value" data-checkbox-summary>
+                            {% if selected_stages %}Wybrano: {{ selected_stages|length }}{% else %}Wszystkie etapy{% endif %}
+                        </span>
+                    </summary>
+                    <div class="checkbox-dropdown-options" role="group" aria-labelledby="workflow-stage-label">
+                    <button type="button" class="checkbox-dropdown-clear" data-checkbox-clear>Wyczyść wybór</button>
+                    {% for value, label in stage_choices %}
+                        <label>
+                            <input type="checkbox" name="stage" value="{{ value }}"
+                                   {% if value in selected_stages %}checked{% endif %}>
+                            {{ label }}
+                        </label>
+                    {% endfor %}
+                    </div>
+                </details>
+            </div>
+
+            <div class="filter-field">
+                <label for="workflow-sort">Sortowanie</label>
+                <select id="workflow-sort" name="sort">
+                    <option value="anthology" {% if sort == "anthology" %}selected{% endif %}>
+                        Antologia: A–Z
+                    </option>
+                    <option value="title" {% if sort == "title" %}selected{% endif %}>
+                        Tytuł: A–Z
+                    </option>
+                    <option value="-title" {% if sort == "-title" %}selected{% endif %}>
+                        Tytuł: Z–A
+                    </option>
+                    <option value="stage" {% if sort == "stage" %}selected{% endif %}>
+                        Etap
+                    </option>
+                    <option value="started_at" {% if sort == "started_at" %}selected{% endif %}>
+                        Rozpoczęcie: najstarsze
+                    </option>
+                    <option value="-started_at" {% if sort == "-started_at" %}selected{% endif %}>
+                        Rozpoczęcie: najnowsze
+                    </option>
+                </select>
+            </div>
+
+            <div class="filter-actions">
+                <button type="submit" class="primary-button">Filtruj</button>
+                <a
+                    href="{% url 'core:workflow_list' %}"
+                    class="secondary-button"
+                    data-clear-saved-filters="workflow-list"
+                >
+                    Wyczyść filtry
+                </a>
+            </div>
+        </form>
+    </section>
+
+    <section class="card" aria-label="Lista etapów pracy">
+        
+
+        <div
+            class="table-container"
+            role="region"
+            aria-label="Tabela etapów i przydziałów"
+            tabindex="0"
+        >
+            <table id="workflow-table" data-server-sort="true">
+                <caption class="visually-hidden">
+                    Etapy pracy oraz osoby przypisane do ról w tym samym cyklu
+                </caption>
+
+                <thead>
+                    <tr>
+                        <th scope="col">Antologia</th>
+                        <th scope="col">Tytuł</th>
+
+                        {% if can_view_authors %}
+                            <th scope="col">Autorzy</th>
+                        {% endif %}
+
+                        <th scope="col">Etap</th>
+                        <th scope="col">Rozpoczęcie</th>
+                        <th scope="col">Zakończenie</th>
+                        <th scope="col">Stan etapu</th>
+
+                        {% for role_value, role_label in role_columns %}
+                            <th scope="col">{{ role_label }}</th>
+                        {% endfor %}
+
+                        
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for stage in stages %}
+                        <tr
+                            class="workflow-stage-row"
+                            data-stage="{{ stage.stage_type }}"
+                        >
+                            <td>
+                                {% if stage.text.anthology %}
+                                    {{ stage.text.anthology.title }}
+                                {% else %}
+                                    <span class="muted-text">Brak antologii</span>
+                                {% endif %}
+                            </td>
+
+                            <td data-copy-value="{{ stage.text.title }}">
+                                <a
+                                    href="{% url 'core:assigned_text_detail' stage.text.pk %}"
+                                    class="text-title-link"
+                                >
+                                    <strong>{{ stage.text.title }}</strong>
+                                </a>
+                            </td>
+
+                            {% if can_view_authors %}
+                                <td data-copy-value="{{ stage.text.authors_display }}">
+                                    {% for author in stage.text.authors.all %}
+                                        <a
+                                            href="{% url 'core:author_detail' author.pk %}"
+                                            class="detail-link"
+                                        >
+                                            {{ author.first_name }} {{ author.last_name }}
+                                        </a>{% if not forloop.last %}, {% endif %}
+                                    {% empty %}
+                                        <span class="muted-text">
+                                            Brak przypisanego autora
+                                        </span>
+                                    {% endfor %}
+                                </td>
+                            {% endif %}
+
+                            <td>
+                                <span class="workflow-stage-badge">
+                                    {{ stage.get_stage_type_display }}
+                                </span>
+                            </td>
+
+                            <td class="date-cell">
+                                {{ stage.started_at|date:"d.m.Y"|default:"–" }}
+                            </td>
+
+                            <td class="date-cell">
+                                {{ stage.ended_at|date:"d.m.Y"|default:"–" }}
+                            </td>
+
+                            <td>
+                                {% if stage.stage_type == "withdrawn" %}
+                                    <span class="stage-status withdrawn">Wycofany</span>
+                                {% elif stage.stage_type == "ready" %}
+                                    <span class="stage-status completed">Gotowy</span>
+                                {% elif stage.is_completed %}
+                                    <span class="stage-status completed">Zakończony</span>
+                                {% elif stage.started_at %}
+                                    {% if stage.started_at|date:"Y-m-d" > today_iso %}
+                                        <span class="stage-status pending">Zaplanowany</span>
+                                    {% else %}
+                                        <span class="stage-status inactive">
+                                            W trakcie
+                                        </span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="stage-status pending">Nierozpoczęty</span>
+                                {% endif %}
+                            </td>
+
+                            {% for cell in stage.role_cells %}
+                                <td>
+                                    {% if cell.user %}
+                                        {% if cell.user.person_profile.is_active %}
+                                            <a
+                                                href="{% url 'core:person_detail' cell.user.person_profile.pk %}"
+                                                class="detail-link"
+                                            >
+                                                {% firstof cell.user.get_full_name "Nieuzupełnione dane" %}
+                                            </a>
+                                        {% else %}
+                                            {% firstof cell.user.get_full_name "Nieuzupełnione dane" %}
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="muted-text">Nie przypisano</span>
+                                    {% endif %}
+                                </td>
+                            {% endfor %}
+
+                            
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="{% if can_view_authors %}{{ role_columns|length|add:'7' }}{% else %}{{ role_columns|length|add:'6' }}{% endif %}">
+                                <div class="empty-results-panel">
+                                    <strong>Nie znaleziono etapów.</strong>
+                                    <p>
+                                        Żaden etap bieżących cykli nie spełnia
+                                        wybranych kryteriów.
+                                    </p>
+                                    <a
+                                        href="{% url 'core:workflow_list' %}"
+                                        class="secondary-button"
+                                        data-clear-saved-filters="workflow-list"
+                                    >
+                                        Wyczyść filtry
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    {% include "core/includes/table_toolbar.html" %}
+    {% include "core/includes/pagination.html" %}
+{% endblock %}

@@ -1,0 +1,503 @@
+{% extends "core/base.html" %}
+
+{% block title %}{{ review.title }} | Fantazmaty CMS{% endblock %}
+
+{% block content %}
+    {% if user.is_superuser and review.is_hidden %}
+    <section class="message warning"><h2>Ukryte zgłoszenie</h2><p>Widoczne wyłącznie dla superusera. Termin odrzucenia: {{ review.decision_at|date:'d.m.Y' }}.</p>
+    <form method="post" action="{% url 'core:release_hidden_review' review.pk %}">{% csrf_token %}
+    <label><input type="checkbox" name="confirm" value="yes" required> To błędna kwalifikacja – przywróć zgłoszenie do recenzji i udostępnij recenzentom.</label><button type="submit">Przywróć zgłoszenie</button></form></section>
+    {% endif %}
+    <header class="page-header">
+        <div class="detail-heading">
+            <div>
+                <p class="eyebrow">
+                    {% if review.anthology %}
+                        {{ review.anthology.title }}
+                    {% else %}
+                        Zgłoszenie do recenzji
+                    {% endif %}
+                </p>
+                <h1 class="page-title">{{ review.title }}</h1>
+                <p class="page-description">
+                    <span class="stage-status {% if review.status == 'accepted' %}completed{% elif review.status == 'rejected' or review.status == 'withdrawn' %}withdrawn{% elif review.status == 'in_review' %}active{% else %}pending{% endif %}">
+                        {{ review.get_status_display }}
+                    </span>
+                    {% if review.decision_at %}
+                        <span class="muted-text">
+                            · Decyzja z {{ review.decision_at|date:"d.m.Y" }}
+                        </span>
+                    {% endif %}
+                </p>
+            </div>
+
+            <a
+                href="{% url 'core:review_list' %}?old_reviews={% if review.old_reviews %}1{% else %}0{% endif %}"
+                class="secondary-button"
+            >
+                Wróć do recenzji
+            </a>
+        </div>
+    </header>
+
+    {% if review.old_reviews %}
+        <div class="message info" role="status">
+            <strong>Recenzja archiwalna.</strong>
+            Nie jest liczona do statystyk i nie można jej edytować.
+        </div>
+    {% elif is_review_locked %}
+        <div class="review-locked-alert" role="status">
+            <strong>Recenzja jest zamknięta.</strong>
+            Opinie i przydziały recenzentów są zablokowane.
+        </div>
+    {% endif %}
+
+    {% if is_copied_to_text %}
+        <div class="message success" role="status">
+            <strong>Tekst jest w procesie wydawniczym.</strong>
+            <a
+                href="{% url 'core:assigned_text_detail' review.copied_text_id %}"
+                class="detail-link"
+            >
+                Otwórz tekst
+            </a>
+        </div>
+    {% endif %}
+
+    <section class="details-card" aria-labelledby="review-information-heading">
+        <h2 id="review-information-heading">Informacje o zgłoszeniu</h2>
+
+        <dl class="details-grid">
+            <div class="detail-item">
+                <dt>Antologia</dt>
+                <dd>{{ review.anthology.title|default:"Brak antologii" }}</dd>
+            </div>
+            <div class="detail-item">
+                <dt>Gatunek</dt>
+                <dd>{{ review.genre|default:"Nie podano" }}</dd>
+            </div>
+            <div class="detail-item">
+                <dt>Długość</dt>
+                <dd>{{ review.length }}</dd>
+            </div>
+            <div class="detail-item">
+                <dt>Data zgłoszenia</dt>
+                <dd>{{ review.created_at|date:"d.m.Y"|default:"–" }}</dd>
+            </div>
+        </dl>
+    </section>
+
+    {% if can_view_author_data %}
+        <section class="details-card" aria-labelledby="review-author-heading">
+            <h2 id="review-author-heading">Dane autora</h2>
+
+            <dl class="details-grid">
+                <div class="detail-item">
+                    <dt>Imię i nazwisko</dt>
+                    <dd>
+                        {% if review.author_id %}
+                            <a
+                                href="{% url 'core:author_detail' review.author_id %}"
+                                class="detail-link"
+                            >
+                                {{ review.author_first_name }} {{ review.author_last_name }}
+                            </a>
+                        {% else %}
+                            {{ review.author_first_name }} {{ review.author_last_name }}
+                        {% endif %}
+                    </dd>
+                </div>
+                <div class="detail-item">
+                    <dt>Adres e-mail</dt>
+                    <dd>
+                        {% if review.email %}
+                            <a href="mailto:{{ review.email }}" class="detail-link">
+                                {{ review.email }}
+                            </a>
+                        {% else %}
+                            <span class="muted-text">Nie podano</span>
+                        {% endif %}
+                    </dd>
+                </div>
+                <div class="detail-item">
+                    <dt>Telefon</dt>
+                    <dd>{{ review.phone_number|default:"Nie podano" }}</dd>
+                </div>
+                <div class="detail-item">
+                    <dt>Umowa</dt>
+                    <dd>
+                        {% if author_has_contract %}
+                            <span class="stage-status completed">Potwierdzona</span>
+                        {% elif matching_author %}
+                            <span class="stage-status pending">Niepotwierdzona</span>
+                        {% else %}
+                            <span class="muted-text">Zgłoszenie nie jest powiązane z autorem</span>
+                        {% endif %}
+                    </dd>
+                </div>
+            </dl>
+        </section>
+    {% endif %}
+
+    <section class="details-card" aria-labelledby="review-warnings-heading">
+        <h2 id="review-warnings-heading">Ostrzeżenia dotyczące treści</h2>
+
+        {% if can_edit_content_warnings and review_content_warnings_form %}
+            <form
+                method="post"
+                action="{% url 'core:update_review_content_warnings' review.pk %}"
+                class="general-notes-form"
+                data-warn-unsaved
+            >
+                {% csrf_token %}
+                {{ review_content_warnings_form.non_field_errors }}
+
+                <div class="form-field">
+                    <label for="{{ review_content_warnings_form.content_warnings.id_for_label }}">
+                        {{ review_content_warnings_form.content_warnings.label }}
+                    </label>
+                    {{ review_content_warnings_form.content_warnings }}
+                    {{ review_content_warnings_form.content_warnings.errors }}
+                </div>
+
+                <div class="general-notes-actions">
+                    <button type="submit" class="secondary-button">
+                        Zapisz ostrzeżenia
+                    </button>
+                </div>
+            </form>
+        {% else %}
+            {% if review.content_warnings %}
+                {{ review.content_warnings|linebreaksbr }}
+            {% else %}
+                <p class="muted-text">Nie dodano ostrzeżeń.</p>
+            {% endif %}
+        {% endif %}
+    </section>
+
+    {% if not is_review_locked %}
+        <section class="review-assignment-card" aria-labelledby="review-assignment-heading">
+            <div class="review-assignment-row">
+                <div>
+                    <h2 id="review-assignment-heading">Twój przydział</h2>
+                    <p>
+                        {% if user_slot %}
+                            Jesteś przypisany jako recenzent nr {{ user_slot }}.
+                        {% elif not reviewers_have_free_slot %}
+                            Zgłoszenie ma komplet recenzentów.
+                        {% else %}
+                            Nie jesteś przypisany do tego zgłoszenia.
+                        {% endif %}
+                    </p>
+                </div>
+
+                {% if can_self_assign_review %}
+                    <form
+                        method="post"
+                        action="{% url 'core:assign_reviewer' review.pk %}"
+                    >
+                        {% csrf_token %}
+                        <button type="submit" class="assign-button">
+                            Biorę
+                        </button>
+                    </form>
+                {% endif %}
+            </div>
+
+            {% if can_unassign_review %}
+                <details class="text-management">
+                    <summary>Zrezygnuj z recenzji</summary>
+                    <p class="form-help">
+                        Rezygnacja usuwa twój przydział oraz zapisaną w nim opinię
+                        i notatki. Pozostali recenzenci zachowują swoje przydziały.
+                    </p>
+                    <form
+                        method="post"
+                        action="{% url 'core:unassign_reviewer' review.pk %}"
+                    >
+                        {% csrf_token %}
+                        <button type="submit" class="unassign-button">
+                            Usuń mój przydział i opinię
+                        </button>
+                    </form>
+                </details>
+            {% endif %}
+        </section>
+    {% endif %}
+
+    <div class="review-workspace{% if not opinion_form %} review-workspace-readonly{% endif %}">
+        {% if opinion_form %}
+            <section class="card review-form-card" aria-labelledby="my-opinion-heading">
+                <h2 id="my-opinion-heading">Twoja opinia</h2>
+
+                {% if user_status %}
+                    <p class="muted-text">
+                        Zapisana ocena: {{ user_status }}
+                        {% if user_status_date %}
+                            · {{ user_status_date|date:"d.m.Y" }}
+                        {% endif %}
+                    </p>
+                {% endif %}
+
+                <form
+                    method="post"
+                    action="{% url 'core:assigned_review_detail' review.pk %}"
+                    class="review-opinion-form"
+                    data-autosave="review-opinion-{{ review.pk }}"
+                    data-warn-unsaved
+                >
+                    {% csrf_token %}
+                    {{ opinion_form.non_field_errors }}
+
+                    <div class="form-field">
+                        <label for="{{ opinion_form.opinion.id_for_label }}">
+                            {{ opinion_form.opinion.label }}
+                        </label>
+                        {{ opinion_form.opinion }}
+                        {{ opinion_form.opinion.errors }}
+                    </div>
+
+                    <div class="form-field">
+                        <label for="{{ opinion_form.notes.id_for_label }}">
+                            {{ opinion_form.notes.label }}
+                        </label>
+                        {{ opinion_form.notes }}
+                        {{ opinion_form.notes.errors }}
+                        {% if opinion_form.notes.help_text %}
+                            <p class="form-help">{{ opinion_form.notes.help_text }}</p>
+                        {% endif %}
+                    </div>
+
+                    {% comment %}
+                        Formularz opinii i osobny formularz ostrzeżeń mają pole
+                        o tej samej nazwie. Tutaj stosujemy osobny identyfikator.
+                    {% endcomment %}
+                    <div class="form-field">
+                        <label for="opinion-content-warnings">
+                            {{ opinion_form.content_warnings.label }}
+                        </label>
+                        <textarea
+                            id="opinion-content-warnings"
+                            name="content_warnings"
+                            class="content-warnings-input"
+                            rows="4"
+                            {% if opinion_form.content_warnings.field.max_length %}
+                                maxlength="{{ opinion_form.content_warnings.field.max_length }}"
+                            {% endif %}
+                            aria-describedby="opinion-warnings-help"
+                        >{{ opinion_form.content_warnings.value|default_if_none:"" }}</textarea>
+                        {{ opinion_form.content_warnings.errors }}
+                        <p id="opinion-warnings-help" class="form-help">
+                            Zapis opinii aktualizuje także wspólne ostrzeżenia
+                            dotyczące treści zgłoszenia.
+                        </p>
+                    </div>
+
+                    <div class="review-form-actions">
+                        <button type="submit" class="primary-button">
+                            Zapisz opinię
+                        </button>
+                    </div>
+                </form>
+            </section>
+        {% elif user_slot %}
+            <section class="card review-locked-card" aria-labelledby="saved-opinion-heading">
+                <h2 id="saved-opinion-heading">Twoja zapisana opinia</h2>
+                <p>
+                    <strong>{{ user_status }}</strong>
+                    {% if user_status_date %}
+                        <span class="muted-text">{{ user_status_date|date:"d.m.Y" }}</span>
+                    {% endif %}
+                </p>
+                {% if user_notes %}
+                    <div>{{ user_notes|linebreaksbr }}</div>
+                {% else %}
+                    <p class="muted-text">Nie zapisano treści opinii.</p>
+                {% endif %}
+            </section>
+        {% endif %}
+
+        <section class="card other-reviews-card" aria-labelledby="review-opinions-heading">
+            <h2 id="review-opinions-heading">
+                {% if user_slot %}Pozostałe opinie{% else %}Opinie recenzentów{% endif %}
+            </h2>
+
+            <div class="review-summary-grid">
+                <div class="summary-tile">
+                    <span>Przypisani recenzenci</span>
+                    <strong>{{ opinion_summary.assigned }}</strong>
+                </div>
+                <div class="summary-tile">
+                    <span>Oddane opinie</span>
+                    <strong>{{ opinion_summary.completed }}</strong>
+                </div>
+            </div>
+
+            <div class="other-reviews-list">
+                {% for opinion in other_reviewer_opinions %}
+                    <details class="reviewer-opinion">
+                        <summary>
+                            <span class="reviewer-opinion-person">
+                                <strong>{{ opinion.reviewer_name }}</strong>
+                                <small class="muted-text">
+                                    Recenzent {{ opinion.position }}
+                                    {% if opinion.opinion_changed_at %}
+                                        · {{ opinion.opinion_changed_at|date:"d.m.Y" }}
+                                    {% endif %}
+                                </small>
+                            </span>
+                            <span class="reviewer-bubble reviewer-opinion-{{ opinion.opinion_value }}">
+                                {{ opinion.opinion_display }}
+                            </span>
+                        </summary>
+
+                        <div class="reviewer-opinion-content">
+                            {% if opinion.notes %}
+                                {{ opinion.notes|linebreaksbr }}
+                            {% else %}
+                                <span class="muted-text">Brak treści opinii.</span>
+                            {% endif %}
+                        </div>
+                    </details>
+                {% empty %}
+                    <div class="empty-reviewer-opinions">
+                        {% if user_slot %}
+                            Brak innych przypisanych recenzentów.
+                        {% else %}
+                            Nie przypisano jeszcze recenzentów.
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+
+            {% if general_notes %}
+                <div class="coordinator-note-readonly">
+                    <h3>Uwagi ogólne</h3>
+                    {{ general_notes|linebreaksbr }}
+                </div>
+            {% endif %}
+        </section>
+    </div>
+
+    {% if can_change_review_status %}
+        <section class="review-decision-card" aria-labelledby="review-decision-heading">
+            <div class="review-decision-header">
+                <div>
+                    <h2 id="review-decision-heading">Decyzja dotycząca tekstu</h2>
+                    <p class="form-help">
+                        Przyjęcie lub odrzucenie zamyka edycję opinii i przydziałów.
+                    </p>
+                </div>
+
+                <div class="review-decision-actions">
+                    {% if review.status != "accepted" %}
+                        <form
+                            method="post"
+                            action="{% url 'core:update_review_status' review.pk %}"
+                        >
+                            {% csrf_token %}
+                            <input type="hidden" name="status" value="accepted">
+                            <button type="submit" class="accept-review-button">
+                                Przyjmij tekst
+                            </button>
+                        </form>
+                    {% endif %}
+
+                    {% if review.status != "rejected" %}
+                        <form
+                            method="post"
+                            action="{% url 'core:update_review_status' review.pk %}"
+                        >
+                            {% csrf_token %}
+                            <input type="hidden" name="status" value="rejected">
+                            <button type="submit" class="reject-review-button">
+                                Odrzuć tekst
+                            </button>
+                        </form>
+                    {% endif %}
+                </div>
+            </div>
+        </section>
+    {% endif %}
+
+    {% if can_view_author_data %}
+        {% if can_notify_author and author_notification_form %}
+            <section class="details-card" aria-labelledby="author-notification-heading">
+                <h2 id="author-notification-heading">Powiadomienie autora</h2>
+                <p class="form-help">
+                    Oznacz wysłane powiadomienie. Ten formularz nie wysyła wiadomości.
+                </p>
+
+                <form
+                    method="post"
+                    action="{% url 'core:update_author_notification' review.pk %}"
+                    class="general-notes-form"
+                >
+                    {% csrf_token %}
+                    {{ author_notification_form.non_field_errors }}
+
+                    <label
+                        for="{{ author_notification_form.author_notified.id_for_label }}"
+                        class="boolean-filter-toggle"
+                    >
+                        {{ author_notification_form.author_notified }}
+                        <span>{{ author_notification_form.author_notified.label }}</span>
+                    </label>
+                    {{ author_notification_form.author_notified.errors }}
+
+                    <div class="form-field">
+                        <label for="{{ author_notification_form.author_notified_at.id_for_label }}">
+                            {{ author_notification_form.author_notified_at.label }}
+                        </label>
+                        {{ author_notification_form.author_notified_at }}
+                        {{ author_notification_form.author_notified_at.errors }}
+                    </div>
+
+                    <div class="general-notes-actions">
+                        <button type="submit" class="secondary-button">
+                            Zapisz powiadomienie
+                        </button>
+                    </div>
+                </form>
+            </section>
+        {% endif %}
+
+        {% if can_copy_review_to_text %}
+            <section class="details-card" aria-labelledby="copy-review-heading">
+                <h2 id="copy-review-heading">Dodaj do procesu wydawniczego</h2>
+                <p>
+                    Powstanie tekst z etapem „Do redakcji”.
+                    Zgłoszenie i zapisane opinie pozostaną dostępne.
+                </p>
+
+                <form
+                    method="post"
+                    action="{% url 'core:copy_review_to_text' review.pk %}"
+                    class="general-notes-form"
+                >
+                    {% csrf_token %}
+
+                    {% if author_has_contract %}
+                        <p class="contract-confirmed">Umowa autora jest potwierdzona.</p>
+                    {% else %}
+                        <label class="contract-checkbox">
+                            <input
+                                type="checkbox"
+                                name="contract_received"
+                                value="yes"
+                                required
+                            >
+                            <span>Potwierdzam otrzymanie umowy autora.</span>
+                        </label>
+                    {% endif %}
+
+                    <div class="general-notes-actions">
+                        <button type="submit" class="primary-button">
+                            Dodaj tekst do procesu
+                        </button>
+                    </div>
+                </form>
+            </section>
+        {% endif %}
+    {% endif %}
+{% endblock %}

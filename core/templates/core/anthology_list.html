@@ -1,0 +1,168 @@
+{% extends "core/base.html" %}
+
+{% block title %}Antologie | Fantazmaty CMS{% endblock %}
+
+{% block content %}
+    <header class="page-header">
+        <h1 class="page-title">Antologie</h1>
+        <p class="page-description">
+            Status publikacji oraz postęp prac nad okładką, składem i drukiem.
+        </p>
+    </header>
+
+    <section class="card" aria-label="Lista antologii">
+        
+
+        <div
+            class="table-container"
+            role="region"
+            aria-label="Tabela antologii"
+            tabindex="0"
+        >
+            <table id="anthologies-table">
+                <caption class="visually-hidden">
+                    Antologie i stan prac produkcyjnych
+                </caption>
+
+                <thead>
+                    <tr>
+                        <th scope="col">Tytuł</th>
+                        <th scope="col">Status publikacji</th>
+                        <th scope="col">Okładka</th>
+                        <th scope="col">Skład</th>
+                        <th scope="col">Druk</th>
+                        <th scope="col">Szczegóły</th>
+                        <th scope="col" data-copy="false">Akcje</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for anthology in anthologies %}
+                        {% with typesetting=anthology.typesetting_task %}
+                            <tr>
+                                <td data-copy-value="{{ anthology.title }}">
+                                    <a
+                                        href="{% url 'core:text_list' %}?anthology={{ anthology.pk }}&amp;hide_ready=0"
+                                        class="text-title-link"
+                                    >
+                                        <strong>{{ anthology.title }}</strong>
+                                    </a>
+                                </td>
+
+                                <td>
+                                    <span class="stage-status {% if anthology.status == 'published' %}completed{% elif anthology.status == 'in_preparation' %}active{% else %}pending{% endif %}">
+                                        {{ anthology.get_status_display }}
+                                    </span>
+                                </td>
+
+                                <td>
+                                    <span class="stage-status {% if anthology.cover_status == 'ready' %}completed{% elif anthology.cover_status == 'in_progress' %}active{% else %}pending{% endif %}">
+                                        {{ anthology.get_cover_status_display }}
+                                    </span>
+                                </td>
+
+                                <td>
+                                    {% if typesetting %}
+                                        <span class="stage-status {% if typesetting.status == 'ready' %}completed{% elif typesetting.status == 'commissioned' %}active{% else %}pending{% endif %}">
+                                            {{ typesetting.get_status_display }}
+                                        </span>
+                                    {% else %}
+                                        <span class="stage-status pending">Niezlecone</span>
+                                    {% endif %}
+                                </td>
+
+                                <td>
+                                    <span class="stage-status {% if anthology.print_status == 'yes' %}completed{% elif anthology.print_status == 'planned' %}pending{% else %}inactive{% endif %}">
+                                        {{ anthology.get_print_status_display }}
+                                    </span>
+                                </td>
+
+                                <td>
+                                    <details class="anthology-details">
+                                        <summary>
+                                            Informacje
+                                        </summary>
+
+                                        <dl class="details-list">
+                                            <div>
+                                                <dt>Autor okładki</dt>
+                                                <dd>
+                                                    {{ anthology.cover_author|default:"Nie przypisano" }}
+                                                </dd>
+                                            </div>
+
+                                            <div>
+                                                <dt>Informacje o okładce</dt>
+                                                <dd>
+                                                    {% if anthology.cover_notes %}
+                                                        {{ anthology.cover_notes|linebreaksbr }}
+                                                    {% else %}
+                                                        <span class="muted-text">Brak uwag</span>
+                                                    {% endif %}
+                                                </dd>
+                                            </div>
+
+                                            <div>
+                                                <dt>Ilustracje w antologii</dt>
+                                                <dd>
+                                                    {% if anthology.has_illustrations %}
+                                                        Tak
+                                                    {% else %}
+                                                        Nie
+                                                    {% endif %}
+                                                </dd>
+                                            </div>
+
+                                            <div>
+                                                <dt>Skład wykonuje</dt>
+                                                <dd>
+                                                    {% if typesetting.assigned_to %}
+                                                        {{ typesetting.assigned_to }}
+                                                    {% else %}
+                                                        <span class="muted-text">Nie przypisano</span>
+                                                    {% endif %}
+                                                </dd>
+                                            </div>
+
+                                            <div>
+                                                <dt>Data zlecenia składu</dt>
+                                                <dd>
+                                                    {{ typesetting.commissioned_at|date:"d.m.Y"|default:"–" }}
+                                                </dd>
+                                            </div>
+                                        </dl>
+                                    </details>
+                                </td>
+
+                                <td data-copy="false">
+                                    <a
+                                        href="{% url 'core:text_list' %}?anthology={{ anthology.pk }}&amp;hide_ready=0"
+                                        class="secondary-button"
+                                        aria-label="Pokaż teksty antologii: {{ anthology.title }}"
+                                    >
+                                        Pokaż teksty
+                                    </a>
+                                </td>
+                            </tr>
+                        {% endwith %}
+                    {% empty %}
+                        <tr>
+                            <td colspan="7">
+                                <div class="empty-results-panel">
+                                    <strong>Nie dodano jeszcze żadnej antologii.</strong>
+                                    <p>
+                                        Antologie zapisane w panelu administracyjnym
+                                        pojawią się tutaj.
+                                    </p>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    {% include "core/includes/table_toolbar.html" %}
+    {% include "core/includes/pagination.html" %}
+{% endblock %}
