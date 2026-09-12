@@ -1,0 +1,317 @@
+{% extends "core/base.html" %}
+
+{% block title %}
+    {{ author.first_name }} {{ author.last_name }} | Fantazmaty CMS
+
+{% endblock %}
+
+{% block content %}
+    <header class="page-header">
+        <div class="detail-heading">
+            <div>
+                <p class="eyebrow">Profil autora</p>
+                <h1 class="page-title">
+                    {{ author.first_name }} {{ author.last_name }}
+                </h1>
+                {% if author.pseudonym %}
+                    <p class="page-description">
+                        Pseudonim: <strong>{{ author.pseudonym }}</strong>
+                    </p>
+                {% endif %}
+            </div>
+
+            <a href="{% url 'core:author_list' %}" class="secondary-button">
+                Wróć do autorów
+            </a>
+        </div>
+    </header>
+
+    <section class="details-card" aria-labelledby="author-information-heading">
+        <h2 id="author-information-heading">Dane autora</h2>
+
+        <dl class="details-grid">
+            <div class="detail-item">
+                <dt>Adres e-mail</dt>
+                <dd>
+                    {% if author.contact and author.email %}
+                        <a href="mailto:{{ author.email }}" class="detail-link">
+                            {{ author.email }}
+                        </a>
+                    {% elif not author.contact %}
+                        <span class="muted-text">Kontakt wyłączony</span>
+                    {% else %}
+                        <span class="muted-text">Nie podano</span>
+                    {% endif %}
+                </dd>
+            </div>
+
+            <div class="detail-item">
+                <dt>Umowa</dt>
+                <dd>
+                    {% if author.has_contract %}
+                        <span class="stage-status completed">Potwierdzona</span>
+                    {% else %}
+                        <span class="stage-status pending">Niepotwierdzona</span>
+                    {% endif %}
+                </dd>
+            </div>
+
+            <div class="detail-item">
+                <dt>Kontakt</dt>
+                <dd>
+                    {% if author.contact %}
+                        <span class="stage-status completed">Włączony</span>
+                    {% else %}
+                        <span class="stage-status inactive">Wyłączony</span>
+                    {% endif %}
+                </dd>
+            </div>
+        </dl>
+    </section>
+
+    <section aria-labelledby="author-summary-heading">
+        <h2 id="author-summary-heading">Podsumowanie współpracy</h2>
+        <p class="muted-text">
+            Liczniki zgłoszeń i decyzji nie uwzględniają archiwalnych recenzji.
+        </p>
+
+        <div class="profile-summary-grid">
+            <div class="summary-tile">
+                <span>Teksty w bazie</span>
+                <strong>{{ author_summary.texts|default:0 }}</strong>
+            </div>
+            <div class="summary-tile">
+                <span>Zgłoszenia</span>
+                <strong>{{ author_summary.submissions|default:0 }}</strong>
+            </div>
+            <div class="summary-tile">
+                <span>Przyjęte</span>
+                <strong>{{ author_summary.accepted|default:0 }}</strong>
+            </div>
+            <div class="summary-tile">
+                <span>Odrzucone</span>
+                <strong>{{ author_summary.rejected|default:0 }}</strong>
+            </div>
+            <div class="summary-tile">
+                <span>Antologie</span>
+                <strong>{{ author_summary.anthologies|default:0 }}</strong>
+            </div>
+        </div>
+    </section>
+
+    {% if can_manage_author_notes %}
+        <section class="card" aria-labelledby="author-notes-heading">
+            <header class="section-header">
+                <div>
+                    <h2 id="author-notes-heading">Notatki o autorze</h2>
+                    <p>Wewnętrzne informacje pomocne przy kolejnych zgłoszeniach.</p>
+                </div>
+                <span class="record-counter">{{ author.note_history|length }}</span>
+            </header>
+
+            <form
+                method="post"
+                action="{% url 'core:add_author_note' author.pk %}"
+                class="text-note-form"
+                data-warn-unsaved
+            >
+                {% csrf_token %}
+
+                {% for error in author_note_form.non_field_errors %}
+                    <p class="form-error" role="alert">{{ error }}</p>
+                {% endfor %}
+
+                <div class="form-field">
+                    <label for="{{ author_note_form.content.id_for_label }}">
+                        Nowa notatka
+                    </label>
+                    {{ author_note_form.content }}
+
+                    {% if author_note_form.content.help_text %}
+                        <p class="form-help">
+                            {{ author_note_form.content.help_text }}
+                        </p>
+                    {% endif %}
+
+                    {% for error in author_note_form.content.errors %}
+                        <p class="field-error">{{ error }}</p>
+                    {% endfor %}
+                </div>
+
+                <div class="general-notes-actions">
+                    <button type="submit" class="primary-button">
+                        Dodaj notatkę
+                    </button>
+                </div>
+            </form>
+
+            <div class="text-notes-list">
+                {% for note in author.note_history %}
+                    <details class="text-note">
+                        <summary>
+                            <span class="text-note-author">
+                                <strong>
+                                    {% if note.created_by %}
+                                        {% firstof note.created_by.get_full_name "Nieuzupełnione dane" %}
+                                    {% else %}
+                                        Usunięte konto
+                                    {% endif %}
+                                </strong>
+                                <small>{{ note.created_at|date:"d.m.Y, H:i" }}</small>
+                            </span>
+                            <span class="dropdown-arrow" aria-hidden="true">▾</span>
+                        </summary>
+
+                        <div class="text-note-content">
+                            {{ note.content|linebreaksbr }}
+                        </div>
+                    </details>
+                {% empty %}
+                    <div class="empty-text-notes">
+                        Nie dodano jeszcze żadnej notatki o autorze.
+                    </div>
+                {% endfor %}
+            </div>
+        </section>
+    {% endif %}
+
+    <section class="card" aria-labelledby="author-texts-heading">
+        <header class="section-header">
+            <div>
+                <h2 id="author-texts-heading">Teksty autora</h2>
+                <p>Teksty powiązane z autorem w bazie tekstów.</p>
+            </div>
+            <span class="record-counter">{{ texts|length }}</span>
+        </header>
+
+        
+
+        <div
+            class="table-container"
+            role="region"
+            aria-label="Tabela tekstów autora"
+            tabindex="0"
+        >
+            <table id="author-texts-table">
+                <caption class="visually-hidden">
+                    Teksty autora: {{ author.first_name }} {{ author.last_name }}
+                </caption>
+
+                <thead>
+                    <tr>
+                        <th scope="col">Tytuł</th>
+                        <th scope="col">Gatunek</th>
+                        <th scope="col">Antologia</th>
+                        <th scope="col" class="numeric-cell">Długość</th>
+                        <th scope="col" data-copy="false">Szczegóły</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for text in texts %}
+                        <tr>
+                            <td data-copy-value="{{ text.title }}">
+                                <a
+                                    href="{% url 'core:assigned_text_detail' text.pk %}"
+                                    class="text-title-link"
+                                >
+                                    <strong>{{ text.title }}</strong>
+                                </a>
+                            </td>
+
+                            <td>
+                                {% if text.source_review.genre %}
+                                    {{ text.source_review.genre }}
+                                {% else %}
+                                    <span class="muted-text">Nie podano</span>
+                                {% endif %}
+                            </td>
+
+                            <td>
+                                {% if text.anthology %}
+                                    {{ text.anthology.title }}
+                                {% else %}
+                                    <span class="muted-text">Brak antologii</span>
+                                {% endif %}
+                            </td>
+
+                            <td
+                                class="numeric-cell"
+                                data-type="number"
+                                data-copy-value="{{ text.length|stringformat:'d' }}"
+                            >
+                                {{ text.length }}
+                            </td>
+
+                            <td data-copy="false">
+                                <a
+                                    href="{% url 'core:assigned_text_detail' text.pk %}"
+                                    class="secondary-button"
+                                    aria-label="Otwórz tekst: {{ text.title }}"
+                                >
+                                    Otwórz
+                                </a>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="5">
+                                <div class="empty-results-panel">
+                                    <strong>Brak przypisanych tekstów.</strong>
+                                    <p>
+                                        Teksty autora pojawią się tutaj po dodaniu
+                                        ich do bazy tekstów i powiązaniu z autorem.
+                                    </p>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+<section class="card" aria-labelledby="author-archive-heading" id="archiwalne-recenzje">
+    <header class="section-header">
+        <div>
+            <h2 id="author-archive-heading">Archiwalne recenzje</h2>
+            <p>Wcześniejsze zgłoszenia autora, również współautorskie.</p>
+        </div>
+        <span class="record-counter">{{ historical_reviews.paginator.count }}</span>
+    </header>
+    <div class="table-container" role="region" aria-label="Archiwalne recenzje autora" tabindex="0">
+        <table id="author-archive-table">
+            <thead><tr>
+                <th scope="col">Tytuł</th><th scope="col">Antologia</th>
+                <th scope="col">Data zgłoszenia</th><th scope="col">Status</th>
+                <th scope="col">Data powiadomienia</th><th scope="col" data-copy="false">Szczegóły</th>
+            </tr></thead>
+            <tbody>
+                {% for review in historical_reviews %}
+                    <tr>
+                        <td><a href="{% url 'core:assigned_review_detail' review.pk %}" class="detail-link">{{ review.title }}</a></td>
+                        <td>{{ review.anthology.title }}</td>
+                        <td>{{ review.created_at|date:"d.m.Y" }}</td>
+                        <td>{{ review.get_status_display }}</td>
+                        <td>{{ review.author_notified_at|date:"d.m.Y"|default:"—" }}</td>
+                        <td data-copy="false"><a href="{% url 'core:assigned_review_detail' review.pk %}" class="secondary-button">Otwórz</a></td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="6">Brak archiwalnych recenzji przypisanych do autora.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if historical_reviews.has_other_pages %}
+        <nav aria-label="Strony archiwalnych recenzji">
+            {% if historical_reviews.has_previous %}
+                <a class="secondary-button" href="?archive_page={{ historical_reviews.previous_page_number }}#archiwalne-recenzje">Poprzednia</a>
+            {% endif %}
+            <span>Strona {{ historical_reviews.number }} z {{ historical_reviews.paginator.num_pages }}</span>
+            {% if historical_reviews.has_next %}
+                <a class="secondary-button" href="?archive_page={{ historical_reviews.next_page_number }}#archiwalne-recenzje">Następna</a>
+            {% endif %}
+        </nav>
+    {% endif %}
+</section>
+{% include "core/includes/table_toolbar.html" %}
+{% endblock %}

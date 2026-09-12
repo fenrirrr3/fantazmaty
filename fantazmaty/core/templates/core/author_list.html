@@ -1,0 +1,231 @@
+{% extends "core/base.html" %}
+
+{% block title %}Autorzy | Fantazmaty CMS{% endblock %}
+
+{% block content %}
+    <header class="page-header">
+        <h1 class="page-title">Autorzy</h1>
+        <p class="page-description">
+            Autorzy zapisani w bazie, ich antologie i informacje o umowach.
+        </p>
+    </header>
+
+    <section class="filters-card" aria-label="Filtry autorów">
+        <form
+            method="get"
+            action="{% url 'core:author_list' %}"
+            class="filters-form"
+            data-remember-filters="author-list"
+        >
+            <input
+                type="hidden"
+                name="page_size"
+                value="{{ page_obj.selected_page_size }}"
+            >
+
+            <div class="filter-field author-search-field">
+                <label for="author-query">Wyszukaj autora</label>
+                <input
+                    id="author-query"
+                    type="search"
+                    name="q"
+                    value="{{ query }}"
+                    placeholder="Imię, nazwisko, pseudonim lub e-mail"
+                >
+            </div>
+
+            <div class="filter-field">
+                <label for="author-contract">Umowa</label>
+                <select id="author-contract" name="contract">
+                    <option value="">Wszystkie</option>
+                    <option value="yes" {% if contract_filter == "yes" %}selected{% endif %}>
+                        Potwierdzona
+                    </option>
+                    <option value="no" {% if contract_filter == "no" %}selected{% endif %}>
+                        Niepotwierdzona
+                    </option>
+                </select>
+            </div>
+
+            <div class="filter-field">
+                <label for="author-contact">Kontakt</label>
+                <select id="author-contact" name="contact">
+                    <option value="">Wszystkie</option>
+                    <option value="yes" {% if contact_filter == "yes" %}selected{% endif %}>
+                        Włączony
+                    </option>
+                    <option value="no" {% if contact_filter == "no" %}selected{% endif %}>
+                        Wyłączony
+                    </option>
+                </select>
+            </div>
+
+            <div class="filter-field">
+                <label for="author-anthology">Antologia</label>
+                <select id="author-anthology" name="anthology">
+                    <option value="">Wszystkie antologie</option>
+                    {% for anthology in anthologies %}
+                        <option
+                            value="{{ anthology.pk }}"
+                            {% if anthology.pk == selected_anthology_id %}selected{% endif %}
+                        >
+                            {{ anthology.title }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="filter-field">
+                <input type="hidden" name="accepted" value="0">
+                <label for="author-accepted">
+                    <input id="author-accepted" type="checkbox" name="accepted" value="1"
+                        {% if accepted_only %}checked{% endif %}>
+                    Przyjęci
+                </label>
+                <span class="form-help">Autorzy z gotowym tekstem w antologii.</span>
+            </div>
+
+            <div class="filter-actions">
+                <button type="submit" class="primary-button">Filtruj</button>
+                <a
+                    href="{% url 'core:author_list' %}"
+                    class="secondary-button"
+                    data-clear-saved-filters="author-list"
+                >
+                    Wyczyść filtry
+                </a>
+            </div>
+        </form>
+    </section>
+
+    <section class="card" aria-label="Lista autorów">
+        
+
+        <div
+            class="table-container"
+            role="region"
+            aria-label="Tabela autorów"
+            tabindex="0"
+        >
+            <table id="authors-table">
+                <caption class="visually-hidden">
+                    Autorzy spełniający wybrane filtry
+                </caption>
+
+                <thead>
+                    <tr>
+                        <th scope="col">Imię i nazwisko</th>
+                        <th scope="col">Pseudonim</th>
+                        <th scope="col">Antologie</th>
+                        <th scope="col">Adres e-mail</th>
+                        <th scope="col">Umowa</th>
+                        <th scope="col">Kontakt</th>
+                        <th scope="col" data-copy="false">Szczegóły</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for author in authors %}
+                        <tr>
+                            <td data-copy-value="{{ author.first_name }} {{ author.last_name }}">
+                                <a
+                                    href="{% url 'core:author_detail' author.pk %}"
+                                    class="detail-link"
+                                >
+                                    <strong>
+                                        {{ author.first_name }} {{ author.last_name }}
+                                    </strong>
+                                </a>
+                            </td>
+
+                            <td data-copy-value="{{ author.pseudonym }}">
+                                {% if author.pseudonym %}
+                                    {{ author.pseudonym }}
+                                {% else %}
+                                    <span class="muted-text">–</span>
+                                {% endif %}
+                            </td>
+
+                            <td>
+                                <div class="roles-list">
+                                    {% for anthology in author.participating_anthologies %}
+                                        <span class="role-badge">
+                                            {{ anthology.title }}
+                                        </span>
+                                    {% empty %}
+                                        <span class="muted-text">
+                                            Brak przypisanych antologii
+                                        </span>
+                                    {% endfor %}
+                                </div>
+                            </td>
+
+                            <td class="email-cell">
+                                {% if author.contact and author.email %}
+                                    <a
+                                        href="mailto:{{ author.email }}"
+                                        class="detail-link"
+                                    >
+                                        {{ author.email }}
+                                    </a>
+                                {% elif not author.contact %}
+                                    <span class="muted-text">Kontakt wyłączony</span>
+                                {% else %}
+                                    <span class="muted-text">Nie podano</span>
+                                {% endif %}
+                            </td>
+
+                            <td>
+                                {% if author.has_contract %}
+                                    <span class="boolean-icon boolean-yes" role="img" aria-label="Umowa potwierdzona" title="Umowa potwierdzona">✓</span>
+                                {% else %}
+                                    <span class="boolean-icon boolean-no" role="img" aria-label="Umowa niepotwierdzona" title="Umowa niepotwierdzona">✗</span>
+                                {% endif %}
+                            </td>
+
+                            <td>
+                                {% if author.contact %}
+                                    <span class="boolean-icon boolean-yes" role="img" aria-label="Kontakt włączony" title="Kontakt włączony">✓</span>
+                                {% else %}
+                                    <span class="boolean-icon boolean-no" role="img" aria-label="Kontakt wyłączony" title="Kontakt wyłączony">✗</span>
+                                {% endif %}
+                            </td>
+
+                            <td data-copy="false">
+                                <a
+                                    href="{% url 'core:author_detail' author.pk %}"
+                                    class="secondary-button"
+                                    aria-label="Otwórz profil autora: {{ author.first_name }} {{ author.last_name }}"
+                                >
+                                    Otwórz
+                                </a>
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="7">
+                                <div class="empty-results-panel">
+                                    <strong>Nie znaleziono autorów.</strong>
+                                    <p>
+                                        Żaden autor nie spełnia wybranych kryteriów.
+                                        Zmień zapytanie lub wyczyść filtry.
+                                    </p>
+                                    <a
+                                        href="{% url 'core:author_list' %}"
+                                        class="secondary-button"
+                                        data-clear-saved-filters="author-list"
+                                    >
+                                        Wyczyść filtry
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    {% include "core/includes/table_toolbar.html" %}
+    {% include "core/includes/pagination.html" %}
+{% endblock %}
