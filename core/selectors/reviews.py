@@ -195,7 +195,7 @@ def _project_reviews(reviews, *, user, include_authors, allow_self_assignment):
         for assignment in assignments:
             reviewer = _user_data(assignment.user)
             reviewer_name = (
-                reviewer["display_name"] if reviewer else "Usunięte konto"
+                assignment.reviewer_display_name
             )
             opinions.append(
                 {
@@ -283,6 +283,7 @@ def _project_reviews(reviews, *, user, include_authors, allow_self_assignment):
         if include_authors:
             row.update(
                 {
+                    "authors": review.display_authors,
                     "author_id": review.author_id,
                     "author_first_name": review.author_first_name,
                     "author_last_name": review.author_last_name,
@@ -397,6 +398,9 @@ def review_list_context(*, user, params):
                 | Q(author__first_name__plcontains=term)
                 | Q(author__last_name__plcontains=term)
                 | Q(author__pseudonym__plcontains=term)
+                | Q(coauthors__first_name__plcontains=term)
+                | Q(coauthors__last_name__plcontains=term)
+                | Q(coauthors__pseudonym__plcontains=term)
                 | Q(author__email__plcontains=term)
             )
 
@@ -405,10 +409,11 @@ def review_list_context(*, user, params):
     # Liczymy rekordy przydziałów, również po usunięciu konta.
     # Usunięcie użytkownika nie zwalnia automatycznie zajętej pozycji.
     queryset = queryset.annotate(
-        assigned_count=Count("assignments"),
+        assigned_count=Count("assignments", distinct=True),
         completed_count=Count(
             "assignments",
             filter=~Q(assignments__opinion__in=READING_OPINIONS),
+            distinct=True,
         ),
     )
 
@@ -438,12 +443,12 @@ def review_list_context(*, user, params):
         sort = "newest"
 
     queryset = (
-        queryset.select_related("anthology")
+        queryset.select_related("anthology", "author").prefetch_related("coauthors")
         .prefetch_related(
             Prefetch(
                 "assignments",
                 queryset=(
-                    ReviewAssignment.objects.select_related("user")
+                    ReviewAssignment.objects.select_related("user", "historical_person")
                     .order_by("position", "pk")
                 ),
                 to_attr="selector_assignments",

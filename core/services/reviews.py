@@ -549,7 +549,7 @@ def copy_review_to_text(*, user, review_id, contract_received=False):
     )
     text.full_clean()
     text.save()
-    text.authors.add(author)
+    text.authors.add(author, *review.coauthors.all())
 
     stage = WorkflowStage(
         text=text,

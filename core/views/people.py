@@ -8,7 +8,9 @@ from django.views.decorators.http import require_GET
 
 from core.forms import PeopleFilterForm
 from core.pagination import paginate_items
-from core.permissions import can_view_author_data, team_member_required
+from core.permissions import (
+    can_view_author_data, is_coordinator, is_superuser, team_member_required,
+)
 from core.selectors.people import user_leave_information
 from people.models import Person, Role
 from workflow.models import WorkflowRoleAssignment, WorkflowStage
@@ -208,7 +210,11 @@ def _profile_assignments(person, *, include_authors):
 @require_GET
 @team_member_required
 def people_list(request):
+    can_view_email = is_coordinator(request.user)
+    can_view_dropbox_email = is_superuser(request.user)
     form = PeopleFilterForm(_filter_data(request))
+    if not can_view_email:
+        form.fields["query"].widget.attrs["placeholder"] = "Imię lub nazwisko"
 
     people = (
         Person.objects.filter(is_active=True)
@@ -228,12 +234,12 @@ def people_list(request):
         )
 
         for term in query.split():
-            people = people.filter(
-                Q(first_name__plcontains=term)
-                | Q(last_name__plcontains=term)
-                | Q(email__plcontains=term)
-                | Q(dropbox_email__plcontains=term)
-            )
+            match = Q(first_name__plcontains=term) | Q(last_name__plcontains=term)
+            if can_view_email:
+                match |= Q(email__plcontains=term)
+            if can_view_dropbox_email:
+                match |= Q(dropbox_email__plcontains=term)
+            people = people.filter(match)
 
         # Zachowaj również role bez przypisanych osób, w tym nowego Składacza.
         form.fields['roles'].queryset = ordered_team_roles()
@@ -267,6 +273,9 @@ def people_list(request):
                 else None
             ),
             "can_view_authors": can_view_author_data(request.user),
+            "can_view_team_email": can_view_email,
+            "can_view_team_dropbox_email": can_view_dropbox_email,
+            "people_column_count": 3 + int(can_view_email) + int(can_view_dropbox_email),
         },
         status=400 if form.errors else 200,
     )
@@ -299,6 +308,8 @@ def person_detail(request, person_id):
             "assignments": assignments,
             "person_summary": person_summary,
             "can_view_authors": include_authors,
+            "can_view_team_email": is_coordinator(request.user),
+            "can_view_team_dropbox_email": is_superuser(request.user),
             "leave_information": (
                 user_leave_information(person.user)
                 if person.user_id is not None

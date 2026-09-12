@@ -372,6 +372,7 @@ class ReviewAdminForm(NormalizedFormMixin, forms.ModelForm):
         model = Review
         fields = (
             "author",
+            "coauthors",
             "author_first_name",
             "author_last_name",
             "title",
@@ -406,12 +407,12 @@ class ReviewAdminForm(NormalizedFormMixin, forms.ModelForm):
         if author is not None:
             cleaned_data["author_first_name"] = author.first_name
             cleaned_data["author_last_name"] = author.last_name
-            cleaned_data["email"] = author.email
-            if not author.email:
+            cleaned_data["email"] = author.email or ""
+            if not author.email and not cleaned_data.get("old_reviews"):
                 self.add_error("author", "Uzupełnij adres e-mail autora historycznego przed dodaniem nowego zgłoszenia.")
         else:
             for name in ("author_first_name", "author_last_name", "email"):
-                if name in self.fields and not cleaned_data.get(name):
+                if name in self.fields and not cleaned_data.get(name) and not (name == "email" and cleaned_data.get("old_reviews")):
                     self.add_error(
                         name,
                         "Uzupełnij dane albo wybierz autora z bazy.",
@@ -670,12 +671,14 @@ class ReviewAssignmentInline(
     fields = (
         "position",
         "user",
+        "historical_person",
         "opinion",
         "notes",
         "assigned_at",
         "opinion_changed_at",
     )
     readonly_fields = (
+        "historical_person",
         "assigned_at",
         "opinion_changed_at",
     )
@@ -736,6 +739,7 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     )
     autocomplete_fields = (
         "author",
+        "coauthors",
         "anthology",
         "copied_text",
     )
@@ -765,6 +769,7 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             {
                 "fields": (
                     "author",
+                    "coauthors",
                     "author_first_name",
                     "author_last_name",
                     "email",
@@ -856,7 +861,7 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         return (
             super()
             .get_queryset(request)
-            .select_related("author", "anthology", "copied_text")
+            .select_related("author", "anthology", "copied_text").prefetch_related("coauthors")
         )
 
     def changeform_view(
@@ -903,7 +908,7 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         if obj.author_id is not None:
             obj.author_first_name = obj.author.first_name
             obj.author_last_name = obj.author.last_name
-            obj.email = obj.author.email
+            obj.email = obj.author.email or ""
 
         decision_statuses = {
             Review.Status.ACCEPTED,
@@ -933,10 +938,7 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         ordering="author_last_name",
     )
     def display_author(self, obj):
-        if obj.author_id is not None:
-            return str(obj.author)
-
-        return f"{obj.author_first_name} {obj.author_last_name}".strip()
+        return obj.author_display_name
 
     @admin.display(
         description="dodany do tekstów",

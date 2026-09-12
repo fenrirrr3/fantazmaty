@@ -78,7 +78,7 @@
             </div>
             <div class="detail-item">
                 <dt>Długość</dt>
-                <dd>{{ review.length }}</dd>
+                <dd>{{ review.length|default_if_none:"—" }}</dd>
             </div>
             <div class="detail-item">
                 <dt>Data zgłoszenia</dt>
@@ -95,16 +95,11 @@
                 <div class="detail-item">
                     <dt>Imię i nazwisko</dt>
                     <dd>
-                        {% if review.author_id %}
-                            <a
-                                href="{% url 'core:author_detail' review.author_id %}"
-                                class="detail-link"
-                            >
-                                {{ review.author_first_name }} {{ review.author_last_name }}
-                            </a>
-                        {% else %}
+                        {% for author in review.authors %}
+                            <a href="{% url 'core:author_detail' author.pk %}" class="detail-link">{{ author }}</a>{% if not forloop.last %}, {% endif %}
+                        {% empty %}
                             {{ review.author_first_name }} {{ review.author_last_name }}
-                        {% endif %}
+                        {% endfor %}
                     </dd>
                 </div>
                 <div class="detail-item">

@@ -63,7 +63,7 @@ def _get_review(user, review_id):
     queryset = Review.objects.visible_to(user).select_related("anthology")
 
     if can_view_author_data(user):
-        queryset = queryset.select_related("author")
+        queryset = queryset.select_related("author").prefetch_related("coauthors")
     else:
         queryset = queryset.filter(old_reviews=False)
 
@@ -225,6 +225,7 @@ def _review_template_data(review, *, include_author):
                 "email": review.email,
                 "phone_number": review.phone_number,
                 "author_notified_at": review.author_notified_at,
+                "authors": review.display_authors,
                 "author_id": review.author_id,
                 "author": (
                     {
@@ -258,7 +259,7 @@ def _render_review_detail(
 
     assignments = list(
         ReviewAssignment.objects.filter(review_id=review.pk)
-        .select_related("user")
+        .select_related("user", "historical_person")
         .order_by("position", "pk")
     )
     own_assignment = next(
@@ -275,9 +276,7 @@ def _render_review_detail(
     for assignment in assignments:
         reviewer = assignment.user
         reviewer_name = (
-            reviewer.get_full_name() or "Nieuzupełnione dane"
-            if reviewer is not None
-            else "Usunięte konto"
+            assignment.reviewer_display_name
         )
         opinions.append(
             {

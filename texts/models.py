@@ -445,6 +445,11 @@ class Review(NormalizedModelMixin, models.Model):
         blank=True,
     )
 
+    coauthors = models.ManyToManyField(
+        Author, blank=True, related_name="coauthored_review_submissions",
+        verbose_name="współautorzy", help_text="Dodatkowi autorzy, poza autorem głównym.",
+    )
+
     # Dane zgłoszenia mogą istnieć przed powiązaniem z rekordem Author.
     # Wyłącznie superuser może je odczytywać w interfejsie.
     author_first_name = models.CharField(
@@ -465,10 +470,12 @@ class Review(NormalizedModelMixin, models.Model):
     genre = models.CharField(
         "gatunek",
         max_length=100,
+        blank=True,
     )
 
     length = models.PositiveIntegerField(
         "długość",
+        null=True, blank=True,
         validators=[MinValueValidator(1)],
     )
 
@@ -479,6 +486,7 @@ class Review(NormalizedModelMixin, models.Model):
 
     email = models.EmailField(
         "adres e-mail",
+        blank=True,
     )
 
     phone_number = models.CharField(
@@ -546,6 +554,10 @@ class Review(NormalizedModelMixin, models.Model):
         verbose_name = "recenzja"
         verbose_name_plural = "recenzje"
         ordering = ("-created_at", "-pk")
+        constraints = [models.CheckConstraint(
+            condition=(models.Q(old_reviews=True, length__isnull=True) | models.Q(length__gte=1, length__isnull=False)),
+            name="review_length_required_unless_old",
+        )]
 
     def __str__(self):
         # Bez tożsamości autora w etykietach relacji, logach i adminie.
@@ -558,6 +570,27 @@ class Review(NormalizedModelMixin, models.Model):
     @property
     def author_was_notified(self):
         return self.author_notified_at is not None
+
+    def clean(self):
+        super().clean()
+        if not self.old_reviews:
+            errors = {}
+            for field in ("length", "genre", "email"):
+                if not getattr(self, field):
+                    errors[field] = "Pole wymagane dla bieżącego zgłoszenia."
+            if errors:
+                raise ValidationError(errors)
+
+    @property
+    def display_authors(self):
+        authors = [self.author] if self.author_id else []
+        if self.pk:
+            authors.extend(a for a in self.coauthors.all() if a.pk != self.author_id)
+        return authors
+
+    @property
+    def author_display_name(self):
+        return ", ".join(str(a) for a in self.display_authors) or f"{self.author_first_name} {self.author_last_name}".strip()
 
 
 class Reviewers(models.Model):
@@ -636,6 +669,28 @@ class ReviewAssignment(models.Model):
         blank=True,
     )
 
+    historical_person = models.ForeignKey(
+        Person, on_delete=models.PROTECT, null=True, blank=True,
+        related_name="historical_review_assignments", verbose_name="recenzent historyczny",
+        help_text="Profil osoby bez wymogu posiadania konta; tylko dla archiwum.",
+    )
+
+    @property
+    def reviewer_display_name(self):
+        if self.historical_person_id:
+            return str(self.historical_person)
+        if self.user_id:
+            return self.user.get_full_name() or "Nieuzupełnione dane"
+        return "Usunięte konto"
+
+    def clean(self):
+        super().clean()
+        if self.historical_person_id:
+            if self.review_id and not self.review.old_reviews:
+                raise ValidationError({"historical_person": "Profil historyczny jest dostępny tylko w archiwum."})
+            if self.user_id and self.historical_person.user_id != self.user_id:
+                raise ValidationError({"historical_person": "Profil nie należy do wskazanego konta."})
+
     position = models.PositiveSmallIntegerField(
         "numer miejsca",
         validators=[
@@ -658,13 +713,13 @@ class ReviewAssignment(models.Model):
 
     assigned_at = models.DateTimeField(
         "data przydzielenia",
-        auto_now_add=True,
+        default=timezone.now, editable=False, null=True, blank=True,
     )
 
     opinion_changed_at = models.DateField(
         "data zmiany opinii",
         default=timezone.localdate,
-        editable=False,
+        editable=False, null=True, blank=True,
     )
 
     objects = ReviewAssignmentQuerySet.as_manager()
@@ -674,6 +729,7 @@ class ReviewAssignment(models.Model):
         verbose_name_plural = "przydziały recenzentów"
         ordering = ("position", "pk")
         constraints = [
+            models.UniqueConstraint(fields=("review", "historical_person"), name="unique_historical_reviewer"),
             models.UniqueConstraint(
                 fields=("review", "user"),
                 name="unique_reviewer_per_review",

@@ -282,25 +282,20 @@
 
                             {% if can_view_authors %}
                                 <td>
-                                    {% if review.author_id %}
-                                        <a
-                                            href="{% url 'core:author_detail' review.author_id %}"
-                                            class="detail-link"
-                                        >
-                                            {{ review.author_first_name }} {{ review.author_last_name }}
-                                        </a>
-                                    {% else %}
-                                        {{ review.author_first_name }} {{ review.author_last_name }}
-                                    {% endif %}
+                                    {% for author in review.authors %}
+                            <a href="{% url 'core:author_detail' author.pk %}" class="detail-link">{{ author }}</a>{% if not forloop.last %}, {% endif %}
+                        {% empty %}
+                            {{ review.author_first_name }} {{ review.author_last_name }}
+                        {% endfor %}
                                 </td>
                             {% endif %}
 
                             <td
                                 class="numeric-cell"
                                 data-type="number"
-                                data-copy-value="{{ review.length|stringformat:'d' }}"
+                                data-copy-value="{{ review.length|default_if_none:"" }}"
                             >
-                                {{ review.length }}
+                                {{ review.length|default_if_none:"—" }}
                             </td>
 
                             <td>

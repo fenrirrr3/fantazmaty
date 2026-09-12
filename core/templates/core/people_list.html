@@ -88,8 +88,8 @@
                     <tr>
                         <th scope="col">Imię i nazwisko</th>
                         <th scope="col">Role</th>
-                        <th scope="col">Adres e-mail</th>
-                        <th scope="col">E-mail Dropboxa</th>
+                        {% if can_view_team_email %}<th scope="col">Adres e-mail</th>{% endif %}
+                        {% if can_view_team_dropbox_email %}<th scope="col">E-mail Dropboxa</th>{% endif %}
                         <th scope="col" data-copy="false">Szczegóły</th>
                     </tr>
                 </thead>
@@ -126,6 +126,7 @@
                                 {% endif %}
                             </td>
 
+                            {% if can_view_team_email %}
                             <td class="email-cell" data-copy-value="{{ person.email }}">
                                 {% if person.email %}
                                     <a href="mailto:{{ person.email }}" class="detail-link">
@@ -135,7 +136,9 @@
                                     <span class="muted-text">Nie podano</span>
                                 {% endif %}
                             </td>
+                            {% endif %}
 
+                            {% if can_view_team_dropbox_email %}
                             <td class="email-cell" data-copy-value="{{ person.dropbox_email }}">
                                 {% if person.dropbox_email %}
                                     <a
@@ -148,6 +151,7 @@
                                     <span class="muted-text">Nie podano</span>
                                 {% endif %}
                             </td>
+                            {% endif %}
 
                             <td data-copy="false">
                                 <a
@@ -161,7 +165,7 @@
                         </tr>
                     {% empty %}
                         <tr>
-                            <td colspan="5">
+                            <td colspan="{{ people_column_count }}">
                                 <div class="empty-results-panel">
                                     {% if filter_form.errors %}
                                         <strong>Popraw filtry wyszukiwania.</strong>

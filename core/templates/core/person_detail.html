@@ -51,6 +51,7 @@
         <h2 id="person-information-heading">Kontakt i role</h2>
 
         <dl class="details-grid">
+            {% if can_view_team_email %}
             <div class="detail-item">
                 <dt>Adres e-mail</dt>
                 <dd>
@@ -63,7 +64,9 @@
                     {% endif %}
                 </dd>
             </div>
+            {% endif %}
 
+            {% if can_view_team_dropbox_email %}
             <div class="detail-item">
                 <dt>E-mail Dropboxa</dt>
                 <dd>
@@ -79,6 +82,7 @@
                     {% endif %}
                 </dd>
             </div>
+            {% endif %}
 
             <div class="detail-item">
                 <dt>Role w zespole</dt>

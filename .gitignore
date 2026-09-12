@@ -29,3 +29,6 @@ staticfiles/
 Thumbs.db
 # Konfiguracja lokalna
 .venv-mysql/
+
+/import_data/
+*.bundle
