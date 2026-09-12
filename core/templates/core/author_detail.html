@@ -270,5 +270,48 @@
             </table>
         </div>
     </section>
+<section class="card" aria-labelledby="author-archive-heading" id="archiwalne-recenzje">
+    <header class="section-header">
+        <div>
+            <h2 id="author-archive-heading">Archiwalne recenzje</h2>
+            <p>Wcześniejsze zgłoszenia autora, również współautorskie.</p>
+        </div>
+        <span class="record-counter">{{ historical_reviews.paginator.count }}</span>
+    </header>
+    <div class="table-container" role="region" aria-label="Archiwalne recenzje autora" tabindex="0">
+        <table id="author-archive-table">
+            <thead><tr>
+                <th scope="col">Tytuł</th><th scope="col">Antologia</th>
+                <th scope="col">Data zgłoszenia</th><th scope="col">Status</th>
+                <th scope="col">Data powiadomienia</th><th scope="col" data-copy="false">Szczegóły</th>
+            </tr></thead>
+            <tbody>
+                {% for review in historical_reviews %}
+                    <tr>
+                        <td><a href="{% url 'core:assigned_review_detail' review.pk %}" class="detail-link">{{ review.title }}</a></td>
+                        <td>{{ review.anthology.title }}</td>
+                        <td>{{ review.created_at|date:"d.m.Y" }}</td>
+                        <td>{{ review.get_status_display }}</td>
+                        <td>{{ review.author_notified_at|date:"d.m.Y"|default:"—" }}</td>
+                        <td data-copy="false"><a href="{% url 'core:assigned_review_detail' review.pk %}" class="secondary-button">Otwórz</a></td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="6">Brak archiwalnych recenzji przypisanych do autora.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if historical_reviews.has_other_pages %}
+        <nav aria-label="Strony archiwalnych recenzji">
+            {% if historical_reviews.has_previous %}
+                <a class="secondary-button" href="?archive_page={{ historical_reviews.previous_page_number }}#archiwalne-recenzje">Poprzednia</a>
+            {% endif %}
+            <span>Strona {{ historical_reviews.number }} z {{ historical_reviews.paginator.num_pages }}</span>
+            {% if historical_reviews.has_next %}
+                <a class="secondary-button" href="?archive_page={{ historical_reviews.next_page_number }}#archiwalne-recenzje">Następna</a>
+            {% endif %}
+        </nav>
+    {% endif %}
+</section>
 {% include "core/includes/table_toolbar.html" %}
 {% endblock %}

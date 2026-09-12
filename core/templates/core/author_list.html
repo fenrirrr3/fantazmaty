@@ -75,6 +75,15 @@
                 </select>
             </div>
 
+            <div class="filter-field">
+                <input type="hidden" name="accepted" value="0">
+                <label for="author-accepted">
+                    <input id="author-accepted" type="checkbox" name="accepted" value="1"
+                        {% if accepted_only %}checked{% endif %}>
+                    Przyjęci
+                </label>
+            </div>
+
             <div class="filter-actions">
                 <button type="submit" class="primary-button">Filtruj</button>
                 <a

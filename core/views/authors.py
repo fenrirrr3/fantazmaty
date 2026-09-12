@@ -1,3 +1,6 @@
+from django.core.paginator import Paginator
+from core.selectors.texts import _annotated_texts
+from workflow.models import WorkflowStage
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
@@ -114,6 +117,14 @@ def _render_author_detail(request, author, *, form=None, status=200):
             }
         )
 
+    historical_reviews = Review.objects.filter(
+        Q(author_id=author.pk) | Q(coauthors__pk=author.pk),
+        old_reviews=True,
+    ).select_related("anthology").distinct().order_by("-created_at", "-pk")
+    historical_page = Paginator(historical_reviews, 25).get_page(
+        request.GET.get("archive_page", "1")
+    )
+
     # Archiwalne recenzje nie wpływają na żaden licznik zgłoszeń.
     submissions = Review.objects.filter(
         author_id=author.pk,
@@ -146,6 +157,7 @@ def _render_author_detail(request, author, *, form=None, status=200):
         {
             "author": author_data,
             "texts": texts,
+            "historical_reviews": historical_page,
             "author_summary": author_summary,
             "can_view_authors": True,
             "can_manage_author_notes": True,
@@ -167,7 +179,16 @@ def author_list(request):
         request.GET.get("anthology", "")
     )
 
+    accepted_only = request.GET.get("accepted", "1").strip() != "0"
     authors = Author.objects.all()
+    if accepted_only:
+        ready_texts = _annotated_texts().filter(
+            current_stage_type=WorkflowStage.StageType.READY,
+            anthology__isnull=False,
+        )
+        if selected_anthology_id is not None:
+            ready_texts = ready_texts.filter(anthology_id=selected_anthology_id)
+        authors = authors.filter(pk__in=ready_texts.order_by().values("authors__pk"))
 
     # Każdy człon zapytania musi pasować do przynajmniej jednego pola.
     # Obsługuje to również wyszukiwanie po pełnym imieniu i nazwisku.
@@ -260,6 +281,7 @@ def author_list(request):
             "query": query,
             "contract_filter": contract_filter,
             "contact_filter": contact_filter,
+            "accepted_only": accepted_only,
             "selected_anthology_id": selected_anthology_id,
             "can_view_authors": True,
         },
