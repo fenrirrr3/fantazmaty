@@ -249,6 +249,11 @@
         return cell;
     }
 
+    function doubleCopyCellFrom(target) {
+        const cell = copyCellFrom(target);
+        return cell && cell.matches("[data-double-copy]") ? cell : null;
+    }
+
     function cancelLink(link) {
         const timer = pendingLinks.get(link);
         if (timer !== undefined) clearTimeout(timer);
@@ -319,7 +324,7 @@
             if (event.button !== 0) return;
 
             const target = elementFrom(event);
-            const cell = copyCellFrom(target);
+            const cell = doubleCopyCellFrom(target);
             if (!cell) return;
 
             const link = target.closest("a[href]");
@@ -362,7 +367,7 @@
             const link = target.closest("a[href]");
             if (
                 !link ||
-                !copyCellFrom(target) ||
+                !doubleCopyCellFrom(target) ||
                 event.button !== 0 ||
                 event.detail === 0 ||
                 event.ctrlKey || event.metaKey || event.shiftKey || event.altKey ||
@@ -766,6 +771,9 @@
         const names = new Set([...form.elements].map((field) => field.name));
         names.delete("csrfmiddlewaretoken");
         names.delete("page");
+        names.delete("q");
+        names.delete("query");
+        form.querySelectorAll("input[type=search], input[type=text], input:not([type])").forEach(field => names.delete(field.name));
         names.delete("");
 
         const sanitize = (parameters) => {
@@ -777,6 +785,7 @@
         };
 
         const saved = storage.get(key, true);
+        if (saved) storage.set(key, sanitize(new URLSearchParams(saved)).toString(), true);
         if (location.search) storage.set(key, sanitize(new URLSearchParams(location.search)).toString(), true);
         if (!location.search && saved) {
             const restored = sanitize(new URLSearchParams(saved));

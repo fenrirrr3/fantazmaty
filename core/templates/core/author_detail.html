@@ -210,7 +210,7 @@
                 <tbody>
                     {% for text in texts %}
                         <tr>
-                            <td data-copy-value="{{ text.title }}">
+                            <td data-double-copy data-copy-value="{{ text.title }}">
                                 <a
                                     href="{% url 'core:assigned_text_detail' text.pk %}"
                                     class="text-title-link"
@@ -288,7 +288,7 @@
             <tbody>
                 {% for review in historical_reviews %}
                     <tr>
-                        <td><a href="{% url 'core:assigned_review_detail' review.pk %}" class="detail-link">{{ review.title }}</a></td>
+                        <td data-double-copy><a href="{% url 'core:assigned_review_detail' review.pk %}" class="detail-link">{{ review.title }}</a></td>
                         <td>{{ review.anthology.title }}</td>
                         <td>{{ review.created_at|date:"d.m.Y" }}</td>
                         <td>{{ review.get_status_display }}</td>
@@ -304,11 +304,11 @@
     {% if historical_reviews.has_other_pages %}
         <nav aria-label="Strony archiwalnych recenzji">
             {% if historical_reviews.has_previous %}
-                <a class="secondary-button" href="?archive_page={{ historical_reviews.previous_page_number }}#archiwalne-recenzje">Poprzednia</a>
+                <a class="secondary-button" href="?archive_page={{ historical_reviews.previous_page_number }}#archiwalne-recenzje"><span aria-hidden="true">←</span><span class="visually-hidden">Poprzednia strona</span></a>
             {% endif %}
             <span>Strona {{ historical_reviews.number }} z {{ historical_reviews.paginator.num_pages }}</span>
             {% if historical_reviews.has_next %}
-                <a class="secondary-button" href="?archive_page={{ historical_reviews.next_page_number }}#archiwalne-recenzje">Następna</a>
+                <a class="secondary-button" href="?archive_page={{ historical_reviews.next_page_number }}#archiwalne-recenzje"><span aria-hidden="true">→</span><span class="visually-hidden">Następna strona</span></a>
             {% endif %}
         </nav>
     {% endif %}

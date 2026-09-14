@@ -112,3 +112,25 @@ def review_create(request):
             messages.success(request, 'Dodano zgłoszenie do recenzji.')
             return redirect('core:assigned_review_detail', review_id=review.pk)
     return render(request, 'core/intake_form.html', {'form': form, 'title': 'Dodaj do recenzji'}, status=400 if request.method == 'POST' else 200)
+
+
+@never_cache
+@login_required
+@require_http_methods(['GET'])
+@superuser_required
+def author_suggestions(request):
+    from authors.models import Author
+    from django.http import JsonResponse
+    query = request.GET.get('q', '').strip()[:255]
+    authors = Author.objects.all()
+    if not query:
+        return JsonResponse({'results': []})
+    for term in query.split():
+        authors = authors.filter(Q(first_name__plcontains=term) | Q(last_name__plcontains=term) |
+                                 Q(pseudonym__plcontains=term) | Q(email__plcontains=term))
+    results = [{'id': author.pk, 'label': f'{author} — {author.pseudonym}' if author.pseudonym else str(author),
+                'first_name': author.first_name, 'last_name': author.last_name,
+                'email': author.email or ''} for author in authors.order_by('last_name', 'first_name', 'pk')[:20]]
+    response = JsonResponse({'results': results})
+    response['Cache-Control'] = 'no-store, private'
+    return response

@@ -20,7 +20,10 @@ document.addEventListener('DOMContentLoaded', () => {
         container.after(footer);
         const heads = [...(table.tHead?.rows[0]?.cells || [])];
         const titleIndex = heads.findIndex(th => /tytuł|^tekst$|opowiadanie/i.test(th.textContent.trim()));
-        if (titleIndex >= 0) [...table.rows].forEach(row => row.cells[titleIndex]?.classList.add('sticky-title'));
+        if (titleIndex >= 0) [...table.rows].forEach(row => {
+            const cell = row.cells[titleIndex];
+            if (cell) cell.classList.add('sticky-title');
+        });
         // A server-paginated list already has a page-size form; auxiliary tables still paginate locally.
         const serverPaged = main.querySelector('.page-size-form') && table === main.querySelector('table');
         const rows = [...(table.tBodies[0]?.rows || [])];
@@ -29,7 +32,8 @@ document.addEventListener('DOMContentLoaded', () => {
             let page = 0;
             const nav = document.createElement('div'); nav.className = 'pagination-links';
             const prev = document.createElement('button'), next = document.createElement('button'), label = document.createElement('span');
-            prev.type = next.type = 'button'; prev.textContent = 'Poprzednia'; next.textContent = 'Następna';
+            prev.type = next.type = 'button'; prev.textContent = '←'; next.textContent = '→';
+            prev.setAttribute('aria-label', 'Poprzednia strona'); next.setAttribute('aria-label', 'Następna strona');
             const draw = () => {
                 [...table.tBodies[0].rows].forEach((row, i) => { row.hidden = Math.floor(i / 25) !== page; });
                 label.textContent = `Strona ${page + 1} z ${Math.ceil(rows.length / 25)}`;
@@ -117,6 +121,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     document.querySelectorAll('form[method="get"].filters-form, form[method="get"][data-remember-filters]').forEach(form => {
         let timer;
+        form.addEventListener('submit', () => clearTimeout(timer));
         const key = `fantazmaty:filter-focus:${location.pathname}`;
         const submit = field => {
             clearTimeout(timer);
@@ -125,17 +130,17 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!form.elements.namedItem('filters_applied')) {
                 const applied = document.createElement('input'); applied.type = 'hidden'; applied.name = 'filters_applied'; applied.value = '1'; form.append(applied);
             }
-            try { sessionStorage.setItem(key, JSON.stringify({name:field?.name, value:field?.value,
+            try { sessionStorage.setItem(key, JSON.stringify({name:field?.name, value:field?.type === "checkbox" ? field.value : "",
                 position:field?.selectionStart, open:!!field?.closest('details[open]'), time:Date.now()})); } catch (_) {}
             form.requestSubmit();
         };
         form.addEventListener('change', event => {
-            if (event.target.matches('[data-auto-submit]')) return;
+            if (event.target.matches('[data-auto-submit], input[type="search"], input[type="text"], input:not([type])')) return;
             clearTimeout(timer); timer = setTimeout(() => submit(event.target), 200);
         });
         form.addEventListener('input', event => {
             if (!event.target.matches('input[type="search"], input[type="text"], input:not([type])')) return;
-            clearTimeout(timer); timer = setTimeout(() => submit(event.target), 450);
+            clearTimeout(timer); if (!event.isComposing) timer = setTimeout(() => submit(event.target), 1200);
         });
         form.addEventListener('click', event => {
             if (event.target.closest('[data-checkbox-clear]')) {

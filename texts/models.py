@@ -779,6 +779,7 @@ class ReviewAssignment(models.Model):
 
         if (
             opinion_is_saved
+            and not (self.review_id and self.review.old_reviews)
             and self.pk is not None
             and not self._state.adding
         ):

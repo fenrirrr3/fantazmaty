@@ -18,7 +18,14 @@ from .views import (
 app_name = "core"
 
 
+from core.views.programs import programs
+
 urlpatterns = [
+    path("programy/", programs, name="programs"),
+    path("autorzy/sugestie/", intake.author_suggestions, name="author_suggestions"),
+    path("moje-urlopy/<int:vacation_id>/odwolaj/", vacations.cancel_vacation, name="cancel_vacation"),
+    path("publikacje/uwagi-do-antologii/<int:pk>/edytuj/", operations.correction_edit, name="correction_edit"),
+    path("publikacje/uwagi-do-antologii/<int:pk>/usun/", operations.correction_delete, name="correction_delete"),
     path("moja-praca/recenzje/", reviews.my_reviews, name="my_reviews"),
     path('ekstrakty/', intake.extract_list, name='extract_list'),
     path('ekstrakty/dodaj/', intake.extract_edit, name='extract_add'),

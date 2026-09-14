@@ -1,0 +1,58 @@
+// Run with jsdom available in NODE_PATH (development dependency only).
+const {JSDOM} = require('jsdom');
+const fs = require('fs');
+const path = require('path');
+const assert = require('node:assert/strict');
+const root = path.join(__dirname, '..', 'static', 'core');
+async function setup(html, scripts) {
+ const dom = new JSDOM(html, {url:'https://cms.example.test/test/', runScripts:'outside-only', pretendToBeVisual:true});
+ const w = dom.window;
+ await new Promise(resolve => w.addEventListener('load', resolve));
+ w.matchMedia = () => ({matches:false,addEventListener(){}});
+ w.ResizeObserver = class {observe(){}};
+ w.HTMLElement.prototype.scrollIntoView = function() {};
+ w.performance.getEntriesByType = () => [{type:'navigate'}];
+ const timers = new Map();let n=0;
+ w.setTimeout=(fn,delay)=>{timers.set(++n,{fn,delay});return n};w.clearTimeout=id=>timers.delete(id);
+ for (const script of scripts) w.eval(fs.readFileSync(path.join(root,script),'utf8'));
+ return {dom,w,timers,start(){w.document.dispatchEvent(new w.Event('DOMContentLoaded'))}};
+}
+(async()=>{
+ const a=await setup('<main><form method="get" class="filters-form"><input type="search" name="q"></form></main>', ['workspace.js']);
+ let submits=0;a.w.HTMLFormElement.prototype.requestSubmit=function(){submits++;this.dispatchEvent(new a.w.Event('submit'))};a.start();
+ const field=a.w.document.querySelector('input');field.value='f';field.dispatchEvent(new a.w.Event('input',{bubbles:true}));
+ assert.equal([...a.timers.values()][0].delay,1200);
+ field.value='fa';field.dispatchEvent(new a.w.Event('input',{bubbles:true}));assert.equal(a.timers.size,1);
+ field.dispatchEvent(new a.w.Event('change',{bubbles:true}));assert.equal([...a.timers.values()][0].delay,1200);
+ a.w.document.querySelector('form').requestSubmit();assert.equal(a.timers.size,0);assert.equal(submits,1);a.dom.window.close();
+ console.log('PASS debounce and immediate submit');
+ const b=await setup('<form><label for="id_author">Autor</label><select id="id_author" name="author" data-author-search-url="/autorzy/sugestie/"><option value=""></option></select><input name="author_first_name"><input name="author_last_name"><input name="email"></form>', ['author-search.js']);
+ b.w.fetch=async()=>({ok:true,json:async()=>({results:[{id:42,label:'Łukasz Żółć — Smok',first_name:'Łukasz',last_name:'Żółć',email:'author@example.test'}]})});b.start();
+ const input=b.w.document.querySelector('input[type=search]');input.value='Smok';input.dispatchEvent(new b.w.Event('input'));
+ await [...b.timers.values()][0].fn();
+ assert.equal(b.w.document.querySelectorAll('[role=option]').length,1);
+ b.w.document.querySelector('[role=option]').click();
+ assert.equal(b.w.document.querySelector('select').value,'42');
+ assert.equal(b.w.document.querySelector('[name=author_first_name]').value,'Łukasz');
+ assert.equal(b.w.document.querySelector('[name=author_last_name]').value,'Żółć');
+ assert.equal(b.w.document.querySelector('[name=email]').value,'author@example.test');
+ assert.equal(input.getAttribute('aria-expanded'),'false');b.dom.window.close();console.log('PASS author suggestions and autofill');
+ const c=await setup('<body data-user-id="1"><aside id="site-sidebar"></aside></body>', ['revision.js']);
+ c.w.sessionStorage.setItem('fantazmaty:sidebar:1','450');c.start();
+ const sidebar=c.w.document.querySelector('aside');assert.equal(sidebar.scrollTop,450);sidebar.scrollTop=600;sidebar.dispatchEvent(new c.w.Event('scroll'));assert.equal(c.w.sessionStorage.getItem('fantazmaty:sidebar:1'),'600');c.dom.window.close();console.log('PASS sidebar position');
+ const e=await setup('<body data-user-id="1"><main><form method="get" data-remember-filters="test"><input name="q" type="search"><select name="status"><option value="new">Nowy</option></select></form></main></body>', []);
+ const filterKey='fantazmaty:v2:1:/test/:filters:test';
+ e.w.localStorage.setItem(filterKey,'q=old');
+ e.w.eval(fs.readFileSync(path.join(root,'ui.js'),'utf8'));e.start();
+ assert.equal(e.w.document.querySelector('input').value,'');
+ e.w.document.querySelector('input').value='secret-search';
+ e.w.document.querySelector('form').dispatchEvent(new e.w.Event('submit',{bubbles:true}));
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(e.w.localStorage.getItem(filterKey),'status=new');e.dom.window.close();console.log('PASS search phrases not remembered');
+ const d=await setup('<body><main><table><tbody><tr><td id="plain">Other</td><td id="title" data-double-copy>Title</td></tr></tbody></table></main></body>', []);
+ d.w.isSecureContext = true;
+ let copied=[];Object.defineProperty(d.w.navigator,'clipboard',{value:{writeText:async value=>copied.push(value)}});
+ d.w.eval(fs.readFileSync(path.join(root,'ui.js'),'utf8'));d.start();
+ d.w.document.querySelector('#plain').dispatchEvent(new d.w.MouseEvent('dblclick',{bubbles:true}));await Promise.resolve();assert.equal(copied.length,0);
+ d.w.document.querySelector('#title').dispatchEvent(new d.w.MouseEvent('dblclick',{bubbles:true}));await Promise.resolve();assert.deepEqual(copied,['Title']);await new Promise(resolve=>setImmediate(resolve));d.dom.window.close();console.log('PASS selective double-click copying');
+})().catch(error=>{console.error(error);process.exitCode=1});

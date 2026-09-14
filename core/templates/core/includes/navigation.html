@@ -124,12 +124,13 @@
                         >
                             Audiobooki
                         </a>
-<a href="{% url 'core:anthology_corrections' %}" class="sidebar-link" {% if current == 'anthology_corrections' %}aria-current="page"{% endif %}>Uwagi do antologii</a>
+<a href="{% url 'core:anthology_corrections' %}" class="sidebar-link" {% if current == 'anthology_corrections' or current == 'correction_edit' %}aria-current="page"{% endif %}>Uwagi do antologii</a>
                         {% if can_coordinate %}<a href="{% url 'core:extract_list' %}" class="sidebar-link" {% if current == 'extract_list' or current == 'extract_add' or current == 'extract_edit' %}aria-current="page"{% endif %}>Ekstrakty</a>{% endif %}
                     </div>
 
                     <div class="sidebar-section">
                         <p class="sidebar-heading">Zespół</p>
+                        <a href="{% url 'core:programs' %}" class="sidebar-link" {% if current == 'programs' %}aria-current="page"{% endif %}>Programy</a>
 
                         <a
                             href="{% url 'core:people_list' %}"

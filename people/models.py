@@ -53,6 +53,11 @@ def leave_is_active(start_date, end_date, until_revoked):
 
 
 class Role(models.Model):
+    def clean(self):
+        super().clean()
+        if self.name.strip().casefold() == "koordynator zespołu":
+            raise ValidationError({"name": "Ta rola została wycofana. Wybierz Koordynator lub jego specjalizację."})
+
     name = models.CharField(
         "nazwa roli",
         max_length=100,

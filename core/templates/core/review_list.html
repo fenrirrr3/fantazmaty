@@ -265,7 +265,7 @@
                                 {% endif %}
                             </td>
 
-                            <td data-copy-value="{{ review.title }}">
+                            <td data-double-copy data-copy-value="{{ review.title }}">
                                 <a
                                     href="{% url 'core:assigned_review_detail' review.pk %}"
                                     class="text-title-link"
@@ -346,7 +346,7 @@
                                 {{ review.decision_at|date:"d.m.Y"|default:"–" }}
                             </td>
 
-                            <td class="reviewer-action-cell" data-copy="false">
+                            <td data-double-copy class="reviewer-action-cell" data-copy="false">
                                 <div class="filter-actions">
                                     
 

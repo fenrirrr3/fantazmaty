@@ -84,7 +84,7 @@
                                 {% endif %}
                             </td>
 
-                            <td data-copy-value="{{ stage.text.title }}">
+                            <td data-double-copy data-copy-value="{{ stage.text.title }}">
                                 <a
                                     href="{% url 'core:assigned_text_detail' stage.text.pk %}"
                                     class="text-title-link"
@@ -139,7 +139,7 @@
                                 </span>
                             </td>
 
-                            <td class="stage-action-cell" data-copy="false">
+                            <td data-double-copy class="stage-action-cell" data-copy="false">
                                 <form
                                     method="post"
                                     action="{% url 'core:take_workflow_stage' stage.pk %}"

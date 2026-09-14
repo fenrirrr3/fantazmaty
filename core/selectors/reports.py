@@ -297,6 +297,10 @@ def reviewer_activity_context(*, user, params):
     selected_statuses = [v for v in requested if v in Review.Status.values]
     selected_status = selected_statuses[-1] if selected_statuses else ""
 
+    archive = params.get("archive", "current")
+    if archive not in {"current", "archived", "all"}:
+        archive = "current"
+    context["selected_archive"] = archive
     context.update(
         selected_status=selected_status,
         selected_statuses=selected_statuses,
@@ -308,14 +312,15 @@ def reviewer_activity_context(*, user, params):
     # Nie filtrujemy historii po aktualnej roli ani aktywności osoby.
     # Usunięcie konta również nie usuwa informacji o oddanej opinii.
     assignments = ReviewAssignment.objects.filter(
-        review__old_reviews=False,
-        review__is_hidden=False,
+        
     ).select_related(
         "review",
         "review__anthology",
         "user",
-        "user__person_profile",
-    )
+        "user__person_profile", "historical_person",
+    ).filter(Q(review__old_reviews=True) | Q(review__is_hidden=False))
+    if archive != "all":
+        assignments = assignments.filter(review__old_reviews=(archive == "archived"))
 
     if filters.get("date_from"):
         assignments = assignments.filter(
@@ -338,6 +343,9 @@ def reviewer_activity_context(*, user, params):
     for assignment in assignments.iterator(chunk_size=BATCH_SIZE):
         review = assignment.review
         person, reviewer_name = _person_and_name(assignment.user)
+        if assignment.historical_person_id:
+            person = assignment.historical_person
+            reviewer_name = str(person)
         anthology_title = review.anthology.title if review.anthology else ""
         author_name = (
             " ".join(
@@ -368,6 +376,7 @@ def reviewer_activity_context(*, user, params):
         rows.append(
             {
                 "assignment_id": assignment.pk,
+                "is_archived": review.old_reviews,
                 "anthology_title": anthology_title,
                 "anthology_id": review.anthology_id,
                 "review_id": review.pk,
@@ -387,6 +396,11 @@ def reviewer_activity_context(*, user, params):
             }
         )
 
+    person_ids = {row["person_id"] for row in rows if row["person_id"]}
+    context["reviewers"] = [
+        _NamedRecord(pk=person.pk, first_name=person.first_name, last_name=person.last_name, display_name=str(person))
+        for person in Person.objects.filter(pk__in=person_ids).order_by("last_name", "first_name", "pk")
+    ]
     return _cascade_activity(context, rows, filters, 'reviewers', selected_statuses)
 
 

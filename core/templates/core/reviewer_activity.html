@@ -7,7 +7,7 @@
         <h1 class="page-title">Aktywność recenzentów</h1>
         <p class="page-description">
             Przydziały, oceny i daty oddania opinii.
-            Archiwalne recenzje nie są uwzględniane.
+            Archiwalne recenzje są dostępne po zmianie zakresu.
         </p>
     </header>
 
@@ -28,7 +28,8 @@
                 <p class="form-error" role="alert">{{ error }}</p>
             {% endfor %}
 
-            <div class="filter-field author-search-field">
+            <div class="filter-field"><label for="review-archive">Zakres</label><select id="review-archive" name="archive"><option value="current" {% if selected_archive == 'current' %}selected{% endif %}>Bieżące</option><option value="archived" {% if selected_archive == 'archived' %}selected{% endif %}>Archiwalne</option><option value="all" {% if selected_archive == 'all' %}selected{% endif %}>Wszystkie</option></select></div>
+<div class="filter-field author-search-field">
                 <label for="reviewer-query">Wyszukaj</label>
                 <input
                     id="reviewer-query"
@@ -156,7 +157,7 @@
         <p class="form-help">
             Zakres dat dotyczy ostatniej zmiany oceny. Po jego ustawieniu
             przydziały bez daty oceny nie pojawią się w wynikach.
-            Lista wyboru osób obejmuje aktywnych recenzentów;
+            Lista wyboru osób uwzględnia wybrany zakres;
             raport zachowuje również wcześniejsze przydziały.
         </p>
     </section>
@@ -200,13 +201,16 @@
                                 {{ row.anthology_title|default:"Brak antologii" }}
                             </td>
 
-                            <td data-copy-value="{{ row.title }}">
+                            <td data-double-copy data-copy-value="{{ row.title }}">
+                                {% if not row.is_archived or can_view_authors %}
                                 <a
                                     href="{% url 'core:assigned_review_detail' row.review_id %}"
                                     class="text-title-link"
                                 >
                                     <strong>{{ row.title }}</strong>
                                 </a>
+                                {% else %}<strong>{{ row.title }}</strong>{% endif %}
+                                {% if row.is_archived %}<span class="muted-text">Archiwalna</span>{% endif %}
                             </td>
 
                             {% if can_view_authors %}

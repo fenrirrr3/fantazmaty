@@ -386,6 +386,7 @@ class ReviewAdminForm(NormalizedFormMixin, forms.ModelForm):
         "is_hidden",
             "status",
             "author_notified_at",
+            "decision_at",
             "copied_text",
         )
 
@@ -393,6 +394,8 @@ class ReviewAdminForm(NormalizedFormMixin, forms.ModelForm):
         super().__init__(*args, **kwargs)
 
         self.submission_warnings = []
+        if self.instance._state.adding and "anthology" in self.fields:
+            self.fields["anthology"].queryset = Anthology.objects.exclude(status=Anthology.Status.PUBLISHED).order_by("title", "pk")
 
         # Dane zostaną uzupełnione po stronie serwera po wyborze autora.
         # Bez powiązanego autora pozostają wymagane w clean().
@@ -514,12 +517,15 @@ class ReviewAssignmentAdminForm(forms.ModelForm):
         fields = (
             "position",
             "user",
+            "historical_person",
             "opinion",
             "notes",
         )
 
     def clean_user(self):
         user = self.cleaned_data.get("user")
+        if self.instance.review_id and self.instance.review.old_reviews:
+            return user
 
         if user is None:
             if self.instance._state.adding:
@@ -617,26 +623,8 @@ class ReviewAssignmentInlineFormSet(BaseInlineFormSet):
 
 
 class ArchivedReviewInlineMixin(SuperuserOnlyAdminMixin):
-    def parent_is_archived(self, obj):
-        return bool(obj is not None and obj.old_reviews)
-
-    def has_add_permission(self, request, obj=None):
-        return (
-            not self.parent_is_archived(obj)
-            and super().has_add_permission(request, obj)
-        )
-
-    def has_change_permission(self, request, obj=None):
-        return (
-            not self.parent_is_archived(obj)
-            and super().has_change_permission(request, obj)
-        )
-
-    def has_delete_permission(self, request, obj=None):
-        return (
-            not self.parent_is_archived(obj)
-            and super().has_delete_permission(request, obj)
-        )
+    """Archive can be corrected only in the superuser administration panel."""
+    pass
 
 
 class ReviewersInline(ArchivedReviewInlineMixin, admin.StackedInline):
@@ -678,7 +666,6 @@ class ReviewAssignmentInline(
         "opinion_changed_at",
     )
     readonly_fields = (
-        "historical_person",
         "assigned_at",
         "opinion_changed_at",
     )
@@ -691,6 +678,29 @@ class ReviewAssignmentInline(
             .get_queryset(request)
             .select_related("review", "user")
         )
+
+    def get_formset(self, request, obj=None, **kwargs):
+        formset = super().get_formset(request, obj, **kwargs)
+        if obj and obj.old_reviews:
+            base_form = formset.form
+            class HistoricalAssignmentForm(base_form):
+                def clean_user(self):
+                    return self.cleaned_data.get("user")
+
+                def clean(self):
+                    data = super().clean()
+                    if self.instance._state.adding and not data.get("user") and not data.get("historical_person") and not data.get("DELETE"):
+                        raise forms.ValidationError("Wybierz konto lub historyczny profil recenzenta.")
+                    return data
+
+                def save(self, commit=True):
+                    if self.instance._state.adding:
+                        self.instance.assigned_at = None
+                        self.instance.opinion_changed_at = None
+                    return super().save(commit=commit)
+            formset.form = HistoricalAssignmentForm
+        return formset
+
 
 
 @admin.register(Review)
@@ -811,6 +821,11 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     class Media:
         js = ("texts/admin/review_author_autofill.js",)
 
+    def get_readonly_fields(self, request, obj=None):
+        if obj and obj.old_reviews:
+            return ("created_at",)
+        return super().get_readonly_fields(request, obj)
+
     def get_urls(self):
         return [
             path(
@@ -916,7 +931,7 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             Review.Status.WITHDRAWN,
         }
 
-        if not change or "status" in form.changed_data:
+        if not obj.old_reviews and (not change or "status" in form.changed_data):
             obj.decision_at = (
                 timezone.localdate()
                 if obj.status in decision_statuses

@@ -166,6 +166,8 @@ class AnthologyTaskAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
 class ServiceOwnedReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     """Zmiana przydziałów wymaga blokad i walidacji w widoku zgłoszenia."""
+    actions = None
+
     def get_readonly_fields(self, request, obj=None):
         return tuple(field.name for field in self.model._meta.fields)
 
@@ -176,7 +178,7 @@ class ServiceOwnedReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         return False
 
     def has_delete_permission(self, request, obj=None):
-        return False
+        return bool(self.has_superuser_access(request) and obj is not None and obj.review.old_reviews)
 
 
 @admin.register(ReviewAssignment)

@@ -26,7 +26,7 @@
                     rel="prev"
                     aria-label="Przejdź do poprzedniej strony"
                 >
-                    Poprzednia
+                    <span aria-hidden="true">←</span><span class="visually-hidden">Poprzednia strona</span>
                 </a>
             {% endif %}
 
@@ -45,7 +45,7 @@
                     rel="next"
                     aria-label="Przejdź do następnej strony"
                 >
-                    Następna
+                    <span aria-hidden="true">→</span><span class="visually-hidden">Następna strona</span>
                 </a>
 
                 {% if page_obj.next_page_number < page_obj.paginator.num_pages %}

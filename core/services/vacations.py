@@ -236,3 +236,12 @@ def finish_vacation(*, user, vacation_id):
 
     _sync_person_leave(person, now=now)
     return vacation
+
+@transaction.atomic
+def cancel_planned_vacation(*, user, vacation_id):
+    person, vacation = _lock_vacation(user, vacation_id)
+    now = timezone.now()
+    if vacation.start_date <= timezone.localdate(now):
+        raise ValidationError("Odwołać można wyłącznie urlop, który jeszcze się nie rozpoczął.")
+    vacation.delete()
+    _sync_person_leave(person, now=now)

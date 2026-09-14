@@ -139,3 +139,43 @@ def release_hidden_review(request, review_id):
         review.save(update_fields=("is_hidden", "status", "decision_at", "author_notified_at"))
         messages.success(request, "Przywrócono widoczność zgłoszenia. Oznaczenie autora na czarnej liście możesz osobno poprawić w panelu.")
     return redirect("core:assigned_review_detail", review_id=review.pk)
+
+
+@never_cache
+@login_required
+@require_http_methods(["GET", "POST"])
+@team_member_required
+@transaction.atomic
+def correction_edit(request, pk):
+    item = get_object_or_404(AnthologyCorrection.objects.select_for_update(), pk=pk, submitted_by=request.user)
+    version = item.updated_at.isoformat()
+    if request.method == "POST" and request.POST.get("version") != version:
+        return render(request, "core/edit_conflict.html", status=409)
+    form = CorrectionForm(request.POST if request.method == "POST" else None, instance=item)
+    if request.method == "POST" and form.is_valid():
+        selected = form.cleaned_data.get("text")
+        if selected:
+            selected = get_object_or_404(Text.objects.select_for_update(), pk=selected.pk)
+        if selected and selected.anthology_id != form.cleaned_data["anthology"].pk:
+            form.add_error("text", "Opowiadanie zmieniło antologię. Wybierz je ponownie.")
+        else:
+            if selected:
+                form.instance.story_title = selected.title
+            form.save()
+            messages.success(request, "Zapisano zmiany uwagi.")
+            return redirect("core:anthology_corrections")
+    return render(request, "core/correction_edit.html", {"form": form, "item": item, "version": version}, status=400 if request.method == "POST" else 200)
+
+
+@never_cache
+@login_required
+@require_POST
+@team_member_required
+@transaction.atomic
+def correction_delete(request, pk):
+    item = get_object_or_404(AnthologyCorrection.objects.select_for_update(), pk=pk, submitted_by=request.user)
+    if request.POST.get("version") != item.updated_at.isoformat():
+        return render(request, "core/edit_conflict.html", status=409)
+    item.delete()
+    messages.success(request, "Usunięto uwagę.")
+    return redirect("core:anthology_corrections")

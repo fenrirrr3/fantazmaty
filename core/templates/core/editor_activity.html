@@ -187,7 +187,7 @@
                                 {{ row.anthology_title|default:"Brak antologii" }}
                             </td>
 
-                            <td data-copy-value="{{ row.title }}">
+                            <td data-double-copy data-copy-value="{{ row.title }}">
                                 <a
                                     href="{% url 'core:assigned_text_detail' row.text_id %}"
                                     class="text-title-link"

@@ -13,6 +13,7 @@ from core.permissions import (
 )
 from core.selectors.people import user_leave_information
 from people.models import Person, Role
+from texts.models import ReviewAssignment
 from workflow.models import WorkflowRoleAssignment, WorkflowStage
 from workflow.services import STAGE_ROLES
 
@@ -288,7 +289,7 @@ def people_list(request):
 def person_detail(request, person_id):
     # Nieaktywne osoby z historią mają dostępny szczegół; lista aktywnego zespołu pozostaje bez zmian.
     person = get_object_or_404(
-        Person.objects.filter(Q(is_active=True) | Q(historical_text_assignments__text__is_historical=True)).distinct()
+        Person.objects.filter(Q(is_active=True) | Q(historical_text_assignments__text__is_historical=True) | Q(historical_review_assignments__review__old_reviews=True) | Q(user__review_assignments__review__old_reviews=True)).distinct()
         .select_related("user")
         .prefetch_related("roles"),
         pk=person_id,
@@ -307,6 +308,9 @@ def person_detail(request, person_id):
             "person": person,
             "assignments": assignments,
             "person_summary": person_summary,
+            "archived_reviews": ReviewAssignment.objects.filter(review__old_reviews=True).filter(
+                Q(historical_person=person) | (Q(user_id=person.user_id) if person.user_id else Q(pk__in=[]))
+            ).select_related("review__anthology").order_by("review__anthology__title", "review__title", "position"),
             "can_view_authors": include_authors,
             "can_view_team_email": is_coordinator(request.user),
             "can_view_team_dropbox_email": is_superuser(request.user),

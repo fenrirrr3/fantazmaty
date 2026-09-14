@@ -1,6 +1,7 @@
 from django import forms
 from core.models import Recruitment
-from texts.models import Extract
+from texts.models import Extract, Anthology
+from django.urls import reverse
 from texts.admin import ReviewAdminForm
 
 
@@ -41,4 +42,12 @@ class SingleReviewForm(ReviewAdminForm):
         fields = ('author', 'author_first_name', 'author_last_name', 'email', 'phone_number',
                   'title', 'genre', 'length', 'content_warnings', 'anthology')
         widgets = {'content_warnings': forms.Textarea(attrs={'rows': 2, 'class': 'short-textarea'}),
-                   'author': forms.Select(attrs={'data-searchable-select': 'Szukaj autora'})}
+                   'author': forms.Select()}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['anthology'].queryset = Anthology.objects.exclude(status=Anthology.Status.PUBLISHED).order_by('title', 'pk')
+        self.fields['author'].widget.attrs['data-author-search-url'] = reverse('core:author_suggestions')
+        # Keep a native fallback; the enhanced control queries the server.
+        self.fields['author'].label_from_instance = lambda author: f'{author} ({author.pseudonym})' if author.pseudonym else str(author)
+

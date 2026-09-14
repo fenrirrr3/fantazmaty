@@ -250,3 +250,18 @@ def active_vacations(request):
             "now": now,
         },
     )
+
+@never_cache
+@login_required
+@require_POST
+@team_member_required
+def cancel_vacation(request, vacation_id):
+    from core.services.vacations import cancel_planned_vacation
+    vacation = get_object_or_404(_manageable_vacations(request.user), pk=vacation_id)
+    try:
+        cancel_planned_vacation(user=request.user, vacation_id=vacation.pk)
+    except ValidationError as error:
+        messages.error(request, " ".join(error.messages))
+    else:
+        messages.success(request, "Odwołano zaplanowany urlop.")
+    return _vacation_redirect(request.user, vacation)

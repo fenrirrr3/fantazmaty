@@ -10,7 +10,7 @@
     color-scheme: dark;
     --background: #10151c; --surface: #1b2430; --surface-alt: #222d3b;
     --surface-hover: #304056; --border: #44546a; --border-strong: #718399;
-    --text: #f1f4f8; --muted: #bdcada; --primary: #85bdff;
+    --text: #dce2ea; --muted: #b2becc; --primary: #85bdff;
     --primary-dark: #acd2ff; --primary-light: #243e60; --header: #111c2a;
     --table-header: #2a394d; --success: #9ee1b7; --success-light: #203f32;
     --danger: #ffadb5; --danger-dark: #ffc8ce; --danger-light: #482d36;
@@ -80,3 +80,9 @@ section:has(#active-stages-heading), section:has(#reserved-assignments-heading) 
     .people-filters-form { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
     .people-filters-form > .filter-actions { grid-column: 1 / -1; }
 }
+
+.author-suggestions { display:grid; max-height:280px; overflow:auto; background:var(--surface); }
+.author-suggestions:empty { display:none; }
+.author-suggestions button { text-align:left; background:var(--surface); color:var(--text); border:1px solid var(--border); padding:10px; cursor:pointer; }
+.author-suggestions button:hover, .author-suggestions button[aria-selected="true"] { background:var(--primary-light); }
+.visually-hidden { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
