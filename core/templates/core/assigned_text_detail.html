@@ -16,7 +16,7 @@
                         Tekst bez antologii
                     {% endif %}
                 </p>
-                <h1 class="page-title">{{ text.title }}</h1>
+                <h1 class="page-title" data-double-copy data-copy-value="{{ text.title }}">{{ text.title }}</h1>
                 <p class="page-description">
                     
                 </p>
@@ -46,6 +46,7 @@
 
     <section class="details-card" aria-labelledby="text-information-heading">
         <h2 id="text-information-heading">Informacje o tekście</h2>
+        {% if author_emails %}<div class="detail-item"><strong>E-mail autora</strong><p>{% for email in author_emails %}<a href="mailto:{{ email }}" data-double-copy data-copy-value="{{ email }}">{{ email }}</a>{% if not forloop.last %}<br>{% endif %}{% endfor %}</p></div>{% endif %}
 
         <dl class="details-grid">
             <div class="detail-item">
@@ -199,19 +200,6 @@
                                     class="complete-stage-form"
                                 >
                                     {% csrf_token %}
-                                    <div class="form-field">
-                                        <label for="end-stage-{{ stage.pk }}">Data zakończenia</label>
-                                        <input
-                                            id="end-stage-{{ stage.pk }}"
-                                            type="date"
-                                            name="ended_at"
-                                            class="stage-date-input"
-                                            value="{{ today_iso }}"
-                                            min="{{ stage.started_at|date:'Y-m-d' }}"
-                                            max="{{ today_iso }}"
-                                            required
-                                        >
-                                    </div>
                                     <button type="submit" class="complete-stage-button">
                                         Zakończ etap
                                     </button>
@@ -489,6 +477,10 @@
                         <span class="dropdown-arrow" aria-hidden="true">▾</span>
                     </summary>
                     <div class="text-note-content">{{ note.content|linebreaksbr }}</div>
+                    {% if note.can_manage %}<div class="text-note-actions">
+                        <a class="secondary-button" href="{% url 'core:edit_text_note' text.pk note.pk %}">Edytuj</a>
+                        <form method="post" action="{% url 'core:delete_text_note' text.pk note.pk %}" data-confirm-delete="Usunąć tę notatkę?">{% csrf_token %}<button class="secondary-button" type="submit">Usuń</button></form>
+                    </div>{% endif %}
                 </details>
             {% empty %}
                 <div class="empty-text-notes">Nie dodano jeszcze żadnej notatki.</div>

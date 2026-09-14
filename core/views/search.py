@@ -182,18 +182,6 @@ def _search_authors(query):
 def _search_people(query):
     people = (
         Person.objects.filter(is_active=True)
-        .filter(
-            _matching_terms(
-                query,
-                (
-                    "first_name",
-                    "last_name",
-                    "email",
-                    "dropbox_email",
-                    "roles__name",
-                ),
-            )
-        )
         .prefetch_related(
             Prefetch(
                 "roles",
@@ -204,6 +192,8 @@ def _search_people(query):
         .order_by("last_name", "first_name", "pk")
     )
 
+    from core.search_people import rank_people
+    people = rank_people(people, query)
     return [
         _NamedResult(
             pk=person.pk,

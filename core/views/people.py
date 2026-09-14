@@ -211,7 +211,7 @@ def _profile_assignments(person, *, include_authors):
 @require_GET
 @team_member_required
 def people_list(request):
-    can_view_email = is_coordinator(request.user)
+    can_view_email = True
     can_view_dropbox_email = is_superuser(request.user)
     form = PeopleFilterForm(_filter_data(request))
     if not can_view_email:
@@ -234,13 +234,8 @@ def people_list(request):
             else []
         )
 
-        for term in query.split():
-            match = Q(first_name__plcontains=term) | Q(last_name__plcontains=term)
-            if can_view_email:
-                match |= Q(email__plcontains=term)
-            if can_view_dropbox_email:
-                match |= Q(dropbox_email__plcontains=term)
-            people = people.filter(match)
+        from core.search_people import rank_people
+        people = rank_people(people, query)
 
         # Zachowaj również role bez przypisanych osób, w tym nowego Składacza.
         form.fields['roles'].queryset = ordered_team_roles()
@@ -276,7 +271,7 @@ def people_list(request):
             "can_view_authors": can_view_author_data(request.user),
             "can_view_team_email": can_view_email,
             "can_view_team_dropbox_email": can_view_dropbox_email,
-            "people_column_count": 3 + int(can_view_email) + int(can_view_dropbox_email),
+            "people_column_count": 3,
         },
         status=400 if form.errors else 200,
     )
@@ -312,7 +307,7 @@ def person_detail(request, person_id):
                 Q(historical_person=person) | (Q(user_id=person.user_id) if person.user_id else Q(pk__in=[]))
             ).select_related("review__anthology").order_by("review__anthology__title", "review__title", "position"),
             "can_view_authors": include_authors,
-            "can_view_team_email": is_coordinator(request.user),
+            "can_view_team_email": True,
             "can_view_team_dropbox_email": is_superuser(request.user),
             "leave_information": (
                 user_leave_information(person.user)

@@ -89,8 +89,7 @@
                         <th scope="col">Imię i nazwisko</th>
                         <th scope="col">Role</th>
                         {% if can_view_team_email %}<th scope="col">Adres e-mail</th>{% endif %}
-                        {% if can_view_team_dropbox_email %}<th scope="col">E-mail Dropboxa</th>{% endif %}
-                        <th scope="col" data-copy="false">Szczegóły</th>
+                        
                     </tr>
                 </thead>
 
@@ -122,12 +121,12 @@
                                 </div>
 
                                 {% if person.is_coordinator %}
-                                    <span class="role-badge" data-palette="coordinator">Koordynator zespołu</span>
+                                    <span class="role-badge" data-palette="coordinator">Koordynator</span>
                                 {% endif %}
                             </td>
 
                             {% if can_view_team_email %}
-                            <td class="email-cell" data-copy-value="{{ person.email }}">
+                            <td class="email-cell" data-double-copy data-copy-value="{{ person.email }}">
                                 {% if person.email %}
                                     <a href="mailto:{{ person.email }}" class="detail-link">
                                         {{ person.email }}
@@ -138,30 +137,6 @@
                             </td>
                             {% endif %}
 
-                            {% if can_view_team_dropbox_email %}
-                            <td class="email-cell" data-copy-value="{{ person.dropbox_email }}">
-                                {% if person.dropbox_email %}
-                                    <a
-                                        href="mailto:{{ person.dropbox_email }}"
-                                        class="detail-link"
-                                    >
-                                        {{ person.dropbox_email }}
-                                    </a>
-                                {% else %}
-                                    <span class="muted-text">Nie podano</span>
-                                {% endif %}
-                            </td>
-                            {% endif %}
-
-                            <td data-copy="false">
-                                <a
-                                    href="{% url 'core:person_detail' person.pk %}"
-                                    class="secondary-button"
-                                    aria-label="Otwórz profil: {{ person.first_name }} {{ person.last_name }}"
-                                >
-                                    Otwórz
-                                </a>
-                            </td>
                         </tr>
                     {% empty %}
                         <tr>

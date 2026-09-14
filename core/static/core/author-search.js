@@ -19,7 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let option = [...select.options].find(o => o.value === String(item.id));
             if (!option) { option = new Option(item.label, item.id); select.add(option); }
             select.value = String(item.id); input.value = item.label;
-            for (const [field, value] of Object.entries({author_first_name:item.first_name, author_last_name:item.last_name, email:item.email})) {
+            for (const [field, value] of Object.entries({author_first_name:item.first_name, author_last_name:item.last_name, email:item.email, phone_number:item.phone_number})) {
                 const target = select.form.elements.namedItem(field);
                 if (target) { target.value = value || ''; target.dispatchEvent(new Event('input', {bubbles:true})); }
             }

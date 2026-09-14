@@ -1,3 +1,4 @@
+from core.author_contact import stored_author_phone
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
@@ -130,7 +131,7 @@ def author_suggestions(request):
                                  Q(pseudonym__plcontains=term) | Q(email__plcontains=term))
     results = [{'id': author.pk, 'label': f'{author} — {author.pseudonym}' if author.pseudonym else str(author),
                 'first_name': author.first_name, 'last_name': author.last_name,
-                'email': author.email or ''} for author in authors.order_by('last_name', 'first_name', 'pk')[:20]]
+                'email': author.email or '', 'phone_number': stored_author_phone(author)} for author in authors.order_by('last_name', 'first_name', 'pk')[:20]]
     response = JsonResponse({'results': results})
     response['Cache-Control'] = 'no-store, private'
     return response

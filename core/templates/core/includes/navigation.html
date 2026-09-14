@@ -2,6 +2,7 @@
 {% illustrations_allowed user as show_illustrations %}
 {% coordinator_allowed user as can_coordinate %}
 {% reviewer_allowed user as show_my_reviews %}
+{% account_person user as own_person %}
 {% if user.is_authenticated and user.is_active %}
     <aside
         id="site-sidebar"
@@ -12,7 +13,7 @@
             <p class="sidebar-heading">Konto</p>
 
             <p>
-                <strong>{% firstof user.get_full_name "Nieuzupełnione dane" %}</strong>
+                {% if own_person %}<a class="detail-link" href="{% url 'core:person_detail' own_person.pk %}"><strong>{{ own_person.first_name }} {{ own_person.last_name }}</strong></a>{% else %}<strong>{% firstof user.get_full_name user.email user.username %}</strong>{% endif %}
             </p>
 
             {% if user.is_staff %}
@@ -137,7 +138,7 @@
                             class="sidebar-link"
                             {% if current == 'people_list' or current == 'person_detail' %}aria-current="page"{% endif %}
                         >
-                            Osoby w zespole
+                            Zespół
                         </a>
 
                         <a
@@ -207,6 +208,7 @@
                 </button>
             </form>
                     </div>
+                    {% if user.is_superuser %}<div class="sidebar-section"><a class="sidebar-link" href="{% url 'core:user_activity' %}" {% if current == 'user_activity' %}aria-current="page"{% endif %}>Aktywność użytkowników</a></div>{% endif %}
                 </nav>
             {% endif %}
         {% endwith %}

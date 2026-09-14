@@ -19,8 +19,12 @@ app_name = "core"
 
 
 from core.views.programs import programs
+from core.views.activity import user_activity
 
 urlpatterns = [
+    path("aktywnosc-uzytkownikow/", user_activity, name="user_activity"),
+    path("teksty/<int:text_id>/notatki/<int:note_id>/edytuj/", texts.edit_text_note, name="edit_text_note"),
+    path("teksty/<int:text_id>/notatki/<int:note_id>/usun/", texts.delete_text_note, name="delete_text_note"),
     path("programy/", programs, name="programs"),
     path("autorzy/sugestie/", intake.author_suggestions, name="author_suggestions"),
     path("moje-urlopy/<int:vacation_id>/odwolaj/", vacations.cancel_vacation, name="cancel_vacation"),

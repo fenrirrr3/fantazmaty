@@ -1,4 +1,26 @@
 document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.dashboard-list').forEach((list, index) => {
+        const rest = [...list.children].slice(6);
+        if (!rest.length) return;
+        list.id ||= `dashboard-list-${index}`;
+        rest.forEach(item => { item.hidden = true; });
+        const button = document.createElement('button');
+        button.type = 'button'; button.className = 'secondary-button dashboard-expand';
+        button.setAttribute('aria-controls', list.id); button.setAttribute('aria-expanded', 'false');
+        button.textContent = `Pokaż pozostałe (${rest.length})`;
+        button.addEventListener('click', () => {
+            const open = button.getAttribute('aria-expanded') !== 'true';
+            rest.forEach(item => { item.hidden = !open; });
+            button.setAttribute('aria-expanded', String(open));
+            button.textContent = open ? 'Zwiń listę' : `Pokaż pozostałe (${rest.length})`;
+        });
+        list.after(button);
+    });
+    document.querySelectorAll('form[data-confirm-delete]').forEach(form => {
+        form.addEventListener('submit', event => {
+            if (!window.confirm(form.dataset.confirmDelete)) event.preventDefault();
+        });
+    });
     const sidebar = document.getElementById('site-sidebar');
     if (sidebar) {
         const key = `fantazmaty:sidebar:${document.body.dataset.userId || ''}`;

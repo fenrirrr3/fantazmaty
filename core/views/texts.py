@@ -4,7 +4,7 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.cache import never_cache
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
 from authors.models import Author
 from core.exports import export_texts_csv
@@ -34,7 +34,7 @@ from core.selectors.texts import (
     text_list_context,
 )
 from core.services.texts import perform_bulk_text_action
-from texts.models import Text
+from texts.models import Text, TextNote
 from workflow.models import WorkflowRoleAssignment
 
 
@@ -118,9 +118,9 @@ def _render_text_detail(request, text, *, bound_forms=None, status=200):
     """
     Selektor przygotowuje historię, przydziały i dostępne akcje.
 
-    Dane autora oraz dane identyfikujące autora recenzji źródłowej
-    mogą trafić do kontekstu wyłącznie dla superusera. Selektor musi
-    stosować tę zasadę również do zagnieżdżonych obiektów.
+    Selektor ogranicza dane autora i recenzji źródłowej do superusera.
+    Widok udostępnia osobno wyłącznie adresy e-mail autorów tego tekstu
+    osobom mającym przy nim przypisanie, również w historii.
     """
     context = text_detail_context(
         user=request.user,
@@ -135,6 +135,12 @@ def _render_text_detail(request, text, *, bound_forms=None, status=200):
         assigned_to_id=request.user.pk,
     ).exists()
     can_contribute = coordinator_access or is_assigned
+    # Only this text's email addresses are revealed, never source-review identity.
+    email_access = can_view_author_data(request.user) or (
+        WorkflowRoleAssignment.objects.filter(text=text, assigned_to=request.user).exists()
+        or text.historical_assignments.filter(person__user=request.user).exists()
+    )
+    context["author_emails"] = list(text.authors.exclude(email__isnull=True).exclude(email="").values_list("email", flat=True)) if email_access else []
 
     context.update(
         {
@@ -479,3 +485,39 @@ def bulk_text_action(request):
         f"Wykonano operację dla {changed_count} tekstów.",
     )
     return redirect("core:text_list")
+
+def _require_note_owner_or_coordinator(user, note):
+    if note.author_id != user.pk and not is_coordinator(user):
+        raise PermissionDenied('Notatkę może zmienić jej autor lub koordynator.')
+
+
+@never_cache
+@login_required
+@require_http_methods(['GET', 'POST'])
+@team_member_required
+def edit_text_note(request, text_id, note_id):
+    with transaction.atomic():
+        text = get_object_or_404(Text.objects.select_for_update(), pk=text_id)
+        note = get_object_or_404(TextNote.objects.select_for_update(), pk=note_id, text=text)
+        _require_note_owner_or_coordinator(request.user, note)
+        form = TextNoteForm(request.POST if request.method == 'POST' else None, instance=note)
+        form.fields["content"].label = "Treść notatki"
+        if request.method == 'POST' and form.is_valid():
+            form.save()
+            messages.success(request, 'Zapisano notatkę.')
+            return redirect('core:assigned_text_detail', text_id=text.pk)
+    return render(request, 'core/text_note_edit.html', {'form': form, 'text': {'pk': text.pk, 'title': text.title}}, status=400 if form.errors else 200)
+
+
+@never_cache
+@login_required
+@require_POST
+@team_member_required
+def delete_text_note(request, text_id, note_id):
+    with transaction.atomic():
+        text = get_object_or_404(Text.objects.select_for_update(), pk=text_id)
+        note = get_object_or_404(TextNote.objects.select_for_update(), pk=note_id, text=text)
+        _require_note_owner_or_coordinator(request.user, note)
+        note.delete()
+    messages.success(request, 'Usunięto notatkę.')
+    return redirect('core:assigned_text_detail', text_id=text.pk)

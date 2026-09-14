@@ -51,3 +51,10 @@ class SingleReviewForm(ReviewAdminForm):
         # Keep a native fallback; the enhanced control queries the server.
         self.fields['author'].label_from_instance = lambda author: f'{author} ({author.pseudonym})' if author.pseudonym else str(author)
 
+
+    def clean(self):
+        data = super().clean()
+        if data.get("author") and not data.get("phone_number"):
+            from core.author_contact import stored_author_phone
+            data["phone_number"] = stored_author_phone(data["author"])
+        return data

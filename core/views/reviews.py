@@ -351,6 +351,7 @@ def _render_review_detail(
                 if own_assignment
                 else None
             ),
+            "user_opinion_value": own_assignment.opinion if own_assignment else "",
             "user_status_date": (
                 own_assignment.opinion_changed_at
                 if own_assignment
@@ -848,14 +849,20 @@ def bulk_review_action(request):
 @require_GET
 @team_member_required
 def my_reviews(request):
-    from core.permissions import is_reviewer
+    from core.permissions import can_view_my_reviews
     from django.core.exceptions import PermissionDenied
-    if not is_reviewer(request.user):
+    if not can_view_my_reviews(request.user):
         raise PermissionDenied("Moje recenzje są dostępne tylko dla recenzentów.")
     view = request.GET.get("view", "active")
-    if view not in {"active", "waiting", "completed", "all"}:
+    if view not in {"active", "waiting", "completed", "all", "archived"}:
         view = "active"
-    rows = ReviewAssignment.objects.filter(user=request.user, review__old_reviews=False, review__is_hidden=False).select_related("review__anthology").order_by("-assigned_at", "-pk")
+    if view == "archived":
+        rows = ReviewAssignment.objects.filter(
+            Q(user=request.user) | Q(historical_person__user=request.user),
+            review__old_reviews=True,
+        ).select_related("review__anthology").order_by("review__anthology__title", "review__title", "pk")
+    else:
+        rows = ReviewAssignment.objects.filter(user=request.user, review__old_reviews=False, review__is_hidden=False).select_related("review__anthology").order_by("-assigned_at", "-pk")
     if view == "active":
         rows = rows.filter(opinion="reading", review__status__in=("new", "in_review"))
     elif view == "waiting":

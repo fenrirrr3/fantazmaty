@@ -27,9 +27,7 @@
 [data-palette="styling"] { --palette-bg: var(--styling-bg); --palette-fg: var(--styling-fg); }
 [data-palette="ready"] { --palette-bg: var(--ready-bg); --palette-fg: var(--ready-fg); }
 .role-badge[data-palette], .workflow-stage-badge[data-palette] { background: var(--palette-bg); color: var(--palette-fg); border-color: currentColor; }
-.workflow-stage-row[data-palette] > td { background: var(--surface); }
 .workflow-stage-row[data-palette] > td:first-child { border-left: 3px solid var(--palette-fg); }
-.workflow-stage-row[data-palette]:hover > td { background: var(--palette-bg); }
 .notes-editor-grid > .notes-editor-panel { padding: 16px; border: 1px solid var(--border); }
 .notes-editor-grid > .notes-editor-panel h3 { margin: 0 0 14px; min-height: 2.5em; }
 .notes-editor-grid > .notes-editor-panel label { display: block; min-height: 2.5em; }

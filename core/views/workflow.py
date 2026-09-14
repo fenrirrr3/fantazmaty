@@ -150,7 +150,10 @@ def workflow_list(request):
 @team_member_required
 def complete_workflow_stage(request, stage_id):
     stage = _get_current_stage(stage_id)
-    form = CompleteStageForm(request.POST, stage=stage)
+    data = request.POST.copy()
+    if not data.get("ended_at"):
+        data["ended_at"] = timezone.localdate().isoformat()
+    form = CompleteStageForm(data, stage=stage)
 
     if not form.is_valid():
         messages.error(request, _form_error_message(form))
@@ -264,6 +267,7 @@ def take_workflow_stage(request, stage_id):
             )
         else:
             messages.success(request, "Przypisano ci etap.")
+        return _detail_redirect(stage.text_id)
 
     return redirect("core:available_texts")
 

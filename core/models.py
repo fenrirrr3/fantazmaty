@@ -101,3 +101,22 @@ class Recruitment(models.Model):
 
     def __str__(self):
         return self.full_name
+
+
+class UserActivity(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='cms_activities', verbose_name='użytkownik')
+    actor = models.CharField('konto', max_length=254)
+    created_at = models.DateTimeField('czas', auto_now_add=True, db_index=True)
+    method = models.CharField('metoda', max_length=10)
+    action = models.CharField('działanie', max_length=255)
+    target = models.CharField('obiekt', max_length=255, blank=True)
+    path = models.CharField('ścieżka', max_length=1000)
+    status_code = models.PositiveSmallIntegerField('wynik HTTP')
+
+    class Meta:
+        ordering = ('-created_at', '-pk')
+        verbose_name = 'aktywność użytkownika'
+        verbose_name_plural = 'aktywności użytkowników'
+
+    def __str__(self):
+        return f'{self.actor}: {self.action}'

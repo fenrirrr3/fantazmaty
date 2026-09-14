@@ -894,6 +894,7 @@ def text_detail_context(*, user, text):
         {
             "pk": note.pk,
             "author": _user_data(note.author),
+            "can_manage": coordinator or note.author_id == user.pk,
             "content": note.content,
             "is_important": note.is_important,
             "created_at": note.created_at,

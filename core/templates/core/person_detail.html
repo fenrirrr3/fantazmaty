@@ -14,7 +14,7 @@
                     {{ person.first_name }} {{ person.last_name }}
                 </h1>
                 {% if person.is_coordinator %}
-                    <p class="page-description">Koordynator zespołu</p>
+                    <p class="page-description">Koordynator</p>
                 {% endif %}
             </div>
 
@@ -56,7 +56,7 @@
                 <dt>Adres e-mail</dt>
                 <dd>
                     {% if person.email %}
-                        <a href="mailto:{{ person.email }}" class="detail-link">
+                        <a href="mailto:{{ person.email }}" data-double-copy data-copy-value="{{ person.email }}" class="detail-link">
                             {{ person.email }}
                         </a>
                     {% else %}
@@ -291,6 +291,6 @@
 {% if archived_reviews %}
 <section class="details-card"><h2>Archiwalne recenzje</h2>
 <div class="table-container"><table><thead><tr><th>Tytuł</th><th>Antologia</th><th>Opinia</th><th>Data opinii</th></tr></thead><tbody>
-{% for assignment in archived_reviews %}<tr><td data-double-copy><strong>{% if user.is_superuser %}<a href="{% url 'core:assigned_review_detail' assignment.review_id %}">{{ assignment.review.title }}</a>{% else %}{{ assignment.review.title }}{% endif %}</strong></td><td>{{ assignment.review.anthology.title }}</td><td>{{ assignment.get_opinion_display }}</td><td>{{ assignment.opinion_changed_at|date:"d.m.Y"|default:"—" }}</td></tr>{% endfor %}
+{% for assignment in archived_reviews %}<tr><td data-double-copy><strong>{% if user.is_superuser %}<a href="{% url 'core:assigned_review_detail' assignment.review_id %}">{{ assignment.review.title }}</a>{% else %}{{ assignment.review.title }}{% endif %}</strong></td><td>{{ assignment.review.anthology.title }}</td><td><span class="reviewer-bubble reviewer-opinion-{{ assignment.opinion }}">{{ assignment.get_opinion_display }}</span></td><td>{{ assignment.opinion_changed_at|date:"d.m.Y"|default:"—" }}</td></tr>{% endfor %}
 </tbody></table></div></section>{% endif %}
 {% endblock %}

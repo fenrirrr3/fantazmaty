@@ -42,3 +42,22 @@ section[aria-labelledby="dashboard-search-heading"] { margin-top:28px; }
 .dashboard-grid .role-badge { border:1px solid var(--border-strong); }
 #nowa-uwaga { padding-inline:18px; }
 .filters-form[aria-busy="true"] { opacity:.75; }
+
+/* One zebra palette for all cells, including sticky titles and workflow rows. */
+table > tbody > tr:nth-child(odd) > :is(td, th) { background:var(--surface); }
+table > tbody > tr:nth-child(even) > :is(td, th) { background:var(--surface-alt); }
+table > tbody > tr:hover > :is(td, th), table > tbody > tr:focus-within > :is(td, th) { background:var(--surface-hover); }
+table > tbody > tr:has(input[type="checkbox"]:checked) > :is(td, th) { background:var(--primary-light); }
+/* Cell backgrounds must remain opaque when horizontally scrolled. */
+.table-container tbody tr:nth-child(odd) .sticky-title { background:var(--surface); }
+.table-container tbody tr:nth-child(even) .sticky-title { background:var(--surface-alt); }
+.table-container tbody tr:hover .sticky-title, .table-container tbody tr:focus-within .sticky-title { background:var(--surface-hover); }
+.table-container tbody tr:has(input[type="checkbox"]:checked) .sticky-title { background:var(--primary-light); }
+.reviewer-bubble.reviewer-opinion-yes, .reviewer-bubble.reviewer-opinion-yes_maybe { background:var(--success-light); color:var(--success); border-color:var(--success); }
+.reviewer-bubble.reviewer-opinion-maybe { background:var(--warning-light); color:var(--warning); border-color:var(--warning); }
+.reviewer-bubble.reviewer-opinion-no, .reviewer-bubble.reviewer-opinion-maybe_no { background:var(--danger-light); color:var(--danger-dark); border-color:var(--danger); }
+.dashboard-list-item[hidden] { display:none; }
+.dashboard-expand { margin:0 16px 16px; }
+.text-note-actions { display:flex; gap:10px; align-items:center; padding:12px 16px; }
+.text-note-actions form { margin:0; }
+[data-double-copy] { cursor:copy; }

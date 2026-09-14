@@ -227,7 +227,7 @@
 
                 {% if user_status %}
                     <p class="muted-text">
-                        Zapisana ocena: {{ user_status }}
+                        Zapisana ocena: <span class="reviewer-bubble reviewer-opinion-{{ user_opinion_value }}">{{ user_status }}</span>
                         {% if user_status_date %}
                             · {{ user_status_date|date:"d.m.Y" }}
                         {% endif %}
@@ -299,7 +299,7 @@
             <section class="card review-locked-card" aria-labelledby="saved-opinion-heading">
                 <h2 id="saved-opinion-heading">Twoja zapisana opinia</h2>
                 <p>
-                    <strong>{{ user_status }}</strong>
+                    <strong class="reviewer-bubble reviewer-opinion-{{ user_opinion_value }}">{{ user_status }}</strong>
                     {% if user_status_date %}
                         <span class="muted-text">{{ user_status_date|date:"d.m.Y" }}</span>
                     {% endif %}

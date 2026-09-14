@@ -285,3 +285,15 @@ def is_reviewer_only(user):
         return False
     names = set(person.roles.values_list("name", flat=True)) | set(user.groups.values_list("name", flat=True))
     return {name.casefold().strip() for name in names} == {"recenzent"}
+
+
+def can_view_my_reviews(user):
+    if not is_team_member(user):
+        return False
+    if is_reviewer(user):
+        return True
+    from django.db.models import Q
+    from texts.models import ReviewAssignment
+    return ReviewAssignment.objects.filter(
+        Q(user=user) | Q(historical_person__user=user), review__old_reviews=True,
+    ).exists()

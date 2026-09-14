@@ -250,8 +250,8 @@
     }
 
     function doubleCopyCellFrom(target) {
-        const cell = copyCellFrom(target);
-        return cell && cell.matches("[data-double-copy]") ? cell : null;
+        if (!target || target.closest("input,textarea,select,button,summary,[data-copy='false']")) return null;
+        return target.closest("[data-double-copy]");
     }
 
     function cancelLink(link) {

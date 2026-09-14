@@ -757,8 +757,8 @@ class GlobalSearchForm(forms.Form):
     query = forms.CharField(
         label="Wyszukaj w CMS-ie",
         max_length=255,
-        widget=forms.SearchInput(
-            attrs={
+        widget=forms.TextInput(
+            attrs={"type": "search",
                 "class": "global-search-input",
                 "placeholder": "Tytuł, antologia lub osoba z zespołu",
                 "autocomplete": "off",
@@ -786,8 +786,8 @@ class PeopleFilterForm(forms.Form):
         label="Szukaj w zespole",
         max_length=255,
         required=False,
-        widget=forms.SearchInput(
-            attrs={
+        widget=forms.TextInput(
+            attrs={"type": "search",
                 "class": "filter-input",
                 "placeholder": "Imię, nazwisko lub e-mail",
             }
