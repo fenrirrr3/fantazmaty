@@ -135,6 +135,9 @@ def _render_text_detail(request, text, *, bound_forms=None, status=200):
         assigned_to_id=request.user.pk,
     ).exists()
     can_contribute = coordinator_access or is_assigned
+    from core.file_forms import TextFileForm
+    context['file_url'] = text.file_url
+    context['text_file_form'] = TextFileForm(instance=text) if can_contribute else None
     # Only this text's email addresses are revealed, never source-review identity.
     email_access = can_view_author_data(request.user) or (
         WorkflowRoleAssignment.objects.filter(text=text, assigned_to=request.user).exists()
@@ -521,3 +524,20 @@ def delete_text_note(request, text_id, note_id):
         note.delete()
     messages.success(request, 'Usunięto notatkę.')
     return redirect('core:assigned_text_detail', text_id=text.pk)
+
+
+@never_cache
+@login_required
+@require_POST
+@team_member_required
+def update_text_file(request, text_id):
+    from core.file_forms import TextFileForm
+    with transaction.atomic():
+        text = get_object_or_404(Text.objects.select_for_update(), pk=text_id)
+        _require_text_contributor(request.user, text)
+        form = TextFileForm(request.POST, instance=text)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Zapisano link do pliku.')
+            return redirect('core:assigned_text_detail', text_id=text.pk)
+    return _render_text_detail(request, text, bound_forms={'text_file_form':form}, status=400)

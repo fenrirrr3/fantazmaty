@@ -150,7 +150,7 @@
                 {% endif %}
             </section>
 
-            {% if can_view_authors %}
+            {% if can_search_authors %}
                 <section class="card" aria-labelledby="search-authors-heading">
                     <header class="section-header">
                         <h2 id="search-authors-heading">Autorzy</h2>
@@ -161,12 +161,7 @@
                         <ul class="search-result-list">
                             {% for author in authors %}
                                 <li class="search-result-item">
-                                    <a
-                                        href="{% url 'core:author_detail' author.pk %}"
-                                        class="detail-link"
-                                    >
-                                        <strong>{{ author }}</strong>
-                                    </a>
+                                    {% if can_view_authors %}<a href="{% url 'core:author_detail' author.pk %}" class="detail-link"><strong>{{ author }}</strong></a>{% else %}<strong>{{ author }}</strong>{% endif %}
 
                                     {% if author.pseudonym %}
                                         <div class="muted-text">

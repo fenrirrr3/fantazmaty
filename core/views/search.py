@@ -1,3 +1,5 @@
+from core.author_access import contact_authors
+from core.permissions import is_coordinator
 from django.contrib.auth.decorators import login_required
 from django.db.models import Prefetch, Q
 from django.shortcuts import render
@@ -160,9 +162,9 @@ def _search_reviews(query, *, include_authors):
     return results
 
 
-def _search_authors(query):
+def _search_authors(query, user):
     authors = (
-        Author.objects.filter(
+        contact_authors(user).filter(
             _matching_terms(
                 query,
                 (
@@ -179,7 +181,7 @@ def _search_authors(query):
     return [_author_data(author) for author in authors[:RESULT_LIMIT]]
 
 
-def _search_people(query):
+def _search_people(query, user):
     people = (
         Person.objects.filter(is_active=True)
         .prefetch_related(
@@ -193,14 +195,15 @@ def _search_people(query):
     )
 
     from core.search_people import rank_people
-    people = rank_people(people, query)
+    people = rank_people(people, query, include_email=is_coordinator(user))
+    allowed_emails = {email.casefold() for email in contact_authors(user).exclude(email__isnull=True).values_list('email', flat=True)}
+    protected_emails = {email.casefold() for email in Author.objects.exclude(email__isnull=True).values_list('email', flat=True)}
     return [
         _NamedResult(
             pk=person.pk,
             first_name=person.first_name,
             last_name=person.last_name,
-            email=person.email,
-            dropbox_email=person.dropbox_email,
+            email=person.email if is_coordinator(user) or (person.email or "").casefold() not in protected_emails or (person.email or "").casefold() in allowed_emails else "",
             roles={
                 "all": [
                     {"pk": role.pk, "name": role.name}
@@ -249,6 +252,7 @@ def global_search(request):
         "people": [],
         "anthologies": [],
         "can_view_authors": include_authors,
+        "can_search_authors": True,
         "can_view_author_data": include_authors,
         "result_limit": RESULT_LIMIT,
     }
@@ -270,9 +274,9 @@ def global_search(request):
                         include_authors=include_authors,
                     ),
                     "authors": (
-                        _search_authors(query) if include_authors else []
+                        _search_authors(query, request.user)
                     ),
-                    "people": _search_people(query),
+                    "people": _search_people(query, request.user),
                     "anthologies": _search_anthologies(query),
                 }
             )

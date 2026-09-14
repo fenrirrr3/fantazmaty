@@ -120,3 +120,20 @@ class UserActivity(models.Model):
 
     def __str__(self):
         return f'{self.actor}: {self.action}'
+
+
+class DiscordDispatch(models.Model):
+    """One submission per token; neither message contents nor webhook secrets are stored."""
+    token = models.UUIDField(unique=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    channel = models.CharField(max_length=100)
+    status = models.CharField(max_length=12, default='pending', choices=(
+        ('pending', 'Wysyłanie / brak potwierdzenia'), ('sent', 'Wysłano'),
+        ('failed', 'Odrzucono'), ('unknown', 'Brak potwierdzenia'),
+    ))
+    message_id = models.CharField(max_length=30, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    class Meta:
+        ordering = ('-created_at', '-pk')
+        verbose_name = 'wysyłka testowa Discord'
+        verbose_name_plural = 'wysyłki testowe Discord'

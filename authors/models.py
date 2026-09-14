@@ -28,6 +28,8 @@ class Author(NormalizedModelMixin, models.Model):
         null=True,
     )
 
+    phone_number = models.CharField("numer telefonu", max_length=50, blank=True)
+
     has_contract = models.BooleanField(
         "umowa",
         default=False,

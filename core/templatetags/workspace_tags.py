@@ -28,6 +28,4 @@ def account_person(user):
     person = Person.objects.filter(user=user).first()
     if person is not None:
         return person
-    email = (user.email or user.get_username()).strip()
-    matches = list(Person.objects.filter(email__iexact=email, is_active=True)[:2]) if email else []
-    return matches[0] if len(matches) == 1 else None
+    return None

@@ -88,6 +88,9 @@ class PersonQuerySet(models.QuerySet):
 
 
 class Person(models.Model):
+    author_profile = models.OneToOneField("authors.Author", null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="team_profile", verbose_name="profil autora", help_text="Opcjonalne, jawne powiązanie. E-mail i pseudonim nie zastępują identyfikatora osoby.")
+
     first_name = models.CharField(
         "imię",
         max_length=100,

@@ -18,7 +18,10 @@ def key(value):
     return ' '.join(unicodedata.normalize('NFKC', value or '').split()).casefold()
 
 
-class Command(BaseCommand):
+from core.import_reporting import ImportReportMixin
+
+
+class Command(ImportReportMixin, BaseCommand):
     help = 'Import tekstów historycznych i osób z JSON; domyślnie podgląd, zapis z --commit.'
 
     def add_arguments(self, parser):
@@ -59,7 +62,7 @@ class Command(BaseCommand):
             raise CommandError(f'LP {getattr(self, "current_row", "?")}: {exc}. Cały import wycofano.') from exc
 
     def resolve_person(self, model, data):
-        allowed = {'id', 'first_name', 'last_name', 'email'} | ({'is_blacklisted', 'contact'} if model is Author else set())
+        allowed = {'id', 'first_name', 'last_name', 'email'} | ({'is_blacklisted', 'contact', 'phone_number', 'pseudonym'} if model is Author else set())
         if not isinstance(data, dict) or set(data) - allowed:
             raise ValueError('Nieznane pola osoby/autora.')
         for field in ('first_name', 'last_name'):
@@ -81,6 +84,7 @@ class Command(BaseCommand):
                 obj = matches[0] if matches else None
                 if obj is None:
                     email = data.get('email') or None
+                    if email == '__CLEAR__': email = None
                     if email and model.objects.filter(email__iexact=email).exists():
                         raise ValueError('E-mail istnieje przy innej osobie; wskaż id zamiast tworzyć duplikat.')
                     obj = model(first_name=data['first_name'], last_name=data['last_name'], email=email)
@@ -99,6 +103,24 @@ class Command(BaseCommand):
         # Explicit source restrictions only; never erase known email or reactivate anyone.
         if model is Author:
             updates = []
+            if not hasattr(self, 'source_author_values'): self.source_author_values = {}
+            for field in ('email', 'phone_number', 'pseudonym', 'is_blacklisted', 'contact'):
+                if field in data and data[field] not in (None, ''):
+                    identity = (obj.pk,field)
+                    if identity in self.source_author_values and self.source_author_values[identity] != data[field]:
+                        raise ValueError(f'Sprzeczne dane autora #{obj.pk}, pole {field}.')
+                    self.source_author_values[identity] = data[field]
+            for field in ('phone_number', 'pseudonym', 'email'):
+                value = data.get(field)
+                if value is None or value == '': continue
+                if not isinstance(value, str): raise ValueError(f'{field} wymaga tekstu.')
+                value = value.strip()
+                if value == '__CLEAR__': value = None if field == 'email' else ''
+                # Updating contact identity requires an explicit author ID.
+                if field == 'email' and not data.get('id'): continue
+                if getattr(obj,field) != value:
+                    setattr(obj,field,value);updates.append(field)
+
             for field in ('is_blacklisted', 'contact'):
                 if field in data:
                     if type(data[field]) is not bool:
@@ -106,6 +128,7 @@ class Command(BaseCommand):
                     if getattr(obj, field) != data[field]:
                         setattr(obj, field, data[field]); updates.append(field)
             if updates:
+                obj.full_clean(exclude=["email"] if obj.email is None else [])
                 obj.save(update_fields=updates)
                 self.counts['aktualizacje_autorow'] += 1
         return obj

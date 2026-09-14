@@ -11,7 +11,10 @@ from texts.extract_data import read_markdown, split_list, normalize_key, author_
 FIELDS = ('full_name', 'email', 'phone_number', 'title', 'submission_dates', 'recruitment', 'accepted_titles', 'rejected_titles')
 
 
-class Command(BaseCommand):
+from core.import_reporting import ImportReportMixin
+
+
+class Command(ImportReportMixin, BaseCommand):
     help = 'Import tabeli Markdown: jeden autor w jednej antologii. Domyślnie próba bez zapisu.'
 
     def add_arguments(self, parser):
@@ -53,6 +56,8 @@ class Command(BaseCommand):
                         author = candidates[0]
                     else:
                         first_name, last_name = author_names(record['full_name'])
+                        if Author.objects.filter(first_name__iexact=first_name,last_name__iexact=last_name).exists():
+                            raise CommandError(f'Wiersz {line}: autor o tym imieniu i nazwisku ma inny e-mail. Sprawdź istniejący profil zamiast tworzyć duplikat.')
                         author = Author(first_name=first_name, last_name=last_name, email=record['email'])
                         author.full_clean()
                         author.save()
@@ -63,7 +68,10 @@ class Command(BaseCommand):
                     item = existing[0] if existing else Extract(author=author)
                     before = {field: getattr(item, field) for field in FIELDS} if existing else None
                     for field in FIELDS:
-                        setattr(item, field, record[field])
+                        value = record[field]
+                        if field == 'phone_number':
+                            value = '' if value == '__CLEAR__' else value or (item.phone_number if existing else '')
+                        setattr(item, field, value)
                     item.full_clean()
                     after = {field: getattr(item, field) for field in FIELDS}
                     if before == after:

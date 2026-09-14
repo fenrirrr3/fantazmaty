@@ -46,6 +46,9 @@
 
     <section class="details-card" aria-labelledby="text-information-heading">
         <h2 id="text-information-heading">Informacje o tekście</h2>
+        <div class="text-file-panel"><strong>Aktualny plik</strong>
+        {% if file_url %}<p><a class="primary-button" href="{{ file_url }}" target="_blank" rel="noopener noreferrer">Otwórz plik lub folder</a></p>{% else %}<p>Nie dodano linku do pliku.</p>{% endif %}
+        {% if text_file_form %}<details><summary>Zmień link</summary><form method="post" action="{% url 'core:update_text_file' text.pk %}" data-warn-unsaved>{% csrf_token %}{{ text_file_form.as_p }}<button type="submit" class="secondary-button">Zapisz link</button></form></details>{% endif %}</div>
         {% if author_emails %}<div class="detail-item"><strong>E-mail autora</strong><p>{% for email in author_emails %}<a href="mailto:{{ email }}" data-double-copy data-copy-value="{{ email }}">{{ email }}</a>{% if not forloop.last %}<br>{% endif %}{% endfor %}</p></div>{% endif %}
 
         <dl class="details-grid">
@@ -187,11 +190,11 @@
             <div class="editing-control-content">
                 {% for stage in stages %}
                     {% if stage.can_complete %}
-                        <div class="quick-stage-card">
+                        <div class="quick-stage-card stage-finish-card">
                             <div class="quick-stage-action">
                                 <div class="quick-stage-description">
                                     <strong>{{ stage.get_stage_type_display }}</strong>
-                                    <p>Zapisz datę zakończenia wykonanej pracy.</p>
+                                    
                                 </div>
 
                                 <form

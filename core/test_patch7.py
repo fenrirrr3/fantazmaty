@@ -12,6 +12,8 @@ from workflow.models import WorkflowStage, WorkflowRoleAssignment
 
 class Patch7Tests(CoreTestDataMixin, TestCase):
     def test_other_place_is_saved_and_idempotent(self):
+        self.anthology.status = "ready"
+        self.anthology.save(update_fields=["status"])
         self.client.force_login(self.reviewer)
         data = dict(anthology=self.anthology.pk, text='', fragment='Spis treści', problem='Literówka', suggestion='Popraw', submission_token=str(uuid.uuid4()))
         for _ in range(2):

@@ -25,6 +25,7 @@ AUTHOR_DISPLAY_FIELDS = (
     "last_name",
     "pseudonym",
     "email",
+    "phone_number",
     "has_contract",
     "contact",
 )

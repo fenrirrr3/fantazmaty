@@ -22,6 +22,8 @@ class Patch6Tests(CoreTestDataMixin, TestCase):
         self.assertFalse(form.is_valid())
 
     def test_text_choices_and_continue_are_validated_and_idempotent(self):
+        self.anthology.status = "ready"
+        self.anthology.save(update_fields=["status"])
         self.client.force_login(self.reviewer)
         text = Text.objects.create(title='Pierwszy tekst', length=1000, anthology=self.anthology)
         other = Anthology.objects.create(title='Inna antologia')

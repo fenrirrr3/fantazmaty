@@ -9,7 +9,10 @@ from people.models import Person
 from texts.models import HistoricalTextAssignment, Text
 
 
-class Command(BaseCommand):
+from core.import_reporting import ImportReportMixin
+
+
+class Command(ImportReportMixin, BaseCommand):
     help = "Import historycznych udziałów z JSON. Domyślnie tylko podgląd; zapis wymaga --commit."
 
     def add_arguments(self, parser):

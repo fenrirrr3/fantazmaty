@@ -32,7 +32,7 @@
                         <th scope="col">Skład</th>
                         <th scope="col">Druk</th>
                         <th scope="col">Szczegóły</th>
-                        <th scope="col" data-copy="false">Akcje</th>
+                        
                     </tr>
                 </thead>
 
@@ -42,7 +42,7 @@
                             <tr>
                                 <td data-copy-value="{{ anthology.title }}">
                                     <a
-                                        href="{% url 'core:text_list' %}?anthology={{ anthology.pk }}&amp;hide_ready=0"
+                                        href="{% url 'core:anthology_detail' anthology.pk %}"
                                         class="text-title-link"
                                     >
                                         <strong>{{ anthology.title }}</strong>
@@ -50,7 +50,7 @@
                                 </td>
 
                                 <td>
-                                    <span class="stage-status {% if anthology.status == 'published' %}completed{% elif anthology.status == 'in_preparation' %}active{% else %}pending{% endif %}">
+                                    <span class="stage-status {% if anthology.status == 'published' or anthology.status == 'ready' %}completed{% elif anthology.status == 'in_preparation' %}active{% else %}pending{% endif %}">
                                         {{ anthology.get_status_display }}
                                     </span>
                                 </td>
@@ -133,21 +133,11 @@
                                         </dl>
                                     </details>
                                 </td>
-
-                                <td data-copy="false">
-                                    <a
-                                        href="{% url 'core:text_list' %}?anthology={{ anthology.pk }}&amp;hide_ready=0"
-                                        class="secondary-button"
-                                        aria-label="Pokaż teksty antologii: {{ anthology.title }}"
-                                    >
-                                        Pokaż teksty
-                                    </a>
-                                </td>
                             </tr>
                         {% endwith %}
                     {% empty %}
                         <tr>
-                            <td colspan="7">
+                            <td colspan="6">
                                 <div class="empty-results-panel">
                                     <strong>Nie dodano jeszcze żadnej antologii.</strong>
                                     <p>

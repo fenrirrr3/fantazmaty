@@ -1,0 +1,5 @@
+{% extends "core/base.html" %}
+{% block title %}Spójność danych | Fantazmaty CMS{% endblock %}
+{% block content %}<header class="page-header"><h1>Spójność danych</h1><p>Lista do sprawdzenia. System nie poprawia ani nie łączy rekordów.</p></header>
+<nav class="my-texts-filters"><a class="secondary-button" href="?tab=integrity">Powiązania i etapy</a> <a class="secondary-button" href="?tab=duplicates">Możliwe duplikaty tekstów</a></nav>
+<section class="card"><h2>Znalezione pozycje: {{ issues|length }}</h2>{% include "core/includes/issue_list.html" %}</section>{% endblock %}

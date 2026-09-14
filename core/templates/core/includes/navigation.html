@@ -97,7 +97,7 @@
                         <a
                             href="{% url 'core:anthology_list' %}"
                             class="sidebar-link"
-                            {% if current == 'anthology_list' %}aria-current="page"{% endif %}
+                            {% if current == 'anthology_list' or current == 'anthology_detail' %}aria-current="page"{% endif %}
                         >
                             Antologie
                         </a>
@@ -208,7 +208,7 @@
                 </button>
             </form>
                     </div>
-                    {% if user.is_superuser %}<div class="sidebar-section"><a class="sidebar-link" href="{% url 'core:user_activity' %}" {% if current == 'user_activity' %}aria-current="page"{% endif %}>Aktywność użytkowników</a></div>{% endif %}
+                    {% if user.is_superuser %}<div class="sidebar-section"><a class="sidebar-link" href="{% url 'core:user_activity' %}" {% if current == 'user_activity' %}aria-current="page"{% endif %}>Aktywność użytkowników</a><a class="sidebar-link" href="{% url 'core:data_integrity' %}" {% if current == 'data_integrity' %}aria-current="page"{% endif %}>Spójność danych</a><a class="sidebar-link" href="{% url 'core:discord_test' %}" {% if current == 'discord_test' %}aria-current="page"{% endif %}>Discord — test</a></div>{% endif %}
                 </nav>
             {% endif %}
         {% endwith %}

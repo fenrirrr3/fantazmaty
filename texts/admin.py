@@ -243,6 +243,7 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
                     "length",
                     "content_warnings",
                     "coordinator_note",
+                    "file_url",
                 ),
             },
         ),
@@ -430,6 +431,7 @@ class ReviewAdminForm(NormalizedFormMixin, forms.ModelForm):
             "author_last_name",
             "title",
             "email",
+            "anthology",
         }
 
         check_warnings = (
@@ -452,6 +454,7 @@ class ReviewAdminForm(NormalizedFormMixin, forms.ModelForm):
             email=cleaned_data["email"],
             title=cleaned_data["title"],
             exclude_review_id=self.instance.pk,
+            anthology_id=getattr(cleaned_data.get("anthology"), "pk", None),
         )
 
         if not self.submission_warnings:

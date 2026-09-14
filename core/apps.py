@@ -9,3 +9,4 @@ class CoreConfig(AppConfig):
     def ready(self):
         from core.search_lookup import register
         register()
+        from core import runtime_checks  # noqa: F401

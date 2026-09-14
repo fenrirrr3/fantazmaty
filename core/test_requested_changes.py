@@ -165,6 +165,8 @@ class RequestedChangesTests(CoreTestDataMixin, TestCase):
                 self.assertTrue(admin.site.is_registered(model),model.__name__)
 
     def test_long_corrections_expand_without_losing_copy_text(self):
+        self.anthology.status = "ready"
+        self.anthology.save(update_fields=["status"])
         item = AnthologyCorrection.objects.create(anthology=self.anthology,story_title='Próba',fragment='A'*180,problem='Krótka uwaga',suggestion='B'*180,submitted_by=self.reviewer)
         self.client.force_login(self.reviewer)
         response = self.client.get(reverse('core:anthology_corrections'))

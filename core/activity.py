@@ -21,6 +21,10 @@ LABELS = {
 }
 
 LABELS.update({
+    'discord_test': 'Test wysyłki Discord',
+    'data_integrity':'Spójność danych', 'person_permissions':'Podgląd uprawnień osoby',
+    'anthology_detail':'Podgląd antologii', 'anthology_credits_csv':'Eksport stopki antologii',
+    'update_text_file':'Zmiana odnośnika do pliku tekstu',
     'programs':'Programy', 'extract_list':'Ekstrakty', 'extract_add':'Dodanie ekstraktu', 'extract_edit':'Edycja ekstraktu',
     'recruitment_list':'Rekrutacja', 'recruitment_add':'Dodanie rekrutacji', 'recruitment_edit':'Edycja rekrutacji',
     'editor_activity':'Aktywność redaktorów', 'correction_texts':'Wybór tekstu do uwagi', 'correction_status':'Zmiana statusu uwagi',

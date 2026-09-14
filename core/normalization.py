@@ -26,7 +26,7 @@ def email(value):
 
 AUTHOR_FIELDS = {
     "first_name": person_name, "last_name": person_name,
-    "pseudonym": compact, "email": email,
+    "pseudonym": compact, "email": email, "phone_number": compact,
 }
 TEXT_FIELDS = {"title": compact, "content_warnings": lower}
 REVIEW_FIELDS = {

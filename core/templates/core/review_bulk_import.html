@@ -37,6 +37,8 @@
             {% if preview_rows %}
                 <input type="hidden" name="preview_token" value="{{ preview_token }}">
                 <h2>Podgląd importu – dane jeszcze nie zostały zapisane</h2>
+                <p>Nowe zgłoszenia: {{ preview_summary.new_reviews }}. Autorzy dopasowani w bazie: {{ preview_summary.matched_authors }}. Zgłoszenia bez profilu autora: {{ preview_summary.unmatched }}. Wiersze z błędami: {{ preview_summary.conflicts }}. Ostrzeżenia: {{ preview_summary.warnings }}.</p>
+                <p>Ten import dodaje zgłoszenia. Nie aktualizuje istniejących tekstów, nie tworzy profili autorów ani osób i nie zmienia ról. Puste pola zgłoszenia nie usuwają danych z profilu autora.</p>
                 <p>Import jest wspólny dla wszystkich wierszy. Błąd blokuje zapis całości; duplikaty i czarna lista wymagają potwierdzenia.</p>
                 <div class="table-container"><table><thead><tr><th>Wiersz</th><th>Autor / dopasowanie</th><th>Tytuł</th><th>Weryfikacja</th></tr></thead><tbody>
                 {% for row in preview_rows %}<tr><td>{{ row.line }}</td><td>

@@ -217,6 +217,7 @@ def get_review_submission_warnings(
     author_last_name: str = "",
     email: str = "",
     exclude_review_id: int | None = None,
+    anthology_id: int | None = None,
     using: str | None = None,
 ) -> list[str]:
     """Zwraca ostrzeżenia wymagające pokazania przed zapisem.
@@ -303,5 +304,10 @@ def get_review_submission_warnings(
             "Kontrola obejmuje wszystkie nabory i stare recenzje."
         )
         warnings.append(warning)
+
+    if anthology_id:
+        from core.supervision import duplicate_candidates
+        for match in duplicate_candidates(title, anthology_id, [author.pk] if author else [], exclude_review_id=exclude_review_id, email=email):
+            warnings.append('Podobny tytuł tego autora w tym samym naborze: ' + match['detail'] + '. Sprawdź przed dodaniem; ponowne zgłoszenie może być zamierzone.')
 
     return warnings

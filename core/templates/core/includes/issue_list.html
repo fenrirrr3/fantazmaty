@@ -1,0 +1,1 @@
+<ul class="issue-list">{% for issue in issues %}<li><strong>{{ issue.label }}</strong> — <a href="{{ issue.url }}">{{ issue.detail }}</a>{% if issue.source_url %} · <a href="{{ issue.source_url }}">Drugi rekord</a>{% endif %}</li>{% empty %}<li>Brak wykrytych problemów.</li>{% endfor %}</ul>

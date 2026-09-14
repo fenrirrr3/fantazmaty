@@ -664,6 +664,7 @@ class ReviewBulkImportForm(forms.Form):
                 warning_cache[submission_key] = (
                     get_review_submission_warnings(
                         title=record["title"],
+                        anthology_id=cleaned_data["anthology"].pk,
                         author=author,
                         author_first_name=record["author_first_name"],
                         author_last_name=record["author_last_name"],

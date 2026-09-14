@@ -24,6 +24,7 @@
         </div>
     </header>
 
+    {% if user.is_superuser %}<p><a class="secondary-button" href="{% url 'core:person_permissions' person.pk %}">Podgląd uprawnień i powiązań</a></p>{% endif %}
     {% if leave_information %}
         <div
             class="leave-warning{% if leave_information.is_active %} is-active{% endif %}"

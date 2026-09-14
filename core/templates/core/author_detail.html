@@ -29,7 +29,7 @@
     <section class="details-card" aria-labelledby="author-information-heading">
         <h2 id="author-information-heading">Dane autora</h2>
 
-        <dl class="details-grid">
+        <dl class="details-grid"><div class="detail-item"><dt>Telefon</dt><dd>{{ author.phone_number|default:"—" }}</dd></div>
             <div class="detail-item">
                 <dt>Adres e-mail</dt>
                 <dd>
@@ -203,7 +203,7 @@
                         <th scope="col">Gatunek</th>
                         <th scope="col">Antologia</th>
                         <th scope="col" class="numeric-cell">Długość</th>
-                        <th scope="col" data-copy="false">Szczegóły</th>
+                        
                     </tr>
                 </thead>
 
@@ -242,20 +242,10 @@
                             >
                                 {{ text.length }}
                             </td>
-
-                            <td data-copy="false">
-                                <a
-                                    href="{% url 'core:assigned_text_detail' text.pk %}"
-                                    class="secondary-button"
-                                    aria-label="Otwórz tekst: {{ text.title }}"
-                                >
-                                    Otwórz
-                                </a>
-                            </td>
                         </tr>
                     {% empty %}
                         <tr>
-                            <td colspan="5">
+                            <td colspan="4">
                                 <div class="empty-results-panel">
                                     <strong>Brak przypisanych tekstów.</strong>
                                     <p>

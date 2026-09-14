@@ -543,6 +543,13 @@ def review_bulk_import(request):
             "form": form,
             "import_warnings": getattr(form, "import_warnings", []),
             "preview_rows": preview_rows,
+            "preview_summary": {
+                "new_reviews": sum(bool(r['record']) for r in preview_rows),
+                "matched_authors": len({a.pk for r in preview_rows for a in r['matched']}),
+                "unmatched": sum(bool(r['record']) and not r['matched'] for r in preview_rows),
+                "conflicts": sum(bool(r['errors']) or r['ambiguous'] for r in preview_rows),
+                "warnings": len(form.import_warnings),
+            },
             "preview_token": signing.dumps(preview_payload, salt="review-preview") if valid else "",
             "can_import": valid,
         },

@@ -30,7 +30,10 @@ def corrections(request):
         key = form.cleaned_data.get("submission_token")
         with transaction.atomic():
             selected_text = get_object_or_404(Text.objects.select_for_update(), pk=item.text_id) if item.text_id else None
-            if selected_text and selected_text.anthology_id != item.anthology_id:
+            selected_anthology = get_object_or_404(Anthology.objects.select_for_update(), pk=item.anthology_id)
+            if selected_anthology.status not in ('ready', 'published'):
+                form.add_error('anthology', 'Antologia nie jest już gotowa ani wydana. Wybierz ją ponownie po zmianie statusu.')
+            elif selected_text and selected_text.anthology_id != item.anthology_id:
                 form.add_error("text", "Opowiadanie zmieniło antologię. Wybierz je ponownie.")
             else:
                 item.story_title = selected_text.title if selected_text else "Inne miejsce"
@@ -49,7 +52,7 @@ def corrections(request):
             return redirect("core:anthology_corrections")
     if request.method == "POST" and ajax:
         return JsonResponse({"errors": {name: list(errors) for name, errors in form.errors.items()}}, status=400)
-    items = AnthologyCorrection.objects.select_related("anthology", "submitted_by")
+    items = AnthologyCorrection.objects.filter(anthology__status__in=("ready", "published")).select_related("anthology", "submitted_by")
     query = request.GET.get("q", "").strip()[:255]
     statuses = [v for v in request.GET.getlist("status") if v in AnthologyCorrection.Status.values]
     status = statuses[-1] if statuses else ""
@@ -76,7 +79,7 @@ def correction_texts(request):
     anthology = request.GET.get("anthology", "")
     if not anthology.isdecimal() or len(anthology) > 18:
         return JsonResponse({"texts": []})
-    texts = Text.objects.filter(anthology_id=anthology).order_by("title", "pk").values("id", "title")
+    texts = Text.objects.filter(anthology_id=anthology, anthology__status__in=("ready", "published")).order_by("title", "pk").values("id", "title")
     return JsonResponse({"texts": list(texts)})
 
 

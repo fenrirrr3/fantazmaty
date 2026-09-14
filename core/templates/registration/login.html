@@ -1,5 +1,6 @@
 {% extends "core/base.html" %}
 
+{% load static %}
 {% block title %}
     Logowanie | Fantazmaty CMS
 {% endblock %}
@@ -8,7 +9,7 @@
     <div class="auth-container">
         <section class="auth-card">
             <header class="auth-header">
-                <span class="auth-logo">F</span>
+                <img class="auth-brand-image" src="{% static 'core/fantazmaty-logo.png' %}" alt="Fantazmaty">
                 <h1>Logowanie</h1>
 
                 <p>

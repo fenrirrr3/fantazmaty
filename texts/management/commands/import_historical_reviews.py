@@ -52,7 +52,10 @@ def index_names(objects, pseudonyms=False):
     return index
 
 
-class Command(BaseCommand):
+from core.import_reporting import ImportReportMixin
+
+
+class Command(ImportReportMixin, BaseCommand):
     help = 'Import archiwalnych recenzji; bez --commit wykonuje próbę i wycofuje wszystkie zapisy.'
 
     def add_arguments(self, parser):

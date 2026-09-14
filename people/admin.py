@@ -19,6 +19,7 @@ class PersonAdminForm(forms.ModelForm):
             "roles",
             "is_coordinator",
             "user",
+            "author_profile",
             "leave_start_date",
             "leave_end_date",
             "leave_until_revoked",
@@ -143,6 +144,7 @@ class PersonAdmin(admin.ModelAdmin):
                     "roles",
                     "is_coordinator",
                     "user",
+                    "author_profile",
                 ),
                 "description": (
                     "Odznaczenie „wciąż w ekipie” ukrywa osobę "

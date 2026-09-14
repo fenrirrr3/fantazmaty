@@ -112,6 +112,7 @@ class Revision7Tests(CoreTestDataMixin, TestCase):
         second = Person.objects.create(first_name='Anna', last_name='Alpha', email='zaneta@example.com')
         third = Person.objects.create(first_name='Inna', last_name='Osoba', email='x@example.com', dropbox_email='zaneta@dropbox.com')
         self.assertEqual(list(rank_people(Person.objects.all(), 'zaneta')), [first,second])
+        self.client.force_login(self.superuser)
         for route in ['people_list', 'global_search']:
             response = self.client.get(reverse('core:'+route), {'q':'zaneta'})
             content = response.content.decode()
@@ -143,7 +144,9 @@ class Revision7Tests(CoreTestDataMixin, TestCase):
         self.assertContains(response, 'Historia')
         self.assertContains(self.client.get(reverse('core:home')), 'Moje recenzje')
 
-    def test_author_phone_uses_latest_nonempty_owned_submission(self):
+    def test_author_phone_uses_profile_not_owned_submission(self):
+        self.author.phone_number = "444555666"
+        self.author.save(update_fields=["phone_number"])
         self.review(phone_number='111222333')
         self.review(phone_number='444555666')
         self.review(phone_number='')

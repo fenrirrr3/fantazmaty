@@ -17,6 +17,7 @@ HEADERS = ("Nazwisko i imię", "E-mail", "E-mail Dropbox", "Funkcja")
 SUPERUSER_MARKER = "Superuser"
 COORDINATOR_PREFIX = "Koordynator "
 ALLOWED_FUNCTIONS = {
+    "Koordynator",
     "Recenzent",
     "Redaktor",
     "Korektor",
@@ -64,7 +65,10 @@ def single(queryset, description):
     return matches[0] if matches else None
 
 
-class Command(BaseCommand):
+from core.import_reporting import ImportReportMixin
+
+
+class Command(ImportReportMixin, BaseCommand):
     help = (
         "Importuje aktywny zespół z TSV; domyślnie wykonuje podgląd, "
         "a zapis wymaga --commit."
@@ -120,7 +124,7 @@ class Command(BaseCommand):
     def read_records(self, path):
         with path.open(encoding="utf-8-sig", newline="") as source:
             reader = csv.DictReader(source, delimiter="\t")
-            if tuple(reader.fieldnames or ()) != HEADERS:
+            if len(reader.fieldnames or ()) != len(set(reader.fieldnames or ())) or not set(HEADERS).issubset(reader.fieldnames or ()) or set(reader.fieldnames or ()) - set(HEADERS) - {'ID osoby', 'ID konta', 'ID autora'}:
                 raise ValueError(
                     "Nieprawidłowe nagłówki. Oczekiwano: "
                     + " | ".join(HEADERS)
@@ -129,6 +133,7 @@ class Command(BaseCommand):
 
             by_email = {}
             for row_number, raw in enumerate(reader, 2):
+                if None in raw: raise ValueError(f"Za dużo kolumn w wierszu {row_number}.")
                 if not any(normalize(value) for value in raw.values()):
                     continue
                 if None in raw:
@@ -144,13 +149,19 @@ class Command(BaseCommand):
                 if not email:
                     raise ValueError(f"Brak e-maila w wierszu {row_number}.")
                 validate_email(email)
-                if dropbox_email:
+                if dropbox_email and dropbox_email != "__clear__":
                     validate_email(dropbox_email)
-                if function != SUPERUSER_MARKER and function not in ALLOWED_FUNCTIONS:
+                if function and function != SUPERUSER_MARKER and function not in ALLOWED_FUNCTIONS:
                     raise ValueError(
                         f"Nieznana funkcja {function!r} w wierszu {row_number}."
                     )
 
+                ids = {}
+                for column, field in (("ID osoby", "person_id"), ("ID konta", "user_id"), ("ID autora", "author_id")):
+                    value = normalize(raw.get(column))
+                    if value and (not value.isdecimal() or int(value) < 1):
+                        raise ValueError(f"{column}: nieprawidłowy identyfikator w wierszu {row_number}.")
+                    ids[field] = int(value) if value else None
                 first_name, last_name = split_name(row["Nazwisko i imię"])
                 member = by_email.setdefault(
                     email,
@@ -162,26 +173,34 @@ class Command(BaseCommand):
                         "roles": set(),
                         "is_superuser": False,
                         "source_rows": [],
+                        **ids,
                     },
                 )
                 if (
                     member["first_name"] != first_name
                     or member["last_name"] != last_name
-                    or member["dropbox_email"] != dropbox_email
+                    or (member["dropbox_email"] and dropbox_email and member["dropbox_email"] != dropbox_email)
+                    or any(member[k] and v and member[k] != v for k,v in ids.items())
                 ):
                     raise ValueError(
                         f"Sprzeczne dane adresu {email} w wierszu {row_number}."
                     )
+                if dropbox_email: member["dropbox_email"] = dropbox_email
+                for k,v in ids.items():
+                    if v: member[k] = v
                 member["source_rows"].append(row_number)
                 if function == SUPERUSER_MARKER:
                     member["is_superuser"] = True
                 elif function in member["roles"]:
                     self.counts["pominiete_duplikaty_funkcji"] += 1
-                else:
+                elif function:
                     member["roles"].add(function)
 
         if not by_email:
             raise ValueError("Plik nie zawiera żadnych członków zespołu.")
+        for field in ('person_id', 'user_id', 'author_id'):
+            ids = [r[field] for r in by_email.values() if r[field]]
+            if len(ids) != len(set(ids)): raise ValueError(f'Sprzeczne wiersze: powtórzone {field} przy różnych adresach.')
         self.counts["osoby_w_pliku"] = len(by_email)
         return list(by_email.values())
 
@@ -203,6 +222,12 @@ class Command(BaseCommand):
         return result
 
     def find_person(self, record):
+        if record.get('person_id'):
+            person = Person.objects.filter(pk=record['person_id']).first()
+            if person is None: raise ValueError('Nie istnieje wskazane ID osoby.')
+            if Person.objects.filter(email__iexact=record['email']).exclude(pk=person.pk).exists():
+                raise ValueError('Nowy e-mail należy do innego profilu osoby.')
+            return person
         person = single(
             Person.objects.filter(email__iexact=record["email"]),
             f"e-mail osoby {record['email']}",
@@ -229,6 +254,14 @@ class Command(BaseCommand):
 
     def find_user(self, person, record):
         User = get_user_model()
+        if record.get('user_id'):
+            user = User.objects.filter(pk=record['user_id']).first()
+            if user is None: raise ValueError('Nie istnieje wskazane ID konta.')
+            if person and person.user_id and person.user_id != user.pk:
+                raise ValueError('ID konta nie zgadza się z trwałym powiązaniem osoby.')
+            if Person.objects.filter(user=user).exclude(pk=getattr(person,'pk',None)).exists():
+                raise ValueError('Konto jest powiązane z inną osobą.')
+            return user
         if person is not None and person.user_id:
             return person.user
 
@@ -272,10 +305,12 @@ class Command(BaseCommand):
             self.counts["nowe_konta"] += 1
         else:
             changes = []
-            if user.email and normalize_email(user.email) != record["email"]:
+            if user.email and normalize_email(user.email) != record["email"] and not record.get("person_id"):
                 raise ValueError(
                     f"Powiązane konto {user} ma inny e-mail: {user.email}."
                 )
+            if User.objects.filter(email__iexact=record['email']).exclude(pk=user.pk).exists():
+                raise ValueError('Adres e-mail wskazuje inne konto.')
             for field, value in (
                 ("email", record["email"]),
                 ("first_name", record["first_name"]),
@@ -295,6 +330,13 @@ class Command(BaseCommand):
                 user.save(update_fields=changes)
                 self.counts["zaktualizowane_konta"] += 1
 
+        if record.get('author_id'):
+            from authors.models import Author
+            author = Author.objects.filter(pk=record['author_id']).first()
+            if author is None or Person.objects.filter(author_profile=author).exclude(pk=getattr(person,'pk',None)).exists():
+                raise ValueError('ID autora nie istnieje albo jest powiązane z inną osobą.')
+        dropbox = record['dropbox_email']
+        record['dropbox_email'] = '' if dropbox == '__clear__' else dropbox or (person.dropbox_email if person else '')
         is_coordinator = any(
             name.startswith(COORDINATOR_PREFIX)
             for name in record["roles"]
@@ -341,6 +383,9 @@ class Command(BaseCommand):
                 person.save(update_fields=list(dict.fromkeys(changes)))
                 self.counts["zaktualizowane_osoby"] += 1
 
+        if record.get('author_id') and person.author_profile_id != record['author_id']:
+            person.author_profile_id = record['author_id']
+            person.full_clean(); person.save(update_fields=['author_profile'])
         before = set(person.roles.values_list("name", flat=True))
         person.roles.add(*(roles[name] for name in record["roles"]))
         self.counts["nowe_przypisania_funkcji"] += len(record["roles"] - before)

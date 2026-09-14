@@ -96,6 +96,8 @@ class WorkspacePatchTests(CoreTestDataMixin, TestCase):
         self.client.force_login(self.reviewer)
 
     def test_corrections_create_bulk_update_and_stale_bulk_rejected(self):
+        self.anthology.status = "ready"
+        self.anthology.save(update_fields=["status"])
         self.client.force_login(self.reviewer)
         url = reverse('core:anthology_corrections')
         text = Text.objects.create(title='Opowiadanie', length=1000, anthology=self.anthology)

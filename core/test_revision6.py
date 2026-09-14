@@ -128,6 +128,8 @@ class RevisionTests(TestCase):
         self.assertTrue(Vacation.objects.filter(pk=vacation.pk).exists())
 
     def correction(self):
+        self.anthology.status = "ready"
+        self.anthology.save(update_fields=["status"])
         return AnthologyCorrection.objects.create(anthology=self.anthology, submitted_by=self.user,
                      story_title='Inne miejsce', fragment='Fragment', problem='Problem', suggestion='Poprawka')
 
