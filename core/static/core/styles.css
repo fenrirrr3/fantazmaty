@@ -2471,3 +2471,7 @@ table th {
     overflow-wrap: normal;
     hyphens: none;
 }
+
+/* Small gaps also survive wrapping long role lists. */
+#people-table .roles-list { display: flex; flex-wrap: wrap; gap: 3px 4px; }
+#people-table .roles-list .role-badge { margin-block: 2px; }

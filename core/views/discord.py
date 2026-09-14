@@ -1,3 +1,4 @@
+from core.models import WorkflowEvent
 import uuid
 from django import forms
 from django.db import transaction
@@ -64,4 +65,5 @@ def discord_test(request):
     return render(request, 'core/discord_test.html', {
         'form':form, 'configured':bool(configured), 'configuration_error':error,
         'history':DiscordDispatch.objects.select_related('user')[:20],
+        'workflow_history': WorkflowEvent.objects.all()[:30],
     }, status=400 if request.method == 'POST' else 200)

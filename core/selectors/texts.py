@@ -273,39 +273,13 @@ def _terminal(stages):
 
 
 def _current_stage(stages):
-    open_stages = [stage for stage in stages if _is_open(stage)]
-    if not open_stages:
-        return None
-    return min(
-        open_stages,
-        key=lambda stage: (
-            0 if stage.stage_type == StageType.WITHDRAWN else
-            1 if stage.stage_type == StageType.AUTHOR_EDITING else 2,
-            -(stage.started_at or date.min).toordinal(),
-            -stage.pk,
-        ),
-    )
+    from workflow.state import current_stage
+    return current_stage(stages)
 
 
 def _annotated_texts():
-    current = (
-        WorkflowStage.objects.filter(
-            text_id=OuterRef("pk"),
-            workflow_cycle=OuterRef("current_workflow_cycle"),
-            is_completed=False,
-            ended_at__isnull=True,
-        )
-        .annotate(
-            priority=Case(
-                When(stage_type=StageType.WITHDRAWN, then=Value(0)),
-                When(stage_type=StageType.AUTHOR_EDITING, then=Value(1)),
-                default=Value(2),
-                output_field=IntegerField(),
-            )
-        )
-        .order_by("priority", F("started_at").desc(nulls_last=True), "-pk")
-        .values("stage_type")[:1]
-    )
+    from workflow.state import state_annotations
+    current = WorkflowStage.objects.filter(text_id=OuterRef("pk"), workflow_cycle=OuterRef("current_workflow_cycle"), is_completed=False, ended_at__isnull=True).annotate(**state_annotations()).order_by('state_priority','-state_order','-iteration','-pk').values('stage_type')[:1]
     return Text.objects.annotate(current_stage_type=Subquery(current))
 
 
@@ -534,16 +508,6 @@ def user_workflow_summary(user, *, today=None):
 def available_stages_for_user(*, user):
     require_team_member(user)
     include_authors = can_view_author_data(user)
-    coordinator = is_coordinator(user)
-    allowed_roles = {
-        role for role, group in ROLE_GROUPS.items()
-        if coordinator or has_role(user, group)
-    }
-    if not user.is_superuser:
-        allowed_roles.discard(Role.STYLING)
-    if coordinator or has_role(user, "Redaktor"):
-        allowed_roles.add(Role.EDITOR)
-
     texts = _prepared_texts(
         Text.objects.filter(
             workflow_stages__workflow_cycle=F("current_workflow_cycle"),
@@ -560,45 +524,11 @@ def available_stages_for_user(*, user):
         if _terminal(stages):
             continue
 
-        occupied = {
-            assignment.role: assignment.assigned_to_id
-            for assignment in text.selector_assignments
-            if assignment.assigned_to_id is not None
-        }
+        from workflow.availability import claim_reason
         for stage in stages:
             role = STAGE_ROLE_MAP.get(stage.stage_type)
-            if (
-                not _is_open(stage)
-                or stage.started_at is not None
-                or role not in allowed_roles
-                or role in occupied
-                or stage.stage_type in {
-                    StageType.EDITING,
-                    StageType.AUTHOR_EDITING,
-                    StageType.EDITOR_CONTROL,
-                }
-            ):
+            if claim_reason(stage, user, stages, text.selector_assignments):
                 continue
-
-            opposite = {
-                Role.VERIFIER_1: Role.VERIFIER_2,
-                Role.VERIFIER_2: Role.VERIFIER_1,
-            }.get(role)
-            if opposite and occupied.get(opposite) == user.pk:
-                continue
-
-            if stage.stage_type == StageType.SECOND_VERIFICATION:
-                if not any(
-                    item.stage_type == StageType.FIRST_VERIFICATION
-                    and item.is_completed for item in stages
-                ):
-                    continue
-                if any(
-                    item.stage_type in {StageType.EDITING, StageType.AUTHOR_EDITING}
-                    and _is_open(item) for item in stages
-                ):
-                    continue
-
             row = _stage_data(stage, _text_data(text, include_authors))
             row.update(
                 required_group="Superuser" if role == Role.STYLING else ROLE_GROUPS.get(role, "Redaktor"),
@@ -790,6 +720,9 @@ def text_detail_context(*, user, text):
     )
     first_done = completed(StageType.FIRST_VERIFICATION)
     second_done = completed(StageType.SECOND_VERIFICATION)
+    from workflow.state import checkpoint_before_restart
+    first_gate = bool(first_done or checkpoint_before_restart(text.current_workflow_cycle, stages, StageType.FIRST_VERIFICATION))
+    second_gate = bool(second_done or checkpoint_before_restart(text.current_workflow_cycle, stages, StageType.SECOND_VERIFICATION))
 
     can_start_first = bool(
         not terminal and pending_first
@@ -825,9 +758,8 @@ def text_detail_context(*, user, text):
             and assignment.assigned_to_id
             and may_act and _is_open(stage)
             and stage.started_at is None
-            and stage.stage_type not in TERMINAL_STAGES | {
-                StageType.AUTHOR_EDITING,
-            }
+            and stage.stage_type not in TERMINAL_STAGES
+            and (stage.stage_type != StageType.AUTHOR_EDITING or (text.current_workflow_cycle > 1 and len(stages) == 1))
         )
         if stage.stage_type == StageType.FIRST_VERIFICATION:
             can_start = can_start_first
@@ -851,6 +783,7 @@ def text_detail_context(*, user, text):
             can_start=can_start,
             can_complete=bool(
                 not terminal and role and may_act
+                and (stage.stage_type != StageType.STYLING or user.is_superuser)
                 and _is_active(stage, today)
                 and stage.stage_type not in TERMINAL_STAGES | {
                     StageType.READY_FOR_EDITING,
@@ -997,22 +930,22 @@ def text_detail_context(*, user, text):
         "can_send_to_first_verification": bool(
             can_control and editing and pending_first
             and first_verifier and first_verifier.assigned_to_id
-            and not first_done
+            and not first_gate
         ),
         "can_start_first_verification": can_start_first,
         "can_resume_editing": can_resume,
         "can_send_to_author": bool(
-            can_control and editing and first_done and not verification_open
+            can_control and editing and first_gate and not verification_open
         ),
         "can_send_to_second_verification": bool(
-            can_control and editing and first_done
+            can_control and editing and first_gate
             and not any(
                 stage.stage_type == StageType.SECOND_VERIFICATION
                 for stage in stages
             )
         ),
         "can_finish_editing": bool(
-            can_control and editing and second_done and not verification_open
+            can_control and editing and second_gate and not verification_open
         ),
         "all_authors": (
             [_author_data(author) for author in Author.objects.all()]

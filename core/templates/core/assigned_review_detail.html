@@ -486,6 +486,14 @@
                         </label>
                     {% endif %}
 
+                    {% for coauthor in copy_coauthors %}
+                        {% if coauthor.has_contract %}<p>Umowa współautora {{ coauthor }} jest potwierdzona.</p>
+                        {% else %}<label class="contract-checkbox"><input type="checkbox" name="coauthor_contract_received" value="{{ coauthor.pk }}" required> Potwierdzam otrzymanie umowy: {{ coauthor }}.</label>{% endif %}
+                    {% endfor %}
+                    {% if copy_phone_differs %}
+                        <p>Telefon w profilu: {{ copy_profile_phone|default:"brak" }}. W zgłoszeniu: {{ review.phone_number }}.</p>
+                        <label class="contract-checkbox"><input type="checkbox" name="update_author_phone" value="yes"> Zapisz telefon ze zgłoszenia w profilu autora.</label>
+                    {% endif %}
                     <div class="general-notes-actions">
                         <button type="submit" class="primary-button">
                             Dodaj tekst do procesu

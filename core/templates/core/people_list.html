@@ -118,11 +118,10 @@
                                             </span>
                                         {% endif %}
                                     {% endfor %}
+                                    {% if person.is_coordinator %}
+                                        <span class="role-badge" data-palette="coordinator">Koordynator</span>
+                                    {% endif %}
                                 </div>
-
-                                {% if person.is_coordinator %}
-                                    <span class="role-badge" data-palette="coordinator">Koordynator</span>
-                                {% endif %}
                             </td>
 
                             {% if can_view_team_email %}

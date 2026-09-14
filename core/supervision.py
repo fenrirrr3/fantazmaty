@@ -31,6 +31,27 @@ def integrity_issues():
         a = assignments.get((stage.text_id,stage.workflow_cycle,role))
         if role and (a is None or a.assigned_to_id is None):
             issues.append(issue('Rozpoczęty etap bez wykonawcy',f'{stage.text.title}: {stage.get_stage_type_display()}',reverse('core:assigned_text_detail',args=[stage.text_id])))
+    from workflow.services import NEXT_STAGE_TYPES
+    grouped = defaultdict(list)
+    for stage in current:
+        grouped[(stage.text_id, stage.workflow_cycle)].append(stage)
+    for stages in grouped.values():
+        text = stages[0].text
+        url = reverse('core:assigned_text_detail', args=[text.pk])
+        opened = defaultdict(list)
+        for stage in stages:
+            if bool(stage.ended_at) != stage.is_completed:
+                issues.append(issue('Sprzeczny zapis zakończenia', f'{text.title}: {stage.get_stage_type_display()}', url))
+            if not stage.is_completed and stage.ended_at is None:
+                opened[stage.stage_type].append(stage)
+        for kind, repeated in opened.items():
+            if len(repeated) > 1:
+                issues.append(issue('Kilka otwartych etapów tego samego rodzaju', f'{text.title}: {repeated[0].get_stage_type_display()}', url))
+        if not any(s.stage_type in ('ready', 'withdrawn') for s in stages):
+            for stage in stages:
+                successor = NEXT_STAGE_TYPES.get(stage.stage_type)
+                if stage.is_completed and successor and not any(s.stage_type == successor and (s.pk > stage.pk or (s.started_at and stage.ended_at and s.started_at >= stage.ended_at)) for s in stages):
+                    issues.append(issue('Brak następnego etapu po zakończeniu', f'{text.title}: {stage.get_stage_type_display()}', url))
     for a in assignments.values():
         if not a.assigned_to_id:
             continue

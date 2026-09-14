@@ -85,7 +85,8 @@ class UserActivityMiddleware:
         # Materialize before logout flushes the session/user.
         before_id = before.pk if before else None
         before_actor = (before.email or before.get_username()) if before else ''
-        response = self.get_response(request)
+        from core.workflow_events import run_admin_request
+        response = run_admin_request(request, self.get_response)
         activity = getattr(request, '_cms_activity', None)
         after = request.user if request.user.is_authenticated else None
         user_id = before_id or (after.pk if after else None)

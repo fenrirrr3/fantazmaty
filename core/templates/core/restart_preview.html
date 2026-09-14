@@ -1,0 +1,10 @@
+{% extends "core/base.html" %}
+{% block title %}Podgląd restartu{% endblock %}
+{% block content %}<header class="page-header"><h1>Nowy cykl: {{ text.title }}</h1><p>Etap początkowy: {{ target_label }}. Poprzednia historia pozostanie zachowana. Niezaznaczone przydziały nie przejdą do nowego cyklu.</p></header>
+<section class="card"><form method="post" class="general-notes-form">{% csrf_token %}
+<input type="hidden" name="target_stage" value="{{ target }}"><input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="confirm_restart" value="yes">
+{% if empty_restart %}<p>Wszystkie role w nowym cyklu będą wolne.</p>{% else %}
+<h2>Zachowaj przydziały</h2>{% for a in assignments %}<label class="contract-checkbox"><input type="checkbox" name="retained_ids" value="{{ a.pk }}" {% if a.role == 'editor' and needs_editor %}checked{% endif %}>{{ a.get_role_display }} — {{ a.assigned_to.get_full_name|default:a.assigned_to.username }}</label>{% empty %}<p>Brak aktywnych przydziałów do zachowania.</p>{% endfor %}
+<label for="restart-editor">Redaktor (wybór zastępuje zachowany przydział redaktora)</label><select id="restart-editor" name="editor_id"><option value="">Zachowaj zaznaczonego / pozostaw wolne</option>{% for editor in editors %}<option value="{{ editor.pk }}">{{ editor.get_full_name|default:editor.username }}</option>{% endfor %}</select>
+{% if needs_editor %}<p>Ten etap wymaga zachowania lub wybrania redaktora.</p>{% endif %}{% endif %}
+<div class="general-notes-actions"><a class="secondary-button" href="{% url 'core:assigned_text_detail' text.pk %}">Anuluj</a><button class="primary-button" type="submit">Potwierdź nowy cykl</button></div></form></section>{% endblock %}

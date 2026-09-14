@@ -1,3 +1,4 @@
+from core.workflow_events import track_workflow
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.shortcuts import get_object_or_404
@@ -372,6 +373,7 @@ def _require_start_order(stage, stages):
 
 
 @transaction.atomic
+@track_workflow
 def start_assigned_stage(*, user, stage_id, started_at):
     require_team_member(user)
     transition_date = validate_assignment_start_date(started_at)
@@ -400,7 +402,7 @@ def start_assigned_stage(*, user, stage_id, started_at):
         raise ValidationError("Ten etap został już zakończony.")
     if stage.started_at is not None:
         raise ValidationError("Data rozpoczęcia tego etapu jest już zapisana.")
-    if stage.stage_type == StageType.AUTHOR_EDITING:
+    if stage.stage_type == StageType.AUTHOR_EDITING and not (text.current_workflow_cycle > 1 and len(stages) == 1):
         raise ValidationError(
             "Pracę autora rozpoczyna się przez przekazanie tekstu autorowi."
         )
@@ -476,10 +478,14 @@ def start_assigned_stage(*, user, stage_id, started_at):
     stage.started_at = transition_date
     stage.full_clean()
     stage.save(update_fields=["started_at"])
+    if stage.stage_type == StageType.EDITING and len(stages) == 1:
+        from workflow.services import create_pending_stage
+        create_pending_stage(text, StageType.FIRST_VERIFICATION)
     return stage
 
 
 @transaction.atomic
+@track_workflow
 def withdraw_text(*, user, text_id):
     require_coordinator(user)
 

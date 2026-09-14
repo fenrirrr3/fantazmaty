@@ -213,3 +213,37 @@ class UserActivityAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+from core.models import WorkflowEvent
+
+@admin.register(WorkflowEvent)
+class WorkflowEventAdmin(admin.ModelAdmin):
+    list_display = ('created_at', 'title', 'previous_status', 'next_status', 'actor_name', 'channel', 'status')
+    list_filter = ('status', 'channel')
+    search_fields = ('title', 'actor_name')
+    readonly_fields = tuple(f.name for f in WorkflowEvent._meta.fields)
+
+    def has_module_permission(self, request):
+        return request.user.is_superuser
+
+    def has_view_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+from core.models import DiscordDispatch
+
+@admin.register(DiscordDispatch)
+class DiscordDispatchAdmin(WorkflowEventAdmin):
+    list_display = ('created_at', 'user', 'channel', 'status', 'message_id')
+    search_fields = ('user__username', 'channel')
+    readonly_fields = tuple(f.name for f in DiscordDispatch._meta.fields)

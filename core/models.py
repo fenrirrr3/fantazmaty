@@ -137,3 +137,27 @@ class DiscordDispatch(models.Model):
         ordering = ('-created_at', '-pk')
         verbose_name = 'wysyłka testowa Discord'
         verbose_name_plural = 'wysyłki testowe Discord'
+
+
+class WorkflowEvent(models.Model):
+    text = models.ForeignKey('texts.Text', null=True, on_delete=models.SET_NULL)
+    title = models.TextField()
+    authors = models.TextField(blank=True)
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    actor_name = models.CharField(max_length=300)
+    previous_status = models.CharField(max_length=100)
+    next_status = models.CharField(max_length=100)
+    details = models.TextField(blank=True)
+    channel = models.CharField(max_length=100)
+    status = models.CharField(max_length=12, default='pending', choices=(
+        ('pending', 'Oczekuje'), ('sending', 'Wysyłanie / brak potwierdzenia'),
+        ('sent', 'Wysłano'), ('failed', 'Błąd wysyłki'), ('unknown', 'Brak potwierdzenia'),
+        ('disabled', 'Brak skonfigurowanego kanału'),
+    ))
+    message_id = models.CharField(max_length=30, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ('-created_at', '-pk')
+        verbose_name = 'zmiana workflow'
+        verbose_name_plural = 'zmiany workflow i powiadomienia Discord'

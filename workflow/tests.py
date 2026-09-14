@@ -454,6 +454,7 @@ class WorkflowRestartTests(WorkflowTestDataMixin, TestCase):
             self.text,
             StageType.FIRST_PROOFREADING,
             self.superuser,
+            retained_ids=[old_assignment.pk],
         )
 
         self.text.refresh_from_db()
@@ -499,18 +500,14 @@ class WorkflowRestartTests(WorkflowTestDataMixin, TestCase):
         self.begin_editing()
         Person.objects.filter(user=self.editor).update(is_active=False)
 
-        restart_workflow_from_stage(
-            self.text,
-            StageType.FIRST_PROOFREADING,
-            self.superuser,
-        )
+        with self.assertRaises(ValidationError):
+            restart_workflow_from_stage(self.text, StageType.FIRST_PROOFREADING, self.superuser)
+        self.text.refresh_from_db()
+        self.assertEqual(self.text.current_workflow_cycle, 1)
+        restart_workflow_from_stage(self.text, StageType.FIRST_PROOFREADING, self.superuser, editor_id=self.superuser.pk)
+        assignment = current_assignment_queryset(self.text).get(role=Role.EDITOR)
+        self.assertEqual(assignment.assigned_to, self.superuser)
 
-        assignment = current_assignment_queryset(self.text).get(
-            role=Role.EDITOR
-        )
-
-        self.assertIsNone(assignment.assigned_to_id)
-        self.assertIsNone(assignment.assigned_at)
 
     def test_old_stage_cannot_be_modified_after_restart(self):
         editing = self.begin_editing()

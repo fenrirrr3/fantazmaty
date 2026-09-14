@@ -53,6 +53,15 @@ class WorkflowStageAdminForm(
         ),
     )
 
+    confirm_data_correction = forms.BooleanField(required=False, label="Potwierdzam ręczną korektę danych (bez przejścia do następnego etapu)")
+
+    def clean(self):
+        data = super().clean()
+        state_fields = {'text', 'workflow_cycle', 'stage_type', 'iteration', 'started_at', 'ended_at', 'is_completed'}
+        if set(self.changed_data) & state_fields and not data.get('confirm_data_correction'):
+            raise forms.ValidationError("Do rozpoczęcia lub zakończenia pracy użyj akcji na liście etapów. Ręczna korekta wymaga potwierdzenia i nie tworzy następnego etapu.")
+        return data
+
     class Meta:
         model = WorkflowStage
         fields = "__all__"
@@ -239,6 +248,7 @@ def get_user_vacation_information(user):
 @admin.register(WorkflowStage)
 class WorkflowStageAdmin(admin.ModelAdmin):
     form = WorkflowStageAdminForm
+    exclude = ("workflow_cycle",)
     empty_value_display = "–"
 
     list_display = (
@@ -292,6 +302,7 @@ class WorkflowStageAdmin(admin.ModelAdmin):
                     "started_at",
                     "ended_at",
                     "is_completed",
+                    "confirm_data_correction",
                 ),
             },
         ),
@@ -311,78 +322,36 @@ class WorkflowStageAdmin(admin.ModelAdmin):
     )
 
     actions = (
-        "set_cycle_as_current",
+        "set_cycle_as_current", "finish_selected_stages", "start_selected_stages",
     )
 
-    @admin.display(
-        boolean=True,
-        description="Bieżący przebieg",
-    )
-    @admin.display(
-        description="Urlop przypisanej osoby",
-    )
-    def assigned_person_leave(self, obj):
-        information = get_user_vacation_information(
-            obj.assigned_to
-        )
+    @admin.action(description="Zakończ etap i utwórz następny (dzisiaj)")
+    def finish_selected_stages(self, request, queryset):
+        from workflow.services import complete_stage
+        from django.core.exceptions import ValidationError, PermissionDenied
+        try:
+            with transaction.atomic():
+                for stage in queryset.order_by('text_id', 'pk'):
+                    complete_stage(stage, request.user, timezone.localdate())
+        except (ValidationError, PermissionDenied) as exc:
+            self.message_user(request, str(exc), level=messages.ERROR)
+        else:
+            self.message_user(request, "Zakończono etapy i utworzono następne.")
 
-        if information is None:
-            return "–"
+    @admin.action(description="Rozpocznij przypisany etap (dzisiaj)")
+    def start_selected_stages(self, request, queryset):
+        from core.services.texts import start_assigned_stage
+        from django.core.exceptions import ValidationError, PermissionDenied
+        try:
+            with transaction.atomic():
+                for stage in queryset.order_by('text_id', 'pk'):
+                    start_assigned_stage(user=request.user, stage_id=stage.pk, started_at=timezone.localdate())
+        except (ValidationError, PermissionDenied) as exc:
+            self.message_user(request, str(exc), level=messages.ERROR)
+        else:
+            self.message_user(request, "Rozpoczęto etapy.")
 
-        return information["description"]
-
-
-    def save_model(
-        self,
-        request,
-        obj,
-        form,
-        change,
-    ):
-        previous_user_id = None
-
-        if obj.pk:
-            previous_user_id = (
-                WorkflowRoleAssignment.objects
-                .filter(pk=obj.pk)
-                .values_list(
-                    "assigned_to_id",
-                    flat=True,
-                )
-                .first()
-            )
-
-        super().save_model(
-            request,
-            obj,
-            form,
-            change,
-        )
-
-        if (
-            obj.assigned_to_id
-            and obj.assigned_to_id != previous_user_id
-        ):
-            information = get_user_vacation_information(
-                obj.assigned_to
-            )
-
-            if information is not None:
-                person_name = (
-                    obj.assigned_to.get_full_name()
-                    or obj.assigned_to.get_username()
-                )
-
-                self.message_user(
-                    request,
-                    (
-                        f"Uwaga: osoba „{person_name}” ma urlop. "
-                        f'{information["description"]}. '
-                        "Przypisanie zostało zapisane."
-                    ),
-                    level=messages.WARNING,
-                )
-
+    @admin.display(boolean=True, description="Bieżący przebieg")
     def is_current_cycle(self, obj):
         return (
             obj.workflow_cycle
@@ -403,6 +372,7 @@ class WorkflowStageAdmin(admin.ModelAdmin):
 @admin.register(WorkflowRoleAssignment)
 class WorkflowRoleAssignmentAdmin(admin.ModelAdmin):
     form = WorkflowRoleAssignmentAdminForm
+    exclude = ("workflow_cycle",)
     empty_value_display = "Nieprzypisane"
 
     list_display = (

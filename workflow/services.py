@@ -1,5 +1,6 @@
 from datetime import date, datetime, timedelta
 from functools import wraps
+from core.workflow_events import track_workflow
 
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import router, transaction
@@ -166,7 +167,7 @@ def _locked_text_operation(function):
         text.current_workflow_cycle = locked_text.current_workflow_cycle
         return result
 
-    return wrapped
+    return track_workflow(wrapped)
 
 
 def _locked_stage_operation(function):
@@ -205,7 +206,7 @@ def _locked_stage_operation(function):
             ensure_stage_belongs_to_current_cycle(locked_stage)
             return function(locked_stage, *args, **kwargs)
 
-    return wrapped
+    return track_workflow(wrapped)
 
 
 def current_cycle(text):
@@ -493,53 +494,59 @@ def _assign_role(text, role, user):
     return assignment
 
 
+def restart_snapshot(text):
+    return {'cycle': text.current_workflow_cycle,
+            'assignments': list(current_assignment_queryset(text).order_by('pk').values_list('pk', 'role', 'assigned_to_id')),
+            'stages': [(s.pk, s.stage_type, s.is_completed, str(s.started_at), str(s.ended_at)) for s in current_stage_queryset(text).order_by('pk')]}
+
+
+def restart_needs_editor(stage_type):
+    return stage_type in RESTARTABLE_STAGE_TYPES[2:11]
+
+
 @_locked_text_operation
-def restart_workflow_from_stage(text, stage_type, user):
+def restart_workflow_from_stage(text, stage_type, user, *, retained_ids=(), editor_id=None, expected_snapshot=None):
     _ensure_actor(user)
-
     if not user.is_superuser:
-        raise PermissionDenied(
-            "Tylko superuser może rozpocząć nowy przebieg workflow."
-        )
-
+        raise PermissionDenied("Tylko superuser może rozpocząć nowy przebieg workflow.")
     if stage_type not in RESTARTABLE_STAGE_TYPES:
         raise ValidationError("Wybrano nieprawidłowy etap docelowy.")
-
-    previous_assignments = list(
-        current_assignment_queryset(text).select_related(
-            "assigned_to",
-            "assigned_to__person_profile",
-        )
-    )
-
+    import json
+    if expected_snapshot is not None and json.dumps(restart_snapshot(text)) != json.dumps(expected_snapshot):
+        raise ValidationError("Przebieg lub przydziały zmieniły się od podglądu. Sprawdź restart ponownie.")
+    previous = list(current_assignment_queryset(text).select_related('assigned_to__person_profile'))
+    try:
+        selected = {int(pk) for pk in retained_ids}
+        editor_id = int(editor_id) if editor_id else None
+    except (ValueError, TypeError):
+        raise ValidationError("Nieprawidłowe przypisanie.")
+    if selected - {a.pk for a in previous}:
+        raise ValidationError("Przydziały zmieniły się. Odśwież podgląd.")
+    retained = [a for a in previous if a.pk in selected]
+    if stage_type == StageType.READY_FOR_EDITING and (retained or editor_id):
+        raise ValidationError("Restart od Do redakcji wymaga pustych przydziałów.")
+    for assignment in retained:
+        if not _actor_is_active(assignment.assigned_to):
+            raise ValidationError("Nie można zachować przydziału do nieaktywnej osoby.")
+        if not (is_coordinator(assignment.assigned_to) or belongs_to_group(assignment.assigned_to, ROLE_GROUPS[assignment.role])):
+            raise ValidationError("Nie można zachować przydziału: osoba nie ma już wymaganej roli.")
+    from django.contrib.auth import get_user_model
+    editor = get_user_model().objects.filter(pk=editor_id).first() if editor_id else None
+    if editor_id and (not _actor_is_active(editor) or not (belongs_to_group(editor, 'Redaktor') or is_coordinator(editor))):
+        raise ValidationError("Wybierz aktywnego redaktora lub koordynatora.")
+    if editor:
+        retained = [a for a in retained if a.role != Role.EDITOR]
+    retained_editor = next((a.assigned_to for a in retained if a.role == Role.EDITOR), None)
+    if restart_needs_editor(stage_type) and not (editor or retained_editor):
+        raise ValidationError("Ten etap wymaga redaktora, który będzie kontynuował pracę. Wybierz go w podglądzie.")
     text.current_workflow_cycle += 1
-    text.save(update_fields=["current_workflow_cycle"])
-
-    if stage_type != StageType.READY_FOR_EDITING:
-        assigned_at = timezone.now()
-        assignments = []
-
-        for previous in previous_assignments:
-            assignee = previous.assigned_to
-
-            if not _actor_is_active(assignee):
-                assignee = None
-
-            assignments.append(
-                WorkflowRoleAssignment(
-                    text=text,
-                    workflow_cycle=current_cycle(text),
-                    role=previous.role,
-                    assigned_to=assignee,
-                    assigned_at=assigned_at if assignee else None,
-                    notes=previous.notes,
-                )
-            )
-
-        for assignment in assignments:
-            assignment.save(using=_database(text))
-
-    # Poprzednie etapy i przydziały pozostają w historii.
+    text.save(update_fields=['current_workflow_cycle'])
+    for previous_assignment in retained:
+        assignment = WorkflowRoleAssignment(text=text, workflow_cycle=current_cycle(text), role=previous_assignment.role,
+            assigned_to=previous_assignment.assigned_to, assigned_at=timezone.now(), notes=previous_assignment.notes)
+        assignment.full_clean(); assignment.save()
+    if editor:
+        _assign_role(text, Role.EDITOR, editor)
     return _create_pending_stage(text, stage_type)
 
 
@@ -613,50 +620,14 @@ def claim_stage(text, stage_type, user, started_at=None):
         .first()
     )
 
-    # Nie twórz dowolnego etapu na żądanie użytkownika.
-    # Dostępność wynika z wcześniejszego przejścia lub restartu.
     if stage is None:
         raise ValidationError("Ten etap nie jest jeszcze dostępny.")
-
-    if stage.started_at or stage.ended_at:
-        raise ValidationError("Ten etap został już rozpoczęty.")
-
+    from workflow.availability import claim_reason
+    reason = claim_reason(stage,user,list(current_stage_queryset(text)),list(current_assignment_queryset(text)))
+    if reason: raise ValidationError(reason)
     is_cycle_entry = cycle_entry_stage_is(text, stage_type)
-
-    if stage_type == StageType.FIRST_VERIFICATION:
-        if not is_cycle_entry and not active_stage_exists(
-            text,
-            StageType.EDITING,
-        ):
-            raise ValidationError(
-                "Pierwszego weryfikatora można przypisać "
-                "podczas aktywnej redakcji."
-            )
-
-    elif stage_type == StageType.SECOND_VERIFICATION and not is_cycle_entry:
-        if not completed_stage_exists(text, StageType.FIRST_VERIFICATION):
-            raise ValidationError(
-                "Najpierw należy zakończyć pierwszą weryfikację."
-            )
-
-        if any(
-            active_stage_exists(text, kind)
-            for kind in (StageType.EDITING, StageType.AUTHOR_EDITING)
-        ):
-            raise ValidationError(
-                "Redaktor musi najpierw przekazać tekst "
-                "do drugiej weryfikacji."
-            )
-
-    elif stage_type == StageType.EDITING and not is_cycle_entry:
-        raise ValidationError(
-            "Użyj operacji wznowienia redakcji."
-        )
-
-    elif stage_type == StageType.AUTHOR_EDITING and not is_cycle_entry:
-        raise ValidationError(
-            "Użyj operacji przekazania tekstu autorowi."
-        )
+    if stage_type == StageType.FIRST_VERIFICATION and started_at is not None:
+        raise ValidationError('Rezerwacja pierwszej weryfikacji nie ustala daty. Datę podaje się przy rozpoczęciu pracy.')
 
     _assign_role(text, role, user)
 
@@ -797,6 +768,11 @@ def resume_editing(text, user, started_at=None):
     return _start_stage(editing_stage, transition_date)
 
 
+def editing_checkpoint_passed(text, checkpoint):
+    from workflow.state import checkpoint_before_restart
+    return completed_stage_exists(text, checkpoint) or checkpoint_before_restart(current_cycle(text), list(current_stage_queryset(text)), checkpoint)
+
+
 @_locked_text_operation
 def send_text_to_author(text, user, started_at=None):
     ensure_editor_access(text, user)
@@ -805,7 +781,7 @@ def send_text_to_author(text, user, started_at=None):
 
     transition_date = _transition_date(started_at)
 
-    if not completed_stage_exists(text, StageType.FIRST_VERIFICATION):
+    if not editing_checkpoint_passed(text, StageType.FIRST_VERIFICATION):
         raise ValidationError(
             "Tekst można przekazać autorowi dopiero po "
             "zakończeniu pierwszej weryfikacji."
@@ -833,7 +809,7 @@ def send_to_second_verification(text, user, started_at=None):
 
     transition_date = _transition_date(started_at)
 
-    if not completed_stage_exists(text, StageType.FIRST_VERIFICATION):
+    if not editing_checkpoint_passed(text, StageType.FIRST_VERIFICATION):
         raise ValidationError(
             "Najpierw należy zakończyć pierwszą weryfikację."
         )
@@ -864,7 +840,7 @@ def finish_editing_to_coordinator(text, user, ended_at=None):
 
     transition_date = _transition_date(ended_at)
 
-    if not completed_stage_exists(text, StageType.SECOND_VERIFICATION):
+    if not editing_checkpoint_passed(text, StageType.SECOND_VERIFICATION):
         raise ValidationError(
             "Redakcję można zakończyć dopiero po zakończeniu "
             "drugiej weryfikacji."
@@ -908,6 +884,9 @@ def user_can_complete_stage(stage, user):
             role=Role.EDITOR,
             assigned_to_id=user.pk,
         ).exists()
+
+    if stage.stage_type == StageType.STYLING and not user.is_superuser:
+        return False
 
     if is_coordinator(user):
         return True

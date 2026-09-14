@@ -187,6 +187,13 @@ class WorkflowStage(models.Model):
                 "niż data rozpoczęcia."
             )
 
+        if self.ended_at and not self.is_completed:
+            errors["is_completed"] = "Etap z datą zakończenia musi być oznaczony jako zakończony."
+        if self.text_id and not self.is_completed and self.ended_at is None:
+            duplicate = type(self).objects.filter(text_id=self.text_id, workflow_cycle=self.workflow_cycle, stage_type=self.stage_type, is_completed=False, ended_at__isnull=True).exclude(pk=self.pk).exists()
+            if duplicate:
+                errors['stage_type'] = "W tym przebiegu istnieje już otwarty etap tego rodzaju."
+
         if self.is_completed and not self.started_at:
             errors["started_at"] = (
                 "Zakończony etap musi mieć datę rozpoczęcia."

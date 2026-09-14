@@ -1,3 +1,4 @@
+from core.workflow_events import track_workflow
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.shortcuts import get_object_or_404
@@ -446,7 +447,7 @@ def save_author_notification(*, user, review_id, author_notified_at):
     return review
 
 
-def _resolve_copy_author(review, *, contract_received):
+def _resolve_copy_author(review, *, contract_received, update_author_phone=False):
     if review.author_id is not None:
         author = get_object_or_404(
             Author.objects.select_for_update(),
@@ -495,6 +496,7 @@ def _resolve_copy_author(review, *, contract_received):
                 last_name=review.author_last_name,
                 email=email,
                 has_contract=True,
+                phone_number=review.phone_number.strip(),
             )
             author.full_clean()
             author.save()
@@ -511,11 +513,16 @@ def _resolve_copy_author(review, *, contract_received):
         author.full_clean()
         author.save(update_fields=["has_contract"])
 
+    if update_author_phone and review.phone_number.strip():
+        author.phone_number = review.phone_number.strip()
+        author.full_clean()
+        author.save(update_fields=["phone_number"])
     return author
 
 
 @transaction.atomic
-def copy_review_to_text(*, user, review_id, contract_received=False):
+@track_workflow
+def copy_review_to_text(*, user, review_id, contract_received=False, confirmed_coauthor_ids=(), update_author_phone=False):
     require_superuser(user)
 
     if type(contract_received) is not bool:
@@ -535,9 +542,26 @@ def copy_review_to_text(*, user, review_id, contract_received=False):
     if review.author_notified_at is None:
         raise ValidationError("Najpierw oznacz powiadomienie autora.")
 
+    if type(update_author_phone) is not bool:
+        raise ValidationError("Nieprawidłowe potwierdzenie zmiany telefonu.")
+    try:
+        confirmed_ids = {int(value) for value in confirmed_coauthor_ids}
+    except (ValueError, TypeError):
+        raise ValidationError("Nieprawidłowa lista umów współautorów.")
+    coauthors = list(Author.objects.select_for_update().filter(pk__in=review.coauthors.values('pk')).order_by('pk'))
+    if confirmed_ids - {a.pk for a in coauthors}:
+        raise ValidationError("Lista współautorów zmieniła się. Odśwież stronę.")
+    missing = [str(a) for a in coauthors if not a.has_contract and a.pk not in confirmed_ids]
+    if missing:
+        raise ValidationError("Potwierdź umowy współautorów: " + ", ".join(missing))
+    for coauthor in coauthors:
+        if not coauthor.has_contract:
+            coauthor.has_contract = True
+            coauthor.save(update_fields=['has_contract'])
     author = _resolve_copy_author(
         review,
         contract_received=contract_received,
+        update_author_phone=update_author_phone,
     )
 
     text = Text(

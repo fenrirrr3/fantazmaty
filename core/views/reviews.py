@@ -434,6 +434,14 @@ def _render_review_detail(
             context["matching_author"] = {"pk": matches[0].pk, "has_contract": matches[0].has_contract}
             context["author_has_contract"] = matches[0].has_contract
 
+    if include_author:
+        context['copy_coauthors'] = review.coauthors.all()
+        profile_author = review.author
+        if not profile_author and context.get('matching_author'):
+            from authors.models import Author
+            profile_author = Author.objects.filter(pk=context['matching_author']['pk']).first()
+        context['copy_profile_phone'] = profile_author.phone_number if profile_author else ''
+        context['copy_phone_differs'] = bool(profile_author and review.phone_number.strip() and review.phone_number.strip() != profile_author.phone_number.strip())
     if bound_forms:
         context.update(bound_forms)
 
@@ -782,6 +790,8 @@ def copy_review_to_text(request, review_id):
             user=request.user,
             review_id=review.pk,
             contract_received=request.POST.get("contract_received") == "yes",
+            confirmed_coauthor_ids=request.POST.getlist("coauthor_contract_received"),
+            update_author_phone=request.POST.get("update_author_phone") == "yes",
         )
     except ValidationError as error:
         messages.error(request, " ".join(error.messages))

@@ -10,3 +10,5 @@ class CoreConfig(AppConfig):
         from core.search_lookup import register
         register()
         from core import runtime_checks  # noqa: F401
+        from core.workflow_events import install
+        install()

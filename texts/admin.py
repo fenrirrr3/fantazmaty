@@ -165,6 +165,15 @@ class WorkflowStageInline(
         "pk",
     )
 
+    readonly_fields = fields
+    show_change_link = True
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
 
 class TextAdminForm(NormalizedFormMixin, forms.ModelForm):
     normalization_fields = TEXT_FIELDS

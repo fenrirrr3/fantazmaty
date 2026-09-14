@@ -371,21 +371,32 @@ def restart_text_workflow(request, text_id):
         messages.error(request, _form_error_message(form))
         return _detail_redirect(text.pk)
 
+    from django.core import signing
+    from django.contrib.auth import get_user_model
+    from workflow.services import restart_snapshot, restart_needs_editor, _actor_is_active, belongs_to_group, is_coordinator
+    target = form.cleaned_data['target_stage']
+    if request.POST.get('confirm_restart') != 'yes':
+        assignments = list(WorkflowRoleAssignment.objects.filter(text=text, workflow_cycle=text.current_workflow_cycle).select_related('assigned_to__person_profile'))
+        eligible = [a for a in assignments if _actor_is_active(a.assigned_to)]
+        editors = [u for u in get_user_model().objects.filter(is_active=True).select_related('person_profile') if _actor_is_active(u) and (belongs_to_group(u, 'Redaktor') or is_coordinator(u))]
+        return render(request, 'core/restart_preview.html', {
+            'text': text, 'target': target, 'target_label': dict(WorkflowStage.StageType.choices)[target],
+            'assignments': eligible, 'editors': editors, 'needs_editor': restart_needs_editor(target),
+            'empty_restart': target == WorkflowStage.StageType.READY_FOR_EDITING,
+            'token': signing.dumps({'user': request.user.pk, 'text': text.pk, 'target': target, 'snapshot': restart_snapshot(text)}, salt='restart-preview'),
+        })
     try:
-        restart_workflow_from_stage(
-            text=text,
-            stage_type=form.cleaned_data["target_stage"],
-            user=request.user,
-        )
+        payload = signing.loads(request.POST.get('token', ''), salt='restart-preview', max_age=1800)
+        if payload['user'] != request.user.pk or payload['text'] != text.pk or payload['target'] != target:
+            raise signing.BadSignature()
+        restart_workflow_from_stage(text=text, stage_type=target, user=request.user,
+            retained_ids=request.POST.getlist('retained_ids'), editor_id=request.POST.get('editor_id'), expected_snapshot=payload['snapshot'])
+    except signing.BadSignature:
+        messages.error(request, 'Podgląd restartu wygasł. Sprawdź restart ponownie.')
     except ValidationError as error:
-        messages.error(request, " ".join(error.messages))
+        messages.error(request, ' '.join(error.messages))
     else:
-        messages.success(
-            request,
-            "Rozpoczęto nowy cykl od wybranego etapu. "
-            "Historia poprzedniego cyklu została zachowana.",
-        )
-
+        messages.success(request, 'Rozpoczęto nowy cykl z wybranymi przydziałami. Poprzedni cykl pozostał w historii.')
     return _detail_redirect(text.pk)
 
 
