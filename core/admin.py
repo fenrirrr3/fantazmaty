@@ -59,6 +59,12 @@ from core.models import AnthologyCorrection
 
 @admin.register(AnthologyCorrection)
 class AnthologyCorrectionAdmin(admin.ModelAdmin):
+    def has_change_permission(self, request, obj=None):
+        return bool(not (obj and obj.is_resolved) and super().has_change_permission(request, obj))
+
+    def has_delete_permission(self, request, obj=None):
+        return bool(obj is not None and not obj.is_resolved and super().has_delete_permission(request, obj))
+
     from core.correction_forms import AdminCorrectionForm
     form = AdminCorrectionForm
     class Media:
@@ -75,8 +81,7 @@ class AnthologyCorrectionAdmin(admin.ModelAdmin):
         return self.has_module_permission(request)
 
     has_add_permission = has_view_permission
-    has_change_permission = has_view_permission
-    has_delete_permission = has_view_permission
+
 
 
 from core.permissions import is_coordinator

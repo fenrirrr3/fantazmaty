@@ -39,7 +39,7 @@ def advance(text, target, users, variant):
     flow.claim_ready_for_editing(text, editor, started_at=today)
     if target == Stage.EDITING:
         return
-    flow.claim_stage(text, Stage.FIRST_VERIFICATION, verifier1, started_at=today)
+    flow.claim_stage(text, Stage.FIRST_VERIFICATION, verifier1)
     flow.send_to_first_verification(text, editor, ended_at=today)
     stage = flow.start_first_verification(text, verifier1, started_at=today)
     if target == Stage.FIRST_VERIFICATION:

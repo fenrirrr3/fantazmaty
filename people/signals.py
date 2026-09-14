@@ -63,3 +63,91 @@ def account_saved(sender, instance, using, raw=False, **kwargs):
 def group_renamed(sender, instance, using, raw=False, **kwargs):
     if not raw and Group.objects.using(using).filter(pk=instance.pk).filter(coordinator_query()).exists():
         get_user_model().objects.using(using).filter(groups=instance).update(is_staff=True)
+
+
+from django.db.models.signals import pre_save
+from people.coordinator_access import revoke_coordinator, revoking
+
+
+@receiver(pre_save, sender=Person)
+def track_coordinator_flag(sender, instance, using, **kwargs):
+    old = sender.objects.using(using).filter(pk=instance.pk).values_list('is_coordinator', flat=True).first() if instance.pk else False
+    instance._revoke_coordinator = bool(old and not instance.is_coordinator)
+
+
+@receiver(post_save, sender=Person)
+def revoke_by_flag(sender, instance, raw=False, **kwargs):
+    if not raw and getattr(instance, '_revoke_coordinator', False) and not revoking.get():
+        revoke_coordinator(instance)
+        instance._revoke_coordinator = False
+
+
+@receiver(m2m_changed, sender=Person.roles.through)
+def revoke_removed_roles(sender, instance, action, reverse, pk_set, using, **kwargs):
+    if revoking.get():
+        return
+    if action in ('pre_remove', 'pre_clear'):
+        if reverse:
+            people = instance.people.all() if action == 'pre_clear' else Person.objects.filter(pk__in=pk_set)
+            affected = list(people.values_list('pk', flat=True)) if Role.objects.filter(pk=instance.pk).filter(coordinator_query()).exists() else []
+        else:
+            removed = instance.roles.all() if action == 'pre_clear' else instance.roles.filter(pk__in=pk_set)
+            affected = [instance.pk] if removed.filter(coordinator_query()).exists() else []
+        instance._removed_coordinator_people = affected
+    elif action in ('post_remove', 'post_clear'):
+        for person in Person.objects.filter(pk__in=getattr(instance, '_removed_coordinator_people', [])):
+            if not person.roles.filter(coordinator_query()).exists():
+                revoke_coordinator(person)
+
+
+@receiver(m2m_changed, sender=get_user_model().groups.through)
+def revoke_removed_groups(sender, instance, action, reverse, pk_set, using, **kwargs):
+    if revoking.get():
+        return
+    if action in ('pre_remove', 'pre_clear'):
+        if reverse:
+            users = instance.user_set.all() if action == 'pre_clear' else get_user_model().objects.filter(pk__in=pk_set)
+            ids = list(users.values_list('pk', flat=True)) if Group.objects.filter(pk=instance.pk).filter(coordinator_query()).exists() else []
+        else:
+            removed = instance.groups.all() if action == 'pre_clear' else instance.groups.filter(pk__in=pk_set)
+            ids = [instance.pk] if removed.filter(coordinator_query()).exists() else []
+        instance._removed_coordinator_users = ids
+    elif action in ('post_remove', 'post_clear'):
+        for person in Person.objects.filter(user_id__in=getattr(instance, '_removed_coordinator_users', [])):
+            if not person.user.groups.filter(coordinator_query()).exists():
+                revoke_coordinator(person)
+
+
+from django.db.models.signals import pre_delete, post_delete
+
+
+def coordinator_name(name):
+    name = name.casefold()
+    return name == 'koordynator' or name.startswith('koordynator ')
+
+
+@receiver(pre_save, sender=Role)
+@receiver(pre_save, sender=Group)
+@receiver(pre_delete, sender=Role)
+@receiver(pre_delete, sender=Group)
+def remember_coordinator_members(sender, instance, **kwargs):
+    old_name = sender.objects.filter(pk=instance.pk).values_list('name', flat=True).first() if instance.pk else None
+    if not old_name or not coordinator_name(old_name):
+        instance._coordinator_members = []
+    elif sender is Role:
+        instance._coordinator_members = list(instance.people.values_list('pk', flat=True))
+    else:
+        instance._coordinator_members = list(Person.objects.filter(user__groups=instance).values_list('pk', flat=True))
+
+
+@receiver(post_save, sender=Role)
+@receiver(post_save, sender=Group)
+@receiver(post_delete, sender=Role)
+@receiver(post_delete, sender=Group)
+def revoke_lost_coordinator_name(sender, instance, signal, **kwargs):
+    if revoking.get() or (signal is post_save and coordinator_name(instance.name)):
+        return
+    for person in Person.objects.filter(pk__in=getattr(instance, '_coordinator_members', [])):
+        remaining = person.roles.filter(coordinator_query()).exists() if sender is Role else bool(person.user_id and person.user.groups.filter(coordinator_query()).exists())
+        if not remaining:
+            revoke_coordinator(person)

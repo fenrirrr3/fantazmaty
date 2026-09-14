@@ -114,6 +114,7 @@ def _permission_context(user):
     }
 
 
+@transaction.atomic
 def _render_text_detail(request, text, *, bound_forms=None, status=200):
     """
     Selektor przygotowuje historię, przydziały i dostępne akcje.
@@ -122,11 +123,14 @@ def _render_text_detail(request, text, *, bound_forms=None, status=200):
     Widok udostępnia osobno wyłącznie adresy e-mail autorów tego tekstu
     osobom mającym przy nim przypisanie, również w historii.
     """
+    text = Text.objects.select_for_update().get(pk=text.pk)
     context = text_detail_context(
         user=request.user,
         text=text,
     )
     context.update(_permission_context(request.user))
+    from core.workflow_tokens import make_token
+    context['workflow_token'] = make_token(text, request.user)
 
     coordinator_access = is_coordinator(request.user)
     is_assigned = WorkflowRoleAssignment.objects.filter(

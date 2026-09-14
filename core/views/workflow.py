@@ -103,11 +103,11 @@ def _perform_text_transition(
     text = get_object_or_404(Text, pk=text_id)
 
     try:
-        transition(
-            text=text,
-            user=request.user,
-            **{date_parameter: timezone.localdate()},
-        )
+        with transaction.atomic():
+            text = Text.objects.select_for_update().get(pk=text_id)
+            from core.workflow_tokens import check_token
+            check_token(request.POST.get('workflow_token', ''), text, request.user)
+            transition(text=text, user=request.user, **{date_parameter: timezone.localdate()})
     except ValidationError as error:
         messages.error(request, " ".join(error.messages))
     else:
@@ -412,10 +412,11 @@ def withdraw_text(request, text_id):
         # Wycofanie zachowuje historię, blokuje dalszą pracę oraz
         # usuwa tekst z kolejek aktywnych i dostępnych zadań.
         # Ponowienie żądania nie tworzy kolejnego etapu wycofania.
-        withdraw_text_service(
-            user=request.user,
-            text_id=text.pk,
-        )
+        with transaction.atomic():
+            text = Text.objects.select_for_update().get(pk=text_id)
+            from core.workflow_tokens import check_token
+            check_token(request.POST.get('workflow_token', ''), text, request.user)
+            withdraw_text_service(user=request.user, text_id=text.pk)
     except ValidationError as error:
         messages.error(request, " ".join(error.messages))
     else:

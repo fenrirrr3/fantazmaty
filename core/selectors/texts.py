@@ -439,30 +439,16 @@ def my_texts_context(*, user, selected_view="active"):
         selected_view = "active"
     include_authors = can_view_author_data(user)
     today = timezone.localdate()
-    rows = []
+    from workflow.read_queries import filter_my_texts
+    texts = filter_my_texts(_user_texts(user, include_authors), user, selected_view, today)
 
-    for text in _user_texts(user, include_authors):
+    def project(text):
         assignments, active, reserved, waiting = _own_work(text, user, today)
         roles = {item.role for item in assignments}
-        own_stages = [
-            stage for stage in text.selector_stages
-            if STAGE_ROLE_MAP.get(stage.stage_type) in roles
-            and stage.stage_type not in {
-                StageType.AUTHOR_EDITING, StageType.READY_FOR_EDITING,
-            }
-        ]
-        completed = (
-            bool(own_stages)
-            and all(stage.is_completed for stage in own_stages)
-            and not active and not reserved and not waiting
-        )
-        if selected_view == "active" and not active:
-            continue
-        if selected_view == "waiting" and not (waiting or reserved):
-            continue
-        if selected_view == "completed" and not completed:
-            continue
-
+        own = [stage for stage in text.selector_stages
+               if STAGE_ROLE_MAP.get(stage.stage_type) in roles
+               and stage.stage_type not in {StageType.AUTHOR_EDITING, StageType.READY_FOR_EDITING}]
+        completed = bool(own) and all(stage.is_completed for stage in own) and not active and not reserved and not waiting
         row = _text_row(text, include_authors)
         row.update(
             user_assignments=[_assignment_data(item) for item in assignments],
@@ -475,68 +461,46 @@ def my_texts_context(*, user, selected_view="active"):
             has_completed_work=completed,
             is_waiting_for_other_role=waiting,
         )
-        rows.append(row)
+        return row
 
-    return {"texts": rows, "selected_view": selected_view}
+    return {"texts": _ProjectedRows(texts, project), "selected_view": selected_view}
 
 
-def user_workflow_summary(user, *, today=None):
+def user_workflow_summary(user, *, today=None, limit=None):
     require_team_member(user)
     today = today or timezone.localdate()
-    include_authors = can_view_author_data(user)
-    active_rows = []
-    reserved_rows = []
-
-    for text in _user_texts(user, include_authors):
-        _, active, reserved, _ = _own_work(text, user, today)
-        text_data = _text_data(text, include_authors)
-        active_rows.extend(_stage_data(stage, text_data) for stage in active)
-        reserved_rows.extend(
-            _assignment_data(assignment, text_data)
-            for assignment in reserved
-        )
-
-    active_rows.sort(key=lambda row: (row["started_at"], row["pk"]))
+    from workflow.read_queries import dashboard_querysets
+    active, reserved = dashboard_querysets(user, today)
+    counts = (active.count(), reserved.count())
+    active = active.select_related("text__anthology")
+    reserved = reserved.select_related("text__anthology", "assigned_to__person_profile")
+    if limit is not None:
+        active, reserved = active[:limit], reserved[:limit]
     return {
-        "active_stages": active_rows,
-        "reserved_assignments": reserved_rows,
-        "active_stage_count": len(active_rows),
-        "reserved_assignment_count": len(reserved_rows),
+        "active_stages": [_stage_data(stage, _text_data(stage.text, False)) for stage in active],
+        "reserved_assignments": [_assignment_data(item, _text_data(item.text, False)) for item in reserved],
+        "active_stage_count": counts[0], "reserved_assignment_count": counts[1],
     }
 
 
 def available_stages_for_user(*, user):
     require_team_member(user)
+    from workflow.availability import claim_access
+    from workflow.read_queries import available_stages
     include_authors = can_view_author_data(user)
-    texts = _prepared_texts(
-        Text.objects.filter(
-            workflow_stages__workflow_cycle=F("current_workflow_cycle"),
-            workflow_stages__is_completed=False,
-            workflow_stages__started_at__isnull=True,
-            workflow_stages__ended_at__isnull=True,
-        ).distinct().order_by("anthology__title", "title", "pk"),
-        include_authors,
-    )
-    rows = []
+    stages = available_stages(user, claim_access(user)).select_related("text__anthology")
+    if include_authors:
+        stages = stages.prefetch_related(Prefetch("text__authors", queryset=Author.objects.order_by(
+            "last_name", "first_name", "pk"), to_attr="selector_authors"))
 
-    for text in texts:
-        stages = text.selector_stages
-        if _terminal(stages):
-            continue
+    def project(stage):
+        role = STAGE_ROLE_MAP.get(stage.stage_type)
+        row = _stage_data(stage, _text_data(stage.text, include_authors))
+        row.update(required_group="Superuser" if role == Role.STYLING else ROLE_GROUPS.get(role, "Redaktor"),
+                   available_role=role)
+        return row
 
-        from workflow.availability import claim_reason
-        for stage in stages:
-            role = STAGE_ROLE_MAP.get(stage.stage_type)
-            if claim_reason(stage, user, stages, text.selector_assignments):
-                continue
-            row = _stage_data(stage, _text_data(text, include_authors))
-            row.update(
-                required_group="Superuser" if role == Role.STYLING else ROLE_GROUPS.get(role, "Redaktor"),
-                available_role=role,
-            )
-            rows.append(row)
-
-    return rows
+    return _ProjectedRows(stages, project)
 
 
 def workflow_list_context(*, user, params):

@@ -1,3 +1,4 @@
+from core.testing_forms import post_form
 from datetime import timedelta
 from io import StringIO
 import json
@@ -65,10 +66,10 @@ class Revision8Tests(CoreTestDataMixin, TestCase):
     def test_file_url_permission_and_validation(self):
         url=reverse('core:update_text_file',args=[self.text.pk])
         self.client.force_login(self.editor)
-        self.assertEqual(self.client.post(url,{'file_url':'https://dropbox.com/example'}).status_code,403)
+        self.assertEqual(post_form(self.client, url,{'file_url':'https://dropbox.com/example'}).status_code,403)
         self.assign()
-        self.assertEqual(self.client.post(url,{'file_url':'javascript:alert(1)'}).status_code,400)
-        self.assertEqual(self.client.post(url,{'file_url':'https://dropbox.com/example'}).status_code,302)
+        self.assertEqual(post_form(self.client, url,{'file_url':'javascript:alert(1)'}).status_code,400)
+        self.assertEqual(post_form(self.client, url,{'file_url':'https://dropbox.com/example'}).status_code,302)
         self.text.refresh_from_db();self.assertEqual(self.text.file_url,'https://dropbox.com/example')
         self.assertContains(self.client.get(reverse('core:assigned_text_detail',args=[self.text.pk])),'https://dropbox.com/example')
 

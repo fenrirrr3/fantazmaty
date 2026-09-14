@@ -48,7 +48,7 @@
         <h2 id="text-information-heading">Informacje o tekście</h2>
         <div class="text-file-panel"><strong>Aktualny plik</strong>
         {% if file_url %}<p><a class="primary-button" href="{{ file_url }}" target="_blank" rel="noopener noreferrer">Otwórz plik lub folder</a></p>{% else %}<p>Nie dodano linku do pliku.</p>{% endif %}
-        {% if text_file_form %}<details><summary>Zmień link</summary><form method="post" action="{% url 'core:update_text_file' text.pk %}" data-warn-unsaved>{% csrf_token %}{{ text_file_form.as_p }}<button type="submit" class="secondary-button">Zapisz link</button></form></details>{% endif %}</div>
+        {% if text_file_form %}<details><summary>Zmień link</summary><form method="post" action="{% url 'core:update_text_file' text.pk %}" data-warn-unsaved>{% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">{{ text_file_form.as_p }}<button type="submit" class="secondary-button">Zapisz link</button></form></details>{% endif %}</div>
         {% if author_emails %}<div class="detail-item"><strong>E-mail autora</strong><p>{% for email in author_emails %}<a href="mailto:{{ email }}" data-double-copy data-copy-value="{{ email }}">{{ email }}</a>{% if not forloop.last %}<br>{% endif %}{% endfor %}</p></div>{% endif %}
 
         <dl class="details-grid">
@@ -202,7 +202,7 @@
                                     action="{% url 'core:complete_workflow_stage' stage.pk %}"
                                     class="complete-stage-form"
                                 >
-                                    {% csrf_token %}
+                                    {% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                                     <button type="submit" class="complete-stage-button">
                                         Zakończ etap
                                     </button>
@@ -214,7 +214,7 @@
                             <div class="quick-stage-action">
                                 <div class="quick-stage-description"><strong>Stylowanie</strong><p>Przejmij stylowanie na swoje konto.</p></div>
                                 <form method="post" action="{% url 'core:take_workflow_stage' stage.pk %}" class="take-stage-form">
-                                    {% csrf_token %}
+                                    {% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                                     <button type="submit" class="primary-button">Przejmij stylowanie</button>
                                     <div class="form-field"><label for="claim-styling-{{ stage.pk }}">Data rozpoczęcia</label><input id="claim-styling-{{ stage.pk }}" type="date" name="started_at" class="stage-date-input" value="{{ today_iso }}" min="{{ today_iso }}" required></div>
                                 </form>
@@ -233,7 +233,7 @@
                                     action="{% url 'core:start_assigned_workflow_stage' stage.pk %}"
                                     class="complete-stage-form"
                                 >
-                                    {% csrf_token %}
+                                    {% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                                     <div class="form-field">
                                         <label for="start-stage-{{ stage.pk }}">Data rozpoczęcia</label>
                                         <input
@@ -261,7 +261,7 @@
                 <div class="workflow-action-buttons">
                     {% if can_send_to_first_verification %}
                         <form method="post" action="{% url 'core:send_to_first_verification_stage' text.pk %}">
-                            {% csrf_token %}
+                            {% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                             <button type="submit" class="primary-button">
                                 Przekaż do pierwszej weryfikacji
                             </button>
@@ -270,7 +270,7 @@
 
                     {% if can_resume_editing %}
                         <form method="post" action="{% url 'core:resume_text_editing' text.pk %}">
-                            {% csrf_token %}
+                            {% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                             <button type="submit" class="primary-button">
                                 Wznów redakcję
                             </button>
@@ -279,7 +279,7 @@
 
                     {% if can_send_to_author %}
                         <form method="post" action="{% url 'core:send_text_to_author_stage' text.pk %}">
-                            {% csrf_token %}
+                            {% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                             <button type="submit" class="secondary-button">
                                 Przekaż tekst autorowi
                             </button>
@@ -288,7 +288,7 @@
 
                     {% if can_send_to_second_verification %}
                         <form method="post" action="{% url 'core:send_to_second_verification_stage' text.pk %}">
-                            {% csrf_token %}
+                            {% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                             <button type="submit" class="primary-button">
                                 Przekaż do drugiej weryfikacji
                             </button>
@@ -297,7 +297,7 @@
 
                     {% if can_finish_editing %}
                         <form method="post" action="{% url 'core:finish_text_editing' text.pk %}">
-                            {% csrf_token %}
+                            {% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                             <button type="submit" class="complete-stage-button">
                                 Zakończ redakcję i przekaż do kontroli
                             </button>
@@ -345,7 +345,7 @@
                         data-autosave="text-warnings-{{ text.pk }}"
                         data-warn-unsaved
                     >
-                        {% csrf_token %}
+                        {% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                         {{ text_content_warnings_form.non_field_errors }}
 
                         <div class="form-field">
@@ -385,7 +385,7 @@
                             data-autosave="coordinator-note-{{ text.pk }}"
                             data-warn-unsaved
                         >
-                            {% csrf_token %}
+                            {% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                             {{ coordinator_note_form.non_field_errors }}
 
                             <div class="form-field">
@@ -414,7 +414,7 @@
                     <summary>Dodaj notatkę koordynatora</summary>
                     <form method="post" action="{% url 'core:update_coordinator_note' text.pk %}"
                           class="general-notes-form" data-warn-unsaved>
-                        {% csrf_token %}
+                        {% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                         {{ coordinator_note_form.as_p }}
                         <button type="submit" class="secondary-button">Zapisz notatkę</button>
                     </form>
@@ -437,7 +437,7 @@
                 data-autosave="text-note-{{ text.pk }}"
                 data-warn-unsaved
             >
-                {% csrf_token %}
+                {% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                 {{ text_note_form.non_field_errors }}
 
                 <div class="form-field">
@@ -482,7 +482,7 @@
                     <div class="text-note-content">{{ note.content|linebreaksbr }}</div>
                     {% if note.can_manage %}<div class="text-note-actions">
                         <a class="secondary-button" href="{% url 'core:edit_text_note' text.pk note.pk %}">Edytuj</a>
-                        <form method="post" action="{% url 'core:delete_text_note' text.pk note.pk %}" data-confirm-delete="Usunąć tę notatkę?">{% csrf_token %}<button class="secondary-button" type="submit">Usuń</button></form>
+                        <form method="post" action="{% url 'core:delete_text_note' text.pk note.pk %}" data-confirm-delete="Usunąć tę notatkę?">{% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}"><button class="secondary-button" type="submit">Usuń</button></form>
                     </div>{% endif %}
                 </details>
             {% empty %}
@@ -638,7 +638,7 @@
                             action="{% url 'core:set_text_authors' text.pk %}"
                             class="text-authors-management-form"
                         >
-                            {% csrf_token %}
+                            {% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                             <label for="text-authors">Przypisani autorzy</label>
                             <select
                                 id="text-authors"
@@ -679,7 +679,7 @@
                             action="{% url 'core:restart_text_workflow' text.pk %}"
                             class="restart-workflow-form"
                         >
-                            {% csrf_token %}
+                            {% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                             {{ restart_workflow_form.non_field_errors }}
                             <label for="{{ restart_workflow_form.target_stage.id_for_label }}">
                                 {{ restart_workflow_form.target_stage.label }}
@@ -704,7 +704,7 @@
                         </div>
 
                         <form method="post" action="{% url 'core:withdraw_text' text.pk %}">
-                            {% csrf_token %}
+                            {% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                             <button type="submit" class="withdraw-text-button">
                                 Wycofaj tekst z procesu
                             </button>

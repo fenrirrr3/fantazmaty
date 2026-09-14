@@ -172,6 +172,10 @@ class WorkflowStage(models.Model):
 
         errors = {}
 
+        if self.ended_at:
+            from django.utils import timezone
+            if self.ended_at > timezone.localdate():
+                errors['ended_at'] = "Nie można zakończyć pracy z przyszłą datą."
         if self.ended_at and not self.started_at:
             errors["started_at"] = (
                 "Etap z datą zakończenia musi mieć datę rozpoczęcia."

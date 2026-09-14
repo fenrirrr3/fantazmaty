@@ -1,20 +1,40 @@
 document.addEventListener('DOMContentLoaded', () => {
-    document.querySelectorAll('.dashboard-list').forEach((list, index) => {
-        const rest = [...list.children].slice(6);
-        if (!rest.length) return;
+    document.querySelectorAll('[data-dashboard-more]').forEach((button, index) => {
+        const list = button.closest('section').querySelector('.dashboard-list');
+        if (!list) return;
         list.id ||= `dashboard-list-${index}`;
-        rest.forEach(item => { item.hidden = true; });
-        const button = document.createElement('button');
-        button.type = 'button'; button.className = 'secondary-button dashboard-expand';
-        button.setAttribute('aria-controls', list.id); button.setAttribute('aria-expanded', 'false');
-        button.textContent = `Pokaż pozostałe (${rest.length})`;
-        button.addEventListener('click', () => {
-            const open = button.getAttribute('aria-expanded') !== 'true';
-            rest.forEach(item => { item.hidden = !open; });
-            button.setAttribute('aria-expanded', String(open));
-            button.textContent = open ? 'Zwiń listę' : `Pokaż pozostałe (${rest.length})`;
+        button.setAttribute('aria-controls', list.id);
+        let busy = false, collapsed = false;
+        button.addEventListener('click', async event => {
+            event.preventDefault();
+            if (busy) return;
+            const extra = [...list.children].slice(6);
+            if (collapsed || !button.dataset.url) {
+                collapsed = !collapsed;
+                extra.forEach(item => { item.hidden = collapsed; });
+                button.setAttribute('aria-expanded', String(!collapsed));
+                button.textContent = collapsed ? 'Pokaż pozostałe' : 'Zwiń listę';
+                return;
+            }
+            busy = true;
+            button.setAttribute('aria-busy', 'true');
+            button.textContent = 'Wczytywanie…';
+            try {
+                const response = await fetch(button.dataset.url, {headers: {'Accept': 'application/json'}, credentials: 'same-origin'});
+                if (!response.ok) throw new Error('load');
+                const data = await response.json();
+                if (typeof data.html !== 'string') throw new Error('format');
+                list.insertAdjacentHTML('beforeend', data.html);
+                button.dataset.url = data.next_url || '';
+                button.setAttribute('aria-expanded', 'true');
+                button.textContent = data.next_url ? 'Pokaż kolejne' : 'Zwiń listę';
+            } catch (_) {
+                button.textContent = 'Nie udało się wczytać — spróbuj ponownie';
+            } finally {
+                busy = false;
+                button.removeAttribute('aria-busy');
+            }
         });
-        list.after(button);
     });
     document.querySelectorAll('form[data-confirm-delete]').forEach(form => {
         form.addEventListener('submit', event => {

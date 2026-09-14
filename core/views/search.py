@@ -195,15 +195,25 @@ def _search_people(query, user):
     )
 
     from core.search_people import rank_people
-    people = rank_people(people, query, include_email=is_coordinator(user))
-    allowed_emails = {email.casefold() for email in contact_authors(user).exclude(email__isnull=True).values_list('email', flat=True)}
-    protected_emails = {email.casefold() for email in Author.objects.exclude(email__isnull=True).values_list('email', flat=True)}
+    coordinator = is_coordinator(user)
+    people = list(rank_people(people, query, include_email=coordinator)[:RESULT_LIMIT])
+    allowed_emails, protected_emails = set(), set()
+    if not coordinator and people:
+        # Bound contact checks to displayed matches, keeping case-insensitive matching.
+        from django.db.models.functions import Lower
+        emails = {(person.email or "").lower() for person in people}
+        def matching_emails(queryset):
+            return {email.casefold() for email in queryset.annotate(
+                contact_email=Lower("email"),
+            ).filter(contact_email__in=emails).values_list("email", flat=True) if email}
+        protected_emails = matching_emails(Author.objects.all())
+        allowed_emails = matching_emails(contact_authors(user))
     return [
         _NamedResult(
             pk=person.pk,
             first_name=person.first_name,
             last_name=person.last_name,
-            email=person.email if is_coordinator(user) or (person.email or "").casefold() not in protected_emails or (person.email or "").casefold() in allowed_emails else "",
+            email=person.email if coordinator or (person.email or "").casefold() not in protected_emails or (person.email or "").casefold() in allowed_emails else "",
             roles={
                 "all": [
                     {"pk": role.pk, "name": role.name}

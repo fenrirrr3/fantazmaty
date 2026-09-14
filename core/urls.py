@@ -53,6 +53,7 @@ urlpatterns = [
     path("recenzje/<int:review_id>/przywroc/", operations.release_hidden_review, name="release_hidden_review"),
     # Pulpit i wyszukiwanie.
     path("", dashboard.home, name="home"),
+    path("dashboard/tasks/", dashboard.dashboard_tasks, name="dashboard_tasks"),
     path(
         "wyszukiwanie/",
         search.global_search,

@@ -108,7 +108,7 @@ class Command(BaseCommand):
                 email = username + "@example.com"
                 user = one_or_none(case_match(User, "username", username), username)
                 person = one_or_none(case_match(Person, "email", email), email)
-                if user is not None and (user.email != email or user.is_superuser or user.is_staff):
+                if user is not None and (user.email != email or user.is_superuser or (user.is_staff and not (role_name == "Koordynator" and person is not None and person.user_id == user.pk))):
                     raise CommandError(f"Kolizja z istniejącym kontem {username}. Wycofano zapis.")
                 if person is not None:
                     if user is None or person.user_id != user.pk:

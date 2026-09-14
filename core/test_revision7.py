@@ -1,3 +1,4 @@
+from core.testing_forms import post_form
 from datetime import timedelta
 import re
 from django.contrib.auth import get_user_model
@@ -53,13 +54,13 @@ class Revision7Tests(CoreTestDataMixin, TestCase):
     def test_note_owner_can_edit_delete_without_current_assignment(self):
         note = TextNote.objects.create(text=self.text, author=self.editor, content='Stara')
         url = reverse('core:edit_text_note', args=[self.text.pk, note.pk])
-        response = self.client.post(url, {'content':'Nowa', 'is_important':'on'})
+        response = post_form(self.client, url, {'content':'Nowa', 'is_important':'on'})
         self.assertEqual(response.status_code, 302)
         note.refresh_from_db()
         self.assertEqual(note.content, 'Nowa')
         self.assertTrue(note.is_important)
         self.assertEqual(note.author, self.editor)
-        response = self.client.post(reverse('core:delete_text_note', args=[self.text.pk, note.pk]))
+        response = post_form(self.client, reverse('core:delete_text_note', args=[self.text.pk, note.pk]))
         self.assertEqual(response.status_code, 302)
         self.assertFalse(TextNote.objects.filter(pk=note.pk).exists())
 
@@ -67,7 +68,7 @@ class Revision7Tests(CoreTestDataMixin, TestCase):
         note = TextNote.objects.create(text=self.text, author=self.reviewer, content='Nie zmieniaj')
         self.assign()
         for route in ['edit_text_note', 'delete_text_note']:
-            response = self.client.post(reverse('core:'+route, args=[self.text.pk, note.pk]), {'content':'Atak'})
+            response = post_form(self.client, reverse('core:'+route, args=[self.text.pk, note.pk]), {'content':'Atak'})
             self.assertEqual(response.status_code, 403)
         self.assertEqual(self.client.get(reverse('core:delete_text_note', args=[self.text.pk, note.pk])).status_code, 405)
         note.refresh_from_db()
@@ -77,8 +78,8 @@ class Revision7Tests(CoreTestDataMixin, TestCase):
         note = TextNote.objects.create(text=self.text, author=self.reviewer, content='Stara')
         self.client.force_login(self.coordinator)
         other = Text.objects.create(title='Inny', length=100)
-        self.assertEqual(self.client.post(reverse('core:delete_text_note', args=[other.pk, note.pk])).status_code, 404)
-        self.assertEqual(self.client.post(reverse('core:edit_text_note', args=[self.text.pk, note.pk]), {'content':'Poprawiona'}).status_code, 302)
+        self.assertEqual(post_form(self.client, reverse('core:delete_text_note', args=[other.pk, note.pk])).status_code, 404)
+        self.assertEqual(post_form(self.client, reverse('core:edit_text_note', args=[self.text.pk, note.pk]), {'content':'Poprawiona'}).status_code, 302)
         note.refresh_from_db()
         self.assertEqual(note.author, self.reviewer)
         self.assertEqual(note.content, 'Poprawiona')
@@ -90,7 +91,7 @@ class Revision7Tests(CoreTestDataMixin, TestCase):
         token = re.search(r'name="_edit_version" value="([^"]+)"', response.content.decode()).group(1)
         note.content = 'Inna edycja'
         note.save()
-        response = self.client.post(url, {'content':'Nadpisana', '_edit_version':token})
+        response = post_form(self.client, url, {'content':'Nadpisana', '_edit_version':token})
         self.assertEqual(response.status_code, 409)
         note.refresh_from_db()
         self.assertEqual(note.content, 'Inna edycja')
@@ -160,7 +161,7 @@ class Revision7Tests(CoreTestDataMixin, TestCase):
 
     def test_claim_redirects_to_detail(self):
         stage = create_pending_stage(self.text, WorkflowStage.StageType.READY_FOR_EDITING)
-        response = self.client.post(reverse('core:take_workflow_stage', args=[stage.pk]), {'started_at':timezone.localdate().isoformat()})
+        response = post_form(self.client, reverse('core:take_workflow_stage', args=[stage.pk]), {'started_at':timezone.localdate().isoformat()})
         self.assertRedirects(response, reverse('core:assigned_text_detail', args=[self.text.pk]))
 
     def test_complete_uses_today_without_calendar(self):
@@ -170,7 +171,7 @@ class Revision7Tests(CoreTestDataMixin, TestCase):
         self.client.force_login(proofreader)
         response = self.client.get(reverse('core:assigned_text_detail', args=[self.text.pk]))
         self.assertNotContains(response, f'id="end-stage-{stage.pk}"')
-        response = self.client.post(reverse('core:complete_workflow_stage', args=[stage.pk]))
+        response = post_form(self.client, reverse('core:complete_workflow_stage', args=[stage.pk]))
         self.assertEqual(response.status_code, 302)
         stage.refresh_from_db()
         self.assertTrue(stage.is_completed)
@@ -192,8 +193,8 @@ class Revision7Tests(CoreTestDataMixin, TestCase):
     def test_activity_excludes_payload_queries_and_captures_logout(self):
         self.client.get(reverse('core:people_list'), {'q':'secret-search'})
         note = TextNote.objects.create(text=self.text, author=self.editor, content='Original')
-        self.client.post(reverse('core:edit_text_note', args=[self.text.pk,note.pk]), {'content':'secret-note'})
-        self.client.post(reverse('logout'))
+        post_form(self.client, reverse('core:edit_text_note', args=[self.text.pk,note.pk]), {'content':'secret-note'})
+        post_form(self.client, reverse('logout'))
         rows = list(UserActivity.objects.filter(user=self.editor).values())
         self.assertNotIn('secret-note', str(rows))
         self.assertNotIn('secret-search', str(rows))

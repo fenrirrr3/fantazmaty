@@ -8,10 +8,39 @@ aby nie tworzyć cyklicznych zależności.
 """
 
 from functools import wraps
+from contextlib import contextmanager
+from contextvars import ContextVar
 
 from django.core.exceptions import PermissionDenied
-
 from people.models import Person
+
+
+_read_access = ContextVar("read_access", default=None)
+
+
+@contextmanager
+def read_access_scope():
+    """Only read-only views use this cache; mutations always read fresh permissions."""
+    if _read_access.get() is not None:
+        yield
+        return
+    token = _read_access.set({})
+    try:
+        yield
+    finally:
+        _read_access.reset(token)
+
+
+def _role_names(person):
+    cache = _read_access.get()
+    key = ("roles", person.pk)
+    if cache is not None and key in cache:
+        return cache[key]
+    names = {name.casefold() for name in person.roles.values_list("name", flat=True)}
+    names.update(name.casefold() for name in person.user.groups.values_list("name", flat=True))
+    if cache is not None:
+        cache[key] = names
+    return names
 
 
 COORDINATOR_ROLE = "Koordynator"
@@ -37,7 +66,11 @@ def get_active_person_profile(user):
     if not is_active_user(user):
         return None
 
-    return (
+    cache = _read_access.get()
+    key = ("profile", user.pk)
+    if cache is not None and key in cache:
+        return cache[key]
+    person = (
         Person.objects.filter(
             user_id=user.pk,
             user__is_active=True,
@@ -46,6 +79,9 @@ def get_active_person_profile(user):
         .select_related("user")
         .first()
     )
+    if cache is not None:
+        cache[key] = person
+    return person
 
 
 def is_team_member(user):
@@ -56,29 +92,12 @@ def is_team_member(user):
 
 
 def _profile_has_role(person, role_name):
-    if person.roles.filter(name__iexact=role_name).exists():
-        return True
-
-    # Zgodność z istniejącymi kontami przypisanymi do grup Django.
-    # Grupa nie przywraca dostępu osobie bez aktywnego profilu.
-    return person.user.groups.filter(name__iexact=role_name).exists()
+    return role_name.casefold() in _role_names(person)
 
 
 def _profile_has_coordinator_role(person):
-    """Rozpoznaje rolę ogólną i wszystkie funkcje koordynatorskie."""
-    role_query = (
-        person.roles.filter(name__iexact=COORDINATOR_ROLE).exists()
-        or person.roles.filter(
-            name__istartswith=COORDINATOR_ROLE_PREFIX,
-        ).exists()
-    )
-    group_query = (
-        person.user.groups.filter(name__iexact=COORDINATOR_ROLE).exists()
-        or person.user.groups.filter(
-            name__istartswith=COORDINATOR_ROLE_PREFIX,
-        ).exists()
-    )
-    return role_query or group_query
+    return any(name == "koordynator" or name.startswith("koordynator ")
+               for name in _role_names(person))
 
 
 def is_coordinator(user):
@@ -258,6 +277,10 @@ def _permission_decorator(check):
     def decorator(view):
         @wraps(view)
         def wrapped(request, *args, **kwargs):
+            if request.method in {"GET", "HEAD"}:
+                with read_access_scope():
+                    check(request.user)
+                    return view(request, *args, **kwargs)
             check(request.user)
             return view(request, *args, **kwargs)
 
@@ -283,7 +306,7 @@ def is_reviewer_only(user):
     person = get_active_person_profile(user)
     if not person or user.is_superuser or is_coordinator(user) or not is_reviewer(user):
         return False
-    names = set(person.roles.values_list("name", flat=True)) | set(user.groups.values_list("name", flat=True))
+    names = _role_names(person)
     return {name.casefold().strip() for name in names} == {"recenzent"}
 
 

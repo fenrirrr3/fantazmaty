@@ -97,6 +97,9 @@ def correction_status(request):
     rows = list(AnthologyCorrection.objects.select_for_update().filter(pk__in=ids).order_by("pk"))
     if {row.pk for row in rows} != {int(value) for value in ids}:
         return render(request, "core/edit_conflict.html", status=409)
+    if any(row.is_resolved for row in rows):
+        messages.error(request, "Rozpatrzonych uwag nie można zmieniać. Żadna uwaga nie została zmieniona.")
+        return redirect('core:anthology_corrections')
     for row in rows:
         # All selected rows are validated before any write.
         if request.POST.get(f"version_{row.pk}") != row.updated_at.isoformat():
@@ -151,6 +154,9 @@ def release_hidden_review(request, review_id):
 @transaction.atomic
 def correction_edit(request, pk):
     item = get_object_or_404(AnthologyCorrection.objects.select_for_update(), pk=pk, submitted_by=request.user)
+    if item.is_resolved:
+        from django.core.exceptions import PermissionDenied
+        raise PermissionDenied("Rozpatrzonej uwagi nie można edytować.")
     version = item.updated_at.isoformat()
     if request.method == "POST" and request.POST.get("version") != version:
         return render(request, "core/edit_conflict.html", status=409)
@@ -179,6 +185,9 @@ def correction_delete(request, pk):
     item = get_object_or_404(AnthologyCorrection.objects.select_for_update(), pk=pk, submitted_by=request.user)
     if request.POST.get("version") != item.updated_at.isoformat():
         return render(request, "core/edit_conflict.html", status=409)
+    if item.is_resolved:
+        from django.core.exceptions import PermissionDenied
+        raise PermissionDenied("Rozpatrzonej uwagi nie można usunąć.")
     item.delete()
     messages.success(request, "Usunięto uwagę.")
     return redirect("core:anthology_corrections")

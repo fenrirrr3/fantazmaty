@@ -120,11 +120,31 @@ class AnthologyAdmin(admin.ModelAdmin):
     show_full_result_count = False
 
 
+class WorkflowAssignmentFormSet(BaseInlineFormSet):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for form in self.forms:
+            if not form.instance.pk:
+                form.instance.workflow_cycle = self.instance.current_workflow_cycle
+
+    def clean(self):
+        if self.instance.pk:
+            locked_text = Text.objects.select_for_update().get(pk=self.instance.pk)
+            if locked_text.current_workflow_cycle != self.instance.current_workflow_cycle:
+                raise ValidationError("Przebieg tekstu zmienił się. Odśwież formularz.")
+        super().clean()
+        from workflow.admin_assignment_rules import protect_assignment
+        for form in self.forms:
+            if form.cleaned_data:
+                protect_assignment(form.instance, form.cleaned_data, deleting=form.cleaned_data.get('DELETE', False))
+
+
 class WorkflowRoleAssignmentInline(
     SuperuserOnlyAdminMixin,
     admin.TabularInline,
 ):
     model = WorkflowRoleAssignment
+    formset = WorkflowAssignmentFormSet
     extra = 0
 
     fields = (

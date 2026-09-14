@@ -28,6 +28,10 @@ class AnthologyCorrection(models.Model):
         verbose_name = "uwaga do antologii"
         verbose_name_plural = "uwagi do antologii"
 
+    @property
+    def is_resolved(self):
+        return self.status in (self.Status.APPLIED, self.Status.REJECTED)
+
     def __str__(self):
         return f"{self.anthology} – {self.story_title}"
 

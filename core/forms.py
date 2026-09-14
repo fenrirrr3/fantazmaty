@@ -84,6 +84,8 @@ class CompleteStageForm(forms.Form):
 
     def clean_ended_at(self):
         ended_at = self.cleaned_data["ended_at"]
+        if ended_at > timezone.localdate():
+            raise ValidationError("Nie można zakończyć pracy z przyszłą datą.")
 
         if (
             self.stage is not None

@@ -1,0 +1,58 @@
+{% if kind == "active" %}
+                    {% for stage in rows %}
+                        <li class="dashboard-list-item">
+                            <a
+                                href="{% url 'core:assigned_text_detail' stage.text.pk %}"
+                                class="detail-link"
+                            >
+                                <strong>{{ stage.text.title }}</strong>
+                            </a>
+
+                            {% if stage.text.anthology %}
+                                <div class="muted-text">
+                                    {{ stage.text.anthology.title }}
+                                </div>
+                            {% endif %}
+
+                            <p>
+                                <span class="role-badge">
+                                    {{ stage.get_stage_type_display }}
+                                </span>
+                            </p>
+
+                            <small class="muted-text">
+                                Od {{ stage.started_at|date:"d.m.Y" }}
+                            </small>
+                        </li>
+                    {% endfor %}
+{% else %}
+                    {% for assignment in rows %}
+                        <li class="dashboard-list-item">
+                            <a
+                                href="{% url 'core:assigned_text_detail' assignment.text.pk %}"
+                                class="detail-link"
+                            >
+                                <strong>{{ assignment.text.title }}</strong>
+                            </a>
+
+                            {% if assignment.text.anthology %}
+                                <div class="muted-text">
+                                    {{ assignment.text.anthology.title }}
+                                </div>
+                            {% endif %}
+
+                            <p>
+                                <span class="role-badge">
+                                    {{ assignment.get_role_display }}
+                                </span>
+                            </p>
+
+                            {% if assignment.assigned_at %}
+                                <small class="muted-text">
+                                    Przypisano
+                                    {{ assignment.assigned_at|date:"d.m.Y" }}
+                                </small>
+                            {% endif %}
+                        </li>
+                    {% endfor %}
+{% endif %}

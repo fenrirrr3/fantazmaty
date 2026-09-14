@@ -25,6 +25,13 @@ class PersonAdminForm(forms.ModelForm):
             "leave_until_revoked",
         )
 
+    def clean(self):
+        data = super().clean()
+        if self.instance.pk and self.instance.is_coordinator and not data.get('is_coordinator') and data.get('roles') is not None:
+            from people.coordinator_access import coordinator_query
+            data['roles'] = data['roles'].exclude(coordinator_query())
+        return data
+
     def clean_first_name(self):
         return " ".join(self.cleaned_data["first_name"].split())
 
@@ -78,6 +85,18 @@ class RoleAdmin(admin.ModelAdmin):
 
 @admin.register(Person)
 class PersonAdmin(admin.ModelAdmin):
+    actions = ('revoke_coordinator_access',)
+
+    @admin.action(description="Odbierz wszystkie uprawnienia koordynatora")
+    def revoke_coordinator_access(self, request, queryset):
+        from people.coordinator_access import revoke_coordinator
+        from django.core.exceptions import PermissionDenied
+        if not request.user.is_superuser:
+            raise PermissionDenied()
+        for person in queryset.order_by('user_id', 'pk'):
+            revoke_coordinator(person)
+        self.message_user(request, "Usunięto funkcje koordynatora, grupy koordynatorskie i oznaczenie koordynatora. Superuserzy zachowują swoje uprawnienia.")
+
     form = PersonAdminForm
 
     list_display = (

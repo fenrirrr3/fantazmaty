@@ -1,3 +1,4 @@
+from core.testing_forms import post_form
 from datetime import timedelta
 from importlib import import_module
 from django.apps import apps
@@ -111,7 +112,7 @@ class RevisionTests(TestCase):
         self.person.save()
         url = reverse('core:cancel_vacation', args=[vacation.pk])
         self.assertEqual(self.client.get(url).status_code, 405)
-        self.assertEqual(self.client.post(url).status_code, 302)
+        self.assertEqual(post_form(self.client, url).status_code, 302)
         self.assertFalse(Vacation.objects.filter(pk=vacation.pk).exists())
         self.person.refresh_from_db()
         self.assertIsNone(self.person.leave_start_date)
@@ -140,19 +141,19 @@ class RevisionTests(TestCase):
         response = self.client.get(url)
         self.assertEqual(response.status_code, 200)
         data = {'anthology':self.anthology.pk, 'fragment':'Nowy', 'problem':'Problem', 'suggestion':'Poprawka', 'version':version}
-        self.assertEqual(self.client.post(url, data).status_code, 302)
+        self.assertEqual(post_form(self.client, url, data).status_code, 302)
         item.refresh_from_db()
         self.assertEqual(item.fragment, 'Nowy')
         delete = reverse('core:correction_delete', args=[item.pk])
         self.assertEqual(self.client.get(delete).status_code, 405)
-        self.assertEqual(self.client.post(delete, {'version':version}).status_code, 409)
-        self.assertEqual(self.client.post(delete, {'version':item.updated_at.isoformat()}).status_code, 302)
+        self.assertEqual(post_form(self.client, delete, {'version':version}).status_code, 409)
+        self.assertEqual(post_form(self.client, delete, {'version':item.updated_at.isoformat()}).status_code, 302)
         self.assertFalse(AnthologyCorrection.objects.filter(pk=item.pk).exists())
 
     def test_other_user_cannot_change_correction(self):
         item = self.correction()
         self.client.force_login(self.root)
-        self.assertEqual(self.client.post(reverse('core:correction_delete', args=[item.pk]), {'version':item.updated_at.isoformat()}).status_code, 404)
+        self.assertEqual(post_form(self.client, reverse('core:correction_delete', args=[item.pk]), {'version':item.updated_at.isoformat()}).status_code, 404)
         self.assertEqual(self.client.get(reverse('core:correction_edit', args=[item.pk])).status_code, 404)
 
     def test_archive_visible_in_person_profile_without_account(self):
@@ -178,7 +179,7 @@ class RevisionTests(TestCase):
         assignment.opinion = ReviewAssignment.Opinion.YES
         assignment.save()
         self.assertIsNone(assignment.opinion_changed_at)
-        response = self.client.post(reverse('admin:texts_review_delete', args=[review.pk]), {'post':'yes'})
+        response = post_form(self.client, reverse('admin:texts_review_delete', args=[review.pk]), {'post':'yes'})
         self.assertEqual(response.status_code, 302, response.content.decode()[:3000])
         self.assertFalse(Review.objects.filter(pk=review.pk).exists())
 
@@ -205,7 +206,7 @@ class RevisionTests(TestCase):
         data['title'] = 'Poprawiony tytuł archiwalny'
         data['assignments-0-opinion'] = ReviewAssignment.Opinion.YES
         data['_save'] = 'Zapisz'
-        response = self.client.post(url, data)
+        response = post_form(self.client, url, data)
         self.assertEqual(response.status_code, 302, str(response.context['adminform'].form.errors) if response.context else '')
         review.refresh_from_db()
         assignment.refresh_from_db()

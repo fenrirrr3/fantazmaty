@@ -1,0 +1,3 @@
+{% if count > 6 %}
+<a class="secondary-button dashboard-expand" data-dashboard-more data-url="{% url 'core:dashboard_tasks' %}?kind={{ kind }}&amp;page=2" href="{% if reviewer_only %}{% url 'core:my_reviews' %}{% else %}{% url 'core:my_texts' %}{% endif %}?view={% if kind == 'active' %}active{% else %}waiting{% endif %}" aria-expanded="false">Pokaż kolejne</a>
+{% endif %}

@@ -39,7 +39,7 @@ class SeedDemoTests(TestCase):
         for slug, role, _, _ in TEAM:
             user = get_user_model().objects.get(username="demo_" + slug)
             self.assertTrue(has_role(user, role))
-            self.assertFalse(user.is_staff)
+            self.assertEqual(user.is_staff, role == "Koordynator")
             self.assertFalse(user.is_superuser)
             self.assertFalse(user.has_usable_password())
         self.assertTrue(is_coordinator(get_user_model().objects.get(username="demo_koordynator_1")))

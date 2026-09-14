@@ -81,6 +81,12 @@ class WorkflowRoleAssignmentAdminForm(
         ),
     )
 
+    def clean(self):
+        data = super().clean()
+        from workflow.admin_assignment_rules import protect_assignment
+        protect_assignment(self.instance, data)
+        return data
+
     class Meta:
         model = WorkflowRoleAssignment
         fields = "__all__"
@@ -371,6 +377,10 @@ class WorkflowStageAdmin(admin.ModelAdmin):
 
 @admin.register(WorkflowRoleAssignment)
 class WorkflowRoleAssignmentAdmin(admin.ModelAdmin):
+    def has_delete_permission(self, request, obj=None):
+        from workflow.admin_assignment_rules import has_recorded_work
+        return bool(obj is not None and not has_recorded_work(obj) and super().has_delete_permission(request, obj))
+
     form = WorkflowRoleAssignmentAdminForm
     exclude = ("workflow_cycle",)
     empty_value_display = "Nieprzypisane"

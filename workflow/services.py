@@ -447,6 +447,8 @@ def _finish_stage_record(stage, ended_at):
             "Nie można zakończyć nierozpoczętego etapu."
         )
 
+    if ended_at > timezone.localdate():
+        raise ValidationError("Nie można zakończyć pracy z przyszłą datą.")
     if ended_at < stage.started_at:
         raise ValidationError(
             "Data zakończenia nie może być wcześniejsza "
@@ -539,7 +541,11 @@ def restart_workflow_from_stage(text, stage_type, user, *, retained_ids=(), edit
     retained_editor = next((a.assigned_to for a in retained if a.role == Role.EDITOR), None)
     if restart_needs_editor(stage_type) and not (editor or retained_editor):
         raise ValidationError("Ten etap wymaga redaktora, który będzie kontynuował pracę. Wybierz go w podglądzie.")
-    text.current_workflow_cycle += 1
+    text.current_workflow_cycle = 1 + max(
+        text.current_workflow_cycle,
+        WorkflowStage.objects.filter(text=text).aggregate(n=Max('workflow_cycle'))['n'] or 0,
+        WorkflowRoleAssignment.objects.filter(text=text).aggregate(n=Max('workflow_cycle'))['n'] or 0,
+    )
     text.save(update_fields=['current_workflow_cycle'])
     for previous_assignment in retained:
         assignment = WorkflowRoleAssignment(text=text, workflow_cycle=current_cycle(text), role=previous_assignment.role,
@@ -865,6 +871,7 @@ def user_can_complete_stage(stage, user):
     if (
         stage.is_completed
         or stage.started_at is None
+        or stage.started_at > timezone.localdate()
         or stage.ended_at is not None
         or text_is_withdrawn(stage.text)
     ):
@@ -924,6 +931,11 @@ def complete_stage(stage, user, ended_at):
     if next_stage_type is None:
         raise ValidationError("Ten etap nie ma przejścia do zakończenia.")
 
+    if next_stage_type == StageType.EDITOR_CONTROL:
+        editor_assignment = current_assignment_queryset(stage.text).select_related('assigned_to__person_profile').filter(role=Role.EDITOR).first()
+        editor = editor_assignment.assigned_to if editor_assignment else None
+        if not _actor_is_active(editor) or not (is_coordinator(editor) or belongs_to_group(editor, 'Redaktor')):
+            raise ValidationError("Przed zakończeniem kontroli koordynatora przypisz aktywnego redaktora z odpowiednią rolą. Etap nie został zakończony.")
     _finish_stage_record(stage, ended_at)
     next_stage = _create_pending_stage(stage.text, next_stage_type)
 

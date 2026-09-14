@@ -1,3 +1,4 @@
+from core.testing_forms import post_form
 from datetime import timedelta
 from unittest.mock import patch
 from django.contrib import admin
@@ -74,7 +75,7 @@ class LogicTests(CoreTestDataMixin, TestCase):
     def test_restart_preview_does_not_mutate_and_rejects_stale_snapshot(self):
         self.stage(); self.assignment()
         url=reverse('core:restart_text_workflow',args=[self.text.pk])
-        response=self.client.post(url,{'target_stage':'second_verification'})
+        response=post_form(self.client, url,{'target_stage':'second_verification'})
         self.assertContains(response,'Potwierdź nowy cykl')
         self.text.refresh_from_db();self.assertEqual(self.text.current_workflow_cycle,1)
         old=restart_snapshot(self.text)
@@ -84,12 +85,12 @@ class LogicTests(CoreTestDataMixin, TestCase):
     def test_restart_preview_confirmation(self):
         self.stage();a=self.assignment()
         url=reverse('core:restart_text_workflow',args=[self.text.pk])
-        response=self.client.post(url,{'target_stage':'editor_control'})
+        response=post_form(self.client, url,{'target_stage':'editor_control'})
         token=response.context['token']
-        result=self.client.post(url,{'target_stage':'editor_control','token':token,'confirm_restart':'yes','retained_ids':[a.pk]})
+        result=post_form(self.client, url,{'target_stage':'editor_control','token':token,'confirm_restart':'yes','retained_ids':[a.pk]})
         self.assertEqual(result.status_code,302)
         self.text.refresh_from_db();self.assertEqual(self.text.current_workflow_cycle,2)
-        self.client.post(url,{'target_stage':'editor_control','token':token,'confirm_restart':'yes','retained_ids':[a.pk]})
+        post_form(self.client, url,{'target_stage':'editor_control','token':token,'confirm_restart':'yes','retained_ids':[a.pk]})
         self.text.refresh_from_db();self.assertEqual(self.text.current_workflow_cycle,2)
 
     def test_coauthor_contract_must_be_confirmed_individually(self):
@@ -120,7 +121,7 @@ class LogicTests(CoreTestDataMixin, TestCase):
         data={'text':self.text.pk,'workflow_cycle':1,'stage_type':stage.stage_type,'iteration':1,'started_at':str(self.today),'ended_at':str(self.today),'is_completed':'on'}
         self.assertFalse(WorkflowStageAdminForm(data=data,instance=stage).is_valid())
         data['confirm_data_correction']='on'
-        response=self.client.post(reverse('admin:workflow_workflowstage_change',args=[stage.pk]),data)
+        response=post_form(self.client, reverse('admin:workflow_workflowstage_change',args=[stage.pk]),data)
         self.assertEqual(response.status_code,302)
         stage.refresh_from_db();self.assertTrue(stage.is_completed)
         self.assertTrue(any(i['label']=='Brak następnego etapu po zakończeniu' for i in integrity_issues()))
@@ -128,7 +129,7 @@ class LogicTests(CoreTestDataMixin, TestCase):
 
     def test_admin_finish_creates_successor(self):
         stage=self.stage('first_proofreading',started_at=self.today)
-        response=self.client.post(reverse('admin:workflow_workflowstage_changelist'),{'action':'finish_selected_stages','_selected_action':[stage.pk]})
+        response=post_form(self.client, reverse('admin:workflow_workflowstage_changelist'),{'action':'finish_selected_stages','_selected_action':[stage.pk]})
         self.assertEqual(response.status_code,302)
         self.assertTrue(S.objects.filter(text=self.text,stage_type='second_proofreading').exists())
 
