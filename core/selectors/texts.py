@@ -158,7 +158,7 @@ def _author_data(author):
 def _anthology_data(anthology):
     if anthology is None:
         return None
-    return _Record(pk=anthology.pk, title=anthology.title)
+    return _Record(pk=anthology.pk, title=anthology.title, status=anthology.status)
 
 
 def _stage_data(stage, text_data=None):
@@ -301,7 +301,7 @@ def _text_row(text, include_authors):
     return result
 
 
-def text_list_context(*, user, params):
+def text_list_context(*, user, params, scope=None, stage_scope=None):
     require_team_member(user)
     include_authors = can_view_author_data(user)
     anthology_id = _positive_id(params.get("anthology"))
@@ -318,6 +318,10 @@ def text_list_context(*, user, params):
 
     def filtered(exclude=None):
         result = _annotated_texts()
+        if scope is not None:
+            result = result.filter(pk__in=scope.values("pk"))
+        if stage_scope is not None:
+            result = result.filter(pk__in=stage_scope.values("text_id")).annotate(current_stage_type=Subquery(stage_scope.filter(text_id=OuterRef("pk")).order_by("pk").values("stage_type")[:1]))
         if anthology_id is not None and exclude != 'anthology':
             result = result.filter(anthology_id=anthology_id)
         if author_id is not None and exclude != 'author':
@@ -352,6 +356,7 @@ def text_list_context(*, user, params):
         include_authors,
     )
     return {
+        "filtered_queryset": queryset,
         "texts": _ProjectedRows(
             queryset,
             lambda text: _text_row(text, include_authors),
@@ -433,7 +438,7 @@ def _own_work(text, user, today):
     return assignments, active, reserved, waiting
 
 
-def my_texts_context(*, user, selected_view="active"):
+def my_texts_context(*, user, selected_view="active", params=None):
     require_team_member(user)
     if selected_view not in {"active", "waiting", "completed", "all"}:
         selected_view = "active"
@@ -441,6 +446,11 @@ def my_texts_context(*, user, selected_view="active"):
     today = timezone.localdate()
     from workflow.read_queries import filter_my_texts
     texts = filter_my_texts(_user_texts(user, include_authors), user, selected_view, today)
+
+    params = params.copy() if params is not None else {}
+    params.setdefault("hide_ready", "0")
+    filters = text_list_context(user=user, params=params, scope=texts)
+    texts = filters.pop("filtered_queryset")
 
     def project(text):
         assignments, active, reserved, waiting = _own_work(text, user, today)
@@ -463,7 +473,8 @@ def my_texts_context(*, user, selected_view="active"):
         )
         return row
 
-    return {"texts": _ProjectedRows(texts, project), "selected_view": selected_view}
+    filters.update(texts=_ProjectedRows(texts, project), selected_view=selected_view)
+    return filters
 
 
 def user_workflow_summary(user, *, today=None, limit=None):
@@ -483,12 +494,18 @@ def user_workflow_summary(user, *, today=None, limit=None):
     }
 
 
-def available_stages_for_user(*, user):
+def available_stages_for_user(*, user, params=None, with_filters=False):
     require_team_member(user)
     from workflow.availability import claim_access
     from workflow.read_queries import available_stages
     include_authors = can_view_author_data(user)
     stages = available_stages(user, claim_access(user)).select_related("text__anthology")
+    filters = text_list_context(user=user, params=params or {}, stage_scope=stages) if with_filters else None
+    if filters is not None:
+        filtered = filters.pop("filtered_queryset")
+        stages = stages.filter(text_id__in=filtered.values("pk"))
+        ordering = [("-" if item.startswith("-") else "") + ("stage_type" if item.lstrip("-") == "current_stage_type" else "text__" + item.lstrip("-")) for item in TEXT_SORTS[filters["sort"]]]
+        stages = stages.order_by(*ordering, "pk")
     if include_authors:
         stages = stages.prefetch_related(Prefetch("text__authors", queryset=Author.objects.order_by(
             "last_name", "first_name", "pk"), to_attr="selector_authors"))
@@ -500,7 +517,11 @@ def available_stages_for_user(*, user):
                    available_role=role)
         return row
 
-    return _ProjectedRows(stages, project)
+    rows = _ProjectedRows(stages, project)
+    if with_filters:
+        filters.pop("texts", None)
+        return rows, filters
+    return rows
 
 
 def workflow_list_context(*, user, params):

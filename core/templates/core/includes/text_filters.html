@@ -1,0 +1,124 @@
+    <section class="filters-card" aria-label="Filtry tekstów">
+        <form
+            method="get"
+            action="{{ request.path }}"
+            class="filters-form"
+            data-remember-filters="{{ request.resolver_match.url_name }}"
+        >
+            {% if selected_view %}<input type="hidden" name="view" value="{{ selected_view }}">{% endif %}
+            <input
+                type="hidden"
+                name="page_size"
+                value="{{ page_obj.selected_page_size }}"
+            >
+
+            <div class="filter-field"><label for="text-query">Wyszukaj</label><input id="text-query" type="search" name="q" value="{{ query }}" placeholder="Tytuł lub antologia"></div>
+            <div class="filter-field">
+                <label for="text-anthology">Antologia</label>
+                <select id="text-anthology" name="anthology">
+                    <option value="">Wszystkie antologie</option>
+                    {% for anthology in anthologies %}
+                        <option
+                            value="{{ anthology.pk }}"
+                            {% if anthology.pk|stringformat:"s" == selected_anthology_id|stringformat:"s" %}selected{% endif %}
+                        >
+                            {{ anthology.title }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            {% if can_view_authors %}
+                <div class="filter-field">
+                    <label for="text-author">Autor</label>
+                    <select id="text-author" name="author">
+                        <option value="">Wszyscy autorzy</option>
+                        {% for author in filter_authors %}
+                            <option
+                                value="{{ author.pk }}"
+                                {% if author.pk|stringformat:"s" == selected_author_id|stringformat:"s" %}selected{% endif %}
+                            >
+                                {{ author.first_name }} {{ author.last_name }}
+                                {% if author.pseudonym %} – {{ author.pseudonym }}{% endif %}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            {% endif %}
+
+            {% if not compact_filters %}
+            <div class="filter-field">
+                <label for="text-status">Etap pracy</label>
+                <select id="text-status" name="status" multiple>
+                    <option value="">Wszystkie etapy</option>
+                    {% for value, label in status_choices %}
+                        <option
+                            value="{{ value }}"
+                            {% if value in selected_statuses %}selected{% endif %}
+                        >
+                            {{ label }}
+                        </option>
+                    {% endfor %}
+                    {% if show_no_status_filter %}
+                        <option
+                            value="none"
+                            {% if "none" in selected_statuses %}selected{% endif %}
+                        >
+                            Bez otwartego etapu
+                        </option>
+                    {% endif %}
+                </select>
+            </div>
+
+            <div class="filter-field">
+                <label for="text-sort">Sortowanie</label>
+                <select id="text-sort" name="sort">
+                    <option value="anthology" {% if sort == "anthology" %}selected{% endif %}>
+                        Antologia: A–Z
+                    </option>
+                    <option value="-anthology" {% if sort == "-anthology" %}selected{% endif %}>
+                        Antologia: Z–A
+                    </option>
+                    <option value="title" {% if sort == "title" %}selected{% endif %}>
+                        Tytuł: A–Z
+                    </option>
+                    <option value="-title" {% if sort == "-title" %}selected{% endif %}>
+                        Tytuł: Z–A
+                    </option>
+                    <option value="length" {% if sort == "length" %}selected{% endif %}>
+                        Długość: rosnąco
+                    </option>
+                    <option value="-length" {% if sort == "-length" %}selected{% endif %}>
+                        Długość: malejąco
+                    </option>
+                </select>
+            </div>
+
+            <div class="filter-field boolean-filter-field">
+                <input type="hidden" name="hide_ready" value="0">
+                <label class="boolean-filter-toggle" for="text-hide-ready">
+                    <input
+                        id="text-hide-ready"
+                        type="checkbox"
+                        name="hide_ready"
+                        value="1"
+                        {% if hide_ready %}checked{% endif %}
+                    >
+                    <span>Ukryj gotowe teksty</span>
+                </label>
+            </div>
+
+            {% endif %}
+            <div class="filter-actions">
+                <button type="submit" class="primary-button">Filtruj</button>
+                <a
+                    href="{{ request.path }}{% if selected_view %}?view={{ selected_view }}{% endif %}"
+                    class="secondary-button"
+                    data-clear-saved-filters="{{ request.resolver_match.url_name }}"
+                >
+                    Wyczyść filtry
+                </a>
+            </div>
+        </form>
+    </section>
+

@@ -73,6 +73,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const clear = document.createElement('a');
             const cleared = new URLSearchParams({filters_applied:'1', hide_ready:'0'});
             if (params.has('old_reviews')) cleared.set('old_reviews', params.get('old_reviews'));
+            if (params.has('view')) cleared.set('view', params.get('view'));
             clear.href = `${location.pathname}?${cleared}`;
             clear.textContent = 'Wyczyść wszystkie'; clear.dataset.clearSavedFilters = form.dataset.rememberFilters;
             chips.append(clear); form.after(chips);

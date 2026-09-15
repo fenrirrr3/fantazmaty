@@ -14,7 +14,7 @@ def create_illustrations_for_anthology(
     **kwargs,
 ):
     if (
-        instance.status == Anthology.Status.UNPUBLISHED
+        instance.status == Anthology.Status.IN_PREPARATION
         and instance.has_illustrations
     ):
         sync_required_illustrations(
@@ -31,7 +31,7 @@ def create_illustration_for_text(
     qualifies_for_illustration = (
         instance.anthology_id is not None
         and instance.anthology.status
-        == Anthology.Status.UNPUBLISHED
+        == Anthology.Status.IN_PREPARATION
         and instance.anthology.has_illustrations
     )
 

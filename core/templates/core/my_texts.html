@@ -1,4 +1,5 @@
 {% extends "core/base.html" %}
+{% load workspace_tags %}
 
 {% block title %}Moje teksty | Fantazmaty CMS{% endblock %}
 
@@ -12,34 +13,36 @@
 
     <nav class="my-texts-filters" aria-label="Widok moich tekstów">
         <a
-            href="{% url 'core:my_texts' %}?view=active&amp;page_size={{ page_obj.selected_page_size }}"
+            href="{% text_view_url "active" %}"
             class="my-texts-filter{% if selected_view == 'active' %} is-active{% endif %}"
             {% if selected_view == "active" %}aria-current="page"{% endif %}
         >
             W toku
         </a>
         <a
-            href="{% url 'core:my_texts' %}?view=waiting&amp;page_size={{ page_obj.selected_page_size }}"
+            href="{% text_view_url "waiting" %}"
             class="my-texts-filter{% if selected_view == 'waiting' %} is-active{% endif %}"
             {% if selected_view == "waiting" %}aria-current="page"{% endif %}
         >
             Oczekujące
         </a>
         <a
-            href="{% url 'core:my_texts' %}?view=completed&amp;page_size={{ page_obj.selected_page_size }}"
+            href="{% text_view_url "completed" %}"
             class="my-texts-filter{% if selected_view == 'completed' %} is-active{% endif %}"
             {% if selected_view == "completed" %}aria-current="page"{% endif %}
         >
             Moja praca zakończona
         </a>
         <a
-            href="{% url 'core:my_texts' %}?view=all&amp;page_size={{ page_obj.selected_page_size }}"
+            href="{% text_view_url "all" %}"
             class="my-texts-filter{% if selected_view == 'all' %} is-active{% endif %}"
             {% if selected_view == "all" %}aria-current="page"{% endif %}
         >
             Wszystkie
         </a>
     </nav>
+
+    {% include "core/includes/text_filters.html" %}
 
     <section class="card" aria-label="Lista moich tekstów">
         

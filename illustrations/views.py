@@ -116,7 +116,7 @@ def illustration_list(request):
     # Ilustracje powstają przez istniejące sygnały przy zmianach danych.
     illustrations = (
         Illustration.objects.filter(
-            text__anthology__status=Anthology.Status.UNPUBLISHED,
+            text__anthology__status=Anthology.Status.IN_PREPARATION,
             text__anthology__has_illustrations=True,
         )
         .select_related(
@@ -150,7 +150,7 @@ def illustration_list(request):
 
     anthologies = (
         Anthology.objects.filter(
-            status=Anthology.Status.UNPUBLISHED,
+            status=Anthology.Status.IN_PREPARATION,
             has_illustrations=True,
         )
         .only("pk", "title")

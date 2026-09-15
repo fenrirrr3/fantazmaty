@@ -141,7 +141,7 @@ def _render_text_detail(request, text, *, bound_forms=None, status=200):
     can_contribute = coordinator_access or is_assigned
     from core.file_forms import TextFileForm
     context['file_url'] = text.file_url
-    context['text_file_form'] = TextFileForm(instance=text) if can_contribute else None
+    context['text_file_form'] = TextFileForm(instance=text) if request.user.is_superuser else None
     # Only this text's email addresses are revealed, never source-review identity.
     email_access = can_view_author_data(request.user) or (
         WorkflowRoleAssignment.objects.filter(text=text, assigned_to=request.user).exists()
@@ -236,6 +236,7 @@ def my_texts(request):
         my_texts_context(
             user=request.user,
             selected_view=selected_view,
+            params=request.GET,
         )
     )
     page_obj = paginate_items(request, context.pop("texts"))
@@ -270,10 +271,14 @@ def assigned_text_detail(request, text_id):
 @require_GET
 @team_member_required
 def available_texts(request):
-    available_stages = available_stages_for_user(user=request.user)
+    params = request.GET.copy()
+    for key in ("status", "sort", "hide_ready"):
+        params.pop(key, None)
+    available_stages, filters = available_stages_for_user(user=request.user, params=params, with_filters=True)
     page_obj = paginate_items(request, available_stages)
 
-    context = _permission_context(request.user)
+    context = dict(filters)
+    context.update(_permission_context(request.user))
     context.update(
         {
             "available_stages": page_obj,
@@ -533,15 +538,14 @@ def delete_text_note(request, text_id, note_id):
 @never_cache
 @login_required
 @require_POST
-@team_member_required
+@superuser_required
 def update_text_file(request, text_id):
     from core.file_forms import TextFileForm
     with transaction.atomic():
         text = get_object_or_404(Text.objects.select_for_update(), pk=text_id)
-        _require_text_contributor(request.user, text)
         form = TextFileForm(request.POST, instance=text)
         if form.is_valid():
             form.save()
-            messages.success(request, 'Zapisano link do pliku.')
+            messages.success(request, 'Zapisano link do folderu Dropbox.')
             return redirect('core:assigned_text_detail', text_id=text.pk)
     return _render_text_detail(request, text, bound_forms={'text_file_form':form}, status=400)

@@ -8,7 +8,7 @@
 }
 :root[data-theme="dark"] {
     color-scheme: dark;
-    --background: #10151c; --surface: #1b2430; --surface-alt: #222d3b;
+    --background: #15171b; --surface: #1b2430; --surface-alt: #222d3b;
     --surface-hover: #304056; --border: #44546a; --border-strong: #718399;
     --text: #dce2ea; --muted: #b2becc; --primary: #85bdff;
     --primary-dark: #acd2ff; --primary-light: #243e60; --header: #111c2a;

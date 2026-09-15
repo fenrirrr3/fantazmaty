@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import operations, intake, supervision, discord
+from .views import operations, intake, supervision
 
 from .views import (
     anthologies,
@@ -22,7 +22,6 @@ from core.views.programs import programs
 from core.views.activity import user_activity
 
 urlpatterns = [
-    path("discord-test/", discord.discord_test, name="discord_test"),
     path("spojnosc-danych/", supervision.data_integrity, name="data_integrity"),
     path("antologie/<int:anthology_id>/", supervision.anthology_detail, name="anthology_detail"),
     path("antologie/<int:anthology_id>/stopka.csv", supervision.anthology_credits_csv, name="anthology_credits_csv"),

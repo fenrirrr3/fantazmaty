@@ -93,7 +93,7 @@ class EditingMiddleware:
                 else:
                     from core.permissions import is_coordinator
                     name = match.url_name
-                    if name == 'set_text_authors' and not request.user.is_superuser:
+                    if name in ('set_text_authors', 'update_text_file') and not request.user.is_superuser:
                         return self.get_response(request)
                     if name in ('edit_text_note', 'delete_text_note'):
                         from texts.models import TextNote

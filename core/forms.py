@@ -326,18 +326,18 @@ class TextContentWarningsForm(NormalizedFormMixin, forms.ModelForm):
         }
 
 
-class ReviewContentWarningsForm(NormalizedFormMixin, forms.ModelForm):
+class ReviewContentWarningsForm(NormalizedFormMixin, forms.Form):
+    """Validate only warnings, including reviews with incomplete imported metadata."""
     normalization_fields = TEXT_FIELDS
-    class Meta:
-        model = Review
-        fields = ("content_warnings",)
-        labels = {"content_warnings": "Trigger warningi"}
-        widgets = {
-            "content_warnings": textarea_widget(
-                "content-warnings-input",
-                placeholder="Wpisz trigger warningi zauważone w tekście...",
-            ),
-        }
+    content_warnings = forms.CharField(
+        label="Trigger warningi", required=False,
+        widget=textarea_widget("content-warnings-input", placeholder="Wpisz trigger warningi zauważone w tekście..."),
+    )
+
+    def __init__(self, *args, instance=None, **kwargs):
+        if instance is not None:
+            kwargs['initial'] = {"content_warnings": instance.content_warnings, **kwargs.get('initial', {})}
+        super().__init__(*args, **kwargs)
 
 
 class AuthorNotificationForm(forms.Form):
@@ -423,7 +423,7 @@ class ReviewBulkImportForm(forms.Form):
 
     anthology = forms.ModelChoiceField(
         label="Antologia",
-        queryset=Anthology.objects.exclude(status=Anthology.Status.PUBLISHED).order_by("title", "pk"),
+        queryset=Anthology.objects.filter(status=Anthology.Status.IN_PREPARATION).order_by("title", "pk"),
         empty_label="Wybierz antologię",
         widget=forms.Select(attrs={"class": "filter-select"}),
     )

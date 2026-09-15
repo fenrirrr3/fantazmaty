@@ -682,8 +682,8 @@ def update_review_content_warnings(request, review_id):
         )
         return _detail_redirect(review.pk)
 
-    # Formularz nie otrzymuje instancji zawierającej dane autora.
-    form = ReviewContentWarningsForm(request.POST)
+    # Waliduj istniejące zgłoszenie; formularz udostępnia tylko ostrzeżenia.
+    form = ReviewContentWarningsForm(request.POST, instance=review)
 
     if form.is_valid():
         try:
@@ -889,5 +889,11 @@ def my_reviews(request):
     query = request.GET.get("q", "").strip()[:255]
     for term in query.split():
         rows = rows.filter(Q(review__title__plcontains=term) | Q(review__anthology__title__plcontains=term))
+    from texts.models import Anthology
+    from core.selectors.texts import _positive_id
+    anthology_id = _positive_id(request.GET.get("anthology"))
+    anthologies = Anthology.objects.filter(pk__in=rows.order_by().values("review__anthology_id")).order_by("title", "pk")
+    if anthology_id is not None:
+        rows = rows.filter(review__anthology_id=anthology_id)
     page = paginate_items(request, rows)
-    return render(request, "core/my_reviews.html", {"assignments": page, "page_obj": page, "selected_view": view, "query": query})
+    return render(request, "core/my_reviews.html", {"assignments": page, "page_obj": page, "selected_view": view, "query": query, "anthologies": anthologies, "selected_anthology_id": str(anthology_id or ""), "can_view_authors": False})

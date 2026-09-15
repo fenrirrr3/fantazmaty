@@ -87,3 +87,30 @@ table > tbody > tr:has(input[type="checkbox"]:checked) > :is(td, th) { backgroun
   .review-form-card { min-width: 0; padding: 14px; }
   .review-summary-grid { grid-template-columns: 1fr; }
 }
+
+.workflow-folder-layout { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; align-items:start; }
+.workflow-folder-layout > .editing-control-content { min-width:0; }
+.dropbox-folder-card { min-width:0; padding:16px; }
+.dropbox-folder-card input[type="url"] { box-sizing:border-box; width:100%; }
+.dropbox-folder-card p { overflow-wrap:anywhere; }
+@media(max-width:760px) { .workflow-folder-layout { grid-template-columns:minmax(0,1fr); } }
+
+/* Menu and workflow panel spacing. */
+.site-sidebar { display:flex; flex-direction:column; overflow:hidden; }
+.sidebar-scroll { flex:1; min-height:0; overflow-y:auto; padding-top:16px; }
+.sidebar-footer { flex-shrink:0; border-top:1px solid var(--border); padding-top:10px; }
+.site-sidebar > .sidebar-section { flex-shrink:0; }
+details.sidebar-section > summary { cursor:pointer; }
+.sidebar-scroll .sidebar-section { margin-bottom:12px; }
+.workflow-folder-layout { padding:20px; align-items:stretch; }
+.workflow-folder-layout > .editing-control-content { padding:0; display:flex; flex-direction:column; gap:12px; }
+.workflow-folder-layout .quick-stage-card { margin:0; padding:16px; }
+.workflow-folder-layout .stage-finish-card { flex:1; }
+.dropbox-folder-card h3 { margin-top:0; }
+
+#correction-bulk { display:flex; flex-wrap:wrap; align-items:end; gap:10px; margin:12px 0 16px; padding:8px 0; }
+#correction-bulk > label { display:grid; gap:6px; }
+.table-footer-tools { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; margin:12px 0 6px; }
+.table-footer-tools details { margin:0; font-size:.85rem; color:var(--muted); }
+.table-footer-tools summary { cursor:pointer; }
+.table-footer-tools p { margin:6px 0; }

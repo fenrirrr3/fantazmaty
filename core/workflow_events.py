@@ -123,8 +123,9 @@ def workflow_channel():
 
 def message(event):
     # No emails, phone numbers or mentions. Keep every identifying field even for long titles.
+    status = event.next_status if event.previous_status == event.next_status else f'{event.previous_status} → {event.next_status}'
     return (f'Tekst: {event.title[:400]}\nAutor: {event.authors[:400]}\n'
-            f'Status: {event.previous_status} → {event.next_status}\n'
+            f'Status: {status}\n'
             f'Wykonał(a): {event.actor_name[:200]}\n{event.details[:700]}')[:2000]
 
 

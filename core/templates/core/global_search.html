@@ -239,7 +239,7 @@
                                 >
                                     <strong>{{ anthology.title }}</strong>
                                 </a>
-                                <span class="stage-status {% if anthology.status == 'published' %}completed{% elif anthology.status == 'in_preparation' %}active{% else %}pending{% endif %}">
+                                <span class="stage-status {% if anthology.status == 'ready' %}completed{% elif anthology.status == 'in_preparation' %}active{% else %}pending{% endif %}">
                                     {{ anthology.get_status_display }}
                                 </span>
                             </li>

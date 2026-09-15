@@ -50,7 +50,7 @@
                                 </td>
 
                                 <td>
-                                    <span class="stage-status {% if anthology.status == 'published' or anthology.status == 'ready' %}completed{% elif anthology.status == 'in_preparation' %}active{% else %}pending{% endif %}">
+                                    <span class="stage-status {% if anthology.status == 'ready' %}completed{% elif anthology.status == 'in_preparation' %}active{% else %}pending{% endif %}">
                                         {{ anthology.get_status_display }}
                                     </span>
                                 </td>

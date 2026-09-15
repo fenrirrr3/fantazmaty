@@ -259,6 +259,10 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     )
     autocomplete_fields = ("authors", "anthology")
     ordering = ("anthology__title", "title", "pk")
+    def get_readonly_fields(self, request, obj=None):
+        fields = super().get_readonly_fields(request, obj)
+        return fields if request.user.is_superuser else (*fields, "file_url")
+
     readonly_fields = ("current_workflow_cycle", "is_historical", "historical_source", "historical_source_row")
 
     fieldsets = (
@@ -425,7 +429,7 @@ class ReviewAdminForm(NormalizedFormMixin, forms.ModelForm):
 
         self.submission_warnings = []
         if self.instance._state.adding and "anthology" in self.fields:
-            self.fields["anthology"].queryset = Anthology.objects.exclude(status=Anthology.Status.PUBLISHED).order_by("title", "pk")
+            self.fields["anthology"].queryset = Anthology.objects.filter(status=Anthology.Status.IN_PREPARATION).order_by("title", "pk")
 
         # Dane zostaną uzupełnione po stronie serwera po wyborze autora.
         # Bez powiązanego autora pozostają wymagane w clean().

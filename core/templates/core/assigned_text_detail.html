@@ -46,9 +46,6 @@
 
     <section class="details-card" aria-labelledby="text-information-heading">
         <h2 id="text-information-heading">Informacje o tekście</h2>
-        <div class="text-file-panel"><strong>Aktualny plik</strong>
-        {% if file_url %}<p><a class="primary-button" href="{{ file_url }}" target="_blank" rel="noopener noreferrer">Otwórz plik lub folder</a></p>{% else %}<p>Nie dodano linku do pliku.</p>{% endif %}
-        {% if text_file_form %}<details><summary>Zmień link</summary><form method="post" action="{% url 'core:update_text_file' text.pk %}" data-warn-unsaved>{% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">{{ text_file_form.as_p }}<button type="submit" class="secondary-button">Zapisz link</button></form></details>{% endif %}</div>
         {% if author_emails %}<div class="detail-item"><strong>E-mail autora</strong><p>{% for email in author_emails %}<a href="mailto:{{ email }}" data-double-copy data-copy-value="{{ email }}">{{ email }}</a>{% if not forloop.last %}<br>{% endif %}{% endfor %}</p></div>{% endif %}
 
         <dl class="details-grid">
@@ -186,6 +183,8 @@
             </table>
         </div>
 
+        {% if text.anthology.status != "ready" %}
+        <div class="workflow-folder-layout">
         {% if not is_withdrawn and not is_ready %}
             <div class="editing-control-content">
                 {% for stage in stages %}
@@ -305,6 +304,19 @@
                     {% endif %}
                 </div>
             </div>
+        {% endif %}
+        <aside class="quick-stage-card dropbox-folder-card" aria-labelledby="dropbox-folder-heading">
+            <h3 id="dropbox-folder-heading">Folder Dropbox</h3>
+            {% if file_url %}<p><a class="primary-button" href="{{ file_url }}" target="_blank" rel="noopener noreferrer">Otwórz folder Dropbox</a></p>{% else %}<p class="muted-text">Nie dodano linku do folderu.</p>{% endif %}
+            {% if text_file_form %}
+            <form method="post" action="{% url 'core:update_text_file' text.pk %}" data-warn-unsaved>
+                {% csrf_token %}
+                {{ text_file_form.as_p }}
+                <button type="submit" class="secondary-button">Zapisz link</button>
+            </form>
+            {% endif %}
+        </aside>
+        </div>
         {% endif %}
     </section>
 

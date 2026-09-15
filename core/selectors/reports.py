@@ -267,6 +267,7 @@ def workflow_activity_context(
         history = history.none()
     if include_authors:
         history = history.prefetch_related(_author_prefetch())
+    known_person_ids = {person["pk"] for person in context[people_context_name]}
     for item in history:
         text = item.text
         authors = _authors_display(text, include_authors)
@@ -279,8 +280,9 @@ def workflow_activity_context(
                          person_id=item.person_id, person_name=item.display_name, assigned_at=None,
                          started_at=None, ended_at=None,
                          is_completed=item.is_completed, is_historical=True))
-        if item.person_id and not any(p["pk"] == item.person_id for p in context[people_context_name]):
+        if item.person_id and item.person_id not in known_person_ids:
             context[people_context_name].append(_NamedRecord(pk=item.person_id, display_name=item.display_name))
+            known_person_ids.add(item.person_id)
     return _cascade_activity(context, rows, filters, people_context_name)
 
 

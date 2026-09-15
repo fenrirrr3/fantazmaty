@@ -23,10 +23,8 @@ class ReviewOpinion(models.TextChoices):
 
 class Anthology(models.Model):
     class Status(models.TextChoices):
-        PUBLISHED = "published", "Wydane"
-        READY = "ready", "Gotowe"
-        UNPUBLISHED = "unpublished", "Niewydane"
         IN_PREPARATION = "in_preparation", "W przygotowaniu"
+        READY = "ready", "Gotowa"
 
     class PrintStatus(models.TextChoices):
         NO = "no", "Nie"
@@ -47,7 +45,7 @@ class Anthology(models.Model):
         "status",
         max_length=20,
         choices=Status.choices,
-        default=Status.UNPUBLISHED,
+        default=Status.IN_PREPARATION,
     )
 
     has_illustrations = models.BooleanField(
@@ -271,7 +269,7 @@ class AnthologyTask(models.Model):
 
 
 class Text(NormalizedModelMixin, models.Model):
-    file_url = models.URLField("aktualny plik lub folder", max_length=1000, blank=True)
+    file_url = models.URLField("folder Dropbox", max_length=1000, blank=True)
 
     historical_source = models.CharField("źródło importu historycznego", max_length=100, blank=True, default="", editable=False)
     historical_source_row = models.PositiveIntegerField("LP importu historycznego", null=True, blank=True, editable=False)

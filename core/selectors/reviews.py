@@ -442,8 +442,11 @@ def review_list_context(*, user, params):
     if sort not in SORT_FIELDS:
         sort = "newest"
 
+    if include_authors:
+        queryset = queryset.select_related("author").prefetch_related("coauthors")
+
     queryset = (
-        queryset.select_related("anthology", "author").prefetch_related("coauthors")
+        queryset.select_related("anthology")
         .prefetch_related(
             Prefetch(
                 "assignments",

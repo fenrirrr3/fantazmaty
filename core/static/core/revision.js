@@ -41,8 +41,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!window.confirm(form.dataset.confirmDelete)) event.preventDefault();
         });
     });
-    const sidebar = document.getElementById('site-sidebar');
+    const sidebar = document.querySelector('.sidebar-scroll');
     if (sidebar) {
+        sidebar.querySelectorAll('[data-menu-section]').forEach(section => {
+            const stateKey = `fantazmaty:menu:${document.body.dataset.userId || ''}:${section.dataset.menuSection}`;
+            try { const saved = localStorage.getItem(stateKey); if (saved !== null) section.open = saved === 'open'; } catch (_) {}
+            if (section.querySelector('[aria-current="page"]')) section.open = true;
+            section.addEventListener('toggle', () => { try { localStorage.setItem(stateKey, section.open ? 'open' : 'closed'); } catch (_) {} });
+        });
         const key = `fantazmaty:sidebar:${document.body.dataset.userId || ''}`;
         try { sidebar.scrollTop = Number(sessionStorage.getItem(key)) || 0; } catch (_) {}
         const save = () => { try { sessionStorage.setItem(key, String(sidebar.scrollTop)); } catch (_) {} };

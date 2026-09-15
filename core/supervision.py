@@ -3,7 +3,7 @@ from collections import defaultdict
 from difflib import SequenceMatcher
 import unicodedata
 from django.contrib.auth import get_user_model
-from django.db.models import F, Q
+from django.db.models import F, Q, Prefetch
 from django.urls import reverse
 from django.utils import timezone
 from core.models import AnthologyCorrection
@@ -58,7 +58,7 @@ def integrity_issues():
         person = getattr(a.assigned_to,'person_profile',None)
         if not a.assigned_to.is_active or (not a.assigned_to.is_superuser and (person is None or not person.is_active)):
             # A completed role is historical work, not an active staffing problem.
-            stages = list(current.filter(text_id=a.text_id))
+            stages = grouped.get((a.text_id, a.workflow_cycle), [])
             terminal = any(s.stage_type in ('ready','withdrawn') for s in stages)
             matching = [s for s in stages if STAGE_ROLES.get(s.stage_type)==a.role]
             if not terminal and (not matching or any(not s.is_completed for s in matching)):
@@ -124,10 +124,12 @@ def all_duplicates():
 
 def anthology_checklist(anthology):
     rows=[]
-    texts=list(Text.objects.filter(anthology=anthology).prefetch_related('authors','workflow_stages'))
+    texts=list(Text.objects.filter(anthology=anthology).prefetch_related(
+        'authors', Prefetch('workflow_stages', queryset=WorkflowStage.objects.filter(
+            workflow_cycle=F('text__current_workflow_cycle')), to_attr='checklist_stages')))
     included=[]
     for text in texts:
-        stages=[s for s in text.workflow_stages.all() if s.workflow_cycle==text.current_workflow_cycle]
+        stages=text.checklist_stages
         if any(s.stage_type=='withdrawn' for s in stages):continue
         included.append(text)
         url=reverse('core:assigned_text_detail',args=[text.pk])
@@ -151,10 +153,14 @@ def anthology_credits(anthology):
     def add(identity,name,role,title):
         item=credits[(identity,role)];item.update(name=name,role=role);item['works'].add(title)
     assignments=WorkflowRoleAssignment.objects.filter(text__anthology=anthology).select_related('assigned_to__person_profile','text')
-    stages=defaultdict(list)
-    for s in WorkflowStage.objects.filter(text__anthology=anthology,is_completed=True):stages[(s.text_id,s.workflow_cycle)].append(s)
+    completed_roles = {
+        (text_id, cycle, STAGE_ROLES.get(kind))
+        for text_id, cycle, kind in WorkflowStage.objects.filter(
+            text__anthology=anthology, is_completed=True
+        ).order_by().values_list('text_id', 'workflow_cycle', 'stage_type')
+    }
     for a in assignments:
-        if a.assigned_to_id and any(STAGE_ROLES.get(s.stage_type)==a.role for s in stages[(a.text_id,a.workflow_cycle)]):
+        if a.assigned_to_id and (a.text_id, a.workflow_cycle, a.role) in completed_roles:
             person=getattr(a.assigned_to,'person_profile',None)
             add(('person',person.pk) if person else ('user',a.assigned_to_id),str(person) if person else a.assigned_to.get_full_name() or str(a.assigned_to),a.get_role_display(),a.text.title)
     for a in HistoricalTextAssignment.objects.filter(text__anthology=anthology,is_completed=True).select_related('person','text'):

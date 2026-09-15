@@ -13,10 +13,10 @@
 
     <link rel="stylesheet" href="{% static 'core/styles.css' %}">
     <script src="{% static 'core/theme.js' %}"></script>
-    <link rel="stylesheet" href="{% static 'core/themes.css' %}">
+    <link rel="stylesheet" href="{% static 'core/themes.css' %}?v=16">
 
     {% block extra_css %}{% endblock %}
-<link rel="stylesheet" href="{% static 'core/workspace.css' %}">
+<link rel="stylesheet" href="{% static 'core/workspace.css' %}?v=16">
 </head>
 
 <body
@@ -92,9 +92,9 @@
         </div>
     </footer>
 
-    <script src="{% static 'core/revision.js' %}?v=12"></script>
+    <script src="{% static 'core/revision.js' %}?v=16"></script>
     <script src="{% static 'core/author-search.js' %}"></script>
-    <script src="{% static 'core/workspace.js' %}"></script>
+    <script src="{% static 'core/workspace.js' %}?v=16"></script>
     <script src="{% static 'core/ui.js' %}"></script>
 
     {% block scripts %}{% endblock %}

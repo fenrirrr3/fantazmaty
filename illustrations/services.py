@@ -5,7 +5,7 @@ from .models import Illustration
 
 def required_texts_queryset():
     return Text.objects.filter(
-        anthology__status=Anthology.Status.UNPUBLISHED,
+        anthology__status=Anthology.Status.IN_PREPARATION,
         anthology__has_illustrations=True,
     )
 

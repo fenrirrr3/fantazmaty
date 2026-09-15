@@ -46,7 +46,7 @@ class SingleReviewForm(ReviewAdminForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields['anthology'].queryset = Anthology.objects.exclude(status=Anthology.Status.PUBLISHED).order_by('title', 'pk')
+        self.fields['anthology'].queryset = Anthology.objects.filter(status=Anthology.Status.IN_PREPARATION).order_by('title', 'pk')
         self.fields['author'].widget.attrs['data-author-search-url'] = reverse('core:author_suggestions')
         # Keep a native fallback; the enhanced control queries the server.
         self.fields['author'].label_from_instance = lambda author: f'{author} ({author.pseudonym})' if author.pseudonym else str(author)

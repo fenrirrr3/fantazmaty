@@ -1,22 +1,5 @@
-<div class="section-header">
-    <div>
-        {% if page_obj.paginator %}
-            <p>
-                Wyniki:
-                <strong>{{ page_obj.paginator.count }}</strong>
-                {% if page_obj.paginator.count %}
-                    <span class="muted-text">
-                        · Wyświetlono {{ page_obj.start_index }}–{{ page_obj.end_index }}
-                    </span>
-                {% endif %}
-            </p>
-        {% endif %}
-
-        <p class="form-help">
-            Dwuklik kopiuje tytuły tekstów i adresy e-mail autorów. Ctrl/⌘ + klik zaznacza komórki, Shift + klik zaznacza zakres; Ctrl/⌘ + C kopiuje zaznaczenie.
-        </p>
-    </div>
-
+<div class="table-footer-tools">
+    <details><summary>Kopiowanie z tabeli</summary><p class="form-help">Dwuklik kopiuje oznaczone tytuły i adresy e-mail. Ctrl/⌘ + klik zaznacza komórki, Shift + klik zaznacza zakres; Ctrl/⌘ + C kopiuje zaznaczenie.</p></details>
     <div class="filter-actions">
 
 

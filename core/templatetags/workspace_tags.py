@@ -29,3 +29,11 @@ def account_person(user):
     if person is not None:
         return person
     return None
+
+
+@register.simple_tag(takes_context=True)
+def text_view_url(context, view):
+    params = context["request"].GET.copy()
+    params["view"] = view
+    params.pop("page", None)
+    return "?" + params.urlencode()

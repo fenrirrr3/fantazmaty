@@ -16,7 +16,7 @@ class CorrectionForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["anthology"].queryset = Anthology.objects.filter(status__in=("ready", "published")).order_by("title", "pk")
+        self.fields["anthology"].queryset = Anthology.objects.filter(status__in=("ready",)).order_by("title", "pk")
         self.fields["text"].widget.attrs["data-texts-url"] = reverse("core:correction_texts")
         anthology = self.data.get(self.add_prefix("anthology")) if self.is_bound else self.initial.get("anthology", self.instance.anthology_id)
         if str(anthology or "").isdecimal() and len(str(anthology)) < 19:

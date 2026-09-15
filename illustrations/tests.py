@@ -56,12 +56,12 @@ class IllustrationTestDataMixin:
 
         cls.anthology = Anthology.objects.create(
             title="Antologia A",
-            status=Anthology.Status.UNPUBLISHED,
+            status=Anthology.Status.IN_PREPARATION,
             has_illustrations=True,
         )
         cls.other_anthology = Anthology.objects.create(
             title="Antologia B",
-            status=Anthology.Status.UNPUBLISHED,
+            status=Anthology.Status.IN_PREPARATION,
             has_illustrations=True,
         )
 
@@ -139,7 +139,7 @@ class IllustrationModelTests(IllustrationTestDataMixin, TestCase):
     def test_enabling_illustrations_creates_missing_records(self):
         anthology = Anthology.objects.create(
             title="Antologia bez ilustracji",
-            status=Anthology.Status.UNPUBLISHED,
+            status=Anthology.Status.IN_PREPARATION,
             has_illustrations=False,
         )
         text = Text.objects.create(
@@ -174,9 +174,8 @@ class IllustrationModelTests(IllustrationTestDataMixin, TestCase):
 
     def test_nonqualifying_text_does_not_receive_illustration(self):
         for status, has_illustrations in (
-            (Anthology.Status.PUBLISHED, True),
-            (Anthology.Status.IN_PREPARATION, True),
-            (Anthology.Status.UNPUBLISHED, False),
+            (Anthology.Status.READY, True),
+            (Anthology.Status.IN_PREPARATION, False),
         ):
             with self.subTest(status=status, enabled=has_illustrations):
                 anthology = Anthology.objects.create(
@@ -355,7 +354,7 @@ class IllustrationViewTests(IllustrationTestDataMixin, TestCase):
         )
 
     def test_published_anthology_is_excluded_without_deleting_record(self):
-        self.anthology.status = Anthology.Status.PUBLISHED
+        self.anthology.status = Anthology.Status.READY
         self.anthology.save(update_fields=["status"])
 
         response = self.client.get(self.illustration_url())
