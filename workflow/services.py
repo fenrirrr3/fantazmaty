@@ -1,3 +1,4 @@
+from workflow.anthology_policy import require_working_anthology
 from datetime import date, datetime, timedelta
 from functools import wraps
 from core.workflow_events import track_workflow
@@ -162,6 +163,7 @@ def _locked_text_operation(function):
                     "Odśwież stronę przed wykonaniem operacji."
                 )
 
+            require_working_anthology(locked_text)
             result = function(locked_text, *args, **kwargs)
 
         text.current_workflow_cycle = locked_text.current_workflow_cycle
@@ -202,6 +204,7 @@ def _locked_stage_operation(function):
                     "Powiązanie etapu zmieniło się. Odśwież stronę."
                 )
 
+            require_working_anthology(locked_text)
             locked_stage.text = locked_text
             ensure_stage_belongs_to_current_cycle(locked_stage)
             return function(locked_stage, *args, **kwargs)

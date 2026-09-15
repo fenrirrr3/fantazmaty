@@ -284,6 +284,7 @@ def _permission_decorator(check):
             check(request.user)
             return view(request, *args, **kwargs)
 
+        wrapped.permission_check = check
         return wrapped
 
     return decorator

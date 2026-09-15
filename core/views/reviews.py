@@ -892,7 +892,8 @@ def my_reviews(request):
     from texts.models import Anthology
     from core.selectors.texts import _positive_id
     anthology_id = _positive_id(request.GET.get("anthology"))
-    anthologies = Anthology.objects.filter(pk__in=rows.order_by().values("review__anthology_id")).order_by("title", "pk")
+    own_anthologies = ReviewAssignment.objects.filter(Q(user=request.user) | Q(historical_person__user=request.user)).order_by().values("review__anthology_id")
+    anthologies = Anthology.objects.filter(pk__in=own_anthologies).order_by("title", "pk")
     if anthology_id is not None:
         rows = rows.filter(review__anthology_id=anthology_id)
     page = paginate_items(request, rows)

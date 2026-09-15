@@ -160,6 +160,27 @@ class VacationAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     autocomplete_fields = ('person',)
     readonly_fields = ('created_at',)
 
+    def get_readonly_fields(self, request, obj=None):
+        return (*self.readonly_fields, *(("person",) if obj else ()))
+
+    def save_model(self, request, obj, form, change):
+        from django.db import transaction
+        from django.utils import timezone
+        from people.models import Person
+        from core.services.vacations import _sync_person_leave
+        with transaction.atomic():
+            person = Person.objects.select_for_update().get(pk=obj.person_id)
+            super().save_model(request, obj, form, change)
+            _sync_person_leave(person, now=timezone.now())
+
+    def has_delete_permission(self, request, obj=None):
+        from django.utils import timezone
+        return bool(obj and obj.start_date > timezone.localdate() and super().has_delete_permission(request, obj))
+
+    def delete_model(self, request, obj):
+        from core.services.vacations import cancel_planned_vacation
+        cancel_planned_vacation(user=request.user, vacation_id=obj.pk)
+
 
 @admin.register(AnthologyTask)
 class AnthologyTaskAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
@@ -174,13 +195,13 @@ class ServiceOwnedReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     actions = None
 
     def get_readonly_fields(self, request, obj=None):
-        return tuple(field.name for field in self.model._meta.fields)
+        return tuple(field.name for field in self.model._meta.fields if field.name not in ("notes", "general_notes"))
 
     def has_add_permission(self, request):
         return False
 
     def has_change_permission(self, request, obj=None):
-        return False
+        return bool(self.has_superuser_access(request) and obj is not None)
 
     def has_delete_permission(self, request, obj=None):
         return bool(self.has_superuser_access(request) and obj is not None and obj.review.old_reviews)

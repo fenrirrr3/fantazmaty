@@ -28,7 +28,7 @@ class ActivityFilterForm(forms.Form):
 @superuser_required
 def user_activity(request):
     form = ActivityFilterForm(request.GET)
-    rows = UserActivity.objects.select_related('user')
+    rows = UserActivity.objects.select_related('user__person_profile')
     if form.is_valid():
         data = form.cleaned_data
         for term in data['q'].split():

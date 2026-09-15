@@ -16,6 +16,7 @@ def claim_access(user):
 def claim_reason(stage, user, stages, assignments, *, access=None):
     from workflow.services import STAGE_ROLES, ROLE_GROUPS
     access = claim_access(user) if access is None else access
+    if stage.text.anthology_id and stage.text.anthology.status == "ready":return "Antologia jest gotowa."
     kind=stage.stage_type
     role=A.Role.EDITOR if kind=='ready_for_editing' else STAGE_ROLES.get(kind)
     if not access["member"]:return 'Brak aktywnego dostępu do zespołu.'

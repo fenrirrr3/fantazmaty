@@ -656,6 +656,7 @@
                                 id="text-authors"
                                 name="authors"
                                 class="text-authors-select"
+                                data-author-search-url="{% url 'core:author_suggestions' %}"
                                 multiple
                                 required
                             >
@@ -676,7 +677,7 @@
                     </div>
                 {% endif %}
 
-                {% if can_restart_workflow and restart_workflow_form %}
+                {% if can_restart_workflow and restart_workflow_form and text.anthology.status != "ready" %}
                     <div class="management-action management-action-restart">
                         <div class="management-action-description">
                             <h3>Rozpocznij nowy cykl</h3>
@@ -705,7 +706,7 @@
                     </div>
                 {% endif %}
 
-                {% if can_manage_workflow and not is_withdrawn and not is_ready %}
+                {% if can_manage_workflow and not is_withdrawn and not is_ready and text.anthology.status != "ready" %}
                     <div class="management-action management-action-danger">
                         <div class="management-action-description">
                             <h3>Wycofaj tekst</h3>

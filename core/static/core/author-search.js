@@ -10,7 +10,25 @@ document.addEventListener('DOMContentLoaded', () => {
         list.setAttribute('role', 'listbox'); input.setAttribute('aria-controls', list.id);
         const status = document.createElement('span'); status.setAttribute('role', 'status');
         [...select.labels].forEach(label => { label.htmlFor = input.id; });
-        input.value = select.value ? select.selectedOptions[0].textContent : '';
+        const multiple = select.multiple;
+        input.value = !multiple && select.value ? select.selectedOptions[0].textContent : '';
+        const selected = document.createElement('div'); selected.className = 'selected-authors';
+        const wasRequired = select.required;
+        if (multiple) { select.required = false; select.before(selected); }
+        const renderSelected = () => {
+            if (!multiple) return;
+            selected.replaceChildren();
+            [...select.selectedOptions].forEach(option => {
+                const chip = document.createElement('span'); chip.className = 'selected-author';
+                const label = document.createElement('span'); label.textContent = option.textContent;
+                const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = 'Usuń';
+                remove.setAttribute('aria-label', `Usuń autora: ${option.textContent}`);
+                remove.addEventListener('click', () => { option.selected = false; select.dispatchEvent(new Event('change', {bubbles:true})); renderSelected(); });
+                chip.append(label, remove); selected.append(chip);
+            });
+            input.setCustomValidity(wasRequired && !select.selectedOptions.length ? 'Wybierz przynajmniej jednego autora.' : '');
+        };
+        renderSelected();
         select.hidden = true; select.after(input, list, status);
         let timer, controller, sequence = 0, active = -1;
         const close = () => { list.replaceChildren(); input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); active = -1; };
@@ -18,6 +36,10 @@ document.addEventListener('DOMContentLoaded', () => {
             ++sequence; clearTimeout(timer); controller?.abort();
             let option = [...select.options].find(o => o.value === String(item.id));
             if (!option) { option = new Option(item.label, item.id); select.add(option); }
+            if (multiple) {
+                option.selected = true; input.value = ''; renderSelected();
+                select.dispatchEvent(new Event('change', {bubbles:true})); close(); status.textContent = 'Dodano autora. Możesz wyszukać kolejną osobę.'; input.focus(); return;
+            }
             select.value = String(item.id); input.value = item.label;
             for (const [field, value] of Object.entries({author_first_name:item.first_name, author_last_name:item.last_name, email:item.email, phone_number:item.phone_number})) {
                 const target = select.form.elements.namedItem(field);
@@ -47,8 +69,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
         input.addEventListener('input', () => {
-            select.value = ''; select.dispatchEvent(new Event('change', {bubbles:true}));
-            clearTimeout(timer); ++sequence; controller?.abort(); close(); timer = setTimeout(search, 350);
+            if (!multiple) { select.value = ''; select.dispatchEvent(new Event('change', {bubbles:true})); }
+            clearTimeout(timer); ++sequence; controller?.abort(); close(); timer = setTimeout(search, 500);
         });
         input.addEventListener('keydown', event => {
             if (event.key === 'Escape') { ++sequence; controller?.abort(); clearTimeout(timer); close(); return; }

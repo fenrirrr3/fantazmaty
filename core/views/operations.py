@@ -153,7 +153,7 @@ def release_hidden_review(request, review_id):
 @team_member_required
 @transaction.atomic
 def correction_edit(request, pk):
-    item = get_object_or_404(AnthologyCorrection.objects.select_for_update(), pk=pk, submitted_by=request.user)
+    item = get_object_or_404((AnthologyCorrection.objects.select_for_update() if request.method == "POST" else AnthologyCorrection.objects), pk=pk, submitted_by=request.user)
     if item.is_resolved:
         from django.core.exceptions import PermissionDenied
         raise PermissionDenied("Rozpatrzonej uwagi nie można edytować.")

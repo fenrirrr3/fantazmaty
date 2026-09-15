@@ -933,7 +933,7 @@ def text_detail_context(*, user, text):
             can_control and editing and second_gate and not verification_open
         ),
         "all_authors": (
-            [_author_data(author) for author in Author.objects.all()]
+            [_author_data(author) for author in text.selector_authors]
             if include_authors else []
         ),
         "selected_author_ids": (

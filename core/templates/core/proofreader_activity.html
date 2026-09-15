@@ -181,7 +181,7 @@
                 <tbody>
                     {% for row in activity_rows %}
                         <tr>
-                            <td><strong>{{ row.person_name }}</strong></td>
+                            <td>{% if row.person_id %}<a class="detail-link" href="{% url 'core:person_detail' row.person_id %}">{{ row.person_name }}</a>{% else %}{{ row.person_name }}{% endif %}</td>
 
                             <td>
                                 {{ row.anthology_title|default:"Brak antologii" }}

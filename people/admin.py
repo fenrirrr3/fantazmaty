@@ -67,6 +67,9 @@ class PersonAdminForm(forms.ModelForm):
 
 @admin.register(Role)
 class RoleAdmin(admin.ModelAdmin):
+    def get_readonly_fields(self, request, obj=None):
+        return ("name",) if obj else ()
+
     list_display = (
         "name",
     )
@@ -85,6 +88,11 @@ class RoleAdmin(admin.ModelAdmin):
 
 @admin.register(Person)
 class PersonAdmin(admin.ModelAdmin):
+    readonly_fields = ("leave_start_date", "leave_end_date", "leave_until_revoked")
+
+    def get_readonly_fields(self, request, obj=None):
+        return (*self.readonly_fields, *(("user",) if obj and obj.user_id else ()))
+
     actions = ('revoke_coordinator_access',)
 
     @admin.action(description="Odbierz wszystkie uprawnienia koordynatora")

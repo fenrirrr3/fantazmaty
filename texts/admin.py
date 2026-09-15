@@ -153,7 +153,11 @@ class WorkflowRoleAssignmentInline(
         "assigned_at",
         "notes",
     )
-    readonly_fields = ("assigned_at",)
+    readonly_fields = ("role", "assigned_to", "assigned_at")
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
     autocomplete_fields = ("assigned_to",)
 
     def get_queryset(self, request):
@@ -230,7 +234,10 @@ class HistoricalTextAssignmentAdmin(HistoricalAssignmentReadOnlyMixin, Superuser
     list_display = ("text", "role_label", "person", "person_name", "is_completed")
     list_filter = ("role", "is_completed")
     search_fields = ("text__title", "person_name", "person__first_name", "person__last_name")
-    readonly_fields = tuple(field.name for field in HistoricalTextAssignment._meta.fields)
+    readonly_fields = tuple(field.name for field in HistoricalTextAssignment._meta.fields if field.name != "notes")
+
+    def has_change_permission(self, request, obj=None):
+        return bool(request.user.is_superuser and obj is not None)
     actions = None
 
 
@@ -439,6 +446,8 @@ class ReviewAdminForm(NormalizedFormMixin, forms.ModelForm):
 
     def clean(self):
         cleaned_data = super().clean()
+        if "old_reviews" not in self.fields:
+            cleaned_data["old_reviews"] = self.instance.old_reviews
         author = cleaned_data.get("author")
 
         if author is not None:
@@ -708,6 +717,17 @@ class ReviewAssignmentInline(
     autocomplete_fields = ("user",)
     ordering = ("position", "pk")
 
+    def get_readonly_fields(self, request, obj=None):
+        if obj and obj.old_reviews:
+            return self.readonly_fields
+        return (*self.readonly_fields, "position", "user", "historical_person", "opinion")
+
+    def has_add_permission(self, request, obj=None):
+        return bool(obj and obj.old_reviews and request.user.is_superuser)
+
+    def has_delete_permission(self, request, obj=None):
+        return bool(obj and obj.old_reviews and request.user.is_superuser)
+
     def get_queryset(self, request):
         return (
             super()
@@ -859,8 +879,8 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
     def get_readonly_fields(self, request, obj=None):
         if obj and obj.old_reviews:
-            return ("created_at",)
-        return super().get_readonly_fields(request, obj)
+            return ("created_at", "old_reviews")
+        return (*super().get_readonly_fields(request, obj), "status", "copied_text", "author_notified_at", *(("old_reviews",) if obj else ()))
 
     def get_urls(self):
         return [

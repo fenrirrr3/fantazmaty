@@ -195,7 +195,7 @@
                 <tbody>
                     {% for row in activity_rows %}
                         <tr>
-                            <td><span class="role-badge" data-palette="reviewer">{{ row.reviewer_name }}</span></td>
+                            <td>{% if row.person_id %}<a class="detail-link" href="{% url 'core:person_detail' row.person_id %}">{{ row.reviewer_name }}</a>{% else %}{{ row.reviewer_name }}{% endif %}</td>
 
                             <td>
                                 {{ row.anthology_title|default:"Brak antologii" }}

@@ -153,6 +153,7 @@ class WorkflowEvent(models.Model):
     next_status = models.CharField(max_length=100)
     details = models.TextField(blank=True)
     channel = models.CharField(max_length=100)
+    sending_started_at = models.DateTimeField(null=True, blank=True, editable=False, db_index=True)
     status = models.CharField(max_length=12, default='pending', choices=(
         ('pending', 'Oczekuje'), ('sending', 'Wysyłanie / brak potwierdzenia'),
         ('sent', 'Wysłano'), ('failed', 'Błąd wysyłki'), ('unknown', 'Brak potwierdzenia'),

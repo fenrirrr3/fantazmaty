@@ -1,4 +1,4 @@
-"""Transactional workflow events. Delivery runs only after a successful commit."""
+"""Transactional outbox. A separate management command delivers committed events."""
 from contextlib import contextmanager
 from contextvars import ContextVar
 from functools import wraps
@@ -83,7 +83,7 @@ def event_scope(user):
             event = WorkflowEvent.objects.using(using).create(text=text, title=title, authors=authors,
                 actor=user, actor_name=actor, previous_status=before['status'], next_status=after['status'],
                 details='\n'.join(changes(before, after)), channel=workflow_channel())
-            transaction.on_commit(lambda pk=event.pk, db=using: deliver(pk, db), using=using, robust=True)
+            # The worker reads this record only after the enclosing transaction commits.
     finally:
         _scope.reset(token)
 
@@ -133,7 +133,8 @@ def deliver(pk, using='default'):
     from core.models import WorkflowEvent
     from core.discord_webhook import channels, send_message, ConfigurationError, DeliveryError
     events = WorkflowEvent.objects.using(using)
-    if not events.filter(pk=pk, status='pending').update(status='sending'):
+    from django.utils import timezone
+    if not events.filter(pk=pk, status='pending').update(status='sending', sending_started_at=timezone.now()):
         return
     event = events.get(pk=pk)
     status, message_id = 'failed', ''
@@ -152,7 +153,11 @@ def deliver(pk, using='default'):
         # Never log webhook URLs or exception bodies.
         logger.error('Unexpected workflow notification failure; event=%s', pk)
         status = 'unknown'
-    events.filter(pk=pk).update(status=status, message_id=message_id)
+    # A long-running attempt may already have been marked unknown by recovery.
+    if status == 'sent':
+        events.filter(pk=pk, status__in=('sending', 'unknown')).update(status=status, message_id=message_id)
+    else:
+        events.filter(pk=pk, status='sending').update(status=status, message_id=message_id)
 
 
 def install():

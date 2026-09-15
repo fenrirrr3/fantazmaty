@@ -1,4 +1,5 @@
 """Lock the edited aggregate and compare the version displayed in its HTML form."""
+from contextlib import nullcontext
 import hashlib
 import json
 import re
@@ -71,17 +72,52 @@ class EditingMiddleware:
             rejection = CsrfViewMiddleware(self.get_response).process_view(request, match.func, match.args, match.kwargs)
             if rejection is not None:
                 return rejection
+        if match.namespace == "admin":
+            from django.contrib import admin
+            if not admin.site.has_permission(request):
+                return self.get_response(request)
+        check = getattr(match.func, "permission_check", None)
+        if check:
+            from django.core.exceptions import PermissionDenied
+            try:
+                check(request.user)
+            except PermissionDenied:
+                return self.get_response(request)
         model, pk = aggregate(match)
-        with transaction.atomic():
-            if model and model._meta.label_lower == 'people.person':
+        if request.method == "POST" and match.namespace == "core" and model and pk:
+            from django.http import HttpResponseForbidden
+            from core.permissions import is_coordinator, can_manage_vacation
+            probe = model.objects.filter(pk=pk).first()
+            name = match.url_name
+            if probe and name in ('add_text_note', 'update_text_content_warnings'):
+                allowed = is_coordinator(request.user) or probe.workflow_role_assignments.filter(workflow_cycle=probe.current_workflow_cycle, assigned_to=request.user).exists()
+                if not allowed:
+                    return HttpResponseForbidden('Brak dostępu do zmiany tego tekstu.')
+            if probe and name in ('edit_text_note', 'delete_text_note'):
+                from texts.models import TextNote
+                note = TextNote.objects.filter(pk=match.kwargs.get('note_id'), text_id=pk).first()
+                if note and not (note.author_id == request.user.pk or is_coordinator(request.user)):
+                    return HttpResponseForbidden('Brak dostępu do tej notatki.')
+            if probe and name in ('assigned_review_detail', 'update_review_content_warnings'):
+                allowed = probe.assignments.filter(user=request.user).exists()
+                if name == 'update_review_content_warnings':
+                    allowed = allowed or is_coordinator(request.user)
+                if not allowed:
+                    return HttpResponseForbidden('Brak przydziału do tej recenzji.')
+            if probe and model._meta.label_lower == 'people.vacation' and not can_manage_vacation(request.user, probe):
+                return HttpResponseForbidden('Brak dostępu do tego urlopu.')
+        writing = request.method == "POST"
+        with transaction.atomic() if writing else nullcontext():
+            if writing and model and model._meta.label_lower == 'people.person':
                 from django.contrib.auth import get_user_model
                 user_id = model.objects.filter(pk=pk).values_list('user_id', flat=True).first()
                 get_user_model().objects.select_for_update().filter(pk=user_id).first()
-            if model and model._meta.label_lower == "people.vacation":
+            if writing and model and model._meta.label_lower == "people.vacation":
                 from people.models import Person
                 person_id = model.objects.filter(pk=pk).values_list("person_id", flat=True).first()
                 Person.objects.select_for_update().filter(pk=person_id).first()
-            obj = model.objects.select_for_update().filter(pk=pk).first() if model and pk else None
+            objects = (model.objects.select_for_update() if writing else model.objects) if model else None
+            obj = objects.filter(pk=pk).first() if model and pk else None
             if request.method == 'POST' and obj:
                 if match.namespace == 'admin':
                     model_admin = getattr(match.func, 'model_admin', None)

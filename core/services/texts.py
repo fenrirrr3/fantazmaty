@@ -1,3 +1,4 @@
+from workflow.anthology_policy import require_working_anthology
 from core.workflow_events import track_workflow
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
@@ -278,6 +279,7 @@ def perform_bulk_text_action(
 
     # Walidujemy cały wybór przed pierwszą zmianą przydziału.
     for text in texts:
+        require_working_anthology(text)
         stages = _current_stages(text)
         assignments = _current_assignments(text)
         _require_open_process(stages)
@@ -387,6 +389,7 @@ def start_assigned_stage(*, user, stage_id, started_at):
         Text.objects.select_for_update(),
         pk=text_id,
     )
+    require_working_anthology(text)
     stages = _current_stages(text)
     assignments = _current_assignments(text)
 
@@ -493,6 +496,7 @@ def withdraw_text(*, user, text_id):
         Text.objects.select_for_update(),
         pk=text_id,
     )
+    require_working_anthology(text)
     stages = _current_stages(text)
 
     existing = next(

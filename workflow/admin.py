@@ -13,6 +13,8 @@ class WorkflowCycleAdminFormMixin:
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        if "workflow_cycle" not in self.fields:
+            return
         if self.instance and self.instance.pk:
             self.fields["workflow_cycle"].initial = (
                 self.instance.workflow_cycle
@@ -28,9 +30,7 @@ class WorkflowCycleAdminFormMixin:
 
     def save(self, commit=True):
         instance = super().save(commit=False)
-        instance.workflow_cycle = self.cleaned_data[
-            "workflow_cycle"
-        ]
+        instance.workflow_cycle = self.cleaned_data.get("workflow_cycle", instance.workflow_cycle)
 
         if commit:
             instance.save()
@@ -253,6 +253,14 @@ def get_user_vacation_information(user):
 
 @admin.register(WorkflowStage)
 class WorkflowStageAdmin(admin.ModelAdmin):
+    readonly_fields = tuple(field.name for field in WorkflowStage._meta.fields)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
     form = WorkflowStageAdminForm
     exclude = ("workflow_cycle",)
     empty_value_display = "–"
@@ -308,7 +316,6 @@ class WorkflowStageAdmin(admin.ModelAdmin):
                     "started_at",
                     "ended_at",
                     "is_completed",
-                    "confirm_data_correction",
                 ),
             },
         ),
@@ -328,7 +335,7 @@ class WorkflowStageAdmin(admin.ModelAdmin):
     )
 
     actions = (
-        "set_cycle_as_current", "finish_selected_stages", "start_selected_stages",
+        "finish_selected_stages", "start_selected_stages",
     )
 
     @admin.action(description="Zakończ etap i utwórz następny (dzisiaj)")
@@ -377,9 +384,15 @@ class WorkflowStageAdmin(admin.ModelAdmin):
 
 @admin.register(WorkflowRoleAssignment)
 class WorkflowRoleAssignmentAdmin(admin.ModelAdmin):
+    def get_readonly_fields(self, request, obj=None):
+        return tuple(field.name for field in WorkflowRoleAssignment._meta.fields if field.name != "notes")
+
+    def has_add_permission(self, request):
+        return False
+
     def has_delete_permission(self, request, obj=None):
         from workflow.admin_assignment_rules import has_recorded_work
-        return bool(obj is not None and not has_recorded_work(obj) and super().has_delete_permission(request, obj))
+        return False
 
     form = WorkflowRoleAssignmentAdminForm
     exclude = ("workflow_cycle",)
@@ -456,9 +469,7 @@ class WorkflowRoleAssignmentAdmin(admin.ModelAdmin):
         "assigned_to",
     )
 
-    actions = (
-        "set_cycle_as_current",
-    )
+    actions = ()
 
     @admin.display(
         boolean=True,

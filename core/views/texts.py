@@ -123,7 +123,7 @@ def _render_text_detail(request, text, *, bound_forms=None, status=200):
     Widok udostępnia osobno wyłącznie adresy e-mail autorów tego tekstu
     osobom mającym przy nim przypisanie, również w historii.
     """
-    text = Text.objects.select_for_update().get(pk=text.pk)
+    text = (Text.objects.select_for_update() if request.method == "POST" else Text.objects).select_related("anthology").get(pk=text.pk)
     context = text_detail_context(
         user=request.user,
         text=text,
@@ -509,8 +509,8 @@ def _require_note_owner_or_coordinator(user, note):
 @team_member_required
 def edit_text_note(request, text_id, note_id):
     with transaction.atomic():
-        text = get_object_or_404(Text.objects.select_for_update(), pk=text_id)
-        note = get_object_or_404(TextNote.objects.select_for_update(), pk=note_id, text=text)
+        text = get_object_or_404((Text.objects.select_for_update() if request.method == "POST" else Text.objects), pk=text_id)
+        note = get_object_or_404((TextNote.objects.select_for_update() if request.method == "POST" else TextNote.objects), pk=note_id, text=text)
         _require_note_owner_or_coordinator(request.user, note)
         form = TextNoteForm(request.POST if request.method == 'POST' else None, instance=note)
         form.fields["content"].label = "Treść notatki"

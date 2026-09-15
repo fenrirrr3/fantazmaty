@@ -39,14 +39,14 @@ class TextAdminCreationTests(TestCase):
         self.assertFalse(stage.is_completed)
         self.assertIsNone(stage.started_at)
 
-    def test_explicit_stage_is_preserved_without_extra_default(self):
+    def test_forged_readonly_inline_cannot_choose_initial_stage(self):
         data = self.data()
         data.update({"workflow_stages-TOTAL_FORMS": "1",
                      "workflow_stages-0-stage_type": "editing",
                      "workflow_stages-0-iteration": "1"})
         response = self.client.post(reverse("admin:texts_text_add"), data)
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(Text.objects.get().workflow_stages.get().stage_type, "editing")
+        self.assertEqual(Text.objects.get().workflow_stages.get().stage_type, "ready_for_editing")
 
     def test_invalid_submission_creates_neither_text_nor_stage(self):
         data = self.data()
