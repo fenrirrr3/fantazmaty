@@ -23,7 +23,7 @@ class DiscordTests(TestCase):
         request=opener.return_value.open.call_args.args[0]
         self.assertEqual(request.full_url,URL+'?wait=true')
         self.assertEqual(json.loads(request.data)['allowed_mentions'],{'parse':[]})
-        self.assertEqual(opener.return_value.open.call_args.kwargs['timeout'],10)
+        self.assertEqual(opener.return_value.open.call_args.kwargs['timeout'],3)
     @patch('core.discord_webhook.build_opener')
     def test_transport_errors_hide_url(self,opener):
         for code in (400,403,429,500,302):

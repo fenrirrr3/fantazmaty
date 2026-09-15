@@ -1,4 +1,4 @@
-"""Transactional outbox. A separate management command delivers committed events."""
+"""Best-effort Discord notifications sent only after a successful database commit."""
 from contextlib import contextmanager
 from contextvars import ContextVar
 from functools import wraps
@@ -83,7 +83,9 @@ def event_scope(user):
             event = WorkflowEvent.objects.using(using).create(text=text, title=title, authors=authors,
                 actor=user, actor_name=actor, previous_status=before['status'], next_status=after['status'],
                 details='\n'.join(changes(before, after)), channel=workflow_channel())
-            # The worker reads this record only after the enclosing transaction commits.
+            transaction.on_commit(
+                lambda pk=event.pk, db=using: notify_after_commit(pk, db), using=using
+            )
     finally:
         _scope.reset(token)
 
@@ -129,6 +131,22 @@ def message(event):
             f'Wykonał(a): {event.actor_name[:200]}\n{event.details[:700]}')[:2000]
 
 
+def notify_after_commit(pk, using='default'):
+    # Include database access in the guard: even a failure to record the delivery
+    # result must not turn a committed workflow operation into an HTTP 500.
+    try:
+        deliver(pk, using)
+    except Exception:
+        logger.error('Workflow notification failed after commit; event=%s', pk)
+        try:
+            from core.models import WorkflowEvent
+            WorkflowEvent.objects.using(using).filter(
+                pk=pk, status__in=('pending', 'sending')
+            ).update(status='unknown')
+        except Exception:
+            logger.error('Could not record notification outcome; event=%s', pk)
+
+
 def deliver(pk, using='default'):
     from core.models import WorkflowEvent
     from core.discord_webhook import channels, send_message, ConfigurationError, DeliveryError
@@ -153,11 +171,7 @@ def deliver(pk, using='default'):
         # Never log webhook URLs or exception bodies.
         logger.error('Unexpected workflow notification failure; event=%s', pk)
         status = 'unknown'
-    # A long-running attempt may already have been marked unknown by recovery.
-    if status == 'sent':
-        events.filter(pk=pk, status__in=('sending', 'unknown')).update(status=status, message_id=message_id)
-    else:
-        events.filter(pk=pk, status='sending').update(status=status, message_id=message_id)
+    events.filter(pk=pk, status='sending').update(status=status, message_id=message_id)
 
 
 def install():

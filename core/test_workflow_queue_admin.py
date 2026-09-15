@@ -4,6 +4,7 @@ from unittest.mock import patch
 from django.contrib import admin
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase, RequestFactory, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -11,7 +12,7 @@ from core.tests import CoreTestDataMixin
 from core.testing_forms import post_form
 from core.models import WorkflowEvent
 from core.selectors.texts import available_stages_for_user
-from core.workflow_events import event_scope
+from core.workflow_events import event_scope, deliver
 from core.services.texts import start_assigned_stage
 from authors.models import Author
 from texts.models import Text, Review, ReviewAssignment, Reviewers
@@ -64,16 +65,15 @@ class WorkflowQueueAdminTests(CoreTestDataMixin, TestCase):
 
     @override_settings(DISCORD_WEBHOOKS={'Testowy':'https://discord.com/api/webhooks/1/test'})
     @patch('core.discord_webhook.send_message', return_value='123')
-    def test_web_enqueues_worker_delivers_once(self, send):
+    def test_web_sends_after_commit_once(self, send):
         text, _ = self.text()
         with self.captureOnCommitCallbacks(execute=True):
             with event_scope(self.superuser):
                 WorkflowStage.objects.create(text=text,stage_type='editing',started_at=timezone.localdate())
-        send.assert_not_called()
+            send.assert_not_called()
         event = WorkflowEvent.objects.get()
-        self.assertEqual(event.status,'pending')
-        call_command('dispatch_workflow_notifications',stdout=StringIO())
-        call_command('dispatch_workflow_notifications',stdout=StringIO())
+        self.assertEqual(event.status,'sent')
+        deliver(event.pk)
         send.assert_called_once()
         event.refresh_from_db();self.assertEqual(event.status,'sent')
         self.assertIsNotNone(event.sending_started_at)
@@ -82,8 +82,9 @@ class WorkflowQueueAdminTests(CoreTestDataMixin, TestCase):
     def test_abandoned_and_uncertain_attempts_never_auto_retry(self, send):
         event = self.event(status='sending', sending_started_at=timezone.now()-timedelta(hours=1))
         self.event(status='unknown')
-        call_command('dispatch_workflow_notifications',stdout=StringIO())
-        event.refresh_from_db();self.assertEqual(event.status,'unknown');send.assert_not_called()
+        with self.assertRaises(CommandError):
+            call_command('dispatch_workflow_notifications',watch=True,stdout=StringIO())
+        event.refresh_from_db();self.assertEqual(event.status,'sending');send.assert_not_called()
 
     def test_admin_safe_notes_and_frozen_state(self):
         text, stage = self.text('editing',True)

@@ -47,7 +47,7 @@ def send_message(url, content):
         'Content-Type': 'application/json', 'User-Agent': 'FantazmatyCMS-DiscordTest/1.0',
     })
     try:
-        with build_opener(NoRedirect()).open(request, timeout=10) as response:
+        with build_opener(NoRedirect()).open(request, timeout=3) as response:
             if response.status != 200:
                 raise DeliveryError('Discord nie potwierdził wysłania. Sprawdź kanał przed ponowną próbą.', uncertain=True)
             data = json.loads(response.read(65536).decode('utf-8'))
