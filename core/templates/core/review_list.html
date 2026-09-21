@@ -53,7 +53,7 @@
             method="get"
             action="{% url 'core:review_list' %}"
             class="filters-form"
-            data-remember-filters="review-list"
+            data-filters="review-list"
         >
             <input type="hidden" name="filters_applied" value="1">
             <input
@@ -100,22 +100,6 @@
 <input id="review-completed" type="number" name="completed" min="0" max="6" step="1" value="{{ selected_completed }}" placeholder="Wszystkie">
             </div>
 
-            <div class="filter-field">
-                <label for="review-sort">Sortowanie</label>
-                <select id="review-sort" name="sort">
-                    <option value="newest" {% if sort == "newest" %}selected{% endif %}>Najnowsze</option>
-                    <option value="oldest" {% if sort == "oldest" %}selected{% endif %}>Najstarsze</option>
-                    <option value="title" {% if sort == "title" %}selected{% endif %}>Tytuł: A–Z</option>
-                    <option value="-title" {% if sort == "-title" %}selected{% endif %}>Tytuł: Z–A</option>
-                    <option value="anthology" {% if sort == "anthology" %}selected{% endif %}>Antologia: A–Z</option>
-                    <option value="-anthology" {% if sort == "-anthology" %}selected{% endif %}>Antologia: Z–A</option>
-                    <option value="length" {% if sort == "length" %}selected{% endif %}>Długość: rosnąco</option>
-                    <option value="-length" {% if sort == "-length" %}selected{% endif %}>Długość: malejąco</option>
-                    <option value="status" {% if sort == "status" %}selected{% endif %}>Status: rosnąco</option>
-                    <option value="-status" {% if sort == "-status" %}selected{% endif %}>Status: malejąco</option>
-                </select>
-            </div>
-
             <fieldset class="multi-filter-field">
                 <legend>Status zgłoszenia</legend>
                 <details class="checkbox-dropdown" data-checkbox-dropdown data-empty-label="Wszystkie statusy"><summary><span data-checkbox-summary>Statusy</span></summary><div class="checkbox-dropdown-options">
@@ -141,7 +125,6 @@
                 <a
                     href="{% url 'core:review_list' %}?old_reviews={% if old_reviews %}1{% else %}0{% endif %}"
                     class="secondary-button"
-                    data-clear-saved-filters="review-list"
                 >
                     Wyczyść filtry
                 </a>
@@ -156,7 +139,7 @@
             action="{% url 'core:bulk_review_action' %}"
             data-bulk-form
         >
-            {% csrf_token %}
+            {% csrf_token %}{% edit_version %}
             <details class="bulk-action-panel">
                 <summary class="bulk-action-toggle">
                     <span>Operacje zbiorcze</span>
@@ -210,7 +193,7 @@
             aria-label="Tabela zgłoszeń do recenzji"
             tabindex="0"
         >
-            <table id="reviews-table" data-server-sort="true">
+            <table data-copy-table data-server-paginated="true" id="reviews-table" data-server-sort="true">
                 <caption class="visually-hidden">
                     Zgłoszenia spełniające wybrane filtry
                 </caption>
@@ -227,15 +210,15 @@
                                 >
                             </th>
                         {% endif %}
-                        <th scope="col">Antologia</th>
-                        <th scope="col">Tytuł</th>
+                        <th scope="col" data-sort-key="anthology">Antologia</th>
+                        <th scope="col" data-sort-key="title" class="sticky-title">Tytuł</th>
                         {% if can_view_authors %}
-                            <th scope="col">Autor</th>
+                            <th scope="col" data-sort-key="author">Autor</th>
                         {% endif %}
-                        <th scope="col" class="numeric-cell">Długość</th>
+                        <th scope="col" class="numeric-cell" data-sort-key="length">Długość</th>
                         <th scope="col">Recenzenci i opinie</th>
-                        <th scope="col">Status</th>
-                        <th scope="col">Data decyzji</th>
+                        <th scope="col" data-sort-key="status">Status</th>
+                        <th scope="col" data-sort-key="created">Data nadesłania</th><th scope="col" data-sort-key="decision">Data decyzji</th>
                         <th scope="col" data-copy="false">Akcje</th>
                     </tr>
                 </thead>
@@ -265,7 +248,7 @@
                                 {% endif %}
                             </td>
 
-                            <td data-double-copy data-copy-value="{{ review.title }}">
+                            <td data-double-copy data-copy-value="{{ review.title }}" class="sticky-title">
                                 <a
                                     href="{% url 'core:assigned_review_detail' review.pk %}"
                                     class="text-title-link"
@@ -342,11 +325,11 @@
                                 {% endif %}
                             </td>
 
-                            <td class="date-cell">
+                            <td class="date-cell">{{ review.created_at|date:"d.m.Y"|default:"—" }}</td><td class="date-cell">
                                 {{ review.decision_at|date:"d.m.Y"|default:"–" }}
                             </td>
 
-                            <td data-double-copy class="reviewer-action-cell" data-copy="false">
+                            <td data-double-copy class="sticky-title reviewer-action-cell" data-copy="false">
                                 <div class="filter-actions">
                                     
 
@@ -356,7 +339,7 @@
                                             action="{% url 'core:assign_reviewer' review.pk %}"
                                             class="reviewer-action-form"
                                         >
-                                            {% csrf_token %}
+                                            {% csrf_token %}{% edit_version %}
                                             <button
                                                 type="submit"
                                                 class="assign-button"
@@ -371,14 +354,13 @@
                         </tr>
                     {% empty %}
                         <tr>
-                            <td colspan="{% if can_perform_bulk_actions and bulk_action_form %}{% if can_view_authors %}9{% else %}8{% endif %}{% else %}{% if can_view_authors %}8{% else %}7{% endif %}{% endif %}">
+                            <td colspan="{% if can_perform_bulk_actions and bulk_action_form %}{% if can_view_authors %}10{% else %}9{% endif %}{% else %}{% if can_view_authors %}9{% else %}8{% endif %}{% endif %}">
                                 <div class="empty-results-panel">
                                     <strong>Nie znaleziono zgłoszeń.</strong>
                                     <p>Zmień kryteria wyszukiwania lub wyczyść filtry.</p>
                                     <a
                                         href="{% url 'core:review_list' %}?old_reviews={% if old_reviews %}1{% else %}0{% endif %}"
                                         class="secondary-button"
-                                        data-clear-saved-filters="review-list"
                                     >
                                         Wyczyść filtry
                                     </a>

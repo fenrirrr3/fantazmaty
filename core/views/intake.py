@@ -104,7 +104,13 @@ def recruitment_edit(request, pk=None):
 @superuser_required
 def review_create(request):
     with transaction.atomic():
-        form = SingleReviewForm(request.POST if request.method == 'POST' else None)
+        from authors.models import Author
+        selected=None
+        raw=request.GET.get('author','')
+        if raw.isascii() and raw.isdecimal() and len(raw)<19:
+            selected=Author.objects.filter(pk=raw).first()
+        initial={'author':selected.pk,'author_first_name':selected.first_name,'author_last_name':selected.last_name,'email':selected.email or '', 'phone_number':selected.phone_number or ''} if selected else {}
+        form = SingleReviewForm(request.POST if request.method == 'POST' else None,initial=initial)
         if request.method == 'POST' and form.is_valid():
             review = form.save(commit=False)
             apply_blacklist(review)
@@ -112,7 +118,14 @@ def review_create(request):
             review.save()
             messages.success(request, 'Dodano zgłoszenie do recenzji.')
             return redirect('core:assigned_review_detail', review_id=review.pk)
-    return render(request, 'core/intake_form.html', {'form': form, 'title': 'Dodaj do recenzji'}, status=400 if request.method == 'POST' else 200)
+    fallback_query=request.GET.get('author_query','').strip()[:200]
+    fallback_authors=Author.objects.none()
+    if fallback_query:
+        fallback_authors=Author.objects.all()
+        for term in fallback_query.split():
+            fallback_authors=fallback_authors.filter(Q(first_name__plcontains=term)|Q(last_name__plcontains=term)|Q(pseudonym__plcontains=term)|Q(email__plcontains=term))
+        fallback_authors=fallback_authors.order_by('last_name','first_name','pk')[:30]
+    return render(request, 'core/intake_form.html', {'form': form, 'title': 'Dodaj do recenzji', 'author_fallback':True, 'fallback_authors':fallback_authors,'fallback_query':fallback_query}, status=400 if request.method == 'POST' else 200)
 
 
 @never_cache

@@ -53,22 +53,22 @@
             aria-label="Tabela moich tekstów"
             tabindex="0"
         >
-            <table id="my-texts-table" class="mobile-review-cards">
+            <table data-copy-table data-server-paginated="true" id="my-texts-table" class="mobile-review-cards">
                 <caption class="visually-hidden">
                     Teksty przypisane do ciebie w wybranym widoku
                 </caption>
 
                 <thead>
                     <tr>
-                        <th scope="col">Antologia</th>
-                        <th scope="col">Tytuł</th>
+                        <th scope="col" data-sort-key="anthology">Antologia</th>
+                        <th scope="col" data-sort-key="title" class="sticky-title">Tytuł</th>
 
                         {% if can_view_authors %}
-                            <th scope="col">Autorzy</th>
+                            <th scope="col" data-sort-key="authors">Autorzy</th>
                         {% endif %}
 
                         <th scope="col">Twoje role</th>
-                        <th scope="col">Etap</th>
+                        <th scope="col" data-sort-key="status">Etap</th>
                         <th scope="col">Twoja praca</th>
                         
                     </tr>
@@ -88,7 +88,7 @@
                                 {% endif %}
                             </td>
 
-                            <td data-label="Tytuł" data-double-copy data-copy-value="{{ text.title }}">
+                            <td data-label="Tytuł" data-double-copy data-copy-value="{{ text.title }}" class="sticky-title">
                                 <a
                                     href="{% url 'core:assigned_text_detail' text.pk %}"
                                     class="text-title-link"

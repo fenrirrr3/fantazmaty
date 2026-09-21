@@ -20,10 +20,10 @@ def snapshot(text_id, using):
     text = Text.objects.using(using).filter(pk=text_id).first()
     if text is None:
         return {'cycle': None, 'status': 'Brak tekstu', 'stages': {}}
-    stages = list(text.workflow_stages.using(using).filter(workflow_cycle=text.current_workflow_cycle))
+    stages = list(text.workflow_stages.using(using).filter(workflow_cycle=text.current_workflow_cycle, is_current=True).select_related('assignment__assigned_to__person_profile'))
     stage = current_stage(stages)
     return {'cycle': text.current_workflow_cycle, 'status': stage.get_stage_type_display() if stage else 'Brak otwartego etapu',
-            'stages': {s.pk: (s.get_stage_type_display(), str(s.started_at or ''), str(s.ended_at or ''), s.is_completed) for s in stages}}
+            'stages': {s.pk: (f'{s.get_stage_type_display()} — wykonanie {s.execution_number}' + (f' — {s.assignment.assigned_to.get_full_name() or s.assignment.assigned_to.get_username()}' if s.assignment_id and s.assignment.assigned_to_id else ''), str(s.started_at or ''), str(s.ended_at or ''), s.is_completed) for s in stages}}
 
 
 def remember(sender, instance, using, **kwargs):
@@ -55,7 +55,7 @@ def changes(before, after):
     if before['cycle'] == after['cycle']:
         for pk, stage in before['stages'].items():
             if pk not in after['stages']:
-                lines.append(f'Usunięto etap: {stage[0]}')
+                lines.append(f'Etap przeniesiono do historii lub usunięto: {stage[0]}')
     return lines
 
 

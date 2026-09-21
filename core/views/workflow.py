@@ -32,7 +32,6 @@ from workflow.services import (
     claim_stage,
     complete_stage,
     finish_editing_to_coordinator,
-    restart_workflow_from_stage,
     resume_editing,
     send_text_to_author,
     send_to_first_verification,
@@ -58,8 +57,8 @@ def _form_error_message(form):
 
 def _get_current_stage(stage_id):
     return get_object_or_404(
-        WorkflowStage.objects.select_related("text").filter(
-            workflow_cycle=F("text__current_workflow_cycle"),
+        WorkflowStage.objects.select_related("text").current_cycle().filter(
+            is_released=True, workflow_cycle=F("text__current_workflow_cycle"),
         ),
         pk=stage_id,
     )
@@ -84,6 +83,7 @@ def _lock_current_stage(stage_id):
     stage = get_object_or_404(
         WorkflowStage.objects.select_for_update(),
         pk=stage_id,
+        is_current=True, is_released=True,
         text_id=text.pk,
         workflow_cycle=text.current_workflow_cycle,
     )
@@ -213,7 +213,7 @@ def start_assigned_workflow_stage(request, stage_id):
 def take_workflow_stage(request, stage_id):
     stage = _get_current_stage(stage_id)
     is_first_verification = (
-        stage.stage_type == WorkflowStage.StageType.FIRST_VERIFICATION
+        stage.stage_type == WorkflowStage.StageType.FIRST_VERIFICATION and not stage.repetition_id
     )
 
     if is_first_verification:
@@ -365,38 +365,31 @@ def finish_text_editing(request, text_id):
 @superuser_required
 def restart_text_workflow(request, text_id):
     text = get_object_or_404(Text, pk=text_id)
-    form = RestartWorkflowForm(request.POST)
-
+    form = RestartWorkflowForm(request.POST, text=text)
     if not form.is_valid():
         messages.error(request, _form_error_message(form))
         return _detail_redirect(text.pk)
-
     from django.core import signing
-    from django.contrib.auth import get_user_model
-    from workflow.services import restart_snapshot, restart_needs_editor, _actor_is_active, belongs_to_group, is_coordinator
-    target = form.cleaned_data['target_stage']
-    if request.POST.get('confirm_restart') != 'yes':
-        assignments = list(WorkflowRoleAssignment.objects.filter(text=text, workflow_cycle=text.current_workflow_cycle).select_related('assigned_to__person_profile'))
-        eligible = [a for a in assignments if _actor_is_active(a.assigned_to)]
-        editors = [u for u in get_user_model().objects.filter(is_active=True).select_related('person_profile') if _actor_is_active(u) and (belongs_to_group(u, 'Redaktor') or is_coordinator(u))]
-        return render(request, 'core/restart_preview.html', {
-            'text': text, 'target': target, 'target_label': dict(WorkflowStage.StageType.choices)[target],
-            'assignments': eligible, 'editors': editors, 'needs_editor': restart_needs_editor(target),
-            'empty_restart': target == WorkflowStage.StageType.READY_FOR_EDITING,
-            'token': signing.dumps({'user': request.user.pk, 'text': text.pk, 'target': target, 'snapshot': restart_snapshot(text)}, salt='restart-preview'),
-        })
+    from core.edit_versions import version_of
+    from workflow.repetitions import validate_repeat, repeat_stages, sequence
     try:
-        payload = signing.loads(request.POST.get('token', ''), salt='restart-preview', max_age=1800)
-        if payload['user'] != request.user.pk or payload['text'] != text.pk or payload['target'] != target:
+        selected = validate_repeat(text, form.cleaned_data['stages'])
+        if request.POST.get('confirm_restart') != 'yes':
+            return render(request, 'core/restart_preview.html', {
+                'text': text, 'selected': selected,
+                'queue_labels': [dict(WorkflowStage.StageType.choices)[k] for k in sequence(selected)],
+                'token': signing.dumps({'user': request.user.pk, 'text': text.pk, 'selected': selected, 'version': version_of(text)}, salt='repeat-preview'),
+            })
+        payload = signing.loads(request.POST.get('token', ''), salt='repeat-preview', max_age=1800)
+        if payload['user'] != request.user.pk or payload['text'] != text.pk or payload['selected'] != selected:
             raise signing.BadSignature()
-        restart_workflow_from_stage(text=text, stage_type=target, user=request.user,
-            retained_ids=request.POST.getlist('retained_ids'), editor_id=request.POST.get('editor_id'), expected_snapshot=payload['snapshot'])
-    except signing.BadSignature:
-        messages.error(request, 'Podgląd restartu wygasł. Sprawdź restart ponownie.')
+        repeat_stages(text, selected, request.user, expected_version=payload['version'])
+    except (signing.BadSignature, KeyError, TypeError):
+        messages.error(request, 'Podgląd wygasł. Przygotuj go ponownie.')
     except ValidationError as error:
         messages.error(request, ' '.join(error.messages))
     else:
-        messages.success(request, 'Rozpoczęto nowy cykl z wybranymi przydziałami. Poprzedni cykl pozostał w historii.')
+        messages.success(request, 'Utworzono kolejkę powtórzeń. Pierwszy etap czeka na nowe przypisanie; historia pozostała zachowana.')
     return _detail_redirect(text.pk)
 
 
@@ -423,3 +416,69 @@ def withdraw_text(request, text_id):
         messages.success(request, "Tekst jest wycofany z procesu.")
 
     return _detail_redirect(text.pk)
+
+
+@never_cache
+@login_required
+@require_POST
+@team_member_required
+def change_scheduled_workflow_stage(request, stage_id):
+    from core.services.texts import change_scheduled_stage
+    stage = _get_current_stage(stage_id)
+    cancel = request.POST.get('action') == 'cancel'
+    form = StartStageForm(request.POST)
+    if not cancel and not form.is_valid():
+        messages.error(request, _form_error_message(form))
+        return _detail_redirect(stage.text_id)
+    try:
+        change_scheduled_stage(user=request.user, stage_id=stage_id,
+                               started_at=None if cancel else form.cleaned_data['started_at'], cancel=cancel)
+    except ValidationError as error:
+        messages.error(request, ' '.join(error.messages))
+    else:
+        messages.success(request, 'Odwołano rezerwację terminu.' if cancel else 'Zmieniono datę rozpoczęcia.')
+    return _detail_redirect(stage.text_id)
+
+
+@never_cache
+@login_required
+@require_POST
+@superuser_required
+def cancel_workflow_repetition(request, text_id, repetition_id):
+    from workflow.repetitions import cancel_repetition
+    from workflow.models import WorkflowRepetition
+    text=get_object_or_404(Text,pk=text_id)
+    try:
+        cancel_repetition(text,request.user,repetition_id=repetition_id)
+    except (ValidationError, WorkflowRepetition.DoesNotExist) as exc:
+        messages.error(request,str(exc))
+    else:messages.success(request,'Anulowano powtórzenie. Przywrócono poprzedni stan tekstu.')
+    return _detail_redirect(text_id)
+
+
+@never_cache
+@login_required
+@coordinator_required
+def handoff_workflow_stage(request, stage_id):
+    from django import forms
+    from django.contrib.auth import get_user_model
+    from workflow.handoffs import handoff_stage
+    from django.core.exceptions import PermissionDenied
+    from django.views.decorators.http import require_http_methods
+    if request.method not in ('GET','POST'):
+        from django.http import HttpResponseNotAllowed
+        return HttpResponseNotAllowed(['GET','POST'])
+    stage=_get_current_stage(stage_id)
+    class HandoffForm(forms.Form):
+        assigned_to=forms.ModelChoiceField(label='Nowy wykonawca',queryset=get_user_model().objects.filter(is_active=True).order_by('last_name','first_name','pk'))
+        expected_assignment_id=forms.IntegerField(widget=forms.HiddenInput)
+        reason=forms.CharField(label='Powód przekazania',widget=forms.Textarea(attrs={'rows':3}),max_length=2000)
+    form=HandoffForm(request.POST if request.method=='POST' else None,initial={'expected_assignment_id':stage.assignment_id})
+    if request.method=='POST' and form.is_valid():
+        try:
+            handoff_stage(stage.text,request.user,stage_id=stage.pk,assigned_to_id=form.cleaned_data['assigned_to'].pk,expected_assignment_id=form.cleaned_data['expected_assignment_id'],reason=form.cleaned_data['reason'])
+        except (ValidationError, PermissionDenied, WorkflowStage.DoesNotExist) as exc:form.add_error(None,str(exc))
+        else:
+            messages.success(request,'Przekazano pracę. Poprzednie przypisanie pozostało zapisane.')
+            return _detail_redirect(stage.text_id)
+    return render(request,'core/workflow_handoff.html',{'form':form,'stage':stage})

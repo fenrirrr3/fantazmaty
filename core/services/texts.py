@@ -88,6 +88,7 @@ def _current_stages(text):
         .filter(
             text_id=text.pk,
             workflow_cycle=text.current_workflow_cycle,
+            is_current=True,
         )
         .order_by("pk")
     )
@@ -99,6 +100,7 @@ def _current_assignments(text):
         .filter(
             text_id=text.pk,
             workflow_cycle=text.current_workflow_cycle,
+            is_current=True,
         )
         .order_by("pk")
     )
@@ -113,6 +115,8 @@ def _require_open_process(stages):
 
 
 def _require_eligible_assignee(user, role):
+    from people.leave_access import require_available
+    require_available(user)
     if role == Role.STYLING and not (user and user.is_active and user.is_superuser):
         raise PermissionDenied("Stylowanie można przypisać tylko superuserowi.")
     if not (user and user.is_active and user.is_superuser) and get_active_person_profile(user) is None:
@@ -283,7 +287,10 @@ def perform_bulk_text_action(
         stages = _current_stages(text)
         assignments = _current_assignments(text)
         _require_open_process(stages)
-        _require_role_not_started(stages, selected_role)
+        matching = [s for s in stages if STAGE_ROLE_MAP.get(s.stage_type) == selected_role and s.assignment_id == next((a.pk for a in assignments if a.role == selected_role), None)]
+        if text.repetitions.filter(completed_at__isnull=True, canceled_at__isnull=True).exists() and not any(s.is_released and not s.is_completed for s in matching):
+            raise ValidationError("Ta rola nie jest jeszcze dostępna w kolejce powtórzeń.")
+        _require_role_not_started(matching or stages, selected_role)
 
         assignment = next(
             (item for item in assignments if item.role == selected_role),
@@ -326,6 +333,10 @@ def perform_bulk_text_action(
 
 
 def _require_start_order(stage, stages):
+    from workflow.repetitions import require_released
+    require_released(stage)
+    if stage.repetition_id:
+        return
     open_others = [
         item
         for item in stages
@@ -405,7 +416,7 @@ def start_assigned_stage(*, user, stage_id, started_at):
         raise ValidationError("Ten etap został już zakończony.")
     if stage.started_at is not None:
         raise ValidationError("Data rozpoczęcia tego etapu jest już zapisana.")
-    if stage.stage_type == StageType.AUTHOR_EDITING and not (text.current_workflow_cycle > 1 and len(stages) == 1):
+    if stage.stage_type == StageType.AUTHOR_EDITING and not stage.repetition_id and not (text.current_workflow_cycle > 1 and len(stages) == 1):
         raise ValidationError(
             "Pracę autora rozpoczyna się przez przekazanie tekstu autorowi."
         )
@@ -481,7 +492,7 @@ def start_assigned_stage(*, user, stage_id, started_at):
     stage.started_at = transition_date
     stage.full_clean()
     stage.save(update_fields=["started_at"])
-    if stage.stage_type == StageType.EDITING and len(stages) == 1:
+    if stage.stage_type == StageType.EDITING and not stage.repetition_id and len(stages) == 1:
         from workflow.services import create_pending_stage
         create_pending_stage(text, StageType.FIRST_VERIFICATION)
     return stage
@@ -515,6 +526,16 @@ def withdraw_text(*, user, text_id):
             "Gotowego tekstu nie można wycofać z zakończonego procesu."
         )
 
+    from core.workflow_events import remember
+    remember(Text, text, text._state.db or 'default')
+    for run in text.repetitions.filter(completed_at__isnull=True, canceled_at__isnull=True):
+        run.canceled_at = timezone.now()
+        run.canceled_by = user
+        run.cancellation_reason = 'Wycofano tekst.'
+        run.save(update_fields=['canceled_at', 'canceled_by', 'cancellation_reason'])
+        run.stages.filter(is_completed=False).update(is_current=False, is_released=False)
+        run.assignments.update(is_current=False)
+
     # Nie oznaczamy niezakończonych zadań jako wykonanych.
     # Selektory pomijają cały wycofany cykl w kolejkach pracy,
     # a serwisy procesu blokują jego dalsze przejścia.
@@ -529,4 +550,49 @@ def withdraw_text(*, user, text_id):
     )
     stage.full_clean()
     stage.save()
+    return stage
+
+@transaction.atomic
+@track_workflow
+def change_scheduled_stage(*, user, stage_id, started_at=None, cancel=False):
+    """Change a future booking without rewriting work that has already happened."""
+    require_team_member(user)
+    text_id = get_object_or_404(WorkflowStage.objects.only('text_id'), pk=stage_id).text_id
+    text = get_object_or_404(Text.objects.select_for_update(), pk=text_id)
+    require_working_anthology(text)
+    stages = _current_stages(text)
+    assignments = _current_assignments(text)
+    _require_open_process(stages)
+    stage = next((s for s in stages if s.pk == stage_id), None)
+    today = timezone.localdate()
+    if not stage or stage.is_completed or stage.ended_at or not stage.started_at or stage.started_at <= today:
+        raise ValidationError('Zmienić można wyłącznie rezerwację z przyszłą datą rozpoczęcia.')
+    role = STAGE_ROLE_MAP.get(stage.stage_type)
+    assignment = next((a for a in assignments if a.role == role), None)
+    if not assignment or not assignment.assigned_to_id:
+        raise ValidationError('Etap nie ma przypisanego wykonawcy.')
+    if assignment.assigned_to_id != user.pk and not is_coordinator(user):
+        raise PermissionDenied('Nie możesz zmieniać cudzej rezerwacji.')
+    if role == Role.STYLING and not user.is_superuser:
+        raise PermissionDenied('Stylowaniem zarządza superuser.')
+    if cancel:
+        stage.started_at = None
+        prior_work = any(s.pk != stage.pk and s.assignment_id == assignment.pk and STAGE_ROLE_MAP.get(s.stage_type) == role and (s.started_at or s.is_completed) for s in stages)
+        # Keep a historical assignee when this is a later return to the same role.
+        if not prior_work:
+            assignment.assigned_to = None
+            assignment.assigned_at = None
+            assignment.save(update_fields=['assigned_to', 'assigned_at'])
+            if stage.stage_type == StageType.EDITING and not stage.repetition_id:
+                stage.stage_type = StageType.READY_FOR_EDITING
+                stage.iteration = 1 + max((s.iteration for s in stages if s.stage_type == StageType.READY_FOR_EDITING), default=0)
+        stage.save(update_fields=['started_at', 'stage_type', 'iteration'])
+    else:
+        _require_eligible_assignee(assignment.assigned_to, role)
+        date = validate_assignment_start_date(started_at)
+        previous = [s.ended_at for s in stages if s.is_completed and s.ended_at]
+        if previous and date < max(previous):
+            raise ValidationError('Data nie może poprzedzać zakończenia wcześniejszych prac.')
+        stage.started_at = date
+        stage.save(update_fields=['started_at'])
     return stage

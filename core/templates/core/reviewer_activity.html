@@ -16,7 +16,7 @@
             method="get"
             action="{% url 'core:reviewer_activity' %}"
             class="filters-form"
-            data-remember-filters="reviewer-activity"
+            data-filters="reviewer-activity"
         >
             <input
                 type="hidden"
@@ -147,7 +147,6 @@
                 <a
                     href="{% url 'core:reviewer_activity' %}"
                     class="secondary-button"
-                    data-clear-saved-filters="reviewer-activity"
                 >
                     Wyczyść filtry
                 </a>
@@ -171,24 +170,24 @@
             aria-label="Tabela aktywności recenzentów"
             tabindex="0"
         >
-            <table id="reviewer-activity-table">
+            <table data-copy-table data-server-paginated="true" id="reviewer-activity-table">
                 <caption class="visually-hidden">
                     Przydziały recenzentów, od najnowszej daty oceny
                 </caption>
 
                 <thead>
                     <tr>
-                        <th scope="col">Recenzent</th>
-                        <th scope="col">Antologia</th>
-                        <th scope="col">Tytuł</th>
+                        <th scope="col" data-sort-key="person">Recenzent</th>
+                        <th scope="col" data-sort-key="anthology">Antologia</th>
+                        <th scope="col" data-sort-key="title" class="sticky-title">Tytuł</th>
                         {% if can_view_authors %}
-                            <th scope="col">Autor</th>
+                            <th scope="col" data-sort-key="author">Autor</th>
                         {% endif %}
-                        <th scope="col">Przydział</th>
-                        <th scope="col">Opinia</th>
-                        <th scope="col">Data oceny</th>
-                        <th scope="col">Status zgłoszenia</th>
-                        <th scope="col">Data decyzji</th>
+                        <th scope="col" data-sort-key="position">Przydział</th>
+                        <th scope="col" data-sort-key="opinion">Opinia</th>
+                        <th scope="col" data-sort-key="opinion_at">Data oceny</th>
+                        <th scope="col" data-sort-key="status">Status zgłoszenia</th>
+                        <th scope="col" data-sort-key="decision">Data decyzji</th>
                     </tr>
                 </thead>
 
@@ -201,7 +200,7 @@
                                 {{ row.anthology_title|default:"Brak antologii" }}
                             </td>
 
-                            <td data-double-copy data-copy-value="{{ row.title }}">
+                            <td data-double-copy data-copy-value="{{ row.title }}" class="sticky-title">
                                 {% if not row.is_archived or can_view_authors %}
                                 <a
                                     href="{% url 'core:assigned_review_detail' row.review_id %}"
@@ -258,7 +257,6 @@
                                     <a
                                         href="{% url 'core:reviewer_activity' %}"
                                         class="secondary-button"
-                                        data-clear-saved-filters="reviewer-activity"
                                     >
                                         Wyczyść filtry
                                     </a>

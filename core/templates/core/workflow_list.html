@@ -18,7 +18,7 @@
             method="get"
             action="{% url 'core:workflow_list' %}"
             class="filters-form"
-            data-remember-filters="workflow-list"
+            data-filters="workflow-list"
         >
             <input
                 type="hidden"
@@ -79,36 +79,11 @@
                 </details>
             </div>
 
-            <div class="filter-field">
-                <label for="workflow-sort">Sortowanie</label>
-                <select id="workflow-sort" name="sort">
-                    <option value="anthology" {% if sort == "anthology" %}selected{% endif %}>
-                        Antologia: A–Z
-                    </option>
-                    <option value="title" {% if sort == "title" %}selected{% endif %}>
-                        Tytuł: A–Z
-                    </option>
-                    <option value="-title" {% if sort == "-title" %}selected{% endif %}>
-                        Tytuł: Z–A
-                    </option>
-                    <option value="stage" {% if sort == "stage" %}selected{% endif %}>
-                        Etap
-                    </option>
-                    <option value="started_at" {% if sort == "started_at" %}selected{% endif %}>
-                        Rozpoczęcie: najstarsze
-                    </option>
-                    <option value="-started_at" {% if sort == "-started_at" %}selected{% endif %}>
-                        Rozpoczęcie: najnowsze
-                    </option>
-                </select>
-            </div>
-
             <div class="filter-actions">
                 <button type="submit" class="primary-button">Filtruj</button>
                 <a
                     href="{% url 'core:workflow_list' %}"
                     class="secondary-button"
-                    data-clear-saved-filters="workflow-list"
                 >
                     Wyczyść filtry
                 </a>
@@ -125,24 +100,24 @@
             aria-label="Tabela etapów i przydziałów"
             tabindex="0"
         >
-            <table id="workflow-table" data-server-sort="true">
+            <table data-copy-table data-server-paginated="true" id="workflow-table" data-server-sort="true">
                 <caption class="visually-hidden">
                     Etapy pracy oraz osoby przypisane do ról w tym samym cyklu
                 </caption>
 
                 <thead>
                     <tr>
-                        <th scope="col">Antologia</th>
-                        <th scope="col">Tytuł</th>
+                        <th scope="col" data-sort-key="anthology">Antologia</th>
+                        <th scope="col" data-sort-key="title" class="sticky-title">Tytuł</th>
 
                         {% if can_view_authors %}
-                            <th scope="col">Autorzy</th>
+                            <th scope="col" data-sort-key="authors">Autorzy</th>
                         {% endif %}
 
-                        <th scope="col">Etap</th>
-                        <th scope="col">Rozpoczęcie</th>
-                        <th scope="col">Zakończenie</th>
-                        <th scope="col">Stan etapu</th>
+                        <th scope="col" data-sort-key="stage">Etap</th>
+                        <th scope="col" data-sort-key="started_at">Rozpoczęcie</th>
+                        <th scope="col" data-sort-key="ended_at">Zakończenie</th>
+                        <th scope="col" data-sort-key="completed">Stan etapu</th>
 
                         {% for role_value, role_label in role_columns %}
                             <th scope="col">{{ role_label }}</th>
@@ -166,7 +141,7 @@
                                 {% endif %}
                             </td>
 
-                            <td data-double-copy data-copy-value="{{ stage.text.title }}">
+                            <td data-double-copy data-copy-value="{{ stage.text.title }}" class="sticky-title">
                                 <a
                                     href="{% url 'core:assigned_text_detail' stage.text.pk %}"
                                     class="text-title-link"
@@ -199,11 +174,11 @@
                             </td>
 
                             <td class="date-cell">
-                                {{ stage.started_at|date:"d.m.Y"|default:"–" }}
+                                {% if stage.imported_completed and not stage.started_at %}Brak danych{% else %}{{ stage.started_at|date:"d.m.Y"|default:"–" }}{% endif %}
                             </td>
 
                             <td class="date-cell">
-                                {{ stage.ended_at|date:"d.m.Y"|default:"–" }}
+                                {% if stage.imported_completed and not stage.ended_at %}Brak danych{% else %}{{ stage.ended_at|date:"d.m.Y"|default:"–" }}{% endif %}
                             </td>
 
                             <td>
@@ -259,7 +234,6 @@
                                     <a
                                         href="{% url 'core:workflow_list' %}"
                                         class="secondary-button"
-                                        data-clear-saved-filters="workflow-list"
                                     >
                                         Wyczyść filtry
                                     </a>

@@ -48,7 +48,11 @@ class SingleReviewForm(ReviewAdminForm):
         super().__init__(*args, **kwargs)
         self.fields['anthology'].queryset = Anthology.objects.filter(status=Anthology.Status.IN_PREPARATION).order_by('title', 'pk')
         self.fields['author'].widget.attrs['data-author-search-url'] = reverse('core:author_suggestions')
-        # Keep a native fallback; the enhanced control queries the server.
+        from authors.models import Author
+        author_id = self.data.get('author') if self.is_bound else self.initial.get('author', self.instance.author_id)
+        self.fields['author'].queryset = Author.objects.filter(pk=author_id) if str(author_id or '').isascii() and str(author_id or '').isdecimal() and len(str(author_id)) < 19 else Author.objects.none()
+        # Without JavaScript the form still accepts manually entered author details.
+
         self.fields['author'].label_from_instance = lambda author: f'{author} ({author.pseudonym})' if author.pseudonym else str(author)
 
 

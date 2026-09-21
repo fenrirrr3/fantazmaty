@@ -1,3 +1,4 @@
+from workflow.repetitions import repeat_stages
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from threading import Barrier
@@ -27,7 +28,6 @@ from .services import (
     current_stage_queryset,
     finish_editing_to_coordinator,
     finish_stage_record,
-    restart_workflow_from_stage,
     resume_editing,
     send_text_to_author,
     send_to_first_verification,
@@ -210,14 +210,13 @@ class WorkflowProgressionTests(WorkflowTestDataMixin, TestCase):
                 started_at=self.today,
             )
 
-    def test_first_verification_requires_assignment_before_handover(self):
-        editing = self.begin_editing()
-
-        with self.assertRaises(ValidationError):
-            send_to_first_verification(self.text, self.editor)
-
-        editing.refresh_from_db()
-        self.assertFalse(editing.is_completed)
+    def test_first_verification_can_wait_for_assignment_after_handover(self):
+        text = self.text
+        claim_ready_for_editing(text, self.editor)
+        pending = send_to_first_verification(text, self.editor)
+        self.assertIsNone(pending.started_at)
+        self.assertFalse(pending.is_completed)
+        self.assertFalse(text.workflow_role_assignments.filter(role="verifier_1").exists())
 
     def test_same_person_cannot_perform_first_and_second_verification(self):
         self.finish_first_verification()
@@ -318,7 +317,10 @@ class WorkflowProgressionTests(WorkflowTestDataMixin, TestCase):
 
         editor_control = self.stage(StageType.EDITOR_CONTROL)
 
-        self.assertEqual(editor_control.started_at, self.today)
+        self.assertIsNone(editor_control.started_at)
+        from core.services.texts import start_assigned_stage
+        start_assigned_stage(user=self.editor, stage_id=editor_control.pk, started_at=self.today)
+        editor_control.refresh_from_db()
         self.assertFalse(
             user_can_complete_stage(editor_control, self.coordinator)
         )
@@ -436,141 +438,20 @@ class WorkflowPermissionTests(WorkflowTestDataMixin, TestCase):
 
     def test_coordinator_cannot_restart_workflow(self):
         with self.assertRaises(PermissionDenied):
-            restart_workflow_from_stage(
+            repeat_stages(
                 self.text,
-                StageType.FIRST_PROOFREADING,
+                [StageType.FIRST_PROOFREADING],
                 self.coordinator,
             )
 
 
 class WorkflowRestartTests(WorkflowTestDataMixin, TestCase):
-    def test_restart_preserves_old_stages_and_assignments(self):
-        editing = self.begin_editing()
-        old_assignment = current_assignment_queryset(self.text).get(
-            role=Role.EDITOR
-        )
-
-        restarted = restart_workflow_from_stage(
-            self.text,
-            StageType.FIRST_PROOFREADING,
-            self.superuser,
-            retained_ids=[old_assignment.pk],
-        )
-
-        self.text.refresh_from_db()
-
-        self.assertEqual(self.text.current_workflow_cycle, 2)
-        self.assertEqual(restarted.workflow_cycle, 2)
-        self.assertEqual(restarted.iteration, 1)
-        self.assertIsNone(restarted.started_at)
-
-        self.assertTrue(
-            WorkflowStage.objects.filter(
-                pk=editing.pk,
-                workflow_cycle=1,
-            ).exists()
-        )
-        self.assertTrue(
-            WorkflowRoleAssignment.objects.filter(
-                pk=old_assignment.pk,
-                workflow_cycle=1,
-            ).exists()
-        )
-        self.assertTrue(
-            current_assignment_queryset(self.text).filter(
-                role=Role.EDITOR,
-                assigned_to=self.editor,
-            ).exists()
-        )
-
-    def test_restart_to_ready_for_editing_does_not_copy_assignments(self):
+    def test_repetition_of_working_text_is_disabled_and_preserves_data(self):
         self.begin_editing()
-
-        restart_workflow_from_stage(
-            self.text,
-            StageType.READY_FOR_EDITING,
-            self.superuser,
-        )
-
-        self.assertFalse(
-            current_assignment_queryset(self.text).exists()
-        )
-
-    def test_restart_does_not_assign_work_to_former_member(self):
-        self.begin_editing()
-        Person.objects.filter(user=self.editor).update(is_active=False)
-
+        before=list(WorkflowStage.objects.filter(text=self.text).values())
         with self.assertRaises(ValidationError):
-            restart_workflow_from_stage(self.text, StageType.FIRST_PROOFREADING, self.superuser)
-        self.text.refresh_from_db()
-        self.assertEqual(self.text.current_workflow_cycle, 1)
-        restart_workflow_from_stage(self.text, StageType.FIRST_PROOFREADING, self.superuser, editor_id=self.superuser.pk)
-        assignment = current_assignment_queryset(self.text).get(role=Role.EDITOR)
-        self.assertEqual(assignment.assigned_to, self.superuser)
-
-
-    def test_old_stage_cannot_be_modified_after_restart(self):
-        editing = self.begin_editing()
-
-        restart_workflow_from_stage(
-            self.text,
-            StageType.READY_FOR_EDITING,
-            self.superuser,
-        )
-
-        with self.assertRaises(ValidationError):
-            finish_stage_record(editing, self.today)
-
-        editing.refresh_from_db()
-        self.assertFalse(editing.is_completed)
-
-    def test_stale_text_instance_cannot_mutate_new_cycle(self):
-        stale_text = Text.objects.get(pk=self.text.pk)
-
-        restart_workflow_from_stage(
-            self.text,
-            StageType.READY_FOR_EDITING,
-            self.superuser,
-        )
-
-        with self.assertRaises(ValidationError):
-            claim_ready_for_editing(stale_text, self.editor)
-
-        self.assertFalse(
-            current_assignment_queryset(self.text).exists()
-        )
-
-    def test_restart_can_reopen_withdrawn_text(self):
-        WorkflowStage.objects.create(
-            text=self.text,
-            stage_type=StageType.WITHDRAWN,
-            workflow_cycle=1,
-        )
-
-        with self.assertRaises(ValidationError):
-            claim_ready_for_editing(self.text, self.editor)
-
-        restart_workflow_from_stage(
-            self.text,
-            StageType.READY_FOR_EDITING,
-            self.superuser,
-        )
-        editing = claim_ready_for_editing(self.text, self.editor)
-
-        self.assertEqual(editing.workflow_cycle, 2)
-
-    def test_restart_rejects_terminal_stage(self):
-        for stage_type in (StageType.READY, StageType.WITHDRAWN):
-            with self.subTest(stage=stage_type):
-                with self.assertRaises(ValidationError):
-                    restart_workflow_from_stage(
-                        self.text,
-                        stage_type,
-                        self.superuser,
-                    )
-
-        self.text.refresh_from_db()
-        self.assertEqual(self.text.current_workflow_cycle, 1)
+            repeat_stages(self.text, [StageType.FIRST_PROOFREADING], self.superuser)
+        self.assertEqual(before,list(WorkflowStage.objects.filter(text=self.text).values()))
 
 
 class WorkflowIntegrityTests(WorkflowTestDataMixin, TestCase):

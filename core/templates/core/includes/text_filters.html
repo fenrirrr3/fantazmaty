@@ -3,7 +3,7 @@
             method="get"
             action="{{ request.path }}"
             class="filters-form"
-            data-remember-filters="{{ request.resolver_match.url_name }}"
+            data-filters="{{ request.resolver_match.url_name }}"
         >
             {% if selected_view %}<input type="hidden" name="view" value="{{ selected_view }}">{% endif %}
             <input
@@ -28,6 +28,9 @@
                 </select>
             </div>
 
+            {% if opinion_choices %}
+            <div class="filter-field"><label for="my-opinion">Moja decyzja</label><select id="my-opinion" name="opinion" multiple>{% for value, label in opinion_choices %}<option value="{{ value }}" {% if value in selected_opinions %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+            {% endif %}
             {% if can_view_authors %}
                 <div class="filter-field">
                     <label for="text-author">Autor</label>
@@ -70,30 +73,6 @@
                 </select>
             </div>
 
-            <div class="filter-field">
-                <label for="text-sort">Sortowanie</label>
-                <select id="text-sort" name="sort">
-                    <option value="anthology" {% if sort == "anthology" %}selected{% endif %}>
-                        Antologia: A–Z
-                    </option>
-                    <option value="-anthology" {% if sort == "-anthology" %}selected{% endif %}>
-                        Antologia: Z–A
-                    </option>
-                    <option value="title" {% if sort == "title" %}selected{% endif %}>
-                        Tytuł: A–Z
-                    </option>
-                    <option value="-title" {% if sort == "-title" %}selected{% endif %}>
-                        Tytuł: Z–A
-                    </option>
-                    <option value="length" {% if sort == "length" %}selected{% endif %}>
-                        Długość: rosnąco
-                    </option>
-                    <option value="-length" {% if sort == "-length" %}selected{% endif %}>
-                        Długość: malejąco
-                    </option>
-                </select>
-            </div>
-
             <div class="filter-field boolean-filter-field">
                 <input type="hidden" name="hide_ready" value="0">
                 <label class="boolean-filter-toggle" for="text-hide-ready">
@@ -114,7 +93,6 @@
                 <a
                     href="{{ request.path }}{% if selected_view %}?view={{ selected_view }}{% endif %}"
                     class="secondary-button"
-                    data-clear-saved-filters="{{ request.resolver_match.url_name }}"
                 >
                     Wyczyść filtry
                 </a>

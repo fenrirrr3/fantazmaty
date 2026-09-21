@@ -1,3 +1,4 @@
+{{ page_obj.sort_columns|json_script:"table-sort-columns" }}
 {% if page_obj.paginator %}
     <nav class="pagination-bar" aria-label="Stronicowanie wyników">
         <span>

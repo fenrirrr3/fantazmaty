@@ -2,8 +2,9 @@
 {% block title %}{{ title }} | Fantazmaty CMS{% endblock %}
 {% block content %}
 <header class="page-header"><h1 class="page-title">{{ title }}</h1></header>
+{% if author_fallback %}<noscript><section class="card"><h2>Znajdź autora w bazie</h2><form method="get"><label>Imię, nazwisko lub e-mail <input name="author_query" value="{{ fallback_query }}"></label><button type="submit">Wyszukaj autora</button></form><ul>{% for author in fallback_authors %}<li><a href="?author={{ author.pk }}">{{ author }} — {{ author.email }}</a></li>{% empty %}<li>Wyszukaj autora przed wypełnianiem zgłoszenia. Możesz też wpisać dane ręcznie.</li>{% endfor %}</ul><p>Wyświetlamy maksymalnie 30 wyników; zawęź zapytanie, jeśli potrzeba.</p></section></noscript>{% endif %}
 <section class="details-card">
-<form method="post" class="intake-form" data-warn-unsaved>{% csrf_token %}
+<form method="post" class="intake-form" data-warn-unsaved>{% csrf_token %}{% edit_version %}
 <input type="hidden" name="version" value="{{ version }}">
 {{ form.as_p }}
 {% if form.notified %}<p>Data powiadomienia: {{ notified_at|date:"d.m.Y H:i"|default:"—" }}</p>{% endif %}

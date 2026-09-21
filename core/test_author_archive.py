@@ -39,8 +39,8 @@ class AuthorArchiveTests(TestCase):
         self.assertEqual(self.author_ids({'anthology':self.other.pk}),set())
         self.assertEqual(self.author_ids({'anthology':self.other.pk,'accepted':'0'}),{self.ready.pk})
 
-    def test_historical_ready_and_withdrawn_priority(self):
-        text=self.text(self.empty,self.anthology,'ready',is_historical=True)
+    def test_ready_and_withdrawn_priority(self):
+        text=self.text(self.empty,self.anthology,'ready')
         self.assertIn(self.empty.pk,self.author_ids())
         WorkflowStage.objects.create(text=text,stage_type='withdrawn',workflow_cycle=1)
         self.assertNotIn(self.empty.pk,self.author_ids())

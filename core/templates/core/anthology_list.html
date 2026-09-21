@@ -19,15 +19,15 @@
             aria-label="Tabela antologii"
             tabindex="0"
         >
-            <table id="anthologies-table">
+            <table data-copy-table data-server-paginated="true" id="anthologies-table">
                 <caption class="visually-hidden">
                     Antologie i stan prac produkcyjnych
                 </caption>
 
                 <thead>
                     <tr>
-                        <th scope="col">Tytuł</th>
-                        <th scope="col">Status publikacji</th>
+                        <th scope="col" data-sort-key="title" class="sticky-title">Tytuł</th>
+                        <th scope="col" data-sort-key="status">Status publikacji</th>
                         <th scope="col">Okładka</th>
                         <th scope="col">Skład</th>
                         <th scope="col">Druk</th>
@@ -40,7 +40,7 @@
                     {% for anthology in anthologies %}
                         {% with typesetting=anthology.typesetting_task %}
                             <tr>
-                                <td data-copy-value="{{ anthology.title }}">
+                                <td data-copy-value="{{ anthology.title }}" class="sticky-title">
                                     <a
                                         href="{% url 'core:anthology_detail' anthology.pk %}"
                                         class="text-title-link"

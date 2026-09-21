@@ -37,14 +37,11 @@ def _filter_data(request):
     return data
 
 
-from core.selectors.history import historical_profile_assignments
 
 
 def _profile_assignments(person, *, include_authors):
-    historical = historical_profile_assignments(person, include_authors=include_authors)
-    historical_completed = sum(item["has_completed_work"] for item in historical)
     if person.user_id is None:
-        return historical, {"active": 0, "reserved": 0, "completed": historical_completed}
+        return [], {"active": 0, "reserved": 0, "completed": 0}
 
     current_stages = (
         WorkflowStage.objects.filter(
@@ -73,9 +70,14 @@ def _profile_assignments(person, *, include_authors):
         queryset = queryset.prefetch_related("text__authors")
 
     today = timezone.localdate()
-    summary = {"active": 0, "reserved": 0, "completed": 0}
+    from workflow.read_queries import work_text_ids
+    from texts.models import Text
+    own_texts = Text.objects.filter(workflow_role_assignments__assigned_to_id=person.user_id, workflow_role_assignments__workflow_cycle=F("current_workflow_cycle")).distinct()
+    classified = work_text_ids(own_texts, person.user, today)
+    completed_ids, active_ids, waiting_ids = (classified[key] for key in ('completed', 'active', 'waiting'))
     assignments = []
 
+    from workflow.state import stage_is_open, stage_is_active
     stage_roles = {
         **STAGE_ROLES,
         WorkflowStage.StageType.EDITING: WorkflowRoleAssignment.Role.EDITOR,
@@ -91,17 +93,17 @@ def _profile_assignments(person, *, include_authors):
         matching_stages = [
             stage
             for stage in stages
-            if stage_roles.get(stage.stage_type) == assignment.role
+            if stage.assignment_id == assignment.pk or (stage.assignment_id is None and assignment.is_current and stage_roles.get(stage.stage_type) == assignment.role)
         ]
         open_stages = [
             stage
             for stage in matching_stages
-            if not stage.is_completed and stage.ended_at is None
+            if stage_is_open(stage)
         ]
         active_stages = [
             stage
             for stage in open_stages
-            if stage.started_at is not None and stage.started_at <= today
+            if stage_is_active(stage, today)
         ]
 
         # Aktywny etap danej roli ma pierwszeństwo przed rezerwacją
@@ -112,31 +114,20 @@ def _profile_assignments(person, *, include_authors):
         )
 
         is_withdrawn = any(
-            stage.stage_type == WorkflowStage.StageType.WITHDRAWN
+            stage.stage_type == WorkflowStage.StageType.WITHDRAWN and stage.is_current
             and not stage.is_completed
             for stage in stages
         )
         is_ready = any(
-            stage.stage_type == WorkflowStage.StageType.READY
+            stage.stage_type == WorkflowStage.StageType.READY and stage.is_current
             for stage in stages
         )
         is_terminal = is_withdrawn or is_ready
 
-        has_active_work = bool(active_stages) and not is_terminal
-        has_reserved_work = (
-            not is_terminal
-            and not has_active_work
-            and (bool(open_stages) or not matching_stages)
-        )
-        has_completed_work = (
-            bool(matching_stages)
-            and not open_stages
-            and all(stage.is_completed for stage in matching_stages)
-        )
+        has_active_work = text.pk in active_ids and assignment.is_current and bool(active_stages)
+        has_reserved_work = assignment.is_current and text.pk in waiting_ids
+        has_completed_work = text.pk in completed_ids
 
-        summary["active"] += int(has_active_work)
-        summary["reserved"] += int(has_reserved_work)
-        summary["completed"] += int(has_completed_work)
 
         authors = []
 
@@ -157,7 +148,7 @@ def _profile_assignments(person, *, include_authors):
             {
                 "pk": assignment.pk,
                 "role": assignment.role,
-                "get_role_display": assignment.get_role_display(),
+                "get_role_display": assignment.get_role_display() + f" — wykonanie {assignment.execution_number}" + (" (wcześniejsze przypisanie)" if not assignment.is_current else ""),
                 "assigned_at": assignment.assigned_at,
                 "has_active_work": has_active_work,
                 "has_reserved_work": has_reserved_work,
@@ -185,6 +176,7 @@ def _profile_assignments(person, *, include_authors):
                             latest_stage.get_stage_type_display()
                         ),
                         "iteration": latest_stage.iteration,
+                        "imported_completed": latest_stage.imported_completed,
                         "started_at": latest_stage.started_at,
                         "ended_at": latest_stage.ended_at,
                         "is_completed": latest_stage.is_completed,
@@ -202,8 +194,8 @@ def _profile_assignments(person, *, include_authors):
             }
         )
 
-    summary["completed"] += historical_completed
-    return assignments + historical, summary
+    summary = {"active": len(active_ids), "reserved": len(waiting_ids), "completed": len(completed_ids)}
+    return assignments, summary
 
 
 @never_cache
@@ -284,7 +276,7 @@ def people_list(request):
 def person_detail(request, person_id):
     # Nieaktywne osoby z historią mają dostępny szczegół; lista aktywnego zespołu pozostaje bez zmian.
     person = get_object_or_404(
-        Person.objects.filter(Q(is_active=True) | Q(historical_text_assignments__text__is_historical=True) | Q(historical_review_assignments__review__old_reviews=True) | Q(user__review_assignments__review__old_reviews=True)).distinct()
+        Person.objects.filter(Q(is_active=True) | Q(user__workflow_role_assignments__isnull=False) | Q(historical_review_assignments__review__old_reviews=True) | Q(user__review_assignments__review__old_reviews=True)).distinct()
         .select_related("user")
         .prefetch_related("roles"),
         pk=person_id,

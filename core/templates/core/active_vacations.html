@@ -20,17 +20,17 @@
             aria-label="Tabela aktywnych urlopów zespołu"
             tabindex="0"
         >
-            <table id="active-vacations-table">
+            <table data-copy-table data-server-paginated="true" id="active-vacations-table">
                 <caption class="visually-hidden">
                     Trwające urlopy członków zespołu
                 </caption>
 
                 <thead>
                     <tr>
-                        <th scope="col">Osoba</th>
+                        <th scope="col" data-sort-key="person">Osoba</th>
                         <th scope="col">Role</th>
-                        <th scope="col">Urlop od</th>
-                        <th scope="col">Urlop do</th>
+                        <th scope="col" data-sort-key="start">Urlop od</th>
+                        <th scope="col" data-sort-key="end">Urlop do</th>
                         <th scope="col" data-copy="false">Szczegóły</th>
                     </tr>
                 </thead>

@@ -17,7 +17,7 @@ from core.services.texts import start_assigned_stage
 from authors.models import Author
 from texts.models import Text, Review, ReviewAssignment, Reviewers
 from workflow.models import WorkflowStage, WorkflowRoleAssignment
-from workflow.services import claim_ready_for_editing, complete_stage, restart_workflow_from_stage
+from workflow.services import claim_ready_for_editing, complete_stage
 
 class WorkflowQueueAdminTests(CoreTestDataMixin, TestCase):
     def text(self, kind='ready_for_editing', assigned=False):
@@ -33,7 +33,6 @@ class WorkflowQueueAdminTests(CoreTestDataMixin, TestCase):
         self.anthology.status = 'ready'; self.anthology.save()
         self.assertEqual(len(available_stages_for_user(user=self.editor)), 0)
         with self.assertRaises(ValidationError): claim_ready_for_editing(text, self.editor)
-        with self.assertRaises(ValidationError): restart_workflow_from_stage(text, 'ready_for_editing', self.superuser)
         with self.assertRaises(ValidationError): complete_stage(stage, self.superuser, timezone.localdate())
         with self.assertRaises(ValidationError): start_assigned_stage(user=self.superuser, stage_id=stage.pk, started_at=timezone.localdate())
         self.assertFalse(text.workflow_role_assignments.exists())

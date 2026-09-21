@@ -185,11 +185,11 @@ class WorkflowFormTests(TestCase):
         ):
             with self.subTest(stage=stage_type):
                 form = RestartWorkflowForm(
-                    data={"target_stage": stage_type}
+                    data={"stages": [stage_type]}
                 )
 
                 self.assertFalse(form.is_valid())
-                self.assertIn("target_stage", form.errors)
+                self.assertIn("stages", form.errors)
 
 
 class ContentFormTests(TestCase):

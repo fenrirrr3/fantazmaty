@@ -119,14 +119,14 @@
             aria-label="Bieżące etapy tekstu"
             tabindex="0"
         >
-            <table>
+            <table data-copy-table>
                 <caption class="visually-hidden">Bieżące etapy pracy nad tekstem</caption>
                 <thead>
                     <tr>
-                        <th scope="col">Etap</th>
-                        <th scope="col">Osoba</th>
-                        <th scope="col">Rozpoczęcie</th>
-                        <th scope="col">Zakończenie</th>
+                        <th scope="col" data-sort-key="status">Etap</th>
+                        <th scope="col" data-sort-key="person">Osoba</th>
+                        <th scope="col" data-sort-key="started_at">Rozpoczęcie</th>
+                        <th scope="col" data-sort-key="ended_at">Zakończenie</th>
                         <th scope="col">Stan</th>
                     </tr>
                 </thead>
@@ -145,8 +145,8 @@
                                     <span class="muted-text">Nie przypisano</span>
                                 {% endif %}
                             </td>
-                            <td class="date-cell">{{ stage.started_at|date:"d.m.Y"|default:"–" }}</td>
-                            <td class="date-cell">{{ stage.ended_at|date:"d.m.Y"|default:"–" }}</td>
+                            <td class="date-cell">{% if stage.imported_completed and not stage.started_at %}Brak danych{% else %}{{ stage.started_at|date:"d.m.Y"|default:"–" }}{% endif %}</td>
+                            <td class="date-cell">{% if stage.imported_completed and not stage.ended_at %}Brak danych{% else %}{{ stage.ended_at|date:"d.m.Y"|default:"–" }}{% endif %}</td>
                             <td>
                                 {% if stage.stage_type == "withdrawn" %}
                                     <span class="stage-status withdrawn">Wycofany</span>
@@ -188,6 +188,13 @@
         {% if not is_withdrawn and not is_ready %}
             <div class="editing-control-content">
                 {% for stage in stages %}
+                    {% if stage.can_edit_schedule %}
+                    <div class="quick-stage-card"><strong>{{ stage.get_stage_type_display }} — rezerwacja</strong>
+                    <form method="post" action="{% url 'core:change_scheduled_workflow_stage' stage.pk %}">{% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
+                    <label for="schedule-{{ stage.pk }}">Data rozpoczęcia</label><input id="schedule-{{ stage.pk }}" type="date" name="started_at" min="{{ today_iso }}" value="{{ stage.started_at|date:'Y-m-d' }}" required>
+                    <button type="submit" name="action" value="save" class="primary-button">Zapisz datę</button><button type="submit" name="action" value="cancel" formnovalidate class="secondary-button">Odwołaj rezerwację</button>
+                    </form></div>
+                    {% endif %}
                     {% if stage.can_complete %}
                         <div class="quick-stage-card stage-finish-card">
                             <div class="quick-stage-action">
@@ -201,19 +208,22 @@
                                     action="{% url 'core:complete_workflow_stage' stage.pk %}"
                                     class="complete-stage-form"
                                 >
-                                    {% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
+                                    {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                                     <button type="submit" class="complete-stage-button">
                                         Zakończ etap
                                     </button>
                                 </form>
                             </div>
                         </div>
-                    {% elif stage.can_claim_styling %}
+                    {% elif stage.can_claim_repeat %}
+<div class="quick-stage-card"><strong>{{ stage.get_stage_type_display }}</strong>
+<form method="post" action="{% url 'core:take_workflow_stage' stage.pk %}">{% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}"><input type="hidden" name="started_at" value="{{ today_iso }}"><button class="primary-button" type="submit">Przejmij i rozpocznij</button></form></div>
+{% elif stage.can_claim_styling %}
                         <div class="quick-stage-card">
                             <div class="quick-stage-action">
                                 <div class="quick-stage-description"><strong>Stylowanie</strong><p>Przejmij stylowanie na swoje konto.</p></div>
                                 <form method="post" action="{% url 'core:take_workflow_stage' stage.pk %}" class="take-stage-form">
-                                    {% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
+                                    {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                                     <button type="submit" class="primary-button">Przejmij stylowanie</button>
                                     <div class="form-field"><label for="claim-styling-{{ stage.pk }}">Data rozpoczęcia</label><input id="claim-styling-{{ stage.pk }}" type="date" name="started_at" class="stage-date-input" value="{{ today_iso }}" min="{{ today_iso }}" required></div>
                                 </form>
@@ -232,7 +242,7 @@
                                     action="{% url 'core:start_assigned_workflow_stage' stage.pk %}"
                                     class="complete-stage-form"
                                 >
-                                    {% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
+                                    {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                                     <div class="form-field">
                                         <label for="start-stage-{{ stage.pk }}">Data rozpoczęcia</label>
                                         <input
@@ -260,16 +270,16 @@
                 <div class="workflow-action-buttons">
                     {% if can_send_to_first_verification %}
                         <form method="post" action="{% url 'core:send_to_first_verification_stage' text.pk %}">
-                            {% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
+                            {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                             <button type="submit" class="primary-button">
-                                Przekaż do pierwszej weryfikacji
+                                Zakończ etap
                             </button>
                         </form>
                     {% endif %}
 
                     {% if can_resume_editing %}
                         <form method="post" action="{% url 'core:resume_text_editing' text.pk %}">
-                            {% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
+                            {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                             <button type="submit" class="primary-button">
                                 Wznów redakcję
                             </button>
@@ -278,7 +288,7 @@
 
                     {% if can_send_to_author %}
                         <form method="post" action="{% url 'core:send_text_to_author_stage' text.pk %}">
-                            {% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
+                            {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                             <button type="submit" class="secondary-button">
                                 Przekaż tekst autorowi
                             </button>
@@ -287,7 +297,7 @@
 
                     {% if can_send_to_second_verification %}
                         <form method="post" action="{% url 'core:send_to_second_verification_stage' text.pk %}">
-                            {% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
+                            {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                             <button type="submit" class="primary-button">
                                 Przekaż do drugiej weryfikacji
                             </button>
@@ -296,7 +306,7 @@
 
                     {% if can_finish_editing %}
                         <form method="post" action="{% url 'core:finish_text_editing' text.pk %}">
-                            {% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
+                            {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                             <button type="submit" class="complete-stage-button">
                                 Zakończ redakcję i przekaż do kontroli
                             </button>
@@ -310,7 +320,7 @@
             {% if file_url %}<p><a class="primary-button" href="{{ file_url }}" target="_blank" rel="noopener noreferrer">Otwórz folder Dropbox</a></p>{% else %}<p class="muted-text">Nie dodano linku do folderu.</p>{% endif %}
             {% if text_file_form %}
             <form method="post" action="{% url 'core:update_text_file' text.pk %}" data-warn-unsaved>
-                {% csrf_token %}
+                {% csrf_token %}{% edit_version %}
                 {{ text_file_form.as_p }}
                 <button type="submit" class="secondary-button">Zapisz link</button>
             </form>
@@ -329,7 +339,7 @@
         <div class="text-team-grid">
             {% for member in team_members %}
                 <div class="text-team-member{% if not member.is_assigned %} is-unassigned{% endif %}">
-                    <span class="text-team-member-role">{{ member.label }}{% if member.is_historical %} <span class="muted-text">(historyczne)</span>{% endif %}</span>
+                    <span class="text-team-member-role">{{ member.label }}{% if member.is_previous %} <span class="muted-text">(wcześniejsze przypisanie)</span>{% endif %}</span>
                     {% if member.user %}
                         <strong>
                             {% firstof member.user.get_full_name "Nieuzupełnione dane" %}
@@ -357,7 +367,7 @@
                         data-autosave="text-warnings-{{ text.pk }}"
                         data-warn-unsaved
                     >
-                        {% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
+                        {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                         {{ text_content_warnings_form.non_field_errors }}
 
                         <div class="form-field">
@@ -397,7 +407,7 @@
                             data-autosave="coordinator-note-{{ text.pk }}"
                             data-warn-unsaved
                         >
-                            {% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
+                            {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                             {{ coordinator_note_form.non_field_errors }}
 
                             <div class="form-field">
@@ -426,7 +436,7 @@
                     <summary>Dodaj notatkę koordynatora</summary>
                     <form method="post" action="{% url 'core:update_coordinator_note' text.pk %}"
                           class="general-notes-form" data-warn-unsaved>
-                        {% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
+                        {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                         {{ coordinator_note_form.as_p }}
                         <button type="submit" class="secondary-button">Zapisz notatkę</button>
                     </form>
@@ -449,7 +459,7 @@
                 data-autosave="text-note-{{ text.pk }}"
                 data-warn-unsaved
             >
-                {% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
+                {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                 {{ text_note_form.non_field_errors }}
 
                 <div class="form-field">
@@ -494,7 +504,7 @@
                     <div class="text-note-content">{{ note.content|linebreaksbr }}</div>
                     {% if note.can_manage %}<div class="text-note-actions">
                         <a class="secondary-button" href="{% url 'core:edit_text_note' text.pk note.pk %}">Edytuj</a>
-                        <form method="post" action="{% url 'core:delete_text_note' text.pk note.pk %}" data-confirm-delete="Usunąć tę notatkę?">{% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}"><button class="secondary-button" type="submit">Usuń</button></form>
+                        <form method="post" action="{% url 'core:delete_text_note' text.pk note.pk %}" data-confirm-delete="Usunąć tę notatkę?">{% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}"><button class="secondary-button" type="submit">Usuń</button></form>
                     </div>{% endif %}
                 </details>
             {% empty %}
@@ -504,7 +514,7 @@
     </section>
 
     {% if source_review %}
-        <details class="review-summary-details">
+        <details class="review-summary-details" open>
             <summary class="review-summary-toggle">
                 <span>Recenzje źródłowe</span>
                 <span class="dropdown-arrow" aria-hidden="true">▾</span>
@@ -574,15 +584,15 @@
                 aria-label="Historia pracy nad tekstem"
                 tabindex="0"
             >
-                <table>
+                <table data-copy-table>
                     <caption class="visually-hidden">
                         Pozostałe etapy bieżącego cyklu i wcześniejsze cykle
                     </caption>
                     <thead>
                         <tr>
-                            <th scope="col">Etap</th>
-                            <th scope="col">Rozpoczęcie</th>
-                            <th scope="col">Zakończenie</th>
+                            <th scope="col" data-sort-key="status">Etap</th>
+                            <th scope="col" data-sort-key="started_at">Rozpoczęcie</th>
+                            <th scope="col" data-sort-key="ended_at">Zakończenie</th>
                             <th scope="col">Stan</th>
                         </tr>
                     </thead>
@@ -590,8 +600,8 @@
                         {% for stage in archived_stages %}
                             <tr>
                                 <td>{{ stage.get_stage_type_display }}</td>
-                                <td>{{ stage.started_at|date:"d.m.Y"|default:"–" }}</td>
-                                <td>{{ stage.ended_at|date:"d.m.Y"|default:"–" }}</td>
+                                <td>{% if stage.imported_completed and not stage.started_at %}Brak danych{% else %}{{ stage.started_at|date:"d.m.Y"|default:"–" }}{% endif %}</td>
+                                <td>{% if stage.imported_completed and not stage.ended_at %}Brak danych{% else %}{{ stage.ended_at|date:"d.m.Y"|default:"–" }}{% endif %}</td>
                                 <td>
                                     {% if stage.stage_type == "withdrawn" %}
                                         Wycofany
@@ -630,6 +640,10 @@
     </details>
 
     {% endif %}
+    {% if can_cancel_repetition %}<form method="post" action="{% url 'core:cancel_workflow_repetition' text.pk open_repetition.pk %}" data-confirm-delete="Anulować niepodjęte powtórzenie i przywrócić poprzedni stan?">{% csrf_token %}{% edit_version %}<button type="submit" class="secondary-button">Anuluj niepodjęte powtórzenie</button><p class="form-help">Dostępne, jeśli nie rozpoczęto ani nie zarezerwowano pracy.</p></form>{% endif %}
+    {% if can_manage_workflow and not is_ready and not is_withdrawn %}<section class="card"><h2>Przekazanie pracy</h2>{% for stage in stages %}{% if not stage.is_completed and stage.is_released and stage.assigned_user %}<p>{{ stage.get_stage_type_display }} <a href="{% url 'core:handoff_workflow_stage' stage.pk %}">Zmień wykonawcę z zachowaniem historii</a></p>{% endif %}{% endfor %}</section>{% endif %}
+    {% if handoffs %}<section class="card"><h2>Historia przekazania pracy</h2>{% for item in handoffs %}<p>{{ item.stage.get_stage_type_display }}: {{ item.previous_assignment.assigned_to.get_full_name }} → {{ item.new_assignment.assigned_to.get_full_name }} · {{ item.created_at|date:"d.m.Y H:i" }}<br>{{ item.reason }}</p>{% endfor %}</section>{% endif %}
+    {% if repeat_queue %}<section class="card"><h2>Kolejka powtórzeń</h2><ol>{% for item in repeat_queue %}<li>{{ item.get_stage_type_display }}: {% if item.is_released %}bieżący etap{% else %}oczekuje na poprzedni etap{% endif %}</li>{% endfor %}</ol></section>{% endif %}
     {% if can_manage_authors or can_manage_workflow or can_restart_workflow %}
         <details class="text-management-card">
             <summary class="text-management-toggle">
@@ -650,7 +664,7 @@
                             action="{% url 'core:set_text_authors' text.pk %}"
                             class="text-authors-management-form"
                         >
-                            {% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
+                            {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                             <label for="text-authors">Przypisani autorzy</label>
                             <select
                                 id="text-authors"
@@ -680,10 +694,10 @@
                 {% if can_restart_workflow and restart_workflow_form and text.anthology.status != "ready" %}
                     <div class="management-action management-action-restart">
                         <div class="management-action-description">
-                            <h3>Rozpocznij nowy cykl</h3>
+                            <h3>Powtórz wybrane etapy</h3>
                             <p>
-                                Wybrany etap rozpocznie nowy przebieg pracy.
-                                Historia poprzedniego cyklu zostanie zachowana.
+                                Wybrane etapy otrzymają nowe wykonania bez przypisanych osób.
+                                Pozostałe etapy i wcześniejsi wykonawcy pozostaną bez zmian. Powtórzenie jest dostępne tylko dla gotowego tekstu w antologii W przygotowaniu.
                             </p>
                         </div>
 
@@ -692,15 +706,15 @@
                             action="{% url 'core:restart_text_workflow' text.pk %}"
                             class="restart-workflow-form"
                         >
-                            {% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
+                            {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                             {{ restart_workflow_form.non_field_errors }}
-                            <label for="{{ restart_workflow_form.target_stage.id_for_label }}">
-                                {{ restart_workflow_form.target_stage.label }}
+                            <label for="{{ restart_workflow_form.stages.id_for_label }}">
+                                {{ restart_workflow_form.stages.label }}
                             </label>
-                            {{ restart_workflow_form.target_stage }}
-                            {{ restart_workflow_form.target_stage.errors }}
+                            {{ restart_workflow_form.stages }}
+                            {{ restart_workflow_form.stages.errors }}
                             <button type="submit" class="restart-workflow-button">
-                                Sprawdź restart
+                                Pokaż kolejkę powtórzeń
                             </button>
                         </form>
                     </div>
@@ -717,7 +731,7 @@
                         </div>
 
                         <form method="post" action="{% url 'core:withdraw_text' text.pk %}">
-                            {% csrf_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
+                            {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                             <button type="submit" class="withdraw-text-button">
                                 Wycofaj tekst z procesu
                             </button>

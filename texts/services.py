@@ -182,31 +182,6 @@ def _iter_duplicate_reviews(
             yield candidate
 
 
-def find_duplicate_reviews(
-    *,
-    title: str,
-    author: Author | None = None,
-    email: str = "",
-    exclude_review_id: int | None = None,
-    using: str | None = None,
-) -> list[Review]:
-    """Zwraca możliwe duplikaty, także z innych naborów i archiwum.
-
-    Obiekty zawierają wczytane pola pk, title, created_at i old_reviews.
-    Odczyt pozostałych pól może wykonać dodatkowe zapytanie.
-    """
-    _validate_author(author)
-    database = _database_alias(author, using)
-
-    return list(
-        _iter_duplicate_reviews(
-            author=author,
-            email=email,
-            title=title,
-            exclude_review_id=exclude_review_id,
-            using=database,
-        )
-    )
 
 
 def get_review_submission_warnings(

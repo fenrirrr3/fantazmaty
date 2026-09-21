@@ -11,7 +11,7 @@ from core.forms import VacationForm
 from core.pagination import paginate_items
 from core.permissions import (
     get_active_person_profile,
-    is_superuser,
+    is_superuser, is_coordinator,
     team_member_required,
 )
 from core.services.vacations import (
@@ -19,7 +19,7 @@ from core.services.vacations import (
     finish_vacation,
     update_vacation,
 )
-from people.models import Vacation
+from people.models import Vacation, Person
 
 
 # Serwisy zapisujące urlopy sprawdzają uprawnienia ponownie.
@@ -34,7 +34,7 @@ def _manageable_vacations(user):
         person__is_active=True,
     ).select_related("person")
 
-    if is_superuser(user):
+    if is_coordinator(user):
         return queryset
 
     person = get_active_person_profile(user)
@@ -49,7 +49,8 @@ def _vacation_redirect(user, vacation):
     if vacation.person.user_id == user.pk:
         return redirect("core:my_vacations")
 
-    return redirect("core:active_vacations")
+    from django.urls import reverse
+    return redirect(reverse("core:my_vacations") + "?person=" + str(vacation.person_id))
 
 
 def _add_validation_errors(form, error):
@@ -77,6 +78,7 @@ def _render_my_vacations(request, person, form, *, status=200):
         {
             "form": form,
             "person": person,
+            "vacation_people": Person.objects.filter(is_active=True).order_by("last_name", "first_name", "pk") if is_coordinator(request.user) else [],
             "vacations": page_obj,
             "page_obj": page_obj,
         },
@@ -90,6 +92,13 @@ def _render_my_vacations(request, person, form, *, status=200):
 @team_member_required
 def my_vacations(request):
     person = get_active_person_profile(request.user)
+    if is_coordinator(request.user):
+        selected = request.POST.get("person") if request.method == "POST" else request.GET.get("person")
+        if selected:
+            from core.selectors.texts import _positive_id
+            person = get_object_or_404(Person.objects.filter(is_active=True), pk=_positive_id(selected))
+        elif person is None:
+            person = Person.objects.filter(is_active=True).order_by("last_name", "pk").first()
 
     if person is None:
         messages.error(
@@ -116,7 +125,8 @@ def my_vacations(request):
             _add_validation_errors(form, error)
         else:
             messages.success(request, "Zgłoszono urlop.")
-            return redirect("core:my_vacations")
+            from django.urls import reverse
+            return redirect(reverse("core:my_vacations") + ("?person=" + str(person.pk) if is_coordinator(request.user) else ""))
 
     return _render_my_vacations(
         request,

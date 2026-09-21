@@ -171,7 +171,7 @@ def workflow_activity_context(
     # do cyklu konkretnego etapu, nigdy do obecnego cyklu tekstu.
     stages = WorkflowStage.objects.filter(
         stage_type__in=stage_roles,
-    ).select_related("text", "text__anthology")
+    ).select_related("text", "text__anthology", "assignment__assigned_to__person_profile")
 
     if filters.get("date_from"):
         stages = stages.filter(ended_at__gte=filters["date_from"])
@@ -207,7 +207,7 @@ def workflow_activity_context(
         text = stage.text
         role = stage_roles[stage.stage_type]
 
-        assignment = next(
+        assignment = stage.assignment or next(
             (
                 item
                 for item in text.report_assignments
@@ -243,6 +243,7 @@ def workflow_activity_context(
                 "stage_id": stage.pk,
                 "workflow_cycle": stage.workflow_cycle,
                 "iteration": stage.iteration,
+                "execution_number": stage.execution_number,
                 "anthology_title": anthology_title,
                 "anthology_id": text.anthology_id,
                 "text_id": text.pk,
@@ -258,31 +259,8 @@ def workflow_activity_context(
             }
         )
 
-    from core.selectors.history import historical_assignments
-    role_family = {"Redaktor": "editor", "Korektor": "proofreader", "Weryfikator": "verifier"}.get(people_role_name)
-    history = historical_assignments().filter(role__in=[role_family] + (["editing_verifier"] if role_family == "verifier" else []))
-    if filters.get("date_from"):
-        history = history.none()
-    if filters.get("date_to"):
-        history = history.none()
-    if include_authors:
-        history = history.prefetch_related(_author_prefetch())
-    known_person_ids = {person["pk"] for person in context[people_context_name]}
-    for item in history:
-        text = item.text
-        authors = _authors_display(text, include_authors)
-        anthology_title = text.anthology.title if text.anthology_id else ""
-        if not _matches(filters["q"], anthology_title, text.title, authors, item.role_label, item.display_name):
-            continue
-        rows.append(dict(stage_id=None, workflow_cycle=None, iteration=None,
-                         anthology_title=anthology_title, anthology_id=text.anthology_id,
-                         text_id=text.pk, title=text.title, authors=authors, role=item.role_label,
-                         person_id=item.person_id, person_name=item.display_name, assigned_at=None,
-                         started_at=None, ended_at=None,
-                         is_completed=item.is_completed, is_historical=True))
-        if item.person_id and item.person_id not in known_person_ids:
-            context[people_context_name].append(_NamedRecord(pk=item.person_id, display_name=item.display_name))
-            known_person_ids.add(item.person_id)
+    rows.sort(key=lambda row: (row["assigned_at"] is not None, row["assigned_at"].timestamp() if row["assigned_at"] else 0), reverse=True)
+
     return _cascade_activity(context, rows, filters, people_context_name)
 
 
@@ -442,13 +420,13 @@ def workflow_inactivity_context(
         )
     )
 
-    terminal_stage = WorkflowStage.objects.filter(
+    terminal_stage = WorkflowStage.objects.current_cycle().filter(
         text_id=OuterRef("text_id"),
         workflow_cycle=OuterRef("workflow_cycle"),
         stage_type__in=TERMINAL_STAGES,
     )
     latest_completion = (
-        WorkflowStage.objects.filter(
+        WorkflowStage.objects.current_cycle().filter(
             text_id=OuterRef("text_id"),
             workflow_cycle=OuterRef("workflow_cycle"),
             is_completed=True,
@@ -460,7 +438,7 @@ def workflow_inactivity_context(
     )
 
     stages = (
-        WorkflowStage.objects.filter(
+        WorkflowStage.objects.current_cycle().filter(
             workflow_cycle=F("text__current_workflow_cycle"),
             is_completed=False,
             ended_at__isnull=True,
@@ -536,6 +514,7 @@ def workflow_inactivity_context(
             "stage_type": stage.stage_type,
             "get_stage_type_display": stage.get_stage_type_display(),
             "iteration": stage.iteration,
+                "execution_number": stage.execution_number,
             "started_at": stage.started_at,
             "ended_at": stage.ended_at,
             "is_completed": stage.is_completed,

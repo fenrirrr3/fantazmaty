@@ -46,7 +46,7 @@
             class="vacation-form"
             data-warn-unsaved
         >
-            {% csrf_token %}
+            {% csrf_token %}{% edit_version %}
 
             {% for error in form.non_field_errors %}
                 <p class="form-error" role="alert">{{ error }}</p>
@@ -137,7 +137,7 @@
                 action="{% url 'core:end_vacation' vacation.pk %}"
                 class="vacation-end-form"
             >
-                {% csrf_token %}
+                {% csrf_token %}{% edit_version %}
                 <button type="submit" class="vacation-end-button">
                     Zakończ urlop teraz
                 </button>

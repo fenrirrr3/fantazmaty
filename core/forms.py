@@ -127,18 +127,16 @@ class StartStageForm(forms.Form):
 
 
 class RestartWorkflowForm(forms.Form):
-    target_stage = forms.ChoiceField(
-        label="Etap, od którego tekst ma rozpocząć nowy przebieg",
-        choices=(
-            ("", "Wybierz etap"),
-            *[
-                (value, label)
-                for value, label in WorkflowStage.StageType.choices
-                if value in RESTARTABLE_STAGE_TYPES
-            ],
-        ),
-        widget=forms.Select(attrs={"class": "stage-select-input"}),
-    )
+    stages = forms.MultipleChoiceField(label="Etapy do powtórzenia", widget=forms.CheckboxSelectMultiple)
+
+    def __init__(self, *args, text=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        from workflow.repetitions import REPEATABLE
+        choices = [(v,l) for v,l in WorkflowStage.StageType.choices if v in REPEATABLE]
+        if text is not None:
+            completed = set(WorkflowStage.objects.current_cycle().filter(text=text, is_completed=True).values_list('stage_type', flat=True))
+            choices = [(v,l) for v,l in choices if v in completed]
+        self.fields['stages'].choices = choices
 
 
 class VacationForm(forms.ModelForm):
@@ -186,7 +184,7 @@ class VacationForm(forms.ModelForm):
         self.fields["end_date"].input_formats = ("%Y-%m-%d", "%Y-%m-%dT%H:%M")
 
         if not self.instance.pk:
-            self.initial.setdefault("start_date", today)
+            self.initial["start_date"] = self.initial.get("start_date") or today
         self.fields["start_date"].widget.attrs.update(
             {
                 "min": self.minimum_start_date.isoformat(),
@@ -566,6 +564,7 @@ class ReviewBulkImportForm(forms.Form):
 
             for field_name, normalize in REVIEW_FIELDS.items():
                 record[field_name] = normalize(record[field_name])
+            record["content_warnings"] = record["content_warnings"].lower()
 
             row_errors = []
 

@@ -58,7 +58,7 @@ def corrections(request):
     status = statuses[-1] if statuses else ""
     anthology = request.GET.get("anthology", "")
     if query:
-        items = items.filter(Q(story_title__plcontains=query) | Q(problem__plcontains=query))
+        items = items.filter(Q(story_title__plcontains=query) | Q(problem__plcontains=query) | Q(fragment__plcontains=query) | Q(suggestion__plcontains=query))
     anthology_ids = [int(anthology)] if anthology.isdecimal() and len(anthology) < 19 else []
     items, facets = facet_queryset(items, {
         'status': ('status', statuses), 'anthology': ('anthology_id', anthology_ids),

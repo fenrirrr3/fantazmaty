@@ -3,6 +3,8 @@
 {% block title %}Moje urlopy | Fantazmaty CMS{% endblock %}
 
 {% block content %}
+{% if vacation_people %}<form method="get" class="filters-form"><label for="vacation-history-person">Urlopy osoby</label><select name="person" id="vacation-history-person">{% for member in vacation_people %}<option value="{{ member.pk }}" {% if member.pk == person.pk %}selected{% endif %}>{{ member }}</option>{% endfor %}</select><button class="primary-button" type="submit">Pokaż urlopy</button></form>{% endif %}
+
     <header class="page-header">
         <h1 class="page-title">Moje urlopy</h1>
         <p class="page-description">
@@ -20,7 +22,11 @@
                 class="vacation-form"
                 data-warn-unsaved
             >
-                {% csrf_token %}
+                {% csrf_token %}{% edit_version %}
+                {% if vacation_people %}
+                <div class="form-field"><label for="vacation-person">Osoba</label>
+                <select name="person" id="vacation-person" required>{% for member in vacation_people %}<option value="{{ member.pk }}" {% if member.pk == person.pk %}selected{% endif %}>{{ member }}</option>{% endfor %}</select></div>
+                {% endif %}
 
                 {% for error in form.non_field_errors %}
                     <p class="form-error" role="alert">{{ error }}</p>
@@ -86,7 +92,7 @@
         <section class="card vacation-history" aria-labelledby="vacation-history-heading">
             <header class="vacation-history-header">
                 <div>
-                    <h2 id="vacation-history-heading">Moje zgłoszenia</h2>
+                    <h2 id="vacation-history-heading">{% if vacation_people %}Urlopy: {{ person }}{% else %}Moje zgłoszenia{% endif %}</h2>
                     <p class="form-help">
                         Urlopy trwające, zaplanowane i zakończone.
                     </p>
@@ -101,16 +107,16 @@
                 aria-label="Tabela moich urlopów"
                 tabindex="0"
             >
-                <table id="my-vacations-table">
+                <table data-copy-table data-server-paginated="true" id="my-vacations-table">
                     <caption class="visually-hidden">
                         Urlopy użytkownika, od najpóźniejszej daty rozpoczęcia
                     </caption>
 
                     <thead>
                         <tr>
-                            <th scope="col">Urlop od</th>
-                            <th scope="col">Urlop do</th>
-                            <th scope="col">Status</th>
+                            <th scope="col" data-sort-key="start">Urlop od</th>
+                            <th scope="col" data-sort-key="end">Urlop do</th>
+                            <th scope="col" data-sort-key="status">Status</th>
                             <th scope="col">Zgłoszono</th>
                             <th scope="col" data-copy="false">Akcje</th>
                         </tr>
@@ -166,7 +172,7 @@
                                         {% endif %}
 
                                         {% if vacation.is_upcoming %}
-<form method="post" action="{% url 'core:cancel_vacation' vacation.pk %}">{% csrf_token %}<button class="secondary-button" type="submit">Odwołaj urlop</button></form>
+<form method="post" action="{% url 'core:cancel_vacation' vacation.pk %}">{% csrf_token %}{% edit_version %}<button class="secondary-button" type="submit">Odwołaj urlop</button></form>
 {% endif %}
 {% if vacation.can_be_ended %}
                                             <form
@@ -174,7 +180,8 @@
                                                 action="{% url 'core:end_vacation' vacation.pk %}"
                                                 class="vacation-end-form"
                                             >
-                                                {% csrf_token %}
+                                                {% csrf_token %}{% edit_version %}
+                
                                                 <button
                                                     type="submit"
                                                     class="vacation-end-button"

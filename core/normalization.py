@@ -28,7 +28,7 @@ AUTHOR_FIELDS = {
     "first_name": person_name, "last_name": person_name,
     "pseudonym": compact, "email": email, "phone_number": compact,
 }
-TEXT_FIELDS = {"title": compact, "content_warnings": lower}
+TEXT_FIELDS = {"title": compact, "content_warnings": compact}
 REVIEW_FIELDS = {
     **TEXT_FIELDS, "author_first_name": person_name, "author_last_name": person_name,
     "email": email, "genre": compact, "phone_number": compact,
@@ -39,6 +39,8 @@ class NormalizedModelMixin:
     normalization_fields = {}
 
     def normalize_fields(self, fields=None):
+        if self._state.adding and self._meta.label_lower == "texts.review":
+            self.content_warnings = lower(self.content_warnings)
         for name, normalize in self.normalization_fields.items():
             if fields is None or name in fields:
                 setattr(self, name, normalize(getattr(self, name)))

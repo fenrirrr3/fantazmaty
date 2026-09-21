@@ -51,22 +51,22 @@
             aria-label="Tabela tekstów dostępnych do przejęcia"
             tabindex="0"
         >
-            <table id="available-texts-table">
+            <table data-copy-table data-server-paginated="true" id="available-texts-table">
                 <caption class="visually-hidden">
                     Dostępne etapy w bieżących cyklach tekstów
                 </caption>
 
                 <thead>
                     <tr>
-                        <th scope="col">Antologia</th>
-                        <th scope="col">Tytuł</th>
+                        <th scope="col" data-sort-key="anthology">Antologia</th>
+                        <th scope="col" data-sort-key="title" class="sticky-title">Tytuł</th>
 
                         {% if can_view_authors %}
-                            <th scope="col">Autorzy</th>
+                            <th scope="col" data-sort-key="authors">Autorzy</th>
                         {% endif %}
 
-                        <th scope="col" class="numeric-cell">Długość</th>
-                        <th scope="col">Etap</th>
+                        <th scope="col" class="numeric-cell" data-sort-key="length">Długość</th>
+                        <th scope="col" data-sort-key="status">Etap</th>
                         <th scope="col">Wymagana rola</th>
                         <th scope="col" data-copy="false">Akcja</th>
                     </tr>
@@ -86,7 +86,7 @@
                                 {% endif %}
                             </td>
 
-                            <td data-double-copy data-copy-value="{{ stage.text.title }}">
+                            <td data-double-copy data-copy-value="{{ stage.text.title }}" class="sticky-title">
                                 <a
                                     href="{% url 'core:assigned_text_detail' stage.text.pk %}"
                                     class="text-title-link"
@@ -148,9 +148,9 @@
                                     class="take-stage-form"
                                     aria-label="Przejmij etap: {{ stage.get_stage_type_display }} – {{ stage.text.title }}"
                                 >
-                                    {% csrf_token %}
+                                    {% csrf_token %}{% edit_version %}
 
-                                    {% if stage.stage_type == "first_verification" %}
+                                    {% if stage.stage_type == "first_verification" and not stage.repetition_id %}
                                         <p
                                             id="reservation-help-{{ stage.pk }}"
                                             class="form-help"

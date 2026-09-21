@@ -7,7 +7,6 @@
 .table-container thead th { position:sticky; top:0; z-index:3; background:var(--table-header); }
 .table-container .sticky-title { position:sticky; left:0; z-index:2; background:var(--surface); min-width:12rem; }
 .table-container thead .sticky-title { z-index:4; background:var(--table-header); }
-.table-bottom-controls { display:flex; flex-wrap:wrap; justify-content:space-between; gap:12px; padding:12px 0; }
 
 .active-filters { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:12px; }
 .filter-chip { border:1px solid var(--border); border-radius:20px; padding:5px 12px; background:var(--surface); color:var(--text); }

@@ -11,6 +11,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const status = document.createElement('span'); status.setAttribute('role', 'status');
         [...select.labels].forEach(label => { label.htmlFor = input.id; });
         const multiple = select.multiple;
+        let selectedIdentity = !multiple && !!select.value;
+        const manual = document.createElement('button'); manual.type='button'; manual.textContent='Wpisz nowego autora ręcznie';
+        if (!multiple) select.before(manual);
+        const resetIdentity = () => {
+            if (selectedIdentity) ['author_first_name','author_last_name','email','phone_number'].forEach(name => { const field=select.form.elements.namedItem(name); if(field) {field.value='';field.dispatchEvent(new Event('input',{bubbles:true}));} });
+            selectedIdentity=false; select.value='';
+        };
+        manual.addEventListener('click', () => { ++sequence; clearTimeout(timer); controller?.abort(); resetIdentity(); input.value=''; input.setCustomValidity(''); close(); select.form.elements.namedItem('author_first_name')?.focus(); });
         input.value = !multiple && select.value ? select.selectedOptions[0].textContent : '';
         const selected = document.createElement('div'); selected.className = 'selected-authors';
         const wasRequired = select.required;
@@ -40,7 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 option.selected = true; input.value = ''; renderSelected();
                 select.dispatchEvent(new Event('change', {bubbles:true})); close(); status.textContent = 'Dodano autora. Możesz wyszukać kolejną osobę.'; input.focus(); return;
             }
-            select.value = String(item.id); input.value = item.label;
+            select.value = String(item.id); input.value = item.label; selectedIdentity=true; input.setCustomValidity('');
             for (const [field, value] of Object.entries({author_first_name:item.first_name, author_last_name:item.last_name, email:item.email, phone_number:item.phone_number})) {
                 const target = select.form.elements.namedItem(field);
                 if (target) { target.value = value || ''; target.dispatchEvent(new Event('input', {bubbles:true})); }
@@ -69,7 +77,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         };
         input.addEventListener('input', () => {
-            if (!multiple) { select.value = ''; select.dispatchEvent(new Event('change', {bubbles:true})); }
+            if (!multiple) { resetIdentity(); input.setCustomValidity(input.value.trim() ? 'Wybierz autora z sugestii albo przejdź do ręcznego wpisania danych.' : ''); select.dispatchEvent(new Event('change', {bubbles:true})); }
             clearTimeout(timer); ++sequence; controller?.abort(); close(); timer = setTimeout(search, 500);
         });
         input.addEventListener('keydown', event => {

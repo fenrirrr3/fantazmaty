@@ -324,6 +324,17 @@ class Vacation(models.Model):
                 "niż data rozpoczęcia."
             )
 
+        if self.person_id and self.start_date and not errors:
+            from datetime import datetime, time
+            from django.db.models import Q
+            start = timezone.make_aware(datetime.combine(self.start_date, time.min))
+            overlapping = Vacation.objects.filter(person_id=self.person_id).exclude(pk=self.pk)
+            overlapping = overlapping.filter(Q(until_revoked=True) | Q(end_date__gt=start))
+            if not self.until_revoked and self.end_date:
+                overlapping = overlapping.filter(start_date__lte=get_local_date(self.end_date))
+            if overlapping.exists():
+                errors["start_date"] = "Ten okres pokrywa się z innym urlopem tej osoby."
+
         if errors:
             raise ValidationError(errors)
 

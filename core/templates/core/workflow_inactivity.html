@@ -18,7 +18,7 @@
             method="get"
             action="{% url 'core:workflow_inactivity' %}"
             class="filters-form"
-            data-remember-filters="workflow-inactivity"
+            data-filters="workflow-inactivity"
         >
             <input
                 type="hidden"
@@ -70,7 +70,6 @@
                 <a
                     href="{% url 'core:workflow_inactivity' %}"
                     class="secondary-button"
-                    data-clear-saved-filters="workflow-inactivity"
                 >
                     Wyczyść filtry
                 </a>
@@ -87,21 +86,21 @@
             aria-label="Tabela przestojów w pracy nad tekstami"
             tabindex="0"
         >
-            <table id="workflow-inactivity-table">
+            <table data-copy-table data-server-paginated="true" id="workflow-inactivity-table">
                 <caption class="visually-hidden">
                     Przestoje w bieżących cyklach, od najdłuższego
                 </caption>
 
                 <thead>
                     <tr>
-                        <th scope="col">Antologia</th>
-                        <th scope="col">Tytuł</th>
+                        <th scope="col" data-sort-key="anthology">Antologia</th>
+                        <th scope="col" data-sort-key="title" class="sticky-title">Tytuł</th>
 
                         {% if can_view_authors %}
-                            <th scope="col">Autorzy</th>
+                            <th scope="col" data-sort-key="authors">Autorzy</th>
                         {% endif %}
 
-                        <th scope="col">Etap</th>
+                        <th scope="col" data-sort-key="status">Etap</th>
                         <th scope="col">Rodzaj przestoju</th>
                         <th scope="col">Od</th>
                         <th scope="col" class="numeric-cell">Liczba dni</th>
@@ -120,7 +119,7 @@
                                 {% endif %}
                             </td>
 
-                            <td data-copy-value="{{ row.text.title }}">
+                            <td data-copy-value="{{ row.text.title }}" class="sticky-title">
                                 <a
                                     href="{% url 'core:assigned_text_detail' row.text.pk %}"
                                     class="text-title-link"
@@ -193,7 +192,6 @@
                                     <a
                                         href="{% url 'core:workflow_inactivity' %}"
                                         class="secondary-button"
-                                        data-clear-saved-filters="workflow-inactivity"
                                     >
                                         Wyczyść filtry
                                     </a>

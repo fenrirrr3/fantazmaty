@@ -10,5 +10,4 @@ def contact_authors(user):
         return Author.objects.all()
     return Author.objects.filter(
         Q(texts__workflow_role_assignments__assigned_to=user)
-        | Q(texts__historical_assignments__person__user=user)
     ).distinct()

@@ -18,8 +18,25 @@ from workflow.models import WorkflowRoleAssignment
 @superuser_required
 def data_integrity(request):
     tab = 'duplicates' if request.GET.get('tab') == 'duplicates' else 'integrity'
-    rows = all_duplicates() if tab == 'duplicates' else integrity_issues()
-    return render(request, 'core/data_integrity.html', {'issues': rows, 'tab': tab})
+    selected = request.GET.get('anthology', '')
+    scanned = False
+    error = ''
+    if tab == 'duplicates':
+        rows = []
+        if request.GET.get('run') == '1':
+            anthology = Anthology.objects.filter(pk=int(selected)).first() if selected.isdecimal() and len(selected) < 19 else None
+            if anthology is None:
+                error = 'Wybierz antologię do sprawdzenia.'
+            else:
+                rows = all_duplicates(anthology.pk)
+                scanned = True
+    else:
+        rows = integrity_issues()
+    return render(request, 'core/data_integrity.html', {
+        'issues': rows, 'tab': tab, 'scanned': scanned, 'scan_error': error,
+        'anthologies': Anthology.objects.order_by('title') if tab == 'duplicates' else [],
+        'selected_anthology': selected,
+    })
 
 @login_required
 @require_GET
@@ -61,9 +78,11 @@ def person_permissions(request, person_id):
     groups = list(user.groups.values_list('name', flat=True)) if user else []
     active = is_team_member(user)
     coordinator = is_coordinator(user)
+    from people.leave_access import is_on_leave
+    on_leave = is_on_leave(user) if user else False
     allowed = []
     for role, group in ROLE_GROUPS.items():
         permitted = active and (bool(user.is_superuser) if role == WorkflowRoleAssignment.Role.STYLING else coordinator or has_role(user, group))
-        allowed.append({'label': dict(WorkflowRoleAssignment.Role.choices).get(role, role), 'allowed': permitted, 'source': 'Superuser' if role == WorkflowRoleAssignment.Role.STYLING else 'Koordynator / Superuser' if coordinator else group})
+        allowed.append({'label': dict(WorkflowRoleAssignment.Role.choices).get(role, role), 'allowed': permitted and not on_leave, 'role_allowed': permitted, 'block': 'Urlop' if permitted and on_leave else '', 'source': 'Superuser' if role == WorkflowRoleAssignment.Role.STYLING else 'Koordynator / Superuser' if coordinator else group})
     available = available_stages_for_user(user=user) if active else []
     return render(request, 'core/person_permissions.html', {'person': person, 'roles': roles, 'groups': groups, 'permissions': allowed, 'available_count': len(available), 'access': active, 'coordinator': coordinator, 'reviewer': is_reviewer(user)})

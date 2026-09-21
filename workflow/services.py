@@ -217,16 +217,18 @@ def current_cycle(text):
 
 
 def current_stage_queryset(text):
-    return WorkflowStage.objects.using(_database(text)).filter(
+    return WorkflowStage.objects.using(_database(text)).current_cycle().filter(
         text_id=text.pk,
         workflow_cycle=current_cycle(text),
+        is_current=True,
     )
 
 
 def current_assignment_queryset(text):
-    return WorkflowRoleAssignment.objects.using(_database(text)).filter(
+    return WorkflowRoleAssignment.objects.using(_database(text)).current_cycle().filter(
         text_id=text.pk,
         workflow_cycle=current_cycle(text),
+        is_current=True,
     )
 
 
@@ -234,7 +236,7 @@ def stage_belongs_to_current_cycle(stage):
     if stage.text_id is None:
         return False
 
-    return stage.workflow_cycle == stage.text.current_workflow_cycle
+    return stage.is_current and stage.is_released and stage.workflow_cycle == stage.text.current_workflow_cycle
 
 
 def ensure_stage_belongs_to_current_cycle(stage):
@@ -307,6 +309,8 @@ def ensure_text_is_not_withdrawn(text):
 
 
 def _ensure_editing_phase(text):
+    if text.repetitions.filter(completed_at__isnull=True, canceled_at__isnull=True).exists():
+        raise ValidationError("W powtórzeniu użyj przycisku Zakończ etap; kolejność wynika z wybranej kolejki.")
     if current_stage_queryset(text).exclude(
         stage_type__in=EDITING_PHASE_TYPES,
     ).exists():
@@ -348,8 +352,7 @@ def get_active_stage(text, stage_type):
 
 def next_iteration(text, stage_type):
     maximum = (
-        current_stage_queryset(text)
-        .filter(stage_type=stage_type)
+        WorkflowStage.objects.filter(text=text, workflow_cycle=current_cycle(text), stage_type=stage_type)
         .aggregate(maximum=Max("iteration"))["maximum"]
         or 0
     )
@@ -365,7 +368,7 @@ def _create_pending_stage(text, stage_type):
 
     stage = (
         current_stage_queryset(text)
-        .filter(stage_type=stage_type, is_completed=False)
+        .filter(stage_type=stage_type, is_completed=False, is_released=True)
         .order_by("-iteration", "-pk")
         .first()
     )
@@ -471,6 +474,8 @@ def finish_stage_record(stage, ended_at):
 
 
 def _assign_role(text, role, user):
+    from people.leave_access import require_available
+    require_available(user)
     if role == Role.STYLING and not user.is_superuser:
         raise PermissionDenied("Stylowanie może przejąć tylko superuser.")
     ensure_distinct_primary_verifier(text, role, user)
@@ -499,64 +504,8 @@ def _assign_role(text, role, user):
     return assignment
 
 
-def restart_snapshot(text):
-    return {'cycle': text.current_workflow_cycle,
-            'assignments': list(current_assignment_queryset(text).order_by('pk').values_list('pk', 'role', 'assigned_to_id')),
-            'stages': [(s.pk, s.stage_type, s.is_completed, str(s.started_at), str(s.ended_at)) for s in current_stage_queryset(text).order_by('pk')]}
 
 
-def restart_needs_editor(stage_type):
-    return stage_type in RESTARTABLE_STAGE_TYPES[2:11]
-
-
-@_locked_text_operation
-def restart_workflow_from_stage(text, stage_type, user, *, retained_ids=(), editor_id=None, expected_snapshot=None):
-    _ensure_actor(user)
-    if not user.is_superuser:
-        raise PermissionDenied("Tylko superuser może rozpocząć nowy przebieg workflow.")
-    if stage_type not in RESTARTABLE_STAGE_TYPES:
-        raise ValidationError("Wybrano nieprawidłowy etap docelowy.")
-    import json
-    if expected_snapshot is not None and json.dumps(restart_snapshot(text)) != json.dumps(expected_snapshot):
-        raise ValidationError("Przebieg lub przydziały zmieniły się od podglądu. Sprawdź restart ponownie.")
-    previous = list(current_assignment_queryset(text).select_related('assigned_to__person_profile'))
-    try:
-        selected = {int(pk) for pk in retained_ids}
-        editor_id = int(editor_id) if editor_id else None
-    except (ValueError, TypeError):
-        raise ValidationError("Nieprawidłowe przypisanie.")
-    if selected - {a.pk for a in previous}:
-        raise ValidationError("Przydziały zmieniły się. Odśwież podgląd.")
-    retained = [a for a in previous if a.pk in selected]
-    if stage_type == StageType.READY_FOR_EDITING and (retained or editor_id):
-        raise ValidationError("Restart od Do redakcji wymaga pustych przydziałów.")
-    for assignment in retained:
-        if not _actor_is_active(assignment.assigned_to):
-            raise ValidationError("Nie można zachować przydziału do nieaktywnej osoby.")
-        if not (is_coordinator(assignment.assigned_to) or belongs_to_group(assignment.assigned_to, ROLE_GROUPS[assignment.role])):
-            raise ValidationError("Nie można zachować przydziału: osoba nie ma już wymaganej roli.")
-    from django.contrib.auth import get_user_model
-    editor = get_user_model().objects.filter(pk=editor_id).first() if editor_id else None
-    if editor_id and (not _actor_is_active(editor) or not (belongs_to_group(editor, 'Redaktor') or is_coordinator(editor))):
-        raise ValidationError("Wybierz aktywnego redaktora lub koordynatora.")
-    if editor:
-        retained = [a for a in retained if a.role != Role.EDITOR]
-    retained_editor = next((a.assigned_to for a in retained if a.role == Role.EDITOR), None)
-    if restart_needs_editor(stage_type) and not (editor or retained_editor):
-        raise ValidationError("Ten etap wymaga redaktora, który będzie kontynuował pracę. Wybierz go w podglądzie.")
-    text.current_workflow_cycle = 1 + max(
-        text.current_workflow_cycle,
-        WorkflowStage.objects.filter(text=text).aggregate(n=Max('workflow_cycle'))['n'] or 0,
-        WorkflowRoleAssignment.objects.filter(text=text).aggregate(n=Max('workflow_cycle'))['n'] or 0,
-    )
-    text.save(update_fields=['current_workflow_cycle'])
-    for previous_assignment in retained:
-        assignment = WorkflowRoleAssignment(text=text, workflow_cycle=current_cycle(text), role=previous_assignment.role,
-            assigned_to=previous_assignment.assigned_to, assigned_at=timezone.now(), notes=previous_assignment.notes)
-        assignment.full_clean(); assignment.save()
-    if editor:
-        _assign_role(text, Role.EDITOR, editor)
-    return _create_pending_stage(text, stage_type)
 
 
 @_locked_text_operation
@@ -624,13 +573,16 @@ def claim_stage(text, stage_type, user, started_at=None):
     )
     stage = (
         current_stage_queryset(text)
-        .filter(stage_type=stage_type, is_completed=False)
+        .filter(stage_type=stage_type, is_completed=False, is_released=True)
         .order_by("-iteration", "-pk")
         .first()
     )
 
     if stage is None:
         raise ValidationError("Ten etap nie jest jeszcze dostępny.")
+    if stage.repetition_id:
+        from workflow.repetitions import claim_repeat
+        return claim_repeat(text, stage, user, transition_date)
     from workflow.availability import claim_reason
     reason = claim_reason(stage,user,list(current_stage_queryset(text)),list(current_assignment_queryset(text)))
     if reason: raise ValidationError(reason)
@@ -661,14 +613,6 @@ def send_to_first_verification(text, user, ended_at=None):
 
     transition_date = _transition_date(ended_at)
 
-    if not current_assignment_queryset(text).filter(
-        role=Role.VERIFIER_1,
-        assigned_to__isnull=False,
-    ).exists():
-        raise ValidationError(
-            "Najpierw pierwszy weryfikator musi przypisać się do tekstu."
-        )
-
     verification_stage = current_stage_queryset(text).filter(
         stage_type=StageType.FIRST_VERIFICATION,
         is_completed=False,
@@ -691,6 +635,8 @@ def send_to_first_verification(text, user, ended_at=None):
 
 @_locked_text_operation
 def start_first_verification(text, user, started_at=None):
+    from people.leave_access import require_available
+    require_available(user)
     _ensure_actor(user)
     ensure_text_is_not_withdrawn(text)
     _ensure_editing_phase(text)
@@ -707,6 +653,8 @@ def start_first_verification(text, user, started_at=None):
         raise ValidationError(
             "Do pierwszej weryfikacji nie przypisano osoby."
         )
+
+    require_available(assignment.assigned_to)
 
     if assignment.assigned_to_id != user.pk and not is_coordinator(user):
         raise PermissionDenied(
@@ -739,7 +687,12 @@ def start_first_verification(text, user, started_at=None):
 
 @_locked_text_operation
 def resume_editing(text, user, started_at=None):
+    from people.leave_access import require_available
+    require_available(user)
     ensure_editor_access(text, user)
+    assigned_editor = current_assignment_queryset(text).filter(role=Role.EDITOR, assigned_to__isnull=False).first()
+    if assigned_editor:
+        require_available(assigned_editor.assigned_to)
     ensure_text_is_not_withdrawn(text)
     _ensure_editing_phase(text)
 
@@ -778,8 +731,7 @@ def resume_editing(text, user, started_at=None):
 
 
 def editing_checkpoint_passed(text, checkpoint):
-    from workflow.state import checkpoint_before_restart
-    return completed_stage_exists(text, checkpoint) or checkpoint_before_restart(current_cycle(text), list(current_stage_queryset(text)), checkpoint)
+    return completed_stage_exists(text, checkpoint)
 
 
 @_locked_text_operation
@@ -885,7 +837,7 @@ def user_can_complete_stage(stage, user):
     if role is None:
         return False
 
-    if stage.stage_type in (StageType.EDITING, StageType.AUTHOR_EDITING):
+    if stage.stage_type in (StageType.EDITING, StageType.AUTHOR_EDITING) and not stage.repetition_id:
         return False
 
     # Kontrola redaktora wymaga wykonania przez przypisanego redaktora.
@@ -910,6 +862,9 @@ def user_can_complete_stage(stage, user):
 @_locked_stage_operation
 def complete_stage(stage, user, ended_at):
     _ensure_actor(user)
+    if stage.repetition_id:
+        from workflow.repetitions import complete_repeat
+        return complete_repeat(stage, user, ended_at)
     ensure_text_is_not_withdrawn(stage.text)
 
     if stage.stage_type == StageType.EDITING:
@@ -942,7 +897,7 @@ def complete_stage(stage, user, ended_at):
     _finish_stage_record(stage, ended_at)
     next_stage = _create_pending_stage(stage.text, next_stage_type)
 
-    if next_stage_type in (StageType.EDITOR_CONTROL, StageType.READY):
+    if next_stage_type == StageType.READY:
         _start_stage(next_stage, ended_at)
 
     return stage

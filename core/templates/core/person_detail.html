@@ -113,7 +113,7 @@
     <section aria-labelledby="person-summary-heading">
         <h2 id="person-summary-heading">Praca nad tekstami</h2>
         <p class="muted-text">
-            Podsumowanie przydziałów w bieżących cyklach tekstów.
+            Liczba tekstów według tych samych zasad co w „Moje teksty”. Redakcja pozostaje oczekująca do zakończenia kontroli redaktorskiej.
         </p>
 
         <div class="profile-summary-grid">
@@ -122,11 +122,11 @@
                 <strong>{{ person_summary.active|default:0 }}</strong>
             </div>
             <div class="summary-tile">
-                <span>Zarezerwowane</span>
+                <span>Oczekujące / zarezerwowane</span>
                 <strong>{{ person_summary.reserved|default:0 }}</strong>
             </div>
             <div class="summary-tile">
-                <span>Zakończone</span>
+                <span>Moja praca zakończona</span>
                 <strong>{{ person_summary.completed|default:0 }}</strong>
             </div>
         </div>
@@ -151,7 +151,7 @@
             aria-label="Przydziały członka zespołu"
             tabindex="0"
         >
-            <table id="person-assignments-table">
+            <table data-copy-table id="person-assignments-table">
                 <caption class="visually-hidden">
                     Przydziały: {{ person.first_name }} {{ person.last_name }}
                 </caption>
@@ -159,16 +159,16 @@
                 <thead>
                     <tr>
                         <th scope="col">Przypisano</th>
-                        <th scope="col">Antologia</th>
-                        <th scope="col">Tytuł</th>
+                        <th scope="col" data-sort-key="anthology">Antologia</th>
+                        <th scope="col" data-sort-key="title" class="sticky-title">Tytuł</th>
                         {% if can_view_authors %}
-                            <th scope="col">Autorzy</th>
+                            <th scope="col" data-sort-key="authors">Autorzy</th>
                         {% endif %}
-                        <th scope="col">Rola</th>
-                        <th scope="col">Etap</th>
+                        <th scope="col" data-sort-key="role">Rola</th>
+                        <th scope="col" data-sort-key="status">Etap</th>
                         <th scope="col">Stan</th>
-                        <th scope="col">Rozpoczęcie</th>
-                        <th scope="col">Zakończenie</th>
+                        <th scope="col" data-sort-key="started_at">Rozpoczęcie</th>
+                        <th scope="col" data-sort-key="ended_at">Zakończenie</th>
                         <th scope="col" data-copy="false">Szczegóły</th>
                     </tr>
                 </thead>
@@ -188,7 +188,7 @@
                                 {% endif %}
                             </td>
 
-                            <td data-double-copy data-copy-value="{{ assignment.text.title }}">
+                            <td data-double-copy data-copy-value="{{ assignment.text.title }}" class="sticky-title">
                                 <a
                                     href="{% url 'core:assigned_text_detail' assignment.text.pk %}"
                                     class="text-title-link"
@@ -229,9 +229,7 @@
                             </td>
 
                             <td>
-                                {% if assignment.is_historical %}
-                                    <span class="role-badge">Historyczne{% if assignment.has_completed_work %} · wykonane{% endif %}</span>
-                                {% elif assignment.is_withdrawn %}
+                                {% if assignment.is_withdrawn %}
                                     <span class="stage-status withdrawn">Tekst wycofany</span>
                                 {% elif assignment.is_ready %}
                                     <span class="stage-status completed">Tekst gotowy</span>
@@ -249,11 +247,11 @@
                             </td>
 
                             <td class="date-cell">
-                                {{ assignment.latest_stage.started_at|date:"d.m.Y"|default:"–" }}
+                                {% if assignment.latest_stage.imported_completed and not assignment.latest_stage.started_at %}Brak danych{% else %}{{ assignment.latest_stage.started_at|date:"d.m.Y"|default:"–" }}{% endif %}
                             </td>
 
                             <td class="date-cell">
-                                {{ assignment.latest_stage.ended_at|date:"d.m.Y"|default:"–" }}
+                                {% if assignment.latest_stage.imported_completed and not assignment.latest_stage.ended_at %}Brak danych{% else %}{{ assignment.latest_stage.ended_at|date:"d.m.Y"|default:"–" }}{% endif %}
                             </td>
 
                             <td data-copy="false">
@@ -291,7 +289,7 @@
 {% include "core/includes/table_toolbar.html" %}
 {% if archived_reviews %}
 <section class="details-card"><h2>Archiwalne recenzje</h2>
-<div class="table-container"><table><thead><tr><th>Tytuł</th><th>Antologia</th><th>Opinia</th><th>Data opinii</th></tr></thead><tbody>
-{% for assignment in archived_reviews %}<tr><td data-double-copy><strong>{% if user.is_superuser %}<a href="{% url 'core:assigned_review_detail' assignment.review_id %}">{{ assignment.review.title }}</a>{% else %}{{ assignment.review.title }}{% endif %}</strong></td><td>{{ assignment.review.anthology.title }}</td><td><span class="reviewer-bubble reviewer-opinion-{{ assignment.opinion }}">{{ assignment.get_opinion_display }}</span></td><td>{{ assignment.opinion_changed_at|date:"d.m.Y"|default:"—" }}</td></tr>{% endfor %}
+<div class="table-container"><table data-copy-table><thead><tr><th data-sort-key="title" class="sticky-title">Tytuł</th><th data-sort-key="anthology">Antologia</th><th data-sort-key="opinion">Opinia</th><th>Data opinii</th></tr></thead><tbody>
+{% for assignment in archived_reviews %}<tr><td data-double-copy class="sticky-title"><strong>{% if user.is_superuser %}<a href="{% url 'core:assigned_review_detail' assignment.review_id %}">{{ assignment.review.title }}</a>{% else %}{{ assignment.review.title }}{% endif %}</strong></td><td>{{ assignment.review.anthology.title }}</td><td><span class="reviewer-bubble reviewer-opinion-{{ assignment.opinion }}">{{ assignment.get_opinion_display }}</span></td><td>{{ assignment.opinion_changed_at|date:"d.m.Y"|default:"—" }}</td></tr>{% endfor %}
 </tbody></table></div></section>{% endif %}
 {% endblock %}

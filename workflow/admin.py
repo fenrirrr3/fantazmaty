@@ -92,164 +92,6 @@ class WorkflowRoleAssignmentAdminForm(
         fields = "__all__"
 
 
-def set_selected_cycles_as_current(
-    model_admin,
-    request,
-    queryset,
-):
-    if not request.user.is_superuser:
-        model_admin.message_user(
-            request,
-            "Tylko superuser może zmieniać bieżący przebieg tekstu.",
-            level=messages.ERROR,
-        )
-        return
-
-    selected_cycles = {}
-
-    for record in queryset.select_related("text"):
-        text_id = record.text_id
-        workflow_cycle = record.workflow_cycle
-
-        previous_cycle = selected_cycles.get(text_id)
-
-        if (
-            previous_cycle is not None
-            and previous_cycle != workflow_cycle
-        ):
-            model_admin.message_user(
-                request,
-                (
-                    f'Dla tekstu „{record.text.title}” zaznaczono '
-                    "rekordy należące do różnych przebiegów. "
-                    "Wybierz tylko jeden przebieg tego tekstu."
-                ),
-                level=messages.ERROR,
-            )
-            return
-
-        selected_cycles[text_id] = workflow_cycle
-
-    if not selected_cycles:
-        model_admin.message_user(
-            request,
-            "Nie zaznaczono żadnego rekordu.",
-            level=messages.WARNING,
-        )
-        return
-
-    changed_texts = 0
-
-    with transaction.atomic():
-        texts = {
-            text.pk: text
-            for text in (
-                Text.objects
-                .select_for_update()
-                .filter(pk__in=selected_cycles)
-            )
-        }
-
-        for text_id, workflow_cycle in selected_cycles.items():
-            text = texts.get(text_id)
-
-            if text is None:
-                continue
-
-            if text.current_workflow_cycle == workflow_cycle:
-                continue
-
-            text.current_workflow_cycle = workflow_cycle
-            text.save(
-                update_fields=["current_workflow_cycle"]
-            )
-
-            changed_texts += 1
-
-    if changed_texts:
-        model_admin.message_user(
-            request,
-            (
-                "Zmieniono bieżący przebieg dla "
-                f"{changed_texts} tekstów."
-            ),
-            level=messages.SUCCESS,
-        )
-    else:
-        model_admin.message_user(
-            request,
-            "Wybrane przebiegi były już ustawione jako bieżące.",
-            level=messages.INFO,
-        )
-
-def get_user_vacation_information(user):
-    if user is None:
-        return None
-
-    person = getattr(user, "person_profile", None)
-
-    if person is None:
-        return None
-
-    today = timezone.localdate()
-    now = timezone.now()
-
-    vacation = (
-        person.vacations
-        .filter(
-            Q(until_revoked=True)
-            | Q(end_date__gte=now)
-        )
-        .order_by(
-            "start_date",
-            "pk",
-        )
-        .first()
-    )
-
-    if vacation is None:
-        return None
-
-    if vacation.is_active:
-        if vacation.until_revoked:
-            description = (
-                f"Obecnie na urlopie od "
-                f"{vacation.start_date:%d.%m.%Y}, "
-                "do odwołania"
-            )
-        else:
-            description = (
-                f"Obecnie na urlopie do "
-                f"{timezone.localtime(vacation.end_date):%d.%m.%Y, %H:%M}"
-            )
-
-        return {
-            "vacation": vacation,
-            "description": description,
-            "is_active": True,
-        }
-
-    if vacation.is_upcoming:
-        if vacation.until_revoked:
-            description = (
-                f"Zaplanowany urlop od "
-                f"{vacation.start_date:%d.%m.%Y}, "
-                "do odwołania"
-            )
-        else:
-            description = (
-                f"Zaplanowany urlop od "
-                f"{vacation.start_date:%d.%m.%Y} do "
-                f"{timezone.localtime(vacation.end_date):%d.%m.%Y, %H:%M}"
-            )
-
-        return {
-            "vacation": vacation,
-            "description": description,
-            "is_active": False,
-        }
-
-    return None
 
 @admin.register(WorkflowStage)
 class WorkflowStageAdmin(admin.ModelAdmin):
@@ -270,6 +112,7 @@ class WorkflowStageAdmin(admin.ModelAdmin):
         "stage_type",
         "workflow_cycle",
         "is_current_cycle",
+        "execution_number",
         "iteration",
         "started_at",
         "ended_at",
@@ -305,6 +148,7 @@ class WorkflowStageAdmin(admin.ModelAdmin):
                     "text",
                     "workflow_cycle",
                     "stage_type",
+                    "execution_number", "repetition", "is_released", "assignment",
                     "iteration",
                 ),
             },
@@ -315,7 +159,7 @@ class WorkflowStageAdmin(admin.ModelAdmin):
                 "fields": (
                     "started_at",
                     "ended_at",
-                    "is_completed",
+                    "is_completed", "imported_completed",
                 ),
             },
         ),
@@ -367,19 +211,10 @@ class WorkflowStageAdmin(admin.ModelAdmin):
     @admin.display(boolean=True, description="Bieżący przebieg")
     def is_current_cycle(self, obj):
         return (
-            obj.workflow_cycle
+            obj.is_current and obj.workflow_cycle
             == obj.text.current_workflow_cycle
         )
 
-    @admin.action(
-        description="Ustaw wybrany przebieg jako bieżący"
-    )
-    def set_cycle_as_current(self, request, queryset):
-        set_selected_cycles_as_current(
-            self,
-            request,
-            queryset,
-        )
 
 
 @admin.register(WorkflowRoleAssignment)
@@ -477,16 +312,27 @@ class WorkflowRoleAssignmentAdmin(admin.ModelAdmin):
     )
     def is_current_cycle(self, obj):
         return (
-            obj.workflow_cycle
+            obj.is_current and obj.workflow_cycle
             == obj.text.current_workflow_cycle
         )
 
-    @admin.action(
-        description="Ustaw wybrany przebieg jako bieżący"
-    )
-    def set_cycle_as_current(self, request, queryset):
-        set_selected_cycles_as_current(
-            self,
-            request,
-            queryset,
-        )
+
+
+from workflow.models import WorkflowRepetition
+
+@admin.register(WorkflowRepetition)
+class WorkflowRepetitionAdmin(admin.ModelAdmin):
+    list_display = ('text', 'created_at', 'created_by', 'completed_at')
+    list_select_related = ('text', 'created_by')
+    readonly_fields = tuple(f.name for f in WorkflowRepetition._meta.fields)
+    def has_add_permission(self, request): return False
+    def has_delete_permission(self, request, obj=None): return False
+
+
+from workflow.models import WorkflowHandoff
+@admin.register(WorkflowHandoff)
+class WorkflowHandoffAdmin(admin.ModelAdmin):
+    list_display = ('text','stage','actor','created_at')
+    readonly_fields = tuple(f.name for f in WorkflowHandoff._meta.fields)
+    def has_add_permission(self, request): return False
+    def has_delete_permission(self, request, obj=None): return False

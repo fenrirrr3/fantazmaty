@@ -2,4 +2,13 @@
 {% block title %}Spójność danych | Fantazmaty CMS{% endblock %}
 {% block content %}<header class="page-header"><h1>Spójność danych</h1><p>Lista do sprawdzenia. System nie poprawia ani nie łączy rekordów.</p></header>
 <nav class="my-texts-filters"><a class="secondary-button" href="?tab=integrity">Powiązania i etapy</a> <a class="secondary-button" href="?tab=duplicates">Możliwe duplikaty tekstów</a></nav>
-<section class="card"><h2>Znalezione pozycje: {{ issues|length }}</h2>{% include "core/includes/issue_list.html" %}</section>{% endblock %}
+{% if tab == 'duplicates' %}
+<section class="card"><form method="get" class="filters-form">
+<input type="hidden" name="tab" value="duplicates"><input type="hidden" name="run" value="1">
+<label for="duplicate-anthology">Antologia</label><select id="duplicate-anthology" name="anthology" required>
+<option value="">Wybierz antologię</option>{% for anthology in anthologies %}<option value="{{ anthology.pk }}"{% if anthology.pk|stringformat:'s' == selected_anthology %} selected{% endif %}>{{ anthology.title }}</option>{% endfor %}
+</select><button type="submit" class="primary-button">Sprawdź duplikaty</button>
+</form>{% if scan_error %}<p role="alert">{{ scan_error }}</p>{% endif %}
+{% if not scanned %}<p>Wybierz antologię i uruchom sprawdzanie. Samo otwarcie strony nie przeszukuje tekstów.</p>{% endif %}</section>
+{% endif %}
+{% if tab != 'duplicates' or scanned %}<section class="card"><h2>Znalezione pozycje: {{ issues|length }}</h2>{% include "core/includes/issue_list.html" %}</section>{% endif %}{% endblock %}

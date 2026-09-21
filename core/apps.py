@@ -14,3 +14,5 @@ class CoreConfig(AppConfig):
         from core import runtime_checks  # noqa: F401
         from core.workflow_events import install
         install()
+        from core.edit_versions import install as install_edit_versions
+        install_edit_versions()

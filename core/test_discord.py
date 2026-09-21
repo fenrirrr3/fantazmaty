@@ -6,7 +6,6 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings, Client
 from django.urls import reverse
 from core.discord_webhook import channels, send_message, ConfigurationError, DeliveryError
-from core.models import DiscordDispatch
 
 URL='https://discord.com/api/webhooks/12345/test-secret'
 

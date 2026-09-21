@@ -147,6 +147,8 @@ def _normalise_review_ids(review_ids):
 @transaction.atomic
 def assign_reviewer(*, user, review_id):
     require_team_member(user)
+    from people.leave_access import require_available
+    require_available(user)
 
     if not can_self_assign_reviews(user):
         raise PermissionDenied(
@@ -322,6 +324,8 @@ def _validate_status_change(*, user, review, assignments, new_status):
 
 
 def _apply_status_change(review, new_status, *, today):
+    if new_status in (Review.Status.ACCEPTED, Review.Status.REJECTED) and not review.old_reviews:
+        review.assignments.filter(opinion__in=("", Reviewers.Opinion.READING)).delete()
     if review.status == new_status:
         return review
 

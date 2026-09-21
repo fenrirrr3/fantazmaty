@@ -11,23 +11,11 @@ class WorkflowStageQuerySet(models.QuerySet):
     def current_cycle(self):
         return self.filter(
             workflow_cycle=models.F("text__current_workflow_cycle"),
+            is_current=True,
         )
 
-    def pending(self):
-        return self.filter(
-            is_completed=False,
-            started_at__isnull=True,
-        )
 
-    def active(self):
-        return self.filter(
-            is_completed=False,
-            started_at__isnull=False,
-            ended_at__isnull=True,
-        )
 
-    def completed(self):
-        return self.filter(is_completed=True)
 
 
 class WorkflowStage(models.Model):
@@ -66,6 +54,13 @@ class WorkflowStage(models.Model):
         validators=[MinValueValidator(1)],
     )
 
+    execution_number = models.PositiveIntegerField("wykonanie etapu", default=1, editable=False)
+    is_current = models.BooleanField("aktualne wykonanie", default=True, editable=False)
+    is_released = models.BooleanField("dostępny w kolejce", default=True, editable=False)
+    repetition = models.ForeignKey("WorkflowRepetition", null=True, blank=True, on_delete=models.RESTRICT, related_name="stages", editable=False)
+    queue_position = models.PositiveIntegerField(default=0, editable=False)
+    assignment = models.ForeignKey("WorkflowRoleAssignment", null=True, blank=True, on_delete=models.RESTRICT, related_name="stages", editable=False)
+
     stage_type = models.CharField(
         "etap",
         max_length=30,
@@ -93,6 +88,11 @@ class WorkflowStage(models.Model):
     is_completed = models.BooleanField(
         "zakończone i gotowe do kolejnego etapu",
         default=False,
+    )
+
+    imported_completed = models.BooleanField(
+        "zakończony etap z importu", default=False, editable=False,
+        help_text="Wyłącznie import: zakończona praca może nie mieć znanych dat.",
     )
 
     # Domyślny manager zachowuje historię wszystkich przebiegów.
@@ -142,8 +142,8 @@ class WorkflowStage(models.Model):
                 condition=(
                     models.Q(ended_at__isnull=True)
                     | (
-                        models.Q(started_at__isnull=False)
-                        & models.Q(ended_at__gte=models.F("started_at"))
+                        (models.Q(started_at__isnull=False) & models.Q(ended_at__gte=models.F("started_at")))
+                        | models.Q(imported_completed=True, started_at__isnull=True)
                     )
                 ),
                 name="wf_stage_dates_valid",
@@ -151,12 +151,17 @@ class WorkflowStage(models.Model):
             models.CheckConstraint(
                 condition=(
                     models.Q(is_completed=False)
+                    | models.Q(imported_completed=True)
                     | (
                         models.Q(started_at__isnull=False)
                         & models.Q(ended_at__isnull=False)
                     )
                 ),
                 name="wf_completed_has_dates",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(imported_completed=False) | models.Q(is_completed=True),
+                name="wf_import_is_completed",
             ),
         ]
 
@@ -167,16 +172,39 @@ class WorkflowStage(models.Model):
             f"podejście {self.iteration}"
         )
 
+    def _validate_import_origin(self):
+        from workflow.import_context import importing_completed
+        if importing_completed.get():
+            return
+        previous = type(self).objects.filter(pk=self.pk).values_list("imported_completed", flat=True).first() if self.pk and not self._state.adding else False
+        if self.imported_completed != bool(previous):
+            raise ValidationError("Wyjątek dla dat może nadać wyłącznie importer zakończonych etapów.")
+
+    def save(self, *args, **kwargs):
+        self._validate_import_origin()
+        if not self.assignment_id and self.text_id:
+            from workflow.services import STAGE_ROLES
+            role = STAGE_ROLES.get(self.stage_type)
+            if role:
+                self.assignment = WorkflowRoleAssignment.objects.filter(text_id=self.text_id, workflow_cycle=self.workflow_cycle, role=role, is_current=True).first()
+                if self.assignment_id and kwargs.get("update_fields") is not None:
+                    kwargs["update_fields"] = set(kwargs["update_fields"]) | {"assignment"}
+        return super().save(*args, **kwargs)
+
     def clean(self):
         super().clean()
 
+        self._validate_import_origin()
         errors = {}
+        if self.imported_completed and not self.is_completed:
+            errors["is_completed"] = "Zaimportowany etap musi pozostać zakończony."
 
+        if self.is_completed and self.started_at and self.started_at > timezone.localdate():
+            errors["started_at"] = "Zakończona praca nie może mieć przyszłej daty rozpoczęcia."
         if self.ended_at:
-            from django.utils import timezone
             if self.ended_at > timezone.localdate():
                 errors['ended_at'] = "Nie można zakończyć pracy z przyszłą datą."
-        if self.ended_at and not self.started_at:
+        if self.ended_at and not self.started_at and not self.imported_completed:
             errors["started_at"] = (
                 "Etap z datą zakończenia musi mieć datę rozpoczęcia."
             )
@@ -193,17 +221,17 @@ class WorkflowStage(models.Model):
 
         if self.ended_at and not self.is_completed:
             errors["is_completed"] = "Etap z datą zakończenia musi być oznaczony jako zakończony."
-        if self.text_id and not self.is_completed and self.ended_at is None:
-            duplicate = type(self).objects.filter(text_id=self.text_id, workflow_cycle=self.workflow_cycle, stage_type=self.stage_type, is_completed=False, ended_at__isnull=True).exclude(pk=self.pk).exists()
+        if self.text_id and self.is_current and self.is_released and not self.is_completed and self.ended_at is None:
+            duplicate = type(self).objects.filter(text_id=self.text_id, workflow_cycle=self.workflow_cycle, stage_type=self.stage_type, is_current=True, is_released=True, is_completed=False, ended_at__isnull=True).exclude(pk=self.pk).exists()
             if duplicate:
                 errors['stage_type'] = "W tym przebiegu istnieje już otwarty etap tego rodzaju."
 
-        if self.is_completed and not self.started_at:
+        if self.is_completed and not self.started_at and not self.imported_completed:
             errors["started_at"] = (
                 "Zakończony etap musi mieć datę rozpoczęcia."
             )
 
-        if self.is_completed and not self.ended_at:
+        if self.is_completed and not self.ended_at and not self.imported_completed:
             errors["ended_at"] = (
                 "Zakończony etap musi mieć datę zakończenia."
             )
@@ -216,6 +244,7 @@ class WorkflowRoleAssignmentQuerySet(models.QuerySet):
     def current_cycle(self):
         return self.filter(
             workflow_cycle=models.F("text__current_workflow_cycle"),
+            is_current=True,
         )
 
     def assigned(self):
@@ -255,6 +284,10 @@ class WorkflowRoleAssignment(models.Model):
         editable=False,
         validators=[MinValueValidator(1)],
     )
+
+    execution_number = models.PositiveIntegerField("wykonanie przydziału", default=1, editable=False)
+    is_current = models.BooleanField("aktualne przypisanie", default=True, editable=False)
+    repetition = models.ForeignKey("WorkflowRepetition", null=True, blank=True, on_delete=models.RESTRICT, related_name="assignments", editable=False)
 
     role = models.CharField(
         "rola",
@@ -302,8 +335,14 @@ class WorkflowRoleAssignment(models.Model):
                     "text",
                     "workflow_cycle",
                     "role",
+                    "execution_number",
                 ),
-                name="uniq_text_cycle_role",
+                name="uniq_text_role_execution",
+            ),
+            models.UniqueConstraint(
+                models.F("text"), models.F("workflow_cycle"), models.F("role"),
+                models.Case(models.When(is_current=True, then=models.Value(1)), default=models.Value(None), output_field=models.IntegerField()),
+                name="uniq_current_role_execution",
             ),
             # MySQL nie obsługuje indeksów UNIQUE z warunkiem WHERE.
             # NULL wyłącza inne role z ograniczenia; obie weryfikacje mają 1.
@@ -314,7 +353,7 @@ class WorkflowRoleAssignment(models.Model):
                 models.F("assigned_to"),
                 models.Case(
                     models.When(
-                        role__in=("verifier_1", "verifier_2"),
+                        is_current=True, role__in=("verifier_1", "verifier_2"),
                         then=models.Value(1),
                     ),
                     default=models.Value(None),
@@ -357,6 +396,7 @@ class WorkflowRoleAssignment(models.Model):
             not self.text_id
             or not self.assigned_to_id
             or not self.workflow_cycle
+            or not self.is_current
             or self.role not in protected_verifier_roles
         ):
             return
@@ -373,6 +413,7 @@ class WorkflowRoleAssignment(models.Model):
                 workflow_cycle=self.workflow_cycle,
                 assigned_to_id=self.assigned_to_id,
                 role__in=protected_verifier_roles,
+                is_current=True,
             )
             .exclude(pk=self.pk)
         )
@@ -456,3 +497,41 @@ class WorkflowRoleAssignment(models.Model):
             using=using,
             update_fields=update_fields,
         )
+        if self.is_current:
+            from workflow.services import STAGE_ROLES
+            kinds = [kind for kind, role in STAGE_ROLES.items() if role == self.role]
+            WorkflowStage.objects.using(using).filter(text_id=self.text_id, workflow_cycle=self.workflow_cycle, is_current=True, is_completed=False, assignment__isnull=True, stage_type__in=kinds).update(assignment_id=self.pk)
+
+class WorkflowRepetition(models.Model):
+    text = models.ForeignKey(Text, on_delete=models.CASCADE, related_name="repetitions")
+    selected_stages = models.JSONField(default=list)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    canceled_at = models.DateTimeField(null=True, blank=True)
+    canceled_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="canceled_workflow_repetitions")
+    cancellation_reason = models.CharField(max_length=255, blank=True)
+    previous_stage_ids = models.JSONField(default=list, editable=False)
+    previous_assignment_ids = models.JSONField(default=list, editable=False)
+
+    class Meta:
+        verbose_name = "powtórzenie etapów"
+        verbose_name_plural = "powtórzenia etapów"
+
+    def __str__(self):
+        return f"{self.text} — powtórzenie #{self.pk}"
+
+
+class WorkflowHandoff(models.Model):
+    text = models.ForeignKey(Text, on_delete=models.CASCADE, related_name="workflow_handoffs")
+    stage = models.ForeignKey(WorkflowStage, on_delete=models.PROTECT, related_name="handoffs")
+    previous_assignment = models.ForeignKey(WorkflowRoleAssignment, on_delete=models.PROTECT, related_name="handoffs_from")
+    new_assignment = models.ForeignKey(WorkflowRoleAssignment, on_delete=models.PROTECT, related_name="handoffs_to")
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+    original_started_at = models.DateField(null=True, blank=True)
+    reason = models.TextField()
+
+    class Meta:
+        verbose_name = "przekazanie pracy"
+        verbose_name_plural = "przekazania pracy"

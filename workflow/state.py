@@ -16,7 +16,7 @@ def state_key(stage):
     return category, -ORDER.get(kind, -1), -stage.iteration, -stage.pk
 
 def current_stage(stages):
-    opened = [s for s in stages if not s.is_completed and s.ended_at is None]
+    opened = [s for s in stages if s.is_current and s.is_released and not s.is_completed and s.ended_at is None]
     return min(opened, key=state_key) if opened else None
 
 def state_annotations():
@@ -31,9 +31,12 @@ def state_annotations():
     }
 
 
-def checkpoint_before_restart(cycle, stages, checkpoint):
-    """A deliberately selected restart skips earlier prerequisites, not recorded work."""
-    if cycle <= 1 or not stages:
-        return False
-    entry = min(stages, key=lambda stage: stage.pk)
-    return ORDER.get(entry.stage_type, -1) > ORDER.get(checkpoint, -1)
+
+
+def stage_is_open(stage):
+    return not stage.is_completed and stage.ended_at is None
+
+
+def stage_is_active(stage, today):
+    return (stage.is_current and stage.is_released and stage_is_open(stage)
+            and stage.started_at is not None and stage.started_at <= today)

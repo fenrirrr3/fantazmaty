@@ -15,7 +15,7 @@
             method="get"
             action="{% url 'core:author_list' %}"
             class="filters-form"
-            data-remember-filters="author-list"
+            data-filters="author-list"
         >
             <input
                 type="hidden"
@@ -89,7 +89,6 @@
                 <a
                     href="{% url 'core:author_list' %}"
                     class="secondary-button"
-                    data-clear-saved-filters="author-list"
                 >
                     Wyczyść filtry
                 </a>
@@ -106,19 +105,19 @@
             aria-label="Tabela autorów"
             tabindex="0"
         >
-            <table id="authors-table">
+            <table data-copy-table data-server-paginated="true" id="authors-table">
                 <caption class="visually-hidden">
                     Autorzy spełniający wybrane filtry
                 </caption>
 
                 <thead>
                     <tr>
-                        <th scope="col">Imię i nazwisko</th>
-                        <th scope="col">Pseudonim</th>
+                        <th scope="col" data-sort-key="person">Imię i nazwisko</th>
+                        <th scope="col" data-sort-key="pseudonym">Pseudonim</th>
                         <th scope="col">Antologie</th>
-                        <th scope="col">Adres e-mail</th>
-                        <th scope="col">Umowa</th>
-                        <th scope="col">Kontakt</th>
+                        <th scope="col" data-sort-key="email">Adres e-mail</th>
+                        <th scope="col" data-sort-key="has_contract">Umowa</th>
+                        <th scope="col" data-sort-key="can_contact">Kontakt</th>
                         <th scope="col" data-copy="false">Szczegóły</th>
                     </tr>
                 </thead>
@@ -212,7 +211,6 @@
                                     <a
                                         href="{% url 'core:author_list' %}"
                                         class="secondary-button"
-                                        data-clear-saved-filters="author-list"
                                     >
                                         Wyczyść filtry
                                     </a>

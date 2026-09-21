@@ -1,11 +1,6 @@
 """Lock the edited aggregate and compare the version displayed in its HTML form."""
 from contextlib import nullcontext
-import hashlib
-import json
-import re
-from html import escape
 from django.core import signing
-from django.core.serializers.json import DjangoJSONEncoder
 from django.db import transaction
 from django.shortcuts import render
 from django.urls import resolve, Resolver404
@@ -37,18 +32,9 @@ def aggregate(match):
 
 
 def fingerprint(obj):
-    from texts.models import TextNote, ReviewAssignment
-    from workflow.models import WorkflowStage, WorkflowRoleAssignment
-    data = [obj.__class__.objects.filter(pk=obj.pk).values().first()]
-    if obj._meta.label_lower == "texts.text":
-        for model in (TextNote, WorkflowStage, WorkflowRoleAssignment):
-            data.append(list(model.objects.filter(text_id=obj.pk).order_by("pk").values()))
-    # Include every direct many-to-many relation (authors, coauthors, roles, groups).
-    for field in obj._meta.many_to_many:
-        data.append([field.name, list(getattr(obj, field.name).order_by('pk').values_list('pk', flat=True))])
-    if obj._meta.label_lower == "texts.review":
-        data.append(list(ReviewAssignment.objects.filter(review_id=obj.pk).order_by("pk").values()))
-    return hashlib.sha256(json.dumps(data, sort_keys=True, cls=DjangoJSONEncoder).encode()).hexdigest()
+    # Kept as a small public helper for existing integrations/tests.
+    from core.edit_versions import version_of
+    return version_of(obj)
 
 
 class EditingMiddleware:
@@ -90,7 +76,7 @@ class EditingMiddleware:
             probe = model.objects.filter(pk=pk).first()
             name = match.url_name
             if probe and name in ('add_text_note', 'update_text_content_warnings'):
-                allowed = is_coordinator(request.user) or probe.workflow_role_assignments.filter(workflow_cycle=probe.current_workflow_cycle, assigned_to=request.user).exists()
+                allowed = is_coordinator(request.user) or probe.workflow_role_assignments.filter(workflow_cycle=probe.current_workflow_cycle, is_current=True, assigned_to=request.user).exists()
                 if not allowed:
                     return HttpResponseForbidden('Brak dostępu do zmiany tego tekstu.')
             if probe and name in ('edit_text_note', 'delete_text_note'):
@@ -139,13 +125,14 @@ class EditingMiddleware:
                     if name in ('update_text_file', 'update_text_content_warnings', 'update_coordinator_note'):
                         allowed = is_coordinator(request.user)
                         if name != 'update_coordinator_note':
-                            allowed = allowed or obj.workflow_role_assignments.filter(workflow_cycle=obj.current_workflow_cycle, assigned_to=request.user).exists()
+                            allowed = allowed or obj.workflow_role_assignments.filter(workflow_cycle=obj.current_workflow_cycle, is_current=True, assigned_to=request.user).exists()
                         if not allowed:
                             return self.get_response(request)
             current = fingerprint(obj) if obj else None
             key = f"{model._meta.label_lower}:{pk}" if obj else ""
             token = request.POST.get("_edit_version") if request.method == "POST" else None
             required = match.namespace == 'admin' or match.url_name in {
+                'cancel_workflow_repetition', 'handoff_workflow_stage',
                 'set_text_authors', 'update_coordinator_note', 'update_text_content_warnings',
                 'edit_text_note', 'delete_text_note', 'update_text_file',
                 'update_review_content_warnings', 'update_author_notification', 'update_review_status',
@@ -157,14 +144,11 @@ class EditingMiddleware:
                 except signing.BadSignature:
                     expected = None
                 if expected != [request.user.pk, key, current]:
-                    return render(request, "core/edit_conflict.html", status=409)
-            response = self.get_response(request)
-            if obj and response.status_code in (200, 400) and "text/html" in response.get("Content-Type", "") and not response.streaming:
-                version = signing.dumps([request.user.pk, key, current], salt="cms-edit-version")
-                hidden = f'<input type="hidden" name="_edit_version" value="{escape(version, quote=True)}">'
-                content = response.content.decode(response.charset)
-                content = re.sub(r'(<form\b[^>]*method=["\']post["\'][^>]*>)', lambda m:m[0]+hidden, content, flags=re.I)
-                response.content = content.encode(response.charset)
-                if response.has_header("Content-Length"):
-                    response["Content-Length"] = len(response.content)
-            return response
+                    return render(request, "core/edit_conflict.html", {
+                        "submitted_values": [(name, value) for name in ('notes','content','content_warnings','coordinator_note','opinion','fragment','problem','suggestion','file_url','author_first_name','author_last_name','email','phone_number','title','length','genre','start_date','end_date','started_at','ended_at','reason') for value in request.POST.getlist(name)],
+                        "current_values": [(name, str(getattr(obj,name) or '')) for name in ('content_warnings','coordinator_note','file_url','title') if hasattr(obj,name)],
+                        "retry_url": request.path,
+                    }, status=409)
+            if obj:
+                request.edit_version_token = signing.dumps([request.user.pk, key, current], salt="cms-edit-version")
+            return self.get_response(request)

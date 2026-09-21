@@ -10,7 +10,7 @@
     color-scheme: dark;
     --background: #15171b; --surface: #1b2430; --surface-alt: #222d3b;
     --surface-hover: #304056; --border: #44546a; --border-strong: #718399;
-    --text: #dce2ea; --muted: #b2becc; --primary: #85bdff;
+    --text: #FFFFFF; --muted: #FFFFFF; --primary: #85bdff;
     --primary-dark: #acd2ff; --primary-light: #243e60; --header: #111c2a;
     --table-header: #2a394d; --success: #9ee1b7; --success-light: #203f32;
     --danger: #ffadb5; --danger-dark: #ffc8ce; --danger-light: #482d36;
@@ -84,3 +84,10 @@ section:has(#active-stages-heading), section:has(#reserved-assignments-heading) 
 .author-suggestions button { text-align:left; background:var(--surface); color:var(--text); border:1px solid var(--border); padding:10px; cursor:pointer; }
 .author-suggestions button:hover, .author-suggestions button[aria-selected="true"] { background:var(--primary-light); }
 .visually-hidden { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+
+:root[data-theme="dark"] .complete-stage-button { color: #FFFFFF; background: #24613e; border: 1px solid #74b58a; }
+:root[data-theme="dark"] .complete-stage-button:hover { color: #FFFFFF; background: #2d754c; }
+:root[data-theme="dark"] :is(p, label, input, textarea, select, .detail-link, .text-title-link) { color: #FFFFFF; }
+.table-sort-button { font: inherit; color: inherit; background: transparent; border: 0; padding: 0; cursor: pointer; text-align: inherit; }
+
+:root[data-theme="dark"] :is(.sidebar-link, .navigation-link, .dropdown-link, .brand-text small) { color: #FFFFFF; }

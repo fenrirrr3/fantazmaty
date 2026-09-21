@@ -1,3 +1,200 @@
+document.addEventListener('DOMContentLoaded', () => {
+    const main = document.querySelector('main');
+    if (!main) return;
+    main.querySelectorAll('input[name="start_date"]').forEach(start => {
+        const end = start.form?.elements.namedItem('end_date');
+        if (!end || end.type !== 'date') return;
+        const todayMinimum = end.min;
+        const update = () => { end.min = start.value > todayMinimum ? start.value : todayMinimum; };
+        start.addEventListener('change', update); update();
+    });
+    main.addEventListener('change', event => {
+        if (!event.target.matches('[data-select-table]')) return;
+        event.target.closest('table').querySelectorAll('tbody input[name="selected"]').forEach(input => {
+            if (!input.disabled && !input.closest('tr').hidden) input.checked = event.target.checked;
+        });
+    });
+    main.querySelectorAll('form[data-filters]').forEach(form => {
+        const params = new URLSearchParams(new FormData(form));
+        const chips = document.createElement('div'); chips.className = 'active-filters'; chips.setAttribute('aria-label', 'Aktywne filtry');
+        for (const [name, value] of params) {
+            if (!value || ['page', 'page_size', 'sort', 'old_reviews', 'filters_applied', 'filters'].includes(name)) continue;
+            const fields = [...form.elements].filter(field => field.name === name);
+            if (!fields.length) continue;
+            const field = fields.find(f => f.value === value) || fields[0];
+            if (field.type === 'hidden') continue;
+            let description = field instanceof HTMLSelectElement
+                ? [...field.options].find(o => o.value === value)?.textContent : null;
+            description ||= field.type === 'checkbox' ? field.labels?.[0]?.textContent.trim() : value;
+            const link = document.createElement('a'); link.className = 'filter-chip';
+            const next = new URLSearchParams(params);
+            next.delete(name); params.getAll(name).filter(v => v !== value).forEach(v => next.append(name, v)); next.delete('page');
+            next.set('filters_applied', '1');
+            link.href = `${location.pathname}?${next}`; link.textContent = `${description} ×`; link.setAttribute('aria-label', `Usuń filtr: ${description}`);
+            chips.append(link);
+        }
+        if (chips.children.length) {
+            const clear = document.createElement('a');
+            const cleared = new URLSearchParams({filters_applied:'1', hide_ready:'0'});
+            if (params.has('old_reviews')) cleared.set('old_reviews', params.get('old_reviews'));
+            if (params.has('view')) cleared.set('view', params.get('view'));
+            clear.href = `${location.pathname}?${cleared}`;
+            clear.textContent = 'Wyczyść wszystkie'; 
+            chips.append(clear); form.after(chips);
+        }
+        const empty = main.querySelector('.empty-results-panel');
+        if (empty && !form.querySelector('.field-error, .errorlist, [aria-invalid="true"]') && main.querySelector('table tbody tr td[colspan]')) {
+            const strong = empty.querySelector('strong');
+            if (strong) strong.textContent = chips.children.length ? 'Brak wyników dla wybranych filtrów.' : 'Nie ma jeszcze pozycji na tej liście.';
+        }
+    });
+
+});
+
+// Native selects remain usable without JS; with JS use checkbox dropdowns.
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('form[method="get"] select[multiple]').forEach(select => {
+        const dropdown = document.createElement('details');
+        dropdown.className = 'checkbox-dropdown'; dropdown.dataset.checkboxDropdown = '';
+        dropdown.dataset.emptyLabel = select.dataset.emptyLabel || 'Wszystkie';
+        const summary = document.createElement('summary');
+        const summaryText = document.createElement('span'); summaryText.dataset.checkboxSummary = '';
+        summaryText.textContent = dropdown.dataset.emptyLabel; summary.append(summaryText);
+        const options = document.createElement('div'); options.className = 'checkbox-dropdown-options';
+        options.setAttribute('role', 'group'); options.setAttribute('aria-label', select.labels?.[0]?.textContent.trim() || 'Statusy');
+        const clear = document.createElement('button'); clear.type = 'button'; clear.textContent = 'Wyczyść wybór'; clear.dataset.checkboxClear = '';
+        options.append(clear);
+        [...select.options].filter(option => option.value).forEach(option => {
+            const label = document.createElement('label'); label.className = 'multi-filter-option';
+            const input = document.createElement('input'); input.type = 'checkbox'; input.name = select.name;
+            input.value = option.value; input.checked = option.selected;
+            const text = document.createElement('span'); text.textContent = option.textContent.trim();
+            label.append(input, text); options.append(label);
+        });
+        dropdown.append(summary, options); select.replaceWith(dropdown);
+    });
+    document.querySelectorAll('form[method="get"].filters-form, form[method="get"][data-filters]').forEach(form => {
+        const selectedSort = new URL(location.href).searchParams.get('sort');
+        if (selectedSort && !form.elements.namedItem('sort')) {
+            const field=document.createElement('input');field.type='hidden';field.name='sort';field.value=selectedSort;form.append(field);
+        }
+        let timer;
+        form.addEventListener('submit', () => clearTimeout(timer));
+        const submit = field => {
+            clearTimeout(timer);
+            if (!form.checkValidity()) return;
+            const page = form.elements.namedItem('page'); if (page) page.value = '1';
+            if (!form.elements.namedItem('filters_applied')) {
+                const applied = document.createElement('input'); applied.type = 'hidden'; applied.name = 'filters_applied'; applied.value = '1'; form.append(applied);
+            }
+            form.requestSubmit();
+        };
+        // Explicit apply for dropdown filters; do not interrupt a multi-selection.
+        if (!form.querySelector('button[type="submit"], input[type="submit"]')) {
+            const button = document.createElement('button'); button.type = 'submit'; button.className = 'primary-button'; button.textContent = 'Filtruj'; form.append(button);
+        }
+        form.addEventListener('change', () => clearTimeout(timer));
+        form.addEventListener('input', event => {
+            if (!event.target.matches('input[type="search"], input[type="text"], input:not([type])')) return;
+            clearTimeout(timer);
+            if (!event.isComposing && !form.querySelector('select, .checkbox-dropdown')) timer = setTimeout(() => submit(event.target), 1200);
+        });
+
+    });
+});
+
+// Only explicitly declared server columns are sortable. Detail tables remain whole.
+document.addEventListener('DOMContentLoaded', () => {
+    let columns = {};
+    try { columns = JSON.parse(document.getElementById('table-sort-columns')?.textContent || '{}') || {}; } catch (_) {}
+    const allowed = new Set(Object.values(columns));
+    document.querySelectorAll('main table[data-server-paginated="true"] th[data-sort-key]').forEach(th => {
+        const key = th.dataset.sortKey;
+        if (!allowed.has(key) || th.querySelector('input, button, a')) return;
+        const button = document.createElement('button'); button.type='button'; button.className='table-sort-button'; button.textContent=th.textContent.trim();
+        const mark = document.createElement('span'); mark.className='sort-indicator'; button.append(mark); th.replaceChildren(button);
+        const current = new URL(location.href).searchParams.get('sort');
+        if (current === key || current === '-'+key) {
+            th.setAttribute('aria-sort',current.startsWith('-')?'descending':'ascending');
+            mark.textContent=current.startsWith('-')?' ▼':' ▲';
+        }
+        button.onclick = () => {
+            const url = new URL(location.href); url.searchParams.set('sort',current===key?'-'+key:key); url.searchParams.delete('page'); location.assign(url.href);
+        };
+    });
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('[data-dashboard-more]').forEach((button, index) => {
+        const list = button.closest('section').querySelector('.dashboard-list');
+        if (!list) return;
+        list.id ||= `dashboard-list-${index}`;
+        button.setAttribute('aria-controls', list.id);
+        let busy = false, collapsed = false;
+        button.addEventListener('click', async event => {
+            event.preventDefault();
+            if (busy) return;
+            const extra = [...list.children].slice(6);
+            if (collapsed || !button.dataset.url) {
+                collapsed = !collapsed;
+                extra.forEach(item => { item.hidden = collapsed; });
+                button.setAttribute('aria-expanded', String(!collapsed));
+                button.textContent = collapsed ? 'Pokaż pozostałe' : 'Zwiń listę';
+                return;
+            }
+            busy = true;
+            button.setAttribute('aria-busy', 'true');
+            button.textContent = 'Wczytywanie…';
+            try {
+                const response = await fetch(button.dataset.url, {headers: {'Accept': 'application/json'}, credentials: 'same-origin'});
+                if (!response.ok) throw new Error('load');
+                const data = await response.json();
+                if (typeof data.html !== 'string') throw new Error('format');
+                list.insertAdjacentHTML('beforeend', data.html);
+                button.dataset.url = data.next_url || '';
+                button.setAttribute('aria-expanded', 'true');
+                button.textContent = data.next_url ? 'Pokaż kolejne' : 'Zwiń listę';
+            } catch (_) {
+                button.textContent = 'Nie udało się wczytać — spróbuj ponownie';
+            } finally {
+                busy = false;
+                button.removeAttribute('aria-busy');
+            }
+        });
+    });
+    document.querySelectorAll('form[data-confirm-delete]').forEach(form => {
+        form.addEventListener('submit', event => {
+            if (!window.confirm(form.dataset.confirmDelete)) event.preventDefault();
+        });
+    });
+    const sidebar = document.querySelector('.sidebar-scroll');
+    if (sidebar) {
+        sidebar.querySelectorAll('[data-menu-section]').forEach(section => {
+            const stateKey = `fantazmaty:menu:${document.body.dataset.userId || ''}:${section.dataset.menuSection}`;
+            try { const saved = localStorage.getItem(stateKey); if (saved !== null) section.open = saved === 'open'; } catch (_) {}
+            if (section.querySelector('[aria-current="page"]')) section.open = true;
+            section.addEventListener('toggle', () => { try { localStorage.setItem(stateKey, section.open ? 'open' : 'closed'); } catch (_) {} });
+        });
+        const key = `fantazmaty:sidebar:${document.body.dataset.userId || ''}`;
+        try { sidebar.scrollTop = Number(sessionStorage.getItem(key)) || 0; } catch (_) {}
+        const save = () => { try { sessionStorage.setItem(key, String(sidebar.scrollTop)); } catch (_) {} };
+        sidebar.addEventListener('scroll', save, {passive:true});
+        window.addEventListener('pagehide', save);
+    }
+    document.querySelectorAll('form[method="get"] input').forEach(field => { field.autocomplete = 'off'; });
+    // A manual reload clears text searches in both the URL and displayed results.
+    if (performance.getEntriesByType('navigation')[0]?.type === 'reload') {
+        const url = new URL(location.href);
+        let changed = false;
+        document.querySelectorAll('form[method="get"] input[name="q"], form[method="get"] input[name="query"], form[method="get"] input[type="search"], form[method="get"] input[type="text"]').forEach(field => {
+            field.autocomplete = 'off';
+            if (url.searchParams.has(field.name)) { url.searchParams.delete(field.name); changed = true; }
+            field.value = '';
+        });
+        if (changed) { url.searchParams.delete('page'); location.replace(url.href); }
+    }
+});
+
 (() => {
     "use strict";
 
@@ -245,7 +442,7 @@
         )) return null;
 
         const cell = target.closest("td, th");
-        if (!cell || !cell.closest("table")) return null;
+        if (!cell || !cell.closest("table[data-copy-table]")) return null;
         return cell;
     }
 
@@ -430,6 +627,11 @@
             button?.setAttribute("aria-expanded", "false");
         };
 
+        panel?.addEventListener("click", event => {
+            if (event.target.closest('a[href]') && button && getComputedStyle(button).display !== 'none') {
+                closePanel(); closeDropdowns();
+            }
+        });
         button?.addEventListener("click", () => {
             if (!panel) return;
             const open = panel.classList.toggle("is-open");
@@ -578,99 +780,9 @@
         schedule();
     }
 
-    function sortValue(cell, type) {
-        const raw = (cell?.dataset.sortValue ?? cell?.innerText ?? "").trim();
-        if (!raw) return null;
-
-        if (type === "number") {
-            const value = Number(raw.replace(/[\s\u00a0]/g, "").replace(",", "."));
-            return Number.isFinite(value) ? value : null;
-        }
-
-        if (type === "date") {
-            const polish = raw.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
-            const normalized = polish
-                ? `${polish[3]}-${polish[2]}-${polish[1]}`
-                : raw;
-            const value = Date.parse(normalized);
-            return Number.isFinite(value) ? value : null;
-        }
-
-        return raw;
-    }
-
-    function initializeSorting(table) {
-        if (table.dataset.sortReady === "true") return;
-        const body = table.tBodies[0];
-        if (!body || table.dataset.serverSort === "true") return;
-        table.dataset.sortReady = "true";
-
-        const originalOrder = new WeakMap();
-        let nextOrder = 0;
-        let activeColumn = null;
-        let direction = "none";
-
-        const rememberRows = (rows) => rows.forEach((row) => {
-            if (!originalOrder.has(row)) originalOrder.set(row, nextOrder++);
-        });
-        rememberRows([...body.rows]);
-
-        table.addEventListener("click", (event) => {
-            const button = elementFrom(event)?.closest("[data-sort-column]");
-            if (!button || button.closest("table") !== table) return;
-            const column = Number(button.dataset.sortColumn);
-            if (!Number.isInteger(column) || column < 0) return;
-
-            const rows = [...body.rows];
-            if (rows.some((row) =>
-                [...row.cells].some((cell) => cell.colSpan > 1 || cell.rowSpan > 1)
-            )) return;
-
-            event.preventDefault();
-            rememberRows(rows);
-            direction = activeColumn !== column ? "ascending"
-                : direction === "ascending" ? "descending"
-                    : direction === "descending" ? "none" : "ascending";
-            activeColumn = direction === "none" ? null : column;
-
-            table.querySelectorAll("thead th").forEach((header) => {
-                header.removeAttribute("aria-sort");
-                const indicator = header.querySelector(".sort-indicator");
-                if (indicator) indicator.textContent = "";
-            });
-
-            if (direction === "none") {
-                rows.sort((a, b) => originalOrder.get(a) - originalOrder.get(b));
-            } else {
-                button.closest("th")?.setAttribute("aria-sort", direction);
-                const indicator = button.querySelector(".sort-indicator");
-                if (indicator) indicator.textContent =
-                    direction === "ascending" ? "▲" : "▼";
-
-                const type = button.dataset.sortType || "text";
-                rows.sort((a, b) => {
-                    const first = sortValue(a.cells[column], type);
-                    const second = sortValue(b.cells[column], type);
-                    if (first === null && second !== null) return 1;
-                    if (second === null && first !== null) return -1;
-
-                    const comparison = first === null ? 0
-                        : typeof first === "number" ? first - second
-                            : collator.compare(first, second);
-                    return (direction === "ascending" ? comparison : -comparison)
-                        || originalOrder.get(a) - originalOrder.get(b);
-                });
-            }
-
-            const fragment = document.createDocumentFragment();
-            rows.forEach((row) => fragment.append(row));
-            body.append(fragment);
-        });
-    }
-
     function formSnapshot(form) {
         return JSON.stringify([...new FormData(form)].filter(
-            ([name]) => name !== "csrfmiddlewaretoken"
+            ([name]) => !["csrfmiddlewaretoken", "_edit_version", "submission_token", "workflow_token", "submission_warnings_token"].includes(name)
         ).map(([name, value]) => [
             name,
             value instanceof File
@@ -683,7 +795,7 @@
         return [...form.elements].filter((field) =>
             field.name &&
             !field.disabled &&
-            field.matches("input, textarea, select") &&
+            field.matches("textarea") &&
             !["hidden", "password", "file", "submit", "button", "reset"]
                 .includes(field.type) &&
             !field.closest("[data-no-autosave]")
@@ -695,30 +807,22 @@
         initialized.add(form);
 
         const baseline = formSnapshot(form);
+        const draftBaseline = JSON.stringify(draftFields(form).map(field => [field.name, field.value]));
         const key = form.dataset.autosave
-            ? scopedKey("draft", form.dataset.autosave)
+            ? scopedKey("draft-text-v23", form.dataset.autosave)
             : null;
 
         if (key && !form.querySelector(".errorlist, .field-error, .form-error")) {
             try {
                 const draft = JSON.parse(storage.get(key) || "null");
-                if (draft?.baseline === baseline && Array.isArray(draft.fields)) {
+                if (draft?.baseline === draftBaseline && Array.isArray(draft.fields)) {
                     const fields = draftFields(form);
                     draft.fields.forEach((saved, index) => {
                         const field = fields[index];
                         if (!field || field.name !== saved.name ||
                             field.type !== saved.type) return;
 
-                        if (["checkbox", "radio"].includes(field.type)) {
-                            field.checked = saved.checked === true;
-                        } else if (field instanceof HTMLSelectElement && field.multiple) {
-                            const values = new Set(saved.values || []);
-                            [...field.options].forEach((option) => {
-                                option.selected = values.has(option.value);
-                            });
-                        } else if (typeof saved.value === "string") {
-                            field.value = saved.value;
-                        }
+                        if (typeof saved.value === "string") field.value = saved.value;
                     });
                 }
             } catch {
@@ -735,12 +839,9 @@
                 name: field.name,
                 type: field.type,
                 value: field.value,
-                checked: field.checked,
-                values: field instanceof HTMLSelectElement
-                    ? [...field.selectedOptions].map((option) => option.value)
-                    : undefined,
+
             }));
-            storage.set(key, JSON.stringify({ baseline, fields }));
+            storage.set(key, JSON.stringify({ baseline: draftBaseline, fields }));
         };
 
         form.addEventListener("input", () => {
@@ -758,53 +859,6 @@
                 // Nie usuwamy szkicu przed odpowiedzią serwera.
                 // Zmienione dane serwera unieważnią jego baseline.
                 trackedForms.set(form, formSnapshot(form));
-            });
-        });
-    }
-
-    function initializeRememberedFilters(form) {
-        if (initialized.has(form)) return;
-        initialized.add(form);
-        const key = scopedKey("filters", form.dataset.rememberFilters);
-        if (!key) return;
-
-        const names = new Set([...form.elements].map((field) => field.name));
-        names.delete("csrfmiddlewaretoken");
-        names.delete("page");
-        names.delete("q");
-        names.delete("query");
-        form.querySelectorAll("input[type=search], input[type=text], input:not([type])").forEach(field => names.delete(field.name));
-        names.delete("");
-
-        const sanitize = (parameters) => {
-            const result = new URLSearchParams();
-            for (const [name, value] of parameters) {
-                if (names.has(name)) result.append(name, value);
-            }
-            return result;
-        };
-
-        const saved = storage.get(key, true);
-        if (saved) storage.set(key, sanitize(new URLSearchParams(saved)).toString(), true);
-        if (location.search) storage.set(key, sanitize(new URLSearchParams(location.search)).toString(), true);
-        if (!location.search && saved) {
-            const restored = sanitize(new URLSearchParams(saved));
-            if (restored.toString()) {
-                const url = new URL(location.href);
-                url.search = restored.toString();
-                location.replace(url.href);
-                return;
-            }
-        }
-
-        form.addEventListener("submit", (event) => {
-            queueMicrotask(() => {
-                if (event.defaultPrevented) return;
-                const params = new URLSearchParams();
-                for (const [name, value] of new FormData(form)) {
-                    if (typeof value === "string") params.append(name, value);
-                }
-                storage.set(key, sanitize(params).toString(), true);
             });
         });
     }
@@ -889,9 +943,7 @@
         };
 
         each(".table-container", initializeScrollableTable);
-        each("table[data-sortable-table]", initializeSorting);
         each("form[data-bulk-form]", initializeBulkActions);
-        each("form[data-remember-filters]", initializeRememberedFilters);
         each("[data-checkbox-dropdown]", initializeCheckboxDropdown);
         each("form[data-autosave], form[data-warn-unsaved]", initializeFormSafety);
     }
@@ -917,18 +969,12 @@
 
         document.addEventListener("click", (event) => {
             const target = elementFrom(event);
-            const clear = target?.closest("[data-clear-saved-filters]");
-            if (clear) {
-                const key = scopedKey("filters", clear.dataset.clearSavedFilters);
-                if (key) storage.remove(key, true);
-            }
-
             const reset = target?.closest("[data-discard-draft]");
             if (reset) {
                 const form = reset.closest("form");
                 if (!form) return;
                 event.preventDefault();
-                const key = scopedKey("draft", form.dataset.autosave);
+                const key = scopedKey("draft-text-v23", form.dataset.autosave);
                 if (key) storage.remove(key, true);
                 form.reset();
                 trackedForms.set(form, formSnapshot(form));

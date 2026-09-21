@@ -15,7 +15,7 @@
             method="get"
             action="{% url 'core:people_list' %}"
             class="filters-form people-filters-form"
-            data-remember-filters="people-list"
+            data-filters="people-list"
         >
             <input
                 type="hidden"
@@ -62,7 +62,6 @@
                 <a
                     href="{% url 'core:people_list' %}"
                     class="secondary-button"
-                    data-clear-saved-filters="people-list"
                 >
                     Wyczyść filtry
                 </a>
@@ -79,16 +78,16 @@
             aria-label="Tabela zespołu"
             tabindex="0"
         >
-            <table id="people-table">
+            <table data-copy-table data-server-paginated="true" id="people-table">
                 <caption class="visually-hidden">
                     Aktywni członkowie zespołu spełniający wybrane filtry
                 </caption>
 
                 <thead>
                     <tr>
-                        <th scope="col">Imię i nazwisko</th>
+                        <th scope="col" data-sort-key="person">Imię i nazwisko</th>
                         <th scope="col">Role</th>
-                        {% if can_view_team_email %}<th scope="col">Adres e-mail</th>{% endif %}
+                        {% if can_view_team_email %}<th scope="col" data-sort-key="email">Adres e-mail</th>{% endif %}
                         
                     </tr>
                 </thead>
@@ -158,7 +157,6 @@
                                     <a
                                         href="{% url 'core:people_list' %}"
                                         class="secondary-button"
-                                        data-clear-saved-filters="people-list"
                                     >
                                         Wyczyść filtry
                                     </a>

@@ -271,10 +271,9 @@ class AnthologyTask(models.Model):
 class Text(NormalizedModelMixin, models.Model):
     file_url = models.URLField("folder Dropbox", max_length=1000, blank=True)
 
-    historical_source = models.CharField("źródło importu historycznego", max_length=100, blank=True, default="", editable=False)
-    historical_source_row = models.PositiveIntegerField("LP importu historycznego", null=True, blank=True, editable=False)
+    import_source = models.CharField("źródło importu", max_length=100, blank=True, default="", editable=False)
+    import_source_row = models.PositiveIntegerField("LP importu", null=True, blank=True, editable=False)
     normalization_fields = TEXT_FIELDS
-    is_historical = models.BooleanField("tekst historyczny", default=False, editable=False)
     title = models.CharField(
         "tytuł",
         max_length=255,
@@ -320,7 +319,7 @@ class Text(NormalizedModelMixin, models.Model):
     class Meta:
         verbose_name = "tekst"
         verbose_name_plural = "teksty"
-        constraints = [models.UniqueConstraint(fields=("historical_source", "historical_source_row"), name="unique_text_historical_source")]
+        constraints = [models.UniqueConstraint(fields=("import_source", "import_source_row"), name="unique_text_import_source")]
 
         ordering = ("title", "pk")
 
@@ -878,74 +877,3 @@ class Extract(NormalizedModelMixin, models.Model):
         return f'{self.recruitment} — {self.full_name}'
 
 
-class HistoricalTextAssignment(models.Model):
-    """Imported participation; never an assignment in the active workflow."""
-    class Role(models.TextChoices):
-        EDITOR = "editor", "Redaktor"
-        PROOFREADER = "proofreader", "Korektor"
-        VERIFIER = "verifier", "Weryfikator"
-        EDITING_COORDINATOR = "editing_coordinator", "Koordynator redakcji"
-        VERIFICATION_COORDINATOR = "verification_coordinator", "Koordynator weryfikacji"
-        EDITING_VERIFIER = "editing_verifier", "Weryfikacja redakcji"
-        FINAL_READER = "final_reader", "Sczytanie"
-
-    text = models.ForeignKey(Text, on_delete=models.CASCADE, related_name="historical_assignments", verbose_name="tekst")
-    person = models.ForeignKey(Person, on_delete=models.SET_NULL, null=True, blank=True, related_name="historical_text_assignments", verbose_name="osoba")
-    person_name = models.CharField("nazwa osoby ze źródła", max_length=255)
-    role = models.CharField("rola", max_length=30, choices=Role.choices)
-    position = models.PositiveSmallIntegerField("numer roli", default=1, validators=[MinValueValidator(1)])
-    participant = models.PositiveSmallIntegerField("numer uczestnika roli", default=1, validators=[MinValueValidator(1)])
-    source_row = models.PositiveIntegerField("LP w tabeli źródłowej", null=True, blank=True, validators=[MinValueValidator(1)])
-    source_status = models.CharField("status tekstu w źródle", max_length=12, blank=True, choices=(("ready", "Gotowe"), ("withdrawn", "WYCOFANY")))
-    notes = models.TextField("uwagi", blank=True)
-    started_at = models.DateField("rozpoczęcie", null=True, blank=True)
-    ended_at = models.DateField("zakończenie", null=True, blank=True)
-    is_completed = models.BooleanField("potwierdzone wykonanie", default=False)
-
-    class Meta:
-        verbose_name = "historyczne przypisanie do tekstu"
-        verbose_name_plural = "historyczne przypisania do tekstów"
-        ordering = ("text__title", "role", "position", "participant", "pk")
-        constraints = [
-            models.UniqueConstraint(fields=("text", "role", "position", "participant"), name="unique_history_role_participant"),
-            models.CheckConstraint(condition=models.Q(participant__gte=1), name="historical_participant_positive"),
-            models.CheckConstraint(condition=models.Q(position__gte=1), name="historical_position_positive"),
-            models.CheckConstraint(condition=models.Q(started_at__isnull=True) | models.Q(ended_at__isnull=True) | models.Q(ended_at__gte=models.F("started_at")), name="historical_dates_order"),
-        ]
-
-    @property
-    def role_label(self):
-        label = self.get_role_display()
-        if self.position > 1 or self.role in (self.Role.PROOFREADER, self.Role.VERIFIER):
-            label += f" {self.position}"
-        if self.participant > 1:
-            label += f" · osoba {self.participant}"
-        return label
-
-    @property
-    def display_name(self):
-        return str(self.person) if self.person_id else self.person_name
-
-    def clean(self):
-        super().clean()
-        if self.text_id and not self.text.is_historical:
-            raise ValidationError({"text": "Przypisanie historyczne wymaga tekstu historycznego."})
-        if self.started_at is not None or self.ended_at is not None:
-            raise ValidationError("Historia bez dat: pozostaw rozpoczęcie i zakończenie puste.")
-        if self.text_id:
-            from workflow.models import WorkflowRoleAssignment
-            current_role = None
-            if self.role in (self.Role.EDITOR, self.Role.EDITING_COORDINATOR, self.Role.VERIFICATION_COORDINATOR) and self.position == 1:
-                current_role = self.role
-            elif self.role == self.Role.PROOFREADER and 1 <= self.position <= 4:
-                current_role = f"proofreader_{self.position}"
-            elif self.role == self.Role.VERIFIER and 1 <= self.position <= 3:
-                current_role = f"verifier_{self.position}"
-            if self.participant == 1 and current_role and WorkflowRoleAssignment.objects.filter(
-                text_id=self.text_id, workflow_cycle=self.text.current_workflow_cycle,
-                role=current_role, assigned_to__isnull=False,
-            ).exists():
-                raise ValidationError("Ta rola ma już podstawowe przypisanie. Historia służy dodatkowym udziałom; nie kopiuj istniejącego przypisania.")
-
-    def __str__(self):
-        return f"{self.text}: {self.role_label} – {self.display_name}"

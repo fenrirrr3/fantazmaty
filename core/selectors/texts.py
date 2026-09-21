@@ -63,6 +63,11 @@ TEXT_SORTS = {
     "-status": ("-current_stage_type", "title", "pk"),
 }
 WORKFLOW_SORTS = {
+    "recent": ("_semantic_order", F("_assigned_time").desc(nulls_last=True), F("started_at").desc(nulls_last=True), "-pk"),
+    "-anthology": ("-text__anthology__title", "-pk"),
+    "-stage": ("-stage_type", "-pk"),
+    "ended_at": (F("ended_at").asc(nulls_last=True), "pk"),
+    "-ended_at": (F("ended_at").desc(nulls_last=True), "-pk"),
     "title": ("text__title", "pk"),
     "-title": ("-text__title", "-pk"),
     "anthology": ("text__anthology__title", "text__title", "-pk"),
@@ -168,8 +173,13 @@ def _stage_data(stage, text_data=None):
         pk=stage.pk,
         text_id=stage.text_id,
         workflow_cycle=stage.workflow_cycle,
+        queue_position=stage.queue_position,
+        imported_completed=stage.imported_completed,
+        execution_number=stage.execution_number,
+        repetition_id=stage.repetition_id,
+        is_released=stage.is_released,
         stage_type=stage.stage_type,
-        get_stage_type_display=stage.get_stage_type_display(),
+        get_stage_type_display=stage.get_stage_type_display() + (f" — wykonanie {stage.execution_number}" if stage.execution_number > 1 else "") + (" — powrót do redaktora" if stage.repetition_id and stage.stage_type == StageType.EDITING and stage.queue_position > 0 else ""),
         iteration=stage.iteration,
         started_at=stage.started_at,
         ended_at=stage.ended_at,
@@ -223,11 +233,11 @@ def _text_data(text, include_authors):
 
 
 def _prepared_texts(queryset, include_authors):
-    stages = WorkflowStage.objects.filter(
+    stages = WorkflowStage.objects.current_cycle().select_related("assignment__assigned_to__person_profile").filter(
         workflow_cycle=F("text__current_workflow_cycle"),
     ).order_by("-pk")
     assignments = (
-        WorkflowRoleAssignment.objects.filter(
+        WorkflowRoleAssignment.objects.current_cycle().filter(
             workflow_cycle=F("text__current_workflow_cycle"),
         )
         .select_related("assigned_to", "assigned_to__person_profile")
@@ -256,16 +266,7 @@ def _prepared_texts(queryset, include_authors):
     return queryset
 
 
-def _is_open(stage):
-    return not stage.is_completed and stage.ended_at is None
-
-
-def _is_active(stage, today):
-    return (
-        _is_open(stage)
-        and stage.started_at is not None
-        and stage.started_at <= today
-    )
+from workflow.state import stage_is_open as _is_open, stage_is_active as _is_active
 
 
 def _terminal(stages):
@@ -279,7 +280,7 @@ def _current_stage(stages):
 
 def _annotated_texts():
     from workflow.state import state_annotations
-    current = WorkflowStage.objects.filter(text_id=OuterRef("pk"), workflow_cycle=OuterRef("current_workflow_cycle"), is_completed=False, ended_at__isnull=True).annotate(**state_annotations()).order_by('state_priority','-state_order','-iteration','-pk').values('stage_type')[:1]
+    current = WorkflowStage.objects.current_cycle().filter(text_id=OuterRef("pk"), workflow_cycle=OuterRef("current_workflow_cycle"), is_released=True, is_completed=False, ended_at__isnull=True).annotate(**state_annotations()).order_by('state_priority','-state_order','-iteration','-pk').values('stage_type')[:1]
     return Text.objects.annotate(current_stage_type=Subquery(current))
 
 
@@ -385,57 +386,9 @@ def _user_texts(user, include_authors):
     return _prepared_texts(
         Text.objects.filter(
             workflow_role_assignments__assigned_to_id=user.pk,
-            workflow_role_assignments__workflow_cycle=F("current_workflow_cycle"),
         ).distinct().order_by("anthology__title", "title", "pk"),
         include_authors,
     )
-
-
-def _own_work(text, user, today):
-    assignments = [
-        item for item in text.selector_assignments
-        if item.assigned_to_id == user.pk
-    ]
-    roles = {item.role for item in assignments}
-    stages = text.selector_stages
-    if _terminal(stages):
-        return assignments, [], [], False
-
-    own_stages = [
-        stage for stage in stages
-        if STAGE_ROLE_MAP.get(stage.stage_type) in roles
-        and stage.stage_type not in {
-            StageType.AUTHOR_EDITING, StageType.READY_FOR_EDITING,
-        }
-    ]
-    active = [stage for stage in own_stages if _is_active(stage, today)]
-    reserved = []
-    for assignment in assignments:
-        matching = [
-            stage for stage in own_stages
-            if STAGE_ROLE_MAP.get(stage.stage_type) == assignment.role
-        ]
-        if not matching or (
-            not any(_is_active(stage, today) for stage in matching)
-            and any(_is_open(stage) for stage in matching)
-        ):
-            reserved.append(assignment)
-
-    waiting = (
-        Role.EDITOR in roles
-        and not any(
-            stage.stage_type == StageType.EDITING and _is_active(stage, today)
-            for stage in stages
-        )
-        and any(
-            stage.stage_type in VERIFICATION_STAGES | {StageType.AUTHOR_EDITING}
-            and _is_open(stage)
-            for stage in stages
-        )
-    )
-    if waiting:
-        reserved = [item for item in reserved if item.role != Role.EDITOR]
-    return assignments, active, reserved, waiting
 
 
 def my_texts_context(*, user, selected_view="active", params=None):
@@ -451,14 +404,11 @@ def my_texts_context(*, user, selected_view="active", params=None):
     params.setdefault("hide_ready", "0")
     filters = text_list_context(user=user, params=params, scope=texts)
     texts = filters.pop("filtered_queryset")
+    from workflow.read_queries import annotate_my_work
+    texts = annotate_my_work(texts, user, today)
 
     def project(text):
-        assignments, active, reserved, waiting = _own_work(text, user, today)
-        roles = {item.role for item in assignments}
-        own = [stage for stage in text.selector_stages
-               if STAGE_ROLE_MAP.get(stage.stage_type) in roles
-               and stage.stage_type not in {StageType.AUTHOR_EDITING, StageType.READY_FOR_EDITING}]
-        completed = bool(own) and all(stage.is_completed for stage in own) and not active and not reserved and not waiting
+        assignments = [item for item in text.selector_assignments if item.assigned_to_id == user.pk]
         row = _text_row(text, include_authors)
         row.update(
             user_assignments=[_assignment_data(item) for item in assignments],
@@ -466,10 +416,10 @@ def my_texts_context(*, user, selected_view="active", params=None):
             current_cycle_stage_history=[
                 _stage_data(stage) for stage in text.selector_stages
             ],
-            has_active_work=bool(active),
-            has_reserved_work=bool(reserved),
-            has_completed_work=completed,
-            is_waiting_for_other_role=waiting,
+            has_active_work=text.work_active,
+            has_reserved_work=text.work_waiting,
+            has_completed_work=text.work_completed,
+            is_waiting_for_other_role=text.work_waiting,
         )
         return row
 
@@ -548,7 +498,7 @@ def workflow_list_context(*, user, params):
     # Wyszukiwanie po autorze nie jest wykonywane dla koordynatora.
     from django.db.models import Q
 
-    stages = WorkflowStage.objects.filter(
+    stages = WorkflowStage.objects.current_cycle().select_related("assignment__assigned_to__person_profile").filter(
         workflow_cycle=F("text__current_workflow_cycle"),
     )
     for term in query.split():
@@ -569,9 +519,17 @@ def workflow_list_context(*, user, params):
         'stage': ('stage_type', selected_stages),
         'anthology': ('text__anthology_id', anthology_ids),
     })
-    sort = params.get("sort", "anthology")
+    sort = params.get("sort", "recent")
     if sort not in WORKFLOW_SORTS:
-        sort = "anthology"
+        sort = "recent"
+
+    from workflow.read_queries import stage_role
+    from workflow.state import ORDER
+    from django.db.models.functions import Coalesce
+    stages = stages.annotate(_semantic_order=Case(*[When(stage_type=k, then=Value(v)) for k,v in ORDER.items()], output_field=IntegerField()))
+    stages = stages.annotate(_sort_role=stage_role()).annotate(_assigned_time=Coalesce(F("assignment__assigned_at"), Subquery(
+        WorkflowRoleAssignment.objects.current_cycle().filter(text_id=OuterRef("text_id"), workflow_cycle=OuterRef("workflow_cycle"), role=OuterRef("_sort_role")).values("assigned_at")[:1]
+    )))
 
     stages = (
         stages.distinct()
@@ -598,8 +556,8 @@ def workflow_list_context(*, user, params):
                 "role": role,
                 "label": label,
                 "user": (
-                    _user_data(assignments[role].assigned_to)
-                    if role in assignments else None
+                    _user_data(stage.assignment.assigned_to) if role == STAGE_ROLE_MAP.get(stage.stage_type) and stage.assignment_id else
+                    _user_data(assignments[role].assigned_to) if role in assignments else None
                 ),
             }
             for role, label in role_columns
@@ -620,7 +578,6 @@ def workflow_list_context(*, user, params):
     }
 
 
-from core.selectors.history import merge_historical_team_members
 
 
 def text_detail_context(*, user, text):
@@ -700,17 +657,16 @@ def text_detail_context(*, user, text):
         for stage in stages
     )
     can_control = (
-        not terminal and not later_phase
+        not any(s.repetition_id and not s.is_completed for s in stages) and not terminal and not later_phase
         and (coordinator or owned(Role.EDITOR))
     )
     first_done = completed(StageType.FIRST_VERIFICATION)
     second_done = completed(StageType.SECOND_VERIFICATION)
-    from workflow.state import checkpoint_before_restart
-    first_gate = bool(first_done or checkpoint_before_restart(text.current_workflow_cycle, stages, StageType.FIRST_VERIFICATION))
-    second_gate = bool(second_done or checkpoint_before_restart(text.current_workflow_cycle, stages, StageType.SECOND_VERIFICATION))
+    first_gate = bool(first_done)
+    second_gate = bool(second_done)
 
     can_start_first = bool(
-        not terminal and pending_first
+        not any(s.repetition_id and not s.is_completed for s in stages) and not terminal and pending_first
         and first_verifier and first_verifier.assigned_to_id
         and not any(
             stage.stage_type in {StageType.EDITING, StageType.AUTHOR_EDITING}
@@ -728,7 +684,7 @@ def text_detail_context(*, user, text):
     stage_rows = []
     for stage in stages:
         role = STAGE_ROLE_MAP.get(stage.stage_type)
-        assignment = assignments.get(role)
+        assignment = stage.assignment or assignments.get(role)
         assigned_user = assignment.assigned_to if assignment else None
         if assigned_user and assigned_user.pk not in leave_cache:
             leave_cache[assigned_user.pk] = user_leave_information(assigned_user)
@@ -766,6 +722,7 @@ def text_detail_context(*, user, text):
                 if assigned_user else None
             ),
             can_start=can_start,
+            can_edit_schedule=bool(not terminal and may_act and assigned_user and _is_open(stage) and stage.started_at and stage.started_at > today and (stage.stage_type != StageType.STYLING or user.is_superuser)),
             can_complete=bool(
                 not terminal and role and may_act
                 and (stage.stage_type != StageType.STYLING or user.is_superuser)
@@ -777,6 +734,21 @@ def text_detail_context(*, user, text):
                 }
             ),
         )
+        from people.leave_access import is_on_leave
+        from workflow.services import user_can_complete_stage
+        from workflow.availability import claim_reason
+        available = stage.is_released and stage.is_current
+        if stage.repetition_id:
+            row['can_start'] = bool(available and not terminal and assigned_user and may_act and _is_open(stage) and not stage.started_at)
+            row['can_complete'] = user_can_complete_stage(stage, user)
+            row['can_claim_repeat'] = not bool(claim_reason(stage, user, stages, list(assignments.values())))
+        if not available or (assigned_user and is_on_leave(assigned_user)):
+            row['can_start'] = False
+        if is_on_leave(user):
+            row['can_claim_styling'] = False
+            row['can_claim_repeat'] = False
+        row['can_start'] = row['can_start'] and available
+        row['is_queued'] = not available
         stage_rows.append(row)
 
     row_by_id = {row["pk"]: row for row in stage_rows}
@@ -797,15 +769,13 @@ def text_detail_context(*, user, text):
 
     archived = []
     if coordinator:
-        historical_stages = WorkflowStage.objects.filter(
-            text_id=text.pk,
-        ).exclude(
-            workflow_cycle=text.current_workflow_cycle,
+        historical_stages = WorkflowStage.objects.filter(text_id=text.pk).exclude(
+            workflow_cycle=text.current_workflow_cycle, is_current=True,
         ).order_by("-workflow_cycle", "-pk")
         archived = [row for row in stage_rows if row["pk"] not in visible_ids]
         for stage in historical_stages:
             row = _stage_data(stage, text_data)
-            row.update(can_start=False, can_complete=False)
+            row.update(can_start=False, can_complete=False, assigned_user=_user_data(stage.assignment.assigned_to) if stage.assignment and stage.assignment.assigned_to else None)
             archived.append(row)
 
     notes = [
@@ -823,8 +793,6 @@ def text_detail_context(*, user, text):
     ]
 
     source_query = Review.objects.filter(copied_text_id=text.pk)
-    if not include_authors:
-        source_query = source_query.filter(old_reviews=False)
     source = source_query.first()
     source_data = None
     opinions = []
@@ -848,7 +816,7 @@ def text_detail_context(*, user, text):
             )
         for assignment in (
             ReviewAssignment.objects.filter(review_id=source.pk)
-            .select_related("user", "user__person_profile")
+            .select_related("user", "user__person_profile", "historical_person")
             .order_by("position", "pk")
         ):
             opinions.append(
@@ -859,7 +827,7 @@ def text_detail_context(*, user, text):
                     "reviewer_name": (
                         assignment.user.get_full_name()
                         or "Nieuzupełnione dane"
-                        if assignment.user else "Usunięte konto"
+                        if assignment.user else str(assignment.historical_person) if assignment.historical_person else "Usunięte konto"
                     ),
                     "opinion_value": assignment.opinion,
                     "opinion": assignment.get_opinion_display(),
@@ -869,6 +837,11 @@ def text_detail_context(*, user, text):
                 }
             )
 
+    open_repetition = text.repetitions.filter(completed_at__isnull=True, canceled_at__isnull=True).first()
+    can_cancel_repetition = bool(user.is_superuser and open_repetition and open_repetition.previous_stage_ids
+        and not open_repetition.stages.filter(started_at__isnull=False).exists()
+        and not open_repetition.stages.filter(is_completed=True).exists()
+        and not open_repetition.assignments.filter(assigned_to__isnull=False).exists())
     return {
         "text": text_data,
         "user_assignments": [_assignment_data(item) for item in own],
@@ -876,7 +849,7 @@ def text_detail_context(*, user, text):
         "visible_stages": visible,
         "archived_stages": archived,
         "can_view_stage_history": coordinator,
-        "team_members": merge_historical_team_members(text, [
+        "team_members": [
             {
                 "role": role,
                 "label": label,
@@ -890,13 +863,22 @@ def text_detail_context(*, user, text):
                 ),
             }
             for role, label in Role.choices
-        ]),
+        ] + [
+            {"role": item.role, "label": item.get_role_display() + f" — wcześniejsze przypisanie {item.execution_number}",
+             "is_previous": True, "is_assigned": True, "user": _user_data(item.assigned_to)}
+            for item in WorkflowRoleAssignment.objects.filter(text=text, assigned_to__isnull=False).exclude(
+                workflow_cycle=text.current_workflow_cycle, is_current=True).select_related('assigned_to__person_profile').order_by('workflow_cycle','role','execution_number')
+        ],
         "is_assigned": bool(own),
         "is_read_only": not coordinator and not own,
         "can_add_note": coordinator or bool(own),
         "can_edit_coordinator_note": coordinator,
         "show_coordinator_note": bool(text.coordinator_note.strip()),
         "text_notes": notes,
+        "repeat_queue": sorted([row for row in stage_rows if row.get('repetition_id') and not row['is_completed']], key=lambda row: row['queue_position']),
+        "open_repetition": open_repetition,
+        "can_cancel_repetition": can_cancel_repetition,
+        "handoffs": text.workflow_handoffs.select_related('previous_assignment__assigned_to', 'new_assignment__assigned_to', 'stage').order_by('-created_at'),
         "source_review": source_data,
         "source_review_opinions": opinions,
         "is_withdrawn": is_withdrawn,
@@ -914,7 +896,6 @@ def text_detail_context(*, user, text):
         "second_verification_completed": second_done,
         "can_send_to_first_verification": bool(
             can_control and editing and pending_first
-            and first_verifier and first_verifier.assigned_to_id
             and not first_gate
         ),
         "can_start_first_verification": can_start_first,

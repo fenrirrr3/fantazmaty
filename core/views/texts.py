@@ -91,7 +91,7 @@ def _require_text_contributor(user, text):
     if is_coordinator(user):
         return
 
-    is_assigned = WorkflowRoleAssignment.objects.filter(
+    is_assigned = WorkflowRoleAssignment.objects.current_cycle().filter(
         text_id=text.pk,
         workflow_cycle=text.current_workflow_cycle,
         assigned_to_id=user.pk,
@@ -133,7 +133,7 @@ def _render_text_detail(request, text, *, bound_forms=None, status=200):
     context['workflow_token'] = make_token(text, request.user)
 
     coordinator_access = is_coordinator(request.user)
-    is_assigned = WorkflowRoleAssignment.objects.filter(
+    is_assigned = WorkflowRoleAssignment.objects.current_cycle().filter(
         text_id=text.pk,
         workflow_cycle=text.current_workflow_cycle,
         assigned_to_id=request.user.pk,
@@ -143,9 +143,8 @@ def _render_text_detail(request, text, *, bound_forms=None, status=200):
     context['file_url'] = text.file_url
     context['text_file_form'] = TextFileForm(instance=text) if request.user.is_superuser else None
     # Only this text's email addresses are revealed, never source-review identity.
-    email_access = can_view_author_data(request.user) or (
+    email_access = coordinator_access or (
         WorkflowRoleAssignment.objects.filter(text=text, assigned_to=request.user).exists()
-        or text.historical_assignments.filter(person__user=request.user).exists()
     )
     context["author_emails"] = list(text.authors.exclude(email__isnull=True).exclude(email="").values_list("email", flat=True)) if email_access else []
 
@@ -168,7 +167,7 @@ def _render_text_detail(request, text, *, bound_forms=None, status=200):
             ),
             "start_stage_form": StartStageForm(),
             "restart_workflow_form": (
-                RestartWorkflowForm()
+                RestartWorkflowForm(text=text)
                 if can_restart_workflow(request.user)
                 else None
             ),

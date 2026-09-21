@@ -33,18 +33,18 @@
             class="review-import-form"
             data-warn-unsaved
         >
-            {% csrf_token %}
+            {% csrf_token %}{% edit_version %}
             {% if preview_rows %}
                 <input type="hidden" name="preview_token" value="{{ preview_token }}">
                 <h2>Podgląd importu – dane jeszcze nie zostały zapisane</h2>
                 <p>Nowe zgłoszenia: {{ preview_summary.new_reviews }}. Autorzy dopasowani w bazie: {{ preview_summary.matched_authors }}. Zgłoszenia bez profilu autora: {{ preview_summary.unmatched }}. Wiersze z błędami: {{ preview_summary.conflicts }}. Ostrzeżenia: {{ preview_summary.warnings }}.</p>
                 <p>Ten import dodaje zgłoszenia. Nie aktualizuje istniejących tekstów, nie tworzy profili autorów ani osób i nie zmienia ról. Puste pola zgłoszenia nie usuwają danych z profilu autora.</p>
                 <p>Import jest wspólny dla wszystkich wierszy. Błąd blokuje zapis całości; duplikaty i czarna lista wymagają potwierdzenia.</p>
-                <div class="table-container"><table><thead><tr><th>Wiersz</th><th>Autor / dopasowanie</th><th>Tytuł</th><th>Weryfikacja</th></tr></thead><tbody>
+                <div class="table-container"><table data-copy-table><thead><tr><th>Wiersz</th><th>Autor / dopasowanie</th><th data-sort-key="title" class="sticky-title">Tytuł</th><th>Weryfikacja</th></tr></thead><tbody>
                 {% for row in preview_rows %}<tr><td>{{ row.line }}</td><td>
                     {% if row.record %}{{ row.record.author_first_name }} {{ row.record.author_last_name }}<br>{{ row.record.email }}
                     {% for author in row.matched %}<p>W bazie: {{ author.first_name }} {{ author.last_name }}{% if author.is_blacklisted %} – czarna lista, zgłoszenie będzie ukryte{% endif %}</p>{% empty %}<p>Brak dopasowanego autora w bazie</p>{% endfor %}
-                    {% else %}{{ row.raw }}{% endif %}</td><td>{{ row.record.title|default:'–' }}</td><td>
+                    {% else %}{{ row.raw }}{% endif %}</td><td class="sticky-title">{{ row.record.title|default:'–' }}</td><td>
                     {% for error in row.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
                     {% for warning in row.warnings %}<p>{{ warning }}</p>{% endfor %}
                     {% if row.ambiguous %}<p class="field-error">Adres pasuje do kilku autorów – popraw dane w panelu.</p>

@@ -22,6 +22,9 @@ from core.views.programs import programs
 from core.views.activity import user_activity
 
 urlpatterns = [
+    path("teksty/<int:text_id>/powtorzenia/<int:repetition_id>/anuluj/", workflow.cancel_workflow_repetition, name="cancel_workflow_repetition"),
+    path("workflow/<int:stage_id>/przekaz/", workflow.handoff_workflow_stage, name="handoff_workflow_stage"),
+    path("workflow/<int:stage_id>/schedule/", workflow.change_scheduled_workflow_stage, name="change_scheduled_workflow_stage"),
     path("spojnosc-danych/", supervision.data_integrity, name="data_integrity"),
     path("antologie/<int:anthology_id>/", supervision.anthology_detail, name="anthology_detail"),
     path("antologie/<int:anthology_id>/stopka.csv", supervision.anthology_credits_csv, name="anthology_credits_csv"),

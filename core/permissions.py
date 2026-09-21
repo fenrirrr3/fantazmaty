@@ -175,19 +175,16 @@ def can_import_reviews(user):
 
 
 def can_self_assign_reviews(user):
-    return has_role(user, REVIEWER_ROLE)
+    from people.leave_access import is_on_leave
+    return has_role(user, REVIEWER_ROLE) and not is_on_leave(user)
 
 
 def can_manage_reviews(user):
     return is_coordinator(user)
 
 
-def can_manage_texts(user):
-    return is_coordinator(user)
 
 
-def can_manage_cover_proposals(user):
-    return is_coordinator(user)
 
 
 def can_view_illustrations(user):
@@ -211,30 +208,15 @@ def can_export_author_data(user):
     return is_superuser(user)
 
 
-def can_view_review(user, review=None):
-    if is_superuser(user):
-        return True
-
-    if not is_team_member(user):
-        return False
-
-    if review is not None and review.old_reviews:
-        return False
-
-    return True
 
 
-def can_view_text(user, text=None):
-    # Dostęp do tekstu nie oznacza dostępu do danych autora.
-    # Widok musi osobno zastosować can_view_author_data().
-    return is_team_member(user)
 
 
 def can_manage_vacation(user, vacation):
     if not is_active_user(user) or vacation is None:
         return False
 
-    if is_superuser(user):
+    if is_coordinator(user):
         return True
 
     person = get_active_person_profile(user)

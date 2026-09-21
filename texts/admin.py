@@ -25,7 +25,6 @@ from .models import (
     Reviewers,
     Text,
     TextNote,
-    HistoricalTextAssignment,
 )
 
 
@@ -148,12 +147,12 @@ class WorkflowRoleAssignmentInline(
     extra = 0
 
     fields = (
-        "role",
+        "role", "execution_number", "is_current",
         "assigned_to",
         "assigned_at",
         "notes",
     )
-    readonly_fields = ("role", "assigned_to", "assigned_at")
+    readonly_fields = ("role", "execution_number", "is_current", "assigned_to", "assigned_at")
     can_delete = False
 
     def has_add_permission(self, request, obj=None):
@@ -177,6 +176,7 @@ class WorkflowStageInline(
 
     fields = (
         "stage_type",
+        "execution_number", "is_current", "is_released",
         "iteration",
         "started_at",
         "ended_at",
@@ -185,6 +185,7 @@ class WorkflowStageInline(
     ordering = (
         "started_at",
         "stage_type",
+        "execution_number", "is_current", "is_released",
         "iteration",
         "pk",
     )
@@ -207,38 +208,10 @@ class TextAdminForm(NormalizedFormMixin, forms.ModelForm):
         fields = "__all__"
 
 
-class HistoricalAssignmentReadOnlyMixin:
-    def has_add_permission(self, request, obj=None):
-        return False
-
-    def has_change_permission(self, request, obj=None):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False
 
 
-class HistoricalTextAssignmentInline(HistoricalAssignmentReadOnlyMixin, admin.TabularInline):
-    model = HistoricalTextAssignment
-    extra = 0
-    can_delete = False
-    fields = ("person", "person_name", "role", "position", "participant", "source_row", "source_status", "notes", "started_at", "ended_at", "is_completed")
-    readonly_fields = fields
-
-    def has_view_permission(self, request, obj=None):
-        return bool(request.user.is_superuser and obj and obj.is_historical)
 
 
-@admin.register(HistoricalTextAssignment)
-class HistoricalTextAssignmentAdmin(HistoricalAssignmentReadOnlyMixin, SuperuserOnlyAdminMixin, admin.ModelAdmin):
-    list_display = ("text", "role_label", "person", "person_name", "is_completed")
-    list_filter = ("role", "is_completed")
-    search_fields = ("text__title", "person_name", "person__first_name", "person__last_name")
-    readonly_fields = tuple(field.name for field in HistoricalTextAssignment._meta.fields if field.name != "notes")
-
-    def has_change_permission(self, request, obj=None):
-        return bool(request.user.is_superuser and obj is not None)
-    actions = None
 
 
 @admin.register(Text)
@@ -254,7 +227,7 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         "length",
         "content_warnings_preview",
     )
-    list_filter = ("anthology", "is_historical")
+    list_filter = ("anthology",)
     search_fields = (
         "title__plcontains",
         "content_warnings__plcontains",
@@ -270,7 +243,7 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         fields = super().get_readonly_fields(request, obj)
         return fields if request.user.is_superuser else (*fields, "file_url")
 
-    readonly_fields = ("current_workflow_cycle", "is_historical", "historical_source", "historical_source_row")
+    readonly_fields = ("current_workflow_cycle", "import_source", "import_source_row")
 
     fieldsets = (
         (
@@ -289,13 +262,12 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         ),
         (
             "Workflow",
-            {"fields": ("current_workflow_cycle", "is_historical", "historical_source", "historical_source_row")},
+            {"fields": ("current_workflow_cycle", "import_source", "import_source_row")},
         ),
     )
     inlines = (
         WorkflowRoleAssignmentInline,
         WorkflowStageInline,
-        HistoricalTextAssignmentInline,
     )
     list_per_page = 50
     show_full_result_count = False
@@ -1003,6 +975,8 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             Text.objects.using(obj._state.db).filter(
                 pk=obj.copied_text_id
             ).update(content_warnings=obj.content_warnings)
+            from core.edit_versions import bump
+            bump('texts.text', obj.copied_text_id, obj._state.db)
 
     @admin.display(
         description="autor",

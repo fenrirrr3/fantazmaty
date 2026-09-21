@@ -3,10 +3,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!text) return;
     const form = text.form;
     const anthology = form.elements.namedItem('anthology');
-    let loadNumber = 0, busy = false;
+    let loadNumber = 0, busy = false, loading = false, failed = false;
+    const submitButtons = [...form.querySelectorAll('button[type="submit"]')];
+    const lock = value => submitButtons.forEach(button => {button.disabled=value;});
     const message = document.createElement('p'); message.setAttribute('role', 'status'); form.prepend(message);
     const load = async () => {
-        const number = ++loadNumber;
+        const number = ++loadNumber; loading=true; failed=false; lock(true);
         text.replaceChildren(new Option('Wczytywanie…', '')); text.disabled = true;
         try {
             const url = new URL(text.dataset.textsUrl, location.origin); url.searchParams.set('anthology', anthology.value);
@@ -18,12 +20,13 @@ document.addEventListener('DOMContentLoaded', () => {
             data.texts.forEach(item => text.add(new Option(item.title, item.id)));
             message.textContent = '';
         } catch (_) {
-            if (number === loadNumber) { text.replaceChildren(new Option('Nie udało się wczytać tekstów', '')); message.textContent = 'Wybierz antologię ponownie, aby spróbować jeszcze raz.'; }
-        } finally { if (number === loadNumber) text.disabled = false; }
+            if (number === loadNumber) { failed=true; text.replaceChildren(new Option('Nie udało się wczytać tekstów', '')); message.textContent = 'Wybierz antologię ponownie, aby spróbować jeszcze raz.'; }
+        } finally { if (number === loadNumber) {text.disabled=false;loading=false;lock(failed);} }
     };
     anthology.addEventListener('change', load);
     if (!form.hasAttribute('data-correction-form')) return;
     form.addEventListener('submit', async event => {
+        if (loading || failed) { event.preventDefault(); message.textContent='Najpierw wczytaj listę tekstów, wybierając ponownie antologię.'; return; }
         if (event.submitter?.value !== 'continue') return;
         event.preventDefault();
         if (busy) return;

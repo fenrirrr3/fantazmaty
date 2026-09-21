@@ -1,5 +1,5 @@
 # Konfiguracja narzędzi deweloperskich.
-# Zależności aplikacji: requirements.txt i requirements.lock.
+# Zależności aplikacji: requirements.txt.
 # Zależności deweloperskie: requirements-dev.txt.
 
 [tool.ruff]

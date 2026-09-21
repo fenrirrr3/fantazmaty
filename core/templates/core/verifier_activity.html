@@ -18,7 +18,7 @@
             method="get"
             action="{% url 'core:verifier_activity' %}"
             class="filters-form"
-            data-remember-filters="verifier-activity"
+            data-filters="verifier-activity"
         >
             <input
                 type="hidden"
@@ -133,7 +133,6 @@
                 <a
                     href="{% url 'core:verifier_activity' %}"
                     class="secondary-button"
-                    data-clear-saved-filters="verifier-activity"
                 >
                     Wyczyść filtry
                 </a>
@@ -157,24 +156,24 @@
             aria-label="Tabela aktywności weryfikatorów"
             tabindex="0"
         >
-            <table id="verifier-activity-table">
+            <table data-copy-table data-server-paginated="true" id="verifier-activity-table">
                 <caption class="visually-hidden">
                     Etapy weryfikacji, od najnowszej daty zakończenia
                 </caption>
 
                 <thead>
                     <tr>
-                        <th scope="col">Weryfikator</th>
-                        <th scope="col">Antologia</th>
-                        <th scope="col">Tytuł</th>
+                        <th scope="col" data-sort-key="person">Weryfikator</th>
+                        <th scope="col" data-sort-key="anthology">Antologia</th>
+                        <th scope="col" data-sort-key="title" class="sticky-title">Tytuł</th>
                         {% if can_view_authors %}
-                            <th scope="col">Autorzy</th>
+                            <th scope="col" data-sort-key="authors">Autorzy</th>
                         {% endif %}
-                        <th scope="col">Rola</th>
+                        <th scope="col" data-sort-key="role">Rola</th>
                         
-                        <th scope="col">Rozpoczęcie</th>
-                        <th scope="col">Zakończenie</th>
-                        <th scope="col">Stan etapu</th>
+                        <th scope="col" data-sort-key="started_at">Rozpoczęcie</th>
+                        <th scope="col" data-sort-key="ended_at">Zakończenie</th>
+                        <th scope="col" data-sort-key="completed">Stan etapu</th>
                     </tr>
                 </thead>
 
@@ -187,7 +186,7 @@
                                 {{ row.anthology_title|default:"Brak antologii" }}
                             </td>
 
-                            <td data-double-copy data-copy-value="{{ row.title }}">
+                            <td data-double-copy data-copy-value="{{ row.title }}" class="sticky-title">
                                 <a
                                     href="{% url 'core:assigned_text_detail' row.text_id %}"
                                     class="text-title-link"
@@ -203,7 +202,7 @@
                             {% endif %}
 
                             <td>
-                                <span class="role-badge">{{ row.role }}</span>
+                                <span class="role-badge">{{ row.role }}</span>{% if row.execution_number > 1 %} <small class="muted-text">wykonanie {{ row.execution_number }}</small>{% endif %}
                             </td>
 
                             
@@ -217,9 +216,7 @@
                             </td>
 
                             <td>
-                                {% if row.is_historical %}
-                                    <span class="role-badge">Historyczne{% if row.is_completed %} · wykonane{% endif %}</span>
-                                {% elif row.is_completed %}
+                                {% if row.is_completed %}
                                     <span class="stage-status completed">Zakończony</span>
                                 {% elif row.started_at %}
                                     {% if row.started_at|date:"Y-m-d" > today_iso %}
@@ -248,7 +245,6 @@
                                     <a
                                         href="{% url 'core:verifier_activity' %}"
                                         class="secondary-button"
-                                        data-clear-saved-filters="verifier-activity"
                                     >
                                         Wyczyść filtry
                                     </a>

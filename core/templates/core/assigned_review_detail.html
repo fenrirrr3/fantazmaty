@@ -5,7 +5,7 @@
 {% block content %}
     {% if user.is_superuser and review.is_hidden %}
     <section class="message warning"><h2>Ukryte zgłoszenie</h2><p>Widoczne wyłącznie dla superusera. Termin odrzucenia: {{ review.decision_at|date:'d.m.Y' }}.</p>
-    <form method="post" action="{% url 'core:release_hidden_review' review.pk %}">{% csrf_token %}
+    <form method="post" action="{% url 'core:release_hidden_review' review.pk %}">{% csrf_token %}{% edit_version %}
     <label><input type="checkbox" name="confirm" value="yes" required> To błędna kwalifikacja – przywróć zgłoszenie do recenzji i udostępnij recenzentom.</label><button type="submit">Przywróć zgłoszenie</button></form></section>
     {% endif %}
     <header class="page-header">
@@ -144,7 +144,7 @@
                 class="general-notes-form"
                 data-warn-unsaved
             >
-                {% csrf_token %}
+                {% csrf_token %}{% edit_version %}
                 {{ review_content_warnings_form.non_field_errors }}
 
                 <div class="form-field">
@@ -191,7 +191,7 @@
                         method="post"
                         action="{% url 'core:assign_reviewer' review.pk %}"
                     >
-                        {% csrf_token %}
+                        {% csrf_token %}{% edit_version %}
                         <button type="submit" class="assign-button">
                             Biorę
                         </button>
@@ -210,7 +210,7 @@
                         method="post"
                         action="{% url 'core:unassign_reviewer' review.pk %}"
                     >
-                        {% csrf_token %}
+                        {% csrf_token %}{% edit_version %}
                         <button type="submit" class="unassign-button">
                             Usuń mój przydział i opinię
                         </button>
@@ -241,7 +241,7 @@
                     data-autosave="review-opinion-{{ review.pk }}"
                     data-warn-unsaved
                 >
-                    {% csrf_token %}
+                    {% csrf_token %}{% edit_version %}
                     {{ opinion_form.non_field_errors }}
 
                     <div class="form-field">
@@ -390,7 +390,7 @@
                             method="post"
                             action="{% url 'core:update_review_status' review.pk %}"
                         >
-                            {% csrf_token %}
+                            {% csrf_token %}{% edit_version %}
                             <input type="hidden" name="status" value="accepted">
                             <button type="submit" class="accept-review-button">
                                 Przyjmij tekst
@@ -403,7 +403,7 @@
                             method="post"
                             action="{% url 'core:update_review_status' review.pk %}"
                         >
-                            {% csrf_token %}
+                            {% csrf_token %}{% edit_version %}
                             <input type="hidden" name="status" value="rejected">
                             <button type="submit" class="reject-review-button">
                                 Odrzuć tekst
@@ -428,7 +428,7 @@
                     action="{% url 'core:update_author_notification' review.pk %}"
                     class="general-notes-form"
                 >
-                    {% csrf_token %}
+                    {% csrf_token %}{% edit_version %}
                     {{ author_notification_form.non_field_errors }}
 
                     <label
@@ -470,7 +470,7 @@
                     action="{% url 'core:copy_review_to_text' review.pk %}"
                     class="general-notes-form"
                 >
-                    {% csrf_token %}
+                    {% csrf_token %}{% edit_version %}
 
                     {% if author_has_contract %}
                         <p class="contract-confirmed">Umowa autora jest potwierdzona.</p>

@@ -896,5 +896,9 @@ def my_reviews(request):
     anthologies = Anthology.objects.filter(pk__in=own_anthologies).order_by("title", "pk")
     if anthology_id is not None:
         rows = rows.filter(review__anthology_id=anthology_id)
+    opinion_choices = [(v, label) for v, label in Reviewers.Opinion.choices if v not in ("", "reading")]
+    selected_opinions = [v for v in request.GET.getlist("opinion") if v in dict(opinion_choices)]
+    if selected_opinions:
+        rows = rows.filter(opinion__in=selected_opinions)
     page = paginate_items(request, rows)
-    return render(request, "core/my_reviews.html", {"assignments": page, "page_obj": page, "selected_view": view, "query": query, "anthologies": anthologies, "selected_anthology_id": str(anthology_id or ""), "can_view_authors": False})
+    return render(request, "core/my_reviews.html", {"opinion_choices": opinion_choices, "selected_opinions": selected_opinions, "assignments": page, "page_obj": page, "selected_view": view, "query": query, "anthologies": anthologies, "selected_anthology_id": str(anthology_id or ""), "can_view_authors": False})

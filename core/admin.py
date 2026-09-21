@@ -163,6 +163,17 @@ class VacationAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     def get_readonly_fields(self, request, obj=None):
         return (*self.readonly_fields, *(("person",) if obj else ()))
 
+    def changeform_view(self, request, object_id=None, form_url='', extra_context=None):
+        # Serialize validation with other vacation writes for the same person.
+        from django.db import transaction
+        from people.models import Person
+        with transaction.atomic():
+            if request.method == "POST" and not object_id:
+                person_id = request.POST.get("person", "")
+                if person_id.isdecimal() and len(person_id) < 19:
+                    Person.objects.select_for_update().filter(pk=int(person_id)).first()
+            return super().changeform_view(request, object_id, form_url, extra_context)
+
     def save_model(self, request, obj, form, change):
         from django.db import transaction
         from django.utils import timezone
@@ -266,10 +277,5 @@ class WorkflowEventAdmin(admin.ModelAdmin):
         return False
 
 
-from core.models import DiscordDispatch
 
-@admin.register(DiscordDispatch)
-class DiscordDispatchAdmin(WorkflowEventAdmin):
-    list_display = ('created_at', 'user', 'channel', 'status', 'message_id')
-    search_fields = ('user__username', 'channel')
-    readonly_fields = tuple(f.name for f in DiscordDispatch._meta.fields)
+

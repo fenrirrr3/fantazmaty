@@ -19,7 +19,7 @@
             action="{% url 'core:bulk_text_action' %}"
             data-bulk-form
         >
-            {% csrf_token %}
+            {% csrf_token %}{% edit_version %}
 
             <details class="bulk-action-panel">
                 <summary class="bulk-action-toggle">
@@ -80,7 +80,7 @@
             aria-label="Tabela tekstów"
             tabindex="0"
         >
-            <table id="texts-table" data-server-sort="true">
+            <table data-copy-table data-server-paginated="true" id="texts-table" data-server-sort="true">
                 <caption class="visually-hidden">
                     Teksty spełniające wybrane filtry
                 </caption>
@@ -99,15 +99,15 @@
                             </th>
                         {% endif %}
 
-                        <th scope="col">Antologia</th>
-                        <th scope="col">Tytuł</th>
+                        <th scope="col" data-sort-key="anthology">Antologia</th>
+                        <th scope="col" data-sort-key="title" class="sticky-title">Tytuł</th>
 
                         {% if can_view_authors %}
-                            <th scope="col">Autorzy</th>
+                            <th scope="col" data-sort-key="authors">Autorzy</th>
                         {% endif %}
 
-                        <th scope="col" class="numeric-cell">Długość</th>
-                        <th scope="col">Etap pracy</th>
+                        <th scope="col" class="numeric-cell" data-sort-key="length">Długość</th>
+                        <th scope="col" data-sort-key="status">Etap pracy</th>
                         <th scope="col">Rozpoczęcie etapu</th>
                     </tr>
                 </thead>
@@ -140,7 +140,7 @@
                                 {% endif %}
                             </td>
 
-                            <td data-double-copy data-copy-value="{{ text.title }}">
+                            <td data-double-copy data-copy-value="{{ text.title }}" class="sticky-title">
                                 <a
                                     href="{% url 'core:assigned_text_detail' text.pk %}"
                                     class="text-title-link"
@@ -204,7 +204,6 @@
                                     <a
                                         href="{% url 'core:text_list' %}"
                                         class="secondary-button"
-                                        data-clear-saved-filters="text-list"
                                     >
                                         Wyczyść filtry
                                     </a>

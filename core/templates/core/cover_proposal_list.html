@@ -20,7 +20,7 @@
             class="general-notes-form"
             data-warn-unsaved
         >
-            {% csrf_token %}
+            {% csrf_token %}{% edit_version %}
 
             {% for error in form.non_field_errors %}
                 <p class="form-error" role="alert">{{ error }}</p>
@@ -80,7 +80,7 @@
             aria-label="Tabela propozycji okładek"
             tabindex="0"
         >
-            <table id="cover-proposals-table">
+            <table data-copy-table data-server-paginated="true" id="cover-proposals-table">
                 <caption class="visually-hidden">
                     Propozycje ilustracji okładkowych, od najnowszego zgłoszenia
                 </caption>
@@ -91,7 +91,7 @@
                         <th scope="col">Ilustracja</th>
                         <th scope="col">Zgłoszone przez</th>
                         <th scope="col">Data zgłoszenia</th>
-                        <th scope="col">Status</th>
+                        <th scope="col" data-sort-key="status">Status</th>
                         <th scope="col">Ostatnia zmiana statusu</th>
                         {% if can_manage_proposals %}
                             <th scope="col" data-copy="false">Zmień status</th>
@@ -154,7 +154,7 @@
                                         action="{% url 'illustrations:update_cover_proposal_status' proposal.pk %}"
                                         class="reviewer-action-form"
                                     >
-                                        {% csrf_token %}
+                                        {% csrf_token %}{% edit_version %}
 
                                         <div class="form-field">
                                             <label

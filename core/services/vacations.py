@@ -4,7 +4,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
 from core.permissions import (
-    is_superuser,
+    is_superuser, is_coordinator,
     require_team_member,
 )
 from people.models import Person, Vacation
@@ -18,7 +18,7 @@ def _require_access(user, person):
             "Nie można zmieniać urlopów osoby, która nie jest już w zespole."
         )
 
-    if not is_superuser(user) and person.user_id != user.pk:
+    if not is_coordinator(user) and person.user_id != user.pk:
         raise PermissionDenied(
             "Możesz zarządzać wyłącznie własnymi urlopami."
         )

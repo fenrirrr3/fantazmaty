@@ -16,7 +16,7 @@
             method="get"
             action="{% url 'illustrations:illustration_list' %}"
             class="filters-form"
-            data-remember-filters="illustration-list"
+            data-filters="illustration-list"
         >
             <input
                 type="hidden"
@@ -59,7 +59,6 @@
                 <a
                     href="{% url 'illustrations:illustration_list' %}"
                     class="secondary-button"
-                    data-clear-saved-filters="illustration-list"
                 >
                     Wyczyść filtry
                 </a>
@@ -76,22 +75,22 @@
             aria-label="Tabela ilustracji i przydziałów"
             tabindex="0"
         >
-            <table id="illustrations-table">
+            <table data-copy-table data-server-paginated="true" id="illustrations-table">
                 <caption class="visually-hidden">
                     Ilustracje spełniające wybrane filtry
                 </caption>
 
                 <thead>
                     <tr>
-                        <th scope="col">Antologia</th>
-                        <th scope="col">Tytuł tekstu</th>
+                        <th scope="col" data-sort-key="anthology">Antologia</th>
+                        <th scope="col" data-sort-key="title" class="sticky-title">Tytuł tekstu</th>
 
                         {% if can_view_authors %}
-                            <th scope="col">Autorzy</th>
+                            <th scope="col" data-sort-key="authors">Autorzy</th>
                         {% endif %}
 
                         <th scope="col">Ilustrator</th>
-                        <th scope="col">Status</th>
+                        <th scope="col" data-sort-key="status">Status</th>
                         <th scope="col">Data przypisania</th>
                         <th scope="col">Ostrzeżenia dotyczące treści</th>
                         <th scope="col">Opowiadanie</th>
@@ -106,7 +105,7 @@
                                 {{ illustration.text.anthology.title|default:"Brak antologii" }}
                             </td>
 
-                            <td data-copy-value="{{ illustration.text.title }}">
+                            <td data-copy-value="{{ illustration.text.title }}" class="sticky-title">
                                 <a
                                     href="{% url 'core:assigned_text_detail' illustration.text.pk %}"
                                     class="text-title-link"
@@ -230,7 +229,6 @@
                                         <a
                                             href="{% url 'illustrations:illustration_list' %}"
                                             class="secondary-button"
-                                            data-clear-saved-filters="illustration-list"
                                         >
                                             Wyczyść filtry
                                         </a>

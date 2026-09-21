@@ -17,7 +17,7 @@ class TeamEmailVisibilityTests(TestCase):
                 email=f"{user.username}@example.com", user=user,
             )
             if user == self.coordinator:
-                person.roles.add(Role.objects.create(name="Koordynator redakcji"))
+                person.roles.add(Role.objects.get_or_create(name="Koordynator redakcji")[0])
         self.target = Person.objects.create(
             first_name="Target", last_name="Person",
             email="private-contact@example.com",
@@ -26,7 +26,7 @@ class TeamEmailVisibilityTests(TestCase):
 
     def test_list_and_detail_visibility(self):
         for user, email_allowed, dropbox_allowed in (
-            (self.member, False, False),
+            (self.member, True, False),
             (self.coordinator, True, False),
             (self.admin, True, True),
         ):
@@ -40,18 +40,18 @@ class TeamEmailVisibilityTests(TestCase):
                     self.assertEqual(response.status_code, 200)
                     html = response.content.decode()
                     self.assertEqual(self.target.email in html, email_allowed)
-                    self.assertEqual(self.target.dropbox_email in html, dropbox_allowed)
+                    self.assertEqual(self.target.dropbox_email in html, dropbox_allowed and url != reverse("core:people_list"))
 
     def test_search_cannot_match_hidden_email(self):
         for user, email_allowed, dropbox_allowed in (
-            (self.member, False, False),
+            (self.member, True, False),
             (self.coordinator, True, False),
             (self.admin, True, True),
         ):
             self.client.force_login(user)
             for query, expected in (
                 ("private-contact", email_allowed),
-                ("private-dropbox", dropbox_allowed),
+                ("private-dropbox", False),
                 ("Target", True),
             ):
                 with self.subTest(user=user.username, query=query):
@@ -65,11 +65,11 @@ class TeamEmailVisibilityTests(TestCase):
         self.member.save(update_fields=["is_staff"])
         self.client.force_login(self.member)
         response = self.client.get(reverse("core:people_list"))
-        self.assertNotContains(response, self.target.email)
+        self.assertContains(response, self.target.email)
         self.assertNotContains(response, self.target.dropbox_email)
 
     def test_empty_table_column_count(self):
-        for user, columns in ((self.member, 3), (self.coordinator, 4), (self.admin, 5)):
+        for user, columns in ((self.member, 3), (self.coordinator, 3), (self.admin, 3)):
             self.client.force_login(user)
             response = self.client.get(reverse("core:people_list"), {"query": "no-match-xyz"})
             self.assertContains(response, f'colspan="{columns}"')
