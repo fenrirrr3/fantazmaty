@@ -1,4 +1,5 @@
 """Database predicates for read-only workflow lists; writes use workflow services."""
+from workflow.catalog import IMPORT_ONLY_STAGE_TYPES
 from django.db.models import Case, When, Value, CharField, Exists, OuterRef, Q, F
 from workflow.models import WorkflowStage as S, WorkflowRoleAssignment as A
 from workflow.services import STAGE_ROLES, ROLE_GROUPS
@@ -33,7 +34,7 @@ def own_stages(user):
                                 assigned_to_id=user.pk, role=OuterRef('_work_role'))
     return S.objects.alias(_work_role=stage_role()).filter(
         Q(assignment__assigned_to_id=user.pk) | (Q(assignment__isnull=True, is_current=True) & Q(Exists(assigned)))
-    ).exclude(stage_type__in=('author_editing', 'ready_for_editing'))
+    ).exclude(stage_type__in=('author_editing', 'ready_for_editing', *IMPORT_ONLY_STAGE_TYPES))
 
 
 def waiting_editor(query, today):
@@ -57,9 +58,19 @@ def annotate_my_work(queryset, user, today):
     reserved = reserved_assignments(user, today).filter(text_id=OuterRef('pk'), workflow_cycle=OuterRef('current_workflow_cycle'), is_current=True)
     closed = Exists(terminal(stages))
     active = Exists(active_stages(own.filter(is_current=True), today)) & ~closed
-    # Repeats explicitly define all remaining editor passes. Legacy late-entry cycles skip earlier checkpoints.
-    editor_remaining = Exists(assigned.filter(role=A.Role.EDITOR, repetition__isnull=True).exclude(stages__imported_completed=True)) & ~Exists(stages.filter(stage_type__in=('editor_control','third_proofreading','fourth_proofreading','styling','ready')))
-    pending = ~active & ~closed & (Exists(own.filter(is_current=True, is_completed=False)) | Exists(reserved) | editor_remaining)
+    # Redakcja jest gotowa dopiero po zakończonej kontroli koordynatora redakcji.
+    # Brak dat nie ma znaczenia: liczy się jawny stan zakończenia, również przy imporcie.
+    editorial_work = Exists(assigned.filter(role=A.Role.EDITOR)) | Exists(own.filter(_work_role=A.Role.EDITOR))
+    # The imported terminal status confirms completed editorial work even if
+    # the source omitted a coordinator check. No fictional check is created.
+    # Repeating editing retires these stages and removes READY, so this does not
+    # approve any later work automatically.
+    imported_editing_approved = (Exists(stages.filter(stage_type=S.StageType.READY))
+        & Exists(stages.filter(stage_type=S.StageType.EDITING, imported_completed=True, is_completed=True)))
+    editing_approved = Exists(stages.filter(stage_type=S.StageType.EDITING_CONTROL, is_completed=True)) | imported_editing_approved
+    editor_remaining = editorial_work & ~editing_approved
+    live_editor_waiting = editor_remaining & Exists(assigned.filter(role=A.Role.EDITOR).exclude(stages__imported_completed=True))
+    pending = ~active & ~closed & (Exists(own.filter(is_current=True, is_completed=False)) | Exists(reserved) | live_editor_waiting)
     completed = Exists(own.filter(is_completed=True)) & ~Exists(own.filter(is_current=True, is_completed=False)) & ~active & ~pending & ~editor_remaining
     return queryset.annotate(work_active=active, work_waiting=pending, work_completed=completed)
 

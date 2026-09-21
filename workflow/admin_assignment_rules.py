@@ -9,8 +9,8 @@ from workflow.models import WorkflowRoleAssignment, WorkflowStage
 def has_recorded_work(assignment):
     if connection.in_atomic_block:
         Text.objects.select_for_update().get(pk=assignment.text_id)
-    from workflow.services import STAGE_ROLES
-    kinds = [kind for kind, role in STAGE_ROLES.items() if role == assignment.role]
+    from workflow.catalog import all_stage_roles
+    kinds = [kind for kind, role in all_stage_roles().items() if role == assignment.role]
     return WorkflowStage.objects.filter(text_id=assignment.text_id, workflow_cycle=assignment.workflow_cycle, stage_type__in=kinds).filter(Q(started_at__isnull=False) | Q(ended_at__isnull=False) | Q(is_completed=True)).exists()
 
 

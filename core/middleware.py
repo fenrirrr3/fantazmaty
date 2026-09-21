@@ -10,11 +10,15 @@ def aggregate(match):
     from texts.models import Review, Text, ReviewAssignment, Reviewers
     from workflow.models import WorkflowStage, WorkflowRoleAssignment
     from people.models import Vacation
+    from authors.models import Author, AuthorNote
     from core.models import AnthologyCorrection
     kwargs = match.kwargs
     admin_model = getattr(getattr(match.func, "model_admin", None), "model", None)
     object_id = kwargs.get("object_id", "")
     if match.namespace == "admin" and admin_model and str(object_id).isdecimal() and len(str(object_id)) < 19:
+        if admin_model is AuthorNote:
+            author_id = AuthorNote.objects.filter(pk=int(object_id)).values_list('author_id', flat=True).first()
+            return Author, author_id
         if admin_model in (ReviewAssignment, Reviewers):
             review_id = admin_model.objects.filter(pk=int(object_id)).values_list('review_id', flat=True).first()
             return Review, review_id
@@ -132,7 +136,7 @@ class EditingMiddleware:
             key = f"{model._meta.label_lower}:{pk}" if obj else ""
             token = request.POST.get("_edit_version") if request.method == "POST" else None
             required = match.namespace == 'admin' or match.url_name in {
-                'cancel_workflow_repetition', 'handoff_workflow_stage',
+                'cancel_workflow_repetition', 'handoff_workflow_stage', 'link_text_review',
                 'set_text_authors', 'update_coordinator_note', 'update_text_content_warnings',
                 'edit_text_note', 'delete_text_note', 'update_text_file',
                 'update_review_content_warnings', 'update_author_notification', 'update_review_status',

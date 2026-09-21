@@ -417,7 +417,7 @@ class ReviewQuerySet(models.QuerySet):
         return self.filter(old_reviews=True)
 
     def for_statistics(self):
-        return self.current().filter(is_hidden=False)
+        return self.filter(models.Q(old_reviews=True) | models.Q(is_hidden=False))
 
 
 class Review(NormalizedModelMixin, models.Model):
@@ -507,8 +507,8 @@ class Review(NormalizedModelMixin, models.Model):
         default=False,
         db_index=True,
         help_text=(
-            "Recenzja archiwalna, wyłączona ze statystyk "
-            "i bieżącego przydzielania pracy."
+            "Oddane opinie archiwalne są liczone do dorobku, "
+            "bez wpływu na bieżące obciążenie i przydzielanie pracy."
         ),
     )
 
@@ -634,11 +634,17 @@ class Reviewers(models.Model):
 
 
 class ReviewAssignmentQuerySet(models.QuerySet):
+    def submitted(self):
+        return self.exclude(opinion__in=("", "reading"))
+
     def current(self):
         return self.filter(review__old_reviews=False)
 
     def for_statistics(self):
-        return self.current().filter(review__is_hidden=False)
+        return self.filter(
+            models.Q(review__old_reviews=False, review__is_hidden=False)
+            | (models.Q(review__old_reviews=True) & ~models.Q(opinion__in=("", "reading")))
+        )
 
     def for_user(self, user):
         if not user.is_authenticated or user.pk is None:
@@ -685,6 +691,9 @@ class ReviewAssignment(models.Model):
 
     def clean(self):
         super().clean()
+        if self.review_id and self.review.old_reviews:
+            from texts.archive_dates import validate_archive_dates
+            validate_archive_dates(self.assigned_at, self.opinion_changed_at)
         if self.historical_person_id:
             if self.review_id and not self.review.old_reviews:
                 raise ValidationError({"historical_person": "Profil historyczny jest dostępny tylko w archiwum."})

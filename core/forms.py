@@ -1,3 +1,4 @@
+from workflow.catalog import active_role_choices
 from django.db.models import Q
 from people.role_ordering import ordered_team_roles
 import hashlib
@@ -851,7 +852,7 @@ class CoordinatorTextBulkActionForm(forms.Form):
         required=False,
         choices=(
             ("", "Wybierz rolę"),
-            *WorkflowRoleAssignment.Role.choices,
+            *active_role_choices(),
         ),
         widget=forms.Select(
             attrs={

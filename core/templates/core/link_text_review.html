@@ -1,0 +1,17 @@
+{% extends "core/base.html" %}
+{% block title %}Powiąż recenzje | Fantazmaty CMS{% endblock %}
+{% block content %}
+<header class="page-header"><h1>Powiąż recenzje: {{ text.title }}</h1><a class="secondary-button" href="{% url 'core:assigned_text_detail' text.pk %}">Wróć do tekstu</a></header>
+<section class="details-card">
+<p>Wybierz przyjęte zgłoszenie z tej samej antologii. Podpowiedzi mają zgodny tytuł i autorów. Zapis zastąpi wcześniejsze powiązanie tego tekstu, zachowując same zgłoszenia i opinie.</p>
+<form method="get" class="filters-form"><div class="form-field"><label for="source-query">Tytuł, autor lub e-mail</label><input id="source-query" name="q" type="search" value="{{ query }}"></div><button type="submit" class="primary-button">Szukaj</button></form>
+<form method="post">{% csrf_token %}{% edit_version %}
+<div class="table-container"><table data-server-paginated="true"><thead><tr><th>Wybór</th><th>Tytuł</th><th>Autor</th><th>Informacja</th></tr></thead><tbody>
+{% for review in candidates %}<tr><td><input type="radio" name="review_id" value="{{ review.pk }}" id="source-{{ review.pk }}" required {% if review.copied_text_id == text.pk %}checked{% endif %}></td><td><label for="source-{{ review.pk }}">{{ review.title }}</label></td><td>{{ review.author_first_name }} {{ review.author_last_name }}</td><td>{% if review.copied_text_id == text.pk %}Obecne powiązanie{% elif review.pk in suggested_ids %}Podpowiedź{% elif review.old_reviews %}Archiwum{% endif %}</td></tr>{% empty %}<tr><td colspan="4">Brak pasujących zgłoszeń.</td></tr>{% endfor %}
+</tbody></table></div>
+{% if candidates %}<button type="submit" class="primary-button">Zapisz powiązanie</button>{% endif %}
+</form>
+</section>
+{% include "core/includes/table_toolbar.html" %}
+{% include "core/includes/pagination.html" %}
+{% endblock %}

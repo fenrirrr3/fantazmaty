@@ -113,7 +113,7 @@
     <section aria-labelledby="person-summary-heading">
         <h2 id="person-summary-heading">Praca nad tekstami</h2>
         <p class="muted-text">
-            Liczba tekstów według tych samych zasad co w „Moje teksty”. Redakcja pozostaje oczekująca do zakończenia kontroli redaktorskiej.
+            Liczba tekstów według tych samych zasad co w „Moje teksty”. Redakcja jest zakończona po kontroli koordynatora redakcji lub po imporcie zakończonej redakcji tekstu oznaczonego jako gotowy.
         </p>
 
         <div class="profile-summary-grid">
@@ -131,6 +131,22 @@
             </div>
         </div>
     </section>
+
+    {% if imported_work_summary %}
+    <section class="details-card" aria-labelledby="imported-work-heading">
+        <h2 id="imported-work-heading">Dawna aktywność</h2>
+        <p class="muted-text">Zakończone prace z importu. Nie zwiększają bieżącego obciążenia ani liczby zarezerwowanych tekstów.</p>
+        <div class="profile-summary-grid">
+            {% for work in imported_work_summary %}
+            <div class="summary-tile">
+                <span>{{ work.label }}</span>
+                <strong>{{ work.texts }}</strong>
+                <span>Teksty z zakończoną pracą · wykonania: {{ work.executions }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
 
     <section class="card" aria-labelledby="person-assignments-heading">
         <header class="section-header">
@@ -288,7 +304,7 @@
     </section>
 {% include "core/includes/table_toolbar.html" %}
 {% if archived_reviews %}
-<section class="details-card"><h2>Archiwalne recenzje</h2>
+<section class="details-card"><h2>Archiwalne recenzje ({{ archived_reviews|length }})</h2>
 <div class="table-container"><table data-copy-table><thead><tr><th data-sort-key="title" class="sticky-title">Tytuł</th><th data-sort-key="anthology">Antologia</th><th data-sort-key="opinion">Opinia</th><th>Data opinii</th></tr></thead><tbody>
 {% for assignment in archived_reviews %}<tr><td data-double-copy class="sticky-title"><strong>{% if user.is_superuser %}<a href="{% url 'core:assigned_review_detail' assignment.review_id %}">{{ assignment.review.title }}</a>{% else %}{{ assignment.review.title }}{% endif %}</strong></td><td>{{ assignment.review.anthology.title }}</td><td><span class="reviewer-bubble reviewer-opinion-{{ assignment.opinion }}">{{ assignment.get_opinion_display }}</span></td><td>{{ assignment.opinion_changed_at|date:"d.m.Y"|default:"—" }}</td></tr>{% endfor %}
 </tbody></table></div></section>{% endif %}

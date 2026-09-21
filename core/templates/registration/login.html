@@ -19,7 +19,7 @@
 
             {% if form.errors %}
                 <div class="form-error">
-                    Nieprawidłowa nazwa użytkownika lub hasło.
+                    Nieprawidłowy adres e-mail lub hasło.
                 </div>
             {% endif %}
 
@@ -34,7 +34,7 @@
 
                 <div class="form-group">
                     <label for="{{ form.username.id_for_label }}">
-                        Nazwa użytkownika
+                        Adres e-mail
                     </label>
 
                     {{ form.username }}

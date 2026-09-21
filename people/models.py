@@ -333,7 +333,7 @@ class Vacation(models.Model):
             if not self.until_revoked and self.end_date:
                 overlapping = overlapping.filter(start_date__lte=get_local_date(self.end_date))
             if overlapping.exists():
-                errors["start_date"] = "Ten okres pokrywa się z innym urlopem tej osoby."
+                errors["start_date"] = "Ten okres pokrywa się z twoim innym urlopem."
 
         if errors:
             raise ValidationError(errors)

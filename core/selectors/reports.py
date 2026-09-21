@@ -1,3 +1,4 @@
+from workflow.catalog import active_stage_choices, active_role_choices
 from datetime import timedelta
 
 from django import forms
@@ -150,8 +151,8 @@ def workflow_activity_context(
     require_coordinator(user)
     include_authors = can_view_author_data(user)
 
-    valid_stages = {value for value, _ in WorkflowStage.StageType.choices}
-    valid_roles = {value for value, _ in WorkflowRoleAssignment.Role.choices}
+    valid_stages = {value for value, _ in active_stage_choices()}
+    valid_roles = {value for value, _ in active_role_choices()}
 
     if any(
         stage not in valid_stages or role not in valid_roles
@@ -200,7 +201,7 @@ def workflow_activity_context(
         "stage_type",
         "-pk",
     )
-    role_labels = dict(WorkflowRoleAssignment.Role.choices)
+    role_labels = dict(active_role_choices())
     rows = []
 
     for stage in stages.iterator(chunk_size=BATCH_SIZE):
@@ -291,9 +292,7 @@ def reviewer_activity_context(*, user, params):
 
     # Nie filtrujemy historii po aktualnej roli ani aktywności osoby.
     # Usunięcie konta również nie usuwa informacji o oddanej opinii.
-    assignments = ReviewAssignment.objects.filter(
-        
-    ).select_related(
+    assignments = ReviewAssignment.objects.submitted().select_related(
         "review",
         "review__anthology",
         "user",
@@ -410,7 +409,7 @@ def workflow_inactivity_context(
         mode = "all"
 
     valid_stage_types = {
-        value for value, _ in WorkflowStage.StageType.choices
+        value for value, _ in active_stage_choices()
     }
     selected_stages = list(
         dict.fromkeys(
@@ -542,7 +541,7 @@ def workflow_inactivity_context(
         "rows": rows,
         "query": query,
         "mode": mode,
-        "stage_choices": WorkflowStage.StageType.choices,
+        "stage_choices": active_stage_choices(),
         "selected_stages": selected_stages,
         "today": today,
     }

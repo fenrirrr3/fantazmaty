@@ -118,3 +118,30 @@ details.sidebar-section > summary { cursor:pointer; }
 .selected-author { display:inline-flex; align-items:center; gap:8px; padding:6px 8px; border:1px solid var(--border); border-radius:6px; background:var(--surface-alt); }
 .selected-author button { padding:2px 6px; }
 .text-authors-management-form input[type="search"] { width:100%; box-sizing:border-box; }
+
+/* Recenzje tekstu: dwie kolumny, jedna na małych ekranach. */
+.source-review-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.source-review-grid .reviewer-opinion { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 760px) { .source-review-grid { grid-template-columns: 1fr; } }
+
+/* Ten arkusz jest ładowany po styles.css: zachowaj mobilne ukrywanie menu. */
+@media (max-width: 950px) {
+    .site-sidebar { display: none; }
+    .site-sidebar.is-open { display: flex; }
+}
+
+/* Przekazanie pracy: ten sam panel, odstępy i przyciski co pozostałe akcje. */
+.work-handoff-card { margin-block: 20px; color: var(--text); background: var(--surface); }
+.work-handoff-card > summary { cursor: pointer; list-style: none; padding: 16px 20px; }
+.work-handoff-card > summary::-webkit-details-marker { display: none; }
+.work-handoff-card[open] > summary { border-bottom: 1px solid var(--border); }
+.work-handoff-card .text-management-content { padding: 8px 20px; }
+.work-handoff-card .management-action { padding-block: 12px; gap: 12px; }
+.work-handoff-card h3 { margin: 0; font-size: 1rem; }
+.work-handoff-link { justify-self: start; white-space: normal; text-align: center; max-width: 100%; }
+.work-handoff-card[open] > summary .dropdown-arrow { transform: rotate(180deg); }
+@media (max-width: 760px) {
+    .work-handoff-card > summary { padding: 14px 16px; }
+    .work-handoff-card .text-management-content { padding-inline: 16px; }
+    .work-handoff-link { justify-self: stretch; }
+}

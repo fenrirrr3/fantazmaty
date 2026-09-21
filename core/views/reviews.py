@@ -877,7 +877,7 @@ def my_reviews(request):
         rows = ReviewAssignment.objects.filter(
             Q(user=request.user) | Q(historical_person__user=request.user),
             review__old_reviews=True,
-        ).select_related("review__anthology").order_by("review__anthology__title", "review__title", "pk")
+        ).submitted().select_related("review__anthology").order_by("review__anthology__title", "review__title", "pk")
     else:
         rows = ReviewAssignment.objects.filter(user=request.user, review__old_reviews=False, review__is_hidden=False).select_related("review__anthology").order_by("-assigned_at", "-pk")
     if view == "active":

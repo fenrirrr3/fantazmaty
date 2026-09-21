@@ -7,6 +7,42 @@ from django.utils import timezone
 from texts.models import Text
 
 from .models import WorkflowRoleAssignment, WorkflowStage
+from .catalog import IMPORT_ONLY_STAGE_TYPES, IMPORT_ONLY_ROLES, active_stage_choices, active_role_choices
+
+
+class OperationalWorkAdminMixin:
+    def get_queryset(self, request):
+        queryset = super().get_queryset(request)
+        match = request.resolver_match
+        # Filter the root queryset too, so counters and filter facets agree.
+        # Direct history links still allow a superuser to correct known dates.
+        if match is None or match.url_name != f"{self.opts.app_label}_{self.opts.model_name}_changelist":
+            return queryset
+        if self.model is WorkflowStage:
+            return queryset.exclude(stage_type__in=IMPORT_ONLY_STAGE_TYPES)
+        return queryset.exclude(role__in=IMPORT_ONLY_ROLES)
+
+
+class ActiveStageFilter(admin.SimpleListFilter):
+    title = "etap"
+    parameter_name = "stage_type"
+
+    def lookups(self, request, model_admin):
+        return active_stage_choices()
+
+    def queryset(self, request, queryset):
+        return queryset.filter(stage_type=self.value()) if self.value() else queryset
+
+
+class ActiveRoleFilter(admin.SimpleListFilter):
+    title = "rola"
+    parameter_name = "role"
+
+    def lookups(self, request, model_admin):
+        return active_role_choices()
+
+    def queryset(self, request, queryset):
+        return queryset.filter(role=self.value()) if self.value() else queryset
 
 
 class WorkflowCycleAdminFormMixin:
@@ -94,8 +130,19 @@ class WorkflowRoleAssignmentAdminForm(
 
 
 @admin.register(WorkflowStage)
-class WorkflowStageAdmin(admin.ModelAdmin):
+class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
     readonly_fields = tuple(field.name for field in WorkflowStage._meta.fields)
+
+    def get_readonly_fields(self, request, obj=None):
+        if request.user.is_superuser and obj and obj.imported_completed and obj.is_completed:
+            return tuple(name for name in self.readonly_fields if name not in {"started_at", "ended_at"})
+        return self.readonly_fields
+
+    def get_fieldsets(self, request, obj=None):
+        sections = super().get_fieldsets(request, obj)
+        if request.user.is_superuser and obj and obj.imported_completed and obj.is_completed:
+            return (*sections, ("Korekta danych importowanych", {"fields": ("confirm_data_correction",), "description": "Nieznane daty pozostaw puste. Praca nadal jest zakończona i nie zwiększa bieżącego obciążenia."}))
+        return sections
 
     def has_add_permission(self, request):
         return False
@@ -121,7 +168,7 @@ class WorkflowStageAdmin(admin.ModelAdmin):
     
     list_filter = (
         "workflow_cycle",
-        "stage_type",
+        ActiveStageFilter,
         "is_completed",
         "started_at",
         "ended_at",
@@ -218,7 +265,7 @@ class WorkflowStageAdmin(admin.ModelAdmin):
 
 
 @admin.register(WorkflowRoleAssignment)
-class WorkflowRoleAssignmentAdmin(admin.ModelAdmin):
+class WorkflowRoleAssignmentAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
     def get_readonly_fields(self, request, obj=None):
         return tuple(field.name for field in WorkflowRoleAssignment._meta.fields if field.name != "notes")
 
@@ -244,7 +291,7 @@ class WorkflowRoleAssignmentAdmin(admin.ModelAdmin):
 
     list_filter = (
         "workflow_cycle",
-        "role",
+        ActiveRoleFilter,
         "assigned_at",
     )
 

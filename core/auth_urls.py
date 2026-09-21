@@ -1,8 +1,9 @@
 from django.contrib.auth import views
 from django.urls import path
+from core.auth_forms import EmailAuthenticationForm
 
 urlpatterns = [
-    path('logowanie/', views.LoginView.as_view(), name='login'),
+    path('logowanie/', views.LoginView.as_view(authentication_form=EmailAuthenticationForm), name='login'),
     path('wylogowanie/', views.LogoutView.as_view(), name='logout'),
     path('zmiana-hasla/', views.PasswordChangeView.as_view(), name='password_change'),
     path('zmiana-hasla/gotowe/', views.PasswordChangeDoneView.as_view(), name='password_change_done'),

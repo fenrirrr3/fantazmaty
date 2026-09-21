@@ -1,3 +1,4 @@
+from workflow.catalog import active_stage_choices
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from django.utils import timezone
@@ -172,7 +173,7 @@ def workflow_inactivity(request):
     context.update(
         {
             "today": today,
-            "stage_choices": WorkflowStage.StageType.choices,
+            "stage_choices": active_stage_choices(),
             "active_inactivity_days": ACTIVE_INACTIVITY_DAYS,
             "waiting_inactivity_days": WAITING_INACTIVITY_DAYS,
         }

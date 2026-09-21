@@ -114,9 +114,9 @@ def _require_open_process(stages):
         )
 
 
-def _require_eligible_assignee(user, role):
+def _require_eligible_assignee(user, role, *, lock=True):
     from people.leave_access import require_available
-    require_available(user)
+    require_available(user, lock=lock)
     if role == Role.STYLING and not (user and user.is_active and user.is_superuser):
         raise PermissionDenied("Stylowanie można przypisać tylko superuserowi.")
     if not (user and user.is_active and user.is_superuser) and get_active_person_profile(user) is None:

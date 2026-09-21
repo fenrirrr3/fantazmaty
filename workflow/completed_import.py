@@ -10,7 +10,7 @@ from django.db import transaction
 from texts.models import Text
 from workflow.import_context import importing_completed
 from workflow.models import WorkflowStage as S, WorkflowRoleAssignment as A
-from workflow.services import STAGE_ROLES
+from workflow.catalog import all_stage_roles, active_stage_choices, IMPORT_ONLY_STAGE_TYPES, IMPORT_ONLY_ROLES
 
 
 def parse_date(value):
@@ -42,6 +42,7 @@ def import_completed_workflow(*, text_id, stages, next_stage):
         raise ValidationError('Tekst w gotowej antologii nie może oczekiwać na dalszą pracę.')
     if not isinstance(stages, list) or not stages:
         raise ValidationError('stages musi być niepustą listą zakończonych etapów.')
+    stage_roles = all_stage_roles()
     expected = []
     people = {}
     seen = set()
@@ -49,10 +50,10 @@ def import_completed_workflow(*, text_id, stages, next_stage):
         if not isinstance(row, dict) or set(row) - {'stage_type', 'assigned_to', 'started_at', 'ended_at'} or 'stage_type' not in row:
             raise ValidationError('Nieprawidłowe pola etapu.')
         kind = row['stage_type']
-        if kind not in STAGE_ROLES or kind == next_stage:
+        if kind not in stage_roles or kind == next_stage:
             raise ValidationError('Nieznany lub powtórzony etap. Powtórzenia rzeczywistej pracy obsługuje osobna operacja workflow.')
-        order = list(S.StageType.values)
-        if order.index(kind) >= order.index(next_stage):
+        order = [value for value, _ in active_stage_choices()]
+        if kind not in IMPORT_ONLY_STAGE_TYPES and order.index(kind) >= order.index(next_stage):
             raise ValidationError('Dalszy etap musi następować po wszystkich importowanych etapach; cofanie wymaga operacji powtórzenia.')
         email = row.get('assigned_to')
         if not isinstance(email, str) or not email.strip():
@@ -61,7 +62,7 @@ def import_completed_workflow(*, text_id, stages, next_stage):
         if len(users) != 1:
             raise ValidationError(f'Adres {email} musi wskazywać dokładnie jedno istniejące konto wykonawcy.')
         person = users[0]
-        role = STAGE_ROLES[kind]
+        role = stage_roles[kind]
         if (kind,person.pk) in seen:
             raise ValidationError('Powtórzony etap tej samej osoby w pliku.')
         seen.add((kind,person.pk))
@@ -74,7 +75,9 @@ def import_completed_workflow(*, text_id, stages, next_stage):
         other = [s for s in actual if s.stage_type == next_stage]
         # A second identical import is a no-op; never reset work begun after import.
         if (len(actual) == len(expected) + 1 and imported == expected and len(other) == 1
-                and all(s.is_current and s.workflow_cycle == text.current_workflow_cycle for s in actual)
+                and all(s.is_current == (s.stage_type not in IMPORT_ONLY_STAGE_TYPES)
+                        and s.is_released == (s.stage_type not in IMPORT_ONLY_STAGE_TYPES)
+                        and s.workflow_cycle == text.current_workflow_cycle for s in actual)
                 and other[0].started_at is None and other[0].ended_at is None
                 and other[0].assignment_id is None
                 and not other[0].is_completed and not other[0].imported_completed
@@ -90,7 +93,13 @@ def import_completed_workflow(*, text_id, stages, next_stage):
         for (role, user_id), user in people.items():
             role_numbers[role] = role_numbers.get(role,0) + 1
             A.objects.filter(text=text,workflow_cycle=text.current_workflow_cycle,role=role,is_current=True).update(is_current=False)
-            a = A(text=text, workflow_cycle=text.current_workflow_cycle, role=role, assigned_to=user, execution_number=role_numbers[role])
+            a = A(text=text, workflow_cycle=text.current_workflow_cycle, role=role, assigned_to=user, execution_number=role_numbers[role], is_current=role not in IMPORT_ONLY_ROLES)
+            # Earlier imported V1 and V2 work can have the same performer.
+            # Keep the earlier assignment in history, never as a conflicting live role.
+            if role in (A.Role.VERIFIER_1, A.Role.VERIFIER_2):
+                A.objects.filter(text=text, workflow_cycle=text.current_workflow_cycle,
+                    role__in=(A.Role.VERIFIER_1, A.Role.VERIFIER_2), assigned_to=user,
+                    is_current=True).update(is_current=False)
             a.full_clean(); a.save()
             # Date of import is not the date when a person took the work.
             A.objects.filter(pk=a.pk).update(assigned_at=None)
@@ -99,7 +108,10 @@ def import_completed_workflow(*, text_id, stages, next_stage):
         for kind, user_id, started, ended in expected:
             iterations[kind] = iterations.get(kind,0) + 1
             stage = S(text=text, workflow_cycle=text.current_workflow_cycle, stage_type=kind,
-                      assignment=assignments[(STAGE_ROLES[kind],user_id)], iteration=iterations[kind], started_at=started, ended_at=ended,
+                      assignment=assignments[(stage_roles[kind],user_id)], iteration=iterations[kind],
+                      execution_number=iterations[kind],
+                      is_current=kind not in IMPORT_ONLY_STAGE_TYPES, is_released=kind not in IMPORT_ONLY_STAGE_TYPES,
+                      started_at=started, ended_at=ended,
                       is_completed=True, imported_completed=True)
             stage.full_clean(); stage.save()
         # READY is a terminal status marker, not a performed task. Preserve

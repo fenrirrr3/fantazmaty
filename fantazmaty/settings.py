@@ -109,6 +109,8 @@ CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
 
 
 INSTALLED_APPS = [
+    # Local management commands (createsuperuser) override Django's commands.
+    "core.apps.CoreConfig",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -119,7 +121,6 @@ INSTALLED_APPS = [
     "texts.apps.TextsConfig",
     "workflow.apps.WorkflowConfig",
     "people.apps.PeopleConfig",
-    "core.apps.CoreConfig",
     "illustrations.apps.IllustrationsConfig",
 ]
 
@@ -194,6 +195,8 @@ DATABASES = {
 }
 
 
+AUTHENTICATION_BACKENDS = ["core.auth_backends.EmailBackend"]
+
 AUTH_PASSWORD_VALIDATORS = [
     {
         "NAME": (
@@ -207,7 +210,7 @@ AUTH_PASSWORD_VALIDATORS = [
             "MinimumLengthValidator"
         ),
         "OPTIONS": {
-            "min_length": 12,
+            "min_length": 8,
         },
     },
     {

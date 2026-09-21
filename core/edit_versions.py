@@ -1,7 +1,7 @@
 """Constant-size edit tokens. Domain services retain their transaction/row locks."""
 from django.apps import apps
 from django.db.models import F
-from django.db.models.signals import post_save, post_delete, pre_delete, m2m_changed
+from django.db.models.signals import pre_save, post_save, post_delete, pre_delete, m2m_changed
 
 # Only editable domain records; no audit/outbox/session traffic.
 TRACKED = {
@@ -42,6 +42,18 @@ def changed(sender, instance, using, raw=False, **kwargs):
         bump('texts.text', instance.text_id, using)
     elif label in ('texts.reviewassignment', 'texts.reviewers'):
         bump('texts.review', instance.review_id, using)
+    elif label == 'authors.authornote':
+        bump('authors.author', instance.author_id, using)
+        old_author = getattr(instance, '_previous_note_author', None)
+        if old_author and old_author != instance.author_id:
+            bump('authors.author', old_author, using)
+        instance._previous_note_author = None
+
+
+def remember_note_author(sender, instance, using, raw=False, **kwargs):
+    if raw or sender._meta.apps is not apps or sender._meta.label_lower != 'authors.authornote':
+        return
+    instance._previous_note_author = sender.objects.using(using).filter(pk=instance.pk).values_list('author_id', flat=True).first() if instance.pk else None
 
 
 def relations_changed(sender, instance, action, reverse, model, pk_set, using, **kwargs):
@@ -66,6 +78,7 @@ def relations_changed(sender, instance, action, reverse, model, pk_set, using, *
 
 
 def install():
+    pre_save.connect(remember_note_author, dispatch_uid='cms-edit-version-note-parent')
     post_save.connect(changed, dispatch_uid='cms-edit-version-save')
     post_delete.connect(changed, dispatch_uid='cms-edit-version-delete')
     pre_delete.connect(deleting_identity, dispatch_uid='cms-edit-version-identity-delete')

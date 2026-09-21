@@ -1,9 +1,10 @@
 """Process state: semantic stage order first, dates only distinguish planned work."""
+from workflow.catalog import active_stage_choices
 from django.db.models import Case, When, Value, IntegerField
 from django.utils import timezone
 from workflow.models import WorkflowStage
 
-ORDER = {value: index for index, (value, _) in enumerate(WorkflowStage.StageType.choices)}
+ORDER = {value: index for index, (value, _) in enumerate(active_stage_choices())}
 
 def state_key(stage):
     kind = stage.stage_type

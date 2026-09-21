@@ -13,6 +13,9 @@ class IdentityFormMixin:
         self.fields["username"] = forms.CharField(label="Nazwa użytkownika", max_length=150)
         self.fields["first_name"].required = True
         self.fields["last_name"].required = True
+        self.fields["email"].required = True
+        self.fields["email"].label = "Adres e-mail (login)"
+        self.fields["username"].help_text = "Wewnętrzna nazwa konta. Do logowania służy adres e-mail."
 
     def _get_validation_exclusions(self):
         return super()._get_validation_exclusions() | {"username"}
@@ -27,6 +30,13 @@ class IdentityFormMixin:
 
     def clean_first_name(self):
         return " ".join(self.cleaned_data["first_name"].split())
+
+    def clean_email(self):
+        from core.account_identity import validate_account_email
+        return validate_account_email(
+            self.cleaned_data["email"], exclude_pk=self.instance.pk,
+            using=self.instance._state.db or "default",
+        )
 
     def clean_last_name(self):
         return " ".join(self.cleaned_data["last_name"].split())
@@ -275,7 +285,6 @@ class WorkflowEventAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
-
 
 
 

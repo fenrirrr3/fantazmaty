@@ -1,3 +1,4 @@
+from workflow.catalog import active_stage_choices
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
@@ -136,7 +137,7 @@ def workflow_list(request):
         {
             "stages": page_obj,
             "page_obj": page_obj,
-            "stage_choices": context.get("stage_choices", WorkflowStage.StageType.choices),
+            "stage_choices": context.get("stage_choices", active_stage_choices()),
             "can_view_authors": can_view_author_data(request.user),
         }
     )
@@ -458,11 +459,11 @@ def cancel_workflow_repetition(request, text_id, repetition_id):
 
 @never_cache
 @login_required
-@coordinator_required
+@superuser_required
 def handoff_workflow_stage(request, stage_id):
     from django import forms
     from django.contrib.auth import get_user_model
-    from workflow.handoffs import handoff_stage
+    from workflow.handoffs import handoff_stage, eligible_handoff_users
     from django.core.exceptions import PermissionDenied
     from django.views.decorators.http import require_http_methods
     if request.method not in ('GET','POST'):
@@ -470,7 +471,7 @@ def handoff_workflow_stage(request, stage_id):
         return HttpResponseNotAllowed(['GET','POST'])
     stage=_get_current_stage(stage_id)
     class HandoffForm(forms.Form):
-        assigned_to=forms.ModelChoiceField(label='Nowy wykonawca',queryset=get_user_model().objects.filter(is_active=True).order_by('last_name','first_name','pk'))
+        assigned_to=forms.ModelChoiceField(label='Nowy wykonawca',queryset=eligible_handoff_users(stage))
         expected_assignment_id=forms.IntegerField(widget=forms.HiddenInput)
         reason=forms.CharField(label='Powód przekazania',widget=forms.Textarea(attrs={'rows':3}),max_length=2000)
     form=HandoffForm(request.POST if request.method=='POST' else None,initial={'expected_assignment_id':stage.assignment_id})

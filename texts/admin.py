@@ -15,6 +15,7 @@ from authors.models import Author
 from people.models import Person
 from core.normalization import NormalizedFormMixin, REVIEW_FIELDS, TEXT_FIELDS
 from workflow.models import WorkflowRoleAssignment, WorkflowStage
+from workflow.catalog import IMPORT_ONLY_ROLES, IMPORT_ONLY_STAGE_TYPES
 
 from .models import (
     MAX_REVIEWERS,
@@ -40,8 +41,27 @@ def content_preview(value, limit=100):
     return f"{value[:limit - 3]}..."
 
 
+class AnthologyTaskFormSet(BaseInlineFormSet):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.parent_was_new = self.instance.pk is None
+
+    def save_new(self, form, commit=True):
+        # Anthology.post_save creates the three default tasks before inline save.
+        # Apply the submitted values to that task instead of inserting it twice.
+        if self.parent_was_new:
+            task = AnthologyTask.objects.using(self.instance._state.db).get(
+                anthology=self.instance, task_type=form.cleaned_data["task_type"],
+            )
+            form.instance.pk = task.pk
+            form.instance._state.adding = False
+            form.instance._state.db = task._state.db
+        return super().save_new(form, commit=commit)
+
+
 class AnthologyTaskInline(admin.TabularInline):
     model = AnthologyTask
+    formset = AnthologyTaskFormSet
     extra = 0
     max_num = 3
     can_delete = False
@@ -163,6 +183,7 @@ class WorkflowRoleAssignmentInline(
         return (
             super()
             .get_queryset(request)
+            .exclude(role__in=IMPORT_ONLY_ROLES)
             .select_related("text", "assigned_to")
         )
 
@@ -173,6 +194,9 @@ class WorkflowStageInline(
 ):
     model = WorkflowStage
     extra = 0
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).exclude(stage_type__in=IMPORT_ONLY_STAGE_TYPES)
 
     fields = (
         "stage_type",
@@ -529,6 +553,9 @@ class ReviewAdminForm(NormalizedFormMixin, forms.ModelForm):
 
 
 class ReviewAssignmentAdminForm(forms.ModelForm):
+    archive_assigned_at = forms.DateTimeField(label="Data przydzielenia", required=False)
+    archive_opinion_changed_at = forms.DateField(label="Data opinii", required=False)
+
     class Meta:
         model = ReviewAssignment
         fields = (
@@ -689,9 +716,15 @@ class ReviewAssignmentInline(
     autocomplete_fields = ("user",)
     ordering = ("position", "pk")
 
+    def get_fields(self, request, obj=None):
+        fields = super().get_fields(request, obj)
+        if obj and obj.old_reviews and request.user.is_superuser:
+            return tuple("archive_" + name if name in self.readonly_fields else name for name in fields)
+        return fields
+
     def get_readonly_fields(self, request, obj=None):
-        if obj and obj.old_reviews:
-            return self.readonly_fields
+        if obj and obj.old_reviews and request.user.is_superuser:
+            return ()
         return (*self.readonly_fields, "position", "user", "historical_person", "opinion")
 
     def has_add_permission(self, request, obj=None):
@@ -712,19 +745,32 @@ class ReviewAssignmentInline(
         if obj and obj.old_reviews:
             base_form = formset.form
             class HistoricalAssignmentForm(base_form):
+                def __init__(self, *args, **kwargs):
+                    super().__init__(*args, **kwargs)
+                    for name in ("assigned_at", "opinion_changed_at"):
+                        self.initial["archive_" + name] = getattr(self.instance, name) if self.instance.pk else None
+
                 def clean_user(self):
                     return self.cleaned_data.get("user")
 
                 def clean(self):
                     data = super().clean()
+                    from texts.archive_dates import validate_archive_dates
+                    try:
+                        validate_archive_dates(data.get("archive_assigned_at"), data.get("archive_opinion_changed_at"))
+                    except ValidationError as error:
+                        for name, messages in error.message_dict.items():
+                            self.add_error("archive_" + name, messages)
+                    # Model.clean must validate the new dates, not the stale instance values.
+                    self.instance.assigned_at = data.get("archive_assigned_at")
+                    self.instance.opinion_changed_at = data.get("archive_opinion_changed_at")
                     if self.instance._state.adding and not data.get("user") and not data.get("historical_person") and not data.get("DELETE"):
                         raise forms.ValidationError("Wybierz konto lub historyczny profil recenzenta.")
                     return data
 
                 def save(self, commit=True):
-                    if self.instance._state.adding:
-                        self.instance.assigned_at = None
-                        self.instance.opinion_changed_at = None
+                    self.instance.assigned_at = self.cleaned_data.get("archive_assigned_at")
+                    self.instance.opinion_changed_at = self.cleaned_data.get("archive_opinion_changed_at")
                     return super().save(commit=commit)
             formset.form = HistoricalAssignmentForm
         return formset

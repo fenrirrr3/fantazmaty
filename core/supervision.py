@@ -1,4 +1,5 @@
 """Read-only checks and publication credits; never repair data implicitly."""
+from workflow.catalog import IMPORT_ONLY_STAGE_TYPES
 from collections import defaultdict
 from difflib import SequenceMatcher
 import unicodedata
@@ -180,7 +181,7 @@ def anthology_credits(anthology):
     credits=defaultdict(lambda:{'name':'','role':'','works':set()})
     def add(identity,name,role,title):
         item=credits[(identity,role)];item.update(name=name,role=role);item['works'].add(title)
-    completed = WorkflowStage.objects.filter(text__anthology=anthology, is_completed=True, assignment__assigned_to__isnull=False).select_related('assignment__assigned_to__person_profile', 'text')
+    completed = WorkflowStage.objects.filter(text__anthology=anthology, is_completed=True, assignment__assigned_to__isnull=False).exclude(stage_type__in=IMPORT_ONLY_STAGE_TYPES).select_related('assignment__assigned_to__person_profile', 'text')
     for stage in completed:
         a=stage.assignment
         person=getattr(a.assigned_to,'person_profile',None)

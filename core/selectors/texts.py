@@ -1,3 +1,4 @@
+from workflow.catalog import active_stage_choices, active_role_choices, IMPORT_ONLY_ROLES
 from core.filtering import facet_queryset
 from datetime import date
 
@@ -307,7 +308,7 @@ def text_list_context(*, user, params, scope=None, stage_scope=None):
     include_authors = can_view_author_data(user)
     anthology_id = _positive_id(params.get("anthology"))
     author_id = _positive_id(params.get("author")) if include_authors else None
-    valid_statuses = set(StageType.values) | {"none"}
+    valid_statuses = {value for value, _ in active_stage_choices()} | {"none"}
     requested = params.getlist("status") if hasattr(params, "getlist") else [params.get("status", "")]
     statuses = list(dict.fromkeys(v for v in requested if v in valid_statuses))
     status = statuses[-1] if statuses else ""
@@ -370,7 +371,7 @@ def text_list_context(*, user, params, scope=None, stage_scope=None):
             if include_authors
             else []
         ),
-        "status_choices": [(v, label) for v, label in StageType.choices if v in available_statuses or v in statuses],
+        "status_choices": [(v, label) for v, label in active_stage_choices() if v in available_statuses or v in statuses],
         "show_no_status_filter": None in available_statuses or "none" in statuses,
         "selected_anthology_id": str(anthology_id) if anthology_id else "",
         "selected_author_id": str(author_id) if author_id else "",
@@ -386,6 +387,7 @@ def _user_texts(user, include_authors):
     return _prepared_texts(
         Text.objects.filter(
             workflow_role_assignments__assigned_to_id=user.pk,
+            workflow_role_assignments__role__in=[value for value, _ in active_role_choices()],
         ).distinct().order_by("anthology__title", "title", "pk"),
         include_authors,
     )
@@ -491,7 +493,7 @@ def workflow_list_context(*, user, params):
     )
     selected_stages = list(dict.fromkeys(
         value.strip() for value in requested_stages
-        if value.strip() in StageType.values
+        if value.strip() in dict(active_stage_choices())
     ))
     query = params.get("q", "").strip()
 
@@ -543,7 +545,7 @@ def workflow_list_context(*, user, params):
     )
 
     selected_roles = {STAGE_ROLE_MAP.get(value) for value in selected_stages}
-    role_columns = [item for item in Role.choices if not selected_stages or item[0] in selected_roles]
+    role_columns = [item for item in active_role_choices() if not selected_stages or item[0] in selected_roles]
 
     def project(stage):
         text = stage.text
@@ -570,7 +572,7 @@ def workflow_list_context(*, user, params):
             Anthology.objects.filter(pk__in=facets["anthology"]).order_by("title", "pk").values("pk", "title")
         ),
         "selected_stages": selected_stages,
-        "stage_choices": [(v, label) for v, label in StageType.choices if v in facets["stage"]],
+        "stage_choices": [(v, label) for v, label in active_stage_choices() if v in facets["stage"]],
         "role_columns": role_columns,
         "selected_anthology_ids": anthology_ids,
         "query": query,
@@ -771,7 +773,7 @@ def text_detail_context(*, user, text):
     if coordinator:
         historical_stages = WorkflowStage.objects.filter(text_id=text.pk).exclude(
             workflow_cycle=text.current_workflow_cycle, is_current=True,
-        ).order_by("-workflow_cycle", "-pk")
+        ).select_related("assignment__assigned_to__person_profile").order_by("-workflow_cycle", "-pk")
         archived = [row for row in stage_rows if row["pk"] not in visible_ids]
         for stage in historical_stages:
             row = _stage_data(stage, text_data)
@@ -792,7 +794,7 @@ def text_detail_context(*, user, text):
         .order_by("-created_at", "-pk")
     ]
 
-    source_query = Review.objects.filter(copied_text_id=text.pk)
+    source_query = Review.objects.visible_to(user).filter(copied_text_id=text.pk).select_related("reviewers")
     source = source_query.first()
     source_data = None
     opinions = []
@@ -806,6 +808,8 @@ def text_detail_context(*, user, text):
             get_status_display=source.get_status_display(),
             content_warnings=source.content_warnings,
             old_reviews=source.old_reviews,
+            can_open=not source.old_reviews or include_authors,
+            general_notes=getattr(getattr(source, "reviewers", None), "general_notes", ""),
         )
         if include_authors:
             source_data.update(
@@ -862,11 +866,11 @@ def text_detail_context(*, user, text):
                     role in assignments and assignments[role].assigned_to_id
                 ),
             }
-            for role, label in Role.choices
+            for role, label in active_role_choices() if role != Role.STYLING
         ] + [
             {"role": item.role, "label": item.get_role_display() + f" — wcześniejsze przypisanie {item.execution_number}",
              "is_previous": True, "is_assigned": True, "user": _user_data(item.assigned_to)}
-            for item in WorkflowRoleAssignment.objects.filter(text=text, assigned_to__isnull=False).exclude(
+            for item in WorkflowRoleAssignment.objects.filter(text=text, assigned_to__isnull=False).exclude(role__in=(*IMPORT_ONLY_ROLES, Role.STYLING)).exclude(
                 workflow_cycle=text.current_workflow_cycle, is_current=True).select_related('assigned_to__person_profile').order_by('workflow_cycle','role','execution_number')
         ],
         "is_assigned": bool(own),
@@ -880,6 +884,7 @@ def text_detail_context(*, user, text):
         "can_cancel_repetition": can_cancel_repetition,
         "handoffs": text.workflow_handoffs.select_related('previous_assignment__assigned_to', 'new_assignment__assigned_to', 'stage').order_by('-created_at'),
         "source_review": source_data,
+        "handoff_stages": [row for row in stage_rows if not row["is_completed"] and row["is_released"] and row.get("assigned_user")],
         "source_review_opinions": opinions,
         "is_withdrawn": is_withdrawn,
         "is_ready": is_ready,

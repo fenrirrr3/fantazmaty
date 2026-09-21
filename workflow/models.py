@@ -5,6 +5,7 @@ from django.db import models, router
 from django.utils import timezone
 
 from texts.models import Text
+from workflow.catalog import IMPORT_ONLY_STAGE_TYPES, IMPORT_ONLY_ROLES, IMPORT_ONLY_STAGE_ROLES
 
 
 class WorkflowStageQuerySet(models.QuerySet):
@@ -39,6 +40,8 @@ class WorkflowStage(models.Model):
         STYLING = "styling", "Stylowanie"
         READY = "ready", "Gotowe"
         WITHDRAWN = "withdrawn", "WYCOFANY"
+        EDITING_REVIEW = "editing_review", "Kontrola redakcji"
+        FOURTH_VERIFICATION = "fourth_verification", "Czwarta weryfikacja"
 
     text = models.ForeignKey(
         Text,
@@ -163,6 +166,13 @@ class WorkflowStage(models.Model):
                 condition=models.Q(imported_completed=False) | models.Q(is_completed=True),
                 name="wf_import_is_completed",
             ),
+            models.CheckConstraint(
+                condition=~models.Q(stage_type__in=IMPORT_ONLY_STAGE_TYPES) | models.Q(
+                    imported_completed=True, is_completed=True, is_current=False,
+                    is_released=False, repetition__isnull=True,
+                ),
+                name="wf_import_only_closed",
+            ),
         ]
 
     def __str__(self):
@@ -174,10 +184,26 @@ class WorkflowStage(models.Model):
 
     def _validate_import_origin(self):
         from workflow.import_context import importing_completed
+        previous = (type(self).objects.filter(pk=self.pk).values("imported_completed", "stage_type", "assignment_id").first()
+                    if self.pk and not self._state.adding else None)
+        if self.stage_type in IMPORT_ONLY_STAGE_TYPES:
+            if not (self.imported_completed and self.is_completed and not self.is_current
+                    and not self.is_released and self.repetition_id is None):
+                raise ValidationError("Ten rodzaj pracy jest dostępny wyłącznie jako zakończona praca z importu, poza kolejką workflow.")
+            if not self.assignment_id:
+                raise ValidationError("Zakończona praca z importu wymaga powiązanego przypisania wykonawcy.")
+            if self.assignment_id:
+                assignment = self.assignment
+                if (assignment.role != IMPORT_ONLY_STAGE_ROLES[self.stage_type]
+                        or assignment.text_id != self.text_id or assignment.workflow_cycle != self.workflow_cycle):
+                    raise ValidationError("Przypisanie nie odpowiada importowanemu etapowi i tekstowi.")
+        if not importing_completed.get() and (self.stage_type in IMPORT_ONLY_STAGE_TYPES
+                or previous and previous["stage_type"] in IMPORT_ONLY_STAGE_TYPES):
+            if not previous or previous["stage_type"] != self.stage_type or previous["assignment_id"] != self.assignment_id:
+                raise ValidationError("Rodzaj i wykonawcę tej pracy może zapisać wyłącznie importer.")
         if importing_completed.get():
             return
-        previous = type(self).objects.filter(pk=self.pk).values_list("imported_completed", flat=True).first() if self.pk and not self._state.adding else False
-        if self.imported_completed != bool(previous):
+        if self.imported_completed != bool(previous and previous["imported_completed"]):
             raise ValidationError("Wyjątek dla dat może nadać wyłącznie importer zakończonych etapów.")
 
     def save(self, *args, **kwargs):
@@ -270,6 +296,8 @@ class WorkflowRoleAssignment(models.Model):
             "K. weryfikacji",
         )
         STYLING = "styling", "Stylowanie"
+        EDITING_REVIEWER = "editing_reviewer", "Kontrola redakcji"
+        VERIFIER_4 = "verifier_4", "Weryfikator 4"
 
     text = models.ForeignKey(
         Text,
@@ -365,6 +393,10 @@ class WorkflowRoleAssignment(models.Model):
                 condition=models.Q(workflow_cycle__gte=1),
                 name="wf_assignment_cycle_positive",
             ),
+            models.CheckConstraint(
+                condition=~models.Q(role__in=IMPORT_ONLY_ROLES) | models.Q(is_current=False, repetition__isnull=True),
+                name="wf_import_role_not_current",
+            ),
         ]
 
     def __str__(self):
@@ -381,8 +413,21 @@ class WorkflowRoleAssignment(models.Model):
             f"{assigned_person} – przebieg {self.workflow_cycle}"
         )
 
+    def _validate_import_role(self):
+        from workflow.import_context import importing_completed
+        if self.role in IMPORT_ONLY_ROLES and (self.is_current or self.repetition_id):
+            raise ValidationError("Rola z importu nie może być bieżącym przypisaniem ani częścią powtórzenia.")
+        if importing_completed.get():
+            return
+        previous = (type(self).objects.filter(pk=self.pk).values("role", "text_id", "workflow_cycle", "assigned_to_id").first()
+                    if self.pk and not self._state.adding else None)
+        if self.role in IMPORT_ONLY_ROLES or previous and previous["role"] in IMPORT_ONLY_ROLES:
+            if not previous or any(previous[name] != getattr(self, name) for name in previous):
+                raise ValidationError("Rolę i wykonawcę dawnej pracy może zapisać wyłącznie importer.")
+
     def clean(self):
         super().clean()
+        self._validate_import_role()
         if self.role == self.Role.STYLING and self.assigned_to_id and not self.assigned_to.is_superuser:
             raise ValidationError({'assigned_to': 'Stylowanie można przypisać tylko superuserowi.'})
 
@@ -437,6 +482,7 @@ class WorkflowRoleAssignment(models.Model):
         using=None,
         update_fields=None,
     ):
+        self._validate_import_role()
         using = using or router.db_for_write(
             type(self),
             instance=self,

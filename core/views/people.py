@@ -1,6 +1,6 @@
 from people.role_ordering import ordered_team_roles
 from django.contrib.auth.decorators import login_required
-from django.db.models import F, Prefetch, Q
+from django.db.models import Count, F, Prefetch, Q
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
@@ -16,6 +16,7 @@ from people.models import Person, Role
 from texts.models import ReviewAssignment
 from workflow.models import WorkflowRoleAssignment, WorkflowStage
 from workflow.services import STAGE_ROLES
+from workflow.catalog import IMPORT_ONLY_ROLES, IMPORT_ONLY_STAGE_TYPES
 
 
 def _filter_data(request):
@@ -55,6 +56,7 @@ def _profile_assignments(person, *, include_authors):
             assigned_to_id=person.user_id,
             workflow_cycle=F("text__current_workflow_cycle"),
         )
+        .exclude(role__in=IMPORT_ONLY_ROLES)
         .select_related("text", "text__anthology")
         .prefetch_related(
             Prefetch(
@@ -198,6 +200,24 @@ def _profile_assignments(person, *, include_authors):
     return assignments, summary
 
 
+def _imported_work_summary(person):
+    if person.user_id is None:
+        return []
+    counts = (WorkflowStage.objects.filter(
+        assignment__assigned_to_id=person.user_id,
+        stage_type__in=IMPORT_ONLY_STAGE_TYPES,
+        imported_completed=True, is_completed=True,
+    ).order_by().values("assignment__role").annotate(
+        texts=Count("text_id", distinct=True), executions=Count("pk"),
+    ))
+    labels = dict(WorkflowRoleAssignment.Role.choices)
+    return sorted([
+        {"role": row["assignment__role"], "label": labels[row["assignment__role"]],
+         "texts": row["texts"], "executions": row["executions"]}
+        for row in counts
+    ], key=lambda row: row["label"])
+
+
 @never_cache
 @login_required
 @require_GET
@@ -295,7 +315,8 @@ def person_detail(request, person_id):
             "person": person,
             "assignments": assignments,
             "person_summary": person_summary,
-            "archived_reviews": ReviewAssignment.objects.filter(review__old_reviews=True).filter(
+            "imported_work_summary": _imported_work_summary(person),
+            "archived_reviews": ReviewAssignment.objects.submitted().filter(review__old_reviews=True).filter(
                 Q(historical_person=person) | (Q(user_id=person.user_id) if person.user_id else Q(pk__in=[]))
             ).select_related("review__anthology").order_by("review__anthology__title", "review__title", "position"),
             "can_view_authors": include_authors,

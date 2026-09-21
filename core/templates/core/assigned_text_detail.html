@@ -513,26 +513,28 @@
         </div>
     </section>
 
-    {% if source_review %}
         <details class="review-summary-details" open>
             <summary class="review-summary-toggle">
-                <span>Recenzje źródłowe</span>
+                <span>Recenzje tekstu</span>
                 <span class="dropdown-arrow" aria-hidden="true">▾</span>
             </summary>
 
             <div class="review-summary-content">
-                <p>
+                {% if request.user.is_superuser %}<p><a class="secondary-button" href="{% url 'core:link_text_review' text.pk %}">Powiąż zgłoszenie z recenzjami</a></p>{% endif %}
+                {% if source_review %}
+                {% if source_review.can_open %}<p>
                     <a
                         href="{% url 'core:assigned_review_detail' source_review.pk %}"
                         class="detail-link"
                     >
                         Otwórz zgłoszenie: {{ source_review.title }}
                     </a>
-                </p>
+                </p>{% else %}<p>{{ source_review.title }}</p>{% endif %}
+                {% if source_review.general_notes %}<div class="notes-editor-panel"><h3>Uwagi ogólne z recenzji</h3>{{ source_review.general_notes|linebreaksbr }}</div>{% endif %}
 
                 {% if source_review.old_reviews %}
                     <p class="muted-text">
-                        Recenzja archiwalna – nie jest liczona do statystyk.
+                        Oddane recenzje archiwalne są liczone do dorobku, ale nie do bieżącego obciążenia.
                     </p>
                 {% endif %}
 
@@ -544,8 +546,9 @@
                     </p>
                 {% endif %}
 
+                <div class="source-review-grid">
                 {% for opinion in source_review_opinions %}
-                    <details class="reviewer-opinion">
+                    <details class="reviewer-opinion" open>
                         <summary>
                             <strong>{{ opinion.reviewer_name }}</strong>
                             <span class="reviewer-bubble reviewer-opinion-{{ opinion.opinion_value }}">
@@ -566,9 +569,12 @@
                 {% empty %}
                     <p class="muted-text">Brak zapisanych opinii.</p>
                 {% endfor %}
+                </div>
+                {% else %}
+                    <p class="muted-text">Brak dostępnego powiązanego zgłoszenia z recenzjami tego tekstu.</p>
+                {% endif %}
             </div>
         </details>
-    {% endif %}
 
     {% if can_view_stage_history %}
     <details class="archived-stages">
@@ -599,7 +605,16 @@
                     <tbody>
                         {% for stage in archived_stages %}
                             <tr>
-                                <td>{{ stage.get_stage_type_display }}</td>
+                                <td>
+                                    {% if request.user.is_superuser and stage.imported_completed %}
+                                        <a href="{% url 'admin:workflow_workflowstage_change' stage.pk %}">{{ stage.get_stage_type_display }}</a>
+                                    {% else %}
+                                        {{ stage.get_stage_type_display }}
+                                    {% endif %}
+                                    {% if stage.assigned_user %}
+                                        <div class="muted-text">{{ stage.assigned_user.display_name }}</div>
+                                    {% endif %}
+                                </td>
                                 <td>{% if stage.imported_completed and not stage.started_at %}Brak danych{% else %}{{ stage.started_at|date:"d.m.Y"|default:"–" }}{% endif %}</td>
                                 <td>{% if stage.imported_completed and not stage.ended_at %}Brak danych{% else %}{{ stage.ended_at|date:"d.m.Y"|default:"–" }}{% endif %}</td>
                                 <td>
@@ -641,7 +656,25 @@
 
     {% endif %}
     {% if can_cancel_repetition %}<form method="post" action="{% url 'core:cancel_workflow_repetition' text.pk open_repetition.pk %}" data-confirm-delete="Anulować niepodjęte powtórzenie i przywrócić poprzedni stan?">{% csrf_token %}{% edit_version %}<button type="submit" class="secondary-button">Anuluj niepodjęte powtórzenie</button><p class="form-help">Dostępne, jeśli nie rozpoczęto ani nie zarezerwowano pracy.</p></form>{% endif %}
-    {% if can_manage_workflow and not is_ready and not is_withdrawn %}<section class="card"><h2>Przekazanie pracy</h2>{% for stage in stages %}{% if not stage.is_completed and stage.is_released and stage.assigned_user %}<p>{{ stage.get_stage_type_display }} <a href="{% url 'core:handoff_workflow_stage' stage.pk %}">Zmień wykonawcę z zachowaniem historii</a></p>{% endif %}{% endfor %}</section>{% endif %}
+    {% if request.user.is_superuser and can_manage_workflow and not is_ready and not is_withdrawn %}
+        <details class="text-management-card work-handoff-card">
+            <summary class="text-management-toggle">
+                <span>Przekazanie pracy</span>
+                <span class="dropdown-arrow" aria-hidden="true">▾</span>
+            </summary>
+            <div class="text-management-content">
+                {% for stage in handoff_stages %}
+                        <div class="management-action">
+                            <div class="management-action-description">
+                                <h3>{{ stage.get_stage_type_display }}</h3>
+                            </div>
+                            <a class="secondary-button work-handoff-link" href="{% url 'core:handoff_workflow_stage' stage.pk %}">Zmień wykonawcę z zachowaniem historii</a>
+                        </div>
+                {% empty %}<p class="muted-text">Brak przypisanych etapów, które można teraz przekazać.</p>
+                {% endfor %}
+            </div>
+        </details>
+    {% endif %}
     {% if handoffs %}<section class="card"><h2>Historia przekazania pracy</h2>{% for item in handoffs %}<p>{{ item.stage.get_stage_type_display }}: {{ item.previous_assignment.assigned_to.get_full_name }} → {{ item.new_assignment.assigned_to.get_full_name }} · {{ item.created_at|date:"d.m.Y H:i" }}<br>{{ item.reason }}</p>{% endfor %}</section>{% endif %}
     {% if repeat_queue %}<section class="card"><h2>Kolejka powtórzeń</h2><ol>{% for item in repeat_queue %}<li>{{ item.get_stage_type_display }}: {% if item.is_released %}bieżący etap{% else %}oczekuje na poprzedni etap{% endif %}</li>{% endfor %}</ol></section>{% endif %}
     {% if can_manage_authors or can_manage_workflow or can_restart_workflow %}

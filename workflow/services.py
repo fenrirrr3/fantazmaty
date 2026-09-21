@@ -1,3 +1,4 @@
+from workflow.catalog import active_stage_choices
 from workflow.anthology_policy import require_working_anthology
 from datetime import date, datetime, timedelta
 from functools import wraps
@@ -363,7 +364,7 @@ def _create_pending_stage(text, stage_type):
     """Wewnętrzna operacja; wywołujący musi posiadać blokadę Text."""
     ensure_text_is_not_withdrawn(text)
 
-    if stage_type not in StageType.values:
+    if stage_type not in dict(active_stage_choices()):
         raise ValidationError("Nieprawidłowy typ etapu.")
 
     stage = (

@@ -103,24 +103,73 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-// Only explicitly declared server columns are sortable. Detail tables remain whole.
+// Paginated lists sort the full result on the server. Whole detail tables sort locally.
 document.addEventListener('DOMContentLoaded', () => {
     let columns = {};
     try { columns = JSON.parse(document.getElementById('table-sort-columns')?.textContent || '{}') || {}; } catch (_) {}
-    const allowed = new Set(Object.values(columns));
-    document.querySelectorAll('main table[data-server-paginated="true"] th[data-sort-key]').forEach(th => {
-        const key = th.dataset.sortKey;
-        if (!allowed.has(key) || th.querySelector('input, button, a')) return;
-        const button = document.createElement('button'); button.type='button'; button.className='table-sort-button'; button.textContent=th.textContent.trim();
-        const mark = document.createElement('span'); mark.className='sort-indicator'; button.append(mark); th.replaceChildren(button);
-        const current = new URL(location.href).searchParams.get('sort');
-        if (current === key || current === '-'+key) {
-            th.setAttribute('aria-sort',current.startsWith('-')?'descending':'ascending');
-            mark.textContent=current.startsWith('-')?' ▼':' ▲';
-        }
-        button.onclick = () => {
-            const url = new URL(location.href); url.searchParams.set('sort',current===key?'-'+key:key); url.searchParams.delete('page'); location.assign(url.href);
-        };
+    const collator = new Intl.Collator('pl', {numeric: true, sensitivity: 'base'});
+    const skipped = new Set(['Akcje', 'Akcja', 'Szczegóły', 'Wybór', 'Zmień status', 'Powiadomienie']);
+    function value(cell) {
+        if (!cell) return null;
+        const raw = (cell.dataset.sortValue ?? cell.querySelector('time[datetime]')?.getAttribute('datetime') ?? cell.textContent).trim();
+        if (!raw || /^(?:[–—-]|Brak danych|Nie przypisano)$/i.test(raw)) return null;
+        const d = raw.match(/^(\d{2})\.(\d{2})\.(\d{4})(?:[, ]+([\d:]+))?$/);
+        if (d) return `${d[3]}-${d[2]}-${d[1]}T${d[4] || '00:00:00'}`;
+        const number = raw.replace(/[\s\u00a0]/g, '').replace(',', '.');
+        if (/^-?\d+(?:\.\d+)?$/.test(number)) return Number(number);
+        return raw.replace(/\s+/g, ' ');
+    }
+    document.querySelectorAll('main table').forEach(table => {
+        const server = table.dataset.serverPaginated === 'true';
+        const headers = [...(table.tHead?.rows[0]?.cells || [])];
+        headers.forEach((th, index) => {
+            const label = th.textContent.trim();
+            if (!label || skipped.has(label) || th.colSpan > 1 || th.querySelector('input, button, a') || th.dataset.sort === 'none') return;
+            const key = columns[label] || th.dataset.sortKey;
+            if (server && !Object.values(columns).includes(key)) return;
+            const button = document.createElement('button');
+            button.type = 'button'; button.className = 'table-sort-button'; button.textContent = label;
+            button.title = label === 'Recenzenci i opinie' ? 'Sortuj według liczby oddanych recenzji' : 'Sortuj: ' + label;
+            const mark = document.createElement('span'); mark.className = 'sort-indicator'; mark.setAttribute('aria-hidden', 'true');
+            button.append(mark); th.replaceChildren(button);
+            let descending = false;
+            const current = new URL(location.href).searchParams.get('sort');
+            if (server && (current === key || current === '-' + key)) {
+                descending = current.startsWith('-');
+                th.setAttribute('aria-sort', descending ? 'descending' : 'ascending');
+                mark.textContent = descending ? ' ▼' : ' ▲';
+            } else { mark.textContent = ' ↕'; }
+            button.addEventListener('click', () => {
+                if (server) {
+                    const url = new URL(location.href);
+                    url.searchParams.set('sort', current === key ? '-' + key : key);
+                    url.searchParams.delete('page'); location.assign(url.href); return;
+                }
+                descending = th.getAttribute('aria-sort') === 'ascending';
+                headers.forEach(header => {
+                    header.removeAttribute('aria-sort');
+                    const indicator = header.querySelector('.sort-indicator');
+                    if (indicator) indicator.textContent = ' ↕';
+                });
+                th.setAttribute('aria-sort', descending ? 'descending' : 'ascending');
+                mark.textContent = descending ? ' ▼' : ' ▲';
+                [...table.tBodies].forEach(body => {
+                    const groups = [];
+                    [...body.rows].forEach(row => {
+                        // Expanded detail rows travel with their owning data row.
+                        if (row.cells.length === headers.length && row.cells[index]?.colSpan === 1) groups.push([row]);
+                        else if (groups.length) groups[groups.length - 1].push(row);
+                    });
+                    groups.sort((a, b) => {
+                        const x = value(a[0].cells[index]), y = value(b[0].cells[index]);
+                        if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1;
+                        const order = typeof x === 'number' && typeof y === 'number' ? x - y : collator.compare(String(x), String(y));
+                        return descending ? -order : order;
+                    });
+                    groups.forEach(group => group.forEach(row => body.append(row)));
+                });
+            });
+        });
     });
 });
 
@@ -626,6 +675,11 @@ document.addEventListener('DOMContentLoaded', () => {
             panel?.classList.remove("is-open");
             button?.setAttribute("aria-expanded", "false");
         };
+
+        // Nie odtwarzaj otwartego menu po powrocie do strony ani zmianie szerokości.
+        closePanel();
+        window.addEventListener("pageshow", closePanel);
+        window.matchMedia("(max-width: 950px)").addEventListener("change", closePanel);
 
         panel?.addEventListener("click", event => {
             if (event.target.closest('a[href]') && button && getComputedStyle(button).display !== 'none') {

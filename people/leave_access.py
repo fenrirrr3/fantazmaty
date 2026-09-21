@@ -19,6 +19,6 @@ def is_on_leave(user, *, lock=False):
     ).exists()
 
 
-def require_available(user):
-    if is_on_leave(user, lock=True):
+def require_available(user, *, lock=True):
+    if is_on_leave(user, lock=lock):
         raise ValidationError("W trakcie urlopu nie można przejmować, rezerwować ani rozpoczynać nowych prac.")

@@ -548,3 +548,35 @@ def update_text_file(request, text_id):
             messages.success(request, 'Zapisano link do folderu Dropbox.')
             return redirect('core:assigned_text_detail', text_id=text.pk)
     return _render_text_detail(request, text, bound_forms={'text_file_form':form}, status=400)
+
+
+@never_cache
+@login_required
+@superuser_required
+@require_http_methods(['GET','POST'])
+def link_text_review(request, text_id):
+    from django.db.models import Q
+    from core.source_reviews import linkable_reviews, suggested_review_ids, link_source_review
+    text = get_object_or_404(Text.objects.select_related('anthology'),pk=text_id)
+    query = request.GET.get('q','').strip()
+    candidates = linkable_reviews(text)
+    suggestions = suggested_review_ids(text)
+    if query:
+        candidates = candidates.filter(Q(title__plcontains=query) | Q(author_first_name__plcontains=query) | Q(author_last_name__plcontains=query) | Q(email__plcontains=query))
+    if request.method == 'POST':
+        try:
+            review_id = int(request.POST.get('review_id',''))
+            link_source_review(user=request.user,text_id=text.pk,review_id=review_id)
+        except (ValueError,ValidationError) as error:
+            messages.error(request,' '.join(error.messages) if isinstance(error,ValidationError) else 'Wybierz zgłoszenie.')
+        else:
+            messages.success(request,'Zapisano powiązanie z recenzjami. Pozostanie zachowane po zmianie tytułu.')
+            return redirect('core:assigned_text_detail',text_id=text.pk)
+    from django.db.models import Case,When,IntegerField,Value
+    candidates=candidates.annotate(suggestion_order=Case(When(pk__in=suggestions,then=Value(0)),default=Value(1),output_field=IntegerField())).order_by('suggestion_order','title','pk')
+    candidates = candidates.annotate(source_information=Case(
+        When(copied_text_id=text.pk, then=Value('Obecne powiązanie')),
+        When(pk__in=suggestions, then=Value('Podpowiedź')),
+        When(old_reviews=True, then=Value('Archiwum')), default=Value('')))
+    page=paginate_items(request,candidates)
+    return render(request,'core/link_text_review.html',{'text':text,'query':query,'candidates':page,'page_obj':page,'suggested_ids':suggestions})

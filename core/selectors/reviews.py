@@ -1,5 +1,6 @@
 from core.filtering import facet_queryset
 from django.db.models import Count, F, Prefetch, Q
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from core.permissions import (
@@ -73,18 +74,17 @@ def _workloads_for_users(user_ids):
         return {}
 
     rows = (
-        ReviewAssignment.objects.filter(
-            user_id__in=user_ids,
-            review__old_reviews=False,
-            review__is_hidden=False,
-        )
+        ReviewAssignment.objects.for_statistics()
+        .annotate(reviewer_user_id=Coalesce("user_id", "historical_person__user_id"))
+        .filter(reviewer_user_id__in=user_ids)
         .order_by()
-        .values("user_id")
+        .values("reviewer_user_id")
         .annotate(
             reading_count=Count(
                 "pk",
                 filter=Q(
                     opinion__in=READING_OPINIONS,
+                    review__old_reviews=False,
                     review__status__in=OPEN_STATUSES,
                 ),
             ),
@@ -100,7 +100,7 @@ def _workloads_for_users(user_ids):
     for row in rows:
         reading = row["reading_count"]
         completed = row["completed_count"]
-        result[row["user_id"]] = {
+        result[row["reviewer_user_id"]] = {
             "reading": reading,
             "completed": completed,
             "total": reading + completed,
@@ -113,7 +113,7 @@ def reviewer_workload(user):
     """
     Zwraca bieżące zadania oraz oddane opinie użytkownika.
 
-    Archiwalne recenzje nie są liczone. Nieoddana opinia dotycząca
+    Oddane archiwalne recenzje zwiększają tylko dorobek. Nieoddana opinia dotycząca
     zamkniętej recenzji nie jest zadaniem oczekującym na wykonanie.
     """
     require_team_member(user)
