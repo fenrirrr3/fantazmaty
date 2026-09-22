@@ -178,8 +178,8 @@ class WorkflowStage(models.Model):
     def __str__(self):
         return (
             f"{self.text.title}: {self.get_stage_type_display()} – "
-            f"przebieg {self.workflow_cycle}, "
-            f"podejście {self.iteration}"
+            f"przebieg {self.workflow_cycle}"
+            + (f" (wyk. {self.execution_number})" if self.execution_number > 1 else "")
         )
 
     def _validate_import_origin(self):

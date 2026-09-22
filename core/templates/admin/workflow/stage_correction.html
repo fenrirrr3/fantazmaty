@@ -1,0 +1,1 @@
+{% extends "admin/base_site.html" %}{% block content %}<p>Korekta dotyczy wyłącznie wskazanego wykonania. Usunięcie usuwa je także ze statystyk. Daty i uwagi innych prac pozostają bez zmian.</p><form method="post">{% csrf_token %}{{ form.as_p }}<div class="submit-row"><input type="submit" class="default" value="Zapisz korektę"></div></form>{% endblock %}

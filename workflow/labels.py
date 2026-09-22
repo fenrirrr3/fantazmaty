@@ -11,7 +11,7 @@ WORK_LABELS = {
 
 
 def execution_label(label, number, *, show_first=False):
-    return f'{label} (wyk. {number})' if show_first or number > 1 else label
+    return f'{label} (wyk. {number})' if number > 1 else label
 
 
 def assignment_label(assignment, *, show_first=False):

@@ -131,7 +131,45 @@ class WorkflowRoleAssignmentAdminForm(
 
 @admin.register(WorkflowStage)
 class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
-    readonly_fields = tuple(field.name for field in WorkflowStage._meta.fields)
+    readonly_fields = (*tuple(field.name for field in WorkflowStage._meta.fields), "edit_execution_link")
+
+    def get_urls(self):
+        from django.urls import path
+        return [path('<path:object_id>/correct/', self.admin_site.admin_view(self.correct_execution), name='workflow_stage_correct')] + super().get_urls()
+
+    @admin.display(description='Korekta wykonania')
+    def edit_execution_link(self,obj):
+        from django.urls import reverse
+        from django.utils.html import format_html
+        return format_html('<a href="{}">Zmień wykonawcę / usuń etap</a>',reverse('admin:workflow_stage_correct',args=[obj.pk]))
+
+    def correct_execution(self,request,object_id):
+        from django.contrib.auth import get_user_model
+        from django.core.exceptions import PermissionDenied, ValidationError
+        from django.db.models.deletion import ProtectedError, RestrictedError
+        from django.shortcuts import get_object_or_404,redirect
+        from django.template.response import TemplateResponse
+        from core.edit_versions import version_of
+        from workflow.admin_stage_edit import edit_stage
+        if not request.user.is_superuser:raise PermissionDenied
+        stage=get_object_or_404(WorkflowStage,pk=object_id)
+        class CorrectionForm(forms.Form):
+            action=forms.ChoiceField(label='Operacja',choices=[('performer','Zmień wykonawcę tego wykonania'),('delete','Usuń to wykonanie etapu')])
+            performer=forms.ModelChoiceField(label='Wykonawca (konto)',queryset=get_user_model().objects.order_by('last_name','first_name','pk'),required=False)
+            replacement=forms.ChoiceField(label='Status po usunięciu bieżącego etapu',choices=[('','— nie dotyczy zakończonego wykonania —'),*active_stage_choices()],required=False)
+            version=forms.IntegerField(widget=forms.HiddenInput)
+            confirm=forms.BooleanField(label='Potwierdzam korektę historii pracy i zmianę statystyk.')
+        form=CorrectionForm(request.POST if request.method=='POST' else None,initial={'version':version_of(stage.text),'performer':stage.assignment.assigned_to_id if stage.assignment else None})
+        if request.method=='POST' and form.is_valid():
+            try:
+                edit_stage(stage.pk,request.user,form.cleaned_data['version'],action=form.cleaned_data['action'],performer=form.cleaned_data['performer'],replacement=form.cleaned_data['replacement'])
+            except ValidationError as exc:form.add_error(None,exc)
+            except (ProtectedError,RestrictedError):form.add_error(None,'Etap ma powiązane przekazania pracy lub inne chronione dane. Nie został usunięty.')
+            else:
+                self.log_change(request,stage.text,'Korekta wykonania etapu '+str(stage.pk)+': '+form.cleaned_data['action'])
+                self.message_user(request,'Zapisano korektę wykonania.')
+                return redirect('admin:texts_text_change',stage.text_id)
+        return TemplateResponse(request,'admin/workflow/stage_correction.html',{**self.admin_site.each_context(request),'title':'Korekta: '+str(stage),'form':form,'stage':stage})
 
     def get_readonly_fields(self, request, obj=None):
         if request.user.is_superuser and obj and obj.imported_completed and obj.is_completed:
@@ -194,7 +232,7 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
                 "fields": (
                     "text",
                     "workflow_cycle",
-                    "stage_type",
+                    "stage_type", "edit_execution_link",
                     "execution_number", "repetition", "is_released", "assignment",
                     "iteration",
                 ),
