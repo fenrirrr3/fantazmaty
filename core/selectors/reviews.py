@@ -6,6 +6,8 @@ from django.utils import timezone
 from core.permissions import (
     can_self_assign_reviews,
     can_view_author_data,
+    can_view_review_archive,
+    can_view_archived_review_authors,
     require_team_member,
 )
 from people.models import Vacation
@@ -343,13 +345,8 @@ class _ReviewRows:
 
 def review_list_context(*, user, params):
     require_team_member(user)
-    include_authors = can_view_author_data(user)
-
-    # Jeden znacznik archiwalności. Archiwum ogląda tylko superuser.
-    old_reviews = (
-        include_authors
-        and params.get("old_reviews", "0").strip() == "1"
-    )
+    old_reviews = can_view_review_archive(user) and params.get("old_reviews", "0").strip() == "1"
+    include_authors = can_view_author_data(user) or (old_reviews and can_view_archived_review_authors(user))
 
     valid_statuses = {value for value, _label in Review.Status.choices}
     filters_applied = (

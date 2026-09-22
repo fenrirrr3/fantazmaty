@@ -1,3 +1,4 @@
+from core.permissions import can_view_review_archive, can_view_archived_review_authors
 from django.contrib import messages
 import hashlib
 import json
@@ -63,9 +64,9 @@ MAX_DATABASE_ID = 9_223_372_036_854_775_807
 def _get_review(user, review_id):
     queryset = Review.objects.visible_to(user).select_related("anthology")
 
-    if can_view_author_data(user):
+    if can_view_author_data(user) or can_view_archived_review_authors(user):
         queryset = queryset.select_related("author").prefetch_related("coauthors")
-    else:
+    if not can_view_review_archive(user):
         queryset = queryset.filter(old_reviews=False)
 
     return get_object_or_404(queryset, pk=review_id)
@@ -169,14 +170,16 @@ def _service_error_message(user, error):
     )
 
 
-def _permission_context(user):
-    can_view_authors = can_view_author_data(user)
+def _permission_context(user, *, archived=False):
+    can_view_authors = can_view_author_data(user) or (archived and can_view_archived_review_authors(user))
 
     return {
         "can_view_authors": can_view_authors,
         "can_view_author_data": can_view_authors,
         "can_view_review_author": can_view_authors,
         "can_view_all_reviews": can_view_authors,
+        "can_view_review_archive": can_view_review_archive(user),
+        "can_open_author_profiles": can_view_author_data(user),
         "can_import_reviews": can_import_reviews(user),
         "can_manage_review": can_manage_reviews(user),
         "can_perform_bulk_actions": can_perform_bulk_actions(user),
@@ -254,7 +257,7 @@ def _render_review_detail(
     bound_forms=None,
     status=200,
 ):
-    include_author = can_view_author_data(request.user)
+    include_author = can_view_author_data(request.user) or (review.old_reviews and can_view_archived_review_authors(request.user))
     is_locked = _review_is_locked(review)
     manager_access = can_manage_reviews(request.user)
 
@@ -339,7 +342,7 @@ def _render_review_detail(
         and review.copied_text_id is None
     )
 
-    context = _permission_context(request.user)
+    context = _permission_context(request.user, archived=review.old_reviews)
     context.update(
         {
             "review": review_data,
@@ -459,8 +462,7 @@ def _render_review_detail(
 @team_member_required
 def review_list(request):
     # Selektor stosuje old_reviews, filtry i sortowanie z białej listy.
-    # Dla osób innych niż superuser zwraca wyłącznie bieżące recenzje,
-    # bez danych autora i bez możliwości wyszukiwania po tych danych.
+    # Archiwum jest dostępne recenzentom; dane autorów w archiwum tylko koordynatorom.
     # Elementy kontekstu muszą być bezpiecznymi projekcjami danych,
     # także w zagnieżdżonych strukturach.
     context = dict(
@@ -471,7 +473,7 @@ def review_list(request):
     )
     page_obj = paginate_items(request, context.pop("reviews"))
 
-    context.update(_permission_context(request.user))
+    context.update(_permission_context(request.user, archived=context["old_reviews"]))
     context.update(
         {
             "reviews": page_obj,

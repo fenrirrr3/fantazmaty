@@ -96,7 +96,7 @@
                     <dt>Imię i nazwisko</dt>
                     <dd>
                         {% for author in review.authors %}
-                            <a href="{% url 'core:author_detail' author.pk %}" class="detail-link">{{ author }}</a>{% if not forloop.last %}, {% endif %}
+                            {% if can_open_author_profiles %}<a href="{% url 'core:author_detail' author.pk %}" class="detail-link">{{ author }}</a>{% else %}{{ author }}{% endif %}{% if not forloop.last %}, {% endif %}
                         {% empty %}
                             {{ review.author_first_name }} {{ review.author_last_name }}
                         {% endfor %}

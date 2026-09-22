@@ -303,3 +303,11 @@ def can_view_my_reviews(user):
     return ReviewAssignment.objects.filter(
         Q(user=user) | Q(historical_person__user=user), review__old_reviews=True,
     ).exists()
+
+
+def can_view_review_archive(user):
+    return is_team_member(user) and (is_coordinator(user) or is_reviewer(user))
+
+
+def can_view_archived_review_authors(user):
+    return is_coordinator(user)

@@ -29,7 +29,7 @@
         </div>
     </header>
 
-    {% if can_view_all_reviews %}
+    {% if can_view_review_archive %}
         <nav class="tabs" aria-label="Zakres recenzji">
             <a
                 href="{% url 'core:review_list' %}?old_reviews=0"
@@ -266,10 +266,11 @@
                             {% if can_view_authors %}
                                 <td>
                                     {% for author in review.authors %}
-                            <a href="{% url 'core:author_detail' author.pk %}" class="detail-link">{{ author }}</a>{% if not forloop.last %}, {% endif %}
+                            {% if can_open_author_profiles %}<a href="{% url 'core:author_detail' author.pk %}" class="detail-link">{{ author }}</a>{% else %}{{ author }}{% endif %}{% if not forloop.last %}, {% endif %}
                         {% empty %}
                             {{ review.author_first_name }} {{ review.author_last_name }}
                         {% endfor %}
+                                    {% if old_reviews and review.email %}<div><a href="mailto:{{ review.email }}" class="detail-link">{{ review.email }}</a></div>{% endif %}
                                 </td>
                             {% endif %}
 
