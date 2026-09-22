@@ -17,6 +17,7 @@ from texts.models import ReviewAssignment
 from workflow.models import WorkflowRoleAssignment, WorkflowStage
 from workflow.services import STAGE_ROLES
 from workflow.catalog import IMPORT_ONLY_ROLES, IMPORT_ONLY_STAGE_TYPES
+from workflow.labels import assignment_label
 
 
 def _filter_data(request):
@@ -150,7 +151,7 @@ def _profile_assignments(person, *, include_authors):
             {
                 "pk": assignment.pk,
                 "role": assignment.role,
-                "get_role_display": assignment.get_role_display() + f" — wykonanie {assignment.execution_number}" + (" (wcześniejsze przypisanie)" if not assignment.is_current else ""),
+                "get_role_display": assignment_label(assignment, show_first=True),
                 "assigned_at": assignment.assigned_at,
                 "has_active_work": has_active_work,
                 "has_reserved_work": has_reserved_work,
@@ -230,7 +231,7 @@ def people_list(request):
         form.fields["query"].widget.attrs["placeholder"] = "Imię lub nazwisko"
 
     people = (
-        Person.objects.filter(is_active=True)
+        Person.objects.active()
         .prefetch_related("roles")
         .order_by("last_name", "first_name", "pk")
     )
@@ -320,8 +321,8 @@ def person_detail(request, person_id):
                 Q(historical_person=person) | (Q(user_id=person.user_id) if person.user_id else Q(pk__in=[]))
             ).select_related("review__anthology").order_by("review__anthology__title", "review__title", "position"),
             "can_view_authors": include_authors,
-            "can_view_team_email": True,
-            "can_view_team_dropbox_email": is_superuser(request.user),
+            "can_view_team_email": person.can_show_team_contact,
+            "can_view_team_dropbox_email": person.can_show_team_contact and is_superuser(request.user),
             "leave_information": (
                 user_leave_information(person.user)
                 if person.user_id is not None

@@ -2056,6 +2056,22 @@ a[href^="mailto:"] {
 .checkbox-dropdown-options input[type="checkbox"] { width: auto; flex: 0 0 auto; }
 .checkbox-dropdown-clear { font-size: 0.8rem; margin-bottom: 6px; }
 
+/* Compact stage chooser on My texts; preserve native select without JavaScript. */
+.filters-form[data-filters="my_texts"] .stage-filter-field {
+    flex: 0 1 210px;
+    width: 210px;
+    max-width: 100%;
+}
+.filters-form[data-filters="my_texts"] .stage-filter-field .checkbox-dropdown-options {
+    max-height: 220px;
+    max-width: min(290px, 85vw);
+    padding: 8px;
+    font-size: 0.875rem;
+}
+.filters-form[data-filters="my_texts"] .stage-filter-field select[multiple] {
+    height: 96px;
+}
+
 .auth-card {
     width: 100%;
     max-width: 420px;

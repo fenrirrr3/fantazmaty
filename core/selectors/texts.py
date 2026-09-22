@@ -1,4 +1,5 @@
 from workflow.catalog import active_stage_choices, active_role_choices, IMPORT_ONLY_ROLES
+from workflow.labels import assignment_label, execution_label
 from core.filtering import facet_queryset
 from datetime import date
 
@@ -180,7 +181,7 @@ def _stage_data(stage, text_data=None):
         repetition_id=stage.repetition_id,
         is_released=stage.is_released,
         stage_type=stage.stage_type,
-        get_stage_type_display=stage.get_stage_type_display() + (f" — wykonanie {stage.execution_number}" if stage.execution_number > 1 else "") + (" — powrót do redaktora" if stage.repetition_id and stage.stage_type == StageType.EDITING and stage.queue_position > 0 else ""),
+        get_stage_type_display=execution_label(stage.get_stage_type_display(), stage.execution_number) + (" — powrót do redaktora" if stage.repetition_id and stage.stage_type == StageType.EDITING and stage.queue_position > 0 else ""),
         iteration=stage.iteration,
         started_at=stage.started_at,
         ended_at=stage.ended_at,
@@ -199,7 +200,7 @@ def _assignment_data(assignment, text_data=None):
         text_id=assignment.text_id,
         workflow_cycle=assignment.workflow_cycle,
         role=assignment.role,
-        get_role_display=assignment.get_role_display(),
+        get_role_display=assignment_label(assignment),
         assigned_to_id=assignment.assigned_to_id,
         assigned_to=_user_data(assignment.assigned_to),
         assigned_at=assignment.assigned_at,
@@ -315,8 +316,6 @@ def text_list_context(*, user, params, scope=None, stage_scope=None):
     query = params.get("q", "").strip()[:500]
 
     hide_ready = params.get("hide_ready", "1").strip() != "0"
-    if StageType.READY in statuses:
-        hide_ready = False
 
     def filtered(exclude=None):
         result = _annotated_texts()
@@ -339,7 +338,10 @@ def text_list_context(*, user, params, scope=None, stage_scope=None):
                 condition |= Q(authors__first_name__plcontains=term) | Q(authors__last_name__plcontains=term) | Q(authors__pseudonym__plcontains=term)
             result = result.filter(condition)
         if hide_ready:
-            result = result.exclude(current_stage_type=StageType.READY)
+            result = result.filter(
+                Q(current_stage_type__isnull=True)
+                | ~Q(current_stage_type__in=(StageType.READY, StageType.WITHDRAWN))
+            )
         return result.distinct()
 
     queryset = filtered()
@@ -856,7 +858,7 @@ def text_detail_context(*, user, text):
         "team_members": [
             {
                 "role": role,
-                "label": label,
+                "label": assignment_label(assignments[role]) if role in assignments else label,
                 "assignment": _assignment_data(assignments.get(role)),
                 "user": (
                     _user_data(assignments[role].assigned_to)
@@ -868,7 +870,7 @@ def text_detail_context(*, user, text):
             }
             for role, label in active_role_choices() if role != Role.STYLING
         ] + [
-            {"role": item.role, "label": item.get_role_display() + f" — wcześniejsze przypisanie {item.execution_number}",
+            {"role": item.role, "label": assignment_label(item, show_first=True),
              "is_previous": True, "is_assigned": True, "user": _user_data(item.assigned_to)}
             for item in WorkflowRoleAssignment.objects.filter(text=text, assigned_to__isnull=False).exclude(role__in=(*IMPORT_ONLY_ROLES, Role.STYLING)).exclude(
                 workflow_cycle=text.current_workflow_cycle, is_current=True).select_related('assigned_to__person_profile').order_by('workflow_cycle','role','execution_number')

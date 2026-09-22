@@ -183,7 +183,7 @@ def _search_authors(query, user):
 
 def _search_people(query, user):
     people = (
-        Person.objects.filter(is_active=True)
+        Person.objects.active()
         .prefetch_related(
             Prefetch(
                 "roles",

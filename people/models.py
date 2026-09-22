@@ -75,7 +75,9 @@ class Role(models.Model):
 
 class PersonQuerySet(models.QuerySet):
     def active(self):
-        return self.filter(is_active=True)
+        return self.filter(is_active=True).filter(
+            models.Q(user__isnull=True) | models.Q(user__is_active=True)
+        )
 
     def with_roles(self, role_ids):
         """Osoby mające co najmniej jedną ze wskazanych ról."""
@@ -234,6 +236,10 @@ class Person(models.Model):
             self.leave_end_date,
             self.leave_until_revoked,
         )
+
+    @property
+    def can_show_team_contact(self):
+        return self.is_active and (self.user_id is None or self.user.is_active)
 
 
 class Vacation(models.Model):

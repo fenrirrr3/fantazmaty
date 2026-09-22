@@ -1,4 +1,5 @@
 from workflow.catalog import active_stage_choices, active_role_choices
+from workflow.labels import execution_label, WORK_LABELS
 from datetime import timedelta
 
 from django import forms
@@ -228,6 +229,8 @@ def workflow_activity_context(
         authors = _authors_display(text, include_authors)
         anthology_title = text.anthology.title if text.anthology else ""
         role_label = role_labels.get(role, role)
+        if stage.execution_number > 1:
+            role_label = execution_label(WORK_LABELS.get(role, role_label), stage.execution_number)
 
         if not _matches(
             filters["q"],
@@ -511,7 +514,7 @@ def workflow_inactivity_context(
             "text": text_data,
             "workflow_cycle": stage.workflow_cycle,
             "stage_type": stage.stage_type,
-            "get_stage_type_display": stage.get_stage_type_display(),
+            "get_stage_type_display": execution_label(stage.get_stage_type_display(), stage.execution_number),
             "iteration": stage.iteration,
                 "execution_number": stage.execution_number,
             "started_at": stage.started_at,

@@ -339,7 +339,7 @@
         <div class="text-team-grid">
             {% for member in team_members %}
                 <div class="text-team-member{% if not member.is_assigned %} is-unassigned{% endif %}">
-                    <span class="text-team-member-role">{{ member.label }}{% if member.is_previous %} <span class="muted-text">(wcześniejsze przypisanie)</span>{% endif %}</span>
+                    <span class="text-team-member-role"{% if member.is_previous %} title="Wcześniejsze przypisanie"{% endif %}>{{ member.label }}</span>
                     {% if member.user %}
                         <strong>
                             {% firstof member.user.get_full_name "Nieuzupełnione dane" %}
