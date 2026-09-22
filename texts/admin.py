@@ -170,9 +170,15 @@ class WorkflowRoleAssignmentInline(
         "role", "execution_number", "is_current",
         "assigned_to",
         "assigned_at",
-        "notes",
+        "notes", "correction_link",
     )
-    readonly_fields = ("role", "execution_number", "is_current", "assigned_to", "assigned_at")
+    readonly_fields = ("role", "execution_number", "is_current", "assigned_to", "assigned_at", "correction_link")
+    @admin.display(description='Korekta')
+    def correction_link(self, obj):
+        from django.urls import reverse
+        from django.utils.html import format_html
+        return format_html('<a href="{}">Zmień / odłącz / usuń</a>', reverse('admin:workflow_assignment_correct',args=[obj.pk]))
+
     can_delete = False
 
     def has_add_permission(self, request, obj=None):
@@ -204,7 +210,7 @@ class WorkflowStageInline(
         "iteration",
         "started_at",
         "ended_at",
-        "is_completed",
+        "is_completed", "correction_link",
     )
     ordering = (
         "started_at",
@@ -213,6 +219,12 @@ class WorkflowStageInline(
         "iteration",
         "pk",
     )
+
+    @admin.display(description='Korekta')
+    def correction_link(self, obj):
+        from django.urls import reverse
+        from django.utils.html import format_html
+        return format_html('<a href="{}">Zmień wykonawcę / usuń etap</a>', reverse('admin:workflow_stage_correct',args=[obj.pk]))
 
     readonly_fields = fields
     show_change_link = True

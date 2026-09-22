@@ -54,6 +54,8 @@ def edit_stage(stage_id, actor, version, *, action, performer=None, replacement=
             else:
                 number=(A.objects.filter(text=text,workflow_cycle=stage.workflow_cycle,role=role).aggregate(n=Max('execution_number'))['n'] or 0)+1
                 assignment=A(text=text,workflow_cycle=stage.workflow_cycle,role=role,execution_number=number,is_current=bool(stage.is_current and not stage.is_completed))
+            if previous and shared and assignment.is_current and previous.is_current:
+                A.objects.filter(pk=previous.pk).update(is_current=False)
             assignment.assigned_to=performer
             assignment.full_clean();assignment.save()
             if not previous or shared:A.objects.filter(pk=assignment.pk).update(assigned_at=None)

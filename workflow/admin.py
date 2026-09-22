@@ -195,6 +195,7 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
     list_display = (
         "text",
         "stage_type",
+        "edit_execution_link",
         "workflow_cycle",
         "is_current_cycle",
         "execution_number",
@@ -304,8 +305,48 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
 
 @admin.register(WorkflowRoleAssignment)
 class WorkflowRoleAssignmentAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
+    def get_urls(self):
+        from django.urls import path
+        return [path('<path:object_id>/correct/', self.admin_site.admin_view(self.correct_assignment_view), name='workflow_assignment_correct')] + super().get_urls()
+
+    @admin.display(description='Korekta przypisania')
+    def correction_link(self, obj):
+        from django.urls import reverse
+        from django.utils.html import format_html
+        return format_html('<a href="{}">Zmień / odłącz osobę / usuń przypisanie</a>', reverse('admin:workflow_assignment_correct', args=[obj.pk]))
+
+    def correct_assignment_view(self, request, object_id):
+        from django.contrib.auth import get_user_model
+        from django.core.exceptions import PermissionDenied, ValidationError
+        from django.db.models.deletion import ProtectedError, RestrictedError
+        from django.shortcuts import get_object_or_404, redirect
+        from django.template.response import TemplateResponse
+        from core.edit_versions import version_of
+        from workflow.admin_assignment_edit import correct_assignment
+        if not request.user.is_superuser:
+            raise PermissionDenied
+        obj = get_object_or_404(WorkflowRoleAssignment, pk=object_id)
+        class CorrectionForm(forms.Form):
+            action = forms.ChoiceField(label='Operacja', choices=[('performer','Zmień osobę we wszystkich etapach tego przypisania'),('clear','Odłącz osobę, zachowując etapy'),('delete','Usuń puste przypisanie bez etapów')])
+            performer = forms.ModelChoiceField(label='Nowy wykonawca', queryset=get_user_model().objects.order_by('last_name','first_name','pk'), required=False)
+            version = forms.IntegerField(widget=forms.HiddenInput)
+            confirm = forms.BooleanField(label='Potwierdzam korektę wykonawcy, historii i statystyk.')
+        form = CorrectionForm(request.POST if request.method == 'POST' else None, initial={'version':version_of(obj.text),'performer':obj.assigned_to_id})
+        if request.method == 'POST' and form.is_valid():
+            try:
+                correct_assignment(obj.pk,request.user,form.cleaned_data['version'],action=form.cleaned_data['action'],performer=form.cleaned_data['performer'])
+            except (ProtectedError, RestrictedError):
+                form.add_error(None,'Rekord ma chronione powiązania i nie został usunięty.')
+            except ValidationError as exc:
+                form.add_error(None,exc)
+            else:
+                self.log_change(request,obj.text,f"Korekta przypisania {obj.pk}: {form.cleaned_data['action']}, osoba {getattr(form.cleaned_data['performer'], 'pk', None)}")
+                self.message_user(request,'Zapisano korektę przypisania.')
+                return redirect('admin:texts_text_change',obj.text_id)
+        return TemplateResponse(request,'admin/workflow/assignment_correction.html',{**self.admin_site.each_context(request),'title':'Korekta: '+str(obj),'form':form,'assignment':obj,'stages':obj.stages.all()})
+
     def get_readonly_fields(self, request, obj=None):
-        return tuple(field.name for field in WorkflowRoleAssignment._meta.fields if field.name != "notes")
+        return tuple(field.name for field in WorkflowRoleAssignment._meta.fields if field.name != "notes") + ("correction_link",)
 
     def has_add_permission(self, request):
         return False
@@ -322,6 +363,7 @@ class WorkflowRoleAssignmentAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
         "text",
         "role",
         "assigned_to",
+        "correction_link",
         "workflow_cycle",
         "is_current_cycle",
         "assigned_at",
@@ -363,6 +405,7 @@ class WorkflowRoleAssignmentAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
                     "workflow_cycle",
                     "role",
                     "assigned_to",
+                    "correction_link",
                     "assigned_at",
                 ),
             },

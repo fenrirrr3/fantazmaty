@@ -1,0 +1,8 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<p>Zmiana osoby obejmuje wszystkie etapy tego przypisania, także zakończone. Daty pozostają bez zmian. To korekta danych, nie przekazanie pracy.</p>
+<p>Odłączenie osoby zachowuje etapy i zakończoną pracę bez wykonawcy. Niezakończone etapy tracą daty rozpoczęcia i rezerwacje; czekają na przypisanie. Konto osoby pozostaje bez zmian.</p>
+<p>Usunąć można przypisanie bez etapów. Powiązane etapy możesz usunąć osobno:</p>
+<ul>{% for stage in stages %}<li><a href="{% url 'admin:workflow_stage_correct' stage.pk %}">{{ stage }}</a></li>{% empty %}<li>Brak etapów.</li>{% endfor %}</ul>
+<form method="post">{% csrf_token %}{{ form.as_p }}<div class="submit-row"><input type="submit" class="default" value="Zapisz korektę"></div></form>
+{% endblock %}
