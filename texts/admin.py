@@ -267,7 +267,7 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         fields = super().get_readonly_fields(request, obj)
         return fields if request.user.is_superuser else (*fields, "file_url")
 
-    readonly_fields = ("current_workflow_cycle", "import_source", "import_source_row")
+    readonly_fields = ("manual_status_link", "current_workflow_cycle", "import_source", "import_source_row")
 
     fieldsets = (
         (
@@ -286,7 +286,7 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         ),
         (
             "Workflow",
-            {"fields": ("current_workflow_cycle", "import_source", "import_source_row")},
+            {"fields": ("manual_status_link", "current_workflow_cycle", "import_source", "import_source_row")},
         ),
     )
     inlines = (
@@ -311,6 +311,44 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
                     stage_type=WorkflowStage.StageType.READY_FOR_EDITING,
                     iteration=1,
                 )
+
+    def get_urls(self):
+        return [path('<path:object_id>/status/', self.admin_site.admin_view(self.change_status_view), name='texts_text_manual_status')] + super().get_urls()
+
+    @admin.display(description='Status tekstu')
+    def manual_status_link(self, obj):
+        from django.utils.html import format_html
+        from workflow.state import current_stage
+        if not obj or not obj.pk:
+            return 'Zapisz tekst, aby ustawić status.'
+        stage = current_stage(list(obj.workflow_stages.filter(workflow_cycle=obj.current_workflow_cycle)))
+        label = stage.get_stage_type_display() if stage else 'Brak bieżącego etapu'
+        return format_html('{} — <a href="{}">Zmień status / przywróć etap</a>', label, reverse('admin:texts_text_manual_status', args=[obj.pk]))
+
+    def change_status_view(self, request, object_id):
+        from django.template.response import TemplateResponse
+        from django.shortcuts import redirect
+        from workflow.admin_status import set_admin_status
+        from workflow.catalog import active_stage_choices
+        from core.edit_versions import version_of
+        if not request.user.is_superuser:
+            raise PermissionDenied
+        obj = get_object_or_404(self.get_queryset(request), pk=unquote(object_id))
+        class StatusForm(forms.Form):
+            stage = forms.ChoiceField(label='Nowy status / etap', choices=active_stage_choices())
+            version = forms.IntegerField(widget=forms.HiddenInput)
+            confirm = forms.BooleanField(label='Potwierdzam ręczną korektę statusu i zachowanie wcześniejszych wykonań w historii.')
+        form = StatusForm(request.POST if request.method == 'POST' else None, initial={'version':version_of(obj)})
+        if request.method == 'POST' and form.is_valid():
+            try:
+                stage = set_admin_status(obj.pk, form.cleaned_data['stage'], request.user, form.cleaned_data['version'])
+            except ValidationError as exc:
+                form.add_error(None, exc)
+            else:
+                self.log_change(request, obj, 'Ręczna zmiana statusu: '+stage.get_stage_type_display())
+                self.message_user(request, 'Ustawiono status: '+stage.get_stage_type_display()+'. Wcześniejsze wykonania zachowano.')
+                return redirect('admin:texts_text_change', obj.pk)
+        return TemplateResponse(request, 'admin/texts/text/manual_status.html', {**self.admin_site.each_context(request), 'title':'Zmień status tekstu: '+obj.title, 'form':form, 'original':obj, 'opts':self.model._meta})
 
     def get_queryset(self, request):
         return (

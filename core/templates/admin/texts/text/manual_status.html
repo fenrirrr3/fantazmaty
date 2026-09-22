@@ -1,0 +1,8 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<p>Wybierz rzeczywisty etap tekstu. Możesz cofnąć status „Gotowe”.</p>
+<p>Nowy etap będzie oczekiwał na przejęcie, bez wykonawcy i dat. Wcześniejsze wykonania pozostaną w historii. Wybrany etap oraz późniejsze wykonania przestaną należeć do bieżącej ścieżki pracy. Importowane daty i uwagi nie zostaną zmienione.</p>
+<p>Gotowa antologia wymaga wcześniejszego ustawienia „W przygotowaniu”. Rozpoczęta praca i aktywne powtórzenia wymagają wcześniejszego zakończenia lub odwołania.</p>
+<form method="post">{% csrf_token %}{{ form.as_p }}<div class="submit-row"><input type="submit" value="Zapisz status" class="default"></div></form>
+<p><a href="{% url 'admin:texts_text_change' original.pk %}">Wróć do tekstu</a></p>
+{% endblock %}
