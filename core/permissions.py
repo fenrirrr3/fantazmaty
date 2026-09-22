@@ -310,4 +310,4 @@ def can_view_review_archive(user):
 
 
 def can_view_archived_review_authors(user):
-    return is_coordinator(user)
+    return is_superuser(user)

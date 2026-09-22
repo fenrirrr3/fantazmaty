@@ -462,7 +462,7 @@ def _render_review_detail(
 @team_member_required
 def review_list(request):
     # Selektor stosuje old_reviews, filtry i sortowanie z białej listy.
-    # Archiwum jest dostępne recenzentom; dane autorów w archiwum tylko koordynatorom.
+    # Archiwum jest dostępne recenzentom; dane autorów w archiwum tylko superuserom.
     # Elementy kontekstu muszą być bezpiecznymi projekcjami danych,
     # także w zagnieżdżonych strukturach.
     context = dict(
