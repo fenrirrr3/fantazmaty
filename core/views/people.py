@@ -69,8 +69,7 @@ def _profile_assignments(person, *, include_authors):
         .order_by(F("assigned_at").desc(nulls_last=True), "-pk")
     )
 
-    if include_authors:
-        queryset = queryset.prefetch_related("text__authors")
+    queryset = queryset.prefetch_related("text__authors")
 
     today = timezone.localdate()
     from workflow.read_queries import work_text_ids
@@ -132,21 +131,12 @@ def _profile_assignments(person, *, include_authors):
         has_completed_work = text.pk in completed_ids
 
 
-        authors = []
+        authors = [
+            {"pk": author.pk, "first_name": author.first_name,
+             "last_name": author.last_name, "pseudonym": author.pseudonym}
+            for author in text.authors.all()
+        ]
 
-        if include_authors:
-            authors = [
-                {
-                    "pk": author.pk,
-                    "first_name": author.first_name,
-                    "last_name": author.last_name,
-                    "pseudonym": author.pseudonym,
-                }
-                for author in text.authors.all()
-            ]
-
-        # Do szablonu nie przekazujemy obiektów ORM przydziału ani tekstu.
-        # Zapobiega to odczytaniu autora przez relacje zagnieżdżone.
         assignments.append(
             {
                 "pk": assignment.pk,

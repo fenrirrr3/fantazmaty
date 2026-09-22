@@ -88,8 +88,7 @@ def _search_texts(query, *, include_authors):
         .order_by("title", "pk")
     )
 
-    if include_authors:
-        queryset = queryset.distinct().prefetch_related("authors")
+    queryset = queryset.distinct().prefetch_related("authors")
 
     results = []
 
@@ -103,7 +102,8 @@ def _search_texts(query, *, include_authors):
                     "all": (
                         [_author_data(author) for author in text.authors.all()]
                         if include_authors
-                        else []
+                        else [f"{author.first_name} {author.last_name}".strip()
+                              for author in text.authors.all()]
                     ),
                 },
             }

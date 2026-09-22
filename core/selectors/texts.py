@@ -212,11 +212,16 @@ def _assignment_data(assignment, text_data=None):
 
 
 def _text_data(text, include_authors):
-    authors = (
-        [_author_data(author) for author in text.selector_authors]
-        if include_authors
-        else []
-    )
+    source_authors = getattr(text, "selector_authors", None)
+    if source_authors is None:
+        source_authors = text.authors.all()
+    authors = [
+        _author_data(author) if include_authors else _Record(
+            pk=author.pk, first_name=author.first_name, last_name=author.last_name,
+            display_name=str(author),
+        )
+        for author in source_authors
+    ]
     return _Record(
         pk=text.pk,
         title=text.title,
@@ -229,7 +234,7 @@ def _text_data(text, include_authors):
         authors={"all": authors},
         authors_display=", ".join(str(author) for author in authors),
         author_emails=", ".join(
-            author["email"] for author in authors if author["email"]
+            author["email"] for author in authors if author.get("email")
         ),
     )
 
@@ -257,14 +262,12 @@ def _prepared_texts(queryset, include_authors):
             to_attr="selector_assignments",
         ),
     )
-    if include_authors:
-        queryset = queryset.prefetch_related(
-            Prefetch(
-                "authors",
-                queryset=Author.objects.order_by("last_name", "first_name", "pk"),
-                to_attr="selector_authors",
-            )
-        )
+    author_query = Author.objects.order_by("last_name", "first_name", "pk")
+    if not include_authors:
+        author_query = author_query.only("pk", "first_name", "last_name")
+    queryset = queryset.prefetch_related(Prefetch(
+        "authors", queryset=author_query, to_attr="selector_authors",
+    ))
     return queryset
 
 
@@ -437,8 +440,8 @@ def user_workflow_summary(user, *, today=None, limit=None):
     from workflow.read_queries import dashboard_querysets
     active, reserved = dashboard_querysets(user, today)
     counts = (active.count(), reserved.count())
-    active = active.select_related("text__anthology")
-    reserved = reserved.select_related("text__anthology", "assigned_to__person_profile")
+    active = active.select_related("text__anthology").prefetch_related("text__authors")
+    reserved = reserved.select_related("text__anthology", "assigned_to__person_profile").prefetch_related("text__authors")
     if limit is not None:
         active, reserved = active[:limit], reserved[:limit]
     return {
@@ -469,12 +472,6 @@ def available_stages_for_user(*, user, params=None, with_filters=False):
     def project(stage):
         role = STAGE_ROLE_MAP.get(stage.stage_type)
         text_data = _text_data(stage.text, include_authors)
-        if not include_authors:
-            # Available work exposes names, without widening access to author contact data.
-            authors = [_Record(pk=a.pk, first_name=a.first_name, last_name=a.last_name,
-                               display_name=str(a)) for a in stage.text.selector_authors]
-            text_data.update(authors={"all": authors},
-                             authors_display=", ".join(str(a) for a in authors))
         row = _stage_data(stage, text_data)
         row.update(required_group="Superuser" if role == Role.STYLING else ROLE_GROUPS.get(role, "Redaktor"),
                    available_role=role)

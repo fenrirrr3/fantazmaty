@@ -132,17 +132,9 @@ def illustration_list(request):
         'anthology': ('text__anthology_id', [selected_anthology_id] if selected_anthology_id else []),
     })
 
-    if can_view_authors:
-        authors = Author.objects.only(
-            "pk",
-            "first_name",
-            "last_name",
-            "pseudonym",
-        ).order_by("last_name", "first_name", "pk")
-    else:
-        # Zapobiega ujawnieniu autorów również przez dotychczasowe
-        # odwołania illustration.text.authors.all w szablonie.
-        authors = Author.objects.none()
+    authors = Author.objects.only(
+        "pk", "first_name", "last_name", "pseudonym",
+    ).order_by("last_name", "first_name", "pk")
 
     illustrations = illustrations.prefetch_related(
         Prefetch("text__authors", queryset=authors)

@@ -102,9 +102,9 @@
                         <th scope="col" data-sort-key="anthology">Antologia</th>
                         <th scope="col" data-sort-key="title" class="sticky-title">Tytuł</th>
 
-                        {% if can_view_authors %}
-                            <th scope="col" data-sort-key="authors">Autorzy</th>
-                        {% endif %}
+                        
+                            <th scope="col" {% if can_view_authors %}data-sort-key="authors"{% endif %}>Autorzy</th>
+                        
 
                         <th scope="col" class="numeric-cell" data-sort-key="length">Długość</th>
                         <th scope="col" data-sort-key="status">Etap pracy</th>
@@ -149,20 +149,22 @@
                                 </a>
                             </td>
 
-                            {% if can_view_authors %}
+                            
                                 <td data-copy-value="{{ text.authors_display }}">
                                     {% for author in text.authors.all %}
-                                        <a
+                                        {% if can_view_authors %}<a
                                             href="{% url 'core:author_detail' author.pk %}"
                                             class="detail-link"
                                         >
                                             {{ author.first_name }} {{ author.last_name }}
-                                        </a>{% if not forloop.last %}, {% endif %}
+                                        </a>{% else %}
+                                            {{ author.first_name }} {{ author.last_name }}
+                                        {% endif %}{% if not forloop.last %}, {% endif %}
                                     {% empty %}
                                         <span class="muted-text">Brak przypisanego autora</span>
                                     {% endfor %}
                                 </td>
-                            {% endif %}
+                            
 
                             <td
                                 class="numeric-cell"
@@ -194,7 +196,7 @@
                         </tr>
                     {% empty %}
                         <tr>
-                            <td colspan="{% if can_perform_bulk_actions and bulk_action_form %}{% if can_view_authors %}7{% else %}6{% endif %}{% else %}{% if can_view_authors %}6{% else %}5{% endif %}{% endif %}">
+                            <td colspan="{% if can_perform_bulk_actions and bulk_action_form %}7{% else %}6{% endif %}">
                                 <div class="empty-results-panel">
                                     <strong>Nie znaleziono tekstów.</strong>
                                     <p>

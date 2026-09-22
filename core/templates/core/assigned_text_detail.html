@@ -65,23 +65,25 @@
                 <dd>{{ text.length }}</dd>
             </div>
 
-            {% if can_view_authors %}
+            
                 <div class="detail-item">
                     <dt>Autorzy</dt>
                     <dd>
                         {% for author in text.authors.all %}
-                            <a
+                            {% if can_view_authors %}<a
                                 href="{% url 'core:author_detail' author.pk %}"
                                 class="detail-link"
                             >
                                 {{ author.first_name }} {{ author.last_name }}
-                            </a>{% if not forloop.last %}, {% endif %}
+                            </a>{% else %}
+                                {{ author.first_name }} {{ author.last_name }}
+                            {% endif %}{% if not forloop.last %}, {% endif %}
                         {% empty %}
                             <span class="muted-text">Brak przypisanego autora</span>
                         {% endfor %}
                     </dd>
                 </div>
-            {% endif %}
+            
 
             {% if source_review %}
                 <div class="detail-item">

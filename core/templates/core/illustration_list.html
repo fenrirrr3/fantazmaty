@@ -85,9 +85,9 @@
                         <th scope="col" data-sort-key="anthology">Antologia</th>
                         <th scope="col" data-sort-key="title" class="sticky-title">Tytuł tekstu</th>
 
-                        {% if can_view_authors %}
-                            <th scope="col" data-sort-key="authors">Autorzy</th>
-                        {% endif %}
+                        
+                            <th scope="col" {% if can_view_authors %}data-sort-key="authors"{% endif %}>Autorzy</th>
+                        
 
                         <th scope="col">Ilustrator</th>
                         <th scope="col" data-sort-key="status">Status</th>
@@ -114,16 +114,18 @@
                                 </a>
                             </td>
 
-                            {% if can_view_authors %}
+                            
                                 <td>
                                     {% for author in illustration.text.authors.all %}
                                         <div>
-                                            <a
+                                            {% if can_view_authors %}<a
                                                 href="{% url 'core:author_detail' author.pk %}"
                                                 class="detail-link"
                                             >
                                                 {{ author.first_name }} {{ author.last_name }}
-                                            </a>
+                                            </a>{% else %}
+                                                {{ author.first_name }} {{ author.last_name }}
+                                            {% endif %}
                                             {% if author.pseudonym %}
                                                 <span class="muted-text">
                                                     ({{ author.pseudonym }})
@@ -136,7 +138,7 @@
                                         </span>
                                     {% endfor %}
                                 </td>
-                            {% endif %}
+                            
 
                             <td>
                                 {% if illustration.illustrator %}
@@ -218,7 +220,7 @@
                         </tr>
                     {% empty %}
                         <tr>
-                            <td colspan="{% if can_view_authors %}9{% else %}8{% endif %}">
+                            <td colspan="9">
                                 <div class="empty-results-panel">
                                     <strong>Brak ilustracji spełniających kryteria.</strong>
                                     <p>
