@@ -15,7 +15,7 @@ from authors.models import Author
 from people.models import Person
 from core.normalization import NormalizedFormMixin, REVIEW_FIELDS, TEXT_FIELDS
 from workflow.models import WorkflowRoleAssignment, WorkflowStage
-from workflow.catalog import IMPORT_ONLY_ROLES, IMPORT_ONLY_STAGE_TYPES
+from workflow.catalog import IMPORT_ONLY_STAGE_TYPES
 
 from .models import (
     MAX_REVIEWERS,
@@ -139,95 +139,33 @@ class AnthologyAdmin(admin.ModelAdmin):
     show_full_result_count = False
 
 
-class WorkflowAssignmentFormSet(BaseInlineFormSet):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        for form in self.forms:
-            if not form.instance.pk:
-                form.instance.workflow_cycle = self.instance.current_workflow_cycle
-
-    def clean(self):
-        if self.instance.pk:
-            locked_text = Text.objects.select_for_update().get(pk=self.instance.pk)
-            if locked_text.current_workflow_cycle != self.instance.current_workflow_cycle:
-                raise ValidationError("Przebieg tekstu zmienił się. Odśwież formularz.")
-        super().clean()
-        from workflow.admin_assignment_rules import protect_assignment
-        for form in self.forms:
-            if form.cleaned_data:
-                protect_assignment(form.instance, form.cleaned_data, deleting=form.cleaned_data.get('DELETE', False))
+from workflow.admin_performer_forms import WorkflowPerformerForm, WorkflowPerformerFormSet
 
 
-class WorkflowRoleAssignmentInline(
-    SuperuserOnlyAdminMixin,
-    admin.TabularInline,
-):
-    model = WorkflowRoleAssignment
-    formset = WorkflowAssignmentFormSet
-    extra = 0
-
-    fields = (
-        "role", "execution_number", "is_current",
-        "assigned_to",
-        "assigned_at",
-        "notes", "correction_link",
-    )
-    readonly_fields = ("role", "execution_number", "is_current", "assigned_to", "assigned_at", "correction_link")
-    @admin.display(description='Korekta')
-    def correction_link(self, obj):
-        from django.urls import reverse
-        from django.utils.html import format_html
-        return format_html('<a href="{}">Zmień / odłącz / usuń</a>', reverse('admin:workflow_assignment_correct',args=[obj.pk]))
-
-    can_delete = False
-
-    def has_add_permission(self, request, obj=None):
-        return False
-    autocomplete_fields = ("assigned_to",)
-
-    def get_queryset(self, request):
-        return (
-            super()
-            .get_queryset(request)
-            .exclude(role__in=IMPORT_ONLY_ROLES)
-            .select_related("text", "assigned_to")
-        )
-
-
-class WorkflowStageInline(
-    SuperuserOnlyAdminMixin,
-    admin.TabularInline,
-):
+class WorkflowStageInline(SuperuserOnlyAdminMixin, admin.TabularInline):
     model = WorkflowStage
+    form = WorkflowPerformerForm
+    formset = WorkflowPerformerFormSet
+    verbose_name_plural = "Workflow — wykonawcy etapów"
     extra = 0
+    can_delete = False
+    fields = ("stage_label", "performer", "started_at", "ended_at", "is_completed", "is_current", "workflow_version")
+    readonly_fields = ("stage_label", "started_at", "ended_at", "is_completed", "is_current")
+    template = "admin/texts/text/workflow_inline.html"
 
     def get_queryset(self, request):
-        return super().get_queryset(request).exclude(stage_type__in=IMPORT_ONLY_STAGE_TYPES)
+        from django.db.models import Case, When, IntegerField, Value
+        from workflow.catalog import active_stage_choices
+        order = [kind for kind, _ in active_stage_choices()]
+        return (super().get_queryset(request).exclude(stage_type__in=IMPORT_ONLY_STAGE_TYPES)
+                .select_related('text','assignment__assigned_to')
+                .annotate(_workflow_order=Case(*[When(stage_type=kind,then=Value(i)) for i,kind in enumerate(order)],default=Value(999),output_field=IntegerField()))
+                .order_by('-workflow_cycle','_workflow_order','execution_number','iteration','pk'))
 
-    fields = (
-        "stage_type",
-        "execution_number", "is_current", "is_released",
-        "iteration",
-        "started_at",
-        "ended_at",
-        "is_completed", "correction_link",
-    )
-    ordering = (
-        "started_at",
-        "stage_type",
-        "execution_number", "is_current", "is_released",
-        "iteration",
-        "pk",
-    )
-
-    @admin.display(description='Korekta')
-    def correction_link(self, obj):
-        from django.urls import reverse
-        from django.utils.html import format_html
-        return format_html('<a href="{}">Zmień wykonawcę / usuń etap</a>', reverse('admin:workflow_stage_correct',args=[obj.pk]))
-
-    readonly_fields = fields
-    show_change_link = True
+    @admin.display(description="Etap")
+    def stage_label(self, obj):
+        from workflow.labels import execution_label
+        return execution_label(obj.get_stage_type_display(), obj.execution_number)
 
     def has_add_permission(self, request, obj=None):
         return False
@@ -301,10 +239,13 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             {"fields": ("manual_status_link", "current_workflow_cycle", "import_source", "import_source_row")},
         ),
     )
-    inlines = (
-        WorkflowRoleAssignmentInline,
-        WorkflowStageInline,
-    )
+    inlines = (WorkflowStageInline,)
+
+    def save_formset(self, request, form, formset, change):
+        if isinstance(formset, WorkflowPerformerFormSet):
+            formset.save_performers(request.user)
+        else:
+            super().save_formset(request, form, formset, change)
     list_per_page = 50
     show_full_result_count = False
 
@@ -335,7 +276,7 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             return 'Zapisz tekst, aby ustawić status.'
         stage = current_stage(list(obj.workflow_stages.filter(workflow_cycle=obj.current_workflow_cycle)))
         label = stage.get_stage_type_display() if stage else 'Brak bieżącego etapu'
-        return format_html('{} — <a href="{}">Zmień status / przywróć etap</a>', label, reverse('admin:texts_text_manual_status', args=[obj.pk]))
+        return format_html('{} — <a href="{}">Zmień status / cofnij etap</a> · <a href="{}#workflow-repeat">Powtórz wybrane etapy</a>', label, reverse('admin:texts_text_manual_status', args=[obj.pk]), reverse('core:assigned_text_detail', args=[obj.pk]))
 
     def change_status_view(self, request, object_id):
         from django.template.response import TemplateResponse

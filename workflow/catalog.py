@@ -24,3 +24,11 @@ def all_stage_roles():
     """For import and recorded history only; services keep their live mapping."""
     from workflow.services import STAGE_ROLES
     return {**STAGE_ROLES, **IMPORT_ONLY_STAGE_ROLES}
+
+
+def workflow_role_choices():
+    """Each operational role once, at its first position in the workflow."""
+    from workflow.services import RESTARTABLE_STAGE_TYPES, STAGE_ROLES
+    labels = dict(active_role_choices())
+    ordered = dict.fromkeys(STAGE_ROLES[kind] for kind in RESTARTABLE_STAGE_TYPES if kind in STAGE_ROLES)
+    return [(role, labels[role]) for role in ordered if role in labels]

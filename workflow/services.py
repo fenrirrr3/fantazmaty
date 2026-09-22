@@ -622,13 +622,17 @@ def send_to_first_verification(text, user, ended_at=None):
     ).first()
     editing_stage = get_active_stage(text, StageType.EDITING)
 
-    if verification_stage is None:
-        raise ValidationError(
-            "Pierwsza weryfikacja nie oczekuje na rozpoczęcie."
-        )
-
     if editing_stage is None:
         raise ValidationError("Nie ma aktywnej redakcji do przekazania.")
+    if completed_stage_exists(text, StageType.FIRST_VERIFICATION):
+        raise ValidationError("Pierwsza weryfikacja jest już zakończona.")
+    if current_stage_queryset(text).filter(
+        stage_type=StageType.FIRST_VERIFICATION, is_completed=False,
+        started_at__isnull=False,
+    ).exists():
+        raise ValidationError("Pierwsza weryfikacja została już rozpoczęta.")
+    if verification_stage is None:
+        verification_stage = _create_pending_stage(text, StageType.FIRST_VERIFICATION)
 
     _finish_stage_record(editing_stage, transition_date)
     return verification_stage

@@ -274,8 +274,9 @@
                         <form method="post" action="{% url 'core:send_to_first_verification_stage' text.pk %}">
                             {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                             <button type="submit" class="primary-button">
-                                Zakończ etap
+                                Przekaż do pierwszej weryfikacji
                             </button>
+                            <p class="form-help">Redakcja zostanie zakończona. Jeśli nie ma weryfikatora, etap będzie czekał na przejęcie.</p>
                         </form>
                     {% endif %}
 
@@ -727,7 +728,7 @@
                 {% endif %}
 
                 {% if can_restart_workflow and restart_workflow_form and text.anthology.status != "ready" %}
-                    <div class="management-action management-action-restart">
+                    <div id="workflow-repeat" class="management-action management-action-restart">
                         <div class="management-action-description">
                             <h3>Powtórz wybrane etapy</h3>
                             <p>

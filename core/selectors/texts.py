@@ -1,4 +1,4 @@
-from workflow.catalog import active_stage_choices, active_role_choices, IMPORT_ONLY_ROLES
+from workflow.catalog import active_stage_choices, active_role_choices, workflow_role_choices, IMPORT_ONLY_ROLES
 from workflow.labels import assignment_label, execution_label
 from core.filtering import facet_queryset
 from datetime import date
@@ -662,6 +662,10 @@ def text_detail_context(*, user, text):
         stage.stage_type in VERIFICATION_STAGES and _is_open(stage)
         for stage in stages
     )
+    verification_open_started = any(
+        stage.stage_type == StageType.FIRST_VERIFICATION and _is_open(stage)
+        and stage.started_at is not None for stage in stages
+    )
     later_phase = any(
         stage.stage_type not in EDITOR_PHASE_STAGES
         for stage in stages
@@ -849,6 +853,7 @@ def text_detail_context(*, user, text):
                 }
             )
 
+    team_role_order = {role: i for i, (role, _) in enumerate(workflow_role_choices())}
     open_repetition = text.repetitions.filter(completed_at__isnull=True, canceled_at__isnull=True).first()
     can_cancel_repetition = bool(user.is_superuser and open_repetition and open_repetition.previous_stage_ids
         and not open_repetition.stages.filter(started_at__isnull=False).exists()
@@ -861,7 +866,7 @@ def text_detail_context(*, user, text):
         "visible_stages": visible,
         "archived_stages": archived,
         "can_view_stage_history": coordinator,
-        "team_members": [
+        "team_members": sorted([
             {
                 "role": role,
                 "label": assignment_label(assignments[role]) if role in assignments else label,
@@ -874,13 +879,13 @@ def text_detail_context(*, user, text):
                     role in assignments and assignments[role].assigned_to_id
                 ),
             }
-            for role, label in active_role_choices() if role != Role.STYLING
+            for role, label in workflow_role_choices() if role != Role.STYLING
         ] + [
             {"role": item.role, "label": assignment_label(item, show_first=True),
              "is_previous": True, "is_assigned": True, "user": _user_data(item.assigned_to)}
             for item in WorkflowRoleAssignment.objects.filter(text=text, assigned_to__isnull=False).exclude(role__in=(*IMPORT_ONLY_ROLES, Role.STYLING)).exclude(
                 workflow_cycle=text.current_workflow_cycle, is_current=True).select_related('assigned_to__person_profile').order_by('workflow_cycle','role','execution_number')
-        ],
+        ], key=lambda member: (team_role_order.get(member["role"], 999), bool(member.get("is_previous")))),
         "is_assigned": bool(own),
         "is_read_only": not coordinator and not own,
         "can_add_note": coordinator or bool(own),
@@ -908,8 +913,8 @@ def text_detail_context(*, user, text):
         "first_verification_completed": first_done,
         "second_verification_completed": second_done,
         "can_send_to_first_verification": bool(
-            can_control and editing and pending_first
-            and not first_gate
+            can_control and editing and not first_gate
+            and not verification_open_started
         ),
         "can_start_first_verification": can_start_first,
         "can_resume_editing": can_resume,

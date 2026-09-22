@@ -154,7 +154,7 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
         if not request.user.is_superuser:raise PermissionDenied
         stage=get_object_or_404(WorkflowStage,pk=object_id)
         class CorrectionForm(forms.Form):
-            action=forms.ChoiceField(label='Operacja',choices=[('performer','Zmień wykonawcę tego wykonania'),('delete','Usuń to wykonanie etapu')])
+            action=forms.ChoiceField(label='Operacja',choices=[('performer','Popraw wykonawcę (bez nowego wykonania)'),('delete','Usuń to wykonanie etapu')])
             performer=forms.ModelChoiceField(label='Wykonawca (konto)',queryset=get_user_model().objects.order_by('last_name','first_name','pk'),required=False)
             replacement=forms.ChoiceField(label='Status po usunięciu bieżącego etapu',choices=[('','— nie dotyczy zakończonego wykonania —'),*active_stage_choices()],required=False)
             version=forms.IntegerField(widget=forms.HiddenInput)

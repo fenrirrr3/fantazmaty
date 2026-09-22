@@ -1,1 +1,6 @@
-{% extends "admin/base_site.html" %}{% block content %}<p>Korekta dotyczy wyłącznie wskazanego wykonania. Usunięcie usuwa je także ze statystyk. Daty i uwagi innych prac pozostają bez zmian.</p><form method="post">{% csrf_token %}{{ form.as_p }}<div class="submit-row"><input type="submit" class="default" value="Zapisz korektę"></div></form>{% endblock %}
+{% extends "admin/base_site.html" %}
+{% block content %}
+<p>Zmiana wykonawcy poprawia istniejące przypisanie, bez nowego numeru wykonania. Jeżeli kilka etapów korzysta z tego przypisania (np. redakcja i plik u autora), wykonawca zmieni się w każdym z nich. Daty i stan pracy pozostają bez zmian.</p>
+<p>Usunięcie etapu usuwa go także ze statystyk. Dla bieżącego etapu wybierz status, który ma go zastąpić.</p>
+<form method="post">{% csrf_token %}{{ form.as_p }}<div class="submit-row"><input type="submit" class="default" value="Zapisz korektę"></div></form>
+{% endblock %}
