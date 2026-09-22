@@ -1,4 +1,6 @@
 {% extends "admin/base_site.html" %}
+{% block extrastyle %}{{ block.super }}{{ form.media.css }}{% endblock %}
+{% block extrahead %}{{ block.super }}<script src="{% url 'admin:jsi18n' %}"></script>{{ form.media.js }}{% endblock %}
 {% block content %}
 <p>Zmiana osoby obejmuje wszystkie etapy tego przypisania, także zakończone. Daty pozostają bez zmian. To korekta danych, nie przekazanie pracy.</p>
 <p>Odłączenie osoby zachowuje etapy i zakończoną pracę bez wykonawcy. Niezakończone etapy tracą daty rozpoczęcia i rezerwacje; czekają na przypisanie. Konto osoby pozostaje bez zmian.</p>

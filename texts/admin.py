@@ -149,8 +149,8 @@ class WorkflowStageInline(SuperuserOnlyAdminMixin, admin.TabularInline):
     verbose_name_plural = "Workflow — wykonawcy etapów"
     extra = 0
     can_delete = False
-    fields = ("stage_label", "performer", "started_at", "ended_at", "is_completed", "is_current", "workflow_version")
-    readonly_fields = ("stage_label", "started_at", "ended_at", "is_completed", "is_current")
+    fields = ("stage_label", "performer", "started_at", "ended_at", "is_completed", "is_current", "delete_stage_link", "workflow_version")
+    readonly_fields = ("stage_label", "started_at", "ended_at", "is_completed", "is_current", "delete_stage_link")
     template = "admin/texts/text/workflow_inline.html"
 
     def get_queryset(self, request):
@@ -166,6 +166,11 @@ class WorkflowStageInline(SuperuserOnlyAdminMixin, admin.TabularInline):
     def stage_label(self, obj):
         from workflow.labels import execution_label
         return execution_label(obj.get_stage_type_display(), obj.execution_number)
+
+    @admin.display(description="Usuwanie")
+    def delete_stage_link(self, obj):
+        from django.utils.html import format_html
+        return format_html('<a href="{}?action=delete">Usuń etap</a>', reverse('admin:workflow_stage_correct', args=[obj.pk]))
 
     def has_add_permission(self, request, obj=None):
         return False

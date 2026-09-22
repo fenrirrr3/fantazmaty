@@ -12,8 +12,8 @@ from core.edit_versions import version_of
 
 class PerformerChoiceField(forms.ModelChoiceField):
     def label_from_instance(self, user):
-        name = user.get_full_name() or user.get_username()
-        return f'{name} — {user.email}' if user.email and name != user.email else name
+        from core.admin_people import person_label
+        return person_label(user)
 
 
 class WorkflowPerformerForm(forms.ModelForm):

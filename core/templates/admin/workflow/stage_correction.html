@@ -1,4 +1,6 @@
 {% extends "admin/base_site.html" %}
+{% block extrastyle %}{{ block.super }}{{ form.media.css }}{% endblock %}
+{% block extrahead %}{{ block.super }}<script src="{% url 'admin:jsi18n' %}"></script>{{ form.media.js }}{% endblock %}
 {% block content %}
 <p>Zmiana wykonawcy poprawia istniejące przypisanie, bez nowego numeru wykonania. Jeżeli kilka etapów korzysta z tego przypisania (np. redakcja i plik u autora), wykonawca zmieni się w każdym z nich. Daty i stan pracy pozostają bez zmian.</p>
 <p>Usunięcie etapu usuwa go także ze statystyk. Dla bieżącego etapu wybierz status, który ma go zastąpić.</p>

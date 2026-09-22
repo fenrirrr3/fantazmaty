@@ -53,6 +53,8 @@ class AccountChangeForm(IdentityFormMixin, UserChangeForm):
 
 
 class AccountAdmin(UserAdmin):
+    search_fields = ('first_name__plcontains', 'last_name__plcontains', 'email__plcontains', 'username__plcontains')
+    ordering = ('last_name', 'first_name', 'pk')
     form = AccountChangeForm
     add_form = AccountCreationForm
     add_fieldsets = ((None, {"classes": ("wide",), "fields": (

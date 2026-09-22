@@ -7,6 +7,8 @@ from django.utils import timezone
 from texts.models import Text
 
 from .models import WorkflowRoleAssignment, WorkflowStage
+from .admin_performer_forms import PerformerChoiceField
+from django.contrib.admin.widgets import AutocompleteSelect
 from .catalog import IMPORT_ONLY_STAGE_TYPES, IMPORT_ONLY_ROLES, active_stage_choices, active_role_choices
 
 
@@ -143,6 +145,12 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
         from django.utils.html import format_html
         return format_html('<a href="{}">Zmień wykonawcę / usuń etap</a>',reverse('admin:workflow_stage_correct',args=[obj.pk]))
 
+    @admin.display(description='Usuwanie')
+    def delete_execution_link(self, obj):
+        from django.urls import reverse
+        from django.utils.html import format_html
+        return format_html('<a href="{}?action=delete">Usuń etap</a>', reverse('admin:workflow_stage_correct',args=[obj.pk]))
+
     def correct_execution(self,request,object_id):
         from django.contrib.auth import get_user_model
         from django.core.exceptions import PermissionDenied, ValidationError
@@ -155,11 +163,11 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
         stage=get_object_or_404(WorkflowStage,pk=object_id)
         class CorrectionForm(forms.Form):
             action=forms.ChoiceField(label='Operacja',choices=[('performer','Popraw wykonawcę (bez nowego wykonania)'),('delete','Usuń to wykonanie etapu')])
-            performer=forms.ModelChoiceField(label='Wykonawca (konto)',queryset=get_user_model().objects.order_by('last_name','first_name','pk'),required=False)
+            performer=PerformerChoiceField(label='Wykonawca',queryset=get_user_model().objects.order_by('last_name','first_name','pk'),required=False,widget=AutocompleteSelect(WorkflowRoleAssignment._meta.get_field('assigned_to'), self.admin_site))
             replacement=forms.ChoiceField(label='Status po usunięciu bieżącego etapu',choices=[('','— nie dotyczy zakończonego wykonania —'),*active_stage_choices()],required=False)
             version=forms.IntegerField(widget=forms.HiddenInput)
             confirm=forms.BooleanField(label='Potwierdzam korektę historii pracy i zmianę statystyk.')
-        form=CorrectionForm(request.POST if request.method=='POST' else None,initial={'version':version_of(stage.text),'performer':stage.assignment.assigned_to_id if stage.assignment else None})
+        form=CorrectionForm(request.POST if request.method=='POST' else None,initial={'action':'delete' if request.GET.get('action') == 'delete' else 'performer','version':version_of(stage.text),'performer':stage.assignment.assigned_to_id if stage.assignment else None})
         if request.method=='POST' and form.is_valid():
             try:
                 edit_stage(stage.pk,request.user,form.cleaned_data['version'],action=form.cleaned_data['action'],performer=form.cleaned_data['performer'],replacement=form.cleaned_data['replacement'])
@@ -195,7 +203,7 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
     list_display = (
         "text",
         "stage_type",
-        "edit_execution_link",
+        "edit_execution_link", "delete_execution_link",
         "workflow_cycle",
         "is_current_cycle",
         "execution_number",
@@ -328,7 +336,7 @@ class WorkflowRoleAssignmentAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
         obj = get_object_or_404(WorkflowRoleAssignment, pk=object_id)
         class CorrectionForm(forms.Form):
             action = forms.ChoiceField(label='Operacja', choices=[('performer','Zmień osobę we wszystkich etapach tego przypisania'),('clear','Odłącz osobę, zachowując etapy'),('delete','Usuń puste przypisanie bez etapów')])
-            performer = forms.ModelChoiceField(label='Nowy wykonawca', queryset=get_user_model().objects.order_by('last_name','first_name','pk'), required=False)
+            performer = PerformerChoiceField(label='Nowy wykonawca', queryset=get_user_model().objects.order_by('last_name','first_name','pk'), required=False, widget=AutocompleteSelect(WorkflowRoleAssignment._meta.get_field('assigned_to'), self.admin_site))
             version = forms.IntegerField(widget=forms.HiddenInput)
             confirm = forms.BooleanField(label='Potwierdzam korektę wykonawcy, historii i statystyk.')
         form = CorrectionForm(request.POST if request.method == 'POST' else None, initial={'version':version_of(obj.text),'performer':obj.assigned_to_id})

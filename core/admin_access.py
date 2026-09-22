@@ -21,3 +21,5 @@ def has_permission(self, request):
 def install():
     admin.site.has_permission = MethodType(has_permission, admin.site)
     admin.site.login_form = SuperuserAdminAuthenticationForm
+    from core.admin_people import install as install_person_choices
+    install_person_choices()
