@@ -57,7 +57,15 @@ def annotate_my_work(queryset, user, today):
     assigned = A.objects.current_cycle().filter(text_id=OuterRef('pk'), assigned_to_id=user.pk)
     reserved = reserved_assignments(user, today).filter(text_id=OuterRef('pk'), workflow_cycle=OuterRef('current_workflow_cycle'), is_current=True)
     closed = Exists(terminal(stages))
-    active = Exists(active_stages(own.filter(is_current=True), today)) & ~closed
+    # Praca redaktora pozostaje w toku podczas poprawek autora. To klasyfikacja
+    # tekstu, nie przypisanie redaktorowi etapu wykonywanego przez autora.
+    with_author = (
+        Exists(assigned.filter(role=A.Role.EDITOR))
+        & Exists(open_stages(stages).filter(
+            stage_type=S.StageType.AUTHOR_EDITING, is_released=True,
+        ))
+    )
+    active = (Exists(active_stages(own.filter(is_current=True), today)) | with_author) & ~closed
     # Redakcja jest gotowa dopiero po zakończonej kontroli koordynatora redakcji.
     # Brak dat nie ma znaczenia: liczy się jawny stan zakończenia, również przy imporcie.
     editorial_work = Exists(assigned.filter(role=A.Role.EDITOR)) | Exists(own.filter(_work_role=A.Role.EDITOR))

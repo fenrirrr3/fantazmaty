@@ -460,13 +460,22 @@ def available_stages_for_user(*, user, params=None, with_filters=False):
         stages = stages.filter(text_id__in=filtered.values("pk"))
         ordering = [("-" if item.startswith("-") else "") + ("stage_type" if item.lstrip("-") == "current_stage_type" else "text__" + item.lstrip("-")) for item in TEXT_SORTS[filters["sort"]]]
         stages = stages.order_by(*ordering, "pk")
-    if include_authors:
-        stages = stages.prefetch_related(Prefetch("text__authors", queryset=Author.objects.order_by(
-            "last_name", "first_name", "pk"), to_attr="selector_authors"))
+    author_query = Author.objects.order_by("last_name", "first_name", "pk")
+    if not include_authors:
+        author_query = author_query.only("pk", "first_name", "last_name")
+    stages = stages.prefetch_related(Prefetch(
+        "text__authors", queryset=author_query, to_attr="selector_authors"))
 
     def project(stage):
         role = STAGE_ROLE_MAP.get(stage.stage_type)
-        row = _stage_data(stage, _text_data(stage.text, include_authors))
+        text_data = _text_data(stage.text, include_authors)
+        if not include_authors:
+            # Available work exposes names, without widening access to author contact data.
+            authors = [_Record(pk=a.pk, first_name=a.first_name, last_name=a.last_name,
+                               display_name=str(a)) for a in stage.text.selector_authors]
+            text_data.update(authors={"all": authors},
+                             authors_display=", ".join(str(a) for a in authors))
+        row = _stage_data(stage, text_data)
         row.update(required_group="Superuser" if role == Role.STYLING else ROLE_GROUPS.get(role, "Redaktor"),
                    available_role=role)
         return row
