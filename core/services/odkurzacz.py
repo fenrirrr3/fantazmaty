@@ -29,7 +29,7 @@ EDITORIAL_RULES = (
     ('unit_space', 'Brakująca spacja między liczbą a jednostką'),
     ('reference_space', 'Brakująca spacja: 2025r., s.15, nr3'),
     ('initials', 'Odstępy przy inicjałach i nazwisku'),
-    ('abbreviations', 'Utrwalone skróty: m.in., tj., tzw.'),
+    ('abbreviations', 'Popraw zapis skrótów i usuń spacje wewnątrz nich: m. in. → m.in., t. j. → tj., t. zw. → tzw.'),
     ('temperature', 'Temperatura: 20 °C / 20 °F / 20 K'),
     ('pronouns_lower', 'Zaimki osobowe małą literą — poza początkiem zdania i akapitu'),
     ('user_word_corrections', 'Własne zamiany słownikowe: 23 pozycje z fleksją (pikap / przekonujący / oddziałujący)'),

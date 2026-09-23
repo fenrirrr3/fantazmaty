@@ -194,7 +194,7 @@
                                     {% if stage.started_at|date:"Y-m-d" > today_iso %}
                                         <span class="stage-status pending">Zaplanowany</span>
                                     {% else %}
-                                        <span class="stage-status inactive">
+                                        <span class="stage-status active">
                                             W trakcie
                                         </span>
                                     {% endif %}
@@ -217,7 +217,7 @@
                                             {% firstof cell.user.get_full_name "Nieuzupełnione dane" %}
                                         {% endif %}
                                     {% else %}
-                                        <span class="muted-text">Nie przypisano</span>
+                                        <span class="muted-text">–</span>
                                     {% endif %}
                                 </td>
                             {% endfor %}

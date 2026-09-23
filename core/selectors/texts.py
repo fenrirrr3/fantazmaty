@@ -413,9 +413,21 @@ def my_texts_context(*, user, selected_view="active", params=None):
     texts = filters.pop("filtered_queryset")
     from workflow.read_queries import annotate_my_work
     texts = annotate_my_work(texts, user, today)
+    # Show every own execution, including superseded assignments. This only
+    # supplies labels; current work and permissions retain their existing rules.
+    texts = texts.prefetch_related(Prefetch(
+        "workflow_role_assignments",
+        queryset=WorkflowRoleAssignment.objects.filter(
+            assigned_to_id=user.pk,
+            role__in=[value for value, _ in active_role_choices()],
+        ).select_related("assigned_to", "assigned_to__person_profile").order_by(
+            "role", "workflow_cycle", "execution_number", "pk",
+        ),
+        to_attr="selector_own_assignments",
+    ))
 
     def project(text):
-        assignments = [item for item in text.selector_assignments if item.assigned_to_id == user.pk]
+        assignments = text.selector_own_assignments
         row = _text_row(text, include_authors)
         row.update(
             user_assignments=[_assignment_data(item) for item in assignments],
