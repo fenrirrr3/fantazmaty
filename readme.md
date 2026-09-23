@@ -320,3 +320,42 @@ z wymaganiami fantazmaty/settings.py.
 
 Nie używaj runserver jako serwera produkcyjnego.
 Resetowanie hasła przez e-mail wymaga działającej konfiguracji poczty.
+
+
+## Odkurzacz (Programy)
+
+Strona `/programy/` zastępuje dotychczasowy obrazek formularzem korekty DOCX.
+Dostęp mają zalogowani, aktywni członkowie zespołu oraz superużytkownicy.
+Wybierz DOCX i reguły, następnie kliknij „Odkurz i pobierz DOCX”. Wynik ma
+sufiks `_odkurzony.docx`. Wszystkie 25 reguł jest domyślnie zaznaczonych;
+odznaczenie wszystkich nie zmienia tekstu. Korekta obejmuje główne akapity,
+bez tabel, nagłówków i przypisów, bez kolorowania i śledzenia zmian.
+
+Po aktualizacji zainstaluj zależności i zbierz pliki statyczne:
+
+```bash
+python -m pip install -r requirements.txt
+python manage.py collectstatic --noinput
+```
+
+Następnie uruchom ponownie proces aplikacji zgodnie z konfiguracją hostingu.
+Ta funkcja nie wymaga nowych migracji ani spaCy. Jedyna nowa zależność
+aplikacji to `python-docx` (wraz z jej zależnościami). Wynik powstaje w pamięci,
+bez tworzenia trwałego rekordu lub publicznego pliku w katalogu media.
+
+Limity: 10 MB pliku wejściowego, 50 MB zawartości ZIP, 2000 elementów ZIP,
+500 000 znaków głównego tekstu i 20 000 znaków w pojedynczym akapicie.
+Przetwarzanie jest synchroniczne; przy długich tekstach czas zależy od serwera.
+Zachowano reguły korekty z dostarczonego programu, w tym wbudowane zamiany
+słownikowe. Wynik wymaga przeglądu redakcyjnego.
+
+Testy funkcji:
+
+```bash
+python manage.py test core.test_odkurzacz --settings=fantazmaty.test_settings
+```
+
+Odkurzacz: reguła tabulatorów usuwa znaki tabulacji bez dodawania spacji.
+Usunięto normalizację dat i godzin, konwersję separatora dziesiętnego,
+grupowanie liczb i reguły wstawiające spacje nierozdzielające. Odstępy przy
+inicjałach i temperaturach są zwykłymi spacjami.

@@ -1,4 +1,60 @@
 {% extends "core/base.html" %}
-{% block title %}Programy | Fantazmaty CMS{% endblock %}
-{% block content %}<header class="page-header"><h1 class="page-title">Programy</h1></header>
-<section class="details-card"><img src="https://gifrific.com/wp-content/uploads/2017/11/you-shall-not-pass-gandalf-lotr.gif" alt="Gandalf: You shall not pass!" style="display:block;max-width:100%;height:auto;margin:auto"></section>{% endblock %}
+{% load static %}
+{% block title %}Odkurzacz – Programy | Fantazmaty CMS{% endblock %}
+{% block extra_css %}
+<style>
+    .odkurzacz { max-width: 960px; }
+    .odkurzacz fieldset { margin: 1.5rem 0; padding: 1rem; border: 1px solid #8795a5; border-radius: 8px; }
+    .odkurzacz legend { padding: 0 .5rem; font-weight: 700; }
+    .odkurzacz-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin: 1rem 0; }
+    .odkurzacz-actions[hidden] { display: none; }
+    .odkurzacz-rules { display: grid; gap: .75rem; }
+    .odkurzacz-rules label { display: flex; align-items: flex-start; gap: .6rem; cursor: pointer; }
+    .odkurzacz-rules input { width: auto; flex: 0 0 auto; margin-top: .3rem; }
+    .odkurzacz .errorlist { color: #bc3434; }
+    .odkurzacz-upload { padding: 1.25rem; border: 2px solid #547da6; border-radius: 10px; margin: 1.25rem 0; }
+    .odkurzacz input[type=file] { display: block; width: 100%; max-width: 100%; padding: .75rem; border: 1px solid #8795a5; border-radius: 6px; font-size: 1rem; box-sizing: border-box; }
+    .odkurzacz input[type=file]::file-selector-button { background: #254f78; color: #fff; border: 0; border-radius: 6px; padding: .85rem 1.2rem; margin-right: 1rem; font: inherit; font-weight: 700; cursor: pointer; }
+    .odkurzacz input[type=file]::file-selector-button:hover { background: #193b5d; }
+    .odkurzacz input[type=file]:focus-visible { outline: 3px solid #547da6; outline-offset: 3px; }
+</style>
+{% endblock %}
+{% block content %}
+<header class="page-header">
+    <p>Programy</p>
+    <h1 class="page-title">Odkurzacz</h1>
+    <p>Uporządkuj spacje, interpunkcję i zapis tekstu w dokumencie Word.</p>
+</header>
+<section class="details-card odkurzacz" aria-label="Korekta dokumentu DOCX">
+    <p>Wybierz dokument i poprawki, które chcesz zastosować. Odkurzacz wykonuje korektę automatycznie i udostępnia plik do pobrania.</p>
+    <p>Przetwarzana jest główna treść dokumentu, bez tabel, nagłówków i treści przypisów. Poprawki są zapisywane bez śledzenia zmian. Odkurzacz nie dodaje kolorów ani oznaczeń.</p>
+    <p><strong>PLIK MUSI BYĆ POZBAWIONY ŚLEDZENIA ZMIAN (WYŁĄCZ TRYB) ORAZ KOMENTARZY!</strong></p>
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        {{ form.non_field_errors }}
+        {% if form.errors %}<p role="alert">Sprawdź komunikaty poniżej i ponownie wybierz plik przed wysłaniem.</p>{% endif %}
+        <div class="odkurzacz-upload">
+        <p><label for="{{ form.document.id_for_label }}"><strong>{{ form.document.label }}</strong></label></p>
+        {{ form.document.errors }}
+        {{ form.document }}
+        <p class="helptext">{{ form.document.help_text }}</p>
+        </div>
+        <button type="submit" class="primary-button">Odkurz i pobierz DOCX</button>
+        <p>Przy większym dokumencie pobieranie może rozpocząć się po chwili. Oryginał pozostaje na Twoim komputerze.</p>
+        <fieldset>
+            <legend>Opcje korekty</legend>
+            <p>Domyślnie zaznaczono wszystkie {{ form.rules.field.choices|length }} opcji. Możesz wyłączyć dowolną poprawkę.</p>
+            <div class="odkurzacz-actions" id="rule-actions" hidden>
+                <button type="button" class="secondary-button" data-rules="all">Zaznacz wszystkie</button>
+                <button type="button" class="secondary-button" data-rules="none">Odznacz wszystkie</button>
+            </div>
+            {{ form.rules.errors }}
+            <div class="odkurzacz-rules">
+                {% for checkbox in form.rules %}<label for="{{ checkbox.id_for_label }}">{{ checkbox.tag }} <span>{{ checkbox.choice_label }}</span></label>{% endfor %}
+            </div>
+        </fieldset>
+        <p>Reguły działają automatycznie — po pobraniu przejrzyj wynik, szczególnie zamiany słownikowe i wielkość liter.</p>
+    </form>
+</section>
+{% endblock %}
+{% block scripts %}<script src="{% static 'core/odkurzacz.js' %}"></script>{% endblock %}
