@@ -1,24 +1,33 @@
 (() => {
   "use strict";
-  document.addEventListener("click", (event) => {
+  document.addEventListener("click", async (event) => {
     const link = event.target.closest("#add_id_copied_text");
     if (!link) return;
-    const url = new URL(link.href, window.location.href);
-    const source = window.location.pathname.match(/\/review\/(\d+)\/change\//);
-    if (source) url.searchParams.set("source_review", source[1]);
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const endpoint = document.getElementById("id_copied_text").dataset.prepareTextUrl;
+    const popup = window.open("", "id_copied_text", "height=650,width=1000,resizable=yes,scrollbars=yes");
+    if (!popup) { alert("Zezwól na otwieranie okien formularza."); return; }
+    const data = new FormData();
     for (const name of ["title", "length", "content_warnings", "anthology"]) {
-      const field = document.getElementById("id_" + name);
-      if (field) url.searchParams.set(name, field.value);
+      data.set(name, document.getElementById("id_" + name)?.value || "");
     }
-    for (const [target, sourceField] of [["source_author_first_name", "author_first_name"], ["source_author_last_name", "author_last_name"], ["source_author_email", "email"]]) {
-      const field = document.getElementById("id_" + sourceField);
-      if (field) url.searchParams.set(target, field.value);
+    for (const name of ["first_name", "last_name", "email"]) {
+      data.set("source_author_" + name, document.getElementById("id_" + (name === "email" ? name : "author_" + name))?.value || "");
     }
-    url.searchParams.delete("authors");
     const author = document.getElementById("id_author");
-    if (author && author.value) url.searchParams.append("authors", author.value);
-    const coauthors = document.getElementById("id_coauthors");
-    if (coauthors) for (const option of coauthors.selectedOptions) url.searchParams.append("authors", option.value);
-    link.href = url.toString();
+    if (author?.value) data.append("authors", author.value);
+    for (const option of document.getElementById("id_coauthors")?.selectedOptions || []) data.append("authors", option.value);
+    try {
+      if (!endpoint) throw new Error();
+      const response = await fetch(endpoint, {method: "POST", body: data, credentials: "same-origin",
+        headers: {"X-CSRFToken": document.querySelector('[name=csrfmiddlewaretoken]').value}});
+      if (!response.ok) throw new Error();
+      const result = await response.json();
+      popup.location.href = result.url;
+    } catch (error) {
+      popup.close();
+      alert("Nie udało się przygotować formularza tekstu. Spróbuj ponownie.");
+    }
   }, true);
 })();

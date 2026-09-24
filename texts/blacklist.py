@@ -4,7 +4,7 @@ from secrets import randbelow
 from django.utils import timezone
 
 
-def apply_blacklist(review):
+def apply_blacklist(review, *, coauthors=None):
     """Wywoływane przy tworzeniu po potwierdzeniu ostrzeżeń formularza."""
     from .services import find_matching_authors
     authors = find_matching_authors(
@@ -19,6 +19,11 @@ def apply_blacklist(review):
         author=review.author if review.author_id else None, email=review.email,
         using=review._state.db,
     ).exists()
+    if coauthors is None:
+        coauthors = review.coauthors.all() if review.pk else ()
+    for coauthor in coauthors:
+        blacklisted = blacklisted or find_matching_authors(author=coauthor, email=coauthor.email).filter(is_blacklisted=True).exists()
+        blacklisted = blacklisted or matching_blacklist_entries(author=coauthor, email=coauthor.email, using=review._state.db).exists()
     if blacklisted:
         review.is_hidden = True
         review.status = review.Status.REJECTED

@@ -6,6 +6,8 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import router, transaction
 from django.forms.models import BaseInlineFormSet
 from django.http import JsonResponse
+import secrets
+import time
 from django.shortcuts import get_object_or_404
 from django.urls import path, reverse
 from django.utils import timezone
@@ -245,10 +247,12 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             initial["source_author_first_name"] = review.author_first_name
             initial["source_author_last_name"] = review.author_last_name
             initial["source_author_email"] = review.email
-        # Values from the open review form include changes not saved yet.
-        for field in ("title", "length", "content_warnings", "anthology", "authors", "source_author_first_name", "source_author_last_name", "source_author_email"):
-            if field in request.GET:
-                initial[field] = request.GET.getlist(field) if field == "authors" else request.GET[field]
+        token = request.GET.get('prefill', '')
+        snapshots = request.session.get('review_text_prefills', {})
+        snapshot = snapshots.get(token, {})
+        if snapshot.get('user') == request.user.pk and time.time() - snapshot.get('at', 0) < 900:
+            initial.update(snapshot.get('data', {}))
+        # No personal data accepted from query strings.
         return initial
 
     form = TextAdminForm
@@ -539,6 +543,7 @@ class ReviewAdminForm(NormalizedFormMixin, forms.ModelForm):
 
         identity_fields = {
             "author",
+            "coauthors",
             "author_first_name",
             "author_last_name",
             "title",
@@ -569,11 +574,20 @@ class ReviewAdminForm(NormalizedFormMixin, forms.ModelForm):
             anthology_id=getattr(cleaned_data.get("anthology"), "pk", None),
         )
 
+        for coauthor in cleaned_data.get('coauthors', ()):
+            warnings = get_review_submission_warnings(
+                author=coauthor, email=coauthor.email, title=cleaned_data['title'],
+                exclude_review_id=self.instance.pk,
+                anthology_id=getattr(cleaned_data.get('anthology'), 'pk', None),
+            )
+            self.submission_warnings.extend(f'Współautor {coauthor}: {warning}' for warning in warnings)
+
         if not self.submission_warnings:
             return cleaned_data
 
         payload = {
             "review_id": self.instance.pk,
+            "coauthor_ids": sorted(a.pk for a in cleaned_data.get("coauthors", ())),
             "author_id": author.pk if author is not None else None,
             "first_name": cleaned_data["author_first_name"],
             "last_name": cleaned_data["author_last_name"],
@@ -976,12 +990,42 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
     def get_urls(self):
         return [
+            path('prepare-text/', self.admin_site.admin_view(self.prepare_text_view), name='texts_review_prepare_text'),
             path(
                 "author-details/<int:author_id>/",
                 self.admin_site.admin_view(self.author_details_view),
                 name="texts_review_author_details",
             ),
         ] + super().get_urls()
+
+    def prepare_text_view(self, request):
+        if not self.has_superuser_access(request):
+            raise PermissionDenied
+        if request.method != 'POST':
+            return JsonResponse({'error': 'POST required'}, status=405)
+        fields = ('title', 'length', 'content_warnings', 'anthology',
+                  'source_author_first_name', 'source_author_last_name', 'source_author_email')
+        data = {key: request.POST.get(key, '') for key in fields}
+        if any(len(value) > 10000 for value in data.values()):
+            return JsonResponse({'error': 'Dane formularza są zbyt długie.'}, status=400)
+        data['authors'] = request.POST.getlist('authors')[:100]
+        now = time.time()
+        snapshots = {key: value for key, value in request.session.get('review_text_prefills', {}).items()
+                     if now - value.get('at', 0) < 900}
+        snapshots = dict(list(snapshots.items())[-9:])
+        token = secrets.token_urlsafe(24)
+        snapshots[token] = {'user': request.user.pk, 'at': now, 'data': data}
+        request.session['review_text_prefills'] = snapshots
+        url = reverse(f'{self.admin_site.name}:texts_text_add')
+        return JsonResponse({'url': url + '?_popup=1&prefill=' + token})
+
+    def render_change_form(self, request, context, *args, **kwargs):
+        response = super().render_change_form(request, context, *args, **kwargs)
+        field = context['adminform'].form.fields.get('copied_text')
+        if field:
+            widget = getattr(field.widget, 'widget', field.widget)
+            widget.attrs['data-prepare-text-url'] = reverse(f'{self.admin_site.name}:texts_review_prepare_text')
+        return response
 
     def author_details_view(self, request, author_id):
         if not self.has_superuser_access(request):
@@ -1088,7 +1132,7 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
         if not change:
             from texts.blacklist import apply_blacklist
-            apply_blacklist(obj)
+            apply_blacklist(obj, coauthors=form.cleaned_data.get("coauthors", ()))
         super().save_model(request, obj, form, change)
 
         # Linking a review must not overwrite the editorial text.

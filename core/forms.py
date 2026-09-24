@@ -397,6 +397,12 @@ class AuthorNotificationForm(forms.Form):
 
 
 class AuthorNoteForm(forms.ModelForm):
+    def clean_content(self):
+        content = self.cleaned_data.get('content', '').strip()
+        if not self.instance.pk and not content:
+            raise ValidationError('Wpisz treść nowej notatki.')
+        return content
+
     class Meta:
         model = AuthorNote
         fields = ("content",)
@@ -479,6 +485,10 @@ class ReviewBulkImportForm(forms.Form):
             )
 
         value = self.cleaned_data["records"]
+        if hasattr(self, '_validated_records'):
+            self.parsed_records = self._validated_records
+            self.preview_records = self.parsed_records
+            return value
         parsed_records = []
         errors = []
         nonempty_count = 0

@@ -1,5 +1,6 @@
 """Request audit. No request bodies, cookies, credentials or query strings."""
 import logging
+import time
 from django.db import transaction
 
 logger = logging.getLogger(__name__)
@@ -50,16 +51,9 @@ def describe_request(match, method):
     if method == 'POST':
         label = {'assigned_review_detail':'Zapis oceny recenzenta', 'my_vacations':'Dodanie urlopu', 'anthology_corrections':'Zgłoszenie uwagi do antologii'}.get(name, label)
     target = ''
-    from texts.models import Text, Review
-    from people.models import Person
-    from workflow.models import WorkflowStage
-    for key, model in (('text_id', Text), ('review_id', Review), ('person_id', Person), ('stage_id', WorkflowStage)):
+    for key in ('text_id', 'review_id', 'person_id', 'stage_id'):
         if key in match.kwargs:
-            obj = model.objects.filter(pk=match.kwargs[key]).first()
-            if obj is not None:
-                target = f'{obj} (#{obj.pk})'
-            else:
-                target = f'#{match.kwargs[key]}'
+            target = f"{key}: #{match.kwargs[key]}"
             break
     if match.namespace == 'admin':
         model_admin = getattr(match.func, 'model_admin', None)
@@ -78,7 +72,12 @@ class UserActivityMiddleware:
     def process_view(self, request, view_func, view_args, view_kwargs):
         match = request.resolver_match
         if match and (match.namespace in ('core', 'illustrations', 'admin') or match.url_name in ('login', 'logout')):
-            request._cms_activity = describe_request(match, request.method)
+            if match.url_name in ('author_suggestions', 'global_search'):
+                return
+            try:
+                request._cms_activity = describe_request(match, request.method)
+            except Exception:
+                logger.exception('Nie udało się opisać aktywności użytkownika.')
 
     def __call__(self, request):
         before = request.user if request.user.is_authenticated else None
@@ -91,13 +90,24 @@ class UserActivityMiddleware:
         after = request.user if request.user.is_authenticated else None
         user_id = before_id or (after.pk if after else None)
         actor = before_actor or ((after.email or after.get_username()) if after else '')
-        if activity and user_id:
+        record_activity = bool(activity and user_id)
+        visit = request.method in ('GET', 'HEAD') and response.status_code < 400
+        now = time.time()
+        if record_activity and visit:
+            try:
+                previous = request.session.get('_activity_visit', {})
+                record_activity = previous.get('user') != user_id or now - float(previous.get('at', 0)) >= 300
+            except (TypeError, ValueError):
+                record_activity = True
+        if record_activity:
             from core.models import UserActivity
             try:
                 # A failed log must not roll back the user's completed operation.
                 with transaction.atomic():
                     UserActivity.objects.create(user_id=user_id, actor=actor[:254], method=request.method[:10],
                         action=activity[0], target=activity[1], path=request.path[:1000], status_code=response.status_code)
+                if visit:
+                    request.session['_activity_visit'] = {'user': user_id, 'at': now}
             except Exception:
                 logger.exception('Nie udało się zapisać aktywności użytkownika.')
         return response

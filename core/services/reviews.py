@@ -291,6 +291,8 @@ def _validate_status_change(*, user, review, assignments, new_status):
     if review.is_hidden and not is_superuser(user):
         raise PermissionDenied
     _require_current_review(review)
+    if review.status == Review.Status.REJECTED and new_status != review.status:
+        raise ValidationError('Decyzję odrzuconego zgłoszenia można poprawić wyłącznie w panelu administratora.')
 
     valid_statuses = {value for value, _label in Review.Status.choices}
     if new_status not in valid_statuses:
@@ -349,8 +351,6 @@ def _apply_status_change(review, new_status, *, today):
 def change_review_status(*, user, review_id, new_status):
     require_coordinator(user)
     review = _lock_review(review_id)
-    if review.status == Review.Status.REJECTED:
-        raise ValidationError("Odrzuconego zgłoszenia nie można ponownie przyjąć z podglądu recenzji.")
     assignments = _lock_assignments(review)
 
     _validate_status_change(
@@ -619,7 +619,6 @@ def _refresh_import_form(original, checked):
     original._bound_fields_cache.clear()
 
 
-@transaction.atomic
 def import_reviews(*, user, form):
     from core.forms import ReviewBulkImportForm
 
@@ -627,18 +626,6 @@ def import_reviews(*, user, form):
 
     if not isinstance(form, ReviewBulkImportForm) or not form.is_bound:
         raise ValidationError("Import wymaga wypełnionego formularza.")
-
-    # Importy wykonywane przez ten serwis są serializowane także wtedy,
-    # gdy dotyczą różnych naborów. Duplikaty wykrywamy między naborami.
-    # Blokujemy istniejące antologie zawsze w tej samej kolejności.
-    anthology_ids = list(
-        Anthology.objects.select_for_update()
-        .order_by("pk")
-        .values_list("pk", flat=True)
-    )
-
-    if not anthology_ids:
-        raise ValidationError("Najpierw utwórz nabór do antologii.")
 
     # Nie ufamy cached cleaned_data ani parsed_records przekazanego
     # formularza. Ponownie przetwarzamy oryginalne dane, podpis,
@@ -655,92 +642,104 @@ def import_reviews(*, user, form):
             ]
         )
 
-    anthology = checked.cleaned_data["anthology"]
-    if anthology.pk not in anthology_ids:
-        raise ValidationError("Wybrany nabór nie jest już dostępny.")
+    with transaction.atomic():
+        # Jeden wspólny rekord serializuje importy między naborami.
+        # Nie blokujemy już wszystkich antologii na czas przetwarzania paczki.
+        mutex = Anthology.objects.select_for_update().order_by('pk').first()
+        if mutex is None:
+            raise ValidationError('Najpierw utwórz nabór do antologii.')
+        anthology = Anthology.objects.select_for_update().filter(
+            pk=checked.cleaned_data['anthology'].pk,
+            status=Anthology.Status.IN_PREPARATION,
+        ).first()
+        if anthology is None:
+            raise ValidationError('Wybrany nabór nie jest już dostępny.')
 
-    author_ids = {
-        record["author_id"]
-        for record in checked.parsed_records
-        if record.get("author_id") is not None
-    }
-    authors = {
-        author.pk: author
-        for author in (
-            Author.objects.select_for_update()
-            .filter(pk__in=author_ids)
-            .order_by("pk")
-        )
-    }
+        author_ids = {
+            record["author_id"]
+            for record in checked.parsed_records
+            if record.get("author_id") is not None
+        }
+        authors = {
+            author.pk: author
+            for author in (
+                Author.objects.select_for_update()
+                .filter(pk__in=author_ids)
+                .order_by("pk")
+            )
+        }
 
-    if set(authors) != author_ids:
-        raise ValidationError(
-            "Dane autorów zmieniły się podczas importu. "
-            "Sprawdź formularz i ponów operację."
-        )
-
-    # Po uzyskaniu blokad autorów ponownie sprawdzamy m.in. czarną listę.
-    # Zmiana ostrzeżeń unieważnia wcześniejsze potwierdzenie.
-    checked = ReviewBulkImportForm(form.data.copy(), user=user)
-    if not checked.is_valid():
-        _refresh_import_form(form, checked)
-        raise ValidationError(
-            [
-                str(error)
-                for errors in checked.errors.values()
-                for error in errors
-            ]
-        )
-
-    final_author_ids = {
-        record["author_id"]
-        for record in checked.parsed_records
-        if record.get("author_id") is not None
-    }
-    if final_author_ids != author_ids:
-        raise ValidationError(
-            "Powiązania autorów zmieniły się podczas importu. "
-            "Sprawdź dane i ponów operację."
-        )
-
-    pending_reviews = []
-
-    for record in checked.parsed_records:
-        author = authors.get(record.get("author_id"))
-        review = Review(
-            author=author,
-            author_first_name=(
-                author.first_name if author else record["author_first_name"]
-            ),
-            author_last_name=(
-                author.last_name if author else record["author_last_name"]
-            ),
-            email=author.email if author else normalize_email(record["email"]),
-            phone_number=record["phone_number"],
-            title=record["title"],
-            genre=record["genre"],
-            length=record["length"],
-            content_warnings=record["content_warnings"],
-            anthology=checked.cleaned_data["anthology"],
-            status=Review.Status.NEW,
-            old_reviews=False,
-        )
-
-        try:
-            review.full_clean()
-        except ValidationError as error:
+        if set(authors) != author_ids:
             raise ValidationError(
-                f'Wiersz {record["line_number"]}: '
-                + " ".join(error.messages)
-            ) from error
+                "Dane autorów zmieniły się podczas importu. "
+                "Sprawdź formularz i ponów operację."
+            )
 
-        from texts.blacklist import apply_blacklist
-        apply_blacklist(review)
-        pending_reviews.append(review)
+        # Po uzyskaniu blokad autorów ponownie sprawdzamy m.in. czarną listę.
+        # Zmiana ostrzeżeń unieważnia wcześniejsze potwierdzenie.
+        from copy import deepcopy
+        parsed = deepcopy(checked.parsed_records)
+        checked = ReviewBulkImportForm(form.data.copy(), user=user)
+        checked._validated_records = parsed
+        if not checked.is_valid():
+            _refresh_import_form(form, checked)
+            raise ValidationError(
+                [
+                    str(error)
+                    for errors in checked.errors.values()
+                    for error in errors
+                ]
+            )
 
-    if not pending_reviews:
-        raise ValidationError("Brak zgłoszeń do zaimportowania.")
+        final_author_ids = {
+            record["author_id"]
+            for record in checked.parsed_records
+            if record.get("author_id") is not None
+        }
+        if final_author_ids != author_ids:
+            raise ValidationError(
+                "Powiązania autorów zmieniły się podczas importu. "
+                "Sprawdź dane i ponów operację."
+            )
 
-    for review in pending_reviews:
-        review.save(force_insert=True)
-    return len(pending_reviews)
+        pending_reviews = []
+
+        for record in checked.parsed_records:
+            author = authors.get(record.get("author_id"))
+            review = Review(
+                author=author,
+                author_first_name=(
+                    author.first_name if author else record["author_first_name"]
+                ),
+                author_last_name=(
+                    author.last_name if author else record["author_last_name"]
+                ),
+                email=author.email if author else normalize_email(record["email"]),
+                phone_number=record["phone_number"],
+                title=record["title"],
+                genre=record["genre"],
+                length=record["length"],
+                content_warnings=record["content_warnings"],
+                anthology=checked.cleaned_data["anthology"],
+                status=Review.Status.NEW,
+                old_reviews=False,
+            )
+
+            try:
+                review.full_clean()
+            except ValidationError as error:
+                raise ValidationError(
+                    f'Wiersz {record["line_number"]}: '
+                    + " ".join(error.messages)
+                ) from error
+
+            from texts.blacklist import apply_blacklist
+            apply_blacklist(review)
+            pending_reviews.append(review)
+
+        if not pending_reviews:
+            raise ValidationError("Brak zgłoszeń do zaimportowania.")
+
+        for review in pending_reviews:
+            review.save(force_insert=True)
+        return len(pending_reviews)

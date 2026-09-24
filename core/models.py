@@ -119,6 +119,7 @@ class UserActivity(models.Model):
 
     class Meta:
         ordering = ('-created_at', '-pk')
+        indexes = [models.Index(fields=['user', 'created_at', 'id'], name='activity_user_time_idx')]
         verbose_name = 'aktywność użytkownika'
         verbose_name_plural = 'aktywności użytkowników'
 
@@ -149,6 +150,7 @@ class WorkflowEvent(models.Model):
 
     class Meta:
         ordering = ('-created_at', '-pk')
+        indexes = [models.Index(fields=['actor', 'created_at', 'id'], name='workflow_actor_time_idx')]
         verbose_name = 'zmiana workflow'
         verbose_name_plural = 'zmiany workflow i powiadomienia Discord'
 
