@@ -154,3 +154,33 @@ class OdkurzaczTests(TestCase):
         html = self.client.get(self.url).content.decode()
         self.assertLess(html.index('Odkurz i pobierz DOCX'), html.index('<legend>Opcje korekty'))
         self.assertIn('odkurzacz-upload', html)
+
+    def test_dialogue_spaces_survive_internal_docx_markers(self):
+        from docx.oxml import OxmlElement
+        cases = (
+            ('viraptorka', ' – pochwalił.'),
+            ('rozumiemy.', ' – W jej głos'),
+            ('pszczół.', ' – Roześmiała się'),
+            ('viraptorka – ', 'pochwalił.'),
+        )
+        for marker in ('proofErr', 'bookmarkStart', 'bookmarkEnd'):
+            for left, right in cases:
+                with self.subTest(marker=marker, left=left):
+                    document = Document()
+                    paragraph = document.add_paragraph()
+                    paragraph.add_run(left).bold = True
+                    paragraph._p.append(OxmlElement('w:' + marker))
+                    paragraph.add_run(right).italic = True
+                    source = BytesIO()
+                    document.save(source)
+                    result = Document(clean_docx(source, [key for key, _ in EDITORIAL_RULES]))
+                    self.assertEqual(result.paragraphs[0].text, left + right)
+                    self.assertTrue(result.paragraphs[0].runs[0].bold)
+                    self.assertTrue(result.paragraphs[0].runs[-1].italic)
+
+    def test_partial_fragment_is_not_a_new_dialogue(self):
+        rules = ['hyphen_dash', 'dash_spaces', 'trim']
+        self.assertEqual(correct_editorial_text(' – narracja', rules, trim_start=False), ' – narracja')
+        self.assertEqual(correct_editorial_text(' - narracja', rules, trim_start=False), ' – narracja')
+        self.assertEqual(correct_editorial_text('tekst – ', rules, trim_end=False), 'tekst – ')
+        self.assertEqual(correct_editorial_text('  –Hę?', rules), '– Hę?')

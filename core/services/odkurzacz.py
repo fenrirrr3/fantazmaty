@@ -290,7 +290,11 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True):
         text = re.sub(H + r'+(?=[,.;:?!])', '', text)
     if 'hyphen_dash' in enabled:
         text = re.sub(r'(?<= )-(?= )', '–', text)
-        text = re.sub(r'(^|\n)' + H + r'*-' + H + r'*(?=[' + LETTERS + r'„“"])', r'\1– ', text)
+        text = re.sub(
+            r'(^|\n)' + H + r'*-' + H + r'*(?=[' + LETTERS + r'„“"])',
+            lambda match: (match[1] + '– ')
+            if trim_start or match[1] == '\n' else match[0], text,
+        )
     if 'dash_style' in enabled:
         text = text.replace('—', '–')
     if 'range_dash' in enabled:
@@ -303,6 +307,11 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True):
         def dash_space(match):
             left = text[:match.start()].rstrip(' \u00a0\u202f')
             right = text[match.end():].lstrip(' \u00a0\u202f')
+            # A DOCX group may start/end at a bookmark, proofing marker,
+            # field or hyperlink inside the paragraph. Without neighbour
+            # context do not reinterpret its edge as a dialogue/paragraph edge.
+            if (not left and not trim_start) or (not right and not trim_end):
+                return match[0]
             if left[-1:].isdigit() and right[:1].isdigit():
                 return match[0]
             if right[:1].isdigit() and (not left or left[-1:] in '(=:'):
