@@ -90,6 +90,7 @@ def filter_my_texts(queryset, user, selected_view, today):
 
 
 def available_stages(user, access):
+    from workflow.availability import can_claim_fourth_proofreading
     stages = current_stages()
     assignments = A.objects.current_cycle().filter(text_id=OuterRef('text_id'), workflow_cycle=OuterRef('workflow_cycle'))
     query = S.objects.current_cycle().exclude(text__anthology__status="ready").filter(is_released=True, workflow_cycle=F('text__current_workflow_cycle'), is_completed=False,
@@ -98,6 +99,7 @@ def available_stages(user, access):
         return query.none()
     kinds = [kind for kind, role in {'ready_for_editing': A.Role.EDITOR, **STAGE_ROLES}.items()
              if (kind != 'styling' or user.is_superuser)
+             and (kind != 'fourth_proofreading' or can_claim_fourth_proofreading(user))
              and (access['coordinator'] or ROLE_GROUPS.get(role, 'Redaktor').casefold() in access['roles'])]
     query = query.filter(stage_type__in=kinds).exclude(stage_type='editor_control', repetition__isnull=True).filter(
         ~Exists(terminal(stages)),

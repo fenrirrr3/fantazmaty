@@ -61,13 +61,13 @@
             </div>
 
             <div class="filter-field">
-                <label for="author-anthology">Antologia</label>
-                <select id="author-anthology" name="anthology">
-                    <option value="">Wszystkie antologie</option>
+                <label for="author-anthology">Antologie (brak wyboru — wszystkie)</label>
+                <select id="author-anthology" name="anthology" multiple>
+
                     {% for anthology in anthologies %}
                         <option
                             value="{{ anthology.pk }}"
-                            {% if anthology.pk == selected_anthology_id %}selected{% endif %}
+                            {% if anthology.pk in selected_anthology_ids %}selected{% endif %}
                         >
                             {{ anthology.title }}
                         </option>

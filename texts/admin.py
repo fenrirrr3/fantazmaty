@@ -85,6 +85,12 @@ class AnthologyTaskInline(admin.TabularInline):
 
 @admin.register(Anthology)
 class AnthologyAdmin(admin.ModelAdmin):
+    def get_search_results(self, request, queryset, search_term):
+        queryset, duplicates = super().get_search_results(request, queryset, search_term)
+        if request.GET.get("app_label") == "texts" and request.GET.get("model_name") == "review" and request.GET.get("field_name") == "anthology":
+            queryset = queryset.filter(status=Anthology.Status.IN_PREPARATION)
+        return queryset, duplicates
+
     list_display = (
         "title",
         "status",
@@ -181,6 +187,26 @@ class WorkflowStageInline(SuperuserOnlyAdminMixin, admin.TabularInline):
 
 class TextAdminForm(NormalizedFormMixin, forms.ModelForm):
     normalization_fields = TEXT_FIELDS
+    source_author_first_name = forms.CharField(required=False, widget=forms.HiddenInput)
+    source_author_last_name = forms.CharField(required=False, widget=forms.HiddenInput)
+    source_author_email = forms.EmailField(required=False, widget=forms.HiddenInput)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        data = self.data if self.is_bound else self.initial
+        if data.get("source_author_email") and "authors" in self.fields:
+            self.fields["authors"].required = False
+            self.fields["authors"].help_text = "Jeśli nie wybierzesz profilu, autor zostanie dopasowany po e-mailu lub utworzony z danych recenzji."
+
+    def clean(self):
+        data = super().clean()
+        if not data.get("authors"):
+            email = data.get("source_author_email")
+            if not email or not data.get("source_author_first_name") or not data.get("source_author_last_name"):
+                self.add_error("authors", "Wybierz autora albo uzupełnij dane autora w recenzji przed użyciem +.")
+            elif Author.objects.filter(email__iexact=email).count() > 1:
+                self.add_error("authors", "Kilku autorów ma ten e-mail. Wybierz właściwy profil.")
+        return data
 
     class Meta:
         model = Text
@@ -195,6 +221,36 @@ class TextAdminForm(NormalizedFormMixin, forms.ModelForm):
 
 @admin.register(Text)
 class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
+    def get_search_results(self, request, queryset, search_term):
+        queryset, duplicates = super().get_search_results(request, queryset, search_term)
+        if request.GET.get("app_label") == "texts" and request.GET.get("model_name") == "review" and request.GET.get("field_name") == "copied_text":
+            queryset = queryset.filter(workflow_stages__isnull=False).distinct()
+        return queryset, duplicates
+
+    def get_changeform_initial_data(self, request):
+        initial = super().get_changeform_initial_data(request)
+        source = request.GET.get("source_review", "")
+        if source.isdecimal() and len(source) < 19:
+            review = get_object_or_404(Review, pk=int(source))
+            for field in ("title", "length", "content_warnings", "anthology_id"):
+                initial[field.removesuffix("_id")] = getattr(review, field)
+            authors = list(review.coauthors.values_list("pk", flat=True))
+            if review.author_id:
+                authors.insert(0, review.author_id)
+            elif review.email:
+                matches = list(Author.objects.filter(email__iexact=review.email).values_list("pk", flat=True)[:2])
+                if len(matches) == 1:
+                    authors.insert(0, matches[0])
+            initial["authors"] = authors
+            initial["source_author_first_name"] = review.author_first_name
+            initial["source_author_last_name"] = review.author_last_name
+            initial["source_author_email"] = review.email
+        # Values from the open review form include changes not saved yet.
+        for field in ("title", "length", "content_warnings", "anthology", "authors", "source_author_first_name", "source_author_last_name", "source_author_email"):
+            if field in request.GET:
+                initial[field] = request.GET.getlist(field) if field == "authors" else request.GET[field]
+        return initial
+
     form = TextAdminForm
     # Admin zawiera powiązania pozwalające ustalić autora zgłoszenia.
     # Koordynatorzy korzystają z widoków aplikacji z odrębnymi uprawnieniami.
@@ -236,6 +292,7 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
                     "content_warnings",
                     "coordinator_note",
                     "file_url",
+                    "source_author_first_name", "source_author_last_name", "source_author_email",
                 ),
             },
         ),
@@ -258,6 +315,12 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         super().save_related(request, form, formsets, change)
         if not change:
             text = form.instance
+            if not text.authors.exists() and form.cleaned_data.get("source_author_email"):
+                email = form.cleaned_data["source_author_email"]
+                author = Author.objects.filter(email__iexact=email).first()
+                if author is None:
+                    author = Author.objects.create(first_name=form.cleaned_data["source_author_first_name"], last_name=form.cleaned_data["source_author_last_name"], email=email)
+                text.authors.add(author)
             stages = WorkflowStage.objects.using(text._state.db).filter(
                 text_id=text.pk,
                 workflow_cycle=text.current_workflow_cycle,
@@ -386,6 +449,11 @@ class TextNoteAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
 class ReviewAdminForm(NormalizedFormMixin, forms.ModelForm):
     normalization_fields = REVIEW_FIELDS
+    confirm_existing_text = forms.BooleanField(
+        label="Potwierdzam powiązanie recenzji z wybranym istniejącym tekstem",
+        required=False,
+        help_text="Uwaga: upewnij się, że zgadzają się autor, tytuł i antologia. Powiązanie nie przenosi etapów ani nie nadpisuje danych tekstu.",
+    )
     confirm_submission_warnings = forms.BooleanField(
         label="Zapoznałem się z ostrzeżeniami i potwierdzam zapis",
         required=False,
@@ -427,6 +495,10 @@ class ReviewAdminForm(NormalizedFormMixin, forms.ModelForm):
         super().__init__(*args, **kwargs)
 
         self.submission_warnings = []
+        if "copied_text" in self.fields:
+            self.fields["copied_text"].queryset = Text.objects.filter(workflow_stages__isnull=False).distinct()
+            self.fields["copied_text"].help_text = "Wyszukaj tekst już obecny w procesie wydawniczym albo użyj +, aby przygotować nowy na podstawie recenzji."
+
         if self.instance._state.adding and "anthology" in self.fields:
             self.fields["anthology"].queryset = Anthology.objects.filter(status=Anthology.Status.IN_PREPARATION).order_by("title", "pk")
 
@@ -440,6 +512,12 @@ class ReviewAdminForm(NormalizedFormMixin, forms.ModelForm):
         cleaned_data = super().clean()
         if "old_reviews" not in self.fields:
             cleaned_data["old_reviews"] = self.instance.old_reviews
+        linked = cleaned_data.get("copied_text")
+        if linked and linked.pk != self.instance.copied_text_id:
+            if not cleaned_data.get("confirm_existing_text"):
+                self.add_error("confirm_existing_text", "Wybrany tekst już istnieje. Sprawdź powiązanie i zaznacz potwierdzenie przed zapisem.")
+            if Review.objects.filter(copied_text=linked).exclude(pk=self.instance.pk).exists():
+                self.add_error("copied_text", "Ten tekst jest już powiązany z inną recenzją.")
         author = cleaned_data.get("author")
 
         if author is not None:
@@ -878,7 +956,7 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         ),
         (
             "Proces wydawniczy",
-            {"fields": ("copied_text",)},
+            {"fields": ("copied_text", "confirm_existing_text")},
         ),
     )
 
@@ -889,12 +967,12 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     show_full_result_count = False
 
     class Media:
-        js = ("texts/admin/review_author_autofill.js",)
+        js = ("texts/admin/review_author_autofill.js", "texts/admin/review_text_link.js",)
 
     def get_readonly_fields(self, request, obj=None):
         if obj and obj.old_reviews:
             return ("created_at", "old_reviews")
-        return (*super().get_readonly_fields(request, obj), "status", "copied_text", "author_notified_at", *(("old_reviews",) if obj else ()))
+        return (*super().get_readonly_fields(request, obj), "status", "author_notified_at", *(("old_reviews",) if obj else ()))
 
     def get_urls(self):
         return [
@@ -1013,12 +1091,7 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             apply_blacklist(obj)
         super().save_model(request, obj, form, change)
 
-        if obj.copied_text_id is not None:
-            Text.objects.using(obj._state.db).filter(
-                pk=obj.copied_text_id
-            ).update(content_warnings=obj.content_warnings)
-            from core.edit_versions import bump
-            bump('texts.text', obj.copied_text_id, obj._state.db)
+        # Linking a review must not overwrite the editorial text.
 
     @admin.display(
         description="autor",

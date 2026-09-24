@@ -176,19 +176,18 @@ def author_list(request):
     query = request.GET.get("q", "").strip()
     contract_filter = _yes_no_filter(request.GET.get("contract", ""))
     contact_filter = _yes_no_filter(request.GET.get("contact", ""))
-    selected_anthology_id = _positive_id(
-        request.GET.get("anthology", "")
-    )
+    selected_anthology_ids = [value for item in request.GET.getlist("anthology")
+                              if (value := _positive_id(item)) is not None]
 
     accepted_only = request.GET.get("accepted", "1").strip() != "0"
     authors = Author.objects.all()
     if accepted_only:
         ready_texts = _annotated_texts().filter(
-            current_stage_type=WorkflowStage.StageType.READY,
+            
             anthology__isnull=False,
         )
-        if selected_anthology_id is not None:
-            ready_texts = ready_texts.filter(anthology_id=selected_anthology_id)
+        if selected_anthology_ids:
+            ready_texts = ready_texts.filter(anthology_id__in=selected_anthology_ids)
         authors = authors.filter(pk__in=ready_texts.order_by().values("authors__pk"))
 
     # Każdy człon zapytania musi pasować do przynajmniej jednego pola.
@@ -211,12 +210,11 @@ def author_list(request):
             contact=contact_filter == "yes",
         )
 
-    anthology_options = Anthology.objects.filter(
-        Q(pk__in=authors.values('texts__anthology_id')) | Q(pk=selected_anthology_id))
+    anthology_options = Anthology.objects.all()
 
-    if selected_anthology_id is not None:
+    if selected_anthology_ids:
         authors = authors.filter(
-            texts__anthology_id=selected_anthology_id,
+            texts__anthology_id__in=selected_anthology_ids,
         ).distinct()
 
     authors = authors.order_by(
@@ -283,7 +281,7 @@ def author_list(request):
             "contract_filter": contract_filter,
             "contact_filter": contact_filter,
             "accepted_only": accepted_only,
-            "selected_anthology_id": selected_anthology_id,
+            "selected_anthology_ids": selected_anthology_ids,
             "can_view_authors": True,
         },
     )

@@ -27,6 +27,7 @@ def claim_reason(stage, user, stages, assignments, *, access=None):
     if any(s.stage_type in ('ready','withdrawn') for s in stages):return 'Proces jest zamknięty.'
     if stage.is_completed or stage.started_at or stage.ended_at:return 'Etap nie oczekuje na przejęcie.'
     if not role:return 'Tego etapu nie można przejąć.'
+    if kind=='fourth_proofreading' and not can_claim_fourth_proofreading(user):return 'Czwarta korekta jest dostępna tylko dla koordynatora korekty.'
     if kind=='styling' and not user.is_superuser:return 'Stylowanie jest dostępne tylko dla superusera.'
     if not (access['coordinator'] or ROLE_GROUPS.get(role,'Redaktor').casefold() in access['roles']):return 'Brak wymaganej roli.'
     occupied={a.role:a.assigned_to_id for a in assignments if a.assigned_to_id}
@@ -42,3 +43,9 @@ def claim_reason(stage, user, stages, assignments, *, access=None):
         if not any(s.stage_type=='first_verification' and s.is_completed for s in stages):return 'Najpierw zakończ pierwszą weryfikację.'
         if any(s.stage_type in ('editing','author_editing') and not s.is_completed and not s.ended_at for s in stages):return 'Redaktor musi przekazać tekst do drugiej weryfikacji.'
     return ''
+
+
+def can_claim_fourth_proofreading(user):
+    return bool(user and user.is_active and (
+        user.is_superuser or has_role(user, "Koordynator korekty")
+    ))

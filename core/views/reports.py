@@ -201,3 +201,29 @@ def editor_activity(request):
     )
     return _render_report(request, template_name="core/editor_activity.html",
                           report_context=context, rows_key="activity_rows")
+
+
+@never_cache
+@login_required
+@require_GET
+@coordinator_required
+def last_activity(request):
+    from datetime import timedelta
+    from django.db.models import OuterRef, Subquery, Q, F
+    from core.models import UserActivity
+    from people.models import Person
+    try:
+        days = max(0, min(36500, int(request.GET.get("days", "28"))))
+    except (ValueError, TypeError):
+        days = 28
+    now = timezone.now()
+    history = UserActivity.objects.filter(user_id=OuterRef("user_id"), status_code__lt=400).order_by("-created_at", "-pk")
+    people = Person.objects.active().annotate(
+        last_activity_at=Subquery(history.values("created_at")[:1]),
+        last_action=Subquery(history.values("action")[:1]),
+    )
+    if days:
+        people = people.filter(Q(last_activity_at__lte=now-timedelta(days=days)) | Q(last_activity_at__isnull=True))
+    people = people.order_by(F("last_activity_at").asc(nulls_first=True), "last_name", "first_name", "pk")
+    page = paginate_items(request, people)
+    return render(request, "core/last_activity.html", {"people": page, "page_obj": page, "days": days})

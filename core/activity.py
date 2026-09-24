@@ -40,7 +40,7 @@ LABELS.update({
     'withdraw_text':'Wycofanie tekstu', 'author_list':'Autorzy', 'author_detail':'Profil autora', 'add_author_note':'Dodanie notatki o autorze',
     'anthology_list':'Antologie', 'end_vacation':'Zakończenie urlopu', 'active_vacations':'Aktywne urlopy',
     'proofreader_activity':'Aktywność korektorów', 'verifier_activity':'Aktywność weryfikatorów', 'reviewer_activity':'Aktywność recenzentów',
-    'workflow_inactivity':'Przestoje',
+    'workflow_inactivity':'Przestoje', 'last_activity':'Ostatnia aktywność',
 })
 
 
