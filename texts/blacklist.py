@@ -14,6 +14,11 @@ def apply_blacklist(review):
     blacklisted = any(author.is_blacklisted for author in authors)
     if review.author_id:
         blacklisted = blacklisted or review.author.is_blacklisted
+    from .services import matching_blacklist_entries
+    blacklisted = blacklisted or matching_blacklist_entries(
+        author=review.author if review.author_id else None, email=review.email,
+        using=review._state.db,
+    ).exists()
     if blacklisted:
         review.is_hidden = True
         review.status = review.Status.REJECTED

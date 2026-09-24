@@ -394,6 +394,7 @@ def _render_review_detail(
             ),
             "can_change_review_status": (
                 manager_access
+                and review.status != Review.Status.REJECTED
                 and not review.old_reviews
                 and review.copied_text_id is None
                 and (

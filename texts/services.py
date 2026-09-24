@@ -184,6 +184,16 @@ def _iter_duplicate_reviews(
 
 
 
+def matching_blacklist_entries(*, author=None, email="", using=None):
+    from authors.models import BlacklistEntry
+    database = _database_alias(author, using)
+    conditions = models.Q()
+    for address in _identity_emails(author, email):
+        conditions |= models.Q(email__iexact=address)
+    queryset = BlacklistEntry.objects.using(database).filter(is_active=True)
+    return queryset.filter(conditions) if conditions else queryset.none()
+
+
 def get_review_submission_warnings(
     *,
     title: str,
@@ -232,6 +242,10 @@ def get_review_submission_warnings(
             "Autor zgłoszenia pasuje do rekordu na czarnej liście "
             f"({references}). Sprawdź oznaczenie przed dodaniem recenzji."
         )
+
+    independent_ids = list(matching_blacklist_entries(author=author, email=email, using=database).values_list("pk", flat=True))
+    if independent_ids:
+        warnings.append("Adres e-mail pasuje do niezależnego wpisu czarnej listy (" + ", ".join(f"#{pk}" for pk in independent_ids) + "). Sprawdź wpis przed dodaniem recenzji.")
 
     duplicate_count = 0
     duplicate_descriptions = []

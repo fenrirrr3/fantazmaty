@@ -349,6 +349,8 @@ def _apply_status_change(review, new_status, *, today):
 def change_review_status(*, user, review_id, new_status):
     require_coordinator(user)
     review = _lock_review(review_id)
+    if review.status == Review.Status.REJECTED:
+        raise ValidationError("Odrzuconego zgłoszenia nie można ponownie przyjąć z podglądu recenzji.")
     assignments = _lock_assignments(review)
 
     _validate_status_change(

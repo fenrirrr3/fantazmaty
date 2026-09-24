@@ -90,6 +90,7 @@ class AuthorNote(models.Model):
 
     content = models.TextField(
         "treść notatki",
+        blank=True,
     )
 
     created_at = models.DateTimeField(
@@ -126,3 +127,25 @@ class AuthorNote(models.Model):
             formatted_date = created_at.strftime("%d.%m.%Y %H:%M")
 
         return f"{self.author} – {creator_name} – {formatted_date}"
+
+
+class BlacklistEntry(models.Model):
+    name = models.CharField("imię i nazwisko / opis", max_length=255, blank=True)
+    email = models.EmailField("adres e-mail", unique=True,
+        help_text="Dopasowanie zgłoszeń po e-mailu, bez rozróżniania wielkości liter. Nie tworzy profilu autora.")
+    notes = models.TextField("notatka", blank=True)
+    is_active = models.BooleanField("aktywny wpis", default=True)
+
+    class Meta:
+        ordering = ("name", "email", "pk")
+        verbose_name = "niezależny wpis czarnej listy"
+        verbose_name_plural = "czarna lista — wpisy niezależne"
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        self.email = (self.email or "").strip().lower()
+        if type(self).objects.filter(email__iexact=self.email).exclude(pk=self.pk).exists():
+            raise ValidationError({"email": "Ten adres jest już na niezależnej czarnej liście."})
+
+    def __str__(self):
+        return f"{self.name} ({self.email})" if self.name else self.email

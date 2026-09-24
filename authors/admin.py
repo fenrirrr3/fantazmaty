@@ -8,7 +8,7 @@ from django.urls import path, reverse
 from django.utils.html import format_html
 from core.normalization import AUTHOR_FIELDS, NormalizedFormMixin
 
-from .models import Author, AuthorNote, BlacklistedAuthor
+from .models import Author, AuthorNote, BlacklistedAuthor, BlacklistEntry
 
 
 class SuperuserOnlyAdminMixin:
@@ -395,11 +395,16 @@ class AuthorAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 class BlacklistedAuthorAdmin(AuthorAdmin):
     list_filter = ("has_contract", "contact")
 
+    def add_view(self, request, form_url="", extra_context=None):
+        if not self.has_add_permission(request):
+            raise PermissionDenied
+        return HttpResponseRedirect(reverse(f"{self.admin_site.name}:authors_blacklistentry_add"))
+
     def get_queryset(self, request):
         return super().get_queryset(request).filter(is_blacklisted=True)
 
     def has_add_permission(self, request):
-        return False
+        return self.has_superuser_access(request)
 
     def get_urls(self):
         # Nie rejestruj drugi raz adresu authors_author_blacklist.
@@ -473,3 +478,11 @@ class AuthorNoteAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             return content
 
         return f"{content[:97]}..."
+
+
+@admin.register(BlacklistEntry)
+class BlacklistEntryAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
+    list_display = ("name", "email", "is_active")
+    search_fields = ("name__plcontains", "email__plcontains", "notes__plcontains")
+    list_filter = ("is_active",)
+    fields = ("name", "email", "is_active", "notes")
