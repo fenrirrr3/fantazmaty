@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
-from django.db import models, router
+from django.db import models, router, transaction
 from django.utils import timezone
 
 from authors.models import Author
@@ -85,6 +85,42 @@ class Anthology(models.Model):
 
     def __str__(self):
         return self.title
+
+    def _validate_ready_transition(self, using):
+        if not self.pk or self.status != self.Status.READY:
+            return
+        previous = type(self).objects.using(using).filter(pk=self.pk).values_list('status', flat=True).first()
+        if previous == self.Status.READY:
+            return
+        from workflow.models import WorkflowStage
+        from django.db.models import Exists, OuterRef
+        stages = WorkflowStage.objects.using(using).filter(
+            text_id=OuterRef('pk'), workflow_cycle=OuterRef('current_workflow_cycle'), is_current=True,
+        )
+        unfinished = Text.objects.using(using).filter(anthology_id=self.pk).annotate(
+            closed=Exists(stages.filter(stage_type='ready', is_released=True)),
+            withdrawn=Exists(stages.filter(stage_type='withdrawn', is_released=True)),
+            pending=Exists(stages.exclude(stage_type__in=('ready', 'withdrawn')).filter(is_completed=False)),
+        ).filter(withdrawn=False).filter(models.Q(closed=False) | models.Q(pending=True))
+        examples = list(unfinished.order_by('pk').values_list('title', 'pk')[:10])
+        if examples:
+            raise ValidationError({'status': 'Nie można oznaczyć antologii jako gotowej. Niezakończone teksty: '
+                + ', '.join(f'{title} (#{pk})' for title, pk in examples)
+                + '. Zakończ lub wycofaj ich workflow.'})
+
+    def clean(self):
+        super().clean()
+        self._validate_ready_transition(self._state.db or router.db_for_write(type(self), instance=self))
+
+    def save(self, *args, **kwargs):
+        using = kwargs.get('using') or router.db_for_write(type(self), instance=self)
+        fields = kwargs.get('update_fields')
+        if self.pk and self.status == self.Status.READY and (fields is None or 'status' in fields):
+            with transaction.atomic(using=using):
+                type(self).objects.using(using).select_for_update().get(pk=self.pk)
+                self._validate_ready_transition(using)
+                return super().save(*args, **kwargs)
+        return super().save(*args, **kwargs)
 
     @property
     def typesetting_task(self):

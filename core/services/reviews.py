@@ -540,13 +540,7 @@ def copy_review_to_text(*, user, review_id, contract_received=False, confirmed_c
     if review.copied_text_id is not None:
         return get_object_or_404(Text, pk=review.copied_text_id)
 
-    if review.status != Review.Status.ACCEPTED:
-        raise ValidationError(
-            "Do procesu wydawniczego można przenieść wyłącznie przyjęty tekst."
-        )
-
-    if review.author_notified_at is None:
-        raise ValidationError("Najpierw oznacz powiadomienie autora.")
+    validate_review_publication(review)
 
     if type(update_author_phone) is not bool:
         raise ValidationError("Nieprawidłowe potwierdzenie zmiany telefonu.")
@@ -599,6 +593,25 @@ def copy_review_to_text(*, user, review_id, contract_received=False, confirmed_c
     review.save(update_fields=["author", "copied_text"])
 
     return text
+
+
+def validate_review_publication(review, *, contracts=False):
+    """Shared gates for the normal transfer and the admin popup."""
+    _require_current_review(review)
+    if review.status != Review.Status.ACCEPTED:
+        raise ValidationError("Do procesu wydawniczego można przenieść wyłącznie przyjęty tekst.")
+    if review.author_notified_at is None:
+        raise ValidationError("Najpierw oznacz powiadomienie autora.")
+    from workflow.anthology_policy import require_working_anthology
+    require_working_anthology(review)
+    if contracts:
+        authors = list(review.coauthors.all())
+        primary = review.author or Author.objects.filter(email__iexact=review.email).first()
+        if primary is None:
+            raise ValidationError("Najpierw utwórz profil autora i potwierdź otrzymanie umowy.")
+        authors.append(primary)
+        if any(not author.has_contract for author in authors):
+            raise ValidationError("Najpierw potwierdź umowy autora i wszystkich współautorów.")
 
 
 def _refresh_import_form(original, checked):

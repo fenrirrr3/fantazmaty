@@ -341,6 +341,13 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
         source_review = getattr(request, '_source_review', None)
         if not change and source_review is not None:
+            from core.services.reviews import validate_review_publication
+            from workflow.anthology_policy import require_working_anthology
+            validate_review_publication(source_review, contracts=True)
+            require_working_anthology(form.instance)
+            authors = list(form.instance.authors.select_for_update())
+            if not authors or any(not author.has_contract for author in authors):
+                raise ValidationError("Każdy autor tekstu musi mieć potwierdzoną umowę. Nie zapisano tekstu.")
             source_review.copied_text = form.instance
             source_review.save(update_fields=['copied_text'])
 
@@ -356,8 +363,14 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
                     return HttpResponseBadRequest('Recenzja nie istnieje. Zamknij okno i odśwież stronę.')
                 if review.copied_text_id:
                     return HttpResponseBadRequest('Ta recenzja ma już powiązany tekst. Zamknij okno i odśwież recenzję; nie utworzono duplikatu.')
-                request._source_review = review
-                return super().changeform_view(request, object_id, form_url, extra_context)
+                from core.services.reviews import validate_review_publication
+                try:
+                    with transaction.atomic():
+                        validate_review_publication(review, contracts=True)
+                        request._source_review = review
+                        return super().changeform_view(request, object_id, form_url, extra_context)
+                except ValidationError as exc:
+                    return HttpResponseBadRequest(" ".join(exc.messages))
         return super().changeform_view(request, object_id, form_url, extra_context)
 
     def get_urls(self):

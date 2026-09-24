@@ -351,11 +351,11 @@ def _require_start_order(stage, stages):
 
     if stage.stage_type == StageType.EDITING:
         if any(
-            item.stage_type in {
-                StageType.FIRST_VERIFICATION,
-                StageType.SECOND_VERIFICATION,
-                StageType.AUTHOR_EDITING,
-            }
+            (item.stage_type in {StageType.SECOND_VERIFICATION, StageType.AUTHOR_EDITING}
+             or (item.stage_type == StageType.FIRST_VERIFICATION
+                 and (item.started_at is not None or any(
+                     previous.stage_type == StageType.EDITING and previous.is_completed
+                     for previous in stages))))
             for item in open_others
         ):
             raise ValidationError(

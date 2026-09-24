@@ -719,7 +719,13 @@ def resume_editing(text, user, started_at=None):
             "Najpierw należy zakończyć oczekującą lub aktywną weryfikację."
         )
 
-    author_stage = get_active_stage(text, StageType.AUTHOR_EDITING)
+    author_stage = current_stage_queryset(text).filter(
+        stage_type=StageType.AUTHOR_EDITING, is_completed=False,
+    ).first()
+    if author_stage is not None and author_stage.started_at is None:
+        raise ValidationError(
+            "Etap pracy autora nie ma daty rozpoczęcia. Uzupełnij ją w panelu administratora przed wznowieniem redakcji."
+        )
 
     if not (
         author_stage

@@ -39,6 +39,11 @@ class Fixes25Tests(TestCase):
         self.assertEqual(Text.objects.count(),1)
 
     def test_popup_full_save_keeps_both_authors_and_links_immediately(self):
+        self.review.status=Review.Status.ACCEPTED
+        self.review.author_notified_at=timezone.localdate()
+        self.review.save()
+        Author.objects.create(first_name='Jan',last_name='Autor',email='main@example.com',has_contract=True)
+        self.author.has_contract=True;self.author.save()
         result=self.client.post(reverse('admin:texts_review_prepare_text'),{'review_id':self.review.pk,'title':'Test','length':'1000','anthology':self.book.pk,'source_author_first_name':'Jan','source_author_last_name':'Autor','source_author_email':'main@example.com','authors':[self.author.pk]}).json()
         response=self.client.get(result['url'])
         form=response.context['adminform'].form

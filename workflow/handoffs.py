@@ -32,7 +32,10 @@ def handoff_stage(text, user, *, stage_id, assigned_to_id, expected_assignment_i
     new=A.objects.create(text=text,workflow_cycle=text.current_workflow_cycle,role=old.role,assigned_to=target,execution_number=number,repetition=old.repetition)
     WorkflowHandoff.objects.create(text=text,stage=stage,previous_assignment=old,new_assignment=new,actor=user,original_started_at=stage.started_at,reason=reason)
     # Completed work stays with the previous person; unfinished returns follow the new assignment.
-    S.objects.current_cycle().filter(text=text,assignment=old,is_completed=False).update(assignment=new, started_at=None)
+    pending = S.objects.current_cycle().filter(text=text, assignment=old, is_completed=False)
+    # Waiting for the author continues regardless of who takes over editing.
+    pending.filter(stage_type=S.StageType.AUTHOR_EDITING).update(assignment=new)
+    pending.exclude(stage_type=S.StageType.AUTHOR_EDITING).update(assignment=new, started_at=None)
     return new
 
 

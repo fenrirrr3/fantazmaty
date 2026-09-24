@@ -117,7 +117,11 @@ class MaintenanceTests(TestCase):
     def test_prefill_private_authorized_and_expiring(self):
         self.client.force_login(self.user)
         url = reverse('admin:texts_review_prepare_text')
-        data = {'review_id': self.review().pk, 'title':'Nowy', 'source_author_first_name':'Jan', 'source_author_last_name':'Testowy',
+        review=self.review(status=Review.Status.ACCEPTED,author_notified_at=timezone.localdate())
+        Author.objects.filter(email__iexact=review.email).update(has_contract=True)
+        if not Author.objects.filter(email__iexact=review.email).exists():
+            Author.objects.create(first_name='Jan',last_name='Testowy',email=review.email,has_contract=True)
+        data = {'review_id': review.pk, 'title':'Nowy', 'source_author_first_name':'Jan', 'source_author_last_name':'Testowy',
                 'source_author_email':'private@example.com', 'length':1000, 'anthology':self.book.pk}
         response = self.client.post(url, data)
         self.assertEqual(response.status_code, 200)

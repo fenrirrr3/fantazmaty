@@ -38,7 +38,7 @@ def claim_reason(stage, user, stages, assignments, *, access=None):
     entry=len(stages)==1 and not stage.is_completed
     if kind=='editor_control':return 'Kontrolę rozpoczyna przypisany redaktor.'
     if kind in ('editing','author_editing') and not entry:return 'Użyj przekazania lub wznowienia redakcji.'
-    if kind=='first_verification' and not entry and not any(s.stage_type=='editing' and s.started_at for s in stages):return 'Rezerwacja wymaga rozpoczętej redakcji.'
+    if kind=='first_verification' and not entry and not any(s.stage_type=='editing' and (s.started_at or s.is_completed) for s in stages):return 'Rezerwacja wymaga rozpoczętej redakcji.'
     if kind=='second_verification' and not entry:
         if not any(s.stage_type=='first_verification' and s.is_completed for s in stages):return 'Najpierw zakończ pierwszą weryfikację.'
         if any(s.stage_type in ('editing','author_editing') and not s.is_completed and not s.ended_at for s in stages):return 'Redaktor musi przekazać tekst do drugiej weryfikacji.'
