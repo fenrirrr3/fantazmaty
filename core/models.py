@@ -108,6 +108,7 @@ class Recruitment(models.Model):
 
 
 class UserActivity(models.Model):
+    source_key = models.CharField(max_length=32, unique=True, null=True, blank=True, editable=False)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='cms_activities', verbose_name='użytkownik')
     actor = models.CharField('konto', max_length=254)
     created_at = models.DateTimeField('czas', auto_now_add=True, db_index=True)
@@ -130,6 +131,8 @@ class UserActivity(models.Model):
 
 
 class WorkflowEvent(models.Model):
+    personal_work = models.BooleanField(default=False, db_index=True, editable=False)
+    personal_work_description = models.CharField(max_length=255, blank=True, editable=False)
     text = models.ForeignKey('texts.Text', null=True, on_delete=models.SET_NULL)
     title = models.TextField()
     authors = models.TextField(blank=True)

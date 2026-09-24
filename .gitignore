@@ -32,3 +32,5 @@ Thumbs.db
 
 /import_data/
 *.bundle
+# Local request activity queue (private runtime data)
+var/activity-spool/

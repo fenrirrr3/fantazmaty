@@ -22,6 +22,12 @@ from texts.blacklist import apply_blacklist
 
 class MaintenanceTests(TestCase):
     def setUp(self):
+        from tempfile import TemporaryDirectory
+        self.spool = TemporaryDirectory()
+        self.addCleanup(self.spool.cleanup)
+        settings = self.settings(ACTIVITY_SPOOL_DIR=self.spool.name)
+        settings.enable()
+        self.addCleanup(settings.disable)
         self.user = get_user_model().objects.create_superuser('maintenance', 'maintenance@example.com', 'unused-test-password')
         self.book = Anthology.objects.create(title='Test naboru')
         self.author = Author.objects.create(first_name='Jan', last_name='Testowy', email='jan@example.com')
@@ -86,11 +92,13 @@ class MaintenanceTests(TestCase):
         request._cms_activity = ('Wszystkie teksty', '')
         middleware(request)
         middleware(request)
+        call_command('flush_activity', stdout=StringIO())
         self.assertEqual(UserActivity.objects.count(), 1)
         request.method = 'POST'
         middleware(request)
+        call_command('flush_activity', stdout=StringIO())
         self.assertEqual(UserActivity.objects.count(), 2)
-        with patch('core.models.UserActivity.objects.create', side_effect=RuntimeError('test')), patch('core.activity.logger.exception'):
+        with patch('core.activity_spool.enqueue_activity', side_effect=RuntimeError('test')), patch('core.activity.logger.exception'):
             self.assertEqual(middleware(request).status_code, 200)
 
     def test_retention_preserves_mutations_and_last_seen(self):
@@ -109,7 +117,7 @@ class MaintenanceTests(TestCase):
     def test_prefill_private_authorized_and_expiring(self):
         self.client.force_login(self.user)
         url = reverse('admin:texts_review_prepare_text')
-        data = {'title':'Nowy', 'source_author_first_name':'Jan', 'source_author_last_name':'Testowy',
+        data = {'review_id': self.review().pk, 'title':'Nowy', 'source_author_first_name':'Jan', 'source_author_last_name':'Testowy',
                 'source_author_email':'private@example.com', 'length':1000, 'anthology':self.book.pk}
         response = self.client.post(url, data)
         self.assertEqual(response.status_code, 200)
@@ -123,7 +131,7 @@ class MaintenanceTests(TestCase):
         self.assertNotEqual(self.client.post(url, data).status_code, 200)
         other = get_user_model().objects.create_superuser('other', 'other@example.com', 'unused')
         self.client.force_login(other)
-        self.assertNotContains(self.client.get(popup), 'private@example.com')
+        self.assertEqual(self.client.get(popup).status_code, 400)
 
     def test_admin_renders_prefill_endpoint(self):
         self.client.force_login(self.user)
@@ -150,14 +158,14 @@ class MaintenanceTests(TestCase):
 
     def test_expired_prefill_is_not_loaded(self):
         self.client.force_login(self.user)
-        response = self.client.post(reverse('admin:texts_review_prepare_text'), {'title': 'EXPIRED PRIVATE VALUE'})
+        response = self.client.post(reverse('admin:texts_review_prepare_text'), {'review_id': self.review().pk, 'title': 'EXPIRED PRIVATE VALUE'})
         session = self.client.session
         entries = session['review_text_prefills']
         for entry in entries.values():
             entry['at'] = 0
         session['review_text_prefills'] = entries
         session.save()
-        self.assertNotContains(self.client.get(response.json()['url']), 'EXPIRED PRIVATE VALUE')
+        self.assertContains(self.client.get(response.json()['url']), 'wygasły', status_code=400)
 
     def test_pages_render_with_collected_manifest(self):
         from tempfile import TemporaryDirectory

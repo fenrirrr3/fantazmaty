@@ -5,7 +5,7 @@ from django.core import signing
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import router, transaction
 from django.forms.models import BaseInlineFormSet
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponseBadRequest
 import secrets
 import time
 from django.shortcuts import get_object_or_404
@@ -202,7 +202,7 @@ class TextAdminForm(NormalizedFormMixin, forms.ModelForm):
 
     def clean(self):
         data = super().clean()
-        if not data.get("authors"):
+        if data.get('source_author_email') or not data.get("authors"):
             email = data.get("source_author_email")
             if not email or not data.get("source_author_first_name") or not data.get("source_author_last_name"):
                 self.add_error("authors", "Wybierz autora albo uzupełnij dane autora w recenzji przed użyciem +.")
@@ -231,6 +231,8 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
     def get_changeform_initial_data(self, request):
         initial = super().get_changeform_initial_data(request)
+        for key in ('source_author_first_name', 'source_author_last_name', 'source_author_email'):
+            initial.pop(key, None)
         source = request.GET.get("source_review", "")
         if source.isdecimal() and len(source) < 19:
             review = get_object_or_404(Review, pk=int(source))
@@ -319,7 +321,7 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         super().save_related(request, form, formsets, change)
         if not change:
             text = form.instance
-            if not text.authors.exists() and form.cleaned_data.get("source_author_email"):
+            if form.cleaned_data.get("source_author_email"):
                 email = form.cleaned_data["source_author_email"]
                 author = Author.objects.filter(email__iexact=email).first()
                 if author is None:
@@ -336,6 +338,27 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
                     stage_type=WorkflowStage.StageType.READY_FOR_EDITING,
                     iteration=1,
                 )
+
+        source_review = getattr(request, '_source_review', None)
+        if not change and source_review is not None:
+            source_review.copied_text = form.instance
+            source_review.save(update_fields=['copied_text'])
+
+    def changeform_view(self, request, object_id=None, form_url='', extra_context=None):
+        token = request.GET.get('prefill')
+        if object_id is None and token:
+            snapshot = request.session.get('review_text_prefills', {}).get(token, {})
+            if snapshot.get('user') != request.user.pk or not 0 <= time.time() - snapshot.get('at', 0) < 900:
+                return HttpResponseBadRequest('Dane formularza wygasły. Zamknij okno i ponownie użyj + w recenzji. Nie zapisano tekstu.')
+            with transaction.atomic():
+                review = Review.objects.select_for_update().filter(pk=snapshot.get('review_id')).first()
+                if review is None:
+                    return HttpResponseBadRequest('Recenzja nie istnieje. Zamknij okno i odśwież stronę.')
+                if review.copied_text_id:
+                    return HttpResponseBadRequest('Ta recenzja ma już powiązany tekst. Zamknij okno i odśwież recenzję; nie utworzono duplikatu.')
+                request._source_review = review
+                return super().changeform_view(request, object_id, form_url, extra_context)
+        return super().changeform_view(request, object_id, form_url, extra_context)
 
     def get_urls(self):
         return [path('<path:object_id>/status/', self.admin_site.admin_view(self.change_status_view), name='texts_text_manual_status')] + super().get_urls()
@@ -1003,6 +1026,12 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             raise PermissionDenied
         if request.method != 'POST':
             return JsonResponse({'error': 'POST required'}, status=405)
+        try:
+            review = Review.objects.get(pk=int(request.POST.get('review_id', '')))
+        except (ValueError, Review.DoesNotExist):
+            return JsonResponse({'error': 'Najpierw zapisz recenzję, a następnie użyj +.'}, status=400)
+        if review.copied_text_id:
+            return JsonResponse({'error': 'Recenzja ma już powiązany tekst. Odśwież formularz.'}, status=409)
         fields = ('title', 'length', 'content_warnings', 'anthology',
                   'source_author_first_name', 'source_author_last_name', 'source_author_email')
         data = {key: request.POST.get(key, '') for key in fields}
@@ -1014,7 +1043,7 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
                      if now - value.get('at', 0) < 900}
         snapshots = dict(list(snapshots.items())[-9:])
         token = secrets.token_urlsafe(24)
-        snapshots[token] = {'user': request.user.pk, 'at': now, 'data': data}
+        snapshots[token] = {'user': request.user.pk, 'at': now, 'data': data, 'review_id': review.pk}
         request.session['review_text_prefills'] = snapshots
         url = reverse(f'{self.admin_site.name}:texts_text_add')
         return JsonResponse({'url': url + '?_popup=1&prefill=' + token})
@@ -1024,6 +1053,7 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         field = context['adminform'].form.fields.get('copied_text')
         if field:
             widget = getattr(field.widget, 'widget', field.widget)
+            widget.attrs['data-source-review-id'] = str(context.get('original').pk) if context.get('original') else ''
             widget.attrs['data-prepare-text-url'] = reverse(f'{self.admin_site.name}:texts_review_prepare_text')
         return response
 
@@ -1130,12 +1160,20 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
                 else None
             )
 
-        if not change:
+        identity_changed = bool({'author', 'email', 'coauthors'} & set(form.changed_data))
+        if not change or (identity_changed and not obj.old_reviews and not obj.copied_text_id and obj.status in (Review.Status.NEW, Review.Status.IN_REVIEW)):
             from texts.blacklist import apply_blacklist
             apply_blacklist(obj, coauthors=form.cleaned_data.get("coauthors", ()))
+            if obj.is_hidden and obj.pk:
+                obj._clear_unfinished_blacklisted_assignments = True
         super().save_model(request, obj, form, change)
 
         # Linking a review must not overwrite the editorial text.
+
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        if getattr(form.instance, '_clear_unfinished_blacklisted_assignments', False):
+            form.instance.assignments.filter(opinion__in=('', Reviewers.Opinion.READING)).delete()
 
     @admin.display(
         description="autor",

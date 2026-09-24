@@ -23,7 +23,7 @@ def snapshot(text_id, using):
     stages = list(text.workflow_stages.using(using).filter(workflow_cycle=text.current_workflow_cycle, is_current=True).select_related('assignment__assigned_to__person_profile'))
     stage = current_stage(stages)
     return {'cycle': text.current_workflow_cycle, 'status': stage.get_stage_type_display() if stage else 'Brak otwartego etapu',
-            'stages': {s.pk: (f'{s.get_stage_type_display()} — wykonanie {s.execution_number}' + (f' — {s.assignment.assigned_to.get_full_name() or s.assignment.assigned_to.get_username()}' if s.assignment_id and s.assignment.assigned_to_id else ''), str(s.started_at or ''), str(s.ended_at or ''), s.is_completed) for s in stages}}
+            'stages': {s.pk: (f'{s.get_stage_type_display()} — wykonanie {s.execution_number}' + (f' — {s.assignment.assigned_to.get_full_name() or s.assignment.assigned_to.get_username()}' if s.assignment_id and s.assignment.assigned_to_id else ''), str(s.started_at or ''), str(s.ended_at or ''), s.is_completed, s.assignment.assigned_to_id if s.assignment_id else None) for s in stages}}
 
 
 def remember(sender, instance, using, **kwargs):
@@ -59,6 +59,21 @@ def changes(before, after):
     return lines
 
 
+def personal_work_changes(before, after, actor_id):
+    result = []
+    for pk, stage in after['stages'].items():
+        old = before['stages'].get(pk)
+        if stage[4] != actor_id:
+            continue
+        if stage[3] and old and not old[3]:
+            result.append('Zakończenie: ' + stage[0])
+        elif not stage[3] and (old is None or old[4] != actor_id):
+            result.append('Przejęcie: ' + stage[0])
+        elif not stage[3] and stage[1] and old and not old[1]:
+            result.append('Rozpoczęcie: ' + stage[0])
+    return result
+
+
 @contextmanager
 def event_scope(user):
     if _scope.get() is not None or not user or not user.is_authenticated:
@@ -80,7 +95,8 @@ def event_scope(user):
             authors = ', '.join(str(a) for a in text.authors.all()) if text else 'brak'
             person = getattr(user, 'person_profile', None)
             actor = str(person) if person else user.get_full_name() or user.get_username()
-            event = WorkflowEvent.objects.using(using).create(text=text, title=title, authors=authors,
+            own_work = personal_work_changes(before, after, user.pk)
+            event = WorkflowEvent.objects.using(using).create(personal_work=bool(own_work), personal_work_description="; ".join(own_work)[:255], text=text, title=title, authors=authors,
                 actor=user, actor_name=actor, previous_status=before['status'], next_status=after['status'],
                 details='\n'.join(changes(before, after)), channel=workflow_channel())
             transaction.on_commit(
@@ -97,6 +113,15 @@ def track_workflow(function):
         obj = args[0] if args else None
         using = getattr(getattr(obj, '_state', None), 'db', None) or 'default'
         with transaction.atomic(using=using), event_scope(user):
+            scope = _scope.get()
+            bound = signature(function).bind(*args, **kwargs).arguments
+            candidate = bound.get('text') or bound.get('stage')
+            text_id = getattr(candidate, 'text_id', None) or getattr(candidate, 'pk', None) or bound.get('text_id')
+            if text_id is None and bound.get('stage_id'):
+                from workflow.models import WorkflowStage
+                text_id = WorkflowStage.objects.using(using).filter(pk=bound['stage_id']).values_list('text_id', flat=True).first()
+            if text_id and scope is not None and (using, text_id) not in scope['before']:
+                scope['before'][(using, text_id)] = snapshot(text_id, using)
             return function(*args, **kwargs)
     return tracked
 

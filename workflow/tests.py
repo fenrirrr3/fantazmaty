@@ -71,6 +71,7 @@ class WorkflowTestDataMixin:
         cls.verifier_2 = create_member("weryfikator_2", "Weryfikator")
         cls.proofreader = create_member("korektor", "Korektor")
         cls.coordinator = create_member("koordynator", "Koordynator")
+        cls.proofreading_coordinator = create_member("koordynator_korekty", "Koordynator korekty")
 
         cls.superuser = User.objects.create_superuser(
             username="superadmin",
@@ -329,7 +330,7 @@ class WorkflowProgressionTests(WorkflowTestDataMixin, TestCase):
 
         for stage_type, user in (
             (StageType.THIRD_PROOFREADING, self.proofreader),
-            (StageType.FOURTH_PROOFREADING, self.proofreader),
+            (StageType.FOURTH_PROOFREADING, self.proofreading_coordinator),
             (StageType.STYLING, self.superuser),
         ):
             stage = claim_stage(self.text, stage_type, user)

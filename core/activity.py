@@ -1,7 +1,6 @@
 """Request audit. No request bodies, cookies, credentials or query strings."""
 import logging
 import time
-from django.db import transaction
 
 logger = logging.getLogger(__name__)
 
@@ -100,14 +99,16 @@ class UserActivityMiddleware:
             except (TypeError, ValueError):
                 record_activity = True
         if record_activity:
-            from core.models import UserActivity
+            from core.activity_spool import enqueue_activity
             try:
-                # A failed log must not roll back the user's completed operation.
-                with transaction.atomic():
-                    UserActivity.objects.create(user_id=user_id, actor=actor[:254], method=request.method[:10],
-                        action=activity[0], target=activity[1], path=request.path[:1000], status_code=response.status_code)
+                action = activity[0]
+                if request.method not in ('GET', 'HEAD'):
+                    # A submitted form and HTTP 200/302 do not prove a domain write.
+                    action = 'Próba / formularz: ' + action
+                enqueue_activity(user_id=user_id, actor=actor[:254], method=request.method[:10],
+                    action=action[:255], target=activity[1], path=request.path[:1000], status_code=response.status_code)
                 if visit:
                     request.session['_activity_visit'] = {'user': user_id, 'at': now}
             except Exception:
-                logger.exception('Nie udało się zapisać aktywności użytkownika.')
+                logger.exception('Nie udało się zapisać aktywności użytkownika w kolejce lokalnej.')
         return response

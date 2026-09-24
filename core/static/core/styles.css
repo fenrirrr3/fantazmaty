@@ -2491,3 +2491,16 @@ table th {
 /* Small gaps also survive wrapping long role lists. */
 #people-table .roles-list { display: flex; flex-wrap: wrap; gap: 3px 4px; }
 #people-table .roles-list .role-badge { margin-block: 2px; }
+
+/* Last activity: identical label and input rows, including wrapped labels. */
+.activity-filters { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto; align-items:start; }
+.activity-filters .filter-field { min-width:0; display:grid; grid-template-rows:2.8em 42px auto; align-content:start; }
+.activity-filters .filter-field > label { line-height:1.4; margin:0; }
+.activity-filters .filter-field > select,
+.activity-filters .filter-field > input { height:42px; min-height:42px; width:100%; box-sizing:border-box; }
+.activity-filters > button { align-self:start; margin-top:calc(2.8em + 8px); }
+@media (max-width:700px) {
+ .activity-filters { grid-template-columns:minmax(0,1fr); }
+ .activity-filters .filter-field { grid-template-rows:auto 42px auto; }
+ .activity-filters > button { margin-top:0; }
+}
