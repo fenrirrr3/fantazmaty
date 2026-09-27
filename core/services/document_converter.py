@@ -2,6 +2,8 @@
 import os
 import sys
 import json
+import logging
+import re
 import posixpath
 import shutil
 import signal
@@ -14,6 +16,8 @@ from zipfile import ZipFile, ZIP_DEFLATED
 from django.conf import settings
 from lxml import etree
 from core.services.odkurzacz import clean_docx, ALL_EDITORIAL_RULES
+
+logger = logging.getLogger(__name__)
 
 FORMATS = {'pdf': 'application/pdf', 'epub': 'application/epub+zip'}
 MAX_OUTPUT = 50 * 1024 * 1024
@@ -109,10 +113,23 @@ def run_converter(directory, timeout):
                 raise ConversionError('Konwersja przekroczyła limit 90 sekund. Podziel dokument lub wybierz mniej formatów.') from None
     except OSError:
         raise ConversionError('Nie można uruchomić konwertera. Administrator musi sprawdzić środowisko Pythona na serwerze.') from None
-    if code == 2:
-        raise ConversionError('Brakuje bibliotek konwertera lub ich zależności systemowych. Administrator powinien zainstalować requirements.txt i sprawdzić pliki czcionek konwertera.')
     if code != 0:
-        raise ConversionError('Nie udało się przekonwertować całego dokumentu. Zapisz go ponownie jako DOCX; sprawdź obrazy i nietypowe elementy.')
+        report = {}
+        try:
+            error_file = directory / 'error.json'
+            if error_file.stat().st_size <= 32768:
+                report = json.loads(error_file.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            pass
+        logger.error('Błąd konwertera: exit=%s diagnostics=%s', code, report)
+        stage = report.get('stage', '')
+        stage = stage if stage in ('DOCX', 'PDF', 'EPUB') else 'konwersja'
+        kind = report.get('error', '')
+        kind = kind if re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,80}', kind) else 'błąd procesu'
+        detail = f'{stage}: {kind}'
+        if code == 2:
+            raise ConversionError('Brakuje bibliotek konwertera. Zainstaluj requirements.txt. ' + detail + '. Szczegóły zapisano w logu błędów.')
+        raise ConversionError('Nie udało się przygotować plików (' + detail + '). Szczegóły zapisano w logu błędów. Nie oznacza to automatycznie uszkodzenia dokumentu; możesz pobrać oryginały po wyłączeniu konwersji.')
 
 
 def convert_document(upload, formats, *, use_cleaner=False, timeout=TIME_LIMIT):

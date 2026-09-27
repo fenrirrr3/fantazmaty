@@ -2,10 +2,14 @@
 import html as escape_html
 import json
 import sys
+import traceback
+from importlib.metadata import version, PackageNotFoundError
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import urlsplit
 from uuid import uuid4
+
+CURRENT_STAGE = 'DOCX'
 
 CSS = '''
 body { font-family: serif; line-height: 1.5; }
@@ -50,6 +54,8 @@ def sanitize_html(fragment, assets):
 
 
 def convert(source, directory, formats, title):
+    global CURRENT_STAGE
+    CURRENT_STAGE = 'DOCX'
     import mammoth
     from PIL import Image
     assets = {}
@@ -86,6 +92,7 @@ def convert(source, directory, formats, title):
         raise ValueError('Document could not be read completely')
     content, headings = sanitize_html(result.value, assets)
     if 'epub' in formats:
+        CURRENT_STAGE = 'EPUB'
         from ebooklib import epub
         book = epub.EpubBook()
         book.set_identifier(str(uuid4()))
@@ -101,6 +108,7 @@ def convert(source, directory, formats, title):
         book.spine = ['nav', chapter]
         epub.write_epub(str(directory / 'document.epub'), book, {'raise_exceptions': True})
     if 'pdf' in formats:
+        CURRENT_STAGE = 'PDF'
         if __package__:
             from .document_pdf import render_pdf
         else:
@@ -116,11 +124,21 @@ def main():
         return 3
     try:
         convert(directory / 'source.docx', directory, formats, config['title'])
-    except (ImportError, OSError):
-        # Fixed error code; never echo document content or private paths.
-        return 2
-    except Exception:
-        return 3
+    except Exception as error:
+        # Never record exception messages, locals, source lines or document text.
+        versions = {}
+        for package in ('fpdf2', 'fpdf', 'fonttools', 'mammoth', 'EbookLib', 'python-docx', 'Pillow'):
+            try: versions[package] = version(package)
+            except PackageNotFoundError: versions[package] = 'not installed'
+        frames = [{'file': Path(frame.filename).name, 'line': frame.lineno, 'function': frame.name}
+                  for frame in traceback.extract_tb(error.__traceback__)]
+        report = {'stage': CURRENT_STAGE, 'error': type(error).__name__,
+                  'frames': frames, 'python': sys.version.split()[0], 'versions': versions}
+        try:
+            (directory / 'error.json').write_text(json.dumps(report), encoding='utf-8')
+        except OSError:
+            pass
+        return 2 if isinstance(error, ImportError) else 3
     return 0
 
 

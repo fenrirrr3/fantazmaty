@@ -120,10 +120,16 @@ def parse_message(uid, raw):
         if part.is_multipart() or not part.get_filename():
             continue
         data = part.get_payload(decode=True)
-        if data:
-            files.append((str(part.get_filename()), data))
-    if not files or len(files) > 10:
-        raise MailboxError(f'Wiadomość {uid}: wymagane od 1 do 10 załączników.')
+        name = str(part.get_filename())
+        if data is None:
+            raise MailboxError(f'Wiadomość {uid}: nie można odczytać zawartości załącznika „{name}”. Sprawdź plik w poczcie lub poproś o ponowne przesłanie.')
+        if not data:
+            raise MailboxError(f'Wiadomość {uid}: załącznik „{name}” jest pusty (0 bajtów). Poproś nadawcę o ponowne przesłanie pliku. Zgłoszenie nie zostało zaimportowane.')
+        files.append((name, data))
+    if not files:
+        raise MailboxError(f'Wiadomość {uid}: nie znaleziono załączników z plikami. Sprawdź wiadomość w poczcie.')
+    if len(files) > 10:
+        raise MailboxError(f'Wiadomość {uid}: znaleziono {len(files)} załączników; limit wynosi 10.')
     # Only these seven fields enter the importer. Never persist the mail body.
     return {'uid': uid, 'digest': hashlib.sha256(raw).hexdigest(),
             'folder': story_title(str(message.get('Subject', ''))) or title,
