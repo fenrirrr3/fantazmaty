@@ -303,6 +303,7 @@ def _text_row(text, include_authors):
         ],
         current_status_started_at=current.started_at if current else None,
         current_status_ended_at=current.ended_at if current else None,
+        last_status_change=getattr(text, "last_status_change", None),
     )
     return result
 
@@ -358,8 +359,19 @@ def text_list_context(*, user, params, scope=None, stage_scope=None):
     if sort not in TEXT_SORTS:
         sort = "anthology"
 
+    ordering = TEXT_SORTS[sort]
+    if scope is None and stage_scope is None:
+        from core.models import WorkflowEvent
+        history = WorkflowEvent.objects.filter(text_id=OuterRef('pk')).exclude(
+            previous_status=F('next_status')).order_by('-created_at', '-pk')
+        queryset = queryset.annotate(last_status_change=Subquery(history.values('created_at')[:1]))
+        requested_sort = params.get('sort', '')
+        if requested_sort in ('last_status_change', '-last_status_change'):
+            sort = requested_sort
+            direction = F('last_status_change')
+            ordering = (direction.desc(nulls_last=True) if sort.startswith('-') else direction.asc(nulls_last=True), 'pk')
     queryset = _prepared_texts(
-        queryset.order_by(*TEXT_SORTS[sort]),
+        queryset.order_by(*ordering),
         include_authors,
     )
     return {

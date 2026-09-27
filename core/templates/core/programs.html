@@ -2,34 +2,16 @@
 {% load static %}
 {% block title %}Programy | Fantazmaty CMS{% endblock %}
 {% block extra_css %}
-<style>
-    .program-tool { margin: 1rem 0; padding: 1rem; }
-    .program-tool > summary { cursor: pointer; font-size: 1.2rem; font-weight: 700; padding: .4rem; }
-    .program-tool input[type=checkbox] { width: auto; }
-    .odkurzacz { max-width: 960px; }
-    .odkurzacz fieldset { margin: 1.5rem 0; padding: 1rem; border: 1px solid #8795a5; border-radius: 8px; }
-    .odkurzacz legend { padding: 0 .5rem; font-weight: 700; }
-    .odkurzacz-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin: 1rem 0; }
-    .odkurzacz-actions[hidden] { display: none; }
-    .odkurzacz-rules { display: grid; gap: .75rem; }
-    .odkurzacz-rules label { display: flex; align-items: flex-start; gap: .6rem; cursor: pointer; }
-    .odkurzacz-rules input { width: auto; flex: 0 0 auto; margin-top: .3rem; }
-    .odkurzacz .errorlist { color: #bc3434; }
-    .odkurzacz-upload { padding: 1.25rem; border: 2px solid #547da6; border-radius: 10px; margin: 1.25rem 0; }
-    .odkurzacz input[type=file] { display: block; width: 100%; max-width: 100%; padding: .75rem; border: 1px solid #8795a5; border-radius: 6px; font-size: 1rem; box-sizing: border-box; }
-    .odkurzacz input[type=file]::file-selector-button { background: #254f78; color: #fff; border: 0; border-radius: 6px; padding: .85rem 1.2rem; margin-right: 1rem; font: inherit; font-weight: 700; cursor: pointer; }
-    .odkurzacz input[type=file]::file-selector-button:hover { background: #193b5d; }
-    .odkurzacz input[type=file]:focus-visible { outline: 3px solid #547da6; outline-offset: 3px; }
-</style>
+<link rel="stylesheet" href="{% static 'core/programs.css' %}">
 {% endblock %}
 {% block content %}
 <header class="page-header">
-    <p>Programy</p>
     <h1 class="page-title">Programy</h1>
-    <p>Uporządkuj spacje, interpunkcję i zapis tekstu w dokumencie Word.</p>
+    <p class="page-description">Uporządkuj spacje, interpunkcję i zapis tekstu w dokumencie Word.</p>
 </header>
 <details class="details-card odkurzacz program-tool" {% if clean_open %}open{% endif %}>
     <summary>Odkurzacz</summary>
+    <div class="card-body">
     <p>Wybierz dokument i poprawki, które chcesz zastosować. Odkurzacz wykonuje korektę automatycznie i udostępnia plik do pobrania.</p>
     <p>Przetwarzana jest główna treść dokumentu, bez tabel, nagłówków i treści przypisów. Poprawki są zapisywane bez śledzenia zmian. Odkurzacz nie dodaje kolorów ani oznaczeń.</p>
     <p><strong>PLIK MUSI BYĆ POZBAWIONY ŚLEDZENIA ZMIAN (WYŁĄCZ TRYB) ORAZ KOMENTARZY!</strong></p>
@@ -60,10 +42,12 @@
         </fieldset>
         <p>Reguły działają automatycznie – po pobraniu przejrzyj wynik, szczególnie zamiany słownikowe i wielkość liter.</p>
     </form>
-</details>
+</div></details>
 <details class="details-card odkurzacz program-tool" {% if conversion_open %}open{% endif %}>
     <summary>Konwerter DOCX → PDF i EPUB</summary>
+    <div class="card-body">
     <p>Wybierz jeden lub kilka formatów. Jeden format pobierzesz jako osobny plik, kilka jako archiwum ZIP.</p>
+    <p>Przed korektą i konwersją ustawiamy Times New Roman 12 pkt, interlinię 1,5, wcięcie pierwszego wiersza 1,25 cm i zerowe odstępy przed oraz po akapicie. Akapity wyśrodkowane nie mają wcięcia. Zachowujemy wyrównanie, kursywę i pogrubienia.</p>
     <p>Konwersja może zmienić podział stron i wygląd dokumentu. PDF korzysta z rozmiaru strony i marginesów pierwszej sekcji DOCX oraz czcionki podobnej do Times New Roman. Złożony układ, nagłówki i stopki Worda nie są odwzorowywane dokładnie; po pobraniu sprawdź wynik.</p>
     <form method="post" enctype="multipart/form-data">
         {% csrf_token %}<input type="hidden" name="program_action" value="convert">
@@ -81,10 +65,10 @@
         <p><label for="{{ conversion_form.use_cleaner.id_for_label }}">{{ conversion_form.use_cleaner }} {{ conversion_form.use_cleaner.label }}</label></p>
         {{ conversion_form.use_cleaner.errors }}
         <p>Po zaznaczeniu tej opcji wszystkie domyślne reguły Odkurzacza zostaną zastosowane przed utworzeniem wybranych formatów. Opcje wybrane w osobnej sekcji Odkurzacza nie wpływają na konwerter. Poprawki dotyczą głównej treści, bez tabel, nagłówków i przypisów; dokument nie powinien zawierać śledzonych zmian ani komentarzy.</p>
-        <p>Bez zaznaczenia konwertowany jest bezpośrednio przesłany DOCX.</p>
+        <p>Bez zaznaczenia pomijamy Odkurzacz; formatowanie dokumentu nadal zostaje ujednolicone.</p>
         <button type="submit" class="primary-button">Konwertuj i pobierz</button>
         <p>Poczekaj na pobranie pliku. Konwersja może potrwać do 90 sekund; nie wysyłaj formularza ponownie w tym czasie.</p>
     </form>
-</details>
+</div></details>
 {% endblock %}
 {% block scripts %}<script src="{% static 'core/odkurzacz.js' %}"></script>{% endblock %}

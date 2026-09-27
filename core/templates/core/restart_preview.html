@@ -1,8 +1,8 @@
 {% extends "core/base.html" %}
 {% block title %}Podgląd powtórzenia etapów{% endblock %}
 {% block content %}<header class="page-header"><h1>Powtórzenie etapów: {{ text.title }}</h1><p>Historia i wcześniejsi wykonawcy zostają zachowani. Nowe wykonania czekają na nowe przypisania.</p></header>
-<section class="card"><p>Weryfikacje niewybrane w formularzu nie będą powtarzane.</p><h2>Kolejność pracy</h2><ol>{% for label in queue_labels %}<li>{{ label }}</li>{% endfor %}</ol><p>Kolejny etap będzie dostępny dopiero po zakończeniu poprzedniego. Powrót do redaktora po wybranej weryfikacji jest częścią tego samego wykonania redakcji. Pozostałe etapy nie zostaną powtórzone.</p>
+<section class="card"><div class="card-body"><p>Weryfikacje niewybrane w formularzu nie będą powtarzane.</p><h2>Kolejność pracy</h2><ol>{% for label in queue_labels %}<li>{{ label }}</li>{% endfor %}</ol><p>Kolejny etap będzie dostępny dopiero po zakończeniu poprzedniego. Powrót do redaktora po wybranej weryfikacji jest częścią tego samego wykonania redakcji. Pozostałe etapy nie zostaną powtórzone.</p>
 <form method="post" class="general-notes-form">{% csrf_token %}{% edit_version %}
 {% for value in selected %}<input type="hidden" name="stages" value="{{ value }}">{% endfor %}
 <input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="confirm_restart" value="yes">
-<div class="general-notes-actions"><a class="secondary-button" href="{% url 'core:assigned_text_detail' text.pk %}">Anuluj</a><button class="primary-button" type="submit">Utwórz powtórzenie etapów</button></div></form></section>{% endblock %}
+<div class="general-notes-actions"><a class="secondary-button" href="{% url 'core:assigned_text_detail' text.pk %}">Anuluj</a><button class="primary-button" type="submit">Utwórz powtórzenie etapów</button></div></form></div></section>{% endblock %}

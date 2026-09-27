@@ -678,8 +678,8 @@
             </div>
         </details>
     {% endif %}
-    {% if handoffs %}<section class="card"><h2>Historia przekazania pracy</h2>{% for item in handoffs %}<p>{{ item.stage.get_stage_type_display }}: {{ item.previous_assignment.assigned_to.get_full_name }} → {{ item.new_assignment.assigned_to.get_full_name }} · {{ item.created_at|date:"d.m.Y H:i" }}<br>{{ item.reason }}</p>{% endfor %}</section>{% endif %}
-    {% if repeat_queue %}<section class="card"><h2>Kolejka powtórzeń</h2><ol>{% for item in repeat_queue %}<li>{{ item.get_stage_type_display }}: {% if item.is_released %}bieżący etap{% else %}oczekuje na poprzedni etap{% endif %}</li>{% endfor %}</ol></section>{% endif %}
+    {% if handoffs %}<section class="card"><div class="card-body"><h2>Historia przekazania pracy</h2>{% for item in handoffs %}<p>{{ item.stage.get_stage_type_display }}: {{ item.previous_assignment.assigned_to.get_full_name }} → {{ item.new_assignment.assigned_to.get_full_name }} · {{ item.created_at|date:"d.m.Y H:i" }}<br>{{ item.reason }}</p>{% endfor %}</div></section>{% endif %}
+    {% if repeat_queue %}<section class="card"><div class="card-body"><h2>Kolejka powtórzeń</h2><ol>{% for item in repeat_queue %}<li>{{ item.get_stage_type_display }}: {% if item.is_released %}bieżący etap{% else %}oczekuje na poprzedni etap{% endif %}</li>{% endfor %}</ol></div></section>{% endif %}
     {% if can_manage_authors or can_manage_workflow or can_restart_workflow %}
         <details class="text-management-card">
             <summary class="text-management-toggle">

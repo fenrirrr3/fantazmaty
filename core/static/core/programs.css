@@ -1,0 +1,18 @@
+
+    .program-tool { margin: 20px 0; padding: 0; }
+    .program-tool > summary { cursor: pointer; font-size: 1rem; font-weight: 600; padding: var(--card-padding); }
+    .program-tool input[type=checkbox] { width: auto; }
+    .odkurzacz { max-width: 960px; }
+    .odkurzacz fieldset { margin: 1.5rem 0; padding: 1rem; border: 1px solid var(--border-strong); border-radius: var(--radius); }
+    .odkurzacz legend { padding: 0 .5rem; font-weight: 700; }
+    .odkurzacz-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin: 1rem 0; }
+    .odkurzacz-actions[hidden] { display: none; }
+    .odkurzacz-rules { display: grid; gap: .75rem; }
+    .odkurzacz-rules label { display: flex; align-items: flex-start; gap: .6rem; cursor: pointer; }
+    .odkurzacz-rules input { width: auto; flex: 0 0 auto; margin-top: .3rem; }
+    .odkurzacz .errorlist { color: var(--danger); }
+    .odkurzacz-upload { padding: 1.25rem; border: 2px solid var(--primary); border-radius: var(--radius); margin: 1.25rem 0; }
+    .odkurzacz input[type=file] { display: block; width: 100%; max-width: 100%; padding: .75rem; border: 1px solid var(--border-strong); border-radius: var(--radius-small); font-size: 1rem; box-sizing: border-box; }
+    .odkurzacz input[type=file]::file-selector-button { background: var(--primary); color: #fff; border: 0; border-radius: var(--radius-small); padding: .85rem 1.2rem; margin-right: 1rem; font: inherit; font-weight: 700; cursor: pointer; }
+    .odkurzacz input[type=file]::file-selector-button:hover { background: var(--primary-dark); }
+    .odkurzacz input[type=file]:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }

@@ -18,7 +18,8 @@ from core.forms import ReviewBulkImportForm
 from core.odkurzacz_forms import OdkurzaczForm
 from core.services.mailbox import MailboxError, encode_folder, story_title, _positive
 from core.services.odkurzacz import clean_docx, ALL_EDITORIAL_RULES
-from core.services.document_converter import convert_document
+from core.services.document_converter import convert_document, validate_resources
+from core.services.document_formatting import normalize_docx
 from texts.models import Anthology
 
 MAX_MESSAGES = 10
@@ -191,6 +192,10 @@ def package_messages(messages, clean=True, convert=True):
                         form = OdkurzaczForm({'rules': []}, {'document': SimpleUploadedFile(name, data)})
                         if not form.is_valid():
                             raise MailboxError(f'Nieprawidłowy DOCX: {name}. ' + ' '.join(str(e) for errors in form.errors.values() for e in errors))
+                    if convert:
+                        validate_resources(BytesIO(data))
+                        with normalize_docx(BytesIO(data)) as formatted:
+                            data = formatted.read()
                     if clean:
                         with clean_docx(BytesIO(data), ALL_EDITORIAL_RULES) as output:
                             data = output.read()

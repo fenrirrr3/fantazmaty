@@ -12,8 +12,12 @@ from uuid import uuid4
 CURRENT_STAGE = 'DOCX'
 
 CSS = '''
-body { font-family: serif; line-height: 1.5; }
-p { margin: 0 0 .6em; orphans: 3; widows: 3; }
+body { font-family: "Times New Roman", serif; font-size: 12pt; line-height: 1.5; }
+p, h1, h2, h3, h4, h5, h6 { margin: 0; font-size: 12pt; line-height: 1.5; text-indent: 1.25cm; orphans: 3; widows: 3; }
+.align-center { text-align: center; text-indent: 0; }
+.align-right { text-align: right; }
+.align-justify { text-align: justify; }
+.align-left { text-align: left; }
 h1, h2, h3, h4, h5, h6 { break-after: avoid; }
 img { max-width: 100%; height: auto; }
 table { border-collapse: collapse; width: 100%; }
@@ -87,10 +91,39 @@ def convert(source, directory, formats, title):
     with source.open('rb') as document:
         result = mammoth.convert_to_html(document,
             convert_image=mammoth.images.img_element(convert_image),
-            external_file_access=False, include_embedded_style_map=False)
+            external_file_access=False, include_embedded_style_map=False, style_map='u => u')
     if any(message.type == 'error' for message in result.messages):
         raise ValueError('Document could not be read completely')
     content, headings = sanitize_html(result.value, assets)
+    # Mammoth deliberately omits paragraph geometry. Restore alignment from DOCX
+    # after sanitization; only our own allowlisted classes reach the EPUB.
+    from collections import defaultdict, deque
+    from docx import Document
+    from docx.oxml.ns import qn
+    from docx.text.paragraph import Paragraph
+    from lxml import html
+    document = Document(source)
+    paragraphs = defaultdict(deque)
+    normalize = lambda value: ' '.join(value.split())
+    for element in document.element.body.iter(qn('w:p')):
+        paragraph = Paragraph(element, document)
+        if paragraph.text.strip():
+            paragraphs[normalize(paragraph.text)].append(paragraph)
+    root = html.fragment_fromstring(content or '<p></p>', create_parent='div')
+    for node in root.iterdescendants():
+        if node.tag not in ('p','h1','h2','h3','h4','h5','h6'):
+            continue
+        matches = paragraphs[normalize(node.text_content())]
+        if matches:
+            paragraph = matches.popleft()
+            alignment = paragraph.alignment
+            style = paragraph.style
+            while alignment is None and style is not None:
+                alignment = style.paragraph_format.alignment
+                style = style.base_style
+            node.set('class', {0:'align-left',1:'align-center',2:'align-right',3:'align-justify'}.get(alignment, 'align-left'))
+    content = ''.join(html.tostring(child, encoding='unicode') for child in root)
+
     if 'epub' in formats:
         CURRENT_STAGE = 'EPUB'
         from ebooklib import epub

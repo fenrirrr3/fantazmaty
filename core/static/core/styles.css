@@ -757,8 +757,7 @@ label,
     font-weight: 650;
 }
 
-input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"])
-    :not([type="submit"]):not([type="button"]) {
+input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="submit"]):not([type="button"]) {
     font: inherit;
 }
 
@@ -2493,14 +2492,16 @@ table th {
 #people-table .roles-list .role-badge { margin-block: 2px; }
 
 /* Last activity: identical label and input rows, including wrapped labels. */
-.activity-filters { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto; align-items:start; }
-.activity-filters .filter-field { min-width:0; display:grid; grid-template-rows:2.8em 42px auto; align-content:start; }
-.activity-filters .filter-field > label { line-height:1.4; margin:0; }
-.activity-filters .filter-field > select,
-.activity-filters .filter-field > input { height:42px; min-height:42px; width:100%; box-sizing:border-box; }
-.activity-filters > button { align-self:start; margin-top:calc(2.8em + 8px); }
-@media (max-width:700px) {
- .activity-filters { grid-template-columns:minmax(0,1fr); }
- .activity-filters .filter-field { grid-template-rows:auto 42px auto; }
- .activity-filters > button { margin-top:0; }
-}
+
+
+.filters-form > label { display: grid; gap: 7px; flex: 1 1 180px; min-width: 0; }
+.intake-form > p, .correction-form-card form > p { display: grid; gap: 7px; margin: 0 0 18px; }
+.intake-form input[type="checkbox"] { justify-self: start; }
+.intake-form .short-textarea { min-height: 72px; height: 72px; }
+.correction-form-card { margin-top: 24px; padding-bottom: 28px; }
+.correction-form-card button { margin: 0 8px 8px 0; }
+.long-cell { min-width: 180px; max-width: 460px; white-space: normal; overflow-wrap: anywhere; }
+.long-cell summary { cursor: pointer; }
+.long-cell[open] summary { margin-bottom: 12px; }
+.vacation-form .details-grid { align-items: start; }
+.vacation-form .details-grid .form-field { align-content: start; }

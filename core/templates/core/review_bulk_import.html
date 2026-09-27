@@ -4,7 +4,7 @@
 {% block content %}
 <header class="page-header"><h1 class="page-title">Import zgłoszeń</h1><p class="page-description">Skrzynka teksty. Wybierz wiadomości, sprawdź dane i pobierz paczkę z tekstami. Wiadomości pozostają na skrzynce, bez zmiany stanu przeczytania.</p></header>
 <p><a class="secondary-button" href="{% url 'core:review_create' %}">Dodaj zgłoszenie lub importuj wiele zgłoszeń</a> <a class="secondary-button" href="{% url 'admin:core_mailboxconnection_changelist' %}">Ustawienia skrzynki</a></p>
-<section class="card">
+<section class="card mailbox-import-card"><div class="card-body">
 {% if error %}<p class="form-error" role="alert">{{ error }}</p>{% endif %}
 {% if mailbox %}
 <form method="post">{% csrf_token %}
@@ -16,7 +16,7 @@
 <button class="primary-button" name="action" value="headers">Pobierz nagłówki</button>
 <button class="primary-button" name="action" value="download" {% if not result.rows %}disabled{% endif %}>Pobierz teksty</button>
 </div>
-<p>Jednorazowo do 10 wiadomości, 15 MB na wiadomość i 50 MB łącznie. Przetwarzanie plików ma limit 90 sekund. Odkurzacz i konwersja obsługują DOCX. Po wyłączeniu obu opcji pobierzesz oryginalne załączniki. Ponowne pobranie nie dodaje drugi raz zgłoszeń.</p>
+<p>Jednorazowo do 10 wiadomości, 15 MB na wiadomość i 50 MB łącznie. Przetwarzanie plików ma limit 90 sekund. Odkurzacz i konwersja obsługują DOCX. Przed konwersją ujednolicamy formatowanie DOCX: Times New Roman 12, interlinia 1,5, wcięcie 1,25 cm (bez wcięcia przy wyśrodkowaniu), bez odstępów między akapitami. Po wyłączeniu obu opcji pobierzesz oryginalne załączniki. Ponowne pobranie nie dodaje drugi raz zgłoszeń.</p>
 {% if result %}
 <p>Wiadomości spełniające filtr: {{ result.total }}. Do 50 na stronie.</p>
 <div class="table-container"><table><thead><tr><th>Wybierz</th><th>Data wiadomości</th><th>Nadawca (odpowiedź do)</th><th>Temat</th><th>Pobrano</th></tr></thead><tbody>
@@ -36,7 +36,7 @@
 {% for row in preview_messages %}<tr><td>{{ row.author }}</td><td>{{ row.title }}</td><td>{{ row.genre }}</td><td>{{ row.length }}</td><td>{{ row.email }}</td><td>{{ row.phone }}</td><td>{{ row.anthology }}</td><td>{% for name, data in row.files %}{{ name }}<br>{% endfor %}</td><td>{% if row.downloaded %}Tylko ponowne pobranie{% else %}Nowe zgłoszenie{% endif %}</td></tr>{% endfor %}
 </tbody></table></div>
 {% for error in hard_errors %}<p class="form-error">{{ error }}</p>{% endfor %}
-{% for form in forms %}{% for warning in form.import_warnings %}<p class="form-error">{{ warning }}</p>{% endfor %}{% endfor %}
+{% for form in forms %}{% for warning in form.import_warnings %}<p class="form-warning">{{ warning }}</p>{% endfor %}{% endfor %}
 {% if not hard_errors %}
 <form method="post">{% csrf_token %}
 <input type="hidden" name="selection" value="{{ selection }}"><input type="hidden" name="preview" value="{{ preview_token }}">
@@ -50,5 +50,5 @@
 </form>
 {% endif %}
 {% endif %}
-</section>
+</div></section>
 {% endblock %}

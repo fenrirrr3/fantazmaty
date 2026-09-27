@@ -32,9 +32,10 @@ def render_pdf(source, target, content, assets, title):
         def handle_starttag(self, tag, attrs):
             super().handle_starttag(tag, attrs)
             values = dict(attrs)
-            if tag == 'p' and self._paragraph is not None:
+            if tag in ('p','h1','h2','h3','h4','h5','h6') and self._paragraph is not None:
                 self._paragraph.first_line_indent = float(values.get('data-indent', 0))
                 self._paragraph.top_margin = float(values.get('data-before', 0))
+                self._paragraph.line_height = float(values.get('line-height', 1.5))
 
     pdf = FPDF(format=(width, height))
     pdf.HTML2FPDF_CLASS = WordHTML
@@ -63,7 +64,7 @@ def render_pdf(source, target, content, assets, title):
     for node in root:
         text = normalize(node.text_content())
         paragraph = paragraphs[text].popleft() if paragraphs[text] else None
-        size, line_height, before, after, indent = 12, 1.15, 0, 2.8, 0
+        size, line_height, before, after, indent = 12, 1.5, 0, 0, 12.5
         if paragraph is not None:
             style = paragraph.style
             font_size = next((r.font.size for r in paragraph.runs if r.text.strip() and r.font.size is not None), None)
@@ -84,11 +85,11 @@ def render_pdf(source, target, content, assets, title):
             value = inherited(paragraph, 'first_line_indent')
             if value is not None: indent = max(0, min(value.mm, 40))
             align = inherited(paragraph, 'alignment')
-            if node.tag == 'p':
+            if node.tag in ('p','h1','h2','h3','h4','h5','h6'):
                 node.set('align', {0:'left',1:'center',2:'right',3:'justify'}.get(align, 'left'))
             if inherited(paragraph, 'page_break_before') and pdf.y > pdf.t_margin + 1:
                 pdf.add_page()
-        if node.tag == 'p':
+        if node.tag in ('p','h1','h2','h3','h4','h5','h6'):
             node.set('line-height', str(line_height))
             node.set('data-indent', str(indent))
             node.set('data-before', str(before))

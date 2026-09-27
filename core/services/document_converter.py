@@ -16,6 +16,7 @@ from zipfile import ZipFile, ZIP_DEFLATED
 from django.conf import settings
 from lxml import etree
 from core.services.odkurzacz import clean_docx, ALL_EDITORIAL_RULES
+from core.services.document_formatting import normalize_docx
 
 logger = logging.getLogger(__name__)
 
@@ -167,13 +168,13 @@ def convert_document(upload, formats, *, use_cleaner=False, timeout=TIME_LIMIT):
         with conversion_slot() as root, TemporaryDirectory(prefix='document-', dir=root) as temporary:
             directory = Path(temporary)
             source = directory / 'source.docx'
-            if use_cleaner:
-                with clean_docx(upload, ALL_EDITORIAL_RULES) as cleaned, source.open('wb') as destination:
-                    shutil.copyfileobj(cleaned, destination)
-            else:
-                upload.seek(0)
-                with source.open('wb') as destination:
-                    shutil.copyfileobj(upload, destination)
+            with normalize_docx(upload) as formatted:
+                if use_cleaner:
+                    with clean_docx(formatted, ALL_EDITORIAL_RULES) as cleaned, source.open('wb') as destination:
+                        shutil.copyfileobj(cleaned, destination)
+                else:
+                    with source.open('wb') as destination:
+                        shutil.copyfileobj(formatted, destination)
             title = Path(getattr(upload, 'name', 'Dokument.docx')).stem[:200] or 'Dokument'
             (directory / 'job.json').write_text(json.dumps({'formats': selected, 'title': title}), encoding='utf-8')
             run_converter(directory, min(TIME_LIMIT, timeout))

@@ -5,8 +5,8 @@
 <header class="page-header"><h1 class="page-title">Uwagi do antologii</h1></header>
 <section class="filters-card"><form method="get" class="filters-form" data-filters="corrections">
 <div class="filter-field"><label for="correction-query">Szukaj</label><input id="correction-query" type="search" name="q" value="{{ query }}"></div>
-<label>Antologia <select name="anthology"><option value="">Wszystkie</option>{% for a in anthologies %}<option value="{{ a.pk }}" {% if a.pk|stringformat:'s' == selected_anthology %}selected{% endif %}>{{ a.title }}</option>{% endfor %}</select></label>
-<label>Status <select name="status" multiple><option value="">Wszystkie</option>{% for value,label in filter_statuses %}<option value="{{ value }}" {% if value in selected_statuses %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label><button type="submit" class="primary-button">Filtruj</button>
+<div class="filter-field"><label for="correction-anthology">Antologia</label><select id="correction-anthology" name="anthology"><option value="">Wszystkie</option>{% for a in anthologies %}<option value="{{ a.pk }}" {% if a.pk|stringformat:'s' == selected_anthology %}selected{% endif %}>{{ a.title }}</option>{% endfor %}</select></div>
+<div class="filter-field"><label for="correction-status">Status</label><select id="correction-status" name="status" multiple><option value="">Wszystkie</option>{% for value,label in filter_statuses %}<option value="{{ value }}" {% if value in selected_statuses %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div><button type="submit" class="primary-button">Filtruj</button>
 </form></section>
 {% if user.is_superuser %}<form id="correction-bulk" method="post" action="{% url 'core:correction_status' %}">{% csrf_token %}{% edit_version %}
 <label>Status zaznaczonych <select name="status">{% for value,label in statuses %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select></label><button class="secondary-button" type="submit">Zmień status zaznaczonych</button></form>{% endif %}

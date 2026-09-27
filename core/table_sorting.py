@@ -188,6 +188,8 @@ def prepare_table_sort(request, items):
         return items, columns
     model = queryset.model._meta.label_lower
     columns = MODELS.get(model, {}).copy()
+    if model == 'texts.text' and 'last_status_change' in queryset.query.annotations:
+        columns['Ostatnia zmiana statusu'] = ('last_status_change', ('last_status_change',))
     if model == 'texts.review':
         if request.GET.get('sort', '').lstrip('-') == 'opinions' and 'completed_count' not in queryset.query.annotations:
             queryset = queryset.annotate(completed_count=Count('assignments', filter=~Q(assignments__opinion__in=('', 'reading')), distinct=True))
