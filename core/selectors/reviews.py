@@ -381,53 +381,7 @@ def review_list_context(*, user, params):
         selected_statuses = []
 
 
-    for term in query.split():
-        condition = (
-            Q(title__plcontains=term)
-            | Q(anthology__title__plcontains=term)
-        )
-
-        if include_authors:
-            condition |= (
-                Q(author_first_name__plcontains=term)
-                | Q(author_last_name__plcontains=term)
-                | Q(email__plcontains=term)
-                | Q(author__first_name__plcontains=term)
-                | Q(author__last_name__plcontains=term)
-                | Q(author__pseudonym__plcontains=term)
-                | Q(coauthors__first_name__plcontains=term)
-                | Q(coauthors__last_name__plcontains=term)
-                | Q(coauthors__pseudonym__plcontains=term)
-                | Q(author__email__plcontains=term)
-            )
-
-        queryset = queryset.filter(condition)
-
-    # Liczymy rekordy przydziałów, również po usunięciu konta.
-    # Usunięcie użytkownika nie zwalnia automatycznie zajętej pozycji.
-    queryset = queryset.annotate(
-        assigned_count=Count("assignments", distinct=True),
-        completed_count=Count(
-            "assignments",
-            filter=~Q(assignments__opinion__in=READING_OPINIONS),
-            distinct=True,
-        ),
-    )
-
-    if completed != "":
-        queryset = queryset.filter(completed_count=int(completed))
-
-    if assignment_state == "none":
-        queryset = queryset.filter(assigned_count=0)
-    elif assignment_state == "one":
-        queryset = queryset.filter(assigned_count=1)
-    elif assignment_state == "full":
-        queryset = queryset.filter(assigned_count__gte=MAX_REVIEWERS)
-    elif assignment_state == "all_finished":
-        queryset = queryset.filter(
-            assigned_count__gt=0,
-            completed_count=F("assigned_count"),
-        )
+    queryset = _filter_review_work(queryset, query, include_authors, completed, assignment_state)
 
     queryset, facets = facet_queryset(queryset, {
         'status': ('status', selected_statuses),
@@ -489,3 +443,55 @@ def review_list_context(*, user, params):
             and sort == "newest"
         ),
     }
+
+
+def _filter_review_work(queryset, query, include_authors, completed, assignment_state):
+    for term in query.split():
+        condition = (
+            Q(title__plcontains=term)
+            | Q(anthology__title__plcontains=term)
+        )
+
+        if include_authors:
+            condition |= (
+                Q(author_first_name__plcontains=term)
+                | Q(author_last_name__plcontains=term)
+                | Q(email__plcontains=term)
+                | Q(author__first_name__plcontains=term)
+                | Q(author__last_name__plcontains=term)
+                | Q(author__pseudonym__plcontains=term)
+                | Q(coauthors__first_name__plcontains=term)
+                | Q(coauthors__last_name__plcontains=term)
+                | Q(coauthors__pseudonym__plcontains=term)
+                | Q(author__email__plcontains=term)
+            )
+
+        queryset = queryset.filter(condition)
+
+    # Liczymy rekordy przydziałów, również po usunięciu konta.
+    # Usunięcie użytkownika nie zwalnia automatycznie zajętej pozycji.
+    queryset = queryset.annotate(
+        assigned_count=Count("assignments", distinct=True),
+        completed_count=Count(
+            "assignments",
+            filter=~Q(assignments__opinion__in=READING_OPINIONS),
+            distinct=True,
+        ),
+    )
+
+    if completed != "":
+        queryset = queryset.filter(completed_count=int(completed))
+
+    if assignment_state == "none":
+        queryset = queryset.filter(assigned_count=0)
+    elif assignment_state == "one":
+        queryset = queryset.filter(assigned_count=1)
+    elif assignment_state == "full":
+        queryset = queryset.filter(assigned_count__gte=MAX_REVIEWERS)
+    elif assignment_state == "all_finished":
+        queryset = queryset.filter(
+            assigned_count__gt=0,
+            completed_count=F("assigned_count"),
+        )
+
+    return queryset

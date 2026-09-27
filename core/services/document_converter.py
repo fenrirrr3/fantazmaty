@@ -177,12 +177,12 @@ def convert_document(upload, formats, *, use_cleaner=False, timeout=TIME_LIMIT, 
     try:
         with conversion_slot() as root, TemporaryDirectory(prefix='document-', dir=root) as temporary:
             directory = Path(temporary)
-            source = directory / 'source.docx'
-            upload.seek(0)
-            with source.open('wb') as destination:
-                shutil.copyfileobj(upload, destination)
-            title = Path(getattr(upload, 'name', 'Dokument.docx')).stem[:200] or 'Dokument'
-            (directory / 'job.json').write_text(json.dumps({'formats': selected, 'title': title, 'prepare': True, 'clean': use_cleaner, 'cleaner_rules': cleaner_rules, 'rebuild': rebuild, 'allow_rebuild_omissions': allow_rebuild_omissions, 'normalize': normalize, 'include_docx': include_docx}), encoding='utf-8')
+            source = _write_job(directory, upload, {
+                'formats': selected, 'prepare': True, 'clean': use_cleaner,
+                'cleaner_rules': cleaner_rules, 'rebuild': rebuild,
+                'allow_rebuild_omissions': allow_rebuild_omissions,
+                'normalize': normalize, 'include_docx': include_docx,
+            })
             run_converter(directory, deadline - time.monotonic())
             outputs = [directory / ('document.' + kind) for kind in selected]
             if include_docx:
@@ -208,3 +208,23 @@ def convert_document(upload, formats, *, use_cleaner=False, timeout=TIME_LIMIT, 
     except BaseException:
         result.close()
         raise
+
+
+def _write_job(directory, upload, config):
+    source = directory / 'source.docx'
+    upload.seek(0)
+    with source.open('wb') as destination:
+        shutil.copyfileobj(upload, destination)
+    config['title'] = Path(getattr(upload, 'name', 'Dokument.docx')).stem[:200] or 'Dokument'
+    (directory / 'job.json').write_text(json.dumps(config), encoding='utf-8')
+    return source
+
+
+def inspect_document(upload, *, timeout=TIME_LIMIT):
+    """Bounded rebuild preflight; no converted document is constructed."""
+    deadline = time.monotonic() + min(TIME_LIMIT, timeout)
+    validate_resources(upload)
+    with conversion_slot() as root, TemporaryDirectory(prefix='document-', dir=root) as temporary:
+        directory = Path(temporary)
+        _write_job(directory, upload, {'formats': [], 'inspect': True})
+        run_converter(directory, deadline - time.monotonic())

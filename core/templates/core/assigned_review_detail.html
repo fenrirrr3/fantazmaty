@@ -39,6 +39,20 @@
             </a>
         </div>
     </header>
+    {% if can_mark_for_decision or can_restore_from_decision %}
+    <section class="review-decision-actions" aria-label="Kierowanie do decyzji">
+        <form method="post" action="{% url 'core:update_review_status' review.pk %}">
+            {% csrf_token %}{% edit_version %}
+            {% if can_mark_for_decision %}
+            <input type="hidden" name="status" value="to_decide">
+            <button class="primary-button" type="submit">Do decyzji</button>
+            {% else %}
+            <input type="hidden" name="status" value="restore">
+            <button class="secondary-button" type="submit">Cofnij „Do decyzji”</button>
+            {% endif %}
+        </form>
+    </section>
+    {% endif %}
 
     {% if review.old_reviews %}
         <div class="message info" role="status">
@@ -375,7 +389,6 @@
     </div>
 
     {% if review.status == 'to_decide' %}<p class="form-warning" role="status">Tekst jest na etapie „Do decyzji”. Recenzję powinna przejąć tylko wyznaczona osoba. Możliwość przejęcia pozostaje otwarta.</p>{% endif %}
-    {% if can_mark_for_decision %}<form method="post" action="{% url 'core:update_review_status' review.pk %}">{% csrf_token %}{% edit_version %}<input type="hidden" name="status" value="to_decide"><button class="secondary-button" type="submit">Do decyzji</button></form>{% endif %}
     {% if can_change_review_status %}
         <section class="review-decision-card" aria-labelledby="review-decision-heading">
             <div class="review-decision-header">

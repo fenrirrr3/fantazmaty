@@ -30,23 +30,14 @@ from workflow.services import (
 )
 
 from .permissions import has_role, is_coordinator
-from .normalization import NormalizedFormMixin, TEXT_FIELDS, REVIEW_FIELDS, upper
+from .normalization import NormalizedFormMixin, TEXT_FIELDS
 
 
 User = get_user_model()
 
-MAX_IMPORT_RECORDS = 500
-MAX_IMPORT_CHARACTERS = 1_000_000
-MAX_IMPORT_ERRORS = 20
-
-REVIEW_IMPORT_LINE_PATTERN = re.compile(
-    r"^\s*\[([^\]]*)\]\s*;\s*"
-    r"\[([^\]]*)\]\s*;\s*"
-    r"\[([^\]]*)\]\s*;\s*"
-    r"\[([^\]]*)\]\s*;\s*"
-    r"\[([^\]]*)\]\s*;\s*"
-    r"\[([^\]]*)\]\s*;\s*"
-    r"\[([^\]]*)\]\s*$"
+from core.services.review_import_parser import (
+    parse_review_records, MAX_IMPORT_RECORDS, MAX_IMPORT_CHARACTERS, MAX_IMPORT_ERRORS,
+    REVIEW_IMPORT_LINE_PATTERN,
 )
 
 
@@ -489,126 +480,7 @@ class ReviewBulkImportForm(forms.Form):
             self.parsed_records = self._validated_records
             self.preview_records = self.parsed_records
             return value
-        parsed_records = []
-        errors = []
-        nonempty_count = 0
-
-        for line_number, raw_line in enumerate(value.splitlines(), start=1):
-            line = raw_line.strip()
-
-            if not line:
-                continue
-
-            nonempty_count += 1
-
-            if nonempty_count > MAX_IMPORT_RECORDS:
-                raise ValidationError(
-                    f"Import może zawierać najwyżej {MAX_IMPORT_RECORDS} "
-                    "niepustych wierszy."
-                )
-
-            match = REVIEW_IMPORT_LINE_PATTERN.fullmatch(line)
-            # Zachowaj zgodność ze starszymi eksportami w nawiasach.
-            parts = match.groups() if match else line.split(";")
-            if len(parts) != 7:
-                errors.append(
-                    f"Wiersz {line_number}: nieprawidłowy format "
-                    "lub liczba pól."
-                )
-                continue
-
-            (
-                author_name,
-                title,
-                genre,
-                length,
-                content_warnings,
-                email,
-                phone_number,
-            ) = (part.strip() for part in parts)
-
-            author_name = upper(author_name)
-            name_parts = author_name.split(maxsplit=1)
-
-            if len(name_parts) != 2:
-                errors.append(
-                    f"Wiersz {line_number}: autora zapisz "
-                    "jako IMIĘ NAZWISKO."
-                )
-                continue
-
-            normalized_length = "".join(length.split())
-
-            if (
-                not normalized_length
-                or not normalized_length.isascii()
-                or not normalized_length.isdecimal()
-                or len(normalized_length) > 10
-            ):
-                errors.append(
-                    f"Wiersz {line_number}: długość musi być "
-                    "dodatnią liczbą całkowitą."
-                )
-                continue
-
-            length_value = int(normalized_length)
-
-            if not 1 <= length_value <= 2147483647:
-                errors.append(
-                    f"Wiersz {line_number}: długość jest poza "
-                    "dozwolonym zakresem."
-                )
-                continue
-
-            record = {
-                "line_number": line_number,
-                "author_name": author_name,
-                "author_first_name": name_parts[0],
-                "author_last_name": name_parts[1],
-                "title": normalize_whitespace(title),
-                "genre": normalize_whitespace(genre),
-                "length": length_value,
-                "content_warnings": content_warnings,
-                "email": normalize_email(email),
-                "phone_number": phone_number,
-            }
-
-            for field_name, normalize in REVIEW_FIELDS.items():
-                record[field_name] = normalize(record[field_name])
-            record["content_warnings"] = record["content_warnings"].lower()
-
-            row_errors = []
-
-            for field_name in (
-                "author_first_name",
-                "author_last_name",
-                "title",
-                "genre",
-                "length",
-                "content_warnings",
-                "email",
-                "phone_number",
-            ):
-                model_field = Review._meta.get_field(field_name)
-
-                try:
-                    record[field_name] = model_field.clean(
-                        record[field_name],
-                        None,
-                    )
-                except ValidationError as error:
-                    row_errors.append(
-                        f"Wiersz {line_number}, {model_field.verbose_name}: "
-                        + " ".join(error.messages)
-                    )
-
-            if row_errors:
-                errors.extend(row_errors)
-            else:
-                parsed_records.append(record)
-
-        if not nonempty_count:
-            errors.append("Wklej przynajmniej jedno zgłoszenie.")
+        parsed_records, errors = parse_review_records(value)
 
         self.preview_records = parsed_records
         if errors:

@@ -1,15 +1,18 @@
-"""Read-only organizational dashboards. No repair actions are exposed."""
-import csv
-from collections import Counter
+"""Organizational checks, publication tasks and team summaries."""
+from core.sort_keys import text_key
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponse
-from django.shortcuts import get_object_or_404, render
-from django.views.decorators.http import require_GET
+from django.shortcuts import get_object_or_404, render, redirect
+from django import forms
+from django.db import transaction
+from django.contrib import messages
+from django.core.exceptions import PermissionDenied
+from django.db.models import Q
+from django.views.decorators.http import require_GET, require_http_methods
 from core.permissions import superuser_required, require_team_member, is_team_member, is_coordinator, is_reviewer, has_role
-from core.supervision import integrity_issues, all_duplicates, anthology_checklist, anthology_credits
+from core.supervision import integrity_issues, all_duplicates, anthology_checklist, anthology_credit_groups
 from core.selectors.texts import available_stages_for_user
-from people.models import Person
-from texts.models import Anthology
+from people.models import Person, Role
+from texts.models import Anthology, AnthologyTask
 from workflow.services import ROLE_GROUPS
 from workflow.models import WorkflowRoleAssignment
 
@@ -18,14 +21,17 @@ from workflow.models import WorkflowRoleAssignment
 @superuser_required
 def data_integrity(request):
     tab = 'duplicates' if request.GET.get('tab') == 'duplicates' else 'integrity'
-    selected = request.GET.get('anthology', '')
+    selected = request.GET.get('anthology', 'all')
     scanned = False
     error = ''
     if tab == 'duplicates':
         rows = []
         if request.GET.get('run') == '1':
             anthology = Anthology.objects.filter(pk=int(selected)).first() if selected.isdecimal() and len(selected) < 19 else None
-            if anthology is None:
+            if selected == 'all':
+                rows = all_duplicates()
+                scanned = True
+            elif anthology is None:
                 error = 'Wybierz antologię do sprawdzenia.'
             else:
                 rows = all_duplicates(anthology.pk)
@@ -38,35 +44,66 @@ def data_integrity(request):
         'selected_anthology': selected,
     })
 
+class AnthologyTaskForm(forms.ModelForm):
+    class Meta:
+        model = AnthologyTask
+        fields = ('status', 'assigned_to')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        selected = self.instance.assigned_to_id
+        self.fields['assigned_to'].queryset = Person.objects.filter(
+            Q(pk=selected) | Q(pk__in=Person.objects.active().values('pk'))
+        ).order_by('last_name', 'first_name', 'pk')
+
+
+def _task_forms(anthology, data=None):
+    tasks = {task.task_type: task for task in anthology.production_tasks.all()}
+    return [AnthologyTaskForm(data=data, prefix=kind,
+                instance=tasks.get(kind) or AnthologyTask(anthology=anthology, task_type=kind))
+            for kind in (AnthologyTask.TaskType.BANNERS, AnthologyTask.TaskType.BLURB, AnthologyTask.TaskType.TYPESETTING)]
+
+
 @login_required
-@require_GET
+@require_http_methods(['GET', 'POST'])
 def anthology_detail(request, anthology_id):
     require_team_member(request.user)
     anthology = get_object_or_404(Anthology, pk=anthology_id)
     coordinator = is_coordinator(request.user)
+    forms_list = _task_forms(anthology) if coordinator else []
+    if request.method == 'POST':
+        if not coordinator:
+            raise PermissionDenied
+        with transaction.atomic():
+            anthology = get_object_or_404(Anthology.objects.select_for_update(), pk=anthology_id)
+            forms_list = _task_forms(anthology, request.POST)
+            if all([form.is_valid() for form in forms_list]):
+                for form in forms_list:
+                    form.save()
+                messages.success(request, 'Zapisano zadania antologii.')
+                return redirect('core:anthology_detail', anthology_id=anthology.pk)
     return render(request, 'core/anthology_detail.html', {
-        'anthology': anthology, 'show_checklist': coordinator,
+        'anthology': anthology, 'show_checklist': coordinator, 'task_forms': forms_list,
         'issues': anthology_checklist(anthology) if coordinator else [],
-        'credits': anthology_credits(anthology),
-    })
+        'credits': anthology_credit_groups(anthology),
+    }, status=400 if request.method == 'POST' else 200)
 
-def csv_value(value):
-    value = str(value)
-    return "'" + value if value.lstrip().startswith(('=', '+', '-', '@')) else value
 
 @login_required
 @require_GET
-def anthology_credits_csv(request, anthology_id):
-    require_team_member(request.user)
-    anthology = get_object_or_404(Anthology, pk=anthology_id)
-    response = HttpResponse(content_type='text/csv; charset=utf-8')
-    response['Content-Disposition'] = f'attachment; filename="stopka-antologii-{anthology.pk}.csv"'
-    response.write('\ufeff')
-    writer = csv.writer(response, delimiter=';')
-    writer.writerow(['Osoba', 'Praca', 'Teksty lub antologia'])
-    for row in anthology_credits(anthology):
-        writer.writerow([csv_value(row['name']), csv_value(row['role']), csv_value('; '.join(row['works']))])
-    return response
+@superuser_required
+def role_names(request):
+    roles = Role.objects.order_by('name')
+    selected = request.GET.get('role', '')
+    role = roles.filter(pk=int(selected)).first() if selected.isdecimal() and len(selected) < 19 else None
+    names = []
+    if role is not None:
+        people = Person.objects.active().filter(
+            Q(roles=role) | Q(user__groups__name__iexact=role.name)
+        ).distinct()
+        names = sorted((f'{person.first_name} {person.last_name}'.strip() for person in people), key=text_key)
+    return render(request, 'core/role_names.html', {'roles': roles, 'selected_role': selected, 'names': names, 'chosen_role': role})
+
 
 @login_required
 @require_GET

@@ -305,7 +305,12 @@ def _validate_status_change(*, user, review, assignments, new_status):
             raise PermissionDenied("Tylko koordynator recenzji może skierować tekst do decyzji.")
         if review.status not in OPEN_STATUSES:
             raise ValidationError("Do decyzji można skierować tylko otwarte zgłoszenie.")
-    if not is_superuser(user) and new_status != Review.Status.TO_DECIDE:
+    restoring = (
+        review.status == Review.Status.TO_DECIDE
+        and new_status in (Review.Status.NEW, Review.Status.IN_REVIEW)
+        and can_mark_review_for_decision(user)
+    )
+    if not is_superuser(user) and new_status != Review.Status.TO_DECIDE and not restoring:
         if new_status not in {Review.Status.ACCEPTED, Review.Status.REJECTED}:
             raise PermissionDenied(
                 "Ten status może ustawić wyłącznie superuser."
@@ -359,6 +364,12 @@ def change_review_status(*, user, review_id, new_status):
     require_coordinator(user)
     review = _lock_review(review_id)
     assignments = _lock_assignments(review)
+    if new_status == "restore":
+        if not can_mark_review_for_decision(user):
+            raise PermissionDenied
+        if review.status != Review.Status.TO_DECIDE:
+            raise ValidationError("Można cofnąć tylko status „Do decyzji”.")
+        new_status = Review.Status.IN_REVIEW if assignments else Review.Status.NEW
 
     _validate_status_change(
         user=user,

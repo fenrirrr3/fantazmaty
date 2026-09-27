@@ -1,5 +1,9 @@
 {% extends "core/base.html" %}
 {% block title %}{{ anthology.title }} | Fantazmaty CMS{% endblock %}
-{% block content %}<header class="page-header"><h1>{{ anthology.title }}</h1><p>{{ anthology.get_status_display }}</p><a class="secondary-button" href="{% url 'core:text_list' %}?anthology={{ anthology.pk }}&amp;hide_ready=0">Teksty antologii</a></header>
-{% if show_checklist %}<section class="card"><h2>Lista kontrolna przed wydaniem</h2><p>Stan zapisany w bazie. Lista nie zmienia statusu antologii.</p>{% include "core/includes/issue_list.html" %}</section>{% endif %}
-<section class="card"><h2>Osoby i wykonane prace</h2><p>Zestawienie do sprawdzenia przed przygotowaniem stopki. Obejmuje ukończone prace, także historyczne; nie wymaga dat.</p><a class="secondary-button" href="{% url 'core:anthology_credits_csv' anthology.pk %}">Pobierz zestawienie CSV</a><div class="table-container"><table data-copy-table><thead><tr><th data-sort-key="person">Osoba</th><th>Praca</th><th>Teksty lub antologia</th></tr></thead><tbody>{% for row in credits %}<tr><td>{{ row.name }}</td><td>{{ row.role }}</td><td>{{ row.works|join:", " }}</td></tr>{% empty %}<tr><td colspan="3">Nie zapisano jeszcze ukończonych prac.</td></tr>{% endfor %}</tbody></table></div></section>{% endblock %}
+{% block content %}
+<header class="page-header"><h1>{{ anthology.title }}</h1><p>{{ anthology.get_status_display }}</p><a class="secondary-button" href="{% url 'core:text_list' %}?anthology={{ anthology.pk }}&amp;hide_ready=0">Teksty antologii</a></header>
+{% if show_checklist %}<section class="card"><div class="card-body"><h2>Lista kontrolna przed wydaniem</h2><p>Stan zapisany w bazie. Lista nie zmienia statusu antologii.</p>{% include "core/includes/issue_list.html" %}
+<form method="post">{% csrf_token %}{% edit_version %}<div class="anthology-tasks">{% for form in task_forms %}<fieldset><legend>{{ form.instance.get_task_type_display }}</legend>{{ form.as_p }}</fieldset>{% endfor %}</div><button type="submit" class="primary-button">Zapisz zadania</button></form>
+</div></section>{% endif %}
+<section class="card"><div class="card-body"><h2>Osoby i wykonane prace</h2><p>Ukończone prace, także zapisane bez dat. Każda osoba pojawia się raz w danej kategorii.</p><ul class="credits-list">{% for row in credits %}<li><strong>{{ row.label }}:</strong> {{ row.names|join:", "|default:"–" }}</li>{% endfor %}</ul></div></section>
+{% endblock %}

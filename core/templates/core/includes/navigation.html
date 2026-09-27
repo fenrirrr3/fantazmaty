@@ -102,7 +102,7 @@
                             {% if current == 'active_vacations' %}aria-current="page"{% endif %}
                         >
                             Aktywne urlopy
-                        </a>{% if can_coordinate %}<a href="{% url 'core:recruitment_list' %}" class="sidebar-link" {% if current == 'recruitment_list' or current == 'recruitment_add' or current == 'recruitment_edit' %}aria-current="page"{% endif %}>Rekrutacja</a>{% endif %}<a href="{% url 'core:programs' %}" class="sidebar-link" {% if current == 'programs' %}aria-current="page"{% endif %}>Programy</a></details>{% if user.is_superuser %}<details class="sidebar-section" data-menu-section="intake" open><summary class="sidebar-heading">Autorzy i zgłoszenia</summary><a
+                        </a>{% if can_coordinate %}<a href="{% url 'core:recruitment_list' %}" class="sidebar-link" {% if current == 'recruitment_list' or current == 'recruitment_add' or current == 'recruitment_edit' %}aria-current="page"{% endif %}>Rekrutacja</a>{% endif %}<a href="{% url 'core:programs' %}" class="sidebar-link" {% if current == 'programs' %}aria-current="page"{% endif %}>Programy</a>{% if user.is_superuser %}<a class="sidebar-link" href="{% url 'core:role_names' %}" {% if current == 'role_names' %}aria-current="page"{% endif %}>Lista osób według roli</a>{% endif %}</details>{% if user.is_superuser %}<details class="sidebar-section" data-menu-section="intake" open><summary class="sidebar-heading">Autorzy i zgłoszenia</summary><a
                                 href="{% url 'core:author_list' %}"
                                 class="sidebar-link"
                                 {% if current == 'author_list' or current == 'author_detail' %}aria-current="page"{% endif %}

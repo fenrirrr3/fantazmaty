@@ -158,36 +158,31 @@ def main():
     directory = Path(sys.argv[1])
     config = json.loads((directory / 'job.json').read_text(encoding='utf-8'))
     formats = config['formats']
-    if (not formats and not config.get('include_docx')) or set(formats) - {'pdf', 'epub'}:
+    if (not formats and not config.get('include_docx') and not config.get('inspect')) or set(formats) - {'pdf', 'epub'}:
         return 3
     try:
-        if config.get('prepare'):
+        if config.get('prepare') or config.get('inspect'):
             if __package__:
-                from .document_formatting import normalize_docx
-                from .odkurzacz import clean_docx, ALL_EDITORIAL_RULES
+                from .document_preparation import prepare_docx, ALL_EDITORIAL_RULES
+                from .document_rebuild import inspect_docx
             else:
-                from document_formatting import normalize_docx
-                from odkurzacz import clean_docx, ALL_EDITORIAL_RULES
+                from document_preparation import prepare_docx, ALL_EDITORIAL_RULES
+                from document_rebuild import inspect_docx
             source = directory / 'source.docx'
-            payload = source.read_bytes()
-            if config.get('rebuild'):
-                if __package__:
-                    from .document_rebuild import rebuild_docx, RebuildUnsupported
-                else:
-                    from document_rebuild import rebuild_docx, RebuildUnsupported
-                with rebuild_docx(BytesIO(payload), allow_omissions=config.get('allow_rebuild_omissions', False)) as rebuilt:
-                    payload = rebuilt.read()
-            if config.get('normalize', True):
-                with normalize_docx(BytesIO(payload)) as formatted:
-                    payload = formatted.read()
-            if config.get('clean'):
-                rules = config.get('cleaner_rules')
-                if rules is None:
-                    rules = list(ALL_EDITORIAL_RULES)
-                if not isinstance(rules, (list, tuple)) or set(rules) - set(ALL_EDITORIAL_RULES):
-                    raise ValueError('Invalid cleaner rules')
-                with clean_docx(BytesIO(payload), rules) as cleaned:
-                    payload = cleaned.read()
+            if config.get('inspect'):
+                with source.open('rb') as document:
+                    inspect_docx(document)
+                return 0
+            rules = config.get('cleaner_rules') if config.get('clean') else ()
+            if rules is None:
+                rules = list(ALL_EDITORIAL_RULES)
+            with source.open('rb') as document, prepare_docx(
+                document, rebuild=config.get('rebuild', False),
+                normalize_formatting=config.get('normalize', True),
+                cleaner_rules=rules, use_cleaner=config.get('clean', False),
+                allow_omissions=config.get('allow_rebuild_omissions', False),
+            ) as prepared:
+                payload = prepared.read()
             source.write_bytes(payload)
         if formats:
             convert(directory / 'source.docx', directory, formats, config['title'])

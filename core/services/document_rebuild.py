@@ -17,17 +17,12 @@ class RebuildUnsupported(ValueError):
         super().__init__("; ".join(self.omissions))
 
 
-def rebuild_docx(source, *, allow_omissions=False):
-    source.seek(0)
-    original = Document(source)
-    body = original.element.body
-    class Omissions(Counter):
-        def add(self, label): self[label] += 1
-    omissions = Omissions()
-    if len(original.sections) > 1:
-        omissions['podziały na sekcje i ustawienia ich układu (pozostanie jedna sekcja A4)'] = len(original.sections)-1
-    for link in body.iter(qn('w:hyperlink')):
-        omissions.add('odnośniki hiperłączy (widoczny tekst pozostanie)')
+class Omissions(Counter):
+    def add(self, label):
+        self[label] += 1
+
+
+def _format_resolver(original, omissions):
     # Resolve document defaults and theme fonts/colors without copying source parts.
     default_p = OxmlElement('w:p'); default_r = OxmlElement('w:r')
     defaults = original.styles.element.find(qn('w:docDefaults'))
@@ -80,6 +75,10 @@ def rebuild_docx(source, *, allow_omissions=False):
                 return RGBColor(*rgb)
             if value == 'auto': return None
         return None
+    return default_font, default_format, font_name, font_color
+
+
+def _sanitize_body(body, omissions):
     # Accept inline revisions: retained runs lose reviewer IDs and timestamps.
     for tag in ('del', 'moveFrom'):
         for node in list(body.iter(qn('w:' + tag))):
@@ -125,19 +124,23 @@ def rebuild_docx(source, *, allow_omissions=False):
             ('.//w:rPr/w:bdr', 'obramowania znaków'),
         ):
             for _ in paragraph.xpath(path): omissions.add(label)
-    result = Document()
-    for section in result.sections:
-        section.page_width = Cm(21); section.page_height = Cm(29.7)
-        section.top_margin = section.bottom_margin = section.left_margin = section.right_margin = Cm(2.5)
-    def styles(style):
-        seen = set()
-        while style is not None and style.style_id not in seen:
-            seen.add(style.style_id); yield style; style = style.base_style
-    def effective(objects, name):
-        for obj in objects:
-            value = getattr(obj, name)
-            if value is not None: return value
-        return None
+
+
+def styles(style):
+    seen = set()
+    while style is not None and style.style_id not in seen:
+        seen.add(style.style_id); yield style; style = style.base_style
+def effective(objects, name):
+    for obj in objects:
+        value = getattr(obj, name)
+        if value is not None: return value
+    return None
+
+
+def _paragraph_specs(original, omissions):
+    body = original.element.body
+    default_font, default_format, font_name, font_color = _format_resolver(original, omissions)
+    paragraphs = []
     for element in body:
         if element.tag == qn('w:sectPr'): continue
         if element.tag != qn('w:p'):
@@ -148,43 +151,93 @@ def rebuild_docx(source, *, allow_omissions=False):
         if element.xpath('./w:pPr/w:numPr') or any(s.element.xpath('./w:pPr/w:numPr') for s in paragraph_styles):
             omissions.add('automatyczne numerowanie i punktory list (tekst pozycji pozostanie)')
         heading = next((st.name for st in paragraph_styles if st.name.startswith('Heading ') and st.name[8:].isdigit()), None)
-        paragraph = result.add_paragraph(style=heading if heading in result.styles else None)
+        paragraph = {'heading': heading, 'format': {}, 'tabs': [], 'runs': []}
+        paragraphs.append(paragraph)
         formats = [old.paragraph_format] + [s.paragraph_format for s in paragraph_styles] + [default_format]
         for name in ('alignment','first_line_indent','left_indent','right_indent','space_before','space_after',
                      'line_spacing','line_spacing_rule','keep_together','keep_with_next','page_break_before','widow_control'):
             value = effective(formats, name)
-            if value is not None: setattr(paragraph.paragraph_format, name, value)
+            if value is not None:
+                paragraph['format'][name] = value
         for formatting in formats:
             if len(formatting.tab_stops):
                 for stop in formatting.tab_stops:
-                    paragraph.paragraph_format.tab_stops.add_tab_stop(stop.position,stop.alignment,stop.leader)
+                    paragraph['tabs'].append((stop.position, stop.alignment, stop.leader))
                 break
         for element_run in element.iter(qn('w:r')):
             old_run = Run(element_run, old)
             fonts = [old_run.font] + [s.font for s in styles(old_run.style)] + [s.font for s in paragraph_styles] + [default_font]
             if effective(fonts, 'hidden'): continue
-            new_run = paragraph.add_run()
+            new_run = {'content': [], 'font': {}}
+            paragraph['runs'].append(new_run)
             for child in element_run:
                 tag = child.tag
                 if tag == qn('w:rPr'): continue
-                if tag == qn('w:t'): new_run.add_text(child.text or '')
-                elif tag == qn('w:tab'): new_run.add_tab()
+                if tag == qn('w:t'): new_run['content'].append(('text', child.text or ''))
+                elif tag == qn('w:tab'): new_run['content'].append(('tab', None))
                 elif tag in (qn('w:br'),qn('w:cr')):
                     from docx.enum.text import WD_BREAK
                     kind = child.get(qn('w:type'),'textWrapping')
-                    new_run.add_break({'page':WD_BREAK.PAGE,'column':WD_BREAK.COLUMN}.get(kind,WD_BREAK.LINE))
-                elif tag == qn('w:noBreakHyphen'): new_run.add_text('‑')
-                elif tag == qn('w:softHyphen'): new_run.add_text('\u00ad')
+                    new_run['content'].append(('break', {'page':WD_BREAK.PAGE,'column':WD_BREAK.COLUMN}.get(kind,WD_BREAK.LINE)))
+                elif tag == qn('w:noBreakHyphen'): new_run['content'].append(('text', '‑'))
+                elif tag == qn('w:softHyphen'): new_run['content'].append(('text', '\u00ad'))
                 elif tag in (qn('w:commentReference'),qn('w:lastRenderedPageBreak')): continue
                 else: omissions.add('element ' + etree.QName(child).localname + ' wewnątrz tekstu')
             for name in ('size','bold','italic','underline','strike','double_strike',
                          'superscript','subscript','small_caps','all_caps','highlight_color'):
                 value = effective(fonts,name)
-                if value is not None: setattr(new_run.font,name,value)
+                if value is not None:
+                    new_run['font'][name] = value
             name = font_name(fonts)
-            if name: new_run.font.name = name
+            if name: new_run['font']['name'] = name
             color = font_color(fonts)
-            if color is not None: new_run.font.color.rgb = color
+            if color is not None: new_run['color'] = color
+    return paragraphs
+
+
+def _analyze_docx(source):
+    source.seek(0)
+    original = Document(source)
+    body = original.element.body
+    omissions = Omissions()
+    if len(original.sections) > 1:
+        omissions['podziały na sekcje i ustawienia ich układu (pozostanie jedna sekcja A4)'] = len(original.sections)-1
+    for link in body.iter(qn('w:hyperlink')):
+        omissions.add('odnośniki hiperłączy (widoczny tekst pozostanie)')
+    _sanitize_body(body, omissions)
+    return _paragraph_specs(original, omissions), omissions
+
+
+def inspect_docx(source):
+    """Return exactly the rebuild warnings without creating or saving an output DOCX."""
+    _, omissions = _analyze_docx(source)
+    if omissions:
+        raise RebuildUnsupported(omissions)
+
+
+def _new_document(paragraphs):
+    result = Document()
+    for section in result.sections:
+        section.page_width = Cm(21)
+        section.page_height = Cm(29.7)
+        section.top_margin = section.bottom_margin = section.left_margin = section.right_margin = Cm(2.5)
+    for item in paragraphs:
+        heading = item['heading']
+        paragraph = result.add_paragraph(style=heading if heading in result.styles else None)
+        for name, value in item['format'].items():
+            setattr(paragraph.paragraph_format, name, value)
+        for stop in item['tabs']:
+            paragraph.paragraph_format.tab_stops.add_tab_stop(*stop)
+        for specification in item['runs']:
+            run = paragraph.add_run()
+            for kind, value in specification['content']:
+                if kind == 'text': run.add_text(value)
+                elif kind == 'tab': run.add_tab()
+                else: run.add_break(value)
+            for name, value in specification['font'].items():
+                setattr(run.font, name, value)
+            if 'color' in specification:
+                run.font.color.rgb = specification['color']
     props = result.core_properties
     for name in ('author','last_modified_by','title','subject','comments','keywords','category','content_status','identifier','language','version'):
         setattr(props,name,'')
@@ -192,7 +245,15 @@ def rebuild_docx(source, *, allow_omissions=False):
         for node in list(props._element.findall(qn(tag))):
             props._element.remove(node)
     props.revision = 1
+    return result
+
+
+def rebuild_docx(source, *, allow_omissions=False):
+    paragraphs, omissions = _analyze_docx(source)
     if omissions and not allow_omissions:
         raise RebuildUnsupported(omissions)
-    output = BytesIO(); result.save(output); output.seek(0)
+    result = _new_document(paragraphs)
+    output = BytesIO()
+    result.save(output)
+    output.seek(0)
     return output

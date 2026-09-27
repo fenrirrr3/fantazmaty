@@ -308,14 +308,14 @@
                             </td>
 
                             <td>
-                                <span class="stage-status {% if review.status == 'accepted' %}completed{% elif review.status == 'rejected' or review.status == 'withdrawn' %}withdrawn{% elif review.status == 'in_review' %}active{% else %}pending{% endif %}">
+                                <span class="stage-status {% if review.status == 'to_decide' %}decision-status {% endif %}{% if review.status == 'accepted' %}completed{% elif review.status == 'rejected' or review.status == 'withdrawn' %}withdrawn{% elif review.status == 'in_review' %}active{% else %}pending{% endif %}">
                                     {{ review.get_status_display }}
                                 </span>
                                 {% if can_view_authors %}{% if review.status == 'accepted' or review.status == 'rejected' %}
                                     <span class="notification-state">{% if review.author_notified_at %}Autor powiadomiony: {{ review.author_notified_at|date:'d.m.Y' }}{% elif review.notification_scheduled %}Powiadomienie po terminie decyzji{% else %}Autor niepowiadomiony{% endif %}</span>
                                 {% endif %}{% endif %}
 
-                                {% if review.status == 'to_decide' %}<div class="form-warning">Do przejęcia tylko przez wyznaczoną osobę.</div>{% endif %}
+                                {% if review.status == 'to_decide' %}<div class="form-warning review-designated-note">Dla wyznaczonej osoby</div>{% endif %}
                                 {% if review.is_copied_to_text %}
                                     <div class="form-help">W procesie wydawniczym</div>
 

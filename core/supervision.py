@@ -1,5 +1,6 @@
 """Read-only checks and publication credits; never repair data implicitly."""
 from workflow.catalog import IMPORT_ONLY_STAGE_TYPES
+from core.sort_keys import text_key
 from collections import defaultdict
 from difflib import SequenceMatcher
 import unicodedata
@@ -127,17 +128,18 @@ def duplicate_candidates(title, anthology_id, author_ids, *, exclude_text_id=Non
     return candidates
 
 
-def all_duplicates(anthology_id):
+def all_duplicates(anthology_id=None):
     from itertools import combinations
     from authors.models import Author
     groups = defaultdict(dict)
-    review_emails = list(Review.objects.filter(anthology_id=anthology_id).exclude(email='').values_list('email', flat=True))
+    scope = {'anthology_id': anthology_id} if anthology_id is not None else {}
+    review_emails = list(Review.objects.filter(**scope).exclude(email='').values_list('email', flat=True))
     from django.db.models.functions import Lower
     author_emails = {a.email.casefold(): a.pk for a in Author.objects.annotate(_email=Lower('email')).filter(_email__in=[email.lower() for email in review_emails]) if a.email}
-    for text in Text.objects.filter(anthology_id=anthology_id).prefetch_related('authors'):
+    for text in Text.objects.filter(**scope).prefetch_related('authors'):
         item = {'id': ('text',text.pk), 'title':text.title, 'folded':folded(text.title), 'copy':None, 'url':reverse('core:assigned_text_detail',args=[text.pk])}
         for author in text.authors.all():groups[(text.anthology_id,('author',author.pk))][item['id']] = item
-    for review in Review.objects.filter(anthology_id=anthology_id).prefetch_related('coauthors'):
+    for review in Review.objects.filter(**scope).prefetch_related('coauthors'):
         identities = {('author', a.pk) for a in review.coauthors.all()}
         if review.author_id:identities.add(('author',review.author_id))
         if review.email:
@@ -173,14 +175,15 @@ def anthology_checklist(anthology):
         if not any(s.stage_type=='ready' for s in stages):rows.append(issue('Tekst nie jest gotowy',text.title,url))
         authors=list(text.authors.all())
         if not authors:rows.append(issue('Brak autora',text.title,url))
-        for author in authors:
-            if not author.has_contract:rows.append(issue('Brak potwierdzonej umowy',f'{author} – {text.title}',url))
     if not included:rows.append(issue('Brak tekstów do wydania','Antologia nie ma niewycofanych tekstów.',reverse('core:text_list')+f'?anthology={anthology.pk}&hide_ready=0'))
     for correction in AnthologyCorrection.objects.filter(anthology=anthology).exclude(status__in=('applied','rejected')):
         rows.append(issue('Uwaga wymaga obsługi',f'{correction.story_title} – {correction.get_status_display()}',reverse('core:anthology_corrections')+f'?anthology={anthology.pk}'))
     if anthology.cover_status!='ready':rows.append(issue('Okładka nie jest gotowa',anthology.title,reverse('admin:texts_anthology_change',args=[anthology.pk])))
-    for task in anthology.production_tasks.exclude(status='ready'):
-        rows.append(issue('Niezakończone zadanie produkcyjne',task.get_task_type_display(),reverse('admin:texts_anthology_change',args=[anthology.pk])))
+    tasks = {task.task_type: task for task in anthology.production_tasks.all()}
+    for kind, label in AnthologyTask.TaskType.choices:
+        task = tasks.get(kind)
+        if task is None or task.status != AnthologyTask.Status.READY:
+            rows.append(issue('Niezakończone zadanie produkcyjne', label, reverse('core:anthology_detail', args=[anthology.pk])))
     return rows
 
 
@@ -189,7 +192,7 @@ def anthology_credits(anthology):
     credits=defaultdict(lambda:{'name':'','role':'','works':set()})
     def add(identity,name,role,title):
         item=credits[(identity,role)];item.update(name=name,role=role);item['works'].add(title)
-    completed = WorkflowStage.objects.filter(text__anthology=anthology, is_completed=True, assignment__assigned_to__isnull=False).exclude(stage_type__in=IMPORT_ONLY_STAGE_TYPES).select_related('assignment__assigned_to__person_profile', 'text')
+    completed = WorkflowStage.objects.filter(text__anthology=anthology, is_completed=True, assignment__assigned_to__isnull=False).select_related('assignment__assigned_to__person_profile', 'text')
     for stage in completed:
         a=stage.assignment
         person=getattr(a.assigned_to,'person_profile',None)
@@ -204,3 +207,23 @@ def anthology_credits(anthology):
         if illustration.illustrator_id:add(('person',illustration.illustrator_id),str(illustration.illustrator),'Ilustrator',illustration.text.title)
     if anthology.cover_author.strip():add(('cover',anthology.pk),anthology.cover_author,'Okładka',anthology.title)
     return [dict(item,works=sorted(item['works'])) for item in sorted(credits.values(),key=lambda item:(item['role'],item['name']))]
+
+
+def anthology_credit_groups(anthology):
+    groups = {label: set() for label in (
+        'Redakcja', 'Kontrola redakcji', 'Korekta', 'Weryfikacja',
+        'Kontrola weryfikacji', 'Kontrola przed składem', 'Recenzje', 'Ilustracja',
+    )}
+    mapping = {
+        'Redaktor': 'Redakcja', 'K. redakcji': 'Kontrola redakcji',
+        'Kontrola redakcji': 'Kontrola redakcji', 'K. weryfikacji': 'Kontrola weryfikacji',
+        'Stylowanie': 'Kontrola przed składem', 'Recenzent': 'Recenzje',
+        'Ilustrator': 'Ilustracja', 'Okładka': 'Ilustracja',
+    }
+    for row in anthology_credits(anthology):
+        role = row['role']
+        group = ('Korekta' if role.startswith('Korektor ') else
+                 'Weryfikacja' if role.startswith('Weryfikator ') else mapping.get(role))
+        if group and row['name'].strip():
+            groups[group].add(row['name'].strip())
+    return [{'label': label, 'names': sorted(names, key=text_key)} for label, names in groups.items()]

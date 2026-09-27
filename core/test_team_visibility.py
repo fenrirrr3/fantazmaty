@@ -79,4 +79,4 @@ class TeamVisibilityTests(TestCase):
             self.assertEqual(_assignment_data(assignment)['get_role_display'],label+' (wyk. 2)')
             self.assertEqual(_stage_data(WorkflowStage(stage_type=stage_kind,execution_number=2))['get_stage_type_display'],label+' (wyk. 2)')
             assignment.execution_number=1
-            self.assertEqual(assignment_label(assignment,show_first=True),label+' (wyk. 1)')
+            self.assertEqual(assignment_label(assignment,show_first=True),label)

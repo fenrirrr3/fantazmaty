@@ -8,7 +8,7 @@ from django.urls import resolve, Resolver404
 
 
 def aggregate(match):
-    from texts.models import Review, Text, TextNote, ReviewAssignment, Reviewers
+    from texts.models import Review, Text, TextNote, ReviewAssignment, Reviewers, Anthology
     from workflow.models import WorkflowStage, WorkflowRoleAssignment
     from people.models import Vacation
     from authors.models import Author, AuthorNote
@@ -33,7 +33,7 @@ def aggregate(match):
     if "stage_id" in kwargs:
         text_id = WorkflowStage.objects.filter(pk=kwargs["stage_id"]).values_list("text_id", flat=True).first()
         return Text, text_id
-    for key, model in (("text_id", Text), ("review_id", Review), ("vacation_id", Vacation), ("correction_id", AnthologyCorrection)):
+    for key, model in (("anthology_id", Anthology), ("text_id", Text), ("review_id", Review), ("vacation_id", Vacation), ("correction_id", AnthologyCorrection)):
         if key in kwargs:
             return model, kwargs[key]
     return None, None
@@ -106,6 +106,8 @@ class EditingMiddleware:
             from core.permissions import is_coordinator, can_manage_vacation
             probe = model.objects.filter(pk=pk).first()
             name = match.url_name
+            if probe and name == 'anthology_detail' and not is_coordinator(request.user):
+                return HttpResponseForbidden('Brak dostępu do edycji antologii.')
             if probe and name in ('add_text_note', 'update_text_content_warnings'):
                 allowed = is_coordinator(request.user) or probe.workflow_role_assignments.filter(workflow_cycle=probe.current_workflow_cycle, is_current=True, assigned_to=request.user).exists()
                 if not allowed:

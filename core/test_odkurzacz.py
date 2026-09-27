@@ -122,7 +122,7 @@ class OdkurzaczTests(TestCase):
         self.assertIn('50 MB', str(form.errors))
 
     def test_failure_shows_form_and_retains_selection(self):
-        with patch('core.views.programs.clean_docx', side_effect=ValueError('bad package')):
+        with patch('core.views.programs.convert_document', side_effect=ValueError('bad package')):
             response = self.client.post(self.url, {'document': upload(), 'rules': ['spaces']})
         self.assertContains(response, 'Nie udało się przetworzyć')
         self.assertEqual(response.context['form']['rules'].value(), ['spaces'])

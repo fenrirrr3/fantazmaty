@@ -23,7 +23,7 @@ LABELS = {
 LABELS.update({
     'discord_test': 'Test wysyłki Discord',
     'data_integrity':'Spójność danych', 'person_permissions':'Podgląd uprawnień osoby',
-    'anthology_detail':'Podgląd antologii', 'anthology_credits_csv':'Eksport stopki antologii',
+    'anthology_detail':'Podgląd antologii', 'role_names':'Lista osób według roli',
     'update_text_file':'Zmiana odnośnika do pliku tekstu',
     'programs':'Programy', 'extract_list':'Ekstrakty', 'extract_add':'Dodanie ekstraktu', 'extract_edit':'Edycja ekstraktu',
     'recruitment_list':'Rekrutacja', 'recruitment_add':'Dodanie rekrutacji', 'recruitment_edit':'Edycja rekrutacji',

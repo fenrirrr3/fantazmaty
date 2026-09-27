@@ -27,3 +27,14 @@ details:is(.intake-panel,.program-tool,.work-handoff-card) > summary:focus-visib
  .activity-filters .filter-field { grid-row: auto; grid-template-rows: auto auto auto; }
  .activity-filters > button { grid-column: 1; grid-row: auto; }
 }
+
+/* Review decisions and anthology summaries. */
+.review-decision-actions { margin: 0 0 1.25rem; }
+.decision-status { margin-bottom: .4rem; }
+.review-designated-note { margin-top: 0; }
+.anthology-tasks { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 1rem; margin-block: 1rem; }
+.anthology-tasks fieldset { min-width: 0; padding: 1rem; }
+.anthology-tasks select { width: 100%; }
+.credits-list { padding-left: 1.25rem; }
+.credits-list li { margin-block: .55rem; }
+.role-names { line-height: 1.8; overflow-wrap: anywhere; }

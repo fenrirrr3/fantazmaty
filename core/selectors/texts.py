@@ -718,6 +718,221 @@ def text_detail_context(*, user, text):
         and (author_editing or pending_editing)
     )
 
+    stage_rows = _detail_stage_rows(
+        user, text, stages, assignments, text_data,
+        terminal=terminal, coordinator=coordinator, today=today,
+        can_start_first=can_start_first, can_resume=can_resume,
+    )
+
+    row_by_id = {row["pk"]: row for row in stage_rows}
+
+    def stage_row(stage):
+        return row_by_id.get(stage.pk) if stage else None
+
+    current = _current_stage(stages)
+    previous = max(
+        (stage for stage in stages if stage.is_completed),
+        key=lambda stage: (stage.ended_at or date.min, stage.pk),
+        default=None,
+    )
+    visible = [
+        stage_row(stage) for stage in (current, previous) if stage is not None
+    ]
+    visible_ids = {row["pk"] for row in visible}
+
+    archived = []
+    if coordinator:
+        historical_stages = WorkflowStage.objects.filter(text_id=text.pk).exclude(
+            workflow_cycle=text.current_workflow_cycle, is_current=True,
+        ).select_related("assignment__assigned_to__person_profile").order_by("-workflow_cycle", "-pk")
+        archived = [row for row in stage_rows if row["pk"] not in visible_ids]
+        for stage in historical_stages:
+            row = _stage_data(stage, text_data)
+            row.update(can_start=False, can_complete=False, assigned_user=_user_data(stage.assignment.assigned_to) if stage.assignment and stage.assignment.assigned_to else None)
+            archived.append(row)
+
+    notes = _text_notes(text, user, coordinator)
+
+    source_data, opinions = _source_review_data(text, user, include_authors)
+
+    open_repetition = text.repetitions.filter(completed_at__isnull=True, canceled_at__isnull=True).first()
+    can_cancel_repetition = bool(user.is_superuser and open_repetition and open_repetition.previous_stage_ids
+        and not open_repetition.stages.filter(started_at__isnull=False).exists()
+        and not open_repetition.stages.filter(is_completed=True).exists()
+        and not open_repetition.assignments.filter(assigned_to__isnull=False).exists())
+    return {
+        "text": text_data,
+        "user_assignments": [_assignment_data(item) for item in own],
+        "stages": stage_rows,
+        "visible_stages": visible,
+        "archived_stages": archived,
+        "can_view_stage_history": coordinator,
+        "team_members": _text_team_members(text, assignments),
+        "is_assigned": bool(own),
+        "is_read_only": not coordinator and not own,
+        "can_add_note": coordinator or bool(own),
+        "can_edit_coordinator_note": coordinator,
+        "show_coordinator_note": bool(text.coordinator_note.strip()),
+        "text_notes": notes,
+        "repeat_queue": sorted([row for row in stage_rows if row.get('repetition_id') and not row['is_completed']], key=lambda row: row['queue_position']),
+        "open_repetition": open_repetition,
+        "can_cancel_repetition": can_cancel_repetition,
+        "handoffs": text.workflow_handoffs.select_related('previous_assignment__assigned_to', 'new_assignment__assigned_to', 'stage').order_by('-created_at'),
+        "source_review": source_data,
+        "handoff_stages": [row for row in stage_rows if not row["is_completed"] and row["is_released"] and row.get("assigned_user")],
+        "source_review_opinions": opinions,
+        "is_withdrawn": is_withdrawn,
+        "is_ready": is_ready,
+        "can_manage_workflow": coordinator,
+        "can_control_editing": can_control,
+        "editor_assignment": _assignment_data(editor),
+        "first_verifier_assignment": _assignment_data(first_verifier),
+        "active_editing": stage_row(editing),
+        "active_author_editing": stage_row(author_editing),
+        "active_verification": stage_row(verification),
+        "pending_editing": stage_row(pending_editing),
+        "pending_first_verification": stage_row(pending_first),
+        "first_verification_completed": first_done,
+        "second_verification_completed": second_done,
+        "can_send_to_first_verification": bool(
+            can_control and editing and not first_gate
+            and not verification_open_started
+        ),
+        "can_start_first_verification": can_start_first,
+        "can_resume_editing": can_resume,
+        "can_send_to_author": bool(
+            can_control and editing and first_gate and not verification_open
+        ),
+        "can_send_to_second_verification": bool(
+            can_control and editing and first_gate
+            and not any(
+                stage.stage_type == StageType.SECOND_VERIFICATION
+                for stage in stages
+            )
+        ),
+        "can_finish_editing": bool(
+            can_control and editing and second_gate and not verification_open
+        ),
+        "all_authors": (
+            [_author_data(author) for author in text.selector_authors]
+            if include_authors else []
+        ),
+        "selected_author_ids": (
+            {author.pk for author in text.selector_authors}
+            if include_authors else set()
+        ),
+        "active_workflow_stage": next(
+            (
+                row_by_id[stage.pk] for stage in stages
+                if not terminal and _is_active(stage, today)
+            ),
+            None,
+        ),
+        "active_user_stage": next(
+            (row for row in stage_rows if row["can_complete"]),
+            None,
+        ),
+    }
+
+
+def _text_notes(text, user, coordinator):
+    return [
+        {
+            "pk": note.pk,
+            "author": _user_data(note.author),
+            "can_manage": coordinator or note.author_id == user.pk,
+            "content": note.content,
+            "is_important": note.is_important,
+            "created_at": note.created_at,
+        }
+        for note in TextNote.objects.filter(text_id=text.pk)
+        .select_related("author", "author__person_profile")
+        .order_by("-created_at", "-pk")
+    ]
+
+
+
+def _source_review_data(text, user, include_authors):
+    source_query = Review.objects.visible_to(user).filter(copied_text_id=text.pk).select_related("reviewers")
+    source = source_query.first()
+    source_data = None
+    opinions = []
+
+    if source is not None:
+        source_data = _Record(
+            pk=source.pk,
+            title=source.title,
+            genre=source.genre,
+            status=source.status,
+            get_status_display=source.get_status_display(),
+            content_warnings=source.content_warnings,
+            old_reviews=source.old_reviews,
+            can_open=not source.old_reviews or include_authors,
+            general_notes=getattr(getattr(source, "reviewers", None), "general_notes", ""),
+        )
+        if include_authors:
+            source_data.update(
+                author_first_name=source.author_first_name,
+                author_last_name=source.author_last_name,
+                email=source.email,
+                phone_number=source.phone_number,
+            )
+        for assignment in (
+            ReviewAssignment.objects.filter(review_id=source.pk)
+            .select_related("user", "user__person_profile", "historical_person")
+            .order_by("position", "pk")
+        ):
+            opinions.append(
+                {
+                    "slot": assignment.position,
+                    "position": assignment.position,
+                    "user": _user_data(assignment.user),
+                    "reviewer_name": (
+                        assignment.user.get_full_name()
+                        or "Nieuzupełnione dane"
+                        if assignment.user else str(assignment.historical_person) if assignment.historical_person else "Usunięte konto"
+                    ),
+                    "opinion_value": assignment.opinion,
+                    "opinion": assignment.get_opinion_display(),
+                    "opinion_display": assignment.get_opinion_display(),
+                    "notes": assignment.notes,
+                    "status_changed_at": assignment.opinion_changed_at,
+                }
+            )
+
+    return source_data, opinions
+
+
+def _text_team_members(text, assignments):
+    team_role_order = {role: i for i, (role, _) in enumerate(workflow_role_choices())}
+    return sorted([
+            {
+                "role": role,
+                "label": assignment_label(assignments[role]) if role in assignments else label,
+                "assignment": _assignment_data(assignments.get(role)),
+                "user": (
+                    _user_data(assignments[role].assigned_to)
+                    if role in assignments else None
+                ),
+                "is_assigned": bool(
+                    role in assignments and assignments[role].assigned_to_id
+                ),
+            }
+            for role, label in workflow_role_choices() if role != Role.STYLING
+        ] + [
+            {"role": item.role, "label": assignment_label(item, show_first=True),
+             "is_previous": True, "is_assigned": True, "user": _user_data(item.assigned_to)}
+            for item in WorkflowRoleAssignment.objects.filter(text=text, assigned_to__isnull=False).exclude(role__in=(*IMPORT_ONLY_ROLES, Role.STYLING)).exclude(
+                workflow_cycle=text.current_workflow_cycle, is_current=True).select_related('assigned_to__person_profile').order_by('workflow_cycle','role','execution_number')
+        ], key=lambda member: (team_role_order.get(member["role"], 999), bool(member.get("is_previous"))))
+
+
+def _detail_stage_rows(user, text, stages, assignments, text_data, *, terminal,
+                       coordinator, today, can_start_first, can_resume):
+    def owned(role):
+        assignment = assignments.get(role)
+        return bool(assignment and assignment.assigned_to_id == user.pk)
+
     from core.selectors.people import user_leave_information
     leave_cache = {}
     stage_rows = []
@@ -792,189 +1007,4 @@ def text_detail_context(*, user, text):
         row['is_queued'] = not available
         stage_rows.append(row)
 
-    row_by_id = {row["pk"]: row for row in stage_rows}
-
-    def stage_row(stage):
-        return row_by_id.get(stage.pk) if stage else None
-
-    current = _current_stage(stages)
-    previous = max(
-        (stage for stage in stages if stage.is_completed),
-        key=lambda stage: (stage.ended_at or date.min, stage.pk),
-        default=None,
-    )
-    visible = [
-        stage_row(stage) for stage in (current, previous) if stage is not None
-    ]
-    visible_ids = {row["pk"] for row in visible}
-
-    archived = []
-    if coordinator:
-        historical_stages = WorkflowStage.objects.filter(text_id=text.pk).exclude(
-            workflow_cycle=text.current_workflow_cycle, is_current=True,
-        ).select_related("assignment__assigned_to__person_profile").order_by("-workflow_cycle", "-pk")
-        archived = [row for row in stage_rows if row["pk"] not in visible_ids]
-        for stage in historical_stages:
-            row = _stage_data(stage, text_data)
-            row.update(can_start=False, can_complete=False, assigned_user=_user_data(stage.assignment.assigned_to) if stage.assignment and stage.assignment.assigned_to else None)
-            archived.append(row)
-
-    notes = [
-        {
-            "pk": note.pk,
-            "author": _user_data(note.author),
-            "can_manage": coordinator or note.author_id == user.pk,
-            "content": note.content,
-            "is_important": note.is_important,
-            "created_at": note.created_at,
-        }
-        for note in TextNote.objects.filter(text_id=text.pk)
-        .select_related("author", "author__person_profile")
-        .order_by("-created_at", "-pk")
-    ]
-
-    source_query = Review.objects.visible_to(user).filter(copied_text_id=text.pk).select_related("reviewers")
-    source = source_query.first()
-    source_data = None
-    opinions = []
-
-    if source is not None:
-        source_data = _Record(
-            pk=source.pk,
-            title=source.title,
-            genre=source.genre,
-            status=source.status,
-            get_status_display=source.get_status_display(),
-            content_warnings=source.content_warnings,
-            old_reviews=source.old_reviews,
-            can_open=not source.old_reviews or include_authors,
-            general_notes=getattr(getattr(source, "reviewers", None), "general_notes", ""),
-        )
-        if include_authors:
-            source_data.update(
-                author_first_name=source.author_first_name,
-                author_last_name=source.author_last_name,
-                email=source.email,
-                phone_number=source.phone_number,
-            )
-        for assignment in (
-            ReviewAssignment.objects.filter(review_id=source.pk)
-            .select_related("user", "user__person_profile", "historical_person")
-            .order_by("position", "pk")
-        ):
-            opinions.append(
-                {
-                    "slot": assignment.position,
-                    "position": assignment.position,
-                    "user": _user_data(assignment.user),
-                    "reviewer_name": (
-                        assignment.user.get_full_name()
-                        or "Nieuzupełnione dane"
-                        if assignment.user else str(assignment.historical_person) if assignment.historical_person else "Usunięte konto"
-                    ),
-                    "opinion_value": assignment.opinion,
-                    "opinion": assignment.get_opinion_display(),
-                    "opinion_display": assignment.get_opinion_display(),
-                    "notes": assignment.notes,
-                    "status_changed_at": assignment.opinion_changed_at,
-                }
-            )
-
-    team_role_order = {role: i for i, (role, _) in enumerate(workflow_role_choices())}
-    open_repetition = text.repetitions.filter(completed_at__isnull=True, canceled_at__isnull=True).first()
-    can_cancel_repetition = bool(user.is_superuser and open_repetition and open_repetition.previous_stage_ids
-        and not open_repetition.stages.filter(started_at__isnull=False).exists()
-        and not open_repetition.stages.filter(is_completed=True).exists()
-        and not open_repetition.assignments.filter(assigned_to__isnull=False).exists())
-    return {
-        "text": text_data,
-        "user_assignments": [_assignment_data(item) for item in own],
-        "stages": stage_rows,
-        "visible_stages": visible,
-        "archived_stages": archived,
-        "can_view_stage_history": coordinator,
-        "team_members": sorted([
-            {
-                "role": role,
-                "label": assignment_label(assignments[role]) if role in assignments else label,
-                "assignment": _assignment_data(assignments.get(role)),
-                "user": (
-                    _user_data(assignments[role].assigned_to)
-                    if role in assignments else None
-                ),
-                "is_assigned": bool(
-                    role in assignments and assignments[role].assigned_to_id
-                ),
-            }
-            for role, label in workflow_role_choices() if role != Role.STYLING
-        ] + [
-            {"role": item.role, "label": assignment_label(item, show_first=True),
-             "is_previous": True, "is_assigned": True, "user": _user_data(item.assigned_to)}
-            for item in WorkflowRoleAssignment.objects.filter(text=text, assigned_to__isnull=False).exclude(role__in=(*IMPORT_ONLY_ROLES, Role.STYLING)).exclude(
-                workflow_cycle=text.current_workflow_cycle, is_current=True).select_related('assigned_to__person_profile').order_by('workflow_cycle','role','execution_number')
-        ], key=lambda member: (team_role_order.get(member["role"], 999), bool(member.get("is_previous")))),
-        "is_assigned": bool(own),
-        "is_read_only": not coordinator and not own,
-        "can_add_note": coordinator or bool(own),
-        "can_edit_coordinator_note": coordinator,
-        "show_coordinator_note": bool(text.coordinator_note.strip()),
-        "text_notes": notes,
-        "repeat_queue": sorted([row for row in stage_rows if row.get('repetition_id') and not row['is_completed']], key=lambda row: row['queue_position']),
-        "open_repetition": open_repetition,
-        "can_cancel_repetition": can_cancel_repetition,
-        "handoffs": text.workflow_handoffs.select_related('previous_assignment__assigned_to', 'new_assignment__assigned_to', 'stage').order_by('-created_at'),
-        "source_review": source_data,
-        "handoff_stages": [row for row in stage_rows if not row["is_completed"] and row["is_released"] and row.get("assigned_user")],
-        "source_review_opinions": opinions,
-        "is_withdrawn": is_withdrawn,
-        "is_ready": is_ready,
-        "can_manage_workflow": coordinator,
-        "can_control_editing": can_control,
-        "editor_assignment": _assignment_data(editor),
-        "first_verifier_assignment": _assignment_data(first_verifier),
-        "active_editing": stage_row(editing),
-        "active_author_editing": stage_row(author_editing),
-        "active_verification": stage_row(verification),
-        "pending_editing": stage_row(pending_editing),
-        "pending_first_verification": stage_row(pending_first),
-        "first_verification_completed": first_done,
-        "second_verification_completed": second_done,
-        "can_send_to_first_verification": bool(
-            can_control and editing and not first_gate
-            and not verification_open_started
-        ),
-        "can_start_first_verification": can_start_first,
-        "can_resume_editing": can_resume,
-        "can_send_to_author": bool(
-            can_control and editing and first_gate and not verification_open
-        ),
-        "can_send_to_second_verification": bool(
-            can_control and editing and first_gate
-            and not any(
-                stage.stage_type == StageType.SECOND_VERIFICATION
-                for stage in stages
-            )
-        ),
-        "can_finish_editing": bool(
-            can_control and editing and second_gate and not verification_open
-        ),
-        "all_authors": (
-            [_author_data(author) for author in text.selector_authors]
-            if include_authors else []
-        ),
-        "selected_author_ids": (
-            {author.pk for author in text.selector_authors}
-            if include_authors else set()
-        ),
-        "active_workflow_stage": next(
-            (
-                row_by_id[stage.pk] for stage in stages
-                if not terminal and _is_active(stage, today)
-            ),
-            None,
-        ),
-        "active_user_stage": next(
-            (row for row in stage_rows if row["can_complete"]),
-            None,
-        ),
-    }
+    return stage_rows

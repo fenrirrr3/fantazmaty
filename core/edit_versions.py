@@ -40,6 +40,8 @@ def changed(sender, instance, using, raw=False, **kwargs):
     bump(label, instance.pk, using)
     if label in ('workflow.workflowstage', 'workflow.workflowroleassignment', 'workflow.workflowrepetition'):
         bump('texts.text', instance.text_id, using)
+    elif label == 'texts.anthologytask':
+        bump('texts.anthology', instance.anthology_id, using)
     elif label in ('texts.reviewassignment', 'texts.reviewers'):
         bump('texts.review', instance.review_id, using)
     elif label == 'texts.textnote':

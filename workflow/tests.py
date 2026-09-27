@@ -70,6 +70,7 @@ class WorkflowTestDataMixin:
         cls.verifier_1 = create_member("weryfikator_1", "Weryfikator")
         cls.verifier_2 = create_member("weryfikator_2", "Weryfikator")
         cls.proofreader = create_member("korektor", "Korektor")
+        cls.other_proofreader = create_member("drugi_korektor", "Korektor")
         cls.coordinator = create_member("koordynator", "Koordynator")
         cls.proofreading_coordinator = create_member("koordynator_korekty", "Koordynator korekty")
 
@@ -306,7 +307,7 @@ class WorkflowProgressionTests(WorkflowTestDataMixin, TestCase):
         steps = (
             (StageType.EDITING_CONTROL, self.coordinator),
             (StageType.FIRST_PROOFREADING, self.proofreader),
-            (StageType.SECOND_PROOFREADING, self.proofreader),
+            (StageType.SECOND_PROOFREADING, self.other_proofreader),
             (StageType.THIRD_VERIFICATION, self.verifier_1),
             (StageType.COORDINATOR_CONTROL, self.coordinator),
         )
@@ -329,7 +330,7 @@ class WorkflowProgressionTests(WorkflowTestDataMixin, TestCase):
         complete_stage(editor_control, self.editor, self.today)
 
         for stage_type, user in (
-            (StageType.THIRD_PROOFREADING, self.proofreader),
+            (StageType.THIRD_PROOFREADING, self.other_proofreader),
             (StageType.FOURTH_PROOFREADING, self.proofreading_coordinator),
             (StageType.STYLING, self.superuser),
         ):

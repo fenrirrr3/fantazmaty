@@ -22,6 +22,7 @@ from core.views.programs import programs
 from core.views.activity import user_activity
 
 urlpatterns = [
+    path("zespol/lista-wedlug-roli/", supervision.role_names, name="role_names"),
     path("workflow/<int:stage_id>/pomin/", workflow.skip_workflow_stage, name="skip_workflow_stage"),
     path("recenzje/import-zbiorczy/", reviews.review_bulk_submit, name="review_bulk_submit"),
     path("organizacja/ostatnia-aktywnosc/", reports.last_activity, name="last_activity"),
@@ -31,7 +32,6 @@ urlpatterns = [
     path("workflow/<int:stage_id>/schedule/", workflow.change_scheduled_workflow_stage, name="change_scheduled_workflow_stage"),
     path("spojnosc-danych/", supervision.data_integrity, name="data_integrity"),
     path("antologie/<int:anthology_id>/", supervision.anthology_detail, name="anthology_detail"),
-    path("antologie/<int:anthology_id>/stopka.csv", supervision.anthology_credits_csv, name="anthology_credits_csv"),
     path("zespol/<int:person_id>/uprawnienia/", supervision.person_permissions, name="person_permissions"),
     path("teksty/<int:text_id>/plik/", texts.update_text_file, name="update_text_file"),
     path("aktywnosc-uzytkownikow/", user_activity, name="user_activity"),

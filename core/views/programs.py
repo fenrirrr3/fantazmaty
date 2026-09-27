@@ -13,9 +13,8 @@ from docx.oxml.exceptions import InvalidXmlError
 from lxml.etree import XMLSyntaxError
 
 from core.odkurzacz_forms import OdkurzaczForm, DocumentConversionForm
-from core.services.document_converter import convert_document, ConversionError, RebuildConfirmationRequired, REBUILD_WARNING
+from core.services.document_converter import convert_document, ConversionError, RebuildConfirmationRequired
 from core.permissions import team_member_required
-from core.services.odkurzacz import clean_docx
 
 logger = logging.getLogger(__name__)
 

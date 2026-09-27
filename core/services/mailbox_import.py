@@ -17,8 +17,7 @@ from core.models import MailboxConnection, MailboxDownload
 from core.forms import ReviewBulkImportForm
 from core.odkurzacz_forms import OdkurzaczForm
 from core.services.mailbox import MailboxError, encode_folder, story_title, _positive
-from core.services.odkurzacz import clean_docx, ALL_EDITORIAL_RULES
-from core.services.document_converter import convert_document, RebuildConfirmationRequired
+from core.services.document_converter import inspect_document, convert_document, RebuildConfirmationRequired
 from texts.models import Anthology
 
 MAX_MESSAGES = 10
@@ -181,8 +180,7 @@ def package_messages(messages, clean=True, convert=True, rebuild=True, allow_reb
                     if not form.is_valid():
                         raise MailboxError(f'Nieprawidłowy DOCX: {name}. Wyłącz przetwarzanie, aby pobrać oryginał.')
                     try:
-                        checked, _, _ = convert_document(SimpleUploadedFile(name, data), [], include_docx=True, rebuild=True, normalize=False, timeout=deadline-time.monotonic())
-                        checked.close()
+                        inspect_document(SimpleUploadedFile(name, data), timeout=deadline-time.monotonic())
                     except RebuildConfirmationRequired as error:
                         rebuild_warnings.append(f"{name}: {error}")
             if rebuild_warnings:

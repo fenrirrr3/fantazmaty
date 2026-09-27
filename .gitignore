@@ -34,3 +34,6 @@ Thumbs.db
 *.bundle
 # Local request activity queue (private runtime data)
 var/activity-spool/
+
+# Lokalna mapa projektu
+/MAPA_PROJEKTU.md

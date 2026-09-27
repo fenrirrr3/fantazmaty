@@ -422,6 +422,46 @@ def workflow_inactivity_context(
         )
     )
 
+    stages = _inactivity_stages(today, active_days, waiting_days, mode, selected_stages, include_authors)
+    rows = _inactivity_rows(stages, query, include_authors, today)
+
+    rows.sort(
+        key=lambda row: (
+            -row["days"],
+            row["text"]["title"].casefold(),
+            row["stage"]["pk"],
+        )
+    )
+
+    return {
+        "rows": rows,
+        "query": query,
+        "mode": mode,
+        "stage_choices": active_stage_choices(),
+        "selected_stages": selected_stages,
+        "today": today,
+    }
+
+def _cascade_activity(context, rows, filters, people_key, statuses=None):
+    dimensions = {
+        'anthology': ('anthology_id', [filters['anthology']] if filters.get('anthology') else []),
+        'person': ('person_id', [filters['person']] if filters.get('person') else []),
+    }
+    if statuses is not None:
+        dimensions['status'] = ('review_status_value', statuses)
+    def matches(row, exclude=None):
+        return all(not values or row[field] in values for name, (field, values) in dimensions.items() if name != exclude)
+    options = {name: {row[field] for row in rows if matches(row, name)} | set(values)
+               for name, (field, values) in dimensions.items()}
+    context['anthologies'] = [item for item in context['anthologies'] if item['pk'] in options['anthology']]
+    context[people_key] = [item for item in context[people_key] if item['pk'] in options['person']]
+    if statuses is not None:
+        context['status_choices'] = [(v, label) for v, label in Review.Status.choices if v in options['status']]
+    context['activity_rows'] = [row for row in rows if matches(row)]
+    return context
+
+
+def _inactivity_stages(today, active_days, waiting_days, mode, selected_stages, include_authors):
     terminal_stage = WorkflowStage.objects.current_cycle().filter(
         text_id=OuterRef("text_id"),
         workflow_cycle=OuterRef("workflow_cycle"),
@@ -474,6 +514,10 @@ def workflow_inactivity_context(
     else:
         stages = stages.filter(active_condition | waiting_condition)
 
+    return stages
+
+
+def _inactivity_rows(stages, query, include_authors, today):
     rows = []
 
     for stage in stages.iterator(chunk_size=BATCH_SIZE):
@@ -532,37 +576,4 @@ def workflow_inactivity_context(
             }
         )
 
-    rows.sort(
-        key=lambda row: (
-            -row["days"],
-            row["text"]["title"].casefold(),
-            row["stage"]["pk"],
-        )
-    )
-
-    return {
-        "rows": rows,
-        "query": query,
-        "mode": mode,
-        "stage_choices": active_stage_choices(),
-        "selected_stages": selected_stages,
-        "today": today,
-    }
-
-def _cascade_activity(context, rows, filters, people_key, statuses=None):
-    dimensions = {
-        'anthology': ('anthology_id', [filters['anthology']] if filters.get('anthology') else []),
-        'person': ('person_id', [filters['person']] if filters.get('person') else []),
-    }
-    if statuses is not None:
-        dimensions['status'] = ('review_status_value', statuses)
-    def matches(row, exclude=None):
-        return all(not values or row[field] in values for name, (field, values) in dimensions.items() if name != exclude)
-    options = {name: {row[field] for row in rows if matches(row, name)} | set(values)
-               for name, (field, values) in dimensions.items()}
-    context['anthologies'] = [item for item in context['anthologies'] if item['pk'] in options['anthology']]
-    context[people_key] = [item for item in context[people_key] if item['pk'] in options['person']]
-    if statuses is not None:
-        context['status_choices'] = [(v, label) for v, label in Review.Status.choices if v in options['status']]
-    context['activity_rows'] = [row for row in rows if matches(row)]
-    return context
+    return rows
