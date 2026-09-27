@@ -13,6 +13,7 @@ EDITORIAL_RULES = (
     ('tabs', 'Usuwanie wszystkich tabulatorów'),
     ('empty_paragraphs', 'Wielokrotne puste akapity → jeden pusty akapit'),
     ('before_punct', 'Spacje przed znakami interpunkcyjnymi'),
+    ('sentence_case', 'Wielka litera po . ? ! – z wyjątkami dla skrótów, liczb i dialogów'),
     ('after_punct', 'Brakujące spacje po interpunkcji (z wyjątkami)'),
     ('inside_brackets', 'Spacje wewnątrz nawiasów'),
     ('inside_quotes', 'Spacje wewnątrz cudzysłowów'),
@@ -104,10 +105,60 @@ DATE_RE = re.compile(
     r'(?<![\w.])(?:(?P<iso_y>\d{4})-(?P<iso_m>\d{1,2})-(?P<iso_d>\d{1,2})|'
     r'(?P<d>\d{1,2})(?P<sep>[./-])(?P<m>\d{1,2})(?P=sep)(?P<y>\d{4}))(?!\w|\.\d)')
 TIME_RE = re.compile(r'(?<![\w:])\d{1,2}:\d{2}(?::\d{2})?(?![\w:])')
+# Conservative exception dictionary: a final abbreviation dot may also end a
+# sentence, but that ambiguity must never be resolved by changing the text.
+SENTENCE_ABBREVIATIONS = frozenset("""
+np. m.in. tj. tzn. tzw. itd. itp. ew. ewent. prawdop. przyp. dosł. przen.
+pot. właśc. zob. por. patrz. cyt. ww. jw. j.w. cd. cdn. c.d. c.d.n.
+p. prof. hab. doc. inż. lic. lek. med. wet. mec. adw. red. dyr. kier.
+zast. sekr. prez. min. amb. sen. jun. ks. o. s. św. bł. śp. ś.p.
+kard. abp. bp. oo. ss. gen. bryg. dyw. kpt. por. ppor. chor. sierż.
+plut. kpr. st. mł. szt. asp. kom. podkom. nadkom. insp. podinsp. nadinsp.
+ul. al. pl. os. bud. lok. m. woj. pow. gm. r. w. godz. tyg. mies. kw.
+ub. br. bm. n.e. p.n.e. ok. tys. szt. egz. poz. proc. maks. str. t.
+cz. rozdz. z. wyd. wydawn. oprac. przeł. tłum. il. rys. ryc. tab. fot.
+bibliogr. art. ust. lit. par. pol. ang. niem. fr. ros. łac. gr. wł.
+hiszp. czes. ukr. hist. daw. arch. żart. iron. pej. wulg. książk. poet.
+sp. sp.j. sp.k. sp.p. etc. ibid. sic. vs. dr. mgr. nr. mjr. płk. ppłk.
+""".split()) | frozenset(('z o.o.', 'sp. z o.o.', 'et al.', 'op. cit.'))
 ABBREVIATION_RE = re.compile(
-    r'\b(?:m\.in\.|p\.n\.e\.|n\.e\.|np\.|itd\.|itp\.|tj\.|tzw\.|'
-    r'prof\.|dr\.|hab\.|mgr\.|inż\.|św\.|al\.|ul\.|godz\.|ok\.|por\.|zob\.)|'
-    r'\b(?:[' + UPPER + r']\.){2,}')
+    r'(?<!\w)(?:' + '|'.join(
+        re.escape(value).replace(r'\.', r'\.' + H + '*').replace(r'\ ', H + '+')
+        for value in sorted(SENTENCE_ABBREVIATIONS, key=lambda x: (-len(x), x))
+    ) + r')|\b(?:[' + UPPER + r']\.){2,}', re.IGNORECASE)
+FILE_NAME_RE = re.compile(r'(?<![\w.])[\w-]+(?:\.[\w-]+)*\.(?:docx?|pdf|epub|mobi|txt|rtf|odt|xlsx?|csv|zip|rar|jpg|jpeg|png|gif|py|html?|js|css)(?!\w)', re.IGNORECASE)
+
+
+def _capitalize_sentences(text):
+    protected = set()
+    for pattern in (TECHNICAL_RE, DATE_RE, TIME_RE, FILE_NAME_RE, ABBREVIATION_RE):
+        for match in pattern.finditer(text):
+            if pattern is ABBREVIATION_RE and match.start() in protected:
+                continue
+            # URLs can include trailing punctuation. Protect only their body.
+            end = match.end()
+            if pattern is TECHNICAL_RE:
+                end = match.start() + len(match[0].rstrip('.,;:!?)]}'))
+            protected.update(range(match.start(), end))
+
+    def replace(match):
+        marks, gap, letter = match.groups()
+        start = match.start()
+        if any(pos in protected for pos in range(start, start + len(marks))):
+            return match[0]
+        if '.' in marks:
+            if len(marks) != 1 or (start and text[start - 1] in '.…'):
+                return match[0]  # ellipsis, not a sentence boundary
+            if start and text[start - 1].isdigit():
+                return match[0]  # ordinal, time, version, date
+            if re.search(r'(?<!\w)[' + UPPER + r']$', text[:start]):
+                return match[0]  # an initial
+        return marks + gap + letter.upper()
+
+    # Deliberately do not cross a dash, quotation mark or parenthesis.
+    # In particular '. – powiedział' / '? – zapytała' stay untouched.
+    return re.sub(r'([.!?]+)(' + H + r'*)([' + LOWER + r'])', replace, text)
+
 
 
 # Własna lista użytkownika. To jawne zamiany redakcyjne, a nie ocena
@@ -250,6 +301,8 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True):
     text = DATE_RE.sub(date_protect, text)
     text = TECHNICAL_RE.sub(protect_technical, text)
     text = TIME_RE.sub(lambda m: mask_value(m[0]), text)
+    if 'sentence_case' in enabled:
+        text = FILE_NAME_RE.sub(lambda m: mask_value(m[0]), text)
     if 'user_word_corrections' in enabled:
         text = _correct_user_words(text)
 
@@ -346,6 +399,8 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True):
     if 'pronouns_lower' in enabled:
         # Po przywróceniu masek dostępne są kropki kończące skróty i zdania.
         text = _lower_personal_pronouns(text)
+    if 'sentence_case' in enabled:
+        text = _capitalize_sentences(text)
     if 'trim' in enabled:
         if trim_start:
             text = re.sub(r'^' + H + r'+', '', text)

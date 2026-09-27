@@ -40,15 +40,16 @@ class OdkurzaczTests(TestCase):
     def test_page_has_all_rules_and_no_placeholder(self):
         response = self.client.get(self.url)
         self.assertContains(response, 'Odkurzacz')
-        self.assertContains(response, 'name="rules"', count=25)
-        self.assertEqual(response.content.decode().count(' checked'), 25)
+        self.assertContains(response, 'name="rules"', count=len(EDITORIAL_RULES))
+        self.assertEqual(sum(' checked' in str(checkbox.tag()) for checkbox in response.context['form']['rules']), len(EDITORIAL_RULES))
         self.assertNotContains(response, 'gifrific')
 
     def test_download_uses_selected_rules(self):
         response = self.client.post(self.url, {'document': upload(), 'rules': ['spaces']})
         self.assertEqual(response.status_code, 200)
         self.assertIn('tekst_odkurzony.docx', response['Content-Disposition'])
-        self.assertEqual(response['Cache-Control'], 'private, no-store')
+        self.assertIn('private', response['Cache-Control'])
+        self.assertIn('no-store', response['Cache-Control'])
         result = Document(BytesIO(b''.join(response.streaming_content)))
         response.close()
         self.assertEqual(result.paragraphs[0].text, 'Ala ma kota...')

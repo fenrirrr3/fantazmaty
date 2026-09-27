@@ -5,6 +5,9 @@ import re
 import ssl
 from email import policy
 from email.parser import BytesHeaderParser
+from email.utils import parsedate_to_datetime
+from django.utils.formats import date_format
+from django.utils.translation import override
 from cryptography.fernet import InvalidToken
 
 PAGE_SIZE = 50
@@ -38,7 +41,7 @@ def _positive(value):
     return value
 
 
-def read_headers(config, cursor=None):
+def read_headers(config, cursor=None, excluded=None):
     client = None
     try:
         password = config.get_password()
@@ -81,12 +84,15 @@ def read_headers(config, cursor=None):
             anchor = uids[-1] if uids else None
         else:
             uids = [uid for uid in uids if uid <= anchor]
+        if excluded:
+            excluded_uids = set(excluded(validity))
+            uids = [uid for uid in uids if uid not in excluded_uids]
         candidates = uids
         newer = bool(cursor and cursor['direction'] == 'newer')
         if cursor:
             candidates = [uid for uid in uids if (uid > boundary if newer else uid < boundary)]
         selected = candidates[:PAGE_SIZE] if newer else candidates[-PAGE_SIZE:]
-        result = {'rows': [], 'total': len(uids), 'next_cursor': None, 'previous_cursor': None}
+        result = {'validity': validity, 'rows': [], 'total': len(uids), 'next_cursor': None, 'previous_cursor': None}
         if not selected:
             # Messages may have disappeared between pages; offer a fresh read.
             return result
@@ -97,7 +103,7 @@ def read_headers(config, cursor=None):
         if any(uid > selected[-1] for uid in uids):
             result['previous_cursor'] = state('newer', selected[-1])
         status, payload = client.uid('FETCH', ','.join(map(str, selected)),
-            '(UID BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE MESSAGE-ID)]<0.65536>)')
+            '(UID BODY.PEEK[HEADER.FIELDS (FROM REPLY-TO SUBJECT DATE MESSAGE-ID)]<0.65536>)')
         if status != 'OK':
             raise MailboxError('Nie udało się pobrać nagłówków. Spróbuj ponownie.')
         parser = BytesHeaderParser(policy=policy.default)
@@ -111,8 +117,8 @@ def read_headers(config, cursor=None):
             message = parser.parsebytes(raw)
             def field(name):
                 return str(message.get(name, '')).replace('\r', ' ').replace('\n', ' ')[:2000]
-            result['rows'].append({'uid': int(uid[1]), 'sender': field('From'),
-                'recipient': field('To'), 'subject': field('Subject'), 'date': field('Date'),
+            result['rows'].append({'uid': int(uid[1]), 'sender': field('Reply-To') or field('From'),
+                'subject': story_title(field('Subject')), 'date': polish_date(field('Date')),
                 'message_id': field('Message-ID')})
         result['rows'].sort(key=lambda item: item['uid'], reverse=True)
         return result
@@ -130,3 +136,16 @@ def read_headers(config, cursor=None):
                 client.logout()
             except (imaplib.IMAP4.error, OSError):
                 pass
+
+
+def story_title(subject):
+    return subject.partition('–')[2].strip() if '–' in subject else subject.strip()
+
+
+def polish_date(value):
+    try:
+        dt = parsedate_to_datetime(value)
+        with override('pl'):
+            return date_format(dt, 'j E Y, H:i')
+    except (ValueError, TypeError, OverflowError):
+        return '–'

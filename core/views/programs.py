@@ -6,25 +6,53 @@ from django.contrib.auth.decorators import login_required
 from django.http import FileResponse
 from django.shortcuts import render
 from django.views.decorators.http import require_http_methods
+from django.views.decorators.cache import never_cache
 from docx.oxml.exceptions import InvalidXmlError
 from lxml.etree import XMLSyntaxError
 
-from core.odkurzacz_forms import OdkurzaczForm
+from core.odkurzacz_forms import OdkurzaczForm, DocumentConversionForm
+from core.services.document_converter import convert_document, ConversionError
 from core.permissions import team_member_required
 from core.services.odkurzacz import clean_docx
 
 logger = logging.getLogger(__name__)
 
 
+@never_cache
 @login_required
 @require_http_methods(["GET", "POST"])
 @team_member_required
 def programs(request):
+    action = request.POST.get('program_action', 'clean') if request.method == 'POST' else None
     form = OdkurzaczForm(
-        request.POST if request.method == "POST" else None,
-        request.FILES if request.method == "POST" else None,
+        request.POST if action == 'clean' else None,
+        request.FILES if action == 'clean' else None,
     )
-    if request.method == "POST" and form.is_valid():
+    conversion_form = DocumentConversionForm(
+        request.POST if action == 'convert' else None,
+        request.FILES if action == 'convert' else None, prefix='convert',
+    )
+    if action == 'convert' and conversion_form.is_valid():
+        upload = conversion_form.cleaned_data['document']
+        try:
+            output, extension, mime = convert_document(upload,
+                conversion_form.cleaned_data['formats'],
+                use_cleaner=conversion_form.cleaned_data['use_cleaner'])
+        except ConversionError as error:
+            conversion_form.add_error(None, str(error))
+        except (BadZipFile, XMLSyntaxError, InvalidXmlError, KeyError, ValueError, OSError):
+            conversion_form.add_error('document', 'Nie udało się przetworzyć DOCX. Zapisz dokument ponownie; przy użyciu Odkurzacza obowiązuje limit 500 000 znaków i 20 000 znaków w akapicie.')
+        except Exception:
+            logger.exception('Błąd konwersji dokumentu')
+            conversion_form.add_error(None, 'Konwersja nie powiodła się. Skontaktuj się z administratorem.')
+        else:
+            response = FileResponse(output, as_attachment=True,
+                filename=Path(upload.name).stem[:120] + '_konwersja.' + extension,
+                content_type=mime)
+            response['Cache-Control'] = 'private, no-store'
+            response['X-Content-Type-Options'] = 'nosniff'
+            return response
+    if action == 'clean' and form.is_valid():
         upload = form.cleaned_data["document"]
         try:
             output = clean_docx(upload, form.cleaned_data["rules"])
@@ -42,4 +70,10 @@ def programs(request):
             response["Cache-Control"] = "private, no-store"
             response["X-Content-Type-Options"] = "nosniff"
             return response
-    return render(request, "core/programs.html", {"form": form})
+    if action not in (None, 'clean', 'convert'):
+        form = OdkurzaczForm(request.POST, request.FILES)
+        form.add_error(None, 'Wybierz narzędzie i wyślij formularz ponownie.')
+    return render(request, "core/programs.html", {
+        "form": form, "conversion_form": conversion_form,
+        "clean_open": bool(form.errors), "conversion_open": action == 'convert',
+    })

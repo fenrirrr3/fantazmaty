@@ -419,3 +419,6 @@ LOGGING = {
         },
     },
 }
+
+# Temporary files for document conversion.
+DOCUMENT_CONVERSION_DIR = BASE_DIR / 'var' / 'conversion'

@@ -38,3 +38,16 @@ class OdkurzaczForm(forms.Form):
         finally:
             upload.seek(0)
         return upload
+
+
+class DocumentConversionForm(OdkurzaczForm):
+    formats = forms.MultipleChoiceField(
+        label='Formaty docelowe', choices=(('pdf', 'PDF'), ('epub', 'EPUB')),
+        widget=forms.CheckboxSelectMultiple, initial=['epub'],
+        error_messages={'required': 'Wybierz co najmniej jeden format.'},
+    )
+    use_cleaner = forms.BooleanField(label='Użyj Odkurzacza przed konwersją', required=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        del self.fields['rules']

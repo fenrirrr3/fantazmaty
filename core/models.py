@@ -209,3 +209,14 @@ class MailboxConnection(models.Model):
     def get_password(self):
         from core.mailbox_crypto import decrypt_password
         return decrypt_password(self.encrypted_password)
+
+
+class MailboxDownload(models.Model):
+    """Local receipt only. Never changes IMAP flags or message contents."""
+    mailbox_key = models.CharField(max_length=64)
+    uid_validity = models.PositiveBigIntegerField()
+    uid = models.PositiveBigIntegerField()
+    downloaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=('mailbox_key', 'uid_validity', 'uid'), name='unique_mailbox_download')]

@@ -2,25 +2,53 @@
 {% block title %}Import zgłoszeń | Fantazmaty CMS{% endblock %}
 {% block extra_css %}<link rel="stylesheet" href="{% static 'core/intake.css' %}">{% endblock %}
 {% block content %}
-<header class="page-header"><h1 class="page-title">Import zgłoszeń</h1><p class="page-description">Podgląd nagłówków poczty. Wiadomości pozostają na skrzynce i zachowują stan przeczytania. Treści ani załączniki nie są pobierane, żadne zgłoszenia nie są dodawane do bazy.</p></header>
-<p><a class="secondary-button" href="{% url 'core:review_create' %}">Dodaj zgłoszenie lub importuj wiele zgłoszeń</a> <a class="secondary-button" href="{% url 'admin:core_mailboxconnection_changelist' %}">Ustawienia skrzynek</a></p>
+<header class="page-header"><h1 class="page-title">Import zgłoszeń</h1><p class="page-description">Skrzynka teksty. Wybierz wiadomości, sprawdź dane i pobierz paczkę z tekstami. Wiadomości pozostają na skrzynce, bez zmiany stanu przeczytania.</p></header>
+<p><a class="secondary-button" href="{% url 'core:review_create' %}">Dodaj zgłoszenie lub importuj wiele zgłoszeń</a> <a class="secondary-button" href="{% url 'admin:core_mailboxconnection_changelist' %}">Ustawienia skrzynki</a></p>
 <section class="card">
-{% if mailboxes %}
-<form method="post" class="mailbox-filters">{% csrf_token %}
-<div class="form-field"><label for="mailbox">Skrzynka</label><select name="mailbox" id="mailbox" required>{% for box in mailboxes %}<option value="{{ box.pk }}" {% if selected_mailbox == box.pk %}selected{% endif %}>{{ box.name }}</option>{% endfor %}</select></div>
-<button class="primary-button" type="submit">Pobierz nagłówki</button>
-</form>
-{% else %}<p>Najpierw dodaj aktywną skrzynkę w panelu administratora.</p>{% endif %}
 {% if error %}<p class="form-error" role="alert">{{ error }}</p>{% endif %}
+{% if mailbox %}
+<form method="post">{% csrf_token %}
+<input type="hidden" name="selection" value="{{ selection }}">
+<div class="mailbox-filters">
+<label><input type="checkbox" name="show_downloaded" {% if show_downloaded %}checked{% endif %}> Pokaż również już pobrane wiadomości</label>
+<label><input type="checkbox" name="clean" {% if clean %}checked{% endif %}> Popraw pliki Odkurzaczem</label>
+<label><input type="checkbox" name="convert" {% if convert %}checked{% endif %}> Konwertuj do PDF i EPUB</label>
+<button class="primary-button" name="action" value="headers">Pobierz nagłówki</button>
+<button class="primary-button" name="action" value="download" {% if not result.rows %}disabled{% endif %}>Pobierz teksty</button>
+</div>
+<p>Jednorazowo do 10 wiadomości, 15 MB na wiadomość i 50 MB łącznie. Przetwarzanie plików ma limit 90 sekund. Odkurzacz i konwersja obsługują DOCX. Po wyłączeniu obu opcji pobierzesz oryginalne załączniki. Ponowne pobranie nie dodaje drugi raz zgłoszeń.</p>
 {% if result %}
-<p>Wiadomości w przeglądanym zakresie: {{ result.total }}. Do 50 nagłówków na stronie. Nowe wiadomości pojawią się po ponownym kliknięciu „Pobierz nagłówki”.</p>
-<div class="table-container"><table><thead><tr><th>Data wiadomości</th><th>Nadawca</th><th>Odbiorca</th><th>Temat</th></tr></thead><tbody>
-{% for row in result.rows %}<tr><td>{{ row.date|default:'–' }}</td><td>{{ row.sender|default:'–' }}</td><td>{{ row.recipient|default:'–' }}</td><td>{{ row.subject|default:'(bez tematu)' }}</td></tr>{% empty %}<tr><td colspan="4">Brak wiadomości do wyświetlenia.</td></tr>{% endfor %}
+<p>Wiadomości spełniające filtr: {{ result.total }}. Do 50 na stronie.</p>
+<div class="table-container"><table><thead><tr><th>Wybierz</th><th>Data wiadomości</th><th>Nadawca (odpowiedź do)</th><th>Temat</th><th>Pobrano</th></tr></thead><tbody>
+{% for row in result.rows %}<tr><td><input type="checkbox" name="uids" value="{{ row.uid }}" aria-label="Wybierz {{ row.subject }}"></td><td>{{ row.date|default:'–' }}</td><td>{{ row.sender|default:'–' }}</td><td>{{ row.subject|default:'(bez tematu)' }}</td><td>{{ row.downloaded|yesno:'Tak,Nie' }}</td></tr>{% empty %}<tr><td colspan="5">Brak wiadomości do wyświetlenia.</td></tr>{% endfor %}
 </tbody></table></div>
-<form method="post" class="pagination">{% csrf_token %}<input type="hidden" name="mailbox" value="{{ selected_mailbox }}">
+<div class="pagination">
 {% if result.previous_cursor %}<button class="secondary-button" name="cursor" value="{{ result.previous_cursor }}">← Nowsze</button>{% endif %}
 {% if result.next_cursor %}<button class="secondary-button" name="cursor" value="{{ result.next_cursor }}">Starsze →</button>{% endif %}
+</div>
+{% endif %}
 </form>
+{% endif %}
+{% if preview_messages %}
+<h2>Podgląd zgłoszeń</h2>
+<p>Zapisujemy tylko siedem pól z wiersza zgłoszenia. Dalsze pola po nazwie antologii i pozostała treść maila są pomijane. Folder w ZIP otrzyma tytuł z tematu po półpauzie; tytuł w bazie pochodzi z wiersza danych.</p>
+<div class="table-container"><table><thead><tr><th>Autor</th><th>Tytuł</th><th>Gatunek</th><th>Znaki</th><th>E-mail</th><th>Telefon</th><th>Antologia</th><th>Pliki</th><th>Zapis</th></tr></thead><tbody>
+{% for row in preview_messages %}<tr><td>{{ row.author }}</td><td>{{ row.title }}</td><td>{{ row.genre }}</td><td>{{ row.length }}</td><td>{{ row.email }}</td><td>{{ row.phone }}</td><td>{{ row.anthology }}</td><td>{% for name, data in row.files %}{{ name }}<br>{% endfor %}</td><td>{% if row.downloaded %}Tylko ponowne pobranie{% else %}Nowe zgłoszenie{% endif %}</td></tr>{% endfor %}
+</tbody></table></div>
+{% for error in hard_errors %}<p class="form-error">{{ error }}</p>{% endfor %}
+{% for form in forms %}{% for warning in form.import_warnings %}<p class="form-error">{{ warning }}</p>{% endfor %}{% endfor %}
+{% if not hard_errors %}
+<form method="post">{% csrf_token %}
+<input type="hidden" name="selection" value="{{ selection }}"><input type="hidden" name="preview" value="{{ preview_token }}">
+{% for uid in selected %}<input type="hidden" name="uids" value="{{ uid }}">{% endfor %}
+{% if clean %}<input type="hidden" name="clean" value="on">{% endif %}{% if convert %}<input type="hidden" name="convert" value="on">{% endif %}
+{% if show_downloaded %}<input type="hidden" name="show_downloaded" value="on">{% endif %}
+<p>Odkurzacz: {{ clean|yesno:'tak,nie' }}. Konwersja PDF i EPUB: {{ convert|yesno:'tak,nie' }}.</p>
+<p><label><input type="checkbox" name="approve" required> Sprawdziłem dane i ostrzeżenia. Potwierdzam zapis nowych zgłoszeń i pobranie plików.</label></p>
+<button class="primary-button" name="action" value="confirm">Zapisz zgłoszenia i pobierz ZIP</button>
+<p>Wiadomość oznaczamy jako pobraną po przygotowaniu paczki i zapisaniu danych. Jeżeli pobieranie w przeglądarce się przerwie, włącz pokazywanie pobranych wiadomości i pobierz ją ponownie.</p>
+</form>
+{% endif %}
 {% endif %}
 </section>
 {% endblock %}
