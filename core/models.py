@@ -166,3 +166,46 @@ class EditRevision(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=('model_label', 'object_id'), name='unique_edit_revision')]
+
+
+class MailboxConnection(models.Model):
+    class Security(models.TextChoices):
+        SSL = 'ssl', 'SSL/TLS (zwykle port 993)'
+        STARTTLS = 'starttls', 'STARTTLS (zwykle port 143)'
+
+    name = models.CharField('nazwa skrzynki', max_length=120)
+    host = models.CharField('serwer IMAP', max_length=253, help_text='Nazwa serwera, np. imap.example.com, bez https://.')
+    port = models.PositiveIntegerField('port', default=993)
+    security = models.CharField('szyfrowanie połączenia', max_length=8, choices=Security.choices, default=Security.SSL)
+    username = models.CharField('login', max_length=254)
+    encrypted_password = models.TextField(editable=False)
+    folder = models.CharField('folder', max_length=255, default='INBOX', help_text='Nazwa folderu IMAP. Standardowa skrzynka odbiorcza: INBOX.')
+    is_active = models.BooleanField('aktywna', default=True)
+
+    class Meta:
+        verbose_name = 'skrzynka zgłoszeń'
+        verbose_name_plural = 'skrzynki zgłoszeń'
+        ordering = ('name', 'pk')
+
+    def __str__(self):
+        return self.name
+
+    def clean(self):
+        import re
+        from django.core.exceptions import ValidationError
+        super().clean()
+        if not re.fullmatch(r'[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?', self.host or ''):
+            raise ValidationError({'host': 'Podaj nazwę serwera IMAP bez protokołu, portu i ścieżki.'})
+        if self.port is None or not 1 <= self.port <= 65535:
+            raise ValidationError({'port': 'Port musi być liczbą od 1 do 65535.'})
+        for field in ('folder', 'username'):
+            if any(ord(c) < 32 or ord(c) == 127 for c in getattr(self, field, '')):
+                raise ValidationError({field: 'Usuń znaki sterujące.'})
+
+    def set_password(self, value):
+        from core.mailbox_crypto import encrypt_password
+        self.encrypted_password = encrypt_password(value)
+
+    def get_password(self):
+        from core.mailbox_crypto import decrypt_password
+        return decrypt_password(self.encrypted_password)

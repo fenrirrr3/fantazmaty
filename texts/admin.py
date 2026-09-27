@@ -154,7 +154,7 @@ class WorkflowStageInline(SuperuserOnlyAdminMixin, admin.TabularInline):
     model = WorkflowStage
     form = WorkflowPerformerForm
     formset = WorkflowPerformerFormSet
-    verbose_name_plural = "Workflow — wykonawcy etapów"
+    verbose_name_plural = "Workflow – wykonawcy etapów"
     extra = 0
     can_delete = False
     fields = ("stage_label", "performer", "started_at", "ended_at", "is_completed", "is_current", "delete_stage_link", "workflow_version")
@@ -185,6 +185,14 @@ class WorkflowStageInline(SuperuserOnlyAdminMixin, admin.TabularInline):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+class TextNoteInline(SuperuserOnlyAdminMixin, admin.StackedInline):
+    model = TextNote
+    fields = ("content", "is_important", "author", "created_at")
+    readonly_fields = ("author", "created_at")
+    extra = 0
+    verbose_name_plural = "Notatki do tekstu"
 
 
 class TextAdminForm(NormalizedFormMixin, forms.ModelForm):
@@ -294,6 +302,14 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
                     "title",
                     "authors",
                     "anthology",
+                    "manual_status_link",
+                ),
+            },
+        ),
+        (
+            "Informacje o tekście",
+            {
+                "fields": (
                     "length",
                     "content_warnings",
                     "coordinator_note",
@@ -303,15 +319,24 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             },
         ),
         (
-            "Workflow",
-            {"fields": ("manual_status_link", "current_workflow_cycle", "import_source", "import_source_row")},
+            "Dane techniczne i pochodzenie importu",
+            {"classes": ("collapse",), "fields": ("current_workflow_cycle", "import_source", "import_source_row")},
         ),
     )
-    inlines = (WorkflowStageInline,)
+    inlines = (WorkflowStageInline, TextNoteInline,)
 
     def save_formset(self, request, form, formset, change):
         if isinstance(formset, WorkflowPerformerFormSet):
             formset.save_performers(request.user)
+        elif formset.model is TextNote:
+            instances = formset.save(commit=False)
+            for obj in formset.deleted_objects:
+                obj.delete()
+            for obj in instances:
+                if obj._state.adding:
+                    obj.author = request.user
+                obj.save()
+            formset.save_m2m()
         else:
             super().save_formset(request, form, formset, change)
     list_per_page = 50
@@ -352,6 +377,13 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             source_review.save(update_fields=['copied_text'])
 
     def changeform_view(self, request, object_id=None, form_url='', extra_context=None):
+        try:
+            with transaction.atomic():
+                return self._validated_changeform_view(request, object_id, form_url, extra_context)
+        except ValidationError as error:
+            return HttpResponseBadRequest(" ".join(error.messages), content_type='text/plain; charset=utf-8')
+
+    def _validated_changeform_view(self, request, object_id=None, form_url='', extra_context=None):
         token = request.GET.get('prefill')
         if object_id is None and token:
             snapshot = request.session.get('review_text_prefills', {}).get(token, {})
@@ -384,7 +416,7 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             return 'Zapisz tekst, aby ustawić status.'
         stage = current_stage(list(obj.workflow_stages.filter(workflow_cycle=obj.current_workflow_cycle)))
         label = stage.get_stage_type_display() if stage else 'Brak bieżącego etapu'
-        return format_html('{} — <a href="{}">Zmień status / cofnij etap</a> · <a href="{}#workflow-repeat">Powtórz wybrane etapy</a>', label, reverse('admin:texts_text_manual_status', args=[obj.pk]), reverse('core:assigned_text_detail', args=[obj.pk]))
+        return format_html('{} – <a href="{}">Zmień status / cofnij etap</a> · <a href="{}#workflow-repeat">Powtórz wybrane etapy</a>', label, reverse('admin:texts_text_manual_status', args=[obj.pk]), reverse('core:assigned_text_detail', args=[obj.pk]))
 
     def change_status_view(self, request, object_id):
         from django.template.response import TemplateResponse
@@ -472,6 +504,13 @@ class TextNoteAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     list_select_related = ("text", "author")
     list_per_page = 50
     show_full_result_count = False
+
+    def delete_queryset(self, request, queryset):
+        # Bulk deletion does not carry an object_id for the middleware.
+        with transaction.atomic():
+            parent_ids = queryset.values_list('text_id', flat=True)
+            list(Text.objects.select_for_update().filter(pk__in=parent_ids).order_by('pk'))
+            super().delete_queryset(request, queryset)
 
     def save_model(self, request, obj, form, change):
         if not self.has_superuser_access(request):
@@ -796,6 +835,7 @@ class ArchivedReviewInlineMixin(SuperuserOnlyAdminMixin):
 
 
 class ReviewersInline(ArchivedReviewInlineMixin, admin.StackedInline):
+    verbose_name_plural = "Ogólne uwagi do zgłoszenia"
     model = Reviewers
     extra = 0
     max_num = 1
@@ -817,6 +857,7 @@ class ReviewAssignmentInline(
     ArchivedReviewInlineMixin,
     admin.TabularInline,
 ):
+    verbose_name_plural = "Oceny recenzentów"
     model = ReviewAssignment
     form = ReviewAssignmentAdminForm
     formset = ReviewAssignmentInlineFormSet
@@ -1114,6 +1155,9 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             .select_related("author", "anthology", "copied_text").prefetch_related("coauthors")
         )
 
+    def changelist_view(self, request, extra_context=None):
+        return super().changelist_view(request, {**(extra_context or {}), "title": "Zgłoszenia do recenzji"})
+
     def changeform_view(
         self,
         request,
@@ -1121,6 +1165,7 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         form_url="",
         extra_context=None,
     ):
+        extra_context = {**(extra_context or {}), "title": "Edycja zgłoszenia do recenzji" if object_id else "Dodaj zgłoszenie do recenzji"}
         if request.method != "POST" or not self.has_superuser_access(request):
             return super().changeform_view(
                 request,
@@ -1206,3 +1251,4 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
 # Reviewers i ReviewAssignment są edytowane wyłącznie jako inline Review.
 # Nie rejestrujemy osobnych adminów omijających blokadę rekordu recenzji.
+

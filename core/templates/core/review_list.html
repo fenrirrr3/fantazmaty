@@ -20,10 +20,10 @@
 
             {% if can_import_reviews %}
                 <a
-                    href="{% url 'core:review_bulk_import' %}"
+                    href="{% url 'core:review_create' %}"
                     class="primary-button"
                 >
-                    Importuj zgłoszenia
+                    Dodaj zgłoszenia
                 </a>
             {% endif %}
         </div>
@@ -279,7 +279,7 @@
                                 data-type="number"
                                 data-copy-value="{{ review.length|default_if_none:"" }}"
                             >
-                                {{ review.length|default_if_none:"—" }}
+                                {{ review.length|default_if_none:"–" }}
                             </td>
 
                             <td>
@@ -326,7 +326,7 @@
                                 {% endif %}
                             </td>
 
-                            <td class="date-cell">{{ review.created_at|date:"d.m.Y"|default:"—" }}</td><td class="date-cell">
+                            <td class="date-cell">{{ review.created_at|date:"d.m.Y"|default:"–" }}</td><td class="date-cell">
                                 {{ review.decision_at|date:"d.m.Y"|default:"–" }}
                             </td>
 

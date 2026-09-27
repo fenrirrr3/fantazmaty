@@ -2,6 +2,7 @@ from core.author_contact import stored_author_phone
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
+from django.core.exceptions import ValidationError
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.cache import never_cache
@@ -113,11 +114,33 @@ def review_create(request):
         form = SingleReviewForm(request.POST if request.method == 'POST' else None,initial=initial)
         if request.method == 'POST' and form.is_valid():
             review = form.save(commit=False)
-            apply_blacklist(review)
-            review.full_clean()
-            review.save()
-            messages.success(request, 'Dodano zgłoszenie do recenzji.')
-            return redirect('core:assigned_review_detail', review_id=review.pk)
+            from texts.models import Anthology
+            # Same lock as bulk imports, including submissions to other calls.
+            Anthology.objects.select_for_update().order_by('pk').first()
+            # Serialize against anthology closure through the actual write.
+            anthology = Anthology.objects.select_for_update().filter(
+                pk=review.anthology_id, status=Anthology.Status.IN_PREPARATION,
+            ).first()
+            if anthology is None:
+                form.add_error('anthology', 'Wybrany nabór nie jest już dostępny. Wybierz antologię w przygotowaniu.')
+            else:
+                if review.author_id:
+                    list(Author.objects.select_for_update().filter(pk=review.author_id))
+                # Rebuild the form after locks: cached cleaned_data and signed
+                # confirmations must not hide duplicates or a changed blacklist.
+                form = SingleReviewForm(request.POST, initial=initial)
+                if form.is_valid():
+                    review = form.save(commit=False)
+                    review.anthology = anthology
+                    try:
+                        apply_blacklist(review)
+                        review.full_clean()
+                    except ValidationError as error:
+                        form.add_error(None, ' '.join(error.messages))
+                    else:
+                        review.save()
+                        messages.success(request, 'Dodano zgłoszenie do recenzji.')
+                        return redirect('core:assigned_review_detail', review_id=review.pk)
     fallback_query=request.GET.get('author_query','').strip()[:200]
     fallback_authors=Author.objects.none()
     if fallback_query:
@@ -125,7 +148,11 @@ def review_create(request):
         for term in fallback_query.split():
             fallback_authors=fallback_authors.filter(Q(first_name__plcontains=term)|Q(last_name__plcontains=term)|Q(pseudonym__plcontains=term)|Q(email__plcontains=term))
         fallback_authors=fallback_authors.order_by('last_name','first_name','pk')[:30]
-    return render(request, 'core/intake_form.html', {'form': form, 'title': 'Dodaj do recenzji', 'author_fallback':True, 'fallback_authors':fallback_authors,'fallback_query':fallback_query}, status=400 if request.method == 'POST' else 200)
+    from core.forms import ReviewBulkImportForm
+    return render(request, 'core/review_intake.html', {
+        'single_form': form, 'bulk_form': ReviewBulkImportForm(user=request.user, auto_id='id_bulk_%s'),
+        'author_fallback': True, 'fallback_authors': fallback_authors, 'fallback_query': fallback_query,
+    }, status=400 if request.method == 'POST' else 200)
 
 
 @never_cache
@@ -142,7 +169,7 @@ def author_suggestions(request):
     for term in query.split():
         authors = authors.filter(Q(first_name__plcontains=term) | Q(last_name__plcontains=term) |
                                  Q(pseudonym__plcontains=term) | Q(email__plcontains=term))
-    results = [{'id': author.pk, 'label': f'{author} — {author.pseudonym}' if author.pseudonym else str(author),
+    results = [{'id': author.pk, 'label': f'{author} – {author.pseudonym}' if author.pseudonym else str(author),
                 'first_name': author.first_name, 'last_name': author.last_name,
                 'email': author.email or '', 'phone_number': stored_author_phone(author)} for author in authors.order_by('last_name', 'first_name', 'pk')[:20]]
     response = JsonResponse({'results': results})

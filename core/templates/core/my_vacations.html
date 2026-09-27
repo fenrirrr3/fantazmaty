@@ -3,7 +3,7 @@
 {% block title %}Moje urlopy | Fantazmaty CMS{% endblock %}
 
 {% block content %}
-{% if vacation_people %}<form method="get" class="filters-form"><label for="vacation-history-person">Urlopy osoby</label><select name="person" id="vacation-history-person">{% for member in vacation_people %}<option value="{{ member.pk }}" {% if member.pk == person.pk %}selected{% endif %}>{{ member }}</option>{% endfor %}</select><button class="primary-button" type="submit">Pokaż urlopy</button></form>{% endif %}
+{% if can_manage_team_vacations %}<form method="get" class="filters-form"><label for="vacation-history-person">Urlopy osoby</label><select name="person" id="vacation-history-person">{% for member in vacation_people %}<option value="{{ member.pk }}" {% if member.pk == person.pk %}selected{% endif %}>{{ member }}</option>{% endfor %}</select><button class="primary-button" type="submit">Pokaż urlopy</button></form>{% endif %}
 
     <header class="page-header">
         <h1 class="page-title">Moje urlopy</h1>
@@ -15,6 +15,7 @@
     <div class="vacation-layout">
         <section class="card vacation-form-card" aria-labelledby="vacation-form-heading">
             <h2 id="vacation-form-heading">Zgłoś urlop</h2>
+            {% if can_manage_team_vacations %}<p class="form-help">Możesz zgłosić urlop swój lub innej osoby. Wybierz ją poniżej.</p>{% endif %}
 
             <form
                 method="post"
@@ -23,7 +24,7 @@
                 data-warn-unsaved
             >
                 {% csrf_token %}{% edit_version %}
-                {% if vacation_people %}
+                {% if can_manage_team_vacations %}
                 <div class="form-field"><label for="vacation-person">Osoba</label>
                 <select name="person" id="vacation-person" required>{% for member in vacation_people %}<option value="{{ member.pk }}" {% if member.pk == person.pk %}selected{% endif %}>{{ member }}</option>{% endfor %}</select></div>
                 {% endif %}
@@ -92,7 +93,7 @@
         <section class="card vacation-history" aria-labelledby="vacation-history-heading">
             <header class="vacation-history-header">
                 <div>
-                    <h2 id="vacation-history-heading">{% if vacation_people %}Urlopy: {{ person }}{% else %}Moje zgłoszenia{% endif %}</h2>
+                    <h2 id="vacation-history-heading">{% if can_manage_team_vacations %}Urlopy: {{ person }}{% else %}Moje zgłoszenia{% endif %}</h2>
                     <p class="form-help">
                         Urlopy trwające, zaplanowane i zakończone.
                     </p>

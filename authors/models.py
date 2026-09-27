@@ -139,7 +139,7 @@ class BlacklistEntry(models.Model):
     class Meta:
         ordering = ("name", "email", "pk")
         verbose_name = "niezależny wpis czarnej listy"
-        verbose_name_plural = "czarna lista — wpisy niezależne"
+        verbose_name_plural = "czarna lista – wpisy niezależne"
 
     def clean(self):
         from django.core.exceptions import ValidationError

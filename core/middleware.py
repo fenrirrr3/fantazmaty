@@ -1,5 +1,6 @@
 """Lock the edited aggregate and compare the version displayed in its HTML form."""
 from contextlib import nullcontext
+import re
 from django.core import signing
 from django.db import transaction
 from django.shortcuts import render
@@ -7,7 +8,7 @@ from django.urls import resolve, Resolver404
 
 
 def aggregate(match):
-    from texts.models import Review, Text, ReviewAssignment, Reviewers
+    from texts.models import Review, Text, TextNote, ReviewAssignment, Reviewers
     from workflow.models import WorkflowStage, WorkflowRoleAssignment
     from people.models import Vacation
     from authors.models import Author, AuthorNote
@@ -16,6 +17,9 @@ def aggregate(match):
     admin_model = getattr(getattr(match.func, "model_admin", None), "model", None)
     object_id = kwargs.get("object_id", "")
     if match.namespace == "admin" and admin_model and str(object_id).isdecimal() and len(str(object_id)) < 19:
+        if admin_model is TextNote:
+            text_id = TextNote.objects.filter(pk=int(object_id)).values_list('text_id', flat=True).first()
+            return Text, text_id
         if admin_model is AuthorNote:
             author_id = AuthorNote.objects.filter(pk=int(object_id)).values_list('author_id', flat=True).first()
             return Author, author_id
@@ -33,6 +37,29 @@ def aggregate(match):
         if key in kwargs:
             return model, kwargs[key]
     return None, None
+
+
+RECOVERABLE_FIELDS = frozenset({
+    'notes', 'content', 'general_notes', 'content_warnings', 'coordinator_note',
+    'opinion', 'fragment', 'problem', 'suggestion', 'file_url',
+    'author_first_name', 'author_last_name', 'email', 'phone_number',
+    'first_name', 'last_name', 'pseudonym', 'title', 'length', 'genre',
+    'start_date', 'end_date', 'started_at', 'ended_at', 'reason',
+    'unofficial_notes', 'cover_notes', 'previous_data',
+})
+
+
+def recover_submitted_values(data):
+    """Allow known content fields, including formsets; never echo secrets/tokens."""
+    result = []
+    for name in data:
+        field = name
+        match = re.fullmatch(r'(?:[\w]+-)*[0-9]+-([\w]+)', name)
+        if match:
+            field = match[1]
+        if field in RECOVERABLE_FIELDS:
+            result.extend((name, value) for value in data.getlist(name))
+    return result
 
 
 def fingerprint(obj):
@@ -98,6 +125,21 @@ class EditingMiddleware:
                 return HttpResponseForbidden('Brak dostępu do tego urlopu.')
         writing = request.method == "POST"
         with transaction.atomic() if writing else nullcontext():
+            # A standalone note edit (including a move) takes the same parent
+            # locks as the Text inline, in PK order and before locking the note.
+            if writing and match.namespace == 'admin':
+                from texts.models import Text, TextNote
+                model_admin = getattr(match.func, 'model_admin', None)
+                if getattr(model_admin, 'model', None) is TextNote:
+                    parent_ids = {pk} if model is Text and pk else set()
+                    raw_target = request.POST.get('text', '')
+                    if raw_target.isascii() and raw_target.isdecimal() and len(raw_target) < 19:
+                        parent_ids.add(int(raw_target))
+                    list(Text.objects.select_for_update().filter(pk__in=parent_ids).order_by('pk'))
+                    if model is Text and aggregate(match) != (model, pk):
+                        return render(request, 'core/edit_conflict.html', {
+                            'submitted_values': recover_submitted_values(request.POST),
+                        }, status=409)
             if writing and model and model._meta.label_lower == 'people.person':
                 from django.contrib.auth import get_user_model
                 user_id = model.objects.filter(pk=pk).values_list('user_id', flat=True).first()
@@ -149,7 +191,7 @@ class EditingMiddleware:
                     expected = None
                 if expected != [request.user.pk, key, current]:
                     return render(request, "core/edit_conflict.html", {
-                        "submitted_values": [(name, value) for name in ('notes','content','content_warnings','coordinator_note','opinion','fragment','problem','suggestion','file_url','author_first_name','author_last_name','email','phone_number','title','length','genre','start_date','end_date','started_at','ended_at','reason') for value in request.POST.getlist(name)],
+                        "submitted_values": recover_submitted_values(request.POST),
                         "current_values": [(name, str(getattr(obj,name) or '')) for name in ('content_warnings','coordinator_note','file_url','title') if hasattr(obj,name)],
                         "retry_url": request.path,
                     }, status=409)

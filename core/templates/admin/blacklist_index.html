@@ -1,0 +1,4 @@
+{% extends "admin/base_site.html" %}
+{% block breadcrumbs %}<div class="breadcrumbs"><a href="{% url 'admin:index' %}">Administracja</a> › Czarna lista</div>{% endblock %}
+{% block content %}<div id="content-main"><p>Wybierz rodzaj wpisu. Obie listy służą do kontroli zgłoszeń.</p>
+{% for entry in entries %}<div class="module"><h2>{{ entry.name }}</h2><p><a href="{{ entry.admin_url }}">Otwórz listę</a>{% if entry.add_url %} · <a href="{{ entry.add_url }}">Dodaj wpis</a>{% endif %}</p></div>{% endfor %}</div>{% endblock %}

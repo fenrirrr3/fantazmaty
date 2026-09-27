@@ -88,7 +88,7 @@ class RoleAdmin(admin.ModelAdmin):
 
 @admin.register(Person)
 class PersonAdmin(admin.ModelAdmin):
-    readonly_fields = ("leave_start_date", "leave_end_date", "leave_until_revoked")
+    readonly_fields = ("account_link", "leave_start_date", "leave_end_date", "leave_until_revoked")
 
     def get_readonly_fields(self, request, obj=None):
         return (*self.readonly_fields, *(("user",) if obj and obj.user_id else ()))
@@ -144,7 +144,7 @@ class PersonAdmin(admin.ModelAdmin):
     )
 
     autocomplete_fields = (
-        "user",
+        "user", "author_profile",
     )
 
     list_per_page = 50
@@ -171,6 +171,7 @@ class PersonAdmin(admin.ModelAdmin):
                     "roles",
                     "is_coordinator",
                     "user",
+                    "account_link",
                     "author_profile",
                 ),
                 "description": (
@@ -191,6 +192,14 @@ class PersonAdmin(admin.ModelAdmin):
             },
         ),
     )
+
+    @admin.display(description="Konto użytkownika")
+    def account_link(self, obj):
+        from django.urls import reverse
+        from django.utils.html import format_html
+        if not obj or not obj.user_id:
+            return "Brak powiązanego konta"
+        return format_html('<a href="{}">Otwórz konto</a>', reverse('admin:auth_user_change', args=[obj.user_id]))
 
     def get_queryset(self, request):
         # Admin zachowuje dostęp do byłych członków zespołu.

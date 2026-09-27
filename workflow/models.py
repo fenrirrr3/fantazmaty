@@ -565,7 +565,7 @@ class WorkflowRepetition(models.Model):
         verbose_name_plural = "powtórzenia etapów"
 
     def __str__(self):
-        return f"{self.text} — powtórzenie #{self.pk}"
+        return f"{self.text} – powtórzenie #{self.pk}"
 
 
 class WorkflowHandoff(models.Model):

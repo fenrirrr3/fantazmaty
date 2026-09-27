@@ -25,6 +25,14 @@ def issue(label, detail, url):
 
 def integrity_issues():
     issues = []
+    from django.db.models import Exists, OuterRef
+    current_for_text = WorkflowStage.objects.filter(
+        text_id=OuterRef('pk'), workflow_cycle=OuterRef('current_workflow_cycle'), is_current=True,
+    )
+    missing = Text.objects.annotate(has_current_stage=Exists(current_for_text)).filter(has_current_stage=False)
+    for text in missing.order_by('pk'):
+        issues.append(issue('Tekst bez bieżącego etapu', text.title,
+            reverse('core:assigned_text_detail', args=[text.pk])))
     current = WorkflowStage.objects.current_cycle().filter(workflow_cycle=F('text__current_workflow_cycle')).select_related('text', 'assignment')
     assignments = {(a.text_id,a.workflow_cycle,a.role):a for a in WorkflowRoleAssignment.objects.current_cycle().filter(workflow_cycle=F('text__current_workflow_cycle')).select_related('assigned_to__person_profile','text')}
     for stage in current.filter(is_completed=False, ended_at__isnull=True, started_at__lte=timezone.localdate()).exclude(stage_type__in=('ready','withdrawn')):
@@ -63,7 +71,7 @@ def integrity_issues():
             terminal = any(s.stage_type in ('ready','withdrawn') for s in stages)
             matching = [s for s in stages if STAGE_ROLES.get(s.stage_type)==a.role]
             if not terminal and (not matching or any(not s.is_completed for s in matching)):
-                issues.append(issue('Przydział do nieaktywnej osoby',f'{a.text.title}: {a.get_role_display()} — {a.assigned_to}',reverse('core:assigned_text_detail',args=[a.text_id])))
+                issues.append(issue('Przydział do nieaktywnej osoby',f'{a.text.title}: {a.get_role_display()} – {a.assigned_to}',reverse('core:assigned_text_detail',args=[a.text_id])))
     from workflow.models import WorkflowRepetition
     closed_text_ids = set(WorkflowStage.objects.current_cycle().filter(stage_type__in=('ready','withdrawn')).values_list('text_id', flat=True))
     runs = WorkflowRepetition.objects.select_related('text').prefetch_related(Prefetch('stages', queryset=WorkflowStage.objects.order_by('queue_position','pk'), to_attr='ordered_steps'))
@@ -93,7 +101,7 @@ def integrity_issues():
         issues.append(issue('Konto bez profilu zespołu',str(user),reverse('admin:auth_user_change',args=[user.pk])))
     for person in Person.objects.select_related('user').exclude(user__isnull=True):
         if person.email and person.user.email and person.email.casefold()!=person.user.email.casefold():
-            issues.append(issue('Różne e-maile powiązanej osoby i konta',str(person)+' — powiązanie po ID pozostaje zachowane',reverse('admin:people_person_change',args=[person.pk])))
+            issues.append(issue('Różne e-maile powiązanej osoby i konta',str(person)+' – powiązanie po ID pozostaje zachowane',reverse('admin:people_person_change',args=[person.pk])))
     for text in Text.objects.filter(authors__isnull=True):
         issues.append(issue('Tekst bez autora',text.title,reverse('core:assigned_text_detail',args=[text.pk])))
     return issues
@@ -166,10 +174,10 @@ def anthology_checklist(anthology):
         authors=list(text.authors.all())
         if not authors:rows.append(issue('Brak autora',text.title,url))
         for author in authors:
-            if not author.has_contract:rows.append(issue('Brak potwierdzonej umowy',f'{author} — {text.title}',url))
+            if not author.has_contract:rows.append(issue('Brak potwierdzonej umowy',f'{author} – {text.title}',url))
     if not included:rows.append(issue('Brak tekstów do wydania','Antologia nie ma niewycofanych tekstów.',reverse('core:text_list')+f'?anthology={anthology.pk}&hide_ready=0'))
     for correction in AnthologyCorrection.objects.filter(anthology=anthology).exclude(status__in=('applied','rejected')):
-        rows.append(issue('Uwaga wymaga obsługi',f'{correction.story_title} — {correction.get_status_display()}',reverse('core:anthology_corrections')+f'?anthology={anthology.pk}'))
+        rows.append(issue('Uwaga wymaga obsługi',f'{correction.story_title} – {correction.get_status_display()}',reverse('core:anthology_corrections')+f'?anthology={anthology.pk}'))
     if anthology.cover_status!='ready':rows.append(issue('Okładka nie jest gotowa',anthology.title,reverse('admin:texts_anthology_change',args=[anthology.pk])))
     for task in anthology.production_tasks.exclude(status='ready'):
         rows.append(issue('Niezakończone zadanie produkcyjne',task.get_task_type_display(),reverse('admin:texts_anthology_change',args=[anthology.pk])))

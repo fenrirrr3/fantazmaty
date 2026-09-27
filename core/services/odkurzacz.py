@@ -22,7 +22,7 @@ EDITORIAL_RULES = (
     ('duplicate_punct', 'Powtórzone przecinki, średniki, dwukropki i podwójne kropki'),
     ('quote_punct', 'Przecinek / kropka poza cudzysłowem w prostych cytatach'),
     ('hyphen_dash', 'Łącznik użyty jako myślnik → półpauza'),
-    ('dash_style', 'Pauza — jako myślnik → półpauza –'),
+    ('dash_style', 'Zamiana pauzy na półpauzę w funkcji myślnika'),
     ('dash_spaces', 'Odstępy przy myślnikach i początku kwestii dialogowej'),
     ('range_dash', 'Łącznik w zakresach liczbowych → półpauza'),
     ('range_spaces', 'Usuwanie spacji wewnątrz zakresów liczbowych'),
@@ -31,7 +31,7 @@ EDITORIAL_RULES = (
     ('initials', 'Odstępy przy inicjałach i nazwisku'),
     ('abbreviations', 'Popraw zapis skrótów i usuń spacje wewnątrz nich: m. in. → m.in., t. j. → tj., t. zw. → tzw.'),
     ('temperature', 'Temperatura: 20 °C / 20 °F / 20 K'),
-    ('pronouns_lower', 'Zaimki osobowe małą literą — poza początkiem zdania i akapitu'),
+    ('pronouns_lower', 'Zaimki osobowe małą literą – poza początkiem zdania i akapitu'),
     ('user_word_corrections', 'Własne zamiany słownikowe: 23 pozycje z fleksją (pikap / przekonujący / oddziałujący)'),
 )
 ALL_EDITORIAL_RULES = frozenset(key for key, _ in EDITORIAL_RULES)

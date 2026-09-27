@@ -362,6 +362,39 @@ class Text(NormalizedModelMixin, models.Model):
     def __str__(self):
         return self.title
 
+    def _validate_anthology_move(self, using):
+        if not self.anthology_id:
+            return
+        previous = type(self).objects.using(using).filter(pk=self.pk).values_list('anthology_id', flat=True).first() if self.pk else None
+        if self.pk and previous == self.anthology_id:
+            return
+        if not Anthology.objects.using(using).filter(pk=self.anthology_id, status=Anthology.Status.READY).exists():
+            return
+        from workflow.models import WorkflowStage
+        stages = WorkflowStage.objects.using(using).filter(text_id=self.pk,
+            workflow_cycle=self.current_workflow_cycle, is_current=True) if self.pk else WorkflowStage.objects.none()
+        withdrawn = stages.filter(stage_type='withdrawn', is_released=True).exists()
+        finished = stages.filter(stage_type='ready', is_released=True).exists()
+        pending = stages.exclude(stage_type__in=('ready', 'withdrawn')).filter(is_completed=False).exists()
+        if not withdrawn and (not finished or pending):
+            raise ValidationError({'anthology': 'Nie można przenieść niedokończonego tekstu do gotowej antologii. Najpierw zakończ jego workflow albo wybierz antologię w przygotowaniu.'})
+
+    def clean(self):
+        super().clean()
+        self._validate_anthology_move(self._state.db or router.db_for_write(type(self), instance=self))
+
+    def save(self, *args, **kwargs):
+        using = kwargs.get('using') or router.db_for_write(type(self), instance=self)
+        fields = kwargs.get('update_fields')
+        if self.pk and (fields is None or 'anthology' in fields or 'anthology_id' in fields):
+            with transaction.atomic(using=using):
+                previous = type(self).objects.using(using).select_for_update().filter(pk=self.pk).values_list('anthology_id', flat=True).first()
+                if previous != self.anthology_id and self.anthology_id:
+                    Anthology.objects.using(using).select_for_update().get(pk=self.anthology_id)
+                    self._validate_anthology_move(using)
+                return super().save(*args, **kwargs)
+        return super().save(*args, **kwargs)
+
     @property
     def authors_display(self):
         # Dostęp do danych autorów kontrolują widoki i uprawnienia.
@@ -919,6 +952,6 @@ class Extract(NormalizedModelMixin, models.Model):
         return super().save(*args, **kwargs)
 
     def __str__(self):
-        return f'{self.recruitment} — {self.full_name}'
+        return f'{self.recruitment} – {self.full_name}'
 
 

@@ -1,0 +1,12 @@
+.intake-columns{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:1rem;align-items:start}
+.intake-panel{min-width:0;padding:0;overflow:hidden}
+.intake-panel>summary{cursor:pointer;padding:1rem;font-weight:600}
+.intake-panel-body{padding:0 1rem 1rem}
+.intake-panel-body .review-import-card{margin:0;padding:0;border:0;box-shadow:none;background:transparent}
+.intake-panel textarea,.intake-panel select,.intake-panel input:not([type=checkbox]):not([type=hidden]){max-width:100%;box-sizing:border-box}
+.intake-panel .table-container{overflow-x:auto}
+.intake-panel-body .intake-form{width:100%;max-width:none}
+.mailbox-filters{display:flex;gap:1rem;align-items:end;flex-wrap:wrap;margin-bottom:1rem}
+.mailbox-filters .form-field{margin:0}
+@media(min-width:901px){.intake-columns:has(>.intake-panel:first-child:not([open])){grid-template-columns:minmax(12rem,1fr) minmax(0,3fr)}.intake-columns:has(>.intake-panel:last-child:not([open])){grid-template-columns:minmax(0,3fr) minmax(12rem,1fr)}}
+@media(max-width:900px){.intake-columns{grid-template-columns:minmax(0,1fr)}}

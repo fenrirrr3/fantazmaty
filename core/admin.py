@@ -53,6 +53,20 @@ class AccountChangeForm(IdentityFormMixin, UserChangeForm):
 
 
 class AccountAdmin(UserAdmin):
+    list_display = ("username", "first_name", "last_name", "email", "is_active", "is_staff", "is_superuser")
+    readonly_fields = (*UserAdmin.readonly_fields, "profile_link")
+    fieldsets = (*UserAdmin.fieldsets, ("Profil członka zespołu", {"fields": ("profile_link",)}))
+
+    @admin.display(description="Profil osoby")
+    def profile_link(self, obj):
+        from people.models import Person
+        from django.urls import reverse
+        from django.utils.html import format_html
+        person = Person.objects.filter(user_id=obj.pk).first() if obj and obj.pk else None
+        if person is None:
+            return "Brak powiązanego profilu"
+        return format_html('<a href="{}">Otwórz profil: {}</a>', reverse('admin:people_person_change', args=[person.pk]), person)
+
     search_fields = ('first_name__plcontains', 'last_name__plcontains', 'email__plcontains', 'username__plcontains')
     ordering = ('last_name', 'first_name', 'pk')
     form = AccountChangeForm
@@ -290,3 +304,38 @@ class WorkflowEventAdmin(admin.ModelAdmin):
 
 
 
+
+
+from core.models import MailboxConnection
+
+
+class MailboxConnectionForm(forms.ModelForm):
+    password = forms.CharField(label='Hasło / hasło aplikacji', required=False,
+        strip=False, widget=forms.PasswordInput(render_value=False),
+        help_text='Pozostaw puste, aby zachować zapisane hasło. Hasło nie jest wyświetlane po zapisaniu.')
+
+    class Meta:
+        model = MailboxConnection
+        fields = ('name', 'host', 'port', 'security', 'username', 'password', 'folder', 'is_active')
+
+    def clean_password(self):
+        password = self.cleaned_data.get('password', '')
+        if not password and not self.instance.encrypted_password:
+            raise forms.ValidationError('Podaj hasło skrzynki lub hasło aplikacji.')
+        return password
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if self.cleaned_data.get('password'):
+            instance.set_password(self.cleaned_data['password'])
+        if commit:
+            instance.save()
+        return instance
+
+
+@admin.register(MailboxConnection)
+class MailboxConnectionAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
+    form = MailboxConnectionForm
+    list_display = ('name', 'host', 'username', 'folder', 'is_active')
+    fields = ('name', 'host', 'port', 'security', 'username', 'password', 'folder', 'is_active')
+    search_fields = ('name', 'host', 'username')

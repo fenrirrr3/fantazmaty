@@ -77,6 +77,7 @@ def _render_my_vacations(request, person, form, *, status=200):
         "core/my_vacations.html",
         {
             "form": form,
+            "can_manage_team_vacations": is_coordinator(request.user),
             "person": person,
             "vacation_people": Person.objects.filter(is_active=True).order_by("last_name", "first_name", "pk") if is_coordinator(request.user) else [],
             "vacations": page_obj,

@@ -23,7 +23,7 @@ def snapshot(text_id, using):
     stages = list(text.workflow_stages.using(using).filter(workflow_cycle=text.current_workflow_cycle, is_current=True).select_related('assignment__assigned_to__person_profile'))
     stage = current_stage(stages)
     return {'cycle': text.current_workflow_cycle, 'status': stage.get_stage_type_display() if stage else 'Brak otwartego etapu',
-            'stages': {s.pk: (f'{s.get_stage_type_display()} — wykonanie {s.execution_number}' + (f' — {s.assignment.assigned_to.get_full_name() or s.assignment.assigned_to.get_username()}' if s.assignment_id and s.assignment.assigned_to_id else ''), str(s.started_at or ''), str(s.ended_at or ''), s.is_completed, s.assignment.assigned_to_id if s.assignment_id else None) for s in stages}}
+            'stages': {s.pk: (f'{s.get_stage_type_display()} – wykonanie {s.execution_number}' + (f' – {s.assignment.assigned_to.get_full_name() or s.assignment.assigned_to.get_username()}' if s.assignment_id and s.assignment.assigned_to_id else ''), str(s.started_at or ''), str(s.ended_at or ''), s.is_completed, s.assignment.assigned_to_id if s.assignment_id else None) for s in stages}}
 
 
 def remember(sender, instance, using, **kwargs):

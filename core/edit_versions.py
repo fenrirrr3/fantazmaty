@@ -38,10 +38,16 @@ def changed(sender, instance, using, raw=False, **kwargs):
         return
     label = sender._meta.concrete_model._meta.label_lower
     bump(label, instance.pk, using)
-    if label in ('texts.textnote', 'workflow.workflowstage', 'workflow.workflowroleassignment', 'workflow.workflowrepetition'):
+    if label in ('workflow.workflowstage', 'workflow.workflowroleassignment', 'workflow.workflowrepetition'):
         bump('texts.text', instance.text_id, using)
     elif label in ('texts.reviewassignment', 'texts.reviewers'):
         bump('texts.review', instance.review_id, using)
+    elif label == 'texts.textnote':
+        bump('texts.text', instance.text_id, using)
+        old_text = getattr(instance, '_previous_note_text', None)
+        if old_text and old_text != instance.text_id:
+            bump('texts.text', old_text, using)
+        instance._previous_note_text = None
     elif label == 'authors.authornote':
         bump('authors.author', instance.author_id, using)
         old_author = getattr(instance, '_previous_note_author', None)
@@ -51,7 +57,12 @@ def changed(sender, instance, using, raw=False, **kwargs):
 
 
 def remember_note_author(sender, instance, using, raw=False, **kwargs):
-    if raw or sender._meta.apps is not apps or sender._meta.label_lower != 'authors.authornote':
+    if raw or sender._meta.apps is not apps:
+        return
+    if sender._meta.label_lower == 'texts.textnote':
+        instance._previous_note_text = sender.objects.using(using).filter(pk=instance.pk).values_list('text_id', flat=True).first() if instance.pk else None
+        return
+    if sender._meta.label_lower != 'authors.authornote':
         return
     instance._previous_note_author = sender.objects.using(using).filter(pk=instance.pk).values_list('author_id', flat=True).first() if instance.pk else None
 

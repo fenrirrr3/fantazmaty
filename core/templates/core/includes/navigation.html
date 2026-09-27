@@ -108,7 +108,7 @@
                                 {% if current == 'author_list' or current == 'author_detail' %}aria-current="page"{% endif %}
                             >
                                 Autorzy
-                            </a><a class="sidebar-link" {% if current == "review_create" %}aria-current="page"{% endif %} href="{% url 'core:review_create' %}">Dodaj do recenzji</a><a
+                            </a><a class="sidebar-link" {% if current == "review_create" or current == "review_bulk_submit" %}aria-current="page"{% endif %} href="{% url 'core:review_create' %}">Dodaj do recenzji</a><a
                                 href="{% url 'core:review_bulk_import' %}"
                                 class="sidebar-link"
                                 {% if current == 'review_bulk_import' %}aria-current="page"{% endif %}

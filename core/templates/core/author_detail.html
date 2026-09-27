@@ -29,7 +29,7 @@
     <section class="details-card" aria-labelledby="author-information-heading">
         <h2 id="author-information-heading">Dane autora</h2>
 
-        <dl class="details-grid"><div class="detail-item"><dt>Telefon</dt><dd>{{ author.phone_number|default:"—" }}</dd></div>
+        <dl class="details-grid"><div class="detail-item"><dt>Telefon</dt><dd>{{ author.phone_number|default:"–" }}</dd></div>
             <div class="detail-item">
                 <dt>Adres e-mail</dt>
                 <dd>
@@ -282,7 +282,7 @@
                         <td>{{ review.anthology.title }}</td>
                         <td>{{ review.created_at|date:"d.m.Y" }}</td>
                         <td>{{ review.get_status_display }}</td>
-                        <td>{{ review.author_notified_at|date:"d.m.Y"|default:"—" }}</td>
+                        <td>{{ review.author_notified_at|date:"d.m.Y"|default:"–" }}</td>
                         <td data-copy="false"><a href="{% url 'core:assigned_review_detail' review.pk %}" class="secondary-button">Otwórz</a></td>
                     </tr>
                 {% empty %}

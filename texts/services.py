@@ -300,3 +300,19 @@ def get_review_submission_warnings(
             warnings.append('Podobny tytuł tego autora w tym samym naborze: ' + match['detail'] + '. Sprawdź przed dodaniem; ponowne zgłoszenie może być zamierzone.')
 
     return warnings
+
+def preview_author_matches(emails):
+    """Batch the same case-insensitive lookups as find_matching_authors."""
+    values = sorted({normalize_email(email) for email in emails} - {''})
+    matches = {email: [] for email in values}
+    # Bounded OR batches preserve database iexact semantics, including old emails.
+    for offset in range(0, len(values), 100):
+        batch = values[offset:offset + 100]
+        query = models.Q()
+        for email in batch:
+            query |= models.Q(email__iexact=email)
+        for author in Author.objects.filter(query).order_by('pk'):
+            key = normalize_email(author.email)
+            if key in matches and len(matches[key]) < 2:
+                matches[key].append(author)
+    return matches

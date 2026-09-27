@@ -23,3 +23,6 @@ def install():
     admin.site.login_form = SuperuserAdminAuthenticationForm
     from core.admin_people import install as install_person_choices
     install_person_choices()
+
+    from core.admin_navigation import install as install_navigation
+    install_navigation(admin.site)

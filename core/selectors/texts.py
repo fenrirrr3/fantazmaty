@@ -181,7 +181,7 @@ def _stage_data(stage, text_data=None):
         repetition_id=stage.repetition_id,
         is_released=stage.is_released,
         stage_type=stage.stage_type,
-        get_stage_type_display=execution_label(stage.get_stage_type_display(), stage.execution_number) + (" — powrót do redaktora" if stage.repetition_id and stage.stage_type == StageType.EDITING and stage.queue_position > 0 else ""),
+        get_stage_type_display=execution_label(stage.get_stage_type_display(), stage.execution_number) + (" – powrót do redaktora" if stage.repetition_id and stage.stage_type == StageType.EDITING and stage.queue_position > 0 else ""),
         iteration=stage.iteration,
         started_at=stage.started_at,
         ended_at=stage.ended_at,

@@ -204,7 +204,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 button.setAttribute('aria-expanded', 'true');
                 button.textContent = data.next_url ? 'Pokaż kolejne' : 'Zwiń listę';
             } catch (_) {
-                button.textContent = 'Nie udało się wczytać — spróbuj ponownie';
+                button.textContent = 'Nie udało się wczytać – spróbuj ponownie';
             } finally {
                 busy = false;
                 button.removeAttribute('aria-busy');

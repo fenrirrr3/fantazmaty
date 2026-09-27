@@ -495,10 +495,11 @@ def review_list(request):
 @login_required
 @require_http_methods(["GET", "POST"])
 @superuser_required
-def review_bulk_import(request):
+def review_bulk_submit(request):
+    from core.intake_forms import SingleReviewForm
     form = ReviewBulkImportForm(
         request.POST if request.method == "POST" else None,
-        user=request.user,
+        user=request.user, auto_id="id_bulk_%s",
     )
 
     valid = form.is_valid() if request.method == "POST" else False
@@ -533,8 +534,9 @@ def review_bulk_import(request):
 
     preview_rows = []
     if request.method == "POST":
-        from texts.services import find_matching_authors
+        from texts.services import preview_author_matches, normalize_email
         records = {row["line_number"]: row for row in getattr(form, "preview_records", form.parsed_records)}
+        author_matches = preview_author_matches(row['email'] for row in records.values())
         all_errors = [str(error) for errors in form.errors.values() for error in errors]
         for line, raw in enumerate(request.POST.get("records", "").splitlines(), 1):
             if not raw.strip():
@@ -544,14 +546,16 @@ def review_bulk_import(request):
             row = records.get(line)
             warnings = [w for w in form.import_warnings if w.startswith(f"Wiersz {line}:")]
             errors = [e for e in all_errors if e.startswith((f"Wiersz {line}:", f"Wiersz {line},"))]
-            matched = list(find_matching_authors(email=row["email"])[:2]) if row else []
+            matched = author_matches.get(normalize_email(row["email"]), []) if row else []
             preview_rows.append({"line": line, "record": row, "raw": raw, "warnings": warnings,
                 "errors": errors, "matched": matched, "ambiguous": len(matched) > 1})
     return render(
         request,
-        "core/review_bulk_import.html",
+        "core/review_intake.html",
         {
-            "form": form,
+            "bulk_form": form,
+            "single_form": SingleReviewForm(),
+            "bulk_open": True,
             "import_warnings": getattr(form, "import_warnings", []),
             "preview_rows": preview_rows,
             "preview_summary": {
