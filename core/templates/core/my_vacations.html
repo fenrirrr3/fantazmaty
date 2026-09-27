@@ -3,7 +3,6 @@
 {% block title %}Moje urlopy | Fantazmaty CMS{% endblock %}
 
 {% block content %}
-{% if can_manage_team_vacations %}<form method="get" class="filters-form"><label for="vacation-history-person">Urlopy osoby</label><select name="person" id="vacation-history-person">{% for member in vacation_people %}<option value="{{ member.pk }}" {% if member.pk == person.pk %}selected{% endif %}>{{ member }}</option>{% endfor %}</select><button class="primary-button" type="submit">Pokaż urlopy</button></form>{% endif %}
 
     <header class="page-header">
         <h1 class="page-title">Moje urlopy</h1>
@@ -93,7 +92,7 @@
         <section class="card vacation-history" aria-labelledby="vacation-history-heading">
             <header class="vacation-history-header">
                 <div>
-                    <h2 id="vacation-history-heading">{% if can_manage_team_vacations %}Urlopy: {{ person }}{% else %}Moje zgłoszenia{% endif %}</h2>
+                    <h2 id="vacation-history-heading">Moje zgłoszenia</h2>
                     <p class="form-help">
                         Urlopy trwające, zaplanowane i zakończone.
                     </p>

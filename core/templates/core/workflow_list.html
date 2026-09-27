@@ -188,6 +188,7 @@
                                     <span class="stage-status withdrawn">Wycofany</span>
                                 {% elif stage.stage_type == "ready" %}
                                     <span class="stage-status completed">Gotowy</span>
+                                {% elif stage.is_skipped %}<span class="stage-status inactive">Pominięty</span>
                                 {% elif stage.is_completed %}
                                     <span class="stage-status completed">Zakończony</span>
                                 {% elif stage.started_at %}

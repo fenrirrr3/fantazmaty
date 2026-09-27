@@ -10,13 +10,17 @@
 <form method="post">{% csrf_token %}
 <input type="hidden" name="selection" value="{{ selection }}">
 <div class="mailbox-filters">
+<div class="filter-field"><label for="mailbox-subject-filter">Nabór w temacie wiadomości</label>
+<select id="mailbox-subject-filter" name="subject_filter"><option value="">Wszystkie wiadomości</option>{% for title in subject_choices %}<option value="{{ title }}" {% if subject_filter == title %}selected{% endif %}>{{ title }}</option>{% endfor %}</select>
+<p class="form-help">Nazwy dodasz w ustawieniach skrzynki. Po zmianie wyboru kliknij Pobierz nagłówki.</p></div>
 <label><input type="checkbox" name="show_downloaded" {% if show_downloaded %}checked{% endif %}> Pokaż również już pobrane wiadomości</label>
+<label><input type="checkbox" name="rebuild" {% if rebuild %}checked{% endif %}> Przebuduj do nowego DOCX (bez metadanych starego pliku)</label>
 <label><input type="checkbox" name="clean" {% if clean %}checked{% endif %}> Popraw pliki Odkurzaczem</label>
 <label><input type="checkbox" name="convert" {% if convert %}checked{% endif %}> Konwertuj do PDF i EPUB</label>
 <button class="primary-button" name="action" value="headers">Pobierz nagłówki</button>
 <button class="primary-button" name="action" value="download" {% if not result.rows %}disabled{% endif %}>Pobierz teksty</button>
 </div>
-<p>Jednorazowo do 10 wiadomości, 15 MB na wiadomość i 50 MB łącznie. Przetwarzanie plików ma limit 90 sekund. Odkurzacz i konwersja obsługują DOCX. Przed konwersją ujednolicamy formatowanie DOCX: Times New Roman 12, interlinia 1,5, wcięcie 1,25 cm (bez wcięcia przy wyśrodkowaniu), bez odstępów między akapitami. Po wyłączeniu obu opcji pobierzesz oryginalne załączniki. Ponowne pobranie nie dodaje drugi raz zgłoszeń.</p>
+<p>Jednorazowo do 10 wiadomości, 15 MB na wiadomość i 50 MB łącznie. Przetwarzanie plików ma limit 90 sekund. Odkurzacz i konwersja obsługują DOCX. Przed konwersją ustawiamy A4, marginesy 2,5 cm z każdej strony i ujednolicamy formatowanie DOCX: Times New Roman 12, interlinia 1,5, wcięcie 1,25 cm (bez wcięcia przy wyśrodkowaniu), bez odstępów między akapitami. Przebudowa pomija nagłówki, stopki, komentarze i ukryty tekst; akceptuje obsługiwane śledzone zmiany. Tabele, ilustracje, przypisy, automatyczne listy i inne nieobsługiwane elementy wymagają akceptacji komunikatu z listą pomijanych elementów. Po wyłączeniu wszystkich trzech opcji pobierzesz oryginalne załączniki. Ponowne pobranie nie dodaje drugi raz zgłoszeń.</p>
 {% if result %}
 <p>Wiadomości spełniające filtr: {{ result.total }}. Do 50 na stronie.</p>
 <div class="table-container"><table><thead><tr><th>Wybierz</th><th>Data wiadomości</th><th>Nadawca (odpowiedź do)</th><th>Temat</th><th>Pobrano</th></tr></thead><tbody>
@@ -39,11 +43,16 @@
 {% for form in forms %}{% for warning in form.import_warnings %}<p class="form-warning">{{ warning }}</p>{% endfor %}{% endfor %}
 {% if not hard_errors %}
 <form method="post">{% csrf_token %}
-<input type="hidden" name="selection" value="{{ selection }}"><input type="hidden" name="preview" value="{{ preview_token }}">
+<input type="hidden" name="selection" value="{{ selection }}"><input type="hidden" name="preview" value="{{ preview_token }}"><input type="hidden" name="subject_filter" value="{{ subject_filter }}">
 {% for uid in selected %}<input type="hidden" name="uids" value="{{ uid }}">{% endfor %}
+{% if rebuild %}<input type="hidden" name="rebuild" value="on">{% endif %}
 {% if clean %}<input type="hidden" name="clean" value="on">{% endif %}{% if convert %}<input type="hidden" name="convert" value="on">{% endif %}
 {% if show_downloaded %}<input type="hidden" name="show_downloaded" value="on">{% endif %}
-<p>Odkurzacz: {{ clean|yesno:'tak,nie' }}. Konwersja PDF i EPUB: {{ convert|yesno:'tak,nie' }}.</p>
+<p>Przebudowa DOCX: {{ rebuild|yesno:'tak,nie' }}. Odkurzacz: {{ clean|yesno:'tak,nie' }}. Konwersja PDF i EPUB: {{ convert|yesno:'tak,nie' }}.</p>
+{% if rebuild_warning %}
+<p class="form-warning">{{ rebuild_warning_text }} Zgłoszenia nie zostały jeszcze zapisane. Akceptacja dotyczy wszystkich nieobsługiwanych plików w tej paczce.</p>
+<p><label><input type="checkbox" name="allow_rebuild_omissions" value="on" required> Akceptuję ostrzeżenie i chcę kontynuować z pominięciem wymienionych elementów.</label></p>
+{% endif %}
 <p><label><input type="checkbox" name="approve" required> Sprawdziłem dane i ostrzeżenia. Potwierdzam zapis nowych zgłoszeń i pobranie plików.</label></p>
 <button class="primary-button" name="action" value="confirm">Zapisz zgłoszenia i pobierz ZIP</button>
 <p>Wiadomość oznaczamy jako pobraną po przygotowaniu paczki i zapisaniu danych. Jeżeli pobieranie w przeglądarce się przerwie, włącz pokazywanie pobranych wiadomości i pobierz ją ponownie.</p>

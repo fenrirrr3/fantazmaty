@@ -1,5 +1,6 @@
 """Bounded library-based conversion in a disposable Python subprocess."""
 import os
+import time
 import sys
 import json
 import logging
@@ -15,8 +16,6 @@ from zipfile import ZipFile, ZIP_DEFLATED
 
 from django.conf import settings
 from lxml import etree
-from core.services.odkurzacz import clean_docx, ALL_EDITORIAL_RULES
-from core.services.document_formatting import normalize_docx
 
 logger = logging.getLogger(__name__)
 
@@ -25,9 +24,16 @@ MAX_OUTPUT = 50 * 1024 * 1024
 TIME_LIMIT = 90
 
 
+REBUILD_WARNING = 'W nowym DOCX zostaną pominięte: '
+
+
 class ConversionError(Exception):
     pass
 
+
+
+class RebuildConfirmationRequired(ConversionError):
+    pass
 
 
 @contextmanager
@@ -152,15 +158,18 @@ def run_converter(directory, timeout):
         stage = stage if stage in ('DOCX', 'PDF', 'EPUB') else 'konwersja'
         kind = report.get('error', '')
         kind = kind if re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,80}', kind) else 'błąd procesu'
+        if kind == 'RebuildUnsupported':
+            raise RebuildConfirmationRequired(REBUILD_WARNING + '; '.join(str(item) for item in report.get('omissions', [])[:30]) + '. Po akceptacji powstanie nowy DOCX bez tych elementów. Tekst i obsługiwane formatowanie zostaną przeniesione.')
         detail = f'{stage}: {kind}'
         if code == 2:
             raise ConversionError('Brakuje bibliotek konwertera. Zainstaluj requirements.txt. ' + detail + '. Szczegóły zapisano w logu błędów.')
         raise ConversionError('Nie udało się przygotować plików (' + detail + '). Szczegóły zapisano w logu błędów. Nie oznacza to automatycznie uszkodzenia dokumentu; możesz pobrać oryginały po wyłączeniu konwersji.')
 
 
-def convert_document(upload, formats, *, use_cleaner=False, timeout=TIME_LIMIT):
+def convert_document(upload, formats, *, use_cleaner=False, timeout=TIME_LIMIT, include_docx=False, rebuild=False, normalize=True, allow_rebuild_omissions=False):
+    deadline = time.monotonic() + min(TIME_LIMIT, timeout)
     selected = [kind for kind in FORMATS if kind in formats]
-    if not selected or set(formats) - set(FORMATS):
+    if (not selected and not include_docx) or set(formats) - set(FORMATS):
         raise ConversionError('Wybierz co najmniej jeden obsługiwany format.')
     validate_resources(upload)
     result = SpooledTemporaryFile(max_size=4 * 1024 * 1024, mode='w+b')
@@ -168,30 +177,31 @@ def convert_document(upload, formats, *, use_cleaner=False, timeout=TIME_LIMIT):
         with conversion_slot() as root, TemporaryDirectory(prefix='document-', dir=root) as temporary:
             directory = Path(temporary)
             source = directory / 'source.docx'
-            with normalize_docx(upload) as formatted:
-                if use_cleaner:
-                    with clean_docx(formatted, ALL_EDITORIAL_RULES) as cleaned, source.open('wb') as destination:
-                        shutil.copyfileobj(cleaned, destination)
-                else:
-                    with source.open('wb') as destination:
-                        shutil.copyfileobj(formatted, destination)
+            upload.seek(0)
+            with source.open('wb') as destination:
+                shutil.copyfileobj(upload, destination)
             title = Path(getattr(upload, 'name', 'Dokument.docx')).stem[:200] or 'Dokument'
-            (directory / 'job.json').write_text(json.dumps({'formats': selected, 'title': title}), encoding='utf-8')
-            run_converter(directory, min(TIME_LIMIT, timeout))
+            (directory / 'job.json').write_text(json.dumps({'formats': selected, 'title': title, 'prepare': True, 'clean': use_cleaner, 'rebuild': rebuild, 'allow_rebuild_omissions': allow_rebuild_omissions, 'normalize': normalize, 'include_docx': include_docx}), encoding='utf-8')
+            run_converter(directory, deadline - time.monotonic())
             outputs = [directory / ('document.' + kind) for kind in selected]
+            if include_docx:
+                shutil.copyfile(source, directory / 'document.docx')
+                outputs.append(directory / 'document.docx')
             for target in outputs:
                 if not target.is_file() or target.is_symlink() or not 0 < target.stat().st_size <= MAX_OUTPUT:
                     raise ConversionError('Konwersja nie utworzyła poprawnego pliku wynikowego lub wynik przekroczył 50 MB.')
             if len(outputs) == 1:
                 with outputs[0].open('rb') as converted:
                     shutil.copyfileobj(converted, result)
-                extension = selected[0]
-                mime = FORMATS[extension]
+                extension = outputs[0].suffix.lstrip('.')
+                mime = FORMATS.get(extension, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
             else:
                 with ZipFile(result, 'w', compression=ZIP_DEFLATED) as archive:
                     for output in outputs:
                         archive.write(output, arcname=output.name)
                 extension, mime = 'zip', 'application/zip'
+        if time.monotonic() > deadline:
+            raise ConversionError('Przygotowanie dokumentu przekroczyło limit czasu. Wybierz mniej formatów lub krótszy dokument.')
         result.seek(0)
         return result, extension, mime
     except BaseException:

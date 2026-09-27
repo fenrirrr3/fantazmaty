@@ -93,6 +93,8 @@ class WorkflowStage(models.Model):
         default=False,
     )
 
+    is_skipped = models.BooleanField("pominięty etap", default=False, editable=False)
+
     imported_completed = models.BooleanField(
         "zakończony etap z importu", default=False, editable=False,
         help_text="Wyłącznie import: zakończona praca może nie mieć znanych dat.",
@@ -124,6 +126,9 @@ class WorkflowStage(models.Model):
             ),
         ]
         constraints = [
+            models.CheckConstraint(condition=models.Q(is_skipped=False) | models.Q(
+                stage_type='fourth_proofreading', is_completed=True, assignment__isnull=True,
+                started_at__isnull=True, ended_at__isnull=True, imported_completed=False), name='wf_skipped_empty'),
             models.UniqueConstraint(
                 fields=(
                     "text",
@@ -155,6 +160,7 @@ class WorkflowStage(models.Model):
                 condition=(
                     models.Q(is_completed=False)
                     | models.Q(imported_completed=True)
+                    | models.Q(is_skipped=True)
                     | (
                         models.Q(started_at__isnull=False)
                         & models.Q(ended_at__isnull=False)
@@ -208,7 +214,7 @@ class WorkflowStage(models.Model):
 
     def save(self, *args, **kwargs):
         self._validate_import_origin()
-        if not self.assignment_id and self.text_id:
+        if not self.is_skipped and not self.assignment_id and self.text_id:
             from workflow.services import STAGE_ROLES
             role = STAGE_ROLES.get(self.stage_type)
             if role:
@@ -252,12 +258,12 @@ class WorkflowStage(models.Model):
             if duplicate:
                 errors['stage_type'] = "W tym przebiegu istnieje już otwarty etap tego rodzaju."
 
-        if self.is_completed and not self.started_at and not self.imported_completed:
+        if self.is_completed and not self.started_at and not self.imported_completed and not self.is_skipped:
             errors["started_at"] = (
                 "Zakończony etap musi mieć datę rozpoczęcia."
             )
 
-        if self.is_completed and not self.ended_at and not self.imported_completed:
+        if self.is_completed and not self.ended_at and not self.imported_completed and not self.is_skipped:
             errors["ended_at"] = (
                 "Zakończony etap musi mieć datę zakończenia."
             )

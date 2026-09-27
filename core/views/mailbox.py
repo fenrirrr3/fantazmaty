@@ -15,7 +15,7 @@ from core.services.mailbox import read_headers, MailboxError
 from core.services.mailbox_import import (
     default_mailbox, mailbox_key, receipts, fetch_messages, prepare_forms, package_messages,
 )
-from core.services.document_converter import ConversionError
+from core.services.document_converter import ConversionError, RebuildConfirmationRequired, REBUILD_WARNING
 from core.services.reviews import import_reviews
 
 
@@ -37,16 +37,24 @@ def load_token(token, user, key, salt):
 def mailbox_headers(request):
     context = {'result': None, 'show_downloaded': request.POST.get('show_downloaded') == 'on',
                'clean': request.POST.get('clean') == 'on' if request.method == 'POST' else True,
+               'rebuild': request.POST.get('rebuild') == 'on' if request.method == 'POST' else True,
                'convert': request.POST.get('convert') == 'on' if request.method == 'POST' else True}
     try:
         config = default_mailbox()
         context['mailbox'] = config
+        context['subject_choices'] = config.subject_choices()
+        subject_filter = request.POST.get('subject_filter', '')
+        context['subject_filter'] = subject_filter
+        if subject_filter and subject_filter not in context['subject_choices']:
+            raise MailboxError('Wybrany nabór nie jest już dostępny. Wybierz go ponownie.')
         key = mailbox_key(config)
         base = {'user': request.user.pk, 'mailbox': key}
         if request.method == 'POST':
             action = request.POST.get('action', 'headers')
             if action in ('download', 'confirm'):
                 selection = load_token(request.POST.get('selection', ''), request.user, key, 'mailbox-selection')
+                if selection.get('subject_filter', '') != subject_filter:
+                    raise MailboxError('Zmieniono nabór. Najpierw pobierz nagłówki ponownie.')
                 try:
                     selected = sorted(set(int(value) for value in request.POST.getlist('uids')))
                 except ValueError:
@@ -59,7 +67,7 @@ def mailbox_headers(request):
                 confirmation = None
                 if action == 'confirm':
                     confirmation = load_token(request.POST.get('preview', ''), request.user, key, 'mailbox-preview')
-                    if confirmation['digest'] != digest or confirmation['clean'] != context['clean'] or confirmation['convert'] != context['convert']:
+                    if confirmation['digest'] != digest or confirmation['clean'] != context['clean'] or confirmation['convert'] != context['convert'] or confirmation.get('rebuild') != context['rebuild']:
                         raise MailboxError('Wiadomości lub opcje się zmieniły. Przygotuj podgląd ponownie.')
                 tokens = confirmation['warnings'] if confirmation else {}
                 approved = bool(confirmation and request.POST.get('approve') == 'on')
@@ -70,10 +78,10 @@ def mailbox_headers(request):
                                selected=selected, hard_errors=hard_errors)
                 warnings = {str(form.data['anthology']): form.data.get('submission_warnings_token', '') for form in forms}
                 context['preview_token'] = signing.dumps(dict(base, digest=digest, warnings=warnings,
-                    clean=context['clean'], convert=context['convert']), salt='mailbox-preview', compress=True)
+                    clean=context['clean'], convert=context['convert'], rebuild=context['rebuild']), salt='mailbox-preview', compress=True)
                 if action == 'confirm' and approved and all(form.is_valid() for form in forms):
                     # Expensive operations finish before any database writes or locks.
-                    archive = package_messages(messages, clean=context['clean'], convert=context['convert'])
+                    archive = package_messages(messages, clean=context['clean'], convert=context['convert'], rebuild=context['rebuild'], allow_rebuild_omissions=request.POST.get('allow_rebuild_omissions') == 'on')
                     try:
                         with transaction.atomic():
                             locked = MailboxConnection.objects.select_for_update().get(pk=config.pk)
@@ -99,20 +107,26 @@ def mailbox_headers(request):
             elif action == 'headers':
                 cursor = None
                 if request.POST.get('cursor'):
-                    cursor = load_token(request.POST['cursor'], request.user, key, 'mailbox-cursor')['cursor']
+                    page = load_token(request.POST['cursor'], request.user, key, 'mailbox-cursor')
+                    if page.get('subject_filter', '') == subject_filter and page.get('show_downloaded', False) == context['show_downloaded']:
+                        cursor = page['cursor']
                 excluded = None if context['show_downloaded'] else lambda validity: receipts(config, validity).values_list('uid', flat=True)
-                result = read_headers(config, cursor, excluded=excluded)
+                result = read_headers(config, cursor, excluded=excluded, subject_filter=subject_filter)
                 already = set(receipts(config, result['validity']).values_list('uid', flat=True))
                 for row in result['rows']:
                     row['downloaded'] = row['uid'] in already
                 for field in ('next_cursor', 'previous_cursor'):
                     if result.get(field):
-                        result[field] = signing.dumps(dict(base, cursor=result[field]), salt='mailbox-cursor', compress=True)
+                        result[field] = signing.dumps(dict(base, cursor=result[field], subject_filter=subject_filter, show_downloaded=context['show_downloaded']), salt='mailbox-cursor', compress=True)
                 context['result'] = result
-                context['selection'] = signing.dumps(dict(base, validity=result['validity'],
+                context['selection'] = signing.dumps(dict(base, subject_filter=subject_filter, validity=result['validity'],
                     uids=[row['uid'] for row in result['rows']]), salt='mailbox-selection', compress=True)
             else:
                 raise MailboxError('Nieprawidłowa operacja.')
+    except RebuildConfirmationRequired as error:
+        context['rebuild_warning'] = True
+        context['rebuild_warning_text'] = str(error)
+        context['error'] = str(error)
     except (MailboxError, ConversionError) as error:
         context['error'] = str(error)
     except (BadZipFile, XMLSyntaxError, ValueError, OSError):

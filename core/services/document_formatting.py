@@ -22,6 +22,16 @@ def normalize_docx(source):
                 # python-docx's parser supplies typed elements for Paragraph/style access.
                 from docx.oxml import parse_xml
                 tree = parse_xml(data)
+                for section in tree.iter(qn('w:sectPr')):
+                    size = section.find(qn('w:pgSz'))
+                    if size is None: size = etree.SubElement(section, qn('w:pgSz'))
+                    size.set(qn('w:w'), '11906'); size.set(qn('w:h'), '16838')
+                    size.set(qn('w:orient'), 'portrait')
+                    margins = section.find(qn('w:pgMar'))
+                    if margins is None: margins = etree.SubElement(section, qn('w:pgMar'))
+                    for side in ('top','bottom','left','right'):
+                        margins.set(qn('w:' + side), '1417')
+                    margins.set(qn('w:gutter'), '0')
                 for element in tree.iter(qn('w:p')):
                     paragraph = Paragraph(element, document)
                     alignment = paragraph.alignment

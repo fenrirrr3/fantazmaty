@@ -16,3 +16,5 @@
     .odkurzacz input[type=file]::file-selector-button { background: var(--primary); color: #fff; border: 0; border-radius: var(--radius-small); padding: .85rem 1.2rem; margin-right: 1rem; font: inherit; font-weight: 700; cursor: pointer; }
     .odkurzacz input[type=file]::file-selector-button:hover { background: var(--primary-dark); }
     .odkurzacz input[type=file]:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }
+
+:root[data-theme="dark"] .odkurzacz input[type=file]::file-selector-button { color: #102034; }

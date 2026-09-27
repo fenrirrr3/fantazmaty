@@ -179,6 +179,8 @@ class MailboxConnection(models.Model):
     security = models.CharField('szyfrowanie połączenia', max_length=8, choices=Security.choices, default=Security.SSL)
     username = models.CharField('login', max_length=254)
     encrypted_password = models.TextField(editable=False)
+    recruitment_subjects = models.TextField('nabory do filtrowania tematów', blank=True, default='',
+        help_text='Każdy nabór w osobnym wierszu, bez cudzysłowów i bez prefiksu Nabór:, np. Na pokład, psubraty. Filtr dopasuje temat zawierający Nabór: „Na pokład, psubraty”.')
     folder = models.CharField('folder', max_length=255, default='INBOX', help_text='Nazwa folderu IMAP. Standardowa skrzynka odbiorcza: INBOX.')
     is_active = models.BooleanField('aktywna', default=True)
 
@@ -198,9 +200,16 @@ class MailboxConnection(models.Model):
             raise ValidationError({'host': 'Podaj nazwę serwera IMAP bez protokołu, portu i ścieżki.'})
         if self.port is None or not 1 <= self.port <= 65535:
             raise ValidationError({'port': 'Port musi być liczbą od 1 do 65535.'})
+        subjects = self.subject_choices()
+        if len(subjects) > 200 or any(len(title) > 255 or any(ord(c) < 32 or ord(c) == 127 for c in title) for title in subjects):
+            raise ValidationError({'recruitment_subjects': 'Maksymalnie 200 nazw, każda do 255 znaków, bez znaków sterujących.'})
+        self.recruitment_subjects = '\n'.join(subjects)
         for field in ('folder', 'username'):
             if any(ord(c) < 32 or ord(c) == 127 for c in getattr(self, field, '')):
                 raise ValidationError({field: 'Usuń znaki sterujące.'})
+
+    def subject_choices(self):
+        return list(dict.fromkeys(line.strip() for line in self.recruitment_subjects.splitlines() if line.strip()))
 
     def set_password(self, value):
         from core.mailbox_crypto import encrypt_password

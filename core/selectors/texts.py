@@ -177,6 +177,7 @@ def _stage_data(stage, text_data=None):
         workflow_cycle=stage.workflow_cycle,
         queue_position=stage.queue_position,
         imported_completed=stage.imported_completed,
+        is_skipped=stage.is_skipped,
         execution_number=stage.execution_number,
         repetition_id=stage.repetition_id,
         is_released=stage.is_released,
@@ -786,6 +787,8 @@ def text_detail_context(*, user, text):
             row['can_claim_styling'] = False
             row['can_claim_repeat'] = False
         row['can_start'] = row['can_start'] and available
+        from workflow.services import can_skip_fourth
+        row['can_skip'] = can_skip_fourth(stage, user)
         row['is_queued'] = not available
         stage_rows.append(row)
 

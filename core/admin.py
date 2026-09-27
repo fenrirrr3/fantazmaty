@@ -316,7 +316,7 @@ class MailboxConnectionForm(forms.ModelForm):
 
     class Meta:
         model = MailboxConnection
-        fields = ('name', 'host', 'port', 'security', 'username', 'password', 'folder', 'is_active')
+        fields = ('name', 'host', 'port', 'security', 'username', 'password', 'folder', 'recruitment_subjects', 'is_active')
 
     def clean_password(self):
         password = self.cleaned_data.get('password', '')
@@ -337,5 +337,5 @@ class MailboxConnectionForm(forms.ModelForm):
 class MailboxConnectionAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     form = MailboxConnectionForm
     list_display = ('name', 'host', 'username', 'folder', 'is_active')
-    fields = ('name', 'host', 'port', 'security', 'username', 'password', 'folder', 'is_active')
+    fields = ('name', 'host', 'port', 'security', 'username', 'password', 'folder', 'recruitment_subjects', 'is_active')
     search_fields = ('name', 'host', 'username')

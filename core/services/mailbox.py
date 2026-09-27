@@ -4,6 +4,7 @@ import imaplib
 import re
 import ssl
 from email import policy
+from zoneinfo import ZoneInfo
 from email.parser import BytesHeaderParser
 from email.utils import parsedate_to_datetime
 from django.utils.formats import date_format
@@ -41,7 +42,9 @@ def _positive(value):
     return value
 
 
-def read_headers(config, cursor=None, excluded=None):
+def read_headers(config, cursor=None, excluded=None, subject_filter=""):
+    if subject_filter and subject_filter not in config.subject_choices():
+        raise MailboxError("Wybierz nabór zapisany w ustawieniach skrzynki.")
     client = None
     try:
         password = config.get_password()
@@ -76,7 +79,18 @@ def read_headers(config, cursor=None, excluded=None):
                 raise MailboxError('Nieprawidłowy kierunek przeglądania.')
         # Stable upper UID excludes arrivals after the first page. UID search
         # remains correct if another mail client deletes messages meanwhile.
-        status, data = client.uid('SEARCH', None, 'UID', f'1:{anchor}' if anchor else '1:*')
+        uid_range = f'1:{anchor}' if anchor else '1:*'
+        if subject_filter:
+            phrase = f'Nabór: „{subject_filter}”'
+            quoted = ('"' + phrase.replace('\\', '\\\\').replace('"', '\\"') + '"').encode('utf-8')
+            try:
+                status, data = client.uid('SEARCH', 'CHARSET', 'UTF-8', 'UID', uid_range, 'SUBJECT', quoted)
+            except imaplib.IMAP4.error:
+                raise MailboxError('Serwer odrzucił wyszukiwanie tematu w UTF-8. Spróbuj pobrać nagłówki bez filtra naboru.') from None
+            if status != 'OK':
+                raise MailboxError('Serwer odrzucił wyszukiwanie tematu w UTF-8. Spróbuj pobrać nagłówki bez filtra naboru.')
+        else:
+            status, data = client.uid('SEARCH', None, 'UID', uid_range)
         if status != 'OK':
             raise MailboxError('Nie udało się odczytać listy wiadomości. Spróbuj ponownie.')
         uids = sorted({_positive(int(uid)) for block in data or [] if block for uid in block.split()})
@@ -94,8 +108,10 @@ def read_headers(config, cursor=None, excluded=None):
         selected = candidates[:PAGE_SIZE] if newer else candidates[-PAGE_SIZE:]
         result = {'validity': validity, 'rows': [], 'total': len(uids), 'next_cursor': None, 'previous_cursor': None}
         if not selected:
-            # Messages may have disappeared between pages; offer a fresh read.
-            return result
+            # If this side of the cursor disappeared, return to newest remaining mail.
+            selected = uids[-PAGE_SIZE:]
+            if not selected:
+                return result
         def state(direction, boundary):
             return {'anchor': anchor, 'validity': validity, 'direction': direction, 'boundary': boundary}
         if any(uid < selected[0] for uid in uids):
@@ -145,6 +161,8 @@ def story_title(subject):
 def polish_date(value):
     try:
         dt = parsedate_to_datetime(value)
+        if dt.tzinfo is not None:
+            dt = dt.astimezone(ZoneInfo('Europe/Warsaw'))
         with override('pl'):
             return date_format(dt, 'j E Y, H:i')
     except (ValueError, TypeError, OverflowError):

@@ -18,8 +18,7 @@ from core.forms import ReviewBulkImportForm
 from core.odkurzacz_forms import OdkurzaczForm
 from core.services.mailbox import MailboxError, encode_folder, story_title, _positive
 from core.services.odkurzacz import clean_docx, ALL_EDITORIAL_RULES
-from core.services.document_converter import convert_document, validate_resources
-from core.services.document_formatting import normalize_docx
+from core.services.document_converter import convert_document, RebuildConfirmationRequired
 from texts.models import Anthology
 
 MAX_MESSAGES = 10
@@ -169,9 +168,10 @@ def safe_name(value):
     return value
 
 
-def package_messages(messages, clean=True, convert=True):
+def package_messages(messages, clean=True, convert=True, rebuild=True, allow_rebuild_omissions=False):
     archive_file = SpooledTemporaryFile(max_size=4*1024*1024, mode='w+b')
     used, total = set(), 0
+    rebuild_warnings = []
     deadline = time.monotonic() + 90
     try:
         with ZipFile(archive_file, 'w', ZIP_DEFLATED) as archive:
@@ -186,31 +186,44 @@ def package_messages(messages, clean=True, convert=True):
                     stem = safe_name(PurePosixPath(name).stem)
                     base = f'{folder}/{index:02d}_{stem}'
                     is_docx = name.lower().endswith('.docx')
-                    if (clean or convert) and not is_docx:
-                        raise MailboxError(f'„{name}”: Odkurzacz i konwerter obsługują DOCX. Wyłącz obie opcje, aby pobrać oryginały.')
+                    if (clean or convert or rebuild) and not is_docx:
+                        raise MailboxError(f'„{name}”: Odkurzacz i konwerter obsługują DOCX. Wyłącz Odkurzacz, konwersję i przebudowę, aby pobrać oryginały.')
                     if is_docx:
                         form = OdkurzaczForm({'rules': []}, {'document': SimpleUploadedFile(name, data)})
                         if not form.is_valid():
                             raise MailboxError(f'Nieprawidłowy DOCX: {name}. ' + ' '.join(str(e) for errors in form.errors.values() for e in errors))
-                    if convert:
-                        validate_resources(BytesIO(data))
-                        with normalize_docx(BytesIO(data)) as formatted:
-                            data = formatted.read()
-                    if clean:
-                        with clean_docx(BytesIO(data), ALL_EDITORIAL_RULES) as output:
-                            data = output.read()
-                    archive.writestr(base + PurePosixPath(name).suffix, data)
-                    total += len(data)
-                    if convert:
+                    if not convert and not rebuild:
+                        if clean:
+                            with clean_docx(BytesIO(data), ALL_EDITORIAL_RULES) as output:
+                                data = output.read()
+                        archive.writestr(base + PurePosixPath(name).suffix, data)
+                        total += len(data)
+                    if convert or rebuild:
                         upload = SimpleUploadedFile(name, data)
-                        output, _, _ = convert_document(upload, ['pdf','epub'], use_cleaner=False, timeout=deadline-time.monotonic())
+                        try:
+                            output, _, _ = convert_document(upload, ['pdf','epub'] if convert else [], use_cleaner=clean, timeout=deadline-time.monotonic(), include_docx=True, rebuild=rebuild, normalize=convert, allow_rebuild_omissions=allow_rebuild_omissions)
+                        except RebuildConfirmationRequired as error:
+                            rebuild_warnings.append(f"{name}: {error}")
+                            continue
+                        if not convert:
+                            with output:
+                                payload = output.read()
+                            archive.writestr(base + '.docx', payload)
+                            total += len(payload)
+                            if total > 150 * 1024 * 1024:
+                                raise MailboxError('Wynik przekracza 150 MB. Wybierz mniej wiadomości.')
+                            continue
                         with output, ZipFile(output) as converted:
-                            for ext in ('pdf', 'epub'):
+                            for ext in ('docx', 'pdf', 'epub'):
                                 payload = converted.read('document.' + ext)
                                 total += len(payload)
                                 if total > 150 * 1024 * 1024:
                                     raise MailboxError('Wynik przekracza 150 MB. Wybierz mniej wiadomości.')
                                 archive.writestr(base + '.' + ext, payload)
+        if rebuild_warnings:
+            raise RebuildConfirmationRequired(' '.join(rebuild_warnings))
+        if time.monotonic() > deadline:
+            raise MailboxError('Przygotowanie paczki przekroczyło 90 sekund. Wybierz mniej wiadomości.')
         archive_file.seek(0)
         return archive_file
     except BaseException:

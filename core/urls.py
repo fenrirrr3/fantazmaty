@@ -22,6 +22,7 @@ from core.views.programs import programs
 from core.views.activity import user_activity
 
 urlpatterns = [
+    path("workflow/<int:stage_id>/pomin/", workflow.skip_workflow_stage, name="skip_workflow_stage"),
     path("recenzje/import-zbiorczy/", reviews.review_bulk_submit, name="review_bulk_submit"),
     path("organizacja/ostatnia-aktywnosc/", reports.last_activity, name="last_activity"),
     path("teksty/<int:text_id>/powiaz-recenzje/", texts.link_text_review, name="link_text_review"),

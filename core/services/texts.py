@@ -448,6 +448,8 @@ def start_assigned_stage(*, user, stage_id, started_at):
             "Nie możesz rozpocząć etapu przypisanego do innej osoby."
         )
 
+    from workflow.availability import ensure_distinct_proofreader
+    ensure_distinct_proofreader(text, role, assignment.assigned_to)
     _require_eligible_assignee(assignment.assigned_to, role)
     _require_distinct_verifiers(assignments, role, assignment.assigned_to_id)
     _require_start_order(stage, stages)
@@ -592,6 +594,8 @@ def change_scheduled_stage(*, user, stage_id, started_at=None, cancel=False):
                 stage.iteration = 1 + max((s.iteration for s in stages if s.stage_type == StageType.READY_FOR_EDITING), default=0)
         stage.save(update_fields=['started_at', 'stage_type', 'iteration'])
     else:
+        from workflow.availability import ensure_distinct_proofreader
+        ensure_distinct_proofreader(text, role, assignment.assigned_to)
         _require_eligible_assignee(assignment.assigned_to, role)
         date = validate_assignment_start_date(started_at)
         previous = [s.ended_at for s in stages if s.is_completed and s.ended_at]

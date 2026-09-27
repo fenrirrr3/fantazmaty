@@ -11,7 +11,6 @@ EDITORIAL_RULES = (
     ('spaces', 'Podwójne i wielokrotne spacje'),
     ('trim', 'Spacje na początku i końcu akapitu'),
     ('tabs', 'Usuwanie wszystkich tabulatorów'),
-    ('empty_paragraphs', 'Wielokrotne puste akapity → jeden pusty akapit'),
     ('before_punct', 'Spacje przed znakami interpunkcyjnymi'),
     ('sentence_case', 'Wielka litera po . ? ! – z wyjątkami dla skrótów, liczb i dialogów'),
     ('after_punct', 'Brakujące spacje po interpunkcji (z wyjątkami)'),
@@ -453,30 +452,9 @@ def _rewrite_text_nodes(slots, corrected):
             node.getparent().remove(node)
 
 
-def _safe_empty_paragraph(element):
-    if element.tag != qn('w:p'):
-        return False
-    for child in element:
-        if child.tag == qn('w:pPr'):
-            if any(child.find(qn('w:' + name)) is not None
-                   for name in ('sectPr', 'numPr', 'pageBreakBefore')):
-                return False
-        elif child.tag == qn('w:r'):
-            for node in child:
-                if node.tag == qn('w:rPr'):
-                    continue
-                if node.tag == qn('w:t') and not (node.text or '').strip(' \u00a0\u202f\t'):
-                    continue
-                if node.tag == qn('w:tab'):
-                    continue
-                return False
-        else:
-            return False
-    return True
-
-
 def apply_editorial_corrections(doc, enabled=None):
     enabled = ALL_EDITORIAL_RULES if enabled is None else frozenset(enabled)
+    enabled = enabled - {'empty_paragraphs'}  # Older callers may still send the retired rule.
     if enabled - ALL_EDITORIAL_RULES:
         raise ValueError('Nieznana reguła korekty edytorskiej.')
     if not enabled:
@@ -527,14 +505,6 @@ def apply_editorial_corrections(doc, enabled=None):
                                                    trim_start=index == 0,
                                                    trim_end=index == len(groups) - 1)
                 _rewrite_text_nodes(group, corrected)
-    if 'empty_paragraphs' in enabled:
-        previous_empty = False
-        for element in list(doc._element.body):
-            empty = _safe_empty_paragraph(element)
-            if empty and previous_empty:
-                element.getparent().remove(element)
-            else:
-                previous_empty = empty
 
 
 def clean_docx(source, rules):

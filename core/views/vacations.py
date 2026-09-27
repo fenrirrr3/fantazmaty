@@ -50,7 +50,7 @@ def _vacation_redirect(user, vacation):
         return redirect("core:my_vacations")
 
     from django.urls import reverse
-    return redirect(reverse("core:my_vacations") + "?person=" + str(vacation.person_id))
+    return redirect("core:active_vacations")
 
 
 def _add_validation_errors(form, error):
@@ -65,8 +65,9 @@ def _add_validation_errors(form, error):
 
 
 def _render_my_vacations(request, person, form, *, status=200):
+    history_person = get_active_person_profile(request.user)
     vacations = (
-        Vacation.objects.filter(person_id=person.pk)
+        Vacation.objects.filter(person_id=history_person.pk if history_person else None)
         .select_related("person")
         .order_by("-start_date", "-created_at", "-pk")
     )
@@ -79,6 +80,7 @@ def _render_my_vacations(request, person, form, *, status=200):
             "form": form,
             "can_manage_team_vacations": is_coordinator(request.user),
             "person": person,
+            "history_person": history_person,
             "vacation_people": Person.objects.filter(is_active=True).order_by("last_name", "first_name", "pk") if is_coordinator(request.user) else [],
             "vacations": page_obj,
             "page_obj": page_obj,
@@ -94,7 +96,7 @@ def _render_my_vacations(request, person, form, *, status=200):
 def my_vacations(request):
     person = get_active_person_profile(request.user)
     if is_coordinator(request.user):
-        selected = request.POST.get("person") if request.method == "POST" else request.GET.get("person")
+        selected = request.POST.get("person") if request.method == "POST" else None
         if selected:
             from core.selectors.texts import _positive_id
             person = get_object_or_404(Person.objects.filter(is_active=True), pk=_positive_id(selected))
@@ -127,7 +129,7 @@ def my_vacations(request):
         else:
             messages.success(request, "Zgłoszono urlop.")
             from django.urls import reverse
-            return redirect(reverse("core:my_vacations") + ("?person=" + str(person.pk) if is_coordinator(request.user) else ""))
+            return redirect("core:my_vacations")
 
     return _render_my_vacations(
         request,

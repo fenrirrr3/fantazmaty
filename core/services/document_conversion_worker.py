@@ -91,7 +91,8 @@ def convert(source, directory, formats, title):
     with source.open('rb') as document:
         result = mammoth.convert_to_html(document,
             convert_image=mammoth.images.img_element(convert_image),
-            external_file_access=False, include_embedded_style_map=False, style_map='u => u')
+            external_file_access=False, include_embedded_style_map=False, style_map='u => u',
+            ignore_empty_paragraphs='pdf' not in formats)
     if any(message.type == 'error' for message in result.messages):
         raise ValueError('Document could not be read completely')
     content, headings = sanitize_html(result.value, assets)
@@ -153,10 +154,34 @@ def main():
     directory = Path(sys.argv[1])
     config = json.loads((directory / 'job.json').read_text(encoding='utf-8'))
     formats = config['formats']
-    if not formats or set(formats) - {'pdf', 'epub'}:
+    if (not formats and not config.get('include_docx')) or set(formats) - {'pdf', 'epub'}:
         return 3
     try:
-        convert(directory / 'source.docx', directory, formats, config['title'])
+        if config.get('prepare'):
+            if __package__:
+                from .document_formatting import normalize_docx
+                from .odkurzacz import clean_docx, ALL_EDITORIAL_RULES
+            else:
+                from document_formatting import normalize_docx
+                from odkurzacz import clean_docx, ALL_EDITORIAL_RULES
+            source = directory / 'source.docx'
+            payload = source.read_bytes()
+            if config.get('rebuild'):
+                if __package__:
+                    from .document_rebuild import rebuild_docx, RebuildUnsupported
+                else:
+                    from document_rebuild import rebuild_docx, RebuildUnsupported
+                with rebuild_docx(BytesIO(payload), allow_omissions=config.get('allow_rebuild_omissions', False)) as rebuilt:
+                    payload = rebuilt.read()
+            if config.get('normalize', True):
+                with normalize_docx(BytesIO(payload)) as formatted:
+                    payload = formatted.read()
+            if config.get('clean'):
+                with clean_docx(BytesIO(payload), ALL_EDITORIAL_RULES) as cleaned:
+                    payload = cleaned.read()
+            source.write_bytes(payload)
+        if formats:
+            convert(directory / 'source.docx', directory, formats, config['title'])
     except Exception as error:
         # Never record exception messages, locals, source lines or document text.
         versions = {}
@@ -166,7 +191,7 @@ def main():
         frames = [{'file': Path(frame.filename).name, 'line': frame.lineno, 'function': frame.name}
                   for frame in traceback.extract_tb(error.__traceback__)]
         report = {'stage': CURRENT_STAGE, 'error': type(error).__name__,
-                  'frames': frames, 'python': sys.version.split()[0], 'versions': versions}
+                  'omissions': getattr(error, 'omissions', []), 'frames': frames, 'python': sys.version.split()[0], 'versions': versions}
         try:
             (directory / 'error.json').write_text(json.dumps(report), encoding='utf-8')
         except OSError:

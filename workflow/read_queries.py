@@ -90,7 +90,7 @@ def filter_my_texts(queryset, user, selected_view, today):
 
 
 def available_stages(user, access):
-    from workflow.availability import can_claim_fourth_proofreading
+    from workflow.availability import can_claim_fourth_proofreading, first_proofreading_work
     stages = current_stages()
     assignments = A.objects.current_cycle().filter(text_id=OuterRef('text_id'), workflow_cycle=OuterRef('workflow_cycle'))
     query = S.objects.current_cycle().exclude(text__anthology__status="ready").filter(is_released=True, workflow_cycle=F('text__current_workflow_cycle'), is_completed=False,
@@ -105,6 +105,7 @@ def available_stages(user, access):
         ~Exists(terminal(stages)),
         ~Exists(assignments.filter(role=OuterRef('_work_role'), assigned_to__isnull=False)),
     )
+    query = query.filter(~Q(stage_type__in=('second_proofreading', 'third_proofreading')) | ~Exists(first_proofreading_work(user).filter(text_id=OuterRef('text_id'))))
     opposite = Case(When(_work_role='verifier_1', then=Value('verifier_2')),
                     When(_work_role='verifier_2', then=Value('verifier_1')), default=Value(''), output_field=CharField())
     query = query.alias(_opposite=opposite).filter(~Exists(assignments.filter(role=OuterRef('_opposite'), assigned_to_id=user.pk)))

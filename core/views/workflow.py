@@ -483,3 +483,19 @@ def handoff_workflow_stage(request, stage_id):
             messages.success(request,'Przekazano pracę. Poprzednie przypisanie pozostało zapisane.')
             return _detail_redirect(stage.text_id)
     return render(request,'core/workflow_handoff.html',{'form':form,'stage':stage})
+
+
+@never_cache
+@login_required
+@require_POST
+@superuser_required
+def skip_workflow_stage(request, stage_id):
+    from workflow.services import skip_fourth_proofreading
+    stage = _get_current_stage(stage_id)
+    try:
+        skip_fourth_proofreading(stage, request.user)
+    except ValidationError as error:
+        messages.error(request, ' '.join(error.messages))
+    else:
+        messages.success(request, 'Pominięto czwartą korektę. Udostępniono kolejny etap.')
+    return _detail_redirect(stage.text_id)

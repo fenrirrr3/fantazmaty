@@ -10,3 +10,5 @@
 .mailbox-filters .form-field{margin:0}
 @media(min-width:901px){.intake-columns:has(>.intake-panel:first-child:not([open])){grid-template-columns:minmax(12rem,1fr) minmax(0,3fr)}.intake-columns:has(>.intake-panel:last-child:not([open])){grid-template-columns:minmax(0,3fr) minmax(12rem,1fr)}}
 @media(max-width:900px){.intake-columns{grid-template-columns:minmax(0,1fr)}}
+
+@media(min-width:901px){.intake-columns:has(>.intake-panel:first-child:not([open])):has(>.intake-panel:last-child:not([open])){grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}

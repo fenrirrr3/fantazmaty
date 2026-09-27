@@ -63,6 +63,13 @@ def render_pdf(source, target, content, assets, title):
             img.set('width', str(min(image.width * .75, (width - margins[0] - margins[2]) * pdf.k)))
     for node in root:
         text = normalize(node.text_content())
+        if node.tag == 'p' and not text and not node.xpath('.//img'):
+            # Empty paragraphs are real 12pt / 1.5 lines, including consecutive ones.
+            height = 18 / pdf.k
+            if pdf.will_page_break(height):
+                pdf.add_page()
+            pdf.ln(height)
+            continue
         paragraph = paragraphs[text].popleft() if paragraphs[text] else None
         size, line_height, before, after, indent = 12, 1.5, 0, 0, 12.5
         if paragraph is not None:

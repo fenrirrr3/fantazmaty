@@ -480,6 +480,8 @@ def _assign_role(text, role, user):
     if role == Role.STYLING and not user.is_superuser:
         raise PermissionDenied("Stylowanie może przejąć tylko superuser.")
     ensure_distinct_primary_verifier(text, role, user)
+    from workflow.availability import ensure_distinct_proofreader
+    ensure_distinct_proofreader(text, role, user)
 
     assignment = current_assignment_queryset(text).filter(
         role=role,
@@ -916,3 +918,38 @@ def complete_stage(stage, user, ended_at):
 
 # Zachowana nazwa używana przez dotychczasowe widoki.
 start_author_editing = send_text_to_author
+
+def can_skip_fourth(stage, user):
+    return bool(user.is_active and user.is_superuser and stage.stage_type == StageType.FOURTH_PROOFREADING
+        and stage_belongs_to_current_cycle(stage) and stage.is_released and not stage.is_completed
+        and not stage.started_at and not stage.ended_at and (not stage.assignment_id or not stage.assignment.assigned_to_id)
+        and not current_assignment_queryset(stage.text).filter(role=Role.PROOFREADER_4, assigned_to__isnull=False).exists()
+        and not text_is_withdrawn(stage.text)
+        and not current_stage_queryset(stage.text).filter(stage_type=StageType.READY).exists()
+        and not (stage.text.anthology_id and stage.text.anthology.status == 'ready'))
+
+
+@_locked_stage_operation
+def skip_fourth_proofreading(stage, user):
+    _ensure_actor(user)
+    if not user.is_superuser:
+        raise PermissionDenied('Etap może pominąć tylko superuser.')
+    if not can_skip_fourth(stage, user):
+        raise ValidationError('Można pominąć tylko bieżącą, nieprzypisaną i nierozpoczętą czwartą korektę.')
+    stage.is_completed = True
+    stage.is_skipped = True
+    stage.assignment = None
+    stage.save(update_fields=['is_completed', 'is_skipped', 'assignment'])
+    if stage.repetition_id:
+        following = stage.repetition.stages.filter(is_completed=False).order_by('queue_position').first()
+        if following:
+            following.is_released = True
+            following.save(update_fields=['is_released'])
+        else:
+            stage.repetition.completed_at = timezone.now()
+            stage.repetition.save(update_fields=['completed_at'])
+            ready = _create_pending_stage(stage.text, StageType.READY)
+            _start_stage(ready, timezone.localdate())
+    else:
+        _create_pending_stage(stage.text, NEXT_STAGE_TYPES[stage.stage_type])
+    return stage

@@ -13,11 +13,11 @@
     <summary>Odkurzacz</summary>
     <div class="card-body">
     <p>Wybierz dokument i poprawki, które chcesz zastosować. Odkurzacz wykonuje korektę automatycznie i udostępnia plik do pobrania.</p>
-    <p>Przetwarzana jest główna treść dokumentu, bez tabel, nagłówków i treści przypisów. Poprawki są zapisywane bez śledzenia zmian. Odkurzacz nie dodaje kolorów ani oznaczeń.</p>
-    <p><strong>PLIK MUSI BYĆ POZBAWIONY ŚLEDZENIA ZMIAN (WYŁĄCZ TRYB) ORAZ KOMENTARZY!</strong></p>
+    <p>Przetwarzana jest główna treść dokumentu, bez tabel, nagłówków i treści przypisów. Poprawki są zapisywane bez śledzenia zmian. Odkurzacz nie dodaje kolorów ani oznaczeń. Puste akapity pozostają bez usuwania ani scalania.</p>
+    <p><strong>Przed zwykłym odkurzaniem zaakceptuj śledzone zmiany i usuń komentarze. Przycisk przebudowy obsługuje proste zmiany tekstu i usuwa komentarze.</strong></p>
     <form method="post" enctype="multipart/form-data">
         {% csrf_token %}
-        <input type="hidden" name="program_action" value="clean">
+
         {{ form.non_field_errors }}
         {% if form.errors %}<p role="alert">Sprawdź komunikaty poniżej i ponownie wybierz plik przed wysłaniem.</p>{% endif %}
         <div class="odkurzacz-upload">
@@ -26,7 +26,14 @@
         {{ form.document }}
         <p class="helptext">{{ form.document.help_text }}</p>
         </div>
-        <button type="submit" class="primary-button">Odkurz i pobierz DOCX</button>
+        <button type="submit" name="program_action" value="clean" class="primary-button">Odkurz i pobierz DOCX</button>
+        {% if rebuild_warning %}
+        <input type="hidden" name="rebuild_token" value="{{ rebuild_token }}">
+        <p class="form-warning">{{ rebuild_warning_text }} Wybierz ponownie ten sam plik.</p>
+        <p><label><input type="checkbox" name="allow_rebuild_omissions" value="on"> Akceptuję ostrzeżenie i chcę kontynuować z pominięciem wymienionych elementów.</label></p>
+        {% endif %}
+        <button type="submit" name="program_action" value="rebuild" class="secondary-button">Przebuduj do nowego DOCX</button>
+        <p class="form-help">Przebudowa przenosi tekst i podstawowe formatowanie do nowego DOCX, bez metadanych starego pliku, komentarzy, nagłówków, stopek i ukrytego tekstu. Przyjmuje dodany tekst i pomija skreślony w śledzonych zmianach. Nie uruchamia reguł Odkurzacza. Dokumenty z nieobsługiwanymi elementami (np. tabelami, ilustracjami, przypisami lub automatycznymi listami) wymagają akceptacji komunikatu z listą pomijanych elementów. Dane osobowe wpisane w treści pozostają.</p>
         <p>Przy większym dokumencie pobieranie może rozpocząć się po chwili. Oryginał pozostaje na Twoim komputerze.</p>
         <fieldset>
             <legend>Opcje korekty</legend>
@@ -47,8 +54,8 @@
     <summary>Konwerter DOCX → PDF i EPUB</summary>
     <div class="card-body">
     <p>Wybierz jeden lub kilka formatów. Jeden format pobierzesz jako osobny plik, kilka jako archiwum ZIP.</p>
-    <p>Przed korektą i konwersją ustawiamy Times New Roman 12 pkt, interlinię 1,5, wcięcie pierwszego wiersza 1,25 cm i zerowe odstępy przed oraz po akapicie. Akapity wyśrodkowane nie mają wcięcia. Zachowujemy wyrównanie, kursywę i pogrubienia.</p>
-    <p>Konwersja może zmienić podział stron i wygląd dokumentu. PDF korzysta z rozmiaru strony i marginesów pierwszej sekcji DOCX oraz czcionki podobnej do Times New Roman. Złożony układ, nagłówki i stopki Worda nie są odwzorowywane dokładnie; po pobraniu sprawdź wynik.</p>
+    <p>Przy tworzeniu PDF zachowujemy puste akapity (również po włączeniu Odkurzacza) oraz justowanie, jeśli jest ustawione w DOCX. Przed korektą i konwersją ustawiamy Times New Roman 12 pkt, interlinię 1,5, wcięcie pierwszego wiersza 1,25 cm i zerowe odstępy przed oraz po akapicie. Akapity wyśrodkowane nie mają wcięcia. Zachowujemy wyrównanie, kursywę i pogrubienia.</p>
+    <p>Konwersja może zmienić podział stron i wygląd dokumentu. Przed konwersją ustawiamy A4 i marginesy 2,5 cm z każdej strony. PDF korzysta z tych ustawień oraz czcionki podobnej do Times New Roman. Złożony układ, nagłówki i stopki Worda nie są odwzorowywane dokładnie; po pobraniu sprawdź wynik.</p>
     <form method="post" enctype="multipart/form-data">
         {% csrf_token %}<input type="hidden" name="program_action" value="convert">
         {{ conversion_form.non_field_errors }}
