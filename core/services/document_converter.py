@@ -86,6 +86,31 @@ def validate_resources(source):
         source.seek(0)
 
 
+def converter_python():
+    """WSGI's sys.executable may be uwsgi, not a Python interpreter."""
+    configured = getattr(settings, 'DOCUMENT_CONVERTER_PYTHON', '') or os.environ.get('DOCUMENT_CONVERTER_PYTHON', '')
+    def usable(path):
+        return path.is_file() and (os.name == 'nt' or os.access(path, os.X_OK))
+    if configured:
+        candidate = Path(configured).expanduser()
+        if not candidate.is_absolute() or not usable(candidate):
+            raise ConversionError('DOCUMENT_CONVERTER_PYTHON musi wskazywać istniejący interpreter Pythona (pełna ścieżka).')
+        return str(candidate)
+    import django
+    roots = [parent for parent in Path(django.__file__).absolute().parents
+             if (parent / 'pyvenv.cfg').is_file()]
+    roots.append(Path(sys.prefix))
+    for root in roots:
+        candidate = root / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
+        if usable(candidate):
+            # Do not resolve symlinks: the venv path selects its site-packages.
+            return str(candidate.absolute())
+    candidate = Path(sys.executable)
+    if re.fullmatch(r'python(?:[0-9]+(?:\.[0-9]+)*)?(?:\.exe)?', candidate.name, re.IGNORECASE) and usable(candidate):
+        return str(candidate.absolute())
+    raise ConversionError('Nie znaleziono Pythona do konwersji. Ustaw DOCUMENT_CONVERTER_PYTHON na interpreter środowiska projektu.')
+
+
 def run_converter(directory, timeout):
     if timeout <= 0:
         raise ConversionError('Konwersja przekroczyła limit 90 sekund. Podziel dokument lub wybierz mniej formatów.')
@@ -94,7 +119,7 @@ def run_converter(directory, timeout):
            if key in ('PATH', 'SYSTEMROOT', 'WINDIR', 'LANG', 'LC_ALL', 'LD_LIBRARY_PATH', 'PYTHONPATH')}
     env.update(HOME=str(directory), TMPDIR=str(directory), TEMP=str(directory), TMP=str(directory),
                PYTHONDONTWRITEBYTECODE='1')
-    command = [sys.executable, str(Path(__file__).with_name('document_conversion_worker.py')), str(directory)]
+    command = [converter_python(), str(Path(__file__).with_name('document_conversion_worker.py')), str(directory)]
     try:
         with subprocess.Popen(command, cwd=directory, env=env, stdin=subprocess.DEVNULL,
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -121,7 +146,7 @@ def run_converter(directory, timeout):
                 report = json.loads(error_file.read_text(encoding='utf-8'))
         except (OSError, ValueError):
             pass
-        logger.error('Błąd konwertera: exit=%s diagnostics=%s', code, report)
+        logger.error('Błąd konwertera: exit=%s python=%s diagnostics=%s', code, command[0], report)
         stage = report.get('stage', '')
         stage = stage if stage in ('DOCX', 'PDF', 'EPUB') else 'konwersja'
         kind = report.get('error', '')
