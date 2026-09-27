@@ -153,7 +153,8 @@ def run_converter(directory, timeout):
                 report = json.loads(error_file.read_text(encoding='utf-8'))
         except (OSError, ValueError):
             pass
-        logger.error('Błąd konwertera: exit=%s python=%s diagnostics=%s', code, command[0], report)
+        if report.get('error') != 'RebuildUnsupported':
+            logger.error('Błąd konwertera: exit=%s python=%s diagnostics=%s', code, command[0], report)
         stage = report.get('stage', '')
         stage = stage if stage in ('DOCX', 'PDF', 'EPUB') else 'konwersja'
         kind = report.get('error', '')

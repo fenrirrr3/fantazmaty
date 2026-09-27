@@ -78,7 +78,7 @@ def audiobooks(request):
 def _review_tasks(user):
     from texts.models import ReviewAssignment
     rows = ReviewAssignment.objects.filter(user=user, review__is_hidden=False,
-        review__old_reviews=False, review__status__in=("new", "in_review")).select_related(
+        review__old_reviews=False, review__status__in=("new", "in_review", "to_decide")).select_related(
             "review__anthology").order_by("assigned_at", "pk")
     return rows.filter(opinion="reading"), rows.filter(opinion="")
 

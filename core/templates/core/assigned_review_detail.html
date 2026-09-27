@@ -374,6 +374,8 @@
         </section>
     </div>
 
+    {% if review.status == 'to_decide' %}<p class="form-warning" role="status">Tekst jest na etapie „Do decyzji”. Recenzję powinna przejąć tylko wyznaczona osoba. Możliwość przejęcia pozostaje otwarta.</p>{% endif %}
+    {% if can_mark_for_decision %}<form method="post" action="{% url 'core:update_review_status' review.pk %}">{% csrf_token %}{% edit_version %}<input type="hidden" name="status" value="to_decide"><button class="secondary-button" type="submit">Do decyzji</button></form>{% endif %}
     {% if can_change_review_status %}
         <section class="review-decision-card" aria-labelledby="review-decision-heading">
             <div class="review-decision-header">

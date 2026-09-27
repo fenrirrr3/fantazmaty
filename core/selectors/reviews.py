@@ -1,5 +1,5 @@
 from core.filtering import facet_queryset
-from django.db.models import Count, F, Prefetch, Q
+from django.db.models import Count, F, Prefetch, Q, Case, When, Value, CharField
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
@@ -15,13 +15,13 @@ from texts.models import Anthology, Review, ReviewAssignment, Reviewers
 
 
 MAX_DATABASE_ID = 9_223_372_036_854_775_807
-DEFAULT_STATUSES = (Review.Status.NEW, Review.Status.IN_REVIEW)
+DEFAULT_STATUSES = (Review.Status.NEW, Review.Status.IN_REVIEW, Review.Status.TO_DECIDE)
 OPEN_STATUSES = frozenset(DEFAULT_STATUSES)
 READING_OPINIONS = ("", Reviewers.Opinion.READING)
 MAX_REVIEWERS = ReviewAssignment.MAX_REVIEWERS
 
 ASSIGNMENT_STATES = frozenset(
-    {"none", "one", "full", "all_finished", "awaiting_decision"}
+    {"none", "one", "full", "all_finished"}
 )
 
 SORT_FIELDS = {
@@ -33,8 +33,8 @@ SORT_FIELDS = {
     "-anthology": ("-anthology__title", "title", "pk"),
     "length": ("length", "pk"),
     "-length": ("-length", "-pk"),
-    "status": ("status", "title", "pk"),
-    "-status": ("-status", "title", "pk"),
+    "status": ("status_label", "title", "pk"),
+    "-status": ("-status_label", "title", "pk"),
 }
 
 
@@ -423,13 +423,11 @@ def review_list_context(*, user, params):
         queryset = queryset.filter(assigned_count=1)
     elif assignment_state == "full":
         queryset = queryset.filter(assigned_count__gte=MAX_REVIEWERS)
-    elif assignment_state in {"all_finished", "awaiting_decision"}:
+    elif assignment_state == "all_finished":
         queryset = queryset.filter(
             assigned_count__gt=0,
             completed_count=F("assigned_count"),
         )
-        if assignment_state == "awaiting_decision":
-            queryset = queryset.filter(status=Review.Status.IN_REVIEW)
 
     queryset, facets = facet_queryset(queryset, {
         'status': ('status', selected_statuses),
@@ -439,6 +437,11 @@ def review_list_context(*, user, params):
     if sort not in SORT_FIELDS:
         sort = "newest"
 
+    if sort in ('status', '-status'):
+        queryset = queryset.annotate(status_label=Case(
+            *[When(status=value, then=Value(label)) for value, label in Review.Status.choices],
+            default=F('status'), output_field=CharField(),
+        ))
     if include_authors:
         queryset = queryset.select_related("author").prefetch_related("coauthors")
 
@@ -470,7 +473,7 @@ def review_list_context(*, user, params):
         "selected_assignment_state": assignment_state,
         "selected_completed": completed,
         "selected_anthology_id": anthology_id,
-        "status_choices": [(v, label) for v, label in Review.Status.choices if v in facets["status"]],
+        "status_choices": Review.Status.choices,
         "query": query,
         "sort": sort,
         "old_reviews": old_reviews,

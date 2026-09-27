@@ -179,6 +179,10 @@ def can_self_assign_reviews(user):
     return has_role(user, REVIEWER_ROLE) and not is_on_leave(user)
 
 
+def can_mark_review_for_decision(user):
+    return is_superuser(user) or has_role(user, "Koordynator recenzji")
+
+
 def can_manage_reviews(user):
     return is_coordinator(user)
 

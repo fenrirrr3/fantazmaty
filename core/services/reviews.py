@@ -7,6 +7,7 @@ from django.utils import timezone
 from authors.models import Author
 from core.permissions import (
     can_manage_reviews,
+    can_mark_review_for_decision,
     can_self_assign_reviews,
     is_superuser,
     require_coordinator,
@@ -34,6 +35,7 @@ OPEN_STATUSES = frozenset(
     {
         Review.Status.NEW,
         Review.Status.IN_REVIEW,
+        Review.Status.TO_DECIDE,
     }
 )
 DECISION_STATUSES = frozenset(
@@ -298,7 +300,12 @@ def _validate_status_change(*, user, review, assignments, new_status):
     if new_status not in valid_statuses:
         raise ValidationError("Wybrano nieprawidłowy status.")
 
-    if not is_superuser(user):
+    if new_status == Review.Status.TO_DECIDE:
+        if not can_mark_review_for_decision(user):
+            raise PermissionDenied("Tylko koordynator recenzji może skierować tekst do decyzji.")
+        if review.status not in OPEN_STATUSES:
+            raise ValidationError("Do decyzji można skierować tylko otwarte zgłoszenie.")
+    if not is_superuser(user) and new_status != Review.Status.TO_DECIDE:
         if new_status not in {Review.Status.ACCEPTED, Review.Status.REJECTED}:
             raise PermissionDenied(
                 "Ten status może ustawić wyłącznie superuser."

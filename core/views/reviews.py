@@ -1,3 +1,4 @@
+from core.permissions import can_mark_review_for_decision
 from core.permissions import can_view_review_archive, can_view_archived_review_authors
 from django.contrib import messages
 import hashlib
@@ -392,6 +393,7 @@ def _render_review_detail(
                 if can_contribute
                 else None
             ),
+            "can_mark_for_decision": (can_mark_review_for_decision(request.user) and review.status in (Review.Status.NEW, Review.Status.IN_REVIEW) and not review.old_reviews and not review.copied_text_id),
             "can_change_review_status": (
                 manager_access
                 and review.status != Review.Status.REJECTED
@@ -760,8 +762,9 @@ def update_review_status(request, review_id):
     if new_status not in {
         Review.Status.ACCEPTED,
         Review.Status.REJECTED,
+        Review.Status.TO_DECIDE,
     }:
-        messages.error(request, "Wybierz przyjęcie albo odrzucenie tekstu.")
+        messages.error(request, "Wybierz prawidłowy status zgłoszenia.")
         return _detail_redirect(review.pk)
 
     try:
@@ -888,9 +891,9 @@ def my_reviews(request):
     else:
         rows = ReviewAssignment.objects.filter(user=request.user, review__old_reviews=False, review__is_hidden=False).select_related("review__anthology").order_by("-assigned_at", "-pk")
     if view == "active":
-        rows = rows.filter(opinion="reading", review__status__in=("new", "in_review"))
+        rows = rows.filter(opinion="reading", review__status__in=("new", "in_review", "to_decide"))
     elif view == "waiting":
-        rows = rows.filter(opinion="", review__status__in=("new", "in_review"))
+        rows = rows.filter(opinion="", review__status__in=("new", "in_review", "to_decide"))
     elif view == "completed":
         rows = rows.exclude(opinion__in=("", "reading"))
     query = request.GET.get("q", "").strip()[:255]

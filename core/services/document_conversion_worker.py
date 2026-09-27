@@ -19,6 +19,7 @@ p, h1, h2, h3, h4, h5, h6 { margin: 0; font-size: 12pt; line-height: 1.5; text-i
 .align-justify { text-align: justify; }
 .align-left { text-align: left; }
 h1, h2, h3, h4, h5, h6 { break-after: avoid; }
+p:empty { min-height: 1.5em; }
 img { max-width: 100%; height: auto; }
 table { border-collapse: collapse; width: 100%; }
 td, th { border: 1px solid #aaa; padding: .3em; overflow-wrap: anywhere; }
@@ -92,7 +93,7 @@ def convert(source, directory, formats, title):
         result = mammoth.convert_to_html(document,
             convert_image=mammoth.images.img_element(convert_image),
             external_file_access=False, include_embedded_style_map=False, style_map='u => u',
-            ignore_empty_paragraphs='pdf' not in formats)
+            ignore_empty_paragraphs=False)
     if any(message.type == 'error' for message in result.messages):
         raise ValueError('Document could not be read completely')
     content, headings = sanitize_html(result.value, assets)
@@ -123,6 +124,9 @@ def convert(source, directory, formats, title):
                 alignment = style.paragraph_format.alignment
                 style = style.base_style
             node.set('class', {0:'align-left',1:'align-center',2:'align-right',3:'align-justify'}.get(alignment, 'align-left'))
+    for node in root.iter('p'):
+        if not node.text_content() and len(node) == 0:
+            node.text = '\u00a0'
     content = ''.join(html.tostring(child, encoding='unicode') for child in root)
 
     if 'epub' in formats:

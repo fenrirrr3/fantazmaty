@@ -87,7 +87,9 @@ def programs(request):
     if action == 'clean' and form.is_valid() and not form.cleaned_data['rebuild']:
         upload = form.cleaned_data["document"]
         try:
-            output = clean_docx(upload, form.cleaned_data["rules"])
+            output, _, _ = convert_document(upload, [], include_docx=True, use_cleaner=True, normalize=False, cleaner_rules=form.cleaned_data["rules"])
+        except ConversionError as error:
+            form.add_error("document", str(error))
         except (BadZipFile, XMLSyntaxError, InvalidXmlError, KeyError, ValueError, OSError):
             form.add_error("document", "Nie udało się przetworzyć dokumentu. Plik może być uszkodzony lub zbyt rozbudowany. Otwórz go w Wordzie i zapisz ponownie jako DOCX; bardzo długi tekst podziel na części.")
         except Exception:

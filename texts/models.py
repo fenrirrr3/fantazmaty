@@ -499,8 +499,9 @@ class Review(NormalizedModelMixin, models.Model):
             return f"Ukryty – odrzucenie zaplanowane na {self.decision_at:%d.%m.%Y}"
         return self.get_status_display()
     class Status(models.TextChoices):
-        NEW = "new", "Nowy"
-        IN_REVIEW = "in_review", "W trakcie oceny"
+        NEW = "new", "Do recenzji"
+        IN_REVIEW = "in_review", "W recenzjach"
+        TO_DECIDE = "to_decide", "Do decyzji"
         ACCEPTED = "accepted", "Przyjęty"
         REJECTED = "rejected", "Odrzucony"
         WITHDRAWN = "withdrawn", "Wycofany"

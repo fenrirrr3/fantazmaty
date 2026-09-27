@@ -1219,7 +1219,7 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             )
 
         identity_changed = bool({'author', 'email', 'coauthors'} & set(form.changed_data))
-        if not change or (identity_changed and not obj.old_reviews and not obj.copied_text_id and obj.status in (Review.Status.NEW, Review.Status.IN_REVIEW)):
+        if not change or (identity_changed and not obj.old_reviews and not obj.copied_text_id and obj.status in (Review.Status.NEW, Review.Status.IN_REVIEW, Review.Status.TO_DECIDE)):
             from texts.blacklist import apply_blacklist
             apply_blacklist(obj, coauthors=form.cleaned_data.get("coauthors", ()))
             if obj.is_hidden and obj.pk:

@@ -174,6 +174,19 @@ def package_messages(messages, clean=True, convert=True, rebuild=True, allow_reb
     rebuild_warnings = []
     deadline = time.monotonic() + 90
     try:
+        if rebuild and not allow_rebuild_omissions:
+            for message in messages:
+                for name, data in message['files']:
+                    form = OdkurzaczForm({'rules': []}, {'document': SimpleUploadedFile(name, data)})
+                    if not form.is_valid():
+                        raise MailboxError(f'Nieprawidłowy DOCX: {name}. Wyłącz przetwarzanie, aby pobrać oryginał.')
+                    try:
+                        checked, _, _ = convert_document(SimpleUploadedFile(name, data), [], include_docx=True, rebuild=True, normalize=False, timeout=deadline-time.monotonic())
+                        checked.close()
+                    except RebuildConfirmationRequired as error:
+                        rebuild_warnings.append(f"{name}: {error}")
+            if rebuild_warnings:
+                raise RebuildConfirmationRequired(' '.join(rebuild_warnings))
         with ZipFile(archive_file, 'w', ZIP_DEFLATED) as archive:
             for message in messages:
                 folder = safe_name(message['folder'])
@@ -188,13 +201,14 @@ def package_messages(messages, clean=True, convert=True, rebuild=True, allow_reb
                     is_docx = name.lower().endswith('.docx')
                     if (clean or convert or rebuild) and not is_docx:
                         raise MailboxError(f'„{name}”: Odkurzacz i konwerter obsługują DOCX. Wyłącz Odkurzacz, konwersję i przebudowę, aby pobrać oryginały.')
-                    if is_docx:
+                    if is_docx and (clean or convert or rebuild):
                         form = OdkurzaczForm({'rules': []}, {'document': SimpleUploadedFile(name, data)})
                         if not form.is_valid():
                             raise MailboxError(f'Nieprawidłowy DOCX: {name}. ' + ' '.join(str(e) for errors in form.errors.values() for e in errors))
                     if not convert and not rebuild:
                         if clean:
-                            with clean_docx(BytesIO(data), ALL_EDITORIAL_RULES) as output:
+                            output, _, _ = convert_document(SimpleUploadedFile(name, data), [], include_docx=True, use_cleaner=True, normalize=False, timeout=deadline-time.monotonic())
+                            with output:
                                 data = output.read()
                         archive.writestr(base + PurePosixPath(name).suffix, data)
                         total += len(data)
