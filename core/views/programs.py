@@ -29,8 +29,8 @@ def programs(request):
     rebuild_token = ""
     action = request.POST.get('program_action', 'clean') if request.method == 'POST' else None
     form = OdkurzaczForm(
-        request.POST if action in ('clean','rebuild') else None,
-        request.FILES if action in ('clean','rebuild') else None,
+        request.POST if action == 'clean' else None,
+        request.FILES if action == 'clean' else None,
     )
     conversion_form = DocumentConversionForm(
         request.POST if action == 'convert' else None,
@@ -56,7 +56,7 @@ def programs(request):
             response['Cache-Control'] = 'private, no-store'
             response['X-Content-Type-Options'] = 'nosniff'
             return response
-    if action == 'rebuild' and form.is_valid():
+    if action == 'clean' and form.is_valid() and form.cleaned_data['rebuild']:
         upload = form.cleaned_data['document']
         digest = hashlib.sha256(upload.read()).hexdigest()
         upload.seek(0)
@@ -68,7 +68,7 @@ def programs(request):
             except signing.BadSignature:
                 pass
         try:
-            output, _, _ = convert_document(upload, [], include_docx=True, rebuild=True, normalize=False, allow_rebuild_omissions=accepted)
+            output, _, _ = convert_document(upload, [], include_docx=True, rebuild=True, normalize=False, allow_rebuild_omissions=accepted, use_cleaner=True, cleaner_rules=form.cleaned_data['rules'])
         except RebuildConfirmationRequired as error:
             rebuild_warning = str(error)
             rebuild_token = signing.dumps({'user': request.user.pk, 'digest': digest}, salt='rebuild-omissions')
@@ -84,7 +84,7 @@ def programs(request):
             response['Cache-Control'] = 'private, no-store'
             response['X-Content-Type-Options'] = 'nosniff'
             return response
-    if action == 'clean' and form.is_valid():
+    if action == 'clean' and form.is_valid() and not form.cleaned_data['rebuild']:
         upload = form.cleaned_data["document"]
         try:
             output = clean_docx(upload, form.cleaned_data["rules"])
@@ -102,7 +102,7 @@ def programs(request):
             response["Cache-Control"] = "private, no-store"
             response["X-Content-Type-Options"] = "nosniff"
             return response
-    if action not in (None, 'clean', 'convert', 'rebuild'):
+    if action not in (None, 'clean', 'convert'):
         form = OdkurzaczForm(request.POST, request.FILES)
         form.add_error(None, 'Wybierz narzędzie i wyślij formularz ponownie.')
     return render(request, "core/programs.html", {

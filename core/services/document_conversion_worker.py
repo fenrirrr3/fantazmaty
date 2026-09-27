@@ -177,7 +177,12 @@ def main():
                 with normalize_docx(BytesIO(payload)) as formatted:
                     payload = formatted.read()
             if config.get('clean'):
-                with clean_docx(BytesIO(payload), ALL_EDITORIAL_RULES) as cleaned:
+                rules = config.get('cleaner_rules')
+                if rules is None:
+                    rules = list(ALL_EDITORIAL_RULES)
+                if not isinstance(rules, (list, tuple)) or set(rules) - set(ALL_EDITORIAL_RULES):
+                    raise ValueError('Invalid cleaner rules')
+                with clean_docx(BytesIO(payload), rules) as cleaned:
                     payload = cleaned.read()
             source.write_bytes(payload)
         if formats:

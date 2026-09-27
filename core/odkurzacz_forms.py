@@ -7,6 +7,7 @@ from core.services.odkurzacz import EDITORIAL_RULES
 
 
 class OdkurzaczForm(forms.Form):
+    rebuild = forms.BooleanField(label="Przebuduj do nowego DOCX przed odkurzaniem", required=False, initial=False)
     document = forms.FileField(
         label="Dokument DOCX",
         help_text="Maksymalnie 10 MB. Wynik pobierzesz jako osobny plik.",
@@ -51,3 +52,4 @@ class DocumentConversionForm(OdkurzaczForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         del self.fields['rules']
+        del self.fields['rebuild']

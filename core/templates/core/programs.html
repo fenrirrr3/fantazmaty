@@ -32,8 +32,8 @@
         <p class="form-warning">{{ rebuild_warning_text }} Wybierz ponownie ten sam plik.</p>
         <p><label><input type="checkbox" name="allow_rebuild_omissions" value="on"> Akceptuję ostrzeżenie i chcę kontynuować z pominięciem wymienionych elementów.</label></p>
         {% endif %}
-        <button type="submit" name="program_action" value="rebuild" class="secondary-button">Przebuduj do nowego DOCX</button>
-        <p class="form-help">Przebudowa przenosi tekst i podstawowe formatowanie do nowego DOCX, bez metadanych starego pliku, komentarzy, nagłówków, stopek i ukrytego tekstu. Przyjmuje dodany tekst i pomija skreślony w śledzonych zmianach. Nie uruchamia reguł Odkurzacza. Dokumenty z nieobsługiwanymi elementami (np. tabelami, ilustracjami, przypisami lub automatycznymi listami) wymagają akceptacji komunikatu z listą pomijanych elementów. Dane osobowe wpisane w treści pozostają.</p>
+        <p><label for="{{ form.rebuild.id_for_label }}">{{ form.rebuild }} {{ form.rebuild.label }}</label></p>
+        <p class="form-help">Przebudowa przenosi tekst i podstawowe formatowanie do nowego DOCX, bez metadanych starego pliku, komentarzy, nagłówków, stopek i ukrytego tekstu. Przyjmuje dodany tekst i pomija skreślony w śledzonych zmianach. Po przebudowie uruchamiamy zaznaczone poniżej reguły Odkurzacza. Dokumenty z nieobsługiwanymi elementami (np. tabelami, ilustracjami, przypisami lub automatycznymi listami) wymagają akceptacji komunikatu z listą pomijanych elementów. Dane osobowe wpisane w treści pozostają.</p>
         <p>Przy większym dokumencie pobieranie może rozpocząć się po chwili. Oryginał pozostaje na Twoim komputerze.</p>
         <fieldset>
             <legend>Opcje korekty</legend>

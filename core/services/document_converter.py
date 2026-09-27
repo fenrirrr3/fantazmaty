@@ -166,7 +166,7 @@ def run_converter(directory, timeout):
         raise ConversionError('Nie udało się przygotować plików (' + detail + '). Szczegóły zapisano w logu błędów. Nie oznacza to automatycznie uszkodzenia dokumentu; możesz pobrać oryginały po wyłączeniu konwersji.')
 
 
-def convert_document(upload, formats, *, use_cleaner=False, timeout=TIME_LIMIT, include_docx=False, rebuild=False, normalize=True, allow_rebuild_omissions=False):
+def convert_document(upload, formats, *, use_cleaner=False, timeout=TIME_LIMIT, include_docx=False, rebuild=False, normalize=True, allow_rebuild_omissions=False, cleaner_rules=None):
     deadline = time.monotonic() + min(TIME_LIMIT, timeout)
     selected = [kind for kind in FORMATS if kind in formats]
     if (not selected and not include_docx) or set(formats) - set(FORMATS):
@@ -181,7 +181,7 @@ def convert_document(upload, formats, *, use_cleaner=False, timeout=TIME_LIMIT, 
             with source.open('wb') as destination:
                 shutil.copyfileobj(upload, destination)
             title = Path(getattr(upload, 'name', 'Dokument.docx')).stem[:200] or 'Dokument'
-            (directory / 'job.json').write_text(json.dumps({'formats': selected, 'title': title, 'prepare': True, 'clean': use_cleaner, 'rebuild': rebuild, 'allow_rebuild_omissions': allow_rebuild_omissions, 'normalize': normalize, 'include_docx': include_docx}), encoding='utf-8')
+            (directory / 'job.json').write_text(json.dumps({'formats': selected, 'title': title, 'prepare': True, 'clean': use_cleaner, 'cleaner_rules': cleaner_rules, 'rebuild': rebuild, 'allow_rebuild_omissions': allow_rebuild_omissions, 'normalize': normalize, 'include_docx': include_docx}), encoding='utf-8')
             run_converter(directory, deadline - time.monotonic())
             outputs = [directory / ('document.' + kind) for kind in selected]
             if include_docx:

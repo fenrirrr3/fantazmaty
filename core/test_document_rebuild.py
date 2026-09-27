@@ -101,12 +101,12 @@ class RebuildViewTests(TestCase):
                 doc = Document(); doc.add_paragraph('Tekst'); doc.core_properties.author = 'Private'
                 if table: doc.add_table(rows=1, cols=1)
                 original_payload = saved(doc).getvalue()
-                response = self.client.post(reverse('core:programs'), {'program_action':'rebuild', 'document':SimpleUploadedFile('story.docx', original_payload)})
+                response = self.client.post(reverse('core:programs'), {'program_action':'clean', 'rebuild':'on', 'document':SimpleUploadedFile('story.docx', original_payload)})
                 self.assertEqual(response.status_code, 200)
                 if table:
                     self.assertContains(response, 'W nowym DOCX zostaną pominięte')
                     token = response.context['rebuild_token']
-                    accepted = self.client.post(reverse('core:programs'), {'program_action':'rebuild', 'allow_rebuild_omissions':'on', 'rebuild_token':token, 'document':SimpleUploadedFile('story.docx', original_payload)})
+                    accepted = self.client.post(reverse('core:programs'), {'program_action':'clean', 'rebuild':'on', 'allow_rebuild_omissions':'on', 'rebuild_token':token, 'document':SimpleUploadedFile('story.docx', original_payload)})
                     self.assertEqual(accepted.status_code,200)
                     self.assertTrue(accepted.streaming)
                     rebuilt = Document(BytesIO(b''.join(accepted.streaming_content)))
@@ -155,3 +155,22 @@ class ConfirmOmissionsTests(SimpleTestCase):
             self.assertIn('table.docx',str(caught.exception));self.assertIn('list.docx',str(caught.exception))
             with package_messages(rows,clean=False,convert=False,allow_rebuild_omissions=True) as out, ZipFile(out) as archive:
                 self.assertEqual(len(archive.namelist()),2)
+
+class CleanerCheckboxTests(TestCase):
+    def test_checkbox_and_selected_rules(self):
+        user = get_user_model().objects.create_superuser('checkbox','checkbox@example.com','testpassword')
+        self.client.force_login(user)
+        page = self.client.get(reverse('core:programs'))
+        self.assertFalse(page.context['form'].fields['rebuild'].initial)
+        self.assertNotContains(page, 'value="rebuild"')
+        with TemporaryDirectory() as tmp, self.settings(DOCUMENT_CONVERSION_DIR=Path(tmp)):
+            for enabled in (False,True):
+                doc=Document(); doc.add_paragraph('Zdanie. następne zdanie...'); doc.core_properties.author='Private'
+                data={'program_action':'clean','rules':['sentence_case'], 'document':SimpleUploadedFile('a.docx',saved(doc).getvalue())}
+                if enabled: data['rebuild']='on'
+                response=self.client.post(reverse('core:programs'),data)
+                self.assertEqual(response.status_code,200)
+                result=Document(BytesIO(b''.join(response.streaming_content)))
+                self.assertEqual(result.paragraphs[0].text,'Zdanie. Następne zdanie...')
+                self.assertEqual(result.core_properties.author,'' if enabled else 'Private')
+                response.close()
