@@ -432,7 +432,7 @@ class ReviewBulkImportForm(forms.Form):
             "liczba znaków; e-mail; telefon; zgody; wiadomość autora. "
             "Zgody: premierach, naborach, obie lub puste pole. "
             "Wiadomość wielowierszową zapisz w cudzysłowach CSV (cudzysłowy wewnątrz podwój). "
-            "Starszy format 7 pól nadal jest obsługiwany. "
+            "Obsługiwane są także starsze formaty: 7 pól oraz autor; tytuł; gatunek; liczba znaków; e-mail; telefon; antologia; zgody. "
             "Pierwsza spacja oddziela imię od nazwiska. "
             f"Jednorazowo można sprawdzić do {MAX_IMPORT_RECORDS} zgłoszeń."
         ),
@@ -519,6 +519,10 @@ class ReviewBulkImportForm(forms.Form):
         canonical_records = []
 
         for record in self.parsed_records:
+            source = record.get('source_anthology', '')
+            if source and normalize_whitespace(source).casefold() != normalize_whitespace(cleaned_data['anthology'].title).casefold():
+                self.add_error('records', f"Wiersz {record['line_number']}: nabór „{source}” nie odpowiada wybranej antologii. Wybierz właściwą antologię.")
+                continue
             email = record["email"]
 
             if email not in author_cache:

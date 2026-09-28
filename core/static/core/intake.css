@@ -1,4 +1,4 @@
-.intake-columns{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:1rem;align-items:start}
+.intake-columns{display:grid;grid-template-columns:minmax(0,1fr);gap:1rem;align-items:start}
 .intake-panel{min-width:0;padding:0;overflow:hidden}
 .intake-panel>summary{cursor:pointer;padding:var(--card-padding);font-weight:600}
 .intake-panel-body{padding:var(--card-padding)}

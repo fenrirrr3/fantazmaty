@@ -106,15 +106,15 @@ def parse_message(uid, raw):
         for node in root.xpath('//br | //p | //div | //tr'):
             node.tail = '\n' + (node.tail or '')
         text = root.text_content()
-    from core.services.review_import_parser import unbracket, encode_submission
+    from core.services.review_import_parser import unbracket, encode_submission, clean_pasted_submission
     candidates = []
-    lines = text.splitlines()
+    lines = clean_pasted_submission(text).splitlines()
     for index, line in enumerate(lines):
         parts = [unbracket(value.strip()) for value in line.split(';', 8)]
         if len(parts) == 9 and '@' in parts[5] and ''.join(parts[4].split()).isdigit():
             candidates.append(('new', index, parts))
         elif len(parts) >= 7 and '@' in parts[4] and ''.join(parts[3].split()).isdigit():
-            candidates.append(('old', index, parts[:7]))
+            candidates.append(('old', index, parts))
     if len(candidates) != 1:
         raise MailboxError(f'Wiadomość {uid}: oczekiwano jednego wiersza autor;tytuł;gatunek;content warningi;liczba znaków;e-mail;telefon;zgody;wiadomość.')
     kind, index, parts = candidates[0]
@@ -127,8 +127,19 @@ def parse_message(uid, raw):
         anthology = recruitment.group(1).strip()
         record = encode_submission([author, title, genre, warnings, length, email, phone, choices, author_message])
     else:
-        author, title, genre, length, email, phone, anthology = parts
-        record = encode_submission([author, title, genre, length, '', email, phone])
+        author, title, genre, length, email, phone, anthology = parts[:7]
+        if len(parts) >= 8:
+            from core.services.newsletters import parse_consents
+            from django.core.exceptions import ValidationError
+            try:
+                parse_consents(parts[7])
+            except ValidationError:
+                # Legacy mail templates sometimes appended unrelated fields.
+                record = encode_submission([author, title, genre, length, '', email, phone])
+            else:
+                record = encode_submission([author, title, genre, '', length, email, phone, parts[7], ''])
+        else:
+            record = encode_submission([author, title, genre, length, '', email, phone])
     files = []
     for part in message.walk():
         if part.is_multipart() or not part.get_filename():

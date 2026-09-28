@@ -38,7 +38,20 @@ def parse_review_records(value):
         consents = {'premieres': False, 'recruitment': False}
         author_message = ''
         has_consent_fields = len(parts) >= 9
-        if len(parts) == 7:
+        source_anthology = ''
+        if is_legacy_mail_record(parts):
+            author_name, title, genre, length, email, phone_number, source_anthology = parts[:7]
+            content_warnings = ''
+            has_consent_fields = len(parts) >= 8
+            try:
+                consents = parse_consents(parts[7] if has_consent_fields else '')
+            except ValidationError as error:
+                errors.append(f"Wiersz {line_number}: " + ' '.join(error.messages))
+                continue
+            if len(parts) > 8 and any(parts[8:]):
+                errors.append(f"Wiersz {line_number}: starszy format zawiera dodatkowe pola. Użyj nowego formatu dla wiadomości autora.")
+                continue
+        elif len(parts) == 7:
             author_name, title, genre, length, content_warnings, email, phone_number = parts
         elif len(parts) >= 9:
             author_name, title, genre, content_warnings, length, email, phone_number, choices = parts[:8]
@@ -49,7 +62,7 @@ def parse_review_records(value):
                 errors.append(f"Wiersz {line_number}: " + ' '.join(error.messages))
                 continue
         else:
-            errors.append(f"Wiersz {line_number}: nieprawidłowy format lub liczba pól. Oczekiwano 9 pól (lub 7 w starszym formacie).")
+            errors.append(f"Wiersz {line_number}: nieprawidłowy format lub liczba pól. Oczekiwano 9 pól albo starszego formatu z 7 lub 8 polami.")
             continue
 
         author_name = upper(author_name)
@@ -100,6 +113,7 @@ def parse_review_records(value):
             "newsletter_premieres": consents['premieres'],
             "newsletter_recruitment": consents['recruitment'],
             "has_consent_fields": has_consent_fields,
+            "source_anthology": normalize_whitespace(source_anthology),
         }
 
         for field_name, normalize in REVIEW_FIELDS.items():
@@ -149,6 +163,7 @@ def unbracket(value):
 
 def submission_rows(value):
     """CSV supports quoted multiline messages; line numbers refer to source rows."""
+    value = clean_pasted_submission(value)
     lines = value.splitlines()
     reader = csv.reader(StringIO(value), delimiter=';', strict=True)
     try:
@@ -169,3 +184,14 @@ def encode_submission(fields):
     stream = StringIO(newline='')
     csv.writer(stream, delimiter=';', lineterminator='\n').writerow(fields)
     return stream.getvalue().rstrip('\n')
+
+
+def clean_pasted_submission(value):
+    # Keep visible link text, never use mailto targets as submission data.
+    value = re.sub(r'\[([^\]\r\n]*)\]\(mailto:[^\s)]*\)', lambda match: match.group(1), value, flags=re.IGNORECASE)
+    value = value.replace('&#x20;', ' ').replace('&#32;', ' ')
+    return re.sub(r'\\[ \t]*(?=\r?$)', '', value, flags=re.MULTILINE)
+
+
+def is_legacy_mail_record(parts):
+    return len(parts) >= 7 and '@' in parts[4] and ''.join(parts[3].split()).isascii() and ''.join(parts[3].split()).isdecimal()
