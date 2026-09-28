@@ -518,4 +518,7 @@
             </section>
         {% endif %}
     {% endif %}
+{% if user.is_superuser and author_message %}
+<section class="card"><div class="card-body"><h2>Wiadomość od autora</h2><p class="form-help">Widoczna wyłącznie dla superusera.</p><div>{{ author_message|linebreaksbr }}</div></div></section>
+{% endif %}
 {% endblock %}

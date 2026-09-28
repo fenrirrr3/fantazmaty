@@ -251,3 +251,19 @@ def imported_work_summary(person):
         for row in counts
     ], key=lambda row: row["label"])
 
+
+
+def role_names_context(params):
+    from people.models import Person, Role
+    from core.sort_keys import text_key
+    roles = Role.objects.order_by('name')
+    selected = params.get('role', '')
+    role = roles.filter(pk=int(selected)).first() if selected.isdecimal() and len(selected) < 19 else None
+    names = []
+    if role is not None:
+        people = Person.objects.active().filter(
+            Q(roles=role) | Q(user__groups__name__iexact=role.name)
+        ).distinct()
+        ordered_people = sorted(people, key=lambda person: (text_key(person.last_name), text_key(person.first_name), person.pk))
+        names = [f'{person.first_name} {person.last_name}'.strip() for person in ordered_people]
+    return {'roles': roles, 'selected_role': selected, 'names': names, 'chosen_role': role}

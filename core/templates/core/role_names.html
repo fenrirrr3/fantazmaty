@@ -1,8 +1,7 @@
 {% extends "core/base.html" %}
 {% block title %}Lista osób według roli | Fantazmaty CMS{% endblock %}
 {% block content %}
-<header class="page-header"><h1>Lista osób według roli</h1><p>Aktywni członkowie zespołu, alfabetycznie według imienia i nazwiska.</p></header>
+<header class="page-header"><h1>Lista osób według roli</h1><p>Aktywni członkowie zespołu, alfabetycznie według nazwiska i imienia.</p></header>
 <section class="card"><div class="card-body">
-<form method="get" class="filters-form"><div class="filter-field"><label for="role">Rola</label><select id="role" name="role" required><option value="">Wybierz rolę</option>{% for role in roles %}<option value="{{ role.pk }}"{% if role.pk|stringformat:'s' == selected_role %} selected{% endif %}>{{ role.name }}</option>{% endfor %}</select></div><button type="submit" class="primary-button">Generuj listę</button></form>
-{% if chosen_role %}<h2>{{ chosen_role.name }}</h2><p class="role-names">{% if names %}{{ names|join:", " }}{% else %}Brak aktywnych osób z tą rolą.{% endif %}</p>{% endif %}
+{% include "core/includes/role_names_form.html" %}
 </div></section>{% endblock %}

@@ -339,6 +339,8 @@ def _render_review_detail(
             profile_author = Author.objects.filter(pk=context['matching_author']['pk']).first()
         context['copy_profile_phone'] = profile_author.phone_number if profile_author else ''
         context['copy_phone_differs'] = bool(profile_author and review.phone_number.strip() and review.phone_number.strip() != profile_author.phone_number.strip())
+    if request.user.is_superuser:
+        context['author_message'] = review.author_message
     if bound_forms:
         context.update(bound_forms)
 
@@ -431,7 +433,12 @@ def review_bulk_submit(request):
         records = {row["line_number"]: row for row in getattr(form, "preview_records", form.parsed_records)}
         author_matches = preview_author_matches(row['email'] for row in records.values())
         all_errors = [str(error) for errors in form.errors.values() for error in errors]
-        for line, raw in enumerate(request.POST.get("records", "").splitlines(), 1):
+        from core.services.review_import_parser import submission_rows
+        try:
+            input_rows = list(submission_rows(request.POST.get("records", "")))
+        except ValidationError:
+            input_rows = [(n, raw, []) for n, raw in enumerate(request.POST.get("records", "").splitlines(), 1)]
+        for line, raw, _fields in input_rows:
             if not raw.strip():
                 continue
             if len(preview_rows) >= 1000:

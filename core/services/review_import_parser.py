@@ -1,5 +1,8 @@
 """Parse pasted review rows; form-level duplicate/blacklist checks stay in the form."""
 import re
+import csv
+from io import StringIO
+from core.services.newsletters import parse_consents
 from django.core.exceptions import ValidationError
 from texts.models import Review
 from texts.services import normalize_email, normalize_whitespace
@@ -25,39 +28,29 @@ def parse_review_records(value):
     errors = []
     nonempty_count = 0
 
-    for line_number, raw_line in enumerate(value.splitlines(), start=1):
-        line = raw_line.strip()
-
-        if not line:
-            continue
-
+    for line_number, raw_line, fields in submission_rows(value):
         nonempty_count += 1
-
         if nonempty_count > MAX_IMPORT_RECORDS:
-            raise ValidationError(
-                f"Import może zawierać najwyżej {MAX_IMPORT_RECORDS} "
-                "niepustych wierszy."
-            )
-
-        match = REVIEW_IMPORT_LINE_PATTERN.fullmatch(line)
-        # Zachowaj zgodność ze starszymi eksportami w nawiasach.
-        parts = match.groups() if match else line.split(";")
-        if len(parts) != 7:
-            errors.append(
-                f"Wiersz {line_number}: nieprawidłowy format "
-                "lub liczba pól."
-            )
+            raise ValidationError(f"Import może zawierać najwyżej {MAX_IMPORT_RECORDS} niepustych wierszy.")
+        match = REVIEW_IMPORT_LINE_PATTERN.fullmatch(raw_line.strip())
+        parts = list(match.groups()) if match else fields
+        parts = [unbracket(part.strip()) for part in parts]
+        consents = {'premieres': False, 'recruitment': False}
+        author_message = ''
+        has_consent_fields = len(parts) >= 9
+        if len(parts) == 7:
+            author_name, title, genre, length, content_warnings, email, phone_number = parts
+        elif len(parts) >= 9:
+            author_name, title, genre, content_warnings, length, email, phone_number, choices = parts[:8]
+            author_message = unbracket(';'.join(parts[8:]).strip())
+            try:
+                consents = parse_consents(choices)
+            except ValidationError as error:
+                errors.append(f"Wiersz {line_number}: " + ' '.join(error.messages))
+                continue
+        else:
+            errors.append(f"Wiersz {line_number}: nieprawidłowy format lub liczba pól. Oczekiwano 9 pól (lub 7 w starszym formacie).")
             continue
-
-        (
-            author_name,
-            title,
-            genre,
-            length,
-            content_warnings,
-            email,
-            phone_number,
-        ) = (part.strip() for part in parts)
 
         author_name = upper(author_name)
         name_parts = author_name.split(maxsplit=1)
@@ -103,6 +96,10 @@ def parse_review_records(value):
             "content_warnings": content_warnings,
             "email": normalize_email(email),
             "phone_number": phone_number,
+            "author_message": author_message,
+            "newsletter_premieres": consents['premieres'],
+            "newsletter_recruitment": consents['recruitment'],
+            "has_consent_fields": has_consent_fields,
         }
 
         for field_name, normalize in REVIEW_FIELDS.items():
@@ -120,6 +117,7 @@ def parse_review_records(value):
             "content_warnings",
             "email",
             "phone_number",
+            "author_message",
         ):
             model_field = Review._meta.get_field(field_name)
 
@@ -143,3 +141,31 @@ def parse_review_records(value):
         errors.append("Wklej przynajmniej jedno zgłoszenie.")
 
     return parsed_records, errors
+
+
+def unbracket(value):
+    return value[1:-1] if value.startswith('[') and value.endswith(']') else value
+
+
+def submission_rows(value):
+    """CSV supports quoted multiline messages; line numbers refer to source rows."""
+    lines = value.splitlines()
+    reader = csv.reader(StringIO(value), delimiter=';', strict=True)
+    try:
+        while True:
+            start = reader.line_num + 1
+            try:
+                fields = next(reader)
+            except StopIteration:
+                break
+            raw = '\n'.join(lines[start - 1:reader.line_num])
+            if raw.strip():
+                yield start, raw, fields
+    except csv.Error:
+        raise ValidationError(f'Wiersz {reader.line_num}: niepoprawny zapis cudzysłowów. Wiadomość wielowierszową zapisz w cudzysłowach CSV; wewnętrzne cudzysłowy podwój.') from None
+
+
+def encode_submission(fields):
+    stream = StringIO(newline='')
+    csv.writer(stream, delimiter=';', lineterminator='\n').writerow(fields)
+    return stream.getvalue().rstrip('\n')

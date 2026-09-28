@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import operations, intake, supervision, mailbox
+from .views import operations, intake, supervision, mailbox, newsletters
 
 from .views import (
     anthologies,
@@ -22,6 +22,7 @@ from core.views.programs import programs
 from core.views.activity import user_activity
 
 urlpatterns = [
+    path("newsletter/zgody/", newsletters.newsletter_list, name="newsletter_list"),
     path("zespol/lista-wedlug-roli/", supervision.role_names, name="role_names"),
     path("workflow/<int:stage_id>/pomin/", workflow.skip_workflow_stage, name="skip_workflow_stage"),
     path("recenzje/import-zbiorczy/", reviews.review_bulk_submit, name="review_bulk_submit"),

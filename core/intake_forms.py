@@ -37,11 +37,15 @@ class RecruitmentForm(forms.ModelForm):
 
 
 class SingleReviewForm(ReviewAdminForm):
+    newsletter_premieres = forms.BooleanField(label="Zgoda na newsletter o premierach", required=False)
+    newsletter_recruitment = forms.BooleanField(label="Zgoda na newsletter o naborach", required=False)
+
     """Te same podpisane ostrzeżenia co w istniejącym formularzu admina."""
     class Meta(ReviewAdminForm.Meta):
         fields = ('author', 'author_first_name', 'author_last_name', 'email', 'phone_number',
-                  'title', 'genre', 'length', 'content_warnings', 'anthology')
-        widgets = {'content_warnings': forms.Textarea(attrs={'rows': 2, 'class': 'short-textarea'}),
+                  'title', 'genre', 'length', 'content_warnings', 'anthology', 'author_message',
+                  'newsletter_premieres', 'newsletter_recruitment')
+        widgets = {'author_message': forms.Textarea(attrs={'rows': 4}), 'content_warnings': forms.Textarea(attrs={'rows': 2, 'class': 'short-textarea'}),
                    'author': forms.Select()}
 
     def __init__(self, *args, **kwargs):

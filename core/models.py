@@ -229,3 +229,19 @@ class MailboxDownload(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=('mailbox_key', 'uid_validity', 'uid'), name='unique_mailbox_download')]
+
+
+class NewsletterConsent(models.Model):
+    """Separate opt-in register; never joined to public author/team projections."""
+    email = models.EmailField('adres e-mail', unique=True)
+    premieres = models.BooleanField('newsletter o premierach', default=False)
+    recruitment = models.BooleanField('newsletter o naborach', default=False)
+    updated_at = models.DateTimeField('ostatnia aktualizacja', auto_now=True)
+
+    class Meta:
+        ordering = ('email', 'pk')
+        verbose_name = 'zgoda newsletterowa'
+        verbose_name_plural = 'zgody newsletterowe'
+
+    def __str__(self):
+        return f'Zgody newsletterowe #{self.pk}'

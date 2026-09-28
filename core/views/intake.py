@@ -139,6 +139,10 @@ def review_create(request):
                         form.add_error(None, ' '.join(error.messages))
                     else:
                         review.save()
+                        from core.services.newsletters import record_consents
+                        record_consents(review.email,
+                            premieres=form.cleaned_data['newsletter_premieres'],
+                            recruitment=form.cleaned_data['newsletter_recruitment'])
                         messages.success(request, 'Dodano zgłoszenie do recenzji.')
                         return redirect('core:assigned_review_detail', review_id=review.pk)
     fallback_query=request.GET.get('author_query','').strip()[:200]

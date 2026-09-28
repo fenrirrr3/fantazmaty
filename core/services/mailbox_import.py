@@ -106,14 +106,29 @@ def parse_message(uid, raw):
         for node in root.xpath('//br | //p | //div | //tr'):
             node.tail = '\n' + (node.tail or '')
         text = root.text_content()
+    from core.services.review_import_parser import unbracket, encode_submission
     candidates = []
-    for line in text.splitlines():
-        parts = [value.strip() for value in line.split(';')[:7]]
-        if len(parts) == 7 and '@' in parts[4] and ''.join(parts[3].split()).isdigit():
-            candidates.append(parts)
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        parts = [unbracket(value.strip()) for value in line.split(';', 8)]
+        if len(parts) == 9 and '@' in parts[5] and ''.join(parts[4].split()).isdigit():
+            candidates.append(('new', index, parts))
+        elif len(parts) >= 7 and '@' in parts[4] and ''.join(parts[3].split()).isdigit():
+            candidates.append(('old', index, parts[:7]))
     if len(candidates) != 1:
-        raise MailboxError(f'Wiadomość {uid}: oczekiwano jednego wiersza autor;tytuł;gatunek;liczba znaków;e-mail;telefon;antologia.')
-    author, title, genre, length, email, phone, anthology = candidates[0]
+        raise MailboxError(f'Wiadomość {uid}: oczekiwano jednego wiersza autor;tytuł;gatunek;content warningi;liczba znaków;e-mail;telefon;zgody;wiadomość.')
+    kind, index, parts = candidates[0]
+    if kind == 'new':
+        author, title, genre, warnings, length, email, phone, choices, author_message = parts
+        author_message = unbracket('\n'.join([author_message, *lines[index + 1:]]).strip())
+        recruitment = re.search(r'Nabór:\s*[„"]([^”"]+)[”"]', str(message.get('Subject', '')), re.IGNORECASE)
+        if not recruitment:
+            raise MailboxError(f'Wiadomość {uid}: w temacie brakuje nazwy antologii w formacie Nabór: „Tytuł antologii”.')
+        anthology = recruitment.group(1).strip()
+        record = encode_submission([author, title, genre, warnings, length, email, phone, choices, author_message])
+    else:
+        author, title, genre, length, email, phone, anthology = parts
+        record = encode_submission([author, title, genre, length, '', email, phone])
     files = []
     for part in message.walk():
         if part.is_multipart() or not part.get_filename():
@@ -129,12 +144,12 @@ def parse_message(uid, raw):
         raise MailboxError(f'Wiadomość {uid}: nie znaleziono załączników z plikami. Sprawdź wiadomość w poczcie.')
     if len(files) > 10:
         raise MailboxError(f'Wiadomość {uid}: znaleziono {len(files)} załączników; limit wynosi 10.')
-    # Only these seven fields enter the importer. Never persist the mail body.
+    # Persist only the declared submission fields, not the full MIME message.
     return {'uid': uid, 'digest': hashlib.sha256(raw).hexdigest(),
             'folder': story_title(str(message.get('Subject', ''))) or title,
             'title': title, 'author': author, 'email': email, 'phone': phone,
             'anthology': anthology, 'genre': genre, 'length': length,
-            'record': ';'.join((author, title, genre, length, '', email, phone)), 'files': files}
+            'record': record, 'files': files}
 
 
 def prepare_forms(messages, config, validity, user, tokens=None, confirmed=False):

@@ -51,6 +51,7 @@ class AnthologyTaskForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields['assigned_to'].widget.attrs['data-searchable-person'] = 'true'
         selected = self.instance.assigned_to_id
         self.fields['assigned_to'].queryset = Person.objects.filter(
             Q(pk=selected) | Q(pk__in=Person.objects.active().values('pk'))
@@ -93,16 +94,8 @@ def anthology_detail(request, anthology_id):
 @require_GET
 @superuser_required
 def role_names(request):
-    roles = Role.objects.order_by('name')
-    selected = request.GET.get('role', '')
-    role = roles.filter(pk=int(selected)).first() if selected.isdecimal() and len(selected) < 19 else None
-    names = []
-    if role is not None:
-        people = Person.objects.active().filter(
-            Q(roles=role) | Q(user__groups__name__iexact=role.name)
-        ).distinct()
-        names = sorted((f'{person.first_name} {person.last_name}'.strip() for person in people), key=text_key)
-    return render(request, 'core/role_names.html', {'roles': roles, 'selected_role': selected, 'names': names, 'chosen_role': role})
+    from core.selectors.people import role_names_context
+    return render(request, 'core/role_names.html', role_names_context(request.GET))
 
 
 @login_required

@@ -1,6 +1,6 @@
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.core.validators import MaxValueValidator, MinValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator, MaxLengthValidator
 from django.db import models, router, transaction
 from django.utils import timezone
 
@@ -490,6 +490,11 @@ class ReviewQuerySet(models.QuerySet):
 
 
 class Review(NormalizedModelMixin, models.Model):
+    author_message = models.TextField(
+        "wiadomość od autora – tylko superuser", blank=True, default="",
+        validators=[MaxLengthValidator(20000)],
+    )
+
     normalization_fields = REVIEW_FIELDS
     is_hidden = models.BooleanField("ukryty", default=False, db_index=True)
 

@@ -751,6 +751,7 @@ def import_reviews(*, user, form):
                 genre=record["genre"],
                 length=record["length"],
                 content_warnings=record["content_warnings"],
+                author_message=record.get("author_message", ""),
                 anthology=checked.cleaned_data["anthology"],
                 status=Review.Status.NEW,
                 old_reviews=False,
@@ -771,6 +772,11 @@ def import_reviews(*, user, form):
         if not pending_reviews:
             raise ValidationError("Brak zgłoszeń do zaimportowania.")
 
-        for review in pending_reviews:
+        from core.services.newsletters import record_consents
+        for review, record in zip(pending_reviews, checked.parsed_records):
             review.save(force_insert=True)
+            if record.get('has_consent_fields'):
+                record_consents(record['email'],
+                    premieres=record['newsletter_premieres'],
+                    recruitment=record['newsletter_recruitment'])
         return len(pending_reviews)

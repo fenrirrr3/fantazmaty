@@ -1,4 +1,5 @@
 {% extends "core/base.html" %}
+{% load static %}
 {% block title %}{{ anthology.title }} | Fantazmaty CMS{% endblock %}
 {% block content %}
 <header class="page-header"><h1>{{ anthology.title }}</h1><p>{{ anthology.get_status_display }}</p><a class="secondary-button" href="{% url 'core:text_list' %}?anthology={{ anthology.pk }}&amp;hide_ready=0">Teksty antologii</a></header>
@@ -7,3 +8,5 @@
 </div></section>{% endif %}
 <section class="card"><div class="card-body"><h2>Osoby i wykonane prace</h2><p>Ukończone prace, także zapisane bez dat. Każda osoba pojawia się raz w danej kategorii.</p><ul class="credits-list">{% for row in credits %}<li><strong>{{ row.label }}:</strong> {{ row.names|join:", "|default:"–" }}</li>{% endfor %}</ul></div></section>
 {% endblock %}
+
+{% block scripts %}{{ block.super }}<script src="{% static 'core/person-select.js' %}" defer></script>{% endblock %}

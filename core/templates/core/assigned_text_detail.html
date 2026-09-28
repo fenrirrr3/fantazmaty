@@ -782,4 +782,9 @@
             </div>
         </details>
     {% endif %}
+{% if user.is_superuser %}
+<section class="card" id="role-names"><div class="card-body"><h2>Lista osób z zespołu według roli</h2><p>Aktywni członkowie zespołu, alfabetycznie według nazwiska i imienia.</p>
+{% include "core/includes/role_names_form.html" with roles=role_names_context.roles selected_role=role_names_context.selected_role names=role_names_context.names chosen_role=role_names_context.chosen_role %}
+</div></section>
+{% endif %}
 {% endblock %}

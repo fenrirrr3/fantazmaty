@@ -428,7 +428,11 @@ class ReviewBulkImportForm(forms.Form):
         max_length=MAX_IMPORT_CHARACTERS,
         help_text=(
             "Każde zgłoszenie wklej w osobnym wierszu. "
-            "Oddziel siedem pól średnikami, bez nawiasów kwadratowych. "
+            "Oddziel średnikami: imię i nazwisko; tytuł; gatunek; content warningi; "
+            "liczba znaków; e-mail; telefon; zgody; wiadomość autora. "
+            "Zgody: premierach, naborach, obie lub puste pole. "
+            "Wiadomość wielowierszową zapisz w cudzysłowach CSV (cudzysłowy wewnątrz podwój). "
+            "Starszy format 7 pól nadal jest obsługiwany. "
             "Pierwsza spacja oddziela imię od nazwiska. "
             f"Jednorazowo można sprawdzić do {MAX_IMPORT_RECORDS} zgłoszeń."
         ),
@@ -439,7 +443,7 @@ class ReviewBulkImportForm(forms.Form):
                 "spellcheck": "false",
                 "placeholder": (
                     "JAN KOWALSKI;Tytuł opowiadania;fantasy;"
-                    "25000;przemoc;jan@example.com;123456789"
+                    "przemoc;25000;jan@example.com;123456789;premierach, naborach;Wiadomość autora"
                 ),
             }
         ),
