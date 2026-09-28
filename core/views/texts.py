@@ -130,8 +130,8 @@ def _render_text_detail(request, text, *, bound_forms=None, status=200):
     )
     context.update(_permission_context(request.user))
     if request.user.is_superuser:
-        from core.selectors.people import role_names_context
-        context['role_names_context'] = role_names_context(request.GET)
+        from core.supervision import text_credit_groups
+        context['text_credits'] = text_credit_groups(text)
     from core.workflow_tokens import make_token
     context['workflow_token'] = make_token(text, request.user)
 

@@ -187,29 +187,35 @@ def anthology_checklist(anthology):
     return rows
 
 
-def anthology_credits(anthology):
+def anthology_credits(anthology, *, text=None):
     # Credits reflect recorded participation, not invented dates or assignments.
     credits=defaultdict(lambda:{'name':'','role':'','works':set()})
     def add(identity,name,role,title):
         item=credits[(identity,role)];item.update(name=name,role=role);item['works'].add(title)
     completed = WorkflowStage.objects.filter(text__anthology=anthology, is_completed=True, assignment__assigned_to__isnull=False).select_related('assignment__assigned_to__person_profile', 'text')
+    if text is not None:
+        completed = completed.filter(text=text)
     for stage in completed:
         a=stage.assignment
         person=getattr(a.assigned_to,'person_profile',None)
         add(('person',person.pk) if person else ('user',a.assigned_to_id),str(person) if person else a.assigned_to.get_full_name() or str(a.assigned_to),a.get_role_display(),stage.text.title)
-    for a in ReviewAssignment.objects.filter(Q(review__copied_text__anthology=anthology)|Q(review__anthology=anthology,review__status='accepted')).exclude(opinion__in=('','reading')).select_related('user__person_profile','historical_person','review'):
+    review_scope = Q(review__copied_text=text) if text is not None else (Q(review__copied_text__anthology=anthology)|Q(review__anthology=anthology,review__status='accepted'))
+    for a in ReviewAssignment.objects.filter(review_scope).exclude(opinion__in=('','reading')).select_related('user__person_profile','historical_person','review'):
         person=a.historical_person or (getattr(a.user,'person_profile',None) if a.user_id else None)
         add(('person',person.pk) if person else ('user',a.user_id) if a.user_id else ('review',a.pk),str(person) if person else a.reviewer_display_name,'Recenzent',a.review.title)
-    for a in AnthologyTask.objects.filter(anthology=anthology,status='ready').select_related('assigned_to'):
+    for a in (AnthologyTask.objects.filter(anthology=anthology,status='ready').select_related('assigned_to') if text is None else []):
         if a.assigned_to_id:add(('person',a.assigned_to_id),str(a.assigned_to),a.get_task_type_display(),anthology.title)
     from illustrations.models import Illustration
-    for illustration in Illustration.objects.filter(text__anthology=anthology,status='delivered').select_related('illustrator','text'):
+    illustrations = Illustration.objects.filter(text__anthology=anthology,status='delivered').select_related('illustrator','text')
+    if text is not None:
+        illustrations = illustrations.filter(text=text)
+    for illustration in illustrations:
         if illustration.illustrator_id:add(('person',illustration.illustrator_id),str(illustration.illustrator),'Ilustrator',illustration.text.title)
-    if anthology.cover_author.strip():add(('cover',anthology.pk),anthology.cover_author,'Okładka',anthology.title)
+    if text is None and anthology.cover_author.strip():add(('cover',anthology.pk),anthology.cover_author,'Okładka',anthology.title)
     return [dict(item,works=sorted(item['works'])) for item in sorted(credits.values(),key=lambda item:(item['role'],item['name']))]
 
 
-def anthology_credit_groups(anthology):
+def anthology_credit_groups(anthology, *, text=None):
     groups = {label: set() for label in (
         'Redakcja', 'Kontrola redakcji', 'Korekta', 'Weryfikacja',
         'Kontrola weryfikacji', 'Kontrola przed składem', 'Recenzje', 'Ilustracja',
@@ -220,10 +226,14 @@ def anthology_credit_groups(anthology):
         'Stylowanie': 'Kontrola przed składem', 'Recenzent': 'Recenzje',
         'Ilustrator': 'Ilustracja', 'Okładka': 'Ilustracja',
     }
-    for row in anthology_credits(anthology):
+    for row in anthology_credits(anthology, text=text):
         role = row['role']
         group = ('Korekta' if role.startswith('Korektor ') else
                  'Weryfikacja' if role.startswith('Weryfikator ') else mapping.get(role))
         if group and row['name'].strip():
             groups[group].add(row['name'].strip())
     return [{'label': label, 'names': sorted(names, key=text_key)} for label, names in groups.items()]
+
+
+def text_credit_groups(text):
+    return anthology_credit_groups(text.anthology, text=text)

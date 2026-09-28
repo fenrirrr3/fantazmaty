@@ -3,7 +3,7 @@
 {% block extra_css %}<link rel="stylesheet" href="{% static 'core/intake.css' %}">{% endblock %}
 {% block content %}
 <header class="page-header"><h1 class="page-title">Dodaj do recenzji</h1><p class="page-description">Rozwiń import masowy z podglądem albo formularz pojedynczego zgłoszenia. Każda część zapisuje się osobno.</p></header>
-<div class="intake-columns">
+<div class="intake-stack">
 <details class="card intake-panel" {% if bulk_open %}open{% endif %}><summary>Wiele zgłoszeń</summary><div class="intake-panel-body">
 {% include 'core/includes/review_bulk_form.html' with form=bulk_form %}
 </div></details>

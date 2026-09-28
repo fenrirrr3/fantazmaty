@@ -783,8 +783,6 @@
         </details>
     {% endif %}
 {% if user.is_superuser %}
-<section class="card" id="role-names"><div class="card-body"><h2>Lista osób z zespołu według roli</h2><p>Aktywni członkowie zespołu, alfabetycznie według nazwiska i imienia.</p>
-{% include "core/includes/role_names_form.html" with roles=role_names_context.roles selected_role=role_names_context.selected_role names=role_names_context.names chosen_role=role_names_context.chosen_role %}
-</div></section>
+<section class="card" id="text-credits"><div class="card-body"><h2>Osoby i wykonane prace przy tym tekście</h2><p>Lista do stopki. Uwzględnia ukończone prace i oddane recenzje powiązane z tym tekstem.</p><ul class="credits-list">{% for row in text_credits %}<li><strong>{{ row.label }}:</strong> {{ row.names|join:", "|default:"–" }}</li>{% endfor %}</ul></div></section>
 {% endif %}
 {% endblock %}
