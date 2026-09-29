@@ -8,7 +8,7 @@
     <header class="page-header">
         <h1 class="page-title">Tabelka zbiorcza</h1>
         <p class="page-description">
-            Jeden wiersz na tekst: antologia, autorzy i przypisani redaktorzy.
+            Jeden wiersz na tekst: antologia, autorzy, wykonawcy i stan poszczególnych prac.
             Historia wcześniejszych cykli jest dostępna w szczegółach tekstu.
         </p>
     </header>
@@ -171,7 +171,7 @@
                                 {% for entry in cell.entries %}
                                     <div class="summary-work-entry" style="margin: .35rem 0 .7rem">
                                     {% if entry.user.person_profile.is_active %}<a href="{% url 'core:person_detail' entry.user.person_profile.pk %}">{{ entry.user.get_full_name|default:"Nieuzupełnione dane" }}</a>{% elif entry.user %}{{ entry.user.get_full_name|default:"Nieuzupełnione dane" }}{% else %}–{% endif %}
-
+                                    <div style="margin-top: .35rem"><span class="stage-status {{ entry.tone }}">{{ entry.state }}</span></div>
                                     </div>
                                 {% empty %}<span class="muted-text">–</span>{% endfor %}
                                 </td>

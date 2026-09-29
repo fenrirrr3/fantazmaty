@@ -12,65 +12,6 @@
 
     {% include "core/includes/text_filters.html" %}
 
-    {% if can_perform_bulk_actions and bulk_action_form %}
-        <form
-            id="text-bulk-form"
-            method="post"
-            action="{% url 'core:bulk_text_action' %}"
-            data-bulk-form
-        >
-            {% csrf_token %}{% edit_version %}
-
-            <details class="bulk-action-panel">
-                <summary class="bulk-action-toggle">
-                    <span>Operacje zbiorcze</span>
-                </summary>
-
-                <div class="bulk-action-content">
-                    <p class="form-help">
-                        Zaznacz teksty w tabeli i wybierz operację.
-                        Zaznaczenie dotyczy bieżącej strony.
-                    </p>
-                    <p>
-                        Zaznaczono:
-                        <strong data-selected-count>0</strong>
-                    </p>
-
-                    {% for error in bulk_action_form.non_field_errors %}
-                        <p class="form-error">{{ error }}</p>
-                    {% endfor %}
-
-                    <div class="bulk-action-fields">
-                        {% for field in bulk_action_form %}
-                            {% if field.is_hidden %}
-                                {{ field }}
-                            {% else %}
-                                <div class="filter-field">
-                                    <label for="{{ field.id_for_label }}">
-                                        {{ field.label }}
-                                    </label>
-                                    {{ field }}
-                                    {% if field.help_text %}
-                                        <p class="form-help">{{ field.help_text }}</p>
-                                    {% endif %}
-                                    {% for error in field.errors %}
-                                        <p class="field-error">{{ error }}</p>
-                                    {% endfor %}
-                                </div>
-                            {% endif %}
-                        {% endfor %}
-                    </div>
-
-                    <div class="general-notes-actions">
-                        <button type="submit" class="primary-button">
-                            Wykonaj dla zaznaczonych
-                        </button>
-                    </div>
-                </div>
-            </details>
-        </form>
-    {% endif %}
-
     <section class="card" aria-label="Lista tekstów">
         
 
@@ -87,17 +28,6 @@
 
                 <thead>
                     <tr>
-                        {% if can_perform_bulk_actions and bulk_action_form %}
-                            <th scope="col" data-copy="false">
-                                <input
-                                    type="checkbox"
-                                    class="select-all-records"
-                                    form="text-bulk-form"
-                                    data-select-all
-                                    aria-label="Zaznacz wszystkie teksty na tej stronie"
-                                >
-                            </th>
-                        {% endif %}
 
                         <th scope="col" data-sort-key="anthology">Antologia</th>
                         <th scope="col" data-sort-key="title" class="sticky-title">Tytuł</th>
@@ -119,19 +49,6 @@
                             class="workflow-stage-row"
                             data-stage="{{ text.current_stage_type|default:'none' }}"
                         >
-                            {% if can_perform_bulk_actions and bulk_action_form %}
-                                <td data-copy="false">
-                                    <input
-                                        type="checkbox"
-                                        name="selected_texts"
-                                        value="{{ text.pk }}"
-                                        class="row-selection"
-                                        form="text-bulk-form"
-                                        data-select-item
-                                        aria-label="Zaznacz tekst: {{ text.title }}"
-                                    >
-                                </td>
-                            {% endif %}
 
                             <td>
                                 {% if text.anthology %}
@@ -198,7 +115,7 @@
                         </tr>
                     {% empty %}
                         <tr>
-                            <td colspan="{% if can_perform_bulk_actions and bulk_action_form %}8{% else %}7{% endif %}">
+                            <td colspan="7">
                                 <div class="empty-results-panel">
                                     <strong>Nie znaleziono tekstów.</strong>
                                     <p>

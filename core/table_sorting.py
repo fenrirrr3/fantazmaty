@@ -135,7 +135,8 @@ def _extra_columns(items, queryset, request):
     if model == 'texts.text' and projected and request.resolver_match and request.resolver_match.url_name == 'workflow_list':
         columns = {'Autorzy': ('authors', lambda r: _get(r, 'text.authors_display'))}
         from workflow.catalog import workflow_role_choices
-        for role, label in [('editor', 'Redaktor')]:
+        for role, label in workflow_role_choices():
+            label = 'Redaktor' if role == 'editor' else label
             columns[label] = ('role_' + role, lambda r, role=role: _joined(
                 _get(entry, 'user.get_full_name') or ''
                 for cell in r.get('role_cells', []) if cell['role'] == role

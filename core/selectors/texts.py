@@ -597,7 +597,8 @@ def workflow_list_context(*, user, params):
             .select_related('assigned_to__person_profile').order_by('execution_number', 'pk'),
         to_attr='summary_assignments',
     ))
-    role_columns = [('editor', 'Redaktor')]
+    role_columns = [(role, 'Redaktor' if role == 'editor' else label)
+                    for role, label in workflow_role_choices()]
 
     def project(text):
         current = _current_stage(text.selector_stages)
@@ -606,19 +607,34 @@ def workflow_list_context(*, user, params):
         cells = []
         for role, label in role_columns:
             entries = []
-            seen_users = set()
+            grouped = {}
             for assignment in text.summary_assignments:
-                if assignment.role != role or not assignment.assigned_to_id or assignment.assigned_to_id in seen_users:
+                if assignment.role != role or not assignment.assigned_to_id:
                     continue
-                seen_users.add(assignment.assigned_to_id)
-                work = [_stage_data(stage) for stage in text.summary_stages
-                        if stage.assignment_id == assignment.pk]
-                entries.append({'user': _user_data(assignment.assigned_to),
-                                'label': assignment_label(assignment), 'work': work})
-            unassigned = [_stage_data(stage) for stage in text.summary_stages
-                          if not stage.assignment_id and STAGE_ROLE_MAP.get(stage.stage_type) == role]
-            if unassigned and not entries:
-                entries.append({'user': None, 'label': label, 'work': unassigned})
+                entry = grouped.setdefault(assignment.assigned_to_id, {
+                    'user': _user_data(assignment.assigned_to), 'work': [],
+                })
+                entry['work'].extend(stage for stage in text.summary_stages
+                                     if stage.assignment_id == assignment.pk)
+            from django.utils import timezone
+            from workflow.state import stage_is_active
+            today = timezone.localdate()
+            for entry in grouped.values():
+                work = entry.pop('work')
+                live = [stage for stage in work if stage.is_current and stage.is_released
+                        and not stage.is_completed and stage.ended_at is None]
+                if any(stage_is_active(stage, today) for stage in live):
+                    state, tone = 'W trakcie', 'active'
+                elif any(stage.started_at and stage.started_at > today for stage in live):
+                    state, tone = 'Zarezerwowano', 'pending'
+                elif live:
+                    state, tone = 'Oczekuje', 'pending'
+                elif work and all(stage.is_completed or stage.ended_at for stage in work):
+                    state, tone = 'Zakończone', 'completed'
+                else:
+                    state, tone = 'Brak bieżącego zadania', 'inactive'
+                entry.update(state=state, tone=tone)
+                entries.append(entry)
             cells.append({'role': role, 'entries': entries})
         row['role_cells'] = cells
         return row
