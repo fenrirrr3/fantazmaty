@@ -1,17 +1,14 @@
-.intake-stack{display:grid;grid-template-columns:minmax(0,1fr);gap:1rem;align-items:start}
+.intake-stack{display:flex;flex-direction:column;align-items:stretch;gap:1rem}
 .intake-panel{min-width:0;padding:0;overflow:hidden}
-.intake-panel>summary{cursor:pointer;padding:var(--card-padding);font-weight:600}
-.intake-panel-body{padding:var(--card-padding)}
 .intake-panel-body .review-import-card{margin:0;padding:0;border:0;box-shadow:none;background:transparent}
 .intake-panel textarea,.intake-panel select,.intake-panel input:not([type=checkbox]):not([type=hidden]){max-width:100%;box-sizing:border-box}
 .intake-panel .table-container{overflow-x:auto}
 .intake-panel-body .intake-form{width:100%;max-width:none}
 .mailbox-filters{display:flex;gap:1rem;align-items:end;flex-wrap:wrap;margin-bottom:1rem}
 .mailbox-filters .form-field{margin:0}
-@media(max-width:900px){.intake-stack{grid-template-columns:minmax(0,1fr)}}
 
 
-.intake-stack{display:flex;flex-direction:column;align-items:stretch}
+
 .intake-stack > .intake-panel{width:100%;box-sizing:border-box;margin:0}
 .import-preview-table td{vertical-align:top;height:auto;white-space:normal}
 .import-preview-table p{margin-block:0.35rem}

@@ -1,5 +1,4 @@
 /* Shared content spacing; table-only cards intentionally stay edge-to-edge. */
-:root { --card-padding: 20px; --field-gap: 8px; }
 .card-body { padding: var(--card-padding); min-width: 0; }
 .card-body > :first-child { margin-top: 0; }
 .card-body > :last-child { margin-bottom: 0; }
@@ -17,12 +16,11 @@
 .activity-filters .filter-field > label { margin: 0; }
 .activity-filters .filter-field > :is(input,select) { width: 100%; min-height: 42px; }
 .activity-filters > button { grid-column: 3; grid-row: 2; align-self: start; min-height: 42px; margin: 0; }
-.intake-panel > summary, .work-handoff-card > summary { padding: var(--card-padding); font-weight: 600; }
+.intake-panel > summary { cursor: pointer; padding: var(--card-padding); font-weight: 600; }
 .intake-panel-body { padding: var(--card-padding); }
 details.intake-panel[open] > summary, details.program-tool[open] > summary { border-bottom: 1px solid var(--border); }
 details:is(.intake-panel,.program-tool,.work-handoff-card) > summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -3px; }
 @media(max-width:700px) {
- :root { --card-padding: 16px; }
  .activity-filters { grid-template-columns: minmax(0,1fr); grid-template-rows: auto; }
  .activity-filters .filter-field { grid-row: auto; grid-template-rows: auto auto auto; }
  .activity-filters > button { grid-column: 1; grid-row: auto; }
@@ -38,3 +36,8 @@ details:is(.intake-panel,.program-tool,.work-handoff-card) > summary:focus-visib
 .credits-list { padding-left: 1.25rem; }
 .credits-list li { margin-block: .55rem; }
 .role-names { line-height: 1.8; overflow-wrap: anywhere; }
+
+.newsletter-copy-actions { margin-top: 16px; }
+.summary-work-entry { margin: .35rem 0 .7rem; }
+.summary-work-entry:last-child { margin-bottom: .35rem; }
+.summary-work-state { margin-top: .35rem; }

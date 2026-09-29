@@ -1,5 +1,7 @@
 /* Motyw: grafit, neutralne szarości i niebieski akcent. */
 :root {
+    --card-padding: 20px;
+    --field-gap: 8px;
     color-scheme: light;
     --background: #edf0f4;
     --surface: #ffffff;
@@ -549,7 +551,7 @@ details[open] > summary .dropdown-arrow {
 .review-assignment-card,
 .quick-stage-card,
 .review-decision-card {
-    padding: 20px;
+    padding: var(--card-padding);
 }
 
 .details-card > h2,
@@ -574,7 +576,7 @@ details[open] > summary .dropdown-arrow {
 .editing-control-header,
 .vacation-history-header,
 .person-assignments-header {
-    padding: 20px;
+    padding: var(--card-padding);
 }
 
 .section-header h2,
@@ -601,10 +603,6 @@ details[open] > summary .dropdown-arrow {
     color: var(--muted);
 }
 
-.form-help {
-    margin: 6px 0 0;
-    font-size: 0.8125rem;
-}
 
 .record-counter,
 .workload-badge {
@@ -1385,7 +1383,7 @@ a[href^="mailto:"] {
 .other-reviews-card,
 .review-locked-card,
 .vacation-form-card {
-    padding: 20px;
+    padding: var(--card-padding);
 }
 
 .review-opinion-form,
@@ -1406,7 +1404,7 @@ a[href^="mailto:"] {
 .source-reviews-list {
     display: grid;
     gap: 12px;
-    padding: 20px;
+    padding: var(--card-padding);
 }
 
 .other-reviews-card .other-reviews-list {
@@ -1462,7 +1460,7 @@ a[href^="mailto:"] {
 .text-management-content,
 .review-summary-content,
 .archived-stages-content {
-    padding: 20px;
+    padding: var(--card-padding);
 }
 
 .notes-editor-grid {
@@ -1576,7 +1574,7 @@ a[href^="mailto:"] {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
     gap: 12px;
-    padding: 20px;
+    padding: var(--card-padding);
 }
 
 .text-team-member {
@@ -2495,7 +2493,8 @@ table th {
 
 
 .filters-form > label { display: grid; gap: 7px; flex: 1 1 180px; min-width: 0; }
-.intake-form > p, .correction-form-card form > p { display: grid; gap: 7px; margin: 0 0 18px; }
+.intake-form > p, .correction-form-card form > p { display: grid; gap: 7px; }
+.correction-form-card form > p { margin: 0 0 18px; }
 .intake-form input[type="checkbox"] { justify-self: start; }
 .intake-form .short-textarea { min-height: 72px; height: 72px; }
 .correction-form-card { margin-top: 24px; padding-bottom: 28px; }
@@ -2505,3 +2504,7 @@ table th {
 .long-cell[open] summary { margin-bottom: 12px; }
 .vacation-form .details-grid { align-items: start; }
 .vacation-form .details-grid .form-field { align-content: start; }
+
+@media (max-width: 760px) {
+    :root { --card-padding: 16px; }
+}

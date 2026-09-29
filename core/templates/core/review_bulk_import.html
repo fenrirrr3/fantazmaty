@@ -27,10 +27,10 @@
 <div class="table-container"><table><thead><tr><th>Wybierz</th><th>Data wiadomości</th><th>Nadawca (odpowiedź do)</th><th>Temat</th><th>Pobrano</th></tr></thead><tbody>
 {% for row in result.rows %}<tr><td><input type="checkbox" name="uids" value="{{ row.uid }}" aria-label="Wybierz {{ row.subject }}"></td><td>{{ row.date|default:'–' }}</td><td>{{ row.sender|default:'–' }}</td><td>{{ row.subject|default:'(bez tematu)' }}</td><td>{{ row.downloaded|yesno:'Tak,Nie' }}</td></tr>{% empty %}<tr><td colspan="5">Brak wiadomości do wyświetlenia.</td></tr>{% endfor %}
 </tbody></table></div>
-<div class="pagination">
+<div class="pagination-bar"><div class="pagination-links">
 {% if result.previous_cursor %}<button class="secondary-button" name="cursor" value="{{ result.previous_cursor }}">← Nowsze</button>{% endif %}
 {% if result.next_cursor %}<button class="secondary-button" name="cursor" value="{{ result.next_cursor }}">Starsze →</button>{% endif %}
-</div>
+</div></div>
 {% endif %}
 </form>
 {% endif %}
