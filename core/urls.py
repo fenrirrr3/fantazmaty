@@ -24,13 +24,13 @@ from core.views.activity import user_activity
 urlpatterns = [
     path("newsletter/zgody/", newsletters.newsletter_list, name="newsletter_list"),
     path("zespol/lista-wedlug-roli/", supervision.role_names, name="role_names"),
-    path("workflow/<int:stage_id>/pomin/", workflow.skip_workflow_stage, name="skip_workflow_stage"),
+    path("etapy/<int:stage_id>/pomin/", workflow.skip_workflow_stage, name="skip_workflow_stage"),
     path("recenzje/import-zbiorczy/", reviews.review_bulk_submit, name="review_bulk_submit"),
     path("organizacja/ostatnia-aktywnosc/", reports.last_activity, name="last_activity"),
     path("teksty/<int:text_id>/powiaz-recenzje/", texts.link_text_review, name="link_text_review"),
     path("teksty/<int:text_id>/powtorzenia/<int:repetition_id>/anuluj/", workflow.cancel_workflow_repetition, name="cancel_workflow_repetition"),
-    path("workflow/<int:stage_id>/przekaz/", workflow.handoff_workflow_stage, name="handoff_workflow_stage"),
-    path("workflow/<int:stage_id>/schedule/", workflow.change_scheduled_workflow_stage, name="change_scheduled_workflow_stage"),
+    path("etapy/<int:stage_id>/przekaz/", workflow.handoff_workflow_stage, name="handoff_workflow_stage"),
+    path("etapy/<int:stage_id>/termin/", workflow.change_scheduled_workflow_stage, name="change_scheduled_workflow_stage"),
     path("spojnosc-danych/", supervision.data_integrity, name="data_integrity"),
     path("antologie/<int:anthology_id>/", supervision.anthology_detail, name="anthology_detail"),
     path("zespol/<int:person_id>/uprawnienia/", supervision.person_permissions, name="person_permissions"),
@@ -60,7 +60,7 @@ urlpatterns = [
     path("recenzje/<int:review_id>/przywroc/", operations.release_hidden_review, name="release_hidden_review"),
     # Pulpit i wyszukiwanie.
     path("", dashboard.home, name="home"),
-    path("dashboard/tasks/", dashboard.dashboard_tasks, name="dashboard_tasks"),
+    path("pulpit/zadania/", dashboard.dashboard_tasks, name="dashboard_tasks"),
     path(
         "wyszukiwanie/",
         search.global_search,
@@ -244,7 +244,7 @@ urlpatterns = [
         name="anthology_list",
     ),
     path(
-        "etapy-prac/",
+        "tabelka-zbiorcza/",
         workflow.workflow_list,
         name="workflow_list",
     ),
@@ -301,3 +301,9 @@ urlpatterns = [
         name="workflow_inactivity",
     ),
 ]
+
+# Dawne adresy pozostają zgodne także dla formularzy POST.
+_legacy_routes = {'workflow/<int:stage_id>/pomin/': 'etapy/<int:stage_id>/pomin/', 'workflow/<int:stage_id>/przekaz/': 'etapy/<int:stage_id>/przekaz/', 'workflow/<int:stage_id>/schedule/': 'etapy/<int:stage_id>/termin/', 'dashboard/tasks/': 'pulpit/zadania/', 'etapy-prac/': 'tabelka-zbiorcza/'}
+for _old, _new in _legacy_routes.items():
+    _target = next(p for p in urlpatterns if str(p.pattern) == _new)
+    urlpatterns.append(path(_old, _target.callback, _target.default_args))

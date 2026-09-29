@@ -3,6 +3,10 @@ from django.urls.resolvers import RoutePattern, URLPattern, URLResolver
 from django.urls import register_converter
 
 SEGMENTS = {
+    "blacklistentry": "wpis-czarnej-listy", "workflowrepetition": "powtorzenie-etapow",
+    "workflowhandoff": "przekazanie-pracy", "r": "przejdz",
+    "mailboxconnection": "skrzynki-zgloszen", "useractivity": "aktywnosc-uzytkownikow",
+    "workflowevent": "zdarzenia-etapow", "prepare-text": "przygotuj-tekst", "correct": "popraw",
     "recruitment": "rekrutacja", "extract": "ekstrakty",
     "core": "organizacja", "anthologycorrection": "uwagi-do-antologii",
     "login": "logowanie", "logout": "wylogowanie", "password_change": "zmiana-hasla",
@@ -35,6 +39,16 @@ class PolishAppConverter:
 register_converter(PolishAppConverter, "polish_app")
 
 
+def _unnamed_patterns(patterns):
+    result = []
+    for item in patterns:
+        if isinstance(item, URLResolver):
+            result.append(URLResolver(item.pattern, _unnamed_patterns(item.url_patterns), item.default_kwargs))
+        else:
+            result.append(URLPattern(item.pattern, item.callback, item.default_args))
+    return result
+
+
 def polish_admin_patterns(patterns):
     output = []
     for item in patterns:
@@ -52,4 +66,15 @@ def polish_admin_patterns(patterns):
                 item.default_kwargs, item.app_name, item.namespace))
         else:
             output.append(URLPattern(pattern, item.callback, item.default_args, item.name))
+    # Canonical Polish routes come first; unnamed aliases preserve old links.
+    for item in patterns:
+        if isinstance(item.pattern, RoutePattern):
+            old = str(item.pattern)
+            translated = "/".join(SEGMENTS.get(part, part) for part in old.split("/"))
+            if old != translated:
+                pattern = RoutePattern(old, is_endpoint=isinstance(item, URLPattern))
+                if isinstance(item, URLResolver):
+                    output.append(URLResolver(pattern, _unnamed_patterns(item.url_patterns), item.default_kwargs))
+                else:
+                    output.append(URLPattern(pattern, item.callback, item.default_args))
     return output

@@ -333,8 +333,11 @@ class MailboxConnectionForm(forms.ModelForm):
         return instance
 
 
+from core.admin_newsletter_recovery import NewsletterRecoveryAdminMixin
+
+
 @admin.register(MailboxConnection)
-class MailboxConnectionAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
+class MailboxConnectionAdmin(NewsletterRecoveryAdminMixin, SuperuserOnlyAdminMixin, admin.ModelAdmin):
     form = MailboxConnectionForm
     list_display = ('name', 'host', 'username', 'folder', 'is_active')
     fields = ('name', 'host', 'port', 'security', 'username', 'password', 'folder', 'recruitment_subjects', 'is_active')

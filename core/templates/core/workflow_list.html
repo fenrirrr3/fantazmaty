@@ -115,8 +115,6 @@
                         
 
                         <th scope="col" >Etap</th>
-                        <th scope="col" >Rozpoczęcie</th>
-                        <th scope="col" >Zakończenie</th>
                         <th scope="col" >Stan etapu</th>
 
                         {% for role_value, role_label in role_columns %}
@@ -175,14 +173,6 @@
                                 </span>
                             </td>
 
-                            <td class="date-cell">
-                                {% if stage.imported_completed and not stage.started_at %}Brak danych{% else %}{{ stage.started_at|date:"d.m.Y"|default:"–" }}{% endif %}
-                            </td>
-
-                            <td class="date-cell">
-                                {% if stage.imported_completed and not stage.ended_at %}Brak danych{% else %}{{ stage.ended_at|date:"d.m.Y"|default:"–" }}{% endif %}
-                            </td>
-
                             <td>
                                 {% if stage.stage_type == "withdrawn" %}
                                     <span class="stage-status withdrawn">Wycofany</span>
@@ -223,7 +213,7 @@
                         </tr>
                     {% empty %}
                         <tr>
-                            <td colspan="{{ role_columns|length|add:'7' }}">
+                            <td colspan="{{ role_columns|length|add:'5' }}">
                                 <div class="empty-results-panel">
                                     <strong>Nie znaleziono tekstów.</strong>
                                     <p>
