@@ -302,6 +302,8 @@ def perform_bulk_text_action(
         )
 
         if target_user is not None:
+            from workflow.availability import ensure_distinct_proofreader
+            ensure_distinct_proofreader(text, selected_role, target_user)
             _require_distinct_verifiers(
                 assignments,
                 selected_role,

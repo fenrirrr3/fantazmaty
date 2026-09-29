@@ -403,6 +403,7 @@
             </div>
 
             {% if show_coordinator_note %}
+                {% if text.coordinator_note_updated_at %}<p class="form-help">Zapisano: {{ text.coordinator_note_updated_at|date:"d.m.Y H:i" }}</p>{% endif %}
                 <div class="notes-editor-panel coordinator-note-highlight">
                     <h3>Notatka koordynatora</h3>
 

@@ -46,6 +46,8 @@ def performer_plan(text, changes):
         elif any(s.is_current and not s.is_completed for s in related):
             from core.services.texts import _require_eligible_assignee
             _require_eligible_assignee(performer, item['role'])
+            from workflow.availability import ensure_distinct_proofreader
+            ensure_distinct_proofreader(text, item['role'], performer)
         if assignment is None and performer is not None:
             stage = item['stages'][0]
             number = (A.objects.filter(text=text, workflow_cycle=stage.workflow_cycle, role=item['role']).aggregate(n=Max('execution_number'))['n'] or 0) + 1
@@ -56,9 +58,13 @@ def performer_plan(text, changes):
         if assignment:
             assignment.assigned_to = performer
             token = importing_completed.set(True)
+            was_current = assignment.is_current
             try:
+                # The final current-role and verifier constraints are checked below.
+                assignment.is_current = False
                 assignment.full_clean()
             finally:
+                assignment.is_current = was_current
                 importing_completed.reset(token)
     # Validate two initially empty verification roles together, before either is saved.
     effective = {a.pk: (a.workflow_cycle, a.role, a.assigned_to_id)
@@ -89,6 +95,11 @@ def correct_stage_performers(text_id, changes, actor, expected_version):
         raise ValidationError(exc.messages) from exc
     token = importing_completed.set(True)
     try:
+        # Free both verifier slots before a swap; all writes stay in this transaction.
+        verifier_ids = [item['assignment'].pk for item in plan
+                        if item['assignment'] and item['assignment'].pk
+                        and item['assignment'].role in ('verifier_1', 'verifier_2')]
+        A.objects.filter(pk__in=verifier_ids).update(assigned_to=None)
         for item in plan:
             assignment, performer = item['assignment'], item['performer']
             if assignment is None:

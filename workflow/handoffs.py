@@ -23,6 +23,8 @@ def handoff_stage(text, user, *, stage_id, assigned_to_id, expected_assignment_i
         raise ValidationError('Wybrane konto już nie istnieje. Odśwież formularz.')
     if target.pk==old.assigned_to_id:raise ValidationError('Wybierz inną osobę.')
     _require_eligible_assignee(target,old.role)
+    from workflow.availability import ensure_distinct_proofreader
+    ensure_distinct_proofreader(text, old.role, target)
     _require_distinct_verifiers(list(current_assignment_queryset(text)),old.role,target.pk)
     from core.workflow_events import remember
     from texts.models import Text
@@ -40,18 +42,38 @@ def handoff_stage(text, user, *, stage_id, assigned_to_id, expected_assignment_i
 
 
 def eligible_handoff_users(stage):
-    from django.core.exceptions import PermissionDenied
-    users = get_user_model().objects.filter(is_active=True).order_by('last_name','first_name','pk')
+    from django.db.models import Q
+    from django.utils import timezone
+    from people.models import Vacation
+    from workflow.services import ROLE_GROUPS
+    users = get_user_model().objects.filter(is_active=True).order_by('last_name', 'first_name', 'pk')
     if (stage.is_completed or not stage.is_current or not stage.is_released
             or not stage.assignment_id or not stage.assignment.assigned_to_id):
         return users.none()
-    assignments = list(current_assignment_queryset(stage.text))
-    allowed = []
-    for candidate in users.exclude(pk=stage.assignment.assigned_to_id):
-        try:
-            _require_eligible_assignee(candidate, stage.assignment.role, lock=False)
-            _require_distinct_verifiers(assignments, stage.assignment.role, candidate.pk)
-        except (ValidationError, PermissionDenied):
-            continue
-        allowed.append(candidate.pk)
-    return get_user_model().objects.filter(pk__in=allowed).order_by('last_name','first_name','pk')
+    role = stage.assignment.role
+    required = ROLE_GROUPS.get(role)
+    if not required:
+        return users.none()
+    coordinator = (Q(person_profile__is_coordinator=True)
+        | Q(person_profile__roles__name__iexact='Koordynator')
+        | Q(person_profile__roles__name__istartswith='Koordynator ')
+        | Q(groups__name__iexact='Koordynator')
+        | Q(groups__name__istartswith='Koordynator '))
+    permitted = coordinator | Q(person_profile__roles__name__iexact=required) | Q(groups__name__iexact=required)
+    if role in (A.Role.PROOFREADER_2, A.Role.PROOFREADER_4):
+        permitted = Q(person_profile__roles__name__iexact='Koordynator korekty') | Q(groups__name__iexact='Koordynator korekty')
+    users = users.filter(Q(is_superuser=True) | (Q(person_profile__is_active=True) & permitted))
+    if role == A.Role.STYLING:
+        users = users.filter(is_superuser=True)
+    now = timezone.now()
+    on_leave = Vacation.objects.filter(person__user__isnull=False, start_date__lte=timezone.localdate(now)).filter(
+        Q(until_revoked=True) | Q(end_date__gt=now)).values('person__user_id')
+    users = users.exclude(pk__in=on_leave).exclude(pk=stage.assignment.assigned_to_id)
+    if role in (A.Role.PROOFREADER_2, A.Role.PROOFREADER_3):
+        first = A.objects.filter(text=stage.text, role=A.Role.PROOFREADER_1).filter(
+            Q(stages__is_completed=True) | Q(stages__started_at__lte=timezone.localdate(now)) | Q(handoffs_from__isnull=False))
+        users = users.exclude(pk__in=first.exclude(assigned_to=None).values('assigned_to_id'))
+    opposite = {A.Role.VERIFIER_1:A.Role.VERIFIER_2, A.Role.VERIFIER_2:A.Role.VERIFIER_1}.get(role)
+    if opposite:
+        users = users.exclude(pk__in=current_assignment_queryset(stage.text).filter(role=opposite).exclude(assigned_to=None).values('assigned_to_id'))
+    return users.distinct()

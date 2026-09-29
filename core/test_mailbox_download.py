@@ -22,7 +22,7 @@ def mail(uid=12, line='Julia Moskalik;Potworna Przystan;dark fantasy;15204;girl@
     return msg.as_bytes()
 
 
-class MailParsingTests(SimpleTestCase):
+class MailParsingTests(TestCase):
     def test_fields_ignore_trailing_and_body(self):
         parsed=parse_message(12,mail())
         self.assertEqual(parsed['record'],'Julia Moskalik;Potworna Przystan;dark fantasy;15204;;girl@example.com;885711216')

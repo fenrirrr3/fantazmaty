@@ -8,7 +8,7 @@
     <header class="page-header">
         <h1 class="page-title">Tabelka zbiorcza</h1>
         <p class="page-description">
-            Jeden wiersz na tekst: aktualny status i wszystkie wykonania prac w bieżącym cyklu.
+            Jeden wiersz na tekst: antologia, autorzy i przypisani redaktorzy.
             Historia wcześniejszych cykli jest dostępna w szczegółach tekstu.
         </p>
     </header>
@@ -114,8 +114,7 @@
                             <th scope="col" {% if can_view_authors %}{% endif %}>Autorzy</th>
                         
 
-                        <th scope="col" >Etap</th>
-                        <th scope="col" >Stan etapu</th>
+
 
                         {% for role_value, role_label in role_columns %}
                             <th scope="col">{{ role_label }}</th>
@@ -167,43 +166,12 @@
                                 </td>
                             
 
-                            <td>
-                                <span class="workflow-stage-badge">
-                                    {{ stage.get_stage_type_display }}
-                                </span>
-                            </td>
-
-                            <td>
-                                {% if stage.stage_type == "withdrawn" %}
-                                    <span class="stage-status withdrawn">Wycofany</span>
-                                {% elif stage.stage_type == "ready" %}
-                                    <span class="stage-status completed">Gotowy</span>
-                                {% elif stage.is_skipped %}<span class="stage-status inactive">Pominięty</span>
-                                {% elif stage.is_completed %}
-                                    <span class="stage-status completed">Zakończony</span>
-                                {% elif stage.started_at %}
-                                    {% if stage.started_at|date:"Y-m-d" > today_iso %}
-                                        <span class="stage-status pending">Zaplanowany</span>
-                                    {% else %}
-                                        <span class="stage-status active">
-                                            W trakcie
-                                        </span>
-                                    {% endif %}
-                                {% else %}
-                                    <span class="stage-status pending">Nierozpoczęty</span>
-                                {% endif %}
-                            </td>
-
                             {% for cell in stage.role_cells %}
                                 <td>
                                 {% for entry in cell.entries %}
                                     <div class="summary-work-entry" style="margin: .35rem 0 .7rem">
                                     {% if entry.user.person_profile.is_active %}<a href="{% url 'core:person_detail' entry.user.person_profile.pk %}">{{ entry.user.get_full_name|default:"Nieuzupełnione dane" }}</a>{% elif entry.user %}{{ entry.user.get_full_name|default:"Nieuzupełnione dane" }}{% else %}–{% endif %}
-                                    {% for work in entry.work %}
-                                        <div class="form-help">{{ work.get_stage_type_display }}</div>
-                                        <div>{% if work.is_skipped %}<span class="stage-status inactive">Pominięty</span>{% elif work.is_completed %}<span class="stage-status completed">Zakończony</span>{% elif work.started_at and work.started_at|date:"Y-m-d" <= today_iso %}<span class="stage-status active">W trakcie</span>{% elif work.started_at %}<span class="stage-status pending">Zaplanowany</span>{% else %}<span class="stage-status pending">Oczekuje</span>{% endif %}</div>
-                                        <div class="form-help">{{ work.started_at|date:"d.m.Y"|default:"–" }} – {{ work.ended_at|date:"d.m.Y"|default:"–" }}</div>
-                                    {% endfor %}
+
                                     </div>
                                 {% empty %}<span class="muted-text">–</span>{% endfor %}
                                 </td>
@@ -213,7 +181,7 @@
                         </tr>
                     {% empty %}
                         <tr>
-                            <td colspan="{{ role_columns|length|add:'5' }}">
+                            <td colspan="{{ role_columns|length|add:'3' }}">
                                 <div class="empty-results-panel">
                                     <strong>Nie znaleziono tekstów.</strong>
                                     <p>

@@ -54,7 +54,7 @@
     <summary>Konwerter DOCX → PDF i EPUB</summary>
     <div class="card-body">
     <p>Wybierz jeden lub kilka formatów. Jeden format pobierzesz jako osobny plik, kilka jako archiwum ZIP.</p>
-    <p>Przy tworzeniu PDF zachowujemy puste akapity (również po włączeniu Odkurzacza) oraz justowanie, jeśli jest ustawione w DOCX. Przed korektą i konwersją ustawiamy Times New Roman 12 pkt, interlinię 1,5, wcięcie pierwszego wiersza 1,25 cm i zerowe odstępy przed oraz po akapicie. Akapity wyśrodkowane nie mają wcięcia. Zachowujemy wyrównanie, kursywę i pogrubienia.</p>
+    <p>Przy tworzeniu PDF zachowujemy puste akapity (równpython manage.py migrateież po włączeniu Odkurzacza) oraz justowanie, jeśli jest ustawione w DOCX. Przed korektą i konwersją ustawiamy Times New Roman 12 pkt, interlinię 1,5, wcięcie pierwszego wiersza 1,25 cm i zerowe odstępy przed oraz po akapicie. Akapity wyśrodkowane nie mają wcięcia. Zachowujemy wyrównanie, kursywę i pogrubienia.</p>
     <p>Konwersja może zmienić podział stron i wygląd dokumentu. Przed konwersją ustawiamy A4 i marginesy 2,5 cm z każdej strony. PDF korzysta z tych ustawień oraz czcionki podobnej do Times New Roman. Złożony układ, nagłówki i stopki Worda nie są odwzorowywane dokładnie; po pobraniu sprawdź wynik.</p>
     <form method="post" enctype="multipart/form-data">
         {% csrf_token %}<input type="hidden" name="program_action" value="convert">

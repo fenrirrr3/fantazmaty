@@ -93,8 +93,8 @@ def mailbox_headers(request):
                             for form in current_forms:
                                 import_reviews(user=request.user, form=form)
                             for message in messages:
-                                MailboxDownload.objects.get_or_create(mailbox_key=key,
-                                    uid_validity=validity, uid=message['uid'])
+                                MailboxDownload.objects.update_or_create(mailbox_key=key,
+                                    uid_validity=validity, uid=message['uid'], defaults={'fingerprint': message.get('fingerprint', ''), 'message_id': message.get('message_id', '')})
                         response = FileResponse(archive, as_attachment=True, filename='zgloszenia.zip', content_type='application/zip')
                         response['Cache-Control'] = 'private, no-store'
                         response['X-Content-Type-Options'] = 'nosniff'

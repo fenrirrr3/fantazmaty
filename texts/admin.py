@@ -292,7 +292,7 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         fields = super().get_readonly_fields(request, obj)
         return fields if request.user.is_superuser else (*fields, "file_url")
 
-    readonly_fields = ("manual_status_link", "current_workflow_cycle", "import_source", "import_source_row")
+    readonly_fields = ("manual_status_link", "coordinator_note_updated_at", "current_workflow_cycle", "import_source", "import_source_row")
 
     fieldsets = (
         (
@@ -312,7 +312,7 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
                 "fields": (
                     "length",
                     "content_warnings",
-                    "coordinator_note",
+                    "coordinator_note", "coordinator_note_updated_at",
                     "file_url",
                     "source_author_first_name", "source_author_last_name", "source_author_email",
                 ),
@@ -406,7 +406,7 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         return super().changeform_view(request, object_id, form_url, extra_context)
 
     def get_urls(self):
-        return [path('<path:object_id>/status/', self.admin_site.admin_view(self.change_status_view), name='texts_text_manual_status')] + super().get_urls()
+        return [path('<path:object_id>/dodaj-etap/', self.admin_site.admin_view(self.add_stage_view), name='texts_text_add_stage'), path('<path:object_id>/status/', self.admin_site.admin_view(self.change_status_view), name='texts_text_manual_status')] + super().get_urls()
 
     @admin.display(description='Status tekstu')
     def manual_status_link(self, obj):
@@ -416,7 +416,41 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             return 'Zapisz tekst, aby ustawić status.'
         stage = current_stage(list(obj.workflow_stages.filter(workflow_cycle=obj.current_workflow_cycle)))
         label = stage.get_stage_type_display() if stage else 'Brak bieżącego etapu'
-        return format_html('{} – <a href="{}">Zmień status / cofnij etap</a> · <a href="{}#workflow-repeat">Powtórz wybrane etapy</a>', label, reverse('admin:texts_text_manual_status', args=[obj.pk]), reverse('core:assigned_text_detail', args=[obj.pk]))
+        return format_html('{} – <a href="{}">Zmień status / cofnij etap</a> · <a href="{}#workflow-repeat">Powtórz wybrane etapy</a> · <a href="{}">Dodaj brakujący etap i wykonawcę</a>', label, reverse('admin:texts_text_manual_status', args=[obj.pk]), reverse('core:assigned_text_detail', args=[obj.pk]), reverse('admin:texts_text_add_stage', args=[obj.pk]))
+
+    def add_stage_view(self, request, object_id):
+        from django.template.response import TemplateResponse
+        from django.shortcuts import redirect
+        from workflow.admin_add_stage import add_missing_stage
+        from workflow.catalog import active_stage_choices
+        from workflow.services import STAGE_ROLES
+        from workflow.admin_performer_forms import PerformerChoiceField
+        from django.contrib.admin.widgets import AutocompleteSelect
+        from django.contrib.auth import get_user_model
+        from core.edit_versions import version_of
+        if not request.user.is_active or not request.user.is_superuser:
+            raise PermissionDenied
+        obj = get_object_or_404(self.get_queryset(request), pk=unquote(object_id))
+        class AddStageForm(forms.Form):
+            kind = forms.ChoiceField(label='Brakujący etap', choices=[(k,v) for k,v in active_stage_choices() if k in STAGE_ROLES])
+            performer = PerformerChoiceField(label='Wykonawca', required=False,
+                queryset=get_user_model().objects.filter(is_active=True).order_by('last_name','first_name','pk'),
+                widget=AutocompleteSelect(WorkflowRoleAssignment._meta.get_field('assigned_to'), admin.site))
+            started_at = forms.DateField(label='Rozpoczęcie', required=False, widget=forms.DateInput(attrs={'type':'date'}, format='%Y-%m-%d'))
+            ended_at = forms.DateField(label='Zakończenie', required=False, widget=forms.DateInput(attrs={'type':'date'}, format='%Y-%m-%d'))
+            version = forms.IntegerField(widget=forms.HiddenInput)
+        form = AddStageForm(request.POST if request.method == 'POST' else None, initial={'version':version_of(obj)})
+        if request.method == 'POST' and form.is_valid():
+            try:
+                data = form.cleaned_data.copy()
+                stage = add_missing_stage(obj.pk, request.user, **data)
+            except (ValidationError, PermissionDenied) as exc:
+                form.add_error(None, ' '.join(exc.messages) if isinstance(exc, ValidationError) else str(exc))
+            else:
+                self.log_change(request, obj, 'Dodano brakujący etap: ' + stage.get_stage_type_display())
+                self.message_user(request, 'Dodano etap i zapisano wykonawcę.')
+                return redirect('admin:texts_text_change', obj.pk)
+        return TemplateResponse(request, 'admin/texts/text/add_stage.html', {**self.admin_site.each_context(request), 'title':'Dodaj brakujący etap: '+obj.title, 'form':form, 'original':obj, 'opts':self.model._meta, 'media':form.media})
 
     def change_status_view(self, request, object_id):
         from django.template.response import TemplateResponse

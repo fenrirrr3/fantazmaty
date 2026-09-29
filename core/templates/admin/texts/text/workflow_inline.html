@@ -1,2 +1,3 @@
+{% if original.pk %}<p><a class="button" href="{% url 'admin:texts_text_add_stage' original.pk %}">Dodaj brakujący etap i wykonawcę</a></p>{% endif %}
 <p class="help">Wybierz wykonawcę przy etapie i zapisz tekst. Daty, stan pracy i numer wykonania pozostają bez zmian. Etapy jednego przypisania (np. redakcja, plik u autora i powroty do redakcji) mają wspólnego wykonawcę – wystarczy zmienić jeden wiersz. Ta korekta zmienia także wykonawcę zakończonych prac tego przypisania.</p>
 {% include "admin/edit_inline/tabular.html" %}

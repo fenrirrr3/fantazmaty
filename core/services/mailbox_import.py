@@ -13,6 +13,7 @@ from pathlib import PurePosixPath
 from zipfile import ZipFile, ZIP_DEFLATED
 from cryptography.fernet import InvalidToken
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db.models import Q
 from core.models import MailboxConnection, MailboxDownload
 from core.forms import ReviewBulkImportForm
 from core.odkurzacz_forms import OdkurzaczForm
@@ -82,7 +83,9 @@ def fetch_messages(config, validity, uids):
             if not found_uid or int(found_uid[1]) != uid:
                 raise MailboxError('Serwer zwrócił inną wiadomość. Pobierz nagłówki ponownie.')
             raw = parts[0][1]
-            result.append(parse_message(uid, raw))
+            metadata = parse_message(uid, raw, submission=False)
+            previous = receipts(config, validity).filter(uid=uid).exists() or MailboxDownload.objects.filter(fingerprint=metadata['fingerprint']).exists()
+            result.append(metadata if previous else parse_message(uid, raw))
         return result
     except MailboxError:
         raise
@@ -94,8 +97,42 @@ def fetch_messages(config, validity, uids):
             except (imaplib.IMAP4.error, OSError): pass
 
 
-def parse_message(uid, raw):
+def parse_message(uid, raw, *, submission=True):
     message = BytesParser(policy=policy.default).parsebytes(raw)
+    files = []
+    for part in message.walk():
+        if part.is_multipart() or not part.get_filename():
+            continue
+        data = part.get_payload(decode=True)
+        name = str(part.get_filename())
+        if data is None:
+            raise MailboxError(f'Wiadomość {uid}: nie można odczytać zawartości załącznika „{name}”. Sprawdź plik w poczcie lub poproś o ponowne przesłanie.')
+        if not data:
+            raise MailboxError(f'Wiadomość {uid}: załącznik „{name}” jest pusty (0 bajtów). Poproś nadawcę o ponowne przesłanie pliku. Zgłoszenie nie zostało zaimportowane.')
+        files.append((name, data))
+    if not files:
+        raise MailboxError(f'Wiadomość {uid}: nie znaleziono załączników z plikami. Sprawdź wiadomość w poczcie.')
+    if len(files) > 10:
+        raise MailboxError(f'Wiadomość {uid}: znaleziono {len(files)} załączników; limit wynosi 10.')
+    # A stable identity independent of IMAP folder, UIDVALIDITY and local settings.
+    # Include decoded contents to avoid trusting a duplicated Message-ID alone.
+    identity = hashlib.sha256()
+    message_id = str(message.get('Message-ID', '')).strip()[:998]
+    for value in (message_id, str(message.get('From', '')), str(message.get('Subject', ''))):
+        encoded = value.encode('utf-8')
+        identity.update(len(encoded).to_bytes(8, 'big')); identity.update(encoded)
+    for part in message.walk():
+        if part.is_multipart():
+            continue
+        for value in (part.get_content_type().encode(), str(part.get_filename() or '').encode('utf-8'), part.get_payload(decode=True) or b''):
+            identity.update(len(value).to_bytes(8, 'big')); identity.update(value)
+    metadata = {'uid': uid, 'digest': hashlib.sha256(raw).hexdigest(),
+                'fingerprint': identity.hexdigest(), 'message_id': message_id,
+                'folder': story_title(str(message.get('Subject', ''))) or f'wiadomosc_{uid}',
+                'title': story_title(str(message.get('Subject', ''))) or '(bez tytułu)',
+                'files': files}
+    if not submission:
+        return metadata
     body = message.get_body(preferencelist=('plain', 'html'))
     if body is None:
         raise MailboxError(f'Wiadomość {uid}: brak danych zgłoszenia w treści.')
@@ -147,23 +184,8 @@ def parse_message(uid, raw):
                 record = encode_submission([author, title, genre, '', length, email, phone, parts[7], ''])
         else:
             record = encode_submission([author, title, genre, length, '', email, phone])
-    files = []
-    for part in message.walk():
-        if part.is_multipart() or not part.get_filename():
-            continue
-        data = part.get_payload(decode=True)
-        name = str(part.get_filename())
-        if data is None:
-            raise MailboxError(f'Wiadomość {uid}: nie można odczytać zawartości załącznika „{name}”. Sprawdź plik w poczcie lub poproś o ponowne przesłanie.')
-        if not data:
-            raise MailboxError(f'Wiadomość {uid}: załącznik „{name}” jest pusty (0 bajtów). Poproś nadawcę o ponowne przesłanie pliku. Zgłoszenie nie zostało zaimportowane.')
-        files.append((name, data))
-    if not files:
-        raise MailboxError(f'Wiadomość {uid}: nie znaleziono załączników z plikami. Sprawdź wiadomość w poczcie.')
-    if len(files) > 10:
-        raise MailboxError(f'Wiadomość {uid}: znaleziono {len(files)} załączników; limit wynosi 10.')
     # Persist only the declared submission fields, not the full MIME message.
-    return {'uid': uid, 'digest': hashlib.sha256(raw).hexdigest(),
+    return {**metadata, 'uid': uid, 'digest': hashlib.sha256(raw).hexdigest(),
             'folder': story_title(str(message.get('Subject', ''))) or title,
             'title': title, 'author': author, 'email': email, 'phone': phone,
             'anthology': anthology, 'genre': genre, 'length': length,
@@ -172,11 +194,14 @@ def parse_message(uid, raw):
 
 def prepare_forms(messages, config, validity, user, tokens=None, confirmed=False):
     previous = set(receipts(config, validity).values_list('uid', flat=True))
+    fingerprints = set(MailboxDownload.objects.filter(fingerprint__in=[m.get('fingerprint', '') for m in messages if m.get('fingerprint')]).values_list('fingerprint', flat=True))
     grouped = {}
     for message in messages:
-        message['downloaded'] = message['uid'] in previous
+        message['downloaded'] = message['uid'] in previous or bool(message.get('fingerprint') and message['fingerprint'] in fingerprints)
         if message['downloaded']:
             continue
+        if message.get('fingerprint'):
+            fingerprints.add(message['fingerprint'])
         matches = list(Anthology.objects.filter(title__iexact=message['anthology'], status=Anthology.Status.IN_PREPARATION)[:2])
         if len(matches) != 1:
             raise MailboxError(f'Wiadomość {message["uid"]}: nie znaleziono jednoznacznej antologii „{message["anthology"]}” ze statusem W przygotowaniu.')

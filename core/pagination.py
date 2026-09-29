@@ -9,7 +9,7 @@ from django.db.models import QuerySet
 
 
 DEFAULT_PAGE_SIZE = 25
-ALLOWED_PAGE_SIZES = frozenset({25, 50, 100})
+ALLOWED_PAGE_SIZES = frozenset({25, 50, 100, 250})
 
 
 def _positive_integer(value, default):

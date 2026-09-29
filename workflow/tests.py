@@ -307,7 +307,7 @@ class WorkflowProgressionTests(WorkflowTestDataMixin, TestCase):
         steps = (
             (StageType.EDITING_CONTROL, self.coordinator),
             (StageType.FIRST_PROOFREADING, self.proofreader),
-            (StageType.SECOND_PROOFREADING, self.other_proofreader),
+            (StageType.SECOND_PROOFREADING, self.proofreading_coordinator),
             (StageType.THIRD_VERIFICATION, self.verifier_1),
             (StageType.COORDINATOR_CONTROL, self.coordinator),
         )

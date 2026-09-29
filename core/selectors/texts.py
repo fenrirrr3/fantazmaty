@@ -232,6 +232,7 @@ def _text_data(text, include_authors):
         current_workflow_cycle=text.current_workflow_cycle,
         content_warnings=text.content_warnings,
         coordinator_note=text.coordinator_note,
+        coordinator_note_updated_at=text.coordinator_note_updated_at,
         authors={"all": authors},
         authors_display=", ".join(str(author) for author in authors),
         author_emails=", ".join(
@@ -596,7 +597,7 @@ def workflow_list_context(*, user, params):
             .select_related('assigned_to__person_profile').order_by('execution_number', 'pk'),
         to_attr='summary_assignments',
     ))
-    role_columns = workflow_role_choices()
+    role_columns = [('editor', 'Redaktor')]
 
     def project(text):
         current = _current_stage(text.selector_stages)
@@ -605,16 +606,18 @@ def workflow_list_context(*, user, params):
         cells = []
         for role, label in role_columns:
             entries = []
+            seen_users = set()
             for assignment in text.summary_assignments:
-                if assignment.role != role:
+                if assignment.role != role or not assignment.assigned_to_id or assignment.assigned_to_id in seen_users:
                     continue
+                seen_users.add(assignment.assigned_to_id)
                 work = [_stage_data(stage) for stage in text.summary_stages
                         if stage.assignment_id == assignment.pk]
                 entries.append({'user': _user_data(assignment.assigned_to),
                                 'label': assignment_label(assignment), 'work': work})
             unassigned = [_stage_data(stage) for stage in text.summary_stages
                           if not stage.assignment_id and STAGE_ROLE_MAP.get(stage.stage_type) == role]
-            if unassigned:
+            if unassigned and not entries:
                 entries.append({'user': None, 'label': label, 'work': unassigned})
             cells.append({'role': role, 'entries': entries})
         row['role_cells'] = cells

@@ -345,6 +345,8 @@ class Text(NormalizedModelMixin, models.Model):
         blank=True,
     )
 
+    coordinator_note_updated_at = models.DateTimeField("data zapisania notatki koordynatora", null=True, blank=True, editable=False)
+
     current_workflow_cycle = models.PositiveIntegerField(
         "aktualny przebieg workflow",
         default=1,
@@ -386,6 +388,13 @@ class Text(NormalizedModelMixin, models.Model):
     def save(self, *args, **kwargs):
         using = kwargs.get('using') or router.db_for_write(type(self), instance=self)
         fields = kwargs.get('update_fields')
+        if fields is None or 'coordinator_note' in fields:
+            previous_note = type(self).objects.using(using).filter(pk=self.pk).values_list('coordinator_note', flat=True).first() if self.pk else ''
+            if previous_note != self.coordinator_note:
+                self.coordinator_note_updated_at = timezone.now() if self.coordinator_note.strip() else None
+                if fields is not None:
+                    fields = set(fields) | {'coordinator_note_updated_at'}
+                    kwargs['update_fields'] = fields
         if self.pk and (fields is None or 'anthology' in fields or 'anthology_id' in fields):
             with transaction.atomic(using=using):
                 previous = type(self).objects.using(using).select_for_update().filter(pk=self.pk).values_list('anthology_id', flat=True).first()

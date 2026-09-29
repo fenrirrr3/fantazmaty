@@ -42,6 +42,8 @@ def correct_assignment(pk, actor, version, *, action, performer=None):
             if performer and stages.filter(is_current=True, is_completed=False).exists():
                 from core.services.texts import _require_eligible_assignee
                 _require_eligible_assignee(performer, assignment.role)
+                from workflow.availability import ensure_distinct_proofreader
+                ensure_distinct_proofreader(text, assignment.role, performer)
             assignment.assigned_to = performer
             token = importing_completed.set(True)
             try:

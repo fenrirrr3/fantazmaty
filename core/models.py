@@ -226,6 +226,8 @@ class MailboxDownload(models.Model):
     uid_validity = models.PositiveBigIntegerField()
     uid = models.PositiveBigIntegerField()
     downloaded_at = models.DateTimeField(auto_now_add=True)
+    fingerprint = models.CharField(max_length=64, blank=True, db_index=True)
+    message_id = models.CharField(max_length=998, blank=True)
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=('mailbox_key', 'uid_validity', 'uid'), name='unique_mailbox_download')]
