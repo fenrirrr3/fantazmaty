@@ -132,6 +132,20 @@ def _extra_columns(items, queryset, request):
                     'W toku' if r['has_active_work'] else 'Oczekiwanie na inną osobę' if r['is_waiting_for_other_role'] else
                     'Zarezerwowana' if r['has_reserved_work'] else 'Zakończona' if r['has_completed_work'] else 'Tekst gotowy' if r['current_stage_type'] == 'ready' else 'Brak bieżącego zadania'),
             })
+    if model == 'texts.text' and projected and request.resolver_match and request.resolver_match.url_name == 'workflow_list':
+        columns = {
+            'Autorzy': ('authors', lambda r: _get(r, 'text.authors_display')),
+            'Etap': ('stage', lambda r: _get(r, 'get_stage_type_display')),
+            'Rozpoczęcie': ('started_at', lambda r: _get(r, 'started_at')),
+            'Zakończenie': ('ended_at', lambda r: _get(r, 'ended_at')),
+            'Stan etapu': ('completed', _stage_state),
+        }
+        from workflow.catalog import workflow_role_choices
+        for role, label in workflow_role_choices():
+            columns[label] = ('role_' + role, lambda r, role=role: _joined(
+                _get(entry, 'user.get_full_name') or ''
+                for cell in r.get('role_cells', []) if cell['role'] == role
+                for entry in cell['entries']))
     if model == 'workflow.workflowstage' and projected:
         columns['Autorzy'] = ('authors', lambda r: _get(r, 'text.authors_display'))
         columns['Wymagana rola'] = ('required_role', lambda r: _get(r, 'required_group'))

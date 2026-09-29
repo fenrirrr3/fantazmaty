@@ -126,8 +126,8 @@ def _require_eligible_assignee(user, role, *, lock=True):
         )
 
     from workflow.availability import can_claim_fourth_proofreading
-    if role == Role.PROOFREADER_4 and not can_claim_fourth_proofreading(user):
-        raise PermissionDenied("Czwartą korektę można przypisać tylko koordynatorowi korekty.")
+    if role in (Role.PROOFREADER_2, Role.PROOFREADER_4) and not can_claim_fourth_proofreading(user):
+        raise PermissionDenied("Drugą i czwartą korektę można przypisać tylko koordynatorowi korekty.")
 
     required_group = ROLE_GROUPS.get(role)
     if role == Role.EDITOR:

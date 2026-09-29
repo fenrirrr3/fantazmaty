@@ -264,6 +264,10 @@ def role_names_context(params):
         people = Person.objects.active().filter(
             Q(roles=role) | Q(user__groups__name__iexact=role.name)
         ).distinct()
-        ordered_people = sorted(people, key=lambda person: (text_key(person.last_name), text_key(person.first_name), person.pk))
+        # Sort the profiles, before formatting as first name + surname.
+        ordered_people = sorted(people, key=lambda person: (
+            text_key(' '.join(person.last_name.split())),
+            text_key(' '.join(person.first_name.split())), person.pk,
+        ))
         names = [f'{person.first_name} {person.last_name}'.strip() for person in ordered_people]
     return {'roles': roles, 'selected_role': selected, 'names': names, 'chosen_role': role}

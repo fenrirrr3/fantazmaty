@@ -13,12 +13,16 @@ from core.pagination import paginate_items
 @superuser_required
 def newsletter_list(request):
     rows = NewsletterConsent.objects.order_by('email', 'pk')
-    selected = {}
-    for field in ('premieres', 'recruitment'):
-        value = request.GET.get(field, '')
-        selected[field] = value if value in ('yes', 'no') else ''
-        if selected[field]:
-            rows = rows.filter(**{field: value == 'yes'})
+    selected = request.GET.get('consent', '')
+    filters = {
+        'general': {'premieres': True},
+        'recruitment': {'recruitment': True},
+        'none': {'premieres': False, 'recruitment': False},
+    }
+    if selected in filters:
+        rows = rows.filter(**filters[selected])
+    else:
+        selected = ''
     page = paginate_items(request, rows)
     return render(request, 'core/newsletter_list.html', {
         'consents': page, 'page_obj': page, 'selected': selected,

@@ -554,62 +554,80 @@ def workflow_list_context(*, user, params):
         'stage': ('stage_type', selected_stages),
         'anthology': ('text__anthology_id', anthology_ids),
     })
-    sort = params.get("sort", "recent")
-    if sort not in WORKFLOW_SORTS:
-        sort = "recent"
-
-    from workflow.read_queries import stage_role
-    from workflow.state import ORDER
-    from django.db.models.functions import Coalesce
-    stages = stages.annotate(_semantic_order=Case(*[When(stage_type=k, then=Value(v)) for k,v in ORDER.items()], output_field=IntegerField()))
-    stages = stages.annotate(_sort_role=stage_role()).annotate(_assigned_time=Coalesce(F("assignment__assigned_at"), Subquery(
-        WorkflowRoleAssignment.objects.current_cycle().filter(text_id=OuterRef("text_id"), workflow_cycle=OuterRef("workflow_cycle"), role=OuterRef("_sort_role")).values("assigned_at")[:1]
-    )))
-
-    stages = (
-        stages.distinct()
-        .order_by(*WORKFLOW_SORTS[sort])
-        .prefetch_related(
-            Prefetch(
-                "text",
-                queryset=_prepared_texts(Text.objects.all(), include_authors),
-            )
-        )
+    # Paginate texts, never individual stage executions.
+    text_query = Text.objects.all()
+    if selected_stages:
+        text_query = text_query.filter(pk__in=stages.values('text_id'))
+    if anthology_ids:
+        text_query = text_query.filter(anthology_id__in=anthology_ids)
+    for term in query.split():
+        condition = Q(title__plcontains=term) | Q(anthology__title__plcontains=term)
+        if include_authors:
+            condition |= (Q(authors__first_name__plcontains=term) | Q(authors__last_name__plcontains=term)
+                          | Q(authors__pseudonym__plcontains=term) | Q(authors__email__plcontains=term))
+        text_query = text_query.filter(condition)
+    texts = _prepared_texts(text_query.distinct(), include_authors)
+    from django.db.models import Min, Max
+    texts = texts.annotate(
+        summary_started=Min('workflow_stages__started_at'),
+        summary_ended=Max('workflow_stages__ended_at'),
     )
+    sorts = {
+        'recent': ('-pk',), 'title': ('title', 'pk'), '-title': ('-title', 'pk'),
+        'anthology': ('anthology__title', 'title', 'pk'),
+        '-anthology': ('-anthology__title', 'title', 'pk'),
+        'started_at': (F('summary_started').asc(nulls_last=True), 'pk'),
+        '-started_at': (F('summary_started').desc(nulls_last=True), 'pk'),
+        'ended_at': (F('summary_ended').asc(nulls_last=True), 'pk'),
+        '-ended_at': (F('summary_ended').desc(nulls_last=True), 'pk'),
+    }
+    sort = params.get('sort', 'anthology')
+    if sort not in sorts:
+        sort = 'anthology'
+    texts = texts.order_by(*sorts[sort]).prefetch_related(Prefetch(
+        'workflow_stages',
+        queryset=WorkflowStage.objects.filter(workflow_cycle=F('text__current_workflow_cycle'))
+            .select_related('assignment__assigned_to__person_profile')
+            .order_by('execution_number', 'iteration', 'pk'),
+        to_attr='summary_stages',
+    ), Prefetch(
+        'workflow_role_assignments',
+        queryset=WorkflowRoleAssignment.objects.filter(workflow_cycle=F('text__current_workflow_cycle'))
+            .select_related('assigned_to__person_profile').order_by('execution_number', 'pk'),
+        to_attr='summary_assignments',
+    ))
+    role_columns = workflow_role_choices()
 
-    selected_roles = {STAGE_ROLE_MAP.get(value) for value in selected_stages}
-    role_columns = [item for item in active_role_choices() if not selected_stages or item[0] in selected_roles]
-
-    def project(stage):
-        text = stage.text
-        assignments = {
-            item.role: item for item in text.selector_assignments
-        }
-        row = _stage_data(stage, _text_data(text, include_authors))
-        row["role_cells"] = [
-            {
-                "role": role,
-                "label": label,
-                "user": (
-                    _user_data(stage.assignment.assigned_to) if role == STAGE_ROLE_MAP.get(stage.stage_type) and stage.assignment_id else
-                    _user_data(assignments[role].assigned_to) if role in assignments else None
-                ),
-            }
-            for role, label in role_columns
-        ]
+    def project(text):
+        current = _current_stage(text.selector_stages)
+        row = _stage_data(current, _text_data(text, include_authors)) if current else _Record(
+            text=_text_data(text, include_authors), get_stage_type_display='–')
+        cells = []
+        for role, label in role_columns:
+            entries = []
+            for assignment in text.summary_assignments:
+                if assignment.role != role:
+                    continue
+                work = [_stage_data(stage) for stage in text.summary_stages
+                        if stage.assignment_id == assignment.pk]
+                entries.append({'user': _user_data(assignment.assigned_to),
+                                'label': assignment_label(assignment), 'work': work})
+            unassigned = [_stage_data(stage) for stage in text.summary_stages
+                          if not stage.assignment_id and STAGE_ROLE_MAP.get(stage.stage_type) == role]
+            if unassigned:
+                entries.append({'user': None, 'label': label, 'work': unassigned})
+            cells.append({'role': role, 'entries': entries})
+        row['role_cells'] = cells
         return row
 
     return {
-        "stages": _ProjectedRows(stages, project),
-        "anthologies": list(
-            Anthology.objects.filter(pk__in=facets["anthology"]).order_by("title", "pk").values("pk", "title")
-        ),
-        "selected_stages": selected_stages,
-        "stage_choices": [(v, label) for v, label in active_stage_choices() if v in facets["stage"]],
-        "role_columns": role_columns,
-        "selected_anthology_ids": anthology_ids,
-        "query": query,
-        "sort": sort,
+        'stages': _ProjectedRows(texts, project),
+        'anthologies': list(Anthology.objects.all()
+                            .order_by('title', 'pk').values('pk', 'title')),
+        'selected_stages': selected_stages,
+        'stage_choices': [(v, label) for v, label in active_stage_choices() if v in facets['stage']],
+        'role_columns': role_columns, 'selected_anthology_ids': anthology_ids,
+        'query': query, 'sort': sort,
     }
 
 

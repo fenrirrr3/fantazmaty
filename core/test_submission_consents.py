@@ -52,7 +52,7 @@ class SubmissionConsentTests(TestCase):
         url=reverse('core:newsletter_list')
         self.client.force_login(self.coord);self.assertEqual(self.client.get(url).status_code,403)
         self.client.force_login(self.admin)
-        response=self.client.get(url,{'premieres':'yes','recruitment':'yes'})
+        response=self.client.get(url,{'consent':'general'})
         self.assertContains(response,'jan@example.com');self.assertNotContains(response,'other@example.com')
 
     def test_message_private_and_escaped(self):

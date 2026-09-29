@@ -99,7 +99,7 @@ def available_stages(user, access):
         return query.none()
     kinds = [kind for kind, role in {'ready_for_editing': A.Role.EDITOR, **STAGE_ROLES}.items()
              if (kind != 'styling' or user.is_superuser)
-             and (kind != 'fourth_proofreading' or can_claim_fourth_proofreading(user))
+             and (kind not in ('second_proofreading', 'fourth_proofreading') or can_claim_fourth_proofreading(user))
              and (access['coordinator'] or ROLE_GROUPS.get(role, 'Redaktor').casefold() in access['roles'])]
     query = query.filter(stage_type__in=kinds).exclude(stage_type='editor_control', repetition__isnull=True).filter(
         ~Exists(terminal(stages)),

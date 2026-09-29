@@ -1,14 +1,14 @@
 {% extends "core/base.html" %}
 
-{% block title %}Etapy prac | Fantazmaty CMS{% endblock %}
+{% block title %}Tabelka zbiorcza | Fantazmaty CMS{% endblock %}
 
 {% block content %}
     {% now "Y-m-d" as today_iso %}
 
     <header class="page-header">
-        <h1 class="page-title">Etapy prac</h1>
+        <h1 class="page-title">Tabelka zbiorcza</h1>
         <p class="page-description">
-            Etapy i przydziały w bieżących cyklach tekstów.
+            Jeden wiersz na tekst: aktualny status i wszystkie wykonania prac w bieżącym cyklu.
             Historia wcześniejszych cykli jest dostępna w szczegółach tekstu.
         </p>
     </header>
@@ -91,7 +91,7 @@
         </form>
     </section>
 
-    <section class="card" aria-label="Lista etapów pracy">
+    <section class="card" aria-label="Tabelka zbiorcza tekstów">
         
 
         <div
@@ -102,7 +102,7 @@
         >
             <table data-copy-table data-server-paginated="true" id="workflow-table" data-server-sort="true">
                 <caption class="visually-hidden">
-                    Etapy pracy oraz osoby przypisane do ról w tym samym cyklu
+                    Teksty i wykonania prac w bieżącym cyklu
                 </caption>
 
                 <thead>
@@ -111,13 +111,13 @@
                         <th scope="col" data-sort-key="title" class="sticky-title">Tytuł</th>
 
                         
-                            <th scope="col" {% if can_view_authors %}data-sort-key="authors"{% endif %}>Autorzy</th>
+                            <th scope="col" {% if can_view_authors %}{% endif %}>Autorzy</th>
                         
 
-                        <th scope="col" data-sort-key="stage">Etap</th>
-                        <th scope="col" data-sort-key="started_at">Rozpoczęcie</th>
-                        <th scope="col" data-sort-key="ended_at">Zakończenie</th>
-                        <th scope="col" data-sort-key="completed">Stan etapu</th>
+                        <th scope="col" >Etap</th>
+                        <th scope="col" >Rozpoczęcie</th>
+                        <th scope="col" >Zakończenie</th>
+                        <th scope="col" >Stan etapu</th>
 
                         {% for role_value, role_label in role_columns %}
                             <th scope="col">{{ role_label }}</th>
@@ -206,20 +206,16 @@
 
                             {% for cell in stage.role_cells %}
                                 <td>
-                                    {% if cell.user %}
-                                        {% if cell.user.person_profile.is_active %}
-                                            <a
-                                                href="{% url 'core:person_detail' cell.user.person_profile.pk %}"
-                                                class="detail-link"
-                                            >
-                                                {% firstof cell.user.get_full_name "Nieuzupełnione dane" %}
-                                            </a>
-                                        {% else %}
-                                            {% firstof cell.user.get_full_name "Nieuzupełnione dane" %}
-                                        {% endif %}
-                                    {% else %}
-                                        <span class="muted-text">–</span>
-                                    {% endif %}
+                                {% for entry in cell.entries %}
+                                    <div class="summary-work-entry" style="margin: .35rem 0 .7rem">
+                                    {% if entry.user.person_profile.is_active %}<a href="{% url 'core:person_detail' entry.user.person_profile.pk %}">{{ entry.user.get_full_name|default:"Nieuzupełnione dane" }}</a>{% elif entry.user %}{{ entry.user.get_full_name|default:"Nieuzupełnione dane" }}{% else %}–{% endif %}
+                                    {% for work in entry.work %}
+                                        <div class="form-help">{{ work.get_stage_type_display }}</div>
+                                        <div>{% if work.is_skipped %}<span class="stage-status inactive">Pominięty</span>{% elif work.is_completed %}<span class="stage-status completed">Zakończony</span>{% elif work.started_at and work.started_at|date:"Y-m-d" <= today_iso %}<span class="stage-status active">W trakcie</span>{% elif work.started_at %}<span class="stage-status pending">Zaplanowany</span>{% else %}<span class="stage-status pending">Oczekuje</span>{% endif %}</div>
+                                        <div class="form-help">{{ work.started_at|date:"d.m.Y"|default:"–" }} – {{ work.ended_at|date:"d.m.Y"|default:"–" }}</div>
+                                    {% endfor %}
+                                    </div>
+                                {% empty %}<span class="muted-text">–</span>{% endfor %}
                                 </td>
                             {% endfor %}
 
@@ -229,9 +225,9 @@
                         <tr>
                             <td colspan="{{ role_columns|length|add:'7' }}">
                                 <div class="empty-results-panel">
-                                    <strong>Nie znaleziono etapów.</strong>
+                                    <strong>Nie znaleziono tekstów.</strong>
                                     <p>
-                                        Żaden etap bieżących cykli nie spełnia
+                                        Żaden tekst nie spełnia
                                         wybranych kryteriów.
                                     </p>
                                     <a
