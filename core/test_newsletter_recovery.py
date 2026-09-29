@@ -60,3 +60,27 @@ class RecoveryTests(TestCase):
         self.assertEqual(reverse('core:dashboard_tasks'),'/pulpit/zadania/')
         self.assertIn('/skrzynki-zgloszen/',reverse('admin:core_mailboxconnection_changelist'))
         self.assertIn('/popraw/',reverse('admin:workflow_stage_correct',args=[1]))
+
+    def test_consents_before_message_label(self):
+        for value in ['premierach', 'naborach', 'premierach, naborach']:
+            for boundary in [' Treść wiadomości: ', '\nTreść wiadomości:\n', ';Treść wiadomości: ']:
+                raw=message('Jan Nowak;Tytuł;fantasy;1200;jan@example.com;123;Nabór;'+value+boundary+'Proszę przeczytać tekst')
+                email,flags=extract_consent(raw)
+                self.assertEqual(email,'jan@example.com')
+                self.assertEqual(flags,{'premieres':'premierach' in value,'recruitment':'naborach' in value})
+        raw=message('Jan Nowak;Tytuł;fantasy;;1200;jan@example.com;123;naborach\nTreść wiadomości: premierach')
+        self.assertEqual(extract_consent(raw)[1],{'premieres':False,'recruitment':True})
+
+    def test_progress_survives_get_and_network_error(self):
+        admin=get_user_model().objects.create_superuser('a','a@example.com','pass')
+        self.client.force_login(admin)
+        url=reverse('admin:core_mailbox_recover_newsletters')
+        progress={'last':30,'seen':30,'matched':20,'skipped':10,'total':50,'done':False}
+        with patch('core.admin_newsletter_recovery.default_mailbox'), patch('core.admin_newsletter_recovery.recover_batch',return_value=progress):
+            self.assertEqual(self.client.post(url).status_code,200)
+        response=self.client.get(url)
+        self.assertEqual(response.context_data['state']['last'],30)
+        with patch('core.admin_newsletter_recovery.default_mailbox'), patch('core.admin_newsletter_recovery.recover_batch',side_effect=MailboxError('Przerwane połączenie')):
+            response=self.client.post(url)
+        self.assertTrue(response.context_data['continue_run'])
+        self.assertEqual(response.context_data['state']['last'],30)

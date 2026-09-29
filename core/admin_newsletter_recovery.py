@@ -20,6 +20,7 @@ from core.services.newsletters import parse_consents, record_consents
 from core.services.review_import_parser import clean_pasted_submission, unbracket
 
 MAX_BYTES = 15 * 1024 * 1024
+SESSION_KEY = 'newsletter_recovery_cursor'
 SALT = 'newsletter-recovery-v1'
 
 
@@ -36,10 +37,15 @@ def extract_consent(raw):
         for node in root.xpath('//br | //p | //div | //tr'):
             node.tail = '\n' + (node.tail or '')
         text = root.text_content()
+    # Old mail templates append this label directly after the checkbox field,
+    # sometimes without a semicolon or even a newline.
+    text = re.split(r'(?i)tre[śs][ćc]\s+wiadomo[śs]ci\s*:?', text, maxsplit=1)[0]
+    text = clean_pasted_submission(text)
+    text = re.sub(r';[ \t]*\r?\n[ \t]*', ';', text)
     candidates = []
-    for line in clean_pasted_submission(text).splitlines():
+    for line in text.splitlines():
         parts = [unbracket(v.strip()) for v in line.split(';', 8)]
-        if len(parts) >= 9 and ''.join(parts[4].split()).isdigit() and '@' in parts[5]:
+        if len(parts) >= 8 and ''.join(parts[4].split()).isdigit() and '@' in parts[5]:
             email, choices = parts[5], parts[7]
         elif len(parts) >= 8 and ''.join(parts[3].split()).isdigit() and '@' in parts[4]:
             email, choices = parts[4], parts[7]
@@ -146,7 +152,11 @@ class NewsletterRecoveryAdminMixin:
     def recover_newsletters(self, request):
         if not request.user.is_active or not request.user.is_superuser:
             raise PermissionDenied
-        token = request.POST.get('cursor', '')
+        if request.method == 'POST' and request.POST.get('restart') == '1':
+            request.session.pop(SESSION_KEY, None)
+            token = ''
+        else:
+            token = request.POST.get('cursor') or request.session.get(SESSION_KEY, '')
         state = None
         error = ''
         try:
@@ -157,14 +167,23 @@ class NewsletterRecoveryAdminMixin:
             if request.method == 'POST':
                 state = recover_batch(default_mailbox(), state)
                 state['user'] = request.user.pk
+                state['retries'] = 0
                 token = signing.dumps(state, salt=SALT, compress=True)
+                request.session[SESSION_KEY] = token
         except signing.BadSignature:
             error = 'Sesja narzędzia wygasła. Otwórz stronę ponownie i rozpocznij od początku.'
             token = ''
+            request.session.pop(SESSION_KEY, None)
         except MailboxError as exc:
             error = str(exc)
+            if state:
+                state['retries'] = state.get('retries', 0) + 1
+                token = signing.dumps(state, salt=SALT, compress=True)
+                request.session[SESSION_KEY] = token
+        auto_retry = bool(error and state and state.get('retries', 0) <= 3)
         return TemplateResponse(request, 'admin/core/newsletter_recovery.html', {
             **self.admin_site.each_context(request), 'title': 'Odzyskaj zgody ze skrzynki Teksty',
             'state': state, 'cursor': token, 'error': error,
-            'continue_run': bool(state and not state.get('done') and not error),
+            'continue_run': bool(request.method == 'POST' and state and not state.get('done') and (not error or auto_retry)),
+            'retry_delay': 15000 if error else 2000,
         })

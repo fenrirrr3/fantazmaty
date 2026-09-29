@@ -1,13 +1,14 @@
 {% extends 'admin/base_site.html' %}
 {% block content %}
-<p>Jednorazowe zebranie zgód ze wszystkich wiadomości w folderze skonfigurowanym dla skrzynki „Teksty”. Pozostaw stronę otwartą do zakończenia.</p>
+<p>Jednorazowe zebranie zgód ze wszystkich wiadomości w folderze skonfigurowanym dla skrzynki „Teksty”. Pozostaw stronę otwartą do zakończenia. Postęp jest zapamiętywany w sesji; po powrocie użyj przycisku Kontynuuj.</p>
 <p>Odczytywane są pola zgłoszeń starego i nowego formularza: „premierach”, „naborach”. Adres pochodzi ze zgłoszenia. Maile nie są oznaczane jako przeczytane ani usuwane. Zgody są dopisywane do istniejącej listy newsletterowej; wcześniejsze zgody nie są cofane.</p>
 <p>Wiadomości bez jednoznacznego formularza oraz większe niż 15 MB są pomijane. Ponowne uruchomienie nie dubluje adresów.</p>
 {% if error %}<p class="errornote">{{ error }}</p>{% endif %}
 {% if state %}<p>Sprawdzono: {{ state.seen }} / {{ state.total }}. Rozpoznane zgłoszenia: {{ state.matched }}. Pominięte wiadomości: {{ state.skipped }} (w tym większe niż 15 MB: {{ state.oversized|default:0 }}).</p>{% endif %}
+<form method="post">{% csrf_token %}<button name="restart" value="1" type="submit">Sprawdź wszystko od początku</button></form>
 {% if state.done and not error %}<p><strong>Zakończono.</strong></p><a href="{% url 'core:newsletter_list' %}">Przejdź do zgód newsletterowych</a>
 {% else %}
 <form method="post" id="recover-form">{% csrf_token %}<input type="hidden" name="cursor" value="{{ cursor }}"><input type="submit" value="{% if cursor %}Kontynuuj{% else %}Pobierz zgody ze wszystkich wiadomości{% endif %}"></form>
-{% if continue_run %}<p>Trwa pobieranie. <button type="button" id="pause-recovery">Wstrzymaj</button></p><script>const timer = setTimeout(() => document.getElementById('recover-form').requestSubmit(), 250); document.getElementById('pause-recovery').addEventListener('click', () => clearTimeout(timer));</script>{% endif %}
+{% if continue_run %}<p>Trwa pobieranie. <button type="button" id="pause-recovery">Wstrzymaj</button></p><script>const timer = setTimeout(() => document.getElementById('recover-form').requestSubmit(), {{ retry_delay }}); document.getElementById('pause-recovery').addEventListener('click', () => clearTimeout(timer));</script>{% endif %}
 {% endif %}
 {% endblock %}
