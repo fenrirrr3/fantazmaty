@@ -21,6 +21,7 @@
 <button class="primary-button" name="action" value="download" {% if not result.rows %}disabled{% endif %}>Pobierz teksty</button>
 </div>
 <p>Jednorazowo do 10 wiadomości, 15 MB na wiadomość i 50 MB łącznie. Przetwarzanie plików ma limit 90 sekund. Odkurzacz i konwersja obsługują DOCX. Przed konwersją ustawiamy A4, marginesy 2,5 cm z każdej strony i ujednolicamy formatowanie DOCX: Times New Roman 12, interlinia 1,5, wcięcie 1,25 cm (bez wcięcia przy wyśrodkowaniu), bez odstępów między akapitami. Przebudowa pomija nagłówki, stopki, komentarze i ukryty tekst; akceptuje obsługiwane śledzone zmiany. Tabele, ilustracje, przypisy, automatyczne listy i inne nieobsługiwane elementy wymagają akceptacji komunikatu z listą pomijanych elementów. Po wyłączeniu wszystkich trzech opcji pobierzesz oryginalne załączniki. Ponowne pobranie nie dodaje drugi raz zgłoszeń.</p>
+<p class="form-help">W nowym formacie maila wiadomość autora kończy osobna linia <code>--- KONIEC WIADOMOŚCI AUTORA ---</code>. Umieść ją w szablonie formularza zaraz po polu wiadomości, przed podpisem i danymi technicznymi. Przy dodatkowych liniach bez znacznika import poprosi o rozdzielenie treści. Starszy format z nazwą antologii nie wymaga znacznika.</p>
 {% if result %}
 <p>Wiadomości spełniające filtr: {{ result.total }}. Do 50 na stronie.</p>
 <div class="table-container"><table><thead><tr><th>Wybierz</th><th>Data wiadomości</th><th>Nadawca (odpowiedź do)</th><th>Temat</th><th>Pobrano</th></tr></thead><tbody>

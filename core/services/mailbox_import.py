@@ -120,7 +120,15 @@ def parse_message(uid, raw):
     kind, index, parts = candidates[0]
     if kind == 'new':
         author, title, genre, warnings, length, email, phone, choices, author_message = parts
-        author_message = unbracket('\n'.join([author_message, *lines[index + 1:]]).strip())
+        trailing = lines[index + 1:]
+        marker = '--- KONIEC WIADOMOŚCI AUTORA ---'
+        if any(line.strip() == marker for line in trailing):
+            stop = next(i for i, line in enumerate(trailing) if line.strip() == marker)
+            author_message = unbracket('\n'.join([author_message, *trailing[:stop]]).strip())
+        elif any(line.strip() for line in trailing):
+            raise MailboxError(f'Wiadomość {uid}: po wierszu zgłoszenia znajdują się dalsze linie. Aby oddzielić wiadomość autora od stopki, umieść „{marker}” w osobnej linii bezpośrednio po wiadomości autora. Możesz też użyć ręcznego importu z podglądem. Niczego nie zaimportowano.')
+        else:
+            author_message = unbracket(author_message.strip())
         recruitment = re.search(r'Nabór:\s*[„"]([^”"]+)[”"]', str(message.get('Subject', '')), re.IGNORECASE)
         if not recruitment:
             raise MailboxError(f'Wiadomość {uid}: w temacie brakuje nazwy antologii w formacie Nabór: „Tytuł antologii”.')
@@ -133,9 +141,8 @@ def parse_message(uid, raw):
             from django.core.exceptions import ValidationError
             try:
                 parse_consents(parts[7])
-            except ValidationError:
-                # Legacy mail templates sometimes appended unrelated fields.
-                record = encode_submission([author, title, genre, length, '', email, phone])
+            except ValidationError as error:
+                raise MailboxError(f'Wiadomość {uid}: nieprawidłowe zgody newsletterowe. ' + ' '.join(error.messages)) from None
             else:
                 record = encode_submission([author, title, genre, '', length, email, phone, parts[7], ''])
         else:

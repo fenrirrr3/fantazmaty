@@ -65,7 +65,7 @@ class SubmissionConsentTests(TestCase):
 
     def test_mail_new_fields_and_subject(self):
         msg=EmailMessage();msg['Subject']='Nabór: „Nabór testowy” – Opowieść'
-        msg.set_content(';'.join(self.fields))
+        msg.set_content(';'.join(self.fields)+'\n--- KONIEC WIADOMOŚCI AUTORA ---\nStopka techniczna')
         msg.add_attachment(b'not empty',maintype='application',subtype='vnd.openxmlformats-officedocument.wordprocessingml.document',filename='tekst.docx')
         parsed=parse_message(1,msg.as_bytes())
         self.assertEqual(parsed['anthology'],'Nabór testowy')
