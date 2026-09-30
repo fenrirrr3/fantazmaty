@@ -9,7 +9,7 @@ from django.urls import reverse
 from docx import Document
 from docx.shared import RGBColor
 
-from core.services.odkurzacz import clean_docx, EDITORIAL_RULES, correct_editorial_text
+from core.services.odkurzacz import clean_docx, EDITORIAL_RULES, DEFAULT_EDITORIAL_RULES, correct_editorial_text
 from core.odkurzacz_forms import OdkurzaczForm
 from people.models import Person
 
@@ -41,7 +41,7 @@ class OdkurzaczTests(TestCase):
         response = self.client.get(self.url)
         self.assertContains(response, 'Odkurzacz')
         self.assertContains(response, 'name="rules"', count=len(EDITORIAL_RULES))
-        self.assertEqual(sum(' checked' in str(checkbox.tag()) for checkbox in response.context['form']['rules']), len(EDITORIAL_RULES))
+        self.assertEqual(sum(' checked' in str(checkbox.tag()) for checkbox in response.context['form']['rules']), len(DEFAULT_EDITORIAL_RULES))
         self.assertNotContains(response, 'gifrific')
 
     def test_download_uses_selected_rules(self):
@@ -131,25 +131,20 @@ class OdkurzaczTests(TestCase):
         with self.assertRaises(ValueError):
             clean_docx(BytesIO(docx_bytes('a' * 20001)), ['spaces'])
 
-    def test_tabs_are_deleted_without_inserting_spaces(self):
+    def test_tabs_are_replaced_with_single_spaces(self):
         text = '\tAla\tma \t kota\t\t'
         result = Document(clean_docx(BytesIO(docx_bytes(text)), ['tabs']))
-        self.assertEqual(result.paragraphs[0].text, 'Alama  kota')
+        self.assertEqual(result.paragraphs[0].text, ' Ala ma kota ')
         self.assertFalse(result.paragraphs[0]._p.xpath('.//w:tab'))
         unchanged = Document(clean_docx(BytesIO(docx_bytes(text)), []))
         self.assertEqual(unchanged.paragraphs[0].text, text)
 
-    def test_removed_rules_and_no_inserted_nbsp(self):
-        removed = {'single_nbsp', 'unit_nbsp', 'reference_nbsp', 'dates_times', 'decimal', 'digit_groups'}
-        self.assertFalse(removed & {key for key, _ in EDITORIAL_RULES})
+    def test_updated_rules_are_available_and_can_be_disabled(self):
+        added = {'single_nbsp', 'unit_nbsp', 'reference_nbsp', 'dates_times', 'decimal', 'digit_groups'}
+        self.assertTrue(added <= {key for key, _ in EDITORIAL_RULES})
         source = '2025-1-2 2/1/2025 o 9.30 9:30 12.50 kg 123456 kg A.Kowalski 20°C'
-        result = correct_editorial_text(source)
-        self.assertEqual(result, '2025-1-2 2/1/2025 o 9.30 9:30 12.50 kg 123456 kg A. Kowalski 20 °C')
-        self.assertNotIn('\u00a0', result)
-        self.assertNotIn('\u202f', result)
-        for key in removed:
-            with self.assertRaises(ValueError):
-                correct_editorial_text('Tekst', [key])
+        self.assertEqual(correct_editorial_text(source, []), source)
+        self.assertIn('\u00a0', correct_editorial_text(source))
 
     def test_submit_above_rules(self):
         html = self.client.get(self.url).content.decode()
@@ -174,7 +169,7 @@ class OdkurzaczTests(TestCase):
                     paragraph.add_run(right).italic = True
                     source = BytesIO()
                     document.save(source)
-                    result = Document(clean_docx(source, [key for key, _ in EDITORIAL_RULES]))
+                    result = Document(clean_docx(source, ['hyphen_dash', 'dash_spaces', 'trim', 'before_punct', 'after_punct']))
                     self.assertEqual(result.paragraphs[0].text, left + right)
                     self.assertTrue(result.paragraphs[0].runs[0].bold)
                     self.assertTrue(result.paragraphs[0].runs[-1].italic)

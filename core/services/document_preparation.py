@@ -8,11 +8,11 @@ from io import BytesIO
 if __package__:
     from .document_rebuild import rebuild_docx
     from .document_formatting import normalize_docx
-    from .odkurzacz import clean_docx, ALL_EDITORIAL_RULES
+    from .odkurzacz import clean_docx, ALL_EDITORIAL_RULES, DEFAULT_EDITORIAL_RULES
 else:
     from document_rebuild import rebuild_docx
     from document_formatting import normalize_docx
-    from odkurzacz import clean_docx, ALL_EDITORIAL_RULES
+    from odkurzacz import clean_docx, ALL_EDITORIAL_RULES, DEFAULT_EDITORIAL_RULES
 
 
 def prepare_docx(source, *, rebuild=False, normalize_formatting=False,

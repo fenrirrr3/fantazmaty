@@ -9,3 +9,8 @@ mammoth==1.13.0
 EbookLib==0.20
 fpdf2==2.8.8
 Pillow>=12.1.0,<13.0
+
+spacy==3.8.7
+pydantic==2.12.5
+click>=8.0,<9
+pl_core_news_sm @ https://github.com/explosion/spacy-models/releases/download/pl_core_news_sm-3.8.0/pl_core_news_sm-3.8.0-py3-none-any.whl

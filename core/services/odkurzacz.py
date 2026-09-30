@@ -1,18 +1,17 @@
-"""Korekta edytorska z dostarczonego programu RedaktorDOCX, bez analizy i GUI."""
-
+"""Updated editorial rules from the desktop cleaner, with web limits."""
 import re
 from io import BytesIO
-
 from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
+# Reguły są wykonywane w ustalonej kolejności, niezależnie od kolejności kliknięć.
 EDITORIAL_RULES = (
     ('spaces', 'Podwójne i wielokrotne spacje'),
     ('trim', 'Spacje na początku i końcu akapitu'),
-    ('tabs', 'Usuwanie wszystkich tabulatorów'),
+    ('tabs', 'Tabulatory i mieszanki tabulatorów ze spacjami → jedna spacja'),
+    ('empty_paragraphs', 'Wielokrotne puste akapity → jeden pusty akapit'),
     ('before_punct', 'Spacje przed znakami interpunkcyjnymi'),
-    ('sentence_case', 'Wielka litera po . ? ! – z wyjątkami dla skrótów, liczb i dialogów'),
     ('after_punct', 'Brakujące spacje po interpunkcji (z wyjątkami)'),
     ('inside_brackets', 'Spacje wewnątrz nawiasów'),
     ('inside_quotes', 'Spacje wewnątrz cudzysłowów'),
@@ -22,19 +21,28 @@ EDITORIAL_RULES = (
     ('duplicate_punct', 'Powtórzone przecinki, średniki, dwukropki i podwójne kropki'),
     ('quote_punct', 'Przecinek / kropka poza cudzysłowem w prostych cytatach'),
     ('hyphen_dash', 'Łącznik użyty jako myślnik → półpauza'),
-    ('dash_style', 'Zamiana pauzy na półpauzę w funkcji myślnika'),
+    ('dash_style', 'Pauza jako myślnik → półpauza –'),
     ('dash_spaces', 'Odstępy przy myślnikach i początku kwestii dialogowej'),
     ('range_dash', 'Łącznik w zakresach liczbowych → półpauza'),
     ('range_spaces', 'Usuwanie spacji wewnątrz zakresów liczbowych'),
+    ('single_nbsp', 'Spacja nierozdzielająca po a, i, o, u, w, z'),
+    ('unit_nbsp', 'Spacja nierozdzielająca między liczbą a jednostką'),
     ('unit_space', 'Brakująca spacja między liczbą a jednostką'),
+    ('reference_nbsp', 'Spacja nierozdzielająca: 2025 r., s. 15, nr 3'),
     ('reference_space', 'Brakująca spacja: 2025r., s.15, nr3'),
     ('initials', 'Odstępy przy inicjałach i nazwisku'),
-    ('abbreviations', 'Popraw zapis skrótów i usuń spacje wewnątrz nich: m. in. → m.in., t. j. → tj., t. zw. → tzw.'),
+    ('abbreviations', 'Usuń spacje wewnątrz skrótów: m. in. → m.in., t. j. → tj., t. zw. → tzw.'),
+    ('dates_times', 'Daty DD.MM.RRRR i godziny HH:MM (jednoznaczne zapisy)'),
+    ('decimal', 'Przecinek dziesiętny przy jednostkach i kwotach'),
+    ('digit_groups', 'Grupowanie dużych liczb spacją nierozdzielającą'),
     ('temperature', 'Temperatura: 20 °C / 20 °F / 20 K'),
     ('pronouns_lower', 'Zaimki osobowe małą literą – poza początkiem zdania i akapitu'),
     ('user_word_corrections', 'Własne zamiany słownikowe: 23 pozycje z fleksją (pikap / przekonujący / oddziałujący)'),
 )
+EDITORIAL_RULES += (('sentence_case', 'Wielka litera po . ? ! – z wyjątkami dla skrótów, liczb i dialogów'),)
 ALL_EDITORIAL_RULES = frozenset(key for key, _ in EDITORIAL_RULES)
+DEFAULT_EDITORIAL_RULES = ALL_EDITORIAL_RULES - {'pronouns_lower', 'user_word_corrections', 'empty_paragraphs'}
+NBSP = '\u00a0'
 H = r'[ \u00a0\u202f]'
 LETTERS = 'A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż'
 LOWER = 'a-ząćęłńóśźż'
@@ -43,6 +51,7 @@ UNITS = (r'(?:km/h|m/s|kg|mg|µg|μg|km|dm|cm|mm|µm|nm|ml|mL|'
          r'kHz|MHz|GHz|Hz|kPa|MPa|Pa|kN|kJ|kW|MW|kV|mA|kΩ|'
          r'kB|MB|GB|TB|ms|min|ha|bar|PLN|zł|EUR|USD|'
          r'[kmc]m[²³]|m[²³]|[gtmlLshNJWTAVΩBK])')
+QUANTITIES = UNITS + r'|osób|szt\.?|egzemplarzy|mieszkańców|punktów'
 NUMBER = r'(?<![\w.,])[-−]?\d+(?:[.,]\d+)?'
 
 PERSONAL_PRONOUNS = frozenset('''
@@ -104,8 +113,58 @@ DATE_RE = re.compile(
     r'(?<![\w.])(?:(?P<iso_y>\d{4})-(?P<iso_m>\d{1,2})-(?P<iso_d>\d{1,2})|'
     r'(?P<d>\d{1,2})(?P<sep>[./-])(?P<m>\d{1,2})(?P=sep)(?P<y>\d{4}))(?!\w|\.\d)')
 TIME_RE = re.compile(r'(?<![\w:])\d{1,2}:\d{2}(?::\d{2})?(?![\w:])')
-# Conservative exception dictionary: a final abbreviation dot may also end a
-# sentence, but that ambiguity must never be resolved by changing the text.
+ABBREVIATION_RE = re.compile(
+    r'\b(?:m\.in\.|p\.n\.e\.|n\.e\.|np\.|itd\.|itp\.|tj\.|tzw\.|'
+    r'prof\.|dr\.|hab\.|mgr\.|inż\.|św\.|al\.|ul\.|godz\.|ok\.|por\.|zob\.)|'
+    r'\b(?:[' + UPPER + r']\.){2,}')
+
+
+def _normalize_dates_times(text):
+    from datetime import date
+
+    def date_repl(match):
+        year = int(match['iso_y'] or match['y'])
+        month = int(match['iso_m'] or match['m'])
+        day = int(match['iso_d'] or match['d'])
+        try:
+            date(year, month, day)
+        except ValueError:
+            return match[0]
+        return f'{day:02d}.{month:02d}.{year:04d}'
+
+    text = DATE_RE.sub(date_repl, text)
+    # Kropka w godzinie jest rozpoznawana tylko po „godz.” lub „o”.
+    text = re.sub(r'\b(godz\.?|o)(' + H + r'+)(\d{1,2})\.(\d{2})(?!\d)',
+                  lambda m: f'{m[1]}{m[2]}{int(m[3]):02d}:{m[4]}'
+                  if int(m[3]) < 24 and int(m[4]) < 60 else m[0], text)
+
+    def time_repl(match):
+        parts = match[0].split(':')
+        if int(parts[0]) < 24 and all(int(part) < 60 for part in parts[1:]):
+            return ':'.join(f'{int(part):02d}' for part in parts)
+        return match[0]
+
+    return TIME_RE.sub(time_repl, text)
+
+
+# Własna lista użytkownika. To jawne zamiany redakcyjne, a nie ocena
+# poprawności przez słownik Worda. Niektóre formy mogą być poprawne
+# w innym znaczeniu; wyłączenie opcji wyłącza całą poniższą listę.
+# Warianty docelowe: pikap, przekonujący, oddziałujący.
+# Fleksja korzysta z jawnych końcówek, ponieważ model językowy nie musi
+# rozpoznawać lematów wyrazów zapisanych błędnie.
+USER_WORD_EXACT = {
+    'niechcąco': 'niechcący',
+    'zaczym': 'za czym',
+    'władnie': 'władny',
+    'niewiadomo': 'nie wiadomo',
+    'terefere': 'tere-fere',
+    'inąd': 'skądinąd',
+    'wszechczasów': 'wszech czasów',
+    'zapewnie': 'zapewne',
+}
+
+
 SENTENCE_ABBREVIATIONS = frozenset("""
 np. m.in. tj. tzn. tzw. itd. itp. ew. ewent. prawdop. przyp. dosł. przen.
 pot. właśc. zob. por. patrz. cyt. ww. jw. j.w. cd. cdn. c.d. c.d.n.
@@ -120,7 +179,7 @@ bibliogr. art. ust. lit. par. pol. ang. niem. fr. ros. łac. gr. wł.
 hiszp. czes. ukr. hist. daw. arch. żart. iron. pej. wulg. książk. poet.
 sp. sp.j. sp.k. sp.p. etc. ibid. sic. vs. dr. mgr. nr. mjr. płk. ppłk.
 """.split()) | frozenset(('z o.o.', 'sp. z o.o.', 'et al.', 'op. cit.'))
-ABBREVIATION_RE = re.compile(
+CAPITALIZATION_ABBREVIATION_RE = re.compile(
     r'(?<!\w)(?:' + '|'.join(
         re.escape(value).replace(r'\.', r'\.' + H + '*').replace(r'\ ', H + '+')
         for value in sorted(SENTENCE_ABBREVIATIONS, key=lambda x: (-len(x), x))
@@ -130,9 +189,9 @@ FILE_NAME_RE = re.compile(r'(?<![\w.])[\w-]+(?:\.[\w-]+)*\.(?:docx?|pdf|epub|mob
 
 def _capitalize_sentences(text):
     protected = set()
-    for pattern in (TECHNICAL_RE, DATE_RE, TIME_RE, FILE_NAME_RE, ABBREVIATION_RE):
+    for pattern in (TECHNICAL_RE, DATE_RE, TIME_RE, FILE_NAME_RE, CAPITALIZATION_ABBREVIATION_RE):
         for match in pattern.finditer(text):
-            if pattern is ABBREVIATION_RE and match.start() in protected:
+            if pattern is CAPITALIZATION_ABBREVIATION_RE and match.start() in protected:
                 continue
             # URLs can include trailing punctuation. Protect only their body.
             end = match.end()
@@ -158,24 +217,6 @@ def _capitalize_sentences(text):
     # In particular '. – powiedział' / '? – zapytała' stay untouched.
     return re.sub(r'([.!?]+)(' + H + r'*)([' + LOWER + r'])', replace, text)
 
-
-
-# Własna lista użytkownika. To jawne zamiany redakcyjne, a nie ocena
-# poprawności przez słownik Worda. Niektóre formy mogą być poprawne
-# w innym znaczeniu; wyłączenie opcji wyłącza całą poniższą listę.
-# Warianty docelowe: pikap, przekonujący, oddziałujący.
-# Fleksja korzysta z jawnych końcówek, ponieważ model językowy nie musi
-# rozpoznawać lematów wyrazów zapisanych błędnie.
-USER_WORD_EXACT = {
-    'niechcąco': 'niechcący',
-    'zaczym': 'za czym',
-    'władnie': 'władny',
-    'niewiadomo': 'nie wiadomo',
-    'terefere': 'tere-fere',
-    'inąd': 'skądinąd',
-    'wszechczasów': 'wszech czasów',
-    'zapewnie': 'zapewne',
-}
 
 
 def _replacement_case(source, replacement):
@@ -264,15 +305,12 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True):
     pozostają bez zmian, np. 1.234 bez jednostki, samotne cudzysłowy,
     pojedynczy łącznik wewnątrz wyrazu i godzina 9.30 bez kontekstu.
     """
-    enabled = ALL_EDITORIAL_RULES if enabled is None else frozenset(enabled)
+    enabled = DEFAULT_EDITORIAL_RULES if enabled is None else frozenset(enabled)
     unknown = enabled - ALL_EDITORIAL_RULES
     if unknown:
         raise ValueError(f'Nieznane reguły korekty: {sorted(unknown)}')
     if not enabled or not text:
         return text
-
-    if 'tabs' in enabled:
-        text = text.replace('\t', '')
 
     protected = {}
 
@@ -290,21 +328,26 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True):
         core = value.rstrip('.,;:!?)]}')
         return mask_value(core) + value[len(core):] if core else value
 
-    # Zachowaj zapis dat i godzin; ochrona zapobiega zmianom przez inne reguły.
+    # Daty przed ochroną wersji (np. 01.02.2025 wygląda też jak numer wersji).
     def date_protect(match):
-        return mask_value(match[0])
+        value = _normalize_dates_times(match[0]) if 'dates_times' in enabled else match[0]
+        return mask_value(value)
 
     # Adresy muszą być chronione zanim rozpoznamy datę wewnątrz URL.
     address_pattern = TECHNICAL_RE.pattern.split(r'|\b(?:\d{1,3}\.)')[0]
     text = re.sub(address_pattern, protect_technical, text, flags=re.IGNORECASE)
     text = DATE_RE.sub(date_protect, text)
     text = TECHNICAL_RE.sub(protect_technical, text)
+    if 'dates_times' in enabled:
+        text = _normalize_dates_times(text)
     text = TIME_RE.sub(lambda m: mask_value(m[0]), text)
     if 'sentence_case' in enabled:
         text = FILE_NAME_RE.sub(lambda m: mask_value(m[0]), text)
     if 'user_word_corrections' in enabled:
         text = _correct_user_words(text)
 
+    if 'tabs' in enabled:
+        text = re.sub(r'[ \t\u00a0\u202f]*\t[ \t\u00a0\u202f]*', ' ', text)
     if 'spaces' in enabled:
         text = re.sub(r' {2,}', ' ', text)
     if 'abbreviations' in enabled:
@@ -359,9 +402,6 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True):
         def dash_space(match):
             left = text[:match.start()].rstrip(' \u00a0\u202f')
             right = text[match.end():].lstrip(' \u00a0\u202f')
-            # A DOCX group may start/end at a bookmark, proofing marker,
-            # field or hyperlink inside the paragraph. Without neighbour
-            # context do not reinterpret its edge as a dialogue/paragraph edge.
             if (not left and not trim_start) or (not right and not trim_end):
                 return match[0]
             if left[-1:].isdigit() and right[:1].isdigit():
@@ -370,28 +410,57 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True):
                 return match[0]  # potencjalny znak minus
             return (' ' if left and not left.endswith('\n') else '') + match[1] + (' ' if right else '')
         text = re.sub(H + r'*([–—])' + H + r'*', dash_space, text)
+    if 'decimal' in enabled:
+        text = re.sub(r'(?<![\w.,])(\d+)\.(\d{1,2})(?=' + H + r'*(?:' + UNITS + r'|%|°' + H + r'*[CF])(?!\w))',
+                      r'\1,\2', text)
     if 'unit_space' in enabled:
         text = re.sub('(' + NUMBER + r')(?=' + UNITS + r'(?!\w))', r'\1 ', text)
+    if 'digit_groups' in enabled:
+        def group_digits(match):
+            digits = re.sub(H, '', match[0])
+            if digits.startswith('0'):
+                return match[0]
+            before = text[:match.start()]
+            if re.search(r'\b(?:nr|numer|kod|id|tel\.?)' + H + r'*[:#]?' + H + r'*$', before, re.I):
+                return match[0]
+            after = text[match.end():]
+            quantity = re.match(H + r'*(?:' + QUANTITIES + r')(?!\w)', after)
+            if len(digits) >= 9 and not quantity:
+                return match[0]  # możliwy numer telefonu lub identyfikator
+            return _group_number(digits)
+        text = re.sub(r'(?<![\w.,])(\d{1,3}(?:' + H + r'\d{3})+|\d{5,})(?!\w|\.\d)', group_digits, text)
+    if 'unit_nbsp' in enabled:
+        text = re.sub(r'(?<=\d)' + H + r'+(?=' + UNITS + r'(?!\w))', NBSP, text)
     if 'reference_space' in enabled:
         text = re.sub(r'\b(\d{4})(?=r\.)', r'\1 ', text)
         text = re.sub(r'\b(s\.|nr)(?=\d)', r'\1 ', text)
+    if 'reference_nbsp' in enabled:
+        text = re.sub(r'\b(\d{4})' + H + r'+(?=r\.)', r'\1' + NBSP, text)
+        text = re.sub(r'\b(s\.|nr)' + H + r'+(?=\d)', r'\1' + NBSP, text)
     if 'initials' in enabled:
         text = re.sub(r'\b([' + UPPER + r'])' + H + r'+\.', r'\1.', text)
-        text = re.sub(r'\b([' + UPPER + r']\.)' + H + r'*(?=[' + UPPER + r']\.)', r'\1' + ' ', text)
+        text = re.sub(r'\b([' + UPPER + r']\.)' + H + r'*(?=[' + UPPER + r']\.)', r'\1' + NBSP, text)
         text = re.sub(r'\b([' + UPPER + r']\.)' + H + r'*(?=[' + UPPER + r'][' + LOWER + r']{2,}\b)',
-                      r'\1' + ' ', text)
+                      r'\1' + NBSP, text)
     if 'temperature' in enabled:
-        text = re.sub('(' + NUMBER + r')' + H + r'*°' + H + r'*([CF])(?!\w)', r'\1' + ' ' + r'°\2', text)
-        text = re.sub('(' + NUMBER + r')' + H + r'*K(?!\w)', r'\1' + ' ' + 'K', text)
+        text = re.sub('(' + NUMBER + r')' + H + r'*°' + H + r'*([CF])(?!\w)', r'\1' + NBSP + r'°\2', text)
+        text = re.sub('(' + NUMBER + r')' + H + r'*K(?!\w)', r'\1' + NBSP + 'K', text)
     if 'after_punct' in enabled:
         # Zachowaj wewnętrzne kropki skrótów. Liczby nie są celem tej reguły.
-        text = ABBREVIATION_RE.sub(lambda m: mask_value(m[0]), text)
+        def protect_abbreviation(match):
+            tail = text[match.end():match.end() + 1]
+            # Granica po skrócie wymaga spacji; jego wewnętrzne kropki są chronione.
+            gap = ' ' if tail and re.fullmatch('[' + LETTERS + '„“\"]', tail) else ''
+            return mask_value(match[0]) + gap
+        text = ABBREVIATION_RE.sub(protect_abbreviation, text)
         text = re.sub(r'(?<=[,;:!?])(?=[' + LETTERS + r'„“"])', ' ', text)
         text = re.sub(r'(?<=\.)(?=[' + LETTERS + r'„“"])', ' ', text)
         # Przecinek przed liczbą wymaga spacji, chyba że tworzy liczbę dziesiętną.
         text = re.sub(r'(?<!\d),(?=\d)', ', ', text)
         text = re.sub(r'(?<=[;!?])(?=\d)', ' ', text)
         text = re.sub(r'(?<!\d):(?=\d)', ': ', text)
+    if 'single_nbsp' in enabled:
+        text = re.sub(r'(?<!\w)([aAiIoOuUwWzZ])' + H + r'+(?=\S)', r'\1' + NBSP, text)
     # Przywróć najpierw późniejsze maski, gdyby zawierały wcześniejsze.
     for marker, value in reversed(list(protected.items())):
         text = text.replace(marker, value)
@@ -406,6 +475,14 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True):
         if trim_end:
             text = re.sub(H + r'+$', '', text)
     return text
+
+
+def _group_number(digits):
+    groups = []
+    while digits:
+        groups.append(digits[-3:])
+        digits = digits[:-3]
+    return NBSP.join(reversed(groups))
 
 
 def _rewrite_text_nodes(slots, corrected):
@@ -452,9 +529,30 @@ def _rewrite_text_nodes(slots, corrected):
             node.getparent().remove(node)
 
 
+def _safe_empty_paragraph(element):
+    if element.tag != qn('w:p'):
+        return False
+    for child in element:
+        if child.tag == qn('w:pPr'):
+            if any(child.find(qn('w:' + name)) is not None
+                   for name in ('sectPr', 'numPr', 'pageBreakBefore')):
+                return False
+        elif child.tag == qn('w:r'):
+            for node in child:
+                if node.tag == qn('w:rPr'):
+                    continue
+                if node.tag == qn('w:t') and not (node.text or '').strip(' \u00a0\u202f\t'):
+                    continue
+                if node.tag == qn('w:tab'):
+                    continue
+                return False
+        else:
+            return False
+    return True
+
+
 def apply_editorial_corrections(doc, enabled=None):
-    enabled = ALL_EDITORIAL_RULES if enabled is None else frozenset(enabled)
-    enabled = enabled - {'empty_paragraphs'}  # Older callers may still send the retired rule.
+    enabled = DEFAULT_EDITORIAL_RULES if enabled is None else frozenset(enabled)
     if enabled - ALL_EDITORIAL_RULES:
         raise ValueError('Nieznana reguła korekty edytorskiej.')
     if not enabled:
@@ -505,6 +603,15 @@ def apply_editorial_corrections(doc, enabled=None):
                                                    trim_start=index == 0,
                                                    trim_end=index == len(groups) - 1)
                 _rewrite_text_nodes(group, corrected)
+    if 'empty_paragraphs' in enabled:
+        previous_empty = False
+        for element in list(doc._element.body):
+            empty = _safe_empty_paragraph(element)
+            if empty and previous_empty:
+                element.getparent().remove(element)
+            else:
+                previous_empty = empty
+
 
 
 def clean_docx(source, rules):

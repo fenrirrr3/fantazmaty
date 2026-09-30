@@ -3,7 +3,7 @@ from zipfile import BadZipFile, ZipFile
 
 from django import forms
 
-from core.services.odkurzacz import EDITORIAL_RULES
+from core.services.odkurzacz import EDITORIAL_RULES, DEFAULT_EDITORIAL_RULES
 
 
 class OdkurzaczForm(forms.Form):
@@ -15,7 +15,7 @@ class OdkurzaczForm(forms.Form):
     )
     rules = forms.MultipleChoiceField(
         label="Opcje korekty", choices=EDITORIAL_RULES,
-        initial=[key for key, _ in EDITORIAL_RULES], required=False,
+        initial=[key for key, _ in EDITORIAL_RULES if key in DEFAULT_EDITORIAL_RULES], required=False,
         widget=forms.CheckboxSelectMultiple,
     )
 
@@ -53,3 +53,31 @@ class DocumentConversionForm(OdkurzaczForm):
         super().__init__(*args, **kwargs)
         del self.fields['rules']
         del self.fields['rebuild']
+
+
+class RepetitionsForm(OdkurzaczForm):
+    window_size = forms.IntegerField(label='Zakres wyszukiwania (słowa)', initial=35, min_value=1, max_value=500)
+    min_word_length = forms.IntegerField(label='Minimalna długość słowa', initial=4, min_value=1, max_value=100)
+    ignored_words = forms.CharField(label='Ignorowane słowa', required=False, max_length=10000,
+                                   widget=forms.Textarea(attrs={'rows': 4}))
+    tracked_words = forms.CharField(label='Własne słowa do oznaczenia', required=False, max_length=10000,
+                                   widget=forms.Textarea(attrs={'rows': 4}))
+    include_prefix_matches = forms.BooleanField(label='Także podobny początek słowa (pierwsze pięć liter)', required=False)
+    duplicates = forms.BooleanField(label='Sąsiednie powtórzenia – zielone tło', required=False, initial=True)
+    long_sentences = forms.BooleanField(label='Długie zdania – turkusowe tło', required=False, initial=True)
+    sentence_limit = forms.IntegerField(label='Próg długiego zdania (słowa)', initial=35, min_value=1, max_value=10000)
+    long_paragraphs = forms.BooleanField(label='Długie akapity – szare tło', required=False, initial=True)
+    paragraph_limit = forms.IntegerField(label='Próg długiego akapitu (słowa)', initial=150, min_value=1, max_value=10000)
+    empty_pairs = forms.BooleanField(label='Puste nawiasy i cudzysłowy – różowe tło', required=False, initial=True)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        del self.fields['rules']
+        del self.fields['rebuild']
+
+    def analysis_config(self):
+        values = self.cleaned_data
+        return {key: values[key] for key in ('window_size', 'min_word_length', 'ignored_words',
+                'tracked_words', 'include_prefix_matches')} | {'analysis_options': {
+                key: values[key] for key in ('duplicates', 'long_sentences', 'sentence_limit',
+                                            'long_paragraphs', 'paragraph_limit', 'empty_pairs')}}

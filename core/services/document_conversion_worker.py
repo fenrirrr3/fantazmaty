@@ -155,6 +155,7 @@ def convert(source, directory, formats, title):
 
 
 def main():
+    global CURRENT_STAGE
     directory = Path(sys.argv[1])
     config = json.loads((directory / 'job.json').read_text(encoding='utf-8'))
     formats = config['formats']
@@ -163,10 +164,10 @@ def main():
     try:
         if config.get('prepare') or config.get('inspect'):
             if __package__:
-                from .document_preparation import prepare_docx, ALL_EDITORIAL_RULES
+                from .document_preparation import prepare_docx, ALL_EDITORIAL_RULES, DEFAULT_EDITORIAL_RULES
                 from .document_rebuild import inspect_docx
             else:
-                from document_preparation import prepare_docx, ALL_EDITORIAL_RULES
+                from document_preparation import prepare_docx, ALL_EDITORIAL_RULES, DEFAULT_EDITORIAL_RULES
                 from document_rebuild import inspect_docx
             source = directory / 'source.docx'
             if config.get('inspect'):
@@ -175,7 +176,7 @@ def main():
                 return 0
             rules = config.get('cleaner_rules') if config.get('clean') else ()
             if rules is None:
-                rules = list(ALL_EDITORIAL_RULES)
+                rules = list(DEFAULT_EDITORIAL_RULES)
             with source.open('rb') as document, prepare_docx(
                 document, rebuild=config.get('rebuild', False),
                 normalize_formatting=config.get('normalize', True),
@@ -184,12 +185,22 @@ def main():
             ) as prepared:
                 payload = prepared.read()
             source.write_bytes(payload)
+        if config.get('repetitions') is not None:
+            CURRENT_STAGE = 'Powtórzenia'
+            if __package__:
+                from .document_repetitions import color_document
+            else:
+                from document_repetitions import color_document
+            source = directory / 'source.docx'
+            with source.open('rb') as document, color_document(document, **config['repetitions']) as marked:
+                payload = marked.read()
+            source.write_bytes(payload)
         if formats:
             convert(directory / 'source.docx', directory, formats, config['title'])
     except Exception as error:
         # Never record exception messages, locals, source lines or document text.
         versions = {}
-        for package in ('fpdf2', 'fpdf', 'fonttools', 'mammoth', 'EbookLib', 'python-docx', 'Pillow'):
+        for package in ('fpdf2', 'fpdf', 'fonttools', 'mammoth', 'EbookLib', 'python-docx', 'Pillow', 'spacy', 'pl_core_news_sm'):
             try: versions[package] = version(package)
             except PackageNotFoundError: versions[package] = 'not installed'
         frames = [{'file': Path(frame.filename).name, 'line': frame.lineno, 'function': frame.name}

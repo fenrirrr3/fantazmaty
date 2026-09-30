@@ -1,6 +1,5 @@
 
     .program-tool { margin: 20px 0; padding: 0; }
-    .program-tool > summary { cursor: pointer; font-size: 1rem; font-weight: 600; padding: var(--card-padding); }
     .program-tool input[type=checkbox] { width: auto; }
     .odkurzacz { max-width: 960px; }
     .odkurzacz fieldset { margin: 1.5rem 0; padding: 1rem; border: 1px solid var(--border-strong); border-radius: var(--radius); }
@@ -18,3 +17,9 @@
     .odkurzacz input[type=file]:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }
 
 :root[data-theme="dark"] .odkurzacz input[type=file]::file-selector-button { color: #102034; }
+
+.repetitions-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; margin: 1.5rem 0; }
+.repetitions-fields .form-field { display: flex; flex-direction: column; gap: .5rem; min-width: 0; }
+.repetitions-fields textarea, .repetitions-fields input[type=number] { width: 100%; box-sizing: border-box; }
+.repetitions-fields input[type=checkbox] { align-self: flex-start; }
+@media (max-width: 640px) { .repetitions-fields { grid-template-columns: 1fr; } }

@@ -10,10 +10,10 @@
     <p class="page-description">Uporządkuj spacje, interpunkcję i zapis tekstu w dokumencie Word.</p>
 </header>
 <details class="details-card odkurzacz program-tool" {% if clean_open %}open{% endif %}>
-    <summary>Odkurzacz</summary>
+    <summary><span>Odkurzacz</span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
     <div class="card-body">
     <p>Wybierz dokument i poprawki, które chcesz zastosować. Odkurzacz wykonuje korektę automatycznie i udostępnia plik do pobrania.</p>
-    <p>Przetwarzana jest główna treść dokumentu, bez tabel, nagłówków i treści przypisów. Poprawki są zapisywane bez śledzenia zmian. Odkurzacz nie dodaje kolorów ani oznaczeń. Puste akapity pozostają bez usuwania ani scalania.</p>
+    <p>Przetwarzana jest główna treść dokumentu, bez tabel, nagłówków i treści przypisów. Poprawki są zapisywane bez śledzenia zmian. Odkurzacz nie dodaje kolorów ani oznaczeń. Puste akapity pozostają bez usuwania ani scalania, chyba że zaznaczysz osobną opcję ich scalania.</p>
     <p><strong>Przed zwykłym odkurzaniem zaakceptuj śledzone zmiany i usuń komentarze. Przycisk przebudowy obsługuje proste zmiany tekstu i usuwa komentarze.</strong></p>
     <form method="post" enctype="multipart/form-data">
         {% csrf_token %}
@@ -37,7 +37,7 @@
         <p>Przy większym dokumencie pobieranie może rozpocząć się po chwili. Oryginał pozostaje na Twoim komputerze.</p>
         <fieldset>
             <legend>Opcje korekty</legend>
-            <p>Domyślnie zaznaczono wszystkie {{ form.rules.field.choices|length }} opcji. Możesz wyłączyć dowolną poprawkę.</p>
+            <p>Scalanie pustych akapitów, zmiany słownikowe i zmniejszanie liter zaimków są domyślnie wyłączone. Pozostałe poprawki możesz wyłączyć według potrzeb.</p>
             <div class="odkurzacz-actions" id="rule-actions" hidden>
                 <button type="button" class="secondary-button" data-rules="all">Zaznacz wszystkie</button>
                 <button type="button" class="secondary-button" data-rules="none">Odznacz wszystkie</button>
@@ -51,10 +51,10 @@
     </form>
 </div></details>
 <details class="details-card odkurzacz program-tool" {% if conversion_open %}open{% endif %}>
-    <summary>Konwerter DOCX → PDF i EPUB</summary>
+    <summary><span>Konwerter DOCX → PDF i EPUB</span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
     <div class="card-body">
     <p>Wybierz jeden lub kilka formatów. Jeden format pobierzesz jako osobny plik, kilka jako archiwum ZIP.</p>
-    <p>Przy tworzeniu PDF zachowujemy puste akapity (równpython manage.py migrateież po włączeniu Odkurzacza) oraz justowanie, jeśli jest ustawione w DOCX. Przed korektą i konwersją ustawiamy Times New Roman 12 pkt, interlinię 1,5, wcięcie pierwszego wiersza 1,25 cm i zerowe odstępy przed oraz po akapicie. Akapity wyśrodkowane nie mają wcięcia. Zachowujemy wyrównanie, kursywę i pogrubienia.</p>
+    <p>Przy tworzeniu PDF zachowujemy puste akapity (również po włączeniu Odkurzacza) oraz justowanie, jeśli jest ustawione w DOCX. Przed korektą i konwersją ustawiamy Times New Roman 12 pkt, interlinię 1,5, wcięcie pierwszego wiersza 1,25 cm i zerowe odstępy przed oraz po akapicie. Akapity wyśrodkowane nie mają wcięcia. Zachowujemy wyrównanie, kursywę i pogrubienia.</p>
     <p>Konwersja może zmienić podział stron i wygląd dokumentu. Przed konwersją ustawiamy A4 i marginesy 2,5 cm z każdej strony. PDF korzysta z tych ustawień oraz czcionki podobnej do Times New Roman. Złożony układ, nagłówki i stopki Worda nie są odwzorowywane dokładnie; po pobraniu sprawdź wynik.</p>
     <form method="post" enctype="multipart/form-data">
         {% csrf_token %}<input type="hidden" name="program_action" value="convert">
@@ -77,5 +77,30 @@
         <p>Poczekaj na pobranie pliku. Konwersja może potrwać do 90 sekund; nie wysyłaj formularza ponownie w tym czasie.</p>
     </form>
 </div></details>
+<details class="details-card odkurzacz program-tool" {% if repetitions_open %}open{% endif %}>
+    <summary><span>Kolorowanie powtórzeń</span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
+    <div class="card-body">
+    <p>Oznacz powtarzające się słowa w DOCX, także w rozpoznanych formach odmiany. Narzędzie nie zmienia treści, nie uruchamia Odkurzacza ani nie ujednolica formatowania.</p>
+    <p>Zakres obejmuje kolejne słowa spełniające minimum długości, również między akapitami. Tabele, nagłówki, hiperłącza i treść przypisów nie są analizowane. Przed analizą zaakceptuj śledzone zmiany.</p>
+    <p>Powtórzenia mają kolorowe litery; własne słowa – żółte tło. Priorytet tła: puste nawiasy, sąsiednie powtórzenia, własne słowa, długie zdania, długie akapity. Wynik jest wskazówką do ręcznego sprawdzenia.</p>
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}<input type="hidden" name="program_action" value="repetitions">
+        {{ repetitions_form.non_field_errors }}
+        {% if repetitions_form.errors %}<p role="alert">Sprawdź komunikaty i ponownie wybierz plik przed wysłaniem.</p>{% endif %}
+        <div class="odkurzacz-upload">
+            {{ repetitions_form.document.label_tag }}{{ repetitions_form.document.errors }}{{ repetitions_form.document }}
+            <p class="helptext">{{ repetitions_form.document.help_text }}</p>
+        </div>
+        <div class="repetitions-fields">
+        {% for field in repetitions_form %}{% if field.name != 'document' %}
+            <div class="form-field">{{ field.errors }}{{ field.label_tag }}{{ field }}{% if field.help_text %}<p class="helptext">{{ field.help_text }}</p>{% endif %}</div>
+        {% endif %}{% endfor %}
+        </div>
+        <p>Wyjątki mają pierwszeństwo przed własną listą słów. Słowa wpisuj po jednym w wierszu albo oddzielaj przecinkami. Kolory mogą różnić się przy kolejnych uruchomieniach.</p>
+        <button type="submit" class="primary-button">Oznacz powtórzenia i pobierz DOCX</button>
+        <p>Przetwarzanie może potrwać do 90 sekund. Oryginał pozostaje bez zmian.</p>
+    </form>
+    </div>
+</details>
 {% endblock %}
 {% block scripts %}<script src="{% static 'core/odkurzacz.js' %}"></script>{% endblock %}

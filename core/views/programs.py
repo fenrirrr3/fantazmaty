@@ -12,7 +12,7 @@ from django.views.decorators.cache import never_cache
 from docx.oxml.exceptions import InvalidXmlError
 from lxml.etree import XMLSyntaxError
 
-from core.odkurzacz_forms import OdkurzaczForm, DocumentConversionForm
+from core.odkurzacz_forms import OdkurzaczForm, DocumentConversionForm, RepetitionsForm
 from core.services.document_converter import convert_document, ConversionError, RebuildConfirmationRequired
 from core.permissions import team_member_required
 
@@ -35,6 +35,29 @@ def programs(request):
         request.POST if action == 'convert' else None,
         request.FILES if action == 'convert' else None, prefix='convert',
     )
+    repetitions_form = RepetitionsForm(
+        request.POST if action == 'repetitions' else None,
+        request.FILES if action == 'repetitions' else None, prefix='repetitions',
+    )
+    if action == 'repetitions' and repetitions_form.is_valid():
+        upload = repetitions_form.cleaned_data['document']
+        try:
+            output, _, _ = convert_document(upload, [], include_docx=True, normalize=False,
+                                            repetitions=repetitions_form.analysis_config())
+        except ConversionError as error:
+            repetitions_form.add_error(None, str(error))
+        except (BadZipFile, XMLSyntaxError, InvalidXmlError, ValueError, OSError):
+            repetitions_form.add_error('document', 'Nie można przeanalizować dokumentu. Sprawdź plik i zaakceptuj śledzone zmiany. Limit: 500 000 znaków i 20 000 znaków w akapicie.')
+        except Exception:
+            logger.exception('Błąd analizy powtórzeń')
+            repetitions_form.add_error(None, 'Analiza nie powiodła się. Skontaktuj się z administratorem.')
+        else:
+            response = FileResponse(output, as_attachment=True,
+                filename=Path(upload.name).stem[:120] + '_powtorzenia.docx',
+                content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+            response['Cache-Control'] = 'private, no-store'
+            response['X-Content-Type-Options'] = 'nosniff'
+            return response
     if action == 'convert' and conversion_form.is_valid():
         upload = conversion_form.cleaned_data['document']
         try:
@@ -103,11 +126,12 @@ def programs(request):
             response["Cache-Control"] = "private, no-store"
             response["X-Content-Type-Options"] = "nosniff"
             return response
-    if action not in (None, 'clean', 'convert'):
+    if action not in (None, 'clean', 'convert', 'repetitions'):
         form = OdkurzaczForm(request.POST, request.FILES)
         form.add_error(None, 'Wybierz narzędzie i wyślij formularz ponownie.')
     return render(request, "core/programs.html", {
-        "form": form, "conversion_form": conversion_form,
+        "form": form, "conversion_form": conversion_form, "repetitions_form": repetitions_form,
+        "repetitions_open": action == "repetitions",
         'rebuild_token': rebuild_token, 'rebuild_warning': rebuild_warning, 'rebuild_warning_text': rebuild_warning,
         'clean_open': bool(form.errors), "conversion_open": action == 'convert',
     })
