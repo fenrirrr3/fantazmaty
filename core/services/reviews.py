@@ -441,7 +441,6 @@ def save_author_notification(*, user, review_id, author_notified_at):
 
     require_superuser(user)
     review = _lock_review(review_id)
-    _require_current_review(review)
 
     if review.status not in (Review.Status.ACCEPTED, Review.Status.REJECTED):
         raise ValidationError(
@@ -518,6 +517,7 @@ def _resolve_copy_author(review, *, contract_received, update_author_phone=False
             author = Author(
                 first_name=review.author_first_name,
                 last_name=review.author_last_name,
+                pseudonym=review.author_pseudonym,
                 email=email,
                 has_contract=True,
                 phone_number=review.phone_number.strip(),
@@ -553,7 +553,6 @@ def copy_review_to_text(*, user, review_id, contract_received=False, confirmed_c
         raise ValidationError("Nieprawidłowe potwierdzenie otrzymania umowy.")
 
     review = _lock_review(review_id)
-    _require_current_review(review)
 
     if review.copied_text_id is not None:
         return get_object_or_404(Text, pk=review.copied_text_id)
@@ -615,7 +614,6 @@ def copy_review_to_text(*, user, review_id, contract_received=False, confirmed_c
 
 def validate_review_publication(review, *, contracts=False):
     """Shared gates for the normal transfer and the admin popup."""
-    _require_current_review(review)
     if review.status != Review.Status.ACCEPTED:
         raise ValidationError("Do procesu wydawniczego można przenieść wyłącznie przyjęty tekst.")
     if review.author_notified_at is None:

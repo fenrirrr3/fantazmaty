@@ -289,6 +289,7 @@ def _project_reviews(reviews, *, user, include_authors, allow_self_assignment):
                     "author_id": review.author_id,
                     "author_first_name": review.author_first_name,
                     "author_last_name": review.author_last_name,
+                    "author_pseudonym": review.author_pseudonym,
                     "email": review.email,
                     "phone_number": review.phone_number,
                     "author_notified_at": review.author_notified_at,

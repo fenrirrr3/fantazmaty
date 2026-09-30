@@ -530,6 +530,7 @@ def workflow_list_context(*, user, params):
         if value.strip() in dict(active_stage_choices())
     ))
     query = params.get("q", "").strip()
+    hide_ready = params.get("hide_ready", "0").strip() != "0"
 
     # Wyszukiwanie po autorze nie jest wykonywane dla koordynatora.
     from django.db.models import Q
@@ -556,7 +557,7 @@ def workflow_list_context(*, user, params):
         'anthology': ('text__anthology_id', anthology_ids),
     })
     # Paginate texts, never individual stage executions.
-    text_query = Text.objects.all()
+    text_query = _annotated_texts()
     if selected_stages:
         text_query = text_query.filter(pk__in=stages.values('text_id'))
     if anthology_ids:
@@ -568,6 +569,9 @@ def workflow_list_context(*, user, params):
                           | Q(authors__pseudonym__plcontains=term) | Q(authors__email__plcontains=term))
         text_query = text_query.filter(condition)
     texts = _prepared_texts(text_query.distinct(), include_authors)
+    if hide_ready:
+        texts = texts.filter(Q(current_stage_type__isnull=True) |
+                             ~Q(current_stage_type__in=(StageType.READY, StageType.WITHDRAWN)))
     from django.db.models import Min, Max
     texts = texts.annotate(
         summary_started=Min('workflow_stages__started_at'),
@@ -646,7 +650,7 @@ def workflow_list_context(*, user, params):
         'selected_stages': selected_stages,
         'stage_choices': [(v, label) for v, label in active_stage_choices() if v in facets['stage']],
         'role_columns': role_columns, 'selected_anthology_ids': anthology_ids,
-        'query': query, 'sort': sort,
+        'query': query, 'sort': sort, 'hide_ready': hide_ready,
     }
 
 

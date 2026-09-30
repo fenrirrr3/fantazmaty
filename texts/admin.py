@@ -589,6 +589,7 @@ class ReviewAdminForm(NormalizedFormMixin, forms.ModelForm):
             "coauthors",
             "author_first_name",
             "author_last_name",
+            "author_pseudonym",
             "title",
             "genre",
             "length",
@@ -637,6 +638,7 @@ class ReviewAdminForm(NormalizedFormMixin, forms.ModelForm):
         if author is not None:
             cleaned_data["author_first_name"] = author.first_name
             cleaned_data["author_last_name"] = author.last_name
+            cleaned_data["author_pseudonym"] = cleaned_data.get("author_pseudonym") or author.pseudonym
             cleaned_data["email"] = author.email or ""
             if not author.email and not cleaned_data.get("old_reviews"):
                 self.add_error("author", "Uzupełnij adres e-mail autora historycznego przed dodaniem nowego zgłoszenia.")
@@ -656,6 +658,7 @@ class ReviewAdminForm(NormalizedFormMixin, forms.ModelForm):
             "coauthors",
             "author_first_name",
             "author_last_name",
+            "author_pseudonym",
             "title",
             "email",
             "anthology",
@@ -1056,6 +1059,7 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
                     "coauthors",
                     "author_first_name",
                     "author_last_name",
+            "author_pseudonym",
                     "email",
                     "phone_number",
                     "author_message",

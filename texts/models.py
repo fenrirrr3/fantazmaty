@@ -499,6 +499,8 @@ class ReviewQuerySet(models.QuerySet):
 
 
 class Review(NormalizedModelMixin, models.Model):
+    author_pseudonym = models.CharField("pseudonim autora", max_length=100, blank=True, default="")
+
     author_message = models.TextField(
         "wiadomość od autora – tylko superuser", blank=True, default="",
         validators=[MaxLengthValidator(20000)],

@@ -227,7 +227,6 @@ def _render_review_detail(
     )
     can_notify_author = (
         include_author
-        and not review.old_reviews
         and review.status in (Review.Status.ACCEPTED, Review.Status.REJECTED)
         and (review.decision_at is None or review.decision_at <= timezone.localdate())
         and review.copied_text_id is None
@@ -691,7 +690,7 @@ def copy_review_to_text(request, review_id):
     review = _get_review(request.user, review_id)
 
     try:
-        # Serwis wymaga przyjętej, niearchiwalnej recenzji,
+        # Serwis wymaga przyjętej recenzji,
         # powiadomienia autora i potwierdzonej umowy. Tworzy tekst,
         # powiązanie autora i początek procesu w jednej transakcji.
         # Ponowienie żądania nie tworzy kolejnego tekstu.

@@ -79,6 +79,8 @@
                 </details>
             </div>
 
+            <input type="hidden" name="hide_ready" value="0">
+            <label class="boolean-filter-toggle"><input type="checkbox" name="hide_ready" value="1" {% if hide_ready %}checked{% endif %}> Ukryj gotowe i wycofane teksty</label>
             <div class="filter-actions">
                 <button type="submit" class="primary-button">Filtruj</button>
                 <a

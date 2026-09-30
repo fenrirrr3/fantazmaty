@@ -59,6 +59,12 @@ def home(request):
             "can_view_authors": can_view_author_data(request.user),
             "can_view_reports": can_view_reports(request.user),
             "today": today,
+            "pending_publication_reviews": (
+                Review.objects.filter(status=Review.Status.ACCEPTED,
+                    author_notified_at__isnull=False, copied_text__isnull=True)
+                    .select_related('anthology').order_by('author_notified_at', 'pk')
+                if request.user.is_superuser else []
+            ),
             "pending_notification_count": Review.objects.awaiting_notification().count() if request.user.is_superuser else 0,
         },
     )

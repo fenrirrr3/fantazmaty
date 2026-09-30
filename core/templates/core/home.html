@@ -12,6 +12,15 @@
     </header>
 
     {% if user.is_superuser %}<section class="details-card notification-queue{% if pending_notification_count %} notification-urgent{% endif %}"><h2>Autorzy do powiadomienia</h2><a class="{% if pending_notification_count %}notification-alert{% else %}detail-link{% endif %}" href="{% url 'core:notification_queue' %}">Obsłuż zgłoszenia: {{ pending_notification_count }}</a><p><a href="{% url 'core:scheduled_rejections' %}">Zaplanowane odrzucenia</a></p></section>{% endif %}
+    {% if user.is_superuser %}
+    <section class="details-card">
+        <h2>Przyjęte teksty do dodania do procesu wydawniczego</h2>
+        <p class="form-help">Autor został powiadomiony, ale zgłoszenie nie jest jeszcze powiązane z tekstem w procesie wydawniczym.</p>
+        <ul>{% for review in pending_publication_reviews %}
+            <li><a href="{% url 'core:assigned_review_detail' review.pk %}">{{ review.title }}</a> – {{ review.author_first_name }} {{ review.author_last_name }} ({{ review.anthology.title }}){% if review.old_reviews %} – archiwalne{% endif %}</li>
+        {% empty %}<li>Brak tekstów oczekujących na przeniesienie.</li>{% endfor %}</ul>
+    </section>
+    {% endif %}
     {% if leave_information %}
         <div
             class="leave-warning{% if leave_information.is_active %} is-active{% endif %}"

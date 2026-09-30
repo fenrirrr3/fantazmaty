@@ -1,5 +1,5 @@
 from core.author_access import contact_authors
-from core.permissions import is_coordinator
+from core.permissions import is_coordinator, can_view_review_archive
 from django.contrib.auth.decorators import login_required
 from django.db.models import Prefetch, Q
 from django.shortcuts import render
@@ -112,7 +112,7 @@ def _search_texts(query, *, include_authors):
     return results
 
 
-def _search_reviews(query, *, include_authors):
+def _search_reviews(query, *, include_authors, include_archived=True):
     fields = ["title", "anthology__title"]
 
     if include_authors:
@@ -120,6 +120,7 @@ def _search_reviews(query, *, include_authors):
             [
                 "author_first_name",
                 "author_last_name",
+                "author_pseudonym",
                 "email",
                 "author__first_name",
                 "author__last_name",
@@ -130,13 +131,14 @@ def _search_reviews(query, *, include_authors):
 
     queryset = (
         Review.objects.filter(
-            old_reviews=False,
             **({} if include_authors else {"is_hidden": False}),
         )
         .filter(_matching_terms(query, fields))
         .select_related("anthology")
         .order_by("title", "pk")
     )
+    if not include_archived:
+        queryset = queryset.filter(old_reviews=False)
     results = []
 
     for review in queryset[:RESULT_LIMIT]:
@@ -282,6 +284,7 @@ def global_search(request):
                     "reviews": _search_reviews(
                         query,
                         include_authors=include_authors,
+                        include_archived=can_view_review_archive(request.user),
                     ),
                     "authors": (
                         _search_authors(query, request.user)
