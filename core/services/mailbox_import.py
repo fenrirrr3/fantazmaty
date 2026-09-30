@@ -139,7 +139,11 @@ def parse_message(uid, raw, *, submission=True):
     text = body.get_content()
     if body.get_content_type() == 'text/html':
         from lxml import html
-        root = html.fromstring(text)
+        from lxml.etree import ParserError, XMLSyntaxError
+        try:
+            root = html.fromstring(text)
+        except (ParserError, XMLSyntaxError, ValueError):
+            raise MailboxError(f'Wiadomość {uid}: treść HTML jest pusta lub nie można jej odczytać. Użyj ręcznego importu z podglądem albo poproś o ponowne przesłanie danych zgłoszenia. Niczego nie zaimportowano.') from None
         for node in root.xpath('//br | //p | //div | //tr'):
             node.tail = '\n' + (node.tail or '')
         text = root.text_content()
@@ -162,10 +166,9 @@ def parse_message(uid, raw, *, submission=True):
         if any(line.strip() == marker for line in trailing):
             stop = next(i for i, line in enumerate(trailing) if line.strip() == marker)
             author_message = unbracket('\n'.join([author_message, *trailing[:stop]]).strip())
-        elif any(line.strip() for line in trailing):
-            raise MailboxError(f'Wiadomość {uid}: po wierszu zgłoszenia znajdują się dalsze linie. Aby oddzielić wiadomość autora od stopki, umieść „{marker}” w osobnej linii bezpośrednio po wiadomości autora. Możesz też użyć ręcznego importu z podglądem. Niczego nie zaimportowano.')
         else:
-            author_message = unbracket(author_message.strip())
+            # Marker is optional; without it all remaining lines belong to the author message.
+            author_message = unbracket('\n'.join([author_message, *trailing]).strip())
         recruitment = re.search(r'Nabór:\s*[„"]([^”"]+)[”"]', str(message.get('Subject', '')), re.IGNORECASE)
         if not recruitment:
             raise MailboxError(f'Wiadomość {uid}: w temacie brakuje nazwy antologii w formacie Nabór: „Tytuł antologii”.')

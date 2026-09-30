@@ -79,9 +79,10 @@ class MailBoundaryTests(SimpleTestCase):
         return m.as_bytes()
     def test_invalid_legacy_consent_not_silently_dropped(self):
         with self.assertRaises(MailboxError):parse_message(1,self.raw('Jan Autor;T;fantasy;100;jan@example.com;;Test;premierach, literowka'))
-    def test_multiline_requires_boundary_and_footer_excluded(self):
+    def test_multiline_accepts_optional_boundary_and_footer_excluded(self):
         line='Jan Autor;T;fantasy;;100;jan@example.com;;premierach;Dziękuję.'
-        with self.assertRaises(MailboxError):parse_message(1,self.raw(line+'\nDodatkowa treść'))
+        without_marker=parse_message(1,self.raw(line+'\nDodatkowa treść'))
+        self.assertEqual(parse_review_records(without_marker['record'])[0][0]['author_message'], 'Dziękuję.\nDodatkowa treść')
         result=parse_message(1,self.raw(line+'\nDrugi wiersz.\n--- KONIEC WIADOMOŚCI AUTORA ---\nIP: 127.0.0.1'))
         row=parse_review_records(result['record'])[0][0]
         self.assertEqual(row['author_message'],'Dziękuję.\nDrugi wiersz.')
