@@ -1,0 +1,15 @@
+{% if mobile_sort_columns %}
+<form method="get" action="{{ request.path }}" class="mobile-table-sort" aria-label="Sortowanie listy">
+    {% for name, values in request.GET.lists %}{% if name != "page" and name != "sort" %}{% for value in values %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}{% endif %}{% endfor %}
+    <label>Sortowanie
+        <select name="sort">
+            <option value=""{% if not request.GET.sort %} selected{% endif %}>Kolejność domyślna</option>
+            {% for label, key in mobile_sort_columns %}{% with reverse_key="-"|add:key %}
+            <option value="{{ key }}" {% if request.GET.sort == key %}selected{% endif %}>{{ label }} – rosnąco</option>
+            <option value="{{ reverse_key }}" {% if request.GET.sort == reverse_key %}selected{% endif %}>{{ label }} – malejąco</option>
+            {% endwith %}{% endfor %}
+        </select>
+    </label>
+    <button type="submit" class="secondary-button">Sortuj</button>
+</form>
+{% endif %}

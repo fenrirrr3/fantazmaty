@@ -1,0 +1,16 @@
+{% load i18n %}
+<div class="app-{{ app.app_label }} module">
+  <table>
+    <caption class="visually-hidden">{{ app.name }}</caption>
+    <thead class="visually-hidden"><tr><th scope="col">{% translate 'Model name' %}</th><th scope="col">{% translate 'Add link' %}</th>{% if show_changelinks %}<th scope="col">{% translate 'Change or view list link' %}</th>{% endif %}</tr></thead>
+    {% for model in app.models %}{% with model_name=model.object_name|lower %}
+    <tr class="model-{{ model_name }}{% if model.admin_url in request.path %} current-model{% endif %}">
+      <th scope="row" id="{% if show_changelinks %}main{% else %}sidebar{% endif %}-{{ app.app_label }}-{{ model_name }}">
+        {% if model.admin_url %}<a href="{{ model.admin_url }}"{% if model.admin_url in request.path %} aria-current="page"{% endif %}>{{ model.name }}</a>{% else %}{{ model.name }}{% endif %}
+      </th>
+      <td>{% if model.add_url %}<a href="{{ model.add_url }}" class="addlink" aria-label="{% translate 'Add' %}: {{ model.name }}">{% translate 'Add' %}</a>{% endif %}</td>
+      {% if show_changelinks %}<td>{% if model.admin_url %}<a href="{{ model.admin_url }}" class="{% if model.view_only %}viewlink{% else %}changelink{% endif %}" aria-label="{% if model.view_only %}{% translate 'View' %}{% else %}{% translate 'Change' %}{% endif %}: {{ model.name }}">{% if model.view_only %}{% translate 'View' %}{% else %}{% translate 'Change' %}{% endif %}</a>{% endif %}</td>{% endif %}
+    </tr>
+    {% endwith %}{% endfor %}
+  </table>
+</div>

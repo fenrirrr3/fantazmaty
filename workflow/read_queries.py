@@ -112,7 +112,7 @@ def available_stages(user, access):
     entry = Q(repetition__isnull=False) | Q(~Exists(stages.exclude(pk=OuterRef('pk'))))
     query = query.filter(~Q(stage_type__in=('editing', 'author_editing')) | entry)
     query = query.filter(~Q(stage_type='first_verification') | entry | Exists(
-        stages.filter(stage_type='editing', started_at__isnull=False)))
+        stages.filter(stage_type='editing').filter(Q(started_at__isnull=False) | Q(is_completed=True))))
     query = query.filter(~Q(stage_type='second_verification') | entry | (
         Exists(stages.filter(stage_type='first_verification', is_completed=True))
         & ~Exists(open_stages(stages).filter(stage_type__in=('editing', 'author_editing')))))
@@ -125,7 +125,12 @@ def dashboard_querysets(user, today):
     active_texts = classified.filter(work_active=True).values('pk')
     waiting_texts = classified.filter(work_waiting=True).values('pk')
     stages = current_stages()
-    active = active_stages(own_stages(user), today).filter(text_id__in=active_texts).filter(
+    editor = A.objects.current_cycle().filter(text_id=OuterRef('text_id'),
+        workflow_cycle=OuterRef('workflow_cycle'), role=A.Role.EDITOR, assigned_to_id=user.pk)
+    dashboard_work = S.objects.filter(
+        Q(pk__in=own_stages(user).values('pk')) |
+        (Q(stage_type=S.StageType.AUTHOR_EDITING) & Q(Exists(editor))))
+    active = active_stages(dashboard_work, today).filter(text_id__in=active_texts).filter(
         workflow_cycle=F('text__current_workflow_cycle'), is_current=True).filter(~Exists(terminal(stages))).order_by(F('started_at').desc(nulls_last=True), '-pk')
     reserved = reserved_assignments(user, today).filter(text_id__in=waiting_texts).filter(workflow_cycle=F('text__current_workflow_cycle')).filter(
         ~Exists(terminal(stages))).order_by(F('assigned_at').desc(nulls_last=True), '-pk')

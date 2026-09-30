@@ -1,0 +1,5 @@
+<details id="{% if show_changelinks %}group{% else %}sidebar-group{% endif %}-{{ group.app_label }}" class="cms-admin-group" data-admin-group="{{ group.app_label }}"{% if not group.collapsed %} open{% endif %}>
+  <summary>{{ group.name }}</summary>
+  {% if group.models %}{% include "admin/includes/cms_model_list.html" with app=group %}{% endif %}
+  {% for subgroup in group.subgroups %}{% include "admin/includes/cms_navigation_group.html" with group=subgroup %}{% endfor %}
+</details>

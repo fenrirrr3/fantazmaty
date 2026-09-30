@@ -595,9 +595,12 @@ def claim_stage(text, stage_type, user, started_at=None):
 
     _assign_role(text, role, user)
 
-    # Pierwszy weryfikator rezerwuje pracę. Rozpoczęcie następuje
-    # oddzielnie, po przekazaniu tekstu przez redaktora.
+    # Podczas redakcji W1 jest rezerwacją. Po przekazaniu tekstu
+    # przejęcie pierwszej weryfikacji od razu rozpoczyna pracę.
     if stage_type == StageType.FIRST_VERIFICATION:
+        if not current_stage_queryset(text).filter(stage_type__in=(StageType.EDITING, StageType.AUTHOR_EDITING),
+                is_completed=False, ended_at__isnull=True).exists():
+            _start_stage(stage, transition_date)
         return stage
 
     _start_stage(stage, transition_date)

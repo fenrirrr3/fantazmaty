@@ -104,7 +104,8 @@ class WorkflowChanges(TestCase):
         self.client.force_login(self.admin)
         response=self.client.get(reverse('core:workflow_list'))
         self.assertContains(response,'Redaktor');self.assertNotContains(response,'Stan etapu')
-        self.assertEqual(response.context['role_columns'],[('editor','Redaktor')])
+        self.assertIn(('editor', 'Redaktor'), response.context['role_columns'])
+        self.assertGreater(len(response.context['role_columns']), 1)
         book=Anthology.objects.create(title='Antologia')
         self.assertContains(self.client.get(reverse('core:anthology_detail',args=[book.pk])),reverse('core:text_list')+'?anthology='+str(book.pk)+'&amp;hide_ready=0')
 

@@ -129,6 +129,7 @@ class AnthologyAdmin(admin.ModelAdmin):
         (
             "Okładka",
             {
+                "classes": ("cms-after-inlines",),
                 "fields": (
                     "cover_status",
                     "cover_author",
@@ -138,7 +139,7 @@ class AnthologyAdmin(admin.ModelAdmin):
         ),
         (
             "Druk",
-            {"fields": ("print_status",)},
+            {"classes": ("cms-after-inlines",), "fields": ("print_status",)},
         ),
     )
     ordering = ("title", "pk")
@@ -195,27 +196,71 @@ class TextNoteInline(SuperuserOnlyAdminMixin, admin.StackedInline):
     verbose_name_plural = "Notatki do tekstu"
 
 
+def review_text_initial(review):
+    """Only persisted review data is authoritative for the publication popup."""
+    authors = list(review.coauthors.values_list('pk', flat=True))
+    if review.author_id:
+        authors.append(review.author_id)
+    elif review.email:
+        matches = list(Author.objects.filter(email__iexact=review.email).values_list('pk', flat=True)[:2])
+        if len(matches) == 1:
+            authors.append(matches[0])
+    return {'title': review.title, 'length': review.length, 'content_warnings': review.content_warnings,
+            'anthology': review.anthology_id, 'authors': sorted(set(authors)),
+            'source_author_first_name': review.author_first_name, 'source_author_last_name': review.author_last_name,
+            'source_author_email': review.email, 'source_author_pseudonym': review.author_pseudonym}
+
+
+def review_source_signature(review):
+    # Phone and contract confirmations also affect publication preparation.
+    return {**review_text_initial(review), 'author': review.author_id, 'phone': review.phone_number,
+            'status': review.status, 'detached': review.publication_detached}
+
+
 class TextAdminForm(NormalizedFormMixin, forms.ModelForm):
     normalization_fields = TEXT_FIELDS
     source_author_first_name = forms.CharField(required=False, widget=forms.HiddenInput)
     source_author_last_name = forms.CharField(required=False, widget=forms.HiddenInput)
     source_author_email = forms.EmailField(required=False, widget=forms.HiddenInput)
+    source_author_pseudonym = forms.CharField(required=False, widget=forms.HiddenInput)
+    source_contract_received = forms.BooleanField(label="Potwierdzam otrzymanie umowy autora", required=False)
+    source_coauthor_contracts = forms.ModelMultipleChoiceField(label="Potwierdzam umowy wskazanych współautorów", queryset=Author.objects.none(), required=False, widget=forms.CheckboxSelectMultiple)
+    source_update_author_phone = forms.BooleanField(label="Uaktualnij telefon autora danymi zgłoszenia", required=False)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        data = self.data if self.is_bound else self.initial
-        if data.get("source_author_email") and "authors" in self.fields:
-            self.fields["authors"].required = False
-            self.fields["authors"].help_text = "Jeśli nie wybierzesz profilu, autor zostanie dopasowany po e-mailu lub utworzony z danych recenzji."
+        source = getattr(self, 'source_review', None)
+        if source is not None:
+            canonical = review_text_initial(source)
+            # These fields describe the saved source, not another editable author form.
+            for name in ('authors', 'source_author_first_name', 'source_author_last_name',
+                         'source_author_email', 'source_author_pseudonym'):
+                if name in self.fields:
+                    self.fields[name].disabled = True
+                    self.initial[name] = canonical[name]
+            self.fields['authors'].required = False
+            self.fields['authors'].help_text = 'Autorzy zapisanej recenzji. Aby ich zmienić, zapisz zmiany w recenzji i ponownie użyj +.'
+        elif self.initial.get('source_author_email') and 'authors' in self.fields:
+            self.fields['authors'].required = False
 
     def clean(self):
         data = super().clean()
-        if data.get('source_author_email') or not data.get("authors"):
-            email = data.get("source_author_email")
-            if not email or not data.get("source_author_first_name") or not data.get("source_author_last_name"):
-                self.add_error("authors", "Wybierz autora albo uzupełnij dane autora w recenzji przed użyciem +.")
-            elif Author.objects.filter(email__iexact=email).count() > 1:
-                self.add_error("authors", "Kilku autorów ma ten e-mail. Wybierz właściwy profil.")
+        source = getattr(self, 'source_review', None)
+        if source is not None:
+            from core.services.reviews import resolve_publication_authors
+            try:
+                resolve_publication_authors(source,
+                    contract_received=data.get('source_contract_received', False),
+                    confirmed_coauthor_ids=[a.pk for a in data.get('source_coauthor_contracts', [])],
+                    update_author_phone=data.get('source_update_author_phone', False), persist=False)
+            except ValidationError as error:
+                self.add_error(None, ' '.join(error.messages))
+            if data.get('anthology') and data['anthology'].pk != source.anthology_id:
+                self.add_error('anthology', 'Tekst musi należeć do antologii zapisanej recenzji.')
+            if getattr(self, 'source_error', None):
+                self.add_error(None, self.source_error)
+        elif not data.get('authors'):
+            self.add_error('authors', 'Wybierz autora.')
         return data
 
     class Meta:
@@ -239,29 +284,17 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
     def get_changeform_initial_data(self, request):
         initial = super().get_changeform_initial_data(request)
-        for key in ('source_author_first_name', 'source_author_last_name', 'source_author_email'):
+        for key in ('source_author_first_name', 'source_author_last_name', 'source_author_email', 'source_author_pseudonym'):
             initial.pop(key, None)
         source = request.GET.get("source_review", "")
         if source.isdecimal() and len(source) < 19:
             review = get_object_or_404(Review, pk=int(source))
-            for field in ("title", "length", "content_warnings", "anthology_id"):
-                initial[field.removesuffix("_id")] = getattr(review, field)
-            authors = list(review.coauthors.values_list("pk", flat=True))
-            if review.author_id:
-                authors.insert(0, review.author_id)
-            elif review.email:
-                matches = list(Author.objects.filter(email__iexact=review.email).values_list("pk", flat=True)[:2])
-                if len(matches) == 1:
-                    authors.insert(0, matches[0])
-            initial["authors"] = authors
-            initial["source_author_first_name"] = review.author_first_name
-            initial["source_author_last_name"] = review.author_last_name
-            initial["source_author_email"] = review.email
-        token = request.GET.get('prefill', '')
-        snapshots = request.session.get('review_text_prefills', {})
-        snapshot = snapshots.get(token, {})
-        if snapshot.get('user') == request.user.pk and time.time() - snapshot.get('at', 0) < 900:
-            initial.update(snapshot.get('data', {}))
+            initial.update(review_text_initial(review))
+            initial['source_review_id'] = review.pk
+        source_review = getattr(request, '_source_review', None)
+        if source_review is not None:
+            initial.update(review_text_initial(source_review))
+            initial['source_review_id'] = source_review.pk
         # No personal data accepted from query strings.
         return initial
 
@@ -295,34 +328,33 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     readonly_fields = ("manual_status_link", "coordinator_note_updated_at", "current_workflow_cycle", "import_source", "import_source_row")
 
     fieldsets = (
-        (
-            "Tekst",
-            {
-                "fields": (
-                    "title",
-                    "authors",
-                    "anthology",
-                    "manual_status_link",
-                ),
-            },
-        ),
-        (
-            "Informacje o tekście",
-            {
-                "fields": (
-                    "length",
-                    "content_warnings",
-                    "coordinator_note", "coordinator_note_updated_at",
-                    "file_url",
-                    "source_author_first_name", "source_author_last_name", "source_author_email",
-                ),
-            },
-        ),
-        (
-            "Dane techniczne i pochodzenie importu",
-            {"classes": ("collapse",), "fields": ("current_workflow_cycle", "import_source", "import_source_row")},
-        ),
+        ('Tekst', {'fields': ('title', 'authors', 'anthology', 'length', 'content_warnings', 'file_url',
+            'source_author_first_name', 'source_author_last_name', 'source_author_email', 'source_author_pseudonym',
+            'source_contract_received', 'source_coauthor_contracts', 'source_update_author_phone')}),
+        ('Status i zarządzanie', {'fields': ('manual_status_link',)}),
+        ('Notatki koordynatora', {'classes': ('cms-after-workflow',),
+            'fields': ('coordinator_note', 'coordinator_note_updated_at')}),
+        ('Dane techniczne i pochodzenie importu', {'classes': ('collapse', 'cms-after-inlines'),
+            'fields': ('current_workflow_cycle', 'import_source', 'import_source_row')}),
     )
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        field = form.base_fields.get('source_coauthor_contracts')
+        source = getattr(request, '_source_review', None)
+        if field is not None:
+            field.queryset = source.coauthors.filter(has_contract=False) if source is not None else Author.objects.none()
+        form.source_review = source
+        form.source_error = getattr(request, '_source_form_error', None)
+        return form
+
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = super().get_fieldsets(request, obj)
+        if obj is None and getattr(request, '_source_review', None) is not None:
+            return fieldsets
+        confirmations = {'source_contract_received', 'source_coauthor_contracts', 'source_update_author_phone'}
+        return tuple((name, {**options, 'fields': tuple(field for field in options['fields'] if field not in confirmations)})
+                     for name, options in fieldsets)
+
     inlines = (WorkflowStageInline, TextNoteInline,)
 
     def save_formset(self, request, form, formset, change):
@@ -346,12 +378,15 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         super().save_related(request, form, formsets, change)
         if not change:
             text = form.instance
-            if form.cleaned_data.get("source_author_email"):
-                email = form.cleaned_data["source_author_email"]
-                author = Author.objects.filter(email__iexact=email).first()
-                if author is None:
-                    author = Author.objects.create(first_name=form.cleaned_data["source_author_first_name"], last_name=form.cleaned_data["source_author_last_name"], email=email)
-                text.authors.add(author)
+            source_review = getattr(request, '_source_review', None)
+            if source_review is not None:
+                from core.services.reviews import resolve_publication_authors
+                author, coauthors = resolve_publication_authors(source_review,
+                    contract_received=form.cleaned_data.get('source_contract_received', False),
+                    confirmed_coauthor_ids=[a.pk for a in form.cleaned_data.get('source_coauthor_contracts', [])],
+                    update_author_phone=form.cleaned_data.get('source_update_author_phone', False))
+                text.authors.set([author, *coauthors])
+                source_review.author = author
             stages = WorkflowStage.objects.using(text._state.db).filter(
                 text_id=text.pk,
                 workflow_cycle=text.current_workflow_cycle,
@@ -374,23 +409,34 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             if not authors or any(not author.has_contract for author in authors):
                 raise ValidationError("Każdy autor tekstu musi mieć potwierdzoną umowę. Nie zapisano tekstu.")
             source_review.copied_text = form.instance
-            source_review.save(update_fields=['copied_text'])
+            source_review.save(update_fields=['copied_text', 'author'])
 
     def changeform_view(self, request, object_id=None, form_url='', extra_context=None):
         try:
             with transaction.atomic():
                 return self._validated_changeform_view(request, object_id, form_url, extra_context)
         except ValidationError as error:
-            return HttpResponseBadRequest(" ".join(error.messages), content_type='text/plain; charset=utf-8')
+            # The save transaction rolled back. Render the original bound form with its error.
+            if request.method == 'POST' and getattr(request, '_source_review', None) is not None:
+                request._source_form_error = ' '.join(error.messages)
+                request._source_review.refresh_from_db()
+                with transaction.atomic():
+                    return super().changeform_view(request, object_id, form_url, extra_context)
+            return HttpResponseBadRequest(' '.join(error.messages), content_type='text/plain; charset=utf-8')
 
     def _validated_changeform_view(self, request, object_id=None, form_url='', extra_context=None):
         token = request.GET.get('prefill')
-        if object_id is None and token:
-            snapshot = request.session.get('review_text_prefills', {}).get(token, {})
-            if snapshot.get('user') != request.user.pk or not 0 <= time.time() - snapshot.get('at', 0) < 900:
-                return HttpResponseBadRequest('Dane formularza wygasły. Zamknij okno i ponownie użyj + w recenzji. Nie zapisano tekstu.')
+        source_id = request.GET.get('source_review', '')
+        if object_id is None and (token or source_id):
+            if token:
+                snapshot = request.session.get('review_text_prefills', {}).get(token, {})
+                if snapshot.get('user') != request.user.pk or not 0 <= time.time() - snapshot.get('at', 0) < 900:
+                    return HttpResponseBadRequest('Dane formularza wygasły. Zamknij okno i ponownie użyj + w recenzji. Nie zapisano tekstu.')
+                source_id = snapshot.get('review_id')
+            elif not source_id.isdecimal() or len(source_id) >= 19:
+                return HttpResponseBadRequest('Nieprawidłowa recenzja źródłowa.')
             with transaction.atomic():
-                review = Review.objects.select_for_update().filter(pk=snapshot.get('review_id')).first()
+                review = Review.objects.select_for_update().filter(pk=source_id).first()
                 if review is None:
                     return HttpResponseBadRequest('Recenzja nie istnieje. Zamknij okno i odśwież stronę.')
                 if review.copied_text_id:
@@ -398,11 +444,15 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
                 from core.services.reviews import validate_review_publication
                 try:
                     with transaction.atomic():
-                        validate_review_publication(review, contracts=True)
+                        validate_review_publication(review)
                         request._source_review = review
+                        if token and snapshot.get('signature') is not None and snapshot['signature'] != review_source_signature(review):
+                            request._source_form_error = 'Recenzja zmieniła się po otwarciu okna. Zamknij okno, sprawdź recenzję i ponownie użyj +.'
                         return super().changeform_view(request, object_id, form_url, extra_context)
-                except ValidationError as exc:
-                    return HttpResponseBadRequest(" ".join(exc.messages))
+                except ValidationError:
+                    if getattr(request, '_source_review', None) is not None:
+                        raise
+                    return HttpResponseBadRequest('Recenzja nie spełnia warunków przeniesienia. Sprawdź jej status i antologię.')
         return super().changeform_view(request, object_id, form_url, extra_context)
 
     def get_urls(self):
@@ -434,10 +484,11 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         class AddStageForm(forms.Form):
             kind = forms.ChoiceField(label='Brakujący etap', choices=[(k,v) for k,v in active_stage_choices() if k in STAGE_ROLES])
             performer = PerformerChoiceField(label='Wykonawca', required=False,
-                queryset=get_user_model().objects.filter(is_active=True).order_by('last_name','first_name','pk'),
+                queryset=get_user_model().objects.all().order_by('last_name','first_name','pk'),
                 widget=AutocompleteSelect(WorkflowRoleAssignment._meta.get_field('assigned_to'), admin.site))
             started_at = forms.DateField(label='Rozpoczęcie', required=False, widget=forms.DateInput(attrs={'type':'date'}, format='%Y-%m-%d'))
             ended_at = forms.DateField(label='Zakończenie', required=False, widget=forms.DateInput(attrs={'type':'date'}, format='%Y-%m-%d'))
+            historical = forms.BooleanField(label='Uzupełnij zakończoną pracę historyczną (daty opcjonalne)', required=False, help_text='Nie rozpoczyna zadania ani nie zwiększa obciążenia. Można wybrać dawnego nieaktywnego wykonawcę.')
             version = forms.IntegerField(widget=forms.HiddenInput)
         form = AddStageForm(request.POST if request.method == 'POST' else None, initial={'version':version_of(obj)})
         if request.method == 'POST' and form.is_valid():
@@ -562,6 +613,7 @@ class TextNoteAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
 class ReviewAdminForm(NormalizedFormMixin, forms.ModelForm):
     normalization_fields = REVIEW_FIELDS
+    confirm_source_mismatch = forms.BooleanField(label='Potwierdzam rozbieżność tytułu lub autorów z wybranym tekstem', required=False)
     confirm_existing_text = forms.BooleanField(
         label="Potwierdzam powiązanie recenzji z wybranym istniejącym tekstem",
         required=False,
@@ -604,6 +656,7 @@ class ReviewAdminForm(NormalizedFormMixin, forms.ModelForm):
             "author_notified_at",
             "decision_at",
             "copied_text",
+            "publication_detached",
         )
 
     def __init__(self, *args, **kwargs):
@@ -649,6 +702,20 @@ class ReviewAdminForm(NormalizedFormMixin, forms.ModelForm):
                         name,
                         "Uzupełnij dane albo wybierz autora z bazy.",
                     )
+
+        link_fields = {'copied_text', 'title', 'author', 'coauthors', 'author_first_name', 'author_last_name', 'email', 'anthology', 'status'}
+        if linked and not self.errors and (self.instance._state.adding or link_fields.intersection(self.changed_data)):
+            from copy import copy
+            from core.source_reviews import validate_source_review_link
+            source = copy(self.instance)
+            for key in ('title', 'status', 'anthology', 'author', 'author_first_name', 'author_last_name', 'email'):
+                if key in cleaned_data:
+                    setattr(source, key, cleaned_data[key])
+            try:
+                validate_source_review_link(linked, source, coauthors=cleaned_data.get('coauthors', ()),
+                    confirm_mismatch=cleaned_data.get('confirm_source_mismatch', False))
+            except ValidationError as error:
+                self.add_error('copied_text', error)
 
         if self.errors:
             return cleaned_data
@@ -873,6 +940,7 @@ class ArchivedReviewInlineMixin(SuperuserOnlyAdminMixin):
 
 
 class ReviewersInline(ArchivedReviewInlineMixin, admin.StackedInline):
+    verbose_name = "Ogólne uwagi do zgłoszenia"
     verbose_name_plural = "Ogólne uwagi do zgłoszenia"
     model = Reviewers
     extra = 0
@@ -1014,6 +1082,7 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         "title__plcontains",
         "author_first_name__plcontains",
         "author_last_name__plcontains",
+        "author_pseudonym__plcontains",
         "email__plcontains",
         "phone_number__plcontains",
         "content_warnings__plcontains",
@@ -1045,9 +1114,7 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
                     "genre",
                     "length",
                     "content_warnings",
-                    "old_reviews",
-        "is_hidden",
-                    "created_at",
+                    "is_hidden",
                 ),
             },
         ),
@@ -1067,33 +1134,35 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             },
         ),
         (
-            "Kontrola zgłoszenia",
-            {
-                "fields": (
-                    "confirm_submission_warnings",
-                    "submission_warnings_token",
-                ),
-            },
-        ),
-        (
             "Decyzja",
             {
                 "fields": (
                     "status",
-                    "decision_at",
                     "author_notified_at",
                 ),
             },
         ),
         (
             "Proces wydawniczy",
-            {"fields": ("copied_text", "confirm_existing_text")},
+            {"classes": ("cms-after-inlines",), "fields": ("copied_text", "confirm_existing_text", "confirm_source_mismatch", "publication_detached")},
         ),
+        (
+            "Kontrola zgłoszenia",
+            {
+                "classes": ("collapse", "cms-after-inlines"),
+                "fields": (
+                    "confirm_submission_warnings",
+                    "submission_warnings_token",
+                ),
+            },
+        ),
+        ('Historia zgłoszenia', {'classes': ('collapse', 'cms-after-inlines'),
+            'fields': ('created_at', 'decision_at', 'old_reviews')}),
     )
 
     ordering = ("-created_at", "-pk")
     date_hierarchy = "created_at"
-    inlines = (ReviewersInline, ReviewAssignmentInline)
+    inlines = (ReviewAssignmentInline, ReviewersInline)
     list_per_page = 50
     show_full_result_count = False
 
@@ -1126,18 +1195,27 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             return JsonResponse({'error': 'Najpierw zapisz recenzję, a następnie użyj +.'}, status=400)
         if review.copied_text_id:
             return JsonResponse({'error': 'Recenzja ma już powiązany tekst. Odśwież formularz.'}, status=409)
-        fields = ('title', 'length', 'content_warnings', 'anthology',
-                  'source_author_first_name', 'source_author_last_name', 'source_author_email')
-        data = {key: request.POST.get(key, '') for key in fields}
-        if any(len(value) > 10000 for value in data.values()):
-            return JsonResponse({'error': 'Dane formularza są zbyt długie.'}, status=400)
-        data['authors'] = request.POST.getlist('authors')[:100]
+        from core.services.reviews import validate_review_publication
+        try:
+            validate_review_publication(review)
+        except ValidationError as error:
+            return JsonResponse({'error': ' '.join(error.messages)}, status=400)
+        data = review_text_initial(review)
+        # Refuse a mixture of unsaved form data and the persisted source.
+        for key in ('title', 'length', 'content_warnings', 'anthology', 'source_author_first_name',
+                    'source_author_last_name', 'source_author_email', 'source_author_pseudonym'):
+            if key in request.POST and request.POST[key] != str(data[key] if data[key] is not None else ''):
+                return JsonResponse({'error': 'Najpierw zapisz zmiany w recenzji, a następnie ponownie użyj +.'}, status=409)
+        if ('source_author_id' in request.POST and request.POST['source_author_id'] != str(review.author_id or '')) or (
+                'source_coauthors_present' in request.POST and set(request.POST.getlist('source_coauthors')) !=
+                {str(pk) for pk in review.coauthors.values_list('pk', flat=True)}):
+            return JsonResponse({'error': 'Najpierw zapisz zmiany autorów w recenzji, a następnie ponownie użyj +.'}, status=409)
         now = time.time()
         snapshots = {key: value for key, value in request.session.get('review_text_prefills', {}).items()
                      if now - value.get('at', 0) < 900}
         snapshots = dict(list(snapshots.items())[-9:])
         token = secrets.token_urlsafe(24)
-        snapshots[token] = {'user': request.user.pk, 'at': now, 'data': data, 'review_id': review.pk}
+        snapshots[token] = {'user': request.user.pk, 'at': now, 'data': data, 'review_id': review.pk, 'signature': review_source_signature(review)}
         request.session['review_text_prefills'] = snapshots
         url = reverse(f'{self.admin_site.name}:texts_text_add')
         return JsonResponse({'url': url + '?_popup=1&prefill=' + token})
@@ -1163,6 +1241,8 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
                 "last_name": author.last_name,
                 "email": author.email,
                 "is_blacklisted": author.is_blacklisted,
+                "pseudonym": author.pseudonym,
+                "phone_number": author.phone_number,
                 "warning": (
                     "Autor znajduje się na czarnej liście."
                     if author.is_blacklisted

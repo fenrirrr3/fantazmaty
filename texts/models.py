@@ -499,6 +499,21 @@ class ReviewQuerySet(models.QuerySet):
 
 
 class Review(NormalizedModelMixin, models.Model):
+    publication_detached = models.BooleanField("Świadomie odłączono od tekstu", default=False,
+        help_text="Nie pokazuj jako nowego tekstu do przeniesienia. Odznacz wyłącznie, jeśli świadomie chcesz ponownie utworzyć tekst.")
+
+    def save(self, *args, **kwargs):
+        fields = kwargs.get('update_fields')
+        if self.pk and (fields is None or 'copied_text' in fields or 'copied_text_id' in fields):
+            previous = type(self).objects.filter(pk=self.pk).values_list('copied_text_id', flat=True).first()
+            if previous and not self.copied_text_id:
+                self.publication_detached = True
+            elif self.copied_text_id:
+                self.publication_detached = False
+            if fields is not None:
+                kwargs['update_fields'] = set(fields) | {'publication_detached'}
+        return super().save(*args, **kwargs)
+
     author_pseudonym = models.CharField("pseudonim autora", max_length=100, blank=True, default="")
 
     author_message = models.TextField(

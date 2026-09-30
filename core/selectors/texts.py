@@ -634,7 +634,18 @@ def workflow_list_context(*, user, params):
                 elif live:
                     state, tone = 'Oczekuje', 'pending'
                 elif work and all(stage.is_completed or stage.ended_at for stage in work):
-                    state, tone = 'Zakończone', 'completed'
+                    editor_current = role == 'editor' and any(
+                        a.role == role and a.is_current and a.assigned_to_id == entry['user']['pk']
+                        for a in text.summary_assignments)
+                    editing_approved = any(s.stage_type == StageType.EDITING_CONTROL and s.is_current and s.is_completed
+                                           for s in text.summary_stages)
+                    imported_ready = (any(s.stage_type == StageType.READY and s.is_current for s in text.summary_stages)
+                                      and any(s.stage_type == StageType.EDITING and s.imported_completed and s.is_completed
+                                              for s in text.summary_stages))
+                    if editor_current and not editing_approved and not imported_ready:
+                        state, tone = 'Oczekuje', 'pending'
+                    else:
+                        state, tone = 'Zakończone', 'completed'
                 else:
                     state, tone = 'Brak bieżącego zadania', 'inactive'
                 entry.update(state=state, tone=tone)

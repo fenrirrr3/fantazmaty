@@ -9,8 +9,61 @@ from workflow.import_context import importing_completed
 from workflow.models import WorkflowStage as S, WorkflowRoleAssignment as A, WorkflowHandoff
 
 
+def require_eligible_correction(performer, role):
+    """Admin corrects identity independently of the person's current team roles.
+
+    Live work still requires an available active account. Completed historical
+    work does not call this check. Normal claims retain their role policy.
+    """
+    from people.leave_access import require_available
+    from core.permissions import get_active_person_profile
+    require_available(performer, lock=True)
+    if not performer or not performer.is_active or (
+            not performer.is_superuser and get_active_person_profile(performer) is None):
+        raise ValidationError('Bieżąca praca wymaga aktywnego konta powiązanego z aktywną osobą w zespole.')
+    if role == A.Role.STYLING and not performer.is_superuser:
+        raise ValidationError('Stylowanie można przypisać tylko superuserowi.')
+
+
+
+def validate_proofreader_plan(text, plan):
+    """Check the final batch, including historical first work and unchanged roles."""
+    proof_roles = {A.Role.PROOFREADER_1, A.Role.PROOFREADER_2, A.Role.PROOFREADER_3}
+    if not any(item['assignment'] and item['assignment'].role in proof_roles for item in plan):
+        return
+    assignments = list(A.objects.filter(text=text, role__in=proof_roles).prefetch_related('stages'))
+    overrides = {item['assignment'].pk: item for item in plan if item['assignment'] and item['assignment'].pk}
+    handed_off = set(WorkflowHandoff.objects.filter(text=text).values_list('previous_assignment_id', flat=True))
+    from django.utils import timezone
+    today = timezone.localdate()
+    first_users, later_users = set(), set()
+    pending = [(a, overrides.get(a.pk)) for a in assignments]
+    pending.extend((item['assignment'], item) for item in plan
+                   if item['assignment'] and item['assignment'].pk is None and item['assignment'].role in proof_roles)
+    for assignment, item in pending:
+        user_id = (item['performer'].pk if item['performer'] else None) if item else assignment.assigned_to_id
+        if user_id is None:
+            continue
+        stages = {stage.pk: stage for stage in assignment.stages.all()} if assignment.pk else {}
+        if item:
+            stages.update({stage.pk: stage for stage in item.get('stages', ())})
+        if assignment.role == A.Role.PROOFREADER_1:
+            if assignment.pk in handed_off or any(stage.is_completed or
+                    (stage.started_at is not None and stage.started_at <= today) for stage in stages.values()):
+                first_users.add(user_id)
+        elif any(stage.is_current and stage.workflow_cycle == text.current_workflow_cycle and
+                 not stage.is_completed for stage in stages.values()):
+            later_users.add(user_id)
+    if first_users & later_users:
+        raise ValidationError('Osoba wykonująca pierwszą korektę nie może wykonywać drugiej ani trzeciej korekty tego tekstu. Sprawdź wszystkie zmieniane przydziały.')
+
+
+
 def performer_plan(text, changes):
     """Validate the whole form before saving anything; caller holds the Text lock."""
+    from workflow.anthology_policy import require_working_anthology
+    if changes:
+        require_working_anthology(text)
     stages = {s.pk: s for s in S.objects.filter(text=text, pk__in=changes).select_related('assignment')}
     if set(stages) != set(changes):
         raise ValidationError('Lista etapów zmieniła się. Odśwież stronę.')
@@ -44,10 +97,7 @@ def performer_plan(text, changes):
             if any(s.started_at or s.ended_at or s.is_completed for s in related):
                 raise ValidationError('Praca ma już daty lub jest zakończona. Wybierz innego wykonawcę zamiast pozostawiać puste pole.')
         elif any(s.is_current and not s.is_completed for s in related):
-            from core.services.texts import _require_eligible_assignee
-            _require_eligible_assignee(performer, item['role'])
-            from workflow.availability import ensure_distinct_proofreader
-            ensure_distinct_proofreader(text, item['role'], performer)
+            require_eligible_correction(performer, item['role'])
         if assignment is None and performer is not None:
             stage = item['stages'][0]
             number = (A.objects.filter(text=text, workflow_cycle=stage.workflow_cycle, role=item['role']).aggregate(n=Max('execution_number'))['n'] or 0) + 1
@@ -79,7 +129,9 @@ def performer_plan(text, changes):
             raise ValidationError('Pierwszą i drugą weryfikację muszą wykonywać różne osoby.')
         if user_id:
             seen.add((cycle, user_id))
-    return list(grouped.values())
+    plan = list(grouped.values())
+    validate_proofreader_plan(text, plan)
+    return plan
 
 
 @transaction.atomic

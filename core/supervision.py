@@ -108,6 +108,16 @@ def integrity_issues():
     return issues
 
 
+def unlinked_review_candidates():
+    """Possible legacy detachments, never inferred as confirmed historical facts."""
+    from django.db.models import Exists, OuterRef
+    texts = Text.objects.filter(anthology_id=OuterRef('anthology_id'), title__iexact=OuterRef('title'))
+    return Review.objects.filter(status=Review.Status.ACCEPTED, copied_text__isnull=True,
+        publication_detached=False).annotate(has_matching_text=Exists(texts)).filter(
+        has_matching_text=True).select_related('anthology').order_by('anthology__title', 'title', 'pk')
+
+
+
 def duplicate_candidates(title, anthology_id, author_ids, *, exclude_text_id=None, exclude_review_id=None, email=''):
     if not folded(title) or not anthology_id:
         return []

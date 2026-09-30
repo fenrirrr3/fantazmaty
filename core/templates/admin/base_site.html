@@ -16,7 +16,13 @@
 {% block nav-global %}
     {% if user.is_active %}
         {% if user.is_superuser or user.person_profile.is_active %}
-            <nav class="cms-admin-navigation" aria-label="System redakcyjny">
+            <nav class="cms-admin-navigation cms-admin-quick-links" data-cms-admin-user="{{ user.pk }}" aria-label="Skróty panelu">
+                {% if user.is_superuser %}
+                <a href="{% url 'admin:texts_text_changelist' %}">Teksty</a>
+                <a href="{% url 'admin:texts_review_changelist' %}">Recenzje</a>
+                <a href="{% url 'admin:people_person_changelist' %}">Zespół</a>
+                <a href="{% url 'admin:texts_anthology_changelist' %}">Antologie</a>
+                {% endif %}
                 <a href="{% url 'core:home' %}">
                     Wróć do systemu redakcyjnego
                 </a>
@@ -27,10 +33,9 @@
 
 {% block extrastyle %}
     {{ block.super }}
+    <link rel="stylesheet" href="{% static 'core/admin-navigation.css' %}">
 
     <style>
-        .cms-admin-advanced { margin: 16px 0; }
-        .cms-admin-advanced > summary { padding: 12px; cursor: pointer; font-weight: bold; }
         :root,
         html[data-theme="light"] {
             --primary: #1761b0;
@@ -202,5 +207,6 @@
 {% block extrahead %}
     {{ block.super }}
     <script src="{% static 'core/admin-inlines.js' %}" defer></script>
+    <script src="{% static 'core/admin-navigation.js' %}" defer></script>
     <script src="{% static 'core/ui.js' %}?v=23" defer></script>
 {% endblock %}

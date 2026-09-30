@@ -20,12 +20,13 @@
     for (const name of ["title", "length", "content_warnings", "anthology"]) {
       data.set(name, document.getElementById("id_" + name)?.value || "");
     }
-    for (const name of ["first_name", "last_name", "email"]) {
+    for (const name of ["first_name", "last_name", "email", "pseudonym"]) {
       data.set("source_author_" + name, document.getElementById("id_" + (name === "email" ? name : "author_" + name))?.value || "");
     }
     const author = document.getElementById("id_author");
-    if (author?.value) data.append("authors", author.value);
-    for (const option of document.getElementById("id_coauthors")?.selectedOptions || []) data.append("authors", option.value);
+    data.set("source_author_id", author?.value || "");
+    data.set("source_coauthors_present", "1");
+    for (const option of document.getElementById("id_coauthors")?.selectedOptions || []) data.append("source_coauthors", option.value);
     try {
       if (!endpoint) throw new Error();
       const response = await fetch(endpoint, {method: "POST", body: data, credentials: "same-origin",

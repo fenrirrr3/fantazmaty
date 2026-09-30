@@ -151,46 +151,12 @@ class PersonAdmin(admin.ModelAdmin):
     show_full_result_count = False
 
     fieldsets = (
-        (
-            "Dane osoby",
-            {
-                "fields": (
-                    "first_name",
-                    "last_name",
-                    "email",
-                    "dropbox_email",
-                    "previous_data",
-                ),
-            },
-        ),
-        (
-            "Przynależność do zespołu",
-            {
-                "fields": (
-                    "is_active",
-                    "roles",
-                    "is_coordinator",
-                    "user",
-                    "account_link",
-                    "author_profile",
-                ),
-                "description": (
-                    "Odznaczenie „wciąż w ekipie” ukrywa osobę "
-                    "na liście aktywnego zespołu. Zachowuje jej "
-                    "profil i historyczne powiązania."
-                ),
-            },
-        ),
-        (
-            "Urlop",
-            {
-                "fields": (
-                    "leave_start_date",
-                    "leave_end_date",
-                    "leave_until_revoked",
-                ),
-            },
-        ),
+        ('Dane osoby i kontakt', {'fields': ('first_name', 'last_name', 'email', 'dropbox_email')}),
+        ('Role i aktywność', {'fields': ('is_active', 'roles', 'is_coordinator'),
+            'description': 'Wyłączenie aktywności ukrywa osobę na liście zespołu. Profil i dawne przydziały pozostają.'}),
+        ('Powiązane konto i profil autora', {'fields': ('user', 'account_link', 'author_profile')}),
+        ('Urlop', {'fields': ('leave_start_date', 'leave_end_date', 'leave_until_revoked')}),
+        ('Pozostałe informacje', {'classes': ('collapse',), 'fields': ('previous_data',)}),
     )
 
     @admin.display(description="Konto użytkownika")

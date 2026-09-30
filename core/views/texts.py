@@ -569,7 +569,7 @@ def link_text_review(request, text_id):
     if request.method == 'POST':
         try:
             review_id = int(request.POST.get('review_id',''))
-            link_source_review(user=request.user,text_id=text.pk,review_id=review_id)
+            link_source_review(user=request.user,text_id=text.pk,review_id=review_id,confirm_mismatch=request.POST.get('confirm_mismatch') == 'on')
         except (ValueError,ValidationError) as error:
             messages.error(request,' '.join(error.messages) if isinstance(error,ValidationError) else 'Wybierz zgłoszenie.')
         else:

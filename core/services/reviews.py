@@ -470,7 +470,7 @@ def save_author_notification(*, user, review_id, author_notified_at):
     return review
 
 
-def _resolve_copy_author(review, *, contract_received, update_author_phone=False):
+def _resolve_copy_author(review, *, contract_received, update_author_phone=False, persist=True):
     if review.author_id is not None:
         author = get_object_or_404(
             Author.objects.select_for_update(),
@@ -523,7 +523,8 @@ def _resolve_copy_author(review, *, contract_received, update_author_phone=False
                 phone_number=review.phone_number.strip(),
             )
             author.full_clean()
-            author.save()
+            if persist:
+                author.save()
             return author
 
     if not author.has_contract:
@@ -535,13 +536,47 @@ def _resolve_copy_author(review, *, contract_received, update_author_phone=False
 
         author.has_contract = True
         author.full_clean()
-        author.save(update_fields=["has_contract"])
+        if persist:
+            author.save(update_fields=["has_contract"])
 
     if update_author_phone and review.phone_number.strip():
         author.phone_number = review.phone_number.strip()
         author.full_clean()
-        author.save(update_fields=["phone_number"])
+        if persist:
+            author.save(update_fields=["phone_number"])
     return author
+
+
+def resolve_publication_authors(review, *, contract_received=False, confirmed_coauthor_ids=(), update_author_phone=False, persist=True):
+    """Validate author/contract data; persist=False performs form validation only.
+
+    Call within a transaction; no data is changed during validation.
+    """
+    if type(update_author_phone) is not bool:
+        raise ValidationError("Nieprawidłowe potwierdzenie zmiany telefonu.")
+    try:
+        confirmed_ids = {int(value) for value in confirmed_coauthor_ids}
+    except (ValueError, TypeError):
+        raise ValidationError("Nieprawidłowa lista umów współautorów.")
+    coauthors = list(Author.objects.select_for_update().filter(pk__in=review.coauthors.values('pk')).order_by('pk'))
+    if confirmed_ids - {a.pk for a in coauthors}:
+        raise ValidationError("Lista współautorów zmieniła się. Odśwież stronę.")
+    missing = [str(a) for a in coauthors if not a.has_contract and a.pk not in confirmed_ids]
+    if missing:
+        raise ValidationError("Potwierdź umowy współautorów: " + ", ".join(missing))
+    for coauthor in coauthors:
+        if not coauthor.has_contract:
+            coauthor.has_contract = True
+            if persist:
+                coauthor.save(update_fields=['has_contract'])
+    author = _resolve_copy_author(
+        review,
+        contract_received=contract_received,
+        update_author_phone=update_author_phone,
+        persist=persist,
+    )
+
+    return author, coauthors
 
 
 @transaction.atomic
@@ -559,27 +594,8 @@ def copy_review_to_text(*, user, review_id, contract_received=False, confirmed_c
 
     validate_review_publication(review)
 
-    if type(update_author_phone) is not bool:
-        raise ValidationError("Nieprawidłowe potwierdzenie zmiany telefonu.")
-    try:
-        confirmed_ids = {int(value) for value in confirmed_coauthor_ids}
-    except (ValueError, TypeError):
-        raise ValidationError("Nieprawidłowa lista umów współautorów.")
-    coauthors = list(Author.objects.select_for_update().filter(pk__in=review.coauthors.values('pk')).order_by('pk'))
-    if confirmed_ids - {a.pk for a in coauthors}:
-        raise ValidationError("Lista współautorów zmieniła się. Odśwież stronę.")
-    missing = [str(a) for a in coauthors if not a.has_contract and a.pk not in confirmed_ids]
-    if missing:
-        raise ValidationError("Potwierdź umowy współautorów: " + ", ".join(missing))
-    for coauthor in coauthors:
-        if not coauthor.has_contract:
-            coauthor.has_contract = True
-            coauthor.save(update_fields=['has_contract'])
-    author = _resolve_copy_author(
-        review,
-        contract_received=contract_received,
-        update_author_phone=update_author_phone,
-    )
+    author, coauthors = resolve_publication_authors(review, contract_received=contract_received,
+        confirmed_coauthor_ids=confirmed_coauthor_ids, update_author_phone=update_author_phone)
 
     text = Text(
         title=review.title,
@@ -614,6 +630,8 @@ def copy_review_to_text(*, user, review_id, contract_received=False, confirmed_c
 
 def validate_review_publication(review, *, contracts=False):
     """Shared gates for the normal transfer and the admin popup."""
+    if review.publication_detached:
+        raise ValidationError("Zgłoszenie świadomie odłączono od istniejącego tekstu. Powiąż je ponownie albo odznacz tę informację w panelu administratora przed utworzeniem nowego tekstu.")
     if review.status != Review.Status.ACCEPTED:
         raise ValidationError("Do procesu wydawniczego można przenieść wyłącznie przyjęty tekst.")
     if review.author_notified_at is None:

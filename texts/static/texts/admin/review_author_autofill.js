@@ -6,6 +6,8 @@
         const firstNameField = document.getElementById("id_author_first_name");
         const lastNameField = document.getElementById("id_author_last_name");
         const emailField = document.getElementById("id_email");
+        const pseudonymField = document.getElementById("id_author_pseudonym");
+        const phoneField = document.getElementById("id_phone_number");
 
         if (
             !authorField ||
@@ -29,8 +31,8 @@
         const identityFields = [
             firstNameField,
             lastNameField,
-            emailField,
-        ];
+            emailField, pseudonymField, phoneField,
+        ].filter(Boolean);
 
         const confirmationField = form.querySelector(
             '[name="confirm_submission_warnings"]'
@@ -214,7 +216,9 @@
 
                 firstNameField.value = data.first_name;
                 lastNameField.value = data.last_name;
-                emailField.value = data.email;
+                emailField.value = data.email || "";
+                if (pseudonymField) pseudonymField.value = data.pseudonym || "";
+                if (phoneField) phoneField.value = data.phone_number || "";
 
                 // Programowe uzupełnianie nie unieważnia podpisu
                 // zwróconego po wcześniejszej walidacji formularza.

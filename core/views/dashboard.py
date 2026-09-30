@@ -61,7 +61,8 @@ def home(request):
             "today": today,
             "pending_publication_reviews": (
                 Review.objects.filter(status=Review.Status.ACCEPTED,
-                    author_notified_at__isnull=False, copied_text__isnull=True)
+                    author_notified_at__isnull=False, copied_text__isnull=True, publication_detached=False)
+                    .exclude(anthology__status='ready')
                     .select_related('anthology').order_by('author_notified_at', 'pk')
                 if request.user.is_superuser else []
             ),

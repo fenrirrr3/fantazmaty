@@ -260,7 +260,7 @@ def take_workflow_stage(request, stage_id):
     except ValidationError as error:
         messages.error(request, " ".join(error.messages))
     else:
-        if is_first_verification:
+        if is_first_verification and stage.text.workflow_stages.filter(stage_type="first_verification", is_current=True, started_at__isnull=True, is_completed=False).exists():
             messages.success(
                 request,
                 "Zarezerwowano pierwszą weryfikację. "

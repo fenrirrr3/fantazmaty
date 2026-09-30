@@ -4,14 +4,23 @@ from django.template.response import TemplateResponse
 from django.urls import path, reverse
 
 GROUPS = (
-    ('publication', 'Teksty i antologie', ('texts.text', 'texts.anthology', 'core.anthologycorrection', 'illustrations.illustration', 'illustrations.coverproposal')),
     ('submissions', 'Zgłoszenia i recenzje', ('texts.review', 'texts.extract')),
+    ('publication', 'Teksty i antologie', ('texts.text', 'texts.anthology', 'texts.anthologytask', 'core.anthologycorrection')),
     ('authors', 'Autorzy', ('authors.author', 'blacklist')),
     ('team', 'Zespół i konta', ('people.person', 'auth.user', 'people.vacation', 'core.recruitment')),
-    ('settings', 'Ustawienia', ('core.mailboxconnection', 'people.role')),
-    ('history', 'Historia i diagnostyka', ('core.useractivity', 'core.workflowevent')),
+    ('art', 'Ilustracje i okładki', ('illustrations.illustration', 'illustrations.coverproposal')),
+    ('history', 'Historia i diagnostyka', ('workflow.workflowstage', 'workflow.workflowroleassignment', 'core.useractivity', 'core.workflowevent')),
+    ('settings', 'Ustawienia', ('core.mailboxconnection', 'people.role', 'auth.group')),
 )
-LABELS = {'texts.review': 'Zgłoszenia do recenzji', 'texts.reviewassignment': 'Oceny i przydziały recenzentów', 'texts.reviewers': 'Ogólne uwagi do zgłoszeń'}
+DETAIL_MODELS = ('texts.textnote', 'authors.authornote', 'texts.reviewassignment', 'texts.reviewers',
+                 'workflow.workflowrepetition', 'workflow.workflowhandoff')
+LABELS = {
+    'texts.review': 'Zgłoszenia do recenzji', 'people.person': 'Członkowie zespołu',
+    'auth.user': 'Konta użytkowników', 'texts.anthologytask': 'Zadania antologii',
+    'workflow.workflowstage': 'Etapy pracy', 'workflow.workflowroleassignment': 'Przydziały wykonawców',
+    'auth.group': 'Grupy uprawnień', 'texts.reviewassignment': 'Oceny i przydziały recenzentów',
+    'texts.reviewers': 'Ogólne uwagi do zgłoszeń',
+}
 
 
 def install(site):
@@ -45,13 +54,27 @@ def install(site):
         blacklist_models = [models.pop(key) for key in ('authors.blacklistedauthor', 'authors.blacklistentry') if key in models]
         if blacklist_models:
             models['blacklist'] = {'name': 'Czarna lista', 'object_name': 'BlacklistHub', 'admin_url': reverse('admin:blacklist_index'), 'view_only': True}
+        details = [models.pop(key) for key in DETAIL_MODELS if key in models]
         result = []
-        for key, name, members in GROUPS:
+        for index, (key, name, members) in enumerate(GROUPS):
             entries = [models.pop(member) for member in members if member in models]
-            if entries:
-                result.append({'name': name, 'app_label': key, 'app_url': reverse('admin:index') + '#group-' + key, 'models': entries})
+            if entries or key == 'history' and details:
+                group = {'name': name, 'app_label': key, 'app_url': reverse('admin:index') + '#group-' + key,
+                         'models': entries, 'collapsed': index >= 4}
+                if key == 'history' and details:
+                    group['subgroups'] = [{'name': 'Szczegółowe rekordy', 'app_label': 'history-details',
+                                           'models': details, 'collapsed': True}]
+                result.append(group)
         if models:
-            result.append({'name': 'Zaawansowane', 'app_label': 'advanced', 'app_url': reverse('admin:index') + '#group-advanced', 'models': list(models.values()), 'collapsed': True})
+            # Preserve access to every registered model without a miscellaneous root tab.
+            history = next((group for group in result if group['app_label'] == 'history'), None)
+            if history is None:
+                history = {'name': 'Historia i diagnostyka', 'app_label': 'history',
+                           'app_url': reverse('admin:index') + '#group-history', 'models': [], 'collapsed': True}
+                result.insert(max(len(result) - 1, 0), history)
+            history.setdefault('subgroups', []).append({'name': 'Pozostałe rekordy',
+                'app_label': 'history-other', 'models': sorted(models.values(), key=lambda model: model['name']), 'collapsed': True})
+
         return result
 
     site.get_urls = MethodType(get_urls, site)

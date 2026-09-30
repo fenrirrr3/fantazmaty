@@ -308,6 +308,8 @@ def _render_review_detail(
             "can_copy_review_to_text": (
                 can_notify_author
                 and review.status == Review.Status.ACCEPTED
+                and not review.publication_detached
+                and review.anthology.status != 'ready'
                 and review.author_notified_at is not None
             ),
             "is_copied_to_text": review.copied_text_id is not None,

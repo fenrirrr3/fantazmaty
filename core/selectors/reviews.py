@@ -457,6 +457,7 @@ def _filter_review_work(queryset, query, include_authors, completed, assignment_
             condition |= (
                 Q(author_first_name__plcontains=term)
                 | Q(author_last_name__plcontains=term)
+                | Q(author_pseudonym__plcontains=term)
                 | Q(email__plcontains=term)
                 | Q(author__first_name__plcontains=term)
                 | Q(author__last_name__plcontains=term)
