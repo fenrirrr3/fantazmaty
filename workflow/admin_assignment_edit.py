@@ -14,6 +14,8 @@ def correct_assignment(pk, actor, version, *, action, performer=None):
     with transaction.atomic():
         text_id = A.objects.values_list('text_id', flat=True).get(pk=pk)
         text = Text.objects.select_for_update().get(pk=text_id)
+        from workflow.anthology_policy import require_working_anthology
+        require_working_anthology(text)
         assignment = A.objects.select_for_update().get(pk=pk)
         if version_of(text) != version:
             raise ValidationError('Dane zmieniły się. Odśwież formularz.')
@@ -40,10 +42,10 @@ def correct_assignment(pk, actor, version, *, action, performer=None):
             if assignment.assigned_to_id == (performer.pk if performer else None):
                 return text.pk
             if performer and stages.filter(is_current=True, is_completed=False).exists():
-                from core.services.texts import _require_eligible_assignee
-                _require_eligible_assignee(performer, assignment.role)
-                from workflow.availability import ensure_distinct_proofreader
-                ensure_distinct_proofreader(text, assignment.role, performer)
+                from workflow.admin_performers import require_eligible_correction
+                require_eligible_correction(performer, assignment.role)
+            from workflow.admin_performers import validate_proofreader_plan
+            validate_proofreader_plan(text, [{'assignment': assignment, 'performer': performer, 'stages': list(stages)}])
             assignment.assigned_to = performer
             token = importing_completed.set(True)
             try:

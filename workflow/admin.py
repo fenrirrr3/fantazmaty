@@ -96,6 +96,9 @@ class WorkflowStageAdminForm(
     def clean(self):
         data = super().clean()
         state_fields = {'text', 'workflow_cycle', 'stage_type', 'iteration', 'started_at', 'ended_at', 'is_completed'}
+        if self.instance.pk and set(self.changed_data) & state_fields:
+            from workflow.anthology_policy import require_working_anthology
+            require_working_anthology(self.instance.text)
         if set(self.changed_data) & state_fields and not data.get('confirm_data_correction'):
             raise forms.ValidationError("Do rozpoczęcia lub zakończenia pracy użyj akcji na liście etapów. Ręczna korekta wymaga potwierdzenia i nie tworzy następnego etapu.")
         return data

@@ -112,13 +112,11 @@ class RebuildViewTests(TestCase):
                     rebuilt = Document(BytesIO(b''.join(accepted.streaming_content)))
                     self.assertEqual(len(rebuilt.tables),0)
                     self.assertEqual(rebuilt.core_properties.author,'')
-                    accepted.close()
                 else:
                     self.assertIn('_nowy.docx', response['Content-Disposition'])
                     result = Document(BytesIO(b''.join(response.streaming_content)))
                     self.assertEqual(result.core_properties.author, '')
                     self.assertEqual(result.paragraphs[0].text, 'Tekst')
-                response.close()
 
 class ConfirmOmissionsTests(SimpleTestCase):
     def test_confirmation_still_builds_new_docx(self):
@@ -173,4 +171,30 @@ class CleanerCheckboxTests(TestCase):
                 result=Document(BytesIO(b''.join(response.streaming_content)))
                 self.assertEqual(result.paragraphs[0].text,'Zdanie. Następne zdanie...')
                 self.assertEqual(result.core_properties.author,'' if enabled else 'Private')
-                response.close()
+
+    def test_streaming_download_closes_file_without_closing_test_connection(self):
+        from unittest.mock import patch
+        from django.db import connection
+
+        user = get_user_model().objects.create_superuser(
+            'streaming', 'streaming@example.com', 'testpassword')
+        self.client.force_login(user)
+        document = Document(); document.add_paragraph('Tekst')
+        output = saved(document)
+        with patch('core.views.programs.convert_document',
+                   return_value=(output, 'docx', 'application/octet-stream')):
+            response = self.client.post(reverse('core:programs'), {
+                'program_action': 'clean',
+                'document': SimpleUploadedFile('a.docx', output.getvalue()),
+            })
+        self.assertTrue(response.streaming)
+        # The test client's iterator closes the response with its database hook
+        # disconnected. Calling response.close() again breaks MySQL TestCase's
+        # surrounding transaction; consume the iterator once instead.
+        with patch.object(connection, 'close_if_unusable_or_obsolete') as close_db:
+            content = b''.join(response.streaming_content)
+        close_db.assert_not_called()
+        self.assertTrue(response.closed)
+        self.assertTrue(output.closed)
+        self.assertEqual(Document(BytesIO(content)).paragraphs[0].text, 'Tekst')
+        self.assertTrue(get_user_model().objects.filter(pk=user.pk).exists())

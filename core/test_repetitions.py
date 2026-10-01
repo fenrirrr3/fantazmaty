@@ -115,4 +115,5 @@ class RepeatPageTests(TestCase):
         self.assertIn('_powtorzenia.docx', response['Content-Disposition'])
         self.assertFalse(convert.call_args.kwargs['normalize'])
         self.assertNotIn('use_cleaner', convert.call_args.kwargs)
-        response.close()
+        result = Document(BytesIO(b''.join(response.streaming_content)))
+        self.assertEqual(result.paragraphs[0].text, 'Koty koty')

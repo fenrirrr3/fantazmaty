@@ -84,11 +84,12 @@ class MailDownloadTests(TestCase):
         payload.update(action='confirm',preview=response.context['preview_token'],approve='on')
         response=self.client.post(self.url,payload)
         self.assertEqual(response.status_code,200,response.context.get('error') if not response.streaming else '')
-        data=b''.join(response.streaming_content);response.close()
+        data=b''.join(response.streaming_content)
         with ZipFile(BytesIO(data)) as z:self.assertEqual(len(z.namelist()),1)
         self.assertEqual(Review.objects.count(),1);self.assertEqual(MailboxDownload.objects.count(),1)
         row=Review.objects.get();self.assertEqual(row.length,15204);self.assertEqual(row.content_warnings,'')
-        response=self.client.post(self.url,payload); self.assertTrue(response.streaming);response.close()
+        response=self.client.post(self.url,payload); self.assertTrue(response.streaming)
+        self.assertEqual(b''.join(response.streaming_content), data)
         self.assertEqual(Review.objects.count(),1)
 
     @patch('core.views.mailbox.fetch_messages')
@@ -147,7 +148,9 @@ class MailDownloadTests(TestCase):
         response=self.client.post(self.url,payload)
         self.assertEqual(response.status_code,400);self.assertEqual(Review.objects.count(),1)
         payload.update(approve='on',preview=response.context['preview_token'])
-        response=self.client.post(self.url,payload);self.assertTrue(response.streaming);response.close()
+        response=self.client.post(self.url,payload);self.assertTrue(response.streaming)
+        with ZipFile(BytesIO(b''.join(response.streaming_content))) as archive:
+            self.assertEqual(len(archive.namelist()), 1)
         self.assertEqual(Review.objects.count(),2)
 
     def test_non_superuser_forbidden(self):

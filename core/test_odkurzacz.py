@@ -51,7 +51,6 @@ class OdkurzaczTests(TestCase):
         self.assertIn('private', response['Cache-Control'])
         self.assertIn('no-store', response['Cache-Control'])
         result = Document(BytesIO(b''.join(response.streaming_content)))
-        response.close()
         self.assertEqual(result.paragraphs[0].text, 'Ala ma kota...')
 
     def test_no_rules_preserves_text_and_formatting(self):
@@ -64,7 +63,6 @@ class OdkurzaczTests(TestCase):
         document.save(stream)
         response = self.client.post(self.url, {'document': upload(stream.getvalue())})
         result = Document(BytesIO(b''.join(response.streaming_content)))
-        response.close()
         run = result.paragraphs[0].runs[0]
         self.assertEqual(run.text, 'Ala  ma kota...')
         self.assertTrue(run.bold)
