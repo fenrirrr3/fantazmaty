@@ -426,27 +426,13 @@ class ReviewBulkImportForm(forms.Form):
     records = forms.CharField(
         label="Zgłoszenia",
         max_length=MAX_IMPORT_CHARACTERS,
-        help_text=(
-            "Każde zgłoszenie wklej w osobnym wierszu. "
-            "Oddziel średnikami: imię i nazwisko; tytuł; gatunek; content warningi; "
-            "liczba znaków; e-mail; telefon; zgody; wiadomość autora. "
-            "Zgody: premierach, naborach, obie lub puste pole. "
-            "Wiadomość wielowierszową zapisz w cudzysłowach CSV (cudzysłowy wewnątrz podwój). "
-            "Obsługiwane są także starsze formaty: 7 pól oraz autor; tytuł; gatunek; liczba znaków; e-mail; telefon; antologia; zgody. "
-            "W formacie średnikowym pierwsza spacja oddziela imię od nazwiska. "
-            "Jedno zgłoszenie można też wkleić z etykietami pól: Imię:, Nazwisko:, "
-            "Pseudonim:, Tytuł opowiadania: itd.; wiadomość do redakcji umieść na końcu. "
-            f"Jednorazowo można sprawdzić do {MAX_IMPORT_RECORDS} zgłoszeń."
-        ),
+        help_text="",
         widget=forms.Textarea(
             attrs={
                 "class": "review-import-textarea",
                 "rows": 16,
                 "spellcheck": "false",
-                "placeholder": (
-                    "JAN KOWALSKI;Tytuł opowiadania;fantasy;"
-                    "przemoc;25000;jan@example.com;123456789;premierach, naborach;Wiadomość autora"
-                ),
+                "placeholder": 'Imię: Jan\nNazwisko: Kowalski\nPseudonim:\nTytuł opowiadania: Tytuł\nGatunek: fantasy\nOstrzeżenia o treści:\nLiczba znaków ze spacjami: 25000\nAdres e-mail: jan@example.com\nNumer telefonu:\nNewsletter: premierach, naborach\n\nWiadomość do redakcji:\n',
             }
         ),
     )

@@ -42,14 +42,27 @@ class SingleReviewForm(ReviewAdminForm):
 
     """Te same podpisane ostrzeżenia co w istniejącym formularzu admina."""
     class Meta(ReviewAdminForm.Meta):
-        fields = ('author', 'author_first_name', 'author_last_name', 'author_pseudonym', 'email', 'phone_number',
-                  'title', 'genre', 'length', 'content_warnings', 'anthology', 'author_message',
-                  'newsletter_premieres', 'newsletter_recruitment')
+        fields = ('anthology', 'author', 'author_first_name', 'author_last_name', 'author_pseudonym',
+                  'title', 'genre', 'content_warnings', 'length', 'email', 'phone_number',
+                  'newsletter_premieres', 'newsletter_recruitment', 'author_message')
+        labels = {
+            'author_first_name': 'Imię', 'author_last_name': 'Nazwisko',
+            'author_pseudonym': 'Pseudonim', 'title': 'Tytuł opowiadania',
+            'genre': 'Gatunek', 'content_warnings': 'Ostrzeżenia o treści',
+            'length': 'Liczba znaków ze spacjami', 'email': 'Adres e-mail',
+            'phone_number': 'Numer telefonu', 'author_message': 'Wiadomość do redakcji',
+        }
         widgets = {'author_message': forms.Textarea(attrs={'rows': 4}), 'content_warnings': forms.Textarea(attrs={'rows': 2, 'class': 'short-textarea'}),
                    'author': forms.Select()}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # These confirmations concern linking an existing text in Django admin;
+        # the single-submission form has no such operation.
+        self.fields.pop('confirm_existing_text', None)
+        self.fields.pop('confirm_source_mismatch', None)
+        self.fields['newsletter_premieres'].label = 'Premierach'
+        self.fields['newsletter_recruitment'].label = 'Naborach'
         self.fields['anthology'].queryset = Anthology.objects.filter(status=Anthology.Status.IN_PREPARATION).order_by('title', 'pk')
         self.fields['author'].widget.attrs['data-author-search-url'] = reverse('core:author_suggestions')
         from authors.models import Author

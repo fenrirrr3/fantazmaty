@@ -76,6 +76,40 @@ def named_submission(value):
 def is_named_record(parts):
     return len(parts) == 11 and '@' in parts[7]
 
+
+def named_submission_blocks(value):
+    """Split pasted CF7 submissions at the next structured author header.
+
+    A lone label in an author's message is still message content. The next
+    submission needs the opening name/surname/title (or pseudonym) sequence.
+    Email import still requires exactly one submission per message.
+    """
+    lines = value.lstrip('\ufeff').splitlines()
+    nonempty = [i for i, line in enumerate(lines) if line.strip()]
+    if not nonempty:
+        return None
+    def label(index):
+        return lines[index].partition(':')[0].strip().casefold()
+    first = nonempty[0]
+    if label(first) not in NAMED_FIELDS:
+        return None
+    starts = [first]
+    metadata = {NAMED_FIELDS[label(first)]}
+    in_message = label(first) == 'wiadomość do redakcji'
+    for offset, index in enumerate(nonempty[1:], 1):
+        following = nonempty[offset + 1:offset + 3]
+        if (set(NAMED_REQUIRED_FIELDS).issubset(metadata)
+                and label(index) == 'imię' and len(following) == 2
+                and label(following[0]) == 'nazwisko'
+                and label(following[1]) in ('pseudonim', 'tytuł opowiadania')):
+            starts.append(index)
+            metadata = set()
+            in_message = False
+        if not in_message:
+            metadata.add(NAMED_FIELDS.get(label(index)))
+            in_message = label(index) == 'wiadomość do redakcji'
+    return [(start, '\n'.join(lines[start:end])) for start, end in zip(starts, [*starts[1:], len(lines)])]
+
 REVIEW_IMPORT_LINE_PATTERN = re.compile(
     r"^\s*\[([^\]]*)\]\s*;\s*"
     r"\[([^\]]*)\]\s*;\s*"
@@ -241,10 +275,15 @@ def unbracket(value):
 
 def submission_rows(value):
     """CSV supports quoted multiline messages; line numbers refer to source rows."""
-    named = named_submission(value)
-    if named is not None:
-        start, fields = named
-        yield start, value.strip(), fields
+    blocks = named_submission_blocks(value)
+    if blocks is not None:
+        for offset, raw in blocks:
+            try:
+                start, fields = named_submission(raw)
+            except ValidationError as error:
+                raise ValidationError([re.sub(r'\bWiersz (\d+)', lambda match: f'Wiersz {int(match[1]) + offset}', message)
+                    for message in error.messages]) from None
+            yield start + offset, raw.strip(), fields
         return
     value = clean_pasted_submission(value)
     lines = value.splitlines()

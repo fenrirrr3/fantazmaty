@@ -44,6 +44,21 @@ def named_mail(body=NAMED_BODY, *, html=False, subject='Nabór: „Test” – O
 
 
 class NamedSubmissionTests(SimpleTestCase):
+    def test_multiple_pasted_named_submissions_preserve_messages(self):
+        second = NAMED_BODY.replace('Anna Maria', 'Jan').replace('Nowak-Kowalska', 'Autor').replace('ANNA@example.com', 'jan@example.com').replace('premierach, naborach', 'naborach')
+        records, errors = parse_review_records(NAMED_BODY + '\n\n' + second)
+        self.assertEqual(errors, [])
+        self.assertEqual(len(records), 2)
+        self.assertEqual([row['author_first_name'] for row in records], ['Anna Maria', 'Jan'])
+        self.assertEqual(records[0]['author_message'], NAMED_BODY.split('Wiadomość do redakcji:\n')[1])
+        self.assertEqual(records[1]['email'], 'jan@example.com')
+        self.assertFalse(records[1]['newsletter_premieres'])
+        self.assertTrue(records[1]['newsletter_recruitment'])
+
+    def test_email_does_not_silently_import_multiple_submissions(self):
+        with self.assertRaises(MailboxError):
+            parse_message(1, named_mail(NAMED_BODY + '\n\n' + NAMED_BODY))
+
     def test_csv_error_identifies_person_instead_of_uid_and_row(self):
         body = 'Anna Nowak;"Niedomknięty tytuł;fantasy;1000;anna@example.com;;Test\n' + '\n'.join('Linia' for _ in range(86))
         with self.assertRaises(MailboxError) as error:
@@ -165,6 +180,78 @@ class NamedSubmissionTests(SimpleTestCase):
                 self.assertEqual(rows[0]['content_warnings'], warnings)
                 self.assertEqual(rows[0]['newsletter_recruitment'], recruitment)
                 self.assertEqual(rows[0]['author_pseudonym'], '')
+
+
+class ManualNamedSubmissionTests(TestCase):
+    def setUp(self):
+        temporary = TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        settings = self.settings(ACTIVITY_SPOOL_DIR=temporary.name)
+        settings.enable()
+        self.addCleanup(settings.disable)
+        self.user = get_user_model().objects.create_superuser('admin', 'admin@example.com', 'password')
+        self.client.force_login(self.user)
+        self.book = Anthology.objects.create(title='Test')
+        self.url = reverse('core:review_bulk_submit')
+
+    def test_named_bulk_preview_then_commit(self):
+        from core.test_bulk_form_regression import FormControls
+        second = NAMED_BODY.replace('Anna Maria', 'Jan').replace('Nowak-Kowalska', 'Autor').replace('ANNA@example.com', 'jan@example.com').replace('[Opowieść; część druga]', 'Drugi tytuł').replace('premierach, naborach', 'naborach')
+        data = {'anthology': self.book.pk, 'records': NAMED_BODY + '\n\n' + second, 'import_action': 'preview'}
+        response = self.client.post(self.url, data)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Review.objects.exists())
+        self.assertFalse(NewsletterConsent.objects.exists())
+        controls = FormControls(self.url)
+        controls.feed(response.content.decode())
+        data.update(preview_token=controls.fields['preview_token'], import_action='import')
+        self.assertEqual(self.client.post(self.url, data).status_code, 302)
+        self.assertEqual(Review.objects.count(), 2)
+        first = Review.objects.get(email='anna@example.com')
+        self.assertEqual(first.author_first_name, 'Anna Maria')
+        self.assertEqual(first.author_pseudonym, 'A. M. Nowak')
+        self.assertEqual(first.author_message, NAMED_BODY.split('Wiadomość do redakcji:\n')[1])
+        self.assertEqual(first.content_warnings, 'przemoc; śmierć')
+        self.assertTrue(NewsletterConsent.objects.get(email='anna@example.com').premieres)
+        self.assertFalse(NewsletterConsent.objects.get(email='jan@example.com').premieres)
+
+    def test_invalid_second_submission_blocks_batch_with_correct_line(self):
+        second = NAMED_BODY.replace('Nazwisko: Nowak-Kowalska', 'Nazwisko:')
+        data = {'anthology': self.book.pk, 'records': NAMED_BODY + '\n\n' + second, 'import_action': 'preview'}
+        response = self.client.post(self.url, data)
+        self.assertEqual(response.status_code, 400)
+        self.assertContains(response, f'Wiersz {len(NAMED_BODY.splitlines()) + 2}:', status_code=400)
+        self.assertFalse(Review.objects.exists())
+        self.assertFalse(NewsletterConsent.objects.exists())
+
+    def test_single_form_matches_new_fields_and_saves_them(self):
+        from core.intake_forms import SingleReviewForm
+        form = SingleReviewForm()
+        expected = ['author_first_name', 'author_last_name', 'author_pseudonym', 'title', 'genre',
+                    'content_warnings', 'length', 'email', 'phone_number', 'newsletter_premieres',
+                    'newsletter_recruitment', 'author_message']
+        self.assertEqual([name for name in form.fields if name in expected], expected)
+        self.assertEqual(form.fields['length'].label, 'Liczba znaków ze spacjami')
+        self.assertNotIn('confirm_existing_text', form.fields)
+        url = reverse('core:review_create')
+        response = self.client.get(url)
+        self.assertContains(response, '<legend>Newsletter</legend>')
+        self.assertContains(response, 'name="newsletter_premieres"', count=1)
+        self.assertContains(response, 'name="newsletter_recruitment"', count=1)
+        self.assertNotContains(response, 'import-format-example')
+        data = {'anthology': self.book.pk, 'author_first_name': 'Anna Maria',
+                'author_last_name': 'Nowak-Kowalska', 'author_pseudonym': 'Pseudonim',
+                'title': 'Pojedynczy', 'genre': 'fantasy', 'content_warnings': 'PRZEMOC',
+                'length': '37930', 'email': 'anna@example.com', 'phone_number': '123456789',
+                'newsletter_premieres': 'on', 'newsletter_recruitment': 'on',
+                'author_message': 'Pierwszy wiersz;\nDrugi wiersz.'}
+        self.assertEqual(self.client.post(url, data).status_code, 302)
+        review = Review.objects.get()
+        self.assertEqual(review.author_pseudonym, 'Pseudonim')
+        self.assertEqual(review.phone_number, '123456789')
+        self.assertEqual(review.author_message, data['author_message'])
+        consent = NewsletterConsent.objects.get()
+        self.assertTrue(consent.premieres and consent.recruitment)
 
 
 class PersistentHeadersTests(TestCase):

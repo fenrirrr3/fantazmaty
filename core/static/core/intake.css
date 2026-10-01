@@ -12,6 +12,7 @@
 .mailbox-option span{min-width:0;overflow-wrap:anywhere}
 .mailbox-actions{grid-column:1/-1;margin:0}
 .mailbox-confirmation-options{max-width:32rem;margin-block:1rem}
+.submission-newsletters{max-width:32rem;margin-bottom:1rem}
 @media(max-width:700px){.mailbox-filters{grid-template-columns:minmax(0,1fr)}}
 
 

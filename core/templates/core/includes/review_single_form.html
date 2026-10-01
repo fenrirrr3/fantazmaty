@@ -1,0 +1,21 @@
+{% for error in form.non_field_errors %}<p class="form-error" role="alert">{{ error }}</p>{% endfor %}
+{% for field in form %}
+    {% if field.is_hidden %}
+        {{ field }}{% for error in field.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+    {% elif field.name == 'newsletter_premieres' %}
+        <fieldset class="submission-newsletters">
+            <legend>Newsletter</legend>
+            <div class="mailbox-options">
+                <label class="mailbox-option">{{ form.newsletter_premieres }}<span>{{ form.newsletter_premieres.label }}</span></label>
+                {% for error in form.newsletter_premieres.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+                <label class="mailbox-option">{{ form.newsletter_recruitment }}<span>{{ form.newsletter_recruitment.label }}</span></label>
+                {% for error in form.newsletter_recruitment.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+            </div>
+        </fieldset>
+    {% elif field.name != 'newsletter_recruitment' %}
+        <p>{{ field.label_tag }}{{ field }}
+            {% if field.help_text %}<span class="form-help">{{ field.help_text }}</span>{% endif %}
+            {% for error in field.errors %}<span class="field-error">{{ error }}</span>{% endfor %}
+        </p>
+    {% endif %}
+{% endfor %}
