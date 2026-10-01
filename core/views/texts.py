@@ -11,7 +11,6 @@ from authors.models import Author
 from core.exports import export_texts_csv
 from core.forms import (
     CoordinatorNoteForm,
-    CoordinatorTextBulkActionForm,
     RestartWorkflowForm,
     StartStageForm,
     TextContentWarningsForm,
@@ -19,7 +18,6 @@ from core.forms import (
 )
 from core.pagination import paginate_items
 from core.permissions import (
-    can_perform_bulk_actions,
     can_restart_workflow,
     can_view_author_data,
     coordinator_required,
@@ -34,7 +32,6 @@ from core.selectors.texts import (
     text_detail_context,
     text_list_context,
 )
-from core.services.texts import perform_bulk_text_action
 from texts.models import Text, TextNote
 from workflow.models import WorkflowRoleAssignment
 
@@ -109,7 +106,6 @@ def _permission_context(user):
     return {
         "can_view_authors": can_view_author_data(user),
         "can_manage_authors": can_view_author_data(user),
-        "can_perform_bulk_actions": can_perform_bulk_actions(user),
         "can_manage_workflow": is_coordinator(user),
         "can_restart_workflow": can_restart_workflow(user),
     }
@@ -215,11 +211,6 @@ def text_list(request):
         {
             "texts": page_obj,
             "page_obj": page_obj,
-            "bulk_action_form": (
-                CoordinatorTextBulkActionForm()
-                if can_perform_bulk_actions(request.user)
-                else None
-            ),
         }
     )
 
@@ -435,75 +426,6 @@ def update_text_content_warnings(request, text_id):
     messages.success(request, "Zapisano ostrzeżenia dotyczące treści.")
     return redirect("core:assigned_text_detail", text_id=text.pk)
 
-
-@never_cache
-@login_required
-@require_POST
-@superuser_required
-def bulk_text_action(request):
-    form = CoordinatorTextBulkActionForm(request.POST)
-
-    try:
-        text_ids = _selected_ids(request.POST, "selected_texts")
-    except ValidationError as error:
-        messages.error(request, " ".join(error.messages))
-        return redirect("core:text_list")
-
-    if not form.is_valid():
-        messages.error(request, _form_error_message(form))
-        return redirect("core:text_list")
-
-    action = form.cleaned_data["action"]
-
-    try:
-        if action == CoordinatorTextBulkActionForm.Action.EXPORT:
-            texts = list(
-                Text.objects.filter(pk__in=text_ids)
-                .select_related("anthology")
-                .prefetch_related("authors")
-                .order_by("anthology__title", "title", "pk")
-            )
-
-            if len(texts) != len(text_ids):
-                raise ValidationError(
-                    "Nie odnaleziono wszystkich zaznaczonych tekstów. "
-                    "Odśwież listę i ponów wybór."
-                )
-
-            return export_texts_csv(
-                user=request.user,
-                texts=texts,
-                filename="teksty.csv",
-            )
-
-        # Serwis ponownie sprawdza uprawnienia oraz kompletność wyboru.
-        # Cała operacja jest atomowa: blokuje teksty w kolejności PK,
-        # następnie przydziały z ich bieżących cykli. Przed zmianą ról
-        # sprawdza aktywność osoby, wymagane role, konflikt weryfikatorów
-        # i stan procesu. Błąd dowolnego tekstu wycofuje całą operację.
-        changed_count = perform_bulk_text_action(
-            user=request.user,
-            text_ids=text_ids,
-            action=action,
-            anthology=form.cleaned_data.get("anthology"),
-            role=form.cleaned_data.get("role"),
-            assigned_to=form.cleaned_data.get("assigned_to"),
-            note=form.cleaned_data.get("note", ""),
-            note_is_important=form.cleaned_data.get(
-                "note_is_important",
-                False,
-            ),
-        )
-
-    except ValidationError as error:
-        messages.error(request, " ".join(error.messages))
-        return redirect("core:text_list")
-
-    messages.success(
-        request,
-        f"Wykonano operację dla {changed_count} tekstów.",
-    )
-    return redirect("core:text_list")
 
 def _require_note_owner_or_coordinator(user, note):
     if note.author_id != user.pk and not is_coordinator(user):

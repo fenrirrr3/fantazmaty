@@ -214,6 +214,9 @@ def unassign_reviewer(*, user, review_id):
     if assignment is None:
         return False
 
+    if assignment.opinion not in ("", Reviewers.Opinion.READING):
+        raise ValidationError("Po oddaniu opinii nie można zrezygnować z recenzji.")
+
     assignment.delete()
 
     if len(assignments) == 1 and review.status == Review.Status.IN_REVIEW:

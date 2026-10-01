@@ -111,7 +111,7 @@ CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS")
 INSTALLED_APPS = [
     # Local management commands (createsuperuser) override Django's commands.
     "core.apps.CoreConfig",
-    "django.contrib.admin",
+    "core.admin_apps.CMSAdminConfig",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",

@@ -28,7 +28,7 @@ class RebuildTests(SimpleTestCase):
         r = p.add_run('Tekst'); r.bold = True
         doc.add_paragraph(); doc.add_paragraph()
         doc.add_paragraph('Środek').alignment = WD_ALIGN_PARAGRAPH.CENTER
-        with rebuild_docx(saved(doc)) as out:
+        with rebuild_docx(saved(doc), allow_omissions=True) as out:
             result = Document(out)
             self.assertEqual([p.text for p in result.paragraphs], ['Tekst', '', '', 'Środek'])
             self.assertTrue(result.paragraphs[0].runs[0].bold)

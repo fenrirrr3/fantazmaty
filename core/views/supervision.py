@@ -117,7 +117,10 @@ def person_permissions(request, person_id):
     on_leave = is_on_leave(user) if user else False
     allowed = []
     for role, group in ROLE_GROUPS.items():
-        permitted = active and (bool(user.is_superuser) if role == WorkflowRoleAssignment.Role.STYLING else coordinator or has_role(user, group))
-        allowed.append({'label': dict(WorkflowRoleAssignment.Role.choices).get(role, role), 'allowed': permitted and not on_leave, 'role_allowed': permitted, 'block': 'Urlop' if permitted and on_leave else '', 'source': 'Superuser' if role == WorkflowRoleAssignment.Role.STYLING else 'Koordynator / Superuser' if coordinator else group})
+        from workflow.availability import role_access_reason
+        reason = role_access_reason(user, role) if user else 'Brak powiązanego konta.'
+        allowed.append({'label': dict(WorkflowRoleAssignment.Role.choices).get(role, role),
+                        'allowed': not reason, 'role_allowed': not reason, 'block': reason,
+                        'source': 'Superuser' if user and user.is_superuser else group})
     available = available_stages_for_user(user=user) if active else []
     return render(request, 'core/person_permissions.html', {'person': person, 'roles': roles, 'groups': groups, 'permissions': allowed, 'available_count': len(available), 'access': active, 'coordinator': coordinator, 'reviewer': is_reviewer(user)})

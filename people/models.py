@@ -337,7 +337,12 @@ class Vacation(models.Model):
             overlapping = Vacation.objects.filter(person_id=self.person_id).exclude(pk=self.pk)
             overlapping = overlapping.filter(Q(until_revoked=True) | Q(end_date__gt=start))
             if not self.until_revoked and self.end_date:
-                overlapping = overlapping.filter(start_date__lte=get_local_date(self.end_date))
+                end = normalize_datetime(self.end_date)
+                last_day = get_local_date(end)
+                if timezone.localtime(end).time() == time.min:
+                    from datetime import timedelta
+                    last_day -= timedelta(days=1)
+                overlapping = overlapping.filter(start_date__lte=last_day)
             if overlapping.exists():
                 errors["start_date"] = "Ten okres pokrywa się z twoim innym urlopem."
 

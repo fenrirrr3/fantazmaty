@@ -16,6 +16,21 @@ def claim_access(user):
     return {'member': True, 'roles': names, 'coordinator': is_coordinator(user)}
 
 
+def role_access_reason(user, role, *, access=None):
+    """Policy for a new claim; assigned work may retain its former role."""
+    from workflow.services import ROLE_GROUPS
+    access = claim_access(user) if access is None else access
+    if not access['member']:
+        return 'Brak aktywnego dostępu do zespołu albo trwa urlop.'
+    if role in (A.Role.PROOFREADER_2, A.Role.PROOFREADER_4) and not can_claim_fourth_proofreading(user):
+        return 'Druga i czwarta korekta są dostępne tylko dla koordynatora korekty.'
+    if role == A.Role.STYLING and not user.is_superuser:
+        return 'Stylowanie jest dostępne tylko dla superusera.'
+    if not (access['coordinator'] or ROLE_GROUPS.get(role, 'Redaktor').casefold() in access['roles']):
+        return 'Brak wymaganej roli.'
+    return ''
+
+
 def claim_reason(stage, user, stages, assignments, *, access=None):
     from workflow.services import STAGE_ROLES, ROLE_GROUPS
     access = claim_access(user) if access is None else access
@@ -27,10 +42,9 @@ def claim_reason(stage, user, stages, assignments, *, access=None):
     if any(s.stage_type in ('ready','withdrawn') for s in stages):return 'Proces jest zamknięty.'
     if stage.is_completed or stage.started_at or stage.ended_at:return 'Etap nie oczekuje na przejęcie.'
     if not role:return 'Tego etapu nie można przejąć.'
-    if kind in ('second_proofreading', 'fourth_proofreading') and not can_claim_fourth_proofreading(user):return 'Druga i czwarta korekta są dostępne tylko dla koordynatora korekty.'
+    reason = role_access_reason(user, role, access=access)
+    if reason:return reason
     if kind in ('second_proofreading', 'third_proofreading') and first_proofreading_work(user).filter(text_id=stage.text_id).exists():return 'Pierwszą korektę tego tekstu wykonywała już ta osoba.'
-    if kind=='styling' and not user.is_superuser:return 'Stylowanie jest dostępne tylko dla superusera.'
-    if not (access['coordinator'] or ROLE_GROUPS.get(role,'Redaktor').casefold() in access['roles']):return 'Brak wymaganej roli.'
     occupied={a.role:a.assigned_to_id for a in assignments if a.assigned_to_id}
     if role in occupied:return 'Rola ma już przypisanego wykonawcę.'
     opposite={'verifier_1':'verifier_2','verifier_2':'verifier_1'}.get(role)

@@ -99,12 +99,15 @@ def fetch_messages(config, validity, uids):
 
 def parse_message(uid, raw, *, submission=True):
     message = BytesParser(policy=policy.default).parsebytes(raw)
-    files = []
+    files, ignored_files = [], []
     for part in message.walk():
         if part.is_multipart() or not part.get_filename():
             continue
-        data = part.get_payload(decode=True)
         name = str(part.get_filename())
+        if part.get_content_disposition() == 'inline' or part.get_content_type().startswith('image/'):
+            ignored_files.append(name)
+            continue
+        data = part.get_payload(decode=True)
         if data is None:
             raise MailboxError(f'Wiadomość {uid}: nie można odczytać zawartości załącznika „{name}”. Sprawdź plik w poczcie lub poproś o ponowne przesłanie.')
         if not data:
@@ -130,7 +133,7 @@ def parse_message(uid, raw, *, submission=True):
                 'fingerprint': identity.hexdigest(), 'message_id': message_id,
                 'folder': story_title(str(message.get('Subject', ''))) or f'wiadomosc_{uid}',
                 'title': story_title(str(message.get('Subject', ''))) or '(bez tytułu)',
-                'files': files}
+                'files': files, 'ignored_files': ignored_files}
     if not submission:
         return metadata
     body = message.get_body(preferencelist=('plain', 'html'))
@@ -147,20 +150,20 @@ def parse_message(uid, raw, *, submission=True):
         for node in root.xpath('//br | //p | //div | //tr'):
             node.tail = '\n' + (node.tail or '')
         text = root.text_content()
-    from core.services.review_import_parser import unbracket, encode_submission, clean_pasted_submission
-    candidates = []
+    from core.services.review_import_parser import unbracket, encode_submission, clean_pasted_submission, mail_submission_rows
+    from django.core.exceptions import ValidationError
+    try:
+        candidates = list(mail_submission_rows(text))
+    except ValidationError as error:
+        raise MailboxError(f"Wiadomość {uid}: " + " ".join(error.messages)) from None
     lines = clean_pasted_submission(text).splitlines()
-    for index, line in enumerate(lines):
-        parts = [unbracket(value.strip()) for value in line.split(';', 8)]
-        if len(parts) == 9 and '@' in parts[5] and ''.join(parts[4].split()).isdigit():
-            candidates.append(('new', index, parts))
-        elif len(parts) >= 7 and '@' in parts[4] and ''.join(parts[3].split()).isdigit():
-            candidates.append(('old', index, parts))
     if len(candidates) != 1:
         raise MailboxError(f'Wiadomość {uid}: oczekiwano jednego wiersza autor;tytuł;gatunek;content warningi;liczba znaków;e-mail;telefon;zgody;wiadomość.')
     kind, index, parts = candidates[0]
+    warnings, author_message, choices = '', '', ''
     if kind == 'new':
-        author, title, genre, warnings, length, email, phone, choices, author_message = parts
+        author, title, genre, warnings, length, email, phone, choices = parts[:8]
+        author_message = ';'.join(parts[8:])
         trailing = lines[index + 1:]
         marker = '--- KONIEC WIADOMOŚCI AUTORA ---'
         if any(line.strip() == marker for line in trailing):
@@ -179,20 +182,28 @@ def parse_message(uid, raw, *, submission=True):
         if len(parts) >= 8:
             from core.services.newsletters import parse_consents
             from django.core.exceptions import ValidationError
+            choices = parts[7]
             try:
-                parse_consents(parts[7])
+                parse_consents(choices)
             except ValidationError as error:
                 raise MailboxError(f'Wiadomość {uid}: nieprawidłowe zgody newsletterowe. ' + ' '.join(error.messages)) from None
             else:
                 record = encode_submission([author, title, genre, '', length, email, phone, parts[7], ''])
         else:
             record = encode_submission([author, title, genre, length, '', email, phone])
+    from core.services.newsletters import parse_consents
+    try:
+        consent_flags = parse_consents(choices)
+    except ValidationError as error:
+        raise MailboxError(f"Wiadomość {uid}: " + " ".join(error.messages)) from None
     # Persist only the declared submission fields, not the full MIME message.
     return {**metadata, 'uid': uid, 'digest': hashlib.sha256(raw).hexdigest(),
             'folder': story_title(str(message.get('Subject', ''))) or title,
             'title': title, 'author': author, 'email': email, 'phone': phone,
             'anthology': anthology, 'genre': genre, 'length': length,
-            'record': record, 'files': files}
+            'record': record, 'files': files, 'content_warnings': warnings,
+            'author_message': author_message, 'newsletter_premieres': consent_flags['premieres'],
+            'newsletter_recruitment': consent_flags['recruitment']}
 
 
 def prepare_forms(messages, config, validity, user, tokens=None, confirmed=False):
@@ -287,6 +298,8 @@ def package_messages(messages, clean=True, convert=True, rebuild=True, allow_reb
                                 raise MailboxError('Wynik przekracza 150 MB. Wybierz mniej wiadomości.')
                             continue
                         with output, ZipFile(output) as converted:
+                            if 'Uwagi_konwersji.txt' in converted.namelist():
+                                archive.writestr(base + '_uwagi.txt', converted.read('Uwagi_konwersji.txt'))
                             for ext in ('docx', 'pdf', 'epub'):
                                 payload = converted.read('document.' + ext)
                                 total += len(payload)

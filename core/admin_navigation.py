@@ -1,5 +1,4 @@
 """Task-oriented navigation without changing model registrations or permissions."""
-from types import MethodType
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
 
@@ -23,59 +22,46 @@ LABELS = {
 }
 
 
-def install(site):
-    if getattr(site, '_cms_navigation_installed', False):
-        return
-    site._cms_navigation_installed = True
-    original_app_list = site.get_app_list
-    original_urls = site.get_urls
 
-    def blacklist(request):
-        models = {m['object_name'].lower(): m for app in original_app_list(request) for m in app['models']}
-        entries = []
-        for key, label in (('blacklistedauthor', 'Autorzy z bazy'), ('blacklistentry', 'Wpisy bez profilu autora')):
-            if key in models:
-                entries.append({**models[key], 'name': label})
-        return TemplateResponse(request, 'admin/blacklist_index.html', {
-            **site.each_context(request), 'title': 'Czarna lista', 'entries': entries,
-        })
+def blacklist_index(site, request):
+    from django.contrib.admin import AdminSite
+    models = {m['object_name'].lower(): m for app in AdminSite.get_app_list(site, request) for m in app['models']}
+    entries = []
+    for key, label in (('blacklistedauthor', 'Autorzy z bazy'), ('blacklistentry', 'Wpisy bez profilu autora')):
+        if key in models: entries.append({**models[key], 'name': label})
+    return TemplateResponse(request, 'admin/blacklist_index.html', {
+        **site.each_context(request), 'title': 'Czarna lista', 'entries': entries,
+    })
 
-    def get_urls(self):
-        return [path('czarna-lista/', self.admin_view(blacklist), name='blacklist_index')] + original_urls()
 
-    def get_app_list(self, request, app_label=None):
-        original = original_app_list(request, app_label)
-        if app_label:
-            return original
-        models = {f"{app['app_label']}.{m['object_name'].lower()}": dict(m) for app in original for m in app['models']}
-        for key, label in LABELS.items():
-            if key in models:
-                models[key]['name'] = label
-        blacklist_models = [models.pop(key) for key in ('authors.blacklistedauthor', 'authors.blacklistentry') if key in models]
-        if blacklist_models:
-            models['blacklist'] = {'name': 'Czarna lista', 'object_name': 'BlacklistHub', 'admin_url': reverse('admin:blacklist_index'), 'view_only': True}
-        details = [models.pop(key) for key in DETAIL_MODELS if key in models]
-        result = []
-        for index, (key, name, members) in enumerate(GROUPS):
-            entries = [models.pop(member) for member in members if member in models]
-            if entries or key == 'history' and details:
-                group = {'name': name, 'app_label': key, 'app_url': reverse('admin:index') + '#group-' + key,
-                         'models': entries, 'collapsed': index >= 4}
-                if key == 'history' and details:
-                    group['subgroups'] = [{'name': 'Szczegółowe rekordy', 'app_label': 'history-details',
-                                           'models': details, 'collapsed': True}]
-                result.append(group)
-        if models:
-            # Preserve access to every registered model without a miscellaneous root tab.
-            history = next((group for group in result if group['app_label'] == 'history'), None)
-            if history is None:
-                history = {'name': 'Historia i diagnostyka', 'app_label': 'history',
-                           'app_url': reverse('admin:index') + '#group-history', 'models': [], 'collapsed': True}
-                result.insert(max(len(result) - 1, 0), history)
-            history.setdefault('subgroups', []).append({'name': 'Pozostałe rekordy',
-                'app_label': 'history-other', 'models': sorted(models.values(), key=lambda model: model['name']), 'collapsed': True})
+def grouped_app_list(original):
+    models = {f"{app['app_label']}.{m['object_name'].lower()}": dict(m) for app in original for m in app['models']}
+    for key, label in LABELS.items():
+        if key in models:
+            models[key]['name'] = label
+    blacklist_models = [models.pop(key) for key in ('authors.blacklistedauthor', 'authors.blacklistentry') if key in models]
+    if blacklist_models:
+        models['blacklist'] = {'name': 'Czarna lista', 'object_name': 'BlacklistHub', 'admin_url': reverse('admin:blacklist_index'), 'view_only': True}
+    details = [models.pop(key) for key in DETAIL_MODELS if key in models]
+    result = []
+    for index, (key, name, members) in enumerate(GROUPS):
+        entries = [models.pop(member) for member in members if member in models]
+        if entries or key == 'history' and details:
+            group = {'name': name, 'app_label': key, 'app_url': reverse('admin:index') + '#group-' + key,
+                     'models': entries, 'collapsed': index >= 4}
+            if key == 'history' and details:
+                group['subgroups'] = [{'name': 'Szczegółowe rekordy', 'app_label': 'history-details',
+                                       'models': details, 'collapsed': True}]
+            result.append(group)
+    if models:
+        # Preserve access to every registered model without a miscellaneous root tab.
+        history = next((group for group in result if group['app_label'] == 'history'), None)
+        if history is None:
+            history = {'name': 'Historia i diagnostyka', 'app_label': 'history',
+                       'app_url': reverse('admin:index') + '#group-history', 'models': [], 'collapsed': True}
+            result.insert(max(len(result) - 1, 0), history)
+        history.setdefault('subgroups', []).append({'name': 'Pozostałe rekordy',
+            'app_label': 'history-other', 'models': sorted(models.values(), key=lambda model: model['name']), 'collapsed': True})
 
-        return result
+    return result
 
-    site.get_urls = MethodType(get_urls, site)
-    site.get_app_list = MethodType(get_app_list, site)

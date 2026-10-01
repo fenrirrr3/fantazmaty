@@ -3,7 +3,7 @@
     --card-padding: 20px;
     --field-gap: 8px;
     color-scheme: light;
-    --background: #edf0f4;
+    --background: #e2e5e9;
     --surface: #ffffff;
     --surface-alt: #f8fafc;
     --surface-hover: #edf4fc;
@@ -12,6 +12,7 @@
     --text: #202b3b;
     --muted: #58677a;
     --primary: #1761b0;
+    --on-primary: #ffffff;
     --primary-dark: #114b89;
     --primary-light: #eaf3ff;
     --header: #172434;
@@ -312,18 +313,12 @@ pre {
 }
 
 .navigation-dropdown summary,
-.text-team > summary,
-.archived-stages > summary,
-.bulk-action-toggle,
-.review-summary-toggle {
+.bulk-action-toggle {
     list-style: none;
 }
 
 .navigation-dropdown summary::-webkit-details-marker,
-.text-team > summary::-webkit-details-marker,
-.archived-stages > summary::-webkit-details-marker,
-.bulk-action-toggle::-webkit-details-marker,
-.review-summary-toggle::-webkit-details-marker {
+.bulk-action-toggle::-webkit-details-marker {
     display: none;
 }
 
@@ -410,10 +405,12 @@ details[open] > summary .dropdown-arrow {
 }
 
 .site-sidebar {
+    display: flex;
+    flex-direction: column;
     position: sticky;
     top: var(--header-height);
     height: calc(100dvh - var(--header-height));
-    overflow-y: auto;
+    overflow: hidden;
     padding: 20px 14px;
     border-right: 1px solid var(--border);
     background: var(--surface);
@@ -596,10 +593,7 @@ details[open] > summary .dropdown-arrow {
 }
 
 .muted-text,
-.form-help,
-.assignment-date-information,
-.other-reviews-description,
-.source-review-information {
+.assignment-date-information {
     color: var(--muted);
 }
 
@@ -959,6 +953,8 @@ legend {
 }
 
 .table-container {
+    max-height: 70vh;
+    isolation: isolate;
     width: 100%;
     max-width: 100%;
     overflow: auto;
@@ -987,7 +983,7 @@ td {
 thead th {
     position: sticky;
     top: 0;
-    z-index: 2;
+    z-index: 3;
     border-bottom-color: var(--border-strong);
     background: var(--table-header);
     color: #415168;
@@ -996,6 +992,9 @@ thead th {
     letter-spacing: 0.02em;
     white-space: nowrap;
 }
+
+.table-container .sticky-title { position: sticky; left: 0; z-index: 2; background: var(--surface); min-width: 12rem; }
+.table-container thead .sticky-title { z-index: 4; background: var(--table-header); }
 
 tbody th {
     font-weight: 650;
@@ -1211,44 +1210,9 @@ a[href^="mailto:"] {
     pointer-events: none;
 }
 
-/* Statusy: delikatne znaczniki zamiast kolorowania całych tabel. */
-.status,
-.stage-status,
-.role-badge,
-.workflow-stage-badge,
-.reviewer-badge,
-.reviewer-result-badge,
-.important-note-badge,
-.inactivity-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    max-width: 100%;
-    padding: 4px 8px;
-    border: 1px solid transparent;
-    border-radius: 5px;
-    font-size: 0.75rem;
-    font-weight: 650;
-    line-height: 1.35;
-}
-
-.status,
-.role-badge,
-.reviewer-badge {
-    background: var(--primary-light);
-    color: var(--primary-dark);
-}
-
-.stage-status.pending,
-.stage-status.inactive,
-.workflow-stage-badge {
-    background: #edf1f5;
-    color: #526176;
-}
-
 .stage-status.active {
-    background: var(--primary-light);
-    color: var(--primary-dark);
+    background: var(--warning-light);
+    color: var(--warning);
 }
 
 .stage-status.completed,
@@ -1542,57 +1506,13 @@ a[href^="mailto:"] {
     gap: 6px;
 }
 
-.text-team,
-.archived-stages,
-.review-summary-details {
-    margin-block: 16px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--surface);
-}
-
-.text-team > summary,
-.archived-stages > summary,
-.review-summary-toggle,
-.text-management-toggle,
 .bulk-action-toggle {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    padding: 16px 20px;
-    font-weight: 650;
-}
-
-.text-team[open] > summary,
-.archived-stages[open] > summary,
-.review-summary-details[open] > summary {
-    border-bottom: 1px solid var(--border);
-}
-
-.text-team-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
-    gap: 12px;
     padding: var(--card-padding);
-}
-
-.text-team-member {
-    padding: 12px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-small);
-}
-
-.text-team-member-role {
-    display: block;
-    margin-bottom: 6px;
-    color: var(--muted);
-    font-size: 0.75rem;
-}
-
-.text-team-member.is-unassigned {
-    background: var(--surface-alt);
-    color: var(--muted);
+    font-weight: 650;
 }
 
 .management-action {
@@ -1923,7 +1843,7 @@ a[href^="mailto:"] {
 .pagination-current {
     border-color: var(--primary);
     background: var(--primary);
-    color: #ffffff;
+    color: var(--on-primary);
 }
 
 .page-size-form {
@@ -1955,7 +1875,7 @@ a[href^="mailto:"] {
 
 .review-import-card {
     max-width: 1100px;
-    padding: 24px;
+    padding: var(--card-padding);
 }
 
 .review-import-textarea {
@@ -2243,7 +2163,7 @@ dialog::backdrop {
     }
 
     .site-sidebar.is-open {
-        display: block;
+        display: flex;
     }
 }
 

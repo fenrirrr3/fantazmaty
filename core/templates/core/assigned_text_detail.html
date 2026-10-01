@@ -99,8 +99,7 @@
                     <dt>Twoje role</dt>
                     <dd class="roles-list">
                         {% for assignment in user_assignments %}
-                            <span class="role-badge">
-                                {{ assignment.get_role_display }}
+                            <span class="role-badge" data-role="{{ assignment.role }}">{{ assignment.get_role_display }}
                             </span>
                         {% endfor %}
                     </dd>

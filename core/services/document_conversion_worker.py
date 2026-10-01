@@ -10,6 +10,12 @@ from urllib.parse import urlsplit
 from uuid import uuid4
 
 CURRENT_STAGE = 'DOCX'
+if __package__:
+    from .document_styles import paragraph_property
+    from .document_html import list_paragraphs
+else:
+    from document_styles import paragraph_property
+    from document_html import list_paragraphs
 
 CSS = '''
 body { font-family: "Times New Roman", serif; font-size: 12pt; line-height: 1.5; }
@@ -96,6 +102,9 @@ def convert(source, directory, formats, title):
             ignore_empty_paragraphs=False)
     if any(message.type == 'error' for message in result.messages):
         raise ValueError('Document could not be read completely')
+    warnings = [str(message.message)[:500] for message in result.messages if message.type == 'warning'][:30]
+    if warnings:
+        (directory / 'warnings.json').write_text(json.dumps(warnings), encoding='utf-8')
     content, headings = sanitize_html(result.value, assets)
     # Mammoth deliberately omits paragraph geometry. Restore alignment from DOCX
     # after sanitization; only our own allowlisted classes reach the EPUB.
@@ -112,17 +121,14 @@ def convert(source, directory, formats, title):
         if paragraph.text.strip():
             paragraphs[normalize(paragraph.text)].append(paragraph)
     root = html.fragment_fromstring(content or '<p></p>', create_parent='div')
+    list_paragraphs(root)
     for node in root.iterdescendants():
         if node.tag not in ('p','h1','h2','h3','h4','h5','h6'):
             continue
         matches = paragraphs[normalize(node.text_content())]
         if matches:
             paragraph = matches.popleft()
-            alignment = paragraph.alignment
-            style = paragraph.style
-            while alignment is None and style is not None:
-                alignment = style.paragraph_format.alignment
-                style = style.base_style
+            alignment = paragraph_property(paragraph, 'alignment')
             node.set('class', {0:'align-left',1:'align-center',2:'align-right',3:'align-justify'}.get(alignment, 'align-left'))
     for node in root.iter('p'):
         if not node.text_content() and len(node) == 0:

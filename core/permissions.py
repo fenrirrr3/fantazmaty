@@ -37,7 +37,6 @@ def _role_names(person):
     if cache is not None and key in cache:
         return cache[key]
     names = {name.casefold() for name in person.roles.values_list("name", flat=True)}
-    names.update(name.casefold() for name in person.user.groups.values_list("name", flat=True))
     if cache is not None:
         cache[key] = names
     return names
@@ -110,8 +109,7 @@ def is_coordinator(user):
         return False
 
     return bool(
-        person.is_coordinator
-        or _profile_has_coordinator_role(person)
+        _profile_has_coordinator_role(person)
     )
 
 
@@ -136,8 +134,7 @@ def has_role(user, role_name):
     if (
         role_name.casefold() == COORDINATOR_ROLE.casefold()
         and (
-            person.is_coordinator
-            or _profile_has_coordinator_role(person)
+            _profile_has_coordinator_role(person)
         )
     ):
         return True
@@ -184,6 +181,11 @@ def can_mark_review_for_decision(user):
 
 
 def can_manage_reviews(user):
+    return is_coordinator(user)
+
+
+def can_manage_review_files(user):
+    """Folder access does not grant access to author personal data."""
     return is_coordinator(user)
 
 
@@ -305,7 +307,7 @@ def can_view_my_reviews(user):
     from django.db.models import Q
     from texts.models import ReviewAssignment
     return ReviewAssignment.objects.filter(
-        Q(user=user) | Q(historical_person__user=user), review__old_reviews=True,
+        Q(user=user) | Q(historical_person__user=user),
     ).exists()
 
 

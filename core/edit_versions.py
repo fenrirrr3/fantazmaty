@@ -10,7 +10,8 @@ TRACKED = {
     'texts.reviewassignment', 'texts.reviewers', 'texts.extract',
     'workflow.workflowstage', 'workflow.workflowroleassignment',
     'workflow.workflowrepetition', 'people.person', 'people.vacation',
-    'people.role', 'people.rekrutacja', 'authors.author', 'authors.authornote', 'authors.blacklistedauthor',
+    'people.role', 'authors.author', 'authors.authornote', 'authors.blacklistedauthor', 'authors.blacklistentry',
+    'core.mailboxconnection', 'core.newsletterconsent',
     'core.anthologycorrection', 'core.recruitment', 'auth.user', 'auth.group',
 }
 

@@ -4,6 +4,7 @@ from django.core import signing
 from pathlib import Path
 from zipfile import BadZipFile
 
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import FileResponse
 from django.shortcuts import render
@@ -55,6 +56,9 @@ def programs(request):
             response = FileResponse(output, as_attachment=True,
                 filename=Path(upload.name).stem[:120] + '_powtorzenia.docx',
                 content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+            if getattr(output, 'conversion_warnings', []):
+                messages.warning(request, 'Konwersja zgłosiła uproszczenia dokumentu. W paczce ZIP szczegóły są w pliku Uwagi_konwersji.txt; sprawdź plik wynikowy.')
+                response['X-Document-Warning-Count'] = str(len(output.conversion_warnings))
             response['Cache-Control'] = 'private, no-store'
             response['X-Content-Type-Options'] = 'nosniff'
             return response
@@ -75,6 +79,9 @@ def programs(request):
             response = FileResponse(output, as_attachment=True,
                 filename=Path(upload.name).stem[:120] + '_konwersja.' + extension,
                 content_type=mime)
+            if getattr(output, 'conversion_warnings', []):
+                messages.warning(request, 'Konwersja zgłosiła uproszczenia dokumentu. W paczce ZIP szczegóły są w pliku Uwagi_konwersji.txt; sprawdź plik wynikowy.')
+                response['X-Document-Warning-Count'] = str(len(output.conversion_warnings))
             response['Cache-Control'] = 'private, no-store'
             response['X-Content-Type-Options'] = 'nosniff'
             return response
@@ -103,6 +110,9 @@ def programs(request):
             response = FileResponse(output, as_attachment=True,
                 filename=Path(upload.name).stem[:120] + '_nowy.docx',
                 content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+            if getattr(output, 'conversion_warnings', []):
+                messages.warning(request, 'Konwersja zgłosiła uproszczenia dokumentu. W paczce ZIP szczegóły są w pliku Uwagi_konwersji.txt; sprawdź plik wynikowy.')
+                response['X-Document-Warning-Count'] = str(len(output.conversion_warnings))
             response['Cache-Control'] = 'private, no-store'
             response['X-Content-Type-Options'] = 'nosniff'
             return response

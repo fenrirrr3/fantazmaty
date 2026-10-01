@@ -15,7 +15,7 @@
                             {% endif %}
 
                             <p>
-                                <span class="role-badge">
+                                <span class="role-badge" data-stage="{{ stage.stage_type }}">
                                     {{ stage.get_stage_type_display }}
                                 </span>
                             </p>
@@ -42,8 +42,7 @@
                             {% endif %}
 
                             <p>
-                                <span class="role-badge">
-                                    {{ assignment.get_role_display }}
+                                <span class="role-badge" data-role="{{ assignment.role }}">{{ assignment.get_role_display }}
                                 </span>
                             </p>
 

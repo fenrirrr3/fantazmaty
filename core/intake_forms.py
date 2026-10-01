@@ -2,7 +2,7 @@ from django import forms
 from core.models import Recruitment
 from texts.models import Extract, Anthology
 from django.urls import reverse
-from texts.admin import ReviewAdminForm
+from core.review_submission_forms import ReviewAdminForm
 
 
 class ExtractForm(forms.ModelForm):

@@ -6,4 +6,4 @@ class PeopleConfig(AppConfig):
     verbose_name = "Ludzie"
 
     def ready(self):
-        from . import signals  # noqa: F401
+        from . import signals, identity  # noqa: F401

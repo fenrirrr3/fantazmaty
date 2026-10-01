@@ -45,6 +45,7 @@
     {% include "core/includes/text_filters.html" %}
 
     <section class="card" aria-label="Lista moich tekstów">
+        {% include "core/includes/mobile_table_sort.html" %}
         
 
         <div
@@ -119,8 +120,7 @@
                             <td data-label="Twoje role">
                                 <div class="roles-list">
                                     {% for assignment in text.user_assignments %}
-                                        <span class="role-badge">
-                                            {{ assignment.get_role_display }}
+                                        <span class="role-badge" data-role="{{ assignment.role }}">{{ assignment.get_role_display }}
                                         </span>
                                     {% empty %}
                                         <span class="muted-text">

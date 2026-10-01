@@ -68,6 +68,27 @@ def fingerprint(obj):
     return version_of(obj)
 
 
+def conflict_values(obj, request):
+    """A conflict page must respect the same field access as the normal page."""
+    from core.permissions import can_manage_review_files, can_manage_reviews
+    from texts.models import Review, ReviewAssignment
+    if isinstance(obj, Review):
+        fields = ['title', 'content_warnings']
+        if can_manage_reviews(request.user):
+            fields.append('coordinator_note')
+        if can_manage_review_files(request.user):
+            fields.append('file_url')
+        values = [(name, str(getattr(obj, name, '') or '')) for name in fields]
+        match = request.resolver_match or resolve(request.path_info)
+        if match.url_name == 'assigned_review_detail':
+            own = ReviewAssignment.objects.filter(review=obj, user=request.user).first()
+            if own:
+                values.extend([('opinion', own.get_opinion_display()), ('notes', own.notes)])
+        return values
+    return [(name, str(getattr(obj, name) or '')) for name in
+            ('content_warnings', 'coordinator_note', 'file_url', 'title') if hasattr(obj, name)]
+
+
 class EditingMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response
@@ -163,8 +184,12 @@ class EditingMiddleware:
                 else:
                     from core.permissions import is_coordinator
                     name = match.url_name
-                    if name in ('set_text_authors', 'update_text_file', 'update_review_file') and not request.user.is_superuser:
+                    if name in ('set_text_authors', 'update_text_file') and not request.user.is_superuser:
                         return self.get_response(request)
+                    if name == 'update_review_file':
+                        from core.permissions import can_manage_review_files
+                        if not can_manage_review_files(request.user):
+                            return self.get_response(request)
                     if name in ('edit_text_note', 'delete_text_note'):
                         from texts.models import TextNote
                         note = TextNote.objects.filter(pk=match.kwargs.get('note_id'), text_id=pk).first()
@@ -194,7 +219,7 @@ class EditingMiddleware:
                 if expected != [request.user.pk, key, current]:
                     return render(request, "core/edit_conflict.html", {
                         "submitted_values": recover_submitted_values(request.POST),
-                        "current_values": [(name, str(getattr(obj,name) or '')) for name in ('content_warnings','coordinator_note','file_url','title') if hasattr(obj,name)],
+                        "current_values": conflict_values(obj, request),
                         "retry_url": request.path,
                     }, status=409)
             if obj:

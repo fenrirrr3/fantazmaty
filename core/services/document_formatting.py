@@ -5,6 +5,10 @@ from docx import Document
 from docx.oxml.ns import qn
 from docx.text.paragraph import Paragraph
 from lxml import etree
+if __package__:
+    from .document_styles import paragraph_property
+else:
+    from document_styles import paragraph_property
 
 
 def normalize_docx(source, *, justify=False):
@@ -34,11 +38,7 @@ def normalize_docx(source, *, justify=False):
                     margins.set(qn('w:gutter'), '0')
                 for element in tree.iter(qn('w:p')):
                     paragraph = Paragraph(element, document)
-                    alignment = paragraph.alignment
-                    style = paragraph.style
-                    while alignment is None and style is not None:
-                        alignment = style.paragraph_format.alignment
-                        style = style.base_style
+                    alignment = paragraph_property(paragraph, 'alignment')
                     props = element.get_or_add_pPr()
                     def property(tag):
                         item = props.find(qn('w:' + tag))

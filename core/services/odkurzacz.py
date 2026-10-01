@@ -113,10 +113,7 @@ DATE_RE = re.compile(
     r'(?<![\w.])(?:(?P<iso_y>\d{4})-(?P<iso_m>\d{1,2})-(?P<iso_d>\d{1,2})|'
     r'(?P<d>\d{1,2})(?P<sep>[./-])(?P<m>\d{1,2})(?P=sep)(?P<y>\d{4}))(?!\w|\.\d)')
 TIME_RE = re.compile(r'(?<![\w:])\d{1,2}:\d{2}(?::\d{2})?(?![\w:])')
-ABBREVIATION_RE = re.compile(
-    r'\b(?:m\.in\.|p\.n\.e\.|n\.e\.|np\.|itd\.|itp\.|tj\.|tzw\.|'
-    r'prof\.|dr\.|hab\.|mgr\.|inż\.|św\.|al\.|ul\.|godz\.|ok\.|por\.|zob\.)|'
-    r'\b(?:[' + UPPER + r']\.){2,}')
+
 
 
 def _normalize_dates_times(text):
@@ -177,13 +174,30 @@ ub. br. bm. n.e. p.n.e. ok. tys. szt. egz. poz. proc. maks. str. t.
 cz. rozdz. z. wyd. wydawn. oprac. przeł. tłum. il. rys. ryc. tab. fot.
 bibliogr. art. ust. lit. par. pol. ang. niem. fr. ros. łac. gr. wł.
 hiszp. czes. ukr. hist. daw. arch. żart. iron. pej. wulg. książk. poet.
-sp. sp.j. sp.k. sp.p. etc. ibid. sic. vs. dr. mgr. nr. mjr. płk. ppłk.
+sp. sp.j. sp.k. sp.p. o.o. etc. ibid. sic. vs. dr. mgr. nr. mjr. płk. ppłk.
 """.split()) | frozenset(('z o.o.', 'sp. z o.o.', 'et al.', 'op. cit.'))
+
+
+def _abbreviation_pattern(value):
+    # Optional spaces belong only between abbreviation parts, never after its
+    # final full stop. Otherwise masking also consumes the sentence's spacing.
+    parts = value.split('.')
+    pattern = ''
+    for index, part in enumerate(parts):
+        pattern += re.escape(part).replace(r'\ ', H + '+')
+        if index < len(parts) - 1:
+            pattern += r'\.'
+            if index < len(parts) - 2:
+                pattern += H + '*'
+    return pattern
+
+
 CAPITALIZATION_ABBREVIATION_RE = re.compile(
     r'(?<!\w)(?:' + '|'.join(
-        re.escape(value).replace(r'\.', r'\.' + H + '*').replace(r'\ ', H + '+')
+        _abbreviation_pattern(value)
         for value in sorted(SENTENCE_ABBREVIATIONS, key=lambda x: (-len(x), x))
     ) + r')|\b(?:[' + UPPER + r']\.){2,}', re.IGNORECASE)
+ABBREVIATION_RE = CAPITALIZATION_ABBREVIATION_RE
 FILE_NAME_RE = re.compile(r'(?<![\w.])[\w-]+(?:\.[\w-]+)*\.(?:docx?|pdf|epub|mobi|txt|rtf|odt|xlsx?|csv|zip|rar|jpg|jpeg|png|gif|py|html?|js|css)(?!\w)', re.IGNORECASE)
 
 

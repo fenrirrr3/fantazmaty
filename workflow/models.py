@@ -60,6 +60,7 @@ class WorkflowStage(models.Model):
     execution_number = models.PositiveIntegerField("wykonanie etapu", default=1, editable=False)
     is_current = models.BooleanField("aktualne wykonanie", default=True, editable=False)
     is_released = models.BooleanField("dostępny w kolejce", default=True, editable=False)
+    queued_at = models.DateField("data wejścia do kolejki", null=True, blank=True, editable=False)
     repetition = models.ForeignKey("WorkflowRepetition", null=True, blank=True, on_delete=models.RESTRICT, related_name="stages", editable=False)
     queue_position = models.PositiveIntegerField(default=0, editable=False)
     assignment = models.ForeignKey("WorkflowRoleAssignment", null=True, blank=True, on_delete=models.RESTRICT, related_name="stages", editable=False)
@@ -214,6 +215,14 @@ class WorkflowStage(models.Model):
 
     def save(self, *args, **kwargs):
         self._validate_import_origin()
+        if (self.queued_at is None and self.is_current and self.is_released
+                and not self.is_completed and not self.imported_completed
+                and self.stage_type not in (self.StageType.READY, self.StageType.WITHDRAWN)):
+            from workflow.import_context import importing_completed
+            if not importing_completed.get():
+                self.queued_at = timezone.localdate()
+                if kwargs.get('update_fields') is not None:
+                    kwargs['update_fields'] = set(kwargs['update_fields']) | {'queued_at'}
         if not self.is_skipped and not self.assignment_id and self.text_id:
             from workflow.services import STAGE_ROLES
             role = STAGE_ROLES.get(self.stage_type)

@@ -21,7 +21,6 @@ from workflow.services import ROLE_GROUPS, STAGE_ROLES, validate_assignment_star
 StageType = WorkflowStage.StageType
 Role = WorkflowRoleAssignment.Role
 
-MAX_BULK_TEXTS = 1000
 MAX_DATABASE_ID = 9_223_372_036_854_775_807
 
 TERMINAL_STAGES = frozenset({StageType.READY, StageType.WITHDRAWN})
@@ -59,29 +58,6 @@ STAGE_ORDER = {
 }
 
 
-def _normalise_text_ids(text_ids):
-    if isinstance(text_ids, (str, bytes)) or text_ids is None:
-        raise ValidationError("Przesłano nieprawidłową listę tekstów.")
-
-    result = set()
-
-    for index, value in enumerate(text_ids):
-        if index >= MAX_BULK_TEXTS:
-            raise ValidationError(
-                f"Jednorazowo można zmienić najwyżej {MAX_BULK_TEXTS} tekstów."
-            )
-
-        if type(value) is not int or not 1 <= value <= MAX_DATABASE_ID:
-            raise ValidationError("Przesłano nieprawidłowy identyfikator tekstu.")
-
-        result.add(value)
-
-    if not result:
-        raise ValidationError("Zaznacz przynajmniej jeden tekst.")
-
-    return sorted(result)
-
-
 def _current_stages(text):
     return list(
         WorkflowStage.objects.select_for_update()
@@ -114,7 +90,7 @@ def _require_open_process(stages):
         )
 
 
-def _require_eligible_assignee(user, role, *, lock=True):
+def _require_eligible_assignee(user, role, *, lock=True, existing=False):
     from people.leave_access import require_available
     require_available(user, lock=lock)
     if role == Role.STYLING and not (user and user.is_active and user.is_superuser):
@@ -136,7 +112,7 @@ def _require_eligible_assignee(user, role, *, lock=True):
     if not required_group:
         raise ValidationError("Nieprawidłowa rola w procesie.")
 
-    if not is_coordinator(user) and not has_role(user, required_group):
+    if not existing and not is_coordinator(user) and not has_role(user, required_group):
         raise ValidationError(
             "Wybrana osoba nie ma roli wymaganej do wykonania zadania."
         )
@@ -156,186 +132,6 @@ def _require_distinct_verifiers(assignments, role, user_id):
         raise ValidationError(
             "Pierwszą i drugą weryfikację muszą wykonywać różne osoby."
         )
-
-
-def _require_role_not_started(stages, role):
-    if any(
-        STAGE_ROLE_MAP.get(stage.stage_type) == role
-        and (
-            stage.started_at is not None
-            or stage.ended_at is not None
-            or stage.is_completed
-        )
-        for stage in stages
-    ):
-        raise ValidationError(
-            "Nie można zbiorczo zmienić przydziału roli, której praca "
-            "już się rozpoczęła. Przydział jest częścią historii procesu."
-        )
-
-
-def _validate_bulk_form(
-    *,
-    action,
-    anthology,
-    role,
-    assigned_to,
-    note,
-    note_is_important,
-):
-    # Import lokalny zapobiega tworzeniu zależności cyklicznych
-    # między formularzami a serwisami procesu.
-    from core.forms import CoordinatorTextBulkActionForm
-
-    allowed_actions = {
-        CoordinatorTextBulkActionForm.Action.CHANGE_ANTHOLOGY,
-        CoordinatorTextBulkActionForm.Action.RESERVE_ROLE,
-        CoordinatorTextBulkActionForm.Action.CLEAR_ROLE,
-        CoordinatorTextBulkActionForm.Action.ADD_NOTE,
-    }
-    if action not in allowed_actions:
-        raise ValidationError("Nieprawidłowa operacja zbiorcza.")
-
-    if type(note_is_important) is not bool:
-        raise ValidationError("Nieprawidłowe oznaczenie ważności notatki.")
-
-    form = CoordinatorTextBulkActionForm(
-        {
-            "action": action,
-            "anthology": getattr(anthology, "pk", "") if anthology else "",
-            "role": role or "",
-            "assigned_to": getattr(assigned_to, "pk", "") if assigned_to else "",
-            "note": note,
-            "note_is_important": note_is_important,
-        }
-    )
-    if not form.is_valid():
-        raise ValidationError(
-            [
-                str(error)
-                for errors in form.errors.values()
-                for error in errors
-            ]
-        )
-
-    return form.cleaned_data
-
-
-@transaction.atomic
-def perform_bulk_text_action(
-    *,
-    user,
-    text_ids,
-    action,
-    anthology=None,
-    role=None,
-    assigned_to=None,
-    note="",
-    note_is_important=False,
-):
-    require_superuser(user)
-    selected_ids = _normalise_text_ids(text_ids)
-    cleaned = _validate_bulk_form(
-        action=action,
-        anthology=anthology,
-        role=role,
-        assigned_to=assigned_to,
-        note=note,
-        note_is_important=note_is_important,
-    )
-
-    # Wszystkie teksty blokujemy przed ich etapami i przydziałami.
-    # Stała kolejność ogranicza ryzyko zakleszczeń operacji zbiorczych.
-    texts = list(
-        Text.objects.select_for_update()
-        .filter(pk__in=selected_ids)
-        .order_by("pk")
-    )
-    if len(texts) != len(selected_ids):
-        raise ValidationError(
-            "Nie odnaleziono wszystkich zaznaczonych tekstów. "
-            "Żadna zmiana nie została zapisana."
-        )
-
-    if action == "change_anthology":
-        target = cleaned["anthology"]
-        # Chroni również przed usunięciem antologii podczas operacji.
-        target = get_object_or_404(
-            type(target).objects.select_for_update(),
-            pk=target.pk,
-        )
-        for text in texts:
-            text.anthology = target
-            text.save(update_fields=["anthology"])
-        return len(texts)
-
-    if action == "add_note":
-        for text in texts:
-            TextNote.objects.create(text=text, author=user,
-                content=cleaned["note"], is_important=cleaned["note_is_important"])
-        return len(texts)
-
-    selected_role = cleaned["role"]
-    target_user = (
-        cleaned["assigned_to"] if action == "reserve_role" else None
-    )
-
-    if target_user is not None:
-        _require_eligible_assignee(target_user, selected_role)
-
-    changes = []
-
-    # Walidujemy cały wybór przed pierwszą zmianą przydziału.
-    for text in texts:
-        require_working_anthology(text)
-        stages = _current_stages(text)
-        assignments = _current_assignments(text)
-        _require_open_process(stages)
-        matching = [s for s in stages if STAGE_ROLE_MAP.get(s.stage_type) == selected_role and s.assignment_id == next((a.pk for a in assignments if a.role == selected_role), None)]
-        if text.repetitions.filter(completed_at__isnull=True, canceled_at__isnull=True).exists() and not any(s.is_released and not s.is_completed for s in matching):
-            raise ValidationError("Ta rola nie jest jeszcze dostępna w kolejce powtórzeń.")
-        _require_role_not_started(matching or stages, selected_role)
-
-        assignment = next(
-            (item for item in assignments if item.role == selected_role),
-            None,
-        )
-
-        if target_user is not None:
-            from workflow.availability import ensure_distinct_proofreader
-            ensure_distinct_proofreader(text, selected_role, target_user)
-            _require_distinct_verifiers(
-                assignments,
-                selected_role,
-                target_user.pk,
-            )
-
-        changes.append((text, assignment))
-
-    for text, assignment in changes:
-        if assignment is None:
-            if target_user is None:
-                continue
-            assignment = WorkflowRoleAssignment(
-                text=text,
-                workflow_cycle=text.current_workflow_cycle,
-                role=selected_role,
-            )
-
-        new_user_id = target_user.pk if target_user else None
-        if assignment.pk and assignment.assigned_to_id == new_user_id:
-            continue
-
-        assignment.assigned_to = target_user
-        assignment.assigned_at = timezone.now() if target_user else None
-        assignment.full_clean()
-
-        if assignment.pk:
-            assignment.save(update_fields=["assigned_to", "assigned_at"])
-        else:
-            assignment.save()
-
-    return len(texts)
 
 
 def _require_start_order(stage, stages):
@@ -452,7 +248,7 @@ def start_assigned_stage(*, user, stage_id, started_at):
 
     from workflow.availability import ensure_distinct_proofreader
     ensure_distinct_proofreader(text, role, assignment.assigned_to)
-    _require_eligible_assignee(assignment.assigned_to, role)
+    _require_eligible_assignee(assignment.assigned_to, role, existing=True)
     _require_distinct_verifiers(assignments, role, assignment.assigned_to_id)
     _require_start_order(stage, stages)
 
@@ -598,7 +394,7 @@ def change_scheduled_stage(*, user, stage_id, started_at=None, cancel=False):
     else:
         from workflow.availability import ensure_distinct_proofreader
         ensure_distinct_proofreader(text, role, assignment.assigned_to)
-        _require_eligible_assignee(assignment.assigned_to, role)
+        _require_eligible_assignee(assignment.assigned_to, role, existing=True)
         date = validate_assignment_start_date(started_at)
         previous = [s.ended_at for s in stages if s.is_completed and s.ended_at]
         if previous and date < max(previous):

@@ -81,7 +81,7 @@ def _render_my_vacations(request, person, form, *, status=200):
             "can_manage_team_vacations": is_coordinator(request.user),
             "person": person,
             "history_person": history_person,
-            "vacation_people": Person.objects.filter(is_active=True).order_by("last_name", "first_name", "pk") if is_coordinator(request.user) else [],
+            "vacation_people": Person.objects.active().order_by("last_name", "first_name", "pk") if is_coordinator(request.user) else [],
             "vacations": page_obj,
             "page_obj": page_obj,
         },
@@ -99,9 +99,9 @@ def my_vacations(request):
         selected = request.POST.get("person") if request.method == "POST" else None
         if selected:
             from core.selectors.texts import _positive_id
-            person = get_object_or_404(Person.objects.filter(is_active=True), pk=_positive_id(selected))
+            person = get_object_or_404(Person.objects.active(), pk=_positive_id(selected))
         elif person is None:
-            person = Person.objects.filter(is_active=True).order_by("last_name", "pk").first()
+            person = Person.objects.active().order_by("last_name", "pk").first()
 
     if person is None:
         messages.error(

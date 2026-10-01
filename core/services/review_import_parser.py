@@ -195,3 +195,17 @@ def clean_pasted_submission(value):
 
 def is_legacy_mail_record(parts):
     return len(parts) >= 7 and '@' in parts[4] and ''.join(parts[3].split()).isascii() and ''.join(parts[3].split()).isdecimal()
+
+
+def mail_submission_rows(value):
+    """Use the same CSV dialect and legacy detection as the manual import.
+
+    The index refers to the last physical line consumed by this CSV record,
+    so a quoted multiline message is never appended twice.
+    """
+    for start, raw, fields in submission_rows(value):
+        parts = [unbracket(field.strip()) if index < 8 else field for index, field in enumerate(fields)]
+        if len(parts) >= 8 and '@' in parts[5] and ''.join(parts[4].split()).isascii() and ''.join(parts[4].split()).isdecimal():
+            yield 'new', start + len(raw.splitlines()) - 2, parts
+        elif is_legacy_mail_record(parts):
+            yield 'old', start + len(raw.splitlines()) - 2, parts

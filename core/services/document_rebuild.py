@@ -200,6 +200,11 @@ def _analyze_docx(source):
     original = Document(source)
     body = original.element.body
     omissions = Omissions()
+    for rel in original.part.rels.values():
+        if not rel.is_external and rel.reltype.endswith(('/header', '/footer')):
+            root = etree.fromstring(rel.target_part.blob, etree.XMLParser(resolve_entities=False, no_network=True))
+            if any((node.text or '').strip() for node in root.iter(qn('w:t'))) or root.find('.//' + qn('w:drawing')) is not None:
+                omissions.add('niepuste nagłówki lub stopki')
     if len(original.sections) > 1:
         omissions['podziały na sekcje i ustawienia ich układu (pozostanie jedna sekcja A4)'] = len(original.sections)-1
     for link in body.iter(qn('w:hyperlink')):

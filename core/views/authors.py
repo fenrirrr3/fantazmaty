@@ -128,9 +128,9 @@ def _render_author_detail(request, author, *, form=None, status=200):
 
     # Archiwalne recenzje nie wpływają na żaden licznik zgłoszeń.
     submissions = Review.objects.filter(
-        author_id=author.pk,
+        Q(author_id=author.pk) | Q(coauthors__pk=author.pk),
         old_reviews=False,
-    )
+    ).distinct()
     author_summary = submissions.aggregate(
         submissions=Count("pk"),
         accepted=Count(

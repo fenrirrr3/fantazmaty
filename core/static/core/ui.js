@@ -653,8 +653,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const cell = copyCellFrom(elementFrom(event));
             if (!cell) return;
 
+            if (selected.size) return; // Let the copy event export the selected cells.
             event.preventDefault();
-            if (selected.size && (event.ctrlKey || event.metaKey || event.shiftKey)) return;
             void copy(cellValue(cell), cell);
         });
     }
@@ -671,7 +671,23 @@ document.addEventListener('DOMContentLoaded', () => {
             dropdowns.forEach((dropdown) => { dropdown.open = false; });
         };
 
+        const backgrounds = [...document.querySelectorAll('main, .site-footer')];
+        const previousInert = new Map();
+        const modalNavigation = () => button && getComputedStyle(button).display !== 'none';
+        const blockBackground = open => {
+            backgrounds.forEach(element => {
+                if (open) {
+                    if (!previousInert.has(element)) previousInert.set(element, element.inert);
+                    element.inert = true;
+                } else if (previousInert.has(element)) {
+                    element.inert = previousInert.get(element);
+                    previousInert.delete(element);
+                }
+            });
+            document.body.classList.toggle('menu-open', open);
+        };
         const closePanel = () => {
+            blockBackground(false);
             panel?.classList.remove("is-open");
             button?.setAttribute("aria-expanded", "false");
         };
@@ -690,7 +706,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!panel) return;
             const open = panel.classList.toggle("is-open");
             button.setAttribute("aria-expanded", String(open));
-            if (!open) closeDropdowns();
+            blockBackground(open && modalNavigation());
+            if (open && modalNavigation()) panel.querySelector('a[href], summary, button')?.focus();
+            if (!open) { closeDropdowns(); button.focus(); }
         });
 
         dropdowns.forEach((dropdown) => {
@@ -712,6 +730,14 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         document.addEventListener("keydown", (event) => {
+            if (event.key === 'Tab' && panel?.classList.contains('is-open') && modalNavigation()) {
+                const options = [button, ...panel.querySelectorAll('a[href], button:not([disabled]), summary, input:not([disabled])')]
+                    .filter(element => !element.closest('details:not([open]) > :not(summary)'));
+                const first = options[0], last = options[options.length - 1];
+                if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+                else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+                else if (!options.includes(document.activeElement)) { event.preventDefault(); first?.focus(); }
+            }
             if (event.key !== "Escape") return;
 
             const openDropdown = dropdowns.find((item) =>

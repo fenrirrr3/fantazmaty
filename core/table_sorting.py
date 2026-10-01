@@ -27,6 +27,7 @@ MODELS = {
   'Data przydziału': ('assigned', ('assigned_at',)), 'Ostatnia zmiana recenzji': ('changed', ('opinion_changed_at',)),
  },
  'people.person': {'Osoba': ('person', ('last_name','first_name')), 'Imię i nazwisko': ('person', ('last_name','first_name')), 'E-mail': ('email', ('email',))},
+ 'core.newsletterconsent': {'Adres e-mail': ('email', ('email',)), 'Zgoda na newsletter o premierach': ('premieres', ('premieres',)), 'Zgoda na newsletter o naborach': ('recruitment', ('recruitment',))},
  'authors.author': {'Autor': ('person', ('last_name','first_name')), 'Imię i nazwisko': ('person', ('last_name','first_name')), 'Pseudonim': ('pseudonym', ('pseudonym',)), 'E-mail': ('email', ('email',))},
  'texts.anthology': {'Antologia': ('title', ('title',)), 'Tytuł': ('title', ('title',)), 'Status': ('status', ('status',))},
  'people.vacation': {'Urlop od': ('start', ('start_date',)), 'Urlop do': ('end', ('end_date',)), 'Osoba': ('person', ('person__last_name','person__first_name')), 'Rozpoczęcie': ('start', ('start_date',)), 'Zakończenie': ('end', ('end_date',)), 'Data rozpoczęcia': ('start', ('start_date',)), 'Data zakończenia': ('end', ('end_date',))},
@@ -96,6 +97,38 @@ def _sorted_rows(items, getter, reverse):
             present.append((row, _value(value)))
     return [row for row, value in sorted(present, key=lambda pair: pair[1], reverse=reverse)] + missing
 
+
+
+class _SortedSubset:
+    """Keep scalar IDs/keys; hydrate only the page requested by the paginator."""
+    def __init__(self, queryset, ids, projector=None):
+        self.queryset, self.ids, self.projector = queryset, ids, projector
+
+    def count(self): return len(self.ids)
+    def __len__(self): return len(self.ids)
+    def __iter__(self):
+        for offset in range(0, len(self.ids), 200):
+            yield from self[offset:offset + 200]
+
+    def __getitem__(self, key):
+        ids = self.ids[key] if isinstance(key, slice) else [self.ids[key]]
+        if not ids: return []
+        records = {_get(row, 'pk'): row for row in self.queryset.filter(pk__in=ids)}
+        result = [self.projector(records[pk]) if self.projector else records[pk] for pk in ids if pk in records]
+        return result if isinstance(key, slice) else result[0]
+
+
+def _sort_query_projection(items, queryset, getter, reverse):
+    projector = getattr(items, 'projector', None)
+    keys, missing = [], []
+    for record in queryset.iterator(chunk_size=200):
+        row = projector(record) if projector else record
+        pk = _get(record, 'pk')
+        value = getter(row)
+        if value is None or value == '' or value == []: missing.append(pk)
+        else: keys.append((pk, _value(value)))
+    ids = [pk for pk, value in sorted(keys, key=lambda pair: pair[1], reverse=reverse)] + missing
+    return _SortedSubset(queryset, ids, projector)
 
 def _joined(items):
     return ', '.join(sorted((str(item) for item in items), key=text_key))
@@ -173,6 +206,8 @@ def _extra_columns(items, queryset, request):
     return columns
 
 def prepare_table_sort(request, items):
+    if hasattr(items, 'sort_table'):
+        return items.sort_table(request)
     queryset = items if isinstance(items, QuerySet) else getattr(items, 'queryset', None)
     if queryset is None:
         if not isinstance(items, (list, tuple)) or not items or not isinstance(items[0], dict):
@@ -197,6 +232,10 @@ def prepare_table_sort(request, items):
         return items, columns
     model = queryset.model._meta.label_lower
     columns = MODELS.get(model, {}).copy()
+    if model == 'people.person' and 'last_activity_at' in queryset.query.annotations:
+        columns.update({'Data logowania': ('last_activity', ('last_activity_at',)), 'Data działania': ('last_activity', ('last_activity_at',))})
+        if 'last_action' in queryset.query.annotations:
+            columns['Działanie'] = ('last_action', ('last_action',))
     if model == 'texts.text' and 'last_status_change' in queryset.query.annotations:
         columns['Ostatnia zmiana statusu'] = ('last_status_change', ('last_status_change',))
     if model == 'texts.review':
@@ -228,7 +267,7 @@ def prepare_table_sort(request, items):
                 items = items.prefetch_related('roles')
             elif queryset.model._meta.label_lower == 'people.vacation':
                 items = items.select_related('person').prefetch_related('person__roles')
-        return _sorted_rows(items, extra, requested.startswith('-')), {
+        return _sort_query_projection(items, items if isinstance(items, QuerySet) else queryset, extra, requested.startswith('-')), {
             **{label:spec[0] for label,spec in columns.items()}, **{label:spec[0] for label,spec in extras.items()}}
     fields = next((fields for _, (name,fields) in columns.items() if name == key), None)
     if fields:

@@ -136,7 +136,6 @@ class ImportedWorkTests(TestCase):
 
     def test_filters_tables_and_people_tiles_hide_import_only_work_and_styling_tile(self):
         from core.selectors.texts import text_detail_context, workflow_list_context
-        from core.forms import CoordinatorTextBulkActionForm
         self.load()
         styling = A.objects.create(text=self.text, role="styling", assigned_to=self.admin)
         context = text_detail_context(user=self.admin, text=self.text)
@@ -145,7 +144,6 @@ class ImportedWorkTests(TestCase):
         self.assertTrue(set(IMPORT_ONLY_STAGE_TYPES).issubset({s["stage_type"] for s in context["archived_stages"]}))
         self.assertFalse(set(dict(active_role_choices())) & set(IMPORT_ONLY_ROLES))
         self.assertFalse(set(dict(active_stage_choices())) & set(IMPORT_ONLY_STAGE_TYPES))
-        self.assertFalse(set(dict(CoordinatorTextBulkActionForm.base_fields["role"].choices)) & set(IMPORT_ONLY_ROLES))
         listing = workflow_list_context(user=self.admin, params=QueryDict())
         self.assertFalse({role for role, _ in listing["role_columns"]} & set(IMPORT_ONLY_ROLES))
         self.assertFalse({row["stage_type"] for row in listing["stages"]} & set(IMPORT_ONLY_STAGE_TYPES))

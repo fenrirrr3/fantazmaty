@@ -1,0 +1,345 @@
+{
+  "base": "audited-current_sep30",
+  "files": [
+    {
+      "path": ".github/workflows/tests.yml",
+      "sha256": "d1464cc0d0993f517206937344f8eb09762d2fa5f7bbeb70ea691e27bae5cba5"
+    },
+    {
+      "path": "core/activity.py",
+      "sha256": "446f6ea0b8c45cb59ccc08f6352d92573e479589f399c16ceb71d3860d5348d6"
+    },
+    {
+      "path": "core/admin.py",
+      "sha256": "65b1cbed77ba323e8327c0791c95efa61f64eb201e1f558e902e61fcfd073c4b"
+    },
+    {
+      "path": "core/admin_access.py",
+      "sha256": "e360912eb588e9114e69bd539c547e92ad5bb3aad841d3d0a5b97a2b6194e600"
+    },
+    {
+      "path": "core/admin_apps.py",
+      "sha256": "59be15fc48a5b2242c5991e48eac30ec4cf0c9959687302dab364ec8da26294e"
+    },
+    {
+      "path": "core/admin_navigation.py",
+      "sha256": "2d027a750fe5f57df0c90f8b16333c63eb783f292e71226902f200a80c80cca8"
+    },
+    {
+      "path": "core/admin_newsletter_recovery.py",
+      "sha256": "a056f68b6c73e74bfd72bbf54c78b696e3f918a02859ae4955ee58dd98bb04a7"
+    },
+    {
+      "path": "core/admin_people.py",
+      "sha256": "6d12cf62ed053ce6a4cc7ec3d2a93b02778345e0486e7e62eb785932577583a0"
+    },
+    {
+      "path": "core/admin_site.py",
+      "sha256": "6eef185fbb986479b4741bbf01104b47232add819b36bf9cff4b3a6bcf3d4351"
+    },
+    {
+      "path": "core/apps.py",
+      "sha256": "d94bbbb6c4b303a12607fb13eeaf5461b787b94c94378db35265269e5d5c34ba"
+    },
+    {
+      "path": "core/edit_versions.py",
+      "sha256": "d1a51c3f34c614a441576c50a2f9789ce9143733b0c45cd944b5886e49889788"
+    },
+    {
+      "path": "core/file_forms.py",
+      "sha256": "0c446ca87a7a67a152cf939f7bd55abfdff7f40439d50a2f45bf0b9c0ccc203c"
+    },
+    {
+      "path": "core/forms.py",
+      "sha256": "0524b50527c228b9d883675485b0ba85518ace1a5d8be129449553ee7494d0f1"
+    },
+    {
+      "path": "core/intake_forms.py",
+      "sha256": "3b48666bccf0536d95c74e02f2ac5ed3b9bc4f26be09ecb4ba831ea039a3dcf1"
+    },
+    {
+      "path": "core/management/commands/check_account_identity.py",
+      "sha256": "d3a1f25a362237af13cb7427e536d7d5d5d9881422e3015a26ed66f518d60e35"
+    },
+    {
+      "path": "core/middleware.py",
+      "sha256": "0139f729bafb457af157edd0f23057698c8dbfe0c297f571ddbd0cd180cf0d8a"
+    },
+    {
+      "path": "core/migrations/0019_unique_account_email.py",
+      "sha256": "e48880a80d5018cee7527a363280ca18e0eb50f772bf422559151699c4e4ed04"
+    },
+    {
+      "path": "core/permissions.py",
+      "sha256": "91534dca21d4750eb9e0f44aae0bacc89c747a7147c4fa9e0572233e26772f18"
+    },
+    {
+      "path": "core/review_submission_forms.py",
+      "sha256": "7c2b794de0a4dc1c8fd8915b20d795a8247f9fce5c4d2cd3e2c2280c5db6d673"
+    },
+    {
+      "path": "core/search_lookup.py",
+      "sha256": "dd5c24930c644f7634e2ac2daaabafbf179cb59fb7cca9056247de833f35db48"
+    },
+    {
+      "path": "core/selectors/reports.py",
+      "sha256": "3e17801d201dd30167f857e94dd0d3c5e4224012421b62566f2fc8d617ef8a9b"
+    },
+    {
+      "path": "core/services/document_conversion_worker.py",
+      "sha256": "9b35c79023e7395e0295c01c6687f6abf431e83e0355d092bccc8de769485b47"
+    },
+    {
+      "path": "core/services/document_converter.py",
+      "sha256": "37ad453bd1744d748579e6e2f04fb19293f196cf8068da6f9af5efa7f56d8d9e"
+    },
+    {
+      "path": "core/services/document_formatting.py",
+      "sha256": "b16c68c3908b03851e5e80b479959f6e29d2f74a4496822c97b2f2bb6d7a6c9b"
+    },
+    {
+      "path": "core/services/document_html.py",
+      "sha256": "2eec72f6d05f4f7fbc3e150e1312fd0a352c7a3a54dacee7db91c573ea228adf"
+    },
+    {
+      "path": "core/services/document_pdf.py",
+      "sha256": "f38644b042909f6a54c2690b4eda56a32fd9f42bb928c6616eada780f37ed425"
+    },
+    {
+      "path": "core/services/document_rebuild.py",
+      "sha256": "ab5a3f43c61e814f71f58d40948e1e597444ef6eacce8ec6fb31b8066e700791"
+    },
+    {
+      "path": "core/services/document_styles.py",
+      "sha256": "281978008b3b347d8b5594cc2303acaf2f88d6932712e28f91209ca213996f95"
+    },
+    {
+      "path": "core/services/document_worker_bootstrap.py",
+      "sha256": "5a0a7e899af84690952a9b7492b89f413c1a4cfd37d5e6a08dc8451e9fb39954"
+    },
+    {
+      "path": "core/services/mailbox_body.py",
+      "sha256": "3bb69fb0ef71544b7be60a29e8d9118594c5e857ab1c9ec8dbd6f13ed1a8681f"
+    },
+    {
+      "path": "core/services/mailbox_import.py",
+      "sha256": "07a535a7c3a998613ca88b721df9b83e5d0ede40d7eb7f1c2ca3c26acabc1bb3"
+    },
+    {
+      "path": "core/services/odkurzacz.py",
+      "sha256": "55264af4e030063833550f4ac46fd6e98eff26e7adee8969b117484e756f1518"
+    },
+    {
+      "path": "core/services/review_import_parser.py",
+      "sha256": "23c87de1fd7040390a63197c8cd23fde692bf155d8043d130ad5a7638f5a0b3c"
+    },
+    {
+      "path": "core/services/reviews.py",
+      "sha256": "c4f35cdec7b94f3e03f8323e54434540cc28c9b6c54949ff2e3702781abca9b3"
+    },
+    {
+      "path": "core/services/texts.py",
+      "sha256": "ce651f28769f3869ff309fce6263e60adf10c4dbb34ca5d7b32f336f3ec3230f"
+    },
+    {
+      "path": "core/source_reviews.py",
+      "sha256": "a0ce60dfcf7ecc430905272a50a2841df264fe2bfaa98194517d6541fc38988b"
+    },
+    {
+      "path": "core/static/core/admin-inlines.js",
+      "sha256": "525a0ec3a90271cc150ffd2097e992f720fdc2a73f56c9da35f950647de8bd7c"
+    },
+    {
+      "path": "core/static/core/components.css",
+      "sha256": "56e38fc75ff91df02ace62811cc9e65d2d1c711cf4d16d95a6d77e855502097c"
+    },
+    {
+      "path": "core/static/core/styles.css",
+      "sha256": "dd10330813ca4b9d6c35641f14f341fe30c81890e8278beceecc95a433a255af"
+    },
+    {
+      "path": "core/static/core/theme.js",
+      "sha256": "c219ba09a74b5f2efe60c5cf9e54f6e1fc56f6f1abf064ab0563cf71b266adbe"
+    },
+    {
+      "path": "core/static/core/ui.js",
+      "sha256": "6c542b8df3dcfea210f28f6219d34affa9b958c6bf9f3dde91e6dae78f7fcfc7"
+    },
+    {
+      "path": "core/table_sorting.py",
+      "sha256": "8b94bef5a64736ea294ba4ccc48178ae93af2e18308fabef843bb48c245bd4b3"
+    },
+    {
+      "path": "core/templates/admin/core/newsletter_recovery.html",
+      "sha256": "0fbd85b09a2fb556e39dd48fe49e3a78c2bb00e13e9ea63edabede045be738ec"
+    },
+    {
+      "path": "core/templates/core/assigned_review_detail.html",
+      "sha256": "66b03d47e4883b4937b4d34977ed1d8647608021e63b016ca5cf5b5bf8e3631c"
+    },
+    {
+      "path": "core/templates/core/assigned_text_detail.html",
+      "sha256": "dd65059d0aad4a7dcaf6e879b199251d367a9527c02402acc657183237e2ad91"
+    },
+    {
+      "path": "core/templates/core/audiobooks.html",
+      "sha256": "4235d233190b22d38ec579fba69d1b866bf2b50a9dc4709dbd258c7010adb1e5"
+    },
+    {
+      "path": "core/templates/core/available_texts.html",
+      "sha256": "f50ffc6f258915019bb5d2eecbceac805d7ef2cefb7ab0b62e256c3f83190b8a"
+    },
+    {
+      "path": "core/templates/core/editor_activity.html",
+      "sha256": "d07e32f91fd7055289771cf7af22e50a63c7b9eb5458a85b4cbf2099b025dce4"
+    },
+    {
+      "path": "core/templates/core/includes/dashboard_work_items.html",
+      "sha256": "4e8ad82a93fa4d3378eb27d9f1b420e479e19dbdc5ef1de5d1788f7132591f2d"
+    },
+    {
+      "path": "core/templates/core/includes/review_import_warnings.html",
+      "sha256": "fe8466ee126eafde0f2033c46511aa1f79a5e688f26dbe7f8630ab372d077c70"
+    },
+    {
+      "path": "core/templates/core/last_activity.html",
+      "sha256": "e083cef798388db7a9927621f89afd98cc2d063c6848875d11ef915e8053b44d"
+    },
+    {
+      "path": "core/templates/core/my_texts.html",
+      "sha256": "e6cb6d60dfd4af81ff269a75d2b3bf67f73df8ade46d1192e48ae306be6aaf89"
+    },
+    {
+      "path": "core/templates/core/person_detail.html",
+      "sha256": "519b7d8f410fa3eaa648811489827b09e307d63da7790be8da80492a06c4047c"
+    },
+    {
+      "path": "core/templates/core/programs.html",
+      "sha256": "d11707cb11f4085db9c00169be862f08840911818ac64bac0b9dae39cdb67758"
+    },
+    {
+      "path": "core/templates/core/proofreader_activity.html",
+      "sha256": "635ae8ade84e7a63c21e078121bd0768fe6b5979218246921b44876fe708c268"
+    },
+    {
+      "path": "core/templates/core/review_bulk_import.html",
+      "sha256": "299f62862209e9c0850ef15bfef4fb695fb1d8b3228334c4da28b1ebc2199ed1"
+    },
+    {
+      "path": "core/templates/core/verifier_activity.html",
+      "sha256": "3e0b71fa3c127baad839c8c8596e74a535cbf9f041d4ac16c1a35e0fa5b02038"
+    },
+    {
+      "path": "core/templates/core/workflow_inactivity.html",
+      "sha256": "f5204cc79eb6a3ba716bbdad9b607060ee82420dc5cf69088ebd5f33e66ae3c7"
+    },
+    {
+      "path": "core/test_audit_repairs.py",
+      "sha256": "fff427c00c4eb83fa2c54d61fffab98287946bdd15c15c1117b6e1ec1b6bc3b4"
+    },
+    {
+      "path": "core/test_document_rebuild.py",
+      "sha256": "83fd40b944f6022b3d88a24724a43e43bcb477ddd891922a34eeae86bea0d2e0"
+    },
+    {
+      "path": "core/test_newsletter_recovery.py",
+      "sha256": "270624661b592717193dd82e2ae4c0f973fa58b97a605bff7631720b632d06a9"
+    },
+    {
+      "path": "core/urls.py",
+      "sha256": "60a4ee9e45e7288ee73730aa6e967d00f9291983f49d6f8bad6433048189c4ed"
+    },
+    {
+      "path": "core/views/__init__.py",
+      "sha256": "dbbd55b3132e52ce50ac645ea984ccf13a93c2eece4ef81d52d88a2f618283b1"
+    },
+    {
+      "path": "core/views/authors.py",
+      "sha256": "9ba24a2362d141c88701600b2fcab15506663e50d1e07f18b131e66bffd993e3"
+    },
+    {
+      "path": "core/views/programs.py",
+      "sha256": "5f504f5e2b9a6eb194a8136c412d537a7016564fd107af5f64b58738b72ed7b4"
+    },
+    {
+      "path": "core/views/reviews.py",
+      "sha256": "006c71b1d2f208533978bbba17e1e4ff65bde02ca9fb8d07dc9ec39b96c5de77"
+    },
+    {
+      "path": "core/views/supervision.py",
+      "sha256": "fb7c229b08cb1c7040f1cb69bd8a95bfdaedef2fb368c94cc692c46b62ce3eda"
+    },
+    {
+      "path": "core/views/texts.py",
+      "sha256": "c1e55ab0dda97f34adfffe6f91aeaefacdf978f06fa1927904714b0fff9381fd"
+    },
+    {
+      "path": "core/views/vacations.py",
+      "sha256": "335db0314bae98026598c89839bc858974b41c0dcc99eac70ba8d438783ba5b7"
+    },
+    {
+      "path": "fantazmaty/release_test_settings.py",
+      "sha256": "01c18771dc6529c9dd764348a2b68f3eba500bd4e831521e4de3ee0737941bd3"
+    },
+    {
+      "path": "fantazmaty/settings.py",
+      "sha256": "5da7b3b322438654f352307b15838f5bb49b70456c06bcde51c01f704e183df8"
+    },
+    {
+      "path": "fantazmaty/test_settings.py",
+      "sha256": "296f2150db44acee23a51386ac6e0f38441064d8975ba31d04cc2d09486d558c"
+    },
+    {
+      "path": "people/apps.py",
+      "sha256": "9d642d476ffcae04913e58408e3c4bcf033a118db56137c5d77e5b2fa0dfcdbc"
+    },
+    {
+      "path": "people/identity.py",
+      "sha256": "eba9a3fc9fc9e8e87670efabad0baeaf932250666ef3f4b383bb4bb9425a4c70"
+    },
+    {
+      "path": "people/management/commands/export_team_members.py",
+      "sha256": "a8fafa452858a6efb9e1e229cabc6dc0401d1a668200f415d0cb00370f3f2ace"
+    },
+    {
+      "path": "people/migrations/0010_unify_team_identity.py",
+      "sha256": "152288f1fbf38531f072899ed41372267409eec33cda71b53996dfb8c5baf1d7"
+    },
+    {
+      "path": "people/models.py",
+      "sha256": "98b99e31d7c65d3eb86eed6d3c5bb94872bc34b4719e8f5f1dcb3275cd13bd1c"
+    },
+    {
+      "path": "requirements.txt",
+      "sha256": "99bba35445005aa419fbb57f9ba4ad7390bdda5a9f74ff553aabe3315b799adb"
+    },
+    {
+      "path": "texts/admin.py",
+      "sha256": "de4d3482cf038e964289dedd9c406b0d58179d30752c2cae36052534880811c1"
+    },
+    {
+      "path": "workflow/availability.py",
+      "sha256": "1ab6e4f3e4b7d50db034313bfec53797f44d1a886ed45e649f0d793182ab31b9"
+    },
+    {
+      "path": "workflow/migrations/0010_workflowstage_queued_at.py",
+      "sha256": "c1b24db9cba10108604858b414b907ec173a22c56cea32599b915d17a069b513"
+    },
+    {
+      "path": "workflow/models.py",
+      "sha256": "93c46242b6899f79781e6922db2e3015e5c78bc21cc4e3aa2c3ef32027101a1e"
+    },
+    {
+      "path": "workflow/test_import_only_work.py",
+      "sha256": "03ff054097b9f1d90e901c00be8a2c1ac4f325e0016b5c15fde72370b46672b5"
+    }
+  ],
+  "removed": [
+    "authors/views.py",
+    "core/views/_init_.py",
+    "people/views.py",
+    "texts/static/texts/admin/texts/review/change_form.html",
+    "texts/views.py",
+    "workflow/views.py"
+  ]
+}

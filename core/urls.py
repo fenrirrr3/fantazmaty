@@ -75,11 +75,6 @@ urlpatterns = [
     # Teksty.
     path("teksty/", texts.text_list, name="text_list"),
     path(
-        "teksty/operacja-zbiorcza/",
-        texts.bulk_text_action,
-        name="bulk_text_action",
-    ),
-    path(
         "teksty/<int:text_id>/autorzy/",
         texts.set_text_authors,
         name="set_text_authors",

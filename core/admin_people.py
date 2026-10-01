@@ -1,14 +1,12 @@
 """Searchable person choices with account names, confined to Django admin."""
-from functools import wraps
-from types import MethodType
-from django.contrib import admin
-from django.contrib.admin.options import BaseModelAdmin
 from django.contrib.admin.views.autocomplete import AutocompleteJsonView
 from django.contrib.admin.widgets import AutocompleteSelect
 from django.contrib.auth import get_user_model
 
 
 def person_label(obj):
+    if type(obj) is get_user_model():
+        obj = getattr(obj, 'person_profile', None) or obj
     name = ' '.join(part.strip() for part in (obj.first_name, obj.last_name) if part and part.strip())
     return name or f'Osoba bez imienia i nazwiska (ID {obj.pk})'
 
@@ -25,17 +23,8 @@ class PersonAutocompleteJsonView(AutocompleteJsonView):
         return result
 
 
-def autocomplete_view(self, request):
-    return PersonAutocompleteJsonView.as_view(admin_site=self)(request)
 
-
-def install():
-    admin.site.autocomplete_view = MethodType(autocomplete_view, admin.site)
-    original = BaseModelAdmin.formfield_for_foreignkey
-    if getattr(original, '_person_choices_installed', False):
-        return
-
-    @wraps(original)
+class PeopleChoiceMixin:
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         target = db_field.remote_field.model
         personal = is_person_model(target)
@@ -43,10 +32,8 @@ def install():
             target_admin = self.admin_site.get_model_admin(target)
             if target_admin.get_search_fields(request):
                 kwargs['widget'] = AutocompleteSelect(db_field, self.admin_site, using=kwargs.get('using'))
-        field = original(self, db_field, request, **kwargs)
+        field = super().formfield_for_foreignkey(db_field, request, **kwargs)
         if personal and field is not None:
             field.label_from_instance = person_label
+            if target is get_user_model(): field.queryset = field.queryset.select_related('person_profile')
         return field
-
-    formfield_for_foreignkey._person_choices_installed = True
-    BaseModelAdmin.formfield_for_foreignkey = formfield_for_foreignkey

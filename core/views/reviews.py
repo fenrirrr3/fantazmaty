@@ -28,6 +28,7 @@ from core.pagination import paginate_items
 from core.permissions import (
     can_import_reviews,
     can_manage_reviews,
+    can_manage_review_files,
     can_perform_bulk_actions,
     can_self_assign_reviews,
     can_view_author_data,
@@ -228,6 +229,8 @@ def _render_review_detail(
         review,
         include_author=include_author,
     )
+    if can_manage_review_files(request.user):
+        review_data["file_url"] = review.file_url
     can_notify_author = (
         include_author
         and review.status in (Review.Status.ACCEPTED, Review.Status.REJECTED)
@@ -275,10 +278,12 @@ def _render_review_detail(
             ),
             "can_unassign_review": (
                 own_assignment is not None and not is_locked
+                and own_assignment.opinion in ("", Reviewers.Opinion.READING)
             ),
             "reviewers_have_free_slot": has_free_slot and not is_locked,
-            "review_file_form": ReviewFileForm(instance=review) if request.user.is_superuser else None,
-            "dropbox_chooser_app_key": getattr(settings, "DROPBOX_CHOOSER_APP_KEY", "") if request.user.is_superuser else "",
+            "can_manage_review_files": can_manage_review_files(request.user),
+            "review_file_form": ReviewFileForm(instance=review) if can_manage_review_files(request.user) else None,
+            "dropbox_chooser_app_key": getattr(settings, "DROPBOX_CHOOSER_APP_KEY", "") if can_manage_review_files(request.user) else "",
             "can_edit_content_warnings": can_contribute,
             "review_content_warnings_form": (
                 ReviewContentWarningsForm(
@@ -822,7 +827,7 @@ def my_reviews(request):
 @never_cache
 @login_required
 @require_POST
-@superuser_required
+@coordinator_required
 def update_review_file(request, review_id):
     with transaction.atomic():
         review = get_object_or_404(Review.objects.select_for_update(), pk=review_id)

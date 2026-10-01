@@ -67,6 +67,15 @@ class AccountAdmin(UserAdmin):
             return "Brak powiązanego profilu"
         return format_html('<a href="{}">Otwórz profil: {}</a>', reverse('admin:people_person_change', args=[person.pk]), person)
 
+    def save_model(self, request, obj, form, change):
+        obj._cms_edit_profile_name = True
+        super().save_model(request, obj, form, change)
+        from people.models import Person
+        person = Person.objects.filter(user_id=obj.pk).first()
+        if person and {'first_name', 'last_name'}.intersection(form.changed_data):
+            person.first_name, person.last_name = obj.first_name, obj.last_name
+            person.save(update_fields=['first_name', 'last_name'])
+
     search_fields = ('first_name__plcontains', 'last_name__plcontains', 'email__plcontains', 'username__plcontains')
     ordering = ('last_name', 'first_name', 'pk')
     form = AccountChangeForm

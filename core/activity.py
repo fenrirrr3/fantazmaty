@@ -29,7 +29,7 @@ LABELS.update({
     'recruitment_list':'Rekrutacja', 'recruitment_add':'Dodanie rekrutacji', 'recruitment_edit':'Edycja rekrutacji',
     'editor_activity':'Aktywność redaktorów', 'correction_texts':'Wybór tekstu do uwagi', 'correction_status':'Zmiana statusu uwagi',
     'notification_queue':'Autorzy do powiadomienia', 'scheduled_rejections':'Zaplanowane odrzucenia', 'release_hidden_review':'Przywrócenie recenzji',
-    'audiobooks':'Audiobooki', 'bulk_text_action':'Operacja zbiorcza na tekstach', 'set_text_authors':'Zmiana autorów tekstu',
+    'audiobooks':'Audiobooki', 'set_text_authors':'Zmiana autorów tekstu',
     'bulk_review_action':'Operacja zbiorcza na recenzjach', 'update_review_status':'Zmiana statusu recenzji',
     'update_review_content_warnings':'Zmiana ostrzeżeń recenzji', 'update_author_notification':'Zapis powiadomienia autora',
     'copy_review_to_text':'Przeniesienie zgłoszenia do tekstów', 'update_coordinator_note':'Zapis notatki koordynatora',

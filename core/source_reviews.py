@@ -37,7 +37,7 @@ def validate_source_review_link(text, review, *, coauthors=None, confirm_mismatc
         expected_name = normalize_author_name(f'{review.author_first_name} {review.author_last_name}')
         possible_primary = [author for author in text_authors
             if normalize_author_name(str(author)) == expected_name
-            and (not review.email or author.email.strip().casefold() == review.email.strip().casefold())]
+            and (not review.email or (author.email or '').strip().casefold() == review.email.strip().casefold())]
         authors_mismatch = not any(review_author_ids | {author.pk} == text_author_ids
                                   for author in possible_primary)
     mismatch = review.title.strip().casefold() != text.title.strip().casefold() or authors_mismatch

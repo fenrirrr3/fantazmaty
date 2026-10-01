@@ -17,7 +17,9 @@ from django.views.decorators.http import require_http_methods
 from core.services.mailbox import MailboxError, encode_folder
 from core.services.mailbox_import import default_mailbox, mailbox_key
 from core.services.newsletters import parse_consents, record_consents
-from core.services.review_import_parser import clean_pasted_submission, unbracket
+from core.services.review_import_parser import clean_pasted_submission, unbracket, mail_submission_rows
+from core.services.mailbox_body import fetch_text_body
+import time
 
 MAX_BYTES = 15 * 1024 * 1024
 SESSION_KEY = 'newsletter_recovery_cursor'
@@ -43,14 +45,8 @@ def extract_consent(raw):
     text = clean_pasted_submission(text)
     text = re.sub(r';[ \t]*\r?\n[ \t]*', ';', text)
     candidates = []
-    for line in text.splitlines():
-        parts = [unbracket(v.strip()) for v in line.split(';', 8)]
-        if len(parts) >= 8 and ''.join(parts[4].split()).isdigit() and '@' in parts[5]:
-            email, choices = parts[5], parts[7]
-        elif len(parts) >= 8 and ''.join(parts[3].split()).isdigit() and '@' in parts[4]:
-            email, choices = parts[4], parts[7]
-        else:
-            continue
+    for kind, _, parts in mail_submission_rows(text):
+        email, choices = (parts[5], parts[7]) if kind == 'new' else (parts[4], parts[7] if len(parts) > 7 else '')
         try:
             validate_email(email)
             consents = parse_consents(choices)
@@ -100,26 +96,18 @@ def recover_batch(config, state=None):
         state.setdefault('total', len(uids))
         state.update(key=mailbox_key(config), validity=validity)
         remaining = [uid for uid in uids if state['last'] < uid <= state['maximum']]
-        for uid in remaining[:1]:
-            status, data = client.uid('FETCH', str(uid), '(UID RFC822.SIZE)')
-            meta = b' '.join(x for x in data or [] if isinstance(x, bytes))
-            size = re.search(rb'RFC822.SIZE (\d+)', meta)
-            if status != 'OK' or not size:
-                raise MailboxError('Nie udało się odczytać rozmiaru wiadomości. Możesz ponowić partię.')
+        started = time.monotonic()
+        processed = 0
+        for uid in remaining[:10]:
+            if processed and time.monotonic() - started > 10: break
+            raw = fetch_text_body(client, uid)
             result = None
-            if int(size[1]) <= MAX_BYTES:
-                status, data = client.uid('FETCH', str(uid), f'(UID BODY.PEEK[]<0.{MAX_BYTES + 1}>)')
-                parts = [x for x in data or [] if isinstance(x, tuple) and len(x) == 2 and isinstance(x[1], bytes)]
-                if status != 'OK' or len(parts) != 1 or len(parts[0][1]) != int(size[1]):
-                    raise MailboxError('Nie udało się pobrać pełnej wiadomości. Możesz ponowić partię.')
-                match = re.search(rb'\bUID (\d+)\b', parts[0][0])
-                if not match or int(match[1]) != uid:
-                    raise MailboxError('Serwer zwrócił inną wiadomość. Ponów partię.')
+            if raw is not None:
                 try:
-                    result = extract_consent(parts[0][1])
-                except (ValueError, TypeError, UnicodeError, LookupError, ParserError):
+                    result = extract_consent(raw)
+                except (ValidationError, ValueError, TypeError, UnicodeError, LookupError, ParserError):
                     result = None
-            if int(size[1]) > MAX_BYTES:
+            else:
                 state['oversized'] = state.get('oversized', 0) + 1
             if result is not None:
                 email, consents = result
@@ -127,9 +115,13 @@ def recover_batch(config, state=None):
                 state['matched'] += 1
             else:
                 state['skipped'] += 1
+                state.setdefault('skipped_uids', []).append(uid)
+                state['skipped_uids'] = state['skipped_uids'][-500:]
+                state['skipped_uids_truncated'] = state['skipped'] > 500
             state['last'] = uid
             state['seen'] += 1
-        state['done'] = len(remaining) <= 1
+            processed += 1
+        state['done'] = processed == len(remaining)
         return state
     except (imaplib.IMAP4.error, OSError, InvalidToken, ValueError) as error:
         raise MailboxError('Nie udało się odczytać skrzynki. Sprawdź ustawienia i ponów partię.') from None

@@ -126,7 +126,7 @@ def run_converter(directory, timeout):
            if key in ('PATH', 'SYSTEMROOT', 'WINDIR', 'LANG', 'LC_ALL', 'LD_LIBRARY_PATH', 'PYTHONPATH')}
     env.update(HOME=str(directory), TMPDIR=str(directory), TEMP=str(directory), TMP=str(directory),
                PYTHONDONTWRITEBYTECODE='1')
-    command = [converter_python(), str(Path(__file__).with_name('document_conversion_worker.py')), str(directory)]
+    command = [converter_python(), str(Path(__file__).with_name('document_worker_bootstrap.py')), str(directory)]
     try:
         with subprocess.Popen(command, cwd=directory, env=env, stdin=subprocess.DEVNULL,
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -153,10 +153,13 @@ def run_converter(directory, timeout):
                 report = json.loads(error_file.read_text(encoding='utf-8'))
         except (OSError, ValueError):
             pass
+        if not report:
+            report = {'stage': 'start', 'error': 'ProcessTerminated', 'exit': code,
+                      'signal': -code if code < 0 else None}
         if report.get('error') != 'RebuildUnsupported':
             logger.error('Błąd konwertera: exit=%s python=%s diagnostics=%s', code, command[0], report)
         stage = report.get('stage', '')
-        stage = stage if stage in ('DOCX', 'PDF', 'EPUB', 'Powtórzenia') else 'konwersja'
+        stage = stage if stage in ('start', 'DOCX', 'PDF', 'EPUB', 'Powtórzenia') else 'konwersja'
         kind = report.get('error', '')
         kind = kind if re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,80}', kind) else 'błąd procesu'
         if kind == 'RebuildUnsupported':
@@ -184,6 +187,9 @@ def convert_document(upload, formats, *, use_cleaner=False, timeout=TIME_LIMIT, 
                 'normalize': normalize, 'justify': justify, 'include_docx': include_docx, 'repetitions': repetitions,
             })
             run_converter(directory, deadline - time.monotonic())
+            warning_file = directory / 'warnings.json'
+            warnings = json.loads(warning_file.read_text(encoding='utf-8')) if warning_file.is_file() else []
+            result.conversion_warnings = warnings
             outputs = [directory / ('document.' + kind) for kind in selected]
             if include_docx:
                 shutil.copyfile(source, directory / 'document.docx')
@@ -191,7 +197,7 @@ def convert_document(upload, formats, *, use_cleaner=False, timeout=TIME_LIMIT, 
             for target in outputs:
                 if not target.is_file() or target.is_symlink() or not 0 < target.stat().st_size <= MAX_OUTPUT:
                     raise ConversionError('Konwersja nie utworzyła poprawnego pliku wynikowego lub wynik przekroczył 50 MB.')
-            if len(outputs) == 1:
+            if len(outputs) == 1 and not warnings:
                 with outputs[0].open('rb') as converted:
                     shutil.copyfileobj(converted, result)
                 extension = outputs[0].suffix.lstrip('.')
@@ -200,6 +206,8 @@ def convert_document(upload, formats, *, use_cleaner=False, timeout=TIME_LIMIT, 
                 with ZipFile(result, 'w', compression=ZIP_DEFLATED) as archive:
                     for output in outputs:
                         archive.write(output, arcname=output.name)
+                    if warnings:
+                        archive.writestr('Uwagi_konwersji.txt', '\n'.join(warnings))
                 extension, mime = 'zip', 'application/zip'
         if time.monotonic() > deadline:
             raise ConversionError('Przygotowanie dokumentu przekroczyło limit czasu. Wybierz mniej formatów lub krótszy dokument.')
