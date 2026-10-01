@@ -109,6 +109,12 @@ def _filter_context(params, *, role_name, people_context_name):
     return context, cleaned, valid
 
 
+def _matches(query, *values):
+    from core.search_lookup import fold_polish
+    searchable = fold_polish(" ".join(str(value or "") for value in values))
+    return all(fold_polish(term) in searchable for term in query.split())
+
+
 def _author_prefetch():
     return Prefetch(
         "text__authors",
