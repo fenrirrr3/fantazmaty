@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -145,6 +146,7 @@ def _render_text_detail(request, text, *, bound_forms=None, status=200):
     from core.file_forms import TextFileForm
     context['file_url'] = text.file_url
     context['text_file_form'] = TextFileForm(instance=text) if request.user.is_superuser else None
+    context['dropbox_chooser_app_key'] = getattr(settings, 'DROPBOX_CHOOSER_APP_KEY', '') if request.user.is_superuser else ''
     # Only this text's email addresses are revealed, never source-review identity.
     email_access = coordinator_access or (
         WorkflowRoleAssignment.objects.filter(text=text, assigned_to=request.user).exists()
@@ -248,6 +250,9 @@ def my_texts(request):
         {
             "texts": page_obj,
             "page_obj": page_obj,
+            "mobile_sort_columns": [(label, page_obj.sort_columns[label]) for label in
+                ("Antologia", "Tytuł", "Autorzy", "Twoje role", "Etap", "Twoja praca")
+                if label in page_obj.sort_columns],
             "selected_view": selected_view,
         }
     )

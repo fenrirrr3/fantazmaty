@@ -422,3 +422,6 @@ LOGGING = {
 
 # Temporary files for document conversion.
 DOCUMENT_CONVERSION_DIR = BASE_DIR / 'var' / 'conversion'
+
+# Public application key for the Dropbox folder picker (not an app secret).
+DROPBOX_CHOOSER_APP_KEY = os.environ.get("DROPBOX_CHOOSER_APP_KEY", "").strip()

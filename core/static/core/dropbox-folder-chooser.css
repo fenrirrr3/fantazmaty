@@ -1,0 +1,9 @@
+.dropbox-folder-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .65rem;
+    margin: 1rem 0;
+}
+.dropbox-folder-actions button { margin: 0; }
+.dropbox-folder-actions button:disabled { opacity: .6; cursor: not-allowed; }
