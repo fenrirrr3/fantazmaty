@@ -421,8 +421,10 @@ class PersistentHeadersTests(TestCase):
             parse_message(13, named_mail(NAMED_BODY.replace('37 930', 'abc'), reply_to='Jan Kowalski <jan@example.com>')),
         ]
         response = self.client.post(self.url, {'action': 'download', 'selection': page.context['selection'], 'uids': [12, 13]})
-        errors = response.context['hard_errors']
+        errors = response.context['skipped_errors']
         self.assertTrue(errors)
         self.assertTrue(all('Jan Kowalski <jan@example.com>' in error for error in errors))
         self.assertTrue(all('Wiersz' not in error for error in errors))
+        self.assertEqual(response.context['selected'], [12])
+        self.assertEqual(response.context['hard_errors'], [])
         self.assertFalse(Review.objects.exists())

@@ -11,7 +11,8 @@ from email import policy
 from email.parser import BytesParser
 from email.utils import parseaddr
 from pathlib import PurePosixPath
-from zipfile import ZipFile, ZIP_DEFLATED
+from zipfile import ZipFile, ZIP_DEFLATED, BadZipFile
+from lxml.etree import XMLSyntaxError
 from cryptography.fernet import InvalidToken
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db.models import Q
@@ -19,7 +20,7 @@ from core.models import MailboxConnection, MailboxDownload
 from core.forms import ReviewBulkImportForm
 from core.odkurzacz_forms import OdkurzaczForm
 from core.services.mailbox import MailboxError, encode_folder, story_title, _positive
-from core.services.document_converter import inspect_document, convert_document, RebuildConfirmationRequired
+from core.services.document_converter import inspect_document, convert_document, RebuildConfirmationRequired, ConversionError
 from texts.models import Anthology
 
 MAX_MESSAGES = 20
@@ -62,7 +63,7 @@ def receipts(config, validity):
     return MailboxDownload.objects.filter(mailbox_key=mailbox_key(config), uid_validity=validity)
 
 
-def fetch_messages(config, validity, uids):
+def fetch_messages(config, validity, uids, skipped_errors=None):
     uids = sorted(set(_positive(uid) for uid in uids))
     if not 1 <= len(uids) <= MAX_MESSAGES:
         raise MailboxError(f'Wybierz od 1 do {MAX_MESSAGES} wiadomości.')
@@ -89,21 +90,34 @@ def fetch_messages(config, validity, uids):
             meta = b' '.join(x for x in data or [] if isinstance(x, bytes))
             size = re.search(rb'RFC822.SIZE (\d+)', meta)
             if status != 'OK' or not size or int(size[1]) > MAX_MESSAGE:
-                raise MailboxError(f'Wiadomość {uid} jest niedostępna lub przekracza 15 MB.')
+                error = f'Wiadomość {uid}: jest niedostępna lub przekracza 15 MB.'
+                if skipped_errors is None:
+                    raise MailboxError(error)
+                skipped_errors.append(error)
+                continue
             total += int(size[1])
             if total > MAX_BATCH:
                 raise MailboxError('Wybrane wiadomości przekraczają łącznie 50 MB. Wybierz mniej pozycji.')
             status, data = client.uid('FETCH', str(uid), f'(UID BODY.PEEK[]<0.{MAX_MESSAGE + 1}>)')
             parts = [x for x in data or [] if isinstance(x, tuple) and len(x) == 2 and isinstance(x[1], bytes)]
             if status != 'OK' or len(parts) != 1 or len(parts[0][1]) != int(size[1]):
-                raise MailboxError(f'Nie udało się pobrać całej wiadomości {uid}.')
+                error = f'Wiadomość {uid}: nie udało się pobrać całej wiadomości.'
+                if skipped_errors is None:
+                    raise MailboxError(error)
+                skipped_errors.append(error)
+                continue
             found_uid = re.search(rb'\bUID (\d+)\b', parts[0][0])
             if not found_uid or int(found_uid[1]) != uid:
                 raise MailboxError('Serwer zwrócił inną wiadomość. Pobierz nagłówki ponownie.')
             raw = parts[0][1]
-            metadata = parse_message(uid, raw, submission=False)
-            previous = receipts(config, validity).filter(uid=uid).exists() or MailboxDownload.objects.filter(fingerprint=metadata['fingerprint']).exists()
-            result.append(metadata if previous else parse_message(uid, raw))
+            try:
+                metadata = parse_message(uid, raw, submission=False)
+                previous = receipts(config, validity).filter(uid=uid).exists() or MailboxDownload.objects.filter(fingerprint=metadata['fingerprint']).exists()
+                result.append(metadata if previous else parse_message(uid, raw))
+            except MailboxError as error:
+                if skipped_errors is None:
+                    raise
+                skipped_errors.append(str(error))
         return result
     except MailboxError:
         raise
@@ -273,6 +287,24 @@ def prepare_forms(messages, config, validity, user, tokens=None, confirmed=False
     return forms
 
 
+def filter_valid_messages(messages, config, validity, user, skipped_errors):
+    """Validate each submission before grouping; warnings still require approval."""
+    valid = []
+    for message in messages:
+        try:
+            forms = prepare_forms([message], config, validity, user)
+            errors = [describe_import_error(error, form.mail_sources)
+                      for form in forms for field, errors in form.errors.items()
+                      if field != 'confirm_submission_warnings' for error in errors]
+        except MailboxError as error:
+            errors = [str(error)]
+        if errors:
+            skipped_errors.extend(errors)
+        else:
+            valid.append(message)
+    return valid
+
+
 def safe_name(value):
     value = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', value).strip(' .')[:100].rstrip(' .')
     if not value or value.upper().split('.')[0] in {'CON','PRN','AUX','NUL',*(f'COM{i}' for i in range(10)),*(f'LPT{i}' for i in range(10))}:
@@ -280,11 +312,60 @@ def safe_name(value):
     return value
 
 
-def package_messages(messages, clean=True, convert=True, rebuild=True, allow_rebuild_omissions=False):
+def package_messages(messages, clean=True, convert=True, rebuild=True, allow_rebuild_omissions=False,
+                     *, skipped_errors=None, accepted=None, rebuild_warnings=None):
+    if skipped_errors is None:
+        return _package_messages(messages, clean, convert, rebuild, allow_rebuild_omissions)
+    # Build each message separately so a failing attachment cannot leak a partial
+    # story into the final ZIP. The whole selected batch keeps its resource limits.
+    result = SpooledTemporaryFile(max_size=4*1024*1024, mode='w+b')
+    used, total = set(), 0
+    deadline = time.monotonic() + 90
+    try:
+        with ZipFile(result, 'w', ZIP_DEFLATED) as archive:
+            for message in messages:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise MailboxError('Przetwarzanie paczki przekroczyło 90 sekund. Wybierz mniej wiadomości.')
+                label = message.get('sender') or message.get('author') or message.get('email') or 'Nieznana osoba'
+                try:
+                    output = _package_messages([message], clean, convert, rebuild, allow_rebuild_omissions, timeout=remaining)
+                except RebuildConfirmationRequired as error:
+                    if rebuild_warnings is None:
+                        raise
+                    rebuild_warnings.append(f'{label}: {error}')
+                    if accepted is not None:
+                        accepted.append(message)
+                    continue
+                except (MailboxError, ConversionError, BadZipFile, XMLSyntaxError, ValueError, OSError) as error:
+                    skipped_errors.append(f'{label}: {error}')
+                    continue
+                with output, ZipFile(output) as source:
+                    folder = safe_name(message['folder'])
+                    while folder.casefold() in used:
+                        folder += f'_{message["uid"]}'
+                    used.add(folder.casefold())
+                    for entry in source.infolist():
+                        total += entry.file_size
+                        if total > 150 * 1024 * 1024:
+                            raise MailboxError('Wynik przekracza 150 MB. Wybierz mniej wiadomości.')
+                        archive.writestr(folder + '/' + entry.filename.split('/', 1)[1], source.read(entry))
+                if accepted is not None:
+                    accepted.append(message)
+        if time.monotonic() > deadline:
+            raise MailboxError('Przygotowanie paczki przekroczyło 90 sekund. Wybierz mniej wiadomości.')
+        result.seek(0)
+        return result
+    except BaseException:
+        result.close()
+        raise
+
+
+def _package_messages(messages, clean=True, convert=True, rebuild=True, allow_rebuild_omissions=False, *, timeout=90):
     archive_file = SpooledTemporaryFile(max_size=4*1024*1024, mode='w+b')
     used, total = set(), 0
     rebuild_warnings = []
-    deadline = time.monotonic() + 90
+    deadline = time.monotonic() + timeout
     try:
         if rebuild and not allow_rebuild_omissions:
             for message in messages:

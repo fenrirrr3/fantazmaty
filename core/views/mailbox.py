@@ -15,7 +15,7 @@ from core.models import MailboxConnection, MailboxDownload
 from core.permissions import superuser_required
 from core.services.mailbox import read_headers, MailboxError
 from core.services.mailbox_import import (
-    default_mailbox, mailbox_key, receipts, fetch_messages, prepare_forms, package_messages, describe_import_error, MAX_MESSAGES,
+    default_mailbox, mailbox_key, receipts, fetch_messages, prepare_forms, package_messages, describe_import_error, filter_valid_messages, MAX_MESSAGES,
 )
 from core.services.document_converter import ConversionError, RebuildConfirmationRequired, REBUILD_WARNING
 from core.services.reviews import import_reviews
@@ -65,6 +65,7 @@ def load_token(token, user, key, salt):
 @superuser_required
 @sensitive_post_parameters()
 def mailbox_headers(request):
+    archive = None
     context = {'result': None, 'max_messages': MAX_MESSAGES, 'show_downloaded': request.POST.get('show_downloaded') == 'on',
                'clean': request.POST.get('clean') == 'on' if request.method == 'POST' else True,
                'rebuild': request.POST.get('rebuild') == 'on' if request.method == 'POST' else True,
@@ -93,50 +94,68 @@ def mailbox_headers(request):
                 if not selected or not set(selected).issubset(selection['uids']):
                     raise MailboxError('Wybierz wiadomości z pobranej listy.')
                 validity = selection['validity']
-                messages = fetch_messages(config, validity, selected)
+                skipped_errors = []
+                messages = fetch_messages(config, validity, selected, skipped_errors)
                 digest = [[m['uid'], m['digest']] for m in messages]
                 confirmation = None
                 if action == 'confirm':
                     confirmation = load_token(request.POST.get('preview', ''), request.user, key, 'mailbox-preview')
                     if confirmation['digest'] != digest or confirmation['clean'] != context['clean'] or confirmation['convert'] != context['convert'] or confirmation.get('rebuild') != context['rebuild']:
-                        raise MailboxError('Wiadomości lub opcje się zmieniły. Przygotuj podgląd ponownie.')
+                        confirmation = None
+                        context['error'] = 'Wiadomości lub opcje się zmieniły. Sprawdź nowy podgląd i zatwierdź go ponownie.'
                 tokens = confirmation['warnings'] if confirmation else {}
                 approved = bool(confirmation and request.POST.get('approve') == 'on')
+                messages = filter_valid_messages(messages, config, validity, request.user, skipped_errors)
+                accepted, rebuild_warnings = [], []
+                archive = package_messages(messages, clean=context['clean'], convert=context['convert'],
+                    rebuild=context['rebuild'], allow_rebuild_omissions=request.POST.get('allow_rebuild_omissions') == 'on',
+                    skipped_errors=skipped_errors, accepted=accepted, rebuild_warnings=rebuild_warnings)
+                messages = accepted
+                selected = [message['uid'] for message in messages]
+                digest = [[m['uid'], m['digest']] for m in messages]
+                if confirmation and confirmation['digest'] != digest:
+                    approved = False
+                    tokens = {}
+                    context['error'] = 'Pominięto wiadomości z błędami. Sprawdź nowy podgląd i zatwierdź pozostałe zgłoszenia.'
                 forms = prepare_forms(messages, config, validity, request.user, tokens, approved)
                 hard_errors = [describe_import_error(e, form.mail_sources) for form in forms for field, errors in form.errors.items()
                                if field != 'confirm_submission_warnings' for e in errors]
+                senders = {row['uid']: row.get('sender') or 'Nieznana osoba' for row in (context.get('result') or {}).get('rows', [])}
+                skipped_errors = [re.sub(r'\bWiadomość\s+(\d+)', lambda match: senders.get(int(match[1]), 'Zgłoszenie'), error)
+                                  for error in skipped_errors]
                 context.update(preview_messages=messages, forms=forms, selection=request.POST['selection'],
-                               selected=selected, hard_errors=hard_errors)
+                               selected=selected, hard_errors=hard_errors, skipped_errors=skipped_errors)
+                if rebuild_warnings:
+                    context['rebuild_warning'] = True
+                    context['rebuild_warning_text'] = ' '.join(rebuild_warnings)
+                if not messages:
+                    context['error'] = 'Brak poprawnych zgłoszeń do zaimportowania. Niczego nie zapisano.'
                 warnings = {str(form.data['anthology']): form.data.get('submission_warnings_token', '') for form in forms}
                 context['preview_token'] = signing.dumps(dict(base, digest=digest, warnings=warnings,
                     clean=context['clean'], convert=context['convert'], rebuild=context['rebuild']), salt='mailbox-preview', compress=True)
-                if action == 'confirm' and approved and all(form.is_valid() for form in forms):
-                    # Expensive operations finish before any database writes or locks.
-                    archive = package_messages(messages, clean=context['clean'], convert=context['convert'], rebuild=context['rebuild'], allow_rebuild_omissions=request.POST.get('allow_rebuild_omissions') == 'on')
-                    try:
-                        with transaction.atomic():
-                            locked = MailboxConnection.objects.select_for_update().get(pk=config.pk)
-                            if not locked.is_active or mailbox_key(locked) != key:
-                                raise MailboxError('Ustawienia skrzynki się zmieniły. Pobierz nagłówki ponownie.')
-                            # Receipt uniqueness and this lock prevent duplicate imports
-                            # on retries, double-clicks and concurrent downloads.
-                            current_forms = prepare_forms(messages, config, validity, request.user, tokens, True)
-                            for form in current_forms:
-                                try:
-                                    import_reviews(user=request.user, form=form)
-                                except ValidationError as error:
-                                    raise MailboxError(' '.join(describe_import_error(detail, form.mail_sources) for detail in error.messages)) from None
-                            for message in messages:
-                                MailboxDownload.objects.update_or_create(mailbox_key=key,
-                                    uid_validity=validity, uid=message['uid'], defaults={'fingerprint': message.get('fingerprint', ''), 'message_id': message.get('message_id', '')})
-                        response = FileResponse(archive, as_attachment=True, filename='zgloszenia.zip', content_type='application/zip')
-                        response['Cache-Control'] = 'private, no-store'
-                        response['X-Content-Type-Options'] = 'nosniff'
-                        return response
-                    except BaseException:
-                        archive.close()
-                        raise
-                if action == 'confirm' and not approved:
+                if action == 'confirm' and approved and messages and not rebuild_warnings and all(form.is_valid() for form in forms):
+                    # Files have been prepared before database writes or locks.
+                    with transaction.atomic():
+                        locked = MailboxConnection.objects.select_for_update().get(pk=config.pk)
+                        if not locked.is_active or mailbox_key(locked) != key:
+                            raise MailboxError('Ustawienia skrzynki się zmieniły. Pobierz nagłówki ponownie.')
+                        # Receipt uniqueness and this lock prevent duplicate imports
+                        # on retries, double-clicks and concurrent downloads.
+                        current_forms = prepare_forms(messages, config, validity, request.user, tokens, True)
+                        for form in current_forms:
+                            try:
+                                import_reviews(user=request.user, form=form)
+                            except ValidationError as error:
+                                raise MailboxError(' '.join(describe_import_error(detail, form.mail_sources) for detail in error.messages)) from None
+                        for message in messages:
+                            MailboxDownload.objects.update_or_create(mailbox_key=key,
+                                uid_validity=validity, uid=message['uid'], defaults={'fingerprint': message.get('fingerprint', ''), 'message_id': message.get('message_id', '')})
+                    response = FileResponse(archive, as_attachment=True, filename='zgloszenia.zip', content_type='application/zip')
+                    archive = None  # The streaming response owns and closes this file.
+                    response['Cache-Control'] = 'private, no-store'
+                    response['X-Content-Type-Options'] = 'nosniff'
+                    return response
+                if action == 'confirm' and not approved and not context.get('error'):
                     context['error'] = 'Sprawdź podgląd i zaznacz potwierdzenie.'
             elif action == 'headers':
                 cursor = None
@@ -163,5 +182,8 @@ def mailbox_headers(request):
         context['error'] = 'Nie udało się przetworzyć pliku. Sprawdź załączniki lub spróbuj pobrać same oryginały.'
     except ValidationError as error:
         context['error'] = ' '.join(error.messages)
+    finally:
+        if archive is not None:
+            archive.close()
     return render(request, 'core/review_bulk_import.html', context,
                   status=400 if context.get('error') else 200)
