@@ -433,7 +433,9 @@ class ReviewBulkImportForm(forms.Form):
             "Zgody: premierach, naborach, obie lub puste pole. "
             "Wiadomość wielowierszową zapisz w cudzysłowach CSV (cudzysłowy wewnątrz podwój). "
             "Obsługiwane są także starsze formaty: 7 pól oraz autor; tytuł; gatunek; liczba znaków; e-mail; telefon; antologia; zgody. "
-            "Pierwsza spacja oddziela imię od nazwiska. "
+            "W formacie średnikowym pierwsza spacja oddziela imię od nazwiska. "
+            "Jedno zgłoszenie można też wkleić z etykietami pól: Imię:, Nazwisko:, "
+            "Pseudonim:, Tytuł opowiadania: itd.; wiadomość do redakcji umieść na końcu. "
             f"Jednorazowo można sprawdzić do {MAX_IMPORT_RECORDS} zgłoszeń."
         ),
         widget=forms.Textarea(

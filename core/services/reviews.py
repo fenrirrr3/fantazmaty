@@ -765,6 +765,7 @@ def import_reviews(*, user, form):
                 author_last_name=(
                     author.last_name if author else record["author_last_name"]
                 ),
+                author_pseudonym=record.get("author_pseudonym", ""),
                 email=author.email if author else normalize_email(record["email"]),
                 phone_number=record["phone_number"],
                 title=record["title"],

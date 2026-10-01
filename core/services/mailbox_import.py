@@ -158,10 +158,18 @@ def parse_message(uid, raw, *, submission=True):
         raise MailboxError(f"Wiadomość {uid}: " + " ".join(error.messages)) from None
     lines = clean_pasted_submission(text).splitlines()
     if len(candidates) != 1:
-        raise MailboxError(f'Wiadomość {uid}: oczekiwano jednego wiersza autor;tytuł;gatunek;content warningi;liczba znaków;e-mail;telefon;zgody;wiadomość.')
+        raise MailboxError(f'Wiadomość {uid}: oczekiwano jednego zgłoszenia z nazwanymi polami albo danych w starszym formacie rozdzielonym średnikami.')
     kind, index, parts = candidates[0]
     warnings, author_message, choices = '', '', ''
-    if kind == 'new':
+    if kind == 'named':
+        first_name, last_name, pseudonym, title, genre, warnings, length, email, phone, choices, author_message = parts
+        author = f'{first_name} {last_name}'
+        recruitment = re.search(r'Nabór:\s*[„"]([^”"]+)[”"]', str(message.get('Subject', '')), re.IGNORECASE)
+        if not recruitment:
+            raise MailboxError(f'Wiadomość {uid}: w temacie brakuje nazwy antologii w formacie Nabór: „Tytuł antologii”.')
+        anthology = recruitment.group(1).strip()
+        record = encode_submission(parts)
+    elif kind == 'new':
         author, title, genre, warnings, length, email, phone, choices = parts[:8]
         author_message = ';'.join(parts[8:])
         trailing = lines[index + 1:]
@@ -200,6 +208,7 @@ def parse_message(uid, raw, *, submission=True):
     return {**metadata, 'uid': uid, 'digest': hashlib.sha256(raw).hexdigest(),
             'folder': story_title(str(message.get('Subject', ''))) or title,
             'title': title, 'author': author, 'email': email, 'phone': phone,
+            'author_pseudonym': parts[2] if kind == 'named' else '',
             'anthology': anthology, 'genre': genre, 'length': length,
             'record': record, 'files': files, 'content_warnings': warnings,
             'author_message': author_message, 'newsletter_premieres': consent_flags['premieres'],

@@ -1,11 +1,12 @@
 from zipfile import BadZipFile
+from copy import deepcopy
 from lxml.etree import XMLSyntaxError
 from django.core import signing
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.contrib.auth.decorators import login_required
 from django.http import FileResponse
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_http_methods
@@ -17,6 +18,34 @@ from core.services.mailbox_import import (
 )
 from core.services.document_converter import ConversionError, RebuildConfirmationRequired, REBUILD_WARNING
 from core.services.reviews import import_reviews
+
+HEADERS_SESSION_KEY = 'mailbox_headers_snapshot'
+IMPORT_OPTIONS = ('show_downloaded', 'clean', 'rebuild', 'convert', 'subject_filter')
+
+
+def restore_headers(request, config, key, context):
+    """The private session stores headers only, never bodies or attachments."""
+    saved = request.session.get(HEADERS_SESSION_KEY)
+    if not saved:
+        return
+    if saved.get('mailbox') != key or saved.get('user') != request.user.pk:
+        request.session.pop(HEADERS_SESSION_KEY, None)
+        return
+    result = deepcopy(saved['result'])
+    already = set(receipts(config, result['validity']).values_list('uid', flat=True))
+    for row in result['rows']:
+        row['downloaded'] = row['uid'] in already
+    base = {'user': request.user.pk, 'mailbox': key, 'subject_filter': saved['subject_filter']}
+    for field in ('next_cursor', 'previous_cursor'):
+        if result.get(field):
+            result[field] = signing.dumps(dict(base, cursor=result[field],
+                show_downloaded=saved['show_downloaded']), salt='mailbox-cursor', compress=True)
+    context['result'] = result
+    # Renew signatures from trusted session data without refetching the mailbox.
+    context['selection'] = signing.dumps(dict(base, validity=result['validity'],
+        uids=[row['uid'] for row in result['rows']]), salt='mailbox-selection', compress=True)
+    if request.method == 'GET':
+        context.update({name: saved[name] for name in IMPORT_OPTIONS})
 
 
 def load_token(token, user, key, salt):
@@ -43,11 +72,12 @@ def mailbox_headers(request):
         config = default_mailbox()
         context['mailbox'] = config
         context['subject_choices'] = config.subject_choices()
-        subject_filter = request.POST.get('subject_filter', '')
+        key = mailbox_key(config)
+        restore_headers(request, config, key, context)
+        subject_filter = request.POST.get('subject_filter', '') if request.method == 'POST' else context.get('subject_filter', '')
         context['subject_filter'] = subject_filter
         if subject_filter and subject_filter not in context['subject_choices']:
             raise MailboxError('Wybrany nabór nie jest już dostępny. Wybierz go ponownie.')
-        key = mailbox_key(config)
         base = {'user': request.user.pk, 'mailbox': key}
         if request.method == 'POST':
             action = request.POST.get('action', 'headers')
@@ -112,15 +142,10 @@ def mailbox_headers(request):
                         cursor = page['cursor']
                 excluded = None if context['show_downloaded'] else lambda validity: receipts(config, validity).values_list('uid', flat=True)
                 result = read_headers(config, cursor, excluded=excluded, subject_filter=subject_filter)
-                already = set(receipts(config, result['validity']).values_list('uid', flat=True))
-                for row in result['rows']:
-                    row['downloaded'] = row['uid'] in already
-                for field in ('next_cursor', 'previous_cursor'):
-                    if result.get(field):
-                        result[field] = signing.dumps(dict(base, cursor=result[field], subject_filter=subject_filter, show_downloaded=context['show_downloaded']), salt='mailbox-cursor', compress=True)
-                context['result'] = result
-                context['selection'] = signing.dumps(dict(base, subject_filter=subject_filter, validity=result['validity'],
-                    uids=[row['uid'] for row in result['rows']]), salt='mailbox-selection', compress=True)
+                request.session[HEADERS_SESSION_KEY] = dict(base, result=result,
+                    **{name: context[name] for name in IMPORT_OPTIONS})
+                # Refresh repeats a GET, not the IMAP fetch submitted by POST.
+                return redirect(request.path)
             else:
                 raise MailboxError('Nieprawidłowa operacja.')
     except RebuildConfirmationRequired as error:
