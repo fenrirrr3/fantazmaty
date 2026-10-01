@@ -1,20 +1,8 @@
-:root { --reviewer-bg:#ccfbf1; --reviewer-fg:#115e59; --coordinator-bg:#ffedd5; --coordinator-fg:#9a3412; }
-:root[data-theme="dark"] { --reviewer-bg:#143d3b; --reviewer-fg:#99f6e4; --coordinator-bg:#492b1b; --coordinator-fg:#fdba74; }
-[data-palette="reviewer"] { --palette-bg:var(--reviewer-bg); --palette-fg:var(--reviewer-fg); }
-[data-palette="coordinator"] { --palette-bg:var(--coordinator-bg); --palette-fg:var(--coordinator-fg); }
-.reviewer-bubble { background:var(--reviewer-bg); color:var(--reviewer-fg); border-color:var(--reviewer-fg); }
-.table-container { max-height:70vh; overflow:auto; isolation:isolate; }
-.table-container thead th { position:sticky; top:0; z-index:3; background:var(--table-header); }
-.table-container .sticky-title { position:sticky; left:0; z-index:2; background:var(--surface); min-width:12rem; }
-.table-container thead .sticky-title { z-index:4; background:var(--table-header); }
 
 .active-filters { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:12px; }
-.filter-chip { border:1px solid var(--border); border-radius:20px; padding:5px 12px; background:var(--surface); color:var(--text); }
 .global-search-form, .global-search-input { margin-top:12px; }
 .reviewer-action-cell .filter-actions { flex-wrap:nowrap; white-space:nowrap; }
 .reviewer-action-form { margin:0; }
-.stage-status.pending, :root[data-theme="dark"] .stage-status.pending { background:var(--danger-light); color:var(--danger); }
-.stage-status.active { background:var(--warning-light); color:var(--warning); }
 .text-summary { padding:16px; margin-bottom:20px; border:1px solid var(--border-strong); border-left:4px solid var(--primary); border-radius:8px; background:var(--surface); }
 .text-summary p { margin:8px 0; }
 .attention-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; }
@@ -23,13 +11,13 @@
 .notification-state { display:block; font-size:.85em; margin-top:5px; }
 tr:has(input[type="checkbox"]:checked) > td { background:var(--primary-light); }
 .audit-value { white-space:pre-wrap; overflow-wrap:anywhere; max-width:40rem; }
-@media(max-width:650px) { .table-container { max-height:65vh; } .sticky-title { max-width:12rem; } }
+
 
 section[aria-labelledby="dashboard-search-heading"] { margin-top:28px; }
 .stage-leave-warning { display:inline-block; margin:6px 0 0 8px; padding:5px 9px; border-radius:6px; background:var(--danger-light); color:var(--danger); border:1px solid var(--danger); }
 
-/* Pakiet 7: czytelne filtry, statusy i wspólny układ pulpitu. */
-.filter-chip { background:var(--primary-light, #e3edff); border-color:var(--primary, #315fba); color:var(--text); }
+/* Filters, statuses and dashboard layout. */
+.filter-chip { border:1px solid var(--primary); border-radius:20px; padding:5px 12px; background:var(--primary-light); color:var(--text); }
 .workflow-stage-row[data-stage="ready_for_editing"] { --workflow-badge-background:var(--ready-edit-bg); --workflow-badge-color:var(--ready-edit-fg); --workflow-badge-border:var(--ready-edit-fg); }
 :root[data-theme="dark"] .workflow-stage-row[data-stage="ready_for_editing"] { --workflow-badge-background:var(--ready-edit-bg); --workflow-badge-color:var(--ready-edit-fg); --workflow-badge-border:var(--ready-edit-fg); }
 .dashboard-grid { align-items:stretch; }
@@ -43,35 +31,30 @@ section[aria-labelledby="dashboard-search-heading"] { margin-top:28px; }
 .filters-form[aria-busy="true"] { opacity:.75; }
 
 /* One zebra palette for all cells, including sticky titles and workflow rows. */
-table > tbody > tr:nth-child(odd) > :is(td, th) { background:var(--surface); }
-table > tbody > tr:nth-child(even) > :is(td, th) { background:var(--surface-alt); }
-table > tbody > tr:hover > :is(td, th), table > tbody > tr:focus-within > :is(td, th) { background:var(--surface-hover); }
 table > tbody > tr:has(input[type="checkbox"]:checked) > :is(td, th) { background:var(--primary-light); }
 /* Cell backgrounds must remain opaque when horizontally scrolled. */
 .table-container tbody tr:nth-child(odd) .sticky-title { background:var(--surface); }
 .table-container tbody tr:nth-child(even) .sticky-title { background:var(--surface-alt); }
 .table-container tbody tr:hover .sticky-title, .table-container tbody tr:focus-within .sticky-title { background:var(--surface-hover); }
 .table-container tbody tr:has(input[type="checkbox"]:checked) .sticky-title { background:var(--primary-light); }
-.reviewer-bubble.reviewer-opinion-yes, .reviewer-bubble.reviewer-opinion-yes_maybe { background:var(--success-light); color:var(--success); border-color:var(--success); }
-.reviewer-bubble.reviewer-opinion-maybe { background:var(--warning-light); color:var(--warning); border-color:var(--warning); }
-.reviewer-bubble.reviewer-opinion-no, .reviewer-bubble.reviewer-opinion-maybe_no { background:var(--danger-light); color:var(--danger-dark); border-color:var(--danger); }
 .dashboard-list-item[hidden] { display:none; }
 .dashboard-expand { margin:0 16px 16px; }
 .text-note-actions { display:flex; gap:10px; align-items:center; padding:12px 16px; }
 .text-note-actions form { margin:0; }
 [data-double-copy] { cursor:copy; }
 
-/* Revision 8: controls follow the active theme. */
+/* Shared workflow controls. */
 .auth-brand-image { width: 96px; height: 120px; object-fit: contain; background: #fff; padding: 10px; border-radius: 12px; }
 .stage-finish-card { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 12px; }
 .text-file-panel { margin: 12px 0 20px; overflow-wrap: anywhere; }
 .text-file-panel form { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
 .issue-list li { margin: 10px 0; overflow-wrap: anywhere; }
-@media (max-width: 700px) {
+@media screen and (max-width: 760px) {
   .table-container table.mobile-review-cards, .mobile-review-cards tbody, .mobile-review-cards tr { display: block; width: 100%; min-width: 0; }
   .mobile-review-cards thead { display: none; }
-  .mobile-review-cards tr { margin-bottom: 16px; border: 1px solid var(--border-color, #8886); border-radius: 8px; overflow: hidden; }
+  .mobile-review-cards tr { margin-bottom: 16px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
   .mobile-review-cards td { display: grid; grid-template-columns: minmax(90px, 35%) minmax(0, 1fr); gap: 10px; position: static; white-space: normal; overflow-wrap: anywhere; }
+  .table-container .mobile-review-cards .sticky-title { position: static; left: auto; z-index: auto; min-width: 0; max-width: none; width: 100%; }
   .mobile-review-cards td::before { content: attr(data-label); font-weight: 600; }
   .mobile-review-cards td[colspan] { display: block; }
   .review-form, .review-form .form-grid, .review-workspace-grid { display: block; }
@@ -79,33 +62,26 @@ table > tbody > tr:has(input[type="checkbox"]:checked) > :is(td, th) { backgroun
 }
 
 .stage-finish-card .quick-stage-action { flex-direction: column; align-items: flex-start; gap: 8px; }
-@media (max-width: 700px) {
-  .review-opinion-form { display: block; min-width: 0; }
+@media screen and (max-width: 760px) {
+  .review-opinion-form { display: grid; min-width: 0; }
   .review-opinion-form textarea, .review-opinion-form select { width: 100%; min-width: 0; box-sizing: border-box; }
   .review-opinion-form .primary-button { width: 100%; min-height: 44px; }
   .review-form-card { min-width: 0; padding: 14px; }
   .review-summary-grid { grid-template-columns: 1fr; }
 }
 
-.workflow-folder-layout { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; align-items:start; }
-.workflow-folder-layout > .editing-control-content { min-width:0; }
-.dropbox-folder-card { min-width:0; padding:16px; }
-.dropbox-folder-card input[type="url"] { box-sizing:border-box; width:100%; }
-.dropbox-folder-card p { overflow-wrap:anywhere; }
-@media(max-width:760px) { .workflow-folder-layout { grid-template-columns:minmax(0,1fr); } }
+.workflow-folder-layout { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; padding:var(--card-padding); align-items:stretch; }
+.workflow-folder-layout > .editing-control-content { min-width:0; padding:0; display:flex; flex-direction:column; gap:12px; }
+@media screen and (max-width:760px) { .workflow-folder-layout { grid-template-columns:minmax(0,1fr); } }
 
 /* Menu and workflow panel spacing. */
-.site-sidebar { display:flex; flex-direction:column; overflow:hidden; }
 .sidebar-scroll { flex:1; min-height:0; overflow-y:auto; padding-top:16px; }
 .sidebar-footer { flex-shrink:0; border-top:1px solid var(--border); padding-top:10px; }
 .site-sidebar > .sidebar-section { flex-shrink:0; }
 details.sidebar-section > summary { cursor:pointer; }
 .sidebar-scroll .sidebar-section { margin-bottom:12px; }
-.workflow-folder-layout { padding:20px; align-items:stretch; }
-.workflow-folder-layout > .editing-control-content { padding:0; display:flex; flex-direction:column; gap:12px; }
 .workflow-folder-layout .quick-stage-card { margin:0; padding:16px; }
 .workflow-folder-layout .stage-finish-card { flex:1; }
-.dropbox-folder-card h3 { margin-top:0; }
 
 #correction-bulk { display:flex; flex-wrap:wrap; align-items:end; gap:10px; margin:12px 0 16px; padding:8px 0; }
 #correction-bulk > label { display:grid; gap:6px; }
@@ -122,24 +98,14 @@ details.sidebar-section > summary { cursor:pointer; }
 /* Recenzje tekstu: dwie kolumny, jedna na małych ekranach. */
 .source-review-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
 .source-review-grid .reviewer-opinion { min-width: 0; margin: 0; overflow-wrap: anywhere; }
-@media (max-width: 760px) { .source-review-grid { grid-template-columns: 1fr; } }
-
-/* Ten arkusz jest ładowany po styles.css: zachowaj mobilne ukrywanie menu. */
-@media (max-width: 950px) {
-    .site-sidebar { display: none; }
-    .site-sidebar.is-open { display: flex; }
-}
+@media screen and (max-width: 760px) { .source-review-grid { grid-template-columns: 1fr; } }
 
 /* Przekazanie pracy: ten sam panel, odstępy i przyciski co pozostałe akcje. */
 .work-handoff-card { margin-block: 20px; color: var(--text); background: var(--surface); }
-.work-handoff-card > summary { cursor: pointer; list-style: none; padding: var(--card-padding); font-weight: 600; }
-.work-handoff-card > summary::-webkit-details-marker { display: none; }
-.work-handoff-card[open] > summary { border-bottom: 1px solid var(--border); }
 .work-handoff-card .text-management-content { padding: 8px var(--card-padding); }
 .work-handoff-card .management-action { padding-block: 12px; gap: 12px; }
 .work-handoff-card h3 { margin: 0; font-size: 1rem; }
 .work-handoff-link { justify-self: start; white-space: normal; text-align: center; max-width: 100%; }
-.work-handoff-card[open] > summary .dropdown-arrow { transform: rotate(180deg); }
-@media (max-width: 760px) {
+@media screen and (max-width: 760px) {
     .work-handoff-link { justify-self: stretch; }
 }

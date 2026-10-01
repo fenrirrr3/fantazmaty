@@ -2,6 +2,9 @@ from core.selectors.review_detail import review_template_data as _review_templat
 from core.permissions import can_mark_review_for_decision
 from core.permissions import can_view_review_archive, can_view_archived_review_authors
 from django.contrib import messages
+from django.conf import settings
+from django.db import transaction
+from core.file_forms import ReviewFileForm
 import hashlib
 import json
 from django.db.models import Q
@@ -274,6 +277,8 @@ def _render_review_detail(
                 own_assignment is not None and not is_locked
             ),
             "reviewers_have_free_slot": has_free_slot and not is_locked,
+            "review_file_form": ReviewFileForm(instance=review) if request.user.is_superuser else None,
+            "dropbox_chooser_app_key": getattr(settings, "DROPBOX_CHOOSER_APP_KEY", "") if request.user.is_superuser else "",
             "can_edit_content_warnings": can_contribute,
             "review_content_warnings_form": (
                 ReviewContentWarningsForm(
@@ -811,4 +816,19 @@ def my_reviews(request):
     if selected_opinions:
         rows = rows.filter(opinion__in=selected_opinions)
     page = paginate_items(request, rows)
-    return render(request, "core/my_reviews.html", {"opinion_choices": opinion_choices, "selected_opinions": selected_opinions, "assignments": page, "page_obj": page, "selected_view": view, "query": query, "anthologies": anthologies, "selected_anthology_id": str(anthology_id or ""), "can_view_authors": False})
+    return render(request, "core/my_reviews.html", {"opinion_choices": opinion_choices, "selected_opinions": selected_opinions, "assignments": page, "page_obj": page, "mobile_sort_columns": [(label, page.sort_columns[label]) for label in ("Antologia", "Tytuł", "Status zgłoszenia", "Moja recenzja", "Data przydziału", "Ostatnia zmiana recenzji") if label in page.sort_columns], "selected_view": view, "query": query, "anthologies": anthologies, "selected_anthology_id": str(anthology_id or ""), "can_view_authors": False})
+
+
+@never_cache
+@login_required
+@require_POST
+@superuser_required
+def update_review_file(request, review_id):
+    with transaction.atomic():
+        review = get_object_or_404(Review.objects.select_for_update(), pk=review_id)
+        form = ReviewFileForm(request.POST, instance=review)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Zapisano link do folderu Dropbox.')
+            return _detail_redirect(review.pk)
+    return _render_review_detail(request, review, bound_forms={'review_file_form': form}, status=400)

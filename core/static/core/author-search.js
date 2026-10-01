@@ -8,11 +8,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const list = document.createElement('div');
         list.id = `${select.id}_suggestions`; list.className = 'author-suggestions';
         list.setAttribute('role', 'listbox'); input.setAttribute('aria-controls', list.id);
-        const status = document.createElement('span'); status.setAttribute('role', 'status');
+        const status = document.createElement('span'); status.setAttribute('role', 'status'); status.className = 'lookup-status';
+        const wrapper = document.createElement('span'); wrapper.className = 'lookup-field';
         [...select.labels].forEach(label => { label.htmlFor = input.id; });
         const multiple = select.multiple;
         let selectedIdentity = !multiple && !!select.value;
-        const manual = document.createElement('button'); manual.type='button'; manual.textContent='Wpisz nowego autora ręcznie';
+        const manual = document.createElement('button'); manual.type='button'; manual.className='secondary-button author-manual-button'; manual.textContent='Wpisz nowego autora ręcznie';
         if (!multiple) select.before(manual);
         const resetIdentity = () => {
             if (selectedIdentity) ['author_first_name','author_last_name','author_pseudonym','email','phone_number'].forEach(name => { const field=select.form.elements.namedItem(name); if(field) {field.value='';field.dispatchEvent(new Event('input',{bubbles:true}));} });
@@ -37,7 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
             input.setCustomValidity(wasRequired && !select.selectedOptions.length ? 'Wybierz przynajmniej jednego autora.' : '');
         };
         renderSelected();
-        select.hidden = true; select.after(input, list, status);
+        select.hidden = true; select.after(wrapper, status); wrapper.append(input, list);
         let timer, controller, sequence = 0, active = -1;
         const close = () => { list.replaceChildren(); input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); active = -1; };
         const choose = item => {

@@ -602,6 +602,7 @@ def copy_review_to_text(*, user, review_id, contract_received=False, confirmed_c
         anthology_id=review.anthology_id,
         length=review.length,
         content_warnings=review.content_warnings,
+        file_url=review.file_url,
         current_workflow_cycle=1,
     )
     text.full_clean()

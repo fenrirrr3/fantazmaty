@@ -271,6 +271,7 @@ SECURE_SSL_REDIRECT = env_bool(
 )
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = "same-origin"
+SECURE_CROSS_ORIGIN_OPENER_POLICY = "same-origin-allow-popups"
 X_FRAME_OPTIONS = "DENY"
 
 # Włącz dopiero po sprawdzeniu poprawnej obsługi HTTPS.

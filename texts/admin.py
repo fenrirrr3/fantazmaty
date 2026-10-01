@@ -205,7 +205,7 @@ def review_text_initial(review):
         matches = list(Author.objects.filter(email__iexact=review.email).values_list('pk', flat=True)[:2])
         if len(matches) == 1:
             authors.append(matches[0])
-    return {'title': review.title, 'length': review.length, 'content_warnings': review.content_warnings,
+    return {'title': review.title, 'length': review.length, 'content_warnings': review.content_warnings, 'file_url': review.file_url,
             'anthology': review.anthology_id, 'authors': sorted(set(authors)),
             'source_author_first_name': review.author_first_name, 'source_author_last_name': review.author_last_name,
             'source_author_email': review.email, 'source_author_pseudonym': review.author_pseudonym}
@@ -646,6 +646,7 @@ class ReviewAdminForm(NormalizedFormMixin, forms.ModelForm):
             "genre",
             "length",
             "content_warnings",
+            "file_url",
             "email",
             "phone_number",
             "author_message",
@@ -1114,6 +1115,7 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
                     "genre",
                     "length",
                     "content_warnings",
+                    "file_url",
                     "is_hidden",
                 ),
             },
@@ -1202,7 +1204,7 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             return JsonResponse({'error': ' '.join(error.messages)}, status=400)
         data = review_text_initial(review)
         # Refuse a mixture of unsaved form data and the persisted source.
-        for key in ('title', 'length', 'content_warnings', 'anthology', 'source_author_first_name',
+        for key in ('title', 'length', 'content_warnings', 'file_url', 'anthology', 'source_author_first_name',
                     'source_author_last_name', 'source_author_email', 'source_author_pseudonym'):
             if key in request.POST and request.POST[key] != str(data[key] if data[key] is not None else ''):
                 return JsonResponse({'error': 'Najpierw zapisz zmiany w recenzji, a następnie ponownie użyj +.'}, status=409)

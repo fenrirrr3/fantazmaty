@@ -44,6 +44,7 @@ def review_template_data(review, *, include_author):
                 "author_last_name": review.author_last_name,
                 "email": review.email,
                 "phone_number": review.phone_number,
+                "file_url": review.file_url,
                 "author_notified_at": review.author_notified_at,
                 "authors": review.display_authors,
                 "author_id": review.author_id,

@@ -551,6 +551,8 @@ class Review(NormalizedModelMixin, models.Model):
         verbose_name="współautorzy", help_text="Dodatkowi autorzy, poza autorem głównym.",
     )
 
+    file_url = models.URLField("folder Dropbox", max_length=1000, blank=True)
+
     # Dane zgłoszenia mogą istnieć przed powiązaniem z rekordem Author.
     # Wyłącznie superuser może je odczytywać w interfejsie.
     author_first_name = models.CharField(

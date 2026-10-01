@@ -3,12 +3,6 @@
 
 {% block title %}{{ text.title }} | Fantazmaty CMS{% endblock %}
 
-{% block extra_css %}
-{{ block.super }}
-{% if user.is_superuser and text_file_form and text.anthology.status != "ready" %}
-<link rel="stylesheet" href="{% static 'core/dropbox-folder-chooser.css' %}">
-{% endif %}
-{% endblock %}
 
 {% block content %}
 
@@ -331,23 +325,8 @@
             </div>
         {% endif %}
         <aside class="quick-stage-card dropbox-folder-card" aria-labelledby="dropbox-folder-heading">
-            <h3 id="dropbox-folder-heading">Folder Dropbox</h3>
-            {% if file_url %}<p><a class="primary-button" href="{{ file_url }}" target="_blank" rel="noopener noreferrer">Otwórz folder Dropbox</a></p>{% else %}<p class="muted-text">Nie dodano linku do folderu.</p>{% endif %}
-            {% if text_file_form %}
-            <form method="post" action="{% url 'core:update_text_file' text.pk %}" data-warn-unsaved>
-                {% csrf_token %}{% edit_version %}
-                {{ text_file_form.as_p }}
-                <div class="dropbox-folder-actions">
-                    {% if user.is_superuser %}
-                    <button type="button" class="secondary-button" id="dropbox-folder-choose" data-input-id="{{ text_file_form.file_url.id_for_label }}" {% if not dropbox_chooser_app_key %}disabled{% endif %}>Wybierz folder Dropbox</button>
-                    {% endif %}
-                    <button type="submit" class="secondary-button">Zapisz link</button>
-                </div>
-                {% if user.is_superuser %}
-                <p id="dropbox-folder-status" class="form-help" role="status" aria-live="polite">{% if dropbox_chooser_app_key %}Wybierz folder, a następnie kliknij „Zapisz link”.{% else %}Wybór folderu wymaga skonfigurowania klucza aplikacji Dropbox. Link nadal możesz wkleić ręcznie.{% endif %}</p>
-                {% endif %}
-            </form>
-            {% endif %}
+            {% url 'core:update_text_file' text.pk as folder_save_url %}
+            {% include 'core/includes/dropbox_folder.html' with folder_url=file_url folder_form=text_file_form folder_heading_id="dropbox-folder-heading" %}
         </aside>
         </div>
         {% endif %}
@@ -549,7 +528,7 @@
                 {% if source_review.can_open %}<p>
                     <a
                         href="{% url 'core:assigned_review_detail' source_review.pk %}"
-                        class="detail-link"
+                        class="secondary-button"
                     >
                         Otwórz zgłoszenie: {{ source_review.title }}
                     </a>

@@ -163,7 +163,7 @@ class EditingMiddleware:
                 else:
                     from core.permissions import is_coordinator
                     name = match.url_name
-                    if name in ('set_text_authors', 'update_text_file') and not request.user.is_superuser:
+                    if name in ('set_text_authors', 'update_text_file', 'update_review_file') and not request.user.is_superuser:
                         return self.get_response(request)
                     if name in ('edit_text_note', 'delete_text_note'):
                         from texts.models import TextNote
@@ -182,7 +182,7 @@ class EditingMiddleware:
             required = match.namespace == 'admin' or match.url_name in {
                 'cancel_workflow_repetition', 'handoff_workflow_stage', 'link_text_review',
                 'set_text_authors', 'update_coordinator_note', 'update_text_content_warnings',
-                'edit_text_note', 'delete_text_note', 'update_text_file',
+                'edit_text_note', 'delete_text_note', 'update_text_file', 'update_review_file',
                 'update_review_content_warnings', 'update_author_notification', 'update_review_status',
                 'assigned_review_detail',
             }

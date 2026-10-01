@@ -22,4 +22,4 @@
 .repetitions-fields .form-field { display: flex; flex-direction: column; gap: .5rem; min-width: 0; }
 .repetitions-fields textarea, .repetitions-fields input[type=number] { width: 100%; box-sizing: border-box; }
 .repetitions-fields input[type=checkbox] { align-self: flex-start; }
-@media (max-width: 640px) { .repetitions-fields { grid-template-columns: 1fr; } }
+@media (max-width: 760px) { .repetitions-fields { grid-template-columns: 1fr; } }

@@ -17,7 +17,7 @@
     window.relatedWindows?.push(popup);
     const data = new FormData();
     data.set('review_id', field.dataset.sourceReviewId);
-    for (const name of ["title", "length", "content_warnings", "anthology"]) {
+    for (const name of ["title", "length", "content_warnings", "file_url", "anthology"]) {
       data.set(name, document.getElementById("id_" + name)?.value || "");
     }
     for (const name of ["first_name", "last_name", "email", "pseudonym"]) {

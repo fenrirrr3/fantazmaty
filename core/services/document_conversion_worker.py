@@ -180,6 +180,7 @@ def main():
             with source.open('rb') as document, prepare_docx(
                 document, rebuild=config.get('rebuild', False),
                 normalize_formatting=config.get('normalize', True),
+                justify=config.get('justify', False),
                 cleaner_rules=rules, use_cleaner=config.get('clean', False),
                 allow_omissions=config.get('allow_rebuild_omissions', False),
             ) as prepared:

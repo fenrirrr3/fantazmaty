@@ -167,7 +167,7 @@ def run_converter(directory, timeout):
         raise ConversionError('Nie udało się przygotować plików (' + detail + '). Szczegóły zapisano w logu błędów. Nie oznacza to automatycznie uszkodzenia dokumentu; możesz pobrać oryginały po wyłączeniu konwersji.')
 
 
-def convert_document(upload, formats, *, use_cleaner=False, timeout=TIME_LIMIT, include_docx=False, rebuild=False, normalize=True, allow_rebuild_omissions=False, cleaner_rules=None, repetitions=None):
+def convert_document(upload, formats, *, use_cleaner=False, timeout=TIME_LIMIT, include_docx=False, rebuild=False, normalize=True, allow_rebuild_omissions=False, cleaner_rules=None, repetitions=None, justify=False):
     deadline = time.monotonic() + min(TIME_LIMIT, timeout)
     selected = [kind for kind in FORMATS if kind in formats]
     if (not selected and not include_docx) or set(formats) - set(FORMATS):
@@ -181,7 +181,7 @@ def convert_document(upload, formats, *, use_cleaner=False, timeout=TIME_LIMIT, 
                 'formats': selected, 'prepare': True, 'clean': use_cleaner,
                 'cleaner_rules': cleaner_rules, 'rebuild': rebuild,
                 'allow_rebuild_omissions': allow_rebuild_omissions,
-                'normalize': normalize, 'include_docx': include_docx, 'repetitions': repetitions,
+                'normalize': normalize, 'justify': justify, 'include_docx': include_docx, 'repetitions': repetitions,
             })
             run_converter(directory, deadline - time.monotonic())
             outputs = [directory / ('document.' + kind) for kind in selected]

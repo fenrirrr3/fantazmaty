@@ -35,7 +35,7 @@ class DropboxChooserTests(TestCase):
         self.client.force_login(self.member)
         response = self.client.get(self.url)
         self.assertContains(response, 'Otwórz folder Dropbox')
-        self.assertNotContains(response, 'dropbox-folder-choose')
+        self.assertNotContains(response, 'id="dropbox-folder-choose"')
         self.assertNotContains(response, 'test-public-app-key')
         self.assertNotContains(response, 'dropins.js')
         response = self.client.post(reverse('core:update_text_file', args=[self.text.pk]),
@@ -60,5 +60,5 @@ class DropboxChooserTests(TestCase):
         self.book.status = 'ready'; self.book.save()
         self.client.force_login(self.admin)
         response = self.client.get(self.url)
-        self.assertNotContains(response, 'dropbox-folder-choose')
+        self.assertNotContains(response, 'id="dropbox-folder-choose"')
         self.assertNotContains(response, 'dropins.js')

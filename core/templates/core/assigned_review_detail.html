@@ -1,4 +1,5 @@
 {% extends "core/base.html" %}
+{% load static %}
 
 {% block title %}{{ review.title }} | Fantazmaty CMS{% endblock %}
 
@@ -6,7 +7,7 @@
     {% if user.is_superuser and review.is_hidden %}
     <section class="message warning"><h2>Ukryte zgłoszenie</h2><p>Widoczne wyłącznie dla superusera. Termin odrzucenia: {{ review.decision_at|date:'d.m.Y' }}.</p>
     <form method="post" action="{% url 'core:release_hidden_review' review.pk %}">{% csrf_token %}{% edit_version %}
-    <label><input type="checkbox" name="confirm" value="yes" required> To błędna kwalifikacja – przywróć zgłoszenie do recenzji i udostępnij recenzentom.</label><button type="submit">Przywróć zgłoszenie</button></form></section>
+    <label><input type="checkbox" name="confirm" value="yes" required> To błędna kwalifikacja – przywróć zgłoszenie do recenzji i udostępnij recenzentom.</label><button type="submit" class="secondary-button">Przywróć zgłoszenie</button></form></section>
     {% endif %}
     <header class="page-header">
         <div class="detail-heading">
@@ -148,6 +149,7 @@
         </section>
     {% endif %}
 
+    {% if user.is_superuser %}<div class="review-folder-layout">{% endif %}
     <section class="details-card" aria-labelledby="review-warnings-heading">
         <h2 id="review-warnings-heading">Ostrzeżenia dotyczące treści</h2>
 
@@ -183,6 +185,14 @@
             {% endif %}
         {% endif %}
     </section>
+
+    {% if user.is_superuser %}
+    <section class="details-card dropbox-folder-card" aria-labelledby="review-folder-heading">
+        {% url 'core:update_review_file' review.pk as folder_save_url %}
+        {% include 'core/includes/dropbox_folder.html' with folder_url=review.file_url folder_form=review_file_form folder_heading_id="review-folder-heading" %}
+    </section>
+    </div>
+    {% endif %}
 
     {% if not is_review_locked %}
         <section class="review-assignment-card" aria-labelledby="review-assignment-heading">
@@ -520,5 +530,13 @@
     {% endif %}
 {% if user.is_superuser and author_message %}
 <section class="card"><div class="card-body"><h2>Wiadomość od autora</h2><p class="form-help">Widoczna wyłącznie dla superusera.</p><div>{{ author_message|linebreaksbr }}</div></div></section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{{ block.super }}
+{% if user.is_superuser and review_file_form and dropbox_chooser_app_key %}
+<script src="https://www.dropbox.com/static/api/2/dropins.js" id="dropboxjs" data-app-key="{{ dropbox_chooser_app_key }}"></script>
+<script src="{% static 'core/dropbox-folder-chooser.js' %}" defer></script>
 {% endif %}
 {% endblock %}

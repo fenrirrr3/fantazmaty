@@ -7,7 +7,7 @@ from docx.text.paragraph import Paragraph
 from lxml import etree
 
 
-def normalize_docx(source):
+def normalize_docx(source, *, justify=False):
     source.seek(0)
     document = Document(source)
     source.seek(0)
@@ -45,6 +45,8 @@ def normalize_docx(source):
                         if item is None:
                             item = etree.SubElement(props, qn('w:' + tag))
                         return item
+                    if justify and alignment != 1:
+                        property('jc').set(qn('w:val'), 'both')
                     spacing = property('spacing')
                     spacing.attrib.clear()
                     for key, value in dict(before='0', after='0', line='360', lineRule='auto').items():

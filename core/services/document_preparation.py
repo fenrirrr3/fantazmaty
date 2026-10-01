@@ -16,7 +16,7 @@ else:
 
 
 def prepare_docx(source, *, rebuild=False, normalize_formatting=False,
-                 cleaner_rules=(), allow_omissions=False, use_cleaner=False):
+                 cleaner_rules=(), allow_omissions=False, use_cleaner=False, justify=False):
     if not isinstance(cleaner_rules, (list, tuple)) or set(cleaner_rules) - set(ALL_EDITORIAL_RULES):
         raise ValueError('Invalid cleaner rules')
     source.seek(0)
@@ -25,7 +25,7 @@ def prepare_docx(source, *, rebuild=False, normalize_formatting=False,
     if rebuild:
         steps.append((rebuild_docx, {'allow_omissions': allow_omissions}))
     if normalize_formatting:
-        steps.append((normalize_docx, {}))
+        steps.append((normalize_docx, {'justify': justify}))
     if cleaner_rules or use_cleaner:
         steps.append((clean_docx, {'rules': cleaner_rules}))
     for operation, options in steps:

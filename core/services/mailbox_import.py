@@ -274,7 +274,7 @@ def package_messages(messages, clean=True, convert=True, rebuild=True, allow_reb
                     if convert or rebuild:
                         upload = SimpleUploadedFile(name, data)
                         try:
-                            output, _, _ = convert_document(upload, ['pdf','epub'] if convert else [], use_cleaner=clean, timeout=deadline-time.monotonic(), include_docx=True, rebuild=rebuild, normalize=convert, allow_rebuild_omissions=allow_rebuild_omissions)
+                            output, _, _ = convert_document(upload, ['pdf','epub'] if convert else [], use_cleaner=clean, timeout=deadline-time.monotonic(), include_docx=True, rebuild=rebuild, normalize=convert, justify=convert, allow_rebuild_omissions=allow_rebuild_omissions)
                         except RebuildConfirmationRequired as error:
                             rebuild_warnings.append(f"{name}: {error}")
                             continue

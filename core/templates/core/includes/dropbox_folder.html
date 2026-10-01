@@ -1,0 +1,18 @@
+<h2 id="{{ folder_heading_id }}">Folder Dropbox</h2>
+{% if folder_url %}<p><a class="primary-button" href="{{ folder_url }}" target="_blank" rel="noopener noreferrer">Otwórz folder Dropbox</a></p>{% else %}<p class="muted-text">Nie dodano linku do folderu.</p>{% endif %}
+{% if folder_form %}
+<form method="post" action="{{ folder_save_url }}" class="file-link-form" data-warn-unsaved>
+    {% csrf_token %}{% edit_version %}
+    {{ folder_form.non_field_errors }}
+    <div class="form-field">
+        {{ folder_form.file_url.label_tag }}
+        {{ folder_form.file_url }}
+        {{ folder_form.file_url.errors }}
+    </div>
+    <div class="dropbox-folder-actions">
+        <button type="button" class="secondary-button" id="dropbox-folder-choose" data-input-id="{{ folder_form.file_url.id_for_label }}" {% if not dropbox_chooser_app_key %}disabled{% endif %}>Wybierz folder Dropbox</button>
+        <button type="submit" class="secondary-button">Zapisz link</button>
+    </div>
+    <p id="dropbox-folder-status" class="form-help" role="status" aria-live="polite">{% if dropbox_chooser_app_key %}Wybierz folder, a następnie kliknij „Zapisz link”.{% else %}Wybór folderu wymaga skonfigurowania klucza aplikacji Dropbox. Link nadal możesz wkleić ręcznie.{% endif %}</p>
+</form>
+{% endif %}

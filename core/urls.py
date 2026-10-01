@@ -112,6 +112,7 @@ urlpatterns = [
         reviews.update_review_status,
         name="update_review_status",
     ),
+    path("recenzje/<int:review_id>/folder-dropbox/", reviews.update_review_file, name="update_review_file"),
     path(
         "recenzje/<int:review_id>/ostrzezenia/",
         reviews.update_review_content_warnings,

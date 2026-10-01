@@ -1,5 +1,5 @@
 .intake-stack{display:flex;flex-direction:column;align-items:stretch;gap:1rem}
-.intake-panel{min-width:0;padding:0;overflow:hidden}
+.intake-panel{min-width:0;padding:0;overflow:visible}
 .intake-panel-body .review-import-card{margin:0;padding:0;border:0;box-shadow:none;background:transparent}
 .intake-panel textarea,.intake-panel select,.intake-panel input:not([type=checkbox]):not([type=hidden]){max-width:100%;box-sizing:border-box}
 .intake-panel .table-container{overflow-x:auto}

@@ -57,7 +57,7 @@
                 <details class="checkbox-dropdown" data-checkbox-dropdown>
                     <summary aria-labelledby="inactivity-stage-label inactivity-stage-value"><span id="inactivity-stage-value" data-checkbox-summary>Wszystkie etapy</span></summary>
                     <div class="checkbox-dropdown-options" role="group" aria-labelledby="inactivity-stage-label">
-                        <button type="button" data-checkbox-clear>Wyczyść wybór</button>
+                        <button type="button" class="secondary-button checkbox-dropdown-clear" data-checkbox-clear>Wyczyść wybór</button>
                         {% for value, label in stage_choices %}{% if value != "ready" and value != "withdrawn" %}
                         <label><input type="checkbox" name="stage" value="{{ value }}" {% if value in selected_stages %}checked{% endif %}>{{ label }}</label>
                         {% endif %}{% endfor %}

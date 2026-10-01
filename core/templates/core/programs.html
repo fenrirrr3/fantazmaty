@@ -12,9 +12,9 @@
 <details class="details-card odkurzacz program-tool" {% if clean_open %}open{% endif %}>
     <summary><span>Odkurzacz</span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
     <div class="card-body">
-    <p>Wybierz dokument i poprawki, które chcesz zastosować. Odkurzacz wykonuje korektę automatycznie i udostępnia plik do pobrania.</p>
-    <p>Przetwarzana jest główna treść dokumentu, bez tabel, nagłówków i treści przypisów. Poprawki są zapisywane bez śledzenia zmian. Odkurzacz nie dodaje kolorów ani oznaczeń. Puste akapity pozostają bez usuwania ani scalania, chyba że zaznaczysz osobną opcję ich scalania.</p>
-    <p><strong>Przed zwykłym odkurzaniem zaakceptuj śledzone zmiany i usuń komentarze. Przycisk przebudowy obsługuje proste zmiany tekstu i usuwa komentarze.</strong></p>
+    <p>Wybierz DOCX i potrzebne poprawki, a następnie pobierz poprawiony plik.</p>
+    <p>Odkurzacz poprawia główną treść, bez tabel, nagłówków i przypisów. Nie śledzi zmian. Puste akapity pozostają, chyba że wybierzesz ich scalanie.</p>
+    <p><strong>Przed odkurzaniem zaakceptuj śledzone zmiany i usuń komentarze albo zaznacz przebudowę do nowego pliku.</strong></p>
     <form method="post" enctype="multipart/form-data">
         {% csrf_token %}
 
@@ -33,7 +33,7 @@
         <p><label><input type="checkbox" name="allow_rebuild_omissions" value="on"> Akceptuję ostrzeżenie i chcę kontynuować z pominięciem wymienionych elementów.</label></p>
         {% endif %}
         <p><label for="{{ form.rebuild.id_for_label }}">{{ form.rebuild }} {{ form.rebuild.label }}</label></p>
-        <p class="form-help">Przebudowa przenosi tekst i podstawowe formatowanie do nowego DOCX, bez metadanych starego pliku, komentarzy, nagłówków, stopek i ukrytego tekstu. Przyjmuje dodany tekst i pomija skreślony w śledzonych zmianach. Po przebudowie uruchamiamy zaznaczone poniżej reguły Odkurzacza. Dokumenty z nieobsługiwanymi elementami (np. tabelami, ilustracjami, przypisami lub automatycznymi listami) wymagają akceptacji komunikatu z listą pomijanych elementów. Dane osobowe wpisane w treści pozostają.</p>
+        <p class="form-help">Przebudowa tworzy nowy DOCX z tekstem i podstawowym formatowaniem, a następnie stosuje wybrane poprawki. Usuwa stare metadane, komentarze, nagłówki, stopki i ukryty tekst. Akceptuje zmiany tekstu: zachowuje dodany tekst, pomija skreślony. Pominięcie innych elementów wymaga Twojego potwierdzenia. Dane wpisane w treści pozostają.</p>
         <p>Przy większym dokumencie pobieranie może rozpocząć się po chwili. Oryginał pozostaje na Twoim komputerze.</p>
         <fieldset>
             <legend>Opcje korekty</legend>
@@ -54,8 +54,8 @@
     <summary><span>Konwerter DOCX → PDF i EPUB</span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
     <div class="card-body">
     <p>Wybierz jeden lub kilka formatów. Jeden format pobierzesz jako osobny plik, kilka jako archiwum ZIP.</p>
-    <p>Przy tworzeniu PDF zachowujemy puste akapity (również po włączeniu Odkurzacza) oraz justowanie, jeśli jest ustawione w DOCX. Przed korektą i konwersją ustawiamy Times New Roman 12 pkt, interlinię 1,5, wcięcie pierwszego wiersza 1,25 cm i zerowe odstępy przed oraz po akapicie. Akapity wyśrodkowane nie mają wcięcia. Zachowujemy wyrównanie, kursywę i pogrubienia.</p>
-    <p>Konwersja może zmienić podział stron i wygląd dokumentu. Przed konwersją ustawiamy A4 i marginesy 2,5 cm z każdej strony. PDF korzysta z tych ustawień oraz czcionki podobnej do Times New Roman. Złożony układ, nagłówki i stopki Worda nie są odwzorowywane dokładnie; po pobraniu sprawdź wynik.</p>
+    <p>Konwerter ustawia Times New Roman 12 pkt, interlinię 1,5 i wcięcie 1,25 cm, bez odstępów przed i po akapicie. Zachowuje puste akapity, wyrównanie, kursywę i pogrubienia. Wyśrodkowane akapity pozostają bez wcięcia.</p>
+    <p>Format strony to A4 z marginesami 2,5 cm. PDF używa czcionki podobnej do Times New Roman. Podział stron i złożony układ mogą się zmienić – sprawdź wynik po pobraniu.</p>
     <form method="post" enctype="multipart/form-data">
         {% csrf_token %}<input type="hidden" name="program_action" value="convert">
         {{ conversion_form.non_field_errors }}
@@ -71,8 +71,8 @@
         </fieldset>
         <p><label for="{{ conversion_form.use_cleaner.id_for_label }}">{{ conversion_form.use_cleaner }} {{ conversion_form.use_cleaner.label }}</label></p>
         {{ conversion_form.use_cleaner.errors }}
-        <p>Po zaznaczeniu tej opcji wszystkie domyślne reguły Odkurzacza zostaną zastosowane przed utworzeniem wybranych formatów. Opcje wybrane w osobnej sekcji Odkurzacza nie wpływają na konwerter. Poprawki dotyczą głównej treści, bez tabel, nagłówków i przypisów; dokument nie powinien zawierać śledzonych zmian ani komentarzy.</p>
-        <p>Bez zaznaczenia pomijamy Odkurzacz; formatowanie dokumentu nadal zostaje ujednolicone.</p>
+        <p>Ta opcja stosuje domyślne poprawki Odkurzacza przed konwersją. Ustawienia w osobnej sekcji Odkurzacza nie mają tu wpływu. Przed konwersją zaakceptuj śledzone zmiany i usuń komentarze.</p>
+        <p>Bez tej opcji konwerter zmienia tylko formatowanie i format pliku.</p>
         <button type="submit" class="primary-button">Konwertuj i pobierz</button>
         <p>Poczekaj na pobranie pliku. Konwersja może potrwać do 90 sekund; nie wysyłaj formularza ponownie w tym czasie.</p>
     </form>
@@ -81,8 +81,8 @@
     <summary><span>Kolorowanie powtórzeń</span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
     <div class="card-body">
     <p>Oznacz powtarzające się słowa w DOCX, także w rozpoznanych formach odmiany. Narzędzie nie zmienia treści, nie uruchamia Odkurzacza ani nie ujednolica formatowania.</p>
-    <p>Zakres obejmuje kolejne słowa spełniające minimum długości, również między akapitami. Tabele, nagłówki, hiperłącza i treść przypisów nie są analizowane. Przed analizą zaakceptuj śledzone zmiany.</p>
-    <p>Powtórzenia mają kolorowe litery; własne słowa – żółte tło. Priorytet tła: puste nawiasy, sąsiednie powtórzenia, własne słowa, długie zdania, długie akapity. Wynik jest wskazówką do ręcznego sprawdzenia.</p>
+    <p>Zakres określa liczbę analizowanych słów, także między akapitami. Analiza pomija tabele, nagłówki, hiperłącza i przypisy. Najpierw zaakceptuj śledzone zmiany.</p>
+    <p>Powtórzenia mają kolorowe litery, a własne słowa – żółte tło. Pozostałe oznaczenia zależą od wybranych opcji. Przejrzyj zaznaczone fragmenty po pobraniu.</p>
     <form method="post" enctype="multipart/form-data">
         {% csrf_token %}<input type="hidden" name="program_action" value="repetitions">
         {{ repetitions_form.non_field_errors }}

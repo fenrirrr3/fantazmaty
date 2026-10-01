@@ -4,11 +4,11 @@
 {% block content %}
 <header class="page-header"><h1 class="page-title">Dodaj do recenzji</h1><p class="page-description">Rozwiń import masowy z podglądem albo formularz pojedynczego zgłoszenia. Każda część zapisuje się osobno.</p></header>
 <div class="intake-stack">
-<details class="card intake-panel" {% if bulk_open %}open{% endif %}><summary>Wiele zgłoszeń</summary><div class="intake-panel-body">
+<details class="card intake-panel" {% if bulk_open %}open{% endif %}><summary><span>Wiele zgłoszeń</span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary><div class="intake-panel-body">
 {% include 'core/includes/review_bulk_form.html' with form=bulk_form %}
 </div></details>
-<details class="card intake-panel" {% if single_form.is_bound or fallback_query or single_form.initial.author %}open{% endif %}><summary>Pojedyncze zgłoszenie</summary><div class="intake-panel-body">
-{% if author_fallback %}<noscript><form method="get"><label>Znajdź autora <input name="author_query" value="{{ fallback_query }}"></label><button type="submit">Wyszukaj</button></form><ul>{% for author in fallback_authors %}<li><a href="?author={{ author.pk }}">{{ author }} – {{ author.email }}</a></li>{% endfor %}</ul></noscript>{% endif %}
+<details class="card intake-panel" {% if single_form.is_bound or fallback_query or single_form.initial.author %}open{% endif %}><summary><span>Pojedyncze zgłoszenie</span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary><div class="intake-panel-body">
+{% if author_fallback %}<noscript><form method="get"><label>Znajdź autora <input name="author_query" value="{{ fallback_query }}"></label><button type="submit" class="secondary-button">Wyszukaj</button></form><ul>{% for author in fallback_authors %}<li><a href="?author={{ author.pk }}">{{ author }} – {{ author.email }}</a></li>{% endfor %}</ul></noscript>{% endif %}
 <form method="post" action="{% url 'core:review_create' %}" class="intake-form" data-warn-unsaved>{% csrf_token %}{% edit_version %}
 {{ single_form.as_p }}<button class="primary-button" type="submit">Dodaj zgłoszenie</button></form></div></details>
 

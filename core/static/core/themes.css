@@ -1,5 +1,4 @@
 :root {
-    --background: #e2e5e9;
     --editing-bg: #fbe5e7; --editing-fg: #8f2735;
     --proofreading-bg: #e2f1e6; --proofreading-fg: #22683b;
     --verification-bg: #fff2c9; --verification-fg: #725600;
@@ -11,6 +10,7 @@
     --background: #15171b; --surface: #1b2430; --surface-alt: #222d3b;
     --surface-hover: #304056; --border: #44546a; --border-strong: #718399;
     --text: #FFFFFF; --muted: #FFFFFF; --primary: #85bdff;
+    --on-primary: #102034;
     --primary-dark: #acd2ff; --primary-light: #243e60; --header: #111c2a;
     --table-header: #2a394d; --success: #9ee1b7; --success-light: #203f32;
     --danger: #ffadb5; --danger-dark: #ffc8ce; --danger-light: #482d36;
@@ -28,26 +28,22 @@
 [data-palette="ready"] { --palette-bg: var(--ready-bg); --palette-fg: var(--ready-fg); }
 .role-badge[data-palette], .workflow-stage-badge[data-palette] { background: var(--palette-bg); color: var(--palette-fg); border-color: currentColor; }
 .workflow-stage-row[data-palette] > td:first-child { border-left: 3px solid var(--palette-fg); }
-.notes-editor-grid > .notes-editor-panel { padding: 16px; border: 1px solid var(--border); }
-.notes-editor-grid > .notes-editor-panel h3 { margin: 0 0 14px; min-height: 2.5em; }
-.notes-editor-grid > .notes-editor-panel label { display: block; min-height: 2.5em; }
-.notes-editor-grid textarea { min-height: 160px; }
-section:has(#active-stages-heading), section:has(#reserved-assignments-heading) { border: 1px solid var(--border-strong); box-shadow: 0 2px 6px #00000012; }
 :root[data-theme="dark"] .coordinator-note-highlight { background: var(--danger-light); border-color: var(--danger); }
 :root[data-theme="dark"] .text-note.is-important,
 :root[data-theme="dark"] .text-note.is-important summary,
 :root[data-theme="dark"] .text-note.is-important .text-note-content { background: var(--warning-light); }
 :root[data-theme="dark"] .boolean-yes { background: var(--success-light); color: var(--success); }
 :root[data-theme="dark"] .boolean-no { background: var(--danger-light); color: var(--danger); }
-:root[data-theme="dark"] .primary-button { color: #102034; }
-.notification-queue { border-left: 4px solid var(--warning); padding: 18px; margin-bottom: 20px; }
+:root[data-theme="dark"] :is(.primary-button,.assign-button,.review-open-button),
+:root[data-theme="dark"] :is(.primary-button,.assign-button,.review-open-button):hover { color: var(--on-primary); }
+:root[data-theme="dark"] .accept-review-button { color: #ffffff; background: #24613e; border-color: #74b58a; }
+:root[data-theme="dark"] .accept-review-button:hover { color: #ffffff; background: #2d754c; }
+:root[data-theme="dark"] :is(.withdraw-text-button,.reject-review-button,.unassign-button,.vacation-end-button):hover { color: var(--danger-dark); background: var(--danger-light); border-color: var(--danger); }
 :root[data-theme="dark"] .sidebar-heading { background: var(--table-header); color: var(--text); }
 :root[data-theme="dark"] .sidebar-link:not(:hover):not(.is-active):not([aria-current="page"]) {
     background: var(--surface-alt); box-shadow: inset 0 0 0 1px var(--border);
 }
 :root[data-theme="dark"] thead th { color: var(--text); }
-:root[data-theme="dark"] .stage-status.pending,
-:root[data-theme="dark"] .stage-status.inactive { background: var(--surface-alt); color: var(--muted); }
 
 /* Wspólne komponenty nowych zakładek korzystają z istniejącej palety. */
 :root { --ready-edit-bg: #d3f3f1; --ready-edit-fg: #145d59; }
@@ -55,28 +51,19 @@ section:has(#active-stages-heading), section:has(#reserved-assignments-heading) 
 [data-palette="ready-for-editing"] { --palette-bg: var(--ready-edit-bg); --palette-fg: var(--ready-edit-fg); }
 .notification-urgent { border-left-color: var(--danger); background: var(--danger-light); }
 .notification-alert { color: var(--danger); font-weight: 750; text-decoration: underline; }
-.copy-selected { outline: 2px solid var(--primary); outline-offset: -2px; background: var(--primary-light) !important; }
-.searchable-select-input { margin-bottom: 7px; }
-
-/* Wyszukiwanie osoby i rozwijane role w jednym wierszu. */
-.people-filters-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; }
-.people-filters-form .team-roles-field { min-width: 0; }
-.people-filters-form .checkbox-dropdown { width: 100%; }
-.people-filters-form .checkbox-dropdown-options .multi-filter-options { display: grid; grid-template-columns: 1fr; }
-@media (max-width: 700px) {
-    .people-filters-form { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-    .people-filters-form > .filter-actions { grid-column: 1 / -1; }
-}
-
-.author-suggestions { display:grid; max-height:280px; overflow:auto; background:var(--surface); }
-.author-suggestions:empty { display:none; }
-.author-suggestions button { text-align:left; background:var(--surface); color:var(--text); border:1px solid var(--border); padding:10px; cursor:pointer; }
-.author-suggestions button:hover, .author-suggestions button[aria-selected="true"] { background:var(--primary-light); }
-.visually-hidden { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
 
 :root[data-theme="dark"] .complete-stage-button { color: #FFFFFF; background: #24613e; border: 1px solid #74b58a; }
 :root[data-theme="dark"] .complete-stage-button:hover { color: #FFFFFF; background: #2d754c; }
 :root[data-theme="dark"] :is(p, label, input, textarea, select, .detail-link, .text-title-link) { color: #FFFFFF; }
-.table-sort-button { font: inherit; color: inherit; background: transparent; border: 0; padding: 0; cursor: pointer; text-align: inherit; }
 
 :root[data-theme="dark"] :is(.sidebar-link, .navigation-link, .dropdown-link, .brand-text small) { color: #FFFFFF; }
+
+/* Reviewer and coordinator palettes. */
+:root { --reviewer-bg:#ccfbf1; --reviewer-fg:#115e59; --coordinator-bg:#ffedd5; --coordinator-fg:#9a3412; }
+:root[data-theme="dark"] { --reviewer-bg:#143d3b; --reviewer-fg:#99f6e4; --coordinator-bg:#492b1b; --coordinator-fg:#fdba74; }
+[data-palette="reviewer"] { --palette-bg:var(--reviewer-bg); --palette-fg:var(--reviewer-fg); }
+[data-palette="coordinator"] { --palette-bg:var(--coordinator-bg); --palette-fg:var(--coordinator-fg); }
+.reviewer-bubble { background:var(--reviewer-bg); color:var(--reviewer-fg); border-color:var(--reviewer-fg); }
+.reviewer-bubble.reviewer-opinion-yes, .reviewer-bubble.reviewer-opinion-yes_maybe { background:var(--success-light); color:var(--success); border-color:var(--success); }
+.reviewer-bubble.reviewer-opinion-maybe { background:var(--warning-light); color:var(--warning); border-color:var(--warning); }
+.reviewer-bubble.reviewer-opinion-no, .reviewer-bubble.reviewer-opinion-maybe_no { background:var(--danger-light); color:var(--danger-dark); border-color:var(--danger); }

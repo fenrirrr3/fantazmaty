@@ -1,6 +1,6 @@
 from django import forms
 from django.core.validators import URLValidator
-from texts.models import Text
+from texts.models import Text, Review
 
 
 class TextFileForm(forms.ModelForm):
@@ -8,3 +8,8 @@ class TextFileForm(forms.ModelForm):
     class Meta:
         model = Text
         fields = ('file_url',)
+
+
+class ReviewFileForm(TextFileForm):
+    class Meta(TextFileForm.Meta):
+        model = Review

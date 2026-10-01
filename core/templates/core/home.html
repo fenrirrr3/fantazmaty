@@ -11,7 +11,7 @@
         </p>
     </header>
 
-    {% if user.is_superuser %}<section class="details-card notification-queue{% if pending_notification_count %} notification-urgent{% endif %}"><h2>Autorzy do powiadomienia</h2><a class="{% if pending_notification_count %}notification-alert{% else %}detail-link{% endif %}" href="{% url 'core:notification_queue' %}">Obsłuż zgłoszenia: {{ pending_notification_count }}</a><p><a href="{% url 'core:scheduled_rejections' %}">Zaplanowane odrzucenia</a></p></section>{% endif %}
+    {% if user.is_superuser %}<section class="details-card notification-queue{% if pending_notification_count %} notification-urgent{% endif %}"><h2>Autorzy do powiadomienia</h2><div class="general-notes-actions"><a class="primary-button" href="{% url 'core:notification_queue' %}">Obsłuż zgłoszenia: {{ pending_notification_count }}</a><a class="secondary-button" href="{% url 'core:scheduled_rejections' %}">Zaplanowane odrzucenia</a></div></section>{% endif %}
     {% if user.is_superuser %}
     <section class="details-card">
         <h2>Przyjęte teksty do dodania do procesu wydawniczego</h2>
