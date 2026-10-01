@@ -4,8 +4,15 @@
 .intake-panel textarea,.intake-panel select,.intake-panel input:not([type=checkbox]):not([type=hidden]){max-width:100%;box-sizing:border-box}
 .intake-panel .table-container{overflow-x:auto}
 .intake-panel-body .intake-form{width:100%;max-width:none}
-.mailbox-filters{display:flex;gap:1rem;align-items:end;flex-wrap:wrap;margin-bottom:1rem}
-.mailbox-filters .form-field{margin:0}
+.mailbox-filters{display:grid;grid-template-columns:minmax(0,24rem) minmax(0,32rem);gap:1rem;align-items:start;margin-bottom:1rem}
+.mailbox-filters .filter-field{margin:0}
+.mailbox-options{display:flex;flex-direction:column;align-items:flex-start;gap:.65rem;min-width:0}
+.mailbox-option{display:flex;align-items:flex-start;gap:.55rem;margin:0;font-weight:400;line-height:1.5;max-width:100%}
+.mailbox-option input[type=checkbox]{flex:0 0 auto;margin-top:.1rem}
+.mailbox-option span{min-width:0;overflow-wrap:anywhere}
+.mailbox-actions{grid-column:1/-1;margin:0}
+.mailbox-confirmation-options{max-width:32rem;margin-block:1rem}
+@media(max-width:700px){.mailbox-filters{grid-template-columns:minmax(0,1fr)}}
 
 
 

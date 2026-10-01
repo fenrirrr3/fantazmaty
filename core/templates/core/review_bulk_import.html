@@ -2,7 +2,7 @@
 {% block title %}Import zgłoszeń | Fantazmaty CMS{% endblock %}
 {% block extra_css %}<link rel="stylesheet" href="{% static 'core/intake.css' %}">{% endblock %}
 {% block content %}
-<header class="page-header"><h1 class="page-title">Import zgłoszeń</h1><p class="page-description">Skrzynka teksty. Wybierz wiadomości, sprawdź dane i pobierz paczkę z tekstami. Wiadomości pozostają na skrzynce, bez zmiany stanu przeczytania.</p></header>
+<header class="page-header"><h1 class="page-title">Import zgłoszeń</h1><p class="page-description">Jednorazowo do {{ max_messages }} wiadomości.</p></header>
 <p><a class="secondary-button" href="{% url 'core:review_create' %}">Dodaj zgłoszenie lub importuj wiele zgłoszeń</a> <a class="secondary-button" href="{% url 'admin:core_mailboxconnection_changelist' %}">Ustawienia skrzynki</a></p>
 <section class="card mailbox-import-card"><div class="card-body">
 {% if error %}<p class="form-error" role="alert">{{ error }}</p>{% endif %}
@@ -11,20 +11,19 @@
 <input type="hidden" name="selection" value="{{ selection }}">
 <div class="mailbox-filters">
 <div class="filter-field"><label for="mailbox-subject-filter">Nabór w temacie wiadomości</label>
-<select id="mailbox-subject-filter" name="subject_filter"><option value="">Wszystkie wiadomości</option>{% for title in subject_choices %}<option value="{{ title }}" {% if subject_filter == title %}selected{% endif %}>{{ title }}</option>{% endfor %}</select>
-<p class="form-help">Nazwy dodasz w ustawieniach skrzynki. Po zmianie wyboru kliknij Pobierz nagłówki.</p></div>
-<label><input type="checkbox" name="show_downloaded" {% if show_downloaded %}checked{% endif %}> Pokaż również już pobrane wiadomości</label>
-<label><input type="checkbox" name="rebuild" {% if rebuild %}checked{% endif %}> Przebuduj do nowego DOCX (bez metadanych starego pliku)</label>
-<label><input type="checkbox" name="clean" {% if clean %}checked{% endif %}> Popraw pliki Odkurzaczem</label>
-<label><input type="checkbox" name="convert" {% if convert %}checked{% endif %}> Konwertuj do PDF i EPUB</label>
+<select id="mailbox-subject-filter" name="subject_filter"><option value="">Wszystkie wiadomości</option>{% for title in subject_choices %}<option value="{{ title }}" {% if subject_filter == title %}selected{% endif %}>{{ title }}</option>{% endfor %}</select></div>
+<div class="mailbox-options">
+<label class="mailbox-option"><input type="checkbox" name="show_downloaded" {% if show_downloaded %}checked{% endif %}><span>Pokaż również już pobrane wiadomości</span></label>
+<label class="mailbox-option"><input type="checkbox" name="rebuild" {% if rebuild %}checked{% endif %}><span>Przebuduj do nowego DOCX</span></label>
+<label class="mailbox-option"><input type="checkbox" name="clean" {% if clean %}checked{% endif %}><span>Popraw pliki Odkurzaczem</span></label>
+<label class="mailbox-option"><input type="checkbox" name="convert" {% if convert %}checked{% endif %}><span>Konwertuj do PDF i EPUB</span></label>
+</div>
+<div class="review-import-actions mailbox-actions">
 <button class="primary-button" name="action" value="headers">Pobierz nagłówki</button>
 <button class="primary-button" name="action" value="download" {% if not result.rows %}disabled{% endif %}>Pobierz teksty</button>
 </div>
-<p>Jednorazowo do 10 wiadomości, 15 MB na wiadomość i 50 MB łącznie. Przetwarzanie plików ma limit 90 sekund. Odkurzacz i konwersja obsługują DOCX. Przed konwersją ustawiamy A4, marginesy 2,5 cm z każdej strony i ujednolicamy formatowanie DOCX: Times New Roman 12, interlinia 1,5, wcięcie 1,25 cm (bez wcięcia przy wyśrodkowaniu), bez odstępów między akapitami. Przebudowa pomija nagłówki, stopki, komentarze i ukryty tekst; akceptuje obsługiwane śledzone zmiany. Tabele, ilustracje, przypisy, automatyczne listy i inne nieobsługiwane elementy wymagają akceptacji komunikatu z listą pomijanych elementów. Po wyłączeniu wszystkich trzech opcji pobierzesz oryginalne załączniki. Ponowne pobranie nie dodaje drugi raz zgłoszeń.</p>
-<p class="form-help">Obsługiwane są wiadomości z nazwanymi polami, np. Imię:, Nazwisko:, Tytuł opowiadania:, oraz dotychczasowe formaty rozdzielone średnikami. W nowym formacie wiadomość do redakcji umieść na końcu. Nazwa naboru pochodzi z tematu: Nabór: „Tytuł antologii”. Znacznik <code>--- KONIEC WIADOMOŚCI AUTORA ---</code> jest opcjonalny; pozwala oddzielić podpis od wiadomości autora.</p>
-<p class="form-help">Pobrana lista nagłówków pozostaje po odświeżeniu strony do kolejnego pobrania. Po zmianie filtrów kliknij Pobierz nagłówki, aby zaktualizować listę.</p>
+</div>
 {% if result %}
-<p>Wiadomości spełniające filtr: {{ result.total }}. Do 50 na stronie.</p>
 <div class="table-container"><table><thead><tr><th>Wybierz</th><th>Data wiadomości</th><th>Nadawca (odpowiedź do)</th><th>Temat</th><th>Pobrano</th></tr></thead><tbody>
 {% for row in result.rows %}<tr><td><input type="checkbox" name="uids" value="{{ row.uid }}" {% if row.uid in selected %}checked{% endif %} aria-label="Wybierz {{ row.subject }}"></td><td>{{ row.date|default:'–' }}</td><td>{{ row.sender|default:'–' }}</td><td>{{ row.subject|default:'(bez tematu)' }}</td><td>{{ row.downloaded|yesno:'Tak,Nie' }}</td></tr>{% empty %}<tr><td colspan="5">Brak wiadomości do wyświetlenia.</td></tr>{% endfor %}
 </tbody></table></div>
@@ -37,12 +36,11 @@
 {% endif %}
 {% if preview_messages %}
 <h2>Podgląd zgłoszeń</h2>
-<p>Zapis obejmuje dane zgłoszenia, ostrzeżenia, jawne zgody newsletterowe i wiadomość autora z nowego formatu. Sprawdź wszystkie pola przed zatwierdzeniem. Folder w ZIP otrzyma tytuł z tematu po półpauzie; tytuł w bazie pochodzi z wiersza danych.</p>
 <div class="table-container"><table><thead><tr><th>Autor</th><th>Tytuł</th><th>Gatunek</th><th>Znaki</th><th>E-mail</th><th>Telefon</th><th>Antologia</th><th>Ostrzeżenia</th><th>Premiery</th><th>Nabory</th><th>Wiadomość autora</th><th>Pliki</th><th>Zapis</th></tr></thead><tbody>
 {% for row in preview_messages %}<tr><td>{{ row.author }}{% if row.author_pseudonym %}<br>Pseudonim: {{ row.author_pseudonym }}{% endif %}</td><td>{{ row.title }}</td><td>{{ row.genre }}</td><td>{{ row.length }}</td><td>{{ row.email }}</td><td>{{ row.phone }}</td><td>{{ row.anthology }}</td><td>{{ row.content_warnings|default:"–" }}</td><td>{{ row.newsletter_premieres|yesno:"Tak,Nie" }}</td><td>{{ row.newsletter_recruitment|yesno:"Tak,Nie" }}</td><td>{{ row.author_message|default:"–"|linebreaksbr }}</td><td>{% for name, data in row.files %}{{ name }}<br>{% endfor %}{% if row.ignored_files %}<small>Pominięto obrazy lub załączniki podpisu: {{ row.ignored_files|join:", " }}</small>{% endif %}</td><td>{% if row.downloaded %}Tylko ponowne pobranie{% else %}Nowe zgłoszenie{% endif %}</td></tr>{% endfor %}
 </tbody></table></div>
 {% for error in hard_errors %}<p class="form-error">{{ error }}</p>{% endfor %}
-{% for form in forms %}{% for warning in form.import_warnings %}<p class="form-warning">{{ warning }}</p>{% endfor %}{% endfor %}
+{% for form in forms %}{% for warning in form.mail_display_warnings %}<p class="form-warning">{{ warning }}</p>{% endfor %}{% endfor %}
 {% if not hard_errors %}
 <form method="post">{% csrf_token %}
 <input type="hidden" name="selection" value="{{ selection }}"><input type="hidden" name="preview" value="{{ preview_token }}"><input type="hidden" name="subject_filter" value="{{ subject_filter }}">
@@ -50,14 +48,14 @@
 {% if rebuild %}<input type="hidden" name="rebuild" value="on">{% endif %}
 {% if clean %}<input type="hidden" name="clean" value="on">{% endif %}{% if convert %}<input type="hidden" name="convert" value="on">{% endif %}
 {% if show_downloaded %}<input type="hidden" name="show_downloaded" value="on">{% endif %}
-<p>Przebudowa DOCX: {{ rebuild|yesno:'tak,nie' }}. Odkurzacz: {{ clean|yesno:'tak,nie' }}. Konwersja PDF i EPUB: {{ convert|yesno:'tak,nie' }}.</p>
 {% if rebuild_warning %}
 <p class="form-warning">{{ rebuild_warning_text }} Zgłoszenia nie zostały jeszcze zapisane. Akceptacja dotyczy wszystkich nieobsługiwanych plików w tej paczce.</p>
-<p><label><input type="checkbox" name="allow_rebuild_omissions" value="on" required> Akceptuję ostrzeżenie i chcę kontynuować z pominięciem wymienionych elementów.</label></p>
 {% endif %}
-<p><label><input type="checkbox" name="approve" required> Sprawdziłem dane i ostrzeżenia. Potwierdzam zapis nowych zgłoszeń i pobranie plików.</label></p>
+<div class="mailbox-options mailbox-confirmation-options">
+{% if rebuild_warning %}<label class="mailbox-option"><input type="checkbox" name="allow_rebuild_omissions" value="on" required><span>Akceptuję ostrzeżenie i pominięcie wymienionych elementów.</span></label>{% endif %}
+<label class="mailbox-option"><input type="checkbox" name="approve" required><span>Sprawdziłem dane i ostrzeżenia. Potwierdzam zapis zgłoszeń i pobranie plików.</span></label>
+</div>
 <button class="primary-button" name="action" value="confirm">Zapisz zgłoszenia i pobierz ZIP</button>
-<p>Wiadomość oznaczamy jako pobraną po przygotowaniu paczki i zapisaniu danych. Jeżeli pobieranie w przeglądarce się przerwie, włącz pokazywanie pobranych wiadomości i pobierz ją ponownie.</p>
 </form>
 {% endif %}
 {% endif %}

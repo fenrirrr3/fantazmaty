@@ -9,7 +9,7 @@ from django.urls import reverse
 
 from core.models import MailboxConnection, MailboxDownload, NewsletterConsent
 from core.services.mailbox import MailboxError
-from core.services.mailbox_import import mailbox_key, parse_message
+from core.services.mailbox_import import mailbox_key, parse_message, fetch_messages
 from core.services.review_import_parser import encode_submission, parse_review_records
 from core.views.mailbox import HEADERS_SESSION_KEY, load_token
 from texts.models import Anthology, Review
@@ -32,16 +32,39 @@ Adres e-mail: to jest fragment wiadomości, nie zmiana adresu.
 "Dziękuję".'''
 
 
-def named_mail(body=NAMED_BODY, *, html=False, subject='Nabór: „Test” – Opowieść'):
+def named_mail(body=NAMED_BODY, *, html=False, subject='Nabór: „Test” – Opowieść', reply_to=None):
     message = EmailMessage()
     message['Subject'] = subject
     message['From'] = 'sender@example.com'
+    if reply_to:
+        message['Reply-To'] = reply_to
     message.set_content(body, subtype='html' if html else 'plain')
     message.add_attachment(b'original', maintype='application', subtype='octet-stream', filename='tekst.docx')
     return message.as_bytes()
 
 
 class NamedSubmissionTests(SimpleTestCase):
+    def test_csv_error_identifies_person_instead_of_uid_and_row(self):
+        body = 'Anna Nowak;"Niedomknięty tytuł;fantasy;1000;anna@example.com;;Test\n' + '\n'.join('Linia' for _ in range(86))
+        with self.assertRaises(MailboxError) as error:
+            parse_message(1402, named_mail(body, reply_to='Anna Nowak <anna@example.com>'))
+        text = str(error.exception)
+        self.assertTrue(text.startswith('Anna Nowak <anna@example.com>:'))
+        self.assertIn('niepoprawny zapis cudzysłowów', text)
+        self.assertNotIn('Wiadomość 1402', text)
+        self.assertNotRegex(text, r'Wiersz\s+\d+')
+
+    def test_attachment_errors_identify_person(self):
+        message = EmailMessage()
+        message['Reply-To'] = 'Anna Nowak <anna@example.com>'
+        message.set_content(NAMED_BODY)
+        message.add_attachment(b'', maintype='application', subtype='octet-stream', filename='pusty.docx')
+        with self.assertRaises(MailboxError) as error:
+            parse_message(1402, message.as_bytes())
+        self.assertIn('Anna Nowak <anna@example.com>', str(error.exception))
+        self.assertIn('pusty (0 bajtów)', str(error.exception))
+        self.assertNotIn('1402', str(error.exception))
+
     def test_names_pseudonym_semicolons_and_multiline_message(self):
         parsed = parse_message(12, named_mail())
         rows, errors = parse_review_records(parsed['record'])
@@ -281,3 +304,38 @@ class PersistentHeadersTests(TestCase):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 403)
         self.assertNotIn(b'anna@example.com', response.content)
+
+    @patch('core.services.mailbox_import.imaplib.IMAP4_SSL')
+    def test_twenty_messages_allowed_and_twenty_one_rejected(self, imap):
+        raw = named_mail()
+        client = imap.return_value
+        client.select.return_value = ('OK', [b'20'])
+        client.response.return_value = ('UIDVALIDITY', [b'7'])
+        def fetch(command, uid, fields):
+            if 'RFC822.SIZE' in fields:
+                return 'OK', [f'1 (UID {uid} RFC822.SIZE {len(raw)})'.encode()]
+            return 'OK', [(f'1 (UID {uid} BODY[] {{{len(raw)}}})'.encode(), raw)]
+        client.uid.side_effect = fetch
+        self.box.set_password('unused')
+        self.assertEqual(len(fetch_messages(self.box, 7, list(range(1, 21)))), 20)
+        self.assertTrue(client.select.call_args.kwargs['readonly'])
+        imap.reset_mock()
+        with self.assertRaises(MailboxError) as error:
+            fetch_messages(self.box, 7, list(range(1, 22)))
+        self.assertIn('od 1 do 20', str(error.exception))
+        imap.assert_not_called()
+
+    @patch('core.views.mailbox.fetch_messages')
+    def test_validation_error_identifies_correct_person_in_mixed_batch(self, fetch):
+        self.headers['rows'].append({'uid': 13, 'subject': 'Błędne zgłoszenie'})
+        page = self.fetch_headers()
+        fetch.return_value = [
+            parse_message(12, named_mail(reply_to='Anna Nowak <anna@example.com>')),
+            parse_message(13, named_mail(NAMED_BODY.replace('37 930', 'abc'), reply_to='Jan Kowalski <jan@example.com>')),
+        ]
+        response = self.client.post(self.url, {'action': 'download', 'selection': page.context['selection'], 'uids': [12, 13]})
+        errors = response.context['hard_errors']
+        self.assertTrue(errors)
+        self.assertTrue(all('Jan Kowalski <jan@example.com>' in error for error in errors))
+        self.assertTrue(all('Wiersz' not in error for error in errors))
+        self.assertFalse(Review.objects.exists())

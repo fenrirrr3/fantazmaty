@@ -9,6 +9,7 @@ from io import BytesIO
 from tempfile import SpooledTemporaryFile
 from email import policy
 from email.parser import BytesParser
+from email.utils import parseaddr
 from pathlib import PurePosixPath
 from zipfile import ZipFile, ZIP_DEFLATED
 from cryptography.fernet import InvalidToken
@@ -21,9 +22,26 @@ from core.services.mailbox import MailboxError, encode_folder, story_title, _pos
 from core.services.document_converter import inspect_document, convert_document, RebuildConfirmationRequired
 from texts.models import Anthology
 
-MAX_MESSAGES = 10
+MAX_MESSAGES = 20
 MAX_MESSAGE = 15 * 1024 * 1024
 MAX_BATCH = 50 * 1024 * 1024
+
+
+def sender_label(message):
+    name, address = parseaddr(str(message.get('Reply-To') or message.get('From') or ''))
+    name = ' '.join(name.split())[:254]
+    address = address.strip()[:254]
+    return f'{name} <{address}>' if name and address else name or address or 'Nieznana osoba'
+
+
+def describe_import_error(error, sources):
+    """Presentation only: retain original form errors and warning signatures."""
+    def replace(match):
+        line = int(match[1])
+        start = max((start for start in sources if start <= line), default=None)
+        label = sources[start] if start is not None else 'Zgłoszenie'
+        return label + (': ' if match[2] == ':' else ', ')
+    return re.sub(r'\bWiersz\s+(\d+)([:,])\s*', replace, str(error))
 
 
 def default_mailbox():
@@ -47,7 +65,7 @@ def receipts(config, validity):
 def fetch_messages(config, validity, uids):
     uids = sorted(set(_positive(uid) for uid in uids))
     if not 1 <= len(uids) <= MAX_MESSAGES:
-        raise MailboxError('Wybierz od 1 do 10 wiadomości.')
+        raise MailboxError(f'Wybierz od 1 do {MAX_MESSAGES} wiadomości.')
     client = None
     try:
         context = ssl.create_default_context()
@@ -99,6 +117,14 @@ def fetch_messages(config, validity, uids):
 
 def parse_message(uid, raw, *, submission=True):
     message = BytesParser(policy=policy.default).parsebytes(raw)
+    try:
+        return _parse_message(uid, raw, message, submission=submission)
+    except MailboxError as error:
+        detail = re.sub(r'^(?:Wiadomość\s+\d+:?\s*|Wiersz\s+\d+[,:]\s*)+', '', str(error))
+        raise MailboxError(f'{sender_label(message)}: {detail}') from None
+
+
+def _parse_message(uid, raw, message, *, submission=True):
     files, ignored_files = [], []
     for part in message.walk():
         if part.is_multipart() or not part.get_filename():
@@ -129,7 +155,7 @@ def parse_message(uid, raw, *, submission=True):
             continue
         for value in (part.get_content_type().encode(), str(part.get_filename() or '').encode('utf-8'), part.get_payload(decode=True) or b''):
             identity.update(len(value).to_bytes(8, 'big')); identity.update(value)
-    metadata = {'uid': uid, 'digest': hashlib.sha256(raw).hexdigest(),
+    metadata = {'uid': uid, 'sender': sender_label(message), 'digest': hashlib.sha256(raw).hexdigest(),
                 'fingerprint': identity.hexdigest(), 'message_id': message_id,
                 'folder': story_title(str(message.get('Subject', ''))) or f'wiadomosc_{uid}',
                 'title': story_title(str(message.get('Subject', ''))) or '(bez tytułu)',
@@ -227,16 +253,22 @@ def prepare_forms(messages, config, validity, user, tokens=None, confirmed=False
             fingerprints.add(message['fingerprint'])
         matches = list(Anthology.objects.filter(title__iexact=message['anthology'], status=Anthology.Status.IN_PREPARATION)[:2])
         if len(matches) != 1:
-            raise MailboxError(f'Wiadomość {message["uid"]}: nie znaleziono jednoznacznej antologii „{message["anthology"]}” ze statusem W przygotowaniu.')
+            raise MailboxError(f'{message.get("sender") or message.get("author") or message.get("email") or "Nieznana osoba"}: nie znaleziono jednoznacznej antologii „{message["anthology"]}” ze statusem W przygotowaniu.')
         pk = matches[0].pk
-        grouped.setdefault(pk, []).append(message['record'])
+        grouped.setdefault(pk, []).append(message)
     forms = []
-    for pk, lines in sorted(grouped.items()):
-        data = {'anthology': pk, 'records': '\n'.join(lines),
+    for pk, group in sorted(grouped.items()):
+        data = {'anthology': pk, 'records': '\n'.join(message['record'] for message in group),
                 'confirm_submission_warnings': confirmed,
                 'submission_warnings_token': (tokens or {}).get(str(pk), '')}
         form = ReviewBulkImportForm(data, user=user)
         form.is_valid()
+        form.mail_sources = {}
+        line = 1
+        for message in group:
+            form.mail_sources[line] = message.get('sender') or message.get('author') or message.get('email') or 'Nieznana osoba'
+            line += len(message['record'].splitlines())
+        form.mail_display_warnings = [describe_import_error(warning, form.mail_sources) for warning in form.import_warnings]
         forms.append(form)
     return forms
 

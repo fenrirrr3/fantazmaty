@@ -1,5 +1,6 @@
 from zipfile import BadZipFile
 from copy import deepcopy
+import re
 from lxml.etree import XMLSyntaxError
 from django.core import signing
 from django.core.exceptions import ValidationError
@@ -14,7 +15,7 @@ from core.models import MailboxConnection, MailboxDownload
 from core.permissions import superuser_required
 from core.services.mailbox import read_headers, MailboxError
 from core.services.mailbox_import import (
-    default_mailbox, mailbox_key, receipts, fetch_messages, prepare_forms, package_messages,
+    default_mailbox, mailbox_key, receipts, fetch_messages, prepare_forms, package_messages, describe_import_error, MAX_MESSAGES,
 )
 from core.services.document_converter import ConversionError, RebuildConfirmationRequired, REBUILD_WARNING
 from core.services.reviews import import_reviews
@@ -64,7 +65,7 @@ def load_token(token, user, key, salt):
 @superuser_required
 @sensitive_post_parameters()
 def mailbox_headers(request):
-    context = {'result': None, 'show_downloaded': request.POST.get('show_downloaded') == 'on',
+    context = {'result': None, 'max_messages': MAX_MESSAGES, 'show_downloaded': request.POST.get('show_downloaded') == 'on',
                'clean': request.POST.get('clean') == 'on' if request.method == 'POST' else True,
                'rebuild': request.POST.get('rebuild') == 'on' if request.method == 'POST' else True,
                'convert': request.POST.get('convert') == 'on' if request.method == 'POST' else True}
@@ -102,7 +103,7 @@ def mailbox_headers(request):
                 tokens = confirmation['warnings'] if confirmation else {}
                 approved = bool(confirmation and request.POST.get('approve') == 'on')
                 forms = prepare_forms(messages, config, validity, request.user, tokens, approved)
-                hard_errors = [str(e) for form in forms for field, errors in form.errors.items()
+                hard_errors = [describe_import_error(e, form.mail_sources) for form in forms for field, errors in form.errors.items()
                                if field != 'confirm_submission_warnings' for e in errors]
                 context.update(preview_messages=messages, forms=forms, selection=request.POST['selection'],
                                selected=selected, hard_errors=hard_errors)
@@ -121,7 +122,10 @@ def mailbox_headers(request):
                             # on retries, double-clicks and concurrent downloads.
                             current_forms = prepare_forms(messages, config, validity, request.user, tokens, True)
                             for form in current_forms:
-                                import_reviews(user=request.user, form=form)
+                                try:
+                                    import_reviews(user=request.user, form=form)
+                                except ValidationError as error:
+                                    raise MailboxError(' '.join(describe_import_error(detail, form.mail_sources) for detail in error.messages)) from None
                             for message in messages:
                                 MailboxDownload.objects.update_or_create(mailbox_key=key,
                                     uid_validity=validity, uid=message['uid'], defaults={'fingerprint': message.get('fingerprint', ''), 'message_id': message.get('message_id', '')})
@@ -153,7 +157,8 @@ def mailbox_headers(request):
         context['rebuild_warning_text'] = str(error)
         context['error'] = str(error)
     except (MailboxError, ConversionError) as error:
-        context['error'] = str(error)
+        senders = {row['uid']: row.get('sender') or 'Nieznana osoba' for row in (context.get('result') or {}).get('rows', [])}
+        context['error'] = re.sub(r'\bWiadomość\s+(\d+)', lambda match: senders.get(int(match[1]), 'Zgłoszenie'), str(error))
     except (BadZipFile, XMLSyntaxError, ValueError, OSError):
         context['error'] = 'Nie udało się przetworzyć pliku. Sprawdź załączniki lub spróbuj pobrać same oryginały.'
     except ValidationError as error:
