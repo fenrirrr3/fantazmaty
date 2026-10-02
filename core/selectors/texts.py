@@ -432,6 +432,11 @@ def my_texts_context(*, user, selected_view="active", params=None):
     texts = filters.pop("filtered_queryset")
     from workflow.read_queries import annotate_my_work
     texts = annotate_my_work(texts, user, today)
+    if selected_view == "completed" and not params.get("sort", "").strip():
+        from workflow.read_queries import annotate_completed_work_date
+        texts = annotate_completed_work_date(texts, user).order_by(
+            F("work_completed_at").desc(nulls_last=True), "-pk",
+        )
     # Show every own execution, including superseded assignments. This only
     # supplies labels; current work and permissions retain their existing rules.
     texts = texts.prefetch_related(Prefetch(

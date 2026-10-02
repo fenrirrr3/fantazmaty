@@ -158,8 +158,8 @@ class WorkflowStageInline(SuperuserOnlyAdminMixin, admin.TabularInline):
     verbose_name_plural = "Workflow – wykonawcy etapów"
     extra = 0
     can_delete = False
-    fields = ("stage_label", "performer", "started_at", "ended_at", "is_completed", "is_current", "delete_stage_link", "workflow_version")
-    readonly_fields = ("stage_label", "started_at", "ended_at", "is_completed", "is_current", "delete_stage_link")
+    fields = ("stage_label", "performer", "started_at", "ended_at", "is_completed", "is_current", "reopen_stage_link", "delete_stage_link", "workflow_version")
+    readonly_fields = ("stage_label", "started_at", "ended_at", "is_completed", "is_current", "reopen_stage_link", "delete_stage_link")
     template = "admin/texts/text/workflow_inline.html"
 
     def get_queryset(self, request):
@@ -180,6 +180,15 @@ class WorkflowStageInline(SuperuserOnlyAdminMixin, admin.TabularInline):
     def delete_stage_link(self, obj):
         from django.utils.html import format_html
         return format_html('<a href="{}?action=delete">Usuń etap</a>', reverse('admin:workflow_stage_correct', args=[obj.pk]))
+
+    @admin.display(description="Zakończenie")
+    def reopen_stage_link(self, obj):
+        if (not obj.is_completed or not obj.is_current or not obj.is_released or obj.is_skipped
+                or obj.workflow_cycle != obj.text.current_workflow_cycle
+                or obj.stage_type in ('ready', 'withdrawn')):
+            return '–'
+        from django.utils.html import format_html
+        return format_html('<a href="{}?action=reopen">Cofnij zakończenie</a>', reverse('admin:workflow_stage_correct', args=[obj.pk]))
 
     def has_add_permission(self, request, obj=None):
         return False
@@ -1166,4 +1175,3 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
 # Reviewers i ReviewAssignment są edytowane wyłącznie jako inline Review.
 # Nie rejestrujemy osobnych adminów omijających blokadę rekordu recenzji.
-

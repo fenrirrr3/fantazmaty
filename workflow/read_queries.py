@@ -1,6 +1,6 @@
 """Database predicates for read-only workflow lists; writes use workflow services."""
 from workflow.catalog import IMPORT_ONLY_STAGE_TYPES
-from django.db.models import Case, When, Value, CharField, Exists, OuterRef, Q, F
+from django.db.models import Case, When, Value, CharField, DateField, Exists, OuterRef, Subquery, Q, F
 from workflow.models import WorkflowStage as S, WorkflowRoleAssignment as A
 from workflow.services import STAGE_ROLES, ROLE_GROUPS
 
@@ -87,6 +87,44 @@ def filter_my_texts(queryset, user, selected_view, today):
     queryset = annotate_my_work(queryset, user, today)
     field = {'active':'work_active', 'waiting':'work_waiting', 'completed':'work_completed'}.get(selected_view)
     return queryset.filter(**{field:True}) if field else queryset
+
+
+def annotate_completed_work_date(queryset, user):
+    """Use this person's completion dates, including the final editorial check."""
+    completed = own_stages(user).filter(
+        text_id=OuterRef('pk'), workflow_cycle=OuterRef('current_workflow_cycle'),
+        is_completed=True,
+    )
+    editing = completed.filter(stage_type=S.StageType.EDITING)
+    editor = A.objects.current_cycle().filter(
+        text_id=OuterRef('pk'), assigned_to_id=user.pk, role=A.Role.EDITOR,
+    )
+    control = S.objects.current_cycle().filter(
+        text_id=OuterRef('pk'), stage_type=S.StageType.EDITING_CONTROL,
+        is_completed=True,
+    ).order_by(F('ended_at').desc(nulls_last=True), '-pk')
+
+    def last_date(stages):
+        return Subquery(stages.exclude(ended_at__isnull=True).order_by('-ended_at', '-pk').values('ended_at')[:1])
+
+    queryset = queryset.annotate(
+        _own_completed_at=last_date(completed.exclude(stage_type=S.StageType.EDITING)),
+        _editing_completed_at=Case(
+            When(Exists(editing) | Exists(editor), then=Case(
+                # Unknown imported check dates stay unknown; an early editorial
+                # pass must not impersonate the date of the final approval.
+                When(Exists(control), then=Subquery(control.values('ended_at')[:1])),
+                default=last_date(editing), output_field=DateField(),
+            )),
+            default=Value(None), output_field=DateField(),
+        ),
+    )
+    return queryset.annotate(work_completed_at=Case(
+        When(_own_completed_at__isnull=True, then=F('_editing_completed_at')),
+        When(_editing_completed_at__isnull=True, then=F('_own_completed_at')),
+        When(_own_completed_at__gte=F('_editing_completed_at'), then=F('_own_completed_at')),
+        default=F('_editing_completed_at'), output_field=DateField(),
+    ))
 
 
 def available_stages(user, access):

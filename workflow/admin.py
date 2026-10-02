@@ -146,7 +146,7 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
     def edit_execution_link(self,obj):
         from django.urls import reverse
         from django.utils.html import format_html
-        return format_html('<a href="{}">Zmień wykonawcę / usuń etap</a>',reverse('admin:workflow_stage_correct',args=[obj.pk]))
+        return format_html('<a href="{}">Popraw wykonanie etapu</a>',reverse('admin:workflow_stage_correct',args=[obj.pk]))
 
     @admin.display(description='Usuwanie')
     def delete_execution_link(self, obj):
@@ -165,13 +165,16 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
         if not request.user.is_superuser:raise PermissionDenied
         stage=get_object_or_404(WorkflowStage,pk=object_id)
         class CorrectionForm(forms.Form):
-            action=forms.ChoiceField(label='Operacja',choices=[('performer','Popraw wykonawcę (bez nowego wykonania)'),('delete','Usuń to wykonanie etapu')])
+            action=forms.ChoiceField(label='Operacja',choices=[('performer','Popraw wykonawcę (bez nowego wykonania)'),('reopen','Cofnij zakończenie etapu (zachowaj rozpoczęcie)'),('delete','Usuń to wykonanie etapu')])
             performer=PerformerChoiceField(label='Wykonawca',queryset=get_user_model().objects.order_by('last_name','first_name','pk'),required=False,widget=AutocompleteSelect(WorkflowRoleAssignment._meta.get_field('assigned_to'), self.admin_site))
             replacement=forms.ChoiceField(label='Status po usunięciu bieżącego etapu',choices=[('','Ostatni pozostały etap workflow'),*active_stage_choices()],required=False,
                 help_text='Puste pole zachowuje ostatni pozostały etap, także zakończony. Nie rozpoczyna pracy ponownie.')
             version=forms.IntegerField(widget=forms.HiddenInput)
             confirm=forms.BooleanField(label='Potwierdzam korektę historii pracy i zmianę statystyk.')
-        form=CorrectionForm(request.POST if request.method=='POST' else None,initial={'action':'delete' if request.GET.get('action') == 'delete' else 'performer','version':version_of(stage.text),'performer':stage.assignment.assigned_to_id if stage.assignment else None})
+        initial_action = request.GET.get('action', 'performer')
+        if initial_action not in ('performer', 'reopen', 'delete'):
+            initial_action = 'performer'
+        form=CorrectionForm(request.POST if request.method=='POST' else None,initial={'action':initial_action,'version':version_of(stage.text),'performer':stage.assignment.assigned_to_id if stage.assignment else None})
         if request.method=='POST' and form.is_valid():
             try:
                 edit_stage(stage.pk,request.user,form.cleaned_data['version'],action=form.cleaned_data['action'],performer=form.cleaned_data['performer'],replacement=form.cleaned_data['replacement'])

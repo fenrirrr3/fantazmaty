@@ -4,5 +4,6 @@
 {% block content %}
 <p>Zmiana wykonawcy poprawia istniejące przypisanie, bez nowego numeru wykonania. Jeżeli kilka etapów korzysta z tego przypisania (np. redakcja i plik u autora), wykonawca zmieni się w każdym z nich. Daty i stan pracy pozostają bez zmian.</p>
 <p>Usunięcie etapu usuwa go także ze statystyk. Status zastępujący bieżący etap jest opcjonalny. Bez jego wyboru status wynika z ostatniego pozostałego etapu workflow, także zakończonego. Jeśli nie pozostanie żaden etap, tekst będzie bez etapu.</p>
+<p>Cofnięcie zakończenia usuwa datę zakończenia i przywraca stan „w trakcie”. Zachowuje datę rozpoczęcia, wykonawcę i numer wykonania. Puste, nierozpoczęte kolejne etapy przechodzą do historii. Jeśli dalszą pracę już przypisano lub wykonano, najpierw popraw te etapy. Operacja dotyczy aktualnych wykonań; w zakończonej kolejce powtórzeń można cofnąć zakończenie ostatniego etapu.</p>
 <form method="post">{% csrf_token %}{{ form.as_p }}<div class="submit-row"><input type="submit" class="default" value="Zapisz korektę"></div></form>
 {% endblock %}
