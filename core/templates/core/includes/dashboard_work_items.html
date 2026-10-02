@@ -20,9 +20,12 @@
                                 </span>
                             </p>
 
-                            <small class="muted-text">
-                                Od {{ stage.started_at|date:"d.m.Y" }}
-                            </small>
+                            {% if stage.editor_waiting %}
+                                <span class="stage-status pending">Oczekujące</span>
+                                <p class="muted-text">Oczekujesz na zakończenie lub przekazanie tego etapu.</p>
+                            {% elif stage.started_at %}
+                                <small class="muted-text">Od {{ stage.started_at|date:"d.m.Y" }}</small>
+                            {% endif %}
                         </li>
                     {% endfor %}
 {% else %}

@@ -206,14 +206,14 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
         if not request.user.is_superuser:raise PermissionDenied
         stage=get_object_or_404(WorkflowStage,pk=object_id)
         class CorrectionForm(forms.Form):
-            action=forms.ChoiceField(label='Operacja',choices=[('performer','Popraw wykonawcę (bez nowego wykonania)'),('reopen','Cofnij zakończenie etapu (zachowaj rozpoczęcie)'),('delete','Usuń to wykonanie etapu')])
+            action=forms.ChoiceField(label='Operacja',choices=[('performer','Popraw wykonawcę (bez nowego wykonania)'),('reopen','Cofnij zakończenie etapu (zachowaj rozpoczęcie)'),('restore_reservation','W1 nie została wykonana: przywróć oczekiwanie na przekazanie'),('delete','Usuń to wykonanie etapu')])
             performer=PerformerChoiceField(label='Wykonawca',queryset=get_user_model().objects.order_by('last_name','first_name','pk'),required=False,widget=AutocompleteSelect(WorkflowRoleAssignment._meta.get_field('assigned_to'), self.admin_site))
             replacement=forms.ChoiceField(label='Status po usunięciu bieżącego etapu',choices=[('','Ostatni pozostały etap workflow'),*active_stage_choices()],required=False,
                 help_text='Puste pole zachowuje ostatni pozostały etap, także zakończony. Nie rozpoczyna pracy ponownie.')
             version=forms.IntegerField(widget=forms.HiddenInput)
             confirm=forms.BooleanField(label='Potwierdzam korektę historii pracy i zmianę statystyk.')
         initial_action = request.GET.get('action', 'performer')
-        if initial_action not in ('performer', 'reopen', 'delete'):
+        if initial_action not in ('performer', 'reopen', 'restore_reservation', 'delete'):
             initial_action = 'performer'
         form=CorrectionForm(request.POST if request.method=='POST' else None,initial={'action':initial_action,'version':version_of(stage.text),'performer':stage.assignment.assigned_to_id if stage.assignment else None})
         if request.method=='POST' and form.is_valid():

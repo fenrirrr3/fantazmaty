@@ -1,6 +1,6 @@
 """Database predicates for read-only workflow lists; writes use workflow services."""
 from workflow.catalog import IMPORT_ONLY_STAGE_TYPES
-from django.db.models import Case, When, Value, CharField, Exists, OuterRef, Q, F
+from django.db.models import Case, When, Value, CharField, Exists, OuterRef, Q, F, Subquery
 from workflow.models import WorkflowStage as S, WorkflowRoleAssignment as A
 from workflow.services import STAGE_ROLES, ROLE_GROUPS
 
@@ -101,7 +101,12 @@ def annotate_my_work(queryset, user, today):
     editorial_work = Exists(assigned.filter(role=A.Role.EDITOR)) | Exists(own.filter(_work_role=A.Role.EDITOR))
     editor_remaining = editorial_work & ~editorial_approval(stages, today)
     live_editor_waiting = editor_remaining & Exists(assigned.filter(role=A.Role.EDITOR))
-    pending = ~active & ~closed & (Exists(own.filter(is_current=True, is_completed=False)) | Exists(reserved) | live_editor_waiting)
+    # After proofreading, the coordinator's verification control is followed
+    # by the editor's own control. Keep that upcoming responsibility visible.
+    editor_followup_waiting = (Exists(assigned.filter(role=A.Role.EDITOR))
+        & Exists(open_stages(stages).filter(stage_type=S.StageType.COORDINATOR_CONTROL)))
+    pending = ~active & ~closed & (Exists(own.filter(is_current=True, is_completed=False))
+        | Exists(reserved) | live_editor_waiting | editor_followup_waiting)
     completed = Exists(own.filter(is_completed=True)) & ~Exists(own.filter(is_current=True, is_completed=False)) & ~active & ~pending & ~editor_remaining
     return queryset.annotate(work_active=active, work_waiting=pending, work_completed=completed)
 
@@ -163,8 +168,29 @@ def dashboard_querysets(user, today):
         (Q(stage_type=S.StageType.AUTHOR_EDITING) & Q(Exists(editor))))
     active = active_stages(dashboard_work, today).filter(text_id__in=active_texts).filter(
         workflow_cycle=F('text__current_workflow_cycle'), is_current=True).filter(~Exists(terminal(stages))).order_by(F('started_at').desc(nulls_last=True), '-pk')
-    reserved = reserved_assignments(user, today).filter(text_id__in=waiting_texts).filter(workflow_cycle=F('text__current_workflow_cycle')).filter(
-        ~Exists(terminal(stages))).order_by(F('assigned_at').desc(nulls_last=True), '-pk')
+    editor_texts = A.objects.current_cycle().filter(text_id=OuterRef('pk'), role=A.Role.EDITOR,
+                                                  assigned_to_id=user.pk)
+    editor_waiting_texts = classified.filter(work_waiting=True).filter(Exists(editor_texts)).values('pk')
+    from workflow.state import state_annotations, ORDER
+    from django.db.models.functions import Coalesce
+    candidates = exclude_obsolete_verification_placeholders(stages.filter(
+        is_released=True, stage_type__in=ORDER,
+    )).annotate(**state_annotations())
+    representative = Coalesce(
+        Subquery(candidates.filter(is_completed=False, ended_at__isnull=True)
+                 .order_by('state_priority', '-state_order', '-iteration', '-pk').values('pk')[:1]),
+        Subquery(candidates.order_by('-state_order', '-iteration', '-pk').values('pk')[:1]),
+    )
+    editorial_waiting = S.objects.current_cycle().filter(text_id__in=editor_waiting_texts,
+        is_released=True, pk=representative).filter(~Exists(terminal(stages)))
+    active = S.objects.filter(Q(pk__in=active.values('pk')) | Q(pk__in=editorial_waiting.values('pk'))).annotate(
+        editor_waiting=Q(pk__in=editorial_waiting.values('pk'))
+            | (Q(stage_type=S.StageType.AUTHOR_EDITING) & Q(Exists(editor))),
+    ).order_by(F('started_at').desc(nulls_last=True), '-pk')
+    reserved = (reserved_assignments(user, today).filter(text_id__in=waiting_texts)
+        .filter(workflow_cycle=F('text__current_workflow_cycle')).filter(~Exists(terminal(stages)))
+        .exclude(Q(role=A.Role.EDITOR) & Q(text_id__in=editor_waiting_texts))
+        .order_by(F('assigned_at').desc(nulls_last=True), '-pk'))
     return active, reserved
 
 

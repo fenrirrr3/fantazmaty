@@ -2,6 +2,7 @@
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.db.models import Max
+from django.utils import timezone
 from core.edit_versions import version_of, bump
 from core.services.texts import _require_eligible_assignee
 from texts.models import Text
@@ -25,7 +26,9 @@ def add_missing_stage(text_id, actor, version, *, kind, performer=None, started_
     if text.repetitions.filter(completed_at__isnull=True, canceled_at__isnull=True).exists():
         raise ValidationError('Najpierw zakończ lub odwołaj kolejkę powtórzeń.')
     current = S.objects.current_cycle().filter(text=text)
-    if current.filter(stage_type=kind).exists():
+    reservation = (kind == S.StageType.FIRST_VERIFICATION and not historical
+                   and started_at is None and ended_at is None)
+    if current.filter(stage_type=kind).exists() and not reservation:
         raise ValidationError('Ten etap już istnieje. Edytuj wykonawcę w tabeli albo użyj powtórzenia/cofnięcia.')
     ensure_verification_not_completed(text, kind)
     if type(historical) is not bool:
@@ -42,6 +45,27 @@ def add_missing_stage(text_id, actor, version, *, kind, performer=None, started_
             _require_eligible_assignee(performer, role)
         except PermissionDenied as error:
             raise ValidationError(str(error) or 'Wybrana osoba nie może wykonywać tego etapu.') from error
+    if reservation and current.filter(
+            stage_type=S.StageType.EDITING, is_released=True, is_completed=False,
+            ended_at__isnull=True, started_at__lte=timezone.localdate(),
+    ).exists():
+        from workflow.services import _ensure_editing_phase, _create_pending_stage
+        from workflow.admin_performers import correct_stage_performers
+        _ensure_editing_phase(text)
+        pending = list(current.filter(stage_type=kind))
+        if len(pending) > 1 or any(s.is_completed or s.started_at or s.ended_at for s in pending):
+            raise ValidationError('W1 jest już rozpoczęta lub ma więcej niż jedno aktualne wykonanie.')
+        if current.filter(is_completed=False, ended_at__isnull=True).exclude(
+                stage_type__in=(S.StageType.EDITING, S.StageType.FIRST_VERIFICATION)).exists():
+            raise ValidationError('Najpierw zakończ pozostałe otwarte etapy redakcyjne.')
+        stage = pending[0] if pending else _create_pending_stage(text, kind)
+        if performer:
+            correct_stage_performers(text.pk, {stage.pk: performer}, actor, version_of(text))
+            stage.refresh_from_db()
+        stage.full_clean()
+        return stage
+    if current.filter(stage_type=kind).exists():
+        raise ValidationError('Ten etap już istnieje. Popraw wykonawcę w tabeli etapów.')
     if (historical or ended_at) and role == A.Role.PROOFREADER_1 and A.objects.filter(text=text, assigned_to=performer, role__in=(A.Role.PROOFREADER_2, A.Role.PROOFREADER_3), stages__is_current=True, stages__is_completed=False).exists():
         raise ValidationError('Ta osoba ma już otwartą drugą lub trzecią korektę. Pierwszą korektę musi wykonać inna osoba.')
     if not ended_at and not historical:

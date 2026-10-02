@@ -188,6 +188,10 @@ class WorkflowStageInline(SuperuserOnlyAdminMixin, admin.TabularInline):
 
     @admin.display(description="Zakończenie")
     def reopen_stage_link(self, obj):
+        from workflow.reservation_repair import reservation_candidate
+        if obj.workflow_cycle == obj.text.current_workflow_cycle and reservation_candidate(obj):
+            from django.utils.html import format_html
+            return format_html('<a href="{}?action=restore_reservation">Przywróć oczekiwanie na przekazanie</a>', reverse('admin:workflow_stage_correct', args=[obj.pk]))
         if (not obj.is_completed or not obj.is_current or not obj.is_released or obj.is_skipped
                 or obj.workflow_cycle != obj.text.current_workflow_cycle
                 or obj.stage_type in ('ready', 'withdrawn')):
@@ -496,7 +500,7 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             raise PermissionDenied
         obj = get_object_or_404(self.get_queryset(request), pk=unquote(object_id))
         class AddStageForm(forms.Form):
-            kind = forms.ChoiceField(label='Brakujący etap', choices=[(k,v) for k,v in active_stage_choices() if k in STAGE_ROLES])
+            kind = forms.ChoiceField(label='Etap', choices=[(k,v) for k,v in active_stage_choices() if k in STAGE_ROLES])
             performer = PerformerChoiceField(label='Wykonawca', required=False,
                 queryset=get_user_model().objects.all().order_by('last_name','first_name','pk'),
                 widget=AutocompleteSelect(WorkflowRoleAssignment._meta.get_field('assigned_to'), admin.site))
@@ -512,8 +516,8 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             except (ValidationError, PermissionDenied) as exc:
                 form.add_error(None, ' '.join(exc.messages) if isinstance(exc, ValidationError) else str(exc))
             else:
-                self.log_change(request, obj, 'Dodano brakujący etap: ' + stage.get_stage_type_display())
-                self.message_user(request, 'Dodano etap i zapisano wykonawcę.')
+                self.log_change(request, obj, 'Zapisano etap i wykonawcę: ' + stage.get_stage_type_display())
+                self.message_user(request, 'Zapisano etap i wykonawcę.')
                 return redirect('admin:texts_text_change', obj.pk)
         return TemplateResponse(request, 'admin/texts/text/add_stage.html', {**self.admin_site.each_context(request), 'title':'Dodaj brakujący etap: '+obj.title, 'form':form, 'original':obj, 'opts':self.model._meta, 'media':form.media})
 

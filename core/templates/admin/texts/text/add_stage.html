@@ -2,7 +2,7 @@
 {% block extrahead %}{{ block.super }}<script src="{% url 'admin:jsi18n' %}"></script>{{ media }}{% endblock %}
 {% block content %}
 <p>Dodaj brakujący etap i wybierz wykonawcę przez wyszukiwarkę. Daty zakończenia użyj tylko dla rzeczywiście zakończonej pracy; wtedy wymagane są obie daty.</p>
-<p>Zakończony etap uzupełni zapis prac, zachowując obecny status tekstu. Otwarty etap można dodać tylko wtedy, gdy nie ma innej otwartej pracy. Istniejące etapy zmieniaj przez edycję wykonawców albo cofnięcie/powtórzenie.</p>
+<p>Zakończony etap uzupełni zapis prac, zachowując obecny status tekstu. Podczas aktywnej redakcji możesz wybrać pierwszą weryfikację i wykonawcę, pozostawiając obie daty puste i pole pracy historycznej niezaznaczone. W1 będzie oczekiwać na przekazanie; redakcja pozostanie aktywna. Jeśli oczekująca W1 już istnieje, zapis zmieni jej wykonawcę bez tworzenia kolejnego etapu lub przydziału. Pozostałe otwarte etapy można dodać tylko wtedy, gdy nie ma innej otwartej pracy.</p>
 <form method="post">{% csrf_token %}{{ form.as_p }}<div class="submit-row"><input type="submit" class="default" value="Dodaj etap"></div></form>
 <p><a href="{% url 'admin:texts_text_change' original.pk %}">Wróć do tekstu</a></p>
 {% endblock %}

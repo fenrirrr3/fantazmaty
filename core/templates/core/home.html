@@ -86,7 +86,7 @@
             <header class="section-header">
                 <div>
                     <h2 id="active-stages-heading">Prace w toku</h2>
-                    <p>{% if reviewer_only %}Teksty, które recenzujesz.{% else %}Przypisane ci rozpoczęte etapy.{% endif %}</p>
+                    <p>{% if reviewer_only %}Teksty, które recenzujesz.{% else %}Twoje rozpoczęte etapy oraz teksty redakcyjne oczekujące na dalszą pracę.{% endif %}</p>
                 </div>
                 <span class="record-counter">
                     {{ active_stage_count|default:0 }}

@@ -86,6 +86,11 @@ def edit_stage(stage_id, actor, version, *, action, performer=None, replacement=
         require_working_anthology(text)
         if stage.repetition_id and not stage.repetition.completed_at and not stage.repetition.canceled_at:
             raise ValidationError('Najpierw zakończ lub odwołaj kolejkę powtórzeń.')
+        if action == 'restore_reservation':
+            from workflow.reservation_repair import restore_first_verification_reservation
+            restore_first_verification_reservation(stage.pk, apply=True, using=text._state.db or 'default')
+            stage.refresh_from_db()
+            return stage
         if action == 'reopen':
             return _reopen_stage(text, stage)
         if action=='delete':
