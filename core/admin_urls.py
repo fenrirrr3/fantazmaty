@@ -7,7 +7,7 @@ SEGMENTS = {
     "workflowhandoff": "przekazanie-pracy", "r": "przejdz",
     "mailboxconnection": "skrzynki-zgloszen", "useractivity": "aktywnosc-uzytkownikow",
     "workflowevent": "zdarzenia-etapow", "prepare-text": "przygotuj-tekst", "correct": "popraw",
-    "recruitment": "rekrutacja", "extract": "ekstrakty",
+    "recruitment": "rekrutacja", "extract": "ekstrakty", "dates": "daty",
     "core": "organizacja", "anthologycorrection": "uwagi-do-antologii",
     "login": "logowanie", "logout": "wylogowanie", "password_change": "zmiana-hasla",
     "done": "gotowe", "autocomplete": "podpowiedzi", "jsi18n": "tlumaczenia",

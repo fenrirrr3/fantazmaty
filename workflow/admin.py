@@ -136,11 +136,52 @@ class WorkflowRoleAssignmentAdminForm(
 
 @admin.register(WorkflowStage)
 class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
-    readonly_fields = (*tuple(field.name for field in WorkflowStage._meta.fields), "edit_execution_link")
+    readonly_fields = (*tuple(field.name for field in WorkflowStage._meta.fields), "edit_execution_link", "edit_dates_link")
 
     def get_urls(self):
         from django.urls import path
-        return [path('<path:object_id>/correct/', self.admin_site.admin_view(self.correct_execution), name='workflow_stage_correct')] + super().get_urls()
+        return [
+            path('<path:object_id>/dates/', self.admin_site.admin_view(self.edit_dates), name='workflow_stage_dates'),
+            path('<path:object_id>/correct/', self.admin_site.admin_view(self.correct_execution), name='workflow_stage_correct'),
+        ] + super().get_urls()
+
+    @admin.display(description='Daty i przekazanie')
+    def edit_dates_link(self, obj):
+        from django.urls import reverse
+        from django.utils.html import format_html
+        return format_html('<a href="{}">Ustaw daty / zakończ etap</a>', reverse('admin:workflow_stage_dates', args=[obj.pk]))
+
+    def edit_dates(self, request, object_id):
+        from django.core.exceptions import PermissionDenied, ValidationError
+        from django.shortcuts import get_object_or_404, redirect
+        from django.template.response import TemplateResponse
+        from core.edit_versions import version_of
+        from workflow.admin_stage_dates import StageDatesForm, set_stage_dates
+        if not request.user.is_active or not request.user.is_superuser:
+            raise PermissionDenied
+        stage = get_object_or_404(WorkflowStage.objects.select_related('text'), pk=object_id)
+        form = StageDatesForm(
+            request.POST if request.method == 'POST' else None, stage=stage,
+            initial={'started_at': stage.started_at, 'ended_at': stage.ended_at,
+                     'version': version_of(stage.text)},
+        )
+        if request.method == 'POST' and form.is_valid():
+            try:
+                set_stage_dates(stage.pk, request.user, form.cleaned_data['version'],
+                    started_at=form.cleaned_data['started_at'], ended_at=form.cleaned_data['ended_at'],
+                    finish=form.cleaned_data.get('finish', False), next_stage=form.cleaned_data.get('next_stage'))
+            except ValidationError as exc:
+                form.add_error(None, forms.ValidationError(exc.messages))
+            except PermissionDenied as exc:
+                form.add_error(None, str(exc) or 'Nie można wykonać tego przejścia workflow.')
+            else:
+                self.log_change(request, stage, 'Ustawienie dat i przekazanie etapu' if form.cleaned_data.get('finish') else 'Korekta dat etapu')
+                self.message_user(request, 'Zakończono etap i przekazano tekst dalej.' if form.cleaned_data.get('finish') else 'Zapisano daty etapu.')
+                return redirect('admin:texts_text_change', stage.text_id)
+        return TemplateResponse(request, 'admin/workflow/stage_dates.html', {
+            **self.admin_site.each_context(request), 'title': 'Daty i przekazanie: ' + str(stage),
+            'form': form, 'stage': stage,
+        })
 
     @admin.display(description='Korekta wykonania')
     def edit_execution_link(self,obj):
@@ -210,7 +251,7 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
     list_display = (
         "text",
         "stage_type",
-        "edit_execution_link", "delete_execution_link",
+        "edit_execution_link", "edit_dates_link", "delete_execution_link",
         "workflow_cycle",
         "is_current_cycle",
         "execution_number",
@@ -260,7 +301,7 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
                 "fields": (
                     "started_at",
                     "ended_at",
-                    "is_completed", "imported_completed",
+                    "is_completed", "imported_completed", "edit_dates_link",
                 ),
             },
         ),

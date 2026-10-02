@@ -856,8 +856,8 @@ def user_can_complete_stage(stage, user):
     if stage.stage_type in (StageType.EDITING, StageType.AUTHOR_EDITING) and not stage.repetition_id:
         return False
 
-    # Kontrola redaktora wymaga wykonania przez przypisanego redaktora.
-    if stage.stage_type == StageType.EDITOR_CONTROL:
+    # Kontrolę wykonuje przypisany redaktor; superuser może ją zamknąć w adminie.
+    if stage.stage_type == StageType.EDITOR_CONTROL and not user.is_superuser:
         return current_assignment_queryset(stage.text).filter(
             role=Role.EDITOR,
             assigned_to_id=user.pk,

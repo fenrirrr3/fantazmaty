@@ -55,7 +55,8 @@ def dark_rgb() -> RGBColor:
 
 
 def light_rgb() -> RGBColor:
-    return RGBColor(*(random.randint(160, 255) for _ in range(3)))
+    # Avoid near-white text on the white pages of generated documents.
+    return RGBColor(*(random.randint(160, 220) for _ in range(3)))
 
 
 def first5(word: str) -> str:

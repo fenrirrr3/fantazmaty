@@ -189,9 +189,16 @@ def _require_start_order(stage, stages):
 
 @transaction.atomic
 @track_workflow
-def start_assigned_stage(*, user, stage_id, started_at):
+def start_assigned_stage(*, user, stage_id, started_at, allow_past=False):
     require_team_member(user)
-    transition_date = validate_assignment_start_date(started_at)
+    if allow_past:
+        require_superuser(user)
+        from workflow.services import _validate_date
+        transition_date = _validate_date(started_at)
+        if transition_date >= timezone.localdate():
+            validate_assignment_start_date(transition_date)
+    else:
+        transition_date = validate_assignment_start_date(started_at)
 
     text_id = get_object_or_404(
         WorkflowStage.objects.only("text_id"),
@@ -234,7 +241,7 @@ def start_assigned_stage(*, user, stage_id, started_at):
         raise ValidationError("Najpierw przypisz osobę do tego etapu.")
 
     if stage.stage_type == StageType.EDITOR_CONTROL:
-        allowed = assignment.assigned_to_id == user.pk
+        allowed = assignment.assigned_to_id == user.pk or user.is_superuser
     else:
         allowed = (
             assignment.assigned_to_id == user.pk

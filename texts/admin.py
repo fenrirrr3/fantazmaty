@@ -158,8 +158,8 @@ class WorkflowStageInline(SuperuserOnlyAdminMixin, admin.TabularInline):
     verbose_name_plural = "Workflow – wykonawcy etapów"
     extra = 0
     can_delete = False
-    fields = ("stage_label", "performer", "started_at", "ended_at", "is_completed", "is_current", "reopen_stage_link", "delete_stage_link", "workflow_version")
-    readonly_fields = ("stage_label", "started_at", "ended_at", "is_completed", "is_current", "reopen_stage_link", "delete_stage_link")
+    fields = ("stage_label", "performer", "started_at", "ended_at", "is_completed", "is_current", "edit_dates_link", "reopen_stage_link", "delete_stage_link", "workflow_version")
+    readonly_fields = ("stage_label", "started_at", "ended_at", "is_completed", "is_current", "edit_dates_link", "reopen_stage_link", "delete_stage_link")
     template = "admin/texts/text/workflow_inline.html"
 
     def get_queryset(self, request):
@@ -175,6 +175,11 @@ class WorkflowStageInline(SuperuserOnlyAdminMixin, admin.TabularInline):
     def stage_label(self, obj):
         from workflow.labels import execution_label
         return execution_label(obj.get_stage_type_display(), obj.execution_number)
+
+    @admin.display(description="Daty i przekazanie")
+    def edit_dates_link(self, obj):
+        from django.utils.html import format_html
+        return format_html('<a href="{}">Ustaw daty / zakończ etap</a>', reverse('admin:workflow_stage_dates', args=[obj.pk]))
 
     @admin.display(description="Usuwanie")
     def delete_stage_link(self, obj):

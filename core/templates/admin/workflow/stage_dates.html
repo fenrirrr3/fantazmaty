@@ -1,0 +1,8 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<p><a href="{% url 'admin:texts_text_change' stage.text_id %}">Wróć do tekstu: {{ stage.text.title }}</a></p>
+<p>Ustaw daty tego wykonania etapu. Aby zakończyć bieżącą pracę, podaj obie daty i zaznacz „Zakończ etap i przekaż tekst dalej”. Kolejny etap powstanie zgodnie z workflow; w kolejce powtórzeń zostanie udostępniony następny wybrany etap.</p>
+{% if stage.is_completed %}<p>Ten etap jest już zakończony. Zapis poprawia daty istniejącego wykonania i zachowuje jego status oraz wykonawcę. Nieznane daty importowanej pracy można pozostawić puste.</p>{% endif %}
+{% if stage.stage_type == 'author_editing' and not stage.repetition_id %}<p>Zakończenie pracy autora wznawia redakcję z podaną datą zakończenia.</p>{% endif %}
+<form method="post">{% csrf_token %}{{ form.as_p }}<div class="submit-row"><input type="submit" class="default" value="Zapisz daty i wybraną operację"></div></form>
+{% endblock %}

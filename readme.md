@@ -322,7 +322,27 @@ Nie używaj runserver jako serwera produkcyjnego.
 Resetowanie hasła przez e-mail wymaga działającej konfiguracji poczty.
 
 
+## Daty etapów i przekazanie tekstu w panelu admina
+
+W edycji tekstu, w tabeli workflow, kliknij „Ustaw daty / zakończ etap”.
+Ten sam link jest dostępny na liście etapów i w szczegółach etapu.
+Formularz pozwala ręcznie ustawić datę rozpoczęcia (również wcześniejszą)
+oraz poprawić daty zakończonej pracy. Przed otwarciem formularza zapisz
+ewentualne zmiany wykonawców w tabeli tekstu.
+
+Aby zakończyć bieżący etap, podaj obie daty i zaznacz „Zakończ etap
+i przekaż tekst dalej”. Dla redakcji wybierz etap docelowy; obowiązują
+dotychczasowe warunki weryfikacji. Zakończenie pracy autora wznawia
+redakcję, a zakończenie etapu powtórzenia udostępnia następny etap kolejki.
+Korekta dat już zakończonej pracy zachowuje wykonawcę i numer wykonania.
+Nieznane daty pracy importowanej mogą pozostać puste.
+
+Zmiany nie wymagają nowych migracji bazy ani nowych zależności.
+
 ## Odkurzacz (Programy)
+
+Jasna paleta kolorowania powtórzeń losuje składowe RGB w zakresie
+160–220, aby ograniczyć bardzo jasne kolory na białych stronach dokumentu.
 
 Strona `/programy/` zastępuje dotychczasowy obrazek formularzem korekty DOCX.
 Dostęp mają zalogowani, aktywni członkowie zespołu oraz superużytkownicy.

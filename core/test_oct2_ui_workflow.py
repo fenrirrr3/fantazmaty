@@ -146,7 +146,7 @@ class RepetitionPaletteTests(SimpleTestCase):
         return output.getvalue()
 
     def test_both_palettes_keep_text_and_formatting_with_correct_rgb_range(self):
-        for palette, low, high in [('dark', 0, 150), ('light', 160, 255)]:
+        for palette, low, high in [('dark', 0, 150), ('light', 160, 220)]:
             with self.subTest(palette=palette), patch('core.services.document_repetitions._lemma_map',
                 side_effect=lambda words: {word.lower(): word.lower() for word in words}):
                 document = Document(color_document(BytesIO(self.document()), color_palette=palette,
@@ -184,4 +184,4 @@ class RepetitionPaletteTests(SimpleTestCase):
                 document = Document(output)
         colors = [run.font.color.rgb for run in document.paragraphs[0].runs if run.font.color.rgb]
         self.assertTrue(colors)
-        self.assertTrue(all(160 <= channel <= 255 for color in colors for channel in color))
+        self.assertTrue(all(160 <= channel <= 220 for color in colors for channel in color))
