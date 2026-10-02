@@ -1,76 +1,92 @@
-POPRAWKA PRZYPISAŃ OSÓB – 2 PAŹDZIERNIKA 2026
+AKTUALIZACJA V5 — OSOBY I WYKONANE PRACE PRZY TEKŚCIE
 
-Paczka zawiera tylko nowe lub zmienione pliki poprawki przypisań.
-Rozpakuj ją w głównym katalogu projektu fantazmaty, obok manage.py.
-Katalogi core i workflow muszą trafić do istniejących katalogów o tych nazwach.
-Paczka jest przeznaczona dla wersji fantazmaty(20261002-130616).zip.
+Lista przy tekście pokazuje nową osobę od razu po przekazaniu pracy, również
+przed jej rozpoczęciem lub zakończeniem. Uwzględnia aktualne przypisania,
+ukończone prace oraz wcześniejszych i nowych wykonawców z historii przekazań.
+Obejmuje też nowego wykonawcę kolejnego wykonania etapu utworzonego przez V4.
+Każda osoba występuje raz w danej kategorii; osoby o identycznych nazwiskach
+pozostają rozróżnione. Lista dotyczy wyłącznie wybranego tekstu.
 
-PRZYCZYNA I POPRAWKA
+Jeśli V4 jest już wgrana, podmień pliki i zrestartuj aplikację.
+Ta poprawka nie wymaga nowych migracji ani odświeżenia plików statycznych.
+Paczka obejmuje także poprzednie poprawki. Jeśli ich jeszcze nie wdrożono,
+wykonaj instrukcje V4 poniżej.
 
-Ręczna zmiana statusu archiwizowała przypisania ról od wybranego etapu
-i tworzyła nowy pusty przydział. Znikał przez to dotychczasowy wykonawca.
-Teraz zmiana statusu zachowuje aktualne przypisania całego zespołu i korzysta
-z istniejącego przydziału wybranej roli. Nie zwiększa numeru przydziału.
-Jawne powtórzenia i przekazania pracy nadal mają własną historię.
+8 ukierunkowanych testów dotyczących przekazań, nowych wykonań, listy w widoku,
+rozróżniania osób i zakresu tekstu przeszło na SQLite. Nie uruchamiano wszystkich
+testów. Kontrola migracji potwierdziła brak zmian schematu.
 
-Etykiety przypisań zamieniały nazwę roli na nazwę etapu w kolejnych wykonaniach
-i w historii. Teraz również tam pozostają role: Weryfikator 1, K. redakcji itd.
-Numer rzeczywistego kolejnego przydziału jest nadal widoczny jako „wyk. 2”.
-Nazwy etapów nadal opisują etapy, np. Pierwsza weryfikacja.
+------------------------------------------------------------
+AKTUALIZACJA V4 — ZARZĄDZANIE ETAPAMI
 
-ZMIENIONE LUB NOWE PLIKI
+W „Zarządzanie tekstem” → „Zarządzanie etapami” wybierz etap lub etapy oraz
+nową osobę dla każdej roli. Pole osoby ma wyszukiwanie po nazwisku.
+Przed zapisem formularz pokazuje kolejkę, wybrane osoby i zamykane etapy.
 
-workflow/admin_status.py
-workflow/labels.py
-workflow/migrations/0011_merge_status_assignments.py
-workflow/management/commands/repair_status_assignments.py
-core/test_status_assignment_regression.py
-core/test_team_visibility.py
-POPRAWKA_PRZYPISAN_20261002.txt
+Zapis zamyka trwającą pracę z dzisiejszą datą końcową, zachowując poprzednią
+osobę i datę rozpoczęcia. Nierozpoczęte lub przyszłe rezerwacje przenosi do
+historii bez fikcyjnego oznaczania pracy jako wykonanej. Tworzy nowe przydziały
+i nowe wykonania wybranych etapów: 1 → 2, 2 → 3 itd. Poprzednie wykonania nie
+są duplikatami do scalenia i nadal pozostają w historii.
 
-WDROŻENIE I SCALENIE BAZY
+Operacja działa także przed zakończeniem tekstu i bez wymogu gotowości
+antologii. Jeżeli antologia była już Gotowa, zostaje ustawiona na
+W przygotowaniu, żeby jej etapy mogły być wykonywane. Podgląd pokazuje tę zmianę.
+Po zakończeniu powtórzenia w trwającym workflow tekst przechodzi do dalszej
+pracy, zamiast automatycznie stawać się gotowy. Dotychczasowa blokada kolejnej
+niezamkniętej kolejki powtórzeń pozostaje; wycofane teksty wymagają osobnej obsługi.
 
-Podmień wymienione pliki w aktualnym projekcie, zachowując ścieżki.
-W głównym katalogu projektu, obok manage.py, wykonaj dotychczasowym Pythonem:
+WDROŻENIE V4
+Rozpakuj paczkę obok manage.py z zachowaniem ścieżek.
+python3.13 manage.py migrate
+python3.13 manage.py collectstatic --noinput
+Następnie zrestartuj aplikację. Jeżeli migracje V3 już wykonano, nie ma nowych
+migracji schematu ani ponownego scalania: migrate nie zmienia wykonanych migracji.
+Paczka zawiera także poprzednie poprawki V3 i tylko nowe/zmienione pliki
+względem przekazanego archiwum źródłowego.
 
-python manage.py migrate
+TESTY V4
+17 testów dotyczących zmiany etapów, nowych wykonawców, ochrony historii,
+podglądu, kontynuacji workflow i wcześniejszych powtórzeń przeszło na SQLite.
+Sprawdzono składnię nowego JavaScriptu i zgodność modeli z migracjami.
+Nie uruchamiano całego zestawu testów. Poniżej opis poprzednich poprawek V3.
 
-Na PythonAnywhere z istniejącej instrukcji wdrożenia:
+------------------------------------------------------------
+POPRAWKA PRZYPISAŃ I WERYFIKACJI — 02.10.2026
 
-cd /home/Fenrirrr3/fantazmaty
-/home/Fenrirrr3/.virtualenvs/fantazmaty-venv/bin/python manage.py migrate
+Paczka zawiera tylko nowe lub zmienione pliki względem przekazanego archiwum.
+Obejmuje również wcześniejsze poprawki, których jeszcze nie wgrano.
 
-Następnie Web → Reload.
+WDROŻENIE
+1. Rozpakuj pliki w katalogu projektu, obok manage.py, zachowując ścieżki.
+2. W środowisku aplikacji wykonaj: python manage.py migrate
+3. Uruchom ponownie proces aplikacji.
 
-Migracja workflow/0011 automatycznie scala rozpoznane puste duplikaty powstałe
-przy ręcznej zmianie statusu z wcześniejszym przypisaniem tej samej roli.
-Zachowuje ID oryginalnego przydziału, osobę i datę przypisania. Przepina puste
-etapy na ten przydział i usuwa wyłącznie scalone puste rekordy. Nie usuwa etapów
-ani zakończonej pracy. Aktualizuje wersje edycji, aby stare formularze nie
-nadpisały naprawy.
+Migracje 0011–0013 przywracają przypisania i scalają zwykłe duplikaty ról.
+Etapy pracy, ich daty, zakończenie i kolejność pozostają w historii.
+Nie scalają jawnych powtórzeń ani przydziałów związanych z przekazaniem pracy;
+pominięte przypadki są wypisywane do sprawdzenia.
 
-Nie scala przypisań z inną wybraną osobą, rozpoczętą pracą, notatkami,
-powtórzeniem, przekazaniem ani zapisanymi powiązaniami do odtworzenia historii.
-Nie przenosi osób między cyklami. Chroni różne osoby w pierwszej i drugiej
-weryfikacji. Przypadki niejednoznaczne wypisuje z ID tekstu i przypisania.
+DODATKOWY PLIK DO SCALANIA
+python scal_przypisania.py                 — podgląd, bez zapisu
+python scal_przypisania.py --apply         — scalenie w bazie
+python scal_przypisania.py --apply --text-id 123 — tylko wskazany tekst
+Ponowne uruchomienie nie tworzy nowych rekordów.
+Przy naprawie duplikatów wybierana jest ostatnia niepusta osoba według numeru
+wykonania i ID. Korekta admina zawsze ustawia osobę wybraną w formularzu.
 
-Ponowny podgląd lub ponowienie tej samej naprawy, np. po rozwiązaniu konfliktu:
-
-python manage.py repair_status_assignments
-python manage.py repair_status_assignments --apply
-
-Pierwsze polecenie niczego nie zapisuje. Drugie zapisuje naprawę w transakcji.
-Naprawa jest idempotentna: kolejne uruchomienie nie tworzy nowych przypisań.
+ZMIANY
+- Korekta osoby aktualizuje wspólne przypisanie roli i usuwa jego zwykłe duplikaty.
+- Nazwy osób są nazwami ról (Weryfikator 1, Koordynator redakcji), nie statusów.
+- Zakończona weryfikacja w historii bieżącego przebiegu jest uwzględniana także
+  bez dat, np. dla zakończonych etapów z importu.
+- Po W1 redaktor może przekazać do W2; po W2 zakończyć redakcję i przekazać do
+  kontroli koordynatora. Powroty do redakcji i autora pozostają w historii.
+- Samo zarezerwowanie niezakończonej weryfikacji nie oznacza jej wykonania.
+- Historia poprzednich przebiegów i jawne powtórzenia zachowują swoje znaczenie.
 
 WERYFIKACJA
-
-23 wybrane testy regresji i powiązanych operacji admina – wszystkie zaliczone.
-Sprawdzono również historyczne modele migracji, łańcuch pustych duplikatów,
-tryb podglądu, ponowne uruchomienie i ochronę historii.
-makemigrations --check --dry-run: brak dodatkowych zmian modeli.
-Kontrola składni sześciu plików Python i git diff --check: bez błędów.
-Testy wykonano na Django 5.2.17 / Python 3.12 / SQLite.
-Nie uruchamiano całego zestawu testów.
-
-Archiwum nie zawierało zrzutu bazy. Nie wykonano zmian na produkcyjnej bazie;
-scalenie jej rekordów wykona powyższe polecenie migrate na serwerze.
+86 testów dotyczących przypisań, korekt admina, dat i weryfikacji przeszło
+na testowej bazie SQLite. Kontrola migracji nie wykazała brakujących zmian.
+Nie uruchamiano całego zestawu testów. Baza serwera nie była dostępna:
+scalenie nastąpi po uruchomieniu migrate lub powyższego skryptu na serwerze.

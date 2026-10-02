@@ -209,7 +209,7 @@ def _credit_person(person=None, user=None, fallback_id=None):
     return identity, name, (text_key(last), text_key(first), str(identity))
 
 
-def anthology_credits(anthology, *, text=None):
+def anthology_credits(anthology, *, text=None, include_assignments=False):
     credits = {}
     def add(person, user, role, title, fallback_id=None):
         identity, name, sort_key = _credit_person(person, user, fallback_id)
@@ -221,6 +221,25 @@ def anthology_credits(anthology, *, text=None):
     for stage in completed:
         a = stage.assignment
         add(getattr(a.assigned_to, 'person_profile', None), a.assigned_to, a.get_role_display(), stage.text.title)
+    if include_assignments and text is not None:
+        # The text's working credit list includes the recipient immediately,
+        # while publication-wide credits retain their completed-work scope.
+        assigned = WorkflowRoleAssignment.objects.current_cycle().filter(
+            text=text, assigned_to__isnull=False,
+        ).exclude(repetition__canceled_at__isnull=False).select_related('assigned_to__person_profile')
+        for assignment in assigned:
+            add(getattr(assignment.assigned_to, 'person_profile', None), assignment.assigned_to,
+                assignment.get_role_display(), text.title)
+        from workflow.models import WorkflowHandoff
+        handoffs = WorkflowHandoff.objects.filter(text=text).exclude(
+            stage__repetition__canceled_at__isnull=False,
+        ).select_related('previous_assignment__assigned_to__person_profile',
+                         'new_assignment__assigned_to__person_profile')
+        for handoff in handoffs:
+            for assignment in (handoff.previous_assignment, handoff.new_assignment):
+                if assignment.assigned_to_id:
+                    add(getattr(assignment.assigned_to, 'person_profile', None), assignment.assigned_to,
+                        assignment.get_role_display(), text.title)
     review_scope = Q(review__copied_text=text) if text is not None else (Q(review__copied_text__anthology=anthology)|Q(review__anthology=anthology,review__status='accepted'))
     for a in ReviewAssignment.objects.filter(review_scope).exclude(opinion__in=('', 'reading')).select_related('user__person_profile','historical_person','review'):
         person = a.historical_person or (getattr(a.user, 'person_profile', None) if a.user_id else None)
@@ -244,7 +263,7 @@ def anthology_credits(anthology, *, text=None):
     return [dict(item, works=sorted(item['works'])) for item in sorted(credits.values(), key=lambda item: (item['role'], item['sort_key']))]
 
 
-def anthology_credit_groups(anthology, *, text=None):
+def anthology_credit_groups(anthology, *, text=None, include_assignments=False):
     groups = {label: {} for label in (
         'Redakcja', 'Kontrola redakcji', 'Korekta', 'Weryfikacja',
         'Kontrola weryfikacji', 'Kontrola przed składem', 'Recenzje', 'Ilustracja',
@@ -255,7 +274,7 @@ def anthology_credit_groups(anthology, *, text=None):
         'Stylowanie': 'Kontrola przed składem', 'Recenzent': 'Recenzje',
         'Ilustrator': 'Ilustracja', 'Okładka': 'Ilustracja',
     }
-    for row in anthology_credits(anthology, text=text):
+    for row in anthology_credits(anthology, text=text, include_assignments=include_assignments):
         role = row['role']
         group = ('Korekta' if role.startswith('Korektor ') else
                  'Weryfikacja' if role.startswith('Weryfikator ') else mapping.get(role))
@@ -265,4 +284,4 @@ def anthology_credit_groups(anthology, *, text=None):
 
 
 def text_credit_groups(text):
-    return anthology_credit_groups(text.anthology, text=text)
+    return anthology_credit_groups(text.anthology, text=text, include_assignments=True)
