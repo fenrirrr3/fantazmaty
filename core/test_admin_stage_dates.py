@@ -191,6 +191,227 @@ class AdminStageDatesTests(TestCase):
         self.stage.refresh_from_db()
         self.assertEqual(self.stage.started_at, self.start)
 
+    def completed_neighbours(self):
+        self.stage.is_completed = True
+        self.stage.ended_at = self.end
+        self.stage.save()
+        # Creation order is deliberately different from workflow order.
+        following = S.objects.create(text=self.text, stage_type='second_proofreading',
+            started_at=self.end + timedelta(days=1), ended_at=self.today, is_completed=True)
+        previous = S.objects.create(text=self.text, stage_type='editing_control',
+            started_at=self.start - timedelta(days=4),
+            ended_at=self.start - timedelta(days=2), is_completed=True)
+        return previous, following
+
+    def assert_completed_correction_rejected(self, **dates):
+        stages = list(S.objects.filter(text=self.text).order_by('pk').values())
+        assignments = list(A.objects.filter(text=self.text).order_by('pk').values())
+        events = list(WorkflowEvent.objects.filter(text=self.text).order_by('pk').values())
+        version = version_of(self.text)
+        with self.assertRaises(ValidationError):
+            self.save_dates(**dates)
+        self.assertEqual(list(S.objects.filter(text=self.text).order_by('pk').values()), stages)
+        self.assertEqual(list(A.objects.filter(text=self.text).order_by('pk').values()), assignments)
+        self.assertEqual(list(WorkflowEvent.objects.filter(text=self.text).order_by('pk').values()), events)
+        self.assertEqual(version_of(self.text), version)
+
+    def test_completed_start_cannot_precede_previous_completed_end(self):
+        previous, _ = self.completed_neighbours()
+        for current in (True, False):
+            with self.subTest(current=current):
+                self.stage.is_current = current
+                self.stage.save()
+                self.assert_completed_correction_rejected(
+                    started_at=previous.ended_at - timedelta(days=1), ended_at=self.end)
+
+    def test_completed_end_cannot_follow_next_completed_start(self):
+        _, following = self.completed_neighbours()
+        for current in (True, False):
+            with self.subTest(current=current):
+                self.stage.is_current = current
+                self.stage.save()
+                # Still within the next stage's interval; comparing ends is insufficient.
+                self.assert_completed_correction_rejected(ended_at=following.ended_at)
+
+    def test_completed_correction_accepts_same_day_handoffs_without_new_work(self):
+        previous, following = self.completed_neighbours()
+        identity = (self.stage.assignment_id, self.stage.execution_number, self.stage.iteration)
+        self.save_dates(started_at=previous.ended_at, ended_at=following.started_at)
+        self.stage.refresh_from_db()
+        self.assertEqual(self.stage.started_at, previous.ended_at)
+        self.assertEqual(self.stage.ended_at, following.started_at)
+        self.assertTrue(self.stage.is_completed and self.stage.is_current)
+        self.assertEqual((self.stage.assignment_id, self.stage.execution_number,
+                          self.stage.iteration), identity)
+        self.assertEqual(S.objects.filter(text=self.text).count(), 3)
+
+    def test_completed_correction_respects_other_iterations_of_the_same_stage(self):
+        self.stage.iteration = self.stage.execution_number = 2
+        self.stage.is_completed = True
+        self.stage.ended_at = self.end
+        self.stage.save()
+        previous = S.objects.create(text=self.text, stage_type=self.stage.stage_type,
+            started_at=self.start - timedelta(days=3),
+            ended_at=self.start - timedelta(days=1), is_completed=True)
+        following = S.objects.create(text=self.text, stage_type=self.stage.stage_type,
+            iteration=3, execution_number=3, started_at=self.end + timedelta(days=1),
+            ended_at=self.today, is_completed=True)
+        self.assert_completed_correction_rejected(
+            started_at=previous.ended_at - timedelta(days=1), ended_at=self.end)
+        self.assert_completed_correction_rejected(ended_at=following.ended_at)
+        self.save_dates(started_at=previous.ended_at, ended_at=following.started_at)
+        self.stage.refresh_from_db()
+        self.assertEqual(self.stage.execution_number, 2)
+
+    def test_completed_end_cannot_follow_started_successor(self):
+        self.stage.is_completed = True
+        self.stage.ended_at = self.end
+        self.stage.save()
+        S.objects.create(text=self.text, stage_type='second_proofreading', started_at=self.end)
+        self.assert_completed_correction_rejected(ended_at=self.today)
+
+    def test_completed_correction_does_not_compare_other_texts(self):
+        previous, following = self.completed_neighbours()
+        other = Text.objects.create(title='Inny tekst', length=100, anthology=self.book)
+        S.objects.create(text=other, stage_type='editing_control',
+                         started_at=self.today, ended_at=self.today, is_completed=True)
+        S.objects.create(text=other, stage_type='second_proofreading',
+            started_at=self.start - timedelta(days=20),
+            ended_at=self.start - timedelta(days=10), is_completed=True)
+        self.save_dates(started_at=previous.ended_at, ended_at=following.started_at)
+        self.stage.refresh_from_db()
+        self.assertEqual(self.stage.ended_at, following.started_at)
+
+    def test_completed_history_correction_uses_its_own_cycle(self):
+        previous, following = self.completed_neighbours()
+        S.objects.filter(text=self.text).update(is_current=False)
+        self.text.current_workflow_cycle = 2
+        self.text.save()
+        S.objects.create(text=self.text, workflow_cycle=2, stage_type='editing_control',
+                         started_at=self.end, ended_at=self.today, is_completed=True)
+        S.objects.create(text=self.text, workflow_cycle=2, stage_type='second_proofreading',
+            started_at=self.start - timedelta(days=20),
+            ended_at=self.start - timedelta(days=10), is_completed=True)
+        self.assert_completed_correction_rejected(
+            started_at=previous.ended_at - timedelta(days=1), ended_at=self.end)
+        self.assert_completed_correction_rejected(ended_at=following.ended_at)
+        self.save_dates(started_at=previous.ended_at, ended_at=following.started_at)
+        self.stage.refresh_from_db()
+        self.assertFalse(self.stage.is_current)
+        self.assertEqual(self.stage.workflow_cycle, 1)
+        self.assertEqual(self.stage.ended_at, following.started_at)
+
+    def test_imported_completed_correction_checks_known_neighbour_boundaries(self):
+        previous, following = self.completed_neighbours()
+        token = importing_completed.set(True)
+        try:
+            for stage in (previous, self.stage, following):
+                stage.imported_completed = True
+            previous.started_at = None
+            self.stage.started_at = self.stage.ended_at = None
+            following.ended_at = None
+            for stage in (previous, self.stage, following):
+                stage.save()
+        finally:
+            importing_completed.reset(token)
+        self.assert_completed_correction_rejected(
+            started_at=previous.ended_at - timedelta(days=1), ended_at=self.end)
+        self.assert_completed_correction_rejected(started_at=None, ended_at=self.today)
+        for dates in ({'started_at': None, 'ended_at': self.end},
+                      {'started_at': self.start, 'ended_at': None},
+                      {'started_at': None, 'ended_at': None},
+                      {'started_at': self.start, 'ended_at': self.end}):
+            with self.subTest(dates=dates):
+                self.save_dates(**dates)
+                self.stage.refresh_from_db()
+                self.assertTrue(self.stage.is_completed and self.stage.imported_completed)
+                self.assertEqual(self.stage.started_at, dates['started_at'])
+                self.assertEqual(self.stage.ended_at, dates['ended_at'])
+        self.assertEqual(S.objects.filter(text=self.text).count(), 3)
+
+    def test_completed_correction_ignores_unknown_neighbour_boundaries(self):
+        previous, following = self.completed_neighbours()
+        token = importing_completed.set(True)
+        try:
+            previous.imported_completed = following.imported_completed = True
+            previous.ended_at = following.started_at = None
+            previous.save()
+            following.save()
+        finally:
+            importing_completed.reset(token)
+        self.save_dates(ended_at=self.end)
+        self.stage.refresh_from_db()
+        self.assertEqual(self.stage.ended_at, self.end)
+
+    def test_completed_repetition_correction_uses_queue_and_retired_predecessors(self):
+        self.stage.is_completed = True
+        self.stage.ended_at = self.start + timedelta(days=2)
+        self.stage.save()
+        styling = S.objects.create(text=self.text, stage_type='styling',
+            started_at=self.stage.ended_at, ended_at=self.start + timedelta(days=3), is_completed=True)
+        S.objects.create(text=self.text, stage_type='ready', started_at=styling.ended_at)
+        run = repeat_stages(self.text, ['first_proofreading', 'styling'], self.admin)
+        repeated = run.stages.get(stage_type='first_proofreading')
+        following = run.stages.get(stage_type='styling')
+        for stage, performer, offset in ((repeated, self.member, 4), (following, self.admin, 6)):
+            stage.assignment.assigned_to = performer
+            stage.assignment.save()
+            set_stage_dates(stage.pk, self.admin, version_of(self.text),
+                started_at=self.start + timedelta(days=offset),
+                ended_at=self.start + timedelta(days=offset + 1), finish=True)
+            stage.refresh_from_db()
+        self.stage = repeated
+        self.assert_completed_correction_rejected(
+            started_at=styling.ended_at - timedelta(days=1), ended_at=repeated.ended_at)
+        self.assert_completed_correction_rejected(
+            started_at=repeated.started_at, ended_at=following.ended_at)
+        self.save_dates(started_at=styling.ended_at, ended_at=following.started_at)
+        repeated.refresh_from_db()
+        self.assertTrue(repeated.is_completed and repeated.is_current)
+        self.assertEqual(repeated.execution_number, 2)
+        self.assertEqual(S.objects.filter(text=self.text).count(), 6)
+
+    def test_completed_editing_return_correction_respects_verification_and_author(self):
+        self.stage.stage_type = 'editing'
+        self.stage.assignment = A.objects.create(text=self.text, role='editor', assigned_to=self.member)
+        self.stage.save()
+        self.save_dates(ended_at=self.start + timedelta(days=1), finish=True,
+                        next_stage='first_verification')
+        verification = S.objects.get(text=self.text, stage_type='first_verification')
+        verification.assignment = A.objects.create(text=self.text, role='verifier_1', assigned_to=self.admin)
+        verification.save()
+        set_stage_dates(verification.pk, self.admin, version_of(self.text),
+            started_at=self.start + timedelta(days=1), ended_at=self.start + timedelta(days=2), finish=True)
+        verification.refresh_from_db()
+        self.stage = S.objects.get(text=self.text, stage_type='editing', iteration=2)
+        editing_end = self.start + timedelta(days=4)
+        author_end = self.start + timedelta(days=6)
+        self.save_dates(started_at=verification.ended_at, ended_at=editing_end,
+                        finish=True, next_stage='author_editing')
+        author = S.objects.get(text=self.text, stage_type='author_editing')
+        set_stage_dates(author.pk, self.admin, version_of(self.text),
+                        started_at=editing_end, ended_at=author_end, finish=True)
+        self.assert_completed_correction_rejected(
+            started_at=verification.ended_at - timedelta(days=1), ended_at=editing_end)
+        self.assert_completed_correction_rejected(started_at=verification.ended_at, ended_at=author_end)
+        self.save_dates(started_at=verification.ended_at, ended_at=editing_end)
+        self.stage.refresh_from_db()
+        self.assertTrue(self.stage.is_completed)
+        self.assertEqual(self.stage.iteration, 2)
+        # A second author exchange must bracket the intervening editorial pass.
+        self.stage = S.objects.get(text=self.text, stage_type='editing', iteration=3)
+        self.save_dates(started_at=author_end, ended_at=self.end,
+                        finish=True, next_stage='author_editing')
+        following = S.objects.get(text=self.text, stage_type='author_editing', iteration=2)
+        set_stage_dates(following.pk, self.admin, version_of(self.text),
+                        started_at=self.end, ended_at=self.today, finish=True)
+        self.assert_completed_correction_rejected(
+            started_at=author_end - timedelta(days=1), ended_at=self.end)
+        self.assert_completed_correction_rejected(started_at=author_end, ended_at=self.today)
+        self.save_dates(started_at=author_end, ended_at=self.end)
+        self.stage.refresh_from_db()
+        self.assertEqual(self.stage.iteration, 3)
+
     def test_admin_links_and_date_form_post(self):
         url = reverse('admin:workflow_stage_dates', args=[self.stage.pk])
         for route, pk in (('admin:texts_text_change', self.text.pk),
