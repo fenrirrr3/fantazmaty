@@ -747,13 +747,14 @@
                     </div>
                 {% endif %}
 
-                {% if can_restart_workflow and restart_workflow_form and text.anthology.status != "ready" %}
+                {% if can_restart_workflow and restart_workflow_form and not is_withdrawn %}
                     <div id="workflow-repeat" class="management-action management-action-restart">
                         <div class="management-action-description">
-                            <h3>Powtórz wybrane etapy</h3>
+                            <h3>Zarządzanie etapami</h3>
                             <p>
-                                Wybrane etapy otrzymają nowe wykonania bez przypisanych osób.
-                                Pozostałe etapy i wcześniejsi wykonawcy pozostaną bez zmian. Powtórzenie jest dostępne tylko dla gotowego tekstu w antologii W przygotowaniu.
+                                Wybierz etapy i nowych wykonawców. Trwająca praca zostanie zakończona z dzisiejszą datą,
+                                a niezaczęte rezerwacje zamknięte. Nowe wykonania otrzymają wybrane osoby.
+                                Dotychczasowa praca i jej wykonawcy pozostaną w historii.
                             </p>
                         </div>
 
@@ -769,6 +770,13 @@
                             </label>
                             {{ restart_workflow_form.stages }}
                             {{ restart_workflow_form.stages.errors }}
+                            {% for row in restart_workflow_form.performer_rows %}
+                                <div data-repeat-performer data-repeat-stages="{{ row.stage_types }}">
+                                    {{ row.field.label_tag }}
+                                    {{ row.field }}
+                                    {{ row.field.errors }}
+                                </div>
+                            {% endfor %}
                             <button type="submit" class="restart-workflow-button">
                                 Pokaż kolejkę powtórzeń
                             </button>
@@ -804,6 +812,10 @@
 
 {% block scripts %}
 {{ block.super }}
+{% if can_restart_workflow and restart_workflow_form %}
+<script src="{% static 'core/workflow-repeat.js' %}" defer></script>
+<script src="{% static 'core/person-select.js' %}" defer></script>
+{% endif %}
 {% if user.is_superuser and text_file_form and dropbox_chooser_app_key and text.anthology.status != "ready" %}
 <script src="https://www.dropbox.com/static/api/2/dropins.js" id="dropboxjs" data-app-key="{{ dropbox_chooser_app_key }}"></script>
 <script src="{% static 'core/dropbox-folder-chooser.js' %}" defer></script>

@@ -138,8 +138,11 @@ def _transition_date(value):
     )
 
 
-def _locked_text_operation(function):
+def _locked_text_operation(function=None, *, allow_ready_anthology=False):
     """Każda mutacja blokuje najpierw nadrzędny rekord Text."""
+    if function is None:
+        return lambda operation: _locked_text_operation(
+            operation, allow_ready_anthology=allow_ready_anthology)
 
     @wraps(function)
     def wrapped(text, *args, **kwargs):
@@ -164,7 +167,8 @@ def _locked_text_operation(function):
                     "Odśwież stronę przed wykonaniem operacji."
                 )
 
-            require_working_anthology(locked_text)
+            if not allow_ready_anthology:
+                require_working_anthology(locked_text)
             result = function(locked_text, *args, **kwargs)
 
         text.current_workflow_cycle = locked_text.current_workflow_cycle
@@ -972,10 +976,8 @@ def skip_fourth_proofreading(stage, user):
             following.is_released = True
             following.save(update_fields=['is_released'])
         else:
-            stage.repetition.completed_at = timezone.now()
-            stage.repetition.save(update_fields=['completed_at'])
-            ready = _create_pending_stage(stage.text, StageType.READY)
-            _start_stage(ready, timezone.localdate())
+            from workflow.repetitions import finish_repetition
+            finish_repetition(stage, timezone.localdate())
     else:
         _create_pending_stage(stage.text, NEXT_STAGE_TYPES[stage.stage_type])
     return stage

@@ -381,22 +381,32 @@ def restart_text_workflow(request, text_id):
     from workflow.repetitions import validate_repeat, repeat_stages, sequence
     try:
         selected = validate_repeat(text, form.cleaned_data['stages'])
+        assignees = form.cleaned_data['assignees']
+        assignee_ids = {role: person.pk for role, person in assignees.items()}
         if request.POST.get('confirm_restart') != 'yes':
             return render(request, 'core/restart_preview.html', {
                 'text': text, 'selected': selected,
                 'queue_labels': [dict(WorkflowStage.StageType.choices)[k] for k in sequence(selected)],
-                'token': signing.dumps({'user': request.user.pk, 'text': text.pk, 'selected': selected, 'version': version_of(text)}, salt='repeat-preview'),
+                'performers': [{'name': f'performer_{role}', 'value': person.pk,
+                                'label': dict(WorkflowRoleAssignment.Role.choices)[role],
+                                'person': person.get_full_name() or person.get_username()}
+                               for role, person in assignees.items()],
+                'opened_stages': WorkflowStage.objects.current_cycle().filter(text=text, is_completed=False)
+                    .exclude(stage_type__in=('ready', 'withdrawn')),
+                'token': signing.dumps({'user': request.user.pk, 'text': text.pk, 'selected': selected,
+                                        'assignees': assignee_ids, 'version': version_of(text)}, salt='repeat-preview'),
             })
         payload = signing.loads(request.POST.get('token', ''), salt='repeat-preview', max_age=1800)
-        if payload['user'] != request.user.pk or payload['text'] != text.pk or payload['selected'] != selected:
+        if (payload['user'] != request.user.pk or payload['text'] != text.pk
+                or payload['selected'] != selected or payload['assignees'] != assignee_ids):
             raise signing.BadSignature()
-        repeat_stages(text, selected, request.user, expected_version=payload['version'])
+        repeat_stages(text, selected, request.user, expected_version=payload['version'], assignees=assignees)
     except (signing.BadSignature, KeyError, TypeError):
         messages.error(request, 'Podgląd wygasł. Przygotuj go ponownie.')
     except ValidationError as error:
         messages.error(request, ' '.join(error.messages))
     else:
-        messages.success(request, 'Utworzono kolejkę powtórzeń. Pierwszy etap czeka na nowe przypisanie; historia pozostała zachowana.')
+        messages.success(request, 'Zamknięto dotychczasowe etapy i utworzono kolejne wykonania z wybranymi osobami. Historia pozostała zachowana.')
     return _detail_redirect(text.pk)
 
 

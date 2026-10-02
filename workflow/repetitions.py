@@ -11,23 +11,82 @@ REPEATABLE = tuple(k for k in RESTARTABLE_STAGE_TYPES if k != S.StageType.READY_
 
 
 def validate_repeat(text, selected):
-    from workflow.anthology_policy import require_working_anthology
-    require_working_anthology(text)
     selected = set(selected)
     if not selected or selected - set(REPEATABLE):
         raise ValidationError('Wybierz poprawne etapy do powtórzenia.')
     current = current_stage_queryset(text)
     if text.repetitions.filter(completed_at__isnull=True, canceled_at__isnull=True).exists():
         raise ValidationError('Najpierw zakończ aktualną kolejkę powtórzeń.')
-    # Only a finished text may be reopened. Pending/released/reserved work is still work.
-    if current.exclude(stage_type=S.StageType.READY).filter(is_completed=False).exists() or not current.filter(stage_type=S.StageType.READY).exists():
-        raise ValidationError('Powtórzenie jest dostępne tylko dla gotowego tekstu bez otwartych etapów i rezerwacji.')
-    completed = set(current.filter(is_completed=True).values_list('stage_type', flat=True))
-    if selected - completed:
-        raise ValidationError('Można powtórzyć tylko etapy wcześniej zakończone w aktualnym workflow.')
+    if current.filter(stage_type=S.StageType.WITHDRAWN).exists():
+        raise ValidationError('Wycofanego tekstu nie można zmieniać tym formularzem.')
+    recorded = set(S.objects.filter(text=text, workflow_cycle=text.current_workflow_cycle)
+                   .exclude(repetition__canceled_at__isnull=False).values_list('stage_type', flat=True))
+    if selected - recorded:
+        raise ValidationError('Można wybrać tylko etapy zapisane w bieżącym przebiegu tekstu.')
     if S.StageType.AUTHOR_EDITING in selected and S.StageType.EDITING not in selected:
         raise ValidationError('Przekazanie autorowi wymaga także wybrania redakcji.')
     return [k for k in REPEATABLE if k in selected]
+
+
+def previous_performer_id(text, role):
+    return (A.objects.filter(text=text, workflow_cycle=text.current_workflow_cycle,
+                             role=role, assigned_to__isnull=False)
+            .exclude(repetition__canceled_at__isnull=False)
+            .order_by('-is_current', '-execution_number', '-pk')
+            .values_list('assigned_to_id', flat=True).first())
+
+
+def eligible_repeat_users(text, role):
+    from django.contrib.auth import get_user_model
+    from django.db.models import Q
+    from people.models import Vacation
+    from workflow.services import ROLE_GROUPS
+    required = ROLE_GROUPS[role]
+    coordinator = (Q(person_profile__is_coordinator=True)
+                   | Q(person_profile__roles__name__iexact='Koordynator')
+                   | Q(person_profile__roles__name__istartswith='Koordynator ')
+                   | Q(groups__name__iexact='Koordynator')
+                   | Q(groups__name__istartswith='Koordynator '))
+    permitted = coordinator | Q(person_profile__roles__name__iexact=required) | Q(groups__name__iexact=required)
+    if role in (A.Role.PROOFREADER_2, A.Role.PROOFREADER_4):
+        permitted = Q(person_profile__roles__name__iexact='Koordynator korekty') | Q(groups__name__iexact='Koordynator korekty')
+    users = get_user_model().objects.filter(is_active=True).filter(
+        Q(is_superuser=True) | (Q(person_profile__is_active=True) & permitted))
+    if role == A.Role.STYLING:
+        users = users.filter(is_superuser=True)
+    leave = Vacation.objects.filter(start_date__lte=timezone.localdate()).filter(
+        Q(until_revoked=True) | Q(end_date__gt=timezone.now())).values('person__user_id')
+    users = users.exclude(pk__in=leave).exclude(pk=previous_performer_id(text, role))
+    if role in (A.Role.PROOFREADER_2, A.Role.PROOFREADER_3):
+        first_users = A.objects.filter(text=text, role=A.Role.PROOFREADER_1).filter(
+            Q(stages__is_completed=True) | Q(stages__started_at__lte=timezone.localdate())
+            | Q(handoffs_from__isnull=False)).exclude(assigned_to=None).values('assigned_to_id')
+        users = users.exclude(pk__in=first_users)
+    return users.distinct().order_by('last_name', 'first_name', 'pk')
+
+
+def validate_repeat_assignees(text, selected, assignees, *, lock=False):
+    from core.services.texts import _require_eligible_assignee, _require_distinct_verifiers
+    from workflow.availability import ensure_distinct_proofreader
+    roles = {STAGE_ROLES[kind] for kind in selected}
+    if set(assignees) != roles or any(user is None for user in assignees.values()):
+        raise ValidationError('Wybierz nową osobę dla każdej wybranej roli.')
+    effective = list(A.objects.current_cycle().filter(text=text).exclude(role__in=roles))
+    for role, user in assignees.items():
+        try:
+            _require_eligible_assignee(user, role, lock=lock)
+        except PermissionDenied as error:
+            raise ValidationError(str(error)) from error
+        if user.pk == previous_performer_id(text, role):
+            raise ValidationError('W kolejnym wykonaniu wybierz inną osobę niż dotychczasowy wykonawca.')
+        ensure_distinct_proofreader(text, role, user)
+        effective.append(A(role=role, assigned_to=user))
+    for role, user in assignees.items():
+        _require_distinct_verifiers(effective, role, user.pk)
+    first = assignees.get(A.Role.PROOFREADER_1)
+    if first and any(assignees.get(role) == first for role in (A.Role.PROOFREADER_2, A.Role.PROOFREADER_3)):
+        raise ValidationError('Pierwszą korektę i drugą lub trzecią korektę muszą wykonywać różne osoby.')
+    return assignees
 
 
 def sequence(selected):
@@ -40,8 +99,8 @@ def sequence(selected):
     return result
 
 
-@_locked_text_operation
-def repeat_stages(text, selected, user, *, expected_version=None):
+@_locked_text_operation(allow_ready_anthology=True)
+def repeat_stages(text, selected, user, *, expected_version=None, assignees=None):
     _ensure_actor(user)
     if not user.is_superuser:
         raise PermissionDenied('Powtórzenie etapów może utworzyć tylko superuser.')
@@ -49,19 +108,46 @@ def repeat_stages(text, selected, user, *, expected_version=None):
     if expected_version is not None and (type(expected_version) is not int or expected_version != version_of(text)):
         raise ValidationError('Stan tekstu zmienił się. Przygotuj podgląd ponownie.')
     selected = validate_repeat(text, selected)
+    current = current_stage_queryset(text)
+    opened = list(current.filter(is_completed=False).exclude(stage_type__in=(S.StageType.READY, S.StageType.WITHDRAWN)))
+    if assignees is not None:
+        validate_repeat_assignees(text, selected, assignees, lock=True)
+    elif opened:
+        raise ValidationError('Przy zmianie trwającej pracy wybierz nowych wykonawców.')
+    today = timezone.localdate()
+    for stage in opened:
+        if stage.started_at and stage.started_at <= today and (
+                not stage.assignment_id or not stage.assignment.assigned_to_id):
+            raise ValidationError('Rozpoczęty etap nie ma wykonawcy. Najpierw popraw przypisanie.')
     from core.workflow_events import remember
     from texts.models import Text
     remember(Text, text, text._state.db or "default")
-    run = WorkflowRepetition.objects.create(text=text, selected_stages=selected, created_by=user, previous_stage_ids=list(S.objects.current_cycle().filter(text=text, stage_type__in=[*selected, S.StageType.READY]).values_list('pk',flat=True)), previous_assignment_ids=list(A.objects.current_cycle().filter(text=text,role__in={STAGE_ROLES[k] for k in selected}).values_list('pk',flat=True)))
+    previous_stage_ids = list(current.filter(stage_type__in=[*selected, S.StageType.READY]).values_list('pk', flat=True))
+    for stage in opened:
+        if stage.started_at and stage.started_at <= today:
+            _finish_stage_record(stage, today)
+        # A reservation without performed work is retired, not marked completed.
+        stage.is_current = False
+        stage.is_released = False
+        stage.save(update_fields=['is_current', 'is_released'])
+    from texts.models import Anthology
+    if text.anthology_id:
+        anthology = Anthology.objects.select_for_update().get(pk=text.anthology_id)
+        if anthology.status == Anthology.Status.READY:
+            anthology.status = Anthology.Status.IN_PREPARATION
+            anthology.save(update_fields=['status'])
+    run = WorkflowRepetition.objects.create(text=text, selected_stages=selected, created_by=user, previous_stage_ids=previous_stage_ids, previous_assignment_ids=list(A.objects.current_cycle().filter(text=text,role__in={STAGE_ROLES[k] for k in selected}).values_list('pk',flat=True)))
     numbers = {kind: (S.objects.filter(text=text, stage_type=kind).aggregate(n=Max('execution_number'))['n'] or 0) + 1 for kind in selected}
     # The terminal marker becomes history, not a competing current status.
     S.objects.current_cycle().filter(text=text, stage_type__in=[*selected, S.StageType.READY]).update(is_current=False)
     assignments = {}
-    for role in {STAGE_ROLES[kind] for kind in selected}:
-        old = A.objects.current_cycle().filter(text=text, role=role)
+    selected_roles = list(dict.fromkeys(STAGE_ROLES[kind] for kind in selected))
+    # Retire all replaced slots before writing the batch, including verifier swaps.
+    A.objects.current_cycle().filter(text=text, role__in=selected_roles).update(is_current=False)
+    for role in selected_roles:
         number = (A.objects.filter(text=text, workflow_cycle=text.current_workflow_cycle, role=role).aggregate(n=Max('execution_number'))['n'] or 0) + 1
-        old.update(is_current=False)
-        assignments[role] = A.objects.create(text=text, workflow_cycle=text.current_workflow_cycle, role=role, execution_number=number, repetition=run)
+        assignments[role] = A.objects.create(text=text, workflow_cycle=text.current_workflow_cycle, role=role, execution_number=number, repetition=run,
+                                           assigned_to=assignees.get(role) if assignees else None)
     for position, kind in enumerate(sequence(selected)):
         iteration = (S.objects.filter(text=text, workflow_cycle=text.current_workflow_cycle, stage_type=kind).aggregate(n=Max('iteration'))['n'] or 0) + 1
         S.objects.create(text=text, workflow_cycle=text.current_workflow_cycle, stage_type=kind,
@@ -96,11 +182,47 @@ def complete_repeat(stage, user, ended_at):
         following.is_released = True
         following.save(update_fields=['is_released'])
     else:
-        stage.repetition.completed_at = timezone.now()
-        stage.repetition.save(update_fields=['completed_at'])
-        ready = _create_pending_stage(stage.text, S.StageType.READY)
-        _start_stage(ready, ended_at)
+        finish_repetition(stage, ended_at)
     return stage
+
+
+def finish_repetition(stage, ended_at):
+    """A repeat during ordinary work resumes workflow rather than finishing the text."""
+    from workflow.services import NEXT_STAGE_TYPES, EDITING_PHASE_TYPES, completed_stage_exists
+    run = stage.repetition
+    run.completed_at = timezone.now()
+    run.save(update_fields=['completed_at'])
+    was_ready = S.objects.filter(text=stage.text, pk__in=run.previous_stage_ids,
+                                 stage_type=S.StageType.READY).exists()
+    if was_ready:
+        next_kind = S.StageType.READY
+    elif stage.stage_type == S.StageType.EDITING:
+        if not completed_stage_exists(stage.text, S.StageType.FIRST_VERIFICATION):
+            next_kind = S.StageType.FIRST_VERIFICATION
+        elif not completed_stage_exists(stage.text, S.StageType.SECOND_VERIFICATION):
+            next_kind = S.StageType.SECOND_VERIFICATION
+        else:
+            next_kind = S.StageType.EDITING_CONTROL
+    elif stage.stage_type == S.StageType.AUTHOR_EDITING:
+        next_kind = S.StageType.EDITING
+    else:
+        next_kind = NEXT_STAGE_TYPES[stage.stage_type]
+    while next_kind not in (S.StageType.READY, S.StageType.EDITING, S.StageType.AUTHOR_EDITING):
+        if not (S.objects.filter(text=stage.text, workflow_cycle=stage.workflow_cycle,
+                                stage_type=next_kind, is_completed=True)
+                .exclude(repetition__canceled_at__isnull=False).exists()):
+            break
+        next_kind = NEXT_STAGE_TYPES[next_kind]
+    if next_kind in EDITING_PHASE_TYPES:
+        current_stage_queryset(stage.text).exclude(stage_type__in=EDITING_PHASE_TYPES).filter(
+            is_completed=True).update(is_current=False, is_released=False)
+    next_stage = _create_pending_stage(stage.text, next_kind)
+    if next_stage.assignment_id and next_stage.execution_number != next_stage.assignment.execution_number:
+        next_stage.execution_number = next_stage.assignment.execution_number
+        next_stage.save(update_fields=['execution_number'])
+    if next_kind == S.StageType.READY:
+        _start_stage(next_stage, ended_at)
+    return next_stage
 
 
 @_locked_text_operation

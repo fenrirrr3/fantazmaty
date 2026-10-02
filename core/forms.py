@@ -118,17 +118,52 @@ class StartStageForm(forms.Form):
         )
 
 
+class RepeatPerformerChoiceField(forms.ModelChoiceField):
+    def label_from_instance(self, user):
+        return user.get_full_name() or user.get_username()
+
+
 class RestartWorkflowForm(forms.Form):
     stages = forms.MultipleChoiceField(label="Etapy do powtórzenia", widget=forms.CheckboxSelectMultiple)
 
     def __init__(self, *args, text=None, **kwargs):
         super().__init__(*args, **kwargs)
-        from workflow.repetitions import REPEATABLE
+        from workflow.repetitions import REPEATABLE, eligible_repeat_users
+        from workflow.services import STAGE_ROLES
+        self.text = text
         choices = [(v,l) for v,l in WorkflowStage.StageType.choices if v in REPEATABLE]
         if text is not None:
-            completed = set(WorkflowStage.objects.current_cycle().filter(text=text, is_completed=True).values_list('stage_type', flat=True))
-            choices = [(v,l) for v,l in choices if v in completed]
+            recorded = set(WorkflowStage.objects.filter(text=text, workflow_cycle=text.current_workflow_cycle)
+                           .exclude(repetition__canceled_at__isnull=False).values_list('stage_type', flat=True))
+            choices = [(v,l) for v,l in choices if v in recorded]
         self.fields['stages'].choices = choices
+        self.performer_rows = []
+        for role in dict.fromkeys(STAGE_ROLES[kind] for kind, _ in choices):
+            name = f'performer_{role}'
+            self.fields[name] = RepeatPerformerChoiceField(
+                label=f'Nowa osoba: {dict(WorkflowRoleAssignment.Role.choices)[role]}',
+                queryset=eligible_repeat_users(text, role) if text else User.objects.none(),
+                required=False, empty_label='Wybierz osobę',
+                widget=forms.Select(attrs={'data-searchable-person': 'true'}))
+            self.performer_rows.append({
+                'field': self[name],
+                'stage_types': ','.join(kind for kind, _ in choices if STAGE_ROLES[kind] == role),
+            })
+
+    def clean(self):
+        cleaned = super().clean()
+        from workflow.services import STAGE_ROLES
+        from workflow.repetitions import validate_repeat_assignees
+        selected = cleaned.get('stages', [])
+        roles = {STAGE_ROLES[kind] for kind in selected}
+        assignees = {role: cleaned.get(f'performer_{role}') for role in roles}
+        for role, performer in assignees.items():
+            if performer is None and f'performer_{role}' not in self.errors:
+                self.add_error(f'performer_{role}', 'Wybierz nową osobę dla tego wykonania.')
+        if not self.errors and self.text:
+            validate_repeat_assignees(self.text, selected, assignees)
+        cleaned['assignees'] = assignees
+        return cleaned
 
 
 class VacationForm(forms.ModelForm):
