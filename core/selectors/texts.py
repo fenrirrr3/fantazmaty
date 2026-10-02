@@ -727,12 +727,6 @@ def text_detail_context(*, user, text):
             None,
         )
 
-    def completed(kind):
-        return any(
-            stage.stage_type == kind and stage.is_completed
-            for stage in stages
-        )
-
     editor = assignments.get(Role.EDITOR)
     first_verifier = assignments.get(Role.VERIFIER_1)
     editing = active(StageType.EDITING)
@@ -763,8 +757,9 @@ def text_detail_context(*, user, text):
         not any(s.repetition_id and not s.is_completed for s in stages) and not terminal and not later_phase
         and (coordinator or owned(Role.EDITOR))
     )
-    first_done = completed(StageType.FIRST_VERIFICATION)
-    second_done = completed(StageType.SECOND_VERIFICATION)
+    from workflow.services import completed_stage_exists
+    first_done = completed_stage_exists(text, StageType.FIRST_VERIFICATION)
+    second_done = completed_stage_exists(text, StageType.SECOND_VERIFICATION)
     first_gate = bool(first_done)
     second_gate = bool(second_done)
 
@@ -829,6 +824,7 @@ def text_detail_context(*, user, text):
         and not open_repetition.stages.filter(started_at__isnull=False).exists()
         and not open_repetition.stages.filter(is_completed=True).exists()
         and not open_repetition.assignments.filter(assigned_to__isnull=False).exists())
+    team = _text_team_members(text, assignments)
     return {
         "text": text_data,
         "user_assignments": [_assignment_data(item) for item in own],
@@ -836,7 +832,8 @@ def text_detail_context(*, user, text):
         "visible_stages": visible,
         "archived_stages": archived,
         "can_view_stage_history": coordinator,
-        "team_members": _text_team_members(text, assignments),
+        "team_members": [member for member in team if not member.get("is_previous")],
+        "previous_team_members": [member for member in team if member.get("is_previous")],
         "is_assigned": bool(own),
         "is_read_only": not coordinator and not own,
         "can_add_note": coordinator or bool(own),
@@ -873,7 +870,7 @@ def text_detail_context(*, user, text):
             can_control and editing and first_gate and not verification_open
         ),
         "can_send_to_second_verification": bool(
-            can_control and editing and first_gate
+            can_control and editing and first_gate and not second_gate
             and not any(
                 stage.stage_type == StageType.SECOND_VERIFICATION
                 for stage in stages
@@ -990,7 +987,8 @@ def _text_team_members(text, assignments):
             for role, label in workflow_role_choices() if role != Role.STYLING
         ] + [
             {"role": item.role, "label": assignment_label(item, show_first=True),
-             "is_previous": True, "is_assigned": True, "user": _user_data(item.assigned_to)}
+             "is_previous": True, "is_assigned": True, "workflow_cycle": item.workflow_cycle,
+             "user": _user_data(item.assigned_to)}
             for item in WorkflowRoleAssignment.objects.filter(text=text, assigned_to__isnull=False).exclude(role__in=(*IMPORT_ONLY_ROLES, Role.STYLING)).exclude(
                 workflow_cycle=text.current_workflow_cycle, is_current=True).select_related('assigned_to__person_profile').order_by('workflow_cycle','role','execution_number')
         ], key=lambda member: (team_role_order.get(member["role"], 999), bool(member.get("is_previous"))))

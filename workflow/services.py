@@ -322,7 +322,13 @@ def _ensure_editing_phase(text):
 
 
 def completed_stage_exists(text, stage_type):
-    return current_stage_queryset(text).filter(
+    queryset = current_stage_queryset(text)
+    if stage_type in (StageType.FIRST_VERIFICATION, StageType.SECOND_VERIFICATION):
+        # Returning to editing retires earlier stage rows, not their result.
+        queryset = WorkflowStage.objects.using(_database(text)).filter(
+            text_id=text.pk, workflow_cycle=current_cycle(text), is_skipped=False,
+        ).exclude(repetition__canceled_at__isnull=False)
+    return queryset.filter(
         stage_type=stage_type,
         is_completed=True,
     ).exists()
@@ -798,6 +804,7 @@ def send_to_second_verification(text, user, started_at=None):
     ensure_editor_access(text, user)
     ensure_text_is_not_withdrawn(text)
     _ensure_editing_phase(text)
+    ensure_verification_not_completed(text, StageType.SECOND_VERIFICATION)
 
     transition_date = _transition_date(started_at)
 

@@ -74,8 +74,8 @@ class StatusAssignmentRegressionTests(StatusAssignmentFixtures):
             stage = S.objects.create(text=self.text, stage_type=kind, assignment=assignment,
                                      started_at=self.today, ended_at=self.today, is_completed=True)
             assignments.append((assignment, stage))
-        reopened = self.status('first_verification')
-        self.assertEqual(reopened.assignment_id, assignments[0][0].pk)
+        reopened = self.status('editing')
+        self.assertEqual(reopened.assignment.role, 'editor')
         for assignment, stage in assignments:
             assignment.refresh_from_db()
             stage.refresh_from_db()
@@ -83,7 +83,7 @@ class StatusAssignmentRegressionTests(StatusAssignmentFixtures):
             self.assertEqual(assignment.assigned_to_id, self.member.pk)
             self.assertTrue(stage.is_completed)
             self.assertEqual(stage.ended_at, self.today)
-        self.assertEqual(A.objects.filter(text=self.text).count(), 3)
+        self.assertEqual(A.objects.filter(text=self.text).count(), 4)
 
     def test_admin_status_post_keeps_verifier_identity_and_role(self):
         assignment = A.objects.create(text=self.text, role='verifier_1', assigned_to=self.member)
@@ -91,11 +91,12 @@ class StatusAssignmentRegressionTests(StatusAssignmentFixtures):
                          started_at=self.today, ended_at=self.today, is_completed=True)
         self.client.force_login(self.admin)
         response = self.client.post(reverse('admin:texts_text_manual_status', args=[self.text.pk]),
-                                    {'stage': 'first_verification', 'version': version_of(self.text),
+                                    {'stage': 'editing', 'version': version_of(self.text),
                                      'confirm': 'on'})
         self.assertEqual(response.status_code, 302)
-        stage = S.objects.current_cycle().get(text=self.text, stage_type='first_verification')
-        self.assertEqual(stage.assignment_id, assignment.pk)
+        assignment.refresh_from_db()
+        self.assertTrue(assignment.is_current)
+        self.assertEqual(assignment.assigned_to_id, self.member.pk)
         self.assertEqual(assignment_label(assignment), 'Weryfikator 1')
 
     def test_new_role_is_created_only_once_and_reused_on_status_correction(self):

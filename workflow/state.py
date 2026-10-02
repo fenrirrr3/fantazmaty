@@ -10,7 +10,18 @@ def operational_stages(stages):
     """Ignore empty legacy verification duplicates; keep performed work intact."""
     stages = list(stages)
     completed = {(s.text_id, s.workflow_cycle, s.stage_type) for s in stages
-                 if s.is_current and s.is_completed}
+                 if s.is_completed and not s.is_skipped
+                 and (not s.repetition_id or not s.repetition.canceled_at)}
+    candidates = [s for s in stages if s.is_current and not s.repetition_id
+                  and not s.is_completed and s.stage_type in ('first_verification', 'second_verification')
+                  and s.started_at is None and s.ended_at is None]
+    if candidates:
+        completed.update(WorkflowStage.objects.using(candidates[0]._state.db).filter(
+            text_id__in={s.text_id for s in candidates},
+            workflow_cycle__in={s.workflow_cycle for s in candidates},
+            stage_type__in=('first_verification', 'second_verification'),
+            is_completed=True, is_skipped=False,
+        ).exclude(repetition__canceled_at__isnull=False).values_list('text_id', 'workflow_cycle', 'stage_type'))
     return [s for s in stages if not (
         s.is_current and not s.repetition_id and not s.is_completed
         and s.stage_type in ('first_verification', 'second_verification')

@@ -39,6 +39,10 @@ def correct_assignment(pk, actor, version, *, action, performer=None):
                 performer = None
             if action == 'performer' and performer is None:
                 raise ValidationError('Wybierz wykonawcę.')
+            if action == 'performer' and stages.exists():
+                from workflow.admin_performers import correct_stage_performers
+                correct_stage_performers(text.pk, {stages.order_by('pk').first().pk: performer}, actor, version)
+                return text.pk
             if assignment.assigned_to_id == (performer.pk if performer else None):
                 return text.pk
             if performer and stages.filter(is_current=True, is_completed=False).exists():

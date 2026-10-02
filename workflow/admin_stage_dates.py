@@ -15,6 +15,7 @@ from workflow.services import (
     ensure_text_is_not_withdrawn, finish_editing_to_coordinator, resume_editing,
     send_text_to_author, send_to_first_verification, send_to_second_verification,
     validate_assignment_start_date, _validate_date, STAGE_ROLES, current_stage_queryset,
+    completed_stage_exists,
 )
 
 
@@ -29,9 +30,8 @@ EDITING_TRANSITIONS = {
 def editing_transition_choices(text):
     """Completed imported checkpoints count even when their dates are unknown."""
     stages = list(current_stage_queryset(text))
-    completed = {stage.stage_type for stage in stages if stage.is_completed}
-    first_done = S.StageType.FIRST_VERIFICATION in completed
-    second_done = S.StageType.SECOND_VERIFICATION in completed
+    first_done = completed_stage_exists(text, S.StageType.FIRST_VERIFICATION)
+    second_done = completed_stage_exists(text, S.StageType.SECOND_VERIFICATION)
     started = {stage.stage_type for stage in stages
                if not stage.is_completed and stage.started_at is not None}
     existing = {stage.stage_type for stage in stages}
@@ -40,7 +40,7 @@ def editing_transition_choices(text):
         available.append(S.StageType.FIRST_VERIFICATION)
     if first_done and S.StageType.AUTHOR_EDITING not in started:
         available.append(S.StageType.AUTHOR_EDITING)
-    if first_done and S.StageType.SECOND_VERIFICATION not in existing:
+    if first_done and not second_done and S.StageType.SECOND_VERIFICATION not in existing:
         available.append(S.StageType.SECOND_VERIFICATION)
     if second_done:
         available.append(S.StageType.EDITING_CONTROL)

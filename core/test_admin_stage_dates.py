@@ -343,13 +343,13 @@ class AdminStageDatesTests(TestCase):
         self.assertFalse(self.stage.is_completed)
         self.assertEqual(S.objects.filter(text=self.text, stage_type='first_verification').count(), 1)
 
-    def test_old_cycle_or_retired_verification_does_not_block_new_workflow(self):
+    def test_retired_verification_counts_but_a_different_cycle_does_not(self):
         first, = self.imported_editing_checkpoints('first_verification')
         first.is_current = False
         first.save()
         choices = dict(StageDatesForm(stage=self.stage).fields['next_stage'].choices)
-        self.assertIn('first_verification', choices)
-        self.assertNotIn('second_verification', choices)
+        self.assertNotIn('first_verification', choices)
+        self.assertIn('second_verification', choices)
         first.is_current = True
         first.workflow_cycle = self.text.current_workflow_cycle + 1
         first.save()

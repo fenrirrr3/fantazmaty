@@ -50,15 +50,15 @@ def claim_reason(stage, user, stages, assignments, *, access=None):
     opposite={'verifier_1':'verifier_2','verifier_2':'verifier_1'}.get(role)
     if opposite and occupied.get(opposite)==user.pk:return 'Pierwszą i drugą weryfikację wykonują różne osoby.'
     if stage.repetition_id:return ''
-    if kind in ('first_verification', 'second_verification') and any(
-            s.stage_type == kind and s.is_completed for s in stages):
+    from workflow.services import completed_stage_exists
+    if kind in ('first_verification', 'second_verification') and completed_stage_exists(stage.text, kind):
         return stage.get_stage_type_display() + ' jest już zakończona. Ponowne wykonanie wymaga powtórzenia etapów.'
     entry=len(stages)==1 and not stage.is_completed
     if kind=='editor_control':return 'Kontrolę rozpoczyna przypisany redaktor.'
     if kind in ('editing','author_editing') and not entry:return 'Użyj przekazania lub wznowienia redakcji.'
     if kind=='first_verification' and not entry and not any(s.stage_type=='editing' and (s.started_at or s.is_completed) for s in stages):return 'Rezerwacja wymaga rozpoczętej redakcji.'
     if kind=='second_verification' and not entry:
-        if not any(s.stage_type=='first_verification' and s.is_completed for s in stages):return 'Najpierw zakończ pierwszą weryfikację.'
+        if not completed_stage_exists(stage.text, 'first_verification'):return 'Najpierw zakończ pierwszą weryfikację.'
         if any(s.stage_type in ('editing','author_editing') and not s.is_completed and not s.ended_at for s in stages):return 'Redaktor musi przekazać tekst do drugiej weryfikacji.'
     return ''
 

@@ -18,10 +18,10 @@ def current_stages():
 
 
 def exclude_obsolete_verification_placeholders(query):
-    completed = S.objects.current_cycle().filter(
+    completed = S.objects.filter(
         text_id=OuterRef('text_id'), workflow_cycle=OuterRef('workflow_cycle'),
-        stage_type=OuterRef('stage_type'), is_completed=True,
-    )
+        stage_type=OuterRef('stage_type'), is_completed=True, is_skipped=False,
+    ).exclude(repetition__canceled_at__isnull=False)
     return query.exclude(
         Q(is_current=True, repetition__isnull=True, is_completed=False,
           stage_type__in=('first_verification', 'second_verification'),
@@ -142,6 +142,8 @@ def annotate_completed_work_date(queryset, user):
 def available_stages(user, access):
     from workflow.availability import can_claim_fourth_proofreading, first_proofreading_work
     stages = current_stages()
+    checkpoints = S.objects.filter(text_id=OuterRef('text_id'), workflow_cycle=OuterRef('workflow_cycle'),
+                                    is_completed=True, is_skipped=False).exclude(repetition__canceled_at__isnull=False)
     assignments = A.objects.current_cycle().filter(text_id=OuterRef('text_id'), workflow_cycle=OuterRef('workflow_cycle'))
     query = S.objects.current_cycle().exclude(text__anthology__status="ready").filter(is_released=True, workflow_cycle=F('text__current_workflow_cycle'), is_completed=False,
                              started_at__isnull=True, ended_at__isnull=True).alias(_work_role=stage_role())
@@ -162,14 +164,14 @@ def available_stages(user, access):
     query = query.filter(
         ~Q(stage_type__in=('first_verification', 'second_verification'))
         | Q(repetition__isnull=False)
-        | ~Exists(stages.filter(stage_type=OuterRef('stage_type'), is_completed=True))
+        | ~Exists(checkpoints.filter(stage_type=OuterRef('stage_type')))
     )
     entry = Q(repetition__isnull=False) | Q(~Exists(stages.exclude(pk=OuterRef('pk'))))
     query = query.filter(~Q(stage_type__in=('editing', 'author_editing')) | entry)
     query = query.filter(~Q(stage_type='first_verification') | entry | Exists(
         stages.filter(stage_type='editing').filter(Q(started_at__isnull=False) | Q(is_completed=True))))
     query = query.filter(~Q(stage_type='second_verification') | entry | (
-        Exists(stages.filter(stage_type='first_verification', is_completed=True))
+        Exists(checkpoints.filter(stage_type='first_verification'))
         & ~Exists(open_stages(stages).filter(stage_type__in=('editing', 'author_editing')))))
     return query.order_by('text__anthology__title', 'text__title', 'text_id', '-pk')
 

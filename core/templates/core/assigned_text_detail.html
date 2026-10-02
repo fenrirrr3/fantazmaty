@@ -343,7 +343,7 @@
         <div class="text-team-grid">
             {% for member in team_members %}
                 <div class="text-team-member{% if not member.is_assigned %} is-unassigned{% endif %}">
-                    <span class="text-team-member-role"{% if member.is_previous %} title="Wcześniejsze przypisanie"{% endif %}>{{ member.label }}</span>
+                    <span class="text-team-member-role">{{ member.label }}</span>
                     {% if member.user %}
                         <strong>
                             {% firstof member.user.get_full_name "Nieuzupełnione dane" %}
@@ -355,6 +355,23 @@
             {% endfor %}
         </div>
     </details>
+
+    {% if previous_team_members %}
+    <details class="text-team">
+        <summary>
+            <span>Historia przypisań osób</span>
+            <span class="dropdown-arrow" aria-hidden="true">▾</span>
+        </summary>
+        <div class="text-team-grid">
+            {% for member in previous_team_members %}
+                <div class="text-team-member">
+                    <span class="text-team-member-role">{{ member.label }} · przebieg {{ member.workflow_cycle }}</span>
+                    <strong>{% firstof member.user.get_full_name "Nieuzupełnione dane" %}</strong>
+                </div>
+            {% endfor %}
+        </div>
+    </details>
+    {% endif %}
 
     <section class="details-card" aria-labelledby="content-notes-heading">
         <h2 id="content-notes-heading">Informacje do pracy</h2>
