@@ -16,17 +16,13 @@ utf8mb4_0900_as_ci.
 Zależności aplikacji znajdują się w requirements.txt.
 Narzędzia do testów i prac deweloperskich — w requirements-dev.txt.
 
-W projekcie zadeklarowano Django 6.1.1. Dotychczasowe testy lokalne
-przeprowadzono na Django 5.2.17, Pythonie 3.12 i izolowanej bazie SQLite,
-z osobnymi ustawieniami testowymi. Nie potwierdza to działania całej
-konfiguracji zadeklarowanej w requirements.txt.
+W requirements.txt zadeklarowano Django 5.2.17. Lokalne testy regresji
+można uruchamiać na izolowanej bazie SQLite z ustawieniami
+fantazmaty.test_settings. Testy ograniczeń i równoczesnych zapisów
+wymagają MySQL; konfigurację zawiera fantazmaty.mysql_integration_settings.
 
 Dobierz interpreter Pythona zgodny z instalowaną wersją Django.
 Nie kopiuj środowiska wirtualnego z innego komputera.
-
-Dotychczasowy requirements.lock jest nieprawidłowy: zawiera kod testów.
-Nie używaj go do instalacji. Można go usunąć; prawidłowy plik blokady
-należy wygenerować dopiero po ustaleniu i sprawdzeniu zależności.
 
 ## Przygotowanie środowiska
 
@@ -91,14 +87,8 @@ Strefa czasowa: Europe/Warsaw.
 
 ## Pierwsze uruchomienie na nowej bazie
 
-Ostatnie poprawki rekrutacji przygotowano zgodnie z założeniem,
-że baza będzie tworzona od nowa.
-
-Użyj nowej, pustej bazy bez dawnych tabel i historii migracji.
-Polecenie flush usuwa dane, ale nie resetuje schematu ani historii
-migracji — nie zastępuje utworzenia nowej bazy.
-
-Nie usuwaj plików migracji z projektu.
+Ta sekcja dotyczy pierwszej instalacji. Istniejącą bazę aktualizuj
+poleceniem migrate, zachowując dane i wszystkie pliki migracji.
 
 Po utworzeniu bazy i skonfigurowaniu .env:
 
@@ -134,8 +124,9 @@ python manage.py collectstatic --noinput
 4. Uruchom ponownie aplikację.
 5. Odśwież stronę z pominięciem pamięci podręcznej, np. Ctrl+F5.
 
-Instrukcja dołączona do konkretnej paczki określa, czy można ją zastosować
-do istniejącej bazy. Wersja przebudowująca rekrutację wymaga nowej bazy.
+Paczki z 2 października aktualizują istniejącą bazę. Migracje
+0011–0013 porządkują przypisania; nie usuwaj historii migracji.
+Po ich zastosowaniu audyt workflow i CSS nie wymaga kolejnej migracji.
 
 Pliki statyczne zbierane są do katalogu staticfiles.
 Na produkcji ten katalog powinien być obsługiwany przez serwer WWW.
@@ -197,39 +188,19 @@ Role „Koordynator redakcji”, „Koordynator audiobooków”,
 „Koordynator rekrutacji” mają takie same uprawnienia w CMS-ie jak
 ogólna rola „Koordynator”. Migracja tworzy te role automatycznie.
 
-## Import aktywnego zespołu
+## Import archiwum zespołu i prac
 
-Dane aktywnego zespołu znajdują się w pliku
-`import_data/czlonkowie_zespolu.tsv`. Jeden adres z kolumny „E-mail”
-oznacza jedną osobę i jedno konto, a kolejne wiersze dodają tej osobie
-następne funkcje. Adres Dropboxa nie służy do dopasowywania kont.
-
-Najpierw wykonaj podgląd bez zapisu:
+Dostępne polecenie importuje przygotowany JSON ze schematem w
+workflow/management/commands/import_team_archive.py. Podgląd jest
+domyślny i wycofuje wszystkie zapisy; zapis wymaga --commit:
 
 ```bash
-python manage.py import_team_members
+python manage.py import_team_archive SCIEZKA_DO_ARCHIWUM.json
+python manage.py import_team_archive SCIEZKA_DO_ARCHIWUM.json --commit
 ```
 
-Jeżeli podgląd nie zgłasza problemów, zapisz dane:
-
-```bash
-python manage.py import_team_members --commit
-```
-
-Można również podać własny plik TSV jako pierwszy argument. Import jest
-atomowy i powtarzalny: błąd wycofuje całość, ponowne uruchomienie nie
-tworzy duplikatów, a istniejące dodatkowe role nie są usuwane.
-
-Nowe konta otrzymują login równy adresowi e-mail i nieużywalne hasło.
-Hasło należy nadać indywidualnie:
-
-```bash
-python manage.py changepassword ADRES_E_MAIL
-```
-
-Wpis „Superuser” nie tworzy roli. Ustawia na powiązanym koncie flagi
-`is_staff` oraz `is_superuser`; w dołączonych danych dotyczy to Dawida
-Wiktorskiego.
+Konflikt wycofuje całość. Nowe konta i profile są nieaktywne, bez
+używalnego hasła; import nie nadaje ról zespołu ani uprawnień superusera.
 
 ## Import zgłoszeń i umowy
 
@@ -243,28 +214,6 @@ Nadal wymagane jest odnotowanie powiadomienia autora.
 
 Odnotowanie powiadomienia w CMS-ie samo w sobie nie wysyła wiadomości.
 
-## Ekstrakty
-
-Plik data/ekstrakty.md zawiera dane do importu.
-Zachowaj go, jeśli po utworzeniu nowej bazy chcesz odtworzyć ekstrakty.
-
-Podgląd bez zapisu:
-
-```bash
-python manage.py import_extracts data/ekstrakty.md --dry-run
-```
-
-Zapis importu:
-
-```bash
-python manage.py import_extracts data/ekstrakty.md --apply
-```
-
-Opcja --update-existing pozwala zastąpić dane istniejących rekordów.
-Używaj jej tylko wtedy, gdy plik ma być źródłem aktualnych danych.
-
-Import ekstraktów nie tworzy zwykłych tekstów, recenzji ani etapów workflow.
-
 ## Kopiowanie tabel
 
 - Dwuklik kopiuje pojedynczą komórkę.
@@ -274,17 +223,6 @@ Import ekstraktów nie tworzy zwykłych tekstów, recenzji ani etapów workflow.
 - Escape usuwa zaznaczenie.
 
 Wklejanie do arkusza zachowuje podział na wiersze i kolumny.
-
-## Dane demonstracyjne
-
-Najpierw zastosuj migracje.
-
-```bash
-python manage.py seed_demo --with-password
-python manage.py seed_demo_texts
-```
-
-Szczegóły opisują DANE-DEMO.txt i TEKSTY-DEMO.txt.
 
 ## Testy
 
@@ -305,12 +243,9 @@ python manage.py test
 Testy wymagają osobnej bazy testowej i odpowiednich uprawnień użytkownika
 MySQL do jej utworzenia.
 
-Ostatnia lokalna weryfikacja obejmowała 288 testów; 3 wymagające MySQL
-pominięto. Testy wykonano na Django 5.2.17 i SQLite z odrębnymi
-ustawieniami testowymi, a nie z główną konfiguracją projektu.
-
-Nie wykonano pełnej kontroli wizualnej w przeglądarce ani testów
-na docelowym MySQL użytkownika.
+Przy poprawkach uruchamiaj testy zmienianego obszaru. Zakres weryfikacji
+audytu z 2 października opisuje AUDYT_20261002.md. Zadania CI obejmują
+Python 3.12/3.13 oraz osobny MySQL 8.
 
 ## Produkcja
 

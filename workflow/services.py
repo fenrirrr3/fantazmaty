@@ -701,10 +701,11 @@ def start_first_verification(text, user, started_at=None):
             "weryfikator lub koordynator."
         )
 
-    if any(
-        active_stage_exists(text, kind)
-        for kind in (StageType.EDITING, StageType.AUTHOR_EDITING)
-    ):
+    if current_stage_queryset(text).filter(
+        stage_type__in=(StageType.EDITING, StageType.AUTHOR_EDITING),
+        is_completed=False,
+        ended_at__isnull=True,
+    ).exists():
         raise ValidationError(
             "Tekst nadal znajduje się u redaktora lub autora."
         )

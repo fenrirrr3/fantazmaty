@@ -151,6 +151,12 @@ def _require_start_order(stage, stages):
         and item.ended_at is None
     ]
 
+    if stage.stage_type == StageType.FIRST_VERIFICATION and any(
+        item.stage_type in (StageType.EDITING, StageType.AUTHOR_EDITING)
+        for item in open_others
+    ):
+        raise ValidationError("Tekst nadal znajduje się u redaktora lub autora.")
+
     if stage.stage_type == StageType.EDITING:
         if any(
             (item.stage_type in {StageType.SECOND_VERIFICATION, StageType.AUTHOR_EDITING}

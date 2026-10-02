@@ -8,7 +8,6 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
 from authors.models import Author
-from core.exports import export_texts_csv
 from core.forms import (
     CoordinatorNoteForm,
     RestartWorkflowForm,
@@ -224,9 +223,6 @@ def text_list(request):
 def my_texts(request):
     selected_view = request.GET.get("view", "active").strip()
 
-    if selected_view not in {"active", "waiting", "completed", "all"}:
-        selected_view = "active"
-
     context = dict(
         my_texts_context(
             user=request.user,
@@ -244,7 +240,6 @@ def my_texts(request):
             "mobile_sort_columns": [(label, page_obj.sort_columns[label]) for label in
                 ("Antologia", "Tytuł", "Autorzy", "Twoje role", "Etap", "Twoja praca")
                 if label in page_obj.sort_columns],
-            "selected_view": selected_view,
         }
     )
 

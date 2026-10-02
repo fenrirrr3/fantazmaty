@@ -131,11 +131,11 @@ class RestartWorkflowForm(forms.Form):
         from workflow.repetitions import REPEATABLE, eligible_repeat_users
         from workflow.services import STAGE_ROLES
         self.text = text
-        choices = [(v,l) for v,l in WorkflowStage.StageType.choices if v in REPEATABLE]
+        choices = [(kind, label) for kind, label in WorkflowStage.StageType.choices if kind in REPEATABLE]
         if text is not None:
             recorded = set(WorkflowStage.objects.filter(text=text, workflow_cycle=text.current_workflow_cycle)
                            .exclude(repetition__canceled_at__isnull=False).values_list('stage_type', flat=True))
-            choices = [(v,l) for v,l in choices if v in recorded]
+            choices = [(kind, label) for kind, label in choices if kind in recorded]
         self.fields['stages'].choices = choices
         self.performer_rows = []
         for role in dict.fromkeys(STAGE_ROLES[kind] for kind, _ in choices):

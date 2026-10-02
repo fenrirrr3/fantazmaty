@@ -194,6 +194,12 @@
         <div class="workflow-folder-layout">
         {% if not is_withdrawn and not is_ready %}
             <div class="editing-control-content">
+                {% for stage in claimable_stages %}
+                    <div class="quick-stage-card">
+                        <strong>{{ stage.get_stage_type_display }}</strong>
+                        {% include "core/includes/take_stage_form.html" %}
+                    </div>
+                {% endfor %}
                 {% for stage in stages %}
                     {% if stage.can_edit_schedule %}
                     <div class="quick-stage-card"><strong>{{ stage.get_stage_type_display }} – rezerwacja</strong>
@@ -222,20 +228,6 @@
                                     <button type="submit" class="complete-stage-button">
                                         Zakończ etap
                                     </button>
-                                </form>
-                            </div>
-                        </div>
-                    {% elif stage.can_claim_repeat %}
-<div class="quick-stage-card"><strong>{{ stage.get_stage_type_display }}</strong>
-<form method="post" action="{% url 'core:take_workflow_stage' stage.pk %}">{% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}"><input type="hidden" name="started_at" value="{{ today_iso }}"><button class="primary-button" type="submit">Przejmij i rozpocznij</button></form></div>
-{% elif stage.can_claim_styling %}
-                        <div class="quick-stage-card">
-                            <div class="quick-stage-action">
-                                <div class="quick-stage-description"><strong>Stylowanie</strong><p>Przejmij stylowanie na swoje konto.</p></div>
-                                <form method="post" action="{% url 'core:take_workflow_stage' stage.pk %}" class="take-stage-form">
-                                    {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
-                                    <button type="submit" class="primary-button">Przejmij stylowanie</button>
-                                    <div class="form-field"><label for="claim-styling-{{ stage.pk }}">Data rozpoczęcia</label><input id="claim-styling-{{ stage.pk }}" type="date" name="started_at" class="stage-date-input" value="{{ today_iso }}" min="{{ today_iso }}" required></div>
                                 </form>
                             </div>
                         </div>
@@ -284,7 +276,7 @@
                             <button type="submit" class="primary-button">
                                 Przekaż do pierwszej weryfikacji
                             </button>
-                            <p class="form-help">Redakcja zostanie zakończona. Jeśli nie ma weryfikatora, etap będzie czekał na przejęcie.</p>
+                            <p class="form-help">Bieżący etap redakcji zostanie zamknięty. Tekst pozostanie w „W toku” do rozpoczęcia pierwszej korekty. Jeśli nie ma weryfikatora, weryfikacja będzie czekać na przejęcie.</p>
                         </form>
                     {% endif %}
 
@@ -319,7 +311,7 @@
                         <form method="post" action="{% url 'core:finish_text_editing' text.pk %}">
                             {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
                             <button type="submit" class="complete-stage-button">
-                                Zakończ redakcję i przekaż do kontroli
+                                Przekaż redakcję do kontroli
                             </button>
                         </form>
                     {% endif %}

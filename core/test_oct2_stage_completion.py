@@ -197,7 +197,7 @@ class StageCompletionCorrectionTests(TestCase):
         self.assertEqual(run.stages.count(), 1)
 
 
-class CompletedWorkOrderingTests(TestCase):
+class MyTextsAllOrderingTests(TestCase):
     def setUp(self):
         self.today = timezone.localdate()
         self.member = get_user_model().objects.create_user('member', 'member@example.com', 'test')
@@ -222,29 +222,29 @@ class CompletedWorkOrderingTests(TestCase):
         return text
 
     def rows(self, params=''):
-        return list(my_texts_context(user=self.member, selected_view='completed', params=QueryDict(params))['texts'])
+        return list(my_texts_context(user=self.member, selected_view='all', params=QueryDict(params))['texts'])
 
-    def test_newest_own_completion_first_unknown_dates_last(self):
+    def test_all_uses_title_order_including_unknown_completion_dates(self):
         oldest = self.work('A dawny', 20)
         newest = self.work('Z nowy', 1)
         unknown = self.work('B bez daty')
         middle = self.work('C średni', 10)
-        self.assertEqual([r['pk'] for r in self.rows()], [newest.pk, middle.pk, oldest.pk, unknown.pk])
+        self.assertEqual([r['pk'] for r in self.rows()], [oldest.pk, unknown.pk, middle.pk, newest.pk])
 
-    def test_editor_uses_coordinator_check_not_early_editing_date(self):
+    def test_all_includes_editor_waiting_after_control_and_completed_proofreader(self):
         editor = self.work('A redakcja', 30, editor=True, control_ago=1)
         proof = self.work('Z korekta', 5)
         self.assertEqual([r['pk'] for r in self.rows()], [editor.pk, proof.pk])
 
-    def test_other_performers_later_completion_does_not_change_own_order(self):
+    def test_other_performers_completion_does_not_change_title_order(self):
         old = self.work('A dawny', 20)
         recent = self.work('B nowy', 5)
         other_assignment = A.objects.create(text=old, role='proofreader_2', assigned_to=self.other)
         S.objects.create(text=old, stage_type='second_proofreading', assignment=other_assignment,
                          started_at=self.today, ended_at=self.today, is_completed=True)
-        self.assertEqual([r['pk'] for r in self.rows()], [recent.pk, old.pk])
+        self.assertEqual([r['pk'] for r in self.rows()], [old.pk, recent.pk])
 
-    def test_latest_of_several_own_roles_and_explicit_header_sort(self):
+    def test_several_own_roles_keep_single_row_and_explicit_header_sort(self):
         both = self.work('A dwa zadania', 20)
         recent = self.work('Z nowe', 5)
         assignment = A.objects.create(text=both, role='proofreader_3', assigned_to=self.member)
@@ -257,9 +257,9 @@ class CompletedWorkOrderingTests(TestCase):
         texts = [self.work(f'{number:02}', 30 - number) for number in range(30)]
         self.client.force_login(self.member)
         url = reverse('core:my_texts')
-        first = self.client.get(url, {'view': 'completed', 'page_size': 25})
-        second = self.client.get(url, {'view': 'completed', 'page_size': 25, 'page': 2})
+        first = self.client.get(url, {'view': 'all', 'page_size': 25})
+        second = self.client.get(url, {'view': 'all', 'page_size': 25, 'page': 2})
         self.assertEqual(first.status_code, 200)
         self.assertEqual(second.status_code, 200)
         actual = [row['pk'] for response in (first, second) for row in response.context['texts']]
-        self.assertEqual(actual, [text.pk for text in reversed(texts)])
+        self.assertEqual(actual, [text.pk for text in texts])

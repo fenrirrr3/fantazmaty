@@ -2,28 +2,6 @@
 :root {
     --card-padding: 20px;
     --field-gap: 8px;
-    color-scheme: light;
-    --background: #e2e5e9;
-    --surface: #ffffff;
-    --surface-alt: #f8fafc;
-    --surface-hover: #edf4fc;
-    --border: #dce3eb;
-    --border-strong: #bac7d6;
-    --text: #202b3b;
-    --muted: #58677a;
-    --primary: #1761b0;
-    --on-primary: #ffffff;
-    --primary-dark: #114b89;
-    --primary-light: #eaf3ff;
-    --header: #172434;
-    --table-header: #eef2f7;
-    --success: #176643;
-    --success-light: #eaf6ef;
-    --danger: #b12b36;
-    --danger-dark: #90212b;
-    --danger-light: #fff0f1;
-    --warning: #775400;
-    --warning-light: #fff6dd;
     --shadow: 0 2px 8px rgb(23 36 52 / 4%);
     --shadow-overlay: 0 12px 36px rgb(23 36 52 / 16%);
     --radius: 10px;
@@ -33,7 +11,6 @@
     --cell-padding-block: 12px;
     --cell-padding-inline: 16px;
     --table-font-size: 0.875rem;
-    --focus-ring: #1761b0;
 }
 
 *,
@@ -647,7 +624,7 @@ details[open] > summary .dropdown-arrow {
 .review-open-button {
     border-color: var(--primary);
     background: var(--primary);
-    color: #ffffff;
+    color: var(--on-primary);
 }
 
 .primary-button:hover,
@@ -655,7 +632,7 @@ details[open] > summary .dropdown-arrow {
 .review-open-button:hover {
     border-color: var(--primary-dark);
     background: var(--primary-dark);
-    color: #ffffff;
+    color: var(--on-primary);
 }
 
 .secondary-button,
@@ -676,22 +653,22 @@ details[open] > summary .dropdown-arrow {
 
 .complete-stage-button,
 .accept-review-button {
-    border-color: var(--success);
-    background: var(--success);
-    color: #ffffff;
+    border-color: var(--success-action-border);
+    background: var(--success-action);
+    color: var(--on-success);
 }
 
 .complete-stage-button:hover,
 .accept-review-button:hover {
-    background: #104c32;
-    color: #ffffff;
+    background: var(--success-action-hover);
+    color: var(--on-success);
 }
 
 .withdraw-text-button,
 .reject-review-button,
 .unassign-button,
 .vacation-end-button {
-    border-color: #e6bfc3;
+    border-color: var(--danger-border);
     background: var(--danger-light);
     color: var(--danger-dark);
 }
@@ -701,7 +678,7 @@ details[open] > summary .dropdown-arrow {
 .unassign-button:hover,
 .vacation-end-button:hover {
     border-color: var(--danger);
-    background: #fbdfe2;
+    background: var(--danger-hover);
 }
 
 button:disabled,
@@ -791,7 +768,7 @@ textarea,
 
 input::placeholder,
 textarea::placeholder {
-    color: #6a798b;
+    color: var(--muted);
     opacity: 1;
 }
 
@@ -1923,18 +1900,18 @@ a[href^="mailto:"] {
     font-size: 1.1rem;
     font-weight: 700;
 }
-.boolean-yes { color: #176643; background: #eaf6ef; }
-.boolean-no { color: #9a2833; background: #fcebec; }
+.boolean-yes { color: var(--success); background: var(--success-light); }
+.boolean-no { color: var(--danger-dark); background: var(--danger-light); }
 
 .notes-editor-panel.coordinator-note-highlight {
     padding: 16px;
-    background: #fff0f0;
-    border: 1px solid #f0caca;
+    background: var(--danger-light);
+    border: 1px solid var(--danger-border);
     border-radius: var(--radius-small);
 }
 .text-note.is-important,
 .text-note.is-important > summary,
-.text-note.is-important .text-note-content { background: #fff8db; }
+.text-note.is-important .text-note-content { background: var(--warning-light); }
 .coordinator-note-create > summary { cursor: pointer; color: var(--primary); }
 
 .filter-label { display: block; margin-bottom: 6px; font-weight: 600; }

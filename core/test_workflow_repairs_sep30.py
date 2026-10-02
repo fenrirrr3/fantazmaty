@@ -60,6 +60,11 @@ class WorkflowRepairs(TestCase):
         def state():return list(workflow_list_context(user=self.admin,params={})['stages'])[0]['role_cells'][0]['entries'][0]['state']
         self.assertEqual(state(),'Oczekuje')
         self.stage('editing_control',is_completed=True,started_at=self.today,ended_at=self.today)
+        self.assertEqual(state(),'Oczekuje')
+        proof = self.stage('first_proofreading')
+        self.assertEqual(state(),'Oczekuje')
+        proof.started_at = self.today
+        proof.save()
         self.assertEqual(state(),'Zakończone')
     def test_mismatch_and_detached_republication(self):
         a=Author.objects.create(first_name='Jan',last_name='Autor',email='autor@example.com',has_contract=True)

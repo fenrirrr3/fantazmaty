@@ -1,0 +1,25 @@
+<form method="post" action="{% url 'core:take_workflow_stage' stage.pk %}"
+      class="take-stage-form"
+      aria-label="Przejmij etap: {{ stage.get_stage_type_display }} – {{ stage.text.title }}">
+    {% csrf_token %}{% edit_version %}
+    {% if workflow_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">{% endif %}
+    {% if stage.stage_type == "first_verification" and not stage.repetition_id %}
+        <p id="reservation-help-{{ stage.pk }}" class="form-help">
+            Przejmij pierwszą weryfikację. Jeśli redaktor nadal pracuje nad tekstem,
+            zadanie zostanie zarezerwowane do czasu jego przekazania.
+        </p>
+        <button type="submit" class="assign-button" aria-describedby="reservation-help-{{ stage.pk }}">
+            Przejmij weryfikację
+        </button>
+    {% else %}
+        <button type="submit" class="assign-button">Przejmij</button>
+        <div class="form-field">
+            <label for="started-at-{{ stage.pk }}">Data rozpoczęcia</label>
+            <input id="started-at-{{ stage.pk }}" type="date" name="started_at"
+                   class="stage-date-input" value="{{ start_stage_form.started_at.value|date:'Y-m-d' }}"
+                   {% if start_stage_form.started_at.field.widget.attrs.min %}min="{{ start_stage_form.started_at.field.widget.attrs.min }}"{% endif %}
+                   {% if start_stage_form.started_at.field.widget.attrs.max %}max="{{ start_stage_form.started_at.field.widget.attrs.max }}"{% endif %}
+                   required>
+        </div>
+    {% endif %}
+</form>

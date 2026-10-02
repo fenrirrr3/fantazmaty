@@ -1,6 +1,6 @@
 """Database predicates for read-only workflow lists; writes use workflow services."""
 from workflow.catalog import IMPORT_ONLY_STAGE_TYPES
-from django.db.models import Case, When, Value, CharField, DateField, Exists, OuterRef, Subquery, Q, F
+from django.db.models import Case, When, Value, CharField, Exists, OuterRef, Q, F
 from workflow.models import WorkflowStage as S, WorkflowRoleAssignment as A
 from workflow.services import STAGE_ROLES, ROLE_GROUPS
 
@@ -63,6 +63,26 @@ def reserved_assignments(user, today):
     ).exclude(Q(role=A.Role.EDITOR) & waiting_editor(stages, today))
 
 
+def editorial_approval(stages, today):
+    """Editing ends for its owner when first proofreading has actually begun."""
+    proofreading = stages.filter(
+        stage_type=S.StageType.FIRST_PROOFREADING, is_released=True,
+        is_skipped=False,
+    ).exclude(repetition__canceled_at__isnull=False).filter(
+        Q(started_at__lte=today) | Q(is_completed=True)
+    )
+    # A prior proofreading pass cannot approve a new editorial repetition.
+    editorial_repeat = stages.filter(
+        repetition__isnull=False, repetition__completed_at__isnull=True,
+        repetition__canceled_at__isnull=True, is_completed=False,
+        stage_type__in=('editing', 'author_editing', 'first_verification', 'second_verification'),
+    )
+    # Preserve already closed imported texts whose historical dates are unknown.
+    imported_ready = (Exists(stages.filter(stage_type=S.StageType.READY))
+        & Exists(stages.filter(stage_type=S.StageType.EDITING, imported_completed=True, is_completed=True)))
+    return (Exists(proofreading) & ~Exists(editorial_repeat)) | imported_ready
+
+
 def annotate_my_work(queryset, user, today):
     stages = S.objects.current_cycle().filter(text_id=OuterRef('pk'))
     own = own_stages(user).filter(text_id=OuterRef('pk'), workflow_cycle=OuterRef('current_workflow_cycle'))
@@ -78,18 +98,9 @@ def annotate_my_work(queryset, user, today):
         ))
     )
     active = (Exists(active_stages(own.filter(is_current=True), today)) | with_author) & ~closed
-    # Redakcja jest gotowa dopiero po zakończonej kontroli koordynatora redakcji.
-    # Brak dat nie ma znaczenia: liczy się jawny stan zakończenia, również przy imporcie.
     editorial_work = Exists(assigned.filter(role=A.Role.EDITOR)) | Exists(own.filter(_work_role=A.Role.EDITOR))
-    # The imported terminal status confirms completed editorial work even if
-    # the source omitted a coordinator check. No fictional check is created.
-    # Repeating editing retires these stages and removes READY, so this does not
-    # approve any later work automatically.
-    imported_editing_approved = (Exists(stages.filter(stage_type=S.StageType.READY))
-        & Exists(stages.filter(stage_type=S.StageType.EDITING, imported_completed=True, is_completed=True)))
-    editing_approved = Exists(stages.filter(stage_type=S.StageType.EDITING_CONTROL, is_completed=True)) | imported_editing_approved
-    editor_remaining = editorial_work & ~editing_approved
-    live_editor_waiting = editor_remaining & Exists(assigned.filter(role=A.Role.EDITOR).exclude(stages__imported_completed=True))
+    editor_remaining = editorial_work & ~editorial_approval(stages, today)
+    live_editor_waiting = editor_remaining & Exists(assigned.filter(role=A.Role.EDITOR))
     pending = ~active & ~closed & (Exists(own.filter(is_current=True, is_completed=False)) | Exists(reserved) | live_editor_waiting)
     completed = Exists(own.filter(is_completed=True)) & ~Exists(own.filter(is_current=True, is_completed=False)) & ~active & ~pending & ~editor_remaining
     return queryset.annotate(work_active=active, work_waiting=pending, work_completed=completed)
@@ -97,46 +108,9 @@ def annotate_my_work(queryset, user, today):
 
 def filter_my_texts(queryset, user, selected_view, today):
     queryset = annotate_my_work(queryset, user, today)
-    field = {'active':'work_active', 'waiting':'work_waiting', 'completed':'work_completed'}.get(selected_view)
-    return queryset.filter(**{field:True}) if field else queryset
-
-
-def annotate_completed_work_date(queryset, user):
-    """Use this person's completion dates, including the final editorial check."""
-    completed = own_stages(user).filter(
-        text_id=OuterRef('pk'), workflow_cycle=OuterRef('current_workflow_cycle'),
-        is_completed=True,
-    )
-    editing = completed.filter(stage_type=S.StageType.EDITING)
-    editor = A.objects.current_cycle().filter(
-        text_id=OuterRef('pk'), assigned_to_id=user.pk, role=A.Role.EDITOR,
-    )
-    control = S.objects.current_cycle().filter(
-        text_id=OuterRef('pk'), stage_type=S.StageType.EDITING_CONTROL,
-        is_completed=True,
-    ).order_by(F('ended_at').desc(nulls_last=True), '-pk')
-
-    def last_date(stages):
-        return Subquery(stages.exclude(ended_at__isnull=True).order_by('-ended_at', '-pk').values('ended_at')[:1])
-
-    queryset = queryset.annotate(
-        _own_completed_at=last_date(completed.exclude(stage_type=S.StageType.EDITING)),
-        _editing_completed_at=Case(
-            When(Exists(editing) | Exists(editor), then=Case(
-                # Unknown imported check dates stay unknown; an early editorial
-                # pass must not impersonate the date of the final approval.
-                When(Exists(control), then=Subquery(control.values('ended_at')[:1])),
-                default=last_date(editing), output_field=DateField(),
-            )),
-            default=Value(None), output_field=DateField(),
-        ),
-    )
-    return queryset.annotate(work_completed_at=Case(
-        When(_own_completed_at__isnull=True, then=F('_editing_completed_at')),
-        When(_editing_completed_at__isnull=True, then=F('_own_completed_at')),
-        When(_own_completed_at__gte=F('_editing_completed_at'), then=F('_own_completed_at')),
-        default=F('_editing_completed_at'), output_field=DateField(),
-    ))
+    if selected_view == 'active':
+        return queryset.filter(Q(work_active=True) | Q(work_waiting=True))
+    return queryset
 
 
 def available_stages(user, access):
@@ -195,7 +169,7 @@ def dashboard_querysets(user, today):
 
 
 def work_text_ids(queryset, user, today):
-    """The same three categories used by My texts, profile and dashboard."""
+    """Internal work states shared by row badges, profile and dashboard."""
     result = {'active': set(), 'waiting': set(), 'completed': set()}
     for pk, active, waiting, completed in annotate_my_work(queryset, user, today).values_list(
         'pk', 'work_active', 'work_waiting', 'work_completed'

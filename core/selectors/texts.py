@@ -421,7 +421,8 @@ def _user_texts(user, include_authors):
 
 def my_texts_context(*, user, selected_view="active", params=None):
     require_team_member(user)
-    if selected_view not in {"active", "waiting", "completed", "all"}:
+    selected_view = {"waiting": "active", "completed": "all"}.get(selected_view, selected_view)
+    if selected_view not in {"active", "all"}:
         selected_view = "active"
     include_authors = can_view_author_data(user)
     today = timezone.localdate()
@@ -434,11 +435,6 @@ def my_texts_context(*, user, selected_view="active", params=None):
     texts = filters.pop("filtered_queryset")
     from workflow.read_queries import annotate_my_work
     texts = annotate_my_work(texts, user, today)
-    if selected_view == "completed" and not params.get("sort", "").strip():
-        from workflow.read_queries import annotate_completed_work_date
-        texts = annotate_completed_work_date(texts, user).order_by(
-            F("work_completed_at").desc(nulls_last=True), "-pk",
-        )
     # Show every own execution, including superseded assignments. This only
     # supplies labels; current work and permissions retain their existing rules.
     texts = texts.prefetch_related(Prefetch(
@@ -585,9 +581,14 @@ def workflow_list_context(*, user, params):
         texts = texts.filter(Q(current_stage_type__isnull=True) |
                              ~Q(current_stage_type__in=(StageType.READY, StageType.WITHDRAWN)))
     from django.db.models import Min, Max
+    from workflow.read_queries import editorial_approval
     texts = texts.annotate(
         summary_started=Min('workflow_stages__started_at'),
         summary_ended=Max('workflow_stages__ended_at'),
+        editorial_approved=editorial_approval(
+            WorkflowStage.objects.current_cycle().filter(text_id=OuterRef('pk')),
+            timezone.localdate(),
+        ),
     )
     sorts = {
         'recent': ('-pk',), 'title': ('title', 'pk'), '-title': ('-title', 'pk'),
@@ -649,12 +650,7 @@ def workflow_list_context(*, user, params):
                     editor_current = role == 'editor' and any(
                         a.role == role and a.is_current and a.assigned_to_id == entry['user']['pk']
                         for a in text.summary_assignments)
-                    editing_approved = any(s.stage_type == StageType.EDITING_CONTROL and s.is_current and s.is_completed
-                                           for s in text.summary_stages)
-                    imported_ready = (any(s.stage_type == StageType.READY and s.is_current for s in text.summary_stages)
-                                      and any(s.stage_type == StageType.EDITING and s.imported_completed and s.is_completed
-                                              for s in text.summary_stages))
-                    if editor_current and not editing_approved and not imported_ready:
+                    if editor_current and not text.editorial_approved:
                         state, tone = 'Oczekuje', 'pending'
                     else:
                         state, tone = 'Zakończone', 'completed'
@@ -825,10 +821,14 @@ def text_detail_context(*, user, text):
         and not open_repetition.stages.filter(is_completed=True).exists()
         and not open_repetition.assignments.filter(assigned_to__isnull=False).exists())
     team = _text_team_members(text, assignments)
+    from workflow.availability import claim_access
+    from workflow.read_queries import available_stages
+    claimable = available_stages(user, claim_access(user)).filter(text_id=text.pk)
     return {
         "text": text_data,
         "user_assignments": [_assignment_data(item) for item in own],
         "stages": stage_rows,
+        "claimable_stages": [_stage_data(stage, text_data) for stage in claimable],
         "visible_stages": visible,
         "archived_stages": archived,
         "can_view_stage_history": coordinator,
@@ -1031,10 +1031,6 @@ def _detail_stage_rows(user, text, stages, assignments, text_data, *, terminal,
         if stage.stage_type == StageType.STYLING:
             can_start = can_start and user.is_superuser and bool(assigned_user and assigned_user.is_superuser)
         row.update(
-            can_claim_styling=bool(
-                user.is_superuser and not terminal and stage.stage_type == StageType.STYLING
-                and _is_open(stage) and stage.started_at is None and not assigned_user
-            ),
             assigned_role=role,
             assigned_user=_user_data(assigned_user),
             leave_information=leave_cache.get(assigned_user.pk) if assigned_user else None,
@@ -1057,17 +1053,12 @@ def _detail_stage_rows(user, text, stages, assignments, text_data, *, terminal,
         )
         from people.leave_access import is_on_leave
         from workflow.services import user_can_complete_stage
-        from workflow.availability import claim_reason
         available = stage.is_released and stage.is_current
         if stage.repetition_id:
             row['can_start'] = bool(available and not terminal and assigned_user and may_act and _is_open(stage) and not stage.started_at)
             row['can_complete'] = user_can_complete_stage(stage, user)
-            row['can_claim_repeat'] = not bool(claim_reason(stage, user, stages, list(assignments.values())))
         if not available or (assigned_user and is_on_leave(assigned_user)):
             row['can_start'] = False
-        if is_on_leave(user):
-            row['can_claim_styling'] = False
-            row['can_claim_repeat'] = False
         row['can_start'] = row['can_start'] and available
         from workflow.services import can_skip_fourth
         row['can_skip'] = can_skip_fourth(stage, user)

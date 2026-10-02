@@ -113,12 +113,11 @@ def person_permissions(request, person_id):
     groups = list(user.groups.values_list('name', flat=True)) if user else []
     active = is_team_member(user)
     coordinator = is_coordinator(user)
-    from people.leave_access import is_on_leave
-    on_leave = is_on_leave(user) if user else False
+    from workflow.availability import claim_access, role_access_reason
+    access = claim_access(user) if user else None
     allowed = []
     for role, group in ROLE_GROUPS.items():
-        from workflow.availability import role_access_reason
-        reason = role_access_reason(user, role) if user else 'Brak powiązanego konta.'
+        reason = role_access_reason(user, role, access=access) if user else 'Brak powiązanego konta.'
         allowed.append({'label': dict(WorkflowRoleAssignment.Role.choices).get(role, role),
                         'allowed': not reason, 'role_allowed': not reason, 'block': reason,
                         'source': 'Superuser' if user and user.is_superuser else group})

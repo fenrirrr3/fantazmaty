@@ -6,7 +6,7 @@ from core.edit_versions import version_of, bump
 from core.services.texts import _require_eligible_assignee
 from texts.models import Text
 from workflow.models import WorkflowStage as S, WorkflowRoleAssignment as A
-from workflow.services import STAGE_ROLES, _assign_role
+from workflow.services import STAGE_ROLES, _assign_role, ensure_verification_not_completed
 from workflow.anthology_policy import require_working_anthology
 from workflow.admin_status import set_admin_status
 
@@ -27,6 +27,7 @@ def add_missing_stage(text_id, actor, version, *, kind, performer=None, started_
     current = S.objects.current_cycle().filter(text=text)
     if current.filter(stage_type=kind).exists():
         raise ValidationError('Ten etap już istnieje. Edytuj wykonawcę w tabeli albo użyj powtórzenia/cofnięcia.')
+    ensure_verification_not_completed(text, kind)
     if type(historical) is not bool:
         raise ValidationError("Nieprawidłowy tryb uzupełnienia historii.")
     if historical and not performer:

@@ -1,3 +1,73 @@
+AKTUALIZACJA V7 — PRZEJMOWANIE TEKSTU I WIDOCZNOŚĆ REDAKCJI
+
+1. Podgląd tekstu pokazuje przejęcie tych samych etapów, które są dostępne
+   danej osobie w „Teksty do wzięcia”. Oba widoki korzystają ze wspólnego
+   formularza i tego samego istniejącego serwisu zapisu. W1 można zarezerwować
+   podczas redakcji; pozostałe etapy mają wybór daty rozpoczęcia.
+2. Redaktor pozostaje w „Moje teksty → W toku” przez W1, W2, kontrolę
+   koordynatora i oczekiwanie na pierwszą korektę. Redakcję uznajemy za
+   zakończoną, gdy pierwsza korekta rzeczywiście się rozpocznie. Sama rezerwacja
+   korekty, także z przyszłą datą, tego nie kończy. Ukończona pierwsza korekta
+   potwierdza przejście tego progu; zamknięte teksty z importu pozostają zamknięte.
+3. Pozostają zakładki „W toku” i „Wszystkie”. Osobne „Oczekujące” i
+   „Moja praca zakończona” usunięto. Zadania oczekujące są w „W toku”
+   z oznaczeniem „Oczekujące”; dawne odnośniki prowadzą do odpowiedniego
+   zachowanego widoku. „Wszystkie” zachowuje zwykłe sortowanie tabeli.
+4. Usunięto warunek pomijający redaktora, którego przypisanie zawierało
+   zakończoną redakcję z importu. To powodowało widoczność tekstu tylko
+   we „Wszystkie” po przekazaniu do W1. Podsumowanie workflow używa
+   tego samego progu zakończenia redakcji co lista „Moje teksty”.
+5. Wcześniejsze przypisanie W1 nie oznacza wykonanej weryfikacji.
+   Podczas aktywnej redakcji pozostaje przycisk przekazania do W1;
+   przekazanie do W2 wymaga zakończonej W1, także przy bezpośrednim zapisie.
+   Historia zakończonych weryfikacji bez dat nadal jest uwzględniana.
+
+WDROŻENIE V7
+Rozpakuj paczkę obok manage.py, zachowując ścieżki. Zawiera wszystkie
+poprzednie poprawki tej rozmowy oraz wyłącznie nowe lub zmienione pliki.
+V7 nie dodaje migracji. Migracje 0011–0013 pozostają identyczne.
+Jedno polecenie w terminalu VS Code z katalogu projektu:
+python manage.py migrate && python manage.py collectstatic --noinput
+Zrestartuj aplikację. Jeśli wcześniejsze migracje są już wykonane,
+„migrate” nie zmieni danych ponownie. Nie trzeba uruchamiać scalania dla V7.
+
+SPRAWDZENIE V7
+49 ukierunkowanych testów: wszystkie OK. Dodatkowo 24 testy podglądu,
+przejmowania i weryfikacji w ustawieniach testowych z DEBUG=False: wszystkie OK.
+Nie uruchamiano całego zestawu testów. Nie testowano na bazie użytkownika
+ani serwerze MySQL. Regresje obejmują cały przebieg redakcji do pierwszej korekty,
+historię importu, przyszłe daty, starsze odnośniki, uprawnienia, urlop,
+powtórzenia pracy, ochronę historii i przyciski W1/W2.
+
+Poniższe sekcje V6 i wcześniejsze dokumentują poprzednie wdrożenia.
+W razie różnic obowiązują zasady V7 opisane powyżej.
+
+AKTUALIZACJA V6 — AUDYT WORKFLOW I UJEDNOLICENIE CSS
+
+Naprawiono rozpoczęcie W1 przy otwartej redakcji/pracy autora bez daty oraz
+dopisywanie zakończonej historycznej W1/W2 jako brakującego etapu. Wspólne
+kolory, przyciski, panele i pola korzystają z jednej palety obu motywów.
+Paczka zawiera wszystkie wcześniejsze poprawki tej rozmowy.
+
+WDROŻENIE V6
+Rozpakuj pliki obok manage.py, zachowując ścieżki, następnie:
+python manage.py migrate
+python manage.py collectstatic --noinput
+Zrestartuj aplikację i odśwież stronę. Audyt nie dodaje nowych migracji;
+dotychczasowe migracje 0011–0013 pozostają bez zmian.
+
+AUDYT_20261002.md zawiera ustalenia i zakres testów.
+DO_USUNIECIA_20261002.md oznacza martwe pliki i fragmenty; nic nie usunięto.
+INWENTARYZACJA_20261002.csv opisuje 416 plików projektu, bez nowych raportów.
+PLIKI_AUDYT_20261002.json opisuje aktualną zbiorczą paczkę.
+
+Ostatni zestaw: 125 testów, 124 zaliczone, 1 wymagający MySQL pominięty.
+Dodatkowo 6 testów listy osób i przekazań zaliczonych z manifestem statycznym.
+Nie uruchamiano całego zestawu. Ograniczenia, w tym brak wizualnej kontroli
+w przeglądarce i zależności testu konwersji DOCX, opisano w raporcie.
+
+Instrukcje V6 są aktualne; poniższe części zachowują opis poprzednich zmian.
+------------------------------------------------------------
 AKTUALIZACJA V5 — OSOBY I WYKONANE PRACE PRZY TEKŚCIE
 
 Lista przy tekście pokazuje nową osobę od razu po przekazaniu pracy, również
