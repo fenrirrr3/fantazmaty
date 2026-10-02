@@ -15,7 +15,6 @@ def execution_label(label, number, *, show_first=False):
 
 
 def assignment_label(assignment, *, show_first=False):
-    label = assignment.get_role_display()
-    if show_first or assignment.execution_number > 1:
-        label = WORK_LABELS.get(assignment.role, label)
-    return execution_label(label, assignment.execution_number, show_first=show_first)
+    # An execution number describes the assignment's history, not a new role.
+    return execution_label(assignment.get_role_display(), assignment.execution_number,
+                           show_first=show_first)

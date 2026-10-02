@@ -6,6 +6,18 @@ from workflow.models import WorkflowStage
 
 ORDER = {value: index for index, (value, _) in enumerate(active_stage_choices())}
 
+def operational_stages(stages):
+    """Ignore empty legacy verification duplicates; keep performed work intact."""
+    stages = list(stages)
+    completed = {(s.text_id, s.workflow_cycle, s.stage_type) for s in stages
+                 if s.is_current and s.is_completed}
+    return [s for s in stages if not (
+        s.is_current and not s.repetition_id and not s.is_completed
+        and s.stage_type in ('first_verification', 'second_verification')
+        and s.started_at is None and s.ended_at is None
+        and (s.text_id, s.workflow_cycle, s.stage_type) in completed
+    )]
+
 def state_key(stage):
     kind = stage.stage_type
     if kind == 'withdrawn': category = 0
@@ -17,7 +29,7 @@ def state_key(stage):
     return category, -ORDER.get(kind, -1), -stage.iteration, -stage.pk
 
 def current_stage(stages):
-    stages = [s for s in stages if s.is_current and s.is_released and s.stage_type in ORDER]
+    stages = [s for s in operational_stages(stages) if s.is_current and s.is_released and s.stage_type in ORDER]
     opened = [s for s in stages if not s.is_completed and s.ended_at is None]
     if opened:
         return min(opened, key=state_key)

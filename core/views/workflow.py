@@ -1,8 +1,9 @@
 from workflow.catalog import active_stage_choices
+import logging
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import transaction, IntegrityError
 from django.db.models import F
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -40,6 +41,7 @@ from workflow.services import (
     start_first_verification,
 )
 
+logger = logging.getLogger(__name__)
 
 def _detail_redirect(text_id):
     return redirect(
@@ -255,10 +257,14 @@ def take_workflow_stage(request, stage_id):
                     stage_type=stage.stage_type,
                     user=request.user,
                     started_at=started_at,
+                    stage_id=stage.pk,
                 )
 
     except ValidationError as error:
         messages.error(request, " ".join(error.messages))
+    except IntegrityError:
+        logger.exception('Konflikt przy przejmowaniu etapu workflow %s.', stage_id)
+        messages.error(request, 'Nie udało się przejąć etapu: przydziały pracy zmieniły się lub są sprzeczne. Odśwież listę; jeśli problem się powtarza, zgłoś go koordynatorowi.')
     else:
         if is_first_verification and stage.text.workflow_stages.filter(stage_type="first_verification", is_current=True, started_at__isnull=True, is_completed=False).exists():
             messages.success(

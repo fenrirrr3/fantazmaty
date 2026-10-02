@@ -35,19 +35,15 @@ def set_admin_status(text_id, kind, actor, expected_version):
         # Preserve completed rows, but remove downstream work from the current path.
         opened.update(is_current=False, is_released=False)
         stages.filter(stage_type__in=list(set(later+['ready','withdrawn']))).update(is_current=False, is_released=False)
-        roles = {STAGE_ROLES[k] for k in later if k in STAGE_ROLES}
-        # Editor is also used in author exchange / editorial verification control.
         target_role = STAGE_ROLES.get(kind)
-        # Editorial checkpoints belong to the same editor. A status correction
-        # is not a handoff or an explicitly requested repetition.
+        # A status correction preserves the whole team. Only an explicit
+        # repetition or handoff creates a new assignment execution.
         assignment = None
-        if target_role == 'editor':
+        if target_role:
             assignment = A.objects.filter(
                 text=text, workflow_cycle=text.current_workflow_cycle,
-                role='editor', is_current=True,
+                role=target_role, is_current=True,
             ).first()
-        roles.discard('editor')
-        A.objects.filter(text=text,workflow_cycle=text.current_workflow_cycle,is_current=True,role__in=roles).update(is_current=False)
         if target_role and assignment is None:
             number = (A.objects.filter(text=text,workflow_cycle=text.current_workflow_cycle,role=target_role).aggregate(n=Max('execution_number'))['n'] or 0)+1
             assignment = A(text=text,workflow_cycle=text.current_workflow_cycle,role=target_role,execution_number=number)
@@ -56,7 +52,7 @@ def set_admin_status(text_id, kind, actor, expected_version):
         all_kind = S.objects.filter(text=text,workflow_cycle=text.current_workflow_cycle,stage_type=kind)
         iteration=(all_kind.aggregate(n=Max('iteration'))['n'] or 0)+1
         execution=(S.objects.filter(text=text,stage_type=kind).aggregate(n=Max('execution_number'))['n'] or 0)+1
-        if target_role == 'editor' and assignment is not None:
+        if assignment is not None:
             execution = assignment.execution_number
         stage=S(text=text,workflow_cycle=text.current_workflow_cycle,stage_type=kind,iteration=iteration,execution_number=execution,assignment=assignment)
         stage.full_clean();stage.save()

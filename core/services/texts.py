@@ -139,6 +139,10 @@ def _require_start_order(stage, stages):
     require_released(stage)
     if stage.repetition_id:
         return
+    from workflow.services import ensure_verification_not_completed
+    ensure_verification_not_completed(stage.text, stage.stage_type)
+    from workflow.state import operational_stages
+    stages = operational_stages(stages)
     open_others = [
         item
         for item in stages

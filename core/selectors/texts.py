@@ -273,7 +273,7 @@ def _prepared_texts(queryset, include_authors):
     return queryset
 
 
-from workflow.state import stage_is_open as _is_open, stage_is_active as _is_active
+from workflow.state import stage_is_open as _is_open, stage_is_active as _is_active, operational_stages
 
 
 def _terminal(stages):
@@ -287,10 +287,12 @@ def _current_stage(stages):
 
 def _annotated_texts():
     from workflow.state import state_annotations, ORDER
+    from workflow.read_queries import exclude_obsolete_verification_placeholders
     from django.db.models.functions import Coalesce
     stages = WorkflowStage.objects.current_cycle().filter(text_id=OuterRef("pk"),
         workflow_cycle=OuterRef("current_workflow_cycle"), is_released=True,
         stage_type__in=ORDER).annotate(**state_annotations())
+    stages = exclude_obsolete_verification_placeholders(stages)
     current = stages.filter(is_completed=False, ended_at__isnull=True).order_by('state_priority','-state_order','-iteration','-pk').values('stage_type')[:1]
     last = stages.order_by('-state_order','-iteration','-pk').values('stage_type')[:1]
     return Text.objects.annotate(current_stage_type=Coalesce(Subquery(current), Subquery(last)))
@@ -305,7 +307,7 @@ def _text_row(text, include_authors):
         current_status=current_data,
         current_stages=[
             _stage_data(stage)
-            for stage in text.selector_stages
+            for stage in operational_stages(text.selector_stages)
             if _is_open(stage)
         ],
         current_status_started_at=current.started_at if current else None,
@@ -688,7 +690,7 @@ def text_detail_context(*, user, text):
         pk=text.pk,
     )
     text_data = _text_data(text, include_authors)
-    stages = text.selector_stages
+    stages = operational_stages(text.selector_stages)
     assignments = {
         item.role: item for item in text.selector_assignments
     }
@@ -767,7 +769,7 @@ def text_detail_context(*, user, text):
     second_gate = bool(second_done)
 
     can_start_first = bool(
-        not any(s.repetition_id and not s.is_completed for s in stages) and not terminal and pending_first
+        not any(s.repetition_id and not s.is_completed for s in stages) and not terminal and pending_first and not first_done
         and first_verifier and first_verifier.assigned_to_id
         and not any(
             stage.stage_type in {StageType.EDITING, StageType.AUTHOR_EDITING}
@@ -807,6 +809,12 @@ def text_detail_context(*, user, text):
             workflow_cycle=text.current_workflow_cycle, is_current=True,
         ).select_related("assignment__assigned_to__person_profile").order_by("-workflow_cycle", "-pk")
         archived = [row for row in stage_rows if row["pk"] not in visible_ids]
+        operational_ids = {stage.pk for stage in stages}
+        for stage in text.selector_stages:
+            if stage.pk not in operational_ids:
+                row = _stage_data(stage, text_data)
+                row.update(can_start=False, can_complete=False, assigned_user=_user_data(stage.assignment.assigned_to) if stage.assignment and stage.assignment.assigned_to else None)
+                archived.append(row)
         for stage in historical_stages:
             row = _stage_data(stage, text_data)
             row.update(can_start=False, can_complete=False, assigned_user=_user_data(stage.assignment.assigned_to) if stage.assignment and stage.assignment.assigned_to else None)

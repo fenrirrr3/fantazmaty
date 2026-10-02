@@ -328,6 +328,13 @@ def completed_stage_exists(text, stage_type):
     ).exists()
 
 
+def ensure_verification_not_completed(text, stage_type):
+    if (stage_type in (StageType.FIRST_VERIFICATION, StageType.SECOND_VERIFICATION)
+            and completed_stage_exists(text, stage_type)):
+        label = dict(StageType.choices)[stage_type]
+        raise ValidationError(label + ' jest już zakończona. Ponowne wykonanie wymaga powtórzenia etapów.')
+
+
 def active_stage_exists(text, stage_type):
     return current_stage_queryset(text).filter(
         stage_type=stage_type,
@@ -366,6 +373,7 @@ def _create_pending_stage(text, stage_type):
 
     if stage_type not in dict(active_stage_choices()):
         raise ValidationError("Nieprawidłowy typ etapu.")
+    ensure_verification_not_completed(text, stage_type)
 
     stage = (
         current_stage_queryset(text)
@@ -488,6 +496,9 @@ def _assign_role(text, role, user):
     ).first()
 
     if assignment is None:
+        number = (WorkflowRoleAssignment.objects.using(_database(text)).filter(
+            text=text, workflow_cycle=current_cycle(text), role=role,
+        ).aggregate(maximum=Max('execution_number'))['maximum'] or 0) + 1
         return WorkflowRoleAssignment.objects.using(
             _database(text)
         ).create(
@@ -495,6 +506,7 @@ def _assign_role(text, role, user):
             workflow_cycle=current_cycle(text),
             role=role,
             assigned_to=user,
+            execution_number=number,
         )
 
     if assignment.assigned_to_id not in (None, user.pk):
@@ -548,12 +560,13 @@ def claim_ready_for_editing(text, user, started_at=None):
 
     editing_stage = _create_pending_stage(text, StageType.EDITING)
     _start_stage(editing_stage, transition_date)
-    _create_pending_stage(text, StageType.FIRST_VERIFICATION)
+    if not completed_stage_exists(text, StageType.FIRST_VERIFICATION):
+        _create_pending_stage(text, StageType.FIRST_VERIFICATION)
     return editing_stage
 
 
 @_locked_text_operation
-def claim_stage(text, stage_type, user, started_at=None):
+def claim_stage(text, stage_type, user, started_at=None, *, stage_id=None):
     _ensure_actor(user)
     ensure_text_is_not_withdrawn(text)
 
@@ -574,9 +587,13 @@ def claim_stage(text, stage_type, user, started_at=None):
     transition_date = validate_assignment_start_date(
         _transition_date(started_at)
     )
+    pending = current_stage_queryset(text).filter(
+        stage_type=stage_type, is_completed=False, is_released=True,
+    )
+    if stage_id is not None:
+        pending = pending.filter(pk=stage_id)
     stage = (
-        current_stage_queryset(text)
-        .filter(stage_type=stage_type, is_completed=False, is_released=True)
+        pending
         .order_by("-iteration", "-pk")
         .first()
     )
@@ -606,7 +623,8 @@ def claim_stage(text, stage_type, user, started_at=None):
     _start_stage(stage, transition_date)
 
     if stage_type == StageType.EDITING and is_cycle_entry:
-        _create_pending_stage(text, StageType.FIRST_VERIFICATION)
+        if not completed_stage_exists(text, StageType.FIRST_VERIFICATION):
+            _create_pending_stage(text, StageType.FIRST_VERIFICATION)
 
     return stage
 
@@ -650,6 +668,7 @@ def start_first_verification(text, user, started_at=None):
     _ensure_actor(user)
     ensure_text_is_not_withdrawn(text)
     _ensure_editing_phase(text)
+    ensure_verification_not_completed(text, StageType.FIRST_VERIFICATION)
 
     transition_date = validate_assignment_start_date(
         _transition_date(started_at)
@@ -713,13 +732,9 @@ def resume_editing(text, user, started_at=None):
 
     # Blokuje również przejętą lub oczekującą weryfikację po przekazaniu
     # tekstu. Nie można wznowić redakcji, omijając jej wykonanie.
-    if current_stage_queryset(text).filter(
-        stage_type__in=(
-            StageType.FIRST_VERIFICATION,
-            StageType.SECOND_VERIFICATION,
-        ),
-        is_completed=False,
-    ).exists():
+    from workflow.state import operational_stages
+    if any(stage.stage_type in (StageType.FIRST_VERIFICATION, StageType.SECOND_VERIFICATION)
+           and not stage.is_completed for stage in operational_stages(current_stage_queryset(text))):
         raise ValidationError(
             "Najpierw należy zakończyć oczekującą lub aktywną weryfikację."
         )
@@ -882,6 +897,7 @@ def complete_stage(stage, user, ended_at):
         from workflow.repetitions import complete_repeat
         return complete_repeat(stage, user, ended_at)
     ensure_text_is_not_withdrawn(stage.text)
+    ensure_verification_not_completed(stage.text, stage.stage_type)
 
     if stage.stage_type == StageType.EDITING:
         raise ValidationError(

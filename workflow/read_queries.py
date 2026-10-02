@@ -17,8 +17,20 @@ def current_stages():
     return S.objects.current_cycle().filter(text_id=OuterRef('text_id'), workflow_cycle=OuterRef('workflow_cycle'))
 
 
+def exclude_obsolete_verification_placeholders(query):
+    completed = S.objects.current_cycle().filter(
+        text_id=OuterRef('text_id'), workflow_cycle=OuterRef('workflow_cycle'),
+        stage_type=OuterRef('stage_type'), is_completed=True,
+    )
+    return query.exclude(
+        Q(is_current=True, repetition__isnull=True, is_completed=False,
+          stage_type__in=('first_verification', 'second_verification'),
+          started_at__isnull=True, ended_at__isnull=True) & Q(Exists(completed))
+    )
+
+
 def open_stages(query):
-    return query.filter(is_completed=False, ended_at__isnull=True)
+    return exclude_obsolete_verification_placeholders(query.filter(is_completed=False, ended_at__isnull=True))
 
 
 def active_stages(query, today):
@@ -147,6 +159,11 @@ def available_stages(user, access):
     opposite = Case(When(_work_role='verifier_1', then=Value('verifier_2')),
                     When(_work_role='verifier_2', then=Value('verifier_1')), default=Value(''), output_field=CharField())
     query = query.alias(_opposite=opposite).filter(~Exists(assignments.filter(role=OuterRef('_opposite'), assigned_to_id=user.pk)))
+    query = query.filter(
+        ~Q(stage_type__in=('first_verification', 'second_verification'))
+        | Q(repetition__isnull=False)
+        | ~Exists(stages.filter(stage_type=OuterRef('stage_type'), is_completed=True))
+    )
     entry = Q(repetition__isnull=False) | Q(~Exists(stages.exclude(pk=OuterRef('pk'))))
     query = query.filter(~Q(stage_type__in=('editing', 'author_editing')) | entry)
     query = query.filter(~Q(stage_type='first_verification') | entry | Exists(
