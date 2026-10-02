@@ -286,9 +286,14 @@ def _current_stage(stages):
 
 
 def _annotated_texts():
-    from workflow.state import state_annotations
-    current = WorkflowStage.objects.current_cycle().filter(text_id=OuterRef("pk"), workflow_cycle=OuterRef("current_workflow_cycle"), is_released=True, is_completed=False, ended_at__isnull=True).annotate(**state_annotations()).order_by('state_priority','-state_order','-iteration','-pk').values('stage_type')[:1]
-    return Text.objects.annotate(current_stage_type=Subquery(current))
+    from workflow.state import state_annotations, ORDER
+    from django.db.models.functions import Coalesce
+    stages = WorkflowStage.objects.current_cycle().filter(text_id=OuterRef("pk"),
+        workflow_cycle=OuterRef("current_workflow_cycle"), is_released=True,
+        stage_type__in=ORDER).annotate(**state_annotations())
+    current = stages.filter(is_completed=False, ended_at__isnull=True).order_by('state_priority','-state_order','-iteration','-pk').values('stage_type')[:1]
+    last = stages.order_by('-state_order','-iteration','-pk').values('stage_type')[:1]
+    return Text.objects.annotate(current_stage_type=Coalesce(Subquery(current), Subquery(last)))
 
 
 def _text_row(text, include_authors):
@@ -787,9 +792,8 @@ def text_detail_context(*, user, text):
         key=lambda stage: (stage.ended_at or date.min, stage.pk),
         default=None,
     )
-    visible = [
-        stage_row(stage) for stage in (current, previous) if stage is not None
-    ]
+    visible = list({stage.pk: stage_row(stage)
+                    for stage in (current, previous) if stage is not None}.values())
     visible_ids = {row["pk"] for row in visible}
 
     archived = []

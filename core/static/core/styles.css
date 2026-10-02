@@ -2428,3 +2428,7 @@ table th {
 @media (max-width: 760px) {
     :root { --card-padding: 16px; }
 }
+
+/* Compact administrative shortcut in text and submission headers. */
+.detail-header-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.secondary-button.small-button { min-height: 32px; padding: 5px 10px; font-size: 0.8125rem; }

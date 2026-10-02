@@ -24,9 +24,12 @@
                 </p>
             </div>
 
+            <div class="detail-header-actions">
+                {% if user.is_superuser %}<a class="secondary-button small-button" href="{% url 'admin:texts_text_change' text.pk %}">Edytuj w adminie</a>{% endif %}
             <a href="{% url 'core:text_list' %}" class="secondary-button">
                 Wróć do tekstów
             </a>
+            </div>
         </div>
     </header>
 
@@ -465,7 +468,7 @@
                 {{ text_note_form.non_field_errors }}
 
                 <div class="form-field">
-                    <label for="{{ text_note_form.content.id_for_label }}">Nowa notatka</label>
+                    <label class="visually-hidden" for="{{ text_note_form.content.id_for_label }}">Treść notatki</label>
                     {{ text_note_form.content }}
                     {{ text_note_form.content.errors }}
                 </div>
@@ -478,7 +481,7 @@
                         {{ text_note_form.is_important }}
                         <span>Ważna notatka</span>
                     </label>
-                    <button type="submit" class="primary-button">Dodaj notatkę</button>
+                    <button type="submit" class="primary-button">Dodaj</button>
                 </div>
                 {{ text_note_form.is_important.errors }}
             </form>

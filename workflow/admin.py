@@ -167,7 +167,8 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
         class CorrectionForm(forms.Form):
             action=forms.ChoiceField(label='Operacja',choices=[('performer','Popraw wykonawcę (bez nowego wykonania)'),('delete','Usuń to wykonanie etapu')])
             performer=PerformerChoiceField(label='Wykonawca',queryset=get_user_model().objects.order_by('last_name','first_name','pk'),required=False,widget=AutocompleteSelect(WorkflowRoleAssignment._meta.get_field('assigned_to'), self.admin_site))
-            replacement=forms.ChoiceField(label='Status po usunięciu bieżącego etapu',choices=[('','– nie dotyczy zakończonego wykonania –'),*active_stage_choices()],required=False)
+            replacement=forms.ChoiceField(label='Status po usunięciu bieżącego etapu',choices=[('','Ostatni pozostały etap workflow'),*active_stage_choices()],required=False,
+                help_text='Puste pole zachowuje ostatni pozostały etap, także zakończony. Nie rozpoczyna pracy ponownie.')
             version=forms.IntegerField(widget=forms.HiddenInput)
             confirm=forms.BooleanField(label='Potwierdzam korektę historii pracy i zmianę statystyk.')
         form=CorrectionForm(request.POST if request.method=='POST' else None,initial={'action':'delete' if request.GET.get('action') == 'delete' else 'performer','version':version_of(stage.text),'performer':stage.assignment.assigned_to_id if stage.assignment else None})

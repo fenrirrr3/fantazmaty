@@ -54,6 +54,10 @@ def dark_rgb() -> RGBColor:
     return RGBColor(*(random.randint(0, 150) for _ in range(3)))
 
 
+def light_rgb() -> RGBColor:
+    return RGBColor(*(random.randint(160, 255) for _ in range(3)))
+
+
 def first5(word: str) -> str:
     return word.lower()[:5]
 
@@ -106,9 +110,9 @@ def _find_repeat_groups(words, progress=None, window_size=WINDOW_SIZE,
     return {key: groups[key] for key in sorted(groups, key=first_pairs.__getitem__)}
 
 
-def _assign_colors(words, groups):
+def _assign_colors(words, groups, color_palette='dark'):
     for indices in groups.values():
-        color = dark_rgb()
+        color = light_rgb() if color_palette == 'light' else dark_rgb()
         for idx in indices:
             if words[idx].color is None:
                 words[idx].color = color
@@ -457,8 +461,10 @@ def _extra_checks(paragraphs, lemmas, ignored, tracked, options, status_callback
 
 def color_document(source, *, window_size=35, min_word_length=4,
                    ignored_words='', tracked_words='', analysis_options=None,
-                   include_prefix_matches=False):
+                   include_prefix_matches=False, color_palette='dark'):
     """Return a marked DOCX; never change its words or editorial formatting."""
+    if color_palette not in ('dark', 'light'):
+        raise ValueError('Wybierz jasne albo ciemne kolory powtórzeń.')
     window_size = _positive_integer(window_size, 'Zakres wyszukiwania')
     min_word_length = _positive_integer(min_word_length, 'Minimalna długość słowa')
     if window_size > 500 or min_word_length > 100:
@@ -500,7 +506,7 @@ def color_document(source, *, window_size=35, min_word_length=4,
         token.ignored = token.lemma in ignored
     groups = _find_repeat_groups(words, window_size=window_size,
                                  include_prefix_matches=include_prefix_matches)
-    _assign_colors(words, groups)
+    _assign_colors(words, groups, color_palette)
     marks = [[] for _ in paragraphs]
     for token, (index, start, end) in zip(words, locations):
         if token.color is not None:

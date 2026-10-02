@@ -56,6 +56,8 @@ class DocumentConversionForm(OdkurzaczForm):
 
 
 class RepetitionsForm(OdkurzaczForm):
+    color_palette = forms.ChoiceField(label='Kolory powtórzeń', choices=[('dark', 'Ciemne'), ('light', 'Jasne')],
+        initial='dark', required=False, help_text='Paleta kolorów liter. Kolory tła dodatkowych oznaczeń pozostają bez zmian.')
     window_size = forms.IntegerField(label='Zakres wyszukiwania (słowa)', initial=35, min_value=1, max_value=500)
     min_word_length = forms.IntegerField(label='Minimalna długość słowa', initial=4, min_value=1, max_value=100)
     ignored_words = forms.CharField(label='Ignorowane słowa', required=False, max_length=10000,
@@ -78,6 +80,6 @@ class RepetitionsForm(OdkurzaczForm):
     def analysis_config(self):
         values = self.cleaned_data
         return {key: values[key] for key in ('window_size', 'min_word_length', 'ignored_words',
-                'tracked_words', 'include_prefix_matches')} | {'analysis_options': {
+                'tracked_words', 'include_prefix_matches')} | {'color_palette': values.get('color_palette') or 'dark', 'analysis_options': {
                 key: values[key] for key in ('duplicates', 'long_sentences', 'sentence_limit',
                                             'long_paragraphs', 'paragraph_limit', 'empty_pairs')}}

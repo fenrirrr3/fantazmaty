@@ -17,8 +17,13 @@ def state_key(stage):
     return category, -ORDER.get(kind, -1), -stage.iteration, -stage.pk
 
 def current_stage(stages):
-    opened = [s for s in stages if s.is_current and s.is_released and not s.is_completed and s.ended_at is None]
-    return min(opened, key=state_key) if opened else None
+    stages = [s for s in stages if s.is_current and s.is_released and s.stage_type in ORDER]
+    opened = [s for s in stages if not s.is_completed and s.ended_at is None]
+    if opened:
+        return min(opened, key=state_key)
+    # A correction can remove the pending continuation. Report the last
+    # completed checkpoint without reopening it or inventing a new execution.
+    return max(stages, key=lambda s: (ORDER[s.stage_type], s.iteration, s.pk), default=None)
 
 def state_annotations():
     return {

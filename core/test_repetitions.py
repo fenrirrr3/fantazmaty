@@ -105,15 +105,18 @@ class RepeatPageTests(TestCase):
         response = self.client.get(reverse('core:programs'))
         self.assertContains(response, 'Kolorowanie powtórzeń')
         self.assertContains(response, 'name="repetitions-window_size"')
+        self.assertContains(response, 'name="repetitions-color_palette"')
         document = Document(); document.add_paragraph('Koty koty')
         with patch('core.views.programs.convert_document', return_value=(BytesIO(payload(document)), 'docx', 'application/octet-stream')) as convert:
             response = self.client.post(reverse('core:programs'), {
                 'program_action': 'repetitions', 'repetitions-document': SimpleUploadedFile('test.docx', payload(document)),
+                'repetitions-color_palette': 'light',
                 'repetitions-window_size': 35, 'repetitions-min_word_length': 4,
                 'repetitions-sentence_limit': 35, 'repetitions-paragraph_limit': 150})
         self.assertEqual(response.status_code, 200)
         self.assertIn('_powtorzenia.docx', response['Content-Disposition'])
         self.assertFalse(convert.call_args.kwargs['normalize'])
+        self.assertEqual(convert.call_args.kwargs['repetitions']['color_palette'], 'light')
         self.assertNotIn('use_cleaner', convert.call_args.kwargs)
         result = Document(BytesIO(b''.join(response.streaming_content)))
         self.assertEqual(result.paragraphs[0].text, 'Koty koty')

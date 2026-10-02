@@ -3,6 +3,6 @@
 {% block extrahead %}{{ block.super }}<script src="{% url 'admin:jsi18n' %}"></script>{{ form.media.js }}{% endblock %}
 {% block content %}
 <p>Zmiana wykonawcy poprawia istniejące przypisanie, bez nowego numeru wykonania. Jeżeli kilka etapów korzysta z tego przypisania (np. redakcja i plik u autora), wykonawca zmieni się w każdym z nich. Daty i stan pracy pozostają bez zmian.</p>
-<p>Usunięcie etapu usuwa go także ze statystyk. Dla bieżącego etapu wybierz status, który ma go zastąpić.</p>
+<p>Usunięcie etapu usuwa go także ze statystyk. Status zastępujący bieżący etap jest opcjonalny. Bez jego wyboru status wynika z ostatniego pozostałego etapu workflow, także zakończonego. Jeśli nie pozostanie żaden etap, tekst będzie bez etapu.</p>
 <form method="post">{% csrf_token %}{{ form.as_p }}<div class="submit-row"><input type="submit" class="default" value="Zapisz korektę"></div></form>
 {% endblock %}
