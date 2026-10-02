@@ -2,7 +2,7 @@
 from django import forms
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
-from django.db.models import Max
+from django.db.models import Max, Q
 from django.utils import timezone
 
 from core.edit_versions import version_of
@@ -15,6 +15,7 @@ from workflow.services import (
     ensure_text_is_not_withdrawn, finish_editing_to_coordinator, resume_editing,
     send_text_to_author, send_to_first_verification, send_to_second_verification,
     validate_assignment_start_date, _validate_date, STAGE_ROLES, current_stage_queryset,
+    EDITING_PHASE_TYPES,
 )
 
 
@@ -97,6 +98,53 @@ class StageDatesForm(forms.Form):
         return data
 
 
+def _recorded_stage_order(stage):
+    from workflow.state import ORDER
+
+    if stage.repetition_id:
+        return stage.repetition_id, stage.queue_position, stage.iteration, stage.pk
+    if stage.stage_type in EDITING_PHASE_TYPES - {S.StageType.READY_FOR_EDITING}:
+        # Editorial handoffs and returns form a sequence of created records;
+        # repeated author exchanges cannot be ordered by stage type alone.
+        # W1 may be reserved before the first editorial pass is created.
+        first_editing = stage.stage_type == S.StageType.EDITING and stage.iteration == 1
+        return 0, ORDER[S.StageType.EDITING], 0 if first_editing else stage.pk, stage.iteration
+    return 0, ORDER[stage.stage_type], stage.iteration, stage.pk
+
+
+def _validate_completed_stage_chronology(stage):
+    from workflow.state import ORDER
+
+    # Import-only work is outside the operational workflow. Validate history in
+    # its own cycle, including executions retired by selective repetitions.
+    if stage.stage_type not in ORDER:
+        return
+    stages = list(S.objects.select_for_update().filter(
+        Q(is_completed=True) | Q(is_current=True, is_released=True),
+        text_id=stage.text_id, workflow_cycle=stage.workflow_cycle,
+        stage_type__in=ORDER,
+    ))
+    position = _recorded_stage_order(stage)
+    previous_ends = []
+    following_starts = []
+    for other in stages:
+        if other.pk == stage.pk:
+            continue
+        other_position = _recorded_stage_order(other)
+        if other_position < position and other.is_completed and other.ended_at is not None:
+            previous_ends.append(other.ended_at)
+        elif other_position > position and other.started_at is not None:
+            following_starts.append(other.started_at)
+    errors = {}
+    # Unknown imported endpoints impose no boundary and remain optional.
+    if stage.started_at is not None and previous_ends and stage.started_at < max(previous_ends):
+        errors['started_at'] = 'Rozpoczęcie nie może poprzedzać zakończenia wcześniejszych prac.'
+    if stage.ended_at is not None and following_starts and stage.ended_at > min(following_starts):
+        errors['ended_at'] = 'Zakończenie nie może następować po rozpoczęciu późniejszych prac.'
+    if errors:
+        raise ValidationError(errors)
+
+
 @transaction.atomic
 @track_workflow
 def set_stage_dates(stage_id, user, version, *, started_at=None, ended_at=None,
@@ -117,6 +165,7 @@ def set_stage_dates(stage_id, user, version, *, started_at=None, ended_at=None,
         stage.started_at = started_at
         stage.ended_at = ended_at
         stage.full_clean()
+        _validate_completed_stage_chronology(stage)
         stage.save(update_fields=['started_at', 'ended_at'])
         return stage
 
