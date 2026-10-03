@@ -1,0 +1,9 @@
+.illustration-edit-form { display: grid; gap: var(--field-gap, 12px); min-width: 0; }
+.illustration-edit-form .form-field { display: grid; gap: 6px; min-width: 0; }
+.illustration-edit-form :is(input:not([type="hidden"]), select, textarea) { width: 100%; min-width: 0; }
+.illustration-edit-form button { justify-self: start; max-width: 100%; white-space: normal; }
+.illustration-edit-form .illustration-excerpt-input { height: 8rem; min-height: 8rem; max-height: 8rem; resize: none; overflow-y: auto; }
+.illustration-excerpt-preview { max-height: 8rem; overflow-y: auto; overflow-wrap: anywhere; }
+.illustration-metadata { display: grid; gap: 14px; }
+.illustration-metadata dt { font-weight: 650; }
+.illustration-metadata dd { margin: 4px 0 0; overflow-wrap: anywhere; }

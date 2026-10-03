@@ -170,7 +170,16 @@ def run_converter(directory, timeout):
         raise ConversionError('Nie udało się przygotować plików (' + detail + '). Szczegóły zapisano w logu błędów. Nie oznacza to automatycznie uszkodzenia dokumentu; możesz pobrać oryginały po wyłączeniu konwersji.')
 
 
-def convert_document(upload, formats, *, use_cleaner=False, timeout=TIME_LIMIT, include_docx=False, rebuild=False, normalize=True, allow_rebuild_omissions=False, cleaner_rules=None, repetitions=None, justify=False):
+def conversion_filename(name, extension):
+    # Preserve Unicode and spaces, but never put paths or controls in a ZIP entry.
+    basename = str(name or 'Dokument.docx').replace('\\', '/').rsplit('/', 1)[-1]
+    stem = re.sub(r'[\x00-\x1f\x7f]', '', Path(basename).stem).strip() or 'Dokument'
+    if stem in ('.', '..'):
+        stem = 'Dokument'
+    return stem + '.' + extension
+
+
+def convert_document(upload, formats, *, use_cleaner=False, timeout=TIME_LIMIT, include_docx=False, rebuild=False, normalize=True, allow_rebuild_omissions=False, cleaner_rules=None, repetitions=None, justify=False, preserve_filename=False):
     deadline = time.monotonic() + min(TIME_LIMIT, timeout)
     selected = [kind for kind in FORMATS if kind in formats]
     if (not selected and not include_docx) or set(formats) - set(FORMATS):
@@ -205,7 +214,7 @@ def convert_document(upload, formats, *, use_cleaner=False, timeout=TIME_LIMIT, 
             else:
                 with ZipFile(result, 'w', compression=ZIP_DEFLATED) as archive:
                     for output in outputs:
-                        archive.write(output, arcname=output.name)
+                        archive.write(output, arcname=conversion_filename(getattr(upload, 'name', 'Dokument.docx'), output.suffix.lstrip('.')) if preserve_filename else output.name)
                     if warnings:
                         archive.writestr('Uwagi_konwersji.txt', '\n'.join(warnings))
                 extension, mime = 'zip', 'application/zip'

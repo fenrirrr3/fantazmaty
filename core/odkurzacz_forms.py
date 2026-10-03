@@ -6,11 +6,15 @@ from django import forms
 from core.services.odkurzacz import EDITORIAL_RULES, DEFAULT_EDITORIAL_RULES
 
 
+PROGRAM_MAX_UPLOAD_BYTES = 2 * 1024 * 1024
+
+
 class OdkurzaczForm(forms.Form):
+    normalize_formatting = forms.BooleanField(label="Ujednolić formatowanie jak przy pobieraniu ze skrzynki", required=False, initial=False)
     rebuild = forms.BooleanField(label="Przebuduj do nowego DOCX przed odkurzaniem", required=False, initial=False)
     document = forms.FileField(
         label="Dokument DOCX",
-        help_text="Maksymalnie 10 MB. Wynik pobierzesz jako osobny plik.",
+        help_text="Maksymalnie 2 MB. Wynik pobierzesz jako osobny plik.",
         widget=forms.ClearableFileInput(attrs={"accept": ".docx"}),
     )
     rules = forms.MultipleChoiceField(
@@ -19,12 +23,17 @@ class OdkurzaczForm(forms.Form):
         widget=forms.CheckboxSelectMultiple,
     )
 
+    def __init__(self, *args, max_document_bytes=PROGRAM_MAX_UPLOAD_BYTES, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.max_document_bytes = max_document_bytes
+        self.fields["document"].help_text = f"Maksymalnie {max_document_bytes // (1024 * 1024)} MB. Wynik pobierzesz jako osobny plik."
+
     def clean_document(self):
         upload = self.cleaned_data["document"]
         if Path(upload.name).suffix.lower() != ".docx":
             raise forms.ValidationError("Wybierz plik z rozszerzeniem .docx.")
-        if upload.size > 10 * 1024 * 1024:
-            raise forms.ValidationError("Plik jest za duży. Maksymalny rozmiar to 10 MB.")
+        if upload.size > self.max_document_bytes:
+            raise forms.ValidationError(f"Plik jest za duży. Maksymalny rozmiar to {self.max_document_bytes // (1024 * 1024)} MB.")
         try:
             with ZipFile(upload) as archive:
                 entries = archive.infolist()
@@ -53,6 +62,7 @@ class DocumentConversionForm(OdkurzaczForm):
         super().__init__(*args, **kwargs)
         del self.fields['rules']
         del self.fields['rebuild']
+        del self.fields['normalize_formatting']
 
 
 class RepetitionsForm(OdkurzaczForm):
@@ -76,6 +86,7 @@ class RepetitionsForm(OdkurzaczForm):
         super().__init__(*args, **kwargs)
         del self.fields['rules']
         del self.fields['rebuild']
+        del self.fields['normalize_formatting']
 
     def analysis_config(self):
         values = self.cleaned_data

@@ -112,19 +112,15 @@ class Illustration(models.Model):
             raise ValidationError(errors)
 
     def save(self, *args, **kwargs):
-        previous_status = None
-
-        if self.pk:
-            previous_status = (
-                type(self).objects
-                .filter(pk=self.pk)
-                .values_list("status", flat=True)
-                .first()
-            )
-
-        status_changed_to_assigned = (
-            self.status == self.Status.ASSIGNED
-            and previous_status != self.Status.ASSIGNED
+        previous = (type(self).objects.filter(pk=self.pk)
+                    .values('status', 'illustrator_id', 'assigned_at').first()) if self.pk else None
+        status_changed_to_assigned = bool(self.illustrator_id) and (
+            (previous is None and self.status == self.Status.ASSIGNED)
+            or (previous is not None and (
+                previous['illustrator_id'] != self.illustrator_id
+                or previous['status'] == self.Status.UNASSIGNED
+                or (self.status == self.Status.ASSIGNED and previous['assigned_at'] is None)
+            ))
         )
 
         if status_changed_to_assigned:
@@ -148,6 +144,15 @@ class Illustration(models.Model):
             kwargs["update_fields"] = updated_fields
 
         super().save(*args, **kwargs)
+
+    @property
+    def genre_display(self):
+        source = getattr(self.text, 'source_review', None)
+        return source.genre if source else ''
+
+    @property
+    def warnings_display(self):
+        return self.text.content_warnings or self.trigger_warnings
 
     @property
     def anthology(self):

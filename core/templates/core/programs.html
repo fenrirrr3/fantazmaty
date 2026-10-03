@@ -32,6 +32,9 @@
         <p class="form-warning">{{ rebuild_warning_text }} Wybierz ponownie ten sam plik.</p>
         <p><label><input type="checkbox" name="allow_rebuild_omissions" value="on"> Akceptuję ostrzeżenie i chcę kontynuować z pominięciem wymienionych elementów.</label></p>
         {% endif %}
+        <p><label for="{{ form.normalize_formatting.id_for_label }}">{{ form.normalize_formatting }} {{ form.normalize_formatting.label }}</label></p>
+        {{ form.normalize_formatting.errors }}
+        <p class="form-help">Po zaznaczeniu: Times New Roman 12 pkt, interlinia 1,5, wcięcie 1,25 cm, bez odstępów przed i po akapicie, A4 i marginesy 2,5 cm. Tekst jest wyjustowany; wyśrodkowane akapity pozostają wyśrodkowane bez wcięcia. Kursywa, pogrubienia i puste akapity zostają zachowane. Bez zaznaczenia Odkurzacz zachowuje formatowanie.</p>
         <p><label for="{{ form.rebuild.id_for_label }}">{{ form.rebuild }} {{ form.rebuild.label }}</label></p>
         <p class="form-help">Przebudowa tworzy nowy DOCX z tekstem i podstawowym formatowaniem, a następnie stosuje wybrane poprawki. Usuwa stare metadane, komentarze, nagłówki, stopki i ukryty tekst. Akceptuje zmiany tekstu: zachowuje dodany tekst, pomija skreślony. Pominięcie innych elementów wymaga Twojego potwierdzenia. Dane wpisane w treści pozostają.</p>
         <p>Przy większym dokumencie pobieranie może rozpocząć się po chwili. Oryginał pozostaje na Twoim komputerze.</p>
@@ -53,7 +56,7 @@
 <details class="details-card odkurzacz program-tool" {% if conversion_open %}open{% endif %}>
     <summary><span>Konwerter DOCX → PDF i EPUB</span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
     <div class="card-body">
-    <p>Wybierz jeden lub kilka formatów. Jeden format pobierzesz jako osobny plik, kilka jako archiwum ZIP.</p>
+    <p>Wybierz jeden lub kilka formatów. Jeden format pobierzesz jako osobny plik, kilka jako archiwum ZIP. Nazwa pliku pozostaje taka jak nazwa dokumentu wejściowego; zmienia się tylko rozszerzenie. Pliki wewnątrz ZIP również zachowują tę nazwę.</p>
     <p>Konwerter ustawia Times New Roman 12 pkt, interlinię 1,5 i wcięcie 1,25 cm, bez odstępów przed i po akapicie. Zachowuje puste akapity, wyrównanie, kursywę i pogrubienia. Wyśrodkowane akapity pozostają bez wcięcia.</p>
     <p>Format strony to A4 z marginesami 2,5 cm. PDF używa czcionki podobnej do Times New Roman. Podział stron i złożony układ mogą się zmienić – sprawdź wynik po pobraniu.</p>
     <p class="form-help">Jeśli konwersja zgłosi pominięte elementy lub uproszczenia, wynik zostanie spakowany do ZIP razem z plikiem Uwagi_konwersji.txt.</p><form method="post" enctype="multipart/form-data">

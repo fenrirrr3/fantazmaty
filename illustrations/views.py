@@ -15,6 +15,7 @@ from texts.models import Anthology
 
 from .forms import CoverProposalForm
 from .models import CoverProposal, Illustration
+from .editing import FORMS, can_edit_illustration, edit_forms, token_matches
 
 
 ILLUSTRATION_SORT_FIELDS = {
@@ -122,6 +123,7 @@ def illustration_list(request):
         .select_related(
             "text",
             "text__anthology",
+            "text__source_review",
             "illustrator",
         )
         .order_by(*ordering)
@@ -165,6 +167,50 @@ def illustration_list(request):
             "can_view_authors": can_view_authors,
         },
     )
+
+
+@never_cache
+@login_required
+@require_http_methods(['GET', 'POST'])
+def illustration_detail(request, illustration_id):
+    _ensure_team_access(request.user)
+    if not can_view_illustrations(request.user):
+        raise PermissionDenied('Ilustracje są dostępne dla koordynatorów i ilustratorów.')
+    with transaction.atomic():
+        query = Illustration.objects
+        if request.method == 'POST':
+            query = query.select_for_update()
+        illustration = get_object_or_404(query, pk=illustration_id,
+            text__anthology__status=Anthology.Status.IN_PREPARATION,
+            text__anthology__has_illustrations=True)
+        editable = can_edit_illustration(request.user, illustration)
+        forms = edit_forms(request.user, illustration) if editable else {}
+        response_status = 200
+        if request.method == 'POST':
+            if not editable:
+                raise PermissionDenied('Możesz edytować tylko własną ilustrację.')
+            action = request.POST.get('action')
+            if action not in FORMS:
+                from django.http import HttpResponseBadRequest
+                return HttpResponseBadRequest('Wybierz poprawną operację zapisu.')
+            forms = edit_forms(request.user, illustration, action=action, data=request.POST)
+            form = forms[action]
+            valid = form.is_valid()
+            if not token_matches(request.POST.get('version', ''), request.user, illustration):
+                form.add_error(None, 'Dane zmieniły się lub formularz wygasł. Zachowaj wpisaną treść i odśwież stronę przed ponownym zapisem.')
+                response_status = 409
+            elif valid:
+                form.save()
+                messages.success(request, {'assignment': 'Zapisano przypisanie i status.',
+                    'link': 'Zapisano link do opowiadania.', 'excerpt': 'Zapisano ilustrowany fragment.'}[action])
+                return redirect('illustrations:illustration_detail', illustration_id=illustration.pk)
+            # ModelForm validation mutates its instance even when saving is refused.
+            # Keep submitted values in the bound form, but display persisted metadata.
+            illustration.refresh_from_db()
+        return render(request, 'core/illustration_detail.html', {
+            'illustration': illustration, 'forms': forms, 'can_edit': editable,
+            'can_assign': is_coordinator(request.user),
+        }, status=response_status)
 
 
 @never_cache

@@ -7,6 +7,7 @@ app_name = "illustrations"
 
 
 urlpatterns = [
+    path("<int:illustration_id>/", views.illustration_detail, name="illustration_detail"),
     path(
         "",
         views.illustration_list,

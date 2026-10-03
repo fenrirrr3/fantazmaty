@@ -14,7 +14,7 @@ from docx.oxml.exceptions import InvalidXmlError
 from lxml.etree import XMLSyntaxError
 
 from core.odkurzacz_forms import OdkurzaczForm, DocumentConversionForm, RepetitionsForm
-from core.services.document_converter import convert_document, ConversionError, RebuildConfirmationRequired
+from core.services.document_converter import convert_document, conversion_filename, ConversionError, RebuildConfirmationRequired
 from core.permissions import team_member_required
 
 logger = logging.getLogger(__name__)
@@ -67,7 +67,7 @@ def programs(request):
         try:
             output, extension, mime = convert_document(upload,
                 conversion_form.cleaned_data['formats'],
-                use_cleaner=conversion_form.cleaned_data['use_cleaner'])
+                use_cleaner=conversion_form.cleaned_data['use_cleaner'], preserve_filename=True)
         except ConversionError as error:
             conversion_form.add_error(None, str(error))
         except (BadZipFile, XMLSyntaxError, InvalidXmlError, KeyError, ValueError, OSError):
@@ -77,7 +77,7 @@ def programs(request):
             conversion_form.add_error(None, 'Konwersja nie powiodła się. Skontaktuj się z administratorem.')
         else:
             response = FileResponse(output, as_attachment=True,
-                filename=Path(upload.name).stem[:120] + '_konwersja.' + extension,
+                filename=conversion_filename(upload.name, extension),
                 content_type=mime)
             if getattr(output, 'conversion_warnings', []):
                 messages.warning(request, 'Konwersja zgłosiła uproszczenia dokumentu. W paczce ZIP szczegóły są w pliku Uwagi_konwersji.txt; sprawdź plik wynikowy.')
@@ -97,7 +97,7 @@ def programs(request):
             except signing.BadSignature:
                 pass
         try:
-            output, _, _ = convert_document(upload, [], include_docx=True, rebuild=True, normalize=False, allow_rebuild_omissions=accepted, use_cleaner=True, cleaner_rules=form.cleaned_data['rules'])
+            output, _, _ = convert_document(upload, [], include_docx=True, rebuild=True, normalize=form.cleaned_data['normalize_formatting'], justify=form.cleaned_data['normalize_formatting'], allow_rebuild_omissions=accepted, use_cleaner=True, cleaner_rules=form.cleaned_data['rules'])
         except RebuildConfirmationRequired as error:
             rebuild_warning = str(error)
             rebuild_token = signing.dumps({'user': request.user.pk, 'digest': digest}, salt='rebuild-omissions')
@@ -119,7 +119,7 @@ def programs(request):
     if action == 'clean' and form.is_valid() and not form.cleaned_data['rebuild']:
         upload = form.cleaned_data["document"]
         try:
-            output, _, _ = convert_document(upload, [], include_docx=True, use_cleaner=True, normalize=False, cleaner_rules=form.cleaned_data["rules"])
+            output, _, _ = convert_document(upload, [], include_docx=True, use_cleaner=True, normalize=form.cleaned_data["normalize_formatting"], justify=form.cleaned_data["normalize_formatting"], cleaner_rules=form.cleaned_data["rules"])
         except ConversionError as error:
             form.add_error("document", str(error))
         except (BadZipFile, XMLSyntaxError, InvalidXmlError, KeyError, ValueError, OSError):

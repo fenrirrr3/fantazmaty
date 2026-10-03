@@ -2,12 +2,14 @@
 
 {% block title %}Ilustracje | Fantazmaty CMS{% endblock %}
 
+{% load static %}
+{% block extra_css %}{{ block.super }}<link rel="stylesheet" href="{% static 'core/illustrations.css' %}">{% endblock %}
 {% block content %}
     <header class="page-header">
         <h1 class="page-title">Ilustracje</h1>
         <p class="page-description">
             Teksty z niewydanych antologii wymagających ilustracji,
-            przydziały ilustratorów i stan prac.
+            przydziały ilustratorów i stan prac. Kliknij tytuł, aby zapisać status, link lub fragment.
         </p>
     </header>
 
@@ -89,6 +91,7 @@
                             <th scope="col" {% if can_view_authors %}data-sort-key="authors"{% endif %}>Autorzy</th>
                         
 
+                        <th scope="col">Gatunek, tagi</th>
                         <th scope="col">Ilustrator</th>
                         <th scope="col" data-sort-key="status">Status</th>
                         <th scope="col">Data przypisania</th>
@@ -107,7 +110,7 @@
 
                             <td data-copy-value="{{ illustration.text.title }}" class="sticky-title">
                                 <a
-                                    href="{% url 'core:assigned_text_detail' illustration.text.pk %}"
+                                    href="{% url 'illustrations:illustration_detail' illustration.pk %}"
                                     class="text-title-link"
                                 >
                                     <strong>{{ illustration.text.title }}</strong>
@@ -140,6 +143,7 @@
                                 </td>
                             
 
+                            <td>{{ illustration.genre_display|default:"Brak danych" }}</td>
                             <td>
                                 {% if illustration.illustrator %}
                                     {% if illustration.illustrator.is_active %}
@@ -171,8 +175,8 @@
                             </td>
 
                             <td>
-                                {% if illustration.trigger_warnings %}
-                                    {{ illustration.trigger_warnings|linebreaksbr }}
+                                {% if illustration.warnings_display %}
+                                    {{ illustration.warnings_display|linebreaksbr }}
                                 {% else %}
                                     <span class="muted-text">Nie dodano</span>
                                 {% endif %}
@@ -209,7 +213,7 @@
                                             <span class="dropdown-arrow" aria-hidden="true">▾</span>
                                         </summary>
 
-                                        <div class="reviewer-opinion-content">
+                                        <div class="reviewer-opinion-content illustration-excerpt-preview">
                                             {{ illustration.illustrated_excerpt|linebreaksbr }}
                                         </div>
                                     </details>
@@ -220,7 +224,7 @@
                         </tr>
                     {% empty %}
                         <tr>
-                            <td colspan="9">
+                            <td colspan="10">
                                 <div class="empty-results-panel">
                                     <strong>Brak ilustracji spełniających kryteria.</strong>
                                     <p>

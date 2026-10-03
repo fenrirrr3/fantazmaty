@@ -370,7 +370,7 @@ def _package_messages(messages, clean=True, convert=True, rebuild=True, allow_re
         if rebuild and not allow_rebuild_omissions:
             for message in messages:
                 for name, data in message['files']:
-                    form = OdkurzaczForm({'rules': []}, {'document': SimpleUploadedFile(name, data)})
+                    form = OdkurzaczForm({'rules': []}, {'document': SimpleUploadedFile(name, data)}, max_document_bytes=10 * 1024 * 1024)
                     if not form.is_valid():
                         raise MailboxError(f'Nieprawidłowy DOCX: {name}. Wyłącz przetwarzanie, aby pobrać oryginał.')
                     try:
@@ -394,7 +394,7 @@ def _package_messages(messages, clean=True, convert=True, rebuild=True, allow_re
                     if (clean or convert or rebuild) and not is_docx:
                         raise MailboxError(f'„{name}”: Odkurzacz i konwerter obsługują DOCX. Wyłącz Odkurzacz, konwersję i przebudowę, aby pobrać oryginały.')
                     if is_docx and (clean or convert or rebuild):
-                        form = OdkurzaczForm({'rules': []}, {'document': SimpleUploadedFile(name, data)})
+                        form = OdkurzaczForm({'rules': []}, {'document': SimpleUploadedFile(name, data)}, max_document_bytes=10 * 1024 * 1024)
                         if not form.is_valid():
                             raise MailboxError(f'Nieprawidłowy DOCX: {name}. ' + ' '.join(str(e) for errors in form.errors.values() for e in errors))
                     if not convert and not rebuild:

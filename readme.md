@@ -421,3 +421,48 @@ przyjmowaniu i imporcie zgłoszeń. Stary adres zakładki otwiera nową listę.
 Wdrożenie na zastosowaną v3: nadpisz pliki paczki i uruchom ponownie proces
 aplikacji. Brak nowych migracji, zależności, zmienionych zasobów statycznych
 i dodatkowych plików do usunięcia.
+
+### Programy i ilustracje (v5)
+
+Programy: Odkurzacz, konwerter i kolorowanie powtórzeń przyjmują DOCX do
+2 MB (2 097 152 bajtów). Konwerter zachowuje nazwę wejściową, zmieniając
+rozszerzenie na PDF, EPUB albo ZIP; pliki wewnątrz ZIP również zachowują
+nazwę dokumentu. Ścieżki i znaki sterujące są usuwane z nazwy.
+Limit importu ze skrzynki pozostaje dotychczasowy (10 MB).
+
+Odkurzacz ma domyślnie wyłączony przełącznik ujednolicenia formatowania,
+korzystający z tego samego mechanizmu co pobieranie ze skrzynki:
+Times New Roman 12 pkt, interlinia 1,5, wcięcie 1,25 cm, brak odstępów
+przed i po akapicie, A4, marginesy 2,5 cm, justowanie z zachowaniem
+wyśrodkowanych akapitów. Działa także z przebudową DOCX.
+
+Antologie → Ilustracje pokazuje teksty antologii w przygotowaniu,
+oznaczonych jako ilustrowane. Tytuł prowadzi do formularza przypisania,
+statusu, osobno zapisywanego linku HTTP/HTTPS i ilustrowanego fragmentu.
+Pole fragmentu ma stałą wysokość i przewijanie. Nie ma wyboru z Dropboxa.
+Gatunek pochodzi z powiązanego zgłoszenia; gdy go brak, widnieje „Brak danych”.
+Ostrzeżenia pochodzą z tekstu, a przy pustym polu ze starszego rekordu ilustracji.
+
+Koordynatorzy zarządzają przydziałami. Ilustrator może zmieniać status,
+link i fragment własnej ilustracji. Zmiana wykonawcy ustawia dzisiejszą
+datę przypisania; poprawki bez zmiany osoby nie zerują daty. Rozbieżny
+status i wykonawca nie zapiszą się. Wygasły formularz lub zmieniony
+rekord zwraca konflikt zamiast nadpisywania danych.
+
+Migracja illustrations.0002_prepare_illustration_workspace uzupełnia
+wyłącznie brakujące rekordy jako „Nieprzypisane” dla tekstów spełniających
+warunki listy. Nie nadpisuje dotychczasowych ilustracji i nie importuje
+starych tabelek. Istniejące sygnały tworzą rekordy dla kolejnych tekstów.
+
+Wdrożenie na v4: skopiuj zawartość paczki do katalogu z manage.py,
+zachowując strukturę folderów, a następnie w aktywnym środowisku aplikacji:
+
+```bash
+python manage.py check &&
+python manage.py migrate --noinput &&
+python manage.py collectstatic --noinput &&
+python manage.py migrate --check
+```
+
+Na PythonAnywhere wykonaj potem Web → Reload. Brak nowych zależności
+i plików do usunięcia. Paczka obejmuje wyłącznie zmiany względem v4.
