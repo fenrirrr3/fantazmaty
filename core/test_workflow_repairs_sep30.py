@@ -62,7 +62,7 @@ class WorkflowRepairs(TestCase):
         self.stage('editing_control',is_completed=True,started_at=self.today,ended_at=self.today)
         self.assertEqual(state(),'Oczekuje')
         proof = self.stage('first_proofreading')
-        self.assertEqual(state(),'Oczekuje')
+        self.assertEqual(state(),'Zakończone')
         proof.started_at = self.today
         proof.save()
         self.assertEqual(state(),'Zakończone')

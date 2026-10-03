@@ -1,6 +1,6 @@
 """Selective repeats. All writes run under the parent Text lock, never rewrite history."""
 from django.core.exceptions import ValidationError, PermissionDenied
-from django.db.models import Max
+from django.db.models import Max, F
 from django.utils import timezone
 from workflow.models import WorkflowStage as S, WorkflowRoleAssignment as A, WorkflowRepetition
 from workflow.services import (STAGE_ROLES, RESTARTABLE_STAGE_TYPES, _locked_text_operation,
@@ -37,26 +37,10 @@ def previous_performer_id(text, role):
 
 
 def eligible_repeat_users(text, role):
-    from django.contrib.auth import get_user_model
     from django.db.models import Q
-    from people.models import Vacation
-    from workflow.services import ROLE_GROUPS
-    required = ROLE_GROUPS[role]
-    coordinator = (Q(person_profile__is_coordinator=True)
-                   | Q(person_profile__roles__name__iexact='Koordynator')
-                   | Q(person_profile__roles__name__istartswith='Koordynator ')
-                   | Q(groups__name__iexact='Koordynator')
-                   | Q(groups__name__istartswith='Koordynator '))
-    permitted = coordinator | Q(person_profile__roles__name__iexact=required) | Q(groups__name__iexact=required)
-    if role in (A.Role.PROOFREADER_2, A.Role.PROOFREADER_4):
-        permitted = Q(person_profile__roles__name__iexact='Koordynator korekty') | Q(groups__name__iexact='Koordynator korekty')
-    users = get_user_model().objects.filter(is_active=True).filter(
-        Q(is_superuser=True) | (Q(person_profile__is_active=True) & permitted))
-    if role == A.Role.STYLING:
-        users = users.filter(is_superuser=True)
-    leave = Vacation.objects.filter(start_date__lte=timezone.localdate()).filter(
-        Q(until_revoked=True) | Q(end_date__gt=timezone.now())).values('person__user_id')
-    users = users.exclude(pk__in=leave).exclude(pk=previous_performer_id(text, role))
+    from workflow.availability import eligible_role_users
+
+    users = eligible_role_users(role).exclude(pk=previous_performer_id(text, role))
     if role in (A.Role.PROOFREADER_2, A.Role.PROOFREADER_3):
         first_users = A.objects.filter(text=text, role=A.Role.PROOFREADER_1).filter(
             Q(stages__is_completed=True) | Q(stages__started_at__lte=timezone.localdate())
@@ -172,15 +156,41 @@ def claim_repeat(text, stage, user, started_at):
     return _start_stage(stage, started_at)
 
 
-def complete_repeat(stage, user, ended_at):
+def insert_repeat_continuation(stage, kind, *, released=False):
+    """Insert a coordinator-requested continuation without losing the chosen queue."""
+    run = stage.repetition
+    run.stages.filter(queue_position__gt=stage.queue_position).update(queue_position=F('queue_position') + 1)
+    assignment = A.objects.current_cycle().filter(text=stage.text, role=STAGE_ROLES[kind]).first()
+    number = assignment.execution_number if assignment else 1
+    iteration = (S.objects.filter(text=stage.text, workflow_cycle=stage.workflow_cycle,
+                                  stage_type=kind).aggregate(n=Max('iteration'))['n'] or 0) + 1
+    return S.objects.create(text=stage.text, workflow_cycle=stage.workflow_cycle,
+        stage_type=kind, iteration=iteration, execution_number=number, assignment=assignment,
+        repetition=run, queue_position=stage.queue_position + 1, is_released=released)
+
+
+def complete_repeat(stage, user, ended_at, *, send_to_proofreading=None):
     require_released(stage)
     if not user_can_complete_stage(stage, user):
         raise PermissionDenied('Nie możesz zakończyć tego wykonania etapu.')
+    from workflow.services import validate_editorial_decision
+    validate_editorial_decision(stage, send_to_proofreading)
     _finish_stage_record(stage, ended_at)
+    if stage.stage_type == S.StageType.EDITING_CONTROL:
+        stage.send_to_proofreading = send_to_proofreading
+        stage.save(update_fields=['send_to_proofreading'])
+        if not send_to_proofreading:
+            insert_repeat_continuation(stage, S.StageType.EDITING_CONTROL)
+            insert_repeat_continuation(stage, S.StageType.EDITING)
+        else:
+            following = stage.repetition.stages.filter(is_completed=False).order_by('queue_position').first()
+            if following is None or following.stage_type != S.StageType.FIRST_PROOFREADING:
+                insert_repeat_continuation(stage, S.StageType.FIRST_PROOFREADING)
     following = stage.repetition.stages.filter(is_completed=False).order_by('queue_position').first()
     if following:
         following.is_released = True
-        following.save(update_fields=['is_released'])
+        following.queued_at = ended_at
+        following.save(update_fields=['is_released', 'queued_at'])
     else:
         finish_repetition(stage, ended_at)
     return stage
@@ -216,7 +226,7 @@ def finish_repetition(stage, ended_at):
     if next_kind in EDITING_PHASE_TYPES:
         current_stage_queryset(stage.text).exclude(stage_type__in=EDITING_PHASE_TYPES).filter(
             is_completed=True).update(is_current=False, is_released=False)
-    next_stage = _create_pending_stage(stage.text, next_kind)
+    next_stage = _create_pending_stage(stage.text, next_kind, queued_at=ended_at)
     if next_stage.assignment_id and next_stage.execution_number != next_stage.assignment.execution_number:
         next_stage.execution_number = next_stage.assignment.execution_number
         next_stage.save(update_fields=['execution_number'])

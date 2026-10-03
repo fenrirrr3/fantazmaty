@@ -169,7 +169,8 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
             try:
                 set_stage_dates(stage.pk, request.user, form.cleaned_data['version'],
                     started_at=form.cleaned_data['started_at'], ended_at=form.cleaned_data['ended_at'],
-                    finish=form.cleaned_data.get('finish', False), next_stage=form.cleaned_data.get('next_stage'))
+                    finish=form.cleaned_data.get('finish', False), next_stage=form.cleaned_data.get('next_stage'),
+                    send_to_proofreading=form.cleaned_data.get('send_to_proofreading'))
             except ValidationError as exc:
                 form.add_error(None, forms.ValidationError(exc.messages))
             except PermissionDenied as exc:
@@ -301,7 +302,7 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
                 "fields": (
                     "started_at",
                     "ended_at",
-                    "is_completed", "imported_completed", "edit_dates_link",
+                    "is_completed", "imported_completed", "send_to_proofreading", "edit_dates_link",
                 ),
             },
         ),

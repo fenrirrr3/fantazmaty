@@ -68,13 +68,10 @@ MAX_DATABASE_ID = 9_223_372_036_854_775_807
 
 
 def _get_review(user, review_id):
-    queryset = Review.objects.visible_to(user).select_related("anthology")
+    queryset = Review.objects.accessible_to(user).select_related("anthology")
 
     if can_view_author_data(user) or can_view_archived_review_authors(user):
         queryset = queryset.select_related("author").prefetch_related("coauthors")
-    if not can_view_review_archive(user):
-        queryset = queryset.filter(old_reviews=False)
-
     return get_object_or_404(queryset, pk=review_id)
 
 

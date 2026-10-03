@@ -72,6 +72,9 @@ class StageDatesForm(forms.Form):
     def __init__(self, *args, stage, **kwargs):
         super().__init__(*args, **kwargs)
         self.stage = stage
+        if stage.stage_type == S.StageType.EDITING_CONTROL and not stage.is_completed:
+            from workflow.decision_forms import editorial_decision_field
+            self.fields['send_to_proofreading'] = editorial_decision_field(required=False)
         if (stage.is_completed or not stage.is_current or not stage.is_released
                 or stage.workflow_cycle != stage.text.current_workflow_cycle
                 or stage.stage_type not in {*STAGE_ROLES, S.StageType.READY_FOR_EDITING}):
@@ -87,6 +90,8 @@ class StageDatesForm(forms.Form):
     def clean(self):
         data = super().clean()
         if data.get('finish'):
+            if 'send_to_proofreading' in self.fields and data.get('send_to_proofreading') is None:
+                self.add_error('send_to_proofreading', 'Wybierz dalszą redakcję albo pierwszą korektę.')
             for field in ('started_at', 'ended_at'):
                 if not data.get(field):
                     self.add_error(field, 'Zakończenie etapu wymaga obu dat.')
@@ -100,7 +105,7 @@ class StageDatesForm(forms.Form):
 @transaction.atomic
 @track_workflow
 def set_stage_dates(stage_id, user, version, *, started_at=None, ended_at=None,
-                    finish=False, next_stage=None):
+                    finish=False, next_stage=None, send_to_proofreading=None):
     if not user.is_active or not user.is_superuser:
         raise PermissionDenied
     text_id = S.objects.values_list('text_id', flat=True).get(pk=stage_id)
@@ -163,6 +168,6 @@ def set_stage_dates(stage_id, user, version, *, started_at=None, ended_at=None,
         elif stage.stage_type == S.StageType.AUTHOR_EDITING and not stage.repetition_id:
             resume_editing(text, user, ended_at)
         else:
-            complete_stage(stage, user, ended_at)
+            complete_stage(stage, user, ended_at, send_to_proofreading=send_to_proofreading)
         stage.refresh_from_db()
     return stage

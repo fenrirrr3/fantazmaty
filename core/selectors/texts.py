@@ -5,6 +5,7 @@ from datetime import date
 
 from django.db.models import (
     Case,
+    Exists,
     F,
     IntegerField,
     Q,
@@ -177,6 +178,7 @@ def _stage_data(stage, text_data=None):
         workflow_cycle=stage.workflow_cycle,
         queue_position=stage.queue_position,
         imported_completed=stage.imported_completed,
+        send_to_proofreading=stage.send_to_proofreading,
         is_skipped=stage.is_skipped,
         execution_number=stage.execution_number,
         repetition_id=stage.repetition_id,
@@ -243,9 +245,11 @@ def _text_data(text, include_authors):
 
 
 def _prepared_texts(queryset, include_authors):
-    stages = WorkflowStage.objects.current_cycle().select_related("assignment__assigned_to__person_profile").filter(
+    from workflow.read_queries import completed_verification_history
+
+    stages = WorkflowStage.objects.current_cycle().select_related("assignment__assigned_to__person_profile", "repetition").filter(
         workflow_cycle=F("text__current_workflow_cycle"),
-    ).order_by("-pk")
+    ).annotate(_has_completed_verification=Exists(completed_verification_history())).order_by("-pk")
     assignments = (
         WorkflowRoleAssignment.objects.current_cycle().filter(
             workflow_cycle=F("text__current_workflow_cycle"),
@@ -281,9 +285,9 @@ def _terminal(stages):
     return any(stage.stage_type in TERMINAL_STAGES for stage in stages)
 
 
-def _current_stage(stages):
+def _current_stage(stages, *, prepared=False):
     from workflow.state import current_stage
-    return current_stage(stages)
+    return current_stage(stages, prepared=prepared)
 
 
 def _annotated_texts():
@@ -301,14 +305,15 @@ def _annotated_texts():
 
 def _text_row(text, include_authors):
     result = _text_data(text, include_authors)
-    current = _current_stage(text.selector_stages)
+    stages = operational_stages(text.selector_stages)
+    current = _current_stage(stages, prepared=True)
     current_data = _stage_data(current)
     result.update(
         current_stage_type=current.stage_type if current else None,
         current_status=current_data,
         current_stages=[
             _stage_data(stage)
-            for stage in operational_stages(text.selector_stages)
+            for stage in stages
             if _is_open(stage)
         ],
         current_status_started_at=current.started_at if current else None,

@@ -138,39 +138,6 @@ def duplicate_candidates(title, anthology_id, author_ids, *, exclude_text_id=Non
     return candidates
 
 
-def all_duplicates(anthology_id=None):
-    from itertools import combinations
-    from authors.models import Author
-    groups = defaultdict(dict)
-    scope = {'anthology_id': anthology_id} if anthology_id is not None else {}
-    review_emails = list(Review.objects.filter(**scope).exclude(email='').values_list('email', flat=True))
-    from django.db.models.functions import Lower
-    author_emails = {a.email.casefold(): a.pk for a in Author.objects.annotate(_email=Lower('email')).filter(_email__in=[email.lower() for email in review_emails]) if a.email}
-    for text in Text.objects.filter(**scope).prefetch_related('authors'):
-        item = {'id': ('text',text.pk), 'title':text.title, 'folded':folded(text.title), 'copy':None, 'url':reverse('core:assigned_text_detail',args=[text.pk])}
-        for author in text.authors.all():groups[(text.anthology_id,('author',author.pk))][item['id']] = item
-    for review in Review.objects.filter(**scope).prefetch_related('coauthors'):
-        identities = {('author', a.pk) for a in review.coauthors.all()}
-        if review.author_id:identities.add(('author',review.author_id))
-        if review.email:
-            email = review.email.casefold()
-            identities.add(('author',author_emails[email]) if email in author_emails else ('email',email))
-        item = {'id': ('review',review.pk), 'title':review.title, 'folded':folded(review.title), 'copy':review.copied_text_id, 'url':reverse('core:assigned_review_detail',args=[review.pk])}
-        for identity in identities:groups[(review.anthology_id,identity)][item['id']] = item
-    rows=[];seen=set()
-    for group in groups.values():
-        for left,right in combinations(group.values(),2):
-            pair=tuple(sorted((left['id'],right['id'])))
-            if pair in seen:continue
-            seen.add(pair)
-            if left['copy'] and right['id']==('text',left['copy']) or right['copy'] and left['id']==('text',right['copy']):continue
-            matcher = SequenceMatcher(None, left['folded'], right['folded'])
-            if left['folded'] and matcher.real_quick_ratio() >= 0.88 and matcher.quick_ratio() >= 0.88 and matcher.ratio() >= 0.88:
-                row=issue('Możliwy duplikat',f"{left['title']} ↔ {right['title']}",right['url'])
-                row['source_url']=left['url'];rows.append(row)
-    return rows
-
-
 def anthology_checklist(anthology):
     rows=[]
     texts=list(Text.objects.filter(anthology=anthology).prefetch_related(

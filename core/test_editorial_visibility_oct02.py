@@ -51,7 +51,7 @@ class EditorialVisibilityTests(WorkflowTestDataMixin, TestCase):
         self.assertEqual(len(forms), 1)
         return forms[0]
 
-    def test_editor_stays_in_progress_through_verifications_and_control_until_proofreading_starts(self):
+    def test_editor_finishes_on_approved_handoff_to_proofreading(self):
         self.begin_editing()
         send_to_first_verification(self.text, self.editor, self.today)
         self.assertIn(self.text.pk, self.my_ids())
@@ -68,12 +68,12 @@ class EditorialVisibilityTests(WorkflowTestDataMixin, TestCase):
         finish_editing_to_coordinator(self.text, self.editor, self.today)
         control = claim_stage(self.text, 'editing_control', self.coordinator)
         self.assertIn(self.text.pk, self.my_ids())
-        complete_stage(control, self.coordinator, self.today)
-        self.assertIn(self.text.pk, self.my_ids())
-        self.assertFalse(self.editor_work().work_completed)
+        complete_stage(control, self.coordinator, self.today, send_to_proofreading=True)
+        self.assertNotIn(self.text.pk, self.my_ids())
+        self.assertTrue(self.editor_work().work_completed)
         proof = claim_stage(self.text, 'first_proofreading', self.proofreader,
                             started_at=self.today + timedelta(days=1))
-        self.assertIn(self.text.pk, self.my_ids())
+        self.assertNotIn(self.text.pk, self.my_ids())
         S.objects.filter(pk=proof.pk).update(started_at=self.today)
         self.assertNotIn(self.text.pk, self.my_ids())
         self.assertIn(self.text.pk, self.my_ids(view='all'))
@@ -207,8 +207,9 @@ class EditorialVisibilityTests(WorkflowTestDataMixin, TestCase):
         editing = self.begin_editing()
         S.objects.filter(pk=editing.pk).update(ended_at=self.today, is_completed=True)
         S.objects.filter(text=self.text, stage_type='first_verification').delete()
+        S.objects.create(text=self.text, stage_type='editing_control', started_at=self.today, ended_at=self.today, is_completed=True, send_to_proofreading=True)
         proof = S.objects.create(text=self.text, stage_type='first_proofreading')
-        self.assertIn(self.text.pk, self.my_ids())
+        self.assertNotIn(self.text.pk, self.my_ids())
         response = self.detail(self.proofreader)
         form = self.claim_form(response, proof)
         data = {node.get('name'): node.get('value', '') for node in form.xpath('.//input[@name]')}

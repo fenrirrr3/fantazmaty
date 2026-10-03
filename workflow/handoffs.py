@@ -1,6 +1,7 @@
 from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
 from django.db.models import Max
+from django.utils import timezone
 from core.permissions import require_superuser
 from core.services.texts import _require_eligible_assignee, _require_distinct_verifiers
 from workflow.models import WorkflowStage as S, WorkflowRoleAssignment as A, WorkflowHandoff
@@ -35,6 +36,7 @@ def handoff_stage(text, user, *, stage_id, assigned_to_id, expected_assignment_i
     WorkflowHandoff.objects.create(text=text,stage=stage,previous_assignment=old,new_assignment=new,actor=user,original_started_at=stage.started_at,reason=reason)
     # Completed work stays with the previous person; unfinished returns follow the new assignment.
     pending = S.objects.current_cycle().filter(text=text, assignment=old, is_completed=False)
+    pending.update(waiting_reset_at=timezone.localdate())
     # Waiting for the author continues regardless of who takes over editing.
     pending.filter(stage_type=S.StageType.AUTHOR_EDITING).update(assignment=new)
     pending.exclude(stage_type=S.StageType.AUTHOR_EDITING).update(assignment=new, started_at=None)
@@ -44,31 +46,14 @@ def handoff_stage(text, user, *, stage_id, assigned_to_id, expected_assignment_i
 def eligible_handoff_users(stage):
     from django.db.models import Q
     from django.utils import timezone
-    from people.models import Vacation
-    from workflow.services import ROLE_GROUPS
+    from workflow.availability import eligible_role_users
     users = get_user_model().objects.filter(is_active=True).order_by('last_name', 'first_name', 'pk')
     if (stage.is_completed or not stage.is_current or not stage.is_released
             or not stage.assignment_id or not stage.assignment.assigned_to_id):
         return users.none()
     role = stage.assignment.role
-    required = ROLE_GROUPS.get(role)
-    if not required:
-        return users.none()
-    coordinator = (Q(person_profile__is_coordinator=True)
-        | Q(person_profile__roles__name__iexact='Koordynator')
-        | Q(person_profile__roles__name__istartswith='Koordynator ')
-        | Q(groups__name__iexact='Koordynator')
-        | Q(groups__name__istartswith='Koordynator '))
-    permitted = coordinator | Q(person_profile__roles__name__iexact=required) | Q(groups__name__iexact=required)
-    if role in (A.Role.PROOFREADER_2, A.Role.PROOFREADER_4):
-        permitted = Q(person_profile__roles__name__iexact='Koordynator korekty') | Q(groups__name__iexact='Koordynator korekty')
-    users = users.filter(Q(is_superuser=True) | (Q(person_profile__is_active=True) & permitted))
-    if role == A.Role.STYLING:
-        users = users.filter(is_superuser=True)
     now = timezone.now()
-    on_leave = Vacation.objects.filter(person__user__isnull=False, start_date__lte=timezone.localdate(now)).filter(
-        Q(until_revoked=True) | Q(end_date__gt=now)).values('person__user_id')
-    users = users.exclude(pk__in=on_leave).exclude(pk=stage.assignment.assigned_to_id)
+    users = eligible_role_users(role).exclude(pk=stage.assignment.assigned_to_id)
     if role in (A.Role.PROOFREADER_2, A.Role.PROOFREADER_3):
         first = A.objects.filter(text=stage.text, role=A.Role.PROOFREADER_1).filter(
             Q(stages__is_completed=True) | Q(stages__started_at__lte=timezone.localdate(now)) | Q(handoffs_from__isnull=False))

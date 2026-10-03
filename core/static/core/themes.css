@@ -59,7 +59,7 @@
 
 :root[data-theme="dark"] :is(p, label, input, textarea, select, .detail-link, .text-title-link) { color: #FFFFFF; }
 
-:root[data-theme="dark"] :is(.sidebar-link, .navigation-link, .dropdown-link, .brand-text small) { color: #FFFFFF; }
+:root[data-theme="dark"] :is(.sidebar-link, .navigation-link, .brand-text small) { color: #FFFFFF; }
 
 /* Reviewer and coordinator palettes. */
 :root { --reviewer-bg:#ccfbf1; --reviewer-fg:#115e59; --coordinator-bg:#ffedd5; --coordinator-fg:#9a3412; }

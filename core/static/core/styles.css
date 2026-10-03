@@ -262,8 +262,7 @@ pre {
     gap: 4px;
 }
 
-.navigation-link,
-.dropdown-link {
+.navigation-link {
     display: block;
     padding: 10px 12px;
     border-radius: var(--radius-small);
@@ -272,16 +271,13 @@ pre {
 }
 
 .navigation-link:hover,
-.dropdown-link:hover,
 .navigation-link.is-active,
-.navigation-link[aria-current="page"],
-.dropdown-link[aria-current="page"] {
+.navigation-link[aria-current="page"] {
     background: #293e56;
     color: #ffffff;
 }
 
-.navigation-link[aria-current="page"],
-.dropdown-link[aria-current="page"] {
+.navigation-link[aria-current="page"] {
     box-shadow: inset 3px 0 #80baff;
 }
 
@@ -299,12 +295,7 @@ pre {
     display: none;
 }
 
-.dropdown-toggle {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-}
+
 
 .dropdown-arrow {
     flex-shrink: 0;
@@ -316,19 +307,7 @@ details[open] > summary .dropdown-arrow {
     transform: rotate(180deg);
 }
 
-.dropdown-menu {
-    position: absolute;
-    top: calc(100% + 8px);
-    left: 0;
-    z-index: 110;
-    min-width: 220px;
-    max-width: min(340px, calc(100vw - 32px));
-    padding: 8px;
-    border: 1px solid #35495f;
-    border-radius: var(--radius);
-    background: var(--header);
-    box-shadow: var(--shadow-overlay);
-}
+
 
 .admin-button {
     padding: 9px 14px;
@@ -528,8 +507,7 @@ details[open] > summary .dropdown-arrow {
     padding: var(--card-padding);
 }
 
-.details-card > h2,
-.compact-details-card > h2 {
+.details-card > h2 {
     margin: 0 0 18px;
 }
 
@@ -600,7 +578,6 @@ details[open] > summary .dropdown-arrow {
 .accept-review-button,
 .reject-review-button,
 .vacation-end-button,
-.author-dialog-button,
 .review-open-button {
     display: inline-flex;
     align-items: center;
@@ -636,16 +613,14 @@ details[open] > summary .dropdown-arrow {
 }
 
 .secondary-button,
-.restart-workflow-button,
-.author-dialog-button {
+.restart-workflow-button {
     border-color: var(--border-strong);
     background: var(--surface);
     color: var(--text);
 }
 
 .secondary-button:hover,
-.restart-workflow-button:hover,
-.author-dialog-button:hover {
+.restart-workflow-button:hover {
     border-color: var(--primary);
     background: var(--primary-light);
     color: var(--primary-dark);
@@ -838,8 +813,7 @@ legend {
 .review-import-actions,
 .review-decision-actions,
 .workflow-action-buttons,
-.vacation-actions,
-.author-dialog-actions {
+.vacation-actions {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -1193,8 +1167,7 @@ a[href^="mailto:"] {
 }
 
 .stage-status.completed,
-.contract-confirmed,
-.copy-review-success {
+.contract-confirmed {
     background: var(--success-light);
     color: var(--success);
 }
@@ -1288,7 +1261,6 @@ a[href^="mailto:"] {
 
 /* Szczegóły tekstów, recenzje i notatki. */
 .details-grid,
-.compact-details-grid,
 .reviewer-opinion-meta {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
@@ -1436,8 +1408,7 @@ a[href^="mailto:"] {
 
 .complete-stage-form,
 .take-stage-form,
-.reviewer-action-form,
-.copy-review-form {
+.reviewer-action-form {
     display: flex;
     flex-wrap: wrap;
     align-items: flex-end;
@@ -1523,13 +1494,8 @@ a[href^="mailto:"] {
     min-height: 150px;
 }
 
-.copy-review-panel {
-    margin-top: 18px;
-    padding-top: 18px;
-    border-top: 1px solid var(--border);
-}
 
-.copy-review-success,
+
 .contract-confirmed {
     padding: 10px 12px;
     border-radius: var(--radius-small);
@@ -1994,8 +1960,7 @@ a[href^="mailto:"] {
     font-weight: 800;
 }
 
-dialog,
-.author-dialog {
+dialog {
     width: min(560px, calc(100vw - 32px));
     max-height: calc(100dvh - 40px);
     padding: 24px;
@@ -2011,31 +1976,13 @@ dialog::backdrop {
     background: rgb(15 26 40 / 48%);
 }
 
-.author-dialog-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    margin-bottom: 20px;
-}
 
-.author-dialog-header h2 {
-    margin: 0;
-}
 
-.dialog-close-button {
-    min-width: 36px;
-    min-height: 36px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-small);
-    background: var(--surface);
-    color: var(--muted);
-}
 
-.author-dialog-form {
-    display: grid;
-    gap: 16px;
-}
+
+
+
+
 
 .audiobook-card {
     max-width: 1200px;
@@ -2109,15 +2056,7 @@ dialog::backdrop {
         width: 100%;
     }
 
-    .dropdown-menu {
-        position: static;
-        min-width: 0;
-        max-width: none;
-        margin-top: 4px;
-        border: 0;
-        background: #203247;
-        box-shadow: none;
-    }
+    
 
     .user-name {
         margin: 10px 12px;
@@ -2227,25 +2166,22 @@ dialog::backdrop {
     }
 
     .global-search-form,
-    .complete-stage-form,
-    .workflow-action-buttons,
-    .author-dialog-actions,
-    .vacation-actions {
+.complete-stage-form,
+.workflow-action-buttons,
+.vacation-actions {
         align-items: stretch;
         flex-direction: column;
     }
 
     .workflow-action-buttons form,
-    .workflow-action-buttons button,
-    .author-dialog-actions > *,
-    .vacation-actions > *,
-    .stage-date-input {
+.workflow-action-buttons button,
+.vacation-actions > *,
+.stage-date-input {
         width: 100%;
     }
 
     .details-grid,
-    .compact-details-grid,
-    .reviewer-opinion-meta {
+.reviewer-opinion-meta {
         grid-template-columns: minmax(0, 1fr);
     }
 

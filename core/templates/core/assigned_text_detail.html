@@ -143,6 +143,7 @@
                                 <span class="workflow-stage-badge">
                                     {{ stage.get_stage_type_display }}
                                 </span>
+                                {% include "core/includes/editorial_decision_result.html" %}
                             </td>
                             <td>
                                 {% if stage.assigned_user %}
@@ -225,6 +226,13 @@
                                     class="complete-stage-form"
                                 >
                                     {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
+                                    {% if stage.stage_type == "editing_control" %}
+                                    <fieldset class="editorial-decision">
+                                        <legend>Co dalej z tekstem?</legend>
+                                        <label><input type="radio" name="send_to_proofreading" value="true" required> Przekaż do pierwszej korekty</label>
+                                        <label><input type="radio" name="send_to_proofreading" value="false" required> Potrzebna dalsza redakcja</label>
+                                    </fieldset>
+                                    {% endif %}
                                     <button type="submit" class="complete-stage-button">
                                         Zakończ etap
                                     </button>
@@ -625,6 +633,7 @@
                                     {% else %}
                                         {{ stage.get_stage_type_display }}
                                     {% endif %}
+                                    {% include "core/includes/editorial_decision_result.html" %}
                                     {% if stage.assigned_user %}
                                         <div class="muted-text">{{ stage.assigned_user.display_name }}</div>
                                     {% endif %}

@@ -17,11 +17,16 @@ def current_stages():
     return S.objects.current_cycle().filter(text_id=OuterRef('text_id'), workflow_cycle=OuterRef('workflow_cycle'))
 
 
-def exclude_obsolete_verification_placeholders(query):
-    completed = S.objects.filter(
+def completed_verification_history():
+    """Correlated history, including non-current executions in the same cycle."""
+    return S.objects.filter(
         text_id=OuterRef('text_id'), workflow_cycle=OuterRef('workflow_cycle'),
         stage_type=OuterRef('stage_type'), is_completed=True, is_skipped=False,
     ).exclude(repetition__canceled_at__isnull=False)
+
+
+def exclude_obsolete_verification_placeholders(query):
+    completed = completed_verification_history()
     return query.exclude(
         Q(is_current=True, repetition__isnull=True, is_completed=False,
           stage_type__in=('first_verification', 'second_verification'),
@@ -70,7 +75,7 @@ def reserved_assignments(user, today):
 
 
 def editorial_approval(stages, today):
-    """Editing ends for its owner on handoff to first proofreading."""
+    """Editing ends after completed coordinator control and handoff to K1."""
     proofreading = stages.filter(
         stage_type=S.StageType.FIRST_PROOFREADING, is_released=True,
         is_skipped=False,
@@ -84,7 +89,15 @@ def editorial_approval(stages, today):
     # Preserve already closed imported texts whose historical dates are unknown.
     imported_ready = (Exists(stages.filter(stage_type=S.StageType.READY))
         & Exists(stages.filter(stage_type=S.StageType.EDITING, imported_completed=True, is_completed=True)))
-    return (Exists(proofreading) & ~Exists(editorial_repeat)) | imported_ready
+    legacy_approval = (Exists(proofreading) & ~Exists(editorial_repeat)) | imported_ready
+    # Existing Ready texts keep their classification even with incomplete history.
+    ready = Exists(stages.filter(stage_type=S.StageType.READY))
+    control = stages.filter(stage_type=S.StageType.EDITING_CONTROL, is_completed=True,
+                            is_skipped=False).exclude(send_to_proofreading=False)
+    returned_to_editor = stages.filter(stage_type=S.StageType.EDITING, is_completed=False,
+                                       ended_at__isnull=True, is_released=True)
+    return ((ready & legacy_approval) | (~ready & Exists(proofreading)
+            & Exists(control) & ~Exists(editorial_repeat) & ~Exists(returned_to_editor)))
 
 
 def annotate_my_work(queryset, user, today):

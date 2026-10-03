@@ -2,6 +2,34 @@
 from core.permissions import is_team_member, is_coordinator, has_role
 from workflow.models import WorkflowRoleAssignment as A
 
+
+def eligible_role_users(role):
+    """Candidates for a new assignment, using the same profile roles as writes."""
+    from django.contrib.auth import get_user_model
+    from django.db.models import Q
+    from django.utils import timezone
+    from people.models import Vacation
+    from workflow.services import ROLE_GROUPS
+
+    users = get_user_model().objects.filter(is_active=True)
+    required = ROLE_GROUPS.get(role)
+    if not required:
+        return users.none()
+    coordinator = (Q(person_profile__roles__name__iexact='Koordynator')
+                   | Q(person_profile__roles__name__istartswith='Koordynator '))
+    permitted = coordinator | Q(person_profile__roles__name__iexact=required)
+    if role in (A.Role.PROOFREADER_2, A.Role.PROOFREADER_4):
+        permitted = Q(person_profile__roles__name__iexact='Koordynator korekty')
+    users = users.filter(Q(is_superuser=True) | (Q(person_profile__is_active=True) & permitted))
+    if role == A.Role.STYLING:
+        users = users.filter(is_superuser=True)
+    now = timezone.now()
+    leave = Vacation.objects.filter(
+        person__user__isnull=False, start_date__lte=timezone.localdate(now),
+    ).filter(Q(until_revoked=True) | Q(end_date__gt=now)).values('person__user_id')
+    return users.exclude(pk__in=leave).distinct().order_by('last_name', 'first_name', 'pk')
+
+
 def claim_access(user):
     from people.leave_access import is_on_leave
     if is_on_leave(user):

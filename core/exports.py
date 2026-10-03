@@ -10,7 +10,7 @@ from django.http import HttpResponse
 from django.utils import timezone
 from django.utils.http import content_disposition_header
 
-from texts.models import Review, Text
+from texts.models import Review
 
 from .permissions import can_export_author_data
 
@@ -131,44 +131,6 @@ def csv_response(*, user, headers, rows, filename="eksport.csv"):
         writer.writerow(safe_csv_value(value) for value in row)
 
     return response
-
-
-def export_texts_csv(user, texts, filename="teksty.csv"):
-    """Eksportuje wyłącznie przekazany zestaw tekstów.
-
-    Zachowuje istniejący układ kolumn i zastosowane wcześniej filtry.
-    """
-    _require_export_access(user)
-
-    if isinstance(texts, QuerySet):
-        if texts.model is not Text:
-            raise TypeError("Oczekiwano QuerySetu modelu Text.")
-
-        texts = (
-            texts.select_related("anthology")
-            .prefetch_related("authors")
-        )
-
-        if not texts.ordered:
-            texts = texts.order_by("pk")
-
-        texts = texts.iterator(chunk_size=500)
-
-    def rows():
-        for text in texts:
-            yield (
-                text.anthology.title if text.anthology_id else "",
-                text.authors_display,
-                text.title,
-                text.length,
-            )
-
-    return csv_response(
-        user=user,
-        headers=("Antologia", "Autorzy", "Tytuł", "Długość"),
-        rows=rows(),
-        filename=filename,
-    )
 
 
 def export_reviews_csv(user, reviews, filename="recenzje.csv"):

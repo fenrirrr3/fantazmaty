@@ -93,6 +93,13 @@ class StatusSortingTests(TestCase):
             return WorkflowEvent.objects.create(text=text,title=text.title,actor=user,actor_name='A',previous_status=previous,next_status=next_,channel='')
         first=event(one,'Redakcja','Weryfikacja')
         second=event(two,'Redakcja','Korekta')
+        # Consecutive writes may share a clock tick, particularly on Windows.
+        from datetime import timedelta
+        from django.utils import timezone
+        first.created_at = timezone.now() - timedelta(minutes=2)
+        second.created_at = first.created_at + timedelta(minutes=1)
+        WorkflowEvent.objects.filter(pk=first.pk).update(created_at=first.created_at)
+        WorkflowEvent.objects.filter(pk=second.pk).update(created_at=second.created_at)
         event(one,'Weryfikacja','Weryfikacja')
         for direction,expected in [('-',[two.pk,one.pk,missing.pk]),('',[one.pk,two.pk,missing.pk])]:
             request=RequestFactory().get('/',{'sort':direction+'last_status_change'})

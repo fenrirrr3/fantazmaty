@@ -15,7 +15,6 @@ from docx.shared import RGBColor
 from docx.text.run import Run
 from docx.enum.text import WD_COLOR_INDEX
 
-SPLIT_RE = re.compile(r'(\W+)')
 WINDOW_SIZE = 35
 MIN_WORD_LENGTH = 4
 MODEL_NAME = 'pl_core_news_sm'
@@ -46,10 +45,6 @@ def get_lemma(word: str) -> str:
     return _get_lemma_lower(word.lower())
 
 
-def extract_word_tokens(text: str):
-    return SPLIT_RE.split(text)
-
-
 def dark_rgb() -> RGBColor:
     return RGBColor(*(random.randint(0, 150) for _ in range(3)))
 
@@ -73,14 +68,6 @@ class Token:
     color: Optional[RGBColor] = None
     highlight: Optional[int] = None
     ignored: bool = False
-
-
-def _fill_lemmas(words, progress=None):
-    lemmas = _lemma_map(token.text for token in words)
-    for token in words:
-        token.lemma = lemmas[token.text.lower()]
-    if progress is not None:
-        progress.update(len(lemmas))
 
 
 def _find_repeat_groups(words, progress=None, window_size=WINDOW_SIZE,
@@ -394,12 +381,6 @@ def _apply_layout_marks(layout, marks):
         _apply_run_colors(run, tokens)
 
 
-def _mark_paragraph(para, marks):
-    ranges = [(start, end, None, MARK_STYLES[kind][1], MARK_STYLES[kind][0])
-              for start, end, kind in marks]
-    _apply_layout_marks(_paragraph_layout(para), ranges)
-
-
 def _extra_checks(paragraphs, lemmas, ignored, tracked, options, status_callback=None,
                   layouts=None, apply_marks=True):
     checks = {**CHECK_DEFAULTS, **options}
@@ -457,7 +438,6 @@ def _extra_checks(paragraphs, lemmas, ignored, tracked, options, status_callback
             _apply_layout_marks(layout, converted)
         return report
     return report, marks
-
 
 
 def color_document(source, *, window_size=35, min_word_length=4,

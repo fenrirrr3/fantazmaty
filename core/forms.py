@@ -68,6 +68,9 @@ class CompleteStageForm(forms.Form):
     def __init__(self, *args, stage=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.stage = stage
+        if stage is not None and stage.stage_type == 'editing_control':
+            from workflow.decision_forms import editorial_decision_field
+            self.fields['send_to_proofreading'] = editorial_decision_field()
 
         if stage is not None and stage.started_at:
             self.fields["ended_at"].widget.attrs["min"] = (

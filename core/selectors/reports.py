@@ -520,21 +520,12 @@ def _cascade_sql(context, base, project, filters, people_key, workflow=False, st
 
 
 def _inactivity_stages(today, active_days, waiting_days, mode, selected_stages, include_authors):
+    from workflow.read_queries import exclude_obsolete_verification_placeholders
+
     terminal_stage = WorkflowStage.objects.current_cycle().filter(
         text_id=OuterRef("text_id"),
         workflow_cycle=OuterRef("workflow_cycle"),
         stage_type__in=TERMINAL_STAGES,
-    )
-    latest_completion = (
-        WorkflowStage.objects.current_cycle().filter(
-            text_id=OuterRef("text_id"),
-            workflow_cycle=OuterRef("workflow_cycle"),
-            is_completed=True,
-            ended_at__isnull=False,
-            ended_at__lte=today,
-        )
-        .order_by("-ended_at", "-pk")
-        .values("ended_at")[:1]
     )
 
     stages = (
@@ -546,12 +537,14 @@ def _inactivity_stages(today, active_days, waiting_days, mode, selected_stages, 
         )
         .annotate(
             report_terminal=Exists(terminal_stage),
-            report_waiting_since=Coalesce('queued_at', Subquery(latest_completion)),
         )
         .filter(report_terminal=False)
         .select_related("text", "text__anthology")
         .order_by("text__title", "stage_type", "pk")
     )
+    stages = exclude_obsolete_verification_placeholders(stages)
+    from workflow.waiting import annotate_inactivity_clocks
+    stages = annotate_inactivity_clocks(stages, today)
     if selected_stages:
         stages = stages.filter(stage_type__in=selected_stages)
     if include_authors:
@@ -560,7 +553,7 @@ def _inactivity_stages(today, active_days, waiting_days, mode, selected_stages, 
     active_limit = today - timedelta(days=active_days)
     waiting_limit = today - timedelta(days=waiting_days)
 
-    active_condition = Q(started_at__lte=active_limit)
+    active_condition = Q(started_at__lte=today, report_active_since__lte=active_limit)
     waiting_condition = Q(started_at__isnull=True) & (
         Q(report_waiting_since__lte=waiting_limit) | Q(report_waiting_since__isnull=True))
 
@@ -593,7 +586,7 @@ def _inactivity_rows(stages, query, include_authors, today):
 
         inactivity_type = "active" if stage.started_at is not None else "waiting"
         since = (
-            stage.started_at
+            stage.report_active_since
             if inactivity_type == "active"
             else stage.report_waiting_since
         )
@@ -626,7 +619,7 @@ def _inactivity_rows(stages, query, include_authors, today):
                 "authors": authors,
                 "inactivity_type": inactivity_type,
                 "since": since,
-                "days": (today - since).days if since is not None else None,
+                "days": max(0, (today - since).days) if since is not None else None,
             }
         )
 

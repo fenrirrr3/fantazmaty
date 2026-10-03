@@ -170,6 +170,7 @@ def complete_workflow_stage(request, stage_id):
             stage=stage,
             user=request.user,
             ended_at=form.cleaned_data["ended_at"],
+            send_to_proofreading=form.cleaned_data.get("send_to_proofreading"),
         )
     except ValidationError as error:
         messages.error(request, " ".join(error.messages))

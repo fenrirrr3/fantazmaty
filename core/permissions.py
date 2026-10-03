@@ -156,16 +156,6 @@ def can_view_author_data(user):
     return is_superuser(user)
 
 
-def can_view_review_author(user, review=None):
-    # Uprawnienie nie zależy od statusu recenzji ani przydziału.
-    # Koordynator nie uzyskuje dostępu do tożsamości autora.
-    return can_view_author_data(user)
-
-
-def can_manage_authors(user):
-    return is_superuser(user)
-
-
 def can_import_reviews(user):
     # Import zawiera dane osobowe autorów oraz ostrzeżenia o czarnej liście.
     return is_superuser(user)
@@ -189,10 +179,6 @@ def can_manage_review_files(user):
     return is_coordinator(user)
 
 
-
-
-
-
 def can_view_illustrations(user):
     return is_coordinator(user) or has_role(user, "Ilustrator")
 
@@ -212,10 +198,6 @@ def can_perform_bulk_actions(user):
 
 def can_export_author_data(user):
     return is_superuser(user)
-
-
-
-
 
 
 def can_manage_vacation(user, vacation):

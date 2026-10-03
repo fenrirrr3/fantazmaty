@@ -69,8 +69,8 @@ def env_required(name):
     return value
 
 
-# Zmienne muszą zostać przekazane przez środowisko procesu.
-# Ten moduł nie wczytuje automatycznie pliku .env.
+# Lokalne wartości są wczytywane z .env na początku modułu.
+# Zmienne przekazane przez środowisko procesu mają pierwszeństwo.
 DJANGO_ENV = os.environ.get(
     "DJANGO_ENV",
     "development",

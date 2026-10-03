@@ -104,7 +104,7 @@ class ImportedWorkTests(TestCase):
             self.assertFalse(annotate_my_work(Text.objects.all(), person.user, timezone.localdate()).get(pk=self.text.pk).work_completed)
         self.assertEqual(S.objects.filter(stage_type__in=IMPORT_ONLY_STAGE_TYPES).count(), 2)
 
-    def test_normal_editor_still_requires_completed_coordinator_check(self):
+    def test_ready_text_without_proofreading_retains_existing_classification(self):
         today = timezone.localdate()
         a = A.objects.create(text=self.text, role="editor", assigned_to=self.people[0].user)
         S.objects.create(text=self.text, stage_type="editing", assignment=a, started_at=today, ended_at=today, is_completed=True)
@@ -112,7 +112,7 @@ class ImportedWorkTests(TestCase):
         query = lambda: annotate_my_work(Text.objects.all(), self.people[0].user, today).get(pk=self.text.pk)
         self.assertFalse(query().work_completed)
         S.objects.create(text=self.text, stage_type="editing_control", started_at=today, ended_at=today, is_completed=True)
-        self.assertTrue(query().work_completed)
+        self.assertFalse(query().work_completed)  # Ready history is not automatically repaired.
 
     def test_import_only_work_is_in_profile_summary_but_not_assignments_or_work_lists(self):
         from core.views.people import _profile_assignments, _imported_work_summary

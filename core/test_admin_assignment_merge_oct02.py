@@ -1,4 +1,4 @@
-from django.apps import apps
+from importlib import import_module
 from django.core.exceptions import ValidationError
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
@@ -8,7 +8,6 @@ from core.selectors.texts import text_detail_context
 from core.test_status_assignment_regression import StatusAssignmentFixtures
 from workflow.admin_performers import correct_stage_performers
 from workflow.admin_stage_dates import editing_transition_choices
-from workflow.assignment_merge import merge_duplicates
 from workflow.import_context import importing_completed
 from workflow.models import WorkflowRoleAssignment as A, WorkflowStage as S
 from workflow.services import send_to_first_verification, completed_stage_exists
@@ -42,16 +41,19 @@ class AssignmentMergeOctoberTests(StatusAssignmentFixtures):
         self.assertFalse(stage.is_current)
         self.assertIsNone(stage.ended_at)
 
-    def test_preview_apply_and_idempotency_with_historical_models(self):
+    def test_retired_migration_preserves_historical_assignments(self):
         empty, old, stage = self.duplicate()
-        historical = MigrationExecutor(connection).loader.project_state(
-            [('workflow', '0012_restore_retired_team_assignments')]).apps
-        self.assertEqual(merge_duplicates(historical, 'default', apply=False)['merged'], 1)
-        self.assertEqual(A.objects.filter(text=self.text).count(), 2)
-        self.assertEqual(merge_duplicates(historical, 'default')['merged'], 1)
-        empty.refresh_from_db()
-        self.assertEqual(empty.assigned_to_id, self.member.pk)
-        self.assertEqual(merge_duplicates(apps, 'default')['merged'], 0)
+        state = MigrationExecutor(connection).loader.project_state(
+            [('workflow', '0012_restore_retired_team_assignments')])
+        migration = import_module(
+            'workflow.migrations.0013_merge_duplicate_role_assignments'
+        ).Migration('0013_merge_duplicate_role_assignments', 'workflow')
+        assignments = list(A.objects.filter(text=self.text).order_by('pk').values())
+        stages = list(S.objects.filter(text=self.text).order_by('pk').values())
+        migration.apply(state.clone(), None)
+        migration.unapply(state.clone(), None)
+        self.assertEqual(list(A.objects.filter(text=self.text).order_by('pk').values()), assignments)
+        self.assertEqual(list(S.objects.filter(text=self.text).order_by('pk').values()), stages)
 
     def test_archived_dateless_verification_blocks_first_and_offers_second(self):
         self.duplicate()

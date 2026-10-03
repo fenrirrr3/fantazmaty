@@ -15,6 +15,9 @@ def operational_stages(stages):
     candidates = [s for s in stages if s.is_current and not s.repetition_id
                   and not s.is_completed and s.stage_type in ('first_verification', 'second_verification')
                   and s.started_at is None and s.ended_at is None]
+    completed.update((s.text_id, s.workflow_cycle, s.stage_type) for s in candidates
+                     if getattr(s, '_has_completed_verification', False))
+    candidates = [s for s in candidates if not hasattr(s, '_has_completed_verification')]
     if candidates:
         completed.update(WorkflowStage.objects.using(candidates[0]._state.db).filter(
             text_id__in={s.text_id for s in candidates},
@@ -39,8 +42,9 @@ def state_key(stage):
     else: category = 5
     return category, -ORDER.get(kind, -1), -stage.iteration, -stage.pk
 
-def current_stage(stages):
-    stages = [s for s in operational_stages(stages) if s.is_current and s.is_released and s.stage_type in ORDER]
+def current_stage(stages, *, prepared=False):
+    stages = stages if prepared else operational_stages(stages)
+    stages = [s for s in stages if s.is_current and s.is_released and s.stage_type in ORDER]
     opened = [s for s in stages if not s.is_completed and s.ended_at is None]
     if opened:
         return min(opened, key=state_key)

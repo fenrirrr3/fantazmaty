@@ -172,6 +172,9 @@ class EditingMiddleware:
                 person_id = model.objects.filter(pk=pk).values_list("person_id", flat=True).first()
                 Person.objects.select_for_update().filter(pk=person_id).first()
             objects = (model.objects.select_for_update() if writing else model.objects) if model else None
+            if model and model._meta.label_lower == 'texts.review' and match.namespace != 'admin':
+                # A conflict must never expose an object that the normal view hides.
+                objects = objects.accessible_to(request.user)
             obj = objects.filter(pk=pk).first() if model and pk else None
             if request.method == 'POST' and obj:
                 if match.namespace == 'admin':

@@ -16,6 +16,9 @@ class CMSModelAdminMixin(PeopleChoiceMixin):
 
 class CMSAdminSite(AdminSite):
     login_form = SuperuserAdminAuthenticationForm
+    site_header = 'Fantazmaty – administracja'
+    site_title = 'Administracja Fantazmaty'
+    index_title = 'Panel administracyjny'
 
     def has_permission(self, request):
         return request.user.is_active and request.user.is_superuser

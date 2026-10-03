@@ -4,6 +4,7 @@ from io import StringIO
 import re
 
 from django.apps import apps
+from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
@@ -14,7 +15,7 @@ from core.selectors.texts import text_detail_context
 from core.test_status_assignment_regression import StatusAssignmentFixtures
 from workflow.models import WorkflowHandoff as H, WorkflowRepetition as R
 from workflow.models import WorkflowRoleAssignment as A, WorkflowStage as S
-from workflow.services import send_to_second_verification
+from workflow.services import send_to_second_verification, resume_editing
 
 
 old_repair = import_module('workflow.migrations.0011_merge_status_assignments').repair_status_assignments
@@ -101,6 +102,11 @@ class RetiredTeamAssignmentTests(StatusAssignmentFixtures):
         editor, editing, verifier, verified, author = self.screenshot_state()
         restore(apps, 'default')
         second = A.objects.create(text=self.text, role='verifier_2', assigned_to=self.other)
+        with self.assertRaises(ValidationError):
+            send_to_second_verification(self.text, self.admin, self.today)
+        # Dated live W1 requires a new editorial pass; restoring an assignment alone is not a handoff.
+        S.objects.filter(pk=editing.pk).update(is_completed=True, ended_at=verified.ended_at)
+        resume_editing(self.text, self.admin, self.today)
         next_stage = send_to_second_verification(self.text, self.admin, self.today)
         self.assertEqual(next_stage.assignment_id, second.pk)
         self.assertEqual(next_stage.assignment.assigned_to_id, self.other.pk)

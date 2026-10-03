@@ -1,19 +1,53 @@
 {% extends "core/base.html" %}
 {% block title %}Spójność danych | Fantazmaty CMS{% endblock %}
 {% block content %}<header class="page-header"><h1>Spójność danych</h1><p>Lista do sprawdzenia. System nie poprawia ani nie łączy rekordów.</p></header>
-<nav class="my-texts-filters"><a class="secondary-button" href="?tab=integrity">Powiązania i etapy</a> <a class="secondary-button" href="?tab=duplicates">Możliwe duplikaty tekstów</a> <a class="secondary-button" href="?tab=unlinked">Recenzje bez powiązania</a></nav>
-{% if tab == 'duplicates' %}
-<section class="card"><div class="card-body"><form method="get" class="filters-form">
-<input type="hidden" name="tab" value="duplicates"><input type="hidden" name="run" value="1">
-<div class="filter-field"><label for="duplicate-anthology">Antologia</label><select id="duplicate-anthology" name="anthology" required>
-<option value="all"{% if selected_anthology == "all" %} selected{% endif %}>Wszystkie antologie</option>{% for anthology in anthologies %}<option value="{{ anthology.pk }}"{% if anthology.pk|stringformat:'s' == selected_anthology %} selected{% endif %}>{{ anthology.title }}</option>{% endfor %}
-</select></div><button type="submit" class="primary-button">Sprawdź duplikaty</button>
-</form>{% if scan_error %}<p role="alert">{{ scan_error }}</p>{% endif %}
-{% if not scanned %}<p>Wybierz zakres i kliknij „Sprawdź duplikaty”. Porównujemy zgłoszenia tego samego autora w ramach każdej antologii. Samo otwarcie strony nie przeszukuje tekstów.</p>{% endif %}</div></section>
+<nav class="my-texts-filters"><a class="secondary-button" href="?tab=integrity">Powiązania i etapy</a> <a class="secondary-button" href="?tab=assignments"{% if tab == "assignments" %} aria-current="page"{% endif %}>Wielokrotne przypisania osób</a> <a class="secondary-button" href="?tab=unlinked">Recenzje bez powiązania</a></nav>
+{% if tab == 'assignments' %}
+<section class="card"><div class="card-body">
+    <h2>Wielokrotne przypisania osób do tekstów</h2>
+    <p>Każda pozycja to jedna osoba przypisana do tego samego tekstu co najmniej dwa razy: do tej samej roli w różnych przypisaniach lub wykonaniach, albo do różnych ról.</p>
+    <p>Uwzględniamy także historię i anulowane powtórzenia, oznaczone na liście. Kilka etapów korzystających z jednego przypisania liczymy jeden raz. Wynik wymaga oceny: ponowna praca lub łączenie ról może być zamierzone.</p>
+    <form method="get" class="filters-form">
+        <input type="hidden" name="tab" value="assignments">
+        {% for field in assignment_filters %}
+        <div class="filter-field">
+            {{ field.label_tag }}{{ field }}
+            {% for error in field.errors %}<p class="form-error" role="alert">{{ error }}</p>{% endfor %}
+        </div>
+        {% endfor %}
+        <button type="submit" class="primary-button">Sprawdź przypisania</button>
+    </form>
+</div></section>
+{% if assignment_page is not None %}
+<section class="card">
+    <div class="card-body"><h2>Znalezione pary tekst–osoba: {{ assignment_page.paginator.count }}</h2></div>
+    <div class="table-container">
+    <table data-server-paginated="true">
+        <caption class="visually-hidden">Osoby przypisane do tego samego tekstu więcej niż raz</caption>
+        <thead><tr><th scope="col">Tekst</th><th scope="col">Osoba</th><th scope="col">Powód kontroli</th><th scope="col">Przypisania, role i wykonania</th></tr></thead>
+        <tbody>
+        {% for row in assignment_rows %}
+        <tr>
+            <td data-label="Tekst"><a href="{{ row.text_url }}">{{ row.title }}</a><br><span class="muted-text">{{ row.anthology }} · tekst #{{ row.text_id }}</span></td>
+            <td data-label="Osoba"><a href="{{ row.person_url }}">{{ row.person_name }}</a><br><span class="muted-text">Konto #{{ row.user_id }}</span></td>
+            <td data-label="Powód kontroli">{% for reason in row.reasons %}<div>{{ reason }}</div>{% endfor %}<span class="muted-text">Liczba przypisań: {{ row.assignment_count }}</span></td>
+            <td data-label="Przypisania, role i wykonania"><ul>
+                {% for assignment in row.assignments %}
+                <li><a href="{{ assignment.url }}">{{ assignment.role }} · wykonanie {{ assignment.execution_number }}</a><br><span class="muted-text">Przebieg {{ assignment.workflow_cycle }} · {{ assignment.status }} · przypisanie #{{ assignment.id }}</span></li>
+                {% endfor %}
+            </ul></td>
+        </tr>
+        {% empty %}<tr><td colspan="4">Brak wielokrotnych przypisań w wybranym zakresie.</td></tr>{% endfor %}
+        </tbody>
+    </table>
+    </div>
+    <div class="card-body">{% include "core/includes/pagination.html" with page_obj=assignment_page %}</div>
+</section>
+{% endif %}
 {% endif %}
 {% if tab == 'unlinked' %}
 <section class="card"><div class="card-body"><h2>Recenzje do ręcznej kontroli: {{ candidate_page.paginator.count }}</h2><p>Przyjęte recenzje bez powiązania, dla których istnieje tekst o tym samym tytule w tej samej antologii. Może to być dawne odłączenie albo zamierzone ponowne zgłoszenie. Sprawdź autorów i historię. Nie łączymy ani nie oznaczamy niczego automatycznie.</p>
 <ul>{% for review in candidate_page %}<li>{{ review.anthology }} – {{ review.title }} · <a href="{% url 'admin:texts_review_change' review.pk %}">Sprawdź recenzję i powiązanie</a></li>{% empty %}<li>Brak kandydatów.</li>{% endfor %}</ul>
 <nav aria-label="Strony recenzji do kontroli">{% if candidate_page.has_previous %}<a href="?tab=unlinked&amp;page={{ candidate_page.previous_page_number }}">Poprzednia</a>{% endif %} Strona {{ candidate_page.number }} z {{ candidate_page.paginator.num_pages }} {% if candidate_page.has_next %}<a href="?tab=unlinked&amp;page={{ candidate_page.next_page_number }}">Następna</a>{% endif %}</nav></div></section>
 {% endif %}
-{% if tab == 'integrity' or scanned %}<section class="card"><div class="card-body"><h2>Znalezione pozycje: {{ issues|length }}</h2>{% include "core/includes/issue_list.html" %}</div></section>{% endif %}{% endblock %}
+{% if tab == 'integrity' %}<section class="card"><div class="card-body"><h2>Znalezione pozycje: {{ issues|length }}</h2>{% include "core/includes/issue_list.html" %}</div></section>{% endif %}{% endblock %}

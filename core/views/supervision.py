@@ -9,7 +9,9 @@ from django.core.exceptions import PermissionDenied
 from django.db.models import Q
 from django.views.decorators.http import require_GET, require_http_methods
 from core.permissions import superuser_required, require_team_member, is_team_member, is_coordinator, is_reviewer, has_role
-from core.supervision import unlinked_review_candidates, integrity_issues, all_duplicates, anthology_checklist, anthology_credit_groups
+from core.supervision import unlinked_review_candidates, integrity_issues, anthology_checklist, anthology_credit_groups
+from core.assignment_integrity import AssignmentIntegrityFilters, assignment_conflicts, assignment_conflict_details
+from core.pagination import paginate_items
 from core.selectors.texts import available_stages_for_user
 from people.models import Person, Role
 from texts.models import Anthology, AnthologyTask
@@ -20,33 +22,40 @@ from workflow.models import WorkflowRoleAssignment
 @require_GET
 @superuser_required
 def data_integrity(request):
-    tab = request.GET.get('tab') if request.GET.get('tab') in ('duplicates', 'unlinked') else 'integrity'
+    requested_tab = request.GET.get('tab')
+    # Old bookmarks open the replacement report without running title matching.
+    if requested_tab == 'duplicates':
+        requested_tab = 'assignments'
+    tab = requested_tab if requested_tab in ('assignments', 'unlinked') else 'integrity'
     candidate_page = None
-    selected = request.GET.get('anthology', 'all')
-    scanned = False
-    error = ''
+    assignment_page = None
+    assignment_rows = []
+    assignment_filters = None
     if tab == 'unlinked':
         from django.core.paginator import Paginator
         candidate_page = Paginator(unlinked_review_candidates(), 50).get_page(request.GET.get('page'))
         rows = []
-    elif tab == 'duplicates':
+    elif tab == 'assignments':
         rows = []
-        if request.GET.get('run') == '1':
-            anthology = Anthology.objects.filter(pk=int(selected)).first() if selected.isdecimal() and len(selected) < 19 else None
-            if selected == 'all':
-                rows = all_duplicates()
-                scanned = True
-            elif anthology is None:
-                error = 'Wybierz antologię do sprawdzenia.'
-            else:
-                rows = all_duplicates(anthology.pk)
-                scanned = True
+        parameters = request.GET.copy()
+        if parameters.get('anthology') == 'all':
+            parameters['anthology'] = ''
+        parameters.setdefault('scope', 'all')
+        parameters.setdefault('kind', 'all')
+        assignment_filters = AssignmentIntegrityFilters(parameters)
+        if assignment_filters.is_valid():
+            data = assignment_filters.cleaned_data
+            scope = {'anthology_id': data['anthology'].pk if data['anthology'] else None,
+                     'scope': data['scope'] or 'all'}
+            assignment_page = paginate_items(request, assignment_conflicts(
+                **scope, kind=data['kind'] or 'all'), default=25)
+            assignment_rows = assignment_conflict_details(assignment_page.object_list, **scope)
     else:
         rows = integrity_issues()
     return render(request, 'core/data_integrity.html', {
-        'issues': rows, 'tab': tab, 'scanned': scanned, 'scan_error': error,
-        'anthologies': Anthology.objects.order_by('title') if tab == 'duplicates' else [],
-        'selected_anthology': selected, 'candidate_page': candidate_page,
+        'issues': rows, 'tab': tab, 'candidate_page': candidate_page,
+        'assignment_filters': assignment_filters, 'assignment_page': assignment_page,
+        'assignment_rows': assignment_rows,
     })
 
 class AnthologyTaskForm(forms.ModelForm):

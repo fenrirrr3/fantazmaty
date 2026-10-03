@@ -1,4 +1,8 @@
-"""One ordinary role assignment per text/cycle; stage history remains intact."""
+"""Grouping helpers for explicit administrator corrections of performers.
+
+Automatic bulk merging has been retired. These helpers remain in use by
+workflow.admin_performers when an administrator explicitly corrects a person.
+"""
 from django.db import models
 
 
@@ -76,48 +80,3 @@ def write_group(apps, database, plan, *, user_id, is_current):
     A.objects.using(database).filter(pk__in=ids).delete()
     bump('workflow.workflowroleassignment', assignment.pk)
     bump('texts.text', assignment.text_id)
-
-
-def merge_duplicates(apps, database, *, apply=True, text_id=None):
-    A = apps.get_model('workflow', 'WorkflowRoleAssignment')
-    T = apps.get_model('texts', 'Text')
-    S = apps.get_model('workflow', 'WorkflowStage')
-    query = A.objects.using(database).filter(role__in=set(STAGE_ROLES.values()))
-    if text_id is not None:
-        query = query.filter(text_id=text_id)
-    groups = list(query.order_by().values('text_id', 'workflow_cycle', 'role')
-                  .annotate(total=models.Count('pk')).filter(total__gt=1)
-                  .order_by('text_id', 'workflow_cycle', 'role'))
-    report = {'merged': 0, 'groups': [], 'skipped': []}
-    verifier_users = {}
-    for group in groups:
-        text = T.objects.using(database).select_for_update().get(pk=group['text_id'])
-        cycle, role = group['workflow_cycle'], group['role']
-        plan, reason = role_group(apps, database, text, cycle, role)
-        if plan is None:
-            report['skipped'].append((text.pk, role, reason))
-            continue
-        user_id = plan['chosen'].assigned_to_id
-        active_text = S.objects.using(database).filter(
-            text_id=text.pk, workflow_cycle=cycle, is_current=True, is_released=True,
-            is_completed=False, stage_type__in=STAGE_ROLES,
-        ).exists()
-        current = cycle == text.current_workflow_cycle and (
-            any(row.is_current for row in plan['rows']) or active_text and user_id is not None)
-        if current and user_id is not None and role in ('verifier_1', 'verifier_2'):
-            opposite = 'verifier_2' if role == 'verifier_1' else 'verifier_1'
-            key = (text.pk, cycle, opposite)
-            if key not in verifier_users:
-                verifier_users[key] = A.objects.using(database).filter(
-                    text_id=text.pk, workflow_cycle=cycle, role=opposite, is_current=True,
-                ).values_list('assigned_to_id', flat=True).first()
-            if verifier_users[key] == user_id:
-                report['skipped'].append((text.pk, role, 'Ta sama osoba w obu weryfikacjach.'))
-                continue
-        if apply:
-            write_group(apps, database, plan, user_id=user_id, is_current=current)
-        if current:
-            verifier_users[(text.pk, cycle, role)] = user_id
-        report['merged'] += len(plan['merge_ids'])
-        report['groups'].append((text.pk, text.title, cycle, role, plan['assignment'].pk, user_id))
-    return report

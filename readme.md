@@ -282,7 +282,7 @@ Jasna paleta kolorowania powtórzeń losuje składowe RGB w zakresie
 Strona `/programy/` zastępuje dotychczasowy obrazek formularzem korekty DOCX.
 Dostęp mają zalogowani, aktywni członkowie zespołu oraz superużytkownicy.
 Wybierz DOCX i reguły, następnie kliknij „Odkurz i pobierz DOCX”. Wynik ma
-sufiks `_odkurzony.docx`. Wszystkie 25 reguł jest domyślnie zaznaczonych;
+sufiks `_odkurzony.docx`. Dostępne są 32 reguły, z których 29 jest domyślnie zaznaczonych;
 odznaczenie wszystkich nie zmienia tekstu. Korekta obejmuje główne akapity,
 bez tabel, nagłówków i przypisów, bez kolorowania i śledzenia zmian.
 
@@ -310,7 +310,114 @@ Testy funkcji:
 python manage.py test core.test_odkurzacz --settings=fantazmaty.test_settings
 ```
 
-Odkurzacz: reguła tabulatorów usuwa znaki tabulacji bez dodawania spacji.
-Usunięto normalizację dat i godzin, konwersję separatora dziesiętnego,
-grupowanie liczb i reguły wstawiające spacje nierozdzielające. Odstępy przy
-inicjałach i temperaturach są zwykłymi spacjami.
+Odkurzacz: reguła tabulatorów zamienia tabulatory i ich mieszanki ze spacjami
+na jedną spację. Dostępne są reguły normalizacji jednoznacznych dat i godzin,
+separatora dziesiętnego, grupowania liczb i spacji nierozdzielających.
+Domyślnie wyłączone są redukcja wielokrotnych pustych akapitów, zamiana
+zaimków na małe litery oraz własne zamiany słownikowe. Lista i kolejność
+reguł znajdują się w `core/services/odkurzacz.py`.
+
+## Pliki statyczne i lokalne pliki robocze
+
+Źródła CSS i JavaScript znajdują się w katalogach `static` aplikacji.
+`staticfiles` jest katalogiem wynikowym i pozostaje w `.gitignore`.
+Po wdrożeniu kodu uruchom `python manage.py collectstatic --noinput`
+w docelowej konfiguracji środowiska. W produkcji powstają również pliki
+z hashem i `staticfiles.json`; stary katalog z archiwum nie zastępuje tego kroku.
+Gdy usuwasz zasoby, przygotuj nowy katalog wynikowy lub wyczyść nieaktywną
+kopię przed ponownym zebraniem. Nie czyść zasobów obsługujących ruch w trakcie
+budowania następnego wydania.
+
+Pliki `.env`, `__pycache__`, lokalny bufor aktywności i blokada konwersji
+nie są częścią kodu do publikacji. Nie kasuj `.env` ani danych runtime przy
+porządkowaniu repozytorium. Sam wpis w `.gitignore` nie usuwa pliku,
+który był wcześniej śledzony przez Git.
+
+## Kolejka aktywności
+
+`python manage.py flush_activity --limit 10000` przenosi wpisy prywatnego
+bufora do bazy. Konfiguracja harmonogramu należy do środowiska wdrożenia:
+sprawdź, czy polecenie jest wykonywane regularnie i czy monitorowany jest
+wiek oraz rozmiar kolejki, błędy przetwarzania i katalog `quarantine`.
+Przejściowe błędy bazy powinny powodować ponowienie, nie usuwanie plików kolejki.
+
+Retencję można najpierw obejrzeć bez usuwania danych:
+`python manage.py prune_activity --days 180 --dry-run`.
+Uruchomienie bez `--dry-run` usuwa stare udane odwiedziny według reguł
+polecenia; harmonogram i okres retencji trzeba dopasować do zasad utrzymania.
+Ta aktualizacja nie zmienia istniejącego harmonogramu ani nie usuwa dziennika.
+
+
+### Wycofane automatyczne scalanie przydziałów (2026-10-03)
+
+Skrypt `scal_przypisania.py`, polecenie `merge_workflow_assignments` i funkcja
+`merge_duplicates` zostały usunięte.
+Migracja `workflow.0013_merge_duplicate_role_assignments` pozostaje jako pusty
+znacznik historii: nie scala danych przy nowej instalacji ani aktualizacji.
+Nie usuwaj tego pliku ani wpisu migracji z bazy. Nie jest potrzebne `--fake`.
+Już wykonane scalenia nie są odwracane i wymagają osobnego odtworzenia danych,
+jeśli ich historia ma zostać przywrócona.
+
+Przy nakładaniu paczki usuń dwa stare pliki: `scal_przypisania.py` oraz
+`workflow/management/commands/merge_workflow_assignments.py` skryptem porządkowania.
+Ręczna korekta wykonawcy w panelu administratora pozostaje dostępna i zachowuje
+swoje dotychczasowe grupowanie przydziałów; wspólny moduł `assignment_merge.py`
+jest nadal używany przez tę funkcję.
+
+### Decyzja koordynatora redakcji i rzeczywiste przestoje (2026-10-03, v3)
+
+Przy kończeniu Kontroli K. redakcji trzeba jawnie wybrać: przekazanie do
+pierwszej korekty albo dalszą redakcję. Dalsza redakcja tworzy kolejny etap
+dla przypisanego redaktora, po którym ponownie potrzebna jest kontrola.
+Decyzje pozostają widoczne w historii. Reguła obejmuje też powtórzenia etapów.
+
+Praca redaktora jest zakończona po zatwierdzonej kontroli i przekazaniu do
+pierwszej korekty. Tekst wraca do jego pracy na etapie Kontroli redaktora,
+a nie podczas wcześniejszej Kontroli K. korekty.
+Druga weryfikacja wymaga wznowienia redakcji po pierwszej; wyjątek dotyczy
+historycznej, zaimportowanej pierwszej weryfikacji bez daty zakończenia.
+Nie uzupełniamy brakujących etapów tekstów oznaczonych jako Gotowy.
+
+Raport przestojów liczy dostępność do pracy, a nie czas wcześniejszej
+rezerwacji. Przed przekazaniem tekstu rzeczywiste oczekiwanie wynosi zero
+i nie kwalifikuje się jako przestój. Zmiana wykonawcy zeruje licznik
+otwartego etapu, zachowując historyczną datę rozpoczęcia. Gdy dostępności
+nie można ustalić z danych, raport pokazuje brak danych.
+Ręczna korekta wykonawców w panelu administratora pozostaje dostępna.
+
+Wdrożenie v3 po zastosowaniu v2:
+
+```bash
+python manage.py migrate
+python manage.py collectstatic --noinput
+```
+
+Następnie uruchom ponownie proces aplikacji. Migracja
+`workflow.0014_editorial_decision_and_waiting_reset` dodaje wyłącznie dwa
+opcjonalne pola, bez uzupełniania lub przekształcania dawnych etapów.
+Paczka v3 nie wymaga usuwania żadnych dodatkowych plików.
+
+### Spójność danych: wielokrotne przypisania (v4)
+
+W sekcji System → Spójność danych zakładkę wyszukiwania duplikatów tekstów
+zastępuje lista „Wielokrotne przypisania osób”. Wiersz reprezentuje parę
+tekst–konto z co najmniej dwoma rekordami przypisań. Raport rozróżnia tę samą
+rolę w kilku przypisaniach (w tym wykonania 1 i 2) oraz różne role tej samej
+osoby. Pokazuje wszystkie przypisania danej pary, ich ID, role, numery wykonań,
+przebiegi, bieżący lub historyczny charakter i anulowane powtórzenia.
+
+Domyślny zakres obejmuje wszystkie przebiegi i wykonania, również tekstów
+Gotowych oraz nieaktywnych kont. Dostępne są filtry antologii, bieżącego
+przebiegu (z zachowaniem wcześniejszych wykonań) i rodzaju przypisania.
+Kilka etapów powiązanych z jednym rekordem przypisania liczymy jeden raz.
+Różnych kont o tych samych nazwiskach nie łączymy. Rekordy bez wykonawcy
+nie tworzą wspólnej osoby. Lista jest stronicowana i dostępna superuserowi.
+
+To lista do kontroli, bez automatycznego scalania lub zmian w danych.
+Wynik może oznaczać zamierzoną pracę w kilku rolach albo powtórzenie.
+Usunięcie wyszukiwania duplikatów w tym raporcie nie zmienia ostrzeżeń przy
+przyjmowaniu i imporcie zgłoszeń. Stary adres zakładki otwiera nową listę.
+
+Wdrożenie na zastosowaną v3: nadpisz pliki paczki i uruchom ponownie proces
+aplikacji. Brak nowych migracji, zależności, zmienionych zasobów statycznych
+i dodatkowych plików do usunięcia.

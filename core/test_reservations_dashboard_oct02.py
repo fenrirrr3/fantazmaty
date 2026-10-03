@@ -223,21 +223,25 @@ class ReservationAndDashboardTests(StatusAssignmentFixtures):
         self.assertTrue(summary['active_stages'][0]['editor_waiting'])
         self.assertEqual(summary['reserved_assignment_count'], 0)
 
-    def test_coordinator_control_after_proofreading_keeps_upcoming_editor_control_visible(self):
+    def test_editor_returns_when_own_control_is_created(self):
         self.close_editing()
+        S.objects.create(text=self.text, stage_type='editing_control', is_completed=True,
+                         started_at=self.today, ended_at=self.today, send_to_proofreading=True)
         S.objects.create(text=self.text, stage_type='first_proofreading', is_completed=True,
                          started_at=self.today, ended_at=self.today)
-        control = S.objects.create(text=self.text, stage_type='coordinator_control')
-        self.assertEqual(self.summary()['active_stages'][0]['pk'], control.pk)
-        self.assertTrue(self.summary()['active_stages'][0]['editor_waiting'])
+        S.objects.create(text=self.text, stage_type='coordinator_control')
+        self.assertEqual(self.summary()['active_stage_count'], 0)
+        control = S.objects.create(text=self.text, stage_type='editor_control', assignment=self.editor)
+        self.assertEqual(self.summary()['active_stage_count'], 1)
         self.assertIn(self.text.pk, [r['pk'] for r in my_texts_context(user=self.member)['texts']])
 
-    def test_dashboard_stays_until_reserved_first_proofreading_actually_starts(self):
+    def test_dashboard_finishes_on_approved_handoff_even_with_future_proofreading(self):
         self.close_editing()
+        S.objects.create(text=self.text, stage_type='editing_control', is_completed=True,
+                         started_at=self.today, ended_at=self.today, send_to_proofreading=True)
         proof = S.objects.create(text=self.text, stage_type='first_proofreading',
                                  started_at=self.today + timedelta(days=1))
-        self.assertEqual(self.summary()['active_stage_count'], 1)
-        self.assertTrue(self.summary()['active_stages'][0]['editor_waiting'])
+        self.assertEqual(self.summary()['active_stage_count'], 0)
         S.objects.filter(pk=proof.pk).update(started_at=self.today)
         self.assertEqual(self.summary()['active_stage_count'], 0)
 

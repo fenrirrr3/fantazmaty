@@ -1,0 +1,3 @@
+{% if stage.stage_type == "editing_control" and stage.send_to_proofreading != None %}
+<div class="muted-text">{% if stage.send_to_proofreading %}Decyzja: pierwsza korekta{% else %}Decyzja: dalsza redakcja{% endif %}</div>
+{% endif %}

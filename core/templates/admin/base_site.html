@@ -1,6 +1,11 @@
 {% extends "admin/base.html" %}
 {% load static %}
 
+{% block dark-mode-vars %}
+    <link rel="stylesheet" href="{% static 'admin/css/dark_mode.css' %}">
+    <script src="{% static 'core/theme.js' %}"></script>
+{% endblock %}
+
 {% block title %}
     {{ title }} | {{ site_title|default:"Administracja Fantazmaty" }}
 {% endblock %}
@@ -99,11 +104,6 @@
             }
         }
 
-        .cms-admin-navigation {
-            margin: 8px 16px;
-            font-size: 0.8125rem;
-        }
-
         .cms-admin-navigation a {
             color: var(--header-link-color);
             text-underline-offset: 3px;
@@ -186,13 +186,6 @@
 
         .copy-toast.is-error {
             border-color: var(--cms-error);
-        }
-
-        @media (max-width: 767px) {
-            .cms-admin-navigation {
-                margin: 10px 0;
-                text-align: center;
-            }
         }
 
         @media print {

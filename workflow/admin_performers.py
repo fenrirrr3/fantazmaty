@@ -162,6 +162,8 @@ def correct_stage_performers(text_id, changes, actor, expected_version):
         plan = performer_plan(text, changes)
     except ValidationError as exc:
         raise ValidationError(exc.messages) from exc
+    from workflow.waiting import performer_snapshot, reset_changed_performers
+    before_performers = performer_snapshot(text)
     token = importing_completed.set(True)
     try:
         # Free both verifier slots before a swap; all writes stay in this transaction.
@@ -191,6 +193,7 @@ def correct_stage_performers(text_id, changes, actor, expected_version):
                     S.objects.filter(pk=stage.pk).update(assignment=assignment)
                     bump('workflow.workflowstage',stage.pk,'default')
         if plan:
+            reset_changed_performers(text, before_performers)
             bump('texts.text',text.pk,'default')
     finally:
         importing_completed.reset(token)

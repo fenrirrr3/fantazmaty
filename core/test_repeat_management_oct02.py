@@ -194,10 +194,15 @@ class RepeatManagementOctoberTests(StatusAssignmentFixtures):
         old['verifier_1'].refresh_from_db()
         self.assertEqual(old['verifier_1'].assigned_to_id, self.member.pk)
 
-    def test_real_second_execution_is_protected_from_duplicate_repair(self):
+    def test_real_second_execution_survives_retired_merge_migration(self):
+        from importlib import import_module
         from django.apps import apps
-        from workflow.assignment_merge import merge_duplicates
+        from django.db.migrations.state import ProjectState
         self.change()
-        report = merge_duplicates(apps, 'default', apply=True)
-        self.assertEqual(report['merged'], 0)
+        before = list(A.objects.filter(text=self.text).order_by('pk').values())
+        migration = import_module(
+            'workflow.migrations.0013_merge_duplicate_role_assignments'
+        ).Migration('0013_merge_duplicate_role_assignments', 'workflow')
+        migration.apply(ProjectState.from_apps(apps), None)
+        self.assertEqual(list(A.objects.filter(text=self.text).order_by('pk').values()), before)
         self.assertEqual(A.objects.filter(text=self.text, role='editor').count(), 2)

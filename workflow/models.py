@@ -94,6 +94,14 @@ class WorkflowStage(models.Model):
         default=False,
     )
 
+    send_to_proofreading = models.BooleanField(
+        "przekazać do pierwszej korekty", null=True, blank=True, editable=False,
+        help_text="Decyzja koordynatora redakcji; brak wartości oznacza dawną historię.",
+    )
+    waiting_reset_at = models.DateField(
+        "data zmiany wykonawcy", null=True, blank=True, editable=False,
+    )
+
     is_skipped = models.BooleanField("pominięty etap", default=False, editable=False)
 
     imported_completed = models.BooleanField(
@@ -518,6 +526,7 @@ class WorkflowRoleAssignment(models.Model):
             )
         )
 
+        assignment_changed = False
         if assignment_is_saved:
             previous = None
 
@@ -562,6 +571,9 @@ class WorkflowRoleAssignment(models.Model):
             from workflow.services import STAGE_ROLES
             kinds = [kind for kind, role in STAGE_ROLES.items() if role == self.role]
             WorkflowStage.objects.using(using).filter(text_id=self.text_id, workflow_cycle=self.workflow_cycle, is_current=True, is_completed=False, assignment__isnull=True, stage_type__in=kinds).update(assignment_id=self.pk)
+        if assignment_changed and self.is_current:
+            from workflow.waiting import reset_assignment_waiting
+            reset_assignment_waiting(self, using=using)
 
 class WorkflowRepetition(models.Model):
     text = models.ForeignKey(Text, on_delete=models.CASCADE, related_name="repetitions")

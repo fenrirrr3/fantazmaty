@@ -1,6 +1,9 @@
 (() => {
     const key = "fantazmaty-theme";
-    try { document.documentElement.dataset.theme = localStorage.getItem(key) === "dark" ? "dark" : "light"; }
+    try {
+        const saved = localStorage.getItem(key) || localStorage.getItem("theme");
+        document.documentElement.dataset.theme = saved === "dark" ? "dark" : "light";
+    }
     catch (_) { document.documentElement.dataset.theme = "light"; }
     document.addEventListener("DOMContentLoaded", () => {
         const button = document.querySelector("[data-theme-toggle]");

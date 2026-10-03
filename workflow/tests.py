@@ -315,7 +315,7 @@ class WorkflowProgressionTests(WorkflowTestDataMixin, TestCase):
         for stage_type, user in steps:
             with self.subTest(stage=stage_type):
                 stage = claim_stage(self.text, stage_type, user)
-                complete_stage(stage, user, self.today)
+                complete_stage(stage, user, self.today, send_to_proofreading=True if stage_type == StageType.EDITING_CONTROL else None)
 
         editor_control = self.stage(StageType.EDITOR_CONTROL)
 

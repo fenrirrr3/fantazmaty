@@ -2,6 +2,7 @@
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.db.models import Q
+from django.utils import timezone
 from texts.models import Text
 from workflow.models import WorkflowRoleAssignment as A, WorkflowStage as S, WorkflowHandoff, WorkflowRepetition
 from workflow.import_context import importing_completed
@@ -58,7 +59,7 @@ def correct_assignment(pk, actor, version, *, action, performer=None):
                 A.objects.filter(pk=pk).update(assigned_to=performer)
                 if action == 'clear':
                     for stage in stages.filter(is_completed=False):
-                        S.objects.filter(pk=stage.pk).update(started_at=None, ended_at=None)
+                        S.objects.filter(pk=stage.pk).update(started_at=None, ended_at=None, waiting_reset_at=timezone.localdate())
                         bump('workflow.workflowstage', stage.pk, 'default')
             finally:
                 importing_completed.reset(token)

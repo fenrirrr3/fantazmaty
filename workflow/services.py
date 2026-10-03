@@ -377,7 +377,7 @@ def next_iteration(text, stage_type):
     return maximum + 1
 
 
-def _create_pending_stage(text, stage_type):
+def _create_pending_stage(text, stage_type, *, queued_at=None):
     """Wewnętrzna operacja; wywołujący musi posiadać blokadę Text."""
     ensure_text_is_not_withdrawn(text)
 
@@ -393,6 +393,9 @@ def _create_pending_stage(text, stage_type):
     )
 
     if stage is not None:
+        if queued_at is not None:
+            stage.queued_at = queued_at
+            stage.save(update_fields=['queued_at'])
         return stage
 
     return WorkflowStage.objects.using(_database(text)).create(
@@ -400,6 +403,7 @@ def _create_pending_stage(text, stage_type):
         workflow_cycle=current_cycle(text),
         stage_type=stage_type,
         iteration=next_iteration(text, stage_type),
+        queued_at=queued_at,
         started_at=None,
         ended_at=None,
         is_completed=False,
@@ -668,6 +672,9 @@ def send_to_first_verification(text, user, ended_at=None):
         verification_stage = _create_pending_stage(text, StageType.FIRST_VERIFICATION)
 
     _finish_stage_record(editing_stage, transition_date)
+    # A reservation may predate the actual editorial handoff by weeks.
+    verification_stage.queued_at = transition_date
+    verification_stage.save(update_fields=['queued_at'])
     return verification_stage
 
 
@@ -802,6 +809,10 @@ def editing_follows_first_verification(text, editing_stage):
     ).exclude(repetition__canceled_at__isnull=False).order_by('-pk').first()
     if first is None:
         return False
+    if first.imported_completed and first.ended_at is None:
+        # Old imported history cannot establish when editing was resumed.
+        # Live W1, dated imports and new repetitions retain the ordering gate.
+        return first.repetition_id is None
     if first.ended_at is not None:
         if editing_stage.started_at != first.ended_at:
             return editing_stage.started_at > first.ended_at
@@ -868,10 +879,10 @@ def send_to_second_verification(text, user, started_at=None):
         raise ValidationError(
             "Przekazanie do drugiej weryfikacji wymaga redakcji wznowionej po "
             "zakończeniu pierwszej weryfikacji. Sprawdź historię etapów; "
-            "samo historyczne oznaczenie W1 jako zakończonej nie wystarcza."
+            "Wyjątek dotyczy wyłącznie importowanej W1 bez daty zakończenia."
         )
     _finish_stage_record(editing_stage, transition_date)
-    return _create_pending_stage(text, StageType.SECOND_VERIFICATION)
+    return _create_pending_stage(text, StageType.SECOND_VERIFICATION, queued_at=transition_date)
 
 
 @_locked_text_operation
@@ -894,7 +905,7 @@ def finish_editing_to_coordinator(text, user, ended_at=None):
         raise ValidationError("Nie ma aktywnej redakcji do zakończenia.")
 
     _finish_stage_record(editing_stage, transition_date)
-    return _create_pending_stage(text, StageType.EDITING_CONTROL)
+    return _create_pending_stage(text, StageType.EDITING_CONTROL, queued_at=transition_date)
 
 
 def user_can_complete_stage(stage, user):
@@ -940,12 +951,33 @@ def user_can_complete_stage(stage, user):
     ).exists()
 
 
+def validate_editorial_decision(stage, decision):
+    if stage.stage_type != StageType.EDITING_CONTROL:
+        return
+    if current_stage_queryset(stage.text).filter(stage_type=StageType.READY).exists():
+        raise ValidationError("Tekst jest już gotowy. Nie zmieniono jego etapów.")
+    if type(decision) is not bool:
+        raise ValidationError(
+            "Wybierz, czy przekazać tekst do pierwszej korekty, czy do dalszej redakcji. "
+            "W panelu administratora użyj formularza Daty i przekazanie."
+        )
+    if not decision:
+        assignment = current_assignment_queryset(stage.text).filter(role=Role.EDITOR).first()
+        if not assignment or not assignment.assigned_to_id:
+            raise ValidationError("Przed powrotem do redakcji przypisz redaktora do tekstu.")
+        if not stage.repetition_id and current_stage_queryset(stage.text).exclude(
+                stage_type__in=(*EDITING_PHASE_TYPES, StageType.EDITING_CONTROL)).filter(
+                started_at__isnull=False).exists():
+            raise ValidationError("Rozpoczęto już dalszą pracę. Najpierw sprawdź jej stan w panelu administratora.")
+
+
 @_locked_stage_operation
-def complete_stage(stage, user, ended_at):
+def complete_stage(stage, user, ended_at, *, send_to_proofreading=None):
     _ensure_actor(user)
+    validate_editorial_decision(stage, send_to_proofreading)
     if stage.repetition_id:
         from workflow.repetitions import complete_repeat
-        return complete_repeat(stage, user, ended_at)
+        return complete_repeat(stage, user, ended_at, send_to_proofreading=send_to_proofreading)
     ensure_text_is_not_withdrawn(stage.text)
     ensure_verification_not_completed(stage.text, stage.stage_type)
 
@@ -967,6 +999,8 @@ def complete_stage(stage, user, ended_at):
         raise PermissionDenied("Nie możesz zakończyć tego etapu.")
 
     next_stage_type = NEXT_STAGE_TYPES.get(stage.stage_type)
+    if stage.stage_type == StageType.EDITING_CONTROL:
+        next_stage_type = StageType.FIRST_PROOFREADING if send_to_proofreading else StageType.EDITING
 
     if next_stage_type is None:
         raise ValidationError("Ten etap nie ma przejścia do zakończenia.")
@@ -977,7 +1011,19 @@ def complete_stage(stage, user, ended_at):
         if not _actor_is_active(editor) or not (is_coordinator(editor) or belongs_to_group(editor, 'Redaktor')):
             raise ValidationError("Przed zakończeniem kontroli koordynatora przypisz aktywnego redaktora z odpowiednią rolą. Etap nie został zakończony.")
     _finish_stage_record(stage, ended_at)
+    if stage.stage_type == StageType.EDITING_CONTROL:
+        stage.send_to_proofreading = send_to_proofreading
+        if not send_to_proofreading:
+            # The completed decision stays in history; the editorial phase reopens.
+            stage.is_current = False
+            stage.is_released = False
+            current_stage_queryset(stage.text).exclude(
+                stage_type__in=(*EDITING_PHASE_TYPES, StageType.EDITING_CONTROL)
+            ).filter(is_completed=False, started_at__isnull=True).update(is_current=False, is_released=False)
+        stage.save(update_fields=['send_to_proofreading', 'is_current', 'is_released'])
     next_stage = _create_pending_stage(stage.text, next_stage_type)
+    next_stage.queued_at = ended_at
+    next_stage.save(update_fields=['queued_at'])
 
     if next_stage_type == StageType.READY:
         _start_stage(next_stage, ended_at)

@@ -481,6 +481,13 @@ class ReviewQuerySet(models.QuerySet):
     def visible_to(self, user):
         return self if user.is_active and user.is_superuser else self.filter(is_hidden=False)
 
+    def accessible_to(self, user):
+        """Object visibility shared by detail views and edit-conflict responses."""
+        from core.permissions import can_view_review_archive
+
+        reviews = self.visible_to(user)
+        return reviews if can_view_review_archive(user) else reviews.filter(old_reviews=False)
+
     def awaiting_notification(self):
         return self.filter(
             models.Q(decision_at__lte=timezone.localdate()) | models.Q(decision_at__isnull=True),
@@ -987,5 +994,4 @@ class Extract(NormalizedModelMixin, models.Model):
 
     def __str__(self):
         return f'{self.recruitment} – {self.full_name}'
-
 
