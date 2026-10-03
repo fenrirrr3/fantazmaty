@@ -7,3 +7,5 @@
 .illustration-metadata { display: grid; gap: 14px; }
 .illustration-metadata dt { font-weight: 650; }
 .illustration-metadata dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+.illustrator-checkbox { display: flex; align-items: center; gap: 8px; }
+.illustration-edit-form .illustrator-checkbox input[type="checkbox"] { width: auto; }

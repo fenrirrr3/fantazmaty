@@ -466,3 +466,49 @@ python manage.py migrate --check
 
 Na PythonAnywhere wykonaj potem Web → Reload. Brak nowych zależności
 i plików do usunięcia. Paczka obejmuje wyłącznie zmiany względem v4.
+
+### Spis ilustratorów (v6)
+
+Etykieta przełącznika odkurzacza brzmi teraz „Ujednolić formatowanie”.
+Sposób działania przełącznika pozostaje taki sam jak w v5.
+
+Pod pozycją Ilustracje znajduje się Ilustratorzy:
+`/ilustracje/ilustratorzy/`. Strona oraz dodawanie i edycja są dostępne
+wyłącznie aktywnym koordynatorom (również specjalizacji) i superuserom.
+Zwykły ilustrator nie widzi odnośnika i nie uzyska dostępu przez adres URL.
+
+Spis korzysta z istniejących profili Person z rolą Ilustrator, z kontem
+logowania lub bez niego. Kolumny: imię i nazwisko, adres e-mail, portfolio,
+preferencje i okładki (Tak/Nie). Domyślnie okładki = Nie. Dostępne są
+wyszukiwanie i stronicowanie. Dawne osoby pozostają oznaczone jako
+„Poza zespołem” albo „Konto nieaktywne”.
+
+„Dodaj ilustratora” tworzy profil i dodaje rolę Ilustrator, bez zakładania
+konta użytkownika. Osoba jest też dostępna do przypisywania ilustracji.
+Powtórzony adres e-mail jest odrzucany; jeśli osoba już istnieje w zespole,
+należy nadać jej rolę Ilustrator w panelu admina zamiast tworzyć drugi profil.
+
+Kliknięcie imienia i nazwiska otwiera edycję. Dla osoby z kontem logowania
+dane identyfikacyjne (imię, nazwisko, e-mail) są tylko do odczytu na tej
+stronie; zarządza się nimi przez istniejący panel administracyjny.
+Portfolio, preferencje i okładki są edytowalne również dla takich osób.
+Przy zapisie weryfikowana jest wersja rekordu, aby nie nadpisać innej edycji.
+
+W panelu admina: Zespół i konta → Członkowie zespołu → Dodaj/edytuj.
+Nadaj rolę Ilustrator; nowe pola znajdują się w sekcji
+„Ilustrator — portfolio i preferencje”. Konto użytkownika jest opcjonalne.
+Nowa sekcja jest udostępniana tylko koordynatorom i superuserom, z zachowaniem
+dotychczasowych uprawnień do samego panelu i modelu osoby.
+
+Paczka v6 zawiera zmiany względem v5. Nie ma nowych zależności ani plików
+do usunięcia. Po podmianie uruchom:
+
+```bash
+python manage.py check &&
+python manage.py migrate --noinput &&
+python manage.py collectstatic --noinput &&
+python manage.py migrate --check
+```
+
+Na PythonAnywhere następnie Web → Reload. Migracja people.0011 dodaje
+trzy pola do profilu osoby; nie kopiuje osób, nie tworzy kont i nie zmienia ról.

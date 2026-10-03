@@ -10,7 +10,7 @@ PROGRAM_MAX_UPLOAD_BYTES = 2 * 1024 * 1024
 
 
 class OdkurzaczForm(forms.Form):
-    normalize_formatting = forms.BooleanField(label="Ujednolić formatowanie jak przy pobieraniu ze skrzynki", required=False, initial=False)
+    normalize_formatting = forms.BooleanField(label="Ujednolić formatowanie", required=False, initial=False)
     rebuild = forms.BooleanField(label="Przebuduj do nowego DOCX przed odkurzaniem", required=False, initial=False)
     document = forms.FileField(
         label="Dokument DOCX",

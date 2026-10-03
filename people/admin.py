@@ -2,6 +2,7 @@ from django import forms
 from django.contrib import admin
 from django.db.models import Value
 from django.db.models.functions import Lower
+from core.permissions import is_coordinator
 
 from .models import Person, Role
 
@@ -20,6 +21,9 @@ class PersonAdminForm(forms.ModelForm):
             "is_coordinator",
             "user",
             "author_profile",
+            "illustrator_portfolio",
+            "illustrator_preferences",
+            "illustrator_covers",
             "leave_start_date",
             "leave_end_date",
             "leave_until_revoked",
@@ -88,6 +92,15 @@ class RoleAdmin(admin.ModelAdmin):
 
 @admin.register(Person)
 class PersonAdmin(admin.ModelAdmin):
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = super().get_fieldsets(request, obj)
+        if is_coordinator(request.user):
+            return (*fieldsets, ("Ilustrator — portfolio i preferencje", {
+                "fields": ("illustrator_portfolio", "illustrator_preferences", "illustrator_covers"),
+                "description": "Aby osoba pojawiła się w spisie Ilustratorzy, dodaj jej rolę Ilustrator. Konto użytkownika nie jest wymagane.",
+            }))
+        return fieldsets
+
     readonly_fields = ("account_link", "leave_start_date", "leave_end_date", "leave_until_revoked")
 
     def get_readonly_fields(self, request, obj=None):

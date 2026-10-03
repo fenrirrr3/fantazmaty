@@ -79,7 +79,7 @@
                             {% if namespace == 'illustrations' and current == 'illustration_list' %}aria-current="page"{% endif %}
                         >
                             Ilustracje
-                        </a>{% endif %}<a
+                        </a>{% endif %}{% if can_coordinate %}<a href="{% url 'illustrations:illustrator_list' %}" class="sidebar-link" {% if namespace == 'illustrations' and current == 'illustrator_list' or namespace == 'illustrations' and current == 'illustrator_add' or namespace == 'illustrations' and current == 'illustrator_edit' %}aria-current="page"{% endif %}>Ilustratorzy</a>{% endif %}<a
                             href="{% url 'illustrations:cover_proposal_list' %}"
                             class="sidebar-link"
                             {% if namespace == 'illustrations' and current == 'cover_proposal_list' %}aria-current="page"{% endif %}

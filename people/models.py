@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.validators import URLValidator
 from django.db import models
 from django.utils import timezone
 
@@ -90,6 +91,13 @@ class PersonQuerySet(models.QuerySet):
 
 
 class Person(models.Model):
+    illustrator_portfolio = models.URLField(
+        "portfolio", max_length=500, blank=True,
+        validators=[URLValidator(schemes=["http", "https"])],
+    )
+    illustrator_preferences = models.TextField("preferencje", blank=True)
+    illustrator_covers = models.BooleanField("okładki", default=False)
+
     author_profile = models.OneToOneField("authors.Author", null=True, blank=True, on_delete=models.SET_NULL,
         related_name="team_profile", verbose_name="profil autora", help_text="Opcjonalne, jawne powiązanie. E-mail i pseudonim nie zastępują identyfikatora osoby.")
 
