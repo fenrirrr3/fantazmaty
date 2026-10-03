@@ -14,6 +14,6 @@ ALLOWED_HOSTS=['testserver','localhost','127.0.0.1']
 LOGIN_URL='/accounts/login/'
 from pathlib import Path
 BASE_DIR=Path(__file__).resolve().parent.parent
-MIDDLEWARE += ['core.activity.UserActivityMiddleware', 'core.middleware.EditingMiddleware']
+MIDDLEWARE += ['core.activity.UserActivityMiddleware', 'core.user_preview.UserPreviewMiddleware', 'core.middleware.EditingMiddleware']
 
 TEMPLATES[0]["DIRS"] = [BASE_DIR / "core" / "templates"]

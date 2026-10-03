@@ -5,6 +5,7 @@ import time
 logger = logging.getLogger(__name__)
 
 LABELS = {
+    'user_preview': 'Wybór użytkownika do podglądu', 'user_preview_stop': 'Zakończenie podglądu użytkownika',
     'home': 'Pulpit', 'people_list': 'Zespół', 'person_detail': 'Profil osoby',
     'assigned_text_detail': 'Podgląd tekstu', 'assigned_review_detail': 'Podgląd recenzji',
     'my_reviews': 'Moje recenzje', 'my_texts': 'Moje teksty', 'available_texts': 'Teksty do wzięcia',
@@ -102,6 +103,8 @@ class UserActivityMiddleware:
             from core.activity_spool import enqueue_activity
             try:
                 action = activity[0]
+                if getattr(request, 'is_user_preview', False):
+                    action = f'Podgląd user_id #{request.user.pk}: ' + action
                 if request.method not in ('GET', 'HEAD'):
                     # A submitted form and HTTP 200/302 do not prove a domain write.
                     action = 'Próba / formularz: ' + action

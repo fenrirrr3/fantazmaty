@@ -3,6 +3,7 @@ from django.test import TestCase, RequestFactory
 from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.urls import reverse
+from django.templatetags.static import static
 from authors.models import Author
 from texts.models import Text, Anthology, Review
 from workflow.models import WorkflowStage as S, WorkflowRoleAssignment as A
@@ -43,7 +44,7 @@ class AdminNavigationTests(TestCase):
             self.assertContains(page,'data-cms-admin-user="'+str(self.user.pk)+'"')
             for route in ('texts_text','texts_review','people_person','texts_anthology'):
                 self.assertContains(page,reverse('admin:'+route+'_changelist'))
-            self.assertContains(page,'core/admin-navigation.js')
+            self.assertContains(page,static('core/admin-navigation.js'))
         page=self.client.get(reverse('admin:index'))
         group_ids=re.findall(r'<details id="([^"]+)"',page.content.decode())
         self.assertEqual(len(group_ids),len(set(group_ids)))

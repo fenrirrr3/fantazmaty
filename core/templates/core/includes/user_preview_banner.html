@@ -1,0 +1,11 @@
+{% if request.is_user_preview %}
+<section class="user-preview-banner" aria-label="Aktywny podgląd użytkownika">
+    <div><strong>Podgląd jako: {{ request.preview_label }}</strong><p>Tylko do odczytu. Zmiany i wysyłanie powiadomień są zablokowane.</p></div>
+    <div class="user-preview-actions">
+        <a href="{% url 'core:user_preview' %}" class="secondary-button">Zmień użytkownika</a>
+        <form method="post" action="{% url 'core:user_preview_stop' %}">
+            {% csrf_token %}<button type="submit" class="primary-button">Wróć do administratora</button>
+        </form>
+    </div>
+</section>
+{% endif %}

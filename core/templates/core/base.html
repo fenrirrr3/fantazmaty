@@ -16,7 +16,7 @@
     <link rel="stylesheet" href="{% static 'core/themes.css' %}?v=25">
 
     <link rel="stylesheet" href="{% static 'core/workspace.css' %}?v=28">
-    <link rel="stylesheet" href="{% static 'core/components.css' %}?v=4">
+    <link rel="stylesheet" href="{% static 'core/components.css' %}?v=5">
     <link rel="stylesheet" href="{% static 'core/dropbox-folder-chooser.css' %}">
     {% block extra_css %}{% endblock %}
 
@@ -70,6 +70,7 @@
             class="page{% if not user.is_authenticated or not user.is_active %} container{% endif %}"
             tabindex="-1"
         >
+            {% include "core/includes/user_preview_banner.html" %}
             {% if messages %}
                 <div class="messages" aria-label="Komunikaty">
                     {% for message in messages %}

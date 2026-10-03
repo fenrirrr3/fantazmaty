@@ -1,5 +1,6 @@
 from django.urls import path
 from .views import operations, intake, supervision, mailbox, newsletters
+from core.user_preview import user_preview, user_preview_stop
 
 from .views import (
     anthologies,
@@ -22,6 +23,8 @@ from core.views.programs import programs
 from core.views.activity import user_activity
 
 urlpatterns = [
+    path("podglad-uzytkownika/", user_preview, name="user_preview"),
+    path("podglad-uzytkownika/zakoncz/", user_preview_stop, name="user_preview_stop"),
     path("newsletter/zgody/", newsletters.newsletter_list, name="newsletter_list"),
     path("zespol/lista-wedlug-roli/", supervision.role_names, name="role_names"),
     path("etapy/<int:stage_id>/pomin/", workflow.skip_workflow_stage, name="skip_workflow_stage"),

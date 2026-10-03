@@ -103,6 +103,10 @@ details:is(.intake-panel,.program-tool,.work-handoff-card,.text-team,.archived-s
 .summary-work-state { margin-top: .35rem; }
 
 /* Layout belongs to components; themes.css owns the colour palette. */
+.user-preview-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding: var(--card-padding); margin-bottom: 20px; border: 2px solid var(--warning); border-radius: var(--radius); background: var(--warning-light); color: var(--text); overflow-wrap: anywhere; }
+.user-preview-banner p { margin: 6px 0 0; }
+.user-preview-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.user-preview-actions form { margin: 0; }
 .notes-editor-grid > .notes-editor-panel { padding: var(--card-padding); border: 1px solid var(--border); }
 .notes-editor-grid > .notes-editor-panel.coordinator-note-highlight { border-color: var(--danger-border); }
 .notes-editor-grid > .notes-editor-panel h3 { margin: 0 0 14px; min-height: 2.5em; }

@@ -1,0 +1,9 @@
+{% extends "core/base.html" %}
+{% block title %}Podgląd użytkownika | Fantazmaty CMS{% endblock %}
+{% block content %}
+<section class="details-card">
+    <h1 class="page-title">Podgląd użytkownika</h1>
+    <p>{{ reason }}</p>
+    <a href="{% url 'core:home' %}" class="secondary-button">Wróć do pulpitu</a>
+</section>
+{% endblock %}

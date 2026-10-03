@@ -1,0 +1,22 @@
+{% extends "core/base.html" %}
+{% block title %}Podgląd jako użytkownik | Fantazmaty CMS{% endblock %}
+{% block content %}
+<header class="page-header">
+    <h1 class="page-title">Podgląd jako użytkownik</h1>
+    <p class="page-description">Sprawdź pulpit, teksty, uprawnienia i przyciski wybranej osoby. Podgląd jest tylko do odczytu — operacje zapisu są zablokowane.</p>
+</header>
+<section class="details-card">
+    <form method="post" class="general-notes-form">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <div class="general-notes-actions">
+            <button type="submit" class="primary-button">Pokaż serwis jako wybrany użytkownik</button>
+            <a href="{% url 'core:home' %}" class="secondary-button">Wróć do pulpitu</a>
+        </div>
+    </form>
+    <p class="form-help">Podgląd działa we wszystkich kartach tej sesji przeglądarki. Nie wymaga hasła wybranej osoby i nie zmienia jej konta. Zakończysz go przyciskiem na pasku podglądu.</p>
+    {% if preview_enabled %}
+    <form method="post" action="{% url 'core:user_preview_stop' %}">{% csrf_token %}<button type="submit" class="secondary-button">Zakończ podgląd i wróć do administratora</button></form>
+    {% endif %}
+</section>
+{% endblock %}

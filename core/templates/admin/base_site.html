@@ -18,6 +18,7 @@
         {% if user.is_superuser or user.person_profile.is_active %}
             <nav class="cms-admin-navigation cms-admin-quick-links" data-cms-admin-user="{{ user.pk }}" aria-label="Skróty panelu">
                 {% if user.is_superuser %}
+                <a href="{% url 'core:user_preview' %}">Podgląd jako użytkownik</a>
                 <a href="{% url 'admin:texts_text_changelist' %}">Teksty</a>
                 <a href="{% url 'admin:texts_review_changelist' %}">Recenzje</a>
                 <a href="{% url 'admin:people_person_changelist' %}">Zespół</a>

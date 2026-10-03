@@ -17,6 +17,7 @@
             </p>
 
             {% if user.is_superuser %}
+                <a href="{% url 'core:user_preview' %}" class="sidebar-link">Podgląd jako użytkownik</a>
                 <a href="{% url 'admin:index' %}" class="sidebar-link">
                     Panel administracyjny
                 </a>

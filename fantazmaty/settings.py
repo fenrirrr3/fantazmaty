@@ -133,6 +133,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "core.activity.UserActivityMiddleware",
+    "core.user_preview.UserPreviewMiddleware",
     "core.middleware.EditingMiddleware",
 ]
 
