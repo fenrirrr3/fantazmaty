@@ -582,7 +582,7 @@ def workflow_list_context(*, user, params):
         texts = texts.filter(Q(current_stage_type__isnull=True) |
                              ~Q(current_stage_type__in=(StageType.READY, StageType.WITHDRAWN)))
     from django.db.models import Min, Max
-    from workflow.read_queries import editorial_approval
+    from workflow.read_queries import editorial_approval, exclude_obsolete_verification_placeholders
     texts = texts.annotate(
         summary_started=Min('workflow_stages__started_at'),
         summary_ended=Max('workflow_stages__ended_at'),
@@ -605,7 +605,8 @@ def workflow_list_context(*, user, params):
         sort = 'anthology'
     texts = texts.order_by(*sorts[sort]).prefetch_related(Prefetch(
         'workflow_stages',
-        queryset=WorkflowStage.objects.filter(workflow_cycle=F('text__current_workflow_cycle'))
+        queryset=exclude_obsolete_verification_placeholders(
+            WorkflowStage.objects.filter(workflow_cycle=F('text__current_workflow_cycle')))
             .select_related('assignment__assigned_to__person_profile')
             .order_by('execution_number', 'iteration', 'pk'),
         to_attr='summary_stages',
@@ -754,7 +755,7 @@ def text_detail_context(*, user, text):
         not any(s.repetition_id and not s.is_completed for s in stages) and not terminal and not later_phase
         and (coordinator or owned(Role.EDITOR))
     )
-    from workflow.services import completed_stage_exists
+    from workflow.services import completed_stage_exists, editing_follows_first_verification
     first_done = completed_stage_exists(text, StageType.FIRST_VERIFICATION)
     second_done = completed_stage_exists(text, StageType.SECOND_VERIFICATION)
     first_gate = bool(first_done)
@@ -872,6 +873,7 @@ def text_detail_context(*, user, text):
         ),
         "can_send_to_second_verification": bool(
             can_control and editing and first_gate and not second_gate
+            and editing_follows_first_verification(text, editing)
             and not any(
                 stage.stage_type == StageType.SECOND_VERIFICATION
                 for stage in stages

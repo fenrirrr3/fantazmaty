@@ -776,6 +776,38 @@ def editing_checkpoint_passed(text, checkpoint):
     return completed_stage_exists(text, checkpoint)
 
 
+def editing_follows_first_verification(text, editing_stage):
+    """Require a post-W1 editorial pass, including same-day and dateless history.
+
+    Handoff itself closes this pass. A completed historical W1 must not approve
+    the original editing pass that preceded its reservation. When dates cannot
+    establish order, a later stage record provides evidence of resumption.
+    """
+    if not editing_stage or (
+        editing_stage.text_id != text.pk
+        or editing_stage.workflow_cycle != current_cycle(text)
+        or editing_stage.stage_type != StageType.EDITING
+        or not editing_stage.is_current or not editing_stage.is_released
+        or editing_stage.is_completed or editing_stage.ended_at is not None
+        or not editing_stage.started_at or editing_stage.started_at > timezone.localdate()
+    ):
+        return False
+    from workflow.state import operational_stages
+    if any(stage.stage_type == StageType.FIRST_VERIFICATION and not stage.is_completed
+           for stage in operational_stages(current_stage_queryset(text))):
+        return False
+    first = WorkflowStage.objects.using(_database(text)).filter(
+        text_id=text.pk, workflow_cycle=current_cycle(text),
+        stage_type=StageType.FIRST_VERIFICATION, is_completed=True, is_skipped=False,
+    ).exclude(repetition__canceled_at__isnull=False).order_by('-pk').first()
+    if first is None:
+        return False
+    if first.ended_at is not None:
+        if editing_stage.started_at != first.ended_at:
+            return editing_stage.started_at > first.ended_at
+    return editing_stage.pk > first.pk
+
+
 @_locked_text_operation
 def send_text_to_author(text, user, started_at=None):
     ensure_editor_access(text, user)
@@ -832,6 +864,12 @@ def send_to_second_verification(text, user, started_at=None):
             "Przed przekazaniem tekst musi znajdować się u redaktora."
         )
 
+    if not editing_follows_first_verification(text, editing_stage):
+        raise ValidationError(
+            "Przekazanie do drugiej weryfikacji wymaga redakcji wznowionej po "
+            "zakończeniu pierwszej weryfikacji. Sprawdź historię etapów; "
+            "samo historyczne oznaczenie W1 jako zakończonej nie wystarcza."
+        )
     _finish_stage_record(editing_stage, transition_date)
     return _create_pending_stage(text, StageType.SECOND_VERIFICATION)
 

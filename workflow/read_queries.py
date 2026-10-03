@@ -58,8 +58,14 @@ def reserved_assignments(user, today):
     stages = current_stages()
     matching = stages.alias(_work_role=stage_role()).filter(Q(assignment_id=OuterRef('pk')) | Q(assignment__isnull=True, _work_role=OuterRef('role'))).exclude(
         stage_type__in=('author_editing', 'ready_for_editing'))
+    performed = S.objects.filter(
+        assignment_id=OuterRef('pk'), text_id=OuterRef('text_id'),
+        workflow_cycle=OuterRef('workflow_cycle'), is_completed=True, is_skipped=False,
+    ).exclude(repetition__canceled_at__isnull=False)
     return A.objects.current_cycle().filter(assigned_to_id=user.pk).filter(
-        ~Exists(matching) | (~Exists(active_stages(matching, today)) & Exists(open_stages(matching)))
+        # Restoring a team member does not reserve their already performed work.
+        (~Exists(matching) & ~Exists(performed))
+        | (~Exists(active_stages(matching, today)) & Exists(open_stages(matching)))
     ).exclude(Q(role=A.Role.EDITOR) & waiting_editor(stages, today))
 
 
@@ -86,6 +92,7 @@ def editorial_approval(stages, today):
 def annotate_my_work(queryset, user, today):
     stages = S.objects.current_cycle().filter(text_id=OuterRef('pk'))
     own = own_stages(user).filter(text_id=OuterRef('pk'), workflow_cycle=OuterRef('current_workflow_cycle'))
+    pending_own = open_stages(own.filter(is_current=True))
     assigned = A.objects.current_cycle().filter(text_id=OuterRef('pk'), assigned_to_id=user.pk)
     reserved = reserved_assignments(user, today).filter(text_id=OuterRef('pk'), workflow_cycle=OuterRef('current_workflow_cycle'), is_current=True)
     closed = Exists(terminal(stages))
@@ -105,9 +112,9 @@ def annotate_my_work(queryset, user, today):
     # by the editor's own control. Keep that upcoming responsibility visible.
     editor_followup_waiting = (Exists(assigned.filter(role=A.Role.EDITOR))
         & Exists(open_stages(stages).filter(stage_type=S.StageType.COORDINATOR_CONTROL)))
-    pending = ~active & ~closed & (Exists(own.filter(is_current=True, is_completed=False))
+    pending = ~active & ~closed & (Exists(pending_own)
         | Exists(reserved) | live_editor_waiting | editor_followup_waiting)
-    completed = Exists(own.filter(is_completed=True)) & ~Exists(own.filter(is_current=True, is_completed=False)) & ~active & ~pending & ~editor_remaining
+    completed = Exists(own.filter(is_completed=True)) & ~Exists(pending_own) & ~active & ~pending & ~editor_remaining
     return queryset.annotate(work_active=active, work_waiting=pending, work_completed=completed)
 
 
