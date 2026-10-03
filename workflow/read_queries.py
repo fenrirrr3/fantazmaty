@@ -70,13 +70,11 @@ def reserved_assignments(user, today):
 
 
 def editorial_approval(stages, today):
-    """Editing ends for its owner when first proofreading has actually begun."""
+    """Editing ends for its owner on handoff to first proofreading."""
     proofreading = stages.filter(
         stage_type=S.StageType.FIRST_PROOFREADING, is_released=True,
         is_skipped=False,
-    ).exclude(repetition__canceled_at__isnull=False).filter(
-        Q(started_at__lte=today) | Q(is_completed=True)
-    )
+    ).exclude(repetition__canceled_at__isnull=False)
     # A prior proofreading pass cannot approve a new editorial repetition.
     editorial_repeat = stages.filter(
         repetition__isnull=False, repetition__completed_at__isnull=True,
@@ -108,12 +106,10 @@ def annotate_my_work(queryset, user, today):
     editorial_work = Exists(assigned.filter(role=A.Role.EDITOR)) | Exists(own.filter(_work_role=A.Role.EDITOR))
     editor_remaining = editorial_work & ~editorial_approval(stages, today)
     live_editor_waiting = editor_remaining & Exists(assigned.filter(role=A.Role.EDITOR))
-    # After proofreading, the coordinator's verification control is followed
-    # by the editor's own control. Keep that upcoming responsibility visible.
-    editor_followup_waiting = (Exists(assigned.filter(role=A.Role.EDITOR))
-        & Exists(open_stages(stages).filter(stage_type=S.StageType.COORDINATOR_CONTROL)))
+    # The editor returns only for their own control, covered by pending_own
+    # and active above; the coordinator's control is not the editor's task.
     pending = ~active & ~closed & (Exists(pending_own)
-        | Exists(reserved) | live_editor_waiting | editor_followup_waiting)
+        | Exists(reserved) | live_editor_waiting)
     completed = Exists(own.filter(is_completed=True)) & ~Exists(pending_own) & ~active & ~pending & ~editor_remaining
     return queryset.annotate(work_active=active, work_waiting=pending, work_completed=completed)
 
