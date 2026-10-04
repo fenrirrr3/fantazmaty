@@ -246,15 +246,9 @@ SESSION_COOKIE_SECURE = env_bool(
     "DJANGO_SESSION_COOKIE_SECURE",
     default=IS_PRODUCTION,
 )
-SESSION_COOKIE_AGE = env_int(
-    "DJANGO_SESSION_COOKIE_AGE",
-    8 * 60 * 60,
-    minimum=1,
-)
-SESSION_EXPIRE_AT_BROWSER_CLOSE = env_bool(
-    "DJANGO_SESSION_EXPIRE_AT_BROWSER_CLOSE",
-    default=True,
-)
+# Session lifetime: 7 days. These two settings intentionally ignore .env.
+SESSION_COOKIE_AGE = 7 * 24 * 60 * 60
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False
 
 CSRF_COOKIE_NAME = "fantazmaty_csrftoken"
 CSRF_COOKIE_SAMESITE = "Lax"
