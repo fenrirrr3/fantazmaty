@@ -8,6 +8,32 @@ from django.urls import path
 
 
 class CMSModelAdminMixin(PeopleChoiceMixin):
+    def get_changelist(self, request, **kwargs):
+        base = super().get_changelist(request, **kwargs)
+
+        class PageSizeChangeList(base):
+            def get_filters_params(self, params=None):
+                values = super().get_filters_params(params)
+                values.pop('page_size', None)
+                return values
+
+        return PageSizeChangeList
+
+    def get_changelist_instance(self, request):
+        from core.pagination import get_page_size, ALLOWED_PAGE_SIZES
+        scoped = copy(self)
+        default = self.list_per_page if self.list_per_page in ALLOWED_PAGE_SIZES else 25
+        scoped.list_per_page = get_page_size(request, default=default)
+        cl = super(CMSModelAdminMixin, scoped).get_changelist_instance(request)
+        cl.cms_size_options = [{'size': size, 'url': cl.get_query_string({'page_size': size, 'p': None, 'all': None})} for size in sorted(ALLOWED_PAGE_SIZES)]
+        cl.cms_has_previous = not cl.show_all and cl.page_num > 1
+        cl.cms_has_next = not cl.show_all and cl.page_num < cl.paginator.num_pages
+        cl.cms_first_url = cl.get_query_string({'p': 1}, ['all'])
+        cl.cms_previous_url = cl.get_query_string({'p': max(1, cl.page_num - 1)}, ['all'])
+        cl.cms_next_url = cl.get_query_string({'p': min(cl.paginator.num_pages, cl.page_num + 1)}, ['all'])
+        cl.cms_last_url = cl.get_query_string({'p': cl.paginator.num_pages}, ['all'])
+        return cl
+
     def get_inline_instances(self, request, obj=None):
         scoped = copy(self)
         scoped.inlines = [type('CMS' + inline.__name__, (PeopleChoiceMixin, inline), {}) for inline in self.inlines]

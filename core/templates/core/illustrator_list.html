@@ -16,7 +16,7 @@
 </div></section>
 <section class="card" aria-label="Spis ilustratorów">
     <div class="table-container" tabindex="0" role="region" aria-label="Tabela ilustratorów">
-        <table class="data-table"><caption class="visually-hidden">Spis ilustratorów</caption>
+        <table data-server-paginated="true" class="data-table"><caption class="visually-hidden">Spis ilustratorów</caption>
             <thead><tr><th scope="col">Imię i nazwisko</th><th scope="col">Adres e-mail</th><th scope="col">Portfolio</th><th scope="col">Preferencje</th><th scope="col">Okładki</th></tr></thead>
             <tbody>{% for person in page_obj %}<tr>
                 <td><a href="{% url 'illustrations:illustrator_edit' person.pk %}"><strong>{{ person }}</strong></a></td>

@@ -1,0 +1,13 @@
+{% load i18n %}
+<nav class="cms-pagination" aria-label="Stronicowanie wyników">
+    <span>{% if cl.show_all and cl.can_show_all %}Wszystkie wyniki{% else %}Strona {{ cl.page_num }} z {{ cl.paginator.num_pages }}{% endif %} · Wyniki: {{ cl.result_count }}</span>
+    <label>Wyników na stronie
+        <select data-page-size-url>{% for option in cl.cms_size_options %}<option value="{{ option.url }}"{% if option.size == cl.list_per_page %} selected{% endif %}>{{ option.size }}</option>{% endfor %}</select>
+    </label>
+    <noscript>{% for option in cl.cms_size_options %}<a href="{{ option.url }}">{{ option.size }} na stronie</a> {% endfor %}</noscript>
+    <div class="cms-pagination-controls">
+        {% if cl.cms_has_previous %}<a class="cms-page-button" href="{{ cl.cms_first_url }}">Pierwsza</a><a class="cms-page-button" href="{{ cl.cms_previous_url }}" rel="prev">Poprzednia</a>{% else %}<button type="button" class="cms-page-button" disabled>Pierwsza</button><button type="button" class="cms-page-button" disabled>Poprzednia</button>{% endif %}
+        {% if cl.cms_has_next %}<a class="cms-page-button" href="{{ cl.cms_next_url }}" rel="next">Następna</a><a class="cms-page-button" href="{{ cl.cms_last_url }}">Ostatnia</a>{% else %}<button type="button" class="cms-page-button" disabled>Następna</button><button type="button" class="cms-page-button" disabled>Ostatnia</button>{% endif %}
+    </div>
+</nav>
+{% if cl.formset and cl.result_count %}<input type="submit" name="_save" class="default" value="{% translate 'Save' %}">{% endif %}

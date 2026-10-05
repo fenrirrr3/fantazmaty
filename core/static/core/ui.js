@@ -11,7 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
     main.addEventListener('change', event => {
         if (!event.target.matches('[data-select-table]')) return;
         event.target.closest('table').querySelectorAll('tbody input[name="selected"]').forEach(input => {
-            if (!input.disabled && !input.closest('tr').hidden) input.checked = event.target.checked;
+            if (!input.disabled && !input.closest('tr').hidden && !input.closest('tr').classList.contains('cms-page-hidden')) input.checked = event.target.checked;
         });
     });
     main.querySelectorAll('form[data-filters]').forEach(form => {

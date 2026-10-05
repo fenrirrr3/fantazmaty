@@ -9,7 +9,7 @@ from django.db.models import QuerySet
 
 
 DEFAULT_PAGE_SIZE = 25
-ALLOWED_PAGE_SIZES = frozenset({25, 50, 100, 250})
+ALLOWED_PAGE_SIZES = frozenset({25, 50, 100, 250, 500})
 
 
 def _positive_integer(value, default):
@@ -30,7 +30,7 @@ def _positive_integer(value, default):
     return number if number > 0 else default
 
 
-def get_page_size(request, default=DEFAULT_PAGE_SIZE):
+def get_page_size(request, default=DEFAULT_PAGE_SIZE, *, size_param='page_size'):
     if default not in ALLOWED_PAGE_SIZES:
         raise ValueError(
             "Domyślny rozmiar strony musi należeć "
@@ -38,7 +38,7 @@ def get_page_size(request, default=DEFAULT_PAGE_SIZE):
         )
 
     page_size = _positive_integer(
-        request.GET.get("page_size"),
+        request.GET.get(size_param),
         default,
     )
 
@@ -48,19 +48,19 @@ def get_page_size(request, default=DEFAULT_PAGE_SIZE):
     return page_size
 
 
-def _page_url(parameters, page_number):
+def _page_url(parameters, page_number, page_param='page', anchor=''):
     parameters = parameters.copy()
-    parameters["page"] = str(page_number)
-    return f"?{parameters.urlencode()}"
+    parameters[page_param] = str(page_number)
+    return f"?{parameters.urlencode()}{anchor}"
 
 
-def paginate_items(request, items, default=DEFAULT_PAGE_SIZE):
+def paginate_items(request, items, default=DEFAULT_PAGE_SIZE, *, page_param='page', size_param='page_size', anchor=''):
     """Stronicuje QuerySet lub sekwencję bez wczytywania całego QuerySetu."""
     from core.table_sorting import prepare_table_sort
     items, sort_columns = prepare_table_sort(request, items)
-    page_size = get_page_size(request, default=default)
+    page_size = get_page_size(request, default=default, size_param=size_param)
     page_number = _positive_integer(
-        request.GET.get("page"),
+        request.GET.get(page_param),
         default=1,
     )
 
@@ -78,25 +78,33 @@ def paginate_items(request, items, default=DEFAULT_PAGE_SIZE):
     page_obj = paginator.get_page(page_number)
 
     parameters = request.GET.copy()
-    parameters.pop("page", None)
-    parameters["page_size"] = str(page_size)
+    parameters.pop(page_param, None)
+    parameters[size_param] = str(page_size)
 
     page_obj.sort_columns = sort_columns
     page_obj.selected_page_size = page_size
     page_obj.allowed_page_sizes = tuple(sorted(ALLOWED_PAGE_SIZES))
+    page_obj.page_param = page_param
+    page_obj.size_param = size_param
+    page_obj.anchor = anchor
+    page_obj.size_options = []
+    for size in sorted(ALLOWED_PAGE_SIZES):
+        size_parameters = parameters.copy()
+        size_parameters[size_param] = str(size)
+        page_obj.size_options.append({'size': size, 'url': _page_url(size_parameters, 1, page_param, anchor)})
     page_obj.query_string = parameters.urlencode()
 
     # QueryDict zachowuje wielokrotne wartości, np. roles=1&roles=2.
     # Szablony powinny używać zwykłego autoescape, bez filtra safe.
-    page_obj.first_url = _page_url(parameters, 1)
-    page_obj.last_url = _page_url(parameters, paginator.num_pages)
+    page_obj.first_url = _page_url(parameters, 1, page_param, anchor)
+    page_obj.last_url = _page_url(parameters, paginator.num_pages, page_param, anchor)
     page_obj.previous_url = (
-        _page_url(parameters, page_obj.previous_page_number())
+        _page_url(parameters, page_obj.previous_page_number(), page_param, anchor)
         if page_obj.has_previous()
         else None
     )
     page_obj.next_url = (
-        _page_url(parameters, page_obj.next_page_number())
+        _page_url(parameters, page_obj.next_page_number(), page_param, anchor)
         if page_obj.has_next()
         else None
     )

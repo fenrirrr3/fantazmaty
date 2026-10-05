@@ -416,7 +416,7 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     readonly_fields = ("manual_status_link", "coordinator_note_updated_at", "current_workflow_cycle", "import_source", "import_source_row")
 
     fieldsets = (
-        ('Tekst', {'fields': ('title', 'authors', 'anthology', 'length', 'tags', 'genre', 'content_warnings', 'file_url', 'for_recording',
+        ('Tekst', {'fields': ('title', 'authors', 'anthology', 'length', 'tags', 'genre', 'content_warnings', 'file_url', 'for_recording', 'audiobook_blacklisted',
             'source_author_first_name', 'source_author_last_name', 'source_author_email', 'source_author_pseudonym',
             'source_contract_received', 'source_coauthor_contracts', 'source_update_author_phone')}),
         ('Status i zarządzanie', {'fields': ('manual_status_link',)}),

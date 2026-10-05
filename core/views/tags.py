@@ -2,7 +2,7 @@
 from core.translation_scope import ordinary
 from django.contrib.auth.decorators import login_required
 from django.db import connections
-from django.db.models import F, OuterRef, Prefetch, Q, Subquery, Value, Exists, TextField
+from django.db.models import F, Func, OuterRef, Prefetch, Q, Subquery, Value, Exists, TextField
 from django.db.models.functions import Concat, Collate, Lower, Replace, Trim
 from django.shortcuts import render
 from django.views.decorators.cache import never_cache
@@ -16,7 +16,10 @@ from core.sort_keys import REPLACEMENTS
 
 
 def polish_key(field, using):
-    # SQLite's LOWER handles ASCII only; normalize Polish capitals first.
+    if connections[using].vendor == 'sqlite':
+        # A single function avoids SQLite parser limits for nested author subqueries.
+        return Collate(Func(F(field), function='cms_polish_sort_key', output_field=TextField()), 'BINARY')
+    # Normalize Polish capitals explicitly before building the portable SQL key.
     value = F(field)
     for letter, _ in REPLACEMENTS:
         value = Replace(value, Value(letter.upper()), Value(letter), output_field=TextField())

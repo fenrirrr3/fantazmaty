@@ -1,64 +1,14 @@
 {{ page_obj.sort_columns|json_script:"table-sort-columns" }}
 {% if page_obj.paginator %}
-    <nav class="pagination-bar" aria-label="Stronicowanie wyników">
-        <span>
-            Strona {{ page_obj.number }} z {{ page_obj.paginator.num_pages }}
-            <span class="muted-text">
-                · Wyniki {{ page_obj.start_index }}–{{ page_obj.end_index }}
-                z {{ page_obj.paginator.count }}
-            </span>
-        </span>
-
-        <div class="pagination-links">
-            {% if page_obj.has_previous %}
-                {% if page_obj.number > 2 %}
-                    <a
-                        class="pagination-link"
-                        href="{{ page_obj.first_url }}"
-                        aria-label="Przejdź do pierwszej strony"
-                    >
-                        Pierwsza
-                    </a>
-                {% endif %}
-
-                <a
-                    class="pagination-link"
-                    href="{{ page_obj.previous_url }}"
-                    rel="prev"
-                    aria-label="Przejdź do poprzedniej strony"
-                >
-                    <span aria-hidden="true">←</span><span class="visually-hidden">Poprzednia strona</span>
-                </a>
-            {% endif %}
-
-            <span
-                class="pagination-current"
-                aria-current="page"
-                aria-label="Bieżąca strona: {{ page_obj.number }}"
-            >
-                {{ page_obj.number }}
-            </span>
-
-            {% if page_obj.has_next %}
-                <a
-                    class="pagination-link"
-                    href="{{ page_obj.next_url }}"
-                    rel="next"
-                    aria-label="Przejdź do następnej strony"
-                >
-                    <span aria-hidden="true">→</span><span class="visually-hidden">Następna strona</span>
-                </a>
-
-                {% if page_obj.next_page_number < page_obj.paginator.num_pages %}
-                    <a
-                        class="pagination-link"
-                        href="{{ page_obj.last_url }}"
-                        aria-label="Przejdź do ostatniej strony"
-                    >
-                        Ostatnia
-                    </a>
-                {% endif %}
-            {% endif %}
-        </div>
-    </nav>
+<nav class="cms-pagination" aria-label="Stronicowanie wyników">
+    <span>Strona {{ page_obj.number }} z {{ page_obj.paginator.num_pages }} · Wyniki {{ page_obj.start_index }}–{{ page_obj.end_index }} z {{ page_obj.paginator.count }}</span>
+    <label>Wyników na stronie
+        <select data-page-size-url>{% for option in page_obj.size_options %}<option value="{{ option.url }}"{% if option.size == page_obj.selected_page_size %} selected{% endif %}>{{ option.size }}</option>{% endfor %}</select>
+    </label>
+    <noscript>{% for option in page_obj.size_options %}<a href="{{ option.url }}">{{ option.size }} na stronie</a> {% endfor %}</noscript>
+    <div class="cms-pagination-controls">
+        {% if page_obj.has_previous %}<a class="cms-page-button" href="{{ page_obj.first_url }}">Pierwsza</a><a class="cms-page-button" href="{{ page_obj.previous_url }}" rel="prev">Poprzednia</a>{% else %}<button type="button" class="cms-page-button" disabled>Pierwsza</button><button type="button" class="cms-page-button" disabled>Poprzednia</button>{% endif %}
+        {% if page_obj.has_next %}<a class="cms-page-button" href="{{ page_obj.next_url }}" rel="next">Następna</a><a class="cms-page-button" href="{{ page_obj.last_url }}">Ostatnia</a>{% else %}<button type="button" class="cms-page-button" disabled>Następna</button><button type="button" class="cms-page-button" disabled>Ostatnia</button>{% endif %}
+    </div>
+</nav>
 {% endif %}

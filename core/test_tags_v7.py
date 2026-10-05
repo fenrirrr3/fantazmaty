@@ -152,6 +152,17 @@ class TagsTests(TestCase):
         self.assertIn('tag=szukany',response.context['page_obj'].previous_url)
         self.assertIn('sort=-title',response.context['page_obj'].previous_url)
 
+    def test_polish_sort_key_preserves_null_and_uppercase_order(self):
+        from core.views.tags import polish_key
+        from django.db.models import CharField, Value
+        query = Text.objects.filter(pk=self.text.pk).annotate(
+            sample=Value(' ĄĆĘŁŃÓŚŹŻ ', output_field=CharField()),
+            missing=Value(None, output_field=CharField()),
+        ).annotate(key=polish_key('sample', Text.objects.db), empty_key=polish_key('missing', Text.objects.db))
+        row = query.get()
+        self.assertEqual(row.key, 'a~c~e~l~n~o~s~z~z~~')
+        self.assertIsNone(row.empty_key)
+
     def test_only_tag_field_changes_and_workflow_is_untouched(self):
         before=(self.text.title,self.text.anthology_id,self.text.content_warnings,self.text.coordinator_note)
         stages=list(self.text.workflow_stages.values())

@@ -14,6 +14,9 @@ def fold_polish(value):
 def install_sqlite_function(sender=None, connection=None, **kwargs):
     if connection is not None and connection.vendor == 'sqlite' and connection.connection is not None:
         connection.connection.create_function('cms_fold_text', 1, fold_polish, deterministic=True)
+        from core.sort_keys import text_key
+        connection.connection.create_function('cms_polish_sort_key', 1,
+            lambda value: None if value is None else text_key(value), deterministic=True)
 
 
 class PolishContains(IContains):

@@ -1,6 +1,7 @@
 """Real availability and performer changes used by the inactivity report."""
 from django.db.models import Case, When, Value, DateField, CharField, ExpressionWrapper, F, Q, Exists, OuterRef, Subquery
 from django.utils import timezone
+from django.db.models.functions import Cast
 from workflow.models import WorkflowStage as S
 
 
@@ -104,11 +105,13 @@ def annotate_inactivity_clocks(query, today):
     ).annotate(_clock_available=later_date('queued_at', '_clock_previous_date'))
     query = query.annotate(_clock_after_change=later_date('_clock_available', 'waiting_reset_at'))
     return query.annotate(
-        report_waiting_since=Case(
+        report_waiting_since=Cast(Case(
             When(report_blocked=True, then=Value(today)),
             # Never infer the missing completion date from an early reservation.
             When(_clock_has_previous=True, _clock_previous_date__isnull=True, waiting_reset_at__isnull=True,
                  then=Value(None, output_field=DateField())),
-            default=F('_clock_after_change'), output_field=DateField()),
-        report_active_since=later_date('started_at', 'waiting_reset_at'),
+            default=F('_clock_after_change'), output_field=DateField()), DateField()),
+        # MySQL can infer a string result for CASE mixing dates and parameters.
+        # output_field alone does not cast the database result to a DATE.
+        report_active_since=Cast(later_date('started_at', 'waiting_reset_at'), DateField()),
     )

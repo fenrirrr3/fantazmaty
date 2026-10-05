@@ -310,6 +310,7 @@ class AnthologyTask(models.Model):
 
 class Text(NormalizedModelMixin, models.Model):
     for_recording = models.BooleanField("Do nagrywania", default=True, db_index=True)
+    audiobook_blacklisted = models.BooleanField("Czarna lista audiobooków", default=False, db_index=True)
     genre = models.CharField("gatunek", max_length=100, blank=True, default="")
     tags = models.TextField("tagi", blank=True, default="", max_length=5000)
 
@@ -396,6 +397,11 @@ class Text(NormalizedModelMixin, models.Model):
     def save(self, *args, **kwargs):
         using = kwargs.get('using') or router.db_for_write(type(self), instance=self)
         fields = kwargs.get('update_fields')
+        if self.audiobook_blacklisted and (fields is None or {'for_recording', 'audiobook_blacklisted'} & set(fields)):
+            self.for_recording = False
+            if fields is not None:
+                fields = set(fields) | {'for_recording'}
+                kwargs['update_fields'] = fields
         if fields is None or 'coordinator_note' in fields:
             previous_note = type(self).objects.using(using).filter(pk=self.pk).values_list('coordinator_note', flat=True).first() if self.pk else ''
             if previous_note != self.coordinator_note:

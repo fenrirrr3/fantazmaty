@@ -1,5 +1,4 @@
 from core.translation_scope import ordinary
-from django.core.paginator import Paginator
 from core.selectors.texts import _annotated_texts
 from workflow.models import WorkflowStage
 from django.contrib import messages
@@ -121,9 +120,8 @@ def _render_author_detail(request, author, *, form=None, status=200):
         Q(author_id=author.pk) | Q(coauthors__pk=author.pk),
         old_reviews=True,
     ).select_related("anthology").distinct().order_by("-created_at", "-pk")
-    historical_page = Paginator(historical_reviews, 25).get_page(
-        request.GET.get("archive_page", "1")
-    )
+    historical_page = paginate_items(request, historical_reviews,
+        page_param='archive_page', size_param='archive_page_size', anchor='#archiwalne-recenzje')
 
     # Archiwalne recenzje nie wpływają na żaden licznik zgłoszeń.
     submissions = ordinary(Review.objects).filter(

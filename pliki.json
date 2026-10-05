@@ -1,0 +1,50 @@
+[
+  {
+    "file": "core/search_lookup.py",
+    "sha256": "04682d50e405db7682407256a11e5cedceda4f93a21a84e64c758bab894e2a29"
+  },
+  {
+    "file": "core/templates/core/includes/text_production.html",
+    "sha256": "2329e04c7f8230ba7d4b6b2a6bebb84d7236403f386fd9aa760e01da1fbe54f1"
+  },
+  {
+    "file": "core/test_admin_navigation_oct01.py",
+    "sha256": "dbcc7c7f6a0ab56997bbf467689ab345783cb53446a61146640276341d91531a"
+  },
+  {
+    "file": "core/test_audiobook_blacklist.py",
+    "sha256": "08b4c302d8e29ea3955fae1c352f8971a74ef2e73e3c5e29ec65efc79c0221ca"
+  },
+  {
+    "file": "core/test_tags_v7.py",
+    "sha256": "881335729e274d1eb780f9e0a606b8759c769cec8b00822302943d2efbeca444"
+  },
+  {
+    "file": "core/views/audiobooks.py",
+    "sha256": "96ec43db0c45af8de69f66e543d118a8665aef6d42b3143f2288e74065b650eb"
+  },
+  {
+    "file": "core/views/tags.py",
+    "sha256": "c23d19c4c2f7cac7527396d61cc6bf9f313421513ac0d43a8f498f9453c57031"
+  },
+  {
+    "file": "texts/admin.py",
+    "sha256": "807b96a4965fb2014c4f832d66f55687fec42b518a463fe3ff93e7289028f720"
+  },
+  {
+    "file": "texts/migrations/0026_text_audiobook_blacklisted.py",
+    "sha256": "7660f27b6a9a634cfdcd7b97ede8b8d9e071ab2cd1a1268e493c53ece93463e2"
+  },
+  {
+    "file": "texts/models.py",
+    "sha256": "3cdfbcf58f0b43418ce3cb99066c0f919fe7bdb7fe4f5743d428bb96569820f5"
+  },
+  {
+    "file": "workflow/test_archive_executions.py",
+    "sha256": "5865d6e07a66a4c8b597c30a416e3f79a4c536d4e88801e1d4cd80f4fc0b6d96"
+  },
+  {
+    "file": "workflow/waiting.py",
+    "sha256": "5c09c9895c8bbdae0f3900b537274d37a6101f14ff79750d0004681ea950e6e7"
+  }
+]

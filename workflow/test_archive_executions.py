@@ -56,8 +56,11 @@ class ArchiveExecutionTests(TestCase):
                 stages=list(S.objects.filter(text=text,stage_type=kind).order_by('execution_number'))
                 self.assertEqual([s.execution_number for s in stages],list(range(1,count+1)))
                 self.assertTrue(all(s.is_completed and s.imported_completed for s in stages))
-                self.assertIn('wykonawca 1',stage_label(stages[0]))
-                self.assertIn('wykonawca 1',assignment_label(stages[0].assignment))
+                expected = {'editing':'Redaktor', 'first_proofreading':'Korektor 1', 'first_verification':'Weryfikator 1'}[kind]
+                for number, stage in enumerate(stages, 1):
+                    label = expected if number == 1 else f'{expected} (wyk. {number})'
+                    self.assertEqual(stage_label(stage), label)
+                    self.assertEqual(assignment_label(stage.assignment), label)
                 self.assertNotIn('przebieg',str(stages[0].assignment))
         self.assertEqual(S.objects.filter(stage_type='ready').count(),29)
         report=self.repair();self.assertEqual(report['counts'],{'bez zmian':29})
@@ -72,9 +75,9 @@ class ArchiveExecutionTests(TestCase):
         team=response.context['team_members']
         self.assertEqual(len(team),7)
         self.assertEqual([m['label'] for m in team if m['role']=='verifier_1'],
-                         ['Weryfikacja — wykonawca 1','Weryfikacja — wykonawca 2','Weryfikacja — wykonawca 3'])
-        self.assertContains(response,'Korekta — wykonawca 2')
-        self.assertContains(response,'Redakcja — wykonawca 1')
+                         ['Weryfikator 1','Weryfikator 1 (wyk. 2)','Weryfikator 1 (wyk. 3)'])
+        self.assertContains(response,'Korektor 1 (wyk. 2)')
+        self.assertContains(response,'Redaktor')
 
     def test_late_conflict_rolls_back_previous_changes_and_name(self):
         self.initial()

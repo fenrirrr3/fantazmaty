@@ -1,23 +1,21 @@
 {
-  "audiobook_default_true": true,
-  "ready_and_translated_texts_included": true,
-  "toggle_updates_queue": true,
-  "stale_or_missing_token_rejected": true,
-  "footer_and_illustration_render": true,
-  "independent_illustrator_activity": true,
-  "disable_preserves_assignments": true,
-  "reactivation": true,
-  "admin_fields": true,
-  "permissions": true,
+  "core_lists_500_and_second_page": true,
+  "admin_500_and_second_page": true,
+  "invalid_size_fallback": true,
+  "multivalue_filters_preserved": true,
+  "size_resets_own_page": true,
+  "archive_independent_parameters": true,
+  "admin_global_configuration_unchanged": true,
   "database": "isolated SQLite",
-  "visual": {
-    "desktop_equal_columns": true,
-    "mobile_stacked": true,
-    "horizontal_overflow": false,
-    "widths_checked": [
-      1280,
-      390
-    ]
+  "browser": {
+    "local_500_and_51": true,
+    "independent_tables": true,
+    "form_values_preserved": true,
+    "selection_visible_rows_only": true,
+    "sorting_all_rows": true,
+    "empty_table_buttons_disabled": true,
+    "desktop_and_mobile_layout": true,
+    "server_pagination_not_duplicated": true
   },
-  "migration_check": "No changes detected"
+  "migration_changes": false
 }

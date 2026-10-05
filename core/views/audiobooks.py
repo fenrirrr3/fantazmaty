@@ -15,7 +15,24 @@ from texts.models import Text
 class AudiobookForm(forms.ModelForm):
     class Meta:
         model = Text
-        fields = ('for_recording',)
+        fields = ('for_recording', 'audiobook_blacklisted')
+        labels = {'audiobook_blacklisted': 'Czarna lista'}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.was_blacklisted = self.instance.audiobook_blacklisted
+        if self.was_blacklisted:
+            self.fields['audiobook_blacklisted'].disabled = True
+            self.fields['for_recording'].disabled = True
+            self.initial['for_recording'] = False
+
+    def clean(self):
+        data = super().clean()
+        if self.was_blacklisted or data.get('audiobook_blacklisted'):
+            # Locked again from the database by the view, not trusted from POST.
+            data['audiobook_blacklisted'] = True
+            data['for_recording'] = False
+        return data
 
 
 @never_cache
@@ -26,7 +43,7 @@ def audiobook_list(request):
     params = request.GET.copy()
     params['hide_ready'] = '0'
     context = dict(text_list_context(user=request.user, params=params,
-        scope=Text.objects.filter(for_recording=True), include_translations=True))
+        scope=Text.objects.filter(for_recording=True, audiobook_blacklisted=False), include_translations=True))
     page = paginate_items(request, context.pop('texts'))
     context.update(texts=page, page_obj=page)
     return render(request, 'core/audiobooks.html', context)
@@ -42,7 +59,7 @@ def update_text_audiobook(request, text_id):
         text = get_object_or_404(Text.objects.select_for_update(), pk=text_id)
         form = AudiobookForm(request.POST, instance=text)
         if form.is_valid():
-            text.save(update_fields=['for_recording'])
+            text.save(update_fields=['for_recording', 'audiobook_blacklisted'])
             messages.success(request, 'Zapisano ustawienie audiobooka.')
             return redirect('core:assigned_text_detail', text_id=text.pk)
         return _render_text_detail(request, text, bound_forms={'audiobook_form': form}, status=400)

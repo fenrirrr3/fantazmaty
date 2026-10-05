@@ -1,35 +1,39 @@
-CMS — STOPKA TEKSTU, AUDIOBOOKI I AKTYWNOŚĆ ILUSTRATORÓW — V18
+Poprawki CI i czarna lista audiobooków — v20, 2026-10-05
 
-Paczka zawiera tylko 18 nowych lub zmienionych plików projektu, względem ostatniej lokalnej wersji v17. Zachowaj strukturę katalogów przy podmianie. Pliki dokumentacji, JSON i PNG nie wymagają wdrożenia.
+Paczka uzupełnia v19. Zawiera wyłącznie zmienione i nowe pliki.
+Skopiuj katalogi core, texts i workflow do katalogu projektu z manage.py,
+zachowując ścieżki. Podmień również dołączone pliki testów.
 
-ZMIANY
-1. Podgląd tekstu: „Osoby i wykonane prace przy tym tekście” zmieniono na „Stopka tekstu”. Zajmuje lewą połowę dostępnej szerokości; po prawej znajdują się sekcje Audiobook oraz, pod nią, Ilustracja. Na telefonie sekcje układają się jedna pod drugą. Widoczność samej stopki pozostaje ograniczona do superusera, tak jak wcześniej; pozostali członkowie zespołu widzą sekcje audiobooka i ilustracji.
-2. „Do nagrywania”: nowe pole tekstu, domyślnie Tak. Zapis działa w podglądzie tekstu i w adminie. Może je zmienić aktywny członek zespołu lub superuser, analogicznie do tagów. Formularz chroni przed nadpisaniem nowszych zmian ze starej karty.
-3. Audiobooki: nowa stronicowana tabela Antologia / Autor / Tytuł / Status. Widać teksty oznaczone „Do nagrywania”, również gotowe i tłumaczone. Status oznacza obecny etap workflow tekstu; nie dodano osobnego procesu nagrywania. Dotychczasowy odtwarzacz pozostaje pod tabelą.
-4. Ilustracja w podglądzie tekstu: nazwisko z przypisanego profilu albo wpis ręczny oraz bieżący status pracy. Wyłączenie ilustratora nie usuwa tej informacji.
-5. Ilustratorzy: nowe pole „Aktywny ilustrator”, niezależne od „wciąż w ekipie” i aktywności konta. Odznacz je w podglądzie ilustratora i zapisz. Osoba znika z listy Ilustratorzy i z wyboru do nowych przypisań, ale pozostaje w bazie i we wcześniejszych pracach. Bieżące przypisanie nadal można edytować bez zmiany osoby.
-6. Admin: pole „Aktywny ilustrator” w formularzu osoby, sekcja „Ilustrator — portfolio i preferencje”, oraz filtr aktywności ilustratora na liście osób. Aby przywrócić osobę na listę, zaznacz to pole w adminie. Dotychczasowy bezpośredni link do jej podglądu też działa.
-7. Lista Ilustratorzy nadal obejmuje osoby z rolą Ilustrator. Nie wymaga konta ani aktywnego członkostwa w zespole, nie pokazuje komunikatów „Poza zespołem” / „Konto nieaktywne” i nie blokuje pól imienia, nazwiska oraz e-maila z powodu powiązanego konta. Dostęp do zarządzania katalogiem nadal mają koordynatorzy i superuserzy.
+Na PythonAnywhere, w aktywnym środowisku wirtualnym, z katalogu projektu:
+python manage.py migrate --noinput && python manage.py check && python manage.py collectstatic --noinput
 
-MIGRACJE
-people/0012_person_illustrator_active.py
-texts/0025_text_for_recording.py
+Następnie Web -> Reload.
 
-Po migracji WSZYSTKIE istniejące teksty mają „Do nagrywania” = Tak, zgodnie z wartością domyślną. Można je potem indywidualnie wyłączyć. Dotychczasowi ilustratorzy mają „Aktywny ilustrator” = Tak; konto nieaktywne lub osoba spoza zespołu nie oznacza automatycznie wyłączonego ilustratora.
-Nie usuwaj plików migracji i nie stosuj --fake. Paczka zakłada wcześniej wdrożone migracje z v17, w tym people/0011 i texts/0024.
+Nowa migracja: texts/0026_text_audiobook_blacklisted.py.
+Domyślnie wszystkie istniejące teksty mają czarną listę wyłączoną.
+Ich dotychczasowy wybór Do nagrywania pozostaje bez zmian.
 
-PYTHONANYWHERE
-Najpierw wgraj/podmień pliki projektu, zachowując katalogi. Jeżeli wdrażasz przez Git, po zatwierdzeniu i wysłaniu zmian pobierz je na serwerze:
-git pull
+Czarna lista audiobooków:
+- Można ją zaznaczyć i zapisać w sekcji Audiobook w podglądzie tekstu.
+- Zapis wyłącza Do nagrywania i usuwa tekst z kolejki audiobooków.
+- Zwykła strona nie pozwala odblokować tekstu, również superuserowi.
+- Odblokowanie: Panel administracyjny -> Teksty -> wybrany tekst ->
+  odznacz Czarna lista audiobooków -> Zapisz.
+- Po odblokowaniu można ponownie zaznaczyć Do nagrywania.
+- Serwer ignoruje próby obejścia blokady przez spreparowane żądania.
 
-W katalogu z manage.py i aktywnym środowisku aplikacji:
-python manage.py migrate
-python manage.py check
-python manage.py collectstatic --noinput
+Poprawki błędów z logów GitHub:
+- SQLite: płytkie wywołanie funkcji sortującej zamiast zagnieżdżonych
+  REPLACE; zachowane polskie sortowanie, puste wartości i paginacja.
+- MySQL: jawne CAST AS DATE dla dat raportu przestojów.
+- Test menu uwzględnia Tłumaczenia.
+- Test importu sprawdza obecne nazwy ról i oznaczenia (wyk. 2), itd.
 
-Następnie kliknij Reload na karcie Web w PythonAnywhere. Odśwież otwarte strony CMS.
-
-WERYFIKACJA
-Lokalnie, na odizolowanej bazie SQLite: migracje, system check bez błędów, makemigrations --check bez nowych zmian, zapis booleana w obie strony, tabela z gotowym i tłumaczonym tekstem, blokada przestarzałego formularza, prawa dostępu, wyłączanie/przywracanie ilustratora bez utraty historii i nowe pola admina.
-Podgląd w przeglądarce: równe kolumny na ekranie 1280 px, układ pionowy bez przepełnienia na 390 px, formularz ilustratora i tabela Audiobooków. PNG pokazuje dane testowe; odznaczone pole to efekt testowego wyłączenia, domyślna wartość nowych i migrowanych tekstów to Tak.
-Nie zmieniono bazy produkcyjnej i nie wdrożono zmian na PythonAnywhere.
+Weryfikacja:
+- 19 wybranych testów zakończonych powodzeniem na odizolowanym SQLite.
+- Check i makemigrations --check --dry-run zakończone powodzeniem.
+- Offline sprawdzono generowanie obu CAST AS DATE dla MySQL 8.
+- Pola w obu stanach sprawdzono w przeglądarce.
+- Lokalnie brak uruchomionego serwera MySQL; wykonanie testów na tej
+  bazie pozostaje do potwierdzenia przez istniejący workflow GitHuba.
+- Zgodnie z prośbą nie uruchamiano całego zestawu 632 testów.

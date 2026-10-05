@@ -269,7 +269,7 @@
         <span class="record-counter">{{ historical_reviews.paginator.count }}</span>
     </header>
     <div class="table-container" role="region" aria-label="Archiwalne recenzje autora" tabindex="0">
-        <table data-copy-table id="author-archive-table">
+        <table data-copy-table data-server-paginated="true" id="author-archive-table">
             <thead><tr>
                 <th scope="col" data-sort-key="title" class="sticky-title">Tytuł</th><th scope="col" data-sort-key="anthology">Antologia</th>
                 <th scope="col">Data zgłoszenia</th><th scope="col" data-sort-key="status">Status</th>
@@ -291,17 +291,7 @@
             </tbody>
         </table>
     </div>
-    {% if historical_reviews.has_other_pages %}
-        <nav aria-label="Strony archiwalnych recenzji">
-            {% if historical_reviews.has_previous %}
-                <a class="secondary-button" href="?archive_page={{ historical_reviews.previous_page_number }}#archiwalne-recenzje"><span aria-hidden="true">←</span><span class="visually-hidden">Poprzednia strona</span></a>
-            {% endif %}
-            <span>Strona {{ historical_reviews.number }} z {{ historical_reviews.paginator.num_pages }}</span>
-            {% if historical_reviews.has_next %}
-                <a class="secondary-button" href="?archive_page={{ historical_reviews.next_page_number }}#archiwalne-recenzje"><span aria-hidden="true">→</span><span class="visually-hidden">Następna strona</span></a>
-            {% endif %}
-        </nav>
-    {% endif %}
+    {% include "core/includes/pagination.html" with page_obj=historical_reviews %}
 </section>
 {% include "core/includes/table_toolbar.html" %}
 {% endblock %}

@@ -12,9 +12,11 @@
             <form method="post" action="{% url 'core:update_text_audiobook' text.pk %}" data-warn-unsaved>
                 {% csrf_token %}{% edit_version %}{{ audiobook_form.non_field_errors }}
                 <div class="form-field"><label class="text-production-checkbox">{{ audiobook_form.for_recording }} {{ audiobook_form.for_recording.label }}</label>{{ audiobook_form.for_recording.errors }}</div>
-                <p class="muted-text">Zaznaczenie dodaje opowiadanie do listy tekstów do nagrywania.</p>
+                <div class="form-field"><label class="text-production-checkbox">{{ audiobook_form.audiobook_blacklisted }} {{ audiobook_form.audiobook_blacklisted.label }}</label>{{ audiobook_form.audiobook_blacklisted.errors }}</div>
+                {% if text.audiobook_blacklisted %}<p class="muted-text">Tekst jest na czarnej liście audiobooków. Odblokowanie jest możliwe wyłącznie w panelu admina.</p>
+                {% else %}<p class="muted-text">„Do nagrywania” dodaje opowiadanie do listy audiobooków. „Czarna lista” wyłącza nagrywanie; blokadę można zdjąć wyłącznie w panelu admina.</p>{% endif %}
                 <button type="submit" class="primary-button">Zapisz</button>
-                <a href="{% url 'core:audiobooks' %}" class="detail-link">Przejdź do Audiobooków</a>
+                <a href="{% url 'core:audiobooks' %}" class="secondary-button">Przejdź do Audiobooków</a>
             </form>
         </div></section>
         <section class="card" id="text-illustration"><div class="card-body">
@@ -22,7 +24,7 @@
             {% if text_illustration %}
                 <p><strong>Ilustrator:</strong> {{ text_illustration.illustrator_display|default:"Nie przypisano" }}</p>
                 <p><strong>Status:</strong> {{ text_illustration.get_status_display }}</p>
-                {% if can_open_text_illustration %}<a class="detail-link" href="{% url 'illustrations:illustration_detail' text_illustration.pk %}">Otwórz ilustrację</a>{% endif %}
+                {% if can_open_text_illustration %}<a class="secondary-button" href="{% url 'illustrations:illustration_detail' text_illustration.pk %}">Otwórz ilustrację</a>{% endif %}
             {% elif anthology_illustrated %}
                 <p><strong>Ilustrator:</strong> Nie przypisano</p><p><strong>Status:</strong> Brak wpisu ilustracji</p>
             {% else %}

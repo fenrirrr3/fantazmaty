@@ -11,7 +11,7 @@
 <section class="card" aria-label="Teksty do nagrywania">
     <div class="card-body"><h2>Do nagrywania</h2></div>
     <div class="table-container" role="region" tabindex="0" aria-label="Tabela tekstów do nagrywania">
-        <table class="data-table">
+        <table data-server-paginated="true" class="data-table">
             <caption class="visually-hidden">Teksty do nagrywania</caption>
             <thead><tr><th scope="col">Antologia</th><th scope="col">Autor</th><th scope="col">Tytuł</th><th scope="col">Status</th></tr></thead>
             <tbody>{% for text in texts %}<tr>
@@ -25,18 +25,4 @@
 </section>
 {% include "core/includes/pagination.html" %}
 
-<section class="card audiobook-card">
-    <h2 class="card-title">Audiobook</h2>
-
-    <div class="youtube-video">
-        <iframe
-            src="https://www.youtube-nocookie.com/embed/6XzGmdXbZmU"
-            title="Audiobook Fantazmatów"
-            loading="lazy"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            referrerpolicy="strict-origin-when-cross-origin"
-            allowfullscreen
-        ></iframe>
-    </div>
-</section>
 {% endblock %}

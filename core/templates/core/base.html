@@ -18,6 +18,7 @@
     <link rel="stylesheet" href="{% static 'core/workspace.css' %}?v=28">
     <link rel="stylesheet" href="{% static 'core/components.css' %}?v=6">
     <link rel="stylesheet" href="{% static 'core/dropbox-folder-chooser.css' %}">
+    <link rel="stylesheet" href="{% static 'core/pagination.css' %}?v=19">
     {% block extra_css %}{% endblock %}
 
 </head>
@@ -96,9 +97,10 @@
         </div>
     </footer>
     <script src="{% static 'core/author-search.js' %}?v=23"></script>
-    <script src="{% static 'core/ui.js' %}?v=28"></script>
+    <script src="{% static 'core/ui.js' %}?v=29"></script>
 
     <script src="{% static 'core/layout.js' %}" defer></script>
+    <script src="{% static 'core/pagination.js' %}?v=19"></script>
     {% block scripts %}{% endblock %}
 </body>
 </html>
