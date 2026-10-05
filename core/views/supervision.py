@@ -84,6 +84,9 @@ def _task_forms(anthology, data=None):
 def anthology_detail(request, anthology_id):
     require_team_member(request.user)
     anthology = get_object_or_404(Anthology, pk=anthology_id)
+    if anthology.is_translated:
+        from django.urls import reverse
+        return redirect(reverse('core:translation_list') + f'?anthology={anthology.pk}&hide_ready=0')
     coordinator = is_coordinator(request.user)
     forms_list = _task_forms(anthology) if coordinator else []
     if request.method == 'POST':

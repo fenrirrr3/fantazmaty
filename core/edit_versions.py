@@ -5,6 +5,7 @@ from django.db.models.signals import pre_save, post_save, post_delete, pre_delet
 
 # Only editable domain records; no audit/outbox/session traffic.
 TRACKED = {
+    'texts.texttranslation',
     'texts.text', 'texts.review', 'texts.anthology', 'texts.anthologytask', 'texts.textnote',
     'illustrations.illustration', 'illustrations.coverproposal',
     'texts.reviewassignment', 'texts.reviewers', 'texts.extract',
@@ -45,6 +46,8 @@ def changed(sender, instance, using, raw=False, **kwargs):
         bump('texts.anthology', instance.anthology_id, using)
     elif label in ('texts.reviewassignment', 'texts.reviewers'):
         bump('texts.review', instance.review_id, using)
+    elif label == 'texts.texttranslation':
+        bump('texts.text', instance.text_id, using)
     elif label == 'texts.textnote':
         bump('texts.text', instance.text_id, using)
         old_text = getattr(instance, '_previous_note_text', None)
@@ -86,9 +89,14 @@ def relations_changed(sender, instance, action, reverse, model, pk_set, using, *
         return
     if instance._meta.label_lower in TRACKED:
         bump(instance._meta.label_lower, instance.pk, using)
+    if instance._meta.label_lower == 'texts.texttranslation':
+        bump('texts.text', instance.text_id, using)
     if reverse and model._meta.label_lower in TRACKED:
         for pk in pk_set or getattr(instance, '_edit_reverse_clear', set()):
             bump(model._meta.label_lower, pk, using)
+            if model._meta.label_lower == 'texts.texttranslation':
+                text_id = model.objects.using(using).filter(pk=pk).values_list('text_id', flat=True).first()
+                bump('texts.text', text_id, using)
 
 
 def install():
@@ -108,7 +116,7 @@ def deleting_identity(sender, instance, using, **kwargs):
     from django.db.models import Q
     label = sender._meta.concrete_model._meta.label_lower
     if label == 'authors.author':
-        text_ids = Text.objects.using(using).filter(authors=instance).values_list('pk', flat=True)
+        text_ids = Text.objects.using(using).filter(Q(authors=instance) | Q(translation__translators=instance)).values_list('pk', flat=True).distinct()
         review_ids = Review.objects.using(using).filter(Q(author=instance) | Q(coauthors=instance)).values_list('pk', flat=True).distinct()
     elif label == 'auth.user':
         text_ids = set(WorkflowRoleAssignment.objects.using(using).filter(assigned_to=instance).values_list('text_id', flat=True))

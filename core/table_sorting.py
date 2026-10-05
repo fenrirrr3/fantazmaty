@@ -1,4 +1,5 @@
 """Allowlisted sorting before pagination, shared by table headers."""
+from core.translation_scope import ordinary
 from workflow.catalog import active_role_choices
 from copy import copy
 from datetime import date, datetime
@@ -158,6 +159,8 @@ def _extra_columns(items, queryset, request):
             'Autorzy': ('authors', lambda r: _get(r, 'authors_display')),
             'Rozpoczęcie etapu': ('stage_start', lambda r: _get(r, 'current_status_started_at')),
         })
+        if request.resolver_match and request.resolver_match.url_name == 'translation_list':
+            columns['Tłumacze'] = ('translators', lambda r: _get(r, 'translators_display'))
         if 'work_active' in queryset.query.annotations:
             columns.update({
                 'Twoje role': ('roles', lambda r: _joined(a['get_role_display'] for a in r['user_assignments'])),
@@ -197,7 +200,7 @@ def _extra_columns(items, queryset, request):
         titles = {}
         if request.GET.get('sort', '').lstrip('-') == 'anthologies':
             from texts.models import Text
-            for author_id, title in Text.objects.filter(authors__pk__in=queryset.values('pk'), anthology__isnull=False).values_list('authors__pk', 'anthology__title').distinct():
+            for author_id, title in ordinary(Text.objects).filter(authors__pk__in=queryset.values('pk'), anthology__isnull=False).values_list('authors__pk', 'anthology__title').distinct():
                 titles.setdefault(author_id, []).append(title)
         columns['Antologie'] = ('anthologies', lambda r: _joined(titles.get(_get(r, 'pk'), [])))
     from core.permissions import can_view_author_data

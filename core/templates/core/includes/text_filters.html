@@ -33,9 +33,9 @@
             {% endif %}
             {% if can_view_authors %}
                 <div class="filter-field">
-                    <label for="text-author">Autor</label>
+                    <label for="text-author">{% if translations_page %}Autor lub tłumacz{% else %}Autor{% endif %}</label>
                     <select id="text-author" name="author">
-                        <option value="">Wszyscy autorzy</option>
+                        <option value="">{% if translations_page %}Wszyscy autorzy i tłumacze{% else %}Wszyscy autorzy{% endif %}</option>
                         {% for author in filter_authors %}
                             <option
                                 value="{{ author.pk }}"

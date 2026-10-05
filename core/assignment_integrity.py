@@ -1,4 +1,5 @@
 """Read-only checks of multiple assignments of one person to the same text."""
+from core.translation_scope import ordinary
 from collections import defaultdict
 
 from django import forms
@@ -11,7 +12,7 @@ from workflow.models import WorkflowRoleAssignment
 
 class AssignmentIntegrityFilters(forms.Form):
     anthology = forms.ModelChoiceField(
-        label='Antologia', queryset=Anthology.objects.order_by('title', 'pk'),
+        label='Antologia', queryset=ordinary(Anthology.objects).order_by('title', 'pk'),
         required=False, empty_label='Wszystkie antologie',
     )
     scope = forms.ChoiceField(label='Zakres', required=False, initial='all', choices=(
@@ -28,7 +29,7 @@ class AssignmentIntegrityFilters(forms.Form):
 def scoped_assignments(*, anthology_id=None, scope='all'):
     # Include previous executions and canceled repetitions, but label them in
     # the result. A current-only manager would hide the duplicates under review.
-    query = WorkflowRoleAssignment.objects.filter(assigned_to__isnull=False)
+    query = ordinary(WorkflowRoleAssignment.objects).filter(assigned_to__isnull=False)
     if anthology_id is not None:
         query = query.filter(text__anthology_id=anthology_id)
     if scope == 'current_cycle':

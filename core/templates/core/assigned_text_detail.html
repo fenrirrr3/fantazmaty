@@ -7,7 +7,6 @@
 {% block extra_css %}<link rel="stylesheet" href="{% static 'core/tags.css' %}">{% endblock %}
 
 {% block content %}
-
     {% now "Y-m-d" as today_iso %}
 
     <header class="page-header">
@@ -28,12 +27,20 @@
 
             <div class="detail-header-actions">
                 {% if user.is_superuser %}<a class="secondary-button small-button" href="{% url 'admin:texts_text_change' text.pk %}">Edytuj w adminie</a>{% endif %}
-            <a href="{% url 'core:text_list' %}" class="secondary-button">
-                Wróć do tekstów
+            <a href="{% if is_translation %}{% url 'core:translation_list' %}{% else %}{% url 'core:text_list' %}{% endif %}" class="secondary-button">
+                {% if is_translation %}Wróć do tłumaczeń{% else %}Wróć do tekstów{% endif %}
             </a>
             </div>
         </div>
     </header>
+
+    {% if is_translation %}
+    <section class="card"><div class="card-body"><h2>Tłumacze</h2>
+    {% if translation_form %}<form method="post" action="{% url 'core:set_translators' text.pk %}">{% csrf_token %}{% edit_version %}{{ translation_form.as_p }}<button class="primary-button" type="submit">Zapisz tłumaczy</button></form><p><a href="{% url 'admin:authors_author_add' %}">Dodaj osobę do spisu autorów</a></p>
+    {% else %}<p>{% for translator in translators %}{{ translator.first_name }} {{ translator.last_name }}{% if not forloop.last %}, {% endif %}{% empty %}Nie przypisano tłumacza.{% endfor %}</p>{% endif %}
+    </div></section>{% endif %}
+
+
 
     {% if is_withdrawn %}
         <div class="message warning" role="status">

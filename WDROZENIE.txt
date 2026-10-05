@@ -1,46 +1,32 @@
-KOREKTA 29 TEKSTÓW — WYKONAWCY JEDNEJ PRACY
+TŁUMACZENIA — CMS V13
 
-Uzgodnienia:
-- Redakcja: kolejne osoby i powtórzenia jako wykonawca 1, 2, 3 itd.
-- Wszystkie weryfikacje ze źródłowej tabeli/stopki, w tym weryfikator redakcji: jedna praca Weryfikacja, wykonawca 1, 2, 3 itd.
-- Wszystkie korekty: jedna praca Korekta, wykonawca 1, 2, 3 itd.
-- Kolejność osób pozostaje kolejnością źródłowych wpisów. Powtórzenia nie są usuwane.
-- Kontrola redakcji oraz koordynatorzy pozostają osobnymi pracami.
-- Wszystkie teksty pozostają Gotowe; 323 wykonania pozostają zakończone, bez dat.
-- Ilona Skrzypczak zostaje zastąpiona Iloną Żurawską. We wcześniejszych 22 tekstach występuje już Ilona Żurawska. Jeżeli jej profil jest w bazie, korekta użyje tego profilu i konta, bez usuwania starego profilu Skrzypczak. Jeżeli istnieje wyłącznie Skrzypczak, zmieni jej nazwisko w profilu i powiązanym koncie, zachowując ID i e-mail. Niejednoznaczne profile/konta blokują zapis.
+Paczka zawiera pliki do podmiany/dodania, przygotowane na podstawie ostatniej wersji v12. Zachowuje poprzednie poprawki. Dołączono współdzielone moduły etykiet oraz migrację workflow 0015 używane przez aktualne widoki. Ta paczka nie uruchamia ani nie zastępuje korekty danych historycznych z v12.
 
-WDROŻENIE
-Wgraj ZIP obok manage.py. W Bash PythonAnywhere, w katalogu projektu, z aktywnym środowiskiem:
+WDROŻENIE NA PYTHONANYWHERE
+Wgraj ZIP do katalogu projektu obok manage.py. W konsoli Bash, w tym katalogu i z aktywnym środowiskiem projektu:
 
-unzip -o import_archiwum_v12_wykonawcy_2026-10-05.zip -d .
+unzip -o cms_tlumaczenia_v13_2026-10-05.zip -d .
 python manage.py migrate
 python manage.py check
 
-Paczka zawiera poprzednią migrację 0015 dla spójności z v10. Nie ma nowej migracji. Nie usuwaj już zastosowanej migracji 0015 ani nie cofaj migracji bazy. Jeżeli v10 wdrożono, migrate nie powinno wprowadzić nowych zmian z tej paczki.
+Następnie kliknij Reload w zakładce Web PythonAnywhere. Nie trzeba uruchamiać collectstatic: zmieniono kod Python i szablony, bez zmian w plikach statycznych.
+Migracja texts/0022_anthology_translations.py dodaje boolean Antologia.tłumaczone i model wpisu tłumaczenia z powiązaniami do autorów. Dotychczasowe antologie domyślnie mają tę opcję wyłączoną. Nie nadpisuje istniejących tekstów ani przypisań workflow. Jeżeli workflow 0015 jest już zastosowana, migrate jej nie powtórzy.
 
-1. Podgląd korekty (wycofuje wszystkie próbne zmiany, także zmiany profili):
-python manage.py repair_archive_executions --report raport_korekty_podglad
+OBSŁUGA
+1. Panel admina → Antologie → wybierz antologię → zaznacz „Tłumaczone” → Zapisz.
+2. W menu „Teksty i recenzje” pojawia się zakładka „Tłumaczenia”. Istniejące teksty tej antologii trafiają na tę listę. Po dodaniu nowego tekstu lub przeniesieniu go do oznaczonej antologii wpis tłumaczenia powstaje automatycznie.
+3. Lista używa tych samych filtrów, sortowania i paginacji co „Wszystkie teksty”, z dodatkową kolumną Tłumacze. Filtr Autor obejmuje również tłumaczy; wyszukiwanie po osobach zachowuje dotychczasowe uprawnienia listy tekstów. Puste oznaczone antologie są dostępne w filtrze.
+4. Otwórz tekst w Tłumaczeniach. Superuser może wskazać tłumacza lub kilku tłumaczy i zapisać. Tłumacze korzystają z modelu i spisu Autorów; nie zastępują oryginalnych autorów. Nową osobę dodaj do Autorów, korzystając z linku przy polu.
+5. Tłumaczy można też edytować w panelu admina: przy tekście z oznaczonej antologii lub przez model Tłumaczenia. Przy tworzeniu nowego tekstu formularz tłumaczy pojawi się po pierwszym zapisie (Zapisz i kontynuuj edycję).
+6. Widoczność zakładki i tekstów wymaga aktywnego konta członka zespołu, jak lista Wszystkie teksty. Edycja tłumaczy ma takie uprawnienia jak edycja autorów: superuser. Pozostałe osoby widzą nazwiska bez ujawniania prywatnych kontaktów tłumaczy.
 
-2. Jeżeli conflicts jest puste, zapis korekty:
-python manage.py repair_archive_executions --apply --report raport_korekty_zapis
+ZAKRES WIDOCZNOŚCI
+Oznaczone antologie i ich teksty są wyłączone ze zwykłych list tekstów, recenzji, tagów, antologii, tabeli workflow, Mojej pracy, pulpitu, raportów, wyszukiwania, list prac na profilach oraz ilustracji. Standardowe formularze naboru/importu recenzji i uwag do antologii nie proponują oznaczonych antologii. Panel admina zachowuje dostęp do zarządzania danymi.
+Bezpośredni standardowy link do tekstu lub antologii przekierowuje do sekcji Tłumaczenia. Praca przy tekście nadal używa istniejącego workflow i jego uprawnień.
+Wpisy Tłumaczeń powstają dla modelu Tekst, tak jak ilustracje; samo zgłoszenie w Recenzjach nie jest automatycznie zamieniane na tekst.
+Antologie gotowe również mogą być tłumaczone. Domyślny filtr „Ukryj gotowe teksty” działa tak samo jak we Wszystkich tekstach — odznacz go, aby zobaczyć zakończone pozycje.
+Odznaczenie „Tłumaczone” przywraca zwykłą widoczność i ukrywa pozycje w Tłumaczeniach. Zapisani tłumacze zostają zachowani; ponowne zaznaczenie przywróci ich bez duplikatów. Istniejące ilustracje i historia pracy nie są usuwane.
 
-3. Następnie import aktualnego pliku danych:
-python manage.py import_completed_table import_archiwum.json --apply --report raport_archiwum_zapis
-
-Jeśli wszystkie 29 tekstów wcześniej zaimportowano i skorygowano, krok 3 jest kontrolą zgodności i nie dodaje rekordów. Jeśli import nie był jeszcze zapisany, tworzy teksty zgodnie z nowym podziałem. Warunkiem są istniejące docelowe antologie. Nie uruchamiaj kroku 3 po konflikcie z kroku 1/2.
-Po zakończeniu kliknij Reload w zakładce Web PythonAnywhere. Collectstatic nie jest potrzebne — zmieniono Python i szablony, bez statycznych CSS/JS.
-
-ZABEZPIECZENIA I ZAKRES
-- Naprawa obejmuje wyłącznie źródło archive-table-2026-10-05-22 i wiersze 1–29. Ta nazwa źródła celowo zostaje bez zmian.
-- Plik archiwum_przed_korekta.json jest wzorcem poprzedniej wersji v11, nie służy do ponownego importowania. Plik import_archiwum.json zawiera nowe mapowanie.
-- Dla już zapisanych tekstów aktualizowane są przypisania/etapy w miejscu: ich ID i powiązania pozostają zachowane. Nie kasujemy tekstów, autorów, etapów ani przypisań.
-- Technicznie wykonania weryfikacji używają first_verification/verifier_1, a korekty first_proofreading/proofreader_1 z numerami wykonania 1…N. Widoki tych 29 archiwalnych tekstów pokazują Weryfikacja/Korekta/Redakcja — wykonawca N, także pierwszy. Aktywny workflow pozostałych tekstów zachowuje własne etapy.
-- Widok zespołu i tabela workflow zachowują osobne wykonania tej samej osoby.
-- Korekta odmawia nadpisania tekstów, których tytuł, długość, autorzy, wykonawcy, etapy lub daty zmieniły się od importu. Rozbieżność wycofuje całą transakcję, również zmianę nazwiska. Raport wymienia przyczynę.
-- Nie dopisujemy fikcyjnych dat, nie nadajemy uprawnień ani haseł. Dotychczasowe e-maile zostają zachowane.
-- Raport JSON korekty zawiera identyfikatory oraz stan etapów i przypisań przed zmianą. Podsumowanie pojawia się również w konsoli; nie powstaje HTML.
-- Ponowne uruchomienie korekty oraz import nowego JSON po korekcie nie powielają wykonań.
-
-WERYFIKACJA LOKALNA
-Pełny zestaw danych: 29 tekstów / 323 wykonania; podgląd z wycofaniem, korekta, ponowienie i standardowy import poprawionych danych bez duplikatów. Zachowane wszystkie ID i pola tekstów, sprawdzona kolejność i każda osoba, puste daty, 29 znaczników Gotowe. Testy obejmują konflikt w ostatnim tekście (wycofanie wcześniejszych zmian), istniejącą Ilonę Żurawską, zmianę nazwiska profilu, brak wcześniejszego importu, niejednoznaczność osób oraz renderowanie podglądu tekstu.
-Workflow: 72 testy (71 poprawnych, 1 pominięty ze względu na brak select_for_update w SQLite). Kontrole widoków i workflow: 105 testów; znaleziony przypadek pustego obiektu formularza poprawiono i powtórzono cały jego moduł z wynikiem pozytywnym. Dodatkowo po zmianach widoku powtórzono 6 testów korekty. Nie wykonywano zapisu w produkcyjnej bazie PythonAnywhere.
+WERYFIKACJA
+616 testów aplikacji: 615 poprawnych, 1 pominięty (SQLite nie obsługuje wymaganej blokady wierszy). Wszystkie 10 testów Tłumaczeń przeszło. Sprawdzono synchronizację wpisów, przełączanie flagi, zachowanie danych po przeniesieniu, wyszukiwanie i sortowanie, ukrywanie na zwykłych listach, uprawnienia, admin, renderowanie stron i konflikt równoczesnego zapisu tłumaczy. Django check bez uwag; makemigrations --check --dry-run bez brakujących migracji.
+Testy wykonano lokalnie na izolowanej SQLite. Nie wdrażano kodu ani migracji na serwer użytkownika. Nie utworzono raportu HTML.

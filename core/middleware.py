@@ -8,7 +8,7 @@ from django.urls import resolve, Resolver404
 
 
 def aggregate(match):
-    from texts.models import Review, Text, TextNote, ReviewAssignment, Reviewers, Anthology
+    from texts.models import Review, Text, TextNote, ReviewAssignment, Reviewers, Anthology, TextTranslation
     from workflow.models import WorkflowStage, WorkflowRoleAssignment
     from people.models import Vacation
     from authors.models import Author, AuthorNote
@@ -17,6 +17,8 @@ def aggregate(match):
     admin_model = getattr(getattr(match.func, "model_admin", None), "model", None)
     object_id = kwargs.get("object_id", "")
     if match.namespace == "admin" and admin_model and str(object_id).isdecimal() and len(str(object_id)) < 19:
+        if admin_model is TextTranslation:
+            return Text, TextTranslation.objects.filter(pk=int(object_id)).values_list('text_id', flat=True).first()
         if admin_model is TextNote:
             text_id = TextNote.objects.filter(pk=int(object_id)).values_list('text_id', flat=True).first()
             return Text, text_id
@@ -211,7 +213,7 @@ class EditingMiddleware:
             required = match.namespace == 'admin' or match.url_name in {
                 'update_text_tags',
                 'cancel_workflow_repetition', 'handoff_workflow_stage', 'link_text_review',
-                'set_text_authors', 'update_coordinator_note', 'update_text_content_warnings',
+                'set_text_authors', 'set_translators', 'update_coordinator_note', 'update_text_content_warnings',
                 'edit_text_note', 'delete_text_note', 'update_text_file', 'update_review_file',
                 'update_review_content_warnings', 'update_author_notification', 'update_review_status',
                 'assigned_review_detail',

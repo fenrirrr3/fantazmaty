@@ -1,3 +1,4 @@
+from core.translation_scope import ordinary
 from core.author_access import contact_authors
 from core.permissions import is_coordinator, can_view_review_archive
 from django.contrib.auth.decorators import login_required
@@ -83,7 +84,7 @@ def _search_texts(query, *, include_authors):
         )
 
     queryset = (
-        Text.objects.filter(_matching_terms(query, fields))
+        ordinary(Text.objects).filter(_matching_terms(query, fields))
         .select_related("anthology")
         .order_by("title", "pk")
     )
@@ -130,7 +131,7 @@ def _search_reviews(query, *, include_authors, include_archived=True):
         )
 
     queryset = (
-        Review.objects.filter(
+        ordinary(Review.objects).filter(
             **({} if include_authors else {"is_hidden": False}),
         )
         .filter(_matching_terms(query, fields))
@@ -229,7 +230,7 @@ def _search_people(query, user):
 
 def _search_anthologies(query):
     anthologies = (
-        Anthology.objects.filter(_matching_terms(query, ("title",)))
+        ordinary(Anthology.objects).filter(_matching_terms(query, ("title",)))
         .order_by("title", "pk")
     )
 

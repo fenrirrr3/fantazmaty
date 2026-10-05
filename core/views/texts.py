@@ -126,6 +126,13 @@ def _render_text_detail(request, text, *, bound_forms=None, status=200):
         text=text,
     )
     context.update(_permission_context(request.user))
+    context['is_translation'] = bool(text.anthology_id and text.anthology.is_translated)
+    if context['is_translation']:
+        from core.translation_forms import TranslationForm
+        from texts.models import TextTranslation
+        record = TextTranslation.objects.filter(text=text).first()
+        context['translation_form'] = TranslationForm(instance=record) if request.user.is_superuser else None
+        context['translators'] = list(record.translators.all()) if record else []
     if request.user.is_superuser:
         from core.supervision import text_credit_groups
         context['text_credits'] = text_credit_groups(text)
@@ -258,6 +265,8 @@ def assigned_text_detail(request, text_id):
         pk=text_id,
     )
 
+    if text.anthology_id and text.anthology.is_translated:
+        return redirect('core:translation_detail', text_id=text.pk)
     return _render_text_detail(request, text)
 
 

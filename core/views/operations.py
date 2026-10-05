@@ -1,3 +1,4 @@
+from core.translation_scope import ordinary
 from core.filtering import facet_queryset
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -29,8 +30,8 @@ def corrections(request):
         item.submitted_by = request.user
         key = form.cleaned_data.get("submission_token")
         with transaction.atomic():
-            selected_text = get_object_or_404(Text.objects.select_for_update(), pk=item.text_id) if item.text_id else None
-            selected_anthology = get_object_or_404(Anthology.objects.select_for_update(), pk=item.anthology_id)
+            selected_text = get_object_or_404(ordinary(Text.objects).select_for_update(), pk=item.text_id) if item.text_id else None
+            selected_anthology = get_object_or_404(ordinary(Anthology.objects).select_for_update(), pk=item.anthology_id)
             if selected_anthology.status not in ('ready',):
                 form.add_error('anthology', 'Antologia nie jest już gotowa ani wydana. Wybierz ją ponownie po zmianie statusu.')
             elif selected_text and selected_text.anthology_id != item.anthology_id:
@@ -39,7 +40,7 @@ def corrections(request):
                 item.story_title = selected_text.title if selected_text else "Inne miejsce"
                 if key:
                     values = {name: getattr(item, name) for name in ("anthology_id", "text_id", "story_title", "fragment", "problem", "suggestion", "submitted_by_id")}
-                    item, created = AnthologyCorrection.objects.get_or_create(submission_key=key, defaults=values)
+                    item, created = ordinary(AnthologyCorrection.objects).get_or_create(submission_key=key, defaults=values)
                     if not created and any(getattr(item, name) != value for name, value in values.items()):
                         return JsonResponse({"errors": {"__all__": ["Identyfikator zapisu był już użyty dla innych danych. Odśwież formularz."]}}, status=409)
                 else:
@@ -52,7 +53,7 @@ def corrections(request):
             return redirect("core:anthology_corrections")
     if request.method == "POST" and ajax:
         return JsonResponse({"errors": {name: list(errors) for name, errors in form.errors.items()}}, status=400)
-    items = AnthologyCorrection.objects.filter(anthology__status__in=("ready",)).select_related("anthology", "submitted_by")
+    items = ordinary(AnthologyCorrection.objects).filter(anthology__status__in=("ready",)).select_related("anthology", "submitted_by")
     query = request.GET.get("q", "").strip()[:255]
     statuses = [v for v in request.GET.getlist("status") if v in AnthologyCorrection.Status.values]
     status = statuses[-1] if statuses else ""
@@ -67,7 +68,7 @@ def corrections(request):
     return render(request, "core/anthology_corrections.html", {"form": form, "page_obj": page,
         "corrections": page, "statuses": AnthologyCorrection.Status.choices,
         "filter_statuses": [(v, label) for v, label in AnthologyCorrection.Status.choices if v in facets["status"]],
-        "anthologies": Anthology.objects.filter(pk__in=facets["anthology"]).order_by("title"), "query": query,
+        "anthologies": ordinary(Anthology.objects).filter(pk__in=facets["anthology"]).order_by("title"), "query": query,
         "selected_status": status, "selected_statuses": statuses, "selected_anthology": anthology}, status=400 if request.method == "POST" else 200)
 
 
@@ -79,7 +80,7 @@ def correction_texts(request):
     anthology = request.GET.get("anthology", "")
     if not anthology.isdecimal() or len(anthology) > 18:
         return JsonResponse({"texts": []})
-    texts = Text.objects.filter(anthology_id=anthology, anthology__status__in=("ready",)).order_by("title", "pk").values("id", "title")
+    texts = ordinary(Text.objects).filter(anthology_id=anthology, anthology__status__in=("ready",)).order_by("title", "pk").values("id", "title")
     return JsonResponse({"texts": list(texts)})
 
 
@@ -94,7 +95,7 @@ def correction_status(request):
     if not ids or len(ids) > 1000 or any(not v.isdecimal() or len(v) > 18 for v in ids) or status not in AnthologyCorrection.Status.values:
         messages.error(request, "Zaznacz uwagi i wybierz poprawny status.")
         return redirect("core:anthology_corrections")
-    rows = list(AnthologyCorrection.objects.select_for_update().filter(pk__in=ids).order_by("pk"))
+    rows = list(ordinary(AnthologyCorrection.objects).select_for_update().filter(pk__in=ids).order_by("pk"))
     if {row.pk for row in rows} != {int(value) for value in ids}:
         return render(request, "core/edit_conflict.html", status=409)
     if any(row.is_resolved for row in rows):
@@ -116,8 +117,8 @@ def correction_status(request):
 @require_GET
 @superuser_required
 def notification_queue(request, scheduled=False):
-    reviews = Review.objects.filter(is_hidden=True, status=Review.Status.REJECTED,
-        decision_at__gt=timezone.localdate(), old_reviews=False) if scheduled else Review.objects.awaiting_notification()
+    reviews = ordinary(Review.objects).filter(is_hidden=True, status=Review.Status.REJECTED,
+        decision_at__gt=timezone.localdate(), old_reviews=False) if scheduled else ordinary(Review.objects).awaiting_notification()
     query = request.GET.get("q", "").strip()[:255]
     if query:
         reviews = reviews.filter(Q(title__plcontains=query) | Q(email__plcontains=query))
@@ -132,7 +133,7 @@ def notification_queue(request, scheduled=False):
 @superuser_required
 @transaction.atomic
 def release_hidden_review(request, review_id):
-    review = get_object_or_404(Review.objects.select_for_update(), pk=review_id, is_hidden=True)
+    review = get_object_or_404(ordinary(Review.objects).select_for_update(), pk=review_id, is_hidden=True)
     if request.POST.get("confirm") != "yes":
         messages.error(request, "Potwierdź przywrócenie zgłoszenia do recenzji.")
     elif review.old_reviews or review.copied_text_id:
@@ -153,7 +154,7 @@ def release_hidden_review(request, review_id):
 @team_member_required
 @transaction.atomic
 def correction_edit(request, pk):
-    item = get_object_or_404((AnthologyCorrection.objects.select_for_update() if request.method == "POST" else AnthologyCorrection.objects), pk=pk, submitted_by=request.user)
+    item = get_object_or_404((ordinary(AnthologyCorrection.objects).select_for_update() if request.method == "POST" else ordinary(AnthologyCorrection.objects)), pk=pk, submitted_by=request.user)
     if item.is_resolved:
         from django.core.exceptions import PermissionDenied
         raise PermissionDenied("Rozpatrzonej uwagi nie można edytować.")
@@ -164,7 +165,7 @@ def correction_edit(request, pk):
     if request.method == "POST" and form.is_valid():
         selected = form.cleaned_data.get("text")
         if selected:
-            selected = get_object_or_404(Text.objects.select_for_update(), pk=selected.pk)
+            selected = get_object_or_404(ordinary(Text.objects).select_for_update(), pk=selected.pk)
         if selected and selected.anthology_id != form.cleaned_data["anthology"].pk:
             form.add_error("text", "Opowiadanie zmieniło antologię. Wybierz je ponownie.")
         else:
@@ -182,7 +183,7 @@ def correction_edit(request, pk):
 @team_member_required
 @transaction.atomic
 def correction_delete(request, pk):
-    item = get_object_or_404(AnthologyCorrection.objects.select_for_update(), pk=pk, submitted_by=request.user)
+    item = get_object_or_404(ordinary(AnthologyCorrection.objects).select_for_update(), pk=pk, submitted_by=request.user)
     if request.POST.get("version") != item.updated_at.isoformat():
         return render(request, "core/edit_conflict.html", status=409)
     if item.is_resolved:

@@ -1,3 +1,4 @@
+from core.translation_scope import ordinary
 from core.author_contact import stored_author_phone
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -116,9 +117,9 @@ def review_create(request):
             review = form.save(commit=False)
             from texts.models import Anthology
             # Same lock as bulk imports, including submissions to other calls.
-            Anthology.objects.select_for_update().order_by('pk').first()
+            ordinary(Anthology.objects).select_for_update().order_by('pk').first()
             # Serialize against anthology closure through the actual write.
-            anthology = Anthology.objects.select_for_update().filter(
+            anthology = ordinary(Anthology.objects).select_for_update().filter(
                 pk=review.anthology_id, status=Anthology.Status.IN_PREPARATION,
             ).first()
             if anthology is None:

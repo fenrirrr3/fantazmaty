@@ -16,6 +16,7 @@ def create_illustrations_for_anthology(
     if (
         instance.status == Anthology.Status.IN_PREPARATION
         and instance.has_illustrations
+        and not instance.is_translated
     ):
         sync_required_illustrations(
             anthology=instance,
@@ -33,6 +34,7 @@ def create_illustration_for_text(
         and instance.anthology.status
         == Anthology.Status.IN_PREPARATION
         and instance.anthology.has_illustrations
+        and not instance.anthology.is_translated
     )
 
     if qualifies_for_illustration:

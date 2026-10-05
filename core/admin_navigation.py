@@ -4,7 +4,7 @@ from django.urls import path, reverse
 
 GROUPS = (
     ('submissions', 'Zgłoszenia i recenzje', ('texts.review', 'texts.extract')),
-    ('publication', 'Teksty i antologie', ('texts.text', 'texts.anthology', 'texts.anthologytask', 'core.anthologycorrection')),
+    ('publication', 'Teksty i antologie', ('texts.text', 'texts.texttranslation', 'texts.anthology', 'texts.anthologytask', 'core.anthologycorrection')),
     ('authors', 'Autorzy', ('authors.author', 'blacklist')),
     ('team', 'Zespół i konta', ('people.person', 'auth.user', 'people.vacation', 'core.recruitment')),
     ('art', 'Ilustracje i okładki', ('illustrations.illustration', 'illustrations.coverproposal')),

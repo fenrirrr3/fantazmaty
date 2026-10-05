@@ -23,7 +23,12 @@ from core.views.programs import programs
 from core.views.activity import user_activity
 from core.views.tags import tag_list
 
+from core.views.translations import translation_list, translation_detail, set_translators
+
 urlpatterns = [
+    path('tlumaczenia/', translation_list, name='translation_list'),
+    path('tlumaczenia/<int:text_id>/', translation_detail, name='translation_detail'),
+    path('tlumaczenia/<int:text_id>/tlumacze/', set_translators, name='set_translators'),
     path("teksty/tagi/", tag_list, name="tag_list"),
     path("teksty/<int:text_id>/tagi/", texts.update_text_tags, name="update_text_tags"),
     path("podglad-uzytkownika/", user_preview, name="user_preview"),

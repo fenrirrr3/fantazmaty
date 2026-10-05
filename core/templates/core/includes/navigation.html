@@ -55,7 +55,7 @@
                             {% if current == 'text_list' or current == 'assigned_text_detail' %}aria-current="page"{% endif %}
                         >
                             Wszystkie teksty
-                        </a><a href="{% url 'core:tag_list' %}" class="sidebar-link" {% if current == 'tag_list' %}aria-current="page"{% endif %}>Tagi</a><a
+                        </a><a href="{% url 'core:tag_list' %}" class="sidebar-link" {% if current == 'tag_list' %}aria-current="page"{% endif %}>Tagi</a><a href="{% url 'core:translation_list' %}" class="sidebar-link" {% if current == 'translation_list' or current == 'translation_detail' %}aria-current="page"{% endif %}>Tłumaczenia</a><a
                             href="{% url 'core:review_list' %}"
                             class="sidebar-link"
                             {% if current == 'review_list' or current == 'assigned_review_detail' %}aria-current="page"{% endif %}

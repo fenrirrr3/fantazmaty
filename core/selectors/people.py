@@ -1,3 +1,4 @@
+from core.translation_scope import ordinary
 from django.db.models import Count, F, Prefetch
 from workflow.models import WorkflowRoleAssignment, WorkflowStage
 from workflow.services import STAGE_ROLES
@@ -89,14 +90,14 @@ def profile_assignments(person, *, include_authors):
         return [], {"active": 0, "reserved": 0, "completed": 0}
 
     current_stages = (
-        WorkflowStage.objects.filter(
+        ordinary(WorkflowStage.objects).filter(
             workflow_cycle=F("text__current_workflow_cycle"),
         )
         .order_by("-iteration", "-pk")
     )
 
     queryset = (
-        WorkflowRoleAssignment.objects.filter(
+        ordinary(WorkflowRoleAssignment.objects).filter(
             assigned_to_id=person.user_id,
             workflow_cycle=F("text__current_workflow_cycle"),
         )
@@ -117,7 +118,7 @@ def profile_assignments(person, *, include_authors):
     today = timezone.localdate()
     from workflow.read_queries import work_text_ids
     from texts.models import Text
-    own_texts = Text.objects.filter(workflow_role_assignments__assigned_to_id=person.user_id, workflow_role_assignments__workflow_cycle=F("current_workflow_cycle")).distinct()
+    own_texts = ordinary(Text.objects).filter(workflow_role_assignments__assigned_to_id=person.user_id, workflow_role_assignments__workflow_cycle=F("current_workflow_cycle")).distinct()
     classified = work_text_ids(own_texts, person.user, today)
     completed_ids, active_ids, waiting_ids = (classified[key] for key in ('completed', 'active', 'waiting'))
     assignments = []
@@ -237,7 +238,7 @@ def profile_assignments(person, *, include_authors):
 def imported_work_summary(person):
     if person.user_id is None:
         return []
-    counts = (WorkflowStage.objects.filter(
+    counts = (ordinary(WorkflowStage.objects).filter(
         assignment__assigned_to_id=person.user_id,
         stage_type__in=IMPORT_ONLY_STAGE_TYPES,
         imported_completed=True, is_completed=True,

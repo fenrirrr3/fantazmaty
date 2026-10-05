@@ -2,6 +2,20 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 from .models import Anthology, AnthologyTask
+from .models import Text
+from .translations import sync_translations
+
+
+@receiver(post_save, sender=Anthology, dispatch_uid='texts.sync_anthology_translations')
+def sync_anthology_translations(sender, instance, using, raw=False, **kwargs):
+    if not raw and instance.is_translated:
+        sync_translations(anthology_id=instance.pk, using=using)
+
+
+@receiver(post_save, sender=Text, dispatch_uid='texts.sync_text_translation')
+def sync_text_translation(sender, instance, using, raw=False, **kwargs):
+    if not raw and instance.anthology_id and instance.anthology.is_translated:
+        sync_translations(text_id=instance.pk, using=using)
 
 
 @receiver(

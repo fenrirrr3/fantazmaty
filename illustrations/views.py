@@ -1,3 +1,4 @@
+from core.translation_scope import ordinary
 from core.filtering import facet_queryset
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -116,7 +117,7 @@ def illustration_list(request):
     # GET nie tworzy ani nie aktualizuje rekordów.
     # Ilustracje powstają przez istniejące sygnały przy zmianach danych.
     illustrations = (
-        Illustration.objects.filter(
+        ordinary(Illustration.objects).filter(
             text__anthology__status=Anthology.Status.IN_PREPARATION,
             text__anthology__has_illustrations=True,
         )
@@ -143,7 +144,7 @@ def illustration_list(request):
     )
 
     anthologies = (
-        Anthology.objects.filter(
+        ordinary(Anthology.objects).filter(
             status=Anthology.Status.IN_PREPARATION,
             has_illustrations=True,
         )
@@ -177,7 +178,7 @@ def illustration_detail(request, illustration_id):
     if not can_view_illustrations(request.user):
         raise PermissionDenied('Ilustracje są dostępne dla koordynatorów i ilustratorów.')
     with transaction.atomic():
-        query = Illustration.objects
+        query = ordinary(Illustration.objects)
         if request.method == 'POST':
             query = query.select_for_update()
         illustration = get_object_or_404(query, pk=illustration_id,
@@ -238,7 +239,7 @@ def cover_proposal_list(request):
         return redirect("illustrations:cover_proposal_list")
 
     proposals = (
-        CoverProposal.objects.select_related("submitted_by")
+        ordinary(CoverProposal.objects).select_related("submitted_by")
         .order_by("-submitted_at", "-pk")
     )
     page_obj = paginate_queryset(request, proposals)
@@ -277,7 +278,7 @@ def update_cover_proposal_status(request, proposal_id):
 
     with transaction.atomic(using=using):
         proposal = get_object_or_404(
-            CoverProposal.objects.using(using).select_for_update(),
+            ordinary(CoverProposal.objects).using(using).select_for_update(),
             pk=proposal_id,
         )
 

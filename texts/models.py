@@ -53,6 +53,9 @@ class Anthology(models.Model):
         default=False,
     )
 
+    is_translated = models.BooleanField("tłumaczone", default=False, db_index=True,
+        help_text="Antologia i jej teksty są widoczne w sekcji Tłumaczenia oraz w panelu admina.")
+
     print_status = models.CharField(
         "wydanie drukowane",
         max_length=20,
@@ -419,6 +422,19 @@ class Text(NormalizedModelMixin, models.Model):
             for author in self.authors.all()
             if author.email
         )
+
+
+class TextTranslation(models.Model):
+    text = models.OneToOneField(Text, on_delete=models.CASCADE, related_name='translation', verbose_name='tekst')
+    translators = models.ManyToManyField(Author, blank=True, related_name='translations', verbose_name='tłumacze')
+
+    class Meta:
+        verbose_name = 'tłumaczenie'
+        verbose_name_plural = 'tłumaczenia'
+        ordering = ('text__anthology__title', 'text__title', 'pk')
+
+    def __str__(self):
+        return self.text.title
 
 
 class TextNote(models.Model):

@@ -1,3 +1,4 @@
+from core.translation_scope import ordinary
 from django.contrib.auth.decorators import login_required
 from django.db.models import Prefetch
 from django.shortcuts import render
@@ -15,13 +16,13 @@ from texts.models import Anthology, AnthologyTask
 @team_member_required
 def anthology_list(request):
     production_tasks = (
-        AnthologyTask.objects
+        ordinary(AnthologyTask.objects)
         .select_related("assigned_to")
         .order_by("task_type", "pk")
     )
 
     anthologies = (
-        Anthology.objects
+        ordinary(Anthology.objects)
         .prefetch_related(
             Prefetch(
                 "production_tasks",

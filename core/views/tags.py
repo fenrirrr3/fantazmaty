@@ -1,4 +1,5 @@
 """Accepted texts with their own tags and genre."""
+from core.translation_scope import ordinary
 from django.contrib.auth.decorators import login_required
 from django.db import connections
 from django.db.models import F, OuterRef, Prefetch, Q, Subquery, Value, Exists, TextField
@@ -61,9 +62,9 @@ def positive_id(value):
 def tag_list(request):
     authors = Author.objects.only('pk', 'first_name', 'last_name').order_by('last_name', 'first_name', 'pk')
     first_author = Author.objects.filter(texts=OuterRef('pk')).annotate(
-        _last=polish_key('last_name', Text.objects.db), _first=polish_key('first_name', Text.objects.db),
+        _last=polish_key('last_name', ordinary(Text.objects).db), _first=polish_key('first_name', ordinary(Text.objects).db),
     ).order_by('_last', '_first', 'pk')
-    base = Text.objects.select_related('anthology').prefetch_related(Prefetch('authors', queryset=authors)).annotate(
+    base = ordinary(Text.objects).select_related('anthology').prefetch_related(Prefetch('authors', queryset=authors)).annotate(
         tag_genre=F('genre'),
         tag_author_last=Subquery(first_author.values('last_name')[:1]),
         tag_author_first=Subquery(first_author.values('first_name')[:1]),
@@ -102,7 +103,7 @@ def tag_list(request):
         'page_obj': page, 'search': search, 'selected_anthology': anthology, 'selected_author': author,
         'selected_genre': genre, 'selected_tag': tag, 'selected_filled': filled,
         'selected_sort': request.GET.get('sort', 'title'),
-        'anthologies': Anthology.objects.filter(texts__isnull=False).only('pk', 'title').distinct().order_by('title', 'pk'),
+        'anthologies': ordinary(Anthology.objects).filter(texts__isnull=False).only('pk', 'title').distinct().order_by('title', 'pk'),
         'authors': authors.filter(texts__isnull=False).distinct(),
         'genres': base.exclude(tag_genre='').order_by('tag_genre').values_list('tag_genre', flat=True).distinct(),
     })

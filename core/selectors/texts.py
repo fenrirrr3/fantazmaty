@@ -1,5 +1,6 @@
 from workflow.catalog import active_stage_choices, active_role_choices, workflow_role_choices, IMPORT_ONLY_ROLES
 from workflow.labels import assignment_label, execution_label, stage_label
+from core.translation_scope import ordinary
 from core.filtering import facet_queryset
 from datetime import date
 
@@ -166,7 +167,7 @@ def _author_data(author):
 def _anthology_data(anthology):
     if anthology is None:
         return None
-    return _Record(pk=anthology.pk, title=anthology.title, status=anthology.status)
+    return _Record(pk=anthology.pk, title=anthology.title, status=anthology.status, is_translated=anthology.is_translated)
 
 
 def _stage_data(stage, text_data=None):
@@ -226,7 +227,13 @@ def _text_data(text, include_authors):
         )
         for author in source_authors
     ]
+    translated = bool(text.anthology_id and text.anthology.is_translated)
+    record = getattr(text, "translation", None) if translated else None
+    translators = list(record.translators.all()) if record else []
     return _Record(
+        is_translation=translated,
+        translators=[_author_data(a) if include_authors else _Record(pk=a.pk, first_name=a.first_name, last_name=a.last_name) for a in translators],
+        translators_display=", ".join(str(a) for a in translators),
         pk=text.pk,
         title=text.title,
         length=text.length,
@@ -291,7 +298,7 @@ def _current_stage(stages, *, prepared=False):
     return current_stage(stages, prepared=prepared)
 
 
-def _annotated_texts():
+def _annotated_texts(*, translated=False):
     from workflow.state import state_annotations, ORDER
     from workflow.read_queries import exclude_obsolete_verification_placeholders
     from django.db.models.functions import Coalesce
@@ -301,7 +308,8 @@ def _annotated_texts():
     stages = exclude_obsolete_verification_placeholders(stages)
     current = stages.filter(is_completed=False, ended_at__isnull=True).order_by('state_priority','-state_order','-iteration','-pk').values('stage_type')[:1]
     last = stages.order_by('-state_order','-iteration','-pk').values('stage_type')[:1]
-    return Text.objects.annotate(current_stage_type=Coalesce(Subquery(current), Subquery(last)))
+    query = Text.objects.filter(anthology__is_translated=True) if translated else Text.objects.exclude(anthology__is_translated=True)
+    return query.annotate(current_stage_type=Coalesce(Subquery(current), Subquery(last)))
 
 
 def _text_row(text, include_authors):
@@ -324,7 +332,7 @@ def _text_row(text, include_authors):
     return result
 
 
-def text_list_context(*, user, params, scope=None, stage_scope=None):
+def text_list_context(*, user, params, scope=None, stage_scope=None, translated=False):
     require_team_member(user)
     include_authors = can_view_author_data(user)
     anthology_id = _positive_id(params.get("anthology"))
@@ -338,7 +346,7 @@ def text_list_context(*, user, params, scope=None, stage_scope=None):
     hide_ready = params.get("hide_ready", "1").strip() != "0"
 
     def filtered(exclude=None):
-        result = _annotated_texts()
+        result = _annotated_texts(translated=translated)
         if scope is not None:
             result = result.filter(pk__in=scope.values("pk"))
         if stage_scope is not None:
@@ -346,7 +354,10 @@ def text_list_context(*, user, params, scope=None, stage_scope=None):
         if anthology_id is not None and exclude != 'anthology':
             result = result.filter(anthology_id=anthology_id)
         if author_id is not None and exclude != 'author':
-            result = result.filter(authors__pk=author_id)
+            condition = Q(authors__pk=author_id)
+            if translated:
+                condition |= Q(translation__translators__pk=author_id)
+            result = result.filter(condition)
         if statuses and exclude != 'status':
             condition = Q(current_stage_type__in=[v for v in statuses if v != 'none'])
             if 'none' in statuses:
@@ -356,6 +367,8 @@ def text_list_context(*, user, params, scope=None, stage_scope=None):
             condition = Q(title__plcontains=term) | Q(anthology__title__plcontains=term)
             if include_authors:
                 condition |= Q(authors__first_name__plcontains=term) | Q(authors__last_name__plcontains=term) | Q(authors__pseudonym__plcontains=term)
+                if translated:
+                    condition |= Q(translation__translators__first_name__plcontains=term) | Q(translation__translators__last_name__plcontains=term) | Q(translation__translators__pseudonym__plcontains=term)
             result = result.filter(condition)
         if hide_ready:
             result = result.filter(
@@ -365,10 +378,14 @@ def text_list_context(*, user, params, scope=None, stage_scope=None):
         return result.distinct()
 
     queryset = filtered()
-    anthology_options = Anthology.objects.filter(
+    anthology_options = Anthology.objects.filter(is_translated=translated).filter(
         Q(pk__in=filtered('anthology').values('anthology_id')) | Q(pk=anthology_id))
+    if translated:
+        anthology_options = Anthology.objects.filter(is_translated=True)
     author_options = Author.objects.filter(
         Q(pk__in=filtered('author').values('authors__pk')) | Q(pk=author_id)) if include_authors else Author.objects.none()
+    if translated and include_authors:
+        author_options = Author.objects.filter(Q(pk__in=filtered('author').values('authors__pk')) | Q(pk__in=filtered('author').values('translation__translators__pk')) | Q(pk=author_id)).distinct()
     available_statuses = set(filtered('status').values_list('current_stage_type', flat=True))
 
     sort = params.get("sort", "anthology")
@@ -390,6 +407,8 @@ def text_list_context(*, user, params, scope=None, stage_scope=None):
         queryset.order_by(*ordering),
         include_authors,
     )
+    if translated:
+        queryset = queryset.prefetch_related("translation__translators")
     return {
         "filtered_queryset": queryset,
         "texts": _ProjectedRows(
@@ -446,7 +465,7 @@ def my_texts_context(*, user, selected_view="active", params=None):
     # supplies labels; current work and permissions retain their existing rules.
     texts = texts.prefetch_related(Prefetch(
         "workflow_role_assignments",
-        queryset=WorkflowRoleAssignment.objects.filter(
+        queryset=ordinary(WorkflowRoleAssignment.objects).filter(
             assigned_to_id=user.pk,
             role__in=[value for value, _ in active_role_choices()],
         ).select_related("assigned_to", "assigned_to__person_profile").order_by(
@@ -480,6 +499,7 @@ def user_workflow_summary(user, *, today=None, limit=None):
     today = today or timezone.localdate()
     from workflow.read_queries import dashboard_querysets
     active, reserved = dashboard_querysets(user, today)
+    active, reserved = ordinary(active), ordinary(reserved)
     counts = (active.count(), reserved.count())
     active = active.select_related("text__anthology").prefetch_related("text__authors")
     reserved = reserved.select_related("text__anthology", "assigned_to__person_profile").prefetch_related("text__authors")
@@ -497,7 +517,7 @@ def available_stages_for_user(*, user, params=None, with_filters=False):
     from workflow.availability import claim_access
     from workflow.read_queries import available_stages
     include_authors = can_view_author_data(user)
-    stages = available_stages(user, claim_access(user)).select_related("text__anthology")
+    stages = ordinary(available_stages(user, claim_access(user))).select_related("text__anthology")
     filters = text_list_context(user=user, params=params or {}, stage_scope=stages) if with_filters else None
     if filters is not None:
         filtered = filters.pop("filtered_queryset")
@@ -675,7 +695,7 @@ def workflow_list_context(*, user, params):
 
     return {
         'stages': _ProjectedRows(texts, project),
-        'anthologies': list(Anthology.objects.all()
+        'anthologies': list(Anthology.objects.filter(is_translated=False)
                             .order_by('title', 'pk').values('pk', 'title')),
         'selected_stages': selected_stages,
         'stage_choices': [(v, label) for v, label in active_stage_choices() if v in facets['stage']],

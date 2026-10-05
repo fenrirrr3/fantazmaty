@@ -1,12 +1,12 @@
 {% extends "core/base.html" %}
 
-{% block title %}Teksty | Fantazmaty CMS{% endblock %}
+{% block title %}{% if translations_page %}Tłumaczenia{% else %}Teksty{% endif %} | Fantazmaty CMS{% endblock %}
 
 {% block content %}
     <header class="page-header">
-        <h1 class="page-title">Teksty</h1>
+        <h1 class="page-title">{% if translations_page %}Tłumaczenia{% else %}Teksty{% endif %}</h1>
         <p class="page-description">
-            Teksty w systemie i ich aktualny etap pracy.
+            {% if translations_page %}Teksty z antologii oznaczonych jako tłumaczone.{% else %}Teksty w systemie i ich aktualny etap pracy.{% endif %}
         </p>
     </header>
 
@@ -36,6 +36,7 @@
                             <th scope="col" {% if can_view_authors %}data-sort-key="authors"{% endif %}>Autorzy</th>
                         
 
+                        {% if translations_page %}<th scope="col" data-sort-key="translators">Tłumacze</th>{% endif %}
                         <th scope="col" class="numeric-cell" data-sort-key="length">Długość</th>
                         <th scope="col" data-sort-key="status">Etap pracy</th>
                         <th scope="col">Rozpoczęcie etapu</th>
@@ -60,7 +61,7 @@
 
                             <td data-double-copy data-copy-value="{{ text.title }}" class="sticky-title">
                                 <a
-                                    href="{% url 'core:assigned_text_detail' text.pk %}"
+                                    href="{% if translations_page %}{% url 'core:translation_detail' text.pk %}{% else %}{% url 'core:assigned_text_detail' text.pk %}{% endif %}"
                                     class="text-title-link"
                                 >
                                     <strong>{{ text.title }}</strong>
@@ -84,6 +85,7 @@
                                 </td>
                             
 
+                            {% if translations_page %}<td>{% for translator in text.translators %}{% if can_view_authors %}<a href="{% url 'core:author_detail' translator.pk %}">{{ translator.first_name }} {{ translator.last_name }}</a>{% else %}{{ translator.first_name }} {{ translator.last_name }}{% endif %}{% if not forloop.last %}, {% endif %}{% empty %}–{% endfor %}</td>{% endif %}
                             <td
                                 class="numeric-cell"
                                 data-type="number"
@@ -115,7 +117,7 @@
                         </tr>
                     {% empty %}
                         <tr>
-                            <td colspan="7">
+                            <td colspan="{% if translations_page %}8{% else %}7{% endif %}">
                                 <div class="empty-results-panel">
                                     <strong>Nie znaleziono tekstów.</strong>
                                     <p>
@@ -123,7 +125,7 @@
                                         Zmień filtry lub przywróć domyślny widok.
                                     </p>
                                     <a
-                                        href="{% url 'core:text_list' %}"
+                                        href="{{ request.path }}"
                                         class="secondary-button"
                                     >
                                         Wyczyść filtry

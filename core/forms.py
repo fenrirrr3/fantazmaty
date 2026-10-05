@@ -1,3 +1,4 @@
+from core.translation_scope import ordinary
 from workflow.catalog import active_role_choices
 from django.db.models import Q
 from people.role_ordering import ordered_team_roles
@@ -136,7 +137,7 @@ class RestartWorkflowForm(forms.Form):
         self.text = text
         choices = [(kind, label) for kind, label in WorkflowStage.StageType.choices if kind in REPEATABLE]
         if text is not None:
-            recorded = set(WorkflowStage.objects.filter(text=text, workflow_cycle=text.current_workflow_cycle)
+            recorded = set(ordinary(WorkflowStage.objects).filter(text=text, workflow_cycle=text.current_workflow_cycle)
                            .exclude(repetition__canceled_at__isnull=False).values_list('stage_type', flat=True))
             choices = [(kind, label) for kind, label in choices if kind in recorded]
         self.fields['stages'].choices = choices
@@ -457,7 +458,7 @@ class ReviewBulkImportForm(forms.Form):
 
     anthology = forms.ModelChoiceField(
         label="Antologia",
-        queryset=Anthology.objects.filter(status=Anthology.Status.IN_PREPARATION).order_by("title", "pk"),
+        queryset=ordinary(Anthology.objects).filter(status=Anthology.Status.IN_PREPARATION).order_by("title", "pk"),
         empty_label="Wybierz antologię",
         widget=forms.Select(attrs={"class": "filter-select"}),
     )

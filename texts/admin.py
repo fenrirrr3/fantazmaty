@@ -28,6 +28,7 @@ from .models import (
     Reviewers,
     Text,
     TextNote,
+    TextTranslation,
 )
 
 
@@ -99,12 +100,14 @@ class AnthologyAdmin(admin.ModelAdmin):
         "cover_status",
         "cover_author",
         "has_illustrations",
+        "is_translated",
         "print_status",
     )
     list_filter = (
         "status",
         "cover_status",
         "has_illustrations",
+        "is_translated",
         "print_status",
     )
     search_fields = (
@@ -123,6 +126,7 @@ class AnthologyAdmin(admin.ModelAdmin):
                     "title",
                     "status",
                     "has_illustrations",
+        "is_translated",
                 ),
             },
         ),
@@ -292,6 +296,38 @@ class TextAdminForm(NormalizedFormMixin, forms.ModelForm):
 
 
 
+class TextTranslationInline(admin.StackedInline):
+    model = TextTranslation
+    fields = ('translators',)
+    autocomplete_fields = ('translators',)
+    extra = 0
+    max_num = 1
+    can_delete = False
+
+
+@admin.register(TextTranslation)
+class TextTranslationAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
+    list_display = ('text', 'display_translators')
+    list_filter = ('text__anthology', 'text__anthology__is_translated')
+    search_fields = ('text__title__plcontains', 'text__anthology__title__plcontains',
+                     'translators__first_name__plcontains', 'translators__last_name__plcontains')
+    autocomplete_fields = ('text', 'translators')
+    readonly_fields = ('text',)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).filter(text__anthology__is_translated=True).select_related('text__anthology').prefetch_related('translators')
+
+    @admin.display(description='Tłumacze')
+    def display_translators(self, obj):
+        return ', '.join(str(a) for a in obj.translators.all()) or '–'
+
+
 @admin.register(Text)
 class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     def get_search_results(self, request, queryset, search_term):
@@ -374,6 +410,12 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
                      for name, options in fieldsets)
 
     inlines = (WorkflowStageInline, TextNoteInline,)
+
+    def get_inlines(self, request, obj=None):
+        if obj and obj.anthology_id and obj.anthology.is_translated:
+            return (*self.inlines, TextTranslationInline)
+        return self.inlines
+
 
     def save_formset(self, request, form, formset, change):
         if isinstance(formset, WorkflowPerformerFormSet):

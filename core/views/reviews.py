@@ -1,3 +1,4 @@
+from core.translation_scope import ordinary
 from core.selectors.review_detail import review_template_data as _review_template_data, review_assignment_data
 from core.permissions import can_mark_review_for_decision
 from core.permissions import can_view_review_archive, can_view_archived_review_authors
@@ -68,7 +69,7 @@ MAX_DATABASE_ID = 9_223_372_036_854_775_807
 
 
 def _get_review(user, review_id):
-    queryset = Review.objects.accessible_to(user).select_related("anthology")
+    queryset = ordinary(Review.objects).accessible_to(user).select_related("anthology")
 
     if can_view_author_data(user) or can_view_archived_review_authors(user):
         queryset = queryset.select_related("author").prefetch_related("coauthors")
@@ -94,7 +95,7 @@ def _require_open_review(review):
 
 
 def _own_assignment(review, user):
-    return ReviewAssignment.objects.filter(
+    return ordinary(ReviewAssignment.objects).filter(
         review_id=review.pk,
         user_id=user.pk,
     ).first()
@@ -740,7 +741,7 @@ def bulk_review_action(request):
     try:
         if action == CoordinatorReviewBulkActionForm.Action.EXPORT:
             reviews = list(
-                Review.objects.filter(pk__in=review_ids)
+                ordinary(Review.objects).filter(pk__in=review_ids)
                 .select_related("anthology", "author")
                 .order_by("anthology__title", "title", "pk")
             )
@@ -791,12 +792,12 @@ def my_reviews(request):
     if view not in {"active", "waiting", "completed", "all", "archived"}:
         view = "active"
     if view == "archived":
-        rows = ReviewAssignment.objects.filter(
+        rows = ordinary(ReviewAssignment.objects).filter(
             Q(user=request.user) | Q(historical_person__user=request.user),
             review__old_reviews=True,
         ).submitted().select_related("review__anthology").order_by("review__anthology__title", "review__title", "pk")
     else:
-        rows = ReviewAssignment.objects.filter(user=request.user, review__old_reviews=False, review__is_hidden=False).select_related("review__anthology").order_by("-assigned_at", "-pk")
+        rows = ordinary(ReviewAssignment.objects).filter(user=request.user, review__old_reviews=False, review__is_hidden=False).select_related("review__anthology").order_by("-assigned_at", "-pk")
     if view == "active":
         rows = rows.filter(opinion="reading", review__status__in=("new", "in_review", "to_decide"))
     elif view == "waiting":
@@ -809,8 +810,8 @@ def my_reviews(request):
     from texts.models import Anthology
     from core.selectors.texts import _positive_id
     anthology_id = _positive_id(request.GET.get("anthology"))
-    own_anthologies = ReviewAssignment.objects.filter(Q(user=request.user) | Q(historical_person__user=request.user)).order_by().values("review__anthology_id")
-    anthologies = Anthology.objects.filter(pk__in=own_anthologies).order_by("title", "pk")
+    own_anthologies = ordinary(ReviewAssignment.objects).filter(Q(user=request.user) | Q(historical_person__user=request.user)).order_by().values("review__anthology_id")
+    anthologies = ordinary(Anthology.objects).filter(pk__in=own_anthologies).order_by("title", "pk")
     if anthology_id is not None:
         rows = rows.filter(review__anthology_id=anthology_id)
     opinion_choices = [(v, label) for v, label in Reviewers.Opinion.choices if v not in ("", "reading")]
@@ -827,7 +828,7 @@ def my_reviews(request):
 @coordinator_required
 def update_review_file(request, review_id):
     with transaction.atomic():
-        review = get_object_or_404(Review.objects.select_for_update(), pk=review_id)
+        review = get_object_or_404(ordinary(Review.objects).select_for_update(), pk=review_id)
         form = ReviewFileForm(request.POST, instance=review)
         if form.is_valid():
             form.save()

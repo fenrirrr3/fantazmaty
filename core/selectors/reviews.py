@@ -1,3 +1,4 @@
+from core.translation_scope import ordinary
 from core.filtering import facet_queryset
 from django.db.models import Count, F, Prefetch, Q, Case, When, Value, CharField
 from django.db.models.functions import Coalesce
@@ -76,7 +77,7 @@ def _workloads_for_users(user_ids):
         return {}
 
     rows = (
-        ReviewAssignment.objects.for_statistics()
+        ordinary(ReviewAssignment.objects).for_statistics()
         .annotate(reviewer_user_id=Coalesce("user_id", "historical_person__user_id"))
         .filter(reviewer_user_id__in=user_ids)
         .order_by()
@@ -376,7 +377,7 @@ def review_list_context(*, user, params):
     anthology_id = _positive_id(params.get("anthology"))
     query = params.get("q", "").strip()
 
-    queryset = Review.objects.visible_to(user).filter(old_reviews=old_reviews)
+    queryset = ordinary(Review.objects).visible_to(user).filter(old_reviews=old_reviews)
     if params.get("notification") == "pending":
         queryset = queryset.awaiting_notification()
         selected_statuses = []
@@ -406,7 +407,7 @@ def review_list_context(*, user, params):
             Prefetch(
                 "assignments",
                 queryset=(
-                    ReviewAssignment.objects.select_related("user", "historical_person")
+                    ordinary(ReviewAssignment.objects).select_related("user", "historical_person")
                     .order_by("position", "pk")
                 ),
                 to_attr="selector_assignments",
@@ -422,7 +423,7 @@ def review_list_context(*, user, params):
             include_authors=include_authors,
         ),
         "anthologies": list(
-            Anthology.objects.filter(pk__in=facets["anthology"]).order_by("title", "pk").values("pk", "title")
+            ordinary(Anthology.objects).filter(pk__in=facets["anthology"]).order_by("title", "pk").values("pk", "title")
         ),
         "selected_statuses": selected_statuses,
         "selected_assignment_state": assignment_state,

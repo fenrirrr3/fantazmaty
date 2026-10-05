@@ -1,3 +1,4 @@
+from core.translation_scope import ordinary
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from django.http import JsonResponse
@@ -60,13 +61,13 @@ def home(request):
             "can_view_reports": can_view_reports(request.user),
             "today": today,
             "pending_publication_reviews": (
-                Review.objects.filter(status=Review.Status.ACCEPTED,
+                ordinary(Review.objects).filter(status=Review.Status.ACCEPTED,
                     author_notified_at__isnull=False, copied_text__isnull=True, publication_detached=False)
                     .exclude(anthology__status='ready')
                     .select_related('anthology').order_by('author_notified_at', 'pk')
                 if request.user.is_superuser else []
             ),
-            "pending_notification_count": Review.objects.awaiting_notification().count() if request.user.is_superuser else 0,
+            "pending_notification_count": ordinary(Review.objects).awaiting_notification().count() if request.user.is_superuser else 0,
         },
     )
 
@@ -84,7 +85,7 @@ def audiobooks(request):
 
 def _review_tasks(user):
     from texts.models import ReviewAssignment
-    rows = ReviewAssignment.objects.filter(user=user, review__is_hidden=False,
+    rows = ordinary(ReviewAssignment.objects).filter(user=user, review__is_hidden=False,
         review__old_reviews=False, review__status__in=("new", "in_review", "to_decide")).select_related(
             "review__anthology").order_by("assigned_at", "pk")
     return rows.filter(opinion="reading"), rows.filter(opinion="")
@@ -105,6 +106,7 @@ def dashboard_tasks(request):
         active, reserved = _review_tasks(request.user)
     else:
         active, reserved = dashboard_querysets(request.user, timezone.localdate())
+        active, reserved = ordinary(active), ordinary(reserved)
         active = active.select_related("text__anthology")
         reserved = reserved.select_related("text__anthology")
     rows = active if kind == "active" else reserved

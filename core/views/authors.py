@@ -1,3 +1,4 @@
+from core.translation_scope import ordinary
 from django.core.paginator import Paginator
 from core.selectors.texts import _annotated_texts
 from workflow.models import WorkflowStage
@@ -88,7 +89,7 @@ def _render_author_detail(request, author, *, form=None, status=200):
 
     author_data["note_history"] = note_history
 
-    text_queryset = Text.objects.filter(authors__pk=author.pk)
+    text_queryset = ordinary(Text.objects).filter(authors__pk=author.pk)
     texts = []
 
     for item in text_queryset.order_by("title", "pk").values(
@@ -116,7 +117,7 @@ def _render_author_detail(request, author, *, form=None, status=200):
             }
         )
 
-    historical_reviews = Review.objects.filter(
+    historical_reviews = ordinary(Review.objects).filter(
         Q(author_id=author.pk) | Q(coauthors__pk=author.pk),
         old_reviews=True,
     ).select_related("anthology").distinct().order_by("-created_at", "-pk")
@@ -125,7 +126,7 @@ def _render_author_detail(request, author, *, form=None, status=200):
     )
 
     # Archiwalne recenzje nie wpływają na żaden licznik zgłoszeń.
-    submissions = Review.objects.filter(
+    submissions = ordinary(Review.objects).filter(
         Q(author_id=author.pk) | Q(coauthors__pk=author.pk),
         old_reviews=False,
     ).distinct()
@@ -141,7 +142,7 @@ def _render_author_detail(request, author, *, form=None, status=200):
         ),
     )
     author_summary["texts"] = len(texts)
-    author_summary["anthologies"] = Anthology.objects.filter(
+    author_summary["anthologies"] = ordinary(Anthology.objects).filter(
         Q(
             pk__in=text_queryset.order_by().values("anthology_id"),
         )
@@ -208,7 +209,7 @@ def author_list(request):
             contact=contact_filter == "yes",
         )
 
-    anthology_options = Anthology.objects.all()
+    anthology_options = ordinary(Anthology.objects).all()
 
     if selected_anthology_ids:
         authors = authors.filter(
@@ -233,7 +234,7 @@ def author_list(request):
 
     if author_ids:
         participations = (
-            Text.objects.filter(
+            ordinary(Text.objects).filter(
                 authors__pk__in=author_ids,
                 anthology__isnull=False,
             )

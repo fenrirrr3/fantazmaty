@@ -1,3 +1,4 @@
+from core.translation_scope import ordinary
 from workflow.catalog import active_stage_choices, active_role_choices
 from workflow.labels import execution_label, WORK_LABELS
 from datetime import timedelta
@@ -89,7 +90,7 @@ def _filter_context(params, *, role_name, people_context_name):
         "filter_form": form,
         "filter_errors": form.errors,
         "anthologies": list(
-            Anthology.objects.order_by("title", "pk").values("pk", "title")
+            ordinary(Anthology.objects).order_by("title", "pk").values("pk", "title")
         ),
         people_context_name: _people_for_role(role_name),
         "query": cleaned.get("q", ""),
@@ -170,7 +171,7 @@ def workflow_activity_context(
 
     # Historia obejmuje wszystkie cykle. Przydział dopasowujemy
     # do cyklu konkretnego etapu, nigdy do obecnego cyklu tekstu.
-    stages = WorkflowStage.objects.filter(
+    stages = ordinary(WorkflowStage.objects).filter(
         stage_type__in=stage_roles,
     ).select_related("text", "text__anthology", "assignment__assigned_to__person_profile")
 
@@ -180,7 +181,7 @@ def workflow_activity_context(
         stages = stages.filter(ended_at__lte=filters["date_to"])
 
     assignments = (
-        WorkflowRoleAssignment.objects.filter(role__in=set(stage_roles.values()))
+        ordinary(WorkflowRoleAssignment.objects).filter(role__in=set(stage_roles.values()))
         .select_related("assigned_to", "assigned_to__person_profile")
         .order_by("workflow_cycle", "role", "pk")
     )
@@ -205,7 +206,7 @@ def workflow_activity_context(
     stage_role = Case(*[When(stage_type=kind, then=Value(role)) for kind, role in stage_roles.items()], output_field=CharField())
     # The expected role expression belongs to the outer Stage, not Assignment.
     stages = stages.annotate(report_role=stage_role)
-    fallback = WorkflowRoleAssignment.objects.filter(text_id=OuterRef('text_id'), workflow_cycle=OuterRef('workflow_cycle'), role=OuterRef('report_role')).order_by('pk')
+    fallback = ordinary(WorkflowRoleAssignment.objects).filter(text_id=OuterRef('text_id'), workflow_cycle=OuterRef('workflow_cycle'), role=OuterRef('report_role')).order_by('pk')
     stages = stages.annotate(
         report_person_id=Case(When(assignment__isnull=False, then=F('assignment__assigned_to__person_profile__pk')), default=Subquery(fallback.values('assigned_to__person_profile__pk')[:1]), output_field=BigIntegerField()),
         report_first=Case(When(assignment__isnull=False, then=F('assignment__assigned_to__first_name')), default=Subquery(fallback.values('assigned_to__first_name')[:1])),
@@ -304,7 +305,7 @@ def reviewer_activity_context(*, user, params):
 
     # Nie filtrujemy historii po aktualnej roli ani aktywności osoby.
     # Usunięcie konta również nie usuwa informacji o oddanej opinii.
-    assignments = ReviewAssignment.objects.submitted().select_related(
+    assignments = ordinary(ReviewAssignment.objects).submitted().select_related(
         "review",
         "review__anthology",
         "user",
@@ -522,14 +523,14 @@ def _cascade_sql(context, base, project, filters, people_key, workflow=False, st
 def _inactivity_stages(today, active_days, waiting_days, mode, selected_stages, include_authors):
     from workflow.read_queries import exclude_obsolete_verification_placeholders
 
-    terminal_stage = WorkflowStage.objects.current_cycle().filter(
+    terminal_stage = ordinary(WorkflowStage.objects).current_cycle().filter(
         text_id=OuterRef("text_id"),
         workflow_cycle=OuterRef("workflow_cycle"),
         stage_type__in=TERMINAL_STAGES,
     )
 
     stages = (
-        WorkflowStage.objects.current_cycle().filter(
+        ordinary(WorkflowStage.objects).current_cycle().filter(
             workflow_cycle=F("text__current_workflow_cycle"),
             is_completed=False,
             ended_at__isnull=True,
