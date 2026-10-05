@@ -32,6 +32,7 @@ from core.selectors.texts import (
     text_list_context,
 )
 from texts.models import Text, TextNote
+from core.tag_forms import TextTagsForm
 from workflow.models import WorkflowRoleAssignment
 
 
@@ -140,6 +141,7 @@ def _render_text_detail(request, text, *, bound_forms=None, status=200):
     can_contribute = coordinator_access or is_assigned
     from core.file_forms import TextFileForm
     context['file_url'] = text.file_url
+    context['text_tags_form'] = TextTagsForm(instance=text)
     context['text_file_form'] = TextFileForm(instance=text) if request.user.is_superuser else None
     context['dropbox_chooser_app_key'] = getattr(settings, 'DROPBOX_CHOOSER_APP_KEY', '') if request.user.is_superuser else ''
     # Only this text's email addresses are revealed, never source-review identity.
@@ -257,6 +259,22 @@ def assigned_text_detail(request, text_id):
     )
 
     return _render_text_detail(request, text)
+
+
+@never_cache
+@login_required
+@require_POST
+@team_member_required
+def update_text_tags(request, text_id):
+    with transaction.atomic():
+        text = get_object_or_404(Text.objects.select_for_update(), pk=text_id)
+        form = TextTagsForm(request.POST, instance=text)
+        if form.is_valid():
+            text.tags = form.cleaned_data['tags']
+            text.save(update_fields=['tags'])
+            messages.success(request, 'Zapisano tagi tekstu.')
+            return redirect('core:assigned_text_detail', text_id=text.pk)
+        return _render_text_detail(request, text, bound_forms={'text_tags_form': form}, status=400)
 
 
 @never_cache

@@ -40,6 +40,7 @@ def aggregate(match):
 
 
 RECOVERABLE_FIELDS = frozenset({
+    'tags',
     'notes', 'content', 'general_notes', 'content_warnings', 'coordinator_note',
     'opinion', 'fragment', 'problem', 'suggestion', 'file_url',
     'author_first_name', 'author_last_name', 'email', 'phone_number',
@@ -208,6 +209,7 @@ class EditingMiddleware:
             key = f"{model._meta.label_lower}:{pk}" if obj else ""
             token = request.POST.get("_edit_version") if request.method == "POST" else None
             required = match.namespace == 'admin' or match.url_name in {
+                'update_text_tags',
                 'cancel_workflow_repetition', 'handoff_workflow_stage', 'link_text_review',
                 'set_text_authors', 'update_coordinator_note', 'update_text_content_warnings',
                 'edit_text_note', 'delete_text_note', 'update_text_file', 'update_review_file',

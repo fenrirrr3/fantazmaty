@@ -1,0 +1,30 @@
+{% extends "core/base.html" %}
+{% load static %}
+{% block title %}Tagi | Fantazmaty CMS{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/tags.css' %}">{% endblock %}
+{% block content %}
+<header class="page-header"><h1>Tagi</h1><p>Tagi tekstów przyjętych do wydania. Kliknij tytuł, aby uzupełnić tagi obok notatek zespołu.</p></header>
+<section class="card"><div class="card-body">
+<form method="get" class="tag-filters" aria-label="Filtry tagów">
+    <div class="form-field tag-search"><label for="tags-search">Szukaj</label><input id="tags-search" name="q" type="search" value="{{ search }}" maxlength="200" placeholder="Antologia, tytuł, autor, tagi lub gatunek"></div>
+    <div class="form-field"><label for="tags-anthology">Antologia</label><select id="tags-anthology" name="anthology"><option value="">Wszystkie</option><option value="none" {% if selected_anthology == 'none' %}selected{% endif %}>Bez antologii</option>{% for item in anthologies %}<option value="{{ item.pk }}" {% if selected_anthology == item.pk|stringformat:'s' %}selected{% endif %}>{{ item.title }}</option>{% endfor %}</select></div>
+    <div class="form-field"><label for="tags-author">Autor</label><select id="tags-author" name="author"><option value="">Wszyscy</option>{% for item in authors %}<option value="{{ item.pk }}" {% if selected_author == item.pk|stringformat:'s' %}selected{% endif %}>{{ item.first_name }} {{ item.last_name }}</option>{% endfor %}</select></div>
+    <div class="form-field"><label for="tags-genre">Gatunek</label><select id="tags-genre" name="genre"><option value="">Wszystkie</option><option value="__missing__" {% if selected_genre == '__missing__' %}selected{% endif %}>Brak danych</option>{% for item in genres %}<option value="{{ item }}" {% if selected_genre == item %}selected{% endif %}>{{ item }}</option>{% endfor %}</select></div>
+    <div class="form-field"><label for="tags-value">Tag zawiera</label><input type="text" id="tags-value" name="tag" value="{{ selected_tag }}" maxlength="200"></div>
+    <div class="form-field"><label for="tags-filled">Uzupełnienie tagów</label><select id="tags-filled" name="filled"><option value="">Wszystkie teksty</option><option value="yes" {% if selected_filled == 'yes' %}selected{% endif %}>Z tagami</option><option value="no" {% if selected_filled == 'no' %}selected{% endif %}>Bez tagów</option></select></div>
+    <div class="form-field"><label for="tags-sort">Sortowanie</label><select id="tags-sort" name="sort">
+        <option value="title" {% if selected_sort == 'title' %}selected{% endif %}>Tytuł A–Z</option><option value="-title" {% if selected_sort == '-title' %}selected{% endif %}>Tytuł Z–A</option>
+        <option value="anthology" {% if selected_sort == 'anthology' %}selected{% endif %}>Antologia A–Z</option><option value="-anthology" {% if selected_sort == '-anthology' %}selected{% endif %}>Antologia Z–A</option>
+        <option value="author" {% if selected_sort == 'author' %}selected{% endif %}>Nazwisko autora A–Z</option><option value="-author" {% if selected_sort == '-author' %}selected{% endif %}>Nazwisko autora Z–A</option>
+        <option value="tags" {% if selected_sort == 'tags' %}selected{% endif %}>Tagi A–Z</option><option value="-tags" {% if selected_sort == '-tags' %}selected{% endif %}>Tagi Z–A</option>
+        <option value="genre" {% if selected_sort == 'genre' %}selected{% endif %}>Gatunek A–Z</option><option value="-genre" {% if selected_sort == '-genre' %}selected{% endif %}>Gatunek Z–A</option>
+    </select></div>
+    <div class="tag-filter-actions"><button class="primary-button" type="submit">Filtruj</button><a class="secondary-button" href="{% url 'core:tag_list' %}">Wyczyść filtry</a></div>
+</form></div></section>
+<section class="card"><div class="table-container" tabindex="0" role="region" aria-label="Tabela tagów">
+    <table><caption class="visually-hidden">Tagi tekstów przyjętych do wydania</caption><thead><tr><th scope="col">Antologia</th><th scope="col">Tytuł</th><th scope="col">Imię i nazwisko autora</th><th scope="col">Tagi</th><th scope="col">Gatunek</th></tr></thead><tbody>
+    {% for item in page_obj %}<tr><td>{{ item.anthology.title|default:"Brak antologii" }}</td><td><a href="{% url 'core:assigned_text_detail' item.pk %}#text-tags-heading"><strong>{{ item.title }}</strong></a></td><td>{% for author in item.authors.all %}<div>{{ author.first_name }} {{ author.last_name }}</div>{% empty %}Brak danych{% endfor %}</td><td class="text-tags-cell">{{ item.tags|default:"Brak tagów" }}</td><td>{{ item.tag_genre|default:"Brak danych" }}</td></tr>{% empty %}<tr><td colspan="5">Brak tekstów spełniających kryteria.</td></tr>{% endfor %}
+    </tbody></table>
+</div></section>
+{% include "core/includes/pagination.html" %}
+{% endblock %}

@@ -305,6 +305,8 @@ class AnthologyTask(models.Model):
 
 
 class Text(NormalizedModelMixin, models.Model):
+    tags = models.TextField("tagi", blank=True, default="", max_length=5000)
+
     file_url = models.URLField("folder Dropbox", max_length=1000, blank=True)
 
     import_source = models.CharField("źródło importu", max_length=100, blank=True, default="", editable=False)
@@ -994,4 +996,3 @@ class Extract(NormalizedModelMixin, models.Model):
 
     def __str__(self):
         return f'{self.recruitment} – {self.full_name}'
-

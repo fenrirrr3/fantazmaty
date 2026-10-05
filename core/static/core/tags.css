@@ -1,0 +1,13 @@
+.text-notes-tags { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.text-notes-tags > .card { min-width: 0; }
+.text-tags-form { display: grid; gap: 12px; padding: 20px; }
+.text-tags-form .form-field { display: grid; gap: 6px; min-width: 0; }
+.text-tags-form textarea { width: 100%; min-height: 8rem; resize: vertical; }
+.text-tags-form button { justify-self: start; }
+.tag-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
+.tag-filters .form-field { display: grid; gap: 6px; min-width: 0; }
+.tag-filters :is(input, select) { width: 100%; }
+.tag-filters .tag-search { grid-column: 1 / -1; }
+.tag-filter-actions { grid-column: 1 / -1; display: flex; gap: 10px; flex-wrap: wrap; }
+.text-tags-cell { white-space: normal; overflow-wrap: anywhere; min-width: 180px; max-width: 360px; }
+@media (max-width: 800px) { .text-notes-tags { grid-template-columns: minmax(0, 1fr); } }

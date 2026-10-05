@@ -21,8 +21,11 @@ app_name = "core"
 
 from core.views.programs import programs
 from core.views.activity import user_activity
+from core.views.tags import tag_list
 
 urlpatterns = [
+    path("teksty/tagi/", tag_list, name="tag_list"),
+    path("teksty/<int:text_id>/tagi/", texts.update_text_tags, name="update_text_tags"),
     path("podglad-uzytkownika/", user_preview, name="user_preview"),
     path("podglad-uzytkownika/zakoncz/", user_preview_stop, name="user_preview_stop"),
     path("newsletter/zgody/", newsletters.newsletter_list, name="newsletter_list"),

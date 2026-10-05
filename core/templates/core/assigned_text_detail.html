@@ -4,6 +4,8 @@
 {% block title %}{{ text.title }} | Fantazmaty CMS{% endblock %}
 
 
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/tags.css' %}">{% endblock %}
+
 {% block content %}
 
     {% now "Y-m-d" as today_iso %}
@@ -467,6 +469,7 @@
         </div>
     </section>
 
+    <div class="text-notes-tags">
     <section class="card" aria-labelledby="text-notes-heading">
         <header class="section-header">
             <h2 id="text-notes-heading">Notatki zespołu</h2>
@@ -534,6 +537,16 @@
             {% endfor %}
         </div>
     </section>
+    <section class="card" aria-labelledby="text-tags-heading">
+        <header class="section-header"><h2 id="text-tags-heading">Tagi</h2></header>
+        <form method="post" action="{% url 'core:update_text_tags' text.pk %}" class="text-tags-form" data-warn-unsaved>
+            {% csrf_token %}{% edit_version %}{{ text_tags_form.non_field_errors }}
+            <div class="form-field">{{ text_tags_form.tags.label_tag }}{{ text_tags_form.tags }}{{ text_tags_form.tags.errors }}<p class="muted-text">{{ text_tags_form.tags.help_text }}</p></div>
+            <button class="primary-button" type="submit">Zapisz tagi</button>
+            <a href="{% url 'core:tag_list' %}">Przejdź do listy tagów</a>
+        </form>
+    </section>
+    </div>
 
         <details class="review-summary-details" open>
             <summary class="review-summary-toggle">

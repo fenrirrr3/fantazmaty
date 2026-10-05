@@ -512,3 +512,47 @@ python manage.py migrate --check
 
 Na PythonAnywhere następnie Web → Reload. Migracja people.0011 dodaje
 trzy pola do profilu osoby; nie kopiuje osób, nie tworzy kont i nie zmienia ról.
+
+### Tagi tekstów (v7)
+
+W menu Teksty i recenzje, pod Wszystkie teksty, znajduje się lista Tagi
+(`/teksty/tagi/`). Obejmuje istniejące rekordy Text, czyli teksty przyjęte
+do wydania, również historyczne. Antologia, tytuł i autorzy są odczytywani
+z bieżących relacji, a gatunek z powiązanego zgłoszenia source_review.
+Brak powiązanego zgłoszenia lub gatunku jest oznaczony jako Brak danych.
+Te informacje nie są kopiowane do nowej tabeli ani zmieniane przy zapisie tagów.
+
+Kolumny: Antologia, Tytuł, Imię i nazwisko autora, Tagi, Gatunek.
+Wyszukiwanie obejmuje wszystkie te informacje, także pełne imię i nazwisko.
+Filtry: antologia, autor (również współautor), gatunek, fragment tagu oraz
+teksty z tagami / bez tagów. Wszystkie kolumny mają sortowanie w obu
+kierunkach przed stronicowaniem. Przy kilku autorach kluczem sortowania
+jest nazwisko i imię pierwszego autora w kolejności alfabetycznej; wiersz
+pokazuje wszystkich autorów. Jeden tekst zawsze zajmuje jeden wiersz.
+
+W szczegółach tekstu Notatki zespołu oraz nowe pole Tagi zajmują po połowie
+szerokości; przy szerokości ekranu do 800 px są ułożone pionowo.
+Każdy aktywny członek zespołu i superuser może zapisać tagi, także bez
+przypisania do danego tekstu. Uprawnienia do notatek pozostają dotychczasowe.
+Tagi wpisuje się po przecinku lub w kolejnych liniach; usuwane są puste
+elementy i duplikaty niezależnie od wielkości liter. Maksymalnie 5000 znaków.
+Formularz zapisuje całą listę; wyczyszczenie pola usuwa tagi. Zapis ze
+starej wersji formularza zwraca konflikt i zachowuje treść do odzyskania.
+Podgląd jako inny użytkownik pozostaje tylko do odczytu.
+
+Migracja texts.0020_text_tags dodaje puste pole tags do istniejących tekstów.
+Nie przenosi gatunku do tagów i nie zmienia etapów workflow ani notatek.
+Paczka v7 zawiera wyłącznie pliki zmienione względem v6. Nie zawiera
+settings.py, więc zachowuje osobną poprawkę sesji na tydzień.
+
+Po podmianie plików, w katalogu z manage.py i środowisku aplikacji:
+
+```bash
+python manage.py check &&
+python manage.py migrate --noinput &&
+python manage.py collectstatic --noinput &&
+python manage.py migrate --check
+```
+
+Następnie PythonAnywhere → Web → Reload. Brak nowych zależności i plików
+do usunięcia. Konieczne jest dodanie do repozytorium także nowych plików.
