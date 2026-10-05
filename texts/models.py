@@ -421,7 +421,7 @@ class Text(NormalizedModelMixin, models.Model):
     @property
     def authors_display(self):
         # Dostęp do danych autorów kontrolują widoki i uprawnienia.
-        return ", ".join(str(author) for author in self.authors.all())
+        return ", ".join(author.display_name for author in self.authors.all())
 
     @property
     def author_emails(self):
@@ -444,6 +444,11 @@ class TranslationPerson(models.Model):
     class Meta:
         abstract = True
         ordering = ('last_name', 'first_name', 'pk')
+
+    @property
+    def display_name(self):
+        """Podpis poza panelem admina; nie zmienia danych osobowych."""
+        return self.pseudonym.strip() or str(self)
 
     def __str__(self):
         return f'{self.first_name} {self.last_name}'.strip()
@@ -763,7 +768,7 @@ class Review(NormalizedModelMixin, models.Model):
 
     @property
     def author_display_name(self):
-        return ", ".join(str(a) for a in self.display_authors) or f"{self.author_first_name} {self.author_last_name}".strip()
+        return ", ".join(a.display_name for a in self.display_authors) or self.author_pseudonym.strip() or f"{self.author_first_name} {self.author_last_name}".strip()
 
 
 class Reviewers(models.Model):

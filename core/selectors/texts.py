@@ -160,7 +160,7 @@ def _author_data(author):
         last_name=author.last_name,
         pseudonym=author.pseudonym,
         email=author.email,
-        display_name=str(author),
+        display_name=author.display_name,
     )
 
 
@@ -227,7 +227,7 @@ def _text_data(text, include_authors):
     authors = [
         _author_data(author) if include_authors else _Record(
             pk=author.pk, first_name=author.first_name, last_name=author.last_name,
-            display_name=str(author),
+            display_name=author.display_name,
         )
         for author in source_authors
     ]
@@ -236,8 +236,8 @@ def _text_data(text, include_authors):
     translators = list(record.translators.all()) if record else []
     return _Record(
         is_translation=translated,
-        translators=[_author_data(a) if include_authors else _Record(pk=a.pk, first_name=a.first_name, last_name=a.last_name) for a in translators],
-        translators_display=", ".join(str(a) for a in translators),
+        translators=[_author_data(a) if include_authors else _Record(pk=a.pk, first_name=a.first_name, last_name=a.last_name, display_name=a.display_name) for a in translators],
+        translators_display=", ".join(a.display_name for a in translators),
         pk=text.pk,
         title=text.title,
         length=text.length,
@@ -283,7 +283,7 @@ def _prepared_texts(queryset, include_authors):
     )
     author_query = Author.objects.order_by("last_name", "first_name", "pk")
     if not include_authors:
-        author_query = author_query.only("pk", "first_name", "last_name")
+        author_query = author_query.only("pk", "first_name", "last_name", "pseudonym")
     queryset = queryset.prefetch_related(Prefetch(
         "authors", queryset=author_query, to_attr="selector_authors",
     ))
@@ -556,7 +556,7 @@ def available_stages_for_user(*, user, params=None, with_filters=False):
         stages = stages.order_by(*ordering, "pk")
     author_query = Author.objects.order_by("last_name", "first_name", "pk")
     if not include_authors:
-        author_query = author_query.only("pk", "first_name", "last_name")
+        author_query = author_query.only("pk", "first_name", "last_name", "pseudonym")
     stages = stages.prefetch_related(Prefetch(
         "text__authors", queryset=author_query, to_attr="selector_authors"))
 
@@ -981,7 +981,7 @@ def _text_notes(text, user, coordinator):
 
 
 def _source_review_data(text, user, include_authors):
-    source_query = Review.objects.visible_to(user).filter(copied_text_id=text.pk).select_related("reviewers")
+    source_query = Review.objects.visible_to(user).filter(copied_text_id=text.pk).select_related("reviewers", "author").prefetch_related("coauthors")
     source = source_query.first()
     source_data = None
     opinions = []
@@ -1000,6 +1000,7 @@ def _source_review_data(text, user, include_authors):
         )
         if include_authors:
             source_data.update(
+                author_display_name=source.author_display_name,
                 author_first_name=source.author_first_name,
                 author_last_name=source.author_last_name,
                 email=source.email,

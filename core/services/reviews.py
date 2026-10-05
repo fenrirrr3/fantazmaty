@@ -564,7 +564,7 @@ def resolve_publication_authors(review, *, contract_received=False, confirmed_co
     coauthors = list(Author.objects.select_for_update().filter(pk__in=review.coauthors.values('pk')).order_by('pk'))
     if confirmed_ids - {a.pk for a in coauthors}:
         raise ValidationError("Lista współautorów zmieniła się. Odśwież stronę.")
-    missing = [str(a) for a in coauthors if not a.has_contract and a.pk not in confirmed_ids]
+    missing = [a.display_name for a in coauthors if not a.has_contract and a.pk not in confirmed_ids]
     if missing:
         raise ValidationError("Potwierdź umowy współautorów: " + ", ".join(missing))
     for coauthor in coauthors:

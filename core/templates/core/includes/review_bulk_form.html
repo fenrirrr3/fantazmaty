@@ -21,8 +21,8 @@
                 <p>Import jest wspólny dla wszystkich wierszy. Błąd blokuje zapis całości; duplikaty i czarna lista wymagają potwierdzenia.</p>
                 <div class="table-container"><table class="import-preview-table" data-copy-table><thead><tr><th>Wiersz</th><th>Autor / dopasowanie</th><th data-sort-key="title">Tytuł</th><th>Dane zgłoszenia</th><th>Weryfikacja</th></tr></thead><tbody>
                 {% for row in preview_rows %}<tr><td>{{ row.line }}</td><td>
-                    {% if row.record %}{{ row.record.author_first_name }} {{ row.record.author_last_name }}{% if row.record.author_pseudonym %}<br>Pseudonim: {{ row.record.author_pseudonym }}{% endif %}<br>{{ row.record.email }}
-                    {% for author in row.matched %}<p>W bazie: {{ author.first_name }} {{ author.last_name }}{% if author.is_blacklisted %} – czarna lista, zgłoszenie będzie ukryte{% endif %}</p>{% empty %}<p>Brak dopasowanego autora w bazie</p>{% endfor %}
+                    {% if row.record %}{% if row.record.author_pseudonym %}{{ row.record.author_pseudonym }}{% else %}{{ row.record.author_first_name }} {{ row.record.author_last_name }}{% endif %}<br>{{ row.record.email }}
+                    {% for author in row.matched %}<p>W bazie: {{ author.display_name }}{% if author.is_blacklisted %} – czarna lista, zgłoszenie będzie ukryte{% endif %}</p>{% empty %}<p>Brak dopasowanego autora w bazie</p>{% endfor %}
                     {% else %}{{ row.raw }}{% endif %}</td><td><strong>{{ row.record.title|default:'–' }}</strong></td><td>
                     {% if row.record %}<p>Gatunek: {{ row.record.genre }}</p><p>Długość: {{ row.record.length }} znaków</p>{% if row.record.content_warnings %}<p>Ostrzeżenia: {{ row.record.content_warnings }}</p>{% endif %}
                     {% if row.record.has_consent_fields %}<p>Zgoda na premiery: {{ row.record.newsletter_premieres|yesno:'tak,nie' }}. Zgoda na nabory: {{ row.record.newsletter_recruitment|yesno:'tak,nie' }}.</p>{% endif %}

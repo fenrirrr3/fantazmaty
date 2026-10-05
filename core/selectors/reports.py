@@ -127,7 +127,7 @@ def _author_prefetch():
 def _authors_display(text, include_authors):
     if not include_authors:
         return ""
-    return ", ".join(str(author) for author in text.report_authors)
+    return ", ".join(author.display_name for author in text.report_authors)
 
 
 def _person_and_name(user):
@@ -307,10 +307,10 @@ def reviewer_activity_context(*, user, params):
     # Usunięcie konta również nie usuwa informacji o oddanej opinii.
     assignments = ordinary(ReviewAssignment.objects).submitted().select_related(
         "review",
-        "review__anthology",
+        "review__anthology", "review__author",
         "user",
         "user__person_profile", "historical_person",
-    ).filter(Q(review__old_reviews=True) | Q(review__is_hidden=False))
+    ).prefetch_related("review__coauthors").filter(Q(review__old_reviews=True) | Q(review__is_hidden=False))
     if archive != "all":
         assignments = assignments.filter(review__old_reviews=(archive == "archived"))
 
@@ -353,18 +353,7 @@ def reviewer_activity_context(*, user, params):
             person = assignment.historical_person
             reviewer_name = str(person)
         anthology_title = review.anthology.title if review.anthology else ""
-        author_name = (
-            " ".join(
-                part
-                for part in (
-                    review.author_first_name,
-                    review.author_last_name,
-                )
-                if part
-            )
-            if include_authors
-            else ""
-        )
+        author_name = review.author_display_name if include_authors else ""
         opinion = assignment.get_opinion_display()
         review_status = review.get_status_display()
 

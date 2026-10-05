@@ -40,6 +40,7 @@ def review_template_data(review, *, include_author):
         author = review.author
         data.update(
             {
+                "author_display_name": review.author_display_name,
                 "author_first_name": review.author_first_name,
                 "author_last_name": review.author_last_name,
                 "email": review.email,
@@ -52,6 +53,7 @@ def review_template_data(review, *, include_author):
                     {
                         "pk": author.pk,
                         "id": author.pk,
+                        "display_name": author.display_name,
                         "first_name": author.first_name,
                         "last_name": author.last_name,
                         "pseudonym": author.pseudonym,

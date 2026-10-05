@@ -53,8 +53,8 @@ def _yes_no_filter(value):
 
 def _author_display_data(author):
     return {
-        field: getattr(author, field)
-        for field in AUTHOR_DISPLAY_FIELDS
+        **{field: getattr(author, field) for field in AUTHOR_DISPLAY_FIELDS},
+        "display_name": author.display_name,
     }
 
 
@@ -258,6 +258,7 @@ def author_list(request):
             )
 
     for author in page_authors:
+        author["display_name"] = author["pseudonym"].strip() or f"{author['first_name']} {author['last_name']}".strip()
         author["participating_anthologies"] = anthologies_by_author[
             author["pk"]
         ]

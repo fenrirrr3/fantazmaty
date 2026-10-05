@@ -37,7 +37,7 @@
     {% if is_translation %}
     <section class="card"><div class="card-body"><h2>Autor zagraniczny i tłumacz</h2>
     {% if translation_form %}<form method="post" action="{% url 'core:set_translators' text.pk %}">{% csrf_token %}{% edit_version %}{{ translation_form.as_p }}<button class="primary-button" type="submit">Zapisz osoby</button></form><p><a href="{% url 'admin:texts_foreignauthor_add' %}">Dodaj autora zagranicznego</a> · <a href="{% url 'admin:texts_translator_add' %}">Dodaj tłumacza</a></p>
-    {% else %}<p>{% for translator in translators %}{{ translator.first_name }} {{ translator.last_name }}{% if not forloop.last %}, {% endif %}{% empty %}Nie przypisano tłumacza.{% endfor %}</p><p><strong>Weryfikacja z oryginałem:</strong> {{ original_verifier|default:"Nie podano" }}</p>{% endif %}
+    {% else %}<p>{% for translator in translators %}{{ translator.display_name }}{% if not forloop.last %}, {% endif %}{% empty %}Nie przypisano tłumacza.{% endfor %}</p><p><strong>Weryfikacja z oryginałem:</strong> {{ original_verifier|default:"Nie podano" }}</p>{% endif %}
     </div></section>{% endif %}
 
 
@@ -88,9 +88,9 @@
                                 href="{% if is_translation %}{% url 'core:translation_person_detail' 'author' author.pk %}{% else %}{% url 'core:author_detail' author.pk %}{% endif %}"
                                 class="detail-link"
                             >
-                                {{ author.first_name }} {{ author.last_name }}
+                                {{ author.display_name }}
                             </a>{% else %}
-                                {{ author.first_name }} {{ author.last_name }}
+                                {{ author.display_name }}
                             {% endif %}{% if not forloop.last %}, {% endif %}
                         {% empty %}
                             <span class="muted-text">Brak przypisanego autora</span>
@@ -580,8 +580,7 @@
                 {% if can_view_authors %}
                     <p>
                         Autor:
-                        {{ source_review.author_first_name }}
-                        {{ source_review.author_last_name }}
+                        {{ source_review.author_display_name }}
                     </p>
                 {% endif %}
 
@@ -753,8 +752,8 @@
                                         value="{{ author.pk }}"
                                         {% if author.pk in selected_author_ids %}selected{% endif %}
                                     >
-                                        {{ author.first_name }} {{ author.last_name }}
-                                        {% if author.pseudonym %} – {{ author.pseudonym }}{% endif %}
+                                        {{ author.display_name }}
+                                        
                                     </option>
                                 {% endfor %}
                             </select>

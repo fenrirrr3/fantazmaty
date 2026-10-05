@@ -73,7 +73,7 @@ def _edit(request, model, form_class, title, route, pk):
 @require_http_methods(['GET'])
 @coordinator_required
 def extract_list(request):
-    return _list(request, Extract, ExtractForm, 'Ekstrakty', 'extract', ('full_name', 'email', 'phone_number', 'title', 'accepted_titles', 'rejected_titles', 'recruitment'))
+    return _list(request, Extract, ExtractForm, 'Ekstrakty', 'extract', ('full_name', 'author__pseudonym', 'email', 'phone_number', 'title', 'accepted_titles', 'rejected_titles', 'recruitment'))
 
 
 @never_cache
@@ -111,7 +111,7 @@ def review_create(request):
         raw=request.GET.get('author','')
         if raw.isascii() and raw.isdecimal() and len(raw)<19:
             selected=Author.objects.filter(pk=raw).first()
-        initial={'author':selected.pk,'author_first_name':selected.first_name,'author_last_name':selected.last_name,'email':selected.email or '', 'phone_number':selected.phone_number or '', 'author_pseudonym':selected.pseudonym} if selected else {}
+        initial={'author':selected.pk,'author_first_name':selected.display_name if selected.pseudonym.strip() else selected.first_name,'author_last_name':'' if selected.pseudonym.strip() else selected.last_name,'email':selected.email or '', 'phone_number':selected.phone_number or '', 'author_pseudonym':selected.pseudonym} if selected else {}
         form = SingleReviewForm(request.POST if request.method == 'POST' else None,initial=initial)
         if request.method == 'POST' and form.is_valid():
             review = form.save(commit=False)
@@ -174,8 +174,8 @@ def author_suggestions(request):
     for term in query.split():
         authors = authors.filter(Q(first_name__plcontains=term) | Q(last_name__plcontains=term) |
                                  Q(pseudonym__plcontains=term) | Q(email__plcontains=term))
-    results = [{'id': author.pk, 'label': f'{author} – {author.pseudonym}' if author.pseudonym else str(author),
-                'first_name': author.first_name, 'last_name': author.last_name,
+    results = [{'id': author.pk, 'label': author.display_name,
+                'first_name': author.display_name if author.pseudonym.strip() else author.first_name, 'last_name': '' if author.pseudonym.strip() else author.last_name,
                 'email': author.email or '', 'pseudonym': author.pseudonym, 'phone_number': stored_author_phone(author)} for author in authors.order_by('last_name', 'first_name', 'pk')[:20]]
     response = JsonResponse({'results': results})
     response['Cache-Control'] = 'no-store, private'

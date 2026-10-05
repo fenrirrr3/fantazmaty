@@ -35,8 +35,8 @@ def translation_person_suggestions(request, kind):
         people = people.filter(condition)
     results = []
     for person in people.order_by('last_name', 'first_name', 'pk')[:20]:
-        details = [value for value in (person.pseudonym, getattr(person, 'language', '')) if value]
-        results.append({'id': person.pk, 'label': str(person) + (' — ' + ', '.join(details) if details else '')})
+        details = [value for value in (getattr(person, 'language', ''),) if value]
+        results.append({'id': person.pk, 'label': person.display_name + (' — ' + ', '.join(details) if details else '')})
     response = JsonResponse({'results': results})
     response['Cache-Control'] = 'no-store, private'
     return response

@@ -527,7 +527,7 @@ def link_text_review(request, text_id):
     from core.source_reviews import linkable_reviews, suggested_review_ids, link_source_review
     text = get_object_or_404(Text.objects.select_related('anthology'),pk=text_id)
     query = request.GET.get('q','').strip()
-    candidates = linkable_reviews(text)
+    candidates = linkable_reviews(text).select_related("author").prefetch_related("coauthors")
     suggestions = suggested_review_ids(text)
     if query:
         candidates = candidates.filter(Q(title__plcontains=query) | Q(author_first_name__plcontains=query) | Q(author_last_name__plcontains=query) | Q(email__plcontains=query))

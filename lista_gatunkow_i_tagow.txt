@@ -1,0 +1,87 @@
+GATUNKI I TAGI — 17 OPOWIADAŃ
+
+6 pozycji: Raz jeszcze w wyłom. 11 pozycji: Fantazmaty 5.
+Trzy wskazane teksty z Na zawsze, do jutra, już nigdy są wycofane — pominięto je.
+Przypisania są klasyfikacją redakcyjną na podstawie lektury. Nazwy gatunków pochodzą z dotychczasowego słownika.
+Ujednolicono m.in. podróż w czasie, ratunek, upływ czasu, przemiana ciała i wirtualna rzeczywistość.
+Nowe motywy F5: honor, ksenofobia, parodia, programowanie, rusałki, utrata człowieczeństwa.
+Konformizm był już użyty w liście Raz jeszcze w wyłom.
+
+Raz jeszcze w wyłom / Kolor piekła
+Gatunek: humorystyczna science fiction, satyra
+Tagi: konsumpcjonizm, chciwość, nierówności społeczne, religia, wojna, przyjaźń, poświęcenie, trauma
+
+Raz jeszcze w wyłom / Wyrywając dusze
+Gatunek: steampunk, science fantasy
+Tagi: wojna, nieśmiertelność, klony, transfer świadomości, tożsamość, fanatyzm, propaganda, zdrada
+
+Raz jeszcze w wyłom / Władcy Ludzkich Ciał
+Gatunek: fantasy przygodowe, dark fantasy
+Tagi: niewola, wolność, bunt, magia, zaklęta broń, latający okręt, zdrada, zakładnicy
+
+Raz jeszcze w wyłom / Kluczarnia
+Gatunek: groteska fantastyczna, satyra
+Tagi: szkoła, biurokracja, bunt, manipulacja, konformizm, kontrola społeczna, absurd
+
+Raz jeszcze w wyłom / Biała brama
+Gatunek: fantasy metafizyczne, dark fantasy
+Tagi: wojna, utrata pamięci, tożsamość, przyjaźń, poświęcenie, przemiana, imiona, portale
+
+Raz jeszcze w wyłom / Słońce Austerlitz
+Gatunek: fantasy historyczne, groza
+Tagi: wojny napoleońskie, postaci historyczne, telepatia, nadprzyrodzone zdolności, potwory, zamach, tajemnica, przyjaźń
+
+Fantazmaty 5 / Wiedźma
+Gatunek: urban fantasy, dramat psychologiczny
+Tagi: wiedźmy, magiczne przedmioty, utrata pamięci, manipulacja, żałoba, depresja, przyjaźń, samotność
+Podstawa: Honorata wytwarza magiczne przedmioty, tłumi żałobę Jagody i manipuluje jej pamięcią, aby wielokrotnie wracać do jej domu.
+
+Fantazmaty 5 / Jenot szuka żony
+Gatunek: urban fantasy, czarna komedia
+Tagi: wiedźmy, demony, nieśmiertelność, nekromancja, zakładnicy, duchy, miłość, czarny humor
+Podstawa: Nieśmiertelny powstaniec z głową jenota zwalcza demony w galerii handlowej; poznaje wiedźmę pracującą w więzieniu. Groteskowa przemoc służy komedii i satyrze.
+
+Fantazmaty 5 / Egzorcyzmy Emily OS
+Gatunek: science fantasy, groza
+Tagi: sztuczna inteligencja, opętanie, demony, religia, kolonializm, kosmici, fanatyzm, śledztwo, stacja kosmiczna
+Podstawa: Egzorcyści uwalniają sztuczną inteligencję kosmicznej platformy od rzeczywistego demona; śledztwo ujawnia kolonialną przemoc i działalność fanatycznej sekty.
+
+Fantazmaty 5 / Gdzie Diabeł mówi dzień dobry
+Gatunek: dark fantasy, body horror
+Tagi: zaświaty, diabeł, demony, dusza, reinkarnacja, zdrada, moralność, psy
+Podstawa: Potępiony zbiera dusze dla Diabła, licząc na powrót do życia i odnalezienie psa. Rozkład ciał, demoniczne przeszczepy i pasożytnicze grzyby stanowią istotną część świata.
+
+Fantazmaty 5 / Klatka z kości
+Gatunek: fantasy mitologiczne, fantasy metafizyczne
+Tagi: szamanizm, duchy, zaświaty, żałoba, poświęcenie, uzdrawianie, wędrówka, przemiana
+Podstawa: Szaman wyrusza po duszę chorego dziecka do krainy duchów; mierzy się ze swoją żałobą, przechodzi przez wnętrze wieloryba i oddaje życie, odzyskując więź ze wspólnotą.
+
+Fantazmaty 5 / Wąż
+Gatunek: dark fantasy, dystopia
+Tagi: narkotyki, wykluczenie, nierówności społeczne, choroba, religia, manipulacja, władza, utrata człowieczeństwa
+Podstawa: Ubogi chłopiec trafia do obozu chorych. Kapłan oferuje mu leczenie i awans do uprzywilejowanej kasty w zamian za utratę więzi i współczucia.
+
+Fantazmaty 5 / Matcha chocolate chip frappuccino
+Gatunek: weird fiction, fantastyka filozoficzna
+Tagi: tożsamość, pamięć, świadomość, wolna wola, konformizm, media społecznościowe, potwory, sens życia
+Podstawa: Bohater kwestionuje własną tożsamość i społeczne odruchy. Lewiatan pożera osobę, która dociera do samopoznania, i zachęca go do bezpiecznej niewiedzy.
+
+Fantazmaty 5 / Opowieść o Midasie z Podhala
+Gatunek: fantasy historyczne, baśń
+Tagi: diabeł, klątwa, przemiana ciała, rusałki, spełnianie życzeń, upływ czasu, zakazana wiedza, muzyka
+Podstawa: Dziewiętnastowieczny przemysłowiec zostaje przemieniony przez diabła w psa. Uratowana majka spełnia jego życzenie absolutnego poznania, które okazuje się nie do zniesienia.
+
+Fantazmaty 5 / Kosmiczna ballada
+Gatunek: science fantasy, komedia
+Tagi: podróż w czasie, statki kosmiczne, muzyka, wojna, przyjaźń, ksenofobia, parodia
+Podstawa: Drużyna średniowiecznych muzyków trafia na kosmiczną wojnę, by ułożyć o niej pieśń. Fabuła jawnie parodiuje Gwiezdne wojny, łącząc istoty fantasy z technologią.
+
+Fantazmaty 5 / O trzech rycerzach-asemblerach i smoku v1.1.0
+Gatunek: science fantasy, baśń
+Tagi: wirtualna rzeczywistość, programowanie, rycerze, smoki, turniej, władza, zdrada, inwazja
+Podstawa: Programy komputerowe walczą o tron w baśniowym królestwie. Smok podszywający się pod zwycięzcę lub ukryty w jego postaci przejmuje władzę i otwiera drogę inwazji.
+
+Fantazmaty 5 / Cztery miecze Zawiszy
+Gatunek: przygodowa science fiction, fantastyka historyczna
+Tagi: postaci historyczne, średniowiecze, rycerze, transfer świadomości, kosmici, telepatia, ratunek, honor, zamach
+Podstawa: Zawisza Czarny przenosi świadomość do ciała czterorękiego stworzenia na obcej planecie, ratuje telepatkę, a zdobyte umiejętności wykorzystuje po powrocie na Ziemię.

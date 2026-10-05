@@ -60,6 +60,11 @@ class Author(NormalizedModelMixin, models.Model):
             "pk",
         )
 
+    @property
+    def display_name(self):
+        """Podpis poza panelem admina; nie zmienia danych osobowych."""
+        return self.pseudonym.strip() or str(self)
+
     def __str__(self):
         return f"{self.first_name} {self.last_name}".strip()
 

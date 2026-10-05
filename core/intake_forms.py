@@ -14,6 +14,10 @@ class ExtractForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields['author'].label_from_instance = lambda author: author.display_name
+        if self.instance.pk and self.instance.author.pseudonym.strip():
+            self.initial['full_name'] = self.instance.author.display_name
+            self.fields['full_name'].disabled = True
         self.fields['submission_dates'].required = True
         self.fields['full_name'].required = False
         self.fields['email'].required = False
@@ -23,6 +27,8 @@ class ExtractForm(forms.ModelForm):
     def clean(self):
         data = super().clean()
         if data.get('author'):
+            if self.fields['full_name'].disabled:
+                data['full_name'] = self.instance.full_name if data['author'].pk == self.instance.author_id else ''
             data['full_name'] = data.get('full_name') or str(data['author'])
             data['email'] = data.get('email') or data['author'].email
             if not data['email']:
@@ -71,7 +77,7 @@ class SingleReviewForm(ReviewAdminForm):
         self.fields['author'].queryset = Author.objects.filter(pk=author_id) if str(author_id or '').isascii() and str(author_id or '').isdecimal() and len(str(author_id)) < 19 else Author.objects.none()
         # Without JavaScript the form still accepts manually entered author details.
 
-        self.fields['author'].label_from_instance = lambda author: f'{author} ({author.pseudonym})' if author.pseudonym else str(author)
+        self.fields['author'].label_from_instance = lambda author: author.display_name
 
 
     def clean(self):

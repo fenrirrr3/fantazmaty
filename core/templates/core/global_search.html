@@ -132,8 +132,7 @@
 
                                 {% if can_view_authors %}
                                     <div class="muted-text">
-                                        {{ review.author_first_name }}
-                                        {{ review.author_last_name }}
+                                        {{ review.author_display_name }}
                                     </div>
                                 {% endif %}
 
@@ -163,11 +162,7 @@
                                 <li class="search-result-item">
                                     {% if can_view_authors %}<a href="{% url 'core:author_detail' author.pk %}" class="detail-link"><strong>{{ author }}</strong></a>{% else %}<strong>{{ author }}</strong>{% endif %}
 
-                                    {% if author.pseudonym %}
-                                        <div class="muted-text">
-                                            Pseudonim: {{ author.pseudonym }}
-                                        </div>
-                                    {% endif %}
+                                    
 
                                     {% if author.contact and author.email %}
                                         <div class="muted-text">{{ author.email }}</div>

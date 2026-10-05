@@ -75,9 +75,9 @@
                                             href="{% if translations_page %}{% url 'core:translation_person_detail' 'author' author.pk %}{% else %}{% url 'core:author_detail' author.pk %}{% endif %}"
                                             class="detail-link"
                                         >
-                                            {{ author.first_name }} {{ author.last_name }}
+                                            {{ author.display_name }}
                                         </a>{% else %}
-                                            {{ author.first_name }} {{ author.last_name }}
+                                            {{ author.display_name }}
                                         {% endif %}{% if not forloop.last %}, {% endif %}
                                     {% empty %}
                                         <span class="muted-text">Brak przypisanego autora</span>
@@ -85,7 +85,7 @@
                                 </td>
                             
 
-                            {% if translations_page %}<td>{% for translator in text.translators %}{% if can_view_authors %}<a href="{% url 'core:translation_person_detail' 'translator' translator.pk %}">{{ translator.first_name }} {{ translator.last_name }}</a>{% else %}{{ translator.first_name }} {{ translator.last_name }}{% endif %}{% if not forloop.last %}, {% endif %}{% empty %}–{% endfor %}</td>{% endif %}
+                            {% if translations_page %}<td>{% for translator in text.translators %}{% if can_view_authors %}<a href="{% url 'core:translation_person_detail' 'translator' translator.pk %}">{{ translator.display_name }}</a>{% else %}{{ translator.display_name }}{% endif %}{% if not forloop.last %}, {% endif %}{% empty %}–{% endfor %}</td>{% endif %}
                             <td
                                 class="numeric-cell"
                                 data-type="number"

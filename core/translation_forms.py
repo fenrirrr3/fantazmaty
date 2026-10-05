@@ -13,6 +13,7 @@ class TranslationForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         for name, kind in (('foreign_authors', 'author'), ('translators', 'translator')):
             field = self.fields[name]
+            field.label_from_instance = lambda person: person.display_name
             field.help_text = 'Wyszukaj i wybierz osobę. Możesz dodać kilka osób.'
             field.widget.attrs['data-translation-search-url'] = reverse('core:translation_person_suggestions', args=[kind])
             field.widget.attrs['data-search-label'] = str(field.label)

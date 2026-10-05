@@ -1,7 +1,7 @@
 {% extends "core/base.html" %}
-{% block title %}{{ person }} | Tłumaczenia{% endblock %}
+{% block title %}{{ person.display_name }} | Tłumaczenia{% endblock %}
 {% block content %}
-<header class="page-header"><p class="eyebrow">Tłumaczenia · {% if kind == 'translator' %}Tłumacz{% else %}Autor zagraniczny{% endif %}</p><h1 class="page-title">{{ person }}</h1><a class="secondary-button" href="{% url 'core:translation_list' %}">Wróć do tłumaczeń</a> <a class="secondary-button" href="{% url admin_change_name person.pk %}">Edytuj profil w adminie</a></header>
+<header class="page-header"><p class="eyebrow">Tłumaczenia · {% if kind == 'translator' %}Tłumacz{% else %}Autor zagraniczny{% endif %}</p><h1 class="page-title">{{ person.display_name }}</h1><a class="secondary-button" href="{% url 'core:translation_list' %}">Wróć do tłumaczeń</a> <a class="secondary-button" href="{% url admin_change_name person.pk %}">Edytuj profil w adminie</a></header>
 <section class="details-card"><dl class="details-grid">
 <div class="detail-item"><dt>Pseudonim</dt><dd>{{ person.pseudonym|default:"Nie podano" }}</dd></div>
 <div class="detail-item"><dt>Adres e-mail</dt><dd>{% if person.email %}<a href="mailto:{{ person.email }}">{{ person.email }}</a>{% else %}Nie podano{% endif %}</dd></div>

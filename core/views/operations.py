@@ -122,7 +122,7 @@ def notification_queue(request, scheduled=False):
     query = request.GET.get("q", "").strip()[:255]
     if query:
         reviews = reviews.filter(Q(title__plcontains=query) | Q(email__plcontains=query))
-    page = paginate_items(request, reviews.select_related("anthology").order_by("decision_at", "pk"))
+    page = paginate_items(request, reviews.select_related("anthology", "author").prefetch_related("coauthors").order_by("decision_at", "pk"))
     return render(request, "core/notification_queue.html", {"page_obj": page, "reviews": page,
         "scheduled": scheduled, "query": query})
 

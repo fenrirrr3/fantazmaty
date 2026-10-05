@@ -112,7 +112,7 @@
 
                 <thead>
                     <tr>
-                        <th scope="col" data-sort-key="person">Imię i nazwisko</th>
+                        <th scope="col" data-sort-key="person">Autor</th>
                         <th scope="col" data-sort-key="pseudonym">Pseudonim</th>
                         <th scope="col">Antologie</th>
                         <th scope="col" data-sort-key="email">Adres e-mail</th>
@@ -125,13 +125,13 @@
                 <tbody>
                     {% for author in authors %}
                         <tr>
-                            <td data-copy-value="{{ author.first_name }} {{ author.last_name }}">
+                            <td data-copy-value="{{ author.display_name }}">
                                 <a
                                     href="{% url 'core:author_detail' author.pk %}"
                                     class="detail-link"
                                 >
                                     <strong>
-                                        {{ author.first_name }} {{ author.last_name }}
+                                        {{ author.display_name }}
                                     </strong>
                                 </a>
                             </td>
@@ -193,7 +193,7 @@
                                 <a
                                     href="{% url 'core:author_detail' author.pk %}"
                                     class="secondary-button"
-                                    aria-label="Otwórz profil autora: {{ author.first_name }} {{ author.last_name }}"
+                                    aria-label="Otwórz profil autora: {{ author.display_name }}"
                                 >
                                     Otwórz
                                 </a>

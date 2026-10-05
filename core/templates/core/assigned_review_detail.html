@@ -114,9 +114,9 @@
                     <dt>Imię i nazwisko</dt>
                     <dd>
                         {% for author in review.authors %}
-                            {% if can_open_author_profiles %}<a href="{% url 'core:author_detail' author.pk %}" class="detail-link">{{ author }}</a>{% else %}{{ author }}{% endif %}{% if not forloop.last %}, {% endif %}
+                            {% if can_open_author_profiles %}<a href="{% url 'core:author_detail' author.pk %}" class="detail-link">{{ author.display_name }}</a>{% else %}{{ author.display_name }}{% endif %}{% if not forloop.last %}, {% endif %}
                         {% empty %}
-                            {{ review.author_first_name }} {{ review.author_last_name }}{% if review.author_pseudonym %} ({{ review.author_pseudonym }}){% endif %}
+                            {{ review.author_display_name }}
                         {% endfor %}
                     </dd>
                 </div>
@@ -515,8 +515,8 @@
                     {% endif %}
 
                     {% for coauthor in copy_coauthors %}
-                        {% if coauthor.has_contract %}<p>Umowa współautora {{ coauthor }} jest potwierdzona.</p>
-                        {% else %}<label class="contract-checkbox"><input type="checkbox" name="coauthor_contract_received" value="{{ coauthor.pk }}" required> Potwierdzam otrzymanie umowy: {{ coauthor }}.</label>{% endif %}
+                        {% if coauthor.has_contract %}<p>Umowa współautora {{ coauthor.display_name }} jest potwierdzona.</p>
+                        {% else %}<label class="contract-checkbox"><input type="checkbox" name="coauthor_contract_received" value="{{ coauthor.pk }}" required> Potwierdzam otrzymanie umowy: {{ coauthor.display_name }}.</label>{% endif %}
                     {% endfor %}
                     {% if copy_phone_differs %}
                         <p>Telefon w profilu: {{ copy_profile_phone|default:"brak" }}. W zgłoszeniu: {{ review.phone_number }}.</p>

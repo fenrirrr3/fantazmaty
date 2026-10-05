@@ -21,6 +21,8 @@ class _NamedResult(dict):
     """Zachowuje obsługę {{ author }} i {{ person }} w szablonie."""
 
     def __str__(self):
+        if self.get("display_name"):
+            return self["display_name"]
         return " ".join(
             part
             for part in (
@@ -62,6 +64,7 @@ def _author_data(author):
     # Oznaczenie czarnej listy pozostaje wyłącznie w panelu admina.
     return _NamedResult(
         pk=author.pk,
+        display_name=author.display_name,
         first_name=author.first_name,
         last_name=author.last_name,
         pseudonym=author.pseudonym,
@@ -103,7 +106,7 @@ def _search_texts(query, *, include_authors):
                     "all": (
                         [_author_data(author) for author in text.authors.all()]
                         if include_authors
-                        else [f"{author.first_name} {author.last_name}".strip()
+                        else [author.display_name
                               for author in text.authors.all()]
                     ),
                 },
@@ -135,7 +138,7 @@ def _search_reviews(query, *, include_authors, include_archived=True):
             **({} if include_authors else {"is_hidden": False}),
         )
         .filter(_matching_terms(query, fields))
-        .select_related("anthology")
+        .select_related("anthology", "author").prefetch_related("coauthors")
         .order_by("title", "pk")
     )
     if not include_archived:
@@ -154,6 +157,7 @@ def _search_reviews(query, *, include_authors, include_archived=True):
         if include_authors:
             result.update(
                 {
+                    "author_display_name": review.author_display_name,
                     "author_first_name": review.author_first_name,
                     "author_last_name": review.author_last_name,
                     "email": review.email,

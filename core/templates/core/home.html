@@ -17,7 +17,7 @@
         <h2>Przyjęte teksty do dodania do procesu wydawniczego</h2>
         <p class="form-help">Autor został powiadomiony, ale zgłoszenie nie jest jeszcze powiązane z tekstem w procesie wydawniczym.</p>
         <ul>{% for review in pending_publication_reviews %}
-            <li><a href="{% url 'core:assigned_review_detail' review.pk %}">{{ review.title }}</a> – {{ review.author_first_name }} {{ review.author_last_name }} ({{ review.anthology.title }}){% if review.old_reviews %} – archiwalne{% endif %}</li>
+            <li><a href="{% url 'core:assigned_review_detail' review.pk %}">{{ review.title }}</a> – {{ review.author_display_name }} ({{ review.anthology.title }}){% if review.old_reviews %} – archiwalne{% endif %}</li>
         {% empty %}<li>Brak tekstów oczekujących na przeniesienie.</li>{% endfor %}</ul>
     </section>
     {% endif %}

@@ -145,7 +145,7 @@ def export_reviews_csv(user, reviews, filename="recenzje.csv"):
         if reviews.model is not Review:
             raise TypeError("Oczekiwano QuerySetu modelu Review.")
 
-        reviews = reviews.select_related("anthology")
+        reviews = reviews.select_related("anthology", "author").prefetch_related("coauthors")
 
         if not reviews.ordered:
             reviews = reviews.order_by("pk")
@@ -156,10 +156,7 @@ def export_reviews_csv(user, reviews, filename="recenzje.csv"):
         for review in reviews:
             yield (
                 review.anthology.title,
-                (
-                    f"{review.author_first_name} "
-                    f"{review.author_last_name}"
-                ).strip(),
+                review.author_display_name,
                 review.title,
                 review.get_status_display(),
             )

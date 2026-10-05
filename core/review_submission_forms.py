@@ -155,7 +155,7 @@ class ReviewAdminForm(NormalizedFormMixin, forms.ModelForm):
                 exclude_review_id=self.instance.pk,
                 anthology_id=getattr(cleaned_data.get('anthology'), 'pk', None),
             )
-            self.submission_warnings.extend(f'Współautor {coauthor}: {warning}' for warning in warnings)
+            self.submission_warnings.extend(f'Współautor {coauthor.display_name}: {warning}' for warning in warnings)
 
         if not self.submission_warnings:
             return cleaned_data

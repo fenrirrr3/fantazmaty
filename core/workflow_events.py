@@ -92,7 +92,7 @@ def event_scope(user):
             text = Text.objects.using(using).filter(pk=text_id).first()
             # Deleted texts have no destination detail; keep a readable audit record.
             title = text.title if text else f'Usunięty tekst #{text_id}'
-            authors = ', '.join(str(a) for a in text.authors.all()) if text else 'brak'
+            authors = ', '.join(a.display_name for a in text.authors.all()) if text else 'brak'
             person = getattr(user, 'person_profile', None)
             actor = str(person) if person else user.get_full_name() or user.get_username()
             own_work = personal_work_changes(before, after, user.pk)

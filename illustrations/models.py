@@ -183,7 +183,7 @@ class Illustration(models.Model):
     @property
     def authors_display(self):
         return ", ".join(
-            str(author)
+            author.display_name
             for author in self.text.authors.all()
         )
 

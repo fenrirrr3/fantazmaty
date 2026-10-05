@@ -156,9 +156,9 @@
                                             href="{% url 'core:author_detail' author.pk %}"
                                             class="detail-link"
                                         >
-                                            {{ author.first_name }} {{ author.last_name }}
+                                            {{ author.display_name }}
                                         </a>{% else %}
-                                            {{ author.first_name }} {{ author.last_name }}
+                                            {{ author.display_name }}
                                         {% endif %}{% if not forloop.last %}, {% endif %}
                                     {% empty %}
                                         <span class="muted-text">

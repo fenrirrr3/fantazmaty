@@ -41,8 +41,8 @@
                                 value="{{ author.pk }}"
                                 {% if author.pk|stringformat:"s" == selected_author_id|stringformat:"s" %}selected{% endif %}
                             >
-                                {{ author.first_name }} {{ author.last_name }}
-                                {% if author.pseudonym %} – {{ author.pseudonym }}{% endif %}
+                                {{ author.display_name }}
+                                
                             </option>
                         {% endfor %}
                     </select>

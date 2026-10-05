@@ -266,9 +266,9 @@
                             {% if can_view_authors %}
                                 <td>
                                     {% for author in review.authors %}
-                            {% if can_open_author_profiles %}<a href="{% url 'core:author_detail' author.pk %}" class="detail-link">{{ author }}</a>{% else %}{{ author }}{% endif %}{% if not forloop.last %}, {% endif %}
+                            {% if can_open_author_profiles %}<a href="{% url 'core:author_detail' author.pk %}" class="detail-link">{{ author.display_name }}</a>{% else %}{{ author.display_name }}{% endif %}{% if not forloop.last %}, {% endif %}
                         {% empty %}
-                            {{ review.author_first_name }} {{ review.author_last_name }}
+                            {{ review.author_display_name }}
                         {% endfor %}
                                     {% if old_reviews and review.email %}<div><a href="mailto:{{ review.email }}" class="detail-link">{{ review.email }}</a></div>{% endif %}
                                 </td>

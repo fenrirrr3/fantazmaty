@@ -178,7 +178,7 @@ def profile_assignments(person, *, include_authors):
         translation = getattr(text, "translation", None) if translated else None
         source_authors = translation.foreign_authors.all() if translation else ([] if translated else text.authors.all())
         authors = [
-            {"pk": author.pk, "first_name": author.first_name,
+            {"pk": author.pk, "display_name": author.display_name, "first_name": author.first_name,
              "last_name": author.last_name, "pseudonym": author.pseudonym}
             for author in source_authors
         ]

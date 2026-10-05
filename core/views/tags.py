@@ -12,6 +12,7 @@ from authors.models import Author
 from texts.models import Anthology, Text
 from core.pagination import paginate_items
 from core.permissions import team_member_required
+from core.selectors.texts import _annotated_texts
 from core.sort_keys import REPLACEMENTS
 
 
@@ -30,7 +31,7 @@ def polish_key(field, using):
     return Collate(value, 'utf8mb4_bin' if vendor == 'mysql' else 'BINARY' if vendor == 'sqlite' else 'C')
 
 
-COLUMNS = {'Antologia': 'anthology', 'Tytuł': 'title', 'Imię i nazwisko autora': 'author',
+COLUMNS = {'Antologia': 'anthology', 'Tytuł': 'title', 'Autor': 'author',
            'Tagi': 'tags', 'Gatunek': 'genre'}
 
 
@@ -63,11 +64,12 @@ def positive_id(value):
 @require_GET
 @team_member_required
 def tag_list(request):
-    authors = Author.objects.only('pk', 'first_name', 'last_name').order_by('last_name', 'first_name', 'pk')
+    authors = Author.objects.only('pk', 'first_name', 'last_name', 'pseudonym').order_by('last_name', 'first_name', 'pk')
     first_author = Author.objects.filter(texts=OuterRef('pk')).annotate(
         _last=polish_key('last_name', ordinary(Text.objects).db), _first=polish_key('first_name', ordinary(Text.objects).db),
     ).order_by('_last', '_first', 'pk')
-    base = ordinary(Text.objects).select_related('anthology').prefetch_related(Prefetch('authors', queryset=authors)).annotate(
+    visible = _annotated_texts().filter(Q(current_stage_type__isnull=True) | ~Q(current_stage_type='withdrawn'))
+    base = visible.select_related('anthology').prefetch_related(Prefetch('authors', queryset=authors)).annotate(
         tag_genre=F('genre'),
         tag_author_last=Subquery(first_author.values('last_name')[:1]),
         tag_author_first=Subquery(first_author.values('first_name')[:1]),
@@ -83,7 +85,7 @@ def tag_list(request):
         matching_authors = Author.objects.filter(texts=OuterRef('pk')).annotate(
             full_name=Concat('first_name', Value(' '), 'last_name'),
             reversed_name=Concat('last_name', Value(' '), 'first_name'),
-        ).filter(Q(full_name__plcontains=search) | Q(reversed_name__plcontains=search))
+        ).filter(Q(full_name__plcontains=search) | Q(reversed_name__plcontains=search) | Q(pseudonym__plcontains=search))
         query = query.annotate(_author_matches=Exists(matching_authors)).filter(
             Q(title__plcontains=search) | Q(anthology__title__plcontains=search)
             | Q(_author_matches=True) | Q(tags__plcontains=search) | Q(tag_genre__plcontains=search))
@@ -106,7 +108,7 @@ def tag_list(request):
         'page_obj': page, 'search': search, 'selected_anthology': anthology, 'selected_author': author,
         'selected_genre': genre, 'selected_tag': tag, 'selected_filled': filled,
         'selected_sort': request.GET.get('sort', 'title'),
-        'anthologies': ordinary(Anthology.objects).filter(texts__isnull=False).only('pk', 'title').distinct().order_by('title', 'pk'),
-        'authors': authors.filter(texts__isnull=False).distinct(),
+        'anthologies': ordinary(Anthology.objects).filter(pk__in=visible.order_by().values('anthology_id')).only('pk', 'title').order_by('title', 'pk'),
+        'authors': authors.filter(texts__pk__in=visible.order_by().values('pk')).distinct(),
         'genres': base.exclude(tag_genre='').order_by('tag_genre').values_list('tag_genre', flat=True).distinct(),
     })

@@ -64,7 +64,7 @@ def home(request):
                 ordinary(Review.objects).filter(status=Review.Status.ACCEPTED,
                     author_notified_at__isnull=False, copied_text__isnull=True, publication_detached=False)
                     .exclude(anthology__status='ready')
-                    .select_related('anthology').order_by('author_notified_at', 'pk')
+                    .select_related('anthology', 'author').prefetch_related('coauthors').order_by('author_notified_at', 'pk')
                 if request.user.is_superuser else []
             ),
             "pending_notification_count": ordinary(Review.objects).awaiting_notification().count() if request.user.is_superuser else 0,
