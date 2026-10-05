@@ -1,0 +1,92 @@
+[
+  {
+    "file": "core/middleware.py",
+    "before_sha256": "e1c8e70659fc61e71e7a8d1e484d179939eb570fcc84e770eabe44c825e82abd",
+    "after_sha256": "fee29a86d668a6b5e4313091a7a408eeb775b012080e28c63c8023af923f6650"
+  },
+  {
+    "file": "core/static/core/text-production.css",
+    "before_sha256": null,
+    "after_sha256": "b36a2dd915a74611a7bd94ad2955f8e3497fbb1731811a7691de1ebe4c74579d"
+  },
+  {
+    "file": "core/templates/core/assigned_text_detail.html",
+    "before_sha256": "253beeb95bdbd265c6f1948accbb2f83a40eda824b577c61b1769dcf042a60fb",
+    "after_sha256": "8d543335b83dc6e42aac666e4f706e03dcfe3f3e3e85dc63d93822bfca8385f8"
+  },
+  {
+    "file": "core/templates/core/audiobooks.html",
+    "before_sha256": "4235d233190b22d38ec579fba69d1b866bf2b50a9dc4709dbd258c7010adb1e5",
+    "after_sha256": "378ea51b9b27b44f031ca5384e1037f54d93756986a734b9e1714e4f9b1cdfae"
+  },
+  {
+    "file": "core/templates/core/illustrator_form.html",
+    "before_sha256": "ff10f30ffef2b75998db31566ca34202e65dabd38dde2bad9e210373a28b2144",
+    "after_sha256": "c1f446eb13ba9fcb1825347805f36168a0a9bb1fdf93802e546197bc61b83f91"
+  },
+  {
+    "file": "core/templates/core/illustrator_list.html",
+    "before_sha256": "51d78ddbea45d9dcd0edc9ccb57059b9c776f60adf29fff7e7a90f81a00f6716",
+    "after_sha256": "223f5bfc9b37b7d5e2206d0c7b44ab6fab0e457eb0646e8911a5a60b2801383f"
+  },
+  {
+    "file": "core/templates/core/includes/text_production.html",
+    "before_sha256": null,
+    "after_sha256": "5aa66fb1e0516f1823764b103fef580b40459b22041751d5694d4d193353e08a"
+  },
+  {
+    "file": "core/urls.py",
+    "before_sha256": "99058266e2792272d893b00176264023dff28cfa2dc2310ce899b9c7aff11c06",
+    "after_sha256": "b35eeb1c61c82186c84d6e80fcd517299d836d62fe51951d2e1e91aed1cea34d"
+  },
+  {
+    "file": "core/views/audiobooks.py",
+    "before_sha256": null,
+    "after_sha256": "ac1e7040e24fc9b41196378a7d8200ffcb7d44a5d76fa04425913fa1e0c58f00"
+  },
+  {
+    "file": "core/views/texts.py",
+    "before_sha256": "11068486ca1e69621566fa09700c180096e86a6d0a4e377d7bf56a560d71eba7",
+    "after_sha256": "1bf42266caa8ba5e932a5747fbf981970bf4f7bec0331faaec7d6cedb63a198a"
+  },
+  {
+    "file": "illustrations/directory.py",
+    "before_sha256": "d92dd85dd0c3a2ace741253331ab4c367bf8577a4700b8638fd4b937bceece8d",
+    "after_sha256": "90a19f23843a7fbc682aa6d036e05576a12aa51f2c8dd336bd2be78ed209fe19"
+  },
+  {
+    "file": "illustrations/editing.py",
+    "before_sha256": "337877a2b6a3df14348b1b42d17cf1269fb45b72942ba3c87fa9647e695b8074",
+    "after_sha256": "99a56d7b29daadeac9ab3c14a3894e865dc6cb1c7fda7293e1cc9072871bda6f"
+  },
+  {
+    "file": "people/admin.py",
+    "before_sha256": "28a8747bb22fd45673b6118a9195a2074c5c978fc660fa7e02a5124539b54f98",
+    "after_sha256": "c13b6c0086d24eead8fbc80ba029821f0d3ddfdd6f43fd169b6353a3a11fbb01"
+  },
+  {
+    "file": "people/migrations/0012_person_illustrator_active.py",
+    "before_sha256": null,
+    "after_sha256": "7fc88b7ee7bee756dc1638bb3ca1c0dbb38dca9293ece67a827d7914ffb73686"
+  },
+  {
+    "file": "people/models.py",
+    "before_sha256": "f094c0ed52fc8434c90825374f237cf45fa4d167569b1c3c7252f2a83ad9909b",
+    "after_sha256": "58d3f6a4917115740dc7ab64ba02b2a6f7454733f37da9802e17be20bbd12f7b"
+  },
+  {
+    "file": "texts/admin.py",
+    "before_sha256": "355cd8d468d1812771ff77c8f2e9cfff55dcef030a6ec0461f11502c71e7d95a",
+    "after_sha256": "79a4547d1f7af73beb3eb21594a14be1f507cb7ec2da3044c0555c27439c4708"
+  },
+  {
+    "file": "texts/migrations/0025_text_for_recording.py",
+    "before_sha256": null,
+    "after_sha256": "f01cda64ef7e6b81e376e67a685a014a8432ee1dde3c8dd447c925768f2f67db"
+  },
+  {
+    "file": "texts/models.py",
+    "before_sha256": "c504bd2c981c089d73c7209c30464d6ec493f041abec6ac9e485bc14143d25c1",
+    "after_sha256": "92e79efac44df1ab50f715e5e547f2228a78cec20a3f8ab2744882929a25892b"
+  }
+]

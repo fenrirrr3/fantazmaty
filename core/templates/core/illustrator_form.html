@@ -6,6 +6,7 @@
 <header class="page-header"><h1>{% if person.pk %}Edytuj ilustratora{% else %}Dodaj ilustratora{% endif %}</h1><a class="secondary-button" href="{% url 'illustrations:illustrator_list' %}">Wróć do ilustratorów</a></header>
 <section class="card"><div class="card-body">
     {% if not person.pk %}<p>Nowa osoba otrzyma rolę Ilustrator. Utworzenie wpisu nie zakłada konta logowania.</p>{% endif %}
+    {% if person.pk and not person.illustrator_active %}<p class="muted-text">Ten ilustrator jest wyłączony z aktywnej listy. Zaznacz „Aktywny ilustrator”, aby go przywrócić.</p>{% endif %}
     <form method="post" class="illustration-edit-form" data-warn-unsaved>
         {% csrf_token %}{{ form.version }}{{ form.version.errors }}{{ form.non_field_errors }}
         {% for field in form.visible_fields %}<div class="form-field">

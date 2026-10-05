@@ -1,15 +1,23 @@
 {
-  "matched": 43,
-  "v1_changed_texts": 18,
-  "v1_replaced_occurrences": 23,
-  "preview_no_writes": true,
-  "missing_record_aborts_all": true,
-  "interrupted_write_rolled_back": true,
-  "old_aliases_removed": true,
-  "manual_tags_and_genres_preserved": true,
-  "other_texts_and_authors_unchanged": true,
-  "repeat_no_changes": true,
-  "partial_import_and_case_variants": true,
-  "database": "isolated in-memory SQLite",
-  "production_modified": false
+  "audiobook_default_true": true,
+  "ready_and_translated_texts_included": true,
+  "toggle_updates_queue": true,
+  "stale_or_missing_token_rejected": true,
+  "footer_and_illustration_render": true,
+  "independent_illustrator_activity": true,
+  "disable_preserves_assignments": true,
+  "reactivation": true,
+  "admin_fields": true,
+  "permissions": true,
+  "database": "isolated SQLite",
+  "visual": {
+    "desktop_equal_columns": true,
+    "mobile_stacked": true,
+    "horizontal_overflow": false,
+    "widths_checked": [
+      1280,
+      390
+    ]
+  },
+  "migration_check": "No changes detected"
 }

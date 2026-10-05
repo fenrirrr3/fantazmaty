@@ -211,7 +211,7 @@ class EditingMiddleware:
             key = f"{model._meta.label_lower}:{pk}" if obj else ""
             token = request.POST.get("_edit_version") if request.method == "POST" else None
             required = match.namespace == 'admin' or match.url_name in {
-                'update_text_tags',
+                'update_text_tags', 'update_text_audiobook',
                 'cancel_workflow_repetition', 'handoff_workflow_stage', 'link_text_review',
                 'set_text_authors', 'set_translators', 'update_coordinator_note', 'update_text_content_warnings',
                 'edit_text_note', 'delete_text_note', 'update_text_file', 'update_review_file',

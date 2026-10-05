@@ -150,6 +150,13 @@ def _render_text_detail(request, text, *, bound_forms=None, status=200):
     from core.file_forms import TextFileForm
     context['file_url'] = text.file_url
     context['text_tags_form'] = TextTagsForm(instance=text)
+    from core.views.audiobooks import AudiobookForm
+    from illustrations.models import Illustration
+    from core.permissions import can_view_illustrations
+    context['audiobook_form'] = AudiobookForm(instance=text)
+    context['text_illustration'] = Illustration.objects.select_related('illustrator').filter(text_id=text.pk).first()
+    context['can_open_text_illustration'] = can_view_illustrations(request.user)
+    context['anthology_illustrated'] = bool(text.anthology_id and text.anthology.has_illustrations)
     context['text_file_form'] = TextFileForm(instance=text) if request.user.is_superuser else None
     context['dropbox_chooser_app_key'] = getattr(settings, 'DROPBOX_CHOOSER_APP_KEY', '') if request.user.is_superuser else ''
     # Only this text's email addresses are revealed, never source-review identity.

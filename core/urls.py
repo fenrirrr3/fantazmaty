@@ -26,8 +26,10 @@ from core.views.tags import tag_list
 from core.views.translations import translation_list, translation_detail, set_translators, translation_person_detail, translation_person_suggestions
 
 from core.views.production_tasks import task_list, audio_descriptions
+from core.views.audiobooks import audiobook_list, update_text_audiobook
 
 urlpatterns = [
+    path("teksty/<int:text_id>/audiobook/", update_text_audiobook, name="update_text_audiobook"),
     path('tlumaczenia/osoby/<str:kind>/sugestie/', translation_person_suggestions, name='translation_person_suggestions'),
     path('zadania/', task_list, name='task_list'),
     path('audiodeskrypcje/', audio_descriptions, name='audio_descriptions'),
@@ -85,7 +87,7 @@ urlpatterns = [
     ),
     path(
         "audiobooki/",
-        dashboard.audiobooks,
+        audiobook_list,
         name="audiobooks",
     ),
 

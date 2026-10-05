@@ -4,7 +4,7 @@
 {% block title %}{{ text.title }} | Fantazmaty CMS{% endblock %}
 
 
-{% block extra_css %}<link rel="stylesheet" href="{% static 'core/tags.css' %}">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/tags.css' %}"><link rel="stylesheet" href="{% static 'core/text-production.css' %}?v=18">{% endblock %}
 
 {% block content %}
     {% now "Y-m-d" as today_iso %}
@@ -825,9 +825,7 @@
             </div>
         </details>
     {% endif %}
-{% if user.is_superuser %}
-<section class="card" id="text-credits"><div class="card-body"><h2>Osoby i wykonane prace przy tym tekście</h2><p>Lista do stopki. Uwzględnia wykonane prace, obecnych wykonawców, historię przekazań i oddane recenzje tego tekstu.</p><ul class="credits-list">{% for row in text_credits %}<li><strong>{{ row.label }}:</strong> {{ row.names|join:", "|default:"–" }}</li>{% endfor %}</ul></div></section>
-{% endif %}
+{% include "core/includes/text_production.html" %}
 {% endblock %}
 
 {% block scripts %}

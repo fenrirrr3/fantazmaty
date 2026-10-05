@@ -1,57 +1,35 @@
-TŁUMACZENIA — ZMIANY WIDOCZNOŚCI I WYSZUKIWANIE OSÓB (v17)
+CMS — STOPKA TEKSTU, AUDIOBOOKI I AKTYWNOŚĆ ILUSTRATORÓW — V18
 
-Paczka zawiera wyłącznie nowe i zmienione pliki względem CMS v16.1.
-Podmień je, zachowując strukturę katalogów od katalogu z manage.py.
-Nie zastępuje danych importu; nie trzeba ponownie importować tekstów.
+Paczka zawiera tylko 18 nowych lub zmienionych plików projektu, względem ostatniej lokalnej wersji v17. Zachowaj strukturę katalogów przy podmianie. Pliki dokumentacji, JSON i PNG nie wymagają wdrożenia.
 
 ZMIANY
-1. Teksty tłumaczone pojawiają się w „Moich tekstach” przypisanych wykonawców
-   i na profilu członka zespołu, z rolami i numerami wykonań.
-   Prace zakończone widać w „Moje teksty → Wszystkie”; nie w „W toku”.
-2. „Wszystkie teksty” i „Tabelka zbiorcza” nadal nie pokazują tłumaczeń.
-3. W „Tłumaczeniach” pole „Ukryj gotowe teksty” jest domyślnie wyłączone.
-   Ręczne zaznaczenie działa. Wyczyść filtry, jeżeli adres ma hide_ready=1.
-4. Przy przypisywaniu autora zagranicznego i tłumacza wyszukiwarka zastępuje
-   pełną listę wyboru. Wpisz nazwę, wybierz wynik, a potem „Zapisz osoby”.
-   Można przypisać wiele osób, usuwać wybrane oraz wybierać klawiaturą.
-   Tłumacza można także znaleźć po języku. Nowe profile nadal dodaje się
-   przez istniejące linki do admina. Uprawnienia do edycji pozostają bez zmian.
-5. W listach osobistych autor zagraniczny ma właściwy profil i osobną
-   przestrzeń identyfikatorów filtra względem zwykłego autora.
+1. Podgląd tekstu: „Osoby i wykonane prace przy tym tekście” zmieniono na „Stopka tekstu”. Zajmuje lewą połowę dostępnej szerokości; po prawej znajdują się sekcje Audiobook oraz, pod nią, Ilustracja. Na telefonie sekcje układają się jedna pod drugą. Widoczność samej stopki pozostaje ograniczona do superusera, tak jak wcześniej; pozostali członkowie zespołu widzą sekcje audiobooka i ilustracji.
+2. „Do nagrywania”: nowe pole tekstu, domyślnie Tak. Zapis działa w podglądzie tekstu i w adminie. Może je zmienić aktywny członek zespołu lub superuser, analogicznie do tagów. Formularz chroni przed nadpisaniem nowszych zmian ze starej karty.
+3. Audiobooki: nowa stronicowana tabela Antologia / Autor / Tytuł / Status. Widać teksty oznaczone „Do nagrywania”, również gotowe i tłumaczone. Status oznacza obecny etap workflow tekstu; nie dodano osobnego procesu nagrywania. Dotychczasowy odtwarzacz pozostaje pod tabelą.
+4. Ilustracja w podglądzie tekstu: nazwisko z przypisanego profilu albo wpis ręczny oraz bieżący status pracy. Wyłączenie ilustratora nie usuwa tej informacji.
+5. Ilustratorzy: nowe pole „Aktywny ilustrator”, niezależne od „wciąż w ekipie” i aktywności konta. Odznacz je w podglądzie ilustratora i zapisz. Osoba znika z listy Ilustratorzy i z wyboru do nowych przypisań, ale pozostaje w bazie i we wcześniejszych pracach. Bieżące przypisanie nadal można edytować bez zmiany osoby.
+6. Admin: pole „Aktywny ilustrator” w formularzu osoby, sekcja „Ilustrator — portfolio i preferencje”, oraz filtr aktywności ilustratora na liście osób. Aby przywrócić osobę na listę, zaznacz to pole w adminie. Dotychczasowy bezpośredni link do jej podglądu też działa.
+7. Lista Ilustratorzy nadal obejmuje osoby z rolą Ilustrator. Nie wymaga konta ani aktywnego członkostwa w zespole, nie pokazuje komunikatów „Poza zespołem” / „Konto nieaktywne” i nie blokuje pól imienia, nazwiska oraz e-maila z powodu powiązanego konta. Dostęp do zarządzania katalogiem nadal mają koordynatorzy i superuserzy.
 
-WDROŻENIE W PYTHONANYWHERE
-Wgraj ZIP do katalogu domowego. W Bash, w środowisku wirtualnym CMS:
+MIGRACJE
+people/0012_person_illustrator_active.py
+texts/0025_text_for_recording.py
 
-cd ~/fantazmaty
-unzip -o ~/cms_tlumaczenia_v17_2026-10-05.zip -d .
+Po migracji WSZYSTKIE istniejące teksty mają „Do nagrywania” = Tak, zgodnie z wartością domyślną. Można je potem indywidualnie wyłączyć. Dotychczasowi ilustratorzy mają „Aktywny ilustrator” = Tak; konto nieaktywne lub osoba spoza zespołu nie oznacza automatycznie wyłączonego ilustratora.
+Nie usuwaj plików migracji i nie stosuj --fake. Paczka zakłada wcześniej wdrożone migracje z v17, w tym people/0011 i texts/0024.
+
+PYTHONANYWHERE
+Najpierw wgraj/podmień pliki projektu, zachowując katalogi. Jeżeli wdrażasz przez Git, po zatwierdzeniu i wysłaniu zmian pobierz je na serwerze:
+git pull
+
+W katalogu z manage.py i aktywnym środowisku aplikacji:
+python manage.py migrate
+python manage.py check
 python manage.py collectstatic --noinput
 
-Następnie kliknij Reload w zakładce Web PythonAnywhere.
-Paczka nie zawiera migracji; dla tej aktualizacji nie trzeba uruchamiać migrate.
-Po wdrożeniu otwórz stronę ponownie; w razie starego widoku odśwież Ctrl+F5.
-Plików do usunięcia nie ma.
+Następnie kliknij Reload na karcie Web w PythonAnywhere. Odśwież otwarte strony CMS.
 
-SPRAWDZENIE
-19 testów Django: wszystkie przeszły. Sprawdzono widoczność prac członków,
-numery wykonań, gotowy status, filtry osobiste, rozdzielenie ID autorów,
-brak tłumaczeń na listach zbiorczych, domyślną widoczność gotowych,
-autoryzację wyszukiwarki, zapis wybranych osób, odrzucenie błędnych ID
-oraz istniejącą obsługę konfliktów zapisu.
-JavaScript: node --check bez błędów.
-Przeglądarka: wyszukiwanie i dodanie drugiego autora, tłumacz wyszukany
-po języku, wybór klawiaturą, usunięcie poprzedniego tłumacza i zapis.
-Testy i zapis formularza wykonano wyłącznie na lokalnej bazie testowej.
-Baza na PythonAnywhere nie została zmieniona.
-
-PLIKI DO PODMIANY
-core/selectors/people.py
-core/selectors/texts.py
-core/static/core/translation-search.js
-core/templates/core/assigned_text_detail.html
-core/templates/core/my_texts.html
-core/templates/core/person_detail.html
-core/test_translations_v13.py
-core/test_translations_v17.py
-core/translation_forms.py
-core/urls.py
-core/views/translations.py
+WERYFIKACJA
+Lokalnie, na odizolowanej bazie SQLite: migracje, system check bez błędów, makemigrations --check bez nowych zmian, zapis booleana w obie strony, tabela z gotowym i tłumaczonym tekstem, blokada przestarzałego formularza, prawa dostępu, wyłączanie/przywracanie ilustratora bez utraty historii i nowe pola admina.
+Podgląd w przeglądarce: równe kolumny na ekranie 1280 px, układ pionowy bez przepełnienia na 390 px, formularz ilustratora i tabela Audiobooków. PNG pokazuje dane testowe; odznaczone pole to efekt testowego wyłączenia, domyślna wartość nowych i migrowanych tekstów to Tak.
+Nie zmieniono bazy produkcyjnej i nie wdrożono zmian na PythonAnywhere.

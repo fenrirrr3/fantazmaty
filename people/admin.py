@@ -24,6 +24,7 @@ class PersonAdminForm(forms.ModelForm):
             "illustrator_portfolio",
             "illustrator_preferences",
             "illustrator_covers",
+            "illustrator_active",
             "leave_start_date",
             "leave_end_date",
             "leave_until_revoked",
@@ -96,8 +97,8 @@ class PersonAdmin(admin.ModelAdmin):
         fieldsets = super().get_fieldsets(request, obj)
         if is_coordinator(request.user):
             return (*fieldsets, ("Ilustrator — portfolio i preferencje", {
-                "fields": ("illustrator_portfolio", "illustrator_preferences", "illustrator_covers"),
-                "description": "Aby osoba pojawiła się w spisie Ilustratorzy, dodaj jej rolę Ilustrator. Konto użytkownika nie jest wymagane.",
+                "fields": ("illustrator_portfolio", "illustrator_preferences", "illustrator_covers", "illustrator_active"),
+                "description": "Spis obejmuje osoby z rolą Ilustrator i zaznaczonym polem Aktywny ilustrator. Konto i członkostwo w zespole nie mają wpływu na obecność w spisie.",
             }))
         return fieldsets
 
@@ -134,6 +135,7 @@ class PersonAdmin(admin.ModelAdmin):
     )
 
     list_filter = (
+        "illustrator_active",
         "is_active",
         "roles",
         "is_coordinator",

@@ -1,0 +1,33 @@
+<div class="text-production{% if not user.is_superuser %} text-production-single{% endif %}">
+    {% if user.is_superuser %}
+    <section class="card" id="text-credits"><div class="card-body">
+        <h2>Stopka tekstu</h2>
+        <p>Uwzględnia wykonane prace, obecnych wykonawców, historię przekazań i oddane recenzje tego tekstu.</p>
+        <ul class="credits-list">{% for row in text_credits %}<li><strong>{{ row.label }}:</strong> {{ row.names|join:", "|default:"–" }}</li>{% endfor %}</ul>
+    </div></section>
+    {% endif %}
+    <div class="text-production-side">
+        <section class="card" id="text-audiobook"><div class="card-body">
+            <h2>Audiobook</h2>
+            <form method="post" action="{% url 'core:update_text_audiobook' text.pk %}" data-warn-unsaved>
+                {% csrf_token %}{% edit_version %}{{ audiobook_form.non_field_errors }}
+                <div class="form-field"><label class="text-production-checkbox">{{ audiobook_form.for_recording }} {{ audiobook_form.for_recording.label }}</label>{{ audiobook_form.for_recording.errors }}</div>
+                <p class="muted-text">Zaznaczenie dodaje opowiadanie do listy tekstów do nagrywania.</p>
+                <button type="submit" class="primary-button">Zapisz</button>
+                <a href="{% url 'core:audiobooks' %}" class="detail-link">Przejdź do Audiobooków</a>
+            </form>
+        </div></section>
+        <section class="card" id="text-illustration"><div class="card-body">
+            <h2>Ilustracja</h2>
+            {% if text_illustration %}
+                <p><strong>Ilustrator:</strong> {{ text_illustration.illustrator_display|default:"Nie przypisano" }}</p>
+                <p><strong>Status:</strong> {{ text_illustration.get_status_display }}</p>
+                {% if can_open_text_illustration %}<a class="detail-link" href="{% url 'illustrations:illustration_detail' text_illustration.pk %}">Otwórz ilustrację</a>{% endif %}
+            {% elif anthology_illustrated %}
+                <p><strong>Ilustrator:</strong> Nie przypisano</p><p><strong>Status:</strong> Brak wpisu ilustracji</p>
+            {% else %}
+                <p class="muted-text">Antologia nie jest oznaczona jako ilustrowana.</p>
+            {% endif %}
+        </div></section>
+    </div>
+</div>

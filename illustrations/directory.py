@@ -23,22 +23,16 @@ class IllustratorForm(PersonAdminForm):
     class Meta:
         model = Person
         fields = ('first_name', 'last_name', 'email', 'illustrator_portfolio',
-                  'illustrator_preferences', 'illustrator_covers')
+                  'illustrator_preferences', 'illustrator_covers', 'illustrator_active')
         widgets = {
             'illustrator_preferences': forms.Textarea(attrs={'rows': 4}),
             'illustrator_portfolio': forms.URLInput(attrs={'placeholder': 'https://...'}),
         }
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if self.instance.user_id:
-            for name in ('first_name', 'last_name', 'email'):
-                self.fields[name].disabled = True
-                self.fields[name].help_text = 'Dane powiązanego profilu. Zmiana w panelu administracyjnym.'
 
 
 def directory_rows():
-    return Person.objects.filter(roles__name__iexact='Ilustrator').distinct()
+    return Person.objects.filter(roles__name__iexact='Ilustrator', illustrator_active=True).distinct()
 
 
 def check_access(user):
@@ -64,7 +58,7 @@ def matches(token, user, person):
 def illustrator_list(request):
     check_access(request.user)
     query = request.GET.get('q', '').strip()[:200]
-    rows = directory_rows().select_related('user').order_by('last_name', 'first_name', 'pk')
+    rows = directory_rows().order_by('last_name', 'first_name', 'pk')
     if query:
         rows = rows.filter(Q(first_name__icontains=query) | Q(last_name__icontains=query)
                            | Q(email__icontains=query) | Q(illustrator_preferences__icontains=query))

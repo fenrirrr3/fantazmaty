@@ -5,8 +5,25 @@
 {% block content %}
 <header class="page-header">
     <h1 class="page-title">Audiobooki</h1>
-    <p class="page-description">Audiobooki Fantazmatów dostępne na YouTube.</p>
+    <p class="page-description">Teksty oznaczone jako „Do nagrywania”. Status odpowiada obecnemu etapowi pracy nad tekstem.</p>
 </header>
+
+<section class="card" aria-label="Teksty do nagrywania">
+    <div class="card-body"><h2>Do nagrywania</h2></div>
+    <div class="table-container" role="region" tabindex="0" aria-label="Tabela tekstów do nagrywania">
+        <table class="data-table">
+            <caption class="visually-hidden">Teksty do nagrywania</caption>
+            <thead><tr><th scope="col">Antologia</th><th scope="col">Autor</th><th scope="col">Tytuł</th><th scope="col">Status</th></tr></thead>
+            <tbody>{% for text in texts %}<tr>
+                <td>{{ text.anthology.title|default:"Brak antologii" }}</td>
+                <td>{{ text.authors_display|default:"Brak przypisanego autora" }}</td>
+                <td><a href="{% if text.is_translation %}{% url 'core:translation_detail' text.pk %}{% else %}{% url 'core:assigned_text_detail' text.pk %}{% endif %}">{{ text.title }}</a></td>
+                <td>{{ text.current_status.get_stage_type_display|default:"Brak etapu" }}</td>
+            </tr>{% empty %}<tr><td colspan="4">Brak tekstów do nagrywania.</td></tr>{% endfor %}</tbody>
+        </table>
+    </div>
+</section>
+{% include "core/includes/pagination.html" %}
 
 <section class="card audiobook-card">
     <h2 class="card-title">Audiobook</h2>

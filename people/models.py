@@ -91,6 +91,8 @@ class PersonQuerySet(models.QuerySet):
 
 
 class Person(models.Model):
+    illustrator_active = models.BooleanField("Aktywny ilustrator", default=True, db_index=True,
+        help_text="Wyłączenie ukrywa osobę w spisie ilustratorów i przy nowych przypisaniach. Dotychczasowe prace pozostają. Niezależne od członkostwa w zespole i konta.")
     illustrator_portfolio = models.URLField(
         "portfolio", max_length=500, blank=True,
         validators=[URLValidator(schemes=["http", "https"])],

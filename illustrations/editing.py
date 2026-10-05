@@ -43,7 +43,7 @@ class AssignmentForm(IllustrationEditForm):
         if can_assign:
             self.fields['illustrator'].queryset = Person.objects.filter(
                 Q(pk=self.instance.illustrator_id)
-                | Q(is_active=True, roles__name__iexact='Ilustrator')
+                | Q(illustrator_active=True, roles__name__iexact='Ilustrator')
             ).distinct().order_by('last_name', 'first_name', 'pk')
         else:
             for name in ('illustrator', 'manual_illustrator_name', 'manual_illustrator_email'):

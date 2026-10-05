@@ -309,6 +309,7 @@ class AnthologyTask(models.Model):
 
 
 class Text(NormalizedModelMixin, models.Model):
+    for_recording = models.BooleanField("Do nagrywania", default=True, db_index=True)
     genre = models.CharField("gatunek", max_length=100, blank=True, default="")
     tags = models.TextField("tagi", blank=True, default="", max_length=5000)
 
