@@ -51,7 +51,7 @@
           "source_column": "Korektor 2"
         },
         {
-          "stage_type": "third_proofreading",
+          "stage_type": "fourth_proofreading",
           "person": {
             "first_name": "Ilona",
             "last_name": "Żurawska"
@@ -83,7 +83,7 @@
           "source_column": "Weryfikator 3"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "fourth_verification",
           "person": {
             "first_name": "Marcelina",
             "last_name": "Kopaczka"
@@ -149,7 +149,7 @@
           "source_column": "Korektor 2"
         },
         {
-          "stage_type": "third_proofreading",
+          "stage_type": "fourth_proofreading",
           "person": {
             "first_name": "Maria",
             "last_name": "Bernaciak"
@@ -181,7 +181,7 @@
           "source_column": "Weryfikator 3"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "fourth_verification",
           "person": {
             "first_name": "Magda",
             "last_name": "Kowalewicz"
@@ -279,7 +279,7 @@
           "source_column": "Weryfikator 1"
         },
         {
-          "stage_type": "second_verification",
+          "stage_type": "first_verification",
           "person": {
             "first_name": "Magda",
             "last_name": "Kowalewicz"
@@ -287,7 +287,7 @@
           "source_column": "Weryfikator 1"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "second_verification",
           "person": {
             "first_name": "Patrycja",
             "last_name": "Pancerz"
@@ -295,7 +295,7 @@
           "source_column": "Weryfikator 2"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "second_verification",
           "person": {
             "first_name": "Patrycja",
             "last_name": "Gil"
@@ -319,7 +319,7 @@
           "source_column": "Weryfikator 3"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "fourth_verification",
           "person": {
             "first_name": "Joanna",
             "last_name": "Gasińska"
@@ -327,7 +327,7 @@
           "source_column": "Weryfikator 4"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "fourth_verification",
           "person": {
             "first_name": "Anna Maria",
             "last_name": "Kottas"
@@ -405,7 +405,7 @@
           "source_column": "Korektor 2"
         },
         {
-          "stage_type": "third_proofreading",
+          "stage_type": "fourth_proofreading",
           "person": {
             "first_name": "Maciej",
             "last_name": "Sznurkowski"
@@ -437,7 +437,7 @@
           "source_column": "Weryfikator 3"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "fourth_verification",
           "person": {
             "first_name": "Patrycja",
             "last_name": "Pancerz"
@@ -529,7 +529,7 @@
           "source_column": "Korektor 2"
         },
         {
-          "stage_type": "third_proofreading",
+          "stage_type": "fourth_proofreading",
           "person": {
             "first_name": "Paweł",
             "last_name": "Sadowski"
@@ -561,7 +561,7 @@
           "source_column": "Weryfikator 3"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "fourth_verification",
           "person": {
             "first_name": "Joanna",
             "last_name": "Gasińska"
@@ -797,7 +797,7 @@
           "source_column": "Weryfikator 3"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "fourth_verification",
           "person": {
             "first_name": "Dawid",
             "last_name": "Wiktorski"
@@ -927,7 +927,7 @@
           "source_column": "Weryfikator 3"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "fourth_verification",
           "person": {
             "first_name": "Mariusz",
             "last_name": "Flejszar"
@@ -1009,7 +1009,7 @@
           "source_column": "Korektor 2"
         },
         {
-          "stage_type": "third_proofreading",
+          "stage_type": "fourth_proofreading",
           "person": {
             "first_name": "Patrycja",
             "last_name": "Pancerz"
@@ -1041,7 +1041,7 @@
           "source_column": "Weryfikator 3"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "fourth_verification",
           "person": {
             "first_name": "Michał",
             "last_name": "Gola"
@@ -1147,7 +1147,7 @@
           "source_column": "Weryfikator 1"
         },
         {
-          "stage_type": "second_verification",
+          "stage_type": "fourth_verification",
           "person": {
             "first_name": "Michał",
             "last_name": "Gola"
@@ -1237,7 +1237,7 @@
           "source_column": "Korektor 2"
         },
         {
-          "stage_type": "third_proofreading",
+          "stage_type": "fourth_proofreading",
           "person": {
             "first_name": "Anna",
             "last_name": "Twarowska"
@@ -1269,7 +1269,7 @@
           "source_column": "Weryfikator 3"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "fourth_verification",
           "person": {
             "first_name": "Anita",
             "last_name": "Brzozowiec"
@@ -1351,7 +1351,7 @@
           "source_column": "Korektor 2"
         },
         {
-          "stage_type": "third_proofreading",
+          "stage_type": "fourth_proofreading",
           "person": {
             "first_name": "Magdalena",
             "last_name": "Rząsa"
@@ -1367,7 +1367,7 @@
           "source_column": "Weryfikator 1"
         },
         {
-          "stage_type": "second_verification",
+          "stage_type": "fourth_verification",
           "person": {
             "first_name": "Dawid",
             "last_name": "Wiktorski"
@@ -1481,7 +1481,7 @@
           "source_column": "Weryfikator 3"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "fourth_verification",
           "person": {
             "first_name": "Anita",
             "last_name": "Brzozowiec"
@@ -1824,7 +1824,7 @@
           "source_column": "Weryfikator 3"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "fourth_verification",
           "person": {
             "first_name": "Damian",
             "last_name": "Szandecki"
@@ -1890,7 +1890,7 @@
           "source_column": "Weryfikator redakcji"
         },
         {
-          "stage_type": "first_proofreading",
+          "stage_type": "second_proofreading",
           "person": {
             "first_name": "Paweł",
             "last_name": "Sadowski"
@@ -1898,7 +1898,7 @@
           "source_column": "Korektor 2"
         },
         {
-          "stage_type": "second_proofreading",
+          "stage_type": "third_proofreading",
           "person": {
             "first_name": "Maria",
             "last_name": "Bernaciak"
@@ -1906,7 +1906,7 @@
           "source_column": "Korektor 3"
         },
         {
-          "stage_type": "third_proofreading",
+          "stage_type": "fourth_proofreading",
           "person": {
             "first_name": "Patrycja",
             "last_name": "Pancerz"
@@ -1930,7 +1930,7 @@
           "source_column": "Weryfikator 2"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "fourth_verification",
           "person": {
             "first_name": "Dawid",
             "last_name": "Wiktorski"
@@ -2052,7 +2052,7 @@
           "source_column": "Weryfikator 3"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "fourth_verification",
           "person": {
             "first_name": "Mariusz",
             "last_name": "Flejszar"
@@ -2166,7 +2166,7 @@
           "source_column": "Weryfikator 3"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "fourth_verification",
           "person": {
             "first_name": "Sylwester",
             "last_name": "Gdela"
@@ -2232,7 +2232,7 @@
           "source_column": "Korektor 1"
         },
         {
-          "stage_type": "second_proofreading",
+          "stage_type": "third_proofreading",
           "person": {
             "first_name": "Katarzyna",
             "last_name": "Płońska"
@@ -2240,7 +2240,7 @@
           "source_column": "Korektor 3"
         },
         {
-          "stage_type": "third_proofreading",
+          "stage_type": "fourth_proofreading",
           "person": {
             "first_name": "Anna",
             "last_name": "Twarowska"
@@ -2272,7 +2272,7 @@
           "source_column": "Weryfikator 3"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "fourth_verification",
           "person": {
             "first_name": "Damian",
             "last_name": "Szandecki"
@@ -2402,7 +2402,7 @@
           "source_column": "Weryfikator 3"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "fourth_verification",
           "person": {
             "first_name": "Michał",
             "last_name": "Gola"
@@ -2524,7 +2524,7 @@
           "source_column": "Weryfikator 3"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "fourth_verification",
           "person": {
             "first_name": "Sylwester",
             "last_name": "Gdela"
@@ -2638,7 +2638,7 @@
           "source_column": "Weryfikator 3"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "fourth_verification",
           "person": {
             "first_name": "Damian",
             "last_name": "Szandecki"
@@ -2699,7 +2699,7 @@
           "stage_type": "second_proofreading",
           "person": {
             "first_name": "Ilona",
-            "last_name": "Żurawska"
+            "last_name": "Skrzypczak"
           },
           "source_column": "Korektor 2"
         },
@@ -2744,7 +2744,7 @@
           "source_column": "Weryfikator 3"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "fourth_verification",
           "person": {
             "first_name": "Anna",
             "last_name": "Twarowska"
@@ -2752,7 +2752,7 @@
           "source_column": "Weryfikator 4"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "fifth_verification",
           "person": {
             "first_name": "Anita",
             "last_name": "Brzozowiec"
@@ -2858,7 +2858,7 @@
           "source_column": "Weryfikator 3"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "fourth_verification",
           "person": {
             "first_name": "Ewa",
             "last_name": "Wawrzynkowska"
@@ -2866,7 +2866,7 @@
           "source_column": "Weryfikator 4"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "fifth_verification",
           "person": {
             "first_name": "Mariusz",
             "last_name": "Flejszar"
@@ -2986,15 +2986,15 @@
           "source_column": "Weryfikator 3"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "fourth_verification",
           "person": {
             "first_name": "Ilona",
-            "last_name": "Żurawska"
+            "last_name": "Skrzypczak"
           },
           "source_column": "Weryfikator 4"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "fifth_verification",
           "person": {
             "first_name": "Damian",
             "last_name": "Szandecki"
@@ -3084,7 +3084,7 @@
           "source_column": "Weryfikator 3"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "fourth_verification",
           "person": {
             "first_name": "Magdalena",
             "last_name": "Kucenty"
@@ -3092,7 +3092,7 @@
           "source_column": "Weryfikator 4"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "fifth_verification",
           "person": {
             "first_name": "Anna Maria",
             "last_name": "Kottas"
@@ -3100,7 +3100,7 @@
           "source_column": "Weryfikator 5"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "sixth_verification",
           "person": {
             "first_name": "Patrycja",
             "last_name": "Pancerz"
@@ -3108,7 +3108,7 @@
           "source_column": "Weryfikator 6"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "seventh_verification",
           "person": {
             "first_name": "Damian",
             "last_name": "Szandecki"
@@ -3194,7 +3194,7 @@
           "stage_type": "first_verification",
           "person": {
             "first_name": "Ilona",
-            "last_name": "Żurawska"
+            "last_name": "Skrzypczak"
           },
           "source_column": "Weryfikator 1"
         },
@@ -3215,7 +3215,7 @@
           "source_column": "Weryfikator 3"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "fourth_verification",
           "person": {
             "first_name": "Agnieszka",
             "last_name": "Chodkiewicz"
@@ -3223,7 +3223,7 @@
           "source_column": "Weryfikator 4"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "fifth_verification",
           "person": {
             "first_name": "Anna Maria",
             "last_name": "Kottas"
@@ -3231,7 +3231,7 @@
           "source_column": "Weryfikator 5"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "sixth_verification",
           "person": {
             "first_name": "Damian",
             "last_name": "Szandecki"
@@ -3239,7 +3239,7 @@
           "source_column": "Weryfikator 6"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "seventh_verification",
           "person": {
             "first_name": "Anita",
             "last_name": "Brzozowiec"
@@ -3346,7 +3346,7 @@
           "source_column": "Weryfikator 3"
         },
         {
-          "stage_type": "third_verification",
+          "stage_type": "fourth_verification",
           "person": {
             "first_name": "Damian",
             "last_name": "Szandecki"

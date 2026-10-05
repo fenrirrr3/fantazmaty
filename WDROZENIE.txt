@@ -1,32 +1,50 @@
-TŁUMACZENIA — CMS V13
+KOREKTA RÓL W 29 TEKSTACH / CZTERECH ANTOLOGIACH
 
-Paczka zawiera pliki do podmiany/dodania, przygotowane na podstawie ostatniej wersji v12. Zachowuje poprzednie poprawki. Dołączono współdzielone moduły etykiet oraz migrację workflow 0015 używane przez aktualne widoki. Ta paczka nie uruchamia ani nie zastępuje korekty danych historycznych z v12.
+Paczka do podmiany na ostatniej wersji CMS z Tłumaczeniami (v13) i importerem archiwum.
+Zawiera 4 pliki Python, poprawiony import_archiwum.json i źródłowy wzorzec do korekty.
+Nie zmienia schematu bazy ani CSS/JS; nie wymaga migrate ani collectstatic.
+Nie uruchamiaj już starego repair_archive_executions — realizował poprzednie mapowanie.
 
-WDROŻENIE NA PYTHONANYWHERE
-Wgraj ZIP do katalogu projektu obok manage.py. W konsoli Bash, w tym katalogu i z aktywnym środowiskiem projektu:
+ZASADY
+- Redaktor: kolejne wpisy jako Redaktor, Redaktor (wyk. 2), Redaktor (wyk. 3) itd.
+- Korektorzy: w kolejności wpisów Korektor 1, Korektor 2, Korektor 3, Korektor 4.
+  Piąty i dalszy wpis: Korektor 4 (wyk. 2), Korektor 4 (wyk. 3) itd.
+  Puste miejsca dawnych kolumn nie pozostawiają luk: dawni K1, K2, K4 stają się K1, K2, K3.
+- Weryfikator redakcji, jeśli występuje: Weryfikator 1, wykonanie 1.
+  Następny wpis: Weryfikator 1 (wyk. 2), kolejny: Weryfikator 2.
+  Pozostali: Weryfikator 3, Weryfikator 3 (wyk. 2), Weryfikator 3 (wyk. 3) itd.
+  Bez Weryfikatora redakcji: kolejno Weryfikator 1, Weryfikator 2, Weryfikator 3 i dalsze wykonania Weryfikatora 3.
+- Zachowane powtórzenia osób, kolejność oryginalnego importu, redaktorzy, koordynatorzy i osobna historyczna kontrola redakcji.
+- Ilona Skrzypczak -> Ilona Żurawska według poprzedniego uzgodnienia; istniejący profil Żurawskiej jest używany ponownie. Nie usuwamy profili.
+- 323 prace pozostają zakończone, bez dat. Wszystkie 29 tekstów pozostaje Gotowe.
+- Tytuły, autorzy, antologie, długości i identyfikatory etapów/przypisań pozostają zachowane.
+- Zwykłe nazwy ról i oznaczenie (wyk. N) zastępują etykiety typu „Korekta — wykonawca N”.
 
-unzip -o cms_tlumaczenia_v13_2026-10-05.zip -d .
-python manage.py migrate
-python manage.py check
+POLECENIA PYTHONANYWHERE
+Wgraj ZIP do katalogu z manage.py. W Bash, z aktywnym środowiskiem projektu:
 
-Następnie kliknij Reload w zakładce Web PythonAnywhere. Nie trzeba uruchamiać collectstatic: zmieniono kod Python i szablony, bez zmian w plikach statycznych.
-Migracja texts/0022_anthology_translations.py dodaje boolean Antologia.tłumaczone i model wpisu tłumaczenia z powiązaniami do autorów. Dotychczasowe antologie domyślnie mają tę opcję wyłączoną. Nie nadpisuje istniejących tekstów ani przypisań workflow. Jeżeli workflow 0015 jest już zastosowana, migrate jej nie powtórzy.
+cd ~/fantazmaty
+unzip -o import_archiwum_v14_role_2026-10-05.zip -d .
+python manage.py repair_archive_slots --report raport_rol_podglad
 
-OBSŁUGA
-1. Panel admina → Antologie → wybierz antologię → zaznacz „Tłumaczone” → Zapisz.
-2. W menu „Teksty i recenzje” pojawia się zakładka „Tłumaczenia”. Istniejące teksty tej antologii trafiają na tę listę. Po dodaniu nowego tekstu lub przeniesieniu go do oznaczonej antologii wpis tłumaczenia powstaje automatycznie.
-3. Lista używa tych samych filtrów, sortowania i paginacji co „Wszystkie teksty”, z dodatkową kolumną Tłumacze. Filtr Autor obejmuje również tłumaczy; wyszukiwanie po osobach zachowuje dotychczasowe uprawnienia listy tekstów. Puste oznaczone antologie są dostępne w filtrze.
-4. Otwórz tekst w Tłumaczeniach. Superuser może wskazać tłumacza lub kilku tłumaczy i zapisać. Tłumacze korzystają z modelu i spisu Autorów; nie zastępują oryginalnych autorów. Nową osobę dodaj do Autorów, korzystając z linku przy polu.
-5. Tłumaczy można też edytować w panelu admina: przy tekście z oznaczonej antologii lub przez model Tłumaczenia. Przy tworzeniu nowego tekstu formularz tłumaczy pojawi się po pierwszym zapisie (Zapisz i kontynuuj edycję).
-6. Widoczność zakładki i tekstów wymaga aktywnego konta członka zespołu, jak lista Wszystkie teksty. Edycja tłumaczy ma takie uprawnienia jak edycja autorów: superuser. Pozostałe osoby widzą nazwiska bez ujawniania prywatnych kontaktów tłumaczy.
+Powyższe polecenie jest podglądem: wykonuje korektę w transakcji i ją wycofuje.
+W konsoli pojawi się podsumowanie, a pełny wynik w raport_rol_podglad.json.
+Do obejrzenia pełnego JSON (dużo danych):
+python -m json.tool --no-ensure-ascii raport_rol_podglad.json
 
-ZAKRES WIDOCZNOŚCI
-Oznaczone antologie i ich teksty są wyłączone ze zwykłych list tekstów, recenzji, tagów, antologii, tabeli workflow, Mojej pracy, pulpitu, raportów, wyszukiwania, list prac na profilach oraz ilustracji. Standardowe formularze naboru/importu recenzji i uwag do antologii nie proponują oznaczonych antologii. Panel admina zachowuje dostęp do zarządzania danymi.
-Bezpośredni standardowy link do tekstu lub antologii przekierowuje do sekcji Tłumaczenia. Praca przy tekście nadal używa istniejącego workflow i jego uprawnień.
-Wpisy Tłumaczeń powstają dla modelu Tekst, tak jak ilustracje; samo zgłoszenie w Recenzjach nie jest automatycznie zamieniane na tekst.
-Antologie gotowe również mogą być tłumaczone. Domyślny filtr „Ukryj gotowe teksty” działa tak samo jak we Wszystkich tekstach — odznacz go, aby zobaczyć zakończone pozycje.
-Odznaczenie „Tłumaczone” przywraca zwykłą widoczność i ukrywa pozycje w Tłumaczeniach. Zapisani tłumacze zostają zachowani; ponowne zaznaczenie przywróci ich bez duplikatów. Istniejące ilustracje i historia pracy nie są usuwane.
+Gdy podgląd zakończy się bez konfliktów, zapis:
+python manage.py repair_archive_slots --apply --report raport_rol_zapis
 
-WERYFIKACJA
-616 testów aplikacji: 615 poprawnych, 1 pominięty (SQLite nie obsługuje wymaganej blokady wierszy). Wszystkie 10 testów Tłumaczeń przeszło. Sprawdzono synchronizację wpisów, przełączanie flagi, zachowanie danych po przeniesieniu, wyszukiwanie i sortowanie, ukrywanie na zwykłych listach, uprawnienia, admin, renderowanie stron i konflikt równoczesnego zapisu tłumaczy. Django check bez uwag; makemigrations --check --dry-run bez brakujących migracji.
-Testy wykonano lokalnie na izolowanej SQLite. Nie wdrażano kodu ani migracji na serwer użytkownika. Nie utworzono raportu HTML.
+Następnie kliknij Reload w zakładce Web PythonAnywhere, aby załadować nazwy ról i kolejność w widokach.
+Nie trzeba ponownie importować opowiadań. import_archiwum.json jest uaktualnionym plikiem na przyszłość; po korekcie ponowny import tych samych danych niczego nie dodaje.
+
+ZAKRES I KONTROLA
+Skrypt wymaga kompletu już zaimportowanych 29 tekstów ze źródła archive-table-2026-10-05-22.
+Obsługuje układ pierwotny, poprzednie spłaszczenie z v12 oraz już poprawiony układ.
+Rozbieżność tytułu, autorów, długości, antologii, wykonawców, numeracji, dat lub etapów przerywa całą korektę.
+Nie tworzy nowych tekstów ani nowych wykonań. Zmiany zachodzą w jednej transakcji.
+Raport JSON zawiera stan przed i po dla każdego tekstu. Nie powstaje raport HTML.
+Lokalna weryfikacja objęła tylko tę korektę: rzeczywisty komplet 29 tekstów/323 prac,
+podgląd z wycofaniem, zachowanie ID i powiązań, role i numery wykonań, daty, zwykłe etykiety,
+ponowienie korekty/importu bez zmian oraz odrzucenie zmienionej pracy.
+Nie wykonywano żadnych operacji na produkcyjnej bazie PythonAnywhere.

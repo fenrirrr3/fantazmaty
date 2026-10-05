@@ -27,9 +27,13 @@ def is_archive_text(text):
 
 
 def archive_work_label(text, kind, number):
-    names = {'editor': 'Redakcja', 'editing': 'Redakcja',
-             'verifier_1': 'Weryfikacja', 'first_verification': 'Weryfikacja',
-             'proofreader_1': 'Korekta', 'first_proofreading': 'Korekta'}
-    if kind in names and is_archive_text(text):
-        return f'{names[kind]} — wykonawca {number}'
+    """Use ordinary role names and execution numbering for historical work."""
+    if not is_archive_text(text):
+        return None
+    from workflow.catalog import all_stage_roles
+    from workflow.models import WorkflowRoleAssignment
+    role = all_stage_roles().get(kind, kind)
+    label = dict(WorkflowRoleAssignment.Role.choices).get(role)
+    if label:
+        return f'{label} (wyk. {number})' if number > 1 else label
     return None

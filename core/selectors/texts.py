@@ -1006,7 +1006,9 @@ def _text_team_members(text, assignments):
     if is_archive_text(text) and WorkflowStage.objects.filter(text=text, workflow_cycle=text.current_workflow_cycle,
                                                              stage_type='ready', is_current=True).exists():
         order = {'editor':0, 'editing_coordinator':1, 'editing_reviewer':2,
-                 'proofreader_1':3, 'verifier_1':4, 'verification_coordinator':5, 'styling':6}
+                 'proofreader_1':3, 'proofreader_2':4, 'proofreader_3':5, 'proofreader_4':6,
+                 'verifier_1':7, 'verifier_2':8, 'verifier_3':9,
+                 'verification_coordinator':10, 'styling':11}
         members = WorkflowRoleAssignment.objects.filter(text=text, workflow_cycle=text.current_workflow_cycle,
             stages__imported_completed=True, assigned_to__isnull=False).select_related('text','assigned_to__person_profile').distinct()
         return [{'role':item.role, 'label':assignment_label(item), 'assignment':_assignment_data(item),
