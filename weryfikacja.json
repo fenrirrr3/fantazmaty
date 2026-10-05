@@ -1,13 +1,42 @@
 {
-  "texts": 29,
-  "executions": 323,
-  "original_and_flattened_layouts_accepted": true,
-  "preview_rolls_back": true,
-  "ids_links_people_and_texts_preserved": true,
-  "all_role_slots_and_execution_numbers_checked": true,
-  "dates_remain_empty": true,
-  "ready_markers": 29,
-  "repair_and_import_reruns_noop": true,
-  "changed_work_rejected": true,
-  "normal_role_labels": true
+  "stories_before": 248,
+  "stories_added": 43,
+  "stories_after": 291,
+  "existing_author_names_unchanged": true,
+  "existing_story_blocks_unchanged": true,
+  "shortcodes_balanced": true,
+  "new_books": {
+    "Gdy Ziemia miała nas dość": 6,
+    "Światła na niebie": 10,
+    "Zbrodnia doskonała": 7,
+    "Obieżyświaty": 12,
+    "Sępom na pożarcie": 8
+  },
+  "source_avada_sha256": "dfa66d16fbbe26f08b9f22bb90cce3af4b7cf19cf8aa2312656fba24e32127d9",
+  "import": {
+    "rows": 43,
+    "preview_no_writes": true,
+    "exact_title_and_anthology_match": true,
+    "missing_title_all_or_nothing": true,
+    "existing_metadata_preserved": true,
+    "other_text_fields_and_author_links_unchanged": true,
+    "idempotent_repeat": true,
+    "database": "isolated in-memory SQLite",
+    "production_tested": false
+  },
+  "matches_previous_imports": 43,
+  "browser": {
+    "records": 291,
+    "anthologies": 26,
+    "tags": 837,
+    "all_expanded_tag_counts_correct": true,
+    "all_expanded_tags_sorted_descending": true,
+    "tag_search": true,
+    "tag_filter": true,
+    "genre_filter": true,
+    "anthology_search": true,
+    "pagination": true,
+    "desktop_overflow": false,
+    "actual_wordpress_import_tested": false
+  }
 }
