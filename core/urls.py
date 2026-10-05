@@ -23,11 +23,12 @@ from core.views.programs import programs
 from core.views.activity import user_activity
 from core.views.tags import tag_list
 
-from core.views.translations import translation_list, translation_detail, set_translators, translation_person_detail
+from core.views.translations import translation_list, translation_detail, set_translators, translation_person_detail, translation_person_suggestions
 
 from core.views.production_tasks import task_list, audio_descriptions
 
 urlpatterns = [
+    path('tlumaczenia/osoby/<str:kind>/sugestie/', translation_person_suggestions, name='translation_person_suggestions'),
     path('zadania/', task_list, name='task_list'),
     path('audiodeskrypcje/', audio_descriptions, name='audio_descriptions'),
     path('tlumaczenia/osoby/<str:kind>/<int:person_id>/', translation_person_detail, name='translation_person_detail'),

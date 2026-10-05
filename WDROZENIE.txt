@@ -1,95 +1,57 @@
-IMPORT TŁUMACZEŃ — 2026-10-05
+TŁUMACZENIA — ZMIANY WIDOCZNOŚCI I WYSZUKIWANIE OSÓB (v17)
 
-20 nowych tekstów: 12 w „Obieżyświatach”, 8 w „Sępom na pożarcie”.
-10 różnych autorów zagranicznych, 20 tłumaczy, 186 wykonań prac.
-Istniejące antologie zostaną oznaczone jako tłumaczone. Ich status nie zmieni się.
-Każdy tekst otrzyma status Gotowy. Daty pracy i przypisania pozostaną puste.
-Nie powstają profile zwykłych polskich autorów dla autorów zagranicznych ani tłumaczy.
+Paczka zawiera wyłącznie nowe i zmienione pliki względem CMS v16.1.
+Podmień je, zachowując strukturę katalogów od katalogu z manage.py.
+Nie zastępuje danych importu; nie trzeba ponownie importować tekstów.
 
-WYMAGANA WERSJA CMS
-Wgrane wcześniejsze zmiany profili tłumaczeń i pola „Weryfikacja z oryginałem”
-(texts/migrations/0023 oraz 0024) oraz wcześniejszy importer archiwum:
-workflow/management/commands/import_completed_table.py i workflow/completed_import.py.
-Nowy skrypt korzysta z ich istniejących funkcji. Paczka nie nadpisuje ich ani modeli CMS.
-Nie instaluj striprtf na serwerze: długości są już policzone i zapisane w JSON.
+ZMIANY
+1. Teksty tłumaczone pojawiają się w „Moich tekstach” przypisanych wykonawców
+   i na profilu członka zespołu, z rolami i numerami wykonań.
+   Prace zakończone widać w „Moje teksty → Wszystkie”; nie w „W toku”.
+2. „Wszystkie teksty” i „Tabelka zbiorcza” nadal nie pokazują tłumaczeń.
+3. W „Tłumaczeniach” pole „Ukryj gotowe teksty” jest domyślnie wyłączone.
+   Ręczne zaznaczenie działa. Wyczyść filtry, jeżeli adres ma hide_ready=1.
+4. Przy przypisywaniu autora zagranicznego i tłumacza wyszukiwarka zastępuje
+   pełną listę wyboru. Wpisz nazwę, wybierz wynik, a potem „Zapisz osoby”.
+   Można przypisać wiele osób, usuwać wybrane oraz wybierać klawiaturą.
+   Tłumacza można także znaleźć po języku. Nowe profile nadal dodaje się
+   przez istniejące linki do admina. Uprawnienia do edycji pozostają bez zmian.
+5. W listach osobistych autor zagraniczny ma właściwy profil i osobną
+   przestrzeń identyfikatorów filtra względem zwykłego autora.
 
-PLIKI
-workflow/management/commands/import_completed_translations.py — jedyny nowy plik kodu.
-import_tlumaczenia.json — dane importu; wgraj obok manage.py.
-pomiar_dlugosci.json — zestawienie długości i różnic nazw w źródłach.
-wyniki_sprawdzenia.txt — wynik niezbędnego sprawdzenia na izolowanej bazie.
-
-POLECENIA W BASH PYTHONANYWHERE
-Uruchom w środowisku wirtualnym używanym przez CMS, w katalogu z manage.py.
-Jeśli ZIP jest w katalogu domowym:
+WDROŻENIE W PYTHONANYWHERE
+Wgraj ZIP do katalogu domowego. W Bash, w środowisku wirtualnym CMS:
 
 cd ~/fantazmaty
-unzip -o ~/import_tlumaczenia_2026-10-05.zip -d .
-python manage.py migrate
+unzip -o ~/cms_tlumaczenia_v17_2026-10-05.zip -d .
+python manage.py collectstatic --noinput
 
-Podgląd — wykonuje operacje w transakcji i wycofuje je, nie zapisuje rekordów:
-python manage.py import_completed_translations import_tlumaczenia.json --report raport_tlumaczenia_podglad
-python -m json.tool --no-ensure-ascii raport_tlumaczenia_podglad.json
+Następnie kliknij Reload w zakładce Web PythonAnywhere.
+Paczka nie zawiera migracji; dla tej aktualizacji nie trzeba uruchamiać migrate.
+Po wdrożeniu otwórz stronę ponownie; w razie starego widoku odśwież Ctrl+F5.
+Plików do usunięcia nie ma.
 
-Po sprawdzeniu podglądu zapisz dane:
-python manage.py import_completed_translations import_tlumaczenia.json --apply --report raport_tlumaczenia_zapis
-python -m json.tool --no-ensure-ascii raport_tlumaczenia_zapis.json
+SPRAWDZENIE
+19 testów Django: wszystkie przeszły. Sprawdzono widoczność prac członków,
+numery wykonań, gotowy status, filtry osobiste, rozdzielenie ID autorów,
+brak tłumaczeń na listach zbiorczych, domyślną widoczność gotowych,
+autoryzację wyszukiwarki, zapis wybranych osób, odrzucenie błędnych ID
+oraz istniejącą obsługę konfliktów zapisu.
+JavaScript: node --check bez błędów.
+Przeglądarka: wyszukiwanie i dodanie drugiego autora, tłumacz wyszukany
+po języku, wybór klawiaturą, usunięcie poprzedniego tłumacza i zapis.
+Testy i zapis formularza wykonano wyłącznie na lokalnej bazie testowej.
+Baza na PythonAnywhere nie została zmieniona.
 
-Nie używaj import_completed_table do tego pliku danych.
-Ta paczka nie zawiera nowych migracji ani plików statycznych. migrate służy upewnieniu
-się, że wcześniejsze migracje CMS są wykonane. collectstatic i Reload nie są potrzebne
-do samego importu; po zapisie wystarczy odświeżyć stronę Tłumaczenia.
-
-ZASADY
-- Antologie muszą istnieć dokładnie po jednej i być puste lub zawierać wyłącznie
-  niezmienione teksty z tego importu. Importer nie tworzy antologii.
-- Puste komórki i „nie było korekty” nie tworzą wykonania. Nie przesuwamy osób.
-  Korektor 4 pozostaje Korektorem 4 przy pustym Korektorze 3.
-- Osoby w tej samej kolumnie są kolejnymi wykonaniami tej samej roli.
-- Weryfikator 3 (wyk. 2) to drugie wykonanie Weryfikatora 3.
-- „Weryfikacja tłumaczenia” trafia do TextTranslation.original_verifier,
-  czyli „Weryfikacja z oryginałem”. Nie tworzy dodatkowego etapu workflow.
-- Kuba Moroński jest zapisany jako Jakub Moroński.
-- Agnieszka Janowska jest zapisana jako Agnieszka Kłych (korekta użytkownika).
-- Imię i nazwisko tłumaczy uporządkowano do osobnych pól.
-- Istniejące osoby są dopasowywane po imieniu i nazwisku bez rozróżnienia wielkości
-  liter i nadmiarowych spacji. Nie zgadujemy dawnych nazwisk ani pseudonimów.
-  Przy kilku identycznych profilach import zostaje przerwany. Osoby o tym samym
-  nazwisku, ale innym imieniu, są wskazywane w warnings do oceny w podglądzie.
-- Raport podaje ID i nazwy dopasowanych autorów zagranicznych i tłumaczy.
-  W razie potrzeby można jawnie wskazać foreign_author_id, translator_id lub
-  person_id w odpowiednim obiekcie osoby w JSON; pozostałych danych nie zmieniaj.
-- Brakujące profile autorów zagranicznych i tłumaczy mają puste e-maile.
-  Języki nowych tłumaczy pozostają puste; języki istniejących nie są zmieniane.
-- Brakujący wykonawca otrzymuje profil z pustym e-mailem i nieaktywne konto
-  bez działającego hasła i bez ról. Istniejące uprawnienia nie są zmieniane.
-- Zmieniony po imporcie tekst lub workflow nie jest nadpisywany.
-  Ponowne uruchomienie dla niezmienionych danych jest bez zmian.
-- Dowolny wykryty konflikt wycofuje cały import. Raport może wtedy zawierać
-  wcześniej przetworzone wiersze; one również nie zostały zapisane.
-- ID nowych rekordów w podglądzie są tymczasowe i mogą różnić się od zapisu.
-- Raport JSON jest jedynym raportem importera. Nie powstaje raport HTML.
-
-DŁUGOŚCI
-Policzono z lokalnych plików RTF obu antologii: łącznie 582 901 znaków ze spacjami.
-Unicode NFC; białe znaki wewnątrz akapitu sprowadzone do jednej spacji.
-Wliczono treść opowiadania, śródtytuły, separatory tekstowe i treść 19 przypisów.
-Nie wliczano znaków końca akapitu, tytułu, nazwisk autora/tłumaczy, oryginalnego
-tytułu, stopek zespołu, adresów strony/social mediów autora po opowiadaniu,
-niewidocznych znaków łamania ani numerów odsyłaczy do przypisów.
-W import_tlumaczenia.json zapisano źródła, granice pomiaru i sumy SHA256.
-Pełne teksty książek nie są dołączone do paczki.
-
-RÓŻNICE MIĘDZY TABELĄ A PUBLIKACJĄ — TYTUŁY Z RTF, OSOBY Z TABELI
-„Restart systemu” = „>RESTART SYSTEMU” w RTF.
-„W domu pogodnego seniora u końca świata” = „W domu pogodnego seniora na końcu świata” w RTF.
-„Hagen” = „Hagen, Równina 2” w RTF.
-„Noc nad Unną”: tabela Dorota Gulbinowicz, RTF Dorota Sulej.
-„To nie jest bajka dla Bönen”: tabela Izabela Mulawa, RTF Izabela Ciupak.
-Na życzenie użytkownika w imporcie zastosowano powyższe trzy tytuły z RTF.
-RTF służy również do pomiaru długości. Nie zmieniano danych osób ani ról z tabeli
-na podstawie starych stopek publikacji i nie dodawano osób wymienionych tylko tam.
-
-AKTUALIZACJA TYTUŁÓW: podmień import_tlumaczenia.json i wykonaj podgląd.
-Jeżeli wcześniejszą wersję zapisano już z --apply, importer wykryje różnicę
-tytułów i przerwie operację; ta paczka nie zmienia już zaimportowanych rekordów.
+PLIKI DO PODMIANY
+core/selectors/people.py
+core/selectors/texts.py
+core/static/core/translation-search.js
+core/templates/core/assigned_text_detail.html
+core/templates/core/my_texts.html
+core/templates/core/person_detail.html
+core/test_translations_v13.py
+core/test_translations_v17.py
+core/translation_forms.py
+core/urls.py
+core/views/translations.py

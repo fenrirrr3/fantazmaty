@@ -1,0 +1,13 @@
+{
+  "core/selectors/people.py": "d325d1dd181a18b97c501d6bc895240cbe6f46e133fa732cc96d56b823c727c0",
+  "core/selectors/texts.py": "6cb8bc6c521910dbb3632a0dc1f8909985342e5536f5dea1dd94cf71dc99a293",
+  "core/static/core/translation-search.js": "276b5ed2522ca89859214781be8c7eb83d63cb861e5fcdc02ff99e70b3f82a23",
+  "core/templates/core/assigned_text_detail.html": "253beeb95bdbd265c6f1948accbb2f83a40eda824b577c61b1769dcf042a60fb",
+  "core/templates/core/my_texts.html": "7d8abda18532b1164d9e6485e1374ad5e2d7ffd2d0d5e769ae8b8875cd378669",
+  "core/templates/core/person_detail.html": "a424776c0d2415f1dfadc6a83ea9724e99213cec0323d3af581e54f19ef45e71",
+  "core/test_translations_v13.py": "dadbd37768698ed0e458ea8e152ac709a37555246d3988e9892d698a374fd758",
+  "core/test_translations_v17.py": "fbb8f20896e5d20263eb386f2b1a7e437973b0dba3c8a09cca83e0ef31c66b94",
+  "core/translation_forms.py": "5464c0735c976ec534b5af6b4f6469240288308b7db657a84f8d0bd9ff6fcd45",
+  "core/urls.py": "99058266e2792272d893b00176264023dff28cfa2dc2310ce899b9c7aff11c06",
+  "core/views/translations.py": "0ab5f0bc16128335d1515b1861eb161c0c6c871f24db15ea1aeaab06e7ac3a74"
+}

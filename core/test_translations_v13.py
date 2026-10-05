@@ -88,14 +88,14 @@ class TranslationTests(TestCase):
         response=self.client.get(reverse('illustrations:illustration_list'))
         self.assertEqual(response.status_code,200);self.assertNotContains(response,self.book.title)
 
-    def test_home_workload_and_profile_exclude_translations(self):
+    def test_home_workload_excludes_but_person_profile_includes_translations(self):
         summary=user_workflow_summary(self.member)
         self.assertEqual(summary['active_stage_count'],0)
         self.assertEqual(summary['reserved_assignment_count'],0)
         rows=available_stages_for_user(user=self.admin)
         self.assertNotIn(self.stage.pk,[r.pk for r in rows])
         response=self.client.get(reverse('core:person_detail',args=[self.member.person_profile.pk]))
-        self.assertEqual(response.status_code,200);self.assertNotContains(response,self.book.title)
+        self.assertEqual(response.status_code,200);self.assertContains(response,self.book.title)
 
     def token(self):
         response=self.client.get(reverse('core:translation_detail',args=[self.text.pk]))

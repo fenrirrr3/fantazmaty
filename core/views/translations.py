@@ -1,6 +1,8 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
+from django.db.models import Q
+from django.http import JsonResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST
@@ -11,6 +13,33 @@ from core.selectors.texts import text_list_context
 from core.translation_forms import TranslationForm
 from core.views.texts import _permission_context, _render_text_detail
 from texts.models import Text, TextTranslation
+
+
+@never_cache
+@login_required
+@require_GET
+@superuser_required
+def translation_person_suggestions(request, kind):
+    from texts.models import ForeignAuthor, Translator
+    model = {'author': ForeignAuthor, 'translator': Translator}.get(kind)
+    if model is None:
+        raise Http404
+    query = request.GET.get('q', '').strip()[:255]
+    people = model.objects.all()
+    if not query:
+        people = people.none()
+    for term in query.split():
+        condition = Q(first_name__plcontains=term) | Q(last_name__plcontains=term) | Q(pseudonym__plcontains=term)
+        if kind == 'translator':
+            condition |= Q(language__plcontains=term)
+        people = people.filter(condition)
+    results = []
+    for person in people.order_by('last_name', 'first_name', 'pk')[:20]:
+        details = [value for value in (person.pseudonym, getattr(person, 'language', '')) if value]
+        results.append({'id': person.pk, 'label': str(person) + (' — ' + ', '.join(details) if details else '')})
+    response = JsonResponse({'results': results})
+    response['Cache-Control'] = 'no-store, private'
+    return response
 
 
 @never_cache

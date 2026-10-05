@@ -77,7 +77,7 @@
 
                             <td data-label="Tytuł" data-double-copy data-copy-value="{{ text.title }}" class="sticky-title">
                                 <a
-                                    href="{% url 'core:assigned_text_detail' text.pk %}"
+                                    href="{% if text.is_translation %}{% url 'core:translation_detail' text.pk %}{% else %}{% url 'core:assigned_text_detail' text.pk %}{% endif %}"
                                     class="text-title-link"
                                 >
                                     <strong>{{ text.title }}</strong>
@@ -88,7 +88,7 @@
                                 <td data-label="Autorzy" data-copy-value="{{ text.authors_display }}">
                                     {% for author in text.authors.all %}
                                         {% if can_view_authors %}<a
-                                            href="{% url 'core:author_detail' author.pk %}"
+                                            href="{% if text.is_translation %}{% url 'core:translation_person_detail' 'author' author.pk %}{% else %}{% url 'core:author_detail' author.pk %}{% endif %}"
                                             class="detail-link"
                                         >
                                             {{ author.first_name }} {{ author.last_name }}

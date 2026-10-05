@@ -206,7 +206,7 @@
 
                             <td data-double-copy data-copy-value="{{ assignment.text.title }}" class="sticky-title">
                                 <a
-                                    href="{% url 'core:assigned_text_detail' assignment.text.pk %}"
+                                    href="{% if assignment.text.is_translation %}{% url 'core:translation_detail' assignment.text.pk %}{% else %}{% url 'core:assigned_text_detail' assignment.text.pk %}{% endif %}"
                                     class="text-title-link"
                                 >
                                     <strong>{{ assignment.text.title }}</strong>
@@ -217,7 +217,7 @@
                                 <td>
                                     {% for author in assignment.text.authors.all %}
                                         {% if can_view_authors %}<a
-                                            href="{% url 'core:author_detail' author.pk %}"
+                                            href="{% if assignment.text.is_translation %}{% url 'core:translation_person_detail' 'author' author.pk %}{% else %}{% url 'core:author_detail' author.pk %}{% endif %}"
                                             class="detail-link"
                                         >
                                             {{ author.first_name }} {{ author.last_name }}
@@ -273,7 +273,7 @@
 
                             <td data-copy="false">
                                 <a
-                                    href="{% url 'core:assigned_text_detail' assignment.text.pk %}"
+                                    href="{% if assignment.text.is_translation %}{% url 'core:translation_detail' assignment.text.pk %}{% else %}{% url 'core:assigned_text_detail' assignment.text.pk %}{% endif %}"
                                     class="secondary-button"
                                     aria-label="Otwórz tekst: {{ assignment.text.title }}"
                                 >

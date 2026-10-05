@@ -1,4 +1,3 @@
-from core.translation_scope import ordinary
 from django.db.models import Count, F, Prefetch
 from workflow.models import WorkflowRoleAssignment, WorkflowStage
 from workflow.services import STAGE_ROLES
@@ -90,19 +89,19 @@ def profile_assignments(person, *, include_authors):
         return [], {"active": 0, "reserved": 0, "completed": 0}
 
     current_stages = (
-        ordinary(WorkflowStage.objects).filter(
+        WorkflowStage.objects.filter(
             workflow_cycle=F("text__current_workflow_cycle"),
         )
         .order_by("-iteration", "-pk")
     )
 
     queryset = (
-        ordinary(WorkflowRoleAssignment.objects).filter(
+        WorkflowRoleAssignment.objects.filter(
             assigned_to_id=person.user_id,
             workflow_cycle=F("text__current_workflow_cycle"),
         )
         .exclude(role__in=IMPORT_ONLY_ROLES)
-        .select_related("text", "text__anthology")
+        .select_related("text", "text__anthology", "text__translation")
         .prefetch_related(
             Prefetch(
                 "text__workflow_stages",
@@ -113,12 +112,12 @@ def profile_assignments(person, *, include_authors):
         .order_by(F("assigned_at").desc(nulls_last=True), "-pk")
     )
 
-    queryset = queryset.prefetch_related("text__authors")
+    queryset = queryset.prefetch_related("text__authors", "text__translation__foreign_authors")
 
     today = timezone.localdate()
     from workflow.read_queries import work_text_ids
     from texts.models import Text
-    own_texts = ordinary(Text.objects).filter(workflow_role_assignments__assigned_to_id=person.user_id, workflow_role_assignments__workflow_cycle=F("current_workflow_cycle")).distinct()
+    own_texts = Text.objects.filter(workflow_role_assignments__assigned_to_id=person.user_id, workflow_role_assignments__workflow_cycle=F("current_workflow_cycle")).distinct()
     classified = work_text_ids(own_texts, person.user, today)
     completed_ids, active_ids, waiting_ids = (classified[key] for key in ('completed', 'active', 'waiting'))
     assignments = []
@@ -175,10 +174,13 @@ def profile_assignments(person, *, include_authors):
         has_completed_work = text.pk in completed_ids
 
 
+        translated = bool(text.anthology_id and text.anthology.is_translated)
+        translation = getattr(text, "translation", None) if translated else None
+        source_authors = translation.foreign_authors.all() if translation else ([] if translated else text.authors.all())
         authors = [
             {"pk": author.pk, "first_name": author.first_name,
              "last_name": author.last_name, "pseudonym": author.pseudonym}
-            for author in text.authors.all()
+            for author in source_authors
         ]
 
         assignments.append(
@@ -195,6 +197,7 @@ def profile_assignments(person, *, include_authors):
                 "text": {
                     "pk": text.pk,
                     "title": text.title,
+                    "is_translation": translated,
                     "anthology": (
                         {
                             "pk": text.anthology.pk,
@@ -238,7 +241,7 @@ def profile_assignments(person, *, include_authors):
 def imported_work_summary(person):
     if person.user_id is None:
         return []
-    counts = (ordinary(WorkflowStage.objects).filter(
+    counts = (WorkflowStage.objects.filter(
         assignment__assigned_to_id=person.user_id,
         stage_type__in=IMPORT_ONLY_STAGE_TYPES,
         imported_completed=True, is_completed=True,

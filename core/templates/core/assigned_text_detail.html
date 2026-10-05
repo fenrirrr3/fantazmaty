@@ -831,6 +831,7 @@
 {% endblock %}
 
 {% block scripts %}
+    {% if translation_form %}<script src="{% static 'core/translation-search.js' %}?v=17"></script><noscript>Wyszukiwanie osób wymaga JavaScript. Osoby można również przypisać przez „Edytuj w adminie”.</noscript>{% endif %}
 {{ block.super }}
 {% if can_restart_workflow and restart_workflow_form %}
 <script src="{% static 'core/workflow-repeat.js' %}" defer></script>
