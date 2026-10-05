@@ -13,6 +13,109 @@
     "Sępom na pożarcie": 8
   },
   "source_avada_sha256": "dfa66d16fbbe26f08b9f22bb90cce3af4b7cf19cf8aa2312656fba24e32127d9",
+  "all_291_author_names_unchanged_from_v1": true,
+  "csv_matches_avada_and_json": true,
+  "tags_after_normalization": 817,
+  "css_and_js_unchanged_from_tested_v1": true,
+  "normalization": {
+    "scope": "43 new stories; 248 existing story blocks unchanged",
+    "mapped_labels": 20,
+    "replacements": 23,
+    "changed_stories": 18,
+    "new_story_distinct_tags": 197,
+    "tags_already_in_catalog": 123,
+    "additional_distinct_tags": 74,
+    "genres_already_in_catalog": 31,
+    "additional_genres": [
+      "dramat społeczny",
+      "thriller psychologiczny"
+    ],
+    "mapping": {
+      "mutanci": [
+        "mutanty"
+      ],
+      "przyroda": [
+        "natura"
+      ],
+      "latające miasta": [
+        "latające miasto"
+      ],
+      "rodzinna tajemnica": [
+        "tajemnica rodzinna"
+      ],
+      "obce istoty": [
+        "obce byty"
+      ],
+      "rytuały": [
+        "rytuał"
+      ],
+      "metamorfoza": [
+        "przemiana"
+      ],
+      "zaginięcia": [
+        "zaginięcie"
+      ],
+      "proroctwo": [
+        "przepowiednie"
+      ],
+      "sobowtór": [
+        "sobowtóry"
+      ],
+      "wykluczenie społeczne": [
+        "wykluczenie"
+      ],
+      "wymieranie gatunków": [
+        "wymieranie"
+      ],
+      "starzenie się": [
+        "starość"
+      ],
+      "sekrety": [
+        "tajemnica"
+      ],
+      "nieszczęśliwa miłość": [
+        "nieodwzajemniona miłość"
+      ],
+      "policyjne negocjacje": [
+        "negocjacje",
+        "policja"
+      ],
+      "dylemat moralny": [
+        "moralność"
+      ],
+      "dziennikarstwo": [
+        "dziennikarz"
+      ],
+      "nauka": [
+        "badania naukowe"
+      ],
+      "przemijanie": [
+        "upływ czasu"
+      ]
+    },
+    "occurrences": {
+      "wymieranie gatunków": 1,
+      "mutanci": 2,
+      "nauka": 1,
+      "latające miasta": 1,
+      "rodzinna tajemnica": 1,
+      "rytuały": 3,
+      "obce istoty": 1,
+      "metamorfoza": 1,
+      "zaginięcia": 1,
+      "starzenie się": 1,
+      "dylemat moralny": 1,
+      "przyroda": 1,
+      "proroctwo": 1,
+      "przemijanie": 1,
+      "nieszczęśliwa miłość": 1,
+      "sobowtór": 1,
+      "policyjne negocjacje": 1,
+      "wykluczenie społeczne": 1,
+      "dziennikarstwo": 1,
+      "sekrety": 1
+    }
+  },
   "import": {
     "rows": 43,
     "preview_no_writes": true,
@@ -24,19 +127,5 @@
     "database": "isolated in-memory SQLite",
     "production_tested": false
   },
-  "matches_previous_imports": 43,
-  "browser": {
-    "records": 291,
-    "anthologies": 26,
-    "tags": 837,
-    "all_expanded_tag_counts_correct": true,
-    "all_expanded_tags_sorted_descending": true,
-    "tag_search": true,
-    "tag_filter": true,
-    "genre_filter": true,
-    "anthology_search": true,
-    "pagination": true,
-    "desktop_overflow": false,
-    "actual_wordpress_import_tested": false
-  }
+  "verification_scope": "V2: data consistency, author preservation, shortcode structure, JS syntax and isolated SQLite import. V1 UI tests apply to unchanged JS/CSS; no new WordPress publication."
 }

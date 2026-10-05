@@ -4246,7 +4246,7 @@
 <!-- EDYTUJ GATUNKI: kolejne wartości oddzielaj znakiem | -->
 <p class="fzsl-gatunki">fantastyka postapokaliptyczna | psychologiczna science fiction</p>
 <!-- EDYTUJ TAGI: kolejne wartości oddzielaj znakiem | -->
-<p class="fzsl-tagi">wieloryby | ocean | katastrofa klimatyczna | wędrówka | poczucie winy | wymieranie gatunków</p>
+<p class="fzsl-tagi">wieloryby | ocean | katastrofa klimatyczna | wędrówka | poczucie winy | wymieranie</p>
 </div>
 <div class="fzsl-destination">
 <p class="fzsl-antologia">Gdy Ziemia miała nas dość</p>
@@ -4260,7 +4260,7 @@
 <!-- EDYTUJ GATUNKI: kolejne wartości oddzielaj znakiem | -->
 <p class="fzsl-gatunki">science fantasy | fantastyka postapokaliptyczna</p>
 <!-- EDYTUJ TAGI: kolejne wartości oddzielaj znakiem | -->
-<p class="fzsl-tagi">bunt natury | mutanci | sztuczna inteligencja | wojna | inżynieria genetyczna | miłość | zdrada</p>
+<p class="fzsl-tagi">bunt natury | mutanty | sztuczna inteligencja | wojna | inżynieria genetyczna | miłość | zdrada</p>
 </div>
 <div class="fzsl-destination">
 <p class="fzsl-antologia">Gdy Ziemia miała nas dość</p>
@@ -4274,7 +4274,7 @@
 <!-- EDYTUJ GATUNKI: kolejne wartości oddzielaj znakiem | -->
 <p class="fzsl-gatunki">fantastyka postapokaliptyczna | przygodowa science fiction</p>
 <!-- EDYTUJ TAGI: kolejne wartości oddzielaj znakiem | -->
-<p class="fzsl-tagi">mutanci | inżynieria genetyczna | katastrofa klimatyczna | cyborgi | przetrwanie | wędrówka | wolność</p>
+<p class="fzsl-tagi">mutanty | inżynieria genetyczna | katastrofa klimatyczna | cyborgi | przetrwanie | wędrówka | wolność</p>
 </div>
 <div class="fzsl-destination">
 <p class="fzsl-antologia">Gdy Ziemia miała nas dość</p>
@@ -4330,7 +4330,7 @@
 <!-- EDYTUJ GATUNKI: kolejne wartości oddzielaj znakiem | -->
 <p class="fzsl-gatunki">science fantasy</p>
 <!-- EDYTUJ TAGI: kolejne wartości oddzielaj znakiem | -->
-<p class="fzsl-tagi">religia | nauka | fanatyzm | pierwszy kontakt | rodzina | eksperymenty | latające miasta</p>
+<p class="fzsl-tagi">religia | badania naukowe | fanatyzm | pierwszy kontakt | rodzina | eksperymenty | latające miasto</p>
 </div>
 <div class="fzsl-destination">
 <p class="fzsl-antologia">Światła na niebie</p>
@@ -4344,7 +4344,7 @@
 <!-- EDYTUJ GATUNKI: kolejne wartości oddzielaj znakiem | -->
 <p class="fzsl-gatunki">groza | science fiction</p>
 <!-- EDYTUJ TAGI: kolejne wartości oddzielaj znakiem | -->
-<p class="fzsl-tagi">rodzeństwo | przemoc domowa | mróz | owady | kosmici | wieś | rodzinna tajemnica</p>
+<p class="fzsl-tagi">rodzeństwo | przemoc domowa | mróz | owady | kosmici | wieś | tajemnica rodzinna</p>
 </div>
 <div class="fzsl-destination">
 <p class="fzsl-antologia">Światła na niebie</p>
@@ -4358,7 +4358,7 @@
 <!-- EDYTUJ GATUNKI: kolejne wartości oddzielaj znakiem | -->
 <p class="fzsl-gatunki">weird fiction | groza kosmiczna</p>
 <!-- EDYTUJ TAGI: kolejne wartości oddzielaj znakiem | -->
-<p class="fzsl-tagi">opuszczone miasto | rytuały | tajemniczy dom | niepewna rzeczywistość | inne wymiary | tożsamość | obce istoty</p>
+<p class="fzsl-tagi">opuszczone miasto | rytuał | tajemniczy dom | niepewna rzeczywistość | inne wymiary | tożsamość | obce byty</p>
 </div>
 <div class="fzsl-destination">
 <p class="fzsl-antologia">Światła na niebie</p>
@@ -4470,7 +4470,7 @@
 <!-- EDYTUJ GATUNKI: kolejne wartości oddzielaj znakiem | -->
 <p class="fzsl-gatunki">groza ludowa | kryminał</p>
 <!-- EDYTUJ TAGI: kolejne wartości oddzielaj znakiem | -->
-<p class="fzsl-tagi">wieś | pogrzeb | rytuały | duchy | opętanie | przestępczość | matka i syn</p>
+<p class="fzsl-tagi">wieś | pogrzeb | rytuał | duchy | opętanie | przestępczość | matka i syn</p>
 </div>
 <div class="fzsl-destination">
 <p class="fzsl-antologia">Zbrodnia doskonała</p>
@@ -4498,7 +4498,7 @@
 <!-- EDYTUJ GATUNKI: kolejne wartości oddzielaj znakiem | -->
 <p class="fzsl-gatunki">science fantasy | groteska</p>
 <!-- EDYTUJ TAGI: kolejne wartości oddzielaj znakiem | -->
-<p class="fzsl-tagi">Mały Książę | moc opowieści | podróże kosmiczne | zemsta | miłość | metamorfoza | czarny humor</p>
+<p class="fzsl-tagi">Mały Książę | moc opowieści | podróże kosmiczne | zemsta | miłość | przemiana | czarny humor</p>
 </div>
 <div class="fzsl-destination">
 <p class="fzsl-antologia">Zbrodnia doskonała</p>
@@ -4512,7 +4512,7 @@
 <!-- EDYTUJ GATUNKI: kolejne wartości oddzielaj znakiem | -->
 <p class="fzsl-gatunki">dark fantasy | kryminał</p>
 <!-- EDYTUJ TAGI: kolejne wartości oddzielaj znakiem | -->
-<p class="fzsl-tagi">śledztwo | zaginięcia | sekta | rytuały | nieśmiertelność | las | izolacja</p>
+<p class="fzsl-tagi">śledztwo | zaginięcie | sekta | rytuał | nieśmiertelność | las | izolacja</p>
 </div>
 <div class="fzsl-destination">
 <p class="fzsl-antologia">Zbrodnia doskonała</p>
@@ -4554,7 +4554,7 @@
 <!-- EDYTUJ GATUNKI: kolejne wartości oddzielaj znakiem | -->
 <p class="fzsl-gatunki">urban fantasy | satyra</p>
 <!-- EDYTUJ TAGI: kolejne wartości oddzielaj znakiem | -->
-<p class="fzsl-tagi">pisarstwo | elfy | portale | starzenie się | samotność | przekład literacki | moc opowieści</p>
+<p class="fzsl-tagi">pisarstwo | elfy | portale | starość | samotność | przekład literacki | moc opowieści</p>
 </div>
 <div class="fzsl-destination">
 <p class="fzsl-antologia">Obieżyświaty</p>
@@ -4596,7 +4596,7 @@
 <!-- EDYTUJ GATUNKI: kolejne wartości oddzielaj znakiem | -->
 <p class="fzsl-gatunki">socjologiczna science fiction</p>
 <!-- EDYTUJ TAGI: kolejne wartości oddzielaj znakiem | -->
-<p class="fzsl-tagi">ojciec i syn | ból | empatia | szczepionki | zwierzęta | dylemat moralny | dzieciństwo</p>
+<p class="fzsl-tagi">ojciec i syn | ból | empatia | szczepionki | zwierzęta | moralność | dzieciństwo</p>
 </div>
 <div class="fzsl-destination">
 <p class="fzsl-antologia">Obieżyświaty</p>
@@ -4610,7 +4610,7 @@
 <!-- EDYTUJ GATUNKI: kolejne wartości oddzielaj znakiem | -->
 <p class="fzsl-gatunki">fantasy baśniowe</p>
 <!-- EDYTUJ TAGI: kolejne wartości oddzielaj znakiem | -->
-<p class="fzsl-tagi">elfy | dusza | muzyka | przemiana | przyroda | industrializacja | tęsknota za domem</p>
+<p class="fzsl-tagi">elfy | dusza | muzyka | przemiana | natura | industrializacja | tęsknota za domem</p>
 </div>
 <div class="fzsl-destination">
 <p class="fzsl-antologia">Obieżyświaty</p>
@@ -4652,7 +4652,7 @@
 <!-- EDYTUJ GATUNKI: kolejne wartości oddzielaj znakiem | -->
 <p class="fzsl-gatunki">fantasy mitologiczne</p>
 <!-- EDYTUJ TAGI: kolejne wartości oddzielaj znakiem | -->
-<p class="fzsl-tagi">legendarne miasto | podróż | bogowie | proroctwo | przemijanie | piękno | zagłada</p>
+<p class="fzsl-tagi">legendarne miasto | podróż | bogowie | przepowiednie | upływ czasu | piękno | zagłada</p>
 </div>
 <div class="fzsl-destination">
 <p class="fzsl-antologia">Obieżyświaty</p>
@@ -4708,7 +4708,7 @@
 <!-- EDYTUJ GATUNKI: kolejne wartości oddzielaj znakiem | -->
 <p class="fzsl-gatunki">fantastyka filozoficzna</p>
 <!-- EDYTUJ TAGI: kolejne wartości oddzielaj znakiem | -->
-<p class="fzsl-tagi">śmierć | nieszczęśliwa miłość | samotność | restauracja | Londyn | rozmowa</p>
+<p class="fzsl-tagi">śmierć | nieodwzajemniona miłość | samotność | restauracja | Londyn | rozmowa</p>
 </div>
 <div class="fzsl-destination">
 <p class="fzsl-antologia">Obieżyświaty</p>
@@ -4736,7 +4736,7 @@
 <!-- EDYTUJ GATUNKI: kolejne wartości oddzielaj znakiem | -->
 <p class="fzsl-gatunki">thriller psychologiczny | kryminał</p>
 <!-- EDYTUJ TAGI: kolejne wartości oddzielaj znakiem | -->
-<p class="fzsl-tagi">Namibia | pustynia | kradzież tożsamości | sobowtór | Stasi | przetrwanie | przekład literacki</p>
+<p class="fzsl-tagi">Namibia | pustynia | kradzież tożsamości | sobowtóry | Stasi | przetrwanie | przekład literacki</p>
 </div>
 <div class="fzsl-destination">
 <p class="fzsl-antologia">Sępom na pożarcie</p>
@@ -4750,7 +4750,7 @@
 <!-- EDYTUJ GATUNKI: kolejne wartości oddzielaj znakiem | -->
 <p class="fzsl-gatunki">kryminał | dramat psychologiczny</p>
 <!-- EDYTUJ TAGI: kolejne wartości oddzielaj znakiem | -->
-<p class="fzsl-tagi">matka i dziecko | uzależnienie | policyjne negocjacje | żałoba | muzyka | wykluczenie społeczne | Niemcy</p>
+<p class="fzsl-tagi">matka i dziecko | uzależnienie | negocjacje | policja | żałoba | muzyka | wykluczenie | Niemcy</p>
 </div>
 <div class="fzsl-destination">
 <p class="fzsl-antologia">Sępom na pożarcie</p>
@@ -4764,7 +4764,7 @@
 <!-- EDYTUJ GATUNKI: kolejne wartości oddzielaj znakiem | -->
 <p class="fzsl-gatunki">kryminał</p>
 <!-- EDYTUJ TAGI: kolejne wartości oddzielaj znakiem | -->
-<p class="fzsl-tagi">śledztwo | zaginięcie | dziennikarstwo | wspomnienia | tajemnica z przeszłości | monarchia | Niemcy</p>
+<p class="fzsl-tagi">śledztwo | zaginięcie | dziennikarz | wspomnienia | tajemnica z przeszłości | monarchia | Niemcy</p>
 </div>
 <div class="fzsl-destination">
 <p class="fzsl-antologia">Sępom na pożarcie</p>
@@ -4820,7 +4820,7 @@
 <!-- EDYTUJ GATUNKI: kolejne wartości oddzielaj znakiem | -->
 <p class="fzsl-gatunki">kryminał | thriller psychologiczny</p>
 <!-- EDYTUJ TAGI: kolejne wartości oddzielaj znakiem | -->
-<p class="fzsl-tagi">miłość | więzienie | korespondencja | zaufanie | sekrety | szpital | Niemcy</p>
+<p class="fzsl-tagi">miłość | więzienie | korespondencja | zaufanie | tajemnica | szpital | Niemcy</p>
 </div>
 <div class="fzsl-destination">
 <p class="fzsl-antologia">Sępom na pożarcie</p>

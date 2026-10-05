@@ -1,58 +1,35 @@
-TAGI I GATUNKI — PIĘĆ ANTOLOGII / PEŁNA STRONA AVADA
+TAGI I GATUNKI — PIĘĆ ANTOLOGII / AVADA — WERSJA 2
 
-Zakres: 43 opowiadania:
-- Sępom na pożarcie: 8
-- Obieżyświaty: 12
-- Zbrodnia doskonała: 7
-- Światła na niebie: 10
-- Gdy Ziemia miała nas dość: 6
+Ta paczka zastępuje poprzednią paczkę tagi_5_antologii_avada_2026-10-05.
+43 nowe opowiadania, 291 opowiadań łącznie, 26 antologii, 817 tagów w filtrze.
+20 nazw ujednolicono do wcześniejszego słownika. Wykaz zmian: UJEDNOLICENIE.txt.
+Zachowano dokładny zapis wszystkich autorów z poprzedniej wersji strony.
+Dotychczasowych 248 wpisów nie zmieniono. Nowe gatunki „thriller psychologiczny” i „dramat społeczny” zachowano jako odrębne kategorie, a nie synonimy wcześniejszych.
 
-Tagi i gatunki opracowano na podstawie treści RTF. To klasyfikacja redakcyjna, nie oficjalne deklaracje autorów. Nie przenoszono treści opowiadań do plików wynikowych.
+AVADA
+Zastąp całą treść strony w trybie edycji kodu/shortcode zawartością strona_avada_pelny_kod.txt.
+Nie doklejaj kodu do starej strony i nie wklejaj całości do jednego Code Block.
+Zapisz stronę, sprawdź podgląd; w razie potrzeby wyczyść cache Avady/WordPressa.
+Tagi, także po rozwinięciu listy i wyszukiwaniu, pozostają sortowane malejąco po liczniku, przy remisie według polskiego alfabetu.
+Licznik dotyczy całego katalogu. Strona nie synchronizuje się automatycznie z CMS.
 
-1. IMPORT DO CMS
-
+IMPORT DO CMS
 Wgraj tagi_gatunki_5_antologii.csv do katalogu z manage.py.
-W paczce jest również dotychczasowy importer, zgodny z najnowszą dostępną lokalnie wersją CMS. Jeżeli polecenie import_tags_genres jest już na serwerze, nie musisz go ponownie kopiować. Jeśli go brakuje, skopiuj plik z paczki, zachowując ścieżkę:
-texts/management/commands/import_tags_genres.py
+Jeśli nie masz polecenia import_tags_genres, skopiuj do projektu plik z paczki, zachowując ścieżkę texts/management/commands/import_tags_genres.py.
+Importer nie zmienił się względem poprzedniej paczki.
 
-Uruchom z katalogu z manage.py, w swoim środowisku Pythona:
-
+Podgląd, bez zapisu:
 python manage.py import_tags_genres tagi_gatunki_5_antologii.csv
 
-To wyłącznie podgląd — bez zapisu. Polecenie wypisze ścieżki raportów HTML i JSON z niepowtarzalną datą w nazwie. Sprawdź status KONTROLA_OK i 43 poprawnie dopasowane wiersze.
-
-Następnie wykonaj zapis:
-
+Po potwierdzeniu KONTROLA_OK i 43 dopasowanych wierszy:
 python manage.py import_tags_genres tagi_gatunki_5_antologii.csv --apply
 
-Zapis potwierdza status ZAPISANO. Przy pierwszym imporcie, jeżeli wszystkich wartości jeszcze brakuje, raport powinien pokazać 43 zmienione teksty. Mniejsza liczba może oznaczać, że część wartości już była w bazie.
+To import dopisujący: zachowuje wcześniejsze wartości, nie zmienia autorów, tytułów ani workflow. Rozbieżność tytułu lub antologii przerywa całość bez zapisu.
+Jeżeli poprzedni CSV został już zaimportowany do produkcji, nowe uruchomienie NIE usunie wcześniejszych wariantów tagów. W takim przypadku potrzebna jest osobna zamiana starych nazw w bazie według UJEDNOLICENIE.txt; tej paczki nie należy traktować jako skryptu czyszczenia istniejących danych.
+Migracje ani collectstatic nie są potrzebne; zakładamy wdrożone już pola Tagi i Gatunek.
+Tytuły odpowiadają wcześniejszym importom archiwum i tłumaczeń, w tym „Zielone płuca koszmaru”. Bieżące dopasowanie do produkcji potwierdzi podgląd na serwerze.
 
-Importer dopisuje tagi i gatunki do Text.tags oraz Text.genre, zachowuje dotychczasowe wartości i pomija powtórzenia. Nie zmienia autorów, tytułów, długości, przypisań, etapów ani dat. Nie tworzy nowych opowiadań. Tytuł i antologia muszą wskazywać dokładnie jeden istniejący rekord. Jakakolwiek rozbieżność zatrzymuje całą paczkę bez zapisu. Ponowne wykonanie z tym samym CSV jest bezpieczne pod względem duplikowania wartości.
-
-Nazwy antologii i tytuły w CSV odpowiadają wcześniejszym paczkom import_archiwum.json (v14) i import_tlumaczenia.json. Zostaje m.in. tytuł „Zielone płuca koszmaru”, użyty przy imporcie archiwum. RTF posłużył do analizy treści; ta operacja nie przemianowuje rekordów CMS. Nie sprawdzano bieżącej bazy PythonAnywhere — kontrolę rzeczywistego dopasowania wykona polecenie podglądu na serwerze.
-
-Format CSV: UTF-8 z BOM, separator średnik, sześć kolumn lp;text_id;antologia;tytul;tagi;gatunek. text_id pozostawiono puste celowo, bo identyfikatory bazy produkcyjnej nie są znane. Wartości tagów i gatunków w obrębie pola rozdziela przecinek.
-
-Nie są potrzebne nowe migracje ani collectstatic dla tej paczki danych. Zakładamy już wdrożone pola Tagi i Gatunek.
-
-2. AVADA
-
-strona_avada_pelny_kod.txt zawiera CAŁĄ stronę: układ, style, skrypt, 248 zachowanych rekordów oraz 43 nowe — razem 291 opowiadań w 26 antologiach.
-
-Otwórz istniejącą stronę „Szukaj opowiadań” w edycji kodu/shortcode WordPressa. Zastąp całą treść strony zawartością pliku TXT. Nie doklejaj kodu do starego i nie wklejaj całego pliku do pojedynczego Code Block. Zapisz, sprawdź podgląd i w razie potrzeby wyczyść cache WordPressa/Avady.
-
-Wszystkie 248 dotychczasowych bloków opowiadań zachowano bez zmian, łącznie z dokładnym zapisem nazw autorów. Autorzy 43 nowych pozycji pochodzą z danych publikacji RTF. Nie ujednolicano nazwisk z profilami CMS.
-
-Popularne tagi, pierwsza część listy oraz pełna lista po rozwinięciu są uporządkowane malejąco według liczby opowiadań. Przy remisie obowiązuje alfabet polski. Wyszukiwanie tagów zachowuje tę kolejność. Licznik oznacza liczbę opowiadań w całym katalogu mających dany tag; jeden tekst liczy się dla jednego tagu tylko raz. Liczniki nie maleją po włączeniu filtra gatunku. Obecnie katalog zawiera 837 unikatowych tagów po normalizacji używanej przez skrypt strony.
-
-Układ pozostał zgodny z przesłanym kodem. To statyczna kopia katalogu: późniejsza edycja w CMS nie aktualizuje automatycznie WordPressa.
-
-nowe_opowiadania.json to pomocniczy, czytelny wykaz 43 nowych pozycji z autorami, tagami i gatunkami. Nie podawaj go importerowi — importer przyjmuje CSV.
-
-3. WERYFIKACJA
-
-Na odizolowanej bazie SQLite sprawdzono wszystkie 43 wiersze: podgląd bez zmian, zapis, zachowanie wcześniejszych wartości i autorów, rozróżnienie tego samego tytułu w różnych antologiach, przerwanie całego importu przy brakującym tytule oraz ponowny import bez powtórzeń.
-
-W lokalnym podglądzie strony sprawdzono: 291 rekordów, 26 antologii, 837 liczników, kolejność całej rozwiniętej listy, wyszukiwarkę tagów, filtrowanie tagiem i gatunkiem, nowe antologie oraz przycisk kolejnych wyników. Nie wykonano publikacji w WordPressie ani importu w produkcyjnej bazie.
-
-Pliki PNG pokazują lokalny podgląd; nie trzeba ich wgrywać do CMS ani Avady.
+WERYFIKACJA
+Sprawdzono zgodność 43 wierszy CSV z kodem strony i JSON, zachowanie 291 nazw autorów i wszystkich 248 dotychczasowych bloków, brak starych wariantów wskazanych w mapowaniu oraz poprawną strukturę shortcode i składnię JS.
+Import sprawdzono na odizolowanej bazie SQLite: podgląd bez zmian, zapis 43 rekordów, przerwanie przy brakującym tytule, zachowanie istniejących danych i autorów, ponowny zapis bez duplikatów.
+CSS i JavaScript są identyczne z poprzednią przetestowaną wersją. Nie zmieniano bazy produkcyjnej ani nie publikowano strony.

@@ -1,10 +1,9 @@
 {
-  "INSTRUKCJA.txt": "23633d0fb9732ba09b4a406d915180f62b89764687012abcb1378572fc0aaa77",
-  "nowe_opowiadania.json": "95c00de181a1222f1dbbe7199f3eb55e6f58b7dc7cfde63f451376dac42d32b9",
-  "podglad.png": "2abf5434bcc32e7246ec6e11fe703df0737d226484d67deaf6795049dd8463ab",
-  "podglad_sortowania_tagow.png": "a9b6535529e3b8c047bd9f397b52d3ced573e24525d91f3a21cac3ada4aaab3c",
-  "strona_avada_pelny_kod.txt": "80399b40fa6a948befa357854f50d32f9c6be44f09805cb212dc351231ad548c",
-  "tagi_gatunki_5_antologii.csv": "4ecf08156d86b52105cd0028581cccb2ab830abf04b02a0c994cd1343abe1850",
-  "weryfikacja.json": "8ae127a9e252e4e296ebb0c50eb5eca75ae3a41d2dcda28fc2cb9d79c00b9d52",
-  "texts/management/commands/import_tags_genres.py": "d33b375616da3eef6349be83e8917657b5ae453dbc149255e83b8d5c59641ef6"
+  "INSTRUKCJA.txt": "6c7dfd22aa665a2642dca6d78663bafc2b76c50ff4cfdbe33214f717121d9a8e",
+  "nowe_opowiadania.json": "41ce3655c6a83f037a8b5e71951c410f54899d8cba1dcb08088170fab95bed1b",
+  "strona_avada_pelny_kod.txt": "2ded03f9371d9dc14d0098690413583f98868bf8d445207e5a05658d9b64be3a",
+  "tagi_gatunki_5_antologii.csv": "34f9ef2f969784dff6a28557ee64bb9ccc8fad77cb22fdc67b3e17b6dcd6ebed",
+  "texts/management/commands/import_tags_genres.py": "d33b375616da3eef6349be83e8917657b5ae453dbc149255e83b8d5c59641ef6",
+  "UJEDNOLICENIE.txt": "e52a14c262cbe6df7d9df288937e533999a3117eb746d2be10491d726127adf8",
+  "weryfikacja.json": "d2581329872fe6bafc59b19e7b36420712d5f8fba7c585bc1d9f36d51d2513a7"
 }

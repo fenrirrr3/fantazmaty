@@ -1,0 +1,34 @@
+UJEDNOLICENIE NOWYCH TAGÓW — WERSJA 2
+
+Zmieniono nazewnictwo w 43 nowych opowiadaniach. Dotychczasowe 248 wpisów pozostaje bez zmian.
+Poniższe formy zostały dopasowane do wcześniejszego słownika; złożone policyjne negocjacje rozbito na dwa istniejące tagi.
+
+mutanci → mutanty (2 wystąpień)
+przyroda → natura (1 wystąpień)
+latające miasta → latające miasto (1 wystąpień)
+rodzinna tajemnica → tajemnica rodzinna (1 wystąpień)
+obce istoty → obce byty (1 wystąpień)
+rytuały → rytuał (3 wystąpień)
+metamorfoza → przemiana (1 wystąpień)
+zaginięcia → zaginięcie (1 wystąpień)
+proroctwo → przepowiednie (1 wystąpień)
+sobowtór → sobowtóry (1 wystąpień)
+wykluczenie społeczne → wykluczenie (1 wystąpień)
+wymieranie gatunków → wymieranie (1 wystąpień)
+starzenie się → starość (1 wystąpień)
+sekrety → tajemnica (1 wystąpień)
+nieszczęśliwa miłość → nieodwzajemniona miłość (1 wystąpień)
+policyjne negocjacje → negocjacje, policja (1 wystąpień)
+dylemat moralny → moralność (1 wystąpień)
+dziennikarstwo → dziennikarz (1 wystąpień)
+nauka → badania naukowe (1 wystąpień)
+przemijanie → upływ czasu (1 wystąpień)
+
+Gatunki: 31 z 33 nazw już istnieje. Zachowano dwa odrębne określenia: thriller psychologiczny oraz dramat społeczny.
+Thriller psychologiczny jest podgatunkiem thrillera, a dramat społeczny nie jest synonimem dramatu psychologicznego.
+Nie scalano też pojęć jedynie pokrewnych: inżynieria genetyczna / genetyka, katastrofa klimatyczna / katastrofa, czarnoksiężnicy / magowie.
+Tag nieodwzajemniona miłość dobrano w Kolacji do odrzuconego zaproszenia bohatera.
+Badania naukowe zastępują naukę w tekście o badaniach nad eterem; dziennikarz zastępuje dziennikarstwo w historii zaginionego reportera.
+
+Pozostałe nowe etykiety opisują odrębne motywy, osoby, miejsca albo bardziej szczegółowe pojęcia:
+Beskidy, Boże Narodzenie, Indie, Inkowie, Mały Książę, Namibia, Niemcy, Polska, Stasi, Syberia, UFO, bunt natury, ból, cenzura, chciwość, codzienność, czarnoksiężnicy, depresja, detektyw, dom opieki, elektrownia jądrowa, emigracja, empatia, hipokryzja, industrializacja, inżynieria genetyczna, jaskinie, jedzenie, katastrofa klimatyczna, konflikt kulturowy, korespondencja, kradzież tożsamości, laboratorium, lata trzydzieste, legendarne miasto, matka i dziecko, matka i syn, mistycyzm, moc opowieści, monarchia, mróz, obca technologia, opuszczone miasto, owady, piękno, początki życia, podróż, podróże astralne, pogrzeb, portale, przekład literacki, przestępczość, psychiatria, renesans, rozbójnicy, rozmowa, solidarność, sonda kosmiczna, starożytne artefakty, szamanizm, szczepionki, szczury, tajemnica z przeszłości, tajemniczy dom, transhumanizm, umysł, utrata dziecka, wieloryby, zagłada przyrody, zaufanie, zbiorowa odpowiedzialność, zbrodnia, zmowa milczenia, zwierzęta

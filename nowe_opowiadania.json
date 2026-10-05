@@ -26,7 +26,7 @@
       "katastrofa klimatyczna",
       "wędrówka",
       "poczucie winy",
-      "wymieranie gatunków"
+      "wymieranie"
     ],
     "genres": [
       "fantastyka postapokaliptyczna",
@@ -40,7 +40,7 @@
     "anthology": "Gdy Ziemia miała nas dość",
     "tags": [
       "bunt natury",
-      "mutanci",
+      "mutanty",
       "sztuczna inteligencja",
       "wojna",
       "inżynieria genetyczna",
@@ -58,7 +58,7 @@
     "author": "Andrzej W. Sawicki",
     "anthology": "Gdy Ziemia miała nas dość",
     "tags": [
-      "mutanci",
+      "mutanty",
       "inżynieria genetyczna",
       "katastrofa klimatyczna",
       "cyborgi",
@@ -135,12 +135,12 @@
     "anthology": "Światła na niebie",
     "tags": [
       "religia",
-      "nauka",
+      "badania naukowe",
       "fanatyzm",
       "pierwszy kontakt",
       "rodzina",
       "eksperymenty",
-      "latające miasta"
+      "latające miasto"
     ],
     "genres": [
       "science fantasy"
@@ -158,7 +158,7 @@
       "owady",
       "kosmici",
       "wieś",
-      "rodzinna tajemnica"
+      "tajemnica rodzinna"
     ],
     "genres": [
       "groza",
@@ -172,12 +172,12 @@
     "anthology": "Światła na niebie",
     "tags": [
       "opuszczone miasto",
-      "rytuały",
+      "rytuał",
       "tajemniczy dom",
       "niepewna rzeczywistość",
       "inne wymiary",
       "tożsamość",
-      "obce istoty"
+      "obce byty"
     ],
     "genres": [
       "weird fiction",
@@ -323,7 +323,7 @@
     "tags": [
       "wieś",
       "pogrzeb",
-      "rytuały",
+      "rytuał",
       "duchy",
       "opętanie",
       "przestępczość",
@@ -364,7 +364,7 @@
       "podróże kosmiczne",
       "zemsta",
       "miłość",
-      "metamorfoza",
+      "przemiana",
       "czarny humor"
     ],
     "genres": [
@@ -379,9 +379,9 @@
     "anthology": "Zbrodnia doskonała",
     "tags": [
       "śledztwo",
-      "zaginięcia",
+      "zaginięcie",
       "sekta",
-      "rytuały",
+      "rytuał",
       "nieśmiertelność",
       "las",
       "izolacja"
@@ -438,7 +438,7 @@
       "pisarstwo",
       "elfy",
       "portale",
-      "starzenie się",
+      "starość",
       "samotność",
       "przekład literacki",
       "moc opowieści"
@@ -496,7 +496,7 @@
       "empatia",
       "szczepionki",
       "zwierzęta",
-      "dylemat moralny",
+      "moralność",
       "dzieciństwo"
     ],
     "genres": [
@@ -513,7 +513,7 @@
       "dusza",
       "muzyka",
       "przemiana",
-      "przyroda",
+      "natura",
       "industrializacja",
       "tęsknota za domem"
     ],
@@ -566,8 +566,8 @@
       "legendarne miasto",
       "podróż",
       "bogowie",
-      "proroctwo",
-      "przemijanie",
+      "przepowiednie",
+      "upływ czasu",
       "piękno",
       "zagłada"
     ],
@@ -638,7 +638,7 @@
     "anthology": "Obieżyświaty",
     "tags": [
       "śmierć",
-      "nieszczęśliwa miłość",
+      "nieodwzajemniona miłość",
       "samotność",
       "restauracja",
       "Londyn",
@@ -676,7 +676,7 @@
       "Namibia",
       "pustynia",
       "kradzież tożsamości",
-      "sobowtór",
+      "sobowtóry",
       "Stasi",
       "przetrwanie",
       "przekład literacki"
@@ -694,10 +694,11 @@
     "tags": [
       "matka i dziecko",
       "uzależnienie",
-      "policyjne negocjacje",
+      "negocjacje",
+      "policja",
       "żałoba",
       "muzyka",
-      "wykluczenie społeczne",
+      "wykluczenie",
       "Niemcy"
     ],
     "genres": [
@@ -713,7 +714,7 @@
     "tags": [
       "śledztwo",
       "zaginięcie",
-      "dziennikarstwo",
+      "dziennikarz",
       "wspomnienia",
       "tajemnica z przeszłości",
       "monarchia",
@@ -790,7 +791,7 @@
       "więzienie",
       "korespondencja",
       "zaufanie",
-      "sekrety",
+      "tajemnica",
       "szpital",
       "Niemcy"
     ],
