@@ -130,9 +130,7 @@
                             </td>
 
                             <td>
-                                <span class="workflow-stage-badge" data-stage="{{ stage.stage_type }}">
-                                    {{ stage.get_stage_type_display }}
-                                </span>
+                                {% include "core/includes/workflow_badge.html" with workflow_stage=stage %}
                             </td>
 
                             <td>

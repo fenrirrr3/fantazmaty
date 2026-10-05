@@ -147,9 +147,7 @@
                     {% for stage in visible_stages %}
                         <tr class="workflow-stage-row" data-stage="{{ stage.stage_type }}">
                             <td>
-                                <span class="workflow-stage-badge">
-                                    {{ stage.get_stage_type_display }}
-                                </span>
+                                {% include "core/includes/workflow_badge.html" with workflow_stage=stage %}
                                 {% include "core/includes/editorial_decision_result.html" %}
                             </td>
                             <td>
@@ -648,9 +646,9 @@
                             <tr>
                                 <td>
                                     {% if request.user.is_superuser and stage.imported_completed %}
-                                        <a href="{% url 'admin:workflow_workflowstage_change' stage.pk %}">{{ stage.get_stage_type_display }}</a>
+                                        <a href="{% url 'admin:workflow_workflowstage_change' stage.pk %}">{% include "core/includes/workflow_badge.html" with workflow_stage=stage %}</a>
                                     {% else %}
-                                        {{ stage.get_stage_type_display }}
+                                        {% include "core/includes/workflow_badge.html" with workflow_stage=stage %}
                                     {% endif %}
                                     {% include "core/includes/editorial_decision_result.html" %}
                                     {% if stage.assigned_user %}

@@ -118,9 +118,7 @@
 
                             <td data-label="Etap">
                                 {% if text.current_status %}
-                                    <span class="workflow-stage-badge">
-                                        {{ text.current_status.get_stage_type_display }}
-                                    </span>
+                                    {% include "core/includes/workflow_badge.html" with workflow_stage=text.current_status %}
                                 {% else %}
                                     <span class="muted-text">
                                         Bez otwartego etapu

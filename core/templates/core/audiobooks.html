@@ -17,8 +17,8 @@
             <tbody>{% for text in texts %}<tr>
                 <td>{{ text.anthology.title|default:"Brak antologii" }}</td>
                 <td>{{ text.authors_display|default:"Brak przypisanego autora" }}</td>
-                <td><a href="{% if text.is_translation %}{% url 'core:translation_detail' text.pk %}{% else %}{% url 'core:assigned_text_detail' text.pk %}{% endif %}">{{ text.title }}</a></td>
-                <td>{{ text.current_status.get_stage_type_display|default:"Brak etapu" }}</td>
+                <td><a href="{% if text.is_translation %}{% url 'core:translation_detail' text.pk %}{% else %}{% url 'core:assigned_text_detail' text.pk %}{% endif %}" class="text-title-link"><strong>{{ text.title }}</strong></a></td>
+                <td>{% include "core/includes/workflow_badge.html" with workflow_stage=text.current_status %}</td>
             </tr>{% empty %}<tr><td colspan="4">Brak tekstów do nagrywania.</td></tr>{% endfor %}</tbody>
         </table>
     </div>

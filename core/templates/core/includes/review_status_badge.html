@@ -1,0 +1,1 @@
+<span class="stage-status {% if review.status == 'to_decide' %}decision-status {% endif %}{% if review.status == 'accepted' %}completed{% elif review.status == 'rejected' or review.status == 'withdrawn' %}withdrawn{% elif review.status == 'in_review' %}active{% else %}pending{% endif %}">{{ review.get_status_display }}</span>

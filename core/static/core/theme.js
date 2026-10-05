@@ -44,8 +44,9 @@
         const stagePalettes = {
             editing: 'editing', author_editing: 'editing', editing_review: 'editing',
             editing_control: 'coordinator', coordinator_control: 'coordinator', editor_control: 'editing',
-            ready_for_editing: 'ready-for-editing', ready: 'ready', styling: 'styling',
+            ready_for_editing: 'ready-for-editing', ready: 'ready', withdrawn: 'withdrawn', styling: 'styling',
             first_verification: 'verification', second_verification: 'verification', third_verification: 'verification', fourth_verification: 'verification',
+            fifth_verification: 'verification', sixth_verification: 'verification', seventh_verification: 'verification',
             first_proofreading: 'proofreading', second_proofreading: 'proofreading', third_proofreading: 'proofreading', fourth_proofreading: 'proofreading'
         };
         document.querySelectorAll(".role-badge, .workflow-stage-badge").forEach(el => {

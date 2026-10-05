@@ -41,6 +41,7 @@
 [data-palette="verification"] { --palette-bg: var(--verification-bg); --palette-fg: var(--verification-fg); }
 [data-palette="styling"] { --palette-bg: var(--styling-bg); --palette-fg: var(--styling-fg); }
 [data-palette="ready"] { --palette-bg: var(--ready-bg); --palette-fg: var(--ready-fg); }
+[data-palette="withdrawn"] { --palette-bg: var(--danger-light); --palette-fg: var(--danger-dark); }
 .role-badge[data-palette], .workflow-stage-badge[data-palette] { background: var(--palette-bg); color: var(--palette-fg); border-color: currentColor; }
 .workflow-stage-row[data-palette] > td:first-child { border-left: 3px solid var(--palette-fg); }
 :root[data-theme="dark"] :is(.withdraw-text-button,.reject-review-button,.unassign-button,.vacation-end-button):hover { color: var(--danger-dark); background: var(--danger-light); border-color: var(--danger); }

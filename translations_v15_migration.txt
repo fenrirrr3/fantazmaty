@@ -1,5 +1,0 @@
-
-Przypisania: scalono 0 pustych duplikatów, przywrócono 0 przypisań osób.
-
-Zespół tekstu: przywrócono 0 przypisań, scalono 0 pustych rekordów.
-OK: migracja 0022 -> 0023 zachowuje osoby, relacje, e-maile, ID tekstów i powiązania zwykłych tekstów; oddzielne modele i powiązania tłumaczeń.

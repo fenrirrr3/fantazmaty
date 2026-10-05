@@ -23,7 +23,7 @@
 </form></div></section>
 <section class="card"><div class="table-container" tabindex="0" role="region" aria-label="Tabela tagów">
     <table data-server-paginated="true"><caption class="visually-hidden">Tagi tekstów przyjętych do wydania</caption><thead><tr><th scope="col">Antologia</th><th scope="col">Tytuł</th><th scope="col">Imię i nazwisko autora</th><th scope="col">Tagi</th><th scope="col">Gatunek</th></tr></thead><tbody>
-    {% for item in page_obj %}<tr><td>{{ item.anthology.title|default:"Brak antologii" }}</td><td><a href="{% url 'core:assigned_text_detail' item.pk %}#text-tags-heading"><strong>{{ item.title }}</strong></a></td><td>{% for author in item.authors.all %}<div>{{ author.first_name }} {{ author.last_name }}</div>{% empty %}Brak danych{% endfor %}</td><td class="text-tags-cell">{{ item.tags|default:"Brak tagów" }}</td><td>{{ item.tag_genre|default:"Brak danych" }}</td></tr>{% empty %}<tr><td colspan="5">Brak tekstów spełniających kryteria.</td></tr>{% endfor %}
+    {% for item in page_obj %}<tr><td>{{ item.anthology.title|default:"Brak antologii" }}</td><td><a href="{% url 'core:assigned_text_detail' item.pk %}#text-tags-heading" class="text-title-link"><strong>{{ item.title }}</strong></a></td><td>{% for author in item.authors.all %}<div>{{ author.first_name }} {{ author.last_name }}</div>{% empty %}Brak danych{% endfor %}</td><td class="text-tags-cell">{{ item.tags|default:"Brak tagów" }}</td><td>{{ item.tag_genre|default:"Brak danych" }}</td></tr>{% empty %}<tr><td colspan="5">Brak tekstów spełniających kryteria.</td></tr>{% endfor %}
     </tbody></table>
 </div></section>
 {% include "core/includes/pagination.html" %}

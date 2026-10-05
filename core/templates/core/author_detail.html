@@ -278,10 +278,10 @@
             <tbody>
                 {% for review in historical_reviews %}
                     <tr>
-                        <td data-double-copy class="sticky-title"><a href="{% url 'core:assigned_review_detail' review.pk %}" class="detail-link">{{ review.title }}</a></td>
+                        <td data-double-copy class="sticky-title"><a href="{% url 'core:assigned_review_detail' review.pk %}" class=" text-title-link"><strong>{{ review.title }}</strong></a></td>
                         <td>{{ review.anthology.title }}</td>
                         <td>{{ review.created_at|date:"d.m.Y" }}</td>
-                        <td>{{ review.get_status_display }}</td>
+                        <td>{% include "core/includes/review_status_badge.html" %}</td>
                         <td>{{ review.author_notified_at|date:"d.m.Y"|default:"–" }}</td>
                         <td data-copy="false"><a href="{% url 'core:assigned_review_detail' review.pk %}" class="secondary-button">Otwórz</a></td>
                     </tr>

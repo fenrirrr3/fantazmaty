@@ -142,7 +142,7 @@
                             {% endif %}
 
                             <td>
-                                {{ row.stage.get_stage_type_display }}
+                                {% include "core/includes/workflow_badge.html" with workflow_stage=row.stage %}
                                 <div class="muted-text">
                                     
                                 </div>
