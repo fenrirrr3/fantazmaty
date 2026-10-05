@@ -12,7 +12,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import connection, transaction
 from texts.models import Anthology, Text
 
-EXPECTED_SHA256 = '2b6d084957551d85316dd7593a6b6555b5aa17c6360557f9136dad5ee4533dba'
+EXPECTED_SHA256 = '81a02d046728f3f3665a17465cb6b66222c7b447b063d1ce9495362e57baa230'
 
 
 def parts(value):
@@ -57,9 +57,10 @@ class Command(BaseCommand):
         source = Path(options['json_file']).resolve()
         try:
             raw = source.read_bytes()
-            if hashlib.sha256(raw).hexdigest() != EXPECTED_SHA256:
+            payload = json.loads(raw.decode('utf-8-sig'))
+            canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode('utf-8')
+            if hashlib.sha256(canonical).hexdigest() != EXPECTED_SHA256:
                 raise ValueError('Plik danych nie odpowiada tej wersji skryptu. Użyj obu plików z tej samej paczki.')
-            payload = json.loads(raw)
             records = payload['records']
             if len(records) != 43 or len({(r['anthology'], r['title']) for r in records}) != 43:
                 raise ValueError('Wymagane dokładnie 43 różne teksty z tej paczki.')
@@ -75,7 +76,8 @@ class Command(BaseCommand):
         except OSError as exc:
             raise CommandError(f'Nie można utworzyć raportu; baza nietknięta: {exc}') from exc
         report = {'status': 'ROZPOCZĘTO', 'apply': options['apply'], 'time': stamp,
-                  'input_sha256': EXPECTED_SHA256, 'rows': [], 'errors': [],
+                  'input_sha256': hashlib.sha256(raw).hexdigest(),
+                  'canonical_input_sha256': EXPECTED_SHA256, 'rows': [], 'errors': [],
                   'matched': 0, 'planned': 0, 'written': 0, 'replaced_occurrences': 0}
         committed = False
         try:
