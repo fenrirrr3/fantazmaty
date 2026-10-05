@@ -50,6 +50,7 @@ ZASADY
 - „Weryfikacja tłumaczenia” trafia do TextTranslation.original_verifier,
   czyli „Weryfikacja z oryginałem”. Nie tworzy dodatkowego etapu workflow.
 - Kuba Moroński jest zapisany jako Jakub Moroński.
+- Agnieszka Janowska jest zapisana jako Agnieszka Kłych (korekta użytkownika).
 - Imię i nazwisko tłumaczy uporządkowano do osobnych pól.
 - Istniejące osoby są dopasowywane po imieniu i nazwisku bez rozróżnienia wielkości
   liter i nadmiarowych spacji. Nie zgadujemy dawnych nazwisk ani pseudonimów.

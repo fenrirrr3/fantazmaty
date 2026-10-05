@@ -22,3 +22,7 @@ sumy kontrolne źródeł i wyodrębnionych tekstów zapisane w danych importu.
 Aktualizacja tytułów: sprawdzono, że zmieniono wyłącznie trzy tytuły w danych
 importu i zestawieniu pomiarów. Nadal 20 unikalnych par antologia–tytuł.
 Pozostałe wartości danych i kod importera nie zmieniły się. ZIP zweryfikowany.
+
+Korekta osoby: Agnieszka Janowska → Agnieszka Kłych przy „Nieznane dzieło”,
+Redaktor (wyk. 2). Sprawdzono, że jest to jedyna zmiana danych importu
+w tej aktualizacji. Dopasowanie do bazy produkcyjnej sprawdzi nowy podgląd.
