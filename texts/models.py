@@ -305,13 +305,14 @@ class AnthologyTask(models.Model):
 
 
 class Text(NormalizedModelMixin, models.Model):
+    genre = models.CharField("gatunek", max_length=100, blank=True, default="")
     tags = models.TextField("tagi", blank=True, default="", max_length=5000)
 
     file_url = models.URLField("folder Dropbox", max_length=1000, blank=True)
 
     import_source = models.CharField("źródło importu", max_length=100, blank=True, default="", editable=False)
     import_source_row = models.PositiveIntegerField("LP importu", null=True, blank=True, editable=False)
-    normalization_fields = TEXT_FIELDS
+    normalization_fields = {**TEXT_FIELDS, "genre": REVIEW_FIELDS["genre"]}
     title = models.CharField(
         "tytuł",
         max_length=255,

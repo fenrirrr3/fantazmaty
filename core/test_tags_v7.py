@@ -20,7 +20,7 @@ class TagsTests(TestCase):
         cls.book2=Anthology.objects.create(title='Antologia Z')
         cls.author=Author.objects.create(first_name='Anna',last_name='Żak',email='private-author@example.test')
         cls.coauthor=Author.objects.create(first_name='Jan',last_name='Adamczyk',email='private-coauthor@example.test')
-        cls.text=Text.objects.create(title='Łąka',anthology=cls.book,length=100,tags='magia, podróż')
+        cls.text=Text.objects.create(title='Łąka',anthology=cls.book,length=100,tags='magia, podróż',genre='Fantasy')
         cls.text.authors.add(cls.author,cls.coauthor)
         cls.other=Text.objects.create(title='Las',anthology=cls.book2,length=100)
         cls.other.authors.add(cls.author)
@@ -55,7 +55,7 @@ class TagsTests(TestCase):
             self.assertContains(response,value)
         for value in ('private-author@example.test','private-coauthor@example.test','secret-source@example.test','Ukryte Zgłoszenie'):
             self.assertNotContains(response,value)
-        self.review.genre='Horror';self.review.save(update_fields=['genre'])
+        self.text.genre='Horror';self.text.save(update_fields=['genre'])
         self.assertContains(self.client.get(self.list),'Horror')
         self.assertNotContains(self.client.get(self.list),'Fantasy')
 

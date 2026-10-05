@@ -602,6 +602,7 @@ def copy_review_to_text(*, user, review_id, contract_received=False, confirmed_c
 
     text = Text(
         title=review.title,
+        genre=review.genre,
         anthology_id=review.anthology_id,
         length=review.length,
         content_warnings=review.content_warnings,

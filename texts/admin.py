@@ -223,7 +223,7 @@ def review_text_initial(review):
         matches = list(Author.objects.filter(email__iexact=review.email).values_list('pk', flat=True)[:2])
         if len(matches) == 1:
             authors.append(matches[0])
-    return {'title': review.title, 'length': review.length, 'content_warnings': review.content_warnings, 'file_url': review.file_url,
+    return {'title': review.title, 'genre': review.genre, 'length': review.length, 'content_warnings': review.content_warnings, 'file_url': review.file_url,
             'anthology': review.anthology_id, 'authors': sorted(set(authors)),
             'source_author_first_name': review.author_first_name, 'source_author_last_name': review.author_last_name,
             'source_author_email': review.email, 'source_author_pseudonym': review.author_pseudonym}
@@ -346,7 +346,7 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     readonly_fields = ("manual_status_link", "coordinator_note_updated_at", "current_workflow_cycle", "import_source", "import_source_row")
 
     fieldsets = (
-        ('Tekst', {'fields': ('title', 'authors', 'anthology', 'length', 'content_warnings', 'file_url',
+        ('Tekst', {'fields': ('title', 'authors', 'anthology', 'length', 'tags', 'genre', 'content_warnings', 'file_url',
             'source_author_first_name', 'source_author_last_name', 'source_author_email', 'source_author_pseudonym',
             'source_contract_received', 'source_coauthor_contracts', 'source_update_author_phone')}),
         ('Status i zarządzanie', {'fields': ('manual_status_link',)}),
@@ -1015,7 +1015,7 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             return JsonResponse({'error': ' '.join(error.messages)}, status=400)
         data = review_text_initial(review)
         # Refuse a mixture of unsaved form data and the persisted source.
-        for key in ('title', 'length', 'content_warnings', 'file_url', 'anthology', 'source_author_first_name',
+        for key in ('title', 'genre', 'length', 'content_warnings', 'file_url', 'anthology', 'source_author_first_name',
                     'source_author_last_name', 'source_author_email', 'source_author_pseudonym'):
             if key in request.POST and request.POST[key] != str(data[key] if data[key] is not None else ''):
                 return JsonResponse({'error': 'Najpierw zapisz zmiany w recenzji, a następnie ponownie użyj +.'}, status=409)

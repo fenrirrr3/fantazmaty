@@ -3,7 +3,7 @@
 {% block title %}Tagi | Fantazmaty CMS{% endblock %}
 {% block extra_css %}<link rel="stylesheet" href="{% static 'core/tags.css' %}">{% endblock %}
 {% block content %}
-<header class="page-header"><h1>Tagi</h1><p>Tagi tekstów przyjętych do wydania. Kliknij tytuł, aby uzupełnić tagi obok notatek zespołu.</p></header>
+<header class="page-header"><h1>Tagi</h1><p>Tagi tekstów przyjętych do wydania. Kliknij tytuł, aby uzupełnić tagi i gatunek obok notatek zespołu.</p></header>
 <section class="card"><div class="card-body">
 <form method="get" class="tag-filters" aria-label="Filtry tagów">
     <div class="form-field tag-search"><label for="tags-search">Szukaj</label><input id="tags-search" name="q" type="search" value="{{ search }}" maxlength="200" placeholder="Antologia, tytuł, autor, tagi lub gatunek"></div>

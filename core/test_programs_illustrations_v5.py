@@ -158,7 +158,7 @@ class IllustrationWorkspaceTests(TestCase):
         cls.other = create_member('inny-ilustrator-v5','Ilustrator')
         cls.editor = create_member('redaktor-v5','Redaktor')
         cls.book = Anthology.objects.create(title='Ilustrowana',has_illustrations=True)
-        cls.text = Text.objects.create(title='Tytuł ilustracji',anthology=cls.book,length=100,content_warnings='Ostrzeżenia tekstu')
+        cls.text = Text.objects.create(title='Tytuł ilustracji',anthology=cls.book,length=100,genre='Science fantasy',content_warnings='Ostrzeżenia tekstu')
         cls.text.authors.add(Author.objects.create(first_name='Jan',last_name='Autor'))
         cls.illustration = Illustration.objects.get(text=cls.text)
         cls.review = Review.objects.create(title=cls.text.title,anthology=cls.book,length=100,

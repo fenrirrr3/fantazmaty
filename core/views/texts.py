@@ -271,8 +271,13 @@ def update_text_tags(request, text_id):
         form = TextTagsForm(request.POST, instance=text)
         if form.is_valid():
             text.tags = form.cleaned_data['tags']
-            text.save(update_fields=['tags'])
-            messages.success(request, 'Zapisano tagi tekstu.')
+            # An older browser tab may still submit the tags-only form.
+            fields = ['tags']
+            if 'genre' in request.POST:
+                text.genre = form.cleaned_data['genre']
+                fields.append('genre')
+            text.save(update_fields=fields)
+            messages.success(request, 'Zapisano tagi i gatunek tekstu.')
             return redirect('core:assigned_text_detail', text_id=text.pk)
         return _render_text_detail(request, text, bound_forms={'text_tags_form': form}, status=400)
 

@@ -234,6 +234,7 @@ def _text_data(text, include_authors):
         anthology=_anthology_data(text.anthology),
         current_workflow_cycle=text.current_workflow_cycle,
         content_warnings=text.content_warnings,
+        genre=text.genre,
         coordinator_note=text.coordinator_note,
         coordinator_note_updated_at=text.coordinator_note_updated_at,
         authors={"all": authors},

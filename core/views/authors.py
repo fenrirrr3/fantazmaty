@@ -97,7 +97,7 @@ def _render_author_detail(request, author, *, form=None, status=200):
         "length",
         "anthology_id",
         "anthology__title",
-        "source_review__genre",
+        "genre",
     ):
         texts.append(
             {
@@ -112,9 +112,7 @@ def _render_author_detail(request, author, *, form=None, status=200):
                     if item["anthology_id"] is not None
                     else None
                 ),
-                "source_review": {
-                    "genre": item["source_review__genre"] or "",
-                },
+                "genre": item["genre"] or "",
             }
         )
 

@@ -6,9 +6,11 @@ from texts.models import Text
 class TextTagsForm(forms.ModelForm):
     class Meta:
         model = Text
-        fields = ('tags',)
-        widgets = {'tags': forms.Textarea(attrs={'rows': 4, 'placeholder': 'np. magia, podróż, przyjaźń'})}
-        help_texts = {'tags': 'Oddziel tagi przecinkami lub nową linią. Zapisujesz całą listę tagów tekstu.'}
+        fields = ('tags', 'genre')
+        widgets = {'tags': forms.Textarea(attrs={'rows': 3, 'placeholder': 'np. magia, podróż, przyjaźń'}),
+                   'genre': forms.Textarea(attrs={'rows': 2, 'placeholder': 'np. fantasy, groza'})}
+        help_texts = {'tags': 'Oddziel tagi przecinkami lub nową linią. Zapisujesz całą listę tagów tekstu.',
+                      'genre': 'Gatunki oddziel przecinkami. Maksymalnie 100 znaków.'}
 
     def clean_tags(self):
         seen, result = set(), []

@@ -147,8 +147,7 @@ class Illustration(models.Model):
 
     @property
     def genre_display(self):
-        source = getattr(self.text, 'source_review', None)
-        return source.genre if source else ''
+        return self.text.genre
 
     @property
     def warnings_display(self):

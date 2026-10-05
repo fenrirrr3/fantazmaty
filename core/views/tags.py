@@ -1,8 +1,8 @@
-"""Accepted texts and their shared tags, without copying source metadata."""
+"""Accepted texts with their own tags and genre."""
 from django.contrib.auth.decorators import login_required
 from django.db import connections
-from django.db.models import F, OuterRef, Prefetch, Q, Subquery, Value, CharField, Exists, TextField
-from django.db.models.functions import Coalesce, Concat, Collate, Lower, Replace, Trim
+from django.db.models import F, OuterRef, Prefetch, Q, Subquery, Value, Exists, TextField
+from django.db.models.functions import Concat, Collate, Lower, Replace, Trim
 from django.shortcuts import render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
@@ -64,7 +64,7 @@ def tag_list(request):
         _last=polish_key('last_name', Text.objects.db), _first=polish_key('first_name', Text.objects.db),
     ).order_by('_last', '_first', 'pk')
     base = Text.objects.select_related('anthology').prefetch_related(Prefetch('authors', queryset=authors)).annotate(
-        tag_genre=Coalesce('source_review__genre', Value(''), output_field=CharField()),
+        tag_genre=F('genre'),
         tag_author_last=Subquery(first_author.values('last_name')[:1]),
         tag_author_first=Subquery(first_author.values('first_name')[:1]),
     )
