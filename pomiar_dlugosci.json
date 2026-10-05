@@ -1,266 +1,354 @@
 [
   {
-    "lp": 1,
-    "antologia": "Raz jeszcze w wyłom",
-    "tytul": "Kolor piekła",
-    "rtf": 51862,
-    "epub": 51811,
-    "roznica": 51,
-    "akapitow": 419,
-    "przypisow": 0,
-    "start_match": true,
-    "end_match": true
+    "row": 1,
+    "anthology": "Obieżyświaty",
+    "title": "Nieznane dzieło",
+    "rtf_title": "Nieznane dzieło",
+    "length": 25233,
+    "previous_table_length": "25",
+    "paragraphs": 80,
+    "notes": 0,
+    "rtf_translator": "Tłumaczenie: Damian Olszewski",
+    "import_translators": [
+      {
+        "first_name": "Damian",
+        "last_name": "Olszewski"
+      }
+    ]
   },
   {
-    "lp": 2,
-    "antologia": "Raz jeszcze w wyłom",
-    "tytul": "Wyrywając dusze",
-    "rtf": 56188,
-    "epub": 56176,
-    "roznica": 12,
-    "akapitow": 176,
-    "przypisow": 0,
-    "start_match": true,
-    "end_match": true
+    "row": 2,
+    "anthology": "Obieżyświaty",
+    "title": "Rekompensata",
+    "rtf_title": "Rekompensata",
+    "length": 25635,
+    "previous_table_length": "26",
+    "paragraphs": 152,
+    "notes": 0,
+    "rtf_translator": "Tłumaczenie: Emilian Wojnowski",
+    "import_translators": [
+      {
+        "first_name": "Emilian",
+        "last_name": "Wojnowski"
+      }
+    ]
   },
   {
-    "lp": 3,
-    "antologia": "Raz jeszcze w wyłom",
-    "tytul": "Władcy Ludzkich Ciał",
-    "rtf": 66334,
-    "epub": 66322,
-    "roznica": 12,
-    "akapitow": 338,
-    "przypisow": 0,
-    "start_match": true,
-    "end_match": true
+    "row": 3,
+    "anthology": "Obieżyświaty",
+    "title": "Somadewa: Sutra Niebiańskiej Rzeki",
+    "rtf_title": "Somadewa: Sutra Niebiańskiej Rzeki",
+    "length": 30281,
+    "previous_table_length": "31",
+    "paragraphs": 120,
+    "notes": 0,
+    "rtf_translator": "Tłumaczenie: Kamila Regel",
+    "import_translators": [
+      {
+        "first_name": "Kamila",
+        "last_name": "Regel"
+      }
+    ]
   },
   {
-    "lp": 4,
-    "antologia": "Raz jeszcze w wyłom",
-    "tytul": "Kluczarnia",
-    "rtf": 26135,
-    "epub": 26111,
-    "roznica": 24,
-    "akapitow": 176,
-    "przypisow": 0,
-    "start_match": true,
-    "end_match": true
+    "row": 4,
+    "anthology": "Obieżyświaty",
+    "title": "Nieszczepiony",
+    "rtf_title": "Nieszczepiony",
+    "length": 46178,
+    "previous_table_length": "46",
+    "paragraphs": 158,
+    "notes": 2,
+    "rtf_translator": "Tłumaczenie: Karolina Wojciechowska",
+    "import_translators": [
+      {
+        "first_name": "Karolina",
+        "last_name": "Wojciechowska"
+      }
+    ]
   },
   {
-    "lp": 5,
-    "antologia": "Raz jeszcze w wyłom",
-    "tytul": "Biała brama",
-    "rtf": 54465,
-    "epub": 54447,
-    "roznica": 18,
-    "akapitow": 252,
-    "przypisow": 0,
-    "start_match": true,
-    "end_match": true
+    "row": 5,
+    "anthology": "Obieżyświaty",
+    "title": "Krewniacy elfów",
+    "rtf_title": "Krewniacy elfów",
+    "length": 27911,
+    "previous_table_length": "28",
+    "paragraphs": 124,
+    "notes": 1,
+    "rtf_translator": "Tłumaczenie: Magdalena Postrzygacz",
+    "import_translators": [
+      {
+        "first_name": "Magdalena",
+        "last_name": "Postrzygacz"
+      }
+    ]
   },
   {
-    "lp": 6,
-    "antologia": "Raz jeszcze w wyłom",
-    "tytul": "Słońce Austerlitz",
-    "rtf": 77561,
-    "epub": 77471,
-    "roznica": 90,
-    "akapitow": 477,
-    "przypisow": 0,
-    "start_match": true,
-    "end_match": true
+    "row": 6,
+    "anthology": "Obieżyświaty",
+    "title": "Rozbójnicy",
+    "rtf_title": "Rozbójnicy",
+    "length": 9036,
+    "previous_table_length": "9",
+    "paragraphs": 28,
+    "notes": 0,
+    "rtf_translator": "Tłumaczenie: Magdalena Postrzygacz",
+    "import_translators": [
+      {
+        "first_name": "Magdalena",
+        "last_name": "Postrzygacz"
+      }
+    ]
   },
   {
-    "lp": 7,
-    "antologia": "Gdy Ziemia miała nas dość",
-    "tytul": "Białe mięso, czerwona krew",
-    "rtf": 20062,
-    "epub": 20062,
-    "roznica": 0,
-    "akapitow": 231,
-    "przypisow": 0,
-    "start_match": true,
-    "end_match": true
+    "row": 7,
+    "anthology": "Obieżyświaty",
+    "title": "Ciężar wschodzącego słońca",
+    "rtf_title": "Ciężar wschodzącego słońca",
+    "length": 121638,
+    "previous_table_length": "122",
+    "paragraphs": 621,
+    "notes": 3,
+    "rtf_translator": "Tłumaczenie: Marcin Piecyk",
+    "import_translators": [
+      {
+        "first_name": "Marcin",
+        "last_name": "Piecyk"
+      }
+    ]
   },
   {
-    "lp": 8,
-    "antologia": "Gdy Ziemia miała nas dość",
-    "tytul": "Pieśń dla wieloryba",
-    "rtf": 29540,
-    "epub": 29540,
-    "roznica": 0,
-    "akapitow": 144,
-    "przypisow": 0,
-    "start_match": true,
-    "end_match": true
+    "row": 8,
+    "anthology": "Obieżyświaty",
+    "title": "Upadek Babbulkund",
+    "rtf_title": "Upadek Babbulkund",
+    "length": 25962,
+    "previous_table_length": "26",
+    "paragraphs": 72,
+    "notes": 0,
+    "rtf_translator": "Tłumaczenie: Natalia Laprus",
+    "import_translators": [
+      {
+        "first_name": "Natalia",
+        "last_name": "Laprus"
+      }
+    ]
   },
   {
-    "lp": 9,
-    "antologia": "Gdy Ziemia miała nas dość",
-    "tytul": "Zerwany kaganiec",
-    "rtf": 91448,
-    "epub": 91448,
-    "roznica": 0,
-    "akapitow": 660,
-    "przypisow": 0,
-    "start_match": true,
-    "end_match": true
+    "row": 9,
+    "anthology": "Obieżyświaty",
+    "title": "Człowiek, który poznał prawdę",
+    "rtf_title": "Człowiek, który poznał prawdę",
+    "length": 32655,
+    "previous_table_length": "33",
+    "paragraphs": 151,
+    "notes": 3,
+    "rtf_translator": "Tłumaczenie: Sylwia Kowalicka",
+    "import_translators": [
+      {
+        "first_name": "Sylwia",
+        "last_name": "Kowalicka"
+      }
+    ]
   },
   {
-    "lp": 10,
-    "antologia": "Gdy Ziemia miała nas dość",
-    "tytul": "Dog days",
-    "rtf": 67607,
-    "epub": 67607,
-    "roznica": 0,
-    "akapitow": 248,
-    "przypisow": 0,
-    "start_match": true,
-    "end_match": true
+    "row": 10,
+    "anthology": "Obieżyświaty",
+    "title": ">RESTART SYSTEMU",
+    "rtf_title": ">RESTART SYSTEMU",
+    "length": 4290,
+    "previous_table_length": "5",
+    "paragraphs": 43,
+    "notes": 0,
+    "rtf_translator": "Tłumaczenie: Weronika Trzeciakiewicz",
+    "import_translators": [
+      {
+        "first_name": "Weronika",
+        "last_name": "Trzeciakiewicz"
+      }
+    ]
   },
   {
-    "lp": 11,
-    "antologia": "Gdy Ziemia miała nas dość",
-    "tytul": "Buran",
-    "rtf": 104583,
-    "epub": 104583,
-    "roznica": 0,
-    "akapitow": 569,
-    "przypisow": 6,
-    "start_match": true,
-    "end_match": true
+    "row": 11,
+    "anthology": "Obieżyświaty",
+    "title": "W domu pogodnego seniora na końcu świata",
+    "rtf_title": "W domu pogodnego seniora na końcu świata",
+    "length": 5340,
+    "previous_table_length": "5",
+    "paragraphs": 23,
+    "notes": 0,
+    "rtf_translator": "Tłumaczenie: Weronika Trzeciakiewicz",
+    "import_translators": [
+      {
+        "first_name": "Weronika",
+        "last_name": "Trzeciakiewicz"
+      }
+    ]
   },
   {
-    "lp": 12,
-    "antologia": "Gdy Ziemia miała nas dość",
-    "tytul": "Zielone płuca koszmaru",
-    "rtf": 70816,
-    "epub": 70816,
-    "roznica": 0,
-    "akapitow": 317,
-    "przypisow": 0,
-    "start_match": true,
-    "end_match": true
+    "row": 12,
+    "anthology": "Obieżyświaty",
+    "title": "Gość",
+    "rtf_title": "Gość",
+    "length": 3218,
+    "previous_table_length": "3",
+    "paragraphs": 15,
+    "notes": 0,
+    "rtf_translator": "Tłumaczenie: Agnieszka Kasprzycka",
+    "import_translators": [
+      {
+        "first_name": "Agnieszka",
+        "last_name": "Kasprzycka"
+      }
+    ]
   },
   {
-    "lp": 13,
-    "antologia": "Światła na niebie",
-    "tytul": "Robaczywe miasto",
-    "rtf": 43546,
-    "epub": 43546,
-    "roznica": 0,
-    "akapitow": 304,
-    "przypisow": 0,
-    "start_match": true,
-    "end_match": true
+    "row": 13,
+    "anthology": "Sępom na pożarcie",
+    "title": "Przelatujące wrony zwiastują dobry dzień",
+    "rtf_title": "Przelatujące wrony zwiastują dobry dzień",
+    "length": 15799,
+    "previous_table_length": "16",
+    "paragraphs": 85,
+    "notes": 0,
+    "rtf_translator": "Tłum. Agata Łacińska",
+    "import_translators": [
+      {
+        "first_name": "Agata",
+        "last_name": "Łacińska"
+      }
+    ]
   },
   {
-    "lp": 14,
-    "antologia": "Światła na niebie",
-    "tytul": "Niepodważalny dowód, niezachwiana wiara",
-    "rtf": 37243,
-    "epub": 37243,
-    "roznica": 0,
-    "akapitow": 387,
-    "przypisow": 0,
-    "start_match": true,
-    "end_match": true
+    "row": 14,
+    "anthology": "Sępom na pożarcie",
+    "title": "Sępom na pożarcie",
+    "rtf_title": "Sępom na pożarcie",
+    "length": 72685,
+    "previous_table_length": "73",
+    "paragraphs": 256,
+    "notes": 2,
+    "rtf_translator": "Tłum. Alicja Janusz, Joanna Mirek, Anna Przepiórka",
+    "import_translators": [
+      {
+        "first_name": "Alicja",
+        "last_name": "Janusz"
+      },
+      {
+        "first_name": "Joanna",
+        "last_name": "Mirek"
+      },
+      {
+        "first_name": "Anna",
+        "last_name": "Przepiórka"
+      }
+    ]
   },
   {
-    "lp": 15,
-    "antologia": "Światła na niebie",
-    "tytul": "Aberracja mrozowiska",
-    "rtf": 35132,
-    "epub": 35132,
-    "roznica": 0,
-    "akapitow": 289,
-    "przypisow": 0,
-    "start_match": true,
-    "end_match": true
+    "row": 15,
+    "anthology": "Sępom na pożarcie",
+    "title": "Noc nad Unną",
+    "rtf_title": "Noc nad Unną",
+    "length": 26176,
+    "previous_table_length": "26",
+    "paragraphs": 171,
+    "notes": 1,
+    "rtf_translator": "Tłum. Dorota Sulej",
+    "import_translators": [
+      {
+        "first_name": "Dorota",
+        "last_name": "Gulbinowicz"
+      }
+    ]
   },
   {
-    "lp": 16,
-    "antologia": "Światła na niebie",
-    "tytul": "Doświadczenie umarłego miasta",
-    "rtf": 23918,
-    "epub": 23917,
-    "roznica": 1,
-    "akapitow": 115,
-    "przypisow": 0,
-    "start_match": true,
-    "end_match": true
+    "row": 16,
+    "anthology": "Sępom na pożarcie",
+    "title": "To nie jest bajka dla Bönen",
+    "rtf_title": "To nie jest bajka dla Bönen",
+    "length": 24825,
+    "previous_table_length": "25",
+    "paragraphs": 133,
+    "notes": 2,
+    "rtf_translator": "Tłum. Izabela Ciupak, Marlena Zalewska",
+    "import_translators": [
+      {
+        "first_name": "Izabela",
+        "last_name": "Mulawa"
+      },
+      {
+        "first_name": "Marlena",
+        "last_name": "Zalewska"
+      }
+    ]
   },
   {
-    "lp": 17,
-    "antologia": "Światła na niebie",
-    "tytul": "Karły stoją na ramionach gigantów",
-    "rtf": 32969,
-    "epub": 32969,
-    "roznica": 0,
-    "akapitow": 252,
-    "przypisow": 0,
-    "start_match": true,
-    "end_match": true
+    "row": 17,
+    "anthology": "Sępom na pożarcie",
+    "title": "Śnieg na Blutkuppe",
+    "rtf_title": "Śnieg na Blutkuppe",
+    "length": 24289,
+    "previous_table_length": "24",
+    "paragraphs": 127,
+    "notes": 1,
+    "rtf_translator": "Tłum. Joanna Mirek",
+    "import_translators": [
+      {
+        "first_name": "Joanna",
+        "last_name": "Mirek"
+      }
+    ]
   },
   {
-    "lp": 18,
-    "antologia": "Światła na niebie",
-    "tytul": "Dokąd odeszli Psiogłowcy?",
-    "rtf": 39705,
-    "epub": 39705,
-    "roznica": 0,
-    "akapitow": 225,
-    "przypisow": 0,
-    "start_match": true,
-    "end_match": true
+    "row": 18,
+    "anthology": "Sępom na pożarcie",
+    "title": "Bad Feilnbach, po prostu",
+    "rtf_title": "Bad Feilnbach, po prostu",
+    "length": 20673,
+    "previous_table_length": "21",
+    "paragraphs": 144,
+    "notes": 4,
+    "rtf_translator": "Tłum. Justyna Sadowska",
+    "import_translators": [
+      {
+        "first_name": "Justyna",
+        "last_name": "Sadowska"
+      }
+    ]
   },
   {
-    "lp": 19,
-    "antologia": "Światła na niebie",
-    "tytul": "Madonna z UFO. Palimpsest",
-    "rtf": 37059,
-    "epub": 37059,
-    "roznica": 0,
-    "akapitow": 295,
-    "przypisow": 0,
-    "start_match": true,
-    "end_match": true
+    "row": 19,
+    "anthology": "Sępom na pożarcie",
+    "title": "Hagen, Równina 2",
+    "rtf_title": "Hagen, Równina 2",
+    "length": 19323,
+    "previous_table_length": "19",
+    "paragraphs": 56,
+    "notes": 0,
+    "rtf_translator": "Tłum. Radosław Wójcik",
+    "import_translators": [
+      {
+        "first_name": "Radosław",
+        "last_name": "Wójcik"
+      }
+    ]
   },
   {
-    "lp": 20,
-    "antologia": "Światła na niebie",
-    "tytul": "Podarunek",
-    "rtf": 41918,
-    "epub": 41918,
-    "roznica": 0,
-    "akapitow": 252,
-    "przypisow": 0,
-    "start_match": true,
-    "end_match": true
-  },
-  {
-    "lp": 21,
-    "antologia": "Światła na niebie",
-    "tytul": "Schizma",
-    "rtf": 30913,
-    "epub": 30913,
-    "roznica": 0,
-    "akapitow": 180,
-    "przypisow": 0,
-    "start_match": true,
-    "end_match": true
-  },
-  {
-    "lp": 22,
-    "antologia": "Światła na niebie",
-    "tytul": "Czas milczenia i czas mówienia",
-    "rtf": 39020,
-    "epub": 39020,
-    "roznica": 0,
-    "akapitow": 221,
-    "przypisow": 0,
-    "start_match": true,
-    "end_match": true
+    "row": 20,
+    "anthology": "Sępom na pożarcie",
+    "title": "Magda i Mario",
+    "rtf_title": "Magda i Mario",
+    "length": 21754,
+    "previous_table_length": "22",
+    "paragraphs": 161,
+    "notes": 0,
+    "rtf_translator": "Tłum. Zuzanna Mamala",
+    "import_translators": [
+      {
+        "first_name": "Zuzanna",
+        "last_name": "Mamala"
+      }
+    ]
   }
 ]

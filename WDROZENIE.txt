@@ -1,41 +1,94 @@
-CMS V16 — TŁUMACZENIA, ILUSTRACJE, PROGRAMY I ZADANIA
+IMPORT TŁUMACZEŃ — 2026-10-05
 
-Paczka do podmiany na ostatniej wersji CMS (v15, osobne profile autorów zagranicznych i tłumaczy). Zawiera wyłącznie zmienione i nowe pliki.
+20 nowych tekstów: 12 w „Obieżyświatach”, 8 w „Sępom na pożarcie”.
+10 różnych autorów zagranicznych, 20 tłumaczy, 186 wykonań prac.
+Istniejące antologie zostaną oznaczone jako tłumaczone. Ich status nie zmieni się.
+Każdy tekst otrzyma status Gotowy. Daty pracy i przypisania pozostaną puste.
+Nie powstają profile zwykłych polskich autorów dla autorów zagranicznych ani tłumaczy.
 
-ZMIANY
-- Tłumaczenia: pole „Weryfikacja z oryginałem” na imię i nazwisko. Dostępne w formularzu wpisu i adminie. Nie tworzy konta ani dodatkowego etapu workflow.
-- Podpis opcji formatowania: „Ujednolić formatowanie”. Paczka zawiera aktualny plik formularza z krótką nazwą.
-- Ilustracje: wybór istniejącego ilustratora albo dwa ręczne pola: imię i nazwisko oraz e-mail. E-mail jest opcjonalny; imię i nazwisko konieczne przy ręcznym przypisaniu. Ręczny wpis nie zakłada konta ani profilu osoby.
-- Wyszukiwarka w formularzu przypisania filtruje osoby z istniejącego spisu, także bez wpisywania polskich znaków. Zachowuje aktualnie wybraną osobę. Przy wpisaniu osoby ręcznie pozostaw pusty wybór profilu; formularz odrzuca podanie obu naraz.
-- Uwagi koordynatora: osobny formularz zapisu w szczegółach ilustracji i zwijany podgląd w tabeli. Uwagi mogą czytać osoby mające dostęp do ilustracji, a zapisywać tylko koordynatorzy/superuserzy. Zachowana kontrola konfliktów zapisu.
-- Status i data przypisania obsługują również ręcznych ilustratorów. Zmiana osoby/danych ręcznego kontaktu aktualizuje datę przypisania; zwykła zmiana statusu na Oddane jej nie resetuje.
-- Odkurzacz i konwerter: domyślnie zaznaczona opcja „Usuń miękkie entery i spacje nieprzenoszące”. Zamienia Shift+Enter i spacje nierozdzielające na zwykłe spacje, bez sklejania słów. Działa na końcu przygotowania dokumentu, również po regułach Odkurzacza dodających spacje nieprzenoszące. Można ją wyłączyć.
-- Zachowane podziały akapitów, stron i kolumn oraz formatowanie znaków. Czyszczenie tych znaków obejmuje też tekst w tabelach, nagłówkach, stopkach i przypisach. Nie jest stosowane do samego narzędzia analizy powtórzeń ani importu skrzynki.
-- Audiodeskrypcje: nowa, pusta zakładka z samym nagłówkiem.
-- Zadania: lista z istniejących danych antologii, które nie mają statusu Gotowa: Okładka, Blurb, Bannery, Skład, Audiodeskrypcja. Kolumny: antologia, zadanie, osoba, status, data zlecenia; wyszukiwarka i filtr rodzaju zadania. Okładka pobierana jest z obecnych pól antologii, bez tworzenia drugiej kopii zadania.
-- Audiodeskrypcja jest też zadaniem antologii, edytowanym tak jak blurb, bannery i skład: wykonawca, status i data zlecenia.
-- Zgodnie z wcześniejszą zasadą izolacji antologie tłumaczone nadal są widoczne w Tłumaczeniach/adminie, a nie na zwykłej zbiorczej liście Zadań.
+WYMAGANA WERSJA CMS
+Wgrane wcześniejsze zmiany profili tłumaczeń i pola „Weryfikacja z oryginałem”
+(texts/migrations/0023 oraz 0024) oraz wcześniejszy importer archiwum:
+workflow/management/commands/import_completed_table.py i workflow/completed_import.py.
+Nowy skrypt korzysta z ich istniejących funkcji. Paczka nie nadpisuje ich ani modeli CMS.
+Nie instaluj striprtf na serwerze: długości są już policzone i zapisane w JSON.
 
-MIGRACJE
-texts/0024: pole weryfikacji z oryginałem, nowy rodzaj zadania oraz uzupełnienie istniejących antologii o pojedyncze zadanie Audiodeskrypcja ze statusem Niezlecone. Istniejące zadania i ich daty pozostają zachowane.
-illustrations/0003: ręczne dane ilustratora i uwagi koordynatora. Istniejące przypisania pozostają bez zmian.
+PLIKI
+workflow/management/commands/import_completed_translations.py — jedyny nowy plik kodu.
+import_tlumaczenia.json — dane importu; wgraj obok manage.py.
+pomiar_dlugosci.json — zestawienie długości i różnic nazw w źródłach.
+wyniki_sprawdzenia.txt — wynik niezbędnego sprawdzenia na izolowanej bazie.
 
-WDROŻENIE PYTHONANYWHERE
-Wgraj ZIP obok manage.py. W Bash z aktywnym środowiskiem:
+POLECENIA W BASH PYTHONANYWHERE
+Uruchom w środowisku wirtualnym używanym przez CMS, w katalogu z manage.py.
+Jeśli ZIP jest w katalogu domowym:
 
 cd ~/fantazmaty
-unzip -o cms_v16_ilustracje_zadania_programy_2026-10-05.zip -d .
+unzip -o ~/import_tlumaczenia_2026-10-05.zip -d .
 python manage.py migrate
-python manage.py collectstatic --noinput
-python manage.py check
 
-Następnie Web -> Reload. Odśwież stronę przeglądarki (Ctrl+F5), aby pobrać nowy skrypt wyszukiwarki.
-Nie uruchamiaj ponownie importów archiwum ani korekty ról.
+Podgląd — wykonuje operacje w transakcji i wycofuje je, nie zapisuje rekordów:
+python manage.py import_completed_translations import_tlumaczenia.json --report raport_tlumaczenia_podglad
+python -m json.tool --no-ensure-ascii raport_tlumaczenia_podglad.json
 
-SPRAWDZENIA LOKALNE
-29 istniejących testów programów, formularzy ilustracji i tłumaczeń: pozytywne.
-7 nowych testów obejmujących ręczne przypisania, status/datę, walidację e-maila, konflikty i uprawnienia uwag, tabelę zadań, zapis audiodeskrypcji, puste Audiodeskrypcje, weryfikację z oryginałem oraz rzeczywiste przetwarzanie DOCX/EPUB: pozytywne.
-Osobna migracja na bazie ze starszym schematem i istniejącymi danymi: zachowane ID, relacje i stare zadania; ponowienie uzupełnienia nie duplikuje audiodeskrypcji.
-Skrypt wyszukiwarki: sprawdzone wyszukiwanie bez polskich znaków, zachowanie wyboru i przywrócenie listy po wyczyszczeniu wyszukiwania.
-Django check: brak problemów. Makemigrations --check --dry-run: brak dodatkowych zmian.
-Nie uruchamiano pełnego zestawu testów projektu ani nie zapisywano produkcyjnej bazy danych.
+Po sprawdzeniu podglądu zapisz dane:
+python manage.py import_completed_translations import_tlumaczenia.json --apply --report raport_tlumaczenia_zapis
+python -m json.tool --no-ensure-ascii raport_tlumaczenia_zapis.json
+
+Nie używaj import_completed_table do tego pliku danych.
+Ta paczka nie zawiera nowych migracji ani plików statycznych. migrate służy upewnieniu
+się, że wcześniejsze migracje CMS są wykonane. collectstatic i Reload nie są potrzebne
+do samego importu; po zapisie wystarczy odświeżyć stronę Tłumaczenia.
+
+ZASADY
+- Antologie muszą istnieć dokładnie po jednej i być puste lub zawierać wyłącznie
+  niezmienione teksty z tego importu. Importer nie tworzy antologii.
+- Puste komórki i „nie było korekty” nie tworzą wykonania. Nie przesuwamy osób.
+  Korektor 4 pozostaje Korektorem 4 przy pustym Korektorze 3.
+- Osoby w tej samej kolumnie są kolejnymi wykonaniami tej samej roli.
+- Weryfikator 3 (wyk. 2) to drugie wykonanie Weryfikatora 3.
+- „Weryfikacja tłumaczenia” trafia do TextTranslation.original_verifier,
+  czyli „Weryfikacja z oryginałem”. Nie tworzy dodatkowego etapu workflow.
+- Kuba Moroński jest zapisany jako Jakub Moroński.
+- Imię i nazwisko tłumaczy uporządkowano do osobnych pól.
+- Istniejące osoby są dopasowywane po imieniu i nazwisku bez rozróżnienia wielkości
+  liter i nadmiarowych spacji. Nie zgadujemy dawnych nazwisk ani pseudonimów.
+  Przy kilku identycznych profilach import zostaje przerwany. Osoby o tym samym
+  nazwisku, ale innym imieniu, są wskazywane w warnings do oceny w podglądzie.
+- Raport podaje ID i nazwy dopasowanych autorów zagranicznych i tłumaczy.
+  W razie potrzeby można jawnie wskazać foreign_author_id, translator_id lub
+  person_id w odpowiednim obiekcie osoby w JSON; pozostałych danych nie zmieniaj.
+- Brakujące profile autorów zagranicznych i tłumaczy mają puste e-maile.
+  Języki nowych tłumaczy pozostają puste; języki istniejących nie są zmieniane.
+- Brakujący wykonawca otrzymuje profil z pustym e-mailem i nieaktywne konto
+  bez działającego hasła i bez ról. Istniejące uprawnienia nie są zmieniane.
+- Zmieniony po imporcie tekst lub workflow nie jest nadpisywany.
+  Ponowne uruchomienie dla niezmienionych danych jest bez zmian.
+- Dowolny wykryty konflikt wycofuje cały import. Raport może wtedy zawierać
+  wcześniej przetworzone wiersze; one również nie zostały zapisane.
+- ID nowych rekordów w podglądzie są tymczasowe i mogą różnić się od zapisu.
+- Raport JSON jest jedynym raportem importera. Nie powstaje raport HTML.
+
+DŁUGOŚCI
+Policzono z lokalnych plików RTF obu antologii: łącznie 582 901 znaków ze spacjami.
+Unicode NFC; białe znaki wewnątrz akapitu sprowadzone do jednej spacji.
+Wliczono treść opowiadania, śródtytuły, separatory tekstowe i treść 19 przypisów.
+Nie wliczano znaków końca akapitu, tytułu, nazwisk autora/tłumaczy, oryginalnego
+tytułu, stopek zespołu, adresów strony/social mediów autora po opowiadaniu,
+niewidocznych znaków łamania ani numerów odsyłaczy do przypisów.
+W import_tlumaczenia.json zapisano źródła, granice pomiaru i sumy SHA256.
+Pełne teksty książek nie są dołączone do paczki.
+
+RÓŻNICE MIĘDZY TABELĄ A PUBLIKACJĄ — TYTUŁY Z RTF, OSOBY Z TABELI
+„Restart systemu” = „>RESTART SYSTEMU” w RTF.
+„W domu pogodnego seniora u końca świata” = „W domu pogodnego seniora na końcu świata” w RTF.
+„Hagen” = „Hagen, Równina 2” w RTF.
+„Noc nad Unną”: tabela Dorota Gulbinowicz, RTF Dorota Sulej.
+„To nie jest bajka dla Bönen”: tabela Izabela Mulawa, RTF Izabela Ciupak.
+Na życzenie użytkownika w imporcie zastosowano powyższe trzy tytuły z RTF.
+RTF służy również do pomiaru długości. Nie zmieniano danych osób ani ról z tabeli
+na podstawie starych stopek publikacji i nie dodawano osób wymienionych tylko tam.
+
+AKTUALIZACJA TYTUŁÓW: podmień import_tlumaczenia.json i wykonaj podgląd.
+Jeżeli wcześniejszą wersję zapisano już z --apply, importer wykryje różnicę
+tytułów i przerwie operację; ta paczka nie zmienia już zaimportowanych rekordów.
