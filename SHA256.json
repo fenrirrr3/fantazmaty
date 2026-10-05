@@ -1,9 +1,8 @@
 {
-  "INSTRUKCJA.txt": "6c7dfd22aa665a2642dca6d78663bafc2b76c50ff4cfdbe33214f717121d9a8e",
-  "nowe_opowiadania.json": "41ce3655c6a83f037a8b5e71951c410f54899d8cba1dcb08088170fab95bed1b",
+  "INSTRUKCJA.txt": "a64d41bdb25ffbe1d86b6747a5dad46eeceb861390a55214c6107cca39327a27",
+  "korekta_tagow_5_antologii.json": "2b6d084957551d85316dd7593a6b6555b5aa17c6360557f9136dad5ee4533dba",
   "strona_avada_pelny_kod.txt": "2ded03f9371d9dc14d0098690413583f98868bf8d445207e5a05658d9b64be3a",
-  "tagi_gatunki_5_antologii.csv": "34f9ef2f969784dff6a28557ee64bb9ccc8fad77cb22fdc67b3e17b6dcd6ebed",
-  "texts/management/commands/import_tags_genres.py": "d33b375616da3eef6349be83e8917657b5ae453dbc149255e83b8d5c59641ef6",
+  "texts/management/commands/normalize_imported_tags.py": "ef64d4f95b3a3e65740b51f6e8319a6112a466d052e4d30f062aea6e70480c72",
   "UJEDNOLICENIE.txt": "e52a14c262cbe6df7d9df288937e533999a3117eb746d2be10491d726127adf8",
-  "weryfikacja.json": "d2581329872fe6bafc59b19e7b36420712d5f8fba7c585bc1d9f36d51d2513a7"
+  "weryfikacja.json": "31c5e55730698272205b54f9f1912d7bc6f87ff37aa8b8e05e5ccbbf85449732"
 }
