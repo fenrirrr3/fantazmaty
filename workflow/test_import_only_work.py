@@ -141,7 +141,7 @@ class ImportedWorkTests(TestCase):
         context = text_detail_context(user=self.admin, text=self.text)
         self.assertFalse({m["role"] for m in context["team_members"]} & {*IMPORT_ONLY_ROLES, "styling"})
         self.assertTrue(A.objects.filter(pk=styling.pk).exists())
-        self.assertTrue(set(IMPORT_ONLY_STAGE_TYPES).issubset({s["stage_type"] for s in context["archived_stages"]}))
+        self.assertTrue({"editing_review", "fourth_verification"}.issubset({s["stage_type"] for s in context["archived_stages"]}))
         self.assertFalse(set(dict(active_role_choices())) & set(IMPORT_ONLY_ROLES))
         self.assertFalse(set(dict(active_stage_choices())) & set(IMPORT_ONLY_STAGE_TYPES))
         listing = workflow_list_context(user=self.admin, params=QueryDict())
@@ -197,7 +197,7 @@ class ImportedWorkTests(TestCase):
         self.assertFalse(person.is_active or person.user.is_active or person.user.is_staff or person.user.is_superuser)
         self.assertFalse(person.user.has_usable_password())
         self.assertFalse(person.roles.exists())
-        self.assertEqual(S.objects.filter(text__import_source=data["source"], imported_completed=True).count(), 2)
+        self.assertEqual(S.objects.filter(text__import_source=data["source"], imported_completed=True).count(), len(IMPORT_ONLY_STAGE_TYPES))
 
     def test_invalid_import_rolls_back_every_assignment(self):
         with self.assertRaises(ValidationError):

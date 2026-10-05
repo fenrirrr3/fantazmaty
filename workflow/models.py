@@ -42,6 +42,9 @@ class WorkflowStage(models.Model):
         WITHDRAWN = "withdrawn", "WYCOFANY"
         EDITING_REVIEW = "editing_review", "Kontrola redakcji"
         FOURTH_VERIFICATION = "fourth_verification", "Czwarta weryfikacja"
+        FIFTH_VERIFICATION = "fifth_verification", "Piąta weryfikacja"
+        SIXTH_VERIFICATION = "sixth_verification", "Szósta weryfikacja"
+        SEVENTH_VERIFICATION = "seventh_verification", "Siódma weryfikacja"
 
     text = models.ForeignKey(
         Text,
@@ -321,6 +324,9 @@ class WorkflowRoleAssignment(models.Model):
         STYLING = "styling", "Stylowanie"
         EDITING_REVIEWER = "editing_reviewer", "Kontrola redakcji"
         VERIFIER_4 = "verifier_4", "Weryfikator 4"
+        VERIFIER_5 = "verifier_5", "Weryfikator 5"
+        VERIFIER_6 = "verifier_6", "Weryfikator 6"
+        VERIFIER_7 = "verifier_7", "Weryfikator 7"
 
     text = models.ForeignKey(
         Text,

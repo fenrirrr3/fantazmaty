@@ -3,6 +3,9 @@
 IMPORT_ONLY_STAGE_ROLES = {
     "editing_review": "editing_reviewer",
     "fourth_verification": "verifier_4",
+    "fifth_verification": "verifier_5",
+    "sixth_verification": "verifier_6",
+    "seventh_verification": "verifier_7",
 }
 IMPORT_ONLY_STAGE_TYPES = tuple(IMPORT_ONLY_STAGE_ROLES)
 IMPORT_ONLY_ROLES = tuple(IMPORT_ONLY_STAGE_ROLES.values())

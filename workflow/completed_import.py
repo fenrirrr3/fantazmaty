@@ -25,7 +25,7 @@ def parse_date(value):
 
 
 @transaction.atomic
-def import_completed_workflow(*, text_id, stages, next_stage):
+def import_completed_workflow(*, text_id, stages, next_stage, preserve_executions=False):
     if type(text_id) is not int or text_id < 1:
         raise ValidationError('text_id musi być dodatnią liczbą całkowitą.')
     text = Text.objects.select_for_update().get(pk=text_id)
@@ -47,7 +47,7 @@ def import_completed_workflow(*, text_id, stages, next_stage):
     people = {}
     seen = set()
     for row in stages:
-        if not isinstance(row, dict) or set(row) - {'stage_type', 'assigned_to', 'started_at', 'ended_at'} or 'stage_type' not in row:
+        if not isinstance(row, dict) or set(row) - {'stage_type', 'assigned_to', 'assigned_to_id', 'started_at', 'ended_at'} or 'stage_type' not in row:
             raise ValidationError('Nieprawidłowe pola etapu.')
         kind = row['stage_type']
         if kind not in stage_roles or kind == next_stage:
@@ -55,18 +55,26 @@ def import_completed_workflow(*, text_id, stages, next_stage):
         order = [value for value, _ in active_stage_choices()]
         if kind not in IMPORT_ONLY_STAGE_TYPES and order.index(kind) >= order.index(next_stage):
             raise ValidationError('Dalszy etap musi następować po wszystkich importowanych etapach; cofanie wymaga operacji powtórzenia.')
-        email = row.get('assigned_to')
-        if not isinstance(email, str) or not email.strip():
-            raise ValidationError('Zakończony etap wymaga adresu konta wykonawcy w assigned_to.')
-        users = list(get_user_model().objects.filter(email__iexact=email.strip())[:2])
-        if len(users) != 1:
-            raise ValidationError(f'Adres {email} musi wskazywać dokładnie jedno istniejące konto wykonawcy.')
+        if 'assigned_to_id' in row:
+            user_id = row['assigned_to_id']
+            if 'assigned_to' in row or type(user_id) is not int or user_id < 1:
+                raise ValidationError('Podaj wyłącznie dodatni assigned_to_id albo adres assigned_to.')
+            users = list(get_user_model().objects.filter(pk=user_id)[:2])
+            if len(users) != 1:
+                raise ValidationError('Nie znaleziono konta wykonawcy o podanym ID.')
+        else:
+            email = row.get('assigned_to')
+            if not isinstance(email, str) or not email.strip():
+                raise ValidationError('Zakończony etap wymaga adresu assigned_to albo assigned_to_id.')
+            users = list(get_user_model().objects.filter(email__iexact=email.strip())[:2])
+            if len(users) != 1:
+                raise ValidationError(f'Adres {email} musi wskazywać dokładnie jedno istniejące konto wykonawcy.')
         person = users[0]
         role = stage_roles[kind]
-        if (kind,person.pk) in seen:
+        if not preserve_executions and (kind,person.pk) in seen:
             raise ValidationError('Powtórzony etap tej samej osoby w pliku.')
         seen.add((kind,person.pk))
-        people[(role,person.pk)] = person
+        people[(role,person.pk,len(expected) if preserve_executions else None)] = person
         expected.append((kind, person.pk, parse_date(row.get('started_at')), parse_date(row.get('ended_at'))))
     actual = list(S.objects.filter(text=text).select_related('assignment').order_by('pk'))
     if actual:
@@ -90,7 +98,7 @@ def import_completed_workflow(*, text_id, stages, next_stage):
     try:
         assignments = {}
         role_numbers = {}
-        for (role, user_id), user in people.items():
+        for (role, user_id, source_execution), user in people.items():
             role_numbers[role] = role_numbers.get(role,0) + 1
             A.objects.filter(text=text,workflow_cycle=text.current_workflow_cycle,role=role,is_current=True).update(is_current=False)
             a = A(text=text, workflow_cycle=text.current_workflow_cycle, role=role, assigned_to=user, execution_number=role_numbers[role], is_current=role not in IMPORT_ONLY_ROLES)
@@ -103,12 +111,12 @@ def import_completed_workflow(*, text_id, stages, next_stage):
             a.full_clean(); a.save()
             # Date of import is not the date when a person took the work.
             A.objects.filter(pk=a.pk).update(assigned_at=None)
-            assignments[(role,user.pk)] = a
+            assignments[(role,user.pk,source_execution)] = a
         iterations = {}
-        for kind, user_id, started, ended in expected:
+        for source_execution, (kind, user_id, started, ended) in enumerate(expected):
             iterations[kind] = iterations.get(kind,0) + 1
             stage = S(text=text, workflow_cycle=text.current_workflow_cycle, stage_type=kind,
-                      assignment=assignments[(stage_roles[kind],user_id)], iteration=iterations[kind],
+                      assignment=assignments[(stage_roles[kind],user_id,source_execution if preserve_executions else None)], iteration=iterations[kind],
                       execution_number=iterations[kind],
                       is_current=kind not in IMPORT_ONLY_STAGE_TYPES, is_released=kind not in IMPORT_ONLY_STAGE_TYPES,
                       started_at=started, ended_at=ended,

@@ -1,0 +1,50 @@
+IMPORT ARCHIWUM V10 — 29 OPOWIADAŃ, 4 ANTOLOGIE, 323 WYKONANIA
+
+Paczka uzupełnia poprzedni import RTF o 7 tekstów „Zbrodni doskonałej” i 78 wykonań prac. Nie zawiera raportu HTML ani pełnych tekstów opowiadań. Pliki workflow zastępują pliki z wcześniejszej wersji CMS (z polem Gatunek i migracją workflow 0014); nie jest to cały projekt.
+
+WDROŻENIE NA PYTHONANYWHERE
+Wgraj ZIP do katalogu projektu, obok manage.py. Otwórz konsolę Bash w tym katalogu i aktywuj używane środowisko projektu.
+
+unzip -o import_archiwum_v10_2026-10-05.zip -d .
+python manage.py migrate
+python manage.py check
+
+WARIANT A: CAŁA PACZKA — 29 TEKSTÓW
+Podgląd (niczego nie zapisuje):
+python manage.py import_completed_table import_archiwum.json --report raport_archiwum_podglad
+python -m json.tool --no-ensure-ascii raport_archiwum_podglad.json
+
+Sprawdź conflicts oraz warnings w podglądzie. Zapis:
+python manage.py import_completed_table import_archiwum.json --apply --report raport_archiwum_zapis
+
+WARIANT B: TYLKO „ZBRODNIA DOSKONAŁA” — 7 TEKSTÓW
+Użyj zamiast wariantu A, jeżeli poprzednie 22 teksty są już w bazie. Ten wariant nie sprawdza ani nie zmienia ich bieżącego workflow i długości.
+python manage.py import_completed_table import_archiwum.json --anthology "Zbrodnia doskonała" --report raport_zbrodnia_podglad
+python -m json.tool --no-ensure-ascii raport_zbrodnia_podglad.json
+python manage.py import_completed_table import_archiwum.json --anthology "Zbrodnia doskonała" --apply --report raport_zbrodnia_zapis
+
+Na końcu kliknij Reload w zakładce Web PythonAnywhere. Collectstatic nie jest potrzebne: paczka nie zmienia plików statycznych. Migracja jest potrzebna: dodaje obsługę historycznych Weryfikatorów 5–7 i aktualizuje ograniczenia spójności.
+
+ZASADY IMPORTU
+- Antologie muszą już istnieć i być puste, poza tekstami tego samego wcześniejszego importu. Import nie tworzy antologii i nie zmienia ich statusu.
+- Wszystkie teksty otrzymują Gotowe, wszystkie wpisane prace są zakończone. Daty rozpoczęcia, zakończenia, przydziału i oczekiwania pozostają puste.
+- Każdy wpis, w tym powtórzenie osoby, pozostaje osobnym wykonaniem. Drugi redaktor to kolejne wykonanie redakcji. Weryfikator redakcji / Weryfikacja przyredakcyjna to wykonanie pierwszej weryfikacji.
+- W „Zbrodni doskonałej” osoby z list Korekta i Weryfikacja trafiają kolejno do Korektor 1, 2 itd. oraz Weryfikator 1, 2 itd. Weryfikatorzy 4–7 to historia, poza aktywnym workflow. Kontrola redakcji pozostaje historyczną kontrolą redakcji. Sczytanie pominięto zgodnie z decyzją użytkownika.
+- Nie uzupełniamy nieudokumentowanych prac ani dat. Zachowano obie autorki „Barana, gwiazdy podwójnej i morza w cynowej wannie”.
+- Długość to znaki ze spacjami z RTF: treść i przypisy, bez tytułu, autora, biogramu i stopki zespołu. Odstępy znormalizowano; końce akapitów nie są liczone jako znaki. Ozdobniki *** wliczono. W De profundis uwzględniono trzy przypisy bez numerów. Nowe ekstrakcje sprawdzono również względem EPUB.
+- Osoby dopasowujemy po pełnym imieniu i nazwisku (normalizacja odstępów i wielkości liter). Nie łączymy automatycznie pseudonimów, zdrobnień ani dawnych nazwisk. Konflikt dwóch dokładnych dopasowań zatrzymuje cały import. Podobne nazwiska są w warnings.
+- Jeśli profil istnieje pod innym zapisem, wpisz jego person_id w odpowiednich obiektach person w JSON (author_id w obiektach authors). Nie zmieniaj source ani source_row. Istniejące nazwiska, e-maile i uprawnienia pozostają bez zmian.
+- Brakujący autor/profil ma pusty e-mail (NULL). Wykonawca otrzymuje wymagane techniczne konto: nieaktywne, bez działającego hasła, z pustym e-mailem, bez uprawnień administratora. Import nie umożliwia logowania nowym osobom.
+- Jeden konflikt wycofuje cały import, również nowe profile. Domyślny podgląd wycofuje wszystkie zmiany. Raporty są JSON, nie HTML.
+- Identyczne ponowienie nie dodaje duplikatów. Zmienione po imporcie dane zatrzymują ponowny import zamiast zostać nadpisane. W takiej sytuacji do dopisania nowej antologii służy wariant B.
+- Stare 22 rekordy są identyczne jak w paczce v9 RTF. Jeśli wcześniej użyto starszej paczki opartej na EPUB, długości mogą się różnić; wariant B ich nie zmienia. Nie kasuj istniejących tekstów w celu ponowienia importu.
+
+PLIKI
+import_archiwum.json — dane wejściowe importera.
+tabela_z_dlugosciami.tsv — czytelna tabela wszystkich 29 tekstów.
+workflow/... — siedem plików kodu/migracji/testów do podmiany lub dodania.
+weryfikacja.json — wyniki lokalnej weryfikacji.
+manifest.json — sumy SHA-256 zawartości paczki.
+
+WERYFIKACJA
+66 testów workflow: 65 poprawnych, 1 pominięty (SQLite nie obsługuje testowanej blokady wierszy). Pełny import 29 tekstów i 323 wykonań sprawdzony na izolowanej SQLite: podgląd, zapis, ponowienie. Osobno sprawdzono import poprzednich 22 tekstów na schemacie 0014, migrację 0015, dopisanie 7 tekstów i ponowienie, bez zmiany poprzednich wpisów. Każdą długość, autora i przypisanie wykonawcy porównano z JSON. Nie uruchamiano importu na produkcyjnej bazie PythonAnywhere.

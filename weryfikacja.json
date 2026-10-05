@@ -1,0 +1,108 @@
+{
+  "summary.json": {
+    "texts": 29,
+    "new_texts": 7,
+    "anthologies": 4,
+    "executions": 323,
+    "new_executions": 78,
+    "old_22_records_unchanged": true,
+    "sczytanie_imported": false,
+    "new_lengths": [
+      {
+        "title": "Al",
+        "length": 26749
+      },
+      {
+        "title": "Inspicjent Brzeszczot",
+        "length": 27337
+      },
+      {
+        "title": "Oko Henrietty",
+        "length": 63006
+      },
+      {
+        "title": "Baran, gwiazda podwójna i morze w cynowej wannie",
+        "length": 66505
+      },
+      {
+        "title": "Cmentarz doskonałych",
+        "length": 52734
+      },
+      {
+        "title": "Śmierć starszej pani",
+        "length": 21476
+      },
+      {
+        "title": "De profundis",
+        "length": 116307
+      }
+    ]
+  },
+  "integration_checks.json": {
+    "texts": 29,
+    "completed_executions": 323,
+    "ready_markers": 29,
+    "checks": [
+      "full preview rollback",
+      "full apply",
+      "full repeated import no-op",
+      "old 22 import on migration 0014",
+      "0015 upgrade preserves existing rows",
+      "incremental 7 preserves old rows",
+      "combined rerun no-op",
+      "all authors, lengths and ordered credits match payload",
+      "all work dates empty",
+      "no HTML generated"
+    ]
+  },
+  "text_checks.json": [
+    {
+      "title": "Al",
+      "complete_text_verified": true,
+      "epub_crosscheck_member": "OEBPS/Text/AL.xhtml",
+      "comparison_normalization": "pominięcie separatorów ***, ujednolicenie apostrofów, różnica spacja/ukośnik po judeochrześcijański; pomiar pozostaje z RTF"
+    },
+    {
+      "title": "Baran, gwiazda podwójna i morze w cynowej wannie",
+      "complete_text_verified": true,
+      "epub_crosscheck_member": "OEBPS/Text/Baran_gwiazda.xhtml",
+      "comparison_normalization": "pominięcie separatorów ***, ujednolicenie apostrofów, różnica spacja/ukośnik po judeochrześcijański; pomiar pozostaje z RTF"
+    },
+    {
+      "title": "Cmentarz doskonałych",
+      "complete_text_verified": true,
+      "epub_crosscheck_member": "OEBPS/Text/Cmentarz_doskonalych.xhtml",
+      "comparison_normalization": "pominięcie separatorów ***, ujednolicenie apostrofów, różnica spacja/ukośnik po judeochrześcijański; pomiar pozostaje z RTF"
+    },
+    {
+      "title": "De profundis",
+      "complete_text_verified": true,
+      "epub_crosscheck_member": "OEBPS/Text/De_profundis.xhtml",
+      "comparison_normalization": "pominięcie separatorów ***, ujednolicenie apostrofów, różnica spacja/ukośnik po judeochrześcijański; pomiar pozostaje z RTF"
+    },
+    {
+      "title": "Inspicjent Brzeszczot",
+      "complete_text_verified": true,
+      "epub_crosscheck_member": "OEBPS/Text/Inspicjent_Brzeszczot.xhtml",
+      "comparison_normalization": "pominięcie separatorów ***, ujednolicenie apostrofów, różnica spacja/ukośnik po judeochrześcijański; pomiar pozostaje z RTF"
+    },
+    {
+      "title": "Oko Henrietty",
+      "complete_text_verified": true,
+      "epub_crosscheck_member": "OEBPS/Text/Oko_Henrietty.xhtml",
+      "comparison_normalization": "pominięcie separatorów ***, ujednolicenie apostrofów, różnica spacja/ukośnik po judeochrześcijański; pomiar pozostaje z RTF"
+    },
+    {
+      "title": "Śmierć starszej pani",
+      "complete_text_verified": true,
+      "epub_crosscheck_member": "OEBPS/Text/Smierc_starszej_pani.xhtml",
+      "comparison_normalization": "pominięcie separatorów ***, ujednolicenie apostrofów, różnica spacja/ukośnik po judeochrześcijański; pomiar pozostaje z RTF"
+    }
+  ],
+  "workflow_tests": {
+    "run": 66,
+    "passed": 65,
+    "skipped": 1,
+    "reason": "SQLite: select_for_update unsupported"
+  }
+}

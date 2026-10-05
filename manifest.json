@@ -1,0 +1,13 @@
+{
+  "import_archiwum.json": "10dc202e89ebebd4c35e0f9b30cf309aeb7bbcc6a3ecf5920b59f513e2880577",
+  "tabela_z_dlugosciami.tsv": "fffa1660f1e4ded1ff1ff37f32615ecbe628ece6abcd603eb62675fdf3d95d3c",
+  "WDROZENIE.txt": "a1812132cf035e989d97c6b5260984b1bf9127a17c194040159e835476853dda",
+  "weryfikacja.json": "9009ad3a8a80da69a149dbf46cf51697b48034446eff3f70ff7f3008b4b86df6",
+  "workflow/catalog.py": "aa847eaea7465232baacdf39cb426316221b2e7e9e43ed16351211d68a8e92df",
+  "workflow/completed_import.py": "c376374fe274173e394de4eb1189631b3893e48beea67f2e5c2475b52a0afd2d",
+  "workflow/management/commands/import_completed_table.py": "e24d487ea34cd45dec62986788f40fcbf54dae5e546e167cb46f4497cfd8ab14",
+  "workflow/migrations/0015_historical_verifiers_5_7.py": "a71bd5547a73616ec22d381e9b6bb5da7a5608408208ed352265d43019f6baa6",
+  "workflow/models.py": "89b2bd55e785688c8d0ac9d0e4e7ce3b3affba872382962f9f81f0dd53a3b6e7",
+  "workflow/test_completed_table.py": "5317dc04c8fb05769bc2d152297bbd077bb69bc753f96879fd7b8b2108b789d1",
+  "workflow/test_import_only_work.py": "27f2e8866f4277abc4c48dc896e5c225517e48301d2c2ab88f36a12de1a24531"
+}
