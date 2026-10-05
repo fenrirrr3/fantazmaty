@@ -25,7 +25,11 @@ from core.views.tags import tag_list
 
 from core.views.translations import translation_list, translation_detail, set_translators, translation_person_detail
 
+from core.views.production_tasks import task_list, audio_descriptions
+
 urlpatterns = [
+    path('zadania/', task_list, name='task_list'),
+    path('audiodeskrypcje/', audio_descriptions, name='audio_descriptions'),
     path('tlumaczenia/osoby/<str:kind>/<int:person_id>/', translation_person_detail, name='translation_person_detail'),
     path('tlumaczenia/', translation_list, name='translation_list'),
     path('tlumaczenia/<int:text_id>/', translation_detail, name='translation_detail'),

@@ -13,7 +13,7 @@
     <summary><span>Odkurzacz</span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
     <div class="card-body">
     <p>Wybierz DOCX i potrzebne poprawki, a następnie pobierz poprawiony plik.</p>
-    <p>Odkurzacz poprawia główną treść, bez tabel, nagłówków i przypisów. Nie śledzi zmian. Puste akapity pozostają, chyba że wybierzesz ich scalanie.</p>
+    <p>Reguły redakcyjne Odkurzacza poprawiają główną treść, bez tabel, nagłówków i przypisów. Przy zaznaczonej opcji usuwania miękkie entery i spacje nieprzenoszące w tekście dokumentu, tabelach, nagłówkach i przypisach są zamieniane odpowiednio na zwykłe entery (nowe akapity) i zwykłe spacje; istniejące podziały stron pozostają. Nie śledzi zmian. Puste akapity pozostają, chyba że wybierzesz ich scalanie.</p>
     <p><strong>Przed odkurzaniem zaakceptuj śledzone zmiany i usuń komentarze albo zaznacz przebudowę do nowego pliku.</strong></p>
     <form method="post" enctype="multipart/form-data">
         {% csrf_token %}
@@ -35,7 +35,7 @@
         <p><label for="{{ form.normalize_formatting.id_for_label }}">{{ form.normalize_formatting }} {{ form.normalize_formatting.label }}</label></p>
         {{ form.normalize_formatting.errors }}
         <p class="form-help">Po zaznaczeniu: Times New Roman 12 pkt, interlinia 1,5, wcięcie 1,25 cm, bez odstępów przed i po akapicie, A4 i marginesy 2,5 cm. Tekst jest wyjustowany; wyśrodkowane akapity pozostają wyśrodkowane bez wcięcia. Kursywa, pogrubienia i puste akapity zostają zachowane. Bez zaznaczenia Odkurzacz zachowuje formatowanie.</p>
-        <p><label for="{{ form.rebuild.id_for_label }}">{{ form.rebuild }} {{ form.rebuild.label }}</label></p>
+        <p><label>{{ form.remove_soft_whitespace }} {{ form.remove_soft_whitespace.label }}</label></p><p class="form-help">Zamienia miękkie entery (Shift+Enter) na zwykłe entery (nowe akapity), a spacje nieprzenoszące na zwykłe spacje. Działa na końcu czyszczenia, także jeśli reguły redakcyjne wcześniej dodały spacje nieprzenoszące. Istniejące podziały stron pozostają.</p><p><label for="{{ form.rebuild.id_for_label }}">{{ form.rebuild }} {{ form.rebuild.label }}</label></p>
         <p class="form-help">Przebudowa tworzy nowy DOCX z tekstem i podstawowym formatowaniem, a następnie stosuje wybrane poprawki. Usuwa stare metadane, komentarze, nagłówki, stopki i ukryty tekst. Akceptuje zmiany tekstu: zachowuje dodany tekst, pomija skreślony. Pominięcie innych elementów wymaga Twojego potwierdzenia. Dane wpisane w treści pozostają.</p>
         <p>Przy większym dokumencie pobieranie może rozpocząć się po chwili. Oryginał pozostaje na Twoim komputerze.</p>
         <fieldset>
@@ -72,10 +72,10 @@
             {{ conversion_form.formats.errors }}
             <div class="odkurzacz-rules">{% for checkbox in conversion_form.formats %}<label for="{{ checkbox.id_for_label }}">{{ checkbox.tag }} <span>{{ checkbox.choice_label }}</span></label>{% endfor %}</div>
         </fieldset>
-        <p><label for="{{ conversion_form.use_cleaner.id_for_label }}">{{ conversion_form.use_cleaner }} {{ conversion_form.use_cleaner.label }}</label></p>
+        <p><label>{{ conversion_form.remove_soft_whitespace }} {{ conversion_form.remove_soft_whitespace.label }}</label></p><p><label for="{{ conversion_form.use_cleaner.id_for_label }}">{{ conversion_form.use_cleaner }} {{ conversion_form.use_cleaner.label }}</label></p>
         {{ conversion_form.use_cleaner.errors }}
         <p>Ta opcja stosuje domyślne poprawki Odkurzacza przed konwersją. Ustawienia w osobnej sekcji Odkurzacza nie mają tu wpływu. Przed konwersją zaakceptuj śledzone zmiany i usuń komentarze.</p>
-        <p>Bez tej opcji konwerter zmienia tylko formatowanie i format pliku.</p>
+        <p>Przy zaznaczeniu usuwania miękkich enterów i spacji nieprzenoszących konwerter zamienia miękkie entery na zwykłe entery (nowe akapity), a spacje nieprzenoszące na zwykłe spacje. Istniejące podziały stron pozostają.</p>
         <button type="submit" class="primary-button">Konwertuj i pobierz</button>
         <p>Poczekaj na pobranie pliku. Konwersja może potrwać do 90 sekund; nie wysyłaj formularza ponownie w tym czasie.</p>
     </form>

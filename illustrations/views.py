@@ -191,6 +191,8 @@ def illustration_detail(request, illustration_id):
             if not editable:
                 raise PermissionDenied('Możesz edytować tylko własną ilustrację.')
             action = request.POST.get('action')
+            if action == 'coordinator_notes' and not is_coordinator(request.user):
+                raise PermissionDenied('Uwagi koordynatora może zmieniać tylko koordynator.')
             if action not in FORMS:
                 from django.http import HttpResponseBadRequest
                 return HttpResponseBadRequest('Wybierz poprawną operację zapisu.')
@@ -203,7 +205,7 @@ def illustration_detail(request, illustration_id):
             elif valid:
                 form.save()
                 messages.success(request, {'assignment': 'Zapisano przypisanie i status.',
-                    'link': 'Zapisano link do opowiadania.', 'excerpt': 'Zapisano ilustrowany fragment.'}[action])
+                    'link': 'Zapisano link do opowiadania.', 'excerpt': 'Zapisano ilustrowany fragment.', 'coordinator_notes': 'Zapisano uwagi koordynatora.'}[action])
                 return redirect('illustrations:illustration_detail', illustration_id=illustration.pk)
             # ModelForm validation mutates its instance even when saving is refused.
             # Keep submitted values in the bound form, but display persisted metadata.

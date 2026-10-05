@@ -5,7 +5,7 @@ from texts.models import TextTranslation
 class TranslationForm(forms.ModelForm):
     class Meta:
         model = TextTranslation
-        fields = ('foreign_authors', 'translators')
+        fields = ('foreign_authors', 'translators', 'original_verifier')
         widgets = {name: forms.SelectMultiple(attrs={'size': 4}) for name in ('foreign_authors', 'translators')}
 
     def __init__(self, *args, **kwargs):

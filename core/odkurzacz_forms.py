@@ -10,6 +10,7 @@ PROGRAM_MAX_UPLOAD_BYTES = 2 * 1024 * 1024
 
 
 class OdkurzaczForm(forms.Form):
+    remove_soft_whitespace = forms.BooleanField(label="Usuń miękkie entery i spacje nieprzenoszące", required=False, initial=True)
     normalize_formatting = forms.BooleanField(label="Ujednolić formatowanie", required=False, initial=False)
     rebuild = forms.BooleanField(label="Przebuduj do nowego DOCX przed odkurzaniem", required=False, initial=False)
     document = forms.FileField(
@@ -84,6 +85,7 @@ class RepetitionsForm(OdkurzaczForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        del self.fields['remove_soft_whitespace']
         del self.fields['rules']
         del self.fields['rebuild']
         del self.fields['normalize_formatting']

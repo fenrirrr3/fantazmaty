@@ -73,7 +73,7 @@
                             {% if current == 'anthology_list' or current == 'anthology_detail' %}aria-current="page"{% endif %}
                         >
                             Antologie
-                        </a><a href="{% url 'core:anthology_corrections' %}" class="sidebar-link" {% if current == 'anthology_corrections' or current == 'correction_edit' %}aria-current="page"{% endif %}>Uwagi do antologii</a>{% if show_illustrations %}<a
+                        </a><a href="{% url 'core:anthology_corrections' %}" class="sidebar-link" {% if current == 'anthology_corrections' or current == 'correction_edit' %}aria-current="page"{% endif %}>Uwagi do antologii</a><a href="{% url 'core:task_list' %}" class="sidebar-link" {% if current == 'task_list' %}aria-current="page"{% endif %}>Zadania</a>{% if show_illustrations %}<a
                             href="{% url 'illustrations:illustration_list' %}"
                             class="sidebar-link"
                             {% if namespace == 'illustrations' and current == 'illustration_list' %}aria-current="page"{% endif %}
@@ -91,7 +91,7 @@
                             {% if current == 'audiobooks' %}aria-current="page"{% endif %}
                         >
                             Audiobooki
-                        </a></details><details class="sidebar-section" data-menu-section="team" open><summary class="sidebar-heading">Zespół</summary><a
+                        </a><a href="{% url 'core:audio_descriptions' %}" class="sidebar-link" {% if current == 'audio_descriptions' %}aria-current="page"{% endif %}>Audiodeskrypcje</a></details><details class="sidebar-section" data-menu-section="team" open><summary class="sidebar-heading">Zespół</summary><a
                             href="{% url 'core:people_list' %}"
                             class="sidebar-link"
                             {% if current == 'people_list' or current == 'person_detail' %}aria-current="page"{% endif %}

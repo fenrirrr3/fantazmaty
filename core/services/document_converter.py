@@ -179,7 +179,7 @@ def conversion_filename(name, extension):
     return stem + '.' + extension
 
 
-def convert_document(upload, formats, *, use_cleaner=False, timeout=TIME_LIMIT, include_docx=False, rebuild=False, normalize=True, allow_rebuild_omissions=False, cleaner_rules=None, repetitions=None, justify=False, preserve_filename=False):
+def convert_document(upload, formats, *, use_cleaner=False, timeout=TIME_LIMIT, include_docx=False, rebuild=False, normalize=True, allow_rebuild_omissions=False, cleaner_rules=None, repetitions=None, justify=False, preserve_filename=False, remove_soft_whitespace=False):
     deadline = time.monotonic() + min(TIME_LIMIT, timeout)
     selected = [kind for kind in FORMATS if kind in formats]
     if (not selected and not include_docx) or set(formats) - set(FORMATS):
@@ -193,7 +193,7 @@ def convert_document(upload, formats, *, use_cleaner=False, timeout=TIME_LIMIT, 
                 'formats': selected, 'prepare': True, 'clean': use_cleaner,
                 'cleaner_rules': cleaner_rules, 'rebuild': rebuild,
                 'allow_rebuild_omissions': allow_rebuild_omissions,
-                'normalize': normalize, 'justify': justify, 'include_docx': include_docx, 'repetitions': repetitions,
+                'remove_soft_whitespace': remove_soft_whitespace, 'normalize': normalize, 'justify': justify, 'include_docx': include_docx, 'repetitions': repetitions,
             })
             run_converter(directory, deadline - time.monotonic())
             warning_file = directory / 'warnings.json'

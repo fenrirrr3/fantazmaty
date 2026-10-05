@@ -1,0 +1,5 @@
+
+Przypisania: scalono 0 pustych duplikatów, przywrócono 0 przypisań osób.
+
+Zespół tekstu: przywrócono 0 przypisań, scalono 0 pustych rekordów.
+OK: migracje zachowują istniejące ilustracje, tłumaczenia i zadania; dodają jedną audiodeskrypcję na antologię; ponowienie nie duplikuje zadań.

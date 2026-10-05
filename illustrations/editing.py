@@ -36,7 +36,7 @@ class IllustrationEditForm(forms.ModelForm):
 class AssignmentForm(IllustrationEditForm):
     class Meta:
         model = Illustration
-        fields = ('illustrator', 'status')
+        fields = ('illustrator', 'manual_illustrator_name', 'manual_illustrator_email', 'status')
 
     def __init__(self, *args, can_assign=False, **kwargs):
         super().__init__(*args, **kwargs)
@@ -46,7 +46,8 @@ class AssignmentForm(IllustrationEditForm):
                 | Q(is_active=True, roles__name__iexact='Ilustrator')
             ).distinct().order_by('last_name', 'first_name', 'pk')
         else:
-            del self.fields['illustrator']
+            for name in ('illustrator', 'manual_illustrator_name', 'manual_illustrator_email'):
+                del self.fields[name]
 
 
 class StoryLinkForm(IllustrationEditForm):
@@ -69,11 +70,19 @@ class ExcerptForm(IllustrationEditForm):
         })}
 
 
-FORMS = {'assignment': AssignmentForm, 'link': StoryLinkForm, 'excerpt': ExcerptForm}
+class CoordinatorNotesForm(IllustrationEditForm):
+    class Meta:
+        model = Illustration
+        fields = ('coordinator_notes',)
+        widgets = {'coordinator_notes': forms.Textarea(attrs={'rows': 4})}
+
+
+FORMS = {'assignment': AssignmentForm, 'link': StoryLinkForm, 'excerpt': ExcerptForm,
+         'coordinator_notes': CoordinatorNotesForm}
 
 
 def edit_forms(user, illustration, *, action=None, data=None):
     initial = {'version': edit_token(user, illustration)}
     return {name: form(data=data if name == action else None, instance=illustration,
                       initial=initial, **({'can_assign': is_coordinator(user)} if name == 'assignment' else {}))
-            for name, form in FORMS.items()}
+            for name, form in FORMS.items() if name != 'coordinator_notes' or is_coordinator(user)}

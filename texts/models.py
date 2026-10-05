@@ -143,6 +143,7 @@ class AnthologyTask(models.Model):
         TYPESETTING = "typesetting", "Skład"
         BLURB = "blurb", "Blurb"
         BANNERS = "banners", "Bannery"
+        AUDIO_DESCRIPTION = "audio_description", "Audiodeskrypcja"
 
     class Status(models.TextChoices):
         NOT_COMMISSIONED = "not_commissioned", "Niezlecone"
@@ -459,6 +460,7 @@ class Translator(TranslationPerson):
 
 
 class TextTranslation(models.Model):
+    original_verifier = models.CharField("Weryfikacja z oryginałem", max_length=255, blank=True, help_text="Imię i nazwisko osoby weryfikującej przekład z oryginałem.")
     text = models.OneToOneField(Text, on_delete=models.CASCADE, related_name='translation', verbose_name='tekst')
     foreign_authors = models.ManyToManyField(ForeignAuthor, blank=True, related_name='translations', verbose_name='autor zagraniczny')
     translators = models.ManyToManyField(Translator, blank=True, related_name='translations', verbose_name='tłumacz')

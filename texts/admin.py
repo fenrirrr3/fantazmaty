@@ -68,7 +68,7 @@ class AnthologyTaskInline(admin.TabularInline):
     model = AnthologyTask
     formset = AnthologyTaskFormSet
     extra = 0
-    max_num = 3
+    max_num = 4
     can_delete = False
 
     fields = (
@@ -327,7 +327,7 @@ class TranslatorAdmin(ForeignAuthorAdmin):
 
 class TextTranslationInline(admin.StackedInline):
     model = TextTranslation
-    fields = ('foreign_authors', 'translators')
+    fields = ('foreign_authors', 'translators', 'original_verifier')
     autocomplete_fields = ('foreign_authors', 'translators')
     extra = 0
     max_num = 1

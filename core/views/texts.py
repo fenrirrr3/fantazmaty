@@ -133,6 +133,7 @@ def _render_text_detail(request, text, *, bound_forms=None, status=200):
         record = TextTranslation.objects.filter(text=text).first()
         context['translation_form'] = TranslationForm(instance=record) if request.user.is_superuser else None
         context['translators'] = list(record.translators.all()) if record else []
+        context['original_verifier'] = record.original_verifier if record else ''
     if request.user.is_superuser:
         from core.supervision import text_credit_groups
         context['text_credits'] = text_credit_groups(text)

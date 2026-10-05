@@ -37,7 +37,7 @@
     {% if is_translation %}
     <section class="card"><div class="card-body"><h2>Autor zagraniczny i tłumacz</h2>
     {% if translation_form %}<form method="post" action="{% url 'core:set_translators' text.pk %}">{% csrf_token %}{% edit_version %}{{ translation_form.as_p }}<button class="primary-button" type="submit">Zapisz osoby</button></form><p><a href="{% url 'admin:texts_foreignauthor_add' %}">Dodaj autora zagranicznego</a> · <a href="{% url 'admin:texts_translator_add' %}">Dodaj tłumacza</a></p>
-    {% else %}<p>{% for translator in translators %}{{ translator.first_name }} {{ translator.last_name }}{% if not forloop.last %}, {% endif %}{% empty %}Nie przypisano tłumacza.{% endfor %}</p>{% endif %}
+    {% else %}<p>{% for translator in translators %}{{ translator.first_name }} {{ translator.last_name }}{% if not forloop.last %}, {% endif %}{% empty %}Nie przypisano tłumacza.{% endfor %}</p><p><strong>Weryfikacja z oryginałem:</strong> {{ original_verifier|default:"Nie podano" }}</p>{% endif %}
     </div></section>{% endif %}
 
 

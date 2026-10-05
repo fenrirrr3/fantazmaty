@@ -76,7 +76,8 @@ def _task_forms(anthology, data=None):
     tasks = {task.task_type: task for task in anthology.production_tasks.all()}
     return [AnthologyTaskForm(data=data, prefix=kind,
                 instance=tasks.get(kind) or AnthologyTask(anthology=anthology, task_type=kind))
-            for kind in (AnthologyTask.TaskType.BANNERS, AnthologyTask.TaskType.BLURB, AnthologyTask.TaskType.TYPESETTING)]
+            for kind in (AnthologyTask.TaskType.BANNERS, AnthologyTask.TaskType.BLURB,
+                         AnthologyTask.TaskType.TYPESETTING, AnthologyTask.TaskType.AUDIO_DESCRIPTION)]
 
 
 @login_required

@@ -42,6 +42,18 @@ class Illustration(models.Model):
         blank=True,
     )
 
+    manual_illustrator_name = models.CharField('Ilustrator — imię i nazwisko (ręcznie)', max_length=255, blank=True)
+    manual_illustrator_email = models.EmailField('E-mail ilustratora (ręcznie)', blank=True)
+    coordinator_notes = models.TextField('Uwagi koordynatora', blank=True)
+
+    @property
+    def illustrator_display(self):
+        return str(self.illustrator) if self.illustrator_id else self.manual_illustrator_name
+
+    @property
+    def illustrator_email(self):
+        return (self.illustrator.email or '') if self.illustrator_id else self.manual_illustrator_email
+
     trigger_warnings = models.TextField(
         "trigger warnings",
         blank=True,
@@ -89,10 +101,17 @@ class Illustration(models.Model):
         super().clean()
 
         errors = {}
+        self.manual_illustrator_name = self.manual_illustrator_name.strip()
+        self.manual_illustrator_email = self.manual_illustrator_email.strip()
+        if self.illustrator_id and (self.manual_illustrator_name or self.manual_illustrator_email):
+            errors['manual_illustrator_name'] = 'Wybierz profil z listy albo wpisz osobę ręcznie; nie oba naraz.'
+        if self.manual_illustrator_email and not self.manual_illustrator_name:
+            errors['manual_illustrator_name'] = 'Podaj imię i nazwisko ilustratora.'
+        has_illustrator = bool(self.illustrator_id or self.manual_illustrator_name)
 
         if (
             self.status != self.Status.UNASSIGNED
-            and not self.illustrator_id
+            and not has_illustrator
         ):
             errors["illustrator"] = (
                 "Status inny niż „Nieprzypisane” wymaga "
@@ -101,7 +120,7 @@ class Illustration(models.Model):
 
         if (
             self.status == self.Status.UNASSIGNED
-            and self.illustrator_id
+            and has_illustrator
         ):
             errors["status"] = (
                 "Jeżeli wybrano ilustratora, zmień status "
@@ -113,11 +132,15 @@ class Illustration(models.Model):
 
     def save(self, *args, **kwargs):
         previous = (type(self).objects.filter(pk=self.pk)
-                    .values('status', 'illustrator_id', 'assigned_at').first()) if self.pk else None
-        status_changed_to_assigned = bool(self.illustrator_id) and (
+                    .values('status', 'illustrator_id', 'assigned_at', 'manual_illustrator_name', 'manual_illustrator_email').first()) if self.pk else None
+        self.manual_illustrator_name = self.manual_illustrator_name.strip()
+        self.manual_illustrator_email = self.manual_illustrator_email.strip()
+        status_changed_to_assigned = bool(self.illustrator_id or self.manual_illustrator_name) and (
             (previous is None and self.status == self.Status.ASSIGNED)
             or (previous is not None and (
                 previous['illustrator_id'] != self.illustrator_id
+                or previous['manual_illustrator_name'] != self.manual_illustrator_name
+                or previous['manual_illustrator_email'] != self.manual_illustrator_email
                 or previous['status'] == self.Status.UNASSIGNED
                 or (self.status == self.Status.ASSIGNED and previous['assigned_at'] is None)
             ))

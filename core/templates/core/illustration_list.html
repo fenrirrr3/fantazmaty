@@ -97,7 +97,7 @@
                         <th scope="col">Data przypisania</th>
                         <th scope="col">Ostrzeżenia dotyczące treści</th>
                         <th scope="col">Opowiadanie</th>
-                        <th scope="col">Ilustrowany fragment</th>
+                        <th scope="col">Ilustrowany fragment</th><th scope="col">Uwagi koordynatora</th>
                     </tr>
                 </thead>
 
@@ -145,7 +145,7 @@
 
                             <td>{{ illustration.genre_display|default:"Brak danych" }}</td>
                             <td>
-                                {% if illustration.illustrator %}
+                                {% if illustration.manual_illustrator_name %}{{ illustration.manual_illustrator_name }}{% elif illustration.illustrator %}
                                     {% if illustration.illustrator.is_active %}
                                         <a
                                             href="{% url 'core:person_detail' illustration.illustrator.pk %}"
@@ -221,10 +221,11 @@
                                     <span class="muted-text">Nie wskazano fragmentu</span>
                                 {% endif %}
                             </td>
+                            <td>{% if illustration.coordinator_notes %}<details class="reviewer-opinion"><summary>Pokaż uwagi</summary><div class="reviewer-opinion-content">{{ illustration.coordinator_notes|linebreaksbr }}</div></details>{% else %}–{% endif %}</td>
                         </tr>
                     {% empty %}
                         <tr>
-                            <td colspan="10">
+                            <td colspan="11">
                                 <div class="empty-results-panel">
                                     <strong>Brak ilustracji spełniających kryteria.</strong>
                                     <p>

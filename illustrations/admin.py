@@ -25,7 +25,7 @@ class IllustrationAdmin(admin.ModelAdmin):
         "display_title",
         "display_anthology",
         "display_authors",
-        "illustrator",
+        "display_illustrator",
         "status",
         "assigned_at",
     )
@@ -36,6 +36,10 @@ class IllustrationAdmin(admin.ModelAdmin):
         "illustrator",
         "assigned_at",
     )
+
+    @admin.display(description='Ilustrator')
+    def display_illustrator(self, obj):
+        return obj.illustrator_display or 'Nie przypisano'
 
     search_fields = (
         "text__title__plcontains",
@@ -48,6 +52,8 @@ class IllustrationAdmin(admin.ModelAdmin):
         "illustrator__email__plcontains",
         "trigger_warnings__plcontains",
         "illustrated_excerpt__plcontains",
+        "manual_illustrator_name__plcontains",
+        "manual_illustrator_email__plcontains",
     )
 
     autocomplete_fields = (
@@ -78,6 +84,8 @@ class IllustrationAdmin(admin.ModelAdmin):
             {
                 "fields": (
                     "illustrator",
+                    "manual_illustrator_name",
+                    "manual_illustrator_email",
                     "status",
                     "assigned_at",
                 ),
@@ -88,6 +96,7 @@ class IllustrationAdmin(admin.ModelAdmin):
             {
                 "fields": (
                     "trigger_warnings",
+                    "coordinator_notes",
                 ),
             },
         ),

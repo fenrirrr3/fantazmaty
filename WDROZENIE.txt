@@ -1,40 +1,41 @@
-TŁUMACZENIA — OSOBNE PROFILE AUTORÓW ZAGRANICZNYCH I TŁUMACZY
+CMS V16 — TŁUMACZENIA, ILUSTRACJE, PROGRAMY I ZADANIA
 
-Paczka zawiera wyłącznie pliki nowe i zmienione względem ostatniego CMS z Tłumaczeniami i poprawką ról archiwalnych (v14). Nie jest pełnym projektem.
+Paczka do podmiany na ostatniej wersji CMS (v15, osobne profile autorów zagranicznych i tłumaczy). Zawiera wyłącznie zmienione i nowe pliki.
 
 ZMIANY
-1. Tłumaczenia są w menu bezpośrednio pod Ekstraktami. Uprawnienia do tej zakładki pozostają takie jak wcześniej.
-2. Nagłówek kolumny: Tłumacz.
-3. Dwa nowe, niezależne modele: Autor zagraniczny i Tłumacz. Nie rozszerzają modelu Author ani profilu członka zespołu i nie tworzą kont użytkowników.
-4. Oba profile: imię, nazwisko, pseudonim, opcjonalny e-mail, opcjonalny telefon, notatki. Tłumacz ma dodatkowo pole Język / języki pracy, np. angielski, niemiecki.
-5. W panelu admina grupa Tłumaczenia zawiera Tłumaczenia, Autorzy zagraniczni i Tłumacze. Tam można dodawać i edytować profile bez adresu e-mail.
-6. W edycji istniejącego tekstu tłumaczonego pojawiają się osobne pola Autor zagraniczny i Tłumacz. W zwykłych tekstach nadal używany jest dotychczasowy spis autorów.
-7. Nowy tekst tłumaczony można zapisać w adminie po wybraniu antologii tłumaczonej, bez autora z polskiego spisu; po zapisaniu przypisać osobę w sekcji Tłumaczenie. Osoby można przypisać również w podglądzie tekstu w aplikacji jako superuser.
-8. Profile można otworzyć z listy Tłumaczenia. Formularze, kontakty i profile szczegółowe zachowują dotychczasowe ograniczenie do superuserów; pozostali członkowie zespołu widzą nazwiska jak wcześniej.
-9. Osobne filtry Autor zagraniczny i Tłumacz, wyszukiwanie osób i języka pracy; sortowanie nazwisk w tabeli.
+- Tłumaczenia: pole „Weryfikacja z oryginałem” na imię i nazwisko. Dostępne w formularzu wpisu i adminie. Nie tworzy konta ani dodatkowego etapu workflow.
+- Podpis opcji formatowania: „Ujednolić formatowanie”. Paczka zawiera aktualny plik formularza z krótką nazwą.
+- Ilustracje: wybór istniejącego ilustratora albo dwa ręczne pola: imię i nazwisko oraz e-mail. E-mail jest opcjonalny; imię i nazwisko konieczne przy ręcznym przypisaniu. Ręczny wpis nie zakłada konta ani profilu osoby.
+- Wyszukiwarka w formularzu przypisania filtruje osoby z istniejącego spisu, także bez wpisywania polskich znaków. Zachowuje aktualnie wybraną osobę. Przy wpisaniu osoby ręcznie pozostaw pusty wybór profilu; formularz odrzuca podanie obu naraz.
+- Uwagi koordynatora: osobny formularz zapisu w szczegółach ilustracji i zwijany podgląd w tabeli. Uwagi mogą czytać osoby mające dostęp do ilustracji, a zapisywać tylko koordynatorzy/superuserzy. Zachowana kontrola konfliktów zapisu.
+- Status i data przypisania obsługują również ręcznych ilustratorów. Zmiana osoby/danych ręcznego kontaktu aktualizuje datę przypisania; zwykła zmiana statusu na Oddane jej nie resetuje.
+- Odkurzacz i konwerter: domyślnie zaznaczona opcja „Usuń miękkie entery i spacje nieprzenoszące”. Zamienia Shift+Enter i spacje nierozdzielające na zwykłe spacje, bez sklejania słów. Działa na końcu przygotowania dokumentu, również po regułach Odkurzacza dodających spacje nieprzenoszące. Można ją wyłączyć.
+- Zachowane podziały akapitów, stron i kolumn oraz formatowanie znaków. Czyszczenie tych znaków obejmuje też tekst w tabelach, nagłówkach, stopkach i przypisach. Nie jest stosowane do samego narzędzia analizy powtórzeń ani importu skrzynki.
+- Audiodeskrypcje: nowa, pusta zakładka z samym nagłówkiem.
+- Zadania: lista z istniejących danych antologii, które nie mają statusu Gotowa: Okładka, Blurb, Bannery, Skład, Audiodeskrypcja. Kolumny: antologia, zadanie, osoba, status, data zlecenia; wyszukiwarka i filtr rodzaju zadania. Okładka pobierana jest z obecnych pól antologii, bez tworzenia drugiej kopii zadania.
+- Audiodeskrypcja jest też zadaniem antologii, edytowanym tak jak blurb, bannery i skład: wykonawca, status i data zlecenia.
+- Zgodnie z wcześniejszą zasadą izolacji antologie tłumaczone nadal są widoczne w Tłumaczeniach/adminie, a nie na zwykłej zbiorczej liście Zadań.
 
-ISTNIEJĄCE DANE
-Migracja 0023 automatycznie kopiuje autorów tekstów z antologii oznaczonych jako tłumaczone do nowych profili i przepina te powiązania. Dotychczasowych tłumaczy przenosi do modelu Tłumacz, także w zachowanych rekordach antologii z wyłączoną flagą.
-Przenosi imię, nazwisko, pseudonim, e-mail i telefon. Nie zgaduje języka pracy — pole pozostaje do uzupełnienia.
-Nie usuwa starych rekordów Author ani ich powiązań ze zwykłymi tekstami/recenzjami. Nowo tworzone profile zagraniczne i tłumacze nie pojawiają się w spisie polskich autorów.
-Włączenie flagi Tłumaczone dla antologii z istniejącymi autorami również tworzy niezależne profile autorów zagranicznych i przenosi powiązania tekstów.
-Wyłączenie flagi nie usuwa nowych profili ani zapisanych powiązań tłumaczeń. Dane tych profili nie trafiają do zwykłej listy tekstów.
-Migracja rozdzielenia modeli jest jednokierunkowa; nie służy do cofania do 0022.
+MIGRACJE
+texts/0024: pole weryfikacji z oryginałem, nowy rodzaj zadania oraz uzupełnienie istniejących antologii o pojedyncze zadanie Audiodeskrypcja ze statusem Niezlecone. Istniejące zadania i ich daty pozostają zachowane.
+illustrations/0003: ręczne dane ilustratora i uwagi koordynatora. Istniejące przypisania pozostają bez zmian.
 
-WDROŻENIE NA PYTHONANYWHERE
-Wgraj ZIP do katalogu z manage.py i uruchom w Bash z aktywnym środowiskiem projektu:
+WDROŻENIE PYTHONANYWHERE
+Wgraj ZIP obok manage.py. W Bash z aktywnym środowiskiem:
 
 cd ~/fantazmaty
-unzip -o cms_tlumaczenia_profile_v15_2026-10-05.zip -d .
+unzip -o cms_v16_ilustracje_zadania_programy_2026-10-05.zip -d .
 python manage.py migrate
+python manage.py collectstatic --noinput
 python manage.py check
 
-Po pomyślnej migracji kliknij Reload w zakładce Web PythonAnywhere.
-Collectstatic nie jest potrzebne: nie zmieniono plików CSS/JS.
-Nie uruchamiaj ponownie importu archiwum ani korekty ról — ta paczka nie zmienia danych workflow.
+Następnie Web -> Reload. Odśwież stronę przeglądarki (Ctrl+F5), aby pobrać nowy skrypt wyszukiwarki.
+Nie uruchamiaj ponownie importów archiwum ani korekty ról.
 
-WERYFIKACJA
-14 testów ukierunkowanych na tłumaczenia i nowe profile: poprawne. Sprawdzono formularze admina bez e-maila, profile, uprawnienia, zapisy z ochroną przed konfliktem, oddzielne filtry i sortowanie, menu, izolację zwykłych widoków i przełączanie flagi antologii.
-Osobna próba migracji z danych w schemacie 0022 do 0023: zachowane osoby, relacje, e-maile, ID tekstów i przypisania zwykłych tekstów; również współautorstwo oraz tłumaczenia z wyłączoną flagą.
-Django check: bez uwag. Makemigrations --check --dry-run: brak niezapisanych zmian schematu.
-Nie wykonano operacji na produkcyjnej bazie użytkownika.
+SPRAWDZENIA LOKALNE
+29 istniejących testów programów, formularzy ilustracji i tłumaczeń: pozytywne.
+7 nowych testów obejmujących ręczne przypisania, status/datę, walidację e-maila, konflikty i uprawnienia uwag, tabelę zadań, zapis audiodeskrypcji, puste Audiodeskrypcje, weryfikację z oryginałem oraz rzeczywiste przetwarzanie DOCX/EPUB: pozytywne.
+Osobna migracja na bazie ze starszym schematem i istniejącymi danymi: zachowane ID, relacje i stare zadania; ponowienie uzupełnienia nie duplikuje audiodeskrypcji.
+Skrypt wyszukiwarki: sprawdzone wyszukiwanie bez polskich znaków, zachowanie wyboru i przywrócenie listy po wyczyszczeniu wyszukiwania.
+Django check: brak problemów. Makemigrations --check --dry-run: brak dodatkowych zmian.
+Nie uruchamiano pełnego zestawu testów projektu ani nie zapisywano produkcyjnej bazy danych.
