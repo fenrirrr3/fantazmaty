@@ -15,6 +15,16 @@ def execution_label(label, number, *, show_first=False):
 
 
 def assignment_label(assignment, *, show_first=False):
+    from workflow.archive_executions import archive_work_label
+    special = archive_work_label(assignment.text, assignment.role, assignment.execution_number) if assignment.text_id else None
+    if special:
+        return special
     # An execution number describes the assignment's history, not a new role.
     return execution_label(assignment.get_role_display(), assignment.execution_number,
                            show_first=show_first)
+
+
+def stage_label(stage, text=None):
+    from workflow.archive_executions import archive_work_label
+    special = archive_work_label(text or stage.text, stage.stage_type, stage.execution_number) if stage.imported_completed else None
+    return special or execution_label(stage.get_stage_type_display(), stage.execution_number)

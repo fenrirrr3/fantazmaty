@@ -173,8 +173,8 @@ class WorkflowStageInline(SuperuserOnlyAdminMixin, admin.TabularInline):
 
     @admin.display(description="Etap")
     def stage_label(self, obj):
-        from workflow.labels import execution_label
-        return execution_label(obj.get_stage_type_display(), obj.execution_number)
+        from workflow.labels import stage_label
+        return stage_label(obj)
 
     @admin.display(description="Daty i przekazanie")
     def edit_dates_link(self, obj):

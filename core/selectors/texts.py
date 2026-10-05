@@ -1,5 +1,5 @@
 from workflow.catalog import active_stage_choices, active_role_choices, workflow_role_choices, IMPORT_ONLY_ROLES
-from workflow.labels import assignment_label, execution_label
+from workflow.labels import assignment_label, execution_label, stage_label
 from core.filtering import facet_queryset
 from datetime import date
 
@@ -184,7 +184,7 @@ def _stage_data(stage, text_data=None):
         repetition_id=stage.repetition_id,
         is_released=stage.is_released,
         stage_type=stage.stage_type,
-        get_stage_type_display=execution_label(stage.get_stage_type_display(), stage.execution_number) + (" – powrót do redaktora" if stage.repetition_id and stage.stage_type == StageType.EDITING and stage.queue_position > 0 else ""),
+        get_stage_type_display=stage_label(stage) + (" – powrót do redaktora" if stage.repetition_id and stage.stage_type == StageType.EDITING and stage.queue_position > 0 else ""),
         iteration=stage.iteration,
         started_at=stage.started_at,
         ended_at=stage.ended_at,
@@ -629,6 +629,8 @@ def workflow_list_context(*, user, params):
         current = _current_stage(text.selector_stages)
         row = _stage_data(current, _text_data(text, include_authors)) if current else _Record(
             text=_text_data(text, include_authors), get_stage_type_display='–')
+        from workflow.archive_executions import is_archive_text
+        archive = is_archive_text(text) and current is not None and current.stage_type == StageType.READY
         cells = []
         for role, label in role_columns:
             entries = []
@@ -636,8 +638,9 @@ def workflow_list_context(*, user, params):
             for assignment in text.summary_assignments:
                 if assignment.role != role or not assignment.assigned_to_id:
                     continue
-                entry = grouped.setdefault(assignment.assigned_to_id, {
+                entry = grouped.setdefault(assignment.pk if archive else assignment.assigned_to_id, {
                     'user': _user_data(assignment.assigned_to), 'work': [],
+                    'execution_label': assignment_label(assignment) if archive else '',
                 })
                 entry['work'].extend(stage for stage in text.summary_stages
                                      if stage.assignment_id == assignment.pk)
@@ -658,7 +661,7 @@ def workflow_list_context(*, user, params):
                     editor_current = role == 'editor' and any(
                         a.role == role and a.is_current and a.assigned_to_id == entry['user']['pk']
                         for a in text.summary_assignments)
-                    if editor_current and not text.editorial_approved:
+                    if editor_current and not text.editorial_approved and not archive:
                         state, tone = 'Oczekuje', 'pending'
                     else:
                         state, tone = 'Zakończone', 'completed'
@@ -979,6 +982,16 @@ def _source_review_data(text, user, include_authors):
 
 
 def _text_team_members(text, assignments):
+    from workflow.archive_executions import is_archive_text
+    if is_archive_text(text) and WorkflowStage.objects.filter(text=text, workflow_cycle=text.current_workflow_cycle,
+                                                             stage_type='ready', is_current=True).exists():
+        order = {'editor':0, 'editing_coordinator':1, 'editing_reviewer':2,
+                 'proofreader_1':3, 'verifier_1':4, 'verification_coordinator':5, 'styling':6}
+        members = WorkflowRoleAssignment.objects.filter(text=text, workflow_cycle=text.current_workflow_cycle,
+            stages__imported_completed=True, assigned_to__isnull=False).select_related('text','assigned_to__person_profile').distinct()
+        return [{'role':item.role, 'label':assignment_label(item), 'assignment':_assignment_data(item),
+                 'is_assigned':True, 'archive_execution':True, 'user':_user_data(item.assigned_to)}
+                for item in sorted(members,key=lambda a:(order.get(a.role,99),a.execution_number,a.pk))]
     team_role_order = {role: i for i, (role, _) in enumerate(workflow_role_choices())}
     return sorted([
             {
@@ -995,7 +1008,7 @@ def _text_team_members(text, assignments):
             }
             for role, label in workflow_role_choices() if role != Role.STYLING
         ] + [
-            {"role": item.role, "label": assignment_label(item, show_first=True),
+            {"role": item.role, "label": assignment_label(item, show_first=True), "archive_execution": is_archive_text(text),
              "is_previous": True, "is_assigned": True, "workflow_cycle": item.workflow_cycle,
              "user": _user_data(item.assigned_to)}
             for item in WorkflowRoleAssignment.objects.filter(text=text, assigned_to__isnull=False).exclude(role__in=(*IMPORT_ONLY_ROLES, Role.STYLING)).exclude(

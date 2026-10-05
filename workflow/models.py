@@ -194,6 +194,11 @@ class WorkflowStage(models.Model):
         ]
 
     def __str__(self):
+        if self.imported_completed:
+            from workflow.archive_executions import archive_work_label
+            label = archive_work_label(self.text, self.stage_type, self.execution_number)
+            if label:
+                return f"{self.text.title}: {label}"
         return (
             f"{self.text.title}: {self.get_stage_type_display()} – "
             f"przebieg {self.workflow_cycle}"
@@ -437,6 +442,10 @@ class WorkflowRoleAssignment(models.Model):
         else:
             assigned_person = "nieprzypisane"
 
+        from workflow.archive_executions import archive_work_label
+        label = archive_work_label(self.text, self.role, self.execution_number)
+        if label:
+            return f"{self.text.title} – {label} – {assigned_person}"
         return (
             f"{self.text.title} – {self.get_role_display()} – "
             f"{assigned_person} – przebieg {self.workflow_cycle}"

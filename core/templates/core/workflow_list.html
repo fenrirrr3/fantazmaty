@@ -172,6 +172,7 @@
                                 <td>
                                 {% for entry in cell.entries %}
                                     <div class="summary-work-entry">
+                                    {% if entry.execution_label %}<div class="muted-text">{{ entry.execution_label }}</div>{% endif %}
                                     {% if entry.user.person_profile.is_active %}<a href="{% url 'core:person_detail' entry.user.person_profile.pk %}">{{ entry.user.get_full_name|default:"Nieuzupełnione dane" }}</a>{% elif entry.user %}{{ entry.user.get_full_name|default:"Nieuzupełnione dane" }}{% else %}–{% endif %}
                                     <div class="summary-work-state"><span class="stage-status {{ entry.tone }}">{{ entry.state }}</span></div>
                                     </div>

@@ -365,7 +365,7 @@
         <div class="text-team-grid">
             {% for member in previous_team_members %}
                 <div class="text-team-member">
-                    <span class="text-team-member-role">{{ member.label }} · przebieg {{ member.workflow_cycle }}</span>
+                    <span class="text-team-member-role">{{ member.label }}{% if not member.archive_execution %} · przebieg {{ member.workflow_cycle }}{% endif %}</span>
                     <strong>{% firstof member.user.get_full_name "Nieuzupełnione dane" %}</strong>
                 </div>
             {% endfor %}
