@@ -1,0 +1,15 @@
+Podmień import_archiwum.json obok manage.py. Wgraj też popraw_autorke.py do tego katalogu.
+Wymagany jest importer i migracja 0015 z paczki v10. Ta aktualizacja nie zmienia kodu CMS ani schematu.
+
+1. Zmień imię istniejącej autorki (to polecenie ZAPISUJE tę jedną poprawkę w bazie):
+python manage.py shell < popraw_autorke.py
+
+2. Jeśli krok 1 zakończył się poprawnie, uruchom podgląd:
+python manage.py import_completed_table import_archiwum.json --report raport_archiwum_podglad
+
+3. Po sprawdzeniu podglądu, zapis danych:
+python manage.py import_completed_table import_archiwum.json --apply --report raport_archiwum_zapis
+
+Plik importu używa istniejących profili: Izabela Palińska (161), Maria Truś (116), Maria Bernaciak (91), Magda Kowalewicz (5) oraz autorki Agnieszka Biskup (19). Identyfikatory pochodzą z raportu Twojej bazy; plik jest przeznaczony dla tej bazy.
+Skrypt zmienia tylko imię autorki ID 19, zachowując jej rekord, adres e-mail i wszystkie powiązania. Ponowne uruchomienie jest bez zmian. Zmiana imienia jest osobną operacją, nie wycofuje jej podgląd importu.
+Zachowano 29 tekstów, 323 wykonania, powtórzenia osób, długości i identyfikatory importu. Nie dodano raportu HTML. Collectstatic i nowe migracje nie są potrzebne, jeśli v10 już wdrożono.

@@ -489,16 +489,18 @@
         {
           "stage_type": "editing",
           "person": {
-            "first_name": "Iza",
-            "last_name": "Palińska"
+            "first_name": "Izabela",
+            "last_name": "Palińska",
+            "person_id": 161
           },
           "source_column": "Redaktor:"
         },
         {
           "stage_type": "editing",
           "person": {
-            "first_name": "Iza",
-            "last_name": "Palińska"
+            "first_name": "Izabela",
+            "last_name": "Palińska",
+            "person_id": 161
           },
           "source_column": "Drugi redaktor:"
         },
@@ -1783,8 +1785,9 @@
         {
           "stage_type": "third_proofreading",
           "person": {
-            "first_name": "Marysia",
-            "last_name": "Truś"
+            "first_name": "Maria",
+            "last_name": "Truś",
+            "person_id": 116
           },
           "source_column": "Korektor 3"
         },
@@ -2951,8 +2954,9 @@
         {
           "stage_type": "fourth_proofreading",
           "person": {
-            "first_name": "Marysia",
-            "last_name": "Bernaciak"
+            "first_name": "Maria",
+            "last_name": "Bernaciak",
+            "person_id": 91
           },
           "source_column": "Korektor 4"
         },
@@ -2967,8 +2971,9 @@
         {
           "stage_type": "second_verification",
           "person": {
-            "first_name": "Magdalena",
-            "last_name": "Kowalewicz"
+            "first_name": "Magda",
+            "last_name": "Kowalewicz",
+            "person_id": 5
           },
           "source_column": "Weryfikator 2"
         },
@@ -3132,7 +3137,8 @@
       "authors": [
         {
           "first_name": "Agnieszka",
-          "last_name": "Biskup"
+          "last_name": "Biskup",
+          "author_id": 19
         }
       ],
       "stages": [
@@ -3293,8 +3299,9 @@
         {
           "stage_type": "second_proofreading",
           "person": {
-            "first_name": "Marysia",
-            "last_name": "Truś"
+            "first_name": "Maria",
+            "last_name": "Truś",
+            "person_id": 116
           },
           "source_column": "Korektor 2"
         },
