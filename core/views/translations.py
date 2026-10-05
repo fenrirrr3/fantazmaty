@@ -16,6 +16,24 @@ from texts.models import Text, TextTranslation
 @never_cache
 @login_required
 @require_GET
+@superuser_required
+def translation_person_detail(request, kind, person_id):
+    from django.http import Http404
+    from texts.models import ForeignAuthor, Translator
+    models = {'author': ForeignAuthor, 'translator': Translator}
+    if kind not in models:
+        raise Http404
+    person = get_object_or_404(models[kind], pk=person_id)
+    records = person.translations.filter(text__anthology__is_translated=True).select_related('text__anthology')
+    return render(request, 'core/translation_person_detail.html', {
+        'person': person, 'kind': kind, 'records': records,
+        'admin_change_name': 'admin:texts_translator_change' if kind == 'translator' else 'admin:texts_foreignauthor_change',
+    })
+
+
+@never_cache
+@login_required
+@require_GET
 @team_member_required
 def translation_list(request):
     context = dict(text_list_context(user=request.user, params=request.GET, translated=True))
@@ -47,5 +65,5 @@ def set_translators(request, text_id):
         if not form.is_valid():
             return _render_text_detail(request, text, bound_forms={'translation_form':form}, status=400)
         form.save()
-        messages.success(request, 'Zapisano tłumaczy tekstu.')
+        messages.success(request, 'Zapisano autora zagranicznego i tłumacza tekstu.')
     return redirect('core:translation_detail', text_id=text.pk)

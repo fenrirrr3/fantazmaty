@@ -155,7 +155,8 @@ def _render_text_detail(request, text, *, bound_forms=None, status=200):
     email_access = coordinator_access or (
         WorkflowRoleAssignment.objects.filter(text=text, assigned_to=request.user).exists()
     )
-    context["author_emails"] = list(text.authors.exclude(email__isnull=True).exclude(email="").values_list("email", flat=True)) if email_access else []
+    contacts = record.foreign_authors if context['is_translation'] and record else text.authors
+    context["author_emails"] = list(contacts.exclude(email__isnull=True).exclude(email="").values_list("email", flat=True)) if email_access else []
 
     context.update(
         {
@@ -329,6 +330,8 @@ def set_text_authors(request, text_id):
                 Text.objects.select_for_update(),
                 pk=text_id,
             )
+            if text.anthology_id and text.anthology.is_translated:
+                raise ValidationError('Autora zagranicznego zmień w formularzu tłumaczenia.')
             authors = list(
                 Author.objects.select_for_update()
                 .filter(pk__in=author_ids)

@@ -1,0 +1,15 @@
+Creating test database for alias 'default'...
+
+..............
+----------------------------------------------------------------------
+Ran 14 tests in 9.512s
+
+OK
+Destroying test database for alias 'default'...
+
+Found 14 test(s).
+
+Przypisania: scalono 0 pustych duplikatów, przywrócono 0 przypisań osób.
+
+Zespół tekstu: przywrócono 0 przypisań, scalono 0 pustych rekordów.
+System check identified no issues (0 silenced).

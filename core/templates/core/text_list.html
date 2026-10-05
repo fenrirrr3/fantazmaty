@@ -36,7 +36,7 @@
                             <th scope="col" {% if can_view_authors %}data-sort-key="authors"{% endif %}>Autorzy</th>
                         
 
-                        {% if translations_page %}<th scope="col" data-sort-key="translators">Tłumacze</th>{% endif %}
+                        {% if translations_page %}<th scope="col" data-sort-key="translators">Tłumacz</th>{% endif %}
                         <th scope="col" class="numeric-cell" data-sort-key="length">Długość</th>
                         <th scope="col" data-sort-key="status">Etap pracy</th>
                         <th scope="col">Rozpoczęcie etapu</th>
@@ -72,7 +72,7 @@
                                 <td data-copy-value="{{ text.authors_display }}">
                                     {% for author in text.authors.all %}
                                         {% if can_view_authors %}<a
-                                            href="{% url 'core:author_detail' author.pk %}"
+                                            href="{% if translations_page %}{% url 'core:translation_person_detail' 'author' author.pk %}{% else %}{% url 'core:author_detail' author.pk %}{% endif %}"
                                             class="detail-link"
                                         >
                                             {{ author.first_name }} {{ author.last_name }}
@@ -85,7 +85,7 @@
                                 </td>
                             
 
-                            {% if translations_page %}<td>{% for translator in text.translators %}{% if can_view_authors %}<a href="{% url 'core:author_detail' translator.pk %}">{{ translator.first_name }} {{ translator.last_name }}</a>{% else %}{{ translator.first_name }} {{ translator.last_name }}{% endif %}{% if not forloop.last %}, {% endif %}{% empty %}–{% endfor %}</td>{% endif %}
+                            {% if translations_page %}<td>{% for translator in text.translators %}{% if can_view_authors %}<a href="{% url 'core:translation_person_detail' 'translator' translator.pk %}">{{ translator.first_name }} {{ translator.last_name }}</a>{% else %}{{ translator.first_name }} {{ translator.last_name }}{% endif %}{% if not forloop.last %}, {% endif %}{% empty %}–{% endfor %}</td>{% endif %}
                             <td
                                 class="numeric-cell"
                                 data-type="number"

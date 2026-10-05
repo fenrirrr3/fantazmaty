@@ -5,7 +5,7 @@ from django.db.models.signals import pre_save, post_save, post_delete, pre_delet
 
 # Only editable domain records; no audit/outbox/session traffic.
 TRACKED = {
-    'texts.texttranslation',
+    'texts.texttranslation', 'texts.foreignauthor', 'texts.translator',
     'texts.text', 'texts.review', 'texts.anthology', 'texts.anthologytask', 'texts.textnote',
     'illustrations.illustration', 'illustrations.coverproposal',
     'texts.reviewassignment', 'texts.reviewers', 'texts.extract',
@@ -48,6 +48,9 @@ def changed(sender, instance, using, raw=False, **kwargs):
         bump('texts.review', instance.review_id, using)
     elif label == 'texts.texttranslation':
         bump('texts.text', instance.text_id, using)
+    elif label in ('texts.foreignauthor', 'texts.translator'):
+        for text_id in instance.translations.using(using).values_list('text_id', flat=True):
+            bump('texts.text', text_id, using)
     elif label == 'texts.textnote':
         bump('texts.text', instance.text_id, using)
         old_text = getattr(instance, '_previous_note_text', None)
@@ -116,8 +119,11 @@ def deleting_identity(sender, instance, using, **kwargs):
     from django.db.models import Q
     label = sender._meta.concrete_model._meta.label_lower
     if label == 'authors.author':
-        text_ids = Text.objects.using(using).filter(Q(authors=instance) | Q(translation__translators=instance)).values_list('pk', flat=True).distinct()
+        text_ids = Text.objects.using(using).filter(Q(authors=instance)).values_list('pk', flat=True).distinct()
         review_ids = Review.objects.using(using).filter(Q(author=instance) | Q(coauthors=instance)).values_list('pk', flat=True).distinct()
+    elif label in ('texts.foreignauthor', 'texts.translator'):
+        text_ids = instance.translations.using(using).values_list('text_id', flat=True)
+        review_ids = []
     elif label == 'auth.user':
         text_ids = set(WorkflowRoleAssignment.objects.using(using).filter(assigned_to=instance).values_list('text_id', flat=True))
         text_ids.update(TextNote.objects.using(using).filter(author=instance).values_list('text_id', flat=True))

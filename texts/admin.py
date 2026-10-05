@@ -29,6 +29,8 @@ from .models import (
     Text,
     TextNote,
     TextTranslation,
+    ForeignAuthor,
+    Translator,
 )
 
 
@@ -252,6 +254,11 @@ class TextAdminForm(NormalizedFormMixin, forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         source = getattr(self, 'source_review', None)
+        anthology_id = self.data.get('anthology') if self.is_bound else self.initial.get('anthology')
+        translated = (self.instance.anthology_id and self.instance.anthology.is_translated) or (
+            str(anthology_id or '').isdecimal() and Anthology.objects.filter(pk=anthology_id, is_translated=True).exists())
+        if translated and 'authors' in self.fields:
+            self.fields['authors'].required = False
         if source is not None:
             canonical = review_text_initial(source)
             # These fields describe the saved source, not another editable author form.
@@ -268,6 +275,11 @@ class TextAdminForm(NormalizedFormMixin, forms.ModelForm):
     def clean(self):
         data = super().clean()
         source = getattr(self, 'source_review', None)
+        anthology_id = self.data.get('anthology') if self.is_bound else self.initial.get('anthology')
+        translated = (self.instance.anthology_id and self.instance.anthology.is_translated) or (
+            str(anthology_id or '').isdecimal() and Anthology.objects.filter(pk=anthology_id, is_translated=True).exists())
+        if translated and 'authors' in self.fields:
+            self.fields['authors'].required = False
         if source is not None:
             from core.services.reviews import resolve_publication_authors
             try:
@@ -281,6 +293,9 @@ class TextAdminForm(NormalizedFormMixin, forms.ModelForm):
                 self.add_error('anthology', 'Tekst musi należeć do antologii zapisanej recenzji.')
             if getattr(self, 'source_error', None):
                 self.add_error(None, self.source_error)
+        elif data.get('anthology') and data['anthology'].is_translated:
+            if data.get('authors'):
+                self.add_error('authors', 'Autora zagranicznego dodaj w sekcji tłumaczenia, po zapisaniu tekstu.')
         elif not data.get('authors'):
             self.add_error('authors', 'Wybierz autora.')
         return data
@@ -296,10 +311,24 @@ class TextAdminForm(NormalizedFormMixin, forms.ModelForm):
 
 
 
+@admin.register(ForeignAuthor)
+class ForeignAuthorAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
+    list_display = ('first_name', 'last_name', 'pseudonym', 'email')
+    search_fields = ('first_name__plcontains', 'last_name__plcontains', 'pseudonym__plcontains', 'email__plcontains')
+    fields = ('first_name', 'last_name', 'pseudonym', 'email', 'phone_number', 'notes')
+
+
+@admin.register(Translator)
+class TranslatorAdmin(ForeignAuthorAdmin):
+    list_display = (*ForeignAuthorAdmin.list_display, 'language')
+    search_fields = (*ForeignAuthorAdmin.search_fields, 'language__plcontains')
+    fields = (*ForeignAuthorAdmin.fields, 'language')
+
+
 class TextTranslationInline(admin.StackedInline):
     model = TextTranslation
-    fields = ('translators',)
-    autocomplete_fields = ('translators',)
+    fields = ('foreign_authors', 'translators')
+    autocomplete_fields = ('foreign_authors', 'translators')
     extra = 0
     max_num = 1
     can_delete = False
@@ -307,11 +336,12 @@ class TextTranslationInline(admin.StackedInline):
 
 @admin.register(TextTranslation)
 class TextTranslationAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
-    list_display = ('text', 'display_translators')
+    list_display = ('text', 'display_foreign_authors', 'display_translators')
     list_filter = ('text__anthology', 'text__anthology__is_translated')
     search_fields = ('text__title__plcontains', 'text__anthology__title__plcontains',
-                     'translators__first_name__plcontains', 'translators__last_name__plcontains')
-    autocomplete_fields = ('text', 'translators')
+                     'translators__first_name__plcontains', 'translators__last_name__plcontains',
+                     'foreign_authors__first_name__plcontains', 'foreign_authors__last_name__plcontains')
+    autocomplete_fields = ('text', 'foreign_authors', 'translators')
     readonly_fields = ('text',)
 
     def has_add_permission(self, request):
@@ -321,9 +351,13 @@ class TextTranslationAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         return False
 
     def get_queryset(self, request):
-        return super().get_queryset(request).filter(text__anthology__is_translated=True).select_related('text__anthology').prefetch_related('translators')
+        return super().get_queryset(request).filter(text__anthology__is_translated=True).select_related('text__anthology').prefetch_related('translators', 'foreign_authors')
 
-    @admin.display(description='Tłumacze')
+    @admin.display(description='Autor zagraniczny')
+    def display_foreign_authors(self, obj):
+        return ', '.join(str(a) for a in obj.foreign_authors.all()) or '–'
+
+    @admin.display(description='Tłumacz')
     def display_translators(self, obj):
         return ', '.join(str(a) for a in obj.translators.all()) or '–'
 
@@ -406,6 +440,8 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         if obj is None and getattr(request, '_source_review', None) is not None:
             return fieldsets
         confirmations = {'source_contract_received', 'source_coauthor_contracts', 'source_update_author_phone'}
+        if obj and obj.anthology_id and obj.anthology.is_translated:
+            confirmations.add('authors')
         return tuple((name, {**options, 'fields': tuple(field for field in options['fields'] if field not in confirmations)})
                      for name, options in fieldsets)
 
@@ -598,12 +634,18 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
     @admin.display(description="autorzy")
     def display_authors(self, obj):
+        if obj.anthology_id and obj.anthology.is_translated:
+            record = getattr(obj, 'translation', None)
+            return ', '.join(str(a) for a in record.foreign_authors.all()) if record else '–'
         return ", ".join(
             str(author) for author in obj.authors.all()
         ) or "–"
 
     @admin.display(description="adresy e-mail")
     def display_author_emails(self, obj):
+        if obj.anthology_id and obj.anthology.is_translated:
+            record = getattr(obj, 'translation', None)
+            return ', '.join(a.email for a in record.foreign_authors.all() if a.email) if record else '–'
         return ", ".join(
             author.email for author in obj.authors.all() if author.email
         ) or "–"

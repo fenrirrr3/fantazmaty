@@ -424,9 +424,44 @@ class Text(NormalizedModelMixin, models.Model):
         )
 
 
+class TranslationPerson(models.Model):
+    first_name = models.CharField('imię', max_length=100)
+    last_name = models.CharField('nazwisko', max_length=100)
+    pseudonym = models.CharField('pseudonim', max_length=100, blank=True)
+    email = models.EmailField('adres e-mail', blank=True)
+    phone_number = models.CharField('numer telefonu', max_length=50, blank=True)
+    notes = models.TextField('notatki', blank=True)
+    legacy_author_id = models.PositiveBigIntegerField(null=True, unique=True, editable=False)
+
+    class Meta:
+        abstract = True
+        ordering = ('last_name', 'first_name', 'pk')
+
+    def __str__(self):
+        return f'{self.first_name} {self.last_name}'.strip()
+
+
+class ForeignAuthor(TranslationPerson):
+    class Meta(TranslationPerson.Meta):
+        abstract = False
+        verbose_name = 'autor zagraniczny'
+        verbose_name_plural = 'autorzy zagraniczni'
+
+
+class Translator(TranslationPerson):
+    language = models.CharField('język / języki pracy', max_length=255, blank=True,
+                                help_text='Np. angielski, niemiecki.')
+
+    class Meta(TranslationPerson.Meta):
+        abstract = False
+        verbose_name = 'tłumacz'
+        verbose_name_plural = 'tłumacze'
+
+
 class TextTranslation(models.Model):
     text = models.OneToOneField(Text, on_delete=models.CASCADE, related_name='translation', verbose_name='tekst')
-    translators = models.ManyToManyField(Author, blank=True, related_name='translations', verbose_name='tłumacze')
+    foreign_authors = models.ManyToManyField(ForeignAuthor, blank=True, related_name='translations', verbose_name='autor zagraniczny')
+    translators = models.ManyToManyField(Translator, blank=True, related_name='translations', verbose_name='tłumacz')
 
     class Meta:
         verbose_name = 'tłumaczenie'

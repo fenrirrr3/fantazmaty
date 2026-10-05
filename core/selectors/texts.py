@@ -26,7 +26,7 @@ from core.permissions import (
     is_coordinator,
     require_team_member,
 )
-from texts.models import Anthology, Review, ReviewAssignment, Text, TextNote
+from texts.models import Anthology, Review, ReviewAssignment, Text, TextNote, ForeignAuthor, Translator
 from workflow.models import WorkflowRoleAssignment, WorkflowStage
 from workflow.services import ROLE_GROUPS, STAGE_ROLES
 
@@ -217,8 +217,12 @@ def _assignment_data(assignment, text_data=None):
 
 
 def _text_data(text, include_authors):
+    translated = bool(text.anthology_id and text.anthology.is_translated)
+    record = getattr(text, "translation", None) if translated else None
     source_authors = getattr(text, "selector_authors", None)
-    if source_authors is None:
+    if translated:
+        source_authors = record.foreign_authors.all() if record else []
+    elif source_authors is None:
         source_authors = text.authors.all()
     authors = [
         _author_data(author) if include_authors else _Record(
@@ -337,6 +341,7 @@ def text_list_context(*, user, params, scope=None, stage_scope=None, translated=
     include_authors = can_view_author_data(user)
     anthology_id = _positive_id(params.get("anthology"))
     author_id = _positive_id(params.get("author")) if include_authors else None
+    translator_id = _positive_id(params.get("translator")) if translated and include_authors else None
     valid_statuses = {value for value, _ in active_stage_choices()} | {"none"}
     requested = params.getlist("status") if hasattr(params, "getlist") else [params.get("status", "")]
     statuses = list(dict.fromkeys(v for v in requested if v in valid_statuses))
@@ -354,10 +359,10 @@ def text_list_context(*, user, params, scope=None, stage_scope=None, translated=
         if anthology_id is not None and exclude != 'anthology':
             result = result.filter(anthology_id=anthology_id)
         if author_id is not None and exclude != 'author':
-            condition = Q(authors__pk=author_id)
-            if translated:
-                condition |= Q(translation__translators__pk=author_id)
+            condition = Q(translation__foreign_authors__pk=author_id) if translated else Q(authors__pk=author_id)
             result = result.filter(condition)
+        if translator_id is not None and exclude != 'translator':
+            result = result.filter(translation__translators__pk=translator_id)
         if statuses and exclude != 'status':
             condition = Q(current_stage_type__in=[v for v in statuses if v != 'none'])
             if 'none' in statuses:
@@ -366,9 +371,11 @@ def text_list_context(*, user, params, scope=None, stage_scope=None, translated=
         for term in query.split():
             condition = Q(title__plcontains=term) | Q(anthology__title__plcontains=term)
             if include_authors:
-                condition |= Q(authors__first_name__plcontains=term) | Q(authors__last_name__plcontains=term) | Q(authors__pseudonym__plcontains=term)
                 if translated:
-                    condition |= Q(translation__translators__first_name__plcontains=term) | Q(translation__translators__last_name__plcontains=term) | Q(translation__translators__pseudonym__plcontains=term)
+                    condition |= Q(translation__foreign_authors__first_name__plcontains=term) | Q(translation__foreign_authors__last_name__plcontains=term) | Q(translation__foreign_authors__pseudonym__plcontains=term)
+                    condition |= Q(translation__translators__first_name__plcontains=term) | Q(translation__translators__last_name__plcontains=term) | Q(translation__translators__pseudonym__plcontains=term) | Q(translation__translators__language__plcontains=term)
+                else:
+                    condition |= Q(authors__first_name__plcontains=term) | Q(authors__last_name__plcontains=term) | Q(authors__pseudonym__plcontains=term)
             result = result.filter(condition)
         if hide_ready:
             result = result.filter(
@@ -385,7 +392,8 @@ def text_list_context(*, user, params, scope=None, stage_scope=None, translated=
     author_options = Author.objects.filter(
         Q(pk__in=filtered('author').values('authors__pk')) | Q(pk=author_id)) if include_authors else Author.objects.none()
     if translated and include_authors:
-        author_options = Author.objects.filter(Q(pk__in=filtered('author').values('authors__pk')) | Q(pk__in=filtered('author').values('translation__translators__pk')) | Q(pk=author_id)).distinct()
+        author_options = ForeignAuthor.objects.filter(Q(pk__in=filtered('author').values('translation__foreign_authors__pk')) | Q(pk=author_id)).distinct()
+    translator_options = Translator.objects.filter(Q(pk__in=filtered('translator').values('translation__translators__pk')) | Q(pk=translator_id)) if translated and include_authors else Translator.objects.none()
     available_statuses = set(filtered('status').values_list('current_stage_type', flat=True))
 
     sort = params.get("sort", "anthology")
@@ -408,7 +416,16 @@ def text_list_context(*, user, params, scope=None, stage_scope=None, translated=
         include_authors,
     )
     if translated:
-        queryset = queryset.prefetch_related("translation__translators")
+        queryset = queryset.prefetch_related("translation__translators", "translation__foreign_authors")
+        if params.get('sort', '').lstrip('-') in ('authors', 'translators'):
+            relation = 'foreign_authors' if params['sort'].lstrip('-') == 'authors' else 'translators'
+            model = ForeignAuthor if relation == 'foreign_authors' else Translator
+            first = model.objects.filter(translations__text_id=OuterRef('pk')).order_by('last_name', 'first_name', 'pk')
+            queryset = queryset.annotate(_translation_person_last=Subquery(first.values('last_name')[:1]),
+                                         _translation_person_first=Subquery(first.values('first_name')[:1]))
+            prefix = '-' if params['sort'].startswith('-') else ''
+            queryset = queryset.order_by(prefix+'_translation_person_last', prefix+'_translation_person_first', 'pk')
+            sort = params['sort']
     return {
         "filtered_queryset": queryset,
         "texts": _ProjectedRows(
@@ -427,6 +444,8 @@ def text_list_context(*, user, params, scope=None, stage_scope=None, translated=
         "show_no_status_filter": None in available_statuses or "none" in statuses,
         "selected_anthology_id": str(anthology_id) if anthology_id else "",
         "selected_author_id": str(author_id) if author_id else "",
+        "filter_translators": [_author_data(person) for person in translator_options],
+        "selected_translator_id": str(translator_id) if translator_id else "",
         "selected_status": status,
         "selected_statuses": statuses,
         "query": query,

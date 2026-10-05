@@ -160,7 +160,7 @@ def _extra_columns(items, queryset, request):
             'Rozpoczęcie etapu': ('stage_start', lambda r: _get(r, 'current_status_started_at')),
         })
         if request.resolver_match and request.resolver_match.url_name == 'translation_list':
-            columns['Tłumacze'] = ('translators', lambda r: _get(r, 'translators_display'))
+            columns['Tłumacz'] = ('translators', lambda r: _get(r, 'translators_display'))
         if 'work_active' in queryset.query.annotations:
             columns.update({
                 'Twoje role': ('roles', lambda r: _joined(a['get_role_display'] for a in r['user_assignments'])),

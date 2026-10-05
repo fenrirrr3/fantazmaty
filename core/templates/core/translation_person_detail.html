@@ -1,0 +1,12 @@
+{% extends "core/base.html" %}
+{% block title %}{{ person }} | Tłumaczenia{% endblock %}
+{% block content %}
+<header class="page-header"><p class="eyebrow">Tłumaczenia · {% if kind == 'translator' %}Tłumacz{% else %}Autor zagraniczny{% endif %}</p><h1 class="page-title">{{ person }}</h1><a class="secondary-button" href="{% url 'core:translation_list' %}">Wróć do tłumaczeń</a> <a class="secondary-button" href="{% url admin_change_name person.pk %}">Edytuj profil w adminie</a></header>
+<section class="details-card"><dl class="details-grid">
+<div class="detail-item"><dt>Pseudonim</dt><dd>{{ person.pseudonym|default:"Nie podano" }}</dd></div>
+<div class="detail-item"><dt>Adres e-mail</dt><dd>{% if person.email %}<a href="mailto:{{ person.email }}">{{ person.email }}</a>{% else %}Nie podano{% endif %}</dd></div>
+<div class="detail-item"><dt>Telefon</dt><dd>{{ person.phone_number|default:"Nie podano" }}</dd></div>
+{% if kind == 'translator' %}<div class="detail-item"><dt>Język / języki pracy</dt><dd>{{ person.language|default:"Nie podano" }}</dd></div>{% endif %}
+</dl><h2>Notatki</h2><p>{{ person.notes|default:"Brak notatek"|linebreaksbr }}</p></section>
+<section class="card"><div class="card-body"><h2>Teksty w tłumaczeniach</h2><ul>{% for record in records %}<li>{{ record.text.anthology.title }} — <a href="{% url 'core:translation_detail' record.text_id %}">{{ record.text.title }}</a></li>{% empty %}<li>Brak przypisanych tekstów.</li>{% endfor %}</ul></div></section>
+{% endblock %}

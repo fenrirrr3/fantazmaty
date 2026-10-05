@@ -1,50 +1,40 @@
-KOREKTA RÓL W 29 TEKSTACH / CZTERECH ANTOLOGIACH
+TŁUMACZENIA — OSOBNE PROFILE AUTORÓW ZAGRANICZNYCH I TŁUMACZY
 
-Paczka do podmiany na ostatniej wersji CMS z Tłumaczeniami (v13) i importerem archiwum.
-Zawiera 4 pliki Python, poprawiony import_archiwum.json i źródłowy wzorzec do korekty.
-Nie zmienia schematu bazy ani CSS/JS; nie wymaga migrate ani collectstatic.
-Nie uruchamiaj już starego repair_archive_executions — realizował poprzednie mapowanie.
+Paczka zawiera wyłącznie pliki nowe i zmienione względem ostatniego CMS z Tłumaczeniami i poprawką ról archiwalnych (v14). Nie jest pełnym projektem.
 
-ZASADY
-- Redaktor: kolejne wpisy jako Redaktor, Redaktor (wyk. 2), Redaktor (wyk. 3) itd.
-- Korektorzy: w kolejności wpisów Korektor 1, Korektor 2, Korektor 3, Korektor 4.
-  Piąty i dalszy wpis: Korektor 4 (wyk. 2), Korektor 4 (wyk. 3) itd.
-  Puste miejsca dawnych kolumn nie pozostawiają luk: dawni K1, K2, K4 stają się K1, K2, K3.
-- Weryfikator redakcji, jeśli występuje: Weryfikator 1, wykonanie 1.
-  Następny wpis: Weryfikator 1 (wyk. 2), kolejny: Weryfikator 2.
-  Pozostali: Weryfikator 3, Weryfikator 3 (wyk. 2), Weryfikator 3 (wyk. 3) itd.
-  Bez Weryfikatora redakcji: kolejno Weryfikator 1, Weryfikator 2, Weryfikator 3 i dalsze wykonania Weryfikatora 3.
-- Zachowane powtórzenia osób, kolejność oryginalnego importu, redaktorzy, koordynatorzy i osobna historyczna kontrola redakcji.
-- Ilona Skrzypczak -> Ilona Żurawska według poprzedniego uzgodnienia; istniejący profil Żurawskiej jest używany ponownie. Nie usuwamy profili.
-- 323 prace pozostają zakończone, bez dat. Wszystkie 29 tekstów pozostaje Gotowe.
-- Tytuły, autorzy, antologie, długości i identyfikatory etapów/przypisań pozostają zachowane.
-- Zwykłe nazwy ról i oznaczenie (wyk. N) zastępują etykiety typu „Korekta — wykonawca N”.
+ZMIANY
+1. Tłumaczenia są w menu bezpośrednio pod Ekstraktami. Uprawnienia do tej zakładki pozostają takie jak wcześniej.
+2. Nagłówek kolumny: Tłumacz.
+3. Dwa nowe, niezależne modele: Autor zagraniczny i Tłumacz. Nie rozszerzają modelu Author ani profilu członka zespołu i nie tworzą kont użytkowników.
+4. Oba profile: imię, nazwisko, pseudonim, opcjonalny e-mail, opcjonalny telefon, notatki. Tłumacz ma dodatkowo pole Język / języki pracy, np. angielski, niemiecki.
+5. W panelu admina grupa Tłumaczenia zawiera Tłumaczenia, Autorzy zagraniczni i Tłumacze. Tam można dodawać i edytować profile bez adresu e-mail.
+6. W edycji istniejącego tekstu tłumaczonego pojawiają się osobne pola Autor zagraniczny i Tłumacz. W zwykłych tekstach nadal używany jest dotychczasowy spis autorów.
+7. Nowy tekst tłumaczony można zapisać w adminie po wybraniu antologii tłumaczonej, bez autora z polskiego spisu; po zapisaniu przypisać osobę w sekcji Tłumaczenie. Osoby można przypisać również w podglądzie tekstu w aplikacji jako superuser.
+8. Profile można otworzyć z listy Tłumaczenia. Formularze, kontakty i profile szczegółowe zachowują dotychczasowe ograniczenie do superuserów; pozostali członkowie zespołu widzą nazwiska jak wcześniej.
+9. Osobne filtry Autor zagraniczny i Tłumacz, wyszukiwanie osób i języka pracy; sortowanie nazwisk w tabeli.
 
-POLECENIA PYTHONANYWHERE
-Wgraj ZIP do katalogu z manage.py. W Bash, z aktywnym środowiskiem projektu:
+ISTNIEJĄCE DANE
+Migracja 0023 automatycznie kopiuje autorów tekstów z antologii oznaczonych jako tłumaczone do nowych profili i przepina te powiązania. Dotychczasowych tłumaczy przenosi do modelu Tłumacz, także w zachowanych rekordach antologii z wyłączoną flagą.
+Przenosi imię, nazwisko, pseudonim, e-mail i telefon. Nie zgaduje języka pracy — pole pozostaje do uzupełnienia.
+Nie usuwa starych rekordów Author ani ich powiązań ze zwykłymi tekstami/recenzjami. Nowo tworzone profile zagraniczne i tłumacze nie pojawiają się w spisie polskich autorów.
+Włączenie flagi Tłumaczone dla antologii z istniejącymi autorami również tworzy niezależne profile autorów zagranicznych i przenosi powiązania tekstów.
+Wyłączenie flagi nie usuwa nowych profili ani zapisanych powiązań tłumaczeń. Dane tych profili nie trafiają do zwykłej listy tekstów.
+Migracja rozdzielenia modeli jest jednokierunkowa; nie służy do cofania do 0022.
+
+WDROŻENIE NA PYTHONANYWHERE
+Wgraj ZIP do katalogu z manage.py i uruchom w Bash z aktywnym środowiskiem projektu:
 
 cd ~/fantazmaty
-unzip -o import_archiwum_v14_role_2026-10-05.zip -d .
-python manage.py repair_archive_slots --report raport_rol_podglad
+unzip -o cms_tlumaczenia_profile_v15_2026-10-05.zip -d .
+python manage.py migrate
+python manage.py check
 
-Powyższe polecenie jest podglądem: wykonuje korektę w transakcji i ją wycofuje.
-W konsoli pojawi się podsumowanie, a pełny wynik w raport_rol_podglad.json.
-Do obejrzenia pełnego JSON (dużo danych):
-python -m json.tool --no-ensure-ascii raport_rol_podglad.json
+Po pomyślnej migracji kliknij Reload w zakładce Web PythonAnywhere.
+Collectstatic nie jest potrzebne: nie zmieniono plików CSS/JS.
+Nie uruchamiaj ponownie importu archiwum ani korekty ról — ta paczka nie zmienia danych workflow.
 
-Gdy podgląd zakończy się bez konfliktów, zapis:
-python manage.py repair_archive_slots --apply --report raport_rol_zapis
-
-Następnie kliknij Reload w zakładce Web PythonAnywhere, aby załadować nazwy ról i kolejność w widokach.
-Nie trzeba ponownie importować opowiadań. import_archiwum.json jest uaktualnionym plikiem na przyszłość; po korekcie ponowny import tych samych danych niczego nie dodaje.
-
-ZAKRES I KONTROLA
-Skrypt wymaga kompletu już zaimportowanych 29 tekstów ze źródła archive-table-2026-10-05-22.
-Obsługuje układ pierwotny, poprzednie spłaszczenie z v12 oraz już poprawiony układ.
-Rozbieżność tytułu, autorów, długości, antologii, wykonawców, numeracji, dat lub etapów przerywa całą korektę.
-Nie tworzy nowych tekstów ani nowych wykonań. Zmiany zachodzą w jednej transakcji.
-Raport JSON zawiera stan przed i po dla każdego tekstu. Nie powstaje raport HTML.
-Lokalna weryfikacja objęła tylko tę korektę: rzeczywisty komplet 29 tekstów/323 prac,
-podgląd z wycofaniem, zachowanie ID i powiązań, role i numery wykonań, daty, zwykłe etykiety,
-ponowienie korekty/importu bez zmian oraz odrzucenie zmienionej pracy.
-Nie wykonywano żadnych operacji na produkcyjnej bazie PythonAnywhere.
+WERYFIKACJA
+14 testów ukierunkowanych na tłumaczenia i nowe profile: poprawne. Sprawdzono formularze admina bez e-maila, profile, uprawnienia, zapisy z ochroną przed konfliktem, oddzielne filtry i sortowanie, menu, izolację zwykłych widoków i przełączanie flagi antologii.
+Osobna próba migracji z danych w schemacie 0022 do 0023: zachowane osoby, relacje, e-maile, ID tekstów i przypisania zwykłych tekstów; również współautorstwo oraz tłumaczenia z wyłączoną flagą.
+Django check: bez uwag. Makemigrations --check --dry-run: brak niezapisanych zmian schematu.
+Nie wykonano operacji na produkcyjnej bazie użytkownika.

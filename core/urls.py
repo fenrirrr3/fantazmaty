@@ -23,9 +23,10 @@ from core.views.programs import programs
 from core.views.activity import user_activity
 from core.views.tags import tag_list
 
-from core.views.translations import translation_list, translation_detail, set_translators
+from core.views.translations import translation_list, translation_detail, set_translators, translation_person_detail
 
 urlpatterns = [
+    path('tlumaczenia/osoby/<str:kind>/<int:person_id>/', translation_person_detail, name='translation_person_detail'),
     path('tlumaczenia/', translation_list, name='translation_list'),
     path('tlumaczenia/<int:text_id>/', translation_detail, name='translation_detail'),
     path('tlumaczenia/<int:text_id>/tlumacze/', set_translators, name='set_translators'),

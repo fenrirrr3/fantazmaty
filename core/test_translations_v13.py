@@ -6,7 +6,7 @@ from django.utils import timezone
 from lxml import html
 
 from authors.models import Author
-from texts.models import Anthology, Text, TextTranslation, Review
+from texts.models import Anthology, Text, TextTranslation, Review, ForeignAuthor, Translator
 from illustrations.models import Illustration
 from workflow.models import WorkflowStage as S, WorkflowRoleAssignment as A
 from workflow.tests import create_member
@@ -22,14 +22,15 @@ class TranslationTests(TestCase):
         cls.member=create_member('tr-member','Redaktor')
         cls.normal=Anthology.objects.create(title='Księga krajowa',has_illustrations=True)
         cls.book=Anthology.objects.create(title='TRANSLATED UNIQUE ANTHOLOGY',is_translated=True,has_illustrations=True)
-        cls.author=Author.objects.create(first_name='Autor',last_name='Oryginału',email='author-private@example.test')
-        cls.translator=Author.objects.create(first_name='Anna',last_name='Żak',email='translator-private@example.test')
-        cls.other=Author.objects.create(first_name='Beata',last_name='Adamska',email=None)
+        cls.author=ForeignAuthor.objects.create(first_name='Autor',last_name='Oryginału',email='author-private@example.test')
+        cls.translator=Translator.objects.create(first_name='Anna',last_name='Żak',email='translator-private@example.test')
+        cls.other=Translator.objects.create(first_name='Beata',last_name='Adamska',email='')
         cls.text=Text.objects.create(title='TRANSLATED UNIQUE STORY',length=500,anthology=cls.book)
-        cls.text.authors.add(cls.author)
+        cls.text.translation.foreign_authors.add(cls.author)
         cls.text.translation.translators.add(cls.translator)
         cls.regular=Text.objects.create(title='Tekst zwykły',length=100,anthology=cls.normal)
-        cls.regular.authors.add(cls.author)
+        cls.domestic=Author.objects.create(first_name='Polski',last_name='Autor',email=None)
+        cls.regular.authors.add(cls.domestic)
         cls.assignment=A.objects.create(text=cls.text,role='editor',assigned_to=cls.member)
         cls.stage=S.objects.create(text=cls.text,stage_type='editing',assignment=cls.assignment,started_at=timezone.localdate())
         cls.review=Review.objects.create(title='TRANSLATED UNIQUE REVIEW',anthology=cls.book,length=500,
@@ -56,13 +57,13 @@ class TranslationTests(TestCase):
     def test_translation_list_same_columns_search_filter_sort_and_empty_anthology(self):
         blank=Anthology.objects.create(title='Puste tłumaczenie',is_translated=True)
         url=reverse('core:translation_list')
-        for params in ({},{'q':'Żak'},{'author':str(self.translator.pk)},{'anthology':str(self.book.pk)},
+        for params in ({},{'q':'Żak'},{'translator':str(self.translator.pk)},{'anthology':str(self.book.pk)},
                        {'sort':'translators'},{'sort':'-length'},{'status':'editing'}):
             response=self.client.get(url,params)
             self.assertEqual(response.status_code,200)
             self.assertEqual([r['pk'] for r in response.context['texts']],[self.text.pk])
             self.assertContains(response,'Anna Żak')
-            for heading in ['Antologia','Tytuł','Autorzy','Tłumacze','Długość','Etap pracy','Rozpoczęcie etapu','Ostatnia zmiana statusu']:
+            for heading in ['Antologia','Tytuł','Autorzy','Tłumacz','Długość','Etap pracy','Rozpoczęcie etapu','Ostatnia zmiana statusu']:
                 self.assertContains(response,heading)
         response=self.client.get(url,{'anthology':blank.pk})
         self.assertContains(response,'Puste tłumaczenie')
@@ -101,12 +102,12 @@ class TranslationTests(TestCase):
         self.assertEqual(response.status_code,200)
         return html.fromstring(response.content).xpath('//form[contains(@action,"tlumacze")]/input[@name="_edit_version"]/@value')[0]
 
-    def test_translator_is_author_and_form_preserves_original_author_and_detects_conflict(self):
+    def test_translation_profiles_form_preserves_author_and_detects_conflict(self):
         endpoint=reverse('core:set_translators',args=[self.text.pk]);token=self.token()
-        response=self.client.post(endpoint,{'translators':[self.other.pk],'_edit_version':token})
+        response=self.client.post(endpoint,{'foreign_authors':[self.author.pk], 'translators':[self.other.pk],'_edit_version':token})
         self.assertEqual(response.status_code,302)
         self.assertEqual(list(self.text.translation.translators.all()),[self.other])
-        self.assertEqual(list(self.text.authors.all()),[self.author])
+        self.assertEqual(list(self.text.translation.foreign_authors.all()),[self.author])
         response=self.client.post(endpoint,{'translators':[self.translator.pk],'_edit_version':token})
         self.assertEqual(response.status_code,409)
         response=self.client.post(endpoint,{'translators':[999999],'_edit_version':self.token()})
