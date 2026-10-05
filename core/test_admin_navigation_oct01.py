@@ -24,8 +24,8 @@ class AdminNavigationTests(TestCase):
     def test_task_groups_order_and_details(self):
         request=RequestFactory().get(reverse('admin:index'));request.user=self.user
         groups=admin.site.get_app_list(request)
-        self.assertEqual([g['app_label'] for g in groups],['submissions','publication','translations','authors','team','art','history','settings'])
-        self.assertEqual([g['collapsed'] for g in groups],[False]*4+[True]*4)
+        self.assertEqual([g['app_label'] for g in groups],['submissions','publication','translations','authors','team','art','audio','history','settings'])
+        self.assertEqual([g['collapsed'] for g in groups],[False]*4+[True]*5)
         by_label = {group['app_label']: group for group in groups}
         def names(group):return [m['object_name'].lower() for m in group['models']]
         self.assertIn('anthologytask',names(groups[1]));self.assertNotIn('illustration',names(groups[1]))

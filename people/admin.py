@@ -91,6 +91,22 @@ class RoleAdmin(admin.ModelAdmin):
     list_per_page = 50
 
 
+class IllustratorDirectoryFilter(admin.SimpleListFilter):
+    title = 'spis ilustratorów'
+    parameter_name = 'illustrator_directory'
+
+    def lookups(self, request, model_admin):
+        return (('active', 'Aktywni ilustratorzy'), ('inactive', 'Nieaktywni ilustratorzy'),
+                ('all', 'Wszyscy ilustratorzy'))
+
+    def queryset(self, request, queryset):
+        if self.value() in ('active', 'inactive', 'all'):
+            queryset = queryset.filter(roles__name__iexact='Ilustrator').distinct()
+            if self.value() != 'all':
+                queryset = queryset.filter(illustrator_active=self.value() == 'active')
+        return queryset
+
+
 @admin.register(Person)
 class PersonAdmin(admin.ModelAdmin):
     def get_fieldsets(self, request, obj=None):
@@ -135,6 +151,7 @@ class PersonAdmin(admin.ModelAdmin):
     )
 
     list_filter = (
+        IllustratorDirectoryFilter,
         "illustrator_active",
         "is_active",
         "roles",
@@ -164,6 +181,12 @@ class PersonAdmin(admin.ModelAdmin):
 
     list_per_page = 50
     show_full_result_count = False
+
+    def get_list_display(self, request):
+        if request.GET.get('illustrator_directory') in ('active', 'inactive', 'all'):
+            return ('full_name', 'email', 'illustrator_portfolio', 'illustrator_preferences',
+                    'illustrator_covers', 'illustrator_active')
+        return super().get_list_display(request)
 
     fieldsets = (
         ('Dane osoby i kontakt', {'fields': ('first_name', 'last_name', 'email', 'dropbox_email')}),

@@ -396,8 +396,40 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         "anthology",
         "length",
         "content_warnings_preview",
+        "for_recording",
+        "audiobook_blacklisted",
     )
-    list_filter = ("anthology",)
+    list_filter = ("audiobook_blacklisted", "for_recording", "anthology", "anthology__is_translated")
+    actions = ('block_audiobooks', 'unblock_audiobooks')
+
+    def _set_audiobook_blacklist(self, request, queryset, blocked):
+        if not self.has_change_permission(request):
+            raise PermissionDenied
+        using = queryset.db
+        # Lock only Text rows, without nullable anthology joins from the list.
+        selected = queryset.values_list('pk', flat=True)
+        count = 0
+        description = ('Dodano do czarnej listy audiobooków; wyłączono nagrywanie.' if blocked
+                       else 'Usunięto z czarnej listy audiobooków; nagrywanie pozostało wyłączone.')
+        with transaction.atomic(using=using):
+            rows = Text.objects.using(using).filter(pk__in=selected).order_by('pk').select_for_update()
+            for obj in rows:
+                if obj.audiobook_blacklisted == blocked and not (blocked and obj.for_recording):
+                    continue
+                obj.audiobook_blacklisted = blocked
+                obj.for_recording = False
+                obj.save(using=using, update_fields=['audiobook_blacklisted', 'for_recording'])
+                self.log_change(request, obj, description)
+                count += 1
+        self.message_user(request, f'{description} Zmieniono tekstów: {count}.')
+
+    @admin.action(description='Audiobooki: dodaj do czarnej listy', permissions=['change'])
+    def block_audiobooks(self, request, queryset):
+        self._set_audiobook_blacklist(request, queryset, True)
+
+    @admin.action(description='Audiobooki: usuń z czarnej listy (bez włączania nagrywania)', permissions=['change'])
+    def unblock_audiobooks(self, request, queryset):
+        self._set_audiobook_blacklist(request, queryset, False)
     search_fields = (
         "title__plcontains",
         "content_warnings__plcontains",
@@ -416,10 +448,12 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     readonly_fields = ("manual_status_link", "coordinator_note_updated_at", "current_workflow_cycle", "import_source", "import_source_row")
 
     fieldsets = (
-        ('Tekst', {'fields': ('title', 'authors', 'anthology', 'length', 'tags', 'genre', 'content_warnings', 'file_url', 'for_recording', 'audiobook_blacklisted',
+        ('Tekst', {'fields': ('title', 'authors', 'anthology', 'length', 'tags', 'genre', 'content_warnings', 'file_url',
             'source_author_first_name', 'source_author_last_name', 'source_author_email', 'source_author_pseudonym',
             'source_contract_received', 'source_coauthor_contracts', 'source_update_author_phone')}),
         ('Status i zarządzanie', {'fields': ('manual_status_link',)}),
+        ('Audiobook', {'fields': ('for_recording', 'audiobook_blacklisted'),
+            'description': 'Czarna lista wyłącza nagrywanie. Blokadę można usunąć wyłącznie tutaj lub akcją na liście tekstów. Aby po odblokowaniu przekazać tekst do nagrywania, zaznacz „Do nagrywania”.'}),
         ('Notatki koordynatora', {'classes': ('cms-after-workflow',),
             'fields': ('coordinator_note', 'coordinator_note_updated_at')}),
         ('Dane techniczne i pochodzenie importu', {'classes': ('collapse', 'cms-after-inlines'),

@@ -230,10 +230,13 @@ class VacationAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
 @admin.register(AnthologyTask)
 class AnthologyTaskAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
-    list_display = ('anthology', '__str__')
-    search_fields = ('anthology__title__plcontains',)
-    list_filter = ('anthology',)
-    autocomplete_fields = ('anthology',)
+    list_display = ('anthology', 'task_type', 'status', 'assigned_to', 'commissioned_at')
+    search_fields = ('anthology__title__plcontains', 'assigned_to__first_name__plcontains',
+                     'assigned_to__last_name__plcontains', 'assigned_to__email__plcontains')
+    list_filter = ('task_type', 'status', 'anthology', 'anthology__status')
+    autocomplete_fields = ('anthology', 'assigned_to')
+    readonly_fields = ('commissioned_at',)
+    list_select_related = ('anthology', 'assigned_to')
 
 
 class ServiceOwnedReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):

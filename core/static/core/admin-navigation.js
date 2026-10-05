@@ -1,6 +1,11 @@
 (() => {
   "use strict";
   document.addEventListener("DOMContentLoaded", () => {
+    // Admin navigation and editable inlines must always display every row.
+    // Only the server-rendered changelist has a page-size selector.
+    document.querySelectorAll("[data-page-size-url]").forEach(select => {
+      select.addEventListener("change", () => location.assign(select.value));
+    });
     const scope = document.querySelector("[data-cms-admin-user]")?.dataset.cmsAdminUser;
     if (!scope) return;
     const prefix = "fantazmaty:admin:" + scope + ":";

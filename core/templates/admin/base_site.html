@@ -26,8 +26,9 @@
                 <a href="{% url 'core:user_preview' %}">Podgląd jako użytkownik</a>
                 <a href="{% url 'admin:texts_text_changelist' %}">Teksty</a>
                 <a href="{% url 'admin:texts_review_changelist' %}">Recenzje</a>
-                <a href="{% url 'admin:people_person_changelist' %}">Zespół</a>
+                <a href="{% url 'admin:people_person_changelist' %}">Osoby</a>
                 <a href="{% url 'admin:texts_anthology_changelist' %}">Antologie</a>
+                <a href="{% url 'admin:texts_text_changelist' %}?audiobook_blacklisted__exact=1">Czarna lista audiobooków</a>
                 {% endif %}
                 <a href="{% url 'core:home' %}">
                     Wróć do systemu redakcyjnego
@@ -200,9 +201,8 @@
 
 {% block extrahead %}
     <link rel="stylesheet" href="{% static 'core/pagination.css' %}?v=19">
-    <script src="{% static 'core/pagination.js' %}?v=19" defer></script>
     {{ block.super }}
     <script src="{% static 'core/admin-inlines.js' %}" defer></script>
-    <script src="{% static 'core/admin-navigation.js' %}" defer></script>
+    <script src="{% static 'core/admin-navigation.js' %}?v=22" defer></script>
     <script src="{% static 'core/ui.js' %}?v=29" defer></script>
 {% endblock %}
