@@ -17,7 +17,7 @@ GROUPS = (
 DETAIL_MODELS = ('texts.textnote', 'authors.authornote', 'texts.reviewassignment', 'texts.reviewers',
                  'workflow.workflowrepetition', 'workflow.workflowhandoff')
 LABELS = {
-    'texts.review': 'Zgłoszenia do recenzji', 'people.person': 'Osoby — zespół i ilustratorzy',
+    'texts.review': 'Zgłoszenia do recenzji', 'people.person': 'Osoby – zespół i ilustratorzy',
     'auth.user': 'Konta użytkowników', 'texts.anthologytask': 'Zadania antologii',
     'workflow.workflowstage': 'Etapy pracy', 'workflow.workflowroleassignment': 'Przydziały wykonawców',
     'auth.group': 'Grupy uprawnień', 'texts.reviewassignment': 'Oceny i przydziały recenzentów',

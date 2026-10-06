@@ -168,10 +168,17 @@ class IllustratorDirectoryTests(TestCase):
     def test_admin_creation_and_edit_use_same_person(self):
         url=reverse('admin:people_person_add')
         page=self.client.get(url)
-        self.assertContains(page,'illustrator_portfolio')
+        self.assertNotContains(page,'name="illustrator_portfolio"')
         response=self.client.post(url,self.data(first_name='Panel',email='panel-v6@example.test',roles=[self.role.pk],is_active='on',_save='Zapisz'))
         self.assertEqual(response.status_code,302)
         person=Person.objects.get(email='panel-v6@example.test')
+        edit_url=reverse('admin:people_person_change',args=[person.pk])
+        edit_page=self.client.get(edit_url)
+        self.assertContains(edit_page,'name="illustrator_portfolio"')
+        token=html.fromstring(edit_page.content).xpath('//input[@name="_edit_version"]/@value')[0]
+        response=self.client.post(edit_url,self.data(first_name='Panel',email='panel-v6@example.test',roles=[self.role.pk],is_active='on',_save='Zapisz',_edit_version=token))
+        self.assertEqual(response.status_code,302)
+        person.refresh_from_db()
         self.assertTrue(person.illustrator_covers)
         self.assertIsNone(person.user_id)
         self.assertContains(self.client.get(self.list_url),'Panel Rysująca')

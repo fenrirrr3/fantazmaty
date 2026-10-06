@@ -4,7 +4,7 @@ from django.db.models import Value
 from django.db.models.functions import Lower
 from core.permissions import is_coordinator
 
-from .models import Person, Role
+from .models import Person, Role, format_local_datetime
 
 
 class PersonAdminForm(forms.ModelForm):
@@ -109,16 +109,22 @@ class IllustratorDirectoryFilter(admin.SimpleListFilter):
 
 @admin.register(Person)
 class PersonAdmin(admin.ModelAdmin):
+    change_form_template = "admin/people/person/change_form.html"
+
     def get_fieldsets(self, request, obj=None):
         fieldsets = super().get_fieldsets(request, obj)
-        if is_coordinator(request.user):
-            return (*fieldsets, ("Ilustrator — portfolio i preferencje", {
+        if obj and obj.roles.filter(name__iexact="Ilustrator").exists() and is_coordinator(request.user):
+            return (*fieldsets, ("Ilustrator – portfolio i preferencje", {
                 "fields": ("illustrator_portfolio", "illustrator_preferences", "illustrator_covers", "illustrator_active"),
                 "description": "Spis obejmuje osoby z rolą Ilustrator i zaznaczonym polem Aktywny ilustrator. Konto i członkostwo w zespole nie mają wpływu na obecność w spisie.",
             }))
         return fieldsets
 
-    readonly_fields = ("account_link", "leave_start_date", "leave_end_date", "leave_until_revoked")
+    readonly_fields = ("account_link", "account_date_joined", "account_last_login",
+                       "leave_start_date", "leave_end_date", "leave_until_revoked")
+
+    class Media:
+        css = {"all": ("core/admin-person.css",)}
 
     def get_readonly_fields(self, request, obj=None):
         return (*self.readonly_fields, *(("user",) if obj and obj.user_id else ()))
@@ -191,9 +197,13 @@ class PersonAdmin(admin.ModelAdmin):
     fieldsets = (
         ('Dane osoby i kontakt', {'fields': ('first_name', 'last_name', 'email', 'dropbox_email')}),
         ('Role i aktywność', {'fields': ('is_active', 'roles', 'is_coordinator'),
-            'description': 'Wyłączenie aktywności ukrywa osobę na liście zespołu. Profil i dawne przydziały pozostają.'}),
+            'description': 'Wyłączenie aktywności ukrywa osobę na liście zespołu. Profil i dawne przydziały pozostają. Dane ilustratora są dostępne po zapisaniu roli Ilustrator.'}),
         ('Powiązane konto i profil autora', {'fields': ('user', 'account_link', 'author_profile')}),
-        ('Urlop', {'fields': ('leave_start_date', 'leave_end_date', 'leave_until_revoked')}),
+        ('Urlop', {'classes': ('person-account-half',),
+                  'fields': ('leave_start_date', 'leave_end_date', 'leave_until_revoked')}),
+        ('Aktywność konta', {'classes': ('person-account-half',),
+                            'fields': ('account_date_joined', 'account_last_login'),
+                            'description': 'Daty dotyczą powiązanego konta użytkownika.'}),
         ('Pozostałe informacje', {'classes': ('collapse',), 'fields': ('previous_data',)}),
     )
 
@@ -204,6 +214,20 @@ class PersonAdmin(admin.ModelAdmin):
         if not obj or not obj.user_id:
             return "Brak powiązanego konta"
         return format_html('<a href="{}">Otwórz konto</a>', reverse('admin:auth_user_change', args=[obj.user_id]))
+
+    @admin.display(description="Data dołączenia")
+    def account_date_joined(self, obj):
+        if not obj or not obj.user_id:
+            return "Brak powiązanego konta"
+        return format_local_datetime(obj.user.date_joined)
+
+    @admin.display(description="Ostatnie logowanie")
+    def account_last_login(self, obj):
+        if not obj or not obj.user_id:
+            return "Brak powiązanego konta"
+        if not obj.user.last_login:
+            return "Jeszcze się nie logowano"
+        return format_local_datetime(obj.user.last_login)
 
     def get_queryset(self, request):
         # Admin zachowuje dostęp do byłych członków zespołu.

@@ -168,7 +168,7 @@ class Command(TableCommand):
     def handle(self, *args, **options):
         self.events, self.warnings = [], []
         self.people_cache, self.profile_cache = {}, {}
-        report = {'mode': 'przerwano — nic nie zapisano', 'input_sha256': None, 'counts': {},
+        report = {'mode': 'przerwano – nic nie zapisano', 'input_sha256': None, 'counts': {},
                   'anthologies': [], 'texts': [], 'conflicts': [], 'warnings': self.warnings,
                   'dates': 'Nieznane daty pracy i przypisania pozostają puste.',
                   'identities': 'Osobne profile autorów zagranicznych i tłumaczy. Brakujące profile wykonawców: pusty e-mail, konto nieaktywne bez hasła i bez nadawania ról.',
@@ -214,13 +214,13 @@ class Command(TableCommand):
                                     'texts_unchanged': sum(r['result'] == 'bez zmian' for r in report['texts']),
                                     'completed_executions': sum(len(r['completed_executions']) for r in report['texts']),
                                     'profiles': dict(Counter(e['action'] for e in self.events))}
-                report['mode'] = 'zapisano' if options['apply'] else 'podgląd — nic nie zapisano'
+                report['mode'] = 'zapisano' if options['apply'] else 'podgląd – nic nie zapisano'
                 # An unwritable report aborts the database transaction as well.
                 write_report()
                 if not options['apply']:
                     transaction.set_rollback(True)
         except (OSError, UnicodeError, ValueError, TypeError, KeyError, ValidationError, DatabaseError) as exc:
-            report['mode'] = 'wycofano — nic nie zapisano'
+            report['mode'] = 'wycofano – nic nie zapisano'
             report['conflicts'].append({'row': current_row, 'error': str(exc)})
             try:
                 write_report()

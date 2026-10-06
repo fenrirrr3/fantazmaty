@@ -1,0 +1,16 @@
+{% if header_search_form %}
+<details class="header-search" data-header-search>
+    <summary class="header-search-toggle" aria-label="Wyszukaj w systemie" title="Wyszukaj w systemie">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg>
+    </summary>
+    <div class="header-search-panel">
+        <form method="get" action="{% url 'core:global_search' %}" class="global-search-form" role="search" aria-label="Wyszukiwarka w nagłówku">
+            <div class="global-search-field">
+                <label for="{{ header_search_form.query.id_for_label }}">Wyszukaj w systemie</label>
+                {{ header_search_form.query }}
+            </div>
+            <button type="submit" class="primary-button">Wyszukaj</button>
+        </form>
+    </div>
+</details>
+{% endif %}

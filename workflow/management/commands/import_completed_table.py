@@ -206,7 +206,7 @@ class Command(BaseCommand):
                     transaction.set_rollback(True)
         except (OSError, UnicodeError, ValueError, TypeError, KeyError, ValidationError, IntegrityError) as exc:
             conflicts.append({'error': str(exc)})
-        mode = 'wycofano — nic nie zapisano' if conflicts else 'zapisano' if options['apply'] else 'podgląd — nic nie zapisano'
+        mode = 'wycofano – nic nie zapisano' if conflicts else 'zapisano' if options['apply'] else 'podgląd – nic nie zapisano'
         report = {'mode': mode, 'input_sha256': hashlib.sha256(payload).hexdigest() if 'payload' in locals() else None,
                   'counts': dict(Counter(event['action'] for event in self.events)), 'texts': results, 'conflicts': conflicts, 'warnings': self.warnings,
                   'dates': 'Nieznane daty rozpoczęcia, zakończenia i przydziału pozostają puste.',

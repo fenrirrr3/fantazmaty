@@ -4,6 +4,14 @@ from core.permissions import is_coordinator
 register = template.Library()
 
 
+@register.inclusion_tag("core/includes/header_search.html")
+def header_search(user):
+    from core.forms import GlobalSearchForm
+    from core.permissions import is_team_member
+    return {"header_search_form": GlobalSearchForm(user=user, auto_id="header_%s")
+            if is_team_member(user) else None}
+
+
 @register.simple_tag
 def illustrations_allowed(user):
     return can_view_illustrations(user)

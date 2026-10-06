@@ -153,7 +153,7 @@ class Command(BaseCommand):
         return changed
 
     def handle(self, *args, **options):
-        report = {'mode': 'podgląd — nic nie zapisano', 'identity': [], 'texts': [], 'missing': [], 'conflicts': []}
+        report = {'mode': 'podgląd – nic nie zapisano', 'identity': [], 'texts': [], 'missing': [], 'conflicts': []}
         try:
             before = json.loads(Path(options['before']).read_text(encoding='utf-8-sig'))
             after = json.loads(Path(options['after']).read_text(encoding='utf-8-sig'))
@@ -183,7 +183,7 @@ class Command(BaseCommand):
                 else:
                     report['mode'] = 'zapisano'
         except Exception as exc:
-            report['mode'] = 'wycofano — nic nie zapisano'
+            report['mode'] = 'wycofano – nic nie zapisano'
             report['conflicts'].append(str(exc))
         report['counts'] = dict(Counter(row['result'] for row in report['texts']))
         path = Path(options['report']).with_suffix('.json'); path.parent.mkdir(parents=True, exist_ok=True)

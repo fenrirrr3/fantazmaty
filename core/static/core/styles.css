@@ -1672,7 +1672,8 @@ a[href^="mailto:"] {
 
 .leave-warning,
 .workflow-vacation-alert,
-.review-locked-alert {
+.review-locked-alert,
+.page > .message {
     margin-bottom: 18px;
 }
 

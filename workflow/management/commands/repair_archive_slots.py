@@ -167,7 +167,7 @@ class Command(BaseCommand):
         return changed
 
     def handle(self, *args, **options):
-        report = {'scope': '29 tekstów, 4 antologie; zwykłe role i wykonania', 'mode': 'podgląd — nic nie zapisano', 'identity': [], 'texts': [], 'missing': [], 'conflicts': []}
+        report = {'scope': '29 tekstów, 4 antologie; zwykłe role i wykonania', 'mode': 'podgląd – nic nie zapisano', 'identity': [], 'texts': [], 'missing': [], 'conflicts': []}
         try:
             before = json.loads(Path(options['before']).read_text(encoding='utf-8-sig'))
             after = json.loads(Path(options['after']).read_text(encoding='utf-8-sig'))
@@ -195,7 +195,7 @@ class Command(BaseCommand):
                     record['after_stages'] = list(Stage.objects.filter(text=text).order_by('pk').values())
                     report['texts'].append(record)
                 report['counts'] = dict(Counter(row['result'] for row in report['texts']))
-                report['mode'] = 'zapisano' if options['apply'] else 'podgląd — nic nie zapisano'
+                report['mode'] = 'zapisano' if options['apply'] else 'podgląd – nic nie zapisano'
                 path = Path(options['report']).with_suffix('.json')
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(json.dumps(report, ensure_ascii=False, indent=2, default=str), encoding='utf-8')
@@ -204,7 +204,7 @@ class Command(BaseCommand):
                 else:
                     report['mode'] = 'zapisano'
         except Exception as exc:
-            report['mode'] = 'wycofano — nic nie zapisano'
+            report['mode'] = 'wycofano – nic nie zapisano'
             report['conflicts'].append(str(exc))
         report['counts'] = dict(Counter(row['result'] for row in report['texts']))
         path = Path(options['report']).with_suffix('.json'); path.parent.mkdir(parents=True, exist_ok=True)

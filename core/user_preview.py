@@ -16,7 +16,7 @@ CONTROL_VIEWS = {"core:user_preview", "core:user_preview_stop"}
 def user_label(user):
     person = getattr(user, "person_profile", None)
     name = f"{person.first_name} {person.last_name}" if person else user.get_full_name()
-    return f"{name or user.get_username()} — {user.email or user.get_username()}"
+    return f"{name or user.get_username()} – {user.email or user.get_username()}"
 
 
 class PreviewUserChoice(forms.ModelChoiceField):

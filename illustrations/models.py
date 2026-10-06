@@ -42,7 +42,7 @@ class Illustration(models.Model):
         blank=True,
     )
 
-    manual_illustrator_name = models.CharField('Ilustrator — imię i nazwisko (ręcznie)', max_length=255, blank=True)
+    manual_illustrator_name = models.CharField('Ilustrator – imię i nazwisko (ręcznie)', max_length=255, blank=True)
     manual_illustrator_email = models.EmailField('E-mail ilustratora (ręcznie)', blank=True)
     coordinator_notes = models.TextField('Uwagi koordynatora', blank=True)
 

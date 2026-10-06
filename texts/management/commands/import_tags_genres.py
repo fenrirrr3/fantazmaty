@@ -149,12 +149,12 @@ def html_report(report):
         if not match:
             for value in row.get("candidates", []) + suggestions:
                 details += "<p>" + ("Sugestia, NIE dopasowanie: " if value in suggestions else "Kandydat: ")
-                details += esc(f'ID {value["text_id"]} — {value["tytul"]} — {value["antologia"]} — {value["autorzy"]}') + "</p>"
-        metadata = esc(f'ID {match.get("text_id", "—")} · {match.get("antologia", row["antologia"])} · {match.get("autorzy", "")}')
+                details += esc(f'ID {value["text_id"]} – {value["tytul"]} – {value["antologia"]} – {value["autorzy"]}') + "</p>"
+        metadata = esc(f'ID {match.get("text_id", "–")} · {match.get("antologia", row["antologia"])} · {match.get("autorzy", "")}')
         def delta(kind, incoming):
-            return ("<small>Przed:</small><div>" + esc(row.get("old_" + kind, "—")) + "</div>"
+            return ("<small>Przed:</small><div>" + esc(row.get("old_" + kind, "–")) + "</div>"
                     + "<small>W pliku:</small><div>" + esc(row[incoming]) + "</div>"
-                    + "<small>Po scaleniu (plan):</small><div>" + esc(row.get("new_" + kind, "—")) + "</div>")
+                    + "<small>Po scaleniu (plan):</small><div>" + esc(row.get("new_" + kind, "–")) + "</div>")
         body.append(f'<tr class="{"error" if errors else ""}"><td>{esc(row["lp"])}</td><td><strong>{esc(row["tytul"])}</strong><p>{metadata}</p></td>'
                     f'<td>{delta("tags", "tagi")}</td><td>{delta("genre", "gatunek")}</td><td><strong>{esc(status)}</strong><p>{details}</p></td></tr>')
     summary = report.get("summary", {})
