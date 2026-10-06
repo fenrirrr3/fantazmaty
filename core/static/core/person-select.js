@@ -8,8 +8,10 @@
     const values = new Map(Array.from(labels, ([value, label]) => [label, value]));
     const normalize = value => value.toLocaleLowerCase('pl').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ł/g, 'l');
     const input = document.createElement('input');
+    const itemLabel = select.dataset.searchItem || 'osobę';
+    const itemsLabel = select.dataset.searchItems || 'osób';
     input.type = 'search'; input.id = `${select.id}_search`;
-    input.placeholder = 'Wpisz nazwisko i wybierz osobę'; input.autocomplete = 'off';
+    input.placeholder = select.dataset.searchPlaceholder || 'Wpisz nazwisko i wybierz osobę'; input.autocomplete = 'off';
     input.setAttribute('role', 'combobox'); input.setAttribute('aria-autocomplete', 'list'); input.setAttribute('aria-expanded', 'false');
     const wrapper = document.createElement('span'); wrapper.className = 'lookup-field';
     const list = document.createElement('div'); list.className = 'author-suggestions';
@@ -23,7 +25,7 @@
     const close = () => { list.replaceChildren(); active = -1; input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); };
     const choose = value => {
       select.value = value; input.value = labels.get(value) || ''; input.setCustomValidity('');
-      input.focus(); close(); status.textContent = 'Wybrano osobę.'; select.dispatchEvent(new Event('change', {bubbles: true}));
+      input.focus(); close(); status.textContent = `Wybrano ${itemLabel}.`; select.dispatchEvent(new Event('change', {bubbles: true}));
     };
     const search = () => {
       close(); const query = normalize(input.value.trim());
@@ -35,11 +37,11 @@
         button.addEventListener('click', () => choose(value)); list.append(button);
       });
       input.setAttribute('aria-expanded', String(!!list.children.length));
-      status.textContent = matches.length > 30 ? 'Zawęź zapytanie – pokazano pierwszych 30 osób.' : matches.length ? 'Wybierz osobę z listy.' : 'Brak pasujących osób.';
+      status.textContent = matches.length > 30 ? `Zawęź zapytanie – pokazano pierwszych 30 ${itemsLabel}.` : matches.length ? `Wybierz ${itemLabel} z listy.` : `Brak pasujących ${itemsLabel}.`;
     };
     input.addEventListener('input', () => {
       const value = input.value.trim(); const chosen = values.get(value);
-      input.setCustomValidity(value && !chosen ? 'Wybierz osobę z podpowiedzi albo wyczyść pole.' : '');
+      input.setCustomValidity(value && !chosen ? `Wybierz ${itemLabel} z podpowiedzi albo wyczyść pole.` : '');
       select.value = chosen || ''; select.dispatchEvent(new Event('change', {bubbles: true})); search();
     });
     input.addEventListener('focus', search);

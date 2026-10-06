@@ -4,7 +4,7 @@
 {% block extra_css %}<link rel="stylesheet" href="{% static 'core/illustrations.css' %}">{% endblock %}
 {% block content %}
 <header class="page-header">
-    <h1>Ilustracja: {{ illustration.text.title }}</h1>
+    <h1 class="page-title">Ilustracja: {{ illustration.text.title }}</h1>
     <p>{{ illustration.text.anthology.title }}</p>
     <a class="secondary-button" href="{% url 'illustrations:illustration_list' %}?anthology={{ illustration.text.anthology_id }}">Wróć do ilustracji antologii</a>
 </header>

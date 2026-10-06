@@ -1,6 +1,6 @@
 {% extends "core/base.html" %}
 {% block title %}Podgląd powtórzenia etapów{% endblock %}
-{% block content %}<header class="page-header"><h1>Zmiana etapów: {{ text.title }}</h1><p>Historia i wcześniejsi wykonawcy zostają zachowani. Nowe wykonania otrzymają wybrane osoby.</p></header>
+{% block content %}<header class="page-header"><h1 class="page-title">Zmiana etapów: {{ text.title }}</h1><p>Historia i wcześniejsi wykonawcy zostają zachowani. Nowe wykonania otrzymają wybrane osoby.</p></header>
 <section class="card"><div class="card-body"><h2>Dotychczasowe etapy</h2><ul>{% for stage in opened_stages %}<li>{{ stage.get_stage_type_display }} – {% if stage.started_at %}praca trwająca zostanie zakończona z dzisiejszą datą; przyszła rezerwacja zostanie zamknięta{% else %}rezerwacja zostanie zamknięta{% endif %}</li>{% empty %}<li>Brak otwartych etapów.</li>{% endfor %}</ul>
 <h2>Nowi wykonawcy</h2><ul>{% for row in performers %}<li>{{ row.label }}: {{ row.person }}</li>{% endfor %}</ul>
 {% if text.anthology.status == 'ready' %}<p>Antologia zostanie ustawiona na „W przygotowaniu”, aby umożliwić dalszą pracę.</p>{% endif %}</div></section>

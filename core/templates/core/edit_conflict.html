@@ -1,6 +1,6 @@
 {% extends "core/base.html" %}
 {% block content %}
-<section class="card"><div class="card-body"><h1>Rekord został zmieniony</h1>
+<section class="card"><div class="card-body"><h1 class="page-title">Rekord został zmieniony</h1>
 <p>Od otwarcia formularza zmieniły się dane lub wygasła jego wersja. Nie zapisano przesłanych zmian.</p>
 <p>Wróć do poprzedniej strony, skopiuj wpisany tekst, a następnie odśwież formularz i porównaj aktualne dane.</p>
 {% if submitted_values %}<h2>Twoje niezapisane dane</h2><p>Skopiuj treść przed otwarciem nowego formularza.</p>{% for name,value in submitted_values %}<label>{{ name }}<textarea readonly rows="4">{{ value }}</textarea></label>{% endfor %}{% endif %}

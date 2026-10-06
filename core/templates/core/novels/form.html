@@ -1,8 +1,8 @@
 {% extends 'core/base.html' %}{% load static %}
 {% block title %}{{ heading }} | Fantazmaty CMS{% endblock %}
 {% block content %}
-<header class="page-header"><h1>{{ heading }}</h1><a href="{% if book %}{% url 'core:novel_detail' book.pk %}{% else %}{% url 'core:novel_list' %}{% endif %}">Wróć do powieści</a></header>
-<section class="card"><div class="card-body"><form method="post" data-warn-unsaved>{% csrf_token %}{% if novel_token %}<input type="hidden" name="novel_token" value="{{ novel_token }}">{% endif %}{{ form.as_p }}<button class="primary-button" type="submit">Zapisz</button></form></div></section>
+<header class="page-header"><h1 class="page-title">{{ heading }}</h1><a class="secondary-button" href="{% if book %}{% url 'core:novel_detail' book.pk %}{% else %}{% url 'core:novel_list' %}{% endif %}">Wróć do powieści</a></header>
+<section class="card"><div class="card-body"><form method="post" class="intake-form" data-warn-unsaved>{% csrf_token %}{% if novel_token %}<input type="hidden" name="novel_token" value="{{ novel_token }}">{% endif %}{{ form.as_p }}<button class="primary-button" type="submit">Zapisz</button></form></div></section>
 {% endblock %}
 
 {% block scripts %}<script src="{% static 'core/novels.js' %}"></script>{% endblock %}

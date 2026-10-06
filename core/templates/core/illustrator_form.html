@@ -3,7 +3,7 @@
 {% block title %}{% if person.pk %}Edytuj wpis ilustratora{% else %}Dodaj wpis{% endif %} | Fantazmaty CMS{% endblock %}
 {% block extra_css %}<link rel="stylesheet" href="{% static 'core/illustrations.css' %}">{% endblock %}
 {% block content %}
-<header class="page-header"><h1>{% if person.pk %}Edytuj wpis ilustratora{% else %}Dodaj wpis{% endif %}</h1><a class="secondary-button" href="{% url 'illustrations:illustrator_list' %}">Wróć do ilustratorów</a></header>
+<header class="page-header"><h1 class="page-title">{% if person.pk %}Edytuj wpis ilustratora{% else %}Dodaj wpis{% endif %}</h1><a class="secondary-button" href="{% url 'illustrations:illustrator_list' %}">Wróć do ilustratorów</a></header>
 <section class="card"><div class="card-body">
     {% if not person.pk %}<p>Wpis nie tworzy konta, profilu członka zespołu ani roli. E-mail i portfolio są opcjonalne.</p>{% endif %}
     {% if person.pk and not person.is_active %}<p class="muted-text">Ten ilustrator jest wyłączony z aktywnej listy. Zaznacz „Aktywny ilustrator”, aby go przywrócić.</p>{% endif %}

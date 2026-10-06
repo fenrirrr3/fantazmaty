@@ -8,7 +8,7 @@
 {% include 'core/includes/review_bulk_form.html' with form=bulk_form %}
 </div></details>
 <details class="card intake-panel" {% if single_form.is_bound or fallback_query or single_form.initial.author %}open{% endif %}><summary><span>Pojedyncze zgłoszenie</span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary><div class="intake-panel-body">
-{% if author_fallback %}<noscript><form method="get"><label>Znajdź autora <input name="author_query" value="{{ fallback_query }}"></label><button type="submit" class="secondary-button">Wyszukaj</button></form><ul>{% for author in fallback_authors %}<li><a href="?author={{ author.pk }}">{{ author.display_name }} – {{ author.email }}</a></li>{% endfor %}</ul></noscript>{% endif %}
+{% if author_fallback %}<noscript><form method="get"><label>Znajdź autora <input type="search" name="author_query" value="{{ fallback_query }}"></label><button type="submit" class="secondary-button">Wyszukaj</button></form><ul>{% for author in fallback_authors %}<li><a href="?author={{ author.pk }}">{{ author.display_name }} – {{ author.email }}</a></li>{% endfor %}</ul></noscript>{% endif %}
 <form method="post" action="{% url 'core:review_create' %}" class="intake-form" data-warn-unsaved>{% csrf_token %}{% edit_version %}
 {% include 'core/includes/review_single_form.html' with form=single_form %}<button class="primary-button" type="submit">Dodaj zgłoszenie</button></form></div></details>
 

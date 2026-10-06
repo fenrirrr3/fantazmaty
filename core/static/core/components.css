@@ -238,3 +238,15 @@ section:has(#active-stages-heading), section:has(#reserved-assignments-heading) 
 .stage-finish-card:has(.editorial-decision) .quick-stage-action { width: 100%; min-width: 0; }
 .complete-stage-form:has(.editorial-decision) { display: grid; grid-template-columns: minmax(0, 1fr); width: 100%; min-width: 0; }
 .complete-stage-form:has(.editorial-decision) .complete-stage-button { justify-self: start; max-width: 100%; }
+
+/* Shared forms and disclosure spacing, also for Django fieldsets. */
+.intake-form fieldset > p { display: grid; gap: var(--field-gap); min-width: 0; margin: 0 0 18px; }
+.intake-form fieldset > p:last-child { margin-bottom: 0; }
+.intake-form + .intake-form { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border); }
+.form-disclosure { margin-top: 20px; border: 1px solid var(--border); border-radius: var(--radius-small); padding: 0 16px 16px; }
+.form-disclosure > summary { padding: 14px 0; cursor: pointer; font-weight: 650; color: var(--text); }
+.form-disclosure:not([open]) { padding-bottom: 0; }
+.form-disclosure > summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.vocabulary-suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.vocabulary-suggestions:empty { display: none; }
+.vocabulary-suggestions button { font: inherit; cursor: pointer; }

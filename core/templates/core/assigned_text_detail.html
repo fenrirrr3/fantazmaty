@@ -36,7 +36,7 @@
 
     {% if is_translation %}
     <section class="card"><div class="card-body"><h2>Autor zagraniczny i tłumacz</h2>
-    {% if translation_form %}<form method="post" action="{% url 'core:set_translators' text.pk %}">{% csrf_token %}{% edit_version %}{{ translation_form.as_p }}<button class="primary-button" type="submit">Zapisz osoby</button></form><p><a href="{% url 'admin:texts_foreignauthor_add' %}">Dodaj autora zagranicznego</a> · <a href="{% url 'admin:texts_translator_add' %}">Dodaj tłumacza</a></p>
+    {% if translation_form %}<form method="post" class="intake-form" action="{% url 'core:set_translators' text.pk %}">{% csrf_token %}{% edit_version %}{{ translation_form.as_p }}<button class="primary-button" type="submit">Zapisz osoby</button></form><p><a href="{% url 'admin:texts_foreignauthor_add' %}">Dodaj autora zagranicznego</a> · <a href="{% url 'admin:texts_translator_add' %}">Dodaj tłumacza</a></p>
     {% else %}<p>{% for translator in translators %}{{ translator.display_name }}{% if not forloop.last %}, {% endif %}{% empty %}Nie przypisano tłumacza.{% endfor %}</p><p><strong>Weryfikacja z oryginałem:</strong> {{ original_verifier|default:"Nie podano" }}</p>{% endif %}
     </div></section>{% endif %}
 
@@ -831,7 +831,7 @@
 {{ block.super }}
 {% if can_restart_workflow and restart_workflow_form %}
 <script src="{% static 'core/workflow-repeat.js' %}" defer></script>
-<script src="{% static 'core/person-select.js' %}" defer></script>
+<script src="{% static 'core/person-select.js' %}?v=28" defer></script>
 {% endif %}
 {% if user.is_superuser and text_file_form and dropbox_chooser_app_key and text.anthology.status != "ready" %}
 <script src="https://www.dropbox.com/static/api/2/dropins.js" id="dropboxjs" data-app-key="{{ dropbox_chooser_app_key }}"></script>
