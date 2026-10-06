@@ -17,6 +17,7 @@ def create_illustrations_for_anthology(
         instance.status == Anthology.Status.IN_PREPARATION
         and instance.has_illustrations
         and not instance.is_translated
+        and not instance.is_novel
     ):
         sync_required_illustrations(
             anthology=instance,
@@ -35,9 +36,11 @@ def create_illustration_for_text(
         == Anthology.Status.IN_PREPARATION
         and instance.anthology.has_illustrations
         and not instance.anthology.is_translated
+        and not instance.anthology.is_novel
     )
 
-    if qualifies_for_illustration:
+    from texts.production import active_production_texts
+    if qualifies_for_illustration and active_production_texts(Text.objects.filter(pk=instance.pk)).exists():
         Illustration.objects.get_or_create(
             text=instance,
             defaults={

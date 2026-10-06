@@ -96,28 +96,46 @@ class AssigneeChoices(forms.ModelChoiceField):
         return str(person) if person else (obj.get_full_name() or obj.get_username())
 
 
+class RoleAssigneeSelect(forms.Select):
+    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
+        option = super().create_option(name, value, label, selected, index, subindex, attrs)
+        if value:
+            option['attrs']['data-assignment-roles'] = ' '.join(self.role_memberships.get(value.value, []))
+        return option
+
+
 class AssignmentForm(forms.Form):
     role = forms.ChoiceField(label='Dopisz do roli', choices=())
     assignee = AssigneeChoices(label='Członek zespołu', queryset=get_user_model().objects.none(),
-                             widget=forms.Select(attrs={'data-searchable-person': 'true'}))
+                             widget=RoleAssigneeSelect(attrs={'data-searchable-person': 'true'}))
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         from workflow.availability import eligible_role_users
         self.fields['role'].choices = [('', 'Wybierz rolę')] + list(workflow_role_choices())
-        role = self.data.get(self.add_prefix('role')) if self.is_bound else None
-        users = eligible_role_users(role) if role in dict(workflow_role_choices()) else get_user_model().objects.filter(is_active=True)
+        memberships = {}
+        for code, _ in workflow_role_choices():
+            for pk in eligible_role_users(code).values_list('pk', flat=True):
+                memberships.setdefault(pk, []).append(code)
+        widget = self.fields['assignee'].widget
+        widget.role_memberships = memberships
+        widget.attrs['data-assignment-role-select'] = self['role'].auto_id
+        users = get_user_model().objects.filter(pk__in=memberships)
         self.fields['assignee'].queryset = users.select_related('person_profile').order_by('last_name', 'first_name', 'pk')
 
     def clean(self):
         data = super().clean()
         if bool(data.get('role')) != bool(data.get('assignee')):
             raise forms.ValidationError('Wybierz zarówno rolę, jak i wykonawcę z uprawnieniami do tej roli.')
+        if data.get('role') and data.get('assignee'):
+            from workflow.availability import eligible_role_users
+            if not eligible_role_users(data['role']).filter(pk=data['assignee'].pk).exists():
+                self.add_error('assignee', 'Ta osoba nie może pełnić wybranej roli.')
         return data
 
 
 class CoverForm(forms.ModelForm):
     class Meta:
         model = Anthology
-        fields = ('cover_status', 'cover_author', 'cover_notes', 'print_status', 'has_illustrations')
+        fields = ('cover_status', 'cover_author', 'cover_notes', 'print_status')
         widgets = {'cover_notes': forms.Textarea(attrs={'rows': 2})}

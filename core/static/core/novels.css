@@ -1,6 +1,6 @@
 .novel-assignment-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-block: 16px; }
 .novel-assignment-grid fieldset { min-width: 0; }
-.novel-assignments { margin: 0; padding-left: 1rem; }
+.novel-assignments { margin: 0; padding: 0; list-style: none; }
 .novel-assignments li + li { margin-top: .35rem; }
 .novel-chapter-filters { margin-bottom: 20px; }
 .novel-select-all { display: flex; align-items: center; gap: var(--field-gap); margin-bottom: 16px; }

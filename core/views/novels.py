@@ -132,14 +132,14 @@ def novel_detail(request, novel_id):
     search = request.GET.get('q', '').strip()
     if search:
         query = query.filter(chapter_number=int(search)) if search.isascii() and search.isdecimal() and len(search) <= 10 else query.none()
-    page = paginate_items(request, query.order_by('chapter_number', 'pk'))
+    chapters = query.order_by('chapter_number', 'pk')
     from workflow.models import WorkflowStage
     rows = []
-    for chapter in page:
+    for chapter in chapters:
         rows.append({'chapter': chapter, 'status': dict(WorkflowStage.StageType.choices).get(chapter.current_stage_type, 'Brak etapu'),
                      'assignments': [a for a in chapter.workflow_role_assignments.all() if a.is_current and a.workflow_cycle == chapter.current_workflow_cycle and a.assigned_to_id]})
-    context = {'book': book, 'profile': profile, 'rows': rows, 'page_obj': page, 'q': search,
-        'coordinator': coordinator, 'error': error, 'is_open': book.status != Anthology.Status.READY,
+    context = {'book': book, 'profile': profile, 'rows': rows, 'q': search,
+        'coordinator': coordinator, 'error': error, 'production_open': bool(error and request.POST.get('action') in ('production', 'finish')), 'is_open': book.status != Anthology.Status.READY,
         'novel_token': novels.edit_token(book, request.user) if coordinator else '',
         'chapter_form': ChapterForm(), 'chapter_range_form': ChapterRangeForm(prefix='add'),
         'assignment_form': AssignmentForm(prefix='assign'),

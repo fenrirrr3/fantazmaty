@@ -89,6 +89,15 @@ class AnthologyTaskInline(admin.TabularInline):
 
 @admin.register(Anthology)
 class AnthologyAdmin(admin.ModelAdmin):
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = super().get_fieldsets(request, obj)
+        if obj and obj.is_novel:
+            # Keep translation visible only to allow correction of old invalid records.
+            hidden = {'has_illustrations'} | (set() if obj.is_translated else {'is_translated'})
+            return tuple((name, {**options, 'fields': tuple(f for f in options['fields'] if f not in hidden)})
+                         for name, options in fieldsets)
+        return fieldsets
+
     def get_search_results(self, request, queryset, search_term):
         queryset, duplicates = super().get_search_results(request, queryset, search_term)
         if request.GET.get("app_label") == "texts" and request.GET.get("model_name") == "review" and request.GET.get("field_name") == "anthology":
@@ -497,7 +506,8 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             return fieldsets
         confirmations = {'source_contract_received', 'source_coauthor_contracts', 'source_update_author_phone'}
         if obj and obj.anthology_id and obj.anthology.is_novel:
-            confirmations.update({'title', 'file_url', 'content_warnings'})
+            confirmations.update({'title', 'file_url', 'content_warnings', 'for_recording', 'audiobook_blacklisted'})
+            fieldsets = tuple((name, options) for name, options in fieldsets if name != 'Audiobook')
         if obj and obj.anthology_id and obj.anthology.is_translated:
             confirmations.add('authors')
         return tuple((name, {**options, 'fields': tuple(field for field in options['fields'] if field not in confirmations)})

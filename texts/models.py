@@ -91,7 +91,11 @@ class Anthology(models.Model):
         return self.title
 
     def _validate_ready_transition(self, using):
-        if not self.pk or self.status != self.Status.READY:
+        if self.status != self.Status.READY:
+            return
+        if not self.pk:
+            if self.is_novel:
+                raise ValidationError({'status': 'Nową powieść dodaj jako „W przygotowaniu”. Gotowość wymaga ukończonych rozdziałów.'})
             return
         previous = type(self).objects.using(using).filter(pk=self.pk).values_list('status', flat=True).first()
         if previous == self.Status.READY:
@@ -119,8 +123,18 @@ class Anthology(models.Model):
         super().clean()
         self._validate_novel_kind()
         self._validate_ready_transition(self._state.db or router.db_for_write(type(self), instance=self))
+        if self._turns_off_translation(self._state.db or router.db_for_write(type(self), instance=self)):
+            from .translations import ordinary_author_links
+            ordinary_author_links(self, self._state.db or router.db_for_write(type(self), instance=self))
+
+    def _turns_off_translation(self, using):
+        return bool(self.pk and not self.is_translated and type(self).objects.using(using).filter(
+            pk=self.pk, is_translated=True,
+        ).exists())
 
     def _validate_novel_kind(self):
+        if self.is_novel and self.is_translated:
+            raise ValidationError({'is_translated': 'Powieści nie obsługują tłumaczeń. Wyłącz „Tłumaczone”.'})
         if self.pk:
             previous = type(self).objects.filter(pk=self.pk).values_list('is_novel', flat=True).first()
             if previous != self.is_novel and (self.texts.exists() or self.reviews.exists()):
@@ -129,14 +143,25 @@ class Anthology(models.Model):
     def save(self, *args, **kwargs):
         using = kwargs.get('using') or router.db_for_write(type(self), instance=self)
         fields = kwargs.get('update_fields')
-        if fields is None or 'is_novel' in fields:
+        if fields is None or {'is_novel', 'is_translated'} & set(fields):
             self._validate_novel_kind()
+        if not self.pk:
+            self._validate_ready_transition(using)
+        if (fields is None or 'is_translated' in fields) and self._turns_off_translation(using):
+            from .translations import ordinary_author_links, restore_ordinary_authors
+            with transaction.atomic(using=using):
+                ordinary_author_links(self, using)
+                self._validate_ready_transition(using)
+                result = super().save(*args, **kwargs)
+                restore_ordinary_authors(self, using)
+                return result
         if self.pk and self.status == self.Status.READY and (fields is None or 'status' in fields):
             with transaction.atomic(using=using):
                 type(self).objects.using(using).select_for_update().get(pk=self.pk)
                 self._validate_ready_transition(using)
                 return super().save(*args, **kwargs)
-        return super().save(*args, **kwargs)
+        with transaction.atomic(using=using):
+            return super().save(*args, **kwargs)
 
     @property
     def typesetting_task(self):

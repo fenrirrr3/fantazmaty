@@ -90,10 +90,10 @@ class NovelChangesTests(TestCase):
         self.assertEqual(self.post(action='chapters', **{'add-chapter_numbers': '2, 0'}).status_code, 400)
         self.assertEqual(self.book.texts.count(), 1)
 
-    def test_assignment_range_spans_pages_and_keeps_missing_numbers(self):
+    def test_assignment_spans_all_visible_chapters_and_keeps_missing_numbers(self):
         self.post(action='chapters', **{'add-chapter_numbers': '2-27'})
         response = self.client.get(self.url, {'page_size': 25})
-        self.assertNotIn(26, [row['chapter'].chapter_number for row in response.context['rows']])
+        self.assertIn(26, [row['chapter'].chapter_number for row in response.context['rows']])
         self.assertEqual(self.post(**self.assignment(chapters=list(self.book.texts.filter(chapter_number__in=[1, 2, 26, 27]).values_list('pk', flat=True)))).status_code, 302)
         for chapter in self.book.texts.filter(chapter_number__in=[1, 2, 26, 27]):
             self.assertEqual(chapter.workflow_role_assignments.get().assigned_to, self.editor)

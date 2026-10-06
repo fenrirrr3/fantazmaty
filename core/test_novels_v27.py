@@ -94,13 +94,14 @@ class NovelTests(TestCase):
         self.assertFalse(SingleReviewForm().fields['anthology'].queryset.filter(pk=self.book.pk).exists())
         self.assertContains(self.client.get(reverse('core:global_search'), {'query': 'Powieść'}), 'Powieść testowa')
 
-    def test_server_pagination_has_500_and_no_client_pagination(self):
+    def test_novel_list_has_pagination_but_chapter_table_does_not(self):
         from lxml import html
         response = self.client.get(self.url, {'page_size': '500'})
-        self.assertContains(response, '500')
         document = html.fromstring(response.content)
-        self.assertTrue(document.xpath('//table[@data-server-paginated="true"]'))
+        self.assertTrue(document.xpath('//table[@data-pagination="off"]'))
+        self.assertIsNone(response.context.get('page_obj'))
         self.assertFalse(document.xpath('//form//form'))
+        self.assertContains(self.client.get(reverse('core:novel_list')), '500')
 
     def test_chapter_admin_form_accepts_inherited_readonly_authors(self):
         from django.contrib import admin

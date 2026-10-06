@@ -1,10 +1,11 @@
 """One persistent translation record per text; flags change visibility, not history."""
 from django.db import transaction
+from django.core.exceptions import ValidationError
 from .models import Text, TextTranslation, ForeignAuthor
 
 
 def sync_translations(*, anthology_id=None, text_id=None, using='default'):
-    texts = Text.objects.using(using).filter(anthology__is_translated=True)
+    texts = Text.objects.using(using).filter(anthology__is_translated=True, anthology__is_novel=False)
     if anthology_id is not None:
         texts = texts.filter(anthology_id=anthology_id)
     if text_id is not None:
@@ -26,3 +27,28 @@ def sync_translations(*, anthology_id=None, text_id=None, using='default'):
                 record.foreign_authors.add(profile)
             text.authors.clear()
         return created
+
+
+def ordinary_author_links(anthology, using='default'):
+    """Recover only explicit legacy identities, never guess foreign names."""
+    from authors.models import Author
+    records = TextTranslation.objects.using(using).filter(
+        text__anthology_id=anthology.pk,
+    ).prefetch_related('foreign_authors')
+    links = []
+    known = set(Author.objects.using(using).values_list('pk', flat=True))
+    for record in records:
+        profiles = list(record.foreign_authors.all())
+        if any(profile.legacy_author_id not in known for profile in profiles):
+            raise ValidationError({'is_translated': (
+                'Nie można wyłączyć tłumaczenia: część autorów zagranicznych nie ma '
+                'powiązania ze zwykłym autorem. Najpierw ustal mapowanie autorów; nic nie zapisano.'
+            )})
+        links.append((record.text_id, [profile.legacy_author_id for profile in profiles]))
+    return links
+
+
+def restore_ordinary_authors(anthology, using='default'):
+    with transaction.atomic(using=using):
+        for text_id, author_ids in ordinary_author_links(anthology, using):
+            Text.objects.using(using).get(pk=text_id).authors.add(*author_ids)

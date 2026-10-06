@@ -1,11 +1,12 @@
 from core.translation_scope import ordinary
 from texts.models import Anthology, Text
+from texts.production import active_production_texts
 
 from .models import Illustration
 
 
 def required_texts_queryset():
-    return ordinary(Text.objects).filter(
+    return active_production_texts(ordinary(Text.objects)).filter(
         anthology__status=Anthology.Status.IN_PREPARATION,
         anthology__has_illustrations=True,
     )

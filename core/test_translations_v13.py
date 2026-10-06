@@ -143,12 +143,16 @@ class TranslationTests(TestCase):
         self.assertEqual(response.status_code,200);self.assertNotContains(response,'translation-0-translators')
 
     def test_flag_off_restores_normal_visibility_without_losing_translators(self):
+        ordinary = Author.objects.create(first_name=self.author.first_name, last_name=self.author.last_name, email=None)
+        self.author.legacy_author_id = ordinary.pk
+        self.author.save(update_fields=['legacy_author_id'])
         self.book.is_translated=False;self.book.save()
         response=self.client.get(reverse('core:translation_list'))
         self.assertNotContains(response,self.book.title)
         response=self.client.get(reverse('core:text_list'))
         self.assertContains(response,self.text.title)
         self.assertEqual(list(TextTranslation.objects.get(text=self.text).translators.all()),[self.translator])
+        self.assertEqual(list(self.text.authors.all()), [ordinary])
 
     def test_translator_delete_invalidates_text_edit_version(self):
         old=version_of(self.text);self.translator.delete()

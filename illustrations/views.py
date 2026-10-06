@@ -12,7 +12,8 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 from authors.models import Author
 from core.pagination import paginate_queryset
 from core.permissions import get_active_person_profile, is_coordinator, can_view_illustrations
-from texts.models import Anthology
+from texts.models import Anthology, Text
+from texts.production import active_production_texts
 
 from .forms import CoverProposalForm
 from .models import CoverProposal, Illustration
@@ -118,6 +119,7 @@ def illustration_list(request):
     # Ilustracje powstają przez istniejące sygnały przy zmianach danych.
     illustrations = (
         ordinary(Illustration.objects).filter(
+            text_id__in=active_production_texts(Text.objects.all()).values("pk"),
             text__anthology__status=Anthology.Status.IN_PREPARATION,
             text__anthology__has_illustrations=True,
         )
@@ -146,7 +148,7 @@ def illustration_list(request):
     anthologies = (
         ordinary(Anthology.objects).filter(
             status=Anthology.Status.IN_PREPARATION,
-            has_illustrations=True,
+            has_illustrations=True, is_novel=False,
         )
         .only("pk", "title")
         .order_by("title", "pk")
@@ -179,7 +181,7 @@ def illustration_detail(request, illustration_id):
     if not can_view_illustrations(request.user):
         raise PermissionDenied('Ilustracje są dostępne dla koordynatorów i ilustratorów.')
     with transaction.atomic():
-        query = ordinary(Illustration.objects)
+        query = ordinary(Illustration.objects).exclude(text__anthology__is_novel=True)
         if request.method == 'POST':
             query = query.select_for_update()
         illustration = get_object_or_404(query, pk=illustration_id,

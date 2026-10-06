@@ -2,6 +2,9 @@
   "use strict";
   document.querySelectorAll('select[data-searchable-person]').forEach(select => {
     const options = Array.from(select.options).filter(option => option.value && !option.disabled);
+    const roleSelect = document.getElementById(select.dataset.assignmentRoleSelect || '');
+    const allowed = value => !roleSelect || options.some(option => option.value === value &&
+      (option.dataset.assignmentRoles || '').split(' ').includes(roleSelect.value) && roleSelect.value);
     const counts = new Map();
     options.forEach(option => counts.set(option.text, (counts.get(option.text) || 0) + 1));
     const labels = new Map(options.map(option => [option.value, counts.get(option.text) > 1 ? `${option.text} (#${option.value})` : option.text]));
@@ -24,13 +27,14 @@
     let active = -1;
     const close = () => { list.replaceChildren(); active = -1; input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); };
     const choose = value => {
+      if (!allowed(value)) return;
       select.value = value; input.value = labels.get(value) || ''; input.setCustomValidity('');
       input.focus(); close(); status.textContent = `Wybrano ${itemLabel}.`; select.dispatchEvent(new Event('change', {bubbles: true}));
     };
     const search = () => {
       close(); const query = normalize(input.value.trim());
       if (!query) { status.textContent = ''; return; }
-      const matches = Array.from(labels).filter(([, label]) => normalize(label).includes(query));
+      const matches = Array.from(labels).filter(([value, label]) => allowed(value) && normalize(label).includes(query));
       matches.slice(0, 30).forEach(([value, label], index) => {
         const button = document.createElement('button'); button.type = 'button'; button.textContent = label;
         button.id = `${list.id}_${index}`; button.setAttribute('role', 'option'); button.setAttribute('aria-selected', 'false');
@@ -40,11 +44,24 @@
       status.textContent = matches.length > 30 ? `Zawęź zapytanie – pokazano pierwszych 30 ${itemsLabel}.` : matches.length ? `Wybierz ${itemLabel} z listy.` : `Brak pasujących ${itemsLabel}.`;
     };
     input.addEventListener('input', () => {
-      const value = input.value.trim(); const chosen = values.get(value);
+      const value = input.value.trim(); const candidate = values.get(value);
+      const chosen = candidate && allowed(candidate) ? candidate : null;
       input.setCustomValidity(value && !chosen ? `Wybierz ${itemLabel} z podpowiedzi albo wyczyść pole.` : '');
       select.value = chosen || ''; select.dispatchEvent(new Event('change', {bubbles: true})); search();
     });
     input.addEventListener('focus', search);
+    if (roleSelect) {
+      const syncRole = () => {
+        options.forEach(option => { option.disabled = !allowed(option.value); });
+        if (!allowed(select.value)) { select.value = ''; input.value = ''; }
+        input.disabled = !roleSelect.value;
+        input.setCustomValidity(''); close();
+        status.textContent = roleSelect.value ? 'Wybierz osobę uprawnioną do tej roli.' : 'Najpierw wybierz rolę.';
+      };
+      roleSelect.addEventListener('change', syncRole);
+      select.form?.addEventListener('reset', () => setTimeout(syncRole, 0));
+      syncRole();
+    }
     input.addEventListener('keydown', event => {
       if (event.key === 'Escape') { close(); return; }
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {

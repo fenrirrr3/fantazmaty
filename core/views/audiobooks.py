@@ -10,6 +10,7 @@ from core.pagination import paginate_items
 from core.permissions import team_member_required
 from core.selectors.texts import text_list_context
 from texts.models import Text
+from texts.production import active_production_texts
 
 
 class AudiobookForm(forms.ModelForm):
@@ -43,7 +44,7 @@ def audiobook_list(request):
     params = request.GET.copy()
     params['hide_ready'] = '0'
     context = dict(text_list_context(user=request.user, params=params,
-        scope=Text.objects.filter(for_recording=True, audiobook_blacklisted=False), include_translations=True))
+        scope=active_production_texts(Text.objects.filter(for_recording=True, audiobook_blacklisted=False)), include_translations=True))
     page = paginate_items(request, context.pop('texts'))
     context.update(texts=page, page_obj=page)
     return render(request, 'core/audiobooks.html', context)
@@ -56,7 +57,7 @@ def audiobook_list(request):
 def update_text_audiobook(request, text_id):
     from core.views.texts import _render_text_detail
     with transaction.atomic():
-        text = get_object_or_404(Text.objects.select_for_update(), pk=text_id)
+        text = get_object_or_404(Text.objects.select_for_update().exclude(anthology__is_novel=True), pk=text_id)
         form = AudiobookForm(request.POST, instance=text)
         if form.is_valid():
             text.save(update_fields=['for_recording', 'audiobook_blacklisted'])
