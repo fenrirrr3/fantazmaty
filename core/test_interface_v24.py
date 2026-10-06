@@ -35,14 +35,14 @@ class InterfaceV24Tests(TestCase):
     def person_page(self, person):
         return self.client.get(reverse('admin:people_person_change', args=[person.pk]))
 
-    def test_illustrator_fields_only_for_illustrator_role_even_without_account(self):
+    def test_contact_fields_are_separate_from_team_profiles_regardless_of_role(self):
         ordinary = self.person_page(self.person)
         self.assertEqual(ordinary.status_code, 200)
         for field in ('illustrator_portfolio', 'illustrator_preferences', 'illustrator_covers', 'illustrator_active'):
             self.assertNotContains(ordinary, f'name="{field}"')
-            self.assertContains(self.person_page(self.artist), f'name="{field}"')
+            self.assertNotContains(self.person_page(self.artist), f'name="{field}"')
         self.person.roles.add(self.role)
-        self.assertContains(self.person_page(self.person), 'Ilustrator – portfolio i preferencje')
+        self.assertNotContains(self.person_page(self.person), 'name="illustrator_portfolio"')
         self.person.roles.remove(self.role)
         self.assertNotContains(self.person_page(self.person), 'name="illustrator_portfolio"')
         self.person.refresh_from_db()

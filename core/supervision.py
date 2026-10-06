@@ -1,6 +1,5 @@
 from core.translation_scope import ordinary
 """Read-only checks and publication credits; never repair data implicitly."""
-from workflow.catalog import IMPORT_ONLY_STAGE_TYPES
 from core.sort_keys import text_key
 from collections import defaultdict
 from difflib import SequenceMatcher
@@ -167,6 +166,8 @@ def anthology_checklist(anthology):
 
 def _credit_person(person=None, user=None, fallback_id=None):
     identity = ('person', person.pk) if person is not None else ('user', user.pk) if user is not None else ('review', fallback_id)
+    if person is not None and person._meta.label_lower == 'illustrations.illustrator':
+        identity = ('illustrator', person.pk)
     source = person if person is not None else user
     first = (getattr(source, 'first_name', '') or '').strip()
     last = (getattr(source, 'last_name', '') or '').strip()

@@ -1,19 +1,19 @@
 {% extends "core/base.html" %}
 {% load static %}
-{% block title %}{% if person.pk %}Edytuj ilustratora{% else %}Dodaj ilustratora{% endif %} | Fantazmaty CMS{% endblock %}
+{% block title %}{% if person.pk %}Edytuj wpis ilustratora{% else %}Dodaj wpis{% endif %} | Fantazmaty CMS{% endblock %}
 {% block extra_css %}<link rel="stylesheet" href="{% static 'core/illustrations.css' %}">{% endblock %}
 {% block content %}
-<header class="page-header"><h1>{% if person.pk %}Edytuj ilustratora{% else %}Dodaj ilustratora{% endif %}</h1><a class="secondary-button" href="{% url 'illustrations:illustrator_list' %}">Wróć do ilustratorów</a></header>
+<header class="page-header"><h1>{% if person.pk %}Edytuj wpis ilustratora{% else %}Dodaj wpis{% endif %}</h1><a class="secondary-button" href="{% url 'illustrations:illustrator_list' %}">Wróć do ilustratorów</a></header>
 <section class="card"><div class="card-body">
-    {% if not person.pk %}<p>Nowa osoba otrzyma rolę Ilustrator. Utworzenie wpisu nie zakłada konta logowania.</p>{% endif %}
-    {% if person.pk and not person.illustrator_active %}<p class="muted-text">Ten ilustrator jest wyłączony z aktywnej listy. Zaznacz „Aktywny ilustrator”, aby go przywrócić.</p>{% endif %}
+    {% if not person.pk %}<p>Wpis nie tworzy konta, profilu członka zespołu ani roli. E-mail i portfolio są opcjonalne.</p>{% endif %}
+    {% if person.pk and not person.is_active %}<p class="muted-text">Ten ilustrator jest wyłączony z aktywnej listy. Zaznacz „Aktywny ilustrator”, aby go przywrócić.</p>{% endif %}
     <form method="post" class="illustration-edit-form" data-warn-unsaved>
         {% csrf_token %}{{ form.version }}{{ form.version.errors }}{{ form.non_field_errors }}
         {% for field in form.visible_fields %}<div class="form-field">
             {% if field.field.widget.input_type == 'checkbox' %}<label class="illustrator-checkbox">{{ field }} {{ field.label }}</label>{% else %}{{ field.label_tag }}{{ field }}{% endif %}
             {% if field.help_text %}<p class="muted-text">{{ field.help_text }}</p>{% endif %}{{ field.errors }}
         </div>{% endfor %}
-        <button class="primary-button" type="submit">Zapisz ilustratora</button>
+        <button class="primary-button" type="submit">Zapisz wpis</button>
     </form>
 </div></section>
 {% endblock %}

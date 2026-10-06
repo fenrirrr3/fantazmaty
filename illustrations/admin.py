@@ -1,7 +1,22 @@
 from django.contrib import admin
 
-from .models import CoverProposal, Illustration
+from .models import CoverProposal, Illustration, Illustrator
 from core.permissions import can_view_illustrations
+
+
+@admin.register(Illustrator)
+class IllustratorAdmin(admin.ModelAdmin):
+    list_display = ("full_name", "email", "portfolio", "preferences", "covers", "is_active")
+    list_filter = ("is_active", "covers")
+    search_fields = ("first_name__plcontains", "last_name__plcontains", "email__plcontains", "preferences__plcontains")
+    ordering = ("last_name", "first_name", "pk")
+    fields = ("first_name", "last_name", "email", "portfolio", "preferences", "covers", "is_active")
+    list_per_page = 50
+    show_full_result_count = False
+
+    @admin.display(description="Imię i nazwisko", ordering="last_name")
+    def full_name(self, obj):
+        return str(obj)
 
 
 @admin.register(Illustration)

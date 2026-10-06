@@ -28,6 +28,12 @@ def polish_key(field, using):
     for letter, replacement in REPLACEMENTS:
         value = Replace(value, Value(letter), Value(replacement), output_field=TextField())
     vendor = connections[using].vendor
+    if vendor == 'mysql':
+        # A NULL expression can have the binary charset even with output_field=TextField().
+        # Convert in SQL before applying a utf8mb4 collation; NULL remains NULL.
+        value = Func(value, function='CONVERT',
+                     template='%(function)s(%(expressions)s USING utf8mb4)',
+                     output_field=TextField())
     return Collate(value, 'utf8mb4_bin' if vendor == 'mysql' else 'BINARY' if vendor == 'sqlite' else 'C')
 
 

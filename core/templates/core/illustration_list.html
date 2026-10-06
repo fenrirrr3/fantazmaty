@@ -142,17 +142,19 @@
                             <td>{{ illustration.genre_display|default:"Brak danych" }}</td>
                             <td>
                                 {% if illustration.manual_illustrator_name %}{{ illustration.manual_illustrator_name }}{% elif illustration.illustrator %}
-                                    {% if illustration.illustrator.is_active %}
+                                    {% if can_manage_directory %}
                                         <a
-                                            href="{% url 'core:person_detail' illustration.illustrator.pk %}"
+                                            href="{% url 'illustrations:illustrator_edit' illustration.illustrator.pk %}"
                                             class="detail-link"
                                         >
                                             {{ illustration.illustrator }}
                                         </a>
                                     {% else %}
                                         {{ illustration.illustrator }}
+                                    {% endif %}
+                                    {% if not illustration.illustrator.is_active %}
                                         <div class="muted-text">
-                                            Poza zespołem
+                                            Nieaktywny ilustrator
                                         </div>
                                     {% endif %}
                                 {% else %}

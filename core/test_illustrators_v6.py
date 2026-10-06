@@ -1,4 +1,4 @@
-from tempfile import TemporaryDirectory
+from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
 from django.test import Client, TestCase
@@ -7,7 +7,7 @@ from lxml import html
 
 from core.odkurzacz_forms import OdkurzaczForm
 from illustrations.editing import AssignmentForm
-from illustrations.models import Illustration
+from illustrations.models import Illustration, Illustrator
 from people.models import Person, Role
 from texts.models import Anthology, Text
 from workflow.tests import create_member
@@ -21,14 +21,12 @@ class IllustratorDirectoryTests(TestCase):
         cls.artist=create_member('artist-v6','Ilustrator')
         cls.editor=create_member('editor-v6','Redaktor')
         cls.role=Role.objects.get(name='Ilustrator')
-        cls.person=cls.artist.person_profile
-        cls.manual=Person.objects.create(first_name='Anna',last_name='Rysująca',email='anna-v6@example.test',
-            illustrator_portfolio='https://example.org/portfolio',illustrator_preferences='Fantasy i krajobrazy',illustrator_covers=True)
-        cls.manual.roles.add(cls.role)
+        cls.person=Illustrator.objects.create(pk=cls.artist.person_profile.pk, first_name='Artysta', last_name='Kontakt', email=cls.artist.person_profile.email)
+        cls.manual=Illustrator.objects.create(first_name='Anna',last_name='Rysująca',email='anna-v6@example.test',
+            portfolio='https://example.org/portfolio',preferences='Fantasy i krajobrazy',covers=True)
 
     def setUp(self):
-        temporary=TemporaryDirectory();self.addCleanup(temporary.cleanup)
-        override=self.settings(ACTIVITY_SPOOL_DIR=temporary.name);override.enable();self.addCleanup(override.disable)
+        activity=patch('core.activity_spool.enqueue_activity');activity.start();self.addCleanup(activity.stop)
         self.client.force_login(self.admin)
         self.list_url=reverse('illustrations:illustrator_list')
         self.add_url=reverse('illustrations:illustrator_add')
@@ -37,12 +35,12 @@ class IllustratorDirectoryTests(TestCase):
     def token(self,url=None):
         response=self.client.get(url or self.edit_url)
         self.assertEqual(response.status_code,200)
-        return html.fromstring(response.content).xpath('//input[@name="version"]/@value')[0]
+        return html.fromstring(response.content.decode()).xpath('//input[@name="version"]/@value')[0]
 
     def data(self,**kwargs):
         return {'first_name':'Anna','last_name':'Rysująca','email':'anna-v6@example.test',
-            'illustrator_portfolio':'https://example.org/portfolio',
-            'illustrator_preferences':'Nowe preferencje','illustrator_covers':'on',**kwargs}
+            'portfolio':'https://example.org/portfolio',
+            'preferences':'Nowe preferencje','covers':'on','is_active':'on',**kwargs}
 
     def test_label_is_shortened(self):
         self.assertEqual(OdkurzaczForm().fields['normalize_formatting'].label,'Ujednolić formatowanie')
@@ -68,14 +66,14 @@ class IllustratorDirectoryTests(TestCase):
 
     def test_artist_editor_and_staff_cannot_access_or_post(self):
         self.editor.is_staff=True;self.editor.save()
-        self.editor.user_permissions.add(*Permission.objects.filter(content_type__app_label='people',codename__in=['view_person','change_person','add_person']))
+        self.editor.user_permissions.add(*Permission.objects.filter(content_type__app_label='illustrations',codename__in=['view_illustrator','change_illustrator','add_illustrator']))
         for user in (self.artist,self.editor):
             self.client.force_login(user)
             for url in (self.list_url,self.add_url,self.edit_url):
                 self.assertEqual(self.client.get(url).status_code,403)
             for url in (self.add_url,self.edit_url):
                 self.assertEqual(self.client.post(url,self.data()).status_code,403)
-        self.manual.refresh_from_db();self.assertEqual(self.manual.illustrator_preferences,'Fantasy i krajobrazy')
+        self.manual.refresh_from_db();self.assertEqual(self.manual.preferences,'Fantasy i krajobrazy')
 
     def test_anonymous_and_inactive_coordinator_are_blocked(self):
         self.client.logout();self.assertEqual(self.client.get(self.list_url).status_code,302)
@@ -86,20 +84,20 @@ class IllustratorDirectoryTests(TestCase):
         for user in (self.admin,self.coordinator,self.artist,self.editor):
             self.client.force_login(user)
             response=self.client.get(reverse('core:programs'))
-            links=html.fromstring(response.content).xpath('//nav[@aria-label="Główna nawigacja"]//a/@href')
+            links=html.fromstring(response.content.decode()).xpath('//nav[@aria-label="Główna nawigacja"]//a/@href')
             if user in (self.admin,self.coordinator):
                 self.assertEqual(links.index(self.list_url),links.index(reverse('illustrations:illustration_list'))+1)
             else:self.assertNotIn(self.list_url,links)
 
     def test_manual_creation_does_not_create_account_and_can_be_assigned(self):
-        accounts=get_user_model().objects.count()
+        accounts=get_user_model().objects.count();profiles=Person.objects.count();roles=Role.objects.count()
         self.client.force_login(self.coordinator)
         response=self.client.post(self.add_url,self.data(first_name='Nowa',email='new-v6@example.test'))
         self.assertRedirects(response,self.list_url)
-        person=Person.objects.get(email='new-v6@example.test')
-        self.assertIsNone(person.user_id)
-        self.assertFalse(person.is_coordinator)
-        self.assertTrue(person.roles.filter(name='Ilustrator').exists())
+        person=Illustrator.objects.get(email='new-v6@example.test')
+        self.assertEqual(Person.objects.count(),profiles)
+        self.assertEqual(Role.objects.count(),roles)
+        self.assertFalse(any(f.is_relation for f in person._meta.fields))
         self.assertEqual(get_user_model().objects.count(),accounts)
         book=Anthology.objects.create(title='Nowa',has_illustrations=True)
         text=Text.objects.create(title='Tekst',anthology=book,length=100)
@@ -107,79 +105,95 @@ class IllustratorDirectoryTests(TestCase):
         self.assertIn(person,form.fields['illustrator'].queryset)
 
     def test_manual_edit_and_unchecked_cover_persist(self):
-        response=self.client.post(self.edit_url,self.data(version=self.token(),illustrator_covers=''))
+        response=self.client.post(self.edit_url,self.data(version=self.token(),covers=''))
         self.assertRedirects(response,self.list_url)
-        self.manual.refresh_from_db();self.assertFalse(self.manual.illustrator_covers)
-        self.assertEqual(self.manual.illustrator_preferences,'Nowe preferencje')
+        self.manual.refresh_from_db();self.assertFalse(self.manual.covers)
+        self.assertEqual(self.manual.preferences,'Nowe preferencje')
 
-    def test_account_identity_and_security_fields_cannot_be_overwritten(self):
+    def test_contact_identity_can_change_without_modifying_team_or_account(self):
         url=reverse('illustrations:illustrator_edit',args=[self.person.pk])
-        before=(self.person.first_name,self.person.last_name,self.person.email,self.person.user_id)
+        original=Person.objects.get(pk=self.artist.person_profile.pk)
+        before=(original.first_name,original.last_name,original.email,original.user_id)
         response=self.client.post(url,self.data(version=self.token(url),email='forged@example.test',
-            user=self.admin.pk,is_coordinator='on',roles=Role.objects.get(name='Koordynator redakcji').pk))
+            user=self.admin.pk,is_coordinator='on',roles=self.role.pk))
         self.assertRedirects(response,self.list_url)
-        self.person.refresh_from_db()
-        self.assertEqual((self.person.first_name,self.person.last_name,self.person.email,self.person.user_id),before)
-        self.assertFalse(self.person.is_coordinator)
-        self.assertEqual(self.person.illustrator_preferences,'Nowe preferencje')
+        self.person.refresh_from_db();original.refresh_from_db();self.artist.refresh_from_db()
+        self.assertEqual(self.person.email,'forged@example.test')
+        self.assertEqual(self.person.first_name,'Anna')
+        self.assertEqual((original.first_name,original.last_name,original.email,original.user_id),before)
+        self.assertNotEqual(self.artist.email,'forged@example.test')
+
 
     def test_duplicate_email_case_insensitive_does_not_create_or_attach_account(self):
-        count=Person.objects.count()
+        count=Illustrator.objects.count()
         response=self.client.post(self.add_url,self.data(email=self.person.email.upper()))
         self.assertEqual(response.status_code,200)
-        self.assertContains(response,'Osoba z tym adresem e-mail już istnieje')
-        self.assertEqual(Person.objects.count(),count)
+        self.assertContains(response,'Wpis z tym adresem e-mail już istnieje')
+        self.assertEqual(Illustrator.objects.count(),count)
 
     def test_invalid_portfolio_email_and_blank_name_are_rejected(self):
-        count=Person.objects.count()
-        for override in ({'illustrator_portfolio':'javascript:alert(1)'},{'illustrator_portfolio':'ftp://example.org/file'},
+        count=Illustrator.objects.count()
+        for override in ({'portfolio':'javascript:alert(1)'},{'portfolio':'ftp://example.org/file'},
                          {'email':'nie-email'},{'first_name':' '}):
             response=self.client.post(self.add_url,self.data(email='unique-v6@example.test',**override) if 'email' not in override else self.data(**override))
             self.assertEqual(response.status_code,200)
             self.assertTrue(response.context['form'].errors)
-        self.assertEqual(Person.objects.count(),count)
+        self.assertEqual(Illustrator.objects.count(),count)
 
     def test_conflict_with_another_save_preserves_data(self):
         token=self.token()
-        self.manual.illustrator_preferences='Zmiana z panelu admina';self.manual.save()
+        self.manual.preferences='Zmiana z panelu admina';self.manual.save()
         response=self.client.post(self.edit_url,self.data(version=token))
         self.assertEqual(response.status_code,409)
         self.assertContains(response,'Nowe preferencje',status_code=409)
-        self.manual.refresh_from_db();self.assertEqual(self.manual.illustrator_preferences,'Zmiana z panelu admina')
+        self.manual.refresh_from_db();self.assertEqual(self.manual.preferences,'Zmiana z panelu admina')
         self.assertEqual(self.client.post(self.edit_url,self.data()).status_code,409)
 
     def test_non_illustrator_id_cannot_be_edited(self):
-        url=reverse('illustrations:illustrator_edit',args=[self.editor.person_profile.pk])
+        url=reverse('illustrations:illustrator_edit',args=[999999])
         self.assertEqual(self.client.get(url).status_code,404)
         self.assertEqual(self.client.post(url,self.data()).status_code,404)
 
     def test_csrf_and_html_escaping(self):
         csrf=Client(enforce_csrf_checks=True);csrf.force_login(self.admin)
         self.assertEqual(csrf.post(self.add_url,self.data()).status_code,403)
-        self.client.post(self.edit_url,self.data(version=self.token(),illustrator_preferences='<script>alert(1)</script>'))
+        self.client.post(self.edit_url,self.data(version=self.token(),preferences='<script>alert(1)</script>'))
         self.assertContains(self.client.get(self.list_url),'&lt;script&gt;alert(1)&lt;/script&gt;')
 
-    def test_search_and_inactive_people_do_not_erase_old_contacts(self):
+    def test_deactivation_hides_contact_but_preserves_existing_assignments(self):
+        book=Anthology.objects.create(title='Dawna praca',has_illustrations=True)
+        story=Text.objects.create(title='Zachowane przypisanie',anthology=book,length=100)
+        illustration=Illustration.objects.get(text=story)
+        illustration.illustrator=self.manual;illustration.status='assigned';illustration.save()
         self.manual.is_active=False;self.manual.save()
         response=self.client.get(self.list_url,{'q':'krajobrazy'})
-        self.assertContains(response,'Anna Rysująca');self.assertContains(response,'Poza zespołem')
-        self.assertEqual(response.context['page_obj'].paginator.count,1)
+        self.assertEqual(response.context['page_obj'].paginator.count,0)
+        self.assertEqual(self.client.get(self.edit_url).status_code,200)
+        self.assertIn(self.manual,AssignmentForm(instance=illustration,can_assign=True).fields['illustrator'].queryset)
+        self.assertNotIn(self.manual,AssignmentForm(instance=Illustration(),can_assign=True).fields['illustrator'].queryset)
+        illustration.refresh_from_db();self.assertEqual(illustration.illustrator_id,self.manual.pk)
 
-    def test_admin_creation_and_edit_use_same_person(self):
-        url=reverse('admin:people_person_add')
+    def test_blank_emails_and_portfolios_are_optional(self):
+        for name in ('Pierwszy','Drugi'):
+            self.assertEqual(self.client.post(self.add_url,self.data(first_name=name,email='',portfolio='')).status_code,302)
+        self.assertEqual(Illustrator.objects.filter(email__isnull=True).count(),2)
+
+
+    def test_admin_creation_and_edit_only_change_contact(self):
+        profiles=Person.objects.count();accounts=get_user_model().objects.count()
+        url=reverse('admin:illustrations_illustrator_add')
         page=self.client.get(url)
-        self.assertNotContains(page,'name="illustrator_portfolio"')
-        response=self.client.post(url,self.data(first_name='Panel',email='panel-v6@example.test',roles=[self.role.pk],is_active='on',_save='Zapisz'))
+        self.assertContains(page,'name="portfolio"')
+        self.assertNotContains(page,'name="roles"')
+        self.assertNotContains(page,'name="user"')
+        response=self.client.post(url,self.data(first_name='Panel',email='panel-v6@example.test',_save='Zapisz'))
         self.assertEqual(response.status_code,302)
-        person=Person.objects.get(email='panel-v6@example.test')
-        edit_url=reverse('admin:people_person_change',args=[person.pk])
-        edit_page=self.client.get(edit_url)
-        self.assertContains(edit_page,'name="illustrator_portfolio"')
-        token=html.fromstring(edit_page.content).xpath('//input[@name="_edit_version"]/@value')[0]
-        response=self.client.post(edit_url,self.data(first_name='Panel',email='panel-v6@example.test',roles=[self.role.pk],is_active='on',_save='Zapisz',_edit_version=token))
+        person=Illustrator.objects.get(email='panel-v6@example.test')
+        edit_url=reverse('admin:illustrations_illustrator_change',args=[person.pk])
+        token=html.fromstring(self.client.get(edit_url).content).xpath('//input[@name="_edit_version"]/@value')[0]
+        response=self.client.post(edit_url,self.data(first_name='Panel',email='panel-v6@example.test',_save='Zapisz',_edit_version=token))
         self.assertEqual(response.status_code,302)
-        person.refresh_from_db()
-        self.assertTrue(person.illustrator_covers)
-        self.assertIsNone(person.user_id)
+        person.refresh_from_db();self.assertTrue(person.covers)
         self.assertContains(self.client.get(self.list_url),'Panel Rysująca')
-        self.assertEqual(Person.objects.filter(email='panel-v6@example.test').count(),1)
+        self.assertEqual(Person.objects.count(),profiles)
+        self.assertEqual(get_user_model().objects.count(),accounts)

@@ -7,7 +7,7 @@ from django.db.models.signals import pre_save, post_save, post_delete, pre_delet
 TRACKED = {
     'texts.texttranslation', 'texts.foreignauthor', 'texts.translator',
     'texts.text', 'texts.review', 'texts.anthology', 'texts.anthologytask', 'texts.textnote',
-    'illustrations.illustration', 'illustrations.coverproposal',
+    'illustrations.illustration', 'illustrations.coverproposal', 'illustrations.illustrator',
     'texts.reviewassignment', 'texts.reviewers', 'texts.extract',
     'workflow.workflowstage', 'workflow.workflowroleassignment',
     'workflow.workflowrepetition', 'people.person', 'people.vacation',

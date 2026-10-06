@@ -5,8 +5,8 @@
 {% block content %}
 <header class="page-header">
     <h1>Ilustratorzy</h1>
-    <p>Aktywni ilustratorzy. Konto użytkownika ani członkostwo w zespole nie są wymagane. Kliknij imię i nazwisko, aby edytować dane.</p>
-    <a class="primary-button" href="{% url 'illustrations:illustrator_add' %}">Dodaj ilustratora</a>
+    <p>Samodzielny spis aktywnych ilustratorów, niezależny od kont i ról zespołu. Kliknij imię i nazwisko, aby edytować dane.</p>
+    <a class="primary-button" href="{% url 'illustrations:illustrator_add' %}">Dodaj wpis</a>
 </header>
 <section class="card"><div class="card-body">
     <form method="get" class="illustration-edit-form">
@@ -21,9 +21,9 @@
             <tbody>{% for person in page_obj %}<tr>
                 <td><a href="{% url 'illustrations:illustrator_edit' person.pk %}"><strong>{{ person }}</strong></a></td>
                 <td>{% if person.email %}<a href="mailto:{{ person.email }}">{{ person.email }}</a>{% else %}Nie podano{% endif %}</td>
-                <td>{% if person.illustrator_portfolio %}<a href="{{ person.illustrator_portfolio }}" target="_blank" rel="noopener noreferrer">Otwórz portfolio</a>{% else %}Nie podano{% endif %}</td>
-                <td><div class="illustration-excerpt-preview">{{ person.illustrator_preferences|default:"Nie podano"|linebreaksbr }}</div></td>
-                <td>{{ person.illustrator_covers|yesno:"Tak,Nie" }}</td>
+                <td>{% if person.portfolio %}<a href="{{ person.portfolio }}" target="_blank" rel="noopener noreferrer">Otwórz portfolio</a>{% else %}Nie podano{% endif %}</td>
+                <td><div class="illustration-excerpt-preview">{{ person.preferences|default:"Nie podano"|linebreaksbr }}</div></td>
+                <td>{{ person.covers|yesno:"Tak,Nie" }}</td>
             </tr>{% empty %}<tr><td colspan="5">Brak ilustratorów spełniających kryteria.</td></tr>{% endfor %}</tbody>
         </table>
     </div>

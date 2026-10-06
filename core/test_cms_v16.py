@@ -10,15 +10,13 @@ from django.urls import reverse
 from django.utils import timezone
 from docx import Document
 from docx.enum.text import WD_BREAK
-from docx.oxml.ns import qn
 from lxml import html
 from people.models import Person
 from texts.models import Anthology, AnthologyTask, Text
-from illustrations.models import Illustration
+from illustrations.models import Illustration, Illustrator
 from illustrations.editing import edit_token
 from workflow.tests import create_member
 from core.services.document_preparation import prepare_docx
-from core.services.document_converter import convert_document
 
 
 class CMS16Tests(TestCase):
@@ -26,6 +24,7 @@ class CMS16Tests(TestCase):
     def setUpTestData(cls):
         cls.admin=get_user_model().objects.create_superuser('admin16','admin16@example.test','test')
         cls.artist=create_member('artist16','Ilustrator')
+        cls.artist_contact=Illustrator.objects.create(first_name='Artysta',last_name='Kontakt')
         cls.book=Anthology.objects.create(title='Nowa antologia',has_illustrations=True)
         cls.text=Text.objects.create(title='Nowy tekst',anthology=cls.book,length=20)
         cls.ill=Illustration.objects.get(text=cls.text)
@@ -60,7 +59,7 @@ class CMS16Tests(TestCase):
     def test_manual_validation_and_switch_back_to_profile(self):
         for data in ({'manual_illustrator_email':'x@example.test'},
                      {'manual_illustrator_name':'Anna','manual_illustrator_email':'wrong'},
-                     {'manual_illustrator_name':'Anna','illustrator':self.artist.person_profile.pk}):
+                     {'manual_illustrator_name':'Anna','illustrator':self.artist_contact.pk}):
             response=self.post_illustration('assignment',status='assigned',**data)
             self.assertEqual(response.status_code,200)
             self.assertTrue(response.context['forms']['assignment'].errors)
@@ -68,9 +67,9 @@ class CMS16Tests(TestCase):
             self.assertEqual(self.ill.status,'unassigned')
         response=self.post_illustration('assignment',manual_illustrator_name='Anna',status='assigned')
         self.assertEqual(response.status_code,302)
-        response=self.post_illustration('assignment',illustrator=self.artist.person_profile.pk,status='assigned')
+        response=self.post_illustration('assignment',illustrator=self.artist_contact.pk,status='assigned')
         self.assertEqual(response.status_code,302);self.ill.refresh_from_db()
-        self.assertEqual(self.ill.manual_illustrator_name,'');self.assertEqual(self.ill.illustrator_id,self.artist.person_profile.pk)
+        self.assertEqual(self.ill.manual_illustrator_name,'');self.assertEqual(self.ill.illustrator_id,self.artist_contact.pk)
 
     def test_notes_permissions_conflict_and_search_markup(self):
         old=edit_token(self.admin,self.ill)
@@ -81,7 +80,7 @@ class CMS16Tests(TestCase):
         response=self.client.get(self.url)
         self.assertContains(response,'id="illustrator-search"')
         self.assertContains(response,'illustrator_search.js')
-        self.ill.refresh_from_db();self.ill.illustrator=self.artist.person_profile;self.ill.status='assigned';self.ill.save()
+        self.ill.refresh_from_db();self.ill.illustrator=self.artist_contact;self.ill.status='assigned';self.ill.save()
         self.client.force_login(self.artist)
         response=self.client.post(self.url,{'action':'coordinator_notes','version':edit_token(self.artist,self.ill),'coordinator_notes':'nie wolno'})
         self.assertEqual(response.status_code,403)

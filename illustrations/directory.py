@@ -1,4 +1,4 @@
-"""Coordinator-only directory sharing Person records with illustration assignments."""
+"""Coordinator-only contact directory, independent of accounts and team roles."""
 from django import forms
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -13,26 +13,25 @@ from django.views.decorators.http import require_GET, require_http_methods
 from core.edit_versions import version_of
 from core.pagination import paginate_queryset
 from core.permissions import is_coordinator
-from people.admin import PersonAdminForm
-from people.models import Person, Role
+from .models import Illustrator
 
 
-class IllustratorForm(PersonAdminForm):
+class IllustratorForm(forms.ModelForm):
     version = forms.CharField(required=False, widget=forms.HiddenInput)
 
     class Meta:
-        model = Person
-        fields = ('first_name', 'last_name', 'email', 'illustrator_portfolio',
-                  'illustrator_preferences', 'illustrator_covers', 'illustrator_active')
+        model = Illustrator
+        fields = ('first_name', 'last_name', 'email', 'portfolio',
+                  'preferences', 'covers', 'is_active')
         widgets = {
-            'illustrator_preferences': forms.Textarea(attrs={'rows': 4}),
-            'illustrator_portfolio': forms.URLInput(attrs={'placeholder': 'https://...'}),
+            'preferences': forms.Textarea(attrs={'rows': 4}),
+            'portfolio': forms.URLInput(attrs={'placeholder': 'https://...'}),
         }
 
 
 
 def directory_rows():
-    return Person.objects.filter(roles__name__iexact='Ilustrator', illustrator_active=True).distinct()
+    return Illustrator.objects.filter(is_active=True)
 
 
 def check_access(user):
@@ -41,12 +40,12 @@ def check_access(user):
 
 
 def edit_token(user, person):
-    return signing.dumps([user.pk, person.pk, version_of(person)], salt='illustrator-directory')
+    return signing.dumps([user.pk, person.pk, version_of(person)], salt='illustrator-contact')
 
 
 def matches(token, user, person):
     try:
-        return signing.loads(token, salt='illustrator-directory', max_age=86400) == [
+        return signing.loads(token, salt='illustrator-contact', max_age=86400) == [
             user.pk, person.pk, version_of(person)]
     except signing.BadSignature:
         return False
@@ -60,8 +59,8 @@ def illustrator_list(request):
     query = request.GET.get('q', '').strip()[:200]
     rows = directory_rows().order_by('last_name', 'first_name', 'pk')
     if query:
-        rows = rows.filter(Q(first_name__icontains=query) | Q(last_name__icontains=query)
-                           | Q(email__icontains=query) | Q(illustrator_preferences__icontains=query))
+        rows = rows.filter(Q(first_name__plcontains=query) | Q(last_name__plcontains=query)
+                           | Q(email__icontains=query) | Q(preferences__plcontains=query))
     page = paginate_queryset(request, rows)
     return render(request, 'core/illustrator_list.html', {'page_obj': page, 'query': query})
 
@@ -72,13 +71,10 @@ def illustrator_list(request):
 def illustrator_edit(request, illustrator_id=None):
     check_access(request.user)
     with transaction.atomic():
-        person = Person()
+        person = Illustrator()
         if illustrator_id is not None:
-            rows = Person.objects.select_for_update() if request.method == 'POST' else Person.objects
+            rows = Illustrator.objects.select_for_update() if request.method == 'POST' else Illustrator.objects
             person = get_object_or_404(rows, pk=illustrator_id)
-            if not person.roles.filter(name__iexact='Ilustrator').exists():
-                from django.http import Http404
-                raise Http404
         form = IllustratorForm(request.POST if request.method == 'POST' else None, instance=person,
                                initial={'version': edit_token(request.user, person) if person.pk else ''})
         status = 200
@@ -91,13 +87,9 @@ def illustrator_edit(request, illustrator_id=None):
                 try:
                     with transaction.atomic():
                         person = form.save()
-                        role = Role.objects.filter(name__iexact='Ilustrator').order_by('pk').first()
-                        if role is None:
-                            role, _ = Role.objects.get_or_create(name='Ilustrator')
-                        person.roles.add(role)
                 except IntegrityError:
                     form.add_error('email', 'Nie zapisano danych. Sprawdź, czy ten adres e-mail nie został już dodany.')
                 else:
-                    messages.success(request, 'Zapisano ilustratora.')
+                    messages.success(request, 'Zapisano wpis w spisie ilustratorów.')
                     return redirect('illustrations:illustrator_list')
         return render(request, 'core/illustrator_form.html', {'form': form, 'person': person}, status=status)

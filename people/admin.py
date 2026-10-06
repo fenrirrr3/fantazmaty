@@ -2,7 +2,6 @@ from django import forms
 from django.contrib import admin
 from django.db.models import Value
 from django.db.models.functions import Lower
-from core.permissions import is_coordinator
 
 from .models import Person, Role, format_local_datetime
 
@@ -21,10 +20,6 @@ class PersonAdminForm(forms.ModelForm):
             "is_coordinator",
             "user",
             "author_profile",
-            "illustrator_portfolio",
-            "illustrator_preferences",
-            "illustrator_covers",
-            "illustrator_active",
             "leave_start_date",
             "leave_end_date",
             "leave_until_revoked",
@@ -91,34 +86,9 @@ class RoleAdmin(admin.ModelAdmin):
     list_per_page = 50
 
 
-class IllustratorDirectoryFilter(admin.SimpleListFilter):
-    title = 'spis ilustratorów'
-    parameter_name = 'illustrator_directory'
-
-    def lookups(self, request, model_admin):
-        return (('active', 'Aktywni ilustratorzy'), ('inactive', 'Nieaktywni ilustratorzy'),
-                ('all', 'Wszyscy ilustratorzy'))
-
-    def queryset(self, request, queryset):
-        if self.value() in ('active', 'inactive', 'all'):
-            queryset = queryset.filter(roles__name__iexact='Ilustrator').distinct()
-            if self.value() != 'all':
-                queryset = queryset.filter(illustrator_active=self.value() == 'active')
-        return queryset
-
-
 @admin.register(Person)
 class PersonAdmin(admin.ModelAdmin):
     change_form_template = "admin/people/person/change_form.html"
-
-    def get_fieldsets(self, request, obj=None):
-        fieldsets = super().get_fieldsets(request, obj)
-        if obj and obj.roles.filter(name__iexact="Ilustrator").exists() and is_coordinator(request.user):
-            return (*fieldsets, ("Ilustrator – portfolio i preferencje", {
-                "fields": ("illustrator_portfolio", "illustrator_preferences", "illustrator_covers", "illustrator_active"),
-                "description": "Spis obejmuje osoby z rolą Ilustrator i zaznaczonym polem Aktywny ilustrator. Konto i członkostwo w zespole nie mają wpływu na obecność w spisie.",
-            }))
-        return fieldsets
 
     readonly_fields = ("account_link", "account_date_joined", "account_last_login",
                        "leave_start_date", "leave_end_date", "leave_until_revoked")
@@ -157,8 +127,6 @@ class PersonAdmin(admin.ModelAdmin):
     )
 
     list_filter = (
-        IllustratorDirectoryFilter,
-        "illustrator_active",
         "is_active",
         "roles",
         "is_coordinator",
@@ -188,16 +156,10 @@ class PersonAdmin(admin.ModelAdmin):
     list_per_page = 50
     show_full_result_count = False
 
-    def get_list_display(self, request):
-        if request.GET.get('illustrator_directory') in ('active', 'inactive', 'all'):
-            return ('full_name', 'email', 'illustrator_portfolio', 'illustrator_preferences',
-                    'illustrator_covers', 'illustrator_active')
-        return super().get_list_display(request)
-
     fieldsets = (
         ('Dane osoby i kontakt', {'fields': ('first_name', 'last_name', 'email', 'dropbox_email')}),
         ('Role i aktywność', {'fields': ('is_active', 'roles', 'is_coordinator'),
-            'description': 'Wyłączenie aktywności ukrywa osobę na liście zespołu. Profil i dawne przydziały pozostają. Dane ilustratora są dostępne po zapisaniu roli Ilustrator.'}),
+            'description': 'Wyłączenie aktywności ukrywa osobę na liście zespołu. Profil i dawne przydziały pozostają.'}),
         ('Powiązane konto i profil autora', {'fields': ('user', 'account_link', 'author_profile')}),
         ('Urlop', {'classes': ('person-account-half',),
                   'fields': ('leave_start_date', 'leave_end_date', 'leave_until_revoked')}),

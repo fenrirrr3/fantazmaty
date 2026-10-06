@@ -1,10 +1,39 @@
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.validators import URLValidator
 from django.db import models
 from django.utils import timezone
 
-from people.models import Person
 from texts.models import Text
+
+
+class Illustrator(models.Model):
+    """An independent contact, with no account or team-profile relationship."""
+    first_name = models.CharField("imię", max_length=100)
+    last_name = models.CharField("nazwisko", max_length=100)
+    email = models.EmailField("adres e-mail", blank=True, null=True, unique=True)
+    portfolio = models.URLField("portfolio", max_length=500, blank=True,
+                                validators=[URLValidator(schemes=["http", "https"])])
+    preferences = models.TextField("preferencje", blank=True)
+    covers = models.BooleanField("okładki", default=False)
+    is_active = models.BooleanField("aktywny ilustrator", default=True, db_index=True,
+        help_text="Wyłączenie ukrywa wpis w aktywnym spisie i przy nowych przypisaniach. Dotychczasowe prace pozostają.")
+
+    class Meta:
+        verbose_name = "wpis ilustratora"
+        verbose_name_plural = "Ilustratorzy"
+        ordering = ("last_name", "first_name", "pk")
+
+    def __str__(self):
+        return f"{self.first_name} {self.last_name}".strip()
+
+    def clean(self):
+        super().clean()
+        self.first_name = " ".join(self.first_name.split())
+        self.last_name = " ".join(self.last_name.split())
+        self.email = (self.email or "").strip() or None
+        if self.email and type(self).objects.filter(email__iexact=self.email).exclude(pk=self.pk).exists():
+            raise ValidationError({"email": "Wpis z tym adresem e-mail już istnieje w spisie ilustratorów."})
 
 
 class Illustration(models.Model):
@@ -34,7 +63,7 @@ class Illustration(models.Model):
     )
 
     illustrator = models.ForeignKey(
-        Person,
+        Illustrator,
         on_delete=models.PROTECT,
         related_name="illustrations",
         verbose_name="ilustrator",

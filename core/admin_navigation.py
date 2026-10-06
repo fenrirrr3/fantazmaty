@@ -1,6 +1,6 @@
 """Task-oriented navigation without changing model registrations or permissions."""
 from django.template.response import TemplateResponse
-from django.urls import path, reverse
+from django.urls import reverse
 from urllib.parse import urlencode
 
 GROUPS = (
@@ -9,7 +9,7 @@ GROUPS = (
     ('translations', 'Tłumaczenia', ('texts.texttranslation', 'texts.foreignauthor', 'texts.translator')),
     ('authors', 'Autorzy', ('authors.author', 'blacklist')),
     ('team', 'Zespół i konta', ('people.person', 'auth.user', 'people.vacation', 'core.recruitment')),
-    ('art', 'Ilustracje i okładki', ('illustrations.illustration', 'illustrators_active', 'illustrators_inactive', 'illustrations.coverproposal')),
+    ('art', 'Ilustracje i okładki', ('illustrations.illustration', 'illustrations.illustrator', 'illustrators_active', 'illustrators_inactive', 'illustrations.coverproposal')),
     ('audio', 'Audiobooki i audiodeskrypcje', ('audiobooks_queue', 'audiobooks_blacklist', 'audio_description_tasks')),
     ('history', 'Historia i diagnostyka', ('workflow.workflowstage', 'workflow.workflowroleassignment', 'core.useractivity', 'core.workflowevent')),
     ('settings', 'Ustawienia', ('core.mailboxconnection', 'people.role', 'auth.group')),
@@ -17,7 +17,7 @@ GROUPS = (
 DETAIL_MODELS = ('texts.textnote', 'authors.authornote', 'texts.reviewassignment', 'texts.reviewers',
                  'workflow.workflowrepetition', 'workflow.workflowhandoff')
 LABELS = {
-    'texts.review': 'Zgłoszenia do recenzji', 'people.person': 'Osoby – zespół i ilustratorzy',
+    'texts.review': 'Zgłoszenia do recenzji', 'people.person': 'Osoby w zespole',
     'auth.user': 'Konta użytkowników', 'texts.anthologytask': 'Zadania antologii',
     'workflow.workflowstage': 'Etapy pracy', 'workflow.workflowroleassignment': 'Przydziały wykonawców',
     'auth.group': 'Grupy uprawnień', 'texts.reviewassignment': 'Oceny i przydziały recenzentów',
@@ -47,10 +47,10 @@ def grouped_app_list(original):
          {'audiobook_blacklisted__exact': '1'}),
         ('audio_description_tasks', 'texts.anthologytask', 'Zadania audiodeskrypcji',
          {'task_type__exact': 'audio_description'}),
-        ('illustrators_active', 'people.person', 'Ilustratorzy aktywni',
-         {'illustrator_directory': 'active'}),
-        ('illustrators_inactive', 'people.person', 'Ilustratorzy nieaktywni',
-         {'illustrator_directory': 'inactive'}),
+        ('illustrators_active', 'illustrations.illustrator', 'Ilustratorzy aktywni',
+         {'is_active__exact': '1'}),
+        ('illustrators_inactive', 'illustrations.illustrator', 'Ilustratorzy nieaktywni',
+         {'is_active__exact': '0'}),
     )
     for key, source, label, filters in shortcuts:
         registered = models.get(source)

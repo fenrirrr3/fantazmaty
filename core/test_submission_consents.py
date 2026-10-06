@@ -79,7 +79,7 @@ class SubmissionConsentTests(TestCase):
         self.assertEqual(role_names_context({'role':str(self.role.pk)})['names'],['Zofia Alfa','Adam Zeta'])
         text=Text.objects.create(anthology=self.book,title='Tekst',length=1000)
         url=reverse('core:assigned_text_detail',args=[text.pk])
-        self.client.force_login(self.admin);self.assertContains(self.client.get(url),'Osoby i wykonane prace przy tym tekście')
+        self.client.force_login(self.admin);self.assertContains(self.client.get(url),'<h2>Stopka tekstu</h2>',html=True)
         self.assertNotContains(self.client.get(url),'Zofia Alfa, Adam Zeta')
         self.client.force_login(self.coord);self.assertNotContains(self.client.get(url),'Lista osób z zespołu według roli')
 

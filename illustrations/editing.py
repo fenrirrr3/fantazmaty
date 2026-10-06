@@ -6,15 +6,11 @@ from django.db.models import Q
 
 from core.edit_versions import version_of
 from core.permissions import is_coordinator
-from people.models import Person
-from .models import Illustration
+from .models import Illustration, Illustrator
 
 
 def can_edit_illustration(user, illustration):
-    return is_coordinator(user) or (
-        illustration.illustrator_id is not None
-        and illustration.illustrator.user_id == user.pk
-    )
+    return is_coordinator(user)
 
 
 def edit_token(user, illustration):
@@ -41,10 +37,10 @@ class AssignmentForm(IllustrationEditForm):
     def __init__(self, *args, can_assign=False, **kwargs):
         super().__init__(*args, **kwargs)
         if can_assign:
-            self.fields['illustrator'].queryset = Person.objects.filter(
+            self.fields['illustrator'].queryset = Illustrator.objects.filter(
                 Q(pk=self.instance.illustrator_id)
-                | Q(illustrator_active=True, roles__name__iexact='Ilustrator')
-            ).distinct().order_by('last_name', 'first_name', 'pk')
+                | Q(is_active=True)
+            ).order_by('last_name', 'first_name', 'pk')
         else:
             for name in ('illustrator', 'manual_illustrator_name', 'manual_illustrator_email'):
                 del self.fields[name]

@@ -23,7 +23,7 @@ from lxml import html
 from authors.models import Author
 from core.odkurzacz_forms import OdkurzaczForm, DocumentConversionForm, RepetitionsForm
 from core.services.document_converter import convert_document, conversion_filename
-from illustrations.models import Illustration
+from illustrations.models import Illustration, Illustrator
 from texts.models import Anthology, Text, Review
 from workflow.tests import create_member
 
@@ -157,6 +157,8 @@ class IllustrationWorkspaceTests(TestCase):
         cls.artist = create_member('ilustrator-v5','Ilustrator')
         cls.other = create_member('inny-ilustrator-v5','Ilustrator')
         cls.editor = create_member('redaktor-v5','Redaktor')
+        cls.artist_contact=Illustrator.objects.create(first_name='Artysta',last_name='Pierwszy')
+        cls.other_contact=Illustrator.objects.create(first_name='Artysta',last_name='Drugi')
         cls.book = Anthology.objects.create(title='Ilustrowana',has_illustrations=True)
         cls.text = Text.objects.create(title='Tytuł ilustracji',anthology=cls.book,length=100,genre='Science fantasy',content_warnings='Ostrzeżenia tekstu')
         cls.text.authors.add(Author.objects.create(first_name='Jan',last_name='Autor'))
@@ -182,7 +184,7 @@ class IllustrationWorkspaceTests(TestCase):
 
     def assigned(self):
         Illustration.objects.filter(pk=self.illustration.pk).update(
-            illustrator=self.artist.person_profile,status='assigned',assigned_at=timezone.localdate()-timedelta(days=20))
+            illustrator=self.artist_contact,status='assigned',assigned_at=timezone.localdate()-timedelta(days=20))
 
     def test_list_loads_text_metadata_and_legacy_warnings_as_fallback(self):
         self.illustration.trigger_warnings='Stare ostrzeżenia';self.illustration.save()
@@ -202,19 +204,19 @@ class IllustrationWorkspaceTests(TestCase):
                 Anthology.objects.filter(pk=self.book.pk).update(status='in_preparation',has_illustrations=True)
 
     def test_saves_assignment_status_and_date(self):
-        response=self.post('assignment',illustrator=self.artist.person_profile.pk,status='assigned')
+        response=self.post('assignment',illustrator=self.artist_contact.pk,status='assigned')
         self.assertEqual(response.status_code,302)
         self.illustration.refresh_from_db()
-        self.assertEqual(self.illustration.illustrator_id,self.artist.person_profile.pk)
+        self.assertEqual(self.illustration.illustrator_id,self.artist_contact.pk)
         self.assertEqual(self.illustration.assigned_at,timezone.localdate())
-        self.assertEqual(self.post('assignment',illustrator=self.artist.person_profile.pk,status='delivered').status_code,302)
+        self.assertEqual(self.post('assignment',illustrator=self.artist_contact.pk,status='delivered').status_code,302)
 
     def test_corrections_do_not_reset_date_but_new_performer_does(self):
         self.assigned(); original=timezone.localdate()-timedelta(days=20)
         for status in ('delivered','in_corrections','assigned'):
-            self.assertEqual(self.post('assignment',illustrator=self.artist.person_profile.pk,status=status).status_code,302)
+            self.assertEqual(self.post('assignment',illustrator=self.artist_contact.pk,status=status).status_code,302)
             self.illustration.refresh_from_db();self.assertEqual(self.illustration.assigned_at,original)
-        self.post('assignment',illustrator=self.other.person_profile.pk,status='assigned')
+        self.post('assignment',illustrator=self.other_contact.pk,status='assigned')
         self.illustration.refresh_from_db();self.assertEqual(self.illustration.assigned_at,timezone.localdate())
 
     def test_unassignment_clears_date_and_missing_illustrator_is_rejected(self):
@@ -254,15 +256,17 @@ class IllustrationWorkspaceTests(TestCase):
         self.illustration.refresh_from_db();self.assertEqual(self.illustration.story_url,'https://example.org/new')
         self.assertEqual(self.client.post(self.url,{'action':'excerpt','illustrated_excerpt':'brak tokena'}).status_code,409)
 
-    def test_artist_edits_own_work_but_cannot_reassign_or_edit_others(self):
-        self.assigned(); self.client.force_login(self.artist)
-        response=self.post('assignment',status='delivered',illustrator=self.other.person_profile.pk)
-        self.assertEqual(response.status_code,302)
-        self.illustration.refresh_from_db();self.assertEqual(self.illustration.illustrator_id,self.artist.person_profile.pk)
-        self.assertEqual(self.post('excerpt',illustrated_excerpt='Mój fragment').status_code,302)
-        self.client.force_login(self.other)
-        self.assertNotContains(self.client.get(self.url),'Zapisz fragment')
-        self.assertEqual(self.client.post(self.url,{'action':'excerpt','illustrated_excerpt':'Obcy fragment'}).status_code,403)
+    def test_artist_account_does_not_grant_contact_edit_rights(self):
+        self.assigned()
+        for user in (self.artist,self.other):
+            self.client.force_login(user)
+            self.assertNotContains(self.client.get(self.url),'Zapisz fragment')
+            self.assertEqual(self.client.post(self.url,{'action':'excerpt','illustrated_excerpt':'Obcy fragment'}).status_code,403)
+            self.assertEqual(self.client.post(self.url,{'action':'assignment','illustrator':self.other_contact.pk,'status':'delivered'}).status_code,403)
+        self.illustration.refresh_from_db()
+        self.assertEqual(self.illustration.illustrator_id,self.artist_contact.pk)
+        self.assertEqual(self.illustration.status,'assigned')
+
 
     def test_editor_without_illustration_access_and_csrf_are_blocked(self):
         self.client.force_login(self.editor)

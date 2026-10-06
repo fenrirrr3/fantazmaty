@@ -7,7 +7,8 @@ from django.test import TestCase, RequestFactory
 from django.urls import reverse
 
 from core.edit_versions import version_of
-from people.models import Person, Role
+from people.models import Person
+from illustrations.models import Illustrator
 from texts.models import Anthology, AnthologyTask, Text
 
 
@@ -60,22 +61,18 @@ class AdminToolsTests(TestCase):
         self.story.refresh_from_db()
         self.assertFalse(self.story.audiobook_blacklisted)
 
-    def test_illustrator_directory_includes_profiles_without_accounts_and_team_membership(self):
-        role, _ = Role.objects.get_or_create(name='Ilustrator')
-        people = []
-        for active in (True, False):
-            person = Person.objects.create(first_name='Ilustrator', last_name=str(active),
-                                           email=f'{active}@example.test', is_active=False,
-                                           illustrator_active=active)
-            person.roles.add(role)
-            people.append(person)
-        Person.objects.create(first_name='Inna', last_name='Osoba', email='inna@example.test')
-        for value, expected in (('active', [people[0].pk]), ('inactive', [people[1].pk]),
-                                ('all', [p.pk for p in people])):
-            page = self.client.get(reverse('admin:people_person_changelist'), {'illustrator_directory': value})
-            self.assertEqual(page.status_code, 200)
-            self.assertCountEqual([p.pk for p in page.context['cl'].result_list], expected)
-            self.assertIn('illustrator_active', page.context['cl'].list_display)
+    def test_illustrator_directory_uses_independent_active_and_inactive_contacts(self):
+        contacts=[Illustrator.objects.create(first_name='Ilustrator',last_name=str(active),is_active=active)
+                  for active in (True,False)]
+        Person.objects.create(first_name='Inna',last_name='Osoba',email='inna@example.test')
+        for filters,expected in (({'is_active__exact':'1'},[contacts[0].pk]),
+                                 ({'is_active__exact':'0'},[contacts[1].pk]),
+                                 ({},[c.pk for c in contacts])):
+            page=self.client.get(reverse('admin:illustrations_illustrator_changelist'),filters)
+            self.assertEqual(page.status_code,200)
+            self.assertCountEqual([p.pk for p in page.context['cl'].result_list],expected)
+            self.assertIn('is_active',page.context['cl'].list_display)
+
 
     def test_shortcuts_resolve_and_admin_does_not_load_client_table_pagination(self):
         request = RequestFactory().get(reverse('admin:index'))

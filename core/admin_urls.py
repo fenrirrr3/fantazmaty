@@ -19,7 +19,7 @@ SEGMENTS = {
     "anthology": "antologia", "anthologytask": "zadania-antologii", "textnote": "notatki-tekstu",
     "people": "zespol", "person": "osoba", "role": "rola", "vacation": "urlop",
     "workflow": "etapy", "workflowstage": "etap-pracy", "workflowroleassignment": "przypisanie-roli",
-    "illustrations": "ilustracje", "illustration": "ilustracja", "coverproposal": "propozycja-okladki",
+    "illustrations": "ilustracje", "illustration": "ilustracja", "illustrator": "ilustrator", "coverproposal": "propozycja-okladki",
     "add": "dodaj", "change": "edytuj", "delete": "usun", "history": "historia",
     "password": "haslo", "author-data": "dane-autora", "author-details": "szczegoly-autora",
 }

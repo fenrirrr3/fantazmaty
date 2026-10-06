@@ -166,6 +166,7 @@ def illustration_list(request):
             "selected_status": selected_status, "selected_statuses": selected_statuses,
             "selected_sort": selected_sort,
             "can_view_authors": can_view_authors,
+            "can_manage_directory": is_coordinator(request.user),
         },
     )
 
@@ -189,7 +190,7 @@ def illustration_detail(request, illustration_id):
         response_status = 200
         if request.method == 'POST':
             if not editable:
-                raise PermissionDenied('Możesz edytować tylko własną ilustrację.')
+                raise PermissionDenied('Ilustrację może edytować koordynator lub superuser.')
             action = request.POST.get('action')
             if action == 'coordinator_notes' and not is_coordinator(request.user):
                 raise PermissionDenied('Uwagi koordynatora może zmieniać tylko koordynator.')
