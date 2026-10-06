@@ -45,7 +45,7 @@ class CMS16Tests(TestCase):
         response=self.post_illustration('assignment',manual_illustrator_name='Anna Bez Konta',manual_illustrator_email='anna@example.test',status='assigned')
         self.assertEqual(response.status_code,302)
         self.ill.refresh_from_db()
-        self.assertIsNone(self.ill.illustrator_id)
+        self.assertFalse(self.ill.illustrators.exists())
         self.assertEqual(self.ill.assigned_at,timezone.localdate())
         self.assertEqual(Person.objects.count(),before);self.assertEqual(get_user_model().objects.count(),accounts)
         self.assertContains(self.client.get(reverse('illustrations:illustration_list')),'Anna Bez Konta')
@@ -59,7 +59,7 @@ class CMS16Tests(TestCase):
     def test_manual_validation_and_switch_back_to_profile(self):
         for data in ({'manual_illustrator_email':'x@example.test'},
                      {'manual_illustrator_name':'Anna','manual_illustrator_email':'wrong'},
-                     {'manual_illustrator_name':'Anna','illustrator':self.artist_contact.pk}):
+                     {'manual_illustrator_name':'Anna','illustrators':self.artist_contact.pk}):
             response=self.post_illustration('assignment',status='assigned',**data)
             self.assertEqual(response.status_code,200)
             self.assertTrue(response.context['forms']['assignment'].errors)
@@ -67,9 +67,9 @@ class CMS16Tests(TestCase):
             self.assertEqual(self.ill.status,'unassigned')
         response=self.post_illustration('assignment',manual_illustrator_name='Anna',status='assigned')
         self.assertEqual(response.status_code,302)
-        response=self.post_illustration('assignment',illustrator=self.artist_contact.pk,status='assigned')
+        response=self.post_illustration('assignment',illustrators=self.artist_contact.pk,status='assigned')
         self.assertEqual(response.status_code,302);self.ill.refresh_from_db()
-        self.assertEqual(self.ill.manual_illustrator_name,'');self.assertEqual(self.ill.illustrator_id,self.artist_contact.pk)
+        self.assertEqual(self.ill.manual_illustrator_name,'');self.assertEqual(list(self.ill.illustrators.all()),[self.artist_contact])
 
     def test_notes_permissions_conflict_and_search_markup(self):
         old=edit_token(self.admin,self.ill)
@@ -80,7 +80,7 @@ class CMS16Tests(TestCase):
         response=self.client.get(self.url)
         self.assertContains(response,'id="illustrator-search"')
         self.assertContains(response,'illustrator_search.js')
-        self.ill.refresh_from_db();self.ill.illustrator=self.artist_contact;self.ill.status='assigned';self.ill.save()
+        self.ill.refresh_from_db();self.ill.set_artists([self.artist_contact],status='assigned')
         self.client.force_login(self.artist)
         response=self.client.post(self.url,{'action':'coordinator_notes','version':edit_token(self.artist,self.ill),'coordinator_notes':'nie wolno'})
         self.assertEqual(response.status_code,403)

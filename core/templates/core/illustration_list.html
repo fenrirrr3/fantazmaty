@@ -8,7 +8,7 @@
     <header class="page-header">
         <h1 class="page-title">Ilustracje</h1>
         <p class="page-description">
-            Teksty z niewydanych antologii wymagających ilustracji,
+            Teksty z antologii wymagających ilustracji,
             przydziały ilustratorów i stan prac. Kliknij tytuł, aby zapisać status, link lub fragment.
         </p>
     </header>
@@ -56,6 +56,10 @@
                 </select>
             </div>
 
+            <div class="filter-field">
+                <input type="hidden" name="hide_published" value="0">
+                <label class="illustrator-checkbox"><input type="checkbox" name="hide_published" value="1"{% if hide_published %} checked{% endif %}> Ukryj wydane antologie</label>
+            </div>
             <div class="filter-actions">
                 <button type="submit" class="primary-button">Filtruj</button>
                 <a
@@ -92,7 +96,7 @@
                         
 
                         <th scope="col">Gatunek, tagi</th>
-                        <th scope="col">Ilustrator</th>
+                        <th scope="col" data-sort-key="illustrator">Ilustratorzy</th>
                         <th scope="col" data-sort-key="status">Status</th>
                         <th scope="col">Data przypisania</th>
                         <th scope="col">Ostrzeżenia dotyczące treści</th>
@@ -141,25 +145,12 @@
 
                             <td>{{ illustration.genre_display|default:"Brak danych" }}</td>
                             <td>
-                                {% if illustration.manual_illustrator_name %}{{ illustration.manual_illustrator_name }}{% elif illustration.illustrator %}
-                                    {% if can_manage_directory %}
-                                        <a
-                                            href="{% url 'illustrations:illustrator_edit' illustration.illustrator.pk %}"
-                                            class="detail-link"
-                                        >
-                                            {{ illustration.illustrator }}
-                                        </a>
-                                    {% else %}
-                                        {{ illustration.illustrator }}
-                                    {% endif %}
-                                    {% if not illustration.illustrator.is_active %}
-                                        <div class="muted-text">
-                                            Nieaktywny ilustrator
-                                        </div>
-                                    {% endif %}
-                                {% else %}
-                                    <span class="muted-text">Nie przypisano</span>
-                                {% endif %}
+                                {% for artist in illustration.illustrators.all %}
+                                    <div>{% if can_manage_directory %}<a href="{% url 'illustrations:illustrator_edit' artist.pk %}" class="detail-link">{{ artist }}</a>{% else %}{{ artist }}{% endif %}
+                                    {% if not artist.is_active %}<span class="muted-text">(nieaktywny)</span>{% endif %}</div>
+                                {% empty %}
+                                    {{ illustration.manual_illustrator_name|default:"Nie przypisano" }}
+                                {% endfor %}
                             </td>
 
                             <td>
@@ -227,8 +218,7 @@
                                 <div class="empty-results-panel">
                                     <strong>Brak ilustracji spełniających kryteria.</strong>
                                     <p>
-                                        Lista obejmuje teksty z niewydanych antologii
-                                        oznaczonych jako wymagające ilustracji.
+                                        Lista obejmuje teksty z antologii oznaczonych jako wymagające ilustracji. Aby zobaczyć archiwalne prace, wyłącz „Ukryj wydane antologie”.
                                     </p>
                                     {% if selected_anthology_id or selected_status %}
                                         <a

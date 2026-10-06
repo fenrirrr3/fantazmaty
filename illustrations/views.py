@@ -4,7 +4,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db import router, transaction
-from django.db.models import Prefetch
+from django.db.models import Prefetch, OuterRef, Subquery
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
@@ -16,7 +16,7 @@ from texts.models import Anthology, Text
 from texts.production import active_production_texts
 
 from .forms import CoverProposalForm
-from .models import CoverProposal, Illustration
+from .models import CoverProposal, Illustration, Illustrator
 from .editing import FORMS, can_edit_illustration, edit_forms, token_matches
 
 
@@ -30,8 +30,7 @@ ILLUSTRATION_SORT_FIELDS = {
         "text__anthology__title",
     ),
     "illustrator": (
-        "illustrator__last_name",
-        "illustrator__first_name",
+        "artist_sort",
     ),
     "status": ("status",),
     "assigned_at": ("assigned_at",),
@@ -112,6 +111,7 @@ def illustration_list(request):
     if selected_status not in Illustration.Status.values:
         selected_status = ""
 
+    hide_published = request.GET.get("hide_published", "1") != "0"
     selected_sort, ordering = _illustration_ordering(request)
     can_view_authors = request.user.is_superuser
 
@@ -120,17 +120,21 @@ def illustration_list(request):
     illustrations = (
         ordinary(Illustration.objects).filter(
             text_id__in=active_production_texts(Text.objects.all()).values("pk"),
-            text__anthology__status=Anthology.Status.IN_PREPARATION,
             text__anthology__has_illustrations=True,
         )
         .select_related(
             "text",
             "text__anthology",
             "text__source_review",
-            "illustrator",
         )
+        .annotate(artist_sort=Subquery(Illustrator.objects.filter(illustrations=OuterRef('pk'))
+            .order_by('last_name', 'first_name', 'pk').values('last_name')[:1]))
+        .prefetch_related('illustrators')
         .order_by(*ordering)
     )
+
+    if hide_published:
+        illustrations = illustrations.exclude(text__anthology__status=Anthology.Status.READY)
 
     illustrations, facets = facet_queryset(illustrations, {
         'status': ('status', selected_statuses),
@@ -147,13 +151,14 @@ def illustration_list(request):
 
     anthologies = (
         ordinary(Anthology.objects).filter(
-            status=Anthology.Status.IN_PREPARATION,
             has_illustrations=True, is_novel=False,
         )
         .only("pk", "title")
         .order_by("title", "pk")
     )
 
+    if hide_published:
+        anthologies = anthologies.exclude(status=Anthology.Status.READY)
     page_obj = paginate_queryset(request, illustrations)
 
     return render(
@@ -166,7 +171,7 @@ def illustration_list(request):
             "status_choices": [(v, label) for v, label in Illustration.Status.choices if v in facets["status"]],
             "selected_anthology_id": selected_anthology_id,
             "selected_status": selected_status, "selected_statuses": selected_statuses,
-            "selected_sort": selected_sort,
+            "selected_sort": selected_sort, "hide_published": hide_published,
             "can_view_authors": can_view_authors,
             "can_manage_directory": is_coordinator(request.user),
         },
@@ -185,7 +190,6 @@ def illustration_detail(request, illustration_id):
         if request.method == 'POST':
             query = query.select_for_update()
         illustration = get_object_or_404(query, pk=illustration_id,
-            text__anthology__status=Anthology.Status.IN_PREPARATION,
             text__anthology__has_illustrations=True)
         editable = can_edit_illustration(request.user, illustration)
         forms = edit_forms(request.user, illustration) if editable else {}

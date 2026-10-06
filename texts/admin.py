@@ -636,7 +636,7 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             return 'Zapisz tekst, aby ustawić status.'
         stage = current_stage(list(obj.workflow_stages.filter(workflow_cycle=obj.current_workflow_cycle)))
         label = stage.get_stage_type_display() if stage else 'Brak bieżącego etapu'
-        return format_html('{} – <a href="{}">Zmień status / cofnij etap</a> · <a href="{}#workflow-repeat">Powtórz wybrane etapy</a> · <a href="{}">Dodaj brakujący etap i wykonawcę</a>', label, reverse('admin:texts_text_manual_status', args=[obj.pk]), reverse('core:assigned_text_detail', args=[obj.pk]), reverse('admin:texts_text_add_stage', args=[obj.pk]))
+        return format_html('{} – <a href="{}">Zmień status / cofnij etap</a> · <a href="{}">Dodaj brakujący etap i wykonawcę</a>', label, reverse('admin:texts_text_manual_status', args=[obj.pk]), reverse('admin:texts_text_add_stage', args=[obj.pk]))
 
     def add_stage_view(self, request, object_id):
         from django.template.response import TemplateResponse

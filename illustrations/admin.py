@@ -1,5 +1,6 @@
 from django.contrib import admin
 
+from .editing import AssignmentModelForm
 from .models import CoverProposal, Illustration, Illustrator
 from core.permissions import can_view_illustrations
 
@@ -14,6 +15,14 @@ class IllustratorAdmin(admin.ModelAdmin):
     list_per_page = 50
     show_full_result_count = False
 
+    def has_delete_permission(self, request, obj=None):
+        return super().has_delete_permission(request, obj) and (obj is None or not obj.illustrations.exists())
+
+    def get_deleted_objects(self, objs, request):
+        deleted, counts, permissions, protected = super().get_deleted_objects(objs, request)
+        protected.extend(str(obj) for obj in objs if obj.illustrations.exists())
+        return deleted, counts, permissions, protected
+
     @admin.display(description="Imię i nazwisko", ordering="last_name")
     def full_name(self, obj):
         return str(obj)
@@ -21,6 +30,8 @@ class IllustratorAdmin(admin.ModelAdmin):
 
 @admin.register(Illustration)
 class IllustrationAdmin(admin.ModelAdmin):
+    form = AssignmentModelForm
+
     def has_module_permission(self, request):
         return can_view_illustrations(request.user) and super().has_module_permission(request)
 
@@ -48,11 +59,11 @@ class IllustrationAdmin(admin.ModelAdmin):
     list_filter = (
         "status",
         "text__anthology",
-        "illustrator",
+        "illustrators",
         "assigned_at",
     )
 
-    @admin.display(description='Ilustrator')
+    @admin.display(description='Ilustratorzy')
     def display_illustrator(self, obj):
         return obj.illustrator_display or 'Nie przypisano'
 
@@ -62,9 +73,9 @@ class IllustrationAdmin(admin.ModelAdmin):
         "text__authors__last_name__plcontains",
         "text__authors__pseudonym__plcontains",
         "text__authors__email__plcontains",
-        "illustrator__first_name__plcontains",
-        "illustrator__last_name__plcontains",
-        "illustrator__email__plcontains",
+        "illustrators__first_name__plcontains",
+        "illustrators__last_name__plcontains",
+        "illustrators__email__plcontains",
         "trigger_warnings__plcontains",
         "illustrated_excerpt__plcontains",
         "manual_illustrator_name__plcontains",
@@ -73,7 +84,7 @@ class IllustrationAdmin(admin.ModelAdmin):
 
     autocomplete_fields = (
         "text",
-        "illustrator",
+        "illustrators",
     )
 
     readonly_fields = (
@@ -98,7 +109,7 @@ class IllustrationAdmin(admin.ModelAdmin):
             "Przypisanie",
             {
                 "fields": (
-                    "illustrator",
+                    "illustrators",
                     "manual_illustrator_name",
                     "manual_illustrator_email",
                     "status",
@@ -140,9 +151,9 @@ class IllustrationAdmin(admin.ModelAdmin):
             .select_related(
                 "text",
                 "text__anthology",
-                "illustrator",
             )
             .prefetch_related(
+                "illustrators",
                 "text__authors",
             )
         )

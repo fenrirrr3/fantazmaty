@@ -217,12 +217,12 @@ def anthology_credits(anthology, *, text=None, include_assignments=False):
         if task.assigned_to_id:
             add(task.assigned_to, None, task.get_task_type_display(), anthology.title)
     from illustrations.models import Illustration
-    illustrations = Illustration.objects.filter(text__anthology=anthology,status='delivered').select_related('illustrator','text')
+    illustrations = Illustration.objects.filter(text__anthology=anthology,status='delivered').select_related('text').prefetch_related('illustrators')
     if text is not None:
         illustrations = illustrations.filter(text=text)
     for illustration in illustrations:
-        if illustration.illustrator_id:
-            add(illustration.illustrator, None, 'Ilustrator', illustration.text.title)
+        for artist in illustration.illustrators.all():
+            add(artist, None, 'Ilustrator', illustration.text.title)
     if text is None and anthology.cover_author.strip():
         name = anthology.cover_author.strip()
         if '@' in name:

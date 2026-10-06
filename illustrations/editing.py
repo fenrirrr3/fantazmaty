@@ -29,20 +29,36 @@ class IllustrationEditForm(forms.ModelForm):
     version = forms.CharField(widget=forms.HiddenInput)
 
 
-class AssignmentForm(IllustrationEditForm):
+class AssignmentModelForm(forms.ModelForm):
     class Meta:
         model = Illustration
-        fields = ('illustrator', 'manual_illustrator_name', 'manual_illustrator_email', 'status')
+        fields = ('illustrators', 'manual_illustrator_name', 'manual_illustrator_email', 'status')
+
+    def clean(self):
+        cleaned = super().clean()
+        if 'illustrators' in self.fields:
+            self.instance._selected_illustrator_ids = {p.pk for p in cleaned.get('illustrators', [])}
+        return cleaned
+
+    def _save_m2m(self):
+        super()._save_m2m()
+        if hasattr(self.instance, '_selected_illustrator_ids'):
+            del self.instance._selected_illustrator_ids
+
+
+class AssignmentForm(AssignmentModelForm, IllustrationEditForm):
+    class Meta(AssignmentModelForm.Meta):
+        widgets = {'illustrators': forms.CheckboxSelectMultiple(attrs={'class': 'illustrator-choices'})}
 
     def __init__(self, *args, can_assign=False, **kwargs):
         super().__init__(*args, **kwargs)
         if can_assign:
-            self.fields['illustrator'].queryset = Illustrator.objects.filter(
-                Q(pk=self.instance.illustrator_id)
-                | Q(is_active=True)
+            selected = self.instance.illustrators.values_list('pk', flat=True) if self.instance.pk else []
+            self.fields['illustrators'].queryset = Illustrator.objects.filter(
+                Q(pk__in=selected) | Q(is_active=True)
             ).order_by('last_name', 'first_name', 'pk')
         else:
-            for name in ('illustrator', 'manual_illustrator_name', 'manual_illustrator_email'):
+            for name in ('illustrators', 'manual_illustrator_name', 'manual_illustrator_email'):
                 del self.fields[name]
 
 

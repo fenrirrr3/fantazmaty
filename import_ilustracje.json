@@ -1,0 +1,1933 @@
+{
+  "schema_version": 1,
+  "illustrator_aliases": {},
+  "texts": [
+    {
+      "anthology": "Fantazmaty 2",
+      "title": "Budzenie zmarłych",
+      "author": "Filip Laskowski",
+      "illustrators": [
+        "Jolanta Jaworska"
+      ],
+      "source_credit": "Jolanta Jaworska",
+      "source_file": "Fantazmaty 2.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Fantazmaty 2",
+      "title": "Bajka o głupim Jasiu",
+      "author": "Anna Grzanek",
+      "illustrators": [
+        "Tomasz Ściolny"
+      ],
+      "source_credit": "Tomasz Ściolny",
+      "source_file": "Fantazmaty 2.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Fantazmaty 2",
+      "title": "Niezwykła kobieta",
+      "author": "Dagmara Adwentowska",
+      "illustrators": [
+        "Katarzyna Kaczmarek"
+      ],
+      "source_credit": "Katarzyna Kaczmarek",
+      "source_file": "Fantazmaty 2.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Fantazmaty 2",
+      "title": "Imię",
+      "author": "Maciej Oleszek",
+      "illustrators": [
+        "Tomasz Ściolny"
+      ],
+      "source_credit": "Tomasz Ściolny",
+      "source_file": "Fantazmaty 2.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Fantazmaty 2",
+      "title": "Ciemność i lustro",
+      "author": "Artur Laisen",
+      "illustrators": [
+        "Szymon Marciniak"
+      ],
+      "source_credit": "Szymon Marciniak",
+      "source_file": "Fantazmaty 2.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Fantazmaty 2",
+      "title": "Zofia i korzenie",
+      "author": "Anna Karnicka",
+      "illustrators": [
+        "Sylwia Wojda-Wołkowycka"
+      ],
+      "source_credit": "Sylwia Wojda-Wołkowycka",
+      "source_file": "Fantazmaty 2.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Fantazmaty 2",
+      "title": "Lot motyla",
+      "author": "Magdalena Świerczek-Gryboś",
+      "illustrators": [
+        "Marek Gryboś"
+      ],
+      "source_credit": "Marek Gryboś",
+      "source_file": "Fantazmaty 2.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Fantazmaty 2",
+      "title": "Nagroda wojownika",
+      "author": "Sylwia Finklińska",
+      "illustrators": [
+        "Maria Krzywda"
+      ],
+      "source_credit": "Maria Krzywda",
+      "source_file": "Fantazmaty 2.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Fantazmaty 2",
+      "title": "Dziewczyny-maliny",
+      "author": "Rafał Cuprjak",
+      "illustrators": [
+        "Alicja Tempłowicz"
+      ],
+      "source_credit": "Alicja Tempłowicz",
+      "source_file": "Fantazmaty 2.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Dragoneza",
+      "title": "Kobieta, która słyszała smoki",
+      "author": "Agnieszka Fulińska",
+      "illustrators": [
+        "Alicja Tempłowicz"
+      ],
+      "source_credit": "Alicja Tempłowicz",
+      "source_file": "Dragoneza 2024.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Dragoneza",
+      "title": "Wspiąć się na górę Niitaka",
+      "author": "Michał Mądrawski",
+      "illustrators": [
+        "Patryk Sokołowski"
+      ],
+      "source_credit": "Patryk Sokołowski",
+      "source_file": "Dragoneza 2024.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Dragoneza",
+      "title": "Miluś",
+      "author": "Artur Olchowy",
+      "illustrators": [
+        "Michał Gralak"
+      ],
+      "source_credit": "Michał Gralak",
+      "source_file": "Dragoneza 2024.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Dragoneza",
+      "title": "Norddragen",
+      "author": "Aleksandra Cebo",
+      "illustrators": [
+        "Bogusz Jaśniak"
+      ],
+      "source_credit": "Bogusz Jaśniak",
+      "source_file": "Dragoneza 2024.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Dragoneza",
+      "title": "Żywożmija",
+      "author": "Barbara Mikulska",
+      "illustrators": [
+        "Waldemar Kurek"
+      ],
+      "source_credit": "Waldemar Kurek",
+      "source_file": "Dragoneza 2024.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Dragoneza",
+      "title": "Katechon",
+      "author": "Marcin Tomasiewicz",
+      "illustrators": [
+        "Patrycja Smaga"
+      ],
+      "source_credit": "Patrycja Smaga",
+      "source_file": "Dragoneza 2024.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Dragoneza",
+      "title": "Siej kwiaty, zbieraj ogień",
+      "author": "Krzysztof Matkowski",
+      "illustrators": [
+        "Zuzanna Malkowska"
+      ],
+      "source_credit": "Zuzanna Malkowska",
+      "source_file": "Dragoneza 2024.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Dragoneza",
+      "title": "Zimna Perła",
+      "author": "Barbara Januszewska",
+      "illustrators": [
+        "Zuzanna Malkowska"
+      ],
+      "source_credit": "Zuzanna Malkowska",
+      "source_file": "Dragoneza 2024.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Dragoneza",
+      "title": "Na psa urok!",
+      "author": "Michał Rybiński",
+      "illustrators": [
+        "Katarzyna Niejadlik"
+      ],
+      "source_credit": "Katarzyna Niejadlik",
+      "source_file": "Dragoneza 2024.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Dragoneza",
+      "title": "Żmije",
+      "author": "Przemysław Morawski",
+      "illustrators": [
+        "Alicja Tempłowicz"
+      ],
+      "source_credit": "Alicja Tempłowicz",
+      "source_file": "Dragoneza 2024.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Dragoneza",
+      "title": "Co dwie głowy, to nie jedna",
+      "author": "Krzysztof Rewiuk",
+      "illustrators": [
+        "Zuzanna Malkowska"
+      ],
+      "source_credit": "Zuzanna Malkowska",
+      "source_file": "Dragoneza 2024.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Dragoneza",
+      "title": "Dzieci Posejdona",
+      "author": "Magdalena Kucenty",
+      "illustrators": [
+        "Michał Wojtkiewicz"
+      ],
+      "source_credit": "Michał Wojtkiewicz",
+      "source_file": "Dragoneza 2024.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Dragoneza",
+      "title": "Wycinki z utraconego świata",
+      "author": "Maciej Bachorski",
+      "illustrators": [
+        "Marek Gryboś"
+      ],
+      "source_credit": "Marek Gryboś",
+      "source_file": "Dragoneza 2024.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Dragoneza",
+      "title": "Coś do naprawy",
+      "author": "Anna Maria Vanitachi",
+      "illustrators": [
+        "Luiza Pożycka"
+      ],
+      "source_credit": "Luiza Pożycka",
+      "source_file": "Dragoneza 2024.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Dragoneza",
+      "title": "Stary bajarz",
+      "author": "Krzysztof Banach",
+      "illustrators": [
+        "Maria Krzywda"
+      ],
+      "source_credit": "Maria Krzywda",
+      "source_file": "Dragoneza 2024.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Dragoneza",
+      "title": "Egzegeza Szalonego Gnostyka",
+      "author": "Sylwester Gdela",
+      "illustrators": [
+        "Michał Gralak"
+      ],
+      "source_credit": "Michał Gralak",
+      "source_file": "Dragoneza 2024.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Dragoneza",
+      "title": "Jedna jedyna",
+      "author": "Aleksandra Buczek-Stachowska",
+      "illustrators": [
+        "Małgorzata Lewandowska"
+      ],
+      "source_credit": "Małgorzata Lewandowska",
+      "source_file": "Dragoneza 2024.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Dragoneza",
+      "title": "Popiół",
+      "author": "Krzysztof Dezyderiusz Sauter",
+      "illustrators": [
+        "Michał Gralak"
+      ],
+      "source_credit": "Michał Gralak",
+      "source_file": "Dragoneza 2024.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Dragoneza",
+      "title": "Miniaturka",
+      "author": "Magda Brumirska",
+      "illustrators": [
+        "Kamila Dankowska"
+      ],
+      "source_credit": "Kamila Dankowska",
+      "source_file": "Dragoneza 2024.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Dragoneza",
+      "title": "Donnerwetter",
+      "author": "Krzysztof Adamski",
+      "illustrators": [
+        "Szymon Marciniak"
+      ],
+      "source_credit": "Szymon Marciniak",
+      "source_file": "Dragoneza 2024.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Ja, legenda",
+      "title": "Babel z moich snów",
+      "author": "Alicja Janusz",
+      "illustrators": [
+        "Szymon Marciniak"
+      ],
+      "source_credit": "Szymon Marciniak",
+      "source_file": "Ja, legenda.docx",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Ja, legenda",
+      "title": "Zakrzywienie czasozefiru",
+      "author": "Kamil Kulig",
+      "illustrators": [
+        "Daniel Włodarski"
+      ],
+      "source_credit": "Daniel Włodarski",
+      "source_file": "Ja, legenda.docx",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Ja, legenda",
+      "title": "Szósta minuta na językach",
+      "author": "Krzysztof Matkowski",
+      "illustrators": [
+        "Zuzanna Malkowska"
+      ],
+      "source_credit": "Zuzanna Malkowska",
+      "source_file": "Ja, legenda.docx",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Ja, legenda",
+      "title": "Dzwoneczek i Klub Solipsystów",
+      "author": "Michał Brzozowski",
+      "illustrators": [
+        "Katarzyna Szymonik"
+      ],
+      "source_credit": "Katarzyna Szymonik",
+      "source_file": "Ja, legenda.docx",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Ja, legenda",
+      "title": "Clean up & Go",
+      "author": "Michał Pięta",
+      "illustrators": [
+        "Tomasz Strzelczyk-Stachura"
+      ],
+      "source_credit": "Tomasz Strzelczyk-Stachura",
+      "source_file": "Ja, legenda.docx",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Ja, legenda",
+      "title": "Serce szwajcarskiego bohatera",
+      "author": "Weronika Seliman",
+      "illustrators": [
+        "Sylwester Gdela"
+      ],
+      "source_credit": "Sylwester Gdela",
+      "source_file": "Ja, legenda.docx",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Ja, legenda",
+      "title": "Farsa",
+      "author": "Michał Puchalski",
+      "illustrators": [
+        "Martyna Pryba"
+      ],
+      "source_credit": "Martyna Pryba",
+      "source_file": "Ja, legenda.docx",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Ja, legenda",
+      "title": "Jedna długa noc",
+      "author": "Katarzyna Szymonik",
+      "illustrators": [
+        "Helena Wystrasz"
+      ],
+      "source_credit": "Helena Wystrasz",
+      "source_file": "Ja, legenda.docx",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Ja, legenda",
+      "title": "Louise",
+      "author": "Magdalena Wilk",
+      "illustrators": [
+        "Kacper Kyc"
+      ],
+      "source_credit": "Kacper Kyc",
+      "source_file": "Ja, legenda.docx",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Ja, legenda",
+      "title": "Der Fischerkönig",
+      "author": "Krzysztof Rewiuk",
+      "illustrators": [
+        "Zuzanna Malkowska"
+      ],
+      "source_credit": "Zuzanna Malkowska",
+      "source_file": "Ja, legenda.docx",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Ja, legenda",
+      "title": "Kroki Komandora",
+      "author": "Agnieszka Fulińska",
+      "illustrators": [
+        "Jacek Gut"
+      ],
+      "source_credit": "Jacek Gut",
+      "source_file": "Ja, legenda.docx",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Ja, legenda",
+      "title": "Instrukcja obsługi drzwi/Latać jak ptaki",
+      "author": "Łukasz Skoneczny",
+      "illustrators": [
+        "Martyn Gill"
+      ],
+      "source_credit": "Martyn Gill",
+      "source_file": "Ja, legenda.docx",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Ja, legenda",
+      "title": "Nowy gracz na rynku many",
+      "author": "Sylwia Finklińska",
+      "illustrators": [
+        "Przemysław Stachura"
+      ],
+      "source_credit": "Przemysław Stachura",
+      "source_file": "Ja, legenda.docx",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Ja, legenda",
+      "title": "Przygoda wesoła i niebezpieczna Pupca Sierotki",
+      "author": "Łukasz Kuliński",
+      "illustrators": [
+        "Katarzyna Kaczmarek"
+      ],
+      "source_credit": "Katarzyna Kaczmarek",
+      "source_file": "Ja, legenda.docx",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Ja, legenda",
+      "title": "Deszczowy żołnierz",
+      "author": "Filip Laskowski",
+      "illustrators": [
+        "Mateusz Ferenc"
+      ],
+      "source_credit": "Mateusz Ferenc",
+      "source_file": "Ja, legenda.docx",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Ja, legenda",
+      "title": "Rdza",
+      "author": "Justyna Macina",
+      "illustrators": [
+        "Krzysztof Majewski"
+      ],
+      "source_credit": "Krzysztof Majewski",
+      "source_file": "Ja, legenda.docx",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Ja, legenda",
+      "title": "Dzikuska",
+      "author": "Michał Stachnik",
+      "illustrators": [
+        "Katarzyna Kaczmarek"
+      ],
+      "source_credit": "Katarzyna Kaczmarek",
+      "source_file": "Ja, legenda.docx",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Ja, legenda",
+      "title": "Status ofiary ściśle reglamentowany",
+      "author": "Jerzy Bogusławski",
+      "illustrators": [
+        "Patrycja Smaga"
+      ],
+      "source_credit": "Patrycja Smaga",
+      "source_file": "Ja, legenda.docx",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Ja, legenda",
+      "title": "Sztuka Gordiana del Monte",
+      "author": "Marek Betlejewski",
+      "illustrators": [
+        "Marek Betlejewski"
+      ],
+      "source_credit": "Marek Betlejewski",
+      "source_file": "Ja, legenda.docx",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Ja, legenda",
+      "title": "Skala wartości",
+      "author": "Miłosz Śmiałek",
+      "illustrators": [
+        "Natalia Gołębiewska"
+      ],
+      "source_credit": "Natalia Gołębiewska",
+      "source_file": "Ja, legenda.docx",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Ja, legenda",
+      "title": "Karpia dzień, czyli JaFonowi wypaplane",
+      "author": "Dariusz Skrzydło",
+      "illustrators": [
+        "Katarzyna Szymonik"
+      ],
+      "source_credit": "Katarzyna Szymonik",
+      "source_file": "Ja, legenda.docx",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Ja, legenda",
+      "title": "Jestem Legenda",
+      "author": "Marzena Zawierska",
+      "illustrators": [
+        "Helena Wystrasz"
+      ],
+      "source_credit": "Helena Wystrasz",
+      "source_file": "Ja, legenda.docx",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Ja, legenda",
+      "title": "Kilka rzeczy do zrobienia",
+      "author": "Krzysztof Górski",
+      "illustrators": [
+        "Anna Szostek"
+      ],
+      "source_credit": "Anna Szostek",
+      "source_file": "Ja, legenda.docx",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Ja, legenda",
+      "title": "Siódmy dzień",
+      "author": "Michał Woźny",
+      "illustrators": [
+        "Adrian Bienias"
+      ],
+      "source_credit": "Adrian Bienias",
+      "source_file": "Ja, legenda.docx",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Ja, legenda",
+      "title": "Zwykły Szary Henio i Korpoprzyjaciel",
+      "author": "Mateusz Hengier",
+      "illustrators": [
+        "Anna Turkiewicz"
+      ],
+      "source_credit": "Anna Turkiewicz",
+      "source_file": "Ja, legenda.docx",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Umieranie to parszywa robota",
+      "title": "Jedenaste słowo",
+      "author": "Katja Tomczyk",
+      "illustrators": [
+        "Weronika Ekhart"
+      ],
+      "source_credit": "Weronika Ekhart",
+      "source_file": "Umieranie-to-parszywa-robota.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Umieranie to parszywa robota",
+      "title": "Szarość, odcień czerni",
+      "author": "Olga Niziołek",
+      "illustrators": [
+        "Tomasz Strzelczyk-Stachura"
+      ],
+      "source_credit": "Tomasz Strzelczyk-Stachura",
+      "source_file": "Umieranie-to-parszywa-robota.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Umieranie to parszywa robota",
+      "title": "Pamięć kamieni",
+      "author": "Kornel Mikołajczyk",
+      "illustrators": [
+        "Katarzyna Niejadlik"
+      ],
+      "source_credit": "Katarzyna Niejadlik",
+      "source_file": "Umieranie-to-parszywa-robota.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Umieranie to parszywa robota",
+      "title": "T4N2M1",
+      "author": "Marek Zychla",
+      "illustrators": [
+        "Klaudia Bibiana Rosa"
+      ],
+      "source_credit": "Klaudia Bibiana Rosa",
+      "source_file": "Umieranie-to-parszywa-robota.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Umieranie to parszywa robota",
+      "title": "Gniew inspektora",
+      "author": "Jakub Sokołowski",
+      "illustrators": [
+        "Emilia Baczyńska"
+      ],
+      "source_credit": "Emilia Baczyńska",
+      "source_file": "Umieranie-to-parszywa-robota.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Umieranie to parszywa robota",
+      "title": "Bosman Przędziorek musi umrzeć",
+      "author": "Michał Renc",
+      "illustrators": [
+        "Emilia Baczyńska"
+      ],
+      "source_credit": "Emilia Baczyńska",
+      "source_file": "Umieranie-to-parszywa-robota.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Umieranie to parszywa robota",
+      "title": "Pamiętasz mit o Tanatosie?",
+      "author": "Wiktor Orłowski",
+      "illustrators": [
+        "Klaudia Bibiana Rosa"
+      ],
+      "source_credit": "Klaudia Bibiana Rosa",
+      "source_file": "Umieranie-to-parszywa-robota.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Umieranie to parszywa robota",
+      "title": "Krew Śpiącej Królewny przyzywa moją duszę",
+      "author": "Justyna Lech",
+      "illustrators": [
+        "Patrycja Smaga"
+      ],
+      "source_credit": "Patrycja Smaga",
+      "source_file": "Umieranie-to-parszywa-robota.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Umieranie to parszywa robota",
+      "title": "Słowa, których nie powiem Łucji",
+      "author": "Krzysztof Matkowski",
+      "illustrators": [
+        "Zuzanna Malkowska"
+      ],
+      "source_credit": "Zuzanna Malkowska",
+      "source_file": "Umieranie-to-parszywa-robota.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Umieranie to parszywa robota",
+      "title": "Lot Dedala",
+      "author": "Grzegorz Gajek",
+      "illustrators": [
+        "Patrycja Smaga"
+      ],
+      "source_credit": "Patrycja Smaga",
+      "source_file": "Umieranie-to-parszywa-robota.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Umieranie to parszywa robota",
+      "title": "Inwazja obcych! Hip, hip, hurra!",
+      "author": "Wojciech Terlecki",
+      "illustrators": [
+        "Maria Krzywda"
+      ],
+      "source_credit": "Maria Krzywda",
+      "source_file": "Umieranie-to-parszywa-robota.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Umieranie to parszywa robota",
+      "title": "Ofiara",
+      "author": "Aleksandra Stanisz",
+      "illustrators": [
+        "Anna Stanisz"
+      ],
+      "source_credit": "Anna Stanisz",
+      "source_file": "Umieranie-to-parszywa-robota.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Umieranie to parszywa robota",
+      "title": "Odpoczniesz po śmierci",
+      "author": "Agnieszka Sudomir",
+      "illustrators": [
+        "Klaudia Bibiana Rosa"
+      ],
+      "source_credit": "Klaudia Bibiana Rosa",
+      "source_file": "Umieranie-to-parszywa-robota.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Umieranie to parszywa robota",
+      "title": "Lustra śmierci",
+      "author": "Monika Glibowska",
+      "illustrators": [
+        "Sylwester Gdela"
+      ],
+      "source_credit": "Sylwester Gdela",
+      "source_file": "Umieranie-to-parszywa-robota.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Umieranie to parszywa robota",
+      "title": "ULTRA HARDKOR",
+      "author": "Łukasz Skoneczny",
+      "illustrators": [
+        "Paweł Sodzawiczny"
+      ],
+      "source_credit": "Paweł Sodzawiczny",
+      "source_file": "Umieranie-to-parszywa-robota.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Umieranie to parszywa robota",
+      "title": "Prędkość duszy",
+      "author": "Jakub Rewiuk",
+      "illustrators": [
+        "Adrian Mechocki"
+      ],
+      "source_credit": "Adrian Mechocki",
+      "source_file": "Umieranie-to-parszywa-robota.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Umieranie to parszywa robota",
+      "title": "Ostatnia bitwa Franza Maira",
+      "author": "Agnieszka Fulińska",
+      "illustrators": [
+        "Adrian Bienias"
+      ],
+      "source_credit": "Adrian Bienias",
+      "source_file": "Umieranie-to-parszywa-robota.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Umieranie to parszywa robota",
+      "title": "Dziecko",
+      "author": "Grzegorz Piórkowski",
+      "illustrators": [
+        "Michał Gralak"
+      ],
+      "source_credit": "Michał Gralak",
+      "source_file": "Umieranie-to-parszywa-robota.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Umieranie to parszywa robota",
+      "title": "Kres Adama",
+      "author": "Sylwia Błach",
+      "illustrators": [
+        "Tomasz Strzelczyk-Stachura"
+      ],
+      "source_credit": "Tomasz Strzelczyk-Stachura",
+      "source_file": "Umieranie-to-parszywa-robota.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Umieranie to parszywa robota",
+      "title": "Pokój z widokiem na wojnę",
+      "author": "Marlena Siwiak, Marian Siwiak",
+      "illustrators": [
+        "Marcin Masiejczyk"
+      ],
+      "source_credit": "Marcin Masiejczyk",
+      "source_file": "Umieranie-to-parszywa-robota.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Zbrodnia doskonała",
+      "title": "Al",
+      "author": "Krzysztof Rewiuk",
+      "illustrators": [
+        "Katarzyna Niejadlik",
+        "Vivi Ekhart"
+      ],
+      "source_credit": "Katarzyna Niejadlik, Vivi Ekhart",
+      "source_file": "Zbrodnia doskonała.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Zbrodnia doskonała",
+      "title": "Inspicjent Brzeszczot",
+      "author": "Alicja Korzewska",
+      "illustrators": [
+        "Adrian Bienias"
+      ],
+      "source_credit": "Adrian Bienias",
+      "source_file": "Zbrodnia doskonała.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Zbrodnia doskonała",
+      "title": "Oko Henrietty",
+      "author": "Marianna Szygoń",
+      "illustrators": [
+        "Klaudia Bibiana Rosa",
+        "Vivi Ekhart"
+      ],
+      "source_credit": "Klaudia Bibiana Rosa, Vivi Ekhart",
+      "source_file": "Zbrodnia doskonała.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Zbrodnia doskonała",
+      "title": "Baran, gwiazda podwójna i morze w cynowej wannie",
+      "author": "Magdalena Kucenty, Magdalena Świerczek-Gryboś",
+      "illustrators": [
+        "Adrian Bienias",
+        "Vivi Ekhart"
+      ],
+      "source_credit": "Adrian Bienias, Vivi Ekhart",
+      "source_file": "Zbrodnia doskonała.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Zbrodnia doskonała",
+      "title": "Cmentarz doskonałych",
+      "author": "Agnieszka Osikowicz-Chwaja",
+      "illustrators": [
+        "Tomasz Chwaja",
+        "Michał Gralak"
+      ],
+      "source_credit": "Tomasz Chwaja, Michał Gralak",
+      "source_file": "Zbrodnia doskonała.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Zbrodnia doskonała",
+      "title": "Śmierć starszej pani",
+      "author": "Agnieszka Biskup",
+      "illustrators": [
+        "Vivi Ekhart"
+      ],
+      "source_credit": "Vivi Ekhart",
+      "source_file": "Zbrodnia doskonała.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Zbrodnia doskonała",
+      "title": "De profundis",
+      "author": "Wiktor Orłowski",
+      "illustrators": [
+        "Adrian Bienias"
+      ],
+      "source_credit": "Adrian Bienias",
+      "source_file": "Zbrodnia doskonała.rtf",
+      "source_method": "zbiorczy wykaz na początku"
+    },
+    {
+      "anthology": "Raz jeszcze w wyłom",
+      "title": "Kolor piekła",
+      "author": "Wiktor Orłowski",
+      "illustrators": [
+        "Arkadiusz Nowakowski"
+      ],
+      "source_credit": "Arkadiusz Nowakowski",
+      "source_file": "Raz-jeszcze-w-wylom-Fantazmaty.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Raz jeszcze w wyłom",
+      "title": "Wyrywając dusze",
+      "author": "Andrzej W. Sawicki",
+      "illustrators": [
+        "Seph Iriye"
+      ],
+      "source_credit": "Seph Iriye",
+      "source_file": "Raz-jeszcze-w-wylom-Fantazmaty.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Raz jeszcze w wyłom",
+      "title": "Władcy Ludzkich Ciał",
+      "author": "Krzysztof Niedzielski",
+      "illustrators": [
+        "Sylwester Gdela"
+      ],
+      "source_credit": "Sylwester Gdela",
+      "source_file": "Raz-jeszcze-w-wylom-Fantazmaty.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Raz jeszcze w wyłom",
+      "title": "Kluczarnia",
+      "author": "Anna Maria Wybraniec, Łukasz Krukowski",
+      "illustrators": [
+        "Vivi Ekhart"
+      ],
+      "source_credit": "Vivi Ekhart",
+      "source_file": "Raz-jeszcze-w-wylom-Fantazmaty.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Raz jeszcze w wyłom",
+      "title": "Biała brama",
+      "author": "Joanna Pastuszka-Roczek",
+      "illustrators": [
+        "Vivi Ekhart"
+      ],
+      "source_credit": "Vivi Ekhart",
+      "source_file": "Raz-jeszcze-w-wylom-Fantazmaty.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Raz jeszcze w wyłom",
+      "title": "Słońce Austerlitz",
+      "author": "Agnieszka Fulińska",
+      "illustrators": [
+        "Sylwester Gdela"
+      ],
+      "source_credit": "Sylwester Gdela",
+      "source_file": "Raz-jeszcze-w-wylom-Fantazmaty.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Gdy Ziemia miała nas dość",
+      "title": "Zielone płuca",
+      "author": "Agnieszka Zerka",
+      "illustrators": [
+        "Małgorzata Mika"
+      ],
+      "source_credit": "Małgorzata Mika",
+      "source_file": "Gdy-Ziemia-miala-nas-dosc-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Gdy Ziemia miała nas dość",
+      "title": "Zerwany kaganiec",
+      "author": "Grzegorz Piórkowski",
+      "illustrators": [
+        "Waldemar Kurek"
+      ],
+      "source_credit": "Waldemar Kurek",
+      "source_file": "Gdy-Ziemia-miala-nas-dosc-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Gdy Ziemia miała nas dość",
+      "title": "Pieśń dla wieloryba",
+      "author": "Bohdan Pękacki",
+      "illustrators": [
+        "Arkadiusz Nowakowski"
+      ],
+      "source_credit": "Arkadiusz Nowakowski",
+      "source_file": "Gdy-Ziemia-miala-nas-dosc-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Gdy Ziemia miała nas dość",
+      "title": "Białe mięso, czerwona krew",
+      "author": "Dawid Juraszek",
+      "illustrators": [
+        "Arkadiusz Nowakowski"
+      ],
+      "source_credit": "Arkadiusz Nowakowski",
+      "source_file": "Gdy-Ziemia-miala-nas-dosc-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Gdy Ziemia miała nas dość",
+      "title": "Buran",
+      "author": "Stanisław Truchan",
+      "illustrators": [
+        "Paweł Sodzawiczny"
+      ],
+      "source_credit": "Paweł Sodzawiczny",
+      "source_file": "Gdy-Ziemia-miala-nas-dosc-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Gdy Ziemia miała nas dość",
+      "title": "Dog days",
+      "author": "Andrzej W. Sawicki",
+      "illustrators": [
+        "Małgorzata Mika"
+      ],
+      "source_credit": "Małgorzata Mika",
+      "source_file": "Gdy-Ziemia-miala-nas-dosc-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Światła na niebie",
+      "title": "Robaczywe miasto",
+      "author": "Michał Brzozowski",
+      "illustrators": [
+        "Paweł Sodzawiczny"
+      ],
+      "source_credit": "Paweł Sodzawiczny",
+      "source_file": "Swiatla-na-niebie-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Światła na niebie",
+      "title": "Niepodważalny dowód, niezachwiana wiara",
+      "author": "Jerzy Bogusławski",
+      "illustrators": [
+        "Sylwester Gdela"
+      ],
+      "source_credit": "Sylwester Gdela",
+      "source_file": "Swiatla-na-niebie-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Światła na niebie",
+      "title": "Aberracja mrozowiska",
+      "author": "Anna Maria Wybraniec",
+      "illustrators": [
+        "Arkadiusz Nowakowski"
+      ],
+      "source_credit": "Arkadiusz Nowakowski",
+      "source_file": "Swiatla-na-niebie-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Światła na niebie",
+      "title": "Doświadczenie umarłego miasta",
+      "author": "Łukasz Krukowski",
+      "illustrators": [
+        "Martyna Kurowska"
+      ],
+      "source_credit": "Martyna Kurowska",
+      "source_file": "Swiatla-na-niebie-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Światła na niebie",
+      "title": "Karły stoją na ramionach gigantów",
+      "author": "Sebastian Zarębski",
+      "illustrators": [
+        "Arkadiusz Nowakowski"
+      ],
+      "source_credit": "Arkadiusz Nowakowski",
+      "source_file": "Swiatla-na-niebie-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Światła na niebie",
+      "title": "Dokąd odeszli psiogłowcy?",
+      "author": "Jakub Rewiuk",
+      "illustrators": [
+        "Katarzyna Niejadlik"
+      ],
+      "source_credit": "Katarzyna Niejadlik",
+      "source_file": "Swiatla-na-niebie-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Światła na niebie",
+      "title": "Madonna z UFO. Palimpsest",
+      "author": "Krzysztof Rewiuk",
+      "illustrators": [
+        "Weronika Ekhart"
+      ],
+      "source_credit": "Weronika Ekhart",
+      "source_file": "Swiatla-na-niebie-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Światła na niebie",
+      "title": "Podarunek",
+      "author": "Magdalena Manuszak",
+      "illustrators": [
+        "Małgorzata Lewandowska"
+      ],
+      "source_credit": "Małgorzata Lewandowska",
+      "source_file": "Swiatla-na-niebie-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Światła na niebie",
+      "title": "Schizma",
+      "author": "Kamila Regel",
+      "illustrators": [
+        "Arkadiusz Nowakowski"
+      ],
+      "source_credit": "Arkadiusz Nowakowski",
+      "source_file": "Swiatla-na-niebie-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Światła na niebie",
+      "title": "Czas milczenia i czas mówienia",
+      "author": "Dariusz Skrzydło",
+      "illustrators": [
+        "Marcin Sumiński"
+      ],
+      "source_credit": "Marcin Sumiński",
+      "source_file": "Swiatla-na-niebie-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Bogowie i pielgrzymi",
+      "title": "Nadzorca",
+      "author": "Marcin Moń",
+      "illustrators": [
+        "Arkadiusz Haratym"
+      ],
+      "source_credit": "Arkadiusz Haratym",
+      "source_file": "Bogowie-i-pielgrzymi-Fantazmaty.rtf",
+      "source_method": "Zbiorcza stopka; użytkownik potwierdził przypisanie Arkadiusza Haratyma do wszystkich sześciu tekstów."
+    },
+    {
+      "anthology": "Bogowie i pielgrzymi",
+      "title": "Uchwycone w zwierciadle",
+      "author": "Marcin Moń",
+      "illustrators": [
+        "Arkadiusz Haratym"
+      ],
+      "source_credit": "Arkadiusz Haratym",
+      "source_file": "Bogowie-i-pielgrzymi-Fantazmaty.rtf",
+      "source_method": "Zbiorcza stopka; użytkownik potwierdził przypisanie Arkadiusza Haratyma do wszystkich sześciu tekstów."
+    },
+    {
+      "anthology": "Bogowie i pielgrzymi",
+      "title": "Gdy gwiazdy się ułożą",
+      "author": "Marcin Moń",
+      "illustrators": [
+        "Arkadiusz Haratym"
+      ],
+      "source_credit": "Arkadiusz Haratym",
+      "source_file": "Bogowie-i-pielgrzymi-Fantazmaty.rtf",
+      "source_method": "Zbiorcza stopka; użytkownik potwierdził przypisanie Arkadiusza Haratyma do wszystkich sześciu tekstów."
+    },
+    {
+      "anthology": "Bogowie i pielgrzymi",
+      "title": "Jedna długa noc",
+      "author": "Marcin Moń",
+      "illustrators": [
+        "Arkadiusz Haratym"
+      ],
+      "source_credit": "Arkadiusz Haratym",
+      "source_file": "Bogowie-i-pielgrzymi-Fantazmaty.rtf",
+      "source_method": "Zbiorcza stopka; użytkownik potwierdził przypisanie Arkadiusza Haratyma do wszystkich sześciu tekstów."
+    },
+    {
+      "anthology": "Bogowie i pielgrzymi",
+      "title": "Drugie miasto",
+      "author": "Marcin Moń",
+      "illustrators": [
+        "Arkadiusz Haratym"
+      ],
+      "source_credit": "Arkadiusz Haratym",
+      "source_file": "Bogowie-i-pielgrzymi-Fantazmaty.rtf",
+      "source_method": "Zbiorcza stopka; użytkownik potwierdził przypisanie Arkadiusza Haratyma do wszystkich sześciu tekstów."
+    },
+    {
+      "anthology": "Bogowie i pielgrzymi",
+      "title": "Szept pielgrzymów",
+      "author": "Marcin Moń",
+      "illustrators": [
+        "Arkadiusz Haratym"
+      ],
+      "source_credit": "Arkadiusz Haratym",
+      "source_file": "Bogowie-i-pielgrzymi-Fantazmaty.rtf",
+      "source_method": "Zbiorcza stopka; użytkownik potwierdził przypisanie Arkadiusza Haratyma do wszystkich sześciu tekstów."
+    },
+    {
+      "anthology": "Fantazmaty 3",
+      "title": "Mój Ragnarök",
+      "author": "Marcin Rusnak",
+      "illustrators": [
+        "Arkadiusz Nowakowski",
+        "Martyna Kurowska"
+      ],
+      "source_credit": "Arkadiusz Nowakowski (pierwsza), Martyna Kurowska (druga i trzecia)",
+      "source_file": "Fantazmaty-3-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Fantazmaty 3",
+      "title": "Obcy w dolinie",
+      "author": "Joanna W. Gajzler",
+      "illustrators": [
+        "Anna Turkiewicz"
+      ],
+      "source_credit": "Anna Turkiewicz",
+      "source_file": "Fantazmaty-3-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Fantazmaty 3",
+      "title": "Paradox",
+      "author": "Antoni Kaja",
+      "illustrators": [
+        "Małgorzata Mika"
+      ],
+      "source_credit": "Małgorzata Mika",
+      "source_file": "Fantazmaty-3-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Fantazmaty 3",
+      "title": "Długi marsz",
+      "author": "Filip Laskowski",
+      "illustrators": [
+        "Arkadiusz Nowakowski",
+        "Sylwester Gdela"
+      ],
+      "source_credit": "Arkadiusz Nowakowski (pierwsza), Sylwester Gdela (druga)",
+      "source_file": "Fantazmaty-3-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Fantazmaty 3",
+      "title": "Defragmentacja",
+      "author": "Przemysław Morawski",
+      "illustrators": [
+        "Vivi Ekhart"
+      ],
+      "source_credit": "Vivi Ekhart",
+      "source_file": "Fantazmaty-3-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Fantazmaty 3",
+      "title": "Czarnobyl cię kocha, biorobocie",
+      "author": "Magdalena Świerczek-Gryboś",
+      "illustrators": [
+        "Katarzyna Niejadlik",
+        "Przemysław Stachura",
+        "Vivi Ekhart"
+      ],
+      "source_credit": "Katarzyna Niejadlik, Przemysław Stachura, Vivi Ekhart",
+      "source_file": "Fantazmaty-3-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Machine de Pologne",
+      "title": "Machine de Pologne",
+      "author": "Andrzej W. Sawicki",
+      "illustrators": [
+        "Katarzyna Niejadlik"
+      ],
+      "source_credit": "Katarzyna Niejadlik",
+      "source_file": "Machine de Pologne.docx",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Machine de Pologne",
+      "title": "Żegnaj, laleczko",
+      "author": "Andrzej W. Sawicki",
+      "illustrators": [
+        "Katarzyna Niejadlik"
+      ],
+      "source_credit": "Katarzyna Niejadlik",
+      "source_file": "Machine de Pologne.docx",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Machine de Pologne",
+      "title": "Przy świetle księżyca",
+      "author": "Andrzej W. Sawicki",
+      "illustrators": [
+        "Klaudia Bibiana Rosa"
+      ],
+      "source_credit": "Klaudia Bibiana Rosa",
+      "source_file": "Machine de Pologne.docx",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Machine de Pologne",
+      "title": "Czas przemienienia",
+      "author": "Andrzej W. Sawicki",
+      "illustrators": [
+        "Arkadiusz Nowakowski"
+      ],
+      "source_credit": "Arkadiusz Nowakowski",
+      "source_file": "Machine de Pologne.docx",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Machine de Pologne",
+      "title": "Księżniczka i śpiący rycerze",
+      "author": "Andrzej W. Sawicki",
+      "illustrators": [
+        "Katarzyna Niejadlik"
+      ],
+      "source_credit": "Katarzyna Niejadlik",
+      "source_file": "Machine de Pologne.docx",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Machine de Pologne",
+      "title": "Opowieść o wróżce",
+      "author": "Andrzej W. Sawicki",
+      "illustrators": [
+        "Arkadiusz Nowakowski"
+      ],
+      "source_credit": "Arkadiusz Nowakowski",
+      "source_file": "Machine de Pologne.docx",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Machine de Pologne",
+      "title": "2-metylo-4-(4-metylopiperazyn-1-ylo)-10H-benzo[b]thieno[2,3-e][1,4]diazepina",
+      "author": "Andrzej W. Sawicki",
+      "illustrators": [
+        "Klaudia Bibiana Rosa"
+      ],
+      "source_credit": "Klaudia Bibiana Rosa",
+      "source_file": "Machine de Pologne.docx",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Na zgliszczach",
+      "title": "Drzewa życia",
+      "author": "Paula Wanarska",
+      "illustrators": [
+        "Małgorzata Lewandowska"
+      ],
+      "source_credit": "Małgorzata Lewandowska",
+      "source_file": "Na-zgliszczach.docx",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Na zgliszczach",
+      "title": "Bezimienne dusze",
+      "author": "Aleksander Killman",
+      "illustrators": [
+        "Patrycja Smaga"
+      ],
+      "source_credit": "Patrycja Smaga",
+      "source_file": "Na-zgliszczach.docx",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Na zgliszczach",
+      "title": "Człowiek z maszyny",
+      "author": "Barbara Zambrzycka",
+      "illustrators": [
+        "Arek Nowakowski"
+      ],
+      "source_credit": "Arek Nowakowski",
+      "source_file": "Na-zgliszczach.docx",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Na zgliszczach",
+      "title": "Kurort Makabra",
+      "author": "Barbara Zosiuk",
+      "illustrators": [
+        "Marcin Sumiński"
+      ],
+      "source_credit": "Marcin Sumiński",
+      "source_file": "Na-zgliszczach.docx",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Na zgliszczach",
+      "title": "Era Wodnika",
+      "author": "Magdalena Owczarek",
+      "illustrators": [
+        "Marcin Sumiński"
+      ],
+      "source_credit": "Marcin Sumiński",
+      "source_file": "Na-zgliszczach.docx",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Na zgliszczach",
+      "title": "Muzeum XXI wieku",
+      "author": "Tomasz Niziński",
+      "illustrators": [
+        "Vivi Ekhart"
+      ],
+      "source_credit": "Vivi Ekhart",
+      "source_file": "Na-zgliszczach.docx",
+      "source_method": "potwierdzenie użytkownika w rozmowie"
+    },
+    {
+      "anthology": "Na zgliszczach",
+      "title": "Długość dźwięku przeciętności",
+      "author": "Krzysztof Matkowski",
+      "illustrators": [
+        "Małgorzata Lewandowska"
+      ],
+      "source_credit": "Małgorzata Lewandowska",
+      "source_file": "Na-zgliszczach.docx",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Gastronomicon",
+      "title": "Ciasteczko Śnieżyny",
+      "author": "Mika Modrzyńska",
+      "illustrators": [
+        "Arkadiusz Nowakowski"
+      ],
+      "source_credit": "Arkadiusz Nowakowski",
+      "source_file": "Gastronomicon-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Gastronomicon",
+      "title": "Roślinoludy",
+      "author": "Katarzyna Szymonik",
+      "illustrators": [
+        "Katarzyna Szymonik"
+      ],
+      "source_credit": "Katarzyna Szymonik",
+      "source_file": "Gastronomicon-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Gastronomicon",
+      "title": "Nostalgia",
+      "author": "Mateusz Kimak",
+      "illustrators": [
+        "Mikołaj Ostapiuk"
+      ],
+      "source_credit": "Mikołaj Ostapiuk",
+      "source_file": "Gastronomicon-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Gastronomicon",
+      "title": "Nienażarty",
+      "author": "Joanna Dzięciołowska",
+      "illustrators": [
+        "Wiktoria Makowska"
+      ],
+      "source_credit": "Wiktoria Makowska",
+      "source_file": "Gastronomicon-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Gastronomicon",
+      "title": "Tort szwarcwaldzki",
+      "author": "Marta Kers",
+      "illustrators": [
+        "Jadwiga Glaza"
+      ],
+      "source_credit": "Jadwiga Glaza",
+      "source_file": "Gastronomicon-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Gastronomicon",
+      "title": "Ości",
+      "author": "Joanna Winifreda Gajzler",
+      "illustrators": [
+        "Bartłomiej Sita"
+      ],
+      "source_credit": "Bartłomiej Sita",
+      "source_file": "Gastronomicon-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Gastronomicon",
+      "title": "Bateria",
+      "author": "Radosław Dąbrowski",
+      "illustrators": [
+        "Adam Biszewski"
+      ],
+      "source_credit": "Adam Biszewski",
+      "source_file": "Gastronomicon-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Gastronomicon",
+      "title": "Jadłodajnia Djetetyczna",
+      "author": "Maja Podolska",
+      "illustrators": [
+        "Jadwiga Glaza"
+      ],
+      "source_credit": "Jadwiga Glaza",
+      "source_file": "Gastronomicon-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Gastronomicon",
+      "title": "Stypendia i olbrzymy",
+      "author": "Łukasz Kucharczyk",
+      "illustrators": [
+        "Marcin Chyliński"
+      ],
+      "source_credit": "Marcin Chyliński",
+      "source_file": "Gastronomicon-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Gastronomicon",
+      "title": "Nie ma jak u babci",
+      "author": "Anna Sikorska",
+      "illustrators": [
+        "Joanna Samek"
+      ],
+      "source_credit": "Joanna Samek",
+      "source_file": "Gastronomicon-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Gastronomicon",
+      "title": "Truskawkowy amok",
+      "author": "Krzysztof Banach",
+      "illustrators": [
+        "Michał Antosiewicz"
+      ],
+      "source_credit": "Michał Antosiewicz",
+      "source_file": "Gastronomicon-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Gastronomicon",
+      "title": "Dobranoc, smoku",
+      "author": "Barbara Zambrzycka",
+      "illustrators": [
+        "Urszula Sarnowska"
+      ],
+      "source_credit": "Urszula Sarnowska",
+      "source_file": "Gastronomicon-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Fantazmaty 4",
+      "title": "Krótka instrukcja obsługi Pana",
+      "author": "Krzysztof Matkowski",
+      "illustrators": [
+        "Michał Antosiewicz"
+      ],
+      "source_credit": "Michał Antosiewicz",
+      "source_file": "Fantazmaty-4-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Fantazmaty 4",
+      "title": "Kto pierwszy, ten…",
+      "author": "Maciej Oleszek",
+      "illustrators": [
+        "Marek Gryboś"
+      ],
+      "source_credit": "Marek Gryboś",
+      "source_file": "Fantazmaty-4-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Fantazmaty 4",
+      "title": "A światłość w ciemności sczerwienieje",
+      "author": "Jerzy Bogusławski",
+      "illustrators": [
+        "Bartłomiej Sita"
+      ],
+      "source_credit": "Bartłomiej Sita",
+      "source_file": "Fantazmaty-4-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Fantazmaty 4",
+      "title": "Przystanek: Etiologia nieznana",
+      "author": "Monika Fenc",
+      "illustrators": [
+        "Marcin Sumiński"
+      ],
+      "source_credit": "Marcin Sumiński",
+      "source_file": "Fantazmaty-4-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Fantazmaty 4",
+      "title": "Zbrodnia bez kary",
+      "author": "Michał J. Sobociński",
+      "illustrators": [
+        "Urszula Sarnowska"
+      ],
+      "source_credit": "Urszula Sarnowska",
+      "source_file": "Fantazmaty-4-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Fantazmaty 4",
+      "title": "Diabeł z La Thieuloye",
+      "author": "Wiktor Orłowski",
+      "illustrators": [
+        "Emilia Baczyńska"
+      ],
+      "source_credit": "Emilia Baczyńska",
+      "source_file": "Fantazmaty-4-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Fantazmaty 4",
+      "title": "Uchodźca",
+      "author": "Edward Strun",
+      "illustrators": [
+        "Adrian Bienias"
+      ],
+      "source_credit": "Adrian Bienias",
+      "source_file": "Fantazmaty-4-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Technofobie",
+      "title": "Częstotliwość",
+      "author": "Wojciech Gunia",
+      "illustrators": [
+        "Mikołaj Ostapiuk",
+        "Graphos"
+      ],
+      "source_credit": "Mikołaj Ostapiuk, Graphos",
+      "source_file": "Technofobie.rtf",
+      "source_method": "stopka opowiadania w aktualnym RTF"
+    },
+    {
+      "anthology": "Technofobie",
+      "title": "Przeze mnie szarańcza",
+      "author": "Krzysztof Matkowski",
+      "illustrators": [
+        "Mikołaj Ostapiuk",
+        "Graphos"
+      ],
+      "source_credit": "Mikołaj Ostapiuk, Graphos",
+      "source_file": "Technofobie.rtf",
+      "source_method": "stopka opowiadania w aktualnym RTF"
+    },
+    {
+      "anthology": "Technofobie",
+      "title": "Zwierciadła w pustce",
+      "author": "Mateusz Wyszyński",
+      "illustrators": [
+        "Mikołaj Ostapiuk",
+        "Graphos"
+      ],
+      "source_credit": "Mikołaj Ostapiuk, Graphos",
+      "source_file": "Technofobie.rtf",
+      "source_method": "stopka opowiadania w aktualnym RTF"
+    },
+    {
+      "anthology": "Technofobie",
+      "title": "Przeskok p-adyczny",
+      "author": "Monika Zakrzewska",
+      "illustrators": [
+        "Mikołaj Ostapiuk",
+        "Graphos"
+      ],
+      "source_credit": "Mikołaj Ostapiuk, Graphos",
+      "source_file": "Technofobie.rtf",
+      "source_method": "stopka opowiadania w aktualnym RTF"
+    },
+    {
+      "anthology": "Technofobie",
+      "title": "UVB-77",
+      "author": "Sylwester Gdela",
+      "illustrators": [
+        "Mikołaj Ostapiuk",
+        "Graphos"
+      ],
+      "source_credit": "Mikołaj Ostapiuk, Graphos",
+      "source_file": "Technofobie.rtf",
+      "source_method": "stopka opowiadania w aktualnym RTF"
+    },
+    {
+      "anthology": "Technofobie",
+      "title": "Idunn",
+      "author": "Alicja Tempłowicz",
+      "illustrators": [
+        "Mikołaj Ostapiuk",
+        "Graphos"
+      ],
+      "source_credit": "Mikołaj Ostapiuk, Graphos",
+      "source_file": "Technofobie.rtf",
+      "source_method": "stopka opowiadania w aktualnym RTF"
+    },
+    {
+      "anthology": "Retrowizje",
+      "title": "Mysterium Cosmographicum",
+      "author": "Agnieszka Fulińska",
+      "illustrators": [
+        "Urszula Sarnowska"
+      ],
+      "source_credit": "Urszula Sarnowska",
+      "source_file": "Retrowizje-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Retrowizje",
+      "title": "Miasto dymu i popiołu",
+      "author": "Michał Gola",
+      "illustrators": [
+        "Urszula Sarnowska"
+      ],
+      "source_credit": "Urszula Sarnowska",
+      "source_file": "Retrowizje-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Retrowizje",
+      "title": "Homo sapiens planifacialis",
+      "author": "Radek Puchała",
+      "illustrators": [
+        "Urszula Sarnowska"
+      ],
+      "source_credit": "Urszula Sarnowska",
+      "source_file": "Retrowizje-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Retrowizje",
+      "title": "Wielki Dług",
+      "author": "Witold Hess",
+      "illustrators": [
+        "Urszula Sarnowska"
+      ],
+      "source_credit": "Urszula Sarnowska",
+      "source_file": "Retrowizje-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Retrowizje",
+      "title": "Świt nad doliną",
+      "author": "Wiktor Orłowski",
+      "illustrators": [
+        "Urszula Sarnowska"
+      ],
+      "source_credit": "Urszula Sarnowska",
+      "source_file": "Retrowizje-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Retrowizje",
+      "title": "Pogrobowiec Boga Wi",
+      "author": "Agata Poważyńska",
+      "illustrators": [],
+      "source_credit": "",
+      "source_file": "Retrowizje-rtf.rtf",
+      "source_method": "stopka opowiadania",
+      "skip_reason": "Brak nazwiska ilustratora w źródle, potwierdzony przez użytkownika."
+    },
+    {
+      "anthology": "Retrowizje",
+      "title": "Wielkie łowy",
+      "author": "Michał Puchalski",
+      "illustrators": [
+        "Urszula Sarnowska"
+      ],
+      "source_credit": "Urszula Sarnowska",
+      "source_file": "Retrowizje-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Retrowizje",
+      "title": "Latawce nad Chang’anem",
+      "author": "Sylwia Wełna",
+      "illustrators": [
+        "Urszula Sarnowska"
+      ],
+      "source_credit": "Urszula Sarnowska",
+      "source_file": "Retrowizje-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Retrowizje",
+      "title": "Atoma",
+      "author": "Sebastian Zarębski",
+      "illustrators": [
+        "Urszula Sarnowska"
+      ],
+      "source_credit": "Urszula Sarnowska",
+      "source_file": "Retrowizje-rtf.rtf",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Fantazmaty 5",
+      "title": "Wiedźma",
+      "author": "Marcin Rusnak",
+      "illustrators": [
+        "Karolina Borucka"
+      ],
+      "source_credit": "Karolina Borucka",
+      "source_file": "DO SKŁADU FANTAZMATY 5.docx",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Fantazmaty 5",
+      "title": "Jenot szuka żony",
+      "author": "Marcin Bartosz Łukasiewicz",
+      "illustrators": [
+        "Urszula Sarnowska"
+      ],
+      "source_credit": "Urszula Sarnowska",
+      "source_file": "DO SKŁADU FANTAZMATY 5.docx",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Fantazmaty 5",
+      "title": "Egzorcyzmy Emily OS",
+      "author": "Adam Kurzawa",
+      "illustrators": [
+        "Marek Gryboś"
+      ],
+      "source_credit": "Marek Gryboś",
+      "source_file": "DO SKŁADU FANTAZMATY 5.docx",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Fantazmaty 5",
+      "title": "Gdzie Diabeł mówi dzień dobry",
+      "author": "Agata Francik",
+      "illustrators": [
+        "Piotr Herla"
+      ],
+      "source_credit": "Piotr Herla",
+      "source_file": "DO SKŁADU FANTAZMATY 5.docx",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Fantazmaty 5",
+      "title": "Klatka z kości",
+      "author": "Filip Śmigiel",
+      "illustrators": [
+        "Alicja Marczyk"
+      ],
+      "source_credit": "Alicja Marczyk",
+      "source_file": "DO SKŁADU FANTAZMATY 5.docx",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Fantazmaty 5",
+      "title": "Wąż",
+      "author": "Adam Sołtys",
+      "illustrators": [
+        "Klaudia Dudzik"
+      ],
+      "source_credit": "Klaudia Dudzik",
+      "source_file": "DO SKŁADU FANTAZMATY 5.docx",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Fantazmaty 5",
+      "title": "Matcha chocolate chip frappuccino",
+      "author": "Adam Raglan",
+      "illustrators": [
+        "Arkadiusz Nowakowski"
+      ],
+      "source_credit": "Arkadiusz Nowakowski",
+      "source_file": "DO SKŁADU FANTAZMATY 5.docx",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Fantazmaty 5",
+      "title": "Opowieść o Midasie z Podhala",
+      "author": "Patryk Gujda",
+      "illustrators": [
+        "Helena Wystrasz"
+      ],
+      "source_credit": "Helena Wystrasz",
+      "source_file": "DO SKŁADU FANTAZMATY 5.docx",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Fantazmaty 5",
+      "title": "Kosmiczna ballada",
+      "author": "Jakub Kozakiewicz",
+      "illustrators": [
+        "Marta Balcerzak"
+      ],
+      "source_credit": "Marta Balcerzak",
+      "source_file": "DO SKŁADU FANTAZMATY 5.docx",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Fantazmaty 5",
+      "title": "O trzech rycerzach-asemblerach i smoku v1.1.0",
+      "author": "Maciej Gorywoda",
+      "illustrators": [
+        "Piotr Herla"
+      ],
+      "source_credit": "Piotr Herla",
+      "source_file": "DO SKŁADU FANTAZMATY 5.docx",
+      "source_method": "stopka opowiadania"
+    },
+    {
+      "anthology": "Fantazmaty 5",
+      "title": "Cztery miecze Zawiszy",
+      "author": "Mirek Kluczka",
+      "illustrators": [
+        "Marcin Sumiński"
+      ],
+      "source_credit": "Marcin Sumiński",
+      "source_file": "DO SKŁADU FANTAZMATY 5.docx",
+      "source_method": "stopka opowiadania"
+    }
+  ]
+}

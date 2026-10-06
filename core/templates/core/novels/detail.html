@@ -38,7 +38,7 @@
 {% if coordinator and is_open %}<td><input type="checkbox" name="chapters" value="{{ row.chapter.pk }}" aria-label="Wybierz rozdział {{ row.chapter.chapter_number }}" {% if row.chapter.pk in selected_chapter_ids %}checked{% endif %}></td>{% endif %}
 <td><strong><a href="{% url 'core:assigned_text_detail' row.chapter.pk %}">Rozdział {{ row.chapter.chapter_number }}</a></strong></td><td>{{ row.chapter.length|default_if_none:'Brak danych' }}</td>
 <td><span class="workflow-stage-badge" data-stage="{{ row.chapter.current_stage_type }}">{{ row.status }}</span></td>
-<td><ul class="novel-assignments">{% for assignment in row.assignments %}<li><span class="role-badge" data-role="{{ assignment.role }}">{{ assignment.get_role_display }}: {{ assignment.assigned_to.person_profile|default:assignment.assigned_to }}{% if assignment.execution_number > 1 %} (wyk. {{ assignment.execution_number }}){% endif %}</span></li>{% empty %}<li>Brak przypisań</li>{% endfor %}</ul></td>
+<td><ul class="novel-assignments">{% for assignment in row.assignments %}<li><span class="role-badge" data-role="{{ assignment.role }}" title="{{ assignment.get_role_display }}">{{ assignment.assigned_to.person_profile|default:assignment.assigned_to }}{% if assignment.execution_number > 1 %} (wyk. {{ assignment.execution_number }}){% endif %}</span></li>{% empty %}<li>Brak przypisań</li>{% endfor %}</ul></td>
 {% if coordinator and is_open %}<td><a class="secondary-button" href="{% url 'core:chapter_edit' book.pk row.chapter.pk %}">Edytuj</a></td>{% endif %}
 </tr>{% empty %}<tr><td colspan="6">Brak rozdziałów.</td></tr>{% endfor %}</tbody></table></div>
 {% if coordinator and is_open %}</form>{% endif %}

@@ -718,91 +718,10 @@
     {% endif %}
     {% if handoffs %}<section class="card"><div class="card-body"><h2>Historia przekazania pracy</h2>{% for item in handoffs %}<p>{{ item.stage.get_stage_type_display }}: {{ item.previous_assignment.assigned_to.get_full_name }} → {{ item.new_assignment.assigned_to.get_full_name }} · {{ item.created_at|date:"d.m.Y H:i" }}<br>{{ item.reason }}</p>{% endfor %}</div></section>{% endif %}
     {% if repeat_queue %}<section class="card"><div class="card-body"><h2>Kolejka powtórzeń</h2><ol class="credits-list">{% for item in repeat_queue %}<li>{{ item.get_stage_type_display }}: {% if item.is_released %}bieżący etap{% else %}oczekuje na poprzedni etap{% endif %}</li>{% endfor %}</ol></div></section>{% endif %}
-    {% if can_manage_authors or can_manage_workflow or can_restart_workflow %}
+    {% if can_manage_workflow and not is_withdrawn and not is_ready and text.anthology.status != "ready" %}
         <details class="text-management-card">
-            <summary class="text-management-toggle">
-                <span>Zarządzanie tekstem</span>
-                <span class="dropdown-arrow" aria-hidden="true">▾</span>
-            </summary>
-
+            <summary class="text-management-toggle"><span>Zarządzanie tekstem</span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
             <div class="text-management-content">
-                {% if can_manage_authors and not is_translation %}
-                    <div class="management-action">
-                        <div class="management-action-description">
-                            <h3>Autorzy tekstu</h3>
-                            <p>Wybierz przynajmniej jednego autora.</p>
-                        </div>
-
-                        <form
-                            method="post"
-                            action="{% url 'core:set_text_authors' text.pk %}"
-                            class="text-authors-management-form"
-                        >
-                            {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
-                            <label for="text-authors">Przypisani autorzy</label>
-                            <select
-                                id="text-authors"
-                                name="authors"
-                                class="text-authors-select"
-                                data-author-search-url="{% url 'core:author_suggestions' %}"
-                                multiple
-                                required
-                            >
-                                {% for author in all_authors %}
-                                    <option
-                                        value="{{ author.pk }}"
-                                        {% if author.pk in selected_author_ids %}selected{% endif %}
-                                    >
-                                        {{ author.display_name }}
-                                        
-                                    </option>
-                                {% endfor %}
-                            </select>
-                            <button type="submit" class="secondary-button">
-                                Zapisz autorów
-                            </button>
-                        </form>
-                    </div>
-                {% endif %}
-
-                {% if can_restart_workflow and restart_workflow_form and not is_withdrawn %}
-                    <div id="workflow-repeat" class="management-action management-action-restart">
-                        <div class="management-action-description">
-                            <h3>Zarządzanie etapami</h3>
-                            <p>
-                                Wybierz etapy i nowych wykonawców. Trwająca praca zostanie zakończona z dzisiejszą datą,
-                                a niezaczęte rezerwacje zamknięte. Nowe wykonania otrzymają wybrane osoby.
-                                Dotychczasowa praca i jej wykonawcy pozostaną w historii.
-                            </p>
-                        </div>
-
-                        <form
-                            method="post"
-                            action="{% url 'core:restart_text_workflow' text.pk %}"
-                            class="restart-workflow-form"
-                        >
-                            {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
-                            {{ restart_workflow_form.non_field_errors }}
-                            <label for="{{ restart_workflow_form.stages.id_for_label }}">
-                                {{ restart_workflow_form.stages.label }}
-                            </label>
-                            {{ restart_workflow_form.stages }}
-                            {{ restart_workflow_form.stages.errors }}
-                            {% for row in restart_workflow_form.performer_rows %}
-                                <div data-repeat-performer data-repeat-stages="{{ row.stage_types }}">
-                                    {{ row.field.label_tag }}
-                                    {{ row.field }}
-                                    {{ row.field.errors }}
-                                </div>
-                            {% endfor %}
-                            <button type="submit" class="restart-workflow-button">
-                                Pokaż kolejkę powtórzeń
-                            </button>
-                        </form>
-                    </div>
-                {% endif %}
-
-                {% if can_manage_workflow and not is_withdrawn and not is_ready and text.anthology.status != "ready" %}
                     <div class="management-action management-action-danger">
                         <div class="management-action-description">
                             <h3>Wycofaj tekst</h3>
@@ -819,7 +738,6 @@
                             </button>
                         </form>
                     </div>
-                {% endif %}
             </div>
         </details>
     {% endif %}
@@ -829,10 +747,6 @@
 {% block scripts %}
     {% if translation_form %}<script src="{% static 'core/translation-search.js' %}?v=17"></script><noscript>Wyszukiwanie osób wymaga JavaScript. Osoby można również przypisać przez „Edytuj w adminie”.</noscript>{% endif %}
 {{ block.super }}
-{% if can_restart_workflow and restart_workflow_form %}
-<script src="{% static 'core/workflow-repeat.js' %}" defer></script>
-<script src="{% static 'core/person-select.js' %}?v=28" defer></script>
-{% endif %}
 {% if user.is_superuser and text_file_form and dropbox_chooser_app_key and text.anthology.status != "ready" %}
 <script src="https://www.dropbox.com/static/api/2/dropins.js" id="dropboxjs" data-app-key="{{ dropbox_chooser_app_key }}"></script>
 <script src="{% static 'core/dropbox-folder-chooser.js' %}" defer></script>

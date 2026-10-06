@@ -60,7 +60,7 @@ MODELS['texts.review'].update({
 MODELS['illustrations.illustration'] = {
     'Antologia':('anthology',('text__anthology__title',)),
     'Tytuł tekstu':('title',('text__title',)),
-    'Ilustrator':('illustrator',('illustrator__last_name','illustrator__first_name')),
+    'Ilustratorzy':('illustrator',('artist_sort',)),
     **_columns(**{'Status':'status', 'Data przypisania':'assigned_at',
     'Ostrzeżenia dotyczące treści':'trigger_warnings', 'Opowiadanie':'story_url',
     'Ilustrowany fragment':'illustrated_excerpt'})}

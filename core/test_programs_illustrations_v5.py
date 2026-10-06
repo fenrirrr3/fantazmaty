@@ -183,8 +183,9 @@ class IllustrationWorkspaceTests(TestCase):
         return self.client.post(self.url, {'action':action,'version':self.token(action=action),**data})
 
     def assigned(self):
+        self.illustration.illustrators.set([self.artist_contact])
         Illustration.objects.filter(pk=self.illustration.pk).update(
-            illustrator=self.artist_contact,status='assigned',assigned_at=timezone.localdate()-timedelta(days=20))
+            status='assigned',assigned_at=timezone.localdate()-timedelta(days=20))
 
     def test_list_loads_text_metadata_and_legacy_warnings_as_fallback(self):
         self.illustration.trigger_warnings='Stare ostrzeżenia';self.illustration.save()
@@ -200,30 +201,30 @@ class IllustrationWorkspaceTests(TestCase):
             with self.subTest(field=field):
                 Anthology.objects.filter(pk=self.book.pk).update(**{field:value})
                 self.assertNotContains(self.client.get(reverse('illustrations:illustration_list')),self.text.title)
-                self.assertEqual(self.client.get(self.url).status_code,404)
+                self.assertEqual(self.client.get(self.url).status_code,200 if field == "status" else 404)
                 Anthology.objects.filter(pk=self.book.pk).update(status='in_preparation',has_illustrations=True)
 
     def test_saves_assignment_status_and_date(self):
-        response=self.post('assignment',illustrator=self.artist_contact.pk,status='assigned')
+        response=self.post('assignment',illustrators=self.artist_contact.pk,status='assigned')
         self.assertEqual(response.status_code,302)
         self.illustration.refresh_from_db()
-        self.assertEqual(self.illustration.illustrator_id,self.artist_contact.pk)
+        self.assertEqual(list(self.illustration.illustrators.all()),[self.artist_contact])
         self.assertEqual(self.illustration.assigned_at,timezone.localdate())
-        self.assertEqual(self.post('assignment',illustrator=self.artist_contact.pk,status='delivered').status_code,302)
+        self.assertEqual(self.post('assignment',illustrators=self.artist_contact.pk,status='delivered').status_code,302)
 
     def test_corrections_do_not_reset_date_but_new_performer_does(self):
         self.assigned(); original=timezone.localdate()-timedelta(days=20)
         for status in ('delivered','in_corrections','assigned'):
-            self.assertEqual(self.post('assignment',illustrator=self.artist_contact.pk,status=status).status_code,302)
+            self.assertEqual(self.post('assignment',illustrators=self.artist_contact.pk,status=status).status_code,302)
             self.illustration.refresh_from_db();self.assertEqual(self.illustration.assigned_at,original)
-        self.post('assignment',illustrator=self.other_contact.pk,status='assigned')
+        self.post('assignment',illustrators=self.other_contact.pk,status='assigned')
         self.illustration.refresh_from_db();self.assertEqual(self.illustration.assigned_at,timezone.localdate())
 
     def test_unassignment_clears_date_and_missing_illustrator_is_rejected(self):
-        self.assertEqual(self.post('assignment',status='assigned',illustrator='').status_code,200)
+        self.assertEqual(self.post('assignment',status='assigned',illustrators=[]).status_code,200)
         self.illustration.refresh_from_db();self.assertEqual(self.illustration.status,'unassigned')
         self.assigned()
-        self.assertEqual(self.post('assignment',status='unassigned',illustrator='').status_code,302)
+        self.assertEqual(self.post('assignment',status='unassigned',illustrators=[]).status_code,302)
         self.illustration.refresh_from_db();self.assertIsNone(self.illustration.assigned_at)
 
     def test_link_and_long_excerpt_save_separately_without_changing_assignment(self):
@@ -262,9 +263,9 @@ class IllustrationWorkspaceTests(TestCase):
             self.client.force_login(user)
             self.assertNotContains(self.client.get(self.url),'Zapisz fragment')
             self.assertEqual(self.client.post(self.url,{'action':'excerpt','illustrated_excerpt':'Obcy fragment'}).status_code,403)
-            self.assertEqual(self.client.post(self.url,{'action':'assignment','illustrator':self.other_contact.pk,'status':'delivered'}).status_code,403)
+            self.assertEqual(self.client.post(self.url,{'action':'assignment','illustrators':self.other_contact.pk,'status':'delivered'}).status_code,403)
         self.illustration.refresh_from_db()
-        self.assertEqual(self.illustration.illustrator_id,self.artist_contact.pk)
+        self.assertEqual(list(self.illustration.illustrators.all()),[self.artist_contact])
         self.assertEqual(self.illustration.status,'assigned')
 
 
@@ -287,5 +288,5 @@ class IllustrationWorkspaceTests(TestCase):
         self.assertEqual(Illustration.objects.filter(text=other).count(),1)
         self.assertFalse(Illustration.objects.filter(text=skipped).exists())
         after=Illustration.objects.get(pk=self.illustration.pk)
-        self.assertEqual((before.status,before.illustrator_id,before.assigned_at),
-                         (after.status,after.illustrator_id,after.assigned_at))
+        self.assertEqual((before.status,list(before.illustrators.all()),before.assigned_at),
+                         (after.status,list(after.illustrators.all()),after.assigned_at))

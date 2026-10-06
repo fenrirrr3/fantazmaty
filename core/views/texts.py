@@ -105,7 +105,7 @@ def _require_text_contributor(user, text):
 def _permission_context(user):
     return {
         "can_view_authors": can_view_author_data(user),
-        "can_manage_authors": can_view_author_data(user),
+        "can_manage_authors": False,
         "can_manage_workflow": is_coordinator(user),
         "can_restart_workflow": can_restart_workflow(user),
     }
@@ -155,7 +155,7 @@ def _render_text_detail(request, text, *, bound_forms=None, status=200):
     from illustrations.models import Illustration
     from core.permissions import can_view_illustrations
     context['audiobook_form'] = AudiobookForm(instance=text)
-    context['text_illustration'] = Illustration.objects.select_related('illustrator').filter(text_id=text.pk).first()
+    context['text_illustration'] = Illustration.objects.prefetch_related('illustrators').filter(text_id=text.pk).first()
     context['can_open_text_illustration'] = can_view_illustrations(request.user)
     context['anthology_illustrated'] = bool(text.anthology_id and text.anthology.has_illustrations)
     context['text_file_form'] = TextFileForm(instance=text) if request.user.is_superuser else None
@@ -335,38 +335,8 @@ def available_texts(request):
 @require_POST
 @superuser_required
 def set_text_authors(request, text_id):
-    try:
-        author_ids = _selected_ids(request.POST, "authors")
-
-        with transaction.atomic():
-            text = get_object_or_404(
-                Text.objects.select_for_update(),
-                pk=text_id,
-            )
-            if text.anthology_id and text.anthology.is_novel:
-                raise ValidationError('Autorów rozdziału zmień w podglądzie całej powieści.')
-            if text.anthology_id and text.anthology.is_translated:
-                raise ValidationError('Autora zagranicznego zmień w formularzu tłumaczenia.')
-            authors = list(
-                Author.objects.select_for_update()
-                .filter(pk__in=author_ids)
-                .order_by("pk")
-            )
-
-            if len(authors) != len(author_ids):
-                raise ValidationError(
-                    "Nie odnaleziono wszystkich wskazanych autorów. "
-                    "Odśwież stronę i ponów wybór."
-                )
-
-            text.authors.set(authors)
-
-    except ValidationError as error:
-        messages.error(request, " ".join(error.messages))
-    else:
-        messages.success(request, "Zapisano autorów tekstu.")
-
-    return redirect("core:assigned_text_detail", text_id=text_id)
+    from django.http import HttpResponseForbidden
+    return HttpResponseForbidden("Autorów tekstu można zmieniać wyłącznie w panelu administracyjnym.")
 
 
 @never_cache

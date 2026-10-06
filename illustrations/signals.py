@@ -47,3 +47,15 @@ def create_illustration_for_text(
                 "status": Illustration.Status.UNASSIGNED,
             },
         )
+
+
+from django.db.models.signals import pre_delete
+from django.db.models.deletion import ProtectedError
+from .models import Illustrator
+
+
+@receiver(pre_delete, sender=Illustrator)
+def protect_illustrator_credits(sender, instance, using, **kwargs):
+    credits = list(instance.illustrations.using(using).all())
+    if credits:
+        raise ProtectedError('Ilustrator ma przypisane teksty. Wyłącz jego aktywność zamiast usuwać wpis.', credits)

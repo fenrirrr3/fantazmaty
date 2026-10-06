@@ -6,7 +6,7 @@
 <header class="page-header">
     <h1 class="page-title">Ilustracja: {{ illustration.text.title }}</h1>
     <p>{{ illustration.text.anthology.title }}</p>
-    <a class="secondary-button" href="{% url 'illustrations:illustration_list' %}?anthology={{ illustration.text.anthology_id }}">Wróć do ilustracji antologii</a>
+    <a class="secondary-button" href="{% url 'illustrations:illustration_list' %}?anthology={{ illustration.text.anthology_id }}{% if illustration.text.anthology.status == "ready" %}&amp;hide_published=0{% endif %}">Wróć do ilustracji antologii</a>
 </header>
 <section class="card"><div class="card-body">
     <h2>Informacje o tekście</h2>
@@ -18,14 +18,17 @@
 </div></section>
 <section class="card"><div class="card-body">
     <h2>Przypisanie i status</h2>
-    <p>Ilustrator: <strong>{{ illustration.illustrator_display|default:"Nie przypisano" }}</strong> · {{ illustration.get_status_display }}</p>
-    {% if can_assign and illustration.illustrator_email %}<p>E-mail ilustratora: <a href="mailto:{{ illustration.illustrator_email }}">{{ illustration.illustrator_email }}</a></p>{% endif %}
+    <p>Ilustratorzy: <strong>{{ illustration.illustrator_display|default:"Nie przypisano" }}</strong> · {{ illustration.get_status_display }}</p>
+    {% if can_assign %}
+    {% for artist in illustration.illustrators.all %}{% if artist.email %}<p>{{ artist }}: <a href="mailto:{{ artist.email }}">{{ artist.email }}</a></p>{% endif %}{% endfor %}
+    {% if illustration.manual_illustrator_email %}<p>E-mail ilustratora: <a href="mailto:{{ illustration.manual_illustrator_email }}">{{ illustration.manual_illustrator_email }}</a></p>{% endif %}
+    {% endif %}
     <p>Data przypisania: {{ illustration.assigned_at|date:"d.m.Y"|default:"Brak daty" }}</p>
     {% if can_edit %}
     <form method="post" class="illustration-edit-form" data-warn-unsaved>
         {% csrf_token %}<input type="hidden" name="action" value="assignment">{{ forms.assignment.version }}
         {{ forms.assignment.non_field_errors }}{{ forms.assignment.version.errors }}
-        {% if can_assign %}<div class="form-field"><label for="illustrator-search">Wyszukaj ilustratora</label><input type="search" id="illustrator-search" placeholder="Wpisz imię lub nazwisko" aria-controls="id_illustrator"><p id="illustrator-search-count" aria-live="polite"></p></div><div class="form-field">{{ forms.assignment.illustrator.label_tag }}{{ forms.assignment.illustrator }}{{ forms.assignment.illustrator.errors }}</div><p>Wybierz wpis ze spisu ilustratorów albo pozostaw pusty wybór i wpisz dane ręcznie. Spis jest niezależny od kont i profili zespołu.</p><div class="form-field">{{ forms.assignment.manual_illustrator_name.label_tag }}{{ forms.assignment.manual_illustrator_name }}{{ forms.assignment.manual_illustrator_name.errors }}</div><div class="form-field">{{ forms.assignment.manual_illustrator_email.label_tag }}{{ forms.assignment.manual_illustrator_email }}{{ forms.assignment.manual_illustrator_email.errors }}</div>{% endif %}
+        {% if can_assign %}<div class="form-field"><label for="illustrator-search">Wyszukaj ilustratora</label><input type="search" id="illustrator-search" placeholder="Wpisz imię lub nazwisko" aria-controls="id_illustrators"><p id="illustrator-search-count" aria-live="polite"></p></div><div class="form-field">{{ forms.assignment.illustrators.label_tag }}{{ forms.assignment.illustrators }}{{ forms.assignment.illustrators.errors }}</div><p>Zaznacz jedną lub kilka osób ze spisu ilustratorów albo pozostaw pusty wybór i wpisz dane ręcznie. Spis jest niezależny od kont i profili zespołu.</p><div class="form-field">{{ forms.assignment.manual_illustrator_name.label_tag }}{{ forms.assignment.manual_illustrator_name }}{{ forms.assignment.manual_illustrator_name.errors }}</div><div class="form-field">{{ forms.assignment.manual_illustrator_email.label_tag }}{{ forms.assignment.manual_illustrator_email }}{{ forms.assignment.manual_illustrator_email.errors }}</div>{% endif %}
         <div class="form-field">{{ forms.assignment.status.label_tag }}{{ forms.assignment.status }}{{ forms.assignment.status.errors }}</div>
         <button type="submit" class="primary-button">Zapisz przypisanie i status</button>
     </form>

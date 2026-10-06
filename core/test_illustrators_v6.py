@@ -102,7 +102,7 @@ class IllustratorDirectoryTests(TestCase):
         book=Anthology.objects.create(title='Nowa',has_illustrations=True)
         text=Text.objects.create(title='Tekst',anthology=book,length=100)
         form=AssignmentForm(instance=Illustration.objects.get(text=text),can_assign=True)
-        self.assertIn(person,form.fields['illustrator'].queryset)
+        self.assertIn(person,form.fields['illustrators'].queryset)
 
     def test_manual_edit_and_unchecked_cover_persist(self):
         response=self.client.post(self.edit_url,self.data(version=self.token(),covers=''))
@@ -164,14 +164,14 @@ class IllustratorDirectoryTests(TestCase):
         book=Anthology.objects.create(title='Dawna praca',has_illustrations=True)
         story=Text.objects.create(title='Zachowane przypisanie',anthology=book,length=100)
         illustration=Illustration.objects.get(text=story)
-        illustration.illustrator=self.manual;illustration.status='assigned';illustration.save()
+        illustration.set_artists([self.manual],status='assigned')
         self.manual.is_active=False;self.manual.save()
         response=self.client.get(self.list_url,{'q':'krajobrazy'})
         self.assertEqual(response.context['page_obj'].paginator.count,0)
         self.assertEqual(self.client.get(self.edit_url).status_code,200)
-        self.assertIn(self.manual,AssignmentForm(instance=illustration,can_assign=True).fields['illustrator'].queryset)
-        self.assertNotIn(self.manual,AssignmentForm(instance=Illustration(),can_assign=True).fields['illustrator'].queryset)
-        illustration.refresh_from_db();self.assertEqual(illustration.illustrator_id,self.manual.pk)
+        self.assertIn(self.manual,AssignmentForm(instance=illustration,can_assign=True).fields['illustrators'].queryset)
+        self.assertNotIn(self.manual,AssignmentForm(instance=Illustration(),can_assign=True).fields['illustrators'].queryset)
+        illustration.refresh_from_db();self.assertEqual(list(illustration.illustrators.all()),[self.manual])
 
     def test_blank_emails_and_portfolios_are_optional(self):
         for name in ('Pierwszy','Drugi'):
