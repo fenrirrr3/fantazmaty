@@ -5,7 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     const sizes = [25, 50, 100, 250, 500];
     document.querySelectorAll('main table').forEach((table, index) => {
-        if (table.dataset.serverPaginated === 'true' || table.id === 'result_list' || !table.tBodies.length) return;
+        if (table.dataset.pagination === 'off' || table.dataset.serverPaginated === 'true' || table.id === 'result_list' || !table.tBodies.length) return;
         if (table.dataset.localPagination === 'ready') return;
         table.dataset.localPagination = 'ready';
         table.id ||= `cms-local-table-${index}`;

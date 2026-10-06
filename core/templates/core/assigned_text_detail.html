@@ -132,7 +132,7 @@
             aria-label="Bieżące etapy tekstu"
             tabindex="0"
         >
-            <table data-copy-table>
+            <table{% if is_novel %} data-pagination="off"{% endif %} data-copy-table>
                 <caption class="visually-hidden">Bieżące etapy pracy nad tekstem</caption>
                 <thead>
                     <tr>
@@ -629,7 +629,7 @@
                 aria-label="Historia pracy nad tekstem"
                 tabindex="0"
             >
-                <table data-copy-table>
+                <table{% if is_novel %} data-pagination="off"{% endif %} data-copy-table>
                     <caption class="visually-hidden">
                         Pozostałe etapy bieżącego cyklu i wcześniejsze cykle
                     </caption>

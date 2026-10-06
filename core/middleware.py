@@ -154,8 +154,12 @@ class EditingMiddleware:
             # A standalone note edit (including a move) takes the same parent
             # locks as the Text inline, in PK order and before locking the note.
             if writing and match.namespace == 'admin':
-                from texts.models import Text, TextNote
+                from texts.models import Anthology, NovelProfile, Text, TextNote
                 model_admin = getattr(match.func, 'model_admin', None)
+                if getattr(model_admin, 'model', None) is NovelProfile and pk:
+                    book_id = NovelProfile.objects.filter(pk=pk).values_list('anthology_id', flat=True).first()
+                    list(Text.objects.select_for_update().filter(anthology_id=book_id).order_by('pk'))
+                    list(Anthology.objects.select_for_update().filter(pk=book_id))
                 if getattr(model_admin, 'model', None) is TextNote:
                     parent_ids = {pk} if model is Text and pk else set()
                     raw_target = request.POST.get('text', '')

@@ -19,7 +19,7 @@
     <link rel="stylesheet" href="{% static 'core/components.css' %}?v=28">
     <link rel="stylesheet" href="{% static 'core/dropbox-folder-chooser.css' %}">
     <link rel="stylesheet" href="{% static 'core/pagination.css' %}?v=19">
-    <link rel="stylesheet" href="{% static 'core/novels.css' %}?v=29">
+    <link rel="stylesheet" href="{% static 'core/novels.css' %}?v=30">
     {% block extra_css %}{% endblock %}
 
 </head>
@@ -105,7 +105,7 @@
 
     <script src="{% static 'core/layout.js' %}" defer></script>
     <script src="{% static 'core/header-search.js' %}?v=1" defer></script>
-    <script src="{% static 'core/pagination.js' %}?v=19"></script>
+    <script src="{% static 'core/pagination.js' %}?v=30"></script>
     {% if user.is_authenticated %}<span hidden data-vocabulary-endpoint="{% url 'core:vocabulary_suggestions' %}"></span><script src="{% static 'core/vocabulary.js' %}?v=29" defer></script>{% endif %}
     {% block scripts %}{% endblock %}
 </body>

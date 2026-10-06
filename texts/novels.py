@@ -7,7 +7,6 @@ from contextlib import contextmanager
 from django.core import signing
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
-from django.utils import timezone
 
 from core.permissions import is_coordinator
 from core.workflow_events import track_workflow
@@ -37,14 +36,6 @@ def parse_chapter_numbers(value):
     return sorted(numbers)
 
 
-def chapter_ids_for_numbers(book, numbers):
-    matched = dict(Text.objects.filter(anthology=book, chapter_number__in=numbers).values_list('chapter_number', 'pk'))
-    missing = sorted(set(numbers) - matched.keys())
-    if missing:
-        raise ValidationError('Najpierw dodaj brakujące rozdziały: ' + ', '.join(map(str, missing)) + '.')
-    return list(matched.values())
-
-
 def add_chapters(book, profile, numbers):
     require_open(book)
     existing = set(Text.objects.filter(anthology=book, chapter_number__in=numbers).values_list('chapter_number', flat=True))
@@ -55,7 +46,7 @@ def add_chapters(book, profile, numbers):
 
 
 def signature(book):
-    """Includes workflow, membership, order and metadata, never the approval itself."""
+    """Snapshot of workflow, membership, order and metadata for concurrent edits."""
     profile = NovelProfile.objects.filter(anthology=book).values(
         'tags', 'genre', 'content_warnings', 'notes', 'file_url').first()
     data = {
@@ -67,8 +58,6 @@ def signature(book):
         'assignments': list(WorkflowRoleAssignment.objects.filter(text__anthology=book).order_by('pk').values()),
         'tasks': list(book.production_tasks.order_by('pk').values()),
     }
-    # Switching the book to ready must not invalidate its own approval.
-    data['book'].pop('status', None)
     return hashlib.sha256(json.dumps(data, sort_keys=True, default=str, ensure_ascii=False).encode()).hexdigest()
 
 
@@ -116,22 +105,8 @@ def chapters_ready(book):
 
 
 def validate_ready_novel(book):
-    profile = NovelProfile.objects.filter(anthology=book).first()
     if not chapters_ready(book):
         raise ValidationError('Powieść musi mieć ukończone wszystkie niewycofane rozdziały.')
-    if not profile or not profile.approved_signature or profile.approved_signature != signature(book):
-        raise ValidationError('Zatwierdź końcową kontrolę spójności powieści po ostatniej zmianie.')
-
-
-def approve(book, user):
-    require_open(book)
-    if not chapters_ready(book):
-        raise ValidationError('Najpierw zakończ wszystkie niewycofane rozdziały.')
-    profile = NovelProfile.objects.get(anthology=book)
-    profile.approved_signature = signature(book)
-    profile.approved_at = timezone.now()
-    profile.approved_by = user
-    profile.save(update_fields=['approved_signature', 'approved_at', 'approved_by'])
 
 
 def sync_metadata(book, profile):

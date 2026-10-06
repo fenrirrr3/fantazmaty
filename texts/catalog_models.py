@@ -2,7 +2,6 @@
 import hashlib
 import unicodedata
 
-from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 
@@ -59,9 +58,6 @@ class NovelProfile(models.Model):
     content_warnings = models.TextField('trigger warningi', blank=True)
     file_url = models.URLField('folder powieści', max_length=1000, blank=True)
     notes = models.TextField('ustalenia i notatki do całej powieści', blank=True)
-    approved_signature = models.CharField(max_length=64, blank=True, editable=False)
-    approved_at = models.DateTimeField(null=True, blank=True, editable=False)
-    approved_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, editable=False)
 
     class Meta:
         verbose_name = 'dane powieści'

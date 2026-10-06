@@ -1,31 +1,53 @@
 {% extends 'core/base.html' %}{% load static %}
 {% block title %}{{ book.title }} | Powieści{% endblock %}
 {% block content %}
-<header class="page-header"><p class="eyebrow">Powieść</p><h1 class="page-title">{{ book.title }}</h1><p class="page-description">{% for author in profile.authors.all %}{{ author.display_name }}{% if not forloop.last %}, {% endif %}{% empty %}Nie podano autora{% endfor %} · {{ book.get_status_display }}</p><a class="secondary-button" href="{% url 'core:novel_list' %}">Wróć do powieści</a></header>
+<header class="page-header">
+<p class="eyebrow">Powieść</p><h1 class="page-title">{{ book.title }}</h1>
+<p class="page-description">{% for author in profile.authors.all %}{{ author.display_name }}{% if not forloop.last %}, {% endif %}{% empty %}Nie podano autora{% endfor %} · {{ book.get_status_display }}</p>
+<a class="secondary-button" href="{% url 'core:novel_list' %}">Wróć do powieści</a>
+{% if user.is_superuser and profile %}<a class="secondary-button" href="{% url 'admin:texts_novelprofile_change' profile.pk %}">Edytuj dane w panelu admina</a>{% endif %}
+</header>
 {% if error %}<div class="message error" role="alert">{{ error }}</div>{% endif %}
-<section class="card"><div class="card-body"><h2>Dane całej powieści</h2><p><strong>Tagi:</strong> {{ profile.tags|default:'Brak' }}</p><p><strong>Gatunek:</strong> {{ profile.genre|default:'Brak' }}</p><p><strong>Trigger warningi:</strong> {{ profile.content_warnings|default:'Brak' }}</p>{% if profile.file_url %}<a class="secondary-button" href="{{ profile.file_url }}" target="_blank" rel="noopener noreferrer">Folder powieści</a>{% endif %}<p>{{ profile.notes|linebreaksbr }}</p>
-{% if coordinator and is_open %}<details class="form-disclosure"><summary>Edytuj dane i autorów powieści</summary><p>Autorzy, tagi i gatunki zostaną uzupełnione także we wszystkich rozdziałach.</p><form method="post" class="intake-form" data-warn-unsaved>{% csrf_token %}<input type="hidden" name="novel_token" value="{{ novel_token }}"><input type="hidden" name="action" value="metadata">{% include "core/novels/metadata_fields.html" with form=metadata_form %}<button class="primary-button">Zapisz dane powieści</button></form></details>{% endif %}</div></section>
-<section class="card"><div class="card-body"><h2>Rozdziały</h2>
-{% if coordinator and is_open %}
-<form method="post" class="intake-form novel-chapter-add" data-warn-unsaved>
-{% csrf_token %}<input type="hidden" name="novel_token" value="{{ novel_token }}"><input type="hidden" name="action" value="chapters">
-<h3>Dodaj rozdziały do tabeli</h3>{{ chapter_range_form.as_p }}
-<p class="muted-text">Istniejące numery pozostaną bez zmian. Każdy nowy rozdział otrzyma własny workflow i autorów powieści.</p>
-<button class="primary-button" type="submit">Dodaj rozdziały</button></form>
-{% endif %}<form method="get" class="filters-form novel-chapter-filters"><div class="filter-field"><label for="chapter-q">Numer rozdziału</label><input type="search" id="chapter-q" name="q" value="{{ q }}"></div><div class="filter-actions"><button class="primary-button" type="submit">Szukaj</button><a class="secondary-button" href="{% url 'core:novel_detail' book.pk %}">Wyczyść</a></div></form>
-{% if coordinator and is_open %}<form method="post" class="intake-form" id="chapter-assign">{% csrf_token %}<input type="hidden" name="novel_token" value="{{ novel_token }}"><input type="hidden" name="action" value="assign">
-<label class="novel-select-all"><input type="checkbox" data-select-chapters> Zaznacz rozdziały na tej stronie</label>{% endif %}
-<div class="table-container" tabindex="0" role="region" aria-label="Tabela rozdziałów"><table class="data-table" data-server-paginated="true"><thead><tr>{% if coordinator and is_open %}<th>Wybierz</th>{% endif %}<th>Rozdział</th><th>Status</th><th>Przypisania</th>{% if coordinator and is_open %}<th>Edycja</th>{% endif %}</tr></thead><tbody>{% for row in rows %}<tr class="workflow-stage-row" data-stage="{{ row.chapter.current_stage_type|default:'none' }}">{% if coordinator and is_open %}<td><input type="checkbox" name="chapters" value="{{ row.chapter.pk }}" aria-label="Wybierz rozdział {{ row.chapter.chapter_number }}" {% if row.chapter.pk in selected_chapter_ids %}checked{% endif %}></td>{% endif %}<td><strong><a href="{% url 'core:assigned_text_detail' row.chapter.pk %}">Rozdział {{ row.chapter.chapter_number }}</a></strong></td><td><span class="workflow-stage-badge" data-stage="{{ row.chapter.current_stage_type }}">{{ row.status }}</span></td><td><ul class="novel-assignments">{% for assignment in row.assignments %}<li>{{ assignment.get_role_display }}: {{ assignment.assigned_to.person_profile|default:assignment.assigned_to }}{% if assignment.execution_number > 1 %} (wyk. {{ assignment.execution_number }}){% endif %}</li>{% empty %}<li>Brak przypisań</li>{% endfor %}</ul></td>{% if coordinator and is_open %}<td><a href="{% url 'core:chapter_edit' book.pk row.chapter.pk %}">Edytuj rozdział</a></td>{% endif %}</tr>{% empty %}<tr><td colspan="5">Brak rozdziałów.</td></tr>{% endfor %}</tbody></table></div>
-{% if coordinator and is_open %}<h3>Masowy przydział do rozdziałów</h3>
-<div class="form-field"><label for="chapter-selection">Numery lub zakresy rozdziałów do przydziału</label>
-<input type="text" name="chapter_selection" id="chapter-selection" value="{{ chapter_selection }}" maxlength="4000" placeholder="np. 1–2, 4–7" aria-describedby="chapter-selection-help">
-<p class="muted-text" id="chapter-selection-help">Zakres obejmuje całą powieść, także inne strony tabeli. Dołączymy również rozdziały zaznaczone powyżej. Pozostaw pole puste, aby użyć samych zaznaczeń.</p></div><p>Wybierz jedną lub kilka par rola–wykonawca. Przydział rezerwuje pracę; nie rozpoczyna ani nie kończy etapów. Zajęta rola lub zakończona praca zatrzyma całą operację. Zmiany wykonawcy i wznowienia są dostępne w podglądzie rozdziału.</p>{{ assignment_forms.management_form }}{{ assignment_forms.non_form_errors }}<div class="novel-assignment-grid">{% for form in assignment_forms %}<fieldset><legend>Przydział {{ forloop.counter }}</legend>{{ form.as_p }}</fieldset>{% endfor %}</div><button class="primary-button">Przypisz wybrane rozdziały</button></form>{% endif %}
-{% include 'core/includes/pagination.html' %}
+<section class="card"><div class="card-body"><h2>Dane całej powieści</h2>
+<p><strong>Tagi:</strong> {{ profile.tags|default:'Brak' }}</p><p><strong>Gatunek:</strong> {{ profile.genre|default:'Brak' }}</p><p><strong>Trigger warningi:</strong> {{ profile.content_warnings|default:'Brak' }}</p>
+{% if profile.file_url %}<a class="secondary-button" href="{{ profile.file_url }}" target="_blank" rel="noopener noreferrer">Folder powieści</a>{% endif %}<p>{{ profile.notes|linebreaksbr }}</p>
 </div></section>
-{% if coordinator %}<section class="card"><div class="card-body"><h2>Zadania całej powieści</h2>{% if coordinator and is_open %}<form method="post" class="intake-form">{% csrf_token %}<input type="hidden" name="novel_token" value="{{ novel_token }}"><input type="hidden" name="action" value="production"><div class="novel-assignment-grid">{% for form in task_forms %}<fieldset><legend>{{ form.instance.get_task_type_display }}</legend>{{ form.as_p }}</fieldset>{% endfor %}</div><h3>Okładka i wydanie</h3>{{ cover_form.as_p }}<button class="primary-button">Zapisz zadania</button></form>{% else %}<ul>{% for task in book.production_tasks.all %}<li>{{ task.get_task_type_display }}: {{ task.get_status_display }}{% if task.assigned_to %} – {{ task.assigned_to }}{% endif %}</li>{% endfor %}</ul><p>Okładka: {{ book.get_cover_status_display }} – {{ book.cover_author|default:'brak wykonawcy' }}</p>{% endif %}</div></section>
+<section class="novel-chapters" aria-labelledby="novel-chapters-heading">
+<h2 id="novel-chapters-heading">Rozdziały</h2>
+<div class="novel-chapter-layout{% if not coordinator or not is_open %} novel-chapter-layout-single{% endif %}">
+{% if coordinator and is_open %}
+<section class="card novel-chapter-add" aria-labelledby="chapter-add-heading"><div class="card-body">
+<h3 id="chapter-add-heading">Dodaj rozdziały</h3><form method="post" class="intake-form" data-warn-unsaved>
+{% csrf_token %}<input type="hidden" name="novel_token" value="{{ novel_token }}"><input type="hidden" name="action" value="chapters">{{ chapter_range_form.as_p }}
+<p class="muted-text">Istniejące numery pozostaną bez zmian. Liczbę znaków możesz uzupełnić w edycji rozdziału.</p><button class="primary-button" type="submit">Dodaj do tabeli</button>
+</form></div></section>{% endif %}
+<section class="card novel-chapter-table" aria-labelledby="chapter-table-heading"><div class="card-body">
+<h3 id="chapter-table-heading">Lista rozdziałów</h3>
+<form method="get" class="filters-form novel-chapter-filters"><div class="filter-field"><label for="chapter-q">Numer rozdziału</label><input type="search" id="chapter-q" name="q" value="{{ q }}"></div><div class="filter-actions"><button class="primary-button" type="submit">Szukaj</button><a class="secondary-button" href="{% url 'core:novel_detail' book.pk %}">Wyczyść</a></div></form>
+{% if coordinator and is_open %}
+<form method="post" id="chapter-assign" class="intake-form">
+{% csrf_token %}<input type="hidden" name="novel_token" value="{{ novel_token }}"><input type="hidden" name="action" value="assign">
+<fieldset class="novel-bulk-action"><legend>Akcja masowa: dopisz członka zespołu</legend>{{ assignment_form.non_field_errors }}
+<div class="novel-bulk-fields">{% for field in assignment_form %}<div class="form-field">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}<button class="primary-button" type="submit">Zatwierdź przydział</button></div>
+<p class="muted-text">Zaznacz rozdziały w tabeli, wybierz rolę i osobę. Przydział nie rozpoczyna pracy. Zajęta rola lub zakończona praca zatrzyma całą operację.</p><p class="muted-text" data-selected-chapters role="status" aria-live="polite"></p></fieldset>
+<label class="novel-select-all"><input type="checkbox" data-select-chapters> Zaznacz rozdziały na tej stronie</label>
 {% endif %}
-<section class="card"><div class="card-body"><h2>Końcowa kontrola spójności</h2><p>{% if approved %}Zatwierdzona po ostatniej zmianie.{% else %}Wymaga zatwierdzenia. Zmiana rozdziałów, przydziałów lub danych powieści unieważnia wcześniejsze zatwierdzenie.{% endif %}</p>{% if coordinator %}<form method="post" class="intake-form">{% csrf_token %}<input type="hidden" name="novel_token" value="{{ novel_token }}">{% if is_open %}<button class="secondary-button" name="action" value="approve">Zatwierdź spójność całej powieści</button>{% if approved %}<button class="primary-button" name="action" value="finish">Oznacz powieść jako gotową</button>{% endif %}{% else %}<button class="secondary-button" name="action" value="reopen">Wznów pracę nad powieścią</button>{% endif %}</form>{% endif %}</div></section>
-<script src="{% static 'core/novels.js' %}?v=29" defer></script>
+<div class="table-container" tabindex="0" role="region" aria-label="Tabela rozdziałów"><table class="data-table" data-server-paginated="true"><thead><tr>
+{% if coordinator and is_open %}<th scope="col">Wybierz</th>{% endif %}<th scope="col">Rozdział</th><th scope="col">Znaki ze spacjami</th><th scope="col">Status</th><th scope="col">Przypisania</th>{% if coordinator and is_open %}<th scope="col">Edycja</th>{% endif %}
+</tr></thead><tbody>{% for row in rows %}<tr class="workflow-stage-row" data-stage="{{ row.chapter.current_stage_type|default:'none' }}">
+{% if coordinator and is_open %}<td><input type="checkbox" name="chapters" value="{{ row.chapter.pk }}" aria-label="Wybierz rozdział {{ row.chapter.chapter_number }}" {% if row.chapter.pk in selected_chapter_ids %}checked{% endif %}></td>{% endif %}
+<td><strong><a href="{% url 'core:assigned_text_detail' row.chapter.pk %}">Rozdział {{ row.chapter.chapter_number }}</a></strong></td><td>{{ row.chapter.length|default_if_none:'Brak danych' }}</td>
+<td><span class="workflow-stage-badge" data-stage="{{ row.chapter.current_stage_type }}">{{ row.status }}</span></td>
+<td><ul class="novel-assignments">{% for assignment in row.assignments %}<li>{{ assignment.get_role_display }}: {{ assignment.assigned_to.person_profile|default:assignment.assigned_to }}{% if assignment.execution_number > 1 %} (wyk. {{ assignment.execution_number }}){% endif %}</li>{% empty %}<li>Brak przypisań</li>{% endfor %}</ul></td>
+{% if coordinator and is_open %}<td><a href="{% url 'core:chapter_edit' book.pk row.chapter.pk %}">Edytuj</a></td>{% endif %}
+</tr>{% empty %}<tr><td colspan="6">Brak rozdziałów.</td></tr>{% endfor %}</tbody></table></div>
+{% if coordinator and is_open %}</form>{% endif %}
+{% include 'core/includes/pagination.html' %}
+</div></section></div></section>
+{% if coordinator %}<section class="card"><div class="card-body"><h2>Zadania całej powieści</h2>
+{% if is_open %}<form method="post" class="intake-form">{% csrf_token %}<input type="hidden" name="novel_token" value="{{ novel_token }}"><input type="hidden" name="action" value="production"><div class="novel-assignment-grid">{% for form in task_forms %}<fieldset><legend>{{ form.instance.get_task_type_display }}</legend>{{ form.as_p }}</fieldset>{% endfor %}</div><h3>Okładka i wydanie</h3>{{ cover_form.as_p }}<button class="primary-button">Zapisz zadania</button></form>
+{% else %}<ul>{% for task in book.production_tasks.all %}<li>{{ task.get_task_type_display }}: {{ task.get_status_display }}{% if task.assigned_to %} – {{ task.assigned_to }}{% endif %}</li>{% endfor %}</ul><p>Okładka: {{ book.get_cover_status_display }} – {{ book.cover_author|default:'brak wykonawcy' }}</p>{% endif %}
+<form method="post" class="intake-form novel-status-action">{% csrf_token %}<input type="hidden" name="novel_token" value="{{ novel_token }}">{% if is_open %}<button class="secondary-button" name="action" value="finish">Oznacz powieść jako gotową</button>{% else %}<button class="secondary-button" name="action" value="reopen">Wznów pracę nad powieścią</button>{% endif %}</form>
+</div></section>{% endif %}
 {% endblock %}
-
-{% block scripts %}<script src="{% static 'core/person-select.js' %}?v=28"></script>{% endblock %}
+{% block scripts %}<script src="{% static 'core/person-select.js' %}?v=28"></script><script src="{% static 'core/novels.js' %}?v=30"></script>{% endblock %}

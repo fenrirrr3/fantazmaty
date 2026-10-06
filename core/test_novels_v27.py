@@ -12,7 +12,7 @@ from django.utils import timezone
 from authors.models import Author
 from core.selectors.texts import my_texts_context, text_list_context
 from texts.models import Anthology, NovelProfile, Text, VocabularyTerm
-from texts.novels import new_chapter, edit_token, locked_book, assign_chapters, approve, validate_ready_novel
+from texts.novels import new_chapter, edit_token, locked_book, assign_chapters, validate_ready_novel
 from texts.vocabulary import canonicalize, merge_plan, merge_token, apply_merge
 from workflow.models import WorkflowStage, WorkflowRoleAssignment
 from workflow.tests import create_member
@@ -141,13 +141,13 @@ class NovelTests(TestCase):
         with self.assertRaises(ValidationError):
             self.book.full_clean()
 
-    def test_form_bulk_and_metadata_sync(self):
-        data = {'action': 'assign', 'chapters': [self.first.pk, self.second.pk], 'assign-TOTAL_FORMS': 1, 'assign-INITIAL_FORMS': 0,
-                'assign-0-role': 'editor', 'assign-0-assignee': self.editor.pk}
+    def test_form_bulk_and_removed_frontend_metadata(self):
+        data = {'action': 'assign', 'chapters': [self.first.pk, self.second.pk],
+                'assign-role': 'editor', 'assign-assignee': self.editor.pk}
         self.assertEqual(self.post(**data).status_code, 302)
-        self.assertEqual(self.post(action='metadata', title=self.book.title, authors=[self.author.pk], tags='smoki', genre='fantasy').status_code, 302)
+        self.assertEqual(self.post(action='metadata', title=self.book.title, authors=[self.author.pk], tags='smoki', genre='fantasy').status_code, 400)
         self.first.refresh_from_db()
-        self.assertEqual(self.first.tags, 'smoki')
+        self.assertEqual(self.first.tags, 'magia')
 
     def test_permissions_csrf_and_pseudonyms(self):
         self.client.force_login(self.member)
@@ -169,27 +169,19 @@ class NovelTests(TestCase):
         response = self.client.get(reverse('core:assigned_text_detail', args=[self.first.pk]))
         self.assertContains(response, 'Wróć do powieści')
 
-    def test_final_approval_requires_ready_chapters_and_expires_on_change(self):
-        with self.assertRaises(ValidationError):
-            approve(self.book, self.admin)
+    def test_finishing_requires_completed_chapters_without_extra_approval(self):
+        self.assertEqual(self.post(action='finish').status_code, 400)
+        self.assertEqual(self.post(action='approve').status_code, 400)
         for chapter in (self.first, self.second):
             chapter.workflow_stages.update(is_current=False)
-            # READY is a terminal marker, not an is_completed task in existing workflow.
             WorkflowStage.objects.create(text=chapter, stage_type='ready')
-        approve(self.book, self.admin)
         validate_ready_novel(self.book)
         self.assertEqual(self.post(action='finish').status_code, 302)
         self.book.refresh_from_db()
         self.assertEqual(self.book.status, 'ready')
         self.assertEqual(self.post(action='reopen').status_code, 302)
         self.book.refresh_from_db()
-        with self.assertRaises(ValidationError):
-            validate_ready_novel(self.book)
-        approve(self.book, self.admin)
-        self.first.coordinator_note = 'Nowe ustalenia'
-        self.first.save(update_fields=['coordinator_note'])
-        with self.assertRaises(ValidationError):
-            validate_ready_novel(self.book)
+        self.assertEqual(self.book.status, 'in_preparation')
 
 
 class VocabularyTests(TestCase):

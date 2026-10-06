@@ -73,10 +73,12 @@ class NovelForm(forms.ModelForm):
 
 class ChapterForm(forms.ModelForm):
     chapter_number = forms.IntegerField(label='Numer rozdziału', min_value=1)
+    length = forms.IntegerField(label='Liczba znaków ze spacjami', min_value=1, required=False,
+                               help_text='Pozostaw puste, jeśli długość nie jest jeszcze znana.')
 
     class Meta:
         model = Text
-        fields = ('chapter_number',)
+        fields = ('chapter_number', 'length')
 
 
 class ChapterRangeForm(forms.Form):
@@ -95,8 +97,8 @@ class AssigneeChoices(forms.ModelChoiceField):
 
 
 class AssignmentForm(forms.Form):
-    role = forms.ChoiceField(label='Rola / etap', choices=(), required=False)
-    assignee = AssigneeChoices(label='Wykonawca', queryset=get_user_model().objects.none(), required=False,
+    role = forms.ChoiceField(label='Dopisz do roli', choices=())
+    assignee = AssigneeChoices(label='Członek zespołu', queryset=get_user_model().objects.none(),
                              widget=forms.Select(attrs={'data-searchable-person': 'true'}))
 
     def __init__(self, *args, **kwargs):
@@ -112,9 +114,6 @@ class AssignmentForm(forms.Form):
         if bool(data.get('role')) != bool(data.get('assignee')):
             raise forms.ValidationError('Wybierz zarówno rolę, jak i wykonawcę z uprawnieniami do tej roli.')
         return data
-
-
-AssignmentForms = forms.formset_factory(AssignmentForm, extra=4, max_num=10, validate_max=True, absolute_max=10)
 
 
 class CoverForm(forms.ModelForm):

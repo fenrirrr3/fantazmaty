@@ -1,7 +1,6 @@
 from django import forms
 from django.contrib import admin
 from django.contrib.admin.utils import unquote
-from django.core import signing
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import router, transaction
 from django.forms.models import BaseInlineFormSet
@@ -15,7 +14,7 @@ from django.utils import timezone
 from authors.admin import SuperuserOnlyAdminMixin
 from authors.models import Author
 from people.models import Person
-from core.normalization import NormalizedFormMixin, REVIEW_FIELDS, TEXT_FIELDS
+from core.normalization import NormalizedFormMixin, TEXT_FIELDS
 from workflow.models import WorkflowRoleAssignment, WorkflowStage
 from workflow.catalog import IMPORT_ONLY_STAGE_TYPES
 
@@ -267,7 +266,7 @@ class TextAdminForm(NormalizedFormMixin, forms.ModelForm):
         if 'length' in self.fields:
             self.fields['length'].required = not novel
         if novel:
-            for name in ('title', 'length', 'file_url', 'content_warnings'):
+            for name in ('title', 'file_url', 'content_warnings'):
                 if name in self.fields:
                     self.fields[name].required = False
                     self.fields[name].disabled = True
@@ -498,7 +497,7 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             return fieldsets
         confirmations = {'source_contract_received', 'source_coauthor_contracts', 'source_update_author_phone'}
         if obj and obj.anthology_id and obj.anthology.is_novel:
-            confirmations.update({'title', 'length', 'file_url', 'content_warnings'})
+            confirmations.update({'title', 'file_url', 'content_warnings'})
         if obj and obj.anthology_id and obj.anthology.is_translated:
             confirmations.add('authors')
         return tuple((name, {**options, 'fields': tuple(field for field in options['fields'] if field not in confirmations)})
