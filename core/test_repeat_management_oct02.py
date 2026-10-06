@@ -134,8 +134,11 @@ class RepeatManagementOctoberTests(StatusAssignmentFixtures):
         self.book.status = 'ready'
         self.book.save()
         self.client.force_login(self.admin)
-        self.assertContains(self.client.get(reverse('core:assigned_text_detail', args=[self.text.pk])),
-                            'Zarządzanie etapami')
+        response = self.client.get(reverse('core:assigned_text_detail', args=[self.text.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'Zarządzanie etapami')
+        self.assertNotContains(response, 'Pokaż kolejkę powtórzeń')
+        self.assertContains(response, reverse('admin:texts_text_change', args=[self.text.pk]))
         run = self.change()
         self.book.refresh_from_db()
         self.assertEqual(self.book.status, 'in_preparation')

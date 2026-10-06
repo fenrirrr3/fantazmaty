@@ -1,7 +1,7 @@
 {% extends "core/base.html" %}
 {% load static %}
 {% block title %}Ilustracja: {{ illustration.text.title }} | Fantazmaty CMS{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'core/illustrations.css' %}">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/illustrations.css' %}?v=34">{% endblock %}
 {% block content %}
 <header class="page-header">
     <h1 class="page-title">Ilustracja: {{ illustration.text.title }}</h1>
@@ -28,7 +28,24 @@
     <form method="post" class="illustration-edit-form" data-warn-unsaved>
         {% csrf_token %}<input type="hidden" name="action" value="assignment">{{ forms.assignment.version }}
         {{ forms.assignment.non_field_errors }}{{ forms.assignment.version.errors }}
-        {% if can_assign %}<div class="form-field"><label for="illustrator-search">Wyszukaj ilustratora</label><input type="search" id="illustrator-search" placeholder="Wpisz imię lub nazwisko" aria-controls="id_illustrators"><p id="illustrator-search-count" aria-live="polite"></p></div><div class="form-field">{{ forms.assignment.illustrators.label_tag }}{{ forms.assignment.illustrators }}{{ forms.assignment.illustrators.errors }}</div><p>Zaznacz jedną lub kilka osób ze spisu ilustratorów albo pozostaw pusty wybór i wpisz dane ręcznie. Spis jest niezależny od kont i profili zespołu.</p><div class="form-field">{{ forms.assignment.manual_illustrator_name.label_tag }}{{ forms.assignment.manual_illustrator_name }}{{ forms.assignment.manual_illustrator_name.errors }}</div><div class="form-field">{{ forms.assignment.manual_illustrator_email.label_tag }}{{ forms.assignment.manual_illustrator_email }}{{ forms.assignment.manual_illustrator_email.errors }}</div>{% endif %}
+        {% if can_assign %}
+        <div class="illustrator-picker" data-illustrator-picker>
+            <div class="form-field">
+                <label for="illustrator-search">Wyszukaj ilustratora</label>
+                <input type="search" id="illustrator-search" autocomplete="off" placeholder="Wpisz co najmniej 2 znaki" aria-controls="illustrator-search-results" aria-describedby="illustrator-search-count">
+                <p id="illustrator-search-count" class="muted-text" aria-live="polite">Wpisz imię lub nazwisko i dodaj wybraną osobę.</p>
+                <ul id="illustrator-search-results" class="illustrator-search-results" aria-label="Wyniki wyszukiwania ilustratorów" hidden></ul>
+            </div>
+            <div><p class="form-help">Wybrani ilustratorzy</p><ul id="illustrator-selected" class="illustrator-selected" aria-label="Wybrani ilustratorzy"></ul></div>
+            <div id="illustrator-source" hidden>{{ forms.assignment.illustrators }}</div>
+            {{ forms.assignment.illustrators.errors }}
+            <p class="form-help">Po dodaniu osoby wyszukaj następną. Zmiany zatwierdź przyciskiem „Zapisz przypisanie i status”.</p>
+            <noscript>Wyszukiwanie wymaga JavaScript. Dotychczasowe przypisania są zachowane; można je również zmienić w panelu admina.</noscript>
+        </div>
+        <p>Możesz też pozostawić wybór pusty i wpisać dane ręcznie. Spis jest niezależny od kont i profili zespołu.</p>
+        <div class="form-field">{{ forms.assignment.manual_illustrator_name.label_tag }}{{ forms.assignment.manual_illustrator_name }}{{ forms.assignment.manual_illustrator_name.errors }}</div>
+        <div class="form-field">{{ forms.assignment.manual_illustrator_email.label_tag }}{{ forms.assignment.manual_illustrator_email }}{{ forms.assignment.manual_illustrator_email.errors }}</div>
+        {% endif %}
         <div class="form-field">{{ forms.assignment.status.label_tag }}{{ forms.assignment.status }}{{ forms.assignment.status.errors }}</div>
         <button type="submit" class="primary-button">Zapisz przypisanie i status</button>
     </form>
@@ -63,4 +80,4 @@
 {% if can_assign %}<form method="post" class="illustration-edit-form" data-warn-unsaved>{% csrf_token %}<input type="hidden" name="action" value="coordinator_notes">{{ forms.coordinator_notes.as_p }}<button type="submit" class="secondary-button">Zapisz uwagi</button></form>
 {% else %}<p>{{ illustration.coordinator_notes|default:"Brak uwag"|linebreaksbr }}</p>{% endif %}</div></section>
 {% endblock %}
-{% block scripts %}<script src="{% static 'core/illustrator_search.js' %}" defer></script>{% endblock %}
+{% block scripts %}<script src="{% static 'core/illustrator_search.js' %}?v=34" defer></script>{% endblock %}

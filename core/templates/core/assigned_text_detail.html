@@ -4,7 +4,7 @@
 {% block title %}{{ text.title }} | Fantazmaty CMS{% endblock %}
 
 
-{% block extra_css %}<link rel="stylesheet" href="{% static 'core/tags.css' %}"><link rel="stylesheet" href="{% static 'core/text-production.css' %}?v=18">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/tags.css' %}"><link rel="stylesheet" href="{% static 'core/text-production.css' %}?v=34">{% endblock %}
 
 {% block content %}
     {% now "Y-m-d" as today_iso %}
@@ -615,8 +615,30 @@
             </div>
         </details>
 
+    {% if can_cancel_repetition %}<form method="post" action="{% url 'core:cancel_workflow_repetition' text.pk open_repetition.pk %}" data-confirm-delete="Anulować niepodjęte powtórzenie i przywrócić poprzedni stan?">{% csrf_token %}{% edit_version %}<button type="submit" class="secondary-button">Anuluj niepodjęte powtórzenie</button><p class="form-help">Dostępne, jeśli nie rozpoczęto ani nie zarezerwowano pracy.</p></form>{% endif %}
+    {% if can_view_stage_history or request.user.is_superuser and can_manage_workflow and not is_ready and not is_withdrawn %}
+    <div class="text-detail-pair" data-detail-pair="workflow">
+    {% if request.user.is_superuser and can_manage_workflow and not is_ready and not is_withdrawn %}
+        <details class="text-management-card work-handoff-card" id="text-handoff">
+            <summary class="text-management-toggle">
+                <span>Przekazanie pracy</span>
+                <span class="dropdown-arrow" aria-hidden="true">▾</span>
+            </summary>
+            <div class="text-management-content">
+                {% for stage in handoff_stages %}
+                        <div class="management-action">
+                            <div class="management-action-description">
+                                <h3>{{ stage.get_stage_type_display }}</h3>
+                            </div>
+                            <a class="secondary-button work-handoff-link" href="{% url 'core:handoff_workflow_stage' stage.pk %}">Zmień wykonawcę z zachowaniem historii</a>
+                        </div>
+                {% empty %}<p class="muted-text">Brak przypisanych etapów, które można teraz przekazać.</p>
+                {% endfor %}
+            </div>
+        </details>
+    {% endif %}
     {% if can_view_stage_history %}
-    <details class="archived-stages">
+    <details class="archived-stages" id="text-stage-history">
         <summary>
             <span>Historia etapów</span>
             <span class="dropdown-arrow" aria-hidden="true">▾</span>
@@ -696,31 +718,15 @@
     </details>
 
     {% endif %}
-    {% if can_cancel_repetition %}<form method="post" action="{% url 'core:cancel_workflow_repetition' text.pk open_repetition.pk %}" data-confirm-delete="Anulować niepodjęte powtórzenie i przywrócić poprzedni stan?">{% csrf_token %}{% edit_version %}<button type="submit" class="secondary-button">Anuluj niepodjęte powtórzenie</button><p class="form-help">Dostępne, jeśli nie rozpoczęto ani nie zarezerwowano pracy.</p></form>{% endif %}
-    {% if request.user.is_superuser and can_manage_workflow and not is_ready and not is_withdrawn %}
-        <details class="text-management-card work-handoff-card">
-            <summary class="text-management-toggle">
-                <span>Przekazanie pracy</span>
-                <span class="dropdown-arrow" aria-hidden="true">▾</span>
-            </summary>
-            <div class="text-management-content">
-                {% for stage in handoff_stages %}
-                        <div class="management-action">
-                            <div class="management-action-description">
-                                <h3>{{ stage.get_stage_type_display }}</h3>
-                            </div>
-                            <a class="secondary-button work-handoff-link" href="{% url 'core:handoff_workflow_stage' stage.pk %}">Zmień wykonawcę z zachowaniem historii</a>
-                        </div>
-                {% empty %}<p class="muted-text">Brak przypisanych etapów, które można teraz przekazać.</p>
-                {% endfor %}
-            </div>
-        </details>
+    </div>
     {% endif %}
     {% if handoffs %}<section class="card"><div class="card-body"><h2>Historia przekazania pracy</h2>{% for item in handoffs %}<p>{{ item.stage.get_stage_type_display }}: {{ item.previous_assignment.assigned_to.get_full_name }} → {{ item.new_assignment.assigned_to.get_full_name }} · {{ item.created_at|date:"d.m.Y H:i" }}<br>{{ item.reason }}</p>{% endfor %}</div></section>{% endif %}
     {% if repeat_queue %}<section class="card"><div class="card-body"><h2>Kolejka powtórzeń</h2><ol class="credits-list">{% for item in repeat_queue %}<li>{{ item.get_stage_type_display }}: {% if item.is_released %}bieżący etap{% else %}oczekuje na poprzedni etap{% endif %}</li>{% endfor %}</ol></div></section>{% endif %}
+    {% if user.is_superuser or can_manage_workflow and not is_withdrawn and not is_ready and text.anthology.status != "ready" %}
+    <div class="text-detail-pair" data-detail-pair="credits">
     {% if can_manage_workflow and not is_withdrawn and not is_ready and text.anthology.status != "ready" %}
-        <details class="text-management-card">
-            <summary class="text-management-toggle"><span>Zarządzanie tekstem</span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
+        <details class="text-management-card" id="text-withdraw">
+            <summary class="text-management-toggle"><span>Wycofaj tekst</span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
             <div class="text-management-content">
                     <div class="management-action management-action-danger">
                         <div class="management-action-description">
@@ -740,6 +746,9 @@
                     </div>
             </div>
         </details>
+    {% endif %}
+        {% include "core/includes/text_credits.html" %}
+    </div>
     {% endif %}
 {% include "core/includes/text_production.html" %}
 {% endblock %}

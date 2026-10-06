@@ -30,8 +30,9 @@ class IllustratorForm(forms.ModelForm):
 
 
 
-def directory_rows():
-    return Illustrator.objects.filter(is_active=True)
+def directory_rows(*, include_inactive=False):
+    rows = Illustrator.objects.all()
+    return rows if include_inactive else rows.filter(is_active=True)
 
 
 def check_access(user):
@@ -57,12 +58,13 @@ def matches(token, user, person):
 def illustrator_list(request):
     check_access(request.user)
     query = request.GET.get('q', '').strip()[:200]
-    rows = directory_rows().order_by('last_name', 'first_name', 'pk')
+    show_inactive = request.GET.get('show_inactive') == '1'
+    rows = directory_rows(include_inactive=show_inactive).order_by('last_name', 'first_name', 'pk')
     if query:
         rows = rows.filter(Q(first_name__plcontains=query) | Q(last_name__plcontains=query)
                            | Q(email__icontains=query) | Q(preferences__plcontains=query))
     page = paginate_queryset(request, rows)
-    return render(request, 'core/illustrator_list.html', {'page_obj': page, 'query': query})
+    return render(request, 'core/illustrator_list.html', {'page_obj': page, 'query': query, 'show_inactive': show_inactive})
 
 
 @never_cache

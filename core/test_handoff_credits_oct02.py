@@ -66,6 +66,6 @@ class HandoffCreditTests(StatusAssignmentFixtures):
         self.client.force_login(self.admin)
         response = self.client.get(reverse('core:assigned_text_detail', args=[self.text.pk]))
         self.assertEqual(response.status_code, 200)
-        section = response.content.decode().split('id="text-credits"', 1)[1].split('</section>', 1)[0]
+        section = response.content.decode().split('id="text-credits"', 1)[1].split('</details>', 1)[0]
         self.assertEqual(section.count('Anna Test'), 1)
         self.assertEqual(section.count('Jan Test'), 1)

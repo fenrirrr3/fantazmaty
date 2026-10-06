@@ -15,3 +15,12 @@
 .illustrator-choices label { display: flex; align-items: center; gap: .6rem; padding: .35rem; }
 .illustrator-choices input[type="checkbox"] { width: auto; flex: 0 0 auto; }
 .illustrator-choices [hidden] { display: none; }
+
+.illustrator-picker [hidden] { display: none !important; }
+.illustrator-picker { display: grid; gap: 1rem; min-width: 0; }
+.illustrator-search-results, .illustrator-selected { list-style: none; margin: 0; padding: 0; }
+.illustrator-search-results { display: grid; gap: .4rem; max-height: 18rem; overflow-y: auto; }
+.illustrator-search-results button { width: 100%; text-align: left; }
+.illustrator-selected { display: flex; flex-wrap: wrap; gap: .5rem; }
+.illustrator-selected li { display: flex; align-items: center; gap: .5rem; min-width: 0; padding: .35rem .55rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); overflow-wrap: anywhere; }
+.illustrator-selected button { padding: .25rem .5rem; }

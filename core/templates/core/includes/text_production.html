@@ -1,12 +1,5 @@
-<div class="text-production{% if is_novel or not user.is_superuser %} text-production-single{% endif %}">
-    {% if user.is_superuser %}
-    <section class="card" id="text-credits"><div class="card-body">
-        <h2>Stopka tekstu</h2>
-        <p>Uwzględnia wykonane prace, obecnych wykonawców, historię przekazań i oddane recenzje tego tekstu.</p>
-        <ul class="credits-list">{% for row in text_credits %}<li><strong>{{ row.label }}:</strong> {{ row.names|join:", "|default:"–" }}</li>{% endfor %}</ul>
-    </div></section>
-    {% endif %}
-    {% if not is_novel %}<div class="text-production-side">
+{% if not is_novel %}
+<div class="text-production">
         <section class="card" id="text-audiobook"><div class="card-body">
             <h2>Audiobook</h2>
             <form method="post" action="{% url 'core:update_text_audiobook' text.pk %}" data-warn-unsaved>
@@ -31,5 +24,5 @@
                 <p class="muted-text">Antologia nie jest oznaczona jako ilustrowana.</p>
             {% endif %}
         </div></section>
-    </div>{% endif %}
 </div>
+{% endif %}
