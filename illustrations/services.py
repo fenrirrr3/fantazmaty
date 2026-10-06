@@ -5,15 +5,21 @@ from texts.production import active_production_texts
 from .models import Illustration
 
 
-def required_texts_queryset():
-    return active_production_texts(ordinary(Text.objects)).filter(
+def illustration_texts_queryset(using='default'):
+    """Scope for new illustration links, including published anthologies."""
+    return ordinary(Text.objects.using(using)).filter(anthology__has_illustrations=True)
+
+
+def required_texts_queryset(using='default'):
+    return active_production_texts(illustration_texts_queryset(using)).filter(
         anthology__status=Anthology.Status.IN_PREPARATION,
         anthology__has_illustrations=True,
     )
 
 
-def sync_required_illustrations(anthology=None):
-    texts = required_texts_queryset()
+def sync_required_illustrations(anthology=None, using=None):
+    using = using or (anthology._state.db if anthology is not None else None) or 'default'
+    texts = required_texts_queryset(using)
 
     if anthology is not None:
         texts = texts.filter(
@@ -21,7 +27,7 @@ def sync_required_illustrations(anthology=None):
         )
 
     existing_text_ids = set(
-        ordinary(Illustration.objects)
+        ordinary(Illustration.objects.using(using))
         .filter(
             text_id__in=texts.values_list(
                 "pk",
@@ -44,7 +50,7 @@ def sync_required_illustrations(anthology=None):
     ]
 
     if missing_illustrations:
-        ordinary(Illustration.objects).bulk_create(
+        ordinary(Illustration.objects.using(using)).bulk_create(
             missing_illustrations,
             ignore_conflicts=True,
         )

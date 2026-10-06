@@ -235,7 +235,14 @@ class AnthologyTaskAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
                      'assigned_to__last_name__plcontains', 'assigned_to__email__plcontains')
     list_filter = ('task_type', 'status', 'anthology', 'anthology__status')
     autocomplete_fields = ('anthology', 'assigned_to')
-    readonly_fields = ('commissioned_at',)
+    readonly_fields = ('anthology', 'task_type', 'commissioned_at')
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
     list_select_related = ('anthology', 'assigned_to')
 
 

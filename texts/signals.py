@@ -33,10 +33,14 @@ def sync_text_translation(sender, instance, using, raw=False, **kwargs):
 def create_anthology_tasks(
     sender,
     instance,
+    using,
+    raw=False,
     **kwargs,
 ):
+    if raw:
+        return
     for task_type, _label in AnthologyTask.TaskType.choices:
-        AnthologyTask.objects.get_or_create(
+        AnthologyTask.objects.using(using).get_or_create(
             anthology=instance,
             task_type=task_type,
             defaults={

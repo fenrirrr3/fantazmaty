@@ -11,8 +11,12 @@ from .services import sync_required_illustrations
 def create_illustrations_for_anthology(
     sender,
     instance,
+    using,
+    raw=False,
     **kwargs,
 ):
+    if raw:
+        return
     if (
         instance.status == Anthology.Status.IN_PREPARATION
         and instance.has_illustrations
@@ -20,7 +24,7 @@ def create_illustrations_for_anthology(
         and not instance.is_novel
     ):
         sync_required_illustrations(
-            anthology=instance,
+            anthology=instance, using=using,
         )
 
 
@@ -28,8 +32,12 @@ def create_illustrations_for_anthology(
 def create_illustration_for_text(
     sender,
     instance,
+    using,
+    raw=False,
     **kwargs,
 ):
+    if raw:
+        return
     qualifies_for_illustration = (
         instance.anthology_id is not None
         and instance.anthology.status
@@ -40,8 +48,8 @@ def create_illustration_for_text(
     )
 
     from texts.production import active_production_texts
-    if qualifies_for_illustration and active_production_texts(Text.objects.filter(pk=instance.pk)).exists():
-        Illustration.objects.get_or_create(
+    if qualifies_for_illustration and active_production_texts(Text.objects.using(using).filter(pk=instance.pk)).exists():
+        Illustration.objects.using(using).get_or_create(
             text=instance,
             defaults={
                 "status": Illustration.Status.UNASSIGNED,

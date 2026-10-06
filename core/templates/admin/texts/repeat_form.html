@@ -1,0 +1,11 @@
+{% extends "admin/base_site.html" %}
+{% load static editing %}
+{% block content %}
+<p>Historia pozostanie zachowana. Przed zapisaniem zmian zobaczysz podgląd kolejki i wykonawców.</p>
+<form method="post" action="{% url 'core:restart_text_workflow' text.pk %}">
+    {% csrf_token %}{% edit_version %}
+    {{ form.as_p }}
+    <input type="submit" value="Przygotuj podgląd powtórzenia">
+</form>
+<script src="{% static 'core/person-select.js' %}"></script>
+{% endblock %}

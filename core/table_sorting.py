@@ -56,6 +56,8 @@ MODELS['texts.review'].update({
     'Autor':('author',('author_last_name','author_first_name')),
     'E-mail':('email',('email',)), 'Decyzja':('status',('status',)), 'Termin':('decision',('decision_at',)),
     'Informacja':('information',('old_reviews',)),
+    'Data zgłoszenia': ('created', ('created_at',)),
+    'Data powiadomienia': ('notified_at', ('author_notified_at',)),
 })
 MODELS['illustrations.illustration'] = {
     'Antologia':('anthology',('text__anthology__title',)),
@@ -63,11 +65,16 @@ MODELS['illustrations.illustration'] = {
     'Ilustratorzy':('illustrator',('artist_sort',)),
     **_columns(**{'Status':'status', 'Data przypisania':'assigned_at',
     'Ostrzeżenia dotyczące treści':'trigger_warnings', 'Opowiadanie':'story_url',
-    'Ilustrowany fragment':'illustrated_excerpt'})}
+    'Ilustrowany fragment':'illustrated_excerpt', 'Uwagi koordynatora':'coordinator_notes'})}
 MODELS['illustrations.coverproposal'] = {
     **_columns(**{'Autor ilustracji':'illustration_author','Ilustracja':'illustration_url',
     'Data zgłoszenia':'submitted_at','Status':'status','Ostatnia zmiana statusu':'status_changed_at'}),
     'Zgłoszone przez':('person',('submitted_by__last_name','submitted_by__first_name'))}
+MODELS['illustrations.illustrator'] = {
+    'Imię i nazwisko': ('person', ('last_name', 'first_name')),
+    **_columns(**{'Adres e-mail': 'email', 'Portfolio': 'portfolio',
+                  'Preferencje': 'preferences', 'Okładki': 'covers'}),
+}
 
 
 def _get(row, path):
@@ -97,6 +104,18 @@ def _sorted_rows(items, getter, reverse):
         else:
             present.append((row, _value(value)))
     return [row for row, value in sorted(present, key=lambda pair: pair[1], reverse=reverse)] + missing
+
+
+class DisplayTable:
+    """Explicit columns for small computed tables; sort before pagination."""
+    def __init__(self, items, columns):
+        self.items, self.columns = items, columns
+
+    def sort_table(self, request):
+        selected = request.GET.get('sort', '')
+        getter = next((getter for key, getter in self.columns.values() if key == selected.lstrip('-')), None)
+        rows = _sorted_rows(self.items, getter, selected.startswith('-')) if getter else self.items
+        return rows, {label: key for label, (key, _) in self.columns.items()}
 
 
 
@@ -159,6 +178,8 @@ def _extra_columns(items, queryset, request):
             'Autorzy': ('authors', lambda r: _get(r, 'authors_display')),
             'Rozpoczęcie etapu': ('stage_start', lambda r: _get(r, 'current_status_started_at')),
         })
+        if request.resolver_match and request.resolver_match.url_name in ('audiobook_list', 'audiobooks'):
+            columns['Autor'] = ('authors', lambda r: _get(r, 'authors_display'))
         if request.resolver_match and request.resolver_match.url_name == 'translation_list':
             columns['Tłumacz'] = ('translators', lambda r: _get(r, 'translators_display'))
         if 'work_active' in queryset.query.annotations:
@@ -192,11 +213,21 @@ def _extra_columns(items, queryset, request):
     if model == 'people.vacation':
         columns['Role'] = ('roles', lambda r: _joined(r.person.roles.all()))
         columns['Status'] = ('vacation_status', lambda r: 'Trwa' if r.is_active else 'Zaplanowany' if r.is_upcoming else 'Zakończony' if r.is_finished else 'Nieaktywny')
+    if model == 'texts.review':
+        columns['Autor'] = ('author', lambda r: _get(r, 'author_display_name'))
     if model == 'texts.anthology':
+        if request.resolver_match and request.resolver_match.url_name == 'novel_list':
+            columns['Autor'] = ('authors', lambda r: _joined(a.display_name for a in r.novel.authors.all()))
+            columns['Powieść'] = ('title', lambda r: r.title)
+            columns['Rozdziały'] = ('chapters', lambda r: r.chapter_count)
+            columns['Gatunek'] = ('genre', lambda r: r.novel.genre)
         columns['Skład'] = ('typesetting', lambda r: r.typesetting_task.get_status_display() if r.typesetting_task else 'Niezlecone')
     if model == 'illustrations.illustration':
-        columns['Autorzy'] = ('authors', lambda r: _joined(r.text.authors.all()))
+        columns['Autorzy'] = ('authors', lambda r: _joined(a.display_name for a in r.text.authors.all()))
+        columns['Gatunek, tagi'] = ('genre_tags', lambda r: r.genre_tags_display)
     if model == 'authors.author':
+        columns['Autor'] = ('person', lambda r: _get(r, 'display_name') or _get(r, 'pseudonym') or ' '.join((_get(r, 'first_name') or '', _get(r, 'last_name') or '')))
+        columns['Imię i nazwisko'] = columns['Autor']
         titles = {}
         if request.GET.get('sort', '').lstrip('-') == 'anthologies':
             from texts.models import Text
@@ -206,6 +237,8 @@ def _extra_columns(items, queryset, request):
     from core.permissions import can_view_author_data
     if not can_view_author_data(request.user):
         columns.pop('Autorzy', None)
+        if model == 'texts.review':
+            columns.pop('Autor', None)
     return columns
 
 def prepare_table_sort(request, items):
@@ -223,6 +256,10 @@ def prepare_table_sort(request, items):
             'Data recenzji':'opinion_at', 'Status':'review_status', 'Rodzaj przestoju':'inactivity_type', 'Od':'since', 'Liczba dni':'days'}
         if 'stage' in items[0] and 'days' in items[0]:
             candidates.update({'Antologia':'text.anthology.title', 'Tytuł':'text.title', 'Etap':'stage.get_stage_type_display'})
+        if 'task' in items[0] and 'anthology_title' in items[0]:
+            candidates.update({'Zadanie': 'name', 'Osoba': 'person', 'Status': 'status', 'Data zlecenia': 'date'})
+        if 'before' in items[0] and 'after' in items[0]:
+            candidates = {'Tekst / powieść': 'title', 'Przed': 'before', 'Po': 'after'}
         fields = {label:path for label,path in candidates.items() if path.split('.')[0] in items[0]}
         public = {'anthology_title':'anthology','text.anthology.title':'anthology','text.title':'title',
             'stage.get_stage_type_display':'status', 'author_name':'author', 'reviewer_name':'person',
@@ -241,6 +278,8 @@ def prepare_table_sort(request, items):
             columns['Działanie'] = ('last_action', ('last_action',))
     if model == 'texts.text' and 'last_status_change' in queryset.query.annotations:
         columns['Ostatnia zmiana statusu'] = ('last_status_change', ('last_status_change',))
+    if model == 'texts.text' and 'current_stage_type' in queryset.query.annotations:
+        columns['Status'] = ('status', ('current_stage_type',))
     if model == 'texts.review':
         if request.GET.get('sort', '').lstrip('-') == 'opinions' and 'completed_count' not in queryset.query.annotations:
             queryset = queryset.annotate(completed_count=Count('assignments', filter=~Q(assignments__opinion__in=('', 'reading')), distinct=True))

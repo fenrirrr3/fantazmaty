@@ -86,7 +86,11 @@ class AuditRepairsV31Tests(TestCase):
         second = new_chapter(self.book, self.book.novel, chapter_number=2)
         self.assertEqual(sync_required_illustrations(self.book), 0)
         self.assertFalse(Illustration.objects.filter(text__anthology=self.book).exists())
-        legacy = Illustration.objects.create(text=second)
+        with self.assertRaises(ValidationError):
+            Illustration.objects.create(text=second)
+        # Simulate a record saved before the scope validator existed.
+        legacy = Illustration(text=second)
+        Illustration.objects.bulk_create([legacy])
         response = self.client.get(reverse('core:assigned_text_detail', args=[self.chapter.pk]))
         doc = html.fromstring(response.content)
         self.assertFalse(doc.xpath('//*[@id="text-audiobook" or @id="text-illustration"]'))

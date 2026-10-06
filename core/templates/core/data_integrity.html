@@ -24,7 +24,7 @@
     <div class="table-container">
     <table data-server-paginated="true">
         <caption class="visually-hidden">Osoby przypisane do tego samego tekstu więcej niż raz</caption>
-        <thead><tr><th scope="col">Tekst</th><th scope="col">Osoba</th><th scope="col">Powód kontroli</th><th scope="col">Przypisania, role i wykonania</th></tr></thead>
+        <thead><tr><th scope="col">Tekst</th><th scope="col">Osoba</th><th scope="col" data-sort-description="Sortuj według liczby różnych ról i przypisań">Powód kontroli</th><th scope="col" data-sort-description="Sortuj według liczby przypisań">Przypisania, role i wykonania</th></tr></thead>
         <tbody>
         {% for row in assignment_rows %}
         <tr>

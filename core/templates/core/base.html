@@ -11,15 +11,16 @@
 
     <title>{% block title %}Fantazmaty CMS{% endblock %}</title>
 
-    <link rel="stylesheet" href="{% static 'core/styles.css' %}?v=28">
+    <link rel="stylesheet" href="{% static 'core/styles.css' %}?v=36">
     <script src="{% static 'core/theme.js' %}?v=21"></script>
     <link rel="stylesheet" href="{% static 'core/themes.css' %}?v=26">
 
-    <link rel="stylesheet" href="{% static 'core/workspace.css' %}?v=29">
-    <link rel="stylesheet" href="{% static 'core/components.css' %}?v=28">
+    <link rel="stylesheet" href="{% static 'core/workspace.css' %}?v=36">
+    <link rel="stylesheet" href="{% static 'core/components.css' %}?v=36">
     <link rel="stylesheet" href="{% static 'core/dropbox-folder-chooser.css' %}">
     <link rel="stylesheet" href="{% static 'core/pagination.css' %}?v=19">
-    <link rel="stylesheet" href="{% static 'core/novels.css' %}?v=31">
+    <link rel="stylesheet" href="{% static 'core/novels.css' %}?v=36">
+    <link rel="stylesheet" href="{% static 'core/illustration-status.css' %}?v=36">
     {% block extra_css %}{% endblock %}
 
 </head>
@@ -101,12 +102,13 @@
         </div>
     </footer>
     <script src="{% static 'core/author-search.js' %}?v=23"></script>
-    <script src="{% static 'core/ui.js' %}?v=29"></script>
+    <script src="{% static 'core/ui.js' %}?v=36"></script>
 
     <script src="{% static 'core/layout.js' %}" defer></script>
     <script src="{% static 'core/header-search.js' %}?v=1" defer></script>
     <script src="{% static 'core/pagination.js' %}?v=30"></script>
     {% if user.is_authenticated %}<span hidden data-vocabulary-endpoint="{% url 'core:vocabulary_suggestions' %}"></span><script src="{% static 'core/vocabulary.js' %}?v=29" defer></script>{% endif %}
+    <script src="{% static 'core/table-selection.js' %}?v=36"></script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

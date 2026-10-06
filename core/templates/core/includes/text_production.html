@@ -16,7 +16,7 @@
             <h2>Ilustracja</h2>
             {% if text_illustration %}
                 <p><strong>Ilustratorzy:</strong> {{ text_illustration.illustrator_display|default:"Nie przypisano" }}</p>
-                <p><strong>Status:</strong> {{ text_illustration.get_status_display }}</p>
+                <p><strong>Status:</strong> {% include "core/includes/illustration_status.html" with illustration=text_illustration %}</p>
                 {% if can_open_text_illustration %}<a class="secondary-button" href="{% url 'illustrations:illustration_detail' text_illustration.pk %}">Otwórz ilustrację</a>{% endif %}
             {% elif anthology_illustrated %}
                 <p><strong>Ilustratorzy:</strong> Nie przypisano</p><p><strong>Status:</strong> Brak wpisu ilustracji</p>

@@ -11,7 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
     main.addEventListener('change', event => {
         if (!event.target.matches('[data-select-table]')) return;
         event.target.closest('table').querySelectorAll('tbody input[name="selected"]').forEach(input => {
-            if (!input.disabled && !input.closest('tr').hidden && !input.closest('tr').classList.contains('cms-page-hidden')) input.checked = event.target.checked;
+            if (!input.disabled && !input.closest('tr').hidden && !input.closest('tr').classList.contains('cms-page-hidden')) { input.checked = event.target.checked; }
         });
     });
     main.querySelectorAll('form[data-filters]').forEach(form => {
@@ -105,10 +105,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Paginated lists sort the full result on the server. Whole detail tables sort locally.
 document.addEventListener('DOMContentLoaded', () => {
-    let columns = {};
-    try { columns = JSON.parse(document.getElementById('table-sort-columns')?.textContent || '{}') || {}; } catch (_) {}
     const collator = new Intl.Collator('pl', {numeric: true, sensitivity: 'base'});
-    const skipped = new Set(['Akcje', 'Akcja', 'Szczegóły', 'Wybór', 'Zmień status', 'Powiadomienie']);
+    const skipped = new Set(['Akcje', 'Akcja', 'Szczegóły', 'Wybór', 'Wybierz', 'Edycja', 'Edytuj', 'Porządkowanie', 'Zmień status', 'Powiadomienie']);
     function value(cell) {
         if (!cell) return null;
         const raw = (cell.dataset.sortValue ?? cell.querySelector('time[datetime]')?.getAttribute('datetime') ?? cell.textContent).trim();
@@ -120,7 +118,13 @@ document.addEventListener('DOMContentLoaded', () => {
         return raw.replace(/\s+/g, ' ');
     }
     document.querySelectorAll('main table').forEach(table => {
+        table.setAttribute('data-copy-table', '');
         const server = table.dataset.serverPaginated === 'true';
+        const configs = [...document.querySelectorAll('[data-sort-config]')];
+        const config = configs.find(node => Boolean(table.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING));
+        let columns = {};
+        try { columns = JSON.parse(config?.previousElementSibling?.textContent || '{}') || {}; } catch (_) {}
+        const pageParam = config?.dataset.pageParam || 'page';
         const headers = [...(table.tHead?.rows[0]?.cells || [])];
         headers.forEach((th, index) => {
             const label = th.textContent.trim();
@@ -129,7 +133,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (server && !Object.values(columns).includes(key)) return;
             const button = document.createElement('button');
             button.type = 'button'; button.className = 'table-sort-button'; button.textContent = label;
-            button.title = label === 'Recenzenci i opinie' ? 'Sortuj według liczby oddanych recenzji' : 'Sortuj: ' + label;
+            button.title = th.dataset.sortDescription || (label === 'Recenzenci i opinie' ? 'Sortuj według liczby oddanych recenzji' : 'Sortuj: ' + label);
             const mark = document.createElement('span'); mark.className = 'sort-indicator'; mark.setAttribute('aria-hidden', 'true');
             button.append(mark); th.replaceChildren(button);
             let descending = false;
@@ -143,7 +147,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (server) {
                     const url = new URL(location.href);
                     url.searchParams.set('sort', current === key ? '-' + key : key);
-                    url.searchParams.delete('page'); location.assign(url.href); return;
+                    url.searchParams.delete(pageParam); location.assign(url.href); return;
                 }
                 descending = th.getAttribute('aria-sort') === 'ascending';
                 headers.forEach(header => {
@@ -547,7 +551,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!(event.ctrlKey || event.metaKey)) clearCells();
                 for (let r = start; r <= end; r++) for (let c = left; c <= right; c++) {
                     const candidate = table.rows[r].cells[c];
-                    if (candidate && copyCellFrom(candidate) && !candidate.querySelector("input,select,textarea,button")) addCell(candidate);
+                    if (candidate && !candidate.closest('[hidden], .cms-page-hidden') && candidate.getClientRects().length && copyCellFrom(candidate) && !candidate.querySelector("input,select,textarea,button")) addCell(candidate);
                 }
             } else if (selected.has(cell)) {
                 selected.delete(cell); cell.classList.remove("copy-selected");

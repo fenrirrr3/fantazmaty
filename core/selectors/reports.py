@@ -454,6 +454,11 @@ class _ReportRows:
         key = selected.lstrip('-')
         entry = next((spec for label, spec in self.fields.items() if spec[0] == key), None)
         if not entry: return self, {label:spec[0] for label,spec in self.fields.items()}
+        if key in ('author', 'authors'):
+            from core.table_sorting import _sort_query_projection
+            field = 'authors' if key == 'authors' else 'author_name'
+            rows = _sort_query_projection(self, self.queryset, lambda row: row[field], selected.startswith('-'))
+            return rows, {label: spec[0] for label, spec in self.fields.items()}
         _, field, textual = entry
         query = self.queryset
         if textual:
@@ -463,9 +468,16 @@ class _ReportRows:
 
 
 def _report_search(queryset, query, fields):
+    from core.public_authors import name_matches, review_name_matches
     for term in query.split():
         condition = Q()
-        for field in fields: condition |= Q(**{field + '__plcontains': term})
+        for field in fields:
+            if field in ('text__authors__first_name', 'text__authors__last_name', 'text__authors__pseudonym'):
+                condition |= name_matches(term, 'text__authors__')
+            elif field in ('review__author_first_name', 'review__author_last_name'):
+                condition |= Q(review_id__in=Review.objects.filter(review_name_matches(term)).values('pk'))
+            else:
+                condition |= Q(**{field + '__plcontains': term})
         queryset = queryset.filter(condition)
     return queryset
 

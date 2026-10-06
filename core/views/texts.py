@@ -1,3 +1,4 @@
+from core.public_authors import name_matches, review_name_matches
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -10,14 +11,12 @@ from django.views.decorators.http import require_GET, require_POST, require_http
 from authors.models import Author
 from core.forms import (
     CoordinatorNoteForm,
-    RestartWorkflowForm,
     StartStageForm,
     TextContentWarningsForm,
     TextNoteForm,
 )
 from core.pagination import paginate_items
 from core.permissions import (
-    can_restart_workflow,
     can_view_author_data,
     coordinator_required,
     is_coordinator,
@@ -34,46 +33,6 @@ from core.selectors.texts import (
 from texts.models import Text, TextNote
 from core.tag_forms import TextTagsForm
 from workflow.models import WorkflowRoleAssignment
-
-
-MAX_SELECTED_OBJECTS = 1000
-MAX_DATABASE_ID = 9_223_372_036_854_775_807
-
-
-def _selected_ids(data, field_name):
-    """Odrzuca niepełny lub nieprawidłowy wybór zamiast pomijać błędy."""
-    values = data.getlist(field_name)
-
-    if not values:
-        raise ValidationError("Zaznacz przynajmniej jeden element.")
-
-    if len(values) > MAX_SELECTED_OBJECTS:
-        raise ValidationError(
-            f"Jednorazowo można zaznaczyć najwyżej "
-            f"{MAX_SELECTED_OBJECTS} elementów."
-        )
-
-    selected_ids = set()
-
-    for value in values:
-        value = value.strip()
-
-        if (
-            not value
-            or len(value) > 19
-            or not value.isascii()
-            or not value.isdecimal()
-        ):
-            raise ValidationError("Przesłano nieprawidłowy identyfikator.")
-
-        object_id = int(value)
-
-        if not 1 <= object_id <= MAX_DATABASE_ID:
-            raise ValidationError("Przesłano nieprawidłowy identyfikator.")
-
-        selected_ids.add(object_id)
-
-    return sorted(selected_ids)
 
 
 def _form_error_message(form):
@@ -107,7 +66,6 @@ def _permission_context(user):
         "can_view_authors": can_view_author_data(user),
         "can_manage_authors": False,
         "can_manage_workflow": is_coordinator(user),
-        "can_restart_workflow": can_restart_workflow(user),
     }
 
 
@@ -185,11 +143,6 @@ def _render_text_detail(request, text, *, bound_forms=None, status=200):
                 else None
             ),
             "start_stage_form": StartStageForm(),
-            "restart_workflow_form": (
-                RestartWorkflowForm(text=text)
-                if can_restart_workflow(request.user)
-                else None
-            ),
         }
     )
 
@@ -512,7 +465,7 @@ def link_text_review(request, text_id):
     candidates = linkable_reviews(text).select_related("author").prefetch_related("coauthors")
     suggestions = suggested_review_ids(text)
     if query:
-        candidates = candidates.filter(Q(title__plcontains=query) | Q(author_first_name__plcontains=query) | Q(author_last_name__plcontains=query) | Q(email__plcontains=query))
+        candidates = candidates.filter(Q(title__plcontains=query) | review_name_matches(query))
     if request.method == 'POST':
         try:
             review_id = int(request.POST.get('review_id',''))

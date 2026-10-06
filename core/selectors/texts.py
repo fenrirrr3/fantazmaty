@@ -1,3 +1,4 @@
+from core.public_authors import name_matches, review_name_matches
 from workflow.catalog import active_stage_choices, active_role_choices, workflow_role_choices, IMPORT_ONLY_ROLES
 from workflow.labels import assignment_label, execution_label, stage_label
 from core.translation_scope import ordinary
@@ -378,10 +379,10 @@ def text_list_context(*, user, params, scope=None, stage_scope=None, translated=
             condition = Q(title__plcontains=term) | Q(anthology__title__plcontains=term)
             if include_authors:
                 if translated or include_translations:
-                    condition |= Q(translation__foreign_authors__first_name__plcontains=term) | Q(translation__foreign_authors__last_name__plcontains=term) | Q(translation__foreign_authors__pseudonym__plcontains=term)
-                    condition |= Q(translation__translators__first_name__plcontains=term) | Q(translation__translators__last_name__plcontains=term) | Q(translation__translators__pseudonym__plcontains=term) | Q(translation__translators__language__plcontains=term)
+                    condition |= name_matches(term, 'translation__foreign_authors__')
+                    condition |= name_matches(term, 'translation__translators__') | Q(translation__translators__language__plcontains=term)
                 if not translated:
-                    condition |= Q(authors__first_name__plcontains=term) | Q(authors__last_name__plcontains=term) | Q(authors__pseudonym__plcontains=term)
+                    condition |= name_matches(term, 'authors__')
             result = result.filter(condition)
         if hide_ready:
             result = result.filter(
@@ -613,9 +614,7 @@ def workflow_list_context(*, user, params):
         )
         if include_authors:
             condition |= (
-                Q(text__authors__first_name__plcontains=term)
-                | Q(text__authors__last_name__plcontains=term)
-                | Q(text__authors__pseudonym__plcontains=term)
+                name_matches(term, 'text__authors__')
                 | Q(text__authors__email__plcontains=term)
             )
         stages = stages.filter(condition)
@@ -633,8 +632,7 @@ def workflow_list_context(*, user, params):
     for term in query.split():
         condition = Q(title__plcontains=term) | Q(anthology__title__plcontains=term)
         if include_authors:
-            condition |= (Q(authors__first_name__plcontains=term) | Q(authors__last_name__plcontains=term)
-                          | Q(authors__pseudonym__plcontains=term) | Q(authors__email__plcontains=term))
+            condition |= (name_matches(term, 'authors__') | Q(authors__email__plcontains=term))
         text_query = text_query.filter(condition)
     texts = _prepared_texts(text_query.distinct(), include_authors)
     if hide_ready:

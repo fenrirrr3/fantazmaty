@@ -137,7 +137,7 @@ class RestartWorkflowForm(forms.Form):
         self.text = text
         choices = [(kind, label) for kind, label in WorkflowStage.StageType.choices if kind in REPEATABLE]
         if text is not None:
-            recorded = set(ordinary(WorkflowStage.objects).filter(text=text, workflow_cycle=text.current_workflow_cycle)
+            recorded = set(WorkflowStage.objects.filter(text=text, workflow_cycle=text.current_workflow_cycle)
                            .exclude(repetition__canceled_at__isnull=False).values_list('stage_type', flat=True))
             choices = [(kind, label) for kind, label in choices if kind in recorded]
         self.fields['stages'].choices = choices
@@ -721,10 +721,6 @@ class PeopleFilterForm(forms.Form):
         help_text="Wyświetl osoby mające co najmniej jedną z wybranych ról.",
     )
 
-
-class TeamUserChoiceField(forms.ModelChoiceField):
-    def label_from_instance(self, user):
-        return user.get_full_name() or "Nieuzupełnione dane"
 
 
 class CoordinatorReviewBulkActionForm(forms.Form):

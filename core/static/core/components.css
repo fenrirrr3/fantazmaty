@@ -201,9 +201,6 @@ section:has(#active-stages-heading), section:has(#reserved-assignments-heading) 
 #login-quote [data-quote-translator] { display: block; }
 
 /* The repeat form uses the same field rhythm as other management actions. */
-.restart-workflow-form > [data-repeat-performer] { display: grid; gap: var(--field-gap); min-width: 0; }
-.restart-workflow-form > [data-repeat-performer] > label { margin: 0; }
-.restart-workflow-form > [data-repeat-performer] > select { width: 100%; }
 /* On phones the page owns vertical scrolling, including complex tables. */
 @media screen and (max-width: 760px) {
     .table-container { max-height: none; }
@@ -250,3 +247,4 @@ section:has(#active-stages-heading), section:has(#reserved-assignments-heading) 
 .vocabulary-suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .vocabulary-suggestions:empty { display: none; }
 .vocabulary-suggestions button { font: inherit; cursor: pointer; }
+

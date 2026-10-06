@@ -143,7 +143,7 @@
                                 </td>
                             
 
-                            <td>{{ illustration.genre_display|default:"Brak danych" }}</td>
+                            <td>{{ illustration.genre_tags_display|default:"Brak danych" }}</td>
                             <td>
                                 {% for artist in illustration.illustrators.all %}
                                     <div>{% if can_manage_directory %}<a href="{% url 'illustrations:illustrator_edit' artist.pk %}" class="detail-link">{{ artist }}</a>{% else %}{{ artist }}{% endif %}
@@ -154,9 +154,7 @@
                             </td>
 
                             <td>
-                                <span class="status">
-                                    {{ illustration.get_status_display }}
-                                </span>
+                                {% include "core/includes/illustration_status.html" %}
                             </td>
 
                             <td class="date-cell">

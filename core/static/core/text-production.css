@@ -1,11 +1,9 @@
 .text-production { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.25rem; align-items: stretch; margin-top: 1.25rem; }
-.text-production > *, .text-production-side > * { min-width: 0; }
+.text-production > * { min-width: 0; }
 .text-production .card { margin: 0; }
-.text-production-side { display: grid; grid-template-rows: auto auto; gap: 1.25rem; align-content: start; }
 .text-production .card-body { overflow-wrap: anywhere; }
 .text-production-checkbox { display: flex; align-items: center; gap: .6rem; }
 .text-production-checkbox input[type="checkbox"] { width: 1.15rem; height: 1.15rem; flex: 0 0 auto; }
-.text-production-single { grid-template-columns: minmax(0, 1fr); }
 @media (max-width: 800px) { .text-production { grid-template-columns: minmax(0, 1fr); } }
 
 /* Equal-width collapsible panels in both story and chapter details. */

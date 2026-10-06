@@ -27,6 +27,8 @@ class PersonAdminForm(forms.ModelForm):
 
     def clean(self):
         data = super().clean()
+        if data.get('user') and data['user'].is_active and not data.get('email') and 'email' not in self.errors:
+            self.add_error('email', 'Aktywne konto wymaga adresu e-mail.')
         if self.instance.pk and self.instance.is_coordinator and not data.get('is_coordinator') and data.get('roles') is not None:
             from people.coordinator_access import coordinator_query
             data['roles'] = data['roles'].exclude(coordinator_query())
@@ -39,7 +41,11 @@ class PersonAdminForm(forms.ModelForm):
         return " ".join(self.cleaned_data["last_name"].split())
 
     def clean_email(self):
-        email = self.cleaned_data["email"].strip()
+        email = (self.cleaned_data.get("email") or "").strip()
+        if not email:
+            if self.instance.user_id and self.instance.user.is_active:
+                raise forms.ValidationError("Aktywne konto wymaga adresu e-mail.")
+            return None
 
         # Sprawdzenie obejmuje również osoby, które opuściły zespół.
         # LOWER po obu stronach zapewnia porównanie bez względu na wielkość

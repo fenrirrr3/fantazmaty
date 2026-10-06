@@ -1,3 +1,9 @@
+
+try:
+    from .document_errors import DocumentInputError
+except ImportError:
+    from document_errors import DocumentInputError
+
 """Repeat analysis from the desktop application, independent of Django/GUI."""
 import random
 import re
@@ -146,7 +152,7 @@ def _apply_run_colors(run, tokens):
     children = [(child, _child_text(child)) for child in original
                 if child.tag != qn('w:rPr')]
     if ''.join(text for _, text in children) != run.text:
-        raise ValueError('Nieobsługiwana struktura tekstu runu; plik nie został zapisany.')
+        raise DocumentInputError('unsupported_run')
 
     rpr = original.rPr
     replacements = []
@@ -195,7 +201,7 @@ def _apply_run_colors(run, tokens):
                 copied.text = text[consumed:consumed + take]
                 copied.set(qn('xml:space'), 'preserve')
             elif consumed or take != len(text):
-                raise ValueError('Nie można bezpiecznie podzielić elementu tekstowego runu.')
+                raise DocumentInputError('unsupported_run')
             current.append(copied)
             consumed += take
             offset += take
@@ -310,7 +316,7 @@ def _paragraph_layout(para, field_state=None):
                 offset += len(value)
             run_offset += len(value)
         if run_offset != len(run.text or ''):
-            raise ValueError('Nieobsługiwana struktura tekstu runu; plik nie został zapisany.')
+            raise DocumentInputError('unsupported_run')
     return ''.join(text), pieces
 
 
@@ -445,26 +451,26 @@ def color_document(source, *, window_size=35, min_word_length=4,
                    include_prefix_matches=False, color_palette='dark'):
     """Return a marked DOCX; never change its words or editorial formatting."""
     if color_palette not in ('dark', 'light'):
-        raise ValueError('Wybierz jasne albo ciemne kolory powtórzeń.')
+        raise DocumentInputError('analysis_options')
     window_size = _positive_integer(window_size, 'Zakres wyszukiwania')
     min_word_length = _positive_integer(min_word_length, 'Minimalna długość słowa')
     if window_size > 500 or min_word_length > 100:
-        raise ValueError('Parametry analizy przekraczają dozwolony zakres.')
+        raise DocumentInputError('analysis_options')
     options = {**CHECK_DEFAULTS, **(analysis_options or {})}
     if set(options) - set(CHECK_DEFAULTS):
-        raise ValueError('Nieznana opcja analizy.')
+        raise DocumentInputError('analysis_options')
     for key in ('sentence_limit', 'paragraph_limit'):
         options[key] = _positive_integer(options[key], key)
         if options[key] > 10000:
-            raise ValueError('Próg długości przekracza dozwolony zakres.')
+            raise DocumentInputError('analysis_options')
     source.seek(0)
     doc = Document(source)
     paragraphs = doc.paragraphs
     lengths = [len(p.text) for p in paragraphs]
     if sum(lengths) > 500000 or any(n > 20000 for n in lengths):
-        raise ValueError('Dokument przekracza limit analizy.')
+        raise DocumentInputError('analysis_limit')
     if doc.element.xpath('.//w:ins | .//w:del | .//w:moveFrom | .//w:moveTo'):
-        raise ValueError('Zaakceptuj śledzone zmiany przed analizą.')
+        raise DocumentInputError('tracked_changes')
     layouts = _document_layout(paragraphs)
     words, locations = [], []
     for p_index, (text, _) in enumerate(layouts):

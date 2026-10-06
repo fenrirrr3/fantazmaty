@@ -1,0 +1,37 @@
+Bogowie starych dni, tom 1 – liczba znaków ze spacjami
+
+Rozdział | Znaki ze spacjami | Tytuł w dokumencie
+---------|------------------|--------------------
+       1 |           12 882 | Właściwi ludzie
+       2 |           37 435 | Za bramami Imperium
+       3 |           18 089 | Rodzina
+       4 |           20 585 | Ofiary nauki
+       5 |           19 351 | Otwarta klatka
+       6 |           19 109 | Awangarda
+       7 |           16 174 | Wewnątrz murów
+       8 |           23 777 | Jedenasty członek załogi
+       9 |           21 182 | Na gorących kamieniach
+      10 |           14 355 | Inny świat
+      11 |           15 908 | Grawitacja
+      12 |           21 670 | Sprawa bezpieczeństwa
+      13 |           26 073 | Gdzie spotykają się drogi
+      14 |           43 048 | Pierścień
+      15 |           23 308 | Przyszłość i przeszłość
+      16 |           23 003 | Wiara
+      17 |           27 424 | W blasku imperatora
+      18 |           40 645 | Łamacz Fal
+      19 |            7 634 | Nie masz nic
+      20 |           44 617 | Ogień
+      21 |           38 640 | Pod Kopułą
+      22 |           17 200 | Archeolog
+      23 |           35 056 | Ostatnia skaza Rataru
+
+Razem: 567 165 znaków ze spacjami
+
+Liczba znaków Unicode w treści rozdziału, ze wszystkimi zwykłymi i nierozdzielającymi spacjami oraz separatorami scen. Bez nagłówków rozdziałów, strony tytułowej, komentarzy i ich kotwic, nagłówków/stopek stron, znaków końca akapitu/wiersza/strony/kolumny oraz końcowej adnotacji „Ciąg dalszy nastąpi”. Tabulator liczony jako jedna spacja. Nie zwijano wielokrotnych spacji.
+
+W bazie zachowane będą numerowane nazwy rozdziałów. Tytuły z DOC są tylko opisem źródła.
+Odczytano strukturę binarnego DOC i tabelę fragmentów tekstu. W bezpośrednim formatowaniu znaków nie wykryto aktywnych oznaczeń usunięć, wstawek ani tekstu ukrytego.
+Nie jest to wynik uruchomienia okna statystyk Microsoft Word.
+Specyfikacja odczytu DOC: https://learn.microsoft.com/en-us/openspecs/office_file_formats/ms-doc/be58bf9c-d1d3-40cc-91ee-36452d7939b2
+Kontrola oznaczeń zmian: https://learn.microsoft.com/en-us/openspecs/office_file_formats/ms-doc/7022285b-9621-42e9-ad4d-4e02c115ef18

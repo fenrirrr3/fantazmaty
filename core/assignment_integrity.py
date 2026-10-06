@@ -10,9 +10,35 @@ from texts.models import Anthology
 from workflow.models import WorkflowRoleAssignment
 
 
+class AssignmentConflictTable:
+    columns = {'Tekst': 'title', 'Osoba': 'person', 'Powód kontroli': 'reason', 'Przypisania, role i wykonania': 'assignments'}
+
+    def __init__(self, queryset):
+        self.queryset = queryset
+
+    def sort_table(self, request):
+        from core.sort_keys import sql_text_key
+        query = self.queryset
+        selected = request.GET.get('sort', '')
+        fields = {'title': ('text__title', 'text__anthology__title'),
+                  'person': ('assigned_to__first_name', 'assigned_to__last_name'),
+                  'reason': ('role_count', 'assignment_count'),
+                  'assignments': ('assignment_count', 'role_count')}.get(selected.lstrip('-'))
+        if fields:
+            ordering = []
+            for index, field in enumerate(fields):
+                key = field
+                if '__' in field:
+                    key = f'_sort_conflict_{index}'
+                    query = query.annotate(**{key: sql_text_key(field, query.db)})
+                ordering.append(F(key).desc(nulls_last=True) if selected.startswith('-') else F(key).asc(nulls_last=True))
+            query = query.order_by(*ordering, 'text_id', 'assigned_to_id')
+        return query, self.columns
+
+
 class AssignmentIntegrityFilters(forms.Form):
     anthology = forms.ModelChoiceField(
-        label='Antologia', queryset=ordinary(Anthology.objects).order_by('title', 'pk'),
+        label='Antologia', queryset=Anthology.objects.all().order_by('title', 'pk'),
         required=False, empty_label='Wszystkie antologie',
     )
     scope = forms.ChoiceField(label='Zakres', required=False, initial='all', choices=(
@@ -29,7 +55,7 @@ class AssignmentIntegrityFilters(forms.Form):
 def scoped_assignments(*, anthology_id=None, scope='all'):
     # Include previous executions and canceled repetitions, but label them in
     # the result. A current-only manager would hide the duplicates under review.
-    query = ordinary(WorkflowRoleAssignment.objects).filter(assigned_to__isnull=False)
+    query = WorkflowRoleAssignment.objects.all().filter(assigned_to__isnull=False)
     if anthology_id is not None:
         query = query.filter(text__anthology_id=anthology_id)
     if scope == 'current_cycle':

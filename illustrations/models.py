@@ -141,6 +141,12 @@ class Illustration(models.Model):
         super().clean()
 
         errors = {}
+        # Existing credits remain editable when their anthology is hidden later.
+        previous_text = type(self).objects.using(self._state.db or 'default').filter(pk=self.pk).values_list('text_id', flat=True).first() if self.pk else None
+        if self.text_id and self.text_id != previous_text:
+            supported = Text.objects.using(self._state.db or 'default').exclude(anthology__is_novel=True).exclude(anthology__is_translated=True)
+            if not supported.filter(pk=self.text_id).exists():
+                errors['text'] = 'Powieści i tłumaczenia nie obsługują ilustracji.'
         self.manual_illustrator_name = self.manual_illustrator_name.strip()
         self.manual_illustrator_email = self.manual_illustrator_email.strip()
         if self.artist_ids() and (self.manual_illustrator_name or self.manual_illustrator_email):
@@ -211,6 +217,10 @@ class Illustration(models.Model):
     @property
     def genre_display(self):
         return self.text.genre
+
+    @property
+    def genre_tags_display(self):
+        return " · ".join(value for value in (self.text.genre, self.text.tags) if value)
 
     @property
     def warnings_display(self):

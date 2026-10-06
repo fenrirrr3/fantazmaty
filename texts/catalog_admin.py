@@ -37,6 +37,8 @@ class NovelAdminForm(forms.ModelForm):
 
     def clean(self):
         data = super().clean()
+        if self.instance.pk and not self.instance.anthology.is_novel:
+            self.add_error(None, 'Publikacja nie jest oznaczona jako powieść. Włącz „Powieść” w antologii, aby edytować zachowane dane.')
         if not self.errors and self.instance.pk:
             try:
                 # Django admin keeps an outer transaction open through save_related.
@@ -81,6 +83,8 @@ class NovelProfileAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
     @admin.display(description='Rozdziały powieści')
     def open_panel(self, obj):
+        if not obj.anthology.is_novel:
+            return format_html('<a href="{}">Zachowany profil – włącz „Powieść” w antologii</a>', reverse('admin:texts_anthology_change', args=[obj.anthology_id]))
         return format_html('<a href="{}">Otwórz panel powieści</a>', reverse('core:novel_detail', args=[obj.anthology_id]))
 
 

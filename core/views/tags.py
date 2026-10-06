@@ -1,5 +1,6 @@
 """Accepted texts with their own tags and genre."""
 from core.translation_scope import ordinary
+from core.public_authors import public_name, name_matches
 from django.contrib.auth.decorators import login_required
 from django.db import connections
 from django.db.models import F, Func, OuterRef, Prefetch, Q, Subquery, Value, Exists, TextField
@@ -48,7 +49,7 @@ class TagsTable:
     def sort_table(self, request):
         selected = request.GET.get('sort', 'title')
         fields = {'anthology': ('anthology__title',), 'title': ('title',),
-                  'author': ('tag_author_last', 'tag_author_first'), 'tags': ('tags',), 'genre': ('tag_genre',)}
+                  'author': ('tag_author_name',), 'tags': ('tags',), 'genre': ('tag_genre',)}
         key = selected.lstrip('-')
         if key not in fields:
             key, selected = 'title', 'title'
@@ -70,15 +71,12 @@ def positive_id(value):
 @require_GET
 @team_member_required
 def tag_list(request):
-    authors = Author.objects.only('pk', 'first_name', 'last_name', 'pseudonym').order_by('last_name', 'first_name', 'pk')
-    first_author = Author.objects.filter(texts=OuterRef('pk')).annotate(
-        _last=polish_key('last_name', ordinary(Text.objects).db), _first=polish_key('first_name', ordinary(Text.objects).db),
-    ).order_by('_last', '_first', 'pk')
+    authors = Author.objects.only('pk', 'first_name', 'last_name', 'pseudonym').annotate(public_signature=public_name()).annotate(_public_order=polish_key('public_signature', Author.objects.db)).order_by('_public_order', 'pk')
+    first_author = authors.filter(texts=OuterRef('pk'))
     visible = _annotated_texts().filter(Q(current_stage_type__isnull=True) | ~Q(current_stage_type='withdrawn'))
     base = visible.select_related('anthology').prefetch_related(Prefetch('authors', queryset=authors)).annotate(
         tag_genre=F('genre'),
-        tag_author_last=Subquery(first_author.values('last_name')[:1]),
-        tag_author_first=Subquery(first_author.values('first_name')[:1]),
+        tag_author_name=Subquery(first_author.values('public_signature')[:1]),
     )
     query = base
     search = request.GET.get('q', '').strip()[:200]
@@ -91,7 +89,7 @@ def tag_list(request):
         matching_authors = Author.objects.filter(texts=OuterRef('pk')).annotate(
             full_name=Concat('first_name', Value(' '), 'last_name'),
             reversed_name=Concat('last_name', Value(' '), 'first_name'),
-        ).filter(Q(full_name__plcontains=search) | Q(reversed_name__plcontains=search) | Q(pseudonym__plcontains=search))
+        ).filter((Q(pseudonym='') & (Q(full_name__plcontains=search) | Q(reversed_name__plcontains=search))) | Q(pseudonym__plcontains=search))
         query = query.annotate(_author_matches=Exists(matching_authors)).filter(
             Q(title__plcontains=search) | Q(anthology__title__plcontains=search)
             | Q(_author_matches=True) | Q(tags__plcontains=search) | Q(tag_genre__plcontains=search))

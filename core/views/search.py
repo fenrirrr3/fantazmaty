@@ -1,3 +1,4 @@
+from core.public_authors import name_matches, review_name_matches
 from core.translation_scope import ordinary
 from core.author_access import contact_authors
 from core.permissions import is_coordinator, can_view_review_archive
@@ -76,18 +77,15 @@ def _author_data(author):
 def _search_texts(query, *, include_authors):
     fields = ["title", "anthology__title"]
 
-    if include_authors:
-        fields.extend(
-            [
-                "authors__first_name",
-                "authors__last_name",
-                "authors__pseudonym",
-                "authors__email",
-            ]
-        )
+    condition = Q()
+    for term in query.split():
+        match = _matching_terms(term, fields)
+        if include_authors:
+            match |= name_matches(term, 'authors__', email=True)
+        condition &= match
 
     queryset = (
-        ordinary(Text.objects).filter(_matching_terms(query, fields))
+        ordinary(Text.objects).filter(condition)
         .select_related("anthology")
         .order_by("title", "pk")
     )
@@ -119,25 +117,18 @@ def _search_texts(query, *, include_authors):
 def _search_reviews(query, *, include_authors, include_archived=True):
     fields = ["title", "anthology__title"]
 
-    if include_authors:
-        fields.extend(
-            [
-                "author_first_name",
-                "author_last_name",
-                "author_pseudonym",
-                "email",
-                "author__first_name",
-                "author__last_name",
-                "author__pseudonym",
-                "author__email",
-            ]
-        )
+    condition = Q()
+    for term in query.split():
+        match = _matching_terms(term, fields)
+        if include_authors:
+            match |= review_name_matches(term)
+        condition &= match
 
     queryset = (
         ordinary(Review.objects).filter(
             **({} if include_authors else {"is_hidden": False}),
         )
-        .filter(_matching_terms(query, fields))
+        .filter(condition)
         .select_related("anthology", "author").prefetch_related("coauthors")
         .order_by("title", "pk")
     )
@@ -170,20 +161,12 @@ def _search_reviews(query, *, include_authors, include_archived=True):
 
 
 def _search_authors(query, user):
-    authors = (
-        contact_authors(user).filter(
-            _matching_terms(
-                query,
-                (
-                    "first_name",
-                    "last_name",
-                    "pseudonym",
-                    "email",
-                ),
-            )
-        )
-        .order_by("last_name", "first_name", "pk")
-    )
+    from core.public_authors import public_name
+    from core.sort_keys import sql_text_key
+    authors = contact_authors(user).annotate(public_signature=public_name())
+    for term in query.split():
+        authors = authors.filter(name_matches(term, email=True))
+    authors = authors.annotate(_public_order=sql_text_key('public_signature', authors.db)).order_by('_public_order', 'pk')
 
     return [_author_data(author) for author in authors[:RESULT_LIMIT]]
 

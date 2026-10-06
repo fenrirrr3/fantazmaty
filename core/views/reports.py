@@ -70,7 +70,21 @@ def _render_report(
     rows_key,
 ):
     context = dict(report_context)
-    page_obj = paginate_items(request, context.pop(rows_key))
+    rows = context.pop(rows_key)
+    if template_name == 'core/workflow_inactivity.html':
+        from core.table_sorting import DisplayTable, _get
+        columns = {
+            'Antologia': ('anthology', lambda row: _get(row, 'text.anthology.title')),
+            'Tytuł': ('title', lambda row: _get(row, 'text.title')),
+            'Etap': ('status', lambda row: _get(row, 'stage.get_stage_type_display')),
+            'Rodzaj przestoju': ('inactivity_type', lambda row: row['inactivity_type']),
+            'Od': ('since', lambda row: row['since']),
+            'Liczba dni': ('days', lambda row: row['days']),
+        }
+        if can_view_author_data(request.user):
+            columns['Autorzy'] = ('authors', lambda row: row['authors'])
+        rows = DisplayTable(rows, columns)
+    page_obj = paginate_items(request, rows)
     can_view_authors = can_view_author_data(request.user)
 
     context.update(

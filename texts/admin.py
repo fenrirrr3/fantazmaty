@@ -321,7 +321,7 @@ class TextAdminForm(NormalizedFormMixin, forms.ModelForm):
             from texts.models import NovelProfile
             book = data.get('anthology') or self.instance.anthology
             if not NovelProfile.objects.filter(anthology=book, authors__isnull=False).exists():
-                self.add_error(None, 'Najpierw przypisz autorów w podglądzie powieści.')
+                self.add_error(None, 'Najpierw przypisz autorów w panelu admina, w sekcji „Dane powieści”.')
         elif data.get('anthology') and data['anthology'].is_translated:
             if data.get('authors'):
                 self.add_error('authors', 'Autora zagranicznego dodaj w sekcji tłumaczenia, po zapisaniu tekstu.')
@@ -393,10 +393,35 @@ class TextTranslationAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
 @admin.register(Text)
 class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
+    def repeat_form(self, request, object_id):
+        from django.shortcuts import render
+        from django.http import HttpResponseNotAllowed
+        from core.forms import RestartWorkflowForm
+        if request.method != 'GET':
+            return HttpResponseNotAllowed(['GET'])
+        obj = get_object_or_404(Text, pk=object_id)
+        if not self.has_change_permission(request, obj):
+            raise PermissionDenied
+        return render(request, 'admin/texts/repeat_form.html', {
+            **self.admin_site.each_context(request), 'title': 'Powtórz etapy: ' + obj.title,
+            'text': obj, 'form': RestartWorkflowForm(text=obj), 'opts': self.model._meta,
+        })
+
+    @admin.display(description='Powtórzenie etapów')
+    def repeat_workflow_link(self, obj):
+        if not obj or not obj.pk:
+            return 'Zapisz tekst, aby zarządzać etapami.'
+        from django.utils.html import format_html
+        from django.urls import reverse
+        return format_html('<a href="{}">Wybierz etapy i przygotuj podgląd powtórzenia</a>', reverse('admin:texts_text_repeat', args=[obj.pk]))
+
     def get_search_results(self, request, queryset, search_term):
         queryset, duplicates = super().get_search_results(request, queryset, search_term)
         if request.GET.get("app_label") == "texts" and request.GET.get("model_name") == "review" and request.GET.get("field_name") == "copied_text":
             queryset = queryset.filter(workflow_stages__isnull=False).distinct()
+        if (request.GET.get('app_label'), request.GET.get('model_name'), request.GET.get('field_name')) == ('illustrations', 'illustration', 'text'):
+            from illustrations.services import illustration_texts_queryset
+            queryset = queryset.filter(pk__in=illustration_texts_queryset().values('pk'))
         return queryset, duplicates
 
     def get_changeform_initial_data(self, request):
@@ -476,13 +501,13 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             fields = (*fields, 'authors', 'tags', 'genre', 'anthology')
         return fields if request.user.is_superuser else (*fields, "file_url")
 
-    readonly_fields = ("manual_status_link", "coordinator_note_updated_at", "current_workflow_cycle", "import_source", "import_source_row")
+    readonly_fields = ("repeat_workflow_link", "manual_status_link", "coordinator_note_updated_at", "current_workflow_cycle", "import_source", "import_source_row")
 
     fieldsets = (
         ('Tekst', {'fields': ('title', 'authors', 'anthology', 'chapter_number', 'length', 'tags', 'genre', 'content_warnings', 'file_url',
             'source_author_first_name', 'source_author_last_name', 'source_author_email', 'source_author_pseudonym',
             'source_contract_received', 'source_coauthor_contracts', 'source_update_author_phone')}),
-        ('Status i zarządzanie', {'fields': ('manual_status_link',)}),
+        ('Status i zarządzanie', {'fields': ('manual_status_link', 'repeat_workflow_link')}),
         ('Audiobook', {'fields': ('for_recording', 'audiobook_blacklisted'),
             'description': 'Czarna lista wyłącza nagrywanie. Blokadę można usunąć wyłącznie tutaj lub akcją na liście tekstów. Aby po odblokowaniu przekazać tekst do nagrywania, zaznacz „Do nagrywania”.'}),
         ('Notatki koordynatora', {'classes': ('cms-after-workflow',),
@@ -626,7 +651,9 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         return super().changeform_view(request, object_id, form_url, extra_context)
 
     def get_urls(self):
-        return [path('<path:object_id>/dodaj-etap/', self.admin_site.admin_view(self.add_stage_view), name='texts_text_add_stage'), path('<path:object_id>/status/', self.admin_site.admin_view(self.change_status_view), name='texts_text_manual_status')] + super().get_urls()
+        repeat_view = self.admin_site.admin_view(self.repeat_form)
+        repeat_view.model_admin = self
+        return [path('<int:object_id>/powtorz-etapy/', repeat_view, name='texts_text_repeat'), path('<path:object_id>/dodaj-etap/', self.admin_site.admin_view(self.add_stage_view), name='texts_text_add_stage'), path('<path:object_id>/status/', self.admin_site.admin_view(self.change_status_view), name='texts_text_manual_status')] + super().get_urls()
 
     @admin.display(description='Status tekstu')
     def manual_status_link(self, obj):

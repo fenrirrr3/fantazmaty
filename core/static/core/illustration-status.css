@@ -1,0 +1,10 @@
+/* Illustration badges: the label remains readable without colour perception. */
+.illustration-status { display: inline-flex; padding: .3em .65em; border: 1px solid; border-radius: var(--radius, .4rem); font-weight: 650; white-space: normal; }
+.illustration-status-unassigned { color: #8f1919; background: #ffe5e5; border-color: #dc8a8a; }
+.illustration-status-assigned { color: #694c00; background: #fff1b8; border-color: #b89b31; }
+.illustration-status-delivered { color: #165329; background: #dcf6e3; border-color: #73b489; }
+.illustration-status-in_corrections { color: #783800; background: #ffe9cf; border-color: #c99259; }
+[data-theme="dark"] .illustration-status-unassigned { color: #ffd1d1; background: #541e24; border-color: #b8616b; }
+[data-theme="dark"] .illustration-status-assigned { color: #ffe8a1; background: #514318; border-color: #aa923e; }
+[data-theme="dark"] .illustration-status-delivered { color: #bdf2cc; background: #193f28; border-color: #54996b; }
+[data-theme="dark"] .illustration-status-in_corrections { color: #ffdbb8; background: #57321b; border-color: #b57b4b; }

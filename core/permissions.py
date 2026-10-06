@@ -187,10 +187,6 @@ def can_view_reports(user):
     return is_coordinator(user)
 
 
-def can_restart_workflow(user):
-    return is_superuser(user)
-
-
 def can_perform_bulk_actions(user):
     # Operacje zbiorcze zachowują dotychczasowe ograniczenie do superusera.
     return is_superuser(user)

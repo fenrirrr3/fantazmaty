@@ -10,7 +10,7 @@ from django.db.models import Q
 from django.views.decorators.http import require_GET, require_http_methods
 from core.permissions import superuser_required, require_team_member, is_team_member, is_coordinator, is_reviewer, has_role
 from core.supervision import unlinked_review_candidates, integrity_issues, anthology_checklist, anthology_credit_groups
-from core.assignment_integrity import AssignmentIntegrityFilters, assignment_conflicts, assignment_conflict_details
+from core.assignment_integrity import AssignmentIntegrityFilters, AssignmentConflictTable, assignment_conflicts, assignment_conflict_details
 from core.pagination import paginate_items
 from core.selectors.texts import available_stages_for_user
 from people.models import Person, Role
@@ -47,8 +47,8 @@ def data_integrity(request):
             data = assignment_filters.cleaned_data
             scope = {'anthology_id': data['anthology'].pk if data['anthology'] else None,
                      'scope': data['scope'] or 'all'}
-            assignment_page = paginate_items(request, assignment_conflicts(
-                **scope, kind=data['kind'] or 'all'), default=25)
+            assignment_page = paginate_items(request, AssignmentConflictTable(assignment_conflicts(
+                **scope, kind=data['kind'] or 'all')), default=25)
             assignment_rows = assignment_conflict_details(assignment_page.object_list, **scope)
     else:
         rows = integrity_issues()

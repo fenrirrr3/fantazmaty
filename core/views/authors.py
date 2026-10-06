@@ -1,3 +1,4 @@
+from core.public_authors import name_matches, review_name_matches
 from core.translation_scope import ordinary
 from core.selectors.texts import _annotated_texts
 from workflow.models import WorkflowStage
@@ -191,9 +192,7 @@ def author_list(request):
     # Obsługuje to również wyszukiwanie po pełnym imieniu i nazwisku.
     for term in query.split():
         authors = authors.filter(
-            Q(first_name__plcontains=term)
-            | Q(last_name__plcontains=term)
-            | Q(pseudonym__plcontains=term)
+            name_matches(term, '')
             | Q(email__plcontains=term)
         )
 

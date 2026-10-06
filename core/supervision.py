@@ -27,15 +27,15 @@ def issue(label, detail, url):
 def integrity_issues():
     issues = []
     from django.db.models import Exists, OuterRef
-    current_for_text = ordinary(WorkflowStage.objects).filter(
+    current_for_text = WorkflowStage.objects.all().filter(
         text_id=OuterRef('pk'), workflow_cycle=OuterRef('current_workflow_cycle'), is_current=True,
     )
-    missing = ordinary(Text.objects).annotate(has_current_stage=Exists(current_for_text)).filter(has_current_stage=False)
+    missing = Text.objects.all().annotate(has_current_stage=Exists(current_for_text)).filter(has_current_stage=False)
     for text in missing.order_by('pk'):
         issues.append(issue('Tekst bez bieżącego etapu', text.title,
             reverse('core:assigned_text_detail', args=[text.pk])))
-    current = ordinary(WorkflowStage.objects).current_cycle().filter(workflow_cycle=F('text__current_workflow_cycle')).select_related('text', 'assignment')
-    assignments = {(a.text_id,a.workflow_cycle,a.role):a for a in ordinary(WorkflowRoleAssignment.objects).current_cycle().filter(workflow_cycle=F('text__current_workflow_cycle')).select_related('assigned_to__person_profile','text')}
+    current = WorkflowStage.objects.all().current_cycle().filter(workflow_cycle=F('text__current_workflow_cycle')).select_related('text', 'assignment')
+    assignments = {(a.text_id,a.workflow_cycle,a.role):a for a in WorkflowRoleAssignment.objects.all().current_cycle().filter(workflow_cycle=F('text__current_workflow_cycle')).select_related('assigned_to__person_profile','text')}
     for stage in current.filter(is_completed=False, ended_at__isnull=True, started_at__lte=timezone.localdate()).exclude(stage_type__in=('ready','withdrawn')):
         role = STAGE_ROLES.get(stage.stage_type)
         a = stage.assignment or assignments.get((stage.text_id,stage.workflow_cycle,role))
@@ -74,8 +74,8 @@ def integrity_issues():
             if not terminal and (not matching or any(not s.is_completed for s in matching)):
                 issues.append(issue('Przydział do nieaktywnej osoby',f'{a.text.title}: {a.get_role_display()} – {a.assigned_to}',reverse('core:assigned_text_detail',args=[a.text_id])))
     from workflow.models import WorkflowRepetition
-    closed_text_ids = set(ordinary(WorkflowStage.objects).current_cycle().filter(stage_type__in=('ready','withdrawn')).values_list('text_id', flat=True))
-    runs = ordinary(WorkflowRepetition.objects).select_related('text').prefetch_related(Prefetch('stages', queryset=ordinary(WorkflowStage.objects).order_by('queue_position','pk'), to_attr='ordered_steps'))
+    closed_text_ids = set(WorkflowStage.objects.all().current_cycle().filter(stage_type__in=('ready','withdrawn')).values_list('text_id', flat=True))
+    runs = WorkflowRepetition.objects.all().select_related('text').prefetch_related(Prefetch('stages', queryset=WorkflowStage.objects.all().order_by('queue_position','pk'), to_attr='ordered_steps'))
     for run in runs:
         steps = run.ordered_steps
         remaining=[s for s in steps if not s.is_completed]
@@ -103,7 +103,7 @@ def integrity_issues():
     for person in Person.objects.select_related('user').exclude(user__isnull=True):
         if person.email and person.user.email and person.email.casefold()!=person.user.email.casefold():
             issues.append(issue('Różne e-maile powiązanej osoby i konta',str(person)+' – powiązanie po ID pozostaje zachowane',reverse('admin:people_person_change',args=[person.pk])))
-    for text in ordinary(Text.objects).filter(authors__isnull=True):
+    for text in Text.objects.filter(Q(anthology__is_translated=True, translation__foreign_authors__isnull=True) | (Q(anthology__is_translated=False) | Q(anthology__isnull=True)) & Q(authors__isnull=True)).distinct():
         issues.append(issue('Tekst bez autora',text.title,reverse('core:assigned_text_detail',args=[text.pk])))
     return issues
 

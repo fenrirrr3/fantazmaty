@@ -27,7 +27,6 @@ from .services import (
     current_assignment_queryset,
     current_stage_queryset,
     finish_editing_to_coordinator,
-    finish_stage_record,
     resume_editing,
     send_text_to_author,
     send_to_first_verification,

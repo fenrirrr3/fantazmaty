@@ -164,6 +164,10 @@ def run_converter(directory, timeout):
         kind = kind if re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,80}', kind) else 'błąd procesu'
         if kind == 'RebuildUnsupported':
             raise RebuildConfirmationRequired(REBUILD_WARNING + '; '.join(str(item) for item in report.get('omissions', [])[:30]) + '. Po akceptacji powstanie nowy DOCX bez tych elementów. Tekst i obsługiwane formatowanie zostaną przeniesione.')
+        from .document_errors import MESSAGES
+        public_code = report.get('public_code')
+        if kind == 'DocumentInputError' and isinstance(public_code, str) and public_code in MESSAGES:
+            raise ConversionError(MESSAGES[public_code])
         detail = f'{stage}: {kind}'
         if code == 2:
             raise ConversionError('Brakuje bibliotek konwertera. Zainstaluj requirements.txt. ' + detail + '. Szczegóły zapisano w logu błędów.')

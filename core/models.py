@@ -247,3 +247,10 @@ class NewsletterConsent(models.Model):
 
     def __str__(self):
         return f'Zgody newsletterowe #{self.pk}'
+
+
+class AuthenticationAttempt(models.Model):
+    """Short-lived HMAC keys; never store passwords, e-mails or raw IPs."""
+    key = models.CharField(max_length=64, unique=True)
+    attempts = models.PositiveIntegerField(default=0)
+    expires_at = models.DateTimeField(db_index=True)

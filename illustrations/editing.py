@@ -30,6 +30,14 @@ class IllustrationEditForm(forms.ModelForm):
 
 
 class AssignmentModelForm(forms.ModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if 'text' in self.fields:
+            from .services import illustration_texts_queryset
+            from texts.models import Text
+            allowed = illustration_texts_queryset().values('pk')
+            self.fields['text'].queryset = Text.objects.filter(Q(pk__in=allowed) | Q(pk=self.instance.text_id))
+
     class Meta:
         model = Illustration
         fields = ('illustrators', 'manual_illustrator_name', 'manual_illustrator_email', 'status')

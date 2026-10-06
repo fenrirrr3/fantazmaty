@@ -1,3 +1,4 @@
+from core.public_authors import name_matches, review_name_matches
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
@@ -29,7 +30,7 @@ def translation_person_suggestions(request, kind):
     if not query:
         people = people.none()
     for term in query.split():
-        condition = Q(first_name__plcontains=term) | Q(last_name__plcontains=term) | Q(pseudonym__plcontains=term)
+        condition = name_matches(term)
         if kind == 'translator':
             condition |= Q(language__plcontains=term)
         people = people.filter(condition)

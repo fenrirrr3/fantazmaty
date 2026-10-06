@@ -64,6 +64,8 @@ class TranslationVisibilityTests(TestCase):
         self.assertEqual([row['pk'] for row in result['texts']], [self.text.pk])
         self.assertIn(self.book.pk, [row['pk'] for row in result['anthologies']])
         result = my_texts_context(user=self.admin, selected_view='all', params=QueryDict('q=Jane'))
+        self.assertEqual(list(result['texts']), [])
+        result = my_texts_context(user=self.admin, selected_view='all', params=QueryDict('q=JZ'))
         self.assertEqual([row['pk'] for row in result['texts']], [self.text.pk])
 
     def test_translation_defaults_show_ready_and_aggregate_lists_still_exclude(self):
@@ -87,7 +89,8 @@ class TranslationVisibilityTests(TestCase):
         self.client.force_login(self.member)
         self.assertEqual(self.client.get(author_url, {'q':'Jane'}).status_code, 403)
         self.client.force_login(self.admin)
-        for url, query, expected in ((author_url, 'jane zak', self.foreign.pk), (author_url, 'JZ', self.foreign.pk), (translator_url, 'francuski', self.translator.pk)):
+        self.assertEqual(self.client.get(author_url, {'q': 'jane zak'}).json()['results'], [])
+        for url, query, expected in ((author_url, 'JZ', self.foreign.pk), (translator_url, 'francuski', self.translator.pk)):
             response = self.client.get(url, {'q':query})
             self.assertEqual(response.status_code, 200)
             self.assertEqual([r['id'] for r in response.json()['results']], [expected])

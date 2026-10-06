@@ -129,6 +129,7 @@ class Person(models.Model):
         "adres e-mail",
         unique=True,
         null=True,
+        blank=True,
     )
 
     dropbox_email = models.EmailField(

@@ -32,6 +32,14 @@ class IllustratorAdmin(admin.ModelAdmin):
 class IllustrationAdmin(admin.ModelAdmin):
     form = AssignmentModelForm
 
+    class Media:
+        css = {'all': ('core/illustration-status.css',)}
+
+    @admin.display(description='Status', ordering='status')
+    def status_badge(self, obj):
+        from django.utils.html import format_html
+        return format_html('<span class="illustration-status illustration-status-{}">{}</span>', obj.status, obj.get_status_display())
+
     def has_module_permission(self, request):
         return can_view_illustrations(request.user) and super().has_module_permission(request)
 
@@ -52,7 +60,7 @@ class IllustrationAdmin(admin.ModelAdmin):
         "display_anthology",
         "display_authors",
         "display_illustrator",
-        "status",
+        "status_badge",
         "assigned_at",
     )
 

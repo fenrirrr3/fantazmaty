@@ -1,3 +1,4 @@
+from core.public_authors import name_matches, review_name_matches
 from core.translation_scope import ordinary
 from core.filtering import facet_queryset
 from django.db.models import Count, F, Prefetch, Q, Case, When, Value, CharField
@@ -457,17 +458,7 @@ def _filter_review_work(queryset, query, include_authors, completed, assignment_
 
         if include_authors:
             condition |= (
-                Q(author_first_name__plcontains=term)
-                | Q(author_last_name__plcontains=term)
-                | Q(author_pseudonym__plcontains=term)
-                | Q(email__plcontains=term)
-                | Q(author__first_name__plcontains=term)
-                | Q(author__last_name__plcontains=term)
-                | Q(author__pseudonym__plcontains=term)
-                | Q(coauthors__first_name__plcontains=term)
-                | Q(coauthors__last_name__plcontains=term)
-                | Q(coauthors__pseudonym__plcontains=term)
-                | Q(author__email__plcontains=term)
+                review_name_matches(term)
             )
 
         queryset = queryset.filter(condition)

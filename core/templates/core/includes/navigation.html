@@ -73,7 +73,7 @@
                             {% if current == 'anthology_list' or current == 'anthology_detail' %}aria-current="page"{% endif %}
                         >
                             Antologie
-                        </a><a href="{% url 'core:anthology_corrections' %}" class="sidebar-link" {% if current == 'anthology_corrections' or current == 'correction_edit' %}aria-current="page"{% endif %}>Uwagi do antologii</a><a href="{% url 'core:task_list' %}" class="sidebar-link" {% if current == 'task_list' %}aria-current="page"{% endif %}>Zadania</a>{% if show_illustrations %}<a
+                        </a><a href="{% url 'core:anthology_corrections' %}" class="sidebar-link" {% if current == 'anthology_corrections' or current == 'correction_edit' %}aria-current="page"{% endif %}>Uwagi do antologii</a>{% if can_coordinate %}<a href="{% url 'core:task_list' %}" class="sidebar-link" {% if current == 'task_list' %}aria-current="page"{% endif %}>Zadania</a>{% endif %}{% if show_illustrations %}<a
                             href="{% url 'illustrations:illustration_list' %}"
                             class="sidebar-link"
                             {% if namespace == 'illustrations' and current == 'illustration_list' %}aria-current="page"{% endif %}

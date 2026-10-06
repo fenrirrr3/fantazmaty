@@ -490,12 +490,6 @@ def _finish_stage_record(stage, ended_at):
     return stage
 
 
-@_locked_stage_operation
-def finish_stage_record(stage, ended_at):
-    """Techniczny helper; uprawnienia sprawdza operacja wywołująca."""
-    return _finish_stage_record(stage, ended_at)
-
-
 def _assign_role(text, role, user):
     from people.leave_access import require_available
     require_available(user)

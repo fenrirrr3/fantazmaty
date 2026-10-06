@@ -574,7 +574,6 @@ details[open] > summary .dropdown-arrow {
 .complete-stage-button,
 .unassign-button,
 .withdraw-text-button,
-.restart-workflow-button,
 .accept-review-button,
 .reject-review-button,
 .vacation-end-button,
@@ -612,15 +611,13 @@ details[open] > summary .dropdown-arrow {
     color: var(--on-primary);
 }
 
-.secondary-button,
-.restart-workflow-button {
+.secondary-button {
     border-color: var(--border-strong);
     background: var(--surface);
     color: var(--text);
 }
 
-.secondary-button:hover,
-.restart-workflow-button:hover {
+.secondary-button:hover {
     border-color: var(--primary);
     background: var(--primary-light);
     color: var(--primary-dark);
@@ -1485,15 +1482,7 @@ a[href^="mailto:"] {
     border-top: 1px solid #e6bfc3;
 }
 
-.restart-workflow-form,
-.text-authors-management-form {
-    display: grid;
-    gap: 10px;
-}
 
-.text-authors-select {
-    min-height: 150px;
-}
 
 
 

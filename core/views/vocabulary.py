@@ -10,6 +10,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET, require_http_methods
 
 from core.pagination import paginate_items
+from core.table_sorting import DisplayTable
 from core.permissions import team_member_required, coordinator_required, is_coordinator
 from texts.models import VocabularyTerm, Text, NovelProfile
 from texts.catalog_models import term_key
@@ -57,7 +58,12 @@ def vocabulary_list(request):
         query = query.filter(kind=kind)
     if search:
         query = query.filter(name__plcontains=search)
-    page = paginate_items(request, query.order_by('kind', 'name', 'pk'))
+    page = paginate_items(request, DisplayTable(query.order_by('kind', 'name', 'pk'), {
+        'Rodzaj': ('kind', lambda term: term.get_kind_display()),
+        'Nazwa': ('name', lambda term: term.name),
+        'Nazwa docelowa / aliasy': ('aliases', lambda term: term.canonical.name if term.canonical_id else ', '.join(alias.name for alias in term.aliases.all()) or 'Nazwa główna'),
+        'Użycia': ('usage', lambda term: counts[(term.kind, term.key)]),
+    }))
     for term in page:
         term.usage = counts[(term.kind, term.key)]
     return render(request, 'core/vocabulary/list.html', {'page_obj': page, 'form': form, 'error': error,

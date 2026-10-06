@@ -72,7 +72,10 @@ def locked_book(book_id, user, token):
     with transaction.atomic():
         # Existing workflow locks Text before Anthology; keep the same order.
         list(Text.objects.select_for_update().filter(anthology_id=book_id).order_by('pk'))
-        book = Anthology.objects.select_for_update().get(pk=book_id, is_novel=True)
+        try:
+            book = Anthology.objects.select_for_update().get(pk=book_id, is_novel=True)
+        except Anthology.DoesNotExist as exc:
+            raise ValidationError('Publikacja nie jest już powieścią albo została usunięta. Odśwież stronę; nic nie zapisano.') from exc
         try:
             payload = signing.loads(token, salt='novel-edit', max_age=86400)
         except signing.BadSignature as exc:

@@ -15,5 +15,6 @@ LOGIN_URL='/accounts/login/'
 from pathlib import Path
 BASE_DIR=Path(__file__).resolve().parent.parent
 MIDDLEWARE += ['core.activity.UserActivityMiddleware', 'core.user_preview.UserPreviewMiddleware', 'core.middleware.EditingMiddleware']
+MIDDLEWARE += ['core.auth_throttle.AuthenticationThrottleMiddleware']
 
 TEMPLATES[0]["DIRS"] = [BASE_DIR / "core" / "templates"]

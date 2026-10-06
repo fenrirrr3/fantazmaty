@@ -216,6 +216,12 @@ def main():
         report = {'stage': CURRENT_STAGE, 'error': type(error).__name__,
                   'omissions': getattr(error, 'omissions', []), 'frames': frames, 'python': sys.version.split()[0], 'versions': versions}
         try:
+            from .document_errors import DocumentInputError, MESSAGES
+        except ImportError:
+            from document_errors import DocumentInputError, MESSAGES
+        if isinstance(error, DocumentInputError) and error.public_code in MESSAGES:
+            report['public_code'] = error.public_code
+        try:
             (directory / 'error.json').write_text(json.dumps(report), encoding='utf-8')
         except OSError:
             pass

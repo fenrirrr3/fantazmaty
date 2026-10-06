@@ -52,9 +52,8 @@ class TableSortingTests(CoreTestDataMixin, TestCase):
                 response = self.client.get(reverse('core:' + name))
                 self.assertEqual(response.status_code, 200)
                 html = response.content.decode()
-                match = re.search(r'id="table-sort-columns"[^>]*>(.*?)</script>', html, re.S)
-                if not match:
-                    continue
+                match = re.search(r'<script[^>]*type="application/json"[^>]*>(.*?)</script>\s*<nav[^>]*data-sort-config', html, re.S)
+                self.assertIsNotNone(match, 'Brak konfiguracji sortowania tabeli')
                 columns = json.loads(match[1]) or {}
                 for head in re.findall(r'<th\b[^>]*>(.*?)</th>', html, re.S):
                     label = unescape(re.sub('<[^>]+>', '', head)).strip()
@@ -97,15 +96,19 @@ class TableSortingTests(CoreTestDataMixin, TestCase):
             self.assertEqual(list(items.values_list('pk',flat=True)),[review.pk])
 
     def test_missing_values_last_in_both_directions(self):
-        rows=[{'title':'Łódź','started_at':None},{'title':'Las','started_at':None},{'title':'Żar','started_at':None}]
-        items,_=prepare_table_sort(self.request('title'), rows)
-        self.assertEqual([r['title'] for r in items],['Las','Łódź','Żar'])
+        rows = [{'title': 'Łódź'}, {'title': ''}, {'title': 'Las'},
+                {'title': None}, {'title': 'Żar'}]
+        for sort, expected in (
+            ('title', ['Las', 'Łódź', 'Żar', '', None]),
+            ('-title', ['Żar', 'Łódź', 'Las', '', None]),
+        ):
+            with self.subTest(sort=sort):
+                items, _ = prepare_table_sort(self.request(sort), rows)
+                self.assertEqual([row['title'] for row in items], expected)
 
     def test_illustrations_and_workflow_computed_columns_with_data(self):
-        from illustrations.models import CoverProposal
-        from core.selectors.texts import workflow_list_context, my_texts_context, available_stages_for_user
+        from core.selectors.texts import workflow_list_context, my_texts_context
         from django.http import QueryDict
-        from workflow.services import claim_stage
         self.anthology.has_illustrations=True
         self.anthology.save()
         text=Text.objects.create(title='Ilustracja', anthology=self.anthology, length=10)

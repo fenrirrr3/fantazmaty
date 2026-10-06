@@ -1,3 +1,4 @@
+from core.public_authors import name_matches, review_name_matches
 from core.translation_scope import ordinary
 from core.author_contact import stored_author_phone
 from django.contrib import messages
@@ -151,7 +152,7 @@ def review_create(request):
     if fallback_query:
         fallback_authors=Author.objects.all()
         for term in fallback_query.split():
-            fallback_authors=fallback_authors.filter(Q(first_name__plcontains=term)|Q(last_name__plcontains=term)|Q(pseudonym__plcontains=term)|Q(email__plcontains=term))
+            fallback_authors=fallback_authors.filter(name_matches(term, email=True))
         fallback_authors=fallback_authors.order_by('last_name','first_name','pk')[:30]
     from core.forms import ReviewBulkImportForm
     return render(request, 'core/review_intake.html', {
@@ -172,8 +173,7 @@ def author_suggestions(request):
     if not query:
         return JsonResponse({'results': []})
     for term in query.split():
-        authors = authors.filter(Q(first_name__plcontains=term) | Q(last_name__plcontains=term) |
-                                 Q(pseudonym__plcontains=term) | Q(email__plcontains=term))
+        authors = authors.filter(name_matches(term, email=True))
     results = [{'id': author.pk, 'label': author.display_name,
                 'first_name': author.display_name if author.pseudonym.strip() else author.first_name, 'last_name': '' if author.pseudonym.strip() else author.last_name,
                 'email': author.email or '', 'pseudonym': author.pseudonym, 'phone_number': stored_author_phone(author)} for author in authors.order_by('last_name', 'first_name', 'pk')[:20]]

@@ -1,0 +1,125 @@
+{
+  "format": "novel-chapter-lengths-v1",
+  "novel_title": "Bogowie starych dni, tom 1",
+  "source_file": "BSD finał.doc",
+  "source_sha256": "128057f56869870ae4e114204bd46447304155531ecc8b948f5437e6c5f8411b",
+  "counting_method": "Liczba znaków Unicode w treści rozdziału, ze wszystkimi zwykłymi i nierozdzielającymi spacjami oraz separatorami scen. Bez nagłówków rozdziałów, strony tytułowej, komentarzy i ich kotwic, nagłówków/stopek stron, znaków końca akapitu/wiersza/strony/kolumny oraz końcowej adnotacji „Ciąg dalszy nastąpi”. Tabulator liczony jako jedna spacja. Nie zwijano wielokrotnych spacji.",
+  "total_characters_with_spaces": 567165,
+  "chapters": [
+    {
+      "chapter_number": 1,
+      "length": 12882,
+      "source_heading": "Rozdział 1: Właściwi ludzie"
+    },
+    {
+      "chapter_number": 2,
+      "length": 37435,
+      "source_heading": "Rozdział 2: Za bramami Imperium"
+    },
+    {
+      "chapter_number": 3,
+      "length": 18089,
+      "source_heading": "Rozdział 3: Rodzina"
+    },
+    {
+      "chapter_number": 4,
+      "length": 20585,
+      "source_heading": "Rozdział 4: Ofiary nauki"
+    },
+    {
+      "chapter_number": 5,
+      "length": 19351,
+      "source_heading": "Rozdział 5: Otwarta klatka"
+    },
+    {
+      "chapter_number": 6,
+      "length": 19109,
+      "source_heading": "Rozdział 6: Awangarda"
+    },
+    {
+      "chapter_number": 7,
+      "length": 16174,
+      "source_heading": "Rozdział 7: Wewnątrz murów"
+    },
+    {
+      "chapter_number": 8,
+      "length": 23777,
+      "source_heading": "Rozdział 8: Jedenasty członek załogi"
+    },
+    {
+      "chapter_number": 9,
+      "length": 21182,
+      "source_heading": "Rozdział 9: Na gorących kamieniach"
+    },
+    {
+      "chapter_number": 10,
+      "length": 14355,
+      "source_heading": "Rozdział 10: Inny świat"
+    },
+    {
+      "chapter_number": 11,
+      "length": 15908,
+      "source_heading": "Rozdział 11: Grawitacja"
+    },
+    {
+      "chapter_number": 12,
+      "length": 21670,
+      "source_heading": "Rozdział 12: Sprawa bezpieczeństwa"
+    },
+    {
+      "chapter_number": 13,
+      "length": 26073,
+      "source_heading": "Rozdział 13: Gdzie spotykają się drogi"
+    },
+    {
+      "chapter_number": 14,
+      "length": 43048,
+      "source_heading": "Rozdział 14: Pierścień"
+    },
+    {
+      "chapter_number": 15,
+      "length": 23308,
+      "source_heading": "Rozdział 15: Przyszłość i przeszłość"
+    },
+    {
+      "chapter_number": 16,
+      "length": 23003,
+      "source_heading": "Rozdział 16: Wiara"
+    },
+    {
+      "chapter_number": 17,
+      "length": 27424,
+      "source_heading": "Rozdział 17: W blasku imperatora"
+    },
+    {
+      "chapter_number": 18,
+      "length": 40645,
+      "source_heading": "Rozdział 18: Łamacz Fal"
+    },
+    {
+      "chapter_number": 19,
+      "length": 7634,
+      "source_heading": "Rozdział 19: Nie masz nic"
+    },
+    {
+      "chapter_number": 20,
+      "length": 44617,
+      "source_heading": "Rozdział 20: Ogień"
+    },
+    {
+      "chapter_number": 21,
+      "length": 38640,
+      "source_heading": "Rozdział 21: Pod Kopułą"
+    },
+    {
+      "chapter_number": 22,
+      "length": 17200,
+      "source_heading": "Rozdział 22: Archeolog"
+    },
+    {
+      "chapter_number": 23,
+      "length": 35056,
+      "source_heading": "Rozdział 23: Ostatnia skaza Rataru"
+    }
+  ]
+}

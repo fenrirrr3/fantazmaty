@@ -130,6 +130,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "core.auth_throttle.AuthenticationThrottleMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "core.activity.UserActivityMiddleware",
@@ -229,6 +230,10 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LOGIN_URL = "login"
+# PythonAnywhere overwrites X-Real-IP; REMOTE_ADDR is its load balancer.
+# For a direct deployment use REMOTE_ADDR, not a client-controlled header.
+# https://help.pythonanywhere.com/pages/WebAppClientIPAddresses
+AUTH_THROTTLE_CLIENT_IP_HEADER = os.environ.get("AUTH_THROTTLE_CLIENT_IP_HEADER", "HTTP_X_REAL_IP")
 LOGIN_REDIRECT_URL = "core:home"
 LOGOUT_REDIRECT_URL = "login"
 
