@@ -91,6 +91,8 @@ class AuditRepairsV31Tests(TestCase):
         # Simulate a record saved before the scope validator existed.
         legacy = Illustration(text=second)
         Illustration.objects.bulk_create([legacy])
+        # MySQL does not populate AutoField PKs after bulk_create().
+        legacy = Illustration.objects.get(text=second)
         response = self.client.get(reverse('core:assigned_text_detail', args=[self.chapter.pk]))
         doc = html.fromstring(response.content)
         self.assertFalse(doc.xpath('//*[@id="text-audiobook" or @id="text-illustration"]'))

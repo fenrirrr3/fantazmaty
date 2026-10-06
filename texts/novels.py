@@ -36,12 +36,13 @@ def parse_chapter_numbers(value):
     return sorted(numbers)
 
 
-def add_chapters(book, profile, numbers):
+def add_chapters(book, profile, numbers, *, lengths=None):
     require_open(book)
+    lengths = lengths or {}
     existing = set(Text.objects.filter(anthology=book, chapter_number__in=numbers).values_list('chapter_number', flat=True))
     for number in numbers:
         if number not in existing:
-            new_chapter(book, profile, chapter_number=number)
+            new_chapter(book, profile, chapter_number=number, length=lengths.get(number))
     return len(set(numbers) - existing)
 
 

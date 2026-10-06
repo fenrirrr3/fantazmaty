@@ -8,21 +8,20 @@
 {% if user.is_superuser and profile %}<a class="secondary-button" href="{% url 'admin:texts_novelprofile_change' profile.pk %}">Edytuj dane w panelu admina</a>{% endif %}
 </header>
 {% if error %}<div class="message error" role="alert">{{ error }}</div>{% endif %}
-<section class="card"><div class="card-body"><h2>Dane całej powieści</h2>
+<div class="novel-overview-grid{% if not coordinator or not is_open %} novel-overview-grid-single{% endif %}">
+{% if coordinator and is_open %}
+<section class="card novel-chapter-add" aria-labelledby="chapter-add-heading"><div class="card-body">
+<h2 id="chapter-add-heading">Dodaj rozdziały</h2><form method="post" class="intake-form" data-warn-unsaved>
+{% csrf_token %}<input type="hidden" name="novel_token" value="{{ novel_token }}"><input type="hidden" name="action" value="chapters">{{ chapter_range_form.as_p }}
+<p class="muted-text">Istniejące rozdziały i ich długości pozostaną bez zmian. Aby zmienić liczbę znaków istniejącego rozdziału, wybierz „Edytuj” w tabeli.</p><button class="primary-button" type="submit">Dodaj do tabeli</button>
+</form></div></section>{% endif %}
+<section class="card novel-metadata" aria-labelledby="novel-metadata-heading"><div class="card-body"><h2 id="novel-metadata-heading">Dane całej powieści</h2>
 <p><strong>Tagi:</strong> {{ profile.tags|default:'Brak' }}</p><p><strong>Gatunek:</strong> {{ profile.genre|default:'Brak' }}</p><p><strong>Trigger warningi:</strong> {{ profile.content_warnings|default:'Brak' }}</p>
 {% if profile.file_url %}<a class="secondary-button" href="{{ profile.file_url }}" target="_blank" rel="noopener noreferrer">Folder powieści</a>{% endif %}<p>{{ profile.notes|linebreaksbr }}</p>
 </div></section>
-<section class="novel-chapters" aria-labelledby="novel-chapters-heading">
-<h2 id="novel-chapters-heading">Rozdziały</h2>
-<div class="novel-chapter-layout{% if not coordinator or not is_open %} novel-chapter-layout-single{% endif %}">
-{% if coordinator and is_open %}
-<section class="card novel-chapter-add" aria-labelledby="chapter-add-heading"><div class="card-body">
-<h3 id="chapter-add-heading">Dodaj rozdziały</h3><form method="post" class="intake-form" data-warn-unsaved>
-{% csrf_token %}<input type="hidden" name="novel_token" value="{{ novel_token }}"><input type="hidden" name="action" value="chapters">{{ chapter_range_form.as_p }}
-<p class="muted-text">Istniejące numery pozostaną bez zmian. Liczbę znaków możesz uzupełnić w edycji rozdziału.</p><button class="primary-button" type="submit">Dodaj do tabeli</button>
-</form></div></section>{% endif %}
-<section class="card novel-chapter-table" aria-labelledby="chapter-table-heading"><div class="card-body">
-<h3 id="chapter-table-heading">Lista rozdziałów</h3>
+</div>
+<section class="card novel-chapter-table novel-chapters" aria-labelledby="chapter-table-heading"><div class="card-body">
+<h2 id="chapter-table-heading">Lista rozdziałów</h2>
 <form method="get" class="filters-form novel-chapter-filters"><div class="filter-field"><label for="chapter-q">Numer rozdziału</label><input type="search" id="chapter-q" name="q" value="{{ q }}"></div><div class="filter-actions"><button class="primary-button" type="submit">Szukaj</button><a class="secondary-button" href="{% url 'core:novel_detail' book.pk %}">Wyczyść</a></div></form>
 {% if coordinator and is_open %}
 <form method="post" id="chapter-assign" class="intake-form">
@@ -43,7 +42,7 @@
 </tr>{% empty %}<tr><td colspan="6">Brak rozdziałów.</td></tr>{% endfor %}</tbody></table></div>
 {% if coordinator and is_open %}</form>{% endif %}
 
-</div></section></div></section>
+</div></section>
 {% if coordinator %}<details class="card text-management-card" id="novel-production"{% if production_open %} open{% endif %}><summary><span>Zadania całej powieści</span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary><div class="card-body">
 {% if is_open %}<form method="post" class="intake-form">{% csrf_token %}<input type="hidden" name="novel_token" value="{{ novel_token }}"><input type="hidden" name="action" value="production"><div class="novel-assignment-grid">{% for form in task_forms %}<fieldset><legend>{{ form.instance.get_task_type_display }}</legend>{{ form.as_p }}</fieldset>{% endfor %}</div><h3>Okładka i wydanie</h3>{{ cover_form.as_p }}<button class="primary-button">Zapisz zadania</button></form>
 {% else %}<ul>{% for task in book.production_tasks.all %}<li>{{ task.get_task_type_display }}: {{ task.get_status_display }}{% if task.assigned_to %} – {{ task.assigned_to }}{% endif %}</li>{% endfor %}</ul><p>Okładka: {{ book.get_cover_status_display }} – {{ book.cover_author|default:'brak wykonawcy' }}</p>{% endif %}

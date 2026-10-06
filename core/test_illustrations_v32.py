@@ -50,6 +50,21 @@ class MultipleIllustratorsTests(TestCase):
         self.assertEqual(len(doc.xpath('//input[@name="illustrators"][@checked]')), 2)
         self.assertEqual({x['name'] for x in anthology_credits(self.book) if x['role'] == 'Ilustrator'}, {str(self.first), str(self.second)})
 
+    def test_detail_pairs_keep_four_separate_edit_forms(self):
+        response = self.client.get(self.detail)
+        self.assertEqual(response.status_code, 200)
+        doc = html.fromstring(response.content)
+        grid = doc.xpath('//div[@class="illustration-detail-grid"]')[0]
+        self.assertEqual(grid.xpath('./section/@aria-labelledby'), [
+            'illustration-assignment-heading', 'illustration-link-heading',
+            'illustration-excerpt-heading', 'illustration-notes-heading'])
+        self.assertEqual(grid.xpath('./section//form/input[@name="action"]/@value'),
+                         ['assignment', 'link', 'excerpt', 'coordinator_notes'])
+        self.assertFalse(doc.xpath('//form//form'))
+        for section in grid.xpath('./section'):
+            self.assertEqual(len(section.xpath('.//input[@name="csrfmiddlewaretoken"]')), 1)
+            self.assertTrue(section.xpath('.//input[@name="version"]'))
+
     def test_published_filter_and_sort_do_not_duplicate_texts(self):
         self.illustration.set_artists([self.first, self.second], status='delivered', preserve_assignment_date=True)
         self.assertEqual(self.client.get(self.list_url).context['page_obj'].paginator.count, 0)

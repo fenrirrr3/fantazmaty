@@ -85,8 +85,9 @@ def novel_detail(request, novel_id):
                         form = ChapterRangeForm(request.POST, prefix='add')
                         forms['chapter_range_form'] = form
                         if not form.is_valid():
-                            raise ValidationError('Popraw numery rozdziałów do dodania.')
-                        count = novels.add_chapters(book, profile, form.cleaned_data['chapter_numbers'])
+                            raise ValidationError('Popraw numery rozdziałów lub liczby znaków.')
+                        count = novels.add_chapters(book, profile, form.cleaned_data['chapter_numbers'],
+                                                   lengths=form.cleaned_data['chapter_lengths'])
                         messages.info(request, f'Dodano rozdziały: {count}. Istniejące numery pozostawiono bez zmian.')
                     elif action == 'chapter':
                         form = ChapterForm(request.POST, instance=Text(anthology=book))

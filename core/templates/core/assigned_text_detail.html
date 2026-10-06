@@ -26,6 +26,7 @@
             </div>
 
             <div class="detail-header-actions">
+                {% if is_novel and can_manage_workflow and text.anthology.status != 'ready' %}<a class="secondary-button small-button" href="{% url 'core:chapter_edit' text.anthology.pk text.pk %}">Edytuj rozdział</a>{% endif %}
                 {% if user.is_superuser %}<a class="secondary-button small-button" href="{% url 'admin:texts_text_change' text.pk %}">Edytuj w adminie</a>{% endif %}
             <a href="{% if is_novel %}{% url 'core:novel_detail' text.anthology.pk %}{% elif is_translation %}{% url 'core:translation_list' %}{% else %}{% url 'core:text_list' %}{% endif %}" class="secondary-button">
                 {% if is_novel %}Wróć do powieści{% elif is_translation %}Wróć do tłumaczeń{% else %}Wróć do tekstów{% endif %}
@@ -74,10 +75,10 @@
                 </dd>
             </div>
 
-            {% if not is_novel %}<div class="detail-item">
-                <dt>Długość</dt>
-                <dd>{{ text.length }}</dd>
-            </div>{% endif %}
+            <div class="detail-item">
+                <dt>{% if is_novel %}Liczba znaków ze spacjami{% else %}Długość{% endif %}</dt>
+                <dd>{{ text.length|default_if_none:'Brak danych' }}</dd>
+            </div>
 
             
                 <div class="detail-item">

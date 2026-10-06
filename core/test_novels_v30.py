@@ -75,7 +75,12 @@ class NovelPanelTests(TestCase):
     def test_split_layout_single_bulk_action_and_length_values(self):
         response = self.client.get(self.url)
         doc = html.fromstring(response.content)
-        self.assertEqual(len(doc.xpath('//div[contains(@class,"novel-chapter-layout")]/section')), 2)
+        overview = doc.xpath('//div[contains(@class,"novel-overview-grid")]')[0]
+        self.assertEqual(overview.xpath('./section/@aria-labelledby'), ['chapter-add-heading', 'novel-metadata-heading'])
+        self.assertFalse(overview.xpath('.//table'))
+        table_card = overview.xpath('following-sibling::section[1]')[0]
+        self.assertEqual(table_card.get('aria-labelledby'), 'chapter-table-heading')
+        self.assertTrue(table_card.xpath('.//table'))
         self.assertEqual(len(doc.xpath('//form[@id="chapter-assign"]//select[@name="assign-role"]')), 1)
         self.assertEqual(len(doc.xpath('//form[@id="chapter-assign"]//select[@name="assign-assignee"]')), 1)
         self.assertFalse(doc.xpath('//input[@name="assign-TOTAL_FORMS"]|//input[@name="chapter_selection"]'))

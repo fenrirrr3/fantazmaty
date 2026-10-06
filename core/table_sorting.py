@@ -63,9 +63,7 @@ MODELS['illustrations.illustration'] = {
     'Antologia':('anthology',('text__anthology__title',)),
     'Tytuł tekstu':('title',('text__title',)),
     'Ilustratorzy':('illustrator',('artist_sort',)),
-    **_columns(**{'Status':'status', 'Data przypisania':'assigned_at',
-    'Ostrzeżenia dotyczące treści':'trigger_warnings', 'Opowiadanie':'story_url',
-    'Ilustrowany fragment':'illustrated_excerpt', 'Uwagi koordynatora':'coordinator_notes'})}
+    **_columns(**{'Status':'status', 'Data przypisania':'assigned_at', 'Uwagi koordynatora':'coordinator_notes'})}
 MODELS['illustrations.coverproposal'] = {
     **_columns(**{'Autor ilustracji':'illustration_author','Ilustracja':'illustration_url',
     'Data zgłoszenia':'submitted_at','Status':'status','Ostatnia zmiana statusu':'status_changed_at'}),
@@ -224,7 +222,6 @@ def _extra_columns(items, queryset, request):
         columns['Skład'] = ('typesetting', lambda r: r.typesetting_task.get_status_display() if r.typesetting_task else 'Niezlecone')
     if model == 'illustrations.illustration':
         columns['Autorzy'] = ('authors', lambda r: _joined(a.display_name for a in r.text.authors.all()))
-        columns['Gatunek, tagi'] = ('genre_tags', lambda r: r.genre_tags_display)
     if model == 'authors.author':
         columns['Autor'] = ('person', lambda r: _get(r, 'display_name') or _get(r, 'pseudonym') or ' '.join((_get(r, 'first_name') or '', _get(r, 'last_name') or '')))
         columns['Imię i nazwisko'] = columns['Autor']

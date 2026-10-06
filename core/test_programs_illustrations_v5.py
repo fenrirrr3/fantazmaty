@@ -187,12 +187,17 @@ class IllustrationWorkspaceTests(TestCase):
         Illustration.objects.filter(pk=self.illustration.pk).update(
             status='assigned',assigned_at=timezone.localdate()-timedelta(days=20))
 
-    def test_list_loads_text_metadata_and_legacy_warnings_as_fallback(self):
+    def test_list_keeps_summary_and_detail_loads_metadata_and_legacy_warnings(self):
         self.illustration.trigger_warnings='Stare ostrzeżenia';self.illustration.save()
         response=self.client.get(reverse('illustrations:illustration_list'))
-        for value in ('Ilustrowana','Jan Autor','Science fantasy','Ostrzeżenia tekstu'):
+        for value in ('Ilustrowana','Jan Autor',self.text.title):
             self.assertContains(response,value)
-        self.assertNotContains(response,'Stare ostrzeżenia')
+        for value in ('Science fantasy','Ostrzeżenia tekstu','Stare ostrzeżenia'):
+            self.assertNotContains(response,value)
+        detail=self.client.get(self.url)
+        for value in ('Science fantasy','Ostrzeżenia tekstu'):
+            self.assertContains(detail,value)
+        self.assertNotContains(detail,'Stare ostrzeżenia')
         Text.objects.filter(pk=self.text.pk).update(content_warnings='')
         self.assertContains(self.client.get(self.url),'Stare ostrzeżenia')
 

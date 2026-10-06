@@ -1,7 +1,7 @@
 {% extends "core/base.html" %}
 {% load static %}
 {% block title %}Ilustracja: {{ illustration.text.title }} | Fantazmaty CMS{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'core/illustrations.css' %}?v=34">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/illustrations.css' %}?v=38">{% endblock %}
 {% block content %}
 <header class="page-header">
     <h1 class="page-title">Ilustracja: {{ illustration.text.title }}</h1>
@@ -16,8 +16,9 @@
         <div><dt>Trigger warningi</dt><dd>{{ illustration.warnings_display|default:"Nie podano"|linebreaksbr }}</dd></div>
     </dl>
 </div></section>
-<section class="card"><div class="card-body">
-    <h2>Przypisanie i status</h2>
+<div class="illustration-detail-grid">
+<section class="card" aria-labelledby="illustration-assignment-heading"><div class="card-body">
+    <h2 id="illustration-assignment-heading">Przypisanie i status</h2>
     <p>Ilustratorzy: <strong>{{ illustration.illustrator_display|default:"Nie przypisano" }}</strong> · {% include "core/includes/illustration_status.html" %}</p>
     {% if can_assign %}
     {% for artist in illustration.illustrators.all %}{% if artist.email %}<p>{{ artist }}: <a href="mailto:{{ artist.email }}">{{ artist.email }}</a></p>{% endif %}{% endfor %}
@@ -51,8 +52,8 @@
     </form>
     {% endif %}
 </div></section>
-<section class="card"><div class="card-body">
-    <h2>Link do opowiadania</h2>
+<section class="card" aria-labelledby="illustration-link-heading"><div class="card-body">
+    <h2 id="illustration-link-heading">Link do opowiadania</h2>
     {% if illustration.story_url %}<p><a class="primary-button" href="{{ illustration.story_url }}" target="_blank" rel="noopener noreferrer">Otwórz opowiadanie</a></p>{% else %}<p class="muted-text">Nie dodano linku do opowiadania.</p>{% endif %}
     {% if can_edit %}
     <form method="post" class="illustration-edit-form" data-warn-unsaved>
@@ -63,8 +64,8 @@
     </form>
     {% endif %}
 </div></section>
-<section class="card"><div class="card-body">
-    <h2>Ilustrowany fragment</h2>
+<section class="card" aria-labelledby="illustration-excerpt-heading"><div class="card-body">
+    <h2 id="illustration-excerpt-heading">Ilustrowany fragment</h2>
     {% if can_edit %}
     <form method="post" class="illustration-edit-form" data-warn-unsaved>
         {% csrf_token %}<input type="hidden" name="action" value="excerpt">{{ forms.excerpt.version }}
@@ -76,8 +77,9 @@
     <div class="illustration-excerpt-preview">{{ illustration.illustrated_excerpt|linebreaksbr }}</div>
     {% else %}<p class="muted-text">Nie wskazano fragmentu.</p>{% endif %}
 </div></section>
-<section class="card"><div class="card-body"><h2>Uwagi koordynatora</h2>
+<section class="card" aria-labelledby="illustration-notes-heading"><div class="card-body"><h2 id="illustration-notes-heading">Uwagi koordynatora</h2>
 {% if can_assign %}<form method="post" class="illustration-edit-form" data-warn-unsaved>{% csrf_token %}<input type="hidden" name="action" value="coordinator_notes">{{ forms.coordinator_notes.as_p }}<button type="submit" class="secondary-button">Zapisz uwagi</button></form>
 {% else %}<p>{{ illustration.coordinator_notes|default:"Brak uwag"|linebreaksbr }}</p>{% endif %}</div></section>
+</div>
 {% endblock %}
 {% block scripts %}<script src="{% static 'core/illustrator_search.js' %}?v=34" defer></script>{% endblock %}

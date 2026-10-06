@@ -1,3 +1,5 @@
+import re
+
 from django import forms
 from django.contrib.auth import get_user_model
 
@@ -73,7 +75,7 @@ class NovelForm(forms.ModelForm):
 
 class ChapterForm(forms.ModelForm):
     chapter_number = forms.IntegerField(label='Numer rozdziału', min_value=1)
-    length = forms.IntegerField(label='Liczba znaków ze spacjami', min_value=1, required=False,
+    length = forms.IntegerField(label='Liczba znaków ze spacjami', min_value=1, max_value=2147483647, required=False,
                                help_text='Pozostaw puste, jeśli długość nie jest jeszcze znana.')
 
     class Meta:
@@ -85,9 +87,50 @@ class ChapterRangeForm(forms.Form):
     chapter_numbers = forms.CharField(label='Numery rozdziałów', max_length=4000,
         help_text='Podaj numery lub zakresy po przecinku, np. 1–2, 4–7. Maksymalnie 500 rozdziałów naraz.',
         widget=forms.TextInput(attrs={'placeholder': 'np. 1–2, 4–7'}))
+    chapter_lengths = forms.CharField(label='Liczba znaków ze spacjami', required=False, max_length=16000,
+        help_text='Dla jednego rozdziału wpisz samą liczbę. Dla kilku podaj numer i długość, np. 1: 12882, 2: 37435 '
+                  '(możesz też użyć osobnych linii). Pominięte długości pozostaną nieznane.',
+        widget=forms.Textarea(attrs={'rows': 3, 'class': 'chapter-lengths-input', 'placeholder': 'np. 1: 12882, 2: 37435'}))
 
     def clean_chapter_numbers(self):
         return parse_chapter_numbers(self.cleaned_data['chapter_numbers'])
+
+    def clean(self):
+        data = super().clean()
+        numbers = data.get('chapter_numbers')
+        raw = data.get('chapter_lengths', '').strip()
+        data['chapter_lengths'] = {}
+        if not numbers or not raw:
+            return data
+
+        def positive_integer(value):
+            compact = re.sub(r'[ \u00a0\u202f]', '', value.strip())
+            if not re.fullmatch(r'[0-9]{1,10}', compact) or not 1 <= int(compact) <= 2147483647:
+                raise forms.ValidationError('Numer i liczba znaków muszą być dodatnimi liczbami całkowitymi, nie większymi niż 2147483647.')
+            return int(compact)
+
+        try:
+            if ':' not in raw:
+                if len(numbers) != 1:
+                    raise forms.ValidationError('Przy kilku rozdziałach podaj osobną długość z numerem, np. 1: 12882, 2: 37435.')
+                data['chapter_lengths'] = {numbers[0]: positive_integer(raw)}
+            else:
+                lengths = {}
+                for item in re.split(r'[,;\r\n]+', raw):
+                    if not item.strip():
+                        continue
+                    if item.count(':') != 1:
+                        raise forms.ValidationError('Użyj zapisu numer: liczba znaków, np. 1: 12882.')
+                    number, length = (positive_integer(part) for part in item.split(':'))
+                    if number not in numbers:
+                        raise forms.ValidationError(f'Rozdział {number} nie znajduje się w podanych numerach do dodania.')
+                    if number in lengths:
+                        raise forms.ValidationError(f'Liczbę znaków rozdziału {number} wpisano więcej niż raz.')
+                    lengths[number] = length
+                data['chapter_lengths'] = lengths
+        except forms.ValidationError as exc:
+            self.add_error('chapter_lengths', exc)
+        return data
 
 
 class AssigneeChoices(forms.ModelChoiceField):

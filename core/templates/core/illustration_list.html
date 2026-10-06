@@ -95,13 +95,10 @@
                             <th scope="col" {% if can_view_authors %}data-sort-key="authors"{% endif %}>Autorzy</th>
                         
 
-                        <th scope="col">Gatunek, tagi</th>
                         <th scope="col" data-sort-key="illustrator">Ilustratorzy</th>
                         <th scope="col" data-sort-key="status">Status</th>
                         <th scope="col">Data przypisania</th>
-                        <th scope="col">Ostrzeżenia dotyczące treści</th>
-                        <th scope="col">Opowiadanie</th>
-                        <th scope="col">Ilustrowany fragment</th><th scope="col">Uwagi koordynatora</th>
+                        <th scope="col">Uwagi koordynatora</th>
                     </tr>
                 </thead>
 
@@ -143,7 +140,6 @@
                                 </td>
                             
 
-                            <td>{{ illustration.genre_tags_display|default:"Brak danych" }}</td>
                             <td>
                                 {% for artist in illustration.illustrators.all %}
                                     <div>{% if can_manage_directory %}<a href="{% url 'illustrations:illustrator_edit' artist.pk %}" class="detail-link">{{ artist }}</a>{% else %}{{ artist }}{% endif %}
@@ -161,58 +157,11 @@
                                 {{ illustration.assigned_at|date:"d.m.Y"|default:"–" }}
                             </td>
 
-                            <td>
-                                {% if illustration.warnings_display %}
-                                    {{ illustration.warnings_display|linebreaksbr }}
-                                {% else %}
-                                    <span class="muted-text">Nie dodano</span>
-                                {% endif %}
-                            </td>
-
-                            <td data-copy-value="{{ illustration.story_url }}">
-                                {% if illustration.story_url %}
-                                    <a
-                                        href="{{ illustration.story_url }}"
-                                        class="detail-link"
-                                        rel="noreferrer"
-                                        aria-label="Otwórz opowiadanie: {{ illustration.text.title }}"
-                                    >
-                                        Otwórz opowiadanie
-                                    </a>
-                                    <button
-                                        type="button"
-                                        class="copy-value-button"
-                                        data-copy-value="{{ illustration.story_url }}"
-                                        aria-label="Skopiuj link do opowiadania: {{ illustration.text.title }}"
-                                    >
-                                        Kopiuj link
-                                    </button>
-                                {% else %}
-                                    <span class="muted-text">Brak linku</span>
-                                {% endif %}
-                            </td>
-
-                            <td>
-                                {% if illustration.illustrated_excerpt %}
-                                    <details class="reviewer-opinion">
-                                        <summary>
-                                            <span>Pokaż fragment</span>
-                                            <span class="dropdown-arrow" aria-hidden="true">▾</span>
-                                        </summary>
-
-                                        <div class="reviewer-opinion-content illustration-excerpt-preview">
-                                            {{ illustration.illustrated_excerpt|linebreaksbr }}
-                                        </div>
-                                    </details>
-                                {% else %}
-                                    <span class="muted-text">Nie wskazano fragmentu</span>
-                                {% endif %}
-                            </td>
                             <td>{% if illustration.coordinator_notes %}<details class="reviewer-opinion"><summary>Pokaż uwagi</summary><div class="reviewer-opinion-content">{{ illustration.coordinator_notes|linebreaksbr }}</div></details>{% else %}–{% endif %}</td>
                         </tr>
                     {% empty %}
                         <tr>
-                            <td colspan="11">
+                            <td colspan="7">
                                 <div class="empty-results-panel">
                                     <strong>Brak ilustracji spełniających kryteria.</strong>
                                     <p>

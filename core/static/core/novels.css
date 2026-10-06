@@ -6,15 +6,17 @@
 .novel-select-all { display: flex; align-items: center; gap: var(--field-gap); margin-bottom: 16px; margin-top: 20px; }
 @media (max-width: 760px) { .novel-assignment-grid { grid-template-columns: minmax(0, 1fr); } }
 
-.novel-chapter-add { margin-bottom: 24px; }
 .novel-assignment-grid .person-select { min-width: 0; }
-.novel-chapter-layout { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(0, 2fr); gap: 24px; align-items: start; }
-.novel-chapter-layout > .card { min-width: 0; margin: 0; }
-.novel-chapter-layout-single { grid-template-columns: minmax(0, 1fr); }
+.novel-overview-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: stretch; margin-block: 24px; }
+.novel-overview-grid > .card { min-width: 0; margin: 0; }
+.novel-overview-grid .card-body { overflow-wrap: anywhere; }
+.novel-overview-grid-single { grid-template-columns: minmax(0, 1fr); }
 .novel-chapters { margin-block: 24px; }
-.novel-bulk-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: end; }
-.novel-bulk-fields .form-field { min-width: 0; }
+.novel-bulk-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.novel-bulk-fields > .form-field { min-width: 0; margin-bottom: 0; align-content: start; }
+.novel-bulk-fields .lookup-status { margin-top: 0; }
+.novel-chapter-add .chapter-lengths-input { min-height: 96px; }
 .novel-bulk-fields button { justify-self: start; margin-bottom: 12px; }
 .novel-status-action { margin-top: 24px; }
-@media (max-width: 1100px) { .novel-chapter-layout { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 800px) { .novel-overview-grid { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 600px) { .novel-bulk-fields { grid-template-columns: minmax(0, 1fr); } }
