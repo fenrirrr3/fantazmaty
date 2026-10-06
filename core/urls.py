@@ -28,7 +28,16 @@ from core.views.translations import translation_list, translation_detail, set_tr
 from core.views.production_tasks import task_list, audio_descriptions
 from core.views.audiobooks import audiobook_list, update_text_audiobook
 
+from core.views import novels, vocabulary
+
 urlpatterns = [
+    path('powiesci/', novels.novel_list, name='novel_list'),
+    path('powiesci/dodaj/', novels.novel_add, name='novel_add'),
+    path('powiesci/<int:novel_id>/', novels.novel_detail, name='novel_detail'),
+    path('powiesci/<int:novel_id>/rozdzial/<int:chapter_id>/', novels.chapter_edit, name='chapter_edit'),
+    path('slownik/', vocabulary.vocabulary_list, name='vocabulary_list'),
+    path('slownik/podpowiedzi/', vocabulary.vocabulary_suggestions, name='vocabulary_suggestions'),
+    path('slownik/<int:term_id>/scal/', vocabulary.vocabulary_merge, name='vocabulary_merge'),
     path("teksty/<int:text_id>/audiobook/", update_text_audiobook, name="update_text_audiobook"),
     path('tlumaczenia/osoby/<str:kind>/sugestie/', translation_person_suggestions, name='translation_person_suggestions'),
     path('zadania/', task_list, name='task_list'),

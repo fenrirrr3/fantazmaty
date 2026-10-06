@@ -22,6 +22,7 @@ class ReviewOpinion(models.TextChoices):
 
 
 class Anthology(models.Model):
+    is_novel = models.BooleanField('powieść', default=False, db_index=True)
     class Status(models.TextChoices):
         IN_PREPARATION = "in_preparation", "W przygotowaniu"
         READY = "ready", "Gotowa"
@@ -95,6 +96,9 @@ class Anthology(models.Model):
         previous = type(self).objects.using(using).filter(pk=self.pk).values_list('status', flat=True).first()
         if previous == self.Status.READY:
             return
+        if self.is_novel:
+            from texts.novels import validate_ready_novel
+            validate_ready_novel(self)
         from workflow.models import WorkflowStage
         from django.db.models import Exists, OuterRef
         stages = WorkflowStage.objects.using(using).filter(
@@ -113,11 +117,20 @@ class Anthology(models.Model):
 
     def clean(self):
         super().clean()
+        self._validate_novel_kind()
         self._validate_ready_transition(self._state.db or router.db_for_write(type(self), instance=self))
+
+    def _validate_novel_kind(self):
+        if self.pk:
+            previous = type(self).objects.filter(pk=self.pk).values_list('is_novel', flat=True).first()
+            if previous != self.is_novel and (self.texts.exists() or self.reviews.exists()):
+                raise ValidationError({'is_novel': 'Rodzaj publikacji można zmienić tylko przed dodaniem tekstów, rozdziałów lub zgłoszeń.'})
 
     def save(self, *args, **kwargs):
         using = kwargs.get('using') or router.db_for_write(type(self), instance=self)
         fields = kwargs.get('update_fields')
+        if fields is None or 'is_novel' in fields:
+            self._validate_novel_kind()
         if self.pk and self.status == self.Status.READY and (fields is None or 'status' in fields):
             with transaction.atomic(using=using):
                 type(self).objects.using(using).select_for_update().get(pk=self.pk)
@@ -309,6 +322,8 @@ class AnthologyTask(models.Model):
 
 
 class Text(NormalizedModelMixin, models.Model):
+    chapter_number = models.PositiveIntegerField('numer rozdziału', null=True, blank=True,
+                                                  validators=[MinValueValidator(1)])
     for_recording = models.BooleanField("Do nagrywania", default=True, db_index=True)
     audiobook_blacklisted = models.BooleanField("Czarna lista audiobooków", default=False, db_index=True)
     genre = models.CharField("gatunek", max_length=100, blank=True, default="")
@@ -366,7 +381,8 @@ class Text(NormalizedModelMixin, models.Model):
     class Meta:
         verbose_name = "tekst"
         verbose_name_plural = "teksty"
-        constraints = [models.UniqueConstraint(fields=("import_source", "import_source_row"), name="unique_text_import_source")]
+        constraints = [models.UniqueConstraint(fields=("import_source", "import_source_row"), name="unique_text_import_source"),
+                       models.UniqueConstraint(fields=('anthology', 'chapter_number'), name='unique_novel_chapter_number')]
 
         ordering = ("title", "pk")
 
@@ -393,10 +409,20 @@ class Text(NormalizedModelMixin, models.Model):
     def clean(self):
         super().clean()
         self._validate_anthology_move(self._state.db or router.db_for_write(type(self), instance=self))
+        self._validate_chapter()
+
+    def _validate_chapter(self):
+        novel = bool(self.anthology_id and self.anthology.is_novel)
+        if novel and not self.chapter_number:
+            raise ValidationError({'chapter_number': 'Rozdział powieści wymaga numeru.'})
+        if not novel and self.chapter_number is not None:
+            raise ValidationError({'chapter_number': 'Numer rozdziału dotyczy wyłącznie powieści.'})
 
     def save(self, *args, **kwargs):
         using = kwargs.get('using') or router.db_for_write(type(self), instance=self)
         fields = kwargs.get('update_fields')
+        if fields is None or {'anthology', 'anthology_id', 'chapter_number'} & set(fields):
+            self._validate_chapter()
         if self.audiobook_blacklisted and (fields is None or {'for_recording', 'audiobook_blacklisted'} & set(fields)):
             self.for_recording = False
             if fields is not None:
@@ -1062,3 +1088,6 @@ class Extract(NormalizedModelMixin, models.Model):
 
     def __str__(self):
         return f'{self.recruitment} – {self.full_name}'
+
+
+from .catalog_models import NovelProfile, VocabularyTerm  # noqa: E402,F401

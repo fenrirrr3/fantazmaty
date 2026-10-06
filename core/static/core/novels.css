@@ -1,0 +1,8 @@
+.novel-assignment-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.novel-assignment-grid fieldset { min-width: 0; border: 1px solid var(--border-color, #cbd5e1); border-radius: .6rem; padding: 1rem; }
+.novel-assignment-grid select, .novel-assignment-grid input { width: 100%; max-width: 100%; }
+.novel-assignments { margin: 0; padding-left: 1rem; }
+.novel-assignments li + li { margin-top: .35rem; }
+.vocabulary-suggestions { display: flex; flex-wrap: wrap; gap: .4rem; margin: .4rem 0; }
+.vocabulary-suggestions button { font: inherit; cursor: pointer; }
+@media (max-width: 760px) { .novel-assignment-grid { grid-template-columns: 1fr; } }

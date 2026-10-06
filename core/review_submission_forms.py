@@ -64,6 +64,8 @@ class ReviewAdminForm(NormalizedFormMixin, forms.ModelForm):
 
         if self.instance._state.adding and "anthology" in self.fields:
             self.fields["anthology"].queryset = Anthology.objects.filter(status=Anthology.Status.IN_PREPARATION).order_by("title", "pk")
+        if 'anthology' in self.fields:
+            self.fields['anthology'].queryset = self.fields['anthology'].queryset.filter(is_novel=False)
 
         # Dane zostaną uzupełnione po stronie serwera po wyborze autora.
         # Bez powiązanego autora pozostają wymagane w clean().

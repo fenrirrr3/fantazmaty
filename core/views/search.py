@@ -232,9 +232,9 @@ def _search_people(query, user):
     ]
 
 
-def _search_anthologies(query):
+def _search_anthologies(query, *, novels=False):
     anthologies = (
-        ordinary(Anthology.objects).filter(_matching_terms(query, ("title",)))
+        (Anthology.objects.filter(is_novel=True) if novels else ordinary(Anthology.objects).filter(is_novel=False)).filter(_matching_terms(query, ("title",)))
         .order_by("title", "pk")
     )
 
@@ -268,6 +268,7 @@ def global_search(request):
         "authors": [],
         "people": [],
         "anthologies": [],
+        "novels": [],
         "can_view_authors": include_authors,
         "can_search_authors": True,
         "can_view_author_data": include_authors,
@@ -296,6 +297,7 @@ def global_search(request):
                     ),
                     "people": _search_people(query, request.user),
                     "anthologies": _search_anthologies(query),
+                    "novels": _search_anthologies(query, novels=True),
                 }
             )
 

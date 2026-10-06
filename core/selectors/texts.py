@@ -167,7 +167,7 @@ def _author_data(author):
 def _anthology_data(anthology):
     if anthology is None:
         return None
-    return _Record(pk=anthology.pk, title=anthology.title, status=anthology.status, is_translated=anthology.is_translated)
+    return _Record(pk=anthology.pk, title=anthology.title, status=anthology.status, is_translated=anthology.is_translated, is_novel=anthology.is_novel)
 
 
 def _stage_data(stage, text_data=None):
@@ -302,7 +302,7 @@ def _current_stage(stages, *, prepared=False):
     return current_stage(stages, prepared=prepared)
 
 
-def _annotated_texts(*, translated=False, include_translations=False):
+def _annotated_texts(*, translated=False, include_translations=False, include_novels=False):
     from workflow.state import state_annotations, ORDER
     from workflow.read_queries import exclude_obsolete_verification_placeholders
     from django.db.models.functions import Coalesce
@@ -313,6 +313,8 @@ def _annotated_texts(*, translated=False, include_translations=False):
     current = stages.filter(is_completed=False, ended_at__isnull=True).order_by('state_priority','-state_order','-iteration','-pk').values('stage_type')[:1]
     last = stages.order_by('-state_order','-iteration','-pk').values('stage_type')[:1]
     query = Text.objects.all() if include_translations else (Text.objects.filter(anthology__is_translated=True) if translated else Text.objects.exclude(anthology__is_translated=True))
+    if not include_novels:
+        query = query.exclude(anthology__is_novel=True)
     return query.annotate(current_stage_type=Coalesce(Subquery(current), Subquery(last)))
 
 
@@ -336,7 +338,7 @@ def _text_row(text, include_authors):
     return result
 
 
-def text_list_context(*, user, params, scope=None, stage_scope=None, translated=False, include_translations=False):
+def text_list_context(*, user, params, scope=None, stage_scope=None, translated=False, include_translations=False, include_novels=False):
     require_team_member(user)
     include_authors = can_view_author_data(user)
     anthology_id = _positive_id(params.get("anthology"))
@@ -353,7 +355,7 @@ def text_list_context(*, user, params, scope=None, stage_scope=None, translated=
     hide_ready = params.get("hide_ready", "0" if translated else "1").strip() != "0"
 
     def filtered(exclude=None):
-        result = _annotated_texts(translated=translated, include_translations=include_translations)
+        result = _annotated_texts(translated=translated, include_translations=include_translations, include_novels=include_novels)
         if scope is not None:
             result = result.filter(pk__in=scope.values("pk"))
         if stage_scope is not None:
@@ -487,7 +489,7 @@ def my_texts_context(*, user, selected_view="active", params=None):
 
     params = params.copy() if params is not None else {}
     params.setdefault("hide_ready", "0")
-    filters = text_list_context(user=user, params=params, scope=texts, include_translations=True)
+    filters = text_list_context(user=user, params=params, scope=texts, include_translations=True, include_novels=True)
     texts = filters.pop("filtered_queryset")
     from workflow.read_queries import annotate_my_work
     texts = annotate_my_work(texts, user, today)
@@ -603,6 +605,7 @@ def workflow_list_context(*, user, params):
     stages = WorkflowStage.objects.current_cycle().select_related("assignment__assigned_to__person_profile").filter(
         workflow_cycle=F("text__current_workflow_cycle"),
     )
+    stages = stages.exclude(text__anthology__is_novel=True)
     for term in query.split():
         condition = (
             Q(text__title__plcontains=term)

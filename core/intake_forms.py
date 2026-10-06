@@ -70,7 +70,7 @@ class SingleReviewForm(ReviewAdminForm):
         self.fields.pop('confirm_source_mismatch', None)
         self.fields['newsletter_premieres'].label = 'Premierach'
         self.fields['newsletter_recruitment'].label = 'Naborach'
-        self.fields['anthology'].queryset = ordinary(Anthology.objects).filter(status=Anthology.Status.IN_PREPARATION).order_by('title', 'pk')
+        self.fields['anthology'].queryset = ordinary(Anthology.objects).filter(is_novel=False).filter(status=Anthology.Status.IN_PREPARATION).order_by('title', 'pk')
         self.fields['author'].widget.attrs['data-author-search-url'] = reverse('core:author_suggestions')
         from authors.models import Author
         author_id = self.data.get('author') if self.is_bound else self.initial.get('author', self.instance.author_id)

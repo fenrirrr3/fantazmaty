@@ -218,6 +218,7 @@
                 {% endif %}
             </section>
 
+            <section class="card"><header class="section-header"><h2>Powieści</h2><span class="record-counter">{{ novels|length }}</span></header><ul>{% for novel in novels %}<li><a href="{% url 'core:novel_detail' novel.pk %}"><strong>{{ novel.title }}</strong></a> – {{ novel.get_status_display }}</li>{% empty %}<li>Brak pasujących powieści.</li>{% endfor %}</ul></section>
             <section class="card" aria-labelledby="search-anthologies-heading">
                 <header class="section-header">
                     <h2 id="search-anthologies-heading">Antologie</h2>

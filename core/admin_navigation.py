@@ -6,6 +6,7 @@ from urllib.parse import urlencode
 GROUPS = (
     ('submissions', 'Zgłoszenia i recenzje', ('texts.review', 'texts.extract')),
     ('publication', 'Teksty i antologie', ('texts.text', 'texts.anthology', 'texts.anthologytask', 'core.anthologycorrection')),
+    ('novels', 'Powieści i słownik', ('novels', 'texts.novelprofile', 'texts.vocabularyterm')),
     ('translations', 'Tłumaczenia', ('texts.texttranslation', 'texts.foreignauthor', 'texts.translator')),
     ('authors', 'Autorzy', ('authors.author', 'blacklist')),
     ('team', 'Zespół i konta', ('people.person', 'auth.user', 'people.vacation', 'core.recruitment')),
@@ -41,6 +42,7 @@ def grouped_app_list(original):
     models = {f"{app['app_label']}.{m['object_name'].lower()}": dict(m) for app in original for m in app['models']}
     # Reuse registered admins, their search, permissions and edit forms.
     shortcuts = (
+        ('novels', 'texts.anthology', 'Powieści', {'is_novel__exact': '1'}),
         ('audiobooks_queue', 'texts.text', 'Audiobooki do nagrywania',
          {'for_recording__exact': '1', 'audiobook_blacklisted__exact': '0'}),
         ('audiobooks_blacklist', 'texts.text', 'Czarna lista audiobooków',
@@ -70,7 +72,7 @@ def grouped_app_list(original):
         entries = [models.pop(member) for member in members if member in models]
         if entries or key == 'history' and details:
             group = {'name': name, 'app_label': key, 'app_url': reverse('admin:index') + '#group-' + key,
-                     'models': entries, 'collapsed': index >= 4}
+                     'models': entries, 'collapsed': key not in ('submissions', 'publication', 'novels', 'translations', 'authors')}
             if key == 'history' and details:
                 group['subgroups'] = [{'name': 'Szczegółowe rekordy', 'app_label': 'history-details',
                                        'models': details, 'collapsed': True}]

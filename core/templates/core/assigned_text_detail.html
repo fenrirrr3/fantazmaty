@@ -27,8 +27,8 @@
 
             <div class="detail-header-actions">
                 {% if user.is_superuser %}<a class="secondary-button small-button" href="{% url 'admin:texts_text_change' text.pk %}">Edytuj w adminie</a>{% endif %}
-            <a href="{% if is_translation %}{% url 'core:translation_list' %}{% else %}{% url 'core:text_list' %}{% endif %}" class="secondary-button">
-                {% if is_translation %}Wróć do tłumaczeń{% else %}Wróć do tekstów{% endif %}
+            <a href="{% if is_novel %}{% url 'core:novel_detail' text.anthology.pk %}{% elif is_translation %}{% url 'core:translation_list' %}{% else %}{% url 'core:text_list' %}{% endif %}" class="secondary-button">
+                {% if is_novel %}Wróć do powieści{% elif is_translation %}Wróć do tłumaczeń{% else %}Wróć do tekstów{% endif %}
             </a>
             </div>
         </div>
@@ -542,13 +542,14 @@
     </section>
     <section class="card" aria-labelledby="text-tags-heading">
         <header class="section-header"><h2 id="text-tags-heading">Tagi i gatunek</h2></header>
-        <form method="post" action="{% url 'core:update_text_tags' text.pk %}" class="text-tags-form" data-warn-unsaved>
+                  {% if is_novel %}<div class="card-body"><p><strong>Tagi:</strong> {{ text.tags|default:'Brak' }}</p><p><strong>Gatunek:</strong> {{ text.genre|default:'Brak' }}</p><a href="{% url 'core:novel_detail' text.anthology.pk %}">Wspólne dane powieści</a></div>{% else %}
+          <form method="post" action="{% url 'core:update_text_tags' text.pk %}" class="text-tags-form" data-warn-unsaved>
             {% csrf_token %}{% edit_version %}{{ text_tags_form.non_field_errors }}
             <div class="form-field">{{ text_tags_form.tags.label_tag }}{{ text_tags_form.tags }}{{ text_tags_form.tags.errors }}<p class="muted-text">{{ text_tags_form.tags.help_text }}</p></div>
             <div class="form-field">{{ text_tags_form.genre.label_tag }}{{ text_tags_form.genre }}{{ text_tags_form.genre.errors }}<p class="muted-text">{{ text_tags_form.genre.help_text }}</p></div>
             <button class="primary-button" type="submit">Zapisz tagi i gatunek</button>
             <a href="{% url 'core:tag_list' %}">Przejdź do listy tagów</a>
-        </form>
+        </form>{% endif %}
     </section>
     </div>
 

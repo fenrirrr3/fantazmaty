@@ -117,9 +117,9 @@ def review_create(request):
             review = form.save(commit=False)
             from texts.models import Anthology
             # Same lock as bulk imports, including submissions to other calls.
-            ordinary(Anthology.objects).select_for_update().order_by('pk').first()
+            ordinary(Anthology.objects).filter(is_novel=False).select_for_update().order_by('pk').first()
             # Serialize against anthology closure through the actual write.
-            anthology = ordinary(Anthology.objects).select_for_update().filter(
+            anthology = ordinary(Anthology.objects).filter(is_novel=False).select_for_update().filter(
                 pk=review.anthology_id, status=Anthology.Status.IN_PREPARATION,
             ).first()
             if anthology is None:

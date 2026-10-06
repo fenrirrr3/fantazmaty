@@ -1,7 +1,14 @@
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-
 from .models import Anthology, AnthologyTask
+
+
+@receiver(post_save, sender=Anthology, dispatch_uid='texts.create_novel_profile')
+def create_novel_profile(sender, instance, using, raw=False, **kwargs):
+    if not raw and instance.is_novel:
+        from texts.models import NovelProfile
+        NovelProfile.objects.using(using).get_or_create(anthology=instance)
+
 from .models import Text
 from .translations import sync_translations
 

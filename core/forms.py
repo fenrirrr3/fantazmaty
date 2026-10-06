@@ -458,7 +458,7 @@ class ReviewBulkImportForm(forms.Form):
 
     anthology = forms.ModelChoiceField(
         label="Antologia",
-        queryset=ordinary(Anthology.objects).filter(status=Anthology.Status.IN_PREPARATION).order_by("title", "pk"),
+        queryset=ordinary(Anthology.objects).filter(is_novel=False).filter(status=Anthology.Status.IN_PREPARATION).order_by("title", "pk"),
         empty_label="Wybierz antologię",
         widget=forms.Select(attrs={"class": "filter-select"}),
     )

@@ -93,11 +93,12 @@ class AnthologyAdmin(admin.ModelAdmin):
     def get_search_results(self, request, queryset, search_term):
         queryset, duplicates = super().get_search_results(request, queryset, search_term)
         if request.GET.get("app_label") == "texts" and request.GET.get("model_name") == "review" and request.GET.get("field_name") == "anthology":
-            queryset = queryset.filter(status=Anthology.Status.IN_PREPARATION)
+            queryset = queryset.filter(status=Anthology.Status.IN_PREPARATION, is_novel=False)
         return queryset, duplicates
 
     list_display = (
         "title",
+        "is_novel",
         "status",
         "cover_status",
         "cover_author",
@@ -107,6 +108,7 @@ class AnthologyAdmin(admin.ModelAdmin):
     )
     list_filter = (
         "status",
+        "is_novel",
         "cover_status",
         "has_illustrations",
         "is_translated",
@@ -126,6 +128,7 @@ class AnthologyAdmin(admin.ModelAdmin):
             {
                 "fields": (
                     "title",
+                    "is_novel",
                     "status",
                     "has_illustrations",
         "is_translated",
@@ -259,6 +262,11 @@ class TextAdminForm(NormalizedFormMixin, forms.ModelForm):
             str(anthology_id or '').isdecimal() and Anthology.objects.filter(pk=anthology_id, is_translated=True).exists())
         if translated and 'authors' in self.fields:
             self.fields['authors'].required = False
+        novel = (self.instance.anthology_id and self.instance.anthology.is_novel) or (
+            str(anthology_id or '').isdecimal() and Anthology.objects.filter(pk=anthology_id, is_novel=True).exists())
+        if novel and 'authors' in self.fields:
+            self.fields['authors'].required = False
+            self.fields['authors'].help_text = 'Autorzy zostaną pobrani z danych całej powieści.'
         if source is not None:
             canonical = review_text_initial(source)
             # These fields describe the saved source, not another editable author form.
@@ -293,6 +301,11 @@ class TextAdminForm(NormalizedFormMixin, forms.ModelForm):
                 self.add_error('anthology', 'Tekst musi należeć do antologii zapisanej recenzji.')
             if getattr(self, 'source_error', None):
                 self.add_error(None, self.source_error)
+        elif (data.get('anthology') and data['anthology'].is_novel) or (self.instance.anthology_id and self.instance.anthology.is_novel):
+            from texts.models import NovelProfile
+            book = data.get('anthology') or self.instance.anthology
+            if not NovelProfile.objects.filter(anthology=book, authors__isnull=False).exists():
+                self.add_error(None, 'Najpierw przypisz autorów w podglądzie powieści.')
         elif data.get('anthology') and data['anthology'].is_translated:
             if data.get('authors'):
                 self.add_error('authors', 'Autora zagranicznego dodaj w sekcji tłumaczenia, po zapisaniu tekstu.')
@@ -443,12 +456,14 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     ordering = ("anthology__title", "title", "pk")
     def get_readonly_fields(self, request, obj=None):
         fields = super().get_readonly_fields(request, obj)
+        if obj and obj.anthology_id and obj.anthology.is_novel:
+            fields = (*fields, 'authors', 'tags', 'genre', 'anthology')
         return fields if request.user.is_superuser else (*fields, "file_url")
 
     readonly_fields = ("manual_status_link", "coordinator_note_updated_at", "current_workflow_cycle", "import_source", "import_source_row")
 
     fieldsets = (
-        ('Tekst', {'fields': ('title', 'authors', 'anthology', 'length', 'tags', 'genre', 'content_warnings', 'file_url',
+        ('Tekst', {'fields': ('title', 'authors', 'anthology', 'chapter_number', 'length', 'tags', 'genre', 'content_warnings', 'file_url',
             'source_author_first_name', 'source_author_last_name', 'source_author_email', 'source_author_pseudonym',
             'source_contract_received', 'source_coauthor_contracts', 'source_update_author_phone')}),
         ('Status i zarządzanie', {'fields': ('manual_status_link',)}),
@@ -506,6 +521,12 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
+        if form.instance.anthology_id and form.instance.anthology.is_novel:
+            text = form.instance
+            profile = text.anthology.novel
+            text.authors.set(profile.authors.all())
+            text.tags, text.genre = profile.tags, profile.genre
+            text.save(update_fields=['tags', 'genre'])
         if not change:
             text = form.instance
             source_review = getattr(request, '_source_review', None)
@@ -1302,3 +1323,5 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
 # Reviewers i ReviewAssignment są edytowane wyłącznie jako inline Review.
 # Nie rejestrujemy osobnych adminów omijających blokadę rekordu recenzji.
+
+from . import catalog_admin  # noqa: E402,F401

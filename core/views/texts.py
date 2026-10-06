@@ -126,6 +126,7 @@ def _render_text_detail(request, text, *, bound_forms=None, status=200):
         text=text,
     )
     context.update(_permission_context(request.user))
+    context['is_novel'] = bool(text.anthology_id and text.anthology.is_novel)
     context['is_translation'] = bool(text.anthology_id and text.anthology.is_translated)
     if context['is_translation']:
         from core.translation_forms import TranslationForm
@@ -286,13 +287,17 @@ def assigned_text_detail(request, text_id):
 def update_text_tags(request, text_id):
     with transaction.atomic():
         text = get_object_or_404(Text.objects.select_for_update(), pk=text_id)
+        if text.anthology_id and text.anthology.is_novel:
+            messages.error(request, 'Tagi i gatunek rozdziałów zmienia się w podglądzie powieści.')
+            return redirect('core:novel_detail', novel_id=text.anthology_id)
         form = TextTagsForm(request.POST, instance=text)
         if form.is_valid():
-            text.tags = form.cleaned_data['tags']
+            from texts.vocabulary import canonicalize
+            text.tags = canonicalize(form.cleaned_data['tags'], 'tag', register=True)
             # An older browser tab may still submit the tags-only form.
             fields = ['tags']
             if 'genre' in request.POST:
-                text.genre = form.cleaned_data['genre']
+                text.genre = canonicalize(form.cleaned_data['genre'], 'genre', register=True)
                 fields.append('genre')
             text.save(update_fields=fields)
             messages.success(request, 'Zapisano tagi i gatunek tekstu.')
@@ -338,6 +343,8 @@ def set_text_authors(request, text_id):
                 Text.objects.select_for_update(),
                 pk=text_id,
             )
+            if text.anthology_id and text.anthology.is_novel:
+                raise ValidationError('Autorów rozdziału zmień w podglądzie całej powieści.')
             if text.anthology_id and text.anthology.is_translated:
                 raise ValidationError('Autora zagranicznego zmień w formularzu tłumaczenia.')
             authors = list(

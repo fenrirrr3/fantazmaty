@@ -22,7 +22,7 @@ def anthology_list(request):
     )
 
     anthologies = (
-        ordinary(Anthology.objects)
+        ordinary(Anthology.objects).filter(is_novel=False)
         .prefetch_related(
             Prefetch(
                 "production_tasks",
