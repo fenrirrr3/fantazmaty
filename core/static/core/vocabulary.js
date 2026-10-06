@@ -10,7 +10,7 @@ document.querySelectorAll('[data-vocabulary]').forEach(input => {
         clearTimeout(timer);
         const version = ++serial;
         timer = setTimeout(async () => {
-            const parts = input.value.split(',');
+            const parts = input.value.split(/[,\r\n]+/);
             const query = parts.at(-1).trim();
             if (!query) { box.replaceChildren(); return; }
             const url = new URL(endpoint, window.location.origin);
@@ -26,7 +26,7 @@ document.querySelectorAll('[data-vocabulary]').forEach(input => {
                     const button = document.createElement('button');
                     button.type = 'button'; button.className = 'secondary-button small-button'; button.textContent = name;
                     button.addEventListener('click', () => {
-                        const values = input.value.split(','); values[values.length - 1] = name;
+                        const values = input.value.split(/[,\r\n]+/); values[values.length - 1] = name;
                         input.value = values.map(value => value.trim()).filter(Boolean).join(', ');
                         ++serial; box.replaceChildren(); input.dispatchEvent(new Event('change', {bubbles: true})); input.focus();
                     });

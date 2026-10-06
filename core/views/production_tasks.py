@@ -2,7 +2,7 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
-from core.permissions import team_member_required
+from core.permissions import team_member_required, is_coordinator
 from core.pagination import paginate_items
 from core.translation_scope import ordinary
 from texts.models import Anthology, AnthologyTask
@@ -22,6 +22,8 @@ def audio_descriptions(request):
 @team_member_required
 def task_list(request):
     books = ordinary(Anthology.objects).exclude(status=Anthology.Status.READY).prefetch_related('production_tasks__assigned_to')
+    if not is_coordinator(request.user):
+        books = books.exclude(is_novel=True)
     query = request.GET.get('q', '').strip()[:200]
     selected_type = request.GET.get('task', '')
     choices = [('cover', 'Okładka'), *AnthologyTask.TaskType.choices]

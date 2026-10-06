@@ -1,6 +1,7 @@
 """Novel operations reuse the existing chapter workflow and its eligibility rules."""
 import hashlib
 import json
+import re
 from contextlib import contextmanager
 
 from django.core import signing
@@ -13,6 +14,44 @@ from core.workflow_events import track_workflow
 from texts.models import Anthology, NovelProfile, Text
 from workflow.models import WorkflowStage, WorkflowRoleAssignment
 from workflow.services import _assign_role, create_pending_stage
+
+
+def parse_chapter_numbers(value):
+    """A bounded, explicit range; never guess or ignore malformed fragments."""
+    numbers = set()
+    if not value or len(value) > 4000:
+        raise ValidationError('Podaj numery rozdziałów, np. 1–2, 4–7.')
+    for part in value.split(','):
+        match = re.fullmatch(r'\s*([0-9]{1,10})\s*(?:[-–]\s*([0-9]{1,10})\s*)?', part)
+        if not match:
+            raise ValidationError('Nieprawidłowy zakres. Użyj numerów i zakresów po przecinku, np. 1–2, 4–7.')
+        start = int(match[1])
+        end = int(match[2] or match[1])
+        if not 1 <= start <= end <= 2147483647:
+            raise ValidationError('Numery muszą być dodatnie, a koniec zakresu nie może być mniejszy od początku.')
+        if end - start >= 500:
+            raise ValidationError('Jedna operacja może obejmować maksymalnie 500 rozdziałów.')
+        numbers.update(range(start, end + 1))
+        if len(numbers) > 500:
+            raise ValidationError('Jedna operacja może obejmować maksymalnie 500 rozdziałów.')
+    return sorted(numbers)
+
+
+def chapter_ids_for_numbers(book, numbers):
+    matched = dict(Text.objects.filter(anthology=book, chapter_number__in=numbers).values_list('chapter_number', 'pk'))
+    missing = sorted(set(numbers) - matched.keys())
+    if missing:
+        raise ValidationError('Najpierw dodaj brakujące rozdziały: ' + ', '.join(map(str, missing)) + '.')
+    return list(matched.values())
+
+
+def add_chapters(book, profile, numbers):
+    require_open(book)
+    existing = set(Text.objects.filter(anthology=book, chapter_number__in=numbers).values_list('chapter_number', flat=True))
+    for number in numbers:
+        if number not in existing:
+            new_chapter(book, profile, chapter_number=number)
+    return len(set(numbers) - existing)
 
 
 def signature(book):
@@ -105,6 +144,7 @@ def sync_metadata(book, profile):
 
 def new_chapter(book, profile, **fields):
     require_open(book)
+    fields['title'] = f'Rozdział {fields["chapter_number"]}'
     chapter = Text(anthology=book, for_recording=False, tags=profile.tags, genre=profile.genre, **fields)
     chapter.full_clean()
     chapter.save()
@@ -130,6 +170,8 @@ def assign_chapter(text, user, role, assignee):
 def assign_chapters(book, user, chapter_ids, assignments):
     require_open(book)
     ids = set(chapter_ids)
+    if len(ids) > 500:
+        raise ValidationError('Jedna operacja może obejmować maksymalnie 500 rozdziałów.')
     chapters = list(Text.objects.filter(anthology=book, pk__in=ids).order_by('pk'))
     if not ids or len(chapters) != len(ids):
         raise ValidationError('Wybierz rozdziały należące do tej powieści.')

@@ -264,6 +264,14 @@ class TextAdminForm(NormalizedFormMixin, forms.ModelForm):
             self.fields['authors'].required = False
         novel = (self.instance.anthology_id and self.instance.anthology.is_novel) or (
             str(anthology_id or '').isdecimal() and Anthology.objects.filter(pk=anthology_id, is_novel=True).exists())
+        if 'length' in self.fields:
+            self.fields['length'].required = not novel
+        if novel:
+            for name in ('title', 'length', 'file_url', 'content_warnings'):
+                if name in self.fields:
+                    self.fields[name].required = False
+                    self.fields[name].disabled = True
+                    self.fields[name].widget = forms.HiddenInput()
         if novel and 'authors' in self.fields:
             self.fields['authors'].required = False
             self.fields['authors'].help_text = 'Autorzy zostaną pobrani z danych całej powieści.'
@@ -489,6 +497,8 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         if obj is None and getattr(request, '_source_review', None) is not None:
             return fieldsets
         confirmations = {'source_contract_received', 'source_coauthor_contracts', 'source_update_author_phone'}
+        if obj and obj.anthology_id and obj.anthology.is_novel:
+            confirmations.update({'title', 'length', 'file_url', 'content_warnings'})
         if obj and obj.anthology_id and obj.anthology.is_translated:
             confirmations.add('authors')
         return tuple((name, {**options, 'fields': tuple(field for field in options['fields'] if field not in confirmations)})

@@ -186,8 +186,8 @@ class NovelTests(TestCase):
         with self.assertRaises(ValidationError):
             validate_ready_novel(self.book)
         approve(self.book, self.admin)
-        self.first.title = 'Nowy tytuł'
-        self.first.save(update_fields=['title'])
+        self.first.coordinator_note = 'Nowe ustalenia'
+        self.first.save(update_fields=['coordinator_note'])
         with self.assertRaises(ValidationError):
             validate_ready_novel(self.book)
 

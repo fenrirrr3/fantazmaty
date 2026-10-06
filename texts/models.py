@@ -356,6 +356,8 @@ class Text(NormalizedModelMixin, models.Model):
 
     length = models.PositiveIntegerField(
         "długość",
+        null=True,
+        blank=True,
         validators=[MinValueValidator(1)],
     )
 
@@ -382,7 +384,9 @@ class Text(NormalizedModelMixin, models.Model):
         verbose_name = "tekst"
         verbose_name_plural = "teksty"
         constraints = [models.UniqueConstraint(fields=("import_source", "import_source_row"), name="unique_text_import_source"),
-                       models.UniqueConstraint(fields=('anthology', 'chapter_number'), name='unique_novel_chapter_number')]
+                       models.UniqueConstraint(fields=('anthology', 'chapter_number'), name='unique_novel_chapter_number'),
+                       models.CheckConstraint(condition=models.Q(chapter_number__isnull=False) | models.Q(length__isnull=False),
+                                              name='ordinary_text_requires_length')]
 
         ordering = ("title", "pk")
 
@@ -411,6 +415,13 @@ class Text(NormalizedModelMixin, models.Model):
         self._validate_anthology_move(self._state.db or router.db_for_write(type(self), instance=self))
         self._validate_chapter()
 
+    def clean_fields(self, exclude=None):
+        if self.chapter_number and self.anthology_id and self.anthology.is_novel:
+            self.title = f'Rozdział {self.chapter_number}'
+        super().clean_fields(exclude=exclude)
+        if self.length is None and not self.chapter_number and 'length' not in (exclude or ()):
+            raise ValidationError({'length': 'Podaj długość tekstu.'})
+
     def _validate_chapter(self):
         novel = bool(self.anthology_id and self.anthology.is_novel)
         if novel and not self.chapter_number:
@@ -421,6 +432,11 @@ class Text(NormalizedModelMixin, models.Model):
     def save(self, *args, **kwargs):
         using = kwargs.get('using') or router.db_for_write(type(self), instance=self)
         fields = kwargs.get('update_fields')
+        if self.chapter_number and self.anthology_id and self.anthology.is_novel:
+            self.title = f'Rozdział {self.chapter_number}'
+            if fields is not None and {'title', 'chapter_number'} & set(fields):
+                fields = set(fields) | {'title'}
+                kwargs['update_fields'] = fields
         if fields is None or {'anthology', 'anthology_id', 'chapter_number'} & set(fields):
             self._validate_chapter()
         if self.audiobook_blacklisted and (fields is None or {'for_recording', 'audiobook_blacklisted'} & set(fields)):

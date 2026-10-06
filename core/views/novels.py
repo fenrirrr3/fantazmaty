@@ -6,7 +6,7 @@ from django.db.models import Count, Q, Sum
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET, require_http_methods
 
-from core.novel_forms import NovelForm, ChapterForm, AssignmentForms, CoverForm
+from core.novel_forms import NovelForm, ChapterForm, ChapterRangeForm, AssignmentForms, CoverForm
 from core.pagination import paginate_items
 from core.permissions import team_member_required, coordinator_required, is_coordinator
 from core.selectors.texts import _annotated_texts
@@ -44,16 +44,19 @@ def novel_list(request):
 def novel_add(request):
     form = NovelForm(request.POST or None)
     if request.method == 'POST' and form.is_valid():
-        with transaction.atomic():
-            book = Anthology.objects.create(title=form.cleaned_data['title'], is_novel=True)
-            profile = form.save(commit=False)
-            profile.pk = NovelProfile.objects.get(anthology=book).pk
-            profile.anthology = book
-            profile.tags = canonicalize(profile.tags, 'tag', register=True)
-            profile.genre = canonicalize(profile.genre, 'genre', register=True)
-            profile.save()
-            form.save_m2m()
-        return redirect('core:novel_detail', novel_id=book.pk)
+        try:
+            with transaction.atomic():
+                book = Anthology.objects.create(title=form.cleaned_data['title'], is_novel=True)
+                profile = form.save(commit=False)
+                profile.pk = NovelProfile.objects.get(anthology=book).pk
+                profile.anthology = book
+                profile.tags = canonicalize(profile.tags, 'tag', register=True)
+                profile.genre = canonicalize(profile.genre, 'genre', register=True)
+                profile.save()
+                form.save_authors()
+            return redirect('core:novel_detail', novel_id=book.pk)
+        except (IntegrityError, ValidationError):
+            form.add_error(None, 'Nie zapisano powieści. Sprawdź dane autora i czy nie dodano go już w bazie.')
     return render(request, 'core/novels/form.html', {'form': form, 'heading': 'Dodaj powieść'}, status=400 if request.method == 'POST' else 200)
 
 
@@ -92,8 +95,15 @@ def novel_detail(request, novel_id):
                         book.full_clean()
                         book.save(update_fields=['title'])
                         profile.save()
-                        form.save_m2m()
+                        form.save_authors()
                         novels.sync_metadata(book, profile)
+                    elif action == 'chapters':
+                        form = ChapterRangeForm(request.POST, prefix='add')
+                        forms['chapter_range_form'] = form
+                        if not form.is_valid():
+                            raise ValidationError('Popraw numery rozdziałów do dodania.')
+                        count = novels.add_chapters(book, profile, form.cleaned_data['chapter_numbers'])
+                        messages.info(request, f'Dodano rozdziały: {count}. Istniejące numery pozostawiono bez zmian.')
                     elif action == 'chapter':
                         form = ChapterForm(request.POST, instance=Text(anthology=book))
                         forms['chapter_form'] = form
@@ -103,12 +113,18 @@ def novel_detail(request, novel_id):
                     elif action == 'assign':
                         assignment_forms = AssignmentForms(request.POST, prefix='assign')
                         forms['assignment_forms'] = assignment_forms
+                        selection = request.POST.get('chapter_selection', '').strip()
+                        forms['chapter_selection'] = selection
+                        forms['selected_chapter_ids'] = [int(value) for value in request.POST.getlist('chapters')
+                                                         if value.isascii() and value.isdecimal() and len(value) <= 18]
                         if not assignment_forms.is_valid():
                             raise ValidationError('Popraw role i wykonawców.')
                         try:
                             ids = [int(value) for value in request.POST.getlist('chapters')]
                         except ValueError as exc:
                             raise ValidationError('Nieprawidłowy wybór rozdziałów.') from exc
+                        if selection:
+                            ids.extend(novels.chapter_ids_for_numbers(book, novels.parse_chapter_numbers(selection)))
                         assignments = [(f.cleaned_data['role'], f.cleaned_data['assignee']) for f in assignment_forms if f.cleaned_data.get('role')]
                         novels.assign_chapters(book, request.user, ids, assignments)
                     elif action == 'production':
@@ -138,7 +154,7 @@ def novel_detail(request, novel_id):
         'workflow_role_assignments__assigned_to__person_profile')
     search = request.GET.get('q', '').strip()
     if search:
-        query = query.filter(title__plcontains=search)
+        query = query.filter(chapter_number=int(search)) if search.isascii() and search.isdecimal() and len(search) <= 10 else query.none()
     page = paginate_items(request, query.order_by('chapter_number', 'pk'))
     from workflow.models import WorkflowStage
     rows = []
@@ -151,8 +167,9 @@ def novel_detail(request, novel_id):
         'total_length': Text.objects.filter(anthology=book).aggregate(total=Sum('length'))['total'] or 0,
         'novel_token': novels.edit_token(book, request.user) if coordinator else '',
         'metadata_form': NovelForm(instance=profile, initial={'title': book.title}),
-        'chapter_form': ChapterForm(), 'assignment_forms': AssignmentForms(prefix='assign'),
-        'task_forms': _task_forms(book) if coordinator else [], 'cover_form': CoverForm(instance=book)}
+        'chapter_form': ChapterForm(), 'chapter_range_form': ChapterRangeForm(prefix='add'),
+        'assignment_forms': AssignmentForms(prefix='assign'),
+        'task_forms': _task_forms(book) if coordinator else [], 'cover_form': CoverForm(instance=book) if coordinator else None}
     context.update(forms)
     return render(request, 'core/novels/detail.html', context, status=400 if error else 200)
 

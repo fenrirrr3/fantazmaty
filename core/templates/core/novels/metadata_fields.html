@@ -1,0 +1,3 @@
+{{ form.non_field_errors }}
+{% for field in form %}{% if 'new_author_' not in field.name %}<p>{{ field.label_tag }}{{ field }}{{ field.errors }}{% if field.help_text %}<span class="helptext">{{ field.help_text }}</span>{% endif %}</p>{% endif %}{% endfor %}
+<fieldset><legend>Dodaj nowego autora (opcjonalnie)</legend><p>Wypełnij tę sekcję, jeśli autora nie ma jeszcze na liście. E-mail i pseudonim są opcjonalne.</p>{% for field in form %}{% if 'new_author_' in field.name %}<p>{{ field.label_tag }}{{ field }}{{ field.errors }}</p>{% endif %}{% endfor %}</fieldset>

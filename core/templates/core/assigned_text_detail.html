@@ -64,7 +64,7 @@
 
         <dl class="details-grid">
             <div class="detail-item">
-                <dt>Antologia</dt>
+                <dt>{% if is_novel %}Powieść{% else %}Antologia{% endif %}</dt>
                 <dd>
                     {% if text.anthology %}
                         {{ text.anthology.title }}
@@ -74,10 +74,10 @@
                 </dd>
             </div>
 
-            <div class="detail-item">
+            {% if not is_novel %}<div class="detail-item">
                 <dt>Długość</dt>
                 <dd>{{ text.length }}</dd>
-            </div>
+            </div>{% endif %}
 
             
                 <div class="detail-item">
@@ -331,10 +331,10 @@
                 </div>
             </div>
         {% endif %}
-        <aside class="quick-stage-card dropbox-folder-card" aria-labelledby="dropbox-folder-heading">
+        {% if not is_novel %}<aside class="quick-stage-card dropbox-folder-card" aria-labelledby="dropbox-folder-heading">
             {% url 'core:update_text_file' text.pk as folder_save_url %}
             {% include 'core/includes/dropbox_folder.html' with folder_url=file_url folder_form=text_file_form folder_heading_id="dropbox-folder-heading" %}
-        </aside>
+        </aside>{% elif text.anthology.novel.file_url %}<aside class="quick-stage-card"><a class="secondary-button" href="{{ text.anthology.novel.file_url }}" target="_blank" rel="noopener noreferrer">Folder całej powieści</a></aside>{% endif %}
         </div>
         {% endif %}
     </section>
@@ -383,8 +383,8 @@
 
         <div class="notes-editor-grid">
             <div class="notes-editor-panel">
-                <h3>Ostrzeżenia dotyczące treści</h3>
-
+                <h3>Ostrzeżenia dotyczące treści{% if is_novel %} całej powieści{% endif %}</h3>
+                {% if is_novel %}<p>{{ text.anthology.novel.content_warnings|default:'Nie dodano ostrzeżeń.'|linebreaksbr }}</p>{% else %}
                 {% if can_edit_content_warnings and text_content_warnings_form %}
                     <form
                         method="post"
@@ -418,7 +418,7 @@
                             <span class="muted-text">Nie dodano ostrzeżeń.</span>
                         {% endif %}
                     </div>
-                {% endif %}
+                {% endif %}{% endif %}
             </div>
 
             {% if show_coordinator_note %}

@@ -449,6 +449,9 @@ def update_text_content_warnings(request, text_id):
         )
         _require_text_contributor(request.user, text)
 
+        if text.anthology_id and text.anthology.is_novel:
+            raise PermissionDenied('Ostrzeżenia są wspólne dla całej powieści. Zmień je w jej podglądzie.')
+
         form = TextContentWarningsForm(request.POST, instance=text)
 
         if form.is_valid():
@@ -517,6 +520,8 @@ def update_text_file(request, text_id):
     from core.file_forms import TextFileForm
     with transaction.atomic():
         text = get_object_or_404(Text.objects.select_for_update(), pk=text_id)
+        if text.anthology_id and text.anthology.is_novel:
+            raise PermissionDenied('Folder jest wspólny dla całej powieści. Zmień go w jej podglądzie.')
         form = TextFileForm(request.POST, instance=text)
         if form.is_valid():
             form.save()
