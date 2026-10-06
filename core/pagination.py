@@ -37,15 +37,23 @@ def get_page_size(request, default=DEFAULT_PAGE_SIZE, *, size_param='page_size')
             "do ALLOWED_PAGE_SIZES."
         )
 
-    page_size = _positive_integer(
-        request.GET.get(size_param),
-        default,
-    )
-
-    if page_size not in ALLOWED_PAGE_SIZES:
-        return default
-
-    return page_size
+    # Filters and page numbers do not change the preference's identity.
+    # Tabs and independent paginators on one view retain separate settings.
+    session = getattr(request, 'session', None)
+    key = f'{request.path}|{size_param}|{request.GET.get("tab", "")}'
+    preferences = dict(session.get('cms_page_sizes', {})) if session is not None else {}
+    saved = _positive_integer(preferences.get(key), default)
+    if saved not in ALLOWED_PAGE_SIZES:
+        saved = default
+    requested = _positive_integer(request.GET.get(size_param), None)
+    if requested not in ALLOWED_PAGE_SIZES:
+        return saved
+    if session is not None and preferences.get(key) != requested:
+        preferences.pop(key, None)
+        preferences[key] = requested
+        # Detail views can have many different URLs; keep the session bounded.
+        session['cms_page_sizes'] = dict(list(preferences.items())[-100:])
+    return requested
 
 
 def _page_url(parameters, page_number, page_param='page', anchor=''):

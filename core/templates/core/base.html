@@ -18,7 +18,7 @@
     <link rel="stylesheet" href="{% static 'core/workspace.css' %}?v=36">
     <link rel="stylesheet" href="{% static 'core/components.css' %}?v=36">
     <link rel="stylesheet" href="{% static 'core/dropbox-folder-chooser.css' %}">
-    <link rel="stylesheet" href="{% static 'core/pagination.css' %}?v=19">
+    <link rel="stylesheet" href="{% static 'core/pagination.css' %}?v=39">
     <link rel="stylesheet" href="{% static 'core/novels.css' %}?v=38">
     <link rel="stylesheet" href="{% static 'core/illustration-status.css' %}?v=36">
     {% block extra_css %}{% endblock %}
@@ -106,7 +106,8 @@
 
     <script src="{% static 'core/layout.js' %}" defer></script>
     <script src="{% static 'core/header-search.js' %}?v=1" defer></script>
-    <script src="{% static 'core/pagination.js' %}?v=30"></script>
+    <script src="{% static 'core/pagination-controls.js' %}?v=39"></script>
+    <script src="{% static 'core/pagination.js' %}?v=39"></script>
     {% if user.is_authenticated %}<span hidden data-vocabulary-endpoint="{% url 'core:vocabulary_suggestions' %}"></span><script src="{% static 'core/vocabulary.js' %}?v=29" defer></script>{% endif %}
     <script src="{% static 'core/table-selection.js' %}?v=36"></script>
     {% block scripts %}{% endblock %}

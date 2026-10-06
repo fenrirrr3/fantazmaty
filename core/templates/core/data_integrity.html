@@ -48,6 +48,6 @@
 {% if tab == 'unlinked' %}
 <section class="card"><div class="card-body"><h2>Recenzje do ręcznej kontroli: {{ candidate_page.paginator.count }}</h2><p>Przyjęte recenzje bez powiązania, dla których istnieje tekst o tym samym tytule w tej samej antologii. Może to być dawne odłączenie albo zamierzone ponowne zgłoszenie. Sprawdź autorów i historię. Nie łączymy ani nie oznaczamy niczego automatycznie.</p>
 <ul>{% for review in candidate_page %}<li>{{ review.anthology }} – {{ review.title }} · <a href="{% url 'admin:texts_review_change' review.pk %}">Sprawdź recenzję i powiązanie</a></li>{% empty %}<li>Brak kandydatów.</li>{% endfor %}</ul>
-<nav aria-label="Strony recenzji do kontroli">{% if candidate_page.has_previous %}<a href="?tab=unlinked&amp;page={{ candidate_page.previous_page_number }}">Poprzednia</a>{% endif %} Strona {{ candidate_page.number }} z {{ candidate_page.paginator.num_pages }} {% if candidate_page.has_next %}<a href="?tab=unlinked&amp;page={{ candidate_page.next_page_number }}">Następna</a>{% endif %}</nav></div></section>
+{% include "core/includes/pagination.html" with page_obj=candidate_page %}</div></section>
 {% endif %}
 {% if tab == 'integrity' %}<section class="card"><div class="card-body"><h2>Znalezione pozycje: {{ issues|length }}</h2>{% include "core/includes/issue_list.html" %}</div></section>{% endif %}{% endblock %}

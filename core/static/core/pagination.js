@@ -1,8 +1,5 @@
 // Server lists keep their full-result pagination; detail tables paginate independently.
 document.addEventListener('DOMContentLoaded', () => {
-    document.querySelectorAll('[data-page-size-url]').forEach(select => {
-        select.addEventListener('change', () => location.assign(select.value));
-    });
     const sizes = [25, 50, 100, 250, 500];
     document.querySelectorAll('main table').forEach((table, index) => {
         if (table.dataset.pagination === 'off' || table.dataset.serverPaginated === 'true' || table.id === 'result_list' || !table.tBodies.length) return;
@@ -20,7 +17,11 @@ document.addEventListener('DOMContentLoaded', () => {
         sizes.forEach(size => { const option = document.createElement('option'); option.value = String(size); option.textContent = String(size); select.append(option); });
         label.append(select);
         const controls = document.createElement('div'); controls.className = 'cms-pagination-controls';
-        let page = 1, size = 25, groups = [];
+        const storageKey = 'fantazmaty:table-size:' + JSON.stringify([location.pathname, table.id]);
+        let savedSize;
+        try { savedSize = Number(localStorage.getItem(storageKey)); } catch { /* Storage may be disabled. */ }
+        let page = 1, size = sizes.includes(savedSize) ? savedSize : 25, groups = [];
+        select.value = String(size);
         const button = (text, action) => {
             const node = document.createElement('button'); node.type = 'button'; node.className = 'cms-page-button'; node.textContent = text;
             node.setAttribute('aria-controls', table.id);
@@ -28,6 +29,22 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         const first = button('Pierwsza', () => 1);
         const previous = button('Poprzednia', () => page - 1);
+        const pageLabel = document.createElement('label'); pageLabel.className = 'cms-page-jump';
+        pageLabel.append('Strona');
+        const pageInput = document.createElement('input');
+        pageInput.type = 'number'; pageInput.min = '1'; pageInput.step = '1';
+        pageInput.setAttribute('aria-label', 'Numer strony'); pageInput.setAttribute('aria-controls', table.id);
+        const pageCount = document.createElement('span');
+        pageLabel.append(pageInput, pageCount); controls.append(pageLabel);
+        function jump() {
+            const raw = pageInput.value.trim();
+            if (/^[0-9]+$/.test(raw) && Number.isSafeInteger(Number(raw))) page = Number(raw);
+            render();
+        }
+        pageInput.addEventListener('change', jump);
+        pageInput.addEventListener('keydown', event => {
+            if (event.key === 'Enter') { event.preventDefault(); jump(); }
+        });
         const next = button('Następna', () => page + 1);
         const last = button('Ostatnia', () => Math.max(1, Math.ceil(groups.length / size)));
         nav.append(status, label, controls);
@@ -50,10 +67,16 @@ document.addEventListener('DOMContentLoaded', () => {
             page = Math.max(1, Math.min(page, pages));
             groups.forEach((group, i) => group.forEach(row => row.classList.toggle('cms-page-hidden', i < (page - 1) * size || i >= page * size)));
             status.textContent = `Strona ${page} z ${pages} · Wyniki ${total ? (page - 1) * size + 1 : 0}–${Math.min(page * size, total)} z ${total}`;
+            pageInput.value = String(page); pageInput.max = String(pages);
+            pageCount.textContent = `z ${pages}`;
             first.disabled = previous.disabled = page === 1;
             next.disabled = last.disabled = page === pages;
         }
-        select.addEventListener('change', () => { size = Number(select.value); page = 1; render(); });
+        select.addEventListener('change', () => {
+            size = sizes.includes(Number(select.value)) ? Number(select.value) : 25;
+            try { localStorage.setItem(storageKey, String(size)); } catch { /* Pagination also works without storage. */ }
+            page = 1; render();
+        });
         table.addEventListener('invalid', event => {
             const i = groups.findIndex(group => group.some(row => row.contains(event.target)));
             if (i >= 0) { page = Math.floor(i / size) + 1; render(); }

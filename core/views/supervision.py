@@ -32,8 +32,7 @@ def data_integrity(request):
     assignment_rows = []
     assignment_filters = None
     if tab == 'unlinked':
-        from django.core.paginator import Paginator
-        candidate_page = Paginator(unlinked_review_candidates(), 50).get_page(request.GET.get('page'))
+        candidate_page = paginate_items(request, unlinked_review_candidates(), default=50)
         rows = []
     elif tab == 'assignments':
         rows = []

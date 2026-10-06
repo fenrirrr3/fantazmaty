@@ -8,6 +8,7 @@
     <noscript>{% for option in page_obj.size_options %}<a href="{{ option.url }}">{{ option.size }} na stronie</a> {% endfor %}</noscript>
     <div class="cms-pagination-controls">
         {% if page_obj.has_previous %}<a class="cms-page-button" href="{{ page_obj.first_url }}">Pierwsza</a><a class="cms-page-button" href="{{ page_obj.previous_url }}" rel="prev">Poprzednia</a>{% else %}<button type="button" class="cms-page-button" disabled>Pierwsza</button><button type="button" class="cms-page-button" disabled>Poprzednia</button>{% endif %}
+        <label class="cms-page-jump">Strona <input type="number" min="1" max="{{ page_obj.paginator.num_pages }}" step="1" value="{{ page_obj.number }}" aria-label="Numer strony" data-server-page data-page-param="{{ page_obj.page_param }}" data-page-url="{{ page_obj.first_url }}"> z {{ page_obj.paginator.num_pages }}</label>
         {% if page_obj.has_next %}<a class="cms-page-button" href="{{ page_obj.next_url }}" rel="next">Następna</a><a class="cms-page-button" href="{{ page_obj.last_url }}">Ostatnia</a>{% else %}<button type="button" class="cms-page-button" disabled>Następna</button><button type="button" class="cms-page-button" disabled>Ostatnia</button>{% endif %}
     </div>
 </nav>
