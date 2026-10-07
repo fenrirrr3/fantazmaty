@@ -5,10 +5,12 @@ from pathlib import Path
 
 
 if __package__:
-    from .document_styles import paragraph_property as inherited, style_chain
+    from .document_progress import report
+    from .document_styles import paragraph_properties, style_chain
     from .document_html import list_paragraphs
 else:
-    from document_styles import paragraph_property as inherited, style_chain
+    from document_progress import report
+    from document_styles import paragraph_properties, style_chain
     from document_html import list_paragraphs
 
 
@@ -74,28 +76,33 @@ def render_pdf(source, target, content, assets, title):
         paragraph = paragraphs[text].popleft() if paragraphs[text] else None
         size, line_height, before, after, indent = 12, 1.5, 0, 0, 12.5
         if paragraph is not None:
-            style = paragraph.style
             font_size = next((r.font.size for r in paragraph.runs if r.text.strip() and r.font.size is not None), None)
-            for style in style_chain(style):
-                if font_size is not None: break
-                font_size = style.font.size
+            if font_size is None:
+                for style in style_chain(paragraph.style):
+                    font_size = style.font.size
+                    if font_size is not None:
+                        break
             if font_size is not None:
                 size = max(6, min(font_size.pt, 72))
-            spacing = inherited(paragraph, 'line_spacing')
+            properties = paragraph_properties(paragraph, (
+                'line_spacing', 'space_before', 'space_after',
+                'first_line_indent', 'alignment', 'page_break_before',
+            ))
+            spacing = properties['line_spacing']
             if spacing is not None:
                 line_height = spacing.pt / size if hasattr(spacing, 'pt') else float(spacing)
                 line_height = max(.8, min(line_height, 4))
             for attr in ('space_before', 'space_after'):
-                value = inherited(paragraph, attr)
+                value = properties[attr]
                 if value is not None:
                     if attr == 'space_before': before = value.mm
                     else: after = value.mm
-            value = inherited(paragraph, 'first_line_indent')
+            value = properties['first_line_indent']
             if value is not None: indent = max(0, min(value.mm, 40))
-            align = inherited(paragraph, 'alignment')
+            align = properties['alignment']
             if node.tag in ('p','h1','h2','h3','h4','h5','h6'):
                 node.set('align', {0:'left',1:'center',2:'right',3:'justify'}.get(align, 'left'))
-            if inherited(paragraph, 'page_break_before'):
+            if properties['page_break_before']:
                 node.set('data-page-break', '1')
         if node.tag in ('p','h1','h2','h3','h4','h5','h6'):
             node.set('line-height', str(line_height))
@@ -103,7 +110,9 @@ def render_pdf(source, target, content, assets, title):
             node.set('data-before', str(before))
         node.set('data-size', str(size))
         node.set('data-after', str(after))
-    for node in root:
+    for index, node in enumerate(root):
+        if index % 10 == 0:
+            report('Skład PDF – bloki treści', index, len(root))
         text = normalize(node.text_content())
         if node.tag == 'p' and not text and not node.xpath('.//img'):
             height = 18 / pdf.k
@@ -121,4 +130,5 @@ def render_pdf(source, target, content, assets, title):
                                 l_margin=0)
                   for tag in ('p','h1','h2','h3','h4','h5','h6','pre','code')}
         pdf.write_html(html.tostring(node, encoding='unicode'), tag_styles=styles)
+    report('Zapis PDF')
     pdf.output(target)

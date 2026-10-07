@@ -5,6 +5,11 @@ from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
+if __package__:
+    from .document_progress import report as report_progress
+else:
+    from document_progress import report as report_progress
+
 # Reguły są wykonywane w ustalonej kolejności, niezależnie od kolejności kliknięć.
 EDITORIAL_RULES = (
     ('spaces', 'Podwójne i wielokrotne spacje'),
@@ -572,7 +577,10 @@ def apply_editorial_corrections(doc, enabled=None):
     if not enabled:
         return
     field_depth = 0
-    for para in doc.paragraphs:
+    paragraphs = doc.paragraphs
+    for paragraph_index, para in enumerate(paragraphs):
+        if paragraph_index % 10 == 0:
+            report_progress('Odkurzanie – akapity', paragraph_index, len(paragraphs))
         groups, slots = [], []
 
         def barrier():
@@ -639,6 +647,7 @@ def clean_docx(source, rules):
             from document_errors import DocumentInputError
         raise DocumentInputError('cleaner_paragraph_limit')
     apply_editorial_corrections(document, frozenset(rules))
+    report_progress('Zapis odkurzonego DOCX')
     output = BytesIO()
     document.save(output)
     output.seek(0)

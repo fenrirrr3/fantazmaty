@@ -17,6 +17,11 @@
     .odkurzacz input[type=file]:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }
 
 .repetitions-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; margin: 1.5rem 0; }
+.program-progress { padding: 16px; margin: 16px 0; border: 1px solid var(--border-strong); border-radius: var(--radius); }
+.program-progress[hidden], .program-progress [hidden] { display: none; }
+.program-progress progress { display: block; width: 100%; height: 16px; margin: 12px 0; accent-color: var(--primary); }
+.program-progress p { margin: 0 0 12px; }
+.program-progress button, .program-progress a { margin: 4px 8px 4px 0; }
 .repetitions-fields .form-field { display: flex; flex-direction: column; gap: .5rem; min-width: 0; }
 .repetitions-fields textarea, .repetitions-fields input[type=number] { width: 100%; box-sizing: border-box; }
 .repetitions-fields input[type=checkbox] { align-self: flex-start; }

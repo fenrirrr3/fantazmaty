@@ -1,7 +1,9 @@
 
 try:
+    from .document_progress import report as report_progress
     from .document_errors import DocumentInputError
 except ImportError:
+    from document_progress import report as report_progress
     from document_errors import DocumentInputError
 
 """Repeat analysis from the desktop application, independent of Django/GUI."""
@@ -485,12 +487,14 @@ def color_document(source, *, window_size=35, min_word_length=4,
     if tracked_forms or options['duplicates']:
         forms.extend(m[0].lower() for text, _ in layouts for m in LEXICAL_RE.finditer(text))
     forms.extend(ignored_forms); forms.extend(tracked_forms)
+    report_progress('Analiza językowa – rozpoznawanie odmian słów')
     lemmas = _lemma_map(forms)
     ignored = {lemmas.get(w, w) for w in ignored_forms}
     tracked = {lemmas.get(w, w) for w in tracked_forms}
     for token in words:
         token.lemma = lemmas.get(token.text.lower(), token.text.lower())
         token.ignored = token.lemma in ignored
+    report_progress('Wyszukiwanie powtórzeń')
     groups = _find_repeat_groups(words, window_size=window_size,
                                  include_prefix_matches=include_prefix_matches)
     _assign_colors(words, groups, color_palette)
@@ -502,8 +506,11 @@ def color_document(source, *, window_size=35, min_word_length=4,
                                   layouts=layouts, apply_marks=False)
     for target, ranges in zip(marks, extra_marks):
         target.extend((a, b, None, MARK_STYLES[k][1], MARK_STYLES[k][0]) for a, b, k in ranges)
-    for layout, ranges in zip(layouts, marks):
+    for index, (layout, ranges) in enumerate(zip(layouts, marks)):
+        if index % 10 == 0:
+            report_progress('Kolorowanie – akapity', index, len(layouts))
         _apply_layout_marks(layout, ranges)
+    report_progress('Zapis oznaczonego DOCX')
     output = BytesIO()
     doc.save(output); output.seek(0)
     return output

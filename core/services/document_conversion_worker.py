@@ -11,9 +11,11 @@ from uuid import uuid4
 
 CURRENT_STAGE = 'DOCX'
 if __package__:
+    from .document_progress import configure, report as report_progress
     from .document_styles import paragraph_property
     from .document_html import list_paragraphs
 else:
+    from document_progress import configure, report as report_progress
     from document_styles import paragraph_property
     from document_html import list_paragraphs
 
@@ -67,6 +69,7 @@ def sanitize_html(fragment, assets):
 def convert(source, directory, formats, title):
     global CURRENT_STAGE
     CURRENT_STAGE = 'DOCX'
+    report_progress('Odczytywanie treści DOCX')
     import mammoth
     from PIL import Image
     assets = {}
@@ -137,6 +140,7 @@ def convert(source, directory, formats, title):
 
     if 'epub' in formats:
         CURRENT_STAGE = 'EPUB'
+        report_progress('Tworzenie EPUB')
         from ebooklib import epub
         book = epub.EpubBook()
         book.set_identifier(str(uuid4()))
@@ -153,6 +157,7 @@ def convert(source, directory, formats, title):
         epub.write_epub(str(directory / 'document.epub'), book, {'raise_exceptions': True})
     if 'pdf' in formats:
         CURRENT_STAGE = 'PDF'
+        report_progress('Przygotowanie PDF')
         if __package__:
             from .document_pdf import render_pdf
         else:
@@ -163,6 +168,8 @@ def convert(source, directory, formats, title):
 def main():
     global CURRENT_STAGE
     directory = Path(sys.argv[1])
+    configure(directory)
+    report_progress('Przygotowanie DOCX')
     config = json.loads((directory / 'job.json').read_text(encoding='utf-8'))
     formats = config['formats']
     if (not formats and not config.get('include_docx') and not config.get('inspect')) or set(formats) - {'pdf', 'epub'}:
@@ -195,6 +202,7 @@ def main():
             source.write_bytes(payload)
         if config.get('repetitions') is not None:
             CURRENT_STAGE = 'Powtórzenia'
+            report_progress('Analiza i kolorowanie powtórzeń')
             if __package__:
                 from .document_repetitions import color_document
             else:

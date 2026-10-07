@@ -2336,3 +2336,8 @@ table th {
 /* Compact administrative shortcut in text and submission headers. */
 .detail-header-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .secondary-button.small-button { min-height: 32px; padding: 5px 10px; font-size: 0.8125rem; }
+
+/* Keep both the table and its generated pager inside the card gutters. */
+.workflow-table-frame { padding: 0 20px 16px; min-width: 0; }
+.workflow-table-frame > .table-container { margin: 0; width: 100%; }
+.workflow-table-frame > .cms-pagination { margin: 12px 0 0; }

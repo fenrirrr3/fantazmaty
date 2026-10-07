@@ -118,7 +118,7 @@ def converter_python():
     raise ConversionError('Nie znaleziono Pythona do konwersji. Ustaw DOCUMENT_CONVERTER_PYTHON na interpreter środowiska projektu.')
 
 
-def run_converter(directory, timeout):
+def run_converter(directory, timeout, control=None):
     if timeout <= 0:
         raise ConversionError('Konwersja przekroczyła limit 90 sekund. Podziel dokument lub wybierz mniej formatów.')
     # Do not pass project credentials to an external document processor.
@@ -132,7 +132,22 @@ def run_converter(directory, timeout):
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                               start_new_session=os.name == 'posix') as process:
             try:
-                code = process.wait(timeout=timeout)
+                if control is None:
+                    code = process.wait(timeout=timeout)
+                else:
+                    deadline = time.monotonic() + timeout
+                    while True:
+                        control(directory)
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            raise subprocess.TimeoutExpired(command, timeout)
+                        try:
+                            code = process.wait(timeout=min(.25, remaining))
+                            control(directory)
+                            break
+                        except subprocess.TimeoutExpired:
+                            if time.monotonic() >= deadline:
+                                raise
             except subprocess.TimeoutExpired:
                 if os.name == 'posix':
                     try:
@@ -143,6 +158,17 @@ def run_converter(directory, timeout):
                     process.kill()
                 process.wait()
                 raise ConversionError('Konwersja przekroczyła limit 90 sekund. Podziel dokument lub wybierz mniej formatów.') from None
+            except BaseException:
+                if process.poll() is None:
+                    if os.name == 'posix':
+                        try:
+                            os.killpg(process.pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                    else:
+                        process.kill()
+                process.wait()
+                raise
     except OSError:
         raise ConversionError('Nie można uruchomić konwertera. Administrator musi sprawdzić środowisko Pythona na serwerze.') from None
     if code != 0:
@@ -183,7 +209,7 @@ def conversion_filename(name, extension):
     return stem + '.' + extension
 
 
-def convert_document(upload, formats, *, use_cleaner=False, timeout=TIME_LIMIT, include_docx=False, rebuild=False, normalize=True, allow_rebuild_omissions=False, cleaner_rules=None, repetitions=None, justify=False, preserve_filename=False, remove_soft_whitespace=False):
+def convert_document(upload, formats, *, use_cleaner=False, timeout=TIME_LIMIT, include_docx=False, rebuild=False, normalize=True, allow_rebuild_omissions=False, cleaner_rules=None, repetitions=None, justify=False, preserve_filename=False, remove_soft_whitespace=False, control=None):
     deadline = time.monotonic() + min(TIME_LIMIT, timeout)
     selected = [kind for kind in FORMATS if kind in formats]
     if (not selected and not include_docx) or set(formats) - set(FORMATS):
@@ -199,7 +225,11 @@ def convert_document(upload, formats, *, use_cleaner=False, timeout=TIME_LIMIT, 
                 'allow_rebuild_omissions': allow_rebuild_omissions,
                 'remove_soft_whitespace': remove_soft_whitespace, 'normalize': normalize, 'justify': justify, 'include_docx': include_docx, 'repetitions': repetitions,
             })
-            run_converter(directory, deadline - time.monotonic())
+            if control is None:
+                run_converter(directory, deadline - time.monotonic())
+            else:
+                control(directory)
+                run_converter(directory, deadline - time.monotonic(), control=control)
             warning_file = directory / 'warnings.json'
             warnings = json.loads(warning_file.read_text(encoding='utf-8')) if warning_file.is_file() else []
             result.conversion_warnings = warnings

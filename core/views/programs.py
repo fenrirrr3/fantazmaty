@@ -25,6 +25,9 @@ logger = logging.getLogger(__name__)
 @require_http_methods(["GET", "POST"])
 @team_member_required
 def programs(request):
+    if request.method == 'POST' and request.headers.get('X-Program-Job') == '1':
+        from .program_jobs import start
+        return start(request)
     rebuild_warning = False
     rebuild_token = ""
     action = request.POST.get('program_action', 'clean') if request.method == 'POST' else None

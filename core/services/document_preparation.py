@@ -6,10 +6,12 @@ No HTTP, mailbox or database dependencies belong here.
 from io import BytesIO
 
 if __package__:
+    from .document_progress import report
     from .document_rebuild import rebuild_docx
     from .document_formatting import normalize_docx
     from .odkurzacz import clean_docx, ALL_EDITORIAL_RULES, DEFAULT_EDITORIAL_RULES
 else:
+    from document_progress import report
     from document_rebuild import rebuild_docx
     from document_formatting import normalize_docx
     from odkurzacz import clean_docx, ALL_EDITORIAL_RULES, DEFAULT_EDITORIAL_RULES
@@ -35,6 +37,8 @@ def prepare_docx(source, *, rebuild=False, normalize_formatting=False,
             from document_whitespace import normalize_spacing_docx
         steps.append((normalize_spacing_docx, {}))
     for operation, options in steps:
+        report({'rebuild_docx': 'Przebudowa DOCX', 'normalize_docx': 'Ujednolicanie formatowania',
+                'clean_docx': 'Odkurzanie tekstu', 'normalize_spacing_docx': 'Zamiana miękkich enterów i spacji'}.get(getattr(operation, '__name__', ''), 'Przygotowanie DOCX'))
         with operation(BytesIO(payload), **options) as result:
             payload = result.read()
     return BytesIO(payload)

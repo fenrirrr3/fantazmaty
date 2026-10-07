@@ -39,3 +39,5 @@ var/conversion/pending_uploads/
 
 # Lokalna mapa projektu
 /MAPA_PROJEKTU.md
+
+var/conversion/program_jobs/
