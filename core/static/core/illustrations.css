@@ -8,9 +8,19 @@
 .illustration-metadata dt { font-weight: 650; }
 .illustration-metadata dd { margin: 4px 0 0; overflow-wrap: anywhere; }
 .illustration-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: stretch; margin-block: 24px; }
+.illustration-detail-grid > .card:first-child { grid-column: 1; grid-row: 1 / span 3; }
+.illustration-detail-grid > .card:not(:first-child) { grid-column: 2; }
+.illustration-detail-grid > .card:nth-child(2) { grid-row: 1; }
+.illustration-detail-grid > .card:nth-child(3) { grid-row: 2; }
+.illustration-detail-grid > .card:nth-child(4) { grid-row: 3; }
+.illustration-detail-grid > .card:not(:first-child) .card-body { padding: 18px 20px; }
+.illustration-detail-grid > .card:not(:first-child) h2 { margin-bottom: 12px; }
+.illustration-detail-grid > .card:not(:first-child) textarea { height: 5rem; min-height: 5rem; max-height: 5rem; resize: none; overflow-y: auto; }
+.illustration-detail-grid > .card:not(:first-child) p { margin-block: 8px; }
+.illustration-detail-grid > .card:not(:first-child) .illustration-excerpt-preview { max-height: 8rem; }
 .illustration-detail-grid > .card { min-width: 0; margin: 0; }
 .illustration-detail-grid .card-body { overflow-wrap: anywhere; }
-@media (max-width: 800px) { .illustration-detail-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 800px) { .illustration-detail-grid { grid-template-columns: minmax(0, 1fr); } .illustration-detail-grid > .card:nth-child(n) { grid-column: auto; grid-row: auto; } }
 .illustrator-checkbox { display: flex; align-items: center; gap: 8px; }
 .illustration-edit-form .illustrator-checkbox input[type="checkbox"] { width: auto; }
 

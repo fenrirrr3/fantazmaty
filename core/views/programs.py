@@ -1,6 +1,4 @@
 import logging
-import hashlib
-from django.core import signing
 from pathlib import Path
 from zipfile import BadZipFile
 
@@ -17,6 +15,8 @@ from core.odkurzacz_forms import OdkurzaczForm, DocumentConversionForm, Repetiti
 from core.services.document_converter import convert_document, conversion_filename, ConversionError, RebuildConfirmationRequired
 from core.permissions import team_member_required
 
+from core.services.pending_documents import save_pending, load_pending, PendingDocumentError
+
 logger = logging.getLogger(__name__)
 
 
@@ -28,10 +28,23 @@ def programs(request):
     rebuild_warning = False
     rebuild_token = ""
     action = request.POST.get('program_action', 'clean') if request.method == 'POST' else None
-    form = OdkurzaczForm(
-        request.POST if action == 'clean' else None,
-        request.FILES if action == 'clean' else None,
-    )
+    pending_path = None
+    continuation_error = ''
+    form_data = request.POST if action == 'clean' else None
+    form_files = request.FILES if action == 'clean' else None
+    accepted = False
+    if action == 'clean_confirm':
+        try:
+            upload, pending, pending_path = load_pending(request, request.POST.get('rebuild_token', ''))
+        except PendingDocumentError as error:
+            continuation_error = str(error)
+        else:
+            form_data = pending['options']
+            form_files = {'document': upload}
+            rebuild_token = request.POST['rebuild_token']
+            rebuild_warning = pending['warning']
+            accepted = True
+    form = OdkurzaczForm(form_data, form_files)
     conversion_form = DocumentConversionForm(
         request.POST if action == 'convert' else None,
         request.FILES if action == 'convert' else None, prefix='convert',
@@ -71,7 +84,7 @@ def programs(request):
         except ConversionError as error:
             conversion_form.add_error(None, str(error))
         except (BadZipFile, XMLSyntaxError, InvalidXmlError, KeyError, ValueError, OSError):
-            conversion_form.add_error('document', 'Nie udało się przetworzyć DOCX. Zapisz dokument ponownie; przy użyciu Odkurzacza obowiązuje limit 500 000 znaków i 20 000 znaków w akapicie.')
+            conversion_form.add_error('document', 'Nie udało się przetworzyć DOCX. Sprawdź plik lub zapisz dokument ponownie jako DOCX.')
         except Exception:
             logger.exception('Błąd konwersji dokumentu')
             conversion_form.add_error(None, 'Konwersja nie powiodła się. Skontaktuj się z administratorem.')
@@ -85,63 +98,49 @@ def programs(request):
             response['Cache-Control'] = 'private, no-store'
             response['X-Content-Type-Options'] = 'nosniff'
             return response
-    if action == 'clean' and form.is_valid() and form.cleaned_data['rebuild']:
+    if action in ('clean', 'clean_confirm') and not continuation_error and form.is_valid():
         upload = form.cleaned_data['document']
-        digest = hashlib.sha256(upload.read()).hexdigest()
-        upload.seek(0)
-        accepted = False
-        if request.POST.get('allow_rebuild_omissions') == 'on':
-            try:
-                approved = signing.loads(request.POST.get('rebuild_token', ''), salt='rebuild-omissions', max_age=3600)
-                accepted = approved == {'user': request.user.pk, 'digest': digest}
-            except signing.BadSignature:
-                pass
+        rebuild = form.cleaned_data['rebuild']
         try:
-            output, _, _ = convert_document(upload, [], include_docx=True, rebuild=True, normalize=form.cleaned_data['normalize_formatting'], justify=form.cleaned_data['normalize_formatting'], allow_rebuild_omissions=accepted, use_cleaner=True, cleaner_rules=form.cleaned_data['rules'], remove_soft_whitespace=form.cleaned_data['remove_soft_whitespace'])
+            output, extension, mime = convert_document(upload, [], include_docx=True,
+                rebuild=rebuild, normalize=form.cleaned_data['normalize_formatting'],
+                justify=form.cleaned_data['normalize_formatting'], allow_rebuild_omissions=accepted,
+                use_cleaner=True, cleaner_rules=form.cleaned_data['rules'],
+                remove_soft_whitespace=form.cleaned_data['remove_soft_whitespace'])
         except RebuildConfirmationRequired as error:
             rebuild_warning = str(error)
-            rebuild_token = signing.dumps({'user': request.user.pk, 'digest': digest}, salt='rebuild-omissions')
-            form.add_error('document', str(error))
+            try:
+                rebuild_token = save_pending(request, upload,
+                    {key: form.cleaned_data[key] for key in ('rebuild', 'normalize_formatting', 'rules', 'remove_soft_whitespace')},
+                    rebuild_warning)
+            except (OSError, PendingDocumentError):
+                logger.exception('Nie udało się zachować dokumentu do potwierdzenia')
+                rebuild_warning = False
+                form.add_error(None, 'Nie udało się zachować pliku do potwierdzenia. Spróbuj przesłać dokument ponownie.')
         except ConversionError as error:
-            form.add_error('document', str(error))
-        except (BadZipFile, XMLSyntaxError, InvalidXmlError, ValueError, OSError):
-            form.add_error('document', 'Nie można odczytać dokumentu. Zapisz go ponownie jako DOCX.')
+            form.add_error(None, str(error))
+        except (BadZipFile, XMLSyntaxError, InvalidXmlError, KeyError, ValueError, OSError):
+            form.add_error(None, 'Nie udało się przetworzyć dokumentu. Sprawdź plik lub zapisz go ponownie jako DOCX.')
+        except Exception:
+            logger.exception('Błąd przetwarzania dokumentu w Odkurzaczu')
+            form.add_error(None, 'Wystąpił błąd przetwarzania. Spróbuj ponownie lub skontaktuj się z administratorem.')
         else:
+            if pending_path is not None:
+                pending_path.unlink(missing_ok=True)
+            suffix = '_nowy' if rebuild else '_odkurzony'
             response = FileResponse(output, as_attachment=True,
-                filename=Path(upload.name).stem[:120] + '_nowy.docx',
-                content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+                filename=Path(upload.name).stem[:120] + suffix + '.' + extension, content_type=mime)
             if getattr(output, 'conversion_warnings', []):
-                messages.warning(request, 'Konwersja zgłosiła uproszczenia dokumentu. W paczce ZIP szczegóły są w pliku Uwagi_konwersji.txt; sprawdź plik wynikowy.')
                 response['X-Document-Warning-Count'] = str(len(output.conversion_warnings))
             response['Cache-Control'] = 'private, no-store'
             response['X-Content-Type-Options'] = 'nosniff'
             return response
-    if action == 'clean' and form.is_valid() and not form.cleaned_data['rebuild']:
-        upload = form.cleaned_data["document"]
-        try:
-            output, _, _ = convert_document(upload, [], include_docx=True, use_cleaner=True, normalize=form.cleaned_data["normalize_formatting"], justify=form.cleaned_data["normalize_formatting"], cleaner_rules=form.cleaned_data["rules"], remove_soft_whitespace=form.cleaned_data['remove_soft_whitespace'])
-        except ConversionError as error:
-            form.add_error("document", str(error))
-        except (BadZipFile, XMLSyntaxError, InvalidXmlError, KeyError, ValueError, OSError):
-            form.add_error("document", "Nie udało się przetworzyć dokumentu. Plik może być uszkodzony lub zbyt rozbudowany. Otwórz go w Wordzie i zapisz ponownie jako DOCX; bardzo długi tekst podziel na części.")
-        except Exception:
-            logger.exception("Błąd przetwarzania dokumentu w Odkurzaczu")
-            form.add_error(None, "Wystąpił błąd przetwarzania. Spróbuj ponownie lub skontaktuj się z administratorem.")
-        else:
-            response = FileResponse(
-                output, as_attachment=True,
-                filename=Path(upload.name).stem[:150] + "_odkurzony.docx",
-                content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            )
-            response["Cache-Control"] = "private, no-store"
-            response["X-Content-Type-Options"] = "nosniff"
-            return response
-    if action not in (None, 'clean', 'convert', 'repetitions'):
+    if action not in (None, 'clean', 'clean_confirm', 'convert', 'repetitions'):
         form = OdkurzaczForm(request.POST, request.FILES)
         form.add_error(None, 'Wybierz narzędzie i wyślij formularz ponownie.')
     return render(request, "core/programs.html", {
         "form": form, "conversion_form": conversion_form, "repetitions_form": repetitions_form,
         "repetitions_open": action == "repetitions",
         'rebuild_token': rebuild_token, 'rebuild_warning': rebuild_warning, 'rebuild_warning_text': rebuild_warning,
-        'clean_open': bool(form.errors), "conversion_open": action == 'convert',
+        'continuation_error': continuation_error, 'clean_open': bool(form.errors or rebuild_warning or continuation_error), "conversion_open": action == 'convert',
     })

@@ -15,6 +15,17 @@
     <p>Wybierz DOCX i potrzebne poprawki, a następnie pobierz poprawiony plik.</p>
     <p>Reguły redakcyjne Odkurzacza poprawiają główną treść, bez tabel, nagłówków i przypisów. Przy zaznaczonej opcji usuwania miękkie entery i spacje nieprzenoszące w tekście dokumentu, tabelach, nagłówkach i przypisach są zamieniane odpowiednio na zwykłe entery (nowe akapity) i zwykłe spacje; istniejące podziały stron pozostają. Nie śledzi zmian. Puste akapity pozostają, chyba że wybierzesz ich scalanie.</p>
     <p><strong>Przed odkurzaniem zaakceptuj śledzone zmiany i usuń komentarze albo zaznacz przebudowę do nowego pliku.</strong></p>
+    {% if continuation_error %}<p class="form-error" role="alert">{{ continuation_error }}</p>{% endif %}
+    {% if rebuild_warning %}
+    <div class="form-warning" role="alert">{{ rebuild_warning_text }}</div>
+    {{ form.non_field_errors }}
+    <p>Dokument i wybrane opcje zostały zachowane. Możesz zaakceptować pominięcie wskazanych elementów przez 30 minut bez ponownego przesyłania pliku.</p>
+    <form method="post" data-rebuild-confirmation>
+        {% csrf_token %}<input type="hidden" name="rebuild_token" value="{{ rebuild_token }}">
+        <button type="submit" name="program_action" value="clean_confirm" class="primary-button">Akceptuję i kontynuuję</button>
+    </form>
+    <p><a href="{% url 'core:programs' %}">Wybierz inny plik lub inne opcje</a></p>
+    {% else %}
     <form method="post" enctype="multipart/form-data">
         {% csrf_token %}
 
@@ -27,11 +38,7 @@
         <p class="helptext">{{ form.document.help_text }}</p>
         </div>
         <button type="submit" name="program_action" value="clean" class="primary-button">Odkurz i pobierz DOCX</button>
-        {% if rebuild_warning %}
-        <input type="hidden" name="rebuild_token" value="{{ rebuild_token }}">
-        <p class="form-warning">{{ rebuild_warning_text }} Wybierz ponownie ten sam plik.</p>
-        <p><label><input type="checkbox" name="allow_rebuild_omissions" value="on"> Akceptuję ostrzeżenie i chcę kontynuować z pominięciem wymienionych elementów.</label></p>
-        {% endif %}
+
         <p><label for="{{ form.normalize_formatting.id_for_label }}">{{ form.normalize_formatting }} {{ form.normalize_formatting.label }}</label></p>
         {{ form.normalize_formatting.errors }}
         <p class="form-help">Po zaznaczeniu: Times New Roman 12 pkt, interlinia 1,5, wcięcie 1,25 cm, bez odstępów przed i po akapicie, A4 i marginesy 2,5 cm. Tekst jest wyjustowany; wyśrodkowane akapity pozostają wyśrodkowane bez wcięcia. Kursywa, pogrubienia i puste akapity zostają zachowane. Bez zaznaczenia Odkurzacz zachowuje formatowanie.</p>
@@ -52,6 +59,7 @@
         </fieldset>
         <p>Reguły działają automatycznie – po pobraniu przejrzyj wynik, szczególnie zamiany słownikowe i wielkość liter.</p>
     </form>
+    {% endif %}
 </div></details>
 <details class="details-card odkurzacz program-tool" {% if conversion_open %}open{% endif %}>
     <summary><span>Konwerter DOCX → PDF i EPUB</span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary>

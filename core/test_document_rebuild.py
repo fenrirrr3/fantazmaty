@@ -106,12 +106,13 @@ class RebuildViewTests(TestCase):
                 if table:
                     self.assertContains(response, 'W nowym DOCX zostaną pominięte')
                     token = response.context['rebuild_token']
-                    accepted = self.client.post(reverse('core:programs'), {'program_action':'clean', 'rebuild':'on', 'allow_rebuild_omissions':'on', 'rebuild_token':token, 'document':SimpleUploadedFile('story.docx', original_payload)})
+                    accepted = self.client.post(reverse('core:programs'), {'program_action':'clean_confirm', 'rebuild_token':token})
                     self.assertEqual(accepted.status_code,200)
                     self.assertTrue(accepted.streaming)
                     rebuilt = Document(BytesIO(b''.join(accepted.streaming_content)))
                     self.assertEqual(len(rebuilt.tables),0)
                     self.assertEqual(rebuilt.core_properties.author,'')
+                    self.assertFalse(list(Path(tmp).glob('pending_uploads/*/*.docx')))
                 else:
                     self.assertIn('_nowy.docx', response['Content-Disposition'])
                     result = Document(BytesIO(b''.join(response.streaming_content)))

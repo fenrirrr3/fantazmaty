@@ -8,7 +8,11 @@
 .cms-pagination .cms-page-button:focus-visible, .cms-pagination select:focus-visible { outline: 2px solid var(--focus-ring, #1761b0); outline-offset: 2px; }
 tr.cms-page-hidden { display: none !important; }
 .cms-pagination .cms-page-jump { white-space: nowrap; }
-.cms-pagination .cms-page-jump input { box-sizing: border-box; width: 5.5rem; min-height: 36px; margin: 0; padding: 5px 8px; border: 1px solid var(--border-strong, #bac7d6); border-radius: 6px; background: var(--surface, #fff); color: inherit; font: inherit; text-align: center; }
+.cms-pagination .cms-page-jump input { box-sizing: border-box; width: calc(2ch + 20px); min-height: 36px; margin: 0; padding: 5px 8px; border: 1px solid var(--border-strong, #bac7d6); border-radius: 6px; background: var(--surface, #fff); color: inherit; font: inherit; text-align: center; }
 .cms-pagination .cms-page-jump input:focus-visible { outline: 2px solid var(--focus-ring, #1761b0); outline-offset: 2px; }
 @media print { .cms-pagination { display: none !important; } tr.cms-page-hidden:not([hidden]) { display: table-row !important; } }
 @media (max-width: 600px) { .cms-pagination { align-items: flex-start; flex-direction: column; } }
+
+.editing-control-card > .cms-pagination { margin-inline: 16px; }
+.cms-pagination .cms-page-jump input { appearance: textfield; -moz-appearance: textfield; }
+.cms-pagination .cms-page-jump input::-webkit-inner-spin-button, .cms-pagination .cms-page-jump input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }

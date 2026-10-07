@@ -632,9 +632,12 @@ def clean_docx(source, rules):
     """Zwróć dokument w pamięci; nie zapisuj tekstu użytkownika na serwerze."""
     source.seek(0)
     document = Document(source)
-    lengths = [len(paragraph.text) for paragraph in document.paragraphs]
-    if sum(lengths) > 500_000 or any(length > 20_000 for length in lengths):
-        raise ValueError("Dokument przekracza limit 500 000 znaków lub 20 000 znaków w akapicie.")
+    if any(len(paragraph.text) > 20_000 for paragraph in document.paragraphs):
+        if __package__:
+            from .document_errors import DocumentInputError
+        else:
+            from document_errors import DocumentInputError
+        raise DocumentInputError('cleaner_paragraph_limit')
     apply_editorial_corrections(document, frozenset(rules))
     output = BytesIO()
     document.save(output)

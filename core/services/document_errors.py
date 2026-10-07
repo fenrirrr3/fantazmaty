@@ -1,5 +1,6 @@
 """Stable, public error messages; never include uploaded document content."""
 MESSAGES = {
+    'cleaner_paragraph_limit': 'Jeden z akapitów przekracza 20 000 znaków. Podziel ten akapit na krótsze. Odkurzacz nie ogranicza łącznej liczby znaków dokumentu.',
     'analysis_limit': 'Dokument przekracza limit analizy. Podziel go na mniejsze części.',
     'tracked_changes': 'Zaakceptuj albo odrzuć śledzone zmiany w dokumencie przed analizą.',
     'unsupported_run': 'Dokument zawiera nieobsługiwaną strukturę tekstu. Zapisz nową kopię DOCX lub wyłącz oznaczanie powtórzeń.',
