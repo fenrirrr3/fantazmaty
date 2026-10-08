@@ -45,10 +45,10 @@ class RecruitmentAndTypographyTests(TestCase):
         url = reverse('core:recruitment_detail', args=[record.pk])
         page = self.client.get(url)
         doc = html.fromstring(page.content)
-        self.assertEqual(doc.xpath('//main//textarea/@name'), ['decision_reason', 'unofficial_notes'])
-        self.assertEqual(self.client.post(url, {'version': page.context['version'], 'status': 'accepted',
-            'decision_reason': 'Tak', 'unofficial_notes': 'Prywatna uwaga'}).status_code, 302)
-        record.refresh_from_db(); self.assertEqual(record.unofficial_notes, 'Prywatna uwaga')
+        self.assertEqual(doc.xpath('//main//textarea/@name'), ['other-decision_reason', 'other-unofficial_notes'])
+        self.assertEqual(self.client.post(url, {'role': 'other', 'version': page.context['sections'][0]['version'], 'other-status': 'accepted',
+            'other-decision_reason': 'Tak', 'other-unofficial_notes': 'Prywatna uwaga'}).status_code, 302)
+        record.refresh_from_db(); self.assertEqual(record.role_decisions.get(role='other').unofficial_notes, 'Prywatna uwaga')
 
     def test_new_and_existing_anthologies_get_typography_once_and_edit_form_includes_it(self):
         book = Anthology.objects.create(title='Typografia test')

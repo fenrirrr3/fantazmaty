@@ -95,29 +95,34 @@ class RecruitmentDetailTests(TestCase):
     def test_privileged_decision_and_reason_only_no_notification_or_metadata_overwrite(self):
         for user in (self.admin, self.coordinator):
             self.client.force_login(user)
-            version = self.client.get(self.url).context['version']
+            version = self.client.get(self.url).context['sections'][0]['version']
             previous_date = Recruitment.objects.get(pk=self.record.pk).notified_at
             with patch('django.core.mail.send_mail') as send:
-                response = self.client.post(self.url, {'version': version, 'status': 'rejected',
-                    'decision_reason': 'Uzasadnienie decyzji', 'notified': '', 'mail_body': 'Zmiana', 'email': 'other@example.test'})
+                response = self.client.post(self.url, {'role': 'illustrators', 'version': version, 'illustrators-status': 'rejected',
+                    'illustrators-decision_reason': 'Uzasadnienie decyzji', 'notified': '', 'mail_body': 'Zmiana', 'email': 'other@example.test'})
                 self.assertRedirects(response, self.url)
                 send.assert_not_called()
             record = Recruitment.objects.get(pk=self.record.pk)
-            self.assertEqual(record.status, 'rejected'); self.assertEqual(record.decision_reason, 'Uzasadnienie decyzji')
+            self.assertEqual(record.status, 'rejected'); self.assertEqual(record.role_decisions.get(role='illustrators').decision_reason, 'Uzasadnienie decyzji')
             self.assertEqual(record.mail_body, BODY); self.assertEqual(record.email, 'candidate@example.test')
             self.assertTrue(record.notified); self.assertEqual(record.notified_at, previous_date)
             self.assertEqual(record.notes, 'Uwagi istniejące')
 
     def test_no_decision_invalid_status_and_stale_edit(self):
         self.client.force_login(self.coordinator)
-        version = self.client.get(self.url).context['version']
-        self.assertEqual(self.client.post(self.url, {'version': version, 'status': 'bad'}).status_code, 400)
-        record = Recruitment.objects.get(pk=self.record.pk); record.status = 'accepted'; record.save()
-        response = self.client.post(self.url, {'version': version, 'status': 'rejected', 'decision_reason': 'Nie zgub szkicu'})
+        version = self.client.get(self.url).context['sections'][0]['version']
+        self.assertEqual(self.client.post(self.url, {'role': 'illustrators', 'version': version, 'illustrators-status': 'bad'}).status_code, 400)
+        record = Recruitment.objects.get(pk=self.record.pk)
+        from core.services.recruitment_decisions import set_all_decisions
+        from django.db import transaction
+        with transaction.atomic():
+            record = Recruitment.objects.select_for_update().get(pk=record.pk)
+            set_all_decisions(record, 'accepted')
+        response = self.client.post(self.url, {'role': 'illustrators', 'version': version, 'illustrators-status': 'rejected', 'illustrators-decision_reason': 'Nie zgub szkicu'})
         self.assertContains(response, 'Nie zgub szkicu', status_code=409)
         record.refresh_from_db(); self.assertEqual(record.status, 'accepted')
-        version = self.client.get(self.url).context['version']
-        self.assertEqual(self.client.post(self.url, {'version': version, 'status': 'new'}).status_code, 302)
+        version = self.client.get(self.url).context['sections'][0]['version']
+        self.assertEqual(self.client.post(self.url, {'role': 'illustrators', 'version': version, 'illustrators-status': 'new'}).status_code, 302)
         record.refresh_from_db(); self.assertIsNone(record.accepted)
 
     def test_permissions_and_csrf(self):

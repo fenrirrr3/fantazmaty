@@ -94,7 +94,7 @@ class AuditFixesTests(TestCase):
         self.assertFalse(Illustration.objects.filter(text_id=9999).exists())
         anthology = Anthology.objects.get(pk=9999)
         anthology.save()
-        self.assertEqual(AnthologyTask.objects.filter(anthology=anthology).count(), 4)
+        self.assertSetEqual(set(AnthologyTask.objects.filter(anthology=anthology).values_list('task_type', flat=True)), set(AnthologyTask.TaskType.values))
         self.assertTrue(AnthologyTask.objects.filter(pk=20000).exists())
         self.assertTrue(Illustration.objects.filter(text_id=9999).exists())
 

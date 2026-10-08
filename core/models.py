@@ -41,6 +41,7 @@ class Recruitment(models.Model):
         NEW = 'new', 'Czeka na ocenę'
         ACCEPTED = 'accepted', 'Przyjęte'
         REJECTED = 'rejected', 'Odrzucone'
+        MIXED = 'mixed', 'Różne decyzje'
 
     class Department(models.TextChoices):
         EDITORS = 'editors', 'Redaktorzy'
@@ -106,7 +107,11 @@ class Recruitment(models.Model):
             if update_fields is not None:
                 update_fields.add('notified_at')
                 kwargs['update_fields'] = update_fields
-            return super().save(*args, **kwargs)
+            result = super().save(*args, **kwargs)
+            from core.services.recruitment_decisions import ensure_decisions, refresh_summary
+            ensure_decisions(self, initial=previous is None, using=using)
+            refresh_summary(self, using=using)
+            return result
 
     @property
     def full_name(self):
@@ -123,7 +128,10 @@ class Recruitment(models.Model):
 
     @property
     def decision_display(self):
-        return {self.Status.ACCEPTED: 'Przyjęty', self.Status.REJECTED: 'Odrzucony'}.get(self.status, 'Bez decyzji')
+        if self.status == self.Status.NEW:
+            from core.selectors.recruitment import record_roles
+            return 'nie wszystkie decyzje' if len(record_roles(self.mail_roles, self.department)) > 1 else 'Bez decyzji'
+        return {self.Status.ACCEPTED: 'Przyjęty', self.Status.REJECTED: 'Odrzucony', self.Status.MIXED: 'Różne decyzje'}.get(self.status, 'Bez decyzji')
 
     @property
     def mail_roles_display(self):
@@ -132,6 +140,29 @@ class Recruitment(models.Model):
 
     def __str__(self):
         return self.full_name or self.mail_subject or self.mail_sender
+
+
+class RecruitmentRoleDecision(models.Model):
+    recruitment = models.ForeignKey(Recruitment, on_delete=models.CASCADE, related_name='role_decisions', verbose_name='zgłoszenie')
+    role = models.CharField('rola', max_length=30)
+    status = models.CharField('decyzja', max_length=20, default='new', choices=(('new', 'Bez decyzji'), ('accepted', 'Przyjęty'), ('rejected', 'Odrzucony')))
+    decision_reason = models.TextField('uzasadnienie decyzji', blank=True)
+    unofficial_notes = models.TextField('nieoficjalne notatki', blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'decyzja dla roli'
+        verbose_name_plural = 'decyzje dla ról'
+        ordering = ('pk',)
+        constraints = [models.UniqueConstraint(fields=('recruitment', 'role'), name='unique_recruitment_role')]
+
+    @property
+    def role_label(self):
+        from core.selectors.recruitment import role_choices
+        return dict(role_choices()).get(self.role, self.role)
+
+    def __str__(self):
+        return self.role_label
 
 
 class UserActivity(models.Model):

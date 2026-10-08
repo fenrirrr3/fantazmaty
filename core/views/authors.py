@@ -13,7 +13,7 @@ from django.views.decorators.http import require_GET, require_POST
 from authors.models import Author, AuthorNote
 from core.forms import AuthorNoteForm
 from core.pagination import paginate_items
-from core.permissions import superuser_required
+from core.permissions import superuser_required, coordinator_required
 from texts.models import Anthology, Review, Text
 
 
@@ -117,7 +117,7 @@ def _render_author_detail(request, author, *, form=None, status=200):
             }
         )
 
-    historical_reviews = ordinary(Review.objects).filter(
+    historical_reviews = ordinary(Review.objects.accessible_to(request.user)).filter(
         Q(author_id=author.pk) | Q(coauthors__pk=author.pk),
         old_reviews=True,
     ).select_related("anthology").distinct().order_by("-created_at", "-pk")
@@ -125,7 +125,7 @@ def _render_author_detail(request, author, *, form=None, status=200):
         page_param='archive_page', size_param='archive_page_size', anchor='#archiwalne-recenzje')
 
     # Archiwalne recenzje nie wpływają na żaden licznik zgłoszeń.
-    submissions = ordinary(Review.objects).filter(
+    submissions = ordinary(Review.objects.accessible_to(request.user)).filter(
         Q(author_id=author.pk) | Q(coauthors__pk=author.pk),
         old_reviews=False,
     ).distinct()
@@ -159,7 +159,7 @@ def _render_author_detail(request, author, *, form=None, status=200):
             "historical_reviews": historical_page,
             "author_summary": author_summary,
             "can_view_authors": True,
-            "can_manage_author_notes": True,
+            "can_manage_author_notes": request.user.is_superuser,
             "author_note_form": form if form is not None else AuthorNoteForm(),
         },
         status=status,
@@ -169,7 +169,7 @@ def _render_author_detail(request, author, *, form=None, status=200):
 @never_cache
 @login_required
 @require_GET
-@superuser_required
+@coordinator_required
 def author_list(request):
     query = request.GET.get("q", "").strip()
     contract_filter = _yes_no_filter(request.GET.get("contract", ""))
@@ -287,7 +287,7 @@ def author_list(request):
 @never_cache
 @login_required
 @require_GET
-@superuser_required
+@coordinator_required
 def author_detail(request, author_id):
     author = get_object_or_404(Author, pk=author_id)
 

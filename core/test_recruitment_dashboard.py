@@ -55,7 +55,11 @@ class RecruitmentDashboardTests(TestCase):
         response = self.client.get(reverse('core:home'))
         self.assertNotContains(response, 'data-pending-recruitment')
         self.assertEqual(self.client.get(reverse('core:recruitment_list')).status_code, 403)
-        Recruitment.objects.filter(status='new').update(status='accepted')
+        from core.services.recruitment_decisions import set_all_decisions
+        from django.db import transaction
+        with transaction.atomic():
+            for record in Recruitment.objects.select_for_update().filter(status='new'):
+                set_all_decisions(record, 'accepted')
         self.client.force_login(self.coordinator)
         self.assertNotContains(self.client.get(reverse('core:home')), 'data-pending-recruitment')
 

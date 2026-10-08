@@ -13,7 +13,7 @@ COMMON = {
  'Długość': ('length', ('length',)), 'Liczba znaków': ('length', ('length',)),
 }
 MODELS = {
- 'core.recruitment': {'Nadawca': ('sender', ('mail_sender', 'last_name', 'first_name')), 'Temat': ('subject', ('mail_subject',)), 'Data wiadomości': ('received', ('mail_received_at',)), 'Rola': ('roles', ('mail_roles',)), 'Przyjęty/Odrzucony': ('decision', ('status',)), 'Powiadomiony': ('notified', ('notified',)),'Data nadesłania': ('created', ('submitted_at',)), 'E-mail': ('email', ('email',)), 'Imię i nazwisko': ('person', ('last_name','first_name'))},
+ 'core.recruitment': {'Nadawca': ('sender', ('mail_sender', 'last_name', 'first_name')), 'Kto': ('subject', ('mail_subject',)), 'Data wiadomości': ('received', ('mail_received_at',)), 'Rola': ('roles', ('mail_roles',)), 'Przyjęty/Odrzucony': ('decision', ('status',)), 'Powiadomiony': ('notified', ('notified',)),'Data nadesłania': ('created', ('submitted_at',)), 'E-mail': ('email', ('email',)), 'Imię i nazwisko': ('person', ('last_name','first_name'))},
  'core.anthologycorrection': {'Antologia': ('anthology', ('anthology__title',)), 'Tytuł opowiadania': ('title', ('story_title',)), 'Status zmiany': ('status', ('status',)), 'Zgłaszający': ('person', ('submitted_by__last_name','submitted_by__first_name'))},
  'texts.text': {**COMMON, 'Etap': ('status', ('current_stage_type',)), 'Etap tekstu': ('status', ('current_stage_type',)), 'Etap pracy': ('status', ('current_stage_type',))},
  'texts.review': {**COMMON, 'Status': ('status', ('status',)), 'Data nadesłania': ('created', ('created_at',)), 'Data decyzji': ('decision', ('decision_at',))},
@@ -172,7 +172,7 @@ def _extra_columns(items, queryset, request):
     projected = hasattr(items, 'projector')
     columns = {}
     if model == 'core.recruitment':
-        columns['Temat'] = ('subject', lambda row: row.subject_name)
+        columns['Kto'] = ('subject', lambda row: row.subject_name)
     if model == 'texts.text' and projected:
         columns.update({
             'Autorzy': ('authors', lambda r: _get(r, 'authors_display')),
@@ -291,8 +291,8 @@ def prepare_table_sort(request, items):
         if not field.is_relation and field.name in {'title', 'status', 'created_at', 'updated_at', 'submitted_at', 'pseudonym', 'has_contract', 'can_contact', 'decision_at', 'action', 'method', 'status_code', 'story_title', 'department', 'notified_at'}:
             label = str(field.verbose_name).capitalize()
             columns.setdefault(label, (field.name, (field.name,)))
-    from core.permissions import can_view_author_data
-    if model in {"texts.review", "texts.text", "authors.author"} and not can_view_author_data(request.user):
+    from core.permissions import can_view_author_data, is_coordinator
+    if model in {"texts.review", "texts.text", "authors.author"} and not (can_view_author_data(request.user) or (model == "authors.author" and is_coordinator(request.user))):
         columns = {label:spec for label,spec in columns.items() if not any('email' in field or 'phone' in field or field.startswith('author_') for field in spec[1])}
     # Some lists do not annotate the derived current stage.
     if queryset.model._meta.label_lower == 'texts.text' and 'current_stage_type' not in queryset.query.annotations:

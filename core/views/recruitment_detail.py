@@ -2,24 +2,22 @@ from django import forms
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
+from django.http import HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
-
-from core.models import Recruitment
+from core.models import Recruitment, RecruitmentRoleDecision
 from core.permissions import coordinator_required
 from core.recruitment_message import form_fields
+from core.selectors.recruitment import record_roles, role_choices
 
 
 class RecruitmentDecisionForm(forms.ModelForm):
-    status = forms.ChoiceField(label='Decyzja', choices=(
-        ('new', 'Bez decyzji'), ('accepted', 'Przyjęty'), ('rejected', 'Odrzucony')))
-
     class Meta:
-        model = Recruitment
+        model = RecruitmentRoleDecision
         fields = ('status', 'decision_reason', 'unofficial_notes')
-        labels = {'unofficial_notes': 'Nieoficjalne notatki'}
-        widgets = {name: forms.Textarea(attrs={'rows': 6}) for name in ('decision_reason', 'unofficial_notes')}
+        labels = {'status': 'Decyzja', 'decision_reason': 'Uzasadnienie decyzji', 'unofficial_notes': 'Nieoficjalne notatki'}
+        widgets = {name: forms.Textarea(attrs={'rows': 4}) for name in ('decision_reason', 'unofficial_notes')}
 
 
 @never_cache
@@ -28,30 +26,40 @@ class RecruitmentDecisionForm(forms.ModelForm):
 @coordinator_required
 def recruitment_detail(request, pk):
     record = get_object_or_404(Recruitment, pk=pk)
-    version = record.updated_at.isoformat()
-    form = RecruitmentDecisionForm(request.POST if request.method == 'POST' else None, instance=record)
+    roles = record_roles(record.mail_roles, record.department)
+    selected_role = request.POST.get('role', '') if request.method == 'POST' else ''
+    decisions = {row.role: row for row in record.role_decisions.all() if row.role in roles}
+    if request.method == 'POST' and selected_role not in decisions:
+        return HttpResponseBadRequest('Nieprawidłowa rola zgłoszenia. Odśwież dane.')
+    sections = []
     status = 200
-    if request.method == 'POST':
-        version = request.POST.get('version', '')
-        status = 400
-        if form.is_valid():
-            with transaction.atomic():
-                current = get_object_or_404(Recruitment.objects.select_for_update(), pk=pk)
-                if version != current.updated_at.isoformat():
-                    form.add_error(None, 'Zgłoszenie zmieniło się w międzyczasie. Skopiuj uzasadnienie i odśwież dane przed ponownym zapisem.')
-                    status = 409
-                else:
-                    current.status = form.cleaned_data['status']
-                    current.decision_reason = form.cleaned_data['decision_reason']
-                    current.unofficial_notes = form.cleaned_data['unofficial_notes']
-                    current.save(update_fields=['status', 'decision_reason', 'unofficial_notes', 'updated_at'])
-                    messages.success(request, 'Zapisano decyzję i uzasadnienie. Nie wysłano powiadomienia.')
-                    return redirect('core:recruitment_detail', pk=pk)
-        # ModelForm validation may mutate its instance; display persisted metadata.
-        record.refresh_from_db()
+    for role, label in role_choices():
+        if role not in decisions:
+            continue
+        decision = decisions[role]
+        selected = role == selected_role
+        form = RecruitmentDecisionForm(request.POST if selected else None, instance=decision, prefix=role)
+        version = request.POST.get('version', '') if selected else decision.updated_at.isoformat()
+        if selected:
+            status = 400
+            if form.is_valid():
+                with transaction.atomic():
+                    parent = get_object_or_404(Recruitment.objects.select_for_update(), pk=pk)
+                    current = get_object_or_404(RecruitmentRoleDecision.objects.select_for_update(), recruitment_id=pk, role=role)
+                    if role not in record_roles(parent.mail_roles, parent.department) or version != current.updated_at.isoformat():
+                        form.add_error(None, 'Decyzja dla tej roli zmieniła się w międzyczasie. Skopiuj wpisane dane i odśwież formularz.')
+                        status = 409
+                    else:
+                        for field in form.Meta.fields:
+                            setattr(current, field, form.cleaned_data[field])
+                        current.save(update_fields=[*form.Meta.fields, 'updated_at'])
+                        parent.save(update_fields=['updated_at'])
+                        messages.success(request, f'Zapisano decyzję dla roli: {label}. Nie wysłano powiadomienia.')
+                        return redirect('core:recruitment_detail', pk=pk)
+        sections.append({'role': role, 'label': label, 'form': form, 'version': version, 'decision': decision, 'open': selected})
     fields = form_fields(record.mail_body)
     return render(request, 'core/recruitment_detail.html', {
-        'record': record, 'form': form, 'version': version,
+        'record': record, 'sections': sections,
         'candidate_name': record.full_name or fields.get('name') or record.mail_sender or 'Nie podano',
         'candidate_email': record.email or fields.get('email'),
     }, status=status)

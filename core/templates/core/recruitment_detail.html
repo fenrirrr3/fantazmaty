@@ -4,21 +4,28 @@
 {% block content %}
 <header class="page-header"><h1 class="page-title recruitment-detail-heading">{{ candidate_name }}</h1><p class="page-description recruitment-detail-heading">{{ record.mail_subject|default:'Zgłoszenie rekrutacyjne' }}</p><a class="secondary-button" href="{% url 'core:recruitment_list' %}">Wróć do Rekrutacji</a></header>
 <div class="recruitment-detail-grid">
-    <section class="details-card">
-        <h2>Dane zgłoszenia</h2>
-        <p><strong>E-mail:</strong> {{ candidate_email|default:'–'|urlize }}</p>
-        <p><strong>Wybrane role:</strong> {% firstof record.mail_roles_display record.get_department_display %}</p>
-        <p><strong>Data nadesłania:</strong> {% if record.mail_received_at %}{{ record.mail_received_at|date:'d.m.Y H:i' }}{% else %}{{ record.submitted_at|date:'d.m.Y' }}{% endif %}</p>
-        <p><strong>Powiadomiony:</strong> {{ record.notified|yesno:'Tak,Nie' }}{% if record.notified_at %} ({{ record.notified_at|date:'d.m.Y H:i' }}){% endif %}</p>
-        <h2>Decyzja i uzasadnienie</h2>
-        <form method="post" class="intake-form" data-warn-unsaved>{% csrf_token %}
-            <input type="hidden" name="version" value="{{ version }}">
-            {{ form.as_p }}
-            <p class="form-help">Uzasadnienie widzą koordynatorzy i superuserzy. Zapis nie wysyła wiadomości ani nie zmienia pola Powiadomiony.</p>
-            <div class="recruitment-actions"><button class="primary-button" type="submit">Zapisz decyzję</button><a class="secondary-button" href="{% url 'core:recruitment_detail' record.pk %}">Odśwież dane</a></div>
-        </form>
-        {% if record.notes %}<h3>Uwagi</h3><div class="recruitment-message">{{ record.notes }}</div>{% endif %}
-    </section>
+    <div class="recruitment-decision-column">
+        <section class="details-card">
+            <h2>Dane zgłoszenia</h2>
+            <p><strong>E-mail:</strong> {{ candidate_email|default:'–'|urlize }}</p>
+            <p><strong>Wybrane role:</strong> {% firstof record.mail_roles_display record.get_department_display %}</p>
+            <p><strong>Data nadesłania:</strong> {% if record.mail_received_at %}{{ record.mail_received_at|date:'d.m.Y H:i' }}{% else %}{{ record.submitted_at|date:'d.m.Y' }}{% endif %}</p>
+            <p><strong>Powiadomiony:</strong> {{ record.notified|yesno:'Tak,Nie' }}{% if record.notified_at %} ({{ record.notified_at|date:'d.m.Y H:i' }}){% endif %}</p>
+            {% if record.notes %}<h3>Uwagi</h3><div class="recruitment-message">{{ record.notes }}</div>{% endif %}
+        </section>
+        {% for section in sections %}
+        <details class="details-card recruitment-role-decision" {% if section.open %}open{% endif %}>
+            <summary><strong>{{ section.label }}</strong> · {{ section.decision.get_status_display }}</summary>
+            <form method="post" class="intake-form" data-warn-unsaved>{% csrf_token %}
+                <input type="hidden" name="role" value="{{ section.role }}">
+                <input type="hidden" name="version" value="{{ section.version }}">
+                {{ section.form.as_p }}
+                <p class="form-help">Zapis dotyczy wyłącznie tej roli. Nie wysyła wiadomości ani nie zmienia pola Powiadomiony.</p>
+                <div class="recruitment-actions"><button class="primary-button" type="submit">Zapisz decyzję: {{ section.label }}</button></div>
+            </form>
+        </details>
+        {% endfor %}
+    </div>
     <section class="details-card">
         <h2>Przesłana wiadomość i linki</h2>
         {% if record.mail_sender %}<p class="recruitment-detail-heading"><strong>Nadawca wiadomości:</strong> {{ record.mail_sender }}</p>{% endif %}

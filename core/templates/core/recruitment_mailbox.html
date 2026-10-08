@@ -3,7 +3,7 @@
 {% block extra_css %}<link rel="stylesheet" href="{% static 'core/intake.css' %}?v=47">{% endblock %}
 {% block content %}
 <header class="page-header"><h1 class="page-title">Pobieranie próbek</h1></header>
-<p class="recruitment-actions"><a class="secondary-button" href="{% url 'core:recruitment_list' %}">Rekrutacja</a><a class="secondary-button" href="{% url 'admin:core_mailboxconnection_changelist' %}?purpose__exact=recruitment">Ustawienia skrzynki</a></p>
+<p class="recruitment-actions"><a class="secondary-button" href="{% url 'core:recruitment_list' %}">Rekrutacja</a>{% if user.is_superuser %}<a class="secondary-button" href="{% url 'admin:core_mailboxconnection_changelist' %}?purpose__exact=recruitment">Ustawienia skrzynki</a>{% endif %}</p>
 <section class="card recruitment-mail-card"><div class="card-body">
 {% if error %}<p class="message error" role="alert">{{ error }}</p>{% endif %}
 {% if mailbox %}<p>Skrzynka: {{ mailbox.name }} · {{ mailbox.folder }}</p>
@@ -34,16 +34,17 @@
 <button class="secondary-button" name="action" value="bulk">Zastosuj do zaznaczonych</button>
 {{ bulk_form.non_field_errors }}
 </fieldset>
-<p class="muted-text">Pole Powiadomiony zapisuje informację; nie wysyła wiadomości.</p>
+<p class="muted-text">Zmiana decyzji obejmuje wszystkie role zaznaczonych zgłoszeń; zachowuje ich uzasadnienia i notatki. Pole Powiadomiony zapisuje informację; nie wysyła wiadomości.</p>
 <div class="table-container"><table class="recruitment-samples-table" data-copy-table data-pagination="off" data-email-mailbox="true">
-<thead><tr><th><input type="checkbox" data-select-table aria-label="Zaznacz wszystkie wiadomości"></th><th>Nadawca</th><th>Temat</th><th>Data</th><th>Przyjęty/Odrzucony</th><th>Powiadomiony</th><th>Stan</th></tr></thead>
+<thead><tr><th><input type="checkbox" data-select-table aria-label="Zaznacz wszystkie wiadomości"></th><th>Nadawca</th><th>Temat</th><th>Data</th><th>Przyjęty/Odrzucony</th><th>Powiadomiony</th><th>Stan</th><th>Podgląd</th></tr></thead>
 <tbody>{% for row in rows %}<tr>
 <td><input type="checkbox" name="selected" value="{{ row.uid }}" {% if row.uid in selected %}checked{% endif %} aria-label="Wybierz wiadomość: {{ row.subject }}"></td>
 <td>{{ row.sender }}</td><td class="recruitment-subject"><button class="recruitment-subject-button" type="submit" name="preview_uid" value="{{ row.uid }}" data-preview-uid="{{ row.uid }}">{{ row.subject|default:"(bez tematu)" }}</button></td><td>{{ row.date }}</td>
 <td>{% include "core/includes/recruitment_decision.html" with record=row.record %}</td>
 <td><input type="checkbox" disabled {% if row.record.notified %}checked{% endif %} aria-label="Powiadomiony"> {{ row.record.notified|yesno:'Tak,Nie,Nie' }}</td>
 <td>{% if row.record %}W bazie{% elif row.downloaded %}Pobrano{% else %}Nowa{% endif %}</td>
-</tr>{% empty %}<tr><td colspan="7">Brak wiadomości pasujących do filtrów.</td></tr>{% endfor %}</tbody>
+<td>{% if row.record %}<a class="secondary-button" href="{% url 'core:recruitment_detail' row.record.pk %}">Podgląd</a>{% else %}<span class="muted-text">Najpierw dodaj do bazy</span>{% endif %}</td>
+</tr>{% empty %}<tr><td colspan="8">Brak wiadomości pasujących do filtrów.</td></tr>{% endfor %}</tbody>
 </table></div>
 <nav class="cms-pagination" aria-label="Strony wiadomości">{% if previous_cursor %}<button class="secondary-button" name="cursor" value="{{ previous_cursor }}">Nowsze wiadomości</button>{% endif %}{% if next_cursor %}<button class="secondary-button" name="cursor" value="{{ next_cursor }}">Starsze wiadomości</button>{% endif %}</nav>
 {% endif %}

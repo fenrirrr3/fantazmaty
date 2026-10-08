@@ -152,6 +152,15 @@ def belongs_to_group(user, group_name):
     return has_role(user, group_name)
 
 
+def can_use_recruitment_mailbox(user):
+    return is_superuser(user) or has_role(user, "Koordynator rekrutacji")
+
+
+def require_recruitment_mailbox(user):
+    if not can_use_recruitment_mailbox(user):
+        raise PermissionDenied("Pobieranie próbek wymaga roli Koordynator rekrutacji lub superusera.")
+
+
 def can_view_author_data(user):
     return is_superuser(user)
 
@@ -262,6 +271,7 @@ team_member_required = _permission_decorator(require_team_member)
 coordinator_required = _permission_decorator(require_coordinator)
 superuser_required = _permission_decorator(require_superuser)
 author_data_required = _permission_decorator(require_author_data_access)
+recruitment_mailbox_required = _permission_decorator(require_recruitment_mailbox)
 
 
 def is_reviewer(user):

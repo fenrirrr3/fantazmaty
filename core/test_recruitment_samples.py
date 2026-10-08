@@ -88,7 +88,7 @@ class RecruitmentSamplesTests(TestCase):
         self.assertContains(response, 'Moje zgłoszenie')
         self.assertFalse(Recruitment.objects.exists())
         self.assertContains(response, 'data-preview-uid="12"')
-        self.assertNotContains(response, '<th>Podgląd</th>')
+        self.assertContains(response, '<th>Podgląd</th>')
 
     def test_preview_fetches_fresh_mail_and_escapes_literal_markup(self):
         raw = EmailMessage()
@@ -151,7 +151,7 @@ class RecruitmentSamplesTests(TestCase):
         record.refresh_from_db(); self.assertIsNone(record.accepted); self.assertFalse(record.notified); self.assertIsNone(record.notified_at)
         self.assertEqual(Recruitment.objects.count(), 1)
         response = self.client.get(self.url)
-        self.assertContains(response, 'Bez decyzji'); self.assertContains(response, 'W bazie')
+        self.assertContains(response, 'nie wszystkie decyzje'); self.assertContains(response, 'W bazie')
 
     @patch('core.views.recruitment_mailbox.fetch_messages')
     def test_changed_mail_rolls_back_whole_batch_and_invalid_bulk_never_fetches(self, fetch):

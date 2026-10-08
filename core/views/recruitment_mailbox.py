@@ -15,7 +15,7 @@ from django.views.decorators.http import require_http_methods
 
 from core.mailbox_date import MailboxDateForm, DEFAULT_SENT_SINCE
 from core.models import MailboxConnection, Recruitment, RecruitmentMailSource
-from core.permissions import superuser_required
+from core.permissions import recruitment_mailbox_required, require_superuser
 from core.recruitment_roles import ROLE_CHOICES
 from core.services.mailbox import MailboxError, read_headers
 from core.services.mailbox_import import fetch_messages, mailbox_key, receipts
@@ -68,26 +68,26 @@ def recruitment_register(request):
     status = request.GET.get('status', '')
     role = role if role in dict(choices) else ''
     status = status if status in Recruitment.Status.values else ''
-    records = Recruitment.objects.annotate(_candidate_sort=Coalesce(
+    records = Recruitment.objects.prefetch_related('role_decisions').annotate(_candidate_sort=Coalesce(
         NullIf(Trim(Concat('first_name', Value(' '), 'last_name')), Value('')),
         NullIf('applicant_name', Value('')), 'mail_sender', output_field=CharField()))
-    if status:
+    if status and not role:
         records = records.filter(status=status)
     for term in query.split():
         records = records.filter(Q(first_name__plcontains=term) | Q(last_name__plcontains=term) |
             Q(applicant_name__plcontains=term) | Q(email__plcontains=term) | Q(mail_sender__plcontains=term) | Q(mail_subject__plcontains=term))
     if role:
-        records = filter_role(records, role)
+        records = filter_role(records, role, status=status)
     page = paginate_items(request, records)
     return render(request, 'core/recruitment_register.html', {'items': page, 'page_obj': page, 'query': query,
         'role': role, 'status': status, 'role_choices': choices,
-        'status_choices': [('new', 'Bez decyzji'), ('accepted', 'Przyjęty'), ('rejected', 'Odrzucony')]})
+        'status_choices': [('new', 'Bez decyzji'), ('accepted', 'Przyjęty'), ('rejected', 'Odrzucony'), ('mixed', 'Różne decyzje')]})
 
 
 @never_cache
 @login_required
 @require_http_methods(['GET', 'POST'])
-@superuser_required
+@recruitment_mailbox_required
 def recruitment_mailbox(request):
     action = 'preview_html' if request.POST.get('preview_uid') else request.POST.get('action', 'headers')
     context = {'bulk_form': RecruitmentBulkForm(), 'max_samples': MAX_SAMPLES}
@@ -131,7 +131,7 @@ def recruitment_mailbox(request):
         def populate(result):
             result = deepcopy(result)
             known = {source.uid: source for source in RecruitmentMailSource.objects.filter(
-                mailbox_key=key, uid_validity=result['validity'], uid__in=[row['uid'] for row in result['rows']]).select_related('recruitment')}
+                mailbox_key=key, uid_validity=result['validity'], uid__in=[row['uid'] for row in result['rows']]).select_related('recruitment').prefetch_related('recruitment__role_decisions')}
             downloaded = set(receipts(config, result['validity']).values_list('uid', flat=True))
             for row in result['rows']:
                 source = known.get(row['uid'])
@@ -157,6 +157,7 @@ def recruitment_mailbox(request):
         else:
             selection = load(request.POST.get('selection', ''), 'selection')
             if action == 'copy_emails':
+                require_superuser(request.user)
                 from core.services.mailbox_email_copy import sender_emails
                 return JsonResponse({'emails': sender_emails(config, selection['validity'], excluded=excluded, recruitment_roles=roles, sent_since=sent_since)})
             if action not in ('preview', 'preview_html', 'download', 'add', 'bulk'):
@@ -196,9 +197,8 @@ def recruitment_mailbox(request):
                     for record in records:
                         fields = ['updated_at']
                         if bulk.cleaned_data['decision']:
-                            record.status = {'yes': Recruitment.Status.ACCEPTED, 'no': Recruitment.Status.REJECTED,
-                                             'clear': Recruitment.Status.NEW}[bulk.cleaned_data['decision']]
-                            fields.append('status')
+                            from core.services.recruitment_decisions import set_all_decisions
+                            set_all_decisions(record, {'yes': 'accepted', 'no': 'rejected', 'clear': 'new'}[bulk.cleaned_data['decision']])
                         if bulk.cleaned_data['notified']:
                             record.notified = bulk.cleaned_data['notified'] == 'yes'
                             fields.append('notified')

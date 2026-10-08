@@ -30,3 +30,7 @@
 .recruitment-date-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; margin-bottom: 1rem; }
 @media(max-width:700px) { .mailbox-filters-dated, .recruitment-date-row { grid-template-columns: minmax(0, 1fr); } }
 @media(max-width:480px) { .mailbox-options-grid { grid-template-columns: minmax(0, 1fr); } }
+.recruitment-decision-column { display: grid; gap: 1rem; align-content: start; min-width: 0; }
+.recruitment-role-decision > summary { cursor: pointer; overflow-wrap: anywhere; }
+.recruitment-role-decision[open] > summary { margin-bottom: 1rem; }
+.recruitment-role-decision textarea { width: 100%; box-sizing: border-box; }

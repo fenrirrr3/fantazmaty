@@ -45,3 +45,9 @@ def text_view_url(context, view):
     params["view"] = view
     params.pop("page", None)
     return "?" + params.urlencode()
+
+
+@register.simple_tag
+def recruitment_mailbox_allowed(user):
+    from core.permissions import can_use_recruitment_mailbox
+    return can_use_recruitment_mailbox(user)

@@ -46,7 +46,7 @@ class RecruitmentForm(forms.ModelForm):
 
     class Meta:
         model = Recruitment
-        fields = ('first_name', 'last_name', 'applicant_name', 'email', 'department', 'submitted_at', 'status', 'decision_reason', 'notified', 'notes', 'unofficial_notes')
+        fields = ('first_name', 'last_name', 'applicant_name', 'email', 'department', 'submitted_at', 'notified', 'notes')
         widgets = {'notes': forms.Textarea(attrs={'rows': 3}), 'unofficial_notes': forms.Textarea(attrs={'rows': 3}), 'submitted_at': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'})}
 
 
