@@ -5,6 +5,22 @@ from django.core.validators import validate_email
 from core.recruitment_roles import ROLE_CHOICES
 
 
+def name_in_subject(subject):
+    value = re.sub(r'^\s*(?:(?:Nowe\s+)?zgłoszenie\s+(?:do\s+Fantazmatów|rekrutacyjne)|Rekrutacja)\s*', '', subject, flags=re.I)
+    value = re.sub(r'\b(?:wybrane role|role|imię i nazwisko)\s*:', '', value, flags=re.I)
+    for _, label in sorted(ROLE_CHOICES, key=lambda row: -len(row[1])):
+        value = re.sub(r'(?<!\w)' + re.escape(label) + r'(?!\w)', '', value, flags=re.I)
+    value = re.sub(r'\s+[–—-]\s+|[|:;,()[\]]', ' ', value)
+    value = ' '.join(value.strip(' –—-').split())
+    # Do not present arbitrary subjects or unresolved form tags as identities.
+    words = value.split()
+    if any(word.casefold().startswith(('zgłoszen', 'rekrutac')) for word in words):
+        return ''
+    if 2 <= len(words) <= 8 and all(all(c.isalpha() or c in "-’'." for c in word) for word in words):
+        return value
+    return ''
+
+
 def roles_in_subject(subject):
     remaining, matched = subject.casefold(), set()
     for key, label in sorted(ROLE_CHOICES, key=lambda choice: -len(choice[1])):

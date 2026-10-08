@@ -57,8 +57,8 @@ class RecruitmentSamplesTests(TestCase):
 
     def payload(self, action='add', uids=(12,), **extra):
         token = signing.dumps(dict(user=self.user.pk, mailbox=mailbox_key(self.box), roles=[], show=False,
-            kind='selection', validity=7, uids=list(uids)), salt=SALT)
-        return {'action': action, 'roles': ['all'], 'selection': token, 'selected': list(uids), **extra}
+            sent_since='2026-10-02', kind='selection', validity=7, uids=list(uids)), salt=SALT)
+        return {'action': action, 'date_filter_enabled': 'on', 'sent_since': '2026-10-02', 'roles': ['all'], 'selection': token, 'selected': list(uids), **extra}
 
     def test_all_is_default_and_headers_survive_return_navigation(self):
         self.assertEqual(self.headers.call_args.kwargs['recruitment_roles'], [])
@@ -127,14 +127,14 @@ class RecruitmentSamplesTests(TestCase):
         response = self.client.post(self.url, self.payload('download'))
         self.assertEqual(response.status_code, 200)
         with ZipFile(BytesIO(b''.join(response.streaming_content))) as archive:
-            self.assertEqual(archive.namelist(), ['wiadomosc-12/01-próbka.docx'])
+            self.assertEqual(archive.namelist(), ['Kandydat/próbka.docx'])
             self.assertEqual(archive.read(archive.namelist()[0]), b'sample-document')
         self.assertEqual(Recruitment.objects.count(), 1)
         self.assertIsNotNone(RecruitmentMailSource.objects.get().downloaded_at)
         self.assertTrue(MailboxDownload.objects.exists())
         response = self.client.get(reverse('core:recruitment_list'))
         self.assertContains(response, 'candidate@example.test')
-        self.assertContains(response, 'zgłoszenie 12')
+        self.assertContains(response, 'Nie podano imienia i nazwiska')
 
     @patch('core.views.recruitment_mailbox.fetch_messages', return_value=[sample()])
     def test_bulk_decision_and_notified_are_independent_and_retry_preserves_both(self, fetch):

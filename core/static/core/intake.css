@@ -20,3 +20,13 @@
 .intake-stack > .intake-panel{width:100%;box-sizing:border-box;margin:0}
 .import-preview-table td{vertical-align:top;height:auto;white-space:normal}
 .import-preview-table p{margin-block:0.35rem}
+
+.mailbox-filters-dated { grid-template-columns: minmax(0, 2fr) minmax(14rem, 1fr); }
+.mailbox-filter-controls { min-width: 0; }
+.mailbox-filter-controls .filter-field { margin-bottom: 1rem; }
+.mailbox-options-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: .8rem 1rem; }
+.mailbox-date-filter { min-width: 0; display: flex; flex-direction: column; gap: .6rem; }
+.mailbox-date-filter input[type=date] { width: 100%; max-width: 15rem; }
+.recruitment-date-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; margin-bottom: 1rem; }
+@media(max-width:700px) { .mailbox-filters-dated, .recruitment-date-row { grid-template-columns: minmax(0, 1fr); } }
+@media(max-width:480px) { .mailbox-options-grid { grid-template-columns: minmax(0, 1fr); } }

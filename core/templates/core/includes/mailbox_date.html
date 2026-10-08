@@ -1,0 +1,6 @@
+<div class="mailbox-date-filter">
+    <label class="mailbox-option">{{ date_form.date_filter_enabled }}<span>{{ date_form.date_filter_enabled.label }}</span></label>
+    <label for="{{ date_form.sent_since.id_for_label }}">{{ date_form.sent_since.label }}</label>
+    {{ date_form.sent_since }}{{ date_form.sent_since.errors }}
+    <p class="form-help">Data wysłania, nie dostarczenia. Odznacz, aby uwzględnić starsze wiadomości.</p>
+</div>

@@ -117,6 +117,11 @@ class Recruitment(models.Model):
         return {self.Status.ACCEPTED: True, self.Status.REJECTED: False}.get(self.status)
 
     @property
+    def subject_name(self):
+        from core.recruitment_message import name_in_subject, form_fields
+        return name_in_subject(self.mail_subject) or self.full_name or form_fields(self.mail_body).get('name') or ''
+
+    @property
     def decision_display(self):
         return {self.Status.ACCEPTED: 'Przyjęty', self.Status.REJECTED: 'Odrzucony'}.get(self.status, 'Bez decyzji')
 

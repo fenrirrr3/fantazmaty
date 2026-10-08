@@ -1,6 +1,6 @@
 {% extends "core/base.html" %}{% load static %}
 {% block title %}Pobieranie próbek | Fantazmaty CMS{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'core/intake.css' %}">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/intake.css' %}?v=47">{% endblock %}
 {% block content %}
 <header class="page-header"><h1 class="page-title">Pobieranie próbek</h1></header>
 <p class="recruitment-actions"><a class="secondary-button" href="{% url 'core:recruitment_list' %}">Rekrutacja</a><a class="secondary-button" href="{% url 'admin:core_mailboxconnection_changelist' %}?purpose__exact=recruitment">Ustawienia skrzynki</a></p>
@@ -11,7 +11,8 @@
 <div class="recruitment-preview-grid">
     <section class="recruitment-role-panel" aria-label="Wybór roli">
         <div class="filter-field recruitment-mail-roles">{{ form.roles.label_tag }}{{ form.roles }}{{ form.roles.errors }}<p class="muted-text">{{ form.roles.help_text }}</p></div>
-        <div class="mailbox-options"><label class="mailbox-option">{{ form.show_downloaded }}<span>{{ form.show_downloaded.label }}</span></label></div>
+        <div class="recruitment-date-row"><div class="mailbox-options"><label class="mailbox-option">{{ form.show_downloaded }}<span>{{ form.show_downloaded.label }}</span></label></div>
+{% include "core/includes/mailbox_date.html" %}</div>
         <button class="primary-button" type="submit" name="action" value="headers">Pobierz nagłówki od początku</button>
     </section>
     <section class="recruitment-preview-panel" aria-label="Treść zaznaczonej wiadomości" aria-busy="false" data-mail-preview>
@@ -49,4 +50,4 @@
 </form>{% endif %}
 </div></section>
 {% endblock %}
-{% block scripts %}<script src="{% static 'core/recruitment-samples.js' %}?v=45" defer></script>{% endblock %}
+{% block scripts %}<script src="{% static 'core/recruitment-samples.js' %}?v=47" defer></script>{% endblock %}

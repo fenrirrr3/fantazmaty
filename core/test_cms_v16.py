@@ -92,7 +92,7 @@ class CMS16Tests(TestCase):
         response=self.client.get(reverse('core:task_list'))
         self.assertEqual(response.status_code,200)
         rows=list(response.context['tasks'])
-        self.assertEqual({r['name'] for r in rows},{'Blurb','Bannery','Skład','Okładka','Audiodeskrypcja'})
+        self.assertEqual({r['name'] for r in rows},{'Blurb','Bannery','Skład','Okładka','Audiodeskrypcja','Typografia okładki'})
         self.assertNotContains(response,ready.title)
         response=self.client.get(reverse('core:anthology_detail',args=[self.book.pk]))
         self.assertContains(response,'audio_description-status')

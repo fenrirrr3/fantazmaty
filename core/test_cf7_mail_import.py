@@ -339,13 +339,15 @@ class PersistentHeadersTests(TestCase):
 
     @patch('core.views.mailbox.fetch_messages')
     def test_preview_confirm_and_refresh_preserve_list_and_import_named_values(self, fetch):
-        page = self.fetch_headers(subject_filter='Test')
+        page = self.fetch_headers(subject_filter='Test', date_filter_enabled='on', sent_since='2026-10-02')
         raw = named_mail()
         fetch.side_effect = lambda *args: [parse_message(12, raw)]
-        payload = {'action': 'download', 'selection': page.context['selection'], 'uids': [12], 'subject_filter': 'Test'}
+        payload = {'action': 'download', 'selection': page.context['selection'], 'uids': [12], 'subject_filter': 'Test', 'date_filter_enabled': 'on', 'sent_since': '2026-10-02'}
         preview = self.client.post(self.url, payload)
         self.assertEqual(preview.status_code, 200)
         self.assertContains(preview, 'A. M. Nowak')
+        self.assertContains(preview, '<input type="hidden" name="sent_since" value="2026-10-02">', html=True)
+        self.assertContains(preview, '<input type="hidden" name="date_filter_enabled" value="on">', html=True)
         self.assertEqual(preview.context['result']['rows'][0]['uid'], 12)
         self.assertFalse(Review.objects.exists() or NewsletterConsent.objects.exists())
         payload.update(action='confirm', preview=preview.context['preview_token'], approve='on')

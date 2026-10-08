@@ -13,7 +13,7 @@ from django.utils import timezone
 from lxml import html, etree
 
 from core.models import Recruitment, RecruitmentMailSource, MailboxConnection, MailboxDownload
-from core.recruitment_message import form_fields, roles_in_subject
+from core.recruitment_message import form_fields, roles_in_subject, name_in_subject
 from core.services.mailbox import MailboxError
 from core.services.mailbox_import import mailbox_key
 
@@ -107,12 +107,30 @@ def store_samples(config, validity, messages, *, downloaded=False):
     return records
 
 
+def safe_archive_name(value, fallback):
+    value = re.sub(r'[\x00-\x1f\x7f<>:"|?*/\\]', '_', value).strip(' .')[:180].strip(' .')
+    if not value or value.split('.')[0].upper() in {'CON', 'PRN', 'AUX', 'NUL', *[f'COM{i}' for i in range(1, 10)], *[f'LPT{i}' for i in range(1, 10)]}:
+        return fallback
+    return value
+
+
 def attachment_archive(messages):
     stream = BytesIO()
     try:
         with ZipFile(stream, 'w', ZIP_DEFLATED) as archive:
+            used_folders = set()
             for row in messages:
                 msg = BytesParser(policy=policy.default).parsebytes(row['raw'])
+                parsed = parse_sample(row['raw'])
+                candidate = name_in_subject(parsed['mail_subject']) or parsed['applicant_name'] or parseaddr(parsed['mail_sender'])[0]
+                folder = safe_archive_name(candidate, f'wiadomosc-{row["uid"]}')
+                base = folder
+                suffix = 1
+                while folder.casefold() in used_folders:
+                    folder = f'{base} ({row["uid"]}-{suffix})'
+                    suffix += 1
+                used_folders.add(folder.casefold())
+                used_files = set()
                 count = 0
                 for part in msg.walk():
                     if part.is_multipart() or part.get_content_disposition() == 'inline':
@@ -120,14 +138,20 @@ def attachment_archive(messages):
                     if not part.get_filename() and part.get_content_disposition() != 'attachment':
                         continue
                     filename = re.split(r'[/\\]', str(part.get_filename() or 'zalacznik.bin'))[-1]
-                    filename = re.sub(r'[\x00-\x1f\x7f<>:"|?*]', '_', filename).strip(' .')[:180] or 'zalacznik.bin'
+                    filename = safe_archive_name(filename, 'zalacznik.bin')
+                    base = filename; suffix = 1
+                    while filename.casefold() in used_files:
+                        suffix += 1
+                        stem, dot, extension = base.rpartition('.')
+                        filename = f'{stem} ({suffix}).{extension}' if dot else f'{base} ({suffix})'
+                    used_files.add(filename.casefold())
                     payload = part.get_payload(decode=True)
                     if payload is None:
                         raise MailboxError('Nie można odczytać jednego z załączników. Niczego nie zapisano.')
                     count += 1
-                    archive.writestr(f'wiadomosc-{row["uid"]}/{count:02d}-{filename}', payload)
+                    archive.writestr(f'{folder}/{filename}', payload)
                 if not count:
-                    archive.writestr(f'wiadomosc-{row["uid"]}/brak-zalacznikow.txt', 'Ta wiadomość nie zawiera załączników. Zgłoszenie zapisano w Rekrutacji.\n')
+                    archive.writestr(f'{folder}/brak-zalacznikow.txt', 'Ta wiadomość nie zawiera załączników. Zgłoszenie zapisano w Rekrutacji.\n')
         stream.seek(0)
         return stream
     except Exception:

@@ -44,6 +44,11 @@ document.addEventListener('DOMContentLoaded', () => {
     form.addEventListener('change', event => {
         if (!event.target.matches('input[name="selected"], [data-select-table]')) return;
         clearTimeout(previewTimer);
+        if (event.target.matches('[data-select-table]')) {
+            controller?.abort(); ++serial;
+            clear('Kliknij temat wiadomości, aby zobaczyć jej treść.'); panel.setAttribute('aria-busy', 'false');
+            return;
+        }
         previewTimer = setTimeout(() => {
             const checked = event.target.matches('input[name="selected"]') && event.target.checked ? event.target : form.querySelector('input[name="selected"]:checked');
             if (checked) preview(checked.value);

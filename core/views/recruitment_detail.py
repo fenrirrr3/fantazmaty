@@ -17,8 +17,9 @@ class RecruitmentDecisionForm(forms.ModelForm):
 
     class Meta:
         model = Recruitment
-        fields = ('status', 'decision_reason')
-        widgets = {'decision_reason': forms.Textarea(attrs={'rows': 6})}
+        fields = ('status', 'decision_reason', 'unofficial_notes')
+        labels = {'unofficial_notes': 'Nieoficjalne notatki'}
+        widgets = {name: forms.Textarea(attrs={'rows': 6}) for name in ('decision_reason', 'unofficial_notes')}
 
 
 @never_cache
@@ -42,7 +43,8 @@ def recruitment_detail(request, pk):
                 else:
                     current.status = form.cleaned_data['status']
                     current.decision_reason = form.cleaned_data['decision_reason']
-                    current.save(update_fields=['status', 'decision_reason', 'updated_at'])
+                    current.unofficial_notes = form.cleaned_data['unofficial_notes']
+                    current.save(update_fields=['status', 'decision_reason', 'unofficial_notes', 'updated_at'])
                     messages.success(request, 'Zapisano decyzję i uzasadnienie. Nie wysłano powiadomienia.')
                     return redirect('core:recruitment_detail', pk=pk)
         # ModelForm validation may mutate its instance; display persisted metadata.

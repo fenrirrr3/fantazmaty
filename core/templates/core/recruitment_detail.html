@@ -18,7 +18,6 @@
             <div class="recruitment-actions"><button class="primary-button" type="submit">Zapisz decyzję</button><a class="secondary-button" href="{% url 'core:recruitment_detail' record.pk %}">Odśwież dane</a></div>
         </form>
         {% if record.notes %}<h3>Uwagi</h3><div class="recruitment-message">{{ record.notes }}</div>{% endif %}
-        {% if record.unofficial_notes %}<h3>Uwagi nieoficjalne</h3><div class="recruitment-message">{{ record.unofficial_notes }}</div>{% endif %}
     </section>
     <section class="details-card">
         <h2>Przesłana wiadomość i linki</h2>

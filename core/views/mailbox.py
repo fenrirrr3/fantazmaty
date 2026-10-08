@@ -11,6 +11,7 @@ from django.shortcuts import render, redirect
 from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_http_methods
+from core.mailbox_date import MailboxDateForm
 from core.models import MailboxConnection, MailboxDownload
 from core.permissions import superuser_required
 from core.services.mailbox import read_headers, MailboxError
@@ -29,14 +30,14 @@ def restore_headers(request, config, key, context):
     saved = request.session.get(HEADERS_SESSION_KEY)
     if not saved:
         return
-    if saved.get('mailbox') != key or saved.get('user') != request.user.pk:
+    if 'sent_since' not in saved or saved.get('mailbox') != key or saved.get('user') != request.user.pk:
         request.session.pop(HEADERS_SESSION_KEY, None)
         return
     result = deepcopy(saved['result'])
     already = set(receipts(config, result['validity']).values_list('uid', flat=True))
     for row in result['rows']:
         row['downloaded'] = row['uid'] in already
-    base = {'user': request.user.pk, 'mailbox': key, 'subject_filter': saved['subject_filter']}
+    base = {'user': request.user.pk, 'mailbox': key, 'subject_filter': saved['subject_filter'], 'sent_since': saved['sent_since']}
     for field in ('next_cursor', 'previous_cursor'):
         if result.get(field):
             result[field] = signing.dumps(dict(base, cursor=result[field],
@@ -47,6 +48,7 @@ def restore_headers(request, config, key, context):
         uids=[row['uid'] for row in result['rows']], show_downloaded=saved['show_downloaded']), salt='mailbox-selection', compress=True)
     if request.method == 'GET':
         context.update({name: saved[name] for name in IMPORT_OPTIONS})
+        context['date_form'] = MailboxDateForm(initial=saved['date_filter'])
 
 
 def load_token(token, user, key, salt):
@@ -66,7 +68,8 @@ def load_token(token, user, key, salt):
 @sensitive_post_parameters()
 def mailbox_headers(request):
     archive = None
-    context = {'result': None, 'max_messages': MAX_MESSAGES, 'show_downloaded': request.POST.get('show_downloaded') == 'on',
+    date_form = MailboxDateForm(request.POST if request.method == 'POST' else None)
+    context = {'date_form': date_form, 'result': None, 'max_messages': MAX_MESSAGES, 'show_downloaded': request.POST.get('show_downloaded') == 'on',
                'clean': request.POST.get('clean') == 'on' if request.method == 'POST' else True,
                'rebuild': request.POST.get('rebuild') == 'on' if request.method == 'POST' else True,
                'convert': request.POST.get('convert') == 'on' if request.method == 'POST' else True}
@@ -82,11 +85,15 @@ def mailbox_headers(request):
             raise MailboxError('Wybrany nabór nie jest już dostępny. Wybierz go ponownie.')
         base = {'user': request.user.pk, 'mailbox': key}
         if request.method == 'POST':
+            if not date_form.is_valid():
+                raise MailboxError('Popraw datę początkową.')
+            sent_since = date_form.effective_date()
+            base['sent_since'] = sent_since
             action = request.POST.get('action', 'headers')
             if action in ('download', 'confirm'):
                 selection = load_token(request.POST.get('selection', ''), request.user, key, 'mailbox-selection')
-                if selection.get('subject_filter', '') != subject_filter:
-                    raise MailboxError('Zmieniono nabór. Najpierw pobierz nagłówki ponownie.')
+                if selection.get('subject_filter', '') != subject_filter or selection.get('sent_since', '') != sent_since:
+                    raise MailboxError('Zmieniono nabór lub datę. Najpierw pobierz nagłówki ponownie.')
                 try:
                     selected = sorted(set(int(value) for value in request.POST.getlist('uids')))
                 except ValueError:
@@ -160,20 +167,20 @@ def mailbox_headers(request):
             elif action == 'copy_emails':
                 from core.services.mailbox_email_copy import sender_emails
                 selection = load_token(request.POST.get('selection', ''), request.user, key, 'mailbox-selection')
-                if selection.get('subject_filter', '') != subject_filter or selection.get('show_downloaded', False) != context['show_downloaded']:
+                if selection.get('sent_since', '') != sent_since or selection.get('subject_filter', '') != subject_filter or selection.get('show_downloaded', False) != context['show_downloaded']:
                     raise MailboxError('Zmieniono filtry. Pobierz nagłówki ponownie.')
                 return JsonResponse({'emails': sender_emails(config, selection['validity'],
                     excluded=None if context['show_downloaded'] else lambda validity: receipts(config, validity).values_list('uid', flat=True),
-                    subject_filter=subject_filter)})
+                    subject_filter=subject_filter, sent_since=sent_since)})
             elif action == 'headers':
                 cursor = None
                 if request.POST.get('cursor'):
                     page = load_token(request.POST['cursor'], request.user, key, 'mailbox-cursor')
-                    if page.get('subject_filter', '') == subject_filter and page.get('show_downloaded', False) == context['show_downloaded']:
+                    if page.get('sent_since', '') == sent_since and page.get('subject_filter', '') == subject_filter and page.get('show_downloaded', False) == context['show_downloaded']:
                         cursor = page['cursor']
                 excluded = None if context['show_downloaded'] else lambda validity: receipts(config, validity).values_list('uid', flat=True)
-                result = read_headers(config, cursor, excluded=excluded, subject_filter=subject_filter)
-                request.session[HEADERS_SESSION_KEY] = dict(base, result=result,
+                result = read_headers(config, cursor, excluded=excluded, subject_filter=subject_filter, sent_since=sent_since)
+                request.session[HEADERS_SESSION_KEY] = dict(base, result=result, date_filter=date_form.snapshot(),
                     **{name: context[name] for name in IMPORT_OPTIONS})
                 # Refresh repeats a GET, not the IMAP fetch submitted by POST.
                 return redirect(request.path)

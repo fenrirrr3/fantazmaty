@@ -1,4 +1,5 @@
 """Read-only IMAP headers with stable UID cursors and modified UTF-7 folders."""
+from datetime import date
 import base64
 import imaplib
 import re
@@ -42,7 +43,7 @@ def _positive(value):
     return value
 
 
-def read_headers(config, cursor=None, excluded=None, subject_filter="", *, recruitment_roles=None):
+def read_headers(config, cursor=None, excluded=None, subject_filter="", *, recruitment_roles=None, sent_since=""):
     if subject_filter and subject_filter not in config.subject_choices():
         raise MailboxError("Wybierz nabór zapisany w ustawieniach skrzynki.")
     from core.recruitment_roles import ROLE_CHOICES
@@ -50,6 +51,14 @@ def read_headers(config, cursor=None, excluded=None, subject_filter="", *, recru
     if recruitment_roles is not None:
         if any(role not in role_labels for role in recruitment_roles) or subject_filter:
             raise MailboxError('Wybierz co najmniej jedną rolę rekrutacyjną z listy.')
+    date_search = []
+    if sent_since:
+        try:
+            cutoff = date.fromisoformat(sent_since)
+        except (ValueError, TypeError):
+            raise MailboxError('Podaj poprawną datę początkową.') from None
+        months = ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')
+        date_search = ['SENTSINCE', f'{cutoff.day:02d}-{months[cutoff.month - 1]}-{cutoff.year:04d}']
     client = None
     try:
         password = config.get_password()
@@ -91,7 +100,7 @@ def read_headers(config, cursor=None, excluded=None, subject_filter="", *, recru
             matching = set()
             for role in dict.fromkeys(recruitment_roles):
                 quoted = ('"' + role_labels[role] + '"').encode('utf-8')
-                status, blocks = client.uid('SEARCH', 'CHARSET', 'UTF-8', 'UID', uid_range, 'SUBJECT', quoted)
+                status, blocks = client.uid('SEARCH', 'CHARSET', 'UTF-8', 'UID', uid_range, *date_search, 'SUBJECT', quoted)
                 if status != 'OK':
                     raise MailboxError('Serwer odrzucił wyszukiwanie ról w temacie wiadomości.')
                 matching.update(uid for block in blocks or [] if block for uid in block.split())
@@ -100,13 +109,13 @@ def read_headers(config, cursor=None, excluded=None, subject_filter="", *, recru
             phrase = f'Nabór: „{subject_filter}”'
             quoted = ('"' + phrase.replace('\\', '\\\\').replace('"', '\\"') + '"').encode('utf-8')
             try:
-                status, data = client.uid('SEARCH', 'CHARSET', 'UTF-8', 'UID', uid_range, 'SUBJECT', quoted)
+                status, data = client.uid('SEARCH', 'CHARSET', 'UTF-8', 'UID', uid_range, *date_search, 'SUBJECT', quoted)
             except imaplib.IMAP4.error:
                 raise MailboxError('Serwer odrzucił wyszukiwanie tematu w UTF-8. Spróbuj pobrać nagłówki bez filtra naboru.') from None
             if status != 'OK':
                 raise MailboxError('Serwer odrzucił wyszukiwanie tematu w UTF-8. Spróbuj pobrać nagłówki bez filtra naboru.')
         else:
-            status, data = client.uid('SEARCH', None, 'UID', uid_range)
+            status, data = client.uid('SEARCH', None, 'UID', uid_range, *date_search)
         if status != 'OK':
             raise MailboxError('Nie udało się odczytać listy wiadomości. Spróbuj ponownie.')
         uids = sorted({_positive(int(uid)) for block in data or [] if block for uid in block.split()})

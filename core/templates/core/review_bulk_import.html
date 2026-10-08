@@ -1,6 +1,6 @@
 {% extends 'core/base.html' %}{% load static %}
 {% block title %}Import zgłoszeń | Fantazmaty CMS{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'core/intake.css' %}">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/intake.css' %}?v=47">{% endblock %}
 {% block content %}
 <header class="page-header"><h1 class="page-title">Import zgłoszeń</h1><p class="page-description">Jednorazowo do {{ max_messages }} wiadomości.</p></header>
 <p><a class="secondary-button" href="{% url 'core:review_create' %}">Dodaj zgłoszenie lub importuj wiele zgłoszeń</a> <a class="secondary-button" href="{% url 'admin:core_mailboxconnection_changelist' %}">Ustawienia skrzynki</a></p>
@@ -10,15 +10,16 @@
 {% if mailbox %}
 <form method="post">{% csrf_token %}
 <input type="hidden" name="selection" value="{{ selection }}">
-<div class="mailbox-filters">
-<div class="filter-field"><label for="mailbox-subject-filter">Nabór w temacie wiadomości</label>
+<div class="mailbox-filters mailbox-filters-dated">
+<div class="mailbox-filter-controls"><div class="filter-field"><label for="mailbox-subject-filter">Nabór w temacie wiadomości</label>
 <select id="mailbox-subject-filter" name="subject_filter"><option value="">Wszystkie wiadomości</option>{% for title in subject_choices %}<option value="{{ title }}" {% if subject_filter == title %}selected{% endif %}>{{ title }}</option>{% endfor %}</select></div>
-<div class="mailbox-options">
+<div class="mailbox-options mailbox-options-grid">
 <label class="mailbox-option"><input type="checkbox" name="show_downloaded" {% if show_downloaded %}checked{% endif %}><span>Pokaż również już pobrane wiadomości</span></label>
 <label class="mailbox-option"><input type="checkbox" name="rebuild" {% if rebuild %}checked{% endif %}><span>Przebuduj do nowego DOCX</span></label>
 <label class="mailbox-option"><input type="checkbox" name="clean" {% if clean %}checked{% endif %}><span>Popraw pliki Odkurzaczem</span></label>
 <label class="mailbox-option"><input type="checkbox" name="convert" {% if convert %}checked{% endif %}><span>Konwertuj do PDF i EPUB</span></label>
-</div>
+</div></div>
+{% include "core/includes/mailbox_date.html" %}
 <div class="review-import-actions mailbox-actions">
 <button class="primary-button" name="action" value="headers">Pobierz nagłówki</button>
 <button class="primary-button" name="action" value="download" {% if not result.rows %}disabled{% endif %}>Pobierz teksty</button>
@@ -44,6 +45,7 @@
 {% for form in forms %}{% for warning in form.mail_display_warnings %}<p class="form-warning">{{ warning }}</p>{% endfor %}{% endfor %}
 {% if not hard_errors %}
 <form method="post">{% csrf_token %}
+<input type="hidden" name="sent_since" value="{{ date_form.sent_since.value|default_if_none:'' }}">{% if date_form.date_filter_enabled.value %}<input type="hidden" name="date_filter_enabled" value="on">{% endif %}
 <input type="hidden" name="selection" value="{{ selection }}"><input type="hidden" name="preview" value="{{ preview_token }}"><input type="hidden" name="subject_filter" value="{{ subject_filter }}">
 {% for uid in selected %}<input type="hidden" name="uids" value="{{ uid }}">{% endfor %}
 {% if rebuild %}<input type="hidden" name="rebuild" value="on">{% endif %}

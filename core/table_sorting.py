@@ -171,6 +171,8 @@ def _extra_columns(items, queryset, request):
     model = queryset.model._meta.label_lower
     projected = hasattr(items, 'projector')
     columns = {}
+    if model == 'core.recruitment':
+        columns['Temat'] = ('subject', lambda row: row.subject_name)
     if model == 'texts.text' and projected:
         columns.update({
             'Autorzy': ('authors', lambda r: _get(r, 'authors_display')),

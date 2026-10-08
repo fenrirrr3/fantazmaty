@@ -13,6 +13,7 @@ from django.shortcuts import render, redirect
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
 
+from core.mailbox_date import MailboxDateForm, DEFAULT_SENT_SINCE
 from core.models import MailboxConnection, Recruitment, RecruitmentMailSource
 from core.permissions import superuser_required
 from core.recruitment_roles import ROLE_CHOICES
@@ -95,19 +96,25 @@ def recruitment_mailbox(request):
         config = recruitment_connection()
         key = mailbox_key(config)
         saved = request.session.get(SESSION_KEY)
-        if saved and (saved.get('mailbox') != key or saved.get('user') != request.user.pk):
+        if saved and ('sent_since' not in saved or saved.get('mailbox') != key or saved.get('user') != request.user.pk):
             saved = None
             request.session.pop(SESSION_KEY, None)
         form = RecruitmentMailboxForm(request.POST if request.method == 'POST' else None,
             initial={'roles': saved['roles'] or ['all'], 'show_downloaded': saved['show']} if saved else None)
-        context.update(form=form, mailbox=config)
+        date_form = MailboxDateForm(request.POST if request.method == 'POST' else None,
+            initial=saved.get('date_filter') if saved else None)
+        context.update(form=form, date_form=date_form, mailbox=config)
         if request.method == 'POST':
             if not form.is_valid():
                 raise MailboxError('Popraw wybór ról.')
+            if not date_form.is_valid():
+                raise MailboxError('Popraw datę początkową.')
             roles, show = form.cleaned_data['roles'], form.cleaned_data['show_downloaded']
+            sent_since = date_form.effective_date()
         else:
             roles, show = (saved['roles'], saved['show']) if saved else ([], False)
-        identity = {'user': request.user.pk, 'mailbox': key, 'roles': roles, 'show': show}
+            sent_since = saved['sent_since'] if saved else DEFAULT_SENT_SINCE.isoformat()
+        identity = {'user': request.user.pk, 'mailbox': key, 'roles': roles, 'show': show, 'sent_since': sent_since}
 
         def signed(payload):
             return signing.dumps({**identity, **payload}, salt=SALT, compress=True)
@@ -117,7 +124,7 @@ def recruitment_mailbox(request):
                 payload = signing.loads(value, salt=SALT, max_age=3600)
             except signing.BadSignature:
                 raise MailboxError('Wybór wygasł. Pobierz nagłówki ponownie.') from None
-            if not isinstance(payload, dict) or any(payload.get(k) != v for k, v in identity.items()) or payload.get('kind') != kind:
+            if not isinstance(payload, dict) or any(payload.get(k, '' if k == 'sent_since' else None) != v for k, v in identity.items()) or payload.get('kind') != kind:
                 raise MailboxError('Zmieniono filtry lub skrzynkę. Pobierz nagłówki od początku.')
             return payload
 
@@ -135,15 +142,15 @@ def recruitment_mailbox(request):
             for name in ('next_cursor', 'previous_cursor'):
                 context[name] = signed({'kind': 'cursor', 'cursor': result[name]}) if result[name] else ''
 
-        if saved and saved['roles'] == roles and saved['show'] == show:
+        if saved and saved['roles'] == roles and saved['show'] == show and saved['sent_since'] == sent_since:
             populate(saved['result'])
         excluded = None if show else lambda validity: imported_uids(config, validity)
         if request.method == 'GET' and saved:
             return render(request, 'core/recruitment_mailbox.html', context)
         if action == 'headers':
             cursor = load(request.POST['cursor'], 'cursor')['cursor'] if request.POST.get('cursor') else None
-            result = read_headers(config, cursor, excluded=excluded, recruitment_roles=roles)
-            request.session[SESSION_KEY] = {**identity, 'result': result}
+            result = read_headers(config, cursor, excluded=excluded, recruitment_roles=roles, sent_since=sent_since)
+            request.session[SESSION_KEY] = {**identity, 'result': result, 'date_filter': date_form.snapshot() if request.method == 'POST' else {'date_filter_enabled': True, 'sent_since': sent_since}}
             populate(result)
             if request.method == 'POST':
                 return redirect(request.path)
@@ -151,7 +158,7 @@ def recruitment_mailbox(request):
             selection = load(request.POST.get('selection', ''), 'selection')
             if action == 'copy_emails':
                 from core.services.mailbox_email_copy import sender_emails
-                return JsonResponse({'emails': sender_emails(config, selection['validity'], excluded=excluded, recruitment_roles=roles)})
+                return JsonResponse({'emails': sender_emails(config, selection['validity'], excluded=excluded, recruitment_roles=roles, sent_since=sent_since)})
             if action not in ('preview', 'preview_html', 'download', 'add', 'bulk'):
                 raise MailboxError('Nieznana operacja.')
             try:

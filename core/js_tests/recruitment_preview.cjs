@@ -16,7 +16,7 @@ const form = node();
 // A named action control shadows HTMLFormElement.action in a real browser.
 form.action = {toString: () => '[object RadioNodeList]'};
 form.getAttribute = () => null;
-const checked = {value: '12', checked: true, matches: () => true};
+const checked = {value: '12', checked: true, matches: selector => selector !== '[data-select-table]'};
 form.querySelector = s => s === '[data-mail-preview]' ? panel : s === 'select[name="roles"]' ? roles : checked;
 const callbacks = [];
 vm.runInNewContext(fs.readFileSync(path.resolve(__dirname,'../static/core/recruitment-samples.js'),'utf8'), {
@@ -41,8 +41,10 @@ function click(uid) {
     assert.ok(prevented);
 }
 (async()=>{
+    form.events.change({target:{matches:()=>true}});
+    assert.equal(timers.size,0); assert.equal(pending.length,0);
     for(let i=0;i<50;i++) form.events.change({target:checked});
-    assert.equal(timers.size,1); // Shift/select-all burst triggers just one preview.
+    assert.equal(timers.size,1); // A Shift range triggers one preview; the header checkbox triggers none.
     [...timers.values()][0](); timers.clear(); assert.equal(pending.length,1);
     assert.equal(pending[0].url,'https://cms.invalid/rekrutacja/skrzynka/');
     assert.equal(pending[0].options.body.get('action'),'preview');
