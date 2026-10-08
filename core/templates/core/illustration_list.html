@@ -57,7 +57,7 @@
             </div>
 
             <div class="illustration-public-actions">
-                <a class="secondary-button" href="{% url 'illustrations:external_illustrations' %}">Zewnętrzne ilustracje</a>
+                <a class="secondary-button" href="{% url 'illustrations:external_illustrations' %}" target="_blank" rel="noopener noreferrer" title="Otwórz w nowej karcie">Zewnętrzne ilustracje</a>
                 {% if can_manage_directory %}<a class="secondary-button" href="?edit_public_link=1" data-dialog-open="public-illustration-link">Link GDrive</a>{% endif %}
             </div>
             <div class="illustration-filter-bottom">

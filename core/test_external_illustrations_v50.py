@@ -98,6 +98,9 @@ class ExternalIllustrationsTests(TestCase):
         page = self.client.get(self.internal)
         doc = html.fromstring(page.content)
         self.assertTrue(doc.xpath('//div[@class="illustration-public-actions"]/a'))
+        public_link = doc.xpath('//a[@href="%s"]' % self.url)[0]
+        self.assertEqual(public_link.get("target"), "_blank")
+        self.assertEqual(set(public_link.get("rel").split()), {"noopener", "noreferrer"})
         self.assertTrue(doc.xpath('//div[@class="illustration-filter-bottom"]/label/input[@name="hide_published"]'))
         token = link_version(self.coordinator,'')
         for url in ('javascript:alert(1)','https://drive.google.com.evil.test/x','http://drive.google.com/x','https://drive.google.com:wrong/x'):
