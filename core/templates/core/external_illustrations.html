@@ -2,15 +2,15 @@
 <html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow"><meta name="referrer" content="no-referrer">
 <title>Zewnętrzne ilustracje | Fantazmaty</title>
 <link rel="stylesheet" href="{% static 'core/themes.css' %}">
-<link rel="stylesheet" href="{% static 'core/styles.css' %}"><link rel="stylesheet" href="{% static 'core/workspace.css' %}"><link rel="stylesheet" href="{% static 'core/components.css' %}"><link rel="stylesheet" href="{% static 'core/pagination.css' %}"><link rel="stylesheet" href="{% static 'core/illustration-status.css' %}"><link rel="stylesheet" href="{% static 'core/dialogs.css' %}">
+<link rel="stylesheet" href="{% static 'core/styles.css' %}"><link rel="stylesheet" href="{% static 'core/workspace.css' %}"><link rel="stylesheet" href="{% static 'core/components.css' %}"><link rel="stylesheet" href="{% static 'core/pagination.css' %}"><link rel="stylesheet" href="{% static 'core/illustration-status.css' %}"><link rel="stylesheet" href="{% static 'core/dialogs.css' %}?v=53">
 </head><body><main class="container external-illustrations" id="main-content">
 <header class="page-header"><h1 class="page-title">Zewnętrzne ilustracje</h1><p class="page-description">Opowiadania do zilustrowania – Fantazmaty</p></header>
 <section class="filters-card"><form method="get" class="filters-form">
     <div class="filter-field"><label for="external-query">Szukaj</label><input id="external-query" type="search" name="q" value="{{ query }}" placeholder="Antologia, tytuł, tag lub gatunek"></div>
     <div class="filter-field"><label for="external-anthology">Antologia</label><select name="anthology" id="external-anthology"><option value="">Wszystkie</option>{% for item in anthologies %}<option value="{{ item.text__anthology_id }}" {% if selected_anthology == item.text__anthology_id|stringformat:'s' %}selected{% endif %}>{{ item.text__anthology__title }}</option>{% endfor %}</select></div>
     <div class="filter-field"><label for="external-status">Status</label><select name="status" id="external-status"><option value="">Wszystkie</option><option {% if selected_status == 'Dostępne' %}selected{% endif %}>Dostępne</option><option {% if selected_status == 'Przypisane' %}selected{% endif %}>Przypisane</option></select></div>
-    <div class="illustration-filter-bottom"><div class="filter-actions"><button class="primary-button" type="submit">Filtruj</button><a class="secondary-button" href="{% url 'illustrations:external_illustrations' %}">Wyczyść filtry</a>{% if drive_url %}<a class="secondary-button" href="{{ drive_url }}" target="_blank" rel="noopener noreferrer">Otwórz GDrive</a>{% endif %}</div>
-    <input type="hidden" name="hide_published" value="0"><label><input type="checkbox" name="hide_published" value="1"{% if hide_published %} checked{% endif %}> Ukryj wydane antologie</label></div>
+    <div class="illustration-filter-bottom"><div class="filter-actions"><button class="primary-button" type="submit">Filtruj</button><a class="secondary-button" href="{% url 'illustrations:external_illustrations' %}">Wyczyść filtry</a>{% if drive_url %}<a class="secondary-button illustration-drive-button" href="{{ drive_url }}" target="_blank" rel="noopener noreferrer">Otwórz GDrive</a>{% endif %}</div>
+    </div>
 </form></section>
 <section class="card"><div class="table-container"><table data-server-paginated="true">
 <thead><tr><th>Antologia</th><th>Tytuł opowiadania</th><th>Tagi</th><th>Gatunek</th><th>Status</th></tr></thead>

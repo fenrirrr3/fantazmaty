@@ -3,7 +3,7 @@
 {% block title %}Ilustracje | Fantazmaty CMS{% endblock %}
 
 {% load static %}
-{% block extra_css %}{{ block.super }}<link rel="stylesheet" href="{% static 'core/illustrations.css' %}"><link rel="stylesheet" href="{% static 'core/dialogs.css' %}">{% endblock %}
+{% block extra_css %}{{ block.super }}<link rel="stylesheet" href="{% static 'core/illustrations.css' %}"><link rel="stylesheet" href="{% static 'core/dialogs.css' %}?v=53">{% endblock %}
 {% block content %}
     <header class="page-header">
         <h1 class="page-title">Ilustracje</h1>
@@ -57,7 +57,7 @@
             </div>
 
             <div class="illustration-public-actions">
-                <a class="secondary-button" href="{% url 'illustrations:external_illustrations' %}" target="_blank" rel="noopener noreferrer" title="Otwórz w nowej karcie">Zewnętrzne ilustracje</a>
+                <a class="secondary-button illustration-public-button" href="{% url 'illustrations:external_illustrations' %}" target="_blank" rel="noopener noreferrer" title="Otwórz w nowej karcie">Zewnętrzne ilustracje</a>
                 {% if can_manage_directory %}<a class="secondary-button" href="?edit_public_link=1" data-dialog-open="public-illustration-link">Link GDrive</a>{% endif %}
             </div>
             <div class="illustration-filter-bottom">

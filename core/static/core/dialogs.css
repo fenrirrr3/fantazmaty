@@ -10,3 +10,15 @@
 .external-illustrations { padding-block: 2rem; }
 .external-illustrations td { overflow-wrap: anywhere; }
 .external-illustrations .external-tags { max-width: 28rem; white-space: pre-line; }
+
+/* Subtle accents reuse the light, dark and autumn theme palettes. */
+.secondary-button.illustration-public-button {
+    color: var(--primary); background: var(--primary-light); border-color: var(--primary);
+}
+.secondary-button.illustration-drive-button {
+    color: var(--success); background: var(--success-light); border-color: var(--success);
+}
+.secondary-button:is(.illustration-public-button, .illustration-drive-button):is(:hover, :focus-visible) {
+    box-shadow: inset 0 0 0 1px currentColor;
+    text-decoration: underline;
+}

@@ -42,6 +42,12 @@ class RecruitmentAndTypographyTests(TestCase):
         response = self.client.get(reverse('core:recruitment_list'), {'sort': 'subject'})
         doc = html.fromstring(response.content)
         self.assertEqual(doc.xpath('string(//td[@class="recruitment-subject"])'), 'Jan Nowak')
+        headers = [th.text_content().strip() for th in doc.xpath('//table/thead/tr/th')]
+        self.assertEqual(headers, ['E-mail', 'Kto', 'Rola', 'Data wiadomości', 'Przyjęty/Odrzucony', 'Powiadomiony'])
+        self.assertEqual(len(doc.xpath('//table/tbody/tr[1]/td')), 6)
+        self.assertEqual(doc.xpath('//td[@class="recruitment-subject"]/a/@href'), [reverse('core:recruitment_detail', args=[record.pk])])
+        empty = html.fromstring(self.client.get(reverse('core:recruitment_list'), {'q': 'nieistniejący-kandydat'}).content)
+        self.assertEqual(empty.xpath('//table/tbody/tr/td/@colspan'), ['6'])
         url = reverse('core:recruitment_detail', args=[record.pk])
         page = self.client.get(url)
         doc = html.fromstring(page.content)

@@ -80,7 +80,15 @@ class ExternalIllustrationsTests(TestCase):
         # Historical released catalogue fixture; transition rules are tested elsewhere.
         Anthology.objects.filter(pk=self.book.pk).update(status=Anthology.Status.READY)
         self.assertNotContains(self.client.get(self.url),self.text.title)
-        self.assertContains(self.client.get(self.url, {'hide_published':'0'}),self.text.title)
+        for params in ({}, {'hide_published': '0'}, {'hide_published': '0', 'anthology': str(self.book.pk)}):
+            page = self.client.get(self.url, params)
+            self.assertNotContains(page, self.text.title)
+            self.assertNotContains(page, self.book.title)
+            self.assertEqual(page.context['rows'].paginator.count, 0)
+            self.assertFalse(list(page.context['anthologies']))
+            self.assertNotContains(page, 'name="hide_published"')
+        # Test the other exclusions independently of publication status.
+        Anthology.objects.filter(pk=self.book.pk).update(status=Anthology.Status.IN_PREPARATION)
         for flag in ('is_translated','is_novel'):
             Anthology.objects.filter(pk=self.book.pk).update(**{flag:True})
             self.assertNotContains(self.client.get(self.url, {'hide_published':'0'}),self.text.title)

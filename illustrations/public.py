@@ -36,7 +36,7 @@ def visible_illustrations():
     return ordinary(Illustration.objects).filter(
         text_id__in=active_production_texts(Text.objects.all()).values('pk'),
         text__anthology__has_illustrations=True,
-    )
+    ).exclude(text__anthology__status=Anthology.Status.READY)
 
 
 @never_cache
@@ -47,9 +47,6 @@ def external_illustrations(request):
     rows = visible_illustrations().annotate(has_artist=Exists(assigned)).annotate(
         public_status=Case(When(Q(has_artist=True) | ~Q(manual_illustrator_name=''), then=Value('Przypisane')),
                            default=Value('Dostępne'), output_field=CharField()))
-    hide_published = request.GET.get('hide_published', '1') != '0'
-    if hide_published:
-        rows = rows.exclude(text__anthology__status=Anthology.Status.READY)
     anthology = request.GET.get('anthology', '')
     choices = rows.values('text__anthology_id', 'text__anthology__title').order_by('text__anthology__title').distinct()
     if anthology:
@@ -68,6 +65,6 @@ def external_illustrations(request):
     config = PublicIllustrationSettings.objects.filter(pk=1).first()
     return render(request, 'core/external_illustrations.html', {
         'rows': page, 'page_obj': page, 'anthologies': choices, 'selected_anthology': anthology,
-        'selected_status': status, 'query': query, 'hide_published': hide_published,
+        'selected_status': status, 'query': query,
         'drive_url': config.drive_url if config else '',
     })
