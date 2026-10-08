@@ -6,6 +6,8 @@ from core.recruitment_roles import ROLE_CHOICES
 
 
 def name_in_subject(subject):
+    if subject.strip().strip('()').casefold() in ('', 'bez tematu', 'no subject'):
+        return ''
     value = re.sub(r'^\s*(?:(?:Nowe\s+)?zgłoszenie\s+(?:do\s+Fantazmatów|rekrutacyjne)|Rekrutacja)\s*', '', subject, flags=re.I)
     value = re.sub(r'\b(?:wybrane role|role|imię i nazwisko)\s*:', '', value, flags=re.I)
     for _, label in sorted(ROLE_CHOICES, key=lambda row: -len(row[1])):

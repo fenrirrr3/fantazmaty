@@ -16,6 +16,7 @@ from core.models import Recruitment, RecruitmentMailSource, MailboxConnection, M
 from core.recruitment_message import form_fields, roles_in_subject, name_in_subject
 from core.services.mailbox import MailboxError
 from core.services.mailbox_import import mailbox_key
+from core.services.mail_attachments import attachments
 
 MAX_SAMPLES = 50
 
@@ -79,7 +80,7 @@ def parse_sample(raw):
         raise MailboxError('Nie udało się odczytać struktury wiadomości. Niczego nie zapisano.') from error
 
 
-def store_samples(config, validity, messages, *, downloaded=False):
+def store_samples(config, validity, messages, *, downloaded=False, downloaded_uids=None):
     """Caller holds one transaction: all selected records succeed or all roll back."""
     key = mailbox_key(config)
     current = MailboxConnection.objects.select_for_update().filter(pk=config.pk).first()
@@ -99,7 +100,7 @@ def store_samples(config, validity, messages, *, downloaded=False):
                 data['submitted_at'] = timezone.localdate(data['mail_received_at'])
             record, _ = Recruitment.objects.get_or_create(mail_fingerprint=fingerprint, defaults=data)
             source = RecruitmentMailSource.objects.create(recruitment=record, mailbox_key=key, uid_validity=validity, uid=row['uid'])
-        if downloaded:
+        if downloaded or (downloaded_uids is not None and row["uid"] in downloaded_uids):
             source.downloaded_at = timezone.now()
             source.save(update_fields=['downloaded_at'])
             MailboxDownload.objects.update_or_create(mailbox_key=key, uid_validity=validity, uid=row['uid'], defaults={})
@@ -114,13 +115,17 @@ def safe_archive_name(value, fallback):
     return value
 
 
-def attachment_archive(messages):
+def attachment_archive(messages, *, downloaded_uids=None):
     stream = BytesIO()
+    files_written = 0
     try:
         with ZipFile(stream, 'w', ZIP_DEFLATED) as archive:
             used_folders = set()
             for row in messages:
                 msg = BytesParser(policy=policy.default).parsebytes(row['raw'])
+                files = list(attachments(msg))
+                if not files:
+                    continue
                 parsed = parse_sample(row['raw'])
                 candidate = name_in_subject(parsed['mail_subject']) or parsed['applicant_name'] or parseaddr(parsed['mail_sender'])[0]
                 folder = safe_archive_name(candidate, f'wiadomosc-{row["uid"]}')
@@ -131,13 +136,8 @@ def attachment_archive(messages):
                     suffix += 1
                 used_folders.add(folder.casefold())
                 used_files = set()
-                count = 0
-                for part in msg.walk():
-                    if part.is_multipart() or part.get_content_disposition() == 'inline':
-                        continue
-                    if not part.get_filename() and part.get_content_disposition() != 'attachment':
-                        continue
-                    filename = re.split(r'[/\\]', str(part.get_filename() or 'zalacznik.bin'))[-1]
+                for original_name, payload in files:
+                    filename = re.split(r'[/\\]', original_name)[-1]
                     filename = safe_archive_name(filename, 'zalacznik.bin')
                     base = filename; suffix = 1
                     while filename.casefold() in used_files:
@@ -145,13 +145,13 @@ def attachment_archive(messages):
                         stem, dot, extension = base.rpartition('.')
                         filename = f'{stem} ({suffix}).{extension}' if dot else f'{base} ({suffix})'
                     used_files.add(filename.casefold())
-                    payload = part.get_payload(decode=True)
-                    if payload is None:
-                        raise MailboxError('Nie można odczytać jednego z załączników. Niczego nie zapisano.')
-                    count += 1
                     archive.writestr(f'{folder}/{filename}', payload)
-                if not count:
-                    archive.writestr(f'{folder}/brak-zalacznikow.txt', 'Ta wiadomość nie zawiera załączników. Zgłoszenie zapisano w Rekrutacji.\n')
+                    files_written += 1
+                if downloaded_uids is not None:
+                    downloaded_uids.add(row['uid'])
+        if not files_written:
+            stream.close()
+            return None
         stream.seek(0)
         return stream
     except Exception:

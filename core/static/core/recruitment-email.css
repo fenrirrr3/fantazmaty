@@ -24,7 +24,7 @@
 .recruitment-bulk label { display: flex; flex-direction: column; gap: .35rem; }
 .recruitment-samples-table .recruitment-subject { white-space: normal; overflow-wrap: anywhere; min-width: 12rem; max-width: 25rem; }
 .recruitment-samples-table td { white-space: normal; overflow-wrap: anywhere; max-width: 25rem; }
-.recruitment-decision { white-space: nowrap; }
+.recruitment-decision { white-space: normal; overflow-wrap: anywhere; }
 .recruitment-decision.accepted { color: var(--success); }
 .recruitment-decision.rejected { color: var(--danger); }
 @media (max-width: 850px) { .recruitment-preview-grid { grid-template-columns: minmax(0, 1fr); } }
@@ -58,3 +58,9 @@
 .recruitment-detail-grid .details-card { min-width: 0; }
 @media (max-width: 850px) { .recruitment-detail-grid { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 480px) { .theme-buttons { margin-inline: 0; gap: .5rem; } .theme-buttons > button { padding-inline: .6rem; white-space: normal; } }
+
+.mailbox-header-action { margin-top: .75rem; }
+.recruitment-decision-cell { min-width: 7rem; max-width: 11rem; white-space: normal; overflow-wrap: anywhere; }
+.recruitment-decision-cell > span { display: inline-block; max-width: 11rem; white-space: normal; overflow-wrap: anywhere; }
+.recruitment-notified select { width: auto; min-width: 5rem; max-width: 100%; }
+.recruitment-notified [role=status] { display: block; margin-top: .35rem; white-space: normal; font-size: .85rem; }

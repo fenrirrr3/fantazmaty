@@ -11,9 +11,8 @@
 <div class="recruitment-preview-grid">
     <section class="recruitment-role-panel" aria-label="Wybór roli">
         <div class="filter-field recruitment-mail-roles">{{ form.roles.label_tag }}{{ form.roles }}{{ form.roles.errors }}<p class="muted-text">{{ form.roles.help_text }}</p></div>
-        <div class="recruitment-date-row"><div class="mailbox-options"><label class="mailbox-option">{{ form.show_downloaded }}<span>{{ form.show_downloaded.label }}</span></label></div>
+        <div class="recruitment-date-row"><div class="mailbox-options"><label class="mailbox-option">{{ form.show_downloaded }}<span>{{ form.show_downloaded.label }}</span></label><div class="mailbox-header-action"><button class="primary-button" type="submit" name="action" value="headers">Pobierz nagłówki od początku</button></div></div>
 {% include "core/includes/mailbox_date.html" %}</div>
-        <button class="primary-button" type="submit" name="action" value="headers">Pobierz nagłówki od początku</button>
     </section>
     <section class="recruitment-preview-panel" aria-label="Treść zaznaczonej wiadomości" aria-busy="false" data-mail-preview>
         <h2>Treść wiadomości</h2>
@@ -40,10 +39,10 @@
 <tbody>{% for row in rows %}<tr>
 <td><input type="checkbox" name="selected" value="{{ row.uid }}" {% if row.uid in selected %}checked{% endif %} aria-label="Wybierz wiadomość: {{ row.subject }}"></td>
 <td>{{ row.sender }}</td><td class="recruitment-subject"><button class="recruitment-subject-button" type="submit" name="preview_uid" value="{{ row.uid }}" data-preview-uid="{{ row.uid }}">{{ row.subject|default:"(bez tematu)" }}</button></td><td>{{ row.date }}</td>
-<td>{% include "core/includes/recruitment_decision.html" with record=row.record %}</td>
-<td><input type="checkbox" disabled {% if row.record.notified %}checked{% endif %} aria-label="Powiadomiony"> {{ row.record.notified|yesno:'Tak,Nie,Nie' }}</td>
-<td>{% if row.record %}W bazie{% elif row.downloaded %}Pobrano{% else %}Nowa{% endif %}</td>
-<td>{% if row.record %}<a class="secondary-button" href="{% url 'core:recruitment_detail' row.record.pk %}">Podgląd</a>{% else %}<span class="muted-text">Najpierw dodaj do bazy</span>{% endif %}</td>
+<td class="recruitment-decision-cell">{% include "core/includes/recruitment_decision.html" with record=row.record %}</td>
+<td data-copy-value="{{ row.record.notified|yesno:'Tak,Nie,Nie' }}" data-sort-value="{{ row.record.notified|yesno:'Tak,Nie,Nie' }}">{% include "core/includes/recruitment_notified.html" with record=row.record mail_uid=row.uid user=user only %}</td>
+<td data-recruitment-stored>{% if row.record %}W bazie{% elif row.downloaded %}Pobrano{% else %}Nowa{% endif %}</td>
+<td data-recruitment-record>{% if row.record %}<a class="secondary-button" href="{% url 'core:recruitment_detail' row.record.pk %}">Podgląd</a>{% else %}<span class="muted-text">Najpierw dodaj do bazy</span>{% endif %}</td>
 </tr>{% empty %}<tr><td colspan="8">Brak wiadomości pasujących do filtrów.</td></tr>{% endfor %}</tbody>
 </table></div>
 <nav class="cms-pagination" aria-label="Strony wiadomości">{% if previous_cursor %}<button class="secondary-button" name="cursor" value="{{ previous_cursor }}">Nowsze wiadomości</button>{% endif %}{% if next_cursor %}<button class="secondary-button" name="cursor" value="{{ next_cursor }}">Starsze wiadomości</button>{% endif %}</nav>
@@ -51,4 +50,4 @@
 </form>{% endif %}
 </div></section>
 {% endblock %}
-{% block scripts %}<script src="{% static 'core/recruitment-samples.js' %}?v=47" defer></script>{% endblock %}
+{% block scripts %}<script src="{% static 'core/recruitment-notified.js' %}" defer></script><script src="{% static 'core/recruitment-samples.js' %}?v=47" defer></script>{% endblock %}

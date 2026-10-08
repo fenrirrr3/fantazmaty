@@ -92,6 +92,7 @@ def recruitment_mailbox(request):
     action = 'preview_html' if request.POST.get('preview_uid') else request.POST.get('action', 'headers')
     context = {'bulk_form': RecruitmentBulkForm(), 'max_samples': MAX_SAMPLES}
     archive = None
+    downloaded_uids = set()
     try:
         config = recruitment_connection()
         key = mailbox_key(config)
@@ -160,7 +161,7 @@ def recruitment_mailbox(request):
                 require_superuser(request.user)
                 from core.services.mailbox_email_copy import sender_emails
                 return JsonResponse({'emails': sender_emails(config, selection['validity'], excluded=excluded, recruitment_roles=roles, sent_since=sent_since)})
-            if action not in ('preview', 'preview_html', 'download', 'add', 'bulk'):
+            if action not in ('preview', 'preview_html', 'download', 'add', 'bulk', 'set_notified'):
                 raise MailboxError('Nieznana operacja.')
             try:
                 chosen = [request.POST.get('uid') or request.POST.get('preview_uid')] if action in ('preview', 'preview_html') else request.POST.getlist('selected')
@@ -170,6 +171,8 @@ def recruitment_mailbox(request):
             if not 1 <= len(selected) <= MAX_SAMPLES or not selected.issubset(selection['uids']):
                 raise MailboxError(f'Wybierz od 1 do {MAX_SAMPLES} wiadomości z pobranej listy.')
             context['selected'] = {value for value in selection['uids'] if str(value) in request.POST.getlist('selected')}
+            if action == 'set_notified' and (len(selected) != 1 or request.POST.get('notified') not in ('yes', 'no')):
+                raise MailboxError('Wybierz jedną wiadomość i status Tak lub Nie.')
             if action == 'bulk':
                 bulk = RecruitmentBulkForm(request.POST)
                 context['bulk_form'] = bulk
@@ -188,9 +191,18 @@ def recruitment_mailbox(request):
                 context['preview'] = preview_data
                 return render(request, 'core/recruitment_mailbox.html', context)
             if action == 'download':
-                archive = attachment_archive(raw_messages)
+                archive = attachment_archive(raw_messages, downloaded_uids=downloaded_uids)
             with transaction.atomic():
-                records = store_samples(config, selection['validity'], raw_messages, downloaded=action == 'download')
+                records = store_samples(config, selection['validity'], raw_messages, downloaded_uids=downloaded_uids)
+                if action == 'set_notified':
+                    from core.views.recruitment_notified import save_notification, notification_response, NotificationConflict
+                    record = Recruitment.objects.select_for_update().get(pk=records[0].pk)
+                    try:
+                        save_notification(record, request.user, request.POST['notified'] == 'yes', '', new_mail=True)
+                    except NotificationConflict as error:
+                        transaction.set_rollback(True)
+                        return JsonResponse({'error': str(error)}, status=409)
+                    return JsonResponse(notification_response(record, request.user))
                 if action == 'bulk':
                     # Only explicitly chosen flags change; notes and other metadata remain intact.
                     records = Recruitment.objects.select_for_update().filter(pk__in=[record.pk for record in records]).order_by('pk')
@@ -203,14 +215,19 @@ def recruitment_mailbox(request):
                             record.notified = bulk.cleaned_data['notified'] == 'yes'
                             fields.append('notified')
                         record.save(update_fields=fields)
-            if action == 'download':
+            if action == 'download' and archive is not None:
                 response = FileResponse(archive, as_attachment=True, filename='probki-zalaczniki.zip', content_type='application/zip')
                 archive = None
                 response['X-Content-Type-Options'] = 'nosniff'
                 return response
+            if action == 'download':
+                notifications.success(request, 'Brak załączników w wybranych wiadomościach. Zgłoszenia dodano do bazy; nie utworzono archiwum.')
+                return redirect(request.path)
             notifications.success(request, f'Zapisano zgłoszenia w Rekrutacji: {len(selected)}.' if action == 'add' else f'Zapisano zmiany dla wiadomości: {len(selected)}. Nie wysyłano powiadomień e-mail.')
             return redirect(request.path)
     except MailboxError as error:
+        if action == 'set_notified':
+            return JsonResponse({'error': str(error)}, status=400)
         if action == 'preview':
             return render(request, 'core/includes/recruitment_preview.html', {'preview_error': str(error)}, status=400)
         context.setdefault('form', RecruitmentMailboxForm())

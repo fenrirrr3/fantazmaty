@@ -150,7 +150,7 @@ def _parse_message(uid, raw, message, *, submission=True):
         if part.is_multipart() or not part.get_filename():
             continue
         name = str(part.get_filename())
-        if part.get_content_disposition() == 'inline' or part.get_content_type().startswith('image/'):
+        if part.get_content_type().startswith('image/'):
             ignored_files.append(name)
             continue
         data = part.get_payload(decode=True)

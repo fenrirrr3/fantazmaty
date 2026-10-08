@@ -90,13 +90,13 @@ class RecruitmentMailboxTests(TestCase):
         raw = b'From: candidate@example.test\r\nSubject: Redakcja\r\n\r\nPlain text, no attachments.'
         fetch.return_value = [{'uid': 12, 'raw': raw}]
         response = self.client.post(self.url, {'roles': ['editors', 'reviewers'], 'action': 'download', 'selection': self.token(), 'selected': ['12']})
-        self.assertEqual(response.status_code, 200)
-        with ZipFile(BytesIO(b''.join(response.streaming_content))) as archive:
-            self.assertEqual(archive.namelist(), ['wiadomosc-12/brak-zalacznikow.txt'])
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(response.streaming)
+        self.assertNotIn('Content-Disposition', response)
         self.assertTrue(fetch.call_args.kwargs['raw_messages'])
         self.assertEqual(Recruitment.objects.count(), 1)
         self.assertIsNone(Recruitment.objects.get().accepted)
-        self.assertEqual(MailboxDownload.objects.get().mailbox_key, mailbox_key(self.box))
+        self.assertFalse(MailboxDownload.objects.exists())
 
     @patch('core.views.recruitment_mailbox.fetch_messages')
     def test_tampered_selection_and_changed_filters_are_rejected(self, fetch):

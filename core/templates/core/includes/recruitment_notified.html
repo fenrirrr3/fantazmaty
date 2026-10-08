@@ -1,0 +1,10 @@
+{% load workspace_tags %}
+<div class="recruitment-notified">
+    {% if record %}{% recruitment_notified_token user record as notified_version %}{% endif %}
+    <select data-recruitment-notified data-value="{{ record.notified|yesno:'yes,no,no' }}" data-version="{{ notified_version|default:'' }}" {% if record %}data-url="{% url 'core:recruitment_notified' record.pk %}"{% else %}data-mail-uid="{{ mail_uid }}"{% endif %} aria-label="Powiadomiony: {% firstof record.subject_name record.full_name mail_uid %}">
+        <option value="no" {% if not record.notified %}selected{% endif %}>Nie</option>
+        <option value="yes" {% if record.notified %}selected{% endif %}>Tak</option>
+    </select>
+    <span role="status" aria-live="polite"></span>
+    <noscript>Automatyczny zapis wymaga JavaScript. Użyj edycji zgłoszenia lub akcji masowej.</noscript>
+</div>

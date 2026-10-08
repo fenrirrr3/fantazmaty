@@ -51,3 +51,9 @@ def text_view_url(context, view):
 def recruitment_mailbox_allowed(user):
     from core.permissions import can_use_recruitment_mailbox
     return can_use_recruitment_mailbox(user)
+
+
+@register.simple_tag
+def recruitment_notified_token(user, record):
+    from core.views.recruitment_notified import notified_token
+    return notified_token(user, record)

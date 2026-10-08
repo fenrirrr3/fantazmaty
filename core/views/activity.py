@@ -32,7 +32,12 @@ def user_activity(request):
     if form.is_valid():
         data = form.cleaned_data
         for term in data['q'].split():
-            rows = rows.filter(Q(actor__plcontains=term) | Q(user__first_name__plcontains=term) | Q(user__last_name__plcontains=term) | Q(action__plcontains=term) | Q(target__plcontains=term))
+            from core.activity import LABELS
+            aliases = Q()
+            for name, label in LABELS.items():
+                if term.casefold() in label.casefold():
+                    aliases |= Q(action__plcontains=name.replace('_', ' ')) | Q(action__plcontains=name)
+            rows = rows.filter(aliases | Q(actor__plcontains=term) | Q(user__first_name__plcontains=term) | Q(user__last_name__plcontains=term) | Q(action__plcontains=term) | Q(target__plcontains=term))
         if data['method']:
             rows = rows.filter(method=data['method'])
         if data['date_from']:
@@ -42,4 +47,6 @@ def user_activity(request):
     else:
         rows = rows.none()
     page = paginate_items(request, rows)
+    from core.activity_targets import present_activities
+    present_activities(page.object_list)
     return render(request, 'core/user_activity.html', {'form':form, 'activities':page, 'page_obj':page}, status=400 if form.errors else 200)
