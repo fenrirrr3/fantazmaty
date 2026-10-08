@@ -26,6 +26,7 @@ class Illustrator(models.Model):
     """An independent contact, with no account or team-profile relationship."""
     first_name = models.CharField("imię", max_length=100)
     last_name = models.CharField("nazwisko", max_length=100, blank=True)
+    pseudonym = models.CharField("pseudonim", max_length=100, blank=True)
     email = models.EmailField("adres e-mail", blank=True, null=True, unique=True)
     portfolio = models.URLField("portfolio", max_length=500, blank=True,
                                 validators=[URLValidator(schemes=["http", "https"])])
@@ -42,8 +43,20 @@ class Illustrator(models.Model):
     def __str__(self):
         return f"{self.first_name} {self.last_name}".strip()
 
+    @property
+    def display_name(self):
+        return self.pseudonym.strip() or str(self)
+
+    @staticmethod
+    def display_name_expression():
+        from django.db.models import Value
+        from django.db.models.functions import Coalesce, Concat, NullIf, Trim
+        return Coalesce(NullIf(Trim('pseudonym'), Value('')),
+                        Trim(Concat('first_name', Value(' '), 'last_name')))
+
     def clean(self):
         super().clean()
+        self.pseudonym = " ".join(self.pseudonym.split())
         self.first_name = " ".join(self.first_name.split())
         self.last_name = " ".join(self.last_name.split())
         self.email = (self.email or "").strip() or None
@@ -92,7 +105,7 @@ class Illustration(models.Model):
 
     @property
     def illustrator_display(self):
-        names = [str(artist) for artist in self.illustrators.all()] if self.pk else []
+        names = [artist.display_name for artist in self.illustrators.all()] if self.pk else []
         return ", ".join(names) or self.manual_illustrator_name
 
     def set_artists(self, artists, *, status=None, preserve_assignment_date=False):

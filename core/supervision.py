@@ -172,6 +172,9 @@ def _credit_person(person=None, user=None, fallback_id=None):
     first = (getattr(source, 'first_name', '') or '').strip()
     last = (getattr(source, 'last_name', '') or '').strip()
     name = f'{first} {last}'.strip()
+    if person is not None and person._meta.label_lower == 'illustrations.illustrator' and person.pseudonym.strip():
+        name = person.display_name
+        first, last = name, ''
     # A username/email is never a public credit label.
     if not name or '@' in name:
         name, first, last = 'Brak danych wykonawcy', '', ''

@@ -103,17 +103,14 @@ class Command(BaseCommand):
                         before = snapshot(illustration)
                         if illustration.manual_illustrator_name or illustration.manual_illustrator_email:
                             raise ValueError('Istnieje ręczne przypisanie. Import nie usunie go automatycznie.')
-                        existing = {key(name) for name in before['illustrators']}
-                        incoming = {key(name) for name in row['illustrators']}
-                        if existing - incoming:
-                            raise ValueError('Tabela usuwałaby obecnego ilustratora: ' + ', '.join(before['illustrators']))
+                        existing = set(illustration.illustrators.values_list('pk', flat=True)) if illustration.pk else set()
                         if before['status'] == Illustration.Status.DELIVERED and row['status'] != Illustration.Status.DELIVERED:
                             raise ValueError('Tabela cofałaby już oddaną ilustrację do wcześniejszego statusu.')
                         if before['status'] == Illustration.Status.IN_CORRECTIONS and row['status'] in (Illustration.Status.UNASSIGNED, Illustration.Status.ASSIGNED):
                             raise ValueError('Tabela cofałaby ilustrację z poprawek do wcześniejszego statusu.')
                         artists = []
                         for name in row['illustrators']:
-                            matches = [p for p in contacts if key(str(p)) == key(name)]
+                            matches = [p for p in contacts if key(name) in {key(str(p)), key(p.pseudonym)}]
                             if len(matches) > 1:
                                 raise ValueError(f'Niejednoznaczny wpis ilustratora: {name}.')
                             if matches:
@@ -126,6 +123,9 @@ class Command(BaseCommand):
                                 contacts.append(artist)
                                 report['new_contacts'].append(str(artist))
                             artists.append(artist)
+                        incoming = {artist.pk for artist in artists}
+                        if existing - incoming:
+                            raise ValueError('Tabela usuwałaby obecnego ilustratora: ' + ', '.join(before['illustrators']))
                         illustration.status = row['status']
                         if row['assigned_at'] is not None:
                             illustration.assigned_at = row['assigned_at']

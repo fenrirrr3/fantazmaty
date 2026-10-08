@@ -10,7 +10,7 @@
 </header>
 <section class="card"><div class="card-body">
     <form method="get" class="illustration-edit-form">
-        <div class="form-field"><label for="illustrator-search">Szukaj po imieniu, nazwisku, e-mailu lub preferencjach</label><input id="illustrator-search" type="search" name="q" value="{{ query }}" maxlength="200"></div>
+        <div class="form-field"><label for="illustrator-search">Szukaj po imieniu, nazwisku, pseudonimie, e-mailu lub preferencjach</label><input id="illustrator-search" type="search" name="q" value="{{ query }}" maxlength="200"></div>
         <input type="hidden" name="page_size" value="{{ page_obj.selected_page_size }}">
         <input type="hidden" name="show_inactive" value="0">
         <label class="illustrator-checkbox"><input type="checkbox" name="show_inactive" value="1"{% if show_inactive %} checked{% endif %}> Pokaż także nieaktywnych</label>
@@ -22,8 +22,8 @@
         <table data-server-paginated="true" class="data-table"><caption class="visually-hidden">Spis ilustratorów</caption>
             <thead><tr><th scope="col">Imię i nazwisko</th><th scope="col">Adres e-mail</th><th scope="col">Portfolio</th><th scope="col">Preferencje</th><th scope="col">Okładki</th></tr></thead>
             <tbody>{% for person in page_obj %}<tr>
-                <td><a href="{% url 'illustrations:illustrator_edit' person.pk %}"><strong>{{ person }}</strong></a>{% if not person.is_active %} <span class="muted-text">(nieaktywny)</span>{% endif %}</td>
-                <td>{% if person.email %}<a href="mailto:{{ person.email }}">{{ person.email }}</a>{% else %}Nie podano{% endif %}</td>
+                <td><a href="{% url 'illustrations:illustrator_edit' person.pk %}"><strong>{{ person.display_name }}</strong></a>{% if not person.is_active %} <span class="muted-text">(nieaktywny)</span>{% endif %}</td>
+                <td>{% if not person.is_active %}<span class="muted-text">Ukryty (nieaktywny)</span>{% elif person.email %}<a href="mailto:{{ person.email }}">{{ person.email }}</a>{% else %}Nie podano{% endif %}</td>
                 <td>{% if person.portfolio %}<a href="{{ person.portfolio }}" target="_blank" rel="noopener noreferrer">Otwórz portfolio</a>{% else %}Nie podano{% endif %}</td>
                 <td><div class="illustration-excerpt-preview">{{ person.preferences|default:"Nie podano"|linebreaksbr }}</div></td>
                 <td>{{ person.covers|yesno:"Tak,Nie" }}</td>

@@ -20,11 +20,11 @@ class PublicIllustrationSettingsAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin)
 
 @admin.register(Illustrator)
 class IllustratorAdmin(admin.ModelAdmin):
-    list_display = ("full_name", "email", "portfolio", "preferences", "covers", "is_active")
+    list_display = ("full_name", "pseudonym", "email", "portfolio", "preferences", "covers", "is_active")
     list_filter = ("is_active", "covers")
-    search_fields = ("first_name__plcontains", "last_name__plcontains", "email__plcontains", "preferences__plcontains")
+    search_fields = ("first_name__plcontains", "last_name__plcontains", "pseudonym__plcontains", "email__plcontains", "preferences__plcontains")
     ordering = ("last_name", "first_name", "pk")
-    fields = ("first_name", "last_name", "email", "portfolio", "preferences", "covers", "is_active")
+    fields = ("first_name", "last_name", "pseudonym", "email", "portfolio", "preferences", "covers", "is_active")
     list_per_page = 50
     show_full_result_count = False
 
@@ -96,6 +96,7 @@ class IllustrationAdmin(admin.ModelAdmin):
         "text__authors__email__plcontains",
         "illustrators__first_name__plcontains",
         "illustrators__last_name__plcontains",
+        "illustrators__pseudonym__plcontains",
         "illustrators__email__plcontains",
         "trigger_warnings__plcontains",
         "illustrated_excerpt__plcontains",

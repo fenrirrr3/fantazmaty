@@ -93,7 +93,7 @@ class Command(BaseCommand):
                                                        'source_author': row['author'], 'database_authors': [a.display_name for a in story.authors.all()]})
                         artists = []
                         for name in names:
-                            matches = [p for p in contacts if key(str(p)) == key(name)]
+                            matches = [p for p in contacts if key(name) in {key(str(p)), key(p.pseudonym)}]
                             if len(matches) > 1:
                                 raise ValueError(f'Kilka wpisów ilustratora {name}; najpierw uporządkuj spis w adminie.')
                             if matches:

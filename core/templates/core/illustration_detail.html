@@ -21,7 +21,7 @@
     <h2 id="illustration-assignment-heading">Przypisanie i status</h2>
     <p>Ilustratorzy: <strong>{{ illustration.illustrator_display|default:"Nie przypisano" }}</strong> · {% include "core/includes/illustration_status.html" %}</p>
     {% if can_assign %}
-    {% for artist in illustration.illustrators.all %}{% if artist.email %}<p>{{ artist }}: <a href="mailto:{{ artist.email }}">{{ artist.email }}</a></p>{% endif %}{% endfor %}
+    {% for artist in illustration.illustrators.all %}{% if artist.email %}<p>{{ artist.display_name }}: <a href="mailto:{{ artist.email }}">{{ artist.email }}</a></p>{% endif %}{% endfor %}
     {% if illustration.manual_illustrator_email %}<p>E-mail ilustratora: <a href="mailto:{{ illustration.manual_illustrator_email }}">{{ illustration.manual_illustrator_email }}</a></p>{% endif %}
     {% endif %}
     <p>Data przypisania: {{ illustration.assigned_at|date:"d.m.Y"|default:"Brak daty" }}</p>
@@ -34,7 +34,7 @@
             <div class="form-field">
                 <label for="illustrator-search">Wyszukaj ilustratora</label>
                 <input type="search" id="illustrator-search" autocomplete="off" placeholder="Wpisz co najmniej 2 znaki" aria-controls="illustrator-search-results" aria-describedby="illustrator-search-count">
-                <p id="illustrator-search-count" class="muted-text" aria-live="polite">Wpisz imię lub nazwisko i dodaj wybraną osobę.</p>
+                <p id="illustrator-search-count" class="muted-text" aria-live="polite">Wpisz nazwę lub pseudonim ilustratora i dodaj wybraną osobę.</p>
                 <ul id="illustrator-search-results" class="illustrator-search-results" aria-label="Wyniki wyszukiwania ilustratorów" hidden></ul>
             </div>
             <div><p class="form-help">Wybrani ilustratorzy</p><ul id="illustrator-selected" class="illustrator-selected" aria-label="Wybrani ilustratorzy"></ul></div>

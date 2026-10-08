@@ -21,7 +21,7 @@ class IllustratorForm(forms.ModelForm):
 
     class Meta:
         model = Illustrator
-        fields = ('first_name', 'last_name', 'email', 'portfolio',
+        fields = ('first_name', 'last_name', 'pseudonym', 'email', 'portfolio',
                   'preferences', 'covers', 'is_active')
         widgets = {
             'preferences': forms.Textarea(attrs={'rows': 4}),
@@ -59,10 +59,10 @@ def illustrator_list(request):
     check_access(request.user)
     query = request.GET.get('q', '').strip()[:200]
     show_inactive = request.GET.get('show_inactive') == '1'
-    rows = directory_rows(include_inactive=show_inactive).order_by('last_name', 'first_name', 'pk')
+    rows = directory_rows(include_inactive=show_inactive).annotate(artist_name=Illustrator.display_name_expression()).order_by('artist_name', 'pk')
     if query:
         rows = rows.filter(Q(first_name__plcontains=query) | Q(last_name__plcontains=query)
-                           | Q(email__icontains=query) | Q(preferences__plcontains=query))
+                           | Q(pseudonym__plcontains=query) | Q(email__icontains=query) | Q(preferences__plcontains=query))
     page = paginate_queryset(request, rows)
     return render(request, 'core/illustrator_list.html', {'page_obj': page, 'query': query, 'show_inactive': show_inactive})
 

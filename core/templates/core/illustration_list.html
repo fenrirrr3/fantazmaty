@@ -154,7 +154,7 @@
 
                             <td>
                                 {% for artist in illustration.illustrators.all %}
-                                    <div>{% if can_manage_directory %}<a href="{% url 'illustrations:illustrator_edit' artist.pk %}" class="detail-link">{{ artist }}</a>{% else %}{{ artist }}{% endif %}
+                                    <div>{% if can_manage_directory %}<a href="{% url 'illustrations:illustrator_edit' artist.pk %}" class="detail-link">{{ artist.display_name }}</a>{% else %}{{ artist.display_name }}{% endif %}
                                     {% if not artist.is_active %}<span class="muted-text">(nieaktywny)</span>{% endif %}</div>
                                 {% empty %}
                                     {{ illustration.manual_illustrator_name|default:"Nie przypisano" }}

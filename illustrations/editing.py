@@ -62,9 +62,10 @@ class AssignmentForm(AssignmentModelForm, IllustrationEditForm):
         super().__init__(*args, **kwargs)
         if can_assign:
             selected = self.instance.illustrators.values_list('pk', flat=True) if self.instance.pk else []
+            self.fields['illustrators'].label_from_instance = lambda person: person.display_name
             self.fields['illustrators'].queryset = Illustrator.objects.filter(
                 Q(pk__in=selected) | Q(is_active=True)
-            ).order_by('last_name', 'first_name', 'pk')
+            ).annotate(artist_name=Illustrator.display_name_expression()).order_by('artist_name', 'pk')
         else:
             for name in ('illustrators', 'manual_illustrator_name', 'manual_illustrator_email'):
                 del self.fields[name]

@@ -154,7 +154,7 @@ def illustration_list(request):
             "text__source_review",
         )
         .annotate(artist_sort=Subquery(Illustrator.objects.filter(illustrations=OuterRef('pk'))
-            .order_by('last_name', 'first_name', 'pk').values('last_name')[:1]))
+            .annotate(artist_name=Illustrator.display_name_expression()).order_by('artist_name', 'pk').values('artist_name')[:1]))
         .prefetch_related('illustrators')
         .order_by(*ordering)
     )
