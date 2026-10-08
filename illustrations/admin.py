@@ -3,6 +3,19 @@ from django.contrib import admin
 from .editing import AssignmentModelForm
 from .models import CoverProposal, Illustration, Illustrator
 from core.permissions import can_view_illustrations
+from authors.admin import SuperuserOnlyAdminMixin
+from .models import PublicIllustrationSettings
+
+
+@admin.register(PublicIllustrationSettings)
+class PublicIllustrationSettingsAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
+    fields = ('drive_url',)
+
+    def has_add_permission(self, request):
+        return super().has_add_permission(request) and not PublicIllustrationSettings.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Illustrator)

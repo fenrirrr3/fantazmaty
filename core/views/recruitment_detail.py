@@ -58,8 +58,10 @@ def recruitment_detail(request, pk):
                         return redirect('core:recruitment_detail', pk=pk)
         sections.append({'role': role, 'label': label, 'form': form, 'version': version, 'decision': decision, 'open': selected})
     fields = form_fields(record.mail_body)
+    from .recruitment_delete import deletion_token
     return render(request, 'core/recruitment_detail.html', {
         'record': record, 'sections': sections,
         'candidate_name': record.full_name or fields.get('name') or record.mail_sender or 'Nie podano',
         'candidate_email': record.email or fields.get('email'),
+        'delete_version': deletion_token(request.user, record) if request.user.is_superuser else '',
     }, status=status)

@@ -96,11 +96,37 @@ def _illustration_ordering(request):
 
 @never_cache
 @login_required
-@require_GET
+@require_http_methods(['GET', 'POST'])
 def illustration_list(request):
     _ensure_team_access(request.user)
     if not can_view_illustrations(request.user):
         raise PermissionDenied("Ilustracje są dostępne dla koordynatorów i ilustratorów.")
+
+    from .models import PublicIllustrationSettings
+    from .public import PublicLinkForm, link_version, valid_link_version
+    config = PublicIllustrationSettings.objects.filter(pk=1).first()
+    drive_url = config.drive_url if config else ''
+    link_form = PublicLinkForm(initial={'drive_url': drive_url, 'version': link_version(request.user, drive_url)})
+    response_status = 200
+    if request.method == 'POST':
+        if not is_coordinator(request.user):
+            raise PermissionDenied('Wspólny link może zmieniać tylko koordynator lub superuser.')
+        link_form = PublicLinkForm(request.POST)
+        response_status = 400
+        if link_form.is_valid():
+            with transaction.atomic():
+                current, _ = PublicIllustrationSettings.objects.get_or_create(pk=1)
+                current = PublicIllustrationSettings.objects.select_for_update().get(pk=1)
+                if not valid_link_version(request.user, current.drive_url, link_form.cleaned_data['version']):
+                    link_form.add_error(None, 'Link zmienił się lub formularz wygasł. Odśwież dane przed zapisem.')
+                    transaction.set_rollback(True)
+                    response_status = 409
+                else:
+                    current.drive_url = link_form.cleaned_data['drive_url']
+                    current.full_clean()
+                    current.save(update_fields=['drive_url'])
+                    messages.success(request, 'Zapisano wspólny link GDrive dla Zewnętrznych ilustracji.')
+                    return redirect('illustrations:illustration_list')
 
     selected_anthology_id = _positive_id(
         request.GET.get("anthology", "")
@@ -174,7 +200,10 @@ def illustration_list(request):
             "selected_sort": selected_sort, "hide_published": hide_published,
             "can_view_authors": can_view_authors,
             "can_manage_directory": is_coordinator(request.user),
+            "public_link_form": link_form,
+            "open_public_link": request.method == 'POST' or request.GET.get('edit_public_link') == '1',
         },
+        status=response_status,
     )
 
 

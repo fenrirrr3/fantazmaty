@@ -22,6 +22,7 @@ LABELS = {
 }
 
 LABELS.update({
+    'external_illustrations': 'Zewnętrzne ilustracje', 'recruitment_delete': 'Usunięcie zgłoszenia rekrutacyjnego',
     'discord_test': 'Test wysyłki Discord',
     'data_integrity':'Spójność danych', 'person_permissions':'Podgląd uprawnień osoby',
     'anthology_detail':'Podgląd antologii', 'role_names':'Lista osób według roli', 'newsletter_list':'Zgody newsletterowe',

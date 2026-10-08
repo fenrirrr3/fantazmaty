@@ -22,6 +22,7 @@ app_name = "core"
 from core.views.programs import programs
 from core.views.program_jobs import program_job
 from core.views.activity import user_activity
+from core.views.recruitment_delete import recruitment_delete
 from core.views.tags import tag_list
 
 from core.views.translations import translation_list, translation_detail, set_translators, translation_person_detail, translation_person_suggestions
@@ -36,6 +37,7 @@ from core.views.recruitment_notified import recruitment_notified
 from core.views.recruitment_mailbox import recruitment_mailbox
 
 urlpatterns = [
+    path('rekrutacja/<int:pk>/usun/', recruitment_delete, name='recruitment_delete'),
     path('rekrutacja/<int:pk>/powiadomiony/', recruitment_notified, name='recruitment_notified'),
     path('rekrutacja/skrzynka/', recruitment_mailbox, name='recruitment_mailbox'),
     path('powiesci/', novels.novel_list, name='novel_list'),

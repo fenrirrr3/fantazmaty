@@ -3,7 +3,7 @@
 {% block title %}Ilustracje | Fantazmaty CMS{% endblock %}
 
 {% load static %}
-{% block extra_css %}{{ block.super }}<link rel="stylesheet" href="{% static 'core/illustrations.css' %}">{% endblock %}
+{% block extra_css %}{{ block.super }}<link rel="stylesheet" href="{% static 'core/illustrations.css' %}"><link rel="stylesheet" href="{% static 'core/dialogs.css' %}">{% endblock %}
 {% block content %}
     <header class="page-header">
         <h1 class="page-title">Ilustracje</h1>
@@ -56,10 +56,11 @@
                 </select>
             </div>
 
-            <div class="filter-field">
-                <input type="hidden" name="hide_published" value="0">
-                <label class="illustrator-checkbox"><input type="checkbox" name="hide_published" value="1"{% if hide_published %} checked{% endif %}> Ukryj wydane antologie</label>
+            <div class="illustration-public-actions">
+                <a class="secondary-button" href="{% url 'illustrations:external_illustrations' %}">Zewnętrzne ilustracje</a>
+                {% if can_manage_directory %}<a class="secondary-button" href="?edit_public_link=1" data-dialog-open="public-illustration-link">Link GDrive</a>{% endif %}
             </div>
+            <div class="illustration-filter-bottom">
             <div class="filter-actions">
                 <button type="submit" class="primary-button">Filtruj</button>
                 <a
@@ -69,8 +70,19 @@
                     Wyczyść filtry
                 </a>
             </div>
+            <input type="hidden" name="hide_published" value="0">
+            <label class="illustrator-checkbox"><input type="checkbox" name="hide_published" value="1"{% if hide_published %} checked{% endif %}> Ukryj wydane antologie</label>
+            </div>
         </form>
     </section>
+
+    {% if can_manage_directory %}<dialog id="public-illustration-link" class="cms-dialog" aria-labelledby="public-link-heading" {% if open_public_link %}open data-dialog-auto-open{% endif %}>
+        <h2 id="public-link-heading">Wspólny link GDrive</h2>
+        <p>Ten sam link będzie publicznie widoczny przy każdym opowiadaniu w Zewnętrznych ilustracjach. Puste pole usuwa link z tabeli.</p>
+        <form method="post" action="{% url 'illustrations:illustration_list' %}">{% csrf_token %}{{ public_link_form.as_p }}
+            <div class="recruitment-actions"><button class="primary-button" type="submit">Zapisz link</button><a class="secondary-button" href="{% url 'illustrations:illustration_list' %}" data-dialog-close>Anuluj</a></div>
+        </form>
+    </dialog>{% endif %}
 
     <section class="card" aria-label="Lista ilustracji">
         
@@ -187,3 +199,4 @@
     {% include "core/includes/table_toolbar.html" %}
     {% include "core/includes/pagination.html" %}
 {% endblock %}
+{% block scripts %}<script src="{% static 'core/dialogs.js' %}" defer></script>{% endblock %}

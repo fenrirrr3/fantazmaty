@@ -5,6 +5,21 @@ from django.db import models
 from django.utils import timezone
 
 from texts.models import Text
+from .validators import validate_drive_url
+
+
+class PublicIllustrationSettings(models.Model):
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    drive_url = models.URLField('wspólny link GDrive', max_length=1000, blank=True, default='', validators=[validate_drive_url],
+        help_text='Link publiczny, pokazywany przy każdym tekście w Zewnętrznych ilustracjach.')
+
+    class Meta:
+        verbose_name = 'ustawienia zewnętrznych ilustracji'
+        verbose_name_plural = 'Zewnętrzne ilustracje – ustawienia'
+        constraints = [models.CheckConstraint(condition=models.Q(id=1), name='single_public_illustration_settings')]
+
+    def __str__(self):
+        return 'Zewnętrzne ilustracje – wspólny link GDrive'
 
 
 class Illustrator(models.Model):

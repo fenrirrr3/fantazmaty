@@ -2,12 +2,14 @@ from django.urls import path
 
 from . import views
 from . import directory
+from .public import external_illustrations
 
 
 app_name = "illustrations"
 
 
 urlpatterns = [
+    path('zewnetrzne/', external_illustrations, name='external_illustrations'),
     path("ilustratorzy/", directory.illustrator_list, name="illustrator_list"),
     path("ilustratorzy/dodaj/", directory.illustrator_edit, name="illustrator_add"),
     path("ilustratorzy/<int:illustrator_id>/", directory.illustrator_edit, name="illustrator_edit"),

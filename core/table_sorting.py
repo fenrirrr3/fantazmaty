@@ -241,6 +241,13 @@ def _extra_columns(items, queryset, request):
     return columns
 
 def prepare_table_sort(request, items):
+    if request.resolver_match and request.resolver_match.view_name == 'illustrations:external_illustrations':
+        # A public projection must never opt into private illustration columns.
+        fields = {'Antologia': ('anthology', 'text__anthology__title'), 'Tytuł opowiadania': ('title', 'text__title'),
+                  'Tagi': ('tags', 'text__tags'), 'Gatunek': ('genre', 'text__genre'), 'Status': ('status', 'public_status')}
+        sort = request.GET.get('sort', 'anthology')
+        field = next((field for key, field in fields.values() if key == sort.lstrip('-')), 'text__anthology__title')
+        return items.order_by(('-' if sort.startswith('-') else '') + field, 'pk'), {label:key for label,(key,_) in fields.items()}
     if hasattr(items, 'sort_table'):
         return items.sort_table(request)
     queryset = items if isinstance(items, QuerySet) else getattr(items, 'queryset', None)

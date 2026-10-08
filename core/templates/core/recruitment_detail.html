@@ -1,8 +1,13 @@
 {% extends "core/base.html" %}{% load static %}
 {% block title %}Zgłoszenie rekrutacyjne | Fantazmaty CMS{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'core/intake.css' %}">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/intake.css' %}"><link rel="stylesheet" href="{% static 'core/dialogs.css' %}">{% endblock %}
 {% block content %}
 <header class="page-header"><h1 class="page-title recruitment-detail-heading">{{ candidate_name }}</h1><p class="page-description recruitment-detail-heading">{{ record.mail_subject|default:'Zgłoszenie rekrutacyjne' }}</p><a class="secondary-button" href="{% url 'core:recruitment_list' %}">Wróć do Rekrutacji</a></header>
+<div class="recruitment-actions">
+    <a class="secondary-button" href="{% url 'core:recruitment_detail' record.pk %}">Odśwież dane</a>
+    {% if user.is_superuser %}<a class="secondary-button cms-danger-button" href="{% url 'core:recruitment_delete' record.pk %}" data-dialog-open="delete-recruitment">Usuń zgłoszenie</a>{% endif %}
+</div>
+{% if user.is_superuser %}<dialog id="delete-recruitment" class="cms-dialog" aria-labelledby="delete-recruitment-heading">{% include 'core/includes/recruitment_delete_form.html' %}</dialog>{% endif %}
 <div class="recruitment-detail-grid">
     <div class="recruitment-decision-column">
         <section class="details-card">
@@ -33,3 +38,4 @@
     </section>
 </div>
 {% endblock %}
+{% block scripts %}<script src="{% static 'core/dialogs.js' %}" defer></script>{% endblock %}
