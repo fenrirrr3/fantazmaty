@@ -66,10 +66,10 @@ def receipts(config, validity):
     return MailboxDownload.objects.filter(mailbox_key=mailbox_key(config), uid_validity=validity)
 
 
-def fetch_messages(config, validity, uids, skipped_errors=None, *, raw_messages=False):
+def fetch_messages(config, validity, uids, skipped_errors=None, *, raw_messages=False, max_messages=MAX_MESSAGES):
     uids = sorted(set(_positive(uid) for uid in uids))
-    if not 1 <= len(uids) <= MAX_MESSAGES:
-        raise MailboxError(f'Wybierz od 1 do {MAX_MESSAGES} wiadomości.')
+    if not 1 <= len(uids) <= max_messages:
+        raise MailboxError(f'Wybierz od 1 do {max_messages} wiadomości.')
     client = None
     try:
         context = ssl.create_default_context()

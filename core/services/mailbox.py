@@ -48,7 +48,7 @@ def read_headers(config, cursor=None, excluded=None, subject_filter="", *, recru
     from core.recruitment_roles import ROLE_CHOICES
     role_labels = dict(ROLE_CHOICES)
     if recruitment_roles is not None:
-        if not recruitment_roles or any(role not in role_labels for role in recruitment_roles) or subject_filter:
+        if any(role not in role_labels for role in recruitment_roles) or subject_filter:
             raise MailboxError('Wybierz co najmniej jedną rolę rekrutacyjną z listy.')
     client = None
     try:
@@ -85,7 +85,7 @@ def read_headers(config, cursor=None, excluded=None, subject_filter="", *, recru
         # Stable upper UID excludes arrivals after the first page. UID search
         # remains correct if another mail client deletes messages meanwhile.
         uid_range = f'1:{anchor}' if anchor else '1:*'
-        if recruitment_roles is not None:
+        if recruitment_roles:
             # IMAP SUBJECT is a case-insensitive substring search. Union retains
             # messages matching several selected roles without duplicating them.
             matching = set()

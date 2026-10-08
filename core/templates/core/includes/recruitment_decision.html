@@ -1,0 +1,1 @@
+{% if record.accepted == True %}<span class="recruitment-decision accepted"><input type="checkbox" disabled checked aria-label="Przyjęty"> Przyjęty</span>{% elif record.accepted == False %}<span class="recruitment-decision rejected"><input type="checkbox" disabled aria-label="Odrzucony"> Odrzucony</span>{% else %}<span class="muted-text">Bez decyzji</span>{% endif %}

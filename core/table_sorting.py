@@ -13,7 +13,7 @@ COMMON = {
  'Długość': ('length', ('length',)), 'Liczba znaków': ('length', ('length',)),
 }
 MODELS = {
- 'core.recruitment': {'Data nadesłania': ('created', ('submitted_at',)), 'E-mail': ('email', ('email',)), 'Imię i nazwisko': ('person', ('last_name','first_name'))},
+ 'core.recruitment': {'Nadawca': ('sender', ('mail_sender', 'last_name', 'first_name')), 'Temat': ('subject', ('mail_subject',)), 'Data wiadomości': ('received', ('mail_received_at',)), 'Rola': ('roles', ('mail_roles',)), 'Przyjęty/Odrzucony': ('decision', ('status',)), 'Powiadomiony': ('notified', ('notified',)),'Data nadesłania': ('created', ('submitted_at',)), 'E-mail': ('email', ('email',)), 'Imię i nazwisko': ('person', ('last_name','first_name'))},
  'core.anthologycorrection': {'Antologia': ('anthology', ('anthology__title',)), 'Tytuł opowiadania': ('title', ('story_title',)), 'Status zmiany': ('status', ('status',)), 'Zgłaszający': ('person', ('submitted_by__last_name','submitted_by__first_name'))},
  'texts.text': {**COMMON, 'Etap': ('status', ('current_stage_type',)), 'Etap tekstu': ('status', ('current_stage_type',)), 'Etap pracy': ('status', ('current_stage_type',))},
  'texts.review': {**COMMON, 'Status': ('status', ('status',)), 'Data nadesłania': ('created', ('created_at',)), 'Data decyzji': ('decision', ('decision_at',))},

@@ -37,6 +37,13 @@ class ExtractForm(forms.ModelForm):
 
 
 class RecruitmentForm(forms.ModelForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance.mail_fingerprint:
+            # Imported messages need not reveal a candidate's real name yet.
+            for name in ('first_name', 'last_name', 'email'):
+                self.fields[name].required = False
+
     class Meta:
         model = Recruitment
         fields = ('first_name', 'last_name', 'email', 'department', 'submitted_at', 'status', 'notified', 'notes', 'unofficial_notes')

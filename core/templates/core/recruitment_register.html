@@ -1,0 +1,12 @@
+{% extends "core/base.html" %}
+{% block title %}Rekrutacja | Fantazmaty CMS{% endblock %}
+{% block content %}
+<header class="page-header"><h1 class="page-title">Rekrutacja</h1>{% if user.is_superuser %}<a class="secondary-button" href="{% url 'core:recruitment_mailbox' %}">Pobieranie próbek</a>{% endif %}</header>
+<section class="filters-card"><form method="get" class="filters-form"><label>Szukaj zgłoszenia <input type="search" name="q" value="{{ query }}"></label><button class="primary-button">Szukaj</button></form></section>
+<section class="card"><div class="table-container"><table class="recruitment-samples-table" data-copy-table data-server-paginated="true">
+<thead><tr><th>Nadawca</th><th>E-mail</th><th>Temat</th><th>Rola</th><th>Data wiadomości</th><th>Przyjęty/Odrzucony</th><th>Powiadomiony</th></tr></thead>
+<tbody>{% for item in items %}<tr><td>{% firstof item.mail_sender item.full_name 'Nie podano' %}</td><td>{{ item.email|default:'–' }}</td><td class="recruitment-subject"><strong>{{ item.mail_subject|default:'–' }}</strong></td><td>{% firstof item.mail_roles_display item.get_department_display %}</td><td>{% if item.mail_received_at %}{{ item.mail_received_at|date:'d.m.Y H:i' }}{% else %}{{ item.submitted_at|date:'d.m.Y' }}{% endif %}</td><td>{% include "core/includes/recruitment_decision.html" with record=item %}</td><td><input type="checkbox" disabled {% if item.notified %}checked{% endif %} aria-label="Powiadomiony"> {{ item.notified|yesno:'Tak,Nie' }}</td></tr>
+{% empty %}<tr><td colspan="7">Brak zgłoszeń.</td></tr>{% endfor %}</tbody>
+</table></div></section>
+{% include "core/includes/pagination.html" %}
+{% endblock %}

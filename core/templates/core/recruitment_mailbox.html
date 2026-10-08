@@ -1,27 +1,57 @@
-{% extends "core/base.html" %}
-{% block title %}Rekrutacja – skrzynka | Fantazmaty CMS{% endblock %}
-{% block extra_css %}{% load static %}<link rel="stylesheet" href="{% static 'core/intake.css' %}">{% endblock %}
+{% extends "core/base.html" %}{% load static %}
+{% block title %}Pobieranie próbek | Fantazmaty CMS{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/intake.css' %}">{% endblock %}
 {% block content %}
-<header class="page-header"><h1 class="page-title">Rekrutacja – pobieranie ze skrzynki</h1></header>
-<p class="recruitment-actions"><a class="secondary-button" href="{% url 'core:recruitment_list' %}">Rekrutacja</a><a class="secondary-button" href="{% url 'admin:core_mailboxconnection_changelist' %}?purpose__exact=recruitment">Ustawienia skrzynki rekrutacyjnej</a></p>
+<header class="page-header"><h1 class="page-title">Pobieranie próbek</h1></header>
+<p class="recruitment-actions"><a class="secondary-button" href="{% url 'core:recruitment_list' %}">Rekrutacja</a><a class="secondary-button" href="{% url 'admin:core_mailboxconnection_changelist' %}?purpose__exact=recruitment">Ustawienia skrzynki</a></p>
 <section class="card recruitment-mail-card"><div class="card-body">
-<p>Pobierz nagłówki wiadomości, wybierz zgłoszenia i zapisz je w ZIP jako oryginalne pliki EML (wraz z załącznikami). Automatyczny zapis danych kandydatów zostanie włączony po ustaleniu formatu zgłoszeń.</p>
 {% if error %}<p class="message error" role="alert">{{ error }}</p>{% endif %}
 {% if mailbox %}<p>Skrzynka: {{ mailbox.name }} · {{ mailbox.folder }}</p>
-<form method="post">{% csrf_token %}
-<div class="filter-field recruitment-mail-roles">{{ form.roles.label_tag }}{{ form.roles }}{{ form.roles.errors }}<p class="muted-text">{{ form.roles.help_text }}</p></div>
-<div class="mailbox-options"><label class="mailbox-option">{{ form.show_downloaded }}<span>{{ form.show_downloaded.label }}</span></label></div>
-<p><button class="primary-button" type="submit" name="action" value="headers">Pobierz nagłówki od początku</button></p>
+<form method="post" data-recruitment-samples>{% csrf_token %}
+<div class="recruitment-preview-grid">
+    <section class="recruitment-role-panel" aria-label="Wybór roli">
+        <div class="filter-field recruitment-mail-roles">{{ form.roles.label_tag }}{{ form.roles }}{{ form.roles.errors }}<p class="muted-text">{{ form.roles.help_text }}</p></div>
+        <div class="mailbox-options"><label class="mailbox-option">{{ form.show_downloaded }}<span>{{ form.show_downloaded.label }}</span></label></div>
+        <button class="primary-button" type="submit" name="action" value="headers">Pobierz nagłówki od początku</button>
+    </section>
+    <section class="recruitment-preview-panel" aria-label="Treść zaznaczonej wiadomości" aria-busy="false" data-mail-preview>
+        <h2>Treść wiadomości</h2>
+        <p data-preview-state role="status" aria-live="polite">{% if not preview %}Zaznacz wiadomość lub kliknij Podgląd. Przy kilku zaznaczonych pokaże się ostatnia wybrana wiadomość.{% endif %}</p>
+        <strong data-preview-subject>{{ preview.subject }}</strong>
+        <p data-preview-sender>{{ preview.sender }}</p>
+        <div class="recruitment-preview-body" data-preview-body>{{ preview.body }}</div>
+        <p class="muted-text" data-preview-truncated {% if not preview.truncated %}hidden{% endif %}>Podgląd skrócono do 100 000 znaków. W bazie zostanie zapisana pełna treść.</p>
+    </section>
+</div>
 {% if selection %}
 <input type="hidden" name="selection" value="{{ selection }}">
-<p>Dopasowane wiadomości: {{ total }}. Pobieraj najwyżej 20 wiadomości jednocześnie.</p>
-<div class="table-container"><table data-copy-table data-pagination="off" data-email-mailbox="true">
-<thead><tr><th><input type="checkbox" data-select-table aria-label="Zaznacz wszystkie wiadomości"></th><th>Nadawca</th><th>Temat</th><th>Data</th><th>Stan</th></tr></thead>
-<tbody>{% for row in rows %}<tr><td><input type="checkbox" name="selected" value="{{ row.uid }}" aria-label="Wybierz wiadomość: {{ row.subject }}"></td><td>{{ row.sender }}</td><td><strong>{{ row.subject }}</strong></td><td>{{ row.date }}</td><td>{{ row.downloaded|yesno:'Pobrano,Nowa' }}</td></tr>{% empty %}<tr><td colspan="5">Brak wiadomości pasujących do filtrów.</td></tr>{% endfor %}</tbody>
+<p>Dopasowane wiadomości: {{ total }}. Maksymalnie {{ max_samples }} wiadomości jednocześnie.</p>
+<div class="recruitment-actions recruitment-sample-actions">
+<button class="primary-button" name="action" value="download">Pobranie załączników</button>
+<button class="secondary-button" name="action" value="add">Dodanie do bazy</button>
+</div>
+<p class="muted-text">Oba działania zapisują zgłoszenia w Rekrutacji. Ponowny zapis nie tworzy duplikatów.</p>
+<fieldset class="recruitment-bulk"><legend>Edycja zaznaczonych zgłoszeń</legend>
+<label>Przyjęty/Odrzucony {{ bulk_form.decision }}{{ bulk_form.decision.errors }}</label>
+<label>Powiadomiony {{ bulk_form.notified }}{{ bulk_form.notified.errors }}</label>
+<button class="secondary-button" name="action" value="bulk">Zastosuj do zaznaczonych</button>
+{{ bulk_form.non_field_errors }}
+</fieldset>
+<p class="muted-text">Pole Powiadomiony zapisuje informację; nie wysyła wiadomości.</p>
+<div class="table-container"><table class="recruitment-samples-table" data-copy-table data-pagination="off" data-email-mailbox="true">
+<thead><tr><th><input type="checkbox" data-select-table aria-label="Zaznacz wszystkie wiadomości"></th><th>Nadawca</th><th>Temat</th><th>Data</th><th>Przyjęty/Odrzucony</th><th>Powiadomiony</th><th>Stan</th><th>Podgląd</th></tr></thead>
+<tbody>{% for row in rows %}<tr>
+<td><input type="checkbox" name="selected" value="{{ row.uid }}" {% if row.uid in selected %}checked{% endif %} aria-label="Wybierz wiadomość: {{ row.subject }}"></td>
+<td>{{ row.sender }}</td><td class="recruitment-subject"><strong>{{ row.subject }}</strong></td><td>{{ row.date }}</td>
+<td>{% include "core/includes/recruitment_decision.html" with record=row.record %}</td>
+<td><input type="checkbox" disabled {% if row.record.notified %}checked{% endif %} aria-label="Powiadomiony"> {{ row.record.notified|yesno:'Tak,Nie,Nie' }}</td>
+<td>{% if row.record %}W bazie{% elif row.downloaded %}Pobrano{% else %}Nowa{% endif %}</td>
+<td><button class="secondary-button" name="preview_uid" value="{{ row.uid }}" data-preview-uid="{{ row.uid }}">Podgląd</button></td>
+</tr>{% empty %}<tr><td colspan="8">Brak wiadomości pasujących do filtrów.</td></tr>{% endfor %}</tbody>
 </table></div>
 <nav class="cms-pagination" aria-label="Strony wiadomości">{% if previous_cursor %}<button class="secondary-button" name="cursor" value="{{ previous_cursor }}">Nowsze wiadomości</button>{% endif %}{% if next_cursor %}<button class="secondary-button" name="cursor" value="{{ next_cursor }}">Starsze wiadomości</button>{% endif %}</nav>
-{% if rows %}<button class="primary-button" name="action" value="download">Pobierz wybrane wiadomości</button>{% endif %}
 {% endif %}
 </form>{% endif %}
 </div></section>
 {% endblock %}
+{% block scripts %}<script src="{% static 'core/recruitment-samples.js' %}?v=44" defer></script>{% endblock %}

@@ -28,6 +28,9 @@ class RecruitmentMailboxTests(TestCase):
     def setUp(self):
         self.client.force_login(self.user)
         self.url = reverse('core:recruitment_mailbox')
+        patcher = patch('core.views.recruitment_mailbox.read_headers', return_value=dict(validity=7, rows=[], total=0, next_cursor=None, previous_cursor=None))
+        self.header_reader = patcher.start()
+        self.addCleanup(patcher.stop)
 
     def token(self, **changes):
         data = {'user': self.user.pk, 'mailbox': mailbox_key(self.box), 'roles': ['editors', 'reviewers'],
@@ -38,7 +41,7 @@ class RecruitmentMailboxTests(TestCase):
     def test_page_roles_order_admin_and_no_conversion_options(self):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(list(response.context['form'].fields['roles'].choices), list(ROLE_CHOICES))
+        self.assertEqual(list(response.context['form'].fields['roles'].choices), [('all', 'Wszystkie'), *ROLE_CHOICES])
         for field in ('clean', 'rebuild', 'convert', 'subject_filter'):
             self.assertNotContains(response, f'name="{field}"')
         self.assertContains(response, 'multiple')
@@ -55,7 +58,7 @@ class RecruitmentMailboxTests(TestCase):
     def test_non_superuser_cannot_read_download_or_copy_mail(self, fetch, read):
         self.client.force_login(self.member)
         self.assertEqual(self.client.get(self.url).status_code, 403)
-        for action in ('headers', 'download', 'copy_emails'):
+        for action in ('headers', 'download', 'copy_emails', 'preview', 'add', 'bulk'):
             self.assertEqual(self.client.post(self.url, {'action': action, 'roles': ['editors']}).status_code, 403)
         fetch.assert_not_called(); read.assert_not_called()
 
@@ -71,11 +74,11 @@ class RecruitmentMailboxTests(TestCase):
         cursor = {'anchor': 100, 'boundary': 51, 'direction': 'older', 'validity': 7}
         read.return_value = {'rows': [{'uid': 12, 'sender': 'a@example.test', 'subject': 'Redakcja, Recenzje', 'date': ''}],
                             'total': 60, 'validity': 7, 'next_cursor': cursor, 'previous_cursor': None}
-        response = self.client.post(self.url, {'roles': ['reviewers', 'editors'], 'action': 'headers'})
+        response = self.client.post(self.url, {'roles': ['reviewers', 'editors'], 'action': 'headers'}, follow=True)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(read.call_args.kwargs['recruitment_roles'], ['editors', 'reviewers'])
         token = response.context['next_cursor']
-        response = self.client.post(self.url, {'roles': ['editors', 'reviewers'], 'cursor': token})
+        response = self.client.post(self.url, {'roles': ['editors', 'reviewers'], 'cursor': token}, follow=True)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(read.call_args.args[1], cursor)
         read.reset_mock()
@@ -83,16 +86,16 @@ class RecruitmentMailboxTests(TestCase):
         self.assertEqual(response.status_code, 400); read.assert_not_called()
 
     @patch('core.views.recruitment_mailbox.fetch_messages')
-    def test_download_is_original_eml_and_does_not_create_candidates(self, fetch):
+    def test_download_without_attachments_still_registers_message(self, fetch):
         raw = b'From: candidate@example.test\r\nSubject: Redakcja\r\n\r\nPlain text, no attachments.'
         fetch.return_value = [{'uid': 12, 'raw': raw}]
         response = self.client.post(self.url, {'roles': ['editors', 'reviewers'], 'action': 'download', 'selection': self.token(), 'selected': ['12']})
         self.assertEqual(response.status_code, 200)
         with ZipFile(BytesIO(b''.join(response.streaming_content))) as archive:
-            self.assertEqual(archive.namelist(), ['rekrutacja-12.eml'])
-            self.assertEqual(archive.read('rekrutacja-12.eml'), raw)
+            self.assertEqual(archive.namelist(), ['wiadomosc-12/brak-zalacznikow.txt'])
         self.assertTrue(fetch.call_args.kwargs['raw_messages'])
-        self.assertEqual(Recruitment.objects.count(), 0)
+        self.assertEqual(Recruitment.objects.count(), 1)
+        self.assertIsNone(Recruitment.objects.get().accepted)
         self.assertEqual(MailboxDownload.objects.get().mailbox_key, mailbox_key(self.box))
 
     @patch('core.views.recruitment_mailbox.fetch_messages')

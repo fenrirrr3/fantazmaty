@@ -56,6 +56,13 @@ class Recruitment(models.Model):
         DESIGNERS = 'designers', 'Graficy'
         OTHER = 'other', 'Inne'
 
+    mail_subject = models.CharField('temat wiadomości', max_length=2000, blank=True)
+    mail_sender = models.CharField('nadawca wiadomości', max_length=2000, blank=True)
+    mail_body = models.TextField('treść wiadomości', blank=True)
+    mail_received_at = models.DateTimeField('data wiadomości', null=True, blank=True)
+    mail_roles = models.JSONField('role z tematu', default=list, blank=True)
+    mail_fingerprint = models.CharField(max_length=64, null=True, blank=True, unique=True, editable=False)
+
     first_name = models.CharField('imię', max_length=150, default='')
     last_name = models.CharField('nazwisko', max_length=150, default='')
     department = models.CharField('dział', max_length=30, choices=Department.choices, default=Department.OTHER)
@@ -103,8 +110,21 @@ class Recruitment(models.Model):
     def full_name(self):
         return f"{self.first_name} {self.last_name}".strip()
 
+    @property
+    def accepted(self):
+        return {self.Status.ACCEPTED: True, self.Status.REJECTED: False}.get(self.status)
+
+    @property
+    def decision_display(self):
+        return {self.Status.ACCEPTED: 'Przyjęty', self.Status.REJECTED: 'Odrzucony'}.get(self.status, 'Bez decyzji')
+
+    @property
+    def mail_roles_display(self):
+        from core.recruitment_roles import ROLE_CHOICES
+        return ', '.join(label for key, label in ROLE_CHOICES if key in self.mail_roles)
+
     def __str__(self):
-        return self.full_name
+        return self.full_name or self.mail_subject or self.mail_sender
 
 
 class UserActivity(models.Model):
@@ -236,6 +256,18 @@ class MailboxDownload(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=('mailbox_key', 'uid_validity', 'uid'), name='unique_mailbox_download')]
+
+
+class RecruitmentMailSource(models.Model):
+    """IMAP identity is independent of the candidate and its decision."""
+    recruitment = models.ForeignKey(Recruitment, on_delete=models.CASCADE, related_name='mail_sources')
+    mailbox_key = models.CharField(max_length=64)
+    uid_validity = models.PositiveBigIntegerField()
+    uid = models.PositiveBigIntegerField()
+    downloaded_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=('mailbox_key', 'uid_validity', 'uid'), name='unique_recruitment_mail_source')]
 
 
 class NewsletterConsent(models.Model):

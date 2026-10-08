@@ -90,7 +90,8 @@ def extract_edit(request, pk=None):
 @require_http_methods(['GET'])
 @coordinator_required
 def recruitment_list(request):
-    return _list(request, Recruitment, RecruitmentForm, 'Rekrutacja', 'recruitment', ('first_name', 'last_name', 'email', 'notes', 'unofficial_notes'))
+    from core.views.recruitment_mailbox import recruitment_register
+    return recruitment_register(request)
 
 
 @never_cache

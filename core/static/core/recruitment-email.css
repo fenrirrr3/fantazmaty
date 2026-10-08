@@ -13,6 +13,21 @@
 .recruitment-mail-roles { width: min(100%, 30rem); }
 .recruitment-mail-roles select { min-height: 13rem; width: 100%; }
 .recruitment-mail-card .cms-pagination { margin: 1rem 0; }
+.recruitment-preview-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.25rem; align-items: stretch; }
+.recruitment-role-panel, .recruitment-preview-panel { min-width: 0; padding: 1rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-alt); }
+.recruitment-preview-panel { display: flex; flex-direction: column; max-height: 32rem; overflow: auto; }
+.recruitment-preview-panel h2 { margin: 0 0 .6rem; }
+.recruitment-preview-body { min-height: 10rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; flex: 1; }
+.recruitment-preview-panel :is(p, strong) { overflow-wrap: anywhere; }
+.recruitment-sample-actions { margin: 1rem 0 .5rem; }
+.recruitment-bulk { display: flex; flex-wrap: wrap; align-items: end; gap: .8rem; margin: 1rem 0; padding: 1rem; border: 1px solid var(--border); border-radius: var(--radius); }
+.recruitment-bulk label { display: flex; flex-direction: column; gap: .35rem; }
+.recruitment-samples-table .recruitment-subject { white-space: normal; overflow-wrap: anywhere; min-width: 12rem; max-width: 25rem; }
+.recruitment-samples-table td { white-space: normal; overflow-wrap: anywhere; max-width: 25rem; }
+.recruitment-decision { white-space: nowrap; }
+.recruitment-decision.accepted { color: var(--success); }
+.recruitment-decision.rejected { color: var(--danger); }
+@media (max-width: 850px) { .recruitment-preview-grid { grid-template-columns: minmax(0, 1fr); } }
 [data-theme-autumn][aria-pressed="true"] { background: var(--primary-light); border-color: var(--primary); color: var(--primary-dark); }
 
 :root[data-theme="autumn"] :is(.header-search-toggle, .menu-button, .logout-button, .admin-button) { border-color: #b8956f; }
