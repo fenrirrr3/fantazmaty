@@ -16,7 +16,10 @@ from core.permissions import is_coordinator
 from .models import Illustrator
 
 
-class IllustratorForm(forms.ModelForm):
+from .contact_forms import IllustratorContactForm
+
+
+class IllustratorForm(IllustratorContactForm):
     version = forms.CharField(required=False, widget=forms.HiddenInput)
 
     class Meta:
@@ -64,6 +67,10 @@ def illustrator_list(request):
         rows = rows.filter(Q(first_name__plcontains=query) | Q(last_name__plcontains=query)
                            | Q(pseudonym__plcontains=query) | Q(email__icontains=query) | Q(preferences__plcontains=query))
     page = paginate_queryset(request, rows)
+    from .contact_forms import duplicate_display_names, contact_label
+    duplicates = duplicate_display_names()
+    for person in page:
+        person.directory_label = contact_label(person, duplicates)
     return render(request, 'core/illustrator_list.html', {'page_obj': page, 'query': query, 'show_inactive': show_inactive})
 
 

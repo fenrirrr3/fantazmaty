@@ -32,6 +32,9 @@ class IllustrationEditForm(forms.ModelForm):
 class AssignmentModelForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        if 'illustrators' in self.fields:
+            selected = self.instance.illustrators.values_list('pk', flat=True) if self.instance.pk else []
+            self.fields['illustrators'].queryset = Illustrator.objects.filter(Q(is_active=True) | Q(pk__in=selected))
         if 'text' in self.fields:
             from .services import illustration_texts_queryset
             from texts.models import Text
@@ -61,8 +64,10 @@ class AssignmentForm(AssignmentModelForm, IllustrationEditForm):
     def __init__(self, *args, can_assign=False, **kwargs):
         super().__init__(*args, **kwargs)
         if can_assign:
+            from .contact_forms import duplicate_display_names, contact_label
+            duplicates = duplicate_display_names()
             selected = self.instance.illustrators.values_list('pk', flat=True) if self.instance.pk else []
-            self.fields['illustrators'].label_from_instance = lambda person: person.display_name
+            self.fields['illustrators'].label_from_instance = lambda person: contact_label(person, duplicates)
             self.fields['illustrators'].queryset = Illustrator.objects.filter(
                 Q(pk__in=selected) | Q(is_active=True)
             ).annotate(artist_name=Illustrator.display_name_expression()).order_by('artist_name', 'pk')

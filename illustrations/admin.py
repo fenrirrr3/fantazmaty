@@ -20,6 +20,15 @@ class PublicIllustrationSettingsAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin)
 
 @admin.register(Illustrator)
 class IllustratorAdmin(admin.ModelAdmin):
+    from .contact_forms import IllustratorContactForm
+    form = IllustratorContactForm
+
+    def get_search_results(self, request, queryset, search_term):
+        queryset, duplicates = super().get_search_results(request, queryset, search_term)
+        if (request.GET.get('app_label'), request.GET.get('model_name'), request.GET.get('field_name')) == ('illustrations', 'illustration', 'illustrators'):
+            queryset = queryset.filter(is_active=True)
+        return queryset, duplicates
+
     list_display = ("full_name", "pseudonym", "email", "portfolio", "preferences", "covers", "is_active")
     list_filter = ("is_active", "covers")
     search_fields = ("first_name__plcontains", "last_name__plcontains", "pseudonym__plcontains", "email__plcontains", "preferences__plcontains")

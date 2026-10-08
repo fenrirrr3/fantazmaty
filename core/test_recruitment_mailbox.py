@@ -125,7 +125,7 @@ class RecruitmentMailboxTests(TestCase):
         client = imap.return_value
         client.select.return_value = ('OK', [b'3']); client.response.return_value = ('UIDVALIDITY', [b'7'])
         client.uid.side_effect = [('OK', [b'12 13']), ('OK', [b'13 14']),
-            ('OK', [(b'1 (UID 13 BODY[])', 'From: a@example.test\r\nSubject: Redakcja – Recenzje\r\n'.encode('utf-8'))])]
+            ('OK', [(f'1 (UID {uid} BODY[])'.encode(), 'From: a@example.test\r\nSubject: Redakcja – Recenzje\r\n'.encode('utf-8')) for uid in (12, 13, 14)])]
         self.box.set_password('test-only')
         result = read_headers(self.box, recruitment_roles=['editors', 'reviewers'])
         self.assertEqual(result['total'], 3)

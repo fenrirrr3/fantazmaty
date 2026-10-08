@@ -21,8 +21,8 @@ from core.services.mailbox import MailboxError, read_headers
 from core.services.mailbox_import import fetch_messages, mailbox_key, receipts
 from core.services.recruitment_samples import MAX_SAMPLES, parse_sample, store_samples, attachment_archive
 
-SALT = 'recruitment-mailbox'
-SESSION_KEY = 'recruitment_sample_headers'
+SALT = 'recruitment-mailbox-v55'
+SESSION_KEY = 'recruitment_sample_headers_v55'
 
 
 class RecruitmentMailboxForm(forms.Form):

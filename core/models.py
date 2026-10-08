@@ -110,6 +110,11 @@ class Recruitment(models.Model):
             result = super().save(*args, **kwargs)
             from core.services.recruitment_decisions import ensure_decisions, refresh_summary
             ensure_decisions(self, initial=previous is None, using=using)
+            if previous:
+                from core.selectors.recruitment import record_roles
+                changed_roles = record_roles(previous.mail_roles, previous.department) ^ record_roles(self.mail_roles, self.department)
+                if changed_roles:
+                    RecruitmentRoleDecision.objects.using(using).filter(recruitment_id=self.pk, role__in=changed_roles).update(updated_at=timezone.now())
             refresh_summary(self, using=using)
             return result
 
@@ -135,8 +140,9 @@ class Recruitment(models.Model):
 
     @property
     def mail_roles_display(self):
-        from core.recruitment_roles import ROLE_CHOICES
-        return ', '.join(label for key, label in ROLE_CHOICES if key in self.mail_roles)
+        from core.selectors.recruitment import record_roles, role_choices
+        roles = record_roles(self.mail_roles, self.department)
+        return ', '.join(label for key, label in role_choices() if key in roles)
 
     def __str__(self):
         return self.full_name or self.mail_subject or self.mail_sender

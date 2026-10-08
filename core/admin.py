@@ -139,14 +139,46 @@ class CoordinatorIntakeAdmin(admin.ModelAdmin):
     readonly_fields = ('created_at', 'updated_at')
 
 
+class RecruitmentRoleFilter(admin.SimpleListFilter):
+    title = 'rola zgłoszenia'
+    parameter_name = 'recruitment_role'
+
+    def lookups(self, request, model_admin):
+        from core.selectors.recruitment import role_choices
+        return role_choices()
+
+    def queryset(self, request, queryset):
+        from core.selectors.recruitment import filter_role, role_choices
+        if self.value() in dict(role_choices()):
+            return filter_role(queryset, self.value())
+        return queryset
+
+
 @admin.register(Recruitment)
 class RecruitmentAdmin(CoordinatorIntakeAdmin):
-    form = RecruitmentForm
-    list_display = ('candidate_display', 'email', 'mail_subject', 'department', 'submitted_at', 'accepted', 'notified', 'notified_at')
-    list_filter = ('department', 'status', 'notified', 'submitted_at')
+    from core.recruitment_admin_forms import RecruitmentAdminForm
+    form = RecruitmentAdminForm
+    list_display = ('candidate_display', 'email', 'mail_subject', 'roles_display', 'submitted_at', 'accepted', 'notified', 'notified_at')
+    list_filter = (RecruitmentRoleFilter, 'status', 'notified', 'submitted_at')
     search_fields = ('first_name__plcontains', 'last_name__plcontains', 'email__plcontains', 'notes__plcontains', 'applicant_name__plcontains', 'decision_reason__plcontains', 'role_decisions__decision_reason__plcontains', 'role_decisions__unofficial_notes__plcontains', 'mail_subject__plcontains', 'mail_sender__plcontains')
-    readonly_fields = ('notified_at', 'updated_at', 'mail_sender', 'mail_subject', 'mail_received_at', 'mail_roles', 'mail_body', 'decisions_link', 'legacy_decision_reason', 'legacy_unofficial_notes')
-    fields = (*RecruitmentForm.Meta.fields, 'mail_sender', 'mail_subject', 'mail_received_at', 'mail_roles', 'mail_body', 'decisions_link', 'legacy_decision_reason', 'legacy_unofficial_notes', 'notified_at', 'updated_at')
+    readonly_fields = ('notified_at', 'updated_at', 'mail_sender', 'mail_subject', 'mail_received_at', 'mail_body', 'decisions_link', 'archived_decisions', 'legacy_decision_reason', 'legacy_unofficial_notes')
+    fields = (*RecruitmentAdminForm.Meta.fields, 'mail_sender', 'mail_subject', 'mail_received_at', 'mail_body', 'decisions_link', 'archived_decisions', 'legacy_decision_reason', 'legacy_unofficial_notes', 'notified_at', 'updated_at')
+
+    @admin.display(description='Role zgłoszenia')
+    def roles_display(self, obj):
+        from core.selectors.recruitment import record_roles, role_choices
+        roles = record_roles(obj.mail_roles, obj.department)
+        return ', '.join(label for role, label in role_choices() if role in roles)
+
+    @admin.display(description='Archiwalne decyzje usuniętych ról')
+    def archived_decisions(self, obj):
+        from core.selectors.recruitment import record_roles
+        from django.utils.html import format_html_join
+        if not obj or not obj.pk:
+            return 'Brak'
+        rows = list(obj.role_decisions.exclude(role__in=record_roles(obj.mail_roles, obj.department)))
+        return format_html_join('', '<p><strong>{} – {}</strong><br>Uzasadnienie: {}<br>Notatki: {}</p>',
+                                ((row.role_label, row.get_status_display(), row.decision_reason or '–', row.unofficial_notes or '–') for row in rows)) if rows else 'Brak'
 
     @admin.display(description='Dawne wspólne uzasadnienie (archiwalne)')
     def legacy_decision_reason(self, obj):

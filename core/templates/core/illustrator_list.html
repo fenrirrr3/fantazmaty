@@ -22,7 +22,7 @@
         <table data-server-paginated="true" class="data-table"><caption class="visually-hidden">Spis ilustratorów</caption>
             <thead><tr><th scope="col">Imię i nazwisko</th><th scope="col">Adres e-mail</th><th scope="col">Portfolio</th><th scope="col">Preferencje</th><th scope="col">Okładki</th></tr></thead>
             <tbody>{% for person in page_obj %}<tr>
-                <td><a href="{% url 'illustrations:illustrator_edit' person.pk %}"><strong>{{ person.display_name }}</strong></a>{% if not person.is_active %} <span class="muted-text">(nieaktywny)</span>{% endif %}</td>
+                <td><a href="{% url 'illustrations:illustrator_edit' person.pk %}"><strong>{{ person.directory_label }}</strong></a>{% if not person.is_active %} <span class="muted-text">(nieaktywny)</span>{% endif %}</td>
                 <td>{% if not person.is_active %}<span class="muted-text">Ukryty (nieaktywny)</span>{% elif person.email %}<a href="mailto:{{ person.email }}">{{ person.email }}</a>{% else %}Nie podano{% endif %}</td>
                 <td>{% if person.portfolio %}<a href="{{ person.portfolio }}" target="_blank" rel="noopener noreferrer">Otwórz portfolio</a>{% else %}Nie podano{% endif %}</td>
                 <td><div class="illustration-excerpt-preview">{{ person.preferences|default:"Nie podano"|linebreaksbr }}</div></td>

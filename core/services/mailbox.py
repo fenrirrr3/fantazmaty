@@ -43,6 +43,34 @@ def _positive(value):
     return value
 
 
+def _header_rows(client, uids, *, recruitment=False):
+    """Read headers in bounded batches; never fetch bodies for list filtering."""
+    rows = {}
+    parser = BytesHeaderParser(policy=policy.default)
+    for offset in range(0, len(uids), 200):
+        batch = uids[offset:offset + 200]
+        wanted = set(batch)
+        status, payload = client.uid('FETCH', ','.join(map(str, batch)),
+            '(UID BODY.PEEK[HEADER.FIELDS (FROM REPLY-TO SUBJECT DATE MESSAGE-ID)]<0.65536>)')
+        if status != 'OK':
+            raise MailboxError('Nie udało się pobrać nagłówków. Spróbuj ponownie.')
+        for item in payload or []:
+            if not isinstance(item, tuple) or len(item) != 2 or not isinstance(item[1], bytes):
+                continue
+            metadata, raw = item
+            uid = re.search(rb'\bUID (\d+)\b', metadata)
+            if not uid or int(uid[1]) not in wanted:
+                continue
+            message = parser.parsebytes(raw)
+            def field(name):
+                return str(message.get(name, '')).replace('\r', ' ').replace('\n', ' ')[:2000]
+            number = int(uid[1])
+            rows[number] = {'uid': number, 'sender': field('Reply-To') or field('From'),
+                            'subject': field('Subject') if recruitment else story_title(field('Subject')),
+                            'date': polish_date(field('Date')), 'message_id': field('Message-ID')}
+    return rows
+
+
 def read_headers(config, cursor=None, excluded=None, subject_filter="", *, recruitment_roles=None, sent_since=""):
     if subject_filter and subject_filter not in config.subject_choices():
         raise MailboxError("Wybierz nabór zapisany w ustawieniach skrzynki.")
@@ -126,6 +154,15 @@ def read_headers(config, cursor=None, excluded=None, subject_filter="", *, recru
         if excluded:
             excluded_uids = set(excluded(validity))
             uids = [uid for uid in uids if uid not in excluded_uids]
+        exact_headers = None
+        if recruitment_roles:
+            from core.recruitment_message import roles_in_subject
+            # SUBJECT is only a broad prefilter. Exact matching must precede
+            # counting and pagination, and is shared by email-copy requests.
+            requested_roles = set(recruitment_roles)
+            exact_headers = _header_rows(client, uids, recruitment=True)
+            uids = [uid for uid in uids if uid in exact_headers and
+                    requested_roles.intersection(roles_in_subject(exact_headers[uid]['subject']))]
         candidates = uids
         newer = bool(cursor and cursor['direction'] == 'newer')
         if cursor:
@@ -143,24 +180,8 @@ def read_headers(config, cursor=None, excluded=None, subject_filter="", *, recru
             result['next_cursor'] = state('older', selected[0])
         if any(uid > selected[-1] for uid in uids):
             result['previous_cursor'] = state('newer', selected[-1])
-        status, payload = client.uid('FETCH', ','.join(map(str, selected)),
-            '(UID BODY.PEEK[HEADER.FIELDS (FROM REPLY-TO SUBJECT DATE MESSAGE-ID)]<0.65536>)')
-        if status != 'OK':
-            raise MailboxError('Nie udało się pobrać nagłówków. Spróbuj ponownie.')
-        parser = BytesHeaderParser(policy=policy.default)
-        for item in payload or []:
-            if not isinstance(item, tuple) or len(item) != 2 or not isinstance(item[1], bytes):
-                continue
-            metadata, raw = item
-            uid = re.search(rb'\bUID (\d+)\b', metadata)
-            if not uid or int(uid[1]) not in selected:
-                continue
-            message = parser.parsebytes(raw)
-            def field(name):
-                return str(message.get(name, '')).replace('\r', ' ').replace('\n', ' ')[:2000]
-            result['rows'].append({'uid': int(uid[1]), 'sender': field('Reply-To') or field('From'),
-                'subject': field('Subject') if recruitment_roles is not None else story_title(field('Subject')), 'date': polish_date(field('Date')),
-                'message_id': field('Message-ID')})
+        headers = exact_headers if exact_headers is not None else _header_rows(client, selected, recruitment=recruitment_roles is not None)
+        result['rows'] = [headers[uid] for uid in selected if uid in headers]
         result['rows'].sort(key=lambda item: item['uid'], reverse=True)
         return result
     except InvalidToken:

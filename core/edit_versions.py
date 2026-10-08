@@ -8,6 +8,7 @@ TRACKED = {
     'texts.novelprofile', 'texts.vocabularyterm',
     'texts.texttranslation', 'texts.foreignauthor', 'texts.translator',
     'texts.text', 'texts.review', 'texts.anthology', 'texts.anthologytask', 'texts.textnote',
+    'illustrations.publicillustrationsettings',
     'illustrations.illustration', 'illustrations.coverproposal', 'illustrations.illustrator',
     'texts.reviewassignment', 'texts.reviewers', 'texts.extract',
     'workflow.workflowstage', 'workflow.workflowroleassignment',

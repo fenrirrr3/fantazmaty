@@ -12,7 +12,8 @@ from django.views.decorators.http import require_http_methods
 from core.permissions import coordinator_required, superuser_required
 from core.filtering import facet_queryset
 from core.pagination import paginate_items
-from core.intake_forms import ExtractForm, RecruitmentForm, SingleReviewForm
+from core.intake_forms import ExtractForm, SingleReviewForm
+from core.recruitment_admin_forms import RecruitmentAdminForm
 from core.models import Recruitment
 from texts.models import Extract
 from texts.blacklist import apply_blacklist
@@ -99,7 +100,7 @@ def recruitment_list(request):
 @require_http_methods(['GET', 'POST'])
 @coordinator_required
 def recruitment_edit(request, pk=None):
-    return _edit(request, Recruitment, RecruitmentForm, 'Zgłoszenie rekrutacyjne', 'recruitment', pk)
+    return _edit(request, Recruitment, RecruitmentAdminForm, 'Zgłoszenie rekrutacyjne', 'recruitment', pk)
 
 
 @never_cache
