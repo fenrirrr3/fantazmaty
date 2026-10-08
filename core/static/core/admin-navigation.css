@@ -20,3 +20,19 @@
     #header #branding, #header #user-tools { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 }
 @media print { .cms-admin-quick-links { display: none; } }
+
+html[data-theme="autumn"] {
+    color-scheme: light;
+    --body-bg: #fffcf5; --body-fg: #382c22; --body-quiet-color: #67513d; --body-loud-color: #382c22;
+    --primary: #904313; --secondary: #503322; --accent: #ffffff; --primary-fg: #ffffff;
+    --header-bg: #503322; --header-color: #ffffff; --header-branding-color: #ffffff; --header-link-color: #fff1dc;
+    --breadcrumbs-bg: #70472d; --breadcrumbs-fg: #f6e4cd; --breadcrumbs-link-fg: #ffffff;
+    --link-fg: #904313; --link-hover-color: #6d310d; --link-selected-fg: #6d310d;
+    --button-bg: #904313; --button-fg: #ffffff; --button-hover-bg: #6d310d;
+    --default-button-bg: #904313; --default-button-hover-bg: #6d310d;
+    --hairline-color: #d7c3a8; --border-color: #a58360; --darkened-bg: #f8efdf;
+    --selected-bg: #f9e4c8; --selected-row: #f9e4c8; --close-button-bg: #67513d;
+    --error-fg: #a02f2c; --message-success-bg: #edf2df; --message-warning-bg: #fff0c9; --message-error-bg: #fff0e9;
+    --cms-focus: #934412; --cms-copied-bg: #edf2df; --cms-copied-fg: #405e29; --cms-error: #a02f2c;
+}
+#header [data-theme-autumn][aria-pressed="true"] { background: #f9e4c8; color: #503322; }

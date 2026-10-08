@@ -3,7 +3,7 @@
 
 {% block dark-mode-vars %}
     <link rel="stylesheet" href="{% static 'admin/css/dark_mode.css' %}">
-    <script src="{% static 'core/theme.js' %}"></script>
+    <script src="{% static 'core/theme.js' %}?v=43"></script>
 {% endblock %}
 
 {% block title %}
@@ -40,7 +40,7 @@
 
 {% block extrastyle %}
     {{ block.super }}
-    <link rel="stylesheet" href="{% static 'core/admin-navigation.css' %}">
+    <link rel="stylesheet" href="{% static 'core/admin-navigation.css' %}?v=43">
 
     <style>
         :root,

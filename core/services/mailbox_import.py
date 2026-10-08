@@ -46,24 +46,27 @@ def describe_import_error(error, sources):
 
 
 def default_mailbox():
-    boxes = list(MailboxConnection.objects.filter(is_active=True, name__iexact='teksty')[:2])
+    boxes = list(MailboxConnection.objects.filter(purpose=MailboxConnection.Purpose.SUBMISSIONS, is_active=True, name__iexact='teksty')[:2])
     if not boxes:
-        boxes = list(MailboxConnection.objects.filter(is_active=True, username__istartswith='teksty@')[:2])
+        boxes = list(MailboxConnection.objects.filter(purpose=MailboxConnection.Purpose.SUBMISSIONS, is_active=True, username__istartswith='teksty@')[:2])
     if len(boxes) != 1:
         raise MailboxError('W adminie ustaw jedną aktywną skrzynkę o nazwie „teksty” (lub loginie teksty@…).')
     return boxes[0]
 
 
 def mailbox_key(config):
-    return hashlib.sha256(json.dumps([config.pk, config.host, config.port, config.security,
-                                     config.username, config.folder]).encode()).hexdigest()
+    identity = [config.pk, config.host, config.port, config.security, config.username, config.folder]
+    # Preserve legacy submission receipts; isolate the recruitment mailbox.
+    if config.purpose == MailboxConnection.Purpose.RECRUITMENT:
+        identity.append(config.purpose)
+    return hashlib.sha256(json.dumps(identity).encode()).hexdigest()
 
 
 def receipts(config, validity):
     return MailboxDownload.objects.filter(mailbox_key=mailbox_key(config), uid_validity=validity)
 
 
-def fetch_messages(config, validity, uids, skipped_errors=None):
+def fetch_messages(config, validity, uids, skipped_errors=None, *, raw_messages=False):
     uids = sorted(set(_positive(uid) for uid in uids))
     if not 1 <= len(uids) <= MAX_MESSAGES:
         raise MailboxError(f'Wybierz od 1 do {MAX_MESSAGES} wiadomości.')
@@ -110,6 +113,9 @@ def fetch_messages(config, validity, uids, skipped_errors=None):
             if not found_uid or int(found_uid[1]) != uid:
                 raise MailboxError('Serwer zwrócił inną wiadomość. Pobierz nagłówki ponownie.')
             raw = parts[0][1]
+            if raw_messages:
+                result.append({'uid': uid, 'raw': raw})
+                continue
             try:
                 metadata = parse_message(uid, raw, submission=False)
                 previous = receipts(config, validity).filter(uid=uid).exists() or MailboxDownload.objects.filter(fingerprint=metadata['fingerprint']).exists()

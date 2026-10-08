@@ -2,7 +2,7 @@
 {% block title %}{{ title }} | Fantazmaty CMS{% endblock %}
 {% block content %}
 <header class="page-header"><h1 class="page-title">{{ title }}</h1>
-{% if is_extract %}<a class="primary-button" href="{% url 'core:extract_add' %}">Dodaj ekstrakt</a>{% else %}<a class="primary-button" href="{% url 'core:recruitment_add' %}">Dodaj zgłoszenie</a>{% endif %}</header>
+{% if is_extract %}<a class="primary-button" href="{% url 'core:extract_add' %}">Dodaj ekstrakt</a>{% else %}<div class="recruitment-actions"><a class="primary-button" href="{% url 'core:recruitment_add' %}">Dodaj zgłoszenie</a>{% if user.is_superuser %}<a class="secondary-button" href="{% url 'core:recruitment_mailbox' %}">Pobierz ze skrzynki</a>{% endif %}</div>{% endif %}</header>
 <section class="filters-card"><form method="get" class="filters-form" data-filters="{{ route }}">
 <label>Wyszukaj <input name="q" type="search" value="{{ query }}"></label>
 <label>Status <select name="status" multiple>{% for value,label in status_choices %}<option value="{{ value }}" {% if value in selected_statuses %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>

@@ -6,7 +6,7 @@ from django.core import signing
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.contrib.auth.decorators import login_required
-from django.http import FileResponse
+from django.http import FileResponse, JsonResponse
 from django.shortcuts import render, redirect
 from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters
@@ -44,7 +44,7 @@ def restore_headers(request, config, key, context):
     context['result'] = result
     # Renew signatures from trusted session data without refetching the mailbox.
     context['selection'] = signing.dumps(dict(base, validity=result['validity'],
-        uids=[row['uid'] for row in result['rows']]), salt='mailbox-selection', compress=True)
+        uids=[row['uid'] for row in result['rows']], show_downloaded=saved['show_downloaded']), salt='mailbox-selection', compress=True)
     if request.method == 'GET':
         context.update({name: saved[name] for name in IMPORT_OPTIONS})
 
@@ -137,7 +137,7 @@ def mailbox_headers(request):
                     # Files have been prepared before database writes or locks.
                     with transaction.atomic():
                         locked = MailboxConnection.objects.select_for_update().get(pk=config.pk)
-                        if not locked.is_active or mailbox_key(locked) != key:
+                        if not locked.is_active or locked.purpose != MailboxConnection.Purpose.SUBMISSIONS or mailbox_key(locked) != key:
                             raise MailboxError('Ustawienia skrzynki się zmieniły. Pobierz nagłówki ponownie.')
                         # Receipt uniqueness and this lock prevent duplicate imports
                         # on retries, double-clicks and concurrent downloads.
@@ -157,6 +157,14 @@ def mailbox_headers(request):
                     return response
                 if action == 'confirm' and not approved and not context.get('error'):
                     context['error'] = 'Sprawdź podgląd i zaznacz potwierdzenie.'
+            elif action == 'copy_emails':
+                from core.services.mailbox_email_copy import sender_emails
+                selection = load_token(request.POST.get('selection', ''), request.user, key, 'mailbox-selection')
+                if selection.get('subject_filter', '') != subject_filter or selection.get('show_downloaded', False) != context['show_downloaded']:
+                    raise MailboxError('Zmieniono filtry. Pobierz nagłówki ponownie.')
+                return JsonResponse({'emails': sender_emails(config, selection['validity'],
+                    excluded=None if context['show_downloaded'] else lambda validity: receipts(config, validity).values_list('uid', flat=True),
+                    subject_filter=subject_filter)})
             elif action == 'headers':
                 cursor = None
                 if request.POST.get('cursor'):

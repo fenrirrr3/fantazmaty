@@ -12,8 +12,8 @@
     <title>{% block title %}Fantazmaty CMS{% endblock %}</title>
 
     <link rel="stylesheet" href="{% static 'core/styles.css' %}?v=36">
-    <script src="{% static 'core/theme.js' %}?v=21"></script>
-    <link rel="stylesheet" href="{% static 'core/themes.css' %}?v=26">
+    <script src="{% static 'core/theme.js' %}?v=43"></script>
+    <link rel="stylesheet" href="{% static 'core/themes.css' %}?v=43">
 
     <link rel="stylesheet" href="{% static 'core/workspace.css' %}?v=36">
     <link rel="stylesheet" href="{% static 'core/components.css' %}?v=36">
@@ -21,6 +21,7 @@
     <link rel="stylesheet" href="{% static 'core/pagination.css' %}?v=40">
     <link rel="stylesheet" href="{% static 'core/novels.css' %}?v=38">
     <link rel="stylesheet" href="{% static 'core/illustration-status.css' %}?v=36">
+    <link rel="stylesheet" href="{% static 'core/recruitment-email.css' %}?v=43">
     {% block extra_css %}{% endblock %}
 
 </head>
@@ -47,6 +48,7 @@
             {% if user.is_authenticated and user.is_active %}
                 <div class="header-actions">
                 {% header_search user %}
+                {% if user.is_superuser %}{% include "core/includes/email_copy.html" %}{% endif %}
                 <button
                     id="menu-button"
                     class="menu-button"
@@ -98,6 +100,7 @@
         <div class="container footer-content">
             <span>Fantazmaty CMS</span>
             <button type="button" class="secondary-button" data-theme-toggle aria-pressed="false">Włącz ciemny motyw</button>
+            <button type="button" class="secondary-button" data-theme-autumn aria-pressed="false">Motyw Jesieniara</button>
             <span>{% now "Y" %}</span>
         </div>
     </footer>
@@ -110,6 +113,7 @@
     <script src="{% static 'core/pagination.js' %}?v=39"></script>
     {% if user.is_authenticated %}<span hidden data-vocabulary-endpoint="{% url 'core:vocabulary_suggestions' %}"></span><script src="{% static 'core/vocabulary.js' %}?v=29" defer></script>{% endif %}
     <script src="{% static 'core/table-selection.js' %}?v=36"></script>
+    {% if user.is_superuser %}<script src="{% static 'core/email-copy.js' %}?v=43" defer></script>{% endif %}
     {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -2,25 +2,30 @@
     const key = "fantazmaty-theme";
     try {
         const saved = localStorage.getItem(key) || localStorage.getItem("theme");
-        document.documentElement.dataset.theme = saved === "dark" ? "dark" : "light";
+        document.documentElement.dataset.theme = ["dark", "autumn"].includes(saved) ? saved : "light";
     }
     catch (_) { document.documentElement.dataset.theme = "light"; }
     document.addEventListener("DOMContentLoaded", () => {
         const button = document.querySelector("[data-theme-toggle]");
-        if (button) {
-            const update = () => {
-                const dark = document.documentElement.dataset.theme === "dark";
-                button.textContent = dark ? "Włącz jasny motyw" : "Włącz ciemny motyw";
-                button.setAttribute("aria-pressed", String(dark));
-            };
-            button.addEventListener("click", () => {
-                const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
-                document.documentElement.dataset.theme = next;
-                try { localStorage.setItem(key, next); } catch (_) {}
-                update();
-            });
+        const autumn = document.querySelector("[data-theme-autumn]");
+        const update = () => {
+            const current = document.documentElement.dataset.theme;
+            if (button) {
+                button.textContent = current === "dark" ? "Włącz jasny motyw" : "Włącz ciemny motyw";
+                button.setAttribute("aria-pressed", String(current === "dark"));
+            }
+            if (autumn) autumn.setAttribute("aria-pressed", String(current === "autumn"));
+            const meta = document.querySelector('meta[name="theme-color"]');
+            if (meta) meta.content = current === "autumn" ? "#503322" : "#172434";
+        };
+        const setTheme = theme => {
+            document.documentElement.dataset.theme = theme;
+            try { localStorage.setItem(key, theme); } catch (_) {}
             update();
-        }
+        };
+        button?.addEventListener("click", () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark"));
+        autumn?.addEventListener("click", () => setTheme(document.documentElement.dataset.theme === "autumn" ? "light" : "autumn"));
+        update();
         const palette = value => {
             value = value.trim().toLocaleLowerCase("pl");
             if (/koordynator|^k\. redakcji$|^k\. weryfikacji$/.test(value)) return "coordinator";

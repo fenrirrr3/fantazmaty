@@ -48,7 +48,8 @@ def get_page_size(request, default=DEFAULT_PAGE_SIZE, *, size_param='page_size')
     requested = _positive_integer(request.GET.get(size_param), None)
     if requested not in ALLOWED_PAGE_SIZES:
         return saved
-    if session is not None and preferences.get(key) != requested:
+    email_copy = request.headers.get('X-CMS-Email-Copy') == '1' and getattr(getattr(request, 'user', None), 'is_superuser', False)
+    if session is not None and not email_copy and preferences.get(key) != requested:
         preferences.pop(key, None)
         preferences[key] = requested
         # Detail views can have many different URLs; keep the session bounded.

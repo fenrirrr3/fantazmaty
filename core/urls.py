@@ -31,7 +31,10 @@ from core.views.audiobooks import audiobook_list, update_text_audiobook
 
 from core.views import novels, vocabulary
 
+from core.views.recruitment_mailbox import recruitment_mailbox
+
 urlpatterns = [
+    path('rekrutacja/skrzynka/', recruitment_mailbox, name='recruitment_mailbox'),
     path('powiesci/', novels.novel_list, name='novel_list'),
     path('powiesci/dodaj/', novels.novel_add, name='novel_add'),
     path('powiesci/<int:novel_id>/', novels.novel_detail, name='novel_detail'),

@@ -169,6 +169,11 @@ class EditRevision(models.Model):
 
 
 class MailboxConnection(models.Model):
+    class Purpose(models.TextChoices):
+        SUBMISSIONS = 'submissions', 'Zgłoszenia tekstów'
+        RECRUITMENT = 'recruitment', 'Rekrutacja do zespołu'
+
+    purpose = models.CharField('przeznaczenie', max_length=20, choices=Purpose.choices, default=Purpose.SUBMISSIONS)
     class Security(models.TextChoices):
         SSL = 'ssl', 'SSL/TLS (zwykle port 993)'
         STARTTLS = 'starttls', 'STARTTLS (zwykle port 143)'

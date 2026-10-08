@@ -9,7 +9,7 @@ GROUPS = (
     ('novels', 'Powieści i słownik', ('novels', 'texts.novelprofile', 'texts.vocabularyterm')),
     ('translations', 'Tłumaczenia', ('texts.texttranslation', 'texts.foreignauthor', 'texts.translator')),
     ('authors', 'Autorzy', ('authors.author', 'blacklist')),
-    ('team', 'Zespół i konta', ('people.person', 'auth.user', 'people.vacation', 'core.recruitment')),
+    ('team', 'Zespół i konta', ('people.person', 'auth.user', 'people.vacation', 'core.recruitment', 'recruitment_mailbox')),
     ('art', 'Ilustracje i okładki', ('illustrations.illustration', 'illustrations.illustrator', 'illustrators_active', 'illustrators_inactive', 'illustrations.coverproposal')),
     ('audio', 'Audiobooki i audiodeskrypcje', ('audiobooks_queue', 'audiobooks_blacklist', 'audio_description_tasks')),
     ('history', 'Historia i diagnostyka', ('workflow.workflowstage', 'workflow.workflowroleassignment', 'core.useractivity', 'core.workflowevent')),
@@ -42,6 +42,7 @@ def grouped_app_list(original):
     models = {f"{app['app_label']}.{m['object_name'].lower()}": dict(m) for app in original for m in app['models']}
     # Reuse registered admins, their search, permissions and edit forms.
     shortcuts = (
+        ('recruitment_mailbox', 'core.mailboxconnection', 'Skrzynka rekrutacyjna', {'purpose__exact': 'recruitment'}),
         ('novels', 'texts.anthology', 'Powieści', {'is_novel__exact': '1'}),
         ('audiobooks_queue', 'texts.text', 'Audiobooki do nagrywania',
          {'for_recording__exact': '1', 'audiobook_blacklisted__exact': '0'}),

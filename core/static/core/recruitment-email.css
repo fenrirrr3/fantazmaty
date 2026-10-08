@@ -1,0 +1,27 @@
+.email-copy { position: relative; }
+.email-copy > button { background: transparent; }
+.email-copy-panel {
+    position: absolute; right: 0; top: calc(100% + .6rem); z-index: 60;
+    width: min(25rem, calc(100vw - 2rem)); padding: 1rem;
+    border: 1px solid var(--border-strong); border-radius: .8rem;
+    background: var(--surface); color: var(--text); box-shadow: 0 8px 30px #0002;
+}
+.email-copy-panel p { color: var(--muted); margin: .65rem 0; font-size: .9rem; }
+.email-copy-panel label { color: var(--text); }
+.email-copy-panel select, .email-copy-panel textarea { width: 100%; margin: .4rem 0; }
+.recruitment-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; }
+.recruitment-mail-roles { width: min(100%, 30rem); }
+.recruitment-mail-roles select { min-height: 13rem; width: 100%; }
+.recruitment-mail-card .cms-pagination { margin: 1rem 0; }
+[data-theme-autumn][aria-pressed="true"] { background: var(--primary-light); border-color: var(--primary); color: var(--primary-dark); }
+
+:root[data-theme="autumn"] :is(.header-search-toggle, .menu-button, .logout-button, .admin-button) { border-color: #b8956f; }
+:root[data-theme="autumn"] :is(.header-search-toggle, .menu-button, .logout-button, .admin-button):hover { background: #70472d; }
+:root[data-theme="autumn"] .brand-text small { color: #eddbc4; }
+@media (max-width: 600px) {
+    .email-copy-panel, .header-search-panel { position: fixed; top: calc(var(--header-height) + .5rem); right: 1rem; max-height: calc(100dvh - var(--header-height) - 2rem); overflow: auto; }
+}
+@media (max-width: 480px) {
+    .site-header .navigation, .header-actions { gap: 6px; }
+    .site-header .brand-mark { display: none; }
+}

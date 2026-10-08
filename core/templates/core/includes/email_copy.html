@@ -1,0 +1,13 @@
+<div class="email-copy" data-email-copy>
+    <button type="button" class="header-search-toggle" data-email-copy-toggle aria-label="Kopiuj adresy e-mail z tabeli" title="Kopiuj adresy e-mail z tabeli, ze wszystkich stron" aria-expanded="false" aria-controls="email-copy-panel">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="7" y="7" width="14" height="12" rx="2"/><path d="m7 9 7 5 7-5M17 4H5a2 2 0 0 0-2 2v10"/></svg>
+    </button>
+    <div id="email-copy-panel" class="email-copy-panel" hidden>
+        <label for="email-copy-table">Tabela</label>
+        <select id="email-copy-table" data-email-copy-table></select>
+        <p>Wszystkie strony, zgodnie z bieżącymi filtrami. Powtarzające się adresy zostaną pominięte.</p>
+        <button type="button" class="primary-button" data-email-copy-run>Kopiuj adresy</button>
+        <p role="status" aria-live="polite" data-email-copy-status></p>
+        <textarea data-email-copy-result aria-label="Adresy e-mail do skopiowania" rows="4" readonly hidden></textarea>
+    </div>
+</div>

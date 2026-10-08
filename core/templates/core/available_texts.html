@@ -65,7 +65,6 @@
 
                         <th scope="col" class="numeric-cell" data-sort-key="length">Długość</th>
                         <th scope="col" data-sort-key="status">Etap</th>
-                        <th scope="col">Wymagana rola</th>
                         <th scope="col" data-copy="false">Akcja</th>
                     </tr>
                 </thead>
@@ -133,19 +132,13 @@
                                 {% include "core/includes/workflow_badge.html" with workflow_stage=stage %}
                             </td>
 
-                            <td>
-                                <span class="role-badge">
-                                    {{ stage.required_group }}
-                                </span>
-                            </td>
-
                             <td data-double-copy class="stage-action-cell" data-copy="false">
                                 {% include "core/includes/take_stage_form.html" %}
                             </td>
                         </tr>
                     {% empty %}
                         <tr>
-                            <td colspan="7">
+                            <td colspan="6">
                                 <div class="empty-results-panel">
                                     <strong>Brak dostępnych zadań dla twoich ról.</strong>
                                     <p>

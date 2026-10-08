@@ -335,7 +335,7 @@ class MailboxConnectionForm(forms.ModelForm):
 
     class Meta:
         model = MailboxConnection
-        fields = ('name', 'host', 'port', 'security', 'username', 'password', 'folder', 'recruitment_subjects', 'is_active')
+        fields = ('name', 'purpose', 'host', 'port', 'security', 'username', 'password', 'folder', 'recruitment_subjects', 'is_active')
 
     def clean_password(self):
         password = self.cleaned_data.get('password', '')
@@ -358,6 +358,23 @@ from core.admin_newsletter_recovery import NewsletterRecoveryAdminMixin
 @admin.register(MailboxConnection)
 class MailboxConnectionAdmin(NewsletterRecoveryAdminMixin, SuperuserOnlyAdminMixin, admin.ModelAdmin):
     form = MailboxConnectionForm
-    list_display = ('name', 'host', 'username', 'folder', 'is_active')
-    fields = ('name', 'host', 'port', 'security', 'username', 'password', 'folder', 'recruitment_subjects', 'is_active')
+    list_display = ('name', 'purpose', 'host', 'username', 'folder', 'is_active')
+    list_filter = ('purpose', 'is_active')
+    fields = ('name', 'purpose', 'host', 'port', 'security', 'username', 'password', 'folder', 'recruitment_subjects', 'is_active')
     search_fields = ('name', 'host', 'username')
+
+    def get_changeform_initial_data(self, request):
+        from urllib.parse import parse_qs
+        initial = super().get_changeform_initial_data(request)
+        filters = parse_qs(request.GET.get('_changelist_filters', ''))
+        if filters.get('purpose__exact') == [MailboxConnection.Purpose.RECRUITMENT]:
+            initial['purpose'] = MailboxConnection.Purpose.RECRUITMENT
+        return initial
+
+    def get_fields(self, request, obj=None):
+        fields = list(super().get_fields(request, obj))
+        purpose = request.POST.get('purpose') if request.method == 'POST' else (
+            obj.purpose if obj else self.get_changeform_initial_data(request).get('purpose'))
+        if purpose == MailboxConnection.Purpose.RECRUITMENT:
+            fields.remove('recruitment_subjects')
+        return fields

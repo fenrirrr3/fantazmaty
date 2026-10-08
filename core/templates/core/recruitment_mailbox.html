@@ -1,0 +1,27 @@
+{% extends "core/base.html" %}
+{% block title %}Rekrutacja – skrzynka | Fantazmaty CMS{% endblock %}
+{% block extra_css %}{% load static %}<link rel="stylesheet" href="{% static 'core/intake.css' %}">{% endblock %}
+{% block content %}
+<header class="page-header"><h1 class="page-title">Rekrutacja – pobieranie ze skrzynki</h1></header>
+<p class="recruitment-actions"><a class="secondary-button" href="{% url 'core:recruitment_list' %}">Rekrutacja</a><a class="secondary-button" href="{% url 'admin:core_mailboxconnection_changelist' %}?purpose__exact=recruitment">Ustawienia skrzynki rekrutacyjnej</a></p>
+<section class="card recruitment-mail-card"><div class="card-body">
+<p>Pobierz nagłówki wiadomości, wybierz zgłoszenia i zapisz je w ZIP jako oryginalne pliki EML (wraz z załącznikami). Automatyczny zapis danych kandydatów zostanie włączony po ustaleniu formatu zgłoszeń.</p>
+{% if error %}<p class="message error" role="alert">{{ error }}</p>{% endif %}
+{% if mailbox %}<p>Skrzynka: {{ mailbox.name }} · {{ mailbox.folder }}</p>
+<form method="post">{% csrf_token %}
+<div class="filter-field recruitment-mail-roles">{{ form.roles.label_tag }}{{ form.roles }}{{ form.roles.errors }}<p class="muted-text">{{ form.roles.help_text }}</p></div>
+<div class="mailbox-options"><label class="mailbox-option">{{ form.show_downloaded }}<span>{{ form.show_downloaded.label }}</span></label></div>
+<p><button class="primary-button" type="submit" name="action" value="headers">Pobierz nagłówki od początku</button></p>
+{% if selection %}
+<input type="hidden" name="selection" value="{{ selection }}">
+<p>Dopasowane wiadomości: {{ total }}. Pobieraj najwyżej 20 wiadomości jednocześnie.</p>
+<div class="table-container"><table data-copy-table data-pagination="off" data-email-mailbox="true">
+<thead><tr><th><input type="checkbox" data-select-table aria-label="Zaznacz wszystkie wiadomości"></th><th>Nadawca</th><th>Temat</th><th>Data</th><th>Stan</th></tr></thead>
+<tbody>{% for row in rows %}<tr><td><input type="checkbox" name="selected" value="{{ row.uid }}" aria-label="Wybierz wiadomość: {{ row.subject }}"></td><td>{{ row.sender }}</td><td><strong>{{ row.subject }}</strong></td><td>{{ row.date }}</td><td>{{ row.downloaded|yesno:'Pobrano,Nowa' }}</td></tr>{% empty %}<tr><td colspan="5">Brak wiadomości pasujących do filtrów.</td></tr>{% endfor %}</tbody>
+</table></div>
+<nav class="cms-pagination" aria-label="Strony wiadomości">{% if previous_cursor %}<button class="secondary-button" name="cursor" value="{{ previous_cursor }}">Nowsze wiadomości</button>{% endif %}{% if next_cursor %}<button class="secondary-button" name="cursor" value="{{ next_cursor }}">Starsze wiadomości</button>{% endif %}</nav>
+{% if rows %}<button class="primary-button" name="action" value="download">Pobierz wybrane wiadomości</button>{% endif %}
+{% endif %}
+</form>{% endif %}
+</div></section>
+{% endblock %}

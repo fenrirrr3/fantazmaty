@@ -42,9 +42,14 @@ def _positive(value):
     return value
 
 
-def read_headers(config, cursor=None, excluded=None, subject_filter=""):
+def read_headers(config, cursor=None, excluded=None, subject_filter="", *, recruitment_roles=None):
     if subject_filter and subject_filter not in config.subject_choices():
         raise MailboxError("Wybierz nabór zapisany w ustawieniach skrzynki.")
+    from core.recruitment_roles import ROLE_CHOICES
+    role_labels = dict(ROLE_CHOICES)
+    if recruitment_roles is not None:
+        if not recruitment_roles or any(role not in role_labels for role in recruitment_roles) or subject_filter:
+            raise MailboxError('Wybierz co najmniej jedną rolę rekrutacyjną z listy.')
     client = None
     try:
         password = config.get_password()
@@ -80,7 +85,18 @@ def read_headers(config, cursor=None, excluded=None, subject_filter=""):
         # Stable upper UID excludes arrivals after the first page. UID search
         # remains correct if another mail client deletes messages meanwhile.
         uid_range = f'1:{anchor}' if anchor else '1:*'
-        if subject_filter:
+        if recruitment_roles is not None:
+            # IMAP SUBJECT is a case-insensitive substring search. Union retains
+            # messages matching several selected roles without duplicating them.
+            matching = set()
+            for role in dict.fromkeys(recruitment_roles):
+                quoted = ('"' + role_labels[role] + '"').encode('utf-8')
+                status, blocks = client.uid('SEARCH', 'CHARSET', 'UTF-8', 'UID', uid_range, 'SUBJECT', quoted)
+                if status != 'OK':
+                    raise MailboxError('Serwer odrzucił wyszukiwanie ról w temacie wiadomości.')
+                matching.update(uid for block in blocks or [] if block for uid in block.split())
+            status, data = 'OK', [b' '.join(matching)]
+        elif subject_filter:
             phrase = f'Nabór: „{subject_filter}”'
             quoted = ('"' + phrase.replace('\\', '\\\\').replace('"', '\\"') + '"').encode('utf-8')
             try:
@@ -134,7 +150,7 @@ def read_headers(config, cursor=None, excluded=None, subject_filter=""):
             def field(name):
                 return str(message.get(name, '')).replace('\r', ' ').replace('\n', ' ')[:2000]
             result['rows'].append({'uid': int(uid[1]), 'sender': field('Reply-To') or field('From'),
-                'subject': story_title(field('Subject')), 'date': polish_date(field('Date')),
+                'subject': field('Subject') if recruitment_roles is not None else story_title(field('Subject')), 'date': polish_date(field('Date')),
                 'message_id': field('Message-ID')})
         result['rows'].sort(key=lambda item: item['uid'], reverse=True)
         return result
