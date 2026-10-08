@@ -1,4 +1,4 @@
-"""Recruitment mail storage without guessing the future candidate form layout."""
+"""Recruitment mail storage and parsing of the generated application form."""
 import hashlib
 import re
 from email import policy
@@ -13,7 +13,7 @@ from django.utils import timezone
 from lxml import html, etree
 
 from core.models import Recruitment, RecruitmentMailSource, MailboxConnection, MailboxDownload
-from core.recruitment_roles import ROLE_CHOICES
+from core.recruitment_message import form_fields, roles_in_subject
 from core.services.mailbox import MailboxError
 from core.services.mailbox_import import mailbox_key
 
@@ -69,15 +69,11 @@ def parse_sample(raw):
                 received = None
         except (ValueError, TypeError, OverflowError):
             received = None
-        # Longer names must not accidentally add the general Korekta role.
-        remaining, matched = subject.casefold(), set()
-        for key, label in sorted(ROLE_CHOICES, key=lambda choice: -len(choice[1])):
-            if label.casefold() in remaining:
-                matched.add(key)
-                remaining = remaining.replace(label.casefold(), ' ')
-        return dict(mail_subject=subject, mail_sender=sender, email=address,
-            mail_body=plain_body(message), mail_received_at=received,
-            mail_roles=[key for key, _ in ROLE_CHOICES if key in matched],
+        body = plain_body(message)
+        fields = form_fields(body)
+        return dict(mail_subject=subject, mail_sender=sender, email=fields.get('email') or address,
+            applicant_name=fields.get('name', ''), mail_body=body, mail_received_at=received,
+            mail_roles=fields.get('roles') or roles_in_subject(subject),
             mail_fingerprint=hashlib.sha256(raw).hexdigest())
     except (ValueError, TypeError, AttributeError, RecursionError) as error:
         raise MailboxError('Nie udało się odczytać struktury wiadomości. Niczego nie zapisano.') from error

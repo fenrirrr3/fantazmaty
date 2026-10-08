@@ -269,6 +269,8 @@ def prepare_table_sort(request, items):
         return items, columns
     model = queryset.model._meta.label_lower
     columns = MODELS.get(model, {}).copy()
+    if model == 'core.recruitment' and '_candidate_sort' in queryset.query.annotations:
+        columns['Nadawca'] = ('sender', ('_candidate_sort',))
     if model == 'people.person' and 'last_activity_at' in queryset.query.annotations:
         columns.update({'Data logowania': ('last_activity', ('last_activity_at',)), 'Data działania': ('last_activity', ('last_activity_at',))})
         if 'last_action' in queryset.query.annotations:

@@ -56,11 +56,13 @@ class Recruitment(models.Model):
         DESIGNERS = 'designers', 'Graficy'
         OTHER = 'other', 'Inne'
 
+    applicant_name = models.CharField('imię i nazwisko z formularza', max_length=300, blank=True)
+    decision_reason = models.TextField('uzasadnienie decyzji', blank=True)
     mail_subject = models.CharField('temat wiadomości', max_length=2000, blank=True)
     mail_sender = models.CharField('nadawca wiadomości', max_length=2000, blank=True)
     mail_body = models.TextField('treść wiadomości', blank=True)
     mail_received_at = models.DateTimeField('data wiadomości', null=True, blank=True)
-    mail_roles = models.JSONField('role z tematu', default=list, blank=True)
+    mail_roles = models.JSONField('wybrane role', default=list, blank=True)
     mail_fingerprint = models.CharField(max_length=64, null=True, blank=True, unique=True, editable=False)
 
     first_name = models.CharField('imię', max_length=150, default='')
@@ -108,7 +110,7 @@ class Recruitment(models.Model):
 
     @property
     def full_name(self):
-        return f"{self.first_name} {self.last_name}".strip()
+        return f"{self.first_name} {self.last_name}".strip() or self.applicant_name
 
     @property
     def accepted(self):

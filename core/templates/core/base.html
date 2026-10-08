@@ -21,7 +21,7 @@
     <link rel="stylesheet" href="{% static 'core/pagination.css' %}?v=40">
     <link rel="stylesheet" href="{% static 'core/novels.css' %}?v=38">
     <link rel="stylesheet" href="{% static 'core/illustration-status.css' %}?v=36">
-    <link rel="stylesheet" href="{% static 'core/recruitment-email.css' %}?v=45">
+    <link rel="stylesheet" href="{% static 'core/recruitment-email.css' %}?v=46">
     {% block extra_css %}{% endblock %}
 
 </head>
@@ -99,8 +99,10 @@
     <footer class="site-footer">
         <div class="container footer-content">
             <span>Fantazmaty CMS</span>
+            <div class="theme-buttons" role="group" aria-label="Motyw strony">
             <button type="button" class="secondary-button" data-theme-toggle aria-pressed="false">Włącz ciemny motyw</button>
             <button type="button" class="secondary-button" data-theme-autumn aria-pressed="false">Motyw Jesieniara</button>
+            </div>
             <span>{% now "Y" %}</span>
         </div>
     </footer>

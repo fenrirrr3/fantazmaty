@@ -6,7 +6,8 @@ from django.contrib import messages as notifications
 from django.contrib.auth.decorators import login_required
 from django.core import signing
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, Value, CharField
+from django.db.models.functions import Coalesce, Concat, NullIf, Trim
 from django.http import FileResponse, JsonResponse
 from django.shortcuts import render, redirect
 from django.views.decorators.cache import never_cache
@@ -66,12 +67,14 @@ def recruitment_register(request):
     status = request.GET.get('status', '')
     role = role if role in dict(choices) else ''
     status = status if status in Recruitment.Status.values else ''
-    records = Recruitment.objects.all()
+    records = Recruitment.objects.annotate(_candidate_sort=Coalesce(
+        NullIf(Trim(Concat('first_name', Value(' '), 'last_name')), Value('')),
+        NullIf('applicant_name', Value('')), 'mail_sender', output_field=CharField()))
     if status:
         records = records.filter(status=status)
     for term in query.split():
         records = records.filter(Q(first_name__plcontains=term) | Q(last_name__plcontains=term) |
-            Q(email__plcontains=term) | Q(mail_sender__plcontains=term) | Q(mail_subject__plcontains=term))
+            Q(applicant_name__plcontains=term) | Q(email__plcontains=term) | Q(mail_sender__plcontains=term) | Q(mail_subject__plcontains=term))
     if role:
         records = filter_role(records, role)
     page = paginate_items(request, records)

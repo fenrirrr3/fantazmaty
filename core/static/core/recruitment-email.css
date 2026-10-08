@@ -49,3 +49,12 @@
 .dashboard-intake-grid > .details-card { margin: 0; min-width: 0; }
 .dashboard-intake-grid > .details-card:only-child { grid-column: 1 / -1; }
 @media (max-width: 850px) { .dashboard-intake-grid { grid-template-columns: minmax(0, 1fr); } }
+
+.theme-buttons { display: flex; align-items: center; gap: .75rem; margin-inline: .75rem; }
+.theme-buttons > button { margin: 0; }
+.recruitment-detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.25rem; align-items: start; }
+.recruitment-message { white-space: pre-wrap; overflow-wrap: anywhere; }
+.recruitment-detail-heading { overflow-wrap: anywhere; }
+.recruitment-detail-grid .details-card { min-width: 0; }
+@media (max-width: 850px) { .recruitment-detail-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 480px) { .theme-buttons { margin-inline: 0; gap: .5rem; } .theme-buttons > button { padding-inline: .6rem; white-space: normal; } }

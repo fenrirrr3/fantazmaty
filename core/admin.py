@@ -142,11 +142,15 @@ class CoordinatorIntakeAdmin(admin.ModelAdmin):
 @admin.register(Recruitment)
 class RecruitmentAdmin(CoordinatorIntakeAdmin):
     form = RecruitmentForm
-    list_display = ('first_name', 'last_name', 'email', 'mail_subject', 'department', 'submitted_at', 'accepted', 'notified', 'notified_at')
+    list_display = ('candidate_display', 'email', 'mail_subject', 'department', 'submitted_at', 'accepted', 'notified', 'notified_at')
     list_filter = ('department', 'status', 'notified', 'submitted_at')
-    search_fields = ('first_name__plcontains', 'last_name__plcontains', 'email__plcontains', 'notes__plcontains', 'mail_subject__plcontains', 'mail_sender__plcontains')
+    search_fields = ('first_name__plcontains', 'last_name__plcontains', 'email__plcontains', 'notes__plcontains', 'applicant_name__plcontains', 'decision_reason__plcontains', 'mail_subject__plcontains', 'mail_sender__plcontains')
     readonly_fields = ('notified_at', 'updated_at', 'mail_sender', 'mail_subject', 'mail_received_at', 'mail_roles', 'mail_body')
     fields = (*RecruitmentForm.Meta.fields, 'mail_sender', 'mail_subject', 'mail_received_at', 'mail_roles', 'mail_body', 'notified_at', 'updated_at')
+
+    @admin.display(description='Imię i nazwisko', ordering='applicant_name')
+    def candidate_display(self, obj):
+        return obj.full_name or obj.mail_sender or '–'
 
     @admin.display(boolean=True, description='Przyjęty/Odrzucony', ordering='status')
     def accepted(self, obj):

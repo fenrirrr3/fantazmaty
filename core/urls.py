@@ -31,6 +31,7 @@ from core.views.audiobooks import audiobook_list, update_text_audiobook
 
 from core.views import novels, vocabulary
 
+from core.views.recruitment_detail import recruitment_detail
 from core.views.recruitment_mailbox import recruitment_mailbox
 
 urlpatterns = [
@@ -81,6 +82,7 @@ urlpatterns = [
     path('ekstrakty/dodaj/', intake.extract_edit, name='extract_add'),
     path('ekstrakty/<int:pk>/', intake.extract_edit, name='extract_edit'),
     path('rekrutacja/', intake.recruitment_list, name='recruitment_list'),
+    path('rekrutacja/<int:pk>/szczegoly/', recruitment_detail, name='recruitment_detail'),
     path('rekrutacja/dodaj/', intake.recruitment_edit, name='recruitment_add'),
     path('rekrutacja/<int:pk>/', intake.recruitment_edit, name='recruitment_edit'),
     path('recenzje/dodaj/', intake.review_create, name='review_create'),
