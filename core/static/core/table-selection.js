@@ -26,10 +26,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Keep the original anchor for repeated Shift clicks.
             } else anchors.set(key, box);
         });
-        table.addEventListener('change', () => {
+        table.addEventListener('change', event => {
             const all = table.querySelector('[data-select-table]');
             if (!all) return;
             const boxes = [...table.querySelectorAll('tbody input[name="selected"]')].filter(visible);
+            if (event.target === all) {
+                const checked = all.checked;
+                boxes.forEach(box => { box.checked = checked; });
+                anchors.clear();
+            }
             all.checked = boxes.length > 0 && boxes.every(box => box.checked);
             all.indeterminate = boxes.some(box => box.checked) && !all.checked;
         });

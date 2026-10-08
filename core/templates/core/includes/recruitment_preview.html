@@ -1,0 +1,7 @@
+<div data-preview-result>
+        <p data-preview-state role="status" aria-live="polite">{% if preview_error %}{{ preview_error }}{% elif not preview %}Kliknij temat wiadomości lub ją zaznacz. Przy kilku zaznaczonych pokaże się ostatnia wybrana wiadomość.{% endif %}</p>
+        <strong data-preview-subject>{{ preview.subject }}</strong>
+        <p data-preview-sender>{{ preview.sender }}</p>
+        <div class="recruitment-preview-body" data-preview-body>{{ preview.body }}</div>
+        <p class="muted-text" data-preview-truncated {% if not preview.truncated %}hidden{% endif %}>Podgląd skrócono do 100 000 znaków. W bazie zostanie zapisana pełna treść.</p>
+</div>

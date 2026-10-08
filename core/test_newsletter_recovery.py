@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock
 from django.test import TestCase, Client
 from django.contrib.auth import get_user_model
 from django.urls import reverse, resolve
-from core.models import NewsletterConsent
+from core.models import NewsletterConsent, MailboxConnection
 from core.admin_newsletter_recovery import extract_consent, recover_batch
 from core.services.mailbox import MailboxError
 
@@ -24,7 +24,7 @@ class RecoveryTests(TestCase):
         self.assertFalse(any(extract_consent(message(row))[1].values()))
         self.assertIsNone(extract_consent(message(row+'\n'+row)))
     def test_readonly_peek_idempotent_snapshot(self):
-        config=SimpleNamespace(pk=1,host='example.com',port=993,security='ssl',username='teksty@example.com',folder='INBOX',get_password=lambda:'secret')
+        config=SimpleNamespace(purpose=MailboxConnection.Purpose.SUBMISSIONS,pk=1,host='example.com',port=993,security='ssl',username='teksty@example.com',folder='INBOX',get_password=lambda:'secret')
         raw=message('Jan Nowak;Tytuł;fantasy;1200;jan@example.com;123;Nabór;premierach')
         from email.parser import BytesParser
         body=BytesParser().parsebytes(raw).get_payload(decode=True)

@@ -20,15 +20,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = new FormData(form); data.set('action', 'preview'); data.set('uid', uid);
         data.delete('selected'); data.delete('cursor'); data.delete('preview_uid');
         try {
-            const response = await fetch(form.action || location.href, {method: 'POST', body: data,
+            const response = await fetch(form.getAttribute('action') || location.href, {method: 'POST', body: data,
                 credentials: 'same-origin', signal: controller.signal});
             if (response.redirected) throw Error('Sesja wygasła. Odśwież stronę.');
-            const result = await response.json();
-            if (!response.ok) throw Error(result.error || 'Nie udało się pobrać wiadomości.');
+            const html = await response.text();
+            const result = new DOMParser().parseFromString(html, 'text/html').querySelector('[data-preview-result]');
+            if (!result) throw Error('Nie udało się pobrać wiadomości. Odśwież stronę i spróbuj ponownie.');
+            const text = name => result.querySelector(`[data-preview-${name}]`).textContent;
+            if (!response.ok) throw Error(text('state') || 'Nie udało się pobrać wiadomości.');
             if (revision !== serial) return;
-            subject.textContent = result.subject; sender.textContent = result.sender;
-            body.textContent = result.body || 'Wiadomość nie zawiera czytelnej treści tekstowej.';
-            truncated.hidden = !result.truncated; state.textContent = '';
+            // Only text is copied; mail markup and remote resources are never inserted.
+            subject.textContent = text('subject'); sender.textContent = text('sender');
+            body.textContent = text('body') || 'Wiadomość nie zawiera czytelnej treści tekstowej.';
+            truncated.hidden = result.querySelector('[data-preview-truncated]').hidden; state.textContent = '';
         } catch (error) {
             if (revision === serial && error.name !== 'AbortError') clear(error.message || 'Nie udało się pobrać treści.');
         } finally { if (revision === serial) panel.setAttribute('aria-busy', 'false'); }
@@ -43,7 +47,7 @@ document.addEventListener('DOMContentLoaded', () => {
         previewTimer = setTimeout(() => {
             const checked = event.target.matches('input[name="selected"]') && event.target.checked ? event.target : form.querySelector('input[name="selected"]:checked');
             if (checked) preview(checked.value);
-            else { controller?.abort(); ++serial; clear('Zaznacz wiadomość lub kliknij Podgląd.'); panel.setAttribute('aria-busy', 'false'); }
+            else { controller?.abort(); ++serial; clear('Kliknij temat wiadomości lub ją zaznacz.'); panel.setAttribute('aria-busy', 'false'); }
         }, 80);
     });
     const roles = form.querySelector('select[name="roles"]');

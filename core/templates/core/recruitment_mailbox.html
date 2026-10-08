@@ -16,11 +16,7 @@
     </section>
     <section class="recruitment-preview-panel" aria-label="Treść zaznaczonej wiadomości" aria-busy="false" data-mail-preview>
         <h2>Treść wiadomości</h2>
-        <p data-preview-state role="status" aria-live="polite">{% if not preview %}Zaznacz wiadomość lub kliknij Podgląd. Przy kilku zaznaczonych pokaże się ostatnia wybrana wiadomość.{% endif %}</p>
-        <strong data-preview-subject>{{ preview.subject }}</strong>
-        <p data-preview-sender>{{ preview.sender }}</p>
-        <div class="recruitment-preview-body" data-preview-body>{{ preview.body }}</div>
-        <p class="muted-text" data-preview-truncated {% if not preview.truncated %}hidden{% endif %}>Podgląd skrócono do 100 000 znaków. W bazie zostanie zapisana pełna treść.</p>
+        {% include "core/includes/recruitment_preview.html" %}
     </section>
 </div>
 {% if selection %}
@@ -39,19 +35,18 @@
 </fieldset>
 <p class="muted-text">Pole Powiadomiony zapisuje informację; nie wysyła wiadomości.</p>
 <div class="table-container"><table class="recruitment-samples-table" data-copy-table data-pagination="off" data-email-mailbox="true">
-<thead><tr><th><input type="checkbox" data-select-table aria-label="Zaznacz wszystkie wiadomości"></th><th>Nadawca</th><th>Temat</th><th>Data</th><th>Przyjęty/Odrzucony</th><th>Powiadomiony</th><th>Stan</th><th>Podgląd</th></tr></thead>
+<thead><tr><th><input type="checkbox" data-select-table aria-label="Zaznacz wszystkie wiadomości"></th><th>Nadawca</th><th>Temat</th><th>Data</th><th>Przyjęty/Odrzucony</th><th>Powiadomiony</th><th>Stan</th></tr></thead>
 <tbody>{% for row in rows %}<tr>
 <td><input type="checkbox" name="selected" value="{{ row.uid }}" {% if row.uid in selected %}checked{% endif %} aria-label="Wybierz wiadomość: {{ row.subject }}"></td>
-<td>{{ row.sender }}</td><td class="recruitment-subject"><strong>{{ row.subject }}</strong></td><td>{{ row.date }}</td>
+<td>{{ row.sender }}</td><td class="recruitment-subject"><button class="recruitment-subject-button" type="submit" name="preview_uid" value="{{ row.uid }}" data-preview-uid="{{ row.uid }}">{{ row.subject|default:"(bez tematu)" }}</button></td><td>{{ row.date }}</td>
 <td>{% include "core/includes/recruitment_decision.html" with record=row.record %}</td>
 <td><input type="checkbox" disabled {% if row.record.notified %}checked{% endif %} aria-label="Powiadomiony"> {{ row.record.notified|yesno:'Tak,Nie,Nie' }}</td>
 <td>{% if row.record %}W bazie{% elif row.downloaded %}Pobrano{% else %}Nowa{% endif %}</td>
-<td><button class="secondary-button" name="preview_uid" value="{{ row.uid }}" data-preview-uid="{{ row.uid }}">Podgląd</button></td>
-</tr>{% empty %}<tr><td colspan="8">Brak wiadomości pasujących do filtrów.</td></tr>{% endfor %}</tbody>
+</tr>{% empty %}<tr><td colspan="7">Brak wiadomości pasujących do filtrów.</td></tr>{% endfor %}</tbody>
 </table></div>
 <nav class="cms-pagination" aria-label="Strony wiadomości">{% if previous_cursor %}<button class="secondary-button" name="cursor" value="{{ previous_cursor }}">Nowsze wiadomości</button>{% endif %}{% if next_cursor %}<button class="secondary-button" name="cursor" value="{{ next_cursor }}">Starsze wiadomości</button>{% endif %}</nav>
 {% endif %}
 </form>{% endif %}
 </div></section>
 {% endblock %}
-{% block scripts %}<script src="{% static 'core/recruitment-samples.js' %}?v=44" defer></script>{% endblock %}
+{% block scripts %}<script src="{% static 'core/recruitment-samples.js' %}?v=45" defer></script>{% endblock %}

@@ -13,6 +13,7 @@ from core.forms import GlobalSearchForm
 from core.permissions import (
     can_view_author_data,
     can_view_reports,
+    is_coordinator,
     team_member_required,
 )
 from core.selectors.people import user_leave_information
@@ -27,6 +28,8 @@ from texts.models import Review
 @team_member_required
 def home(request):
     today = timezone.localdate()
+    from core.selectors.recruitment import pending_by_role
+    coordinator = is_coordinator(request.user)
     from core.permissions import is_reviewer_only
     reviewer_only = is_reviewer_only(request.user)
     workflow_summary = {"active_stages": [], "reserved_assignments": [],
@@ -60,12 +63,14 @@ def home(request):
             "can_view_authors": can_view_author_data(request.user),
             "can_view_reports": can_view_reports(request.user),
             "today": today,
+            "dashboard_coordinator": coordinator,
+            "pending_recruitment": pending_by_role() if coordinator else [],
             "pending_publication_reviews": (
-                ordinary(Review.objects).filter(status=Review.Status.ACCEPTED,
+                ordinary(Review.objects).accessible_to(request.user).filter(status=Review.Status.ACCEPTED,
                     author_notified_at__isnull=False, copied_text__isnull=True, publication_detached=False)
                     .exclude(anthology__status='ready')
                     .select_related('anthology', 'author').prefetch_related('coauthors').order_by('author_notified_at', 'pk')
-                if request.user.is_superuser else []
+                if coordinator else []
             ),
             "pending_notification_count": ordinary(Review.objects).awaiting_notification().count() if request.user.is_superuser else 0,
         },

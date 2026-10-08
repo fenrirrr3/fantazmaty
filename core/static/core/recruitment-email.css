@@ -11,7 +11,7 @@
 .email-copy-panel select, .email-copy-panel textarea { width: 100%; margin: .4rem 0; }
 .recruitment-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; }
 .recruitment-mail-roles { width: min(100%, 30rem); }
-.recruitment-mail-roles select { min-height: 13rem; width: 100%; }
+.recruitment-mail-roles select { min-height: 0; height: 7.5rem; width: 100%; }
 .recruitment-mail-card .cms-pagination { margin: 1rem 0; }
 .recruitment-preview-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.25rem; align-items: stretch; }
 .recruitment-role-panel, .recruitment-preview-panel { min-width: 0; padding: 1rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-alt); }
@@ -40,3 +40,12 @@
     .site-header .navigation, .header-actions { gap: 6px; }
     .site-header .brand-mark { display: none; }
 }
+
+.recruitment-role-panel .mailbox-options { margin-bottom: 1rem; }
+.recruitment-subject-button { padding: 0; border: 0; background: none; color: var(--primary); font: inherit; font-weight: 700; text-align: left; white-space: normal; overflow-wrap: anywhere; cursor: pointer; }
+.recruitment-subject-button:hover { text-decoration: underline; }
+.recruitment-preview-panel > [data-preview-result] { display: flex; flex-direction: column; min-height: 0; }
+.dashboard-intake-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.25rem; margin-bottom: 1.25rem; }
+.dashboard-intake-grid > .details-card { margin: 0; min-width: 0; }
+.dashboard-intake-grid > .details-card:only-child { grid-column: 1 / -1; }
+@media (max-width: 850px) { .dashboard-intake-grid { grid-template-columns: minmax(0, 1fr); } }

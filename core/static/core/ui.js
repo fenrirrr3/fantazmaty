@@ -8,12 +8,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const update = () => { end.min = start.value > todayMinimum ? start.value : todayMinimum; };
         start.addEventListener('change', update); update();
     });
-    main.addEventListener('change', event => {
-        if (!event.target.matches('[data-select-table]')) return;
-        event.target.closest('table').querySelectorAll('tbody input[name="selected"]').forEach(input => {
-            if (!input.disabled && !input.closest('tr').hidden && !input.closest('tr').classList.contains('cms-page-hidden')) { input.checked = event.target.checked; }
-        });
-    });
     main.querySelectorAll('form[data-filters]').forEach(form => {
         const params = new URLSearchParams(new FormData(form));
         const chips = document.createElement('div'); chips.className = 'active-filters'; chips.setAttribute('aria-label', 'Aktywne filtry');

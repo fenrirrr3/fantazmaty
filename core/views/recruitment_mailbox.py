@@ -25,7 +25,7 @@ SESSION_KEY = 'recruitment_sample_headers'
 
 class RecruitmentMailboxForm(forms.Form):
     roles = forms.MultipleChoiceField(label='Rola', choices=(('all', 'Wszystkie'), *ROLE_CHOICES),
-        initial=['all'], required=False, help_text='Wszystkie lub kilka wybranych ról. Pusty wybór oznacza Wszystkie.')
+        initial=['all'], required=False, widget=forms.SelectMultiple(attrs={'size': 4}), help_text='Wszystkie lub kilka wybranych ról. Pusty wybór oznacza Wszystkie.')
     show_downloaded = forms.BooleanField(label='Pokaż również zgłoszenia już pobrane lub dodane do bazy', required=False)
 
     def clean_roles(self):
@@ -60,12 +60,24 @@ def recruitment_register(request):
     # Wrapped by intake.recruitment_list's coordinator permission check.
     from core.pagination import paginate_items
     query = request.GET.get('q', '').strip()[:500]
+    from core.selectors.recruitment import filter_role, role_choices
+    choices = role_choices()
+    role = request.GET.get('role', '')
+    status = request.GET.get('status', '')
+    role = role if role in dict(choices) else ''
+    status = status if status in Recruitment.Status.values else ''
     records = Recruitment.objects.all()
+    if status:
+        records = records.filter(status=status)
     for term in query.split():
         records = records.filter(Q(first_name__plcontains=term) | Q(last_name__plcontains=term) |
             Q(email__plcontains=term) | Q(mail_sender__plcontains=term) | Q(mail_subject__plcontains=term))
+    if role:
+        records = filter_role(records, role)
     page = paginate_items(request, records)
-    return render(request, 'core/recruitment_register.html', {'items': page, 'page_obj': page, 'query': query})
+    return render(request, 'core/recruitment_register.html', {'items': page, 'page_obj': page, 'query': query,
+        'role': role, 'status': status, 'role_choices': choices,
+        'status_choices': [('new', 'Bez decyzji'), ('accepted', 'Przyjęty'), ('rejected', 'Odrzucony')]})
 
 
 @never_cache
@@ -146,7 +158,7 @@ def recruitment_mailbox(request):
                 raise MailboxError('Nieprawidłowy wybór wiadomości.') from None
             if not 1 <= len(selected) <= MAX_SAMPLES or not selected.issubset(selection['uids']):
                 raise MailboxError(f'Wybierz od 1 do {MAX_SAMPLES} wiadomości z pobranej listy.')
-            context['selected'] = selected
+            context['selected'] = {value for value in selection['uids'] if str(value) in request.POST.getlist('selected')}
             if action == 'bulk':
                 bulk = RecruitmentBulkForm(request.POST)
                 context['bulk_form'] = bulk
@@ -161,7 +173,7 @@ def recruitment_mailbox(request):
                 preview_data = {'subject': preview['mail_subject'], 'sender': preview['mail_sender'],
                     'body': body[:100000], 'truncated': len(body) > 100000}
                 if action == 'preview':
-                    return JsonResponse(preview_data)
+                    return render(request, 'core/includes/recruitment_preview.html', {'preview': preview_data})
                 context['preview'] = preview_data
                 return render(request, 'core/recruitment_mailbox.html', context)
             if action == 'download':
@@ -190,7 +202,7 @@ def recruitment_mailbox(request):
             return redirect(request.path)
     except MailboxError as error:
         if action == 'preview':
-            return JsonResponse({'error': str(error)}, status=400)
+            return render(request, 'core/includes/recruitment_preview.html', {'preview_error': str(error)}, status=400)
         context.setdefault('form', RecruitmentMailboxForm())
         context['error'] = str(error)
         return render(request, 'core/recruitment_mailbox.html', context, status=400 if request.method == 'POST' else 200)

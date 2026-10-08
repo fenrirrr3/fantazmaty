@@ -64,3 +64,28 @@ assert.equal(first.boxes[2].checked,true);
 // A different checkbox column does not change the original column.
 first.boxes[0].checked=false;first.boxes[6].column=1;click(first,6,true,true);assert.equal(first.boxes[0].checked,false);
 console.log('PASS: Polish/numeric/date/empty sorting, detail rows, server query preservation, Shift ranges, hidden/disabled rows, reversed order, independent tables and columns.');
+
+// Reproduce real bubbling: table listener runs before the main listener in ui.js.
+const main = new Element(); main.querySelectorAll = () => [];
+const mailTable = selectionTable(), untouched = selectionTable();
+mailTable.boxes.forEach(box => { box.name = 'selected'; });
+mailTable.boxes[6].name = 'notified'; mailTable.boxes[6].disabled = true;
+const master = {checked:false, indeterminate:false, matches:s=>s==='[data-select-table]', closest:()=>mailTable};
+mailTable.querySelector = s => s==='[data-select-table]' ? master : null;
+mailTable.querySelectorAll = s => mailTable.boxes.filter(box => !s.includes('name="selected"') || box.name==='selected');
+const selectCallbacks=[];
+const context={document:{addEventListener:(_,fn)=>selectCallbacks.push(fn),querySelector:()=>main,querySelectorAll:()=>[mailTable,untouched]}, Event:class {}};
+const ui=fs.readFileSync(path.join(assets,'ui.js'),'utf8');
+vm.runInNewContext(ui.slice(0,ui.indexOf('// Native selects')),context);
+vm.runInNewContext(fs.readFileSync(path.join(assets,'table-selection.js'),'utf8'),context);
+selectCallbacks.forEach(fn=>fn());
+function change(target) { const event={target}; mailTable.events.change(event); main.events.change?.(event); }
+master.checked=true; change(master);
+assert.deepEqual(mailTable.boxes.map(box=>box.checked),[true,true,false,false,true,true,false]);
+assert.equal(master.checked,true); assert.equal(master.indeterminate,false);
+assert.equal(untouched.boxes.some(box=>box.checked),false);
+mailTable.boxes[1].checked=false; change(mailTable.boxes[1]);
+assert.equal(master.checked,false); assert.equal(master.indeterminate,true);
+master.checked=false; change(master);
+assert.equal(mailTable.boxes.some(box=>box.checked),false);
+console.log('PASS: select-all bubbling, visible rows only, readonly flags, partial selection and deselection.');

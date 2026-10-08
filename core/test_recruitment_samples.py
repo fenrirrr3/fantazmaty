@@ -1,4 +1,5 @@
 from email.message import EmailMessage
+from lxml import html
 from io import BytesIO
 from unittest.mock import patch
 from zipfile import ZipFile
@@ -72,7 +73,9 @@ class RecruitmentSamplesTests(TestCase):
     @patch('core.views.recruitment_mailbox.fetch_messages', return_value=[sample(html=True)])
     def test_preview_is_plain_text_does_not_save_and_requires_signed_selection(self, fetch):
         response = self.client.post(self.url, self.payload('preview', uid=12))
-        data = response.json()
+        self.assertTrue(response['Content-Type'].startswith('text/html'))
+        doc = html.fromstring(response.content.decode('utf-8'))
+        data = {'body': doc.xpath('string(//*[@data-preview-body])')}
         self.assertIn('Moje zgłoszenie', data['body'])
         self.assertNotIn('<script', data['body']); self.assertNotIn('alert(1)', data['body'])
         self.assertNotIn('tracker', data['body'])
@@ -83,6 +86,21 @@ class RecruitmentSamplesTests(TestCase):
         # The non-JS preview renders the same escaped plain text beside Rola.
         response = self.client.post(self.url, self.payload('preview_html', preview_uid=12))
         self.assertContains(response, 'Moje zgłoszenie')
+        self.assertFalse(Recruitment.objects.exists())
+        self.assertContains(response, 'data-preview-uid="12"')
+        self.assertNotContains(response, '<th>Podgląd</th>')
+
+    def test_preview_fetches_fresh_mail_and_escapes_literal_markup(self):
+        raw = EmailMessage()
+        raw['Subject'] = 'Tytuł <img src="https://remote.invalid/title">'
+        raw.set_content('Nowa treść z serwera <img src="https://remote.invalid/body" onerror="alert(1)">')
+        with patch('core.views.recruitment_mailbox.fetch_messages', return_value=[{'uid': 12, 'raw': raw.as_bytes()}]) as fetch:
+            response = self.client.post(self.url, self.payload('preview', uid=12))
+        fetch.assert_called_once_with(self.box, 7, {12}, raw_messages=True, max_messages=50)
+        self.assertContains(response, 'Nowa treść z serwera')
+        self.assertContains(response, '&lt;img')
+        doc = html.fromstring(response.content.decode('utf-8'))
+        self.assertFalse(doc.xpath('//img|//script'))
         self.assertFalse(Recruitment.objects.exists())
 
     @patch('core.views.recruitment_mailbox.fetch_messages')

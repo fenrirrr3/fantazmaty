@@ -13,11 +13,20 @@ panel.querySelector = s => parts[s];
 const roles = node(); roles.options = [{value:'all',selected:true}, {value:'editors',selected:false}, {value:'reviewers',selected:false}];
 Object.defineProperty(roles,'selectedOptions',{get() { return this.options.filter(o=>o.selected); }});
 const form = node();
+// A named action control shadows HTMLFormElement.action in a real browser.
+form.action = {toString: () => '[object RadioNodeList]'};
+form.getAttribute = () => null;
 const checked = {value: '12', checked: true, matches: () => true};
 form.querySelector = s => s === '[data-mail-preview]' ? panel : s === 'select[name="roles"]' ? roles : checked;
 const callbacks = [];
 vm.runInNewContext(fs.readFileSync(path.resolve(__dirname,'../static/core/recruitment-samples.js'),'utf8'), {
     document: {addEventListener: (_, fn) => callbacks.push(fn), querySelector: () => form},
+    DOMParser: class { parseFromString(value) {
+        return {querySelector() { return value && {querySelector(selector) {
+            const key=selector.match(/data-preview-(.*)\]/)[1];
+            return key==='truncated' ? {hidden:!value.truncated} : {textContent:value[key] || ''};
+        }}; }};
+    } },
     FormData: class extends Map { constructor() { super(); } }, AbortController,
     location: {href:'https://cms.invalid/rekrutacja/skrzynka/'},
     setTimeout(fn) { const id=++timerId; timers.set(id,fn); return id; }, clearTimeout(id) { timers.delete(id); },
@@ -25,7 +34,7 @@ vm.runInNewContext(fs.readFileSync(path.resolve(__dirname,'../static/core/recrui
 });
 callbacks.forEach(fn=>fn());
 const tick = () => new Promise(resolve => setImmediate(resolve));
-const reply = (request, value) => request.resolve({ok:true, redirected:false, json:async()=>value});
+const reply = (request, value) => request.resolve({ok:true, redirected:false, text:async()=>value});
 function click(uid) {
     let prevented=false;
     form.events.click({target:{closest:()=>({dataset:{previewUid:uid}})}, preventDefault(){prevented=true;}});
@@ -35,6 +44,7 @@ function click(uid) {
     for(let i=0;i<50;i++) form.events.change({target:checked});
     assert.equal(timers.size,1); // Shift/select-all burst triggers just one preview.
     [...timers.values()][0](); timers.clear(); assert.equal(pending.length,1);
+    assert.equal(pending[0].url,'https://cms.invalid/rekrutacja/skrzynka/');
     assert.equal(pending[0].options.body.get('action'),'preview');
     assert.equal(pending[0].options.body.get('uid'),'12');
     click('13'); assert.equal(pending[0].options.signal.aborted,true);
@@ -47,7 +57,9 @@ function click(uid) {
     assert.equal(body.textContent,'');
     roles.options[0].selected=true; roles.events.change();
     assert.equal(roles.options[1].selected,false); assert.equal(roles.options[0].selected,true);
-    click('14'); pending[2].resolve({ok:false, redirected:false, json:async()=>({error:'Wybór wygasł'})});
+    click('14'); pending[2].resolve({ok:false, redirected:false, text:async()=>({state:'Wybór wygasł'})});
     await tick(); assert.equal(state.textContent,'Wybór wygasł'); assert.equal(panel.attrs['aria-busy'],'false');
+    click('15'); pending[3].resolve({ok:false, redirected:false, text:async()=>null});
+    await tick(); assert.match(state.textContent,/Odśwież stronę/);
     console.log('Recruitment preview: selection, batching, late responses, safe text, All and errors OK');
 })().catch(error=>{console.error(error);process.exitCode=1;});
