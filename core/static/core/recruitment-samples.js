@@ -46,13 +46,13 @@ document.addEventListener('DOMContentLoaded', () => {
         clearTimeout(previewTimer);
         if (event.target.matches('[data-select-table]')) {
             controller?.abort(); ++serial;
-            clear('Kliknij temat wiadomości, aby zobaczyć jej treść.'); panel.setAttribute('aria-busy', 'false');
+            clear('Kliknij temat wiadomości.'); panel.setAttribute('aria-busy', 'false');
             return;
         }
         previewTimer = setTimeout(() => {
             const checked = event.target.matches('input[name="selected"]') && event.target.checked ? event.target : form.querySelector('input[name="selected"]:checked');
             if (checked) preview(checked.value);
-            else { controller?.abort(); ++serial; clear('Kliknij temat wiadomości lub ją zaznacz.'); panel.setAttribute('aria-busy', 'false'); }
+            else { controller?.abort(); ++serial; clear('Kliknij temat wiadomości.'); panel.setAttribute('aria-busy', 'false'); }
         }, 80);
     });
     const roles = form.querySelector('select[name="roles"]');

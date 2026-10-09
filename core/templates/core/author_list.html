@@ -61,7 +61,7 @@
             </div>
 
             <div class="filter-field">
-                <label for="author-anthology">Antologie (brak wyboru – wszystkie)</label>
+                <label for="author-anthology">Antologie</label>
                 <select id="author-anthology" name="anthology" multiple>
 
                     {% for anthology in anthologies %}
@@ -77,7 +77,7 @@
 
             <div class="filter-field">
                 <input type="hidden" name="accepted" value="0">
-                <label for="author-accepted">
+                <label for="author-accepted" class="filter-toggle-button">
                     <input id="author-accepted" type="checkbox" name="accepted" value="1"
                         {% if accepted_only %}checked{% endif %}>
                     Przyjęci

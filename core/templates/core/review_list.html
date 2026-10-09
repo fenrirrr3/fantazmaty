@@ -100,7 +100,7 @@
 <input id="review-completed" type="number" name="completed" min="0" max="6" step="1" value="{{ selected_completed }}" placeholder="Wszystkie">
             </div>
 
-            <fieldset class="multi-filter-field">
+            <div class="review-filter-bottom"><fieldset class="multi-filter-field review-status-filter">
                 <legend>Status zgłoszenia</legend>
                 <details class="checkbox-dropdown" data-checkbox-dropdown data-empty-label="Wszystkie statusy"><summary><span data-checkbox-summary>Statusy</span></summary><div class="checkbox-dropdown-options">
                     {% for value, label in status_choices %}
@@ -120,7 +120,7 @@
                 </p>
             </fieldset>
 
-            <div class="filter-actions">
+            <div class="filter-actions" data-active-filters-target>
                 <button type="submit" class="primary-button">Filtruj</button>
                 <a
                     href="{% url 'core:review_list' %}?old_reviews={% if old_reviews %}1{% else %}0{% endif %}"
@@ -128,61 +128,9 @@
                 >
                     Wyczyść filtry
                 </a>
-            </div>
+            </div></div>
         </form>
     </section>
-
-    {% if can_perform_bulk_actions and bulk_action_form %}
-        <form
-            id="review-bulk-form"
-            method="post"
-            action="{% url 'core:bulk_review_action' %}"
-            data-bulk-form
-        >
-            {% csrf_token %}{% edit_version %}
-            <details class="bulk-action-panel">
-                <summary class="bulk-action-toggle">
-                    <span>Operacje zbiorcze</span>
-                </summary>
-
-                <div class="bulk-action-content">
-                    <p class="form-help">
-                        Zaznaczenie dotyczy bieżącej strony.
-                        {% if old_reviews %}
-                            Archiwalne zgłoszenia można wyeksportować.
-                            Zmiana ich statusu jest zablokowana.
-                        {% endif %}
-                    </p>
-                    <p>Zaznaczono: <strong data-selected-count>0</strong></p>
-
-                    {{ bulk_action_form.non_field_errors }}
-
-                    <div class="bulk-action-fields">
-                        {% for field in bulk_action_form %}
-                            {% if field.is_hidden %}
-                                {{ field }}
-                            {% else %}
-                                <div class="filter-field">
-                                    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-                                    {{ field }}
-                                    {{ field.errors }}
-                                    {% if field.help_text %}
-                                        <p class="form-help">{{ field.help_text }}</p>
-                                    {% endif %}
-                                </div>
-                            {% endif %}
-                        {% endfor %}
-                    </div>
-
-                    <div class="general-notes-actions">
-                        <button type="submit" class="primary-button">
-                            Wykonaj dla zaznaczonych
-                        </button>
-                    </div>
-                </div>
-            </details>
-        </form>
-    {% endif %}
 
     <section class="card" aria-label="Lista recenzji">
         
@@ -199,17 +147,6 @@
                 </caption>
                 <thead>
                     <tr>
-                        {% if can_perform_bulk_actions and bulk_action_form %}
-                            <th scope="col" data-copy="false">
-                                <input
-                                    type="checkbox"
-                                    form="review-bulk-form"
-                                    class="select-all-records"
-                                    data-select-all
-                                    aria-label="Zaznacz wszystkie zgłoszenia na tej stronie"
-                                >
-                            </th>
-                        {% endif %}
                         <th scope="col" data-sort-key="anthology">Antologia</th>
                         <th scope="col" data-sort-key="title" class="sticky-title">Tytuł</th>
                         {% if can_view_authors %}
@@ -226,19 +163,6 @@
                 <tbody>
                     {% for review in reviews %}
                         <tr>
-                            {% if can_perform_bulk_actions and bulk_action_form %}
-                                <td data-copy="false">
-                                    <input
-                                        type="checkbox"
-                                        name="selected_reviews"
-                                        value="{{ review.pk }}"
-                                        form="review-bulk-form"
-                                        class="row-selection"
-                                        data-select-item
-                                        aria-label="Zaznacz zgłoszenie: {{ review.title }}"
-                                    >
-                                </td>
-                            {% endif %}
 
                             <td>
                                 {% if review.anthology %}
@@ -355,7 +279,7 @@
                         </tr>
                     {% empty %}
                         <tr>
-                            <td colspan="{% if can_perform_bulk_actions and bulk_action_form %}{% if can_view_authors %}10{% else %}9{% endif %}{% else %}{% if can_view_authors %}9{% else %}8{% endif %}{% endif %}">
+                            <td colspan="{% if can_view_authors %}9{% else %}8{% endif %}">
                                 <div class="empty-results-panel">
                                     <strong>Nie znaleziono zgłoszeń.</strong>
                                     <p>Zmień kryteria wyszukiwania lub wyczyść filtry.</p>

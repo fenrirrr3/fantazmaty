@@ -109,14 +109,16 @@ class NovelPanelTests(TestCase):
         response = self.client.post(url, {'novel_token': edit_token(self.book, self.admin), 'chapter_number': 1, 'length': 0})
         self.assertEqual(response.status_code, 400)
 
-    def test_chapter_tables_skip_pagination_but_regular_story_does_not(self):
+    def test_chapter_tables_and_story_work_stages_skip_pagination(self):
         response = self.client.get(reverse('core:assigned_text_detail', args=[self.chapter.pk]))
         tables = html.fromstring(response.content).xpath('//main//table')
         self.assertTrue(tables)
         self.assertTrue(all(table.get('data-pagination') == 'off' for table in tables))
         story = Text.objects.create(title='Opowiadanie', length=100)
         response = self.client.get(reverse('core:assigned_text_detail', args=[story.pk]))
-        self.assertFalse(html.fromstring(response.content).xpath('//main//table[@data-pagination="off"]'))
+        doc = html.fromstring(response.content)
+        self.assertEqual(doc.xpath('//section[@aria-labelledby="workflow-heading"]//table/@data-pagination'), ['off'])
+        self.assertFalse(doc.xpath('//*[@id="text-stage-history"]//table[@data-pagination="off"]'))
 
     def test_old_approval_fields_removed(self):
         self.assertFalse({'approved_at', 'approved_by', 'approved_signature'} & {field.name for field in NovelProfile._meta.fields})

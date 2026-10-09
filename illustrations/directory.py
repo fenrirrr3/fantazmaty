@@ -62,15 +62,19 @@ def illustrator_list(request):
     check_access(request.user)
     query = request.GET.get('q', '').strip()[:200]
     show_inactive = request.GET.get('show_inactive') == '1'
-    rows = directory_rows(include_inactive=show_inactive).annotate(artist_name=Illustrator.display_name_expression()).order_by('artist_name', 'pk')
+    from django.db.models.functions import Concat
+    from django.db.models import Value, CharField
+    rows = directory_rows(include_inactive=show_inactive).annotate(artist_name=Concat('first_name', Value(' '), 'last_name', output_field=CharField())).order_by('artist_name', 'pk')
     if query:
         rows = rows.filter(Q(first_name__plcontains=query) | Q(last_name__plcontains=query)
                            | Q(pseudonym__plcontains=query) | Q(email__icontains=query) | Q(preferences__plcontains=query))
     page = paginate_queryset(request, rows)
-    from .contact_forms import duplicate_display_names, contact_label
+    from .contact_forms import duplicate_display_names, identity_key
     duplicates = duplicate_display_names()
     for person in page:
-        person.directory_label = contact_label(person, duplicates)
+        person.directory_label = str(person) + (f' ({person.pseudonym.strip()})' if person.pseudonym.strip() else '')
+        if identity_key(person.display_name) in duplicates:
+            person.directory_label += f' (ID {person.pk})'
     return render(request, 'core/illustrator_list.html', {'page_obj': page, 'query': query, 'show_inactive': show_inactive})
 
 

@@ -22,18 +22,20 @@
 {% if selection %}
 <input type="hidden" name="selection" value="{{ selection }}">
 <p>Dopasowane wiadomości: {{ total }}. Maksymalnie {{ max_samples }} wiadomości jednocześnie.</p>
+<div class="recruitment-operations-grid"><section class="sample-download-panel" aria-label="Pobranie załączników i dodanie do bazy"><h2>Pobieranie i zapis</h2>
 <div class="recruitment-actions recruitment-sample-actions">
 <button class="primary-button" name="action" value="download">Pobranie załączników</button>
 <button class="secondary-button" name="action" value="add">Dodanie do bazy</button>
 </div>
 <p class="muted-text">Oba działania zapisują zgłoszenia w Rekrutacji. Ponowny zapis nie tworzy duplikatów.</p>
-<fieldset class="recruitment-bulk"><legend>Edycja zaznaczonych zgłoszeń</legend>
+</section><section class="sample-edit-panel" aria-label="Edycja zaznaczonych zgłoszeń"><fieldset class="recruitment-bulk"><legend>Edycja zaznaczonych zgłoszeń</legend>
 <label>Przyjęty/Odrzucony {{ bulk_form.decision }}{{ bulk_form.decision.errors }}</label>
 <label>Powiadomiony {{ bulk_form.notified }}{{ bulk_form.notified.errors }}</label>
 <button class="secondary-button" name="action" value="bulk">Zastosuj do zaznaczonych</button>
 {{ bulk_form.non_field_errors }}
 </fieldset>
 <p class="muted-text">Zmiana decyzji obejmuje wszystkie role zaznaczonych zgłoszeń; zachowuje ich uzasadnienia i notatki. Pole Powiadomiony zapisuje informację; nie wysyła wiadomości.</p>
+</section></div>
 <div class="table-container"><table class="recruitment-samples-table" data-copy-table data-pagination="off" data-email-mailbox="true">
 <thead><tr><th><input type="checkbox" data-select-table aria-label="Zaznacz wszystkie wiadomości"></th><th>Nadawca</th><th>Temat</th><th>Data</th><th>Przyjęty/Odrzucony</th><th>Powiadomiony</th><th>Stan</th><th>Podgląd</th></tr></thead>
 <tbody>{% for row in rows %}<tr>
@@ -50,4 +52,4 @@
 </form>{% endif %}
 </div></section>
 {% endblock %}
-{% block scripts %}<script src="{% static 'core/recruitment-notified.js' %}" defer></script><script src="{% static 'core/recruitment-samples.js' %}?v=47" defer></script>{% endblock %}
+{% block scripts %}<script src="{% static 'core/recruitment-notified.js' %}" defer></script><script src="{% static 'core/recruitment-samples.js' %}?v=56" defer></script>{% endblock %}

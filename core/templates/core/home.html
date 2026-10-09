@@ -11,9 +11,9 @@
         </p>
     </header>
 
+    <div class="dashboard-intake-grid">
     {% if user.is_superuser %}<section class="details-card notification-queue{% if pending_notification_count %} notification-urgent{% endif %}"><h2>Autorzy do powiadomienia</h2><div class="general-notes-actions"><a class="primary-button" href="{% url 'core:notification_queue' %}">Obsłuż zgłoszenia: {{ pending_notification_count }}</a><a class="secondary-button" href="{% url 'core:scheduled_rejections' %}">Zaplanowane odrzucenia</a></div></section>{% endif %}
     {% if dashboard_coordinator %}
-    <div class="dashboard-intake-grid">
     <section class="details-card">
         <h2>Przyjęte teksty do dodania do procesu wydawniczego</h2>
         <p class="form-help">Autor został powiadomiony, ale zgłoszenie nie jest jeszcze powiązane z tekstem w procesie wydawniczym.</p>
@@ -21,7 +21,9 @@
             <li><a href="{% url 'core:assigned_review_detail' review.pk %}">{{ review.title }}</a>{% if can_view_authors %} – {{ review.author_display_name }}{% endif %} ({{ review.anthology.title }}){% if review.old_reviews %} – archiwalne{% endif %}</li>
         {% empty %}<li>Brak tekstów oczekujących na przeniesienie.</li>{% endfor %}</ul>
     </section>
-    {% if pending_recruitment %}
+    {% endif %}
+    </div>
+    {% if dashboard_coordinator and pending_recruitment %}
     <section class="details-card" data-pending-recruitment>
         <h2>Oczekujące zgłoszenia rekrutacyjne</h2>
         <p class="form-help">Zgłoszenia bez decyzji. Zgłoszenie do kilku działów jest liczone w każdym z nich.</p>
@@ -31,8 +33,6 @@
         {% endfor %}
         </div>
     </section>
-    {% endif %}
-    </div>
     {% endif %}
     {% if leave_information %}
         <div
@@ -130,7 +130,8 @@
             {% include "core/includes/dashboard_more.html" with count=active_stage_count kind="active" %}
         </section>
 
-        <section class="card" aria-labelledby="reserved-assignments-heading">
+        <div class="dashboard-right-stack">
+        <section class="card dashboard-reservations" aria-labelledby="reserved-assignments-heading">
             <header class="section-header">
                 <div>
                     <h2 id="reserved-assignments-heading">Rezerwacje</h2>
@@ -164,6 +165,12 @@
             {% endif %}
             {% include "core/includes/dashboard_more.html" with count=reserved_assignment_count kind="reserved" %}
         </section>
+        <section class="card dashboard-pending-reviews" aria-labelledby="pending-reviews-heading">
+            <header class="section-header"><div><h2 id="pending-reviews-heading">Recenzje</h2><p>Przypisane zgłoszenia bez oddanej oceny.</p></div><span class="record-counter">{{ pending_review_count }}</span></header>
+            {% include "core/includes/dashboard_reviews.html" with rows=pending_reviews empty_message="Nie masz recenzji oczekujących na ocenę." %}
+            {% if pending_review_count > 6 %}<a class="secondary-button dashboard-expand" data-dashboard-more data-url="{% url 'core:dashboard_tasks' %}?kind=reviews&amp;page=2" href="{% url 'core:my_reviews' %}" aria-expanded="false">Pokaż kolejne</a>{% endif %}
+        </section>
+        </div>
     </div>
 
     <section class="filters-card" aria-labelledby="dashboard-search-heading">

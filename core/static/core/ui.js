@@ -20,7 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
             let description = field instanceof HTMLSelectElement
                 ? [...field.options].find(o => o.value === value)?.textContent : null;
             description ||= field.type === 'checkbox' ? field.labels?.[0]?.textContent.trim() : value;
-            const link = document.createElement('a'); link.className = 'filter-chip';
+            const link = document.createElement('a'); link.className = 'filter-chip secondary-button';
             const next = new URLSearchParams(params);
             next.delete(name); params.getAll(name).filter(v => v !== value).forEach(v => next.append(name, v)); next.delete('page');
             next.set('filters_applied', '1');
@@ -34,7 +34,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (params.has('view')) cleared.set('view', params.get('view'));
             clear.href = `${location.pathname}?${cleared}`;
             clear.textContent = 'Wyczyść wszystkie'; 
-            chips.append(clear); form.after(chips);
+            const target = form.querySelector('[data-active-filters-target]');
+            if (target) target.append(chips);
+            else { clear.className = 'secondary-button'; chips.append(clear); form.after(chips); }
         }
         const empty = main.querySelector('.empty-results-panel');
         if (empty && !form.querySelector('.field-error, .errorlist, [aria-invalid="true"]') && main.querySelector('table tbody tr td[colspan]')) {

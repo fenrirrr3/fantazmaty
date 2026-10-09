@@ -34,7 +34,7 @@ class IllustratorPseudonymTests(TestCase):
             page = self.client.get(url, {'show_inactive': '1', 'q': 'Graphos'}, **headers)
             self.assertContains(page, 'Graphos')
             self.assertNotContains(page, self.artist.email)
-            self.assertNotContains(page, 'Przemek')
+            self.assertContains(page, 'Przemek Świszcz (Graphos)')
             self.assertContains(page, 'Ukryty (nieaktywny)')
         self.assertContains(self.client.get(reverse('illustrations:illustrator_edit', args=[self.artist.pk])), self.artist.email)
 

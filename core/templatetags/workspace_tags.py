@@ -4,6 +4,12 @@ from core.permissions import is_coordinator
 register = template.Library()
 
 
+@register.simple_tag
+def post_layout_allowed(user):
+    from core.permissions import can_view_post_layout
+    return can_view_post_layout(user)
+
+
 @register.inclusion_tag("core/includes/header_search.html")
 def header_search(user):
     from core.forms import GlobalSearchForm

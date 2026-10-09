@@ -1,5 +1,6 @@
 {% load workspace_tags %}
 {% illustrations_allowed user as show_illustrations %}
+{% post_layout_allowed user as show_post_layout %}
 {% coordinator_allowed user as can_coordinate %}
 {% recruitment_mailbox_allowed user as can_download_samples %}
 {% reviewer_allowed user as show_my_reviews %}
@@ -92,7 +93,7 @@
                             {% if current == 'audiobooks' %}aria-current="page"{% endif %}
                         >
                             Audiobooki
-                        </a><a href="{% url 'core:audio_descriptions' %}" class="sidebar-link" {% if current == 'audio_descriptions' %}aria-current="page"{% endif %}>Audiodeskrypcje</a></details><details class="sidebar-section" data-menu-section="team" open><summary class="sidebar-heading">Zespół</summary><a
+                        </a><a href="{% url 'core:audio_descriptions' %}" class="sidebar-link" {% if current == 'audio_descriptions' %}aria-current="page"{% endif %}>Audiodeskrypcje</a><a href="{% url 'core:audio_proofreading' %}" class="sidebar-link" {% if current == 'audio_proofreading' %}aria-current="page"{% endif %}>Korekta audiobooków</a>{% if show_post_layout %}<a href="{% url 'core:post_layout' %}" class="sidebar-link" {% if current == 'post_layout' %}aria-current="page"{% endif %}>Korekta poskładowa</a>{% endif %}</details><details class="sidebar-section" data-menu-section="team" open><summary class="sidebar-heading">Zespół</summary><a
                             href="{% url 'core:people_list' %}"
                             class="sidebar-link"
                             {% if current == 'people_list' or current == 'person_detail' %}aria-current="page"{% endif %}

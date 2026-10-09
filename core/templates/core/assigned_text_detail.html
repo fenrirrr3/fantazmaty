@@ -4,7 +4,7 @@
 {% block title %}{{ text.title }} | Fantazmaty CMS{% endblock %}
 
 
-{% block extra_css %}<link rel="stylesheet" href="{% static 'core/tags.css' %}"><link rel="stylesheet" href="{% static 'core/text-production.css' %}?v=36">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/tags.css' %}"><link rel="stylesheet" href="{% static 'core/text-production.css' %}?v=56">{% endblock %}
 
 {% block content %}
     {% now "Y-m-d" as today_iso %}
@@ -134,7 +134,7 @@
             aria-label="Bieżące etapy tekstu"
             tabindex="0"
         >
-            <table{% if is_novel %} data-pagination="off"{% endif %} data-copy-table>
+            <table data-pagination="off" data-copy-table>
                 <caption class="visually-hidden">Bieżące etapy pracy nad tekstem</caption>
                 <thead>
                     <tr>
@@ -381,10 +381,10 @@
     </details>
     {% endif %}
 
-    <section class="details-card" aria-labelledby="content-notes-heading">
+    <section class="details-card work-information" aria-labelledby="content-notes-heading">
         <h2 id="content-notes-heading">Informacje do pracy</h2>
 
-        <div class="notes-editor-grid">
+        <div class="notes-editor-grid{% if not show_coordinator_note and can_edit_coordinator_note %} has-note-toggle{% endif %}">
             <div class="notes-editor-panel">
                 <h3>Ostrzeżenia dotyczące treści{% if is_novel %} całej powieści{% endif %}</h3>
                 {% if is_novel %}<p>{{ text.anthology.novel.content_warnings|default:'Nie dodano ostrzeżeń.'|linebreaksbr }}</p>{% else %}
@@ -425,9 +425,10 @@
             </div>
 
             {% if show_coordinator_note %}
-                {% if text.coordinator_note_updated_at %}<p class="form-help">Zapisano: {{ text.coordinator_note_updated_at|date:"d.m.Y H:i" }}</p>{% endif %}
+                
                 <div class="notes-editor-panel coordinator-note-highlight">
                     <h3>Notatka koordynatora</h3>
+
 
                     {% if can_edit_coordinator_note and coordinator_note_form %}
                         <form
@@ -459,17 +460,19 @@
                             {{ text.coordinator_note|linebreaksbr }}
                         </div>
                     {% endif %}
+{% if text.coordinator_note_updated_at %}<p class="form-help">Zapisano: {{ text.coordinator_note_updated_at|date:"d.m.Y H:i" }}</p>{% endif %}
                 </div>
             {% endif %}
             {% if not show_coordinator_note and can_edit_coordinator_note %}
                 <details class="coordinator-note-create"{% if coordinator_note_form.errors %} open{% endif %}>
                     <summary>Dodaj notatkę koordynatora</summary>
+                    <div class="notes-editor-panel coordinator-note-highlight"><h3>Notatka koordynatora</h3>
                     <form method="post" action="{% url 'core:update_coordinator_note' text.pk %}"
                           class="general-notes-form" data-warn-unsaved>
                         {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
-                        {{ coordinator_note_form.as_p }}
+                        {{ coordinator_note_form.non_field_errors }}<div class="form-field">{{ coordinator_note_form.coordinator_note.label_tag }}{{ coordinator_note_form.coordinator_note }}{{ coordinator_note_form.coordinator_note.errors }}</div>
                         <button type="submit" class="secondary-button">Zapisz notatkę</button>
-                    </form>
+                    </form></div>
                 </details>
             {% endif %}
         </div>
@@ -618,6 +621,8 @@
             </div>
         </details>
 
+    {% include "core/includes/text_production.html" %}
+
     {% if can_cancel_repetition %}<form method="post" action="{% url 'core:cancel_workflow_repetition' text.pk open_repetition.pk %}" data-confirm-delete="Anulować niepodjęte powtórzenie i przywrócić poprzedni stan?">{% csrf_token %}{% edit_version %}<button type="submit" class="secondary-button">Anuluj niepodjęte powtórzenie</button><p class="form-help">Dostępne, jeśli nie rozpoczęto ani nie zarezerwowano pracy.</p></form>{% endif %}
     {% if can_view_stage_history or request.user.is_superuser and can_manage_workflow and not is_ready and not is_withdrawn %}
     <div class="text-detail-pair" data-detail-pair="workflow">
@@ -731,9 +736,9 @@
         <details class="text-management-card" id="text-withdraw">
             <summary class="text-management-toggle"><span>Wycofaj tekst</span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
             <div class="text-management-content">
-                    <div class="management-action management-action-danger">
+                    <div class="management-action">
                         <div class="management-action-description">
-                            <h3>Wycofaj tekst</h3>
+                            
                             <p>
                                 Wycofanie zablokuje dalszą pracę w tym cyklu
                                 i usunie tekst z kolejek zadań.
@@ -753,7 +758,7 @@
         {% include "core/includes/text_credits.html" %}
     </div>
     {% endif %}
-{% include "core/includes/text_production.html" %}
+
 {% endblock %}
 
 {% block scripts %}

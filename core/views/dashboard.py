@@ -43,10 +43,13 @@ def home(request):
     else:
         workflow_summary = user_workflow_summary(request.user, today=today, limit=6)
 
+    pending_reviews = _pending_reviews(request.user)
     return render(
         request,
         "core/home.html",
         {
+            "pending_reviews": list(pending_reviews[:6]),
+            "pending_review_count": pending_reviews.count(),
             "now": timezone.localtime(),
             "reviewer_only": reviewer_only,
             "review_reading": review_reading,
@@ -88,6 +91,11 @@ def audiobooks(request):
     )
 
 
+def _pending_reviews(user):
+    reading, reserved = _review_tasks(user)
+    return (reading | reserved).distinct()
+
+
 def _review_tasks(user):
     from texts.models import ReviewAssignment
     rows = ordinary(ReviewAssignment.objects).filter(user=user, review__is_hidden=False,
@@ -104,10 +112,13 @@ def dashboard_tasks(request):
     from core.permissions import is_reviewer_only
     from workflow.read_queries import dashboard_querysets
     kind = request.GET.get("kind", "active")
-    if kind not in {"active", "reserved"}:
+    if kind not in {"active", "reserved", "reviews"}:
         return JsonResponse({"error": "Nieprawidłowy rodzaj zadań."}, status=400)
     reviewer = is_reviewer_only(request.user)
-    if reviewer:
+    if kind == "reviews":
+        active = reserved = _pending_reviews(request.user)
+        reviewer = True
+    elif reviewer:
         active, reserved = _review_tasks(request.user)
     else:
         active, reserved = dashboard_querysets(request.user, timezone.localdate())

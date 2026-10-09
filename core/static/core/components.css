@@ -248,3 +248,9 @@ section:has(#active-stages-heading), section:has(#reserved-assignments-heading) 
 .vocabulary-suggestions:empty { display: none; }
 .vocabulary-suggestions button { font: inherit; cursor: pointer; }
 
+
+/* Work notes: the add control does not set the content alignment. */
+.work-information .notes-editor-grid .notes-editor-panel { padding: 1rem; }
+.work-information .notes-editor-grid .notes-editor-panel h3 { min-height: 2.6em; margin-bottom: .75rem; }
+.work-information .notes-editor-grid .notes-editor-panel label { min-height: 0; }
+.work-information .notes-editor-grid textarea { min-height: 6rem; height: 6rem; }

@@ -56,7 +56,7 @@ LABELS.update({
     'vocabulary_list': 'Słownik tagów i gatunków', 'vocabulary_suggestions': 'Podpowiedzi tagów i gatunków',
     'vocabulary_merge': 'Scalanie tagów i gatunków', 'update_text_audiobook': 'Zmiana nagrywania audiobooka',
     'translation_person_suggestions': 'Wyszukiwanie autorów zagranicznych i tłumaczy',
-    'task_list': 'Zadania', 'audio_descriptions': 'Audiodeskrypcje',
+    'task_list': 'Zadania', 'audio_descriptions': 'Audiodeskrypcje', 'post_layout': 'Korekta poskładowa', 'audio_proofreading': 'Korekta audiobooków',
     'translation_person_detail': 'Profil autora zagranicznego lub tłumacza', 'translation_list': 'Tłumaczenia',
     'translation_detail': 'Podgląd tłumaczenia', 'set_translators': 'Zmiana tłumaczy',
     'tag_list': 'Tagi', 'update_text_tags': 'Zapis tagów i gatunków',

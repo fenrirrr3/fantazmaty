@@ -192,6 +192,15 @@ def can_view_illustrations(user):
     return is_coordinator(user) or has_role(user, "Ilustrator")
 
 
+def can_view_post_layout(user):
+    return is_superuser(user) or has_role(user, "Koordynator korekty") or has_role(user, "Korektor poskładowy")
+
+
+def require_post_layout(user):
+    if not can_view_post_layout(user):
+        raise PermissionDenied("Dostęp wymaga roli Koordynator korekty lub Korektor poskładowy.")
+
+
 def can_view_reports(user):
     return is_coordinator(user)
 
@@ -272,6 +281,7 @@ coordinator_required = _permission_decorator(require_coordinator)
 superuser_required = _permission_decorator(require_superuser)
 author_data_required = _permission_decorator(require_author_data_access)
 recruitment_mailbox_required = _permission_decorator(require_recruitment_mailbox)
+post_layout_required = _permission_decorator(require_post_layout)
 
 
 def is_reviewer(user):

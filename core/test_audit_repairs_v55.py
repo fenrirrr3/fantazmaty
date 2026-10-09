@@ -148,8 +148,8 @@ class AuditAdminRepairsTests(TestCase):
         artist = Illustrator.objects.create(first_name='Przemek', last_name='Świszcz', pseudonym='Graphos')
         duplicate = Illustrator.objects.create(first_name='Graphos')
         page = self.client.get(reverse('illustrations:illustrator_list'))
-        for person in (artist, duplicate):
-            self.assertContains(page, f'Graphos (ID {person.pk})')
+        self.assertContains(page, f'Przemek Świszcz (Graphos) (ID {artist.pk})')
+        self.assertContains(page, f'Graphos (ID {duplicate.pk})')
         form = AssignmentForm(instance=self.row, can_assign=True)
         self.assertEqual(form.fields['illustrators'].label_from_instance(artist), f'Graphos (ID {artist.pk})')
         url = reverse('admin:illustrations_illustrator_change', args=[artist.pk])

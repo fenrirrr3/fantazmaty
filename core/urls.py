@@ -36,7 +36,11 @@ from core.views.recruitment_detail import recruitment_detail
 from core.views.recruitment_notified import recruitment_notified
 from core.views.recruitment_mailbox import recruitment_mailbox
 
+from core.views.proofreading_sections import post_layout, audio_proofreading
+
 urlpatterns = [
+    path('korekta-poskladowa/', post_layout, name='post_layout'),
+    path('korekta-audiobookow/', audio_proofreading, name='audio_proofreading'),
     path('rekrutacja/<int:pk>/usun/', recruitment_delete, name='recruitment_delete'),
     path('rekrutacja/<int:pk>/powiadomiony/', recruitment_notified, name='recruitment_notified'),
     path('rekrutacja/skrzynka/', recruitment_mailbox, name='recruitment_mailbox'),
