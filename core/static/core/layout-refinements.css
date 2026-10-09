@@ -1,0 +1,18 @@
+/* Insets contain both the table and pagination added by JavaScript. */
+.profile-table-inset { min-width: 0; padding: 0 var(--card-padding) 1rem; }
+.profile-table-inset > .table-container { width: 100%; max-width: 100%; margin-inline: 0; }
+.profile-table-inset > .cms-pagination { margin-inline: 0; }
+.work-information .general-notes-form button[type="submit"] { min-width: 7rem; min-height: 2.5rem; justify-self: start; padding: .6rem 1rem; }
+.verification-claim-row { display: flex; align-items: center; gap: 1rem; }
+.verification-claim-row > button { flex: 0 0 auto; }
+.stage-action-cell .verification-claim-row > .form-help { margin: 0; white-space: normal; min-width: 15ch; max-width: 25ch; }
+.stage-action-cell:has(.verification-claim-row) { vertical-align: middle; }
+/* The half-width cards share the same central gutter as the four counters. */
+.dashboard-intake-grid { gap: 12px; }
+.dashboard-summary { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 850px) { .dashboard-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 480px) { .dashboard-summary { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 600px) {
+    .profile-table-inset { padding-inline: 1rem; }
+    .verification-claim-row { gap: .6rem; }
+}

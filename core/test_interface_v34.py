@@ -53,8 +53,8 @@ class DetailInterfaceTests(TestCase):
                 response = self.client.get(reverse('core:assigned_text_detail', args=[story.pk]))
                 self.assertEqual(response.status_code, 200)
                 doc = html.fromstring(response.content)
-                for pair, expected in [('workflow', ['text-handoff', 'text-stage-history']),
-                                       ('credits', ['text-withdraw', 'text-credits'])]:
+                for pair, expected in [('credits-history', ['text-credits', 'text-stage-history']),
+                                       ('management', ['text-withdraw', 'text-handoff'])]:
                     panels = doc.xpath(f'//div[@data-detail-pair="{pair}"]/details')
                     self.assertEqual([panel.get('id') for panel in panels], expected)
                     self.assertTrue(all('open' not in panel.attrib for panel in panels))

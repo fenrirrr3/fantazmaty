@@ -101,13 +101,14 @@
 
             
 
-            <div
+            <div class="profile-table-inset">
+<div
                 class="table-container"
                 role="region"
                 aria-label="Tabela moich urlopów"
                 tabindex="0"
             >
-                <table data-copy-table data-server-paginated="true" id="my-vacations-table">
+                <table data-copy-table data-pagination="off" id="my-vacations-table">
                     <caption class="visually-hidden">
                         Urlopy użytkownika, od najpóźniejszej daty rozpoczęcia
                     </caption>
@@ -214,9 +215,11 @@
                     </tbody>
                 </table>
             </div>
-        </section>
+        
+</div>
+</section>
     </div>
 
     {% include "core/includes/table_toolbar.html" %}
-    {% include "core/includes/pagination.html" %}
+
 {% endblock %}

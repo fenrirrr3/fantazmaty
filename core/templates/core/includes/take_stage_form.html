@@ -4,13 +4,15 @@
     {% csrf_token %}{% edit_version %}
     {% if workflow_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">{% endif %}
     {% if stage.stage_type == "first_verification" and not stage.repetition_id %}
+        <div class="verification-claim-row">
+        <button type="submit" class="assign-button" aria-describedby="reservation-help-{{ stage.pk }}">
+            Przejmij weryfikację
+        </button>
         <p id="reservation-help-{{ stage.pk }}" class="form-help">
             Przejmij pierwszą weryfikację. Jeśli redaktor nadal pracuje nad tekstem,
             zadanie zostanie zarezerwowane do czasu jego przekazania.
         </p>
-        <button type="submit" class="assign-button" aria-describedby="reservation-help-{{ stage.pk }}">
-            Przejmij weryfikację
-        </button>
+        </div>
     {% else %}
         <button type="submit" class="assign-button">Przejmij</button>
         <div class="form-field">

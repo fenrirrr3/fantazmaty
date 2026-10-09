@@ -182,7 +182,8 @@
 
         
 
-        <div
+        <div class="profile-table-inset">
+<div
             class="table-container"
             role="region"
             aria-label="Tabela tekstów autora"
@@ -255,7 +256,9 @@
                 </tbody>
             </table>
         </div>
-    </section>
+    
+</div>
+</section>
 <section class="card" aria-labelledby="author-archive-heading" id="archiwalne-recenzje">
     <header class="section-header">
         <div>
@@ -264,7 +267,8 @@
         </div>
         <span class="record-counter">{{ historical_reviews.paginator.count }}</span>
     </header>
-    <div class="table-container" role="region" aria-label="Archiwalne recenzje autora" tabindex="0">
+    <div class="profile-table-inset">
+<div class="table-container" role="region" aria-label="Archiwalne recenzje autora" tabindex="0">
         <table data-copy-table data-server-paginated="true" id="author-archive-table">
             <thead><tr>
                 <th scope="col" data-sort-key="title" class="sticky-title">Tytuł</th><th scope="col" data-sort-key="anthology">Antologia</th>
@@ -288,6 +292,8 @@
         </table>
     </div>
     {% include "core/includes/pagination.html" with page_obj=historical_reviews %}
+
+</div>
 </section>
 {% include "core/includes/table_toolbar.html" %}
 {% endblock %}

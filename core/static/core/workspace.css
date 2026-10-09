@@ -167,8 +167,7 @@ details.sidebar-section > summary { cursor:pointer; }
 .dashboard-intake-grid:empty { display: none; }
 .dashboard-intake-grid > :only-child { grid-column: 1 / -1; }
 .stage-action-cell .take-stage-form .form-help { white-space: normal; overflow-wrap: anywhere; max-width: 25ch; min-width: 15ch; }
-#archiwalne-recenzje > .table-container, #archiwalne-recenzje > .cms-pagination { margin-inline: 1rem; }
-.recruitment-operations-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1.25rem; margin-block: 1rem; align-items: start; }
+.recruitment-operations-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 1.25rem; margin-block: 1rem; align-items: stretch; }
 .recruitment-operations-grid > section { min-width: 0; padding: 1rem; border: 1px solid var(--border); border-radius: var(--radius-small); }
 .recruitment-operations-grid .recruitment-bulk { margin: 0; }
 @media (max-width:800px) {

@@ -71,7 +71,6 @@ def _render_my_vacations(request, person, form, *, status=200):
         .select_related("person")
         .order_by("-start_date", "-created_at", "-pk")
     )
-    page_obj = paginate_items(request, vacations)
 
     return render(
         request,
@@ -82,8 +81,7 @@ def _render_my_vacations(request, person, form, *, status=200):
             "person": person,
             "history_person": history_person,
             "vacation_people": Person.objects.active().order_by("last_name", "first_name", "pk") if is_coordinator(request.user) else [],
-            "vacations": page_obj,
-            "page_obj": page_obj,
+            "vacations": vacations,
         },
         status=status,
     )
