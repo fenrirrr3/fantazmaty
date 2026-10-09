@@ -5,6 +5,7 @@ import re
 import secrets
 import shutil
 import subprocess
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -37,16 +38,23 @@ def root():
 
 
 def write_json(path, value):
-    temporary = path.with_suffix('.tmp')
-    temporary.write_text(json.dumps(value, ensure_ascii=False), encoding='utf-8')
-    for attempt in range(5):
-        try:
-            os.replace(temporary, path)
-            return
-        except PermissionError:
-            if attempt == 4:
-                raise
-            time.sleep(.02)
+    # A unique temporary name per writer: the web process and the worker may
+    # write the same state file concurrently.
+    descriptor, temporary = tempfile.mkstemp(dir=path.parent, prefix='.' + path.name + '.', suffix='.tmp')
+    try:
+        with os.fdopen(descriptor, 'w', encoding='utf-8') as stream:
+            stream.write(json.dumps(value, ensure_ascii=False))
+        for attempt in range(5):
+            try:
+                os.replace(temporary, path)
+                return
+            except PermissionError:
+                if attempt == 4:
+                    raise
+                time.sleep(.02)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
 
 
 def read_json(path):
@@ -98,21 +106,42 @@ def launch(folder):
         raise JobError('Nie można uruchomić programu. Skontaktuj się z administratorem.') from None
 
 
-def create(request, upload, options, action):
-    cleanup()
-    root().mkdir(parents=True, exist_ok=True, mode=0o700)
-    # Refuse accidental repeated clicks while this user's process is active.
+def max_active_jobs():
+    """Server-wide cap: each worker loads python-docx/spaCy into its own process."""
+    return max(1, int(getattr(settings, 'PROGRAM_MAX_ACTIVE_JOBS', 1)))
+
+
+def active_jobs():
+    """(user id, folder) for every queued or running job that is still alive."""
+    result = []
+    if not root().is_dir():
+        return result
     for folder in root().iterdir():
         if not folder.is_dir() or folder.is_symlink():
             continue
         try:
             data = read_json(folder / 'request.json')
             state = read_json(folder / 'state.json')
-            if data['user'] == request.user.pk and state['state'] in ('queued', 'running') and time.time() - state.get('started', 0) < 150:
-                raise JobError('Masz już uruchomiony program. Poczekaj na wynik albo zatrzymaj go.')
-        except (OSError, KeyError, ValueError) as error:
-            if isinstance(error, JobError):
-                raise
+        except (OSError, ValueError):
+            continue
+        if state.get('state') in ('queued', 'running') and time.time() - state.get('started', 0) < 150:
+            result.append((data.get('user'), folder))
+    return result
+
+
+def require_capacity(user_id=None):
+    active = active_jobs()
+    if user_id is not None and any(owner == user_id for owner, _ in active):
+        # Refuse accidental repeated clicks while this user's process is active.
+        raise JobError('Masz już uruchomiony program. Poczekaj na wynik albo zatrzymaj go.')
+    if len(active) >= max_active_jobs():
+        raise JobError('Serwer przetwarza teraz maksymalną liczbę dokumentów. Spróbuj ponownie za minutę.')
+
+
+def create(request, upload, options, action):
+    cleanup()
+    root().mkdir(parents=True, exist_ok=True, mode=0o700)
+    require_capacity(request.user.pk)
     upload.seek(0)
     payload = upload.read(PROGRAM_MAX_UPLOAD_BYTES + 1)
     upload.seek(0)
@@ -169,6 +198,11 @@ def confirm(folder):
             pass
     except FileExistsError:
         raise JobError('Potwierdzenie zostało już wysłane.') from None
+    try:
+        require_capacity()
+    except JobError:
+        (folder / 'accepted').unlink(missing_ok=True)
+        raise
     os.utime(folder / 'request.json', None)
     write_json(folder / 'state.json', {'state': 'queued', 'stage': 'Wznawianie po akceptacji', 'started': time.time()})
     try:

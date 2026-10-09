@@ -1,9 +1,11 @@
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
+from core.edit_versions import VersionedQuerySet
 
 
 class AnthologyCorrection(models.Model):
+    objects = VersionedQuerySet.as_manager()
     class Status(models.TextChoices):
         NEW = "new", "Nowa"
         CHECKING = "checking", "W sprawdzaniu"
@@ -37,6 +39,7 @@ class AnthologyCorrection(models.Model):
 
 
 class Recruitment(models.Model):
+    objects = VersionedQuerySet.as_manager()
     class Status(models.TextChoices):
         NEW = 'new', 'Czeka na ocenę'
         ACCEPTED = 'accepted', 'Przyjęte'
@@ -233,6 +236,7 @@ class EditRevision(models.Model):
 
 
 class MailboxConnection(models.Model):
+    objects = VersionedQuerySet.as_manager()
     class Purpose(models.TextChoices):
         SUBMISSIONS = 'submissions', 'Zgłoszenia tekstów'
         RECRUITMENT = 'recruitment', 'Rekrutacja do zespołu'
@@ -316,6 +320,7 @@ class RecruitmentMailSource(models.Model):
 
 class NewsletterConsent(models.Model):
     """Separate opt-in register; never joined to public author/team projections."""
+    objects = VersionedQuerySet.as_manager()
     email = models.EmailField('adres e-mail', unique=True)
     premieres = models.BooleanField('newsletter o premierach', default=False)
     recruitment = models.BooleanField('newsletter o naborach', default=False)

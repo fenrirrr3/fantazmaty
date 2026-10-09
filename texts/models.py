@@ -7,6 +7,7 @@ from django.utils import timezone
 from authors.models import Author
 from people.models import Person
 from core.normalization import NormalizedModelMixin, REVIEW_FIELDS, TEXT_FIELDS
+from core.edit_versions import VersionedQuerySet
 
 
 MAX_REVIEWERS = 6
@@ -22,6 +23,7 @@ class ReviewOpinion(models.TextChoices):
 
 
 class Anthology(models.Model):
+    objects = VersionedQuerySet.as_manager()
     is_novel = models.BooleanField('powieść', default=False, db_index=True)
     class Status(models.TextChoices):
         IN_PREPARATION = "in_preparation", "W przygotowaniu"
@@ -177,6 +179,7 @@ class Anthology(models.Model):
 
 
 class AnthologyTask(models.Model):
+    objects = VersionedQuerySet.as_manager()
     class TaskType(models.TextChoices):
         TYPESETTING = "typesetting", "Skład"
         BLURB = "blurb", "Blurb"
@@ -348,6 +351,7 @@ class AnthologyTask(models.Model):
 
 
 class Text(NormalizedModelMixin, models.Model):
+    objects = VersionedQuerySet.as_manager()
     chapter_number = models.PositiveIntegerField('numer rozdziału', null=True, blank=True,
                                                   validators=[MinValueValidator(1)])
     for_recording = models.BooleanField("Do nagrywania", default=True, db_index=True)
@@ -501,6 +505,7 @@ class Text(NormalizedModelMixin, models.Model):
 
 
 class TranslationPerson(models.Model):
+    objects = VersionedQuerySet.as_manager()
     first_name = models.CharField('imię', max_length=100)
     last_name = models.CharField('nazwisko', max_length=100)
     pseudonym = models.CharField('pseudonim', max_length=100, blank=True)
@@ -540,6 +545,7 @@ class Translator(TranslationPerson):
 
 
 class TextTranslation(models.Model):
+    objects = VersionedQuerySet.as_manager()
     original_verifier = models.CharField("Weryfikacja z oryginałem", max_length=255, blank=True, help_text="Imię i nazwisko osoby weryfikującej przekład z oryginałem.")
     text = models.OneToOneField(Text, on_delete=models.CASCADE, related_name='translation', verbose_name='tekst')
     foreign_authors = models.ManyToManyField(ForeignAuthor, blank=True, related_name='translations', verbose_name='autor zagraniczny')
@@ -555,6 +561,7 @@ class TextTranslation(models.Model):
 
 
 class TextNote(models.Model):
+    objects = VersionedQuerySet.as_manager()
     text = models.ForeignKey(
         Text,
         on_delete=models.CASCADE,
@@ -613,7 +620,7 @@ class TextNote(models.Model):
         return f"{self.text.title} – {author_name} – {formatted_date}"
 
 
-class ReviewQuerySet(models.QuerySet):
+class ReviewQuerySet(VersionedQuerySet):
     def visible_to(self, user):
         return self if user.is_active and user.is_superuser else self.filter(is_hidden=False)
 
@@ -841,6 +848,7 @@ class Review(NormalizedModelMixin, models.Model):
 
 class Reviewers(models.Model):
     """Uwagi ogólne do ocen; przydziały przechowuje ReviewAssignment."""
+    objects = VersionedQuerySet.as_manager()
 
     Opinion = ReviewOpinion
 
@@ -879,7 +887,7 @@ class Reviewers(models.Model):
         return review.assignments.count() < MAX_REVIEWERS
 
 
-class ReviewAssignmentQuerySet(models.QuerySet):
+class ReviewAssignmentQuerySet(VersionedQuerySet):
     def submitted(self):
         return self.exclude(opinion__in=("", "reading"))
 
@@ -1064,6 +1072,7 @@ class ReviewAssignment(models.Model):
 
 class Extract(NormalizedModelMixin, models.Model):
     """Jeden autor w jednym naborze; tytuły pozostają listami w rekordzie."""
+    objects = VersionedQuerySet.as_manager()
     normalization_fields = {"email": REVIEW_FIELDS["email"], "phone_number": REVIEW_FIELDS["phone_number"]}
     author = models.ForeignKey(Author, on_delete=models.PROTECT, related_name='extracts', verbose_name='autor')
     full_name = models.CharField('imię i nazwisko', max_length=255)

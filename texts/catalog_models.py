@@ -4,6 +4,7 @@ import unicodedata
 
 from django.core.exceptions import ValidationError
 from django.db import models
+from core.edit_versions import VersionedQuerySet
 
 
 def term_key(value):
@@ -12,6 +13,7 @@ def term_key(value):
 
 
 class VocabularyTerm(models.Model):
+    objects = VersionedQuerySet.as_manager()
     class Kind(models.TextChoices):
         TAG = 'tag', 'Tag'
         GENRE = 'genre', 'Gatunek'
@@ -51,6 +53,7 @@ class VocabularyTerm(models.Model):
 
 
 class NovelProfile(models.Model):
+    objects = VersionedQuerySet.as_manager()
     anthology = models.OneToOneField('texts.Anthology', on_delete=models.CASCADE, related_name='novel', verbose_name='powieść')
     authors = models.ManyToManyField('authors.Author', blank=True, verbose_name='autorzy')
     genre = models.CharField('gatunek', max_length=100, blank=True)

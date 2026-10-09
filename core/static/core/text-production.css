@@ -4,7 +4,7 @@
 .text-production .card-body { overflow-wrap: anywhere; }
 .text-production-checkbox { display: flex; align-items: center; gap: .6rem; }
 .text-production-checkbox input[type="checkbox"] { width: 1.15rem; height: 1.15rem; flex: 0 0 auto; }
-@media (max-width: 800px) { .text-production { grid-template-columns: minmax(0, 1fr); } }
+@media screen and (max-width: 760px) { .text-production { grid-template-columns: minmax(0, 1fr); } }
 
 /* Equal-width collapsible panels in both story and chapter details. */
 .text-detail-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; align-items: stretch; margin-block: 1.25rem; }
@@ -14,7 +14,7 @@
 .text-detail-pair .table-container { max-width: 100%; }
 .text-detail-pair .management-action { grid-template-columns: minmax(0, 1fr); }
 .text-notes-tags { align-items: stretch; }
-@media (max-width: 800px) { .text-detail-pair { grid-template-columns: minmax(0, 1fr); } }
+@media screen and (max-width: 760px) { .text-detail-pair { grid-template-columns: minmax(0, 1fr); } }
 
 .text-tags-actions { display: flex; flex-wrap: wrap; gap: .65rem; align-items: center; margin-top: auto; }
 .text-tags-form .text-tags-actions button { margin-top: 0; }

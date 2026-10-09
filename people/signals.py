@@ -1,10 +1,10 @@
-from django.conf import settings
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
 from django.db.models import Q
 from django.db.models.signals import m2m_changed, post_save
 from django.dispatch import receiver
 from .models import Person, Role
+from django.db.models.signals import pre_save
+from people.coordinator_access import revoke_coordinator, revoking
+from django.db.models.signals import pre_delete, post_delete
 
 
 def coordinator_query():
@@ -14,8 +14,6 @@ def coordinator_query():
 # CMS coordination does not confer Django-admin access. Existing role/flag
 # revocation handlers below remain the common explicit revocation operation.
 
-from django.db.models.signals import pre_save
-from people.coordinator_access import revoke_coordinator, revoking
 
 
 @receiver(pre_save, sender=Person)
@@ -49,7 +47,6 @@ def revoke_removed_roles(sender, instance, action, reverse, pk_set, using, **kwa
                 revoke_coordinator(person)
 
 
-from django.db.models.signals import pre_delete, post_delete
 
 
 def coordinator_name(name):

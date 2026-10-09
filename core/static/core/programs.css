@@ -11,7 +11,7 @@
     .odkurzacz-rules input { width: auto; flex: 0 0 auto; margin-top: .3rem; }
     .odkurzacz .errorlist { color: var(--danger); }
     .odkurzacz-upload { padding: 1.25rem; border: 2px solid var(--primary); border-radius: var(--radius); margin: 1.25rem 0; }
-    .odkurzacz input[type=file] { display: block; width: 100%; max-width: 100%; padding: .75rem; border: 1px solid var(--border-strong); border-radius: var(--radius-small); font-size: 1rem; box-sizing: border-box; }
+    .odkurzacz input[type=file] { display: block; width: 100%; max-width: 100%; padding: .75rem; border: 1px solid var(--border-strong); border-radius: var(--radius-small); font-size: var(--font-size-lg); box-sizing: border-box; }
     .odkurzacz input[type=file]::file-selector-button { background: var(--primary); color: var(--on-primary); border: 0; border-radius: var(--radius-small); padding: .85rem 1.2rem; margin-right: 1rem; font: inherit; font-weight: 700; cursor: pointer; }
     .odkurzacz input[type=file]::file-selector-button:hover { background: var(--primary-dark); }
     .odkurzacz input[type=file]:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }
@@ -25,4 +25,4 @@
 .repetitions-fields .form-field { display: flex; flex-direction: column; gap: .5rem; min-width: 0; }
 .repetitions-fields textarea, .repetitions-fields input[type=number] { width: 100%; box-sizing: border-box; }
 .repetitions-fields input[type=checkbox] { align-self: flex-start; }
-@media (max-width: 760px) { .repetitions-fields { grid-template-columns: 1fr; } }
+@media screen and (max-width: 760px) { .repetitions-fields { grid-template-columns: 1fr; } }

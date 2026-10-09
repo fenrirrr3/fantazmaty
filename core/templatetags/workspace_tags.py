@@ -63,3 +63,21 @@ def recruitment_mailbox_allowed(user):
 def recruitment_notified_token(user, record):
     from core.views.recruitment_notified import notified_token
     return notified_token(user, record)
+
+
+@register.filter
+def role_palette_attr(code, label=''):
+    from core.palettes import palette_attr, role_palette
+    return palette_attr(role_palette(code, label))
+
+
+@register.filter
+def stage_palette_attr(code, label=''):
+    from core.palettes import palette_attr, stage_palette
+    return palette_attr(stage_palette(code, label))
+
+
+@register.filter
+def label_palette_attr(label):
+    from core.palettes import label_palette, palette_attr
+    return palette_attr(label_palette(label))

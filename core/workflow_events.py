@@ -8,7 +8,6 @@ import os
 from django.conf import settings
 from django.db import transaction
 from django.db.models.signals import pre_save, pre_delete
-from django.urls import resolve, Resolver404
 
 _scope = ContextVar('workflow_event_scope', default=None)
 logger = logging.getLogger(__name__)
@@ -127,11 +126,9 @@ def track_workflow(function):
 
 
 def run_admin_request(request, get_response):
-    try:
-        match = resolve(request.path_info)
-    except Resolver404:
-        return get_response(request)
-    if request.method != 'POST' or match.namespace != 'admin' or not request.user.is_authenticated:
+    from core.request_match import resolve_request
+    match = resolve_request(request)
+    if match is None or request.method != 'POST' or match.namespace != 'admin' or not request.user.is_authenticated:
         return get_response(request)
     with transaction.atomic(), event_scope(request.user):
         response = get_response(request)

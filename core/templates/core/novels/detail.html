@@ -1,5 +1,6 @@
-{% extends 'core/base.html' %}{% load static %}
+{% extends 'core/base.html' %}{% load static %}{% load workspace_tags %}
 {% block title %}{{ book.title }} | Powieści{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/novels.css' %}">{% endblock %}
 {% block content %}
 <header class="page-header">
 <p class="eyebrow">Powieść</p><h1 class="page-title">{{ book.title }}</h1>
@@ -33,11 +34,11 @@
 {% endif %}
 <div class="table-container" tabindex="0" role="region" aria-label="Tabela rozdziałów"><table class="data-table" data-pagination="off"><thead><tr>
 {% if coordinator and is_open %}<th scope="col">Wybierz</th>{% endif %}<th scope="col">Rozdział</th><th scope="col">Znaki ze spacjami</th><th scope="col">Status</th><th scope="col">Przypisania</th>{% if coordinator and is_open %}<th scope="col">Edycja</th>{% endif %}
-</tr></thead><tbody>{% for row in rows %}<tr class="workflow-stage-row" data-stage="{{ row.chapter.current_stage_type|default:'none' }}">
+</tr></thead><tbody>{% for row in rows %}<tr class="workflow-stage-row" data-stage="{{ row.chapter.current_stage_type|default:'none' }}"{{ row.chapter.current_stage_type|stage_palette_attr }}>
 {% if coordinator and is_open %}<td><input type="checkbox" name="chapters" value="{{ row.chapter.pk }}" aria-label="Wybierz rozdział {{ row.chapter.chapter_number }}" {% if row.chapter.pk in selected_chapter_ids %}checked{% endif %}></td>{% endif %}
 <td><strong><a href="{% url 'core:assigned_text_detail' row.chapter.pk %}">Rozdział {{ row.chapter.chapter_number }}</a></strong></td><td>{{ row.chapter.length|default_if_none:'Brak danych' }}</td>
-<td><span class="workflow-stage-badge" data-stage="{{ row.chapter.current_stage_type }}">{{ row.status }}</span></td>
-<td><ul class="novel-assignments">{% for assignment in row.assignments %}<li><span class="role-badge" data-role="{{ assignment.role }}" title="{{ assignment.get_role_display }}">{{ assignment.assigned_to.person_profile|default:assignment.assigned_to }}{% if assignment.execution_number > 1 %} (wyk. {{ assignment.execution_number }}){% endif %}</span></li>{% empty %}<li>Brak przypisań</li>{% endfor %}</ul></td>
+<td><span class="workflow-stage-badge" data-stage="{{ row.chapter.current_stage_type }}"{{ row.chapter.current_stage_type|stage_palette_attr:row.status }}>{{ row.status }}</span></td>
+<td><ul class="novel-assignments">{% for assignment in row.assignments %}<li><span class="role-badge" data-role="{{ assignment.role }}"{{ assignment.role|role_palette_attr:assignment.get_role_display }} title="{{ assignment.get_role_display }}">{{ assignment.assigned_to.person_profile|default:assignment.assigned_to }}{% if assignment.execution_number > 1 %} (wyk. {{ assignment.execution_number }}){% endif %}</span></li>{% empty %}<li>Brak przypisań</li>{% endfor %}</ul></td>
 {% if coordinator and is_open %}<td><a class="secondary-button" href="{% url 'core:chapter_edit' book.pk row.chapter.pk %}">Edytuj</a></td>{% endif %}
 </tr>{% empty %}<tr><td colspan="6">Brak rozdziałów.</td></tr>{% endfor %}</tbody></table></div>
 {% if coordinator and is_open %}</form>{% endif %}
@@ -49,4 +50,4 @@
 <form method="post" class="intake-form novel-status-action">{% csrf_token %}<input type="hidden" name="novel_token" value="{{ novel_token }}">{% if is_open %}<button class="secondary-button" name="action" value="finish">Oznacz powieść jako gotową</button>{% else %}<button class="secondary-button" name="action" value="reopen">Wznów pracę nad powieścią</button>{% endif %}</form>
 </div></details>{% endif %}
 {% endblock %}
-{% block scripts %}<script src="{% static 'core/person-select.js' %}?v=31"></script><script src="{% static 'core/novels.js' %}?v=31"></script>{% endblock %}
+{% block scripts %}<script src="{% static 'core/person-select.js' %}" defer></script><script src="{% static 'core/novels.js' %}" defer></script>{% endblock %}

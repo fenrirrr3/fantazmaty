@@ -136,7 +136,8 @@ def plan_rows(rows, *, lock):
 
 
 def html_report(report):
-    esc = lambda value: html.escape(str(value), quote=True)
+    def esc(value):
+        return html.escape(str(value), quote=True)
     body = []
     for row in report["rows"]:
         match = row.get("matched", {})

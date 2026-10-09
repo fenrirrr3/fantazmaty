@@ -1,4 +1,4 @@
-{% extends "core/base.html" %}
+{% extends "core/base.html" %}{% load workspace_tags %}
 
 {% block title %}Aktywność korektorów | Fantazmaty CMS{% endblock %}
 
@@ -202,7 +202,7 @@
                             {% endif %}
 
                             <td>
-                                <span class="role-badge" data-role="{{ row.role_code }}">{{ row.role }}</span>
+                                <span class="role-badge" data-role="{{ row.role_code }}"{{ row.role_code|role_palette_attr:row.role }}>{{ row.role }}</span>
                             </td>
 
                             

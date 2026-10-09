@@ -1,10 +1,22 @@
-/* Illustration badges: the label remains readable without colour perception. */
+/*
+ * Status ilustracji. Arkusz jest samodzielny, bo korzysta z niego także
+ * panel administracyjny, który nie ładuje themes.css. Etykieta pozostaje
+ * czytelna bez rozróżniania kolorów.
+ */
+:root {
+    --ill-unassigned-fg: #8f1919; --ill-unassigned-bg: #ffe5e5; --ill-unassigned-border: #dc8a8a;
+    --ill-assigned-fg: #694c00; --ill-assigned-bg: #fff1b8; --ill-assigned-border: #b89b31;
+    --ill-delivered-fg: #165329; --ill-delivered-bg: #dcf6e3; --ill-delivered-border: #73b489;
+    --ill-corrections-fg: #783800; --ill-corrections-bg: #ffe9cf; --ill-corrections-border: #c99259;
+}
+[data-theme="dark"] {
+    --ill-unassigned-fg: #ffd1d1; --ill-unassigned-bg: #541e24; --ill-unassigned-border: #b8616b;
+    --ill-assigned-fg: #ffe8a1; --ill-assigned-bg: #514318; --ill-assigned-border: #aa923e;
+    --ill-delivered-fg: #bdf2cc; --ill-delivered-bg: #193f28; --ill-delivered-border: #54996b;
+    --ill-corrections-fg: #ffdbb8; --ill-corrections-bg: #57321b; --ill-corrections-border: #b57b4b;
+}
 .illustration-status { display: inline-flex; padding: .3em .65em; border: 1px solid; border-radius: var(--radius, .4rem); font-weight: 650; white-space: normal; }
-.illustration-status-unassigned { color: #8f1919; background: #ffe5e5; border-color: #dc8a8a; }
-.illustration-status-assigned { color: #694c00; background: #fff1b8; border-color: #b89b31; }
-.illustration-status-delivered { color: #165329; background: #dcf6e3; border-color: #73b489; }
-.illustration-status-in_corrections { color: #783800; background: #ffe9cf; border-color: #c99259; }
-[data-theme="dark"] .illustration-status-unassigned { color: #ffd1d1; background: #541e24; border-color: #b8616b; }
-[data-theme="dark"] .illustration-status-assigned { color: #ffe8a1; background: #514318; border-color: #aa923e; }
-[data-theme="dark"] .illustration-status-delivered { color: #bdf2cc; background: #193f28; border-color: #54996b; }
-[data-theme="dark"] .illustration-status-in_corrections { color: #ffdbb8; background: #57321b; border-color: #b57b4b; }
+.illustration-status-unassigned { color: var(--ill-unassigned-fg); background: var(--ill-unassigned-bg); border-color: var(--ill-unassigned-border); }
+.illustration-status-assigned { color: var(--ill-assigned-fg); background: var(--ill-assigned-bg); border-color: var(--ill-assigned-border); }
+.illustration-status-delivered { color: var(--ill-delivered-fg); background: var(--ill-delivered-bg); border-color: var(--ill-delivered-border); }
+.illustration-status-in_corrections { color: var(--ill-corrections-fg); background: var(--ill-corrections-bg); border-color: var(--ill-corrections-border); }

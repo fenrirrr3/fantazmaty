@@ -3,6 +3,18 @@ from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.forms import UserChangeForm, UserCreationForm
+from core.models import AnthologyCorrection
+from core.permissions import is_coordinator
+from core.models import Recruitment
+from texts.models import Extract
+from core.intake_forms import ExtractForm
+from people.models import Vacation
+from texts.models import AnthologyTask, Reviewers, ReviewAssignment
+from authors.admin import SuperuserOnlyAdminMixin
+from core.models import UserActivity
+from core.models import WorkflowEvent
+from core.models import MailboxConnection
+from core.admin_newsletter_recovery import NewsletterRecoveryAdminMixin
 
 User = get_user_model()
 
@@ -89,7 +101,6 @@ if admin.site.is_registered(User):
     admin.site.unregister(User)
 admin.site.register(User, AccountAdmin)
 
-from core.models import AnthologyCorrection
 
 
 @admin.register(AnthologyCorrection)
@@ -119,10 +130,6 @@ class AnthologyCorrectionAdmin(admin.ModelAdmin):
 
 
 
-from core.permissions import is_coordinator
-from core.models import Recruitment
-from texts.models import Extract
-from core.intake_forms import RecruitmentForm, ExtractForm
 
 
 class CoordinatorIntakeAdmin(admin.ModelAdmin):
@@ -238,9 +245,6 @@ class ExtractAdmin(CoordinatorIntakeAdmin):
         return self._lines(obj.rejected_titles)
 
 
-from people.models import Vacation
-from texts.models import AnthologyTask, Reviewers, ReviewAssignment
-from authors.admin import SuperuserOnlyAdminMixin
 
 
 @admin.register(Vacation)
@@ -332,7 +336,6 @@ class ReviewersAdmin(ServiceOwnedReviewAdmin):
     list_display = ('__str__',)
 
 
-from core.models import UserActivity
 
 
 @admin.register(UserActivity)
@@ -353,7 +356,6 @@ class UserActivityAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         return False
 
 
-from core.models import WorkflowEvent
 
 @admin.register(WorkflowEvent)
 class WorkflowEventAdmin(admin.ModelAdmin):
@@ -381,7 +383,6 @@ class WorkflowEventAdmin(admin.ModelAdmin):
 
 
 
-from core.models import MailboxConnection
 
 
 class MailboxConnectionForm(forms.ModelForm):
@@ -408,7 +409,6 @@ class MailboxConnectionForm(forms.ModelForm):
         return instance
 
 
-from core.admin_newsletter_recovery import NewsletterRecoveryAdminMixin
 
 
 @admin.register(MailboxConnection)

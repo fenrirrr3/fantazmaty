@@ -133,35 +133,45 @@ class ExternalIllustrationsTests(TestCase):
         self.assertEqual(PublicIllustrationSettings.objects.get().drive_url,link)
         self.assertEqual(self.client.post(self.internal, {'drive_url':'','version':link_version(self.coordinator,link)}).status_code,302)
         self.assertNotContains(self.client.get(self.url),'Otwórz GDrive')
-        csrf = Client(enforce_csrf_checks=True);csrf.force_login(self.coordinator)
-        self.assertEqual(csrf.post(self.internal, {'drive_url':link,'version':token}).status_code,403)
+        csrf = Client(enforce_csrf_checks=True)
+        csrf.force_login(self.coordinator)
+        self.assertEqual(
+            csrf.post(self.internal, {"drive_url": link, "version": token}).status_code, 403
+        )
 
 
 class RecruitmentDeletionTests(TestCase):
     def setUp(self):
-        self.admin = get_user_model().objects.create_superuser('delete-admin','admin@example.test','test')
-        self.coordinator = get_user_model().objects.create_user('delete-coordinator')
-        p = Person.objects.create(user=self.coordinator, first_name='Anna', last_name='Koordynator')
-        p.roles.add(Role.objects.get_or_create(name='Koordynator')[0])
-        self.record = Recruitment.objects.create(first_name='Jan', last_name='Kandydat', mail_roles=['editors','proofreaders'])
-        RecruitmentMailSource.objects.create(recruitment=self.record, mailbox_key='key', uid_validity=1, uid=2)
-        self.url = reverse('core:recruitment_delete', args=[self.record.pk])
-        self.detail = reverse('core:recruitment_detail', args=[self.record.pk])
+        self.admin = get_user_model().objects.create_superuser(
+            "delete-admin", "admin@example.test", "test"
+        )
+        self.coordinator = get_user_model().objects.create_user("delete-coordinator")
+        p = Person.objects.create(user=self.coordinator, first_name="Anna", last_name="Koordynator")
+        p.roles.add(Role.objects.get_or_create(name="Koordynator")[0])
+        self.record = Recruitment.objects.create(
+            first_name="Jan", last_name="Kandydat", mail_roles=["editors", "proofreaders"]
+        )
+        RecruitmentMailSource.objects.create(
+            recruitment=self.record, mailbox_key="key", uid_validity=1, uid=2
+        )
+        self.url = reverse("core:recruitment_delete", args=[self.record.pk])
+        self.detail = reverse("core:recruitment_detail", args=[self.record.pk])
 
     def test_only_superuser_sees_button_and_can_delete(self):
-        self.assertEqual(self.client.post(self.url).status_code,302)
+        self.assertEqual(self.client.post(self.url).status_code, 302)
         self.client.force_login(self.coordinator)
-        self.assertNotContains(self.client.get(self.detail),'Usuń zgłoszenie')
-        for method in ('get','post'):
-            self.assertEqual(getattr(self.client,method)(self.url).status_code,403)
+        self.assertNotContains(self.client.get(self.detail), "Usuń zgłoszenie")
+        for method in ("get", "post"):
+            self.assertEqual(getattr(self.client, method)(self.url).status_code, 403)
         self.client.force_login(self.admin)
         page = self.client.get(self.detail)
-        self.assertContains(page,'cms-danger-button');self.assertContains(page,'Odśwież dane')
-        self.assertEqual(self.client.get(self.url).status_code,200)
+        self.assertContains(page, "cms-danger-button")
+        self.assertContains(page, "Odśwież dane")
+        self.assertEqual(self.client.get(self.url).status_code, 200)
         self.assertTrue(Recruitment.objects.filter(pk=self.record.pk).exists())
-        other = Recruitment.objects.create(first_name='Inna osoba')
-        result = self.client.post(self.url, {'version':deletion_token(self.admin,self.record)})
-        self.assertRedirects(result,reverse('core:recruitment_list'))
+        other = Recruitment.objects.create(first_name="Inna osoba")
+        result = self.client.post(self.url, {"version": deletion_token(self.admin, self.record)})
+        self.assertRedirects(result, reverse("core:recruitment_list"))
         self.assertFalse(Recruitment.objects.filter(pk=self.record.pk).exists())
         self.assertFalse(RecruitmentMailSource.objects.exists())
         self.assertFalse(self.record.role_decisions.exists())
@@ -169,10 +179,13 @@ class RecruitmentDeletionTests(TestCase):
 
     def test_csrf_and_newer_decision_prevent_deletion(self):
         self.client.force_login(self.admin)
-        csrf = Client(enforce_csrf_checks=True);csrf.force_login(self.admin)
-        self.assertEqual(csrf.post(self.url).status_code,403)
-        token = deletion_token(self.admin,self.record)
-        decision = self.record.role_decisions.first();decision.decision_reason='Nowe uzasadnienie';decision.save()
-        self.assertEqual(self.client.post(self.url, {'version':token}).status_code,409)
-        self.assertEqual(self.client.post(self.url, {'version':'forged'}).status_code,409)
+        csrf = Client(enforce_csrf_checks=True)
+        csrf.force_login(self.admin)
+        self.assertEqual(csrf.post(self.url).status_code, 403)
+        token = deletion_token(self.admin, self.record)
+        decision = self.record.role_decisions.first()
+        decision.decision_reason = "Nowe uzasadnienie"
+        decision.save()
+        self.assertEqual(self.client.post(self.url, {"version": token}).status_code, 409)
+        self.assertEqual(self.client.post(self.url, {"version": "forged"}).status_code, 409)
         self.assertTrue(Recruitment.objects.filter(pk=self.record.pk).exists())

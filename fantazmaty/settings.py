@@ -6,12 +6,15 @@ from django.core.exceptions import ImproperlyConfigured
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-load_dotenv(
-    BASE_DIR / ".env",
-    override=False,
-    interpolate=False,
-    encoding="utf-8",
-)
+
+# Testy ustawiają DJANGO_SKIP_DOTENV=1, aby lokalny .env nie wpływał na wynik.
+if os.environ.get("DJANGO_SKIP_DOTENV") != "1":
+    load_dotenv(
+        BASE_DIR / ".env",
+        override=False,
+        interpolate=False,
+        encoding="utf-8",
+    )
 
 def env_bool(name, default=False):
     value = os.environ.get(name)
@@ -130,6 +133,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "core.permissions.ReadAccessScopeMiddleware",
     "core.auth_throttle.AuthenticationThrottleMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
@@ -230,10 +234,24 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LOGIN_URL = "login"
-# PythonAnywhere overwrites X-Real-IP; REMOTE_ADDR is its load balancer.
-# For a direct deployment use REMOTE_ADDR, not a client-controlled header.
+# Adres klienta dla limitu prób logowania. Domyślnie REMOTE_ADDR, którego
+# klient nie może podrobić. Na PythonAnywhere REMOTE_ADDR to load balancer,
+# a X-Real-IP jest nadpisywany przez platformę, więc tam ustaw
+# AUTH_THROTTLE_CLIENT_IP_HEADER=HTTP_X_REAL_IP.
 # https://help.pythonanywhere.com/pages/WebAppClientIPAddresses
-AUTH_THROTTLE_CLIENT_IP_HEADER = os.environ.get("AUTH_THROTTLE_CLIENT_IP_HEADER", "HTTP_X_REAL_IP")
+AUTH_THROTTLE_CLIENT_IP_HEADER = os.environ.get(
+    "AUTH_THROTTLE_CLIENT_IP_HEADER",
+    "REMOTE_ADDR",
+).strip() or "REMOTE_ADDR"
+
+if not (
+    AUTH_THROTTLE_CLIENT_IP_HEADER == "REMOTE_ADDR"
+    or AUTH_THROTTLE_CLIENT_IP_HEADER.startswith("HTTP_")
+):
+    raise ImproperlyConfigured(
+        "AUTH_THROTTLE_CLIENT_IP_HEADER musi mieć wartość REMOTE_ADDR "
+        "albo nazwę nagłówka w formacie META, np. HTTP_X_REAL_IP."
+    )
 LOGIN_REDIRECT_URL = "core:home"
 LOGOUT_REDIRECT_URL = "login"
 
@@ -261,8 +279,9 @@ CSRF_COOKIE_SECURE = env_bool(
     "DJANGO_CSRF_COOKIE_SECURE",
     default=IS_PRODUCTION,
 )
-# Umożliwia istniejącym skryptom odczyt tokena dla żądań AJAX.
-CSRF_COOKIE_HTTPONLY = False
+# Skrypty pobierają token z pola csrfmiddlewaretoken w formularzu,
+# więc ciasteczko nie musi być dostępne z JavaScriptu.
+CSRF_COOKIE_HTTPONLY = True
 
 
 SECURE_SSL_REDIRECT = env_bool(
@@ -423,6 +442,9 @@ LOGGING = {
 
 # Temporary files for document conversion.
 DOCUMENT_CONVERSION_DIR = BASE_DIR / 'var' / 'conversion'
+# Ile zadań programów może czekać lub działać jednocześnie. Konwerter i tak
+# przetwarza jeden dokument naraz (conversion_slot), więc domyślnie 1.
+PROGRAM_MAX_ACTIVE_JOBS = env_int("PROGRAM_MAX_ACTIVE_JOBS", 1, minimum=1)
 
 # Public application key for the Dropbox folder picker (not an app secret).
 DROPBOX_CHOOSER_APP_KEY = os.environ.get("DROPBOX_CHOOSER_APP_KEY", "").strip()

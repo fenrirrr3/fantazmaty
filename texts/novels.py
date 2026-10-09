@@ -7,7 +7,9 @@ from contextlib import contextmanager
 from django.core import signing
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
+from django.db.models import F
 
+from core.edit_versions import batched_bumps
 from core.permissions import is_coordinator
 from core.workflow_events import track_workflow
 from texts.models import Anthology, NovelProfile, Text
@@ -40,9 +42,12 @@ def add_chapters(book, profile, numbers, *, lengths=None):
     require_open(book)
     lengths = lengths or {}
     existing = set(Text.objects.filter(anthology=book, chapter_number__in=numbers).values_list('chapter_number', flat=True))
-    for number in numbers:
-        if number not in existing:
-            new_chapter(book, profile, chapter_number=number, length=lengths.get(number))
+    authors = list(profile.authors.all())
+    # Each chapter saves a text, its authors and a stage; one version bump per record is enough.
+    with batched_bumps():
+        for number in numbers:
+            if number not in existing:
+                new_chapter(book, profile, chapter_number=number, length=lengths.get(number), authors=authors)
     return len(set(numbers) - existing)
 
 
@@ -92,18 +97,27 @@ def require_open(book):
 
 
 def chapters_ready(book):
-    chapters = list(Text.objects.filter(anthology=book))
-    if not chapters:
+    """All non-withdrawn chapters are released as ready and have no open work.
+
+    One query for every chapter's current stages instead of three per chapter.
+    """
+    chapter_ids = list(Text.objects.filter(anthology=book).values_list('pk', flat=True))
+    if not chapter_ids:
         return False
+    stages = {pk: [] for pk in chapter_ids}
+    for text_id, stage_type, is_released, is_completed in WorkflowStage.objects.filter(
+            text__anthology=book, is_current=True, workflow_cycle=F('text__current_workflow_cycle'),
+    ).values_list('text_id', 'stage_type', 'is_released', 'is_completed'):
+        stages[text_id].append((stage_type, is_released, is_completed))
+    finished = {WorkflowStage.StageType.READY, WorkflowStage.StageType.WITHDRAWN}
     active = 0
-    for chapter in chapters:
-        stages = chapter.workflow_stages.filter(workflow_cycle=chapter.current_workflow_cycle, is_current=True)
-        if stages.filter(stage_type=WorkflowStage.StageType.WITHDRAWN).exists():
+    for rows in stages.values():
+        if any(stage_type == WorkflowStage.StageType.WITHDRAWN for stage_type, _, _ in rows):
             continue
         active += 1
-        if not stages.filter(stage_type=WorkflowStage.StageType.READY, is_released=True).exists():
+        if not any(stage_type == WorkflowStage.StageType.READY and released for stage_type, released, _ in rows):
             return False
-        if stages.exclude(stage_type__in=[WorkflowStage.StageType.READY, WorkflowStage.StageType.WITHDRAWN]).filter(is_completed=False, is_released=True).exists():
+        if any(stage_type not in finished and released and not completed for stage_type, released, completed in rows):
             return False
     return bool(active)
 
@@ -115,19 +129,20 @@ def validate_ready_novel(book):
 
 def sync_metadata(book, profile):
     authors = list(profile.authors.all())
-    for chapter in Text.objects.filter(anthology=book).order_by('pk'):
-        chapter.authors.set(authors)
-        chapter.tags, chapter.genre = profile.tags, profile.genre
-        chapter.save(update_fields=['tags', 'genre'])
+    with batched_bumps():
+        for chapter in Text.objects.filter(anthology=book).order_by('pk'):
+            chapter.authors.set(authors)
+            chapter.tags, chapter.genre = profile.tags, profile.genre
+            chapter.save(update_fields=['tags', 'genre'])
 
 
-def new_chapter(book, profile, **fields):
+def new_chapter(book, profile, *, authors=None, **fields):
     require_open(book)
     fields['title'] = f'Rozdział {fields["chapter_number"]}'
     chapter = Text(anthology=book, for_recording=False, tags=profile.tags, genre=profile.genre, **fields)
     chapter.full_clean()
     chapter.save()
-    chapter.authors.set(profile.authors.all())
+    chapter.authors.set(profile.authors.all() if authors is None else authors)
     create_pending_stage(chapter, WorkflowStage.StageType.READY_FOR_EDITING)
     return chapter
 
@@ -158,6 +173,7 @@ def assign_chapters(book, user, chapter_ids, assignments):
         raise ValidationError('Wybierz przynajmniej jedną rolę i wykonawcę.')
     if len({role for role, _ in assignments}) != len(assignments):
         raise ValidationError('W jednym przydziale wybierz każdą rolę tylko raz.')
-    for chapter in chapters:
-        for role, assignee in assignments:
-            assign_chapter(chapter, user, role, assignee)
+    with batched_bumps():
+        for chapter in chapters:
+            for role, assignee in assignments:
+                assign_chapter(chapter, user, role, assignee)

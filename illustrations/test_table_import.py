@@ -38,49 +38,68 @@ class IllustrationTableImportTests(TestCase):
         self.assertEqual(self.illustration.illustrated_excerpt, 'Stary fragment')
         self.assertFalse(Illustrator.objects.exists())
         self.run_import(apply=True)
-        self.illustration.refresh_from_db(); self.story.refresh_from_db()
-        self.assertEqual(self.illustration.status, 'delivered')
+        self.illustration.refresh_from_db()
+        self.story.refresh_from_db()
+        self.assertEqual(self.illustration.status, "delivered")
         self.assertEqual(self.illustration.assigned_at, date(2026, 4, 3))
-        self.assertEqual(self.illustration.illustrated_excerpt, self.row['illustrated_excerpt'])
-        self.assertEqual(self.illustration.story_url, 'https://example.org/zachowany')
-        self.assertEqual(self.illustration.trigger_warnings, 'Ostrzeżenia ilustracji')
-        self.assertEqual(self.illustration.coordinator_notes, 'Uwagi')
-        self.assertEqual((self.story.genre, self.story.tags, self.story.content_warnings), ('Fantasy', 'stary tag', 'Ostrzeżenia tekstu'))
+        self.assertEqual(self.illustration.illustrated_excerpt, self.row["illustrated_excerpt"])
+        self.assertEqual(self.illustration.story_url, "https://example.org/zachowany")
+        self.assertEqual(self.illustration.trigger_warnings, "Ostrzeżenia ilustracji")
+        self.assertEqual(self.illustration.coordinator_notes, "Uwagi")
+        self.assertEqual(
+            (self.story.genre, self.story.tags, self.story.content_warnings),
+            ("Fantasy", "stary tag", "Ostrzeżenia tekstu"),
+        )
         repeat = self.run_import(apply=True)
-        self.assertEqual(repeat['counts'], {'unchanged': 1})
+        self.assertEqual(repeat["counts"], {"unchanged": 1})
         self.assertEqual(Illustrator.objects.count(), 1)
 
     def test_missing_text_rolls_back_all_rows(self):
         with self.assertRaises(CommandError):
-            self.run_import(apply=True, rows=[self.row, {**self.row, 'title': 'Nie istnieje'}])
+            self.run_import(apply=True, rows=[self.row, {**self.row, "title": "Nie istnieje"}])
         self.illustration.refresh_from_db()
-        self.assertEqual(self.illustration.status, 'unassigned')
-        self.assertEqual(self.illustration.illustrated_excerpt, 'Stary fragment')
+        self.assertEqual(self.illustration.status, "unassigned")
+        self.assertEqual(self.illustration.illustrated_excerpt, "Stary fragment")
         self.assertFalse(Illustrator.objects.exists())
-        self.assertTrue(json.loads(self.report.read_text(encoding='utf-8'))['conflicts'])
+        self.assertTrue(json.loads(self.report.read_text(encoding="utf-8"))["conflicts"])
 
     def test_unassigned_blank_excerpt_preserves_existing_excerpt(self):
-        self.run_import(apply=True, rows=[{**self.row, 'status': 'unassigned', 'illustrators': [], 'assigned_at': None, 'illustrated_excerpt': ''}])
+        self.run_import(
+            apply=True,
+            rows=[
+                {
+                    **self.row,
+                    "status": "unassigned",
+                    "illustrators": [],
+                    "assigned_at": None,
+                    "illustrated_excerpt": "",
+                }
+            ],
+        )
         self.illustration.refresh_from_db()
-        self.assertEqual(self.illustration.status, 'unassigned')
+        self.assertEqual(self.illustration.status, "unassigned")
         self.assertIsNone(self.illustration.assigned_at)
-        self.assertEqual(self.illustration.illustrated_excerpt, 'Stary fragment')
+        self.assertEqual(self.illustration.illustrated_excerpt, "Stary fragment")
         self.assertFalse(self.illustration.illustrators.exists())
 
     def test_assigned_date_is_not_replaced_with_today_and_existing_contact_reused(self):
-        artist = Illustrator.objects.create(first_name='Anna', last_name='Artysta', is_active=True)
-        self.run_import(apply=True, rows=[{**self.row, 'status': 'assigned'}])
-        self.illustration.refresh_from_db(); artist.refresh_from_db()
-        self.assertEqual(self.illustration.status, 'assigned')
+        artist = Illustrator.objects.create(first_name="Anna", last_name="Artysta", is_active=True)
+        self.run_import(apply=True, rows=[{**self.row, "status": "assigned"}])
+        self.illustration.refresh_from_db()
+        artist.refresh_from_db()
+        self.assertEqual(self.illustration.status, "assigned")
         self.assertEqual(self.illustration.assigned_at, date(2026, 4, 3))
         self.assertEqual(list(self.illustration.illustrators.all()), [artist])
         self.assertTrue(artist.is_active)
         self.assertEqual(Illustrator.objects.count(), 1)
 
     def test_existing_different_artist_blocks_unassignment_and_replacement(self):
-        artist = Illustrator.objects.create(first_name='Inny', last_name='Ilustrator')
-        self.illustration.set_artists([artist], status='assigned')
-        for row in (self.row, {**self.row, 'status': 'unassigned', 'illustrators': [], 'assigned_at': None}):
+        artist = Illustrator.objects.create(first_name="Inny", last_name="Ilustrator")
+        self.illustration.set_artists([artist], status="assigned")
+        for row in (
+            self.row,
+            {**self.row, "status": "unassigned", "illustrators": [], "assigned_at": None},
+        ):
             with self.assertRaises(CommandError):
                 self.run_import(apply=True, rows=[row])
             self.assertEqual(list(self.illustration.illustrators.all()), [artist])

@@ -1,20 +1,32 @@
-SECRET_KEY='isolated-tests-only'
-AUTHENTICATION_BACKENDS = ['core.auth_backends.EmailBackend']
-INSTALLED_APPS=['core.apps.CoreConfig','core.admin_apps.CMSAdminConfig','django.contrib.auth','django.contrib.contenttypes','django.contrib.sessions','django.contrib.messages','django.contrib.staticfiles','authors.apps.AuthorsConfig','texts.apps.TextsConfig','workflow.apps.WorkflowConfig','people.apps.PeopleConfig','illustrations.apps.IllustrationsConfig']
-DATABASES={'default':{'ENGINE':'django.db.backends.sqlite3','NAME':':memory:'}}
-MIDDLEWARE=['django.contrib.sessions.middleware.SessionMiddleware','django.middleware.common.CommonMiddleware','django.middleware.csrf.CsrfViewMiddleware','django.contrib.auth.middleware.AuthenticationMiddleware','django.contrib.messages.middleware.MessageMiddleware']
-TEMPLATES=[{'BACKEND':'django.template.backends.django.DjangoTemplates','APP_DIRS':True,'OPTIONS':{'builtins':['core.templatetags.editing'],'context_processors':['django.template.context_processors.request','django.contrib.auth.context_processors.auth','django.contrib.messages.context_processors.messages']}}]
-ROOT_URLCONF='fantazmaty.urls'
-STATIC_URL='/static/'
-USE_TZ=True
-TIME_ZONE='Europe/Warsaw'
-DEFAULT_AUTO_FIELD='django.db.models.BigAutoField'
-PASSWORD_HASHERS=['django.contrib.auth.hashers.MD5PasswordHasher']
-ALLOWED_HOSTS=['testserver','localhost','127.0.0.1']
-LOGIN_URL='/accounts/login/'
-from pathlib import Path
-BASE_DIR=Path(__file__).resolve().parent.parent
-MIDDLEWARE += ['core.activity.UserActivityMiddleware', 'core.user_preview.UserPreviewMiddleware', 'core.middleware.EditingMiddleware']
-MIDDLEWARE += ['core.auth_throttle.AuthenticationThrottleMiddleware']
+"""Ustawienia testów: konfiguracja produkcyjna z izolowaną bazą SQLite.
 
-TEMPLATES[0]["DIRS"] = [BASE_DIR / "core" / "templates"]
+Moduł importuje fantazmaty.settings, więc kolejność middleware, język,
+strefa czasowa, przekierowania i nagłówki bezpieczeństwa są takie same
+jak w działającej aplikacji. Nadpisywane są tylko baza, hasher haseł
+i ścieżki plików roboczych. Lokalny .env jest pomijany.
+"""
+import os
+import tempfile
+from pathlib import Path
+
+for _name, _value in {
+    "DJANGO_SKIP_DOTENV": "1",
+    "DJANGO_ENV": "test",
+    "DJANGO_SECRET_KEY": "isolated-tests-only-not-a-real-secret-0123456789",
+    "DJANGO_DB_NAME": "unused",
+    "DJANGO_DB_USER": "unused",
+    "DJANGO_DB_PASSWORD": "unused",
+}.items():
+    os.environ.setdefault(_name, _value)
+
+from .settings import *  # noqa: E402,F403
+
+DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}}
+PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
+ALLOWED_HOSTS = ["testserver", "localhost", "127.0.0.1"]
+EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
+
+# Pliki robocze testów nie trafiają do var/ w katalogu projektu.
+_WORK_DIR = Path(tempfile.gettempdir()) / "fantazmaty-tests"
+ACTIVITY_SPOOL_DIR = _WORK_DIR / "activity-spool"
+DOCUMENT_CONVERSION_DIR = _WORK_DIR / "conversion"

@@ -65,7 +65,7 @@
                     {% for text in texts %}
                         <tr
                             class="workflow-stage-row"
-                            data-stage="{{ text.current_stage_type|default:'none' }}"
+                            data-stage="{{ text.current_stage_type|default:'none' }}"{{ text.current_stage_type|stage_palette_attr }}
                         >
                             <td data-label="Antologia">
                                 {% if text.anthology %}
@@ -106,7 +106,7 @@
                             <td data-label="Twoje role">
                                 <div class="roles-list">
                                     {% for assignment in text.user_assignments %}
-                                        <span class="role-badge" data-role="{{ assignment.role }}">{{ assignment.get_role_display }}
+                                        <span class="role-badge" data-role="{{ assignment.role }}"{{ assignment.role|role_palette_attr:assignment.get_role_display }}>{{ assignment.get_role_display }}
                                         </span>
                                     {% empty %}
                                         <span class="muted-text">

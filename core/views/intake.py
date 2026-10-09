@@ -1,4 +1,4 @@
-from core.public_authors import name_matches, review_name_matches
+from core.public_authors import name_matches
 from core.translation_scope import ordinary
 from core.author_contact import stored_author_phone
 from django.contrib import messages

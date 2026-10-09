@@ -1,17 +1,19 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
+from core.edit_policy import edit_policy
 from core.forms import VacationForm
 from core.pagination import paginate_items
 from core.permissions import (
+    can_manage_vacation,
     get_active_person_profile,
-    is_superuser, is_coordinator,
+    is_coordinator,
     team_member_required,
 )
 from core.services.vacations import (
@@ -27,6 +29,11 @@ from people.models import Vacation, Person
 # walidują aktualny stan i synchronizują pola urlopowe osoby.
 # Synchronizacja uwzględnia wszystkie jej urlopy: przyszły urlop
 # nie może przesłonić urlopu trwającego obecnie.
+
+
+def _vacation_policy(request, vacation, kwargs):
+    if not can_manage_vacation(request.user, vacation):
+        raise PermissionDenied('Brak dostępu do tego urlopu.')
 
 
 def _manageable_vacations(user):
@@ -49,7 +56,6 @@ def _vacation_redirect(user, vacation):
     if vacation.person.user_id == user.pk:
         return redirect("core:my_vacations")
 
-    from django.urls import reverse
     return redirect("core:active_vacations")
 
 
@@ -126,7 +132,6 @@ def my_vacations(request):
             _add_validation_errors(form, error)
         else:
             messages.success(request, "Zgłoszono urlop.")
-            from django.urls import reverse
             return redirect("core:my_vacations")
 
     return _render_my_vacations(
@@ -137,6 +142,7 @@ def my_vacations(request):
     )
 
 
+@edit_policy(_vacation_policy)
 @never_cache
 @login_required
 @require_http_methods(["GET", "POST"])
@@ -196,6 +202,7 @@ def edit_vacation(request, vacation_id):
     )
 
 
+@edit_policy(_vacation_policy)
 @never_cache
 @login_required
 @require_POST
@@ -262,6 +269,7 @@ def active_vacations(request):
         },
     )
 
+@edit_policy(_vacation_policy)
 @never_cache
 @login_required
 @require_POST

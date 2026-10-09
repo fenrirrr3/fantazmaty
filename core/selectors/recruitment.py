@@ -1,7 +1,7 @@
 """Shared role matching for dashboard counts and recruitment list filters."""
 from collections import Counter
 
-from core.models import Recruitment, RecruitmentRoleDecision
+from core.models import Recruitment
 from core.recruitment_roles import ROLE_CHOICES
 
 

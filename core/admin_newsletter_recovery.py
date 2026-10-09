@@ -17,7 +17,7 @@ from django.views.decorators.http import require_http_methods
 from core.services.mailbox import MailboxError, encode_folder
 from core.services.mailbox_import import default_mailbox, mailbox_key
 from core.services.newsletters import parse_consents, record_consents
-from core.services.review_import_parser import clean_pasted_submission, unbracket, mail_submission_rows
+from core.services.review_import_parser import clean_pasted_submission, mail_submission_rows
 from core.services.mailbox_body import fetch_text_body
 import time
 
@@ -99,32 +99,42 @@ def recover_batch(config, state=None):
         started = time.monotonic()
         processed = 0
         for uid in remaining[:10]:
-            if processed and time.monotonic() - started > 10: break
+            if processed and time.monotonic() - started > 10:
+                break
             raw = fetch_text_body(client, uid)
             result = None
             if raw is not None:
                 try:
                     result = extract_consent(raw)
-                except (ValidationError, ValueError, TypeError, UnicodeError, LookupError, ParserError):
+                except (
+                    ValidationError,
+                    ValueError,
+                    TypeError,
+                    UnicodeError,
+                    LookupError,
+                    ParserError,
+                ):
                     result = None
             else:
-                state['oversized'] = state.get('oversized', 0) + 1
+                state["oversized"] = state.get("oversized", 0) + 1
             if result is not None:
                 email, consents = result
                 record_consents(email, **consents)
-                state['matched'] += 1
+                state["matched"] += 1
             else:
-                state['skipped'] += 1
-                state.setdefault('skipped_uids', []).append(uid)
-                state['skipped_uids'] = state['skipped_uids'][-500:]
-                state['skipped_uids_truncated'] = state['skipped'] > 500
-            state['last'] = uid
-            state['seen'] += 1
+                state["skipped"] += 1
+                state.setdefault("skipped_uids", []).append(uid)
+                state["skipped_uids"] = state["skipped_uids"][-500:]
+                state["skipped_uids_truncated"] = state["skipped"] > 500
+            state["last"] = uid
+            state["seen"] += 1
             processed += 1
-        state['done'] = processed == len(remaining)
+        state["done"] = processed == len(remaining)
         return state
-    except (imaplib.IMAP4.error, OSError, InvalidToken, ValueError) as error:
-        raise MailboxError('Nie udało się odczytać skrzynki. Sprawdź ustawienia i ponów partię.') from None
+    except (imaplib.IMAP4.error, OSError, InvalidToken, ValueError):
+        raise MailboxError(
+            "Nie udało się odczytać skrzynki. Sprawdź ustawienia i ponów partię."
+        ) from None
     finally:
         if client is not None:
             try:
@@ -134,48 +144,66 @@ def recover_batch(config, state=None):
 
 
 class NewsletterRecoveryAdminMixin:
-    change_list_template = 'admin/core/mailbox_recovery_link.html'
+    change_list_template = "admin/core/mailbox_recovery_link.html"
 
     def get_urls(self):
-        return [path('odzyskaj-zgody/', self.admin_site.admin_view(
-            require_http_methods(['GET', 'POST'])(self.recover_newsletters)),
-            name='core_mailbox_recover_newsletters')] + super().get_urls()
+        return [
+            path(
+                "odzyskaj-zgody/",
+                self.admin_site.admin_view(
+                    require_http_methods(["GET", "POST"])(self.recover_newsletters)
+                ),
+                name="core_mailbox_recover_newsletters",
+            )
+        ] + super().get_urls()
 
     def recover_newsletters(self, request):
         if not request.user.is_active or not request.user.is_superuser:
             raise PermissionDenied
-        if request.method == 'POST' and request.POST.get('restart') == '1':
+        if request.method == "POST" and request.POST.get("restart") == "1":
             request.session.pop(SESSION_KEY, None)
-            token = ''
+            token = ""
         else:
-            token = request.POST.get('cursor') or request.session.get(SESSION_KEY, '')
+            token = request.POST.get("cursor") or request.session.get(SESSION_KEY, "")
         state = None
-        error = ''
+        error = ""
         try:
             if token:
                 state = signing.loads(token, salt=SALT, max_age=86400)
-                if state['user'] != request.user.pk:
+                if state["user"] != request.user.pk:
                     raise PermissionDenied
-            if request.method == 'POST':
+            if request.method == "POST":
                 state = recover_batch(default_mailbox(), state)
-                state['user'] = request.user.pk
-                state['retries'] = 0
+                state["user"] = request.user.pk
+                state["retries"] = 0
                 token = signing.dumps(state, salt=SALT, compress=True)
                 request.session[SESSION_KEY] = token
         except signing.BadSignature:
-            error = 'Sesja narzędzia wygasła. Otwórz stronę ponownie i rozpocznij od początku.'
-            token = ''
+            error = "Sesja narzędzia wygasła. Otwórz stronę ponownie i rozpocznij od początku."
+            token = ""
             request.session.pop(SESSION_KEY, None)
         except MailboxError as exc:
             error = str(exc)
             if state:
-                state['retries'] = state.get('retries', 0) + 1
+                state["retries"] = state.get("retries", 0) + 1
                 token = signing.dumps(state, salt=SALT, compress=True)
                 request.session[SESSION_KEY] = token
-        auto_retry = bool(error and state and state.get('retries', 0) <= 3)
-        return TemplateResponse(request, 'admin/core/newsletter_recovery.html', {
-            **self.admin_site.each_context(request), 'title': 'Odzyskaj zgody ze skrzynki Teksty',
-            'state': state, 'cursor': token, 'error': error,
-            'continue_run': bool(request.method == 'POST' and state and not state.get('done') and (not error or auto_retry)),
-            'retry_delay': 15000 if error else 2000,
-        })
+        auto_retry = bool(error and state and state.get("retries", 0) <= 3)
+        return TemplateResponse(
+            request,
+            "admin/core/newsletter_recovery.html",
+            {
+                **self.admin_site.each_context(request),
+                "title": "Odzyskaj zgody ze skrzynki Teksty",
+                "state": state,
+                "cursor": token,
+                "error": error,
+                "continue_run": bool(
+                    request.method == "POST"
+                    and state
+                    and not state.get("done")
+                    and (not error or auto_retry)
+                ),
+                "retry_delay": 15000 if error else 2000,
+            },
+        )

@@ -1,6 +1,7 @@
 """Focused security and workflow visibility tests for the read-only preview."""
 from unittest.mock import patch
 
+from django.conf import settings
 from django.contrib.auth import SESSION_KEY as AUTH_SESSION_KEY, get_user_model
 from django.test import Client
 from django.urls import reverse
@@ -127,7 +128,7 @@ class UserPreviewTests(StatusAssignmentFixtures):
         client.force_login(self.admin)
         self.assertEqual(client.post(self.start_url, {"target": self.member.pk}).status_code, 403)
         client.get(self.start_url)
-        token = client.cookies["csrftoken"].value
+        token = client.cookies[settings.CSRF_COOKIE_NAME].value
         self.assertEqual(client.post(self.start_url, {"target": self.member.pk, "csrfmiddlewaretoken": token}).status_code, 302)
         self.assertEqual(client.post(self.start_url, {"target": self.other.pk}).status_code, 403)
         self.assertEqual(client.post(self.stop_url).status_code, 403)

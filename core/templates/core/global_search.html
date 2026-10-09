@@ -1,4 +1,4 @@
-{% extends "core/base.html" %}
+{% extends "core/base.html" %}{% load workspace_tags %}
 
 {% block title %}Wyszukiwanie | Fantazmaty CMS{% endblock %}
 
@@ -200,7 +200,7 @@
                                 {% if person.roles.all %}
                                     <div class="roles-list">
                                         {% for role in person.roles.all %}
-                                            <span class="role-badge">{{ role.name }}</span>
+                                            <span class="role-badge"{{ role.name|label_palette_attr }}>{{ role.name }}</span>
                                         {% endfor %}
                                     </div>
                                 {% endif %}

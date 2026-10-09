@@ -1,4 +1,4 @@
-from core.public_authors import name_matches, review_name_matches
+from core.public_authors import name_matches
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
@@ -14,6 +14,7 @@ from core.selectors.texts import text_list_context
 from core.translation_forms import TranslationForm
 from core.views.texts import _permission_context, _render_text_detail
 from texts.models import Text, TextTranslation
+from core.edit_policy import edit_policy
 
 
 @never_cache
@@ -82,6 +83,7 @@ def translation_detail(request, text_id):
     return _render_text_detail(request, text)
 
 
+@edit_policy(require_version=True)
 @never_cache
 @login_required
 @require_POST

@@ -186,14 +186,13 @@ def correct_stage_performers(text_id, changes, actor, expected_version):
                 assignment.save()
                 A.objects.filter(pk=assignment.pk).update(assigned_at=None)
             else:
+                # VersionedQuerySet.update() bumps the assignment and its text.
                 A.objects.filter(pk=assignment.pk).update(assigned_to=performer)
-                bump('workflow.workflowroleassignment',assignment.pk,'default')
             for stage in item['stages']:
                 if stage.assignment_id != assignment.pk:
                     S.objects.filter(pk=stage.pk).update(assignment=assignment)
-                    bump('workflow.workflowstage',stage.pk,'default')
         if plan:
             reset_changed_performers(text, before_performers)
-            bump('texts.text',text.pk,'default')
+            bump('texts.text', text.pk, text._state.db or 'default')
     finally:
         importing_completed.reset(token)

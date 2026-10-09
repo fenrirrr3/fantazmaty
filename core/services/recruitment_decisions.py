@@ -9,9 +9,13 @@ def ensure_decisions(record, *, initial=False, using='default'):
     defaults = {'status': record.status if record.status in ('new', 'accepted', 'rejected') else 'new',
                 'decision_reason': record.decision_reason, 'unofficial_notes': record.unofficial_notes} if initial else {}
     existing = set(RecruitmentRoleDecision.objects.using(using).filter(recruitment_id=record.pk).values_list('role', flat=True))
-    for role, _ in role_choices():
-        if role in roles and role not in existing:
-            RecruitmentRoleDecision.objects.using(using).get_or_create(recruitment_id=record.pk, role=role, defaults=defaults)
+    missing = [role for role, _ in role_choices() if role in roles and role not in existing]
+    if missing:
+        # One INSERT for all roles; the unique constraint keeps a concurrent writer harmless.
+        RecruitmentRoleDecision.objects.using(using).bulk_create(
+            [RecruitmentRoleDecision(recruitment_id=record.pk, role=role, **defaults) for role in missing],
+            ignore_conflicts=True,
+        )
 
 
 def refresh_summary(record, *, using='default'):

@@ -5,4 +5,4 @@
 <section class="card"><div class="card-body"><form method="post" class="intake-form" data-warn-unsaved>{% csrf_token %}{% if novel_token %}<input type="hidden" name="novel_token" value="{{ novel_token }}">{% endif %}{% if form.new_author_first_name %}{% include "core/novels/metadata_fields.html" %}{% else %}{{ form.as_p }}{% endif %}<button class="primary-button" type="submit">Zapisz</button></form></div></section>
 {% endblock %}
 
-{% block scripts %}<script src="{% static 'core/novels.js' %}?v=29"></script>{% endblock %}
+{% block scripts %}<script src="{% static 'core/novels.js' %}" defer></script>{% endblock %}

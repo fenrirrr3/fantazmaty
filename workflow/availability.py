@@ -1,5 +1,5 @@
 """One claim policy shared by displayed availability and the mutation service."""
-from core.permissions import is_team_member, is_coordinator, has_role
+from core.permissions import is_coordinator, has_role
 from workflow.models import WorkflowRoleAssignment as A
 
 
@@ -60,53 +60,94 @@ def role_access_reason(user, role, *, access=None):
 
 
 def claim_reason(stage, user, stages, assignments, *, access=None):
-    from workflow.services import STAGE_ROLES, ROLE_GROUPS
+    from workflow.services import STAGE_ROLES
     access = claim_access(user) if access is None else access
-    if stage.text.anthology_id and stage.text.anthology.status == "ready":return "Antologia jest gotowa."
-    if not stage.is_current or not stage.is_released:return 'Etap czeka na zakończenie poprzedniego.'
-    kind=stage.stage_type
-    role=A.Role.EDITOR if kind=='ready_for_editing' else STAGE_ROLES.get(kind)
-    if not access["member"]:return 'Brak aktywnego dostępu do zespołu.'
-    if any(s.stage_type in ('ready','withdrawn') for s in stages):return 'Proces jest zamknięty.'
-    if stage.is_completed or stage.started_at or stage.ended_at:return 'Etap nie oczekuje na przejęcie.'
-    if not role:return 'Tego etapu nie można przejąć.'
+    if stage.text.anthology_id and stage.text.anthology.status == "ready":
+        return "Antologia jest gotowa."
+    if not stage.is_current or not stage.is_released:
+        return "Etap czeka na zakończenie poprzedniego."
+    kind = stage.stage_type
+    role = A.Role.EDITOR if kind == "ready_for_editing" else STAGE_ROLES.get(kind)
+    if not access["member"]:
+        return "Brak aktywnego dostępu do zespołu."
+    if any(s.stage_type in ("ready", "withdrawn") for s in stages):
+        return "Proces jest zamknięty."
+    if stage.is_completed or stage.started_at or stage.ended_at:
+        return "Etap nie oczekuje na przejęcie."
+    if not role:
+        return "Tego etapu nie można przejąć."
     reason = role_access_reason(user, role, access=access)
-    if reason:return reason
-    if kind in ('second_proofreading', 'third_proofreading') and first_proofreading_work(user).filter(text_id=stage.text_id).exists():return 'Pierwszą korektę tego tekstu wykonywała już ta osoba.'
-    occupied={a.role:a.assigned_to_id for a in assignments if a.assigned_to_id}
-    if role in occupied:return 'Rola ma już przypisanego wykonawcę.'
-    opposite={'verifier_1':'verifier_2','verifier_2':'verifier_1'}.get(role)
-    if opposite and occupied.get(opposite)==user.pk:return 'Pierwszą i drugą weryfikację wykonują różne osoby.'
-    if stage.repetition_id:return ''
+    if reason:
+        return reason
+    if (
+        kind in ("second_proofreading", "third_proofreading")
+        and first_proofreading_work(user).filter(text_id=stage.text_id).exists()
+    ):
+        return "Pierwszą korektę tego tekstu wykonywała już ta osoba."
+    occupied = {a.role: a.assigned_to_id for a in assignments if a.assigned_to_id}
+    if role in occupied:
+        return "Rola ma już przypisanego wykonawcę."
+    opposite = {"verifier_1": "verifier_2", "verifier_2": "verifier_1"}.get(role)
+    if opposite and occupied.get(opposite) == user.pk:
+        return "Pierwszą i drugą weryfikację wykonują różne osoby."
+    if stage.repetition_id:
+        return ""
     from workflow.services import completed_stage_exists
-    if kind in ('first_verification', 'second_verification') and completed_stage_exists(stage.text, kind):
-        return stage.get_stage_type_display() + ' jest już zakończona. Ponowne wykonanie wymaga powtórzenia etapów.'
-    entry=len(stages)==1 and not stage.is_completed
-    if kind=='editor_control':return 'Kontrolę rozpoczyna przypisany redaktor.'
-    if kind in ('editing','author_editing') and not entry:return 'Użyj przekazania lub wznowienia redakcji.'
-    if kind=='first_verification' and not entry and not any(s.stage_type=='editing' and (s.started_at or s.is_completed) for s in stages):return 'Rezerwacja wymaga rozpoczętej redakcji.'
-    if kind=='second_verification' and not entry:
-        if not completed_stage_exists(stage.text, 'first_verification'):return 'Najpierw zakończ pierwszą weryfikację.'
-        if any(s.stage_type in ('editing','author_editing') and not s.is_completed and not s.ended_at for s in stages):return 'Redaktor musi przekazać tekst do drugiej weryfikacji.'
-    return ''
+
+    if kind in ("first_verification", "second_verification") and completed_stage_exists(
+        stage.text, kind
+    ):
+        return (
+            stage.get_stage_type_display()
+            + " jest już zakończona. Ponowne wykonanie wymaga powtórzenia etapów."
+        )
+    entry = len(stages) == 1 and not stage.is_completed
+    if kind == "editor_control":
+        return "Kontrolę rozpoczyna przypisany redaktor."
+    if kind in ("editing", "author_editing") and not entry:
+        return "Użyj przekazania lub wznowienia redakcji."
+    if (
+        kind == "first_verification"
+        and not entry
+        and not any(s.stage_type == "editing" and (s.started_at or s.is_completed) for s in stages)
+    ):
+        return "Rezerwacja wymaga rozpoczętej redakcji."
+    if kind == "second_verification" and not entry:
+        if not completed_stage_exists(stage.text, "first_verification"):
+            return "Najpierw zakończ pierwszą weryfikację."
+        if any(
+            s.stage_type in ("editing", "author_editing") and not s.is_completed and not s.ended_at
+            for s in stages
+        ):
+            return "Redaktor musi przekazać tekst do drugiej weryfikacji."
+    return ""
 
 
 def can_claim_fourth_proofreading(user):
-    return bool(user and user.is_active and (
-        user.is_superuser or has_role(user, "Koordynator korekty")
-    ))
+    return bool(
+        user and user.is_active and (user.is_superuser or has_role(user, "Koordynator korekty"))
+    )
 
 
 def first_proofreading_work(user):
     """All executions, including imports and former performers after handoffs."""
     from django.db.models import Q
     from django.utils import timezone
+
     return A.objects.filter(role=A.Role.PROOFREADER_1, assigned_to_id=user.pk).filter(
-        Q(stages__is_completed=True) | Q(stages__started_at__lte=timezone.localdate()) |
-        Q(handoffs_from__isnull=False))
+        Q(stages__is_completed=True)
+        | Q(stages__started_at__lte=timezone.localdate())
+        | Q(handoffs_from__isnull=False)
+    )
 
 
 def ensure_distinct_proofreader(text, role, user):
     from django.core.exceptions import ValidationError
-    if role in (A.Role.PROOFREADER_2, A.Role.PROOFREADER_3) and first_proofreading_work(user).filter(text_id=text.pk).exists():
-        raise ValidationError('Osoba wykonująca pierwszą korektę nie może przejąć drugiej ani trzeciej korekty tego tekstu.')
+
+    if (
+        role in (A.Role.PROOFREADER_2, A.Role.PROOFREADER_3)
+        and first_proofreading_work(user).filter(text_id=text.pk).exists()
+    ):
+        raise ValidationError(
+            "Osoba wykonująca pierwszą korektę nie może przejąć drugiej ani trzeciej korekty tego tekstu."
+        )

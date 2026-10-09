@@ -1,4 +1,4 @@
-from core.public_authors import name_matches, review_name_matches
+from core.public_authors import review_name_matches
 from core.translation_scope import ordinary
 from core.filtering import facet_queryset
 from django.db.models import Count, F, Prefetch, Q, Case, When, Value, CharField

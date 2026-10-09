@@ -109,7 +109,8 @@ class ImportedWorkTests(TestCase):
         a = A.objects.create(text=self.text, role="editor", assigned_to=self.people[0].user)
         S.objects.create(text=self.text, stage_type="editing", assignment=a, started_at=today, ended_at=today, is_completed=True)
         S.objects.create(text=self.text, stage_type="ready")
-        query = lambda: annotate_my_work(Text.objects.all(), self.people[0].user, today).get(pk=self.text.pk)
+        def query():
+            return annotate_my_work(Text.objects.all(), self.people[0].user, today).get(pk=self.text.pk)
         self.assertFalse(query().work_completed)
         S.objects.create(text=self.text, stage_type="editing_control", started_at=today, ended_at=today, is_completed=True)
         self.assertFalse(query().work_completed)  # Ready history is not automatically repaired.
@@ -163,27 +164,51 @@ class ImportedWorkTests(TestCase):
         self.assertEqual(response.status_code, 200)
         stage.started_at = timezone.localdate() - timedelta(days=2)
         stage.ended_at = timezone.localdate() - timedelta(days=1)
-        stage.full_clean(); stage.save()
+        stage.full_clean()
+        stage.save()
         self.assertFalse(stage.is_current)
         response = self.client.get(reverse("admin:texts_text_change", args=[self.text.pk]))
         self.assertEqual(response.status_code, 200)
         for inline in response.context["inline_admin_formsets"]:
             if inline.opts.model is S:
-                self.assertFalse(inline.formset.get_queryset().filter(stage_type__in=IMPORT_ONLY_STAGE_TYPES).exists())
+                self.assertFalse(
+                    inline.formset.get_queryset()
+                    .filter(stage_type__in=IMPORT_ONLY_STAGE_TYPES)
+                    .exists()
+                )
             if inline.opts.model is A:
-                self.assertFalse(inline.formset.get_queryset().filter(role__in=IMPORT_ONLY_ROLES).exists())
+                self.assertFalse(
+                    inline.formset.get_queryset().filter(role__in=IMPORT_ONLY_ROLES).exists()
+                )
         response = self.client.get(reverse("core:assigned_text_detail", args=[self.text.pk]))
-        self.assertContains(response, reverse("admin:workflow_workflowstage_change", args=[stage.pk]))
+        self.assertContains(
+            response, reverse("admin:workflow_workflowstage_change", args=[stage.pk])
+        )
 
     def test_shared_import_command_previews_then_creates_missing_people_without_roles(self):
         data = {
-            "schema_version": 1, "source": "test-import-only", "people": [
-                {"first_name": "Dawny", "last_name": "Wykonawca", "email": "past@example.com"}],
-            "authors": [{"first_name": "Autor", "last_name": "Testowy", "email": "writer@example.com"}],
-            "texts": [{"source_row": 1, "title": "Dawne zgłoszenie", "anthology": "Dawna antologia",
-                       "length": 100, "authors": ["writer@example.com"], "next_stage": "ready",
-                       "stages": [{"stage_type": kind, "assigned_to": "past@example.com"}
-                                  for kind in IMPORT_ONLY_STAGE_TYPES]}],
+            "schema_version": 1,
+            "source": "test-import-only",
+            "people": [
+                {"first_name": "Dawny", "last_name": "Wykonawca", "email": "past@example.com"}
+            ],
+            "authors": [
+                {"first_name": "Autor", "last_name": "Testowy", "email": "writer@example.com"}
+            ],
+            "texts": [
+                {
+                    "source_row": 1,
+                    "title": "Dawne zgłoszenie",
+                    "anthology": "Dawna antologia",
+                    "length": 100,
+                    "authors": ["writer@example.com"],
+                    "next_stage": "ready",
+                    "stages": [
+                        {"stage_type": kind, "assigned_to": "past@example.com"}
+                        for kind in IMPORT_ONLY_STAGE_TYPES
+                    ],
+                }
+            ],
         }
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "data.json"
@@ -194,10 +219,18 @@ class ImportedWorkTests(TestCase):
             for _ in range(2):
                 call_command("import_team_archive", str(path), commit=True, stdout=StringIO())
         person = Person.objects.select_related("user").get(email="past@example.com")
-        self.assertFalse(person.is_active or person.user.is_active or person.user.is_staff or person.user.is_superuser)
+        self.assertFalse(
+            person.is_active
+            or person.user.is_active
+            or person.user.is_staff
+            or person.user.is_superuser
+        )
         self.assertFalse(person.user.has_usable_password())
         self.assertFalse(person.roles.exists())
-        self.assertEqual(S.objects.filter(text__import_source=data["source"], imported_completed=True).count(), len(IMPORT_ONLY_STAGE_TYPES))
+        self.assertEqual(
+            S.objects.filter(text__import_source=data["source"], imported_completed=True).count(),
+            len(IMPORT_ONLY_STAGE_TYPES),
+        )
 
     def test_invalid_import_rolls_back_every_assignment(self):
         with self.assertRaises(ValidationError):

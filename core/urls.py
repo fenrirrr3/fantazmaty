@@ -14,29 +14,29 @@ from .views import (
     vacations,
     workflow,
 )
-
-
-app_name = "core"
-
-
 from core.views.programs import programs
 from core.views.program_jobs import program_job
 from core.views.activity import user_activity
 from core.views.recruitment_delete import recruitment_delete
 from core.views.tags import tag_list
-
 from core.views.translations import translation_list, translation_detail, set_translators, translation_person_detail, translation_person_suggestions
-
 from core.views.production_tasks import task_list, audio_descriptions
 from core.views.audiobooks import audiobook_list, update_text_audiobook
-
 from core.views import novels, vocabulary
-
 from core.views.recruitment_detail import recruitment_detail
 from core.views.recruitment_notified import recruitment_notified
 from core.views.recruitment_mailbox import recruitment_mailbox
-
 from core.views.proofreading_sections import post_layout, audio_proofreading
+
+
+app_name = "core"
+
+
+
+
+
+
+
 
 urlpatterns = [
     path('korekta-poskladowa/', post_layout, name='post_layout'),

@@ -108,24 +108,37 @@ def import_completed_workflow(*, text_id, stages, next_stage, preserve_execution
                 A.objects.filter(text=text, workflow_cycle=text.current_workflow_cycle,
                     role__in=(A.Role.VERIFIER_1, A.Role.VERIFIER_2), assigned_to=user,
                     is_current=True).update(is_current=False)
-            a.full_clean(); a.save()
+            a.full_clean()
+            a.save()
             # Date of import is not the date when a person took the work.
             A.objects.filter(pk=a.pk).update(assigned_at=None)
-            assignments[(role,user.pk,source_execution)] = a
+            assignments[(role, user.pk, source_execution)] = a
         iterations = {}
         for source_execution, (kind, user_id, started, ended) in enumerate(expected):
-            iterations[kind] = iterations.get(kind,0) + 1
-            stage = S(text=text, workflow_cycle=text.current_workflow_cycle, stage_type=kind,
-                      assignment=assignments[(stage_roles[kind],user_id,source_execution if preserve_executions else None)], iteration=iterations[kind],
-                      execution_number=iterations[kind],
-                      is_current=kind not in IMPORT_ONLY_STAGE_TYPES, is_released=kind not in IMPORT_ONLY_STAGE_TYPES,
-                      started_at=started, ended_at=ended,
-                      is_completed=True, imported_completed=True)
-            stage.full_clean(); stage.save()
+            iterations[kind] = iterations.get(kind, 0) + 1
+            stage = S(
+                text=text,
+                workflow_cycle=text.current_workflow_cycle,
+                stage_type=kind,
+                assignment=assignments[
+                    (stage_roles[kind], user_id, source_execution if preserve_executions else None)
+                ],
+                iteration=iterations[kind],
+                execution_number=iterations[kind],
+                is_current=kind not in IMPORT_ONLY_STAGE_TYPES,
+                is_released=kind not in IMPORT_ONLY_STAGE_TYPES,
+                started_at=started,
+                ended_at=ended,
+                is_completed=True,
+                imported_completed=True,
+            )
+            stage.full_clean()
+            stage.save()
         # READY is a terminal status marker, not a performed task. Preserve
         # ordinary workflow semantics, with no fictional start/end dates.
         marker = S(text=text, workflow_cycle=text.current_workflow_cycle, stage_type=next_stage)
-        marker.full_clean(); marker.save()
+        marker.full_clean()
+        marker.save()
     finally:
         importing_completed.reset(token)
     return True

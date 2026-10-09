@@ -1,7 +1,6 @@
-from core.public_authors import name_matches, review_name_matches
+from core.public_authors import name_matches
 from core.translation_scope import ordinary
 from core.selectors.texts import _annotated_texts
-from workflow.models import WorkflowStage
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
@@ -181,7 +180,7 @@ def author_list(request):
     authors = Author.objects.all()
     if accepted_only:
         ready_texts = _annotated_texts().filter(
-            
+
             anthology__isnull=False,
         )
         if selected_anthology_ids:

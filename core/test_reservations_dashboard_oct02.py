@@ -19,7 +19,7 @@ from workflow.models import WorkflowStage as S, WorkflowRoleAssignment as A
 from workflow.reservation_repair import restore_first_verification_reservation
 from workflow.services import (
     completed_stage_exists, send_to_first_verification, send_to_second_verification,
-    start_first_verification, claim_stage, complete_stage, resume_editing,
+    start_first_verification, complete_stage, resume_editing,
 )
 
 
@@ -231,7 +231,7 @@ class ReservationAndDashboardTests(StatusAssignmentFixtures):
                          started_at=self.today, ended_at=self.today)
         S.objects.create(text=self.text, stage_type='coordinator_control')
         self.assertEqual(self.summary()['active_stage_count'], 0)
-        control = S.objects.create(text=self.text, stage_type='editor_control', assignment=self.editor)
+        S.objects.create(text=self.text, stage_type='editor_control', assignment=self.editor)
         self.assertEqual(self.summary()['active_stage_count'], 1)
         self.assertIn(self.text.pk, [r['pk'] for r in my_texts_context(user=self.member)['texts']])
 

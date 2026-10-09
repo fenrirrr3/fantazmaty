@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audyt Fantazmaty CMS</title>
+<style>
+:root{
+  --bg:#f5f6f8;--surface:#fff;--text:#1d2633;--muted:#5a6778;--border:#d9dfe7;--code:#eef1f5;
+  --crit:#b3261e;--crit-bg:#fdecea;--high:#b45309;--high-bg:#fff4e0;--med:#1d5fb4;--med-bg:#e8f1fd;--low:#4b5563;--low-bg:#eef0f3;--ok:#1e7a46;--ok-bg:#e7f6ed;
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#14181e;--surface:#1c222b;--text:#e8edf3;--muted:#a7b3c2;--border:#334050;--code:#262e39;
+  --crit:#ff9b93;--crit-bg:#3d1f1e;--high:#f6c27a;--high-bg:#3a2c17;--med:#93c1ff;--med-bg:#1d2f47;--low:#c4cbd4;--low-bg:#2a313b;--ok:#8fdcaf;--ok-bg:#1b3527;}
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:32px 16px 64px}
+h1{font-size:1.75rem;margin:0 0 4px;line-height:1.25}
+h2{font-size:1.25rem;margin:40px 0 12px;padding-bottom:6px;border-bottom:2px solid var(--border)}
+h3{font-size:1rem;margin:0 0 6px;line-height:1.4}
+p{margin:0 0 10px}
+.lead{color:var(--muted);margin-bottom:20px}
+code{font:13px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace;background:var(--code);padding:1px 5px;border-radius:4px;overflow-wrap:anywhere}
+pre{background:var(--code);padding:10px 12px;border-radius:6px;overflow:auto;font:13px/1.45 ui-monospace,Consolas,monospace;margin:8px 0}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:20px 0}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 14px}
+.card b{display:block;font-size:1.5rem;line-height:1.2}
+.card span{color:var(--muted);font-size:.85rem}
+.box{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin:12px 0}
+table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;font-size:.9rem}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+th{background:var(--code);font-weight:600}
+tr:last-child td{border-bottom:0}
+.table-scroll{overflow-x:auto}
+.sev{display:inline-block;font-size:.72rem;font-weight:700;letter-spacing:.03em;text-transform:uppercase;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.s-crit{color:var(--crit);background:var(--crit-bg)}.s-high{color:var(--high);background:var(--high-bg)}
+.s-med{color:var(--med);background:var(--med-bg)}.s-low{color:var(--low);background:var(--low-bg)}.s-ok{color:var(--ok);background:var(--ok-bg)}
+.f{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--low);border-radius:8px;padding:14px 16px;margin:12px 0}
+.f.high{border-left-color:var(--high)}.f.med{border-left-color:var(--med)}.f.crit{border-left-color:var(--crit)}
+.f .meta{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:6px}
+.f .id{font-weight:700;color:var(--muted);font-size:.85rem}
+.loc{color:var(--muted);font-size:.85rem;margin-bottom:6px}
+.fix{border-top:1px dashed var(--border);margin-top:8px;padding-top:8px}
+.fix::before{content:"Rekomendacja: ";font-weight:600}
+ul{margin:6px 0 10px;padding-left:20px}
+li{margin:3px 0}
+nav.toc ol{columns:2;column-gap:24px;margin:0}
+nav.toc a{color:var(--med)}
+a{color:var(--med)}
+.foot{color:var(--muted);font-size:.85rem;margin-top:40px}
+@media (max-width:640px){nav.toc ol{columns:1}h1{font-size:1.4rem}}
+@media print{body{background:#fff}.f,.box,.card,table{break-inside:avoid}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Audyt projektu Fantazmaty CMS</h1>
+<p class="lead">Stan repozytorium: gałąź <code>main</code>, commit <code>bfad17b</code> („css rework 3”) — zgodny z kopią lokalną w <code>I:\cms\fantazmaty</code>. Data audytu: 9 października 2026.</p>
+
+<div class="cards">
+  <div class="card"><b>883 / 883</b><span>testy Django zaliczone (1 pominięty)</span></div>
+  <div class="card"><b>8 / 8</b><span>testy JS (Node) zaliczone</span></div>
+  <div class="card"><b>76%</b><span>pokrycie kodu (z gałęziami)</span></div>
+  <div class="card"><b>1 102</b><span>błędy ruff wg własnej konfiguracji</span></div>
+  <div class="card"><b>4</b><span>ustalenia wysokiej wagi</span></div>
+  <div class="card"><b>13 / 10</b><span>średnie / niskie</span></div>
+</div>
+
+<div class="box">
+<h3>Podsumowanie w trzech zdaniach</h3>
+<p>Projekt jest w dobrej kondycji: kontrola dostępu jest konsekwentna (każdy z ~60 adresów aplikacji wymaga logowania i przynależności do zespołu), migracje są czyste, a regresje dobrze obstawione testami. Najpoważniejsze problemy dotyczą <strong>ciemnego motywu</strong> (komunikaty o błędach i placeholdery są w nim nieodróżnialne od zwykłego tekstu), <strong>ograniczania prób logowania</strong> (domyślne zaufanie do nagłówka <code>X-Real-IP</code>) oraz <strong>rozjazdu konfiguracji testowej z produkcyjną</strong>. Największy potencjał optymalizacji tkwi w zapytaniach N+1 przy operacjach masowych, długich operacjach w wątku żądania i porządkowaniu architektury CSS.</p>
+</div>
+
+<h2>Spis treści</h2>
+<nav class="toc">
+<ol>
+<li><a href="#metoda">Zakres i metoda</a></li>
+<li><a href="#lista">Lista ustaleń</a></li>
+<li><a href="#css">CSS i interfejs</a></li>
+<li><a href="#logika">Logika i architektura</a></li>
+<li><a href="#bezp">Bezpieczeństwo i zależności</a></li>
+<li><a href="#wyd">Wydajność</a></li>
+<li><a href="#jakosc">Jakość kodu, testy, narzędzia</a></li>
+<li><a href="#plusy">Mocne strony</a></li>
+<li><a href="#plan">Plan działań</a></li>
+</ol>
+</nav>
+
+<h2 id="metoda">1. Zakres i metoda</h2>
+<ul>
+<li>Przegląd kodu: ustawienia, middleware, uprawnienia, serwisy workflow/recenzji/urlopów, zadania programów, skrzynki IMAP, 18 plików CSS, 25 plików JS, szablony bazowe.</li>
+<li>Uruchomione narzędzia: <code>manage.py check</code>, <code>check --deploy</code>, <code>makemigrations --check</code>, pełny zestaw testów, <code>coverage</code>, <code>ruff</code> (konfiguracja projektu + reguły rozszerzone), <code>pip-audit</code>, testy JS w Node.</li>
+<li>Pomiar liczby zapytań SQL na każde żądanie w trakcie całego zestawu testów (1 557 żądań).</li>
+<li>Sonda dostępu: każdy adres aplikacji wywołany jako gość i jako zalogowany użytkownik spoza zespołu (GET i POST).</li>
+<li>Render w Chromium: 60 stron przy szerokości 1280 px i 375 px, trzy motywy; pomiar kolorów obliczonych i kontrastu WCAG.</li>
+</ul>
+<p>Ograniczenia: baza w renderingu była pusta (układ tabel z dużą ilością danych nie został sprawdzony wizualnie); testy wykonano na SQLite (zadanie MySQL z CI nie było uruchamiane).</p>
+
+<h2 id="lista">2. Lista ustaleń</h2>
+<div class="table-scroll">
+<table>
+<thead><tr><th>ID</th><th>Waga</th><th>Obszar</th><th>Ustalenie</th></tr></thead>
+<tbody>
+<tr><td><a href="#H1">H1</a></td><td><span class="sev s-high">Wysoka</span></td><td>CSS</td><td>Ciemny motyw nadpisuje kolory błędów i ostrzeżeń na biało</td></tr>
+<tr><td><a href="#H2">H2</a></td><td><span class="sev s-high">Wysoka</span></td><td>CSS / UX</td><td>W ciemnym motywie <code>--muted</code> = <code>--text</code>; placeholdery wyglądają jak wpisane wartości</td></tr>
+<tr><td><a href="#H3">H3</a></td><td><span class="sev s-high">Wysoka</span></td><td>Bezpieczeństwo</td><td>Limit logowań domyślnie ufa nagłówkowi <code>X-Real-IP</code>; brak limitu na konto</td></tr>
+<tr><td><a href="#H4">H4</a></td><td><span class="sev s-high">Wysoka</span></td><td>Testy</td><td>Ustawienia testowe odbiegają od produkcji (baza, język, kolejność middleware, izolacja)</td></tr>
+<tr><td><a href="#M1">M1</a></td><td><span class="sev s-med">Średnia</span></td><td>Architektura</td><td>Reguły uprawnień zdublowane w <code>EditingMiddleware</code>; blokady trzymane przez cały widok</td></tr>
+<tr><td><a href="#M2">M2</a></td><td><span class="sev s-med">Średnia</span></td><td>Logika</td><td>Śledzenie wersji edycji omija <code>QuerySet.update()</code> i <code>bulk_create()</code></td></tr>
+<tr><td><a href="#M3">M3</a></td><td><span class="sev s-med">Średnia</span></td><td>CSS</td><td>Architektura stylów: 10 arkuszy na każdej stronie, reguły w niewłaściwych plikach, łańcuchy nadpisań</td></tr>
+<tr><td><a href="#M4">M4</a></td><td><span class="sev s-med">Średnia</span></td><td>CSS</td><td>194 kolory wpisane na sztywno poza plikiem motywów</td></tr>
+<tr><td><a href="#M5">M5</a></td><td><span class="sev s-med">Średnia</span></td><td>CSS</td><td>11 różnych progów media queries i niespójna składnia</td></tr>
+<tr><td><a href="#M6">M6</a></td><td><span class="sev s-med">Średnia</span></td><td>Dostępność</td><td>Obramowanie pól w jasnym motywie: kontrast 1,72:1 (wymagane 3:1)</td></tr>
+<tr><td><a href="#M7">M7</a></td><td><span class="sev s-med">Średnia</span></td><td>Frontend</td><td>Ręczne <code>?v=</code> niespójne między szablonami (np. <code>ui.js</code> v58 vs v36)</td></tr>
+<tr><td><a href="#M8">M8</a></td><td><span class="sev s-med">Średnia</span></td><td>Zależności</td><td><code>cryptography</code> &lt;47 z 4 znanymi podatnościami; Django 5.2.17 (jest 5.2.18)</td></tr>
+<tr><td><a href="#M9">M9</a></td><td><span class="sev s-med">Średnia</span></td><td>Wydajność</td><td>Eksplozje zapytań: do 1 210 zapytań na żądanie</td></tr>
+<tr><td><a href="#M10">M10</a></td><td><span class="sev s-med">Średnia</span></td><td>Wydajność</td><td>Do 90 s konwersji i połączenia IMAP w wątku żądania; brak globalnego limitu zadań</td></tr>
+<tr><td><a href="#M11">M11</a></td><td><span class="sev s-med">Średnia</span></td><td>Wydajność</td><td>Sortowanie całych tabel w Pythonie</td></tr>
+<tr><td><a href="#M12">M12</a></td><td><span class="sev s-med">Średnia</span></td><td>Narzędzia</td><td>Ruff zgłasza 1 102 błędy i nie działa w CI; pytest wskazuje ustawienia produkcyjne</td></tr>
+<tr><td><a href="#M13">M13</a></td><td><span class="sev s-med">Średnia</span></td><td>Testy</td><td>Słabe pokrycie urlopów (15%), eksportu danych autorów (15%) i operacji (37%)</td></tr>
+<tr><td><a href="#L1">L1–L10</a></td><td><span class="sev s-low">Niska</span></td><td>Różne</td><td>Drobne niespójności, porządki i usprawnienia (sekcje 3–7)</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2 id="css">3. CSS i interfejs</h2>
+
+<div class="f high" id="H1">
+<div class="meta"><span class="id">H1</span><span class="sev s-high">Wysoka</span><h3>Ciemny motyw zamienia komunikaty o błędach w zwykły biały tekst</h3></div>
+<div class="loc"><code>core/static/core/themes.css:61</code> (oraz <code>:63</code>)</div>
+<p>Reguła <code>:root[data-theme="dark"] :is(p, label, input, textarea, select, .detail-link, .text-title-link) { color:#FFFFFF }</code> ma specyficzność <strong>(0,3,0)</strong>, bo <code>:is()</code> przyjmuje specyficzność najsilniejszego argumentu (<code>.detail-link</code>). Wygrywa więc z każdą klasą komponentu na elemencie <code>&lt;p&gt;</code> lub <code>&lt;label&gt;</code>.</p>
+<p>Skutek, sprawdzony w Chromium: <code>&lt;p class="field-error"&gt;</code> ma w jasnym motywie kolor <code>rgb(144,33,43)</code>, w ciemnym <code>rgb(255,255,255)</code>; ten sam element jako <code>&lt;div&gt;</code> zachowuje różowy kolor błędu. Dotyczy 23 × <code>field-error</code>, 16 × <code>form-error</code>, 3 × <code>form-warning</code>, 2 × <code>message error</code> w szablonach.</p>
+<div class="fix">Usunąć regułę (kolor tekstu i tak pochodzi z <code>--text</code>) albo wyzerować jej specyficzność przez <code>:where()</code>:
+<pre>:root[data-theme="dark"] :where(p, label, input, textarea, select, .detail-link, .text-title-link) { color: var(--text); }</pre>
+Ten sam wzorzec ma reguła wydruku w <code>components.css:177</code> — tam wymuszenie czerni jest zamierzone, ale <code>:where()</code> też będzie bezpieczniejsze.</div>
+</div>
+
+<div class="f high" id="H2">
+<div class="meta"><span class="id">H2</span><span class="sev s-high">Wysoka</span><h3>Ciemny motyw: brak hierarchii tekstu, placeholdery nie do odróżnienia</h3></div>
+<div class="loc"><code>themes.css:24</code> (<code>--muted:#FFFFFF</code>), <code>styles.css:742</code> (<code>::placeholder { color: var(--muted) }</code>)</div>
+<p>W ciemnym motywie <code>--muted</code> ma ten sam kolor co <code>--text</code> (kontrast między nimi 1,00:1). Opisy, podpisy, daty i teksty pomocnicze wyglądają jak treść główna (widoczne na Pulpicie), a placeholder w polu ma identyczny kolor jak wpisana wartość — użytkownik może uznać pole za wypełnione.</p>
+<div class="fix">Ustawić np. <code>--muted: #b8c4d3</code> (kontrast 8,85:1 na <code>--surface</code>, 5,96:1 na <code>--surface-hover</code>, czyli nadal powyżej AA) i usunąć regułę z H1, która wymusza biel.</div>
+</div>
+
+<div class="f med" id="M3">
+<div class="meta"><span class="id">M3</span><span class="sev s-med">Średnia</span><h3>Architektura stylów: reguły w przypadkowych plikach i łańcuchy nadpisań</h3></div>
+<div class="loc"><code>core/templates/core/base.html:14–25</code>, <code>recruitment-email.css</code>, <code>layout-refinements.css</code></div>
+<ul>
+<li>Każda strona ładuje 10 arkuszy (≈93 KB przed kompresją), w tym typowo podstronowe: <code>novels.css</code>, <code>recruitment-email.css</code>, <code>illustration-status.css</code>.</li>
+<li><code>recruitment-email.css</code> zawiera reguły niezwiązane z rekrutacją: kolory nagłówka motywu „Jesieniara”, <code>.theme-buttons</code>, siatkę Pulpitu <code>.dashboard-intake-grid</code>. <code>layout-refinements.css</code> zawiera słownik tagów i formularze etapów.</li>
+<li>33 selektory są zdefiniowane w więcej niż jednym pliku, a łącznie 110 selektorów ma kilka definicji (np. <code>.dashboard-intake-grid { gap }</code> ustawiane w <code>recruitment-email.css:48</code> i nadpisywane w <code>layout-refinements.css:73</code>; <code>.dashboard-summary</code> w <code>styles.css</code> i <code>layout-refinements.css</code>).</li>
+<li>Komentarz w <code>components.css:155</code> mówi o „ostatnio ładowanych regułach wydruku”, a po nim ładuje się jeszcze 5 arkuszy.</li>
+<li>Formatowanie niespójne: <code>styles.css</code> w pełnym stylu wieloliniowym, <code>workspace.css</code> i <code>recruitment-email.css</code> w stylu jednoliniowym bez spacji.</li>
+</ul>
+<div class="fix">Pogrupować style według komponentów i stron, ładować arkusze podstron przez <code>{% block extra_css %}</code>, a kolejność kaskady jawnie określić przez <code>@layer base, themes, components, pages, overrides;</code> zamiast polegać na kolejności plików. Dodać <code>stylelint</code> z <code>no-duplicate-selectors</code>.</div>
+</div>
+
+<div class="f med" id="M4">
+<div class="meta"><span class="id">M4</span><span class="sev s-med">Średnia</span><h3>Kolory wpisane na sztywno poza plikiem motywów</h3></div>
+<div class="loc">styles.css (60), components.css (40), admin-navigation.css (39), illustration-status.css (24), pagination.css (11), dialogs.css (10)</div>
+<p>Poza <code>themes.css</code> jest 194 wystąpień literalnych kolorów (311 łącznie z nim). Przykłady: <code>#e6bfc3</code> w <code>styles.css:800</code> i <code>:1641</code> dubluje <code>--danger-border</code>; kolory motywu jesiennego (<code>#b8956f</code>, <code>#70472d</code>, <code>#eddbc4</code>) w <code>recruitment-email.css:33–35</code>; cienie <code>#0002</code>, <code>#00000012</code> obok tokenu <code>--shadow</code>; <code>::selection</code> ma stałe kolory jasnego motywu także w ciemnym.</p>
+<div class="fix">Zastąpić literały zmiennymi; nowe odcienie definiować w <code>themes.css</code> dla wszystkich trzech motywów.</div>
+</div>
+
+<div class="f med" id="M5">
+<div class="meta"><span class="id">M5</span><span class="sev s-med">Średnia</span><h3>Zbyt wiele progów responsywności</h3></div>
+<p>Używane progi: 400, 480, 600, 700, 760, 800, 850, 950, 1000, 1024, 1100 px oraz mieszana składnia (<code>@media(max-width:760px)</code>, <code>@media screen and (max-width: 760px)</code>, <code>@media (max-width:760px)</code>). Elementy przełączają układ przy różnych szerokościach, co daje „schodki” w zakresie 700–1100 px.</p>
+<div class="fix">Ustalić 3–4 progi (np. 480 / 760 / 1100) i trzymać się jednej składni. Tam, gdzie zależy to od miejsca w kontenerze, rozważyć <code>@container</code>.</div>
+</div>
+
+<div class="f med" id="M6">
+<div class="meta"><span class="id">M6</span><span class="sev s-med">Średnia</span><h3>Obramowanie pól formularzy w jasnym motywie poniżej WCAG 1.4.11</h3></div>
+<div class="loc"><code>styles.css:726</code> (<code>border: 1px solid var(--border-strong)</code>), <code>themes.css:4</code></div>
+<p><code>#bac7d6</code> na białym tle daje 1,72:1 (wymagane 3:1 dla granic komponentów). W motywie ciemnym 4,03:1, w jesiennym 3,41:1 — tylko jasny nie spełnia wymogu. Kontrast tekstów jest dobry we wszystkich motywach (5,5–15:1).</p>
+<div class="fix">Np. <code>--border-strong: #7d8fa5</code> (3,31:1).</div>
+</div>
+
+<div class="f med" id="M7">
+<div class="meta"><span class="id">M7</span><span class="sev s-med">Średnia</span><h3>Niespójne ręczne wersjonowanie plików statycznych</h3></div>
+<div class="loc"><code>base.html:111</code> vs <code>admin/base_site.html:208</code></div>
+<p>Ten sam plik ma różne <code>?v=</code> w różnych szablonach: <code>ui.js</code> 58 / 36, <code>novels.js</code> 29 / 31, <code>person-select.js</code> 28 / 31, <code>illustrations.css</code> 34 / 40; część plików nie ma wersji wcale. Na produkcji i tak działa <code>ManifestStaticFilesStorage</code> (hash w nazwie pliku), więc <code>?v=</code> jest tam zbędne, a lokalnie powoduje nieaktualną pamięć podręczną w panelu.</p>
+<div class="fix">Usunąć ręczne <code>?v=</code> i polegać na manifeście; lokalnie wystarcza wyłączona pamięć podręczna w przeglądarce.</div>
+</div>
+
+<div class="f" id="L1">
+<div class="meta"><span class="id">L1</span><span class="sev s-low">Niska</span><h3>Kolory odznak nadawane skryptem na podstawie tekstu</h3></div>
+<div class="loc"><code>core/static/core/theme.js:29–65</code></div>
+<p>Paleta ról i etapów jest ustalana po <code>DOMContentLoaded</code> (krótkie mignięcie niepokolorowanych odznak) i częściowo przez wyrażenia regularne na treści etykiety. Mapowanie dubluje wiedzę z Pythona i jest niepełne: brak <code>verifier_5–7</code> w <code>rolePalettes</code> (działa tylko dzięki dopasowaniu tekstu „Weryfik”).</p>
+<div class="fix">Generować <code>data-palette</code> po stronie serwera (np. tag szablonu na podstawie <code>workflow/catalog.py</code>).</div>
+</div>
+
+<div class="f" id="L2">
+<div class="meta"><span class="id">L2</span><span class="sev s-low">Niska</span><h3>Zachowania interfejsu, które mogą zaskakiwać</h3></div>
+<ul>
+<li><code>ui.js:236</code> — odświeżenie strony (F5) czyści parametry wyszukiwania i przeładowuje stronę jeszcze raz; użytkownik traci wyniki, których szukał.</li>
+<li><code>ui.js:254</code> — linki w komórkach z kopiowaniem nawigują z opóźnieniem 500 ms (obsługa dwukliku). To kompromis, ale warto rozważyć osobny przycisk kopiowania.</li>
+<li>Brak favicony — każde wejście generuje 404 na <code>/favicon.ico</code>.</li>
+<li><code>font-family: Inter</code> bez <code>@font-face</code> — krój zależy od tego, czy użytkownik ma Inter w systemie.</li>
+</ul>
+</div>
+
+<div class="f" id="L3">
+<div class="meta"><span class="id">L3</span><span class="sev s-low">Niska</span><h3>Mieszane jednostki i wartości</h3></div>
+<p><code>styles.css</code> używa głównie px (310 linii z px vs 39 z rem), pozostałe pliki rem. 22 różne wartości <code>font-size</code> (m.in. <code>0.8125rem</code> i <code>.8125rem</code>, <code>14px</code>, <code>9pt</code>, <code>10pt</code>), promienie <code>4/5/6/8/9/12/20px</code> i <code>.8rem</code> obok tokenów <code>--radius</code>, <code>--radius-small</code>. 13 wystąpień <code>!important</code> — większość uzasadniona (<code>[hidden]</code>, <code>prefers-reduced-motion</code>, druk).</p>
+<div class="fix">Wprowadzić skalę typografii i promieni jako tokeny (<code>--fs-sm</code>, <code>--fs-xs</code>, <code>--radius-pill</code>) i stopniowo migrować.</div>
+</div>
+
+<h2 id="logika">4. Logika i architektura</h2>
+
+<div class="f med" id="M1">
+<div class="meta"><span class="id">M1</span><span class="sev s-med">Średnia</span><h3>Uprawnienia zdublowane w middleware, transakcja na cały widok</h3></div>
+<div class="loc"><code>core/middleware.py:95–235</code></div>
+<p><code>EditingMiddleware</code> poza tokenami wersji zawiera własne reguły dostępu kluczowane nazwami adresów (<code>'add_text_note'</code>, <code>'update_text_file'</code>, <code>'assigned_review_detail'</code>…), równoległe do dekoratorów i serwisów. Nowy widok lub zmiana nazwy adresu łatwo rozsynchronizuje obie warstwy. Dodatkowo przy POST cały widok wykonuje się w <code>transaction.atomic()</code> z <code>select_for_update()</code> (linia 153), więc blokada wiersza trwa także podczas renderowania, wysyłki e-maili i zapytań do innych tabel.</p>
+<div class="fix">Przenieść reguły dostępu do widoków/serwisów (jedno źródło prawdy), a w middleware zostawić tylko weryfikację tokenu wersji. Blokady zakładać w serwisie, możliwie krótko.</div>
+</div>
+
+<div class="f med" id="M2">
+<div class="meta"><span class="id">M2</span><span class="sev s-med">Średnia</span><h3>Wykrywanie konfliktów edycji ma luki przy operacjach masowych</h3></div>
+<div class="loc"><code>core/edit_versions.py</code>; przykłady: <code>core/services/recruitment_decisions.py:27,38</code>, <code>texts/translations.py:15</code>, <code>workflow/repetitions.py:126,130</code>, <code>core/services/texts.py:357–358</code></div>
+<p>Wersje rosną w sygnałach <code>post_save</code>/<code>m2m_changed</code>, a <code>QuerySet.update()</code> i <code>bulk_create()</code> sygnałów nie wysyłają. W części miejsc wersja tekstu podbija się przy okazji innego zapisu, a w <code>workflow/admin_performers.py:190–197</code> jest ręczne <code>bump(…, 'default')</code> z zaszytym aliasem bazy (gdzie indziej używane jest <code>text._state.db</code>). Reguła „pamiętaj o bump” nie jest egzekwowana.</p>
+<div class="fix">Dodać pomocnicze <code>tracked_update(qs, **values)</code> / <code>tracked_bulk_create()</code>, które podbijają wersje; zawsze przekazywać <code>using</code>. Test, który wyszukuje <code>.update(</code> na modelach z <code>TRACKED</code>.</div>
+</div>
+
+<div class="f" id="L4">
+<div class="meta"><span class="id">L4</span><span class="sev s-low">Niska</span><h3>Wyścig przy zapisie stanu zadań programów</h3></div>
+<div class="loc"><code>core/services/program_jobs.py:39</code></div>
+<p><code>write_json()</code> używa wspólnej nazwy pliku tymczasowego (<code>state.tmp</code>) dla procesu WWW i workera. Przy jednoczesnym zapisie jeden <code>os.replace()</code> może trafić na brak pliku (<code>FileNotFoundError</code> nie jest obsługiwany).</p>
+<div class="fix">Tworzyć unikalny plik przez <code>tempfile.NamedTemporaryFile(dir=…, delete=False)</code>, jak w <code>activity_spool.py</code>.</div>
+</div>
+
+<div class="f" id="L5">
+<div class="meta"><span class="id">L5</span><span class="sev s-low">Niska</span><h3>Drobne niespójności logiki</h3></div>
+<ul>
+<li><code>core/activity.py:20</code> i <code>:54</code> — klucz <code>review_bulk_import</code> ma dwie różne etykiety („Podgląd nagłówków poczty” / „Pobieranie zgłoszeń”); obowiązuje druga.</li>
+<li><code>core/middleware.py</code> — token wersji ważny 24 h: formularz otwarty na noc kończy się stroną konfliktu, choć nikt nic nie zmienił.</li>
+<li>URL jest rozwiązywany 3 razy na żądanie (podgląd użytkownika, edycja, Django) — można użyć <code>request.resolver_match</code> w <code>process_view</code>.</li>
+<li><code>core/services/document_formatting.py:43</code> — funkcja lokalna <code>property</code> przesłania wbudowane <code>property</code>.</li>
+</ul>
+</div>
+
+<h2 id="bezp">5. Bezpieczeństwo i zależności</h2>
+
+<div class="f high" id="H3">
+<div class="meta"><span class="id">H3</span><span class="sev s-high">Wysoka</span><h3>Ograniczanie prób logowania można obejść poza PythonAnywhere</h3></div>
+<div class="loc"><code>fantazmaty/settings.py:236</code>, <code>core/auth_throttle.py</code></div>
+<p>Domyślnie adres klienta pochodzi z <code>HTTP_X_REAL_IP</code>. Na PythonAnywhere proxy nadpisuje ten nagłówek, ale przy każdym innym wdrożeniu (VPS, lokalnie, inny hosting) ustawia go sam klient. Oba limity (na IP i na parę IP + login) zawierają adres IP, a limitu na samo konto celowo nie ma — zmieniając nagłówek przy każdej próbie, można zgadywać hasło bez ograniczeń.</p>
+<div class="fix">Domyślnie <code>REMOTE_ADDR</code>; <code>HTTP_X_REAL_IP</code> włączać zmienną środowiskową tylko na PythonAnywhere. Dodać trzeci, łagodny limit na samo konto (np. 50 prób/h niezależnie od IP) — nie blokuje konta, a zatrzymuje rozproszony atak.</div>
+</div>
+
+<div class="f med" id="M8">
+<div class="meta"><span class="id">M8</span><span class="sev s-med">Średnia</span><h3>Przestarzałe zależności z podatnościami</h3></div>
+<div class="loc"><code>requirements.txt</code></div>
+<ul>
+<li><code>cryptography&gt;=46,&lt;47</code> (zainstalowane 46.0.7): <code>pip-audit</code> zgłasza 4 podatności, w tym dołączony OpenSSL (GHSA-537c-gmf6-5ccf, poprawka 48.0.1) i CVE-2026-69247/69248/69249 (poprawki 49–50). Projekt używa tylko Fernet, więc realne ryzyko jest niskie, ale górne ograniczenie blokuje aktualizacje bezpieczeństwa.</li>
+<li><code>Django==5.2.17</code> — dostępne 5.2.18 (gałąź LTS, wydania łatkowe zwykle zawierają poprawki bezpieczeństwa).</li>
+</ul>
+<div class="fix">Podnieść <code>cryptography</code> do ≥50 (przetestować <code>mailbox_crypto.py</code>), Django do 5.2.18; dodać <code>pip-audit</code> do CI.</div>
+</div>
+
+<div class="f" id="L6">
+<div class="meta"><span class="id">L6</span><span class="sev s-low">Niska</span><h3>Utwardzenie nagłówków i ciasteczek</h3></div>
+<ul>
+<li><code>settings.py:265</code> — <code>CSRF_COOKIE_HTTPONLY = False</code> z komentarzem, że skrypty czytają token z ciasteczka. Żaden skrypt tego nie robi (wszystkie biorą <code>csrfmiddlewaretoken</code> z DOM), więc można ustawić <code>True</code>.</li>
+<li>Brak Content-Security-Policy; <code>admin/base_site.html</code> ma blok <code>&lt;style&gt;</code> w treści (przy CSP wymagałby nonce lub przeniesienia do pliku).</li>
+<li><code>check --deploy</code>: HSTS domyślnie wyłączony (W004) — zgodnie z komentarzem, ale warto włączyć po potwierdzeniu HTTPS.</li>
+</ul>
+</div>
+
+<h2 id="wyd">6. Wydajność</h2>
+
+<div class="f med" id="M9">
+<div class="meta"><span class="id">M9</span><span class="sev s-med">Średnia</span><h3>Zapytania N+1 i powtarzane sprawdzanie uprawnień</h3></div>
+<p>Pomiar w trakcie testów (maksymalna liczba zapytań na jedno żądanie):</p>
+<div class="table-scroll"><table>
+<thead><tr><th>Widok</th><th>Zapytań</th><th>Najczęściej powtarzane</th></tr></thead>
+<tbody>
+<tr><td>POST <code>recruitment_mailbox</code></td><td>1 210</td><td>100 × SELECT <code>RecruitmentRoleDecision</code> — <code>Recruitment.save()</code> (<code>core/models.py:91</code>) robi blokadę, <code>ensure_decisions</code> i <code>refresh_summary</code> dla każdego rekordu</td></tr>
+<tr><td>POST <code>novel_detail</code></td><td>879</td><td>104 × UPDATE <code>core_editrevision</code> (osobny zapis każdego rozdziału)</td></tr>
+<tr><td>POST <code>update_text_tags</code></td><td>79</td><td>24 × SELECT <code>people_person</code></td></tr>
+<tr><td>GET <code>illustration_detail</code></td><td>47</td><td>17 × SELECT <code>people_person</code></td></tr>
+<tr><td>GET <code>author_list</code></td><td>30</td><td>14 × SELECT <code>people_person</code></td></tr>
+</tbody></table></div>
+<p>Powtarzany SELECT na <code>people_person</code> to <code>get_active_person_profile()</code> wołane przez każdą funkcję uprawnień; pamięć podręczna <code>read_access_scope</code> działa tylko w GET opakowanym dekoratorem, a nie w tagach szablonu ani przy POST.</p>
+<div class="fix">Pamiętać profil i role na obiekcie <code>request</code> (lub <code>user</code>) przez całe żądanie, z jawnym odświeżeniem przed mutacją. Import próbek: zbiorcze tworzenie decyzji i jedno <code>refresh_summary</code> na partię. Rozdziały: grupować zapisy i podbijać wersję raz.</div>
+</div>
+
+<div class="f med" id="M10">
+<div class="meta"><span class="id">M10</span><span class="sev s-med">Średnia</span><h3>Długie operacje w wątku żądania</h3></div>
+<ul>
+<li><code>core/views/programs.py:62, 84, 108</code> — synchroniczny <code>convert_document()</code> z limitem 90 s (spaCy, python-docx) blokuje worker WWW. Równolegle istnieje asynchroniczna ścieżka <code>program_jobs</code> — dwie implementacje tego samego.</li>
+<li><code>program_jobs.create()</code> ogranicza tylko jedno zadanie na użytkownika; brak limitu globalnego, a każdy proces ładuje model spaCy (setki MB RAM).</li>
+<li>Pobieranie nagłówków IMAP (<code>core/views/mailbox.py:182</code>, <code>recruitment_mailbox.py:153</code>) — kilka operacji po 15 s limitu w trakcie żądania.</li>
+</ul>
+<div class="fix">Używać wyłącznie ścieżki zadań w tle, dodać globalny semafor (np. maks. 2 aktywne zadania, plik blokady w <code>var/conversion</code>), a IMAP przenieść do tego samego mechanizmu.</div>
+</div>
+
+<div class="f med" id="M11">
+<div class="meta"><span class="id">M11</span><span class="sev s-med">Średnia</span><h3>Sortowanie tabel w Pythonie</h3></div>
+<div class="loc"><code>core/table_sorting.py:139</code></div>
+<p><code>_sort_query_projection()</code> przechodzi cały QuerySet, projektuje każdy rekord i sortuje w pamięci przy każdym żądaniu. Paginacja potem doczytuje tylko stronę, ale koszt jest O(N) dla całej tabeli. Przy obecnej skali działa, przy kilku tysiącach tekstów/recenzji zacznie być odczuwalne.</p>
+<div class="fix">Kolumny sortowalne wyrażać jako adnotacje bazodanowe (<code>Case/When</code>, <code>Subquery</code>), a sortowanie w Pythonie zostawić dla małych tabel.</div>
+</div>
+
+<div class="f" id="L7">
+<div class="meta"><span class="id">L7</span><span class="sev s-low">Niska</span><h3>Dziennik aktywności</h3></div>
+<div class="loc"><code>core/activity_spool.py</code>, <code>core/management/commands/flush_activity.py</code></div>
+<p><code>os.fsync()</code> przy każdym zapisanym żądaniu wydłuża odpowiedź (szczególnie na dyskach sieciowych). Przenoszenie do bazy wykonuje ~3 zapytania i osobną transakcję na wpis, a <code>sorted(glob())</code> wczytuje cały katalog.</p>
+<div class="fix">Zrezygnować z <code>fsync</code> (atomowy <code>os.replace</code> wystarcza dla dziennika), w <code>flush_activity</code> użyć <code>bulk_create(ignore_conflicts=True)</code> w partiach po kilkaset.</div>
+</div>
+
+<div class="f" id="L8">
+<div class="meta"><span class="id">L8</span><span class="sev s-low">Niska</span><h3>Zasoby ładowane globalnie</h3></div>
+<p><code>base.html</code> ładuje ~10 skryptów, z czego <code>author-search.js</code>, <code>ui.js</code> (50 KB), <code>pagination*.js</code> i <code>table-selection.js</code> bez <code>defer</code> na końcu <code>&lt;body&gt;</code>; ładowane są też na stronie logowania i resetu hasła, gdzie nie są potrzebne.</p>
+<div class="fix">Dodać <code>defer</code> wszędzie, gdzie skrypt czeka na <code>DOMContentLoaded</code>; skrypty narzędzi tabel ładować tylko na stronach z tabelami.</div>
+</div>
+
+<h2 id="jakosc">7. Jakość kodu, testy, narzędzia</h2>
+
+<div class="f high" id="H4">
+<div class="meta"><span class="id">H4</span><span class="sev s-high">Wysoka</span><h3>Konfiguracja testowa odbiega od produkcyjnej</h3></div>
+<div class="loc"><code>fantazmaty/test_settings.py</code>, <code>fantazmaty/mysql_integration_settings.py</code></div>
+<ul>
+<li>Główne testy działają na SQLite, a <code>settings.py</code> wymaga MySQL („MySQL w środowisku lokalnym, testowym i produkcyjnym”). Różnice w porównaniach tekstu i blokadach (SQLite ignoruje <code>select_for_update</code>).</li>
+<li>Brak <code>LANGUAGE_CODE = "pl"</code> — testy i podgląd renderują daty po angielsku („FRIDAY, 9 OCTOBER”), więc formaty polskie nie są testowane. Brak też <code>LOGIN_REDIRECT_URL</code>.</li>
+<li>Kolejność middleware inna niż na produkcji: <code>AuthenticationThrottleMiddleware</code> jest na końcu (na produkcji przed <code>MessageMiddleware</code>), brak <code>SecurityMiddleware</code> i <code>XFrameOptionsMiddleware</code>. Żaden test nie pilnuje kolejności middleware, od której zależą m.in. <code>UserPreviewMiddleware</code> i limit logowań.</li>
+<li>Integracja MySQL nie ustawia <code>isolation_level: read committed</code> ani kolacji <code>utf8mb4_0900_as_ci</code> używanych w produkcji — testy blokad działają w innym poziomie izolacji (REPEATABLE READ).</li>
+</ul>
+<div class="fix">Budować <code>test_settings</code> przez import z <code>settings.py</code> i nadpisywać tylko bazę i hasher; w integracji MySQL skopiować <code>OPTIONS</code> i <code>TEST</code> z produkcji. Dodać test sprawdzający kolejność middleware.</div>
+</div>
+
+<div class="f med" id="M12">
+<div class="meta"><span class="id">M12</span><span class="sev s-med">Średnia</span><h3>Linter nie przechodzi i nie jest uruchamiany w CI</h3></div>
+<p><code>ruff check</code> z konfiguracją z <code>pyproject.toml</code> zgłasza 1 102 błędy: 697 × E702 (wiele instrukcji po średniku), 226 × E701, 91 × nieużywane importy (F401), 71 × importy nie na górze (E402), 8 × nieużywane zmienne (F841, np. <code>core/selectors/review_detail.py:90</code>). Największe skupiska: <code>import_team_archive.py</code>, <code>document_rebuild.py</code>, <code>supervision.py</code>. <code>pytest</code> w <code>pyproject.toml</code> wskazuje <code>fantazmaty.settings</code> (MySQL + <code>.env</code>), a CI używa <code>manage.py test</code> z <code>test_settings</code>.</p>
+<div class="fix"><code>ruff check --fix</code> (94 poprawki automatyczne), <code>ruff format</code> na plikach z E70x, potem krok <code>ruff check</code> w CI. Ujednolicić uruchamianie testów (albo pytest z <code>test_settings</code>, albo usunąć konfigurację pytest).</div>
+</div>
+
+<div class="f med" id="M13">
+<div class="meta"><span class="id">M13</span><span class="sev s-med">Średnia</span><h3>Luki w pokryciu testami</h3></div>
+<p>Pokrycie ogółem 76% (gałęzie włączone). Najsłabiej pokryte moduły o znaczeniu biznesowym:</p>
+<ul>
+<li><code>core/services/vacations.py</code> — 15% (urlopy blokują przejmowanie prac)</li>
+<li><code>core/exports.py</code> — 15% (eksport danych osobowych autorów)</li>
+<li><code>core/views/operations.py</code> — 37%, <code>core/views/vacations.py</code> — 44%, <code>authors/admin.py</code> — 45%</li>
+<li><code>core/discord_webhook.py</code>, <code>flush_activity</code>, część komend importu/napraw — 0%</li>
+</ul>
+<div class="fix">Priorytetowo dopisać testy uprawnień i przypadków brzegowych urlopów (start dziś, „do odwołania”, zakończenie) oraz eksportu danych.</div>
+</div>
+
+<div class="f" id="L9">
+<div class="meta"><span class="id">L9</span><span class="sev s-low">Niska</span><h3>Organizacja repozytorium</h3></div>
+<ul>
+<li>Brak <code>README</code> i <code>.env.example</code> (choć <code>.gitignore</code> ma wyjątek <code>!.env.example</code>) — nowa osoba nie wie, jakie zmienne ustawić.</li>
+<li>Aplikacja <code>core</code> zawiera 426 z 629 plików — widoki, serwisy, formularze i testy wszystkich domen.</li>
+<li>Ponad 100 modułów testów nazwanych datą lub wersją (<code>test_oct02_…</code>, <code>test_audit_v36</code>, <code>test_layout_v58</code>) zamiast funkcji — trudno znaleźć testy danego obszaru.</li>
+<li>Kopia robocza w <code>I:\cms\fantazmaty</code> ma końce linii CRLF, mimo że <code>.gitattributes</code> wymusza LF (ustawienie edytora).</li>
+<li><code>.python-version</code> = 3.12, lokalne <code>__pycache__</code> z 3.13.</li>
+</ul>
+</div>
+
+<div class="f" id="L10">
+<div class="meta"><span class="id">L10</span><span class="sev s-low">Niska</span><h3>Styl kodu</h3></div>
+<p>Wiele linii z kilkoma instrukcjami (<code>; </code>, <code>if …: return</code>), <code>from .test_settings import *</code>, <code>ModelForm</code> z <code>fields = "__all__"</code> w <code>texts/admin.py:334</code> i <code>workflow/admin.py:108,133</code> (nowe pole modelu automatycznie pojawi się w formularzu), nullable <code>EmailField</code> w <code>authors/models.py:25</code>.</p>
+</div>
+
+<h2 id="plusy">8. Mocne strony</h2>
+<div class="box">
+<ul>
+<li><span class="sev s-ok">OK</span> Kontrola dostępu: wszystkie adresy aplikacji (poza logowaniem/resetem hasła i celowo publiczną listą ilustracji) zwracają przekierowanie lub 403 dla gościa i dla konta spoza zespołu.</li>
+<li><span class="sev s-ok">OK</span> Ustawienia produkcyjne blokują start przy <code>DEBUG</code>, pustym <code>ALLOWED_HOSTS</code>, niezabezpieczonych ciasteczkach i braku SMTP.</li>
+<li><span class="sev s-ok">OK</span> Brak <code>mark_safe</code>, jedyne <code>|safe</code> dotyczy pomocy walidatorów haseł Django; jedno <code>insertAdjacentHTML</code> przyjmuje HTML z własnego endpointu.</li>
+<li><span class="sev s-ok">OK</span> Hasła skrzynek szyfrowane (Fernet z obsługą <code>SECRET_KEY_FALLBACKS</code>), IMAP z domyślnym kontekstem TLS, webhook Discord z białą listą adresów i bez przekierowań, podprocesy bez sekretów w środowisku.</li>
+<li><span class="sev s-ok">OK</span> Spójna kolejność blokad w workflow (Text → Stage), walidacja dat, ochrona przed podwójnym zapisem tokenami wersji.</li>
+<li><span class="sev s-ok">OK</span> <code>manage.py check</code> i <code>makemigrations --check</code> bez uwag; 883 testy przechodzą.</li>
+<li><span class="sev s-ok">OK</span> Brak poziomego przewijania przy 375 px na wszystkich ~55 stronach, które otwierają się żądaniem GET; dobre wsparcie <code>prefers-reduced-motion</code>, <code>forced-colors</code>, widoczny <code>:focus-visible</code>, link „Przejdź do treści”.</li>
+</ul>
+</div>
+
+<h2 id="plan">9. Plan działań</h2>
+<div class="table-scroll">
+<table>
+<thead><tr><th>Kolejność</th><th>Zadanie</th><th>Ustalenia</th><th>Nakład</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>Poprawić ciemny motyw: <code>:where()</code> zamiast <code>:is()</code>, nowy <code>--muted</code>, ciemniejsze <code>--border-strong</code> w jasnym</td><td>H1, H2, M6</td><td>~1 h</td></tr>
+<tr><td>2</td><td>Domyślnie <code>REMOTE_ADDR</code> w limicie logowań + limit na konto</td><td>H3</td><td>~2 h</td></tr>
+<tr><td>3</td><td>Aktualizacja <code>cryptography</code> i Django, <code>pip-audit</code> w CI, <code>CSRF_COOKIE_HTTPONLY=True</code></td><td>M8, L6</td><td>~1 h</td></tr>
+<tr><td>4</td><td>Ujednolicić ustawienia testowe z produkcją</td><td>H4</td><td>~2–3 h</td></tr>
+<tr><td>5</td><td><code>ruff --fix</code> + formatowanie, krok lint w CI</td><td>M12, L10</td><td>~2 h</td></tr>
+<tr><td>6</td><td>Pamięć podręczna uprawnień na żądanie; zbiorcze operacje w imporcie próbek i rozdziałach</td><td>M9</td><td>~0,5–1 dnia</td></tr>
+<tr><td>7</td><td>Usunąć ręczne <code>?v=</code>, <code>defer</code> dla skryptów, favicona</td><td>M7, L2, L8</td><td>~1 h</td></tr>
+<tr><td>8</td><td>Testy urlopów i eksportu danych autorów</td><td>M13</td><td>~0,5 dnia</td></tr>
+<tr><td>9</td><td>Konwersje i IMAP wyłącznie w tle, globalny limit zadań</td><td>M10, L4</td><td>~1 dzień</td></tr>
+<tr><td>10</td><td>Reorganizacja CSS: <code>@layer</code>, tokeny kolorów/typografii, wspólne progi, arkusze podstron</td><td>M3, M4, M5, L1, L3</td><td>2–3 dni, etapami</td></tr>
+<tr><td>11</td><td>Uprawnienia z middleware do widoków/serwisów; pomocnik <code>tracked_update</code></td><td>M1, M2</td><td>1–2 dni</td></tr>
+</tbody>
+</table>
+</div>
+
+<p class="foot">Raport przygotowany na podstawie kodu z commita <code>bfad17b</code>. Wyniki pomiarów zapytań pochodzą z danych testowych — w produkcji liczby będą zależeć od wielkości danych. Ustalenia oznaczone jako zweryfikowane (H1, H2, M6) sprawdzono przez render w Chromium i obliczenie kontrastu.</p>
+</div>
+</body>
+</html>

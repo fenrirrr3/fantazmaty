@@ -41,37 +41,46 @@ def sanitize_html(fragment, assets):
     root = html.fragment_fromstring(fragment or '<p></p>', create_parent='div')
     for element in list(root.iterdescendants()):
         if not isinstance(element.tag, str):
-            element.drop_tree(); continue
+            element.drop_tree()
+            continue
         if element.tag not in TAGS:
-            element.drop_tag(); continue
+            element.drop_tag()
+            continue
         for key, value in list(element.attrib.items()):
-            allowed = key in ('id', 'title')
-            if element.tag == 'a' and key == 'href':
-                allowed = value.startswith('#') or urlsplit(value).scheme.lower() in ('http', 'https', 'mailto')
-            if element.tag == 'img' and key == 'src':
+            allowed = key in ("id", "title")
+            if element.tag == "a" and key == "href":
+                allowed = value.startswith("#") or urlsplit(value).scheme.lower() in (
+                    "http",
+                    "https",
+                    "mailto",
+                )
+            if element.tag == "img" and key == "src":
                 allowed = value in assets
-            if element.tag == 'img' and key == 'alt':
+            if element.tag == "img" and key == "alt":
                 allowed = True
-            if element.tag in ('td', 'th') and key in ('colspan', 'rowspan'):
+            if element.tag in ("td", "th") and key in ("colspan", "rowspan"):
                 allowed = value.isascii() and value.isdecimal() and 1 <= int(value) <= 100
             if not allowed:
                 del element.attrib[key]
     headings = []
-    for number, element in enumerate(root.xpath('.//h1 | .//h2 | .//h3'), 1):
-        if not element.get('id'):
-            element.set('id', 'section-' + str(number))
-        headings.append((element.get('id'), element.text_content()[:200]))
+    for number, element in enumerate(root.xpath(".//h1 | .//h2 | .//h3"), 1):
+        if not element.get("id"):
+            element.set("id", "section-" + str(number))
+        headings.append((element.get("id"), element.text_content()[:200]))
     # Serialize children as HTML; EbookLib normalizes the chapter to XHTML.
-    content = (escape_html.escape(root.text) if root.text else '') + ''.join(html.tostring(child, encoding='unicode') for child in root)
+    content = (escape_html.escape(root.text) if root.text else "") + "".join(
+        html.tostring(child, encoding="unicode") for child in root
+    )
     return content, headings
 
 
 def convert(source, directory, formats, title):
     global CURRENT_STAGE
-    CURRENT_STAGE = 'DOCX'
-    report_progress('Odczytywanie treści DOCX')
+    CURRENT_STAGE = "DOCX"
+    report_progress("Odczytywanie treści DOCX")
     import mammoth
     from PIL import Image
+
     assets = {}
     total_image_bytes = 0
 
@@ -80,34 +89,40 @@ def convert(source, directory, formats, title):
         with image.open() as stream:
             data = stream.read(20 * 1024 * 1024 + 1)
         if len(data) > 20 * 1024 * 1024:
-            raise ValueError('Image too large')
+            raise ValueError("Image too large")
         with Image.open(BytesIO(data)) as picture:
             if picture.width * picture.height > 20_000_000:
-                raise ValueError('Image dimensions too large')
+                raise ValueError("Image dimensions too large")
             # Rasterize only known image formats, never embed SVG scripts/URLs.
-            if picture.format not in ('PNG', 'JPEG', 'GIF', 'WEBP', 'BMP', 'TIFF'):
-                raise ValueError('Unsupported image')
+            if picture.format not in ("PNG", "JPEG", "GIF", "WEBP", "BMP", "TIFF"):
+                raise ValueError("Unsupported image")
             picture.load()
             rendered = BytesIO()
-            picture.convert('RGBA').save(rendered, format='PNG')
+            picture.convert("RGBA").save(rendered, format="PNG")
         data = rendered.getvalue()
         total_image_bytes += len(data)
         if total_image_bytes > 30 * 1024 * 1024:
-            raise ValueError('Too many images')
-        name = f'assets/image-{len(assets) + 1}.png'
+            raise ValueError("Too many images")
+        name = f"assets/image-{len(assets) + 1}.png"
         assets[name] = data
-        return {'src': name}
+        return {"src": name}
 
-    with source.open('rb') as document:
-        result = mammoth.convert_to_html(document,
+    with source.open("rb") as document:
+        result = mammoth.convert_to_html(
+            document,
             convert_image=mammoth.images.img_element(convert_image),
-            external_file_access=False, include_embedded_style_map=False, style_map='u => u',
-            ignore_empty_paragraphs=False)
-    if any(message.type == 'error' for message in result.messages):
-        raise ValueError('Document could not be read completely')
-    warnings = [str(message.message)[:500] for message in result.messages if message.type == 'warning'][:30]
+            external_file_access=False,
+            include_embedded_style_map=False,
+            style_map="u => u",
+            ignore_empty_paragraphs=False,
+        )
+    if any(message.type == "error" for message in result.messages):
+        raise ValueError("Document could not be read completely")
+    warnings = [
+        str(message.message)[:500] for message in result.messages if message.type == "warning"
+    ][:30]
     if warnings:
-        (directory / 'warnings.json').write_text(json.dumps(warnings), encoding='utf-8')
+        (directory / "warnings.json").write_text(json.dumps(warnings), encoding="utf-8")
     content, headings = sanitize_html(result.value, assets)
     # Mammoth deliberately omits paragraph geometry. Restore alignment from DOCX
     # after sanitization; only our own allowlisted classes reach the EPUB.
@@ -116,126 +131,177 @@ def convert(source, directory, formats, title):
     from docx.oxml.ns import qn
     from docx.text.paragraph import Paragraph
     from lxml import html
+
     document = Document(source)
     paragraphs = defaultdict(deque)
-    normalize = lambda value: ' '.join(value.split())
-    for element in document.element.body.iter(qn('w:p')):
+    def normalize(value):
+        return " ".join(value.split())
+    for element in document.element.body.iter(qn("w:p")):
         paragraph = Paragraph(element, document)
         if paragraph.text.strip():
             paragraphs[normalize(paragraph.text)].append(paragraph)
-    root = html.fragment_fromstring(content or '<p></p>', create_parent='div')
+    root = html.fragment_fromstring(content or "<p></p>", create_parent="div")
     list_paragraphs(root)
     for node in root.iterdescendants():
-        if node.tag not in ('p','h1','h2','h3','h4','h5','h6'):
+        if node.tag not in ("p", "h1", "h2", "h3", "h4", "h5", "h6"):
             continue
         matches = paragraphs[normalize(node.text_content())]
         if matches:
             paragraph = matches.popleft()
-            alignment = paragraph_property(paragraph, 'alignment')
-            node.set('class', {0:'align-left',1:'align-center',2:'align-right',3:'align-justify'}.get(alignment, 'align-left'))
-    for node in root.iter('p'):
+            alignment = paragraph_property(paragraph, "alignment")
+            node.set(
+                "class",
+                {0: "align-left", 1: "align-center", 2: "align-right", 3: "align-justify"}.get(
+                    alignment, "align-left"
+                ),
+            )
+    for node in root.iter("p"):
         if not node.text_content() and len(node) == 0:
-            node.text = '\u00a0'
-    content = ''.join(html.tostring(child, encoding='unicode') for child in root)
+            node.text = "\u00a0"
+    content = "".join(html.tostring(child, encoding="unicode") for child in root)
 
-    if 'epub' in formats:
-        CURRENT_STAGE = 'EPUB'
-        report_progress('Tworzenie EPUB')
+    if "epub" in formats:
+        CURRENT_STAGE = "EPUB"
+        report_progress("Tworzenie EPUB")
         from ebooklib import epub
+
         book = epub.EpubBook()
         book.set_identifier(str(uuid4()))
-        book.set_title(title); book.set_language('pl')
-        chapter = epub.EpubHtml(title=title, file_name='content.xhtml', lang='pl')
+        book.set_title(title)
+        book.set_language("pl")
+        chapter = epub.EpubHtml(title=title, file_name="content.xhtml", lang="pl")
         chapter.content = content
-        stylesheet = epub.EpubItem(uid='style', file_name='style.css', media_type='text/css', content=CSS.encode())
-        book.add_item(stylesheet); chapter.add_item(stylesheet); book.add_item(chapter)
+        stylesheet = epub.EpubItem(
+            uid="style", file_name="style.css", media_type="text/css", content=CSS.encode()
+        )
+        book.add_item(stylesheet)
+        chapter.add_item(stylesheet)
+        book.add_item(chapter)
         for number, (name, data) in enumerate(assets.items()):
-            book.add_item(epub.EpubItem(uid=f'image-{number}', file_name=name, media_type='image/png', content=data))
-        book.toc = tuple(epub.Link('content.xhtml#' + id_, label, 'toc-' + str(n)) for n, (id_, label) in enumerate(headings)) or (chapter,)
-        book.add_item(epub.EpubNcx()); book.add_item(epub.EpubNav())
-        book.spine = ['nav', chapter]
-        epub.write_epub(str(directory / 'document.epub'), book, {'raise_exceptions': True})
-    if 'pdf' in formats:
-        CURRENT_STAGE = 'PDF'
-        report_progress('Przygotowanie PDF')
+            book.add_item(
+                epub.EpubItem(
+                    uid=f"image-{number}", file_name=name, media_type="image/png", content=data
+                )
+            )
+        book.toc = tuple(
+            epub.Link("content.xhtml#" + id_, label, "toc-" + str(n))
+            for n, (id_, label) in enumerate(headings)
+        ) or (chapter,)
+        book.add_item(epub.EpubNcx())
+        book.add_item(epub.EpubNav())
+        book.spine = ["nav", chapter]
+        epub.write_epub(str(directory / "document.epub"), book, {"raise_exceptions": True})
+    if "pdf" in formats:
+        CURRENT_STAGE = "PDF"
+        report_progress("Przygotowanie PDF")
         if __package__:
             from .document_pdf import render_pdf
         else:
             from document_pdf import render_pdf
-        render_pdf(source, directory / 'document.pdf', content, assets, title)
+        render_pdf(source, directory / "document.pdf", content, assets, title)
 
 
 def main():
     global CURRENT_STAGE
     directory = Path(sys.argv[1])
     configure(directory)
-    report_progress('Przygotowanie DOCX')
-    config = json.loads((directory / 'job.json').read_text(encoding='utf-8'))
-    formats = config['formats']
-    if (not formats and not config.get('include_docx') and not config.get('inspect')) or set(formats) - {'pdf', 'epub'}:
+    report_progress("Przygotowanie DOCX")
+    config = json.loads((directory / "job.json").read_text(encoding="utf-8"))
+    formats = config["formats"]
+    if (not formats and not config.get("include_docx") and not config.get("inspect")) or set(
+        formats
+    ) - {"pdf", "epub"}:
         return 3
     try:
-        if config.get('prepare') or config.get('inspect'):
+        if config.get("prepare") or config.get("inspect"):
             if __package__:
-                from .document_preparation import prepare_docx, ALL_EDITORIAL_RULES, DEFAULT_EDITORIAL_RULES
+                from .document_preparation import prepare_docx, DEFAULT_EDITORIAL_RULES
                 from .document_rebuild import inspect_docx
             else:
-                from document_preparation import prepare_docx, ALL_EDITORIAL_RULES, DEFAULT_EDITORIAL_RULES
+                from document_preparation import prepare_docx, DEFAULT_EDITORIAL_RULES
                 from document_rebuild import inspect_docx
-            source = directory / 'source.docx'
-            if config.get('inspect'):
-                with source.open('rb') as document:
+            source = directory / "source.docx"
+            if config.get("inspect"):
+                with source.open("rb") as document:
                     inspect_docx(document)
                 return 0
-            rules = config.get('cleaner_rules') if config.get('clean') else ()
+            rules = config.get("cleaner_rules") if config.get("clean") else ()
             if rules is None:
                 rules = list(DEFAULT_EDITORIAL_RULES)
-            with source.open('rb') as document, prepare_docx(
-                document, rebuild=config.get('rebuild', False),
-                normalize_formatting=config.get('normalize', True),
-                justify=config.get('justify', False),
-                remove_soft_whitespace=config.get('remove_soft_whitespace', False),
-                cleaner_rules=rules, use_cleaner=config.get('clean', False),
-                allow_omissions=config.get('allow_rebuild_omissions', False),
-            ) as prepared:
+            with (
+                source.open("rb") as document,
+                prepare_docx(
+                    document,
+                    rebuild=config.get("rebuild", False),
+                    normalize_formatting=config.get("normalize", True),
+                    justify=config.get("justify", False),
+                    remove_soft_whitespace=config.get("remove_soft_whitespace", False),
+                    cleaner_rules=rules,
+                    use_cleaner=config.get("clean", False),
+                    allow_omissions=config.get("allow_rebuild_omissions", False),
+                ) as prepared,
+            ):
                 payload = prepared.read()
             source.write_bytes(payload)
-        if config.get('repetitions') is not None:
-            CURRENT_STAGE = 'Powtórzenia'
-            report_progress('Analiza i kolorowanie powtórzeń')
+        if config.get("repetitions") is not None:
+            CURRENT_STAGE = "Powtórzenia"
+            report_progress("Analiza i kolorowanie powtórzeń")
             if __package__:
                 from .document_repetitions import color_document
             else:
                 from document_repetitions import color_document
-            source = directory / 'source.docx'
-            with source.open('rb') as document, color_document(document, **config['repetitions']) as marked:
+            source = directory / "source.docx"
+            with (
+                source.open("rb") as document,
+                color_document(document, **config["repetitions"]) as marked,
+            ):
                 payload = marked.read()
             source.write_bytes(payload)
         if formats:
-            convert(directory / 'source.docx', directory, formats, config['title'])
+            convert(directory / "source.docx", directory, formats, config["title"])
     except Exception as error:
         # Never record exception messages, locals, source lines or document text.
         versions = {}
-        for package in ('fpdf2', 'fpdf', 'fonttools', 'mammoth', 'EbookLib', 'python-docx', 'Pillow', 'spacy', 'pl_core_news_sm'):
-            try: versions[package] = version(package)
-            except PackageNotFoundError: versions[package] = 'not installed'
-        frames = [{'file': Path(frame.filename).name, 'line': frame.lineno, 'function': frame.name}
-                  for frame in traceback.extract_tb(error.__traceback__)]
-        report = {'stage': CURRENT_STAGE, 'error': type(error).__name__,
-                  'omissions': getattr(error, 'omissions', []), 'frames': frames, 'python': sys.version.split()[0], 'versions': versions}
+        for package in (
+            "fpdf2",
+            "fpdf",
+            "fonttools",
+            "mammoth",
+            "EbookLib",
+            "python-docx",
+            "Pillow",
+            "spacy",
+            "pl_core_news_sm",
+        ):
+            try:
+                versions[package] = version(package)
+            except PackageNotFoundError:
+                versions[package] = "not installed"
+        frames = [
+            {"file": Path(frame.filename).name, "line": frame.lineno, "function": frame.name}
+            for frame in traceback.extract_tb(error.__traceback__)
+        ]
+        report = {
+            "stage": CURRENT_STAGE,
+            "error": type(error).__name__,
+            "omissions": getattr(error, "omissions", []),
+            "frames": frames,
+            "python": sys.version.split()[0],
+            "versions": versions,
+        }
         try:
             from .document_errors import DocumentInputError, MESSAGES
         except ImportError:
             from document_errors import DocumentInputError, MESSAGES
         if isinstance(error, DocumentInputError) and error.public_code in MESSAGES:
-            report['public_code'] = error.public_code
+            report["public_code"] = error.public_code
         try:
-            (directory / 'error.json').write_text(json.dumps(report), encoding='utf-8')
+            (directory / "error.json").write_text(json.dumps(report), encoding="utf-8")
         except OSError:
             pass
         return 2 if isinstance(error, ImportError) else 3
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

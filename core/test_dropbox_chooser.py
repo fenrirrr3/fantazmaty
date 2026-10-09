@@ -57,8 +57,9 @@ class DropboxChooserTests(TestCase):
         from django.utils import timezone
         today = timezone.localdate()
         WorkflowStage.objects.create(text=self.text, stage_type='ready', is_completed=True, started_at=today, ended_at=today)
-        self.book.status = 'ready'; self.book.save()
+        self.book.status = 'ready'
+        self.book.save()
         self.client.force_login(self.admin)
         response = self.client.get(self.url)
         self.assertNotContains(response, 'id="dropbox-folder-choose"')
-        self.assertNotContains(response, 'dropins.js')
+        self.assertNotContains(response, "dropins.js")

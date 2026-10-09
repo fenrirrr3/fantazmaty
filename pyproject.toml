@@ -28,7 +28,7 @@ indent-style = "space"
 line-ending = "lf"
 
 [tool.pytest.ini_options]
-DJANGO_SETTINGS_MODULE = "fantazmaty.settings"
+DJANGO_SETTINGS_MODULE = "fantazmaty.test_settings"
 python_files = [
     "tests.py",
     "test_*.py",

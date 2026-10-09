@@ -4,7 +4,11 @@ import re
 from django.core import signing
 from django.db import transaction
 from django.shortcuts import render
-from django.urls import resolve, Resolver404
+from django.conf import settings
+from django.urls import resolve
+
+from core.edit_policy import policy_for
+from core.request_match import resolve_request
 
 
 def aggregate(match):
@@ -97,9 +101,8 @@ class EditingMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        try:
-            match = resolve(request.path_info)
-        except Resolver404:
+        match = resolve_request(request)
+        if match is None:
             return self.get_response(request)
         if match.namespace not in ("core", "illustrations", "admin"):
             return self.get_response(request)
@@ -125,30 +128,12 @@ class EditingMiddleware:
             except PermissionDenied:
                 return self.get_response(request)
         model, pk = aggregate(match)
-        if request.method == "POST" and match.namespace == "core" and model and pk:
-            from django.http import HttpResponseForbidden
-            from core.permissions import is_coordinator, can_manage_vacation
+        policy = policy_for(match)
+        if request.method == "POST" and match.namespace != "admin" and model and pk and policy:
             probe = model.objects.filter(pk=pk).first()
-            name = match.url_name
-            if probe and name == 'anthology_detail' and not is_coordinator(request.user):
-                return HttpResponseForbidden('Brak dostępu do edycji antologii.')
-            if probe and name in ('add_text_note', 'update_text_content_warnings'):
-                allowed = is_coordinator(request.user) or probe.workflow_role_assignments.filter(workflow_cycle=probe.current_workflow_cycle, is_current=True, assigned_to=request.user).exists()
-                if not allowed:
-                    return HttpResponseForbidden('Brak dostępu do zmiany tego tekstu.')
-            if probe and name in ('edit_text_note', 'delete_text_note'):
-                from texts.models import TextNote
-                note = TextNote.objects.filter(pk=match.kwargs.get('note_id'), text_id=pk).first()
-                if note and not (note.author_id == request.user.pk or is_coordinator(request.user)):
-                    return HttpResponseForbidden('Brak dostępu do tej notatki.')
-            if probe and name in ('assigned_review_detail', 'update_review_content_warnings'):
-                allowed = probe.assignments.filter(user=request.user).exists()
-                if name == 'update_review_content_warnings':
-                    allowed = allowed or is_coordinator(request.user)
-                if not allowed:
-                    return HttpResponseForbidden('Brak przydziału do tej recenzji.')
-            if probe and model._meta.label_lower == 'people.vacation' and not can_manage_vacation(request.user, probe):
-                return HttpResponseForbidden('Brak dostępu do tego urlopu.')
+            if probe and not policy.allows(request, probe, match.kwargs):
+                # The view repeats the same check and answers with its own 403.
+                return self.get_response(request)
         writing = request.method == "POST"
         with transaction.atomic() if writing else nullcontext():
             # A standalone note edit (including a move) takes the same parent
@@ -191,40 +176,13 @@ class EditingMiddleware:
                         permission = model_admin.has_delete_permission if match.url_name.endswith('_delete') else model_admin.has_change_permission
                         if not permission(request, target):
                             return self.get_response(request)
-                else:
-                    from core.permissions import is_coordinator
-                    name = match.url_name
-                    if name in ('set_text_authors', 'update_text_file') and not request.user.is_superuser:
-                        return self.get_response(request)
-                    if name == 'update_review_file':
-                        from core.permissions import can_manage_review_files
-                        if not can_manage_review_files(request.user):
-                            return self.get_response(request)
-                    if name in ('edit_text_note', 'delete_text_note'):
-                        from texts.models import TextNote
-                        note = TextNote.objects.filter(pk=match.kwargs.get('note_id'), text_id=pk).first()
-                        if not note or not (note.author_id == request.user.pk or is_coordinator(request.user)):
-                            return self.get_response(request)
-                    if name in ('update_text_file', 'update_text_content_warnings', 'update_coordinator_note'):
-                        allowed = is_coordinator(request.user)
-                        if name != 'update_coordinator_note':
-                            allowed = allowed or obj.workflow_role_assignments.filter(workflow_cycle=obj.current_workflow_cycle, is_current=True, assigned_to=request.user).exists()
-                        if not allowed:
-                            return self.get_response(request)
             current = fingerprint(obj) if obj else None
             key = f"{model._meta.label_lower}:{pk}" if obj else ""
             token = request.POST.get("_edit_version") if request.method == "POST" else None
-            required = match.namespace == 'admin' or match.url_name in {
-                'update_text_tags', 'update_text_audiobook',
-                'cancel_workflow_repetition', 'handoff_workflow_stage', 'link_text_review',
-                'set_text_authors', 'set_translators', 'update_coordinator_note', 'update_text_content_warnings',
-                'edit_text_note', 'delete_text_note', 'update_text_file', 'update_review_file',
-                'update_review_content_warnings', 'update_author_notification', 'update_review_status',
-                'assigned_review_detail',
-            }
+            required = match.namespace == 'admin' or bool(policy and policy.require_version)
             if request.method == 'POST' and obj and request.user.is_authenticated and request.user.is_active and (token or required):
                 try:
-                    expected = signing.loads(token or "", salt="cms-edit-version", max_age=86400)
+                    expected = signing.loads(token or "", salt="cms-edit-version", max_age=settings.SESSION_COOKIE_AGE)
                 except signing.BadSignature:
                     expected = None
                 if expected != [request.user.pk, key, current]:

@@ -6,9 +6,11 @@ from django.utils import timezone
 
 from texts.models import Text
 from .validators import validate_drive_url
+from core.edit_versions import VersionedQuerySet
 
 
 class PublicIllustrationSettings(models.Model):
+    objects = VersionedQuerySet.as_manager()
     id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
     drive_url = models.URLField('wspólny link GDrive', max_length=1000, blank=True, default='', validators=[validate_drive_url],
         help_text='Link publiczny, pokazywany przy każdym tekście w Zewnętrznych ilustracjach.')
@@ -24,6 +26,7 @@ class PublicIllustrationSettings(models.Model):
 
 class Illustrator(models.Model):
     """An independent contact, with no account or team-profile relationship."""
+    objects = VersionedQuerySet.as_manager()
     first_name = models.CharField("imię", max_length=100)
     last_name = models.CharField("nazwisko", max_length=100, blank=True)
     pseudonym = models.CharField("pseudonim", max_length=100, blank=True)
@@ -65,6 +68,7 @@ class Illustrator(models.Model):
 
 
 class Illustration(models.Model):
+    objects = VersionedQuerySet.as_manager()
     class Status(models.TextChoices):
         UNASSIGNED = (
             "unassigned",
@@ -266,6 +270,7 @@ class Illustration(models.Model):
         )
 
 class CoverProposal(models.Model):
+    objects = VersionedQuerySet.as_manager()
     class Status(models.TextChoices):
         PENDING = (
             "pending",

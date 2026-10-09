@@ -1,4 +1,4 @@
-{% extends "core/base.html" %}
+{% extends "core/base.html" %}{% load workspace_tags %}
 
 {% block title %}Teksty do wzięcia | Fantazmaty CMS{% endblock %}
 
@@ -73,7 +73,7 @@
                     {% for stage in available_stages %}
                         <tr
                             class="workflow-stage-row"
-                            data-stage="{{ stage.stage_type }}"
+                            data-stage="{{ stage.stage_type }}"{{ stage.stage_type|stage_palette_attr }}
                         >
                             <td>
                                 {% if stage.text.anthology %}

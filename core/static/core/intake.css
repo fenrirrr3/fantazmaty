@@ -13,7 +13,7 @@
 .mailbox-actions{grid-column:1/-1;margin:0}
 .mailbox-confirmation-options{max-width:32rem;margin-block:1rem}
 .submission-newsletters{max-width:32rem;margin-bottom:1rem}
-@media(max-width:700px){.mailbox-filters{grid-template-columns:minmax(0,1fr)}}
+@media screen and (max-width: 760px){.mailbox-filters{grid-template-columns:minmax(0,1fr)}}
 
 
 
@@ -28,8 +28,8 @@
 .mailbox-date-filter { min-width: 0; display: flex; flex-direction: column; gap: .6rem; }
 .mailbox-date-filter input[type=date] { width: 100%; max-width: 15rem; }
 .recruitment-date-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; margin-bottom: 1rem; }
-@media(max-width:700px) { .mailbox-filters-dated, .recruitment-date-row { grid-template-columns: minmax(0, 1fr); } }
-@media(max-width:480px) { .mailbox-options-grid { grid-template-columns: minmax(0, 1fr); } }
+@media screen and (max-width: 760px) { .mailbox-filters-dated, .recruitment-date-row { grid-template-columns: minmax(0, 1fr); } }
+@media screen and (max-width: 480px) { .mailbox-options-grid { grid-template-columns: minmax(0, 1fr); } }
 .recruitment-decision-column { display: grid; gap: 1rem; align-content: start; min-width: 0; }
 .recruitment-role-decision > summary { cursor: pointer; overflow-wrap: anywhere; }
 .recruitment-role-decision[open] > summary { margin-bottom: 1rem; }

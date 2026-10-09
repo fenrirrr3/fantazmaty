@@ -6,9 +6,10 @@ from django.utils import timezone
 
 from texts.models import Text
 from workflow.catalog import IMPORT_ONLY_STAGE_TYPES, IMPORT_ONLY_ROLES, IMPORT_ONLY_STAGE_ROLES
+from core.edit_versions import VersionedQuerySet
 
 
-class WorkflowStageQuerySet(models.QuerySet):
+class WorkflowStageQuerySet(VersionedQuerySet):
     def current_cycle(self):
         return self.filter(
             workflow_cycle=models.F("text__current_workflow_cycle"),
@@ -297,7 +298,7 @@ class WorkflowStage(models.Model):
             raise ValidationError(errors)
 
 
-class WorkflowRoleAssignmentQuerySet(models.QuerySet):
+class WorkflowRoleAssignmentQuerySet(VersionedQuerySet):
     def current_cycle(self):
         return self.filter(
             workflow_cycle=models.F("text__current_workflow_cycle"),
@@ -591,6 +592,7 @@ class WorkflowRoleAssignment(models.Model):
             reset_assignment_waiting(self, using=using)
 
 class WorkflowRepetition(models.Model):
+    objects = VersionedQuerySet.as_manager()
     text = models.ForeignKey(Text, on_delete=models.CASCADE, related_name="repetitions")
     selected_stages = models.JSONField(default=list)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)

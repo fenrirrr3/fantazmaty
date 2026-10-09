@@ -5,6 +5,9 @@ from texts.models import Anthology, Text
 
 from .models import Illustration
 from .services import sync_required_illustrations
+from django.db.models.signals import pre_delete
+from django.db.models.deletion import ProtectedError
+from .models import Illustrator
 
 
 @receiver(post_save, sender=Anthology)
@@ -57,9 +60,6 @@ def create_illustration_for_text(
         )
 
 
-from django.db.models.signals import pre_delete
-from django.db.models.deletion import ProtectedError
-from .models import Illustrator
 
 
 @receiver(pre_delete, sender=Illustrator)

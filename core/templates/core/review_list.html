@@ -1,4 +1,4 @@
-{% extends "core/base.html" %}
+{% extends "core/base.html" %}{% load workspace_tags %}
 
 {% block title %}Recenzje | Fantazmaty CMS{% endblock %}
 
@@ -183,7 +183,7 @@
                                     <div class="muted-text">{{ review.genre }}</div>
                                 {% endif %}
                                 {% if review.current_user_slot %}
-                                    <span class="role-badge">Twoja recenzja</span>
+                                    <span class="role-badge" data-palette="reviewer">Twoja recenzja</span>
                                 {% endif %}
                             </td>
 

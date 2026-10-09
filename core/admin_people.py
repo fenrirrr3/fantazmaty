@@ -35,5 +35,6 @@ class PeopleChoiceMixin:
         field = super().formfield_for_foreignkey(db_field, request, **kwargs)
         if personal and field is not None:
             field.label_from_instance = person_label
-            if target is get_user_model(): field.queryset = field.queryset.select_related('person_profile')
+            if target is get_user_model():
+                field.queryset = field.queryset.select_related("person_profile")
         return field

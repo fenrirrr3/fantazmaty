@@ -48,3 +48,37 @@ class AuthenticationThrottleTests(TestCase):
             response = self.client.post(reverse('login'), {'username': 'no@example.test', 'password': 'bad'},
                                         REMOTE_ADDR='10.0.0.1', HTTP_X_REAL_IP='192.0.2.2')
             self.assertEqual(response.status_code, 200)
+
+    def test_real_ip_header_is_ignored_by_default(self):
+        # Without explicit configuration a client-supplied X-Real-IP must not create new buckets.
+        for i in range(10):
+            self.client.post(reverse('login'), {'username': 'no@example.test', 'password': 'bad'},
+                             HTTP_X_REAL_IP=f'192.0.2.{i}')
+        response = self.client.post(reverse('login'), {'username': 'no@example.test', 'password': 'bad'},
+                                    HTTP_X_REAL_IP='198.51.100.1')
+        self.assertEqual(response.status_code, 429)
+
+    def test_account_ceiling_stops_guessing_from_many_addresses(self):
+        from django.test import override_settings
+        from core import auth_throttle
+        user = get_user_model().objects.create_user('victim', 'victim@example.test', 'valid-password')
+        data = {'username': user.email, 'password': 'incorrect'}
+        with override_settings(AUTH_THROTTLE_CLIENT_IP_HEADER='HTTP_X_REAL_IP'), \
+                patch.object(auth_throttle, 'ACCOUNT_LOGIN_LIMIT', 5):
+            for i in range(5):
+                self.assertEqual(self.client.post(reverse('login'), data, HTTP_X_REAL_IP=f'192.0.2.{i}').status_code, 200)
+            self.assertEqual(self.client.post(reverse('login'), data, HTTP_X_REAL_IP='198.51.100.9').status_code, 429)
+            # Other accounts are unaffected.
+            other = {'username': 'other@example.test', 'password': 'bad'}
+            self.assertEqual(self.client.post(reverse('login'), other, HTTP_X_REAL_IP='198.51.100.9').status_code, 200)
+
+    def test_successful_login_clears_account_ceiling(self):
+        user = get_user_model().objects.create_user('owner', 'owner@example.test', 'valid-password')
+        for i in range(3):
+            self.client.post(reverse('login'), {'username': user.email, 'password': 'bad'}, REMOTE_ADDR=f'192.0.2.{i}')
+        self.assertTrue(AuthenticationAttempt.objects.exists())
+        response = self.client.post(reverse('login'), {'username': user.email, 'password': 'valid-password'}, REMOTE_ADDR='192.0.2.50')
+        self.assertEqual(response.status_code, 302)
+        from django.utils.crypto import salted_hmac
+        account_key = salted_hmac('cms-auth-rate', 'login:account:' + user.email, algorithm='sha256').hexdigest()
+        self.assertFalse(AuthenticationAttempt.objects.filter(key=account_key).exists())

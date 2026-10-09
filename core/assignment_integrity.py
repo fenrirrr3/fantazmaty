@@ -1,5 +1,4 @@
 """Read-only checks of multiple assignments of one person to the same text."""
-from core.translation_scope import ordinary
 from collections import defaultdict
 
 from django import forms

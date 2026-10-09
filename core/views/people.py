@@ -1,23 +1,18 @@
 from people.role_ordering import ordered_team_roles
 from django.contrib.auth.decorators import login_required
-from django.db.models import Count, F, Prefetch, Q
+from django.db.models import Q
 from django.shortcuts import get_object_or_404, render
-from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 
 from core.forms import PeopleFilterForm
 from core.pagination import paginate_items
 from core.permissions import (
-    can_view_author_data, is_coordinator, is_superuser, team_member_required,
+    can_view_author_data, is_superuser, team_member_required,
 )
 from core.selectors.people import (user_leave_information, profile_assignments as _profile_assignments, imported_work_summary as _imported_work_summary)
 from people.models import Person, Role
 from texts.models import ReviewAssignment
-from workflow.models import WorkflowRoleAssignment, WorkflowStage
-from workflow.services import STAGE_ROLES
-from workflow.catalog import IMPORT_ONLY_ROLES, IMPORT_ONLY_STAGE_TYPES
-from workflow.labels import assignment_label
 
 
 def _filter_data(request):

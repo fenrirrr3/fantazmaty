@@ -31,6 +31,24 @@ def read_access_scope():
         _read_access.reset(token)
 
 
+class ReadAccessScopeMiddleware:
+    """Share permission lookups across one GET/HEAD request.
+
+    Templates, context processors and views ask for the same profile and
+    roles many times per page. Read-only requests reuse one lookup; every
+    other method keeps reading fresh data, as mutations require.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        if request.method in {"GET", "HEAD"}:
+            with read_access_scope():
+                return self.get_response(request)
+        return self.get_response(request)
+
+
 def _role_names(person):
     cache = _read_access.get()
     key = ("roles", person.pk)

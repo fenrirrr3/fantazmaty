@@ -104,37 +104,45 @@ class MergeIllustratorTests(TestCase):
         before = list(Illustration.objects.order_by('pk').values())
         revisions = [version_of(row) for row in self.rows]
         self.merge()
-        self.target.refresh_from_db(); self.source.refresh_from_db()
-        self.assertEqual(self.target.pseudonym, '')
+        self.target.refresh_from_db()
+        self.source.refresh_from_db()
+        self.assertEqual(self.target.pseudonym, "")
         self.assertIsNone(self.target.email)
-        self.assertEqual(self.source.email, 'graphos@example.test')
+        self.assertEqual(self.source.email, "graphos@example.test")
         self.assertEqual([version_of(row) for row in self.rows], revisions)
         report = self.merge(apply=True)
         self.target.refresh_from_db()
         self.assertFalse(Illustrator.objects.filter(pk=self.source.pk).exists())
-        self.assertEqual(self.target.display_name, 'Graphos')
-        self.assertEqual(self.target.email, 'graphos@example.test')
-        self.assertEqual(self.target.preferences, 'Fantasy\n\nSmoki')
+        self.assertEqual(self.target.display_name, "Graphos")
+        self.assertEqual(self.target.email, "graphos@example.test")
+        self.assertEqual(self.target.preferences, "Fantasy\n\nSmoki")
         self.assertTrue(self.target.covers)
         self.assertFalse(self.target.is_active)
-        self.assertEqual(set(self.rows[0].illustrators.values_list('pk', flat=True)), {self.target.pk, self.other.pk})
-        self.assertEqual(list(self.rows[1].illustrators.values_list('pk', flat=True)), [self.target.pk])
-        self.assertEqual(list(Illustration.objects.order_by('pk').values()), before)
+        self.assertEqual(
+            set(self.rows[0].illustrators.values_list("pk", flat=True)),
+            {self.target.pk, self.other.pk},
+        )
+        self.assertEqual(
+            list(self.rows[1].illustrators.values_list("pk", flat=True)), [self.target.pk]
+        )
+        self.assertEqual(list(Illustration.objects.order_by("pk").values()), before)
         self.assertTrue(all(version_of(row) > old for row, old in zip(self.rows, revisions)))
-        self.assertEqual(report['merged_id'], self.source.pk)
+        self.assertEqual(report["merged_id"], self.source.pk)
         repeat = self.merge(apply=True)
-        self.assertIsNone(repeat['merged_id'])
-        self.assertEqual(repeat['before'][0], repeat['after'])
+        self.assertIsNone(repeat["merged_id"])
+        self.assertEqual(repeat["before"][0], repeat["after"])
 
     def test_conflicting_contact_and_ambiguous_name_abort_without_changes(self):
-        self.target.email = 'different@example.test'; self.target.save()
-        with self.assertRaisesMessage(CommandError, 'email'):
+        self.target.email = "different@example.test"
+        self.target.save()
+        with self.assertRaisesMessage(CommandError, "email"):
             self.merge(apply=True)
         self.target.refresh_from_db()
-        self.assertEqual(self.target.pseudonym, '')
+        self.assertEqual(self.target.pseudonym, "")
         self.assertTrue(self.rows[0].illustrators.filter(pk=self.source.pk).exists())
-        self.target.email = None; self.target.save()
-        Illustrator.objects.create(first_name='Graphos')
-        with self.assertRaisesMessage(CommandError, 'kilka rekordów'):
+        self.target.email = None
+        self.target.save()
+        Illustrator.objects.create(first_name="Graphos")
+        with self.assertRaisesMessage(CommandError, "kilka rekordów"):
             self.merge(apply=True)
         self.assertTrue(Illustrator.objects.filter(pk=self.source.pk).exists())

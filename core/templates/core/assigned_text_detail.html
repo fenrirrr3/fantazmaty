@@ -1,10 +1,10 @@
-{% extends "core/base.html" %}
+{% extends "core/base.html" %}{% load workspace_tags %}
 {% load static %}
 
 {% block title %}{{ text.title }} | Fantazmaty CMS{% endblock %}
 
 
-{% block extra_css %}<link rel="stylesheet" href="{% static 'core/tags.css' %}"><link rel="stylesheet" href="{% static 'core/text-production.css' %}?v=58">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/tags.css' %}"><link rel="stylesheet" href="{% static 'core/text-production.css' %}">{% endblock %}
 
 {% block content %}
     {% now "Y-m-d" as today_iso %}
@@ -111,7 +111,7 @@
                     <dt>Twoje role</dt>
                     <dd class="roles-list">
                         {% for assignment in user_assignments %}
-                            <span class="role-badge" data-role="{{ assignment.role }}">{{ assignment.get_role_display }}
+                            <span class="role-badge" data-role="{{ assignment.role }}"{{ assignment.role|role_palette_attr:assignment.get_role_display }}>{{ assignment.get_role_display }}
                             </span>
                         {% endfor %}
                     </dd>
@@ -148,7 +148,7 @@
                 </thead>
                 <tbody>
                     {% for stage in visible_stages %}
-                        <tr class="workflow-stage-row" data-stage="{{ stage.stage_type }}">
+                        <tr class="workflow-stage-row" data-stage="{{ stage.stage_type }}"{{ stage.stage_type|stage_palette_attr }}>
                             <td>
                                 {% include "core/includes/workflow_badge.html" with workflow_stage=stage %}
                                 {% include "core/includes/editorial_decision_result.html" %}
@@ -699,7 +699,7 @@
 {% endblock %}
 
 {% block scripts %}
-    {% if translation_form %}<script src="{% static 'core/translation-search.js' %}?v=17"></script><noscript>Wyszukiwanie osób wymaga JavaScript. Osoby można również przypisać przez „Edytuj w adminie”.</noscript>{% endif %}
+    {% if translation_form %}<script src="{% static 'core/translation-search.js' %}" defer></script><noscript>Wyszukiwanie osób wymaga JavaScript. Osoby można również przypisać przez „Edytuj w adminie”.</noscript>{% endif %}
 {{ block.super }}
 {% if user.is_superuser and text_file_form and dropbox_chooser_app_key and text.anthology.status != "ready" %}
 <script src="https://www.dropbox.com/static/api/2/dropins.js" id="dropboxjs" data-app-key="{{ dropbox_chooser_app_key }}"></script>

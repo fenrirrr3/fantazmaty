@@ -1,4 +1,9 @@
-"""Durable, private spool for request metadata (never request bodies)."""
+"""Private spool for request metadata (never request bodies).
+
+Each entry is written to a temporary file and atomically renamed, so the
+flush command never sees a partial record. No fsync: an audit entry lost on
+power failure is acceptable, a slower response on every request is not.
+"""
 import json
 import logging
 import os
@@ -23,8 +28,6 @@ def enqueue_activity(**data):
         with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=directory, prefix='.', delete=False) as stream:
             temporary = stream.name
             json.dump(data, stream, ensure_ascii=False)
-            stream.flush()
-            os.fsync(stream.fileno())
         os.replace(temporary, directory / (key + '.json'))
     finally:
         if temporary and os.path.exists(temporary):

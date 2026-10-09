@@ -9,9 +9,13 @@ class Command(BaseCommand):
         groups = {}
         for pk, email in get_user_model().objects.values_list('pk', 'email').iterator():
             key = (email or '').strip().lower()
-            if key: groups.setdefault(key, []).append(pk)
+            if key:
+                groups.setdefault(key, []).append(pk)
         duplicates = [ids for ids in groups.values() if len(ids) > 1]
         if duplicates:
-            for ids in duplicates: self.stdout.write('Konta z tym samym adresem – ID: ' + ', '.join(map(str, ids)))
-            raise CommandError('Popraw lub scal wskazane konta przed migracją. Niczego nie zmieniono.')
-        self.stdout.write(self.style.SUCCESS('Brak powtarzających się niepustych adresów kont.'))
+            for ids in duplicates:
+                self.stdout.write("Konta z tym samym adresem – ID: " + ", ".join(map(str, ids)))
+            raise CommandError(
+                "Popraw lub scal wskazane konta przed migracją. Niczego nie zmieniono."
+            )
+        self.stdout.write(self.style.SUCCESS("Brak powtarzających się niepustych adresów kont."))

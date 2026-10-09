@@ -1,0 +1,33 @@
+{% extends "core/base.html" %}
+{% block title %}Postęp programu | Fantazmaty CMS{% endblock %}
+{% block extra_css %}{% if refresh %}<meta http-equiv="refresh" content="2">{% endif %}{% endblock %}
+{% block content %}
+<header class="page-header">
+    <h1 class="page-title">Postęp programu</h1>
+    <p class="page-description">Dokument jest przetwarzany na serwerze. Strona odświeża się sama.</p>
+</header>
+<section class="details-card program-job-status" aria-live="polite">
+    <div class="card-body">
+    {% if state.state == 'done' %}
+        <p class="message success" role="status">Gotowe.{% if state.warnings %} Konwersja zgłosiła uproszczenia – szczegóły są w pliku Uwagi_konwersji.txt w paczce ZIP.{% endif %}</p>
+        <p><a class="primary-button" href="{{ download_url }}">Pobierz {{ state.filename }}</a></p>
+    {% elif state.state == 'confirmation' %}
+        <div class="form-warning" role="alert">{{ state.message }}</div>
+        <form method="post">
+            {% csrf_token %}<input type="hidden" name="view" value="page">
+            <button type="submit" name="action" value="confirm" class="primary-button">Akceptuję i kontynuuję</button>
+            <button type="submit" name="action" value="cancel" class="secondary-button">Zatrzymaj</button>
+        </form>
+    {% elif state.state == 'error' or state.state == 'cancelled' %}
+        <p class="{% if state.state == 'error' %}form-error{% else %}form-help{% endif %}" role="alert">{{ state.message|default:"Praca zatrzymana." }}</p>
+    {% else %}
+        <p role="status">{{ state.stage|default:"Przetwarzanie…" }}{% if state.total %} ({{ state.completed }} z {{ state.total }}){% endif %}</p>
+        <form method="post">
+            {% csrf_token %}<input type="hidden" name="view" value="page">
+            <button type="submit" name="action" value="cancel" class="secondary-button">Zatrzymaj</button>
+        </form>
+    {% endif %}
+    <p><a href="{% url 'core:programs' %}">Wróć do programów</a></p>
+    </div>
+</section>
+{% endblock %}

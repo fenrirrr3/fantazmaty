@@ -226,8 +226,10 @@ def workflow_activity_context(
         output_field=CharField(),
     ))
     query_fields = ['text__title', 'text__anthology__title', 'report_person_name', 'report_role_label']
-    if include_authors: query_fields += ['text__authors__first_name', 'text__authors__last_name', 'text__authors__pseudonym']
-    stages = _report_search(stages, filters['q'], query_fields).distinct()
+    if include_authors:
+        query_fields += ['text__authors__first_name', 'text__authors__last_name', 'text__authors__pseudonym']
+    stages = _report_search(stages, filters["q"], query_fields).distinct()
+
     def project(stage):
         text = stage.text
         role = stage_roles[stage.stage_type]
@@ -236,8 +238,7 @@ def workflow_activity_context(
             (
                 item
                 for item in text.report_assignments
-                if item.workflow_cycle == stage.workflow_cycle
-                and item.role == role
+                if item.workflow_cycle == stage.workflow_cycle and item.role == role
             ),
             None,
         )
@@ -256,26 +257,27 @@ def workflow_activity_context(
             role_label = execution_label(WORK_LABELS.get(role, role_label), stage.execution_number)
 
         return {
-                "stage_id": stage.pk,
-                "workflow_cycle": stage.workflow_cycle,
-                "iteration": stage.iteration,
-                "execution_number": stage.execution_number,
-                "anthology_title": anthology_title,
-                "anthology_id": text.anthology_id,
-                "text_id": text.pk,
-                "title": text.title,
-                "authors": authors,
-                "role": role_label,
-                "role_code": role,
-                "person_id": person.pk if person else None,
-                "person_name": person_name,
-                "assigned_at": assignment.assigned_at if assignment else None,
-                "started_at": stage.started_at,
-                "ended_at": stage.ended_at,
-                "is_completed": stage.is_completed,
-            }
+            "stage_id": stage.pk,
+            "workflow_cycle": stage.workflow_cycle,
+            "iteration": stage.iteration,
+            "execution_number": stage.execution_number,
+            "anthology_title": anthology_title,
+            "anthology_id": text.anthology_id,
+            "text_id": text.pk,
+            "title": text.title,
+            "authors": authors,
+            "role": role_label,
+            "role_code": role,
+            "person_id": person.pk if person else None,
+            "person_name": person_name,
+            "assigned_at": assignment.assigned_at if assignment else None,
+            "started_at": stage.started_at,
+            "ended_at": stage.ended_at,
+            "is_completed": stage.is_completed,
+        }
 
     return _cascade_sql(context, stages, project, filters, people_context_name, workflow=True)
+
 
 def reviewer_activity_context(*, user, params):
     require_coordinator(user)
@@ -286,7 +288,9 @@ def reviewer_activity_context(*, user, params):
         role_name="Recenzent",
         people_context_name="reviewers",
     )
-    requested = params.getlist("status") if hasattr(params, "getlist") else [params.get("status", "")]
+    requested = (
+        params.getlist("status") if hasattr(params, "getlist") else [params.get("status", "")]
+    )
     selected_statuses = [v for v in requested if v in Review.Status.values]
     selected_status = selected_statuses[-1] if selected_statuses else ""
 
@@ -299,18 +303,26 @@ def reviewer_activity_context(*, user, params):
         selected_statuses=selected_statuses,
         status_choices=Review.Status.choices,
     )
-    context['_include_authors'] = include_authors
+    context["_include_authors"] = include_authors
     if not valid:
         return context
 
     # Nie filtrujemy historii po aktualnej roli ani aktywności osoby.
     # Usunięcie konta również nie usuwa informacji o oddanej opinii.
-    assignments = ordinary(ReviewAssignment.objects).submitted().select_related(
-        "review",
-        "review__anthology", "review__author",
-        "user",
-        "user__person_profile", "historical_person",
-    ).prefetch_related("review__coauthors").filter(Q(review__old_reviews=True) | Q(review__is_hidden=False))
+    assignments = (
+        ordinary(ReviewAssignment.objects)
+        .submitted()
+        .select_related(
+            "review",
+            "review__anthology",
+            "review__author",
+            "user",
+            "user__person_profile",
+            "historical_person",
+        )
+        .prefetch_related("review__coauthors")
+        .filter(Q(review__old_reviews=True) | Q(review__is_hidden=False))
+    )
     if archive != "all":
         assignments = assignments.filter(review__old_reviews=(archive == "archived"))
 
@@ -331,21 +343,62 @@ def reviewer_activity_context(*, user, params):
         "pk",
     )
     assignments = assignments.annotate(
-        report_person_id=Coalesce('historical_person_id', 'user__person_profile__pk', output_field=BigIntegerField()),
-        report_first=Coalesce('historical_person__first_name', 'user__first_name', Value('')),
-        report_last=Coalesce('historical_person__last_name', 'user__last_name', Value('')),
-        report_opinion_label=Case(*[When(opinion=value, then=Value(str(label))) for value, label in ReviewAssignment._meta.get_field('opinion').choices], output_field=CharField()),
-        report_status_label=Case(*[When(review__status=value, then=Value(str(label))) for value, label in Review.Status.choices], output_field=CharField()),
-    ).annotate(report_person_name=Coalesce(
-        NullIf(Trim(Concat('report_first', Value(' '), 'report_last')), Value('')),
-        Case(When(user_id__isnull=True, historical_person_id__isnull=True, then=Value('Usunięte konto')), default=Value('Nieuzupełnione dane')),
-        output_field=CharField(),
-    ))
-    query_fields = ['review__title', 'review__anthology__title', 'report_person_name', 'report_opinion_label', 'report_status_label']
-    if include_authors: query_fields += ['review__author_first_name', 'review__author_last_name']
-    assignments = _report_search(assignments, filters['q'], query_fields).distinct()
-    person_ids = assignments.values_list('report_person_id', flat=True)
-    context['reviewers'] = [_NamedRecord(pk=person.pk, first_name=person.first_name, last_name=person.last_name, display_name=str(person)) for person in Person.objects.filter(pk__in=person_ids).order_by('last_name', 'first_name', 'pk')]
+        report_person_id=Coalesce(
+            "historical_person_id", "user__person_profile__pk", output_field=BigIntegerField()
+        ),
+        report_first=Coalesce("historical_person__first_name", "user__first_name", Value("")),
+        report_last=Coalesce("historical_person__last_name", "user__last_name", Value("")),
+        report_opinion_label=Case(
+            *[
+                When(opinion=value, then=Value(str(label)))
+                for value, label in ReviewAssignment._meta.get_field("opinion").choices
+            ],
+            output_field=CharField(),
+        ),
+        report_status_label=Case(
+            *[
+                When(review__status=value, then=Value(str(label)))
+                for value, label in Review.Status.choices
+            ],
+            output_field=CharField(),
+        ),
+    ).annotate(
+        report_person_name=Coalesce(
+            NullIf(Trim(Concat("report_first", Value(" "), "report_last")), Value("")),
+            Case(
+                When(
+                    user_id__isnull=True,
+                    historical_person_id__isnull=True,
+                    then=Value("Usunięte konto"),
+                ),
+                default=Value("Nieuzupełnione dane"),
+            ),
+            output_field=CharField(),
+        )
+    )
+    query_fields = [
+        "review__title",
+        "review__anthology__title",
+        "report_person_name",
+        "report_opinion_label",
+        "report_status_label",
+    ]
+    if include_authors:
+        query_fields += ["review__author_first_name", "review__author_last_name"]
+    assignments = _report_search(assignments, filters["q"], query_fields).distinct()
+    person_ids = assignments.values_list("report_person_id", flat=True)
+    context["reviewers"] = [
+        _NamedRecord(
+            pk=person.pk,
+            first_name=person.first_name,
+            last_name=person.last_name,
+            display_name=str(person),
+        )
+        for person in Person.objects.filter(pk__in=person_ids).order_by(
+            "last_name", "first_name", "pk"
+        )
+    ]
+
     def project(assignment):
         review = assignment.review
         person, reviewer_name = _person_and_name(assignment.user)
@@ -358,28 +411,30 @@ def reviewer_activity_context(*, user, params):
         review_status = review.get_status_display()
 
         return {
-                "assignment_id": assignment.pk,
-                "is_archived": review.old_reviews,
-                "anthology_title": anthology_title,
-                "anthology_id": review.anthology_id,
-                "review_id": review.pk,
-                "title": review.title,
-                "author_name": author_name,
-                "slot": f"Recenzent {assignment.position}",
-                "position": assignment.position,
-                "person_id": person.pk if person else None,
-                "reviewer_name": reviewer_name,
-                "opinion": opinion,
-                "opinion_value": assignment.opinion,
-                "opinion_at": assignment.opinion_changed_at,
-                "assigned_at": assignment.assigned_at,
-                "review_status": review_status,
-                "review_status_value": review.status,
-                "decision_at": review.decision_at,
-            }
+            "assignment_id": assignment.pk,
+            "is_archived": review.old_reviews,
+            "anthology_title": anthology_title,
+            "anthology_id": review.anthology_id,
+            "review_id": review.pk,
+            "title": review.title,
+            "author_name": author_name,
+            "slot": f"Recenzent {assignment.position}",
+            "position": assignment.position,
+            "person_id": person.pk if person else None,
+            "reviewer_name": reviewer_name,
+            "opinion": opinion,
+            "opinion_value": assignment.opinion,
+            "opinion_at": assignment.opinion_changed_at,
+            "assigned_at": assignment.assigned_at,
+            "review_status": review_status,
+            "review_status_value": review.status,
+            "decision_at": review.decision_at,
+        }
 
+    return _cascade_sql(
+        context, assignments, project, filters, "reviewers", statuses=selected_statuses
+    )
 
-    return _cascade_sql(context, assignments, project, filters, 'reviewers', statuses=selected_statuses)
 
 def workflow_inactivity_context(
     *,
@@ -406,18 +461,14 @@ def workflow_inactivity_context(
     if mode not in {"all", "active", "waiting"}:
         mode = "all"
 
-    valid_stage_types = {
-        value for value, _ in active_stage_choices()
-    }
+    valid_stage_types = {value for value, _ in active_stage_choices()}
     selected_stages = list(
-        dict.fromkeys(
-            value
-            for value in params.getlist("stage")
-            if value in valid_stage_types
-        )
+        dict.fromkeys(value for value in params.getlist("stage") if value in valid_stage_types)
     )
 
-    stages = _inactivity_stages(today, active_days, waiting_days, mode, selected_stages, include_authors)
+    stages = _inactivity_stages(
+        today, active_days, waiting_days, mode, selected_stages, include_authors
+    )
     rows = _inactivity_rows(stages, query, include_authors, today)
 
     rows.sort(
@@ -441,97 +492,169 @@ def workflow_inactivity_context(
 class _ReportRows:
     def __init__(self, queryset, projector, fields):
         self.queryset, self.projector, self.fields = queryset, projector, fields
-    def count(self): return self.queryset.count()
-    def __len__(self): return self.count()
+
+    def count(self):
+        return self.queryset.count()
+
+    def __len__(self):
+        return self.count()
+
     def __iter__(self):
-        for item in self.queryset.iterator(chunk_size=BATCH_SIZE): yield self.projector(item)
+        for item in self.queryset.iterator(chunk_size=BATCH_SIZE):
+            yield self.projector(item)
+
     def __getitem__(self, key):
-        if isinstance(key, slice): return [self.projector(item) for item in self.queryset[key]]
+        if isinstance(key, slice):
+            return [self.projector(item) for item in self.queryset[key]]
         return self.projector(self.queryset[key])
+
     def sort_table(self, request):
         from core.sort_keys import sql_text_key
-        selected = request.GET.get('sort', '')
-        key = selected.lstrip('-')
+
+        selected = request.GET.get("sort", "")
+        key = selected.lstrip("-")
         entry = next((spec for label, spec in self.fields.items() if spec[0] == key), None)
-        if not entry: return self, {label:spec[0] for label,spec in self.fields.items()}
-        if key in ('author', 'authors'):
+        if not entry:
+            return self, {label: spec[0] for label, spec in self.fields.items()}
+        if key in ("author", "authors"):
             from core.table_sorting import _sort_query_projection
-            field = 'authors' if key == 'authors' else 'author_name'
-            rows = _sort_query_projection(self, self.queryset, lambda row: row[field], selected.startswith('-'))
+
+            field = "authors" if key == "authors" else "author_name"
+            rows = _sort_query_projection(
+                self, self.queryset, lambda row: row[field], selected.startswith("-")
+            )
             return rows, {label: spec[0] for label, spec in self.fields.items()}
         _, field, textual = entry
         query = self.queryset
         if textual:
-            query = query.annotate(report_sort=sql_text_key(field, query.db)); field = 'report_sort'
-        order = F(field).desc(nulls_last=True) if selected.startswith('-') else F(field).asc(nulls_last=True)
-        return _ReportRows(query.order_by(order, 'pk'), self.projector, self.fields), {label:spec[0] for label,spec in self.fields.items()}
+            query = query.annotate(report_sort=sql_text_key(field, query.db))
+            field = "report_sort"
+        order = (
+            F(field).desc(nulls_last=True)
+            if selected.startswith("-")
+            else F(field).asc(nulls_last=True)
+        )
+        return _ReportRows(query.order_by(order, "pk"), self.projector, self.fields), {
+            label: spec[0] for label, spec in self.fields.items()
+        }
 
 
 def _report_search(queryset, query, fields):
     from core.public_authors import name_matches, review_name_matches
+
     for term in query.split():
         condition = Q()
         for field in fields:
-            if field in ('text__authors__first_name', 'text__authors__last_name', 'text__authors__pseudonym'):
-                condition |= name_matches(term, 'text__authors__')
-            elif field in ('review__author_first_name', 'review__author_last_name'):
-                condition |= Q(review_id__in=Review.objects.filter(review_name_matches(term)).values('pk'))
+            if field in (
+                "text__authors__first_name",
+                "text__authors__last_name",
+                "text__authors__pseudonym",
+            ):
+                condition |= name_matches(term, "text__authors__")
+            elif field in ("review__author_first_name", "review__author_last_name"):
+                condition |= Q(
+                    review_id__in=Review.objects.filter(review_name_matches(term)).values("pk")
+                )
             else:
-                condition |= Q(**{field + '__plcontains': term})
+                condition |= Q(**{field + "__plcontains": term})
         queryset = queryset.filter(condition)
     return queryset
 
 
 def _cascade_sql(context, base, project, filters, people_key, workflow=False, statuses=None):
-    anthology = 'text__anthology_id' if workflow else 'review__anthology_id'
+    anthology = "text__anthology_id" if workflow else "review__anthology_id"
+
     def filtered(exclude=None):
         query = base
-        if exclude != 'anthology' and filters.get('anthology'): query = query.filter(**{anthology: filters['anthology']})
-        if exclude != 'person' and filters.get('person'): query = query.filter(report_person_id=filters['person'])
-        if exclude != 'status' and statuses: query = query.filter(review__status__in=statuses)
+        if exclude != "anthology" and filters.get("anthology"):
+            query = query.filter(**{anthology: filters["anthology"]})
+        if exclude != "person" and filters.get("person"):
+            query = query.filter(report_person_id=filters["person"])
+        if exclude != "status" and statuses:
+            query = query.filter(review__status__in=statuses)
         return query
-    anthology_ids = set(filtered('anthology').values_list(anthology, flat=True))
-    person_ids = set(filtered('person').values_list('report_person_id', flat=True))
-    if filters.get('anthology'): anthology_ids.add(filters['anthology'])
-    if filters.get('person'): person_ids.add(filters['person'])
-    context['anthologies'] = [item for item in context['anthologies'] if item['pk'] in anthology_ids]
-    context[people_key] = [item for item in context[people_key] if item['pk'] in person_ids]
+
+    anthology_ids = set(filtered("anthology").values_list(anthology, flat=True))
+    person_ids = set(filtered("person").values_list("report_person_id", flat=True))
+    if filters.get("anthology"):
+        anthology_ids.add(filters["anthology"])
+    if filters.get("person"):
+        person_ids.add(filters["person"])
+    context["anthologies"] = [
+        item for item in context["anthologies"] if item["pk"] in anthology_ids
+    ]
+    context[people_key] = [item for item in context[people_key] if item["pk"] in person_ids]
     if statuses is not None:
-        available = set(filtered('status').values_list('review__status', flat=True)) | set(statuses)
-        context['status_choices'] = [(value, label) for value, label in Review.Status.choices if value in available]
-    fields = {'Antologia': ('anthology', 'text__anthology__title' if workflow else 'review__anthology__title', True),
-              'Tytuł': ('title', 'text__title' if workflow else 'review__title', True)}
+        available = set(filtered("status").values_list("review__status", flat=True)) | set(statuses)
+        context["status_choices"] = [
+            (value, label) for value, label in Review.Status.choices if value in available
+        ]
+    fields = {
+        "Antologia": (
+            "anthology",
+            "text__anthology__title" if workflow else "review__anthology__title",
+            True,
+        ),
+        "Tytuł": ("title", "text__title" if workflow else "review__title", True),
+    }
     if workflow:
-        fields.update({'Osoba': ('person','report_person_name',True), 'Korektor': ('person','report_person_name',True),
-                      'Weryfikator': ('person','report_person_name',True), 'Redaktor': ('person','report_person_name',True),
-                      'Rola': ('role','report_role_label',True), 'Rozpoczęcie': ('started_at','started_at',False),
-                      'Zakończenie': ('ended_at','ended_at',False), 'Stan etapu': ('completed','is_completed',False)})
+        fields.update(
+            {
+                "Osoba": ("person", "report_person_name", True),
+                "Korektor": ("person", "report_person_name", True),
+                "Weryfikator": ("person", "report_person_name", True),
+                "Redaktor": ("person", "report_person_name", True),
+                "Rola": ("role", "report_role_label", True),
+                "Rozpoczęcie": ("started_at", "started_at", False),
+                "Zakończenie": ("ended_at", "ended_at", False),
+                "Stan etapu": ("completed", "is_completed", False),
+            }
+        )
     else:
-        fields.update({'Recenzent': ('person','report_person_name',True), 'Przydział': ('position','position',False),
-                      'Opinia': ('opinion','report_opinion_label',True), 'Data oceny': ('opinion_at','opinion_changed_at',False),
-                      'Status zgłoszenia': ('status','report_status_label',True), 'Data decyzji': ('decision','review__decision_at',False)})
-    if context.get('_include_authors'):
+        fields.update(
+            {
+                "Recenzent": ("person", "report_person_name", True),
+                "Przydział": ("position", "position", False),
+                "Opinia": ("opinion", "report_opinion_label", True),
+                "Data oceny": ("opinion_at", "opinion_changed_at", False),
+                "Status zgłoszenia": ("status", "report_status_label", True),
+                "Data decyzji": ("decision", "review__decision_at", False),
+            }
+        )
+    if context.get("_include_authors"):
         # Author display consists of multiple authors, so this uses their names as a stable SQL key.
         if workflow:
-            base = base.annotate(report_author_sort=Subquery(Author.objects.filter(texts__pk=OuterRef('text_id')).order_by('last_name','first_name').values('last_name')[:1]))
-            fields['Autorzy'] = ('authors','report_author_sort',True)
+            base = base.annotate(
+                report_author_sort=Subquery(
+                    Author.objects.filter(texts__pk=OuterRef("text_id"))
+                    .order_by("last_name", "first_name")
+                    .values("last_name")[:1]
+                )
+            )
+            fields["Autorzy"] = ("authors", "report_author_sort", True)
         else:
-            fields['Autor'] = ('author','review__author_last_name',True)
-    context['activity_rows'] = _ReportRows(filtered(), project, fields)
+            fields["Autor"] = ("author", "review__author_last_name", True)
+    context["activity_rows"] = _ReportRows(filtered(), project, fields)
     return context
 
 
 def _inactivity_stages(today, active_days, waiting_days, mode, selected_stages, include_authors):
     from workflow.read_queries import exclude_obsolete_verification_placeholders
 
-    terminal_stage = ordinary(WorkflowStage.objects).current_cycle().filter(
-        text_id=OuterRef("text_id"),
-        workflow_cycle=OuterRef("workflow_cycle"),
-        stage_type__in=TERMINAL_STAGES,
+    terminal_stage = (
+        ordinary(WorkflowStage.objects)
+        .current_cycle()
+        .filter(
+            text_id=OuterRef("text_id"),
+            workflow_cycle=OuterRef("workflow_cycle"),
+            stage_type__in=TERMINAL_STAGES,
+        )
     )
 
     stages = (
-        ordinary(WorkflowStage.objects).current_cycle().filter(
+        ordinary(WorkflowStage.objects)
+        .current_cycle()
+        .filter(
             workflow_cycle=F("text__current_workflow_cycle"),
             is_completed=False,
             ended_at__isnull=True,
@@ -546,6 +669,7 @@ def _inactivity_stages(today, active_days, waiting_days, mode, selected_stages, 
     )
     stages = exclude_obsolete_verification_placeholders(stages)
     from workflow.waiting import annotate_inactivity_clocks
+
     stages = annotate_inactivity_clocks(stages, today)
     if selected_stages:
         stages = stages.filter(stage_type__in=selected_stages)
@@ -557,7 +681,8 @@ def _inactivity_stages(today, active_days, waiting_days, mode, selected_stages, 
 
     active_condition = Q(started_at__lte=today, report_active_since__lte=active_limit)
     waiting_condition = Q(started_at__isnull=True) & (
-        Q(report_waiting_since__lte=waiting_limit) | Q(report_waiting_since__isnull=True))
+        Q(report_waiting_since__lte=waiting_limit) | Q(report_waiting_since__isnull=True)
+    )
 
     if mode == "active":
         stages = stages.filter(active_condition)
@@ -588,9 +713,7 @@ def _inactivity_rows(stages, query, include_authors, today):
 
         inactivity_type = "active" if stage.started_at is not None else "waiting"
         since = (
-            stage.report_active_since
-            if inactivity_type == "active"
-            else stage.report_waiting_since
+            stage.report_active_since if inactivity_type == "active" else stage.report_waiting_since
         )
         text_data = {
             "pk": text.pk,
@@ -607,9 +730,11 @@ def _inactivity_rows(stages, query, include_authors, today):
             "text": text_data,
             "workflow_cycle": stage.workflow_cycle,
             "stage_type": stage.stage_type,
-            "get_stage_type_display": execution_label(stage.get_stage_type_display(), stage.execution_number),
+            "get_stage_type_display": execution_label(
+                stage.get_stage_type_display(), stage.execution_number
+            ),
             "iteration": stage.iteration,
-                "execution_number": stage.execution_number,
+            "execution_number": stage.execution_number,
             "started_at": stage.started_at,
             "ended_at": stage.ended_at,
             "is_completed": stage.is_completed,

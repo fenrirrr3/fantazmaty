@@ -254,6 +254,8 @@ def cancel_repetition(text, user, *, repetition_id):
     run.assignments.update(is_current=False)
     S.objects.filter(text=text,pk__in=run.previous_stage_ids).update(is_current=True)
     A.objects.filter(text=text,pk__in=run.previous_assignment_ids).update(is_current=True)
-    run.canceled_at=timezone.now();run.canceled_by=user;run.cancellation_reason='Anulowano przed rozpoczęciem pracy.'
-    run.save(update_fields=['canceled_at','canceled_by','cancellation_reason'])
+    run.canceled_at=timezone.now()
+    run.canceled_by=user
+    run.cancellation_reason='Anulowano przed rozpoczęciem pracy.'
+    run.save(update_fields=["canceled_at", "canceled_by", "cancellation_reason"])
     return run

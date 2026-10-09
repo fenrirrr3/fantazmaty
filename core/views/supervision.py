@@ -1,5 +1,4 @@
 """Organizational checks, publication tasks and team summaries."""
-from core.sort_keys import text_key
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, render, redirect
 from django import forms
@@ -8,12 +7,13 @@ from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.db.models import Q
 from django.views.decorators.http import require_GET, require_http_methods
-from core.permissions import superuser_required, require_team_member, is_team_member, is_coordinator, is_reviewer, has_role
+from core.edit_policy import edit_policy
+from core.permissions import superuser_required, require_coordinator, require_team_member, is_team_member, is_coordinator, is_reviewer
 from core.supervision import unlinked_review_candidates, integrity_issues, anthology_checklist, anthology_credit_groups
 from core.assignment_integrity import AssignmentIntegrityFilters, AssignmentConflictTable, assignment_conflicts, assignment_conflict_details
 from core.pagination import paginate_items
 from core.selectors.texts import available_stages_for_user
-from people.models import Person, Role
+from people.models import Person
 from texts.models import Anthology, AnthologyTask
 from workflow.services import ROLE_GROUPS
 from workflow.models import WorkflowRoleAssignment
@@ -79,6 +79,7 @@ def _task_forms(anthology, data=None):
                          AnthologyTask.TaskType.TYPESETTING, AnthologyTask.TaskType.COVER_TYPOGRAPHY, AnthologyTask.TaskType.AUDIO_DESCRIPTION)]
 
 
+@edit_policy(lambda request, anthology, kwargs: require_coordinator(request.user))
 @login_required
 @require_http_methods(['GET', 'POST'])
 def anthology_detail(request, anthology_id):

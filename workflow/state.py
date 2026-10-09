@@ -34,13 +34,20 @@ def operational_stages(stages):
 
 def state_key(stage):
     kind = stage.stage_type
-    if kind == 'withdrawn': category = 0
-    elif kind == 'ready': category = 1
-    elif kind == 'author_editing': category = 2
-    elif stage.started_at and stage.started_at <= timezone.localdate(): category = 3
-    elif stage.started_at: category = 4
-    else: category = 5
+    if kind == 'withdrawn':
+        category = 0
+    elif kind == "ready":
+        category = 1
+    elif kind == "author_editing":
+        category = 2
+    elif stage.started_at and stage.started_at <= timezone.localdate():
+        category = 3
+    elif stage.started_at:
+        category = 4
+    else:
+        category = 5
     return category, -ORDER.get(kind, -1), -stage.iteration, -stage.pk
+
 
 def current_stage(stages, *, prepared=False):
     stages = stages if prepared else operational_stages(stages)
@@ -52,18 +59,24 @@ def current_stage(stages, *, prepared=False):
     # completed checkpoint without reopening it or inventing a new execution.
     return max(stages, key=lambda s: (ORDER[s.stage_type], s.iteration, s.pk), default=None)
 
+
 def state_annotations():
     return {
-        'state_priority': Case(
-            When(stage_type='withdrawn',then=Value(0)),
-            When(stage_type='ready',then=Value(1)),
-            When(stage_type='author_editing',then=Value(2)),
-            When(started_at__lte=timezone.localdate(),then=Value(3)),
-            When(started_at__isnull=False,then=Value(4)),default=Value(5),output_field=IntegerField()),
-        'state_order': Case(*[When(stage_type=kind,then=Value(index)) for kind,index in ORDER.items()],default=Value(-1),output_field=IntegerField()),
+        "state_priority": Case(
+            When(stage_type="withdrawn", then=Value(0)),
+            When(stage_type="ready", then=Value(1)),
+            When(stage_type="author_editing", then=Value(2)),
+            When(started_at__lte=timezone.localdate(), then=Value(3)),
+            When(started_at__isnull=False, then=Value(4)),
+            default=Value(5),
+            output_field=IntegerField(),
+        ),
+        "state_order": Case(
+            *[When(stage_type=kind, then=Value(index)) for kind, index in ORDER.items()],
+            default=Value(-1),
+            output_field=IntegerField(),
+        ),
     }
-
-
 
 
 def stage_is_open(stage):
@@ -71,5 +84,10 @@ def stage_is_open(stage):
 
 
 def stage_is_active(stage, today):
-    return (stage.is_current and stage.is_released and stage_is_open(stage)
-            and stage.started_at is not None and stage.started_at <= today)
+    return (
+        stage.is_current
+        and stage.is_released
+        and stage_is_open(stage)
+        and stage.started_at is not None
+        and stage.started_at <= today
+    )

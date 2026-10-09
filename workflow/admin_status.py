@@ -48,13 +48,27 @@ def set_admin_status(text_id, kind, actor, expected_version):
         if target_role and assignment is None:
             number = (A.objects.filter(text=text,workflow_cycle=text.current_workflow_cycle,role=target_role).aggregate(n=Max('execution_number'))['n'] or 0)+1
             assignment = A(text=text,workflow_cycle=text.current_workflow_cycle,role=target_role,execution_number=number)
-            assignment.full_clean();assignment.save()
+            assignment.full_clean()
+            assignment.save()
             A.objects.filter(pk=assignment.pk).update(assigned_at=None)
-        all_kind = S.objects.filter(text=text,workflow_cycle=text.current_workflow_cycle,stage_type=kind)
-        iteration=(all_kind.aggregate(n=Max('iteration'))['n'] or 0)+1
-        execution=(S.objects.filter(text=text,stage_type=kind).aggregate(n=Max('execution_number'))['n'] or 0)+1
+        all_kind = S.objects.filter(
+            text=text, workflow_cycle=text.current_workflow_cycle, stage_type=kind
+        )
+        iteration = (all_kind.aggregate(n=Max("iteration"))["n"] or 0) + 1
+        execution = (
+            S.objects.filter(text=text, stage_type=kind).aggregate(n=Max("execution_number"))["n"]
+            or 0
+        ) + 1
         if assignment is not None:
             execution = assignment.execution_number
-        stage=S(text=text,workflow_cycle=text.current_workflow_cycle,stage_type=kind,iteration=iteration,execution_number=execution,assignment=assignment)
-        stage.full_clean();stage.save()
+        stage = S(
+            text=text,
+            workflow_cycle=text.current_workflow_cycle,
+            stage_type=kind,
+            iteration=iteration,
+            execution_number=execution,
+            assignment=assignment,
+        )
+        stage.full_clean()
+        stage.save()
         return stage

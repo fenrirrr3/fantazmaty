@@ -13,7 +13,7 @@ from core.permissions import (
     require_superuser,
     require_team_member,
 )
-from texts.models import Text, TextNote
+from texts.models import Text
 from workflow.models import WorkflowRoleAssignment, WorkflowStage
 from workflow.services import ROLE_GROUPS, STAGE_ROLES, validate_assignment_start_date
 

@@ -87,7 +87,6 @@ def review_assignment_data(review, user):
     opinions = []
 
     for assignment in assignments:
-        reviewer = assignment.user
         reviewer_name = (
             assignment.reviewer_display_name
         )

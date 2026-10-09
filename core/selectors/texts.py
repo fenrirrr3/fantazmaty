@@ -1,21 +1,17 @@
-from core.public_authors import name_matches, review_name_matches
+from core.public_authors import name_matches
 from workflow.catalog import active_stage_choices, active_role_choices, workflow_role_choices, IMPORT_ONLY_ROLES
-from workflow.labels import assignment_label, execution_label, stage_label
+from workflow.labels import assignment_label, stage_label
 from core.translation_scope import ordinary
 from core.filtering import facet_queryset
 from datetime import date
 
 from django.db.models import (
-    Case,
     Exists,
     F,
-    IntegerField,
     Q,
     OuterRef,
     Prefetch,
     Subquery,
-    Value,
-    When,
 )
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -23,13 +19,13 @@ from django.utils import timezone
 from authors.models import Author
 from core.permissions import (
     can_view_author_data,
-    has_role,
     is_coordinator,
     require_team_member,
 )
 from texts.models import Anthology, Review, ReviewAssignment, Text, TextNote, ForeignAuthor, Translator
 from workflow.models import WorkflowRoleAssignment, WorkflowStage
 from workflow.services import ROLE_GROUPS, STAGE_ROLES
+from workflow.state import stage_is_open as _is_open, stage_is_active as _is_active, operational_stages
 
 
 StageType = WorkflowStage.StageType
@@ -292,7 +288,6 @@ def _prepared_texts(queryset, include_authors):
     return queryset
 
 
-from workflow.state import stage_is_open as _is_open, stage_is_active as _is_active, operational_stages
 
 
 def _terminal(stages):

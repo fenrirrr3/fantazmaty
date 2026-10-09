@@ -7,7 +7,7 @@ from django.db import router, transaction
 from django.db.models import Prefetch, OuterRef, Subquery
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.cache import never_cache
-from django.views.decorators.http import require_GET, require_http_methods, require_POST
+from django.views.decorators.http import require_http_methods, require_POST
 
 from authors.models import Author
 from core.pagination import paginate_queryset

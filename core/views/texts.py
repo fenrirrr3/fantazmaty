@@ -1,4 +1,4 @@
-from core.public_authors import name_matches, review_name_matches
+from core.public_authors import review_name_matches
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -8,7 +8,6 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
-from authors.models import Author
 from core.forms import (
     CoordinatorNoteForm,
     StartStageForm,
@@ -17,6 +16,7 @@ from core.forms import (
 )
 from core.pagination import paginate_items
 from core.permissions import (
+    read_access_scope,
     can_view_author_data,
     coordinator_required,
     is_coordinator,
@@ -33,6 +33,7 @@ from core.selectors.texts import (
 from texts.models import Text, TextNote
 from core.tag_forms import TextTagsForm
 from workflow.models import WorkflowRoleAssignment
+from core.edit_policy import edit_policy
 
 
 def _form_error_message(form):
@@ -61,6 +62,17 @@ def _require_text_contributor(user, text):
         )
 
 
+# Edit policies: the middleware and the views use the same checks.
+def _contributor_policy(request, text, kwargs):
+    _require_text_contributor(request.user, text)
+
+
+def _note_policy(request, text, kwargs):
+    note = TextNote.objects.filter(pk=kwargs.get('note_id'), text=text).first()
+    if note is not None:
+        _require_note_owner_or_coordinator(request.user, note)
+
+
 def _permission_context(user):
     return {
         "can_view_authors": can_view_author_data(user),
@@ -71,6 +83,12 @@ def _permission_context(user):
 
 @transaction.atomic
 def _render_text_detail(request, text, *, bound_forms=None, status=200):
+    # Rendering is read-only, also after a rejected POST: share permission lookups.
+    with read_access_scope():
+        return _render_text_detail_page(request, text, bound_forms=bound_forms, status=status)
+
+
+def _render_text_detail_page(request, text, *, bound_forms=None, status=200):
     """
     Selektor przygotowuje historię, przydziały i dostępne akcje.
 
@@ -233,6 +251,7 @@ def assigned_text_detail(request, text_id):
     return _render_text_detail(request, text)
 
 
+@edit_policy(require_version=True)
 @never_cache
 @login_required
 @require_POST
@@ -283,6 +302,7 @@ def available_texts(request):
     return render(request, "core/available_texts.html", context)
 
 
+@edit_policy(require_version=True)
 @never_cache
 @login_required
 @require_POST
@@ -292,6 +312,7 @@ def set_text_authors(request, text_id):
     return HttpResponseForbidden("Autorów tekstu można zmieniać wyłącznie w panelu administracyjnym.")
 
 
+@edit_policy(_contributor_policy)
 @never_cache
 @login_required
 @require_POST
@@ -327,6 +348,7 @@ def add_text_note(request, text_id):
     return redirect("core:assigned_text_detail", text_id=text.pk)
 
 
+@edit_policy(require_version=True)
 @never_cache
 @login_required
 @require_POST
@@ -360,6 +382,7 @@ def update_coordinator_note(request, text_id):
     return redirect("core:assigned_text_detail", text_id=text.pk)
 
 
+@edit_policy(_contributor_policy, require_version=True)
 @never_cache
 @login_required
 @require_POST
@@ -403,6 +426,7 @@ def _require_note_owner_or_coordinator(user, note):
         raise PermissionDenied('Notatkę może zmienić jej autor lub koordynator.')
 
 
+@edit_policy(_note_policy, require_version=True)
 @never_cache
 @login_required
 @require_http_methods(['GET', 'POST'])
@@ -421,6 +445,7 @@ def edit_text_note(request, text_id, note_id):
     return render(request, 'core/text_note_edit.html', {'form': form, 'text': {'pk': text.pk, 'title': text.title}}, status=400 if form.errors else 200)
 
 
+@edit_policy(_note_policy, require_version=True)
 @never_cache
 @login_required
 @require_POST
@@ -435,6 +460,7 @@ def delete_text_note(request, text_id, note_id):
     return redirect('core:assigned_text_detail', text_id=text.pk)
 
 
+@edit_policy(require_version=True)
 @never_cache
 @login_required
 @require_POST
@@ -453,6 +479,7 @@ def update_text_file(request, text_id):
     return _render_text_detail(request, text, bound_forms={'text_file_form':form}, status=400)
 
 
+@edit_policy(require_version=True)
 @never_cache
 @login_required
 @superuser_required

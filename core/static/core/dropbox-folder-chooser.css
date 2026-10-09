@@ -1,9 +1,0 @@
-.dropbox-folder-card { padding: var(--card-padding); min-width: 0; }
-.dropbox-folder-card > h2 { margin: 0 0 18px; }
-.file-link-form { display: grid; gap: 18px; }
-.file-link-form > p { margin: 0; }
-.dropbox-folder-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 0; }
-.dropbox-folder-actions button { margin: 0; }
-.review-folder-layout { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 20px; }
-.review-folder-layout > .details-card { margin: 0; min-width: 0; }
-@media (max-width: 760px) { .review-folder-layout { grid-template-columns: minmax(0, 1fr); } }

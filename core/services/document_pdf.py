@@ -48,35 +48,44 @@ def render_pdf(source, target, content, assets, title):
     for style, suffix in (('', 'Regular'), ('B', 'Bold'), ('I', 'Italic'), ('BI', 'BoldItalic')):
         pdf.add_font('Document', style=style, fname=font_dir / ('NimbusRoman-' + suffix + '.otf'))
     pdf.set_title(title)
-    pdf.set_margins(*margins[:3]); pdf.set_auto_page_break(True, margins[3])
-    pdf.add_page(); pdf.set_font('Document', size=12)
+    pdf.set_margins(*margins[:3])
+    pdf.set_auto_page_break(True, margins[3])
+    pdf.add_page()
+    pdf.set_font("Document", size=12)
     paragraphs = defaultdict(deque)
-    normalize = lambda value: ' '.join(value.split())
-    for element in document.element.body.iter(qn('w:p')):
+    def normalize(value):
+        return " ".join(value.split())
+    for element in document.element.body.iter(qn("w:p")):
         paragraph = Paragraph(element, document)
         if paragraph.text.strip():
             paragraphs[normalize(paragraph.text)].append(paragraph)
-    root = html.fragment_fromstring(content or '<p></p>', create_parent='div')
+    root = html.fragment_fromstring(content or "<p></p>", create_parent="div")
     list_paragraphs(root)
-    for img in root.xpath('.//img'):
-        key = img.get('src')
+    for img in root.xpath(".//img"):
+        key = img.get("src")
         if key not in assets:
-            raise ValueError('Unknown image')
+            raise ValueError("Unknown image")
         # Embedded image data only: no network or local file paths reach fpdf2.
-        img.set('src', 'data:image/png;base64,' + b64encode(assets[key]).decode('ascii'))
+        img.set("src", "data:image/png;base64," + b64encode(assets[key]).decode("ascii"))
         from PIL import Image
         from io import BytesIO
+
         with Image.open(BytesIO(assets[key])) as image:
-            img.set('width', str(min(image.width * .75, (width - margins[0] - margins[2]) * pdf.k)))
+            img.set(
+                "width", str(min(image.width * 0.75, (width - margins[0] - margins[2]) * pdf.k))
+            )
     # Resolve every paragraph, including those nested in lists and tables.
     for node in root.iterdescendants():
-        if node.tag not in ('p','h1','h2','h3','h4','h5','h6'):
+        if node.tag not in ("p", "h1", "h2", "h3", "h4", "h5", "h6"):
             continue
         text = normalize(node.text_content())
         paragraph = paragraphs[text].popleft() if paragraphs[text] else None
         size, line_height, before, after, indent = 12, 1.5, 0, 0, 12.5
         if paragraph is not None:
-            font_size = next((r.font.size for r in paragraph.runs if r.text.strip() and r.font.size is not None), None)
+            font_size = next(
+                (r.font.size for r in paragraph.runs if r.text.strip() and r.font.size is not None),
+                None,
+            )
             if font_size is None:
                 for style in style_chain(paragraph.style):
                     font_size = style.font.size
@@ -84,51 +93,72 @@ def render_pdf(source, target, content, assets, title):
                         break
             if font_size is not None:
                 size = max(6, min(font_size.pt, 72))
-            properties = paragraph_properties(paragraph, (
-                'line_spacing', 'space_before', 'space_after',
-                'first_line_indent', 'alignment', 'page_break_before',
-            ))
-            spacing = properties['line_spacing']
+            properties = paragraph_properties(
+                paragraph,
+                (
+                    "line_spacing",
+                    "space_before",
+                    "space_after",
+                    "first_line_indent",
+                    "alignment",
+                    "page_break_before",
+                ),
+            )
+            spacing = properties["line_spacing"]
             if spacing is not None:
-                line_height = spacing.pt / size if hasattr(spacing, 'pt') else float(spacing)
-                line_height = max(.8, min(line_height, 4))
-            for attr in ('space_before', 'space_after'):
+                line_height = spacing.pt / size if hasattr(spacing, "pt") else float(spacing)
+                line_height = max(0.8, min(line_height, 4))
+            for attr in ("space_before", "space_after"):
                 value = properties[attr]
                 if value is not None:
-                    if attr == 'space_before': before = value.mm
-                    else: after = value.mm
-            value = properties['first_line_indent']
-            if value is not None: indent = max(0, min(value.mm, 40))
-            align = properties['alignment']
-            if node.tag in ('p','h1','h2','h3','h4','h5','h6'):
-                node.set('align', {0:'left',1:'center',2:'right',3:'justify'}.get(align, 'left'))
-            if properties['page_break_before']:
-                node.set('data-page-break', '1')
-        if node.tag in ('p','h1','h2','h3','h4','h5','h6'):
-            node.set('line-height', str(line_height))
-            node.set('data-indent', str(indent))
-            node.set('data-before', str(before))
-        node.set('data-size', str(size))
-        node.set('data-after', str(after))
+                    if attr == "space_before":
+                        before = value.mm
+                    else:
+                        after = value.mm
+            value = properties["first_line_indent"]
+            if value is not None:
+                indent = max(0, min(value.mm, 40))
+            align = properties["alignment"]
+            if node.tag in ("p", "h1", "h2", "h3", "h4", "h5", "h6"):
+                node.set(
+                    "align", {0: "left", 1: "center", 2: "right", 3: "justify"}.get(align, "left")
+                )
+            if properties["page_break_before"]:
+                node.set("data-page-break", "1")
+        if node.tag in ("p", "h1", "h2", "h3", "h4", "h5", "h6"):
+            node.set("line-height", str(line_height))
+            node.set("data-indent", str(indent))
+            node.set("data-before", str(before))
+        node.set("data-size", str(size))
+        node.set("data-after", str(after))
     for index, node in enumerate(root):
         if index % 10 == 0:
-            report('Skład PDF – bloki treści', index, len(root))
+            report("Skład PDF – bloki treści", index, len(root))
         text = normalize(node.text_content())
-        if node.tag == 'p' and not text and not node.xpath('.//img'):
+        if node.tag == "p" and not text and not node.xpath(".//img"):
             height = 18 / pdf.k
-            if pdf.will_page_break(height): pdf.add_page()
+            if pdf.will_page_break(height):
+                pdf.add_page()
             pdf.ln(height)
             continue
-        size = float(node.get('data-size', 12))
-        before = float(node.get('data-before', 0))
-        after = float(node.get('data-after', 0))
-        if node.get('data-page-break') and pdf.y > pdf.t_margin + 1: pdf.add_page()
-        pdf.set_font('Document', size=size)
-        styles = {tag: TextStyle(font_family='Document', font_size_pt=size,
-                                font_style='B' if tag.startswith('h') else '', color=0,
-                                t_margin=before, b_margin=after,
-                                l_margin=0)
-                  for tag in ('p','h1','h2','h3','h4','h5','h6','pre','code')}
-        pdf.write_html(html.tostring(node, encoding='unicode'), tag_styles=styles)
-    report('Zapis PDF')
+        size = float(node.get("data-size", 12))
+        before = float(node.get("data-before", 0))
+        after = float(node.get("data-after", 0))
+        if node.get("data-page-break") and pdf.y > pdf.t_margin + 1:
+            pdf.add_page()
+        pdf.set_font("Document", size=size)
+        styles = {
+            tag: TextStyle(
+                font_family="Document",
+                font_size_pt=size,
+                font_style="B" if tag.startswith("h") else "",
+                color=0,
+                t_margin=before,
+                b_margin=after,
+                l_margin=0,
+            )
+            for tag in ("p", "h1", "h2", "h3", "h4", "h5", "h6", "pre", "code")
+        }
+        pdf.write_html(html.tostring(node, encoding="unicode"), tag_styles=styles)
+    report("Zapis PDF")
     pdf.output(target)

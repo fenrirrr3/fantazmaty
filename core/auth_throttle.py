@@ -12,6 +12,10 @@ from django.utils.deprecation import MiddlewareMixin
 
 from core.models import AuthenticationAttempt
 
+# Failed attempts per account per hour, summed over all client addresses.
+ACCOUNT_LOGIN_LIMIT = 100
+ACCOUNT_RESET_LIMIT = 20
+
 
 def consume(key, limit, seconds, now):
     with transaction.atomic():
@@ -51,6 +55,12 @@ class AuthenticationThrottleMiddleware(MiddlewareMixin):
         AuthenticationAttempt.objects.filter(pk__in=stale).delete()
         limits = [(kind + ':ip:' + address, 10 if resetting else 100, 3600 if resetting else 900),
                   (kind + ':identity:' + address + ':' + identity, 5 if resetting else 10, 3600 if resetting else 900)]
+        if identity:
+            # Soft per-account ceiling independent of the client address: it stops
+            # distributed guessing, yet is high enough not to lock out the owner
+            # during ordinary mistakes. A successful login clears it.
+            limits.append((kind + ':account:' + identity, ACCOUNT_RESET_LIMIT if resetting else ACCOUNT_LOGIN_LIMIT, 3600))
+        keys = []
         for value, limit, seconds in limits:
             key = salted_hmac('cms-auth-rate', value, algorithm='sha256').hexdigest()
             wait = consume(key, limit, seconds, now)
@@ -59,12 +69,13 @@ class AuthenticationThrottleMiddleware(MiddlewareMixin):
                 response['Retry-After'] = str(wait)
                 response['Cache-Control'] = 'no-store'
                 return response
-            if ':identity:' in value and not resetting:
-                request.auth_throttle_key = key
+            if not resetting and (':identity:' in value or ':account:' in value):
+                keys.append(key)
+        request.auth_throttle_keys = keys
         return None
 
     def process_response(self, request, response):
-        key = getattr(request, 'auth_throttle_key', None)
-        if key and response.status_code in (301, 302, 303) and request.user.is_authenticated:
-            AuthenticationAttempt.objects.filter(key=key).delete()
+        keys = getattr(request, 'auth_throttle_keys', None)
+        if keys and response.status_code in (301, 302, 303) and request.user.is_authenticated:
+            AuthenticationAttempt.objects.filter(key__in=keys).delete()
         return response

@@ -1,1 +1,1 @@
-{% if workflow_stage %}<span class="workflow-stage-badge" data-stage="{{ workflow_stage.stage_type }}">{{ workflow_stage.get_stage_type_display }}</span>{% else %}<span class="muted-text">Bez otwartego etapu</span>{% endif %}
+{% load workspace_tags %}{% if workflow_stage %}<span class="workflow-stage-badge" data-stage="{{ workflow_stage.stage_type }}"{{ workflow_stage.stage_type|stage_palette_attr:workflow_stage.get_stage_type_display }}>{{ workflow_stage.get_stage_type_display }}</span>{% else %}<span class="muted-text">Bez otwartego etapu</span>{% endif %}

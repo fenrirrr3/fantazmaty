@@ -1,52 +1,27 @@
+"""Status, potwierdzenie, anulowanie i pobranie wyniku zadania programu."""
 from django.contrib.auth.decorators import login_required
 from django.http import FileResponse, JsonResponse
+from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
 
 from core.permissions import team_member_required
-from core.odkurzacz_forms import OdkurzaczForm, DocumentConversionForm, RepetitionsForm
 from core.services import program_jobs as jobs
-from core.services.pending_documents import load_pending, PendingDocumentError
+
+ACTIVE_STATES = ('queued', 'running')
 
 
-def start(request):
-    action = request.POST.get('program_action', 'clean')
-    pending_path = None
-    try:
-        if action in ('clean', 'clean_confirm'):
-            if action == 'clean_confirm':
-                upload, pending, pending_path = load_pending(request, request.POST.get('rebuild_token', ''))
-                form = OdkurzaczForm(pending['options'], {'document': upload})
-            else:
-                form = OdkurzaczForm(request.POST, request.FILES)
-        elif action == 'convert':
-            form = DocumentConversionForm(request.POST, request.FILES, prefix='convert')
-        elif action == 'repetitions':
-            form = RepetitionsForm(request.POST, request.FILES, prefix='repetitions')
-        else:
-            raise jobs.JobError('Wybierz program.')
-        if not form.is_valid():
-            return JsonResponse({'errors': {key: [str(message) for message in values] for key, values in form.errors.items()}}, status=400)
-        data = form.cleaned_data
-        if action in ('clean', 'clean_confirm'):
-            options = dict(formats=[], include_docx=True, rebuild=data['rebuild'],
-                           normalize=data['normalize_formatting'], justify=data['normalize_formatting'],
-                           allow_rebuild_omissions=action == 'clean_confirm', use_cleaner=True,
-                           cleaner_rules=data['rules'], remove_soft_whitespace=data['remove_soft_whitespace'])
-        elif action == 'convert':
-            options = dict(formats=data['formats'], use_cleaner=data['use_cleaner'], preserve_filename=True,
-                           remove_soft_whitespace=data['remove_soft_whitespace'])
-        else:
-            options = dict(formats=[], include_docx=True, normalize=False, repetitions=form.analysis_config())
-        token = jobs.create(request, data['document'], options, 'clean' if action == 'clean_confirm' else action)
-        if pending_path is not None:
-            pending_path.unlink(missing_ok=True)
-        return JsonResponse({'url': reverse('core:program_job', args=[token])}, status=202)
-    except (jobs.JobError, PendingDocumentError) as error:
-        return JsonResponse({'message': str(error)}, status=400)
-    except OSError:
-        return JsonResponse({'message': 'Nie można zapisać zadania. Administrator musi sprawdzić katalog roboczy programów.'}, status=503)
+def _page_url(token):
+    return reverse('core:program_job', args=[token]) + '?view=page'
+
+
+def _render_page(request, token, state, *, status=200):
+    return render(request, 'core/program_job.html', {
+        'state': state, 'token': token,
+        'refresh': state.get('state') in ACTIVE_STATES + ('cancelling',),
+        'download_url': reverse('core:program_job', args=[token]) + '?download=1',
+    }, status=status)
 
 
 @never_cache
@@ -54,18 +29,23 @@ def start(request):
 @require_http_methods(['GET', 'POST'])
 @team_member_required
 def program_job(request, token):
+    page = request.GET.get('view') == 'page' or request.POST.get('view') == 'page'
     try:
         folder = jobs.resolve(request, token)
         state = jobs.status(folder)
         if request.method == 'POST':
             action = request.POST.get('action')
             if action == 'cancel':
-                if state['state'] in ('queued', 'running', 'confirmation'):
+                if state['state'] in ACTIVE_STATES + ('confirmation',):
                     (folder / 'cancel').touch()
-                return JsonResponse({'state': 'cancelling'} if state['state'] in ('queued', 'running') else jobs.status(folder))
+                if page:
+                    return redirect(_page_url(token))
+                return JsonResponse({'state': 'cancelling'} if state['state'] in ACTIVE_STATES else jobs.status(folder))
             if action == 'confirm':
                 renewed = jobs.refreshed_token(token)
                 jobs.confirm(folder)
+                if page:
+                    return redirect(_page_url(renewed))
                 return JsonResponse({**jobs.status(folder), 'url': reverse('core:program_job', args=[renewed])}, status=202)
             raise jobs.JobError('Nieprawidłowa akcja.')
         if request.GET.get('download') == '1':
@@ -76,8 +56,15 @@ def program_job(request, token):
             response['Cache-Control'] = 'private, no-store'
             response['X-Content-Type-Options'] = 'nosniff'
             return response
+        if page:
+            return _render_page(request, token, state)
         return JsonResponse(state)
     except jobs.JobError as error:
+        if page:
+            return _render_page(request, token, {'state': 'error', 'message': str(error)}, status=404)
         return JsonResponse({'message': str(error)}, status=404)
     except (OSError, ValueError):
-        return JsonResponse({'message': 'Nie można odczytać zadania. Spróbuj ponownie.'}, status=503)
+        message = 'Nie można odczytać zadania. Spróbuj ponownie.'
+        if page:
+            return _render_page(request, token, {'state': 'error', 'message': message}, status=503)
+        return JsonResponse({'message': message}, status=503)

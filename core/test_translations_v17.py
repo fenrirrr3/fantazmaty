@@ -114,7 +114,8 @@ class TranslationVisibilityTests(TestCase):
         self.assertEqual(set(record.translators.values_list('pk', flat=True)), {self.translator.pk, second.pk})
         data['translators'] = [second.pk]
         form = TranslationForm(data=data, instance=record)
-        self.assertTrue(form.is_valid(), form.errors); form.save()
-        self.assertEqual(list(record.translators.values_list('pk', flat=True)), [second.pk])
-        data['translators'] = [99999999]
+        self.assertTrue(form.is_valid(), form.errors)
+        form.save()
+        self.assertEqual(list(record.translators.values_list("pk", flat=True)), [second.pk])
+        data["translators"] = [99999999]
         self.assertFalse(TranslationForm(data=data, instance=record).is_valid())

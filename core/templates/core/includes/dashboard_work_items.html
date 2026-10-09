@@ -1,4 +1,4 @@
-{% if kind == "active" %}
+{% load workspace_tags %}{% if kind == "active" %}
                     {% for stage in rows %}
                         <li class="dashboard-list-item">
                             <a
@@ -15,7 +15,7 @@
                             {% endif %}
 
                             <p>
-                                <span class="role-badge" data-stage="{{ stage.stage_type }}">
+                                <span class="role-badge" data-stage="{{ stage.stage_type }}"{{ stage.stage_type|stage_palette_attr:stage.get_stage_type_display }}>
                                     {{ stage.get_stage_type_display }}
                                 </span>
                             </p>
@@ -45,7 +45,7 @@
                             {% endif %}
 
                             <p>
-                                <span class="role-badge" data-role="{{ assignment.role }}">{{ assignment.get_role_display }}
+                                <span class="role-badge" data-role="{{ assignment.role }}"{{ assignment.role|role_palette_attr:assignment.get_role_display }}>{{ assignment.get_role_display }}
                                 </span>
                             </p>
 

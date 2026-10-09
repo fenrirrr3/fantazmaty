@@ -4,7 +4,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
 from core.permissions import (
-    is_superuser, is_coordinator,
+    is_coordinator,
     require_team_member,
 )
 from people.models import Person, Vacation

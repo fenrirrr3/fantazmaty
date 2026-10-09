@@ -3,7 +3,7 @@ import unicodedata
 from django.db import connections
 from django.db.backends.signals import connection_created
 from django.db.models import CharField, TextField, Func, Value
-from django.db.models.functions import Lower, Replace, Collate, Cast
+from django.db.models.functions import Lower, Replace, Collate
 from django.db.models.lookups import IContains
 
 
@@ -42,13 +42,14 @@ class PolishContains(IContains):
         return connection.operators['icontains'] % rhs
 
     def get_prep_lookup(self):
-        if isinstance(self.rhs, str): self.rhs = fold_polish(self.rhs)
+        if isinstance(self.rhs, str):
+            self.rhs = fold_polish(self.rhs)
         return super().get_prep_lookup()
 
 
 def register():
     CharField.register_lookup(PolishContains)
     TextField.register_lookup(PolishContains)
-    connection_created.connect(install_sqlite_function, dispatch_uid='cms-fold-text', weak=False)
+    connection_created.connect(install_sqlite_function, dispatch_uid="cms-fold-text", weak=False)
     for connection in connections.all(initialized_only=True):
         install_sqlite_function(connection=connection)

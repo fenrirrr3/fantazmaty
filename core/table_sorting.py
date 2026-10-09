@@ -130,36 +130,45 @@ class _SortedSubset:
 
     def __getitem__(self, key):
         ids = self.ids[key] if isinstance(key, slice) else [self.ids[key]]
-        if not ids: return []
-        records = {_get(row, 'pk'): row for row in self.queryset.filter(pk__in=ids)}
-        result = [self.projector(records[pk]) if self.projector else records[pk] for pk in ids if pk in records]
+        if not ids:
+            return []
+        records = {_get(row, "pk"): row for row in self.queryset.filter(pk__in=ids)}
+        result = [
+            self.projector(records[pk]) if self.projector else records[pk]
+            for pk in ids
+            if pk in records
+        ]
         return result if isinstance(key, slice) else result[0]
 
 
 def _sort_query_projection(items, queryset, getter, reverse):
-    projector = getattr(items, 'projector', None)
+    projector = getattr(items, "projector", None)
     keys, missing = [], []
     for record in queryset.iterator(chunk_size=200):
         row = projector(record) if projector else record
-        pk = _get(record, 'pk')
+        pk = _get(record, "pk")
         value = getter(row)
-        if value is None or value == '' or value == []: missing.append(pk)
-        else: keys.append((pk, _value(value)))
+        if value is None or value == "" or value == []:
+            missing.append(pk)
+        else:
+            keys.append((pk, _value(value)))
     ids = [pk for pk, value in sorted(keys, key=lambda pair: pair[1], reverse=reverse)] + missing
     return _SortedSubset(queryset, ids, projector)
 
+
 def _joined(items):
-    return ', '.join(sorted((str(item) for item in items), key=text_key))
+    return ", ".join(sorted((str(item) for item in items), key=text_key))
 
 
 def _stage_state(row):
     from django.utils import timezone
-    if _get(row, 'is_completed'):
-        return 'Zakończony'
-    started = _get(row, 'started_at')
+
+    if _get(row, "is_completed"):
+        return "Zakończony"
+    started = _get(row, "started_at")
     if not started:
-        return 'Nierozpoczęty'
-    return 'Zaplanowany' if started > timezone.localdate() else 'W trakcie'
+        return "Nierozpoczęty"
+    return "Zaplanowany" if started > timezone.localdate() else "W trakcie"
 
 
 def _extra_columns(items, queryset, request):
@@ -169,187 +178,446 @@ def _extra_columns(items, queryset, request):
     columns retain database pagination. Prefetched relations avoid per-row reads.
     """
     model = queryset.model._meta.label_lower
-    projected = hasattr(items, 'projector')
+    projected = hasattr(items, "projector")
     columns = {}
-    if model == 'core.recruitment':
-        columns['Kto'] = ('subject', lambda row: row.subject_name)
-    if model == 'texts.text' and projected:
-        columns.update({
-            'Autorzy': ('authors', lambda r: _get(r, 'authors_display')),
-            'Rozpoczęcie etapu': ('stage_start', lambda r: _get(r, 'current_status_started_at')),
-        })
-        if request.resolver_match and request.resolver_match.url_name in ('audiobook_list', 'audiobooks'):
-            columns['Autor'] = ('authors', lambda r: _get(r, 'authors_display'))
-        if request.resolver_match and request.resolver_match.url_name == 'translation_list':
-            columns['Tłumacz'] = ('translators', lambda r: _get(r, 'translators_display'))
-        if 'work_active' in queryset.query.annotations:
-            columns.update({
-                'Twoje role': ('roles', lambda r: _joined(a['get_role_display'] for a in r['user_assignments'])),
-                'Twoja praca': ('work', lambda r: 'Wycofany' if r['current_stage_type'] == 'withdrawn' else
-                    'W toku' if r['has_active_work'] else 'Oczekiwanie na inną osobę' if r['is_waiting_for_other_role'] else
-                    'Zarezerwowana' if r['has_reserved_work'] else 'Zakończona' if r['has_completed_work'] else 'Tekst gotowy' if r['current_stage_type'] == 'ready' else 'Brak bieżącego zadania'),
-            })
-    if model == 'texts.text' and projected and request.resolver_match and request.resolver_match.url_name == 'workflow_list':
-        columns = {'Autorzy': ('authors', lambda r: _get(r, 'text.authors_display'))}
+    if model == "core.recruitment":
+        columns["Kto"] = ("subject", lambda row: row.subject_name)
+    if model == "texts.text" and projected:
+        columns.update(
+            {
+                "Autorzy": ("authors", lambda r: _get(r, "authors_display")),
+                "Rozpoczęcie etapu": (
+                    "stage_start",
+                    lambda r: _get(r, "current_status_started_at"),
+                ),
+            }
+        )
+        if request.resolver_match and request.resolver_match.url_name in (
+            "audiobook_list",
+            "audiobooks",
+        ):
+            columns["Autor"] = ("authors", lambda r: _get(r, "authors_display"))
+        if request.resolver_match and request.resolver_match.url_name == "translation_list":
+            columns["Tłumacz"] = ("translators", lambda r: _get(r, "translators_display"))
+        if "work_active" in queryset.query.annotations:
+            columns.update(
+                {
+                    "Twoje role": (
+                        "roles",
+                        lambda r: _joined(a["get_role_display"] for a in r["user_assignments"]),
+                    ),
+                    "Twoja praca": (
+                        "work",
+                        lambda r: (
+                            "Wycofany"
+                            if r["current_stage_type"] == "withdrawn"
+                            else "W toku"
+                            if r["has_active_work"]
+                            else "Oczekiwanie na inną osobę"
+                            if r["is_waiting_for_other_role"]
+                            else "Zarezerwowana"
+                            if r["has_reserved_work"]
+                            else "Zakończona"
+                            if r["has_completed_work"]
+                            else "Tekst gotowy"
+                            if r["current_stage_type"] == "ready"
+                            else "Brak bieżącego zadania"
+                        ),
+                    ),
+                }
+            )
+    if (
+        model == "texts.text"
+        and projected
+        and request.resolver_match
+        and request.resolver_match.url_name == "workflow_list"
+    ):
+        columns = {"Autorzy": ("authors", lambda r: _get(r, "text.authors_display"))}
         from workflow.catalog import workflow_role_choices
+
         for role, label in workflow_role_choices():
-            label = 'Redaktor' if role == 'editor' else label
-            columns[label] = ('role_' + role, lambda r, role=role: _joined(
-                _get(entry, 'user.get_full_name') or ''
-                for cell in r.get('role_cells', []) if cell['role'] == role
-                for entry in cell['entries']))
-    if model == 'workflow.workflowstage' and projected:
-        columns['Autorzy'] = ('authors', lambda r: _get(r, 'text.authors_display'))
-        columns['Wymagana rola'] = ('required_role', lambda r: _get(r, 'required_group'))
-        columns['Stan etapu'] = ('completed', _stage_state)
-        from workflow.models import WorkflowRoleAssignment
+            label = "Redaktor" if role == "editor" else label
+            columns[label] = (
+                "role_" + role,
+                lambda r, role=role: _joined(
+                    _get(entry, "user.get_full_name") or ""
+                    for cell in r.get("role_cells", [])
+                    if cell["role"] == role
+                    for entry in cell["entries"]
+                ),
+            )
+    if model == "workflow.workflowstage" and projected:
+        columns["Autorzy"] = ("authors", lambda r: _get(r, "text.authors_display"))
+        columns["Wymagana rola"] = ("required_role", lambda r: _get(r, "required_group"))
+        columns["Stan etapu"] = ("completed", _stage_state)
         for role, label in active_role_choices():
-            columns[label] = ('role_' + role, lambda r, role=role: next(
-                (_get(c, 'user.get_full_name') for c in r.get('role_cells', []) if c['role'] == role), None))
-    if model == 'core.useractivity':
-        columns['Użytkownik'] = ('person', lambda r: str(_get(r, 'user.person_profile') or r.actor))
-    if model == 'people.person':
-        columns['Role'] = ('roles', lambda r: _joined(r.roles.all()))
-    if model == 'people.vacation':
-        columns['Role'] = ('roles', lambda r: _joined(r.person.roles.all()))
-        columns['Status'] = ('vacation_status', lambda r: 'Trwa' if r.is_active else 'Zaplanowany' if r.is_upcoming else 'Zakończony' if r.is_finished else 'Nieaktywny')
-    if model == 'texts.review':
-        columns['Autor'] = ('author', lambda r: _get(r, 'author_display_name'))
-    if model == 'texts.anthology':
-        if request.resolver_match and request.resolver_match.url_name == 'novel_list':
-            columns['Autor'] = ('authors', lambda r: _joined(a.display_name for a in r.novel.authors.all()))
-            columns['Powieść'] = ('title', lambda r: r.title)
-            columns['Rozdziały'] = ('chapters', lambda r: r.chapter_count)
-            columns['Gatunek'] = ('genre', lambda r: r.novel.genre)
-        columns['Skład'] = ('typesetting', lambda r: r.typesetting_task.get_status_display() if r.typesetting_task else 'Niezlecone')
-    if model == 'illustrations.illustration':
-        columns['Autorzy'] = ('authors', lambda r: _joined(a.display_name for a in r.text.authors.all()))
-    if model == 'authors.author':
-        columns['Autor'] = ('person', lambda r: _get(r, 'display_name') or _get(r, 'pseudonym') or ' '.join((_get(r, 'first_name') or '', _get(r, 'last_name') or '')))
-        columns['Imię i nazwisko'] = columns['Autor']
+            columns[label] = (
+                "role_" + role,
+                lambda r, role=role: next(
+                    (
+                        _get(c, "user.get_full_name")
+                        for c in r.get("role_cells", [])
+                        if c["role"] == role
+                    ),
+                    None,
+                ),
+            )
+    if model == "core.useractivity":
+        columns["Użytkownik"] = ("person", lambda r: str(_get(r, "user.person_profile") or r.actor))
+    if model == "people.person":
+        columns["Role"] = ("roles", lambda r: _joined(r.roles.all()))
+    if model == "people.vacation":
+        columns["Role"] = ("roles", lambda r: _joined(r.person.roles.all()))
+        columns["Status"] = (
+            "vacation_status",
+            lambda r: (
+                "Trwa"
+                if r.is_active
+                else "Zaplanowany"
+                if r.is_upcoming
+                else "Zakończony"
+                if r.is_finished
+                else "Nieaktywny"
+            ),
+        )
+    if model == "texts.review":
+        columns["Autor"] = ("author", lambda r: _get(r, "author_display_name"))
+    if model == "texts.anthology":
+        if request.resolver_match and request.resolver_match.url_name == "novel_list":
+            columns["Autor"] = (
+                "authors",
+                lambda r: _joined(a.display_name for a in r.novel.authors.all()),
+            )
+            columns["Powieść"] = ("title", lambda r: r.title)
+            columns["Rozdziały"] = ("chapters", lambda r: r.chapter_count)
+            columns["Gatunek"] = ("genre", lambda r: r.novel.genre)
+        columns["Skład"] = (
+            "typesetting",
+            lambda r: (
+                r.typesetting_task.get_status_display() if r.typesetting_task else "Niezlecone"
+            ),
+        )
+    if model == "illustrations.illustration":
+        columns["Autorzy"] = (
+            "authors",
+            lambda r: _joined(a.display_name for a in r.text.authors.all()),
+        )
+    if model == "authors.author":
+        columns["Autor"] = (
+            "person",
+            lambda r: (
+                _get(r, "display_name")
+                or _get(r, "pseudonym")
+                or " ".join((_get(r, "first_name") or "", _get(r, "last_name") or ""))
+            ),
+        )
+        columns["Imię i nazwisko"] = columns["Autor"]
         titles = {}
-        if request.GET.get('sort', '').lstrip('-') == 'anthologies':
+        if request.GET.get("sort", "").lstrip("-") == "anthologies":
             from texts.models import Text
-            for author_id, title in ordinary(Text.objects).filter(authors__pk__in=queryset.values('pk'), anthology__isnull=False).values_list('authors__pk', 'anthology__title').distinct():
+
+            for author_id, title in (
+                ordinary(Text.objects)
+                .filter(authors__pk__in=queryset.values("pk"), anthology__isnull=False)
+                .values_list("authors__pk", "anthology__title")
+                .distinct()
+            ):
                 titles.setdefault(author_id, []).append(title)
-        columns['Antologie'] = ('anthologies', lambda r: _joined(titles.get(_get(r, 'pk'), [])))
+        columns["Antologie"] = ("anthologies", lambda r: _joined(titles.get(_get(r, "pk"), [])))
     from core.permissions import can_view_author_data
+
     if not can_view_author_data(request.user):
-        columns.pop('Autorzy', None)
-        if model == 'texts.review':
-            columns.pop('Autor', None)
+        columns.pop("Autorzy", None)
+        if model == "texts.review":
+            columns.pop("Autor", None)
     return columns
 
+
 def prepare_table_sort(request, items):
-    if request.resolver_match and request.resolver_match.view_name == 'illustrations:external_illustrations':
+    if (
+        request.resolver_match
+        and request.resolver_match.view_name == "illustrations:external_illustrations"
+    ):
         # A public projection must never opt into private illustration columns.
-        fields = {'Antologia': ('anthology', 'text__anthology__title'), 'Tytuł opowiadania': ('title', 'text__title'),
-                  'Tagi': ('tags', 'text__tags'), 'Gatunek': ('genre', 'text__genre'), 'Status': ('status', 'public_status')}
-        sort = request.GET.get('sort', 'anthology')
-        field = next((field for key, field in fields.values() if key == sort.lstrip('-')), 'text__anthology__title')
-        return items.order_by(('-' if sort.startswith('-') else '') + field, 'pk'), {label:key for label,(key,_) in fields.items()}
-    if hasattr(items, 'sort_table'):
+        fields = {
+            "Antologia": ("anthology", "text__anthology__title"),
+            "Tytuł opowiadania": ("title", "text__title"),
+            "Tagi": ("tags", "text__tags"),
+            "Gatunek": ("genre", "text__genre"),
+            "Status": ("status", "public_status"),
+        }
+        sort = request.GET.get("sort", "anthology")
+        field = next(
+            (field for key, field in fields.values() if key == sort.lstrip("-")),
+            "text__anthology__title",
+        )
+        return items.order_by(("-" if sort.startswith("-") else "") + field, "pk"), {
+            label: key for label, (key, _) in fields.items()
+        }
+    if hasattr(items, "sort_table"):
         return items.sort_table(request)
-    queryset = items if isinstance(items, QuerySet) else getattr(items, 'queryset', None)
+    queryset = items if isinstance(items, QuerySet) else getattr(items, "queryset", None)
     if queryset is None:
         if not isinstance(items, (list, tuple)) or not items or not isinstance(items[0], dict):
             return items, {}
-        candidates = {'Antologia':'anthology_title', 'Tytuł':'title', 'Autor':'author_name', 'Autorzy':'authors',
-            'Recenzent':'reviewer_name', 'Redaktor':'person_name', 'Korektor':'person_name', 'Weryfikator':'person_name',
-            'Osoba':'person_name', 'Rozpoczęcie':'started_at', 'Zakończenie':'ended_at',
-            'Ocena':'opinion', 'Recenzja':'opinion', 'Opinia':'opinion', 'Przydział':'position', 'Stan etapu':'is_completed',
-            'Rola':'role', 'Data oceny':'opinion_at', 'Data decyzji':'decision_at', 'Status zgłoszenia':'review_status',
-            'Data recenzji':'opinion_at', 'Status':'review_status', 'Rodzaj przestoju':'inactivity_type', 'Od':'since', 'Liczba dni':'days'}
-        if 'stage' in items[0] and 'days' in items[0]:
-            candidates.update({'Antologia':'text.anthology.title', 'Tytuł':'text.title', 'Etap':'stage.get_stage_type_display'})
-        if 'task' in items[0] and 'anthology_title' in items[0]:
-            candidates.update({'Zadanie': 'name', 'Osoba': 'person', 'Status': 'status', 'Data zlecenia': 'date'})
-        if 'before' in items[0] and 'after' in items[0]:
-            candidates = {'Tekst / powieść': 'title', 'Przed': 'before', 'Po': 'after'}
-        fields = {label:path for label,path in candidates.items() if path.split('.')[0] in items[0]}
-        public = {'anthology_title':'anthology','text.anthology.title':'anthology','text.title':'title',
-            'stage.get_stage_type_display':'status', 'author_name':'author', 'reviewer_name':'person',
-            'person_name':'person', 'is_completed':'completed', 'decision_at':'decision', 'review_status':'status'}
-        columns = {label:public.get(path, path) for label,path in fields.items()}
-        requested = request.GET.get('sort', '')
-        path = next((path for label,path in fields.items() if columns[label] == requested.lstrip('-')), None)
+        candidates = {
+            "Antologia": "anthology_title",
+            "Tytuł": "title",
+            "Autor": "author_name",
+            "Autorzy": "authors",
+            "Recenzent": "reviewer_name",
+            "Redaktor": "person_name",
+            "Korektor": "person_name",
+            "Weryfikator": "person_name",
+            "Osoba": "person_name",
+            "Rozpoczęcie": "started_at",
+            "Zakończenie": "ended_at",
+            "Ocena": "opinion",
+            "Recenzja": "opinion",
+            "Opinia": "opinion",
+            "Przydział": "position",
+            "Stan etapu": "is_completed",
+            "Rola": "role",
+            "Data oceny": "opinion_at",
+            "Data decyzji": "decision_at",
+            "Status zgłoszenia": "review_status",
+            "Data recenzji": "opinion_at",
+            "Status": "review_status",
+            "Rodzaj przestoju": "inactivity_type",
+            "Od": "since",
+            "Liczba dni": "days",
+        }
+        if "stage" in items[0] and "days" in items[0]:
+            candidates.update(
+                {
+                    "Antologia": "text.anthology.title",
+                    "Tytuł": "text.title",
+                    "Etap": "stage.get_stage_type_display",
+                }
+            )
+        if "task" in items[0] and "anthology_title" in items[0]:
+            candidates.update(
+                {"Zadanie": "name", "Osoba": "person", "Status": "status", "Data zlecenia": "date"}
+            )
+        if "before" in items[0] and "after" in items[0]:
+            candidates = {"Tekst / powieść": "title", "Przed": "before", "Po": "after"}
+        fields = {
+            label: path for label, path in candidates.items() if path.split(".")[0] in items[0]
+        }
+        public = {
+            "anthology_title": "anthology",
+            "text.anthology.title": "anthology",
+            "text.title": "title",
+            "stage.get_stage_type_display": "status",
+            "author_name": "author",
+            "reviewer_name": "person",
+            "person_name": "person",
+            "is_completed": "completed",
+            "decision_at": "decision",
+            "review_status": "status",
+        }
+        columns = {label: public.get(path, path) for label, path in fields.items()}
+        requested = request.GET.get("sort", "")
+        path = next(
+            (path for label, path in fields.items() if columns[label] == requested.lstrip("-")),
+            None,
+        )
         if path:
-            items = _sorted_rows(items, lambda row: _get(row, path), requested.startswith('-'))
+            items = _sorted_rows(items, lambda row: _get(row, path), requested.startswith("-"))
         return items, columns
     model = queryset.model._meta.label_lower
     columns = MODELS.get(model, {}).copy()
-    if model == 'illustrations.illustrator' and 'artist_name' in queryset.query.annotations:
-        columns['Imię i nazwisko'] = ('person', ('artist_name',))
-    if model == 'core.recruitment' and '_candidate_sort' in queryset.query.annotations:
-        columns['Nadawca'] = ('sender', ('_candidate_sort',))
-    if model == 'people.person' and 'last_activity_at' in queryset.query.annotations:
-        columns.update({'Data logowania': ('last_activity', ('last_activity_at',)), 'Data działania': ('last_activity', ('last_activity_at',))})
-        if 'last_action' in queryset.query.annotations:
-            columns['Działanie'] = ('last_action', ('last_action',))
-    if model == 'texts.text' and 'last_status_change' in queryset.query.annotations:
-        columns['Ostatnia zmiana statusu'] = ('last_status_change', ('last_status_change',))
-    if model == 'texts.text' and 'current_stage_type' in queryset.query.annotations:
-        columns['Status'] = ('status', ('current_stage_type',))
-    if model == 'texts.review':
-        if request.GET.get('sort', '').lstrip('-') == 'opinions' and 'completed_count' not in queryset.query.annotations:
-            queryset = queryset.annotate(completed_count=Count('assignments', filter=~Q(assignments__opinion__in=('', 'reading')), distinct=True))
-        columns['Recenzenci i opinie'] = ('opinions', ('completed_count',))
-    if model == 'texts.review' and 'source_information' in queryset.query.annotations:
-        columns['Informacja'] = ('information', ('source_information',))
+    if model == "illustrations.illustrator" and "artist_name" in queryset.query.annotations:
+        columns["Imię i nazwisko"] = ("person", ("artist_name",))
+    if model == "core.recruitment" and "_candidate_sort" in queryset.query.annotations:
+        columns["Nadawca"] = ("sender", ("_candidate_sort",))
+    if model == "people.person" and "last_activity_at" in queryset.query.annotations:
+        columns.update(
+            {
+                "Data logowania": ("last_activity", ("last_activity_at",)),
+                "Data działania": ("last_activity", ("last_activity_at",)),
+            }
+        )
+        if "last_action" in queryset.query.annotations:
+            columns["Działanie"] = ("last_action", ("last_action",))
+    if model == "texts.text" and "last_status_change" in queryset.query.annotations:
+        columns["Ostatnia zmiana statusu"] = ("last_status_change", ("last_status_change",))
+    if model == "texts.text" and "current_stage_type" in queryset.query.annotations:
+        columns["Status"] = ("status", ("current_stage_type",))
+    if model == "texts.review":
+        if (
+            request.GET.get("sort", "").lstrip("-") == "opinions"
+            and "completed_count" not in queryset.query.annotations
+        ):
+            queryset = queryset.annotate(
+                completed_count=Count(
+                    "assignments",
+                    filter=~Q(assignments__opinion__in=("", "reading")),
+                    distinct=True,
+                )
+            )
+        columns["Recenzenci i opinie"] = ("opinions", ("completed_count",))
+    if model == "texts.review" and "source_information" in queryset.query.annotations:
+        columns["Informacja"] = ("information", ("source_information",))
     for field in queryset.model._meta.concrete_fields:
-        if not field.is_relation and field.name in {'title', 'status', 'created_at', 'updated_at', 'submitted_at', 'pseudonym', 'has_contract', 'can_contact', 'decision_at', 'action', 'method', 'status_code', 'story_title', 'department', 'notified_at'}:
+        if not field.is_relation and field.name in {
+            "title",
+            "status",
+            "created_at",
+            "updated_at",
+            "submitted_at",
+            "pseudonym",
+            "has_contract",
+            "can_contact",
+            "decision_at",
+            "action",
+            "method",
+            "status_code",
+            "story_title",
+            "department",
+            "notified_at",
+        }:
             label = str(field.verbose_name).capitalize()
             columns.setdefault(label, (field.name, (field.name,)))
     from core.permissions import can_view_author_data, is_coordinator
-    if model in {"texts.review", "texts.text", "authors.author"} and not (can_view_author_data(request.user) or (model == "authors.author" and is_coordinator(request.user))):
-        columns = {label:spec for label,spec in columns.items() if not any('email' in field or 'phone' in field or field.startswith('author_') for field in spec[1])}
+
+    if model in {"texts.review", "texts.text", "authors.author"} and not (
+        can_view_author_data(request.user)
+        or (model == "authors.author" and is_coordinator(request.user))
+    ):
+        columns = {
+            label: spec
+            for label, spec in columns.items()
+            if not any(
+                "email" in field or "phone" in field or field.startswith("author_")
+                for field in spec[1]
+            )
+        }
     # Some lists do not annotate the derived current stage.
-    if queryset.model._meta.label_lower == 'texts.text' and 'current_stage_type' not in queryset.query.annotations:
-        columns = {k:v for k,v in columns.items() if v[0] != 'status'}
+    if (
+        queryset.model._meta.label_lower == "texts.text"
+        and "current_stage_type" not in queryset.query.annotations
+    ):
+        columns = {k: v for k, v in columns.items() if v[0] != "status"}
     for label, spec in list(columns.items()):
-        if label == 'E-mail': columns['Adres e-mail'] = spec
-        if label == 'Status': columns.setdefault('Status publikacji', spec)
+        if label == "E-mail":
+            columns["Adres e-mail"] = spec
+        if label == "Status":
+            columns.setdefault("Status publikacji", spec)
     extras = _extra_columns(items, queryset, request)
-    requested = request.GET.get('sort', '')
-    key = requested.lstrip('-')
-    extra = next((getter for name,getter in extras.values() if name == key), None)
+    requested = request.GET.get("sort", "")
+    key = requested.lstrip("-")
+    extra = next((getter for name, getter in extras.values() if name == key), None)
     if extra:
         if isinstance(items, QuerySet):
-            if queryset.model._meta.label_lower == 'people.person':
-                items = items.prefetch_related('roles')
-            elif queryset.model._meta.label_lower == 'people.vacation':
-                items = items.select_related('person').prefetch_related('person__roles')
-        return _sort_query_projection(items, items if isinstance(items, QuerySet) else queryset, extra, requested.startswith('-')), {
-            **{label:spec[0] for label,spec in columns.items()}, **{label:spec[0] for label,spec in extras.items()}}
-    fields = next((fields for _, (name,fields) in columns.items() if name == key), None)
+            if queryset.model._meta.label_lower == "people.person":
+                items = items.prefetch_related("roles")
+            elif queryset.model._meta.label_lower == "people.vacation":
+                items = items.select_related("person").prefetch_related("person__roles")
+        return _sort_query_projection(
+            items,
+            items if isinstance(items, QuerySet) else queryset,
+            extra,
+            requested.startswith("-"),
+        ), {
+            **{label: spec[0] for label, spec in columns.items()},
+            **{label: spec[0] for label, spec in extras.items()},
+        }
+    fields = next((fields for _, (name, fields) in columns.items() if name == key), None)
     if fields:
         from workflow.state import ORDER
+
         ordered_fields = []
         for field in fields:
-            if field in ('stage_type', 'current_stage_type'):
-                queryset = queryset.annotate(_semantic_stage_order=Case(*[When(**{field:kind}, then=Value(index)) for kind,index in ORDER.items()], default=Value(999), output_field=IntegerField()))
-                ordered_fields.append('_semantic_stage_order')
-            elif '__' not in field and field in {f.name for f in queryset.model._meta.concrete_fields} and queryset.model._meta.get_field(field).choices:
+            if field in ("stage_type", "current_stage_type"):
+                queryset = queryset.annotate(
+                    _semantic_stage_order=Case(
+                        *[
+                            When(**{field: kind}, then=Value(index))
+                            for kind, index in ORDER.items()
+                        ],
+                        default=Value(999),
+                        output_field=IntegerField(),
+                    )
+                )
+                ordered_fields.append("_semantic_stage_order")
+            elif (
+                "__" not in field
+                and field in {f.name for f in queryset.model._meta.concrete_fields}
+                and queryset.model._meta.get_field(field).choices
+            ):
                 choices = queryset.model._meta.get_field(field).flatchoices
-                name = '_choice_' + str(len(ordered_fields))
-                ranks = {v: index for index, (v, label) in enumerate(sorted(choices, key=lambda pair: text_key(str(pair[1]))))}
-                queryset = queryset.annotate(**{name:Case(*[When(**{field:v}, then=Value(rank)) for v,rank in ranks.items()], default=Value(None), output_field=IntegerField())})
+                name = "_choice_" + str(len(ordered_fields))
+                ranks = {
+                    v: index
+                    for index, (v, label) in enumerate(
+                        sorted(choices, key=lambda pair: text_key(str(pair[1])))
+                    )
+                }
+                queryset = queryset.annotate(
+                    **{
+                        name: Case(
+                            *[When(**{field: v}, then=Value(rank)) for v, rank in ranks.items()],
+                            default=Value(None),
+                            output_field=IntegerField(),
+                        )
+                    }
+                )
                 ordered_fields.append(name)
-            elif field.split('__')[-1] in {'title','first_name','last_name','email','pseudonym','actor','story_title',
-                    'full_name','author_last_name','author_first_name','fragment','problem','suggestion','notes',
-                    'unofficial_notes','recruitment','accepted_titles','rejected_titles','trigger_warnings',
-                    'illustrated_excerpt','illustration_author','target','action','story_url','illustration_url'}:
-                name = '_alphabet_' + str(len(ordered_fields))
-                queryset = queryset.annotate(**{name:sql_text_key(field, queryset.db)})
+            elif field.split("__")[-1] in {
+                "title",
+                "first_name",
+                "last_name",
+                "email",
+                "pseudonym",
+                "actor",
+                "story_title",
+                "full_name",
+                "author_last_name",
+                "author_first_name",
+                "fragment",
+                "problem",
+                "suggestion",
+                "notes",
+                "unofficial_notes",
+                "recruitment",
+                "accepted_titles",
+                "rejected_titles",
+                "trigger_warnings",
+                "illustrated_excerpt",
+                "illustration_author",
+                "target",
+                "action",
+                "story_url",
+                "illustration_url",
+            }:
+                name = "_alphabet_" + str(len(ordered_fields))
+                queryset = queryset.annotate(**{name: sql_text_key(field, queryset.db)})
                 ordered_fields.append(name)
             else:
                 ordered_fields.append(field)
         fields = tuple(ordered_fields)
-        order = [F(field).desc(nulls_last=True) if requested.startswith('-') else F(field).asc(nulls_last=True) for field in fields]
-        queryset = queryset.order_by(*order, *(['execution_number', 'iteration'] if queryset.model._meta.label_lower == 'workflow.workflowstage' else []), 'pk')
+        order = [
+            F(field).desc(nulls_last=True)
+            if requested.startswith("-")
+            else F(field).asc(nulls_last=True)
+            for field in fields
+        ]
+        queryset = queryset.order_by(
+            *order,
+            *(
+                ["execution_number", "iteration"]
+                if queryset.model._meta.label_lower == "workflow.workflowstage"
+                else []
+            ),
+            "pk",
+        )
         if isinstance(items, QuerySet):
             items = queryset
         else:
             items = copy(items)
             items.queryset = queryset
-    return items, {**{label:key for label,(key,_) in columns.items()}, **{label:spec[0] for label,spec in extras.items()}}
+    return items, {
+        **{label: key for label, (key, _) in columns.items()},
+        **{label: spec[0] for label, spec in extras.items()},
+    }

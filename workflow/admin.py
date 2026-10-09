@@ -1,15 +1,15 @@
 from django import forms
 from django.contrib import admin, messages
 from django.db import transaction
-from django.db.models import Q
 from django.utils import timezone
 
-from texts.models import Text
 
 from .models import WorkflowRoleAssignment, WorkflowStage
 from .admin_performer_forms import PerformerChoiceField
 from django.contrib.admin.widgets import AutocompleteSelect
 from .catalog import IMPORT_ONLY_STAGE_TYPES, IMPORT_ONLY_ROLES, active_stage_choices, active_role_choices
+from workflow.models import WorkflowRepetition
+from workflow.models import WorkflowHandoff
 
 
 class OperationalWorkAdminMixin:
@@ -204,39 +204,109 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
         from django.template.response import TemplateResponse
         from core.edit_versions import version_of
         from workflow.admin_stage_edit import edit_stage
-        if not request.user.is_superuser:raise PermissionDenied
-        stage=get_object_or_404(WorkflowStage,pk=object_id)
+        if not request.user.is_superuser:
+            raise PermissionDenied
+        stage = get_object_or_404(WorkflowStage, pk=object_id)
+
         class CorrectionForm(forms.Form):
-            action=forms.ChoiceField(label='Operacja',choices=[('performer','Popraw wykonawcę (bez nowego wykonania)'),('reopen','Cofnij zakończenie etapu (zachowaj rozpoczęcie)'),('restore_reservation','W1 nie została wykonana: przywróć oczekiwanie na przekazanie'),('delete','Usuń to wykonanie etapu')])
-            performer=PerformerChoiceField(label='Wykonawca',queryset=get_user_model().objects.order_by('last_name','first_name','pk'),required=False,widget=AutocompleteSelect(WorkflowRoleAssignment._meta.get_field('assigned_to'), self.admin_site))
-            replacement=forms.ChoiceField(label='Status po usunięciu bieżącego etapu',choices=[('','Ostatni pozostały etap workflow'),*active_stage_choices()],required=False,
-                help_text='Puste pole zachowuje ostatni pozostały etap, także zakończony. Nie rozpoczyna pracy ponownie.')
-            version=forms.IntegerField(widget=forms.HiddenInput)
-            confirm=forms.BooleanField(label='Potwierdzam korektę historii pracy i zmianę statystyk.')
-        initial_action = request.GET.get('action', 'performer')
-        if initial_action not in ('performer', 'reopen', 'restore_reservation', 'delete'):
-            initial_action = 'performer'
-        form=CorrectionForm(request.POST if request.method=='POST' else None,initial={'action':initial_action,'version':version_of(stage.text),'performer':stage.assignment.assigned_to_id if stage.assignment else None})
-        if request.method=='POST' and form.is_valid():
+            action = forms.ChoiceField(
+                label="Operacja",
+                choices=[
+                    ("performer", "Popraw wykonawcę (bez nowego wykonania)"),
+                    ("reopen", "Cofnij zakończenie etapu (zachowaj rozpoczęcie)"),
+                    (
+                        "restore_reservation",
+                        "W1 nie została wykonana: przywróć oczekiwanie na przekazanie",
+                    ),
+                    ("delete", "Usuń to wykonanie etapu"),
+                ],
+            )
+            performer = PerformerChoiceField(
+                label="Wykonawca",
+                queryset=get_user_model().objects.order_by("last_name", "first_name", "pk"),
+                required=False,
+                widget=AutocompleteSelect(
+                    WorkflowRoleAssignment._meta.get_field("assigned_to"), self.admin_site
+                ),
+            )
+            replacement = forms.ChoiceField(
+                label="Status po usunięciu bieżącego etapu",
+                choices=[("", "Ostatni pozostały etap workflow"), *active_stage_choices()],
+                required=False,
+                help_text="Puste pole zachowuje ostatni pozostały etap, także zakończony. Nie rozpoczyna pracy ponownie.",
+            )
+            version = forms.IntegerField(widget=forms.HiddenInput)
+            confirm = forms.BooleanField(
+                label="Potwierdzam korektę historii pracy i zmianę statystyk."
+            )
+
+        initial_action = request.GET.get("action", "performer")
+        if initial_action not in ("performer", "reopen", "restore_reservation", "delete"):
+            initial_action = "performer"
+        form = CorrectionForm(
+            request.POST if request.method == "POST" else None,
+            initial={
+                "action": initial_action,
+                "version": version_of(stage.text),
+                "performer": stage.assignment.assigned_to_id if stage.assignment else None,
+            },
+        )
+        if request.method == "POST" and form.is_valid():
             try:
-                edit_stage(stage.pk,request.user,form.cleaned_data['version'],action=form.cleaned_data['action'],performer=form.cleaned_data['performer'],replacement=form.cleaned_data['replacement'])
-            except ValidationError as exc:form.add_error(None,exc)
-            except (ProtectedError,RestrictedError):form.add_error(None,'Etap ma powiązane przekazania pracy lub inne chronione dane. Nie został usunięty.')
+                edit_stage(
+                    stage.pk,
+                    request.user,
+                    form.cleaned_data["version"],
+                    action=form.cleaned_data["action"],
+                    performer=form.cleaned_data["performer"],
+                    replacement=form.cleaned_data["replacement"],
+                )
+            except ValidationError as exc:
+                form.add_error(None, exc)
+            except (ProtectedError, RestrictedError):
+                form.add_error(
+                    None,
+                    "Etap ma powiązane przekazania pracy lub inne chronione dane. Nie został usunięty.",
+                )
             else:
-                self.log_change(request,stage.text,'Korekta wykonania etapu '+str(stage.pk)+': '+form.cleaned_data['action'])
-                self.message_user(request,'Zapisano korektę wykonania.')
-                return redirect('admin:texts_text_change',stage.text_id)
-        return TemplateResponse(request,'admin/workflow/stage_correction.html',{**self.admin_site.each_context(request),'title':'Korekta: '+str(stage),'form':form,'stage':stage})
+                self.log_change(
+                    request,
+                    stage.text,
+                    "Korekta wykonania etapu " + str(stage.pk) + ": " + form.cleaned_data["action"],
+                )
+                self.message_user(request, "Zapisano korektę wykonania.")
+                return redirect("admin:texts_text_change", stage.text_id)
+        return TemplateResponse(
+            request,
+            "admin/workflow/stage_correction.html",
+            {
+                **self.admin_site.each_context(request),
+                "title": "Korekta: " + str(stage),
+                "form": form,
+                "stage": stage,
+            },
+        )
 
     def get_readonly_fields(self, request, obj=None):
         if request.user.is_superuser and obj and obj.imported_completed and obj.is_completed:
-            return tuple(name for name in self.readonly_fields if name not in {"started_at", "ended_at"})
+            return tuple(
+                name for name in self.readonly_fields if name not in {"started_at", "ended_at"}
+            )
         return self.readonly_fields
 
     def get_fieldsets(self, request, obj=None):
         sections = super().get_fieldsets(request, obj)
         if request.user.is_superuser and obj and obj.imported_completed and obj.is_completed:
-            return (*sections, ("Korekta danych importowanych", {"fields": ("confirm_data_correction",), "description": "Nieznane daty pozostaw puste. Praca nadal jest zakończona i nie zwiększa bieżącego obciążenia."}))
+            return (
+                *sections,
+                (
+                    "Korekta danych importowanych",
+                    {
+                        "fields": ("confirm_data_correction",),
+                        "description": "Nieznane daty pozostaw puste. Praca nadal jest zakończona i nie zwiększa bieżącego obciążenia.",
+                    },
+                ),
+            )
         return sections
 
     def has_add_permission(self, request):
@@ -252,7 +322,9 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
     list_display = (
         "text",
         "stage_type",
-        "edit_execution_link", "edit_dates_link", "delete_execution_link",
+        "edit_execution_link",
+        "edit_dates_link",
+        "delete_execution_link",
         "workflow_cycle",
         "is_current_cycle",
         "execution_number",
@@ -261,7 +333,7 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
         "ended_at",
         "is_completed",
     )
-    
+
     list_filter = (
         "workflow_cycle",
         ActiveStageFilter,
@@ -279,9 +351,7 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
         "text__anthology__title__plcontains",
     )
 
-    autocomplete_fields = (
-        "text",
-    )
+    autocomplete_fields = ("text",)
 
     fieldsets = (
         (
@@ -290,8 +360,12 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
                 "fields": (
                     "text",
                     "workflow_cycle",
-                    "stage_type", "edit_execution_link",
-                    "execution_number", "repetition", "is_released", "assignment",
+                    "stage_type",
+                    "edit_execution_link",
+                    "execution_number",
+                    "repetition",
+                    "is_released",
+                    "assignment",
                     "iteration",
                 ),
             },
@@ -302,7 +376,10 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
                 "fields": (
                     "started_at",
                     "ended_at",
-                    "is_completed", "imported_completed", "send_to_proofreading", "edit_dates_link",
+                    "is_completed",
+                    "imported_completed",
+                    "send_to_proofreading",
+                    "edit_dates_link",
                 ),
             },
         ),
@@ -322,16 +399,18 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
     )
 
     actions = (
-        "finish_selected_stages", "start_selected_stages",
+        "finish_selected_stages",
+        "start_selected_stages",
     )
 
     @admin.action(description="Zakończ etap i utwórz następny (dzisiaj)")
     def finish_selected_stages(self, request, queryset):
         from workflow.services import complete_stage
         from django.core.exceptions import ValidationError, PermissionDenied
+
         try:
             with transaction.atomic():
-                for stage in queryset.order_by('text_id', 'pk'):
+                for stage in queryset.order_by("text_id", "pk"):
                     complete_stage(stage, request.user, timezone.localdate())
         except (ValidationError, PermissionDenied) as exc:
             self.message_user(request, str(exc), level=messages.ERROR)
@@ -342,10 +421,13 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
     def start_selected_stages(self, request, queryset):
         from core.services.texts import start_assigned_stage
         from django.core.exceptions import ValidationError, PermissionDenied
+
         try:
             with transaction.atomic():
-                for stage in queryset.order_by('text_id', 'pk'):
-                    start_assigned_stage(user=request.user, stage_id=stage.pk, started_at=timezone.localdate())
+                for stage in queryset.order_by("text_id", "pk"):
+                    start_assigned_stage(
+                        user=request.user, stage_id=stage.pk, started_at=timezone.localdate()
+                    )
         except (ValidationError, PermissionDenied) as exc:
             self.message_user(request, str(exc), level=messages.ERROR)
         else:
@@ -353,24 +435,31 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
 
     @admin.display(boolean=True, description="Bieżący przebieg")
     def is_current_cycle(self, obj):
-        return (
-            obj.is_current and obj.workflow_cycle
-            == obj.text.current_workflow_cycle
-        )
-
+        return obj.is_current and obj.workflow_cycle == obj.text.current_workflow_cycle
 
 
 @admin.register(WorkflowRoleAssignment)
 class WorkflowRoleAssignmentAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
     def get_urls(self):
         from django.urls import path
-        return [path('<path:object_id>/correct/', self.admin_site.admin_view(self.correct_assignment_view), name='workflow_assignment_correct')] + super().get_urls()
 
-    @admin.display(description='Korekta przypisania')
+        return [
+            path(
+                "<path:object_id>/correct/",
+                self.admin_site.admin_view(self.correct_assignment_view),
+                name="workflow_assignment_correct",
+            )
+        ] + super().get_urls()
+
+    @admin.display(description="Korekta przypisania")
     def correction_link(self, obj):
         from django.urls import reverse
         from django.utils.html import format_html
-        return format_html('<a href="{}">Zmień / odłącz osobę / usuń przypisanie</a>', reverse('admin:workflow_assignment_correct', args=[obj.pk]))
+
+        return format_html(
+            '<a href="{}">Zmień / odłącz osobę / usuń przypisanie</a>',
+            reverse("admin:workflow_assignment_correct", args=[obj.pk]),
+        )
 
     def correct_assignment_view(self, request, object_id):
         from django.contrib.auth import get_user_model
@@ -380,36 +469,79 @@ class WorkflowRoleAssignmentAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
         from django.template.response import TemplateResponse
         from core.edit_versions import version_of
         from workflow.admin_assignment_edit import correct_assignment
+
         if not request.user.is_superuser:
             raise PermissionDenied
         obj = get_object_or_404(WorkflowRoleAssignment, pk=object_id)
+
         class CorrectionForm(forms.Form):
-            action = forms.ChoiceField(label='Operacja', choices=[('performer','Zmień osobę we wszystkich etapach tego przypisania'),('clear','Odłącz osobę, zachowując etapy'),('delete','Usuń puste przypisanie bez etapów')])
-            performer = PerformerChoiceField(label='Nowy wykonawca', queryset=get_user_model().objects.order_by('last_name','first_name','pk'), required=False, widget=AutocompleteSelect(WorkflowRoleAssignment._meta.get_field('assigned_to'), self.admin_site))
+            action = forms.ChoiceField(
+                label="Operacja",
+                choices=[
+                    ("performer", "Zmień osobę we wszystkich etapach tego przypisania"),
+                    ("clear", "Odłącz osobę, zachowując etapy"),
+                    ("delete", "Usuń puste przypisanie bez etapów"),
+                ],
+            )
+            performer = PerformerChoiceField(
+                label="Nowy wykonawca",
+                queryset=get_user_model().objects.order_by("last_name", "first_name", "pk"),
+                required=False,
+                widget=AutocompleteSelect(
+                    WorkflowRoleAssignment._meta.get_field("assigned_to"), self.admin_site
+                ),
+            )
             version = forms.IntegerField(widget=forms.HiddenInput)
-            confirm = forms.BooleanField(label='Potwierdzam korektę wykonawcy, historii i statystyk.')
-        form = CorrectionForm(request.POST if request.method == 'POST' else None, initial={'version':version_of(obj.text),'performer':obj.assigned_to_id})
-        if request.method == 'POST' and form.is_valid():
+            confirm = forms.BooleanField(
+                label="Potwierdzam korektę wykonawcy, historii i statystyk."
+            )
+
+        form = CorrectionForm(
+            request.POST if request.method == "POST" else None,
+            initial={"version": version_of(obj.text), "performer": obj.assigned_to_id},
+        )
+        if request.method == "POST" and form.is_valid():
             try:
-                correct_assignment(obj.pk,request.user,form.cleaned_data['version'],action=form.cleaned_data['action'],performer=form.cleaned_data['performer'])
+                correct_assignment(
+                    obj.pk,
+                    request.user,
+                    form.cleaned_data["version"],
+                    action=form.cleaned_data["action"],
+                    performer=form.cleaned_data["performer"],
+                )
             except (ProtectedError, RestrictedError):
-                form.add_error(None,'Rekord ma chronione powiązania i nie został usunięty.')
+                form.add_error(None, "Rekord ma chronione powiązania i nie został usunięty.")
             except ValidationError as exc:
-                form.add_error(None,exc)
+                form.add_error(None, exc)
             else:
-                self.log_change(request,obj.text,f"Korekta przypisania {obj.pk}: {form.cleaned_data['action']}, osoba {getattr(form.cleaned_data['performer'], 'pk', None)}")
-                self.message_user(request,'Zapisano korektę przypisania.')
-                return redirect('admin:texts_text_change',obj.text_id)
-        return TemplateResponse(request,'admin/workflow/assignment_correction.html',{**self.admin_site.each_context(request),'title':'Korekta: '+str(obj),'form':form,'assignment':obj,'stages':obj.stages.all()})
+                self.log_change(
+                    request,
+                    obj.text,
+                    f"Korekta przypisania {obj.pk}: {form.cleaned_data['action']}, osoba {getattr(form.cleaned_data['performer'], 'pk', None)}",
+                )
+                self.message_user(request, "Zapisano korektę przypisania.")
+                return redirect("admin:texts_text_change", obj.text_id)
+        return TemplateResponse(
+            request,
+            "admin/workflow/assignment_correction.html",
+            {
+                **self.admin_site.each_context(request),
+                "title": "Korekta: " + str(obj),
+                "form": form,
+                "assignment": obj,
+                "stages": obj.stages.all(),
+            },
+        )
 
     def get_readonly_fields(self, request, obj=None):
-        return tuple(field.name for field in WorkflowRoleAssignment._meta.fields if field.name != "notes") + ("correction_link",)
+        return tuple(
+            field.name for field in WorkflowRoleAssignment._meta.fields if field.name != "notes"
+        ) + ("correction_link",)
 
     def has_add_permission(self, request):
         return False
 
     def has_delete_permission(self, request, obj=None):
-        from workflow.admin_assignment_rules import has_recorded_work
         return False
 
     form = WorkflowRoleAssignmentAdminForm
@@ -449,9 +581,7 @@ class WorkflowRoleAssignmentAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
         "assigned_to",
     )
 
-    readonly_fields = (
-        "assigned_at",
-    )
+    readonly_fields = ("assigned_at",)
 
     fieldsets = (
         (
@@ -470,9 +600,7 @@ class WorkflowRoleAssignmentAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
         (
             "Informacje dodatkowe",
             {
-                "fields": (
-                    "notes",
-                ),
+                "fields": ("notes",),
             },
         ),
     )
@@ -496,28 +624,33 @@ class WorkflowRoleAssignmentAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
         description="Bieżący przebieg",
     )
     def is_current_cycle(self, obj):
-        return (
-            obj.is_current and obj.workflow_cycle
-            == obj.text.current_workflow_cycle
-        )
+        return obj.is_current and obj.workflow_cycle == obj.text.current_workflow_cycle
 
 
 
-from workflow.models import WorkflowRepetition
 
 @admin.register(WorkflowRepetition)
 class WorkflowRepetitionAdmin(admin.ModelAdmin):
-    list_display = ('text', 'created_at', 'created_by', 'completed_at')
-    list_select_related = ('text', 'created_by')
+    list_display = ("text", "created_at", "created_by", "completed_at")
+    list_select_related = ("text", "created_by")
     readonly_fields = tuple(f.name for f in WorkflowRepetition._meta.fields)
-    def has_add_permission(self, request): return False
-    def has_delete_permission(self, request, obj=None): return False
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
-from workflow.models import WorkflowHandoff
+
+
 @admin.register(WorkflowHandoff)
 class WorkflowHandoffAdmin(admin.ModelAdmin):
-    list_display = ('text','stage','actor','created_at')
+    list_display = ("text", "stage", "actor", "created_at")
     readonly_fields = tuple(f.name for f in WorkflowHandoff._meta.fields)
-    def has_add_permission(self, request): return False
-    def has_delete_permission(self, request, obj=None): return False
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

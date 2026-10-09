@@ -31,6 +31,8 @@ from .models import (
     ForeignAuthor,
     Translator,
 )
+from workflow.admin_performer_forms import WorkflowPerformerForm, WorkflowPerformerFormSet
+from core.review_submission_forms import ReviewAdminForm
 
 
 def content_preview(value, limit=100):
@@ -165,7 +167,6 @@ class AnthologyAdmin(admin.ModelAdmin):
     show_full_result_count = False
 
 
-from workflow.admin_performer_forms import WorkflowPerformerForm, WorkflowPerformerFormSet
 
 
 class WorkflowStageInline(SuperuserOnlyAdminMixin, admin.TabularInline):
@@ -814,7 +815,6 @@ class TextNoteAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         return content_preview(obj.content)
 
 
-from core.review_submission_forms import ReviewAdminForm
 
 
 class ReviewAssignmentAdminForm(forms.ModelForm):

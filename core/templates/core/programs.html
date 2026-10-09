@@ -15,17 +15,7 @@
     <p>Wybierz DOCX i potrzebne poprawki, a następnie pobierz poprawiony plik.</p>
     <p>Reguły redakcyjne Odkurzacza poprawiają główną treść, bez tabel, nagłówków i przypisów. Przy zaznaczonej opcji usuwania miękkie entery i spacje nieprzenoszące w tekście dokumentu, tabelach, nagłówkach i przypisach są zamieniane odpowiednio na zwykłe entery (nowe akapity) i zwykłe spacje; istniejące podziały stron pozostają. Nie śledzi zmian. Puste akapity pozostają, chyba że wybierzesz ich scalanie.</p>
     <p><strong>Przed odkurzaniem zaakceptuj śledzone zmiany i usuń komentarze albo zaznacz przebudowę do nowego pliku.</strong></p>
-    {% if continuation_error %}<p class="form-error" role="alert">{{ continuation_error }}</p>{% endif %}
-    {% if rebuild_warning %}
-    <div class="form-warning" role="alert">{{ rebuild_warning_text }}</div>
-    {{ form.non_field_errors }}
-    <p>Dokument i wybrane opcje zostały zachowane. Możesz zaakceptować pominięcie wskazanych elementów przez 30 minut bez ponownego przesyłania pliku.</p>
-    <form method="post" data-rebuild-confirmation>
-        {% csrf_token %}<input type="hidden" name="rebuild_token" value="{{ rebuild_token }}">
-        <button type="submit" name="program_action" value="clean_confirm" class="primary-button">Akceptuję i kontynuuję</button>
-    </form>
-    <p><a href="{% url 'core:programs' %}">Wybierz inny plik lub inne opcje</a></p>
-    {% else %}
+    {% if program_error %}<p class="form-error" role="alert">{{ program_error }}</p>{% endif %}
     <form method="post" enctype="multipart/form-data">
         {% csrf_token %}
 
@@ -59,7 +49,6 @@
         </fieldset>
         <p>Reguły działają automatycznie – po pobraniu przejrzyj wynik, szczególnie zamiany słownikowe i wielkość liter.</p>
     </form>
-    {% endif %}
 </div></details>
 <details class="details-card odkurzacz program-tool" {% if conversion_open %}open{% endif %}>
     <summary><span>Konwerter DOCX → PDF i EPUB</span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
@@ -114,4 +103,4 @@
     </div>
 </details>
 {% endblock %}
-{% block scripts %}<script src="{% static 'core/odkurzacz.js' %}"></script><script src="{% static 'core/program-jobs.js' %}"></script>{% endblock %}
+{% block scripts %}<script src="{% static 'core/odkurzacz.js' %}" defer></script><script src="{% static 'core/program-jobs.js' %}" defer></script>{% endblock %}

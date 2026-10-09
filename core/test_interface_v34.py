@@ -73,4 +73,4 @@ class DetailInterfaceTests(TestCase):
         self.assertEqual(len(doc.xpath('//*[@id="illustrator-source"][@hidden]//input[@checked]')), 2)
         self.assertTrue(doc.xpath('//*[@id="illustrator-search-results"][@hidden]'))
         self.assertFalse(doc.xpath('//select[@name="illustrators"]'))
-        self.assertContains(response, 'illustrator_search.js?v=34')
+        self.assertContains(response, 'illustrator_search.js')

@@ -1,4 +1,4 @@
-from core.services.review_import_parser import parse_review_records, encode_submission
+from core.services.review_import_parser import encode_submission
 from core.services.reviews import import_reviews
 from core.forms import ReviewBulkImportForm
 from core.supervision import text_credit_groups
@@ -27,15 +27,38 @@ class TextCreditTests(TestCase):
         self.assertEqual(groups['Ilustracja'],[])
 
     def test_old_and_new_formats_save_correct_warning_and_consents(self):
-        book=Anthology.objects.create(title='Nabór');user=get_user_model().objects.create_superuser('admin','admin@example.com','password')
-        records='Ala Autor;Stary;fantasy;37930;ala@example.com;123456789;Nabór;premierach, naborach\n'+encode_submission(['Ewa Autor','Nowy','fantasy','PRZEMOC','1234','ewa@example.com','','naborach',''])
-        form=ReviewBulkImportForm({'anthology':book.pk,'records':records},user=user)
-        self.assertTrue(form.is_valid(),form.errors);import_reviews(user=user,form=form)
-        self.assertEqual(Review.objects.get(title='Stary').content_warnings,'')
-        self.assertEqual(Review.objects.get(title='Stary').length,37930)
-        self.assertEqual(Review.objects.get(title='Nowy').content_warnings,'przemoc')
+        book = Anthology.objects.create(title="Nabór")
+        user = get_user_model().objects.create_superuser("admin", "admin@example.com", "password")
+        records = (
+            "Ala Autor;Stary;fantasy;37930;ala@example.com;123456789;Nabór;premierach, naborach\n"
+            + encode_submission(
+                [
+                    "Ewa Autor",
+                    "Nowy",
+                    "fantasy",
+                    "PRZEMOC",
+                    "1234",
+                    "ewa@example.com",
+                    "",
+                    "naborach",
+                    "",
+                ]
+            )
+        )
+        form = ReviewBulkImportForm({"anthology": book.pk, "records": records}, user=user)
+        self.assertTrue(form.is_valid(), form.errors)
+        import_reviews(user=user, form=form)
+        self.assertEqual(Review.objects.get(title="Stary").content_warnings, "")
+        self.assertEqual(Review.objects.get(title="Stary").length, 37930)
+        self.assertEqual(Review.objects.get(title="Nowy").content_warnings, "przemoc")
         self.client.force_login(user)
-        response=self.client.post(reverse('core:review_bulk_submit'),{'anthology':book.pk,'records':'Jan Inny;Trzeci;fantasy;99;j@example.com;;Nabór;premierach'})
-        self.assertContains(response,'intake-stack',status_code=response.status_code)
-        self.assertNotContains(response,'intake-columns',status_code=response.status_code)
-        self.assertNotContains(response,'Ostrzeżenia: –',status_code=response.status_code)
+        response = self.client.post(
+            reverse("core:review_bulk_submit"),
+            {
+                "anthology": book.pk,
+                "records": "Jan Inny;Trzeci;fantasy;99;j@example.com;;Nabór;premierach",
+            },
+        )
+        self.assertContains(response, "intake-stack", status_code=response.status_code)
+        self.assertNotContains(response, "intake-columns", status_code=response.status_code)
+        self.assertNotContains(response, "Ostrzeżenia: –", status_code=response.status_code)

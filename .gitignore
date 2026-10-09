@@ -35,9 +35,9 @@ Thumbs.db
 # Local request activity queue (private runtime data)
 var/activity-spool/
 var/conversion/conversion.lock
-var/conversion/pending_uploads/
 
 # Lokalna mapa projektu
 /MAPA_PROJEKTU.md
 
 var/conversion/program_jobs/
+var/release-test-static/

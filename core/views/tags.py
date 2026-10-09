@@ -1,6 +1,6 @@
 """Accepted texts with their own tags and genre."""
 from core.translation_scope import ordinary
-from core.public_authors import public_name, name_matches
+from core.public_authors import public_name
 from django.contrib.auth.decorators import login_required
 from django.db import connections
 from django.db.models import F, Func, OuterRef, Prefetch, Q, Subquery, Value, Exists, TextField
@@ -10,7 +10,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 
 from authors.models import Author
-from texts.models import Anthology, Text
+from texts.models import Anthology
 from core.pagination import paginate_items
 from core.permissions import team_member_required
 from core.selectors.texts import _annotated_texts

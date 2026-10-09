@@ -2,9 +2,11 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 from core.normalization import AUTHOR_FIELDS, NormalizedModelMixin
+from core.edit_versions import VersionedQuerySet
 
 
 class Author(NormalizedModelMixin, models.Model):
+    objects = VersionedQuerySet.as_manager()
     normalization_fields = {**AUTHOR_FIELDS, "email": lambda value: None if value is None else AUTHOR_FIELDS["email"](value)}
     first_name = models.CharField(
         "imię",
@@ -77,6 +79,7 @@ class BlacklistedAuthor(Author):
 
 
 class AuthorNote(models.Model):
+    objects = VersionedQuerySet.as_manager()
     author = models.ForeignKey(
         Author,
         on_delete=models.CASCADE,
@@ -135,6 +138,7 @@ class AuthorNote(models.Model):
 
 
 class BlacklistEntry(models.Model):
+    objects = VersionedQuerySet.as_manager()
     name = models.CharField("imię i nazwisko / opis", max_length=255, blank=True)
     email = models.EmailField("adres e-mail", unique=True,
         help_text="Dopasowanie zgłoszeń po e-mailu, bez rozróżniania wielkości liter. Nie tworzy profilu autora.")

@@ -13,8 +13,8 @@
     max-width: 100%;
     padding: 4px 8px;
     border: 1px solid transparent;
-    border-radius: 5px;
-    font-size: 0.75rem;
+    border-radius: var(--radius-badge);
+    font-size: var(--font-size-xs);
     font-weight: 650;
     line-height: 1.35;
 }
@@ -51,7 +51,7 @@
     display: block;
     margin-bottom: 6px;
     color: var(--muted);
-    font-size: 0.75rem;
+    font-size: var(--font-size-xs);
 }
 
 .text-team-member.is-unassigned {
@@ -70,7 +70,7 @@
 .card-body .table-container { max-width: 100%; }
 .mailbox-import-card td { overflow-wrap: anywhere; }
 .card-body .form-field, .card-body > form.intake-form > p, .intake-form > p { margin: 0 0 18px; }
-.form-help, .helptext, .filter-field > small { display: block; color: var(--muted); font-size: .875rem; line-height: 1.6; font-weight: 400; margin: 6px 0 12px; }
+.form-help, .helptext, .filter-field > small { display: block; color: var(--muted); font-size: var(--font-size-md); line-height: 1.6; font-weight: 400; margin: 6px 0 12px; }
 .form-warning { padding: 12px 16px; border: 1px solid var(--warning); border-radius: var(--radius-small); color: var(--warning); background: var(--warning-light); }
 .filters-form .filter-field { min-width: 0; }
 .activity-filters { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr) auto; grid-template-rows: auto auto auto; gap: 8px 16px; align-items: start; }
@@ -80,7 +80,7 @@
 .activity-filters > button { grid-column: 3; grid-row: 2; align-self: start; min-height: 42px; margin: 0; }
 .intake-panel-body { padding: var(--card-padding); }
 details:is(.intake-panel,.program-tool,.work-handoff-card,.text-team,.archived-stages,.review-summary-details,.text-management-card) > summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -3px; }
-@media(max-width:760px) {
+@media screen and (max-width: 760px) {
  .activity-filters { grid-template-columns: minmax(0,1fr); grid-template-rows: auto; }
  .activity-filters .filter-field { grid-row: auto; grid-template-rows: auto auto auto; }
  .activity-filters > button { grid-column: 1; grid-row: auto; }
@@ -112,7 +112,7 @@ details:is(.intake-panel,.program-tool,.work-handoff-card,.text-team,.archived-s
 .notes-editor-grid > .notes-editor-panel h3 { margin: 0 0 14px; min-height: 2.5em; }
 .notes-editor-grid > .notes-editor-panel label { display: block; min-height: 2.5em; }
 .notes-editor-grid textarea { min-height: 160px; }
-section:has(#active-stages-heading), section:has(#reserved-assignments-heading) { border: 1px solid var(--border-strong); box-shadow: 0 2px 6px #00000012; }
+section:has(#active-stages-heading), section:has(#reserved-assignments-heading) { border: 1px solid var(--border-strong); box-shadow: var(--shadow-soft); }
 .notification-queue { border-left: 4px solid var(--warning); padding: var(--card-padding); margin-bottom: 20px; }
 .copy-selected { outline: 2px solid var(--primary); outline-offset: -2px; background: var(--primary-light) !important; }
 .searchable-select-input { margin-bottom: 7px; }
@@ -131,14 +131,14 @@ section:has(#active-stages-heading), section:has(#reserved-assignments-heading) 
 }
 :is(.intake-panel,.program-tool,.work-handoff-card,.text-team,.archived-stages,.review-summary-details,.text-management-card) > summary {
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    cursor: pointer; list-style: none; padding: var(--card-padding); font-size: 1rem; font-weight: 650;
+    cursor: pointer; list-style: none; padding: var(--card-padding); font-size: var(--font-size-lg); font-weight: 650;
 }
 :is(.intake-panel,.program-tool,.work-handoff-card,.text-team,.archived-stages,.review-summary-details,.text-management-card) > summary::-webkit-details-marker { display: none; }
 :is(.intake-panel,.program-tool,.work-handoff-card,.text-team,.archived-stages,.review-summary-details,.text-management-card)[open] > summary { border-bottom: 1px solid var(--border); }
 .mobile-table-sort { display: none; }
-/* Help remains white in the dark theme, with hierarchy supplied by size and spacing. */
+/* Supporting copy uses the muted token in every theme. */
 .page-description, .source-review-information, .other-reviews-description {
-    color: var(--muted); font-size: .875rem; line-height: 1.6; font-weight: 400;
+    color: var(--muted); font-size: var(--font-size-md); line-height: 1.6; font-weight: 400;
 }
 
 @media screen and (max-width: 760px) {
@@ -149,7 +149,7 @@ section:has(#active-stages-heading), section:has(#reserved-assignments-heading) 
     .people-filters-form { grid-template-columns: minmax(0,1fr); }
 }
 
-@media screen and (max-width: 400px) {
+@media screen and (max-width: 480px) {
     .mobile-table-sort { grid-template-columns: minmax(0,1fr); }
 }
 /* Last-loaded print rules override both themes and scrolling/card layouts. */
@@ -174,7 +174,7 @@ section:has(#active-stages-heading), section:has(#reserved-assignments-heading) 
     .mobile-review-cards td { display: table-cell; }
     .mobile-review-cards td::before { content: none; }
     .mobile-table-sort, .table-footer-tools { display: none; }
-    :root[data-theme] :is(p,label,input,textarea,select,.detail-link,.text-title-link), :root[data-theme] thead th { color: #000; }
+    :where(:root[data-theme]) :where(p,label,input,textarea,select,.detail-link,.text-title-link), :root[data-theme] thead th { color: #000; }
 }
 
 /* Field wrappers produced by Django use the same spacing as explicit fields. */
@@ -191,12 +191,12 @@ section:has(#active-stages-heading), section:has(#reserved-assignments-heading) 
 .author-suggestions button { text-align: left; white-space: normal; overflow-wrap: anywhere; background: var(--surface); color: var(--text); border: 0; border-bottom: 1px solid var(--border); padding: 10px 12px; min-height: 44px; cursor: pointer; }
 .author-suggestions button:last-child { border-bottom: 0; }
 .author-suggestions button:hover, .author-suggestions button[aria-selected="true"] { background: var(--primary-light); }
-.lookup-status { display: block; margin-top: 6px; font-size: .875rem; }
+.lookup-status { display: block; margin-top: 6px; font-size: var(--font-size-md); }
 .lookup-status:empty { display: none; }
 .author-manual-button { margin: 0 0 10px; }
 #login-quote { margin: 24px 0 0; text-align: center; color: var(--muted); }
 #login-quote [data-quote-text] { margin: 0; font-style: italic; white-space: pre-line; }
-#login-quote footer { margin-top: 8px; font-size: .8125rem; }
+#login-quote footer { margin-top: 8px; font-size: var(--font-size-sm); }
 #login-quote [data-quote-source] { color: inherit; }
 #login-quote [data-quote-translator] { display: block; }
 
@@ -254,3 +254,72 @@ section:has(#active-stages-heading), section:has(#reserved-assignments-heading) 
 .work-information .notes-editor-grid .notes-editor-panel h3 { min-height: 2.6em; margin-bottom: .75rem; }
 .work-information .notes-editor-grid .notes-editor-panel label { min-height: 0; }
 .work-information .notes-editor-grid textarea { min-height: 6rem; height: 6rem; }
+
+/* Odznaki ról, etapów i opinii recenzentów (kolory: themes.css). */
+.role-badge[data-palette], .workflow-stage-badge[data-palette] { background: var(--palette-bg); color: var(--palette-fg); border-color: currentColor; }
+.workflow-stage-row[data-palette] > td:first-child { border-left: 3px solid var(--palette-fg); }
+.notification-urgent { border-left-color: var(--danger); background: var(--danger-light); }
+.notification-alert { color: var(--danger); font-weight: 750; text-decoration: underline; }
+.reviewer-bubble { background:var(--reviewer-bg); color:var(--reviewer-fg); border-color:var(--reviewer-fg); }
+.reviewer-bubble.reviewer-opinion-yes, .reviewer-bubble.reviewer-opinion-yes_maybe { background:var(--success-light); color:var(--success); border-color:var(--success); }
+.reviewer-bubble.reviewer-opinion-maybe { background:var(--warning-light); color:var(--warning); border-color:var(--warning); }
+.reviewer-bubble.reviewer-opinion-no, .reviewer-bubble.reviewer-opinion-maybe_no { background:var(--danger-light); color:var(--danger-dark); border-color:var(--danger); }
+
+/* Folder Dropbox przy tekście, recenzji i osobie. */
+.dropbox-folder-card { padding: var(--card-padding); min-width: 0; }
+.dropbox-folder-card > h2 { margin: 0 0 18px; }
+.file-link-form { display: grid; gap: 18px; }
+.file-link-form > p { margin: 0; }
+.dropbox-folder-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 0; }
+.dropbox-folder-actions button { margin: 0; }
+.review-folder-layout { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 20px; }
+.review-folder-layout > .details-card { margin: 0; min-width: 0; }
+@media screen and (max-width: 760px) { .review-folder-layout { grid-template-columns: minmax(0, 1fr); } }
+
+/* Nagłówek: kopiowanie adresów e-mail (superuser) i przyciski motywu w stopce. */
+.email-copy { position: relative; }
+.email-copy > button { background: transparent; }
+.email-copy-panel {
+    position: absolute; right: 0; top: calc(100% + .6rem); z-index: 60;
+    width: min(25rem, calc(100vw - 2rem)); padding: 1rem;
+    border: 1px solid var(--border-strong); border-radius: var(--radius-large);
+    background: var(--surface); color: var(--text); box-shadow: var(--shadow-panel);
+}
+.email-copy-panel p { color: var(--muted); margin: .65rem 0; font-size: var(--font-size-md); }
+.email-copy-panel label { color: var(--text); }
+.email-copy-panel select, .email-copy-panel textarea { width: 100%; margin: .4rem 0; }
+.theme-buttons { display: flex; align-items: center; gap: .75rem; margin-inline: .75rem; }
+.theme-buttons > button { margin: 0; }
+[data-theme-autumn][aria-pressed="true"] { background: var(--primary-light); border-color: var(--primary); color: var(--primary-dark); }
+@media screen and (max-width: 760px) {
+    .email-copy-panel, .header-search-panel { position: fixed; top: calc(var(--header-height) + .5rem); right: 1rem; max-height: calc(100dvh - var(--header-height) - 2rem); overflow: auto; }
+}
+@media screen and (max-width: 480px) {
+    .site-header .navigation, .header-actions { gap: 6px; }
+    .site-header .brand-mark { display: none; }
+    .theme-buttons { margin-inline: 0; gap: .5rem; }
+    .theme-buttons > button { padding-inline: .6rem; white-space: normal; }
+}
+
+/* Wiersz akcji pod kartą (zgłoszenia, ilustracje, rekrutacja). */
+.recruitment-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; }
+
+/* Tabela osadzona w karcie profilu, razem z paginacją dodawaną przez JavaScript. */
+.profile-table-inset { min-width: 0; padding: 0 var(--card-padding) 1rem; }
+.profile-table-inset > .table-container { width: 100%; max-width: 100%; margin-inline: 0; }
+.profile-table-inset > .cms-pagination { margin-inline: 0; }
+@media screen and (max-width: 760px) { .profile-table-inset { padding-inline: 1rem; } }
+.work-information .general-notes-form button[type="submit"] { min-width: 7rem; min-height: 2.5rem; justify-self: start; padding: .6rem 1rem; }
+
+/* Przejęcie i rozpoczęcie etapu: przycisk na wysokości pola daty. */
+.take-stage-form, .start-stage-form { display: flex; flex-wrap: nowrap; align-items: flex-end; gap: 1rem; margin: 0; }
+.take-stage-form > button, .start-stage-form > button { flex: 0 0 auto; }
+.take-stage-form .form-field, .start-stage-form .form-field { margin: 0; }
+.take-stage-form > button, .start-stage-form > button,
+.take-stage-form .stage-date-input, .start-stage-form .stage-date-input { min-height: 42px; margin-bottom: 0; }
+.take-stage-form .reservation-label { margin: 0; align-self: center; }
+.stage-action-cell:has(.take-stage-form) { vertical-align: middle; }
+.quick-stage-card > .take-stage-form { margin-top: .85rem; }
+.quick-stage-action:has(.start-stage-form) { align-items: flex-start; gap: 1.25rem; }
+.quick-stage-action .start-stage-form { margin-top: .4rem; }
+@media screen and (max-width: 480px) { .quick-stage-card :is(.take-stage-form, .start-stage-form) { flex-wrap: wrap; } }

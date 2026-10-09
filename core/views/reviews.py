@@ -50,6 +50,7 @@ from core.services.reviews import (
     unassign_reviewer as unassign_reviewer_service,
 )
 from texts.models import Review, ReviewAssignment, Reviewers
+from core.edit_policy import edit_policy
 
 
 CLOSED_REVIEW_STATUSES = frozenset(
@@ -118,6 +119,14 @@ def _require_review_contributor(review, user):
             "Ostrzeżenia dotyczące treści może zmieniać "
             "przypisany recenzent lub koordynator."
         )
+
+
+def _assigned_reviewer_policy(request, review, kwargs):
+    _require_assigned_reviewer(review, request.user)
+
+
+def _review_contributor_policy(request, review, kwargs):
+    _require_review_contributor(review, request.user)
 
 
 def _selected_review_ids(data):
@@ -534,6 +543,7 @@ def unassign_reviewer(request, review_id):
     return _detail_redirect(review.pk)
 
 
+@edit_policy(_assigned_reviewer_policy, require_version=True)
 @never_cache
 @login_required
 @require_http_methods(["GET", "POST"])
@@ -583,6 +593,7 @@ def assigned_review_detail(request, review_id):
     )
 
 
+@edit_policy(_review_contributor_policy, require_version=True)
 @never_cache
 @login_required
 @require_POST
@@ -627,6 +638,7 @@ def update_review_content_warnings(request, review_id):
     )
 
 
+@edit_policy(require_version=True)
 @never_cache
 @login_required
 @require_POST
@@ -658,6 +670,7 @@ def update_author_notification(request, review_id):
     )
 
 
+@edit_policy(require_version=True)
 @never_cache
 @login_required
 @require_POST
@@ -822,6 +835,7 @@ def my_reviews(request):
     return render(request, "core/my_reviews.html", {"opinion_choices": opinion_choices, "selected_opinions": selected_opinions, "assignments": page, "page_obj": page, "mobile_sort_columns": [(label, page.sort_columns[label]) for label in ("Antologia", "Tytuł", "Status zgłoszenia", "Moja recenzja", "Data przydziału", "Ostatnia zmiana recenzji") if label in page.sort_columns], "selected_view": view, "query": query, "anthologies": anthologies, "selected_anthology_id": str(anthology_id or ""), "can_view_authors": False})
 
 
+@edit_policy(require_version=True)
 @never_cache
 @login_required
 @require_POST

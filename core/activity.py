@@ -17,7 +17,7 @@ LABELS = {
     'global_search': 'Wyszukiwanie', 'author_suggestions': 'Podpowiedzi autorów',
     'my_vacations': 'Moje urlopy', 'edit_vacation': 'Edycja urlopu', 'cancel_vacation': 'Odwołanie urlopu',
     'anthology_corrections': 'Uwagi do antologii', 'correction_edit': 'Edycja uwagi', 'correction_delete': 'Usunięcie uwagi',
-    'review_create': 'Dodanie zgłoszenia', 'review_bulk_import': 'Podgląd nagłówków poczty', 'review_bulk_submit': 'Import zbiorczy zgłoszeń',
+    'review_create': 'Dodanie zgłoszenia', 'review_bulk_submit': 'Import zbiorczy zgłoszeń',
     'user_activity': 'Aktywność użytkowników', 'login': 'Logowanie', 'logout': 'Wylogowanie',
 }
 

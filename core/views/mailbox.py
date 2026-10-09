@@ -18,7 +18,7 @@ from core.services.mailbox import read_headers, MailboxError
 from core.services.mailbox_import import (
     default_mailbox, mailbox_key, receipts, fetch_messages, prepare_forms, package_messages, describe_import_error, filter_valid_messages, MAX_MESSAGES,
 )
-from core.services.document_converter import ConversionError, RebuildConfirmationRequired, REBUILD_WARNING
+from core.services.document_converter import ConversionError, RebuildConfirmationRequired
 from core.services.reviews import import_reviews
 
 HEADERS_SESSION_KEY = 'mailbox_headers_snapshot'

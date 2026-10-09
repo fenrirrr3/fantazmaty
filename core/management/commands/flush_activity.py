@@ -29,6 +29,9 @@ def validated_record(path):
     return data, stamp, key
 
 
+BATCH_SIZE = 500
+
+
 class Command(BaseCommand):
     help = 'Przenosi lokalny dziennik do bazy; wadliwe wpisy izoluje bez blokowania kolejki.'
 
@@ -38,40 +41,78 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         if options['limit'] < 1:
             raise CommandError('Limit musi być dodatni.')
-        count = quarantined = failed = 0
+        self.count = self.quarantined = self.failed = 0
         directory = spool_directory()
-        for path in sorted(directory.glob('*.json'))[:options['limit']]:
+        if not directory.is_dir():
+            self.stdout.write('Przeniesiono wpisów: 0. Odłożono uszkodzonych: 0. Do ponowienia: 0.')
+            return
+        # Oldest names first is irrelevant (keys are random); created_at is stored in each entry.
+        paths = []
+        with os.scandir(directory) as entries:
+            for entry in entries:
+                if entry.is_file() and entry.name.endswith('.json') and not entry.name.startswith('.'):
+                    paths.append(directory / entry.name)
+                    if len(paths) >= options['limit']:
+                        break
+        for start in range(0, len(paths), BATCH_SIZE):
+            self.flush_batch(directory, paths[start:start + BATCH_SIZE])
+        self.stdout.write(f'Przeniesiono wpisów: {self.count}. Odłożono uszkodzonych: {self.quarantined}. Do ponowienia: {self.failed}.')
+        if self.failed:
+            raise CommandError('Nie wszystkie poprawne wpisy udało się przenieść. Ponów synchronizację.')
+
+    def quarantine(self, directory, path):
+        quarantine = directory / 'quarantine'
+        quarantine.mkdir(mode=0o700, exist_ok=True)
+        try:
+            os.replace(path, quarantine / path.name)
+        except FileNotFoundError:
+            return
+        self.quarantined += 1
+        self.stderr.write('Odłożono uszkodzony wpis: ' + path.name)
+
+    def flush_batch(self, directory, paths):
+        records = []
+        for path in paths:
             try:
-                data, stamp, key = validated_record(path)
+                records.append((path, *validated_record(path)))
             except FileNotFoundError:
                 continue
             except (ValueError, TypeError, KeyError, UnicodeError):
-                quarantine = directory / 'quarantine'
-                quarantine.mkdir(mode=0o700, exist_ok=True)
-                try:
-                    os.replace(path, quarantine / path.name)
-                except FileNotFoundError:
-                    continue
-                quarantined += 1
-                self.stderr.write('Odłożono uszkodzony wpis: ' + path.name)
-                continue
+                self.quarantine(directory, path)
             except OSError:
-                failed += 1
+                self.failed += 1
                 self.stderr.write('Nie można odczytać wpisu: ' + path.name)
-                continue
-            try:
-                if not get_user_model().objects.filter(pk=data['user_id']).exists():
-                    data['user_id'] = None
-                with transaction.atomic():
-                    entry, created = UserActivity.objects.get_or_create(source_key=key, defaults=data)
-                    if created:
-                        UserActivity.objects.filter(pk=entry.pk).update(created_at=stamp)
-                path.unlink(missing_ok=True)
-                count += 1
-            except Exception:
-                # Transient database errors must not quarantine valid records.
-                failed += 1
-                self.stderr.write('Nie przeniesiono wpisu; pozostaje w kolejce: ' + path.name)
-        self.stdout.write(f'Przeniesiono wpisów: {count}. Odłożono uszkodzonych: {quarantined}. Do ponowienia: {failed}.')
-        if failed:
-            raise CommandError('Nie wszystkie poprawne wpisy udało się przenieść. Ponów synchronizację.')
+        if not records:
+            return
+        try:
+            self.write_batch(records)
+        except Exception:
+            # Transient database errors must not quarantine valid records;
+            # retry one by one so a single conflicting entry cannot block the rest.
+            for record in records:
+                try:
+                    self.write_batch([record])
+                except Exception:
+                    self.failed += 1
+                    self.stderr.write('Nie przeniesiono wpisu; pozostaje w kolejce: ' + record[0].name)
+
+    def write_batch(self, records):
+        user_ids = {data['user_id'] for _, data, _, _ in records if data['user_id'] is not None}
+        known_users = set(get_user_model().objects.filter(pk__in=user_ids).values_list('pk', flat=True))
+        with transaction.atomic():
+            keys = [key for _, _, _, key in records]
+            existing = set(UserActivity.objects.filter(source_key__in=keys).values_list('source_key', flat=True))
+            fresh = [(data, stamp, key) for _, data, stamp, key in records if key not in existing]
+            UserActivity.objects.bulk_create([
+                UserActivity(source_key=key, **{**data, 'user_id': data['user_id'] if data['user_id'] in known_users else None})
+                for data, stamp, key in fresh
+            ])
+            # created_at uses auto_now_add, so the original request time is restored afterwards.
+            stamps = {key: stamp for _, stamp, key in fresh}
+            saved = list(UserActivity.objects.filter(source_key__in=stamps).only('pk', 'source_key', 'created_at'))
+            for entry in saved:
+                entry.created_at = stamps[entry.source_key]
+            UserActivity.objects.bulk_update(saved, ['created_at'])
+        for path, _, _, _ in records:
+            path.unlink(missing_ok=True)
+        self.count += len(records)

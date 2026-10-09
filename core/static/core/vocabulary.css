@@ -1,0 +1,7 @@
+/* Słownik tagów i gatunków. */
+.vocabulary-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; align-items: start; margin-bottom: 1.25rem; }
+.vocabulary-column { min-width: 0; }
+.vocabulary-search { display: grid; gap: .75rem; }
+.vocabulary-search input[type="search"] { width: 100%; }
+.vocabulary-add { border-top: 1px solid var(--border); }
+@media screen and (max-width: 1100px) { .vocabulary-columns { grid-template-columns: minmax(0, 1fr); } }

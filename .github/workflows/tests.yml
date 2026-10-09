@@ -19,6 +19,25 @@ jobs:
       - run: python manage.py check && python manage.py makemigrations --check --dry-run && python manage.py test
         env:
           DJANGO_SETTINGS_MODULE: fantazmaty.test_settings
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install ruff
+      - run: ruff check .
+  dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install pip-audit
+      # pl_core_news_sm pochodzi z GitHuba i nie ma go w bazie PyPI.
+      - run: grep -v '^pl_core_news_sm' requirements.txt > /tmp/audit-requirements.txt && pip-audit --strict -r /tmp/audit-requirements.txt
   mysql:
     runs-on: ubuntu-latest
     services:

@@ -11,6 +11,7 @@ from core.permissions import team_member_required
 from core.selectors.texts import text_list_context
 from texts.models import Text
 from texts.production import active_production_texts
+from core.edit_policy import edit_policy
 
 
 class AudiobookForm(forms.ModelForm):
@@ -50,6 +51,7 @@ def audiobook_list(request):
     return render(request, 'core/audiobooks.html', context)
 
 
+@edit_policy(require_version=True)
 @never_cache
 @login_required
 @require_POST

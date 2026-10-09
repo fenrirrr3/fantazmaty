@@ -10,19 +10,16 @@
     <meta name="theme-color" content="#172434">
 
     <title>{% block title %}Fantazmaty CMS{% endblock %}</title>
+    <link rel="icon" type="image/png" href="{% static 'core/favicon.png' %}">
 
-    <link rel="stylesheet" href="{% static 'core/styles.css' %}?v=36">
-    <script src="{% static 'core/theme.js' %}?v=43"></script>
-    <link rel="stylesheet" href="{% static 'core/themes.css' %}?v=43">
-
-    <link rel="stylesheet" href="{% static 'core/workspace.css' %}?v=57">
-    <link rel="stylesheet" href="{% static 'core/components.css' %}?v=56">
-    <link rel="stylesheet" href="{% static 'core/dropbox-folder-chooser.css' %}">
-    <link rel="stylesheet" href="{% static 'core/pagination.css' %}?v=40">
-    <link rel="stylesheet" href="{% static 'core/novels.css' %}?v=38">
-    <link rel="stylesheet" href="{% static 'core/illustration-status.css' %}?v=36">
-    <link rel="stylesheet" href="{% static 'core/recruitment-email.css' %}?v=49">
-    <link rel="stylesheet" href="{% static 'core/layout-refinements.css' %}?v=58">
+    <script src="{% static 'core/theme.js' %}"></script>
+    <!-- Kolejność: tokeny i motywy, podstawa, układ, komponenty, a na końcu arkusze stron. -->
+    <link rel="stylesheet" href="{% static 'core/themes.css' %}">
+    <link rel="stylesheet" href="{% static 'core/styles.css' %}">
+    <link rel="stylesheet" href="{% static 'core/workspace.css' %}">
+    <link rel="stylesheet" href="{% static 'core/components.css' %}">
+    <link rel="stylesheet" href="{% static 'core/pagination.css' %}">
+    <link rel="stylesheet" href="{% static 'core/illustration-status.css' %}">
     {% block extra_css %}{% endblock %}
 
 </head>
@@ -107,16 +104,16 @@
             <span>{% now "Y" %}</span>
         </div>
     </footer>
-    <script src="{% static 'core/author-search.js' %}?v=23"></script>
-    <script src="{% static 'core/ui.js' %}?v=58"></script>
+    <script src="{% static 'core/author-search.js' %}" defer></script>
+    <script src="{% static 'core/ui.js' %}" defer></script>
 
     <script src="{% static 'core/layout.js' %}" defer></script>
-    <script src="{% static 'core/header-search.js' %}?v=1" defer></script>
-    <script src="{% static 'core/pagination-controls.js' %}?v=39"></script>
-    <script src="{% static 'core/pagination.js' %}?v=39"></script>
-    {% if user.is_authenticated %}<span hidden data-vocabulary-endpoint="{% url 'core:vocabulary_suggestions' %}"></span><script src="{% static 'core/vocabulary.js' %}?v=29" defer></script>{% endif %}
-    <script src="{% static 'core/table-selection.js' %}?v=45"></script>
-    {% if user.is_superuser %}<script src="{% static 'core/email-copy.js' %}?v=43" defer></script>{% endif %}
+    <script src="{% static 'core/header-search.js' %}" defer></script>
+    <script src="{% static 'core/pagination-controls.js' %}" defer></script>
+    <script src="{% static 'core/pagination.js' %}" defer></script>
+    {% if user.is_authenticated %}<span hidden data-vocabulary-endpoint="{% url 'core:vocabulary_suggestions' %}"></span><script src="{% static 'core/vocabulary.js' %}" defer></script>{% endif %}
+    <script src="{% static 'core/table-selection.js' %}" defer></script>
+    {% if user.is_superuser %}<script src="{% static 'core/email-copy.js' %}" defer></script>{% endif %}
     {% block scripts %}{% endblock %}
 </body>
 </html>

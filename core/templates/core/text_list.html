@@ -1,4 +1,4 @@
-{% extends "core/base.html" %}
+{% extends "core/base.html" %}{% load workspace_tags %}
 
 {% block title %}{% if translations_page %}Tłumaczenia{% else %}Teksty{% endif %} | Fantazmaty CMS{% endblock %}
 
@@ -48,7 +48,7 @@
                     {% for text in texts %}
                         <tr
                             class="workflow-stage-row"
-                            data-stage="{{ text.current_stage_type|default:'none' }}"
+                            data-stage="{{ text.current_stage_type|default:'none' }}"{{ text.current_stage_type|stage_palette_attr }}
                         >
 
                             <td>

@@ -613,14 +613,23 @@ def claim_stage(text, stage_type, user, started_at=None, *, stage_id=None):
         return claim_repeat(text, stage, user, transition_date)
     from workflow.availability import claim_reason
     reason = claim_reason(stage,user,list(current_stage_queryset(text)),list(current_assignment_queryset(text)))
-    if reason: raise ValidationError(reason)
+    if reason:
+        raise ValidationError(reason)
     is_cycle_entry = cycle_entry_stage_is(text, stage_type)
-    reservation_only = stage_type == StageType.FIRST_VERIFICATION and current_stage_queryset(text).filter(
-        stage_type__in=(StageType.EDITING, StageType.AUTHOR_EDITING),
-        is_completed=False, ended_at__isnull=True,
-    ).exists()
+    reservation_only = (
+        stage_type == StageType.FIRST_VERIFICATION
+        and current_stage_queryset(text)
+        .filter(
+            stage_type__in=(StageType.EDITING, StageType.AUTHOR_EDITING),
+            is_completed=False,
+            ended_at__isnull=True,
+        )
+        .exists()
+    )
     if reservation_only and started_at is not None:
-        raise ValidationError('Rezerwacja pierwszej weryfikacji nie ustala daty. Datę podaje się przy rozpoczęciu pracy.')
+        raise ValidationError(
+            "Rezerwacja pierwszej weryfikacji nie ustala daty. Datę podaje się przy rozpoczęciu pracy."
+        )
 
     _assign_role(text, role, user)
 
@@ -648,22 +657,31 @@ def send_to_first_verification(text, user, ended_at=None):
 
     transition_date = _transition_date(ended_at)
 
-    verification_stage = current_stage_queryset(text).filter(
-        stage_type=StageType.FIRST_VERIFICATION,
-        is_completed=False,
-        started_at__isnull=True,
-        ended_at__isnull=True,
-    ).first()
+    verification_stage = (
+        current_stage_queryset(text)
+        .filter(
+            stage_type=StageType.FIRST_VERIFICATION,
+            is_completed=False,
+            started_at__isnull=True,
+            ended_at__isnull=True,
+        )
+        .first()
+    )
     editing_stage = get_active_stage(text, StageType.EDITING)
 
     if editing_stage is None:
         raise ValidationError("Nie ma aktywnej redakcji do przekazania.")
     if completed_stage_exists(text, StageType.FIRST_VERIFICATION):
         raise ValidationError("Pierwsza weryfikacja jest już zakończona.")
-    if current_stage_queryset(text).filter(
-        stage_type=StageType.FIRST_VERIFICATION, is_completed=False,
-        started_at__isnull=False,
-    ).exists():
+    if (
+        current_stage_queryset(text)
+        .filter(
+            stage_type=StageType.FIRST_VERIFICATION,
+            is_completed=False,
+            started_at__isnull=False,
+        )
+        .exists()
+    ):
         raise ValidationError("Pierwsza weryfikacja została już rozpoczęta.")
     if verification_stage is None:
         verification_stage = _create_pending_stage(text, StageType.FIRST_VERIFICATION)
@@ -671,60 +689,64 @@ def send_to_first_verification(text, user, ended_at=None):
     _finish_stage_record(editing_stage, transition_date)
     # A reservation may predate the actual editorial handoff by weeks.
     verification_stage.queued_at = transition_date
-    verification_stage.save(update_fields=['queued_at'])
+    verification_stage.save(update_fields=["queued_at"])
     return verification_stage
 
 
 @_locked_text_operation
 def start_first_verification(text, user, started_at=None):
     from people.leave_access import require_available
+
     require_available(user)
     _ensure_actor(user)
     ensure_text_is_not_withdrawn(text)
     _ensure_editing_phase(text)
     ensure_verification_not_completed(text, StageType.FIRST_VERIFICATION)
 
-    transition_date = validate_assignment_start_date(
-        _transition_date(started_at)
+    transition_date = validate_assignment_start_date(_transition_date(started_at))
+    assignment = (
+        current_assignment_queryset(text)
+        .filter(
+            role=Role.VERIFIER_1,
+            assigned_to__isnull=False,
+        )
+        .first()
     )
-    assignment = current_assignment_queryset(text).filter(
-        role=Role.VERIFIER_1,
-        assigned_to__isnull=False,
-    ).first()
 
     if assignment is None:
-        raise ValidationError(
-            "Do pierwszej weryfikacji nie przypisano osoby."
-        )
+        raise ValidationError("Do pierwszej weryfikacji nie przypisano osoby.")
 
     require_available(assignment.assigned_to)
 
     if assignment.assigned_to_id != user.pk and not is_coordinator(user):
         raise PermissionDenied(
-            "Pierwszą weryfikację może rozpocząć przypisany "
-            "weryfikator lub koordynator."
+            "Pierwszą weryfikację może rozpocząć przypisany weryfikator lub koordynator."
         )
 
-    if current_stage_queryset(text).filter(
-        stage_type__in=(StageType.EDITING, StageType.AUTHOR_EDITING),
-        is_completed=False,
-        ended_at__isnull=True,
-    ).exists():
-        raise ValidationError(
-            "Tekst nadal znajduje się u redaktora lub autora."
+    if (
+        current_stage_queryset(text)
+        .filter(
+            stage_type__in=(StageType.EDITING, StageType.AUTHOR_EDITING),
+            is_completed=False,
+            ended_at__isnull=True,
         )
+        .exists()
+    ):
+        raise ValidationError("Tekst nadal znajduje się u redaktora lub autora.")
 
-    stage = current_stage_queryset(text).filter(
-        stage_type=StageType.FIRST_VERIFICATION,
-        is_completed=False,
-        started_at__isnull=True,
-        ended_at__isnull=True,
-    ).first()
+    stage = (
+        current_stage_queryset(text)
+        .filter(
+            stage_type=StageType.FIRST_VERIFICATION,
+            is_completed=False,
+            started_at__isnull=True,
+            ended_at__isnull=True,
+        )
+        .first()
+    )
 
     if stage is None:
-        raise ValidationError(
-            "Pierwsza weryfikacja nie oczekuje na rozpoczęcie."
-        )
+        raise ValidationError("Pierwsza weryfikacja nie oczekuje na rozpoczęcie.")
 
     return _start_stage(stage, transition_date)
 
@@ -732,9 +754,14 @@ def start_first_verification(text, user, started_at=None):
 @_locked_text_operation
 def resume_editing(text, user, started_at=None):
     from people.leave_access import require_available
+
     require_available(user)
     ensure_editor_access(text, user)
-    assigned_editor = current_assignment_queryset(text).filter(role=Role.EDITOR, assigned_to__isnull=False).first()
+    assigned_editor = (
+        current_assignment_queryset(text)
+        .filter(role=Role.EDITOR, assigned_to__isnull=False)
+        .first()
+    )
     if assigned_editor:
         require_available(assigned_editor.assigned_to)
     ensure_text_is_not_withdrawn(text)
@@ -748,15 +775,22 @@ def resume_editing(text, user, started_at=None):
     # Blokuje również przejętą lub oczekującą weryfikację po przekazaniu
     # tekstu. Nie można wznowić redakcji, omijając jej wykonanie.
     from workflow.state import operational_stages
-    if any(stage.stage_type in (StageType.FIRST_VERIFICATION, StageType.SECOND_VERIFICATION)
-           and not stage.is_completed for stage in operational_stages(current_stage_queryset(text))):
-        raise ValidationError(
-            "Najpierw należy zakończyć oczekującą lub aktywną weryfikację."
-        )
 
-    author_stage = current_stage_queryset(text).filter(
-        stage_type=StageType.AUTHOR_EDITING, is_completed=False,
-    ).first()
+    if any(
+        stage.stage_type in (StageType.FIRST_VERIFICATION, StageType.SECOND_VERIFICATION)
+        and not stage.is_completed
+        for stage in operational_stages(current_stage_queryset(text))
+    ):
+        raise ValidationError("Najpierw należy zakończyć oczekującą lub aktywną weryfikację.")
+
+    author_stage = (
+        current_stage_queryset(text)
+        .filter(
+            stage_type=StageType.AUTHOR_EDITING,
+            is_completed=False,
+        )
+        .first()
+    )
     if author_stage is not None and author_stage.started_at is None:
         raise ValidationError(
             "Etap pracy autora nie ma daty rozpoczęcia. Uzupełnij ją w panelu administratora przed wznowieniem redakcji."
@@ -791,19 +825,34 @@ def editing_follows_first_verification(text, editing_stage):
         editing_stage.text_id != text.pk
         or editing_stage.workflow_cycle != current_cycle(text)
         or editing_stage.stage_type != StageType.EDITING
-        or not editing_stage.is_current or not editing_stage.is_released
-        or editing_stage.is_completed or editing_stage.ended_at is not None
-        or not editing_stage.started_at or editing_stage.started_at > timezone.localdate()
+        or not editing_stage.is_current
+        or not editing_stage.is_released
+        or editing_stage.is_completed
+        or editing_stage.ended_at is not None
+        or not editing_stage.started_at
+        or editing_stage.started_at > timezone.localdate()
     ):
         return False
     from workflow.state import operational_stages
-    if any(stage.stage_type == StageType.FIRST_VERIFICATION and not stage.is_completed
-           for stage in operational_stages(current_stage_queryset(text))):
+
+    if any(
+        stage.stage_type == StageType.FIRST_VERIFICATION and not stage.is_completed
+        for stage in operational_stages(current_stage_queryset(text))
+    ):
         return False
-    first = WorkflowStage.objects.using(_database(text)).filter(
-        text_id=text.pk, workflow_cycle=current_cycle(text),
-        stage_type=StageType.FIRST_VERIFICATION, is_completed=True, is_skipped=False,
-    ).exclude(repetition__canceled_at__isnull=False).order_by('-pk').first()
+    first = (
+        WorkflowStage.objects.using(_database(text))
+        .filter(
+            text_id=text.pk,
+            workflow_cycle=current_cycle(text),
+            stage_type=StageType.FIRST_VERIFICATION,
+            is_completed=True,
+            is_skipped=False,
+        )
+        .exclude(repetition__canceled_at__isnull=False)
+        .order_by("-pk")
+        .first()
+    )
     if first is None:
         return False
     if first.imported_completed and first.ended_at is None:
@@ -826,8 +875,7 @@ def send_text_to_author(text, user, started_at=None):
 
     if not editing_checkpoint_passed(text, StageType.FIRST_VERIFICATION):
         raise ValidationError(
-            "Tekst można przekazać autorowi dopiero po "
-            "zakończeniu pierwszej weryfikacji."
+            "Tekst można przekazać autorowi dopiero po zakończeniu pierwszej weryfikacji."
         )
 
     editing_stage = get_active_stage(text, StageType.EDITING)
@@ -854,23 +902,21 @@ def send_to_second_verification(text, user, started_at=None):
     transition_date = _transition_date(started_at)
 
     if not editing_checkpoint_passed(text, StageType.FIRST_VERIFICATION):
-        raise ValidationError(
-            "Najpierw należy zakończyć pierwszą weryfikację."
-        )
+        raise ValidationError("Najpierw należy zakończyć pierwszą weryfikację.")
 
-    if current_stage_queryset(text).filter(
-        stage_type=StageType.SECOND_VERIFICATION,
-    ).exists():
-        raise ValidationError(
-            "Druga weryfikacja została już utworzona lub zakończona."
+    if (
+        current_stage_queryset(text)
+        .filter(
+            stage_type=StageType.SECOND_VERIFICATION,
         )
+        .exists()
+    ):
+        raise ValidationError("Druga weryfikacja została już utworzona lub zakończona.")
 
     editing_stage = get_active_stage(text, StageType.EDITING)
 
     if editing_stage is None:
-        raise ValidationError(
-            "Przed przekazaniem tekst musi znajdować się u redaktora."
-        )
+        raise ValidationError("Przed przekazaniem tekst musi znajdować się u redaktora.")
 
     if not editing_follows_first_verification(text, editing_stage):
         raise ValidationError(
@@ -892,8 +938,7 @@ def finish_editing_to_coordinator(text, user, ended_at=None):
 
     if not editing_checkpoint_passed(text, StageType.SECOND_VERIFICATION):
         raise ValidationError(
-            "Redakcję można zakończyć dopiero po zakończeniu "
-            "drugiej weryfikacji."
+            "Redakcję można zakończyć dopiero po zakończeniu drugiej weryfikacji."
         )
 
     editing_stage = get_active_stage(text, StageType.EDITING)
@@ -926,15 +971,22 @@ def user_can_complete_stage(stage, user):
     if role is None:
         return False
 
-    if stage.stage_type in (StageType.EDITING, StageType.AUTHOR_EDITING) and not stage.repetition_id:
+    if (
+        stage.stage_type in (StageType.EDITING, StageType.AUTHOR_EDITING)
+        and not stage.repetition_id
+    ):
         return False
 
     # Kontrolę wykonuje przypisany redaktor; superuser może ją zamknąć w adminie.
     if stage.stage_type == StageType.EDITOR_CONTROL and not user.is_superuser:
-        return current_assignment_queryset(stage.text).filter(
-            role=Role.EDITOR,
-            assigned_to_id=user.pk,
-        ).exists()
+        return (
+            current_assignment_queryset(stage.text)
+            .filter(
+                role=Role.EDITOR,
+                assigned_to_id=user.pk,
+            )
+            .exists()
+        )
 
     if stage.stage_type == StageType.STYLING and not user.is_superuser:
         return False
@@ -942,10 +994,14 @@ def user_can_complete_stage(stage, user):
     if is_coordinator(user):
         return True
 
-    return current_assignment_queryset(stage.text).filter(
-        role=role,
-        assigned_to_id=user.pk,
-    ).exists()
+    return (
+        current_assignment_queryset(stage.text)
+        .filter(
+            role=role,
+            assigned_to_id=user.pk,
+        )
+        .exists()
+    )
 
 
 def validate_editorial_decision(stage, decision):
@@ -962,10 +1018,16 @@ def validate_editorial_decision(stage, decision):
         assignment = current_assignment_queryset(stage.text).filter(role=Role.EDITOR).first()
         if not assignment or not assignment.assigned_to_id:
             raise ValidationError("Przed powrotem do redakcji przypisz redaktora do tekstu.")
-        if not stage.repetition_id and current_stage_queryset(stage.text).exclude(
-                stage_type__in=(*EDITING_PHASE_TYPES, StageType.EDITING_CONTROL)).filter(
-                started_at__isnull=False).exists():
-            raise ValidationError("Rozpoczęto już dalszą pracę. Najpierw sprawdź jej stan w panelu administratora.")
+        if (
+            not stage.repetition_id
+            and current_stage_queryset(stage.text)
+            .exclude(stage_type__in=(*EDITING_PHASE_TYPES, StageType.EDITING_CONTROL))
+            .filter(started_at__isnull=False)
+            .exists()
+        ):
+            raise ValidationError(
+                "Rozpoczęto już dalszą pracę. Najpierw sprawdź jej stan w panelu administratora."
+            )
 
 
 @_locked_stage_operation
@@ -974,20 +1036,18 @@ def complete_stage(stage, user, ended_at, *, send_to_proofreading=None):
     validate_editorial_decision(stage, send_to_proofreading)
     if stage.repetition_id:
         from workflow.repetitions import complete_repeat
+
         return complete_repeat(stage, user, ended_at, send_to_proofreading=send_to_proofreading)
     ensure_text_is_not_withdrawn(stage.text)
     ensure_verification_not_completed(stage.text, stage.stage_type)
 
     if stage.stage_type == StageType.EDITING:
         raise ValidationError(
-            "Redakcję zakończ przez przekazanie tekstu "
-            "do weryfikacji, autora albo koordynatora."
+            "Redakcję zakończ przez przekazanie tekstu do weryfikacji, autora albo koordynatora."
         )
 
     if stage.stage_type == StageType.AUTHOR_EDITING:
-        raise ValidationError(
-            "Etap u autora zakończ przez wznowienie redakcji."
-        )
+        raise ValidationError("Etap u autora zakończ przez wznowienie redakcji.")
 
     if stage.is_completed:
         raise ValidationError("Ten etap został już zakończony.")
@@ -997,16 +1057,27 @@ def complete_stage(stage, user, ended_at, *, send_to_proofreading=None):
 
     next_stage_type = NEXT_STAGE_TYPES.get(stage.stage_type)
     if stage.stage_type == StageType.EDITING_CONTROL:
-        next_stage_type = StageType.FIRST_PROOFREADING if send_to_proofreading else StageType.EDITING
+        next_stage_type = (
+            StageType.FIRST_PROOFREADING if send_to_proofreading else StageType.EDITING
+        )
 
     if next_stage_type is None:
         raise ValidationError("Ten etap nie ma przejścia do zakończenia.")
 
     if next_stage_type == StageType.EDITOR_CONTROL:
-        editor_assignment = current_assignment_queryset(stage.text).select_related('assigned_to__person_profile').filter(role=Role.EDITOR).first()
+        editor_assignment = (
+            current_assignment_queryset(stage.text)
+            .select_related("assigned_to__person_profile")
+            .filter(role=Role.EDITOR)
+            .first()
+        )
         editor = editor_assignment.assigned_to if editor_assignment else None
-        if not _actor_is_active(editor) or not (is_coordinator(editor) or belongs_to_group(editor, 'Redaktor')):
-            raise ValidationError("Przed zakończeniem kontroli koordynatora przypisz aktywnego redaktora z odpowiednią rolą. Etap nie został zakończony.")
+        if not _actor_is_active(editor) or not (
+            is_coordinator(editor) or belongs_to_group(editor, "Redaktor")
+        ):
+            raise ValidationError(
+                "Przed zakończeniem kontroli koordynatora przypisz aktywnego redaktora z odpowiednią rolą. Etap nie został zakończony."
+            )
     _finish_stage_record(stage, ended_at)
     if stage.stage_type == StageType.EDITING_CONTROL:
         stage.send_to_proofreading = send_to_proofreading
@@ -1016,11 +1087,13 @@ def complete_stage(stage, user, ended_at, *, send_to_proofreading=None):
             stage.is_released = False
             current_stage_queryset(stage.text).exclude(
                 stage_type__in=(*EDITING_PHASE_TYPES, StageType.EDITING_CONTROL)
-            ).filter(is_completed=False, started_at__isnull=True).update(is_current=False, is_released=False)
-        stage.save(update_fields=['send_to_proofreading', 'is_current', 'is_released'])
+            ).filter(is_completed=False, started_at__isnull=True).update(
+                is_current=False, is_released=False
+            )
+        stage.save(update_fields=["send_to_proofreading", "is_current", "is_released"])
     next_stage = _create_pending_stage(stage.text, next_stage_type)
     next_stage.queued_at = ended_at
-    next_stage.save(update_fields=['queued_at'])
+    next_stage.save(update_fields=["queued_at"])
 
     if next_stage_type == StageType.READY:
         _start_stage(next_stage, ended_at)
@@ -1031,34 +1104,50 @@ def complete_stage(stage, user, ended_at, *, send_to_proofreading=None):
 # Zachowana nazwa używana przez dotychczasowe widoki.
 start_author_editing = send_text_to_author
 
+
 def can_skip_fourth(stage, user):
-    return bool(user.is_active and user.is_superuser and stage.stage_type == StageType.FOURTH_PROOFREADING
-        and stage_belongs_to_current_cycle(stage) and stage.is_released and not stage.is_completed
-        and not stage.started_at and not stage.ended_at and (not stage.assignment_id or not stage.assignment.assigned_to_id)
-        and not current_assignment_queryset(stage.text).filter(role=Role.PROOFREADER_4, assigned_to__isnull=False).exists()
+    return bool(
+        user.is_active
+        and user.is_superuser
+        and stage.stage_type == StageType.FOURTH_PROOFREADING
+        and stage_belongs_to_current_cycle(stage)
+        and stage.is_released
+        and not stage.is_completed
+        and not stage.started_at
+        and not stage.ended_at
+        and (not stage.assignment_id or not stage.assignment.assigned_to_id)
+        and not current_assignment_queryset(stage.text)
+        .filter(role=Role.PROOFREADER_4, assigned_to__isnull=False)
+        .exists()
         and not text_is_withdrawn(stage.text)
         and not current_stage_queryset(stage.text).filter(stage_type=StageType.READY).exists()
-        and not (stage.text.anthology_id and stage.text.anthology.status == 'ready'))
+        and not (stage.text.anthology_id and stage.text.anthology.status == "ready")
+    )
 
 
 @_locked_stage_operation
 def skip_fourth_proofreading(stage, user):
     _ensure_actor(user)
     if not user.is_superuser:
-        raise PermissionDenied('Etap może pominąć tylko superuser.')
+        raise PermissionDenied("Etap może pominąć tylko superuser.")
     if not can_skip_fourth(stage, user):
-        raise ValidationError('Można pominąć tylko bieżącą, nieprzypisaną i nierozpoczętą czwartą korektę.')
+        raise ValidationError(
+            "Można pominąć tylko bieżącą, nieprzypisaną i nierozpoczętą czwartą korektę."
+        )
     stage.is_completed = True
     stage.is_skipped = True
     stage.assignment = None
-    stage.save(update_fields=['is_completed', 'is_skipped', 'assignment'])
+    stage.save(update_fields=["is_completed", "is_skipped", "assignment"])
     if stage.repetition_id:
-        following = stage.repetition.stages.filter(is_completed=False).order_by('queue_position').first()
+        following = (
+            stage.repetition.stages.filter(is_completed=False).order_by("queue_position").first()
+        )
         if following:
             following.is_released = True
-            following.save(update_fields=['is_released'])
+            following.save(update_fields=["is_released"])
         else:
             from workflow.repetitions import finish_repetition
+
             finish_repetition(stage, timezone.localdate())
     else:
         _create_pending_stage(stage.text, NEXT_STAGE_TYPES[stage.stage_type])

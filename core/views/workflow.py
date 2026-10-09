@@ -40,6 +40,7 @@ from workflow.services import (
     send_to_second_verification,
     start_first_verification,
 )
+from core.edit_policy import edit_policy
 
 logger = logging.getLogger(__name__)
 
@@ -458,6 +459,7 @@ def change_scheduled_workflow_stage(request, stage_id):
     return _detail_redirect(stage.text_id)
 
 
+@edit_policy(require_version=True)
 @never_cache
 @login_required
 @require_POST
@@ -470,36 +472,57 @@ def cancel_workflow_repetition(request, text_id, repetition_id):
         cancel_repetition(text,request.user,repetition_id=repetition_id)
     except (ValidationError, WorkflowRepetition.DoesNotExist) as exc:
         messages.error(request,str(exc))
-    else:messages.success(request,'Anulowano powtórzenie. Przywrócono poprzedni stan tekstu.')
+    else:
+        messages.success(request,'Anulowano powtórzenie. Przywrócono poprzedni stan tekstu.')
     return _detail_redirect(text_id)
 
 
+@edit_policy(require_version=True)
 @never_cache
 @login_required
 @superuser_required
 def handoff_workflow_stage(request, stage_id):
     from django import forms
-    from django.contrib.auth import get_user_model
     from workflow.handoffs import handoff_stage, eligible_handoff_users
     from django.core.exceptions import PermissionDenied
-    from django.views.decorators.http import require_http_methods
-    if request.method not in ('GET','POST'):
+
+    if request.method not in ("GET", "POST"):
         from django.http import HttpResponseNotAllowed
-        return HttpResponseNotAllowed(['GET','POST'])
-    stage=_get_current_stage(stage_id)
+
+        return HttpResponseNotAllowed(["GET", "POST"])
+    stage = _get_current_stage(stage_id)
+
     class HandoffForm(forms.Form):
-        assigned_to=forms.ModelChoiceField(label='Nowy wykonawca',queryset=eligible_handoff_users(stage))
-        expected_assignment_id=forms.IntegerField(widget=forms.HiddenInput)
-        reason=forms.CharField(label='Powód przekazania',widget=forms.Textarea(attrs={'rows':3}),max_length=2000)
-    form=HandoffForm(request.POST if request.method=='POST' else None,initial={'expected_assignment_id':stage.assignment_id})
-    if request.method=='POST' and form.is_valid():
+        assigned_to = forms.ModelChoiceField(
+            label="Nowy wykonawca", queryset=eligible_handoff_users(stage)
+        )
+        expected_assignment_id = forms.IntegerField(widget=forms.HiddenInput)
+        reason = forms.CharField(
+            label="Powód przekazania", widget=forms.Textarea(attrs={"rows": 3}), max_length=2000
+        )
+
+    form = HandoffForm(
+        request.POST if request.method == "POST" else None,
+        initial={"expected_assignment_id": stage.assignment_id},
+    )
+    if request.method == "POST" and form.is_valid():
         try:
-            handoff_stage(stage.text,request.user,stage_id=stage.pk,assigned_to_id=form.cleaned_data['assigned_to'].pk,expected_assignment_id=form.cleaned_data['expected_assignment_id'],reason=form.cleaned_data['reason'])
-        except (ValidationError, PermissionDenied, WorkflowStage.DoesNotExist) as exc:form.add_error(None,str(exc))
+            handoff_stage(
+                stage.text,
+                request.user,
+                stage_id=stage.pk,
+                assigned_to_id=form.cleaned_data["assigned_to"].pk,
+                expected_assignment_id=form.cleaned_data["expected_assignment_id"],
+                reason=form.cleaned_data["reason"],
+            )
+        except (ValidationError, PermissionDenied, WorkflowStage.DoesNotExist) as exc:
+            form.add_error(None, str(exc))
         else:
-            messages.success(request,'Przekazano pracę. Poprzednie przypisanie pozostało zapisane.')
+            messages.success(
+                request, "Przekazano pracę. Poprzednie przypisanie pozostało zapisane."
+            )
             return _detail_redirect(stage.text_id)
-    return render(request,'core/workflow_handoff.html',{'form':form,'stage':stage})
+    return render(request, "core/workflow_handoff.html", {"form": form, "stage": stage})
 
 
 @never_cache
@@ -508,11 +531,12 @@ def handoff_workflow_stage(request, stage_id):
 @superuser_required
 def skip_workflow_stage(request, stage_id):
     from workflow.services import skip_fourth_proofreading
+
     stage = _get_current_stage(stage_id)
     try:
         skip_fourth_proofreading(stage, request.user)
     except ValidationError as error:
-        messages.error(request, ' '.join(error.messages))
+        messages.error(request, " ".join(error.messages))
     else:
-        messages.success(request, 'Pominięto czwartą korektę. Udostępniono kolejny etap.')
+        messages.success(request, "Pominięto czwartą korektę. Udostępniono kolejny etap.")
     return _detail_redirect(stage.text_id)

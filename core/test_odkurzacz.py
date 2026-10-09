@@ -9,6 +9,7 @@ from django.urls import reverse
 from docx import Document
 from docx.shared import RGBColor
 
+from core.program_test_support import run_program
 from core.services.odkurzacz import clean_docx, EDITORIAL_RULES, DEFAULT_EDITORIAL_RULES, correct_editorial_text
 from core.odkurzacz_forms import OdkurzaczForm
 from people.models import Person
@@ -45,7 +46,7 @@ class OdkurzaczTests(TestCase):
         self.assertNotContains(response, 'gifrific')
 
     def test_download_uses_selected_rules(self):
-        response = self.client.post(self.url, {'document': upload(), 'rules': ['spaces']})
+        response = run_program(self.client, {'document': upload(), 'rules': ['spaces']})
         self.assertEqual(response.status_code, 200)
         self.assertIn('tekst_odkurzony.docx', response['Content-Disposition'])
         self.assertIn('private', response['Cache-Control'])
@@ -61,7 +62,7 @@ class OdkurzaczTests(TestCase):
         run.font.color.rgb = RGBColor(12, 34, 56)
         stream = BytesIO()
         document.save(stream)
-        response = self.client.post(self.url, {'document': upload(stream.getvalue())})
+        response = run_program(self.client, {'document': upload(stream.getvalue())})
         result = Document(BytesIO(b''.join(response.streaming_content)))
         run = result.paragraphs[0].runs[0]
         self.assertEqual(run.text, 'Ala  ma kota...')
@@ -119,11 +120,12 @@ class OdkurzaczTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn('50 MB', str(form.errors))
 
-    def test_failure_shows_form_and_retains_selection(self):
-        with patch('core.views.programs.convert_document', side_effect=ValueError('bad package')):
-            response = self.client.post(self.url, {'document': upload(), 'rules': ['spaces']})
-        self.assertContains(response, 'Nie udało się przetworzyć')
-        self.assertEqual(response.context['form']['rules'].value(), ['spaces'])
+    def test_failure_is_reported_on_the_job_page(self):
+        with patch('core.services.program_jobs.convert_document', side_effect=ValueError('bad package')):
+            response = run_program(self.client, {'document': upload(), 'rules': ['spaces']})
+        self.assertContains(response, 'Nie udało się przetworzyć dokumentu')
+        self.assertContains(response, 'Wróć do programów')
+        self.assertNotIn('bad package', response.content.decode())
 
     def test_oversize_text_is_rejected(self):
         with self.assertRaises(ValueError):

@@ -1,4 +1,4 @@
-{% extends "core/base.html" %}
+{% extends "core/base.html" %}{% load workspace_tags %}
 
 {% block title %}Aktywne urlopy | Fantazmaty CMS{% endblock %}
 
@@ -53,7 +53,7 @@
                             <td>
                                 <div class="roles-list">
                                     {% for role in vacation.person.roles.all %}
-                                        <span class="role-badge">{{ role.name }}</span>
+                                        <span class="role-badge"{{ role.name|label_palette_attr }}>{{ role.name }}</span>
                                     {% empty %}
                                         {% if not vacation.person.is_coordinator %}
                                             <span class="muted-text">

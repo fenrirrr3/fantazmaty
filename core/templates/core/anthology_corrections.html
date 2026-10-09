@@ -19,4 +19,4 @@
 <section class="details-card correction-form-card" id="nowa-uwaga"><h2>Zgłoś uwagę</h2><form method="post" action="{% url 'core:anthology_corrections' %}" data-warn-unsaved data-correction-form>{% csrf_token %}{% edit_version %}{{ form.as_p }}<button type="submit" class="primary-button">Dodaj uwagę</button><button type="submit" name="action" value="continue" class="secondary-button">Dodaj uwagę i kontynuuj</button></form></section>
 {% endblock %}
 
-{% block scripts %}<script src="{% static 'core/corrections.js' %}"></script>{% endblock %}
+{% block scripts %}<script src="{% static 'core/corrections.js' %}" defer></script>{% endblock %}

@@ -61,5 +61,5 @@ def send_message(url, content):
         if exc.code in (401,403,404):
             raise DeliveryError('Webhook jest niedostępny. Sprawdź jego konfigurację i uprawnienia na Discordzie.') from None
         raise DeliveryError('Discord odrzucił żądanie.' if exc.code < 500 else 'Błąd Discorda. Sprawdź kanał przed ponowną próbą.', uncertain=exc.code >= 500) from None
-    except (URLError, OSError, ValueError) as exc:
+    except (URLError, OSError, ValueError):
         raise DeliveryError('Brak potwierdzenia wysyłki. Sprawdź kanał przed ponowną próbą – wiadomość mogła dotrzeć.', uncertain=True) from None

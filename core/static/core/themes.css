@@ -1,3 +1,46 @@
+/*
+ * Tokeny projektu: rozmiary, typografia i kolory wszystkich motywów.
+ * Tylko zmienne CSS i ich przypisania; komponenty korzystają z nich w
+ * styles.css, workspace.css, components.css oraz arkuszach stron.
+ * Progi szerokości (media queries nie przyjmują zmiennych):
+ *   480px – telefon, 760px – mały tablet, 950px – zwinięte menu boczne,
+ *   1100px – wąski ekran komputera.
+ */
+:root {
+    /* Layout */
+    --card-padding: 20px;
+    --field-gap: 8px;
+    --header-height: 68px;
+    --sidebar-width: 244px;
+    --cell-padding-block: 12px;
+    --cell-padding-inline: 16px;
+    /* Radius */
+    --radius-xs: 4px;
+    --radius-badge: 5px;
+    --radius-small: 6px;
+    --radius-medium: 8px;
+    --radius: 10px;
+    --radius-large: 12px;
+    --radius-pill: 20px;
+    /* Typography */
+    --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-size-xxs: 0.6875rem;
+    --font-size-xs: 0.75rem;
+    --font-size-sm: 0.8125rem;
+    --font-size-md: 0.875rem;
+    --font-size-base: 0.9375rem;
+    --font-size-lg: 1rem;
+    --font-size-xl: 1.125rem;
+    --font-size-2xl: 1.25rem;
+    --font-size-3xl: 1.5rem;
+    --font-size-4xl: 1.75rem;
+    --table-font-size: var(--font-size-md);
+    /* Shadows */
+    --shadow: 0 2px 8px rgb(23 36 52 / 4%);
+    --shadow-overlay: 0 12px 36px rgb(23 36 52 / 16%);
+}
+
+/* Motyw jasny (domyślny): grafit, neutralne szarości i niebieski akcent. */
 :root {
     color-scheme: light;
     --background: #e2e5e9; --surface: #ffffff; --surface-alt: #f8fafc;
@@ -5,6 +48,7 @@
     --text: #202b3b; --muted: #58677a; --primary: #1761b0;
     --on-primary: #ffffff; --primary-dark: #114b89; --primary-light: #eaf3ff;
     --header: #172434; --table-header: #eef2f7; --focus-ring: #1761b0;
+    --control-border: #7d8fa5;
     --success: #176643; --success-light: #eaf6ef;
     --success-action: #176643; --success-action-hover: #104c32;
     --success-action-border: #176643; --on-success: #ffffff;
@@ -16,15 +60,38 @@
     --verification-bg: #fff2c9; --verification-fg: #725600;
     --styling-bg: #e0edfc; --styling-fg: #245c93;
     --ready-bg: #eee2f9; --ready-fg: #6f3c91;
+    --ready-edit-bg: #d3f3f1; --ready-edit-fg: #145d59;
+    --reviewer-bg: #ccfbf1; --reviewer-fg: #115e59;
+    --coordinator-bg: #ffedd5; --coordinator-fg: #9a3412;
+    /* Chrome: header bar, sidebar, overlays (constant unless a theme overrides). */
+    --header-fg: #ffffff; --header-muted: #b9c7d7; --header-soft: #dbe5f0;
+    --header-hover: #293e56; --header-accent: #80baff; --header-border: #49617b;
+    --header-control-border: #647589; --header-menu-border: #35495f;
+    --header-divider: rgb(255 255 255 / 8%);
+    --sidebar-heading-bg: #e4eaf2; --sidebar-heading-fg: #293e56;
+    --sidebar-link-bg: #f0f3f7; --sidebar-link-ring: #d7dfe9;
+    --table-header-fg: #415168;
+    --selection-bg: #cfe4ff; --selection-fg: #172434;
+    --success-border: #bcdcc8; --warning-border: #ead8a7; --primary-border: #bfd7f2;
+    --warning-accent: #bf8d20;
+    --badge-neutral-bg: #edf1f5; --badge-neutral-fg: #526176;
+    --media-bg: #101820; --logo-bg: #ffffff;
+    --backdrop: rgb(15 26 40 / 48%);
+    --shadow-soft: 0 2px 6px #00000012;
+    --shadow-panel: 0 8px 30px #0002;
+    --shadow-popover: 0 5px 16px rgb(0 0 0 / 12%);
 }
+
+/* Motyw ciemny. */
 :root[data-theme="dark"] {
     color-scheme: dark;
     --background: #15171b; --surface: #1b2430; --surface-alt: #222d3b;
     --surface-hover: #304056; --border: #44546a; --border-strong: #718399;
-    --text: #FFFFFF; --muted: #FFFFFF; --primary: #85bdff;
+    --text: #FFFFFF; --muted: #b8c4d3; --primary: #85bdff;
     --on-primary: #102034;
     --primary-dark: #acd2ff; --primary-light: #243e60; --header: #111c2a;
     --table-header: #2a394d; --success: #9ee1b7; --success-light: #203f32;
+    --control-border: #718399;
     --success-action: #24613e; --success-action-hover: #2d754c;
     --success-action-border: #74b58a;
     --danger: #ffadb5; --danger-dark: #ffc8ce; --danger-light: #482d36;
@@ -35,44 +102,15 @@
     --verification-bg: #443d24; --verification-fg: #ffe28d;
     --styling-bg: #243c56; --styling-fg: #add4ff;
     --ready-bg: #3c2d50; --ready-fg: #dfbbff;
+    --ready-edit-bg: #163f41; --ready-edit-fg: #91e0dc;
+    --reviewer-bg: #143d3b; --reviewer-fg: #99f6e4;
+    --coordinator-bg: #492b1b; --coordinator-fg: #fdba74;
+    --sidebar-heading-bg: var(--table-header); --sidebar-heading-fg: var(--text);
+    --sidebar-link-bg: var(--surface-alt); --sidebar-link-ring: var(--border);
+    --table-header-fg: var(--text);
 }
-[data-palette="editing"] { --palette-bg: var(--editing-bg); --palette-fg: var(--editing-fg); }
-[data-palette="proofreading"] { --palette-bg: var(--proofreading-bg); --palette-fg: var(--proofreading-fg); }
-[data-palette="verification"] { --palette-bg: var(--verification-bg); --palette-fg: var(--verification-fg); }
-[data-palette="styling"] { --palette-bg: var(--styling-bg); --palette-fg: var(--styling-fg); }
-[data-palette="ready"] { --palette-bg: var(--ready-bg); --palette-fg: var(--ready-fg); }
-[data-palette="withdrawn"] { --palette-bg: var(--danger-light); --palette-fg: var(--danger-dark); }
-.role-badge[data-palette], .workflow-stage-badge[data-palette] { background: var(--palette-bg); color: var(--palette-fg); border-color: currentColor; }
-.workflow-stage-row[data-palette] > td:first-child { border-left: 3px solid var(--palette-fg); }
-:root[data-theme="dark"] :is(.withdraw-text-button,.reject-review-button,.unassign-button,.vacation-end-button):hover { color: var(--danger-dark); background: var(--danger-light); border-color: var(--danger); }
-:root[data-theme="dark"] .sidebar-heading { background: var(--table-header); color: var(--text); }
-:root[data-theme="dark"] .sidebar-link:not(:hover):not(.is-active):not([aria-current="page"]) {
-    background: var(--surface-alt); box-shadow: inset 0 0 0 1px var(--border);
-}
-:root[data-theme="dark"] thead th { color: var(--text); }
 
-/* Wspólne komponenty nowych zakładek korzystają z istniejącej palety. */
-:root { --ready-edit-bg: #d3f3f1; --ready-edit-fg: #145d59; }
-:root[data-theme="dark"] { --ready-edit-bg: #163f41; --ready-edit-fg: #91e0dc; }
-[data-palette="ready-for-editing"] { --palette-bg: var(--ready-edit-bg); --palette-fg: var(--ready-edit-fg); }
-.notification-urgent { border-left-color: var(--danger); background: var(--danger-light); }
-.notification-alert { color: var(--danger); font-weight: 750; text-decoration: underline; }
-
-:root[data-theme="dark"] :is(p, label, input, textarea, select, .detail-link, .text-title-link) { color: #FFFFFF; }
-
-:root[data-theme="dark"] :is(.sidebar-link, .navigation-link, .brand-text small) { color: #FFFFFF; }
-
-/* Reviewer and coordinator palettes. */
-:root { --reviewer-bg:#ccfbf1; --reviewer-fg:#115e59; --coordinator-bg:#ffedd5; --coordinator-fg:#9a3412; }
-:root[data-theme="dark"] { --reviewer-bg:#143d3b; --reviewer-fg:#99f6e4; --coordinator-bg:#492b1b; --coordinator-fg:#fdba74; }
-[data-palette="reviewer"] { --palette-bg:var(--reviewer-bg); --palette-fg:var(--reviewer-fg); }
-[data-palette="coordinator"] { --palette-bg:var(--coordinator-bg); --palette-fg:var(--coordinator-fg); }
-.reviewer-bubble { background:var(--reviewer-bg); color:var(--reviewer-fg); border-color:var(--reviewer-fg); }
-.reviewer-bubble.reviewer-opinion-yes, .reviewer-bubble.reviewer-opinion-yes_maybe { background:var(--success-light); color:var(--success); border-color:var(--success); }
-.reviewer-bubble.reviewer-opinion-maybe { background:var(--warning-light); color:var(--warning); border-color:var(--warning); }
-.reviewer-bubble.reviewer-opinion-no, .reviewer-bubble.reviewer-opinion-maybe_no { background:var(--danger-light); color:var(--danger-dark); border-color:var(--danger); }
-
-/* A warm light theme; workflow badges retain their semantic role colours. */
+/* Ciepły jasny motyw; odznaki etapów zachowują kolory ról z motywu jasnego. */
 :root[data-theme="autumn"] {
     color-scheme: light;
     --background: #f0e5d5; --surface: #fffcf5; --surface-alt: #f8efdf;
@@ -80,10 +118,34 @@
     --text: #382c22; --muted: #67513d; --primary: #904313;
     --on-primary: #ffffff; --primary-dark: #6d310d; --primary-light: #f9e4c8;
     --header: #503322; --table-header: #efdfc5; --focus-ring: #934412;
+    --control-border: #a58360;
     --success: #405e29; --success-light: #edf2df;
     --success-action: #405e29; --success-action-hover: #30491d;
     --success-action-border: #405e29; --on-success: #ffffff;
     --danger: #a02f2c; --danger-dark: #7e2422; --danger-light: #fff0e9;
     --danger-border: #dab0a0; --danger-hover: #f6d9cb;
     --warning: #71500c; --warning-light: #fff0c9;
+    --header-muted: #eddbc4; --header-hover: #70472d;
+    --header-border: #b8956f; --header-control-border: #b8956f;
+    --sidebar-heading-bg: var(--table-header); --sidebar-heading-fg: var(--header);
+    --sidebar-link-bg: var(--surface-alt); --sidebar-link-ring: var(--border);
+    --table-header-fg: #5a4330;
+    --selection-bg: #f9e4c8; --selection-fg: #382c22;
 }
+
+/* Palety ról i etapów: element z data-palette dostaje parę kolorów. */
+[data-palette="editing"] { --palette-bg: var(--editing-bg); --palette-fg: var(--editing-fg); }
+[data-palette="proofreading"] { --palette-bg: var(--proofreading-bg); --palette-fg: var(--proofreading-fg); }
+[data-palette="verification"] { --palette-bg: var(--verification-bg); --palette-fg: var(--verification-fg); }
+[data-palette="styling"] { --palette-bg: var(--styling-bg); --palette-fg: var(--styling-fg); }
+[data-palette="ready"] { --palette-bg: var(--ready-bg); --palette-fg: var(--ready-fg); }
+[data-palette="ready-for-editing"] { --palette-bg: var(--ready-edit-bg); --palette-fg: var(--ready-edit-fg); }
+[data-palette="withdrawn"] { --palette-bg: var(--danger-light); --palette-fg: var(--danger-dark); }
+[data-palette="reviewer"] { --palette-bg: var(--reviewer-bg); --palette-fg: var(--reviewer-fg); }
+[data-palette="coordinator"] { --palette-bg: var(--coordinator-bg); --palette-fg: var(--coordinator-fg); }
+
+/* Poprawki zależne od motywu, których nie da się wyrazić samymi zmiennymi. */
+/* :where() zeruje specyficzność, więc kolory komponentów (błędy, ostrzeżenia) wygrywają. */
+:where(:root[data-theme="dark"]) :where(p, label, input, textarea, select, .detail-link, .text-title-link) { color: var(--text); }
+:root[data-theme="dark"] :is(.sidebar-link, .navigation-link, .brand-text small) { color: var(--text); }
+:root[data-theme="dark"] :is(.withdraw-text-button,.reject-review-button,.unassign-button,.vacation-end-button):hover { color: var(--danger-dark); background: var(--danger-light); border-color: var(--danger); }

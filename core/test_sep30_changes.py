@@ -3,7 +3,6 @@ from django.contrib.auth import get_user_model
 from django.urls import reverse
 from django.utils import timezone
 from texts.models import Anthology, Review, Text
-from authors.models import Author
 from workflow.models import WorkflowStage
 from core.services.reviews import copy_review_to_text
 from core.views.search import _search_reviews
@@ -26,19 +25,41 @@ class ChangesTests(TestCase):
         text=copy_review_to_text(user=self.user,review_id=self.review.pk,contract_received=True)
         self.assertEqual(text.authors.get().pseudonym,'Pseudonim')
         self.assertEqual(copy_review_to_text(user=self.user,review_id=self.review.pk).pk,text.pk)
-        self.review.refresh_from_db();self.assertTrue(self.review.old_reviews)
+        self.review.refresh_from_db()
+        self.assertTrue(self.review.old_reviews)
+
     def test_dashboard(self):
         self.client.force_login(self.user)
-        self.assertContains(self.client.get(reverse('core:home')),self.review.title)
-        copy_review_to_text(user=self.user,review_id=self.review.pk,contract_received=True)
-        self.assertNotContains(self.client.get(reverse('core:home')),self.review.title)
+        self.assertContains(self.client.get(reverse("core:home")), self.review.title)
+        copy_review_to_text(user=self.user, review_id=self.review.pk, contract_received=True)
+        self.assertNotContains(self.client.get(reverse("core:home")), self.review.title)
+
     def test_hide_ready(self):
-        text=Text.objects.create(title='Gotowy',length=100)
-        WorkflowStage.objects.create(text=text,stage_type='ready')
-        self.assertEqual(len(list(workflow_list_context(user=self.user,params={'hide_ready':'1'})['stages'])),0)
-        self.assertEqual(len(list(workflow_list_context(user=self.user,params={'hide_ready':'0'})['stages'])),1)
+        text = Text.objects.create(title="Gotowy", length=100)
+        WorkflowStage.objects.create(text=text, stage_type="ready")
+        self.assertEqual(
+            len(list(workflow_list_context(user=self.user, params={"hide_ready": "1"})["stages"])),
+            0,
+        )
+        self.assertEqual(
+            len(list(workflow_list_context(user=self.user, params={"hide_ready": "0"})["stages"])),
+            1,
+        )
+
     def test_pseudonym_form(self):
-        for cls in [SingleReviewForm,ReviewAdminForm]:
-            form=cls(data={'author_first_name':'Adam','author_last_name':'Nowy','author_pseudonym':'Pióro','title':'Nowy','email':'adam@example.com','anthology':self.book.pk,'length':100, 'genre':'fantasy', 'status':'new'})
-            self.assertTrue(form.is_valid(),form.errors)
-            self.assertEqual(form.save(commit=False).author_pseudonym,'Pióro')
+        for cls in [SingleReviewForm, ReviewAdminForm]:
+            form = cls(
+                data={
+                    "author_first_name": "Adam",
+                    "author_last_name": "Nowy",
+                    "author_pseudonym": "Pióro",
+                    "title": "Nowy",
+                    "email": "adam@example.com",
+                    "anthology": self.book.pk,
+                    "length": 100,
+                    "genre": "fantasy",
+                    "status": "new",
+                }
+            )
+            self.assertTrue(form.is_valid(), form.errors)
+            self.assertEqual(form.save(commit=False).author_pseudonym, "Pióro")

@@ -12,6 +12,8 @@ from django.core.validators import validate_email
 from django.utils import timezone
 from lxml import html, etree
 
+from core.edit_versions import batched_bumps
+
 from core.models import Recruitment, RecruitmentMailSource, MailboxConnection, MailboxDownload
 from core.recruitment_message import form_fields, roles_in_subject, name_in_subject
 from core.services.mailbox import MailboxError
@@ -87,25 +89,30 @@ def store_samples(config, validity, messages, *, downloaded=False, downloaded_ui
     if current is None or not current.is_active or current.purpose != MailboxConnection.Purpose.RECRUITMENT or mailbox_key(current) != key:
         raise MailboxError('Zmieniono ustawienia skrzynki. Pobierz nagłówki ponownie.')
     records = []
-    for row in messages:
-        data = parse_sample(row['raw'])
-        source = RecruitmentMailSource.objects.select_for_update().filter(mailbox_key=key, uid_validity=validity, uid=row['uid']).first()
-        if source:
-            record = source.recruitment
-            if record.mail_fingerprint != data['mail_fingerprint']:
-                raise MailboxError('Zawartość zapisanej wiadomości zmieniła się. Nie nadpisano zgłoszenia.')
-        else:
-            fingerprint = data.pop('mail_fingerprint')
-            if data['mail_received_at']:
-                data['submitted_at'] = timezone.localdate(data['mail_received_at'])
-            record, _ = Recruitment.objects.get_or_create(mail_fingerprint=fingerprint, defaults=data)
-            source = RecruitmentMailSource.objects.create(recruitment=record, mailbox_key=key, uid_validity=validity, uid=row['uid'])
-        if downloaded or (downloaded_uids is not None and row["uid"] in downloaded_uids):
-            source.downloaded_at = timezone.now()
-            source.save(update_fields=['downloaded_at'])
-            MailboxDownload.objects.update_or_create(mailbox_key=key, uid_validity=validity, uid=row['uid'], defaults={})
-        records.append(record)
+    with batched_bumps():
+        for row in messages:
+            records.append(_store_sample(row, key, validity, downloaded, downloaded_uids))
     return records
+
+
+def _store_sample(row, key, validity, downloaded, downloaded_uids):
+    data = parse_sample(row['raw'])
+    source = RecruitmentMailSource.objects.select_for_update().filter(mailbox_key=key, uid_validity=validity, uid=row['uid']).first()
+    if source:
+        record = source.recruitment
+        if record.mail_fingerprint != data['mail_fingerprint']:
+            raise MailboxError('Zawartość zapisanej wiadomości zmieniła się. Nie nadpisano zgłoszenia.')
+    else:
+        fingerprint = data.pop('mail_fingerprint')
+        if data['mail_received_at']:
+            data['submitted_at'] = timezone.localdate(data['mail_received_at'])
+        record, _ = Recruitment.objects.get_or_create(mail_fingerprint=fingerprint, defaults=data)
+        source = RecruitmentMailSource.objects.create(recruitment=record, mailbox_key=key, uid_validity=validity, uid=row['uid'])
+    if downloaded or (downloaded_uids is not None and row["uid"] in downloaded_uids):
+        source.downloaded_at = timezone.now()
+        source.save(update_fields=['downloaded_at'])
+        MailboxDownload.objects.update_or_create(mailbox_key=key, uid_validity=validity, uid=row['uid'], defaults={})
+    return record
 
 
 def safe_archive_name(value, fallback):
@@ -139,16 +146,17 @@ def attachment_archive(messages, *, downloaded_uids=None):
                 for original_name, payload in files:
                     filename = re.split(r'[/\\]', original_name)[-1]
                     filename = safe_archive_name(filename, 'zalacznik.bin')
-                    base = filename; suffix = 1
+                    base = filename
+                    suffix = 1
                     while filename.casefold() in used_files:
                         suffix += 1
-                        stem, dot, extension = base.rpartition('.')
-                        filename = f'{stem} ({suffix}).{extension}' if dot else f'{base} ({suffix})'
+                        stem, dot, extension = base.rpartition(".")
+                        filename = f"{stem} ({suffix}).{extension}" if dot else f"{base} ({suffix})"
                     used_files.add(filename.casefold())
-                    archive.writestr(f'{folder}/{filename}', payload)
+                    archive.writestr(f"{folder}/{filename}", payload)
                     files_written += 1
                 if downloaded_uids is not None:
-                    downloaded_uids.add(row['uid'])
+                    downloaded_uids.add(row["uid"])
         if not files_written:
             stream.close()
             return None

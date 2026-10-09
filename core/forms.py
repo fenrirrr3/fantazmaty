@@ -1,10 +1,7 @@
 from core.translation_scope import ordinary
-from workflow.catalog import active_role_choices
-from django.db.models import Q
 from people.role_ordering import ordered_team_roles
 import hashlib
 import json
-import re
 from datetime import datetime, time, timedelta
 
 from django import forms
@@ -19,27 +16,22 @@ from texts.models import Anthology, Review, ReviewAssignment, Text, TextNote
 from texts.services import (
     find_matching_authors,
     get_review_submission_warnings,
-    normalize_email,
     normalize_review_title,
     normalize_whitespace,
 )
 from workflow.models import WorkflowRoleAssignment, WorkflowStage
 from workflow.services import (
-    RESTARTABLE_STAGE_TYPES,
-    ROLE_GROUPS,
     validate_assignment_start_date,
 )
 
-from .permissions import has_role, is_coordinator
 from .normalization import NormalizedFormMixin, TEXT_FIELDS
+from core.services.review_import_parser import (
+    parse_review_records, MAX_IMPORT_CHARACTERS, MAX_IMPORT_ERRORS,
+)
 
 
 User = get_user_model()
 
-from core.services.review_import_parser import (
-    parse_review_records, MAX_IMPORT_RECORDS, MAX_IMPORT_CHARACTERS, MAX_IMPORT_ERRORS,
-    REVIEW_IMPORT_LINE_PATTERN,
-)
 
 
 def date_widget():

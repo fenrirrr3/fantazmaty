@@ -155,77 +155,139 @@ class Command(TableCommand):
         executions = Counter()
         works = []
         for stage in row['stages']:
-            kind = stage['stage_type']; executions[kind] += 1
-            works.append({'column': stage['source_column'], 'stage_type': kind, 'execution_number': executions[kind],
-                          'person': stage['person']['first_name'] + ' ' + stage['person']['last_name']})
-        return {'row': row['source_row'], 'title': text.title, 'anthology': anthology.title, 'text_id': text.pk,
-                'length': text.length, 'result': 'bez zmian' if existing else 'dodanie',
-                'foreign_authors': [{'id': p.pk, 'name': str(p)} for p in foreign],
-                'translators': [{'id': p.pk, 'name': str(p)} for p in translators],
-                'Weryfikacja z oryginałem': translation.original_verifier,
-                'completed_executions': works, 'omitted_columns': row['omitted_columns'], 'events': self.events[before:]}
+            kind = stage['stage_type']
+            executions[kind] += 1
+            works.append(
+                {
+                    "column": stage["source_column"],
+                    "stage_type": kind,
+                    "execution_number": executions[kind],
+                    "person": stage["person"]["first_name"] + " " + stage["person"]["last_name"],
+                }
+            )
+        return {
+            "row": row["source_row"],
+            "title": text.title,
+            "anthology": anthology.title,
+            "text_id": text.pk,
+            "length": text.length,
+            "result": "bez zmian" if existing else "dodanie",
+            "foreign_authors": [{"id": p.pk, "name": str(p)} for p in foreign],
+            "translators": [{"id": p.pk, "name": str(p)} for p in translators],
+            "Weryfikacja z oryginałem": translation.original_verifier,
+            "completed_executions": works,
+            "omitted_columns": row["omitted_columns"],
+            "events": self.events[before:],
+        }
 
     def handle(self, *args, **options):
         self.events, self.warnings = [], []
         self.people_cache, self.profile_cache = {}, {}
-        report = {'mode': 'przerwano – nic nie zapisano', 'input_sha256': None, 'counts': {},
-                  'anthologies': [], 'texts': [], 'conflicts': [], 'warnings': self.warnings,
-                  'dates': 'Nieznane daty pracy i przypisania pozostają puste.',
-                  'identities': 'Osobne profile autorów zagranicznych i tłumaczy. Brakujące profile wykonawców: pusty e-mail, konto nieaktywne bez hasła i bez nadawania ról.',
-                  'notice': 'W podglądzie identyfikatory nowo tworzonych rekordów są tymczasowe; żadne zmiany nie są utrwalane.'}
-        target = Path(options['report']).with_suffix('.json')
-        source_path = Path(options['file'])
+        report = {
+            "mode": "przerwano – nic nie zapisano",
+            "input_sha256": None,
+            "counts": {},
+            "anthologies": [],
+            "texts": [],
+            "conflicts": [],
+            "warnings": self.warnings,
+            "dates": "Nieznane daty pracy i przypisania pozostają puste.",
+            "identities": "Osobne profile autorów zagranicznych i tłumaczy. Brakujące profile wykonawców: pusty e-mail, konto nieaktywne bez hasła i bez nadawania ról.",
+            "notice": "W podglądzie identyfikatory nowo tworzonych rekordów są tymczasowe; żadne zmiany nie są utrwalane.",
+        }
+        target = Path(options["report"]).with_suffix(".json")
+        source_path = Path(options["file"])
         if target.resolve() == source_path.resolve():
-            raise CommandError('Plik raportu nie może być plikiem danych importu.')
+            raise CommandError("Plik raportu nie może być plikiem danych importu.")
 
         def write_report():
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(json.dumps(report, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
+            target.write_text(
+                json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+            )
 
         current_row = None
         try:
             payload = source_path.read_bytes()
-            report['input_sha256'] = hashlib.sha256(payload).hexdigest()
-            data = json.loads(payload.decode('utf-8-sig'))
+            report["input_sha256"] = hashlib.sha256(payload).hexdigest()
+            data = json.loads(payload.decode("utf-8-sig"))
             self.validate(data)
             with transaction.atomic():
                 anthologies = {}
-                for title in sorted({r['anthology'] for r in data['texts']}):
-                    matches = [a for a in Anthology.objects.select_for_update().order_by('pk') if normalized(a.title) == normalized(title)]
+                for title in sorted({r["anthology"] for r in data["texts"]}):
+                    matches = [
+                        a
+                        for a in Anthology.objects.select_for_update().order_by("pk")
+                        if normalized(a.title) == normalized(title)
+                    ]
                     if len(matches) != 1:
-                        raise ValueError(f'Antologia „{title}” musi wskazywać dokładnie jeden istniejący rekord.')
+                        raise ValueError(
+                            f"Antologia „{title}” musi wskazywać dokładnie jeden istniejący rekord."
+                        )
                     anthology = matches[0]
-                    expected = [r['source_row'] for r in data['texts'] if r['anthology'] == title]
-                    if Text.objects.filter(anthology=anthology).exclude(import_source=data['source'], import_source_row__in=expected).exists():
-                        raise ValueError(f'Antologia „{title}” zawiera teksty spoza tego importu; wymagana pusta antologia.')
-                    report['anthologies'].append({'id': anthology.pk, 'title': anthology.title,
-                                                 'is_translated_before': anthology.is_translated, 'is_translated_after': True})
+                    expected = [r["source_row"] for r in data["texts"] if r["anthology"] == title]
+                    if (
+                        Text.objects.filter(anthology=anthology)
+                        .exclude(import_source=data["source"], import_source_row__in=expected)
+                        .exists()
+                    ):
+                        raise ValueError(
+                            f"Antologia „{title}” zawiera teksty spoza tego importu; wymagana pusta antologia."
+                        )
+                    report["anthologies"].append(
+                        {
+                            "id": anthology.pk,
+                            "title": anthology.title,
+                            "is_translated_before": anthology.is_translated,
+                            "is_translated_after": True,
+                        }
+                    )
                     if not anthology.is_translated:
                         # Do not invoke bulk synchronization on pre-existing texts during a retry.
                         if Text.objects.filter(anthology=anthology).exists():
-                            raise ValueError(f'Antologia „{title}” przestała być tłumaczona po imporcie; wymaga sprawdzenia.')
+                            raise ValueError(
+                                f"Antologia „{title}” przestała być tłumaczona po imporcie; wymaga sprawdzenia."
+                            )
                         anthology.is_translated = True
-                        anthology.save(update_fields=['is_translated'])
+                        anthology.save(update_fields=["is_translated"])
                     anthologies[title] = anthology
-                for row in data['texts']:
-                    current_row = row['source_row']
-                    report['texts'].append(self.import_row(row, data['source'], anthologies[row['anthology']]))
-                report['counts'] = {'texts_added': sum(r['result'] == 'dodanie' for r in report['texts']),
-                                    'texts_unchanged': sum(r['result'] == 'bez zmian' for r in report['texts']),
-                                    'completed_executions': sum(len(r['completed_executions']) for r in report['texts']),
-                                    'profiles': dict(Counter(e['action'] for e in self.events))}
-                report['mode'] = 'zapisano' if options['apply'] else 'podgląd – nic nie zapisano'
+                for row in data["texts"]:
+                    current_row = row["source_row"]
+                    report["texts"].append(
+                        self.import_row(row, data["source"], anthologies[row["anthology"]])
+                    )
+                report["counts"] = {
+                    "texts_added": sum(r["result"] == "dodanie" for r in report["texts"]),
+                    "texts_unchanged": sum(r["result"] == "bez zmian" for r in report["texts"]),
+                    "completed_executions": sum(
+                        len(r["completed_executions"]) for r in report["texts"]
+                    ),
+                    "profiles": dict(Counter(e["action"] for e in self.events)),
+                }
+                report["mode"] = "zapisano" if options["apply"] else "podgląd – nic nie zapisano"
                 # An unwritable report aborts the database transaction as well.
                 write_report()
-                if not options['apply']:
+                if not options["apply"]:
                     transaction.set_rollback(True)
-        except (OSError, UnicodeError, ValueError, TypeError, KeyError, ValidationError, DatabaseError) as exc:
-            report['mode'] = 'wycofano – nic nie zapisano'
-            report['conflicts'].append({'row': current_row, 'error': str(exc)})
+        except (
+            OSError,
+            UnicodeError,
+            ValueError,
+            TypeError,
+            KeyError,
+            ValidationError,
+            DatabaseError,
+        ) as exc:
+            report["mode"] = "wycofano – nic nie zapisano"
+            report["conflicts"].append({"row": current_row, "error": str(exc)})
             try:
                 write_report()
             except OSError as report_error:
-                self.stderr.write(f'Nie udało się zapisać raportu: {report_error}')
+                self.stderr.write(f"Nie udało się zapisać raportu: {report_error}")
             self.stderr.write(json.dumps(report, ensure_ascii=False, indent=2))
-            raise CommandError('Import przerwany; nie zapisano żadnych zmian. Szczegóły w raporcie.') from exc
-        self.stdout.write(f"{report['mode']}. Nowe teksty: {report['counts']['texts_added']}; bez zmian: {report['counts']['texts_unchanged']}; wykonania: {report['counts']['completed_executions']}. Raport: {target}")
+            raise CommandError(
+                "Import przerwany; nie zapisano żadnych zmian. Szczegóły w raporcie."
+            ) from exc
+        self.stdout.write(
+            f"{report['mode']}. Nowe teksty: {report['counts']['texts_added']}; bez zmian: {report['counts']['texts_unchanged']}; wykonania: {report['counts']['completed_executions']}. Raport: {target}"
+        )

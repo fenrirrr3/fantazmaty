@@ -3,7 +3,7 @@ from django import forms
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied
 from django.shortcuts import redirect, render
-from django.urls import Resolver404, resolve
+from core.request_match import resolve_request
 from django.utils.cache import add_never_cache_headers
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods, require_POST
@@ -82,10 +82,7 @@ class UserPreviewMiddleware:
         if state is None:
             return self.get_response(request)
         actor = request.preview_actor
-        try:
-            match = resolve(request.path_info)
-        except Resolver404:
-            match = None
+        match = resolve_request(request)
         owner_valid = (
             actor.is_authenticated and actor.is_active and actor.is_superuser
             and isinstance(state, dict) and state.get("actor") == actor.pk

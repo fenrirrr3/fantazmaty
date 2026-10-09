@@ -3,6 +3,7 @@ from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
 from django.db import models
 from django.utils import timezone
+from core.edit_versions import VersionedQuerySet
 
 
 def get_local_date(value):
@@ -54,6 +55,7 @@ def leave_is_active(start_date, end_date, until_revoked):
 
 
 class Role(models.Model):
+    objects = VersionedQuerySet.as_manager()
     def clean(self):
         super().clean()
         if self.name.strip().casefold() == "koordynator zespołu":
@@ -74,7 +76,7 @@ class Role(models.Model):
         return self.name
 
 
-class PersonQuerySet(models.QuerySet):
+class PersonQuerySet(VersionedQuerySet):
     def active(self):
         return self.filter(is_active=True).filter(
             models.Q(user__isnull=True) | models.Q(user__is_active=True)
@@ -254,6 +256,7 @@ class Person(models.Model):
 
 
 class Vacation(models.Model):
+    objects = VersionedQuerySet.as_manager()
     person = models.ForeignKey(
         Person,
         on_delete=models.CASCADE,
