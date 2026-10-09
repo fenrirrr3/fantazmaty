@@ -4,7 +4,7 @@
 {% block title %}{{ text.title }} | Fantazmaty CMS{% endblock %}
 
 
-{% block extra_css %}<link rel="stylesheet" href="{% static 'core/tags.css' %}"><link rel="stylesheet" href="{% static 'core/text-production.css' %}?v=57">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/tags.css' %}"><link rel="stylesheet" href="{% static 'core/text-production.css' %}?v=58">{% endblock %}
 
 {% block content %}
     {% now "Y-m-d" as today_iso %}
@@ -259,9 +259,12 @@
                                 <form
                                     method="post"
                                     action="{% url 'core:start_assigned_workflow_stage' stage.pk %}"
-                                    class="complete-stage-form"
+                                    class="complete-stage-form start-stage-form"
                                 >
                                     {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
+                                    <button type="submit" class="primary-button">
+                                        Rozpocznij etap
+                                    </button>
                                     <div class="form-field">
                                         <label for="start-stage-{{ stage.pk }}">Data rozpoczęcia</label>
                                         <input
@@ -277,9 +280,7 @@
                                             required
                                         >
                                     </div>
-                                    <button type="submit" class="primary-button">
-                                        Rozpocznij etap
-                                    </button>
+
                                 </form>
                             </div>
                         </div>
@@ -479,7 +480,7 @@
         </div>
     </section>
 
-    <div class="text-notes-tags">
+    <div class="text-notes-tags{% if is_novel %} chapter-notes-reviews{% endif %}">
     <section class="card" aria-labelledby="text-notes-heading">
         <header class="section-header">
             <h2 id="text-notes-heading">Notatki zespołu</h2>
@@ -547,80 +548,22 @@
             {% endfor %}
         </div>
     </section>
+    {% if is_novel %}{% include 'core/includes/text_reviews.html' %}{% else %}
     <section class="card" aria-labelledby="text-tags-heading">
         <header class="section-header"><h2 id="text-tags-heading">Tagi i gatunek</h2></header>
-                  {% if is_novel %}<div class="card-body"><p><strong>Tagi:</strong> {{ text.tags|default:'Brak' }}</p><p><strong>Gatunek:</strong> {{ text.genre|default:'Brak' }}</p><a href="{% url 'core:novel_detail' text.anthology.pk %}">Wspólne dane powieści</a></div>{% else %}
+
           <form method="post" action="{% url 'core:update_text_tags' text.pk %}" class="text-tags-form" data-warn-unsaved>
             {% csrf_token %}{% edit_version %}{{ text_tags_form.non_field_errors }}
             <div class="form-field">{{ text_tags_form.tags.label_tag }}{{ text_tags_form.tags }}{{ text_tags_form.tags.errors }}<p class="muted-text">{{ text_tags_form.tags.help_text }}</p></div>
             <div class="form-field">{{ text_tags_form.genre.label_tag }}{{ text_tags_form.genre }}{{ text_tags_form.genre.errors }}<p class="muted-text">{{ text_tags_form.genre.help_text }}</p></div>
-            <button class="primary-button" type="submit">Zapisz tagi i gatunek</button>
-            <a href="{% url 'core:tag_list' %}">Przejdź do listy tagów</a>
-        </form>{% endif %}
+            <div class="text-tags-actions"><button class="primary-button" type="submit">Zapisz tagi i gatunek</button>
+            <a class="secondary-button" href="{% url 'core:tag_list' %}">Przejdź do listy</a></div>
+        </form>
     </section>
+    {% endif %}
     </div>
 
-        <details class="review-summary-details" open>
-            <summary class="review-summary-toggle">
-                <span>Recenzje tekstu</span>
-                <span class="dropdown-arrow" aria-hidden="true">▾</span>
-            </summary>
-
-            <div class="review-summary-content">
-                {% if request.user.is_superuser %}<p><a class="secondary-button" href="{% url 'core:link_text_review' text.pk %}">Powiąż zgłoszenie z recenzjami</a></p>{% endif %}
-                {% if source_review %}
-                {% if source_review.can_open %}<p>
-                    <a
-                        href="{% url 'core:assigned_review_detail' source_review.pk %}"
-                        class="secondary-button"
-                    >
-                        Otwórz zgłoszenie: {{ source_review.title }}
-                    </a>
-                </p>{% else %}<p>{{ source_review.title }}</p>{% endif %}
-                {% if source_review.general_notes %}<div class="notes-editor-panel"><h3>Uwagi ogólne z recenzji</h3>{{ source_review.general_notes|linebreaksbr }}</div>{% endif %}
-
-                {% if source_review.old_reviews %}
-                    <p class="muted-text">
-                        Oddane recenzje archiwalne są liczone do dorobku, ale nie do bieżącego obciążenia.
-                    </p>
-                {% endif %}
-
-                {% if can_view_authors %}
-                    <p>
-                        Autor:
-                        {{ source_review.author_display_name }}
-                    </p>
-                {% endif %}
-
-                <div class="source-review-grid">
-                {% for opinion in source_review_opinions %}
-                    <details class="reviewer-opinion" open>
-                        <summary>
-                            <strong>{{ opinion.reviewer_name }}</strong>
-                            <span class="reviewer-bubble reviewer-opinion-{{ opinion.opinion_value }}">
-                                {{ opinion.opinion_display }}
-                            </span>
-                            {% if opinion.status_changed_at %}
-                                <small>{{ opinion.status_changed_at|date:"d.m.Y" }}</small>
-                            {% endif %}
-                        </summary>
-                        <div class="reviewer-opinion-content">
-                            {% if opinion.notes %}
-                                {{ opinion.notes|linebreaksbr }}
-                            {% else %}
-                                <span class="muted-text">Brak treści opinii.</span>
-                            {% endif %}
-                        </div>
-                    </details>
-                {% empty %}
-                    <p class="muted-text">Brak zapisanych opinii.</p>
-                {% endfor %}
-                </div>
-                {% else %}
-                    <p class="muted-text">Brak dostępnego powiązanego zgłoszenia z recenzjami tego tekstu.</p>
-                {% endif %}
-            </div>
-        </details>
+    {% if not is_novel %}{% include 'core/includes/text_reviews.html' %}{% endif %}
 
     {% include "core/includes/text_production.html" %}
 

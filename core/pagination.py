@@ -63,10 +63,16 @@ def _page_url(parameters, page_number, page_param='page', anchor=''):
     return f"?{parameters.urlencode()}{anchor}"
 
 
-def paginate_items(request, items, default=DEFAULT_PAGE_SIZE, *, page_param='page', size_param='page_size', anchor=''):
+def paginate_items(request, items, default=DEFAULT_PAGE_SIZE, *, page_param='page', size_param='page_size', anchor='', sort_param='sort'):
     """Stronicuje QuerySet lub sekwencję bez wczytywania całego QuerySetu."""
     from core.table_sorting import prepare_table_sort
-    items, sort_columns = prepare_table_sort(request, items)
+    sort_request = request
+    if sort_param != 'sort':
+        from copy import copy
+        sort_request = copy(request)
+        sort_request.GET = request.GET.copy()
+        sort_request.GET['sort'] = request.GET.get(sort_param, '')
+    items, sort_columns = prepare_table_sort(sort_request, items)
     page_size = get_page_size(request, default=default, size_param=size_param)
     page_number = _positive_integer(
         request.GET.get(page_param),
@@ -91,6 +97,7 @@ def paginate_items(request, items, default=DEFAULT_PAGE_SIZE, *, page_param='pag
     parameters[size_param] = str(page_size)
 
     page_obj.sort_columns = sort_columns
+    page_obj.sort_param = sort_param
     page_obj.selected_page_size = page_size
     page_obj.allowed_page_sizes = tuple(sorted(ALLOWED_PAGE_SIZES))
     page_obj.page_param = page_param

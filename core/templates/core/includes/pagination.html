@@ -1,6 +1,6 @@
 {{ page_obj.sort_columns|json_script }}
 {% if page_obj.paginator %}
-<nav class="cms-pagination" data-sort-config data-page-param="{{ page_obj.page_param }}" data-size-param="{{ page_obj.size_param }}" data-result-count="{{ page_obj.paginator.count }}" aria-label="Stronicowanie wyników">
+<nav class="cms-pagination" data-sort-config data-sort-param="{{ page_obj.sort_param|default:'sort' }}" data-page-param="{{ page_obj.page_param }}" data-size-param="{{ page_obj.size_param }}" data-result-count="{{ page_obj.paginator.count }}" aria-label="Stronicowanie wyników">
     <span>Strona {{ page_obj.number }} z {{ page_obj.paginator.num_pages }} · Wyniki {{ page_obj.start_index }}–{{ page_obj.end_index }} z {{ page_obj.paginator.count }}</span>
     <label>Wyników na stronie
         <select data-page-size-url>{% for option in page_obj.size_options %}<option value="{{ option.url }}"{% if option.size == page_obj.selected_page_size %} selected{% endif %}>{{ option.size }}</option>{% endfor %}</select>

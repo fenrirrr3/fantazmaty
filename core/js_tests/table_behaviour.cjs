@@ -13,17 +13,17 @@ class Element {
     removeAttribute(name) { delete this.attrs[name]; }
     querySelector(selector) { if (selector==='.sort-indicator') return this.children[0]?.children[0]; return null; }
 }
-function sortFixture(values, server = false, key = 'title') {
+function sortFixture(values, server = false, key = 'title', sortParam = 'sort') {
     const th = new Element('Tytuł');
     const body = {rows: values.map(value => ({cells:[new Element(value)]})), append(row) { this.rows=this.rows.filter(r=>r!==row); this.rows.push(row); }};
     const table = new Element(); table.dataset.serverPaginated=String(server);table.tHead={rows:[{cells:[th]}]};table.tBodies=[body];table.compareDocumentPosition=()=>4;
-    const config={dataset:{pageParam:'archive_page'},previousElementSibling:{textContent:JSON.stringify({'Tytuł':key})}};
+    const config={dataset:{pageParam:'archive_page',sortParam},previousElementSibling:{textContent:JSON.stringify({'Tytuł':key})}};
     const callbacks=[];const assigned=[];
     const source=fs.readFileSync(path.join(assets,'ui.js'),'utf8').replace(/\r\n/g, '\n');
     const sortSource=source.slice(source.indexOf('// Paginated lists sort'),source.indexOf("document.addEventListener('DOMContentLoaded', () => {\n    document.querySelectorAll('[data-dashboard-more]"));
     vm.runInNewContext(sortSource,{
         document:{addEventListener:(event,fn)=>callbacks.push(fn),querySelectorAll:selector=>selector==='main table'?[table]:[config],createElement:()=>new Element()},
-        Node:{DOCUMENT_POSITION_FOLLOWING:4},Intl,URL,location:{href:'https://cms.invalid/list?tag=smoki&archive_page=3&page_size=25',assign:url=>assigned.push(url)},
+        Node:{DOCUMENT_POSITION_FOLLOWING:4},Intl,URL,location:{href:'https://cms.invalid/list?tag=smoki&archive_page=3&page_size=25&genre_sort=-usage&genre_page=2',assign:url=>assigned.push(url)},
     });
     callbacks.forEach(fn=>fn());
     return {table, th, body, click:()=>th.children[0].events.click(), assigned};
@@ -36,6 +36,7 @@ fixture.click();assert.deepEqual(fixture.body.rows.map(r=>r.cells[0].textContent
 fixture=sortFixture(['10','2','100','']);fixture.click();assert.deepEqual(fixture.body.rows.map(r=>r.cells[0].textContent),['2','10','100','']);
 fixture=sortFixture(['02.01.2025','10.12.2024']);fixture.click();assert.equal(fixture.body.rows[0].cells[0].textContent,'10.12.2024');
 fixture=sortFixture(['B','A'],true);fixture.click();let url=new URL(fixture.assigned[0]);assert.equal(url.searchParams.get('sort'),'title');assert.equal(url.searchParams.has('archive_page'),false);assert.equal(url.searchParams.get('tag'),'smoki');
+fixture=sortFixture(['B','A'],true,'name','tag_sort');fixture.click();url=new URL(fixture.assigned[0]);assert.equal(url.searchParams.get('tag_sort'),'name');assert.equal(url.searchParams.get('genre_sort'),'-usage');assert.equal(url.searchParams.get('genre_page'),'2');assert.equal(url.searchParams.has('sort'),false);
 
 function selectionTable() {
     const table = new Element();table.id='chapters';

@@ -220,9 +220,9 @@ def take_workflow_stage(request, stage_id):
         stage.stage_type == WorkflowStage.StageType.FIRST_VERIFICATION and not stage.repetition_id
     )
 
-    if is_first_verification:
-        # Pierwszy weryfikator rezerwuje zadanie. Rozpoczyna je dopiero
-        # po przekazaniu tekstu przez redaktora.
+    if is_first_verification and not request.POST.get('started_at'):
+        # Rezerwacja nie ustala daty. Po przekazaniu tekstu formularz
+        # przyjmuje datę; jej dopuszczalność jest sprawdzana pod blokadą.
         started_at = None
     else:
         form = StartStageForm(request.POST)

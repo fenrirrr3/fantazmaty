@@ -615,7 +615,11 @@ def claim_stage(text, stage_type, user, started_at=None, *, stage_id=None):
     reason = claim_reason(stage,user,list(current_stage_queryset(text)),list(current_assignment_queryset(text)))
     if reason: raise ValidationError(reason)
     is_cycle_entry = cycle_entry_stage_is(text, stage_type)
-    if stage_type == StageType.FIRST_VERIFICATION and started_at is not None:
+    reservation_only = stage_type == StageType.FIRST_VERIFICATION and current_stage_queryset(text).filter(
+        stage_type__in=(StageType.EDITING, StageType.AUTHOR_EDITING),
+        is_completed=False, ended_at__isnull=True,
+    ).exists()
+    if reservation_only and started_at is not None:
         raise ValidationError('Rezerwacja pierwszej weryfikacji nie ustala daty. Datę podaje się przy rozpoczęciu pracy.')
 
     _assign_role(text, role, user)
@@ -623,8 +627,7 @@ def claim_stage(text, stage_type, user, started_at=None, *, stage_id=None):
     # Podczas redakcji W1 jest rezerwacją. Po przekazaniu tekstu
     # przejęcie pierwszej weryfikacji od razu rozpoczyna pracę.
     if stage_type == StageType.FIRST_VERIFICATION:
-        if not current_stage_queryset(text).filter(stage_type__in=(StageType.EDITING, StageType.AUTHOR_EDITING),
-                is_completed=False, ended_at__isnull=True).exists():
+        if not reservation_only:
             _start_stage(stage, transition_date)
         return stage
 

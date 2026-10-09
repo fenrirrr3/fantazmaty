@@ -161,11 +161,14 @@ class AuditFixesTests(TestCase):
             with self.subTest(route=route):
                 response = self.client.get(reverse(route))
                 self.assertEqual(response.status_code, 200)
-                columns = response.context['page_obj'].sort_columns
+                pages = ([section['page'] for section in response.context['sections']]
+                         if route == 'core:vocabulary_list' else [response.context['page_obj']])
+                columns = pages[0].sort_columns
                 parser = Headers(); parser.feed(response.content.decode())
                 for label in parser.headers:
                     label = label.strip()
                     if label and label not in {'Akcje', 'Akcja', 'Szczegóły', 'Wybór', 'Porządkowanie'}:
                         self.assertIn(label, columns)
-                for key in set(columns.values()):
-                    self.assertEqual(self.client.get(reverse(route), {'sort': '-' + key}).status_code, 200)
+                for page in pages:
+                    for key in set(page.sort_columns.values()):
+                        self.assertEqual(self.client.get(reverse(route), {page.sort_param: '-' + key}).status_code, 200)

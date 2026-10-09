@@ -1,0 +1,61 @@
+<details class="review-summary-details" open>
+            <summary class="review-summary-toggle">
+                <span>Recenzje tekstu</span>
+                <span class="dropdown-arrow" aria-hidden="true">▾</span>
+            </summary>
+
+            <div class="review-summary-content">
+                {% if request.user.is_superuser %}<p><a class="secondary-button" href="{% url 'core:link_text_review' text.pk %}">Powiąż zgłoszenie z recenzjami</a></p>{% endif %}
+                {% if source_review %}
+                {% if source_review.can_open %}<p>
+                    <a
+                        href="{% url 'core:assigned_review_detail' source_review.pk %}"
+                        class="secondary-button"
+                    >
+                        Otwórz zgłoszenie: {{ source_review.title }}
+                    </a>
+                </p>{% else %}<p>{{ source_review.title }}</p>{% endif %}
+                {% if source_review.general_notes %}<div class="notes-editor-panel"><h3>Uwagi ogólne z recenzji</h3>{{ source_review.general_notes|linebreaksbr }}</div>{% endif %}
+
+                {% if source_review.old_reviews %}
+                    <p class="muted-text">
+                        Oddane recenzje archiwalne są liczone do dorobku, ale nie do bieżącego obciążenia.
+                    </p>
+                {% endif %}
+
+                {% if can_view_authors %}
+                    <p>
+                        Autor:
+                        {{ source_review.author_display_name }}
+                    </p>
+                {% endif %}
+
+                <div class="source-review-grid">
+                {% for opinion in source_review_opinions %}
+                    <details class="reviewer-opinion" open>
+                        <summary>
+                            <strong>{{ opinion.reviewer_name }}</strong>
+                            <span class="reviewer-bubble reviewer-opinion-{{ opinion.opinion_value }}">
+                                {{ opinion.opinion_display }}
+                            </span>
+                            {% if opinion.status_changed_at %}
+                                <small>{{ opinion.status_changed_at|date:"d.m.Y" }}</small>
+                            {% endif %}
+                        </summary>
+                        <div class="reviewer-opinion-content">
+                            {% if opinion.notes %}
+                                {{ opinion.notes|linebreaksbr }}
+                            {% else %}
+                                <span class="muted-text">Brak treści opinii.</span>
+                            {% endif %}
+                        </div>
+                    </details>
+                {% empty %}
+                    <p class="muted-text">Brak zapisanych opinii.</p>
+                {% endfor %}
+                </div>
+                {% else %}
+                    <p class="muted-text">Brak dostępnego powiązanego zgłoszenia z recenzjami tego tekstu.</p>
+                {% endif %}
+            </div>
+        </details>

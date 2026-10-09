@@ -18,6 +18,13 @@ from texts.vocabulary import tokens, refresh_dictionary, merge_plan, merge_token
 
 
 class TermForm(forms.ModelForm):
+    def __init__(self, *args, fixed_kind=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        if fixed_kind:
+            self.fields['kind'].choices = [(fixed_kind, dict(VocabularyTerm.Kind.choices)[fixed_kind])]
+            self.fields['kind'].initial = fixed_kind
+            self.fields['kind'].widget = forms.HiddenInput()
+
     class Meta:
         model = VocabularyTerm
         fields = ('kind', 'name')
@@ -27,7 +34,13 @@ class TermForm(forms.ModelForm):
 @require_http_methods(['GET', 'POST'])
 @team_member_required
 def vocabulary_list(request):
-    form = TermForm(request.POST or None)
+    submitted_kind = request.POST.get('kind')
+    forms_by_kind = {
+        kind: TermForm(request.POST if request.method == 'POST' and submitted_kind == kind else None,
+                       fixed_kind=kind, auto_id=f'id_{kind}_%s')
+        for kind in ('genre', 'tag')
+    }
+    form = forms_by_kind.get(submitted_kind)
     error = None
     if request.method == 'POST':
         if not is_coordinator(request.user):
@@ -37,12 +50,12 @@ def vocabulary_list(request):
                 if request.POST.get('action') == 'refresh':
                     count = refresh_dictionary()
                     messages.success(request, f'Dodano brakujące hasła: {count}. Nie zmieniono treści pól.')
-                elif form.is_valid():
+                elif form is not None and form.is_valid():
                     form.save()
                     messages.success(request, 'Dodano hasło słownika.')
                 else:
                     raise ValidationError('Popraw nazwę i rodzaj hasła.')
-            return redirect('core:vocabulary_list')
+            return redirect(request.get_full_path())
         except (ValidationError, IntegrityError) as exc:
             error = ' '.join(exc.messages) if isinstance(exc, ValidationError) else 'Takie hasło już istnieje.'
     counts = Counter()
@@ -52,22 +65,29 @@ def vocabulary_list(request):
             for kind, value in [('tag', tags), ('genre', genre)]:
                 counts.update((kind, term_key(name)) for name in tokens(value))
     query = VocabularyTerm.objects.select_related('canonical').prefetch_related('aliases')
-    kind = request.GET.get('kind', '')
-    search = request.GET.get('q', '').strip()
-    if kind in dict(VocabularyTerm.Kind.choices):
-        query = query.filter(kind=kind)
-    if search:
-        query = query.filter(name__plcontains=search)
-    page = paginate_items(request, DisplayTable(query.order_by('kind', 'name', 'pk'), {
-        'Rodzaj': ('kind', lambda term: term.get_kind_display()),
-        'Nazwa': ('name', lambda term: term.name),
-        'Nazwa docelowa / aliasy': ('aliases', lambda term: term.canonical.name if term.canonical_id else ', '.join(alias.name for alias in term.aliases.all()) or 'Nazwa główna'),
-        'Użycia': ('usage', lambda term: counts[(term.kind, term.key)]),
-    }))
-    for term in page:
-        term.usage = counts[(term.kind, term.key)]
-    return render(request, 'core/vocabulary/list.html', {'page_obj': page, 'form': form, 'error': error,
-        'coordinator': is_coordinator(request.user), 'kinds': VocabularyTerm.Kind.choices, 'kind': kind, 'q': search},
+    sections = []
+    for kind, label in [('genre', 'Gatunek'), ('tag', 'Tagi')]:
+        q_param, page_param = f'{kind}_q', f'{kind}_page'
+        search = request.GET.get(q_param, '').strip()
+        terms = query.filter(kind=kind)
+        if search:
+            terms = terms.filter(name__plcontains=search)
+        page = paginate_items(request, DisplayTable(terms.order_by('name', 'pk'), {
+            'Nazwa': ('name', lambda term: term.name),
+            'Nazwa docelowa / aliasy': ('aliases', lambda term: term.canonical.name if term.canonical_id else ', '.join(alias.name for alias in term.aliases.all()) or 'Nazwa główna'),
+            'Użycia': ('usage', lambda term: counts[(term.kind, term.key)]),
+        }), page_param=page_param, size_param=f'{kind}_size', sort_param=f'{kind}_sort', anchor=f'#{kind}-dictionary')
+        for term in page:
+            term.usage = counts[(term.kind, term.key)]
+        preserved = request.GET.copy()
+        for key in (q_param, page_param):
+            preserved.pop(key, None)
+        clear_url = '?' + preserved.urlencode() + f'#{kind}-dictionary'
+        sections.append({'kind': kind, 'label': label, 'page': page, 'form': forms_by_kind[kind],
+                         'q': search, 'q_param': q_param, 'clear_url': clear_url,
+                         'preserved': [(key, value) for key, values in preserved.lists() for value in values]})
+    return render(request, 'core/vocabulary/list.html', {'sections': sections, 'error': error,
+        'coordinator': is_coordinator(request.user)},
         status=400 if error else 200)
 
 

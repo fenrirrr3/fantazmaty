@@ -121,6 +121,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let columns = {};
         try { columns = JSON.parse(config?.previousElementSibling?.textContent || '{}') || {}; } catch (_) {}
         const pageParam = config?.dataset.pageParam || 'page';
+        const sortParam = config?.dataset.sortParam || 'sort';
         const headers = [...(table.tHead?.rows[0]?.cells || [])];
         headers.forEach((th, index) => {
             const label = th.textContent.trim();
@@ -133,7 +134,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const mark = document.createElement('span'); mark.className = 'sort-indicator'; mark.setAttribute('aria-hidden', 'true');
             button.append(mark); th.replaceChildren(button);
             let descending = false;
-            const current = new URL(location.href).searchParams.get('sort');
+            const current = new URL(location.href).searchParams.get(sortParam);
             if (server && (current === key || current === '-' + key)) {
                 descending = current.startsWith('-');
                 th.setAttribute('aria-sort', descending ? 'descending' : 'ascending');
@@ -142,7 +143,7 @@ document.addEventListener('DOMContentLoaded', () => {
             button.addEventListener('click', () => {
                 if (server) {
                     const url = new URL(location.href);
-                    url.searchParams.set('sort', current === key ? '-' + key : key);
+                    url.searchParams.set(sortParam, current === key ? '-' + key : key);
                     url.searchParams.delete(pageParam); location.assign(url.href); return;
                 }
                 descending = th.getAttribute('aria-sort') === 'ascending';

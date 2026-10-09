@@ -168,7 +168,11 @@ def available_stages(user, access):
     query = query.filter(~Q(stage_type='second_verification') | entry | (
         Exists(checkpoints.filter(stage_type='first_verification'))
         & ~Exists(open_stages(stages).filter(stage_type__in=('editing', 'author_editing')))))
-    return query.order_by('text__anthology__title', 'text__title', 'text_id', '-pk')
+    return query.annotate(reservation_only=(
+        Q(stage_type='first_verification', repetition__isnull=True)
+        & Exists(stages.filter(stage_type__in=('editing', 'author_editing'),
+                               is_completed=False, ended_at__isnull=True))
+    )).order_by('text__anthology__title', 'text__title', 'text_id', '-pk')
 
 
 def dashboard_querysets(user, today):

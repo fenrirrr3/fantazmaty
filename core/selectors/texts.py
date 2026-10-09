@@ -192,6 +192,7 @@ def _stage_data(stage, text_data=None):
         ended_at=stage.ended_at,
         is_completed=stage.is_completed,
         editor_waiting=getattr(stage, 'editor_waiting', False),
+        reservation_only=getattr(stage, 'reservation_only', False),
     )
     if text_data is not None:
         result["text"] = text_data
