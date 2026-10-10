@@ -1,5 +1,27 @@
 {
  "schema": "anthology-corrections-v1",
+ "accounts": [
+  {
+   "first_name": "Damian",
+   "last_name": "Szandecki",
+   "email": "damian.szandecki.4d01fb@fantazmaty.invalid"
+  },
+  {
+   "first_name": "Sylwester",
+   "last_name": "Gdela",
+   "email": "sylwester.gdela.c9f169@fantazmaty.invalid"
+  },
+  {
+   "first_name": "Karolina",
+   "last_name": "Grzeszczak",
+   "email": "karolina.grzeszczak.9545f5@fantazmaty.invalid"
+  },
+  {
+   "first_name": "Alicja",
+   "last_name": "Janusz",
+   "email": "alicja.janusz.86f1a4@fantazmaty.invalid"
+  }
+ ],
  "corrections": [
   {
    "anthology": "nanoFantazje 1.0",
@@ -34,7 +56,7 @@
    "suggestion": "Konstrukcja powoli przesuwała się ku szczytowi, muskana promieniami upalnego słońca."
   },
   {
-   "anthology": "Fantazmaty 1",
+   "anthology": "Fantazmaty 2",
    "reporter": "Karolina Grzeszczak",
    "story": "Iskra z Edry",
    "fragment": "Od tego miesjca przenieść do nowego akapitu",
@@ -51,7 +73,7 @@
   },
   {
    "anthology": "Umieranie to parszywa robota",
-   "reporter": "Marian Siwiak",
+   "reporter": "Dawid Wiktorski",
    "story": "Pokój",
    "fragment": "Sam koniec",
    "problem": "Opowiadanie podpisane przez Konrada Kołodziejczyka",
@@ -148,7 +170,7 @@
   {
    "anthology": "Dragoneza",
    "reporter": "Sebastian Filipowicz",
-   "story": "Wycinki utraconego świata",
+   "story": "Wycinki z utraconego świata",
    "fragment": "Strona 290: \"...przepychając się przez nieskończony tłumy.\"",
    "problem": "Albo \"nieskończony tłum\", albo \"nieskończone tłumy\"",
    "suggestion": "Proponuję \"nieskończony tłum\", bo tak zostało przeczytane w audiobooku."
@@ -156,7 +178,7 @@
   {
    "anthology": "Dragoneza",
    "reporter": "Sebastian Filipowicz",
-   "story": "Wycinki utraconego świata",
+   "story": "Wycinki z utraconego świata",
    "fragment": "Strona 299: \"Jak zareagowaliście na wieść o tym, że zakończyła się klęską?\"",
    "problem": "To ewidentnie jest pytanie prowadzącego wywiad, więc powinno być wytłuszczone, tak jak wszystkie inne, a tymczasem wygląda jak zwykły kolejny akapit wypowiedzi odpowiadającego.",
    "suggestion": "Trzeba wyeksponować to pytanie, tak jak wszystkie inne w tym opowiadaniu"
@@ -164,7 +186,7 @@
   {
    "anthology": "Dragoneza",
    "reporter": "Sebastian Filipowicz",
-   "story": "Wycinki utraconego świata",
+   "story": "Wycinki z utraconego świata",
    "fragment": "Strona 307: \"Tiahne-2\"",
    "problem": "Superkomputer jest tu nazwany \"Tiahne-2\", podczas gdy wcześniej było \"Tianhe-2\".",
    "suggestion": "Proponuję na stronie 307 zmienić na \"Tianhe-2\", bo tak zostało przeczytane w audiobooku."
