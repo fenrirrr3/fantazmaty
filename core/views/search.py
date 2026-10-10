@@ -14,7 +14,7 @@ from authors.models import Author
 from core.forms import GlobalSearchForm
 from core.permissions import can_view_author_data, team_member_required
 from people.models import Person, Role
-from texts.models import Anthology, Review, Text
+from texts.models import Anthology, Extract, Review, Text
 
 
 RESULT_LIMIT = 50
@@ -207,6 +207,33 @@ def _search_authors(query, user, page=1):
     return _page_results(authors, page, _author_data)
 
 
+def _search_extracts(query, user, page=1):
+    # The informational Extract register is restricted to coordinators.
+    if not is_coordinator(user):
+        return []
+    from texts.extract_data import normalize_key, split_list
+
+    queryset = Extract.objects.select_related('author')
+    for term in query.split():
+        queryset = queryset.filter(
+            name_matches(term, 'author__', email=True)
+            | _matching_terms(term, ('title', 'recruitment'))
+        )
+
+    def project(item):
+        accepted = {normalize_key(title) for title in split_list(item.accepted_titles)}
+        rejected = {normalize_key(title) for title in split_list(item.rejected_titles)}
+        return {
+            'pk': item.pk, 'author': item.author.display_name, 'recruitment': item.recruitment,
+            'url': reverse('core:extract_edit', args=[item.pk]),
+            'titles': [{'title': title, 'status': 'Przyjęty' if normalize_key(title) in accepted
+                        else 'Odrzucony' if normalize_key(title) in rejected else 'Bez decyzji'}
+                       for title in split_list(item.title)],
+        }
+
+    return _page_results(queryset.order_by('recruitment', 'pk'), page, project)
+
+
 def _search_people(query, user, page=1):
     people = (
         Person.objects.all().select_related("user")
@@ -308,6 +335,7 @@ def global_search(request):
         "form": form,
         "query": "",
         "texts": [],
+        "extracts": [],
         "reviews": [],
         "authors": [],
         "people": [],
@@ -340,17 +368,22 @@ def global_search(request):
                         _search_authors(query, request.user, page=request.GET.get("authors_page", 1))
                     ),
                     "people": _search_people(query, request.user, page=request.GET.get("people_page", 1)),
+                    "extracts": _search_extracts(query, request.user, page=request.GET.get("extracts_page", 1)),
                     "additional_results": _additional_results(query, request.user, request.GET),
                     "anthologies": _search_anthologies(query, page=request.GET.get("anthologies_page", 1)),
                     "novels": _search_anthologies(query, novels=True, page=request.GET.get("novels_page", 1)),
                 }
             )
 
-    for key in ('texts', 'reviews', 'authors', 'people', 'anthologies', 'novels'):
+    for key in ('texts', 'extracts', 'reviews', 'authors', 'people', 'anthologies', 'novels'):
         if isinstance(context[key], SearchResults):
             _pagination_links(context[key], request, key)
     for group in context.get('additional_results', []):
         _pagination_links(group['items'], request, group['key'])
+
+    context['has_results'] = any(context[key] for key in
+        ('texts', 'extracts', 'reviews', 'authors', 'people', 'anthologies', 'novels')) or any(
+        group['items'] for group in context.get('additional_results', []))
 
     # Wyniki zawierają wyłącznie jawnie wybrane wartości. Szablon
     # nie otrzymuje obiektów ORM pozwalających przejść do danych

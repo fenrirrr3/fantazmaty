@@ -170,7 +170,7 @@ class ChangesV79Tests(TestCase):
             self.client.get(reverse("core:post_layout_edit", args=[item.pk])).status_code, 200
         )
 
-    def test_search_category_order_and_shared_empty_and_result_markup(self):
+    def test_search_hides_empty_sections_and_preserves_result_order_and_markup(self):
         url = reverse("core:global_search")
         doc = html.fromstring(self.client.get(url, {"q": "ZZZnothingmatch"}).content)
         sections = doc.xpath('//div[@class="global-search-results"]/section')
@@ -185,10 +185,8 @@ class ChangesV79Tests(TestCase):
             "Ilustratorzy",
             "Rekrutacja",
         ]
-        self.assertEqual([section.xpath("string(.//h2)") for section in sections], expected)
-        self.assertTrue(
-            all(section.xpath('./div[@class="empty-results-panel"]') for section in sections)
-        )
+        self.assertEqual(sections, [])
+        self.assertIn('Brak wyników dla podanego zapytania.', doc.text_content())
         from core.models import AudioContributor, Recruitment
 
         AudioContributor.objects.create(name="Wspólny Lektor")
@@ -198,6 +196,7 @@ class ChangesV79Tests(TestCase):
         )
         Anthology.objects.create(title="Wspólny tytuł powieści", is_novel=True)
         doc = html.fromstring(self.client.get(url, {"q": "Wspólny"}).content)
+        self.assertEqual(doc.xpath('//div[@class="global-search-results"]/section/header/h2/text()'), expected[-4:])
         for label in expected[-4:]:
             section = doc.xpath('//section[header/h2[text()="' + label + '"]]')[0]
             self.assertTrue(
