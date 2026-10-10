@@ -10,6 +10,12 @@ def post_layout_allowed(user):
     return can_view_post_layout(user)
 
 
+@register.simple_tag
+def audio_proofreading_allowed(user):
+    from core.permissions import can_view_audio_proofreading
+    return can_view_audio_proofreading(user)
+
+
 @register.inclusion_tag("core/includes/header_search.html")
 def header_search(user):
     from core.forms import GlobalSearchForm

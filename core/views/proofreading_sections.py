@@ -18,4 +18,5 @@ def post_layout(request):
 @require_GET
 @team_member_required
 def audio_proofreading(request):
-    return render(request, 'core/proofreading_section.html', {'title': 'Korekta audiobooków'})
+    from core.views.audiobook_production import list_page
+    return list_page(request, proofreading=True)

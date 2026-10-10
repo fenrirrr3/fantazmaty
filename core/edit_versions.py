@@ -15,6 +15,7 @@ from django.db.models.signals import pre_save, post_save, post_delete, pre_delet
 # Only editable domain records; no audit/outbox/session traffic.
 TRACKED = {
     'core.audiobook',
+    'core.audiobookstage',
     'core.publicaudiobooksettings',
     'texts.novelprofile', 'texts.vocabularyterm',
     'texts.texttranslation', 'texts.foreignauthor', 'texts.translator',
@@ -33,6 +34,7 @@ TRACKED = {
 # Child records whose change must also invalidate the parent edit form.
 PARENTS = {
     'core.audiobook': (('text_id', 'texts.text'),),
+    'core.audiobookstage': (('text_id', 'texts.text'),),
     'workflow.workflowstage': (('text_id', 'texts.text'),),
     'workflow.workflowroleassignment': (('text_id', 'texts.text'),),
     'workflow.workflowrepetition': (('text_id', 'texts.text'),),

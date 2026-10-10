@@ -334,7 +334,7 @@ def _extra_columns(items, queryset, request):
 
 
 def prepare_table_sort(request, items):
-    if request.resolver_match and request.resolver_match.view_name == 'core:audiobooks':
+    if request.resolver_match and request.resolver_match.view_name in ('core:audiobooks', 'core:audio_proofreading', 'core:assign_audio_proofreader'):
         fields = {
             'Antologia': ('anthology', 'anthology__title'), 'Autor': ('author', 'audio_author'),
             'Tytuł': ('title', 'title'), 'Status': ('status', 'audio_status'),

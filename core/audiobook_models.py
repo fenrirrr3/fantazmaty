@@ -20,6 +20,8 @@ class Audiobook(models.Model):
         PUBLISHED = 'published', 'Opublikowane'
 
     text = models.OneToOneField('texts.Text', on_delete=models.PROTECT, related_name='audiobook', verbose_name='tekst')
+    active_stage = models.OneToOneField('core.AudiobookStage', on_delete=models.PROTECT, null=True, blank=True,
+        editable=False, related_name='active_for', verbose_name='trwający etap')
     status = models.CharField('status audiobooka', max_length=24, choices=Status.choices, default=Status.PENDING, db_index=True)
     narrator_name = models.CharField('lektor – imię i nazwisko', max_length=255, blank=True)
     narrator_email = models.EmailField('e-mail lektora', blank=True)
@@ -62,3 +64,23 @@ class Audiobook(models.Model):
                 errors[name] = 'Przy adresie e-mail podaj również imię i nazwisko.'
         if errors:
             raise ValidationError(errors)
+
+
+class AudiobookStage(models.Model):
+    objects = VersionedQuerySet.as_manager()
+    text = models.ForeignKey('texts.Text', on_delete=models.PROTECT, related_name='audiobook_stages', verbose_name='tekst')
+    stage_type = models.CharField('etap', max_length=24, choices=Audiobook.Status.choices)
+    started_at = models.DateField('data rozpoczęcia', null=True, blank=True)
+    ended_at = models.DateField('data zakończenia', null=True, blank=True)
+    is_completed = models.BooleanField('zakończony', default=False)
+
+    class Meta:
+        verbose_name = 'etap audiobooka'
+        verbose_name_plural = 'Historia etapów audiobooków'
+        ordering = ('pk',)
+        constraints = [models.CheckConstraint(condition=models.Q(ended_at__isnull=True)
+            | models.Q(started_at__isnull=True) | models.Q(ended_at__gte=models.F('started_at')),
+            name='audio_stage_end_after_start')]
+
+    def __str__(self):
+        return f'{self.text} – {self.get_stage_type_display()}'

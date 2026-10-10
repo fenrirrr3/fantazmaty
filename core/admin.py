@@ -16,13 +16,31 @@ from core.models import WorkflowEvent
 from core.models import MailboxConnection
 from core.admin_newsletter_recovery import NewsletterRecoveryAdminMixin
 from core.models import PublicAudiobookSettings
-from core.models import Audiobook
+from core.models import Audiobook, AudiobookStage
 from core.audiobook_forms import AudiobookProductionForm
 
 
 class AudiobookAdminForm(AudiobookProductionForm):
     class Meta(AudiobookProductionForm.Meta):
         exclude = ()
+
+
+@admin.register(AudiobookStage)
+class AudiobookStageAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
+    list_display = ('text', 'stage_type', 'started_at', 'ended_at', 'is_completed')
+    list_filter = ('stage_type', 'is_completed')
+    search_fields = ('text__title',)
+    list_select_related = ('text',)
+    readonly_fields = ('text', 'stage_type', 'started_at', 'ended_at', 'is_completed')
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Audiobook)
@@ -34,7 +52,7 @@ class AudiobookAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     list_select_related = ('text__anthology', 'proofreader')
     autocomplete_fields = ('text',)
     fieldsets = (
-        ('Tekst i status', {'fields': ('text', 'status')}),
+        ('Tekst i status', {'fields': ('text', 'status', 'production_link')}),
         ('Lektor', {'fields': ('narrator_name', 'narrator_email', 'recording_started_at', 'corrections_started_at')}),
         ('Korektor audiobooka', {'fields': ('proofreader', 'proofreading_started_at')}),
         ('Dźwiękowiec', {'fields': ('engineer_name', 'engineer_email', 'editing_started_at')}),
@@ -42,7 +60,18 @@ class AudiobookAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     )
 
     def get_readonly_fields(self, request, obj=None):
-        return ('text',) if obj else ()
+        fields = ('status', 'production_link', 'recording_started_at', 'proofreading_started_at', 'corrections_started_at',
+            'editing_started_at', 'awaiting_publication_started_at')
+        return (*fields, 'text') if obj else fields
+
+    @admin.display(description='Etapy produkcji')
+    def production_link(self, obj):
+        if not obj or not obj.text_id:
+            return 'Zapisz audiobook, aby otworzyć etapy produkcji.'
+        from django.urls import reverse
+        from django.utils.html import format_html
+        return format_html('<a href="{}">Otwórz podgląd audiobooka i zarządzaj etapami</a>',
+            reverse('core:audiobook_detail', args=[obj.text_id]))
 
     def formfield_for_foreignkey(self, db_field, request, **kwargs):
         if db_field.name == 'text':
