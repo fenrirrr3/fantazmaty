@@ -237,6 +237,6 @@ class ChangesV79Tests(TestCase):
         response = self.client.get(reverse("core:anthology_corrections"))
         doc = html.fromstring(response.content)
         self.assertIn(
-            "wyłącznie do już wydanych antologii",
+            "Tu zgłaszamy uwagi tylko do już wydanych antologii",
             doc.xpath('string(//header[h1="Uwagi do antologii"]/p)'),
         )

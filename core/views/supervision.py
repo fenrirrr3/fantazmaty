@@ -99,13 +99,31 @@ def anthology_detail(request, anthology_id):
         if not coordinator:
             raise PermissionDenied
         action = request.POST.get('action', '')
-        if action not in ('', 'cover', 'tasks_and_cover', 'new_person'):
+        removal = request.POST.get('remove_task')
+        if removal is not None:
+            if removal not in (*AnthologyTask.TaskType.values, 'cover'):
+                return HttpResponse('Nieznane zadanie.', status=400)
+            action = 'remove_person'
+        if action not in ('', 'cover', 'tasks_and_cover', 'new_person', 'remove_person'):
             return HttpResponse('Nieznana operacja.', status=400)
-        if action in ('cover', 'tasks_and_cover', 'new_person') and not request.POST.get('_edit_version'):
+        if action in ('cover', 'tasks_and_cover', 'new_person', 'remove_person') and not request.POST.get('_edit_version'):
             return HttpResponse('Odśwież stronę i ponów zapis. Brak wersji formularza.', status=409)
         with transaction.atomic():
             anthology = get_object_or_404(Anthology.objects.select_for_update(), pk=anthology_id)
-            if action == 'new_person':
+            if action == 'remove_person':
+                if removal == 'cover':
+                    anthology.cover_illustrator = None
+                    anthology.cover_author = ''
+                    anthology.cover_status = 'not_started'
+                    anthology.save(update_fields=['cover_illustrator', 'cover_author', 'cover_status'])
+                else:
+                    task = get_object_or_404(AnthologyTask, anthology=anthology, task_type=removal)
+                    task.assigned_to = None
+                    task.status = AnthologyTask.Status.NOT_COMMISSIONED
+                    task.save(update_fields=['assigned_to', 'status'])
+                messages.success(request, 'Usunięto przypisanie. Zadanie ma status Niezlecone – możesz przypisać inną osobę.')
+                return redirect('core:anthology_detail', anthology_id=anthology.pk)
+            elif action == 'new_person':
                 new_person_form = NewTaskPersonForm(request.POST, anthology=anthology, prefix='new-person')
                 if new_person_form.is_valid():
                     try:
