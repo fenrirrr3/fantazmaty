@@ -3,6 +3,7 @@ from django.urls.resolvers import RoutePattern, URLPattern, URLResolver
 from django.urls import register_converter
 
 SEGMENTS = {
+    'publicaudiobooksettings': 'zewnetrzne-audiobooki',
     'publicillustrationsettings': 'zewnetrzne-ilustracje',
     "blacklistentry": "wpis-czarnej-listy", "workflowrepetition": "powtorzenie-etapow",
     "workflowhandoff": "przekazanie-pracy", "r": "przejdz",

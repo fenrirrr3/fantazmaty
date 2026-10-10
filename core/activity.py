@@ -22,6 +22,7 @@ LABELS = {
 }
 
 LABELS.update({
+    'external_audiobooks': 'Zewnętrzne audiobooki', 'audiobook_guidelines_txt': 'Pobranie wytycznych audiobooków',
     'external_illustrations': 'Zewnętrzne ilustracje', 'recruitment_delete': 'Usunięcie zgłoszenia rekrutacyjnego',
     'discord_test': 'Test wysyłki Discord',
     'data_integrity':'Spójność danych', 'person_permissions':'Podgląd uprawnień osoby',

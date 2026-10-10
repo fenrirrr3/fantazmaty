@@ -2,6 +2,29 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 from core.edit_versions import VersionedQuerySet
+from core.audiobook_validators import validate_mega_url
+
+
+class PublicAudiobookSettings(models.Model):
+    objects = VersionedQuerySet.as_manager()
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    mega_url = models.URLField(
+        'wspólny link MegaNZ', max_length=1000, default='https://mega.nz/',
+        validators=[validate_mega_url],
+        help_text='Publiczny link wspólny dla opowiadań na stronie zewnętrznej.',
+    )
+    guidelines = models.TextField(
+        'wytyczne', blank=True, default='', max_length=40000,
+        help_text='Tekst publiczny. Można go rozwinąć na stronie i pobrać jako TXT.',
+    )
+
+    class Meta:
+        verbose_name = 'ustawienia zewnętrznych audiobooków'
+        verbose_name_plural = 'Zewnętrzne audiobooki – ustawienia'
+        constraints = [models.CheckConstraint(condition=models.Q(id=1), name='single_public_audiobook_settings')]
+
+    def __str__(self):
+        return 'Zewnętrzne audiobooki – MegaNZ i wytyczne'
 
 
 class AnthologyCorrection(models.Model):

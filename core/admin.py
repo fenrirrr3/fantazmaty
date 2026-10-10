@@ -15,6 +15,18 @@ from core.models import UserActivity
 from core.models import WorkflowEvent
 from core.models import MailboxConnection
 from core.admin_newsletter_recovery import NewsletterRecoveryAdminMixin
+from core.models import PublicAudiobookSettings
+
+
+@admin.register(PublicAudiobookSettings)
+class PublicAudiobookSettingsAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
+    fields = ('mega_url', 'guidelines')
+
+    def has_add_permission(self, request):
+        return super().has_add_permission(request) and not PublicAudiobookSettings.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 User = get_user_model()
 

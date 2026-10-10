@@ -1,0 +1,53 @@
+{% load static %}<!doctype html>
+<html lang="pl">
+<head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow"><meta name="referrer" content="no-referrer">
+    <title>Zewnętrzne audiobooki | Fantazmaty</title>
+    <link rel="icon" type="image/png" href="{% static 'core/favicon.png' %}">
+    <link rel="stylesheet" href="{% static 'core/themes.css' %}">
+    <link rel="stylesheet" href="{% static 'core/styles.css' %}">
+    <link rel="stylesheet" href="{% static 'core/workspace.css' %}">
+    <link rel="stylesheet" href="{% static 'core/components.css' %}">
+    <link rel="stylesheet" href="{% static 'core/pagination.css' %}">
+    <link rel="stylesheet" href="{% static 'core/external-audiobooks.css' %}?v=59">
+</head>
+<body><main class="container external-audiobooks" id="main-content">
+    <header class="page-header"><h1 class="page-title">Zewnętrzne audiobooki</h1><p class="page-description">Opowiadania do nagrania z gotowych antologii Fantazmatów.</p></header>
+    <section class="filters-card">
+        <form method="get" class="filters-form">
+            <div class="filter-field"><label for="audio-query">Szukaj</label><input id="audio-query" type="search" name="q" value="{{ query }}" placeholder="Antologia, tytuł, tag lub gatunek"></div>
+            <div class="filter-field"><label for="audio-anthology">Antologia</label><select name="anthology" id="audio-anthology"><option value="">Wszystkie</option>{% for item in anthologies %}<option value="{{ item.anthology_id }}" {% if selected_anthology == item.anthology_id|stringformat:'s' %}selected{% endif %}>{{ item.anthology__title }}</option>{% endfor %}</select></div>
+            <div class="filter-field"><label for="audio-status">Status</label><select name="status" id="audio-status"><option value="">Wszystkie dostępne</option><option {% if selected_status == 'Do nagrania' %}selected{% endif %}>Do nagrania</option></select></div>
+            <div class="audiobook-filter-actions filter-actions">
+                <button class="primary-button" type="submit">Filtruj</button>
+                <a class="secondary-button" href="{% url 'core:external_audiobooks' %}">Wyczyść filtry</a>
+                {% if mega_url %}<a class="secondary-button audiobook-public-button" href="{{ mega_url }}" target="_blank" rel="noopener noreferrer">Otwórz MegaNZ</a>{% endif %}
+            </div>
+        </form>
+        <details class="audiobook-guidelines">
+            <summary class="secondary-button">Otwórz wytyczne</summary>
+            <div class="audiobook-guidelines-content">
+                <h2>Wytyczne do nagrywania</h2>
+                {% if guidelines %}<div class="audiobook-guidelines-text">{{ guidelines }}</div><a class="secondary-button" href="{% url 'core:audiobook_guidelines_txt' %}" download>Pobierz wytyczne TXT</a>
+                {% else %}<p>Wytyczne zostaną uzupełnione.</p>{% endif %}
+            </div>
+        </details>
+    </section>
+    <section class="card">
+        <div class="table-container" role="region" tabindex="0" aria-label="Opowiadania do nagrania">
+            <table data-server-paginated="true" id="external-audiobooks-table">
+                <thead><tr><th>Antologia</th><th>Tytuł opowiadania</th><th>Tagi</th><th>Gatunek</th><th>Status</th></tr></thead>
+                <tbody>{% for row in rows %}<tr>
+                    <td>{{ row.anthology__title }}</td><td><strong>{{ row.title }}</strong></td>
+                    <td class="external-audio-tags">{{ row.tags|default:'–' }}</td><td>{{ row.genre|default:'–' }}</td>
+                    <td><span class="stage-status pending">{{ row.public_status }}</span></td>
+                </tr>{% empty %}<tr><td colspan="5">Brak opowiadań spełniających kryteria.</td></tr>{% endfor %}</tbody>
+            </table>
+        </div>
+    </section>
+    {% include 'core/includes/pagination.html' %}
+</main>
+<script src="{% static 'core/ui.js' %}" defer></script>
+<script src="{% static 'core/pagination-controls.js' %}" defer></script>
+</body></html>

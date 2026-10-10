@@ -334,6 +334,20 @@ def _extra_columns(items, queryset, request):
 
 
 def prepare_table_sort(request, items):
+    if request.resolver_match and request.resolver_match.view_name == 'core:external_audiobooks':
+        # Never expose private Text fields through public sorting or projection.
+        fields = {
+            'Antologia': ('anthology', 'anthology__title'),
+            'Tytuł opowiadania': ('title', 'title'),
+            'Tagi': ('tags', 'tags'),
+            'Gatunek': ('genre', 'genre'),
+            'Status': ('status', 'public_status'),
+        }
+        sort = request.GET.get('sort', 'anthology')
+        field = next((field for key, field in fields.values() if key == sort.lstrip('-')), 'anthology__title')
+        return items.order_by(('-' if sort.startswith('-') else '') + field, 'title', 'pk'), {
+            label: key for label, (key, _) in fields.items()
+        }
     if (
         request.resolver_match
         and request.resolver_match.view_name == "illustrations:external_illustrations"
