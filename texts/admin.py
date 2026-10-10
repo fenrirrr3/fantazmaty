@@ -22,6 +22,7 @@ from .models import (
     MAX_REVIEWERS,
     Anthology,
     AnthologyTask,
+    ExtractVolume, ExtractVolumeCredit, ExtractTextLink,
     Review,
     ReviewAssignment,
     Reviewers,
@@ -89,8 +90,21 @@ class AnthologyTaskInline(admin.TabularInline):
         )
 
 
+class ExtractVolumeCreditInline(admin.TabularInline):
+    model = ExtractVolumeCredit
+    extra = 0
+    autocomplete_fields = ('person',)
+    fields = ('person', 'role', 'source_name', 'position')
+
+
 @admin.register(Anthology)
 class AnthologyAdmin(admin.ModelAdmin):
+    def get_inlines(self, request, obj=None):
+        inlines = list(super().get_inlines(request, obj))
+        if obj and ExtractVolume.objects.filter(anthology=obj).exists():
+            inlines.append(ExtractVolumeCreditInline)
+        return inlines
+
     def get_deleted_objects(self, objs, request):
         # Only the parent deletion may remove its untouched default tasks.
         previous = getattr(request, '_deleting_anthologies', None)
@@ -303,7 +317,7 @@ class TextAdminForm(NormalizedFormMixin, forms.ModelForm):
         novel = (self.instance.anthology_id and self.instance.anthology.is_novel) or (
             str(anthology_id or '').isdecimal() and Anthology.objects.filter(pk=anthology_id, is_novel=True).exists())
         if 'length' in self.fields:
-            self.fields['length'].required = not novel
+            self.fields['length'].required = not novel and self.instance.import_source != 'extracts-v1'
         if novel:
             for name in ('title', 'file_url', 'content_warnings'):
                 if name in self.fields:
@@ -1400,3 +1414,29 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 # Nie rejestrujemy osobnych adminów omijających blokadę rekordu recenzji.
 
 from . import catalog_admin  # noqa: E402,F401
+
+
+@admin.register(ExtractVolume)
+class ExtractVolumeAdmin(admin.ModelAdmin):
+    list_display = ('number', 'anthology')
+    readonly_fields = ('number', 'anthology')
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(ExtractTextLink)
+class ExtractTextLinkAdmin(admin.ModelAdmin):
+    list_display = ('source_title', 'extract', 'text')
+    readonly_fields = ('source_title', 'title_key', 'extract', 'text')
+    search_fields = ('source_title',)
+    list_select_related = ('extract', 'text')
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

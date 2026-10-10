@@ -349,6 +349,11 @@ def anthology_credits(anthology, *, text=None, include_assignments=False):
 
 
 def anthology_credit_groups(anthology, *, text=None, include_assignments=False):
+    if text is None and anthology is not None:
+        from texts.extract_volumes import volume_credit_groups
+        volume_groups = volume_credit_groups(anthology)
+        if volume_groups is not None:
+            return volume_groups
     groups = {
         label: {}
         for label in (

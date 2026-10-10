@@ -118,7 +118,7 @@ def person_detail(request, person_id):
     person = get_object_or_404(
         Person.objects.filter(Q(is_active=True) | Q(is_external=True) | Q(user__audio_contacts__isnull=False)
             | Q(user__proofread_audiobooks__isnull=False) | Q(user__audiobook_stage_history__isnull=False)
-            | Q(user__post_layout_assignments__isnull=False)
+            | Q(user__post_layout_assignments__isnull=False) | Q(extract_credits__isnull=False)
             | Q(user__workflow_role_assignments__isnull=False) | Q(historical_review_assignments__review__old_reviews=True) | Q(user__review_assignments__review__old_reviews=True)).distinct()
         .select_related("user")
         .prefetch_related("roles"),

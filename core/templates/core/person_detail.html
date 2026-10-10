@@ -230,7 +230,7 @@
                                         {% endif %}{% if not forloop.last %}, {% endif %}
                                     {% empty %}
                                         <span class="muted-text">
-                                            {% if assignment.kind_key == 'post_layout' %}Cała antologia{% else %}Brak przypisanego autora{% endif %}
+                                            {% if assignment.kind_key == 'extract_volume' %}–{% elif assignment.kind_key == 'post_layout' %}Cała antologia{% else %}Brak przypisanego autora{% endif %}
                                         </span>
                                     {% endfor %}
                                 </td>

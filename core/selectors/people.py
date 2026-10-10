@@ -85,8 +85,11 @@ def user_leave_information(user):
     }
 
 def profile_assignments(person, *, include_authors):
+    from texts.extract_volumes import profile_volume_credits
+    volume_rows = profile_volume_credits(person)
+    completed_volumes = len({row["text"]["anthology"]["pk"] for row in volume_rows})
     if person.user_id is None:
-        return [], {"active": 0, "reserved": 0, "completed": 0}
+        return volume_rows, {"active": 0, "reserved": 0, "completed": completed_volumes}
 
     current_stages = (
         WorkflowStage.objects.filter(
@@ -241,6 +244,8 @@ def profile_assignments(person, *, include_authors):
     assignments.extend(profile_audio_assignments(person))
     from core.selectors.post_layout import profile_post_layout_assignments
     assignments.extend(profile_post_layout_assignments(person))
+    assignments.extend(volume_rows)
+    summary["completed"] += completed_volumes
     return assignments, summary
 
 

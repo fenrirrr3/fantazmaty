@@ -5,7 +5,7 @@ from urllib.parse import urlencode
 
 GROUPS = (
     ('submissions', 'Zgłoszenia i recenzje', ('texts.review', 'texts.extract')),
-    ('publication', 'Teksty i antologie', ('texts.text', 'texts.anthology', 'texts.anthologytask', 'core.anthologycorrection')),
+    ('publication', 'Teksty i antologie', ('texts.text', 'texts.anthology', 'texts.extractvolume', 'texts.anthologytask', 'core.anthologycorrection')),
     ('post_layout', 'Korekta poskładowa', ('core.postlayoutassignment',)),
     ('novels', 'Powieści i słownik', ('novels', 'texts.novelprofile', 'texts.vocabularyterm')),
     ('translations', 'Tłumaczenia', ('texts.texttranslation', 'texts.foreignauthor', 'texts.translator')),
@@ -16,7 +16,7 @@ GROUPS = (
     ('history', 'Historia i diagnostyka', ('workflow.workflowstage', 'workflow.workflowroleassignment', 'core.useractivity', 'core.workflowevent')),
     ('settings', 'Ustawienia', ('core.mailboxconnection', 'people.role', 'auth.group')),
 )
-DETAIL_MODELS = ('texts.textnote', 'authors.authornote', 'texts.reviewassignment', 'texts.reviewers',
+DETAIL_MODELS = ('texts.extracttextlink', 'texts.textnote', 'authors.authornote', 'texts.reviewassignment', 'texts.reviewers',
                  'workflow.workflowrepetition', 'workflow.workflowhandoff')
 LABELS = {
     'texts.review': 'Zgłoszenia do recenzji', 'people.person': 'Osoby w zespole',

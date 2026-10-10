@@ -1,0 +1,344 @@
+{
+  "schema": "extract-volumes-v1",
+  "volumes": [
+    {
+      "number": 1,
+      "source": "F:\\Dropbox\\Fantazmaty\\Koordynatorzy\\Pliki antologii\\18 Ekstrakty 1\\Ekstrakty-rtf.rtf",
+      "source_sha256": "be55916e5c5873396bee558053e06ae3b9e8afa7fec342b1f2fcaad61c4e64cf",
+      "credits": [
+        {
+          "role": "Redaktor prowadzący",
+          "name": "Dawid Wiktorski"
+        },
+        {
+          "role": "Redakcja",
+          "name": "Mateusz Bielecki"
+        },
+        {
+          "role": "Redakcja",
+          "name": "Anita Brzozowiec"
+        },
+        {
+          "role": "Redakcja",
+          "name": "Marta Irzyk"
+        },
+        {
+          "role": "Redakcja",
+          "name": "Marta Karmowska"
+        },
+        {
+          "role": "Redakcja",
+          "name": "Kamila Kowalczyk"
+        },
+        {
+          "role": "Redakcja",
+          "name": "Adam Raglan"
+        },
+        {
+          "role": "Redakcja",
+          "name": "Joanna Rozmus"
+        },
+        {
+          "role": "Redakcja",
+          "name": "Justyna Szymkiewicz"
+        },
+        {
+          "role": "Redakcja",
+          "name": "Magdalena Świerczek-Gryboś"
+        },
+        {
+          "role": "Redakcja",
+          "name": "Dawid Wiktorski"
+        },
+        {
+          "role": "Korekta",
+          "name": "Paulina Karbownik"
+        },
+        {
+          "role": "Korekta",
+          "name": "Agnieszka Kolenda"
+        },
+        {
+          "role": "Korekta",
+          "name": "Ewa Kujaszewska"
+        },
+        {
+          "role": "Korekta",
+          "name": "Patrycja Kurczewska"
+        },
+        {
+          "role": "Korekta",
+          "name": "Joanna Lewandowska"
+        },
+        {
+          "role": "Korekta",
+          "name": "Justyna Mroczek-Żal"
+        },
+        {
+          "role": "Korekta",
+          "name": "Ewa Paleczna"
+        },
+        {
+          "role": "Korekta",
+          "name": "Karolina Rogala"
+        },
+        {
+          "role": "Korekta",
+          "name": "Anna Sadek"
+        },
+        {
+          "role": "Korekta",
+          "name": "Beata Sagan-Szendzielorz"
+        },
+        {
+          "role": "Korekta",
+          "name": "Ilona Żurawska",
+          "original_name": "Ilona Skrzypczak"
+        },
+        {
+          "role": "Korekta",
+          "name": "Pola Stawiany"
+        },
+        {
+          "role": "Korekta",
+          "name": "Katarzyna Twarduś"
+        },
+        {
+          "role": "Weryfikacja",
+          "name": "Anita Brzozowiec"
+        },
+        {
+          "role": "Weryfikacja",
+          "name": "Aleks Gapski"
+        },
+        {
+          "role": "Weryfikacja",
+          "name": "Paulina Karbownik"
+        },
+        {
+          "role": "Weryfikacja",
+          "name": "Magdalena Kłodowska"
+        },
+        {
+          "role": "Weryfikacja",
+          "name": "Magda Kowalewicz"
+        },
+        {
+          "role": "Weryfikacja",
+          "name": "Aleksandra Krasińska"
+        },
+        {
+          "role": "Weryfikacja",
+          "name": "Małgorzata Lisiecka"
+        },
+        {
+          "role": "Weryfikacja",
+          "name": "Katarzyna Pikosz"
+        },
+        {
+          "role": "Weryfikacja",
+          "name": "Renata Rabczewska"
+        },
+        {
+          "role": "Koordynacja działu redakcji",
+          "name": "Magdalena Świerczek-Gryboś"
+        },
+        {
+          "role": "Koordynacja działu redakcji",
+          "name": "Dawid Wiktorski"
+        },
+        {
+          "role": "Koordynacja działu korekty",
+          "name": "Justyna Mroczek-Żal"
+        },
+        {
+          "role": "Koordynacja działu korekty",
+          "name": "Ilona Żurawska",
+          "original_name": "Ilona Skrzypczak"
+        },
+        {
+          "role": "Koordynacja działu weryfikacji",
+          "name": "Anita Brzozowiec"
+        },
+        {
+          "role": "Koordynacja działu weryfikacji",
+          "name": "Magda Kowalewicz"
+        },
+        {
+          "role": "Koordynacja działu recenzji",
+          "name": "Magdalena Piniak"
+        },
+        {
+          "role": "Koordynacja działu ilustracji",
+          "name": "Anita Brzozowiec"
+        },
+        {
+          "role": "Koordynacja działu ilustracji",
+          "name": "Arkadiusz Nowakowski"
+        },
+        {
+          "role": "Koordynacja działu ilustracji",
+          "name": "Magdalena Świerczek-Gryboś"
+        },
+        {
+          "role": "Koordynacja działu audio",
+          "name": "Magda Brumirska-Zielińska"
+        },
+        {
+          "role": "Koordynacja działu marketingu",
+          "name": "Dawid Wiktorski"
+        },
+        {
+          "role": "Koordynacja działu tłumaczeń",
+          "name": "Alicja Janusz"
+        },
+        {
+          "role": "Ilustracja na okładce",
+          "name": "Arkadiusz Nowakowski",
+          "cover": true
+        },
+        {
+          "role": "Projekt typograficzny okładki",
+          "name": "Arkadiusz Nowakowski",
+          "task": "cover_typography"
+        },
+        {
+          "role": "Skład i projekt typograficzny",
+          "name": "Maria Nowak",
+          "task": "typesetting"
+        },
+        {
+          "role": "Tekst audiodeskrypcji okładki",
+          "name": "Magda Brumirska-Zielińska",
+          "task": "audio_description"
+        },
+        {
+          "role": "Konsultacja audiodeskrypcji",
+          "name": "Magdalena Rutkowska"
+        }
+      ]
+    },
+    {
+      "number": 2,
+      "source": "F:\\Dropbox\\Fantazmaty\\Koordynatorzy\\Pliki antologii\\21 Ekstrakty 2\\Ekstrakty-tom-drugi-rtf.rtf",
+      "source_sha256": "f2cef8df2d269fafa2a41757224a725de29c6048039661177bb39617ce64af8e",
+      "credits": [
+        {
+          "role": "Redaktor prowadzący",
+          "name": "Dawid Wiktorski"
+        },
+        {
+          "role": "Redakcja",
+          "name": "Dawid Wiktorski"
+        },
+        {
+          "role": "Korekta",
+          "name": "Beata Sagan-Szendzielorz"
+        },
+        {
+          "role": "Korekta",
+          "name": "Justyna Mroczek-Żal"
+        },
+        {
+          "role": "Korekta poskładowa",
+          "name": "Karolina Rogala"
+        },
+        {
+          "role": "Weryfikacja",
+          "name": "Anita Brzozowiec"
+        },
+        {
+          "role": "Weryfikacja",
+          "name": "Magda Kowalewicz"
+        },
+        {
+          "role": "Koordynacja działu redakcji",
+          "name": "Magdalena Świerczek-Gryboś"
+        },
+        {
+          "role": "Koordynacja działu redakcji",
+          "name": "Dawid Wiktorski"
+        },
+        {
+          "role": "Koordynacja działu korekty",
+          "name": "Justyna Mroczek-Żal"
+        },
+        {
+          "role": "Koordynacja działu korekty",
+          "name": "Ilona Żurawska"
+        },
+        {
+          "role": "Koordynacja działu weryfikacji",
+          "name": "Anita Brzozowiec"
+        },
+        {
+          "role": "Koordynacja działu weryfikacji",
+          "name": "Magda Kowalewicz"
+        },
+        {
+          "role": "Koordynacja działu recenzji",
+          "name": "Magdalena Piniak"
+        },
+        {
+          "role": "Koordynacja działu ilustracji",
+          "name": "Anita Brzozowiec"
+        },
+        {
+          "role": "Koordynacja działu ilustracji",
+          "name": "Arkadiusz Nowakowski"
+        },
+        {
+          "role": "Koordynacja działu ilustracji",
+          "name": "Magdalena Świerczek-Gryboś"
+        },
+        {
+          "role": "Koordynacja działu audio",
+          "name": "Agata Graczyk"
+        },
+        {
+          "role": "Koordynacja działu audio",
+          "name": "Magda Kowalewicz"
+        },
+        {
+          "role": "Koordynacja działu marketingu",
+          "name": "Dawid Wiktorski"
+        },
+        {
+          "role": "Koordynacja działu tłumaczeń",
+          "name": "Alicja Janusz"
+        },
+        {
+          "role": "Ilustracja na okładce",
+          "name": "Arkadiusz Nowakowski",
+          "original_name": "Arek Nowakowski",
+          "cover": true
+        },
+        {
+          "role": "Projekt typograficzny okładki",
+          "name": "Arkadiusz Nowakowski",
+          "original_name": "Arek Nowakowski",
+          "task": "cover_typography"
+        },
+        {
+          "role": "Skład i projekt typograficzny",
+          "name": "Maria Nowak",
+          "task": "typesetting"
+        },
+        {
+          "role": "Tekst audiodeskrypcji okładki",
+          "name": "Magda Brumirska-Zielińska",
+          "task": "audio_description"
+        },
+        {
+          "role": "Konsultacja audiodeskrypcji",
+          "name": "Magdalena Dudowicz"
+        }
+      ]
+    },
+    {
+      "number": 3,
+      "source": "Przyjęte zgłoszenia w bazie; tom niewydany, bez stopki",
+      "credits": []
+    }
+  ]
+}

@@ -416,7 +416,7 @@ class Text(NormalizedModelMixin, models.Model):
         verbose_name_plural = "teksty"
         constraints = [models.UniqueConstraint(fields=("import_source", "import_source_row"), name="unique_text_import_source"),
                        models.UniqueConstraint(fields=('anthology', 'chapter_number'), name='unique_novel_chapter_number'),
-                       models.CheckConstraint(condition=models.Q(chapter_number__isnull=False) | models.Q(length__isnull=False),
+                       models.CheckConstraint(condition=models.Q(chapter_number__isnull=False) | models.Q(length__isnull=False) | models.Q(import_source='extracts-v1'),
                                               name='ordinary_text_requires_length')]
 
         ordering = ("title", "pk")
@@ -450,7 +450,7 @@ class Text(NormalizedModelMixin, models.Model):
         if self.chapter_number and self.anthology_id and self.anthology.is_novel:
             self.title = f'Rozdział {self.chapter_number}'
         super().clean_fields(exclude=exclude)
-        if self.length is None and not self.chapter_number and 'length' not in (exclude or ()):
+        if self.length is None and not self.chapter_number and self.import_source != 'extracts-v1' and 'length' not in (exclude or ()):
             raise ValidationError({'length': 'Podaj długość tekstu.'})
 
     def _validate_chapter(self):
@@ -1143,3 +1143,5 @@ class Extract(NormalizedModelMixin, models.Model):
 
 
 from .catalog_models import NovelProfile, VocabularyTerm  # noqa: E402,F401
+
+from .extract_volume_models import ExtractVolume, ExtractVolumeCredit, ExtractTextLink  # noqa: E402,F401
