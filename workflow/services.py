@@ -290,15 +290,6 @@ def ensure_distinct_primary_verifier(text, role, user):
         )
 
 
-def cycle_entry_stage_is(text, stage_type):
-    stages = list(
-        current_stage_queryset(text)
-        .order_by("pk")
-        .values_list("stage_type", "is_completed")[:2]
-    )
-    return stages == [(stage_type, False)]
-
-
 def text_is_withdrawn(text):
     return current_stage_queryset(text).filter(
         stage_type=StageType.WITHDRAWN,
@@ -612,19 +603,16 @@ def claim_stage(text, stage_type, user, started_at=None, *, stage_id=None):
         from workflow.repetitions import claim_repeat
         return claim_repeat(text, stage, user, transition_date)
     from workflow.availability import claim_reason
-    reason = claim_reason(stage,user,list(current_stage_queryset(text)),list(current_assignment_queryset(text)))
+    stages = list(current_stage_queryset(text))
+    reason = claim_reason(stage, user, stages, list(current_assignment_queryset(text)))
     if reason:
         raise ValidationError(reason)
-    is_cycle_entry = cycle_entry_stage_is(text, stage_type)
-    reservation_only = (
-        stage_type == StageType.FIRST_VERIFICATION
-        and current_stage_queryset(text)
-        .filter(
-            stage_type__in=(StageType.EDITING, StageType.AUTHOR_EDITING),
-            is_completed=False,
-            ended_at__isnull=True,
-        )
-        .exists()
+    is_cycle_entry = (len(stages) == 1 and stages[0].stage_type == stage_type
+                      and not stages[0].is_completed)
+    reservation_only = stage_type == StageType.FIRST_VERIFICATION and any(
+        item.stage_type in (StageType.EDITING, StageType.AUTHOR_EDITING)
+        and not item.is_completed and item.ended_at is None
+        for item in stages
     )
     if reservation_only and started_at is not None:
         raise ValidationError(
@@ -810,10 +798,6 @@ def resume_editing(text, user, started_at=None):
     return _start_stage(editing_stage, transition_date)
 
 
-def editing_checkpoint_passed(text, checkpoint):
-    return completed_stage_exists(text, checkpoint)
-
-
 def editing_follows_first_verification(text, editing_stage):
     """Require a post-W1 editorial pass, including same-day and dateless history.
 
@@ -873,7 +857,7 @@ def send_text_to_author(text, user, started_at=None):
 
     transition_date = _transition_date(started_at)
 
-    if not editing_checkpoint_passed(text, StageType.FIRST_VERIFICATION):
+    if not completed_stage_exists(text, StageType.FIRST_VERIFICATION):
         raise ValidationError(
             "Tekst można przekazać autorowi dopiero po zakończeniu pierwszej weryfikacji."
         )
@@ -901,7 +885,7 @@ def send_to_second_verification(text, user, started_at=None):
 
     transition_date = _transition_date(started_at)
 
-    if not editing_checkpoint_passed(text, StageType.FIRST_VERIFICATION):
+    if not completed_stage_exists(text, StageType.FIRST_VERIFICATION):
         raise ValidationError("Najpierw należy zakończyć pierwszą weryfikację.")
 
     if (
@@ -936,7 +920,7 @@ def finish_editing_to_coordinator(text, user, ended_at=None):
 
     transition_date = _transition_date(ended_at)
 
-    if not editing_checkpoint_passed(text, StageType.SECOND_VERIFICATION):
+    if not completed_stage_exists(text, StageType.SECOND_VERIFICATION):
         raise ValidationError(
             "Redakcję można zakończyć dopiero po zakończeniu drugiej weryfikacji."
         )
@@ -1099,10 +1083,6 @@ def complete_stage(stage, user, ended_at, *, send_to_proofreading=None):
         _start_stage(next_stage, ended_at)
 
     return stage
-
-
-# Zachowana nazwa używana przez dotychczasowe widoki.
-start_author_editing = send_text_to_author
 
 
 def can_skip_fourth(stage, user):

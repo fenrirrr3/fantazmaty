@@ -21,7 +21,11 @@ class CorrectionForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         for name in self.required_fields:
             self.fields[name].required = True
-        self.fields["anthology"].queryset = frontend_scope(Anthology.objects).filter(status__in=("ready",)).order_by("title", "pk")
+        from django.db.models import Q
+        current = Q(pk=self.instance.anthology_id) if self.instance.anthology_id else Q(pk__in=[])
+        # Dotychczasowa antologia zostaje do wyboru, nawet gdy nie jest już wydana.
+        self.fields["anthology"].queryset = frontend_scope(Anthology.objects).filter(
+            Q(status__in=("ready",)) | current).order_by("title", "pk")
         self.fields["text"].widget.attrs["data-texts-url"] = reverse("core:correction_texts")
         anthology = self.data.get(self.add_prefix("anthology")) if self.is_bound else self.initial.get("anthology", self.instance.anthology_id)
         if str(anthology or "").isdecimal() and len(str(anthology)) < 19:

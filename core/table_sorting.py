@@ -119,8 +119,9 @@ class DisplayTable:
 
 class _SortedSubset:
     """Keep scalar IDs/keys; hydrate only the page requested by the paginator."""
-    def __init__(self, queryset, ids, projector=None):
+    def __init__(self, queryset, ids, projector=None, batch_projector=None):
         self.queryset, self.ids, self.projector = queryset, ids, projector
+        self.batch_projector = batch_projector
 
     def count(self): return len(self.ids)
     def __len__(self): return len(self.ids)
@@ -133,6 +134,10 @@ class _SortedSubset:
         if not ids:
             return []
         records = {_get(row, "pk"): row for row in self.queryset.filter(pk__in=ids)}
+        if self.batch_projector:
+            # Wiersze projektowane zbiorczo (np. lista zgłoszeń) – jak przy zwykłej stronie.
+            result = self.batch_projector([records[pk] for pk in ids if pk in records])
+            return result if isinstance(key, slice) else result[0]
         result = [
             self.projector(records[pk]) if self.projector else records[pk]
             for pk in ids
@@ -153,7 +158,7 @@ def _sort_query_projection(items, queryset, getter, reverse):
         else:
             keys.append((pk, _value(value)))
     ids = [pk for pk, value in sorted(keys, key=lambda pair: pair[1], reverse=reverse)] + missing
-    return _SortedSubset(queryset, ids, projector)
+    return _SortedSubset(queryset, ids, projector, getattr(items, "batch_projector", None))
 
 
 def _joined(items):

@@ -218,7 +218,7 @@ def change_status(*, user, pk, status, version):
         else:
             item.work_end = item.completed_on = today
     elif item.historical:
-        raise ValidationError('Historyczny wpis ze stopki zmienisz tylko w panelu admina.')
+        raise ValidationError('Historyczny wpis ze stopki jest zawsze zakończony – jego statusu nie zmienia się. Korektora i strony poprawisz w edycji wpisu.')
     else:
         raise ValidationError('Status zmienia się o jeden krok: Przydzielony ↔ W trakcie ↔ Zakończony.')
     item.status = status

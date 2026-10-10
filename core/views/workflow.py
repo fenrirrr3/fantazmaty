@@ -2,7 +2,7 @@ from workflow.catalog import active_stage_choices
 import logging
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction, IntegrityError
 from django.db.models import F
 from django.shortcuts import get_object_or_404, redirect, render
@@ -24,6 +24,7 @@ from core.permissions import (
 )
 from core.selectors.texts import workflow_list_context
 from core.services.texts import (
+    restore_withdrawn_text as restore_withdrawn_text_service,
     start_assigned_stage,
     withdraw_text as withdraw_text_service,
 )
@@ -114,6 +115,8 @@ def _perform_text_transition(
             transition(text=text, user=request.user, **{date_parameter: timezone.localdate()})
     except ValidationError as error:
         messages.error(request, " ".join(error.messages))
+    except PermissionDenied as error:
+        messages.error(request, str(error) or 'Nie masz uprawnień do tej operacji.')
     else:
         messages.success(request, success_message)
 
@@ -175,6 +178,8 @@ def complete_workflow_stage(request, stage_id):
         )
     except ValidationError as error:
         messages.error(request, " ".join(error.messages))
+    except PermissionDenied as error:
+        messages.error(request, str(error) or 'Nie masz uprawnień do tej operacji.')
     else:
         messages.success(request, "Zakończono etap.")
 
@@ -205,6 +210,8 @@ def start_assigned_workflow_stage(request, stage_id):
         )
     except ValidationError as error:
         messages.error(request, " ".join(error.messages))
+    except PermissionDenied as error:
+        messages.error(request, str(error) or 'Nie masz uprawnień do tej operacji.')
     else:
         messages.success(request, "Zapisano datę rozpoczęcia etapu.")
 
@@ -264,6 +271,8 @@ def take_workflow_stage(request, stage_id):
 
     except ValidationError as error:
         messages.error(request, " ".join(error.messages))
+    except PermissionDenied as error:
+        messages.error(request, str(error) or 'Nie masz uprawnień do tej operacji.')
     except IntegrityError:
         logger.exception('Konflikt przy przejmowaniu etapu workflow %s.', stage_id)
         messages.error(request, 'Nie udało się przejąć etapu: przydziały pracy zmieniły się lub są sprzeczne. Odśwież listę; jeśli problem się powtarza, zgłoś go koordynatorowi.')
@@ -407,6 +416,8 @@ def restart_text_workflow(request, text_id):
         messages.error(request, 'Podgląd wygasł. Przygotuj go ponownie.')
     except ValidationError as error:
         messages.error(request, ' '.join(error.messages))
+    except PermissionDenied as error:
+        messages.error(request, str(error) or 'Nie masz uprawnień do tej operacji.')
     else:
         messages.success(request, 'Zamknięto dotychczasowe etapy i utworzono kolejne wykonania z wybranymi osobami. Historia pozostała zachowana.')
     return _detail_redirect(text.pk)
@@ -431,9 +442,32 @@ def withdraw_text(request, text_id):
             withdraw_text_service(user=request.user, text_id=text.pk)
     except ValidationError as error:
         messages.error(request, " ".join(error.messages))
+    except PermissionDenied as error:
+        messages.error(request, str(error) or 'Nie masz uprawnień do tej operacji.')
     else:
         messages.success(request, "Tekst jest wycofany z procesu.")
 
+    return _detail_redirect(text.pk)
+
+
+@never_cache
+@login_required
+@require_POST
+@superuser_required
+def restore_withdrawn_text(request, text_id):
+    text = get_object_or_404(Text, pk=text_id)
+    try:
+        with transaction.atomic():
+            text = Text.objects.select_for_update().get(pk=text_id)
+            from core.workflow_tokens import check_token
+            check_token(request.POST.get('workflow_token', ''), text, request.user)
+            restore_withdrawn_text_service(user=request.user, text_id=text.pk)
+    except ValidationError as error:
+        messages.error(request, " ".join(error.messages))
+    except PermissionDenied as error:
+        messages.error(request, str(error) or 'Nie masz uprawnień do tej operacji.')
+    else:
+        messages.success(request, "Przywrócono tekst do procesu – praca wraca do stanu sprzed wycofania.")
     return _detail_redirect(text.pk)
 
 
@@ -454,8 +488,10 @@ def change_scheduled_workflow_stage(request, stage_id):
                                started_at=None if cancel else form.cleaned_data['started_at'], cancel=cancel)
     except ValidationError as error:
         messages.error(request, ' '.join(error.messages))
+    except PermissionDenied as error:
+        messages.error(request, str(error) or 'Nie masz uprawnień do tej zmiany.')
     else:
-        messages.success(request, 'Odwołano rezerwację terminu.' if cancel else 'Zmieniono datę rozpoczęcia.')
+        messages.success(request, 'Cofnięto przydział – etap może przejąć inna osoba.' if cancel else 'Zmieniono datę rozpoczęcia.')
     return _detail_redirect(stage.text_id)
 
 
@@ -542,6 +578,8 @@ def skip_workflow_stage(request, stage_id):
         skip_fourth_proofreading(stage, request.user)
     except ValidationError as error:
         messages.error(request, " ".join(error.messages))
+    except PermissionDenied as error:
+        messages.error(request, str(error) or 'Nie masz uprawnień do tej operacji.')
     else:
         messages.success(request, "Pominięto czwartą korektę. Udostępniono kolejny etap.")
     return _detail_redirect(stage.text_id)

@@ -51,6 +51,7 @@ def people_list(request):
 
     people = (
         Person.objects.filter(Q(pk__in=Person.objects.active().values('pk')) | Q(is_external=True))
+        .select_related("user")
         .prefetch_related("roles")
         .order_by("last_name", "first_name", "pk")
     )

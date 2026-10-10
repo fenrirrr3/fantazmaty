@@ -130,8 +130,7 @@ pre {
     transform: translateY(0);
 }
 
-.muted-text,
-.assignment-date-information {
+.muted-text {
     color: var(--muted);
 }
 

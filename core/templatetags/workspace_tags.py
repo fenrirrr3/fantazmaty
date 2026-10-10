@@ -48,13 +48,10 @@ def review_list_allowed(user):
 
 @register.simple_tag
 def account_person(user):
-    from people.models import Person
+    # Ten sam rekord co relacja OneToOne; brak profilu daje None.
     if not user.is_authenticated:
         return None
-    person = Person.objects.filter(user=user).first()
-    if person is not None:
-        return person
-    return None
+    return getattr(user, "person_profile", None)
 
 
 @register.simple_tag(takes_context=True)

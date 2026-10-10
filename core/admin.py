@@ -54,7 +54,18 @@ class PostLayoutAssignmentAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         return False
 
     def has_delete_permission(self, request, obj=None):
-        return self.has_superuser_access(request)
+        return self.has_superuser_access(request) and not (obj and obj.deleted_at)
+
+    def has_change_permission(self, request, obj=None):
+        # Usunięte wpisy są historią – przywraca się je na stronie Korekty poskładowej.
+        return self.has_superuser_access(request) and not (obj and obj.deleted_at)
+
+    def delete_model(self, request, obj):
+        # Jak na stronie: usunięcie ukrywa wpis, historia pracy zostaje.
+        from django.utils import timezone
+        obj.deleted_at, obj.deleted_by = timezone.now(), request.user
+        obj.version += 1
+        obj.save(update_fields=['deleted_at', 'deleted_by', 'version'])
 
     def save_model(self, request, obj, form, change):
         obj.version += 1
@@ -139,7 +150,16 @@ class AudiobookAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     def get_readonly_fields(self, request, obj=None):
         fields = ('status', 'production_link', 'recording_started_at', 'proofreading_started_at', 'corrections_started_at',
             'editing_started_at', 'awaiting_publication_started_at')
+        if obj and not self.proofreader_editable(obj):
+            # Jak na stronie: korektora zmienia się tylko w trakcie etapu Korekta, przed jego zakończeniem.
+            fields = (*fields, 'proofreader')
         return (*fields, 'text') if obj else fields
+
+    @staticmethod
+    def proofreader_editable(obj):
+        from core.selectors.audio_proofreading import can_assign_proofreader, corrections
+        return obj.status == Audiobook.Status.PROOFREADING and can_assign_proofreader(
+            obj, corrections().filter(text_id=obj.text_id))
 
     @admin.display(description='Etapy produkcji')
     def production_link(self, obj):
@@ -182,6 +202,14 @@ class IdentityFormMixin:
         self.fields["username"] = forms.CharField(label="Nazwa użytkownika", max_length=150)
         self.fields["first_name"].required = True
         self.fields["last_name"].required = True
+        # Imię i nazwisko trafiają też do profilu osoby, który mieści 100 znaków.
+        from people.models import Person
+        for name in ("first_name", "last_name"):
+            limit = Person._meta.get_field(name).max_length
+            self.fields[name].max_length = limit
+            self.fields[name].widget.attrs["maxlength"] = str(limit)
+            from django.core.validators import MaxLengthValidator
+            self.fields[name].validators.append(MaxLengthValidator(limit))
         self.fields["email"].required = True
         self.fields["email"].label = "Adres e-mail (login)"
         self.fields["username"].help_text = "Wewnętrzna nazwa konta. Do logowania służy adres e-mail."
@@ -444,13 +472,63 @@ class VacationAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         from django.utils import timezone
         return bool(obj and obj.start_date > timezone.localdate() and super().has_delete_permission(request, obj))
 
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+
+        class VacationAdminForm(form):
+            def clean(self):
+                data = super().clean()
+                person = data.get('person')
+                if self.instance._state.adding and person is not None and not person.is_active:
+                    # Jak na stronie: nie planujemy urlopów osobom spoza zespołu.
+                    self.add_error('person', 'Ta osoba nie jest już w zespole – nie można dodać jej urlopu.')
+                return data
+
+        return VacationAdminForm
+
     def delete_model(self, request, obj):
-        from core.services.vacations import cancel_planned_vacation
-        cancel_planned_vacation(user=request.user, vacation_id=obj.pk)
+        # Superuser odwołuje zaplanowany urlop także osobie, która odeszła z zespołu
+        # (usługa na stronie by tego odmówiła i kończyło się błędem 500).
+        from django.db import transaction
+        from django.utils import timezone
+        from people.models import Person
+        from django.core.exceptions import PermissionDenied
+        from core.services.vacations import _sync_person_leave
+        with transaction.atomic():
+            person = Person.objects.select_for_update().get(pk=obj.person_id)
+            now = timezone.now()
+            if obj.start_date <= timezone.localdate(now):
+                raise PermissionDenied('Usunąć można tylko urlop, który jeszcze się nie rozpoczął.')
+            obj.delete()
+            _sync_person_leave(person, now=now)
+
+
+class AnthologyTaskAdminForm(forms.ModelForm):
+    """Gotowa audiodeskrypcja musi mieć treść – inaczej sygnał oznaczyłby pustą jako zakończoną."""
+
+    class Meta:
+        model = AnthologyTask
+        fields = '__all__'
+
+    def clean(self):
+        data = super().clean()
+        task_type = data.get('task_type') or self.instance.task_type
+        status = data.get('status')
+        was_ready = bool(self.instance.pk and AnthologyTask.objects.filter(
+            pk=self.instance.pk, status=AnthologyTask.Status.READY).exists())
+        if task_type == 'audio_description' and status == AnthologyTask.Status.READY and not was_ready:
+            from core.models import AudioDescription
+            anthology_id = self.instance.anthology_id or getattr(data.get('anthology'), 'pk', None)
+            description = AudioDescription.objects.filter(anthology_id=anthology_id).first()
+            if description is None or not (description.content or '').strip():
+                self.add_error('status', 'Audiodeskrypcja nie ma treści. Uzupełnij ją na stronie Audiodeskrypcji '
+                                         'albo wybierz „Nie dotyczy”.')
+        return data
 
 
 @admin.register(AnthologyTask)
 class AnthologyTaskAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
+    form = AnthologyTaskAdminForm
     list_display = ('anthology', 'task_type', 'status', 'assigned_to', 'commissioned_at')
     search_fields = ('anthology__title__plcontains', 'assigned_to__first_name__plcontains',
                      'assigned_to__last_name__plcontains', 'assigned_to__email__plcontains')
@@ -562,6 +640,17 @@ class MailboxConnectionForm(forms.ModelForm):
         if not password and not self.instance.encrypted_password:
             raise forms.ValidationError('Podaj hasło skrzynki lub hasło aplikacji.')
         return password
+
+    def clean(self):
+        data = super().clean()
+        # Import rekrutacji wymaga dokładnie jednej aktywnej skrzynki tego typu.
+        if data.get('is_active') and data.get('purpose') == MailboxConnection.Purpose.RECRUITMENT:
+            others = MailboxConnection.objects.filter(purpose=MailboxConnection.Purpose.RECRUITMENT, is_active=True)
+            if self.instance.pk:
+                others = others.exclude(pk=self.instance.pk)
+            if others.exists():
+                raise forms.ValidationError('Aktywna może być tylko jedna skrzynka rekrutacji. Najpierw wyłącz poprzednią.')
+        return data
 
     def save(self, commit=True):
         instance = super().save(commit=False)

@@ -10,7 +10,8 @@
             {{ active_inactivity_days }} dni oraz etapy oczekujące
             co najmniej {{ waiting_inactivity_days }} dni.
             Zestawienie pomija teksty gotowe i wycofane. Pokazuje także oczekujące
-            etapy, których czasu oczekiwania nie da się ustalić.
+            etapy, których czasu oczekiwania nie da się ustalić, oraz recenzje
+            bez opinii po {{ overdue_review_days }} dniach od przypisania.
         </p>
     </header>
 
@@ -50,6 +51,9 @@
                     <option value="waiting" {% if mode == "waiting" %}selected{% endif %}>
                         Nierozpoczęte
                     </option>
+                    <option value="reviews" {% if mode == "reviews" %}selected{% endif %}>
+                        Recenzje bez opinii
+                    </option>
                 </select>
             </div>
 
@@ -78,6 +82,41 @@
         </form>
     </section>
 
+    {% if show_review_section %}
+    <section class="card" aria-labelledby="overdue-reviews-heading">
+        <h2 id="overdue-reviews-heading">Recenzje bez opinii ({{ overdue_review_days }}+ dni)</h2>
+        {% if overdue_reviews %}
+        <div class="table-container" role="region" aria-label="Recenzje bez opinii" tabindex="0">
+            <table id="overdue-reviews-table">
+                <thead>
+                    <tr>
+                        <th scope="col">Antologia</th>
+                        <th scope="col" class="sticky-title">Zgłoszenie</th>
+                        <th scope="col">Recenzent</th>
+                        <th scope="col">Przypisano</th>
+                        <th scope="col" class="numeric-cell">Liczba dni</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in overdue_reviews %}
+                    <tr class="inactivity-row is-waiting-too-long">
+                        <td>{% if row.review.anthology %}{{ row.review.anthology.title }}{% else %}<span class="muted-text">Brak antologii</span>{% endif %}</td>
+                        <td class="sticky-title"><a href="{% url 'core:assigned_review_detail' row.review.pk %}" class="text-title-link"><strong>{{ row.review.title }}</strong></a></td>
+                        <td>{{ row.reviewer }}</td>
+                        <td class="date-cell"><time datetime="{{ row.assigned_at|date:'Y-m-d' }}">{{ row.assigned_at|date:"d.m.Y" }}</time></td>
+                        <td class="numeric-cell inactivity-days">{{ row.days }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="muted-text">Brak recenzji czekających na opinię dłużej niż {{ overdue_review_days }} dni.</p>
+        {% endif %}
+    </section>
+    {% endif %}
+
+    {% if show_workflow_rows %}
     <section class="card" aria-label="Lista przestojów">
         
 
@@ -206,6 +245,7 @@
 
     {% include "core/includes/table_toolbar.html" %}
     {% include "core/includes/pagination.html" %}
+    {% endif %}
 
     <p class="form-help">
         Stan na {{ today|date:"d.m.Y" }}.

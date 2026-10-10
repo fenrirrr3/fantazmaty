@@ -62,8 +62,14 @@ class ReviewAdminForm(NormalizedFormMixin, forms.ModelForm):
             self.fields["copied_text"].queryset = Text.objects.filter(workflow_stages__isnull=False).distinct()
             self.fields["copied_text"].help_text = "Wyszukaj tekst już obecny w procesie wydawniczym albo użyj +, aby przygotować nowy na podstawie recenzji."
 
-        if self.instance._state.adding and "anthology" in self.fields:
-            self.fields["anthology"].queryset = Anthology.objects.filter(status=Anthology.Status.IN_PREPARATION).order_by("title", "pk")
+        if "anthology" in self.fields and not self.instance.old_reviews:
+            # Jak na stronie: bieżące zgłoszenia trafiają do antologii w przygotowaniu,
+            # bez tłumaczeń (te znikają z redakcji). Dotychczasowa antologia zostaje do wyboru.
+            from django.db.models import Q
+            allowed = Q(status=Anthology.Status.IN_PREPARATION, is_translated=False)
+            if self.instance.anthology_id:
+                allowed |= Q(pk=self.instance.anthology_id)
+            self.fields["anthology"].queryset = Anthology.objects.filter(allowed).order_by("title", "pk")
         if 'anthology' in self.fields:
             self.fields['anthology'].queryset = self.fields['anthology'].queryset.filter(is_novel=False)
 

@@ -48,6 +48,11 @@
         <div class="message warning" role="status">
             <strong>Tekst został wycofany.</strong>
             Dalsza praca w tym cyklu jest zablokowana. Historia pozostaje dostępna.
+            {% if request.user.is_superuser and text.anthology.status != "ready" %}
+            <form method="post" action="{% url 'core:restore_withdrawn_text' text.pk %}">{% include "core/includes/workflow_fields.html" %}
+                <button type="submit" class="secondary-button" data-confirm="Przywrócić tekst do procesu? Etap „Wycofany” zostanie usunięty.">Przywróć do procesu</button>
+            </form>
+            {% endif %}
         </div>
     {% elif is_ready %}
         <div class="message success" role="status">
@@ -214,13 +219,22 @@
                 {% for stage in stages %}
                     {% if stage.can_edit_schedule %}
                     <div class="quick-stage-card"><strong>{{ stage.get_stage_type_display }} – rezerwacja</strong>
-                    <form method="post" action="{% url 'core:change_scheduled_workflow_stage' stage.pk %}">{% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
+                    <form method="post" action="{% url 'core:change_scheduled_workflow_stage' stage.pk %}">{% include "core/includes/workflow_fields.html" %}
                     <label for="schedule-{{ stage.pk }}">Data rozpoczęcia</label><input id="schedule-{{ stage.pk }}" type="date" name="started_at" min="{{ today_iso }}" value="{{ stage.started_at|date:'Y-m-d' }}" required>
-                    <button type="submit" name="action" value="save" class="primary-button">Zapisz datę</button><button type="submit" name="action" value="cancel" formnovalidate class="secondary-button">Odwołaj rezerwację</button>
+                    <button type="submit" name="action" value="save" class="primary-button">Zapisz datę</button><button type="submit" name="action" value="cancel" formnovalidate class="secondary-button" data-confirm="Odwołać rezerwację? Etap wróci do puli i może go wziąć inna osoba.">Odwołaj rezerwację</button>
+                    </form></div>
+                    {% elif stage.can_release %}
+                    <div class="quick-stage-card"><strong>{{ stage.get_stage_type_display }}{% if stage.is_reservation %} – rezerwacja{% endif %}</strong>
+                    <form method="post" action="{% url 'core:change_scheduled_workflow_stage' stage.pk %}">{% include "core/includes/workflow_fields.html" %}
+                    <p class="form-help">{% if stage.is_reservation %}Rezerwacja weryfikacji zostanie zwolniona – etap będzie mogła wziąć inna osoba.{% else %}Etap wróci do puli bez wykonawcy i bez daty rozpoczęcia. Użyj tego, jeśli nie możesz dokończyć pracy.{% endif %}</p>
+                    <button type="submit" name="action" value="cancel" class="secondary-button" data-confirm="{% if stage.is_reservation %}Odwołać rezerwację weryfikacji?{% else %}Cofnąć przydział? Zniknie data rozpoczęcia, a etap będzie mógł przejąć ktoś inny.{% endif %}">{% if stage.is_reservation %}Odwołaj rezerwację{% else %}Cofnij przydział{% endif %}</button>
                     </form></div>
                     {% endif %}
                     {% if stage.can_skip %}
-                    <form method="post" action="{% url 'core:skip_workflow_stage' stage.pk %}" class="quick-stage-card">{% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}"><strong>Czwarta korekta</strong><p class="form-help">Przejście dalej bez wykonawcy i dat pracy.</p><button type="submit" class="secondary-button">Pomiń etap</button></form>
+                    <form method="post" action="{% url 'core:skip_workflow_stage' stage.pk %}" class="quick-stage-card">{% include "core/includes/workflow_fields.html" %}<strong>Czwarta korekta</strong><p class="form-help">Przejście dalej bez wykonawcy i dat pracy.</p><button type="submit" class="secondary-button" data-confirm="Pominąć czwartą korektę?">Pomiń etap</button></form>
+                    {% endif %}
+                    {% if stage.complete_blocker %}
+                        <div class="quick-stage-card"><strong>{{ stage.get_stage_type_display }}</strong><p class="form-warning">{{ stage.complete_blocker }}</p></div>
                     {% endif %}
                     {% if stage.can_complete %}
                         <div class="quick-stage-card stage-finish-card">
@@ -235,7 +249,7 @@
                                     action="{% url 'core:complete_workflow_stage' stage.pk %}"
                                     class="complete-stage-form"
                                 >
-                                    {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
+                                    {% include "core/includes/workflow_fields.html" %}
                                     {% if stage.stage_type == "editing_control" %}
                                     <fieldset class="editorial-decision">
                                         <legend>Co dalej z tekstem?</legend>
@@ -243,7 +257,12 @@
                                         <label><input type="radio" name="send_to_proofreading" value="false" required> Potrzebna dalsza redakcja</label>
                                     </fieldset>
                                     {% endif %}
-                                    <button type="submit" class="complete-stage-button">
+                                    <div class="form-field">
+                                        <label for="end-stage-{{ stage.pk }}">Data zakończenia</label>
+                                        <input id="end-stage-{{ stage.pk }}" type="date" name="ended_at" class="stage-date-input"
+                                            value="{{ today_iso }}" max="{{ today_iso }}"{% if stage.started_at %} min="{{ stage.started_at|date:'Y-m-d' }}"{% endif %} required>
+                                    </div>
+                                    <button type="submit" class="complete-stage-button" data-confirm="Zakończyć etap „{{ stage.get_stage_type_display }}”? Tej operacji nie cofniesz samodzielnie.">
                                         Zakończ etap
                                     </button>
                                 </form>
@@ -262,7 +281,7 @@
                                     action="{% url 'core:start_assigned_workflow_stage' stage.pk %}"
                                     class="complete-stage-form start-stage-form"
                                 >
-                                    {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
+                                    {% include "core/includes/workflow_fields.html" %}
                                     <button type="submit" class="primary-button">
                                         Rozpocznij etap
                                     </button>
@@ -291,17 +310,18 @@
                 <div class="workflow-action-buttons">
                     {% if can_send_to_first_verification %}
                         <form method="post" action="{% url 'core:send_to_first_verification_stage' text.pk %}">
-                            {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
-                            <button type="submit" class="primary-button">
+                            {% include "core/includes/workflow_fields.html" %}
+                            {% if first_verifier_unavailable %}<p class="form-warning">{{ first_verifier_unavailable }}</p>{% endif %}
+                            <button type="submit" class="primary-button" data-confirm="Przekazać tekst do pierwszej weryfikacji? Redakcja zostanie zamknięta.{% if first_verifier_unavailable %} {{ first_verifier_unavailable }}{% endif %}">
                                 Przekaż do pierwszej weryfikacji
                             </button>
-                            <p class="form-help">Bieżący etap redakcji zostanie zamknięty. Tekst pozostanie w „W toku” do rozpoczęcia pierwszej korekty. Jeśli nie ma weryfikatora, weryfikacja będzie czekać na przejęcie.</p>
+                            <p class="form-help">Bieżący etap redakcji zostanie zamknięty. Tekst pozostanie w „W toku” do rozpoczęcia pierwszej weryfikacji. Jeśli nie ma weryfikatora, weryfikacja będzie czekać na przejęcie.</p>
                         </form>
                     {% endif %}
 
                     {% if can_resume_editing %}
                         <form method="post" action="{% url 'core:resume_text_editing' text.pk %}">
-                            {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
+                            {% include "core/includes/workflow_fields.html" %}
                             <button type="submit" class="primary-button">
                                 Wznów redakcję
                             </button>
@@ -310,8 +330,8 @@
 
                     {% if can_send_to_author %}
                         <form method="post" action="{% url 'core:send_text_to_author_stage' text.pk %}">
-                            {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
-                            <button type="submit" class="secondary-button">
+                            {% include "core/includes/workflow_fields.html" %}
+                            <button type="submit" class="secondary-button" data-confirm="Przekazać tekst autorowi?">
                                 Przekaż tekst autorowi
                             </button>
                         </form>
@@ -319,8 +339,8 @@
 
                     {% if can_send_to_second_verification %}
                         <form method="post" action="{% url 'core:send_to_second_verification_stage' text.pk %}">
-                            {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
-                            <button type="submit" class="primary-button">
+                            {% include "core/includes/workflow_fields.html" %}
+                            <button type="submit" class="primary-button" data-confirm="Przekazać tekst do drugiej weryfikacji?">
                                 Przekaż do drugiej weryfikacji
                             </button>
                         </form>
@@ -328,8 +348,8 @@
 
                     {% if can_finish_editing %}
                         <form method="post" action="{% url 'core:finish_text_editing' text.pk %}">
-                            {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
-                            <button type="submit" class="complete-stage-button">
+                            {% include "core/includes/workflow_fields.html" %}
+                            <button type="submit" class="complete-stage-button" data-confirm="Przekazać redakcję do kontroli? Redakcja zostanie zamknięta.">
                                 Przekaż redakcję do kontroli
                             </button>
                         </form>
@@ -382,7 +402,7 @@
                         data-autosave="text-warnings-{{ text.pk }}"
                         data-warn-unsaved
                     >
-                        {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
+                        {% include "core/includes/workflow_fields.html" %}
                         {{ text_content_warnings_form.non_field_errors }}
 
                         <div class="form-field">
@@ -424,7 +444,7 @@
                             data-autosave="coordinator-note-{{ text.pk }}"
                             data-warn-unsaved
                         >
-                            {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
+                            {% include "core/includes/workflow_fields.html" %}
                             {{ coordinator_note_form.non_field_errors }}
 
                             <div class="form-field">
@@ -455,7 +475,7 @@
                     <div class="notes-editor-panel coordinator-note-highlight"><h3>Notatka koordynatora</h3>
                     <form method="post" action="{% url 'core:update_coordinator_note' text.pk %}"
                           class="general-notes-form" data-warn-unsaved>
-                        {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
+                        {% include "core/includes/workflow_fields.html" %}
                         {{ coordinator_note_form.non_field_errors }}<div class="form-field">{{ coordinator_note_form.coordinator_note.label_tag }}{{ coordinator_note_form.coordinator_note }}{{ coordinator_note_form.coordinator_note.errors }}</div>
                         <button type="submit" class="secondary-button">Zapisz</button>
                     </form></div>
@@ -479,7 +499,7 @@
                 data-autosave="text-note-{{ text.pk }}"
                 data-warn-unsaved
             >
-                {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
+                {% include "core/includes/workflow_fields.html" %}
                 {{ text_note_form.non_field_errors }}
 
                 <div class="form-field">
@@ -524,7 +544,7 @@
                     <div class="text-note-content">{{ note.content|linebreaksbr }}</div>
                     {% if note.can_manage %}<div class="text-note-actions">
                         <a class="secondary-button" href="{% url 'core:edit_text_note' text.pk note.pk %}">Edytuj</a>
-                        <form method="post" action="{% url 'core:delete_text_note' text.pk note.pk %}" data-confirm-delete="Usunąć tę notatkę?">{% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}"><button class="secondary-button" type="submit">Usuń</button></form>
+                        <form method="post" action="{% url 'core:delete_text_note' text.pk note.pk %}" data-confirm="Usunąć tę notatkę?">{% include "core/includes/workflow_fields.html" %}<button class="secondary-button" type="submit">Usuń</button></form>
                     </div>{% endif %}
                 </details>
             {% empty %}
@@ -551,7 +571,7 @@
 
     {% if not is_extract_volume %}{% include "core/includes/text_production.html" %}{% endif %}
 
-    {% if can_cancel_repetition %}<form method="post" action="{% url 'core:cancel_workflow_repetition' text.pk open_repetition.pk %}" data-confirm-delete="Anulować niepodjęte powtórzenie i przywrócić poprzedni stan?">{% csrf_token %}{% edit_version %}<button type="submit" class="secondary-button">Anuluj niepodjęte powtórzenie</button><p class="form-help">Dostępne, jeśli nie rozpoczęto ani nie zarezerwowano pracy.</p></form>{% endif %}
+    {% if can_cancel_repetition %}<form method="post" action="{% url 'core:cancel_workflow_repetition' text.pk open_repetition.pk %}" data-confirm="Anulować niepodjęte powtórzenie i przywrócić poprzedni stan?">{% csrf_token %}{% edit_version %}<button type="submit" class="secondary-button">Anuluj niepodjęte powtórzenie</button><p class="form-help">Dostępne, jeśli nie rozpoczęto ani nie zarezerwowano pracy.</p></form>{% endif %}
     {% if user.is_superuser or can_view_stage_history %}
     <div class="text-detail-pair" data-detail-pair="credits-history">
         {% include "core/includes/text_credits.html" %}
@@ -668,8 +688,8 @@
                         </div>
 
                         <form method="post" action="{% url 'core:withdraw_text' text.pk %}">
-                            {% csrf_token %}{% edit_version %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">
-                            <button type="submit" class="withdraw-text-button">
+                            {% include "core/includes/workflow_fields.html" %}
+                            <button type="submit" class="withdraw-text-button" data-confirm="Wycofać tekst z procesu? Dalsza praca w tym cyklu zostanie zablokowana.">
                                 Wycofaj tekst z procesu
                             </button>
                         </form>

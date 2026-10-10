@@ -13,7 +13,7 @@
 <p>Konsultacja: {% for person in controllers %}<a href="{% url 'core:person_detail' person.pk %}">{{ person }}</a>{% if not forloop.last %}, {% endif %}{% empty %}Nie wyznaczono{% endfor %}</p>
 </div></section>
 <section class="card"><div class="card-body"><h2>Prace nad audiodeskrypcją</h2>
-{% if can_edit and not is_completed %}<form method="post" class="audiodesc-form" data-warn-unsaved>{% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="stage">{{ stage_form.non_field_errors }}
+{% if can_edit and not is_completed %}<form method="post" class="audiodesc-form" data-warn-unsaved data-confirm="Oznaczyć audiodeskrypcję jako zakończoną? Zadanie antologii stanie się Gotowe, a cofnąć to można tylko w panelu admina." data-confirm-when="stage=completed">{% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="stage">{{ stage_form.non_field_errors }}
 <div class="form-field">{{ stage_form.stage.label_tag }}{{ stage_form.stage }}{{ stage_form.stage.errors }}</div>
 <p class="muted-text">Zakończone ustawia zadanie antologii jako Gotowe. Tego kroku nie da się cofnąć poza panelem admina.</p><button class="primary-button" type="submit">Zapisz</button></form>
 {% else %}<p><strong>{{ description.get_stage_display }}</strong></p>{% if is_completed %}<p class="muted-text">Audiodeskrypcja jest zakończona. Cofnięcie tylko w panelu admina.</p>{% endif %}{% endif %}

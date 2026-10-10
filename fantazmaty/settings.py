@@ -87,6 +87,13 @@ if DJANGO_ENV not in {"development", "test", "production"}:
 IS_PRODUCTION = DJANGO_ENV == "production"
 
 SECRET_KEY = env_required("DJANGO_SECRET_KEY")
+# Poprzednie klucze (po przecinku) po zmianie DJANGO_SECRET_KEY: sesje
+# i zaszyfrowane hasło skrzynki pocztowej pozostają czytelne.
+SECRET_KEY_FALLBACKS = env_list("DJANGO_SECRET_KEY_FALLBACKS")
+
+# Operacje zbiorcze przy 500 wierszach na stronie wysyłają kilka pól na wiersz
+# (zaznaczenie, wersja); domyślne 1000 pól kończyło się błędem 400.
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 5000
 
 DEBUG = env_bool(
     "DJANGO_DEBUG",

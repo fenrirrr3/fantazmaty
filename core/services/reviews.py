@@ -8,7 +8,8 @@ from authors.models import Author
 from core.permissions import (
     can_manage_reviews,
     can_mark_review_for_decision,
-    can_self_assign_reviews,
+    REVIEWER_ROLE,
+    has_role,
     is_superuser,
     require_coordinator,
     require_superuser,
@@ -152,7 +153,8 @@ def assign_reviewer(*, user, review_id):
     from people.leave_access import require_available
     require_available(user)
 
-    if not can_self_assign_reviews(user):
+    # Urlop wykluczył już require_available, wystarczy sama rola.
+    if not has_role(user, REVIEWER_ROLE):
         raise PermissionDenied(
             "Do recenzji mogą przypisywać się osoby z rolą recenzenta."
         )
@@ -227,6 +229,27 @@ def unassign_reviewer(*, user, review_id):
 
 
 @transaction.atomic
+def release_reviewer_slot(*, user, review_id, assignment_id):
+    """Koordynator zwalnia miejsce recenzenta, który nie oddał opinii."""
+    require_team_member(user)
+    if not can_mark_review_for_decision(user):
+        raise PermissionDenied("Miejsce recenzenta może zwolnić tylko koordynator recenzji.")
+    review = _lock_review(review_id)
+    _require_open_review(review)
+    assignments = _lock_assignments(review)
+    assignment = next((item for item in assignments if item.pk == assignment_id), None)
+    if assignment is None:
+        raise ValidationError("Recenzent nie jest już przypisany. Odśwież stronę.")
+    if assignment.opinion not in ("", Reviewers.Opinion.READING):
+        raise ValidationError("Recenzent oddał już opinię – jego miejsca nie można zwolnić.")
+    assignment.delete()
+    if len(assignments) == 1 and review.status == Review.Status.IN_REVIEW:
+        review.status = Review.Status.NEW
+        review.save(update_fields=["status"])
+    return assignment
+
+
+@transaction.atomic
 def save_reviewer_opinion(
     *,
     user,
@@ -297,7 +320,16 @@ def _validate_status_change(*, user, review, assignments, new_status):
         raise PermissionDenied
     _require_current_review(review)
     if review.status == Review.Status.REJECTED and new_status != review.status:
-        raise ValidationError('Decyzję odrzuconego zgłoszenia można poprawić wyłącznie w panelu administratora.')
+        # Poprawka decyzji: tylko superuser i tylko przed powiadomieniem autora
+        # (panel admina ma status tylko do odczytu).
+        if not is_superuser(user):
+            raise ValidationError('Decyzję odrzuconego zgłoszenia może poprawić tylko superuser.')
+        if review.author_notified_at or review.is_hidden:
+            raise ValidationError('Autor został już powiadomiony albo zgłoszenie jest na czarnej liście – decyzji nie można zmienić.')
+
+    if (review.status == Review.Status.ACCEPTED and new_status != review.status
+            and review.author_notified_at and not is_superuser(user)):
+        raise ValidationError('Autor został już powiadomiony o przyjęciu – decyzję może zmienić tylko superuser.')
 
     valid_statuses = {value for value, _label in Review.Status.choices}
     if new_status not in valid_statuses:
@@ -611,7 +643,7 @@ def copy_review_to_text(*, user, review_id, contract_received=False, confirmed_c
     )
     text.full_clean()
     text.save()
-    text.authors.add(author, *review.coauthors.all())
+    text.authors.add(author, *coauthors)
 
     stage = WorkflowStage(
         text=text,

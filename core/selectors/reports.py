@@ -174,25 +174,13 @@ def workflow_activity_context(
     # do cyklu konkretnego etapu, nigdy do obecnego cyklu tekstu.
     stages = frontend_scope(WorkflowStage.objects).filter(
         stage_type__in=stage_roles,
-    ).select_related("text", "text__anthology", "assignment__assigned_to__person_profile")
+    ).select_related("text", "text__anthology")
 
     if filters.get("date_from"):
         stages = stages.filter(ended_at__gte=filters["date_from"])
     if filters.get("date_to"):
         stages = stages.filter(ended_at__lte=filters["date_to"])
 
-    assignments = (
-        frontend_scope(WorkflowRoleAssignment.objects).filter(role__in=set(stage_roles.values()))
-        .select_related("assigned_to", "assigned_to__person_profile")
-        .order_by("workflow_cycle", "role", "pk")
-    )
-    stages = stages.prefetch_related(
-        Prefetch(
-            "text__workflow_role_assignments",
-            queryset=assignments,
-            to_attr="report_assignments",
-        )
-    )
     if include_authors:
         stages = stages.prefetch_related(_author_prefetch())
 
@@ -232,46 +220,24 @@ def workflow_activity_context(
     stages = _report_search(stages, filters["q"], query_fields).distinct()
 
     def project(stage):
+        # Osoba, data przydziału i rola pochodzą z adnotacji SQL powyżej –
+        # tych samych, po których raport sortuje i wyszukuje.
         text = stage.text
-        role = stage_roles[stage.stage_type]
-
-        assignment = stage.assignment or next(
-            (
-                item
-                for item in text.report_assignments
-                if item.workflow_cycle == stage.workflow_cycle and item.role == role
-            ),
-            None,
-        )
-        assigned_user = assignment.assigned_to if assignment else None
-        person, person_name = _person_and_name(assigned_user)
-
-        if assignment is None:
-            person_name = "Nie przypisano"
-        elif assignment.assigned_to_id is None and assignment.assigned_at is None:
-            person_name = "Nie przypisano"
-
-        authors = _authors_display(text, include_authors)
-        anthology_title = text.anthology.title if text.anthology else ""
-        role_label = role_labels.get(role, role)
-        if stage.execution_number > 1:
-            role_label = execution_label(WORK_LABELS.get(role, role_label), stage.execution_number)
-
         return {
             "stage_id": stage.pk,
             "workflow_cycle": stage.workflow_cycle,
             "iteration": stage.iteration,
             "execution_number": stage.execution_number,
-            "anthology_title": anthology_title,
+            "anthology_title": text.anthology.title if text.anthology else "",
             "anthology_id": text.anthology_id,
             "text_id": text.pk,
             "title": text.title,
-            "authors": authors,
-            "role": role_label,
-            "role_code": role,
-            "person_id": person.pk if person else None,
-            "person_name": person_name,
-            "assigned_at": assignment.assigned_at if assignment else None,
+            "authors": _authors_display(text, include_authors),
+            "role": stage.report_role_label,
+            "role_code": stage_roles[stage.stage_type],
+            "person_id": stage.report_person_id,
+            "person_name": stage.report_person_name,
+            "assigned_at": stage.report_assigned_at,
             "started_at": stage.started_at,
             "ended_at": stage.ended_at,
             "is_completed": stage.is_completed,
@@ -576,8 +542,9 @@ def _cascade_sql(context, base, project, filters, people_key, workflow=False, st
             query = query.filter(review__status__in=statuses)
         return query
 
-    anthology_ids = set(filtered("anthology").values_list(anthology, flat=True))
-    person_ids = set(filtered("person").values_list("report_person_id", flat=True))
+    # order_by() usuwa kolumny sortowania z SELECT DISTINCT – baza zwraca tylko różne identyfikatory.
+    anthology_ids = set(filtered("anthology").order_by().values_list(anthology, flat=True).distinct())
+    person_ids = set(filtered("person").order_by().values_list("report_person_id", flat=True).distinct())
     if filters.get("anthology"):
         anthology_ids.add(filters["anthology"])
     if filters.get("person"):
@@ -587,7 +554,7 @@ def _cascade_sql(context, base, project, filters, people_key, workflow=False, st
     ]
     context[people_key] = [item for item in context[people_key] if item["pk"] in person_ids]
     if statuses is not None:
-        available = set(filtered("status").values_list("review__status", flat=True)) | set(statuses)
+        available = set(filtered("status").order_by().values_list("review__status", flat=True).distinct()) | set(statuses)
         context["status_choices"] = [
             (value, label) for value, label in Review.Status.choices if value in available
         ]
@@ -753,3 +720,38 @@ def _inactivity_rows(stages, query, include_authors, today):
         )
 
     return rows
+
+
+OVERDUE_REVIEW_DAYS = 21
+
+
+def overdue_review_rows(*, today=None, days=OVERDUE_REVIEW_DAYS):
+    """Przydziały recenzentów bez opinii dłużej niż `days` dni od przypisania."""
+    from datetime import datetime, time, timedelta
+    from django.utils import timezone
+    from core.translation_scope import frontend_scope
+    from texts.models import Review, ReviewAssignment, Reviewers
+
+    today = today or timezone.localdate()
+    limit = timezone.make_aware(datetime.combine(today - timedelta(days=days), time.max))
+    assignments = (
+        ReviewAssignment.objects.filter(
+            opinion__in=("", Reviewers.Opinion.READING),
+            assigned_at__lte=limit,
+            review__in=frontend_scope(Review.objects).filter(
+                status__in=(Review.Status.NEW, Review.Status.IN_REVIEW, Review.Status.TO_DECIDE),
+                is_hidden=False, old_reviews=False,
+            ),
+        )
+        .select_related("review", "review__anthology", "user", "historical_person")
+        .order_by("assigned_at", "pk")
+    )
+    return [
+        {
+            "review": item.review,
+            "reviewer": item.reviewer_display_name,
+            "assigned_at": item.assigned_at,
+            "days": (today - timezone.localtime(item.assigned_at).date()).days,
+        }
+        for item in assignments
+    ]

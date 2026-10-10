@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 from django.conf import settings
@@ -16,7 +17,7 @@ from django.core.files import File
 
 from core.odkurzacz_forms import PROGRAM_MAX_UPLOAD_BYTES
 from .document_converter import (
-    ConversionError, RebuildConfirmationRequired, convert_document,
+    ConversionError, RebuildConfirmationRequired, _try_lock, convert_document,
     conversion_filename, converter_python,
 )
 
@@ -83,12 +84,49 @@ def cleanup():
         try:
             if not folder.resolve().is_relative_to(root().resolve()):
                 continue
-            if (folder / 'request.json').stat().st_mtime < cutoff:
-                if alive(read_json(folder / 'state.json')):
-                    continue
+            request_file = folder / 'request.json'
+            # Folder bez request.json (przerwane tworzenie) liczymy od daty folderu.
+            stamp = request_file.stat().st_mtime if request_file.exists() else folder.stat().st_mtime
+            if stamp < cutoff:
+                try:
+                    if alive(read_json(folder / 'state.json')):
+                        continue
+                except (OSError, ValueError):
+                    pass
                 shutil.rmtree(folder)
         except (OSError, ValueError):
             pass
+    # Katalogi robocze konwertera zostają po przerwanym procesie (np. restart workera).
+    conversion = root().parent
+    for folder in conversion.glob('document-*'):
+        try:
+            if folder.is_dir() and not folder.is_symlink() and folder.stat().st_mtime < cutoff:
+                shutil.rmtree(folder)
+        except OSError:
+            pass
+
+
+@contextmanager
+def creation_lock(wait=5):
+    """Jedno tworzenie zadania naraz – limit kolejki działa też przy podwójnym kliknięciu."""
+    root().mkdir(parents=True, exist_ok=True, mode=0o700)
+    # Plik blokady obok katalogu zadań: w środku są wyłącznie foldery zadań.
+    with (root().parent / 'program_jobs.lock').open('a+b') as lock:
+        deadline = time.monotonic() + wait
+        while not _try_lock(lock):
+            if time.monotonic() >= deadline:
+                raise JobError('Serwer przyjmuje teraz inne zadanie. Spróbuj ponownie za chwilę.')
+            time.sleep(0.1)
+        try:
+            yield
+        finally:
+            if os.name == 'posix':
+                import fcntl
+                fcntl.flock(lock, fcntl.LOCK_UN)
+            else:
+                import msvcrt
+                lock.seek(0)
+                msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
 
 
 def launch(folder):
@@ -152,6 +190,11 @@ def require_capacity(user_id=None):
 def create(request, upload, options, action):
     cleanup()
     root().mkdir(parents=True, exist_ok=True, mode=0o700)
+    with creation_lock():
+        return _create(request, upload, options, action)
+
+
+def _create(request, upload, options, action):
     require_capacity(request.user.pk)
     upload.seek(0)
     payload = upload.read(PROGRAM_MAX_UPLOAD_BYTES + 1)

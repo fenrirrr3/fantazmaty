@@ -64,6 +64,10 @@ class AuthenticationThrottleMiddleware(MiddlewareMixin):
         for value, limit, seconds in limits:
             key = salted_hmac('cms-auth-rate', value, algorithm='sha256').hexdigest()
             wait = consume(key, limit, seconds, now)
+            if wait and ':account:' in value and not resetting and self._password_matches(request, identity):
+                # Limit konta chroni przed zgadywaniem z wielu adresów, ale nie może
+                # blokować właściciela, który podaje poprawne hasło.
+                wait = 0
             if wait:
                 response = HttpResponse('Zbyt wiele prób. Spróbuj ponownie za kilka minut.', status=429, content_type='text/plain; charset=utf-8')
                 response['Retry-After'] = str(wait)
@@ -73,6 +77,14 @@ class AuthenticationThrottleMiddleware(MiddlewareMixin):
                 keys.append(key)
         request.auth_throttle_keys = keys
         return None
+
+    @staticmethod
+    def _password_matches(request, identity):
+        from django.contrib.auth import authenticate
+        password = request.POST.get('password', '')
+        if not identity or not password:
+            return False
+        return authenticate(request, username=identity, password=password) is not None
 
     def process_response(self, request, response):
         keys = getattr(request, 'auth_throttle_keys', None)

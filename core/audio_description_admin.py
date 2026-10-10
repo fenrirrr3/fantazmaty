@@ -1,9 +1,7 @@
 from django import forms
 from django.contrib import admin
-from django.db.models import Q
 from django.urls import reverse
 from django.utils.html import format_html
-from people.models import Person
 from core.models import AudioDescription, AudioDescriptionNote
 
 
@@ -15,11 +13,10 @@ class AudioDescriptionAdminForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        current = self.instance.controllers.values("pk") if self.instance.pk else []
-        active = Person.objects.active().filter(user__is_active=True).values("pk")
-        self.fields["controllers"].queryset = Person.objects.filter(
-            Q(pk__in=active) | Q(pk__in=current)
-        )
+        # Ta sama lista osób co na stronie Audiodeskrypcji (także osoby bez konta).
+        from core.anthology_tasks import task_people
+        current = list(self.instance.controllers.values_list("pk", flat=True)) if self.instance.pk else []
+        self.fields["controllers"].queryset = task_people(*current)
 
 
 class AudioDescriptionNoteInline(admin.TabularInline):

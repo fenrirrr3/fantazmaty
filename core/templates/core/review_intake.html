@@ -14,3 +14,9 @@
 
 </div>
 {% endblock %}
+
+{% block scripts %}
+{# Wyszukiwarka autorów działa tylko w formularzu pojedynczego zgłoszenia. #}
+<script src="{% static 'core/author-search.js' %}" defer></script>
+{{ block.super }}
+{% endblock %}

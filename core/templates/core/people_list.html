@@ -117,11 +117,13 @@
                             </td>
 
                             {% if can_view_team_email %}
-                            <td class="email-cell" data-double-copy data-copy-value="{{ person.email }}">
-                                {% if person.email %}
+                            <td class="email-cell" data-double-copy data-copy-value="{% if person.can_show_team_contact %}{{ person.email }}{% endif %}">
+                                {% if person.email and person.can_show_team_contact %}
                                     <a href="mailto:{{ person.email }}" class="detail-link">
                                         {{ person.email }}
                                     </a>
+                                {% elif person.email %}
+                                    <span class="muted-text">Ukryty</span>
                                 {% else %}
                                     <span class="muted-text">Nie podano</span>
                                 {% endif %}

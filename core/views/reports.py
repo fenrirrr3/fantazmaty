@@ -185,8 +185,17 @@ def workflow_inactivity(request):
             waiting_days=WAITING_INACTIVITY_DAYS,
         )
     )
+    from core.selectors.reports import OVERDUE_REVIEW_DAYS, overdue_review_rows
+    requested_mode = request.GET.get("mode", "all").strip()
+    if requested_mode == "reviews":
+        context["mode"] = "reviews"
+    show_reviews = context.get("mode", "all") in ("all", "reviews")
     context.update(
         {
+            "overdue_reviews": overdue_review_rows(today=today) if show_reviews else [],
+            "show_review_section": show_reviews,
+            "show_workflow_rows": context.get("mode") != "reviews",
+            "overdue_review_days": OVERDUE_REVIEW_DAYS,
             "today": today,
             "stage_choices": active_stage_choices(),
             "active_inactivity_days": ACTIVE_INACTIVITY_DAYS,

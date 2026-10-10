@@ -12,7 +12,6 @@ from core.permissions import (
     can_view_archived_review_authors,
     require_team_member,
 )
-from people.models import Vacation
 from texts.models import Anthology, Review, ReviewAssignment, Reviewers
 
 
@@ -125,62 +124,7 @@ def reviewer_workload(user):
     return _workloads_for_users({user.pk}).get(user.pk, _empty_workload())
 
 
-def _leave_information_for_users(user_ids):
-    if not user_ids:
-        return {}
-
-    now = timezone.now()
-    today = timezone.localdate(now)
-
-    vacations = (
-        Vacation.objects.filter(
-            person__user_id__in=user_ids,
-            person__is_active=True,
-        )
-        .filter(Q(until_revoked=True) | Q(end_date__gt=now))
-        .order_by("start_date", "pk")
-        .values(
-            "pk",
-            "person__user_id",
-            "start_date",
-            "end_date",
-            "until_revoked",
-        )
-    )
-
-    result = {}
-
-    for vacation in vacations:
-        user_id = vacation["person__user_id"]
-
-        # Wcześniejszy trwający urlop ma pierwszeństwo przed przyszłym.
-        if user_id in result:
-            continue
-
-        is_active = vacation["start_date"] <= today
-        result[user_id] = {
-            "vacation": {
-                "pk": vacation["pk"],
-                "start_date": vacation["start_date"],
-                "end_date": vacation["end_date"],
-                "until_revoked": vacation["until_revoked"],
-            },
-            "is_active": is_active,
-            "is_upcoming": not is_active,
-        }
-
-    return result
-
-
 def _project_reviews(reviews, *, user, include_authors, allow_self_assignment):
-    user_ids = {
-        assignment.user_id
-        for review in reviews
-        for assignment in review.selector_assignments
-        if assignment.user_id is not None
-    }
-    workloads = _workloads_for_users(user_ids)
-    leave_information = _leave_information_for_users(user_ids)
     rows = []
 
     for review in reviews:
@@ -195,7 +139,6 @@ def _project_reviews(reviews, *, user, include_authors, allow_self_assignment):
         )
         locked = review.old_reviews or review.status not in OPEN_STATUSES
         opinions = []
-        reviewer_workloads = []
 
         for assignment in assignments:
             reviewer = _user_data(assignment.user)
@@ -219,19 +162,6 @@ def _project_reviews(reviews, *, user, include_authors, allow_self_assignment):
                     "is_own": assignment.user_id == user.pk,
                 }
             )
-
-            if assignment.user_id is not None:
-                reviewer_workloads.append(
-                    {
-                        "slot": assignment.position,
-                        "user": reviewer,
-                        "workload": workloads.get(
-                            assignment.user_id,
-                            _empty_workload(),
-                        ),
-                        "leave": leave_information.get(assignment.user_id),
-                    }
-                )
 
         assigned_count = len(assignments)
         completed_count = sum(
@@ -268,7 +198,6 @@ def _project_reviews(reviews, *, user, include_authors, allow_self_assignment):
             "completed_reviewer_count": completed_count,
             "assignments": opinions,
             "reviewer_opinions": opinions,
-            "reviewer_workloads": reviewer_workloads,
             "reviewers_have_free_slot": has_free_slot and not locked,
             "is_closed_for_assignments": locked,
             "is_locked": locked,
@@ -315,6 +244,8 @@ class _ReviewRows:
         self.user = user
         self.include_authors = include_authors
         self.allow_self_assignment = can_self_assign_reviews(user)
+        # Sortowanie po kolumnie wyliczanej (Autor) czyta pole z rekordu, a stronę projektuje zbiorczo.
+        self.batch_projector = self._project
 
     def count(self):
         return self.queryset.count()

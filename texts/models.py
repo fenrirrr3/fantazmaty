@@ -904,10 +904,6 @@ class Review(NormalizedModelMixin, models.Model):
     def is_copied_to_text(self):
         return self.copied_text_id is not None
 
-    @property
-    def author_was_notified(self):
-        return self.author_notified_at is not None
-
     def clean(self):
         super().clean()
         if not self.old_reviews:
@@ -956,39 +952,16 @@ class Reviewers(models.Model):
     def __str__(self):
         return f"Oceny: {self.review.title}"
 
-    @property
-    def has_free_slot(self):
-        if self.review_id is None:
-            return False
-
-        review = self.review
-
-        if review.old_reviews:
-            return False
-
-        # Usunięcie konta nie zwalnia historycznego miejsca z oceną.
-        # Zwolnienie przydziału obsługuje serwis recenzji.
-        return review.assignments.count() < MAX_REVIEWERS
-
 
 class ReviewAssignmentQuerySet(VersionedQuerySet):
     def submitted(self):
         return self.exclude(opinion__in=("", "reading"))
-
-    def current(self):
-        return self.filter(review__old_reviews=False)
 
     def for_statistics(self):
         return self.filter(
             models.Q(review__old_reviews=False, review__is_hidden=False)
             | (models.Q(review__old_reviews=True) & ~models.Q(opinion__in=("", "reading")))
         )
-
-    def for_user(self, user):
-        if not user.is_authenticated or user.pk is None:
-            return self.none()
-
-        return self.filter(user_id=user.pk)
 
 
 class ReviewAssignment(models.Model):

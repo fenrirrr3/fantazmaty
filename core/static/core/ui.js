@@ -212,11 +212,22 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     });
-    document.querySelectorAll('form[data-confirm-delete]').forEach(form => {
-        form.addEventListener('submit', event => {
-            if (!window.confirm(form.dataset.confirmDelete)) event.preventDefault();
-        });
-    });
+    // Nieodwracalne decyzje: pytanie z przycisku (data-confirm) albo z formularza.
+    document.addEventListener('submit', event => {
+        const form = event.target;
+        if (!(form instanceof HTMLFormElement)) return;
+        let question = (event.submitter && event.submitter.dataset.confirm) || form.dataset.confirm;
+        const condition = form.dataset.confirmWhen;
+        if (question && condition && !event.submitter?.dataset.confirm) {
+            const [name, value] = condition.split('=');
+            const field = form.elements.namedItem(name);
+            if (!field || field.value !== value) question = '';
+        }
+        if (question && !window.confirm(question)) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+        }
+    }, true);
     const sidebar = document.querySelector('.sidebar-scroll');
     if (sidebar) {
         sidebar.querySelectorAll('[data-menu-section]').forEach(section => {
@@ -246,10 +257,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const pendingLinks = new Map();
     const trackedForms = new Map();
     const initialized = new WeakSet();
-    const collator = new Intl.Collator("pl", {
-        numeric: true,
-        sensitivity: "base",
-    });
 
     const storage = {
         get(key, persistent = false) {
@@ -650,16 +657,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function initializeNavigation() {
-        const button = find("#menu-button, [data-menu-toggle]");
+        const button = find("#menu-button");
         const controlledId = button?.getAttribute("aria-controls");
         const panel = controlledId
             ? document.getElementById(controlledId)
-            : find("#navigation-links, .site-sidebar");
-        const dropdowns = [...document.querySelectorAll(".navigation-dropdown")];
-
-        const closeDropdowns = () => {
-            dropdowns.forEach((dropdown) => { dropdown.open = false; });
-        };
+            : find(".site-sidebar");
 
         const backgrounds = [...document.querySelectorAll('main, .site-footer')];
         const previousInert = new Map();
@@ -689,7 +691,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         panel?.addEventListener("click", event => {
             if (event.target.closest('a[href]') && button && getComputedStyle(button).display !== 'none') {
-                closePanel(); closeDropdowns();
+                closePanel();
             }
         });
         button?.addEventListener("click", () => {
@@ -698,16 +700,7 @@ document.addEventListener('DOMContentLoaded', () => {
             button.setAttribute("aria-expanded", String(open));
             blockBackground(open && modalNavigation());
             if (open && modalNavigation()) panel.querySelector('a[href], summary, button')?.focus();
-            if (!open) { closeDropdowns(); button.focus(); }
-        });
-
-        dropdowns.forEach((dropdown) => {
-            dropdown.addEventListener("toggle", () => {
-                if (!dropdown.open) return;
-                dropdowns.forEach((other) => {
-                    if (other !== dropdown) other.open = false;
-                });
-            });
+            if (!open) button.focus();
         });
 
         document.addEventListener("pointerdown", (event) => {
@@ -715,7 +708,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!target || panel?.contains(target) || button?.contains(target)) {
                 return;
             }
-            if (!target.closest(".navigation-dropdown")) closeDropdowns();
             closePanel();
         });
 
@@ -729,15 +721,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 else if (!options.includes(document.activeElement)) { event.preventDefault(); first?.focus(); }
             }
             if (event.key !== "Escape") return;
-
-            const openDropdown = dropdowns.find((item) =>
-                item.open && item.contains(document.activeElement)
-            );
-            if (openDropdown) {
-                openDropdown.open = false;
-                openDropdown.querySelector("summary")?.focus();
-                return;
-            }
 
             if (panel?.classList.contains("is-open")) {
                 closePanel();
@@ -934,53 +917,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function initializeBulkActions(form) {
-        if (initialized.has(form)) return;
-        initialized.add(form);
-
-        const items = () => [...form.elements].filter((field) =>
-            field.matches?.("[data-select-item]") && !field.disabled
-        );
-        const masters = () => [...form.elements].filter((field) =>
-            field.matches?.("[data-select-all]")
-        );
-
-        const update = () => {
-            const available = items();
-            const checked = available.filter((field) => field.checked).length;
-            masters().forEach((master) => {
-                master.checked = available.length > 0 && checked === available.length;
-                master.indeterminate = checked > 0 && checked < available.length;
-            });
-            available.forEach((field) => {
-                field.closest("tr")?.classList.toggle("is-selected", field.checked);
-            });
-            form.querySelectorAll("[data-selected-count]").forEach((node) => {
-                node.textContent = String(checked);
-            });
-        };
-
-        document.addEventListener("change", (event) => {
-            const field = elementFrom(event);
-            if (field?.form !== form) return;
-
-            if (field.matches("[data-select-all]")) {
-                items().forEach((item) => { item.checked = field.checked; });
-            }
-            if (field.matches("[data-select-all], [data-select-item]")) update();
-        });
-
-        form.addEventListener("submit", (event) => {
-            if (!items().some((field) => field.checked)) {
-                event.preventDefault();
-                announce("Zaznacz przynajmniej jeden rekord.", true);
-                items()[0]?.focus();
-            }
-        });
-
-        update();
-    }
-
     function initializeCheckboxDropdown(dropdown) {
         if (initialized.has(dropdown)) return;
         initialized.add(dropdown);
@@ -1014,7 +950,6 @@ document.addEventListener('DOMContentLoaded', () => {
         };
 
         each(".table-container", initializeScrollableTable);
-        each("form[data-bulk-form]", initializeBulkActions);
         each("[data-checkbox-dropdown]", initializeCheckboxDropdown);
         each("form[data-autosave], form[data-warn-unsaved]", initializeFormSafety);
     }
@@ -1028,29 +963,6 @@ document.addEventListener('DOMContentLoaded', () => {
         initializeClipboard();
 
         initializeElements();
-
-        document.addEventListener("change", (event) => {
-            const field = elementFrom(event);
-            if (!field?.matches("[data-auto-submit]") || !field.form) return;
-
-            const page = field.form.elements.namedItem("page");
-            if (page instanceof HTMLInputElement) page.value = "1";
-            field.form.requestSubmit();
-        });
-
-        document.addEventListener("click", (event) => {
-            const target = elementFrom(event);
-            const reset = target?.closest("[data-discard-draft]");
-            if (reset) {
-                const form = reset.closest("form");
-                if (!form) return;
-                event.preventDefault();
-                const key = scopedKey("draft-text-v23", form.dataset.autosave);
-                if (key) storage.remove(key, true);
-                form.reset();
-                trackedForms.set(form, formSnapshot(form));
-            }
-        });
 
         window.addEventListener("beforeunload", (event) => {
             const changed = [...trackedForms].some(([form, baseline]) =>

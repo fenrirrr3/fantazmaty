@@ -38,6 +38,10 @@ def correct_assignment(pk, actor, version, *, action, performer=None):
         elif action in ('performer', 'clear'):
             if action == 'clear':
                 performer = None
+                # Zakończona praca zachowuje wykonawcę – inaczej kolejna osoba przejęłaby cudzy dorobek.
+                if stages.filter(is_completed=True).exists():
+                    raise ValidationError('Przypisanie ma zakończone etapy. Nie można odłączyć osoby – '
+                                          'zakończona praca musi zachować wykonawcę. Zmień wykonawcę formularzem korekty.')
             if action == 'performer' and performer is None:
                 raise ValidationError('Wybierz wykonawcę.')
             if action == 'performer' and stages.exists():

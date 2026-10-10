@@ -173,8 +173,7 @@ def complete_repeat(stage, user, ended_at, *, send_to_proofreading=None):
     require_released(stage)
     if not user_can_complete_stage(stage, user):
         raise PermissionDenied('Nie możesz zakończyć tego wykonania etapu.')
-    from workflow.services import validate_editorial_decision
-    validate_editorial_decision(stage, send_to_proofreading)
+    # Decyzję redakcyjną sprawdził już complete_stage – jedyne miejsce wywołania.
     _finish_stage_record(stage, ended_at)
     if stage.stage_type == S.StageType.EDITING_CONTROL:
         stage.send_to_proofreading = send_to_proofreading
@@ -217,10 +216,11 @@ def finish_repetition(stage, ended_at):
         next_kind = S.StageType.EDITING
     else:
         next_kind = NEXT_STAGE_TYPES[stage.stage_type]
+    completed_kinds = set(
+        S.objects.filter(text=stage.text, workflow_cycle=stage.workflow_cycle, is_completed=True)
+        .exclude(repetition__canceled_at__isnull=False).values_list('stage_type', flat=True))
     while next_kind not in (S.StageType.READY, S.StageType.EDITING, S.StageType.AUTHOR_EDITING):
-        if not (S.objects.filter(text=stage.text, workflow_cycle=stage.workflow_cycle,
-                                stage_type=next_kind, is_completed=True)
-                .exclude(repetition__canceled_at__isnull=False).exists()):
+        if next_kind not in completed_kinds:
             break
         next_kind = NEXT_STAGE_TYPES[next_kind]
     if next_kind in EDITING_PHASE_TYPES:
@@ -235,6 +235,13 @@ def finish_repetition(stage, ended_at):
     return next_stage
 
 
+def repetition_has_work(run):
+    """Kolejka ma rozpoczętą lub zakończoną pracę albo rezerwację osoby."""
+    from django.db.models import Q
+    return (run.stages.filter(Q(started_at__isnull=False) | Q(is_completed=True)).exists()
+            or run.assignments.filter(assigned_to__isnull=False).exists())
+
+
 @_locked_text_operation
 def cancel_repetition(text, user, *, repetition_id):
     _ensure_actor(user)
@@ -245,7 +252,7 @@ def cancel_repetition(text, user, *, repetition_id):
         raise ValidationError('Ta kolejka jest już zamknięta.')
     if not run.previous_stage_ids:
         raise ValidationError('Starsza kolejka nie ma zapisanego stanu do przywrócenia; wymaga sprawdzenia przez administratora.')
-    if run.stages.filter(started_at__isnull=False).exists() or run.stages.filter(is_completed=True).exists() or run.assignments.filter(assigned_to__isnull=False).exists():
+    if repetition_has_work(run):
         raise ValidationError('Nie można anulować kolejki z rozpoczętą pracą lub rezerwacją.')
     from core.workflow_events import remember
     from texts.models import Text

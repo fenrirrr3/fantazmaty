@@ -1,6 +1,6 @@
 from core.translation_scope import frontend_scope
 from core.selectors.review_detail import review_template_data as _review_template_data, review_assignment_data
-from core.permissions import can_mark_review_for_decision
+from core.permissions import can_mark_review_for_decision, is_coordinator
 from core.permissions import can_view_review_archive, can_view_archived_review_authors
 from django.contrib import messages
 from django.conf import settings
@@ -47,6 +47,7 @@ from core.services.reviews import (
     save_author_notification,
     save_review_content_warnings,
     save_reviewer_opinion,
+    release_reviewer_slot as release_reviewer_slot_service,
     unassign_reviewer as unassign_reviewer_service,
 )
 from texts.models import Review, ReviewAssignment, Reviewers
@@ -202,12 +203,11 @@ def _permission_context(user, *, archived=False):
     return {
         "can_view_authors": can_view_authors,
         "can_view_author_data": can_view_authors,
-        "can_view_review_author": can_view_authors,
         "can_view_all_reviews": can_view_authors,
         "can_view_review_archive": can_view_review_archive(user),
-        "can_open_author_profiles": can_view_author_data(user),
+        # Profile autorów są otwarte dla koordynatorów (lista Autorzy), więc i link.
+        "can_open_author_profiles": is_coordinator(user),
         "can_import_reviews": can_import_reviews(user),
-        "can_manage_review": can_manage_reviews(user),
         "can_perform_bulk_actions": can_perform_bulk_actions(user),
     }
 
@@ -222,6 +222,8 @@ def _render_review_detail(
     include_author = can_view_author_data(request.user) or (review.old_reviews and can_view_archived_review_authors(request.user))
     is_locked = _review_is_locked(review)
     manager_access = can_manage_reviews(request.user)
+    file_access = can_manage_review_files(request.user)
+    decision_access = can_mark_review_for_decision(request.user)
 
     assignments, own_assignment, opinions, opinion_summary = review_assignment_data(review, request.user)
 
@@ -249,7 +251,7 @@ def _render_review_detail(
         review,
         include_author=include_author,
     )
-    if can_manage_review_files(request.user):
+    if file_access:
         review_data["file_url"] = review.file_url
     can_notify_author = (
         include_author
@@ -281,7 +283,6 @@ def _render_review_detail(
             "other_reviewer_opinions": [
                 item for item in opinions if not item["is_own"]
             ],
-            "all_reviewer_opinions": opinions,
             "opinion_summary": opinion_summary,
             "general_notes": (
                 Reviewers.objects.filter(review_id=review.pk)
@@ -301,9 +302,11 @@ def _render_review_detail(
                 and own_assignment.opinion in ("", Reviewers.Opinion.READING)
             ),
             "reviewers_have_free_slot": has_free_slot and not is_locked,
-            "can_manage_review_files": can_manage_review_files(request.user),
-            "review_file_form": ReviewFileForm(instance=review) if can_manage_review_files(request.user) else None,
-            "dropbox_chooser_app_key": getattr(settings, "DROPBOX_CHOOSER_APP_KEY", "") if can_manage_review_files(request.user) else "",
+            "can_release_reviewer_slots": not is_locked and decision_access,
+            "released_opinion_values": ("", Reviewers.Opinion.READING),
+            "can_manage_review_files": file_access,
+            "review_file_form": ReviewFileForm(instance=review) if file_access else None,
+            "dropbox_chooser_app_key": getattr(settings, "DROPBOX_CHOOSER_APP_KEY", "") if file_access else "",
             "can_edit_content_warnings": can_contribute,
             "review_content_warnings_form": (
                 ReviewContentWarningsForm(
@@ -312,11 +315,12 @@ def _render_review_detail(
                 if can_contribute
                 else None
             ),
-            "can_restore_from_decision": (can_mark_review_for_decision(request.user) and review.status == Review.Status.TO_DECIDE and not review.old_reviews and not review.copied_text_id),
-            "can_mark_for_decision": (can_mark_review_for_decision(request.user) and review.status in (Review.Status.NEW, Review.Status.IN_REVIEW) and not review.old_reviews and not review.copied_text_id),
+            "can_restore_from_decision": (decision_access and review.status == Review.Status.TO_DECIDE and not review.old_reviews and not review.copied_text_id),
+            "can_mark_for_decision": (decision_access and review.status in (Review.Status.NEW, Review.Status.IN_REVIEW) and not review.old_reviews and not review.copied_text_id),
             "can_change_review_status": (
                 manager_access
-                and review.status != Review.Status.REJECTED
+                and (review.status != Review.Status.REJECTED or (
+                    request.user.is_superuser and not review.author_notified_at and not review.is_hidden))
                 and not review.old_reviews
                 and review.copied_text_id is None
                 and (
@@ -417,7 +421,6 @@ def review_list(request):
         {
             "reviews": page_obj,
             "page_obj": page_obj,
-            "status_choices": Review.Status.choices,
             "bulk_action_form": (
                 CoordinatorReviewBulkActionForm()
                 if can_perform_bulk_actions(request.user)
@@ -565,6 +568,24 @@ def unassign_reviewer(request, review_id):
     else:
         messages.success(request, "Usunięto twoje przypisanie do recenzji.")
 
+    return _detail_redirect(review.pk)
+
+
+@never_cache
+@login_required
+@require_POST
+@team_member_required
+def release_reviewer_slot(request, review_id, assignment_id):
+    review = _get_review(request.user, review_id)
+    try:
+        _require_open_review(review)
+        release_reviewer_slot_service(user=request.user, review_id=review.pk, assignment_id=assignment_id)
+    except ValidationError as error:
+        messages.error(request, _service_error_message(request.user, error))
+    except PermissionDenied as error:
+        messages.error(request, str(error) or "Nie masz uprawnień do tej operacji.")
+    else:
+        messages.success(request, "Zwolniono miejsce recenzenta.")
     return _detail_redirect(review.pk)
 
 

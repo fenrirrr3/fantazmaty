@@ -1,7 +1,7 @@
 const fs = require('node:fs'), vm = require('node:vm'), path = require('node:path');
 const assert = require('node:assert/strict');
 const code = fs.readFileSync(path.resolve(__dirname, '../static/core/ui.js'), 'utf8');
-const safety = code.slice(code.indexOf('    function formSnapshot('), code.indexOf('    function initializeBulkActions('));
+const safety = code.slice(code.indexOf('    function formSnapshot('), code.indexOf('    function initializeCheckboxDropdown('));
 const keys = code.slice(code.indexOf('    const userScope ='), code.indexOf('    let toast;'));
 const guardStart = code.indexOf('        window.addEventListener("beforeunload", (event) => {');
 const guard = code.slice(guardStart, code.indexOf('\n        });', guardStart) + 12);

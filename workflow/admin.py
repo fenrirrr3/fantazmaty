@@ -47,60 +47,21 @@ class ActiveRoleFilter(admin.SimpleListFilter):
         return queryset.filter(role=self.value()) if self.value() else queryset
 
 
-class WorkflowCycleAdminFormMixin:
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        if "workflow_cycle" not in self.fields:
-            return
-        if self.instance and self.instance.pk:
-            self.fields["workflow_cycle"].initial = (
-                self.instance.workflow_cycle
-            )
-        else:
-            self.fields["workflow_cycle"].initial = 1
-
-    def clean_workflow_cycle(self):
-        workflow_cycle = self.cleaned_data["workflow_cycle"]
-        self.instance.workflow_cycle = workflow_cycle
-
-        return workflow_cycle
-
-    def save(self, commit=True):
-        instance = super().save(commit=False)
-        instance.workflow_cycle = self.cleaned_data.get("workflow_cycle", instance.workflow_cycle)
-
-        if commit:
-            instance.save()
-            self.save_m2m()
-
-        return instance
-
-
-class WorkflowStageAdminForm(
-    WorkflowCycleAdminFormMixin,
-    forms.ModelForm,
-):
-    workflow_cycle = forms.IntegerField(
-        label="Przebieg workflow",
-        min_value=1,
-        help_text=(
-            "Techniczny numer przebiegu. Zmieniaj go ręcznie "
-            "tylko w celu poprawienia błędnego przypisania "
-            "rekordu."
-        ),
-    )
-
+class WorkflowStageAdminForm(forms.ModelForm):
+    # Numer przebiegu (workflow_cycle) jest tylko do odczytu – admin go nie edytuje.
     confirm_data_correction = forms.BooleanField(required=False, label="Potwierdzam ręczną korektę danych (bez przejścia do następnego etapu)")
 
     def clean(self):
         data = super().clean()
-        state_fields = {'text', 'workflow_cycle', 'stage_type', 'iteration', 'started_at', 'ended_at', 'is_completed'}
+        state_fields = {'text', 'stage_type', 'iteration', 'started_at', 'ended_at', 'is_completed'}
         if self.instance.pk and set(self.changed_data) & state_fields:
             from workflow.anthology_policy import require_working_anthology
             require_working_anthology(self.instance.text)
         if set(self.changed_data) & state_fields and not data.get('confirm_data_correction'):
             raise forms.ValidationError("Do rozpoczęcia lub zakończenia pracy użyj akcji na liście etapów. Ręczna korekta wymaga potwierdzenia i nie tworzy następnego etapu.")
+        if self.instance.pk and {'started_at', 'ended_at'} & set(self.changed_data):
+            from workflow.admin_stage_dates import preserve_stage_order
+            preserve_stage_order(self.instance, data.get('started_at'), data.get('ended_at'))
         return data
 
     class Meta:
@@ -108,20 +69,7 @@ class WorkflowStageAdminForm(
         fields = "__all__"
 
 
-class WorkflowRoleAssignmentAdminForm(
-    WorkflowCycleAdminFormMixin,
-    forms.ModelForm,
-):
-    workflow_cycle = forms.IntegerField(
-        label="Przebieg workflow",
-        min_value=1,
-        help_text=(
-            "Techniczny numer przebiegu. Zmieniaj go ręcznie "
-            "tylko w celu poprawienia błędnego przypisania "
-            "rekordu."
-        ),
-    )
-
+class WorkflowRoleAssignmentAdminForm(forms.ModelForm):
     def clean(self):
         data = super().clean()
         from workflow.admin_assignment_rules import protect_assignment
@@ -152,7 +100,7 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
         return format_html('<a href="{}">Ustaw daty / zakończ etap</a>', reverse('admin:workflow_stage_dates', args=[obj.pk]))
 
     def edit_dates(self, request, object_id):
-        from django.core.exceptions import PermissionDenied, ValidationError
+        from django.core.exceptions import ObjectDoesNotExist, PermissionDenied, ValidationError
         from django.shortcuts import get_object_or_404, redirect
         from django.template.response import TemplateResponse
         from core.edit_versions import version_of
@@ -175,6 +123,8 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
                 form.add_error(None, forms.ValidationError(exc.messages))
             except PermissionDenied as exc:
                 form.add_error(None, str(exc) or 'Nie można wykonać tego przejścia workflow.')
+            except ObjectDoesNotExist:
+                form.add_error(None, 'Rekord został w międzyczasie usunięty lub zmieniony. Odśwież stronę.')
             else:
                 self.log_change(request, stage, 'Ustawienie dat i przekazanie etapu' if form.cleaned_data.get('finish') else 'Korekta dat etapu')
                 self.message_user(request, 'Zakończono etap i przekazano tekst dalej.' if form.cleaned_data.get('finish') else 'Zapisano daty etapu.')
@@ -198,7 +148,7 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
 
     def correct_execution(self,request,object_id):
         from django.contrib.auth import get_user_model
-        from django.core.exceptions import PermissionDenied, ValidationError
+        from django.core.exceptions import ObjectDoesNotExist, PermissionDenied, ValidationError
         from django.db.models.deletion import ProtectedError, RestrictedError
         from django.shortcuts import get_object_or_404,redirect
         from django.template.response import TemplateResponse
@@ -268,6 +218,8 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
                     None,
                     "Etap ma powiązane przekazania pracy lub inne chronione dane. Nie został usunięty.",
                 )
+            except ObjectDoesNotExist:
+                form.add_error(None, "Rekord został w międzyczasie usunięty lub zmieniony. Odśwież stronę.")
             else:
                 self.log_change(
                     request,
@@ -316,7 +268,6 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
         return False
 
     form = WorkflowStageAdminForm
-    exclude = ("workflow_cycle",)
     empty_value_display = "–"
 
     list_display = (
@@ -463,7 +414,7 @@ class WorkflowRoleAssignmentAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
 
     def correct_assignment_view(self, request, object_id):
         from django.contrib.auth import get_user_model
-        from django.core.exceptions import PermissionDenied, ValidationError
+        from django.core.exceptions import ObjectDoesNotExist, PermissionDenied, ValidationError
         from django.db.models.deletion import ProtectedError, RestrictedError
         from django.shortcuts import get_object_or_404, redirect
         from django.template.response import TemplateResponse
@@ -511,6 +462,8 @@ class WorkflowRoleAssignmentAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
                 )
             except (ProtectedError, RestrictedError):
                 form.add_error(None, "Rekord ma chronione powiązania i nie został usunięty.")
+            except ObjectDoesNotExist:
+                form.add_error(None, "Rekord został w międzyczasie usunięty lub zmieniony. Odśwież stronę.")
             except ValidationError as exc:
                 form.add_error(None, exc)
             else:
@@ -545,7 +498,6 @@ class WorkflowRoleAssignmentAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
         return False
 
     form = WorkflowRoleAssignmentAdminForm
-    exclude = ("workflow_cycle",)
     empty_value_display = "Nieprzypisane"
 
     list_display = (
@@ -580,8 +532,6 @@ class WorkflowRoleAssignmentAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
         "text",
         "assigned_to",
     )
-
-    readonly_fields = ("assigned_at",)
 
     fieldsets = (
         (

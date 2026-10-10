@@ -102,6 +102,29 @@ class StageDatesForm(forms.Form):
         return data
 
 
+def preserve_stage_order(stage, started_at, ended_at):
+    """Korekta dat nie może zmienić kolejności prac w przebiegu.
+
+    Etapy, które dotąd zaczynały się po zakończeniu tego etapu, nadal muszą
+    zaczynać się po nim; te zakończone przed jego rozpoczęciem – przed nim.
+    Od tej kolejności zależą przejścia na stronie (np. druga weryfikacja).
+    """
+    previous = S.objects.filter(pk=stage.pk).values('started_at', 'ended_at').first()
+    if not previous:
+        return
+    others = S.objects.filter(text_id=stage.text_id, workflow_cycle=stage.workflow_cycle).exclude(pk=stage.pk)
+    if previous['ended_at'] and ended_at:
+        later = others.filter(started_at__gte=previous['ended_at'], started_at__lt=ended_at)
+        if later.exists():
+            raise ValidationError('Nowa data zakończenia jest późniejsza niż rozpoczęcie kolejnej pracy w tym przebiegu. '
+                                  'Popraw najpierw daty późniejszych etapów.')
+    if previous['started_at'] and started_at:
+        earlier = others.filter(ended_at__lte=previous['started_at'], ended_at__gt=started_at)
+        if earlier.exists():
+            raise ValidationError('Nowa data rozpoczęcia jest wcześniejsza niż zakończenie poprzedniej pracy w tym przebiegu. '
+                                  'Popraw najpierw daty wcześniejszych etapów.')
+
+
 @transaction.atomic
 @track_workflow
 def set_stage_dates(stage_id, user, version, *, started_at=None, ended_at=None,
@@ -119,6 +142,7 @@ def set_stage_dates(stage_id, user, version, *, started_at=None, ended_at=None,
     if stage.is_completed:
         if finish:
             raise ValidationError('Ten etap został już zakończony.')
+        preserve_stage_order(stage, started_at, ended_at)
         stage.started_at = started_at
         stage.ended_at = ended_at
         stage.full_clean()

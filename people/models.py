@@ -82,15 +82,6 @@ class PersonQuerySet(VersionedQuerySet):
             models.Q(user__isnull=True) | models.Q(user__is_active=True)
         )
 
-    def with_roles(self, role_ids):
-        """Osoby mające co najmniej jedną ze wskazanych ról."""
-        role_ids = tuple(role_ids)
-
-        if not role_ids:
-            return self
-
-        return self.filter(roles__pk__in=role_ids).distinct()
-
 
 class Person(models.Model):
     legacy_coordinator_access = models.BooleanField(default=False, editable=False)
@@ -251,14 +242,6 @@ class Person(models.Model):
 
         if errors:
             raise ValidationError(errors)
-
-    @property
-    def is_on_leave(self):
-        return leave_is_active(
-            self.leave_start_date,
-            self.leave_end_date,
-            self.leave_until_revoked,
-        )
 
     @property
     def can_show_team_contact(self):

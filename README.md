@@ -52,11 +52,15 @@ na SQLite i MySQL, `ruff check`, stylelint oraz `pip-audit`.
 2. `python manage.py migrate` i `python manage.py collectstatic --noinput`
 3. Zmienne środowiskowe jak w `.env.example`, w tym `DJANGO_ENV=production`
    oraz **`AUTH_THROTTLE_CLIENT_IP_HEADER=HTTP_X_REAL_IP`** – bez tego limit prób
-   logowania liczyłby wszystkich użytkowników jako jeden adres load balancera.
+   logowania liczyłby wszystkich użytkowników jako jeden adres load balancera –
+   i **`DJANGO_TRUST_PROXY_SSL_HEADER=true`** – PythonAnywhere kończy HTTPS na
+   load balancerze; bez tego grozi pętla przekierowań i odrzucane formularze.
 4. Zadania cykliczne:
    - `python manage.py flush_activity` – przenosi dziennik aktywności do bazy,
    - `python manage.py prune_activity` – usuwa stare wpisy aktywności,
-   - `python manage.py dispatch_workflow_notifications` – ponawia niewysłane powiadomienia Discord.
+   - `python manage.py clearsessions` – usuwa wygasłe sesje (raz dziennie).
+   Powiadomienia Discord wysyła aplikacja na bieżąco; `dispatch_workflow_notifications`
+   nie jest już używane – usuń to zadanie, jeśli jest zaplanowane.
 5. `python manage.py check --deploy`
 
 ## Struktura

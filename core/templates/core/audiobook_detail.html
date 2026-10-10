@@ -61,14 +61,14 @@
         <td>{% if stage.stage_type == 'published' %}<span class="muted-text">Etap końcowy</span>{% elif stage.ended_at %}{{ stage.ended_at|date:"d.m.Y" }}{% elif stage.is_completed %}<span class="muted-text">Zakończony: data nieznana</span>{% else %}–{% endif %}</td>
         <td>{% if stage.stage_type == 'published' %}Opublikowano{% elif audio.active_stage_id == stage.pk and can_finish %}<form method="post">
             {% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="finish_stage"><input type="hidden" name="stage_id" value="{{ stage.pk }}">
-            <button type="submit" class="audio-finish-button" title="Zakończ etap" aria-label="Zakończ etap: {{ stage.get_stage_type_display }}">Zakończ</button>
+            <button type="submit" class="audio-finish-button" data-confirm="Zakończyć etap „{{ stage.get_stage_type_display }}”?" title="Zakończ etap" aria-label="Zakończ etap: {{ stage.get_stage_type_display }}">Zakończ</button>
         </form>{% elif stage.is_completed %}Zakończony{% else %}W toku{% endif %}</td>
     </tr>{% empty %}<tr><td colspan="4">Nie dodano jeszcze etapów.</td></tr>{% endfor %}</tbody></table></div>
     {% if is_published %}<p class="muted-text">Audiobook jest opublikowany. To etap końcowy – nie wymaga zakończenia.</p>{% elif can_manage_stages %}{% if audio.active_stage_id %}<p class="muted-text">Zakończ trwający etap, aby dodać kolejny.</p>{% else %}
     <form method="post" class="audio-stage-add audio-production-form" data-warn-unsaved>
         {% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="start_stage">{{ stage_form.non_field_errors }}
         {% for field in stage_form %}<div class="form-field">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}
-        <button class="primary-button">Dodaj etap</button>
+        <button class="primary-button" data-confirm="Dodać ten etap? Trzeba go będzie zakończyć przed dodaniem kolejnego.">Dodaj etap</button>
     </form>{% endif %}{% elif can_finish and not audio.active_stage_id %}<p class="muted-text">Korekta zakończona. Kolejny etap wybierze koordynator.</p>{% endif %}
 </div></section>
 </div>

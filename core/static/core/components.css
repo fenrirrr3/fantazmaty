@@ -2,18 +2,16 @@
  * Komponenty wielokrotnego użytku. Każdy komponent ma jedną regułę bazową;
  * dawne nazwy klas są wymienione w tej samej regule, więc szablony działają bez zmian.
  *
- *   Przyciski   – .primary-button, .secondary-button, .success-button, .danger-button + .small-button
+ *   Przyciski   – .primary-button, .secondary-button, .danger-button + .small-button
  *   Pola        – .form-field (etykieta, kontrolka, podpowiedź, błąd)
  *   Odznaki     – .badge (kolor z data-palette albo modyfikatora stanu)
- *   Karty       – .card, .card-body, .card--compact, .card--muted, .panel
+ *   Karty       – .card, .card-body, .panel
  *   Wiersze     – .actions (przyciski obok siebie), .filters-form (filtry)
- *   Siatki      – .stack (pionowo), .grid-2 (dwie kolumny)
  */
 
 /* ===== Przyciski ===== */
 .primary-button,
 .secondary-button,
-.success-button,
 .danger-button,
 .assign-button,
 .complete-stage-button,
@@ -65,7 +63,6 @@
 }
 
 /* Zatwierdzający: zakończenie etapu, przyjęcie. */
-.success-button,
 .complete-stage-button,
 .accept-review-button,
 .audio-finish-button {
@@ -74,7 +71,7 @@
     color: var(--on-success);
 }
 
-:is(.success-button, .complete-stage-button, .accept-review-button, .audio-finish-button):hover {
+:is(.complete-stage-button, .accept-review-button, .audio-finish-button):hover {
     background: var(--success-action-hover);
     color: var(--on-success);
 }
@@ -98,14 +95,12 @@
 }
 
 /* Wyróżniony: linki do stron zewnętrznych (ilustracje, audiobooki). */
-.accent-button,
 .secondary-button:is(.audiobook-public-button, .illustration-public-button, .illustration-drive-button) {
     border-color: var(--accent);
     background: var(--accent);
     color: var(--on-accent);
 }
 
-.accent-button:hover,
 .secondary-button:is(.audiobook-public-button, .illustration-public-button, .illustration-drive-button):hover {
     border-color: var(--accent-hover);
     background: var(--accent-hover);
@@ -556,7 +551,6 @@ fieldset.multi-filter-field {
     padding: var(--card-padding);
 }
 
-.card--compact,
 .stage-finish-card,
 .workflow-folder-layout .quick-stage-card {
     padding: var(--space-4);
@@ -591,12 +585,7 @@ fieldset.multi-filter-field {
 }
 
 /* Ramka wewnątrz karty: notatki, opisy, przykłady. */
-.card--muted,
-.coordinator-note-readonly,
-.coordinator-note-detail,
-.editing-state-description,
-.locked-review-preview,
-.import-format-example {
+.coordinator-note-readonly {
     padding: var(--space-4);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
@@ -744,27 +733,6 @@ fieldset.multi-filter-field {
 }
 
 .detail-item dd {
-    margin: 0;
-}
-
-/* ===== Układy ===== */
-.stack {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: var(--space-4);
-}
-
-.grid-2 {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-5);
-    align-items: start;
-}
-
-.grid-2 > *,
-.stack > * {
-    min-width: 0;
     margin: 0;
 }
 
@@ -1328,10 +1296,6 @@ a[href^="mailto:"] {
         align-items: flex-start;
     }
 
-    .grid-2 {
-        grid-template-columns: minmax(0, 1fr);
-    }
-
     .table-container {
         max-height: none;
     }
@@ -1503,7 +1467,7 @@ a[href^="mailto:"] {
         break-inside: avoid;
     }
 
-    :root[data-theme] :is(.primary-button, .assign-button, .success-button, .complete-stage-button, .accept-review-button,
+    :root[data-theme] :is(.primary-button, .assign-button, .complete-stage-button, .accept-review-button,
         .danger-button, .withdraw-text-button, .reject-review-button, .unassign-button, .vacation-end-button) {
         border-color: gray;
         background: white;

@@ -166,11 +166,13 @@ def correction_edit(request, pk):
         selected = form.cleaned_data.get("text")
         if selected:
             selected = get_object_or_404(frontend_scope(Text.objects).select_for_update(), pk=selected.pk)
-        if selected and selected.anthology_id != form.cleaned_data["anthology"].pk:
+        anthology = form.cleaned_data["anthology"]
+        if anthology.pk != item.anthology_id and anthology.status not in ("ready",):
+            form.add_error("anthology", "Antologia nie jest już wydana. Wybierz ją ponownie po zmianie statusu.")
+        elif selected and selected.anthology_id != anthology.pk:
             form.add_error("text", "Opowiadanie zmieniło antologię. Wybierz je ponownie.")
         else:
-            if selected:
-                form.instance.story_title = selected.title
+            form.instance.story_title = selected.title if selected else form.instance.story_title or "Inne miejsce"
             form.save()
             messages.success(request, "Zapisano zmiany uwagi.")
             return redirect("core:anthology_corrections")

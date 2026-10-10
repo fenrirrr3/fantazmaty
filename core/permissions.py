@@ -61,7 +61,6 @@ def _role_names(person):
 
 
 COORDINATOR_ROLE = "Koordynator"
-COORDINATOR_ROLE_PREFIX = f"{COORDINATOR_ROLE} "
 REVIEWER_ROLE = "Recenzent"
 
 
@@ -166,11 +165,6 @@ def has_coordinator_access(user):
     return is_coordinator(user)
 
 
-def belongs_to_group(user, group_name):
-    """Zgodność z dotychczasową nazwą sprawdzania roli."""
-    return has_role(user, group_name)
-
-
 def can_use_recruitment_mailbox(user):
     return is_superuser(user) or has_role(user, "Koordynator rekrutacji")
 
@@ -273,13 +267,6 @@ def require_superuser(user):
         )
 
 
-def require_author_data_access(user):
-    if not can_view_author_data(user):
-        raise PermissionDenied(
-            "Dane autora są dostępne wyłącznie dla superusera."
-        )
-
-
 def _permission_decorator(check):
     def decorator(view):
         @wraps(view)
@@ -302,7 +289,6 @@ def _permission_decorator(check):
 team_member_required = _permission_decorator(require_team_member)
 coordinator_required = _permission_decorator(require_coordinator)
 superuser_required = _permission_decorator(require_superuser)
-author_data_required = _permission_decorator(require_author_data_access)
 recruitment_mailbox_required = _permission_decorator(require_recruitment_mailbox)
 post_layout_required = _permission_decorator(require_post_layout)
 

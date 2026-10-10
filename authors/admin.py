@@ -17,10 +17,11 @@ class SuperuserOnlyAdminMixin:
     @staticmethod
     def has_superuser_access(request):
         user = request.user
+        # Jak w CMSAdminSite.has_permission: o dostępie decyduje superuser, nie flaga is_staff
+        # (inaczej superuser bez is_staff widział tylko część panelu).
         return (
             user.is_authenticated
             and user.is_active
-            and user.is_staff
             and user.is_superuser
         )
 

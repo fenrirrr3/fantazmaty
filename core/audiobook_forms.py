@@ -32,6 +32,8 @@ class AudiobookProductionForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         # Preserve a former member in existing assignments, but do not offer
         # inactive accounts for new assignments.
+        if 'proofreader' not in self.fields:
+            return  # pole tylko do odczytu (np. poza etapem Korekta w panelu)
         ids = eligible_proofreaders().values('pk')
         self.fields['proofreader'].queryset = get_user_model().objects.filter(
             Q(pk__in=ids) | Q(pk=self.instance.proofreader_id)

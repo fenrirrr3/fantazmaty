@@ -238,7 +238,7 @@
                         action="{% url 'core:unassign_reviewer' review.pk %}"
                     >
                         {% csrf_token %}{% edit_version %}
-                        <button type="submit" class="unassign-button">
+                        <button type="submit" class="unassign-button" data-confirm="Zrezygnować z recenzji? Twoja opinia i notatki zostaną usunięte.">
                             Usuń mój przydział i opinię
                         </button>
                     </form>
@@ -379,6 +379,13 @@
                             {% else %}
                                 <span class="muted-text">Brak treści opinii.</span>
                             {% endif %}
+                            {% if can_release_reviewer_slots and opinion.opinion_value in released_opinion_values %}
+                                <form method="post" action="{% url 'core:release_reviewer_slot' review.pk opinion.pk %}" class="release-reviewer-form">
+                                    {% csrf_token %}{% edit_version %}
+                                    <p class="form-help">Przypisano {{ opinion.assigned_at|date:"d.m.Y" }}.</p>
+                                    <button type="submit" class="unassign-button" data-confirm="Zwolnić miejsce recenzenta {{ opinion.reviewer_name }}? Jego przydział zostanie usunięty.">Zwolnij miejsce</button>
+                                </form>
+                            {% endif %}
                         </div>
                     </details>
                 {% empty %}
@@ -420,7 +427,7 @@
                         >
                             {% csrf_token %}{% edit_version %}
                             <input type="hidden" name="status" value="accepted">
-                            <button type="submit" class="accept-review-button">
+                            <button type="submit" class="accept-review-button" data-confirm="Przyjąć tekst? Przyjęcie zamyka edycję opinii i przydziałów.">
                                 Przyjmij tekst
                             </button>
                         </form>
@@ -433,7 +440,7 @@
                         >
                             {% csrf_token %}{% edit_version %}
                             <input type="hidden" name="status" value="rejected">
-                            <button type="submit" class="reject-review-button">
+                            <button type="submit" class="reject-review-button" data-confirm="Odrzucić tekst? Odrzucenie zamyka edycję opinii i przydziałów.">
                                 Odrzuć tekst
                             </button>
                         </form>

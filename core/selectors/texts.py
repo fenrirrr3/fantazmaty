@@ -24,22 +24,14 @@ from core.permissions import (
 )
 from texts.models import Anthology, Review, ReviewAssignment, Text, TextNote, ForeignAuthor, Translator
 from workflow.models import WorkflowRoleAssignment, WorkflowStage
-from workflow.services import ROLE_GROUPS, STAGE_ROLES
+from workflow.services import ROLE_GROUPS
+from core.services.texts import STAGE_ROLE_MAP, TERMINAL_STAGES
 from workflow.state import stage_is_open as _is_open, stage_is_active as _is_active, operational_stages
 
 
 StageType = WorkflowStage.StageType
 Role = WorkflowRoleAssignment.Role
 
-STAGE_ROLE_MAP = {
-    **STAGE_ROLES,
-    StageType.READY_FOR_EDITING: Role.EDITOR,
-    StageType.EDITING: Role.EDITOR,
-    StageType.AUTHOR_EDITING: Role.EDITOR,
-    StageType.EDITOR_CONTROL: Role.EDITOR,
-}
-
-TERMINAL_STAGES = frozenset({StageType.READY, StageType.WITHDRAWN})
 VERIFICATION_STAGES = frozenset(
     {StageType.FIRST_VERIFICATION, StageType.SECOND_VERIFICATION}
 )
@@ -832,11 +824,35 @@ def text_detail_context(*, user, text):
         can_control and not editing and not verification_open
         and (author_editing or pending_editing)
     )
+    # Po przekazaniu pierwszej redakcji nowy redaktor startuje etap, choć
+    # rezerwacja pierwszej weryfikacji nadal czeka.
+    can_restart_editing = bool(
+        can_control and pending_editing and not editing and not author_editing
+        and not first_done and not verification_open_started
+        and not any(s.stage_type == StageType.SECOND_VERIFICATION and _is_open(s) for s in stages)
+    )
+    from people.leave_access import is_on_leave as _on_leave
+    actor_on_leave = _on_leave(user)
+    availability = {}
+    if first_verifier and unavailable_reason(first_verifier.assigned_to, cache=availability) or actor_on_leave:
+        can_start_first = False
+    if editor and unavailable_reason(editor.assigned_to, cache=availability) or actor_on_leave:
+        can_resume = False
+        can_restart_editing = False
+    first_verifier_unavailable = ''
+    if pending_first and first_verifier and first_verifier.assigned_to_id:
+        reason = unavailable_reason(first_verifier.assigned_to, cache=availability)
+        if reason:
+            first_verifier_unavailable = (
+                f'Zarezerwowany weryfikator ({_display_name(first_verifier.assigned_to)}) {reason} – '
+                'weryfikacja poczeka na jego powrót, chyba że koordynator przekaże ją innej osobie.'
+            )
 
     stage_rows = _detail_stage_rows(
         user, text, stages, assignments, text_data,
         terminal=terminal, coordinator=coordinator, today=today,
-        can_start_first=can_start_first, can_resume=can_resume,
+        can_start_first=can_start_first, can_resume=can_resume or can_restart_editing,
+        availability=availability,
     )
 
     row_by_id = {row["pk"]: row for row in stage_rows}
@@ -876,10 +892,9 @@ def text_detail_context(*, user, text):
     source_data, opinions = _source_review_data(text, user, include_authors)
 
     open_repetition = text.repetitions.filter(completed_at__isnull=True, canceled_at__isnull=True).first()
+    from workflow.repetitions import repetition_has_work
     can_cancel_repetition = bool(user.is_superuser and open_repetition and open_repetition.previous_stage_ids
-        and not open_repetition.stages.filter(started_at__isnull=False).exists()
-        and not open_repetition.stages.filter(is_completed=True).exists()
-        and not open_repetition.assignments.filter(assigned_to__isnull=False).exists())
+        and not repetition_has_work(open_repetition))
     team = _text_team_members(text, assignments)
     from workflow.availability import claim_access
     from workflow.read_queries import available_stages
@@ -925,6 +940,7 @@ def text_detail_context(*, user, text):
             and not verification_open_started
         ),
         "can_start_first_verification": can_start_first,
+        "first_verifier_unavailable": first_verifier_unavailable,
         "can_resume_editing": can_resume,
         "can_send_to_author": bool(
             can_control and editing and first_gate and not verification_open
@@ -1070,13 +1086,41 @@ def _text_team_members(text, assignments):
         ], key=lambda member: (team_role_order.get(member["role"], 999), bool(member.get("is_previous"))))
 
 
+def _display_name(user):
+    return (user.get_full_name() or user.email or user.get_username()).strip()
+
+
+def unavailable_reason(user, *, leave=True, cache=None):
+    """Dlaczego przypisana osoba nie może teraz rozpocząć pracy (lub pusty tekst).
+
+    `cache` (słownik na czas jednego widoku) oszczędza powtórnych zapytań o tę samą osobę.
+    """
+    if not user:
+        return ''
+    key = (user.pk, leave)
+    if cache is not None and key in cache:
+        return cache[key]
+    from workflow.services import _actor_is_active
+    from people.leave_access import is_on_leave
+    reason = ''
+    if not _actor_is_active(user):
+        reason = 'ma nieaktywne konto'
+    elif leave and is_on_leave(user):
+        reason = 'jest na urlopie'
+    if cache is not None:
+        cache[key] = reason
+    return reason
+
+
 def _detail_stage_rows(user, text, stages, assignments, text_data, *, terminal,
-                       coordinator, today, can_start_first, can_resume):
+                       coordinator, today, can_start_first, can_resume, availability=None):
     def owned(role):
         assignment = assignments.get(role)
         return bool(assignment and assignment.assigned_to_id == user.pk)
 
     from core.selectors.people import user_leave_information
+    from core.services.texts import release_blocker
+    from workflow.services import can_skip_fourth, user_can_complete_stage
     leave_cache = {}
     stage_rows = []
     for stage in stages:
@@ -1127,18 +1171,37 @@ def _detail_stage_rows(user, text, stages, assignments, text_data, *, terminal,
                 }
             ),
         )
-        from people.leave_access import is_on_leave
-        from workflow.services import user_can_complete_stage
         available = stage.is_released and stage.is_current
         if stage.repetition_id:
             row['can_start'] = bool(available and not terminal and assigned_user and may_act and _is_open(stage) and not stage.started_at)
             row['can_complete'] = user_can_complete_stage(stage, user)
-        if not available or (assigned_user and is_on_leave(assigned_user)):
+        if not available or (assigned_user and unavailable_reason(assigned_user, cache=availability)):
             row['can_start'] = False
+        row['complete_blocker'] = ''
+        if row['can_complete'] and stage.stage_type == StageType.COORDINATOR_CONTROL:
+            editor_assignment = assignments.get(Role.EDITOR)
+            editor_user = editor_assignment.assigned_to if editor_assignment else None
+            if not editor_user or unavailable_reason(editor_user, leave=False, cache=availability):
+                row['can_complete'] = False
+                row['complete_blocker'] = ('Kontrolę koordynatora można zakończyć dopiero po przypisaniu '
+                                           'aktywnego redaktora – zmień wykonawcę przez „Przekazanie pracy”.')
         row['can_start'] = row['can_start'] and available
-        from workflow.services import can_skip_fourth
         row['can_skip'] = can_skip_fourth(stage, user)
         row['is_queued'] = not available
+        started_work = bool(stage.started_at and stage.started_at <= today)
+        reservation = stage.stage_type == StageType.FIRST_VERIFICATION and stage.started_at is None
+        row['can_release'] = bool(
+            not terminal and available and assigned_user and may_act
+            and not stage.is_completed and not stage.ended_at
+            and (stage.stage_type != StageType.STYLING or user.is_superuser)
+            and (started_work or reservation)
+            and release_blocker(stage, stages) is None
+            and not (started_work and any(
+                other.pk != stage.pk and assignment and other.assignment_id == assignment.pk
+                and STAGE_ROLE_MAP.get(other.stage_type) == role and (other.started_at or other.is_completed)
+                for other in stages))
+        )
+        row['is_reservation'] = reservation
         stage_rows.append(row)
 
     return stage_rows

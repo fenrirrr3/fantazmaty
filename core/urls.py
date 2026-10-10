@@ -162,6 +162,11 @@ urlpatterns = [
         name="unassign_reviewer",
     ),
     path(
+        "recenzje/<int:review_id>/zwolnij/<int:assignment_id>/",
+        reviews.release_reviewer_slot,
+        name="release_reviewer_slot",
+    ),
+    path(
         "recenzje/<int:review_id>/status/",
         reviews.update_review_status,
         name="update_review_status",
@@ -265,6 +270,11 @@ urlpatterns = [
         "moje-teksty/<int:text_id>/wycofaj/",
         workflow.withdraw_text,
         name="withdraw_text",
+    ),
+    path(
+        "moje-teksty/<int:text_id>/przywroc/",
+        workflow.restore_withdrawn_text,
+        name="restore_withdrawn_text",
     ),
 
     # Etapy dostępne do przejęcia.

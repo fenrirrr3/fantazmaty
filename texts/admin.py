@@ -70,6 +70,11 @@ class AnthologyTaskFormSet(BaseInlineFormSet):
 class AnthologyTaskInline(admin.TabularInline):
     model = AnthologyTask
     formset = AnthologyTaskFormSet
+
+    @property
+    def form(self):
+        from core.admin import AnthologyTaskAdminForm
+        return AnthologyTaskAdminForm
     extra = 0
     max_num = 4
     can_delete = False
@@ -515,6 +520,38 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     )
     list_filter = ("audiobook_blacklisted", "for_recording", "anthology", "anthology__is_translated")
     actions = ('block_audiobooks', 'unblock_audiobooks')
+
+    @staticmethod
+    def deletion_blocker(obj):
+        """Powód, dla którego tekstu nie wolno usunąć, albo None."""
+        from django.db.models import Q
+        from workflow.models import WorkflowStage
+        if obj.anthology_id and obj.anthology.status in ('ready',):
+            return 'Antologia jest wydana – tekstów nie usuwa się z wydanych antologii.'
+        if WorkflowStage.objects.filter(text=obj).filter(
+                Q(started_at__isnull=False) | Q(ended_at__isnull=False) | Q(is_completed=True)).exclude(
+                stage_type='ready_for_editing').exists():
+            return 'Tekst ma rozpoczętą lub zakończoną pracę – usunięcie skasowałoby historię i zasługi osób. Wycofaj tekst zamiast go usuwać.'
+        return None
+
+    def has_delete_permission(self, request, obj=None):
+        allowed = super().has_delete_permission(request, obj)
+        return bool(allowed and (obj is None or self.deletion_blocker(obj) is None))
+
+    def get_actions(self, request):
+        # Zbiorcze usuwanie omijałoby sprawdzenie pojedynczych tekstów.
+        actions = super().get_actions(request)
+        actions.pop('delete_selected', None)
+        return actions
+
+    def delete_model(self, request, obj):
+        reason = self.deletion_blocker(obj)
+        if reason:
+            raise PermissionDenied(reason)
+        with transaction.atomic():
+            # Zgłoszenie, z którego powstał tekst, nie może wrócić do puli „do przeniesienia”.
+            Review.objects.filter(copied_text=obj).update(publication_detached=True)
+            super().delete_model(request, obj)
 
     def _set_audiobook_blacklist(self, request, queryset, blocked):
         if not self.has_change_permission(request):
@@ -1226,10 +1263,23 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     class Media:
         js = ("texts/admin/review_author_autofill.js", "texts/admin/review_text_link.js",)
 
+    def has_delete_permission(self, request, obj=None):
+        allowed = super().has_delete_permission(request, obj)
+        if not allowed or obj is None or obj.old_reviews:
+            return allowed
+        # Oddane opinie liczą się do dorobku recenzentów – nie kasujemy ich razem ze zgłoszeniem.
+        return not obj.assignments.exclude(opinion__in=('', Reviewers.Opinion.READING)).exists()
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        actions.pop('delete_selected', None)
+        return actions
+
     def get_readonly_fields(self, request, obj=None):
         if obj and obj.old_reviews:
             return ("created_at", "old_reviews")
-        return (*super().get_readonly_fields(request, obj), "status", "author_notified_at", *(("old_reviews",) if obj else ()))
+        # Ukrycie wynika z czarnej listy; przywraca je przycisk na stronie zgłoszenia.
+        return (*super().get_readonly_fields(request, obj), "status", "author_notified_at", *(("old_reviews", "is_hidden") if obj else ()))
 
     def get_urls(self):
         return [

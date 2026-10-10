@@ -110,7 +110,6 @@ def remember_role_people(sender, instance, **kwargs):
 @receiver(post_delete, sender=Role)
 def deleted_role(sender, instance, **kwargs):
     for person in Person.objects.filter(pk__in=getattr(instance, "_cms_role_people", ())):
-        person.is_coordinator = person.legacy_coordinator_access or person.roles.filter(name__istartswith="Koordynator").exists()
         sync_person(person)
 
 
@@ -124,7 +123,6 @@ def remember_role_edit(sender, instance, **kwargs):
 @receiver(post_save, sender=Role)
 def changed_role(sender, instance, **kwargs):
     for person in Person.objects.filter(pk__in=getattr(instance, "_cms_role_people", ())):
-        person.is_coordinator = person.legacy_coordinator_access or person.roles.filter(name__istartswith="Koordynator").exists()
         sync_person(person)
 
 

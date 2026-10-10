@@ -1,5 +1,4 @@
 {% load workspace_tags %}
-{% illustrations_allowed user as show_illustrations %}
 {% load static %}
 <!DOCTYPE html>
 <html lang="pl">
@@ -98,7 +97,6 @@
             <span>{% now "Y" %}</span>
         </div>
     </footer>
-    <script src="{% static 'core/author-search.js' %}" defer></script>
     <script src="{% static 'core/ui.js' %}" defer></script>
 
     <script src="{% static 'core/layout.js' %}" defer></script>

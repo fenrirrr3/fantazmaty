@@ -40,10 +40,20 @@ class AssignmentModelForm(forms.ModelForm):
             from texts.models import Text
             allowed = illustration_texts_queryset().values('pk')
             self.fields['text'].queryset = Text.objects.filter(Q(pk__in=allowed) | Q(pk=self.instance.text_id))
+            if self.instance.pk:
+                # Ilustracja z zasługami należy do jednego tekstu; strona nigdy jej nie przenosi.
+                self.fields['text'].disabled = True
+                self.fields['text'].help_text = 'Ilustracji nie przenosi się do innego tekstu.'
 
     class Meta:
         model = Illustration
         fields = ('illustrators', 'manual_illustrator_name', 'manual_illustrator_email', 'status')
+
+    def clean_story_url(self):
+        value = self.cleaned_data.get('story_url')
+        if value:
+            URLValidator(schemes=['https', 'http'])(value)
+        return value
 
     def clean(self):
         cleaned = super().clean()

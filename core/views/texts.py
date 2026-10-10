@@ -142,7 +142,7 @@ def _render_text_detail_page(request, text, *, bound_forms=None, status=200):
     context['text_file_form'] = TextFileForm(instance=text) if request.user.is_superuser else None
     context['dropbox_chooser_app_key'] = getattr(settings, 'DROPBOX_CHOOSER_APP_KEY', '') if request.user.is_superuser else ''
     # Only this text's email addresses are revealed, never source-review identity.
-    email_access = coordinator_access or (
+    email_access = coordinator_access or is_assigned or (
         WorkflowRoleAssignment.objects.filter(text=text, assigned_to=request.user).exists()
     )
     contacts = record.foreign_authors if context['is_translation'] and record else text.authors

@@ -16,12 +16,12 @@ from core.permissions import (
 from texts.models import Text
 from workflow.models import WorkflowRoleAssignment, WorkflowStage
 from workflow.services import ROLE_GROUPS, STAGE_ROLES, validate_assignment_start_date
+from workflow.state import ORDER as STAGE_ORDER  # kolejność etapów z katalogu procesu
 
 
 StageType = WorkflowStage.StageType
 Role = WorkflowRoleAssignment.Role
 
-MAX_DATABASE_ID = 9_223_372_036_854_775_807
 
 TERMINAL_STAGES = frozenset({StageType.READY, StageType.WITHDRAWN})
 
@@ -32,31 +32,6 @@ STAGE_ROLE_MAP = {
     StageType.AUTHOR_EDITING: Role.EDITOR,
     StageType.EDITOR_CONTROL: Role.EDITOR,
 }
-
-STAGE_ORDER = {
-    kind: position
-    for position, kind in enumerate(
-        (
-            StageType.READY_FOR_EDITING,
-            StageType.EDITING,
-            StageType.FIRST_VERIFICATION,
-            StageType.AUTHOR_EDITING,
-            StageType.SECOND_VERIFICATION,
-            StageType.EDITING_CONTROL,
-            StageType.FIRST_PROOFREADING,
-            StageType.SECOND_PROOFREADING,
-            StageType.THIRD_VERIFICATION,
-            StageType.COORDINATOR_CONTROL,
-            StageType.EDITOR_CONTROL,
-            StageType.THIRD_PROOFREADING,
-            StageType.FOURTH_PROOFREADING,
-            StageType.STYLING,
-            StageType.READY,
-            StageType.WITHDRAWN,
-        )
-    )
-}
-
 
 def _current_stages(text):
     return list(
@@ -106,8 +81,6 @@ def _require_eligible_assignee(user, role, *, lock=True, existing=False):
         raise PermissionDenied("Drugą i czwartą korektę można przypisać tylko koordynatorowi korekty.")
 
     required_group = ROLE_GROUPS.get(role)
-    if role == Role.EDITOR:
-        required_group = "Redaktor"
 
     if not required_group:
         raise ValidationError("Nieprawidłowa rola w procesie.")
@@ -375,6 +348,51 @@ def withdraw_text(*, user, text_id):
 
 @transaction.atomic
 @track_workflow
+def restore_withdrawn_text(*, user, text_id):
+    """Cofnięcie wycofania przez superusera: usuwa etap „Wycofany” bieżącego cyklu."""
+    if not user.is_active or not user.is_superuser:
+        raise PermissionDenied('Wycofanie może cofnąć tylko superuser.')
+    text = get_object_or_404(Text.objects.select_for_update(), pk=text_id)
+    require_working_anthology(text)
+    stages = _current_stages(text)
+    withdrawn = next((s for s in stages if s.stage_type == StageType.WITHDRAWN), None)
+    if withdrawn is None:
+        raise ValidationError('Tekst nie jest wycofany.')
+    if text.repetitions.filter(cancellation_reason='Wycofano tekst.',
+                               canceled_at__date__gte=withdrawn.started_at).exists():
+        raise ValidationError('Wycofanie odwołało kolejkę powtórzeń. Takiego tekstu nie da się przywrócić '
+                              'jednym przyciskiem – popraw etapy w panelu admina.')
+    from core.workflow_events import remember
+    remember(Text, text, text._state.db or 'default')
+    withdrawn.delete()
+    return text
+
+
+RELEASE_EXCLUDED = {
+    StageType.READY_FOR_EDITING, StageType.AUTHOR_EDITING, StageType.EDITOR_CONTROL,
+    StageType.EDITING_CONTROL, StageType.READY, StageType.WITHDRAWN,
+}
+RELEASE_VERIFICATIONS = {StageType.FIRST_VERIFICATION, StageType.SECOND_VERIFICATION}
+
+
+def release_blocker(stage, stages):
+    """Powód, dla którego nie można cofnąć przydziału bieżącej pracy, albo None."""
+    if stage.stage_type in RELEASE_EXCLUDED:
+        return 'Przy tym etapie nie cofa się przydziału – użyj przekazania pracy.'
+    if stage.repetition_id:
+        return 'Etap jest częścią kolejki powtórzeń. Zmianę wykonawcy zrobi koordynator.'
+    if stage.started_at is None:
+        if stage.stage_type != StageType.FIRST_VERIFICATION:
+            return 'Ten etap nie ma rezerwacji do odwołania.'
+        return None
+    if stage.stage_type == StageType.EDITING and any(
+            s.stage_type in RELEASE_VERIFICATIONS and s.started_at and not s.is_completed for s in stages):
+        return 'Weryfikacja już trwa – przydziału redakcji nie można teraz cofnąć.'
+    return None
+
+
+@transaction.atomic
+@track_workflow
 def change_scheduled_stage(*, user, stage_id, started_at=None, cancel=False):
     """Change a future booking without rewriting work that has already happened."""
     require_team_member(user)
@@ -386,8 +404,16 @@ def change_scheduled_stage(*, user, stage_id, started_at=None, cancel=False):
     _require_open_process(stages)
     stage = next((s for s in stages if s.pk == stage_id), None)
     today = timezone.localdate()
-    if not stage or stage.is_completed or stage.ended_at or not stage.started_at or stage.started_at <= today:
+    if not stage or stage.is_completed or stage.ended_at:
+        raise ValidationError('Etap jest już zakończony albo nie należy do bieżącego procesu.')
+    future_booking = bool(stage.started_at and stage.started_at > today)
+    if not cancel and not future_booking:
         raise ValidationError('Zmienić można wyłącznie rezerwację z przyszłą datą rozpoczęcia.')
+    if cancel and not future_booking:
+        # Zwolnienie: rezerwacja pierwszej weryfikacji (bez daty) albo rozpoczęta, niezakończona praca.
+        reason = release_blocker(stage, stages)
+        if reason:
+            raise ValidationError(reason)
     role = STAGE_ROLE_MAP.get(stage.stage_type)
     assignment = next((a for a in assignments if a.role == role), None)
     if not assignment or not assignment.assigned_to_id:
@@ -397,8 +423,10 @@ def change_scheduled_stage(*, user, stage_id, started_at=None, cancel=False):
     if role == Role.STYLING and not user.is_superuser:
         raise PermissionDenied('Stylowaniem zarządza superuser.')
     if cancel:
-        stage.started_at = None
         prior_work = any(s.pk != stage.pk and s.assignment_id == assignment.pk and STAGE_ROLE_MAP.get(s.stage_type) == role and (s.started_at or s.is_completed) for s in stages)
+        if not future_booking and stage.started_at and prior_work:
+            raise ValidationError('Ta osoba ma już wcześniejszą pracę w tej roli – zamiast cofać przydział, przekaż pracę innej osobie.')
+        stage.started_at = None
         # Keep a historical assignee when this is a later return to the same role.
         if not prior_work:
             assignment.assigned_to = None
