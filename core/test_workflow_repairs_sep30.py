@@ -180,11 +180,11 @@ class WorkflowRepairs(TestCase):
         self.assertNotContains(self.client.get(reverse("core:home")), review.title)
 
     def test_pseudonym_search(self):
-        self.review(author_pseudonym="Nietypowypseudonim", title="Unikalna historia pseudonimu")
+        self.review(author_pseudonym="Nietypowypseudonim", title="Unikalna historia pseudonimu", status="new")
         for url in ["core:review_list", "core:global_search"]:
             response = self.client.get(
                 reverse(url),
-                {"q": "Nietypowypseudonim", "query": "Nietypowypseudonim", "status": "accepted"},
+                {"q": "Nietypowypseudonim", "query": "Nietypowypseudonim", "status": "new"},
             )
             self.assertContains(response, "Unikalna historia pseudonimu")
 
@@ -359,19 +359,22 @@ class WorkflowRepairs(TestCase):
         data.update(overrides)
         return ReviewAdminForm(data=data, instance=review)
 
-    def test_admin_rejects_cross_anthology_and_unaccepted_source(self):
+    def test_admin_allows_cross_anthology_but_rejects_unaccepted_source(self):
         author = Author.objects.create(
             first_name="Jan", last_name="Autor", email="autor@example.com"
         )
         self.text.authors.add(author)
         self.stage("editing")
         other = Anthology.objects.create(title="Inny nabór")
-        for changes in ({"anthology": other}, {"status": "new"}, {"status": "rejected"}):
+        review = self.review(author=author, old_reviews=False, anthology=other)
+        form = self.admin_link_form(review, self.text, confirm_source_mismatch="on", old_reviews="")
+        self.assertTrue(form.is_valid(), form.errors)
+        for changes in ({"status": "new"}, {"status": "in_review"}):
             review = self.review(author=author, old_reviews=False, **changes)
             form = self.admin_link_form(review, self.text, confirm_source_mismatch="on", old_reviews="")
             self.assertFalse(form.is_valid())
             self.assertIn("copied_text", form.errors)
-            self.assertIn("tej samej antologii", str(form.errors["copied_text"]))
+            self.assertIn("przyjęte lub archiwalne zgłoszenie", str(form.errors["copied_text"]))
 
     def test_admin_requires_separate_confirmation_of_author_mismatch(self):
         author = Author.objects.create(

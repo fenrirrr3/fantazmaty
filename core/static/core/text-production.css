@@ -27,3 +27,20 @@
 .chapter-notes-reviews .review-summary-toggle { padding-block: .85rem; }
 .chapter-notes-reviews .text-notes-list,
 .chapter-notes-reviews .review-summary-content { max-height: 24rem; overflow: auto; }
+
+.text-detail-pair[data-detail-pair="assignment-history"] { align-items: start; }
+/* A dedicated control row keeps the button level with the date input, not its label. */
+.quick-stage-action .start-stage-form { display: grid; grid-template-columns: auto minmax(150px, 1fr); align-items: end; gap: .4rem 1rem; }
+.start-stage-form .form-field { display: contents; }
+.start-stage-form .form-field label { grid-column: 2; grid-row: 1; margin: 0; line-height: 1.4; }
+.start-stage-form .stage-date-input { grid-column: 2; grid-row: 2; }
+.start-stage-form > button { grid-column: 1; grid-row: 2; }
+.start-stage-form > button, .start-stage-form .stage-date-input { box-sizing: border-box; height: 42px; min-height: 42px; margin: 0; align-self: end; }
+@media screen and (max-width: 480px) {
+    .quick-stage-action .start-stage-form { grid-template-columns: minmax(0, 1fr); width: 100%; }
+    .start-stage-form .form-field label { grid-column: 1; }
+    .start-stage-form .stage-date-input { grid-column: 1; width: 100%; }
+    .start-stage-form > button { grid-column: 1; grid-row: 3; justify-self: start; margin-top: .3rem; }
+}
+
+.text-notes-tags.extract-volume-notes { grid-template-columns: minmax(0, 1fr); }

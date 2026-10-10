@@ -37,7 +37,12 @@ class PostLayoutAssignment(models.Model):
         ordering = ('-created_at', '-pk')
         constraints = [
             models.CheckConstraint(condition=(models.Q(page_from__isnull=False, page_to__isnull=False, page_from__gte=1, page_to__gte=models.F('page_from')) | models.Q(historical=True, page_from__isnull=True, page_to__isnull=True)), name='post_layout_page_range'),
-            models.CheckConstraint(condition=(models.Q(historical=True, status='completed', assigned_start__isnull=True, assigned_end__isnull=True, work_start__isnull=True, work_end__isnull=True, completed_on__isnull=True) | (models.Q(assigned_start__isnull=False) & (
+            models.CheckConstraint(condition=((models.Q(historical=True, status='completed')
+                & (models.Q(assigned_end__isnull=True, work_start__isnull=True) | models.Q(assigned_end__isnull=False, work_start__isnull=False, assigned_end=models.F('work_start')))
+                & (models.Q(work_end__isnull=True, completed_on__isnull=True) | models.Q(work_end__isnull=False, completed_on__isnull=False, work_end=models.F('completed_on')))
+                & (models.Q(assigned_start__isnull=True) | models.Q(work_start__isnull=True) | models.Q(work_start__gte=models.F('assigned_start')))
+                & (models.Q(work_start__isnull=True) | models.Q(completed_on__isnull=True) | models.Q(completed_on__gte=models.F('work_start')))
+                & (models.Q(assigned_start__isnull=True) | models.Q(completed_on__isnull=True) | models.Q(completed_on__gte=models.F('assigned_start')))) | (models.Q(assigned_start__isnull=False) & (
                 models.Q(status='assigned', assigned_end__isnull=True, work_start__isnull=True, work_end__isnull=True, completed_on__isnull=True)
                 | models.Q(status='in_progress', assigned_end=models.F('work_start'), assigned_end__isnull=False, work_start__isnull=False,
                     work_start__gte=models.F('assigned_start'), work_end__isnull=True, completed_on__isnull=True)

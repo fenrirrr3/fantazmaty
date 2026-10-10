@@ -342,3 +342,5 @@ section:has(#active-stages-heading), section:has(#reserved-assignments-heading) 
 .available-stage-cell { vertical-align: middle; }
 .available-stage-cell:has(+ td .take-stage-action) > * { transform: translateY(.75rem); }
 @media (max-width: 600px) { .author-table-inset { padding-inline: 1rem; } .quick-stage-card:has(.take-stage-action) > strong { padding-top: 0; } }
+
+.search-pagination { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; border-top: 1px solid var(--border); }

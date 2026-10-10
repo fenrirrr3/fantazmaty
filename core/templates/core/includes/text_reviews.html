@@ -7,6 +7,7 @@
             <div class="review-summary-content">
                 {% if request.user.is_superuser and not source_review %}<p><a class="secondary-button" href="{% url 'core:link_text_review' text.pk %}">Powiąż zgłoszenie z recenzjami</a></p>{% endif %}
                 {% if source_review %}
+                {% if request.user.is_superuser %}<p><a class="secondary-button" href="{% url 'core:link_text_review' text.pk %}">Zmień lub usuń powiązanie</a></p>{% endif %}
                 {% if source_review.can_open %}<p>
                     <a
                         href="{% url 'core:assigned_review_detail' source_review.pk %}"
@@ -17,7 +18,7 @@
                 </p>{% else %}<p>{{ source_review.title }}</p>{% endif %}
                 {% if source_review.general_notes %}<div class="notes-editor-panel"><h3>Uwagi ogólne z recenzji</h3>{{ source_review.general_notes|linebreaksbr }}</div>{% endif %}
 
-                {% if source_review.old_reviews %}
+                {% if source_review.is_archived %}
                     <p class="muted-text">
                         Oddane recenzje archiwalne są liczone do dorobku, ale nie do bieżącego obciążenia.
                     </p>

@@ -821,24 +821,18 @@ def my_reviews(request):
     if not can_view_my_reviews(request.user):
         raise PermissionDenied("Moje recenzje są dostępne tylko dla recenzentów.")
     view = request.GET.get("view", "active")
-    if view not in {"active", "waiting", "completed", "all", "archived"}:
-        view = "active"
-    if view == "archived":
-        rows = ordinary(ReviewAssignment.objects, include_abandoned=True).filter(
-            Q(user=request.user) | Q(historical_person__user=request.user),
-            review__old_reviews=True,
-        ).submitted().select_related("review__anthology").order_by("review__anthology__title", "review__title", "pk")
-    else:
-        rows = ordinary(ReviewAssignment.objects, include_abandoned=True).filter(
-            user=request.user, review__old_reviews=False, review__is_hidden=False,
-        ).filter(Q(pk__in=ordinary(ReviewAssignment.objects).values('pk'))
-            | ~Q(opinion__in=('', 'reading'))).select_related("review__anthology").order_by("-assigned_at", "-pk")
+    view = "all" if view in {"all", "archived", "completed"} else "active"
+    rows = ordinary(ReviewAssignment.objects, include_abandoned=True).filter(
+        Q(user=request.user) | Q(historical_person__user=request.user),
+    ).filter(review__in=Review.objects.visible_to(request.user))
+    # Preserve completed personal history from abandoned anthologies; unfinished
+    # assignments there are not actionable tasks.
+    rows = rows.filter(Q(pk__in=ordinary(ReviewAssignment.objects).values('pk'))
+        | ~Q(opinion__in=('', 'reading')))
     if view == "active":
-        rows = rows.filter(opinion="reading", review__status__in=("new", "in_review", "to_decide"))
-    elif view == "waiting":
-        rows = rows.filter(opinion="", review__status__in=("new", "in_review", "to_decide"))
-    elif view == "completed":
-        rows = rows.exclude(opinion__in=("", "reading"))
+        rows = rows.filter(opinion__in=("", "reading"), review__old_reviews=False,
+                           review__status__in=("new", "in_review", "to_decide"))
+    rows = rows.select_related("review__anthology").order_by("-assigned_at", "-pk")
     own_anthologies = rows.order_by().values('review__anthology_id')
     query = request.GET.get("q", "").strip()[:255]
     for term in query.split():

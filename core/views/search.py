@@ -1,8 +1,9 @@
 from core.public_authors import name_matches, review_name_matches
 from core.translation_scope import ordinary, non_abandoned
 from core.author_access import contact_authors
-from core.permissions import is_coordinator, can_view_review_archive
+from core.permissions import is_coordinator
 from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
 from django.db.models import Prefetch, Q
 from django.shortcuts import render
 from django.urls import reverse
@@ -17,6 +18,33 @@ from texts.models import Anthology, Review, Text
 
 
 RESULT_LIMIT = 50
+
+
+class SearchResults(list):
+    def __init__(self, items, page):
+        super().__init__(items)
+        self.page = page
+        self.total = page.paginator.count
+
+
+def _page(queryset, number):
+    return Paginator(queryset, RESULT_LIMIT).get_page(number)
+
+
+def _page_results(queryset, number, project):
+    page = _page(queryset, number)
+    return SearchResults([project(item) for item in page], page)
+
+
+def _pagination_links(results, request, key):
+    params = request.GET.copy()
+    for attr, number in [('previous_url', results.page.previous_page_number() if results.page.has_previous() else None),
+                         ('next_url', results.page.next_page_number() if results.page.has_next() else None)]:
+        if number is None:
+            setattr(results, attr, '')
+        else:
+            params[key + '_page'] = str(number)
+            setattr(results, attr, '?' + params.urlencode() + '#search-' + key + '-heading')
 
 
 class _NamedResult(dict):
@@ -75,7 +103,7 @@ def _author_data(author):
     )
 
 
-def _search_texts(query, *, include_authors):
+def _search_texts(query, *, include_authors, page=1):
     fields = ["title", "anthology__title"]
 
     condition = Q()
@@ -95,9 +123,10 @@ def _search_texts(query, *, include_authors):
 
     queryset = queryset.distinct().select_related("translation").prefetch_related("authors", "translation__foreign_authors")
 
+    page_obj = _page(queryset, page)
     results = []
 
-    for text in queryset[:RESULT_LIMIT]:
+    for text in page_obj:
         translated = bool(text.anthology_id and text.anthology.is_translated)
         record = getattr(text, 'translation', None) if translated else None
         authors = list(record.foreign_authors.all()) if record else list(text.authors.all())
@@ -118,10 +147,10 @@ def _search_texts(query, *, include_authors):
             }
         )
 
-    return results
+    return SearchResults(results, page_obj)
 
 
-def _search_reviews(query, *, include_authors, include_archived=True):
+def _search_reviews(query, *, include_authors, include_archived=True, page=1):
     fields = ["title", "anthology__title"]
 
     condition = Q()
@@ -139,11 +168,11 @@ def _search_reviews(query, *, include_authors, include_archived=True):
         .select_related("anthology", "author").prefetch_related("coauthors")
         .order_by("title", "pk")
     )
-    if not include_archived:
-        queryset = queryset.filter(old_reviews=False)
+    queryset = queryset.current()
+    page_obj = _page(queryset, page)
     results = []
 
-    for review in queryset[:RESULT_LIMIT]:
+    for review in page_obj:
         result = {
             "pk": review.pk,
             "title": review.title,
@@ -164,10 +193,10 @@ def _search_reviews(query, *, include_authors, include_archived=True):
 
         results.append(result)
 
-    return results
+    return SearchResults(results, page_obj)
 
 
-def _search_authors(query, user):
+def _search_authors(query, user, page=1):
     from core.public_authors import public_name
     from core.sort_keys import sql_text_key
     authors = contact_authors(user).annotate(public_signature=public_name())
@@ -175,12 +204,12 @@ def _search_authors(query, user):
         authors = authors.filter(name_matches(term, email=True))
     authors = authors.annotate(_public_order=sql_text_key('public_signature', authors.db)).order_by('_public_order', 'pk')
 
-    return [_author_data(author) for author in authors[:RESULT_LIMIT]]
+    return _page_results(authors, page, _author_data)
 
 
-def _search_people(query, user):
+def _search_people(query, user, page=1):
     people = (
-        Person.objects.active()
+        Person.objects.all().select_related("user")
         .prefetch_related(
             Prefetch(
                 "roles",
@@ -193,7 +222,8 @@ def _search_people(query, user):
 
     from core.search_people import rank_people
     coordinator = is_coordinator(user)
-    people = list(rank_people(people, query, include_email=coordinator)[:RESULT_LIMIT])
+    page_obj = _page(rank_people(people, query, include_email=coordinator), page)
+    people = list(page_obj)
     allowed_emails, protected_emails = set(), set()
     if not coordinator and people:
         # Bound contact checks to displayed matches, keeping case-insensitive matching.
@@ -205,9 +235,10 @@ def _search_people(query, user):
             ).filter(contact_email__in=emails).values_list("email", flat=True) if email}
         protected_emails = matching_emails(Author.objects.all())
         allowed_emails = matching_emails(contact_authors(user))
-    return [
+    return SearchResults([
         _NamedResult(
             pk=person.pk,
+            member_state="Zewnętrzny" if person.is_external else ("Nieaktywny" if not person.is_active or (person.user_id and not person.user.is_active) else ""),
             first_name=person.first_name,
             last_name=person.last_name,
             email=person.email if coordinator or (person.email or "").casefold() not in protected_emails or (person.email or "").casefold() in allowed_emails else "",
@@ -218,45 +249,42 @@ def _search_people(query, user):
                 ],
             },
         )
-        for person in people[:RESULT_LIMIT]
-    ]
+        for person in people
+    ], page_obj)
 
 
-def _search_anthologies(query, *, novels=False):
+def _search_anthologies(query, *, novels=False, page=1):
     anthologies = (
         (Anthology.objects.filter(is_novel=True).exclude(status='abandoned') if novels else non_abandoned(Anthology.objects).filter(is_novel=False)).filter(_matching_terms(query, ("title",)))
         .order_by("title", "pk")
     )
 
-    return [
-        _anthology_data(anthology)
-        for anthology in anthologies[:RESULT_LIMIT]
-    ]
+    return _page_results(anthologies, page, _anthology_data)
 
 
-def _additional_results(query, user):
+def _additional_results(query, user, pages=None):
     from core.models import AudioContributor, Recruitment
     from illustrations.models import Illustrator
-    groups = []
+    pages = pages or {}
     coordinator = is_coordinator(user)
     fields = ('name', 'email') if coordinator else ('name',)
     contacts = AudioContributor.objects.filter(_matching_terms(query, fields)).order_by('name', 'pk')
-    groups.append({'label': 'Lektorzy i montaż', 'items': [
-        {'label': person.name, 'url': reverse('core:audio_contributor', args=[person.pk])}
-        for person in contacts[:RESULT_LIMIT]]})
+    groups = [{'key': 'audio', 'label': 'Lektorzy i montaż', 'empty': 'Brak pasujących lektorów i osób odpowiedzialnych za montaż.',
+        'items': _page_results(contacts, pages.get('audio_page', 1), lambda person: {
+            'label': person.name, 'url': reverse('core:audio_contributor', args=[person.pk])})}]
     if coordinator:
         artists = Illustrator.objects.all()
         for term in query.split():
             artists = artists.filter(_matching_terms(term, ('first_name', 'last_name', 'pseudonym', 'email')))
-        groups.append({'label': 'Ilustratorzy (także nieaktywni)', 'items': [
-            {'label': str(person) + (f' ({person.pseudonym})' if person.pseudonym else ''), 'url': reverse('illustrations:illustrator_edit', args=[person.pk])}
-            for person in artists.order_by('last_name', 'first_name', 'pk')[:RESULT_LIMIT]]})
+        groups.append({'key': 'illustrators', 'label': 'Ilustratorzy', 'empty': 'Brak pasujących ilustratorów.',
+            'items': _page_results(artists.order_by('last_name', 'first_name', 'pk'), pages.get('illustrators_page', 1), lambda person: {
+                'label': str(person) + (f' ({person.pseudonym})' if person.pseudonym else ''),
+                'url': reverse('illustrations:illustrator_edit', args=[person.pk])})})
         applications = Recruitment.objects.filter(_matching_terms(query,
             ('first_name', 'last_name', 'applicant_name', 'email', 'mail_subject'))).order_by('-submitted_at', '-pk')
-        groups.append({'label': 'Rekrutacja', 'items': [
-            {'label': application.subject_name or str(application),
-             'url': reverse('core:recruitment_detail', args=[application.pk])}
-            for application in applications[:RESULT_LIMIT]]})
+        groups.append({'key': 'recruitment', 'label': 'Rekrutacja', 'empty': 'Brak pasujących zgłoszeń rekrutacyjnych.',
+            'items': _page_results(applications, pages.get('recruitment_page', 1), lambda application: {
+                'label': application.subject_name or str(application), 'url': reverse('core:recruitment_detail', args=[application.pk])})})
     return groups
 
 
@@ -301,22 +329,28 @@ def global_search(request):
                 {
                     "texts": _search_texts(
                         query,
-                        include_authors=include_authors,
+                        include_authors=include_authors, page=request.GET.get("texts_page", 1),
                     ),
                     "reviews": _search_reviews(
                         query,
                         include_authors=include_authors,
-                        include_archived=can_view_review_archive(request.user),
+                        include_archived=False, page=request.GET.get("reviews_page", 1),
                     ),
                     "authors": (
-                        _search_authors(query, request.user)
+                        _search_authors(query, request.user, page=request.GET.get("authors_page", 1))
                     ),
-                    "people": _search_people(query, request.user),
-                    "additional_results": _additional_results(query, request.user),
-                    "anthologies": _search_anthologies(query),
-                    "novels": _search_anthologies(query, novels=True),
+                    "people": _search_people(query, request.user, page=request.GET.get("people_page", 1)),
+                    "additional_results": _additional_results(query, request.user, request.GET),
+                    "anthologies": _search_anthologies(query, page=request.GET.get("anthologies_page", 1)),
+                    "novels": _search_anthologies(query, novels=True, page=request.GET.get("novels_page", 1)),
                 }
             )
+
+    for key in ('texts', 'reviews', 'authors', 'people', 'anthologies', 'novels'):
+        if isinstance(context[key], SearchResults):
+            _pagination_links(context[key], request, key)
+    for group in context.get('additional_results', []):
+        _pagination_links(group['items'], request, group['key'])
 
     # Wyniki zawierają wyłącznie jawnie wybrane wartości. Szablon
     # nie otrzymuje obiektów ORM pozwalających przejść do danych

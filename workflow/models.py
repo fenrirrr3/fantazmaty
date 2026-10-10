@@ -620,7 +620,7 @@ class WorkflowHandoff(models.Model):
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
     created_at = models.DateTimeField(auto_now_add=True)
     original_started_at = models.DateField(null=True, blank=True)
-    reason = models.TextField()
+    reason = models.TextField(blank=True)
 
     class Meta:
         verbose_name = "przekazanie pracy"

@@ -123,9 +123,9 @@
                             <td
                                 class="numeric-cell"
                                 data-type="number"
-                                data-copy-value="{{ stage.text.length|stringformat:'d' }}"
+                                data-copy-value="{% if stage.text.is_extract_volume %}nie dotyczy{% else %}{{ stage.text.length|default_if_none:"" }}{% endif %}"
                             >
-                                {{ stage.text.length }}
+                                {% if stage.text.is_extract_volume %}nie dotyczy{% else %}{{ stage.text.length|default_if_none:"Brak danych" }}{% endif %}
                             </td>
 
                             <td class="available-stage-cell">

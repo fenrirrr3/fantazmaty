@@ -1,0 +1,6 @@
+{% if results.page.paginator.num_pages > 1 %}
+<nav class="search-pagination card-body" aria-label="Strony wyników">
+{% if results.previous_url %}<a class="secondary-button" href="{{ results.previous_url }}">Poprzednia</a>{% endif %}
+<span>Strona {{ results.page.number }} z {{ results.page.paginator.num_pages }} · Wyniki {{ results.page.start_index }}–{{ results.page.end_index }} z {{ results.total }}</span>
+{% if results.next_url %}<a class="secondary-button" href="{{ results.next_url }}">Następna</a>{% endif %}
+</nav>{% endif %}

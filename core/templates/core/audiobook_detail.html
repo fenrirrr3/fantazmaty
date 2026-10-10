@@ -40,7 +40,7 @@
     <p><strong>Korektor audiobooka:</strong> {% if audio.proofreader.person_profile %}<a href="{% url 'core:person_detail' audio.proofreader.person_profile.pk %}">{{ proofreader_display }}</a>{% else %}{{ proofreader_display|default:"Nie przypisano" }}{% endif %}</p>
 </div></section>
 <section class="card"><div class="card-body"><h2>Publikacja</h2>
-    {% if can_edit %}<form method="post" class="audio-production-form" data-warn-unsaved>
+    {% if can_edit %}<form method="post" class="audio-production-form audio-publication-form" data-warn-unsaved>
         {% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="publication">{{ publication_form.non_field_errors }}
         {% for field in publication_form %}<div class="form-field">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}
         <button class="primary-button">Zapisz</button>
@@ -64,7 +64,7 @@
             <button type="submit" class="audio-finish-button" title="Zakończ etap" aria-label="Zakończ etap: {{ stage.get_stage_type_display }}">Zakończ</button>
         </form>{% elif stage.is_completed %}Zakończony{% else %}W toku{% endif %}</td>
     </tr>{% empty %}<tr><td colspan="4">Nie dodano jeszcze etapów.</td></tr>{% endfor %}</tbody></table></div>
-    {% if can_edit %}{% if audio.active_stage_id %}<p class="muted-text">Zakończ trwający etap, aby dodać kolejny.</p>{% else %}
+    {% if can_manage_stages %}{% if audio.active_stage_id %}<p class="muted-text">Zakończ trwający etap, aby dodać kolejny.</p>{% else %}
     <form method="post" class="audio-stage-add audio-production-form" data-warn-unsaved>
         {% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="start_stage">{{ stage_form.non_field_errors }}
         {% for field in stage_form %}<div class="form-field">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}

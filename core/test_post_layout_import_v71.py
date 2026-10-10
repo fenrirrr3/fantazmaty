@@ -134,7 +134,7 @@ class HistoricalPostLayoutTests(TestCase):
         with self.assertRaises(ValidationError):
             item.full_clean()
 
-    def test_partial_pages_and_dates_rejected(self):
+    def test_partial_pages_rejected_but_known_completion_date_allowed(self):
         self.run_import(True)
         item = PostLayoutAssignment.objects.get()
         item.page_from = 1
@@ -151,7 +151,11 @@ class HistoricalPostLayoutTests(TestCase):
             },
             instance=item,
         )
-        self.assertFalse(form.is_valid())
+        self.assertTrue(form.is_valid(), form.errors)
+        saved = form.save()
+        saved.full_clean()
+        self.assertIsNone(saved.assigned_start)
+        self.assertEqual(saved.completed_on.isoformat(), "2026-01-01")
 
     def test_explicit_mapping(self):
         self.rows[0]["proofreader"] = "Dawne nazwisko"

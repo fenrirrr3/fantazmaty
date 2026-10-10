@@ -2,7 +2,7 @@
 {% load static %}
 {% block title %}Uwagi do antologii | Fantazmaty CMS{% endblock %}
 {% block content %}
-<header class="page-header"><h1 class="page-title">Uwagi do antologii</h1></header>
+<header class="page-header"><h1 class="page-title">Uwagi do antologii</h1><p class="message warning">Uwagi zgłaszaj wyłącznie do już wydanych antologii.</p></header>
 <section class="filters-card"><form method="get" class="filters-form" data-filters="corrections">
 <div class="filter-field"><label for="correction-query">Szukaj</label><input id="correction-query" type="search" name="q" value="{{ query }}"></div>
 <div class="filter-field"><label for="correction-anthology">Antologia</label><select id="correction-anthology" name="anthology"><option value="">Wszystkie</option>{% for a in anthologies %}<option value="{{ a.pk }}" {% if a.pk|stringformat:'s' == selected_anthology %}selected{% endif %}>{{ a.title }}</option>{% endfor %}</select></div>

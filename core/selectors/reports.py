@@ -325,7 +325,8 @@ def reviewer_activity_context(*, user, params):
         .filter(Q(review__old_reviews=True) | Q(review__is_hidden=False))
     )
     if archive != "all":
-        assignments = assignments.filter(review__old_reviews=(archive == "archived"))
+        decided = Q(review__status__in=("accepted", "rejected"))
+        assignments = assignments.filter(decided) if archive == "archived" else assignments.exclude(decided)
 
     if filters.get("date_from"):
         assignments = assignments.filter(
@@ -413,7 +414,7 @@ def reviewer_activity_context(*, user, params):
 
         return {
             "assignment_id": assignment.pk,
-            "is_archived": review.old_reviews,
+            "is_archived": review.is_archived,
             "anthology_title": anthology_title,
             "anthology_id": review.anthology_id,
             "review_id": review.pk,

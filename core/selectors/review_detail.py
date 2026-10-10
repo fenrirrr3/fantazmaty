@@ -22,6 +22,7 @@ def review_template_data(review, *, include_author):
         "created_at": review.created_at,
         "decision_at": review.decision_at,
         "old_reviews": review.old_reviews,
+        "is_archived": review.is_archived,
         "is_hidden": review.is_hidden,
         "copied_text_id": review.copied_text_id,
         "anthology_id": review.anthology_id,

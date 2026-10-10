@@ -7,8 +7,8 @@ from texts.models import Review, Text
 
 def linkable_reviews(text):
     from django.db.models import Q
-    return Review.objects.filter(anthology_id=text.anthology_id).filter(
-        Q(status=Review.Status.ACCEPTED) | Q(old_reviews=True)
+    return Review.objects.filter(
+        Q(status__in=(Review.Status.ACCEPTED, Review.Status.REJECTED)) | Q(old_reviews=True)
     ).filter(
         Q(copied_text__isnull=True) | Q(copied_text_id=text.pk)
     ).order_by('title','pk')
@@ -24,8 +24,8 @@ def suggested_review_ids(text):
 
 def validate_source_review_link(text, review, *, coauthors=None, confirm_mismatch=False):
     """Shared, non-mutating validation for admin and explicit source links."""
-    if not review or (review.status != Review.Status.ACCEPTED and not review.old_reviews) or review.anthology_id != text.anthology_id:
-        raise ValidationError('Wybierz przyjęte lub archiwalne zgłoszenie z tej samej antologii. Dane mogły się zmienić.')
+    if not review or (not review.is_archived and not review.old_reviews):
+        raise ValidationError('Wybierz przyjęte lub archiwalne zgłoszenie. Dane mogły się zmienić.')
     from texts.services import normalize_author_name
     text_authors = list(text.authors.all())
     text_author_ids = {author.pk for author in text_authors}
@@ -63,10 +63,27 @@ def link_source_review(*, user, text_id, review_id, confirm_mismatch=False):
     if existing and existing != chosen.pk:
         previous = locked[existing]
         previous.copied_text = None
-        previous.save(update_fields=['copied_text'])
+        previous.publication_detached = True
+        previous.save(update_fields=['copied_text', 'publication_detached'])
     if chosen.copied_text_id != text.pk:
         chosen.copied_text = text
-        chosen.save(update_fields=['copied_text'])
+        chosen.publication_detached = False
+        chosen.save(update_fields=['copied_text', 'publication_detached'])
         from core.edit_versions import bump
         bump('texts.text',text.pk,text._state.db)
     return chosen
+
+
+@transaction.atomic
+def unlink_source_review(*, user, text_id, review_id):
+    require_superuser(user)
+    text = Text.objects.select_for_update().get(pk=text_id)
+    review = Review.objects.select_for_update().filter(copied_text_id=text.pk).first()
+    if not review or review.pk != review_id:
+        raise ValidationError('Powiązanie już się zmieniło. Odśwież formularz.')
+    review.copied_text = None
+    review.publication_detached = True
+    review.save(update_fields=['copied_text', 'publication_detached'])
+    from core.edit_versions import bump
+    bump('texts.text', text.pk, text._state.db)
+    return review

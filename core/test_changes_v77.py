@@ -48,14 +48,18 @@ class ChangesV77Tests(TestCase):
         response = self.client.get(reverse('core:link_text_review', args=[self.text.pk]), {'q': 'Testowe'})
         self.assertContains(response, f'id="source-{archive.pk}"')
 
-    def test_other_anthology_already_linked_and_live_rejected_remain_protected(self):
+    def test_other_anthology_and_rejected_archive_allowed_but_already_linked_protected(self):
         rejected = self.review(status='rejected')
         other = self.review(old_reviews=True, status='accepted')
         other.anthology = Anthology.objects.create(title='Inna')
         other.save()
         linked = self.review(old_reviews=True, status='accepted',
                              copied_text=Text.objects.create(title='Inny', length=1))
-        for review in (rejected, other, linked):
+        self.assertIn(other, linkable_reviews(self.text))
+        self.assertIn(rejected, linkable_reviews(self.text))
+        with self.assertRaises(ValidationError):
+            link_source_review(user=self.admin, text_id=self.text.pk, review_id=rejected.pk)
+        for review in (linked,):
             self.assertNotIn(review, linkable_reviews(self.text))
             with self.assertRaises(ValidationError):
                 link_source_review(user=self.admin, text_id=self.text.pk, review_id=review.pk, confirm_mismatch=True)

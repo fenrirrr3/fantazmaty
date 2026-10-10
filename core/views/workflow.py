@@ -492,13 +492,18 @@ def handoff_workflow_stage(request, stage_id):
         return HttpResponseNotAllowed(["GET", "POST"])
     stage = _get_current_stage(stage_id)
 
+    class HandoffPersonField(forms.ModelChoiceField):
+        def label_from_instance(self, obj):
+            profile = getattr(obj, 'person_profile', None)
+            return str(profile) if profile else (obj.get_full_name() or f'Konto #{obj.pk} (brak imienia i nazwiska)')
+
     class HandoffForm(forms.Form):
-        assigned_to = forms.ModelChoiceField(
-            label="Nowy wykonawca", queryset=eligible_handoff_users(stage)
+        assigned_to = HandoffPersonField(
+            label="Nowy wykonawca", queryset=eligible_handoff_users(stage).select_related("person_profile").order_by("person_profile__last_name", "person_profile__first_name", "pk")
         )
         expected_assignment_id = forms.IntegerField(widget=forms.HiddenInput)
         reason = forms.CharField(
-            label="Powód przekazania", widget=forms.Textarea(attrs={"rows": 3}), max_length=2000
+            label="Powód przekazania (opcjonalnie)", required=False, widget=forms.Textarea(attrs={"rows": 3}), max_length=2000
         )
 
     form = HandoffForm(

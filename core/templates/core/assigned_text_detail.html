@@ -79,7 +79,7 @@
 
             <div class="detail-item">
                 <dt>{% if is_novel %}Liczba znaków ze spacjami{% else %}Długość{% endif %}</dt>
-                <dd>{{ text.length|default_if_none:'Brak danych' }}</dd>
+                <dd>{% if is_extract_volume %}nie dotyczy{% else %}{{ text.length|default_if_none:'Brak danych' }}{% endif %}</dd>
             </div>
 
             
@@ -367,23 +367,6 @@
         </div>
     </details>
 
-    {% if previous_team_members %}
-    <details class="text-team">
-        <summary>
-            <span>Historia przypisań osób</span>
-            <span class="dropdown-arrow" aria-hidden="true">▾</span>
-        </summary>
-        <div class="text-team-grid">
-            {% for member in previous_team_members %}
-                <div class="text-team-member">
-                    <span class="text-team-member-role">{{ member.label }}{% if not member.archive_execution %} · przebieg {{ member.workflow_cycle }}{% endif %}</span>
-                    <strong>{% firstof member.user.get_full_name "Nieuzupełnione dane" %}</strong>
-                </div>
-            {% endfor %}
-        </div>
-    </details>
-    {% endif %}
-
     <section class="details-card work-information" aria-labelledby="content-notes-heading">
         <h2 id="content-notes-heading">Informacje do pracy</h2>
 
@@ -481,7 +464,7 @@
         </div>
     </section>
 
-    <div class="text-notes-tags{% if is_novel %} chapter-notes-reviews{% endif %}">
+    <div class="text-notes-tags{% if is_extract_volume %} extract-volume-notes{% endif %}{% if is_novel %} chapter-notes-reviews{% endif %}">
     <section class="card" aria-labelledby="text-notes-heading">
         <header class="section-header">
             <h2 id="text-notes-heading">Notatki zespołu</h2>
@@ -549,7 +532,7 @@
             {% endfor %}
         </div>
     </section>
-    {% if is_novel %}{% include 'core/includes/text_reviews.html' %}{% else %}
+    {% if is_novel %}{% include 'core/includes/text_reviews.html' %}{% elif not is_extract_volume %}
     <section class="card" aria-labelledby="text-tags-heading">
         <header class="section-header"><h2 id="text-tags-heading">Tagi i gatunek</h2></header>
 
@@ -564,9 +547,9 @@
     {% endif %}
     </div>
 
-    {% if not is_novel %}{% include 'core/includes/text_reviews.html' %}{% endif %}
+    {% if not is_novel and not is_extract_volume %}{% include 'core/includes/text_reviews.html' %}{% endif %}
 
-    {% include "core/includes/text_production.html" %}
+    {% if not is_extract_volume %}{% include "core/includes/text_production.html" %}{% endif %}
 
     {% if can_cancel_repetition %}<form method="post" action="{% url 'core:cancel_workflow_repetition' text.pk open_repetition.pk %}" data-confirm-delete="Anulować niepodjęte powtórzenie i przywrócić poprzedni stan?">{% csrf_token %}{% edit_version %}<button type="submit" class="secondary-button">Anuluj niepodjęte powtórzenie</button><p class="form-help">Dostępne, jeśli nie rozpoczęto ani nie zarezerwowano pracy.</p></form>{% endif %}
     {% if user.is_superuser or can_view_stage_history %}
@@ -652,11 +635,27 @@
     </details>{% endif %}
     </div>
     {% endif %}
-    {% if handoffs %}<section class="card"><div class="card-body"><h2>Historia przekazania pracy</h2>{% for item in handoffs %}<p>{{ item.stage.get_stage_type_display }}: {{ item.previous_assignment.assigned_to.get_full_name }} → {{ item.new_assignment.assigned_to.get_full_name }} · {{ item.created_at|date:"d.m.Y H:i" }}<br>{{ item.reason }}</p>{% endfor %}</div></section>{% endif %}
+    <div class="text-detail-pair" data-detail-pair="assignment-history">
+    <details class="text-team" id="handoff-history"><summary><span>Historia przekazania pracy</span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary><div class="card-body">{% for item in handoffs %}<p>{{ item.stage.get_stage_type_display }}: {% firstof item.previous_assignment.assigned_to.get_full_name "Brak danych" %} → {% firstof item.new_assignment.assigned_to.get_full_name "Brak danych" %} · {{ item.created_at|date:"d.m.Y H:i" }}{% if item.reason %}<br>{{ item.reason }}{% endif %}</p>{% empty %}<p class="muted-text">Brak przekazań pracy.</p>{% endfor %}</div></details>
+    <details class="text-team" id="assignment-history">
+        <summary>
+            <span>Historia przypisań osób</span>
+            <span class="dropdown-arrow" aria-hidden="true">▾</span>
+        </summary>
+        <div class="text-team-grid">
+            {% for member in previous_team_members %}
+                <div class="text-team-member">
+                    <span class="text-team-member-role">{{ member.label }}{% if not member.archive_execution %} · przebieg {{ member.workflow_cycle }}{% endif %}</span>
+                    <strong>{% firstof member.user.get_full_name "Nieuzupełnione dane" %}</strong>
+                </div>
+            {% empty %}<p class="muted-text">Brak wcześniejszych przypisań.</p>{% endfor %}
+        </div>
+    </details>
+    </div>
     {% if repeat_queue %}<section class="card"><div class="card-body"><h2>Kolejka powtórzeń</h2><ol class="credits-list">{% for item in repeat_queue %}<li>{{ item.get_stage_type_display }}: {% if item.is_released %}bieżący etap{% else %}oczekuje na poprzedni etap{% endif %}</li>{% endfor %}</ol></div></section>{% endif %}
     {% if can_manage_workflow and not is_withdrawn and not is_ready and text.anthology.status != "ready" or request.user.is_superuser and can_manage_workflow and not is_ready and not is_withdrawn %}
     <div class="text-detail-pair" data-detail-pair="management">
-        {% if can_manage_workflow and not is_withdrawn and not is_ready and text.anthology.status != "ready" %}<details class="text-management-card" id="text-withdraw">
+        {% if not is_extract_volume and can_manage_workflow and not is_withdrawn and not is_ready and text.anthology.status != "ready" %}<details class="text-management-card" id="text-withdraw">
             <summary class="text-management-toggle"><span>Wycofaj tekst</span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
             <div class="text-management-content">
                     <div class="management-action">

@@ -114,12 +114,10 @@ def people_list(request):
 @require_GET
 @team_member_required
 def person_detail(request, person_id):
-    # Nieaktywne osoby z historią mają dostępny szczegół; lista aktywnego zespołu pozostaje bez zmian.
+    # Search includes all team profiles, also inactive and external people.
+    # Reading a profile does not reactivate the account or its assignments.
     person = get_object_or_404(
-        Person.objects.filter(Q(is_active=True) | Q(is_external=True) | Q(user__audio_contacts__isnull=False)
-            | Q(user__proofread_audiobooks__isnull=False) | Q(user__audiobook_stage_history__isnull=False)
-            | Q(user__post_layout_assignments__isnull=False) | Q(extract_credits__isnull=False) | Q(anthology_tasks__task_type='audio_description') | Q(controlled_audio_descriptions__isnull=False)
-            | Q(user__workflow_role_assignments__isnull=False) | Q(historical_review_assignments__review__old_reviews=True) | Q(user__review_assignments__review__old_reviews=True)).distinct()
+        Person.objects.all()
         .select_related("user")
         .prefetch_related("roles"),
         pk=person_id,
@@ -151,11 +149,12 @@ def person_detail(request, person_id):
             "person_summary": person_summary,
             "imported_work_summary": _imported_work_summary(person),
             "completed_reviews": ReviewAssignment.objects.submitted().filter(
-                user_id=person.user_id, review__old_reviews=False,
+                user_id=person.user_id,
+            ).exclude(review__status__in=("accepted", "rejected")
             ).filter(review__in=Review.objects.visible_to(request.user))
                 .select_related("review__anthology").order_by("review__anthology__title", "review__title", "pk")
                 if person.user_id else ReviewAssignment.objects.none(),
-            "archived_reviews": ReviewAssignment.objects.submitted().filter(review__old_reviews=True).filter(
+            "archived_reviews": ReviewAssignment.objects.submitted().filter(review__in=Review.objects.visible_to(request.user), review__status__in=("accepted", "rejected")).filter(
                 Q(historical_person=person) | (Q(user_id=person.user_id) if person.user_id else Q(pk__in=[]))
             ).select_related("review__anthology").order_by("review__anthology__title", "review__title", "position"),
             "can_view_authors": include_authors,

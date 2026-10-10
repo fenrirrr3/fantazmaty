@@ -116,9 +116,8 @@ def _render_author_detail(request, author, *, form=None, status=200):
             }
         )
 
-    historical_reviews = ordinary(Review.objects.accessible_to(request.user)).filter(
+    historical_reviews = ordinary(Review.objects.accessible_to(request.user), include_abandoned=True).archived().filter(
         Q(author_id=author.pk) | Q(coauthors__pk=author.pk),
-        old_reviews=True,
     ).select_related("anthology").distinct().order_by("-created_at", "-pk")
     historical_page = paginate_items(request, historical_reviews,
         page_param='archive_page', size_param='archive_page_size', anchor='#archiwalne-recenzje')

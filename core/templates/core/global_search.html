@@ -59,59 +59,15 @@
         <header class="page-header">
             <h2>Wyniki dla „{{ query }}”</h2>
             <p class="muted-text">
-                Wyświetlono maksymalnie {{ result_limit }} wyników w każdej kategorii.
-                Doprecyzuj zapytanie, aby zawęzić wyniki.
+                Każda kategoria ma osobne strony po {{ result_limit }} wyników.
             </p>
         </header>
 
         <div class="global-search-results">
-            {% for group in additional_results %}<section class="card"><header class="section-header"><h2>{{ group.label }}</h2><span class="record-counter">{{ group.items|length }}</span></header><ul class="search-result-list">{% for item in group.items %}<li class="search-result-item"><a href="{{ item.url }}">{{ item.label }}</a></li>{% empty %}<li>Brak wyników.</li>{% endfor %}</ul></section>{% endfor %}
-            <section class="card" aria-labelledby="search-texts-heading">
-                <header class="section-header">
-                    <h2 id="search-texts-heading">Teksty</h2>
-                    <span class="record-counter">{{ texts|length }}</span>
-                </header>
-
-                {% if texts %}
-                    <ul class="search-result-list">
-                        {% for text in texts %}
-                            <li class="search-result-item">
-                                <a
-                                    href="{{ text.url }}"
-                                    class="detail-link"
-                                >
-                                    <strong>{{ text.title }}</strong>
-                                </a>
-
-                                {% if text.anthology %}
-                                    <div class="muted-text">
-                                        {{ text.anthology.title }}
-                                    </div>
-                                {% endif %}
-
-                                
-                                    {% if text.authors.all %}
-                                        <div class="muted-text">
-                                            {% for author in text.authors.all %}
-                                                {{ author }}{% if not forloop.last %}, {% endif %}
-                                            {% endfor %}
-                                        </div>
-                                    {% endif %}
-                                
-                            </li>
-                        {% endfor %}
-                    </ul>
-                {% else %}
-                    <div class="empty-results-panel">
-                        Brak pasujących tekstów.
-                    </div>
-                {% endif %}
-            </section>
-
             <section class="card" aria-labelledby="search-reviews-heading">
                 <header class="section-header">
                     <h2 id="search-reviews-heading">Bieżące recenzje</h2>
-                    <span class="record-counter">{{ reviews|length }}</span>
+                    <span class="record-counter">{{ reviews.total }}</span>
                 </header>
 
                 {% if reviews %}
@@ -148,13 +104,57 @@
                         Brak pasujących bieżących recenzji.
                     </div>
                 {% endif %}
+            {% include "core/includes/search_pagination.html" with results=reviews %}
+            </section>
+
+            <section class="card" aria-labelledby="search-texts-heading">
+                <header class="section-header">
+                    <h2 id="search-texts-heading">Teksty</h2>
+                    <span class="record-counter">{{ texts.total }}</span>
+                </header>
+
+                {% if texts %}
+                    <ul class="search-result-list">
+                        {% for text in texts %}
+                            <li class="search-result-item">
+                                <a
+                                    href="{{ text.url }}"
+                                    class="detail-link"
+                                >
+                                    <strong>{{ text.title }}</strong>
+                                </a>
+
+                                {% if text.anthology %}
+                                    <div class="muted-text">
+                                        {{ text.anthology.title }}
+                                    </div>
+                                {% endif %}
+
+                                
+                                    {% if text.authors.all %}
+                                        <div class="muted-text">
+                                            {% for author in text.authors.all %}
+                                                {{ author }}{% if not forloop.last %}, {% endif %}
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
+                                
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <div class="empty-results-panel">
+                        Brak pasujących tekstów.
+                    </div>
+                {% endif %}
+            {% include "core/includes/search_pagination.html" with results=texts %}
             </section>
 
             {% if can_search_authors %}
                 <section class="card" aria-labelledby="search-authors-heading">
                     <header class="section-header">
                         <h2 id="search-authors-heading">Autorzy</h2>
-                        <span class="record-counter">{{ authors|length }}</span>
+                        <span class="record-counter">{{ authors.total }}</span>
                     </header>
 
                     {% if authors %}
@@ -178,13 +178,14 @@
                             Brak pasujących autorów.
                         </div>
                     {% endif %}
-                </section>
+                {% include "core/includes/search_pagination.html" with results=authors %}
+            </section>
             {% endif %}
 
             <section class="card" aria-labelledby="search-people-heading">
                 <header class="section-header">
                     <h2 id="search-people-heading">Zespół</h2>
-                    <span class="record-counter">{{ people|length }}</span>
+                    <span class="record-counter">{{ people.total }}</span>
                 </header>
 
                 {% if people %}
@@ -195,7 +196,7 @@
                                     href="{% url 'core:person_detail' person.pk %}"
                                     class="detail-link"
                                 >
-                                    <strong>{{ person }}</strong>
+                                    <strong>{{ person }}</strong>{% if person.member_state %}<span class="muted-text">{{ person.member_state }}</span>{% endif %}
                                 </a>
 
                                 {% if person.roles.all %}
@@ -214,16 +215,16 @@
                     </ul>
                 {% else %}
                     <div class="empty-results-panel">
-                        Brak pasujących aktywnych członków zespołu.
+                        Brak pasujących osób w zespole.
                     </div>
                 {% endif %}
+            {% include "core/includes/search_pagination.html" with results=people %}
             </section>
 
-            <section class="card"><header class="section-header"><h2>Powieści</h2><span class="record-counter">{{ novels|length }}</span></header><ul>{% for novel in novels %}<li><a href="{% url 'core:novel_detail' novel.pk %}"><strong>{{ novel.title }}</strong></a> – {{ novel.get_status_display }}</li>{% empty %}<li>Brak pasujących powieści.</li>{% endfor %}</ul></section>
             <section class="card" aria-labelledby="search-anthologies-heading">
                 <header class="section-header">
                     <h2 id="search-anthologies-heading">Antologie</h2>
-                    <span class="record-counter">{{ anthologies|length }}</span>
+                    <span class="record-counter">{{ anthologies.total }}</span>
                 </header>
 
                 {% if anthologies %}
@@ -247,7 +248,22 @@
                         Brak pasujących antologii.
                     </div>
                 {% endif %}
+            {% include "core/includes/search_pagination.html" with results=anthologies %}
             </section>
+            <section class="card" aria-labelledby="search-novels-heading">
+                <header class="section-header"><h2 id="search-novels-heading">Powieści</h2><span class="record-counter">{{ novels.total }}</span></header>
+                {% if novels %}<ul class="search-result-list">{% for novel in novels %}<li class="search-result-item"><a class="detail-link" href="{% url 'core:novel_detail' novel.pk %}"><strong>{{ novel.title }}</strong></a><div class="muted-text">{{ novel.get_status_display }}</div></li>{% endfor %}</ul>
+                {% else %}<div class="empty-results-panel">Brak pasujących powieści.</div>{% endif %}
+            {% include "core/includes/search_pagination.html" with results=novels %}
+            </section>
+            {% for group in additional_results %}
+            <section class="card" aria-labelledby="search-{{ group.key }}-heading">
+                <header class="section-header"><h2 id="search-{{ group.key }}-heading">{{ group.label }}</h2><span class="record-counter">{{ group.items.total }}</span></header>
+                {% if group.items %}<ul class="search-result-list">{% for item in group.items %}<li class="search-result-item"><a class="detail-link" href="{{ item.url }}">{{ item.label }}</a></li>{% endfor %}</ul>
+                {% else %}<div class="empty-results-panel">{{ group.empty }}</div>{% endif %}
+                {% include "core/includes/search_pagination.html" with results=group.items %}
+            </section>
+            {% endfor %}
         </div>
     {% elif not form.errors %}
         <section class="card">

@@ -26,8 +26,9 @@ from texts.production import active_production_texts
 from core.selectors.audio_proofreading import proofreading_scope, can_assign_proofreader, correction_rows, corrections
 
 
-def audio_texts():
-    return Text.objects.exclude(anthology__status='abandoned').select_related('anthology', 'audiobook__proofreader__person_profile', 'translation').prefetch_related(
+def audio_texts(*, include_abandoned=False):
+    scope = Text.objects.all() if include_abandoned else Text.objects.exclude(anthology__status='abandoned')
+    return scope.select_related('anthology', 'audiobook__proofreader__person_profile', 'translation').prefetch_related(
         'authors', 'translation__foreign_authors').exclude(anthology__is_novel=True)
 
 
@@ -166,13 +167,17 @@ def audiobook_detail(request, text_id):
         if request.method == 'POST':
             locked = get_object_or_404(Text.objects.select_for_update(), pk=text_id)
             can_edit_audio(request, locked, {})
-            require_available(locked)
-        text = get_object_or_404(audio_texts(), pk=text_id)
+            if request.POST.get('action') not in ('people', 'publication'):
+                require_available(locked)
+            elif not Audiobook.objects.filter(text=locked).exists():
+                require_available(locked)
+        text = get_object_or_404(audio_texts(include_abandoned=True).filter(
+            ~Q(anthology__status="abandoned") | Q(audiobook__isnull=False)), pk=text_id)
         audio = getattr(text, 'audiobook', None) or Audiobook(text=text)
         eligible = active_production_texts(Text.objects.filter(pk=text.pk,
             for_recording=True, audiobook_blacklisted=False)).exists()
         coordinator = is_coordinator(request.user)
-        editable = eligible and coordinator
+        editable = coordinator and (eligible or audio.pk is not None)
         people_form = AudiobookPeopleForm(instance=audio, prefix='people')
         publication_form = AudiobookPublicationForm(instance=audio, prefix='publication')
         stage_form = AudiobookStageForm()
@@ -212,7 +217,7 @@ def audiobook_detail(request, text_id):
         return render(request, 'core/audiobook_detail.html', dict(text=text, audio=audio,
             authors_display=authors_display(text), proofreader_display=proofreader_display(audio),
             people_form=people_form, publication_form=publication_form, stage_form=stage_form,
-            stages=stages, errors=errors, can_edit=editable, eligible=eligible, can_coordinate=coordinator,
+            stages=stages, errors=errors, can_edit=editable, can_manage_stages=eligible and coordinator, eligible=eligible, can_coordinate=coordinator,
             can_finish=eligible and may_finish(request.user, audio)),
             status=400 if request.method == 'POST' else 200)
 

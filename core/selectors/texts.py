@@ -239,6 +239,7 @@ def _text_data(text, include_authors):
         pk=text.pk,
         title=text.title,
         length=text.length,
+        is_extract_volume=text.import_source == "extract-volume-v2",
         anthology_id=text.anthology_id,
         anthology=_anthology_data(text.anthology),
         current_workflow_cycle=text.current_workflow_cycle,
@@ -993,6 +994,7 @@ def _source_review_data(text, user, include_authors):
             get_status_display=source.get_status_display(),
             content_warnings=source.content_warnings,
             old_reviews=source.old_reviews,
+            is_archived=source.is_archived,
             can_open=not source.old_reviews or include_authors,
             general_notes=getattr(getattr(source, "reviewers", None), "general_notes", ""),
         )

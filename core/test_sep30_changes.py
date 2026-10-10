@@ -15,10 +15,14 @@ class ChangesTests(TestCase):
         self.user=get_user_model().objects.create_superuser('admin','admin@example.com','test')
         self.book=Anthology.objects.create(title='Nabór')
         self.review=Review.objects.create(title='Archiwalny test',anthology=self.book,author_first_name='Jan',author_last_name='Test',email='jan@example.com',author_pseudonym='Pseudonim',length=100,old_reviews=True,status='accepted',author_notified_at=timezone.localdate())
-    def test_archive_search_privacy(self):
-        self.assertEqual(len(_search_reviews('Archiwalny',include_authors=False)),1)
-        self.assertNotIn('email',_search_reviews('Archiwalny',include_authors=False)[0])
-        self.assertEqual(_search_reviews('Archiwalny',include_authors=False,include_archived=False),[])
+    def test_current_search_excludes_decided_reviews_and_keeps_author_privacy(self):
+        self.assertEqual(_search_reviews('Archiwalny', include_authors=False), [])
+        self.review.status = 'new'
+        self.review.old_reviews = False
+        self.review.save()
+        results = _search_reviews('Archiwalny', include_authors=False)
+        self.assertEqual(len(results), 1)
+        self.assertNotIn('email', results[0])
     def test_transfer_archive_idempotent(self):
         self.client.force_login(self.user)
         self.assertContains(self.client.get(reverse('core:assigned_review_detail',args=[self.review.pk])),'Dodaj do procesu wydawniczego')

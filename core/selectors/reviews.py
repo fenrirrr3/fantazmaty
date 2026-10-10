@@ -19,6 +19,7 @@ from texts.models import Anthology, Review, ReviewAssignment, Reviewers
 MAX_DATABASE_ID = 9_223_372_036_854_775_807
 DEFAULT_STATUSES = (Review.Status.NEW, Review.Status.IN_REVIEW, Review.Status.TO_DECIDE)
 OPEN_STATUSES = frozenset(DEFAULT_STATUSES)
+CURRENT_STATUSES = (*DEFAULT_STATUSES, Review.Status.WITHDRAWN)
 READING_OPINIONS = ("", Reviewers.Opinion.READING)
 MAX_REVIEWERS = ReviewAssignment.MAX_REVIEWERS
 
@@ -250,6 +251,7 @@ def _project_reviews(reviews, *, user, include_authors, allow_self_assignment):
             "created_at": review.created_at,
             "decision_at": review.decision_at,
             "old_reviews": review.old_reviews,
+            "is_archived": review.is_archived,
             "anthology_id": review.anthology_id,
             "anthology": (
                 {
@@ -349,10 +351,13 @@ class _ReviewRows:
 
 def review_list_context(*, user, params):
     require_team_member(user)
-    old_reviews = can_view_review_archive(user) and params.get("old_reviews", "0").strip() == "1"
+    requested_statuses = set(params.getlist("status"))
+    old_reviews = can_view_review_archive(user) and (params.get("old_reviews", "0").strip() == "1"
+        or bool(requested_statuses and requested_statuses <= {"accepted", "rejected"})
+        or params.get("notification") == "pending")
     include_authors = can_view_author_data(user) or (old_reviews and can_view_archived_review_authors(user))
 
-    valid_statuses = {value for value, _label in Review.Status.choices}
+    valid_statuses = {"accepted", "rejected"} if old_reviews else set(CURRENT_STATUSES)
     filters_applied = (
         params.get("filters_applied") == "1" or "status" in params
     )
@@ -366,7 +371,7 @@ def review_list_context(*, user, params):
             )
         )
     else:
-        selected_statuses = [] if old_reviews else list(DEFAULT_STATUSES)
+        selected_statuses = []
 
     assignment_state = params.get("assignment_state", "").strip()
     if assignment_state not in ASSIGNMENT_STATES:
@@ -379,7 +384,8 @@ def review_list_context(*, user, params):
     anthology_id = _positive_id(params.get("anthology"))
     query = params.get("q", "").strip()
 
-    queryset = ordinary(Review.objects).visible_to(user).filter(old_reviews=old_reviews)
+    queryset = ordinary(Review.objects, include_abandoned=old_reviews).visible_to(user)
+    queryset = queryset.archived() if old_reviews else queryset.current()
     if params.get("notification") == "pending":
         queryset = queryset.awaiting_notification()
         selected_statuses = []
@@ -409,7 +415,7 @@ def review_list_context(*, user, params):
             Prefetch(
                 "assignments",
                 queryset=(
-                    ordinary(ReviewAssignment.objects).select_related("user", "historical_person")
+                    ordinary(ReviewAssignment.objects, include_abandoned=old_reviews).select_related("user", "historical_person")
                     .order_by("position", "pk")
                 ),
                 to_attr="selector_assignments",
@@ -425,13 +431,13 @@ def review_list_context(*, user, params):
             include_authors=include_authors,
         ),
         "anthologies": list(
-            ordinary(Anthology.objects).filter(pk__in=facets["anthology"]).order_by("title", "pk").values("pk", "title")
+            ordinary(Anthology.objects, include_abandoned=old_reviews).filter(pk__in=facets["anthology"]).order_by("title", "pk").values("pk", "title")
         ),
         "selected_statuses": selected_statuses,
         "selected_assignment_state": assignment_state,
         "selected_completed": completed,
         "selected_anthology_id": anthology_id,
-        "status_choices": Review.Status.choices,
+        "status_choices": [(v, label) for v, label in Review.Status.choices if v in valid_statuses],
         "query": query,
         "sort": sort,
         "old_reviews": old_reviews,
@@ -439,7 +445,7 @@ def review_list_context(*, user, params):
         "max_reviewers": MAX_REVIEWERS,
         "filters_are_default": (
             not old_reviews
-            and set(selected_statuses) == set(DEFAULT_STATUSES)
+            and not selected_statuses
             and not completed
             and not assignment_state
             and anthology_id is None

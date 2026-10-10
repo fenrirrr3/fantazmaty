@@ -1,7 +1,33 @@
-.cover-assignment-form { margin-bottom: 1.5rem; }
-.cover-assignment-form fieldset { border: 1px solid var(--border-color, #bbc9d6); border-radius: .6rem; padding: 1rem; min-width: 0; }
-.cover-assignment-form legend { font-weight: 600; padding: 0 .4rem; }
-.cover-assignment-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 1.5rem; margin-bottom: 1rem; }
-.cover-assignment-grid .form-field { min-width: 0; }
-.cover-assignment-grid input:not([type="checkbox"]), .cover-assignment-grid select, .cover-assignment-grid textarea { width: 100%; box-sizing: border-box; }
-@media (max-width: 760px) { .cover-assignment-grid { grid-template-columns: 1fr; } }
+.anthology-preparation-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.25rem;
+  margin-bottom: 1.25rem;
+  align-items: start;
+}
+.anthology-preparation-grid > .card { min-width: 0; margin: 0; }
+.anthology-checklist { padding-left: 1.25rem; margin-bottom: 0; }
+.anthology-checklist li { margin-bottom: .75rem; overflow-wrap: anywhere; line-height: 1.6; }
+.anthology-checklist li:last-child { margin-bottom: 0; }
+.anthology-person-name { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.anthology-new-person .form-field, .anthology-cover-fields .form-field {
+  display: grid;
+  gap: var(--field-gap, .4rem);
+  min-width: 0;
+  margin-bottom: 1rem;
+}
+.anthology-new-person input, .anthology-new-person select,
+.anthology-six-tasks input:not([type="checkbox"]), .anthology-six-tasks select,
+.anthology-six-tasks textarea { width: 100%; max-width: 100%; box-sizing: border-box; }
+.anthology-tasks.anthology-six-tasks { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.anthology-six-tasks fieldset { border: 1px solid var(--border-color, #bbc9d6); border-radius: .6rem; }
+.anthology-six-tasks legend { font-weight: 600; padding: 0 .4rem; }
+.anthology-six-tasks textarea { min-height: 4rem; resize: vertical; }
+.anthology-cover-fields .muted-text { margin: 0; }
+@media (max-width: 1100px) {
+  .anthology-tasks.anthology-six-tasks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .anthology-preparation-grid, .anthology-person-name,
+  .anthology-tasks.anthology-six-tasks { grid-template-columns: 1fr; }
+}

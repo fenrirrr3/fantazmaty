@@ -4,7 +4,7 @@ from django.shortcuts import get_object_or_404, render, redirect
 from django import forms
 from django.db import transaction
 from django.contrib import messages
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.http import HttpResponse
 from django.db.models import Q
 from django.views.decorators.http import require_GET, require_http_methods
@@ -18,6 +18,7 @@ from people.models import Person
 from texts.models import Anthology, AnthologyTask
 from texts.models import ExtractVolume
 from texts.cover_forms import CoverAssignmentForm
+from core.anthology_tasks import CompactCoverAssignmentForm, NewTaskPersonForm, grouped_checklist
 from workflow.services import ROLE_GROUPS
 from workflow.models import WorkflowRoleAssignment
 
@@ -65,18 +66,18 @@ class AnthologyTaskForm(forms.ModelForm):
         model = AnthologyTask
         fields = ('status', 'assigned_to')
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, include_all_people=False, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['assigned_to'].widget.attrs['data-searchable-person'] = 'true'
         selected = self.instance.assigned_to_id
-        self.fields['assigned_to'].queryset = Person.objects.filter(
+        self.fields['assigned_to'].queryset = (Person.objects.all() if include_all_people else Person.objects.filter(
             Q(pk=selected) | Q(pk__in=Person.objects.active().values('pk'))
-        ).order_by('last_name', 'first_name', 'pk')
+        )).order_by('last_name', 'first_name', 'pk')
 
 
-def _task_forms(anthology, data=None):
+def _task_forms(anthology, data=None, *, include_all_people=False):
     tasks = {task.task_type: task for task in anthology.production_tasks.all()}
-    return [AnthologyTaskForm(data=data, prefix=kind,
+    return [AnthologyTaskForm(data=data, prefix=kind, include_all_people=include_all_people,
                 instance=tasks.get(kind) or AnthologyTask(anthology=anthology, task_type=kind))
             for kind in (AnthologyTask.TaskType.BANNERS, AnthologyTask.TaskType.BLURB,
                          AnthologyTask.TaskType.TYPESETTING, AnthologyTask.TaskType.COVER_TYPOGRAPHY, AnthologyTask.TaskType.AUDIO_DESCRIPTION)]
@@ -91,32 +92,54 @@ def anthology_detail(request, anthology_id):
     if anthology.is_novel:
         return redirect('core:novel_detail', novel_id=anthology.pk)
     coordinator = is_coordinator(request.user)
-    forms_list = _task_forms(anthology) if coordinator else []
-    cover_form = CoverAssignmentForm(instance=anthology, prefix='cover') if coordinator else None
+    forms_list = _task_forms(anthology, include_all_people=True) if coordinator else []
+    cover_form = CompactCoverAssignmentForm(instance=anthology, prefix='cover') if coordinator else None
+    new_person_form = NewTaskPersonForm(anthology=anthology, prefix='new-person') if coordinator else None
     if request.method == 'POST':
         if not coordinator:
             raise PermissionDenied
-        if request.POST.get('action') == 'cover' and not request.POST.get('_edit_version'):
-            return HttpResponse('Odśwież stronę i ponów zapis okładki. Brak wersji formularza.', status=409)
+        action = request.POST.get('action', '')
+        if action not in ('', 'cover', 'tasks_and_cover', 'new_person'):
+            return HttpResponse('Nieznana operacja.', status=400)
+        if action in ('cover', 'tasks_and_cover', 'new_person') and not request.POST.get('_edit_version'):
+            return HttpResponse('Odśwież stronę i ponów zapis. Brak wersji formularza.', status=409)
         with transaction.atomic():
             anthology = get_object_or_404(Anthology.objects.select_for_update(), pk=anthology_id)
-            if request.POST.get('action') == 'cover':
+            if action == 'new_person':
+                new_person_form = NewTaskPersonForm(request.POST, anthology=anthology, prefix='new-person')
+                if new_person_form.is_valid():
+                    try:
+                        new_person_form.save(user=request.user)
+                    except ValidationError as error:
+                        new_person_form.add_error(None, ValidationError(error.messages))
+                    else:
+                        messages.success(request, 'Dodano osobę bez konta i przypisano zadanie ze statusem Zlecone.')
+                        return redirect('core:anthology_detail', anthology_id=anthology.pk)
+            elif action == 'cover':
+                # Previously opened pages can still submit their single cover form.
                 cover_form = CoverAssignmentForm(request.POST, instance=anthology, prefix='cover')
                 if cover_form.is_valid():
                     cover_form.save()
                     messages.success(request, 'Zapisano okładkę antologii.')
                     return redirect('core:anthology_detail', anthology_id=anthology.pk)
             else:
-                forms_list = _task_forms(anthology, request.POST)
-                if all([form.is_valid() for form in forms_list]):
+                forms_list = _task_forms(anthology, request.POST, include_all_people=True)
+                valid = all([form.is_valid() for form in forms_list])
+                if action == 'tasks_and_cover':
+                    cover_form = CompactCoverAssignmentForm(request.POST, instance=anthology, prefix='cover')
+                    valid = cover_form.is_valid() and valid
+                if valid:
                     for form in forms_list:
                         form.save()
+                    if action == 'tasks_and_cover':
+                        cover_form.save()
                     messages.success(request, 'Zapisano zadania antologii.')
                     return redirect('core:anthology_detail', anthology_id=anthology.pk)
+    issues = anthology_checklist(anthology) if coordinator else []
     show_credits = not ExtractVolume.objects.filter(anthology=anthology, number__in=(1, 2)).exists()
     return render(request, 'core/anthology_detail.html', {
         'anthology': anthology, 'show_checklist': coordinator, 'task_forms': forms_list,
-        'issues': anthology_checklist(anthology) if coordinator else [],
+        'issues': issues, 'issue_groups': grouped_checklist(issues), 'new_person_form': new_person_form,
         'credits': anthology_credit_groups(anthology) if show_credits else [],
         'extract_text': anthology.texts.filter(import_source='extract-volume-v2').first(), 'show_credits': show_credits, 'cover_form': cover_form,
     }, status=400 if request.method == 'POST' else 200)

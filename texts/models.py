@@ -385,6 +385,10 @@ class AnthologyTask(models.Model):
 
 
 class Text(NormalizedModelMixin, models.Model):
+    @property
+    def is_extract_volume(self):
+        return self.import_source == "extract-volume-v2"
+
     objects = VersionedQuerySet.as_manager()
     chapter_number = models.PositiveIntegerField('numer rozdziału', null=True, blank=True,
                                                   validators=[MinValueValidator(1)])
@@ -685,16 +689,20 @@ class ReviewQuerySet(VersionedQuerySet):
         )
 
     def current(self):
-        return self.filter(old_reviews=False)
+        return self.exclude(status__in=("accepted", "rejected"))
 
     def archived(self):
-        return self.filter(old_reviews=True)
+        return self.filter(status__in=("accepted", "rejected"))
 
     def for_statistics(self):
         return self.filter(models.Q(old_reviews=True) | models.Q(is_hidden=False))
 
 
 class Review(NormalizedModelMixin, models.Model):
+    @property
+    def is_archived(self):
+        return self.status in (self.Status.ACCEPTED, self.Status.REJECTED)
+
     publication_detached = models.BooleanField("Świadomie odłączono od tekstu", default=False,
         help_text="Nie pokazuj jako nowego tekstu do przeniesienia. Odznacz wyłącznie, jeśli świadomie chcesz ponownie utworzyć tekst.")
 

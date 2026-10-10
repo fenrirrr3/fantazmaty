@@ -5,11 +5,48 @@
 {% block content %}{% if return_url %}<p><a class="secondary-button" href="{{ return_url }}">Wróć do poprzedniej listy</a></p>{% endif %}
 <header class="page-header"><h1 class="page-title">{{ anthology.title }}</h1><p class="page-description">{{ anthology.get_status_display }}</p><a class="secondary-button" href="{% if anthology.is_translated %}{% url 'core:translation_list' %}{% else %}{% url 'core:text_list' %}{% endif %}?anthology={{ anthology.pk }}&amp;hide_ready=0">Teksty antologii</a></header>
 {% if extract_text %}<p><a class="secondary-button" href="{% url 'core:assigned_text_detail' extract_text.pk %}">Etapy pracy całego tomu</a>{% if show_checklist %} <a class="secondary-button" href="{% url 'core:extract_list' %}?recruitment={{ anthology.title|urlencode }}">Informacyjny rejestr miniatur</a>{% endif %}</p>{% endif %}
-{% if show_checklist %}<section class="card"><div class="card-body"><h2>Lista kontrolna przed wydaniem</h2><p>Stan zapisany w bazie. Lista nie zmienia statusu antologii.</p>{% include "core/includes/issue_list.html" %}
-<h2>Zadania antologii</h2>
-<form method="post" class="cover-assignment-form">{% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="cover"><fieldset id="task-cover"><legend>Okładka</legend>{{ cover_form.non_field_errors }}<div class="cover-assignment-grid">{% for field in cover_form %}{% if field.is_hidden %}{{ field }}{% else %}<div class="form-field">{{ field.label_tag }}{{ field }}{% if field.help_text %}<p class="muted-text">{{ field.help_text }}</p>{% endif %}{{ field.errors }}</div>{% endif %}{% endfor %}</div><button class="primary-button" type="submit">Zapisz okładkę</button></fieldset></form>
-<form method="post">{% csrf_token %}{% edit_version %}<div class="anthology-tasks">{% for form in task_forms %}<fieldset id="task-{{ form.instance.task_type }}"><legend>{{ form.instance.get_task_type_display }}</legend>{{ form.as_p }}</fieldset>{% endfor %}</div><button type="submit" class="primary-button">Zapisz zadania</button></form>
-</div></section>{% endif %}
+{% if show_checklist %}
+<div class="anthology-preparation-grid">
+  <section class="card"><div class="card-body">
+    <h2>Lista kontrolna przed wydaniem</h2>
+    <p>Stan zapisany w bazie. Lista nie zmienia statusu antologii.</p>
+    <ul class="anthology-checklist">
+    {% for group in issue_groups %}
+      <li><strong>{{ group.label }} ({{ group.items|length }}):</strong>
+        {% for item in group.items %}<a href="{{ item.url }}">{{ item.detail }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}
+      </li>
+    {% empty %}<li>Brak problemów do rozwiązania.</li>{% endfor %}
+    </ul>
+  </div></section>
+  <section class="card"><div class="card-body">
+    <h2>Dodaj osobę do zadania</h2>
+    <p>Jeśli osoby nie ma w spisie, dodaj ją bez konta i e-maila. Zadanie otrzyma status Zlecone.</p>
+    <form method="post" class="anthology-new-person" data-warn-unsaved>
+      {% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="new_person">
+      {{ new_person_form.non_field_errors }}
+      <div class="anthology-person-name">
+        <div class="form-field">{{ new_person_form.first_name.label_tag }}{{ new_person_form.first_name }}{{ new_person_form.first_name.errors }}</div>
+        <div class="form-field">{{ new_person_form.last_name.label_tag }}{{ new_person_form.last_name }}{{ new_person_form.last_name.errors }}</div>
+      </div>
+      <div class="form-field">{{ new_person_form.task_type.label_tag }}{{ new_person_form.task_type }}{{ new_person_form.task_type.errors }}</div>
+      <button class="primary-button" type="submit">Dodaj i przypisz zadanie</button>
+    </form>
+  </div></section>
+</div>
+<section class="card"><div class="card-body">
+  <h2>Zadania antologii</h2>
+  <form method="post" data-warn-unsaved>
+    {% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="tasks_and_cover">
+    <div class="anthology-tasks anthology-six-tasks">
+      {% for form in task_forms %}<fieldset id="task-{{ form.instance.task_type }}"><legend>{{ form.instance.get_task_type_display }}</legend>{{ form.as_p }}</fieldset>{% endfor %}
+      <fieldset id="task-cover"><legend>Okładka</legend>{{ cover_form.non_field_errors }}
+        <div class="anthology-cover-fields">{% for field in cover_form %}{% if field.is_hidden %}{{ field }}{% else %}<div class="form-field">{{ field.label_tag }}{{ field }}{% if field.help_text %}<p class="muted-text">{{ field.help_text }}</p>{% endif %}{{ field.errors }}</div>{% endif %}{% endfor %}</div>
+      </fieldset>
+    </div>
+    <button type="submit" class="primary-button">Zapisz zadania</button>
+  </form>
+</div></section>
+{% endif %}
 {% if show_credits %}<section class="card"><div class="card-body"><h2>Osoby i wykonane prace</h2><p>Ukończone prace, także zapisane bez dat. Każda osoba pojawia się raz w danej kategorii.</p><ul class="credits-list">{% for row in credits %}<li><strong>{{ row.label }}:</strong> {{ row.names|join:", "|default:"–" }}</li>{% endfor %}</ul></div></section>{% endif %}
 {% endblock %}
 

@@ -9,11 +9,9 @@ from workflow.services import _locked_text_operation, current_assignment_queryse
 
 
 @_locked_text_operation
-def handoff_stage(text, user, *, stage_id, assigned_to_id, expected_assignment_id, reason):
+def handoff_stage(text, user, *, stage_id, assigned_to_id, expected_assignment_id, reason=""):
     require_superuser(user)
     reason=(reason or '').strip()
-    if not reason:
-        raise ValidationError("Podaj powód przekazania pracy.")
     stage = S.objects.get(pk=stage_id, text=text, is_current=True, is_released=True)
     if (
         stage.is_completed

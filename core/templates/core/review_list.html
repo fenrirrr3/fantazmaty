@@ -11,7 +11,7 @@
                 </h1>
                 <p class="page-description">
                     {% if old_reviews %}
-                        Stare zgłoszenia. Oddane opinie są liczone do dorobku, bez wpływu na bieżące obciążenie.
+                        Zgłoszenia przyjęte lub odrzucone. Oddane opinie są liczone do dorobku, bez wpływu na bieżące obciążenie.
                     {% else %}
                         Zgłoszenia, przydziały recenzentów i decyzje dotyczące tekstów.
                     {% endif %}
@@ -246,7 +246,7 @@
 
                                 {% endif %}
 
-                                {% if review.old_reviews %}
+                                {% if review.is_archived %}
                                     <div class="form-help">Archiwalna</div>
                                 {% endif %}
                             </td>

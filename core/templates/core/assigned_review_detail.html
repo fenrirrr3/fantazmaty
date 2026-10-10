@@ -35,7 +35,7 @@
             <div class="detail-header-actions">
                 {% if user.is_superuser %}<a class="secondary-button small-button" href="{% url 'admin:texts_review_change' review.pk %}">Edytuj w adminie</a>{% endif %}
             <a
-                href="{% if return_url %}{{ return_url }}{% else %}{% url 'core:review_list' %}?old_reviews={% if review.old_reviews %}1{% else %}0{% endif %}{% endif %}"
+                href="{% if return_url %}{{ return_url }}{% else %}{% url 'core:review_list' %}?old_reviews={% if review.is_archived %}1{% else %}0{% endif %}{% endif %}"
                 class="secondary-button"
             >
                 Wróć do recenzji
@@ -58,10 +58,10 @@
     </section>
     {% endif %}
 
-    {% if review.old_reviews %}
+    {% if review.is_archived %}
         <div class="message info" role="status">
             <strong>Recenzja archiwalna.</strong>
-            Oddane opinie są liczone do dorobku, ale nie do bieżącego obciążenia. Edycja jest dostępna dla superusera w panelu administracyjnym.
+            Zgłoszenie zostało przyjęte lub odrzucone. Oddane opinie są liczone do dorobku, ale nie do bieżącego obciążenia.
         </div>
     {% elif is_review_locked %}
         <div class="review-locked-alert" role="status">

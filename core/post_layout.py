@@ -38,7 +38,7 @@ class AssignmentForm(forms.Form):
     def __init__(self, *args, user, **kwargs):
         super().__init__(*args, **kwargs)
         self.user = user
-        self.fields['anthology'].queryset = Anthology.objects.filter(is_novel=False).exclude(status='abandoned').order_by('title', 'pk')
+        self.fields['anthology'].queryset = Anthology.objects.filter(is_novel=False).exclude(status__in=('ready', 'abandoned')).order_by('title', 'pk')
         self.fields['proofreader'].queryset = eligible_proofreaders().order_by('person_profile__last_name', 'person_profile__first_name', 'pk')
         self.initial['token'] = signing.dumps([user.pk, uuid.uuid4().hex], salt='post-layout-create')
 
@@ -66,7 +66,7 @@ def create_assignment(*, user, anthology, proofreader, page_from, page_to, token
     anthology = Anthology.objects.select_for_update().get(pk=anthology.pk)
     from people.models import Person
     Person.objects.select_for_update().get(user_id=proofreader.pk)
-    if anthology.is_novel or anthology.status == 'abandoned' or not eligible_proofreaders().filter(pk=proofreader.pk).exists():
+    if anthology.is_novel or anthology.status in ('ready', 'abandoned') or not eligible_proofreaders().filter(pk=proofreader.pk).exists():
         raise ValidationError('Antologia lub korektor nie są już dostępni. Odśwież stronę.')
     existing = PostLayoutAssignment.objects.filter(creation_key=token).first()
     if existing:
@@ -111,10 +111,10 @@ class AssignmentEditForm(forms.ModelForm):
     def clean(self):
         data = super().clean()
         start, work, end = (data.get(f) for f in ('assigned_start', 'work_start', 'completed_on'))
-        if self.instance.historical and any((start, work, end)) and not all((start, work, end)):
-            raise forms.ValidationError('Dla wpisu historycznego pozostaw wszystkie daty puste albo uzupełnij pełny przebieg.')
         if start and work and work < start:
             self.add_error('work_start', 'Rozpoczęcie pracy nie może poprzedzać przydzielenia.')
+        if start and end and end < start:
+            self.add_error('completed_on', 'Zakończenie nie może poprzedzać przydzielenia.')
         if work and end and end < work:
             self.add_error('completed_on', 'Zakończenie nie może poprzedzać rozpoczęcia pracy.')
         self.instance.assigned_end = work

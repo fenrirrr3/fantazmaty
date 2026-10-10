@@ -31,14 +31,14 @@ class ReviewHistoryTests(TestCase):
             ('Cudza recenzja', 'yes', False, False, cls.other),
         ]:
             review = Review.objects.create(title=title, anthology=cls.book, length=1,
-                old_reviews=archived, is_hidden=hidden)
+                old_reviews=archived, is_hidden=hidden, status="accepted" if archived else "new")
             cls.assignments[title] = ReviewAssignment.objects.create(review=review, user=user,
                 position=1, opinion=opinion, notes='Zachowana treść recenzji')
 
     def test_own_completed_and_archived_remain_without_abandoned_pending_work(self):
         self.client.force_login(self.member)
-        expected = {'completed': ['Oddana recenzja'], 'all': ['Oddana recenzja'],
-            'archived': ['Archiwalna recenzja'], 'active': [], 'waiting': []}
+        expected = {'completed': ['Archiwalna recenzja', 'Oddana recenzja'], 'all': ['Archiwalna recenzja', 'Oddana recenzja'],
+            'archived': ['Archiwalna recenzja', 'Oddana recenzja'], 'active': [], 'waiting': []}
         for view, titles in expected.items():
             with self.subTest(view=view):
                 page = self.client.get(reverse('core:my_reviews'), {'view': view})

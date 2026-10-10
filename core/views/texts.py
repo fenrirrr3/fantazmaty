@@ -30,7 +30,7 @@ from core.selectors.texts import (
     text_detail_context,
     text_list_context,
 )
-from texts.models import Text, TextNote
+from texts.models import Text, TextNote, Review
 from core.tag_forms import TextTagsForm
 from workflow.models import WorkflowRoleAssignment
 from core.edit_policy import edit_policy
@@ -492,27 +492,32 @@ def update_text_file(request, text_id):
 @require_http_methods(['GET','POST'])
 def link_text_review(request, text_id):
     from django.db.models import Q
-    from core.source_reviews import linkable_reviews, suggested_review_ids, link_source_review
+    from core.source_reviews import linkable_reviews, suggested_review_ids, link_source_review, unlink_source_review
     text = get_object_or_404(Text.objects.select_related('anthology'),pk=text_id)
     query = request.GET.get('q','').strip()
-    candidates = linkable_reviews(text).select_related("author").prefetch_related("coauthors")
+    candidates = linkable_reviews(text).select_related("author", "anthology").prefetch_related("coauthors")
     suggestions = suggested_review_ids(text)
     if query:
         candidates = candidates.filter(Q(title__plcontains=query) | review_name_matches(query))
     if request.method == 'POST':
         try:
             review_id = int(request.POST.get('review_id',''))
-            link_source_review(user=request.user,text_id=text.pk,review_id=review_id,confirm_mismatch=request.POST.get('confirm_mismatch') == 'on')
+            if request.POST.get('action') == 'unlink':
+                if request.POST.get('confirm_unlink') != 'on':
+                    raise ValidationError('Potwierdź usunięcie powiązania.')
+                unlink_source_review(user=request.user, text_id=text.pk, review_id=review_id)
+            else:
+                link_source_review(user=request.user,text_id=text.pk,review_id=review_id,confirm_mismatch=request.POST.get('confirm_mismatch') == 'on')
         except (ValueError,ValidationError) as error:
             messages.error(request,' '.join(error.messages) if isinstance(error,ValidationError) else 'Wybierz zgłoszenie.')
         else:
-            messages.success(request,'Zapisano powiązanie z recenzjami. Pozostanie zachowane po zmianie tytułu.')
+            messages.success(request, 'Usunięto powiązanie. Zgłoszenie i opinie zachowano.' if request.POST.get('action') == 'unlink' else 'Zapisano powiązanie z recenzjami. Pozostanie zachowane po zmianie tytułu.')
             return redirect('core:assigned_text_detail',text_id=text.pk)
     from django.db.models import Case,When,IntegerField,Value
     candidates=candidates.annotate(suggestion_order=Case(When(pk__in=suggestions,then=Value(0)),default=Value(1),output_field=IntegerField())).order_by('suggestion_order','title','pk')
     candidates = candidates.annotate(source_information=Case(
         When(copied_text_id=text.pk, then=Value('Obecne powiązanie')),
         When(pk__in=suggestions, then=Value('Podpowiedź')),
-        When(old_reviews=True, then=Value('Archiwum')), default=Value('')))
+        When(status__in=('accepted', 'rejected'), then=Value('Archiwum')), default=Value('')))
     page=paginate_items(request,candidates)
-    return render(request,'core/link_text_review.html',{'text':text,'query':query,'candidates':page,'page_obj':page,'suggested_ids':suggestions})
+    return render(request,'core/link_text_review.html',{'text':text,'query':query,'candidates':page,'page_obj':page,'suggested_ids':suggestions, 'current_source': Review.objects.filter(copied_text=text).first()})

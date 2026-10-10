@@ -53,3 +53,9 @@
 .audio-table-actions select, .audio-table-actions .errorlist { grid-column: 1 / -1; max-width: 20rem; }
 .audio-table-actions .audio-claim-form { margin: 0; }
 .audio-table-actions button { min-height: 2.5rem; padding: .45rem .85rem; font: inherit; font-size: .95rem; line-height: 1.4; font-weight: 600; border-radius: .4rem; }
+
+/* Publication has three compact fields; avoid stacking grid gap and form margins. */
+.audio-detail-left .audio-publication-form { gap: .65rem; }
+.audio-publication-form .form-field,
+.audio-publication-form .form-field + .form-field { margin: 0; }
+.audio-publication-form > button { margin-top: .25rem; }
