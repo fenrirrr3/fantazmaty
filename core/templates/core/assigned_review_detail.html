@@ -4,7 +4,7 @@
 {% block title %}{{ review.title }} | Fantazmaty CMS{% endblock %}
 
 {% block content %}
-    {% if user.is_superuser and review.is_hidden %}
+    {% if user.is_superuser and review.is_hidden and not is_abandoned_review %}
     <section class="message warning"><h2>Ukryte zgłoszenie</h2><p>Widoczne wyłącznie dla superusera. Termin odrzucenia: {{ review.decision_at|date:'d.m.Y' }}.</p>
     <form method="post" action="{% url 'core:release_hidden_review' review.pk %}">{% csrf_token %}{% edit_version %}
     <label><input type="checkbox" name="confirm" value="yes" required> To błędna kwalifikacja – przywróć zgłoszenie do recenzji i udostępnij recenzentom.</label><button type="submit" class="secondary-button">Przywróć zgłoszenie</button></form></section>

@@ -5,7 +5,18 @@
 .post-layout-add > .errorlist { grid-column: 1 / -1; }
 .post-layout-filters, .post-layout-status { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
 .post-layout-filters .form-field { flex: 1 1 18rem; }
-.post-layout-status { min-width: 12rem; }
+.post-layout-status { min-width: 12rem; margin: 0; flex-wrap: nowrap; }
+.post-layout-row-actions { display: flex; align-items: center; gap: .75rem; padding-inline: .4rem; }
+.post-layout-row-actions > a { flex: 0 0 auto; }
+.post-layout-search { display: block; }
+.post-layout-search > label { display: block; margin-bottom: .5rem; }
+.post-layout-filter-controls { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
+.post-layout-filter-controls > input { flex: 1 1 12rem; min-width: 0; }
+.post-layout-filter-controls > button, .post-layout-filter-controls > a { margin: 0; }
+.post-layout-search .post-layout-hide { margin: 0; }
+#post-layout-bulk { align-items: end; }
+#post-layout-bulk > button { margin: 0; }
+#post-layout-bulk .form-field > select { width: 100%; }
 #post-layout-bulk [data-bulk-action][hidden] { display: none !important; }
 .post-layout-toolbar, .post-layout-edit { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
 .post-layout-toolbar { margin-bottom: 20px; }

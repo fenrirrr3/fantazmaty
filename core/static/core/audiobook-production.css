@@ -8,6 +8,8 @@
 .audio-production-form .form-field + .form-field { margin-top: .8rem; }
 .audio-filters { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 1rem; }
 .audio-filters input, .audio-filters select { width: 100%; min-width: 0; }
+.audio-period { white-space: nowrap; }
+.audio-period + .audio-period { margin-top: .3rem; }
 .audio-table td { vertical-align: middle; }
 .audio-table th { white-space: normal; min-width: 7rem; }
 .audio-table .text-title-link { display: block; min-width: 12rem; }
@@ -33,4 +35,9 @@
 @media (max-width: 900px) { .audio-detail-columns { grid-template-columns: 1fr; } }
 @media (max-width: 760px) { .audio-fields-grid, .audio-metadata, .audio-filters { grid-template-columns: 1fr; } }
 
+.audio-name-profile { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: .75rem; align-items: end; }
+.audio-name-profile > a { justify-self: start; margin: 0; }
+.audio-name-profile > .form-field { min-width: 0; }
+.audio-claim-form { margin: .5rem 0; }
+@media (max-width: 480px) { .audio-name-profile { grid-template-columns: 1fr; } }
 .audio-table tbody a:not(.text-title-link) { font-weight: 400; }

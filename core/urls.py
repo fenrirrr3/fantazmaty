@@ -22,7 +22,7 @@ from core.views.tags import tag_list
 from core.views.translations import translation_list, translation_detail, set_translators, translation_person_detail, translation_person_suggestions
 from core.views.production_tasks import task_list, audio_descriptions
 from core.views.audiobooks import audiobook_list, update_text_audiobook
-from core.views.audiobook_production import audiobook_detail, assign_audio_proofreader
+from core.views.audiobook_production import audiobook_detail, assign_audio_proofreader, claim_audio_proofreading
 from core.views.audio_contacts import audio_contributor, contact_suggestions
 from core.views.external_audiobooks import external_audiobooks, audiobook_guidelines_txt
 from core.views import novels, vocabulary
@@ -50,6 +50,7 @@ urlpatterns = [
     path('korekta-poskladowa/', post_layout, name='post_layout'),
     path('korekta-poskladowa/<int:pk>/edycja/', post_layout_edit, name='post_layout_edit'),
     path('korekta-audiobookow/', audio_proofreading, name='audio_proofreading'),
+    path('korekta-audiobookow/<int:text_id>/przejmij/', claim_audio_proofreading, name='claim_audio_proofreading'),
     path('korekta-audiobookow/<int:text_id>/przypisz/', assign_audio_proofreader, name='assign_audio_proofreader'),
     path('rekrutacja/<int:pk>/usun/', recruitment_delete, name='recruitment_delete'),
     path('rekrutacja/<int:pk>/powiadomiony/', recruitment_notified, name='recruitment_notified'),

@@ -143,7 +143,7 @@ class PostLayoutTests(TestCase):
         queue = reverse('core:audio_proofreading')
         for user, count in ((old, 0), (new, 1), (self.admin, 1)):
             self.client.force_login(user)
-            page = self.client.get(queue)
+            page = self.client.get(queue, {'hide_completed': '0'})
             self.assertFalse(page.context['hide_completed'])
             self.assertEqual(page.context['page_obj'].paginator.count, 1)
             self.assertEqual(self.client.get(queue, {'hide_completed': '1'}).context['page_obj'].paginator.count, count)

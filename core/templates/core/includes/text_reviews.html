@@ -5,7 +5,7 @@
             </summary>
 
             <div class="review-summary-content">
-                {% if request.user.is_superuser %}<p><a class="secondary-button" href="{% url 'core:link_text_review' text.pk %}">Powiąż zgłoszenie z recenzjami</a></p>{% endif %}
+                {% if request.user.is_superuser and not source_review %}<p><a class="secondary-button" href="{% url 'core:link_text_review' text.pk %}">Powiąż zgłoszenie z recenzjami</a></p>{% endif %}
                 {% if source_review %}
                 {% if source_review.can_open %}<p>
                     <a

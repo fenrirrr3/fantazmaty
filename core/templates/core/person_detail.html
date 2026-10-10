@@ -247,11 +247,11 @@
 
                             <td>
                                 {% if assignment.kind_key == 'audio' or assignment.kind_key == 'post_layout' %}
-                                    <span class="stage-status {% if assignment.has_completed_work %}completed{% elif assignment.has_active_work %}active{% else %}pending{% endif %}">{{ assignment.state_label }}</span>
-                                {% elif assignment.is_withdrawn %}
+                                    <span class="stage-status {% if assignment.has_completed_work %}completed{% elif assignment.has_active_work %}active{% else %}pending{% endif %}">{% if assignment.has_completed_work %}Zakończone{% else %}{{ assignment.state_label }}{% endif %}</span>
+                                {% elif assignment.is_withdrawn and not assignment.has_completed_work %}
                                     <span class="stage-status withdrawn">Tekst wycofany</span>
                                 {% elif assignment.is_ready %}
-                                    <span class="stage-status completed">Tekst gotowy</span>
+                                    <span class="stage-status completed">Zakończone</span>
                                 {% elif assignment.has_active_work %}
                                     <span class="stage-status active">W toku</span>
                                 {% elif assignment.latest_stage.is_scheduled %}
@@ -259,7 +259,7 @@
                                 {% elif assignment.has_reserved_work %}
                                     <span class="stage-status pending">Zarezerwowany</span>
                                 {% elif assignment.has_completed_work %}
-                                    <span class="stage-status completed">Zakończony</span>
+                                    <span class="stage-status completed">Zakończone</span>
                                 {% else %}
                                     <span class="muted-text">Brak bieżącego zadania</span>
                                 {% endif %}
@@ -310,9 +310,6 @@
 </div>
 </section>
 {% include "core/includes/table_toolbar.html" %}
-{% if archived_reviews %}
-<section class="details-card"><h2>Archiwalne recenzje ({{ archived_reviews|length }})</h2>
-<div class="table-container"><table data-copy-table><thead><tr><th data-sort-key="title" class="sticky-title">Tytuł</th><th data-sort-key="anthology">Antologia</th><th data-sort-key="opinion">Opinia</th><th>Data opinii</th></tr></thead><tbody>
-{% for assignment in archived_reviews %}<tr><td data-double-copy class="sticky-title"><strong>{% if user.is_superuser %}<a href="{% url 'core:assigned_review_detail' assignment.review_id %}" class="text-title-link">{{ assignment.review.title }}</a>{% else %}{{ assignment.review.title }}{% endif %}</strong></td><td>{{ assignment.review.anthology.title }}</td><td><span class="reviewer-bubble reviewer-opinion-{{ assignment.opinion }}">{{ assignment.get_opinion_display }}</span></td><td>{{ assignment.opinion_changed_at|date:"d.m.Y"|default:"–" }}</td></tr>{% endfor %}
-</tbody></table></div></section>{% endif %}
+{% include "core/includes/person_review_history.html" with history_reviews=completed_reviews history_heading="Oddane recenzje" %}
+{% include "core/includes/person_review_history.html" with history_reviews=archived_reviews history_heading="Archiwalne recenzje" %}
 {% endblock %}

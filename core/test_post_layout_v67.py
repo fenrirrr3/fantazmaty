@@ -171,11 +171,17 @@ class PostLayoutEditingTests(TestCase):
         for name in ('core:audio_proofreading', 'core:audiobooks'):
             page = self.client.get(reverse(name), {'sort': 'engineer'})
             self.assertEqual(page.status_code, 200)
-            self.assertContains(page, 'Montaż')
+            if name == 'core:audiobooks':
+                self.assertContains(page, 'Montaż')
             for url in (reverse('core:author_detail', args=[author.pk]), reverse('core:anthology_detail', args=[self.book.pk]),
-                    reverse('core:person_detail', args=[reader.person_profile.pk]), reverse('core:audio_contributor', args=[narrator.pk]),
-                    reverse('core:audio_contributor', args=[engineer.pk])):
+                    reverse('core:person_detail', args=[reader.person_profile.pk])):
                 self.assertContains(page, url)
+            if name == 'core:audiobooks':
+                for person in (narrator, engineer):
+                    self.assertContains(page, reverse('core:audio_contributor', args=[person.pk]))
+            else:
+                self.assertNotContains(page, reverse('core:audio_contributor', args=[narrator.pk]))
+                self.assertNotContains(page, reverse('core:audio_contributor', args=[engineer.pk]))
             doc = html.fromstring(page.content)
             self.assertEqual(doc.xpath('//table//strong/text()'), [text.title])
             self.assertContains(page, 'Pseudonim')

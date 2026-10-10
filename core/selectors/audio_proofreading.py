@@ -17,12 +17,20 @@ def proofreading_scope(texts, user, coordinator, *, hide_completed=False):
     eligible = active_production_texts(Text.objects.filter(for_recording=True, audiobook_blacklisted=False))
     texts = texts.filter(audiobook__isnull=False).annotate(
         has_audio_correction=Exists(history),
+        has_finished_audio_correction=Exists(history.filter(is_completed=True)),
         own_audio_correction=Exists(history.filter(performer=user, is_completed=True)),
         can_produce_audio=Exists(eligible.filter(pk=OuterRef('pk'))),
     ).filter(Q(has_audio_correction=True) | Q(audiobook__proofreading_started_at__isnull=False)
         | Q(pk__in=eligible.values('pk'), audiobook__status=Audiobook.Status.PROOFREADING))
     if not coordinator:
-        texts = texts.filter(Q(own_audio_correction=True)
+        from core.audiobook_forms import eligible_proofreaders
+        free_work = Q(pk__in=[])
+        if eligible_proofreaders().filter(pk=user.pk).exists():
+            free_work = Q(can_produce_audio=True, audiobook__status=Audiobook.Status.PROOFREADING,
+                audiobook__proofreader__isnull=True) & (Q(has_finished_audio_correction=False)
+                    | Q(audiobook__active_stage__stage_type=Audiobook.Status.PROOFREADING,
+                        audiobook__active_stage__is_completed=False))
+        texts = texts.filter(free_work | Q(own_audio_correction=True)
             | Q(audiobook__proofreader=user, audiobook__status=Audiobook.Status.PROOFREADING)
             | Q(has_audio_correction=False, audiobook__proofreader=user, audiobook__proofreading_started_at__isnull=False))
     if hide_completed:
@@ -30,8 +38,8 @@ def proofreading_scope(texts, user, coordinator, *, hide_completed=False):
         unfinished = history.filter(is_completed=False)
         if not coordinator:
             finished = finished.filter(performer=user)
-            unfinished = unfinished.filter(pk=OuterRef('audiobook__active_stage_id'),
-                text__audiobook__proofreader=user)
+            unfinished = unfinished.filter(Q(text__audiobook__proofreader=user)
+                | Q(text__audiobook__proofreader__isnull=True), pk=OuterRef('audiobook__active_stage_id'))
         texts = texts.annotate(finished_audio_work=Exists(finished), unfinished_audio_work=Exists(unfinished)).exclude(
             finished_audio_work=True, unfinished_audio_work=False)
     return texts.prefetch_related(Prefetch('audiobook_stages', queryset=corrections(), to_attr='audio_corrections'))

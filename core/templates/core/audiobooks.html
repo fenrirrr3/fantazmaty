@@ -1,6 +1,6 @@
 {% extends "core/base.html" %}
 {% load static %}
-{% block extra_css %}{{ block.super }}<link rel="stylesheet" href="{% static 'core/external-audiobooks.css' %}?v=59"><link rel="stylesheet" href="{% static 'core/audiobook-production.css' %}?v=67">{% endblock %}
+{% block extra_css %}{{ block.super }}<link rel="stylesheet" href="{% static 'core/external-audiobooks.css' %}?v=59"><link rel="stylesheet" href="{% static 'core/audiobook-production.css' %}?v=69">{% endblock %}
 {% block title %}Audiobooki | Fantazmaty CMS{% endblock %}
 {% block content %}
 <header class="page-header">
@@ -15,17 +15,18 @@
     <form method="get">
         <div class="audio-filters">
             <div class="form-field"><label for="audio-q">Szukaj tekstu lub osoby</label><input type="search" name="q" id="audio-q" value="{{ query }}"></div>
-            <div class="form-field"><label for="audio-anthology">Antologia</label><select name="anthology" id="audio-anthology"><option value="">Wszystkie</option>{% for book in anthologies %}{% if book.anthology_id %}<option value="{{ book.anthology_id }}"{% if selected_anthology == book.anthology_id|stringformat:'s' %} selected{% endif %}>{{ book.anthology__title }}</option>{% endif %}{% endfor %}</select></div>
-            <div class="form-field"><label for="audio-status">Status audiobooka</label><select name="status" id="audio-status"><option value="">Wszystkie</option>{% for value, label in status_choices %}<option value="{{ value }}"{% if value == selected_status %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+            <div class="form-field"><label for="audio-anthology">Antologia</label><select name="anthology" id="audio-anthology" multiple size="4"><option value="">Wszystkie</option>{% for book in anthologies %}{% if book.anthology_id %}<option value="{{ book.anthology_id }}"{% if book.anthology_id|stringformat:'s' in selected_anthologies %} selected{% endif %}>{{ book.anthology__title }}</option>{% endif %}{% endfor %}</select></div>
+            <div class="form-field"><label for="audio-status">Status audiobooka</label><select name="status" id="audio-status" multiple size="4"><option value="">Wszystkie</option>{% for value, label in status_choices %}<option value="{{ value }}"{% if value in selected_statuses %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
         </div>
         <div class="audio-actions"><button class="primary-button" type="submit">Filtruj</button><a class="secondary-button" href="{% url 'core:audiobooks' %}">Wyczyść filtry</a></div>
     </form>
 </div></section>
+<p class="form-help">Etapy: data rozpoczęcia – data zakończenia. „?” oznacza brak zapisanej daty.</p>
 <section class="card" aria-label="Audiobooki">
     <div class="table-container" role="region" tabindex="0" aria-label="Tabela audiobooków">
         <table data-server-paginated="true" class="data-table audio-table">
             <caption class="visually-hidden">Audiobooki – przypisania i publikacje</caption>
-            <thead><tr><th scope="col">Antologia</th><th scope="col">Autor</th><th scope="col">Tytuł</th><th scope="col">Status</th><th scope="col">Lektor</th><th scope="col">Montaż</th><th scope="col">Korektor audiobooka</th><th scope="col">Nagrywanie od</th><th scope="col">Korekta od</th><th scope="col">Poprawki od</th><th scope="col">Montaż od</th><th scope="col">Czeka na publikację od</th><th scope="col">Data premiery</th><th scope="col">YouTube</th><th scope="col">HearThis</th></tr></thead>
+            <thead><tr><th scope="col">Antologia</th><th scope="col">Autor</th><th scope="col">Tytuł</th><th scope="col">Status</th><th scope="col">Lektor</th><th scope="col">Montażysta</th><th scope="col">Korektor audiobooka</th><th scope="col">Nagrywanie</th><th scope="col">Korekta</th><th scope="col">Poprawki</th><th scope="col">Montaż</th><th scope="col">Data premiery</th><th scope="col">YouTube</th><th scope="col">HearThis</th></tr></thead>
             <tbody>{% for text in texts %}{% with audio=text.audio %}<tr>
                 <td>{% if text.anthology %}<a href="{% url 'core:anthology_detail' text.anthology.pk %}">{{ text.anthology.title }}</a>{% else %}Brak antologii{% endif %}</td>
                 <td>{% include "core/includes/audio_author_links.html" %}</td>
@@ -34,16 +35,15 @@
                 <td>{% if audio.narrator_contact_id %}<a href="{% url 'core:audio_contributor' audio.narrator_contact_id %}">{{ audio.narrator_name }}</a>{% else %}{{ audio.narrator_name|default:"Nie przypisano" }}{% endif %}</td>
                 <td>{% if audio.engineer_contact_id %}<a href="{% url 'core:audio_contributor' audio.engineer_contact_id %}">{{ audio.engineer_name }}</a>{% else %}{{ audio.engineer_name|default:"Nie przypisano" }}{% endif %}</td>
                 <td>{% include "core/includes/audio_proofreader_link.html" %}</td>
-                <td>{{ audio.recording_started_at|date:"d.m.Y"|default:"–" }}</td>
-                <td>{{ audio.proofreading_started_at|date:"d.m.Y"|default:"–" }}</td>
-                <td>{{ audio.corrections_started_at|date:"d.m.Y"|default:"–" }}</td>
-                <td>{{ audio.editing_started_at|date:"d.m.Y"|default:"–" }}</td>
-                <td>{{ audio.awaiting_publication_started_at|date:"d.m.Y"|default:"–" }}</td>
+                <td>{% include "core/includes/audio_periods.html" with periods=text.periods.recording %}</td>
+                <td>{% include "core/includes/audio_periods.html" with periods=text.periods.proofreading %}</td>
+                <td>{% include "core/includes/audio_periods.html" with periods=text.periods.corrections %}</td>
+                <td>{% include "core/includes/audio_periods.html" with periods=text.periods.editing %}</td>
                 <td>{{ audio.premiere_date|date:"d.m.Y"|default:"–" }}</td>
 
                 <td>{% if audio.status == 'published' %}{% for link in audio.publication_links %}{% if link.service == 'youtube' %}<a class="secondary-button" href="{{ link.url }}" target="_blank" rel="noopener noreferrer">{{ link.label }}</a>{% endif %}{% endfor %}{% if not audio.youtube_url %}–{% endif %}{% else %}–{% endif %}</td>
                 <td>{% if audio.status == 'published' %}{% for link in audio.publication_links %}{% if link.service == 'hearthis' %}<a class="secondary-button" href="{{ link.url }}" target="_blank" rel="noopener noreferrer">{{ link.label }}</a>{% endif %}{% endfor %}{% if not audio.hearthis_url %}–{% endif %}{% else %}–{% endif %}</td>
-            </tr>{% endwith %}{% empty %}<tr><td colspan="15">Brak audiobooków pasujących do filtrów.</td></tr>{% endfor %}</tbody>
+            </tr>{% endwith %}{% empty %}<tr><td colspan="14">Brak audiobooków pasujących do filtrów.</td></tr>{% endfor %}</tbody>
         </table>
     </div>
 </section>

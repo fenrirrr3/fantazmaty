@@ -27,6 +27,46 @@ def may_finish(user, audio):
         and audio.proofreader_id == user.pk and has_role(user, 'Korektor audiobooków')))
 
 
+def can_claim_proofreading(audio, history, user):
+    if not audio or audio.status != Audiobook.Status.PROOFREADING or audio.proofreader_id not in (None, user.pk):
+        return False
+    if audio.active_stage_id:
+        active = next((stage for stage in history if stage.pk == audio.active_stage_id), None)
+        return bool(active and not active.is_completed and (audio.proofreader_id is None or active.started_at is None))
+    return not any(stage.is_completed for stage in history)
+
+
+@transaction.atomic
+def claim_proofreading(*, text_id, user):
+    from core.audiobook_forms import eligible_proofreaders
+    if not eligible_proofreaders().filter(pk=user.pk).exists():
+        raise PermissionDenied('Przejęcie wymaga aktywnej roli Korektor audiobooków.')
+    text = Text.objects.select_for_update().get(pk=text_id)
+    require_available(text)
+    audio = Audiobook.objects.select_for_update().filter(text=text).first()
+    history = list(AudiobookStage.objects.select_for_update().filter(text=text, stage_type='proofreading'))
+    if not can_claim_proofreading(audio, history, user):
+        raise ValidationError('Ta korekta nie jest już dostępna do przejęcia. Odśwież listę.')
+    today = timezone.localdate()
+    active = next((stage for stage in history if stage.pk == audio.active_stage_id), None)
+    if active:
+        if active.started_at and active.started_at > today:
+            raise ValidationError('Korekta ma datę rozpoczęcia w przyszłości.')
+        active.started_at = active.started_at or today
+        active.performer = user
+        active.save(update_fields=['started_at', 'performer'])
+    else:
+        started_at = audio.proofreading_started_at or today
+        if started_at > today or text.audiobook_stages.filter(ended_at__gt=started_at).exists():
+            raise ValidationError('Sprawdź datę rozpoczęcia korekty i zakończenia poprzedniego etapu.')
+        active = AudiobookStage.objects.create(text=text, stage_type='proofreading', started_at=started_at, performer=user)
+    audio.proofreader = user
+    audio.active_stage = active
+    audio.proofreading_started_at = active.started_at
+    audio.save(update_fields=['proofreader', 'active_stage', 'proofreading_started_at'])
+    return active
+
+
 @transaction.atomic
 def start_stage(*, text_id, user, stage_type, started_at):
     require_coordinator(user)

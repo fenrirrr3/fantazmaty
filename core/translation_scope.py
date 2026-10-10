@@ -15,10 +15,10 @@ PATHS = {
 }
 
 
-def ordinary(queryset):
+def ordinary(queryset, *, include_abandoned=False):
     for path in PATHS.get(queryset.model._meta.label_lower, ()):
         queryset = queryset.exclude(**{path: True})
-    return non_abandoned(queryset)
+    return queryset if include_abandoned else non_abandoned(queryset)
 
 
 def non_abandoned(queryset):

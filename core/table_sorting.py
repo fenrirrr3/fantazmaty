@@ -358,6 +358,12 @@ def prepare_table_sort(request, items):
             'Data premiery': ('premiere', 'audiobook__premiere_date'),
             'YouTube': ('youtube', 'audiobook__youtube_url'), 'HearThis': ('hearthis', 'audiobook__hearthis_url'),
         }
+        if request.resolver_match.view_name == 'core:audiobooks':
+            for label in ('Nagrywanie od', 'Korekta od', 'Poprawki od', 'Montaż od', 'Czeka na publikację od', 'Historia korekty'):
+                fields.pop(label, None)
+            fields['Montażysta'] = ('engineer', 'audiobook__engineer_name')
+            for label, kind in (('Nagrywanie', 'recording'), ('Korekta', 'proofreading'), ('Poprawki', 'corrections'), ('Montaż', 'editing')):
+                fields[label] = (kind, f'audio_{kind}_date')
         selected = request.GET.get('sort', 'anthology')
         field = next((field for key, field in fields.values() if key == selected.lstrip('-')), 'anthology__title')
         return items.order_by(('-' if selected.startswith('-') else '') + field, 'title', 'pk'), {

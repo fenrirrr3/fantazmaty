@@ -106,7 +106,7 @@ class AudiobookAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         ('Tekst i status', {'fields': ('text', 'status', 'production_link')}),
         ('Lektor', {'fields': ('narrator_name', 'narrator_email', 'recording_started_at', 'corrections_started_at')}),
         ('Korektor audiobooka', {'fields': ('proofreader', 'proofreading_started_at')}),
-        ('Dźwiękowiec', {'fields': ('engineer_name', 'engineer_email', 'editing_started_at')}),
+        ('Montaż', {'fields': ('engineer_name', 'engineer_email', 'editing_started_at')}),
         ('Publikacja', {'fields': ('awaiting_publication_started_at', 'premiere_date', 'youtube_url', 'hearthis_url', 'additional_links')}),
     )
 
@@ -436,7 +436,9 @@ class AnthologyTaskAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         return False
 
     def has_delete_permission(self, request, obj=None):
-        return False
+        return bool(self.has_superuser_access(request) and obj is not None
+            and obj.anthology_id in getattr(request, '_deleting_anthologies', ())
+            and obj.status == AnthologyTask.Status.NOT_COMMISSIONED and obj.assigned_to_id is None)
 
     list_select_related = ('anthology', 'assigned_to')
 

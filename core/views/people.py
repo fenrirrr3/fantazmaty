@@ -12,7 +12,7 @@ from core.permissions import (
 )
 from core.selectors.people import (user_leave_information, profile_assignments as _profile_assignments, imported_work_summary as _imported_work_summary)
 from people.models import Person, Role
-from texts.models import ReviewAssignment
+from texts.models import Review, ReviewAssignment
 
 
 def _filter_data(request):
@@ -150,6 +150,11 @@ def person_detail(request, person_id):
             "hide_completed": hide_completed,
             "person_summary": person_summary,
             "imported_work_summary": _imported_work_summary(person),
+            "completed_reviews": ReviewAssignment.objects.submitted().filter(
+                user_id=person.user_id, review__old_reviews=False,
+            ).filter(review__in=Review.objects.visible_to(request.user))
+                .select_related("review__anthology").order_by("review__anthology__title", "review__title", "pk")
+                if person.user_id else ReviewAssignment.objects.none(),
             "archived_reviews": ReviewAssignment.objects.submitted().filter(review__old_reviews=True).filter(
                 Q(historical_person=person) | (Q(user_id=person.user_id) if person.user_id else Q(pk__in=[]))
             ).select_related("review__anthology").order_by("review__anthology__title", "review__title", "position"),

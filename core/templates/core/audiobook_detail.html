@@ -1,7 +1,7 @@
 {% extends "core/base.html" %}
 {% load static %}
 {% block title %}Audiobook: {{ text.title }} | Fantazmaty CMS{% endblock %}
-{% block extra_css %}{{ block.super }}<link rel="stylesheet" href="{% static 'core/audiobook-production.css' %}?v=61">{% endblock %}
+{% block extra_css %}{{ block.super }}<link rel="stylesheet" href="{% static 'core/audiobook-production.css' %}?v=70">{% endblock %}
 {% block content %}
 <header class="page-header">
     <h1 class="page-title">Audiobook: {{ text.title }}</h1>
@@ -24,22 +24,20 @@
 <div class="audio-detail-columns">
 <div class="audio-detail-left">
 <section class="card"><div class="card-body">
-    <h2>Lektor i dźwiękowiec</h2>
-    <div class="audio-actions">{% if audio.narrator_contact_id %}<a class="secondary-button" href="{% url 'core:audio_contributor' audio.narrator_contact_id %}">{{ audio.narrator_name }} – nagrania</a>{% endif %}{% if audio.engineer_contact_id %}<a class="secondary-button" href="{% url 'core:audio_contributor' audio.engineer_contact_id %}">{{ audio.engineer_name }} – nagrania</a>{% endif %}</div>
+    <h2>Lektor i montaż</h2>
     {% if can_edit %}<form method="post" class="audio-production-form" data-warn-unsaved data-contact-endpoint="{% url 'core:contact_suggestions' %}">
         {% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="people">{{ people_form.non_field_errors }}
         {{ people_form.narrator_contact }}{{ people_form.engineer_contact }}{{ people_form.narrator_contact.errors }}{{ people_form.engineer_contact.errors }}
-        <fieldset><legend>Lektor</legend><div class="form-field">{{ people_form.narrator_name.label_tag }}{{ people_form.narrator_name }}{{ people_form.narrator_name.errors }}</div><div class="form-field">{{ people_form.narrator_email.label_tag }}{{ people_form.narrator_email }}{{ people_form.narrator_email.errors }}</div></fieldset>
-        <fieldset><legend>Dźwiękowiec</legend><div class="form-field">{{ people_form.engineer_name.label_tag }}{{ people_form.engineer_name }}{{ people_form.engineer_name.errors }}</div><div class="form-field">{{ people_form.engineer_email.label_tag }}{{ people_form.engineer_email }}{{ people_form.engineer_email.errors }}</div></fieldset>
+        <fieldset><legend>Lektor</legend><div class="audio-name-profile"><div class="form-field">{{ people_form.narrator_name.label_tag }}{{ people_form.narrator_name }}{{ people_form.narrator_name.errors }}</div>{% if audio.narrator_contact_id %}<a class="secondary-button" href="{% url 'core:audio_contributor' audio.narrator_contact_id %}">Otwórz profil</a>{% endif %}</div><div class="form-field">{{ people_form.narrator_email.label_tag }}{{ people_form.narrator_email }}{{ people_form.narrator_email.errors }}</div></fieldset>
+        <fieldset><legend>Montaż</legend><div class="audio-name-profile"><div class="form-field">{{ people_form.engineer_name.label_tag }}{{ people_form.engineer_name }}{{ people_form.engineer_name.errors }}</div>{% if audio.engineer_contact_id %}<a class="secondary-button" href="{% url 'core:audio_contributor' audio.engineer_contact_id %}">Otwórz profil</a>{% endif %}</div><div class="form-field">{{ people_form.engineer_email.label_tag }}{{ people_form.engineer_email }}{{ people_form.engineer_email.errors }}</div></fieldset>
         <button class="primary-button">Zapisz</button>
     </form>{% else %}
-        <p><strong>Lektor:</strong> {{ audio.narrator_name|default:"Nie przypisano" }}</p>
+        <div class="audio-name-profile"><p><strong>Lektor:</strong> {{ audio.narrator_name|default:"Nie przypisano" }}</p>{% if audio.narrator_contact_id %}<a class="secondary-button" href="{% url 'core:audio_contributor' audio.narrator_contact_id %}">Otwórz profil</a>{% endif %}</div>
         {% if can_coordinate and audio.narrator_email %}<p>{{ audio.narrator_email }}</p>{% endif %}
-        <p><strong>Dźwiękowiec:</strong> {{ audio.engineer_name|default:"Nie przypisano" }}</p>
+        <div class="audio-name-profile"><p><strong>Montaż:</strong> {{ audio.engineer_name|default:"Nie przypisano" }}</p>{% if audio.engineer_contact_id %}<a class="secondary-button" href="{% url 'core:audio_contributor' audio.engineer_contact_id %}">Otwórz profil</a>{% endif %}</div>
         {% if can_coordinate and audio.engineer_email %}<p>{{ audio.engineer_email }}</p>{% endif %}
     {% endif %}
-    <p><strong>Korektor audiobooka:</strong> {{ proofreader_display|default:"Nie przypisano" }}</p>
-    {% if can_coordinate %}<a class="secondary-button" href="{% url 'core:audio_proofreading' %}">Przypisz w Korekcie audiobooków</a>{% endif %}
+    <p><strong>Korektor audiobooka:</strong> {% if audio.proofreader.person_profile %}<a href="{% url 'core:person_detail' audio.proofreader.person_profile.pk %}">{{ proofreader_display }}</a>{% else %}{{ proofreader_display|default:"Nie przypisano" }}{% endif %}</p>
 </div></section>
 <section class="card"><div class="card-body"><h2>Publikacja</h2>
     {% if can_edit %}<form method="post" class="audio-production-form" data-warn-unsaved>

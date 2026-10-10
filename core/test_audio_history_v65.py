@@ -36,7 +36,7 @@ class AudioHistoryTests(TestCase):
         for user, expected in [(self.old, [self.first.pk]), (self.new, [self.second.pk]),
                 (self.coordinator, [self.second.pk, self.first.pk]), (self.admin, [self.second.pk, self.first.pk])]:
             self.client.force_login(user)
-            page = self.client.get(self.queue)
+            page = self.client.get(self.queue, {'hide_completed': '0'})
             self.assertEqual(page.status_code, 200)
             self.assertEqual(page.context['page_obj'].paginator.count, 1)
             row = list(page.context['texts'])[0]
@@ -45,10 +45,10 @@ class AudioHistoryTests(TestCase):
             self.assertNotContains(page, 'name="proofreader"')
             self.assertContains(page, reverse('core:audiobook_detail', args=[self.text.pk]))
             self.assertEqual(self.client.get(self.queue, {'status': 'editing'}).context['page_obj'].paginator.count, 0)
-            self.assertEqual(self.client.get(self.queue, {'status': 'published', 'q': self.text.title}).context['page_obj'].paginator.count, 1)
+            self.assertEqual(self.client.get(self.queue, {'status': 'published', 'q': self.text.title, 'hide_completed': '0'}).context['page_obj'].paginator.count, 1)
         outsider = create_member('hist-outsider', 'Korektor audiobooków')
         self.client.force_login(outsider)
-        self.assertEqual(self.client.get(self.queue).context['page_obj'].paginator.count, 0)
+        self.assertEqual(self.client.get(self.queue, {'hide_completed': '0'}).context['page_obj'].paginator.count, 0)
 
     def test_blacklisted_withdrawn_and_disabled_remain_read_only_in_history(self):
         self.text.for_recording = False
@@ -56,7 +56,7 @@ class AudioHistoryTests(TestCase):
         self.text.save()
         WorkflowStage.objects.create(text=self.text, stage_type='withdrawn')
         self.client.force_login(self.admin)
-        page = self.client.get(self.queue)
+        page = self.client.get(self.queue, {'hide_completed': '0'})
         self.assertEqual(page.context['page_obj'].paginator.count, 1)
         self.assertContains(page, 'Wyłączony z produkcji')
         self.assertFalse(list(page.context['texts'])[0]['allow_assignment'])
@@ -103,7 +103,7 @@ class AudioHistoryTests(TestCase):
             rows, _ = profile_assignments(user.person_profile, include_authors=True)
             self.assertEqual({r['latest_stage']['pk'] for r in rows}, expected)
         self.client.force_login(self.admin)
-        self.assertTrue(list(self.client.get(self.queue).context['texts'])[0]['allow_assignment'])
+        self.assertTrue(list(self.client.get(self.queue, {'hide_completed': '0'}).context['texts'])[0]['allow_assignment'])
 
     def test_completed_correction_cannot_be_reassigned_with_forged_post(self):
         self.audio.status = 'proofreading'

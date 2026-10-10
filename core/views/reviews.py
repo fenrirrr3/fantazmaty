@@ -69,8 +69,15 @@ MAX_DATABASE_ID = 9_223_372_036_854_775_807
 # Widok nie zastępuje tej walidacji sprawdzeniem wykonanym przed zapisem.
 
 
-def _get_review(user, review_id):
-    queryset = ordinary(Review.objects).accessible_to(user).select_related("anthology")
+def _get_review(user, review_id, *, history=False):
+    queryset = ordinary(Review.objects, include_abandoned=history).accessible_to(user)
+    if history:
+        submitted = ReviewAssignment.objects.submitted()
+        if not can_manage_reviews(user):
+            submitted = submitted.filter(Q(user=user) | Q(historical_person__user=user))
+        queryset = queryset.filter(Q(pk__in=ordinary(Review.objects).values('pk'))
+            | Q(pk__in=submitted.values('review_id')))
+    queryset = queryset.select_related("anthology", "copied_text__anthology")
 
     if can_view_author_data(user) or can_view_archived_review_authors(user):
         queryset = queryset.select_related("author").prefetch_related("coauthors")
@@ -84,8 +91,14 @@ def _detail_redirect(review_id):
     )
 
 
+def _review_is_abandoned(review):
+    return bool((review.anthology_id and review.anthology.status == 'abandoned')
+        or (review.copied_text_id and review.copied_text.anthology_id
+            and review.copied_text.anthology.status == 'abandoned'))
+
+
 def _review_is_locked(review):
-    return review.old_reviews or review.status in CLOSED_REVIEW_STATUSES
+    return review.old_reviews or review.status in CLOSED_REVIEW_STATUSES or _review_is_abandoned(review)
 
 
 def _require_open_review(review):
@@ -361,6 +374,12 @@ def _render_review_detail(
         context['author_message'] = review.author_message
     if bound_forms:
         context.update(bound_forms)
+    context['is_abandoned_review'] = _review_is_abandoned(review)
+    if context['is_abandoned_review']:
+        # History stays readable; abandoned submissions cannot restart production.
+        for key in ('can_manage_review_files', 'can_restore_from_decision', 'can_mark_for_decision',
+                    'can_change_review_status', 'can_notify_author', 'can_copy_review_to_text'):
+            context[key] = False
 
     return render(
         request,
@@ -549,7 +568,7 @@ def unassign_reviewer(request, review_id):
 @require_http_methods(["GET", "POST"])
 @team_member_required
 def assigned_review_detail(request, review_id):
-    review = _get_review(request.user, review_id)
+    review = _get_review(request.user, review_id, history=request.method == "GET")
 
     if request.method == "GET":
         return _render_review_detail(request, review)
@@ -805,26 +824,29 @@ def my_reviews(request):
     if view not in {"active", "waiting", "completed", "all", "archived"}:
         view = "active"
     if view == "archived":
-        rows = ordinary(ReviewAssignment.objects).filter(
+        rows = ordinary(ReviewAssignment.objects, include_abandoned=True).filter(
             Q(user=request.user) | Q(historical_person__user=request.user),
             review__old_reviews=True,
         ).submitted().select_related("review__anthology").order_by("review__anthology__title", "review__title", "pk")
     else:
-        rows = ordinary(ReviewAssignment.objects).filter(user=request.user, review__old_reviews=False, review__is_hidden=False).select_related("review__anthology").order_by("-assigned_at", "-pk")
+        rows = ordinary(ReviewAssignment.objects, include_abandoned=True).filter(
+            user=request.user, review__old_reviews=False, review__is_hidden=False,
+        ).filter(Q(pk__in=ordinary(ReviewAssignment.objects).values('pk'))
+            | ~Q(opinion__in=('', 'reading'))).select_related("review__anthology").order_by("-assigned_at", "-pk")
     if view == "active":
         rows = rows.filter(opinion="reading", review__status__in=("new", "in_review", "to_decide"))
     elif view == "waiting":
         rows = rows.filter(opinion="", review__status__in=("new", "in_review", "to_decide"))
     elif view == "completed":
         rows = rows.exclude(opinion__in=("", "reading"))
+    own_anthologies = rows.order_by().values('review__anthology_id')
     query = request.GET.get("q", "").strip()[:255]
     for term in query.split():
         rows = rows.filter(Q(review__title__plcontains=term) | Q(review__anthology__title__plcontains=term))
     from texts.models import Anthology
     from core.selectors.texts import _positive_id
     anthology_id = _positive_id(request.GET.get("anthology"))
-    own_anthologies = ordinary(ReviewAssignment.objects).filter(Q(user=request.user) | Q(historical_person__user=request.user)).order_by().values("review__anthology_id")
-    anthologies = ordinary(Anthology.objects).filter(pk__in=own_anthologies).order_by("title", "pk")
+    anthologies = ordinary(Anthology.objects, include_abandoned=True).filter(pk__in=own_anthologies).order_by("title", "pk")
     if anthology_id is not None:
         rows = rows.filter(review__anthology_id=anthology_id)
     opinion_choices = [(v, label) for v, label in Reviewers.Opinion.choices if v not in ("", "reading")]

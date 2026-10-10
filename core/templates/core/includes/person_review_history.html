@@ -1,0 +1,5 @@
+{% if history_reviews %}
+<section class="details-card"><h2>{{ history_heading }} ({{ history_reviews|length }})</h2>
+<div class="table-container"><table data-copy-table><thead><tr><th data-sort-key="title" class="sticky-title">Tytuł</th><th data-sort-key="anthology">Antologia</th><th data-sort-key="opinion">Opinia</th><th>Data opinii</th></tr></thead><tbody>
+{% for assignment in history_reviews %}<tr><td data-double-copy class="sticky-title"><strong>{% if user.is_superuser %}<a href="{% url 'core:assigned_review_detail' assignment.review_id %}" class="text-title-link">{{ assignment.review.title }}</a>{% else %}{{ assignment.review.title }}{% endif %}</strong></td><td>{{ assignment.review.anthology.title }}</td><td><span class="reviewer-bubble reviewer-opinion-{{ assignment.opinion }}">{{ assignment.get_opinion_display }}</span></td><td>{{ assignment.opinion_changed_at|date:"d.m.Y"|default:"–" }}</td></tr>{% endfor %}
+</tbody></table></div></section>{% endif %}

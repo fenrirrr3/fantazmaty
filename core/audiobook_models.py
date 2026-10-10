@@ -15,8 +15,8 @@ class AudioContributor(models.Model):
         related_name='audio_contacts', verbose_name='powiązane konto (opcjonalne)')
 
     class Meta:
-        verbose_name = 'lektor / dźwiękowiec'
-        verbose_name_plural = 'Lektorzy i dźwiękowcy'
+        verbose_name = 'lektor / montaż'
+        verbose_name_plural = 'Lektorzy i montaż'
         ordering = ('name', 'pk')
         constraints = [models.UniqueConstraint(fields=('name', 'email'), name='unique_audio_contact_pair')]
 
@@ -59,9 +59,9 @@ class Audiobook(models.Model):
     narrator_contact = models.ForeignKey(AudioContributor, on_delete=models.PROTECT, null=True, blank=True,
         related_name='narrated_books', verbose_name='profil lektora')
     engineer_contact = models.ForeignKey(AudioContributor, on_delete=models.PROTECT, null=True, blank=True,
-        related_name='engineered_books', verbose_name='profil dźwiękowca')
+        related_name='engineered_books', verbose_name='profil montażysty')
     narrator_email = models.EmailField('e-mail lektora', blank=True)
-    engineer_name = models.CharField('dźwiękowiec – imię i nazwisko', max_length=255, blank=True)
+    engineer_name = models.CharField('montaż – imię i nazwisko', max_length=255, blank=True)
     engineer_email = models.EmailField('e-mail dźwiękowca', blank=True)
     proofreader = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
         related_name='proofread_audiobooks', verbose_name='korektor audiobooka')

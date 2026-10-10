@@ -91,6 +91,35 @@ class AnthologyTaskInline(admin.TabularInline):
 
 @admin.register(Anthology)
 class AnthologyAdmin(admin.ModelAdmin):
+    def get_deleted_objects(self, objs, request):
+        # Only the parent deletion may remove its untouched default tasks.
+        previous = getattr(request, '_deleting_anthologies', None)
+        request._deleting_anthologies = {obj.pk for obj in objs}
+        try:
+            return super().get_deleted_objects(objs, request)
+        finally:
+            if previous is None:
+                del request._deleting_anthologies
+            else:
+                request._deleting_anthologies = previous
+
+    def _delete_anthologies(self, request, queryset):
+        using = queryset.db
+        with transaction.atomic(using=using):
+            books = list(queryset.select_for_update().order_by('pk'))
+            list(AnthologyTask.objects.using(using).select_for_update().filter(
+                anthology_id__in=[book.pk for book in books]).order_by('pk'))
+            _, _, permissions, protected = self.get_deleted_objects(books, request)
+            if permissions or protected:
+                raise PermissionDenied('Antologia ma zadania z przypisaniami lub inne chronione dane. Odśwież podgląd usuwania.')
+            queryset.delete()
+
+    def delete_model(self, request, obj):
+        self._delete_anthologies(request, Anthology.objects.using(obj._state.db).filter(pk=obj.pk))
+
+    def delete_queryset(self, request, queryset):
+        self._delete_anthologies(request, queryset)
+
     def get_fieldsets(self, request, obj=None):
         fieldsets = super().get_fieldsets(request, obj)
         if obj and obj.is_novel:
