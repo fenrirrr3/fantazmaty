@@ -1,9 +1,10 @@
 {% extends "core/base.html" %}
 {% load static %}
 {% block title %}{{ anthology.title }} | Fantazmaty CMS{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'core/anthology-cover.css' %}">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/anthology-cover.css' %}"><link rel="stylesheet" href="{% static 'core/dialogs.css' %}">{% endblock %}
 {% block content %}{% if return_url %}<p><a class="secondary-button" href="{{ return_url }}">Wróć do poprzedniej listy</a></p>{% endif %}
-<header class="page-header"><h1 class="page-title">{{ anthology.title }}</h1><p class="page-description">{{ anthology.get_status_display }}</p><a class="secondary-button" href="{% if anthology.is_translated %}{% url 'core:translation_list' %}{% else %}{% url 'core:text_list' %}{% endif %}?anthology={{ anthology.pk }}&amp;hide_ready=0">Teksty antologii</a></header>
+<header class="page-header"><h1 class="page-title">{{ anthology.title }}</h1><p class="page-description">{{ anthology.get_status_display }}</p><div class="actions"><a class="secondary-button" href="{% if anthology.is_translated %}{% url 'core:translation_list' %}{% else %}{% url 'core:text_list' %}{% endif %}?anthology={{ anthology.pk }}&amp;hide_ready=0">Teksty antologii</a>{% if show_checklist %}{% if recordable_count %}<button type="button" class="secondary-button" data-dialog-open="block-recording">Zablokuj nagrywanie</button>{% elif has_texts %}<span class="muted-text">Wszystkie teksty są na czarnej liście audiobooków.</span>{% endif %}{% endif %}</div></header>
+{% if show_checklist and recordable_count %}<dialog id="block-recording" class="cms-dialog" aria-labelledby="block-recording-heading"><form method="post">{% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="block_recording"><h2 id="block-recording-heading">Zablokować nagrywanie audiobooków?</h2><p>Na czarną listę audiobooków trafi {{ recordable_count }} {% if recordable_count == 1 %}tekst{% elif recordable_count < 5 %}teksty{% else %}tekstów{% endif %} tej antologii. Nie będzie można ich nagrywać; usunięcie z czarnej listy jest możliwe tylko w panelu admina. Audiodeskrypcji antologii to nie dotyczy.</p><div class="actions"><button type="submit" class="danger-button">Zablokuj nagrywanie</button><button type="button" class="secondary-button" data-dialog-close>Anuluj</button></div></form></dialog>{% endif %}
 {% if extract_text %}<p><a class="secondary-button" href="{% url 'core:assigned_text_detail' extract_text.pk %}">Etapy pracy całego tomu</a>{% if show_checklist %} <a class="secondary-button" href="{% url 'core:extract_list' %}?recruitment={{ anthology.title|urlencode }}">Informacyjny rejestr miniatur</a>{% endif %}</p>{% endif %}
 {% if show_checklist %}
 <div class="anthology-preparation-grid">
@@ -51,4 +52,4 @@
 {% if show_credits %}<section class="card"><div class="card-body"><h2>Osoby i wykonane prace</h2><p>Ukończone prace, także zapisane bez dat. Każda osoba pojawia się raz w danej kategorii.</p><ul class="credits-list">{% for row in credits %}<li><strong>{{ row.label }}:</strong> {{ row.names|join:", "|default:"–" }}</li>{% endfor %}</ul></div></section>{% endif %}
 {% endblock %}
 
-{% block scripts %}{{ block.super }}<script src="{% static 'core/person-select.js' %}" defer></script><script src="{% static 'core/contact-suggestions.js' %}" defer></script>{% endblock %}
+{% block scripts %}{{ block.super }}<script src="{% static 'core/dialogs.js' %}" defer></script><script src="{% static 'core/person-select.js' %}" defer></script><script src="{% static 'core/contact-suggestions.js' %}" defer></script>{% endblock %}

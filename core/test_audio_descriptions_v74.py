@@ -92,7 +92,9 @@ class AudioDescriptionTests(TestCase):
         self.task.refresh_from_db()
         self.assertEqual(self.task.status, "ready")
         self.description.controllers.clear()
-        self.assertEqual(self.post(self.other, {"action": "note", "note": "x"}).status_code, 403)
+        self.assertEqual(self.post(self.other, {"action": "stage", "stage": "consultation"}).status_code, 403)
+        # Uwagi zapisuje każdy członek zespołu.
+        self.assertEqual(self.post(self.other, {"action": "note", "note": "x"}).status_code, 302)
 
     def test_assignee_cannot_change_owner_or_grant_control(self):
         self.post(self.member, {}, self.claim)

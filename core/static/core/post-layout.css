@@ -1,7 +1,7 @@
 .post-layout-add {
     display: grid;
-    grid-template-columns: 2fr 2fr 1fr 1fr;
-    gap: var(--space-4);
+    grid-template-columns: 1fr;
+    gap: var(--space-3);
     align-items: end;
 }
 
@@ -100,6 +100,15 @@
     gap: var(--space-4);
 }
 
+/* Dodaj przydział, wyszukiwanie i operacje zbiorcze obok siebie. */
+.post-layout-toolbar:has(> .card:nth-child(3)) {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.post-layout-toolbar h2 {
+    margin-top: 0;
+}
+
 .post-layout-toolbar {
     margin-bottom: var(--space-5);
 }
@@ -117,16 +126,18 @@
     min-width: 0;
 }
 
-.post-layout-table-wrap {
-    padding-inline: var(--space-5);
-}
-
 .post-layout-table tbody a {
     font-weight: 400;
 }
 
+@media (max-width: 1100px) {
+    .post-layout-toolbar:has(> .card:nth-child(3)) {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
 @media (max-width: 760px) {
-    .post-layout-toolbar, .post-layout-edit {
+    .post-layout-toolbar:has(> .card:nth-child(3)), .post-layout-toolbar, .post-layout-edit {
         grid-template-columns: 1fr;
     }
     .post-layout-status {
@@ -140,14 +151,8 @@
     }
 }
 
-@media (max-width: 760px) {
-    .post-layout-add {
-        grid-template-columns: 1fr 1fr;
-    }
-}
 
-@media (max-width: 480px) {
-    .post-layout-add {
-        grid-template-columns: 1fr;
-    }
+/* W wąskiej kolumnie: pole, opcje i przyciski w osobnych wierszach. */
+.post-layout-toolbar .post-layout-filter-controls > :is(input, .post-layout-hide) {
+    flex-basis: 100%;
 }

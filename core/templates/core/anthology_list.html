@@ -63,7 +63,7 @@
 
                                 <td>
                                     {% if typesetting %}
-                                        <span class="stage-status {% if typesetting.status == 'ready' %}completed{% elif typesetting.status == 'commissioned' %}active{% else %}pending{% endif %}">
+                                        <span class="stage-status {% if typesetting.status == 'ready' or typesetting.status == 'not_applicable' %}completed{% elif typesetting.status == 'commissioned' %}active{% else %}pending{% endif %}">
                                             {{ typesetting.get_status_display }}
                                         </span>
                                     {% else %}

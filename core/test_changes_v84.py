@@ -258,7 +258,7 @@ class ReviewVisibilityTests(TestCase):
         url = reverse('core:my_reviews')
         counts = {view: self.client.get(url, {'view': view}).context['page_obj'].paginator.count
                   for view in ('active', 'completed', 'decided', 'all')}
-        self.assertEqual(counts, {'active': 1, 'completed': 2, 'decided': 1, 'all': 3})
+        self.assertEqual(counts, {'active': 1, 'completed': 2, 'decided': 2, 'all': 2})
 
     def test_rejected_cannot_be_linked_but_other_anthology_can(self):
         other = Anthology.objects.create(title='Inna antologia v84')

@@ -10,7 +10,7 @@ from docx import Document
 from docx.shared import RGBColor
 
 from core.program_test_support import run_program
-from core.services.odkurzacz import clean_docx, EDITORIAL_RULES, DEFAULT_EDITORIAL_RULES, correct_editorial_text
+from core.services.odkurzacz import clean_docx, EDITORIAL_RULES, FORM_DEFAULT_EDITORIAL_RULES, correct_editorial_text
 from core.odkurzacz_forms import OdkurzaczForm
 from people.models import Person
 
@@ -42,7 +42,7 @@ class OdkurzaczTests(TestCase):
         response = self.client.get(self.url)
         self.assertContains(response, 'Odkurzacz')
         self.assertContains(response, 'name="rules"', count=len(EDITORIAL_RULES))
-        self.assertEqual(sum(' checked' in str(checkbox.tag()) for checkbox in response.context['form']['rules']), len(DEFAULT_EDITORIAL_RULES))
+        self.assertEqual(sum(' checked' in str(checkbox.tag()) for checkbox in response.context['form']['rules']), len(FORM_DEFAULT_EDITORIAL_RULES))
         self.assertNotContains(response, 'gifrific')
 
     def test_download_uses_selected_rules(self):

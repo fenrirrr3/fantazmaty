@@ -37,6 +37,7 @@
     --success-border: #bcdcc8; --warning-border: #ead8a7; --primary-border: #bfd7f2;
     --warning-accent: #bf8d20;
     --badge-neutral-bg: #edf1f5; --badge-neutral-fg: #526176;
+    --accent: #6d28d9; --accent-hover: #4c1d95; --on-accent: #ffffff;
     --media-bg: #101820; --logo-bg: #ffffff;
     --backdrop: rgb(15 26 40 / 48%);
 }
@@ -67,6 +68,7 @@
     --sidebar-heading-bg: var(--table-header); --sidebar-heading-fg: var(--text);
     --sidebar-link-bg: var(--surface-alt); --sidebar-link-ring: var(--border);
     --table-header-fg: var(--text);
+    --accent: #c4b5fd; --accent-hover: #ede9fe; --on-accent: #1e1240;
 }
 
 /* Ciepły jasny motyw; odznaki etapów zachowują kolory ról z motywu jasnego. */
@@ -90,6 +92,7 @@
     --sidebar-link-bg: var(--surface-alt); --sidebar-link-ring: var(--border);
     --table-header-fg: #5a4330;
     --selection-bg: #f9e4c8; --selection-fg: #382c22;
+    --accent: #0f6b5f; --accent-hover: #0a4a42; --on-accent: #ffffff;
 }
 
 /* Palety ról i etapów: element z data-palette dostaje parę kolorów. */

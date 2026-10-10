@@ -11,7 +11,7 @@
 <section class="card"><div class="profile-table-inset"><div class="table-container"><table data-server-paginated="true"><thead><tr><th>Antologia</th><th>Kto pisze</th><th>Status</th><th>Konsultacja</th><th>Akcja</th></tr></thead>
 <tbody>{% for row in rows %}<tr><td><a class="text-title-link" href="{% url 'core:audio_description_detail' row.book.pk %}">{{ row.book.title }}</a></td>
 <td>{% if row.task.assigned_to_id %}<a href="{% url 'core:person_detail' row.task.assigned_to_id %}">{{ row.task.assigned_to }}</a>{% else %}Nieprzypisane{% endif %}</td>
-<td><span class="stage-status {% if row.task.status == 'ready' %}completed{% elif row.task.status == 'commissioned' %}active{% else %}pending{% endif %}">{{ row.task.get_status_display }}</span></td>
+<td><span class="stage-status {% if row.task.status == 'ready' or row.task.status == 'not_applicable' %}completed{% elif row.task.status == 'commissioned' %}active{% else %}pending{% endif %}">{{ row.task.get_status_display }}</span></td>
 <td>{% for person in row.controllers %}<a href="{% url 'core:person_detail' person.pk %}">{{ person }}</a>{% if not forloop.last %}, {% endif %}{% empty %}–{% endfor %}</td>
 <td>{% if row.can_claim %}<form method="post" action="{% url 'core:claim_audio_description' row.book.pk %}">{% csrf_token %}<input type="hidden" name="_edit_version" value="{{ row.token }}"><button class="primary-button" type="submit">Przejmij</button></form>{% else %}<a class="secondary-button" href="{% url 'core:audio_description_detail' row.book.pk %}">Podgląd</a>{% endif %}</td></tr>
 {% empty %}<tr><td colspan="5">Brak audiodeskrypcji pasujących do filtrów.</td></tr>{% endfor %}</tbody></table></div>{% include "core/includes/pagination.html" %}</div></section>

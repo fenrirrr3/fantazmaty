@@ -31,8 +31,6 @@ class ProofreaderField(forms.ModelChoiceField):
 class AssignmentForm(forms.Form):
     anthology = forms.ModelChoiceField(label='Antologia', queryset=Anthology.objects.none())
     proofreader = ProofreaderField(label='Korektor poskładowy', queryset=get_user_model().objects.none())
-    page_from = forms.IntegerField(label='Strona od', min_value=1, max_value=2147483647)
-    page_to = forms.IntegerField(label='Strona do', min_value=1, max_value=2147483647)
     token = forms.CharField(widget=forms.HiddenInput)
 
     def __init__(self, *args, user, **kwargs):
@@ -51,15 +49,11 @@ class AssignmentForm(forms.Form):
         except (signing.BadSignature, ValueError, TypeError):
             raise forms.ValidationError('Formularz wygasł. Odśwież stronę.')
 
-    def clean(self):
-        data = super().clean()
-        if data.get('page_from') and data.get('page_to') and data['page_to'] < data['page_from']:
-            self.add_error('page_to', 'Koniec zakresu nie może być mniejszy od początku.')
-        return data
 
 
 @transaction.atomic
-def create_assignment(*, user, anthology, proofreader, page_from, page_to, token):
+def create_assignment(*, user, anthology, proofreader, token, page_from=None, page_to=None):
+    """Zakres stron jest opcjonalny – można go uzupełnić później w edycji wpisu."""
     require_post_layout(user)
     if not can_manage(user):
         raise PermissionDenied()
@@ -103,8 +97,10 @@ class AssignmentEditForm(forms.ModelForm):
         self.fields['completed_on'].disabled = self.instance.status != 'completed'
         self.fields['work_start'].required = self.instance.status != 'assigned' and not self.instance.historical
         self.fields['completed_on'].required = self.instance.status == 'completed' and not self.instance.historical
-        for name in ('page_from', 'page_to', 'assigned_start'):
-            self.fields[name].required = not self.instance.historical
+        self.fields['assigned_start'].required = not self.instance.historical
+        for name in ('page_from', 'page_to'):
+            self.fields[name].required = False
+            self.fields[name].help_text = 'Opcjonalne – podaj obie strony albo żadną.'
         self.fields['work_start'].help_text = 'To także data zakończenia etapu Przydzielony.'
         self.fields['completed_on'].help_text = 'To także data zakończenia etapu W trakcie.'
 
@@ -117,6 +113,11 @@ class AssignmentEditForm(forms.ModelForm):
             self.add_error('completed_on', 'Zakończenie nie może poprzedzać przydzielenia.')
         if work and end and end < work:
             self.add_error('completed_on', 'Zakończenie nie może poprzedzać rozpoczęcia pracy.')
+        first, last = data.get('page_from'), data.get('page_to')
+        if (first is None) != (last is None):
+            self.add_error('page_to' if first else 'page_from', 'Podaj obie strony zakresu albo żadną.')
+        elif first and last and last < first:
+            self.add_error('page_to', 'Koniec zakresu nie może być mniejszy od początku.')
         self.instance.assigned_end = work
         self.instance.work_end = end
         return data

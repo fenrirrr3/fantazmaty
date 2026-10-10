@@ -463,23 +463,12 @@ section:has(#reserved-assignments-heading) {
     overflow-wrap: anywhere;
 }
 
-.take-stage-action {
-    display: grid;
-    flex: 0 0 auto;
-    gap: var(--field-gap);
-}
-
 :is(.take-stage-form, .start-stage-form) button {
     white-space: nowrap;
 }
 
-.take-stage-action .form-label {
-    font-size: var(--font-size-sm);
-    font-weight: 600;
-}
-
-/* Kolumna etapu wyrównana do przycisku przejęcia, nie do etykiety „Akcja” nad nim. */
-.available-stage-cell:has(+ td .take-stage-action) {
+/* Kolumna etapu wyrównana do przycisku przejęcia i pola daty, nie do etykiety daty. */
+.available-stage-cell:has(+ td .take-stage-form .stage-date-input) {
     padding-top: calc(var(--cell-padding-block) + var(--font-size-sm) * var(--leading) + var(--field-gap));
 }
 
@@ -552,6 +541,7 @@ section:has(#reserved-assignments-heading) {
 }
 
 .workflow-table-frame {
+    --table-bleed: var(--space-5);
     min-width: 0;
     padding: 0 var(--space-5) var(--space-4);
 }
@@ -1025,6 +1015,7 @@ section:has(#reserved-assignments-heading) {
 
     .profile-table-inset,
     .author-table-inset {
+        --table-bleed: var(--space-4);
         padding-inline: var(--space-4);
     }
 }

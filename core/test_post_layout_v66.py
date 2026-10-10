@@ -28,13 +28,15 @@ class PostLayoutTests(TestCase):
         user = user or self.manager
         form = AssignmentForm(user=user)
         return {'action': 'create', 'token': form.initial['token'], 'anthology': self.book.pk,
-            'proofreader': self.reader.pk, 'page_from': 1, 'page_to': 20, **values}
+            'proofreader': self.reader.pk, **values}
 
     def create(self, user=None, **values):
+        # Zakres stron nie jest już w formularzu dodawania – ustawiamy go jak edycja wpisu.
+        pages = {'page_from': values.pop('page_from', 1), 'page_to': values.pop('page_to', 20)}
         user = user or self.manager
         form = AssignmentForm(self.form_data(user, **values), user=user)
         self.assertTrue(form.is_valid(), form.errors)
-        return create_assignment(user=user, **form.cleaned_data)
+        return create_assignment(user=user, **form.cleaned_data, **pages)
 
     def transition(self, item, status, user=None, version=None):
         self.client.force_login(user or self.reader)
@@ -51,9 +53,10 @@ class PostLayoutTests(TestCase):
         self.assertEqual(item.status, 'assigned')
         self.assertIsNotNone(item.assigned_start)
         self.assertIsNone(item.work_start)
-        self.assertEqual(self.client.post(self.url, self.form_data(page_from=21, page_to=50)).status_code, 302)
+        self.assertEqual(item.pages_display, 'brak zakresu stron')
+        self.assertEqual(self.client.post(self.url, self.form_data()).status_code, 302)
         self.assertEqual(PostLayoutAssignment.objects.count(), 2)
-        for values in ({'page_from': 0}, {'page_from': 30, 'page_to': 20}, {'proofreader': self.editor.pk}):
+        for values in ({'proofreader': self.editor.pk}, {'anthology': ''}):
             self.assertEqual(self.client.post(self.url, self.form_data(**values)).status_code, 400)
         self.client.force_login(self.reader)
         self.assertEqual(self.client.post(self.url, self.form_data(self.reader)).status_code, 403)

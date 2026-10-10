@@ -289,23 +289,17 @@ class ChangesV80Tests(TestCase):
         self.client.force_login(self.reader)
         url = reverse("core:my_reviews")
         active = self.client.get(url)
-        all_page = self.client.get(url, {"view": "all"})
+        all_page = self.client.get(url, {"view": "completed"})
         self.assertEqual(
             {x.review_id for x in active.context["assignments"]}, {waiting.pk, reading.pk}
-        )
-        self.assertEqual(
-            {x.review_id for x in all_page.context["assignments"]},
-            {waiting.pk, reading.pk, rated.pk, accepted.pk, historic.pk},
         )
         self.assertNotIn(other.pk, {x.review_id for x in all_page.context["assignments"]})
         doc = html.fromstring(all_page.content)
         self.assertEqual(
             doc.xpath('//nav[@aria-label="Widok moich recenzji"]/a/text()'),
-            ["W toku", "Oddane", "Rozstrzygnięte", "Wszystkie"],
+            ["W toku", "Oddane"],
         )
-        decided = self.client.get(url, {"view": "decided"})
-        self.assertEqual({x.review_id for x in decided.context["assignments"]}, {accepted.pk, historic.pk})
-        for view in ["archived", "completed"]:
+        for view in ["archived", "completed", "decided", "all"]:
             self.assertEqual(
                 {x.review_id for x in self.client.get(url, {"view": view}).context["assignments"]},
                 {rated.pk, accepted.pk, historic.pk},

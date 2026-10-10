@@ -17,7 +17,6 @@ EDITORIAL_RULES = (
     ('spaces', 'Podwójne i wielokrotne spacje'),
     ('trim', 'Spacje na początku i końcu akapitu'),
     ('tabs', 'Tabulatory i mieszanki tabulatorów ze spacjami → jedna spacja'),
-    ('empty_paragraphs', 'Wielokrotne puste akapity → jeden pusty akapit'),
     ('before_punct', 'Spacje przed znakami interpunkcyjnymi'),
     ('after_punct', 'Brakujące spacje po interpunkcji (z wyjątkami)'),
     ('inside_brackets', 'Spacje wewnątrz nawiasów'),
@@ -46,9 +45,13 @@ EDITORIAL_RULES = (
     ('pronouns_lower', 'Zaimki osobowe małą literą – poza początkiem zdania i akapitu'),
     ('user_word_corrections', 'Własne zamiany słownikowe: 23 pozycje z fleksją (pikap / przekonujący / oddziałujący)'),
 )
-EDITORIAL_RULES += (('sentence_case', 'Wielka litera po . ? ! – z wyjątkami dla skrótów, liczb i dialogów'),)
+EDITORIAL_RULES += (('sentence_case', 'Wielka litera po . ? ! – z wyjątkami dla skrótów, liczb i dialogów'),
+                    ('empty_paragraphs', 'Wielokrotne puste akapity → jeden pusty akapit'))
 ALL_EDITORIAL_RULES = frozenset(key for key, _ in EDITORIAL_RULES)
 DEFAULT_EDITORIAL_RULES = ALL_EDITORIAL_RULES - {'pronouns_lower', 'user_word_corrections', 'empty_paragraphs'}
+# Formularz Odkurzacza zaznacza domyślnie także zaimki i zamiany słownikowe;
+# DEFAULT_EDITORIAL_RULES (bez nich) pozostaje dla automatycznego czyszczenia zgłoszeń.
+FORM_DEFAULT_EDITORIAL_RULES = ALL_EDITORIAL_RULES - {'empty_paragraphs'}
 NBSP = '\u00a0'
 H = r'[ \u00a0\u202f]'
 LETTERS = 'A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż'

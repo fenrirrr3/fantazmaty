@@ -10,7 +10,9 @@
 <form method="post" data-recruitment-samples>{% csrf_token %}
 <div class="recruitment-preview-grid">
     <section class="recruitment-role-panel" aria-label="Wybór roli">
-        <div class="filter-field recruitment-mail-roles">{{ form.roles.label_tag }}{{ form.roles }}{{ form.roles.errors }}<p class="muted-text">{{ form.roles.help_text }}</p></div>
+        <fieldset class="filter-field recruitment-mail-roles" data-recruitment-roles><legend class="form-label">{{ form.roles.label }}</legend>
+            <div class="recruitment-role-options">{% for checkbox in form.roles %}<label for="{{ checkbox.id_for_label }}">{{ checkbox.tag }} <span>{{ checkbox.choice_label }}</span></label>{% endfor %}</div>
+            {{ form.roles.errors }}<p class="muted-text">{{ form.roles.help_text }}</p></fieldset>
         <div class="recruitment-date-row"><div class="mailbox-options"><label class="mailbox-option">{{ form.show_downloaded }}<span>{{ form.show_downloaded.label }}</span></label><div class="mailbox-header-action"><button class="primary-button" type="submit" name="action" value="headers">Pobierz nagłówki od początku</button></div></div>
 {% include "core/includes/mailbox_date.html" %}</div>
     </section>

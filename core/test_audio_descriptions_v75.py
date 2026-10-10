@@ -42,19 +42,21 @@ class AudioDescriptionContentTests(TestCase):
         self.client.force_login(user)
         return self.client.post(self.url, {"_edit_version": self.token(user), **data})
 
-    def test_all_four_authorized_groups_edit_content_but_other_member_cannot(self):
-        for user in (self.writer, self.controller, self.manager, self.admin):
+    def test_every_team_member_saves_content_and_notes_but_not_the_stage(self):
+        for user in (self.writer, self.controller, self.manager, self.admin, self.other):
             response = self.post(user, action="content", content=f"Treść {user.pk}\nDrugi akapit.")
             self.assertEqual(response.status_code, 302)
             self.description.refresh_from_db()
             self.assertEqual(self.description.content, f"Treść {user.pk}\nDrugi akapit.")
-        self.assertEqual(
-            self.post(self.other, action="content", content="Nadpisane").status_code, 403
-        )
+        self.assertEqual(self.post(self.other, action="note", note="Uwaga spoza zespołu AD").status_code, 302)
+        self.assertTrue(AudioDescriptionNote.objects.filter(content="Uwaga spoza zespołu AD").exists())
+        self.assertEqual(self.post(self.other, action="stage", stage="consultation").status_code, 403)
         self.client.force_login(self.other)
         response = self.client.get(self.url)
         self.assertContains(response, "Drugi akapit.")
-        self.assertNotContains(response, 'name="content"')
+        self.assertContains(response, 'name="content"')
+        self.assertContains(response, 'name="note"')
+        self.assertNotContains(response, 'name="stage"')
 
     def test_stage_finishes_task_and_reopening_in_either_place_keeps_consistency(self):
         for stage in ("consultation", "proofreading", "completed"):
@@ -143,9 +145,7 @@ class AudioDescriptionContentTests(TestCase):
 
     def test_revoked_controller_cannot_save_and_unknown_action_is_bad_request(self):
         self.description.controllers.clear()
-        self.assertEqual(
-            self.post(self.controller, action="note", note="Brak dostępu").status_code, 403
-        )
+        self.assertEqual(self.post(self.controller, action="stage", stage="consultation").status_code, 403)
         self.assertEqual(self.post(self.writer, action="unknown").status_code, 400)
         self.assertFalse(AudioDescriptionNote.objects.exists())
 

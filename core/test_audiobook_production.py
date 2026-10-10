@@ -209,7 +209,9 @@ class AudiobookProductionTests(TestCase):
         self.client.force_login(self.admin)
         with CaptureQueriesContext(connection) as single:
             self.client.get(self.queue)
-        texts = Text.objects.bulk_create([Text(title=f'Tekst {i:02}', anthology=self.book, length=1) for i in range(30)])
+        Text.objects.bulk_create([Text(title=f'Tekst {i:02}', anthology=self.book, length=1) for i in range(30)])
+        # MySQL nie zwraca kluczy z bulk_create, więc teksty czytamy ponownie.
+        texts = Text.objects.filter(anthology=self.book, title__startswith='Tekst ')
         Audiobook.objects.bulk_create([Audiobook(text=t, status='proofreading') for t in texts])
         with CaptureQueriesContext(connection) as many:
             response = self.client.get(self.queue)

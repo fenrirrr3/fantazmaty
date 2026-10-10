@@ -216,8 +216,8 @@ class DownloadRemovalTests(TestCase):
         self.assertContains(self.client.get(url + '?view=page'), 'Uwaga konwertera: test')
         self.assertEqual(self.client.get(url).json()['warnings'], ['Uwaga konwertera: test'])
         download = self.client.get(url + '?download=1')
+        # Klient testowy zamyka odpowiedź po odczycie; ręczne close() zamknęłoby połączenie MySQL.
         self.assertEqual(b''.join(download.streaming_content), b'wynik')
-        download.close()
         self.assertFalse(folder.exists())
         again = self.client.get(url + '?download=1')
         self.assertEqual(again.status_code, 404)

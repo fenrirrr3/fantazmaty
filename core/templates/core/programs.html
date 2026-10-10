@@ -32,18 +32,19 @@
         <p><label for="{{ form.normalize_formatting.id_for_label }}">{{ form.normalize_formatting }} {{ form.normalize_formatting.label }}</label></p>
         {{ form.normalize_formatting.errors }}
         <p class="form-help">Po zaznaczeniu: Times New Roman 12 pkt, interlinia 1,5, wcięcie 1,25 cm, bez odstępów przed i po akapicie, A4 i marginesy 2,5 cm. Tekst jest wyjustowany; wyśrodkowane akapity pozostają wyśrodkowane bez wcięcia. Kursywa, pogrubienia i puste akapity zostają zachowane. Bez zaznaczenia Odkurzacz zachowuje formatowanie.</p>
-        <p><label>{{ form.remove_soft_whitespace }} {{ form.remove_soft_whitespace.label }}</label></p><p class="form-help">Zamienia miękkie entery (Shift+Enter) na zwykłe entery (nowe akapity), a spacje nieprzenoszące na zwykłe spacje. Działa na końcu czyszczenia, także jeśli reguły redakcyjne wcześniej dodały spacje nieprzenoszące. Istniejące podziały stron pozostają.</p><p><label for="{{ form.rebuild.id_for_label }}">{{ form.rebuild }} {{ form.rebuild.label }}</label></p>
+        <p><label for="{{ form.rebuild.id_for_label }}">{{ form.rebuild }} {{ form.rebuild.label }}</label></p>
         <p class="form-help">Przebudowa tworzy nowy DOCX z tekstem i podstawowym formatowaniem, a następnie stosuje wybrane poprawki. Usuwa stare metadane, komentarze, nagłówki, stopki i ukryty tekst. Akceptuje zmiany tekstu: zachowuje dodany tekst, pomija skreślony. Pominięcie innych elementów wymaga Twojego potwierdzenia. Dane wpisane w treści pozostają.</p>
         <p>Przy większym dokumencie pobieranie może rozpocząć się po chwili. Oryginał pozostaje na Twoim komputerze.</p>
         <fieldset>
             <legend>Opcje korekty</legend>
-            <p>Scalanie pustych akapitów, zmiany słownikowe i zmniejszanie liter zaimków są domyślnie wyłączone. Pozostałe poprawki możesz wyłączyć według potrzeb.</p>
+            <p>Domyślnie wyłączone jest tylko scalanie pustych akapitów (na końcu listy). Pozostałe poprawki możesz wyłączyć według potrzeb.</p>
             <div class="odkurzacz-actions" id="rule-actions" hidden>
                 <button type="button" class="secondary-button" data-rules="all">Zaznacz wszystkie</button>
                 <button type="button" class="secondary-button" data-rules="none">Odznacz wszystkie</button>
             </div>
-            {{ form.rules.errors }}
+            {{ form.rules.errors }}{{ form.remove_soft_whitespace.errors }}
             <div class="odkurzacz-rules">
+                <label for="{{ form.remove_soft_whitespace.id_for_label }}" title="Miękkie entery (Shift+Enter) stają się nowymi akapitami, a spacje nieprzenoszące zwykłymi spacjami. Działa na końcu czyszczenia; podziały stron pozostają.">{{ form.remove_soft_whitespace }} <span>{{ form.remove_soft_whitespace.label }} (Shift+Enter → nowy akapit, wykonywane na końcu)</span></label>
                 {% for checkbox in form.rules %}<label for="{{ checkbox.id_for_label }}">{{ checkbox.tag }} <span>{{ checkbox.choice_label }}</span></label>{% endfor %}
             </div>
         </fieldset>

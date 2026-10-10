@@ -55,15 +55,13 @@ document.addEventListener('DOMContentLoaded', () => {
             else { controller?.abort(); ++serial; clear('Kliknij temat wiadomości.'); panel.setAttribute('aria-busy', 'false'); }
         }, 80);
     });
-    const roles = form.querySelector('select[name="roles"]');
-    let previous = [...roles.selectedOptions].map(option => option.value);
-    roles.addEventListener('change', () => {
-        const selected = [...roles.selectedOptions].map(option => option.value);
-        if (selected.includes('all') && selected.length > 1) {
-            const keepAll = !previous.includes('all');
-            [...roles.options].forEach(option => { option.selected = keepAll ? option.value === 'all' : option.value !== 'all' && option.selected; });
-        }
-        previous = [...roles.selectedOptions].map(option => option.value);
+    const roles = form.querySelector('[data-recruitment-roles]');
+    const boxes = () => [...roles.querySelectorAll('input[name="roles"]')];
+    roles.addEventListener('change', event => {
+        // „Wszystkie” wyklucza pojedyncze role; pusty wybór wraca do „Wszystkie”.
+        const target = event.target;
+        if (target.checked) boxes().forEach(box => { if ((box.value === 'all') !== (target.value === 'all')) box.checked = false; });
+        if (!boxes().some(box => box.checked)) boxes().forEach(box => { box.checked = box.value === 'all'; });
         clearTimeout(previewTimer);
         controller?.abort(); ++serial;
         clear('Zmieniono role. Pobierz nagłówki, aby odświeżyć listę.'); panel.setAttribute('aria-busy', 'false');

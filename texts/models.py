@@ -243,6 +243,10 @@ class AnthologyTask(models.Model):
         NOT_COMMISSIONED = "not_commissioned", "Niezlecone"
         COMMISSIONED = "commissioned", "Zlecone"
         READY = "ready", "Gotowe"
+        # Zadanie nie jest potrzebne w tej antologii: liczy się jak wykonane, bez wykonawcy.
+        NOT_APPLICABLE = "not_applicable", "Nie dotyczy"
+
+    DONE_STATUSES = (Status.READY, Status.NOT_APPLICABLE)
 
     anthology = models.ForeignKey(
         Anthology,
@@ -305,7 +309,7 @@ class AnthologyTask(models.Model):
         errors = {}
 
         if (
-            self.status != self.Status.NOT_COMMISSIONED
+            self.status in (self.Status.COMMISSIONED, self.Status.READY)
             and not self.assigned_to_id
         ):
             errors["assigned_to"] = (
@@ -340,6 +344,13 @@ class AnthologyTask(models.Model):
 
             if not update_fields:
                 return
+
+        if self.status == self.Status.NOT_APPLICABLE:
+            # „Nie dotyczy” nie ma wykonawcy ani daty zlecenia.
+            self.assigned_to = None
+            self.commissioned_at = None
+            if update_fields is not None and "status" in update_fields:
+                update_fields.update({"assigned_to", "commissioned_at"})
 
         relevant_fields = {"status", "assigned_to", "assigned_to_id"}
         update_commission_date = (
@@ -387,7 +398,7 @@ class AnthologyTask(models.Model):
             if newly_commissioned:
                 self.commissioned_at = timezone.localdate()
                 date_changed = True
-            elif effective_status == self.Status.NOT_COMMISSIONED:
+            elif effective_status in (self.Status.NOT_COMMISSIONED, self.Status.NOT_APPLICABLE):
                 self.commissioned_at = None
                 date_changed = True
 

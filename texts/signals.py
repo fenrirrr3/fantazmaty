@@ -64,6 +64,8 @@ def sync_audio_description_stage(sender, instance, using, raw=False, **kwargs):
         return
     from core.models import AudioDescription
     rows = AudioDescription.objects.using(using).filter(anthology_id=instance.anthology_id)
+    if instance.status == 'not_applicable':
+        return  # audiodeskrypcja niepotrzebna: jej etap zostaje bez zmian
     if instance.status == 'ready':
         rows.exclude(stage='completed').update(stage='completed')
     else:

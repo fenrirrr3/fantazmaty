@@ -27,7 +27,8 @@ SESSION_KEY = 'recruitment_sample_headers_v55'
 
 class RecruitmentMailboxForm(forms.Form):
     roles = forms.MultipleChoiceField(label='Rola', choices=(('all', 'Wszystkie'), *ROLE_CHOICES),
-        initial=['all'], required=False, widget=forms.SelectMultiple(attrs={'size': 4}), help_text='Wszystkie lub kilka wybranych ról. Pusty wybór oznacza Wszystkie.')
+        initial=['all'], required=False, widget=forms.CheckboxSelectMultiple,
+        help_text='Zaznacz „Wszystkie” albo jedną lub kilka ról. Brak zaznaczenia oznacza Wszystkie.')
     show_downloaded = forms.BooleanField(label='Pokaż również zgłoszenia już pobrane lub dodane do bazy', required=False)
 
     def clean_roles(self):

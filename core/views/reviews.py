@@ -814,8 +814,6 @@ def bulk_review_action(request):
 MY_REVIEW_VIEWS = {
     "active": "W toku",
     "completed": "Oddane",
-    "decided": "Rozstrzygnięte",
-    "all": "Wszystkie",
 }
 
 
@@ -829,7 +827,8 @@ def my_reviews(request):
     if not can_view_my_reviews(request.user):
         raise PermissionDenied("Moje recenzje są dostępne tylko dla recenzentów.")
     view = request.GET.get("view", "active")
-    if view == "archived":
+    if view in ("archived", "decided", "all"):
+        # Dawne zakładki scalono w „Oddane” – wszystkie oddane recenzje w jednym miejscu.
         view = "completed"
     if view not in MY_REVIEW_VIEWS:
         view = "active"
@@ -843,10 +842,8 @@ def my_reviews(request):
     open_review = Q(review__old_reviews=False, review__status__in=("new", "in_review", "to_decide"))
     if view == "active":
         rows = rows.filter(open_review, opinion__in=("", "reading"))
-    elif view == "completed":
+    else:
         rows = rows.exclude(opinion__in=("", "reading"))
-    elif view == "decided":
-        rows = rows.exclude(open_review)
     rows = rows.select_related("review__anthology").order_by("-assigned_at", "-pk")
     own_anthologies = rows.order_by().values('review__anthology_id')
     query = request.GET.get("q", "").strip()[:255]

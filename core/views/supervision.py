@@ -112,12 +112,23 @@ def anthology_detail(request, anthology_id):
             if removal not in (*AnthologyTask.TaskType.values, 'cover'):
                 return HttpResponse('Nieznane zadanie.', status=400)
             action = 'remove_person'
-        if action not in ('', 'cover', 'tasks_and_cover', 'new_person', 'remove_person'):
+        if action not in ('', 'cover', 'tasks_and_cover', 'new_person', 'remove_person', 'block_recording'):
             return HttpResponse('Nieznana operacja.', status=400)
-        if action in ('cover', 'tasks_and_cover', 'new_person', 'remove_person') and not request.POST.get('_edit_version'):
+        if action in ('cover', 'tasks_and_cover', 'new_person', 'remove_person', 'block_recording') and not request.POST.get('_edit_version'):
             return HttpResponse('Odśwież stronę i ponów zapis. Brak wersji formularza.', status=409)
         with transaction.atomic():
             anthology = get_object_or_404(Anthology.objects.select_for_update(), pk=anthology_id)
+            if action == 'block_recording':
+                # Czarna lista audiobooków obejmuje opowiadania; audiodeskrypcja
+                # antologii jest osobnym zadaniem i pozostaje bez zmian.
+                blocked = 0
+                for text in anthology.texts.filter(audiobook_blacklisted=False).order_by('pk').select_for_update():
+                    text.audiobook_blacklisted = True
+                    text.save(update_fields=['audiobook_blacklisted', 'for_recording'])
+                    blocked += 1
+                messages.success(request, f'Zablokowano nagrywanie audiobooków: {blocked} tekstów trafiło na czarną listę. '
+                                          'Audiodeskrypcja antologii pozostaje bez zmian.')
+                return redirect('core:anthology_detail', anthology_id=anthology.pk)
             if action == 'remove_person':
                 finished = (anthology.cover_status == Anthology.CoverStatus.READY if removal == 'cover' else
                             AnthologyTask.objects.filter(anthology=anthology, task_type=removal,
@@ -175,6 +186,8 @@ def anthology_detail(request, anthology_id):
         'issues': issues, 'issue_groups': grouped_checklist(issues), 'new_person_form': new_person_form,
         'credits': anthology_credit_groups(anthology) if show_credits else [],
         'extract_text': anthology.texts.filter(import_source='extract-volume-v2').first(), 'show_credits': show_credits, 'cover_form': cover_form,
+        'recordable_count': anthology.texts.filter(audiobook_blacklisted=False).count() if coordinator else 0,
+        'has_texts': anthology.texts.exists(),
     }, status=400 if request.method == 'POST' else 200)
 
 

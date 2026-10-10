@@ -3,7 +3,7 @@ from zipfile import BadZipFile, ZipFile
 
 from django import forms
 
-from core.services.odkurzacz import EDITORIAL_RULES, DEFAULT_EDITORIAL_RULES
+from core.services.odkurzacz import EDITORIAL_RULES, FORM_DEFAULT_EDITORIAL_RULES
 
 
 PROGRAM_MAX_UPLOAD_BYTES = 2 * 1024 * 1024
@@ -20,7 +20,7 @@ class OdkurzaczForm(forms.Form):
     )
     rules = forms.MultipleChoiceField(
         label="Opcje korekty", choices=EDITORIAL_RULES,
-        initial=[key for key, _ in EDITORIAL_RULES if key in DEFAULT_EDITORIAL_RULES], required=False,
+        initial=[key for key, _ in EDITORIAL_RULES if key in FORM_DEFAULT_EDITORIAL_RULES], required=False,
         widget=forms.CheckboxSelectMultiple,
     )
 

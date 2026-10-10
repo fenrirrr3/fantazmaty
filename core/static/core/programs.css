@@ -22,12 +22,21 @@
 }
 
 .odkurzacz-rules {
-    display: grid;
-    gap: var(--space-3);
+    /* Dwie równoległe kolumny; kolejność czytania: lewa, potem prawa. */
+    columns: 2;
+    column-gap: var(--space-6);
 }
 
 .odkurzacz-rules label {
     display: flex;
+    margin-bottom: var(--space-3);
+    break-inside: avoid;
+}
+
+@media screen and (max-width: 760px) {
+    .odkurzacz-rules {
+        columns: 1;
+    }
 }
 
 .odkurzacz .errorlist {

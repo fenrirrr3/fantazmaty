@@ -29,7 +29,8 @@ def task_list(request):
             task = tasks.get(kind)
             status = task.status if task else 'not_commissioned'
             cells.append({'status': task.get_status_display() if task else 'Niezlecone',
-                          'state': {'not_commissioned': 'pending', 'commissioned': 'active', 'ready': 'completed'}[status],
+                          'state': {'not_commissioned': 'pending', 'commissioned': 'active', 'ready': 'completed',
+                                    'not_applicable': 'completed'}[status],
                           'date': task.commissioned_at if task else None,
                           'person': str(task.assigned_to) if task and task.assigned_to_id else ''})
         for (kind, label), cell in zip(choices, cells):

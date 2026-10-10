@@ -31,7 +31,7 @@ class ClaimPresentationTests(WorkflowTestDataMixin, TestCase):
         for route in [reverse('core:available_texts'), reverse('core:assigned_text_detail', args=[self.text.pk])]:
             form = self.claim_form(route)
             self.assertEqual(form.xpath('normalize-space(.//button)'), 'Przejmij')
-            self.assertIn('Rezerwacja', form.text_content())
+            self.assertIn('Do rezerwacji', form.text_content())
             self.assertFalse(form.xpath('.//input[@name="started_at"]'))
         response = self.client.post(reverse('core:take_workflow_stage', args=[self.pending.pk]))
         self.assertEqual(response.status_code, 302)
@@ -44,7 +44,7 @@ class ClaimPresentationTests(WorkflowTestDataMixin, TestCase):
         for route in [reverse('core:available_texts'), reverse('core:assigned_text_detail', args=[self.text.pk])]:
             form = self.claim_form(route)
             self.assertTrue(form.xpath('.//input[@name="started_at"]'))
-            self.assertNotIn('Rezerwacja', form.text_content())
+            self.assertNotIn('Do rezerwacji', form.text_content())
         date = self.today + timedelta(days=2)
         response = self.client.post(reverse('core:take_workflow_stage', args=[self.pending.pk]), {'started_at': date.isoformat()})
         self.assertEqual(response.status_code, 302)

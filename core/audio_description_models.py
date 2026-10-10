@@ -60,6 +60,9 @@ class AudioDescription(models.Model):
                 .filter(anthology_id=self.anthology_id, task_type="audio_description")
                 .first()
             )
+            if task and task.status == "not_applicable":
+                # Zadanie „Nie dotyczy”: treść można zapisywać, status zadania się nie zmienia.
+                task, sync_stage = None, False
             if self._state.adding and task and task.status == "ready":
                 self.stage = self.Stage.COMPLETED
             if (

@@ -11,7 +11,7 @@ from django.views.decorators.http import require_GET, require_POST, require_http
 from core.edit_policy import edit_policy
 from core.models import AudioDescription, AudioDescriptionNote, EditRevision
 from core.pagination import paginate_items
-from core.permissions import team_member_required, get_active_person_profile, is_coordinator
+from core.permissions import team_member_required, get_active_person_profile, is_coordinator, is_team_member
 from core.table_sorting import DisplayTable
 from people.models import Person
 from texts.models import Anthology, AnthologyTask
@@ -37,6 +37,24 @@ def may_edit(user, book):
 def require_edit(request, book, kwargs):
     if book is None or not may_edit(request.user, book):
         raise PermissionDenied("Edycja wymaga przypisania do audiodeskrypcji lub kontroli.")
+
+
+def may_write(user):
+    """Treść i uwagi zapisuje każdy członek zespołu; etap i przypisanie – wykonawcy i koordynator."""
+    return is_coordinator(user) or is_team_member(user)
+
+
+def require_write(request, book, kwargs):
+    if book is None or not may_write(request.user):
+        raise PermissionDenied("Zapis treści i uwag wymaga aktywnego profilu członka zespołu.")
+
+
+def require_action(request, book, kwargs):
+    """Treść i uwagi – każdy członek zespołu; etap i przypisanie – osoby przypisane."""
+    if request.POST.get("action", "assignment") in ("content", "note"):
+        require_write(request, book, kwargs)
+    else:
+        require_edit(request, book, kwargs)
 
 
 class DescriptionForm(forms.ModelForm):
@@ -123,7 +141,7 @@ def audio_descriptions(request):
     if selected_status:
         tasks = tasks.filter(status=selected_status)
     if hide_completed:
-        tasks = tasks.exclude(status=AnthologyTask.Status.READY)
+        tasks = tasks.exclude(status__in=AnthologyTask.DONE_STATUSES)
     person = get_active_person_profile(request.user)
     versions = dict(
         EditRevision.objects.filter(
@@ -219,7 +237,7 @@ def claim_audio_description(request, anthology_id):
     return redirect("core:audio_description_detail", anthology_id=book.pk)
 
 
-@edit_policy(require_edit, require_version=True)
+@edit_policy(require_action, require_version=True)
 @never_cache
 @login_required
 @require_http_methods(["GET", "POST"])
@@ -239,8 +257,9 @@ def audio_description_detail(request, anthology_id):
         completed = description.stage == AudioDescription.Stage.COMPLETED
         manager = is_coordinator(request.user)
         editable = may_edit(request.user, book)
+        writable = may_write(request.user)
         if request.method == "POST":
-            require_edit(request, book, {})
+            require_action(request, book, {})
             if request.POST.get("action", "assignment") == "assignment" and not manager:
                 raise PermissionDenied("Przypisanie zmienia koordynator.")
         action = request.POST.get("action", "assignment") if request.method == "POST" else None
@@ -302,6 +321,7 @@ def audio_description_detail(request, anthology_id):
                 "controllers": description.controllers.all() if description else [],
                 "form": form,
                 "can_edit": editable,
+                "can_write": writable,
                 "can_manage": manager,
                 "is_completed": completed,
             },

@@ -2,12 +2,22 @@
 
 .recruitment-mail-roles {
     width: min(100%, 30rem);
+    margin: 0;
+    padding: 0;
+    border: 0;
 }
 
-.recruitment-mail-roles select {
-    min-height: 0;
-    height: 7.5rem;
-    width: 100%;
+.recruitment-role-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+    gap: var(--space-2) var(--space-4);
+}
+
+.recruitment-role-options > label {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+    margin: 0;
 }
 
 .recruitment-mail-card .cms-pagination {

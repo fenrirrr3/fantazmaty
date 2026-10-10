@@ -2,14 +2,13 @@
 {% block title %}Korekta poskładowa | Fantazmaty CMS{% endblock %}
 {% block extra_css %}<link rel="stylesheet" href="{% static 'core/post-layout.css' %}">{% endblock %}
 {% block content %}
-<header class="page-header"><h1 class="page-title">Korekta poskładowa</h1><p>{% if can_manage %}Przydziały korekty antologii według zakresów stron.{% else %}Twoje przydziały korekty poskładowej.{% endif %}</p></header>
+<header class="page-header"><h1 class="page-title">Korekta poskładowa</h1><p>{% if can_manage %}Przydziały korekty antologii; zakres stron możesz uzupełnić w edycji wpisu.{% else %}Twoje przydziały korekty poskładowej.{% endif %}</p></header>
 {% if errors %}<div class="errorlist" role="alert">{% for error in errors %}<p>{{ error }}</p>{% endfor %}</div>{% endif %}
-{% if form %}<section class="card"><div class="card-body"><h2>Dodaj przydział</h2>
+<div class="post-layout-toolbar">{% if form %}<section class="card"><div class="card-body"><h2>Dodaj przydział</h2>
 <form method="post" class="post-layout-add" data-warn-unsaved>{% csrf_token %}<input type="hidden" name="action" value="create">{{ form.token }}{{ form.token.errors }}{{ form.non_field_errors }}
 {% for field in form.visible_fields %}<div class="form-field">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}
 <button class="primary-button" type="submit">Dodaj wpis</button>
-</form></div></section>{% endif %}
-<div class="post-layout-toolbar"><section class="card"><div class="card-body"><form method="get" class="post-layout-filters post-layout-search">
+</form></div></section>{% endif %}<section class="card"><div class="card-body"><h2>Szukaj</h2><form method="get" class="post-layout-filters post-layout-search">
 <label for="post-layout-q">Szukaj antologii lub korektora</label><div class="post-layout-filter-controls"><input type="search" id="post-layout-q" name="q" value="{{ query }}">
 <label class="post-layout-hide"><input type="checkbox" name="hide_completed" value="1" {% if hide_completed %}checked{% endif %}> Ukryj zakończone</label>
 {% if can_manage %}<label class="post-layout-hide"><input type="checkbox" name="show_deleted" value="1" {% if show_deleted %}checked{% endif %}> Pokaż usunięte (historia)</label>{% endif %}

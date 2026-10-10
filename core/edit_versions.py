@@ -231,7 +231,7 @@ def _bump_rows(model, rows, using):
     parents = PARENTS.get(label, ())
     with batched_bumps():
         for row in rows:
-            if label in TRACKED:
+            if label in TRACKED and row[0] is not None:
                 bump(label, row[0], using)
             for (_, parent), value in zip(parents, row[1:], strict=True):
                 bump(parent, value, using)
@@ -263,7 +263,8 @@ class VersionedQuerySet(models.QuerySet):
 
     def bulk_create(self, objs, *args, **kwargs):
         created = super().bulk_create(objs, *args, **kwargs)
-        rows = [(obj.pk, *[getattr(obj, f) for f in self._version_fields()[1:]]) for obj in created if obj.pk]
+        # MySQL nie zwraca kluczy z bulk_create – rodzice i tak dostają nową wersję.
+        rows = [(obj.pk, *[getattr(obj, f) for f in self._version_fields()[1:]]) for obj in created]
         _bump_rows(self.model, rows, self.db)
         return created
 

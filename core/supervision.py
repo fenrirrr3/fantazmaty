@@ -103,7 +103,10 @@ def integrity_issues():
     for person in Person.objects.select_related('user').exclude(user__isnull=True):
         if person.email and person.user.email and person.email.casefold()!=person.user.email.casefold():
             issues.append(issue('Różne e-maile powiązanej osoby i konta',str(person)+' – powiązanie po ID pozostaje zachowane',reverse('admin:people_person_change',args=[person.pk])))
-    for text in Text.objects.filter(Q(anthology__is_translated=True, translation__foreign_authors__isnull=True) | (Q(anthology__is_translated=False) | Q(anthology__isnull=True)) & Q(authors__isnull=True)).distinct():
+    for text in Text.objects.filter(Q(anthology__is_translated=True, translation__foreign_authors__isnull=True) | (Q(anthology__is_translated=False) | Q(anthology__isnull=True)) & Q(authors__isnull=True)).exclude(
+            # Tomy „Ekstrakty” zbierają miniatury bez przypisanego autora tekstu.
+            Q(anthology__is_extracts=True) | Q(anthology__extract_volume__isnull=False)
+            | Q(anthology__title__iregex=r'^ekstrakty ?[0-9]+$')).distinct():
         issues.append(issue('Tekst bez autora',text.title,reverse('core:assigned_text_detail',args=[text.pk])))
     return issues
 
@@ -185,7 +188,7 @@ def anthology_checklist(anthology):
     tasks = {task.task_type: task for task in anthology.production_tasks.all()}
     for kind, label in AnthologyTask.TaskType.choices:
         task = tasks.get(kind)
-        if task is None or task.status != AnthologyTask.Status.READY:
+        if task is None or task.status not in AnthologyTask.DONE_STATUSES:
             rows.append(
                 issue(
                     "Niezakończone zadanie produkcyjne",

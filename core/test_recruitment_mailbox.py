@@ -42,7 +42,7 @@ class RecruitmentMailboxTests(TestCase):
         self.assertEqual(list(response.context['form'].fields['roles'].choices), [('all', 'Wszystkie'), *ROLE_CHOICES])
         for field in ('clean', 'rebuild', 'convert', 'subject_filter'):
             self.assertNotContains(response, f'name="{field}"')
-        self.assertContains(response, 'multiple')
+        self.assertContains(response, 'type="checkbox" name="roles"', count=len(ROLE_CHOICES) + 1)
         self.assertTrue(admin.site.is_registered(Recruitment))
         response = self.client.get(reverse('admin:index'))
         self.assertContains(response, 'Skrzynka rekrutacyjna')

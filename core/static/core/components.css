@@ -97,6 +97,21 @@
     color: var(--danger-dark);
 }
 
+/* Wyróżniony: linki do stron zewnętrznych (ilustracje, audiobooki). */
+.accent-button,
+.secondary-button:is(.audiobook-public-button, .illustration-public-button, .illustration-drive-button) {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--on-accent);
+}
+
+.accent-button:hover,
+.secondary-button:is(.audiobook-public-button, .illustration-public-button, .illustration-drive-button):hover {
+    border-color: var(--accent-hover);
+    background: var(--accent-hover);
+    color: var(--on-accent);
+}
+
 /* Mały: przyciski w tabelach i nagłówkach kart. */
 .small-button {
     min-height: var(--control-height-sm);
@@ -803,6 +818,11 @@ fieldset.multi-filter-field {
     --badge-fg: var(--warning);
 }
 
+/* Rodzaj przestoju ma obramowanie jak odznaka etapu w tym samym wierszu. */
+.inactivity-badge {
+    --badge-border: currentColor;
+}
+
 .stage-status.completed {
     --badge-bg: var(--success-light);
     --badge-fg: var(--success);
@@ -1049,6 +1069,29 @@ fieldset.multi-filter-field {
     border-radius: var(--radius-lg);
     scrollbar-color: var(--border-strong) var(--surface-alt);
     scrollbar-width: thin;
+}
+
+/* Tabela w karcie przylega do jej krawędzi – bez białego marginesu.
+   --table-bleed to wewnętrzny odstęp opakowania (domyślnie odstęp karty). */
+@media screen {
+    :is(.card-body, .profile-table-inset, .author-table-inset, .workflow-table-frame, .details-card) > :is(.table-scroll-shell, .table-container) {
+        width: auto;
+        max-width: none;
+        margin-inline: calc(-1 * var(--table-bleed, var(--card-padding)));
+    }
+
+    :is(.card-body, .profile-table-inset, .author-table-inset, .workflow-table-frame, .details-card) > :is(.table-scroll-shell, .table-container),
+    :is(.card-body, .profile-table-inset, .author-table-inset, .workflow-table-frame, .details-card) > .table-scroll-shell > .table-container {
+        border-radius: 0;
+    }
+
+    :is(.card-body, .profile-table-inset, .author-table-inset, .workflow-table-frame):has(> :is(.table-scroll-shell, .table-container):last-child) {
+        padding-bottom: 0;
+    }
+
+    :is(.card-body, .profile-table-inset, .author-table-inset, .workflow-table-frame):has(> :is(.table-scroll-shell, .table-container):first-child, > .mobile-table-sort:first-child + .table-scroll-shell) {
+        padding-top: 0;
+    }
 }
 
 .table-container .sticky-title {
@@ -1354,6 +1397,10 @@ a[href^="mailto:"] {
     .table-container:has(> .mobile-review-cards),
     .table-scroll-shell:has(.mobile-review-cards) {
         overflow: visible;
+    }
+
+    :is(.card-body, .profile-table-inset, .author-table-inset, .workflow-table-frame, .details-card) > :is(.table-scroll-shell, .table-container):has(.mobile-review-cards) {
+        margin-inline: 0;
     }
 
     .table-scroll-shell:has(.mobile-review-cards) > :is(.table-scroll-top, .table-scroll-button) {

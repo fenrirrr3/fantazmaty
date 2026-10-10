@@ -86,7 +86,7 @@ class RecruitmentSamplesTests(TestCase):
         response = self.client.get(self.url)
         self.headers.assert_not_called()
         self.assertContains(response, "Pobieranie próbek")
-        self.assertContains(response, 'value="all" selected')
+        self.assertContains(response, 'value="all" id="id_roles_0" checked')
         self.assertContains(response, "data-mail-preview")
         self.assertContains(response, "50 wiadomości")
 
