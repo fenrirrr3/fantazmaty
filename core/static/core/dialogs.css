@@ -1,24 +1,34 @@
-.cms-dialog { width: min(36rem, calc(100vw - 2rem)); max-height: calc(100vh - 2rem); overflow: auto; box-sizing: border-box; padding: 1.5rem; border: 1px solid var(--border, #cbd5e1); border-radius: var(--radius-large, 12px); background: var(--surface, #fff); color: var(--text, #172434); }
-.cms-dialog::backdrop { background: rgb(15 23 42 / 55%); }
-.cms-dialog form p { display: grid; gap: .5rem; }
-.cms-dialog input:not([type=hidden]) { width: 100%; box-sizing: border-box; }
-.secondary-button.cms-danger-button { background: #b42332; border-color: #b42332; color: #fff; }
-.secondary-button.cms-danger-button:hover { background: #8f1825; border-color: #8f1825; color: #fff; }
-.illustration-public-actions { display: flex; align-items: center; flex-wrap: wrap; gap: .65rem; align-self: end; padding-bottom: .1rem; }
-.illustration-filter-bottom { display: grid; gap: 1rem; flex-basis: 100%; min-width: 0; }
-.illustration-filter-bottom .filter-actions { margin: 0; }
-.external-illustrations { padding-block: 2rem; }
-.external-illustrations td { overflow-wrap: anywhere; }
-.external-illustrations .external-tags { max-width: 28rem; white-space: pre-line; }
+/* Okna potwierdzeń (cms-dialog) i lista zewnętrznych ilustracji. */
 
-/* Subtle accents reuse the light, dark and autumn theme palettes. */
-.secondary-button.illustration-public-button {
-    color: var(--primary); background: var(--primary-light); border-color: var(--primary);
+.cms-dialog form p {
+    display: grid;
+    gap: var(--field-gap);
 }
-.secondary-button.illustration-drive-button {
-    color: var(--success); background: var(--success-light); border-color: var(--success);
+
+.illustration-public-actions {
+    align-self: end;
 }
-.secondary-button:is(.illustration-public-button, .illustration-drive-button):is(:hover, :focus-visible) {
-    box-shadow: inset 0 0 0 1px currentColor;
-    text-decoration: underline;
+
+.illustration-filter-bottom {
+    display: grid;
+    flex-basis: 100%;
+    gap: var(--space-4);
+    min-width: 0;
+}
+
+.illustration-filter-bottom .filter-actions {
+    margin: 0;
+}
+
+.external-illustrations {
+    padding-block: var(--space-6);
+}
+
+.external-illustrations td {
+    overflow-wrap: anywhere;
+}
+
+.external-illustrations .external-tags {
+    max-width: 28rem;
+    white-space: pre-line;
 }

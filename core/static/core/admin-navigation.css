@@ -1,38 +1,313 @@
-#header { flex-wrap: wrap; gap: 8px 16px; }
-#header .cms-admin-quick-links { flex-basis: 100%; width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; margin: 8px 0 0; }
-.cms-admin-navigation { font-size: 0.8125rem; }
-.cms-admin-quick-links a { white-space: normal; overflow-wrap: anywhere; }
-#header .theme-toggle { color: var(--header-link-color); font: inherit; line-height: 1.4; width: auto; height: auto; margin-top: 4px; padding: 4px 8px; border: 1px solid var(--header-link-color); border-radius: 4px; }
-#header .theme-toggle:focus-visible { outline: 2px solid var(--header-link-color); outline-offset: 3px; }
-.cms-admin-group { margin: 0 0 16px; border: 1px solid var(--hairline-color); border-radius: 4px; background: var(--body-bg); }
-.cms-admin-group > summary { padding: 12px 14px; cursor: pointer; color: var(--body-fg); font-weight: 600; }
-.cms-admin-group > summary:focus-visible { outline: 2px solid var(--link-fg); outline-offset: -3px; }
-.cms-admin-group > .module { margin: 0; max-width: 100%; overflow-x: auto; }
-.cms-admin-group > .cms-admin-group { margin: 10px 12px 12px; }
-.cms-admin-group table { width: 100%; }
-.cms-admin-quick-links { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
-#nav-sidebar .cms-admin-group { margin: 8px; }
-#nav-sidebar .cms-admin-group > summary { padding: 10px; }
-#nav-sidebar .cms-admin-group > .cms-admin-group { margin: 6px; }
-#nav-sidebar .cms-admin-group th { overflow-wrap: anywhere; }
-@media screen and (max-width: 1100px) {
-    #header .cms-admin-quick-links { flex-basis: auto; align-self: stretch; justify-content: center; }
-    #header #branding, #header #user-tools { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+/*
+ * Panel administracyjny: kolory motywów (Django admin ma własne zmienne),
+ * nawigacja z grupami, kopiowanie z tabel i powiadomienie o skopiowaniu.
+ * Skale (odstępy, zaokrąglenia) pochodzą z tokens.css.
+ */
+
+:root, html[data-theme="light"] {
+    --primary: #1761b0;
+    --secondary: #172434;
+    --accent: #ffffff;
+    --primary-fg: #ffffff;
+    --header-color: #ffffff;
+    --header-branding-color: #ffffff;
+    --header-bg: #172434;
+    --header-link-color: #e5edf7;
+    --breadcrumbs-fg: #e5edf7;
+    --breadcrumbs-link-fg: #ffffff;
+    --breadcrumbs-bg: #263b52;
+    --link-fg: #1761b0;
+    --link-hover-color: #114b89;
+    --link-selected-fg: #114b89;
+    --button-bg: #1761b0;
+    --button-hover-bg: #114b89;
+    --default-button-bg: #1761b0;
+    --default-button-hover-bg: #114b89;
+    --selected-bg: #eaf3ff;
+    --selected-row: #eaf3ff;
+    --cms-focus: #1761b0;
+    --cms-copied-bg: #eaf6ef;
+    --cms-copied-fg: #176643;
+    --cms-error: #b12b36;
 }
-@media print { .cms-admin-quick-links { display: none; } }
+
+html[data-theme="dark"] {
+    --link-fg: #8bbfff;
+    --link-hover-color: #bedcff;
+    --link-selected-fg: #bedcff;
+    --selected-bg: #253b52;
+    --selected-row: #253b52;
+    --cms-focus: #8bbfff;
+    --cms-copied-bg: #183b2b;
+    --cms-copied-fg: #a5e4be;
+    --cms-error: #ff9ca5;
+}
+
+@media (prefers-color-scheme: dark) {
+    html[data-theme="auto"] {
+        --link-fg: #8bbfff;
+        --link-hover-color: #bedcff;
+        --link-selected-fg: #bedcff;
+        --selected-bg: #253b52;
+        --selected-row: #253b52;
+        --cms-focus: #8bbfff;
+        --cms-copied-bg: #183b2b;
+        --cms-copied-fg: #a5e4be;
+        --cms-error: #ff9ca5;
+    }
+}
+
+#header {
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-4);
+}
+
+#header .cms-admin-quick-links {
+    flex-basis: 100%;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+    margin: var(--space-2) 0 0;
+}
+
+.cms-admin-navigation {
+    font-size: var(--font-size-sm);
+}
+
+.cms-admin-quick-links a {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+#header .theme-toggle {
+    color: var(--header-link-color);
+    font: inherit;
+    line-height: var(--leading-tight);
+    width: auto;
+    height: auto;
+    margin: 0;
+    padding: 2px var(--space-2);
+    vertical-align: middle;
+    border: 1px solid var(--header-link-color);
+    border-radius: var(--radius-sm);
+}
+
+#header .theme-toggle:focus-visible {
+    outline: 2px solid var(--header-link-color);
+    outline-offset: 3px;
+}
+
+.cms-admin-group {
+    margin: 0 0 var(--space-4);
+    border: 1px solid var(--hairline-color);
+    border-radius: var(--radius-sm);
+    background: var(--body-bg);
+}
+
+.cms-admin-group > summary {
+    padding: var(--space-3) var(--space-4);
+    cursor: pointer;
+    color: var(--body-fg);
+    font-weight: 600;
+}
+
+.cms-admin-group > summary:focus-visible {
+    outline: 2px solid var(--link-fg);
+    outline-offset: -3px;
+}
+
+.cms-admin-group > .module {
+    margin: 0;
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+.cms-admin-group > .cms-admin-group {
+    margin: var(--space-3) var(--space-3) var(--space-3);
+}
+
+.cms-admin-group table {
+    width: 100%;
+}
+
+.cms-admin-quick-links {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-4);
+}
+
+#nav-sidebar .cms-admin-group {
+    margin: var(--space-2);
+}
+
+#nav-sidebar .cms-admin-group > summary {
+    padding: var(--space-3);
+}
+
+#nav-sidebar .cms-admin-group > .cms-admin-group {
+    margin: var(--space-2);
+}
+
+#nav-sidebar .cms-admin-group th {
+    overflow-wrap: anywhere;
+}
+
+@media screen and (max-width: 1100px) {
+    #header .cms-admin-quick-links {
+        flex-basis: auto;
+        align-self: stretch;
+        justify-content: center;
+    }
+    #header #branding, #header #user-tools {
+        min-width: 0;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+    }
+}
+
+@media print {
+    .cms-admin-quick-links {
+        display: none;
+    }
+}
 
 html[data-theme="autumn"] {
     color-scheme: light;
-    --body-bg: #fffcf5; --body-fg: #382c22; --body-quiet-color: #67513d; --body-loud-color: #382c22;
-    --primary: #904313; --secondary: #503322; --accent: #ffffff; --primary-fg: #ffffff;
-    --header-bg: #503322; --header-color: #ffffff; --header-branding-color: #ffffff; --header-link-color: #fff1dc;
-    --breadcrumbs-bg: #70472d; --breadcrumbs-fg: #f6e4cd; --breadcrumbs-link-fg: #ffffff;
-    --link-fg: #904313; --link-hover-color: #6d310d; --link-selected-fg: #6d310d;
-    --button-bg: #904313; --button-fg: #ffffff; --button-hover-bg: #6d310d;
-    --default-button-bg: #904313; --default-button-hover-bg: #6d310d;
-    --hairline-color: #d7c3a8; --border-color: #a58360; --darkened-bg: #f8efdf;
-    --selected-bg: #f9e4c8; --selected-row: #f9e4c8; --close-button-bg: #67513d;
-    --error-fg: #a02f2c; --message-success-bg: #edf2df; --message-warning-bg: #fff0c9; --message-error-bg: #fff0e9;
-    --cms-focus: #934412; --cms-copied-bg: #edf2df; --cms-copied-fg: #405e29; --cms-error: #a02f2c;
+    --body-bg: #fffcf5;
+    --body-fg: #382c22;
+    --body-quiet-color: #67513d;
+    --body-loud-color: #382c22;
+    --primary: #904313;
+    --secondary: #503322;
+    --accent: #ffffff;
+    --primary-fg: #ffffff;
+    --header-bg: #503322;
+    --header-color: #ffffff;
+    --header-branding-color: #ffffff;
+    --header-link-color: #fff1dc;
+    --breadcrumbs-bg: #70472d;
+    --breadcrumbs-fg: #f6e4cd;
+    --breadcrumbs-link-fg: #ffffff;
+    --link-fg: #904313;
+    --link-hover-color: #6d310d;
+    --link-selected-fg: #6d310d;
+    --button-bg: #904313;
+    --button-fg: #ffffff;
+    --button-hover-bg: #6d310d;
+    --default-button-bg: #904313;
+    --default-button-hover-bg: #6d310d;
+    --hairline-color: #d7c3a8;
+    --border-color: #a58360;
+    --darkened-bg: #f8efdf;
+    --selected-bg: #f9e4c8;
+    --selected-row: #f9e4c8;
+    --close-button-bg: #67513d;
+    --error-fg: #a02f2c;
+    --message-success-bg: #edf2df;
+    --message-warning-bg: #fff0c9;
+    --message-error-bg: #fff0e9;
+    --cms-focus: #934412;
+    --cms-copied-bg: #edf2df;
+    --cms-copied-fg: #405e29;
+    --cms-error: #a02f2c;
 }
-#header [data-theme-autumn][aria-pressed="true"] { background: #f9e4c8; color: #503322; }
+
+#header [data-theme-autumn][aria-pressed="true"] {
+    background: #f9e4c8;
+    color: #503322;
+}
+
+/* Nawigacja w nagłówku */
+
+.cms-admin-navigation a {
+    color: var(--header-link-color);
+    text-underline-offset: 3px;
+}
+
+.cms-admin-navigation a:focus-visible {
+    outline: 2px solid var(--header-link-color);
+    outline-offset: var(--space-1);
+}
+
+/* Kopiowanie komórek tabel (ui.js). */
+
+table td, table tbody th {
+    cursor: cell;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+table :is(a, button, summary, select, input[type="checkbox"]) {
+    cursor: pointer;
+}
+
+table :is(input:not([type="checkbox"]):not([type="radio"]), textarea) {
+    cursor: text;
+}
+
+table [data-copy="false"] {
+    cursor: auto;
+}
+
+table tr > :is(td, th).copied-cell {
+    outline: 2px solid var(--cms-copied-fg);
+    outline-offset: -2px;
+    background: var(--cms-copied-bg);
+    color: var(--cms-copied-fg);
+}
+
+table tr > :is(td, th).copy-selected {
+    outline: 2px solid var(--cms-focus);
+    outline-offset: -2px;
+    background: var(--selected-bg);
+}
+
+table .copy-error {
+    outline: 2px solid var(--cms-error);
+    outline-offset: -2px;
+}
+
+.copy-value-button.is-copied {
+    background: var(--cms-copied-bg);
+    color: var(--cms-copied-fg);
+}
+
+.copy-toast {
+    position: fixed;
+    right: var(--space-5);
+    bottom: var(--space-5);
+    z-index: var(--z-toast);
+    max-width: min(380px, calc(100vw - 2 * var(--space-5)));
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid #49617b;
+    border-radius: var(--radius-md);
+    background: #172434;
+    color: #ffffff;
+    box-shadow: var(--shadow-lg);
+    font-size: var(--font-size-md);
+    line-height: var(--leading);
+    overflow-wrap: anywhere;
+    pointer-events: none;
+}
+
+.copy-toast[hidden] {
+    display: none;
+}
+
+.copy-toast.is-error {
+    border-color: var(--cms-error);
+}
+
+@media print {
+    .cms-admin-navigation, .copy-toast, .copy-value-button {
+        display: none;
+    }
+}
+
+/* Wyszukiwarka listy: pole i przycisk w jednej linii także na telefonie. */
+
+#changelist-search > div {
+    align-items: center;
+}

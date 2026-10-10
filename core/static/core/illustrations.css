@@ -1,40 +1,180 @@
-.illustration-edit-form { display: grid; gap: var(--field-gap, 12px); min-width: 0; }
-.illustration-edit-form .form-field { display: grid; gap: 6px; min-width: 0; }
-.illustration-edit-form :is(input:not([type="hidden"]), select, textarea) { width: 100%; min-width: 0; }
-.illustration-edit-form button { justify-self: start; max-width: 100%; white-space: normal; }
-.illustration-edit-form .illustration-excerpt-input { height: 8rem; min-height: 8rem; max-height: 8rem; resize: none; overflow-y: auto; }
-.illustration-excerpt-preview { max-height: 8rem; overflow-y: auto; overflow-wrap: anywhere; }
-.illustration-metadata { display: grid; gap: 14px; }
-.illustration-metadata dt { font-weight: 650; }
-.illustration-metadata dd { margin: 4px 0 0; overflow-wrap: anywhere; }
-.illustration-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: stretch; margin-block: 24px; }
-.illustration-detail-grid > .card:first-child { grid-column: 1; grid-row: 1 / span 3; }
-.illustration-detail-grid > .card:not(:first-child) { grid-column: 2; }
-.illustration-detail-grid > .card:nth-child(2) { grid-row: 1; }
-.illustration-detail-grid > .card:nth-child(3) { grid-row: 2; }
-.illustration-detail-grid > .card:nth-child(4) { grid-row: 3; }
-.illustration-detail-grid > .card:not(:first-child) .card-body { padding: 18px 20px; }
-.illustration-detail-grid > .card:not(:first-child) h2 { margin-bottom: 12px; }
-.illustration-detail-grid > .card:not(:first-child) textarea { height: 5rem; min-height: 5rem; max-height: 5rem; resize: none; overflow-y: auto; }
-.illustration-detail-grid > .card:not(:first-child) p { margin-block: 8px; }
-.illustration-detail-grid > .card:not(:first-child) .illustration-excerpt-preview { max-height: 8rem; }
-.illustration-detail-grid > .card { min-width: 0; margin: 0; }
-.illustration-detail-grid .card-body { overflow-wrap: anywhere; }
-@media screen and (max-width: 760px) { .illustration-detail-grid { grid-template-columns: minmax(0, 1fr); } .illustration-detail-grid > .card:nth-child(n) { grid-column: auto; grid-row: auto; } }
-.illustrator-checkbox { display: flex; align-items: center; gap: 8px; }
-.illustration-edit-form .illustrator-checkbox input[type="checkbox"] { width: auto; }
+.illustration-edit-form {
+    display: grid;
+    gap: var(--field-gap);
+    min-width: 0;
+}
+
+.illustration-edit-form button {
+    justify-self: start;
+    max-width: 100%;
+    white-space: normal;
+}
+
+.illustration-edit-form .illustration-excerpt-input {
+    height: 8rem;
+    min-height: 8rem;
+    max-height: 8rem;
+    resize: none;
+    overflow-y: auto;
+}
+
+.illustration-excerpt-preview {
+    max-height: 8rem;
+    overflow-y: auto;
+    overflow-wrap: anywhere;
+}
+
+.illustration-metadata {
+    display: grid;
+    gap: var(--space-4);
+}
+
+.illustration-metadata dt {
+    font-weight: 600;
+}
+
+.illustration-metadata dd {
+    margin: var(--space-1) 0 0;
+    overflow-wrap: anywhere;
+}
+
+.illustration-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-5);
+    align-items: stretch;
+    margin-block: var(--space-5);
+}
+
+.illustration-detail-grid > .card:first-child {
+    grid-column: 1;
+    grid-row: 1 / span 3;
+}
+
+.illustration-detail-grid > .card:not(:first-child) {
+    grid-column: 2;
+}
+
+.illustration-detail-grid > .card:nth-child(2) {
+    grid-row: 1;
+}
+
+.illustration-detail-grid > .card:nth-child(3) {
+    grid-row: 2;
+}
+
+.illustration-detail-grid > .card:nth-child(4) {
+    grid-row: 3;
+}
+
+.illustration-detail-grid > .card:not(:first-child) .card-body {
+    padding: var(--space-4) var(--space-5);
+}
+
+.illustration-detail-grid > .card:not(:first-child) h2 {
+    margin-bottom: var(--space-3);
+}
+
+.illustration-detail-grid > .card:not(:first-child) textarea {
+    height: 5rem;
+    min-height: 5rem;
+    max-height: 5rem;
+    resize: none;
+    overflow-y: auto;
+}
+
+.illustration-detail-grid > .card:not(:first-child) p {
+    margin-block: var(--space-2);
+}
+
+.illustration-detail-grid > .card:not(:first-child) .illustration-excerpt-preview {
+    max-height: 8rem;
+}
+
+.illustration-detail-grid > .card {
+    min-width: 0;
+    margin: 0;
+}
+
+.illustration-detail-grid .card-body {
+    overflow-wrap: anywhere;
+}
+
+@media screen and (max-width: 760px) {
+    .illustration-detail-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .illustration-detail-grid > .card:nth-child(n) {
+        grid-column: auto;
+        grid-row: auto;
+    }
+}
+
+.illustrator-checkbox {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
 
 /* Searchable multiple selection, retaining selected people while filtering. */
-.illustrator-choices { max-height: 20rem; overflow-y: auto; padding: .75rem; border: 1px solid var(--border); border-radius: var(--radius-small); }
-.illustrator-choices label { display: flex; align-items: center; gap: .6rem; padding: .35rem; }
-.illustrator-choices input[type="checkbox"] { width: auto; flex: 0 0 auto; }
-.illustrator-choices [hidden] { display: none; }
 
-.illustrator-picker [hidden] { display: none !important; }
-.illustrator-picker { display: grid; gap: 1rem; min-width: 0; }
-.illustrator-search-results, .illustrator-selected { list-style: none; margin: 0; padding: 0; }
-.illustrator-search-results { display: grid; gap: .4rem; max-height: 18rem; overflow-y: auto; }
-.illustrator-search-results button { width: 100%; text-align: left; }
-.illustrator-selected { display: flex; flex-wrap: wrap; gap: .5rem; }
-.illustrator-selected li { display: flex; align-items: center; gap: .5rem; min-width: 0; padding: .35rem .55rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); overflow-wrap: anywhere; }
-.illustrator-selected button { padding: .25rem .5rem; }
+.illustrator-choices {
+    max-height: 20rem;
+    overflow-y: auto;
+    padding: var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+}
+
+.illustrator-choices label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1);
+}
+
+.illustrator-picker {
+    display: grid;
+    gap: var(--space-4);
+    min-width: 0;
+}
+
+.illustrator-search-results, .illustrator-selected {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.illustrator-search-results {
+    display: grid;
+    gap: var(--space-2);
+    max-height: 18rem;
+    overflow-y: auto;
+}
+
+.illustrator-search-results button {
+    width: 100%;
+    text-align: left;
+}
+
+.illustrator-selected {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+}
+
+.illustrator-selected li {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    overflow-wrap: anywhere;
+}
+
+.illustrator-selected button {
+    padding: var(--space-1) var(--space-2);
+}

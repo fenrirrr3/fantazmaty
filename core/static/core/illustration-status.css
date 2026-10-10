@@ -3,20 +3,72 @@
  * panel administracyjny, który nie ładuje themes.css. Etykieta pozostaje
  * czytelna bez rozróżniania kolorów.
  */
+
 :root {
-    --ill-unassigned-fg: #8f1919; --ill-unassigned-bg: #ffe5e5; --ill-unassigned-border: #dc8a8a;
-    --ill-assigned-fg: #694c00; --ill-assigned-bg: #fff1b8; --ill-assigned-border: #b89b31;
-    --ill-delivered-fg: #165329; --ill-delivered-bg: #dcf6e3; --ill-delivered-border: #73b489;
-    --ill-corrections-fg: #783800; --ill-corrections-bg: #ffe9cf; --ill-corrections-border: #c99259;
+    --ill-unassigned-fg: #8f1919;
+    --ill-unassigned-bg: #ffe5e5;
+    --ill-unassigned-border: #dc8a8a;
+    --ill-assigned-fg: #694c00;
+    --ill-assigned-bg: #fff1b8;
+    --ill-assigned-border: #b89b31;
+    --ill-delivered-fg: #165329;
+    --ill-delivered-bg: #dcf6e3;
+    --ill-delivered-border: #73b489;
+    --ill-corrections-fg: #783800;
+    --ill-corrections-bg: #ffe9cf;
+    --ill-corrections-border: #c99259;
 }
+
 [data-theme="dark"] {
-    --ill-unassigned-fg: #ffd1d1; --ill-unassigned-bg: #541e24; --ill-unassigned-border: #b8616b;
-    --ill-assigned-fg: #ffe8a1; --ill-assigned-bg: #514318; --ill-assigned-border: #aa923e;
-    --ill-delivered-fg: #bdf2cc; --ill-delivered-bg: #193f28; --ill-delivered-border: #54996b;
-    --ill-corrections-fg: #ffdbb8; --ill-corrections-bg: #57321b; --ill-corrections-border: #b57b4b;
+    --ill-unassigned-fg: #ffd1d1;
+    --ill-unassigned-bg: #541e24;
+    --ill-unassigned-border: #b8616b;
+    --ill-assigned-fg: #ffe8a1;
+    --ill-assigned-bg: #514318;
+    --ill-assigned-border: #aa923e;
+    --ill-delivered-fg: #bdf2cc;
+    --ill-delivered-bg: #193f28;
+    --ill-delivered-border: #54996b;
+    --ill-corrections-fg: #ffdbb8;
+    --ill-corrections-bg: #57321b;
+    --ill-corrections-border: #b57b4b;
 }
-.illustration-status { display: inline-flex; padding: .3em .65em; border: 1px solid; border-radius: var(--radius, .4rem); font-weight: 650; white-space: normal; }
-.illustration-status-unassigned { color: var(--ill-unassigned-fg); background: var(--ill-unassigned-bg); border-color: var(--ill-unassigned-border); }
-.illustration-status-assigned { color: var(--ill-assigned-fg); background: var(--ill-assigned-bg); border-color: var(--ill-assigned-border); }
-.illustration-status-delivered { color: var(--ill-delivered-fg); background: var(--ill-delivered-bg); border-color: var(--ill-delivered-border); }
-.illustration-status-in_corrections { color: var(--ill-corrections-fg); background: var(--ill-corrections-bg); border-color: var(--ill-corrections-border); }
+
+/* Geometria jak w odznakach (.badge); tokeny skal ładuje też panel administracyjny. */
+
+.illustration-status {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--badge-height);
+    padding: 0 var(--space-2);
+    border: 1px solid;
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    line-height: var(--leading-tight);
+    white-space: normal;
+}
+
+.illustration-status-unassigned {
+    color: var(--ill-unassigned-fg);
+    background: var(--ill-unassigned-bg);
+    border-color: var(--ill-unassigned-border);
+}
+
+.illustration-status-assigned {
+    color: var(--ill-assigned-fg);
+    background: var(--ill-assigned-bg);
+    border-color: var(--ill-assigned-border);
+}
+
+.illustration-status-delivered {
+    color: var(--ill-delivered-fg);
+    background: var(--ill-delivered-bg);
+    border-color: var(--ill-delivered-border);
+}
+
+.illustration-status-in_corrections {
+    color: var(--ill-corrections-fg);
+    background: var(--ill-corrections-bg);
+    border-color: var(--ill-corrections-border);
+}

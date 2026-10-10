@@ -1,36 +1,168 @@
-.intake-stack{display:flex;flex-direction:column;align-items:stretch;gap:1rem}
-.intake-panel{min-width:0;padding:0;overflow:visible}
-.intake-panel-body .review-import-card{margin:0;padding:0;border:0;box-shadow:none;background:transparent}
-.intake-panel textarea,.intake-panel select,.intake-panel input:not([type=checkbox]):not([type=hidden]){max-width:100%;box-sizing:border-box}
-.intake-panel .table-container{overflow-x:auto}
-.intake-panel-body .intake-form{width:100%;max-width:none}
-.mailbox-filters{display:grid;grid-template-columns:minmax(0,24rem) minmax(0,32rem);gap:1rem;align-items:start;margin-bottom:1rem}
-.mailbox-filters .filter-field{margin:0}
-.mailbox-options{display:flex;flex-direction:column;align-items:flex-start;gap:.65rem;min-width:0}
-.mailbox-option{display:flex;align-items:flex-start;gap:.55rem;margin:0;font-weight:400;line-height:1.5;max-width:100%}
-.mailbox-option input[type=checkbox]{flex:0 0 auto;margin-top:.1rem}
-.mailbox-option span{min-width:0;overflow-wrap:anywhere}
-.mailbox-actions{grid-column:1/-1;margin:0}
-.mailbox-confirmation-options{max-width:32rem;margin-block:1rem}
-.submission-newsletters{max-width:32rem;margin-bottom:1rem}
-@media screen and (max-width: 760px){.mailbox-filters{grid-template-columns:minmax(0,1fr)}}
+.intake-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-4);
+}
 
+.intake-panel {
+    min-width: 0;
+    padding: 0;
+    overflow: visible;
+}
 
+.intake-panel-body .review-import-card {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+    background: transparent;
+}
 
-.intake-stack > .intake-panel{width:100%;box-sizing:border-box;margin:0}
-.import-preview-table td{vertical-align:top;height:auto;white-space:normal}
-.import-preview-table p{margin-block:0.35rem}
+.intake-panel .table-container {
+    overflow-x: auto;
+}
 
-.mailbox-filters-dated { grid-template-columns: minmax(0, 2fr) minmax(14rem, 1fr); }
-.mailbox-filter-controls { min-width: 0; }
-.mailbox-filter-controls .filter-field { margin-bottom: 1rem; }
-.mailbox-options-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: .8rem 1rem; }
-.mailbox-date-filter { min-width: 0; display: flex; flex-direction: column; gap: .6rem; }
-.mailbox-date-filter input[type=date] { width: 100%; max-width: 15rem; }
-.recruitment-date-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1rem; margin-bottom: 1rem; }
-@media screen and (max-width: 760px) { .mailbox-filters-dated, .recruitment-date-row { grid-template-columns: minmax(0, 1fr); } }
-@media screen and (max-width: 480px) { .mailbox-options-grid { grid-template-columns: minmax(0, 1fr); } }
-.recruitment-decision-column { display: grid; gap: 1rem; align-content: start; min-width: 0; }
-.recruitment-role-decision > summary { cursor: pointer; overflow-wrap: anywhere; }
-.recruitment-role-decision[open] > summary { margin-bottom: 1rem; }
-.recruitment-role-decision textarea { width: 100%; box-sizing: border-box; }
+.intake-panel-body .intake-form {
+    width: 100%;
+    max-width: none;
+}
+
+.mailbox-filters {
+    display: grid;
+    grid-template-columns: minmax(0,24rem) minmax(0,32rem);
+    gap: var(--space-4);
+    align-items: start;
+    margin-bottom: var(--space-4);
+}
+
+.mailbox-filters .filter-field {
+    margin: 0;
+}
+
+.mailbox-options {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-3);
+    min-width: 0;
+}
+
+.mailbox-option {
+    display: flex;
+    margin: 0;
+    font-weight: 400;
+    max-width: 100%;
+}
+
+.mailbox-option span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.mailbox-actions {
+    grid-column: 1/-1;
+    margin: 0;
+}
+
+.mailbox-confirmation-options {
+    max-width: 32rem;
+    margin-block: var(--space-4);
+}
+
+.submission-newsletters {
+    max-width: 32rem;
+    margin-bottom: var(--space-4);
+}
+
+@media screen and (max-width: 760px) {
+    .mailbox-filters {
+        grid-template-columns: minmax(0,1fr);
+    }
+}
+
+.intake-stack > .intake-panel {
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0;
+}
+
+.import-preview-table td {
+    vertical-align: top;
+    height: auto;
+    white-space: normal;
+}
+
+.import-preview-table p {
+    margin-block: var(--space-1);
+}
+
+.mailbox-filters-dated {
+    grid-template-columns: minmax(0, 2fr) minmax(14rem, 1fr);
+}
+
+.mailbox-filter-controls {
+    min-width: 0;
+}
+
+.mailbox-filter-controls .filter-field {
+    margin-bottom: var(--space-4);
+}
+
+.mailbox-options-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--space-3) var(--space-4);
+}
+
+.mailbox-date-filter {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.mailbox-date-filter input[type=date] {
+    width: 100%;
+    max-width: 15rem;
+}
+
+.recruitment-date-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--space-4);
+    margin-bottom: var(--space-4);
+}
+
+@media screen and (max-width: 760px) {
+    .mailbox-filters-dated, .recruitment-date-row {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+@media screen and (max-width: 480px) {
+    .mailbox-options-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.recruitment-decision-column {
+    display: grid;
+    gap: var(--space-4);
+    align-content: start;
+    min-width: 0;
+}
+
+.recruitment-role-decision > summary {
+    cursor: pointer;
+    overflow-wrap: anywhere;
+}
+
+.recruitment-role-decision[open] > summary {
+    margin-bottom: var(--space-4);
+}
+
+.recruitment-role-decision textarea {
+    width: 100%;
+    box-sizing: border-box;
+}

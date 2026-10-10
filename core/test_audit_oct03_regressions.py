@@ -187,7 +187,7 @@ class AuditOctoberRegressions(StatusAssignmentFixtures):
         self.client.force_login(self.member)
         response = self.client.get(reverse('password_change'))
         self.assertTemplateUsed(response, 'core/base.html')
-        self.assertContains(response, static('core/styles.css'))
+        self.assertContains(response, static('core/components.css'))
         response = self.client.post(reverse('password_change'),
                                     {'old_password': 'incorrect', 'new_password1': 'New-password-927!',
                                      'new_password2': 'New-password-927!'})

@@ -1,0 +1,1062 @@
+/*
+ * Reguły konkretnych widoków, których nie obejmują komponenty.
+ * Większe widoki mają własne arkusze ładowane w bloku extra_css.
+ */
+
+/* ===== Logowanie ===== */
+.auth-container {
+    display: grid;
+    flex: 1;
+    place-items: center;
+    width: 100%;
+    padding: var(--space-7) var(--space-5);
+}
+
+.auth-card {
+    width: 100%;
+    max-width: 420px;
+    padding: var(--space-6);
+}
+
+.auth-header {
+    margin-bottom: var(--space-5);
+    text-align: center;
+}
+
+.auth-brand-image {
+    width: 96px;
+    height: 120px;
+    padding: var(--space-3);
+    border-radius: var(--radius-lg);
+    background: var(--logo-bg);
+    object-fit: contain;
+}
+
+.auth-form {
+    display: grid;
+    gap: var(--space-4);
+}
+
+.auth-password-reset {
+    display: table;
+    width: fit-content;
+    margin: var(--space-3) auto 0;
+    font-size: var(--font-size-sm);
+    text-align: center;
+}
+
+#login-quote {
+    margin: var(--space-5) 0 0;
+    color: var(--muted);
+    text-align: center;
+}
+
+#login-quote [data-quote-text] {
+    margin: 0;
+    font-style: italic;
+    white-space: pre-line;
+}
+
+#login-quote footer {
+    margin-top: var(--space-2);
+    font-size: var(--font-size-sm);
+}
+
+#login-quote [data-quote-source] {
+    color: inherit;
+}
+
+#login-quote [data-quote-translator] {
+    display: block;
+}
+
+/* ===== Pulpit i wyszukiwarka ===== */
+.dashboard-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--space-3);
+    margin-block: var(--space-4);
+}
+
+.review-summary-grid,
+.profile-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(140px, 100%), 1fr));
+    gap: var(--space-3);
+    margin-block: var(--space-4);
+}
+
+.dashboard-counter,
+.summary-tile {
+    display: grid;
+    gap: var(--space-2);
+    color: var(--muted);
+    font-size: var(--font-size-sm);
+}
+
+:is(.dashboard-counter, .summary-tile) strong {
+    color: var(--text);
+    font-size: var(--font-size-3xl);
+    line-height: var(--leading-tight);
+    font-variant-numeric: tabular-nums;
+}
+
+.dashboard-intake-grid,
+.dashboard-grid,
+.global-search-results {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-5);
+    align-items: stretch;
+    margin-bottom: var(--space-5);
+}
+
+.dashboard-intake-grid:empty {
+    display: none;
+}
+
+.dashboard-intake-grid > *,
+.dashboard-grid > .card,
+.dashboard-right-stack > .card {
+    min-width: 0;
+    margin: 0;
+}
+
+.dashboard-intake-grid > :only-child {
+    grid-column: 1 / -1;
+}
+
+.dashboard-grid > .card,
+.dashboard-right-stack > .card {
+    display: flex;
+    flex-direction: column;
+}
+
+.dashboard-right-stack {
+    display: grid;
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    gap: var(--space-5);
+    min-width: 0;
+}
+
+.dashboard-grid .section-header {
+    align-items: flex-start;
+    min-height: 6rem;
+}
+
+.dashboard-list,
+.search-result-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.search-result-item {
+    padding: var(--space-4) var(--space-5);
+}
+
+.search-result-item + .search-result-item {
+    border-top: 1px solid var(--border);
+}
+
+.search-result-item a {
+    display: block;
+    text-decoration: none;
+}
+
+.search-result-item a:hover strong {
+    text-decoration: underline;
+}
+
+.dashboard-grid .dashboard-list {
+    display: grid;
+    gap: var(--space-3);
+    padding: 0 var(--space-4) var(--space-4);
+}
+
+.dashboard-right-stack .dashboard-list {
+    max-height: 24rem;
+    overflow-y: auto;
+}
+
+.dashboard-grid .dashboard-list-item {
+    display: grid;
+    gap: var(--space-2);
+    min-width: 0;
+    padding: var(--space-4);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--primary);
+    border-radius: var(--radius-md);
+    background: var(--surface-alt);
+}
+
+.dashboard-list-item[hidden] {
+    display: none;
+}
+
+.dashboard-grid .dashboard-list-item > .detail-link {
+    font-size: var(--font-size-lg);
+    overflow-wrap: anywhere;
+}
+
+.dashboard-grid .dashboard-list-item > .muted-text {
+    font-size: var(--font-size-md);
+    overflow-wrap: anywhere;
+}
+
+.dashboard-grid .dashboard-list-item > small {
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--border);
+    font-variant-numeric: tabular-nums;
+}
+
+.dashboard-grid .dashboard-list-item:focus-within {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
+
+.dashboard-grid .dashboard-list-item p {
+    margin: 0;
+}
+
+.dashboard-grid .role-badge {
+    --badge-border: var(--border-strong);
+}
+
+.dashboard-expand {
+    margin: 0 var(--space-4) var(--space-4);
+}
+
+section[aria-labelledby="dashboard-search-heading"] {
+    margin-top: var(--space-6);
+}
+
+.global-search-form {
+    margin-block: var(--space-3) var(--space-5);
+}
+
+.search-pagination {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+    border-top: 1px solid var(--border);
+}
+
+section:has(#active-stages-heading),
+section:has(#reserved-assignments-heading) {
+    border: 1px solid var(--border-strong);
+    box-shadow: var(--shadow-sm);
+}
+
+/* ===== Recenzje ===== */
+.review-workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(280px, 1fr);
+    gap: var(--space-5);
+    align-items: start;
+    margin-block: var(--space-5);
+}
+
+.review-workspace-readonly {
+    grid-template-columns: 1fr;
+}
+
+.review-opinion-form,
+.general-notes-form,
+.vacation-form,
+.review-import-form,
+.file-link-form {
+    display: grid;
+    gap: var(--space-4);
+}
+
+:is(.general-notes-form, .review-import-form, .vacation-form, .file-link-form) > p {
+    margin: 0;
+}
+
+.general-notes-form > p:has(> input:not([type="hidden"]), > textarea, > select) {
+    display: grid;
+    gap: var(--field-gap);
+}
+
+.general-notes-form .general-notes-actions {
+    margin-top: 0;
+}
+
+.review-notes-input {
+    min-height: 220px;
+}
+
+.other-reviews-list,
+.text-notes-list {
+    display: grid;
+    gap: var(--space-3);
+    padding: var(--card-padding);
+}
+
+.other-reviews-card .other-reviews-list {
+    padding: 0;
+}
+
+.source-review-grid,
+.review-folder-layout {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4);
+    align-items: start;
+}
+
+.review-folder-layout {
+    margin-bottom: var(--space-5);
+}
+
+:is(.source-review-grid, .review-folder-layout) > * {
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.review-decision-actions {
+    margin: 0 0 var(--space-5);
+}
+
+.decision-status {
+    margin-bottom: var(--space-2);
+}
+
+.review-designated-note {
+    margin-top: 0;
+}
+
+.review-filter-bottom {
+    display: grid;
+    flex: 1 0 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4);
+    align-items: start;
+}
+
+/* Przyciski na wysokości listy statusów, a nie podpowiedzi pod nią. */
+.review-filter-bottom .filter-actions {
+    padding-top: calc(var(--font-size-sm) * var(--leading) + var(--field-gap));
+}
+
+.review-filter-bottom .active-filters {
+    flex: 1 1 auto;
+    margin: 0;
+}
+
+.reviewer-action-cell .filter-actions {
+    flex-wrap: nowrap;
+    white-space: nowrap;
+}
+
+.review-import-card {
+    max-width: 1100px;
+}
+
+.review-import-textarea {
+    min-height: 340px;
+    font-family: var(--font-mono);
+    font-size: var(--font-size-sm);
+}
+
+.editorial-decision {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.editorial-decision legend {
+    margin-bottom: var(--space-2);
+    padding: 0;
+}
+
+.editorial-decision label {
+    display: flex;
+    margin: var(--space-2) 0;
+}
+
+.complete-stage-form:has(.editorial-decision) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+}
+
+.complete-stage-form:has(.editorial-decision) .complete-stage-button {
+    justify-self: start;
+    max-width: 100%;
+}
+
+.stage-finish-card:has(.editorial-decision) .quick-stage-action {
+    width: 100%;
+    min-width: 0;
+}
+
+.selected-authors {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
+}
+
+.selected-author {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-alt);
+}
+
+.author-manual-button {
+    margin: 0 0 var(--space-3);
+}
+
+/* ===== Teksty: etapy, przejmowanie i notatki ===== */
+.complete-stage-form,
+.reviewer-action-form,
+.take-stage-form,
+.start-stage-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--space-3);
+    margin: 0;
+}
+
+.take-stage-form,
+.start-stage-form {
+    flex-wrap: nowrap;
+}
+
+:is(.take-stage-form, .start-stage-form) > button {
+    flex: 0 0 auto;
+}
+
+:is(.take-stage-form, .start-stage-form) .form-field {
+    margin: 0;
+}
+
+.take-stage-form .reservation-label {
+    align-self: center;
+    margin: 0;
+}
+
+.stage-date-input {
+    width: auto;
+    min-width: 150px;
+}
+
+.stage-action-cell,
+.reviewer-action-cell {
+    min-width: 200px;
+}
+
+.stage-action-cell .take-stage-form .form-help {
+    min-width: 15ch;
+    max-width: 25ch;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.take-stage-action {
+    display: grid;
+    flex: 0 0 auto;
+    gap: var(--field-gap);
+}
+
+:is(.take-stage-form, .start-stage-form) button {
+    white-space: nowrap;
+}
+
+.take-stage-action .form-label {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+}
+
+/* Kolumna etapu wyrównana do przycisku przejęcia, nie do etykiety „Akcja” nad nim. */
+.available-stage-cell:has(+ td .take-stage-action) {
+    padding-top: calc(var(--cell-padding-block) + var(--font-size-sm) * var(--leading) + var(--field-gap));
+}
+
+.quick-stage-action {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+}
+
+.quick-stage-action:has(.start-stage-form) {
+    align-items: flex-end;
+    gap: var(--space-5);
+}
+
+.quick-stage-description p {
+    margin: var(--space-1) 0 0;
+    color: var(--muted);
+}
+
+.quick-stage-card:has(> .take-stage-form) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--space-3) var(--space-5);
+}
+
+.quick-stage-card:has(> .take-stage-form) > strong {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--control-height);
+}
+
+.stage-finish-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+}
+
+.stage-finish-card .quick-stage-action {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+}
+
+.workflow-folder-layout {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4);
+    align-items: stretch;
+    padding: var(--card-padding);
+}
+
+.workflow-folder-layout > .editing-control-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    min-width: 0;
+    padding: 0;
+}
+
+.workflow-folder-layout .quick-stage-card {
+    margin: 0;
+}
+
+.workflow-folder-layout .stage-finish-card {
+    flex: 1;
+}
+
+.workflow-table-frame {
+    min-width: 0;
+    padding: 0 var(--space-5) var(--space-4);
+}
+
+.workflow-table-frame > .table-container {
+    width: 100%;
+    margin: 0;
+}
+
+.workflow-table-frame > .cms-pagination {
+    margin: var(--space-3) 0 0;
+}
+
+.stage-leave-warning {
+    display: inline-flex;
+    margin: var(--space-2) 0 0 var(--space-2);
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--danger);
+    border-radius: var(--radius-md);
+    background: var(--danger-light);
+    color: var(--danger);
+}
+
+.management-action {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 1fr);
+    align-items: center;
+    gap: var(--space-5);
+    padding-block: var(--space-4);
+}
+
+.management-action + .management-action {
+    border-top: 1px solid var(--border);
+}
+
+.management-action-description p {
+    margin: var(--space-2) 0 0;
+    color: var(--muted);
+}
+
+.work-handoff-card {
+    margin-block: var(--space-5);
+}
+
+.work-handoff-card .text-management-content {
+    padding-block: var(--space-2);
+}
+
+.work-handoff-card .management-action {
+    gap: var(--space-3);
+    padding-block: var(--space-3);
+}
+
+.work-handoff-card h3 {
+    margin: 0;
+    font-size: var(--font-size-lg);
+}
+
+.work-handoff-link {
+    justify-self: start;
+    max-width: 100%;
+    white-space: normal;
+}
+
+.text-team-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
+    gap: var(--space-3);
+    padding: var(--card-padding);
+}
+
+.text-team-member-role {
+    display: block;
+    margin-bottom: var(--space-2);
+    color: var(--muted);
+    font-size: var(--font-size-xs);
+}
+
+.text-team-member.is-unassigned {
+    background: var(--surface-alt);
+    color: var(--muted);
+}
+
+.contract-confirmed {
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    background: var(--success-light);
+    color: var(--success);
+}
+
+/* Notatki koordynatora i redakcyjne obok siebie. */
+.notes-editor-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-5);
+    align-items: start;
+}
+
+.notes-editor-panel {
+    min-width: 0;
+    padding: var(--card-padding);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+}
+
+.notes-editor-panel h3 {
+    margin: 0 0 var(--space-3);
+}
+
+.notes-editor-panel.coordinator-note-highlight {
+    border-color: var(--danger-border);
+    background: var(--danger-light);
+}
+
+.notes-editor-grid textarea {
+    min-height: 160px;
+}
+
+.coordinator-note-create > summary {
+    color: var(--primary);
+    cursor: pointer;
+}
+
+/* Na stronie tekstu panele są niższe, a przełącznik notatki stoi nad siatką. */
+.work-information .notes-editor-panel {
+    padding: var(--space-4);
+}
+
+.work-information .notes-editor-grid.has-note-toggle {
+    margin-top: var(--space-7);
+}
+
+.work-information .form-field > label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+}
+
+.work-information textarea {
+    height: 6rem;
+    min-height: 6rem;
+}
+
+.work-information .coordinator-note-create {
+    position: relative;
+    min-width: 0;
+}
+
+.work-information .coordinator-note-create > summary {
+    position: absolute;
+    bottom: calc(100% + var(--space-2));
+}
+
+.work-information .coordinator-note-highlight > .form-help {
+    margin: var(--space-2) 0;
+}
+
+.work-information .general-notes-form button[type="submit"] {
+    justify-self: start;
+    min-width: 7rem;
+}
+
+/* ===== Zgłoszenia, uwagi i poprawki ===== */
+.intake-form > p,
+.intake-form fieldset > p,
+.correction-form-card form > p,
+.anthology-tasks fieldset > p {
+    display: grid;
+    gap: var(--field-gap);
+    min-width: 0;
+    margin: 0 0 var(--space-4);
+}
+
+.intake-form fieldset > p:last-child {
+    margin-bottom: 0;
+}
+
+:is(.intake-form, .anthology-tasks) input[type="checkbox"] {
+    justify-self: start;
+}
+
+.intake-form .short-textarea {
+    height: 72px;
+    min-height: 72px;
+}
+
+.intake-form + .intake-form {
+    margin-top: var(--space-5);
+    padding-top: var(--space-5);
+    border-top: 1px solid var(--border);
+}
+
+.correction-form-card {
+    margin-top: var(--space-5);
+}
+
+.correction-form-card form > button {
+    margin: 0 var(--space-2) var(--space-2) 0;
+}
+
+#correction-bulk {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--space-3);
+    margin: var(--space-3) 0 var(--space-4);
+}
+
+#correction-bulk > label {
+    display: grid;
+    gap: var(--field-gap);
+}
+
+.mailbox-import-card td {
+    overflow-wrap: anywhere;
+}
+
+.notification-queue {
+    margin-bottom: var(--space-5);
+    border-left: 4px solid var(--warning);
+}
+
+.notification-urgent {
+    border-left-color: var(--danger);
+    background: var(--danger-light);
+}
+
+.notification-state {
+    display: block;
+    margin-top: var(--space-1);
+    font-size: var(--font-size-sm);
+}
+
+.anthology-tasks {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+    gap: var(--space-4);
+    margin-block: var(--space-4);
+}
+
+.anthology-tasks fieldset {
+    min-width: 0;
+}
+
+/* ===== Ludzie, urlopy i raporty ===== */
+.people-filters-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    align-items: end;
+}
+
+.people-filters-form .checkbox-dropdown {
+    width: 100%;
+}
+
+.people-filters-form .checkbox-dropdown-options .multi-filter-options {
+    display: grid;
+    grid-template-columns: 1fr;
+}
+
+#people-table .roles-list {
+    gap: 2px var(--space-1);
+}
+
+/* Raport aktywności: podpowiedzi pod polami nie przesuwają przycisku. */
+.activity-filters {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    grid-template-rows: auto auto auto;
+    gap: var(--space-2) var(--space-4);
+    align-items: start;
+}
+
+.activity-filters .filter-field {
+    display: grid;
+    grid-row: 1 / 4;
+    grid-template-rows: subgrid;
+}
+
+.activity-filters > button {
+    grid-row: 2;
+    grid-column: 3;
+    margin: 0;
+}
+
+.vacation-layout {
+    display: grid;
+    grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
+    gap: var(--space-5);
+    align-items: start;
+}
+
+.vacation-form .details-grid {
+    align-items: start;
+}
+
+.vacation-row-active > td:first-child,
+.inactivity-row.is-waiting-too-long > td:first-child {
+    border-left: 3px solid var(--warning-accent);
+}
+
+.inactivity-row.is-active-too-long > td:first-child {
+    border-left: 3px solid var(--danger);
+}
+
+.vacation-row-finished {
+    color: var(--muted);
+}
+
+.inactivity-days {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.profile-history-filters {
+    margin-bottom: var(--space-4);
+}
+
+.profile-anthology-link {
+    font-weight: 400;
+}
+
+.profile-table-inset,
+.author-table-inset {
+    min-width: 0;
+    padding: 0 var(--card-padding) var(--space-4);
+}
+
+:is(.profile-table-inset, .author-table-inset) > .table-container {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+}
+
+:is(.profile-table-inset, .author-table-inset) > .cms-pagination {
+    margin: var(--space-3) 0 0;
+}
+
+.credits-list {
+    padding-left: var(--space-5);
+}
+
+.credits-list li {
+    margin-block: var(--space-2);
+}
+
+.role-names {
+    overflow-wrap: anywhere;
+}
+
+.translation-person-actions > button {
+    margin-left: auto;
+}
+
+.newsletter-copy-actions {
+    margin-top: var(--space-4);
+}
+
+.summary-work-entry {
+    margin: var(--space-1) 0 var(--space-3);
+}
+
+.summary-work-entry:last-child {
+    margin-bottom: var(--space-1);
+}
+
+.summary-work-state {
+    margin-top: var(--space-1);
+}
+
+.recruitment-operations-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-5);
+    align-items: stretch;
+    margin-block: var(--space-4);
+}
+
+.recruitment-operations-grid .recruitment-bulk {
+    margin: 0;
+}
+
+/* Podpowiedzi wpisów (osoby, tagi). */
+.contact-suggestions,
+.vocabulary-suggestions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-top: var(--space-1);
+}
+
+:is(.contact-suggestions, .vocabulary-suggestions):empty {
+    display: none;
+}
+
+.issue-list li {
+    margin: var(--space-3) 0;
+    overflow-wrap: anywhere;
+}
+
+#nowa-uwaga {
+    padding-inline: var(--space-4);
+}
+
+@media screen and (max-width: 1100px) {
+    .review-workspace,
+    .vacation-layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+@media screen and (max-width: 760px) {
+    .dashboard-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .dashboard-grid,
+    .dashboard-intake-grid,
+    .global-search-results,
+    .notes-editor-grid,
+    .management-action,
+    .review-filter-bottom,
+    .recruitment-operations-grid,
+    .source-review-grid,
+    .review-folder-layout,
+    .workflow-folder-layout,
+    .people-filters-form,
+    .activity-filters {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .dashboard-right-stack {
+        grid-template-rows: auto auto;
+    }
+
+    .review-filter-bottom .filter-actions {
+        padding-top: 0;
+    }
+
+    .activity-filters {
+        grid-template-rows: auto;
+    }
+
+    .activity-filters .filter-field {
+        grid-row: auto;
+        grid-template-rows: auto auto auto;
+    }
+
+    .activity-filters > button {
+        grid-row: auto;
+        grid-column: 1;
+    }
+
+    .work-information .coordinator-note-create {
+        margin-top: var(--space-7);
+    }
+
+    .work-handoff-link {
+        justify-self: stretch;
+    }
+
+    .review-opinion-form .primary-button {
+        width: 100%;
+    }
+
+    .review-summary-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .profile-table-inset,
+    .author-table-inset {
+        padding-inline: var(--space-4);
+    }
+}
+
+@media screen and (max-width: 480px) {
+    .auth-card {
+        padding: var(--space-5);
+    }
+
+    .dashboard-summary {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .profile-summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .global-search-form,
+    .complete-stage-form,
+    .workflow-action-buttons,
+    .vacation-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .workflow-action-buttons :is(form, button),
+    .vacation-actions > *,
+    .stage-date-input {
+        width: 100%;
+    }
+
+    .quick-stage-card :is(.take-stage-form, .start-stage-form) {
+        flex-wrap: wrap;
+    }
+}

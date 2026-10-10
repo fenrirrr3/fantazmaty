@@ -44,7 +44,7 @@ DJANGO_SETTINGS_MODULE=fantazmaty.mysql_integration_settings python manage.py te
 `fantazmaty/test_settings.py` importuje `fantazmaty/settings.py`, więc testy
 działają z tym samym językiem, middleware i nagłówkami co produkcja. Lokalny
 `.env` jest wtedy pomijany. CI (`.github/workflows/tests.yml`) uruchamia testy
-na SQLite i MySQL, `ruff check` oraz `pip-audit`.
+na SQLite i MySQL, `ruff check`, stylelint oraz `pip-audit`.
 
 ## Wdrożenie (PythonAnywhere)
 
@@ -76,13 +76,29 @@ wersji). Ochrona przed nadpisaniem cudzych zmian: `core/edit_versions.py`.
 
 ## Style
 
-- `core/static/core/themes.css` – jedyne źródło tokenów: kolory wszystkich motywów
-  (jasny, ciemny, „Jesieniara”), typografia, promienie, cienie.
-- `styles.css` (podstawa), `workspace.css` (układ, pulpit), `components.css`
-  (komponenty wspólne) – ładowane na każdej stronie.
-- Arkusze stron (`novels.css`, `recruitment.css`, `vocabulary.css`, `programs.css`, …)
-  dołączają szablony w bloku `extra_css`.
-- Progi szerokości: 480 px (telefon), 760 px (mały tablet), 950 px (zwinięte menu),
-  1100 px (wąski ekran).
-- Kolory odznak ról i etapów ustala serwer (`core/palettes.py`, filtry w
-  `core/templatetags/workspace_tags.py`).
+Arkusze w `core/static/core/` ładuje wspólny szablon `core/includes/stylesheets.html`
+w stałej kolejności warstw:
+
+1. `tokens.css` – skale: odstępy 4/8/12/16/24/32/48 px (`--space-1…7`), rozmiary
+   tekstu 12–24 px, interlinia 1,25 (nagłówki) i 1,5 (tekst), zaokrąglenia 4/8/12 px
+   i pigułka, wysokość kontrolek 36 px (małe 30 px), trzy cienie, pięć warstw `z-index`.
+   Ładuje go także panel administracyjny.
+2. `themes.css` – kolory motywów (jasny, ciemny, „Jesieniara”), palety ról, wydruk.
+3. `base.css` – reset i wygląd elementów HTML (pola, tabele, okna dialogowe).
+4. `layout.css` – nagłówek, menu boczne, obszar strony, stopka.
+5. `components.css` – przyciski (główny, zwykły, zatwierdzający, niebezpieczny + mały),
+   pola formularzy, odznaki, karty, wiersze przycisków, filtry, tabele, komunikaty.
+6. `pagination.css`, `illustration-status.css` – komponenty używane też w panelu.
+7. `pages.css` – reguły widoków bez własnego arkusza.
+8. Arkusze stron (`novels.css`, `recruitment.css`, …) w bloku `extra_css`.
+
+Wartości spoza skal, `!important` i powtórzone selektory blokuje stylelint
+(`.stylelintrc.json`, zadanie `css` w CI):
+
+```bash
+npx --yes stylelint@16.10.0 "core/static/core/*.css"
+```
+
+Progi szerokości: 480 px (telefon), 760 px (tablet), 950 px (zwinięte menu),
+1100 px (wąski ekran). Kolory odznak ról i etapów ustala serwer (`core/palettes.py`,
+filtry w `core/templatetags/workspace_tags.py`).

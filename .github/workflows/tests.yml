@@ -28,6 +28,15 @@ jobs:
           python-version: '3.13'
       - run: python -m pip install ruff
       - run: ruff check .
+  css:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # Skale, warstwy i zakazy (!important, wartości spoza tokenów) – .stylelintrc.json.
+      - run: npx --yes stylelint@16.10.0 "core/static/core/*.css"
   dependencies:
     runs-on: ubuntu-latest
     steps:

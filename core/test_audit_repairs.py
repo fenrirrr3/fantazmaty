@@ -492,9 +492,8 @@ class AuditDocuments(SimpleTestCase):
         self.assertEqual(listed.get("line-height"), "2.0")
         self.assertEqual(tree.xpath(".//td/p")[0].get("align"), "right")
 
-    def test_conversion_warnings_are_delivered_in_download(self):
+    def test_conversion_warnings_are_returned_with_the_single_file(self):
         import json
-        from zipfile import ZipFile
         from core.services.document_converter import convert_document
 
         doc = Document()
@@ -512,9 +511,11 @@ class AuditDocuments(SimpleTestCase):
             patch("core.services.document_converter.run_converter", side_effect=worker),
         ):
             result, extension, _ = convert_document(self.saved(doc), ["epub"])
-            with result, ZipFile(result) as archive:
-                self.assertEqual(extension, "zip")
-                self.assertIn("Pominięto", archive.read("Uwagi_konwersji.txt").decode())
+            with result:
+                # Uwagi są pokazywane na stronie postępu; pojedynczy plik nie trafia do ZIP.
+                self.assertEqual(extension, "epub")
+                self.assertEqual(result.read(), b"EPUB test output")
+                self.assertIn("Pominięto", result.conversion_warnings[0])
 
     def test_bootstrap_records_failures_before_worker_initialization(self):
         import json

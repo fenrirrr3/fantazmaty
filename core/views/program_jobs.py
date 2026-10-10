@@ -29,7 +29,9 @@ def _render_page(request, token, state, *, status=200):
 @require_http_methods(['GET', 'POST'])
 @team_member_required
 def program_job(request, token):
-    page = request.GET.get('view') == 'page' or request.POST.get('view') == 'page'
+    download = request.method == 'GET' and request.GET.get('download') == '1'
+    # Pobranie pliku otwiera się w przeglądarce, więc błędy pokazujemy jako stronę.
+    page = download or request.GET.get('view') == 'page' or request.POST.get('view') == 'page'
     try:
         folder = jobs.resolve(request, token)
         state = jobs.status(folder)
@@ -48,18 +50,24 @@ def program_job(request, token):
                     return redirect(_page_url(renewed))
                 return JsonResponse({**jobs.status(folder), 'url': reverse('core:program_job', args=[renewed])}, status=202)
             raise jobs.JobError('Nieprawidłowa akcja.')
-        if request.GET.get('download') == '1':
+        if download:
             if state['state'] != 'done':
                 raise jobs.JobError('Plik nie jest jeszcze gotowy do pobrania.')
             response = FileResponse((folder / 'result').open('rb'), as_attachment=True,
                                     filename=state['filename'], content_type=state['mime'])
             response['Cache-Control'] = 'private, no-store'
             response['X-Content-Type-Options'] = 'nosniff'
+            # Po wysłaniu pliku usuwamy zadanie i wynik z serwera (najpierw
+            # zamyka się plik, potem katalog – kolejność zamknięć Django).
+            response._resource_closers.append(lambda: jobs.remove(folder))
             return response
         if page:
             return _render_page(request, token, state)
         return JsonResponse(state)
     except jobs.JobError as error:
+        if download and str(error).startswith('Zadanie wygasło'):
+            error = jobs.JobError('Plik został już pobrany i usunięty z serwera albo zadanie wygasło. '
+                                  'Uruchom program ponownie, jeśli potrzebujesz kolejnej kopii.')
         if page:
             return _render_page(request, token, {'state': 'error', 'message': str(error)}, status=404)
         return JsonResponse({'message': str(error)}, status=404)

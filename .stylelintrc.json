@@ -1,0 +1,43 @@
+{
+  "rules": {
+    "block-no-empty": true,
+    "color-no-invalid-hex": true,
+    "declaration-block-no-duplicate-properties": true,
+    "declaration-no-important": true,
+    "keyframe-declaration-no-important": true,
+    "no-duplicate-selectors": true,
+    "property-no-unknown": true,
+    "selector-pseudo-class-no-unknown": true,
+    "selector-pseudo-element-no-unknown": true,
+    "unit-no-unknown": true,
+    "media-feature-name-value-allowed-list": {
+      "max-width": ["480px", "760px", "950px", "1100px"],
+      "min-width": ["481px", "761px", "951px", "1101px"],
+      "max-height": ["540px"]
+    },
+    "declaration-property-value-allowed-list": {
+      "font-weight": ["400", "600", "700", "inherit"],
+      "line-height": ["/^var\\(--leading(-tight)?\\)$/", "1", "normal", "inherit"],
+      "z-index": ["auto", "/^var\\(--z-[a-z]+\\)$/", "/^[1-5]$/"],
+      "/^border(-[a-z]+)*-radius$/": ["0", "50%", "/^(0 )*var\\(--radius-(sm|md|lg|pill)\\)( var\\(--radius-(sm|md|lg|pill)\\)| 0)*$/"]
+    },
+    "declaration-property-value-disallowed-list": {
+      "/^(margin|padding|gap|row-gap|column-gap)(-[a-z]+)*$/": ["/(^|[\\s(])\\d*\\.\\d+rem|(^|[\\s(])\\d+rem/", "/(^|[\\s(])([4-9]|[1-9]\\d+)(\\.\\d+)?px/"],
+      "font-size": ["/\\d(px|rem)/"]
+    },
+    "color-no-hex": true
+  },
+  "overrides": [
+    {
+      "files": [
+        "**/themes.css",
+        "**/admin-navigation.css",
+        "**/illustration-status.css",
+        "**/audiobook-production.css",
+        "**/pagination.css",
+        "**/person-multiselect.css"
+      ],
+      "rules": { "color-no-hex": null }
+    }
+  ]
+}

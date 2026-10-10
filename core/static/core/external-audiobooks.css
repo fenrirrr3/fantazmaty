@@ -1,12 +1,57 @@
-.external-audiobooks { max-width: 1440px; margin: 2rem auto; padding: 0 1rem; }
-.audiobook-public-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1rem; }
-.audiobook-public-button { background: var(--primary-light, #e6f1ff); color: var(--primary, #185ca0); border-color: var(--primary, #185ca0); }
-.audiobook-filter-actions { flex-basis: 100%; }
-.external-audio-tags { white-space: normal; min-width: 12rem; max-width: 32rem; overflow-wrap: anywhere; }
-.audiobook-guidelines { margin-top: .85rem; }
-.audiobook-guidelines > summary { display: inline-flex; cursor: pointer; list-style: none; }
-.audiobook-guidelines > summary::-webkit-details-marker { display: none; }
-.audiobook-guidelines > summary:focus-visible { outline: 2px solid var(--focus-ring, #1761b0); outline-offset: 3px; }
-.audiobook-guidelines-content { margin-top: .75rem; padding: 1rem; border: 1px solid var(--border); border-radius: var(--radius-small); }
-.audiobook-guidelines-content h2 { margin-top: 0; }
-.audiobook-guidelines-text { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 50vh; overflow-y: auto; margin-bottom: 1rem; }
+/* Publiczna lista audiobooków do nagrania. */
+
+.external-audiobooks {
+    max-width: 1440px;
+    margin: var(--space-6) auto;
+    padding: 0 var(--space-4);
+}
+
+.audiobook-public-actions {
+    margin-top: var(--space-4);
+}
+
+.audiobook-filter-actions {
+    flex-basis: 100%;
+}
+
+.external-audio-tags {
+    min-width: 12rem;
+    max-width: 32rem;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.audiobook-guidelines {
+    margin-top: var(--space-3);
+}
+
+.audiobook-guidelines > summary {
+    display: inline-flex;
+    list-style: none;
+    cursor: pointer;
+}
+
+.audiobook-guidelines > summary::-webkit-details-marker {
+    display: none;
+}
+
+.audiobook-guidelines > summary:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 3px;
+}
+
+.audiobook-guidelines-content {
+    margin-top: var(--space-3);
+}
+
+.audiobook-guidelines-content h2 {
+    margin-top: 0;
+}
+
+.audiobook-guidelines-text {
+    max-height: 50vh;
+    margin-bottom: var(--space-4);
+    overflow-y: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}

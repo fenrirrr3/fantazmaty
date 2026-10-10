@@ -1,11 +1,63 @@
-.dashboard #content { width: auto; max-width: none; }
-.cms-admin-dashboard { display: grid; grid-template-columns: minmax(0, 1fr) 15rem; gap: 1.5rem; align-items: start; }
-.cms-admin-dashboard #content-main { float: none; width: auto; min-width: 0; }
-.cms-admin-menu-columns { columns: 2; column-gap: 1.25rem; }
-.cms-admin-menu-columns > .cms-admin-group { break-inside: avoid; overflow: hidden; }
-.cms-admin-recent { min-width: 0; border: 1px solid var(--hairline-color); border-radius: 4px; }
-.cms-admin-recent summary { padding: .85rem; cursor: pointer; font-weight: 600; }
-.cms-admin-recent .actionlist { margin: .5rem .85rem 1rem; overflow-wrap: anywhere; }
-.cms-admin-recent .actionlist li { margin-bottom: .75rem; }
-@media (max-width: 1200px) { .cms-admin-dashboard { grid-template-columns: minmax(0, 1fr); } .cms-admin-recent { max-width: 30rem; } }
-@media (max-width: 850px) { .cms-admin-menu-columns { columns: 1; } }
+.dashboard #content {
+    width: auto;
+    max-width: none;
+}
+
+.cms-admin-dashboard {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 15rem;
+    gap: var(--space-5);
+    align-items: start;
+}
+
+.cms-admin-dashboard #content-main {
+    float: none;
+    width: auto;
+    min-width: 0;
+}
+
+.cms-admin-menu-columns {
+    columns: 2;
+    column-gap: var(--space-5);
+}
+
+.cms-admin-menu-columns > .cms-admin-group {
+    break-inside: avoid;
+    overflow: hidden;
+}
+
+.cms-admin-recent {
+    min-width: 0;
+    border: 1px solid var(--hairline-color);
+    border-radius: var(--radius-sm);
+}
+
+.cms-admin-recent summary {
+    padding: var(--space-3);
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.cms-admin-recent .actionlist {
+    margin: var(--space-2) var(--space-3) var(--space-4);
+    overflow-wrap: anywhere;
+}
+
+.cms-admin-recent .actionlist li {
+    margin-bottom: var(--space-3);
+}
+
+@media (max-width: 1100px) {
+    .cms-admin-dashboard {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .cms-admin-recent {
+        max-width: 30rem;
+    }
+}
+
+@media (max-width: 760px) {
+    .cms-admin-menu-columns {
+        columns: 1;
+    }
+}

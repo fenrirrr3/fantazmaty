@@ -1,0 +1,388 @@
+/*
+ * Podstawa: reset, typografia i wygląd elementów HTML (bez klas komponentów).
+ * Wartości pochodzą wyłącznie z tokens.css i themes.css.
+ */
+
+/* Reset */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+html {
+    min-height: 100%;
+    scroll-padding-top: calc(var(--header-height) + var(--space-4));
+}
+
+body {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    margin: 0;
+    background: var(--background);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: var(--font-size-base);
+    line-height: var(--leading);
+}
+
+main, section, article, aside, form, fieldset {
+    min-width: 0;
+}
+
+/* Atrybut hidden musi wygrać z każdym display ustawionym w komponentach. */
+[hidden],
+.hidden-column {
+    display: none !important; /* stylelint-disable-line declaration-no-important */
+}
+
+img, video, svg {
+    max-width: 100%;
+}
+
+img, video {
+    height: auto;
+}
+
+/* Typografia */
+h1, h2, h3, h4 {
+    line-height: var(--leading-tight);
+    text-wrap: balance;
+}
+
+h2 {
+    font-size: var(--font-size-xl);
+}
+
+h3 {
+    font-size: var(--font-size-lg);
+}
+
+p {
+    margin-block: 0 var(--space-4);
+}
+
+p, li, dd {
+    overflow-wrap: anywhere;
+}
+
+small {
+    font-size: var(--font-size-sm);
+}
+
+a {
+    color: var(--primary);
+    text-underline-offset: 3px;
+}
+
+a:hover {
+    color: var(--primary-dark);
+}
+
+code, pre {
+    font-family: var(--font-mono);
+}
+
+pre {
+    max-width: 100%;
+    overflow: auto;
+    padding: var(--space-4);
+    border-radius: var(--radius-md);
+    background: var(--surface-alt);
+}
+
+::selection {
+    background: var(--selection-bg);
+    color: var(--selection-fg);
+}
+
+:focus-visible {
+    outline: 3px solid var(--focus-ring);
+    outline-offset: 3px;
+}
+
+.sr-only,
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+}
+
+.skip-link {
+    position: fixed;
+    top: var(--space-3);
+    left: var(--space-3);
+    z-index: var(--z-toast);
+    padding: var(--space-3) var(--space-4);
+    transform: translateY(-160%);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--primary-dark);
+}
+
+.skip-link:focus {
+    transform: translateY(0);
+}
+
+.muted-text,
+.assignment-date-information {
+    color: var(--muted);
+}
+
+/* Formularze: wszystkie pola tekstowe i listy mają wysokość --control-height. */
+button, input, select, textarea {
+    max-width: 100%;
+    font: inherit;
+}
+
+button, summary, select, input[type="checkbox"], input[type="radio"] {
+    cursor: pointer;
+}
+
+button {
+    touch-action: manipulation;
+}
+
+button, a, input, select, textarea, summary, [tabindex] {
+    -webkit-tap-highlight-color: transparent;
+}
+
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled,
+[aria-disabled="true"] {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+label {
+    color: var(--text);
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+}
+
+input:not([type]),
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="search"],
+input[type="number"],
+input[type="tel"],
+input[type="url"],
+input[type="date"],
+input[type="datetime-local"],
+input[type="time"],
+select,
+textarea {
+    width: 100%;
+    min-width: 0;
+    min-height: var(--control-height);
+    padding: var(--space-1) var(--control-padding-x);
+    border: 1px solid var(--control-border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--text);
+    line-height: var(--leading-tight);
+}
+
+textarea {
+    min-height: 128px;
+    padding-block: var(--space-2);
+    line-height: var(--leading);
+    resize: vertical;
+}
+
+input::placeholder,
+textarea::placeholder {
+    color: var(--muted);
+    opacity: 1;
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+    border-color: var(--primary);
+    outline-offset: 2px;
+}
+
+input[aria-invalid="true"],
+select[aria-invalid="true"],
+textarea[aria-invalid="true"] {
+    border-color: var(--danger);
+}
+
+input[readonly],
+textarea[readonly] {
+    background: var(--surface-alt);
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+    flex-shrink: 0;
+    width: var(--checkbox-size);
+    height: var(--checkbox-size);
+    margin: 0;
+    accent-color: var(--primary);
+    vertical-align: middle;
+}
+
+fieldset {
+    margin: 0;
+    padding: var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+}
+
+legend {
+    padding-inline: var(--space-2);
+    font-weight: 600;
+}
+
+/* Tabele */
+table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    background: var(--surface);
+    font-size: var(--table-font-size);
+}
+
+th, td {
+    padding: var(--cell-padding-block) var(--cell-padding-inline);
+    border-bottom: 1px solid var(--border);
+    line-height: var(--leading);
+    text-align: left;
+    vertical-align: middle;
+    white-space: normal;
+    word-break: normal;
+    overflow-wrap: normal;
+    hyphens: none;
+}
+
+/* Nagłówek i kolumna tytułu przyklejają się wewnątrz izolowanej tabeli (warstwy 1–5). */
+thead th {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    border-bottom-color: var(--border-strong);
+    background: var(--table-header);
+    color: var(--table-header-fg);
+    font-size: var(--font-size-xs);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+tbody th {
+    font-weight: 600;
+}
+
+tbody tr:nth-child(even) > :is(td, th) {
+    background: var(--surface-alt);
+}
+
+tbody tr:is(:hover, :focus-within) > :is(td, th) {
+    background: var(--surface-hover);
+}
+
+tbody tr:has(input[type="checkbox"]:checked) > :is(td, th) {
+    background: var(--primary-light);
+}
+
+tbody tr:last-child > :is(td, th) {
+    border-bottom: 0;
+}
+
+tbody td,
+tbody th,
+[data-copy-value] {
+    cursor: cell;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+td :is(a, button, summary, select, input[type="checkbox"]),
+th button {
+    cursor: pointer;
+}
+
+td :is(input:not([type="checkbox"]):not([type="radio"]), textarea) {
+    cursor: text;
+}
+
+:is(td, th)[data-copy="false"] {
+    cursor: auto;
+}
+
+[data-double-copy] {
+    cursor: copy;
+}
+
+td[data-type="number"],
+.numeric-cell {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Okna dialogowe */
+dialog {
+    width: min(560px, calc(100vw - 2 * var(--space-4)));
+    max-height: calc(100dvh - 2 * var(--space-5));
+    padding: var(--space-5);
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: var(--shadow-lg);
+}
+
+dialog::backdrop {
+    background: var(--backdrop);
+}
+
+/* Ograniczony ruch: wyłączone animacje i płynne przewijanie (musi wygrać z każdym komponentem). */
+/* stylelint-disable declaration-no-important */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+    }
+}
+/* stylelint-enable declaration-no-important */
+
+@media print {
+    body {
+        display: block;
+        background: white;
+        color: black;
+        font-size: 10pt;
+    }
+
+    a {
+        color: black;
+    }
+
+    thead {
+        display: table-header-group;
+    }
+
+    thead th {
+        position: static;
+        color: black;
+    }
+
+    tr {
+        break-inside: avoid;
+    }
+}

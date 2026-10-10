@@ -1,346 +1,1469 @@
-/* Statusy: delikatne znaczniki zamiast kolorowania całych tabel. */
-.status,
-.stage-status,
-.role-badge,
-.workflow-stage-badge,
-.reviewer-badge,
-.reviewer-result-badge,
-.important-note-badge,
-.inactivity-badge {
+/*
+ * Komponenty wielokrotnego użytku. Każdy komponent ma jedną regułę bazową;
+ * dawne nazwy klas są wymienione w tej samej regule, więc szablony działają bez zmian.
+ *
+ *   Przyciski   – .primary-button, .secondary-button, .success-button, .danger-button + .small-button
+ *   Pola        – .form-field (etykieta, kontrolka, podpowiedź, błąd)
+ *   Odznaki     – .badge (kolor z data-palette albo modyfikatora stanu)
+ *   Karty       – .card, .card-body, .card--compact, .card--muted, .panel
+ *   Wiersze     – .actions (przyciski obok siebie), .filters-form (filtry)
+ *   Siatki      – .stack (pionowo), .grid-2 (dwie kolumny)
+ */
+
+/* ===== Przyciski ===== */
+.primary-button,
+.secondary-button,
+.success-button,
+.danger-button,
+.assign-button,
+.complete-stage-button,
+.accept-review-button,
+.audio-finish-button,
+.unassign-button,
+.withdraw-text-button,
+.reject-review-button,
+.vacation-end-button {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    max-width: 100%;
-    padding: 4px 8px;
-    border: 1px solid transparent;
-    border-radius: var(--radius-badge);
-    font-size: var(--font-size-xs);
-    font-weight: 650;
-    line-height: 1.35;
+    justify-content: center;
+    gap: var(--space-2);
+    min-height: var(--control-height);
+    padding: var(--space-1) var(--space-4);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--text);
+    font-size: var(--font-size-md);
+    font-weight: 600;
+    line-height: var(--leading-tight);
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color 120ms ease, border-color 120ms ease;
 }
 
-.status,
-.role-badge,
-.reviewer-badge {
+/* Zwykły (domyślny wygląd bazy). */
+.secondary-button:hover {
+    border-color: var(--primary);
     background: var(--primary-light);
     color: var(--primary-dark);
 }
 
-.stage-status.pending,
-.stage-status.inactive,
-.workflow-stage-badge {
-    background: var(--surface-alt);
+/* Główny. */
+.primary-button,
+.assign-button {
+    border-color: var(--primary);
+    background: var(--primary);
+    color: var(--on-primary);
+}
+
+.primary-button:hover,
+.assign-button:hover {
+    border-color: var(--primary-dark);
+    background: var(--primary-dark);
+    color: var(--on-primary);
+}
+
+/* Zatwierdzający: zakończenie etapu, przyjęcie. */
+.success-button,
+.complete-stage-button,
+.accept-review-button,
+.audio-finish-button {
+    border-color: var(--success-action-border);
+    background: var(--success-action);
+    color: var(--on-success);
+}
+
+:is(.success-button, .complete-stage-button, .accept-review-button, .audio-finish-button):hover {
+    background: var(--success-action-hover);
+    color: var(--on-success);
+}
+
+/* Niebezpieczny: wycofanie, odrzucenie, usunięcie. */
+.danger-button,
+.unassign-button,
+.withdraw-text-button,
+.reject-review-button,
+.vacation-end-button,
+.secondary-button.cms-danger-button {
+    border-color: var(--danger-border);
+    background: var(--danger-light);
+    color: var(--danger-dark);
+}
+
+:is(.danger-button, .unassign-button, .withdraw-text-button, .reject-review-button, .vacation-end-button, .cms-danger-button):hover {
+    border-color: var(--danger);
+    background: var(--danger-hover);
+    color: var(--danger-dark);
+}
+
+/* Mały: przyciski w tabelach i nagłówkach kart. */
+.small-button {
+    min-height: var(--control-height-sm);
+    padding: 0 var(--space-3);
+    font-size: var(--font-size-sm);
+}
+
+/* Etykieta z polem wyboru wyglądająca jak przycisk (filtry). */
+.multi-filter-option,
+.filter-toggle-button {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: var(--control-height);
+    padding: var(--space-1) var(--space-3);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+:is(.multi-filter-option, .filter-toggle-button):has(input:checked) {
+    border-color: var(--primary);
+    background: var(--primary-light);
+    color: var(--primary-dark);
+}
+
+.multi-filter-option:focus-within {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+}
+
+/* Pole wyboru z opisem: pole jest wyśrodkowane na pierwszej linii tekstu. */
+:where(label:has(> input[type="checkbox"], > input[type="radio"])) {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    cursor: pointer;
+}
+
+:where(label) > input:is([type="checkbox"], [type="radio"]) {
+    margin-top: calc((1lh - var(--checkbox-size)) / 2);
+}
+
+/* Samodzielne pola wyboru w wierszu z kontrolkami mają ich wysokość,
+   a pierwsza linia tekstu stoi na środku tej wysokości. */
+label:is(.boolean-filter-toggle, .important-note-toggle, .vacation-checkbox, .contract-checkbox) {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    min-height: var(--control-height);
+    padding-block: calc((var(--control-height) - 1lh) / 2);
+}
+
+/* Pole wyboru z etykietą nad nim (formularze Django) stoi po lewej stronie etykiety. */
+:is(.form-field, .intake-form > p, .intake-form fieldset > p, .anthology-tasks fieldset > p):has(> input[type="checkbox"]) {
+    grid-template-columns: var(--checkbox-size) minmax(0, 1fr);
+    align-items: start;
+    column-gap: var(--space-2);
+}
+
+:is(.form-field, .intake-form > p, .intake-form fieldset > p, .anthology-tasks fieldset > p):has(> input[type="checkbox"]) > * {
+    grid-column: 2;
+}
+
+:is(.form-field, .intake-form > p, .intake-form fieldset > p, .anthology-tasks fieldset > p):has(> input[type="checkbox"]) > label {
+    grid-row: 1;
+}
+
+:is(.form-field, .intake-form > p, .intake-form fieldset > p, .anthology-tasks fieldset > p) > input[type="checkbox"] {
+    grid-row: 1;
+    grid-column: 1;
+    margin-top: calc((var(--font-size-sm) * var(--leading) - var(--checkbox-size)) / 2);
+}
+
+/* ===== Pola formularzy ===== */
+.form-field,
+.filter-field,
+.form-group,
+.global-search-field,
+.filters-form > label:not(:has(> input:is([type="checkbox"], [type="radio"]))) {
+    display: grid;
+    align-content: start;
+    gap: var(--field-gap);
+    min-width: 0;
+}
+
+.filter-field,
+.filters-form > label:not(:has(> input:is([type="checkbox"], [type="radio"]))) {
+    flex: 1 1 180px;
+}
+
+.author-search-field,
+.global-search-field {
+    flex: 2 1 280px;
+}
+
+.form-help,
+.helptext {
+    display: block;
+    margin: var(--space-2) 0 var(--space-3);
+    color: var(--muted);
+    font-size: var(--font-size-md);
+    font-weight: 400;
+    line-height: var(--leading);
+}
+
+/* W polu odstęp wyznacza siatka, więc podpowiedź nie dokłada marginesu. */
+:is(.form-field, .filter-field, .global-search-field) > :is(.form-help, .helptext, small) {
+    margin: 0;
+    color: var(--muted);
+    font-size: var(--font-size-md);
+    font-weight: 400;
+}
+
+.form-warning {
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--warning);
+    border-radius: var(--radius-md);
+    background: var(--warning-light);
+    color: var(--warning);
+}
+
+.errorlist,
+.field-error,
+.form-error {
+    color: var(--danger-dark);
+    font-size: var(--font-size-sm);
+}
+
+.errorlist {
+    margin: 0;
+    padding-left: var(--space-5);
+}
+
+.form-error {
+    padding: var(--space-3);
+    border: 1px solid var(--danger-border);
+    border-radius: var(--radius-md);
+    background: var(--danger-light);
+}
+
+.searchable-select-input {
+    margin-bottom: var(--space-2);
+}
+
+/* Pole z podpowiedziami (autorzy, osoby). */
+.lookup-field {
+    position: relative;
+    display: block;
+    min-width: 0;
+}
+
+.lookup-field > input {
+    display: block;
+    width: 100%;
+}
+
+.lookup-field > .author-suggestions {
+    position: absolute;
+    top: calc(100% + var(--space-1));
+    right: 0;
+    left: 0;
+    z-index: var(--z-dropdown);
+    display: grid;
+    max-height: min(280px, 45vh);
+    overflow: auto;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    box-shadow: var(--shadow-md);
+}
+
+.lookup-field > .author-suggestions:empty {
+    display: none;
+}
+
+.author-suggestions button {
+    min-height: var(--control-height);
+    padding: var(--space-2) var(--space-3);
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    text-align: left;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+}
+
+.author-suggestions button:last-child {
+    border-bottom: 0;
+}
+
+.author-suggestions button:is(:hover, [aria-selected="true"]) {
+    background: var(--primary-light);
+}
+
+.lookup-status {
+    display: block;
+    margin-top: var(--space-2);
+    font-size: var(--font-size-md);
+}
+
+.lookup-status:empty {
+    display: none;
+}
+
+/* Lista pól wyboru rozwijana jak select. */
+.checkbox-dropdown {
+    position: relative;
+}
+
+.checkbox-dropdown > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    list-style: none;
+    min-height: var(--control-height);
+    padding: var(--space-1) var(--control-padding-x);
+    border: 1px solid var(--control-border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+}
+
+.checkbox-dropdown > summary::-webkit-details-marker {
+    display: none;
+}
+
+.checkbox-dropdown > summary::after {
+    content: "▾";
     color: var(--muted);
 }
 
+.checkbox-dropdown[open] > summary::after {
+    content: "▴";
+}
 
-.text-team-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
-    gap: 12px;
+.checkbox-dropdown-options {
+    position: absolute;
+    top: calc(100% + var(--space-1));
+    left: 0;
+    z-index: var(--z-dropdown);
+    width: max-content;
+    min-width: 100%;
+    max-width: min(340px, 85vw);
+    max-height: 320px;
+    overflow-y: auto;
+    padding: var(--space-3);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    box-shadow: var(--shadow-md);
+}
+
+.checkbox-dropdown-options label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2);
+}
+
+.checkbox-dropdown-options input[type="checkbox"] {
+    margin-top: 0;
+}
+
+.checkbox-dropdown-clear {
+    margin-bottom: var(--space-2);
+    font-size: var(--font-size-sm);
+}
+
+.multi-filter-field {
+    flex-basis: 100%;
+}
+
+.multi-filter-options,
+.roles-list,
+.reviewers-list {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+/* ===== Wiersze przycisków ===== */
+.actions,
+.filter-actions,
+.dialog-actions,
+.general-notes-actions,
+.review-form-actions,
+.review-import-actions,
+.review-decision-actions,
+.workflow-action-buttons,
+.vacation-actions,
+.detail-header-actions,
+.text-note-actions,
+.user-preview-actions,
+.dropbox-folder-actions,
+.recruitment-actions,
+.translation-person-actions,
+.audio-actions,
+.ad-filter-actions,
+.audiobook-public-actions,
+.illustration-public-actions,
+.odkurzacz-actions,
+.text-tags-actions,
+.tag-filter-actions,
+.post-layout-row-actions,
+.active-filters {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+:is(.actions, .filter-actions, .dialog-actions, .workflow-action-buttons, .vacation-actions, .detail-header-actions,
+    .text-note-actions, .user-preview-actions, .dropbox-folder-actions, .recruitment-actions, .audio-actions) > :is(form, button, a) {
+    margin: 0;
+}
+
+.general-notes-actions,
+.review-form-actions,
+.dialog-actions {
+    margin-top: var(--space-4);
+}
+
+/* ===== Filtry ===== */
+.filters-form,
+.global-search-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--space-4);
+}
+
+.filters-form[aria-busy="true"] {
+    opacity: 0.75;
+}
+
+.filters-form[data-filters="my_texts"] .stage-filter-field {
+    flex: 0 1 210px;
+    width: 210px;
+    max-width: 100%;
+}
+
+.filters-form[data-filters="my_texts"] .stage-filter-field .checkbox-dropdown-options {
+    max-width: min(290px, 85vw);
+    max-height: 220px;
+    padding: var(--space-2);
+    font-size: var(--font-size-md);
+}
+
+/* Etykieta grupy pól (span lub legend) wygląda jak zwykła etykieta pola. */
+.filter-label,
+.multi-filter-field > legend {
+    display: block;
+    margin: 0 0 var(--field-gap);
+    padding: 0;
+    color: var(--text);
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+}
+
+:is(.form-field, .filter-field) > .filter-label {
+    margin: 0;
+}
+
+fieldset.multi-filter-field {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.filter-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--control-height-sm);
+    padding: 0 var(--space-3);
+    border: 1px solid var(--primary);
+    border-radius: var(--radius-pill);
+    background: var(--primary-light);
+    color: var(--text);
+    font-size: var(--font-size-sm);
+    text-decoration: none;
+}
+
+.filter-chip.secondary-button {
+    border-radius: var(--radius-md);
+    background: var(--primary-light);
+}
+
+/* ===== Karty ===== */
+.card,
+.details-card,
+.filters-card,
+.editing-control-card,
+.review-decision-card,
+.review-assignment-card,
+.text-management-card,
+.quick-stage-card,
+.text-team,
+.archived-stages,
+.review-summary-details,
+.auth-card {
+    min-width: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+}
+
+.text-team,
+.archived-stages,
+.review-summary-details {
+    margin-block: var(--space-4);
+}
+
+/* Wnętrze karty: jeden odstęp od krawędzi (24 px, na telefonie 16 px). */
+.card-body,
+.details-card,
+.filters-card,
+.review-assignment-card,
+.quick-stage-card,
+.review-decision-card,
+.review-form-card,
+.other-reviews-card,
+.review-locked-card,
+.vacation-form-card,
+.review-import-card,
+.dropbox-folder-card,
+.intake-panel-body,
+.text-note-form,
+.editing-control-content,
+.text-management-content,
+.review-summary-content,
+.archived-stages-content,
+.notification-queue {
+    min-width: 0;
     padding: var(--card-padding);
 }
 
-.text-team-member {
-    padding: 12px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-small);
+.card--compact,
+.stage-finish-card,
+.workflow-folder-layout .quick-stage-card {
+    padding: var(--space-4);
 }
 
-.text-team-member-role {
+.card-body > :first-child {
+    margin-top: 0;
+}
+
+.card-body > :last-child {
+    margin-bottom: 0;
+}
+
+.card-body h2 {
+    margin: var(--space-5) 0 var(--space-3);
+}
+
+.card-body > h2:first-child,
+.details-card > h2,
+.dropbox-folder-card > h2 {
+    margin: 0 0 var(--space-4);
+}
+
+.card-body > p,
+.card-body > form > p {
+    margin-block: var(--space-3);
+}
+
+.card-body .form-field,
+.intake-form > p {
+    margin: 0 0 var(--space-4);
+}
+
+/* Ramka wewnątrz karty: notatki, opisy, przykłady. */
+.card--muted,
+.coordinator-note-readonly,
+.coordinator-note-detail,
+.editing-state-description,
+.locked-review-preview,
+.import-format-example {
+    padding: var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-alt);
+    overflow-wrap: anywhere;
+}
+
+/* Obramowany fragment karty bez tła. */
+.panel,
+.text-team-member,
+.dashboard-counter,
+.summary-tile,
+.recruitment-operations-grid > section,
+.recruitment-role-panel,
+.recruitment-preview-panel,
+.recruitment-bulk,
+.program-progress,
+.audiobook-guidelines-content {
+    min-width: 0;
+    padding: var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+}
+
+/* Nagłówek karty: tytuł po lewej, liczniki i przyciski po prawej. */
+.section-header,
+.detail-heading,
+.review-decision-header,
+.editing-control-header,
+.vacation-history-header,
+.review-assignment-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+}
+
+.section-header,
+.editing-control-header,
+.vacation-history-header {
+    padding: var(--card-padding);
+}
+
+:is(.section-header, .editing-control-header, .vacation-history-header, .review-assignment-row, .review-decision-header) h2 {
+    margin: 0;
+}
+
+:is(.section-header, .editing-control-header, .review-assignment-row) p {
+    margin: var(--space-2) 0 0;
+    color: var(--muted);
+}
+
+/* Karty rozwijane: podsumowanie jest nagłówkiem karty. */
+:is(.intake-panel, .program-tool, .work-handoff-card, .text-team, .archived-stages, .review-summary-details, .text-management-card) > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--card-padding);
+    font-size: var(--font-size-lg);
+    font-weight: 600;
+    list-style: none;
+    cursor: pointer;
+}
+
+:is(.intake-panel, .program-tool, .work-handoff-card, .text-team, .archived-stages, .review-summary-details, .text-management-card) > summary::-webkit-details-marker {
+    display: none;
+}
+
+:is(.intake-panel, .program-tool, .work-handoff-card, .text-team, .archived-stages, .review-summary-details, .text-management-card)[open] > summary {
+    border-bottom: 1px solid var(--border);
+}
+
+:is(.intake-panel, .program-tool, .work-handoff-card, .text-team, .archived-stages, .review-summary-details, .text-management-card) > summary:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -3px;
+}
+
+/* Rozwijane notatki i opinie wewnątrz kart. */
+.reviewer-opinion,
+.text-note {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+}
+
+:is(.reviewer-opinion, .text-note) > summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+}
+
+.reviewer-opinion-content,
+.text-note-content,
+.reviewer-opinion-notes {
+    padding: var(--space-4);
+    border-top: 1px solid var(--border);
+    overflow-wrap: anywhere;
+}
+
+.reviewer-opinion-notes {
+    white-space: pre-wrap;
+}
+
+.text-note-author,
+.reviewer-opinion-person {
+    display: grid;
+    gap: 2px;
+}
+
+.text-note-author small {
+    color: var(--muted);
+}
+
+.text-note.is-important {
+    border-left: 3px solid var(--warning-accent);
+}
+
+.text-note.is-important,
+.text-note.is-important > summary,
+.text-note.is-important .text-note-content {
+    background: var(--warning-light);
+}
+
+.text-note-actions {
+    padding: var(--space-3) var(--space-4);
+}
+
+/* Lista szczegółów (dt/dd). */
+.details-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+    gap: var(--space-5);
+    margin: 0;
+}
+
+.detail-item dt {
+    margin-bottom: var(--space-1);
+    color: var(--muted);
+    font-size: var(--font-size-sm);
+}
+
+.detail-item dd {
+    margin: 0;
+}
+
+/* ===== Układy ===== */
+.stack {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-4);
+}
+
+.grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-5);
+    align-items: start;
+}
+
+.grid-2 > *,
+.stack > * {
+    min-width: 0;
+    margin: 0;
+}
+
+/* ===== Odznaki ===== */
+.badge,
+.status,
+.stage-status,
+.role-badge,
+.workflow-stage-badge,
+.important-note-badge,
+.inactivity-badge,
+.record-counter {
+    --badge-bg: var(--surface-alt);
+    --badge-fg: var(--muted);
+    --badge-border: transparent;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-1);
+    max-width: 100%;
+    min-height: var(--badge-height);
+    padding: 0 var(--space-2);
+    border: 1px solid var(--badge-border);
+    border-radius: var(--radius-sm);
+    background: var(--badge-bg);
+    color: var(--badge-fg);
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    line-height: var(--leading-tight);
+    vertical-align: middle;
+    justify-self: start;
+}
+
+.record-counter {
+    min-width: var(--badge-height);
+    font-size: var(--font-size-sm);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Kolor odznaki: informacja, w toku, gotowe, wycofane. */
+.status,
+.role-badge {
+    --badge-bg: var(--primary-light);
+    --badge-fg: var(--primary-dark);
+}
+
+.stage-status.active,
+.important-note-badge,
+.inactivity-badge {
+    --badge-bg: var(--warning-light);
+    --badge-fg: var(--warning);
+}
+
+.stage-status.completed {
+    --badge-bg: var(--success-light);
+    --badge-fg: var(--success);
+}
+
+.stage-status.withdrawn,
+.inactivity-badge.is-active {
+    --badge-bg: var(--danger-light);
+    --badge-fg: var(--danger-dark);
+}
+
+:is(.badge, .role-badge, .workflow-stage-badge)[data-palette] {
+    --badge-bg: var(--palette-bg);
+    --badge-fg: var(--palette-fg);
+    --badge-border: currentColor;
+}
+
+/* Etapy w tabelce zbiorczej: kolor wynika z etapu wiersza. */
+.workflow-stage-row .workflow-stage-badge:not([data-palette]) {
+    --badge-bg: var(--workflow-badge-background, var(--badge-neutral-bg));
+    --badge-fg: var(--workflow-badge-color, var(--badge-neutral-fg));
+    --badge-border: var(--workflow-badge-border, transparent);
+}
+
+.workflow-stage-row:is([data-stage="editing"], [data-stage="first_proofreading"], [data-stage="second_proofreading"],
+    [data-stage="third_proofreading"], [data-stage="fourth_proofreading"], [data-stage="styling"]) {
+    --workflow-badge-background: var(--primary-light);
+    --workflow-badge-color: var(--primary-dark);
+}
+
+.workflow-stage-row:is([data-stage="author_editing"], [data-stage="first_verification"], [data-stage="second_verification"],
+    [data-stage="third_verification"]) {
+    --workflow-badge-background: var(--warning-light);
+    --workflow-badge-color: var(--warning);
+}
+
+.workflow-stage-row[data-stage="ready"] {
+    --workflow-badge-background: var(--success-light);
+    --workflow-badge-color: var(--success);
+}
+
+.workflow-stage-row[data-stage="ready_for_editing"] {
+    --workflow-badge-background: var(--ready-edit-bg);
+    --workflow-badge-color: var(--ready-edit-fg);
+    --workflow-badge-border: var(--ready-edit-fg);
+}
+
+.workflow-stage-row[data-stage="withdrawn"] {
+    --workflow-badge-background: var(--danger-light);
+    --workflow-badge-color: var(--danger-dark);
+}
+
+.workflow-stage-row[data-palette] > td:first-child {
+    border-left: 3px solid var(--palette-fg);
+}
+
+/* Opinia recenzenta: osoba i ocena w jednej pigułce, kolor zależy od oceny. */
+.reviewer-bubble {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px var(--space-2);
+    max-width: 100%;
+    min-height: var(--badge-height);
+    margin: 2px var(--space-1) 2px 0;
+    padding: 2px var(--space-2);
+    border: 1px solid var(--reviewer-fg);
+    border-radius: var(--radius-md);
+    background: var(--reviewer-bg);
+    color: var(--reviewer-fg);
+    font-size: var(--font-size-sm);
+    line-height: var(--leading-tight);
+}
+
+.reviewer-bubble:is(.reviewer-opinion-yes, .reviewer-opinion-yes_maybe) {
+    border-color: var(--success);
+    background: var(--success-light);
+    color: var(--success);
+}
+
+.reviewer-bubble.reviewer-opinion-maybe {
+    border-color: var(--warning);
+    background: var(--warning-light);
+    color: var(--warning);
+}
+
+.reviewer-bubble:is(.reviewer-opinion-no, .reviewer-opinion-maybe_no) {
+    border-color: var(--danger);
+    background: var(--danger-light);
+    color: var(--danger-dark);
+}
+
+.reviewers-list {
+    align-content: start;
+    row-gap: 2px;
+}
+
+.reviewers-list .reviewer-bubble {
+    margin-block: 0;
+}
+
+.boolean-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--badge-height);
+    height: var(--badge-height);
+    border-radius: var(--radius-sm);
+    font-size: var(--font-size-lg);
+    font-weight: 700;
+}
+
+.boolean-yes {
+    background: var(--success-light);
+    color: var(--success);
+}
+
+.boolean-no {
+    background: var(--danger-light);
+    color: var(--danger-dark);
+}
+
+/* ===== Zakładki ===== */
+.my-texts-filters,
+.tabs {
+    display: flex;
+    gap: var(--space-2);
+    max-width: 100%;
+    margin-bottom: var(--space-5);
+    padding-bottom: var(--space-1);
+    overflow-x: auto;
+}
+
+.my-texts-filter,
+.tab-link {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    min-height: var(--control-height);
+    padding: var(--space-1) var(--space-4);
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    color: var(--muted);
+    text-decoration: none;
+}
+
+:is(.my-texts-filter, .tab-link):hover {
+    background: var(--surface);
+    color: var(--text);
+}
+
+.my-texts-filter.is-active,
+.tab-link:is(.is-active, [aria-selected="true"], [aria-current="page"]) {
+    border-color: var(--primary-border);
+    background: var(--primary-light);
+    color: var(--primary-dark);
+    font-weight: 600;
+}
+
+/* ===== Komunikaty ===== */
+.messages {
+    display: grid;
+    gap: var(--space-3);
+    margin: 0 0 var(--space-5);
+    padding: 0;
+    list-style: none;
+}
+
+.message,
+.leave-warning,
+.review-locked-alert {
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border);
+    border-left-width: 3px;
+    border-radius: var(--radius-md);
+    background: var(--surface);
+}
+
+.message.success {
+    border-color: var(--success-border);
+    background: var(--success-light);
+    color: var(--success);
+}
+
+.message.error {
+    border-color: var(--danger-border);
+    background: var(--danger-light);
+    color: var(--danger-dark);
+}
+
+.message.warning,
+.leave-warning.is-active {
+    border-color: var(--warning-border);
+    background: var(--warning-light);
+    color: var(--warning);
+}
+
+.message.info,
+.leave-warning {
+    border-color: var(--primary-border);
+    background: var(--primary-light);
+    color: var(--primary-dark);
+}
+
+.leave-warning,
+.review-locked-alert,
+.page > .message {
+    margin-bottom: var(--space-4);
+}
+
+.empty,
+.empty-results-panel,
+.empty-reviewer-opinions,
+.empty-text-notes {
+    padding: var(--space-6) var(--space-5);
+    color: var(--muted);
+    text-align: center;
+}
+
+.empty-results-panel strong {
     display: block;
-    margin-bottom: 6px;
+    margin-bottom: var(--space-2);
+    color: var(--text);
+}
+
+.empty-results-panel p {
+    max-width: 520px;
+    margin: 0 auto var(--space-4);
+}
+
+/* ===== Tabele ===== */
+.table-scroll-shell {
+    position: relative;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.table-container {
+    width: 100%;
+    max-width: 100%;
+    max-height: 70vh;
+    overflow: auto;
+    isolation: isolate;
+    border-radius: var(--radius-lg);
+    scrollbar-color: var(--border-strong) var(--surface-alt);
+    scrollbar-width: thin;
+}
+
+.table-container .sticky-title {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    min-width: 12rem;
+    background: var(--surface);
+}
+
+.table-container tbody tr:nth-child(even) .sticky-title {
+    background: var(--surface-alt);
+}
+
+.table-container tbody tr:is(:hover, :focus-within) .sticky-title {
+    background: var(--surface-hover);
+}
+
+.table-container tbody tr:has(input[type="checkbox"]:checked) .sticky-title {
+    background: var(--primary-light);
+}
+
+.table-container thead .sticky-title {
+    z-index: 4;
+    background: var(--table-header);
+}
+
+tbody tr > :is(td, th):is(.copied-cell, .is-copied) {
+    outline: 2px solid var(--success);
+    outline-offset: -2px;
+    background: var(--success-light);
+}
+
+tbody tr > :is(td, th).copy-selected {
+    outline: 2px solid var(--primary);
+    outline-offset: -2px;
+    background: var(--primary-light);
+}
+
+table .copy-error {
+    outline: 2px solid var(--danger);
+    outline-offset: -2px;
+}
+
+tr:is(.is-selected, [aria-selected="true"]) > td {
+    background: var(--primary-light);
+}
+
+.date-cell,
+.email-cell {
+    white-space: nowrap;
+}
+
+.email-cell a,
+a[href^="mailto:"] {
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+.long-cell {
+    min-width: 180px;
+    max-width: 460px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.long-cell summary {
+    cursor: pointer;
+}
+
+.long-cell[open] summary {
+    margin-bottom: var(--space-3);
+}
+
+.detail-link,
+.text-title-link {
+    color: var(--primary-dark);
+    text-decoration: none;
+}
+
+:is(.detail-link, .text-title-link):hover {
+    color: var(--primary);
+    text-decoration: underline;
+}
+
+.sort-button,
+.table-sort-button {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    width: 100%;
+    min-height: var(--badge-height);
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+}
+
+:is(.sort-button, .table-sort-button):hover {
+    color: var(--primary);
+}
+
+.sort-indicator {
+    min-width: 12px;
+    color: var(--primary);
+    font-size: var(--font-size-xs);
+}
+
+.table-scroll-top {
+    max-width: 100%;
+    height: 14px;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.table-scroll-top-content {
+    height: 1px;
+}
+
+.table-scroll-button {
+    position: absolute;
+    top: 50%;
+    z-index: var(--z-raised);
+    display: none;
+    width: var(--control-height);
+    height: var(--control-height);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--primary);
+    box-shadow: var(--shadow-sm);
+    transform: translateY(-50%);
+}
+
+.table-scroll-button.is-visible {
+    display: grid;
+    place-items: center;
+}
+
+.table-scroll-button:hover {
+    background: var(--primary-light);
+}
+
+.table-scroll-button-left {
+    left: var(--space-1);
+}
+
+.table-scroll-button-right {
+    right: var(--space-1);
+}
+
+.copy-value-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: var(--control-height-sm);
+    min-height: var(--control-height-sm);
+    margin-left: var(--space-2);
+    padding: 0 var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
     color: var(--muted);
     font-size: var(--font-size-xs);
 }
 
-.text-team-member.is-unassigned {
-    background: var(--surface-alt);
+.copy-value-button:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+}
+
+.copy-value-button.is-copied {
+    background: var(--success-light);
+    color: var(--success);
+}
+
+.copy-toast {
+    position: fixed;
+    right: var(--space-5);
+    bottom: var(--space-5);
+    z-index: var(--z-toast);
+    max-width: min(380px, calc(100vw - 2 * var(--space-5)));
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-md);
+    background: var(--header);
+    color: var(--header-fg);
+    box-shadow: var(--shadow-lg);
+    pointer-events: none;
+}
+
+.table-footer-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin: var(--space-3) 0 var(--space-2);
+}
+
+.table-footer-tools details {
+    margin: 0;
     color: var(--muted);
+    font-size: var(--font-size-md);
 }
 
-
-/* Shared content spacing; table-only cards intentionally stay edge-to-edge. */
-.card-body { padding: var(--card-padding); min-width: 0; }
-.card-body > :first-child { margin-top: 0; }
-.card-body > :last-child { margin-bottom: 0; }
-.card-body h2 { margin: 24px 0 12px; }
-.card-body > h2:first-child { margin-top: 0; }
-.card-body > p, .card-body > form > p { margin-block: 12px; }
-.card-body .table-container { max-width: 100%; }
-.mailbox-import-card td { overflow-wrap: anywhere; }
-.card-body .form-field, .card-body > form.intake-form > p, .intake-form > p { margin: 0 0 18px; }
-.form-help, .helptext, .filter-field > small { display: block; color: var(--muted); font-size: var(--font-size-md); line-height: 1.6; font-weight: 400; margin: 6px 0 12px; }
-.form-warning { padding: 12px 16px; border: 1px solid var(--warning); border-radius: var(--radius-small); color: var(--warning); background: var(--warning-light); }
-.filters-form .filter-field { min-width: 0; }
-.activity-filters { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr) auto; grid-template-rows: auto auto auto; gap: 8px 16px; align-items: start; }
-.activity-filters .filter-field { display: grid; grid-template-rows: subgrid; grid-row: 1 / 4; gap: 8px; }
-.activity-filters .filter-field > label { margin: 0; }
-.activity-filters .filter-field > :is(input,select) { width: 100%; min-height: 42px; }
-.activity-filters > button { grid-column: 3; grid-row: 2; align-self: start; min-height: 42px; margin: 0; }
-.intake-panel-body { padding: var(--card-padding); }
-details:is(.intake-panel,.program-tool,.work-handoff-card,.text-team,.archived-stages,.review-summary-details,.text-management-card) > summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -3px; }
-@media screen and (max-width: 760px) {
- .activity-filters { grid-template-columns: minmax(0,1fr); grid-template-rows: auto; }
- .activity-filters .filter-field { grid-row: auto; grid-template-rows: auto auto auto; }
- .activity-filters > button { grid-column: 1; grid-row: auto; }
+.table-footer-tools summary {
+    cursor: pointer;
 }
 
-/* Review decisions and anthology summaries. */
-.review-decision-actions { margin: 0 0 1.25rem; }
-.decision-status { margin-bottom: .4rem; }
-.review-designated-note { margin-top: 0; }
-.anthology-tasks { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 1rem; margin-block: 1rem; }
-.anthology-tasks fieldset { min-width: 0; padding: 1rem; }
-.anthology-tasks select { width: 100%; }
-.credits-list { padding-left: 1.25rem; }
-.credits-list li { margin-block: .55rem; }
-.role-names { line-height: 1.8; overflow-wrap: anywhere; }
-.translation-person-actions { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
-.translation-person-actions > button { margin-left: auto; }
-
-.newsletter-copy-actions { margin-top: 16px; }
-.summary-work-entry { margin: .35rem 0 .7rem; }
-.summary-work-entry:last-child { margin-bottom: .35rem; }
-.summary-work-state { margin-top: .35rem; }
-
-/* Layout belongs to components; themes.css owns the colour palette. */
-.user-preview-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding: var(--card-padding); margin-bottom: 20px; border: 2px solid var(--warning); border-radius: var(--radius); background: var(--warning-light); color: var(--text); overflow-wrap: anywhere; }
-.user-preview-banner p { margin: 6px 0 0; }
-.user-preview-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-.user-preview-actions form { margin: 0; }
-.notes-editor-grid > .notes-editor-panel { padding: var(--card-padding); border: 1px solid var(--border); }
-.notes-editor-grid > .notes-editor-panel.coordinator-note-highlight { border-color: var(--danger-border); }
-.notes-editor-grid > .notes-editor-panel h3 { margin: 0 0 14px; min-height: 2.5em; }
-.notes-editor-grid > .notes-editor-panel label { display: block; min-height: 2.5em; }
-.notes-editor-grid textarea { min-height: 160px; }
-section:has(#active-stages-heading), section:has(#reserved-assignments-heading) { border: 1px solid var(--border-strong); box-shadow: var(--shadow-soft); }
-.notification-queue { border-left: 4px solid var(--warning); padding: var(--card-padding); margin-bottom: 20px; }
-.copy-selected { outline: 2px solid var(--primary); outline-offset: -2px; background: var(--primary-light) !important; }
-.searchable-select-input { margin-bottom: 7px; }
-/* Wyszukiwanie osoby i rozwijane role w jednym wierszu. */
-.people-filters-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; }
-.people-filters-form .team-roles-field { min-width: 0; }
-.people-filters-form .checkbox-dropdown { width: 100%; }
-.people-filters-form .checkbox-dropdown-options .multi-filter-options { display: grid; grid-template-columns: 1fr; }
-
-
-
-
-/* Consistent expandable panel headings, including the editor's existing panels. */
-.text-team, .archived-stages, .review-summary-details {
-    margin-block: 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface);
+.table-footer-tools p {
+    margin: var(--space-2) 0;
 }
-:is(.intake-panel,.program-tool,.work-handoff-card,.text-team,.archived-stages,.review-summary-details,.text-management-card) > summary {
-    display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    cursor: pointer; list-style: none; padding: var(--card-padding); font-size: var(--font-size-lg); font-weight: 650;
-}
-:is(.intake-panel,.program-tool,.work-handoff-card,.text-team,.archived-stages,.review-summary-details,.text-management-card) > summary::-webkit-details-marker { display: none; }
-:is(.intake-panel,.program-tool,.work-handoff-card,.text-team,.archived-stages,.review-summary-details,.text-management-card)[open] > summary { border-bottom: 1px solid var(--border); }
-.mobile-table-sort { display: none; }
-/* Supporting copy uses the muted token in every theme. */
-.page-description, .source-review-information, .other-reviews-description {
-    color: var(--muted); font-size: var(--font-size-md); line-height: 1.6; font-weight: 400;
+
+.mobile-table-sort {
+    display: none;
 }
 
 @media screen and (max-width: 760px) {
-    .mobile-table-sort { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 12px; align-items: end; padding: var(--card-padding); border-bottom: 1px solid var(--border); }
-    .mobile-table-sort label { display: grid; gap: var(--field-gap); }
-    .mobile-table-sort select { min-width: 0; width: 100%; }
-    .mobile-table-sort button { min-height: 44px; }
-    .people-filters-form { grid-template-columns: minmax(0,1fr); }
-}
-
-@media screen and (max-width: 480px) {
-    .mobile-table-sort { grid-template-columns: minmax(0,1fr); }
-}
-/* Last-loaded print rules override both themes and scrolling/card layouts. */
-@media print {
-    :root, :root[data-theme] {
-        --background: #fff; --surface: #fff; --surface-alt: #fff; --surface-hover: #fff;
-        --table-header: #fff; --text: #000; --muted: #000; --primary: #000; --primary-dark: #000;
-        --border: #aaa; --border-strong: #aaa; --success: #176643; --danger: #b12b36;
-        --danger-dark: #90212b; --warning: #775400;
-        --success-light: #fff; --danger-light: #fff; --warning-light: #fff; --primary-light: #fff;
-        --editing-bg: #fff; --editing-fg: #000; --proofreading-bg: #fff; --proofreading-fg: #000;
-        --verification-bg: #fff; --verification-fg: #000; --styling-bg: #fff; --styling-fg: #000;
-        --ready-bg: #fff; --ready-fg: #000; --ready-edit-bg: #fff; --ready-edit-fg: #000;
-        --reviewer-bg: #fff; --reviewer-fg: #000; --coordinator-bg: #fff; --coordinator-fg: #000;
+    .filters-form {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
     }
-    .table-container { overflow: visible; max-height: none; isolation: auto; }
-    .table-container thead th, .table-container .sticky-title, .table-container thead .sticky-title { position: static; left: auto; min-width: 0; max-width: none; }
-    .table-container table.mobile-review-cards { display: table; width: 100%; min-width: 0; }
-    .mobile-review-cards thead { display: table-header-group; }
-    .mobile-review-cards tbody { display: table-row-group; }
-    .mobile-review-cards tr { display: table-row; }
-    .mobile-review-cards td { display: table-cell; }
-    .mobile-review-cards td::before { content: none; }
-    .mobile-table-sort, .table-footer-tools { display: none; }
-    :where(:root[data-theme]) :where(p,label,input,textarea,select,.detail-link,.text-title-link), :root[data-theme] thead th { color: #000; }
+
+    .filter-field,
+    .global-search-field {
+        width: 100%;
+    }
+
+    .section-header,
+    .detail-heading,
+    .review-decision-header,
+    .editing-control-header,
+    .review-assignment-row {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .grid-2 {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .table-container {
+        max-height: none;
+    }
+
+    .table-container table {
+        min-width: 640px;
+    }
+
+    .table-container table[data-compact-table] {
+        min-width: 0;
+    }
+
+    /* Tabela recenzji zamienia się w karty. */
+    .table-container table.mobile-review-cards,
+    .mobile-review-cards :is(tbody, tr) {
+        display: block;
+        width: 100%;
+        min-width: 0;
+    }
+
+    .mobile-review-cards thead {
+        display: none;
+    }
+
+    .mobile-review-cards tr {
+        margin-bottom: var(--space-4);
+        overflow: hidden;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-md);
+    }
+
+    .mobile-review-cards td {
+        position: static;
+        display: grid;
+        grid-template-columns: minmax(90px, 35%) minmax(0, 1fr);
+        gap: var(--space-3);
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    .mobile-review-cards td::before {
+        content: attr(data-label);
+        font-weight: 600;
+    }
+
+    .mobile-review-cards td[colspan] {
+        display: block;
+    }
+
+    .table-container .mobile-review-cards .sticky-title {
+        position: static;
+        left: auto;
+        z-index: auto;
+        width: 100%;
+        min-width: 0;
+        max-width: none;
+    }
+
+    .table-container:has(> .mobile-review-cards),
+    .table-scroll-shell:has(.mobile-review-cards) {
+        overflow: visible;
+    }
+
+    .table-scroll-shell:has(.mobile-review-cards) > :is(.table-scroll-top, .table-scroll-button) {
+        display: none;
+    }
+
+    .mobile-table-sort {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: end;
+        gap: var(--space-3);
+        padding: var(--card-padding);
+        border-bottom: 1px solid var(--border);
+    }
+
+    .mobile-table-sort label {
+        display: grid;
+        gap: var(--field-gap);
+    }
 }
 
-/* Field wrappers produced by Django use the same spacing as explicit fields. */
-.general-notes-form > p, .review-import-form > p, .vacation-form > p { margin: 0; }
-.general-notes-form > p:has(> input:not([type="hidden"])),
-.general-notes-form > p:has(> textarea),
-.general-notes-form > p:has(> select) { display: grid; gap: var(--field-gap); }
-.general-notes-form .general-notes-actions { margin-top: 0; }
-/* One visual component for both local person options and remote author results. */
-.lookup-field { position: relative; display: block; min-width: 0; }
-.lookup-field > input { display: block; width: 100%; }
-.lookup-field > .author-suggestions { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 40; display: grid; max-height: min(280px, 45vh); overflow: auto; background: var(--surface); border: 1px solid var(--border-strong); border-radius: var(--radius-small); box-shadow: var(--shadow-overlay); }
-.lookup-field > .author-suggestions:empty, .lookup-field > .author-suggestions[hidden] { display: none; }
-.author-suggestions button { text-align: left; white-space: normal; overflow-wrap: anywhere; background: var(--surface); color: var(--text); border: 0; border-bottom: 1px solid var(--border); padding: 10px 12px; min-height: 44px; cursor: pointer; }
-.author-suggestions button:last-child { border-bottom: 0; }
-.author-suggestions button:hover, .author-suggestions button[aria-selected="true"] { background: var(--primary-light); }
-.lookup-status { display: block; margin-top: 6px; font-size: var(--font-size-md); }
-.lookup-status:empty { display: none; }
-.author-manual-button { margin: 0 0 10px; }
-#login-quote { margin: 24px 0 0; text-align: center; color: var(--muted); }
-#login-quote [data-quote-text] { margin: 0; font-style: italic; white-space: pre-line; }
-#login-quote footer { margin-top: 8px; font-size: var(--font-size-sm); }
-#login-quote [data-quote-source] { color: inherit; }
-#login-quote [data-quote-translator] { display: block; }
-
-/* The repeat form uses the same field rhythm as other management actions. */
-/* On phones the page owns vertical scrolling, including complex tables. */
-@media screen and (max-width: 760px) {
-    .table-container { max-height: none; }
-    .table-container:has(> .mobile-review-cards), .table-scroll-shell:has(.mobile-review-cards) { overflow: visible; }
-    .table-scroll-shell:has(.mobile-review-cards) > .table-scroll-top,
-    .table-scroll-shell:has(.mobile-review-cards) > .table-scroll-button { display: none !important; }
+@media screen and (max-width: 480px) {
+    .details-grid,
+    .mobile-table-sort {
+        grid-template-columns: minmax(0, 1fr);
+    }
 }
 
-.anthology-tasks fieldset > p { display: grid; gap: var(--field-gap); margin: 0 0 18px; }
-.anthology-tasks input[type="checkbox"] { justify-self: start; }
+@media (pointer: coarse) {
+    .table-scroll-button.is-visible {
+        display: none;
+    }
+}
+
+@media (forced-colors: active) {
+    .badge,
+    .stage-status,
+    .role-badge,
+    .workflow-stage-badge,
+    .reviewer-bubble {
+        border-color: CanvasText;
+    }
+}
 
 @media print {
-    :root[data-theme] :is(.primary-button,.assign-button,.review-open-button,.accept-review-button,.complete-stage-button,.withdraw-text-button,.reject-review-button,.unassign-button,.vacation-end-button) { color: #000; background: #fff; border-color: #aaa; }
-    .lookup-field > .author-suggestions { display: none; }
+    .card,
+    .details-card {
+        box-shadow: none;
+    }
+
+    .filters-card,
+    .copy-value-button,
+    .copy-toast,
+    .table-scroll-top,
+    .table-scroll-button.is-visible,
+    .mobile-table-sort,
+    .table-footer-tools,
+    .lookup-field > .author-suggestions {
+        display: none;
+    }
+
+    .table-container {
+        max-height: none;
+        overflow: visible;
+        isolation: auto;
+    }
+
+    .table-container table,
+    .table-container table.mobile-review-cards {
+        display: table;
+        width: 100%;
+        min-width: 0;
+    }
+
+    .table-container :is(thead th, .sticky-title) {
+        position: static;
+        left: auto;
+        min-width: 0;
+        max-width: none;
+    }
+
+    .mobile-review-cards thead {
+        display: table-header-group;
+    }
+
+    .mobile-review-cards tbody {
+        display: table-row-group;
+    }
+
+    .mobile-review-cards tr {
+        display: table-row;
+    }
+
+    .mobile-review-cards td {
+        display: table-cell;
+    }
+
+    .mobile-review-cards td::before {
+        content: none;
+    }
+
+    .text-note,
+    .summary-tile {
+        break-inside: avoid;
+    }
+
+    :root[data-theme] :is(.primary-button, .assign-button, .success-button, .complete-stage-button, .accept-review-button,
+        .danger-button, .withdraw-text-button, .reject-review-button, .unassign-button, .vacation-end-button) {
+        border-color: gray;
+        background: white;
+        color: black;
+    }
 }
-
-/* The entire menu remains scrollable on short screens. */
-@media screen and (max-height: 540px) {
-    .site-sidebar { overflow-y: auto; overscroll-behavior: contain; }
-    .sidebar-scroll { flex: none; overflow: visible; min-height: auto; }
-    .sidebar-footer { flex-shrink: 0; }
-}
-@media screen and (max-width: 950px) {
-    body.menu-open { overflow: hidden; }
-}
-
-/* Required coordinator decision, shared with the stage completion card. */
-.editorial-decision { border: 0; margin: 0; padding: 0; min-width: 0; }
-.editorial-decision legend { margin-bottom: .5rem; font-weight: 600; }
-.editorial-decision label { display: flex; align-items: flex-start; gap: .5rem; margin: .5rem 0; }
-.editorial-decision input[type="radio"] { width: auto; flex: 0 0 auto; margin-top: .3rem; }
-.stage-finish-card:has(.editorial-decision) .quick-stage-action { width: 100%; min-width: 0; }
-.complete-stage-form:has(.editorial-decision) { display: grid; grid-template-columns: minmax(0, 1fr); width: 100%; min-width: 0; }
-.complete-stage-form:has(.editorial-decision) .complete-stage-button { justify-self: start; max-width: 100%; }
-
-/* Shared forms and disclosure spacing, also for Django fieldsets. */
-.intake-form fieldset > p { display: grid; gap: var(--field-gap); min-width: 0; margin: 0 0 18px; }
-.intake-form fieldset > p:last-child { margin-bottom: 0; }
-.intake-form + .intake-form { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border); }
-.form-disclosure { margin-top: 20px; border: 1px solid var(--border); border-radius: var(--radius-small); padding: 0 16px 16px; }
-.form-disclosure > summary { padding: 14px 0; cursor: pointer; font-weight: 650; color: var(--text); }
-.form-disclosure:not([open]) { padding-bottom: 0; }
-.form-disclosure > summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-.vocabulary-suggestions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-.vocabulary-suggestions:empty { display: none; }
-.vocabulary-suggestions button { font: inherit; cursor: pointer; }
-
-
-/* Work notes: the add control does not set the content alignment. */
-.work-information .notes-editor-grid .notes-editor-panel { padding: 1rem; }
-.work-information .notes-editor-grid .notes-editor-panel h3 { min-height: 2.6em; margin-bottom: .75rem; }
-.work-information .notes-editor-grid .notes-editor-panel label { min-height: 0; }
-.work-information .notes-editor-grid textarea { min-height: 6rem; height: 6rem; }
-
-/* Odznaki ról, etapów i opinii recenzentów (kolory: themes.css). */
-.role-badge[data-palette], .workflow-stage-badge[data-palette] { background: var(--palette-bg); color: var(--palette-fg); border-color: currentColor; }
-.workflow-stage-row[data-palette] > td:first-child { border-left: 3px solid var(--palette-fg); }
-.notification-urgent { border-left-color: var(--danger); background: var(--danger-light); }
-.notification-alert { color: var(--danger); font-weight: 750; text-decoration: underline; }
-.reviewer-bubble { background:var(--reviewer-bg); color:var(--reviewer-fg); border-color:var(--reviewer-fg); }
-.reviewer-bubble.reviewer-opinion-yes, .reviewer-bubble.reviewer-opinion-yes_maybe { background:var(--success-light); color:var(--success); border-color:var(--success); }
-.reviewer-bubble.reviewer-opinion-maybe { background:var(--warning-light); color:var(--warning); border-color:var(--warning); }
-.reviewer-bubble.reviewer-opinion-no, .reviewer-bubble.reviewer-opinion-maybe_no { background:var(--danger-light); color:var(--danger-dark); border-color:var(--danger); }
-
-/* Folder Dropbox przy tekście, recenzji i osobie. */
-.dropbox-folder-card { padding: var(--card-padding); min-width: 0; }
-.dropbox-folder-card > h2 { margin: 0 0 18px; }
-.file-link-form { display: grid; gap: 18px; }
-.file-link-form > p { margin: 0; }
-.dropbox-folder-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 0; }
-.dropbox-folder-actions button { margin: 0; }
-.review-folder-layout { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 20px; }
-.review-folder-layout > .details-card { margin: 0; min-width: 0; }
-@media screen and (max-width: 760px) { .review-folder-layout { grid-template-columns: minmax(0, 1fr); } }
-
-/* Nagłówek: kopiowanie adresów e-mail (superuser) i przyciski motywu w stopce. */
-.email-copy { position: relative; }
-.email-copy > button { background: transparent; }
-.email-copy-panel {
-    position: absolute; right: 0; top: calc(100% + .6rem); z-index: 60;
-    width: min(25rem, calc(100vw - 2rem)); padding: 1rem;
-    border: 1px solid var(--border-strong); border-radius: var(--radius-large);
-    background: var(--surface); color: var(--text); box-shadow: var(--shadow-panel);
-}
-.email-copy-panel p { color: var(--muted); margin: .65rem 0; font-size: var(--font-size-md); }
-.email-copy-panel label { color: var(--text); }
-.email-copy-panel select, .email-copy-panel textarea { width: 100%; margin: .4rem 0; }
-.theme-buttons { display: flex; align-items: center; gap: .75rem; margin-inline: .75rem; }
-.theme-buttons > button { margin: 0; }
-[data-theme-autumn][aria-pressed="true"] { background: var(--primary-light); border-color: var(--primary); color: var(--primary-dark); }
-@media screen and (max-width: 760px) {
-    .email-copy-panel, .header-search-panel { position: fixed; top: calc(var(--header-height) + .5rem); right: 1rem; max-height: calc(100dvh - var(--header-height) - 2rem); overflow: auto; }
-}
-@media screen and (max-width: 480px) {
-    .site-header .navigation, .header-actions { gap: 6px; }
-    .site-header .brand-mark { display: none; }
-    .theme-buttons { margin-inline: 0; gap: .5rem; }
-    .theme-buttons > button { padding-inline: .6rem; white-space: normal; }
-}
-
-/* Wiersz akcji pod kartą (zgłoszenia, ilustracje, rekrutacja). */
-.recruitment-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; }
-
-/* Tabela osadzona w karcie profilu, razem z paginacją dodawaną przez JavaScript. */
-.profile-table-inset { min-width: 0; padding: 0 var(--card-padding) 1rem; }
-.profile-table-inset > .table-container { width: 100%; max-width: 100%; margin-inline: 0; }
-.profile-table-inset > .cms-pagination { margin-inline: 0; }
-@media screen and (max-width: 760px) { .profile-table-inset { padding-inline: 1rem; } }
-.work-information .general-notes-form button[type="submit"] { min-width: 7rem; min-height: 2.5rem; justify-self: start; padding: .6rem 1rem; }
-
-/* Przejęcie i rozpoczęcie etapu: przycisk na wysokości pola daty. */
-.take-stage-form, .start-stage-form { display: flex; flex-wrap: nowrap; align-items: flex-end; gap: 1rem; margin: 0; }
-.take-stage-form > button, .start-stage-form > button { flex: 0 0 auto; }
-.take-stage-form .form-field, .start-stage-form .form-field { margin: 0; }
-.take-stage-form > button, .start-stage-form > button,
-.take-stage-form .stage-date-input, .start-stage-form .stage-date-input { min-height: 42px; margin-bottom: 0; }
-.take-stage-form .reservation-label { margin: 0; align-self: center; }
-.stage-action-cell:has(.take-stage-form) { vertical-align: middle; }
-.quick-stage-card > .take-stage-form { margin-top: .85rem; }
-.quick-stage-action:has(.start-stage-form) { align-items: flex-start; gap: 1.25rem; }
-.quick-stage-action .start-stage-form { margin-top: .4rem; }
-@media screen and (max-width: 480px) { .quick-stage-card :is(.take-stage-form, .start-stage-form) { flex-wrap: wrap; } }
-
-/* v63: shared contact and claim controls. */
-.contact-suggestions { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .35rem; }
-.contact-suggestions:empty { display: none; }
-.author-table-inset { box-sizing: border-box; padding: 0 1.25rem 1rem; }
-.author-table-inset > .table-container { max-width: 100%; width: 100%; margin: 0; }
-.author-table-inset > .cms-pagination { margin: .75rem 0 0; padding-inline: 0; }
-.take-stage-action { display: flex; flex-direction: column; gap: .4rem; }
-.take-stage-action .form-label { font-weight: 600; font-size: var(--font-size-md); line-height: 1.4; }
-.take-stage-form .form-field label { margin: 0 0 .4rem; line-height: 1.4; }
-.take-stage-form .assign-button { height: 42px; margin: 0; }
-.quick-stage-card:has(> .take-stage-form) { display: flex; flex-wrap: wrap; align-items: center; column-gap: 1.5rem; }
-.quick-stage-card > .take-stage-form { margin-top: 0; }
-.quick-stage-card:has(.take-stage-action) > strong { padding-top: 1.7rem; }
-.available-stage-cell { vertical-align: middle; }
-.available-stage-cell:has(+ td .take-stage-action) > * { transform: translateY(.75rem); }
-@media (max-width: 600px) { .author-table-inset { padding-inline: 1rem; } .quick-stage-card:has(.take-stage-action) > strong { padding-top: 0; } }
-
-.search-pagination { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; border-top: 1px solid var(--border); }

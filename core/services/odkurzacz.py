@@ -7,8 +7,10 @@ from docx.oxml.ns import qn
 
 if __package__:
     from .document_progress import report as report_progress
+    from .document_stories import document_stories
 else:
     from document_progress import report as report_progress
+    from document_stories import document_stories
 
 # Reguły są wykonywane w ustalonej kolejności, niezależnie od kolejności kliknięć.
 EDITORIAL_RULES = (
@@ -56,6 +58,9 @@ UNITS = (r'(?:km/h|m/s|kg|mg|µg|μg|km|dm|cm|mm|µm|nm|ml|mL|'
          r'kHz|MHz|GHz|Hz|kPa|MPa|Pa|kN|kJ|kW|MW|kV|mA|kΩ|'
          r'kB|MB|GB|TB|ms|min|ha|bar|PLN|zł|EUR|USD|'
          r'[kmc]m[²³]|m[²³]|[gtmlLshNJWTAVΩBK])')
+# Bez spacji pojedyncza wielka litera to zwykle oznaczenie (klasa 2B, 4K, 3A),
+# a nie jednostka, więc reguła „brakująca spacja” jej nie rozdziela.
+ATTACHED_UNITS = UNITS.replace('[gtmlLshNJWTAVΩBK]', '[gtmlsh]')
 QUANTITIES = UNITS + r'|osób|szt\.?|egzemplarzy|mieszkańców|punktów'
 NUMBER = r'(?<![\w.,])[-−]?\d+(?:[.,]\d+)?'
 
@@ -393,15 +398,23 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True):
     if 'quote_punct' in enabled:
         text = re.sub(r'„([^„”\n]+),”', r'„\1”,', text)
         # Tylko mały cytowany fragment, bez innych granic zdań wewnątrz.
-        text = re.sub(r'„([' + LOWER + r'][^„”\n.!?]*)\.”', r'„\1”.', text)
+        # Kropka wychodzi za cudzysłów tylko wtedy, gdy cytat kończy zdanie.
+        # „tak.” i wyszedł – zdanie trwa dalej, więc nic nie przenosimy.
+        text = re.sub(r'„([' + LOWER + r'][^„”\n.!?]*)\.”(?=' + H + r'*$|' + H + r'+[' + UPPER + r'–—„])', r'„\1”.', text)
     if 'inside_brackets' in enabled:
         text = re.sub(r'([(\[{])' + H + r'+', r'\1', text)
         text = re.sub(H + r'+([)\]}])', r'\1', text)
     if 'outside_brackets' in enabled:
-        text = re.sub(r'(?<=[' + LETTERS + r'”])(?=[(\[{])', ' ', text)
+        # Formy w rodzaju „zrobił(a)”, „Drogi(a)”, „pan(i)” zostają złączone.
+        text = re.sub(r'(?<=[' + LETTERS + r'”])(?=[(\[{])(?![(\[][' + LOWER + r']{1,4}[)\]])', ' ', text)
         text = re.sub(r'(?<=[)\]}])(?=[' + LETTERS + r'])', ' ', text)
     if 'before_punct' in enabled:
-        text = re.sub(H + r'+(?=[,.;:?!])', '', text)
+        # Wynik lub proporcja „3 : 1” zachowuje symetryczne odstępy.
+        def before_punct(match, source=text):
+            ratio = (source[match.end()] == ':' and source[:match.start()][-1:].isdigit()
+                     and re.match(':' + H + r'*\d', source[match.end():]))
+            return match[0] if ratio else ''
+        text = re.sub(H + r'+(?=[,.;:?!])', before_punct, text)
     if 'hyphen_dash' in enabled:
         text = re.sub(r'(?<= )-(?= )', '–', text)
         text = re.sub(
@@ -433,7 +446,7 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True):
         text = re.sub(r'(?<![\w.,])(\d+)\.(\d{1,2})(?=' + H + r'*(?:' + UNITS + r'|%|°' + H + r'*[CF])(?!\w))',
                       r'\1,\2', text)
     if 'unit_space' in enabled:
-        text = re.sub('(' + NUMBER + r')(?=' + UNITS + r'(?!\w))', r'\1 ', text)
+        text = re.sub('(' + NUMBER + r')(?=' + ATTACHED_UNITS + r'(?!\w))', r'\1 ', text)
     if 'digit_groups' in enabled:
         def group_digits(match):
             digits = re.sub(H, '', match[0])
@@ -463,7 +476,8 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True):
                       r'\1' + NBSP, text)
     if 'temperature' in enabled:
         text = re.sub('(' + NUMBER + r')' + H + r'*°' + H + r'*([CF])(?!\w)', r'\1' + NBSP + r'°\2', text)
-        text = re.sub('(' + NUMBER + r')' + H + r'*K(?!\w)', r'\1' + NBSP + 'K', text)
+        # Kelwin tylko po odstępie: „4K” to rozdzielczość, nie temperatura.
+        text = re.sub('(' + NUMBER + r')' + H + r'+K(?!\w)', r'\1' + NBSP + 'K', text)
     if 'after_punct' in enabled:
         # Zachowaj wewnętrzne kropki skrótów. Liczby nie są celem tej reguły.
         def protect_abbreviation(match):
@@ -504,10 +518,24 @@ def _group_number(digits):
     return NBSP.join(reversed(groups))
 
 
+def _edit_opcodes(original, corrected):
+    """Najmniejsza lista zmian znaków (jak difflib.get_opcodes).
+
+    rapidfuzz liczy ją w czasie zbliżonym do liniowego także dla akapitów
+    po 20 000 znaków; difflib (zapasowo) rośnie z kwadratem długości.
+    """
+    try:
+        from rapidfuzz.distance import Levenshtein
+    except ImportError:
+        from difflib import SequenceMatcher
+        return SequenceMatcher(None, original, corrected, autojunk=False).get_opcodes()
+    return [(op.tag, op.src_start, op.src_end, op.dest_start, op.dest_end)
+            for op in Levenshtein.opcodes(original, corrected)]
+
+
 def _rewrite_text_nodes(slots, corrected):
     """Zmieniaj wyłącznie tekst i tabulatory; nie przebudowuj całego akapitu."""
     from bisect import bisect_right
-    from difflib import SequenceMatcher
 
     original = ''.join(value for _, value in slots)
     if original == corrected:
@@ -517,7 +545,7 @@ def _rewrite_text_nodes(slots, corrected):
         offset += len(value)
         ends.append(offset)
     chunks = [[] for _ in slots]
-    for tag, a, b, c, d in SequenceMatcher(None, original, corrected, autojunk=False).get_opcodes():
+    for tag, a, b, c, d in _edit_opcodes(original, corrected):
         if tag == 'equal':
             position = a
             while position < b:
@@ -577,8 +605,13 @@ def apply_editorial_corrections(doc, enabled=None):
     if not enabled:
         return
     field_depth = 0
-    paragraphs = doc.paragraphs
-    for paragraph_index, para in enumerate(paragraphs):
+    # Treść, tabele, pola tekstowe, nagłówki, stopki i przypisy.
+    stories, commit = document_stories(doc)
+    paragraphs = [(number, para) for number, story in enumerate(stories) for para in story.paragraphs]
+    current_story = 0
+    for paragraph_index, (story_number, para) in enumerate(paragraphs):
+        if story_number != current_story:
+            current_story, field_depth = story_number, 0  # pola nie przechodzą między częściami
         if paragraph_index % 10 == 0:
             report_progress('Odkurzanie – akapity', paragraph_index, len(paragraphs))
         groups, slots = [], []
@@ -625,6 +658,7 @@ def apply_editorial_corrections(doc, enabled=None):
                                                    trim_start=index == 0,
                                                    trim_end=index == len(groups) - 1)
                 _rewrite_text_nodes(group, corrected)
+    commit()
     if 'empty_paragraphs' in enabled:
         previous_empty = False
         for element in list(doc._element.body):
@@ -640,7 +674,8 @@ def clean_docx(source, rules):
     """Zwróć dokument w pamięci; nie zapisuj tekstu użytkownika na serwerze."""
     source.seek(0)
     document = Document(source)
-    if any(len(paragraph.text) > 20_000 for paragraph in document.paragraphs):
+    stories, _ = document_stories(document)
+    if any(len(paragraph.text) > 20_000 for story in stories for paragraph in story.paragraphs):
         if __package__:
             from .document_errors import DocumentInputError
         else:

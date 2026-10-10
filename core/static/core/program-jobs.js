@@ -13,7 +13,8 @@
         accept.className = 'primary-button'; accept.textContent = 'Akceptuję i kontynuuję'; accept.hidden = true;
         const download = document.createElement('a'); download.className = 'primary-button';
         download.textContent = 'Pobierz wynik'; download.hidden = true;
-        box.append(label, bar, stop, accept, download);
+        const notes = document.createElement('div'); notes.className = 'form-warning'; notes.hidden = true;
+        box.append(label, bar, stop, accept, download, notes);
         const submit = form.querySelector('button[type="submit"]');
         if (!submit) return;
         submit.before(box);
@@ -29,6 +30,7 @@
         }
         function finish(message) {
             clearTimeout(timer); lock(false); remember(null);
+            notes.hidden = true;
             bar.hidden = true; stop.hidden = true; accept.hidden = true;
             label.textContent = message;
         }
@@ -51,8 +53,16 @@
             try {
                 const data = await request(url);
                 if (data.state === 'done') {
-                    finish(data.warnings ? 'Gotowe. Sprawdź uwagi do konwersji w pobranej paczce.' : 'Gotowe. Plik można pobrać.');
+                    const warnings = Array.isArray(data.warnings) ? data.warnings : [];
+                    finish(warnings.length ? 'Gotowe. Konwerter zgłosił uwagi – są wypisane poniżej.' : 'Gotowe. Plik jest pobierany.');
                     bar.hidden = false; bar.value = 100;
+                    if (warnings.length) {
+                        notes.replaceChildren();
+                        const title = document.createElement('strong'); title.textContent = 'Uwagi do konwersji';
+                        const list = document.createElement('ul');
+                        warnings.forEach(text => { const item = document.createElement('li'); item.textContent = text; list.append(item); });
+                        notes.append(title, list); notes.hidden = false;
+                    }
                     download.href = `${url}?download=1`; download.hidden = false;
                     if (!downloaded) { downloaded = true; download.click(); }
                     return;
@@ -78,6 +88,13 @@
                 timer = setTimeout(poll, 3000);
             }
         }
+        download.addEventListener('click', () => {
+            // Serwer usuwa wynik po pobraniu, więc drugi raz nie da się go pobrać.
+            setTimeout(() => {
+                download.hidden = true;
+                label.textContent = 'Plik pobrany. Kopia na serwerze została usunięta.';
+            }, 1500);
+        });
         stop.addEventListener('click', async () => {
             stopRequested = true; stop.disabled = true; accept.hidden = true;
             label.textContent = 'Zatrzymywanie pracy…';

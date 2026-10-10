@@ -528,7 +528,8 @@ def _package_messages(
                         )
                     try:
                         inspect_document(
-                            SimpleUploadedFile(name, data), timeout=deadline - time.monotonic()
+                            SimpleUploadedFile(name, data), timeout=deadline - time.monotonic(),
+                            wait_for_slot=min(30, max(0, deadline - time.monotonic())),
                         )
                     except RebuildConfirmationRequired as error:
                         rebuild_warnings.append(f"{name}: {error}")
@@ -575,6 +576,7 @@ def _package_messages(
                                 use_cleaner=True,
                                 normalize=False,
                                 timeout=deadline - time.monotonic(),
+                                wait_for_slot=min(30, max(0, deadline - time.monotonic())),
                             )
                             with output:
                                 data = output.read()
@@ -588,6 +590,7 @@ def _package_messages(
                                 ["pdf", "epub"] if convert else [],
                                 use_cleaner=clean,
                                 timeout=deadline - time.monotonic(),
+                                wait_for_slot=min(30, max(0, deadline - time.monotonic())),
                                 include_docx=True,
                                 rebuild=rebuild,
                                 normalize=convert,
@@ -607,11 +610,10 @@ def _package_messages(
                                     "Wynik przekracza 150 MB. Wybierz mniej wiadomości."
                                 )
                             continue
+                        warnings = getattr(output, "conversion_warnings", [])
+                        if warnings:
+                            archive.writestr(base + "_uwagi.txt", "\n".join(warnings))
                         with output, ZipFile(output) as converted:
-                            if "Uwagi_konwersji.txt" in converted.namelist():
-                                archive.writestr(
-                                    base + "_uwagi.txt", converted.read("Uwagi_konwersji.txt")
-                                )
                             for ext in ("docx", "pdf", "epub"):
                                 payload = converted.read("document." + ext)
                                 total += len(payload)

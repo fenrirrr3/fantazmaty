@@ -36,36 +36,55 @@ class RebuildConfirmationRequired(ConversionError):
     pass
 
 
+BUSY_MESSAGE = 'Konwerter przetwarza teraz inny dokument. Spróbuj za chwilę.'
+
+
+def _try_lock(lock):
+    if os.name == 'posix':
+        import fcntl
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except BlockingIOError:
+            return False
+    import msvcrt
+    lock.seek(0)
+    lock.write(b'0')
+    lock.flush()
+    lock.seek(0)
+    try:
+        msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
+        return True
+    except OSError:
+        return False
+
+
 @contextmanager
-def conversion_slot():
-    """One conversion per shared project directory, across web workers."""
+def conversion_slot(wait=0, on_wait=None):
+    """One conversion per shared project directory, across web workers.
+
+    wait > 0: czekaj w kolejce najwyżej tyle sekund; on_wait() jest wołane
+    co sekundę (np. sprawdzenie anulowania i znak życia zadania).
+    """
     directory = Path(getattr(settings, 'DOCUMENT_CONVERSION_DIR', settings.BASE_DIR / 'var' / 'conversion'))
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     with (directory / 'conversion.lock').open('a+b') as lock:
-        if os.name == 'posix':
-            import fcntl
-            try:
-                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                raise ConversionError('Konwerter przetwarza teraz inny dokument. Spróbuj za chwilę.') from None
-        else:
-            import msvcrt
-            lock.seek(0)
-            lock.write(b'0')
-            lock.flush()
-            lock.seek(0)
-            try:
-                msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
-            except OSError:
-                raise ConversionError(
-                    "Konwerter przetwarza teraz inny dokument. Spróbuj za chwilę."
-                ) from None
+        deadline = time.monotonic() + max(0, wait)
+        while not _try_lock(lock):
+            if time.monotonic() >= deadline:
+                raise ConversionError(BUSY_MESSAGE if not wait else
+                                      'Konwerter był zajęty innymi dokumentami zbyt długo. Spróbuj ponownie później.')
+            if on_wait is not None:
+                on_wait()
+            time.sleep(1)
         try:
             yield directory
         finally:
             if os.name == "posix":
+                import fcntl
                 fcntl.flock(lock, fcntl.LOCK_UN)
             else:
+                import msvcrt
                 lock.seek(0)
                 msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
 
@@ -311,8 +330,9 @@ def convert_document(
     preserve_filename=False,
     remove_soft_whitespace=False,
     control=None,
+    wait_for_slot=0,
+    on_wait=None,
 ):
-    deadline = time.monotonic() + min(TIME_LIMIT, timeout)
     selected = [kind for kind in FORMATS if kind in formats]
     if (not selected and not include_docx) or set(formats) - set(FORMATS):
         raise ConversionError("Wybierz co najmniej jeden obsługiwany format.")
@@ -320,9 +340,11 @@ def convert_document(
     result = SpooledTemporaryFile(max_size=4 * 1024 * 1024, mode="w+b")
     try:
         with (
-            conversion_slot() as root,
+            conversion_slot(wait_for_slot, on_wait) as root,
             TemporaryDirectory(prefix="document-", dir=root) as temporary,
         ):
+            # Limit czasu liczy się od uzyskania konwertera, nie od wejścia do kolejki.
+            deadline = time.monotonic() + min(TIME_LIMIT, timeout)
             directory = Path(temporary)
             source = _write_job(
                 directory,
@@ -366,7 +388,9 @@ def convert_document(
                     raise ConversionError(
                         "Konwersja nie utworzyła poprawnego pliku wynikowego lub wynik przekroczył 50 MB."
                     )
-            if len(outputs) == 1 and not warnings:
+            # Uwagi konwertera trafiają do conversion_warnings (strona postępu
+            # pokazuje je użytkownikowi); jeden plik wynikowy nie jest pakowany.
+            if len(outputs) == 1:
                 with outputs[0].open("rb") as converted:
                     shutil.copyfileobj(converted, result)
                 extension = outputs[0].suffix.lstrip(".")
@@ -385,10 +409,9 @@ def convert_document(
                             if preserve_filename
                             else output.name,
                         )
-                    if warnings:
-                        archive.writestr("Uwagi_konwersji.txt", "\n".join(warnings))
                 extension, mime = "zip", "application/zip"
-        if time.monotonic() > deadline:
+            finished = time.monotonic()
+        if finished > deadline:
             raise ConversionError(
                 "Przygotowanie dokumentu przekroczyło limit czasu. Wybierz mniej formatów lub krótszy dokument."
             )
@@ -409,11 +432,11 @@ def _write_job(directory, upload, config):
     return source
 
 
-def inspect_document(upload, *, timeout=TIME_LIMIT):
+def inspect_document(upload, *, timeout=TIME_LIMIT, wait_for_slot=0):
     """Bounded rebuild preflight; no converted document is constructed."""
-    deadline = time.monotonic() + min(TIME_LIMIT, timeout)
     validate_resources(upload)
-    with conversion_slot() as root, TemporaryDirectory(prefix="document-", dir=root) as temporary:
+    with conversion_slot(wait_for_slot) as root, TemporaryDirectory(prefix="document-", dir=root) as temporary:
+        deadline = time.monotonic() + min(TIME_LIMIT, timeout)
         directory = Path(temporary)
         _write_job(directory, upload, {"formats": [], "inspect": True})
         run_converter(directory, deadline - time.monotonic())

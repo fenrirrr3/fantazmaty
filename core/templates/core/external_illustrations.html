@@ -2,8 +2,8 @@
 <html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow"><meta name="referrer" content="no-referrer">
 <title>Zewnętrzne ilustracje | Fantazmaty</title>
 <link rel="icon" type="image/svg+xml" href="{% static 'core/favicon-white.svg' %}">
-<link rel="stylesheet" href="{% static 'core/themes.css' %}">
-<link rel="stylesheet" href="{% static 'core/styles.css' %}"><link rel="stylesheet" href="{% static 'core/workspace.css' %}"><link rel="stylesheet" href="{% static 'core/components.css' %}"><link rel="stylesheet" href="{% static 'core/pagination.css' %}"><link rel="stylesheet" href="{% static 'core/illustration-status.css' %}"><link rel="stylesheet" href="{% static 'core/dialogs.css' %}">
+{% include 'core/includes/stylesheets.html' %}
+<link rel="stylesheet" href="{% static 'core/dialogs.css' %}">
 </head><body><main class="container external-illustrations" id="main-content">
 <header class="page-header"><h1 class="page-title">Zewnętrzne ilustracje</h1><p class="page-description">Opowiadania do zilustrowania – Fantazmaty</p></header>
 <section class="filters-card"><form method="get" class="filters-form">

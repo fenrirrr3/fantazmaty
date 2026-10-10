@@ -13,7 +13,7 @@
     <summary><span>Odkurzacz</span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
     <div class="card-body">
     <p>Wybierz DOCX i potrzebne poprawki, a następnie pobierz poprawiony plik.</p>
-    <p>Reguły redakcyjne Odkurzacza poprawiają główną treść, bez tabel, nagłówków i przypisów. Przy zaznaczonej opcji usuwania miękkie entery i spacje nieprzenoszące w tekście dokumentu, tabelach, nagłówkach i przypisach są zamieniane odpowiednio na zwykłe entery (nowe akapity) i zwykłe spacje; istniejące podziały stron pozostają. Nie śledzi zmian. Puste akapity pozostają, chyba że wybierzesz ich scalanie.</p>
+    <p>Reguły redakcyjne Odkurzacza poprawiają cały tekst: treść, tabele, pola tekstowe, nagłówki, stopki i przypisy. Przy zaznaczonej opcji usuwania miękkie entery i spacje nieprzenoszące w tych miejscach są zamieniane odpowiednio na zwykłe entery (nowe akapity) i zwykłe spacje; istniejące podziały stron pozostają. Nie śledzi zmian. Puste akapity pozostają, chyba że wybierzesz ich scalanie.</p>
     <p><strong>Przed odkurzaniem zaakceptuj śledzone zmiany i usuń komentarze albo zaznacz przebudowę do nowego pliku.</strong></p>
     {% if program_error %}<p class="form-error" role="alert">{{ program_error }}</p>{% endif %}
     <form method="post" enctype="multipart/form-data">
@@ -56,7 +56,7 @@
     <p>Wybierz jeden lub kilka formatów. Jeden format pobierzesz jako osobny plik, kilka jako archiwum ZIP. Nazwa pliku pozostaje taka jak nazwa dokumentu wejściowego; zmienia się tylko rozszerzenie. Pliki wewnątrz ZIP również zachowują tę nazwę.</p>
     <p>Konwerter ustawia Times New Roman 12 pkt, interlinię 1,5 i wcięcie 1,25 cm, bez odstępów przed i po akapicie. Zachowuje puste akapity, wyrównanie, kursywę i pogrubienia. Wyśrodkowane akapity pozostają bez wcięcia.</p>
     <p>Format strony to A4 z marginesami 2,5 cm. PDF używa czcionki podobnej do Times New Roman. Podział stron i złożony układ mogą się zmienić – sprawdź wynik po pobraniu.</p>
-    <p class="form-help">Jeśli konwersja zgłosi pominięte elementy lub uproszczenia, wynik zostanie spakowany do ZIP razem z plikiem Uwagi_konwersji.txt.</p><form method="post" enctype="multipart/form-data">
+    <p class="form-help">Uwagi konwertera (pominięte elementy, uproszczenia) pojawią się na tej stronie po zakończeniu pracy. Nagłówki Worda (Nagłówek 1, 2, 3) wyznaczają rozdziały EPUB i spis treści. Wynik jest usuwany z serwera zaraz po pobraniu.</p><form method="post" enctype="multipart/form-data">
         {% csrf_token %}<input type="hidden" name="program_action" value="convert">
         {{ conversion_form.non_field_errors }}
         {% if conversion_form.errors %}<p role="alert">Sprawdź komunikaty i ponownie wybierz plik przed wysłaniem.</p>{% endif %}
@@ -81,7 +81,7 @@
     <summary><span>Kolorowanie powtórzeń</span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
     <div class="card-body">
     <p>Oznacz powtarzające się słowa w DOCX, także w rozpoznanych formach odmiany. Narzędzie nie zmienia treści, nie uruchamia Odkurzacza ani nie ujednolica formatowania.</p>
-    <p>Zakres określa liczbę analizowanych słów, także między akapitami. Analiza pomija tabele, nagłówki, hiperłącza i przypisy. Najpierw zaakceptuj śledzone zmiany.</p>
+    <p>Zakres określa liczbę analizowanych słów, także między akapitami. Analiza obejmuje treść z tabelami i polami tekstowymi oraz osobno nagłówki, stopki i przypisy; pomija tylko hiperłącza. Najpierw zaakceptuj śledzone zmiany.</p>
     <p>Powtórzenia mają kolorowe litery, a własne słowa – żółte tło. Pozostałe oznaczenia zależą od wybranych opcji. Przejrzyj zaznaczone fragmenty po pobraniu.</p>
     <form method="post" enctype="multipart/form-data">
         {% csrf_token %}<input type="hidden" name="program_action" value="repetitions">

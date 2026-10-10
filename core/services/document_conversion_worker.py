@@ -74,6 +74,74 @@ def sanitize_html(fragment, assets):
     return content, headings
 
 
+WARNING_PATTERNS = (
+    (r"Unrecognised (paragraph|run|table) style: (.*) \(Style ID: (.*)\)",
+     lambda m: "Styl {} „{}” nie ma odpowiednika w e-booku – tekst zachowano w zwykłym formacie.".format(
+         {"paragraph": "akapitu", "run": "znaków", "table": "tabeli"}[m[1]], m[2] or m[3])),
+    (r"(\w+) style with ID (\S+) was referenced but not defined in the document",
+     lambda m: f"Dokument odwołuje się do nieistniejącego stylu ({m[2]}) – pominięto jego formatowanie."),
+    (r"A w:sym element with an unsupported character was ignored: char (\S+) in font (.*)",
+     lambda m: f"Pominięto symbol specjalny z czcionki {m[2]}."),
+    (r"unexpected non-(row|cell) element in table.*",
+     lambda m: "Nietypowa budowa tabeli – scalone komórki mogą wyglądać inaczej."),
+    (r"Unsupported break type: (.*)", lambda m: f"Pominięto nieobsługiwany podział ({m[1]})."),
+    (r"Could not find image file for a:blip element", lambda m: "Nie znaleziono pliku jednego z obrazów – obraz pominięto."),
+    (r"Image of type (.*) is unlikely to display in web browsers",
+     lambda m: f"Obraz w formacie {m[1]} może się nie wyświetlić w czytniku."),
+    (r"A v:imagedata element without a relationship ID was ignored", lambda m: "Pominięto obraz bez źródła."),
+    (r"An unrecognised element was ignored: (.*)", lambda m: f"Pominięto nieobsługiwany element dokumentu ({m[1]})."),
+    (r"Ignoring complex field .*", lambda m: "Pominięto uszkodzone pole Worda (np. spis treści lub odsyłacz)."),
+)
+
+
+def polish_warnings(messages):
+    """Uwagi biblioteki konwertera po polsku, bez powtórzeń, najwyżej 30."""
+    import re
+    counts = {}
+    for message in messages:
+        for pattern, render in WARNING_PATTERNS:
+            match = re.fullmatch(pattern, message)
+            if match:
+                text = render(match)
+                break
+        else:
+            text = "Uwaga konwertera: " + message
+        counts[text] = counts.get(text, 0) + 1
+    return [text if count == 1 else f"{text} ({count} razy)" for text, count in counts.items()][:30]
+
+
+def split_chapters(content, title):
+    """Podziel treść na rozdziały według nagłówków Worda (Nagłówek 1/2/3).
+
+    Rozdziałami są nagłówki najwyższego poziomu, który występuje w tekście
+    co najmniej dwa razy (pojedynczy Nagłówek 1 to zwykle tytuł utworu).
+    Bez takich nagłówków powstaje jeden rozdział, jak dotąd.
+    Zwraca [(tytuł rozdziału, HTML, [(id, etykieta nagłówka)])].
+    """
+    from lxml import html
+    root = html.fragment_fromstring(content or "<p></p>", create_parent="div")
+    children = list(root)
+    level = next((tag for tag in ("h1", "h2", "h3")
+                  if sum(1 for child in children if child.tag == tag) >= 2), None)
+    groups = []
+    for child in children:
+        if level and child.tag == level or not groups:
+            groups.append([])
+        groups[-1].append(child)
+    chapters = []
+    for group in groups:
+        first = group[0]
+        heading = first.text_content().strip()[:200] if first.tag == level else ""
+        if not heading and not any(node.text_content().strip() or node.xpath(".//img") for node in group):
+            continue  # pusty początek przed pierwszym rozdziałem
+        markup = "".join(html.tostring(node, encoding="unicode") for node in group)
+        anchors = [(node.get("id"), node.text_content().strip()[:200])
+                   for item in group for node in item.xpath("descendant-or-self::*[self::h1 or self::h2 or self::h3]")
+                   if node.get("id")]
+        chapters.append((heading or title, markup, anchors))
+    return chapters or [(title, "<p>\u00a0</p>", [])]
+
+
 def convert(source, directory, formats, title):
     global CURRENT_STAGE
     CURRENT_STAGE = "DOCX"
@@ -118,9 +186,9 @@ def convert(source, directory, formats, title):
         )
     if any(message.type == "error" for message in result.messages):
         raise ValueError("Document could not be read completely")
-    warnings = [
+    warnings = polish_warnings(
         str(message.message)[:500] for message in result.messages if message.type == "warning"
-    ][:30]
+    )
     if warnings:
         (directory / "warnings.json").write_text(json.dumps(warnings), encoding="utf-8")
     content, headings = sanitize_html(result.value, assets)
@@ -169,27 +237,30 @@ def convert(source, directory, formats, title):
         book.set_identifier(str(uuid4()))
         book.set_title(title)
         book.set_language("pl")
-        chapter = epub.EpubHtml(title=title, file_name="content.xhtml", lang="pl")
-        chapter.content = content
         stylesheet = epub.EpubItem(
             uid="style", file_name="style.css", media_type="text/css", content=CSS.encode()
         )
         book.add_item(stylesheet)
-        chapter.add_item(stylesheet)
-        book.add_item(chapter)
+        chapters, toc = [], []
+        parts = split_chapters(content, title)
+        for number, (chapter_title, chapter_content, chapter_headings) in enumerate(parts, 1):
+            name = "content.xhtml" if len(parts) == 1 else f"chapter-{number:03d}.xhtml"
+            chapter = epub.EpubHtml(title=chapter_title, file_name=name, lang="pl")
+            chapter.content = chapter_content
+            chapter.add_item(stylesheet)
+            book.add_item(chapter)
+            chapters.append(chapter)
+            toc.extend(epub.Link(name + "#" + id_, label, "toc-" + id_) for id_, label in chapter_headings)
         for number, (name, data) in enumerate(assets.items()):
             book.add_item(
                 epub.EpubItem(
                     uid=f"image-{number}", file_name=name, media_type="image/png", content=data
                 )
             )
-        book.toc = tuple(
-            epub.Link("content.xhtml#" + id_, label, "toc-" + str(n))
-            for n, (id_, label) in enumerate(headings)
-        ) or (chapter,)
+        book.toc = tuple(toc) or tuple(chapters)
         book.add_item(epub.EpubNcx())
         book.add_item(epub.EpubNav())
-        book.spine = ["nav", chapter]
+        book.spine = ["nav", *chapters]
         epub.write_epub(str(directory / "document.epub"), book, {"raise_exceptions": True})
     if "pdf" in formats:
         CURRENT_STAGE = "PDF"

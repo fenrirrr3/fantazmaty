@@ -1,17 +1,73 @@
-.text-notes-tags { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: stretch; }
-.text-notes-tags > .card { min-width: 0; display: flex; flex-direction: column; }
-.text-notes-tags .text-note-form textarea { min-height: 12rem; }
-.text-tags-form { display: flex; flex-direction: column; gap: 12px; padding: var(--card-padding); flex: 1; }
-.text-tags-form .muted-text { margin: 0; font-size: var(--font-size-md); }
-.text-tags-form .form-field { display: grid; gap: 6px; min-width: 0; }
-.text-tags-form textarea { width: 100%; min-height: 4rem; resize: vertical; }
-.text-tags-form textarea[name="tags"] { height: 6rem; }
-.text-tags-form textarea[name="genre"] { height: 4rem; }
-.text-tags-form button { align-self: flex-start; margin-top: auto; }
-.tag-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
-.tag-filters .form-field { display: grid; gap: 6px; min-width: 0; }
-.tag-filters :is(input, select) { width: 100%; }
-.tag-filters .tag-search { grid-column: 1 / -1; }
-.tag-filter-actions { grid-column: 1 / -1; display: flex; gap: 10px; flex-wrap: wrap; }
-.text-tags-cell { white-space: normal; overflow-wrap: anywhere; min-width: 180px; max-width: 360px; }
-@media screen and (max-width: 760px) { .text-notes-tags { grid-template-columns: minmax(0, 1fr); } }
+.text-notes-tags {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--space-5);
+    align-items: stretch;
+}
+
+.text-notes-tags > .card {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.text-notes-tags .text-note-form textarea {
+    min-height: 12rem;
+}
+
+.text-tags-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--card-padding);
+    flex: 1;
+}
+
+.text-tags-form .muted-text {
+    margin: 0;
+    font-size: var(--font-size-md);
+}
+
+.text-tags-form textarea {
+    min-height: 4rem;
+}
+
+.text-tags-form textarea[name="tags"] {
+    height: 6rem;
+}
+
+.text-tags-form textarea[name="genre"] {
+    height: 4rem;
+}
+
+.text-tags-form button {
+    align-self: flex-start;
+    margin-top: auto;
+}
+
+.tag-filters {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: var(--space-4);
+}
+
+.tag-filters .tag-search {
+    grid-column: 1 / -1;
+}
+
+.tag-filter-actions {
+    grid-column: 1 / -1;
+}
+
+.text-tags-cell {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    min-width: 180px;
+    max-width: 360px;
+}
+
+@media screen and (max-width: 760px) {
+    .text-notes-tags {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}

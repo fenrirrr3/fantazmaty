@@ -136,7 +136,7 @@ class ProgramChangesTests(TestCase):
                 else:
                     self.assertTrue(payload.startswith(b"%PDF"))
 
-    def test_warning_archive_also_keeps_the_original_name(self):
+    def test_warnings_do_not_turn_a_single_file_into_an_archive(self):
         import json
 
         def worker(directory, timeout):
@@ -147,9 +147,10 @@ class ProgramChangesTests(TestCase):
             output, ext, _ = convert_document(
                 SimpleUploadedFile("Zażółć.docx", document_bytes()), ["pdf"], preserve_filename=True
             )
-            self.assertEqual(ext, "zip")
-            with output, ZipFile(output) as archive:
-                self.assertEqual(set(archive.namelist()), {"Zażółć.pdf", "Uwagi_konwersji.txt"})
+            self.assertEqual(ext, "pdf")
+            with output:
+                self.assertTrue(output.read().startswith(b"%PDF"))
+            self.assertEqual(output.conversion_warnings, ["Uwaga testowa"])
 
     def test_names_cannot_escape_zip_or_inject_response_headers(self):
         self.assertEqual(conversion_filename(r"C:\folder\Tytuł.v1.docx", "pdf"), "Tytuł.v1.pdf")

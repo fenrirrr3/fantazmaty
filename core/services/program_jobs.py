@@ -21,6 +21,8 @@ from .document_converter import (
 )
 
 TTL = 1800
+STALE_AFTER = 150      # brak znaku życia procesu przez tyle sekund = błąd
+QUEUE_WAIT = 600       # najdłuższe oczekiwanie w kolejce na wolny konwerter
 SALT = 'private-program-job-v1'
 SESSION_KEY = 'program_upload_session'
 
@@ -67,6 +69,12 @@ def read_json(path):
             time.sleep(.02)
 
 
+def alive(state):
+    """Zadanie w kolejce lub w toku, którego proces ostatnio dał znak życia."""
+    last = state.get('heartbeat', state.get('started', 0))
+    return state.get('state') in ('queued', 'running') and time.time() - last < STALE_AFTER
+
+
 def cleanup():
     cutoff = time.time() - TTL
     for folder in root().glob('*'):
@@ -76,8 +84,7 @@ def cleanup():
             if not folder.resolve().is_relative_to(root().resolve()):
                 continue
             if (folder / 'request.json').stat().st_mtime < cutoff:
-                state = read_json(folder / 'state.json')
-                if state.get('state') in ('queued', 'running') and time.time() - state.get('started', 0) < 150:
+                if alive(read_json(folder / 'state.json')):
                     continue
                 shutil.rmtree(folder)
         except (OSError, ValueError):
@@ -106,9 +113,13 @@ def launch(folder):
         raise JobError('Nie można uruchomić programu. Skontaktuj się z administratorem.') from None
 
 
-def max_active_jobs():
-    """Server-wide cap: each worker loads python-docx/spaCy into its own process."""
-    return max(1, int(getattr(settings, 'PROGRAM_MAX_ACTIVE_JOBS', 1)))
+def max_queued_jobs():
+    """Server-wide cap of waiting and running jobs.
+
+    Dokumenty są przetwarzane po kolei (conversion_slot); pozostałe czekają
+    w kolejce. Każde zadanie w kolejce to lekki proces nadzorcy.
+    """
+    return max(1, int(getattr(settings, 'PROGRAM_MAX_QUEUED_JOBS', 5)))
 
 
 def active_jobs():
@@ -124,7 +135,7 @@ def active_jobs():
             state = read_json(folder / 'state.json')
         except (OSError, ValueError):
             continue
-        if state.get('state') in ('queued', 'running') and time.time() - state.get('started', 0) < 150:
+        if alive(state):
             result.append((data.get('user'), folder))
     return result
 
@@ -134,8 +145,8 @@ def require_capacity(user_id=None):
     if user_id is not None and any(owner == user_id for owner, _ in active):
         # Refuse accidental repeated clicks while this user's process is active.
         raise JobError('Masz już uruchomiony program. Poczekaj na wynik albo zatrzymaj go.')
-    if len(active) >= max_active_jobs():
-        raise JobError('Serwer przetwarza teraz maksymalną liczbę dokumentów. Spróbuj ponownie za minutę.')
+    if len(active) >= max_queued_jobs():
+        raise JobError('Kolejka programów jest pełna. Spróbuj ponownie za kilka minut.')
 
 
 def create(request, upload, options, action):
@@ -183,9 +194,11 @@ def resolve(request, token):
 
 def status(folder):
     state = read_json(folder / 'state.json')
+    if not isinstance(state.get('warnings', []), list):
+        state['warnings'] = []  # dawny zapis: sama liczba uwag
     if (folder / 'cancel').exists() and state['state'] == 'confirmation':
         return {'state': 'cancelled', 'message': 'Praca zatrzymana.'}
-    if state['state'] in ('queued', 'running') and time.time() - state.get('started', 0) > 150:
+    if state['state'] in ('queued', 'running') and not alive(state):
         return {'state': 'error', 'message': 'Proces nie odpowiedział w przewidzianym czasie. Sprawdź log zadania na serwerze.'}
     return state
 
@@ -212,6 +225,12 @@ def confirm(folder):
         raise
 
 
+def remove(folder):
+    """Usuń zadanie razem z wynikiem (po pobraniu pliku)."""
+    if re.fullmatch(r'[a-f0-9]{32}', folder.name) and folder.resolve().is_relative_to(root().resolve()):
+        shutil.rmtree(folder, ignore_errors=True)
+
+
 def refreshed_token(token):
     return signing.dumps(signing.loads(token, salt=SALT, max_age=TTL), salt=SALT)
 
@@ -219,7 +238,18 @@ def refreshed_token(token):
 def execute(folder):
     data = read_json(folder / 'request.json')
     started = time.time()
-    last_progress = None
+    last_progress, last_beat = None, 0.0
+
+    def beat(state, extra):
+        nonlocal last_beat
+        last_beat = time.time()
+        write_json(folder / 'state.json', {'state': state, 'started': started, 'heartbeat': last_beat, **extra})
+
+    def waiting():
+        if (folder / 'cancel').exists():
+            raise JobCancelled()
+        if time.time() - last_beat >= 2:
+            beat('queued', {'stage': 'W kolejce – konwerter kończy inny dokument'})
 
     def control(directory):
         nonlocal last_progress
@@ -228,14 +258,14 @@ def execute(folder):
         try:
             progress = read_json(directory / 'progress.json')
         except (OSError, ValueError):
-            return
+            progress = last_progress or {'stage': 'Uruchamianie konwertera'}
         if progress.get('stage') == 'start':
             progress = {'stage': 'Uruchamianie konwertera'}
-        if progress != last_progress:
+        if progress != last_progress or time.time() - last_beat >= 5:
             last_progress = progress
-            write_json(folder / 'state.json', {'state': 'running', 'started': started, **progress})
+            beat('running', progress)
 
-    write_json(folder / 'state.json', {'state': 'running', 'stage': 'Sprawdzanie dokumentu', 'started': started})
+    beat('running', {'stage': 'Sprawdzanie dokumentu'})
     try:
         if (folder / 'cancel').exists():
             raise JobCancelled()
@@ -243,7 +273,8 @@ def execute(folder):
         if (folder / 'accepted').exists():
             options['allow_rebuild_omissions'] = True
         with (folder / 'source.docx').open('rb') as source:
-            result, extension, mime = convert_document(File(source, name=data['name']), control=control, **options)
+            result, extension, mime = convert_document(File(source, name=data['name']), control=control,
+                                                       wait_for_slot=QUEUE_WAIT, on_wait=waiting, **options)
         with result, (folder / 'result').open('wb') as target:
             shutil.copyfileobj(result, target)
         if (folder / 'cancel').exists():
@@ -253,7 +284,7 @@ def execute(folder):
             suffix = '_powtorzenia' if data['action'] == 'repetitions' else ('_nowy' if options.get('rebuild') else '_odkurzony')
             name = Path(name).stem[:120] + suffix + '.docx'
         write_json(folder / 'state.json', {'state': 'done', 'filename': conversion_filename(name, extension), 'mime': mime,
-                                          'warnings': len(getattr(result, 'conversion_warnings', []))})
+                                          'warnings': list(getattr(result, 'conversion_warnings', []))[:30]})
     except RebuildConfirmationRequired as error:
         write_json(folder / 'state.json', {'state': 'confirmation', 'message': str(error)})
         return

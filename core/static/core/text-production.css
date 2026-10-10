@@ -1,46 +1,117 @@
-.text-production { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.25rem; align-items: stretch; margin-top: 1.25rem; }
-.text-production > * { min-width: 0; }
-.text-production .card { margin: 0; }
-.text-production .card-body { overflow-wrap: anywhere; }
-.text-production-checkbox { display: flex; align-items: center; gap: .6rem; }
-.text-production-checkbox input[type="checkbox"] { width: 1.15rem; height: 1.15rem; flex: 0 0 auto; }
-@media screen and (max-width: 760px) { .text-production { grid-template-columns: minmax(0, 1fr); } }
-
-/* Equal-width collapsible panels in both story and chapter details. */
-.text-detail-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; align-items: stretch; margin-block: 1.25rem; }
-.text-detail-pair:empty { display: none; }
-.text-detail-pair > details { min-width: 0; margin: 0; overflow-wrap: anywhere; }
-.text-detail-pair > details:only-child { grid-column: 1 / -1; }
-.text-detail-pair .table-container { max-width: 100%; }
-.text-detail-pair .management-action { grid-template-columns: minmax(0, 1fr); }
-.text-notes-tags { align-items: stretch; }
-@media screen and (max-width: 760px) { .text-detail-pair { grid-template-columns: minmax(0, 1fr); } }
-
-.text-tags-actions { display: flex; flex-wrap: wrap; gap: .65rem; align-items: center; margin-top: auto; }
-.text-tags-form .text-tags-actions button { margin-top: 0; }
-.text-detail-pair[data-detail-pair="management"] .text-management-content { padding: .65rem var(--card-padding); }
-.text-detail-pair[data-detail-pair="management"] .management-action { padding-block: .5rem; gap: .65rem; }
-.text-detail-pair[data-detail-pair="management"] .management-action-description p { margin: 0; }
-.chapter-notes-reviews > .review-summary-details { margin: 0; min-width: 0; }
-.chapter-notes-reviews .text-note-form textarea { min-height: 6rem; height: 6rem; }
-.chapter-notes-reviews .section-header,
-.chapter-notes-reviews .review-summary-toggle { padding-block: .85rem; }
-.chapter-notes-reviews .text-notes-list,
-.chapter-notes-reviews .review-summary-content { max-height: 24rem; overflow: auto; }
-
-.text-detail-pair[data-detail-pair="assignment-history"] { align-items: start; }
-/* A dedicated control row keeps the button level with the date input, not its label. */
-.quick-stage-action .start-stage-form { display: grid; grid-template-columns: auto minmax(150px, 1fr); align-items: end; gap: .4rem 1rem; }
-.start-stage-form .form-field { display: contents; }
-.start-stage-form .form-field label { grid-column: 2; grid-row: 1; margin: 0; line-height: 1.4; }
-.start-stage-form .stage-date-input { grid-column: 2; grid-row: 2; }
-.start-stage-form > button { grid-column: 1; grid-row: 2; }
-.start-stage-form > button, .start-stage-form .stage-date-input { box-sizing: border-box; height: 42px; min-height: 42px; margin: 0; align-self: end; }
-@media screen and (max-width: 480px) {
-    .quick-stage-action .start-stage-form { grid-template-columns: minmax(0, 1fr); width: 100%; }
-    .start-stage-form .form-field label { grid-column: 1; }
-    .start-stage-form .stage-date-input { grid-column: 1; width: 100%; }
-    .start-stage-form > button { grid-column: 1; grid-row: 3; justify-self: start; margin-top: .3rem; }
+.text-production {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--space-5);
+    align-items: stretch;
+    margin-top: var(--space-5);
 }
 
-.text-notes-tags.extract-volume-notes { grid-template-columns: minmax(0, 1fr); }
+.text-production > * {
+    min-width: 0;
+}
+
+.text-production .card {
+    margin: 0;
+}
+
+.text-production .card-body {
+    overflow-wrap: anywhere;
+}
+
+.text-production-checkbox {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+@media screen and (max-width: 760px) {
+    .text-production {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+/* Equal-width collapsible panels in both story and chapter details. */
+
+.text-detail-pair {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-5);
+    align-items: stretch;
+    margin-block: var(--space-5);
+}
+
+.text-detail-pair:empty {
+    display: none;
+}
+
+.text-detail-pair > details {
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.text-detail-pair > details:only-child {
+    grid-column: 1 / -1;
+}
+
+.text-detail-pair .table-container {
+    max-width: 100%;
+}
+
+.text-detail-pair .management-action {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+@media screen and (max-width: 760px) {
+    .text-detail-pair {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.text-tags-actions {
+    margin-top: auto;
+}
+
+.text-tags-form .text-tags-actions button {
+    margin-top: 0;
+}
+
+.text-detail-pair[data-detail-pair="management"] .text-management-content {
+    padding: var(--space-3) var(--card-padding);
+}
+
+.text-detail-pair[data-detail-pair="management"] .management-action {
+    padding-block: var(--space-2);
+    gap: var(--space-3);
+}
+
+.text-detail-pair[data-detail-pair="management"] .management-action-description p {
+    margin: 0;
+}
+
+.chapter-notes-reviews > .review-summary-details {
+    margin: 0;
+    min-width: 0;
+}
+
+.chapter-notes-reviews .text-note-form textarea {
+    min-height: 6rem;
+    height: 6rem;
+}
+
+.chapter-notes-reviews .section-header, .chapter-notes-reviews .review-summary-toggle {
+    padding-block: var(--space-3);
+}
+
+.chapter-notes-reviews .text-notes-list, .chapter-notes-reviews .review-summary-content {
+    max-height: 24rem;
+    overflow: auto;
+}
+
+.text-detail-pair[data-detail-pair="assignment-history"] {
+    align-items: start;
+}
+
+.text-notes-tags.extract-volume-notes {
+    grid-template-columns: minmax(0, 1fr);
+}

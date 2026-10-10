@@ -9,7 +9,8 @@
 <section class="details-card program-job-status" aria-live="polite">
     <div class="card-body">
     {% if state.state == 'done' %}
-        <p class="message success" role="status">Gotowe.{% if state.warnings %} Konwersja zgłosiła uproszczenia – szczegóły są w pliku Uwagi_konwersji.txt w paczce ZIP.{% endif %}</p>
+        <p class="message success" role="status">Gotowe. Po pobraniu plik zostanie usunięty z serwera.</p>
+        {% if state.warnings %}<div class="form-warning"><strong>Uwagi do konwersji</strong><ul>{% for warning in state.warnings %}<li>{{ warning }}</li>{% endfor %}</ul></div>{% endif %}
         <p><a class="primary-button" href="{{ download_url }}">Pobierz {{ state.filename }}</a></p>
     {% elif state.state == 'confirmation' %}
         <div class="form-warning" role="alert">{{ state.message }}</div>

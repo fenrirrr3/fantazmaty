@@ -444,9 +444,9 @@ LOGGING = {
 
 # Temporary files for document conversion.
 DOCUMENT_CONVERSION_DIR = BASE_DIR / 'var' / 'conversion'
-# Ile zadań programów może czekać lub działać jednocześnie. Konwerter i tak
-# przetwarza jeden dokument naraz (conversion_slot), więc domyślnie 1.
-PROGRAM_MAX_ACTIVE_JOBS = env_int("PROGRAM_MAX_ACTIVE_JOBS", 1, minimum=1)
+# Ile zadań programów może czekać w kolejce lub działać jednocześnie.
+# Konwerter przetwarza jeden dokument naraz (conversion_slot), pozostałe czekają.
+PROGRAM_MAX_QUEUED_JOBS = env_int("PROGRAM_MAX_QUEUED_JOBS", 5, minimum=1)
 
 # Public application key for the Dropbox folder picker (not an app secret).
 DROPBOX_CHOOSER_APP_KEY = os.environ.get("DROPBOX_CHOOSER_APP_KEY", "").strip()

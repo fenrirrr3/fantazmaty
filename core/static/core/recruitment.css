@@ -1,41 +1,180 @@
 /* Rekrutacja: rejestr, szczegóły zgłoszenia i pobieranie próbek. */
-.recruitment-mail-roles { width: min(100%, 30rem); }
-.recruitment-mail-roles select { min-height: 0; height: 7.5rem; width: 100%; }
-.recruitment-mail-card .cms-pagination { margin: 1rem 0; }
-.mailbox-header-action { margin-top: .75rem; }
-.recruitment-role-panel .mailbox-options { margin-bottom: 1rem; }
 
-.recruitment-preview-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.25rem; align-items: stretch; }
-.recruitment-role-panel, .recruitment-preview-panel { min-width: 0; padding: 1rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-alt); }
-.recruitment-preview-panel { display: flex; flex-direction: column; max-height: 32rem; overflow: auto; }
-.recruitment-preview-panel h2 { margin: 0 0 .6rem; }
-.recruitment-preview-panel > [data-preview-result] { display: flex; flex-direction: column; min-height: 0; }
-.recruitment-preview-panel :is(p, strong) { overflow-wrap: anywhere; }
-.recruitment-preview-body { min-height: 10rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; flex: 1; }
-
-.recruitment-sample-actions { margin: 1rem 0 .5rem; }
-.recruitment-bulk { display: flex; flex-wrap: wrap; align-items: end; gap: .8rem; margin: 1rem 0; padding: 1rem; border: 1px solid var(--border); border-radius: var(--radius); }
-.recruitment-bulk label { display: flex; flex-direction: column; gap: .35rem; }
-.recruitment-samples-table .recruitment-subject { white-space: normal; overflow-wrap: anywhere; min-width: 12rem; max-width: 25rem; }
-.recruitment-samples-table td { white-space: normal; overflow-wrap: anywhere; max-width: 25rem; }
-.recruitment-subject-button { padding: 0; border: 0; background: none; color: var(--primary); font: inherit; font-weight: 700; text-align: left; white-space: normal; overflow-wrap: anywhere; cursor: pointer; }
-.recruitment-subject-button:hover { text-decoration: underline; }
-
-.recruitment-decision { white-space: normal; overflow-wrap: anywhere; }
-.recruitment-decision.accepted { color: var(--success); }
-.recruitment-decision.rejected { color: var(--danger); }
-.recruitment-decision-cell { min-width: 7rem; max-width: 11rem; white-space: normal; overflow-wrap: anywhere; }
-.recruitment-decision-cell > span { display: inline-block; max-width: 11rem; white-space: normal; overflow-wrap: anywhere; }
-.recruitment-notified select { width: auto; min-width: 5rem; max-width: 100%; }
-.recruitment-notified [role=status] { display: block; margin-top: .35rem; white-space: normal; font-size: var(--font-size-md); }
-
-.recruitment-detail-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.25rem; align-items: start; }
-.recruitment-detail-grid .details-card { min-width: 0; }
-.recruitment-detail-heading { overflow-wrap: anywhere; }
-.recruitment-message { white-space: pre-wrap; overflow-wrap: anywhere; }
-
-@media screen and (max-width: 760px) {
-    .recruitment-preview-grid, .recruitment-detail-grid { grid-template-columns: minmax(0, 1fr); }
+.recruitment-mail-roles {
+    width: min(100%, 30rem);
 }
 
-.recruitment-actions { margin-bottom: 1rem; }
+.recruitment-mail-roles select {
+    min-height: 0;
+    height: 7.5rem;
+    width: 100%;
+}
+
+.recruitment-mail-card .cms-pagination {
+    margin: var(--space-4) 0;
+}
+
+.mailbox-header-action {
+    margin-top: var(--space-3);
+}
+
+.recruitment-role-panel .mailbox-options {
+    margin-bottom: var(--space-4);
+}
+
+.recruitment-preview-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--space-5);
+    align-items: stretch;
+}
+
+.recruitment-role-panel, .recruitment-preview-panel {
+    background: var(--surface-alt);
+}
+
+.recruitment-preview-panel {
+    display: flex;
+    flex-direction: column;
+    max-height: 32rem;
+    overflow: auto;
+}
+
+.recruitment-preview-panel h2 {
+    margin: 0 0 var(--space-2);
+}
+
+.recruitment-preview-panel > [data-preview-result] {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.recruitment-preview-panel :is(p, strong) {
+    overflow-wrap: anywhere;
+}
+
+.recruitment-preview-body {
+    min-height: 10rem;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    flex: 1;
+}
+
+.recruitment-sample-actions {
+    margin: var(--space-4) 0 var(--space-2);
+}
+
+.recruitment-bulk {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: var(--space-3);
+    margin: var(--space-4) 0;
+}
+
+.recruitment-bulk label {
+    display: grid;
+    gap: var(--field-gap);
+}
+
+.recruitment-samples-table .recruitment-subject {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    min-width: 12rem;
+    max-width: 25rem;
+}
+
+.recruitment-samples-table td {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    max-width: 25rem;
+}
+
+.recruitment-subject-button {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--primary);
+    font: inherit;
+    font-weight: 700;
+    text-align: left;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+}
+
+.recruitment-subject-button:hover {
+    text-decoration: underline;
+}
+
+.recruitment-decision {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.recruitment-decision.accepted {
+    color: var(--success);
+}
+
+.recruitment-decision.rejected {
+    color: var(--danger);
+}
+
+.recruitment-decision-cell {
+    min-width: 7rem;
+    max-width: 11rem;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.recruitment-decision-cell > span {
+    display: inline-block;
+    max-width: 11rem;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.recruitment-notified select {
+    width: auto;
+    min-width: 5rem;
+    max-width: 100%;
+}
+
+.recruitment-notified [role=status] {
+    display: block;
+    margin-top: var(--space-1);
+    white-space: normal;
+    font-size: var(--font-size-md);
+}
+
+.recruitment-detail-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--space-5);
+    align-items: start;
+}
+
+.recruitment-detail-grid .details-card {
+    min-width: 0;
+}
+
+.recruitment-detail-heading {
+    overflow-wrap: anywhere;
+}
+
+.recruitment-message {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+@media screen and (max-width: 760px) {
+    .recruitment-preview-grid, .recruitment-detail-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.recruitment-actions {
+    margin-bottom: var(--space-4);
+}

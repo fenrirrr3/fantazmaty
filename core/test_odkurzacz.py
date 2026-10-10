@@ -70,7 +70,7 @@ class OdkurzaczTests(TestCase):
         self.assertTrue(run.underline)
         self.assertEqual(run.font.color.rgb, RGBColor(12, 34, 56))
 
-    def test_correction_across_runs_preserves_other_parts(self):
+    def test_correction_across_runs_also_covers_tables_and_headers(self):
         document = Document()
         para = document.add_paragraph()
         para.add_run('Ala ').bold = True
@@ -83,8 +83,8 @@ class OdkurzaczTests(TestCase):
         self.assertEqual(result.paragraphs[0].text, 'Ala ma kota…')
         self.assertTrue(result.paragraphs[0].runs[0].bold)
         self.assertTrue(result.paragraphs[0].runs[1].underline)
-        self.assertEqual(result.tables[0].cell(0, 0).text, 'Bez  zmian...')
-        self.assertEqual(result.sections[0].header.paragraphs[0].text, 'Nagłówek  bez zmian...')
+        self.assertEqual(result.tables[0].cell(0, 0).text, 'Bez zmian…')
+        self.assertEqual(result.sections[0].header.paragraphs[0].text, 'Nagłówek bez zmian…')
         self.assertFalse(result.paragraphs[0]._p.xpath('.//w:color | .//w:highlight'))
 
     def test_all_rules_run(self):

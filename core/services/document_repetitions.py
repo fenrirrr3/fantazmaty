@@ -19,9 +19,11 @@ from docx.enum.text import WD_COLOR_INDEX
 try:
     from .document_progress import report as report_progress
     from .document_errors import DocumentInputError
+    from .document_stories import document_stories
 except ImportError:
     from document_progress import report as report_progress
     from document_errors import DocumentInputError
+    from document_stories import document_stories
 
 WINDOW_SIZE = 35
 MIN_WORD_LENGTH = 4
@@ -467,52 +469,68 @@ def color_document(source, *, window_size=35, min_word_length=4,
             raise DocumentInputError('analysis_options')
     source.seek(0)
     doc = Document(source)
-    paragraphs = doc.paragraphs
-    lengths = [len(p.text) for p in paragraphs]
+    # Treść główna z tabelami i polami tekstowymi, nagłówki, stopki i przypisy.
+    # Każda część jest analizowana osobno: odległość między słowami liczy się
+    # tylko w obrębie tej samej części.
+    stories, commit = document_stories(doc, include_fallback=False)
+    stories = [story for story in stories if story.paragraphs]
+    lengths = [len(p.text) for story in stories for p in story.paragraphs]
     if sum(lengths) > 500000 or any(n > 20000 for n in lengths):
         raise DocumentInputError('analysis_limit')
-    if doc.element.xpath('.//w:ins | .//w:del | .//w:moveFrom | .//w:moveTo'):
+    from lxml import etree
+    namespaces = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+    if any(etree._Element.xpath(story.root, './/w:ins | .//w:del | .//w:moveFrom | .//w:moveTo',
+                                namespaces=namespaces) for story in stories):
         raise DocumentInputError('tracked_changes')
-    layouts = _document_layout(paragraphs)
-    words, locations = [], []
-    for p_index, (text, _) in enumerate(layouts):
-        for match in re.finditer(r'\w+', text):
-            value = match[0]
-            if len(value) >= min_word_length:
-                words.append(Token(value, True, word_len=len(value),
-                                   stem5=first5(value) if len(value) >= 5 else None))
-                locations.append((p_index, match.start(), match.end()))
+    layouts = [_document_layout(story.paragraphs) for story in stories]
+    story_words = []
+    for story_layouts in layouts:
+        words, locations = [], []
+        for p_index, (text, _) in enumerate(story_layouts):
+            for match in re.finditer(r'\w+', text):
+                value = match[0]
+                if len(value) >= min_word_length:
+                    words.append(Token(value, True, word_len=len(value),
+                                       stem5=first5(value) if len(value) >= 5 else None))
+                    locations.append((p_index, match.start(), match.end()))
+        story_words.append((words, locations))
     ignored_forms, tracked_forms = parse_word_list(ignored_words), parse_word_list(tracked_words)
-    forms = [w.text.lower() for w in words]
+    forms = [w.text.lower() for words, _ in story_words for w in words]
     if tracked_forms or options['duplicates']:
-        forms.extend(m[0].lower() for text, _ in layouts for m in LEXICAL_RE.finditer(text))
+        forms.extend(m[0].lower() for story_layouts in layouts for text, _ in story_layouts
+                     for m in LEXICAL_RE.finditer(text))
     forms.extend(ignored_forms)
     forms.extend(tracked_forms)
     report_progress("Analiza językowa – rozpoznawanie odmian słów")
     lemmas = _lemma_map(forms)
     ignored = {lemmas.get(w, w) for w in ignored_forms}
     tracked = {lemmas.get(w, w) for w in tracked_forms}
-    for token in words:
-        token.lemma = lemmas.get(token.text.lower(), token.text.lower())
-        token.ignored = token.lemma in ignored
     report_progress("Wyszukiwanie powtórzeń")
-    groups = _find_repeat_groups(
-        words, window_size=window_size, include_prefix_matches=include_prefix_matches
-    )
-    _assign_colors(words, groups, color_palette)
-    marks = [[] for _ in paragraphs]
-    for token, (index, start, end) in zip(words, locations):
-        if token.color is not None:
-            marks[index].append((start, end, token.color, None, 0))
-    _, extra_marks = _extra_checks(
-        paragraphs, lemmas, ignored, tracked, options, layouts=layouts, apply_marks=False
-    )
-    for target, ranges in zip(marks, extra_marks):
-        target.extend((a, b, None, MARK_STYLES[k][1], MARK_STYLES[k][0]) for a, b, k in ranges)
-    for index, (layout, ranges) in enumerate(zip(layouts, marks)):
-        if index % 10 == 0:
-            report_progress("Kolorowanie – akapity", index, len(layouts))
-        _apply_layout_marks(layout, ranges)
+    total = sum(len(story.paragraphs) for story in stories)
+    done = 0
+    for story, story_layouts, (words, locations) in zip(stories, layouts, story_words):
+        for token in words:
+            token.lemma = lemmas.get(token.text.lower(), token.text.lower())
+            token.ignored = token.lemma in ignored
+        groups = _find_repeat_groups(
+            words, window_size=window_size, include_prefix_matches=include_prefix_matches
+        )
+        _assign_colors(words, groups, color_palette)
+        marks = [[] for _ in story.paragraphs]
+        for token, (index, start, end) in zip(words, locations):
+            if token.color is not None:
+                marks[index].append((start, end, token.color, None, 0))
+        _, extra_marks = _extra_checks(
+            story.paragraphs, lemmas, ignored, tracked, options, layouts=story_layouts, apply_marks=False
+        )
+        for target, ranges in zip(marks, extra_marks):
+            target.extend((a, b, None, MARK_STYLES[k][1], MARK_STYLES[k][0]) for a, b, k in ranges)
+        for layout, ranges in zip(story_layouts, marks):
+            if done % 10 == 0:
+                report_progress("Kolorowanie – akapity", done, total)
+            done += 1
+            _apply_layout_marks(layout, ranges)
+    commit()
     report_progress("Zapis oznaczonego DOCX")
     output = BytesIO()
     doc.save(output)

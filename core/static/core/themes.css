@@ -1,45 +1,7 @@
 /*
- * Tokeny projektu: rozmiary, typografia i kolory wszystkich motywów.
- * Tylko zmienne CSS i ich przypisania; komponenty korzystają z nich w
- * styles.css, workspace.css, components.css oraz arkuszach stron.
- * Progi szerokości (media queries nie przyjmują zmiennych):
- *   480px – telefon, 760px – mały tablet, 950px – zwinięte menu boczne,
- *   1100px – wąski ekran komputera.
+ * Kolory motywów: jasny (domyślny), ciemny i jesienny, oraz palety ról.
+ * Skale (odstępy, typografia, zaokrąglenia, cienie) są w tokens.css.
  */
-:root {
-    /* Layout */
-    --card-padding: 20px;
-    --field-gap: 8px;
-    --header-height: 68px;
-    --sidebar-width: 244px;
-    --cell-padding-block: 12px;
-    --cell-padding-inline: 16px;
-    /* Radius */
-    --radius-xs: 4px;
-    --radius-badge: 5px;
-    --radius-small: 6px;
-    --radius-medium: 8px;
-    --radius: 10px;
-    --radius-large: 12px;
-    --radius-pill: 20px;
-    /* Typography */
-    --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    --font-size-xxs: 0.6875rem;
-    --font-size-xs: 0.75rem;
-    --font-size-sm: 0.8125rem;
-    --font-size-md: 0.875rem;
-    --font-size-base: 0.9375rem;
-    --font-size-lg: 1rem;
-    --font-size-xl: 1.125rem;
-    --font-size-2xl: 1.25rem;
-    --font-size-3xl: 1.5rem;
-    --font-size-4xl: 1.75rem;
-    --table-font-size: var(--font-size-md);
-    /* Shadows */
-    --shadow: 0 2px 8px rgb(23 36 52 / 4%);
-    --shadow-overlay: 0 12px 36px rgb(23 36 52 / 16%);
-}
-
 /* Motyw jasny (domyślny): grafit, neutralne szarości i niebieski akcent. */
 :root {
     color-scheme: light;
@@ -77,9 +39,6 @@
     --badge-neutral-bg: #edf1f5; --badge-neutral-fg: #526176;
     --media-bg: #101820; --logo-bg: #ffffff;
     --backdrop: rgb(15 26 40 / 48%);
-    --shadow-soft: 0 2px 6px #00000012;
-    --shadow-panel: 0 8px 30px #0002;
-    --shadow-popover: 0 5px 16px rgb(0 0 0 / 12%);
 }
 
 /* Motyw ciemny. */
@@ -153,5 +112,53 @@
 /* Poprawki zależne od motywu, których nie da się wyrazić samymi zmiennymi. */
 /* :where() zeruje specyficzność, więc kolory komponentów (błędy, ostrzeżenia) wygrywają. */
 :where(:root[data-theme="dark"]) :where(p, label, input, textarea, select, .detail-link, .text-title-link) { color: var(--text); }
-:root[data-theme="dark"] :is(.sidebar-link, .navigation-link, .brand-text small) { color: var(--text); }
-:root[data-theme="dark"] :is(.withdraw-text-button,.reject-review-button,.unassign-button,.vacation-end-button):hover { color: var(--danger-dark); background: var(--danger-light); border-color: var(--danger); }
+:root[data-theme="dark"] .brand-text small { color: var(--text); }
+
+/* Wydruk: czarno-biała paleta i ciaśniejsze tabele. */
+@media print {
+    :root,
+    :root[data-theme] {
+        --cell-padding-block: var(--space-1);
+        --cell-padding-inline: var(--space-2);
+        --table-font-size: 9pt;
+        --background: #fff;
+        --surface: #fff;
+        --surface-alt: #fff;
+        --surface-hover: #fff;
+        --table-header: #fff;
+        --text: #000;
+        --muted: #000;
+        --primary: #000;
+        --primary-dark: #000;
+        --border: #aaa;
+        --border-strong: #aaa;
+        --success: #176643;
+        --danger: #b12b36;
+        --danger-dark: #90212b;
+        --warning: #775400;
+        --success-light: #fff;
+        --danger-light: #fff;
+        --warning-light: #fff;
+        --primary-light: #fff;
+        --editing-bg: #fff;
+        --editing-fg: #000;
+        --proofreading-bg: #fff;
+        --proofreading-fg: #000;
+        --verification-bg: #fff;
+        --verification-fg: #000;
+        --styling-bg: #fff;
+        --styling-fg: #000;
+        --ready-bg: #fff;
+        --ready-fg: #000;
+        --ready-edit-bg: #fff;
+        --ready-edit-fg: #000;
+        --reviewer-bg: #fff;
+        --reviewer-fg: #000;
+        --coordinator-bg: #fff;
+        --coordinator-fg: #000;
+    }
+    :where(:root[data-theme]) :where(p,label,input,textarea,select,.detail-link,.text-title-link),
+    :root[data-theme] thead th {
+        color: #000;
+    }
+}

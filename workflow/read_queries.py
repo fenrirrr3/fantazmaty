@@ -175,11 +175,37 @@ def available_stages(user, access):
     )).order_by('text__anthology__title', 'text__title', 'text_id', '-pk')
 
 
-def dashboard_querysets(user, today):
+def user_text_ids(user):
+    """Texts where the user holds any role or stage assignment (all cycles).
+
+    Every work state in annotate_my_work requires such an assignment, so this
+    narrows the expensive classification to the user's own texts.
+    """
+    ids = set(A.objects.filter(assigned_to_id=user.pk).values_list('text_id', flat=True))
+    ids.update(S.objects.filter(assignment__assigned_to_id=user.pk).values_list('text_id', flat=True))
+    return ids
+
+
+def classify_user_texts(user, today):
+    """Work state of the user's texts in one query: active, waiting and waiting with editor role."""
     from texts.models import Text
-    classified = annotate_my_work(Text.objects.all(), user, today)
-    active_texts = classified.filter(work_active=True).values('pk')
-    waiting_texts = classified.filter(work_waiting=True).values('pk')
+    candidates = user_text_ids(user)
+    if not candidates:
+        return [], [], []
+    editor = A.objects.current_cycle().filter(text_id=OuterRef('pk'), role=A.Role.EDITOR, assigned_to_id=user.pk)
+    rows = list(annotate_my_work(Text.objects.filter(pk__in=candidates), user, today)
+                .annotate(editor_assigned=Exists(editor))
+                .values_list('pk', 'work_active', 'work_waiting', 'editor_assigned'))
+    active = [pk for pk, is_active, _, _ in rows if is_active]
+    waiting = [pk for pk, _, is_waiting, _ in rows if is_waiting]
+    editor_waiting = [pk for pk, _, is_waiting, is_editor in rows if is_waiting and is_editor]
+    return active, waiting, editor_waiting
+
+
+def dashboard_querysets(user, today):
+    # Klasyfikacja tekstów jest liczona raz, tylko dla tekstów użytkownika;
+    # dalsze zapytania dostają gotowe listy identyfikatorów zamiast podzapytań.
+    active_texts, waiting_texts, editor_waiting_texts = classify_user_texts(user, today)
     stages = current_stages()
     editor = A.objects.current_cycle().filter(text_id=OuterRef('text_id'),
         workflow_cycle=OuterRef('workflow_cycle'), role=A.Role.EDITOR, assigned_to_id=user.pk)
@@ -187,10 +213,7 @@ def dashboard_querysets(user, today):
         Q(pk__in=own_stages(user).values('pk')) |
         (Q(stage_type=S.StageType.AUTHOR_EDITING) & Q(Exists(editor))))
     active = active_stages(dashboard_work, today).filter(text_id__in=active_texts).filter(
-        workflow_cycle=F('text__current_workflow_cycle'), is_current=True).filter(~Exists(terminal(stages))).order_by(F('started_at').desc(nulls_last=True), '-pk')
-    editor_texts = A.objects.current_cycle().filter(text_id=OuterRef('pk'), role=A.Role.EDITOR,
-                                                  assigned_to_id=user.pk)
-    editor_waiting_texts = classified.filter(work_waiting=True).filter(Exists(editor_texts)).values('pk')
+        workflow_cycle=F('text__current_workflow_cycle'), is_current=True).filter(~Exists(terminal(stages)))
     from workflow.state import state_annotations, ORDER
     from django.db.models.functions import Coalesce
     candidates = exclude_obsolete_verification_placeholders(stages.filter(
@@ -201,16 +224,23 @@ def dashboard_querysets(user, today):
                  .order_by('state_priority', '-state_order', '-iteration', '-pk').values('pk')[:1]),
         Subquery(candidates.order_by('-state_order', '-iteration', '-pk').values('pk')[:1]),
     )
-    editorial_waiting = S.objects.current_cycle().filter(text_id__in=editor_waiting_texts,
-        is_released=True, pk=representative).filter(~Exists(terminal(stages)))
-    active = S.objects.filter(Q(pk__in=active.values('pk')) | Q(pk__in=editorial_waiting.values('pk'))).annotate(
-        editor_waiting=Q(pk__in=editorial_waiting.values('pk'))
+    editorial_waiting_ids = list(S.objects.current_cycle().filter(text_id__in=editor_waiting_texts,
+        is_released=True, pk=representative).filter(~Exists(terminal(stages))).values_list('pk', flat=True)) \
+        if editor_waiting_texts else []
+    active_ids = list(active.values_list('pk', flat=True)) if active_texts else []
+    active = S.objects.filter(pk__in=[*active_ids, *editorial_waiting_ids]).annotate(
+        editor_waiting=Q(pk__in=editorial_waiting_ids)
             | (Q(stage_type=S.StageType.AUTHOR_EDITING) & Q(Exists(editor))),
     ).order_by(F('started_at').desc(nulls_last=True), '-pk')
     reserved = (reserved_assignments(user, today).filter(text_id__in=waiting_texts)
         .filter(workflow_cycle=F('text__current_workflow_cycle')).filter(~Exists(terminal(stages)))
         .exclude(Q(role=A.Role.EDITOR) & Q(text_id__in=editor_waiting_texts))
         .order_by(F('assigned_at').desc(nulls_last=True), '-pk'))
+    if waiting_texts:
+        reserved_ids = list(reserved.values_list('pk', flat=True))
+        reserved = A.objects.filter(pk__in=reserved_ids).order_by(F('assigned_at').desc(nulls_last=True), '-pk')
+    else:
+        reserved = A.objects.none()
     return active, reserved
 
 

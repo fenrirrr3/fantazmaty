@@ -10,6 +10,8 @@ mammoth==1.13.0
 EbookLib==0.20
 fpdf2==2.8.8
 Pillow>=12.1.0,<13.0
+# Szybkie porównanie tekstu przed i po Odkurzaczu (długie akapity).
+rapidfuzz==3.10.1
 
 spacy==3.8.7
 pydantic==2.12.5

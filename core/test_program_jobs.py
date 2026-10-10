@@ -172,8 +172,8 @@ class ProgramJobTests(TestCase):
         folder = next(jobs.root().iterdir())
         self.assertTrue((folder / "cancel").exists())
 
-    def test_server_wide_limit_rejects_new_jobs_until_one_finishes(self):
-        with self.settings(PROGRAM_MAX_ACTIVE_JOBS=1):
+    def test_full_queue_rejects_new_jobs_until_one_finishes(self):
+        with self.settings(PROGRAM_MAX_QUEUED_JOBS=1):
             self.create()
             other = Client()
             other.force_login(self.other)
@@ -184,7 +184,7 @@ class ProgramJobTests(TestCase):
                     HTTP_X_PROGRAM_JOB="1",
                 )
             self.assertEqual(response.status_code, 400)
-            self.assertIn("maksymalną liczbę", response.json()["message"])
+            self.assertIn("Kolejka programów jest pełna", response.json()["message"])
             launch.assert_not_called()
             folder = next(jobs.root().iterdir())
             jobs.write_json(
