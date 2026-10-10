@@ -101,14 +101,18 @@ class AssignmentEditForm(forms.ModelForm):
             Q(pk__in=eligible) | Q(pk=self.instance.proofreader_id)).select_related('person_profile')
         self.fields['work_start'].disabled = self.instance.status == 'assigned'
         self.fields['completed_on'].disabled = self.instance.status != 'completed'
-        self.fields['work_start'].required = self.instance.status != 'assigned'
-        self.fields['completed_on'].required = self.instance.status == 'completed'
+        self.fields['work_start'].required = self.instance.status != 'assigned' and not self.instance.historical
+        self.fields['completed_on'].required = self.instance.status == 'completed' and not self.instance.historical
+        for name in ('page_from', 'page_to', 'assigned_start'):
+            self.fields[name].required = not self.instance.historical
         self.fields['work_start'].help_text = 'To także data zakończenia etapu Przydzielony.'
         self.fields['completed_on'].help_text = 'To także data zakończenia etapu W trakcie.'
 
     def clean(self):
         data = super().clean()
         start, work, end = (data.get(f) for f in ('assigned_start', 'work_start', 'completed_on'))
+        if self.instance.historical and any((start, work, end)) and not all((start, work, end)):
+            raise forms.ValidationError('Dla wpisu historycznego pozostaw wszystkie daty puste albo uzupełnij pełny przebieg.')
         if start and work and work < start:
             self.add_error('work_start', 'Rozpoczęcie pracy nie może poprzedzać przydzielenia.')
         if work and end and end < work:

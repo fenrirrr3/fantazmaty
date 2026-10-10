@@ -123,13 +123,15 @@ def list_page(request, *, proofreading=False, bound_assignment=None, status_code
         proofreader_display=proofreader_display(getattr(t, 'audiobook', None)),
         **({'corrections': correction_rows(t.audiobook, t.audio_corrections, viewer=None if coordinator else request.user),
             'allow_assignment': coordinator and t.can_produce_audio and can_assign_proofreader(t.audiobook, t.audio_corrections),
+            'can_finish': t.can_produce_audio and may_finish(request.user, t.audiobook) and any(
+                stage.pk == t.audiobook.active_stage_id and not stage.is_completed for stage in t.audio_corrections),
             'can_claim': claimant and t.can_produce_audio and can_claim_proofreading(t.audiobook, t.audio_corrections, request.user),
             'production_disabled': not t.can_produce_audio} if proofreading else {'periods': stage_periods(t)})) for t in page.object_list]
     if proofreading:
         versions = dict(EditRevision.objects.filter(model_label='texts.text',
             object_id__in=[r['pk'] for r in page.object_list]).values_list('object_id', 'version'))
         for row in page.object_list:
-            if row['can_claim'] or (coordinator and row['allow_assignment']):
+            if row['can_claim'] or row['can_finish'] or (coordinator and row['allow_assignment']):
                 row['edit_token'] = signing.dumps([request.user.pk, f"texts.text:{row['pk']}", versions.get(row['pk'], 0)], salt='cms-edit-version')
     if proofreading and coordinator:
         choices = [(user.pk, str(user.person_profile)) for user in eligible_proofreaders().select_related('person_profile').order_by('last_name', 'first_name', 'pk')]
@@ -199,6 +201,8 @@ def audiobook_detail(request, text_id):
                         raise ValidationError('Wybierz prawidłowy etap.')
                     finish_stage(text_id=text.pk, stage_id=int(raw), user=request.user)
                     messages.success(request, 'Zakończono etap i zapisano dzisiejszą datę.')
+                    if request.POST.get('return_to') == 'audio_proofreading':
+                        return redirect('core:audio_proofreading')
                     return redirect('core:audiobook_detail', text_id=text.pk)
                 else:
                     raise ValidationError('Nieznana operacja. Odśwież podgląd.')

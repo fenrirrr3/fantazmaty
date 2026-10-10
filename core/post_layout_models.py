@@ -17,16 +17,17 @@ class PostLayoutAssignment(models.Model):
     objects = VersionedQuerySet.as_manager()
     anthology = models.ForeignKey('texts.Anthology', on_delete=models.PROTECT, related_name='post_layout_assignments', verbose_name='antologia')
     proofreader = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='post_layout_assignments', verbose_name='korektor poskładowy')
-    page_from = models.PositiveIntegerField('strona od')
-    page_to = models.PositiveIntegerField('strona do')
+    page_from = models.PositiveIntegerField('strona od', null=True, blank=True)
+    page_to = models.PositiveIntegerField('strona do', null=True, blank=True)
     status = models.CharField('status', max_length=16, choices=Status.choices, default=Status.ASSIGNED, db_index=True)
-    assigned_start = models.DateField('przydzielony – rozpoczęcie', default=timezone.localdate)
+    assigned_start = models.DateField('przydzielony – rozpoczęcie', default=timezone.localdate, null=True, blank=True)
     assigned_end = models.DateField('przydzielony – zakończenie', null=True, blank=True)
     work_start = models.DateField('w trakcie – rozpoczęcie', null=True, blank=True)
     work_end = models.DateField('w trakcie – zakończenie', null=True, blank=True)
     completed_on = models.DateField('zakończony – data zakończenia', null=True, blank=True)
     created_at = models.DateTimeField('data przypisania', auto_now_add=True)
-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='created_post_layout_assignments', verbose_name='przypisał')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='created_post_layout_assignments', verbose_name='przypisał', null=True, blank=True)
+    historical = models.BooleanField('historyczna korekta ze stopki', default=False, editable=False)
     creation_key = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     version = models.PositiveIntegerField(default=1, editable=False)
 
@@ -35,19 +36,24 @@ class PostLayoutAssignment(models.Model):
         verbose_name_plural = 'Korekta poskładowa – przydziały'
         ordering = ('-created_at', '-pk')
         constraints = [
-            models.CheckConstraint(condition=models.Q(page_from__gte=1, page_to__gte=models.F('page_from')), name='post_layout_page_range'),
-            models.CheckConstraint(condition=(
+            models.CheckConstraint(condition=(models.Q(page_from__isnull=False, page_to__isnull=False, page_from__gte=1, page_to__gte=models.F('page_from')) | models.Q(historical=True, page_from__isnull=True, page_to__isnull=True)), name='post_layout_page_range'),
+            models.CheckConstraint(condition=(models.Q(historical=True, status='completed', assigned_start__isnull=True, assigned_end__isnull=True, work_start__isnull=True, work_end__isnull=True, completed_on__isnull=True) | (models.Q(assigned_start__isnull=False) & (
                 models.Q(status='assigned', assigned_end__isnull=True, work_start__isnull=True, work_end__isnull=True, completed_on__isnull=True)
                 | models.Q(status='in_progress', assigned_end=models.F('work_start'), assigned_end__isnull=False, work_start__isnull=False,
                     work_start__gte=models.F('assigned_start'), work_end__isnull=True, completed_on__isnull=True)
                 | models.Q(status='completed', assigned_end=models.F('work_start'), assigned_end__isnull=False, work_start__isnull=False,
                     work_start__gte=models.F('assigned_start'), work_end=models.F('completed_on'),
                     work_end__isnull=False, completed_on__isnull=False, completed_on__gte=models.F('work_start'))
-            ), name='post_layout_status_dates'),
+            ))), name='post_layout_status_dates'),
+            models.CheckConstraint(condition=(models.Q(historical=True, status='completed') | models.Q(historical=False, created_by__isnull=False)), name='post_layout_history_state'),
         ]
 
     def __str__(self):
-        return f'{self.anthology} – strony {self.page_from}–{self.page_to}'
+        return f'{self.anthology} – {self.pages_display}'
+
+    @property
+    def pages_display(self):
+        return f'strony {self.page_from}–{self.page_to}' if self.page_from is not None else 'brak zakresu stron'
 
     def clean(self):
         super().clean()

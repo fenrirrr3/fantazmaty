@@ -35,12 +35,12 @@ class PostLayoutAssignmentAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     from core.post_layout import AssignmentEditForm
     form = AssignmentEditForm
     list_display = ('anthology', 'proofreader', 'page_from', 'page_to', 'status', 'assigned_start', 'work_start', 'completed_on')
-    list_filter = ('status', 'anthology')
+    list_filter = ('status', 'historical', 'anthology')
     list_select_related = ('anthology', 'proofreader')
     search_fields = ('anthology__title', 'proofreader__first_name', 'proofreader__last_name')
-    readonly_fields = ('anthology', 'status', 'assigned_end', 'work_end', 'created_at', 'created_by', 'management_link')
+    readonly_fields = ('anthology', 'status', 'assigned_end', 'work_end', 'created_at', 'created_by', 'historical', 'management_link')
     fields = ('anthology', 'proofreader', 'page_from', 'page_to', 'status', 'assigned_start', 'assigned_end',
-        'work_start', 'work_end', 'completed_on', 'created_at', 'created_by', 'management_link')
+        'work_start', 'work_end', 'completed_on', 'created_at', 'created_by', 'historical', 'management_link')
     actions = None
 
     @admin.display(description='Zarządzanie przydziałami i statusami')

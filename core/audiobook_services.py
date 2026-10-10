@@ -105,6 +105,8 @@ def finish_stage(*, text_id, stage_id, user):
     if audio.active_stage_id != stage_id:
         raise ValidationError('Ten etap nie jest już aktualny. Odśwież podgląd.')
     stage = AudiobookStage.objects.get(pk=stage_id, text=text)
+    if not is_coordinator(user) and stage.stage_type != Audiobook.Status.PROOFREADING:
+        raise PermissionDenied('Możesz zakończyć tylko etap korekty audiobooka.')
     if stage.is_completed:
         raise ValidationError('Etap został już zakończony.')
     today = timezone.localdate()
