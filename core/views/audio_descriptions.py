@@ -4,7 +4,6 @@ from django.contrib.auth.decorators import login_required
 from django.core import signing
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
@@ -16,6 +15,7 @@ from core.permissions import team_member_required, get_active_person_profile, is
 from core.table_sorting import DisplayTable
 from people.models import Person
 from texts.models import Anthology, AnthologyTask
+from core.anthology_tasks import TaskPeopleChoice, TaskPersonChoice, task_people
 
 
 def books():
@@ -40,7 +40,9 @@ def require_edit(request, book, kwargs):
 
 
 class DescriptionForm(forms.ModelForm):
-    controllers = forms.ModelMultipleChoiceField(
+    """Coordinator assignment only; the task status is managed on the anthology page."""
+    assigned_to = TaskPersonChoice(label="Kto pisze", queryset=Person.objects.none(), required=False)
+    controllers = TaskPeopleChoice(
         label="Konsultacja – osoby do kontroli",
         queryset=Person.objects.none(),
         required=False,
@@ -49,44 +51,28 @@ class DescriptionForm(forms.ModelForm):
 
     class Meta:
         model = AnthologyTask
-        fields = ("assigned_to", "status")
-        labels = {"assigned_to": "Kto pisze"}
+        fields = ("assigned_to",)
 
-    def __init__(self, *args, description=None, manager=False, **kwargs):
+    def __init__(self, *args, description=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.description = description
-        self.manager = manager
-        if not manager:
-            self.fields.pop("assigned_to")
-            self.fields.pop("controllers")
-        else:
-            current = (
-                list(description.controllers.values_list("pk", flat=True)) if description else []
-            )
-            active = Person.objects.active().filter(user__is_active=True).values("pk")
-            self.fields["controllers"].queryset = Person.objects.filter(
-                Q(pk__in=active) | Q(pk__in=current)
-            )
-            self.fields["controllers"].initial = current
-            self.fields["assigned_to"].queryset = Person.objects.filter(
-                Q(pk__in=active) | Q(pk=self.instance.assigned_to_id)
-            )
-            self.fields["assigned_to"].widget.attrs["data-searchable-person"] = "true"
+        current = list(description.controllers.values_list("pk", flat=True)) if description else []
+        self.fields["controllers"].queryset = task_people(*current)
+        self.fields["controllers"].initial = current
+        self.fields["assigned_to"].queryset = task_people(self.instance.assigned_to_id)
+        self.fields["assigned_to"].widget.attrs["data-searchable-person"] = "true"
         for field in self.fields.values():
             field.widget.attrs["class"] = "form-control"
 
-    def clean_status(self):
-        status = self.cleaned_data["status"]
-        if not self.manager and not self.instance.assigned_to_id and status != "not_commissioned":
-            raise forms.ValidationError(
-                "Najpierw koordynator musi przypisać wykonawcę audiodeskrypcji."
-            )
-        return status
-
     def clean(self):
         values = super().clean()
-        if not self.manager and values.get("status") == AnthologyTask.Status.NOT_COMMISSIONED:
-            raise forms.ValidationError("Zmianę przypisania wykonuje koordynator.")
+        if self.instance.status == AnthologyTask.Status.READY:
+            if values.get("assigned_to") != self.instance.assigned_to:
+                raise forms.ValidationError("Audiodeskrypcja jest gotowa. Wykonawcę zmienisz tylko w panelu admina.")
+        else:
+            # Assignment opens or closes the commission; "Gotowe" comes only from the work stage.
+            self.instance.status = (AnthologyTask.Status.COMMISSIONED if values.get("assigned_to")
+                                    else AnthologyTask.Status.NOT_COMMISSIONED)
         return values
 
 
@@ -95,6 +81,17 @@ class StageForm(forms.ModelForm):
         model = AudioDescription
         fields = ("stage",)
         widgets = {"stage": forms.Select(attrs={"class": "form-control"})}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.was_completed = self.instance.pk and AudioDescription.objects.filter(
+            pk=self.instance.pk, stage=AudioDescription.Stage.COMPLETED).exists()
+
+    def clean_stage(self):
+        stage = self.cleaned_data["stage"]
+        if self.was_completed and stage != AudioDescription.Stage.COMPLETED:
+            raise forms.ValidationError("Zakończonej audiodeskrypcji nie można cofnąć. Zmiana tylko w panelu admina.")
+        return stage
 
 
 class ContentForm(forms.ModelForm):
@@ -238,17 +235,20 @@ def audio_description_detail(request, anthology_id):
             task_type="audio_description",
         )
         description = get_object_or_404(AudioDescription, anthology=book)
+        # Read before forms bind data: a rejected submission must not lock the page.
+        completed = description.stage == AudioDescription.Stage.COMPLETED
         manager = is_coordinator(request.user)
         editable = may_edit(request.user, book)
         if request.method == "POST":
             require_edit(request, book, {})
+            if request.POST.get("action", "assignment") == "assignment" and not manager:
+                raise PermissionDenied("Przypisanie zmienia koordynator.")
         action = request.POST.get("action", "assignment") if request.method == "POST" else None
         form = DescriptionForm(
             request.POST if action == "assignment" else None,
             instance=task,
             description=description,
-            manager=manager,
-        )
+        ) if manager else None
         stage_form = StageForm(request.POST if action == "stage" else None, instance=description)
         content_form = ContentForm(
             request.POST if action == "content" else None, instance=description
@@ -265,8 +265,7 @@ def audio_description_detail(request, anthology_id):
             if chosen is not None and chosen.is_valid():
                 if action == "assignment":
                     form.save()
-                    if manager:
-                        description.controllers.set(form.cleaned_data["controllers"])
+                    description.controllers.set(form.cleaned_data["controllers"])
                 elif action == "note":
                     person = get_active_person_profile(request.user)
                     AudioDescriptionNote.objects.create(
@@ -304,6 +303,7 @@ def audio_description_detail(request, anthology_id):
                 "form": form,
                 "can_edit": editable,
                 "can_manage": manager,
+                "is_completed": completed,
             },
             status=400 if request.method == "POST" else 200,
         )

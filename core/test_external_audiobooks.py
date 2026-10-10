@@ -37,7 +37,7 @@ class ExternalAudiobookTests(TestCase):
             response = self.client.get(self.url, {'sort': 'coordinator_note'})
             self.assertEqual(response.status_code, 200)
             self.assertContains(response, self.story.title)
-            self.assertEqual(set(response.context['rows'][0]), {'anthology__title', 'title', 'tags', 'genre', 'public_status'})
+            self.assertEqual(set(response.context['rows'][0]), {'anthology__title', 'title', 'tags', 'genre', 'public_status', 'audio_status', 'audiobook__narrator_name'})
             for value in ('PRYWATNE UWAGI', 'private-folder', 'private@example.test', 'Prywatne', 'site-sidebar'):
                 self.assertNotContains(response, value)
             self.assertEqual(response['X-Robots-Tag'], 'noindex, nofollow')

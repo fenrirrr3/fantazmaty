@@ -7,8 +7,11 @@ from texts.models import Review, Text
 
 def linkable_reviews(text):
     from django.db.models import Q
+    # Only accepted submissions (also archival imports that were not rejected or
+    # withdrawn). Another anthology is allowed: texts sometimes moved after review.
     return Review.objects.filter(
-        Q(status__in=(Review.Status.ACCEPTED, Review.Status.REJECTED)) | Q(old_reviews=True)
+        Q(status=Review.Status.ACCEPTED)
+        | (Q(old_reviews=True) & ~Q(status__in=(Review.Status.REJECTED, Review.Status.WITHDRAWN)))
     ).filter(
         Q(copied_text__isnull=True) | Q(copied_text_id=text.pk)
     ).order_by('title','pk')
@@ -24,8 +27,9 @@ def suggested_review_ids(text):
 
 def validate_source_review_link(text, review, *, coauthors=None, confirm_mismatch=False):
     """Shared, non-mutating validation for admin and explicit source links."""
-    if not review or (not review.is_archived and not review.old_reviews):
-        raise ValidationError('Wybierz przyjęte lub archiwalne zgłoszenie. Dane mogły się zmienić.')
+    if not review or review.status in (Review.Status.REJECTED, Review.Status.WITHDRAWN) or (
+            review.status != Review.Status.ACCEPTED and not review.old_reviews):
+        raise ValidationError('Wybierz przyjęte zgłoszenie. Odrzuconych i wycofanych nie można powiązać.')
     from texts.services import normalize_author_name
     text_authors = list(text.authors.all())
     text_author_ids = {author.pk for author in text_authors}
@@ -42,9 +46,10 @@ def validate_source_review_link(text, review, *, coauthors=None, confirm_mismatc
             and (not review.email or (author.email or '').strip().casefold() == review.email.strip().casefold())]
         authors_mismatch = not any(review_author_ids | {author.pk} == text_author_ids
                                   for author in possible_primary)
+    # Archival imports without an accepted status are linked only after explicit confirmation.
     mismatch = review.status != Review.Status.ACCEPTED or review.title.strip().casefold() != text.title.strip().casefold() or authors_mismatch
     if mismatch and confirm_mismatch is not True:
-        raise ValidationError('Tytuł, autorzy lub decyzja zgłoszenia nie zgadzają się z przyjętym tekstem. Sprawdź dane i zaznacz potwierdzenie rozbieżności.')
+        raise ValidationError('Tytuł, autorzy lub decyzja zgłoszenia różnią się od przyjętego tekstu. Sprawdź dane i zaznacz potwierdzenie rozbieżności.')
     if review.copied_text_id not in (None,text.pk):
         raise ValidationError('To zgłoszenie jest już powiązane z innym tekstem.')
 

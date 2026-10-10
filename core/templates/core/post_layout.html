@@ -1,6 +1,6 @@
 {% extends 'core/base.html' %}{% load static %}
 {% block title %}Korekta poskładowa | Fantazmaty CMS{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'core/post-layout.css' %}?v=70">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/post-layout.css' %}">{% endblock %}
 {% block content %}
 <header class="page-header"><h1 class="page-title">Korekta poskładowa</h1><p>{% if can_manage %}Przydziały korekty antologii według zakresów stron.{% else %}Twoje przydziały korekty poskładowej.{% endif %}</p></header>
 {% if errors %}<div class="errorlist" role="alert">{% for error in errors %}<p>{{ error }}</p>{% endfor %}</div>{% endif %}
@@ -12,14 +12,15 @@
 <div class="post-layout-toolbar"><section class="card"><div class="card-body"><form method="get" class="post-layout-filters post-layout-search">
 <label for="post-layout-q">Szukaj antologii lub korektora</label><div class="post-layout-filter-controls"><input type="search" id="post-layout-q" name="q" value="{{ query }}">
 <label class="post-layout-hide"><input type="checkbox" name="hide_completed" value="1" {% if hide_completed %}checked{% endif %}> Ukryj zakończone</label>
+{% if can_manage %}<label class="post-layout-hide"><input type="checkbox" name="show_deleted" value="1" {% if show_deleted %}checked{% endif %}> Pokaż usunięte (historia)</label>{% endif %}
 <button class="primary-button" type="submit">Filtruj</button><a class="secondary-button" href="{% url 'core:post_layout' %}">Wyczyść filtry</a>
 </div></form></div></section>
 {% if can_manage %}<section class="card"><div class="card-body"><h2>Operacje zbiorcze</h2>
 <form method="post" id="post-layout-bulk" class="post-layout-filters">{% csrf_token %}<input type="hidden" name="action" value="bulk">
-<div class="form-field"><label for="bulk-operation">Operacja</label><select name="operation" id="bulk-operation" required><option value="">Wybierz</option><option value="status">Zmień status</option><option value="assign">Zmień przypisanie</option><option value="delete">Usuń wpisy</option></select></div>
+<div class="form-field"><label for="bulk-operation">Operacja</label><select name="operation" id="bulk-operation" required><option value="">Wybierz</option>{% if show_deleted %}<option value="restore">Przywróć wpisy</option>{% else %}<option value="status">Zmień status</option><option value="assign">Zmień przypisanie</option><option value="delete">Usuń wpisy</option>{% endif %}</select></div>
 <div class="form-field" data-bulk-action="status" hidden><label for="bulk-status">Nowy status</label><select name="bulk_status" id="bulk-status"><option value="">Wybierz status</option>{% for value, label in statuses %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select></div>
 <div class="form-field" data-bulk-action="assign" hidden><label for="bulk-proofreader">Nowy korektor</label><select name="bulk_proofreader" id="bulk-proofreader"><option value="">Wybierz osobę</option>{% for person in proofreaders %}<option value="{{ person.pk }}">{{ person.person_profile }}</option>{% endfor %}</select></div>
-<label data-bulk-action="delete" hidden><input type="checkbox" name="confirm_delete" value="1"> Potwierdzam trwałe usunięcie zaznaczonych wpisów wraz z datami.</label>
+<label data-bulk-action="delete" hidden><input type="checkbox" name="confirm_delete" value="1"> Potwierdzam usunięcie zaznaczonych wpisów z listy. Wpisy z datami zostaną w historii (filtr „Pokaż usunięte”).</label>
 <button type="submit" class="primary-button">Zastosuj do zaznaczonych</button>
 </form></div></section>{% endif %}</div>
 <section class="card"><div class="card-body post-layout-table-wrap"><div class="table-container"><table class="data-table post-layout-table" data-server-paginated="true">
@@ -29,12 +30,12 @@
 <td><a href="{% url 'core:anthology_detail' item.anthology_id %}">{{ item.anthology.title }}</a></td><td>{% if item.proofreader.person_profile %}<a href="{% url 'core:person_detail' item.proofreader.person_profile.pk %}">{{ item.proofreader.person_profile }}</a>{% else %}{{ item.proofreader.get_full_name|default:item.proofreader.username }}{% endif %}</td><td>{{ item.pages_display }}</td>
 <td><span class="stage-status {% if item.status == 'completed' %}completed{% elif item.status == 'in_progress' %}active{% else %}pending{% endif %}">{{ item.get_status_display }}</span></td>
 <td>{{ item.assigned_start|date:'d.m.Y'|default:'–' }}</td><td>{{ item.assigned_end|date:'d.m.Y'|default:'–' }}</td><td>{{ item.work_start|date:'d.m.Y'|default:'–' }}</td><td>{{ item.work_end|date:'d.m.Y'|default:'–' }}</td><td>{{ item.completed_on|date:'d.m.Y'|default:'–' }}</td>
-<td><div class="post-layout-row-actions">{% if item.next_status %}<form method="post" class="post-layout-status">{% csrf_token %}<input type="hidden" name="action" value="status"><input type="hidden" name="pk" value="{{ item.pk }}"><input type="hidden" name="version" value="{{ item.version }}">
+<td><div class="post-layout-row-actions">{% if item.deleted_at %}<span class="muted-text">Usunięto {{ item.deleted_at|date:'d.m.Y H:i' }}{% if item.deleted_by %} – {{ item.deleted_by.person_profile|default:item.deleted_by.get_full_name }}{% endif %}</span>{% elif item.next_status or item.previous_status %}<form method="post" class="post-layout-status">{% csrf_token %}<input type="hidden" name="action" value="status"><input type="hidden" name="pk" value="{{ item.pk }}"><input type="hidden" name="version" value="{{ item.version }}">
 <label class="visually-hidden" for="post-layout-status-{{ item.pk }}">Status: {{ item.anthology.title }}, {{ item.pages_display }}</label>
-<select id="post-layout-status-{{ item.pk }}" name="status"><option value="{{ item.status }}">{{ item.get_status_display }}</option><option value="{{ item.next_status }}">{{ item.next_status_label }}</option></select><button class="secondary-button" type="submit">Zapisz</button>
-</form>{% else %}<span class="muted-text">Zakończony</span>{% endif %}{% if can_manage %}<a class="secondary-button" href="{% url 'core:post_layout_edit' item.pk %}">Edytuj</a>{% endif %}</div></td>
+<select id="post-layout-status-{{ item.pk }}" name="status"><option value="{{ item.status }}">{{ item.get_status_display }}</option>{% if item.next_status %}<option value="{{ item.next_status }}">{{ item.next_status_label }}</option>{% endif %}{% if item.previous_status %}<option value="{{ item.previous_status }}">Cofnij do: {{ item.previous_status_label }}</option>{% endif %}</select><button class="secondary-button" type="submit">Zapisz</button>
+</form>{% else %}<span class="muted-text">Zakończony</span>{% endif %}{% if can_manage and not item.deleted_at %}<a class="secondary-button" href="{% url 'core:post_layout_edit' item.pk %}">Edytuj</a>{% endif %}</div></td>
 </tr>{% empty %}<tr><td colspan="{% if can_manage %}11{% else %}10{% endif %}">Brak przydziałów pasujących do filtrów.</td></tr>{% endfor %}</tbody>
 </table></div>{% include 'core/includes/pagination.html' %}</div></section>
 {% endblock %}
 
-{% block scripts %}<script src="{% static 'core/post-layout.js' %}?v=70" defer></script>{% endblock %}
+{% block scripts %}<script src="{% static 'core/post-layout.js' %}" defer></script>{% endblock %}

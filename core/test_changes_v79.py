@@ -106,13 +106,17 @@ class ChangesV79Tests(TestCase):
         self.assertTrue(review.old_reviews)
 
     def test_linking_still_checks_ownership_and_actual_review_decision(self):
+        rejected = Review.objects.create(
+            title=self.text.title, anthology=self.original, length=100, author=self.author,
+            status="rejected", old_reviews=True,
+        )
+        # Rejected submissions cannot be linked, even with confirmation.
+        self.assertNotIn(rejected, linkable_reviews(self.text))
+        with self.assertRaises(ValidationError):
+            link_source_review(user=self.admin, text_id=self.text.pk, review_id=rejected.pk, confirm_mismatch=True)
         review = Review.objects.create(
-            title=self.text.title,
-            anthology=self.original,
-            length=100,
-            author=self.author,
-            status="rejected",
-            old_reviews=True,
+            title=self.text.title, anthology=self.original, length=100, author=self.author,
+            status="new", old_reviews=True,
         )
         self.assertIn(review, linkable_reviews(self.text))
         with self.assertRaises(ValidationError):

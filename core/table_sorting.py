@@ -1,5 +1,5 @@
 """Allowlisted sorting before pagination, shared by table headers."""
-from core.translation_scope import ordinary
+from core.translation_scope import frontend_scope
 from workflow.catalog import active_role_choices
 from copy import copy
 from datetime import date, datetime
@@ -317,7 +317,7 @@ def _extra_columns(items, queryset, request):
             from texts.models import Text
 
             for author_id, title in (
-                ordinary(Text.objects)
+                frontend_scope(Text.objects)
                 .filter(authors__pk__in=queryset.values("pk"), anthology__isnull=False)
                 .values_list("authors__pk", "anthology__title")
                 .distinct()

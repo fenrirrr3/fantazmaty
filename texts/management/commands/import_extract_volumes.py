@@ -208,6 +208,9 @@ class Command(BaseCommand):
                 book = Anthology.objects.select_for_update().get(pk=marker.anthology_id)
                 if book.is_novel or book.is_translated:
                     raise ValueError(f"{title}: zmieniony rodzaj publikacji.")
+                if not book.is_extracts:
+                    book.is_extracts = True
+                    book.save(update_fields=["is_extracts"])
             else:
                 existing = [
                     b
@@ -218,7 +221,7 @@ class Command(BaseCommand):
                     raise ValueError(
                         f"{title}: istnieje już antologia bez powiązania importu. Nie tworzę duplikatu ani nie przejmuję jej automatycznie."
                     )
-                book = Anthology.objects.create(title=title)
+                book = Anthology.objects.create(title=title, is_extracts=True)
                 marker = ExtractVolume.objects.create(anthology=book, number=number)
             book_row = {
                 "number": number,

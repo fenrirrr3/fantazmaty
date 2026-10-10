@@ -87,9 +87,11 @@ class PostLayoutEditingTests(TestCase):
         two.refresh_from_db()
         self.assertEqual(one.proofreader, self.other)
         self.assertEqual(two.proofreader, self.other)
-        # First record would succeed, second cannot move backwards. Roll back both.
-        self.assertEqual(self.bulk([two, one], 'status', bulk_status='assigned').status_code, 400)
+        # One record cannot skip a step; the whole operation is rolled back.
         self.assertEqual(self.bulk([one, two], 'status', bulk_status='completed').status_code, 400)
+        one.refresh_from_db()
+        two.refresh_from_db()
+        self.assertEqual((one.status, two.status), ('assigned', 'in_progress'))
         self.assertEqual(self.bulk([one, two], 'status', bulk_status='in_progress').status_code, 302)
         one.refresh_from_db()
         two.refresh_from_db()
@@ -101,11 +103,11 @@ class PostLayoutEditingTests(TestCase):
         one.status = 'assigned'
         one.assigned_end = one.work_start = one.work_end = one.completed_on = None
         one.save()
-        # The first row advances, then the completed second row fails. Both stay unchanged.
-        self.assertEqual(self.bulk([one, two], 'status', bulk_status='in_progress').status_code, 400)
-        one.refresh_from_db()
-        self.assertEqual(one.status, 'assigned')
-        self.assertIsNone(one.work_start)
+        # The first row advances and the completed second row steps back: both are valid single steps.
+        self.assertEqual(self.bulk([one, two], 'status', bulk_status='in_progress').status_code, 302)
+        two.refresh_from_db()
+        self.assertEqual(two.status, 'in_progress')
+        self.assertIsNone(two.completed_on)
 
     def test_bulk_stale_and_deletion_permissions(self):
         item = self.item()
@@ -118,7 +120,8 @@ class PostLayoutEditingTests(TestCase):
         self.assertEqual(self.bulk([item], 'delete', user=self.admin).status_code, 400)
         self.assertTrue(PostLayoutAssignment.objects.filter(pk=item.pk).exists())
         self.assertEqual(self.bulk([item], 'delete', user=self.admin, confirm_delete='1').status_code, 302)
-        self.assertFalse(PostLayoutAssignment.objects.filter(pk=item.pk).exists())
+        self.assertFalse(PostLayoutAssignment.objects.present().filter(pk=item.pk).exists())
+        self.assertTrue(PostLayoutAssignment.objects.deleted().filter(pk=item.pk).exists())
         profile = self.client.get(reverse('core:person_detail', args=[self.other.person_profile.pk]))
         self.assertFalse(profile.context['assignments'])
 

@@ -1,5 +1,5 @@
 from core.public_authors import name_matches, review_name_matches
-from core.translation_scope import ordinary, non_abandoned
+from core.translation_scope import frontend_scope, non_abandoned
 from core.author_access import contact_authors
 from core.permissions import is_coordinator
 from django.contrib.auth.decorators import login_required
@@ -150,7 +150,8 @@ def _search_texts(query, *, include_authors, page=1):
     return SearchResults(results, page_obj)
 
 
-def _search_reviews(query, *, include_authors, include_archived=True, page=1):
+def _search_reviews(query, *, user, include_authors, page=1):
+    """Current and decided submissions; withdrawn ones stay in the admin panel."""
     fields = ["title", "anthology__title"]
 
     condition = Q()
@@ -160,15 +161,13 @@ def _search_reviews(query, *, include_authors, include_archived=True, page=1):
             match |= review_name_matches(term)
         condition &= match
 
+    # The same visibility as the submission page, so every result can be opened.
     queryset = (
-        ordinary(Review.objects).filter(
-            **({} if include_authors else {"is_hidden": False}),
-        )
+        frontend_scope(Review.objects.accessible_to(user))
         .filter(condition)
         .select_related("anthology", "author").prefetch_related("coauthors")
         .order_by("title", "pk")
     )
-    queryset = queryset.current()
     page_obj = _page(queryset, page)
     results = []
 
@@ -262,13 +261,19 @@ def _search_people(query, user, page=1):
             ).filter(contact_email__in=emails).values_list("email", flat=True) if email}
         protected_emails = matching_emails(Author.objects.all())
         allowed_emails = matching_emails(contact_authors(user))
+    def state(person):
+        if person.is_external:
+            return "Zewnętrzny"
+        return "Nieaktywny" if not person.is_active or (person.user_id and not person.user.is_active) else ""
+
     return SearchResults([
         _NamedResult(
             pk=person.pk,
-            member_state="Zewnętrzny" if person.is_external else ("Nieaktywny" if not person.is_active or (person.user_id and not person.user.is_active) else ""),
+            member_state=state(person),
             first_name=person.first_name,
             last_name=person.last_name,
-            email=person.email if coordinator or (person.email or "").casefold() not in protected_emails or (person.email or "").casefold() in allowed_emails else "",
+            # Like the profile page: contact data of former members is not shown.
+            email="" if state(person) else (person.email if coordinator or (person.email or "").casefold() not in protected_emails or (person.email or "").casefold() in allowed_emails else ""),
             roles={
                 "all": [
                     {"pk": role.pk, "name": role.name}
@@ -360,9 +365,8 @@ def global_search(request):
                         include_authors=include_authors, page=request.GET.get("texts_page", 1),
                     ),
                     "reviews": _search_reviews(
-                        query,
-                        include_authors=include_authors,
-                        include_archived=False, page=request.GET.get("reviews_page", 1),
+                        query, user=request.user,
+                        include_authors=include_authors, page=request.GET.get("reviews_page", 1),
                     ),
                     "authors": (
                         _search_authors(query, request.user, page=request.GET.get("authors_page", 1))

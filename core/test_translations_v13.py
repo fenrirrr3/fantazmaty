@@ -10,7 +10,7 @@ from texts.models import Anthology, Text, TextTranslation, Review, ForeignAuthor
 from illustrations.models import Illustration
 from workflow.models import WorkflowStage as S, WorkflowRoleAssignment as A
 from workflow.tests import create_member
-from core.translation_scope import ordinary
+from core.translation_scope import frontend_scope
 from core.selectors.texts import user_workflow_summary, available_stages_for_user
 from core.edit_versions import version_of
 
@@ -56,7 +56,7 @@ class TranslationTests(TestCase):
         self.normal.is_translated = False
         self.normal.save()
         self.assertEqual(list(row.translators.all()), [self.other])
-        self.assertIn(self.regular, ordinary(Text.objects))
+        self.assertIn(self.regular, frontend_scope(Text.objects))
         self.regular.anthology = self.book
         self.regular.save()
         self.assertEqual(TextTranslation.objects.get(text=self.regular).pk, row.pk)

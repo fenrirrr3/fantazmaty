@@ -29,29 +29,32 @@ class AdminNavigationTests(TestCase):
             [g["app_label"] for g in groups],
             [
                 "submissions",
+                "texts",
                 "publication",
-                "post_layout",
-                "novels",
-                "translations",
-                "authors",
-                "team",
                 "art",
                 "audio",
-                "history",
+                "people",
+                "recruitment",
+                "accounts",
                 "settings",
+                "history",
             ],
         )
-        self.assertEqual([g["collapsed"] for g in groups], [False, False, True, False, False, False, True, True, True, True, True])
+        self.assertEqual([g["collapsed"] for g in groups], [False, False, False, True, True, True, True, True, True, True])
         by_label = {group["app_label"]: group for group in groups}
 
         def names(group):
             return [m["object_name"].lower() for m in group["models"]]
 
-        self.assertIn("anthologytask", names(groups[1]))
-        self.assertNotIn("illustration", names(groups[1]))
-        self.assertIn("texttranslation", names(by_label["translations"]))
-        self.assertIn("novelprofile", names(by_label["novels"]))
-        self.assertIn("vocabularyterm", names(by_label["novels"]))
+        self.assertIn("anthologytask", names(by_label["publication"]))
+        self.assertIn("postlayoutassignment", names(by_label["publication"]))
+        self.assertNotIn("illustration", names(by_label["publication"]))
+        self.assertIn("texttranslation", names(by_label["texts"]))
+        self.assertIn("novelprofile", names(by_label["texts"]))
+        self.assertIn("vocabularyterm", names(by_label["texts"]))
+        # Extracts close the Texts group, as in the site menu.
+        self.assertEqual(names(by_label["texts"])[-2:], ["extract", "extractvolume"])
+        self.assertIn("author", names(by_label["people"]))
         self.assertIn("workflowstage", names(by_label["history"]))
         self.assertIn("workflowroleassignment", names(by_label["history"]))
         detail = by_label["history"]["subgroups"][0]
@@ -69,9 +72,9 @@ class AdminNavigationTests(TestCase):
             page = self.client.get(url)
             self.assertEqual(page.status_code, 200)
             for label in (
-                "Zgłoszenia i recenzje",
-                "Teksty i antologie",
-                "Ilustracje i okładki",
+                "Zgłoszenia",
+                "Antologie i wydanie",
+                "Grafika",
                 "Historia i diagnostyka",
                 "Szczegółowe rekordy",
             ):

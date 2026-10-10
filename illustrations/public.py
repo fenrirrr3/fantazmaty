@@ -8,7 +8,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 
 from core.pagination import paginate_queryset
-from core.translation_scope import ordinary
+from core.translation_scope import frontend_scope
 from texts.models import Anthology, Text
 from texts.production import active_production_texts
 from .validators import validate_drive_url
@@ -33,7 +33,7 @@ def valid_link_version(user, url, token):
 
 def visible_illustrations():
     from .models import Illustration
-    return ordinary(Illustration.objects).filter(
+    return frontend_scope(Illustration.objects).filter(
         text_id__in=active_production_texts(Text.objects.all()).values('pk'),
         text__anthology__has_illustrations=True,
     ).exclude(text__anthology__status=Anthology.Status.READY)

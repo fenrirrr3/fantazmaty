@@ -113,7 +113,7 @@ class NavigationV78Tests(TestCase):
     def test_unlinked_exceptions_and_extract_navigation(self):
         novel = Anthology.objects.create(title='Powieść nawigacyjna', is_novel=True)
         chapter = Text.objects.create(title='Rozdział 1', chapter_number=1, anthology=novel, length=100)
-        book = Anthology.objects.create(title='Ekstrakty 3')
+        book = Anthology.objects.create(title='Ekstrakty 3', is_extracts=True)
         whole = book.texts.get(import_source='extract-volume-v2')
         self.client.force_login(self.admin)
         url = reverse('core:unlinked_reviews')

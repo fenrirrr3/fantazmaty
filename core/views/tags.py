@@ -1,5 +1,5 @@
 """Accepted texts with their own tags and genre."""
-from core.translation_scope import ordinary
+from core.translation_scope import frontend_scope
 from core.public_authors import public_name
 from django.contrib.auth.decorators import login_required
 from django.db import connections
@@ -112,7 +112,7 @@ def tag_list(request):
         'page_obj': page, 'search': search, 'selected_anthology': anthology, 'selected_author': author,
         'selected_genre': genre, 'selected_tag': tag, 'selected_filled': filled,
         'selected_sort': request.GET.get('sort', 'title'),
-        'anthologies': ordinary(Anthology.objects).filter(pk__in=visible.order_by().values('anthology_id')).only('pk', 'title').order_by('title', 'pk'),
+        'anthologies': frontend_scope(Anthology.objects).filter(pk__in=visible.order_by().values('anthology_id')).only('pk', 'title').order_by('title', 'pk'),
         'authors': authors.filter(texts__pk__in=visible.order_by().values('pk')).distinct(),
         'genres': base.exclude(tag_genre='').order_by('tag_genre').values_list('tag_genre', flat=True).distinct(),
     })

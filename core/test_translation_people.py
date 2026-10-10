@@ -55,7 +55,9 @@ class TranslationPeopleTests(TestCase):
         response=self.client.get(url)
         nav=html.fromstring(response.content).xpath('//a[contains(@class,"sidebar-link")]/text()')
         nav=[v.strip() for v in nav if v.strip()]
-        self.assertEqual(nav.index('Tłumaczenia'),nav.index('Ekstrakty')+1)
+        # Texts group: translations follow the summary table; extracts close the group.
+        self.assertEqual(nav.index('Tłumaczenia'),nav.index('Tabelka zbiorcza')+1)
+        self.assertEqual(nav.index('Ekstrakty'),nav.index('Programy')+1)
 
     def test_filter_id_spaces_do_not_collide_and_sort_works(self):
         other=Translator.objects.create(first_name='Adam',last_name='Abacki')

@@ -67,7 +67,12 @@ def sync_audio_description_stage(sender, instance, using, raw=False, **kwargs):
     if instance.status == 'ready':
         rows.exclude(stage='completed').update(stage='completed')
     else:
-        rows.filter(stage='completed').update(stage='writing')
+        # Reopening (admin only) returns to the last working step when work exists,
+        # and to the start when the description was never written.
+        from django.db.models import Q
+        reopened = rows.filter(stage='completed')
+        reopened.filter(~Q(content='') | Q(notes__isnull=False)).update(stage='proofreading')
+        reopened.update(stage='writing')
 
 
 @receiver(post_save, sender=Anthology, dispatch_uid='texts.ensure_extract_whole')

@@ -8,13 +8,21 @@ from django.utils import timezone
 from core.edit_versions import VersionedQuerySet
 
 
+class PostLayoutQuerySet(VersionedQuerySet):
+    def present(self):
+        return self.filter(deleted_at__isnull=True)
+
+    def deleted(self):
+        return self.filter(deleted_at__isnull=False)
+
+
 class PostLayoutAssignment(models.Model):
     class Status(models.TextChoices):
         ASSIGNED = 'assigned', 'Przydzielony'
         IN_PROGRESS = 'in_progress', 'W trakcie'
         COMPLETED = 'completed', 'Zakończony'
 
-    objects = VersionedQuerySet.as_manager()
+    objects = PostLayoutQuerySet.as_manager()
     anthology = models.ForeignKey('texts.Anthology', on_delete=models.PROTECT, related_name='post_layout_assignments', verbose_name='antologia')
     proofreader = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name='post_layout_assignments', verbose_name='korektor poskładowy')
     page_from = models.PositiveIntegerField('strona od', null=True, blank=True)
@@ -30,6 +38,10 @@ class PostLayoutAssignment(models.Model):
     historical = models.BooleanField('historyczna korekta ze stopki', default=False, editable=False)
     creation_key = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     version = models.PositiveIntegerField(default=1, editable=False)
+    # Deleting keeps the record (with its dates) as history; it only leaves the lists.
+    deleted_at = models.DateTimeField('usunięto', null=True, blank=True, editable=False, db_index=True)
+    deleted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, editable=False,
+        related_name='deleted_post_layout_assignments', verbose_name='usunął')
 
     class Meta:
         verbose_name = 'przydział korekty poskładowej'
@@ -64,6 +76,16 @@ class PostLayoutAssignment(models.Model):
         super().clean()
         if self.page_from is not None and self.page_to is not None and (self.page_from < 1 or self.page_to < self.page_from):
             raise ValidationError({'page_to': 'Koniec zakresu nie może być mniejszy od początku; numeracja zaczyna się od 1.'})
+
+    @property
+    def previous_status(self):
+        if self.historical:
+            return None
+        return {'in_progress': self.Status.ASSIGNED, 'completed': self.Status.IN_PROGRESS}.get(self.status)
+
+    @property
+    def previous_status_label(self):
+        return dict(self.Status.choices).get(self.previous_status, '')
 
     @property
     def next_status(self):

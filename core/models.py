@@ -229,6 +229,11 @@ class UserActivity(models.Model):
 
 
 class WorkflowEvent(models.Model):
+    class Kind(models.TextChoices):
+        WORKFLOW = 'workflow', 'Workflow tekstu'
+        AUDIOBOOK = 'audiobook', 'Produkcja audiobooka'
+
+    kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.WORKFLOW, db_index=True, editable=False)
     personal_work = models.BooleanField(default=False, db_index=True, editable=False)
     personal_work_description = models.CharField(max_length=255, blank=True, editable=False)
     text = models.ForeignKey('texts.Text', null=True, on_delete=models.SET_NULL)

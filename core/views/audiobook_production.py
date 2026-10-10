@@ -10,12 +10,13 @@ from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.cache import never_cache
-from django.views.decorators.http import require_http_methods, require_POST
+from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from authors.models import Author
 from core.audiobook_forms import (AudiobookPeopleForm, AudiobookPublicationForm,
     AudiobookStageForm, AudiobookAssignmentForm, eligible_proofreaders)
-from core.audiobook_services import require_available, may_finish, start_stage, finish_stage, claim_proofreading, can_claim_proofreading
+from core.audiobook_services import (require_available, may_finish, start_stage, finish_stage, claim_proofreading,
+    can_claim_proofreading, allowed_next_stages)
 from core.edit_policy import edit_policy
 from core.models import Audiobook, AudiobookStage, EditRevision
 from core.pagination import paginate_items
@@ -58,6 +59,8 @@ def author_links(text, user):
 
 
 DATE_STAGES = ('recording', 'proofreading', 'corrections', 'editing')
+WAITING = 'waiting_next'
+STATUS_FILTERS = [*Audiobook.Status.choices[:-1], (WAITING, 'Czeka na kolejny etap'), Audiobook.Status.choices[-1]]
 
 
 def stage_periods(text):
@@ -103,7 +106,14 @@ def list_page(request, *, proofreading=False, bound_assignment=None, status_code
         rows = rows.filter(anthology_id__in=[int(v) for v in anthologies_selected]) if valid else rows.none()
     rows = rows.annotate(audio_status=Coalesce('audiobook__status', Value(Audiobook.Status.PENDING)))
     if statuses_selected:
-        rows = rows.filter(audio_status__in=statuses_selected) if all(v in Audiobook.Status.values for v in statuses_selected) else rows.none()
+        if all(v in Audiobook.Status.values or v == WAITING for v in statuses_selected):
+            condition = Q(audio_status__in=[v for v in statuses_selected if v != WAITING])
+            if WAITING in statuses_selected:
+                condition |= (Q(audiobook__active_stage__isnull=True)
+                              & ~Q(audio_status__in=(Audiobook.Status.PENDING, Audiobook.Status.PUBLISHED)))
+            rows = rows.filter(condition)
+        else:
+            rows = rows.none()
     if not proofreading:
         rows = rows.prefetch_related(Prefetch('audiobook_stages',
             queryset=AudiobookStage.objects.filter(stage_type__in=DATE_STAGES).order_by('pk'),
@@ -147,7 +157,7 @@ def list_page(request, *, proofreading=False, bound_assignment=None, status_code
     return render(request, 'core/audio_proofreading.html' if proofreading else 'core/audiobooks.html',
         dict(texts=page, page_obj=page, anthologies=anthologies, can_assign=coordinator, can_claim=claimant,
         query=q, selected_anthology=request.GET.get('anthology', ''), selected_status=request.GET.get('status', ''),
-        selected_anthologies=anthologies_selected, selected_statuses=statuses_selected, status_choices=Audiobook.Status.choices,
+        selected_anthologies=anthologies_selected, selected_statuses=statuses_selected, status_choices=STATUS_FILTERS,
         hide_completed=hide_completed), status=status_code)
 
 
@@ -180,7 +190,8 @@ def audiobook_detail(request, text_id):
         editable = coordinator and (eligible or audio.pk is not None)
         people_form = AudiobookPeopleForm(instance=audio, prefix='people')
         publication_form = AudiobookPublicationForm(instance=audio, prefix='publication')
-        stage_form = AudiobookStageForm()
+        allowed = allowed_next_stages(text, audio) if audio.pk else allowed_next_stages(text)
+        stage_form = AudiobookStageForm(allowed=allowed)
         errors = []
         if request.method == 'POST':
             action = request.POST.get('action')
@@ -196,7 +207,7 @@ def audiobook_detail(request, text_id):
                         publication_form.save()
                         return redirect('core:audiobook_detail', text_id=text.pk)
                 elif action == 'start_stage':
-                    stage_form = AudiobookStageForm(request.POST)
+                    stage_form = AudiobookStageForm(request.POST, allowed=allowed)
                     if stage_form.is_valid():
                         start_stage(text_id=text.pk, user=request.user, **stage_form.cleaned_data)
                         return redirect('core:audiobook_detail', text_id=text.pk)
@@ -217,7 +228,8 @@ def audiobook_detail(request, text_id):
         return render(request, 'core/audiobook_detail.html', dict(text=text, audio=audio,
             authors_display=authors_display(text), proofreader_display=proofreader_display(audio),
             people_form=people_form, publication_form=publication_form, stage_form=stage_form,
-            stages=stages, errors=errors, can_edit=editable, can_manage_stages=eligible and coordinator, eligible=eligible, can_coordinate=coordinator,
+            stages=stages, errors=errors, can_edit=editable, can_manage_stages=eligible and coordinator and bool(allowed),
+            is_published=audio.status == Audiobook.Status.PUBLISHED, eligible=eligible, can_coordinate=coordinator,
             can_finish=eligible and may_finish(request.user, audio)),
             status=400 if request.method == 'POST' else 200)
 
@@ -267,3 +279,11 @@ def assign_audio_proofreader(request, text_id):
             messages.success(request, 'Zapisano przypisanie korektora audiobooka.')
             return redirect('core:audio_proofreading')
         return list_page(request, proofreading=True, bound_assignment=form, status_code=400)
+
+
+@never_cache
+@login_required
+@require_GET
+@team_member_required
+def audio_proofreading(request):
+    return list_page(request, proofreading=True)

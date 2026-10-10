@@ -1,4 +1,4 @@
-from core.translation_scope import ordinary
+from core.translation_scope import frontend_scope
 from workflow.catalog import active_stage_choices
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
@@ -238,7 +238,7 @@ def last_activity(request):
     if mode == 'login':
         people = people.annotate(last_activity_at=F('user__last_login'), last_action=Value('Logowanie', output_field=CharField()))
     else:
-        history = ordinary(WorkflowEvent.objects).filter(actor_id=OuterRef('user_id'), personal_work=True).order_by('-created_at', '-pk')
+        history = frontend_scope(WorkflowEvent.objects).filter(actor_id=OuterRef('user_id'), personal_work=True).order_by('-created_at', '-pk')
         people = people.annotate(last_activity_at=Subquery(history.values('created_at')[:1]),
                                  last_action=Subquery(history.values('personal_work_description')[:1]))
     if days:

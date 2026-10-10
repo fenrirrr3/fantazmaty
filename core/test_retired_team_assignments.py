@@ -78,7 +78,7 @@ class RetiredTeamAssignmentTests(StatusAssignmentFixtures):
         self.client.force_login(self.admin)
         response = self.client.get(reverse('core:assigned_text_detail', args=[self.text.pk]))
         self.assertEqual(response.status_code, 200)
-        sections = re.findall(r'<details class="text-team">(.*?)</details>', response.content.decode(), re.S)
+        sections = re.findall(r'<details class="text-team"[^>]*>(.*?)</details>', response.content.decode(), re.S)
         current = next(section for section in sections if 'Osoby przypisane do tekstu' in section)
         previous = next(section for section in sections if 'Historia przypisań osób' in section)
         self.assertEqual(current.count('Weryfikator 1'), 1)
@@ -92,11 +92,13 @@ class RetiredTeamAssignmentTests(StatusAssignmentFixtures):
         self.client.force_login(self.admin)
         response = self.client.get(reverse('core:assigned_text_detail', args=[self.text.pk]))
         self.assertEqual(response.status_code, 200)
-        sections = re.findall(r'<details class="text-team">(.*?)</details>', response.content.decode(), re.S)
+        sections = re.findall(r'<details class="text-team"[^>]*>(.*?)</details>', response.content.decode(), re.S)
         current = next(section for section in sections if 'Osoby przypisane do tekstu' in section)
         self.assertEqual(current.count('Weryfikator 1'), 1)
         self.assertIn('Renata', current)
-        self.assertNotContains(response, 'Historia przypisań osób')
+        # The history section is always present; after the repair it has no entries.
+        history = next(section for section in sections if 'Historia przypisań osób' in section)
+        self.assertIn('Brak wcześniejszych przypisań', history)
 
     def test_next_handover_uses_second_verifier_and_preserves_the_first(self):
         editor, editing, verifier, verified, author = self.screenshot_state()

@@ -1,8 +1,9 @@
+"""Post-layout proofreading: assignments by page range, status steps and history."""
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect
 from django.views.decorators.cache import never_cache
-from django.views.decorators.http import require_GET, require_http_methods
-from core.permissions import post_layout_required, team_member_required
+from django.views.decorators.http import require_http_methods
+from core.permissions import post_layout_required
 
 
 @never_cache
@@ -48,7 +49,9 @@ def post_layout(request):
                 raise ValidationError('Nieznana operacja.')
         except ValidationError as exc:
             errors, code = exc.messages, 409 if isinstance(exc, StaleAssignment) else 400
-    rows = PostLayoutAssignment.objects.select_related('anthology', 'proofreader__person_profile')
+    show_deleted = manager and request.GET.get('show_deleted') == '1'
+    rows = PostLayoutAssignment.objects.select_related('anthology', 'proofreader__person_profile', 'deleted_by__person_profile')
+    rows = rows.deleted() if show_deleted else rows.present()
     if not manager:
         rows = rows.filter(proofreader=request.user)
     selected = request.GET.get('assignment', '')
@@ -66,7 +69,7 @@ def post_layout(request):
         for item in page:
             item.selection_token = selection_token(request.user, item)
     return render(request, 'core/post_layout.html', {'assignments': page, 'page_obj': page, 'form': form,
-        'can_manage': manager, 'errors': errors, 'hide_completed': hide_completed, 'query': query,
+        'can_manage': manager, 'errors': errors, 'hide_completed': hide_completed, 'query': query, 'show_deleted': show_deleted,
         'proofreaders': eligible_proofreaders() if manager else (), 'statuses': PostLayoutAssignment.Status.choices}, status=code)
 
 
@@ -82,7 +85,7 @@ def post_layout_edit(request, pk):
     from core.post_layout import can_manage, AssignmentEditForm, edit_assignment, StaleAssignment
     if not can_manage(request.user):
         raise PermissionDenied()
-    item = get_object_or_404(PostLayoutAssignment.objects.select_related('anthology'), pk=pk)
+    item = get_object_or_404(PostLayoutAssignment.objects.present().select_related('anthology'), pk=pk)
     form, errors, code = AssignmentEditForm(instance=item), [], 200
     if request.method == 'POST':
         try:
@@ -94,12 +97,3 @@ def post_layout_edit(request, pk):
         except ValidationError as exc:
             errors, code = exc.messages, 409 if isinstance(exc, StaleAssignment) else 400
     return render(request, 'core/post_layout_edit.html', {'item': item, 'form': form, 'errors': errors}, status=code)
-
-
-@never_cache
-@login_required
-@require_GET
-@team_member_required
-def audio_proofreading(request):
-    from core.views.audiobook_production import list_page
-    return list_page(request, proofreading=True)

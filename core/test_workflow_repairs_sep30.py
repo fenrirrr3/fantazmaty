@@ -374,7 +374,7 @@ class WorkflowRepairs(TestCase):
             form = self.admin_link_form(review, self.text, confirm_source_mismatch="on", old_reviews="")
             self.assertFalse(form.is_valid())
             self.assertIn("copied_text", form.errors)
-            self.assertIn("przyjęte lub archiwalne zgłoszenie", str(form.errors["copied_text"]))
+            self.assertIn("Wybierz przyjęte zgłoszenie", str(form.errors["copied_text"]))
 
     def test_admin_requires_separate_confirmation_of_author_mismatch(self):
         author = Author.objects.create(

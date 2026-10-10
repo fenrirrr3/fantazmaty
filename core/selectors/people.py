@@ -241,9 +241,17 @@ def profile_assignments(person, *, include_authors):
 
     summary = {"active": len(active_ids), "reserved": len(waiting_ids), "completed": len(completed_ids)}
     from core.selectors.audio_proofreading import profile_audio_assignments
-    assignments.extend(profile_audio_assignments(person))
     from core.selectors.post_layout import profile_post_layout_assignments
-    assignments.extend(profile_post_layout_assignments(person))
+    other_rows = [*profile_audio_assignments(person), *profile_post_layout_assignments(person)]
+    # Audiobook proofreading and post-layout work count like text assignments.
+    for row in other_rows:
+        if row.get('has_active_work'):
+            summary['active'] += 1
+        elif row.get('has_reserved_work'):
+            summary['reserved'] += 1
+        elif row.get('has_completed_work'):
+            summary['completed'] += 1
+    assignments.extend(other_rows)
     assignments.extend(volume_rows)
     summary["completed"] += completed_volumes
     return assignments, summary

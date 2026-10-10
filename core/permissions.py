@@ -333,7 +333,8 @@ def can_view_my_reviews(user):
 
 
 def can_view_review_archive(user):
-    return is_team_member(user) and (is_coordinator(user) or is_reviewer(user))
+    # Decided submissions are visible to the whole team.
+    return is_team_member(user)
 
 
 def can_view_archived_review_authors(user):

@@ -10,7 +10,8 @@ SOURCE = 'extract-volume-v2'
 
 
 def is_extract_anthology(book):
-    return 'ekstrakty' in book.title.casefold() or hasattr(book, 'extract_volume')
+    # Explicit admin flag; imported volumes are always flagged as well.
+    return bool(book.is_extracts) or hasattr(book, 'extract_volume')
 
 
 def published_legacy_volume(book):

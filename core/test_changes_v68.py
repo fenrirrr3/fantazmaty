@@ -15,7 +15,7 @@ from core.models import Audiobook, AudiobookStage, PostLayoutAssignment
 from core.palettes import label_palette
 from core.post_layout import selection_token
 from core.selectors.texts import text_list_context
-from core.translation_scope import ordinary
+from core.translation_scope import frontend_scope
 from texts.models import Anthology, Text
 from workflow.models import WorkflowStage
 from workflow.services import claim_ready_for_editing
@@ -33,8 +33,8 @@ class UIChangesTests(TestCase):
         cls.stage = WorkflowStage.objects.create(text=cls.text, stage_type='ready_for_editing', is_released=True)
 
     def test_abandoned_scopes_filters_admin_and_direct_claim(self):
-        self.assertFalse(ordinary(Anthology.objects).filter(pk=self.book.pk).exists())
-        self.assertFalse(ordinary(Text.objects).filter(pk=self.text.pk).exists())
+        self.assertFalse(frontend_scope(Anthology.objects).filter(pk=self.book.pk).exists())
+        self.assertFalse(frontend_scope(Text.objects).filter(pk=self.text.pk).exists())
         self.client.force_login(self.admin)
         for name in ('core:anthology_list', 'core:available_texts', 'core:text_list', 'core:workflow_list'):
             page = self.client.get(reverse(name), {'sort': 'anthology', 'hide_ready': '0'})
@@ -49,7 +49,7 @@ class UIChangesTests(TestCase):
         self.assertTrue(WorkflowStage.objects.filter(pk=self.stage.pk).exists())
         self.book.status = 'in_preparation'
         self.book.save()
-        self.assertTrue(ordinary(Text.objects).filter(pk=self.text.pk).exists())
+        self.assertTrue(frontend_scope(Text.objects).filter(pk=self.text.pk).exists())
         self.assertContains(self.client.get(reverse('core:text_list')), self.text.title)
 
     def test_coordinator_delete_and_conditional_bulk_markup(self):
@@ -63,7 +63,9 @@ class UIChangesTests(TestCase):
         data = {'action':'bulk', 'operation':'delete', 'selected':[selection_token(self.manager, item)]}
         self.assertEqual(self.client.post(url, data).status_code, 400)
         self.assertEqual(self.client.post(url, {**data, 'confirm_delete':'1'}).status_code, 302)
-        self.assertFalse(PostLayoutAssignment.objects.filter(pk=item.pk).exists())
+        # Deletion keeps the record as history.
+        self.assertFalse(PostLayoutAssignment.objects.present().filter(pk=item.pk).exists())
+        self.assertTrue(PostLayoutAssignment.objects.deleted().filter(pk=item.pk).exists())
 
     def test_new_role_palettes_are_distinct_and_shared(self):
         roles = ['Prawa ręka', 'Ilustrator', 'Grafik', 'Lektor', 'Składacz', 'Dźwiękowiec']
@@ -89,7 +91,7 @@ class UIChangesTests(TestCase):
         self.assertEqual(self.client.get(reverse('core:post_layout_edit', args=[item.pk])).status_code, 200)
         data = {'action':'bulk', 'operation':'delete', 'selected':[selection_token(coordinator, item)], 'confirm_delete':'1'}
         self.assertEqual(self.client.post(reverse('core:post_layout'), data).status_code, 302)
-        self.assertFalse(PostLayoutAssignment.objects.filter(pk=item.pk).exists())
+        self.assertFalse(PostLayoutAssignment.objects.present().filter(pk=item.pk).exists())
 
     def test_translation_person_buttons_in_one_action_group(self):
         book = Anthology.objects.create(title='Tłumaczona', is_translated=True)

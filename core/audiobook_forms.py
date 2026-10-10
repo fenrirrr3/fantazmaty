@@ -37,6 +37,19 @@ class AudiobookProductionForm(forms.ModelForm):
             Q(pk__in=ids) | Q(pk=self.instance.proofreader_id)
         ).select_related('person_profile').order_by('last_name', 'first_name', 'pk')
 
+    def clean(self):
+        from core.audiobook_models import contact_key
+        data = super().clean()
+        for role in ('narrator', 'engineer'):
+            if f'{role}_name' not in self.fields or f'{role}_contact' in self.fields:
+                continue
+            contact = getattr(self.instance, f'{role}_contact', None)
+            name, email = data.get(f'{role}_name', ''), (data.get(f'{role}_email') or '').strip().lower()
+            if contact and (contact_key(contact.name) != contact_key(name) or (email and email != contact.email)):
+                # Another person was typed: link (or create) that person's own profile.
+                setattr(self.instance, f'{role}_contact', None)
+        return data
+
 
 class AudiobookPeopleForm(forms.ModelForm):
     class Meta:
@@ -51,6 +64,18 @@ class AudiobookPeopleForm(forms.ModelForm):
                 self.fields[f'{role}_{field}'].widget.attrs.update({'data-contact-kind': 'audio', 'data-contact-group': role,
                     'data-contact-field': field, 'autocomplete': 'off'})
             self.fields[f'{role}_contact'].widget.attrs.update({'data-contact-group': role, 'data-contact-field': 'id'})
+            self.fields[f'{role}_name'].help_text = 'Zacznij pisać, aby wybrać osobę z bazy. Nowa osoba otrzyma własny profil.'
+
+    def clean(self):
+        from core.audiobook_models import contact_key
+        data = super().clean()
+        for role in ('narrator', 'engineer'):
+            contact = data.get(f'{role}_contact')
+            name = data.get(f'{role}_name', '')
+            if contact and contact_key(contact.name) != contact_key(name):
+                # The typed name no longer matches the chosen profile: look it up again.
+                data[f'{role}_contact'] = None
+        return data
 
 
 class AudiobookPublicationForm(forms.ModelForm):
@@ -67,9 +92,17 @@ class AudiobookAssignmentForm(AudiobookProductionForm):
 
 
 class AudiobookStageForm(forms.Form):
-    stage_type = forms.ChoiceField(label='Etap', choices=Audiobook.Status.choices)
+    stage_type = forms.ChoiceField(label='Etap', choices=())
     started_at = forms.DateField(label='Data rozpoczęcia', initial=timezone.localdate,
+        help_text='Przy etapie Opublikowane to data publikacji; etap nie wymaga zakończenia.',
         widget=forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}))
+
+    def __init__(self, *args, allowed=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        from core.audiobook_services import STAGE_ORDER
+        labels = dict(Audiobook.Status.choices)
+        kinds = STAGE_ORDER if allowed is None else allowed
+        self.fields['stage_type'].choices = [(kind, labels[kind]) for kind in kinds]
 
     def clean_started_at(self):
         value = self.cleaned_data['started_at']

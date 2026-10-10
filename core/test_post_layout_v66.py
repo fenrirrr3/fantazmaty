@@ -72,12 +72,17 @@ class PostLayoutTests(TestCase):
         self.assertIsNone(item.work_end)
         self.assertIsNone(item.completed_on)
         self.assertEqual(self.transition(item, 'completed', version=old_version).status_code, 409)
-        self.assertEqual(self.transition(item, 'assigned').status_code, 400)
         self.assertEqual(self.transition(item, 'completed').status_code, 302)
         item.refresh_from_db()
         self.assertEqual(item.work_end, item.completed_on)
         self.assertEqual(item.status, 'completed')
-        self.assertEqual(self.transition(item, 'in_progress').status_code, 400)
+        # One step back is allowed and clears the dates of the withdrawn step.
+        self.assertEqual(self.transition(item, 'assigned').status_code, 400)
+        self.assertEqual(self.transition(item, 'in_progress').status_code, 302)
+        item.refresh_from_db()
+        self.assertIsNone(item.completed_on)
+        self.assertEqual(self.transition(item, 'completed').status_code, 302)
+        item.refresh_from_db()
 
     def test_own_rows_only_and_other_person_cannot_change_status(self):
         mine = self.create()

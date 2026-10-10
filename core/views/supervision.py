@@ -6,7 +6,6 @@ from django.db import transaction
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.http import HttpResponse
-from django.db.models import Q
 from django.views.decorators.http import require_GET, require_http_methods
 from core.edit_policy import edit_policy
 from core.permissions import superuser_required, require_coordinator, require_team_member, is_team_member, is_coordinator, is_reviewer
@@ -18,7 +17,7 @@ from people.models import Person
 from texts.models import Anthology, AnthologyTask
 from texts.models import ExtractVolume
 from texts.cover_forms import CoverAssignmentForm
-from core.anthology_tasks import CompactCoverAssignmentForm, NewTaskPersonForm, grouped_checklist
+from core.anthology_tasks import CompactCoverAssignmentForm, NewTaskPersonForm, grouped_checklist, task_people, TaskPersonChoice
 from workflow.services import ROLE_GROUPS
 from workflow.models import WorkflowRoleAssignment
 
@@ -62,22 +61,31 @@ def data_integrity(request):
     })
 
 class AnthologyTaskForm(forms.ModelForm):
+    assigned_to = TaskPersonChoice(queryset=Person.objects.none(), required=False, label='Przypisana osoba')
+
     class Meta:
         model = AnthologyTask
         fields = ('status', 'assigned_to')
 
-    def __init__(self, *args, include_all_people=False, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['assigned_to'].widget.attrs['data-searchable-person'] = 'true'
-        selected = self.instance.assigned_to_id
-        self.fields['assigned_to'].queryset = (Person.objects.all() if include_all_people else Person.objects.filter(
-            Q(pk=selected) | Q(pk__in=Person.objects.active().values('pk'))
-        )).order_by('last_name', 'first_name', 'pk')
+        self.fields['assigned_to'].queryset = task_people(self.instance.assigned_to_id)
+        if self.locked:
+            # A finished audio description is reopened only in the admin panel.
+            for field in self.fields.values():
+                field.disabled = True
+            self.fields['status'].help_text = 'Audiodeskrypcja jest gotowa. Zmiana możliwa tylko w panelu admina.'
+
+    @property
+    def locked(self):
+        return bool(self.instance.pk and self.instance.task_type == AnthologyTask.TaskType.AUDIO_DESCRIPTION
+                    and AnthologyTask.objects.filter(pk=self.instance.pk, status=AnthologyTask.Status.READY).exists())
 
 
-def _task_forms(anthology, data=None, *, include_all_people=False):
+def _task_forms(anthology, data=None, **kwargs):
     tasks = {task.task_type: task for task in anthology.production_tasks.all()}
-    return [AnthologyTaskForm(data=data, prefix=kind, include_all_people=include_all_people,
+    return [AnthologyTaskForm(data=data, prefix=kind,
                 instance=tasks.get(kind) or AnthologyTask(anthology=anthology, task_type=kind))
             for kind in (AnthologyTask.TaskType.BANNERS, AnthologyTask.TaskType.BLURB,
                          AnthologyTask.TaskType.TYPESETTING, AnthologyTask.TaskType.COVER_TYPOGRAPHY, AnthologyTask.TaskType.AUDIO_DESCRIPTION)]
@@ -92,7 +100,7 @@ def anthology_detail(request, anthology_id):
     if anthology.is_novel:
         return redirect('core:novel_detail', novel_id=anthology.pk)
     coordinator = is_coordinator(request.user)
-    forms_list = _task_forms(anthology, include_all_people=True) if coordinator else []
+    forms_list = _task_forms(anthology) if coordinator else []
     cover_form = CompactCoverAssignmentForm(instance=anthology, prefix='cover') if coordinator else None
     new_person_form = NewTaskPersonForm(anthology=anthology, prefix='new-person') if coordinator else None
     if request.method == 'POST':
@@ -111,6 +119,13 @@ def anthology_detail(request, anthology_id):
         with transaction.atomic():
             anthology = get_object_or_404(Anthology.objects.select_for_update(), pk=anthology_id)
             if action == 'remove_person':
+                finished = (anthology.cover_status == Anthology.CoverStatus.READY if removal == 'cover' else
+                            AnthologyTask.objects.filter(anthology=anthology, task_type=removal,
+                                                         status=AnthologyTask.Status.READY).exists())
+                if finished:
+                    # Completed work keeps its credit; corrections are made in the admin panel.
+                    messages.error(request, 'Zadanie jest gotowe – przypisanie ukończonej pracy zmienisz tylko w panelu admina.')
+                    return redirect('core:anthology_detail', anthology_id=anthology.pk)
                 if removal == 'cover':
                     anthology.cover_illustrator = None
                     anthology.cover_author = ''
@@ -141,7 +156,7 @@ def anthology_detail(request, anthology_id):
                     messages.success(request, 'Zapisano okładkę antologii.')
                     return redirect('core:anthology_detail', anthology_id=anthology.pk)
             else:
-                forms_list = _task_forms(anthology, request.POST, include_all_people=True)
+                forms_list = _task_forms(anthology, request.POST)
                 valid = all([form.is_valid() for form in forms_list])
                 if action == 'tasks_and_cover':
                     cover_form = CompactCoverAssignmentForm(request.POST, instance=anthology, prefix='cover')

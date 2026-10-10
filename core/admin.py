@@ -34,13 +34,14 @@ class AudiobookAdminForm(AudiobookProductionForm):
 class PostLayoutAssignmentAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     from core.post_layout import AssignmentEditForm
     form = AssignmentEditForm
-    list_display = ('anthology', 'proofreader', 'page_from', 'page_to', 'status', 'assigned_start', 'work_start', 'completed_on')
-    list_filter = ('status', 'historical', 'anthology')
+    list_display = ('anthology', 'proofreader', 'page_from', 'page_to', 'status', 'assigned_start', 'work_start', 'completed_on', 'deleted_at')
+    list_filter = ('status', 'historical', ('deleted_at', admin.EmptyFieldListFilter), 'anthology')
     list_select_related = ('anthology', 'proofreader')
     search_fields = ('anthology__title', 'proofreader__first_name', 'proofreader__last_name')
-    readonly_fields = ('anthology', 'status', 'assigned_end', 'work_end', 'created_at', 'created_by', 'historical', 'management_link')
+    readonly_fields = ('anthology', 'status', 'assigned_end', 'work_end', 'created_at', 'created_by', 'historical',
+        'deleted_at', 'deleted_by', 'management_link')
     fields = ('anthology', 'proofreader', 'page_from', 'page_to', 'status', 'assigned_start', 'assigned_end',
-        'work_start', 'work_end', 'completed_on', 'created_at', 'created_by', 'historical', 'management_link')
+        'work_start', 'work_end', 'completed_on', 'created_at', 'created_by', 'historical', 'deleted_at', 'deleted_by', 'management_link')
     actions = None
 
     @admin.display(description='Zarządzanie przydziałami i statusami')
@@ -68,6 +69,31 @@ class AudioContributorAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     autocomplete_fields = ('user',)
     fields = ('name', 'email', 'user', 'works_link')
     readonly_fields = ('works_link',)
+    actions = ('merge_contacts',)
+
+    @admin.action(description='Połącz zaznaczone profile w jeden (zostaje najstarszy)')
+    def merge_contacts(self, request, queryset):
+        from django.contrib import messages
+        from django.db import transaction
+        from core.models import Audiobook
+        with transaction.atomic():
+            people = list(queryset.select_for_update().order_by('pk'))
+            if len(people) < 2:
+                self.message_user(request, 'Zaznacz co najmniej dwa profile.', messages.ERROR)
+                return
+            keep, *duplicates = people
+            ids = [person.pk for person in duplicates]
+            for role in ('narrator', 'engineer'):
+                for audio in Audiobook.objects.select_for_update().filter(**{f'{role}_contact_id__in': ids}):
+                    setattr(audio, f'{role}_contact', keep)
+                    audio.save(update_fields=[f'{role}_contact'])
+            if not keep.email:
+                keep.email = next((person.email for person in duplicates if person.email), '')
+            if not keep.user_id:
+                keep.user_id = next((person.user_id for person in duplicates if person.user_id), None)
+            AudioContributor.objects.filter(pk__in=ids).delete()
+            keep.save()
+        self.message_user(request, f'Połączono {len(ids) + 1} profile w „{keep.name}”.', messages.SUCCESS)
 
     @admin.display(description='Nagrania')
     def works_link(self, obj):

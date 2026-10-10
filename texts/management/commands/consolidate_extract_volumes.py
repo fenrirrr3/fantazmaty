@@ -23,7 +23,7 @@ class Command(BaseCommand):
         path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf8')
         try:
             with transaction.atomic():
-                books = Anthology.objects.filter(Q(title__icontains='ekstrakty') | Q(extract_volume__isnull=False)).order_by('pk')
+                books = Anthology.objects.filter(Q(is_extracts=True) | Q(extract_volume__isnull=False)).order_by('pk')
                 for book in books:
                     report['volumes'].append(consolidate_volume(book))
                 if not options['apply']:

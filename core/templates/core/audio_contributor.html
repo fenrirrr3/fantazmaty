@@ -1,12 +1,19 @@
 {% extends 'core/base.html' %}
 {% block title %}{{ person.name }} – nagrania | Fantazmaty CMS{% endblock %}
 {% block content %}{% if return_url %}<p><a class="secondary-button" href="{{ return_url }}">Wróć do poprzedniej listy</a></p>{% endif %}
-<header class="page-header"><h1>{{ person.name }}</h1><a class="secondary-button" href="{% url 'core:audiobooks' %}">Audiobooki</a></header>
+<header class="page-header"><h1>{{ person.name }}</h1><p class="page-description">Jeden profil lektora i montażysty – łączy wszystkie nagrania i montaże tej osoby.</p><a class="secondary-button" href="{% url 'core:audiobooks' %}">Audiobooki</a></header>
 <section class="card"><div class="card-body">
 {% if show_email and person.email %}<p>E-mail: <a href="mailto:{{ person.email }}">{{ person.email }}</a></p>{% endif %}
 {% if person.user.person_profile %}<a class="secondary-button" href="{% url 'core:person_detail' person.user.person_profile.pk %}">Profil członka zespołu</a>{% endif %}
-{% if user.is_superuser %}<a class="secondary-button" href="{% url 'admin:core_audiocontributor_change' person.pk %}">Edytuj dane</a>{% endif %}
+{% if user.is_superuser %}<a class="secondary-button" href="{% url 'admin:core_audiocontributor_change' person.pk %}">Panel admina</a>{% endif %}
+{% if form %}<form method="post" class="audio-production-form" data-warn-unsaved>{% csrf_token %}{{ form.non_field_errors }}
+{% for field in form %}<div class="form-field">{{ field.label_tag }}{{ field }}{% if field.help_text %}<p class="muted-text">{{ field.help_text }}</p>{% endif %}{{ field.errors }}</div>{% endfor %}
+<button class="primary-button" type="submit">Zapisz profil</button></form>{% endif %}
 </div></section>
+<section class="card"><header class="section-header"><h2>Bieżące przypisania</h2></header><div class="profile-table-inset">
+<div class="table-container"><table class="data-table"><thead><tr><th>Antologia</th><th>Autor</th><th>Tytuł</th><th>Udział</th><th>Status</th></tr></thead><tbody>
+{% for audio in current_works %}<tr><td>{{ audio.text.anthology.title }}</td><td>{{ audio.author_display }}</td><td><a href="{% url 'core:audiobook_detail' audio.text_id %}"><strong>{{ audio.text.title }}</strong></a></td><td>{% if audio.narrator_contact_id == person.pk %}Lektor{% endif %}{% if audio.engineer_contact_id == person.pk %}{% if audio.narrator_contact_id == person.pk %}, {% endif %}Montaż{% endif %}</td><td>{% include "core/includes/audiobook_status.html" %}</td></tr>{% empty %}<tr><td colspan="5">Brak bieżących przypisań.</td></tr>{% endfor %}
+</tbody></table></div></div></section>
 <section class="card"><header class="section-header"><h2>Zrealizowane nagrania</h2></header><div class="profile-table-inset">
 <div class="table-container"><table class="data-table"><thead><tr><th>Antologia</th><th>Autor</th><th>Tytuł</th><th>Udział</th><th>Premiera</th></tr></thead><tbody>
 {% for audio in works %}<tr><td>{{ audio.text.anthology.title }}</td><td>{{ audio.author_display }}</td><td><a href="{% url 'core:audiobook_detail' audio.text_id %}"><strong>{{ audio.text.title }}</strong></a></td><td>{% if audio.narrator_contact_id == person.pk %}Lektor{% endif %}{% if audio.engineer_contact_id == person.pk %}{% if audio.narrator_contact_id == person.pk %}, {% endif %}Montaż{% endif %}</td><td>{{ audio.premiere_date|date:'d.m.Y'|default:'–' }}</td></tr>{% empty %}<tr><td colspan="5">Brak opublikowanych nagrań.</td></tr>{% endfor %}

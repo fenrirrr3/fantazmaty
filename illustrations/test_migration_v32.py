@@ -7,10 +7,12 @@ class IllustratorMigrationTests(TransactionTestCase):
     def test_existing_credit_and_manual_details_survive_upgrade(self):
         executor = MigrationExecutor(connection)
         after = executor.loader.graph.leaf_nodes()
-        before = [(app, '0005_independent_illustrator_directory' if app == 'illustrations' else name) for app, name in after]
+        # Migrating one app back also unapplies later migrations of other apps that depend on it.
+        before = [('illustrations', '0005_independent_illustrator_directory')]
         executor.migrate(before)
         try:
-            apps = executor.loader.project_state(before).apps
+            # The real database state: other apps keep their unrelated later migrations.
+            apps = MigrationExecutor(connection)._create_project_state(with_applied_migrations=True).apps
             Anthology = apps.get_model('texts', 'Anthology')
             Text = apps.get_model('texts', 'Text')
             Illustrator = apps.get_model('illustrations', 'Illustrator')

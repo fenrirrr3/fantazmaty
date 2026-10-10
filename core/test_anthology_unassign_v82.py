@@ -65,6 +65,12 @@ class AnthologyUnassignTests(TestCase):
                 self.book.cover_status = 'ready'
                 self.book.cover_notes = 'Zachowaj uwagi'
                 self.book.save()
+                # A finished cover keeps its credit; removal is offered only before completion.
+                self.assertEqual(self.remove('cover').status_code, 302)
+                self.book.refresh_from_db()
+                self.assertEqual(self.book.cover_status, 'ready')
+                self.book.cover_status = 'in_progress'
+                self.book.save()
                 page = self.client.get(self.url)
                 document = html.fromstring(page.content)
                 self.assertTrue(document.xpath('//fieldset[@id="task-cover"]//button[@name="remove_task"][@formnovalidate]'))
@@ -85,7 +91,7 @@ class AnthologyUnassignTests(TestCase):
     def test_removal_is_independent_of_unsaved_other_fields(self):
         task = self.book.production_tasks.get(task_type='blurb')
         task.assigned_to = self.member.person_profile
-        task.status = 'ready'
+        task.status = 'commissioned'
         task.save()
         self.book.cover_author = 'Stara okładka'
         self.book.cover_status = 'ready'

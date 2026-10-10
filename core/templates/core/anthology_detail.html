@@ -21,7 +21,7 @@
   <section class="card"><div class="card-body">
     <h2>Dodaj osobę do zadania</h2>
     <p>Jeśli osoby nie ma w spisie, dodaj ją bez konta i e-maila. Zadanie otrzyma status Zlecone.</p>
-    <form method="post" class="anthology-new-person" data-warn-unsaved>
+    <form method="post" class="anthology-new-person" data-warn-unsaved data-contact-endpoint="{% url 'core:contact_suggestions' %}">
       {% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="new_person">
       {{ new_person_form.non_field_errors }}
       <div class="anthology-person-name">
@@ -38,10 +38,10 @@
   <form method="post" data-warn-unsaved>
     {% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="tasks_and_cover">
     <div class="anthology-tasks anthology-six-tasks">
-      {% for form in task_forms %}<fieldset id="task-{{ form.instance.task_type }}"><legend>{{ form.instance.get_task_type_display }}</legend>{{ form.as_p }}{% if form.instance.assigned_to_id or form.instance.status != 'not_commissioned' %}<button type="submit" class="secondary-button" name="remove_task" value="{{ form.instance.task_type }}" formnovalidate>Usuń przypisanie</button>{% endif %}</fieldset>{% endfor %}
+      {% for form in task_forms %}<fieldset id="task-{{ form.instance.task_type }}"><legend>{{ form.instance.get_task_type_display }}</legend>{{ form.as_p }}{% if form.instance.status == 'ready' %}<p class="muted-text">Zadanie gotowe – przypisanie zmienisz w panelu admina.</p>{% elif form.instance.assigned_to_id or form.instance.status != 'not_commissioned' %}<button type="submit" class="secondary-button" name="remove_task" value="{{ form.instance.task_type }}" formnovalidate>Usuń przypisanie</button>{% endif %}</fieldset>{% endfor %}
       <fieldset id="task-cover"><legend>Okładka</legend>{{ cover_form.non_field_errors }}
         <div class="anthology-cover-fields">{% for field in cover_form %}{% if field.is_hidden %}{{ field }}{% else %}<div class="form-field">{{ field.label_tag }}{{ field }}{% if field.help_text %}<p class="muted-text">{{ field.help_text }}</p>{% endif %}{{ field.errors }}</div>{% endif %}{% endfor %}</div>
-        {% if anthology.cover_illustrator_id or anthology.cover_author or anthology.cover_status != 'not_started' %}<button type="submit" class="secondary-button" name="remove_task" value="cover" formnovalidate>Usuń przypisanie</button>{% endif %}
+        {% if anthology.cover_status == 'ready' %}<p class="muted-text">Okładka gotowa – przypisanie zmienisz w panelu admina.</p>{% elif anthology.cover_illustrator_id or anthology.cover_author or anthology.cover_status != 'not_started' %}<button type="submit" class="secondary-button" name="remove_task" value="cover" formnovalidate>Usuń przypisanie</button>{% endif %}
       </fieldset>
     </div>
     <button type="submit" class="primary-button">Zapisz zadania</button>
@@ -51,4 +51,4 @@
 {% if show_credits %}<section class="card"><div class="card-body"><h2>Osoby i wykonane prace</h2><p>Ukończone prace, także zapisane bez dat. Każda osoba pojawia się raz w danej kategorii.</p><ul class="credits-list">{% for row in credits %}<li><strong>{{ row.label }}:</strong> {{ row.names|join:", "|default:"–" }}</li>{% endfor %}</ul></div></section>{% endif %}
 {% endblock %}
 
-{% block scripts %}{{ block.super }}<script src="{% static 'core/person-select.js' %}" defer></script>{% endblock %}
+{% block scripts %}{{ block.super }}<script src="{% static 'core/person-select.js' %}" defer></script><script src="{% static 'core/contact-suggestions.js' %}" defer></script>{% endblock %}

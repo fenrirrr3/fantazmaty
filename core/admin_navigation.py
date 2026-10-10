@@ -3,23 +3,31 @@ from django.template.response import TemplateResponse
 from django.urls import reverse
 from urllib.parse import urlencode
 
+# Same order and names as the site menu: submissions, texts, anthologies, art, audio,
+# people, recruitment, then accounts, settings and history (admin only).
 GROUPS = (
-    ('submissions', 'Zgłoszenia i recenzje', ('texts.review', 'texts.extract')),
-    ('publication', 'Teksty i antologie', ('texts.text', 'texts.anthology', 'texts.extractvolume', 'texts.anthologytask', 'core.anthologycorrection')),
-    ('post_layout', 'Korekta poskładowa', ('core.postlayoutassignment',)),
-    ('novels', 'Powieści i słownik', ('novels', 'texts.novelprofile', 'texts.vocabularyterm')),
-    ('translations', 'Tłumaczenia', ('texts.texttranslation', 'texts.foreignauthor', 'texts.translator')),
-    ('authors', 'Autorzy', ('authors.author', 'blacklist')),
-    ('team', 'Zespół i konta', ('people.person', 'auth.user', 'people.vacation', 'core.recruitment', 'recruitment_mailbox')),
-    ('art', 'Ilustracje i okładki', ('illustrations.illustration', 'illustrations.illustrator', 'illustrators_active', 'illustrators_inactive', 'illustrations.coverproposal', 'illustrations.publicillustrationsettings')),
-    ('audio', 'Audiobooki i audiodeskrypcje', ('core.audiodescription', 'core.audiobook', 'core.audiocontributor', 'core.audiobookstage', 'audiobooks_queue', 'audiobooks_blacklist', 'audio_description_tasks', 'core.publicaudiobooksettings')),
-    ('history', 'Historia i diagnostyka', ('workflow.workflowstage', 'workflow.workflowroleassignment', 'core.useractivity', 'core.workflowevent')),
-    ('settings', 'Ustawienia', ('core.mailboxconnection', 'people.role', 'auth.group')),
+    ('submissions', 'Zgłoszenia', ('texts.review',)),
+    ('texts', 'Teksty', ('texts.text', 'texts.texttranslation', 'texts.foreignauthor', 'texts.translator', 'novels',
+                         'texts.novelprofile', 'texts.vocabularyterm', 'texts.extract', 'texts.extractvolume')),
+    ('publication', 'Antologie i wydanie', ('texts.anthology', 'texts.anthologytask', 'core.anthologycorrection',
+                                            'core.postlayoutassignment')),
+    ('art', 'Grafika', ('illustrations.illustration', 'illustrations.illustrator', 'illustrators_active', 'illustrators_inactive',
+                        'illustrations.coverproposal', 'illustrations.publicillustrationsettings')),
+    ('audio', 'Audio', ('core.audiobook', 'core.audiobookstage', 'core.audiocontributor', 'audiobooks_queue', 'audiobooks_blacklist',
+                        'core.audiodescription', 'audio_description_tasks', 'core.publicaudiobooksettings')),
+    ('people', 'Ludzie', ('people.person', 'people.vacation', 'authors.author', 'blacklist')),
+    ('recruitment', 'Rekrutacja', ('core.recruitment', 'recruitment_mailbox')),
+    ('accounts', 'Konta i uprawnienia', ('auth.user', 'people.role', 'auth.group')),
+    ('settings', 'Ustawienia', ('core.mailboxconnection',)),
+    ('history', 'Historia i diagnostyka', ('workflow.workflowstage', 'workflow.workflowroleassignment', 'core.workflowevent', 'core.useractivity')),
 )
+EXPANDED = ('submissions', 'texts', 'publication')
 DETAIL_MODELS = ('texts.extracttextlink', 'texts.textnote', 'authors.authornote', 'texts.reviewassignment', 'texts.reviewers',
                  'workflow.workflowrepetition', 'workflow.workflowhandoff')
 LABELS = {
-    'texts.review': 'Zgłoszenia do recenzji', 'people.person': 'Osoby w zespole',
+    'texts.review': 'Recenzje', 'people.person': 'Zespół', 'texts.extract': 'Ekstrakty',
+    'texts.extractvolume': 'Tomy Ekstraktów', 'core.useractivity': 'Aktywność użytkowników',
+    'core.workflowevent': 'Zmiany workflow i powiadomienia', 'texts.vocabularyterm': 'Słownik tagów i gatunków',
     'auth.user': 'Konta użytkowników', 'texts.anthologytask': 'Zadania antologii',
     'workflow.workflowstage': 'Etapy pracy', 'workflow.workflowroleassignment': 'Przydziały wykonawców',
     'auth.group': 'Grupy uprawnień', 'texts.reviewassignment': 'Oceny i przydziały recenzentów',
@@ -126,8 +134,7 @@ def grouped_app_list(original):
                 "app_label": key,
                 "app_url": reverse("admin:index") + "#group-" + key,
                 "models": entries,
-                "collapsed": key
-                not in ("submissions", "publication", "novels", "translations", "authors"),
+                "collapsed": key not in EXPANDED,
             }
             if key == "history" and details:
                 group["subgroups"] = [

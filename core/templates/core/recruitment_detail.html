@@ -1,6 +1,6 @@
 {% extends "core/base.html" %}{% load static %}
 {% block title %}Zgłoszenie rekrutacyjne | Fantazmaty CMS{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'core/recruitment.css' %}?v=63"><link rel="stylesheet" href="{% static 'core/intake.css' %}"><link rel="stylesheet" href="{% static 'core/dialogs.css' %}">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/recruitment.css' %}"><link rel="stylesheet" href="{% static 'core/intake.css' %}"><link rel="stylesheet" href="{% static 'core/dialogs.css' %}">{% endblock %}
 {% block content %}
 <header class="page-header"><h1 class="page-title recruitment-detail-heading">{{ candidate_name }}</h1><p class="page-description recruitment-detail-heading">{{ record.mail_subject|default:'Zgłoszenie rekrutacyjne' }}</p><a class="secondary-button" href="{% if return_url %}{{ return_url }}{% else %}{% url 'core:recruitment_list' %}{% endif %}">Wróć do Rekrutacji</a></header>
 <div class="recruitment-actions">

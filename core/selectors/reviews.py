@@ -1,5 +1,5 @@
 from core.public_authors import review_name_matches
-from core.translation_scope import ordinary
+from core.translation_scope import frontend_scope
 from core.filtering import facet_queryset
 from django.db.models import Count, F, Prefetch, Q, Case, When, Value, CharField
 from django.db.models.functions import Coalesce
@@ -19,7 +19,7 @@ from texts.models import Anthology, Review, ReviewAssignment, Reviewers
 MAX_DATABASE_ID = 9_223_372_036_854_775_807
 DEFAULT_STATUSES = (Review.Status.NEW, Review.Status.IN_REVIEW, Review.Status.TO_DECIDE)
 OPEN_STATUSES = frozenset(DEFAULT_STATUSES)
-CURRENT_STATUSES = (*DEFAULT_STATUSES, Review.Status.WITHDRAWN)
+CURRENT_STATUSES = DEFAULT_STATUSES
 READING_OPINIONS = ("", Reviewers.Opinion.READING)
 MAX_REVIEWERS = ReviewAssignment.MAX_REVIEWERS
 
@@ -79,7 +79,7 @@ def _workloads_for_users(user_ids):
         return {}
 
     rows = (
-        ordinary(ReviewAssignment.objects).for_statistics()
+        frontend_scope(ReviewAssignment.objects).for_statistics()
         .annotate(reviewer_user_id=Coalesce("user_id", "historical_person__user_id"))
         .filter(reviewer_user_id__in=user_ids)
         .order_by()
@@ -384,7 +384,7 @@ def review_list_context(*, user, params):
     anthology_id = _positive_id(params.get("anthology"))
     query = params.get("q", "").strip()
 
-    queryset = ordinary(Review.objects, include_abandoned=old_reviews).visible_to(user)
+    queryset = frontend_scope(Review.objects, include_abandoned=old_reviews).visible_to(user)
     queryset = queryset.archived() if old_reviews else queryset.current()
     if params.get("notification") == "pending":
         queryset = queryset.awaiting_notification()
@@ -415,7 +415,7 @@ def review_list_context(*, user, params):
             Prefetch(
                 "assignments",
                 queryset=(
-                    ordinary(ReviewAssignment.objects, include_abandoned=old_reviews).select_related("user", "historical_person")
+                    frontend_scope(ReviewAssignment.objects, include_abandoned=old_reviews).select_related("user", "historical_person")
                     .order_by("position", "pk")
                 ),
                 to_attr="selector_assignments",
@@ -431,7 +431,7 @@ def review_list_context(*, user, params):
             include_authors=include_authors,
         ),
         "anthologies": list(
-            ordinary(Anthology.objects, include_abandoned=old_reviews).filter(pk__in=facets["anthology"]).order_by("title", "pk").values("pk", "title")
+            frontend_scope(Anthology.objects, include_abandoned=old_reviews).filter(pk__in=facets["anthology"]).order_by("title", "pk").values("pk", "title")
         ),
         "selected_statuses": selected_statuses,
         "selected_assignment_state": assignment_state,

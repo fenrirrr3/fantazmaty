@@ -1,4 +1,4 @@
-from core.translation_scope import ordinary
+from core.translation_scope import frontend_scope
 from core.selectors.review_detail import review_template_data as _review_template_data, review_assignment_data
 from core.permissions import can_mark_review_for_decision
 from core.permissions import can_view_review_archive, can_view_archived_review_authors
@@ -70,12 +70,12 @@ MAX_DATABASE_ID = 9_223_372_036_854_775_807
 
 
 def _get_review(user, review_id, *, history=False):
-    queryset = ordinary(Review.objects, include_abandoned=history).accessible_to(user)
+    queryset = frontend_scope(Review.objects, include_abandoned=history).accessible_to(user)
     if history:
         submitted = ReviewAssignment.objects.submitted()
         if not can_manage_reviews(user):
             submitted = submitted.filter(Q(user=user) | Q(historical_person__user=user))
-        queryset = queryset.filter(Q(pk__in=ordinary(Review.objects).values('pk'))
+        queryset = queryset.filter(Q(pk__in=frontend_scope(Review.objects).values('pk'))
             | Q(pk__in=submitted.values('review_id')))
     queryset = queryset.select_related("anthology", "copied_text__anthology")
 
@@ -109,7 +109,7 @@ def _require_open_review(review):
 
 
 def _own_assignment(review, user):
-    return ordinary(ReviewAssignment.objects).filter(
+    return frontend_scope(ReviewAssignment.objects).filter(
         review_id=review.pk,
         user_id=user.pk,
     ).first()
@@ -773,7 +773,7 @@ def bulk_review_action(request):
     try:
         if action == CoordinatorReviewBulkActionForm.Action.EXPORT:
             reviews = list(
-                ordinary(Review.objects).filter(pk__in=review_ids)
+                frontend_scope(Review.objects).filter(pk__in=review_ids)
                 .select_related("anthology", "author")
                 .order_by("anthology__title", "title", "pk")
             )
@@ -811,6 +811,14 @@ def bulk_review_action(request):
     return redirect("core:review_list")
 
 
+MY_REVIEW_VIEWS = {
+    "active": "W toku",
+    "completed": "Oddane",
+    "decided": "Rozstrzygnięte",
+    "all": "Wszystkie",
+}
+
+
 @never_cache
 @login_required
 @require_GET
@@ -821,17 +829,24 @@ def my_reviews(request):
     if not can_view_my_reviews(request.user):
         raise PermissionDenied("Moje recenzje są dostępne tylko dla recenzentów.")
     view = request.GET.get("view", "active")
-    view = "all" if view in {"all", "archived", "completed"} else "active"
-    rows = ordinary(ReviewAssignment.objects, include_abandoned=True).filter(
+    if view == "archived":
+        view = "completed"
+    if view not in MY_REVIEW_VIEWS:
+        view = "active"
+    rows = frontend_scope(ReviewAssignment.objects, include_abandoned=True).filter(
         Q(user=request.user) | Q(historical_person__user=request.user),
-    ).filter(review__in=Review.objects.visible_to(request.user))
+    ).filter(review__in=Review.objects.accessible_to(request.user))
     # Preserve completed personal history from abandoned anthologies; unfinished
     # assignments there are not actionable tasks.
-    rows = rows.filter(Q(pk__in=ordinary(ReviewAssignment.objects).values('pk'))
+    rows = rows.filter(Q(pk__in=frontend_scope(ReviewAssignment.objects).values('pk'))
         | ~Q(opinion__in=('', 'reading')))
+    open_review = Q(review__old_reviews=False, review__status__in=("new", "in_review", "to_decide"))
     if view == "active":
-        rows = rows.filter(opinion__in=("", "reading"), review__old_reviews=False,
-                           review__status__in=("new", "in_review", "to_decide"))
+        rows = rows.filter(open_review, opinion__in=("", "reading"))
+    elif view == "completed":
+        rows = rows.exclude(opinion__in=("", "reading"))
+    elif view == "decided":
+        rows = rows.exclude(open_review)
     rows = rows.select_related("review__anthology").order_by("-assigned_at", "-pk")
     own_anthologies = rows.order_by().values('review__anthology_id')
     query = request.GET.get("q", "").strip()[:255]
@@ -840,15 +855,16 @@ def my_reviews(request):
     from texts.models import Anthology
     from core.selectors.texts import _positive_id
     anthology_id = _positive_id(request.GET.get("anthology"))
-    anthologies = ordinary(Anthology.objects, include_abandoned=True).filter(pk__in=own_anthologies).order_by("title", "pk")
+    anthologies = frontend_scope(Anthology.objects, include_abandoned=True).filter(pk__in=own_anthologies).order_by("title", "pk")
     if anthology_id is not None:
         rows = rows.filter(review__anthology_id=anthology_id)
     opinion_choices = [(v, label) for v, label in Reviewers.Opinion.choices if v not in ("", "reading")]
-    selected_opinions = [v for v in request.GET.getlist("opinion") if v in dict(opinion_choices)]
+    # Opinions exist only for submitted reviews; the filter is ignored in other views.
+    selected_opinions = [v for v in request.GET.getlist("opinion") if v in dict(opinion_choices)] if view != "active" else []
     if selected_opinions:
         rows = rows.filter(opinion__in=selected_opinions)
     page = paginate_items(request, rows)
-    return render(request, "core/my_reviews.html", {"opinion_choices": opinion_choices, "selected_opinions": selected_opinions, "assignments": page, "page_obj": page, "mobile_sort_columns": [(label, page.sort_columns[label]) for label in ("Antologia", "Tytuł", "Status zgłoszenia", "Moja recenzja", "Data przydziału", "Ostatnia zmiana recenzji") if label in page.sort_columns], "selected_view": view, "query": query, "anthologies": anthologies, "selected_anthology_id": str(anthology_id or ""), "can_view_authors": False})
+    return render(request, "core/my_reviews.html", {"opinion_choices": opinion_choices if view != "active" else [], "selected_opinions": selected_opinions, "assignments": page, "page_obj": page, "mobile_sort_columns": [(label, page.sort_columns[label]) for label in ("Antologia", "Tytuł", "Status zgłoszenia", "Moja recenzja", "Data przydziału", "Ostatnia zmiana recenzji") if label in page.sort_columns], "selected_view": view, "review_views": MY_REVIEW_VIEWS.items(), "query": query, "anthologies": anthologies, "selected_anthology_id": str(anthology_id or ""), "can_view_authors": False})
 
 
 @edit_policy(require_version=True)
@@ -858,7 +874,7 @@ def my_reviews(request):
 @coordinator_required
 def update_review_file(request, review_id):
     with transaction.atomic():
-        review = get_object_or_404(ordinary(Review.objects).select_for_update(), pk=review_id)
+        review = get_object_or_404(frontend_scope(Review.objects).select_for_update(), pk=review_id)
         form = ReviewFileForm(request.POST, instance=review)
         if form.is_valid():
             form.save()

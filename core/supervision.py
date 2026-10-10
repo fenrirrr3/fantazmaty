@@ -1,5 +1,5 @@
 """Read-only checks and publication credits; never repair data implicitly."""
-from core.translation_scope import ordinary
+from core.translation_scope import frontend_scope
 from core.sort_keys import text_key
 from collections import defaultdict
 from difflib import SequenceMatcher
@@ -111,8 +111,8 @@ def integrity_issues():
 def unlinked_review_candidates():
     """Possible legacy detachments, never inferred as confirmed historical facts."""
     from django.db.models import Exists, OuterRef
-    texts = ordinary(Text.objects).filter(anthology_id=OuterRef('anthology_id'), title__iexact=OuterRef('title'))
-    return ordinary(Review.objects).filter(status=Review.Status.ACCEPTED, copied_text__isnull=True,
+    texts = frontend_scope(Text.objects).filter(anthology_id=OuterRef('anthology_id'), title__iexact=OuterRef('title'))
+    return frontend_scope(Review.objects).filter(status=Review.Status.ACCEPTED, copied_text__isnull=True,
         publication_detached=False).annotate(has_matching_text=Exists(texts)).filter(
         has_matching_text=True).select_related('anthology').order_by('anthology__title', 'title', 'pk')
 
@@ -127,7 +127,7 @@ def duplicate_candidates(title, anthology_id, author_ids, *, exclude_text_id=Non
         text_q |= Q(authors__email__iexact=email)
         review_q |= Q(email__iexact=email)
     if exclude_review_id and not exclude_text_id:
-        exclude_text_id = ordinary(Review.objects).filter(pk=exclude_review_id).values_list('copied_text_id',flat=True).first()
+        exclude_text_id = frontend_scope(Review.objects).filter(pk=exclude_review_id).values_list('copied_text_id',flat=True).first()
     candidates=[]
     for model, match, excluded, route in ((Text,text_q,exclude_text_id,'assigned_text_detail'),(Review,review_q,exclude_review_id,'assigned_review_detail')):
         for obj in model.objects.filter(match,anthology_id=anthology_id).exclude(pk=excluded).distinct():

@@ -1,4 +1,4 @@
-from core.translation_scope import ordinary
+from core.translation_scope import frontend_scope
 import uuid
 from django import forms
 from django.urls import reverse
@@ -8,7 +8,7 @@ from core.models import AnthologyCorrection
 
 class CorrectionForm(forms.ModelForm):
     submission_token = forms.UUIDField(required=False, widget=forms.HiddenInput, initial=uuid.uuid4)
-    text = forms.ModelChoiceField(label="Tytuł opowiadania", queryset=ordinary(Text.objects).none(), required=False, empty_label="Inne miejsce")
+    text = forms.ModelChoiceField(label="Tytuł opowiadania", queryset=frontend_scope(Text.objects).none(), required=False, empty_label="Inne miejsce")
 
     class Meta:
         model = AnthologyCorrection
@@ -17,11 +17,11 @@ class CorrectionForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["anthology"].queryset = ordinary(Anthology.objects).filter(status__in=("ready",)).order_by("title", "pk")
+        self.fields["anthology"].queryset = frontend_scope(Anthology.objects).filter(status__in=("ready",)).order_by("title", "pk")
         self.fields["text"].widget.attrs["data-texts-url"] = reverse("core:correction_texts")
         anthology = self.data.get(self.add_prefix("anthology")) if self.is_bound else self.initial.get("anthology", self.instance.anthology_id)
         if str(anthology or "").isdecimal() and len(str(anthology)) < 19:
-            self.fields["text"].queryset = ordinary(Text.objects).filter(anthology_id=anthology).order_by("title", "pk")
+            self.fields["text"].queryset = frontend_scope(Text.objects).filter(anthology_id=anthology).order_by("title", "pk")
 
     def clean(self):
         data = super().clean()

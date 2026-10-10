@@ -141,6 +141,11 @@ def run_admin_request(request, get_response):
         return response
 
 
+def audiobook_channel():
+    """Separate channel for audiobook production; defaults to the workflow channel."""
+    return str(getattr(settings, 'DISCORD_AUDIOBOOK_CHANNEL', os.environ.get('DISCORD_AUDIOBOOK_CHANNEL', '')) or workflow_channel())
+
+
 def workflow_channel():
     return str(getattr(settings, 'DISCORD_WORKFLOW_CHANNEL', os.environ.get('DISCORD_WORKFLOW_CHANNEL', 'Testowy')))
 

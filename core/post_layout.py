@@ -127,7 +127,7 @@ def edit_assignment(*, user, pk, version, data):
     from django.shortcuts import get_object_or_404
     if not can_manage(user):
         raise PermissionDenied()
-    item = get_object_or_404(PostLayoutAssignment.objects.select_for_update(), pk=pk)
+    item = get_object_or_404(PostLayoutAssignment.objects.present().select_for_update(), pk=pk)
     if str(item.version) != str(version):
         raise StaleAssignment('Wpis zmienił się w innym oknie. Odśwież stronę.')
     form = AssignmentEditForm(data, instance=item)
@@ -147,7 +147,7 @@ def selection_token(user, item):
 def bulk_change(*, user, selected, operation, status=None, proofreader=None, confirm_delete=False):
     if not can_manage(user):
         raise PermissionDenied()
-    if operation not in ('status', 'assign', 'delete'):
+    if operation not in ('status', 'assign', 'delete', 'restore'):
         raise ValidationError('Wybierz operację zbiorczą.')
     if not selected or len(selected) > 500:
         raise ValidationError('Zaznacz od 1 do 500 wpisów.')
@@ -163,10 +163,17 @@ def bulk_change(*, user, selected, operation, status=None, proofreader=None, con
     items = list(PostLayoutAssignment.objects.select_for_update().filter(pk__in=versions).order_by('pk'))
     if len(items) != len(versions) or any(item.version != versions[item.pk] for item in items):
         raise StaleAssignment('Jeden z wpisów zmienił się lub został usunięty. Odśwież stronę; niczego nie zapisano.')
-    if operation == 'delete':
-        if not confirm_delete:
-            raise ValidationError('Potwierdź trwałe usunięcie zaznaczonych wpisów.')
-        PostLayoutAssignment.objects.filter(pk__in=versions).delete()
+    if operation in ('delete', 'restore'):
+        if operation == 'delete' and not confirm_delete:
+            raise ValidationError('Potwierdź usunięcie zaznaczonych wpisów z listy.')
+        now = timezone.now()
+        for item in items:
+            item.deleted_at, item.deleted_by = (now, user) if operation == 'delete' else (None, None)
+            item.version += 1
+            item.save(update_fields=['deleted_at', 'deleted_by', 'version'])
+        return len(items)
+    if any(item.deleted_at for item in items):
+        raise ValidationError('Usunięte wpisy najpierw przywróć.')
     elif operation == 'assign':
         if not str(proofreader or '').isascii() or not str(proofreader or '').isdecimal():
             raise ValidationError('Wybierz korektora poskładowego.')
@@ -190,20 +197,29 @@ def bulk_change(*, user, selected, operation, status=None, proofreader=None, con
 def change_status(*, user, pk, status, version):
     require_post_layout(user)
     from django.shortcuts import get_object_or_404
-    item = get_object_or_404(PostLayoutAssignment.objects.select_for_update(), pk=pk)
+    item = get_object_or_404(PostLayoutAssignment.objects.present().select_for_update(), pk=pk)
     if not can_manage(user) and item.proofreader_id != user.pk:
         raise PermissionDenied()
     if str(item.version) != str(version):
         raise StaleAssignment('Wpis zmienił się w innym oknie. Odśwież stronę.')
     if status == item.status:
         return item
-    if status != item.next_status:
-        raise ValidationError('Wybierz kolejny etap: Przydzielony → W trakcie → Zakończony.')
-    today = timezone.localdate()
-    if status == item.Status.IN_PROGRESS:
-        item.assigned_end = item.work_start = today
+    if status == item.previous_status:
+        # Undo one step: the dates of the withdrawn step are cleared.
+        if status == item.Status.ASSIGNED:
+            item.assigned_end = item.work_start = None
+        else:
+            item.work_end = item.completed_on = None
+    elif status == item.next_status:
+        today = timezone.localdate()
+        if status == item.Status.IN_PROGRESS:
+            item.assigned_end = item.work_start = today
+        else:
+            item.work_end = item.completed_on = today
+    elif item.historical:
+        raise ValidationError('Historyczny wpis ze stopki zmienisz tylko w panelu admina.')
     else:
-        item.work_end = item.completed_on = today
+        raise ValidationError('Status zmienia się o jeden krok: Przydzielony ↔ W trakcie ↔ Zakończony.')
     item.status = status
     item.version += 1
     item.full_clean()

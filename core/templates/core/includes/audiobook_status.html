@@ -1,1 +1,1 @@
-<span class="audio-status audio-status--{{ audio.status|default:'pending' }}">{{ audio.get_status_display|default:"Do nagrania" }}</span>
+<span class="audio-status audio-status--{{ audio.status|default:'pending' }}{% if audio.awaiting_next_stage %} audio-status--waiting{% endif %}">{{ audio.status_label|default:"Do nagrania" }}</span>{% if audio.awaiting_next_stage %}<br><span class="muted-text">Czeka na kolejny etap</span>{% endif %}

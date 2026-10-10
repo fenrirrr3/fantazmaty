@@ -8,7 +8,7 @@ class AudioDescription(models.Model):
     class Stage(models.TextChoices):
         WRITING = "writing", "Pisanie AD"
         CONSULTATION = "consultation", "Konsultacja"
-        PROOFREADING = "proofreading", "Korekta"
+        PROOFREADING = "proofreading", "Korekta audiodeskrypcji"
         COMPLETED = "completed", "Zakończone"
 
     objects = VersionedQuerySet.as_manager()

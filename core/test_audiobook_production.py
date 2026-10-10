@@ -75,26 +75,39 @@ class AudiobookProductionTests(TestCase):
         self.assertNotContains(self.client.get(self.url), 'private-audio@example.test')
         self.assertEqual(self.post('people', self.member).status_code, 403)
 
-    def test_arbitrary_repeated_stages_dates_and_public_eligibility(self):
-        states = ['editing', 'pending', 'recording', 'proofreading', 'corrections', 'proofreading', 'awaiting_publication', 'published']
+    def test_ordered_repeated_stages_dates_and_public_eligibility(self):
+        states = ['recording', 'proofreading', 'corrections', 'proofreading', 'editing', 'awaiting_publication']
         today = timezone.localdate()
         self.assertEqual(self.post('publication', **{'publication-premiere_date': str(today),
             'publication-youtube_url': 'https://youtu.be/film', 'publication-hearthis_url': 'https://hearthis.at/fantazmaty/story/'}).status_code, 302)
+        # "Do nagrania" is the starting state, not a stage.
+        self.assertEqual(self.start('pending').status_code, 400)
         for state in states:
             self.assertEqual(self.start(state).status_code, 302)
             audio = Audiobook.objects.get(text=self.text)
             self.assertEqual(audio.status, state)
             stage = audio.active_stage
             self.assertEqual(stage.started_at, today)
-            self.assertEqual(self.client.get(self.public).context['page_obj'].paginator.count, int(state == 'pending'))
+            # Everything not yet published is listed publicly (with its status).
+            self.assertEqual(self.client.get(self.public).context['page_obj'].paginator.count, 1)
             table = html.fromstring(self.client.get(self.list_url).content)
-            self.assertEqual(len(table.xpath('//a[@href="https://youtu.be/film"]')), int(state == 'published'))
+            self.assertEqual(len(table.xpath('//a[@href="https://youtu.be/film"]')), 0)
             self.assertEqual(self.post('finish_stage', stage_id=stage.pk).status_code, 302)
             stage.refresh_from_db()
             self.assertEqual(stage.ended_at, today)
             self.assertTrue(stage.is_completed)
             self.assertIsNone(Audiobook.objects.get(text=self.text).active_stage_id)
-        self.assertEqual(list(self.text.audiobook_stages.values_list('stage_type', flat=True)), states)
+        # Going back to an earlier stage is refused.
+        self.assertEqual(self.start('recording').status_code, 400)
+        # Publication is final: no active stage, nothing to finish.
+        self.assertEqual(self.start('published').status_code, 302)
+        audio = Audiobook.objects.get(text=self.text)
+        self.assertEqual(audio.status, 'published')
+        self.assertIsNone(audio.active_stage_id)
+        self.assertEqual(self.client.get(self.public).context['page_obj'].paginator.count, 0)
+        table = html.fromstring(self.client.get(self.list_url).content)
+        self.assertEqual(len(table.xpath('//a[@href="https://youtu.be/film"]')), 1)
+        self.assertEqual(list(self.text.audiobook_stages.values_list('stage_type', flat=True)), [*states, 'published'])
         self.assertEqual(self.text.audiobook_stages.filter(stage_type='proofreading').count(), 2)
 
     def test_stage_validation_and_stale_or_repeated_posts(self):

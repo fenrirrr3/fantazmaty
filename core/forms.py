@@ -1,4 +1,4 @@
-from core.translation_scope import ordinary
+from core.translation_scope import frontend_scope
 from people.role_ordering import ordered_team_roles
 import hashlib
 import json
@@ -450,7 +450,7 @@ class ReviewBulkImportForm(forms.Form):
 
     anthology = forms.ModelChoiceField(
         label="Antologia",
-        queryset=ordinary(Anthology.objects).filter(is_novel=False).filter(status=Anthology.Status.IN_PREPARATION).order_by("title", "pk"),
+        queryset=frontend_scope(Anthology.objects).filter(is_novel=False).filter(status=Anthology.Status.IN_PREPARATION).order_by("title", "pk"),
         empty_label="Wybierz antologię",
         widget=forms.Select(attrs={"class": "filter-select"}),
     )

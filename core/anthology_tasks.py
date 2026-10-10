@@ -1,6 +1,7 @@
 """Adding a contact and assigning one anthology task without creating a login."""
 from django import forms
 from django.db import transaction
+from django.db.models import Q
 from django.core.exceptions import ValidationError
 
 from core.permissions import require_coordinator
@@ -34,6 +35,10 @@ class NewTaskPersonForm(forms.Form):
     def __init__(self, *args, anthology, **kwargs):
         super().__init__(*args, **kwargs)
         self.anthology = anthology
+        for name in ('first_name', 'last_name'):
+            self.fields[name].widget.attrs.update({'data-contact-mode': 'hint', 'data-contact-group': 'new-person',
+                                                   'autocomplete': 'off'})
+        self.fields['task_type'].widget.attrs['data-contact-kind-select'] = 'true'
 
     def clean(self):
         data = super().clean()
@@ -89,6 +94,30 @@ class NewTaskPersonForm(forms.Form):
             task.full_clean()
             task.save()
         return person
+
+
+def task_people(*selected_ids):
+    """Active team plus everyone who has already worked on anthology tasks or audio descriptions."""
+    from core.models import AudioDescription, AudioDescriptionNote
+    controllers = AudioDescription.controllers.through.objects.values('person_id')
+    note_authors = AudioDescriptionNote.objects.filter(author__isnull=False).values('author_id')
+    return Person.objects.filter(
+        Q(pk__in=Person.objects.active().values('pk'))
+        | Q(pk__in=AnthologyTask.objects.filter(assigned_to__isnull=False).values('assigned_to_id'))
+        | Q(pk__in=controllers) | Q(user_id__in=note_authors)
+        | Q(pk__in=[pk for pk in selected_ids if pk])
+    ).order_by('last_name', 'first_name', 'pk')
+
+
+class TaskPersonChoice(forms.ModelChoiceField):
+    def label_from_instance(self, person):
+        if person.is_external:
+            return f'{person} – zewnętrzny'
+        return f'{person}' if person.is_active else f'{person} – nieaktywny'
+
+
+class TaskPeopleChoice(forms.ModelMultipleChoiceField):
+    label_from_instance = TaskPersonChoice.label_from_instance
 
 
 def grouped_checklist(issues):

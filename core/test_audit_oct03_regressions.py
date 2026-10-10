@@ -70,9 +70,10 @@ class AuditOctoberRegressions(StatusAssignmentFixtures):
                                     {'_edit_version': 'invalid'})
         self.assertContains(response, review.title, status_code=409)
 
-    def test_archive_conflict_does_not_bypass_archive_access(self):
-        review = Review.objects.create(title='Private archive entry', length=100,
-                                       anthology=self.book, old_reviews=True)
+    def test_archive_conflict_does_not_bypass_admin_only_withdrawn_reviews(self):
+        # The archive is visible to the whole team; withdrawn submissions stay in the admin panel.
+        review = Review.objects.create(title='Private withdrawn entry', length=100,
+                                       anthology=self.book, status='withdrawn')
         self.client.force_login(self.member)
         response = self.client.post(reverse('core:assign_reviewer', args=[review.pk]),
                                     {'_edit_version': 'invalid'})

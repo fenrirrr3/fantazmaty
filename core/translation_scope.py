@@ -1,4 +1,8 @@
-"""Explicit scope for ordinary CMS lists; admin and translation views remain unfiltered."""
+"""Scope of the editorial frontend (not admin, not translation views).
+
+frontend_scope() hides translated anthologies, abandoned anthologies and withdrawn
+submissions; withdrawn submissions are available only in the admin panel.
+"""
 PATHS = {
     'texts.anthology': ('is_translated',),
     'texts.text': ('anthology__is_translated',),
@@ -15,9 +19,18 @@ PATHS = {
 }
 
 
-def ordinary(queryset, *, include_abandoned=False):
-    for path in PATHS.get(queryset.model._meta.label_lower, ()):
+WITHDRAWN = {
+    'texts.review': 'status',
+    'texts.reviewassignment': 'review__status',
+}
+
+
+def frontend_scope(queryset, *, include_abandoned=False, include_withdrawn=False):
+    label = queryset.model._meta.label_lower
+    for path in PATHS.get(label, ()):
         queryset = queryset.exclude(**{path: True})
+    if label in WITHDRAWN and not include_withdrawn:
+        queryset = queryset.exclude(**{WITHDRAWN[label]: 'withdrawn'})
     return queryset if include_abandoned else non_abandoned(queryset)
 
 

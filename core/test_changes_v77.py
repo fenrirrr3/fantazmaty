@@ -56,9 +56,10 @@ class ChangesV77Tests(TestCase):
         linked = self.review(old_reviews=True, status='accepted',
                              copied_text=Text.objects.create(title='Inny', length=1))
         self.assertIn(other, linkable_reviews(self.text))
-        self.assertIn(rejected, linkable_reviews(self.text))
+        # Rejected submissions are never offered and cannot be linked, even with confirmation.
+        self.assertNotIn(rejected, linkable_reviews(self.text))
         with self.assertRaises(ValidationError):
-            link_source_review(user=self.admin, text_id=self.text.pk, review_id=rejected.pk)
+            link_source_review(user=self.admin, text_id=self.text.pk, review_id=rejected.pk, confirm_mismatch=True)
         for review in (linked,):
             self.assertNotIn(review, linkable_reviews(self.text))
             with self.assertRaises(ValidationError):
@@ -121,7 +122,7 @@ class ChangesV77Tests(TestCase):
 
 class WholeExtractTests(TestCase):
     def test_future_volumes_are_single_workflow_ready_for_assignment(self):
-        book = Anthology.objects.create(title='Ekstrakty 4')
+        book = Anthology.objects.create(title='Ekstrakty 4', is_extracts=True)
         text = book.texts.get()
         self.assertEqual(text.title, book.title)
         self.assertEqual(text.workflow_stages.get().stage_type, 'ready_for_editing')
@@ -157,7 +158,7 @@ class WholeExtractTests(TestCase):
 
     def test_first_two_ready_third_available_without_fake_dates(self):
         for n in (1, 2, 3):
-            book = Anthology.objects.create(title=f'Ekstrakty {n}')
+            book = Anthology.objects.create(title=f'Ekstrakty {n}', is_extracts=True)
             book.refresh_from_db()
             stage = book.texts.get().workflow_stages.get()
             self.assertEqual(book.status, 'ready' if n < 3 else 'in_preparation')
@@ -175,7 +176,7 @@ class WholeExtractTests(TestCase):
             text.authors.add(author)
             WorkflowStage.objects.create(text=text, stage_type='ready' if n < 3 else 'ready_for_editing', is_current=True, is_released=True)
             ExtractTextLink.objects.create(text=text, extract=source, title_key=name.casefold(), source_title=name)
-        Anthology.objects.filter(pk=book.pk).update(title=f'Ekstrakty {n}')
+        Anthology.objects.filter(pk=book.pk).update(title=f'Ekstrakty {n}', is_extracts=True)
         book.refresh_from_db()
         return book, source
 

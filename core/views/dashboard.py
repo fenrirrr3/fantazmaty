@@ -1,4 +1,4 @@
-from core.translation_scope import ordinary, non_abandoned
+from core.translation_scope import frontend_scope, non_abandoned
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from django.http import JsonResponse
@@ -69,13 +69,13 @@ def home(request):
             "dashboard_coordinator": coordinator,
             "pending_recruitment": pending_by_role() if coordinator else [],
             "pending_publication_reviews": (
-                ordinary(Review.objects).accessible_to(request.user).filter(status=Review.Status.ACCEPTED,
+                frontend_scope(Review.objects).accessible_to(request.user).filter(status=Review.Status.ACCEPTED,
                     author_notified_at__isnull=False, copied_text__isnull=True, publication_detached=False)
                     .exclude(anthology__status='ready')
                     .select_related('anthology', 'author').prefetch_related('coauthors').order_by('author_notified_at', 'pk')
                 if coordinator else []
             ),
-            "pending_notification_count": ordinary(Review.objects).awaiting_notification().count() if request.user.is_superuser else 0,
+            "pending_notification_count": frontend_scope(Review.objects).awaiting_notification().count() if request.user.is_superuser else 0,
         },
     )
 
@@ -98,7 +98,7 @@ def _pending_reviews(user):
 
 def _review_tasks(user):
     from texts.models import ReviewAssignment
-    rows = ordinary(ReviewAssignment.objects).filter(user=user, review__is_hidden=False,
+    rows = frontend_scope(ReviewAssignment.objects).filter(user=user, review__is_hidden=False,
         review__old_reviews=False, review__status__in=("new", "in_review", "to_decide")).select_related(
             "review__anthology").order_by("assigned_at", "pk")
     return rows.filter(opinion="reading"), rows.filter(opinion="")

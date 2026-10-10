@@ -4,21 +4,21 @@
     <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow"><meta name="referrer" content="no-referrer">
     <title>Zewnętrzne audiobooki | Fantazmaty</title>
-    <link rel="icon" type="image/svg+xml" href="{% static 'core/favicon-white.svg' %}?v=63">
+    <link rel="icon" type="image/svg+xml" href="{% static 'core/favicon-white.svg' %}">
     <link rel="stylesheet" href="{% static 'core/themes.css' %}">
     <link rel="stylesheet" href="{% static 'core/styles.css' %}">
     <link rel="stylesheet" href="{% static 'core/workspace.css' %}">
     <link rel="stylesheet" href="{% static 'core/components.css' %}">
     <link rel="stylesheet" href="{% static 'core/pagination.css' %}">
-    <link rel="stylesheet" href="{% static 'core/external-audiobooks.css' %}?v=59">
+    <link rel="stylesheet" href="{% static 'core/external-audiobooks.css' %}">
 </head>
 <body><main class="container external-audiobooks" id="main-content">
-    <header class="page-header"><h1 class="page-title">Zewnętrzne audiobooki</h1><p class="page-description">Opowiadania do nagrania z gotowych antologii Fantazmatów.</p></header>
+    <header class="page-header"><h1 class="page-title">Zewnętrzne audiobooki</h1><p class="page-description">Opowiadania z gotowych antologii Fantazmatów, które nie zostały jeszcze opublikowane – wolne do nagrania i te w przygotowaniu.</p></header>
     <section class="filters-card">
         <form method="get" class="filters-form">
-            <div class="filter-field"><label for="audio-query">Szukaj</label><input id="audio-query" type="search" name="q" value="{{ query }}" placeholder="Antologia, tytuł, tag lub gatunek"></div>
+            <div class="filter-field"><label for="audio-query">Szukaj</label><input id="audio-query" type="search" name="q" value="{{ query }}" placeholder="Antologia, tytuł, tag, gatunek lub lektor"></div>
             <div class="filter-field"><label for="audio-anthology">Antologia</label><select name="anthology" id="audio-anthology"><option value="">Wszystkie</option>{% for item in anthologies %}<option value="{{ item.anthology_id }}" {% if selected_anthology == item.anthology_id|stringformat:'s' %}selected{% endif %}>{{ item.anthology__title }}</option>{% endfor %}</select></div>
-            <div class="filter-field"><label for="audio-status">Status</label><select name="status" id="audio-status"><option value="">Wszystkie dostępne</option><option {% if selected_status == 'Do nagrania' %}selected{% endif %}>Do nagrania</option></select></div>
+            <div class="filter-field"><label for="audio-status">Status</label><select name="status" id="audio-status"><option value="">Wszystkie nieopublikowane</option>{% for value, label in status_choices %}<option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
             <div class="audiobook-filter-actions filter-actions">
                 <button class="primary-button" type="submit">Filtruj</button>
                 <a class="secondary-button" href="{% url 'core:external_audiobooks' %}">Wyczyść filtry</a>
@@ -37,12 +37,13 @@
     <section class="card">
         <div class="table-container" role="region" tabindex="0" aria-label="Opowiadania do nagrania">
             <table data-server-paginated="true" id="external-audiobooks-table">
-                <thead><tr><th>Antologia</th><th>Tytuł opowiadania</th><th>Tagi</th><th>Gatunek</th><th>Status</th></tr></thead>
+                <thead><tr><th>Antologia</th><th>Tytuł opowiadania</th><th>Tagi</th><th>Gatunek</th><th>Lektor</th><th>Status</th></tr></thead>
                 <tbody>{% for row in rows %}<tr>
                     <td>{{ row.anthology__title }}</td><td><strong>{{ row.title }}</strong></td>
                     <td class="external-audio-tags">{{ row.tags|default:'–' }}</td><td>{{ row.genre|default:'–' }}</td>
-                    <td><span class="stage-status pending">{{ row.public_status }}</span></td>
-                </tr>{% empty %}<tr><td colspan="5">Brak opowiadań spełniających kryteria.</td></tr>{% endfor %}</tbody>
+                    <td>{{ row.audiobook__narrator_name|default:'–' }}</td>
+                    <td><span class="stage-status {% if row.audio_status == 'pending' %}pending{% else %}active{% endif %}">{{ row.public_status }}</span></td>
+                </tr>{% empty %}<tr><td colspan="6">Brak opowiadań spełniających kryteria.</td></tr>{% endfor %}</tbody>
             </table>
         </div>
     </section>

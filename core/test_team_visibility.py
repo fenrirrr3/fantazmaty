@@ -23,14 +23,16 @@ class TeamVisibilityTests(TestCase):
         cls.disabled_profile = Person.objects.create(user=cls.disabled,first_name='Adam',last_name='Nieaktywny',
             email=cls.disabled.email,dropbox_email='hidden-dropbox@example.com')
 
-    def test_inactive_account_is_absent_from_team_and_search(self):
+    def test_inactive_account_is_absent_from_team_and_marked_in_search(self):
         self.client.force_login(self.admin)
         response = self.client.get(reverse('core:people_list'))
         self.assertNotContains(response, self.disabled.email)
         self.assertNotContains(response, 'Nieaktywny')
         self.assertContains(response, self.member.email)
-        self.assertEqual(_search_people('Nieaktywny', self.admin), [])
-        self.assertEqual(_search_people(self.disabled.email, self.admin), [])
+        # Search covers former members too, clearly marked and without contact data.
+        found = _search_people('Nieaktywny', self.admin)
+        self.assertEqual([(row['pk'], row['member_state'], row['email']) for row in found],
+                         [(self.disabled_profile.pk, 'Nieaktywny', '')])
 
     def test_inactive_contact_is_hidden_in_profile_for_member_and_superuser(self):
         for viewer in (self.member, self.admin):

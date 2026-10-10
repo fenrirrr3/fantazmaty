@@ -63,19 +63,26 @@ class AudioDescriptionContentTests(TestCase):
             )
             self.task.refresh_from_db()
             self.assertEqual(self.task.status, "ready" if stage == "completed" else "commissioned")
+        # A finished description is reopened only in the admin panel.
         self.assertEqual(
-            self.post(self.writer, action="stage", stage="proofreading").status_code, 302
+            self.post(self.writer, action="stage", stage="proofreading").status_code, 400
         )
         self.task.refresh_from_db()
-        self.assertEqual(self.task.status, "commissioned")
+        self.assertEqual(self.task.status, "ready")
+        self.task.status = "commissioned"
+        self.task.save()  # Same path as the admin panel.
+        self.description.refresh_from_db()
+        self.assertEqual(self.description.stage, "writing")
+        self.description.content = "Szkic"
+        self.description.save(update_fields=["content"])
         self.task.status = "ready"
-        self.task.save()  # Same path as admin and anthology task forms.
+        self.task.save()
         self.description.refresh_from_db()
         self.assertEqual(self.description.stage, "completed")
         self.task.status = "commissioned"
         self.task.save()
         self.description.refresh_from_db()
-        self.assertEqual(self.description.stage, "writing")
+        self.assertEqual(self.description.stage, "proofreading")
 
     def test_finishing_unassigned_and_invalid_stage_do_not_save(self):
         self.task.assigned_to = None
@@ -156,9 +163,10 @@ class AudioDescriptionContentTests(TestCase):
         self.client.force_login(self.manager)
         doc = html.fromstring(self.client.get(self.url).content)
         self.assertEqual(len(doc.xpath('//div[@class="ad-columns"]/section')), 2)
+        # The finished stage is locked; assignment, content and notes stay available.
         self.assertEqual(
             doc.xpath('//form/input[@name="action"]/@value'),
-            ["assignment", "stage", "content", "note"],
+            ["assignment", "content", "note"],
         )
         self.assertTrue(
             doc.xpath('//select[@name="controllers"][@multiple][@data-person-multiple]')

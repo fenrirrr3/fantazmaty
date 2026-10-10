@@ -4,19 +4,19 @@
 {% block content %}
 <header class="page-header"><h1 class="page-title">Audiodeskrypcja: {{ anthology.title }}</h1><div class="audio-actions"><a class="secondary-button" href="{% if return_url %}{{ return_url }}{% else %}{% url 'core:audio_descriptions' %}{% endif %}">Wróć do listy</a><a class="secondary-button" href="{% url 'core:anthology_detail' anthology.pk %}">Otwórz antologię</a></div></header>
 <div class="ad-columns">
-<section class="card"><div class="card-body"><h2>Przypisanie i status</h2>
-{% if can_edit %}<form method="post" class="audio-production-form ad-form" data-warn-unsaved>{% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="assignment">{{ form.non_field_errors }}
+<section class="card"><div class="card-body"><h2>Przypisanie</h2>
+<p>Status zadania antologii: <strong>{{ task.get_status_display }}</strong>{% if can_manage %} – zmieniasz go na <a href="{% url 'core:anthology_detail' anthology.pk %}#task-audio_description">stronie antologii</a>{% endif %}.</p>
+{% if can_manage %}<form method="post" class="audio-production-form ad-form" data-warn-unsaved>{% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="assignment">{{ form.non_field_errors }}
 {% for field in form %}<div class="form-field">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}
-<button class="primary-button" type="submit">Zapisz</button></form>
-{% else %}<p>Status zadania: {{ task.get_status_display }}</p>{% endif %}
+<button class="primary-button" type="submit">Zapisz</button></form>{% endif %}
 <p>Kto pisze: {% if task.assigned_to_id %}<a href="{% url 'core:person_detail' task.assigned_to_id %}">{{ task.assigned_to }}</a>{% else %}Nieprzypisane{% endif %}</p>
 <p>Konsultacja: {% for person in controllers %}<a href="{% url 'core:person_detail' person.pk %}">{{ person }}</a>{% if not forloop.last %}, {% endif %}{% empty %}Nie wyznaczono{% endfor %}</p>
 </div></section>
 <section class="card"><div class="card-body"><h2>Prace nad audiodeskrypcją</h2>
-{% if can_edit %}<form method="post" class="ad-form" data-warn-unsaved>{% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="stage">{{ stage_form.non_field_errors }}
+{% if can_edit and not is_completed %}<form method="post" class="ad-form" data-warn-unsaved>{% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="stage">{{ stage_form.non_field_errors }}
 <div class="form-field">{{ stage_form.stage.label_tag }}{{ stage_form.stage }}{{ stage_form.stage.errors }}</div>
-<p class="muted-text">Zakończone ustawia zadanie antologii jako Gotowe. Powrót do wcześniejszego etapu ponownie otwiera zadanie.</p><button class="primary-button" type="submit">Zapisz</button></form>
-{% else %}<p>{{ description.get_stage_display }}</p>{% endif %}
+<p class="muted-text">Zakończone ustawia zadanie antologii jako Gotowe. Tego kroku nie da się cofnąć poza panelem admina.</p><button class="primary-button" type="submit">Zapisz</button></form>
+{% else %}<p><strong>{{ description.get_stage_display }}</strong></p>{% if is_completed %}<p class="muted-text">Audiodeskrypcja jest zakończona. Cofnięcie tylko w panelu admina.</p>{% endif %}{% endif %}
 </div></section></div>
 <section class="card"><div class="card-body"><h2>Treść audiodeskrypcji</h2>{% if can_edit %}<p class="muted-text">Niezapisana treść jest zachowywana jako szkic w tej karcie przeglądarki. Przycisk „Zapisz treść” zapisuje ją w bazie.</p>{% endif %}
 {% if can_edit %}<form method="post" class="ad-form" data-warn-unsaved data-autosave="ad-{{ anthology.pk }}-content">{% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="content">{{ content_form.non_field_errors }}<div class="form-field"><label class="visually-hidden" for="{{ content_form.content.id_for_label }}">Treść audiodeskrypcji</label>{{ content_form.content }}{{ content_form.content.errors }}</div><button class="primary-button" type="submit">Zapisz treść</button></form>

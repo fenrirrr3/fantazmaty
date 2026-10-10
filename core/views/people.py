@@ -151,10 +151,10 @@ def person_detail(request, person_id):
             "completed_reviews": ReviewAssignment.objects.submitted().filter(
                 user_id=person.user_id,
             ).exclude(review__status__in=("accepted", "rejected")
-            ).filter(review__in=Review.objects.visible_to(request.user))
+            ).filter(review__in=Review.objects.accessible_to(request.user))
                 .select_related("review__anthology").order_by("review__anthology__title", "review__title", "pk")
                 if person.user_id else ReviewAssignment.objects.none(),
-            "archived_reviews": ReviewAssignment.objects.submitted().filter(review__in=Review.objects.visible_to(request.user), review__status__in=("accepted", "rejected")).filter(
+            "archived_reviews": ReviewAssignment.objects.submitted().filter(review__in=Review.objects.accessible_to(request.user), review__status__in=("accepted", "rejected")).filter(
                 Q(historical_person=person) | (Q(user_id=person.user_id) if person.user_id else Q(pk__in=[]))
             ).select_related("review__anthology").order_by("review__anthology__title", "review__title", "position"),
             "can_view_authors": include_authors,

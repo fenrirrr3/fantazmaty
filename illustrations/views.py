@@ -1,4 +1,4 @@
-from core.translation_scope import ordinary
+from core.translation_scope import frontend_scope
 from core.filtering import facet_queryset
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -144,7 +144,7 @@ def illustration_list(request):
     # GET nie tworzy ani nie aktualizuje rekordów.
     # Ilustracje powstają przez istniejące sygnały przy zmianach danych.
     illustrations = (
-        ordinary(Illustration.objects).filter(
+        frontend_scope(Illustration.objects).filter(
             text_id__in=active_production_texts(Text.objects.all()).values("pk"),
             text__anthology__has_illustrations=True,
         )
@@ -176,7 +176,7 @@ def illustration_list(request):
     )
 
     anthologies = (
-        ordinary(Anthology.objects).filter(
+        frontend_scope(Anthology.objects).filter(
             has_illustrations=True, is_novel=False,
         )
         .only("pk", "title")
@@ -215,7 +215,7 @@ def illustration_detail(request, illustration_id):
     if not can_view_illustrations(request.user):
         raise PermissionDenied('Ilustracje są dostępne dla koordynatorów i ilustratorów.')
     with transaction.atomic():
-        query = ordinary(Illustration.objects).exclude(text__anthology__is_novel=True)
+        query = frontend_scope(Illustration.objects).exclude(text__anthology__is_novel=True)
         if request.method == 'POST':
             query = query.select_for_update()
         illustration = get_object_or_404(query, pk=illustration_id,
@@ -277,7 +277,7 @@ def cover_proposal_list(request):
         return redirect("illustrations:cover_proposal_list")
 
     proposals = (
-        ordinary(CoverProposal.objects).select_related("submitted_by")
+        frontend_scope(CoverProposal.objects).select_related("submitted_by")
         .order_by("-submitted_at", "-pk")
     )
     page_obj = paginate_queryset(request, proposals)
@@ -316,7 +316,7 @@ def update_cover_proposal_status(request, proposal_id):
 
     with transaction.atomic(using=using):
         proposal = get_object_or_404(
-            ordinary(CoverProposal.objects).using(using).select_for_update(),
+            frontend_scope(CoverProposal.objects).using(using).select_for_update(),
             pk=proposal_id,
         )
 

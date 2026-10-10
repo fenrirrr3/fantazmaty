@@ -1,4 +1,4 @@
-from core.translation_scope import ordinary
+from core.translation_scope import frontend_scope
 from texts.models import Anthology, Text
 from texts.production import active_production_texts
 
@@ -7,7 +7,7 @@ from .models import Illustration
 
 def illustration_texts_queryset(using='default'):
     """Scope for new illustration links, including published anthologies."""
-    return ordinary(Text.objects.using(using)).filter(anthology__has_illustrations=True)
+    return frontend_scope(Text.objects.using(using)).filter(anthology__has_illustrations=True)
 
 
 def required_texts_queryset(using='default'):
@@ -27,7 +27,7 @@ def sync_required_illustrations(anthology=None, using=None):
         )
 
     existing_text_ids = set(
-        ordinary(Illustration.objects.using(using))
+        frontend_scope(Illustration.objects.using(using))
         .filter(
             text_id__in=texts.values_list(
                 "pk",
@@ -50,7 +50,7 @@ def sync_required_illustrations(anthology=None, using=None):
     ]
 
     if missing_illustrations:
-        ordinary(Illustration.objects.using(using)).bulk_create(
+        frontend_scope(Illustration.objects.using(using)).bulk_create(
             missing_illustrations,
             ignore_conflicts=True,
         )

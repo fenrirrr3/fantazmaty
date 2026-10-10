@@ -1,7 +1,7 @@
 from core.public_authors import name_matches
 from workflow.catalog import active_stage_choices, active_role_choices, workflow_role_choices, IMPORT_ONLY_ROLES
 from workflow.labels import assignment_label, stage_label
-from core.translation_scope import ordinary, non_abandoned
+from core.translation_scope import frontend_scope, non_abandoned
 from core.filtering import facet_queryset
 from datetime import date
 
@@ -410,7 +410,7 @@ def text_list_context(*, user, params, scope=None, stage_scope=None, translated=
     ordering = TEXT_SORTS[sort]
     if scope is None and stage_scope is None:
         from core.models import WorkflowEvent
-        history = WorkflowEvent.objects.filter(text_id=OuterRef('pk')).exclude(
+        history = WorkflowEvent.objects.filter(text_id=OuterRef('pk'), kind=WorkflowEvent.Kind.WORKFLOW).exclude(
             previous_status=F('next_status')).order_by('-created_at', '-pk')
         queryset = queryset.annotate(last_status_change=Subquery(history.values('created_at')[:1]))
         requested_sort = params.get('sort', '')
@@ -548,7 +548,7 @@ def available_stages_for_user(*, user, params=None, with_filters=False):
     from workflow.availability import claim_access
     from workflow.read_queries import available_stages
     include_authors = can_view_author_data(user)
-    stages = ordinary(available_stages(user, claim_access(user))).select_related("text__anthology")
+    stages = frontend_scope(available_stages(user, claim_access(user))).select_related("text__anthology")
     filters = text_list_context(user=user, params=params or {}, stage_scope=stages) if with_filters else None
     if filters is not None:
         filtered = filters.pop("filtered_queryset")

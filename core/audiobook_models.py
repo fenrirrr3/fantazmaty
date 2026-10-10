@@ -7,6 +7,55 @@ from core.edit_versions import VersionedQuerySet
 from core.audiobook_validators import validate_youtube_url, validate_hearthis_url, validate_audio_links
 
 
+def contact_key(value):
+    """Loose identity of a typed name: case, spacing and Polish diacritics are ignored."""
+    import unicodedata
+    value = ' '.join((value or '').split()).casefold().replace('ł', 'l')
+    return ''.join(ch for ch in unicodedata.normalize('NFKD', value) if not unicodedata.combining(ch))
+
+
+def resolve_contact(name, email, contact=None):
+    """Return the single profile for a narrator or sound engineer, creating it only when new.
+
+    A typed name never renames an existing profile (that is done on the profile itself).
+    """
+    name = ' '.join((name or '').split())
+    email = (email or '').strip().lower()
+    if not name:
+        return None
+    key = contact_key(name)
+    if contact is not None and contact_key(contact.name) == key and email in ('', contact.email):
+        return contact
+    if contact is not None and contact_key(contact.name) == key and not contact.email:
+        if not AudioContributor.objects.filter(email__iexact=email).exclude(pk=contact.pk).exists():
+            contact.email = email
+            contact.save(update_fields=['email'])
+            return contact
+    if email:
+        owners = list(AudioContributor.objects.filter(email__iexact=email))
+        if owners:
+            same = [person for person in owners if contact_key(person.name) == key]
+            if len(same) == 1:
+                return same[0]
+            raise ValidationError(f'Adres {email} ma już kontakt „{owners[0].name}”. Wybierz go z podpowiedzi albo popraw adres.')
+    similar = [person for person in AudioContributor.objects.only('pk', 'name', 'email') if contact_key(person.name) == key]
+    if email:
+        without_email = [person for person in similar if not person.email]
+        if len(without_email) == 1 and len(similar) == 1:
+            person = without_email[0]
+            person.email = email
+            person.save(update_fields=['email'])
+            return person
+        if similar and not without_email:
+            # Same name, different address: another person.
+            return AudioContributor.objects.create(name=name, email=email)
+    if len(similar) == 1:
+        return similar[0]
+    if len(similar) > 1:
+        raise ValidationError(f'W bazie jest kilka kontaktów „{name}”. Wybierz właściwy z podpowiedzi.')
+    return AudioContributor.objects.create(name=name, email=email)
+
+
 class AudioContributor(models.Model):
     objects = VersionedQuerySet.as_manager()
     name = models.CharField('imię i nazwisko', max_length=255)
@@ -91,22 +140,28 @@ class Audiobook(models.Model):
             for role in ('narrator', 'engineer'):
                 if fields is not None and not set(fields) & {f'{role}_name', f'{role}_email', f'{role}_contact'}:
                     continue
-                name = ' '.join(getattr(self, f'{role}_name').split())
-                email = getattr(self, f'{role}_email').strip().lower()
                 contact = getattr(self, f'{role}_contact')
-                if not name:
-                    contact = None
-                elif not contact or (contact.name != name or contact.email != email):
-                    matches = list(AudioContributor.objects.filter(name__iexact=name, email__iexact=email)[:2])
-                    if len(matches) > 1:
-                        raise ValidationError('Istnieją dwa identyczne kontakty. Wybierz konkretny profil z podpowiedzi.')
-                    contact = matches[0] if matches else AudioContributor.objects.get_or_create(name=name, email=email)[0]
+                name = getattr(self, f'{role}_name')
+                if contact is None and ' '.join(name.split()):
+                    contact = resolve_contact(name, getattr(self, f'{role}_email'))
+                # One profile per person: the audiobook only mirrors the profile data.
                 setattr(self, f'{role}_contact', contact)
+                setattr(self, f'{role}_name', contact.name if contact else '')
+                setattr(self, f'{role}_email', contact.email if contact else '')
                 if fields is not None:
-                    fields = set(fields) | {f'{role}_contact'}
+                    fields = set(fields) | {f'{role}_contact', f'{role}_name', f'{role}_email'}
             if fields is not None:
                 kwargs['update_fields'] = fields
             return super().save(*args, **kwargs)
+
+    @property
+    def awaiting_next_stage(self):
+        return self.status not in (self.Status.PENDING, self.Status.PUBLISHED) and not self.active_stage_id
+
+    @property
+    def status_label(self):
+        from core.audiobook_services import status_text
+        return status_text(self)
 
     @property
     def publication_links(self):

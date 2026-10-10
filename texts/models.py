@@ -25,6 +25,9 @@ class ReviewOpinion(models.TextChoices):
 class Anthology(models.Model):
     objects = VersionedQuerySet.as_manager()
     is_novel = models.BooleanField('powieść', default=False, db_index=True)
+    is_extracts = models.BooleanField('Ekstrakty', default=False, db_index=True,
+        help_text='Antologia zbiorcza Ekstraktów: jeden wspólny tekst całego tomu z jednym workflow, '
+                  'miniatury tylko w rejestrze Ekstraktów.')
     class Status(models.TextChoices):
         IN_PREPARATION = "in_preparation", "W przygotowaniu"
         ABANDONED = "abandoned", "Porzucona"
@@ -147,8 +150,17 @@ class Anthology(models.Model):
         ).exists())
 
     def _validate_novel_kind(self):
-        if self.is_novel and 'ekstrakty' in self.title.casefold():
+        if self.is_extracts and self.is_novel:
             raise ValidationError({'is_novel': 'Ekstrakty są antologią zbiorczą, bez trybu powieści.'})
+        if self.is_extracts and self.is_translated:
+            raise ValidationError({'is_translated': 'Ekstrakty nie obsługują tłumaczeń.'})
+        if self.pk and not self.is_extracts and hasattr(self, 'extract_volume'):
+            raise ValidationError({'is_extracts': 'Tom Ekstraktów z importu musi pozostać oznaczony jako Ekstrakty.'})
+        if self.pk and self.is_extracts:
+            was_extracts = type(self).objects.filter(pk=self.pk, is_extracts=True).exists()
+            if not was_extracts and self.texts.exclude(import_source__in=('extract-volume-v2', 'extracts-v1')).exists():
+                raise ValidationError({'is_extracts': 'Antologia ma już zwykłe teksty. Ekstrakty mają jeden wspólny tekst – '
+                                                      'najpierw przenieś teksty do innej antologii.'})
         if self.is_novel and self.is_translated:
             raise ValidationError({'is_translated': 'Powieści nie obsługują tłumaczeń. Wyłącz „Tłumaczone”.'})
         if self.pk:
@@ -168,18 +180,24 @@ class Anthology(models.Model):
                     effective[field] = getattr(self, field)
             changed = False
             if effective.get('cover_status') == 'not_started':
+                changed = self.cover_commissioned_at is not None
                 self.cover_commissioned_at = None
-                changed = True
-            elif effective.get('cover_status') == 'in_progress' and effective != previous:
-                self.cover_commissioned_at = timezone.localdate()
-                changed = True
+            elif effective.get('cover_status') == 'in_progress':
+                # A commission starts when the cover leaves "Niezlecone" or goes to another
+                # artist. Correcting the spelling of the same artist keeps the date.
+                new_commission = (previous is None or previous.get('cover_status') == 'not_started'
+                                  or (effective.get('cover_illustrator_id') and previous.get('cover_illustrator_id')
+                                      and effective['cover_illustrator_id'] != previous['cover_illustrator_id']))
+                if new_commission or self.cover_commissioned_at is None:
+                    self.cover_commissioned_at = timezone.localdate()
+                    changed = True
             if changed and fields is not None:
                 kwargs['update_fields'] = fields = set(fields) | {'cover_commissioned_at'}
         if self.cover_illustrator_id and (fields is None or {'cover_illustrator', 'cover_illustrator_id', 'cover_author'} & set(fields)):
             self.cover_author = str(self.cover_illustrator)
             if fields is not None:
                 kwargs['update_fields'] = fields = set(fields) | {'cover_author'}
-        if fields is None or {'is_novel', 'is_translated', 'title'} & set(fields):
+        if fields is None or {'is_novel', 'is_translated', 'is_extracts'} & set(fields):
             self._validate_novel_kind()
         if not self.pk:
             self._validate_ready_transition(using)
@@ -678,7 +696,8 @@ class ReviewQuerySet(VersionedQuerySet):
         """Object visibility shared by detail views and edit-conflict responses."""
         from core.permissions import can_view_review_archive
 
-        reviews = self.visible_to(user)
+        # Withdrawn submissions are kept only in the admin panel.
+        reviews = self.visible_to(user).exclude(status="withdrawn")
         return reviews if can_view_review_archive(user) else reviews.filter(old_reviews=False)
 
     def awaiting_notification(self):
@@ -689,7 +708,7 @@ class ReviewQuerySet(VersionedQuerySet):
         )
 
     def current(self):
-        return self.exclude(status__in=("accepted", "rejected"))
+        return self.exclude(status__in=("accepted", "rejected", "withdrawn"))
 
     def archived(self):
         return self.filter(status__in=("accepted", "rejected"))

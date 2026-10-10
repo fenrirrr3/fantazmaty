@@ -38,7 +38,7 @@ class ChangesV80Tests(TestCase):
         )
 
     def test_extract_panels_and_length_only_change_whole_volumes(self):
-        book = Anthology.objects.create(title="Ekstrakty 3")
+        book = Anthology.objects.create(title="Ekstrakty 3", is_extracts=True)
         whole = ensure_whole_text(book)
         page = self.client.get(reverse("core:assigned_text_detail", args=[whole.pk]))
         doc = html.fromstring(page.content)
@@ -264,13 +264,16 @@ class ChangesV80Tests(TestCase):
         url = reverse("core:review_list")
         now = self.client.get(url)
         archive = self.client.get(url, {"old_reviews": "1"})
-        self.assertEqual({x["pk"] for x in now.context["reviews"]}, {current.pk, withdrawn.pk})
+        # Withdrawn submissions are available only in the admin panel.
+        self.assertEqual({x["pk"] for x in now.context["reviews"]}, {current.pk})
+        self.assertNotIn(withdrawn.pk, {x["pk"] for x in archive.context["reviews"]})
         self.assertEqual(
             {x["pk"] for x in archive.context["reviews"]}, {accepted.pk, rejected.pk, historic.pk}
         )
         self.assertFalse(Review.objects.get(pk=accepted.pk).old_reviews)
         search = self.client.get(reverse("core:global_search"), {"q": "Przyjęty"})
-        self.assertEqual(search.context["reviews"], [])
+        self.assertEqual({x["pk"] for x in search.context["reviews"]}, {accepted.pk, historic.pk})
+        self.assertEqual(self.client.get(reverse("core:global_search"), {"q": "Wycofany"}).context["reviews"], [])
         self.assertContains(
             self.client.get(reverse("core:assigned_review_detail", args=[accepted.pk])),
             "Recenzja archiwalna",
@@ -297,11 +300,15 @@ class ChangesV80Tests(TestCase):
         self.assertNotIn(other.pk, {x.review_id for x in all_page.context["assignments"]})
         doc = html.fromstring(all_page.content)
         self.assertEqual(
-            doc.xpath('//nav[@aria-label="Widok moich recenzji"]/a/text()'), ["W toku", "Wszystkie"]
+            doc.xpath('//nav[@aria-label="Widok moich recenzji"]/a/text()'),
+            ["W toku", "Oddane", "Rozstrzygnięte", "Wszystkie"],
         )
+        decided = self.client.get(url, {"view": "decided"})
+        self.assertEqual({x.review_id for x in decided.context["assignments"]}, {accepted.pk, historic.pk})
         for view in ["archived", "completed"]:
             self.assertEqual(
-                self.client.get(url, {"view": view}).context["page_obj"].paginator.count, 5
+                {x.review_id for x in self.client.get(url, {"view": view}).context["assignments"]},
+                {rated.pk, accepted.pk, historic.pk},
             )
 
     def test_profile_archive_uses_decision_and_preserves_hidden_permissions(self):

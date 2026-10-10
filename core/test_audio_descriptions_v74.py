@@ -53,7 +53,10 @@ class AudioDescriptionTests(TestCase):
             self.book.production_tasks.filter(task_type="audio_description").count(), 1
         )
         self.assertEqual(AudioDescription.objects.count(), before)
-        self.assertContains(self.client.get(self.detail), 'name="status"')
+        # The task status is managed on the anthology page; the writer moves the work stage.
+        detail = self.client.get(self.detail)
+        self.assertNotContains(detail, 'name="status"')
+        self.assertContains(detail, 'name="stage"')
 
     def test_stale_second_claim_and_ready_task_never_overwrite(self):
         stale = self.token(self.other)
@@ -63,29 +66,33 @@ class AudioDescriptionTests(TestCase):
         self.post(self.other, {}, self.claim)
         self.task.refresh_from_db()
         self.assertEqual(self.task.assigned_to_id, self.member.person_profile.pk)
-        self.post(self.member, {"status": "ready"})
+        self.post(self.member, {"action": "stage", "stage": "completed"})
         self.post(self.other, {}, self.claim)
         self.task.refresh_from_db()
         self.assertEqual(self.task.status, "ready")
 
     def test_coordinator_assigns_controller_and_only_designated_users_edit(self):
-        self.assertEqual(self.post(self.other, {"status": "ready"}).status_code, 403)
+        self.assertEqual(self.post(self.other, {"action": "stage", "stage": "completed"}).status_code, 403)
         self.assertEqual(
             self.post(
                 self.manager,
                 {
                     "assigned_to": self.member.person_profile.pk,
                     "controllers": [self.other.person_profile.pk],
-                    "status": "commissioned",
+                    "status": "ready",
                 },
             ).status_code,
             302,
         )
-        self.assertEqual(self.post(self.other, {"status": "ready"}).status_code, 302)
+        self.task.refresh_from_db()
+        # The status sent from this page is ignored: assignment only commissions the task.
+        self.assertEqual(self.task.status, "commissioned")
+        self.assertEqual(self.post(self.other, {"action": "assignment", "assigned_to": ""}).status_code, 403)
+        self.assertEqual(self.post(self.other, {"action": "stage", "stage": "completed"}).status_code, 302)
         self.task.refresh_from_db()
         self.assertEqual(self.task.status, "ready")
         self.description.controllers.clear()
-        self.assertEqual(self.post(self.other, {"status": "commissioned"}).status_code, 403)
+        self.assertEqual(self.post(self.other, {"action": "note", "note": "x"}).status_code, 403)
 
     def test_assignee_cannot_change_owner_or_grant_control(self):
         self.post(self.member, {}, self.claim)
@@ -103,9 +110,9 @@ class AudioDescriptionTests(TestCase):
 
     def test_controller_without_assignee_gets_validation_error(self):
         self.description.controllers.add(self.other.person_profile)
-        response = self.post(self.other, {"status": "ready"})
+        response = self.post(self.other, {"action": "stage", "stage": "completed"})
         self.assertEqual(response.status_code, 400)
-        self.assertContains(response, "Najpierw koordynator musi przypisać", status_code=400)
+        self.assertContains(response, "wymaga przypisania osoby piszącej", status_code=400)
         self.task.refresh_from_db()
         self.assertEqual(self.task.status, "not_commissioned")
 
@@ -205,7 +212,7 @@ class AudioDescriptionTests(TestCase):
         self.client.force_login(self.member)
         self.assertEqual(self.client.post(self.claim, {}).status_code, 409)
         self.assertEqual(
-            self.post(self.manager, {"status": "ready", "assigned_to": ""}).status_code, 400
+            self.post(self.manager, {"status": "ready", "assigned_to": ""}).status_code, 302
         )
         self.task.refresh_from_db()
         self.assertEqual(self.task.status, "not_commissioned")

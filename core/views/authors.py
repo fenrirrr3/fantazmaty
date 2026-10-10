@@ -1,5 +1,5 @@
 from core.public_authors import name_matches
-from core.translation_scope import ordinary
+from core.translation_scope import frontend_scope
 from core.selectors.texts import _annotated_texts
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -88,7 +88,7 @@ def _render_author_detail(request, author, *, form=None, status=200):
 
     author_data["note_history"] = note_history
 
-    text_queryset = ordinary(Text.objects).filter(authors__pk=author.pk)
+    text_queryset = frontend_scope(Text.objects).filter(authors__pk=author.pk)
     texts = []
 
     for item in text_queryset.order_by("title", "pk").values(
@@ -116,14 +116,14 @@ def _render_author_detail(request, author, *, form=None, status=200):
             }
         )
 
-    historical_reviews = ordinary(Review.objects.accessible_to(request.user), include_abandoned=True).archived().filter(
+    historical_reviews = frontend_scope(Review.objects.accessible_to(request.user), include_abandoned=True).archived().filter(
         Q(author_id=author.pk) | Q(coauthors__pk=author.pk),
     ).select_related("anthology").distinct().order_by("-created_at", "-pk")
     historical_page = paginate_items(request, historical_reviews,
         page_param='archive_page', size_param='archive_page_size', anchor='#archiwalne-recenzje')
 
     # Archiwalne recenzje nie wpływają na żaden licznik zgłoszeń.
-    submissions = ordinary(Review.objects.accessible_to(request.user)).filter(
+    submissions = frontend_scope(Review.objects.accessible_to(request.user)).filter(
         Q(author_id=author.pk) | Q(coauthors__pk=author.pk),
         old_reviews=False,
     ).distinct()
@@ -139,7 +139,7 @@ def _render_author_detail(request, author, *, form=None, status=200):
         ),
     )
     author_summary["texts"] = len(texts)
-    author_summary["anthologies"] = ordinary(Anthology.objects).filter(
+    author_summary["anthologies"] = frontend_scope(Anthology.objects).filter(
         Q(
             pk__in=text_queryset.order_by().values("anthology_id"),
         )
@@ -204,7 +204,7 @@ def author_list(request):
             contact=contact_filter == "yes",
         )
 
-    anthology_options = ordinary(Anthology.objects).all()
+    anthology_options = frontend_scope(Anthology.objects).all()
 
     if selected_anthology_ids:
         authors = authors.filter(
@@ -229,7 +229,7 @@ def author_list(request):
 
     if author_ids:
         participations = (
-            ordinary(Text.objects).filter(
+            frontend_scope(Text.objects).filter(
                 authors__pk__in=author_ids,
                 anthology__isnull=False,
             )

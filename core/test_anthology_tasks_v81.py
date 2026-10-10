@@ -98,9 +98,14 @@ class AnthologyTaskPanelTests(TestCase):
         self.assertEqual(Person.objects.count(), count)
         self.assertFalse(self.book.production_tasks.exclude(status='not_commissioned', assigned_to=None).exists())
         field = self.client.get(self.url).context['task_forms'][1].fields['assigned_to']
+        # Inactive and external people are offered only once they have worked on a task.
+        self.assertFalse(field.queryset.filter(pk=person.pk).exists())
+        earlier = Anthology.objects.create(title='Wcześniejsza praca').production_tasks.get(task_type='banners')
+        earlier.assigned_to, earlier.status = person, 'commissioned'
+        earlier.save()
+        field = self.client.get(self.url).context['task_forms'][1].fields['assigned_to']
         self.assertTrue(field.queryset.filter(pk=person.pk).exists())
-        # The shared helper must not broaden the unchanged novel forms.
-        self.assertFalse(_task_forms(self.book)[1].fields['assigned_to'].queryset.filter(pk=person.pk).exists())
+        self.assertTrue(_task_forms(self.book)[1].fields['assigned_to'].queryset.filter(pk=person.pk).exists())
         data = self.all_tasks_data()
         data.update({'blurb-status': 'commissioned', 'blurb-assigned_to': person.pk})
         self.assertEqual(self.client.post(self.url, data).status_code, 302)

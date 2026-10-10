@@ -160,6 +160,7 @@ class AnthologyAdmin(admin.ModelAdmin):
     list_display = (
         "title",
         "is_novel",
+        "is_extracts",
         "status",
         "cover_status",
         "cover_author",
@@ -170,6 +171,7 @@ class AnthologyAdmin(admin.ModelAdmin):
     list_filter = (
         "status",
         "is_novel",
+        "is_extracts",
         "cover_status",
         "has_illustrations",
         "is_translated",
@@ -190,6 +192,7 @@ class AnthologyAdmin(admin.ModelAdmin):
                 "fields": (
                     "title",
                     "is_novel",
+                    "is_extracts",
                     "status",
                     "has_illustrations",
         "is_translated",
@@ -1330,7 +1333,7 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         )
 
     def changelist_view(self, request, extra_context=None):
-        return super().changelist_view(request, {**(extra_context or {}), "title": "Zgłoszenia do recenzji"})
+        return super().changelist_view(request, {**(extra_context or {}), "title": "Recenzje"})
 
     def changeform_view(
         self,

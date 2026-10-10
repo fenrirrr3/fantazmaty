@@ -1,7 +1,7 @@
 {% extends "core/base.html" %}
 {% load static %}
 {% block title %}Audiobook: {{ text.title }} | Fantazmaty CMS{% endblock %}
-{% block extra_css %}{{ block.super }}<link rel="stylesheet" href="{% static 'core/audiobook-production.css' %}?v=74">{% endblock %}
+{% block extra_css %}{{ block.super }}<link rel="stylesheet" href="{% static 'core/audiobook-production.css' %}">{% endblock %}
 {% block content %}
 <header class="page-header">
     <h1 class="page-title">Audiobook: {{ text.title }}</h1>
@@ -58,13 +58,13 @@
     <table class="data-table" data-pagination="off"><thead><tr><th>Etap</th><th>Data rozpoczęcia</th><th>Data zakończenia</th><th>Akcja</th></tr></thead>
     <tbody>{% for stage in stages %}<tr>
         <td>{{ stage.get_stage_type_display }}{% if stage.performer %}<br><span class="muted-text">{{ stage.performer.person_profile|default:stage.performer.get_full_name }}</span>{% endif %}</td><td>{{ stage.started_at|date:"d.m.Y"|default:"Brak daty" }}</td>
-        <td>{% if stage.ended_at %}{{ stage.ended_at|date:"d.m.Y" }}{% elif stage.is_completed %}<span class="muted-text">Zakończony: data nieznana</span>{% else %}–{% endif %}</td>
-        <td>{% if audio.active_stage_id == stage.pk and can_finish %}<form method="post">
+        <td>{% if stage.stage_type == 'published' %}<span class="muted-text">Etap końcowy</span>{% elif stage.ended_at %}{{ stage.ended_at|date:"d.m.Y" }}{% elif stage.is_completed %}<span class="muted-text">Zakończony: data nieznana</span>{% else %}–{% endif %}</td>
+        <td>{% if stage.stage_type == 'published' %}Opublikowano{% elif audio.active_stage_id == stage.pk and can_finish %}<form method="post">
             {% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="finish_stage"><input type="hidden" name="stage_id" value="{{ stage.pk }}">
             <button type="submit" class="audio-finish-button" title="Zakończ etap" aria-label="Zakończ etap: {{ stage.get_stage_type_display }}">Zakończ</button>
         </form>{% elif stage.is_completed %}Zakończony{% else %}W toku{% endif %}</td>
     </tr>{% empty %}<tr><td colspan="4">Nie dodano jeszcze etapów.</td></tr>{% endfor %}</tbody></table></div>
-    {% if can_manage_stages %}{% if audio.active_stage_id %}<p class="muted-text">Zakończ trwający etap, aby dodać kolejny.</p>{% else %}
+    {% if is_published %}<p class="muted-text">Audiobook jest opublikowany. To etap końcowy – nie wymaga zakończenia.</p>{% elif can_manage_stages %}{% if audio.active_stage_id %}<p class="muted-text">Zakończ trwający etap, aby dodać kolejny.</p>{% else %}
     <form method="post" class="audio-stage-add audio-production-form" data-warn-unsaved>
         {% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="start_stage">{{ stage_form.non_field_errors }}
         {% for field in stage_form %}<div class="form-field">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}

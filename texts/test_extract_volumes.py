@@ -219,7 +219,7 @@ class ExtractVolumeImportTests(TestCase):
         self.assertEqual(len(rows), 2)
 
     def test_existing_unlinked_anthology_aborts(self):
-        Anthology.objects.create(title="Ekstrakty 2")
+        Anthology.objects.create(title="Ekstrakty 2", is_extracts=True)
         with self.assertRaises(CommandError):
             self.run_import(True)
         self.assertEqual(Text.objects.count(), 1)
