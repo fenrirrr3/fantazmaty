@@ -1,10 +1,11 @@
 from core.public_authors import name_matches, review_name_matches
-from core.translation_scope import ordinary
+from core.translation_scope import ordinary, non_abandoned
 from core.author_access import contact_authors
 from core.permissions import is_coordinator, can_view_review_archive
 from django.contrib.auth.decorators import login_required
 from django.db.models import Prefetch, Q
 from django.shortcuts import render
+from django.urls import reverse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 
@@ -82,30 +83,36 @@ def _search_texts(query, *, include_authors):
         match = _matching_terms(term, fields)
         if include_authors:
             match |= name_matches(term, 'authors__', email=True)
+            match |= name_matches(term, 'translation__foreign_authors__')
+            match |= name_matches(term, 'translation__translators__')
         condition &= match
 
     queryset = (
-        ordinary(Text.objects).filter(condition)
+        non_abandoned(Text.objects).filter(condition)
         .select_related("anthology")
         .order_by("title", "pk")
     )
 
-    queryset = queryset.distinct().prefetch_related("authors")
+    queryset = queryset.distinct().select_related("translation").prefetch_related("authors", "translation__foreign_authors")
 
     results = []
 
     for text in queryset[:RESULT_LIMIT]:
+        translated = bool(text.anthology_id and text.anthology.is_translated)
+        record = getattr(text, 'translation', None) if translated else None
+        authors = list(record.foreign_authors.all()) if record else list(text.authors.all())
         results.append(
             {
                 "pk": text.pk,
                 "title": text.title,
+                "url": reverse("core:translation_detail" if translated else "core:assigned_text_detail", args=[text.pk]),
                 "anthology": _anthology_data(text.anthology),
                 "authors": {
                     "all": (
-                        [_author_data(author) for author in text.authors.all()]
+                        ([str(author.display_name) for author in authors] if translated else [_author_data(author) for author in authors])
                         if include_authors
                         else [author.display_name
-                              for author in text.authors.all()]
+                              for author in authors]
                     ),
                 },
             }
@@ -217,7 +224,7 @@ def _search_people(query, user):
 
 def _search_anthologies(query, *, novels=False):
     anthologies = (
-        (Anthology.objects.filter(is_novel=True).exclude(status='abandoned') if novels else ordinary(Anthology.objects).filter(is_novel=False)).filter(_matching_terms(query, ("title",)))
+        (Anthology.objects.filter(is_novel=True).exclude(status='abandoned') if novels else non_abandoned(Anthology.objects).filter(is_novel=False)).filter(_matching_terms(query, ("title",)))
         .order_by("title", "pk")
     )
 
@@ -225,6 +232,32 @@ def _search_anthologies(query, *, novels=False):
         _anthology_data(anthology)
         for anthology in anthologies[:RESULT_LIMIT]
     ]
+
+
+def _additional_results(query, user):
+    from core.models import AudioContributor, Recruitment
+    from illustrations.models import Illustrator
+    groups = []
+    coordinator = is_coordinator(user)
+    fields = ('name', 'email') if coordinator else ('name',)
+    contacts = AudioContributor.objects.filter(_matching_terms(query, fields)).order_by('name', 'pk')
+    groups.append({'label': 'Lektorzy i montaż', 'items': [
+        {'label': person.name, 'url': reverse('core:audio_contributor', args=[person.pk])}
+        for person in contacts[:RESULT_LIMIT]]})
+    if coordinator:
+        artists = Illustrator.objects.all()
+        for term in query.split():
+            artists = artists.filter(_matching_terms(term, ('first_name', 'last_name', 'pseudonym', 'email')))
+        groups.append({'label': 'Ilustratorzy (także nieaktywni)', 'items': [
+            {'label': str(person) + (f' ({person.pseudonym})' if person.pseudonym else ''), 'url': reverse('illustrations:illustrator_edit', args=[person.pk])}
+            for person in artists.order_by('last_name', 'first_name', 'pk')[:RESULT_LIMIT]]})
+        applications = Recruitment.objects.filter(_matching_terms(query,
+            ('first_name', 'last_name', 'applicant_name', 'email', 'mail_subject'))).order_by('-submitted_at', '-pk')
+        groups.append({'label': 'Rekrutacja', 'items': [
+            {'label': application.subject_name or str(application),
+             'url': reverse('core:recruitment_detail', args=[application.pk])}
+            for application in applications[:RESULT_LIMIT]]})
+    return groups
 
 
 @never_cache
@@ -279,6 +312,7 @@ def global_search(request):
                         _search_authors(query, request.user)
                     ),
                     "people": _search_people(query, request.user),
+                    "additional_results": _additional_results(query, request.user),
                     "anthologies": _search_anthologies(query),
                     "novels": _search_anthologies(query, novels=True),
                 }

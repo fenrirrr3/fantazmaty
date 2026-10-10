@@ -97,13 +97,10 @@ class TranslationTests(TestCase):
 
     def test_ordinary_lists_search_and_filters_do_not_expose_translation_records(self):
         routes = [
-            "text_list",
             "tag_list",
             "review_list",
             "workflow_list",
-            "anthology_list",
             "home",
-            "global_search",
             "my_texts",
             "anthology_corrections",
             "data_integrity",
@@ -122,15 +119,15 @@ class TranslationTests(TestCase):
         response = self.client.get(
             reverse("core:text_list"), {"anthology": self.book.pk, "hide_ready": "0"}
         )
-        self.assertEqual(response.context["page_obj"].paginator.count, 0)
-        self.assertNotContains(response, self.book.title)
+        self.assertEqual(response.context["page_obj"].paginator.count, 1)
+        self.assertContains(response, self.book.title)
         response = self.client.get(reverse("illustrations:illustration_list"))
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, self.book.title)
 
-    def test_home_workload_excludes_but_person_profile_includes_translations(self):
+    def test_home_workload_and_person_profile_include_translations(self):
         summary = user_workflow_summary(self.member)
-        self.assertEqual(summary["active_stage_count"], 0)
+        self.assertEqual(summary["active_stage_count"], 1)
         self.assertEqual(summary["reserved_assignment_count"], 0)
         rows = available_stages_for_user(user=self.admin)
         self.assertNotIn(self.stage.pk, [r.pk for r in rows])
@@ -194,8 +191,8 @@ class TranslationTests(TestCase):
             404,
         )
         response = self.client.get(reverse("core:anthology_detail", args=[self.book.pk]))
-        self.assertEqual(response.status_code, 302)
-        self.assertIn("/tlumaczenia/", response.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Zadania antologii")
 
     def test_admin_flag_and_translator_inline_only_for_translated_text(self):
         response = self.client.get(reverse("admin:texts_anthology_change", args=[self.book.pk]))

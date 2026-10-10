@@ -35,7 +35,7 @@
             <div class="detail-header-actions">
                 {% if user.is_superuser %}<a class="secondary-button small-button" href="{% url 'admin:texts_review_change' review.pk %}">Edytuj w adminie</a>{% endif %}
             <a
-                href="{% url 'core:review_list' %}?old_reviews={% if review.old_reviews %}1{% else %}0{% endif %}"
+                href="{% if return_url %}{{ return_url }}{% else %}{% url 'core:review_list' %}?old_reviews={% if review.old_reviews %}1{% else %}0{% endif %}{% endif %}"
                 class="secondary-button"
             >
                 Wróć do recenzji

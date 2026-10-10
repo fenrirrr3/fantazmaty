@@ -140,7 +140,7 @@ def novel_detail(request, novel_id):
         rows.append({'chapter': chapter, 'status': dict(WorkflowStage.StageType.choices).get(chapter.current_stage_type, 'Brak etapu'),
                      'assignments': [a for a in chapter.workflow_role_assignments.all() if a.is_current and a.workflow_cycle == chapter.current_workflow_cycle and a.assigned_to_id]})
     context = {'book': book, 'profile': profile, 'rows': rows, 'q': search,
-        'coordinator': coordinator, 'error': error, 'production_open': bool(error and request.POST.get('action') in ('production', 'finish')), 'is_open': book.status != Anthology.Status.READY,
+        'coordinator': coordinator, 'error': error, 'production_open': request.GET.get('tasks') == '1' or bool(error and request.POST.get('action') in ('production', 'finish')), 'is_open': book.status != Anthology.Status.READY,
         'novel_token': novels.edit_token(book, request.user) if coordinator else '',
         'chapter_form': ChapterForm(), 'chapter_range_form': ChapterRangeForm(prefix='add'),
         'assignment_form': AssignmentForm(prefix='assign'),

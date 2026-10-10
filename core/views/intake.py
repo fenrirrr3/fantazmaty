@@ -1,5 +1,5 @@
 from core.public_authors import name_matches
-from core.translation_scope import ordinary
+from core.translation_scope import ordinary, non_abandoned
 from core.author_contact import stored_author_phone
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -15,7 +15,7 @@ from core.pagination import paginate_items
 from core.intake_forms import ExtractForm, SingleReviewForm
 from core.recruitment_admin_forms import RecruitmentAdminForm
 from core.models import Recruitment
-from texts.models import Extract
+from texts.models import Extract, Text
 from texts.blacklist import apply_blacklist
 
 
@@ -48,6 +48,7 @@ def _list(request, model, form_class, title, route, fields):
         'blacklist': blacklist, 'recruitment': recruitment,
         'selected_department': request.GET.get('department', ''),
         'departments': [(v, label) for v, label in model.Department.choices if v in facets['department']] if model is Recruitment else [],
+        'extract_workflows': list(non_abandoned(Text.objects).filter(import_source='extract-volume-v2').select_related('anthology').order_by('anthology__title')) if model is Extract else [],
         'recruitments': sorted(facets['recruitment'], key=str.casefold) if model is Extract else [],
     })
 

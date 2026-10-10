@@ -34,6 +34,7 @@ from .models import (
 )
 from workflow.admin_performer_forms import WorkflowPerformerForm, WorkflowPerformerFormSet
 from core.review_submission_forms import ReviewAdminForm
+from .cover_forms import AnthologyAdminForm
 
 
 def content_preview(value, limit=100):
@@ -99,6 +100,13 @@ class ExtractVolumeCreditInline(admin.TabularInline):
 
 @admin.register(Anthology)
 class AnthologyAdmin(admin.ModelAdmin):
+    form = AnthologyAdminForm
+    readonly_fields = ('cover_author', 'cover_commissioned_at')
+
+    def save_model(self, request, obj, form, change):
+        form.apply_artist(obj)
+        super().save_model(request, obj, form, change)
+
     def get_inlines(self, request, obj=None):
         inlines = list(super().get_inlines(request, obj))
         if obj and ExtractVolume.objects.filter(anthology=obj).exists():
@@ -194,8 +202,13 @@ class AnthologyAdmin(admin.ModelAdmin):
                 "classes": ("cms-after-inlines",),
                 "fields": (
                     "cover_status",
+                    "cover_illustrator",
+                    "new_cover_first_name",
+                    "new_cover_last_name",
+                    "clear_legacy_cover",
                     "cover_author",
                     "cover_notes",
+                    "cover_commissioned_at",
                 ),
             },
         ),
@@ -312,12 +325,12 @@ class TextAdminForm(NormalizedFormMixin, forms.ModelForm):
         anthology_id = self.data.get('anthology') if self.is_bound else self.initial.get('anthology')
         translated = (self.instance.anthology_id and self.instance.anthology.is_translated) or (
             str(anthology_id or '').isdecimal() and Anthology.objects.filter(pk=anthology_id, is_translated=True).exists())
-        if translated and 'authors' in self.fields:
+        if (translated or self.instance.import_source == 'extract-volume-v2') and 'authors' in self.fields:
             self.fields['authors'].required = False
         novel = (self.instance.anthology_id and self.instance.anthology.is_novel) or (
             str(anthology_id or '').isdecimal() and Anthology.objects.filter(pk=anthology_id, is_novel=True).exists())
         if 'length' in self.fields:
-            self.fields['length'].required = not novel and self.instance.import_source != 'extracts-v1'
+            self.fields['length'].required = not novel and self.instance.import_source not in ('extracts-v1', 'extract-volume-v2')
         if novel:
             for name in ('title', 'file_url', 'content_warnings'):
                 if name in self.fields:
@@ -346,7 +359,7 @@ class TextAdminForm(NormalizedFormMixin, forms.ModelForm):
         anthology_id = self.data.get('anthology') if self.is_bound else self.initial.get('anthology')
         translated = (self.instance.anthology_id and self.instance.anthology.is_translated) or (
             str(anthology_id or '').isdecimal() and Anthology.objects.filter(pk=anthology_id, is_translated=True).exists())
-        if translated and 'authors' in self.fields:
+        if (translated or self.instance.import_source == 'extract-volume-v2') and 'authors' in self.fields:
             self.fields['authors'].required = False
         if source is not None:
             from core.services.reviews import resolve_publication_authors
@@ -369,7 +382,7 @@ class TextAdminForm(NormalizedFormMixin, forms.ModelForm):
         elif data.get('anthology') and data['anthology'].is_translated:
             if data.get('authors'):
                 self.add_error('authors', 'Autora zagranicznego dodaj w sekcji tłumaczenia, po zapisaniu tekstu.')
-        elif not data.get('authors'):
+        elif not data.get('authors') and self.instance.import_source != 'extract-volume-v2':
             self.add_error('authors', 'Wybierz autora.')
         return data
 

@@ -16,13 +16,10 @@ from texts.models import (
     Anthology,
     AnthologyTask,
     Extract,
-    ExtractTextLink,
     ExtractVolume,
     ExtractVolumeCredit,
     Text,
 )
-from workflow.import_context import importing_completed
-from workflow.models import WorkflowStage
 
 
 def key(value):
@@ -30,7 +27,7 @@ def key(value):
 
 
 class Command(BaseCommand):
-    help = "Tworzy tomy Ekstraktów i przyjęte miniatury. Domyślnie podgląd; zapis: --apply."
+    help = "Tworzy po jednym tekście na tom Ekstraktów i zapisuje prace ze stopek. Domyślnie podgląd; zapis: --apply."
 
     def add_arguments(self, parser):
         parser.add_argument("input")
@@ -94,7 +91,7 @@ class Command(BaseCommand):
             "texts": [],
             "conflicts": [],
             "warnings": [],
-            "notes": "Tylko przyjęte miniatury. Źródłowe Ekstrakty, role i konta pozostają bez zmian. Daty i nieznane długości pozostają puste.",
+            "notes": "Jeden tekst na cały tom. Miniatury są wyłącznie informacyjne. Źródłowe Ekstrakty, role i konta pozostają bez zmian. Daty i nieznane długości pozostają puste.",
         }
         with transaction.atomic():
             try:
@@ -206,6 +203,7 @@ class Command(BaseCommand):
                 .select_related("anthology")
                 .first()
             )
+            volume_created = marker is None
             if marker:
                 book = Anthology.objects.select_for_update().get(pk=marker.anthology_id)
                 if book.is_novel or book.is_translated:
@@ -232,86 +230,26 @@ class Command(BaseCommand):
                 "unchanged_texts": 0,
             }
             report["volumes"].append(book_row)
+            from texts.extract_whole import consolidate_volume
+            result = consolidate_volume(book)
+            whole = Text.objects.get(pk=result['text_id'])
             seen_pairs = set()
-            accepted_links = set()
             for source in sources[number]:
                 for title in split_list(source.accepted_titles):
                     if len(title) > 255:
                         raise ValueError(f"Zbyt długi tytuł w Ekstrakty #{source.pk}.")
-                    title_key = key(title)
-                    pair = (source.author_id, title_key)
+                    pair = (source.author_id, key(title))
                     if pair in seen_pairs:
-                        raise ValueError(
-                            f"Powtórzony przyjęty tytuł autora w tomie: {title}. Sprawdź źródłowe Ekstrakty."
-                        )
+                        raise ValueError(f"Powtórzony przyjęty tytuł autora w tomie: {title}.")
                     seen_pairs.add(pair)
-                    book_row["accepted_titles"] += 1
-                    link = (
-                        ExtractTextLink.objects.select_for_update()
-                        .filter(extract=source, title_key=title_key)
-                        .select_related("text")
-                        .first()
-                    )
-                    if link:
-                        text = link.text
-                        if (
-                            text.anthology_id != book.pk
-                            or source.author_id not in text.authors.values_list("pk", flat=True)
-                        ):
-                            raise ValueError(
-                                f"{title}: zmieniono antologię lub autora wcześniej importowanej miniatury."
-                            )
-                        action = "bez zmian"
-                        book_row["unchanged_texts"] += 1
-                    else:
-                        if any(
-                            key(t.title) == title_key
-                            for t in Text.objects.filter(authors=source.author, anthology=book)
-                        ):
-                            raise ValueError(
-                                f"{title}: istnieje już tekst autora bez powiązania importu; nie dubluję."
-                            )
-                        text = Text(title=title, import_source="extracts-v1", length=None)
-                        text.full_clean()
-                        text.save()
-                        text.authors.add(source.author)
-                        token = importing_completed.set(True)
-                        try:
-                            WorkflowStage.objects.create(
-                                text=text,
-                                stage_type="ready" if number < 3 else "ready_for_editing",
-                                is_current=True,
-                                is_released=True,
-                            )
-                        finally:
-                            importing_completed.reset(token)
-                        text.anthology = book
-                        text.full_clean()
-                        text.save(update_fields=["anthology"])
-                        link = ExtractTextLink.objects.create(
-                            extract=source, text=text, title_key=title_key, source_title=title
-                        )
-                        action = "dodanie"
-                        book_row["new_texts"] += 1
-                    accepted_links.add(link.pk)
-                    report["texts"].append(
-                        {
-                            "extract_id": source.pk,
-                            "text_id": text.pk,
-                            "title": text.title,
-                            "author_id": source.author_id,
-                            "author": source.author.display_name,
-                            "anthology": book.title,
-                            "action": action,
-                        }
-                    )
-            removed = ExtractTextLink.objects.filter(text__anthology=book).exclude(
-                pk__in=accepted_links
-            )
-            if removed.exists():
-                raise ValueError(
-                    f"{book.title}: wcześniejsze miniatury zniknęły z przyjętych tytułów. Nie usuwam ich automatycznie; sprawdź źródło."
-                )
+                    book_row['accepted_titles'] += 1
+            book_row['new_texts'] = int(volume_created)
+            book_row['unchanged_texts'] = int(not volume_created)
+            if result['removed_generated_miniatures']:
+                book_row['conversion'] = result
+            report['texts'].append({'text_id': whole.pk, 'title': whole.title,
+                                    'anthology': book.title, 'action': 'tekst całego tomu',
+                                    'source_records': len(sources[number])})
             if not book_row["accepted_titles"]:
                 report["warnings"].append(
                     f"{book.title}: brak przyjętych tytułów w źródłowej bazie."

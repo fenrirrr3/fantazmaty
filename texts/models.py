@@ -36,9 +36,9 @@ class Anthology(models.Model):
         YES = "yes", "Tak"
 
     class CoverStatus(models.TextChoices):
-        NOT_STARTED = "not_started", "Nierozpoczęta"
-        IN_PROGRESS = "in_progress", "W przygotowaniu"
-        READY = "ready", "Gotowa"
+        NOT_STARTED = "not_started", "Niezlecone"
+        IN_PROGRESS = "in_progress", "Zlecone"
+        READY = "ready", "Gotowe"
 
     title = models.CharField(
         "tytuł antologii",
@@ -74,11 +74,22 @@ class Anthology(models.Model):
         default=CoverStatus.NOT_STARTED,
     )
 
+    cover_commissioned_at = models.DateField("data zlecenia okładki", null=True, blank=True, editable=False)
+
     cover_author = models.CharField(
         "autor okładki",
         max_length=255,
         blank=True,
     )
+
+    cover_illustrator = models.ForeignKey(
+        "illustrations.Illustrator", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="anthology_covers", verbose_name="wykonawca okładki",
+    )
+
+    @property
+    def cover_artist_name(self):
+        return self.cover_illustrator.display_name if self.cover_illustrator_id else self.cover_author
 
     cover_notes = models.TextField(
         "informacje o okładce",
@@ -136,6 +147,8 @@ class Anthology(models.Model):
         ).exists())
 
     def _validate_novel_kind(self):
+        if self.is_novel and 'ekstrakty' in self.title.casefold():
+            raise ValidationError({'is_novel': 'Ekstrakty są antologią zbiorczą, bez trybu powieści.'})
         if self.is_novel and self.is_translated:
             raise ValidationError({'is_translated': 'Powieści nie obsługują tłumaczeń. Wyłącz „Tłumaczone”.'})
         if self.pk:
@@ -146,7 +159,27 @@ class Anthology(models.Model):
     def save(self, *args, **kwargs):
         using = kwargs.get('using') or router.db_for_write(type(self), instance=self)
         fields = kwargs.get('update_fields')
-        if fields is None or {'is_novel', 'is_translated'} & set(fields):
+        if fields is None or {'cover_status', 'cover_illustrator', 'cover_illustrator_id', 'cover_author'} & set(fields):
+            previous = type(self).objects.using(using).filter(pk=self.pk).values(
+                'cover_status', 'cover_illustrator_id', 'cover_author').first() if self.pk else None
+            effective = dict(previous or {})
+            for field in ('cover_status', 'cover_illustrator_id', 'cover_author'):
+                if fields is None or field in fields or (field == 'cover_illustrator_id' and 'cover_illustrator' in fields):
+                    effective[field] = getattr(self, field)
+            changed = False
+            if effective.get('cover_status') == 'not_started':
+                self.cover_commissioned_at = None
+                changed = True
+            elif effective.get('cover_status') == 'in_progress' and effective != previous:
+                self.cover_commissioned_at = timezone.localdate()
+                changed = True
+            if changed and fields is not None:
+                kwargs['update_fields'] = fields = set(fields) | {'cover_commissioned_at'}
+        if self.cover_illustrator_id and (fields is None or {'cover_illustrator', 'cover_illustrator_id', 'cover_author'} & set(fields)):
+            self.cover_author = str(self.cover_illustrator)
+            if fields is not None:
+                kwargs['update_fields'] = fields = set(fields) | {'cover_author'}
+        if fields is None or {'is_novel', 'is_translated', 'title'} & set(fields):
             self._validate_novel_kind()
         if not self.pk:
             self._validate_ready_transition(using)
@@ -416,7 +449,7 @@ class Text(NormalizedModelMixin, models.Model):
         verbose_name_plural = "teksty"
         constraints = [models.UniqueConstraint(fields=("import_source", "import_source_row"), name="unique_text_import_source"),
                        models.UniqueConstraint(fields=('anthology', 'chapter_number'), name='unique_novel_chapter_number'),
-                       models.CheckConstraint(condition=models.Q(chapter_number__isnull=False) | models.Q(length__isnull=False) | models.Q(import_source='extracts-v1'),
+                       models.CheckConstraint(condition=models.Q(chapter_number__isnull=False) | models.Q(length__isnull=False) | models.Q(import_source__in=('extracts-v1', 'extract-volume-v2')),
                                               name='ordinary_text_requires_length')]
 
         ordering = ("title", "pk")
@@ -444,14 +477,25 @@ class Text(NormalizedModelMixin, models.Model):
     def clean(self):
         super().clean()
         self._validate_anthology_move(self._state.db or router.db_for_write(type(self), instance=self))
+        self._validate_extract_volume()
         self._validate_chapter()
 
     def clean_fields(self, exclude=None):
         if self.chapter_number and self.anthology_id and self.anthology.is_novel:
             self.title = f'Rozdział {self.chapter_number}'
         super().clean_fields(exclude=exclude)
-        if self.length is None and not self.chapter_number and self.import_source != 'extracts-v1' and 'length' not in (exclude or ()):
+        if self.length is None and not self.chapter_number and self.import_source not in ('extracts-v1', 'extract-volume-v2') and 'length' not in (exclude or ()):
             raise ValidationError({'length': 'Podaj długość tekstu.'})
+
+    def _validate_extract_volume(self):
+        if self.import_source == 'extract-volume-v2' and self.pk and self.anthology_id != self.import_source_row:
+            raise ValidationError({'anthology': 'Tekst całego tomu musi pozostać w swojej antologii.'})
+        if not self.anthology_id:
+            return
+        from .extract_whole import SOURCE, is_extract_anthology
+        if is_extract_anthology(self.anthology):
+            if self.import_source != SOURCE or self.import_source_row != self.anthology_id:
+                raise ValidationError({'anthology': 'Ekstrakty mają jeden wspólny tekst. Miniatury zapisuj w zakładce Ekstrakty.'})
 
     def _validate_chapter(self):
         novel = bool(self.anthology_id and self.anthology.is_novel)
@@ -469,6 +513,7 @@ class Text(NormalizedModelMixin, models.Model):
                 fields = set(fields) | {'title'}
                 kwargs['update_fields'] = fields
         if fields is None or {'anthology', 'anthology_id', 'chapter_number'} & set(fields):
+            self._validate_extract_volume()
             self._validate_chapter()
         if self.audiobook_blacklisted and (fields is None or {'for_recording', 'audiobook_blacklisted'} & set(fields)):
             self.for_recording = False

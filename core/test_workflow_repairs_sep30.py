@@ -367,8 +367,8 @@ class WorkflowRepairs(TestCase):
         self.stage("editing")
         other = Anthology.objects.create(title="Inny nabór")
         for changes in ({"anthology": other}, {"status": "new"}, {"status": "rejected"}):
-            review = self.review(author=author, old_reviews=True, **changes)
-            form = self.admin_link_form(review, self.text, confirm_source_mismatch="on")
+            review = self.review(author=author, old_reviews=False, **changes)
+            form = self.admin_link_form(review, self.text, confirm_source_mismatch="on", old_reviews="")
             self.assertFalse(form.is_valid())
             self.assertIn("copied_text", form.errors)
             self.assertIn("tej samej antologii", str(form.errors["copied_text"]))

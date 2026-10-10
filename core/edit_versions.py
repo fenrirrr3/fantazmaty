@@ -14,6 +14,7 @@ from django.db.models.signals import pre_save, post_save, post_delete, pre_delet
 
 # Only editable domain records; no audit/outbox/session traffic.
 TRACKED = {
+    'core.audiodescriptionnote',
     'core.audiodescription',
     'core.postlayoutassignment',
     'core.audiocontributor',
@@ -36,6 +37,7 @@ TRACKED = {
 
 # Child records whose change must also invalidate the parent edit form.
 PARENTS = {
+    'core.audiodescriptionnote': (('description_id', 'core.audiodescription'),),
     'core.audiodescription': (('anthology_id', 'texts.anthology'),),
     'core.audiobook': (('text_id', 'texts.text'),),
     'core.audiobookstage': (('text_id', 'texts.text'),),
@@ -130,6 +132,8 @@ def changed(sender, instance, using, raw=False, **kwargs):
     bump(label, instance.pk, using)
     for attname, parent in PARENTS.get(label, ()):
         bump(parent, getattr(instance, attname), using)
+    if label == 'core.audiodescriptionnote':
+        bump('texts.anthology', instance.description.anthology_id, using)
     if label in ('texts.foreignauthor', 'texts.translator'):
         for text_id in instance.translations.using(using).values_list('text_id', flat=True):
             bump('texts.text', text_id, using)
@@ -231,6 +235,10 @@ def _bump_rows(model, rows, using):
                 bump(label, row[0], using)
             for (_, parent), value in zip(parents, row[1:], strict=True):
                 bump(parent, value, using)
+        if label == 'core.audiodescriptionnote':
+            Description = apps.get_model('core', 'AudioDescription')
+            for book_id in Description.objects.using(using).filter(pk__in={row[1] for row in rows}).values_list('anthology_id', flat=True):
+                bump('texts.anthology', book_id, using)
 
 
 class VersionedQuerySet(models.QuerySet):

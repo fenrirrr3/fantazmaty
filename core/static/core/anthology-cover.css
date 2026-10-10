@@ -1,0 +1,7 @@
+.cover-assignment-form { margin-bottom: 1.5rem; }
+.cover-assignment-form fieldset { border: 1px solid var(--border-color, #bbc9d6); border-radius: .6rem; padding: 1rem; min-width: 0; }
+.cover-assignment-form legend { font-weight: 600; padding: 0 .4rem; }
+.cover-assignment-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 1.5rem; margin-bottom: 1rem; }
+.cover-assignment-grid .form-field { min-width: 0; }
+.cover-assignment-grid input:not([type="checkbox"]), .cover-assignment-grid select, .cover-assignment-grid textarea { width: 100%; box-sizing: border-box; }
+@media (max-width: 760px) { .cover-assignment-grid { grid-template-columns: 1fr; } }

@@ -21,6 +21,7 @@ from core.views.recruitment_delete import recruitment_delete
 from core.views.tags import tag_list
 from core.views.translations import translation_list, translation_detail, set_translators, translation_person_detail, translation_person_suggestions
 from core.views.production_tasks import task_list
+from core.views.unlinked_reviews import unlinked_reviews
 from core.views.audio_descriptions import audio_descriptions, audio_description_detail, claim_audio_description
 from core.views.audiobooks import audiobook_list, update_text_audiobook
 from core.views.audiobook_production import audiobook_detail, assign_audio_proofreader, claim_audio_proofreading
@@ -43,6 +44,7 @@ app_name = "core"
 
 
 urlpatterns = [
+    path("recenzje/niepowiazane/", unlinked_reviews, name="unlinked_reviews"),
     path("audiobooki/osoby/<int:pk>/", audio_contributor, name="audio_contributor"),
     path("kontakty/podpowiedzi/", contact_suggestions, name="contact_suggestions"),
     path('audiobooki/zewnetrzne/', external_audiobooks, name='external_audiobooks'),

@@ -140,6 +140,7 @@ MIDDLEWARE = [
     "core.activity.UserActivityMiddleware",
     "core.user_preview.UserPreviewMiddleware",
     "core.middleware.EditingMiddleware",
+    "core.navigation.NavigationMiddleware",
 ]
 
 ROOT_URLCONF = "fantazmaty.urls"
@@ -156,6 +157,7 @@ TEMPLATES = [
             "builtins": ["core.templatetags.editing"],
             "context_processors": [
                 "django.template.context_processors.request",
+                "core.navigation.context",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
             ],

@@ -3,7 +3,7 @@
 {% block content %}
 <header class="page-header"><h1 class="page-title">{{ title }}</h1>
 {% if not is_extract %}<div class="recruitment-actions"><a class="primary-button" href="{% url 'core:recruitment_add' %}">Dodaj zgłoszenie</a>{% if user.is_superuser %}<a class="secondary-button" href="{% url 'core:recruitment_mailbox' %}">Pobierz ze skrzynki</a>{% endif %}</div>{% endif %}</header>
-<section class="filters-card"><form method="get" class="filters-form" data-filters="{{ route }}">
+{% if is_extract %}<section class="card"><div class="card-body"><p>Ta lista jest informacyjnym rejestrem miniatur i ich autorów. Prace nad całym tomem prowadź w jednym wspólnym tekście:</p><div class="filter-actions">{% for volume in extract_workflows %}<a class="secondary-button" href="{% url 'core:assigned_text_detail' volume.pk %}">{{ volume.title }} – etapy pracy</a>{% empty %}<p>Brak utworzonych tomów w workflow.</p>{% endfor %}</div></div></section>{% endif %}<section class="filters-card"><form method="get" class="filters-form" data-filters="{{ route }}">
 <label>Wyszukaj <input name="q" type="search" value="{{ query }}"></label>
 <label>Status <select name="status" multiple>{% for value,label in status_choices %}<option value="{{ value }}" {% if value in selected_statuses %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
 {% if is_extract %}<label>Antologia <select name="recruitment"><option value="">Wszystkie</option>{% for value in recruitments %}<option value="{{ value }}" {% if value == recruitment %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>{% else %}

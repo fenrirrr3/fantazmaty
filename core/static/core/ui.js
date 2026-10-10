@@ -919,6 +919,7 @@ document.addEventListener('DOMContentLoaded', () => {
             timer = setTimeout(saveDraft, 250);
         });
         form.addEventListener("change", saveDraft);
+        if (key) window.addEventListener("beforeunload", saveDraft);
 
         form.addEventListener("submit", (event) => {
             queueMicrotask(() => {

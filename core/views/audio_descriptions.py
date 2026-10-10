@@ -10,7 +10,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
 from core.edit_policy import edit_policy
-from core.models import AudioDescription, EditRevision
+from core.models import AudioDescription, AudioDescriptionNote, EditRevision
 from core.pagination import paginate_items
 from core.permissions import team_member_required, get_active_person_profile, is_coordinator
 from core.table_sorting import DisplayTable
@@ -41,13 +41,16 @@ def require_edit(request, book, kwargs):
 
 class DescriptionForm(forms.ModelForm):
     controllers = forms.ModelMultipleChoiceField(
-        label="Osoby do kontroli", queryset=Person.objects.none(), required=False
+        label="Konsultacja – osoby do kontroli",
+        queryset=Person.objects.none(),
+        required=False,
+        widget=forms.SelectMultiple(attrs={"data-person-multiple": "true"}),
     )
 
     class Meta:
         model = AnthologyTask
         fields = ("assigned_to", "status")
-        labels = {"assigned_to": "Osoba wykonująca audiodeskrypcję"}
+        labels = {"assigned_to": "Kto pisze"}
 
     def __init__(self, *args, description=None, manager=False, **kwargs):
         super().__init__(*args, **kwargs)
@@ -87,6 +90,26 @@ class DescriptionForm(forms.ModelForm):
         return values
 
 
+class StageForm(forms.ModelForm):
+    class Meta:
+        model = AudioDescription
+        fields = ("stage",)
+        widgets = {"stage": forms.Select(attrs={"class": "form-control"})}
+
+
+class ContentForm(forms.ModelForm):
+    class Meta:
+        model = AudioDescription
+        fields = ("content",)
+        widgets = {"content": forms.Textarea(attrs={"rows": 14, "class": "form-control"})}
+
+
+class NoteForm(forms.Form):
+    note = forms.CharField(
+        label="Dodaj uwagę", widget=forms.Textarea(attrs={"rows": 4, "class": "form-control"})
+    )
+
+
 @never_cache
 @login_required
 @require_GET
@@ -94,6 +117,7 @@ class DescriptionForm(forms.ModelForm):
 def audio_descriptions(request):
     query = request.GET.get("q", "").strip()[:200]
     selected_status = request.GET.get("status", "")
+    hide_completed = request.GET.get("hide_completed") == "1"
     tasks = (
         AnthologyTask.objects.filter(task_type="audio_description", anthology__in=books())
         .select_related("anthology", "assigned_to", "anthology__audio_description")
@@ -101,6 +125,8 @@ def audio_descriptions(request):
     )
     if selected_status:
         tasks = tasks.filter(status=selected_status)
+    if hide_completed:
+        tasks = tasks.exclude(status=AnthologyTask.Status.READY)
     person = get_active_person_profile(request.user)
     versions = dict(
         EditRevision.objects.filter(
@@ -141,9 +167,9 @@ def audio_descriptions(request):
             rows,
             {
                 "Antologia": ("anthology", lambda row: row["book"].title),
-                "Osoba": ("person", lambda row: str(row["task"].assigned_to or "")),
+                "Kto pisze": ("person", lambda row: str(row["task"].assigned_to or "")),
                 "Status": ("status", lambda row: row["task"].get_status_display()),
-                "Kontrola": (
+                "Konsultacja": (
                     "controllers",
                     lambda row: ", ".join(str(p) for p in row["controllers"]),
                 ),
@@ -159,6 +185,7 @@ def audio_descriptions(request):
             "query": query,
             "selected_status": selected_status,
             "status_choices": AnthologyTask.Status.choices,
+            "hide_completed": hide_completed,
         },
     )
 
@@ -210,30 +237,69 @@ def audio_description_detail(request, anthology_id):
             anthology=book,
             task_type="audio_description",
         )
-        description = AudioDescription.objects.filter(anthology=book).first()
+        description = get_object_or_404(AudioDescription, anthology=book)
         manager = is_coordinator(request.user)
         editable = may_edit(request.user, book)
         if request.method == "POST":
             require_edit(request, book, {})
+        action = request.POST.get("action", "assignment") if request.method == "POST" else None
         form = DescriptionForm(
-            request.POST if request.method == "POST" else None,
+            request.POST if action == "assignment" else None,
             instance=task,
             description=description,
             manager=manager,
         )
-        if request.method == "POST" and form.is_valid():
-            form.save()
-            if manager:
-                description, _ = AudioDescription.objects.get_or_create(anthology=book)
-                description.controllers.set(form.cleaned_data["controllers"])
-            messages.success(request, "Zapisano audiodeskrypcję.")
-            return redirect("core:audio_description_detail", anthology_id=book.pk)
+        stage_form = StageForm(request.POST if action == "stage" else None, instance=description)
+        content_form = ContentForm(
+            request.POST if action == "content" else None, instance=description
+        )
+        note_form = NoteForm(request.POST if action == "note" else None)
+        forms_by_action = {
+            "assignment": form,
+            "stage": stage_form,
+            "content": content_form,
+            "note": note_form,
+        }
+        if request.method == "POST":
+            chosen = forms_by_action.get(action)
+            if chosen is not None and chosen.is_valid():
+                if action == "assignment":
+                    form.save()
+                    if manager:
+                        description.controllers.set(form.cleaned_data["controllers"])
+                elif action == "note":
+                    person = get_active_person_profile(request.user)
+                    AudioDescriptionNote.objects.create(
+                        description=description,
+                        author=request.user,
+                        author_name=str(person)
+                        if person
+                        else (request.user.get_full_name() or request.user.get_username()),
+                        content=note_form.cleaned_data["note"],
+                    )
+                elif action == "content":
+                    changed = content_form.save(commit=False)
+                    changed.save(update_fields=["content"])
+                else:
+                    changed = stage_form.save(commit=False)
+                    changed.save(update_fields=["stage"])
+                messages.success(
+                    request, "Zapisano audiodeskrypcję." if action != "note" else "Dodano uwagę."
+                )
+                return redirect("core:audio_description_detail", anthology_id=book.pk)
+            if chosen is None:
+                messages.error(request, "Nieznana operacja. Odśwież stronę i spróbuj ponownie.")
         return render(
             request,
             "core/audio_description_detail.html",
             {
                 "anthology": book,
                 "task": task,
+                "description": description,
+                "stage_form": stage_form,
+                "content_form": content_form,
+                "note_form": note_form,
+                "notes": description.notes.all(),
                 "controllers": description.controllers.all() if description else [],
                 "form": form,
                 "can_edit": editable,

@@ -56,3 +56,25 @@ def create_audio_description(sender, instance, using, raw=False, **kwargs):
     if not raw and not instance.is_novel:
         from core.models import AudioDescription
         AudioDescription.objects.using(using).get_or_create(anthology=instance)
+
+
+@receiver(post_save, sender=AnthologyTask, dispatch_uid='texts.sync_audio_description_stage')
+def sync_audio_description_stage(sender, instance, using, raw=False, **kwargs):
+    if raw or instance.task_type != 'audio_description':
+        return
+    from core.models import AudioDescription
+    rows = AudioDescription.objects.using(using).filter(anthology_id=instance.anthology_id)
+    if instance.status == 'ready':
+        rows.exclude(stage='completed').update(stage='completed')
+    else:
+        rows.filter(stage='completed').update(stage='writing')
+
+
+@receiver(post_save, sender=Anthology, dispatch_uid='texts.ensure_extract_whole')
+def ensure_extract_whole(sender, instance, using, raw=False, **kwargs):
+    if not raw:
+        from .extract_whole import is_extract_anthology, ensure_whole_text
+        if is_extract_anthology(instance):
+            whole = ensure_whole_text(instance)
+            if whole and instance.status != 'ready':
+                instance.status = Anthology.objects.using(using).get(pk=instance.pk).status

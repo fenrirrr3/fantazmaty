@@ -1,6 +1,7 @@
 from django.urls import reverse
 from .models import ExtractVolume, ExtractVolumeCredit
 
+PROFILE_TEXT_ROLES = ("Redakcja", "Korekta", "Korekta poskładowa", "Weryfikacja")
 
 def volume_credit_groups(anthology):
     if not ExtractVolume.objects.filter(anthology=anthology).exists():
@@ -13,7 +14,7 @@ def volume_credit_groups(anthology):
 
 def profile_volume_credits(person):
     rows = []
-    for credit in ExtractVolumeCredit.objects.filter(person=person).select_related("anthology"):
+    for credit in ExtractVolumeCredit.objects.filter(person=person, role__in=PROFILE_TEXT_ROLES).select_related("anthology"):
         book = credit.anthology
         rows.append(
             {

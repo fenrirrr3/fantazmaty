@@ -1,4 +1,4 @@
-from core.translation_scope import ordinary
+from core.translation_scope import ordinary, non_abandoned
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from django.http import JsonResponse
@@ -122,7 +122,7 @@ def dashboard_tasks(request):
         active, reserved = _review_tasks(request.user)
     else:
         active, reserved = dashboard_querysets(request.user, timezone.localdate())
-        active, reserved = ordinary(active), ordinary(reserved)
+        active, reserved = non_abandoned(active), non_abandoned(reserved)
         active = active.select_related("text__anthology")
         reserved = reserved.select_related("text__anthology")
     rows = active if kind == "active" else reserved

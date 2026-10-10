@@ -17,7 +17,7 @@ LABELS = {
     'home': 'Pulpit', 'people_list': 'Zespół', 'person_detail': 'Profil osoby',
     'assigned_text_detail': 'Podgląd tekstu', 'assigned_review_detail': 'Podgląd recenzji',
     'my_reviews': 'Moje recenzje', 'my_texts': 'Moje teksty', 'available_texts': 'Teksty do wzięcia',
-    'review_list': 'Recenzje', 'text_list': 'Wszystkie teksty', 'workflow_list': 'Tabelka zbiorcza',
+    'review_list': 'Recenzje', 'unlinked_reviews': 'Niepowiązane teksty', 'text_list': 'Wszystkie teksty', 'workflow_list': 'Tabelka zbiorcza',
     'take_workflow_stage': 'Przejęcie etapu', 'complete_workflow_stage': 'Zakończenie etapu',
     'start_assigned_workflow_stage': 'Rozpoczęcie etapu', 'assign_reviewer': 'Przejęcie recenzji',
     'unassign_reviewer': 'Rezygnacja z recenzji', 'save_review': 'Zapis recenzji',

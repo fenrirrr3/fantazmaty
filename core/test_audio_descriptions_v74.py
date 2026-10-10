@@ -162,6 +162,10 @@ class AudioDescriptionTests(TestCase):
             url,
             {
                 "controllers": [self.other.person_profile.pk],
+                "stage": "writing",
+                "content": "",
+                "notes-TOTAL_FORMS": "0",
+                "notes-INITIAL_FORMS": "0",
                 "_save": "Zapisz",
                 "_edit_version": token,
             },

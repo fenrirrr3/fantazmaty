@@ -7,7 +7,9 @@ from texts.models import Review, Text
 
 def linkable_reviews(text):
     from django.db.models import Q
-    return Review.objects.filter(status=Review.Status.ACCEPTED, anthology_id=text.anthology_id).filter(
+    return Review.objects.filter(anthology_id=text.anthology_id).filter(
+        Q(status=Review.Status.ACCEPTED) | Q(old_reviews=True)
+    ).filter(
         Q(copied_text__isnull=True) | Q(copied_text_id=text.pk)
     ).order_by('title','pk')
 
@@ -22,8 +24,8 @@ def suggested_review_ids(text):
 
 def validate_source_review_link(text, review, *, coauthors=None, confirm_mismatch=False):
     """Shared, non-mutating validation for admin and explicit source links."""
-    if not review or review.status != Review.Status.ACCEPTED or review.anthology_id != text.anthology_id:
-        raise ValidationError('Wybierz przyjęte zgłoszenie z tej samej antologii. Dane mogły się zmienić.')
+    if not review or (review.status != Review.Status.ACCEPTED and not review.old_reviews) or review.anthology_id != text.anthology_id:
+        raise ValidationError('Wybierz przyjęte lub archiwalne zgłoszenie z tej samej antologii. Dane mogły się zmienić.')
     from texts.services import normalize_author_name
     text_authors = list(text.authors.all())
     text_author_ids = {author.pk for author in text_authors}
@@ -40,9 +42,9 @@ def validate_source_review_link(text, review, *, coauthors=None, confirm_mismatc
             and (not review.email or (author.email or '').strip().casefold() == review.email.strip().casefold())]
         authors_mismatch = not any(review_author_ids | {author.pk} == text_author_ids
                                   for author in possible_primary)
-    mismatch = review.title.strip().casefold() != text.title.strip().casefold() or authors_mismatch
+    mismatch = review.status != Review.Status.ACCEPTED or review.title.strip().casefold() != text.title.strip().casefold() or authors_mismatch
     if mismatch and confirm_mismatch is not True:
-        raise ValidationError('Tytuł lub autorzy zgłoszenia różnią się od tekstu. Sprawdź dane i zaznacz potwierdzenie rozbieżności.')
+        raise ValidationError('Tytuł, autorzy lub decyzja zgłoszenia nie zgadzają się z przyjętym tekstem. Sprawdź dane i zaznacz potwierdzenie rozbieżności.')
     if review.copied_text_id not in (None,text.pk):
         raise ValidationError('To zgłoszenie jest już powiązane z innym tekstem.')
 

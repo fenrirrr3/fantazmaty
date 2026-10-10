@@ -1,13 +1,14 @@
 {% extends "core/base.html" %}{% load static %}
 {% block title %}Audiodeskrypcje | Fantazmaty CMS{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/audio-descriptions.css' %}">{% endblock %}
 {% block content %}
 <header class="page-header"><h1 class="page-title">Audiodeskrypcje</h1></header>
 <section class="filters-card"><form method="get" class="filters-form">
 <div class="filter-field"><label for="description-q">Szukaj antologii lub osoby</label><input id="description-q" name="q" type="search" value="{{ query }}"></div>
 <div class="filter-field"><label for="description-status">Status</label><select id="description-status" name="status"><option value="">Wszystkie</option>{% for value, label in status_choices %}<option value="{{ value }}" {% if value == selected_status %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
-<div class="filter-actions"><button class="primary-button">Filtruj</button><a class="secondary-button" href="{% url 'core:audio_descriptions' %}">Wyczyść filtry</a></div>
+<div class="filter-actions ad-filter-actions"><label><input type="checkbox" name="hide_completed" value="1" {% if hide_completed %}checked{% endif %}> Ukryj gotowe</label><button class="primary-button">Filtruj</button><a class="secondary-button" href="{% url 'core:audio_descriptions' %}">Wyczyść filtry</a></div>
 </form></section>
-<section class="card"><div class="profile-table-inset"><div class="table-container"><table data-server-paginated="true"><thead><tr><th>Antologia</th><th>Osoba</th><th>Status</th><th>Kontrola</th><th>Akcja</th></tr></thead>
+<section class="card"><div class="profile-table-inset"><div class="table-container"><table data-server-paginated="true"><thead><tr><th>Antologia</th><th>Kto pisze</th><th>Status</th><th>Konsultacja</th><th>Akcja</th></tr></thead>
 <tbody>{% for row in rows %}<tr><td><a class="text-title-link" href="{% url 'core:audio_description_detail' row.book.pk %}">{{ row.book.title }}</a></td>
 <td>{% if row.task.assigned_to_id %}<a href="{% url 'core:person_detail' row.task.assigned_to_id %}">{{ row.task.assigned_to }}</a>{% else %}Nieprzypisane{% endif %}</td>
 <td><span class="stage-status {% if row.task.status == 'ready' %}completed{% elif row.task.status == 'commissioned' %}active{% else %}pending{% endif %}">{{ row.task.get_status_display }}</span></td>

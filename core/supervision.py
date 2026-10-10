@@ -141,7 +141,7 @@ def duplicate_candidates(title, anthology_id, author_ids, *, exclude_text_id=Non
 def anthology_checklist(anthology):
     rows=[]
     texts=list(Text.objects.filter(anthology=anthology).prefetch_related(
-        'authors', Prefetch('workflow_stages', queryset=WorkflowStage.objects.current_cycle().filter(
+        'authors', 'translation__foreign_authors', Prefetch('workflow_stages', queryset=WorkflowStage.objects.current_cycle().filter(
             workflow_cycle=F('text__current_workflow_cycle')), to_attr='checklist_stages')))
     included=[]
     for text in texts:
@@ -152,8 +152,9 @@ def anthology_checklist(anthology):
         url = reverse("core:assigned_text_detail", args=[text.pk])
         if not any(s.stage_type == "ready" for s in stages):
             rows.append(issue("Tekst nie jest gotowy", text.title, url))
-        authors = list(text.authors.all())
-        if not authors:
+        record = getattr(text, 'translation', None) if anthology.is_translated else None
+        authors = list(record.foreign_authors.all()) if record else list(text.authors.all())
+        if not authors and text.import_source != 'extract-volume-v2':
             rows.append(issue("Brak autora", text.title, url))
     if not included:
         rows.append(
@@ -178,7 +179,7 @@ def anthology_checklist(anthology):
             issue(
                 "Okładka nie jest gotowa",
                 anthology.title,
-                reverse("admin:texts_anthology_change", args=[anthology.pk]),
+                reverse("core:anthology_detail", args=[anthology.pk]) + "#task-cover",
             )
         )
     tasks = {task.task_type: task for task in anthology.production_tasks.all()}
@@ -189,7 +190,7 @@ def anthology_checklist(anthology):
                 issue(
                     "Niezakończone zadanie produkcyjne",
                     label,
-                    reverse("core:anthology_detail", args=[anthology.pk]),
+                    reverse("core:anthology_detail", args=[anthology.pk]) + "#task-" + kind,
                 )
             )
     return rows
@@ -330,8 +331,8 @@ def anthology_credits(anthology, *, text=None, include_assignments=False):
     for illustration in illustrations:
         for artist in illustration.illustrators.all():
             add(artist, None, "Ilustrator", illustration.text.title)
-    if text is None and anthology.cover_author.strip():
-        name = anthology.cover_author.strip()
+    if text is None and anthology.cover_artist_name.strip():
+        name = anthology.cover_artist_name.strip()
         if "@" in name:
             name = "Brak danych wykonawcy"
         identity = ("cover", anthology.pk)

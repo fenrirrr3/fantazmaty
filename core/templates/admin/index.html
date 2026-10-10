@@ -1,1 +1,13 @@
-{% extends "admin/index.html" %}
+{% extends "admin/index.html" %}{% load static i18n log %}
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static 'core/admin-dashboard.css' %}">{% endblock %}
+{% block coltype %}colM{% endblock %}
+{% block content %}
+<div class="cms-admin-dashboard">
+<div id="content-main" class="cms-admin-menu-columns">{% include "admin/app_list.html" with app_list=app_list show_changelinks=True %}</div>
+<aside class="cms-admin-recent"><details><summary>Ostatnie działania</summary>
+{% get_admin_log 10 as admin_log for_user user %}
+<ul class="actionlist">{% for entry in admin_log %}<li class="{% if entry.is_addition %}addlink{% elif entry.is_change %}changelink{% else %}deletelink{% endif %}">
+{% if entry.is_deletion or not entry.get_admin_url %}{{ entry.object_repr }}{% else %}<a href="{{ entry.get_admin_url }}">{{ entry.object_repr }}</a>{% endif %}<br><span class="mini quiet">{{ entry.content_type.name|capfirst }} · {{ entry.action_time|date:'d.m.Y H:i' }}</span></li>{% empty %}<li>Brak ostatnich działań.</li>{% endfor %}</ul>
+</details></aside></div>
+{% endblock %}
+{% block sidebar %}{% endblock %}

@@ -8,6 +8,7 @@ from texts.models import Anthology, NovelProfile, Text
 from workflow.catalog import workflow_role_choices
 from texts.vocabulary import canonicalize
 from texts.novels import parse_chapter_numbers
+from texts.cover_forms import CoverAssignmentForm
 
 
 class AuthorChoices(forms.ModelMultipleChoiceField):
@@ -177,8 +178,8 @@ class AssignmentForm(forms.Form):
         return data
 
 
-class CoverForm(forms.ModelForm):
-    class Meta:
+class CoverForm(CoverAssignmentForm):
+    class Meta(CoverAssignmentForm.Meta):
         model = Anthology
-        fields = ('cover_status', 'cover_author', 'cover_notes', 'print_status')
+        fields = (*CoverAssignmentForm.Meta.fields, 'print_status')
         widgets = {'cover_notes': forms.Textarea(attrs={'rows': 2})}

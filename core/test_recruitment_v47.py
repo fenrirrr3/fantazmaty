@@ -110,7 +110,8 @@ class RecruitmentAndTypographyTests(TestCase):
             "cover_typography-status",
         )
         response = self.client.get(reverse("core:task_list"), {"task": "cover_typography"})
-        self.assertEqual([row["name"] for row in response.context["tasks"]], ["Typografia okładki"])
+        self.assertIn(("cover_typography", "Typografia okładki"), response.context["task_choices"])
+        self.assertTrue(all(len(row["cells"]) == 6 for row in response.context["tasks"]))
         response = self.client.get(
             reverse(
                 "admin:texts_anthologytask_change",

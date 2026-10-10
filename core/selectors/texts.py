@@ -1,7 +1,7 @@
 from core.public_authors import name_matches
 from workflow.catalog import active_stage_choices, active_role_choices, workflow_role_choices, IMPORT_ONLY_ROLES
 from workflow.labels import assignment_label, stage_label
-from core.translation_scope import ordinary
+from core.translation_scope import ordinary, non_abandoned
 from core.filtering import facet_queryset
 from datetime import date
 
@@ -529,10 +529,10 @@ def user_workflow_summary(user, *, today=None, limit=None):
     today = today or timezone.localdate()
     from workflow.read_queries import dashboard_querysets
     active, reserved = dashboard_querysets(user, today)
-    active, reserved = ordinary(active), ordinary(reserved)
+    active, reserved = non_abandoned(active), non_abandoned(reserved)
     counts = (active.count(), reserved.count())
-    active = active.select_related("text__anthology").prefetch_related("text__authors")
-    reserved = reserved.select_related("text__anthology", "assigned_to__person_profile").prefetch_related("text__authors")
+    active = active.select_related("text__anthology", "text__translation").prefetch_related("text__authors", "text__translation__foreign_authors", "text__translation__translators")
+    reserved = reserved.select_related("text__anthology", "text__translation", "assigned_to__person_profile").prefetch_related("text__authors", "text__translation__foreign_authors", "text__translation__translators")
     if limit is not None:
         active, reserved = active[:limit], reserved[:limit]
     return {

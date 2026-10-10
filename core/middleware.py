@@ -52,6 +52,7 @@ def aggregate(match):
 
 
 RECOVERABLE_FIELDS = frozenset({
+    'note',
     'tags',
     'notes', 'content', 'general_notes', 'content_warnings', 'coordinator_note',
     'opinion', 'fragment', 'problem', 'suggestion', 'file_url',

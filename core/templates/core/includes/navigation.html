@@ -28,7 +28,7 @@
 
 
         </div>
-{% with current=request.resolver_match.url_name namespace=request.resolver_match.namespace %}{% if user.is_superuser or user.person_profile.is_active %}<nav class="sidebar-scroll" aria-label="Główna nawigacja"><div class="sidebar-section"><p class="sidebar-heading">Moja praca</p><a
+{% with current=navigation_current namespace=navigation_namespace %}{% if user.is_superuser or user.person_profile.is_active %}<nav class="sidebar-scroll" aria-label="Główna nawigacja"><div class="sidebar-section"><p class="sidebar-heading">Moja praca</p><a
                             href="{% url 'core:home' %}"
                             class="sidebar-link"
                             {% if namespace == 'core' and current == 'home' %}aria-current="page"{% endif %}

@@ -6,7 +6,7 @@
 <header class="page-header">
     <h1 class="page-title">Audiobook: {{ text.title }}</h1>
     <div class="audio-actions">
-        <a class="secondary-button" href="{% url 'core:audiobooks' %}">Wróć do Audiobooków</a>
+        <a class="secondary-button" href="{% if return_url %}{{ return_url }}{% else %}{% url 'core:audiobooks' %}{% endif %}">Wróć do Audiobooków</a>
         <a class="secondary-button" href="{% if text.anthology.is_translated %}{% url 'core:translation_detail' text.pk %}{% else %}{% url 'core:assigned_text_detail' text.pk %}{% endif %}">Otwórz tekst</a>
     </div>
 </header>

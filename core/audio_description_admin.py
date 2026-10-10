@@ -4,13 +4,14 @@ from django.db.models import Q
 from django.urls import reverse
 from django.utils.html import format_html
 from people.models import Person
-from core.models import AudioDescription
+from core.models import AudioDescription, AudioDescriptionNote
 
 
 class AudioDescriptionAdminForm(forms.ModelForm):
     class Meta:
         model = AudioDescription
-        fields = ("controllers",)
+        fields = ("controllers", "stage", "content")
+        widgets = {"controllers": forms.SelectMultiple(attrs={"data-person-multiple": "true"})}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -21,15 +22,31 @@ class AudioDescriptionAdminForm(forms.ModelForm):
         )
 
 
+class AudioDescriptionNoteInline(admin.TabularInline):
+    model = AudioDescriptionNote
+    extra = 0
+    fields = ("author_name", "created_at", "content")
+    readonly_fields = fields
+    can_delete = False
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
 @admin.register(AudioDescription)
 class AudioDescriptionAdmin(admin.ModelAdmin):
     form = AudioDescriptionAdminForm
-    list_display = ("anthology", "task_link")
+    list_display = ("anthology", "task_link", "stage")
+    list_filter = ("stage",)
     search_fields = ("anthology__title",)
     list_select_related = ("anthology",)
     readonly_fields = ("anthology", "task_link")
-    fields = ("anthology", "task_link", "controllers")
-    filter_horizontal = ("controllers",)
+    fields = ("anthology", "task_link", "controllers", "stage", "content")
+    inlines = (AudioDescriptionNoteInline,)
+
+    class Media:
+        js = ("core/person-multiselect.js",)
+        css = {"all": ("core/person-multiselect.css",)}
 
     @admin.display(description="Wykonawca i status")
     def task_link(self, obj):
@@ -54,4 +71,7 @@ class AudioDescriptionAdmin(admin.ModelAdmin):
             and obj is not None
             and obj.anthology_id in getattr(request, "_deleting_anthologies", ())
             and not obj.controllers.exists()
+            and not obj.content.strip()
+            and obj.stage == "writing"
+            and not obj.notes.exists()
         )

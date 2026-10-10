@@ -76,7 +76,9 @@ class TranslationVisibilityTests(TestCase):
         self.assertFalse(html.fromstring(response.content).xpath('//input[@id="text-hide-ready"]/@checked'))
         response = self.client.get(reverse('core:translation_list'), {'hide_ready': '1'})
         self.assertNotContains(response, self.text.title)
-        for route in ('text_list', 'workflow_list'):
+        response = self.client.get(reverse('core:text_list'), {'hide_ready': '0'})
+        self.assertContains(response, self.text.title)
+        for route in ('workflow_list',):
             response = self.client.get(reverse('core:'+route), {'hide_ready': '0'})
             self.assertContains(response, self.normal.title)
             self.assertNotContains(response, self.text.title)

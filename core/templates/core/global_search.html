@@ -6,7 +6,7 @@
     <header class="page-header">
         <h1 class="page-title">Wyszukiwanie</h1>
         <p class="page-description">
-            Znajdź teksty, bieżące recenzje, osoby w zespole i antologie.
+            Znajdź teksty i tłumaczenia, recenzje, osoby, antologie oraz kontakty do nagrań. Koordynatorzy mogą też wyszukiwać ilustratorów i zgłoszenia rekrutacyjne.
             {% if can_view_authors %}
                 Możesz również wyszukiwać autorów.
             {% endif %}
@@ -65,6 +65,7 @@
         </header>
 
         <div class="global-search-results">
+            {% for group in additional_results %}<section class="card"><header class="section-header"><h2>{{ group.label }}</h2><span class="record-counter">{{ group.items|length }}</span></header><ul class="search-result-list">{% for item in group.items %}<li class="search-result-item"><a href="{{ item.url }}">{{ item.label }}</a></li>{% empty %}<li>Brak wyników.</li>{% endfor %}</ul></section>{% endfor %}
             <section class="card" aria-labelledby="search-texts-heading">
                 <header class="section-header">
                     <h2 id="search-texts-heading">Teksty</h2>
@@ -76,7 +77,7 @@
                         {% for text in texts %}
                             <li class="search-result-item">
                                 <a
-                                    href="{% url 'core:assigned_text_detail' text.pk %}"
+                                    href="{{ text.url }}"
                                     class="detail-link"
                                 >
                                     <strong>{{ text.title }}</strong>
@@ -230,7 +231,7 @@
                         {% for anthology in anthologies %}
                             <li class="search-result-item">
                                 <a
-                                    href="{% url 'core:text_list' %}?anthology={{ anthology.pk }}&amp;hide_ready=0"
+                                    href="{% url 'core:anthology_detail' anthology.pk %}"
                                     class="detail-link"
                                 >
                                     <strong>{{ anthology.title }}</strong>

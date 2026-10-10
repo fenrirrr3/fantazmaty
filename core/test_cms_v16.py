@@ -144,8 +144,10 @@ class CMS16Tests(TestCase):
         response = self.client.get(reverse("core:task_list"))
         self.assertEqual(response.status_code, 200)
         rows = list(response.context["tasks"])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(len(rows[0]["cells"]), 6)
         self.assertEqual(
-            {r["name"] for r in rows},
+            {label for value, label in response.context["task_choices"]},
             {"Blurb", "Banery", "Skład", "Okładka", "Audiodeskrypcja", "Typografia okładki"},
         )
         self.assertNotContains(response, ready.title)

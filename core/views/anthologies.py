@@ -1,4 +1,4 @@
-from core.translation_scope import ordinary
+from core.translation_scope import non_abandoned
 from django.contrib.auth.decorators import login_required
 from django.db.models import Prefetch
 from django.shortcuts import render
@@ -16,13 +16,13 @@ from texts.models import Anthology, AnthologyTask
 @team_member_required
 def anthology_list(request):
     production_tasks = (
-        ordinary(AnthologyTask.objects)
+        non_abandoned(AnthologyTask.objects)
         .select_related("assigned_to")
         .order_by("task_type", "pk")
     )
 
     anthologies = (
-        ordinary(Anthology.objects).filter(is_novel=False)
+        non_abandoned(Anthology.objects).filter(is_novel=False)
         .prefetch_related(
             Prefetch(
                 "production_tasks",

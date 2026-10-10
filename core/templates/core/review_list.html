@@ -45,6 +45,7 @@
             >
                 Archiwalne
             </a>
+            {% if user.is_superuser %}<a class="tab-link" href="{% url 'core:unlinked_reviews' %}">Niepowiązane</a>{% endif %}
         </nav>
     {% endif %}
 

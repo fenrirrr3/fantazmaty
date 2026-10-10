@@ -5,6 +5,7 @@ from django import forms
 from django.db import transaction
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
+from django.http import HttpResponse
 from django.db.models import Q
 from django.views.decorators.http import require_GET, require_http_methods
 from core.edit_policy import edit_policy
@@ -15,6 +16,8 @@ from core.pagination import paginate_items
 from core.selectors.texts import available_stages_for_user
 from people.models import Person
 from texts.models import Anthology, AnthologyTask
+from texts.models import ExtractVolume
+from texts.cover_forms import CoverAssignmentForm
 from workflow.services import ROLE_GROUPS
 from workflow.models import WorkflowRoleAssignment
 
@@ -87,26 +90,35 @@ def anthology_detail(request, anthology_id):
     anthology = get_object_or_404(Anthology, pk=anthology_id)
     if anthology.is_novel:
         return redirect('core:novel_detail', novel_id=anthology.pk)
-    if anthology.is_translated:
-        from django.urls import reverse
-        return redirect(reverse('core:translation_list') + f'?anthology={anthology.pk}&hide_ready=0')
     coordinator = is_coordinator(request.user)
     forms_list = _task_forms(anthology) if coordinator else []
+    cover_form = CoverAssignmentForm(instance=anthology, prefix='cover') if coordinator else None
     if request.method == 'POST':
         if not coordinator:
             raise PermissionDenied
+        if request.POST.get('action') == 'cover' and not request.POST.get('_edit_version'):
+            return HttpResponse('Odśwież stronę i ponów zapis okładki. Brak wersji formularza.', status=409)
         with transaction.atomic():
             anthology = get_object_or_404(Anthology.objects.select_for_update(), pk=anthology_id)
-            forms_list = _task_forms(anthology, request.POST)
-            if all([form.is_valid() for form in forms_list]):
-                for form in forms_list:
-                    form.save()
-                messages.success(request, 'Zapisano zadania antologii.')
-                return redirect('core:anthology_detail', anthology_id=anthology.pk)
+            if request.POST.get('action') == 'cover':
+                cover_form = CoverAssignmentForm(request.POST, instance=anthology, prefix='cover')
+                if cover_form.is_valid():
+                    cover_form.save()
+                    messages.success(request, 'Zapisano okładkę antologii.')
+                    return redirect('core:anthology_detail', anthology_id=anthology.pk)
+            else:
+                forms_list = _task_forms(anthology, request.POST)
+                if all([form.is_valid() for form in forms_list]):
+                    for form in forms_list:
+                        form.save()
+                    messages.success(request, 'Zapisano zadania antologii.')
+                    return redirect('core:anthology_detail', anthology_id=anthology.pk)
+    show_credits = not ExtractVolume.objects.filter(anthology=anthology, number__in=(1, 2)).exists()
     return render(request, 'core/anthology_detail.html', {
         'anthology': anthology, 'show_checklist': coordinator, 'task_forms': forms_list,
         'issues': anthology_checklist(anthology) if coordinator else [],
-        'credits': anthology_credit_groups(anthology),
+        'credits': anthology_credit_groups(anthology) if show_credits else [],
+        'extract_text': anthology.texts.filter(import_source='extract-volume-v2').first(), 'show_credits': show_credits, 'cover_form': cover_form,
     }, status=400 if request.method == 'POST' else 200)
 
 

@@ -1,7 +1,7 @@
 {% extends 'core/base.html' %}{% load static %}{% load workspace_tags %}
 {% block title %}{{ book.title }} | Powieści{% endblock %}
 {% block extra_css %}<link rel="stylesheet" href="{% static 'core/novels.css' %}">{% endblock %}
-{% block content %}
+{% block content %}{% if return_url %}<p><a class="secondary-button" href="{{ return_url }}">Wróć do poprzedniej listy</a></p>{% endif %}
 <header class="page-header">
 <p class="eyebrow">Powieść</p><h1 class="page-title">{{ book.title }}</h1>
 <p class="page-description">{% for author in profile.authors.all %}{{ author.display_name }}{% if not forloop.last %}, {% endif %}{% empty %}Nie podano autora{% endfor %} · {{ book.get_status_display }}</p>
@@ -45,8 +45,8 @@
 
 </div></section>
 {% if coordinator %}<details class="card text-management-card" id="novel-production"{% if production_open %} open{% endif %}><summary><span>Zadania całej powieści</span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary><div class="card-body">
-{% if is_open %}<form method="post" class="intake-form">{% csrf_token %}<input type="hidden" name="novel_token" value="{{ novel_token }}"><input type="hidden" name="action" value="production"><div class="novel-assignment-grid">{% for form in task_forms %}<fieldset><legend>{{ form.instance.get_task_type_display }}</legend>{{ form.as_p }}</fieldset>{% endfor %}</div><h3>Okładka i wydanie</h3>{{ cover_form.as_p }}<button class="primary-button">Zapisz zadania</button></form>
-{% else %}<ul>{% for task in book.production_tasks.all %}<li>{{ task.get_task_type_display }}: {{ task.get_status_display }}{% if task.assigned_to %} – {{ task.assigned_to }}{% endif %}</li>{% endfor %}</ul><p>Okładka: {{ book.get_cover_status_display }} – {{ book.cover_author|default:'brak wykonawcy' }}</p>{% endif %}
+{% if is_open %}<form method="post" class="intake-form">{% csrf_token %}<input type="hidden" name="novel_token" value="{{ novel_token }}"><input type="hidden" name="action" value="production"><div class="novel-assignment-grid">{% for form in task_forms %}<fieldset id="task-{{ form.instance.task_type }}"><legend>{{ form.instance.get_task_type_display }}</legend>{{ form.as_p }}</fieldset>{% endfor %}</div><h3 id="task-cover">Okładka i wydanie</h3>{{ cover_form.as_p }}<button class="primary-button">Zapisz zadania</button></form>
+{% else %}<ul>{% for task in book.production_tasks.all %}<li>{{ task.get_task_type_display }}: {{ task.get_status_display }}{% if task.assigned_to %} – {{ task.assigned_to }}{% endif %}</li>{% endfor %}</ul><p>Okładka: {{ book.get_cover_status_display }} – {{ book.cover_artist_name|default:'brak wykonawcy' }}</p>{% endif %}
 <form method="post" class="intake-form novel-status-action">{% csrf_token %}<input type="hidden" name="novel_token" value="{{ novel_token }}">{% if is_open %}<button class="secondary-button" name="action" value="finish">Oznacz powieść jako gotową</button>{% else %}<button class="secondary-button" name="action" value="reopen">Wznów pracę nad powieścią</button>{% endif %}</form>
 </div></details>{% endif %}
 {% endblock %}

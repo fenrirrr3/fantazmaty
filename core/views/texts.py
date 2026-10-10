@@ -102,6 +102,7 @@ def _render_text_detail_page(request, text, *, bound_forms=None, status=200):
         text=text,
     )
     context.update(_permission_context(request.user))
+    context['is_extract_volume'] = text.import_source == 'extract-volume-v2'
     context['is_novel'] = bool(text.anthology_id and text.anthology.is_novel)
     context['is_translation'] = bool(text.anthology_id and text.anthology.is_translated)
     if context['is_translation']:
@@ -195,6 +196,7 @@ def text_list(request):
         text_list_context(
             user=request.user,
             params=request.GET,
+            include_translations=True,
         )
     )
     page_obj = paginate_items(request, context.pop("texts"))

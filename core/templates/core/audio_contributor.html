@@ -1,6 +1,6 @@
 {% extends 'core/base.html' %}
 {% block title %}{{ person.name }} – nagrania | Fantazmaty CMS{% endblock %}
-{% block content %}
+{% block content %}{% if return_url %}<p><a class="secondary-button" href="{{ return_url }}">Wróć do poprzedniej listy</a></p>{% endif %}
 <header class="page-header"><h1>{{ person.name }}</h1><a class="secondary-button" href="{% url 'core:audiobooks' %}">Audiobooki</a></header>
 <section class="card"><div class="card-body">
 {% if show_email and person.email %}<p>E-mail: <a href="mailto:{{ person.email }}">{{ person.email }}</a></p>{% endif %}

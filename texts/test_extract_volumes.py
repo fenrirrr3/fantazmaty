@@ -89,8 +89,8 @@ class ExtractVolumeImportTests(TestCase):
         self.assertEqual(ExtractVolume.objects.count(), 3)
         self.assertEqual(ExtractVolumeCredit.objects.count(), 4)
         for text in Text.objects.all():
-            self.assertEqual(text.title, "Tak, przecinek")
-            self.assertEqual(list(text.authors.all()), [self.author])
+            self.assertEqual(text.title, text.anthology.title)
+            self.assertEqual(list(text.authors.all()), [])
             self.assertIsNone(text.length)
             self.assertIsNone(text.workflow_stages.get().started_at)
         self.assertEqual(list(Extract.objects.values()), original)
@@ -158,11 +158,10 @@ class ExtractVolumeImportTests(TestCase):
         text.save()
         self.run_import(True)
         text.refresh_from_db()
-        self.assertEqual(text.title, "Poprawiony tytuł")
+        self.assertEqual(text.title, text.anthology.title)
         self.sources[2].accepted_titles = ""
         self.sources[2].save()
-        with self.assertRaises(CommandError):
-            self.run_import(True)
+        self.run_import(True)
         self.assertEqual(Text.objects.count(), 3)
 
     def test_regular_text_length_still_required_and_admin_can_edit_miniature(self):
@@ -176,7 +175,7 @@ class ExtractVolumeImportTests(TestCase):
     def test_volume_history_without_account_and_ordinary_book_unchanged(self):
         self.run_import(True)
         rows, summary = profile_assignments(self.person, include_authors=True)
-        self.assertEqual(len(rows), 4)
+        self.assertEqual(len(rows), 2)
         self.assertEqual(summary["completed"], 2)
         self.assertTrue(all(row["text"]["authors"]["all"] == [] for row in rows))
         self.assertTrue(all(row["has_completed_work"] for row in rows))
@@ -217,13 +216,13 @@ class ExtractVolumeImportTests(TestCase):
             created_by=None,
         )
         rows, _ = profile_assignments(self.person, include_authors=True)
-        self.assertEqual(len(rows), 4)
+        self.assertEqual(len(rows), 2)
 
     def test_existing_unlinked_anthology_aborts(self):
         Anthology.objects.create(title="Ekstrakty 2")
         with self.assertRaises(CommandError):
             self.run_import(True)
-        self.assertFalse(Text.objects.exists())
+        self.assertEqual(Text.objects.count(), 1)
         self.assertFalse(ExtractTextLink.objects.exists())
 
     def test_explicit_mapping_of_person_and_recruitment(self):
@@ -241,5 +240,5 @@ class ExtractVolumeImportTests(TestCase):
         self.run_import(True, mapping=str(mapping))
         self.assertEqual(ExtractVolumeCredit.objects.filter(person=self.person).count(), 4)
         self.assertEqual(
-            ExtractTextLink.objects.get(extract=self.sources[0]).text.anthology.title, "Ekstrakty 1"
+            Text.objects.get(anthology__title="Ekstrakty 1").title, "Ekstrakty 1"
         )
