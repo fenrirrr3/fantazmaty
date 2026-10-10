@@ -144,3 +144,16 @@ class StylesheetTests(SimpleTestCase):
         self.assertIn('.audiobook-public-button', css)
         for theme in ('--accent:', '--accent-hover:'):
             self.assertGreaterEqual(self.css('themes.css').count(theme), 3)
+
+
+class AdBlockerSafeClassTests(SimpleTestCase):
+    """Blokery reklam ukrywają elementy o klasach „ad-…” – audiodeskrypcja ich nie używa."""
+
+    def test_no_ad_prefixed_classes(self):
+        import re
+        pattern = re.compile(r'(?<![\w-])ad-[a-z]')
+        root = Path(settings.BASE_DIR) / 'core'
+        for path in [*(root / 'templates').rglob('*.html'), *STATIC.glob('*.css')]:
+            text = path.read_text(encoding='utf-8')
+            classes = ' '.join(re.findall(r'class="([^"]*)"', text)) if path.suffix == '.html' else ' '.join(re.findall(r'\.[\w-]+', text))
+            self.assertIsNone(pattern.search(classes.replace('.', ' ')), path.name)

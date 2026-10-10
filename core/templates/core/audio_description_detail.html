@@ -3,28 +3,28 @@
 {% block extra_css %}<link rel="stylesheet" href="{% static 'core/audiobook-production.css' %}"><link rel="stylesheet" href="{% static 'core/audio-descriptions.css' %}"><link rel="stylesheet" href="{% static 'core/person-multiselect.css' %}">{% endblock %}
 {% block content %}
 <header class="page-header"><h1 class="page-title">Audiodeskrypcja: {{ anthology.title }}</h1><div class="audio-actions"><a class="secondary-button" href="{% if return_url %}{{ return_url }}{% else %}{% url 'core:audio_descriptions' %}{% endif %}">Wróć do listy</a><a class="secondary-button" href="{% url 'core:anthology_detail' anthology.pk %}">Otwórz antologię</a></div></header>
-<div class="ad-columns">
+<div class="audiodesc-columns">
 <section class="card"><div class="card-body"><h2>Przypisanie</h2>
 <p>Status zadania antologii: <strong>{{ task.get_status_display }}</strong>{% if can_manage %} – zmieniasz go na <a href="{% url 'core:anthology_detail' anthology.pk %}#task-audio_description">stronie antologii</a>{% endif %}.</p>
-{% if can_manage %}<form method="post" class="audio-production-form ad-form" data-warn-unsaved>{% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="assignment">{{ form.non_field_errors }}
+{% if can_manage %}<form method="post" class="audio-production-form audiodesc-form" data-warn-unsaved>{% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="assignment">{{ form.non_field_errors }}
 {% for field in form %}<div class="form-field">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}
 <button class="primary-button" type="submit">Zapisz</button></form>{% endif %}
 <p>Kto pisze: {% if task.assigned_to_id %}<a href="{% url 'core:person_detail' task.assigned_to_id %}">{{ task.assigned_to }}</a>{% else %}Nieprzypisane{% endif %}</p>
 <p>Konsultacja: {% for person in controllers %}<a href="{% url 'core:person_detail' person.pk %}">{{ person }}</a>{% if not forloop.last %}, {% endif %}{% empty %}Nie wyznaczono{% endfor %}</p>
 </div></section>
 <section class="card"><div class="card-body"><h2>Prace nad audiodeskrypcją</h2>
-{% if can_edit and not is_completed %}<form method="post" class="ad-form" data-warn-unsaved>{% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="stage">{{ stage_form.non_field_errors }}
+{% if can_edit and not is_completed %}<form method="post" class="audiodesc-form" data-warn-unsaved>{% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="stage">{{ stage_form.non_field_errors }}
 <div class="form-field">{{ stage_form.stage.label_tag }}{{ stage_form.stage }}{{ stage_form.stage.errors }}</div>
 <p class="muted-text">Zakończone ustawia zadanie antologii jako Gotowe. Tego kroku nie da się cofnąć poza panelem admina.</p><button class="primary-button" type="submit">Zapisz</button></form>
 {% else %}<p><strong>{{ description.get_stage_display }}</strong></p>{% if is_completed %}<p class="muted-text">Audiodeskrypcja jest zakończona. Cofnięcie tylko w panelu admina.</p>{% endif %}{% endif %}
 </div></section></div>
 <section class="card"><div class="card-body"><h2>Treść audiodeskrypcji</h2>{% if can_write %}<p class="muted-text">Niezapisana treść jest zachowywana jako szkic w tej karcie przeglądarki. Przycisk „Zapisz treść” zapisuje ją w bazie.</p>{% endif %}
-{% if can_write %}<form method="post" class="ad-form" data-warn-unsaved data-autosave="ad-{{ anthology.pk }}-content">{% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="content">{{ content_form.non_field_errors }}<div class="form-field"><label class="visually-hidden" for="{{ content_form.content.id_for_label }}">Treść audiodeskrypcji</label>{{ content_form.content }}{{ content_form.content.errors }}</div><button class="primary-button" type="submit">Zapisz treść</button></form>
-{% else %}<div class="ad-content">{{ description.content|default:"Brak treści audiodeskrypcji." }}</div>{% endif %}
+{% if can_write %}<form method="post" class="audiodesc-form" data-warn-unsaved data-autosave="ad-{{ anthology.pk }}-content">{% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="content">{{ content_form.non_field_errors }}<div class="form-field"><label class="visually-hidden" for="{{ content_form.content.id_for_label }}">Treść audiodeskrypcji</label>{{ content_form.content }}{{ content_form.content.errors }}</div><button class="primary-button" type="submit">Zapisz treść</button></form>
+{% else %}<div class="audiodesc-content">{{ description.content|default:"Brak treści audiodeskrypcji." }}</div>{% endif %}
 </div></section>
 <section class="card"><div class="card-body"><h2>Uwagi</h2>
-{% if can_write %}<form method="post" class="ad-form" data-warn-unsaved>{% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="note">{{ note_form.non_field_errors }}<div class="form-field">{{ note_form.note.label_tag }}{{ note_form.note }}{{ note_form.note.errors }}</div><button class="primary-button" type="submit">Dodaj uwagę</button></form>{% endif %}
-{% for note in notes %}<article class="ad-note"><header><strong>{{ note.author_name }}</strong><time datetime="{{ note.created_at|date:'c' }}">{{ note.created_at|date:'d.m.Y H:i' }}</time></header><div class="ad-content">{{ note.content }}</div></article>{% empty %}<p class="muted-text">Brak uwag.</p>{% endfor %}
+{% if can_write %}<form method="post" class="audiodesc-form" data-warn-unsaved>{% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="note">{{ note_form.non_field_errors }}<div class="form-field">{{ note_form.note.label_tag }}{{ note_form.note }}{{ note_form.note.errors }}</div><button class="primary-button" type="submit">Dodaj uwagę</button></form>{% endif %}
+{% for note in notes %}<article class="audiodesc-note"><header><strong>{{ note.author_name }}</strong><time datetime="{{ note.created_at|date:'c' }}">{{ note.created_at|date:'d.m.Y H:i' }}</time></header><div class="audiodesc-content">{{ note.content }}</div></article>{% empty %}<p class="muted-text">Brak uwag.</p>{% endfor %}
 </div></section>
 {% endblock %}
 {% block scripts %}{{ block.super }}<script src="{% static 'core/person-select.js' %}" defer></script><script src="{% static 'core/person-multiselect.js' %}" defer></script>{% endblock %}

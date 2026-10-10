@@ -162,7 +162,7 @@ class AudioDescriptionContentTests(TestCase):
         )
         self.client.force_login(self.manager)
         doc = html.fromstring(self.client.get(self.url).content)
-        self.assertEqual(len(doc.xpath('//div[@class="ad-columns"]/section')), 2)
+        self.assertEqual(len(doc.xpath('//div[@class="audiodesc-columns"]/section')), 2)
         # The finished stage is locked; assignment, content and notes stay available.
         self.assertEqual(
             doc.xpath('//form/input[@name="action"]/@value'),
