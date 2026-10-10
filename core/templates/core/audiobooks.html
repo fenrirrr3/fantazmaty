@@ -41,8 +41,8 @@
                 <td>{{ audio.awaiting_publication_started_at|date:"d.m.Y"|default:"–" }}</td>
                 <td>{{ audio.premiere_date|date:"d.m.Y"|default:"–" }}</td>
 
-                <td>{% if audio.status == 'published' and audio.youtube_url %}<a class="secondary-button" href="{{ audio.youtube_url }}" target="_blank" rel="noopener noreferrer">YouTube</a>{% else %}–{% endif %}</td>
-                <td>{% if audio.status == 'published' and audio.hearthis_url %}<a class="secondary-button" href="{{ audio.hearthis_url }}" target="_blank" rel="noopener noreferrer">HearThis</a>{% else %}–{% endif %}</td>
+                <td>{% if audio.status == 'published' %}{% for link in audio.publication_links %}{% if link.service == 'youtube' %}<a class="secondary-button" href="{{ link.url }}" target="_blank" rel="noopener noreferrer">{{ link.label }}</a>{% endif %}{% endfor %}{% if not audio.youtube_url %}–{% endif %}{% else %}–{% endif %}</td>
+                <td>{% if audio.status == 'published' %}{% for link in audio.publication_links %}{% if link.service == 'hearthis' %}<a class="secondary-button" href="{{ link.url }}" target="_blank" rel="noopener noreferrer">{{ link.label }}</a>{% endif %}{% endfor %}{% if not audio.hearthis_url %}–{% endif %}{% else %}–{% endif %}</td>
             </tr>{% endwith %}{% empty %}<tr><td colspan="15">Brak audiobooków pasujących do filtrów.</td></tr>{% endfor %}</tbody>
         </table>
     </div>

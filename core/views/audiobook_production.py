@@ -150,7 +150,7 @@ def audiobook_detail(request, text_id):
                     raise ValidationError('Nieznana operacja. Odśwież podgląd.')
             except ValidationError as exc:
                 errors = exc.messages
-        stages = list(text.audiobook_stages.all())
+        stages = list(text.audiobook_stages.select_related('performer__person_profile'))
         return render(request, 'core/audiobook_detail.html', dict(text=text, audio=audio,
             authors_display=authors_display(text), proofreader_display=proofreader_display(audio),
             people_form=people_form, publication_form=publication_form, stage_form=stage_form,

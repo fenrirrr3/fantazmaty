@@ -242,9 +242,8 @@ class AudiobookProductionTests(TestCase):
 
     def test_migration_preserves_known_dates_without_inventing_end_dates(self):
         apps = MigrationExecutor(connection).loader.project_state([('core', '0027_audiobook_stages')]).apps
-        Audio = apps.get_model('core', 'Audiobook')
         old = timezone.localdate() - timedelta(days=10)
-        audio = Audio.objects.create(text_id=self.text.pk, status='proofreading', recording_started_at=old)
+        audio = Audiobook.objects.create(text_id=self.text.pk, status='proofreading', recording_started_at=old)
         migration = import_module('core.migrations.0028_audiobook_stage_history')
         migration.preserve_dates(apps, connection.schema_editor())
         migration.preserve_dates(apps, connection.schema_editor())

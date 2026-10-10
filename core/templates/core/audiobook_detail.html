@@ -46,8 +46,7 @@
         <button class="primary-button">Zapisz</button>
     </form>{% else %}<p><strong>Data premiery:</strong> {{ audio.premiere_date|date:"d.m.Y"|default:"Brak daty" }}</p>{% endif %}
     {% if audio.status == 'published' %}<div class="audio-actions">
-        {% if audio.youtube_url %}<a class="secondary-button" href="{{ audio.youtube_url }}" target="_blank" rel="noopener noreferrer">Otwórz YouTube</a>{% endif %}
-        {% if audio.hearthis_url %}<a class="secondary-button" href="{{ audio.hearthis_url }}" target="_blank" rel="noopener noreferrer">Otwórz HearThis</a>{% endif %}
+        {% for link in audio.publication_links %}<a class="secondary-button" href="{{ link.url }}" target="_blank" rel="noopener noreferrer">Otwórz {{ link.label }}</a>{% endfor %}
     </div>{% endif %}
 </div></section>
 </div>
@@ -58,7 +57,7 @@
     <div class="table-container" role="region" tabindex="0" aria-label="Historia etapów audiobooka">
     <table class="data-table" data-pagination="off"><thead><tr><th>Etap</th><th>Data rozpoczęcia</th><th>Data zakończenia</th><th>Akcja</th></tr></thead>
     <tbody>{% for stage in stages %}<tr>
-        <td>{{ stage.get_stage_type_display }}</td><td>{{ stage.started_at|date:"d.m.Y"|default:"Brak daty" }}</td>
+        <td>{{ stage.get_stage_type_display }}{% if stage.performer %}<br><span class="muted-text">{{ stage.performer.person_profile|default:stage.performer.get_full_name }}</span>{% endif %}</td><td>{{ stage.started_at|date:"d.m.Y"|default:"Brak daty" }}</td>
         <td>{{ stage.ended_at|date:"d.m.Y"|default:"–" }}{% if stage.is_completed and not stage.ended_at %}<span class="muted-text"> Zakończony; data nieznana</span>{% endif %}</td>
         <td>{% if audio.active_stage_id == stage.pk and can_finish %}<form method="post">
             {% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="finish_stage"><input type="hidden" name="stage_id" value="{{ stage.pk }}">

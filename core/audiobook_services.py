@@ -42,7 +42,8 @@ def start_stage(*, text_id, user, stage_type, started_at):
     previous = text.audiobook_stages.filter(ended_at__isnull=False).order_by('-ended_at').first()
     if previous and started_at < previous.ended_at:
         raise ValidationError('Nowy etap nie może rozpocząć się przed zakończeniem poprzedniego.')
-    stage = AudiobookStage.objects.create(text=text, stage_type=stage_type, started_at=started_at)
+    stage = AudiobookStage.objects.create(text=text, stage_type=stage_type, started_at=started_at,
+        performer=audio.proofreader if stage_type == Audiobook.Status.PROOFREADING else None)
     audio.active_stage = stage
     audio.status = stage_type
     fields = ['active_stage', 'status']
@@ -71,7 +72,9 @@ def finish_stage(*, text_id, stage_id, user):
         raise ValidationError('Etap ma datę rozpoczęcia w przyszłości.')
     stage.ended_at = today
     stage.is_completed = True
-    stage.save(update_fields=['ended_at', 'is_completed'])
+    if stage.stage_type == Audiobook.Status.PROOFREADING:
+        stage.performer = audio.proofreader
+    stage.save(update_fields=['ended_at', 'is_completed', 'performer'])
     audio.active_stage = None
     audio.save(update_fields=['active_stage'])
     return stage

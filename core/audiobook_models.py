@@ -4,7 +4,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 
 from core.edit_versions import VersionedQuerySet
-from core.audiobook_validators import validate_youtube_url, validate_hearthis_url
+from core.audiobook_validators import validate_youtube_url, validate_hearthis_url, validate_audio_links
 
 
 class Audiobook(models.Model):
@@ -37,6 +37,8 @@ class Audiobook(models.Model):
     premiere_date = models.DateField('data premiery', null=True, blank=True)
     youtube_url = models.URLField('YouTube', max_length=1000, blank=True, validators=[validate_youtube_url])
     hearthis_url = models.URLField('HearThis', max_length=1000, blank=True, validators=[validate_hearthis_url])
+    additional_links = models.JSONField('linki do kolejnych części', default=list, blank=True,
+        validators=[validate_audio_links], help_text='Lista obiektów: service (youtube/hearthis), part (numer części), url.')
 
     class Meta:
         verbose_name = 'audiobook'
@@ -45,6 +47,17 @@ class Audiobook(models.Model):
 
     def __str__(self):
         return str(self.text)
+
+    @property
+    def publication_links(self):
+        links = []
+        for service in ('youtube', 'hearthis'):
+            url = getattr(self, f'{service}_url')
+            if url:
+                links.append({'service': service, 'part': 1, 'url': url})
+        links.extend(self.additional_links)
+        return [{**link, 'label': ('YouTube' if link['service'] == 'youtube' else 'HearThis')
+            + (f" – cz. {link['part']}" if self.additional_links else '')} for link in links]
 
     def clean(self):
         super().clean()
@@ -73,6 +86,9 @@ class AudiobookStage(models.Model):
     started_at = models.DateField('data rozpoczęcia', null=True, blank=True)
     ended_at = models.DateField('data zakończenia', null=True, blank=True)
     is_completed = models.BooleanField('zakończony', default=False)
+    performer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='audiobook_stage_history', verbose_name='wykonawca korekty')
+    import_key = models.CharField(max_length=64, null=True, blank=True, unique=True, editable=False)
 
     class Meta:
         verbose_name = 'etap audiobooka'

@@ -24,14 +24,17 @@ class AudiobookAdminForm(AudiobookProductionForm):
     class Meta(AudiobookProductionForm.Meta):
         exclude = ()
 
+    def clean_additional_links(self):
+        return self.cleaned_data.get('additional_links') or []
+
 
 @admin.register(AudiobookStage)
 class AudiobookStageAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
-    list_display = ('text', 'stage_type', 'started_at', 'ended_at', 'is_completed')
+    list_display = ('text', 'stage_type', 'performer', 'started_at', 'ended_at', 'is_completed')
     list_filter = ('stage_type', 'is_completed')
     search_fields = ('text__title',)
-    list_select_related = ('text',)
-    readonly_fields = ('text', 'stage_type', 'started_at', 'ended_at', 'is_completed')
+    list_select_related = ('text', 'performer')
+    readonly_fields = ('text', 'stage_type', 'performer', 'started_at', 'ended_at', 'is_completed')
 
     def has_add_permission(self, request):
         return False
@@ -56,7 +59,7 @@ class AudiobookAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         ('Lektor', {'fields': ('narrator_name', 'narrator_email', 'recording_started_at', 'corrections_started_at')}),
         ('Korektor audiobooka', {'fields': ('proofreader', 'proofreading_started_at')}),
         ('Dźwiękowiec', {'fields': ('engineer_name', 'engineer_email', 'editing_started_at')}),
-        ('Publikacja', {'fields': ('awaiting_publication_started_at', 'premiere_date', 'youtube_url', 'hearthis_url')}),
+        ('Publikacja', {'fields': ('awaiting_publication_started_at', 'premiere_date', 'youtube_url', 'hearthis_url', 'additional_links')}),
     )
 
     def get_readonly_fields(self, request, obj=None):
