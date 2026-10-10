@@ -1,35 +1,51 @@
 {% extends "core/base.html" %}
 {% load static %}
-
-{% block extra_css %}{{ block.super }}<link rel="stylesheet" href="{% static 'core/external-audiobooks.css' %}?v=59">{% endblock %}
-
+{% block extra_css %}{{ block.super }}<link rel="stylesheet" href="{% static 'core/external-audiobooks.css' %}?v=59"><link rel="stylesheet" href="{% static 'core/audiobook-production.css' %}?v=60">{% endblock %}
 {% block title %}Audiobooki | Fantazmaty CMS{% endblock %}
-
 {% block content %}
 <header class="page-header">
     <h1 class="page-title">Audiobooki</h1>
-    <p class="page-description">Teksty oznaczone jako „Do nagrywania”. Status odpowiada obecnemu etapowi pracy nad tekstem.</p>
+    <p class="page-description">Przypisania, postęp produkcji i publikacje tekstów oznaczonych jako „Do nagrywania”.</p>
     <div class="audiobook-public-actions">
         <a class="secondary-button audiobook-public-button" href="{% url 'core:external_audiobooks' %}" target="_blank" rel="noopener noreferrer">Zewnętrzne audiobooki</a>
         {% if user.is_superuser %}<a class="secondary-button" href="{% url 'admin:core_publicaudiobooksettings_changelist' %}">MegaNZ i wytyczne – ustawienia</a>{% endif %}
     </div>
 </header>
-
-<section class="card" aria-label="Teksty do nagrywania">
-    <div class="card-body"><h2>Do nagrywania</h2></div>
-    <div class="table-container" role="region" tabindex="0" aria-label="Tabela tekstów do nagrywania">
-        <table data-server-paginated="true" class="data-table">
-            <caption class="visually-hidden">Teksty do nagrywania</caption>
-            <thead><tr><th scope="col">Antologia</th><th scope="col">Autor</th><th scope="col">Tytuł</th><th scope="col">Status</th></tr></thead>
-            <tbody>{% for text in texts %}<tr>
+<section class="card"><div class="card-body">
+    <form method="get">
+        <div class="audio-filters">
+            <div class="form-field"><label for="audio-q">Szukaj tekstu lub osoby</label><input type="search" name="q" id="audio-q" value="{{ query }}"></div>
+            <div class="form-field"><label for="audio-anthology">Antologia</label><select name="anthology" id="audio-anthology"><option value="">Wszystkie</option>{% for book in anthologies %}{% if book.anthology_id %}<option value="{{ book.anthology_id }}"{% if selected_anthology == book.anthology_id|stringformat:'s' %} selected{% endif %}>{{ book.anthology__title }}</option>{% endif %}{% endfor %}</select></div>
+            <div class="form-field"><label for="audio-status">Status audiobooka</label><select name="status" id="audio-status"><option value="">Wszystkie</option>{% for value, label in status_choices %}<option value="{{ value }}"{% if value == selected_status %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+        </div>
+        <div class="audio-actions"><button class="primary-button" type="submit">Filtruj</button><a class="secondary-button" href="{% url 'core:audiobooks' %}">Wyczyść filtry</a></div>
+    </form>
+</div></section>
+<section class="card" aria-label="Audiobooki">
+    <div class="table-container" role="region" tabindex="0" aria-label="Tabela audiobooków">
+        <table data-server-paginated="true" class="data-table audio-table">
+            <caption class="visually-hidden">Audiobooki – przypisania i publikacje</caption>
+            <thead><tr><th scope="col">Antologia</th><th scope="col">Autor</th><th scope="col">Tytuł</th><th scope="col">Status</th><th scope="col">Lektor</th><th scope="col">Dźwiękowiec</th><th scope="col">Korektor audiobooka</th><th scope="col">Nagrywanie od</th><th scope="col">Korekta od</th><th scope="col">Poprawki od</th><th scope="col">Montaż od</th><th scope="col">Czeka na publikację od</th><th scope="col">Data premiery</th><th scope="col">YouTube</th><th scope="col">HearThis</th></tr></thead>
+            <tbody>{% for text in texts %}{% with audio=text.audio %}<tr>
                 <td>{{ text.anthology.title|default:"Brak antologii" }}</td>
                 <td>{{ text.authors_display|default:"Brak przypisanego autora" }}</td>
-                <td><a href="{% if text.is_translation %}{% url 'core:translation_detail' text.pk %}{% else %}{% url 'core:assigned_text_detail' text.pk %}{% endif %}" class="text-title-link"><strong>{{ text.title }}</strong></a></td>
-                <td>{% include "core/includes/workflow_badge.html" with workflow_stage=text.current_status %}</td>
-            </tr>{% empty %}<tr><td colspan="4">Brak tekstów do nagrywania.</td></tr>{% endfor %}</tbody>
+                <td><a href="{% url 'core:audiobook_detail' text.pk %}" class="text-title-link"><strong>{{ text.title }}</strong></a></td>
+                <td>{% include "core/includes/audiobook_status.html" %}</td>
+                <td>{{ audio.narrator_name|default:"Nie przypisano" }}</td>
+                <td>{{ audio.engineer_name|default:"Nie przypisano" }}</td>
+                <td>{{ text.proofreader_display|default:"Nie przypisano" }}</td>
+                <td>{{ audio.recording_started_at|date:"d.m.Y"|default:"–" }}</td>
+                <td>{{ audio.proofreading_started_at|date:"d.m.Y"|default:"–" }}</td>
+                <td>{{ audio.corrections_started_at|date:"d.m.Y"|default:"–" }}</td>
+                <td>{{ audio.editing_started_at|date:"d.m.Y"|default:"–" }}</td>
+                <td>{{ audio.awaiting_publication_started_at|date:"d.m.Y"|default:"–" }}</td>
+                <td>{{ audio.premiere_date|date:"d.m.Y"|default:"–" }}</td>
+
+                <td>{% if audio.status == 'published' and audio.youtube_url %}<a class="secondary-button" href="{{ audio.youtube_url }}" target="_blank" rel="noopener noreferrer">YouTube</a>{% else %}–{% endif %}</td>
+                <td>{% if audio.status == 'published' and audio.hearthis_url %}<a class="secondary-button" href="{{ audio.hearthis_url }}" target="_blank" rel="noopener noreferrer">HearThis</a>{% else %}–{% endif %}</td>
+            </tr>{% endwith %}{% empty %}<tr><td colspan="15">Brak audiobooków pasujących do filtrów.</td></tr>{% endfor %}</tbody>
         </table>
     </div>
 </section>
 {% include "core/includes/pagination.html" %}
-
 {% endblock %}

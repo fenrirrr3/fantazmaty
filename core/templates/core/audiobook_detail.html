@@ -1,0 +1,45 @@
+{% extends "core/base.html" %}
+{% load static %}
+{% block title %}Audiobook: {{ text.title }} | Fantazmaty CMS{% endblock %}
+{% block extra_css %}{{ block.super }}<link rel="stylesheet" href="{% static 'core/audiobook-production.css' %}?v=60">{% endblock %}
+{% block content %}
+<header class="page-header">
+    <h1 class="page-title">Audiobook: {{ text.title }}</h1>
+    <div class="audio-actions">
+        <a class="secondary-button" href="{% url 'core:audiobooks' %}">Wróć do Audiobooków</a>
+        <a class="secondary-button" href="{% if text.anthology.is_translated %}{% url 'core:translation_detail' text.pk %}{% else %}{% url 'core:assigned_text_detail' text.pk %}{% endif %}">Otwórz tekst</a>
+    </div>
+</header>
+<section class="card"><div class="card-body">
+    <h2>Informacje o tekście</h2>
+    <dl class="audio-metadata">
+        <div><dt>Antologia</dt><dd>{{ text.anthology.title|default:"Brak antologii" }}</dd></div>
+        <div><dt>Autor</dt><dd>{{ authors_display|default:"Brak danych" }}</dd></div>
+        <div><dt>Liczba znaków</dt><dd>{{ text.length }}</dd></div>
+        <div><dt>Gatunek</dt><dd>{{ text.genre|default:"Brak danych" }}</dd></div>
+        <div><dt>Tagi</dt><dd>{{ text.tags|default:"Brak danych"|linebreaksbr }}</dd></div>
+        <div><dt>Ostrzeżenia dotyczące treści</dt><dd>{{ text.content_warnings|default:"Nie podano"|linebreaksbr }}</dd></div>
+    </dl>
+</div></section>
+<section class="card"><div class="card-body">
+    <h2>Przypisanie i status</h2>
+    <p>{% include "core/includes/audiobook_status.html" %}</p>
+    {% if not eligible %}<p class="muted-text">Tekst wyłączono z produkcji audiobooków (wycofanie, czarna lista lub wyłączone „Do nagrywania”). Dotychczasowe dane są zachowane.</p>{% elif not can_edit %}<p class="muted-text">Przypisania, status i daty może zmieniać koordynator lub superuser.</p>{% endif %}
+    <form method="post" class="audio-production-form" data-warn-unsaved>
+        {% csrf_token %}{% edit_version %}{{ form.non_field_errors }}
+        <div class="audio-fields-grid">
+        {% for title, fields in field_groups %}
+            <fieldset><legend>{{ title }}</legend>
+                {% for field in fields %}<div class="form-field">{{ field.label_tag }}{{ field }}{{ field.errors }}{% if field.help_text %}<p class="form-help">{{ field.help_text }}</p>{% endif %}</div>{% endfor %}
+            </fieldset>
+        {% endfor %}
+        </div>
+        <p class="muted-text">Daty są opcjonalne. Zmiana statusu nie uzupełnia ich automatycznie.</p>
+        {% if can_edit %}<button class="primary-button" type="submit">Zapisz</button>{% endif %}
+    </form>
+    {% if audio.status == 'published' %}<div class="audio-actions">
+        {% if audio.youtube_url %}<a class="secondary-button" href="{{ audio.youtube_url }}" target="_blank" rel="noopener noreferrer">Otwórz YouTube</a>{% endif %}
+        {% if audio.hearthis_url %}<a class="secondary-button" href="{{ audio.hearthis_url }}" target="_blank" rel="noopener noreferrer">Otwórz HearThis</a>{% endif %}
+    </div>{% endif %}
+</div></section>
+{% endblock %}

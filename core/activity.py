@@ -5,6 +5,7 @@ import time
 logger = logging.getLogger(__name__)
 
 LABELS = {
+    'audiobook_detail': 'Podgląd audiobooka',
     'user_preview': 'Wybór użytkownika do podglądu', 'user_preview_stop': 'Zakończenie podglądu użytkownika',
     'home': 'Pulpit', 'people_list': 'Zespół', 'person_detail': 'Profil osoby',
     'assigned_text_detail': 'Podgląd tekstu', 'assigned_review_detail': 'Podgląd recenzji',

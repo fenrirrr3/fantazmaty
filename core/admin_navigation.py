@@ -11,7 +11,7 @@ GROUPS = (
     ('authors', 'Autorzy', ('authors.author', 'blacklist')),
     ('team', 'Zespół i konta', ('people.person', 'auth.user', 'people.vacation', 'core.recruitment', 'recruitment_mailbox')),
     ('art', 'Ilustracje i okładki', ('illustrations.illustration', 'illustrations.illustrator', 'illustrators_active', 'illustrators_inactive', 'illustrations.coverproposal', 'illustrations.publicillustrationsettings')),
-    ('audio', 'Audiobooki i audiodeskrypcje', ('audiobooks_queue', 'audiobooks_blacklist', 'audio_description_tasks', 'core.publicaudiobooksettings')),
+    ('audio', 'Audiobooki i audiodeskrypcje', ('core.audiobook', 'audiobooks_queue', 'audiobooks_blacklist', 'audio_description_tasks', 'core.publicaudiobooksettings')),
     ('history', 'Historia i diagnostyka', ('workflow.workflowstage', 'workflow.workflowroleassignment', 'core.useractivity', 'core.workflowevent')),
     ('settings', 'Ustawienia', ('core.mailboxconnection', 'people.role', 'auth.group')),
 )

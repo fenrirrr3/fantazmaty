@@ -16,6 +16,45 @@ from core.models import WorkflowEvent
 from core.models import MailboxConnection
 from core.admin_newsletter_recovery import NewsletterRecoveryAdminMixin
 from core.models import PublicAudiobookSettings
+from core.models import Audiobook
+from core.audiobook_forms import AudiobookProductionForm
+
+
+class AudiobookAdminForm(AudiobookProductionForm):
+    class Meta(AudiobookProductionForm.Meta):
+        exclude = ()
+
+
+@admin.register(Audiobook)
+class AudiobookAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
+    form = AudiobookAdminForm
+    list_display = ('text', 'status', 'narrator_name', 'engineer_name', 'proofreader', 'premiere_date')
+    list_filter = ('status', 'text__anthology')
+    search_fields = ('text__title', 'narrator_name', 'engineer_name', 'proofreader__last_name')
+    list_select_related = ('text__anthology', 'proofreader')
+    autocomplete_fields = ('text',)
+    fieldsets = (
+        ('Tekst i status', {'fields': ('text', 'status')}),
+        ('Lektor', {'fields': ('narrator_name', 'narrator_email', 'recording_started_at', 'corrections_started_at')}),
+        ('Korektor audiobooka', {'fields': ('proofreader', 'proofreading_started_at')}),
+        ('Dźwiękowiec', {'fields': ('engineer_name', 'engineer_email', 'editing_started_at')}),
+        ('Publikacja', {'fields': ('awaiting_publication_started_at', 'premiere_date', 'youtube_url', 'hearthis_url')}),
+    )
+
+    def get_readonly_fields(self, request, obj=None):
+        return ('text',) if obj else ()
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        if db_field.name == 'text':
+            from texts.models import Text
+            from texts.production import active_production_texts
+            kwargs['queryset'] = active_production_texts(Text.objects.filter(
+                for_recording=True, audiobook_blacklisted=False, audiobook__isnull=True))
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+    def has_delete_permission(self, request, obj=None):
+        # Disabling recording preserves its production history.
+        return False
 
 
 @admin.register(PublicAudiobookSettings)

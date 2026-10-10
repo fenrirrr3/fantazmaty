@@ -16,11 +16,13 @@ def aggregate(match):
     from workflow.models import WorkflowStage, WorkflowRoleAssignment
     from people.models import Vacation
     from authors.models import Author, AuthorNote
-    from core.models import AnthologyCorrection
+    from core.models import AnthologyCorrection, Audiobook
     kwargs = match.kwargs
     admin_model = getattr(getattr(match.func, "model_admin", None), "model", None)
     object_id = kwargs.get("object_id", "")
     if match.namespace == "admin" and admin_model and str(object_id).isdecimal() and len(str(object_id)) < 19:
+        if admin_model is Audiobook:
+            return Text, Audiobook.objects.filter(pk=int(object_id)).values_list('text_id', flat=True).first()
         if admin_model is TextTranslation:
             return Text, TextTranslation.objects.filter(pk=int(object_id)).values_list('text_id', flat=True).first()
         if admin_model is TextNote:

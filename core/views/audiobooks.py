@@ -2,15 +2,12 @@ from django import forms
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
-from django.shortcuts import get_object_or_404, redirect, render
+from django.shortcuts import get_object_or_404, redirect
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST
 
-from core.pagination import paginate_items
 from core.permissions import team_member_required
-from core.selectors.texts import text_list_context
 from texts.models import Text
-from texts.production import active_production_texts
 from core.edit_policy import edit_policy
 
 
@@ -42,13 +39,8 @@ class AudiobookForm(forms.ModelForm):
 @require_GET
 @team_member_required
 def audiobook_list(request):
-    params = request.GET.copy()
-    params['hide_ready'] = '0'
-    context = dict(text_list_context(user=request.user, params=params,
-        scope=active_production_texts(Text.objects.filter(for_recording=True, audiobook_blacklisted=False)), include_translations=True))
-    page = paginate_items(request, context.pop('texts'))
-    context.update(texts=page, page_obj=page)
-    return render(request, 'core/audiobooks.html', context)
+    from core.views.audiobook_production import list_page
+    return list_page(request)
 
 
 @edit_policy(require_version=True)

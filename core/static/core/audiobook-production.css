@@ -1,0 +1,18 @@
+.audio-actions { display: flex; flex-wrap: wrap; gap: .65rem; margin: .85rem 0; align-items: center; }
+.audio-fields-grid, .audio-metadata { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 1.5rem; }
+.audio-metadata dd { margin: .3rem 0 0; overflow-wrap: anywhere; }
+.audio-metadata dt { font-weight: 600; }
+.audio-production-form fieldset { min-width: 0; padding: 1rem; border: 1px solid var(--border-color, #bbc9d6); border-radius: .6rem; }
+.audio-production-form legend { font-weight: 600; padding: 0 .4rem; }
+.audio-production-form input, .audio-production-form select { width: 100%; box-sizing: border-box; }
+.audio-production-form .form-field + .form-field { margin-top: .8rem; }
+.audio-filters { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 1rem; }
+.audio-filters input, .audio-filters select { width: 100%; min-width: 0; }
+.audio-table td { vertical-align: middle; }
+.audio-table th { white-space: normal; min-width: 7rem; }
+.audio-table .text-title-link { display: block; min-width: 12rem; }
+.audio-status { display: inline-block; padding: .2rem .55rem; border: 1px solid currentColor; border-radius: .35rem; font-size: .88rem; line-height: 1.4; background: #f1f5f9; color: #334155; }
+.audio-status--recording, .audio-status--corrections { background: #fff0c2; color: #714500; }
+.audio-status--proofreading, .audio-status--editing { background: #dcecff; color: #154777; }
+.audio-status--awaiting_publication, .audio-status--published { background: #e0f3e7; color: #1a5a35; }
+@media (max-width: 760px) { .audio-fields-grid, .audio-metadata, .audio-filters { grid-template-columns: 1fr; } }

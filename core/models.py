@@ -3,6 +3,7 @@ from django.db import models
 from django.utils import timezone
 from core.edit_versions import VersionedQuerySet
 from core.audiobook_validators import validate_mega_url
+from core.audiobook_models import Audiobook as Audiobook
 
 
 class PublicAudiobookSettings(models.Model):

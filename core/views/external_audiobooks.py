@@ -17,7 +17,7 @@ def visible_audiobooks():
     return active_production_texts(Text.objects.filter(
         for_recording=True, audiobook_blacklisted=False,
         anthology__status=Anthology.Status.READY,
-    ))
+    ).filter(Q(audiobook__isnull=True) | Q(audiobook__status='pending')))
 
 
 def public_config():

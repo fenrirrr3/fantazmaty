@@ -334,6 +334,25 @@ def _extra_columns(items, queryset, request):
 
 
 def prepare_table_sort(request, items):
+    if request.resolver_match and request.resolver_match.view_name == 'core:audiobooks':
+        fields = {
+            'Antologia': ('anthology', 'anthology__title'), 'Autor': ('author', 'audio_author'),
+            'Tytuł': ('title', 'title'), 'Status': ('status', 'audio_status'),
+            'Lektor': ('narrator', 'audiobook__narrator_name'), 'Dźwiękowiec': ('engineer', 'audiobook__engineer_name'),
+            'Korektor audiobooka': ('proofreader', 'audiobook__proofreader__person_profile__last_name'),
+            'Nagrywanie od': ('recording', 'audiobook__recording_started_at'),
+            'Korekta od': ('proofreading', 'audiobook__proofreading_started_at'),
+            'Poprawki od': ('corrections', 'audiobook__corrections_started_at'),
+            'Montaż od': ('editing', 'audiobook__editing_started_at'),
+            'Czeka na publikację od': ('awaiting', 'audiobook__awaiting_publication_started_at'),
+            'Data premiery': ('premiere', 'audiobook__premiere_date'),
+            'YouTube': ('youtube', 'audiobook__youtube_url'), 'HearThis': ('hearthis', 'audiobook__hearthis_url'),
+        }
+        selected = request.GET.get('sort', 'anthology')
+        field = next((field for key, field in fields.values() if key == selected.lstrip('-')), 'anthology__title')
+        return items.order_by(('-' if selected.startswith('-') else '') + field, 'title', 'pk'), {
+            label: key for label, (key, _) in fields.items()
+        }
     if request.resolver_match and request.resolver_match.view_name == 'core:external_audiobooks':
         # Never expose private Text fields through public sorting or projection.
         fields = {
