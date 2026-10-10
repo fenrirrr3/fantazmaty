@@ -6,15 +6,16 @@ from django.contrib.auth import get_user_model
 from django.core import signing
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 
 from core.models import PostLayoutAssignment
-from core.permissions import has_role, is_superuser, require_post_layout
+from core.permissions import is_coordinator, require_post_layout
 from texts.models import Anthology
 
 
 def can_manage(user):
-    return is_superuser(user) or has_role(user, 'Koordynator korekty')
+    return is_coordinator(user)
 
 
 def eligible_proofreaders():
@@ -24,7 +25,7 @@ def eligible_proofreaders():
 
 class ProofreaderField(forms.ModelChoiceField):
     def label_from_instance(self, obj):
-        return str(obj.person_profile)
+        return str(getattr(obj, 'person_profile', None) or obj.get_full_name() or obj.username)
 
 
 class AssignmentForm(forms.Form):
@@ -37,7 +38,7 @@ class AssignmentForm(forms.Form):
     def __init__(self, *args, user, **kwargs):
         super().__init__(*args, **kwargs)
         self.user = user
-        self.fields['anthology'].queryset = Anthology.objects.filter(is_novel=False).order_by('title', 'pk')
+        self.fields['anthology'].queryset = Anthology.objects.filter(is_novel=False).exclude(status='abandoned').order_by('title', 'pk')
         self.fields['proofreader'].queryset = eligible_proofreaders().order_by('person_profile__last_name', 'person_profile__first_name', 'pk')
         self.initial['token'] = signing.dumps([user.pk, uuid.uuid4().hex], salt='post-layout-create')
 
@@ -65,7 +66,7 @@ def create_assignment(*, user, anthology, proofreader, page_from, page_to, token
     anthology = Anthology.objects.select_for_update().get(pk=anthology.pk)
     from people.models import Person
     Person.objects.select_for_update().get(user_id=proofreader.pk)
-    if anthology.is_novel or not eligible_proofreaders().filter(pk=proofreader.pk).exists():
+    if anthology.is_novel or anthology.status == 'abandoned' or not eligible_proofreaders().filter(pk=proofreader.pk).exists():
         raise ValidationError('Antologia lub korektor nie są już dostępni. Odśwież stronę.')
     existing = PostLayoutAssignment.objects.filter(creation_key=token).first()
     if existing:
@@ -82,6 +83,103 @@ def create_assignment(*, user, anthology, proofreader, page_from, page_to, token
 
 class StaleAssignment(ValidationError):
     pass
+
+
+class AssignmentEditForm(forms.ModelForm):
+    proofreader = ProofreaderField(label='Korektor poskładowy', queryset=get_user_model().objects.none())
+
+    class Meta:
+        model = PostLayoutAssignment
+        fields = ('proofreader', 'page_from', 'page_to', 'assigned_start', 'work_start', 'completed_on')
+        widgets = {field: forms.DateInput(attrs={'type': 'date'}, format='%Y-%m-%d')
+            for field in ('assigned_start', 'work_start', 'completed_on')}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        eligible = eligible_proofreaders().values('pk')
+        self.fields['proofreader'].queryset = get_user_model().objects.filter(
+            Q(pk__in=eligible) | Q(pk=self.instance.proofreader_id)).select_related('person_profile')
+        self.fields['work_start'].disabled = self.instance.status == 'assigned'
+        self.fields['completed_on'].disabled = self.instance.status != 'completed'
+        self.fields['work_start'].required = self.instance.status != 'assigned'
+        self.fields['completed_on'].required = self.instance.status == 'completed'
+        self.fields['work_start'].help_text = 'To także data zakończenia etapu Przydzielony.'
+        self.fields['completed_on'].help_text = 'To także data zakończenia etapu W trakcie.'
+
+    def clean(self):
+        data = super().clean()
+        start, work, end = (data.get(f) for f in ('assigned_start', 'work_start', 'completed_on'))
+        if start and work and work < start:
+            self.add_error('work_start', 'Rozpoczęcie pracy nie może poprzedzać przydzielenia.')
+        if work and end and end < work:
+            self.add_error('completed_on', 'Zakończenie nie może poprzedzać rozpoczęcia pracy.')
+        self.instance.assigned_end = work
+        self.instance.work_end = end
+        return data
+
+
+@transaction.atomic
+def edit_assignment(*, user, pk, version, data):
+    from django.shortcuts import get_object_or_404
+    if not can_manage(user):
+        raise PermissionDenied()
+    item = get_object_or_404(PostLayoutAssignment.objects.select_for_update(), pk=pk)
+    if str(item.version) != str(version):
+        raise StaleAssignment('Wpis zmienił się w innym oknie. Odśwież stronę.')
+    form = AssignmentEditForm(data, instance=item)
+    if form.is_valid():
+        item = form.save(commit=False)
+        item.version += 1
+        item.full_clean()
+        item.save()
+    return form
+
+
+def selection_token(user, item):
+    return signing.dumps([user.pk, item.pk, item.version], salt='post-layout-bulk')
+
+
+@transaction.atomic
+def bulk_change(*, user, selected, operation, status=None, proofreader=None, confirm_delete=False):
+    if not can_manage(user):
+        raise PermissionDenied()
+    if operation not in ('status', 'assign', 'delete'):
+        raise ValidationError('Wybierz operację zbiorczą.')
+    if not selected or len(selected) > 500:
+        raise ValidationError('Zaznacz od 1 do 500 wpisów.')
+    versions = {}
+    try:
+        for token in selected:
+            owner, pk, version = signing.loads(token, salt='post-layout-bulk', max_age=86400)
+            if owner != user.pk:
+                raise ValueError()
+            versions[pk] = version
+    except (signing.BadSignature, TypeError, ValueError):
+        raise StaleAssignment('Zaznaczenie wygasło lub jest nieprawidłowe. Odśwież stronę.')
+    items = list(PostLayoutAssignment.objects.select_for_update().filter(pk__in=versions).order_by('pk'))
+    if len(items) != len(versions) or any(item.version != versions[item.pk] for item in items):
+        raise StaleAssignment('Jeden z wpisów zmienił się lub został usunięty. Odśwież stronę; niczego nie zapisano.')
+    if operation == 'delete':
+        if not confirm_delete:
+            raise ValidationError('Potwierdź trwałe usunięcie zaznaczonych wpisów.')
+        PostLayoutAssignment.objects.filter(pk__in=versions).delete()
+    elif operation == 'assign':
+        if not str(proofreader or '').isascii() or not str(proofreader or '').isdecimal():
+            raise ValidationError('Wybierz korektora poskładowego.')
+        person = eligible_proofreaders().filter(pk=int(proofreader)).first() if len(str(proofreader)) <= 18 else None
+        if not person:
+            raise ValidationError('Wybrana osoba nie jest aktywnym korektorem poskładowym.')
+        for item in items:
+            item.proofreader = person
+            item.version += 1
+            item.full_clean()
+            item.save()
+    else:
+        if status not in PostLayoutAssignment.Status.values:
+            raise ValidationError('Wybierz prawidłowy status.')
+        for item in items:
+            change_status(user=user, pk=item.pk, version=item.version, status=status)
+    return len(items)
 
 
 @transaction.atomic

@@ -8,6 +8,7 @@ from django.db import transaction
 from django.db.models import Q, Value, OuterRef, Subquery, Case, When, CharField
 from django.db.models.functions import Coalesce
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods, require_POST
 
@@ -26,7 +27,7 @@ from core.selectors.audio_proofreading import proofreading_scope, can_assign_pro
 
 
 def audio_texts():
-    return Text.objects.select_related('anthology', 'audiobook__proofreader__person_profile', 'translation').prefetch_related(
+    return Text.objects.exclude(anthology__status='abandoned').select_related('anthology', 'audiobook__proofreader__person_profile', 'translation').prefetch_related(
         'authors', 'translation__foreign_authors').exclude(anthology__is_novel=True)
 
 
@@ -43,6 +44,16 @@ def proofreader_display(audio):
     user = audio.proofreader
     profile = getattr(user, 'person_profile', None)
     return str(profile) if profile else (user.get_full_name() or user.username)
+
+
+def author_links(text, user):
+    translated = bool(text.anthology_id and text.anthology.is_translated)
+    translation = getattr(text, 'translation', None) if translated else None
+    people = translation.foreign_authors.all() if translation else ([] if translated else text.authors.all())
+    allowed = user.is_superuser if translated else is_coordinator(user)
+    return [{'name': person.display_name, 'url': (
+        reverse('core:translation_person_detail', args=['author', person.pk]) if translated else
+        reverse('core:author_detail', args=[person.pk])) if allowed else ''} for person in people]
 
 
 def list_page(request, *, proofreading=False, bound_assignment=None, status_code=200):
@@ -83,7 +94,7 @@ def list_page(request, *, proofreading=False, bound_assignment=None, status_code
         default=Subquery(local.values('signature')[:1]), output_field=CharField()))
     page = paginate_items(request, rows)
     page.object_list = [dict(pk=t.pk, title=t.title, anthology=t.anthology,
-        authors_display=authors_display(t), audio=getattr(t, 'audiobook', None),
+        authors_display=authors_display(t), author_links=author_links(t, request.user), audio=getattr(t, 'audiobook', None),
         proofreader_display=proofreader_display(getattr(t, 'audiobook', None)),
         **({'corrections': correction_rows(t.audiobook, t.audio_corrections, viewer=None if coordinator else request.user),
             'allow_assignment': coordinator and t.can_produce_audio and can_assign_proofreader(t.audiobook, t.audio_corrections),

@@ -6,5 +6,7 @@ def require_working_anthology(text):
     if not text.anthology_id:
         return
     anthology = Anthology.objects.using(text._state.db or 'default').select_for_update().get(pk=text.anthology_id)
+    if anthology.status == Anthology.Status.ABANDONED:
+        raise ValidationError('Antologia została porzucona. Przywróć ją w panelu admina przed zmianą workflow.')
     if anthology.status == Anthology.Status.READY:
         raise ValidationError('Antologia jest gotowa. Aby zmienić workflow, najpierw ustaw ją na „W przygotowaniu”.')

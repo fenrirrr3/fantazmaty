@@ -212,7 +212,7 @@ def can_view_illustrations(user):
 
 
 def can_view_post_layout(user):
-    return is_superuser(user) or has_role(user, "Koordynator korekty") or has_role(user, "Korektor poskładowy")
+    return is_coordinator(user) or has_role(user, "Korektor poskładowy")
 
 
 def can_view_audio_proofreading(user):
@@ -221,7 +221,7 @@ def can_view_audio_proofreading(user):
 
 def require_post_layout(user):
     if not can_view_post_layout(user):
-        raise PermissionDenied("Dostęp wymaga roli Koordynator korekty lub Korektor poskładowy.")
+        raise PermissionDenied("Dostęp wymaga uprawnień koordynatora lub roli Korektor poskładowy.")
 
 
 def can_view_reports(user):

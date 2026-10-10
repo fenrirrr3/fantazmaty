@@ -1,6 +1,6 @@
 {% extends "core/base.html" %}
 {% load static %}
-{% block extra_css %}{{ block.super }}<link rel="stylesheet" href="{% static 'core/external-audiobooks.css' %}?v=59"><link rel="stylesheet" href="{% static 'core/audiobook-production.css' %}?v=60">{% endblock %}
+{% block extra_css %}{{ block.super }}<link rel="stylesheet" href="{% static 'core/external-audiobooks.css' %}?v=59"><link rel="stylesheet" href="{% static 'core/audiobook-production.css' %}?v=67">{% endblock %}
 {% block title %}Audiobooki | Fantazmaty CMS{% endblock %}
 {% block content %}
 <header class="page-header">
@@ -25,15 +25,15 @@
     <div class="table-container" role="region" tabindex="0" aria-label="Tabela audiobooków">
         <table data-server-paginated="true" class="data-table audio-table">
             <caption class="visually-hidden">Audiobooki – przypisania i publikacje</caption>
-            <thead><tr><th scope="col">Antologia</th><th scope="col">Autor</th><th scope="col">Tytuł</th><th scope="col">Status</th><th scope="col">Lektor</th><th scope="col">Dźwiękowiec</th><th scope="col">Korektor audiobooka</th><th scope="col">Nagrywanie od</th><th scope="col">Korekta od</th><th scope="col">Poprawki od</th><th scope="col">Montaż od</th><th scope="col">Czeka na publikację od</th><th scope="col">Data premiery</th><th scope="col">YouTube</th><th scope="col">HearThis</th></tr></thead>
+            <thead><tr><th scope="col">Antologia</th><th scope="col">Autor</th><th scope="col">Tytuł</th><th scope="col">Status</th><th scope="col">Lektor</th><th scope="col">Montaż</th><th scope="col">Korektor audiobooka</th><th scope="col">Nagrywanie od</th><th scope="col">Korekta od</th><th scope="col">Poprawki od</th><th scope="col">Montaż od</th><th scope="col">Czeka na publikację od</th><th scope="col">Data premiery</th><th scope="col">YouTube</th><th scope="col">HearThis</th></tr></thead>
             <tbody>{% for text in texts %}{% with audio=text.audio %}<tr>
-                <td>{{ text.anthology.title|default:"Brak antologii" }}</td>
-                <td>{{ text.authors_display|default:"Brak przypisanego autora" }}</td>
+                <td>{% if text.anthology %}<a href="{% url 'core:anthology_detail' text.anthology.pk %}">{{ text.anthology.title }}</a>{% else %}Brak antologii{% endif %}</td>
+                <td>{% include "core/includes/audio_author_links.html" %}</td>
                 <td><a href="{% url 'core:audiobook_detail' text.pk %}" class="text-title-link"><strong>{{ text.title }}</strong></a></td>
                 <td>{% include "core/includes/audiobook_status.html" %}</td>
                 <td>{% if audio.narrator_contact_id %}<a href="{% url 'core:audio_contributor' audio.narrator_contact_id %}">{{ audio.narrator_name }}</a>{% else %}{{ audio.narrator_name|default:"Nie przypisano" }}{% endif %}</td>
                 <td>{% if audio.engineer_contact_id %}<a href="{% url 'core:audio_contributor' audio.engineer_contact_id %}">{{ audio.engineer_name }}</a>{% else %}{{ audio.engineer_name|default:"Nie przypisano" }}{% endif %}</td>
-                <td>{{ text.proofreader_display|default:"Nie przypisano" }}</td>
+                <td>{% include "core/includes/audio_proofreader_link.html" %}</td>
                 <td>{{ audio.recording_started_at|date:"d.m.Y"|default:"–" }}</td>
                 <td>{{ audio.proofreading_started_at|date:"d.m.Y"|default:"–" }}</td>
                 <td>{{ audio.corrections_started_at|date:"d.m.Y"|default:"–" }}</td>

@@ -32,6 +32,7 @@ def known_date(value):
 
 class Command(BaseCommand):
     help = 'Import opublikowanych audiobooków; domyślnie podgląd bez zapisu.'
+    schema = 'fantazmaty-published-audio-v1'
 
     def add_arguments(self, parser):
         parser.add_argument('input')
@@ -52,8 +53,8 @@ class Command(BaseCommand):
             raw = source_path.read_bytes()
             data = json.loads(raw.decode('utf-8-sig'))
             report['input_sha256'] = hashlib.sha256(raw).hexdigest()
-            if data.get('schema') != 'fantazmaty-published-audio-v1' or not isinstance(data.get('records'), list):
-                raise ValueError('Nieobsługiwany format importu opublikowanych audiobooków.')
+            if data.get('schema') != self.schema or not isinstance(data.get('records'), list):
+                raise ValueError('Nieobsługiwany format importu audiobooków.')
             self.people_map = json.loads(Path(options['people_map']).read_text(encoding='utf-8-sig')) if options['people_map'] else {}
             if not isinstance(self.people_map, dict):
                 raise ValueError('Mapa osób musi być obiektem JSON: nazwisko -> ID konta.')

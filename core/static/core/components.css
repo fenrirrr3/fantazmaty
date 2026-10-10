@@ -96,6 +96,8 @@ details:is(.intake-panel,.program-tool,.work-handoff-card,.text-team,.archived-s
 .credits-list { padding-left: 1.25rem; }
 .credits-list li { margin-block: .55rem; }
 .role-names { line-height: 1.8; overflow-wrap: anywhere; }
+.translation-person-actions { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
+.translation-person-actions > button { margin-left: auto; }
 
 .newsletter-copy-actions { margin-top: 16px; }
 .summary-work-entry { margin: .35rem 0 .7rem; }

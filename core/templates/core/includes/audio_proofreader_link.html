@@ -1,0 +1,1 @@
+{% if text.audio.proofreader.person_profile %}<a href="{% url 'core:person_detail' text.audio.proofreader.person_profile.pk %}">{{ text.proofreader_display }}</a>{% else %}{{ text.proofreader_display|default:'Nie przypisano' }}{% endif %}

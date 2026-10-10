@@ -217,7 +217,7 @@ def _search_people(query, user):
 
 def _search_anthologies(query, *, novels=False):
     anthologies = (
-        (Anthology.objects.filter(is_novel=True) if novels else ordinary(Anthology.objects).filter(is_novel=False)).filter(_matching_terms(query, ("title",)))
+        (Anthology.objects.filter(is_novel=True).exclude(status='abandoned') if novels else ordinary(Anthology.objects).filter(is_novel=False)).filter(_matching_terms(query, ("title",)))
         .order_by("title", "pk")
     )
 

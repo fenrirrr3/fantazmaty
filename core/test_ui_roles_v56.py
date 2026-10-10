@@ -29,7 +29,7 @@ class LayoutAndRoleTests(TestCase):
     def test_post_layout_permissions_and_exact_workflow_role(self):
         self.client.force_login(self.member)
         route = reverse('core:post_layout')
-        for roles, allowed in [((), False), (('Korektor',), False), (('Koordynator redakcji',), False), (('Koordynator',), False), (('Korektor poskładowy',), True), (('Koordynator korekty',), True)]:
+        for roles, allowed in [((), False), (('Korektor',), False), (('Koordynator redakcji',), True), (('Koordynator',), True), (('Korektor poskładowy',), True), (('Koordynator korekty',), True)]:
             self.roles(*roles)
             self.assertEqual(self.client.get(route).status_code, 200 if allowed else 403)
             doc = html.fromstring(self.client.get(reverse('core:home')).content)

@@ -32,3 +32,5 @@
 .audio-finish-button:focus-visible { outline: 3px solid var(--text); outline-offset: 3px; }
 @media (max-width: 900px) { .audio-detail-columns { grid-template-columns: 1fr; } }
 @media (max-width: 760px) { .audio-fields-grid, .audio-metadata, .audio-filters { grid-template-columns: 1fr; } }
+
+.audio-table tbody a:not(.text-title-link) { font-weight: 400; }

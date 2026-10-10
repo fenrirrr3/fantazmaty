@@ -20,7 +20,7 @@ from texts.vocabulary import canonicalize
 @require_GET
 @team_member_required
 def novel_list(request):
-    query = Anthology.objects.filter(is_novel=True).select_related('novel').prefetch_related('novel__authors').annotate(
+    query = Anthology.objects.filter(is_novel=True).exclude(status='abandoned').select_related('novel').prefetch_related('novel__authors').annotate(
         chapter_count=Count('texts'))
     term = request.GET.get('q', '').strip()
     state = request.GET.get('status', '')

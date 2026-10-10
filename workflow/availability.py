@@ -61,6 +61,8 @@ def role_access_reason(user, role, *, access=None):
 
 
 def claim_reason(stage, user, stages, assignments, *, access=None):
+    if stage.text.anthology_id and stage.text.anthology.status == 'abandoned':
+        return 'Antologia została porzucona.'
     from workflow.services import STAGE_ROLES
     access = claim_access(user) if access is None else access
     if stage.text.anthology_id and stage.text.anthology.status == "ready":

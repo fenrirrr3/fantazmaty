@@ -140,7 +140,7 @@ def available_stages(user, access):
     checkpoints = S.objects.filter(text_id=OuterRef('text_id'), workflow_cycle=OuterRef('workflow_cycle'),
                                     is_completed=True, is_skipped=False).exclude(repetition__canceled_at__isnull=False)
     assignments = A.objects.current_cycle().filter(text_id=OuterRef('text_id'), workflow_cycle=OuterRef('workflow_cycle'))
-    query = S.objects.current_cycle().exclude(text__anthology__status="ready").filter(is_released=True, workflow_cycle=F('text__current_workflow_cycle'), is_completed=False,
+    query = S.objects.current_cycle().exclude(text__anthology__status__in=("ready", "abandoned")).filter(is_released=True, workflow_cycle=F('text__current_workflow_cycle'), is_completed=False,
                              started_at__isnull=True, ended_at__isnull=True).alias(_work_role=stage_role())
     if not access['member']:
         return query.none()

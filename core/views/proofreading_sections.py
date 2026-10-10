@@ -14,7 +14,8 @@ def post_layout(request):
     from django.core.exceptions import ValidationError, PermissionDenied
     from django.db.models import Q
     from core.models import PostLayoutAssignment
-    from core.post_layout import AssignmentForm, can_manage, create_assignment, change_status, StaleAssignment
+    from core.post_layout import (AssignmentForm, can_manage, create_assignment, change_status, StaleAssignment,
+        bulk_change, selection_token, eligible_proofreaders)
     from core.pagination import paginate_items
     manager = can_manage(request.user)
     action = request.POST.get('action') if request.method == 'POST' else None
@@ -37,6 +38,12 @@ def post_layout(request):
                 change_status(user=request.user, pk=int(raw), status=request.POST.get('status'), version=request.POST.get('version'))
                 messages.success(request, 'Zapisano status i daty etapu.')
                 return redirect(request.path + ('?' + request.GET.urlencode() if request.GET else ''))
+            elif action == 'bulk':
+                count = bulk_change(user=request.user, selected=request.POST.getlist('selected'),
+                    operation=request.POST.get('operation'), status=request.POST.get('bulk_status'),
+                    proofreader=request.POST.get('bulk_proofreader'), confirm_delete=request.POST.get('confirm_delete') == '1')
+                messages.success(request, f'Zastosowano operację do {count} wpisów.')
+                return redirect(request.path + ('?' + request.GET.urlencode() if request.GET else ''))
             else:
                 raise ValidationError('Nieznana operacja.')
         except ValidationError as exc:
@@ -55,8 +62,38 @@ def post_layout(request):
     if hide_completed:
         rows = rows.exclude(status=PostLayoutAssignment.Status.COMPLETED)
     page = paginate_items(request, rows)
+    if manager:
+        for item in page:
+            item.selection_token = selection_token(request.user, item)
     return render(request, 'core/post_layout.html', {'assignments': page, 'page_obj': page, 'form': form,
-        'can_manage': manager, 'errors': errors, 'hide_completed': hide_completed, 'query': query}, status=code)
+        'can_manage': manager, 'errors': errors, 'hide_completed': hide_completed, 'query': query,
+        'proofreaders': eligible_proofreaders() if manager else (), 'statuses': PostLayoutAssignment.Status.choices}, status=code)
+
+
+@never_cache
+@login_required
+@require_http_methods(['GET', 'POST'])
+@post_layout_required
+def post_layout_edit(request, pk):
+    from django.contrib import messages
+    from django.core.exceptions import ValidationError, PermissionDenied
+    from django.shortcuts import get_object_or_404
+    from core.models import PostLayoutAssignment
+    from core.post_layout import can_manage, AssignmentEditForm, edit_assignment, StaleAssignment
+    if not can_manage(request.user):
+        raise PermissionDenied()
+    item = get_object_or_404(PostLayoutAssignment.objects.select_related('anthology'), pk=pk)
+    form, errors, code = AssignmentEditForm(instance=item), [], 200
+    if request.method == 'POST':
+        try:
+            form = edit_assignment(user=request.user, pk=pk, version=request.POST.get('version'), data=request.POST)
+            if form.is_valid():
+                messages.success(request, 'Zapisano osobę, zakres stron i daty etapów.')
+                return redirect('core:post_layout')
+            code = 400
+        except ValidationError as exc:
+            errors, code = exc.messages, 409 if isinstance(exc, StaleAssignment) else 400
+    return render(request, 'core/post_layout_edit.html', {'item': item, 'form': form, 'errors': errors}, status=code)
 
 
 @never_cache

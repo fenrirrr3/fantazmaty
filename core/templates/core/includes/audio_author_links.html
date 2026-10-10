@@ -1,0 +1,1 @@
+{% for author in text.author_links %}{% if author.url %}<a href="{{ author.url }}">{{ author.name }}</a>{% else %}{{ author.name }}{% endif %}{% if not forloop.last %}, {% endif %}{% empty %}Brak danych{% endfor %}

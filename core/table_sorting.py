@@ -347,6 +347,7 @@ def prepare_table_sort(request, items):
             'Antologia': ('anthology', 'anthology__title'), 'Autor': ('author', 'audio_author'),
             'Tytuł': ('title', 'title'), 'Status': ('status', 'audio_status'),
             'Lektor': ('narrator', 'audiobook__narrator_name'), 'Dźwiękowiec': ('engineer', 'audiobook__engineer_name'),
+            'Montaż': ('engineer', 'audiobook__engineer_name'),
             'Korektor audiobooka': ('proofreader', 'audiobook__proofreader__person_profile__last_name'),
             'Nagrywanie od': ('recording', 'audiobook__recording_started_at'),
             'Korekta od': ('proofreading', 'audiobook__proofreading_started_at'),

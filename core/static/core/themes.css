@@ -143,6 +143,12 @@
 [data-palette="withdrawn"] { --palette-bg: var(--danger-light); --palette-fg: var(--danger-dark); }
 [data-palette="reviewer"] { --palette-bg: var(--reviewer-bg); --palette-fg: var(--reviewer-fg); }
 [data-palette="coordinator"] { --palette-bg: var(--coordinator-bg); --palette-fg: var(--coordinator-fg); }
+[data-palette="right-hand"] { --palette-bg: #334155; --palette-fg: #ffffff; }
+[data-palette="illustrator"] { --palette-bg: #fce7f3; --palette-fg: #86134f; }
+[data-palette="designer"] { --palette-bg: #e0e7ff; --palette-fg: #373080; }
+[data-palette="narrator"] { --palette-bg: #efdfca; --palette-fg: #623a16; }
+[data-palette="typesetter"] { --palette-bg: #edf0c6; --palette-fg: #4b5614; }
+[data-palette="sound-engineer"] { --palette-bg: #cff3fc; --palette-fg: #15546b; }
 
 /* Poprawki zależne od motywu, których nie da się wyrazić samymi zmiennymi. */
 /* :where() zeruje specyficzność, więc kolory komponentów (błędy, ostrzeżenia) wygrywają. */

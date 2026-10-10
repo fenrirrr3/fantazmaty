@@ -29,7 +29,7 @@ from core.views import novels, vocabulary
 from core.views.recruitment_detail import recruitment_detail
 from core.views.recruitment_notified import recruitment_notified
 from core.views.recruitment_mailbox import recruitment_mailbox
-from core.views.proofreading_sections import post_layout, audio_proofreading
+from core.views.proofreading_sections import post_layout, post_layout_edit, audio_proofreading
 
 
 app_name = "core"
@@ -48,6 +48,7 @@ urlpatterns = [
     path('audiobooki/<int:text_id>/', audiobook_detail, name='audiobook_detail'),
     path('audiobooki/zewnetrzne/wytyczne.txt', audiobook_guidelines_txt, name='audiobook_guidelines_txt'),
     path('korekta-poskladowa/', post_layout, name='post_layout'),
+    path('korekta-poskladowa/<int:pk>/edycja/', post_layout_edit, name='post_layout_edit'),
     path('korekta-audiobookow/', audio_proofreading, name='audio_proofreading'),
     path('korekta-audiobookow/<int:text_id>/przypisz/', assign_audio_proofreader, name='assign_audio_proofreader'),
     path('rekrutacja/<int:pk>/usun/', recruitment_delete, name='recruitment_delete'),

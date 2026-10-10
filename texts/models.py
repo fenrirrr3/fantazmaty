@@ -27,6 +27,7 @@ class Anthology(models.Model):
     is_novel = models.BooleanField('powieść', default=False, db_index=True)
     class Status(models.TextChoices):
         IN_PREPARATION = "in_preparation", "W przygotowaniu"
+        ABANDONED = "abandoned", "Porzucona"
         READY = "ready", "Gotowa"
 
     class PrintStatus(models.TextChoices):

@@ -58,11 +58,13 @@ def correction_rows(audio, history, *, viewer=None):
         if viewer is not None and (not performer or performer.pk != viewer.pk):
             continue
         rows.append({'pk': stage.pk, 'performer_id': performer.pk if performer else None,
+            'person_id': getattr(getattr(performer, 'person_profile', None), 'pk', None),
             'performer': performer_label(performer), 'started_at': stage.started_at,
             'ended_at': stage.ended_at, 'is_completed': stage.is_completed,
             'is_active': active, 'state': 'Zakończona' if stage.is_completed else 'W toku' if active else 'Nieaktywna'})
     if not history and (viewer is None or audio.proofreader_id == viewer.pk):
         rows.append({'pk': None, 'performer_id': audio.proofreader_id,
+            'person_id': getattr(getattr(audio.proofreader, 'person_profile', None), 'pk', None),
             'performer': performer_label(audio.proofreader), 'started_at': audio.proofreading_started_at,
             'ended_at': None, 'is_completed': False, 'is_active': False,
             'state': 'Oczekuje na etap' if audio.status == Audiobook.Status.PROOFREADING else 'Brak szczegółów etapu'})

@@ -18,4 +18,11 @@ PATHS = {
 def ordinary(queryset):
     for path in PATHS.get(queryset.model._meta.label_lower, ()):
         queryset = queryset.exclude(**{path: True})
+    return non_abandoned(queryset)
+
+
+def non_abandoned(queryset):
+    """Frontend scope only. Never alter default managers or historical records."""
+    for path in PATHS.get(queryset.model._meta.label_lower, ()):
+        queryset = queryset.exclude(**{path.replace('is_translated', 'status'): 'abandoned'})
     return queryset

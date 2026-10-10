@@ -32,13 +32,15 @@ class AudiobookAdminForm(AudiobookProductionForm):
 
 @admin.register(PostLayoutAssignment)
 class PostLayoutAssignmentAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
+    from core.post_layout import AssignmentEditForm
+    form = AssignmentEditForm
     list_display = ('anthology', 'proofreader', 'page_from', 'page_to', 'status', 'assigned_start', 'work_start', 'completed_on')
     list_filter = ('status', 'anthology')
     list_select_related = ('anthology', 'proofreader')
     search_fields = ('anthology__title', 'proofreader__first_name', 'proofreader__last_name')
-    readonly_fields = ('anthology', 'proofreader', 'page_from', 'page_to', 'status', 'assigned_start', 'assigned_end',
+    readonly_fields = ('anthology', 'status', 'assigned_end', 'work_end', 'created_at', 'created_by', 'management_link')
+    fields = ('anthology', 'proofreader', 'page_from', 'page_to', 'status', 'assigned_start', 'assigned_end',
         'work_start', 'work_end', 'completed_on', 'created_at', 'created_by', 'management_link')
-    fields = readonly_fields
     actions = None
 
     @admin.display(description='Zarządzanie przydziałami i statusami')
@@ -51,7 +53,12 @@ class PostLayoutAssignmentAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         return False
 
     def has_delete_permission(self, request, obj=None):
-        return False
+        return self.has_superuser_access(request)
+
+    def save_model(self, request, obj, form, change):
+        obj.version += 1
+        obj.full_clean()
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(AudioContributor)

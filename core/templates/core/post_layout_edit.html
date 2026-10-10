@@ -1,0 +1,13 @@
+{% extends 'core/base.html' %}{% load static %}
+{% block title %}Edytuj korektę poskładową | Fantazmaty CMS{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/post-layout.css' %}?v=67">{% endblock %}
+{% block content %}
+<header class="page-header"><h1 class="page-title">Edytuj korektę poskładową</h1><p>{{ item.anthology.title }} · {{ item.get_status_display }}</p></header>
+{% for error in errors %}<p class="errorlist" role="alert">{{ error }}</p>{% endfor %}
+<section class="card"><div class="card-body">
+<form method="post" class="post-layout-edit" data-warn-unsaved>{% csrf_token %}<input type="hidden" name="version" value="{{ item.version }}">
+{{ form.non_field_errors }}
+{% for field in form %}<div class="form-field">{{ field.label_tag }}{{ field }}{{ field.errors }}{% if field.help_text %}<small>{{ field.help_text }}</small>{% endif %}</div>{% endfor %}
+<div class="post-layout-status"><button class="primary-button">Zapisz</button><a class="secondary-button" href="{% url 'core:post_layout' %}">Wróć do listy</a></div>
+</form></div></section>
+{% endblock %}

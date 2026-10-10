@@ -58,7 +58,7 @@ class PostLayoutTests(TestCase):
         self.client.force_login(self.reader)
         self.assertEqual(self.client.post(self.url, self.form_data(self.reader)).status_code, 403)
         self.client.force_login(self.editor)
-        self.assertEqual(self.client.get(self.url).status_code, 403)
+        self.assertEqual(self.client.get(self.url).status_code, 200)
 
     def test_transitions_record_stage_dates_and_reject_stale_skip_and_reverse(self):
         item = self.create()
@@ -111,7 +111,7 @@ class PostLayoutTests(TestCase):
         self.assertEqual(self.client.get(self.url, {'hide_completed': '1'}).context['page_obj'].paginator.count, 1)
         self.client.force_login(self.editor)
         doc = html.fromstring(self.client.get(profile_url).content)
-        self.assertFalse(doc.xpath('//table[@id="person-assignments-table"]//a[contains(@href,"korekta-poskladowa")]'))
+        self.assertTrue(doc.xpath('//table[@id="person-assignments-table"]//a[contains(@href,"korekta-poskladowa")]'))
 
     def test_admin_and_database_guards(self):
         item = self.create()

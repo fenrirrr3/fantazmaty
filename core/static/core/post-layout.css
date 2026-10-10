@@ -6,5 +6,15 @@
 .post-layout-filters, .post-layout-status { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
 .post-layout-filters .form-field { flex: 1 1 18rem; }
 .post-layout-status { min-width: 12rem; }
+#post-layout-bulk [data-bulk-action][hidden] { display: none !important; }
+.post-layout-toolbar, .post-layout-edit { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.post-layout-toolbar { margin-bottom: 20px; }
+.post-layout-toolbar > .card { min-width: 0; margin: 0; }
+.post-layout-toolbar > .card:only-child { grid-column: 1 / -1; }
+.post-layout-edit .form-field { min-width: 0; }
+.post-layout-edit input, .post-layout-edit select { width: 100%; box-sizing: border-box; }
+.post-layout-table-wrap { padding-inline: 1.25rem; }
+.post-layout-table tbody a { font-weight: 400; }
+@media (max-width: 760px) { .post-layout-toolbar, .post-layout-edit { grid-template-columns: 1fr; } }
 @media (max-width: 760px) { .post-layout-add { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 480px) { .post-layout-add { grid-template-columns: 1fr; } }

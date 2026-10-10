@@ -312,7 +312,7 @@ def _annotated_texts(*, translated=False, include_translations=False, include_no
     query = Text.objects.all() if include_translations else (Text.objects.filter(anthology__is_translated=True) if translated else Text.objects.exclude(anthology__is_translated=True))
     if not include_novels:
         query = query.exclude(anthology__is_novel=True)
-    return query.annotate(current_stage_type=Coalesce(Subquery(current), Subquery(last)))
+    return query.exclude(anthology__status='abandoned').annotate(current_stage_type=Coalesce(Subquery(current), Subquery(last)))
 
 
 def _text_row(text, include_authors):
@@ -394,6 +394,7 @@ def text_list_context(*, user, params, scope=None, stage_scope=None, translated=
         anthology_options = Anthology.objects.filter(Q(pk__in=filtered('anthology').values('anthology_id')) | Q(pk=anthology_id))
     elif translated:
         anthology_options = Anthology.objects.filter(is_translated=True)
+    anthology_options = anthology_options.exclude(status='abandoned')
     author_options = Author.objects.filter(
         Q(pk__in=filtered('author').values('authors__pk')) | Q(pk=author_id)) if include_authors else Author.objects.none()
     if translated and include_authors:
@@ -722,7 +723,7 @@ def workflow_list_context(*, user, params):
 
     return {
         'stages': _ProjectedRows(texts, project),
-        'anthologies': list(Anthology.objects.filter(is_translated=False)
+        'anthologies': list(Anthology.objects.filter(is_translated=False).exclude(status='abandoned')
                             .order_by('title', 'pk').values('pk', 'title')),
         'selected_stages': selected_stages,
         'stage_choices': [(v, label) for v, label in active_stage_choices() if v in facets['stage']],
