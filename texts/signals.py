@@ -49,3 +49,10 @@ def create_anthology_tasks(
                 ),
             },
         )
+
+
+@receiver(post_save, sender=Anthology, dispatch_uid='texts.create_audio_description')
+def create_audio_description(sender, instance, using, raw=False, **kwargs):
+    if not raw and not instance.is_novel:
+        from core.models import AudioDescription
+        AudioDescription.objects.using(using).get_or_create(anthology=instance)

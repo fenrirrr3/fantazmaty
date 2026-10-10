@@ -30,7 +30,7 @@ def profile_volume_credits(person):
                 "is_ready": True,
                 "is_withdrawn": False,
                 "text": {
-                    "title": book.title,
+                    "title": "Cała antologia",
                     "anthology": {"pk": book.pk, "title": book.title},
                     "authors": {"all": []},
                 },

@@ -14,6 +14,7 @@ from django.db.models.signals import pre_save, post_save, post_delete, pre_delet
 
 # Only editable domain records; no audit/outbox/session traffic.
 TRACKED = {
+    'core.audiodescription',
     'core.postlayoutassignment',
     'core.audiocontributor',
     'core.audiobook',
@@ -35,6 +36,7 @@ TRACKED = {
 
 # Child records whose change must also invalidate the parent edit form.
 PARENTS = {
+    'core.audiodescription': (('anthology_id', 'texts.anthology'),),
     'core.audiobook': (('text_id', 'texts.text'),),
     'core.audiobookstage': (('text_id', 'texts.text'),),
     'workflow.workflowstage': (('text_id', 'texts.text'),),
@@ -170,11 +172,16 @@ def relations_changed(sender, instance, action, reverse, model, pk_set, using, *
         return
     if instance._meta.label_lower in TRACKED:
         bump(instance._meta.label_lower, instance.pk, using)
+    if instance._meta.label_lower == 'core.audiodescription':
+        bump('texts.anthology', instance.anthology_id, using)
     if instance._meta.label_lower == 'texts.texttranslation':
         bump('texts.text', instance.text_id, using)
     if reverse and model._meta.label_lower in TRACKED:
         for pk in pk_set or getattr(instance, '_edit_reverse_clear', set()):
             bump(model._meta.label_lower, pk, using)
+            if model._meta.label_lower == 'core.audiodescription':
+                book_id = model.objects.using(using).filter(pk=pk).values_list('anthology_id', flat=True).first()
+                bump('texts.anthology', book_id, using)
             if model._meta.label_lower == 'texts.texttranslation':
                 text_id = model.objects.using(using).filter(pk=pk).values_list('text_id', flat=True).first()
                 bump('texts.text', text_id, using)

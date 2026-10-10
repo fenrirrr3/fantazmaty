@@ -30,6 +30,7 @@ class AdminNavigationTests(TestCase):
             [
                 "submissions",
                 "publication",
+                "post_layout",
                 "novels",
                 "translations",
                 "authors",
@@ -40,7 +41,7 @@ class AdminNavigationTests(TestCase):
                 "settings",
             ],
         )
-        self.assertEqual([g["collapsed"] for g in groups], [False] * 5 + [True] * 5)
+        self.assertEqual([g["collapsed"] for g in groups], [False, False, True, False, False, False, True, True, True, True, True])
         by_label = {group["app_label"]: group for group in groups}
 
         def names(group):

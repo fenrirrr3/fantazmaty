@@ -136,7 +136,7 @@ class CMS16Tests(TestCase):
         self.ill.refresh_from_db()
         self.assertEqual(self.ill.coordinator_notes, "Proszę o ciemne tło.")
 
-    def test_tasks_and_empty_audio_tab(self):
+    def test_tasks_and_audio_description_table_share_assignment(self):
         ready = Anthology.objects.create(title="Gotowa pomijana", status="ready")
         self.assertEqual(
             self.book.production_tasks.filter(task_type="audio_description").count(), 1
@@ -146,7 +146,7 @@ class CMS16Tests(TestCase):
         rows = list(response.context["tasks"])
         self.assertEqual(
             {r["name"] for r in rows},
-            {"Blurb", "Bannery", "Skład", "Okładka", "Audiodeskrypcja", "Typografia okładki"},
+            {"Blurb", "Banery", "Skład", "Okładka", "Audiodeskrypcja", "Typografia okładki"},
         )
         self.assertNotContains(response, ready.title)
         response = self.client.get(reverse("core:anthology_detail", args=[self.book.pk]))
@@ -171,7 +171,12 @@ class CMS16Tests(TestCase):
         response = self.client.get(reverse("core:audio_descriptions"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, '<h1 class="page-title">Audiodeskrypcje</h1>', html=True)
-        self.assertFalse(html.fromstring(response.content).xpath("//main//table"))
+        self.assertTrue(html.fromstring(response.content).xpath("//main//table"))
+        rows = list(response.context["rows"])
+        assigned = next(row for row in rows if row["book"].pk == self.book.pk)
+        self.assertEqual(assigned["task"].assigned_to_id, self.artist.person_profile.pk)
+        self.assertFalse(assigned["can_claim"])
+        self.assertContains(response, ready.title)
 
     def test_original_verifier_form_save(self):
         book = Anthology.objects.create(title="Przekład", is_translated=True)

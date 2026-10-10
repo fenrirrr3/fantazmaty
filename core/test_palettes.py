@@ -17,7 +17,7 @@ class PaletteTests(SimpleTestCase):
     def test_team_role_names_follow_the_label_rules(self):
         cases = {'Koordynator redakcji': 'coordinator', 'Recenzent': 'reviewer', 'Redaktor': 'editing',
                  'Korektor': 'proofreading', 'Weryfikator': 'verification', 'Stylista': 'styling',
-                 'Ilustrator': ''}
+                 'Ilustrator': 'illustrator'}
         for label, palette in cases.items():
             with self.subTest(label=label):
                 self.assertEqual(label_palette(label), palette)

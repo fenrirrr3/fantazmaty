@@ -571,3 +571,6 @@ class MailboxConnectionAdmin(NewsletterRecoveryAdminMixin, SuperuserOnlyAdminMix
         if purpose == MailboxConnection.Purpose.RECRUITMENT:
             fields.remove('recruitment_subjects')
         return fields
+
+
+from core.audio_description_admin import AudioDescriptionAdmin  # noqa: E402,F401

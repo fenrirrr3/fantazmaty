@@ -162,7 +162,7 @@
         
 
         <div class="profile-table-inset">
-<form method="get" action="#person-assignments-heading" class="filter-actions"><label><input type="checkbox" name="hide_completed" value="1" {% if hide_completed %}checked{% endif %}> Ukryj zakończone</label><button class="secondary-button" type="submit">Filtruj</button></form>
+<form method="get" action="#person-assignments-heading" class="filter-actions profile-history-filters"><label><input type="checkbox" name="hide_completed" value="1" {% if hide_completed %}checked{% endif %}> Ukryj zakończone</label><button class="secondary-button" type="submit">Filtruj</button></form>
 <div
             class="table-container"
             role="region"
@@ -200,7 +200,7 @@
 
                             <td>
                                 {% if assignment.text.anthology %}
-                                    {{ assignment.text.anthology.title }}
+                                    <a class="profile-anthology-link" href="{% url 'core:anthology_detail' assignment.text.anthology.pk %}">{{ assignment.text.anthology.title }}</a>
                                 {% else %}
                                     <span class="muted-text">Brak antologii</span>
                                 {% endif %}
@@ -230,7 +230,7 @@
                                         {% endif %}{% if not forloop.last %}, {% endif %}
                                     {% empty %}
                                         <span class="muted-text">
-                                            {% if assignment.kind_key == 'extract_volume' %}–{% elif assignment.kind_key == 'post_layout' %}Cała antologia{% else %}Brak przypisanego autora{% endif %}
+                                            {% if assignment.kind_key == 'extract_volume' or assignment.kind_key == 'post_layout' %}–{% else %}Brak przypisanego autora{% endif %}
                                         </span>
                                     {% endfor %}
                                 </td>

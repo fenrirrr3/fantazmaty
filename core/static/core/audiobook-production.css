@@ -14,9 +14,14 @@
 .audio-table th { white-space: normal; min-width: 7rem; }
 .audio-table .text-title-link { display: block; min-width: 12rem; }
 .audio-status { display: inline-block; padding: .2rem .55rem; border: 1px solid currentColor; border-radius: .35rem; font-size: .88rem; line-height: 1.4; background: #f1f5f9; color: #334155; }
-.audio-status--recording, .audio-status--corrections { background: #fff0c2; color: #714500; }
-.audio-status--proofreading, .audio-status--editing { background: #dcecff; color: #154777; }
-.audio-status--awaiting_publication, .audio-status--published { background: #e0f3e7; color: #1a5a35; }
+/* Each stage has its own readable palette in all themes. */
+.audio-status--pending { background: #f1f5f9; color: #334155; }
+.audio-status--recording { background: #fff0c2; color: #714500; }
+.audio-status--proofreading { background: #e0f3e7; color: #1a5a35; }
+.audio-status--corrections { background: #ffedd5; color: #873c13; }
+.audio-status--editing { background: #ede5ff; color: #5b2885; }
+.audio-status--awaiting_publication { background: #cff4f1; color: #155b55; }
+.audio-status--published { background: #e2edcc; color: #3b5417; }
 .audio-detail-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr); gap: 1.5rem; align-items: start; }
 .audio-detail-left { display: grid; gap: 1.5rem; min-width: 0; }
 .audio-detail-columns .card { margin: 0; min-width: 0; }
@@ -41,3 +46,10 @@
 .audio-claim-form { margin: .5rem 0; }
 @media (max-width: 480px) { .audio-name-profile { grid-template-columns: 1fr; } }
 .audio-table tbody a:not(.text-title-link) { font-weight: 400; }
+
+.audio-correction-history .stage-status { display: inline-block; margin: .3rem 0; }
+.audio-table-actions { display: grid; grid-template-columns: auto auto; gap: .5rem; align-items: center; justify-content: start; }
+.audio-table-actions .audio-assignment-form { display: contents; }
+.audio-table-actions select, .audio-table-actions .errorlist { grid-column: 1 / -1; max-width: 20rem; }
+.audio-table-actions .audio-claim-form { margin: 0; }
+.audio-table-actions button { min-height: 2.5rem; padding: .45rem .85rem; font: inherit; font-size: .95rem; line-height: 1.4; font-weight: 600; border-radius: .4rem; }

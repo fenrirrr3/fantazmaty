@@ -20,7 +20,8 @@ from core.views.activity import user_activity
 from core.views.recruitment_delete import recruitment_delete
 from core.views.tags import tag_list
 from core.views.translations import translation_list, translation_detail, set_translators, translation_person_detail, translation_person_suggestions
-from core.views.production_tasks import task_list, audio_descriptions
+from core.views.production_tasks import task_list
+from core.views.audio_descriptions import audio_descriptions, audio_description_detail, claim_audio_description
 from core.views.audiobooks import audiobook_list, update_text_audiobook
 from core.views.audiobook_production import audiobook_detail, assign_audio_proofreader, claim_audio_proofreading
 from core.views.audio_contacts import audio_contributor, contact_suggestions
@@ -66,6 +67,8 @@ urlpatterns = [
     path('tlumaczenia/osoby/<str:kind>/sugestie/', translation_person_suggestions, name='translation_person_suggestions'),
     path('zadania/', task_list, name='task_list'),
     path('audiodeskrypcje/', audio_descriptions, name='audio_descriptions'),
+    path('audiodeskrypcje/<int:anthology_id>/', audio_description_detail, name='audio_description_detail'),
+    path('audiodeskrypcje/<int:anthology_id>/przejmij/', claim_audio_description, name='claim_audio_description'),
     path('tlumaczenia/osoby/<str:kind>/<int:person_id>/', translation_person_detail, name='translation_person_detail'),
     path('tlumaczenia/', translation_list, name='translation_list'),
     path('tlumaczenia/<int:text_id>/', translation_detail, name='translation_detail'),

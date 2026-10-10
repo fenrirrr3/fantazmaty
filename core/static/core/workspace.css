@@ -187,3 +187,6 @@ details.sidebar-section > summary { cursor:pointer; }
     .dashboard-intake-grid { grid-template-columns: minmax(0, 1fr); }
 }
 @media screen and (max-width: 480px) { .dashboard-summary { grid-template-columns: minmax(0, 1fr); } }
+
+.profile-history-filters { margin-bottom: .9rem; }
+.profile-anthology-link { font-weight: 400; }

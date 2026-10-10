@@ -1,0 +1,15 @@
+{% extends "core/base.html" %}{% load static %}
+{% block title %}Audiodeskrypcja: {{ anthology.title }} | Fantazmaty CMS{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/audiobook-production.css' %}?v=74">{% endblock %}
+{% block content %}
+<header class="page-header"><h1 class="page-title">Audiodeskrypcja: {{ anthology.title }}</h1><div class="audio-actions"><a class="secondary-button" href="{% url 'core:audio_descriptions' %}">Wróć do listy</a><a class="secondary-button" href="{% url 'core:anthology_detail' anthology.pk %}">Otwórz antologię</a></div></header>
+<section class="card"><div class="card-body"><h2>Przypisanie i status</h2>
+{% if can_edit %}<form method="post" class="audio-production-form">{% csrf_token %}{% edit_version %}{{ form.non_field_errors }}
+{% for field in form %}<div class="form-field">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}
+<div class="audio-actions"><button class="primary-button" type="submit">Zapisz</button></div></form>
+{% else %}<p>Status: {{ task.get_status_display }}</p>{% endif %}
+<p>Osoba: {% if task.assigned_to_id %}<a href="{% url 'core:person_detail' task.assigned_to_id %}">{{ task.assigned_to }}</a>{% else %}Nieprzypisane{% endif %}</p>
+<p>Kontrola: {% for person in controllers %}<a href="{% url 'core:person_detail' person.pk %}">{{ person }}</a>{% if not forloop.last %}, {% endif %}{% empty %}Nie wyznaczono{% endfor %}</p>
+</div></section>
+{% endblock %}
+{% block scripts %}{{ block.super }}<script src="{% static 'core/person-select.js' %}" defer></script>{% endblock %}

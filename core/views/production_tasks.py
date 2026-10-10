@@ -2,18 +2,10 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
-from core.permissions import team_member_required, coordinator_required
+from core.permissions import coordinator_required
 from core.pagination import paginate_items
 from core.translation_scope import ordinary
 from texts.models import Anthology, AnthologyTask
-
-
-@never_cache
-@login_required
-@require_GET
-@team_member_required
-def audio_descriptions(request):
-    return render(request, 'core/audio_descriptions.html')
 
 
 @never_cache

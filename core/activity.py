@@ -5,6 +5,12 @@ import time
 logger = logging.getLogger(__name__)
 
 LABELS = {
+    'audio_contributor': 'Profil lektora lub montażysty',
+    'contact_suggestions': 'Podpowiedzi kontaktów',
+    'claim_audio_proofreading': 'Przejęcie korekty audiobooka',
+    'post_layout_edit': 'Edycja korekty poskładowej',
+    'audio_description_detail': 'Podgląd audiodeskrypcji',
+    'claim_audio_description': 'Przejęcie audiodeskrypcji',
     'audiobook_detail': 'Podgląd audiobooka',
     'assign_audio_proofreader': 'Przypisanie korektora audiobooka',
     'user_preview': 'Wybór użytkownika do podglądu', 'user_preview_stop': 'Zakończenie podglądu użytkownika',

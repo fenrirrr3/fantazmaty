@@ -6,8 +6,8 @@ działały tak samo jak na serwerze.
 """
 import os
 
-from .settings import DATABASES as _PRODUCTION_DATABASES
 from .test_settings import *  # noqa: F403
+from .settings import DATABASES as _PRODUCTION_DATABASES
 
 _production = _PRODUCTION_DATABASES["default"]
 DATABASES = {"default": {

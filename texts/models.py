@@ -184,7 +184,7 @@ class AnthologyTask(models.Model):
     class TaskType(models.TextChoices):
         TYPESETTING = "typesetting", "Skład"
         BLURB = "blurb", "Blurb"
-        BANNERS = "banners", "Bannery"
+        BANNERS = "banners", "Banery"
         COVER_TYPOGRAPHY = "cover_typography", "Typografia okładki"
         AUDIO_DESCRIPTION = "audio_description", "Audiodeskrypcja"
 
