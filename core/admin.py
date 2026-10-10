@@ -272,7 +272,7 @@ class AnthologyCorrectionAdmin(admin.ModelAdmin):
     form = AdminCorrectionForm
     class Media:
         js = ("core/corrections.js",)
-    list_display = ("anthology", "story_title", "status", "submitted_by", "created_at")
+    list_display = ("anthology", "story_title", "status", "submitted_by", "reporter_name", "created_at")
     list_filter = ("status", "anthology")
     search_fields = ("story_title__plcontains", "problem__plcontains", "fragment__plcontains")
     readonly_fields = ("created_at", "updated_at")

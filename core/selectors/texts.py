@@ -995,7 +995,8 @@ def _source_review_data(text, user, include_authors):
             content_warnings=source.content_warnings,
             old_reviews=source.old_reviews,
             is_archived=source.is_archived,
-            can_open=not source.old_reviews or include_authors,
+            # Każdy członek zespołu otwiera recenzję powiązaną z tekstem; dane autora widzą tylko uprawnieni.
+            can_open=True,
             general_notes=getattr(getattr(source, "reviewers", None), "general_notes", ""),
         )
         if include_authors:

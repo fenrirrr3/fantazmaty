@@ -332,6 +332,14 @@ def can_view_my_reviews(user):
     ).exists()
 
 
+def can_browse_reviews(user):
+    """Lista Recenzje i sekcja Zgłoszenia: recenzenci, koordynatorzy i administratorzy.
+
+    Pozostali członkowie zespołu otwierają pojedyncze recenzje z podglądu tekstu.
+    """
+    return is_coordinator(user) or (is_team_member(user) and is_reviewer(user))
+
+
 def can_view_review_archive(user):
     # Decided submissions are visible to the whole team.
     return is_team_member(user)

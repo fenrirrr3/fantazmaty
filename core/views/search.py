@@ -17,7 +17,7 @@ from people.models import Person, Role
 from texts.models import Anthology, Extract, Review, Text
 
 
-RESULT_LIMIT = 50
+RESULT_LIMIT = 15
 
 
 class SearchResults(list):

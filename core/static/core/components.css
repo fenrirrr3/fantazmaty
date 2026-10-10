@@ -777,9 +777,10 @@ fieldset.multi-filter-field {
 .important-note-badge,
 .inactivity-badge,
 .record-counter {
+    /* Wszystkie odznaki mają obramowanie w kolorze tekstu. */
     --badge-bg: var(--surface-alt);
     --badge-fg: var(--muted);
-    --badge-border: transparent;
+    --badge-border: currentColor;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -818,11 +819,6 @@ fieldset.multi-filter-field {
     --badge-fg: var(--warning);
 }
 
-/* Rodzaj przestoju ma obramowanie jak odznaka etapu w tym samym wierszu. */
-.inactivity-badge {
-    --badge-border: currentColor;
-}
-
 .stage-status.completed {
     --badge-bg: var(--success-light);
     --badge-fg: var(--success);
@@ -844,7 +840,7 @@ fieldset.multi-filter-field {
 .workflow-stage-row .workflow-stage-badge:not([data-palette]) {
     --badge-bg: var(--workflow-badge-background, var(--badge-neutral-bg));
     --badge-fg: var(--workflow-badge-color, var(--badge-neutral-fg));
-    --badge-border: var(--workflow-badge-border, transparent);
+    --badge-border: var(--workflow-badge-border, currentColor);
 }
 
 .workflow-stage-row:is([data-stage="editing"], [data-stage="first_proofreading"], [data-stage="second_proofreading"],

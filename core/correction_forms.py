@@ -15,8 +15,12 @@ class CorrectionForm(forms.ModelForm):
         fields = ("anthology", "text", "fragment", "problem", "suggestion")
         widgets = {name: forms.Textarea(attrs={"rows": 3}) for name in ("fragment", "problem", "suggestion")}
 
+    required_fields = ("fragment", "problem", "suggestion")
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        for name in self.required_fields:
+            self.fields[name].required = True
         self.fields["anthology"].queryset = frontend_scope(Anthology.objects).filter(status__in=("ready",)).order_by("title", "pk")
         self.fields["text"].widget.attrs["data-texts-url"] = reverse("core:correction_texts")
         anthology = self.data.get(self.add_prefix("anthology")) if self.is_bound else self.initial.get("anthology", self.instance.anthology_id)
@@ -26,10 +30,16 @@ class CorrectionForm(forms.ModelForm):
     def clean(self):
         data = super().clean()
         text = data.get("text")
-        self.instance.story_title = text.title if text else "Inne miejsce"
+        if text:
+            self.instance.story_title = text.title
+        elif not (self.instance.pk and self.instance.text_id is None and self.instance.story_title):
+            self.instance.story_title = "Inne miejsce"
+        # Bez opowiadania zostaje dotychczasowe miejsce, np. z importu („Audiodeskrypcja”).
         return data
 
 
 class AdminCorrectionForm(CorrectionForm):
+    required_fields = ()
+
     class Meta(CorrectionForm.Meta):
-        fields = (*CorrectionForm.Meta.fields, "status", "submitted_by")
+        fields = (*CorrectionForm.Meta.fields, "status", "submitted_by", "reporter_name")

@@ -40,7 +40,7 @@ def job_options(action, form):
                     cleaner_rules=data['rules'], remove_soft_whitespace=data['remove_soft_whitespace'])
     if action == 'convert':
         return dict(formats=data['formats'], use_cleaner=data['use_cleaner'], preserve_filename=True,
-                    remove_soft_whitespace=data['remove_soft_whitespace'])
+                    remove_soft_whitespace=data['use_cleaner'])
     return dict(formats=[], include_docx=True, normalize=False, repetitions=form.analysis_config())
 
 

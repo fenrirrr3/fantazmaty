@@ -35,10 +35,10 @@
             <div class="detail-header-actions">
                 {% if user.is_superuser %}<a class="secondary-button small-button" href="{% url 'admin:texts_review_change' review.pk %}">Edytuj w adminie</a>{% endif %}
             <a
-                href="{% if return_url %}{{ return_url }}{% else %}{% url 'core:review_list' %}?old_reviews={% if review.is_archived %}1{% else %}0{% endif %}{% endif %}"
+                href="{% if return_url %}{{ return_url }}{% elif not can_browse_reviews and review.copied_text_id %}{% url 'core:assigned_text_detail' review.copied_text_id %}{% else %}{% url 'core:review_list' %}?old_reviews={% if review.is_archived %}1{% else %}0{% endif %}{% endif %}"
                 class="secondary-button"
             >
-                Wróć do recenzji
+                {% if return_url or can_browse_reviews or not review.copied_text_id %}Wróć do recenzji{% else %}Wróć do tekstu{% endif %}
             </a>
             </div>
         </div>

@@ -44,7 +44,7 @@
             </div>
             {{ form.rules.errors }}{{ form.remove_soft_whitespace.errors }}
             <div class="odkurzacz-rules">
-                <label for="{{ form.remove_soft_whitespace.id_for_label }}" title="Miękkie entery (Shift+Enter) stają się nowymi akapitami, a spacje nieprzenoszące zwykłymi spacjami. Działa na końcu czyszczenia; podziały stron pozostają.">{{ form.remove_soft_whitespace }} <span>{{ form.remove_soft_whitespace.label }} (Shift+Enter → nowy akapit, wykonywane na końcu)</span></label>
+                <label for="{{ form.remove_soft_whitespace.id_for_label }}" title="Miękkie entery (Shift+Enter) stają się nowymi akapitami, a spacje nieprzenoszące zwykłymi spacjami. Działa na końcu czyszczenia; podziały stron pozostają.">{{ form.remove_soft_whitespace }} <span>{{ form.remove_soft_whitespace.label }}</span></label>
                 {% for checkbox in form.rules %}<label for="{{ checkbox.id_for_label }}">{{ checkbox.tag }} <span>{{ checkbox.choice_label }}</span></label>{% endfor %}
             </div>
         </fieldset>
@@ -70,10 +70,9 @@
             {{ conversion_form.formats.errors }}
             <div class="odkurzacz-rules">{% for checkbox in conversion_form.formats %}<label for="{{ checkbox.id_for_label }}">{{ checkbox.tag }} <span>{{ checkbox.choice_label }}</span></label>{% endfor %}</div>
         </fieldset>
-        <p><label>{{ conversion_form.remove_soft_whitespace }} {{ conversion_form.remove_soft_whitespace.label }}</label></p><p><label for="{{ conversion_form.use_cleaner.id_for_label }}">{{ conversion_form.use_cleaner }} {{ conversion_form.use_cleaner.label }}</label></p>
+        <p><label for="{{ conversion_form.use_cleaner.id_for_label }}">{{ conversion_form.use_cleaner }} {{ conversion_form.use_cleaner.label }}</label></p>
         {{ conversion_form.use_cleaner.errors }}
-        <p>Ta opcja stosuje domyślne poprawki Odkurzacza przed konwersją. Ustawienia w osobnej sekcji Odkurzacza nie mają tu wpływu. Przed konwersją zaakceptuj śledzone zmiany i usuń komentarze.</p>
-        <p>Przy zaznaczeniu usuwania miękkich enterów i spacji nieprzenoszących konwerter zamienia miękkie entery na zwykłe entery (nowe akapity), a spacje nieprzenoszące na zwykłe spacje. Istniejące podziały stron pozostają.</p>
+        <p>Ta opcja stosuje domyślne poprawki Odkurzacza przed konwersją, w tym zamianę miękkich enterów na nowe akapity i spacji nieprzenoszących na zwykłe spacje. Ustawienia w osobnej sekcji Odkurzacza nie mają tu wpływu. Przed konwersją zaakceptuj śledzone zmiany i usuń komentarze.</p>
         <button type="submit" class="primary-button">Konwertuj i pobierz</button>
         <p>Poczekaj na pobranie pliku. Konwersja może potrwać do 90 sekund; nie wysyłaj formularza ponownie w tym czasie.</p>
     </form>

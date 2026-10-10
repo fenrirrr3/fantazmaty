@@ -247,7 +247,7 @@ class CMS16Tests(TestCase):
                 "program_action": "convert",
                 "convert-document": SimpleUploadedFile("tekst.docx", self.document()),
                 "convert-formats": ["epub"],
-                "convert-remove_soft_whitespace": "on",
+                "convert-use_cleaner": "on",
             },
         )
         self.assertEqual(response.status_code, 200)
@@ -255,5 +255,5 @@ class CMS16Tests(TestCase):
             content = archive.read("EPUB/content.xhtml")
             self.assertEqual(
                 [p.text_content().strip() for p in html.fromstring(content).xpath("//p")][:2],
-                ["Ala ma", "kota !"],
+                ["Ala ma", "kota!"],  # Odkurzacz usuwa też spację przed wykrzyknikiem.
             )

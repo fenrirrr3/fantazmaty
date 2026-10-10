@@ -1,0 +1,389 @@
+{
+ "schema": "anthology-corrections-v1",
+ "corrections": [
+  {
+   "anthology": "nanoFantazje 1.0",
+   "reporter": "Damian Szandecki",
+   "story": "Inne miejsce",
+   "fragment": "Paginacja w druku",
+   "problem": "Numeracja stron się nie zgadza - od Przedmowy do \"Starsza pani musi zniknać\" całość numery są \"cofnięte\" o 2, a od \"Księcia łabędzi\" o 4.",
+   "suggestion": ""
+  },
+  {
+   "anthology": "Fantazmaty 1",
+   "reporter": "Damian Szandecki",
+   "story": "Inne miejsce",
+   "fragment": "Paginacja w druku",
+   "problem": "Numeracja stron się nie zgadza - numery są \"cofnięte\" o 2",
+   "suggestion": ""
+  },
+  {
+   "anthology": "nanoFantazje 1.0",
+   "reporter": "Sylwester Gdela",
+   "story": "Inne miejsce",
+   "fragment": "Świerczek-Gryboś,, (stopka, PDF)",
+   "problem": "Dwa przecinki po nazwisku",
+   "suggestion": "usunąć"
+  },
+  {
+   "anthology": "Ja, legenda",
+   "reporter": "Sylwester Gdela",
+   "story": "Zakrzywienie czasozefiru",
+   "fragment": "Konstrukcja powoliodebr przesuwała się ku szczytowi, muskana promieniami upalnego słońca.",
+   "problem": "Został kawałek słowa po rekonstukcji zdania.",
+   "suggestion": "Konstrukcja powoli przesuwała się ku szczytowi, muskana promieniami upalnego słońca."
+  },
+  {
+   "anthology": "Fantazmaty 1",
+   "reporter": "Karolina Grzeszczak",
+   "story": "Iskra z Edry",
+   "fragment": "Od tego miesjca przenieść do nowego akapitu",
+   "problem": "Wkleił się komentarz w tekst główny",
+   "suggestion": "usunąć"
+  },
+  {
+   "anthology": "nanoFantazje 1.0",
+   "reporter": "Karolina Grzeszczak",
+   "story": "Inne miejsce",
+   "fragment": "Redaktorzy (Projekt Fantazmaty współtworzą )",
+   "problem": "Brakuje Alicji Kiełczewskiej",
+   "suggestion": "Dodać"
+  },
+  {
+   "anthology": "Umieranie to parszywa robota",
+   "reporter": "Marian Siwiak",
+   "story": "Pokój",
+   "fragment": "Sam koniec",
+   "problem": "Opowiadanie podpisane przez Konrada Kołodziejczyka",
+   "suggestion": "Usunąć"
+  },
+  {
+   "anthology": "Fantazmaty 1",
+   "reporter": "Anita Brzozowiec",
+   "story": "Śnienie",
+   "fragment": "– Chris mówi – kontynuowała niezrażona – że według najnowszych badań, dzieci między trzecim a piątym rokiem życia zaczynają śnić konkretne obrazy, przetwarzać wyjątkowo silne bodźce.",
+   "problem": "zbędny przecinek",
+   "suggestion": "– Chris mówi – kontynuowała niezrażona – że według najnowszych badań dzieci między trzecim a piątym rokiem życia zaczynają śnić konkretne obrazy, przetwarzać wyjątkowo silne bodźce."
+  },
+  {
+   "anthology": "Umieranie to parszywa robota",
+   "reporter": "Alicja Janusz",
+   "story": "Ultra Hardkor",
+   "fragment": "\"przyglądając się dłoni ubrudzonej je własną krwią dłoni\", \"mogę z tego, co wiem, tylko\", brakuje ja",
+   "problem": "",
+   "suggestion": ""
+  },
+  {
+   "anthology": "nanoFantazje 3.0",
+   "reporter": "Barbara Uznańska-Loch",
+   "story": "Mit założycielski",
+   "fragment": "str.96, pierwsza linijka",
+   "problem": "pogrubienie literki \"s\" w słowie \"się\"",
+   "suggestion": "ujednolicić czcionkę"
+  },
+  {
+   "anthology": "nanoFantazje 3.0",
+   "reporter": "Barbara Uznańska-Loch",
+   "story": "Zagroda",
+   "fragment": "str. 154, drugi akapit od dołu, \"Chyba nadal działało.\"",
+   "problem": "słowo \"działało\" jest mniejszym drukiem niż reszta",
+   "suggestion": "ujednolicić czcionkę"
+  },
+  {
+   "anthology": "Na zawsze, do jutra, już nigdy",
+   "reporter": "Agnieszka Rzepecka",
+   "story": "Matecznik",
+   "fragment": "Blisko obrzeża miejscowość",
+   "problem": "miejscowość (literówka)",
+   "suggestion": "miejscowości"
+  },
+  {
+   "anthology": "Na zawsze, do jutra, już nigdy",
+   "reporter": "Katarzyna Twarduś",
+   "story": "Dziesięć ton miłości",
+   "fragment": "Patrzył za nią, czując jak ogarnia go coraz większa wesołość.",
+   "problem": "brak przecinka",
+   "suggestion": "Patrzył za nią, czując, jak ogarnia go coraz większa wesołość."
+  },
+  {
+   "anthology": "nanoFantazje 3.0",
+   "reporter": "Dawid Wiktorski",
+   "story": "Inne miejsce",
+   "fragment": "– Jestem, jestem. – W drzwiach do pokoju, wycierając ręce o fartuch,\npojawiła się około pięćdziesięcioletnia korpulentna gospodyni",
+   "problem": "pogrubienia słów",
+   "suggestion": ""
+  },
+  {
+   "anthology": "nanoFantazje 3.0",
+   "reporter": "Dawid Wiktorski",
+   "story": "Zagroda",
+   "fragment": "całe do przejrzenia",
+   "problem": "",
+   "suggestion": ""
+  },
+  {
+   "anthology": "nanoFantazje 3.0",
+   "reporter": "Dawid Wiktorski",
+   "story": "Kołakowska",
+   "fragment": "gdy przytulał żonę Wieczorami",
+   "problem": "brak kropki po \"żonę\"",
+   "suggestion": ""
+  },
+  {
+   "anthology": "nanoFantazje 3.0",
+   "reporter": "Dawid Wiktorski",
+   "story": "Dziesięć dni błękitu",
+   "fragment": "brakowało powierza",
+   "problem": "powietrza",
+   "suggestion": ""
+  },
+  {
+   "anthology": "Dragoneza",
+   "reporter": "Anna Koral",
+   "story": "Dzieci Posejdona",
+   "fragment": "Musiał zauważyć, że była w środku i mimo wszystko postanowił się pokazać.",
+   "problem": "brak przecinka po \"środku\"",
+   "suggestion": "Musiał zauważyć, że była w środku, i mimo wszystko postanowił się pokazać."
+  },
+  {
+   "anthology": "Dragoneza",
+   "reporter": "Sebastian Filipowicz",
+   "story": "Wycinki utraconego świata",
+   "fragment": "Strona 290: \"...przepychając się przez nieskończony tłumy.\"",
+   "problem": "Albo \"nieskończony tłum\", albo \"nieskończone tłumy\"",
+   "suggestion": "Proponuję \"nieskończony tłum\", bo tak zostało przeczytane w audiobooku."
+  },
+  {
+   "anthology": "Dragoneza",
+   "reporter": "Sebastian Filipowicz",
+   "story": "Wycinki utraconego świata",
+   "fragment": "Strona 299: \"Jak zareagowaliście na wieść o tym, że zakończyła się klęską?\"",
+   "problem": "To ewidentnie jest pytanie prowadzącego wywiad, więc powinno być wytłuszczone, tak jak wszystkie inne, a tymczasem wygląda jak zwykły kolejny akapit wypowiedzi odpowiadającego.",
+   "suggestion": "Trzeba wyeksponować to pytanie, tak jak wszystkie inne w tym opowiadaniu"
+  },
+  {
+   "anthology": "Dragoneza",
+   "reporter": "Sebastian Filipowicz",
+   "story": "Wycinki utraconego świata",
+   "fragment": "Strona 307: \"Tiahne-2\"",
+   "problem": "Superkomputer jest tu nazwany \"Tiahne-2\", podczas gdy wcześniej było \"Tianhe-2\".",
+   "suggestion": "Proponuję na stronie 307 zmienić na \"Tianhe-2\", bo tak zostało przeczytane w audiobooku."
+  },
+  {
+   "anthology": "nanoFantazje 3.0",
+   "reporter": "Agata Graczyk",
+   "story": "Gdańsk 76",
+   "fragment": "strona 40 linijka z \"jednak zawsze nagle, z mrugającymi światłami\"",
+   "problem": "brak spacji",
+   "suggestion": ""
+  },
+  {
+   "anthology": "Obieżyświaty",
+   "reporter": "Dawid Wiktorski",
+   "story": "Inne miejsce",
+   "fragment": "podlinkowanie patronite'a w pdf-e (nie ma hiperłącza)",
+   "problem": "",
+   "suggestion": ""
+  },
+  {
+   "anthology": "Obieżyświaty",
+   "reporter": "Dawid Wiktorski",
+   "story": "Inne miejsce",
+   "fragment": "poprawka w obieżyświatach tytułu z cudzysłowu na kursywę w audiodeskrypcji",
+   "problem": "",
+   "suggestion": ""
+  },
+  {
+   "anthology": "Obieżyświaty",
+   "reporter": "Magda Kowalewicz",
+   "story": "Inne miejsce",
+   "fragment": "Koordynacja działu audio: Agata Graczyk, Magda Kowalewicz",
+   "problem": "Usunąć mnie",
+   "suggestion": "Koordynacja działu audio: Agata Graczyk"
+  },
+  {
+   "anthology": "Gastronomicon",
+   "reporter": "Katarzyna Twarduś",
+   "story": "Roślinoludy",
+   "fragment": "No tak, przecież jego jednym przyjacielem był Tidi.",
+   "problem": "literówka: powinno być 'jedynym', nie 'jednym'",
+   "suggestion": "No tak, przecież jego jedynym przyjacielem był Tidi."
+  },
+  {
+   "anthology": "Gastronomicon",
+   "reporter": "Katarzyna Twarduś",
+   "story": "Roślinoludy",
+   "fragment": "Brando na moment zamarł, by po chwili cicho zapytać:",
+   "problem": "literówka: powinno być 'Bradno', nie 'Brando'",
+   "suggestion": "Bradno na moment zamarł, by po chwili cicho zapytać:"
+  },
+  {
+   "anthology": "Gastronomicon",
+   "reporter": "Katarzyna Twarduś",
+   "story": "Roślinoludy",
+   "fragment": "Bradno podszedł od kolegi, poklepał go po plecach i wyszeptał:",
+   "problem": "literówka: powinno być 'do kolegi', nie 'od kolegi'",
+   "suggestion": "Bradno podszedł do kolegi, poklepał go po plecach i wyszeptał:"
+  },
+  {
+   "anthology": "Gastronomicon",
+   "reporter": "Katarzyna Twarduś",
+   "story": "Roślinoludy",
+   "fragment": "Brando usłyszał słodki głosik dobiegający z innego wymiaru.",
+   "problem": "literówka: powinno być 'Bradno', nie 'Brando'",
+   "suggestion": "Bradno usłyszał słodki głosik dobiegający z innego wymiaru."
+  },
+  {
+   "anthology": "Na zawsze, do jutra, już nigdy",
+   "reporter": "Katarzyna Twarduś",
+   "story": "Dmuchawce",
+   "fragment": "Akapit od: Na polecenie Króla i Królowej",
+   "problem": "Ten akapit w pliku RTF jest bez kursywy, powinien być kursywą",
+   "suggestion": "Wprowadzić kursywe w całym akapicie"
+  },
+  {
+   "anthology": "Na zawsze, do jutra, już nigdy",
+   "reporter": "Katarzyna Twarduś",
+   "story": "Dmuchawce",
+   "fragment": "Akapit: Gdy wszystkie prezenty zostały wręczone…",
+   "problem": "Ten akapit chyba wszędzie powinien być kursywą",
+   "suggestion": ""
+  },
+  {
+   "anthology": "Dragoneza",
+   "reporter": "Katarzyna Twarduś",
+   "story": "Żmije",
+   "fragment": "zerwała się z posłania i, nie bacząc na brak okrycia",
+   "problem": "Niepotrzebny przecink po 'i'",
+   "suggestion": "Usunąć przecink po 'i'"
+  },
+  {
+   "anthology": "Dragoneza",
+   "reporter": "Katarzyna Twarduś",
+   "story": "Żmije",
+   "fragment": "Widać we Francyji będąc, inne niż waść lokale odwiedzałem.",
+   "problem": "Imiesłów błędnie zastosowany, nie zgadza się czas (pobyt we Francji chyba trwał dłużej niż samo odwiedzanie lokali)",
+   "suggestion": "Widać, gdy byłem we Francyji, inne niż waść lokale odwiedzałem"
+  },
+  {
+   "anthology": "Dragoneza",
+   "reporter": "Katarzyna Twarduś",
+   "story": "Żmije",
+   "fragment": "Przekręcając się na brzuch, obrócił całe ciało w prawo, mocnym wymachem nóg sprowadzając Rychłego na brudne klepisko.",
+   "problem": "Imiesłów 'sprowadzając' – to już było po tym, jak się przekręcił, więc oba nie pasują",
+   "suggestion": "Przekręcając się na brzuch, obrócił całe ciało w prawo i mocnym wymachem nóg sprowadził Rychłego na brudne klepisko."
+  },
+  {
+   "anthology": "Dragoneza",
+   "reporter": "Katarzyna Twarduś",
+   "story": "Żmije",
+   "fragment": "Niech opatrzność czuwa nad Tobą,\nWierny Ci Atanazy Wielecki",
+   "problem": "Po 'Tobą' nie powinno być przecinka, to podpis pod listem, rozdzielony akapitem",
+   "suggestion": "Niech opatrzność czuwa nad Tobą\nWierny Ci Atanazy Wielecki"
+  },
+  {
+   "anthology": "Dragoneza",
+   "reporter": "Katarzyna Twarduś",
+   "story": "Żmije",
+   "fragment": "Gdy starszy Kobielski cofnął buta",
+   "problem": "cofnął (kogo? co?) but",
+   "suggestion": "Gdy starszy Kobielski cofnął but"
+  },
+  {
+   "anthology": "Dragoneza",
+   "reporter": "Katarzyna Twarduś",
+   "story": "Żmije",
+   "fragment": "Jana rewelacje te obeszły nie bardziej niż rozprawa o wartości cnoty portową dziwkę.",
+   "problem": "czy tu nie powinno być 'portowej'?",
+   "suggestion": ""
+  },
+  {
+   "anthology": "Dragoneza",
+   "reporter": "Katarzyna Twarduś",
+   "story": "Żmije",
+   "fragment": "– A to małpi syn! – zakrzyknął któryś ze Kozaków",
+   "problem": "chyba powinno być 'z Kozaków'",
+   "suggestion": ""
+  },
+  {
+   "anthology": "Dragoneza",
+   "reporter": "Katarzyna Twarduś",
+   "story": "Żmije",
+   "fragment": "W jednej ręce, tej, w której brakowało palców, trzymał lejce, w drugiej bandolet.",
+   "problem": "przy jeździe wierzchem trzyma się wodze, lejce są przy zaprzęgu",
+   "suggestion": "W jednej ręce, tej, w której brakowało palców, trzymał wodze, w drugiej bandolet."
+  },
+  {
+   "anthology": "Dragoneza",
+   "reporter": "Katarzyna Twarduś",
+   "story": "Żmije",
+   "fragment": "Przez chwilę przed oczami się migały mu",
+   "problem": "Chyba nie powinno być 'się'",
+   "suggestion": "Przez chwilę przed oczami migały mu"
+  },
+  {
+   "anthology": "Dragoneza",
+   "reporter": "Katarzyna Twarduś",
+   "story": "Żmije",
+   "fragment": ", jakby miało własną wolę. Pewnie gdyby je odciąć, ruszyłoby w swoją stronę",
+   "problem": "rym: wolę – stronę",
+   "suggestion": "Może: 'ruszyłoby przed siebie'?"
+  },
+  {
+   "anthology": "Dragoneza",
+   "reporter": "Katarzyna Twarduś",
+   "story": "Żmije",
+   "fragment": "Jacek miał nadzieje się",
+   "problem": "e' zamiast 'ę'",
+   "suggestion": "Jacek miał nadzieję się"
+  },
+  {
+   "anthology": "Dragoneza",
+   "reporter": "Katarzyna Twarduś",
+   "story": "Żmije",
+   "fragment": "nawet wspierając się na szabli nie miał dość siły",
+   "problem": "brakuje przecinka",
+   "suggestion": "nawet wspierając się na szabli, nie miał dość siły"
+  },
+  {
+   "anthology": "Dragoneza",
+   "reporter": "Katarzyna Twarduś",
+   "story": "Żmije",
+   "fragment": "",
+   "problem": "ogólnie: niekonsekwencja w zapisie 'spytal/zapytał', raz jest tak, raz tak",
+   "suggestion": ""
+  },
+  {
+   "anthology": "Dragoneza",
+   "reporter": "Katarzyna Twarduś",
+   "story": "Żmije",
+   "fragment": "Jacek sięgnął do mieszka, który miał przy pasie i wyjął",
+   "problem": "brakuje przecinka",
+   "suggestion": "Jacek sięgnął do mieszka, który miał przy pasie, i wyjął"
+  },
+  {
+   "anthology": "Dragoneza",
+   "reporter": "Katarzyna Twarduś",
+   "story": "Żmije",
+   "fragment": "Strop podtrzymywał owalnie rozmieszczony rząd kolumn",
+   "problem": "homonimia skladniowa",
+   "suggestion": "Może: Strop podtrzymywały owalnie rozmieszczone kolumny"
+  },
+  {
+   "anthology": "Dragoneza",
+   "reporter": "Katarzyna Twarduś",
+   "story": "Żmije",
+   "fragment": "ręką pierwszych, przez Żmija natchnionych wykonany",
+   "problem": "brakuje przecinka",
+   "suggestion": "ręką pierwszych, przez Żmija natchnionych wykonany,"
+  },
+  {
+   "anthology": "Dragoneza",
+   "reporter": "Katarzyna Twarduś",
+   "story": "Żmije",
+   "fragment": "Sam katafalk, będące świadectwem rozpaczy castrum doloris",
+   "problem": "błędna odmiana",
+   "suggestion": "Sam katafalk, będący świadectwem rozpaczy castrum doloris"
+  }
+ ]
+}

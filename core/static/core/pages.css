@@ -145,18 +145,22 @@
 }
 
 .dashboard-list,
+/* Wyniki wyszukiwania wyglądają jak wpisy „Prace w toku” na Pulpicie. */
 .search-result-list {
+    display: grid;
+    gap: var(--space-3);
     margin: 0;
-    padding: 0;
+    padding: 0 var(--space-4) var(--space-4);
     list-style: none;
 }
 
 .search-result-item {
-    padding: var(--space-4) var(--space-5);
-}
-
-.search-result-item + .search-result-item {
-    border-top: 1px solid var(--border);
+    min-width: 0;
+    padding: var(--space-4);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--primary);
+    border-radius: var(--radius-md);
+    background: var(--surface-alt);
 }
 
 .search-result-item a {
@@ -217,10 +221,6 @@
 
 .dashboard-grid .dashboard-list-item p {
     margin: 0;
-}
-
-.dashboard-grid .role-badge {
-    --badge-border: var(--border-strong);
 }
 
 .dashboard-expand {
@@ -433,6 +433,15 @@ section:has(#reserved-assignments-heading) {
     flex-wrap: nowrap;
 }
 
+/* Teksty do wzięcia: Przejmij i data w jednej linii, na środku wiersza (etykieta daty tylko dla czytników). */
+.take-stage-compact {
+    align-items: center;
+}
+
+.take-stage-compact .stage-date-input {
+    min-width: 10.5rem;
+}
+
 :is(.take-stage-form, .start-stage-form) > button {
     flex: 0 0 auto;
 }
@@ -465,11 +474,6 @@ section:has(#reserved-assignments-heading) {
 
 :is(.take-stage-form, .start-stage-form) button {
     white-space: nowrap;
-}
-
-/* Kolumna etapu wyrównana do przycisku przejęcia i pola daty, nie do etykiety daty. */
-.available-stage-cell:has(+ td .take-stage-form .stage-date-input) {
-    padding-top: calc(var(--cell-padding-block) + var(--font-size-sm) * var(--leading) + var(--field-gap));
 }
 
 .quick-stage-action {

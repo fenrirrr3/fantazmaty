@@ -97,7 +97,8 @@ class AuthorPseudonymTests(TestCase):
         self.assertEqual((review.author_first_name, review.author_last_name), (self.author.first_name, self.author.last_name))
 
     def test_review_authorship_remains_hidden_for_regular_member(self):
-        self.client.force_login(self.member)
+        reviewer = create_member('pseudo-reviewer', 'Recenzent')
+        self.client.force_login(reviewer)
         response = self.client.get(reverse('core:review_list'))
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, 'Mariusz Nowak')

@@ -54,7 +54,7 @@ class ChangesV80Tests(TestCase):
         self.assertContains(page, "Notatki zespołu")
         self.assertContains(page, "nie dotyczy")
         page = self.client.get(reverse("core:text_list"), {"q": "Ekstrakty"})
-        self.assertContains(page, "nie dotyczy")
+        self.assertContains(page, "n.d.")
         self.assertNotContains(page, ">None<")
         normal = self.client.get(reverse("core:assigned_text_detail", args=[self.text.pk]))
         self.assertContains(normal, "Recenzje tekstu")
@@ -69,13 +69,13 @@ class ChangesV80Tests(TestCase):
         inactive.first_name = "NeedleInactive"
         inactive.is_active = False
         inactive.save()
-        for i in range(53):
+        for i in range(18):
             Text.objects.create(title=f"Needle {i:03}", anthology=self.book, length=1)
             AudioContributor.objects.create(name=f"NeedleAudio {i:03}")
         url = reverse("core:global_search")
         page = self.client.get(url, {"q": "Needle"})
-        self.assertEqual(len(page.context["texts"]), 50)
-        self.assertEqual(page.context["texts"].total, 53)
+        self.assertEqual(len(page.context["texts"]), 15)
+        self.assertEqual(page.context["texts"].total, 18)
         self.assertEqual({p["pk"] for p in page.context["people"]}, {external.pk, inactive.pk})
         self.assertContains(page, "Zewnętrzny")
         self.assertContains(page, "Nieaktywny")
@@ -87,7 +87,7 @@ class ChangesV80Tests(TestCase):
         self.assertIn("q=Needle", next_url)
         next_page = self.client.get(url + next_url)
         self.assertEqual(len(next_page.context["texts"]), 3)
-        self.assertEqual(len(next_page.context["additional_results"][0]["items"]), 50)
+        self.assertEqual(len(next_page.context["additional_results"][0]["items"]), 15)
         self.assertEqual(next_page.context["additional_results"][0]["items"].page.number, 1)
         page = self.client.get(url, {"q": "Needle", "audio_page": 2})
         self.assertEqual(len(page.context["additional_results"][0]["items"]), 3)

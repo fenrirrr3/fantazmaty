@@ -61,6 +61,8 @@ class DocumentConversionForm(OdkurzaczForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # Miękkie entery usuwa Odkurzacz – w konwerterze działa to razem z „Użyj Odkurzacza”.
+        del self.fields['remove_soft_whitespace']
         del self.fields['rules']
         del self.fields['rebuild']
         del self.fields['normalize_formatting']

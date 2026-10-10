@@ -71,13 +71,13 @@ class ExtractSearchTests(TestCase):
         self.assertNotContains(self.client.get(self.url), 'Brak wyników dla podanego zapytania.')
 
     def test_extract_results_have_independent_pagination(self):
-        for number in range(50):
+        for number in range(15):
             Extract.objects.create(author=self.author, full_name='Anna Żurawska', email=self.author.email,
                 title=f'Tekst {number}', recruitment=f'Ekstrakty test {number:02}')
         response = self.client.get(self.url, {'q': 'Anna Żurawska'})
         results = response.context['extracts']
-        self.assertEqual(results.total, 51)
-        self.assertEqual(len(results), 50)
+        self.assertEqual(results.total, 16)
+        self.assertEqual(len(results), 15)
         self.assertIn('extracts_page=2', results.next_url)
         second = self.client.get(self.url + results.next_url)
         self.assertEqual(len(second.context['extracts']), 1)

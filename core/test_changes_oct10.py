@@ -136,8 +136,10 @@ class StylesheetTests(SimpleTestCase):
         self.assertIn('margin-inline: calc(-1 * var(--table-bleed, var(--card-padding)))', css)
         self.assertNotIn('.post-layout-table-wrap {', self.css('post-layout.css'))
 
-    def test_inactivity_kind_badge_has_a_border(self):
-        self.assertIn('.inactivity-badge {\n    --badge-border: currentColor;', self.css('components.css'))
+    def test_every_badge_has_a_border(self):
+        css = self.css('components.css')
+        self.assertIn('--badge-fg: var(--muted);\n    --badge-border: currentColor;', css)
+        self.assertNotIn('--badge-border: transparent', css)
 
     def test_external_buttons_use_the_accent_colour(self):
         css = self.css('components.css')

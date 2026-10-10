@@ -236,12 +236,16 @@ class ReviewVisibilityTests(TestCase):
         cls.open = Review.objects.create(title='Szukane nowe', status='new', **common)
 
     def test_withdrawn_only_in_admin_and_team_sees_decisions(self):
+        # Lista Recenzje jest dla recenzentów; redaktor otwiera tylko pojedyncze recenzje.
         self.client.force_login(self.editor)
+        self.assertEqual(self.client.get(reverse('core:review_list')).status_code, 403)
+        self.client.force_login(self.reviewer)
         current = self.client.get(reverse('core:review_list'))
         titles = {row['title'] for row in current.context['page_obj']}
         self.assertEqual(titles, {'Szukane nowe'})
         archive = self.client.get(reverse('core:review_list'), {'old_reviews': '1'})
         self.assertEqual({row['title'] for row in archive.context['page_obj']}, {'Szukane przyjęte', 'Szukane odrzucone'})
+        self.client.force_login(self.editor)
         self.assertEqual(self.client.get(reverse('core:assigned_review_detail', args=[self.withdrawn.pk])).status_code, 404)
         self.assertEqual(self.client.get(reverse('core:assigned_review_detail', args=[self.accepted.pk])).status_code, 200)
         found = {row['title'] for row in _search_reviews('Szukane', user=self.editor, include_authors=False)}

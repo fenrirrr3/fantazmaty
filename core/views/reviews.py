@@ -374,6 +374,8 @@ def _render_review_detail(
         context['author_message'] = review.author_message
     if bound_forms:
         context.update(bound_forms)
+    from core.permissions import can_browse_reviews
+    context['can_browse_reviews'] = can_browse_reviews(request.user)
     context['is_abandoned_review'] = _review_is_abandoned(review)
     if context['is_abandoned_review']:
         # History stays readable; abandoned submissions cannot restart production.
@@ -394,6 +396,10 @@ def _render_review_detail(
 @require_GET
 @team_member_required
 def review_list(request):
+    from core.permissions import can_browse_reviews
+    if not can_browse_reviews(request.user):
+        raise PermissionDenied("Lista recenzji jest dostępna dla recenzentów i koordynatorów. "
+                               "Recenzję tekstu otworzysz z podglądu tekstu.")
     # Selektor stosuje old_reviews, filtry i sortowanie z białej listy.
     # Archiwum jest dostępne recenzentom; dane autorów w archiwum tylko superuserom.
     # Elementy kontekstu muszą być bezpiecznymi projekcjami danych,

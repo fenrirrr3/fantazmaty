@@ -41,6 +41,12 @@ def reviewer_allowed(user):
 
 
 @register.simple_tag
+def review_list_allowed(user):
+    from core.permissions import can_browse_reviews
+    return can_browse_reviews(user)
+
+
+@register.simple_tag
 def account_person(user):
     from people.models import Person
     if not user.is_authenticated:

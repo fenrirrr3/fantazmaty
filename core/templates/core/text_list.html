@@ -89,9 +89,9 @@
                             <td
                                 class="numeric-cell"
                                 data-type="number"
-                                data-copy-value="{% if text.is_extract_volume %}nie dotyczy{% else %}{{ text.length|default_if_none:"" }}{% endif %}"
+                                data-copy-value="{% if text.is_extract_volume %}n.d.{% else %}{{ text.length|default_if_none:"" }}{% endif %}"
                             >
-                                {% if text.is_extract_volume %}nie dotyczy{% else %}{{ text.length|default_if_none:"Brak danych" }}{% endif %}
+                                {% if text.is_extract_volume %}n.d.{% else %}{{ text.length|default_if_none:"Brak danych" }}{% endif %}
                             </td>
 
                             <td>

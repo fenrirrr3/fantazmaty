@@ -123,9 +123,9 @@
                             <td
                                 class="numeric-cell"
                                 data-type="number"
-                                data-copy-value="{% if stage.text.is_extract_volume %}nie dotyczy{% else %}{{ stage.text.length|default_if_none:"" }}{% endif %}"
+                                data-copy-value="{% if stage.text.is_extract_volume %}n.d.{% else %}{{ stage.text.length|default_if_none:"" }}{% endif %}"
                             >
-                                {% if stage.text.is_extract_volume %}nie dotyczy{% else %}{{ stage.text.length|default_if_none:"Brak danych" }}{% endif %}
+                                {% if stage.text.is_extract_volume %}n.d.{% else %}{{ stage.text.length|default_if_none:"Brak danych" }}{% endif %}
                             </td>
 
                             <td class="available-stage-cell">
@@ -133,7 +133,7 @@
                             </td>
 
                             <td data-double-copy class="stage-action-cell" data-copy="false">
-                                {% include "core/includes/take_stage_form.html" %}
+                                {% include "core/includes/take_stage_form.html" with compact=True %}
                             </td>
                         </tr>
                     {% empty %}
