@@ -7,7 +7,7 @@
         <button type="submit" class="assign-button" aria-describedby="reservation-help-{{ stage.pk }}">Przejmij</button>
         <span id="reservation-help-{{ stage.pk }}" class="form-help reservation-label">Rezerwacja</span>
     {% else %}
-        <button type="submit" class="assign-button">Przejmij</button>
+        <div class="form-field take-stage-action"><span class="form-label">Akcja</span><button type="submit" class="assign-button">Przejmij</button></div>
         <div class="form-field">
             <label for="started-at-{{ stage.pk }}">Data rozpoczęcia</label>
             <input id="started-at-{{ stage.pk }}" type="date" name="started_at"

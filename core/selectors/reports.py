@@ -61,6 +61,7 @@ def _people_for_role(role_name):
     people = (
         Person.objects.filter(
             is_active=True,
+            is_external=False,
             user__isnull=False,
             user__is_active=True,
         )

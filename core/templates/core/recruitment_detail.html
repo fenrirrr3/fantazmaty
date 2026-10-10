@@ -1,6 +1,6 @@
 {% extends "core/base.html" %}{% load static %}
 {% block title %}Zgłoszenie rekrutacyjne | Fantazmaty CMS{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'core/recruitment.css' %}"><link rel="stylesheet" href="{% static 'core/intake.css' %}"><link rel="stylesheet" href="{% static 'core/dialogs.css' %}">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/recruitment.css' %}?v=63"><link rel="stylesheet" href="{% static 'core/intake.css' %}"><link rel="stylesheet" href="{% static 'core/dialogs.css' %}">{% endblock %}
 {% block content %}
 <header class="page-header"><h1 class="page-title recruitment-detail-heading">{{ candidate_name }}</h1><p class="page-description recruitment-detail-heading">{{ record.mail_subject|default:'Zgłoszenie rekrutacyjne' }}</p><a class="secondary-button" href="{% url 'core:recruitment_list' %}">Wróć do Rekrutacji</a></header>
 <div class="recruitment-actions">
@@ -16,6 +16,7 @@
             <p><strong>Wybrane role:</strong> {% firstof record.mail_roles_display record.get_department_display %}</p>
             <p><strong>Data nadesłania:</strong> {% if record.mail_received_at %}{{ record.mail_received_at|date:'d.m.Y H:i' }}{% else %}{{ record.submitted_at|date:'d.m.Y' }}{% endif %}</p>
             <p><strong>Powiadomiony:</strong> {{ record.notified|yesno:'Tak,Nie' }}{% if record.notified_at %} ({{ record.notified_at|date:'d.m.Y H:i' }}){% endif %}</p>
+            <p><strong>Załączniki pobrane:</strong> {% if attachment_downloads %}Tak ({{ attachment_downloads.0.downloaded_at|date:'d.m.Y H:i' }}){% else %}Nie{% endif %}</p>
             {% if record.notes %}<h3>Uwagi</h3><div class="recruitment-message">{{ record.notes }}</div>{% endif %}
         </section>
         {% for section in sections %}
@@ -25,6 +26,7 @@
                 <input type="hidden" name="role" value="{{ section.role }}">
                 <input type="hidden" name="version" value="{{ section.version }}">
                 {{ section.form.as_p }}
+                {% if section.decision.reason_author_name %}<p class="form-help">Uzasadnienie: {{ section.decision.reason_author_name }} · {{ section.decision.reason_updated_at|date:'d.m.Y H:i' }}</p>{% elif section.decision.decision_reason %}<p class="form-help">Autor wcześniejszego uzasadnienia: brak zapisanej informacji.</p>{% endif %}
                 <p class="form-help">Zapis dotyczy wyłącznie tej roli. Nie wysyła wiadomości ani nie zmienia pola Powiadomiony.</p>
                 <div class="recruitment-actions"><button class="primary-button" type="submit">Zapisz decyzję: {{ section.label }}</button></div>
             </form>

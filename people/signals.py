@@ -43,7 +43,7 @@ def revoke_removed_roles(sender, instance, action, reverse, pk_set, using, **kwa
         instance._removed_coordinator_people = affected
     elif action in ('post_remove', 'post_clear'):
         for person in Person.objects.filter(pk__in=getattr(instance, '_removed_coordinator_people', [])):
-            if not person.roles.filter(coordinator_query()).exists():
+            if not person.legacy_coordinator_access and not person.roles.filter(coordinator_query()).exists():
                 revoke_coordinator(person)
 
 
@@ -73,5 +73,5 @@ def revoke_lost_coordinator_name(sender, instance, signal, **kwargs):
         return
     for person in Person.objects.filter(pk__in=getattr(instance, '_coordinator_members', [])):
         remaining = person.roles.filter(coordinator_query()).exists() if sender is Role else bool(person.user_id and person.user.groups.filter(coordinator_query()).exists())
-        if not remaining:
+        if not remaining and not person.legacy_coordinator_access:
             revoke_coordinator(person)

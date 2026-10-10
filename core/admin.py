@@ -17,6 +17,7 @@ from core.models import MailboxConnection
 from core.admin_newsletter_recovery import NewsletterRecoveryAdminMixin
 from core.models import PublicAudiobookSettings
 from core.models import Audiobook, AudiobookStage
+from core.models import AudioContributor
 from core.audiobook_forms import AudiobookProductionForm
 
 
@@ -26,6 +27,21 @@ class AudiobookAdminForm(AudiobookProductionForm):
 
     def clean_additional_links(self):
         return self.cleaned_data.get('additional_links') or []
+
+
+@admin.register(AudioContributor)
+class AudioContributorAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
+    list_display = ('name', 'email', 'user')
+    search_fields = ('name', 'email')
+    autocomplete_fields = ('user',)
+    fields = ('name', 'email', 'user', 'works_link')
+    readonly_fields = ('works_link',)
+
+    @admin.display(description='Nagrania')
+    def works_link(self, obj):
+        from django.urls import reverse
+        from django.utils.html import format_html
+        return format_html('<a href="{}">Zrealizowane nagrania</a>', reverse('core:audio_contributor', args=[obj.pk])) if obj.pk else 'Zapisz profil.'
 
 
 @admin.register(AudiobookStage)
@@ -253,6 +269,10 @@ class RecruitmentAdmin(CoordinatorIntakeAdmin):
     search_fields = ('first_name__plcontains', 'last_name__plcontains', 'email__plcontains', 'notes__plcontains', 'applicant_name__plcontains', 'decision_reason__plcontains', 'role_decisions__decision_reason__plcontains', 'role_decisions__unofficial_notes__plcontains', 'mail_subject__plcontains', 'mail_sender__plcontains')
     readonly_fields = ('notified_at', 'updated_at', 'mail_sender', 'mail_subject', 'mail_received_at', 'mail_body', 'decisions_link', 'archived_decisions', 'legacy_decision_reason', 'legacy_unofficial_notes')
     fields = (*RecruitmentAdminForm.Meta.fields, 'mail_sender', 'mail_subject', 'mail_received_at', 'mail_body', 'decisions_link', 'archived_decisions', 'legacy_decision_reason', 'legacy_unofficial_notes', 'notified_at', 'updated_at')
+
+    def get_readonly_fields(self, request, obj=None):
+        from core.permissions import can_use_recruitment_mailbox
+        return self.readonly_fields if can_use_recruitment_mailbox(request.user) else (*self.readonly_fields, 'notified')
 
     @admin.display(description='Role zgłoszenia')
     def roles_display(self, obj):

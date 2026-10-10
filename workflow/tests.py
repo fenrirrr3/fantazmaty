@@ -43,6 +43,8 @@ Role = WorkflowRoleAssignment.Role
 
 
 def create_member(username, role_name):
+    if role_name == 'Koordynator':
+        role_name = 'Koordynator redakcji'
     user = User.objects.create_user(username=username)
     person = Person.objects.create(
         first_name=username,

@@ -5,6 +5,7 @@ from core.edit_versions import VersionedQuerySet
 from core.audiobook_validators import validate_mega_url
 from core.audiobook_models import Audiobook as Audiobook
 from core.audiobook_models import AudiobookStage as AudiobookStage
+from core.audiobook_models import AudioContributor as AudioContributor
 
 
 class PublicAudiobookSettings(models.Model):
@@ -182,6 +183,10 @@ class RecruitmentRoleDecision(models.Model):
     status = models.CharField('decyzja', max_length=20, default='new', choices=(('new', 'Bez decyzji'), ('accepted', 'Przyjęty'), ('rejected', 'Odrzucony')))
     decision_reason = models.TextField('uzasadnienie decyzji', blank=True)
     unofficial_notes = models.TextField('nieoficjalne notatki', blank=True)
+    reason_author = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='recruitment_reasons', verbose_name='autor uzasadnienia')
+    reason_author_name = models.CharField('podpis autora uzasadnienia', max_length=255, blank=True)
+    reason_updated_at = models.DateTimeField('data zmiany uzasadnienia', null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

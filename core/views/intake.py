@@ -55,6 +55,10 @@ def _list(request, model, form_class, title, route, fields):
 def _edit(request, model, form_class, title, route, pk):
     instance = get_object_or_404(model, pk=pk) if pk else None
     form = form_class(request.POST if request.method == 'POST' else None, instance=instance)
+    if model is Recruitment:
+        from core.permissions import can_use_recruitment_mailbox
+        if not can_use_recruitment_mailbox(request.user):
+            form.fields['notified'].disabled = True
     if request.method == 'POST' and form.is_valid():
         with transaction.atomic():
             if instance:

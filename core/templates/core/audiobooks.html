@@ -31,8 +31,8 @@
                 <td>{{ text.authors_display|default:"Brak przypisanego autora" }}</td>
                 <td><a href="{% url 'core:audiobook_detail' text.pk %}" class="text-title-link"><strong>{{ text.title }}</strong></a></td>
                 <td>{% include "core/includes/audiobook_status.html" %}</td>
-                <td>{{ audio.narrator_name|default:"Nie przypisano" }}</td>
-                <td>{{ audio.engineer_name|default:"Nie przypisano" }}</td>
+                <td>{% if audio.narrator_contact_id %}<a href="{% url 'core:audio_contributor' audio.narrator_contact_id %}">{{ audio.narrator_name }}</a>{% else %}{{ audio.narrator_name|default:"Nie przypisano" }}{% endif %}</td>
+                <td>{% if audio.engineer_contact_id %}<a href="{% url 'core:audio_contributor' audio.engineer_contact_id %}">{{ audio.engineer_name }}</a>{% else %}{{ audio.engineer_name|default:"Nie przypisano" }}{% endif %}</td>
                 <td>{{ text.proofreader_display|default:"Nie przypisano" }}</td>
                 <td>{{ audio.recording_started_at|date:"d.m.Y"|default:"–" }}</td>
                 <td>{{ audio.proofreading_started_at|date:"d.m.Y"|default:"–" }}</td>

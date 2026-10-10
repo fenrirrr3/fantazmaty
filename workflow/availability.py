@@ -11,12 +11,13 @@ def eligible_role_users(role):
     from people.models import Vacation
     from workflow.services import ROLE_GROUPS
 
-    users = get_user_model().objects.filter(is_active=True)
+    users = get_user_model().objects.filter(is_active=True).exclude(person_profile__is_external=True)
     required = ROLE_GROUPS.get(role)
     if not required:
         return users.none()
     coordinator = (Q(person_profile__roles__name__iexact='Koordynator')
-                   | Q(person_profile__roles__name__istartswith='Koordynator '))
+                   | Q(person_profile__roles__name__istartswith='Koordynator ')
+                   | Q(person_profile__legacy_coordinator_access=True))
     permitted = coordinator | Q(person_profile__roles__name__iexact=required)
     if role in (A.Role.PROOFREADER_2, A.Role.PROOFREADER_4):
         permitted = Q(person_profile__roles__name__iexact='Koordynator korekty')

@@ -26,7 +26,7 @@
     {% endif %}
     <p>Data przypisania: {{ illustration.assigned_at|date:"d.m.Y"|default:"Brak daty" }}</p>
     {% if can_edit %}
-    <form method="post" class="illustration-edit-form" data-warn-unsaved>
+    <form method="post" class="illustration-edit-form" data-warn-unsaved data-contact-endpoint="{% url 'core:contact_suggestions' %}">
         {% csrf_token %}<input type="hidden" name="action" value="assignment">{{ forms.assignment.version }}
         {{ forms.assignment.non_field_errors }}{{ forms.assignment.version.errors }}
         {% if can_assign %}
@@ -82,4 +82,4 @@
 {% else %}<p>{{ illustration.coordinator_notes|default:"Brak uwag"|linebreaksbr }}</p>{% endif %}</div></section>
 </div>
 {% endblock %}
-{% block scripts %}<script src="{% static 'core/illustrator_search.js' %}" defer></script>{% endblock %}
+{% block scripts %}<script src="{% static 'core/illustrator_search.js' %}?v=63" defer></script><script src="{% static 'core/contact-suggestions.js' %}" defer></script>{% endblock %}

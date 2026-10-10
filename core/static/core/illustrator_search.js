@@ -7,7 +7,7 @@
     if (!input || !source || !results || !selected || !counter) return;
     const normalize = value => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ł/g, 'l').replace(/Ł/g, 'L').toLowerCase();
     const people = Array.from(source.querySelectorAll('input[type="checkbox"]')).map(box => ({
-        box, name: box.closest('label').textContent.trim(),
+        box, name: box.closest('label').textContent.trim(), email: box.dataset.email || '',
     }));
     const change = (person, checked) => {
         person.box.checked = checked;
@@ -22,7 +22,7 @@
         people.filter(person => person.box.checked).forEach(person => {
             const row = document.createElement('li');
             const name = document.createElement('span');
-            name.textContent = person.name;
+            name.textContent = person.name + (person.email ? ' · ' + person.email : '');
             const remove = document.createElement('button');
             remove.type = 'button'; remove.className = 'secondary-button';
             remove.textContent = 'Usuń';
@@ -44,7 +44,7 @@
             return;
         }
         const tokens = query.split(/\s+/);
-        const matching = people.filter(person => !person.box.checked && tokens.every(token => normalize(person.name).includes(token)));
+        const matching = people.filter(person => !person.box.checked && tokens.every(token => normalize(person.name + ' ' + person.email).includes(token)));
         counter.textContent = matching.length ? `Znaleziono: ${matching.length}. Wybierz „Dodaj” przy właściwej osobie.${matching.length > 10 ? ' Pokazano pierwsze 10 wyników; doprecyzuj wyszukiwanie.' : ''}` : 'Brak pasujących osób. Wybrane osoby są już na liście wybranych.';
         matching.slice(0, 10).forEach(person => {
             const row = document.createElement('li');

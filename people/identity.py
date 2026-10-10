@@ -16,14 +16,13 @@ def sync_person(person, *, copy_groups=False):
     try:
         if person.user_id and copy_groups:
             for name in person.user.groups.values_list("name", flat=True):
+                if name.casefold() == 'koordynator':
+                    person.legacy_coordinator_access = True
+                    Person.objects.filter(pk=person.pk).update(legacy_coordinator_access=True)
+                    continue
                 person.roles.add(Role.objects.get_or_create(name=name)[0])
-        if (
-            person.is_coordinator
-            and not person.roles.filter(name__istartswith="Koordynator").exists()
-        ):
-            person.roles.add(Role.objects.get_or_create(name="Koordynator")[0])
         names = list(person.roles.values_list("name", flat=True))
-        coordinator = any(
+        coordinator = person.legacy_coordinator_access or any(
             name.casefold() == "koordynator" or name.casefold().startswith("koordynator ")
             for name in names
         )
@@ -58,7 +57,7 @@ def profile_roles_changed(sender, instance, action, reverse, pk_set, **kwargs):
                 sync_person(person)
     elif action.startswith("post_"):
         # The flag mirrors roles; it must not re-add a deliberately removed role.
-        instance.is_coordinator = instance.roles.filter(name__istartswith="Koordynator").exists()
+        instance.is_coordinator = instance.legacy_coordinator_access or instance.roles.filter(name__istartswith="Koordynator").exists()
         sync_person(instance)
 
 
@@ -80,11 +79,11 @@ def account_groups_changed(sender, instance, action, reverse, pk_set, **kwargs):
         for user in users:
             person = Person.objects.filter(user=user).first()
             if person:
-                names = list(user.groups.values_list("name", flat=True))
+                names = [name for name in user.groups.values_list("name", flat=True) if name.casefold() != 'koordynator']
                 roles = [Role.objects.get_or_create(name=name)[0] for name in names]
                 person.roles.set(roles)
                 Person.objects.filter(pk=person.pk).update(
-                    is_coordinator=any(
+                    is_coordinator=person.legacy_coordinator_access or any(
                         name.casefold() == "koordynator"
                         or name.casefold().startswith("koordynator ")
                         for name in names
@@ -111,7 +110,7 @@ def remember_role_people(sender, instance, **kwargs):
 @receiver(post_delete, sender=Role)
 def deleted_role(sender, instance, **kwargs):
     for person in Person.objects.filter(pk__in=getattr(instance, "_cms_role_people", ())):
-        person.is_coordinator = person.roles.filter(name__istartswith="Koordynator").exists()
+        person.is_coordinator = person.legacy_coordinator_access or person.roles.filter(name__istartswith="Koordynator").exists()
         sync_person(person)
 
 
@@ -125,7 +124,7 @@ def remember_role_edit(sender, instance, **kwargs):
 @receiver(post_save, sender=Role)
 def changed_role(sender, instance, **kwargs):
     for person in Person.objects.filter(pk__in=getattr(instance, "_cms_role_people", ())):
-        person.is_coordinator = person.roles.filter(name__istartswith="Koordynator").exists()
+        person.is_coordinator = person.legacy_coordinator_access or person.roles.filter(name__istartswith="Koordynator").exists()
         sync_person(person)
 
 

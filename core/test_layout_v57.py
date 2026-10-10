@@ -52,7 +52,7 @@ class DetailLayoutTests(TestCase):
                 doc = html.fromstring(response.content)
                 for heading in headings:
                     section = doc.xpath(f'//section[@aria-labelledby="{heading}"]')[0]
-                    self.assertTrue(section.xpath('./div[@class="profile-table-inset"]//table'))
+                    self.assertTrue(section.xpath('./div[contains(concat(" ",normalize-space(@class)," ")," profile-table-inset ")]//table'))
                     self.assertFalse(section.xpath('./div[@class="table-container"]'))
                     self.assertFalse(section.xpath('./nav[contains(@class,"pagination")]'))
 

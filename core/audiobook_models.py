@@ -7,6 +7,38 @@ from core.edit_versions import VersionedQuerySet
 from core.audiobook_validators import validate_youtube_url, validate_hearthis_url, validate_audio_links
 
 
+class AudioContributor(models.Model):
+    objects = VersionedQuerySet.as_manager()
+    name = models.CharField('imię i nazwisko', max_length=255)
+    email = models.EmailField('adres e-mail', blank=True)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='audio_contacts', verbose_name='powiązane konto (opcjonalne)')
+
+    class Meta:
+        verbose_name = 'lektor / dźwiękowiec'
+        verbose_name_plural = 'Lektorzy i dźwiękowcy'
+        ordering = ('name', 'pk')
+        constraints = [models.UniqueConstraint(fields=('name', 'email'), name='unique_audio_contact_pair')]
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        from django.db import transaction
+        with transaction.atomic():
+            self.name = ' '.join(self.name.split())
+            self.email = self.email.strip().lower()
+            if not self.pk and not self.user_id and self.email:
+                from django.contrib.auth import get_user_model
+                matches = list(get_user_model().objects.filter(email__iexact=self.email).values_list('pk', flat=True)[:2])
+                if len(matches) == 1:
+                    self.user_id = matches[0]
+            super().save(*args, **kwargs)
+            for role in ('narrator', 'engineer'):
+                Audiobook.objects.filter(**{f'{role}_contact': self}).update(
+                    **{f'{role}_name': self.name, f'{role}_email': self.email})
+
+
 class Audiobook(models.Model):
     objects = VersionedQuerySet.as_manager()
 
@@ -24,6 +56,10 @@ class Audiobook(models.Model):
         editable=False, related_name='active_for', verbose_name='trwający etap')
     status = models.CharField('status audiobooka', max_length=24, choices=Status.choices, default=Status.PENDING, db_index=True)
     narrator_name = models.CharField('lektor – imię i nazwisko', max_length=255, blank=True)
+    narrator_contact = models.ForeignKey(AudioContributor, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='narrated_books', verbose_name='profil lektora')
+    engineer_contact = models.ForeignKey(AudioContributor, on_delete=models.PROTECT, null=True, blank=True,
+        related_name='engineered_books', verbose_name='profil dźwiękowca')
     narrator_email = models.EmailField('e-mail lektora', blank=True)
     engineer_name = models.CharField('dźwiękowiec – imię i nazwisko', max_length=255, blank=True)
     engineer_email = models.EmailField('e-mail dźwiękowca', blank=True)
@@ -47,6 +83,30 @@ class Audiobook(models.Model):
 
     def __str__(self):
         return str(self.text)
+
+    def save(self, *args, **kwargs):
+        from django.db import transaction
+        with transaction.atomic():
+            fields = kwargs.get('update_fields')
+            for role in ('narrator', 'engineer'):
+                if fields is not None and not set(fields) & {f'{role}_name', f'{role}_email', f'{role}_contact'}:
+                    continue
+                name = ' '.join(getattr(self, f'{role}_name').split())
+                email = getattr(self, f'{role}_email').strip().lower()
+                contact = getattr(self, f'{role}_contact')
+                if not name:
+                    contact = None
+                elif not contact or (contact.name != name or contact.email != email):
+                    matches = list(AudioContributor.objects.filter(name__iexact=name, email__iexact=email)[:2])
+                    if len(matches) > 1:
+                        raise ValidationError('Istnieją dwa identyczne kontakty. Wybierz konkretny profil z podpowiedzi.')
+                    contact = matches[0] if matches else AudioContributor.objects.get_or_create(name=name, email=email)[0]
+                setattr(self, f'{role}_contact', contact)
+                if fields is not None:
+                    fields = set(fields) | {f'{role}_contact'}
+            if fields is not None:
+                kwargs['update_fields'] = fields
+            return super().save(*args, **kwargs)
 
     @property
     def publication_links(self):

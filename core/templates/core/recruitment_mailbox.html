@@ -1,6 +1,6 @@
 {% extends "core/base.html" %}{% load static %}
 {% block title %}Pobieranie próbek | Fantazmaty CMS{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'core/recruitment.css' %}"><link rel="stylesheet" href="{% static 'core/intake.css' %}">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/recruitment.css' %}?v=63"><link rel="stylesheet" href="{% static 'core/intake.css' %}">{% endblock %}
 {% block content %}
 <header class="page-header"><h1 class="page-title">Pobieranie próbek</h1></header>
 <p class="recruitment-actions"><a class="secondary-button" href="{% url 'core:recruitment_list' %}">Rekrutacja</a>{% if user.is_superuser %}<a class="secondary-button" href="{% url 'admin:core_mailboxconnection_changelist' %}?purpose__exact=recruitment">Ustawienia skrzynki</a>{% endif %}</p>

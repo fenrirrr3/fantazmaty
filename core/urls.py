@@ -23,6 +23,7 @@ from core.views.translations import translation_list, translation_detail, set_tr
 from core.views.production_tasks import task_list, audio_descriptions
 from core.views.audiobooks import audiobook_list, update_text_audiobook
 from core.views.audiobook_production import audiobook_detail, assign_audio_proofreader
+from core.views.audio_contacts import audio_contributor, contact_suggestions
 from core.views.external_audiobooks import external_audiobooks, audiobook_guidelines_txt
 from core.views import novels, vocabulary
 from core.views.recruitment_detail import recruitment_detail
@@ -41,6 +42,8 @@ app_name = "core"
 
 
 urlpatterns = [
+    path("audiobooki/osoby/<int:pk>/", audio_contributor, name="audio_contributor"),
+    path("kontakty/podpowiedzi/", contact_suggestions, name="contact_suggestions"),
     path('audiobooki/zewnetrzne/', external_audiobooks, name='external_audiobooks'),
     path('audiobooki/<int:text_id>/', audiobook_detail, name='audiobook_detail'),
     path('audiobooki/zewnetrzne/wytyczne.txt', audiobook_guidelines_txt, name='audiobook_guidelines_txt'),

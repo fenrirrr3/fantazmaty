@@ -50,7 +50,7 @@ def people_list(request):
         form.fields["query"].widget.attrs["placeholder"] = "Imię lub nazwisko"
 
     people = (
-        Person.objects.active()
+        Person.objects.filter(Q(pk__in=Person.objects.active().values('pk')) | Q(is_external=True))
         .prefetch_related("roles")
         .order_by("last_name", "first_name", "pk")
     )
@@ -116,7 +116,7 @@ def people_list(request):
 def person_detail(request, person_id):
     # Nieaktywne osoby z historią mają dostępny szczegół; lista aktywnego zespołu pozostaje bez zmian.
     person = get_object_or_404(
-        Person.objects.filter(Q(is_active=True) | Q(user__workflow_role_assignments__isnull=False) | Q(historical_review_assignments__review__old_reviews=True) | Q(user__review_assignments__review__old_reviews=True)).distinct()
+        Person.objects.filter(Q(is_active=True) | Q(is_external=True) | Q(user__audio_contacts__isnull=False) | Q(user__workflow_role_assignments__isnull=False) | Q(historical_review_assignments__review__old_reviews=True) | Q(user__review_assignments__review__old_reviews=True)).distinct()
         .select_related("user")
         .prefetch_related("roles"),
         pk=person_id,
@@ -133,6 +133,7 @@ def person_detail(request, person_id):
         "core/person_detail.html",
         {
             "person": person,
+            "audio_profiles": person.user.audio_contacts.all() if person.user_id else [],
             "assignments": assignments,
             "person_summary": person_summary,
             "imported_work_summary": _imported_work_summary(person),

@@ -6,6 +6,7 @@
 {% endblock %}
 
 {% block content %}
+
     <header class="page-header">
         <div class="detail-heading">
             <div>
@@ -23,6 +24,9 @@
             </a>
         </div>
     </header>
+
+    {% if person.is_external %}<p class="stage-status inactive">Zewnętrzny</p>{% endif %}
+    {% if audio_profiles %}<section class="card"><div class="card-body"><h2>Nagrania</h2>{% for contact in audio_profiles %}<a class="secondary-button" href="{% url 'core:audio_contributor' contact.pk %}">{{ contact.name }} – zrealizowane nagrania</a>{% endfor %}</div></section>{% endif %}
 
     {% if user.is_superuser %}<p><a class="secondary-button" href="{% url 'core:person_permissions' person.pk %}">Podgląd uprawnień i powiązań</a></p>{% endif %}
     {% if leave_information %}

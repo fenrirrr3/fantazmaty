@@ -4,6 +4,10 @@ from django.contrib.auth.backends import ModelBackend
 
 
 class EmailBackend(ModelBackend):
+    def user_can_authenticate(self, user):
+        from people.models import Person
+        return super().user_can_authenticate(user) and not Person.objects.filter(user=user, is_external=True).exists()
+
     def authenticate(self, request, username=None, password=None, **kwargs):
         if username is None or password is None:
             return None

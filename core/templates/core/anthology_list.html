@@ -79,60 +79,6 @@
 
                                 <td>
                                     <a class="secondary-button" href="{% url 'core:text_list' %}?anthology={{ anthology.pk }}&amp;hide_ready=0">Teksty antologii</a>
-                                    <details class="anthology-details">
-                                        <summary>
-                                            Informacje
-                                        </summary>
-
-                                        <dl class="details-list">
-                                            <div>
-                                                <dt>Autor okładki</dt>
-                                                <dd>
-                                                    {{ anthology.cover_author|default:"Nie przypisano" }}
-                                                </dd>
-                                            </div>
-
-                                            <div>
-                                                <dt>Informacje o okładce</dt>
-                                                <dd>
-                                                    {% if anthology.cover_notes %}
-                                                        {{ anthology.cover_notes|linebreaksbr }}
-                                                    {% else %}
-                                                        <span class="muted-text">Brak uwag</span>
-                                                    {% endif %}
-                                                </dd>
-                                            </div>
-
-                                            <div>
-                                                <dt>Ilustracje w antologii</dt>
-                                                <dd>
-                                                    {% if anthology.has_illustrations %}
-                                                        Tak
-                                                    {% else %}
-                                                        Nie
-                                                    {% endif %}
-                                                </dd>
-                                            </div>
-
-                                            <div>
-                                                <dt>Skład wykonuje</dt>
-                                                <dd>
-                                                    {% if typesetting.assigned_to %}
-                                                        {{ typesetting.assigned_to }}
-                                                    {% else %}
-                                                        <span class="muted-text">Nie przypisano</span>
-                                                    {% endif %}
-                                                </dd>
-                                            </div>
-
-                                            <div>
-                                                <dt>Data zlecenia składu</dt>
-                                                <dd>
-                                                    {{ typesetting.commissioned_at|date:"d.m.Y"|default:"–" }}
-                                                </dd>
-                                            </div>
-                                        </dl>
-                                    </details>
                                 </td>
                             </tr>
                         {% endwith %}

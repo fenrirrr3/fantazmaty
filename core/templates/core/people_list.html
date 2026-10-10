@@ -101,7 +101,7 @@
                                     class="detail-link"
                                 >
                                     <strong>
-                                        {{ person.first_name }} {{ person.last_name }}
+                                        {{ person.first_name }} {{ person.last_name }}{% if person.is_external %} <span class="stage-status inactive">Zewnętrzny</span>{% endif %}
                                     </strong>
                                 </a>
                             </td>

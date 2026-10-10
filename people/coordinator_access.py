@@ -21,10 +21,11 @@ def revoke_coordinator(person):
         user = get_user_model().objects.select_for_update().filter(pk=person.user_id).first()
         current = Person.objects.select_for_update().get(pk=person.pk)
         current.roles.remove(*current.roles.filter(coordinator_query()))
-        Person.objects.filter(pk=current.pk).update(is_coordinator=False)
+        Person.objects.filter(pk=current.pk).update(is_coordinator=False, legacy_coordinator_access=False)
         from core.edit_versions import bump
         bump('people.person', current.pk, current._state.db)
         person.is_coordinator = False
+        person.legacy_coordinator_access = False
         if user:
             user.groups.remove(*user.groups.filter(coordinator_query()))
             # Preserve independent admin permissions and superusers.

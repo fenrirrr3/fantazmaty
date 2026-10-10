@@ -57,13 +57,24 @@ class AssignmentModelForm(forms.ModelForm):
             del self.instance._selected_illustrator_ids
 
 
+class ContactCheckboxes(forms.CheckboxSelectMultiple):
+    def create_option(self, name, value, label, selected, index, subindex=None, attrs=None):
+        option = super().create_option(name, value, label, selected, index, subindex, attrs)
+        if getattr(value, 'instance', None):
+            option['attrs']['data-email'] = value.instance.email or ''
+        return option
+
+
 class AssignmentForm(AssignmentModelForm, IllustrationEditForm):
     class Meta(AssignmentModelForm.Meta):
-        widgets = {'illustrators': forms.CheckboxSelectMultiple(attrs={'class': 'illustrator-choices'})}
+        widgets = {'illustrators': ContactCheckboxes(attrs={'class': 'illustrator-choices'})}
 
     def __init__(self, *args, can_assign=False, **kwargs):
         super().__init__(*args, **kwargs)
         if can_assign:
+            for field, part in (('manual_illustrator_name', 'name'), ('manual_illustrator_email', 'email')):
+                self.fields[field].widget.attrs.update({'data-contact-kind': 'illustration',
+                    'data-contact-group': 'illustrator', 'data-contact-field': part, 'autocomplete': 'off'})
             from .contact_forms import duplicate_display_names, contact_label
             duplicates = duplicate_display_names()
             selected = self.instance.illustrators.values_list('pk', flat=True) if self.instance.pk else []

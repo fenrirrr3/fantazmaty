@@ -58,8 +58,8 @@ class Role(models.Model):
     objects = VersionedQuerySet.as_manager()
     def clean(self):
         super().clean()
-        if self.name.strip().casefold() == "koordynator zespołu":
-            raise ValidationError({"name": "Ta rola została wycofana. Wybierz Koordynator lub jego specjalizację."})
+        if self.name.strip().casefold() in ("koordynator", "koordynator zespołu"):
+            raise ValidationError({"name": "Ogólna rola została wycofana. Wybierz koordynatora konkretnego działu."})
 
     name = models.CharField(
         "nazwa roli",
@@ -78,7 +78,7 @@ class Role(models.Model):
 
 class PersonQuerySet(VersionedQuerySet):
     def active(self):
-        return self.filter(is_active=True).filter(
+        return self.filter(is_active=True, is_external=False).filter(
             models.Q(user__isnull=True) | models.Q(user__is_active=True)
         )
 
@@ -93,6 +93,9 @@ class PersonQuerySet(VersionedQuerySet):
 
 
 class Person(models.Model):
+    legacy_coordinator_access = models.BooleanField(default=False, editable=False)
+    is_external = models.BooleanField('Zewnętrzny', default=False, db_index=True,
+        help_text='Widoczny w zespole, bez logowania i udziału w raportach aktywności. Przypisania historyczne pozostają.')
     illustrator_active = models.BooleanField("Aktywny ilustrator", default=True, db_index=True,
         help_text="Wyłączenie ukrywa osobę w spisie ilustratorów i przy nowych przypisaniach. Dotychczasowe prace pozostają. Niezależne od członkostwa w zespole i konta.")
     illustrator_portfolio = models.URLField(
@@ -197,6 +200,13 @@ class Person(models.Model):
 
     def __str__(self):
         return f"{self.first_name} {self.last_name}".strip()
+
+    def save(self, *args, **kwargs):
+        if self.is_external:
+            self.is_active = False
+            if kwargs.get('update_fields') is not None:
+                kwargs['update_fields'] = set(kwargs['update_fields']) | {'is_active'}
+        return super().save(*args, **kwargs)
 
     def clean(self):
         super().clean()

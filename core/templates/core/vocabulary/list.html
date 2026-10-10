@@ -11,6 +11,10 @@
 {% for section in sections %}
     <section class="card vocabulary-column" id="{{ section.kind }}-dictionary" aria-labelledby="{{ section.kind }}-heading">
         <header class="section-header"><h2 id="{{ section.kind }}-heading">{{ section.label }}</h2></header>
+        {% if coordinator %}<div class="card-body vocabulary-add">
+            <h3>Dodaj hasło – {{ section.label|lower }}</h3>
+            <form method="post" class="intake-form">{% csrf_token %}{{ section.form.as_p }}<button class="primary-button" type="submit">Dodaj hasło</button></form>
+        </div>{% endif %}
         <div class="card-body">
             <form method="get" class="vocabulary-search" action="#{{ section.kind }}-dictionary">
                 {% for key,value in section.preserved %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
@@ -29,10 +33,7 @@
             </div>
             {% include 'core/includes/pagination.html' with page_obj=section.page %}
         </div>
-        {% if coordinator %}<div class="card-body vocabulary-add">
-            <h3>Dodaj hasło – {{ section.label|lower }}</h3>
-            <form method="post" class="intake-form">{% csrf_token %}{{ section.form.as_p }}<button class="primary-button" type="submit">Dodaj hasło</button></form>
-        </div>{% endif %}
+
     </section>
 {% endfor %}
 </div>

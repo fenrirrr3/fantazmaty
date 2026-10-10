@@ -4,7 +4,7 @@ from .models import Role
 
 TEAM_ROLE_ORDER = (
     "Recenzent", "Redaktor", "Korektor", "Weryfikator", "Korektor poskładowy",
-    "Grafik", "Dźwiękowiec", "Lektor", "Składacz", "Tłumacz", "Koordynator",
+    "Grafik", "Dźwiękowiec", "Lektor", "Składacz", "Tłumacz",
     "Koordynator redakcji", "Koordynator audiobooków",
     "Koordynator weryfikacji", "Koordynator ilustracji",
     "Koordynator recenzji", "Koordynator korekty",

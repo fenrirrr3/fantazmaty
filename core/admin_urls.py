@@ -3,6 +3,7 @@ from django.urls.resolvers import RoutePattern, URLPattern, URLResolver
 from django.urls import register_converter
 
 SEGMENTS = {
+    'audiocontributor': 'lektor-dzwiekowiec',
     'audiobook': 'audiobook',
     'audiobookstage': 'etap-audiobooka',
     'publicaudiobooksettings': 'zewnetrzne-audiobooki',

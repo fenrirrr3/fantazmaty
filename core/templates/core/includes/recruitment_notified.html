@@ -1,4 +1,6 @@
 {% load workspace_tags %}
+{% recruitment_mailbox_allowed user as can_notify %}
+{% if can_notify %}
 <div class="recruitment-notified">
     {% if record %}{% recruitment_notified_token user record as notified_version %}{% endif %}
     <select data-recruitment-notified data-value="{{ record.notified|yesno:'yes,no,no' }}" data-version="{{ notified_version|default:'' }}" {% if record %}data-url="{% url 'core:recruitment_notified' record.pk %}"{% else %}data-mail-uid="{{ mail_uid }}"{% endif %} aria-label="Powiadomiony: {% firstof record.subject_name record.full_name mail_uid %}">
@@ -8,3 +10,4 @@
     <span role="status" aria-live="polite"></span>
     <noscript>Automatyczny zapis wymaga JavaScript. Użyj edycji zgłoszenia lub akcji masowej.</noscript>
 </div>
+{% else %}{{ record.notified|yesno:'Tak,Nie,Nie' }}{% endif %}

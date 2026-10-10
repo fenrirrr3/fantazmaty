@@ -37,3 +37,5 @@
 @media screen and (max-width: 760px) {
     .recruitment-preview-grid, .recruitment-detail-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+.recruitment-actions { margin-bottom: 1rem; }

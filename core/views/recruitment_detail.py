@@ -6,6 +6,7 @@ from django.http import HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
+from django.utils import timezone
 from core.models import Recruitment, RecruitmentRoleDecision
 from core.permissions import coordinator_required
 from core.recruitment_message import form_fields
@@ -50,9 +51,14 @@ def recruitment_detail(request, pk):
                         form.add_error(None, 'Decyzja dla tej roli zmieniła się w międzyczasie. Skopiuj wpisane dane i odśwież formularz.')
                         status = 409
                     else:
+                        if current.decision_reason != form.cleaned_data['decision_reason']:
+                            current.reason_author = request.user
+                            profile = getattr(request.user, 'person_profile', None)
+                            current.reason_author_name = (str(profile) if profile else (request.user.get_full_name() or request.user.username))[:255]
+                            current.reason_updated_at = timezone.now()
                         for field in form.Meta.fields:
                             setattr(current, field, form.cleaned_data[field])
-                        current.save(update_fields=[*form.Meta.fields, 'updated_at'])
+                        current.save(update_fields=[*form.Meta.fields, 'updated_at', 'reason_author', 'reason_author_name', 'reason_updated_at'])
                         parent.save(update_fields=['updated_at'])
                         messages.success(request, f'Zapisano decyzję dla roli: {label}. Nie wysłano powiadomienia.')
                         return redirect('core:recruitment_detail', pk=pk)
@@ -61,6 +67,7 @@ def recruitment_detail(request, pk):
     from .recruitment_delete import deletion_token
     return render(request, 'core/recruitment_detail.html', {
         'record': record, 'sections': sections,
+        'attachment_downloads': record.mail_sources.filter(downloaded_at__isnull=False).order_by('-downloaded_at'),
         'candidate_name': record.full_name or fields.get('name') or record.mail_sender or 'Nie podano',
         'candidate_email': record.email or fields.get('email'),
         'delete_version': deletion_token(request.user, record) if request.user.is_superuser else '',

@@ -1,6 +1,6 @@
 {% extends "core/base.html" %}{% load workspace_tags static %}
 {% block title %}Rekrutacja | Fantazmaty CMS{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'core/recruitment.css' %}">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/recruitment.css' %}?v=63">{% endblock %}
 {% block content %}{% csrf_token %}
 <header class="page-header"><h1 class="page-title">Rekrutacja</h1>{% recruitment_mailbox_allowed user as can_download_samples %}{% if can_download_samples %}<a class="secondary-button" href="{% url 'core:recruitment_mailbox' %}">Pobieranie próbek</a>{% endif %}</header>
 <section class="filters-card"><form method="get" class="filters-form"><label>Szukaj zgłoszenia <input type="search" name="q" value="{{ query }}"></label><label>Rola <select name="role"><option value="">Wszystkie</option>{% for value,label in role_choices %}<option value="{{ value }}" {% if role == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label><label>Decyzja <select name="status"><option value="">Wszystkie</option>{% for value,label in status_choices %}<option value="{{ value }}" {% if status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label><button class="primary-button">Filtruj</button></form></section>

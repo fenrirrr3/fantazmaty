@@ -323,3 +323,20 @@ section:has(#active-stages-heading), section:has(#reserved-assignments-heading) 
 .quick-stage-action:has(.start-stage-form) { align-items: flex-start; gap: 1.25rem; }
 .quick-stage-action .start-stage-form { margin-top: .4rem; }
 @media screen and (max-width: 480px) { .quick-stage-card :is(.take-stage-form, .start-stage-form) { flex-wrap: wrap; } }
+
+/* v63: shared contact and claim controls. */
+.contact-suggestions { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .35rem; }
+.contact-suggestions:empty { display: none; }
+.author-table-inset { box-sizing: border-box; padding: 0 1.25rem 1rem; }
+.author-table-inset > .table-container { max-width: 100%; width: 100%; margin: 0; }
+.author-table-inset > .cms-pagination { margin: .75rem 0 0; padding-inline: 0; }
+.take-stage-action { display: flex; flex-direction: column; gap: .4rem; }
+.take-stage-action .form-label { font-weight: 600; font-size: var(--font-size-md); line-height: 1.4; }
+.take-stage-form .form-field label { margin: 0 0 .4rem; line-height: 1.4; }
+.take-stage-form .assign-button { height: 42px; margin: 0; }
+.quick-stage-card:has(> .take-stage-form) { display: flex; flex-wrap: wrap; align-items: center; column-gap: 1.5rem; }
+.quick-stage-card > .take-stage-form { margin-top: 0; }
+.quick-stage-card:has(.take-stage-action) > strong { padding-top: 1.7rem; }
+.available-stage-cell { vertical-align: middle; }
+.available-stage-cell:has(+ td .take-stage-action) > * { transform: translateY(.75rem); }
+@media (max-width: 600px) { .author-table-inset { padding-inline: 1rem; } .quick-stage-card:has(.take-stage-action) > strong { padding-top: 0; } }

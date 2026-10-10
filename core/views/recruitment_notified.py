@@ -8,7 +8,7 @@ from django.urls import reverse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 from core.models import Recruitment
-from core.permissions import coordinator_required
+from core.permissions import coordinator_required, require_recruitment_mailbox
 
 SALT = 'recruitment-notified'
 
@@ -27,6 +27,7 @@ def notified_token(user, record):
 
 def save_notification(record, user, value, token, *, new_mail=False):
     # The caller holds the parent row lock and transaction.
+    require_recruitment_mailbox(user)
     if new_mail and not token:
         valid = not record.notified and record.notified_at is None
     else:

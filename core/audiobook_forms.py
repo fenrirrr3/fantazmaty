@@ -7,7 +7,7 @@ from core.audiobook_models import Audiobook
 
 
 def eligible_proofreaders():
-    return get_user_model().objects.filter(is_active=True, person_profile__is_active=True,
+    return get_user_model().objects.filter(is_active=True, person_profile__is_active=True, person_profile__is_external=False,
         person_profile__roles__name__iexact='Korektor audiobooków').distinct()
 
 
@@ -41,7 +41,16 @@ class AudiobookProductionForm(forms.ModelForm):
 class AudiobookPeopleForm(forms.ModelForm):
     class Meta:
         model = Audiobook
-        fields = ('narrator_name', 'narrator_email', 'engineer_name', 'engineer_email')
+        fields = ('narrator_name', 'narrator_email', 'narrator_contact', 'engineer_name', 'engineer_email', 'engineer_contact')
+        widgets = {'narrator_contact': forms.HiddenInput(), 'engineer_contact': forms.HiddenInput()}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for role in ('narrator', 'engineer'):
+            for field in ('name', 'email'):
+                self.fields[f'{role}_{field}'].widget.attrs.update({'data-contact-kind': 'audio', 'data-contact-group': role,
+                    'data-contact-field': field, 'autocomplete': 'off'})
+            self.fields[f'{role}_contact'].widget.attrs.update({'data-contact-group': role, 'data-contact-field': 'id'})
 
 
 class AudiobookPublicationForm(forms.ModelForm):

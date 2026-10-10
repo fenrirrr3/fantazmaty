@@ -92,6 +92,7 @@ def get_active_person_profile(user):
             user_id=user.pk,
             user__is_active=True,
             is_active=True,
+            is_external=False,
         )
         .select_related("user")
         .first()
@@ -127,7 +128,7 @@ def is_coordinator(user):
         return False
 
     return bool(
-        _profile_has_coordinator_role(person)
+        person.legacy_coordinator_access or _profile_has_coordinator_role(person)
     )
 
 
@@ -152,7 +153,7 @@ def has_role(user, role_name):
     if (
         role_name.casefold() == COORDINATOR_ROLE.casefold()
         and (
-            _profile_has_coordinator_role(person)
+            person.legacy_coordinator_access or _profile_has_coordinator_role(person)
         )
     ):
         return True

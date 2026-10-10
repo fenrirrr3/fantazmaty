@@ -16,6 +16,7 @@ class PersonAdminForm(forms.ModelForm):
             "dropbox_email",
             "previous_data",
             "is_active",
+            "is_external",
             "roles",
             "is_coordinator",
             "user",
@@ -27,7 +28,11 @@ class PersonAdminForm(forms.ModelForm):
 
     def clean(self):
         data = super().clean()
-        if data.get('user') and data['user'].is_active and not data.get('email') and 'email' not in self.errors:
+        if data.get('is_external'):
+            data['is_active'] = False
+        if data.get('is_coordinator') and not self.instance.is_coordinator:
+            raise forms.ValidationError('Nadaj koordynatora konkretnego działu w polu Role.')
+        if data.get('user') and data['user'].is_active and not data.get('is_external') and not data.get('email') and 'email' not in self.errors:
             self.add_error('email', 'Aktywne konto wymaga adresu e-mail.')
         if self.instance.pk and self.instance.is_coordinator and not data.get('is_coordinator') and data.get('roles') is not None:
             from people.coordinator_access import coordinator_query
@@ -43,7 +48,7 @@ class PersonAdminForm(forms.ModelForm):
     def clean_email(self):
         email = (self.cleaned_data.get("email") or "").strip()
         if not email:
-            if self.instance.user_id and self.instance.user.is_active:
+            if self.instance.user_id and self.instance.user.is_active and not (self.data.get('is_external') or self.instance.is_external):
                 raise forms.ValidationError("Aktywne konto wymaga adresu e-mail.")
             return None
 
@@ -123,6 +128,7 @@ class PersonAdmin(admin.ModelAdmin):
         "full_name",
         "display_roles",
         "is_active",
+        "is_external",
         "is_coordinator",
         "email",
         "dropbox_email",
@@ -134,6 +140,7 @@ class PersonAdmin(admin.ModelAdmin):
 
     list_filter = (
         "is_active",
+        "is_external",
         "roles",
         "is_coordinator",
     )
@@ -164,8 +171,8 @@ class PersonAdmin(admin.ModelAdmin):
 
     fieldsets = (
         ('Dane osoby i kontakt', {'fields': ('first_name', 'last_name', 'email', 'dropbox_email')}),
-        ('Role i aktywność', {'fields': ('is_active', 'roles', 'is_coordinator'),
-            'description': 'Wyłączenie aktywności ukrywa osobę na liście zespołu. Profil i dawne przydziały pozostają.'}),
+        ('Role i aktywność', {'fields': ('is_active', 'is_external', 'roles', 'is_coordinator'),
+            'description': 'Zewnętrzny pozostaje na liście zespołu, ale nie loguje się i nie jest liczony w aktywności. Koordynację nadaj przez rolę działową.'}),
         ('Powiązane konto i profil autora', {'fields': ('user', 'account_link', 'author_profile')}),
         ('Urlop', {'classes': ('person-account-half',),
                   'fields': ('leave_start_date', 'leave_end_date', 'leave_until_revoked')}),
