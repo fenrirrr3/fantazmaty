@@ -2,6 +2,7 @@
 <div class="text-production">
         <section class="card" id="text-audiobook"><div class="card-body">
             <h2>Audiobook</h2>
+            <p><strong>Status:</strong> {% if text_audiobook %}{% include "core/includes/audiobook_status.html" with audio=text_audiobook %}{% elif text.for_recording and not text.audiobook_blacklisted %}{% include "core/includes/audiobook_status.html" with audio=text_audiobook %}{% else %}<span class="muted-text">Brak wpisu audiobooka</span>{% endif %}</p>
             <form method="post" action="{% url 'core:update_text_audiobook' text.pk %}" data-warn-unsaved>
                 {% csrf_token %}{% edit_version %}{{ audiobook_form.non_field_errors }}
                 <div class="form-field"><label class="text-production-checkbox">{{ audiobook_form.for_recording }} {{ audiobook_form.for_recording.label }}</label>{{ audiobook_form.for_recording.errors }}</div>

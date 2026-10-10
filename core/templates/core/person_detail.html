@@ -14,9 +14,6 @@
                 <h1 class="page-title">
                     {{ person.first_name }} {{ person.last_name }}
                 </h1>
-                {% if person.is_coordinator %}
-                    <p class="page-description">Koordynator</p>
-                {% endif %}
             </div>
 
             <a href="{% url 'core:people_list' %}" class="secondary-button">
@@ -92,7 +89,6 @@
             <div class="detail-item">
                 <dt>Role w zespole</dt>
                 <dd class="roles-list">
-                    {% if person.is_coordinator %}<span class="role-badge" data-palette="coordinator">Koordynator</span>{% endif %}
                     {% for role in person.roles.all %}
                         <span class="role-badge"{{ role.name|label_palette_attr }}>{{ role.name }}</span>
                     {% empty %}
@@ -157,7 +153,7 @@
             <div>
                 <h2 id="person-assignments-heading">Przydziały</h2>
                 <p>
-                    Role przypisane tej osobie oraz stan odpowiadających im etapów.
+                    Przydziały do tekstów, korekt audiobooków i korekt poskładowych.
                 </p>
             </div>
             <span class="record-counter">{{ assignments|length }}</span>
@@ -166,6 +162,7 @@
         
 
         <div class="profile-table-inset">
+<form method="get" action="#person-assignments-heading" class="filter-actions"><label><input type="checkbox" name="hide_completed" value="1" {% if hide_completed %}checked{% endif %}> Ukryj zakończone</label><button class="secondary-button" type="submit">Filtruj</button></form>
 <div
             class="table-container"
             role="region"
@@ -186,7 +183,7 @@
                             <th scope="col" {% if can_view_authors %}data-sort-key="authors"{% endif %}>Autorzy</th>
                         
                         <th scope="col" data-sort-key="role">Rola</th>
-                        <th scope="col" data-sort-key="status">Etap</th>
+                        <th scope="col" data-sort-key="kind">Rodzaj</th>
                         <th scope="col">Stan</th>
                         <th scope="col" data-sort-key="started_at">Rozpoczęcie</th>
                         <th scope="col" data-sort-key="ended_at">Zakończenie</th>
@@ -210,12 +207,14 @@
                             </td>
 
                             <td data-double-copy data-copy-value="{{ assignment.text.title }}" class="sticky-title">
+                                {% if assignment.no_detail_link %}<strong>{{ assignment.text.title }}</strong>{% else %}
                                 <a
-                                    href="{% if assignment.text.is_translation %}{% url 'core:translation_detail' assignment.text.pk %}{% else %}{% url 'core:assigned_text_detail' assignment.text.pk %}{% endif %}"
+                                    href="{% if assignment.detail_url %}{{ assignment.detail_url }}{% elif assignment.text.is_translation %}{% url 'core:translation_detail' assignment.text.pk %}{% else %}{% url 'core:assigned_text_detail' assignment.text.pk %}{% endif %}"
                                     class="text-title-link"
                                 >
                                     <strong>{{ assignment.text.title }}</strong>
                                 </a>
+                                {% endif %}
                             </td>
 
                             
@@ -231,7 +230,7 @@
                                         {% endif %}{% if not forloop.last %}, {% endif %}
                                     {% empty %}
                                         <span class="muted-text">
-                                            Brak przypisanego autora
+                                            {% if assignment.kind_key == 'post_layout' %}Cała antologia{% else %}Brak przypisanego autora{% endif %}
                                         </span>
                                     {% endfor %}
                                 </td>
@@ -243,15 +242,13 @@
                             </td>
 
                             <td>
-                                {% if assignment.latest_stage %}
-                                    {% include "core/includes/workflow_badge.html" with workflow_stage=assignment.latest_stage %}
-                                {% else %}
-                                    <span class="muted-text">Etap jeszcze nie powstał</span>
-                                {% endif %}
+                                {{ assignment.kind|default:'Tekst' }}
                             </td>
 
                             <td>
-                                {% if assignment.is_withdrawn %}
+                                {% if assignment.kind_key == 'audio' or assignment.kind_key == 'post_layout' %}
+                                    <span class="stage-status {% if assignment.has_completed_work %}completed{% elif assignment.has_active_work %}active{% else %}pending{% endif %}">{{ assignment.state_label }}</span>
+                                {% elif assignment.is_withdrawn %}
                                     <span class="stage-status withdrawn">Tekst wycofany</span>
                                 {% elif assignment.is_ready %}
                                     <span class="stage-status completed">Tekst gotowy</span>
@@ -277,20 +274,22 @@
                             </td>
 
                             <td data-copy="false">
+                                {% if not assignment.no_detail_link %}
                                 <a
-                                    href="{% if assignment.text.is_translation %}{% url 'core:translation_detail' assignment.text.pk %}{% else %}{% url 'core:assigned_text_detail' assignment.text.pk %}{% endif %}"
+                                    href="{% if assignment.detail_url %}{{ assignment.detail_url }}{% elif assignment.text.is_translation %}{% url 'core:translation_detail' assignment.text.pk %}{% else %}{% url 'core:assigned_text_detail' assignment.text.pk %}{% endif %}"
                                     class="secondary-button"
-                                    aria-label="Otwórz tekst: {{ assignment.text.title }}"
+                                    aria-label="Otwórz {{ assignment.kind|default:'Tekst' }}: {{ assignment.text.title }}"
                                 >
                                     Otwórz
                                 </a>
+                                {% else %}<span class="muted-text">–</span>{% endif %}
                             </td>
                         </tr>
                     {% empty %}
                         <tr>
                             <td colspan="10">
                                 <div class="empty-results-panel">
-                                    <strong>Brak przydziałów w bieżących cyklach.</strong>
+                                    <strong>Brak przydziałów.</strong>
                                     <p>
                                         {% if person.user %}
                                             Zadania pojawią się po przypisaniu

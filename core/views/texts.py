@@ -131,6 +131,10 @@ def _render_text_detail_page(request, text, *, bound_forms=None, status=200):
     from illustrations.models import Illustration
     from core.permissions import can_view_illustrations
     context['audiobook_form'] = AudiobookForm(instance=text)
+    context['text']['for_recording'] = text.for_recording
+    context['text']['audiobook_blacklisted'] = text.audiobook_blacklisted
+    from core.models import Audiobook
+    context['text_audiobook'] = Audiobook.objects.filter(text_id=text.pk).only('status').first()
     context['text_illustration'] = Illustration.objects.prefetch_related('illustrators').filter(text_id=text.pk).first()
     context['can_open_text_illustration'] = can_view_illustrations(request.user)
     context['anthology_illustrated'] = bool(text.anthology_id and text.anthology.has_illustrations)

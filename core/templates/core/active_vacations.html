@@ -55,17 +55,10 @@
                                     {% for role in vacation.person.roles.all %}
                                         <span class="role-badge"{{ role.name|label_palette_attr }}>{{ role.name }}</span>
                                     {% empty %}
-                                        {% if not vacation.person.is_coordinator %}
-                                            <span class="muted-text">
-                                                Brak przypisanych ról
-                                            </span>
-                                        {% endif %}
+                                        <span class="muted-text">Brak przypisanych ról</span>
                                     {% endfor %}
                                 </div>
 
-                                {% if vacation.person.is_coordinator %}
-                                    <div class="form-help">Koordynator zespołu</div>
-                                {% endif %}
                             </td>
 
                             <td class="date-cell">

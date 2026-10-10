@@ -6,6 +6,7 @@ from core.audiobook_validators import validate_mega_url
 from core.audiobook_models import Audiobook as Audiobook
 from core.audiobook_models import AudiobookStage as AudiobookStage
 from core.audiobook_models import AudioContributor as AudioContributor
+from core.post_layout_models import PostLayoutAssignment as PostLayoutAssignment
 
 
 class PublicAudiobookSettings(models.Model):

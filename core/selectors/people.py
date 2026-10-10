@@ -186,6 +186,8 @@ def profile_assignments(person, *, include_authors):
         assignments.append(
             {
                 "pk": assignment.pk,
+                "kind": "Tekst",
+                "kind_key": "text",
                 "role": assignment.role,
                 "get_role_display": assignment_label(assignment, show_first=True),
                 "assigned_at": assignment.assigned_at,
@@ -235,6 +237,10 @@ def profile_assignments(person, *, include_authors):
         )
 
     summary = {"active": len(active_ids), "reserved": len(waiting_ids), "completed": len(completed_ids)}
+    from core.selectors.audio_proofreading import profile_audio_assignments
+    assignments.extend(profile_audio_assignments(person))
+    from core.selectors.post_layout import profile_post_layout_assignments
+    assignments.extend(profile_post_layout_assignments(person))
     return assignments, summary
 
 

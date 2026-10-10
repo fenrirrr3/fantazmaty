@@ -18,6 +18,7 @@ from core.admin_newsletter_recovery import NewsletterRecoveryAdminMixin
 from core.models import PublicAudiobookSettings
 from core.models import Audiobook, AudiobookStage
 from core.models import AudioContributor
+from core.models import PostLayoutAssignment
 from core.audiobook_forms import AudiobookProductionForm
 
 
@@ -27,6 +28,30 @@ class AudiobookAdminForm(AudiobookProductionForm):
 
     def clean_additional_links(self):
         return self.cleaned_data.get('additional_links') or []
+
+
+@admin.register(PostLayoutAssignment)
+class PostLayoutAssignmentAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
+    list_display = ('anthology', 'proofreader', 'page_from', 'page_to', 'status', 'assigned_start', 'work_start', 'completed_on')
+    list_filter = ('status', 'anthology')
+    list_select_related = ('anthology', 'proofreader')
+    search_fields = ('anthology__title', 'proofreader__first_name', 'proofreader__last_name')
+    readonly_fields = ('anthology', 'proofreader', 'page_from', 'page_to', 'status', 'assigned_start', 'assigned_end',
+        'work_start', 'work_end', 'completed_on', 'created_at', 'created_by', 'management_link')
+    fields = readonly_fields
+    actions = None
+
+    @admin.display(description='Zarządzanie przydziałami i statusami')
+    def management_link(self, obj):
+        from django.urls import reverse
+        from django.utils.html import format_html
+        return format_html('<a href="{}">Otwórz Korektę poskładową</a>', reverse('core:post_layout'))
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(AudioContributor)

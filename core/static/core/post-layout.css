@@ -1,0 +1,10 @@
+.post-layout-add { display: grid; grid-template-columns: 2fr 2fr 1fr 1fr; gap: 1rem; align-items: end; }
+.post-layout-add .form-field, .post-layout-filters .form-field { margin: 0; min-width: 0; }
+.post-layout-add select, .post-layout-add input:not([type=hidden]) { width: 100%; min-width: 0; box-sizing: border-box; }
+.post-layout-add > button { grid-column: 1 / -1; justify-self: start; }
+.post-layout-add > .errorlist { grid-column: 1 / -1; }
+.post-layout-filters, .post-layout-status { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
+.post-layout-filters .form-field { flex: 1 1 18rem; }
+.post-layout-status { min-width: 12rem; }
+@media (max-width: 760px) { .post-layout-add { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 480px) { .post-layout-add { grid-template-columns: 1fr; } }

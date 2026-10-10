@@ -22,6 +22,7 @@ from core.permissions import is_coordinator, require_coordinator, team_member_re
 from core.public_authors import public_name, name_matches
 from texts.models import Text, ForeignAuthor
 from texts.production import active_production_texts
+from core.selectors.audio_proofreading import proofreading_scope, can_assign_proofreader, correction_rows, corrections
 
 
 def audio_texts():
@@ -46,13 +47,12 @@ def proofreader_display(audio):
 
 def list_page(request, *, proofreading=False, bound_assignment=None, status_code=200):
     coordinator = is_coordinator(request.user)
+    hide_completed = request.GET.get('hide_completed') == '1'
     if proofreading and not can_view_audio_proofreading(request.user):
         raise PermissionDenied('Dostęp wymaga roli Korektor audiobooków lub koordynatora.')
     scope = active_production_texts(audio_texts().filter(for_recording=True, audiobook_blacklisted=False))
     if proofreading:
-        scope = scope.filter(audiobook__status=Audiobook.Status.PROOFREADING)
-        if not coordinator:
-            scope = scope.filter(audiobook__proofreader=request.user)
+        scope = proofreading_scope(audio_texts(), request.user, coordinator, hide_completed=hide_completed)
     anthologies = scope.order_by('anthology__title').values('anthology_id', 'anthology__title').distinct()
     q = request.GET.get('q', '').strip()[:200]
     anthology = request.GET.get('anthology', '')
@@ -65,6 +65,13 @@ def list_page(request, *, proofreading=False, bound_assignment=None, status_code
             | Q(audiobook__narrator_name__plcontains=q) | Q(audiobook__engineer_name__plcontains=q)
             | Q(audiobook__proofreader__person_profile__first_name__plcontains=q)
             | Q(audiobook__proofreader__person_profile__last_name__plcontains=q)).distinct()
+        if proofreading:
+            # Match historical performers without multiplying the story rows.
+            matches = corrections().filter(Q(performer__person_profile__first_name__plcontains=q)
+                | Q(performer__person_profile__last_name__plcontains=q))
+            if not coordinator:
+                matches = matches.filter(performer=request.user)
+            rows = scope.filter(Q(pk__in=rows.values('pk')) | Q(pk__in=matches.values('text_id')))
     if anthology:
         rows = rows.filter(anthology_id=int(anthology)) if anthology.isascii() and anthology.isdecimal() and len(anthology) <= 18 else rows.none()
     rows = rows.annotate(audio_status=Coalesce('audiobook__status', Value(Audiobook.Status.PENDING)))
@@ -77,13 +84,18 @@ def list_page(request, *, proofreading=False, bound_assignment=None, status_code
     page = paginate_items(request, rows)
     page.object_list = [dict(pk=t.pk, title=t.title, anthology=t.anthology,
         authors_display=authors_display(t), audio=getattr(t, 'audiobook', None),
-        proofreader_display=proofreader_display(getattr(t, 'audiobook', None))) for t in page.object_list]
+        proofreader_display=proofreader_display(getattr(t, 'audiobook', None)),
+        **({'corrections': correction_rows(t.audiobook, t.audio_corrections, viewer=None if coordinator else request.user),
+            'allow_assignment': coordinator and t.can_produce_audio and can_assign_proofreader(t.audiobook, t.audio_corrections),
+            'production_disabled': not t.can_produce_audio} if proofreading else {})) for t in page.object_list]
     if proofreading and coordinator:
         choices = [(user.pk, str(user.person_profile)) for user in eligible_proofreaders().select_related('person_profile').order_by('last_name', 'first_name', 'pk')]
         choice_ids = {pk for pk, label in choices}
         versions = dict(EditRevision.objects.filter(model_label='texts.text',
             object_id__in=[r['pk'] for r in page.object_list]).values_list('object_id', 'version'))
         for row in page.object_list:
+            if not row['allow_assignment']:
+                continue
             form = bound_assignment if bound_assignment and bound_assignment.instance.text_id == row['pk'] else AudiobookAssignmentForm(instance=row['audio'], auto_id=f"id_audio_{row['pk']}_%s")
             extra = [(row['audio'].proofreader_id, row['proofreader_display'])] if row['audio'].proofreader_id and row['audio'].proofreader_id not in choice_ids else []
             form.fields['proofreader'].choices = [('', 'Nie przypisano'), *choices, *extra]
@@ -91,7 +103,8 @@ def list_page(request, *, proofreading=False, bound_assignment=None, status_code
             row['edit_token'] = signing.dumps([request.user.pk, f"texts.text:{row['pk']}", versions.get(row['pk'], 0)], salt='cms-edit-version')
     return render(request, 'core/audio_proofreading.html' if proofreading else 'core/audiobooks.html',
         dict(texts=page, page_obj=page, anthologies=anthologies, can_assign=coordinator,
-        query=q, selected_anthology=anthology, selected_status=status, status_choices=Audiobook.Status.choices), status=status_code)
+        query=q, selected_anthology=anthology, selected_status=status, status_choices=Audiobook.Status.choices,
+        hide_completed=hide_completed), status=status_code)
 
 
 def can_edit_audio(request, obj, kwargs):
@@ -174,6 +187,8 @@ def assign_audio_proofreader(request, text_id):
         text = get_object_or_404(Text.objects.select_for_update(), pk=text_id)
         require_available(text)
         audio = get_object_or_404(Audiobook, text=text, status=Audiobook.Status.PROOFREADING)
+        if not can_assign_proofreader(audio, corrections().filter(text=text)):
+            raise PermissionDenied('Korekta została zakończona. Aby przypisać kolejną osobę, rozpocznij nowy etap Korekta.')
         form = AudiobookAssignmentForm(request.POST, instance=audio, auto_id=f'id_audio_{text.pk}_%s')
         if form.is_valid():
             form.save()

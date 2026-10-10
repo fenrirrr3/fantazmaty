@@ -116,7 +116,10 @@ def people_list(request):
 def person_detail(request, person_id):
     # Nieaktywne osoby z historią mają dostępny szczegół; lista aktywnego zespołu pozostaje bez zmian.
     person = get_object_or_404(
-        Person.objects.filter(Q(is_active=True) | Q(is_external=True) | Q(user__audio_contacts__isnull=False) | Q(user__workflow_role_assignments__isnull=False) | Q(historical_review_assignments__review__old_reviews=True) | Q(user__review_assignments__review__old_reviews=True)).distinct()
+        Person.objects.filter(Q(is_active=True) | Q(is_external=True) | Q(user__audio_contacts__isnull=False)
+            | Q(user__proofread_audiobooks__isnull=False) | Q(user__audiobook_stage_history__isnull=False)
+            | Q(user__post_layout_assignments__isnull=False)
+            | Q(user__workflow_role_assignments__isnull=False) | Q(historical_review_assignments__review__old_reviews=True) | Q(user__review_assignments__review__old_reviews=True)).distinct()
         .select_related("user")
         .prefetch_related("roles"),
         pk=person_id,
@@ -127,6 +130,15 @@ def person_detail(request, person_id):
         person,
         include_authors=include_authors,
     )
+    hide_completed = request.GET.get('hide_completed') == '1'
+    if hide_completed:
+        assignments = [row for row in assignments if not (row.get('is_ready') or (
+            row.get('has_completed_work') and not row.get('has_active_work') and not row.get('has_reserved_work')))]
+    from core.post_layout import can_manage
+    from core.permissions import can_view_post_layout
+    for row in assignments:
+        if row.get('kind_key') == 'post_layout':
+            row['no_detail_link'] = not (can_view_post_layout(request.user) and (can_manage(request.user) or person.user_id == request.user.pk))
 
     return render(
         request,
@@ -135,6 +147,7 @@ def person_detail(request, person_id):
             "person": person,
             "audio_profiles": person.user.audio_contacts.all() if person.user_id else [],
             "assignments": assignments,
+            "hide_completed": hide_completed,
             "person_summary": person_summary,
             "imported_work_summary": _imported_work_summary(person),
             "archived_reviews": ReviewAssignment.objects.submitted().filter(review__old_reviews=True).filter(

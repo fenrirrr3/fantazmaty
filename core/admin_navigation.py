@@ -6,6 +6,7 @@ from urllib.parse import urlencode
 GROUPS = (
     ('submissions', 'Zgłoszenia i recenzje', ('texts.review', 'texts.extract')),
     ('publication', 'Teksty i antologie', ('texts.text', 'texts.anthology', 'texts.anthologytask', 'core.anthologycorrection')),
+    ('post_layout', 'Korekta poskładowa', ('core.postlayoutassignment',)),
     ('novels', 'Powieści i słownik', ('novels', 'texts.novelprofile', 'texts.vocabularyterm')),
     ('translations', 'Tłumaczenia', ('texts.texttranslation', 'texts.foreignauthor', 'texts.translator')),
     ('authors', 'Autorzy', ('authors.author', 'blacklist')),

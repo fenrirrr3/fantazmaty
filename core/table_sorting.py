@@ -334,6 +334,14 @@ def _extra_columns(items, queryset, request):
 
 
 def prepare_table_sort(request, items):
+    if request.resolver_match and request.resolver_match.view_name == 'core:post_layout':
+        fields = {'Antologia': ('anthology', 'anthology__title'), 'Korektor': ('proofreader', 'proofreader__person_profile__last_name'),
+            'Strony': ('pages', 'page_from'), 'Status': ('status', 'status'),
+            'Przydzielony od': ('assigned_start', 'assigned_start'), 'Przydzielony do': ('assigned_end', 'assigned_end'),
+            'W trakcie od': ('work_start', 'work_start'), 'W trakcie do': ('work_end', 'work_end'), 'Zakończony': ('completed', 'completed_on')}
+        selected = request.GET.get('sort', 'anthology')
+        field = next((field for key, field in fields.values() if key == selected.lstrip('-')), 'anthology__title')
+        return items.order_by(('-' if selected.startswith('-') else '') + field, 'page_from', 'pk'), {label: key for label, (key, _) in fields.items()}
     if request.resolver_match and request.resolver_match.view_name in ('core:audiobooks', 'core:audio_proofreading', 'core:assign_audio_proofreader'):
         fields = {
             'Antologia': ('anthology', 'anthology__title'), 'Autor': ('author', 'audio_author'),
@@ -342,6 +350,7 @@ def prepare_table_sort(request, items):
             'Korektor audiobooka': ('proofreader', 'audiobook__proofreader__person_profile__last_name'),
             'Nagrywanie od': ('recording', 'audiobook__recording_started_at'),
             'Korekta od': ('proofreading', 'audiobook__proofreading_started_at'),
+            'Historia korekty': ('proofreading', 'audiobook__proofreading_started_at'),
             'Poprawki od': ('corrections', 'audiobook__corrections_started_at'),
             'Montaż od': ('editing', 'audiobook__editing_started_at'),
             'Czeka na publikację od': ('awaiting', 'audiobook__awaiting_publication_started_at'),

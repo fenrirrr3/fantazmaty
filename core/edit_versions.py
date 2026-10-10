@@ -14,6 +14,7 @@ from django.db.models.signals import pre_save, post_save, post_delete, pre_delet
 
 # Only editable domain records; no audit/outbox/session traffic.
 TRACKED = {
+    'core.postlayoutassignment',
     'core.audiocontributor',
     'core.audiobook',
     'core.audiobookstage',
