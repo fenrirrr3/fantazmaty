@@ -74,7 +74,7 @@
   {
    "anthology": "Umieranie to parszywa robota",
    "reporter": "Dawid Wiktorski",
-   "story": "Pokój",
+   "story": "Pokój z widokiem na wojnę",
    "fragment": "Sam koniec",
    "problem": "Opowiadanie podpisane przez Konrada Kołodziejczyka",
    "suggestion": "Usunąć"
@@ -146,9 +146,9 @@
   {
    "anthology": "nanoFantazje 3.0",
    "reporter": "Dawid Wiktorski",
-   "story": "Kołakowska",
+   "story": "Córy Nieba",
    "fragment": "gdy przytulał żonę Wieczorami",
-   "problem": "brak kropki po \"żonę\"",
+   "problem": "sprawdzić który tekst autorki - brak kropki po \"żonę\"",
    "suggestion": ""
   },
   {
