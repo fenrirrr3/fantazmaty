@@ -54,6 +54,9 @@ def _unused_pipes(nlp, purpose):
     from spacy.pipeline import EditTreeLemmatizer
     if purpose == 'sentences':
         needed = {'tok2vec', 'parser', 'senter'}
+    elif purpose == 'context':
+        # Lematy w kontekście zdania i jego granice z jednego przebiegu.
+        needed = {'tok2vec', 'parser', 'senter', 'lemmatizer'}
     elif 'lemmatizer' in nlp.pipe_names and isinstance(nlp.get_pipe('lemmatizer'), EditTreeLemmatizer):
         needed = {'tok2vec', 'lemmatizer'}
     else:
@@ -99,6 +102,7 @@ class Token:
     text: str
     is_word: bool
     lemma: Optional[str] = None
+    context_lemma: Optional[str] = None
     stem5: Optional[str] = None
     word_len: int = 0
     color: Optional[RGBColor] = None
@@ -118,6 +122,10 @@ def _find_repeat_groups(words, progress=None, window_size=WINDOW_SIZE,
         if not token.ignored:
             if token.lemma:
                 buckets.setdefault(('lemma', token.lemma, None), []).append(i)
+            # Lemat z kontekstu zdania (drugi głos modelu): formy, których lemat izolowany
+            # rozminął się z kontekstowym, wciąż trafiają do wspólnej grupy.
+            if token.context_lemma and token.context_lemma != token.lemma:
+                buckets.setdefault(('lemma', token.context_lemma, None), []).append(i)
             if include_prefix_matches and token.stem5:
                 category = 5 if token.word_len == 5 else 6
                 buckets.setdefault(('stem5', token.stem5, category), []).append(i)
@@ -313,9 +321,12 @@ def _lemma_map(forms):
             else:
                 missing.append(word)
         if missing:
+            from spacy.tokens import Doc
             nlp = _get_nlp()
             disabled = _unused_pipes(nlp, 'lemmas')
-            for word, parsed in zip(missing, nlp.pipe(missing, batch_size=BATCH_SIZE,
+            # Słowo to już jeden token: pomijamy tokenizer (ok. 1/3 czasu tego kroku).
+            documents = (Doc(nlp.vocab, words=[word]) for word in missing)
+            for word, parsed in zip(missing, nlp.pipe(documents, batch_size=BATCH_SIZE,
                                                     disable=disabled)):
                 lemma = _lemma_from_doc(parsed, word)
                 result[word] = lemma
@@ -323,6 +334,25 @@ def _lemma_map(forms):
                 while len(_LEMMA_CACHE) > _LEMMA_CACHE_LIMIT:
                     _LEMMA_CACHE.popitem(last=False)
         return result
+
+
+def _context_analysis(texts, *, sentences, status_callback=None):
+    """Jeden przebieg modelu po akapitach: lematy słów w kontekście i (opcjonalnie) granice zdań.
+
+    Model był uczony na zdaniach, więc lemat słowa w kontekście bywa inny (zwykle lepszy)
+    niż lemat słowa podanego osobno; grupowanie powtórzeń korzysta z obu.
+    Zwraca listę par: ({początek słowa: lemat}, [(początek zdania, koniec zdania)]).
+    """
+    if status_callback:
+        status_callback('Analiza językowa – lematy w kontekście i granice zdań…')
+    nlp = _get_nlp()
+    disabled = _unused_pipes(nlp, 'context' if sentences else 'lemmas')
+    result = []
+    for parsed in nlp.pipe(texts, batch_size=BATCH_SIZE, disable=disabled):
+        lemmas = {token.idx: _form(token.lemma_) for token in parsed if token.lemma_ and not token.is_space}
+        spans = [(sentence.start_char, sentence.end_char) for sentence in parsed.sents] if sentences else []
+        result.append((lemmas, spans))
+    return result
 
 
 # Niewidoczne znaczniki Worda: nie są tekstem ani przerwą między słowami.
@@ -458,7 +488,7 @@ def _apply_layout_marks(layout, marks, styles=None):
 
 
 def _extra_checks(paragraphs, lemmas, ignored, tracked, options, status_callback=None,
-                  layouts=None, apply_marks=True):
+                  layouts=None, apply_marks=True, sentence_spans=None):
     checks = {**CHECK_DEFAULTS, **options}
     layouts = _document_layout(paragraphs) if layouts is None else layouts
     texts = [layout[0] for layout in layouts]
@@ -498,15 +528,15 @@ def _extra_checks(paragraphs, lemmas, ignored, tracked, options, status_callback
                 marks[p_index].append((match.start(), match.end(), 'empty_pairs'))
                 report['empty_pairs'] += 1
     if checks['long_sentences']:
-        if status_callback:
-            status_callback('Rozpoznawanie zdań i sprawdzanie ich długości…')
-        # Model rozpoznaje zdania w kontekście, zamiast dzielić przy każdej kropce.
-        nlp = _get_nlp()
-        disabled = _unused_pipes(nlp, 'sentences')
-        for index, parsed in enumerate(nlp.pipe(texts, batch_size=BATCH_SIZE, disable=disabled)):
-            for sentence in parsed.sents:
-                if len(LEXICAL_RE.findall(sentence.text)) > checks['sentence_limit']:
-                    marks[index].append((sentence.start_char, sentence.end_char, 'long_sentences'))
+        if sentence_spans is None:
+            if status_callback:
+                status_callback('Rozpoznawanie zdań i sprawdzanie ich długości…')
+            # Model rozpoznaje zdania w kontekście, zamiast dzielić przy każdej kropce.
+            sentence_spans = [spans for _, spans in _context_analysis(texts, sentences=True)]
+        for index, (text, spans) in enumerate(zip(texts, sentence_spans)):
+            for start, end in spans:
+                if len(LEXICAL_RE.findall(text[start:end])) > checks['sentence_limit']:
+                    marks[index].append((start, end, 'long_sentences'))
                     report['long_sentences'] += 1
     if apply_marks:
         for layout, ranges in zip(layouts, marks):
@@ -576,9 +606,12 @@ def color_document(source, *, window_size=35, min_word_length=4,
     styles = {}  # wspólne wzory rPr dla wszystkich części dokumentu
     done = 0
     for story, story_layouts, (words, locations) in zip(stories, layouts, story_words):
-        for token in words:
+        report_progress("Analiza językowa – lematy w kontekście")
+        context = _context_analysis([text for text, _ in story_layouts], sentences=bool(options['long_sentences']))
+        for token, (index, start, _) in zip(words, locations):
             token.lemma = lemmas.get(_form(token.text), _form(token.text))
-            token.ignored = token.lemma in ignored
+            token.context_lemma = context[index][0].get(start)
+            token.ignored = token.lemma in ignored or token.context_lemma in ignored
         groups = _find_repeat_groups(
             words, window_size=window_size, include_prefix_matches=include_prefix_matches
         )
@@ -588,7 +621,8 @@ def color_document(source, *, window_size=35, min_word_length=4,
             if token.color is not None:
                 marks[index].append((start, end, token.color, None, 0))
         _, extra_marks = _extra_checks(
-            story.paragraphs, lemmas, ignored, tracked, options, layouts=story_layouts, apply_marks=False
+            story.paragraphs, lemmas, ignored, tracked, options, layouts=story_layouts, apply_marks=False,
+            sentence_spans=[spans for _, spans in context],
         )
         for target, ranges in zip(marks, extra_marks):
             target.extend((a, b, None, MARK_STYLES[k][1], MARK_STYLES[k][0]) for a, b, k in ranges)

@@ -27,9 +27,9 @@
     <h2>Lektor i montaż</h2>
     {% if can_edit %}<form method="post" class="audio-production-form" data-warn-unsaved>
         {% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="people">{{ people_form.non_field_errors }}
-        <fieldset><legend>Lektor</legend><div class="audio-name-profile"><div class="form-field">{{ people_form.narrator_contact.label_tag }}{{ people_form.narrator_contact }}{{ people_form.narrator_contact.errors }}</div>{% if audio.narrator_contact_id %}<a class="secondary-button" href="{% url 'core:audio_contributor' audio.narrator_contact_id %}">Otwórz wpis</a>{% endif %}</div>
+        <fieldset><legend>Lektor</legend><div class="form-field"><label class="visually-hidden" for="{{ people_form.narrator_contact.id_for_label }}">Lektor ze spisu</label>{{ people_form.narrator_contact }}{{ people_form.narrator_contact.errors }}</div>{% if audio.narrator_contact_id %}<div class="actions"><a class="secondary-button" href="{% url 'core:audio_contributor' audio.narrator_contact_id %}">Otwórz wpis</a></div>{% endif %}
             <details><summary>Osoby nie ma w spisie</summary><div class="form-field">{{ people_form.new_narrator_name.label_tag }}{{ people_form.new_narrator_name }}<p class="form-help">{{ people_form.new_narrator_name.help_text }}</p>{{ people_form.new_narrator_name.errors }}</div><div class="form-field">{{ people_form.new_narrator_email.label_tag }}{{ people_form.new_narrator_email }}{{ people_form.new_narrator_email.errors }}</div></details></fieldset>
-        <fieldset><legend>Montaż</legend><div class="audio-name-profile"><div class="form-field">{{ people_form.engineer_contact.label_tag }}{{ people_form.engineer_contact }}{{ people_form.engineer_contact.errors }}</div>{% if audio.engineer_contact_id %}<a class="secondary-button" href="{% url 'core:audio_contributor' audio.engineer_contact_id %}">Otwórz wpis</a>{% endif %}</div>
+        <fieldset><legend>Montaż</legend><div class="form-field"><label class="visually-hidden" for="{{ people_form.engineer_contact.id_for_label }}">Montaż ze spisu</label>{{ people_form.engineer_contact }}{{ people_form.engineer_contact.errors }}</div>{% if audio.engineer_contact_id %}<div class="actions"><a class="secondary-button" href="{% url 'core:audio_contributor' audio.engineer_contact_id %}">Otwórz wpis</a></div>{% endif %}
             <details><summary>Osoby nie ma w spisie</summary><div class="form-field">{{ people_form.new_engineer_name.label_tag }}{{ people_form.new_engineer_name }}<p class="form-help">{{ people_form.new_engineer_name.help_text }}</p>{{ people_form.new_engineer_name.errors }}</div><div class="form-field">{{ people_form.new_engineer_email.label_tag }}{{ people_form.new_engineer_email }}{{ people_form.new_engineer_email.errors }}</div></details></fieldset>
         <button class="primary-button">Zapisz</button>
     </form>{% else %}
@@ -85,7 +85,7 @@
         <h3>Popraw daty etapów</h3><p class="form-help">Puste pole – data nieznana. Trwający etap kończy zmiana statusu.</p>
         <div class="audio-stage-dates">{% for row in dates_form.rows %}<fieldset><legend>{{ row.stage.get_stage_type_display }}</legend>
             <div class="form-field"><label for="{{ row.start.id_for_label }}">Rozpoczęcie</label>{{ row.start }}{{ row.start.errors }}</div>
-            <div class="form-field">{% if row.end %}<label for="{{ row.end.id_for_label }}">Zakończenie</label>{{ row.end }}{{ row.end.errors }}{% else %}<p class="muted-text">Zakończenie: etap otwarty</p>{% endif %}</div>
+            <div class="form-field">{% if row.end %}<label for="{{ row.end.id_for_label }}">Zakończenie</label>{{ row.end }}{{ row.end.errors }}{% else %}<label for="stage-open-{{ row.stage.pk }}">Zakończenie</label><input id="stage-open-{{ row.stage.pk }}" type="text" value="etap otwarty" disabled>{% endif %}</div>
         </fieldset>{% endfor %}</div>
         <div class="actions"><button class="primary-button">Zapisz daty</button></div>
     </form>{% endif %}

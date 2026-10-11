@@ -39,12 +39,22 @@
     letter-spacing: -0.035em;
 }
 
-.page-description {
+.page-description,
+.page-header > p:not([class]) {
     max-width: 850px;
     margin: var(--space-2) 0 0;
     color: var(--muted);
     font-size: var(--font-size-md);
     font-weight: 400;
+}
+
+/* Nagłówek strony: opis tuż pod tytułem, przyciski z wyraźnym odstępem – niezależnie od znaczników. */
+.page-header > * + .message {
+    margin-top: var(--space-3);
+}
+
+.page-header > * + :is(a, .actions, .audio-actions) {
+    margin-top: var(--space-4);
 }
 
 .eyebrow {

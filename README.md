@@ -46,6 +46,14 @@ działają z tym samym językiem, middleware i nagłówkami co produkcja. Lokaln
 `.env` jest wtedy pomijany. CI (`.github/workflows/tests.yml`) uruchamia testy
 na SQLite i MySQL, `ruff check`, stylelint oraz `pip-audit`.
 
+## Program lokalny (jeden plik)
+
+`python tools/redaktor_docx/build.py` buduje `redaktor_docx.py` – jeden plik z Odkurzaczem,
+konwersją DOCX → PDF/EPUB, kolorowaniem powtórzeń i przebudową DOCX oraz oknem programu
+(Tkinter). Kod programów jest brany z `core/services`, więc po zmianach wystarczy zbudować plik
+ponownie. Na komputerze potrzebny jest Python 3.12+ z pakietami: `python-docx lxml mammoth
+EbookLib fpdf2 Pillow rapidfuzz spacy` i modelem `pl_core_news_sm` (polecenia w nagłówku pliku).
+
 ## Wdrożenie (PythonAnywhere)
 
 1. `pip install -r requirements.txt`

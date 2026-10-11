@@ -1,7 +1,7 @@
 {% extends "core/base.html" %}
 {% block title %}Autorzy tekstu | Fantazmaty CMS{% endblock %}
 {% block content %}
-<section class="card"><div class="card-body"><h1 class="page-title">Autorów zmienia się w panelu administracyjnym</h1>
-<p>Autorów tekstu można zmieniać wyłącznie w panelu administracyjnym, w edycji tekstu. Na tej stronie nie zapisano żadnych zmian.</p>
-<div class="actions"><a class="primary-button" href="{% url 'admin:texts_text_change' text_id %}">Otwórz tekst w panelu administracyjnym</a><a class="secondary-button" href="{% url 'core:assigned_text_detail' text_id %}">Wróć do tekstu</a></div></div></section>
+<header class="page-header"><h1 class="page-title">Autorów zmienia się w panelu administracyjnym</h1>
+<p class="page-description">Autorów tekstu można zmieniać wyłącznie w panelu administracyjnym, w edycji tekstu. Na tej stronie nie zapisano żadnych zmian.</p>
+<div class="actions"><a class="primary-button" href="{% url 'admin:texts_text_change' text_id %}">Otwórz tekst w panelu administracyjnym</a><a class="secondary-button" href="{% url 'core:assigned_text_detail' text_id %}">Wróć do tekstu</a></div></header>
 {% endblock %}

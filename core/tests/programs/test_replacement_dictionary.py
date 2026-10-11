@@ -28,7 +28,8 @@ class InitialDictionaryTests(TestCase):
     def test_migration_fills_the_dictionary_with_the_built_in_list(self):
         entries = list(ReplacementEntry.objects.order_by('position', 'pk'))
         self.assertEqual([entry.as_replacement() for entry in entries],
-                         [{'kind': kind, 'source': source, 'target': target} for kind, source, target in INITIAL])
+                         [{'kind': kind, 'source': source, 'target': target, 'checked': True}
+                          for kind, source, target in INITIAL])
         self.assertTrue(all(entry.is_active for entry in entries))
         self.assertEqual(ReplacementEntry.active_replacements(), [entry.as_replacement() for entry in entries])
 

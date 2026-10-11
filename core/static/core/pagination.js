@@ -48,7 +48,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const next = button('Następna', () => page + 1);
         const last = button('Ostatnia', () => Math.max(1, Math.ceil(groups.length / size)));
         nav.append(status, label, controls);
-        (table.closest('.table-container') || table).after(nav);
+        // Za całą tabelą – także za opakowaniem przewijania, które w karcie przylega do jej krawędzi.
+        (table.closest('.table-scroll-shell') || table.closest('.table-container') || table).after(nav);
         function collect() {
             groups = [];
             [...table.tBodies].forEach(body => {

@@ -62,6 +62,50 @@ def _alignment(paragraph):
         return None
 
 
+SYMBOL_FONTS = ('symbol', 'wingdings', 'webdings', 'marlett', 'mt extra')
+
+
+def _symbol_run(run, fonts):
+    """Przebieg w foncie symbolicznym (albo ze znakami z obszaru prywatnego) zachowuje swój font."""
+    names = (fonts.get(qn("w:" + key), "") for key in ("ascii", "hAnsi", "cs", "eastAsia"))
+    if any(name.lower() in SYMBOL_FONTS for name in names):
+        return True
+    return any(0xF000 <= ord(char) <= 0xF0FF for node in run.iter(qn("w:t")) for char in (node.text or ""))
+
+
+def _heading_lookup(document):
+    """Funkcja: akapit → czy to nagłówek albo punkt listy (bezpośrednio lub ze stylu, z dziedziczeniem)."""
+    def owned(element):
+        props = element.find(qn("w:pPr"))
+        if props is None:
+            return None
+        numbering = props.find(f'{qn("w:numPr")}/{qn("w:numId")}')
+        if numbering is not None:
+            return numbering.get(qn("w:val")) != "0"
+        level = props.find(qn("w:outlineLvl"))
+        if level is not None:
+            return level.get(qn("w:val")) != "9"
+        return None
+
+    def is_heading_or_list(paragraph):
+        own = owned(paragraph._p)
+        if own is not None:
+            return own
+        try:
+            chain = list(style_chain(paragraph_style(paragraph)))
+        except (KeyError, ValueError, AttributeError):
+            return False
+        for style in chain:
+            name = (style.name or "").lower()
+            if name.startswith(("heading", "nagłówek", "naglowek")) or (style.style_id or "").lower().startswith("heading"):
+                return True
+            inherited = owned(style.element)
+            if inherited is not None:
+                return inherited
+        return False
+    return is_heading_or_list
+
+
 def normalize_docx(source, *, justify=False):
     source.seek(0)
     document = Document(source)
@@ -91,29 +135,36 @@ def normalize_docx(source, *, justify=False):
                     for side in ("header", "footer"):
                         if margins.get(qn("w:" + side)) is None:
                             margins.set(qn("w:" + side), "708")
+                heading = _heading_lookup(document)
                 for element in tree.iter(qn("w:p")):
                     paragraph = Paragraph(element, document)
                     alignment = _alignment(paragraph)
                     props = element.get_or_add_pPr()
+                    # Komórki tabel zachowują swój układ; listy i nagłówki zachowują wcięcia
+                    # (wcięcie listy pochodzi z numeracji, a akapit by je nadpisał).
+                    in_table = any(parent.tag == qn("w:tc") for parent in element.iterancestors())
+                    listed = heading(paragraph)
 
                     def child(tag):
                         return _child(props, "w:" + tag)
 
                     # Justujemy tylko tekst wyrównany do lewej lub bez wyrównania; środek, prawa
                     # strona i nagłówki/stopki (numer strony, tytuł) zostają jak w źródle.
-                    if justify and not margin_story and alignment in (None, 0):
+                    if justify and not margin_story and not in_table and alignment in (None, 0):
                         child("jc").set(qn("w:val"), "both")
-                    spacing = child("spacing")
-                    spacing.attrib.clear()
-                    for key, value in dict(
-                        before="0", after="0", line="360", lineRule="auto"
-                    ).items():
-                        spacing.set(qn("w:" + key), value)
-                    indent = child("ind")
-                    for key in ("firstLineChars", "hanging", "hangingChars"):
-                        indent.attrib.pop(qn("w:" + key), None)
-                    indent.set(qn("w:firstLine"), "0" if alignment == 1 else "709")
-                    child("contextualSpacing").set(qn("w:val"), "0")
+                    if not in_table:
+                        spacing = child("spacing")
+                        spacing.attrib.clear()
+                        for key, value in dict(
+                            before="0", after="0", line="360", lineRule="auto"
+                        ).items():
+                            spacing.set(qn("w:" + key), value)
+                        child("contextualSpacing").set(qn("w:val"), "0")
+                    if not in_table and not listed:
+                        indent = child("ind")
+                        for key in ("firstLineChars", "hanging", "hangingChars"):
+                            indent.attrib.pop(qn("w:" + key), None)
+                        indent.set(qn("w:firstLine"), "0" if alignment == 1 else "709")
                     # Includes hyperlinks and runs inside other inline containers.
                     for run in element.iter(qn("w:r")):
                         rpr = run.get_or_add_rPr()
@@ -121,8 +172,9 @@ def normalize_docx(source, *, justify=False):
                         for key in list(fonts.attrib):
                             if key.endswith("Theme"):
                                 del fonts.attrib[key]
-                        for key in ("ascii", "hAnsi", "eastAsia", "cs"):
-                            fonts.set(qn("w:" + key), "Times New Roman")
+                        if not _symbol_run(run, fonts):
+                            for key in ("ascii", "hAnsi", "eastAsia", "cs"):
+                                fonts.set(qn("w:" + key), "Times New Roman")
                         for tag in ("sz", "szCs"):
                             size = _child(rpr, "w:" + tag)
                             size.set(qn("w:val"), "24")

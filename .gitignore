@@ -41,3 +41,6 @@ var/conversion/conversion.lock
 
 var/conversion/program_jobs/
 var/release-test-static/
+
+# Zbudowany program lokalny (tools/redaktor_docx/build.py)
+/redaktor_docx.py

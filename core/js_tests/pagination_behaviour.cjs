@@ -43,8 +43,9 @@ f = serverFixture('p', '?q=smoki&p=1'); f.input.value = '3'; f.input.events.chan
 f = serverFixture(); f.select.events.change(); assert.equal(f.assigned[0], f.select.value);
 
 const storage = new Map();
-function localFixture(pathname = '/detail/1/', id = 'credits', storageBlocked = false) {
+function localFixture(pathname = '/detail/1/', id = 'credits', storageBlocked = false, shell = null) {
     const table = new Element('table'); table.id = id;
+    if (shell) table.closest = selector => selector === '.table-scroll-shell' ? shell : null;
     const rows = Array.from({length: 115}, () => Object.assign(new Element('tr'), {cells: [{colSpan: 1}, {colSpan: 1}]}));
     table.tBodies = [{rows}];
     const callbacks = [];
@@ -56,7 +57,7 @@ function localFixture(pathname = '/detail/1/', id = 'credits', storageBlocked = 
         },
         MutationObserver: class { observe() {} },
     }); callbacks.forEach(fn => fn());
-    const [status, label, controls] = table.nav.children;
+    const [status, label, controls] = (shell || table).nav.children;
     const [first, previous, jump, next, last] = controls.children;
     const input = jump.children[1], select = label.children[1];
     return {table, status, select, first, previous, input, next, last, visible: () => rows.filter(r => !r.classes.has('cms-page-hidden')).length};
@@ -75,4 +76,6 @@ f = localFixture(); assert.equal(f.select.value, '50'); assert.equal(f.visible()
 f.select.value = '500'; f.select.events.change(); assert.equal(f.visible(), 115); assert.equal(f.input.max, '1'); assert.ok(f.next.disabled);
 assert.equal(localFixture().select.value, '500');
 f = localFixture('/private/', 'table', true); f.select.value = '100'; f.select.events.change(); assert.equal(f.visible(), 100);
-console.log('PASS: server and local page jumps, input validation, no form submit, query/anchor preservation, remembered sizes, independent tables and unavailable storage.');
+// Tabela w opakowaniu przewijania (przylega do krawędzi karty): stronicowanie stoi za opakowaniem, z odstępem karty.
+const shell = new Element('div'); localFixture('/shell/', 'table', false, shell); assert.ok(shell.nav);
+console.log('PASS: server and local page jumps, pagination after the scroll shell, input validation, no form submit, query/anchor preservation, remembered sizes, independent tables and unavailable storage.');

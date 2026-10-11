@@ -31,10 +31,22 @@ class EditorialTextRuleTests(SimpleTestCase):
                 self.assertIn(abbreviation, self.fix(f'To {abbreviation} przykład.'))
         self.assertEqual(correct_editorial_text('To o.o. przykład.', ['after_punct']), 'To o.o. przykład.')
 
-    def test_period_stays_inside_quote_when_the_sentence_continues(self):
-        self.assertEqual(self.fix('Napisał „tak.” i wyszedł.'), 'Napisał „tak.” i wyszedł.')
-        self.assertEqual(self.fix('Powiedział „tak.”'), 'Powiedział „tak”.')
-        self.assertEqual(self.fix('Napisał „tak.” Potem wyszedł.'), 'Napisał „tak”. Potem wyszedł.')
+    def test_period_and_comma_always_follow_the_closing_quote(self):
+        """Polska interpunkcja: kropka za cudzysłowem; gdy zdanie trwa dalej, kropka znika."""
+        cases = {
+            'Napisał „tak.” i wyszedł.': 'Napisał „tak” i wyszedł.',
+            'Powiedział „tak.”': 'Powiedział „tak”.',
+            'Powiedział „tak.”.': 'Powiedział „tak”.',
+            'Napisał „tak.” Potem wyszedł.': 'Napisał „tak”. Potem wyszedł.',
+            '„Tak.” – powiedział.': '„Tak” – powiedział.',
+            'Powiedział: „Tak. Nie. Może.” I wyszedł.': 'Powiedział: „Tak. Nie. Może”. I wyszedł.',
+            'Mówił: „Idź!”. Potem „co?” i „hm…”.': 'Mówił: „Idź!”. Potem „co?” i „hm…”.',
+            'Słowo „tak,” i „nie;” oraz „może:” tak.': 'Słowo „tak”, i „nie”; oraz „może”: tak.',
+            '„Cytat «w środku.» koniec.”': '„Cytat «w środku» koniec”.',
+        }
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual(self.fix(text), expected)
 
     def test_letter_marks_after_numbers_are_not_units(self):
         self.assertEqual(self.fix('Klasy 2B i 3A wyszły.'), 'Klasy 2B i 3A wyszły.')
@@ -105,7 +117,7 @@ class OptionalAndEdgeRuleTests(SimpleTestCase):
             correct_editorial_text('Spotkałem Go wczoraj. On przyszedł. Dałem Mu to: Ona wie. '
                                    'Mówił np. Ona przyjdzie! Ja też. Widziałem JEGO.', {'pronouns_lower'}),
             'Spotkałem go wczoraj. On przyszedł. Dałem mu to: Ona wie. '
-            'Mówił np. ona przyjdzie! Ja też. Widziałem jego.')
+            'Mówił np. ona przyjdzie! Ja też. Widziałem JEGO.')
         self.assertEqual(correct_editorial_text('Pisał – Ona wie, https://example.com/On', {'pronouns_lower'}),
                          'Pisał – ona wie, https://example.com/On')
 
@@ -258,13 +270,13 @@ class EditorialRuleRegressionTests(SimpleTestCase):
     def fix(self, text, rules=FORM_DEFAULT_EDITORIAL_RULES):
         return correct_editorial_text(text, rules)
 
-    def test_pronouns_in_capitals_stay_in_titles_and_shouting(self):
-        """Napis wersalikami i partykuła „NIE” nie są wyróżnionym zaimkiem."""
+    def test_pronouns_in_capitals_stay_in_titles_shouting_and_emphasis(self):
+        """Wersaliki to napis, krzyk albo wyróżnienie (decyzja właściciela) – zostają."""
         rules = {'pronouns_lower'}
-        for text in ('ROZDZIAŁ PIERWSZY. ON I ONA', 'Krzyknął: NIE CHCĘ GO WIDZIEĆ!', 'Powiedziałem NIE.'):
+        for text in ('ROZDZIAŁ PIERWSZY. ON I ONA', 'Krzyknął: NIE CHCĘ GO WIDZIEĆ!', 'Powiedziałem NIE.',
+                     'Widziałem JEGO, nie ją.', 'Daj TOBIE to.'):
             with self.subTest(text=text):
                 self.assertEqual(correct_editorial_text(text, rules), text)
-        self.assertEqual(correct_editorial_text('Widziałem JEGO, nie ją.', rules), 'Widziałem jego, nie ją.')
 
     def test_straight_quote_inside_polish_quote_becomes_second_level(self):
         self.assertEqual(self.fix('„Powiedział: "nie"” – zaśmiał się.', {'quotes'}),
@@ -372,7 +384,6 @@ class EditorialRuleR7Tests(SimpleTestCase):
     def test_honorific_second_person_forms_keep_their_capital(self):
         text = 'Piszę do Ciebie, bo Tobie ufam, z Tobą chcę być, kocham Cię i dam Ci to, a Ty wiesz. Was też, Wam i Wami.'
         self.assertEqual(correct_editorial_text(text, {'pronouns_lower'}), text)
-        self.assertEqual(correct_editorial_text('Daj TOBIE to.', {'pronouns_lower'}), 'Daj tobie to.')
 
     def test_replacement_target_spelling_is_kept_unless_the_source_is_all_capitals(self):
         entries = [{'kind': 'word', 'source': 'nato', 'target': 'NATO'},
@@ -486,3 +497,82 @@ class ProgramFormTests(SimpleTestCase):
         form = OdkurzaczForm({}, {'document': upload(stream.getvalue())})
         self.assertFalse(form.is_valid())
         self.assertIn('50 MB', str(form.errors))
+
+
+class EditorialRuleR9Tests(SimpleTestCase):
+    """Runda 9: przypadki z przeglądu (cudzysłowy, kreski, maski, skróty, listy, niewidoczne znaki)."""
+
+    def fix(self, text, rules=FORM_DEFAULT_EDITORIAL_RULES):
+        return correct_editorial_text(text, rules)
+
+    def test_review_cases_are_corrected(self):
+        cases = {
+            # cudzysłowy
+            'Koniec cytatu."': 'Koniec cytatu."',
+            '”tak” i ”nie”.': '„tak” i „nie”.',
+            '„tak" i "nie„.': '„tak” i „nie”.',
+            '"Cytat z "zagnieżdżonym" cudzysłowem".': '„Cytat z «zagnieżdżonym» cudzysłowem”.',
+            '„Cytat „zagnieżdżony” polski”.': '„Cytat «zagnieżdżony» polski”.',
+            '„Cytat z "zagnieżdżonym" cudzysłowem”.': '„Cytat z «zagnieżdżonym» cudzysłowem”.',
+            "Powiedział ``tak'' i ''nie''.": 'Powiedział „tak” i „nie”.',
+            '«Cytat» i »odwrotny«.': '„Cytat” i „odwrotny”.',
+            'To było "5" x 7" zdjęcie.': 'To było "5" x 7" zdjęcie.',
+            "Harry'ego i Jacques'a, rok '98.": 'Harry’ego i Jacques’a, rok \'98.',
+            "It's a 'test' i ‘angielski’ cytat.": 'It’s a „test” i „angielski” cytat.',
+            # kreski
+            'Słowo – – słowo, słowo –– słowo, słowo -- -- słowo.': 'Słowo – słowo, słowo – słowo, słowo – słowo.',
+            '„– Tak – powiedział.”': '„– Tak – powiedział”.',
+            'Zdanie.- Nie. Tak?- Nie!- Może.': 'Zdanie. – Nie. Tak? – Nie! – Może.',
+            '- 5 osób przyszło.': '– 5 osób przyszło.',
+            '-5 stopni.': '-5 stopni.',
+            'Lata 1990‒1995 i 1990―1995 i 1990−1995.': 'Lata 1990–1995 i 1990–1995 i 1990–1995.',
+            'Czarno‐biały i czarno‑biały.': 'Czarno-biały i czarno-biały.',
+            '― Idziemy ― powiedział.': '– Idziemy – powiedział.',
+            '2 - 1 = 1, a 3 + 4 - 2.': '2 - 1 = 1, a 3 + 4 - 2.',
+            # interpunkcja
+            'Kwota 1.234.567,89 zł i wersja 1.2.3:tak.': 'Kwota 1.234.567,89 zł i wersja 1.2.3: tak.',
+            'Nie, , nie, nie,, nie.': 'Nie, nie, nie, nie.',
+            'Jak to?.. Tak!.. Nie.': 'Jak to?… Tak!… Nie.',
+            'Tak … – powiedział. Co …tak.': 'Tak… – powiedział. Co… tak.',
+            '– …i tak dalej.': '– …i tak dalej.',
+            # daty, skróty, inicjały
+            'Dnia 5.X.2024 r. tak.': 'Dnia 5.X.2024 r. tak.',
+            'S.A. i P.S. i U.S.A. i N.N. i J.R.R. Tolkien i A.B. Nowak.':
+                'S.A. i P.S. i U.S.A. i N.N. i J. R. R. Tolkien i A. B. Nowak.',
+            'Lista: a) jeden. b) dwa. c. trzy.': 'Lista: a) jeden. b) dwa. c. trzy.',
+            'Zrobił to. a potem wyszedł.': 'Zrobił to. A potem wyszedł.',
+            'W 5tys. zł i 5mln i 2mld i 5tej.': 'W 5 tys. zł i 5 mln i 2 mld i 5tej.',
+            'Zobacz nr.5, nr. 5, t.3, cz.2, art.5, ok.5 i s.5.': 'Zobacz nr 5, nr 5, t. 3, cz. 2, art. 5, ok. 5 i s. 5.',
+            # jednostki
+            'Wzrost o 5 % i 5 ‰.': 'Wzrost o 5% i 5‰.',
+            'Mieszkanie 50m2, 50 m2 i 5km2 i 2m3.': 'Mieszkanie 50 m², 50 m² i 5 km² i 2 m³.',
+            # niewidoczne znaki i nietypowe spacje
+            'Ze​ro­wid﻿th⁠ i‎ tak‏.': 'Zerowidth i tak.',
+            'Spacja wąska, em,　ideograficzna, 5 kg.': 'Spacja wąska, em, ideograficzna, 5 kg.',
+            # separatory
+            '* * *': '* * *',
+            '- - -': '- - -',
+            '-----': '-----',
+        }
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual(self.fix(text), expected)
+
+    def test_new_rules_can_be_disabled_and_are_counted(self):
+        self.assertEqual(self.fix('Ze​ro i Harry\'ego i 5 %', set()), 'Ze​ro i Harry\'ego i 5 %')
+        self.assertEqual(self.fix("Harry'ego", {'invisible_chars'}), "Harry'ego")
+        counts = {}
+        correct_editorial_text('Ze​ro­ "tak" i Harry\'ego 5 %', FORM_DEFAULT_EDITORIAL_RULES, counts=counts)
+        self.assertEqual({key: counts[key] for key in ('invisible_chars', 'quotes', 'apostrophe', 'unit_nbsp')},
+                         {'invisible_chars': 2, 'quotes': 2, 'apostrophe': 1, 'unit_nbsp': 1})
+        self.assertIn('invisible_chars', DEFAULT_EDITORIAL_RULES)
+
+    def test_checked_dictionary_entries_skip_the_timing_probe(self):
+        from core.services.odkurzacz import CompiledReplacements
+        with patch('core.services.odkurzacz._too_slow', side_effect=AssertionError('probe')):
+            compiled = CompiledReplacements([{'kind': 'pattern', 'source': r'\bkot(?P<e>a|y)?\b',
+                                              'target': r'pies\g<e>', 'checked': True}])
+        self.assertEqual(compiled.apply('kot i koty'), 'pies i piesy')
+        with patch('core.services.odkurzacz._too_slow', return_value=False) as probe:
+            CompiledReplacements([{'kind': 'pattern', 'source': r'\bkot\b', 'target': 'pies'}])
+        probe.assert_called_once()

@@ -69,7 +69,7 @@ class AudiobookPeopleForm(forms.ModelForm):
             current = getattr(self.instance, f'{role}_contact_id', None)
             field.queryset = AudioContributor.objects.filter(Q(is_active=True) | Q(pk=current)).order_by('name', 'pk')
             field.empty_label = 'Nie przypisano'
-            field.widget.attrs['data-searchable-select'] = ''
+            field.widget.attrs['data-searchable-select'] = 'Szukaj w spisie lektorów i montażu'
 
     def clean(self):
         from core.audiobook_models import AudioContributor, contact_key

@@ -31,7 +31,7 @@ SESSION_KEY = 'program_upload_session'
 # Zadania superusera (analiza bez limitu wielkości) mogą trwać dłużej niż 90 s.
 SUPERUSER_TIME_LIMIT = 300
 SUMMARY_LABELS = {'user_word_corrections': 'Własne zamiany słownikowe (słownik zamian)',
-                  'nonbreaking_spaces': 'Spacje nierozdzielające zamienione na zwykłe'}
+                  'nonbreaking_spaces': 'Spacje nierozdzielające i nietypowe zamienione na zwykłe'}
 
 
 class JobError(ValueError):

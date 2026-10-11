@@ -98,8 +98,8 @@ class RememberedSettingsTests(ProgramViewMixin, TestCase):
         html = self.client.get(self.url).content.decode()
         self.assertIn('name="convert-formats" value="pdf" id="id_convert-formats_0" checked', html)
         self.assertNotIn('name="convert-formats" value="epub" id="id_convert-formats_1" checked', html)
-        self.assertIn('name="convert-rules" value="spaces" id="id_convert-rules_0" checked', html)
-        self.assertNotIn('name="convert-rules" value="trim" id="id_convert-rules_1" checked', html)
+        self.assertIn('name="convert-rules" value="spaces" id="id_convert-rules_1" checked', html)
+        self.assertNotIn('name="convert-rules" value="trim" id="id_convert-rules_2" checked', html)
 
     def test_rule_added_after_saving_follows_its_default(self):
         """Reguła spoza listy znanych w chwili zapisu jest zaznaczona tak jak domyślnie; znane – jak zapisano."""
@@ -596,8 +596,9 @@ class ReplacementsInJobsTests(ProgramViewMixin, TestCase):
         ReplacementEntry.objects.create(kind='word', source='kot', target='pies', position=20)
         ReplacementEntry.objects.create(kind='word', source='mysz', target='szczur', position=10)
         ReplacementEntry.objects.create(kind='word', source='ptak', target='ryba', is_active=False)
-        expected = [{'kind': 'word', 'source': 'mysz', 'target': 'szczur'},
-                    {'kind': 'word', 'source': 'kot', 'target': 'pies'}]
+        # Wpisy z CMS są już sprawdzone przy zapisie („checked”) – Odkurzacz nie powtarza próby czasu.
+        expected = [{'kind': 'word', 'source': 'mysz', 'target': 'szczur', 'checked': True},
+                    {'kind': 'word', 'source': 'kot', 'target': 'pies', 'checked': True}]
         self.assertEqual(self.post_job({'program_action': 'clean', 'document': upload()})['replacements'], expected)
         options = self.post_job({'program_action': 'convert', 'convert-document': upload(), 'convert-formats': ['pdf'],
                                  'convert-use_cleaner': 'on'})

@@ -47,7 +47,8 @@ class ReplacementEntry(models.Model):
         return f'{self.source} → {self.target}'
 
     def as_replacement(self):
-        return {'kind': self.kind, 'source': self.source, 'target': self.target}
+        # Wpis zapisany przez formularz przeszedł już próbę czasu wzorca – Odkurzacz jej nie powtarza.
+        return {'kind': self.kind, 'source': self.source, 'target': self.target, 'checked': True}
 
     @classmethod
     def active_replacements(cls):

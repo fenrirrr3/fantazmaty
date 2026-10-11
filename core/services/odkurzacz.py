@@ -14,6 +14,7 @@ else:
 
 # Reguły są wykonywane w ustalonej kolejności, niezależnie od kolejności kliknięć.
 EDITORIAL_RULES = (
+    ('invisible_chars', 'Niewidoczne znaki z kopiowania (zero-width space, miękki łącznik, BOM, znaki kierunku)'),
     ('spaces', 'Podwójne i wielokrotne spacje'),
     ('trim', 'Spacje na początku i końcu akapitu'),
     ('tabs', 'Tabulatory i mieszanki tabulatorów ze spacjami → jedna spacja'),
@@ -22,19 +23,20 @@ EDITORIAL_RULES = (
     ('inside_brackets', 'Spacje wewnątrz nawiasów'),
     ('inside_quotes', 'Spacje wewnątrz cudzysłowów'),
     ('outside_brackets', 'Brakujące spacje wokół nawiasów'),
-    ('quotes', 'Proste i angielskie cudzysłowy → polskie „…”'),
+    ('quotes', 'Proste, angielskie i inne cudzysłowy → polskie „…”, cytat w cytacie «…»'),
+    ('apostrophe', 'Apostrof prosty wewnątrz wyrazu → typograficzny ’'),
     ('ellipsis', 'Wielokropek → …'),
     ('duplicate_punct', 'Powtórzone przecinki, średniki, dwukropki i podwójne kropki'),
-    ('quote_punct', 'Przecinek / kropka poza cudzysłowem w prostych cytatach'),
+    ('quote_punct', 'Kropka i przecinek zawsze za cudzysłowem zamykającym: „tak”.'),
     ('hyphen_dash', 'Łącznik użyty jako myślnik → półpauza'),
-    ('dash_style', 'Pauza jako myślnik → półpauza –'),
+    ('dash_style', 'Pauza i inne kreski jako myślnik → półpauza –; powtórzone myślniki → jeden'),
     ('dash_spaces', 'Odstępy przy myślnikach i początku kwestii dialogowej'),
     ('range_dash', 'Łącznik w zakresach liczbowych → półpauza'),
     ('range_spaces', 'Usuwanie spacji wewnątrz zakresów liczbowych'),
-    ('unit_nbsp', 'Jedna zwykła spacja między liczbą a jednostką: 5 kg'),
-    ('unit_space', 'Brakująca spacja między liczbą a jednostką'),
+    ('unit_nbsp', 'Jedna zwykła spacja między liczbą a jednostką: 5 kg; procent bez spacji: 5%'),
+    ('unit_space', 'Brakująca spacja między liczbą a jednostką; m2 → m²'),
     ('reference_nbsp', 'Jedna zwykła spacja w zapisach: 2025 r., s. 15, nr 3'),
-    ('reference_space', 'Brakująca spacja: 2025r., s.15, nr3'),
+    ('reference_space', 'Brakująca spacja: 2025r., s.15, nr3, ok.5; błędne „nr.” → nr'),
     ('initials', 'Odstępy przy inicjałach i nazwisku'),
     ('abbreviations', 'Usuń spacje wewnątrz skrótów: m. in. → m.in., t. j. → tj., t. zw. → tzw.'),
     ('dates_times', 'Daty DD.MM.RRRR i godziny HH:MM (jednoznaczne zapisy)'),
@@ -54,7 +56,21 @@ FORM_DEFAULT_EDITORIAL_RULES = ALL_EDITORIAL_RULES - {'empty_paragraphs'}
 # Decyzja właściciela: Odkurzacz nigdzie nie wstawia spacji nierozdzielających,
 # a istniejące (U+00A0, wąska U+202F, cyfrowa U+2007) zawsze zamienia na zwykłe spacje.
 NONBREAKING_SPACES = '\u00a0\u202f\u2007'
-NONBREAKING_TABLE = str.maketrans(dict.fromkeys(NONBREAKING_SPACES, ' '))
+# Nietypowe spacje (en, em, cienka, ideograficzna…) także stają się zwykłymi.
+UNUSUAL_SPACES = NONBREAKING_SPACES + ''.join(map(chr, range(0x2000, 0x200b))) + '\u205f\u3000\u1680'
+NONBREAKING_TABLE = str.maketrans(dict.fromkeys(UNUSUAL_SPACES, ' '))
+# Znaki bez szerokości z kopiowania (strony WWW, PDF, czytniki): łamią wyszukiwanie i słownik.
+INVISIBLE_CHARS = '\u200b\u200c\u200d\u2060\ufeff\u00ad\u200e\u200f\u2061\u2062\u2063\u2064'
+INVISIBLE_RE = re.compile('[' + INVISIBLE_CHARS + ']')
+# Akapit złożony wyłącznie ze znaków separatora (* * *, - - -, -----) zostaje bez zmian.
+SEPARATOR_CHARS = frozenset('-–—*#~_=. \t')
+# Skrótowce z kropkami, które nie są inicjałami (nie rozdzielamy ich spacjami).
+DOTTED_ACRONYM_RE = re.compile(r'(?<!\w)(?:S\.A\.|P\.S\.|P\.P\.S\.|U\.S\.A\.|N\.N\.|S\.J\.|S\.C\.|A\.D\.|R\.I\.P\.)(?!\w)')
+# Data z miesiącem rzymskim (5.X.2024) – chroniona jak data, bez zmiany zapisu.
+ROMAN_DATE_RE = re.compile(r'(?<![\w.])\d{1,2}\.[IVX]{1,4}\.\d{4}(?!\w)')
+# Skróty, po których zwykle stoi liczba (ok.5 → ok. 5); „nr” nie ma kropki.
+NUMBER_ABBREVIATIONS = r'(?:s|t|cz|poz|rozdz|art|ust|par|godz|str|ok|ur|zm)\.'
+MARKER_CLASS = '\U000F0000-\U000FFFFD'
 H = r'[ \u00a0\u202f\u2007]'
 LETTERS = 'A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż'
 LOWER = 'a-ząćęłńóśźż'
@@ -65,7 +81,7 @@ UNITS = (r'(?:km/h|m/s|kg|mg|µg|μg|km|dm|cm|mm|µm|nm|ml|mL|'
          r'[kmc]m[²³]|m[²³]|[gtmlLshNJWTAVΩBK])')
 # Bez spacji pojedyncza wielka litera to zwykle oznaczenie (klasa 2B, 4K, 3A),
 # a nie jednostka, więc reguła „brakująca spacja” jej nie rozdziela.
-ATTACHED_UNITS = UNITS.replace('[gtmlLshNJWTAVΩBK]', '[gtmlsh]')
+ATTACHED_UNITS = '(?:' + UNITS.replace('[gtmlLshNJWTAVΩBK]', '[gtmlsh]') + r'|tys\.|mln|mld|proc\.|[kmcd]?m[23])'
 QUANTITIES = UNITS + r'|osób|szt\.?|egzemplarzy|mieszkańców|punktów'
 NUMBER = r'(?<![\w.,])[-−]?\d+(?:[.,]\d+)?'
 
@@ -119,28 +135,13 @@ def _significant_prefix(text, start):
     return significant
 
 
-def _in_caps_passage(text, match):
-    """Forma wielkimi literami w napisie wersalikami (tytuł, krzyk) – nie zmieniamy.
-
-    Decyduje najbliższe słowo dłuższe niż jedna litera przed formą lub po niej
-    (pojedyncze „I”, „W” niczego nie rozstrzygają).
-    """
-    def nearest(words):
-        return next((word for word in words if len(word) > 1), '')
-
-    before = WORD_RE.findall(text, max(0, match.start() - CONTEXT), match.start())
-    after = WORD_RE.findall(text, match.end(), match.end() + CONTEXT)
-    return any(word.isupper() for word in (nearest(reversed(before)), nearest(after)))
-
-
 def _lower_personal_pronouns(text):
     """Reguła pisowni form z listy, bez rozstrzygania ich funkcji gramatycznej.
 
     Chroni początki zdań, akapitów i wypowiedzi po dwukropku. Przy skrótach
     mogących kończyć zdanie zachowuje wielką literę. Po granicy nietekstowego
     XML również zachowujemy pierwszy zaimek, bo brakuje pełnego kontekstu.
-    Wersaliki zmieniamy tylko jako pojedyncze wyróżnienie (Widziałem JEGO);
-    napis wersalikami zostaje, a „NIE” to zwykle partykuła, nie zaimek.
+    Formy wersalikami (JEGO, ONA) zostają: to wyróżnienie albo napis.
     """
     if PRONOUN_RE.search(text) is None:
         return text
@@ -153,8 +154,8 @@ def _lower_personal_pronouns(text):
             span_index += 1
         if span_index < len(protected_spans) and protected_spans[span_index][0] < match.end():
             return match[0]
-        if match[0].isupper() and len(match[0]) > 1 and (match[0] == 'NIE' or _in_caps_passage(text, match)):
-            return match[0]
+        if match[0].isupper() and len(match[0]) > 1:
+            return match[0]  # wersaliki to wyróżnienie albo napis – zostają (decyzja właściciela)
         if match[0] in HONORIFIC_PRONOUNS or _after_opening_quote(text, match.start()):
             return match[0]
         significant = _significant_prefix(text, match.start())
@@ -305,7 +306,7 @@ def _abbreviation_pattern(value):
 
 
 CAPITALIZATION_ABBREVIATION_RE = re.compile(
-    r'(?<!\w)(?:' + '|'.join(
+    r'(?<![^\W\d])(?:' + '|'.join(
         _abbreviation_pattern(value)
         for value in sorted(SENTENCE_ABBREVIATIONS, key=lambda x: (-len(x), x))
     ) + r')|\b(?:[' + UPPER + r']\.){2,}', re.IGNORECASE)
@@ -369,9 +370,14 @@ def _capitalize_sentences(text):
             return match[0]
         if protected(match.start(3)):
             return match[0]  # adres lub nazwa techniczna zaczynająca zdanie
+        following = text[match.end():match.end() + 2]
+        if following[:1] == ')' or (following[:1] == '.' and not following[1:2].isalnum()):
+            return match[0]  # punkt listy: a) b) albo c.
         if '.' in marks:
             if len(marks) != 1 or (start and text[start - 1] in '.…'):
                 return match[0]  # ellipsis, not a sentence boundary
+            if start and text[start - 1].islower() and (start < 2 or not text[start - 2].isalnum()):
+                return match[0]  # punkt listy „c. trzy”
             if start and text[start - 1].isdigit():
                 if TIME_BEFORE_RE.search(text, max(0, start - 12), start) is None:
                     return match[0]  # ordinal, version, date
@@ -612,10 +618,11 @@ def _too_slow(pattern):
     return False
 
 
-def _compile_pattern(source, target=''):
+def _compile_pattern(source, target='', *, probe=True):
     """Skompilowany wzorzec albo None, gdy wpis jest błędny lub zbyt kosztowny.
 
-    Publiczne dla formularza słownika zamian (walidacja wpisu „wzorzec”).
+    Publiczne dla formularza słownika zamian (walidacja wpisu „wzorzec”). probe=False pomija
+    próbę czasu (wpis sprawdzony już przy zapisie w CMS); kontrola składni i zagnieżdżeń zostaje.
     """
     from re import _parser
     if not isinstance(source, str) or not isinstance(target, str) or not source \
@@ -629,7 +636,7 @@ def _compile_pattern(source, target=''):
     except (re.error, IndexError, TypeError, ValueError, RecursionError, OverflowError):
         return None
     # Wzorzec dopasowujący pusty napis wstawiałby target między każde dwa znaki.
-    if pattern.fullmatch('') is not None or _too_slow(pattern):
+    if pattern.fullmatch('') is not None or (probe and _too_slow(pattern)):
         return None
     return pattern
 
@@ -670,7 +677,7 @@ class CompiledReplacements:
                     words[key] = (target, _keeps_target_case(target))
                 continue
             flush_words()
-            pattern = _compile_pattern(source, target)
+            pattern = _compile_pattern(source, target, probe=entry.get('checked') is not True)
             if pattern is None:
                 continue
 
@@ -716,6 +723,74 @@ def _correct_user_words(text, replacements=None, record=None):
     return compile_replacements(replacements).apply(text, record)
 
 
+ADDRESS_RE = re.compile(TECHNICAL_RE.pattern.split(r'|\b(?:\d{1,3}\.)')[0], re.IGNORECASE)
+QUOTE_OPENERS = ' \t\n(["[{„“«‹–—-'
+QUOTE_CLOSERS = ' \t\n)]}.,;:!?…”»›–—-'
+
+
+def _arithmetic(text, match):
+    """„2 - 1 = 1” to odejmowanie, nie zakres: obok stoi znak równości lub plus."""
+    window = text[max(0, match.start() - 12):match.end() + 12]
+    return '=' in window or '+' in window
+
+
+def _pair_straight_quotes(text, quote='"'):
+    """Cudzysłowy proste parowane stosem: poziom 1 → „…”, cytat w cytacie → «…».
+
+    Otwierający stoi po spacji/nawiasie/na początku i przed znakiem innym niż spacja; zamykający
+    stoi po znaku innym niż spacja i przed spacją, interpunkcją lub końcem. Cal (5" x 7") nie ma
+    pary. Poziom liczy też otwarte wcześniej „…”. Para musi zawierać literę i mieścić się w linii.
+    """
+    if quote not in text:
+        return text
+    stack, pairs = [], []
+    for position, char in enumerate(text):
+        if char != quote:
+            continue
+        previous = text[position - 1] if position else ' '
+        following = text[position + 1] if position + 1 < len(text) else ' '
+        opening = previous in QUOTE_OPENERS and following not in ' \t\n'
+        closing = previous not in ' \t\n' and following in QUOTE_CLOSERS
+        if opening and (not closing or not stack):
+            stack.append(position)
+        elif closing and stack:
+            start = stack.pop()
+            inner = text[start + 1:position]
+            if '\n' not in inner and re.search('[' + LETTERS + ']', inner):
+                pairs.append((start, position))
+    if not pairs:
+        return text
+    result = list(text)
+    for start, end in pairs:
+        depth = text.count('„', 0, start) - text.count('”', 0, start)
+        depth += sum(1 for a, b in pairs if a < start < b)
+        result[start], result[end] = ('«', '»') if depth > 0 else ('„', '”')
+    return ''.join(result)
+
+
+def _nest_polish_quotes(text):
+    """„…„…”…” – wewnętrzna para na «…»."""
+    if text.count('„') < 2:
+        return text
+    stack, result = [], list(text)
+    for position, char in enumerate(text):
+        if char == '„':
+            stack.append(position)
+        elif char == '”' and stack:
+            start = stack.pop()
+            if stack and '\n' not in text[start:position]:
+                result[start], result[position] = '«', '»'
+    return ''.join(result)
+
+
+def _guillemets_to_polish(text):
+    """«tak» jako cudzysłów główny (poza otwartym „…”) → „tak”."""
+    def replace(match):
+        depth = text.count('„', 0, match.start()) - text.count('”', 0, match.start())
+        return match[0] if depth > 0 else f'„{match[1]}”'
+    return re.sub(r'«([^«»\n]*[' + LETTERS + r'][^«»\n]*)»', replace, text)
+
+
 def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *,
                            replacements=None, counts=None):
     """Korekta fragmentu tekstu; puste enabled wyłącza wszystkie reguły.
@@ -736,6 +811,13 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
     # Spacje nierozdzielające zawsze stają się zwykłymi (nie liczymy tego jako zmiany reguły;
     # w DOCX robi to wcześniej osobny, cichy krok – patrz _replace_nonbreaking_spaces).
     text = text.translate(NONBREAKING_TABLE)
+    if text.strip() and set(text) <= SEPARATOR_CHARS:
+        return text  # akapit-separator (* * *, - - -) – reguły nie mają go poprawiać
+    if 'invisible_chars' in enabled:
+        before = text
+        text = INVISIBLE_RE.sub('', text)
+        if counts is not None and before != text:
+            counts['invisible_chars'] = counts.get('invisible_chars', 0) + len(before) - len(text)
 
     protected = {}
     occupied = set(text)
@@ -762,12 +844,12 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
         return mask_value(value)
 
     # Adresy muszą być chronione zanim rozpoznamy datę wewnątrz URL.
-    address_pattern = TECHNICAL_RE.pattern.split(r'|\b(?:\d{1,3}\.)')[0]
-    text = re.sub(address_pattern, protect_technical, text, flags=re.IGNORECASE)
+    text = ADDRESS_RE.sub(protect_technical, text)
     # Reguły liczbowe pomijamy w akapitach bez cyfr; żadna reguła cyfr nie dodaje.
     digits = DIGIT_RE.search(text) is not None
     if digits:
         text = DATE_RE.sub(date_protect, text)
+        text = ROMAN_DATE_RE.sub(lambda m: mask_value(m[0]), text)
     text = TECHNICAL_RE.sub(protect_technical, text)
     if digits:
         def time_range(match):
@@ -819,19 +901,34 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
         before = text
         # Cudzysłów maszynowy z dwóch przecinków i apostrofów: ,,tak'' / ,,tak" → „tak”.
         text = re.sub(r",,([^,„”\"\n]*?[" + LETTERS + r"][^„”\"\n]*?)(?:''|\"|”)", r'„\1”', text)
+        # LaTeX i ASCII: ``tak'' oraz ''tak''.
+        text = re.sub(r"(?<!\w)(?:``|'')([^`'\n]*[" + LETTERS + r"][^`'\n]*)''(?!\w)", r'„\1”', text)
         text = re.sub(r'“([^“”\n]+)”', r'„\1”', text)
         text = re.sub(r'„([^„“”\n]+)“', r'„\1”', text)
-        # Cytat wewnątrz otwartego „…” dostaje cudzysłów drugiego stopnia «…».
-        def straight_quotes(match, source=text):
-            depth = source.count('„', 0, match.start()) - source.count('”', 0, match.start())
-            return f'«{match[1]}»' if depth > 0 else f'„{match[1]}”'
-        text = re.sub(r'(?<!\w)"([^"\n]*[' + LETTERS + r'][^"\n]*)"(?!\w)', straight_quotes, text)
+        # Dwa „angielskie zamykające” z autokorekty Worda (”tak”), cudzysłów prosty zamykający po „
+        # (otwarty „ bez pary) i odwrotny układ "tak„.
+        text = re.sub(r'(?<![\w”])”(?=[' + LETTERS + r'„“"])([^„”“\n]*[' + LETTERS + r'][^„”“\n]*)”(?!\w)',
+                      r'„\1”', text)
+        text = re.sub(r'„([^„”“"\n]*[' + LETTERS + r'][^„”“"\n]*)"(?!\w)', r'„\1”', text)
+        text = re.sub(r'(?<!\w)"([^„”“"\n]*[' + LETTERS + r'][^„”“"\n]*)„(?!\w)', r'„\1”', text)
+        # Niemieckie »tak« i francuskie «tak» jako cudzysłów główny (poza otwartym „…”).
+        text = re.sub(r'»([^«»\n]*[' + LETTERS + r'][^«»\n]*)«', r'„\1”', text)
+        text = _guillemets_to_polish(text)
+        text = re.sub(r'‘([^‘’\n]*[' + LETTERS + r'][^‘’\n]*)’', r'„\1”', text)
+        text = _pair_straight_quotes(text)
+        text = _pair_straight_quotes(text, "'")  # 'tak' jako cudzysłów; apostrof w wyrazie nie ma pary
+        text = _nest_polish_quotes(text)
         if counts is not None:
             _count(counts, 'quotes', before, text)
+    if 'apostrophe' in enabled:
+        before = text
+        text = re.sub(r'(?<=[' + LETTERS + r"])'(?=[" + LETTERS + r'])', '’', text)
+        if counts is not None:
+            _count(counts, 'apostrophe', before, text)
     if 'inside_quotes' in enabled:
         before = text
         text = re.sub(r'([„“])' + H + r'+', r'\1', text)
-        text = re.sub(H + r'+([”])', r'\1', text)
+        text = re.sub(H + r'+(?=”(?![' + LETTERS + r']))', '', text)
         # Cudzysłów prosty tuż po cyfrze to cal (5" x 7"), nie początek cytatu.
         text = re.sub(r'(?<!\w)"([^"\n]+)"', lambda m: '"' + m[1].strip(' \u00a0\u202f') + '"', text)
         if counts is not None:
@@ -841,19 +938,15 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
         text = re.sub(r'\.{3,}', '…', text)
         if counts is not None:
             _count(counts, 'ellipsis', before, text)
-    if 'duplicate_punct' in enabled:
-        before = text
-        text = re.sub(r'([,;:])\1+', r'\1', text)
-        text = re.sub(r'(?<!\.)\.{2}(?!\.)', '.', text)
-        if counts is not None:
-            _count(counts, 'duplicate_punct', before, text)
     if 'quote_punct' in enabled:
         before = text
-        text = re.sub(r'„([^„”\n]+),”', r'„\1”,', text)
-        # Tylko mały cytowany fragment, bez innych granic zdań wewnątrz.
-        # Kropka wychodzi za cudzysłów tylko wtedy, gdy cytat kończy zdanie.
-        # „tak.” i wyszedł – zdanie trwa dalej, więc nic nie przenosimy.
-        text = re.sub(r'„([' + LOWER + r'][^„”\n.!?]*)\.”(?=' + H + r'*$|' + H + r'+[' + UPPER + r'–—„])', r'„\1”.', text)
+        # Polska interpunkcja: przecinek, średnik, dwukropek i kropka stoją zawsze za cudzysłowem
+        # zamykającym (pytajnik, wykrzyknik i wielokropek należące do cytatu zostają w środku).
+        text = re.sub(r'([,;:])([”»])', r'\2\1', text)
+        # Kropka przed cudzysłowem znika, gdy zdanie trwa dalej („tak.” – powiedział; „tak.” i wyszedł),
+        # a kończy zdanie za cudzysłowem w pozostałych wypadkach („tak.”. → „tak”.).
+        text = re.sub(r'\.([”»])(?=' + H + r'*[–—]|' + H + r'+[' + LOWER + r'])', r'\1', text)
+        text = re.sub(r'\.([”»])\.?', r'\1.', text)
         if counts is not None:
             _count(counts, 'quote_punct', before, text)
     if 'inside_brackets' in enabled:
@@ -875,18 +968,35 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
         def before_punct(match, source=text):
             ratio = (source[match.end()] == ':' and source[max(0, match.start() - 1):match.start()].isdigit()
                      and re.match(':' + H + r'*\d', source[match.end():]))
+            if source[match.end()] == '…':
+                # Wielokropek otwierający (po myślniku, cudzysłowie, nawiasie, na początku) zostaje po spacji.
+                left = source[max(0, match.start() - CONTEXT):match.start()].rstrip()
+                if not left or left[-1] in '–—-„“«("[':
+                    return match[0]
             return match[0] if ratio else ''
-        text = re.sub(H + r'+(?=[,.;:?!])', before_punct, text)
+        text = re.sub(H + r'+(?=[,.;:?!…])', before_punct, text)
         if counts is not None:
             _count(counts, 'before_punct', before, text)
+    if 'duplicate_punct' in enabled:
+        before = text
+        text = re.sub(r'([,;:])\1+', r'\1', text)
+        # Maszynowy zapis ?.. i !.. to ?… i !…; pozostałe podwójne kropki to jedna kropka.
+        text = re.sub(r'(?<=[?!])\.{2}(?!\.)', '…', text)
+        text = re.sub(r'(?<!\.)\.{2}(?!\.)', '.', text)
+        if counts is not None:
+            _count(counts, 'duplicate_punct', before, text)
     if 'hyphen_dash' in enabled:
         before = text
         # Podwójny łącznik z maszynopisu to myślnik: „tak--powiedział”, „tak -- rzekł”, „-- Wiem”.
         # „---” (separatory, znaczniki) i „--opcja” (zapis techniczny) zostają bez zmian.
         text = re.sub(r'(?<=\w)--(?=\w)|(?<![-\S])--(?=' + H + r')', '–', text)
-        text = re.sub(r'(?<= )-(?= )', '–', text)
+        text = re.sub(r'(?<= )-(?= )', lambda m: m[0] if _arithmetic(text, m) and text[m.start() - 2:m.start() - 1].isdigit()
+                      and text[m.end() + 1:m.end() + 2].isdigit() else '–', text)
+        # Łącznik tuż po kropce, znaku zapytania lub wykrzyknika przed spacją to myślnik: „Tak.- Nie”.
+        text = re.sub(r'(?<=[.?!…])-(?=' + H + r')', ' –', text)
+        # Kwestia dialogowa na początku linii; przed liczbą tylko z odstępem (minus pisze się „-5”).
         text = re.sub(
-            r'(^|\n)' + H + r'*-' + H + r'*(?=[' + LETTERS + r'„“"])',
+            r'(^|\n)' + H + r'*-(?:' + H + r'*(?=[' + LETTERS + r'„“"])|' + H + r'+(?=\d))',
             lambda match: (match[1] + '– ')
             if trim_start or match[1] == '\n' else match[0], text,
         )
@@ -894,19 +1004,22 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
             _count(counts, 'hyphen_dash', before, text)
     if 'dash_style' in enabled:
         before = text
-        text = text.replace('—', '–')
+        # Pauza i kreska pozioma → półpauza; łącznik unicode i nierozdzielający → zwykły łącznik.
+        text = text.replace('—', '–').replace('\u2015', '–').replace('\u2010', '-').replace('\u2011', '-')
+        # Powtórzone myślniki (– –, ––) → jeden.
+        text = re.sub(r'–(?:' + H + r'*–)+', '–', text)
         if counts is not None:
             _count(counts, 'dash_style', before, text)
     if digits and 'range_dash' in enabled:
         before = text
-        text = re.sub(r'(?<![\w.,-])(\d+)' + H + r'*-'+ H + r'*(\d+)(?![\w-]|[.,]\d)',
-                      lambda m: m[0].replace('-', '–'), text)
+        text = re.sub(r'(?<![\w.,\-\u2012\u2212])(\d+)' + H + r'*[-\u2012\u2212]' + H + r'*(\d+)(?![\w\-\u2012\u2212]|[.,]\d)',
+                      lambda m: m[0] if _arithmetic(text, m) else re.sub('[-\u2012\u2212]', '–', m[0]), text)
         if counts is not None:
             _count(counts, 'range_dash', before, text)
     if digits and 'range_spaces' in enabled:
         before = text
         text = re.sub(r'(?<![\w.,-])(\d+)' + H + r'*([–-])' + H + r'*(\d+)(?![\w-]|[.,]\d)',
-                      r'\1\2\3', text)
+                      lambda m: m[0] if _arithmetic(text, m) else m[1] + m[2] + m[3], text)
         if counts is not None:
             _count(counts, 'range_spaces', before, text)
     if 'dash_spaces' in enabled:
@@ -925,7 +1038,9 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
                 return match[0]
             if right[:1].isdigit() and (not left or left[-1:] in '(=:'):
                 return match[0]  # potencjalny znak minus
-            return (' ' if left and not left.endswith('\n') else '') + match[1] + (' ' if right else '')
+            leading = ' ' if left and not left.endswith('\n') and left[-1] not in '„“«([' else ''
+            trailing = ' ' if right and right[0] not in '”»)]–—' else ''
+            return leading + match[1] + trailing
         text = re.sub(H + r'*([–—])' + H + r'*', dash_space, text)
         if counts is not None:
             _count(counts, 'dash_spaces', before, text)
@@ -938,6 +1053,8 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
     if digits and 'unit_space' in enabled:
         before = text
         text = re.sub('(' + NUMBER + r')(?=' + ATTACHED_UNITS + r'(?!\w))', r'\1 ', text)
+        text = re.sub(r'(?<=\d' + H + r')([kmcd]?m)([23])(?!\w)',
+                      lambda m: m[1] + {'2': '²', '3': '³'}[m[2]], text)
         if counts is not None:
             _count(counts, 'unit_space', before, text)
     if digits and 'digit_groups' in enabled:
@@ -958,24 +1075,31 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
     if digits and 'unit_nbsp' in enabled:
         before = text
         text = re.sub(r'(?<=\d)' + H + r'+(?=' + UNITS + r'(?!\w))', ' ', text)
+        text = re.sub(r'(?<=\d)' + H + r'+(?=[%‰])', '', text)
         if counts is not None:
             _count(counts, 'unit_nbsp', before, text)
     if digits and 'reference_space' in enabled:
         before = text
         text = re.sub(r'\b(\d{4})(?=r\.)', r'\1 ', text)
-        text = re.sub(r'\b(s\.|nr)(?=\d)', r'\1 ', text)
+        text = re.sub(r'\bnr\.' + H + r'*(?=\d)', 'nr ', text)
+        text = re.sub(r'(?<![^\W\d])(' + NUMBER_ABBREVIATIONS + r'|nr)(?=\d)', r'\1 ', text)
         if counts is not None:
             _count(counts, 'reference_space', before, text)
     if digits and 'reference_nbsp' in enabled:
         before = text
         text = re.sub(r'\b(\d{4})' + H + r'+(?=r\.)', r'\1 ', text)
-        text = re.sub(r'\b(s\.|nr)' + H + r'+(?=\d)', r'\1 ', text)
+        text = re.sub(r'(?<![^\W\d])(' + NUMBER_ABBREVIATIONS + r'|nr)' + H + r'+(?=\d)', r'\1 ', text)
         if counts is not None:
             _count(counts, 'reference_nbsp', before, text)
     if 'initials' in enabled:
+        # Skrótowce z kropkami (S.A., P.S.) to nie inicjały.
+        text = DOTTED_ACRONYM_RE.sub(lambda m: mask_value(m[0]), text)
         before = text
         text = re.sub(r'\b([' + UPPER + r'])' + H + r'+\.', r'\1.', text)
-        text = re.sub(r'\b([' + UPPER + r']\.)' + H + r'*(?=[' + UPPER + r']\.)', r'\1 ', text)
+        # Kilka inicjałów rozdzielamy tylko przed nazwiskiem (J.R.R. Tolkien); U.S.A. zostaje.
+        text = re.sub(r'\b(?:[' + UPPER + r']\.' + H + r'*){2,}(?=' + H + r'*[' + UPPER + r'][' + LOWER + r']{2,}\b)',
+                      lambda m: ' '.join(re.findall(r'[' + UPPER + r']\.', m[0])) + (' ' if m[0][-1] != '.' else ''),
+                      text)
         text = re.sub(r'\b([' + UPPER + r']\.)' + H + r'*(?=[' + UPPER + r'][' + LOWER + r']{2,}\b)',
                       r'\1 ', text)
         if counts is not None:
@@ -1000,14 +1124,16 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
             return mask_value(match[0]) + gap
         text = ABBREVIATION_RE.sub(protect_abbreviation, text)
         before = text
-        text = re.sub(r'(?<=[,;:!?])(?=[' + LETTERS + r'„“"])', ' ', text)
-        text = re.sub(r'(?<=\.)(?=[' + LETTERS + r'„“"])', ' ', text)
+        # Cudzysłów prosty tylko otwierający (przed literą); zamykający na końcu akapitu zostaje przy kropce.
+        text = re.sub(r'(?<=[,;:!?])(?=[' + LETTERS + r'„“]|"[' + LETTERS + r'])', ' ', text)
+        text = re.sub(r'(?<=\.)(?=[' + LETTERS + r'„“]|"[' + LETTERS + r'])', ' ', text)
         # Wielokropek między wyrazami (godziny…a potem); „…i” na początku fragmentu zostaje.
         text = re.sub(r'(?<=[' + LETTERS + r']…)(?=[' + LETTERS + r'])', ' ', text)
         # Przecinek przed liczbą wymaga spacji, chyba że tworzy liczbę dziesiętną.
-        text = re.sub(r'(?<!\d),(?=\d)', ', ', text)
+        # Zamaskowany numer (wersja, data) liczy się jak cyfra: 1.234.567,89 zostaje.
+        text = re.sub(r'(?<![\d' + MARKER_CLASS + r']),(?=\d)', ', ', text)
         text = re.sub(r'(?<=[;!?])(?=\d)', ' ', text)
-        text = re.sub(r'(?<!\d):(?=\d)', ': ', text)
+        text = re.sub(r'(?<![\d' + MARKER_CLASS + r']):(?=\d)', ': ', text)
         if counts is not None:
             _count(counts, 'after_punct', before, text, gaps)
     text = _unmask(text, protected)
@@ -1449,13 +1575,13 @@ def apply_editorial_corrections(doc, enabled=None, *, track_changes=False, repla
             if slots:
                 groups.append(list(slots))
                 slots.clear()
-            groups.append(SOFT_BARRIER if soft else None)
+            groups.append(soft if soft is LINE_BARRIER else (SOFT_BARRIER if soft else None))
 
-        # Korekta widzi sąsiednie runy, ale nie ingeruje w pola, hiperłącza,
-        # rysunki, przypisy, podziały wierszy ani znaczniki dokumentu.
-        for child in para._p:
-            if child.tag in PARAGRAPH_MARKERS:
-                continue
+        # Korekta widzi sąsiednie runy (także w cudzych wstawkach, hiperłączach i kontrolkach),
+        # ale nie ingeruje w pola, rysunki, przypisy ani znaczniki dokumentu.
+        for child in _paragraph_runs(para._p):
+            if child is DELETED_CONTENT:
+                continue  # usunięty tekst nie przerywa zdania (po przyjęciu zmian go nie ma)
             if child.tag != qn('w:r'):
                 barrier()
                 continue
@@ -1476,18 +1602,24 @@ def apply_editorial_corrections(doc, enabled=None, *, track_changes=False, repla
                         slots.append((node, node.text))
                 elif node.tag == qn('w:tab'):
                     slots.append((node, '\t'))
+                elif node.tag == qn('w:cr') or (node.tag == qn('w:br')
+                                                and node.get(qn('w:type'), 'textWrapping') == 'textWrapping'):
+                    barrier(soft=LINE_BARRIER)  # miękki enter: koniec i początek linii
                 else:
                     barrier(soft=node.tag == qn('w:br') and node.get(qn('w:type')) in PAGE_BREAK_TYPES)
         if slots:
             groups.append(slots)
         for index, group in enumerate(groups):
-            if group and group is not SOFT_BARRIER:
+            if group and group not in (SOFT_BARRIER, LINE_BARRIER):
                 original = ''.join(value for _, value in group)
-                # Brzeg akapitu: przed (po) grupą są najwyżej podziały strony lub kolumny.
+                # Brzeg akapitu: przed (po) grupą są najwyżej podziały strony lub kolumny;
+                # miękki enter tuż obok daje brzeg linii (spacje, kwestia dialogowa).
                 corrected = correct_editorial_text(
                     original, enabled,
-                    trim_start=all(item is SOFT_BARRIER for item in groups[:index]),
-                    trim_end=all(item is SOFT_BARRIER for item in groups[index + 1:]),
+                    trim_start=(index > 0 and groups[index - 1] is LINE_BARRIER)
+                    or all(item is SOFT_BARRIER for item in groups[:index]),
+                    trim_end=(index + 1 < len(groups) and groups[index + 1] is LINE_BARRIER)
+                    or all(item is SOFT_BARRIER for item in groups[index + 1:]),
                     replacements=compiled, counts=paragraph_counts)
                 if tracker is not None:
                     _rewrite_tracked(group, corrected, tracker)
@@ -1515,6 +1647,27 @@ def apply_editorial_corrections(doc, enabled=None, *, track_changes=False, repla
 
 
 SOFT_BARRIER = object()
+LINE_BARRIER = object()
+DELETED_CONTENT = object()
+# Opakowania tekstu, do których korekta wchodzi jak do zwykłych przebiegów.
+TRANSPARENT_CONTAINERS = frozenset(qn('w:' + name) for name in (
+    'ins', 'moveTo', 'hyperlink', 'sdt', 'sdtContent', 'smartTag', 'customXml', 'dir', 'bdo'))
+CONTAINER_PROPERTIES = frozenset(qn('w:' + name) for name in ('sdtPr', 'sdtEndPr', 'smartTagPr', 'customXmlPr'))
+DELETED_CONTAINERS = frozenset(qn('w:' + name) for name in ('del', 'moveFrom'))
+
+
+def _paragraph_runs(paragraph):
+    """Dzieci akapitu w kolejności tekstu: przebiegi także z wnętrza wstawek, hiperłączy
+    i kontrolek; usunięty tekst (w:del) jako DELETED_CONTENT; reszta jako bariery."""
+    for child in paragraph:
+        if child.tag in PARAGRAPH_MARKERS or child.tag in CONTAINER_PROPERTIES:
+            continue
+        if child.tag in DELETED_CONTAINERS:
+            yield DELETED_CONTENT
+        elif child.tag in TRANSPARENT_CONTAINERS:
+            yield from _paragraph_runs(child)
+        else:
+            yield child
 
 
 def _store_summary(summary, counts):

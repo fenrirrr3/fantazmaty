@@ -118,6 +118,14 @@ class ModelPipelineTests(SimpleTestCase):
         full = [doc[0].lemma_ for doc in nlp.pipe(words, disable=['parser'])]
         reduced = [doc[0].lemma_ for doc in nlp.pipe(words, disable=_unused_pipes(nlp, 'lemmas'))]
         self.assertEqual(reduced, full)
+        # Słowa podane bez tokenizera (gotowe dokumenty jednowyrazowe) dają te same lematy.
+        from spacy.tokens import Doc
+        direct = [doc[0].lemma_ for doc in nlp.pipe((Doc(nlp.vocab, words=[word]) for word in words),
+                                                    disable=_unused_pipes(nlp, 'lemmas'))]
+        self.assertEqual(direct, full)
+        # Jeden przebieg „context” daje te same granice zdań co przebieg tylko dla zdań.
+        self.assertEqual([s.text for s in nlp(self.TEXT, disable=_unused_pipes(nlp, 'context')).sents],
+                         [s.text for s in nlp(self.TEXT, disable=['lemmatizer']).sents])
         self.assertEqual([s.text for s in nlp(self.TEXT, disable=_unused_pipes(nlp, 'sentences')).sents],
                          [s.text for s in nlp(self.TEXT, disable=['lemmatizer']).sents])
 
@@ -279,3 +287,33 @@ class RepetitionsPageTests(IsolatedProgramDirsMixin, TestCase):
         self.assertEqual(convert.call_args.kwargs['repetitions']['color_palette'], 'light')
         self.assertNotIn('use_cleaner', convert.call_args.kwargs)
         self.assertEqual(downloaded_document(response).paragraphs[0].text, 'Koty koty')
+
+
+class ContextLemmaTests(SimpleTestCase):
+    """Lemat z kontekstu zdania to drugi klucz grupowania; granice zdań pochodzą z tego samego przebiegu."""
+
+    def test_forms_joined_only_by_the_context_lemma_share_a_colour(self):
+        document = Document()
+        document.add_paragraph('Pręty leżały obok, a jeden pręt był zgięty.')
+        text = document.paragraphs[0].text
+        starts = {word: text.index(word) for word in ('Pręty', 'pręt', 'leżały', 'zgięty')}
+        identity = lambda words: {word.lower(): word.lower() for word in words}  # noqa: E731
+        context = [({starts['Pręty']: 'pręt', starts['pręt']: 'pręt', starts['leżały']: 'leżeć'},
+                    [(0, len(text))])]
+        with patch('core.services.document_repetitions._lemma_map', side_effect=identity), \
+                patch('core.services.document_repetitions._context_analysis', return_value=context) as analysis:
+            marked = Document(color_document(BytesIO(payload(document)), analysis_options={
+                **ONLY_REPETITIONS, 'long_sentences': True, 'sentence_limit': 3}))
+        analysis.assert_called_once()
+        self.assertTrue(analysis.call_args.kwargs['sentences'])
+        runs = marked.paragraphs[0].runs
+        coloured = [run.text for run in runs if run.font.color.rgb]
+        self.assertEqual(coloured, ['Pręty', 'pręt'])
+        self.assertTrue(all(run.font.highlight_color == WD_COLOR_INDEX.TURQUOISE for run in runs))
+
+    def test_sentence_pass_is_skipped_when_long_sentences_are_off(self):
+        document = Document()
+        document.add_paragraph('Kot i kot.')
+        with patch('core.services.document_repetitions._context_analysis', return_value=[({}, [])]) as analysis:
+            color_document(BytesIO(payload(document)), analysis_options=ONLY_REPETITIONS)
+        self.assertFalse(analysis.call_args.kwargs['sentences'])

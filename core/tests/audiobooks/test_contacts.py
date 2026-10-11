@@ -79,7 +79,7 @@ class AudioContactTests(TestCase):
         page = self.client.get(reverse('core:audiobook_detail', args=[self.first.pk]))
         doc = html.fromstring(page.content)
         for role, person in [('narrator', narrator), ('engineer', engineer)]:
-            container = doc.xpath(f'//div[contains(@class,"audio-name-profile")][.//select[@name="people-{role}_contact"]]')[0]
+            container = doc.xpath(f'//fieldset[.//select[@name="people-{role}_contact"]]')[0]
             self.assertEqual(container.xpath('.//a/@href'), [reverse('core:audio_contributor', args=[person.pk])])
         self.assertContains(page, reverse('core:person_detail', args=[reader.person_profile.pk]))
         self.assertContains(page, 'Nowy montażysta – e-mail')

@@ -368,3 +368,30 @@ class SoftWhitespaceTests(SimpleTestCase):
                 archive.writestr(f'part{index}.xml', b'')
         with self.assertRaisesMessage(ValueError, 'limit rozpakowanej zawartości'):
             normalize_spacing_docx(stream)
+
+
+class FormattingR9Tests(SimpleTestCase):
+    """Listy, nagłówki i komórki tabel zachowują układ; fonty symboliczne zostają."""
+
+    def test_lists_headings_tables_and_symbol_fonts_keep_their_layout(self):
+        document = Document()
+        document.add_paragraph('Zwykły akapit')
+        document.add_paragraph('Punkt listy', style='List Number')
+        document.add_paragraph('Nagłówek', style='Heading 1')
+        document.add_table(rows=1, cols=1).cell(0, 0).text = 'W tabeli'
+        symbol = document.add_paragraph().add_run(' strzałka')
+        symbol.font.name = 'Wingdings'
+        result = Document(normalize_docx(saved(document), justify=True))
+        plain, listed, heading, symbols = result.paragraphs[0], result.paragraphs[1], result.paragraphs[2], result.paragraphs[3]
+        self.assertEqual(plain.paragraph_format.first_line_indent.twips, 709)
+        self.assertEqual(plain.alignment, WD_ALIGN_PARAGRAPH.JUSTIFY)
+        for paragraph in (listed, heading):
+            with self.subTest(paragraph.text):
+                self.assertIsNone(paragraph._p.find(f'{qn("w:pPr")}/{qn("w:ind")}'))
+                self.assertEqual(paragraph.paragraph_format.line_spacing, 1.5)
+        cell = result.tables[0].cell(0, 0).paragraphs[0]
+        self.assertIsNone(cell._p.find(f'{qn("w:pPr")}/{qn("w:ind")}'))
+        self.assertIsNone(cell._p.find(f'{qn("w:pPr")}/{qn("w:spacing")}'))
+        self.assertIsNone(cell.alignment)
+        self.assertEqual(symbols.runs[0].font.name, 'Wingdings')
+        self.assertEqual(result.paragraphs[0].runs[0].font.name, 'Times New Roman')

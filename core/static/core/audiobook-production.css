@@ -200,7 +200,13 @@
 }
 
 .audio-production-form fieldset {
+    display: grid;
+    gap: var(--space-3);
     min-width: 0;
+}
+
+.audio-production-form fieldset > :is(.actions, details) {
+    margin: 0;
 }
 
 .audio-production-form .form-field + .form-field {
@@ -258,6 +264,13 @@
 
 @media screen and (max-width: 1100px) {
     .audio-detail-columns {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media screen and (max-width: 760px) {
+    .audio-stage-add,
+    .audio-stage-dates fieldset {
         grid-template-columns: 1fr;
     }
 }

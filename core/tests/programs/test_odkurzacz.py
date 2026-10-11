@@ -609,3 +609,67 @@ class OdkurzaczPageTests(IsolatedProgramDirsMixin, TestCase):
             [p.text_content().strip() for p in html.fromstring(content).xpath('//p')][:2],
             ['Ala ma', 'kota!'],  # Odkurzacz usuwa też spację przed wykrzyknikiem.
         )
+
+
+class CleanerR9Tests(SimpleTestCase):
+    """Runda 9: korekta widzi tekst w cudzych wstawkach, hiperłączach i kontrolkach; usunięty tekst
+    nie przerywa zdania; miękki enter to brzeg linii."""
+
+    W = ('xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+         'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"')
+
+    @staticmethod
+    def text_run(text):
+        return f'<w:r><w:t xml:space="preserve">{text}</w:t></w:r>'
+
+    def document(self, inner):
+        from docx.oxml import parse_xml
+        document = Document()
+        body = document.element.body
+        body.insert(len(body) - 1, parse_xml(f'<w:p {self.W}>{inner}</w:p>'))
+        return document
+
+    @staticmethod
+    def visible_text(document):
+        parts = []
+        for node in document.element.body.iter():
+            if node.tag == qn('w:t'):
+                parts.append(node.text or '')
+            elif node.tag in (qn('w:br'), qn('w:cr')):
+                parts.append('\n')
+        return ''.join(parts)
+
+    def test_insertions_links_controls_and_deleted_text_are_part_of_the_sentence(self):
+        revision = 'w:id="9" w:author="X" w:date="2020-01-01T00:00:00Z"'
+        cases = {
+            'insertion': (self.text_run('Powiedział ,,tak') + f'<w:ins {revision}>{self.text_run(" i nie")}</w:ins>'
+                          + self.text_run('" .potem wyszedł'), 'Powiedział „tak i nie”. Potem wyszedł'),
+            'whole paragraph inserted': (f'<w:ins {revision}>{self.text_run("Cały akapit ,tak .")}</w:ins>',
+                                         'Cały akapit, tak.'),
+            'deleted text': (self.text_run('Powiedział "tak') + f'<w:del {revision}><w:r><w:delText> stare</w:delText>'
+                             '</w:r></w:del>' + self.text_run('" i poszedł .'), 'Powiedział „tak” i poszedł.'),
+            'hyperlink': (self.text_run('Zobacz "') + f'<w:hyperlink r:id="rId99">{self.text_run("stronę")}</w:hyperlink>'
+                          + self.text_run('" ,tak.'), 'Zobacz „stronę”, tak.'),
+            'content control': (self.text_run('Przed ') + f'<w:sdt><w:sdtPr><w:id w:val="5"/></w:sdtPr><w:sdtContent>'
+                                f'{self.text_run("w kontrolce ,tak")}</w:sdtContent></w:sdt>' + self.text_run(' po .koniec'),
+                                'Przed w kontrolce, tak po. Koniec'),
+            'soft break': (self.text_run('Pierwsza linia ') + '<w:r><w:br/></w:r>' + self.text_run('  - Druga linia  '),
+                           'Pierwsza linia\n– Druga linia'),
+        }
+        for name, (inner, expected) in cases.items():
+            with self.subTest(name):
+                document = self.document(inner)
+                result = Document(clean_docx(saved(document), FORM_DEFAULT_EDITORIAL_RULES))
+                self.assertEqual(self.visible_text(result), expected)
+                # Cudze zmiany i hiperłącza zostają w dokumencie.
+                for tag in ('w:ins', 'w:del', 'w:hyperlink', 'w:sdt'):
+                    self.assertEqual(len(list(result.element.body.iter(qn(tag)))),
+                                     len(list(document.element.body.iter(qn(tag)))))
+
+    def test_tracked_mode_inside_a_foreign_insertion(self):
+        revision = 'w:id="9" w:author="X" w:date="2020-01-01T00:00:00Z"'
+        document = self.document(self.text_run('Tekst ') + f'<w:ins {revision}>{self.text_run("z ,,cytatem"  "\"")}</w:ins>')
+        result = Document(clean_docx(saved(document), FORM_DEFAULT_EDITORIAL_RULES, track_changes=True))
+        insertion = next(result.element.body.iter(qn('w:ins')))
+        self.assertTrue(any(node.tag == qn('w:del') for node in insertion.iter()))
+        self.assertEqual(self.visible_text(result).replace('cytatem"', ''), 'Tekst z „cytatem”')

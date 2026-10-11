@@ -29,11 +29,13 @@ def _valid_replacements(replacements):
         raise ValueError('Invalid replacements')
     result = []
     for item in replacements:
-        if (not isinstance(item, dict) or set(item) != {'kind', 'source', 'target'}
+        if (not isinstance(item, dict) or set(item) - {'checked'} != {'kind', 'source', 'target'}
                 or item['kind'] not in REPLACEMENT_KINDS
-                or not all(isinstance(item[key], str) for key in ('source', 'target')) or not item['source']):
+                or not all(isinstance(item[key], str) for key in ('source', 'target')) or not item['source']
+                or not isinstance(item.get('checked', False), bool)):
             raise ValueError('Invalid replacements')
-        result.append({'kind': item['kind'], 'source': item['source'], 'target': item['target']})
+        result.append({'kind': item['kind'], 'source': item['source'], 'target': item['target'],
+                       **({'checked': True} if item.get('checked') else {})})
     return result
 
 
