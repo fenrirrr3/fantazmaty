@@ -12,8 +12,9 @@ from docx import Document
 
 from core.odkurzacz_forms import DocumentConversionForm, OdkurzaczForm, RepetitionsForm
 from core.services.odkurzacz import (
-    DEFAULT_EDITORIAL_RULES, DEFAULT_REPLACEMENTS, EDITORIAL_RULES, FORM_DEFAULT_EDITORIAL_RULES, _change_regions,
-    USER_WORD_EXACT, USER_WORD_PATTERNS, _edit_opcodes, clean_docx, correct_editorial_text,
+    ALL_EDITORIAL_RULES, DEFAULT_EDITORIAL_RULES, DEFAULT_REPLACEMENTS, EDITORIAL_RULES, FORM_DEFAULT_EDITORIAL_RULES,
+    _change_regions, _compile_pattern, USER_WORD_EXACT, USER_WORD_PATTERNS, _edit_opcodes, clean_docx,
+    correct_editorial_text,
 )
 
 from .support import REPETITION_PARAMETERS, saved, sized_docx, upload
@@ -31,21 +32,21 @@ class EditorialTextRuleTests(SimpleTestCase):
         self.assertEqual(correct_editorial_text('To o.o. przykład.', ['after_punct']), 'To o.o. przykład.')
 
     def test_period_stays_inside_quote_when_the_sentence_continues(self):
-        self.assertEqual(self.fix('Napisał „tak.” i wyszedł.'), 'Napisał „tak.” i\u00a0wyszedł.')
+        self.assertEqual(self.fix('Napisał „tak.” i wyszedł.'), 'Napisał „tak.” i wyszedł.')
         self.assertEqual(self.fix('Powiedział „tak.”'), 'Powiedział „tak”.')
         self.assertEqual(self.fix('Napisał „tak.” Potem wyszedł.'), 'Napisał „tak”. Potem wyszedł.')
 
     def test_letter_marks_after_numbers_are_not_units(self):
-        self.assertEqual(self.fix('Klasy 2B i 3A wyszły.'), 'Klasy 2B i\u00a03A wyszły.')
+        self.assertEqual(self.fix('Klasy 2B i 3A wyszły.'), 'Klasy 2B i 3A wyszły.')
         self.assertEqual(self.fix('Telewizor 4K.'), 'Telewizor 4K.')
-        self.assertEqual(self.fix('Kabel 2m, 5kg i 20 K.'), 'Kabel 2\u00a0m, 5\u00a0kg i\u00a020\u00a0K.')
+        self.assertEqual(self.fix('Kabel 2m, 5kg i 20 K.'), 'Kabel 2 m, 5 kg i 20 K.')
 
     def test_gender_forms_in_brackets_stay_joined(self):
         self.assertEqual(self.fix('Drogi(a) Kliencie, zrobił(a) to.'), 'Drogi(a) Kliencie, zrobił(a) to.')
         self.assertEqual(self.fix('Pies(kundel) szczekał.'), 'Pies (kundel) szczekał.')
 
     def test_score_keeps_spaces_around_colon(self):
-        self.assertEqual(self.fix('Wynik 3 : 1 , a potem :'), 'Wynik 3 : 1, a\u00a0potem:')
+        self.assertEqual(self.fix('Wynik 3 : 1 , a potem :'), 'Wynik 3 : 1, a potem:')
 
     def test_partial_fragment_is_not_a_new_dialogue(self):
         rules = ['hyphen_dash', 'dash_spaces', 'trim']
@@ -55,11 +56,12 @@ class EditorialTextRuleTests(SimpleTestCase):
         self.assertEqual(correct_editorial_text('  –Hę?', rules), '– Hę?')
 
     def test_typographic_rules_are_available_and_can_be_disabled(self):
-        added = {'single_nbsp', 'unit_nbsp', 'reference_nbsp', 'dates_times', 'decimal', 'digit_groups'}
+        added = {'unit_nbsp', 'reference_nbsp', 'dates_times', 'decimal', 'digit_groups'}
         self.assertTrue(added <= {key for key, _ in EDITORIAL_RULES})
         source = '2025-1-2 2/1/2025 o 9.30 9:30 12.50 kg 123456 kg A.Kowalski 20°C'
         self.assertEqual(correct_editorial_text(source, []), source)
-        self.assertIn('\u00a0', correct_editorial_text(source))
+        self.assertEqual(correct_editorial_text(source),
+                         '02.01.2025 02.01.2025 o 09:30 09:30 12,50 kg 123 456 kg A. Kowalski 20 °C')
 
     def test_defaults_and_explicit_empty_paragraph_rule(self):
         self.assertEqual(correct_editorial_text('kot\tkota', {'tabs'}), 'kot kota')
@@ -138,7 +140,7 @@ class OptionalAndEdgeRuleTests(SimpleTestCase):
         self.assertEqual(
             correct_editorial_text('012345 osób, nr 123456, 123456789 i 123456789 osób, 12345 kg',
                                    {'digit_groups'}),
-            '012345 osób, nr 123456, 123456789 i 123\u00a0456\u00a0789 osób, 12\u00a0345 kg')
+            '012345 osób, nr 123456, 123456789 i 123 456 789 osób, 12 345 kg')
 
     def test_technical_text_is_protected_from_default_rules(self):
         source = 'Adres: www.example.pl/strona?a=1. Napisz: jan@example.com, wersja v1.2.3, IP 192.168.0.1'
@@ -172,7 +174,7 @@ class ReplacementListTests(SimpleTestCase):
                    'azjatami; komedia dellarte, KOMEDIA DELLARTE, KoMeDiA dEllArte, komediami Dellarte; '
                    'ZACZYM, Zaczym; MASSMEDIAMI; miałczeniem; nieprzekonywującego; wymyśleć; kanister')
         expected = ('Pikapem jechał niechcący, PIKAPAMI; Europejczykiem, Europejczykiem i EUROPEJCZYKIEM; '
-                    'Azjatami; komedia dell’arte, KOMEDIA DELL’ARTE, KoMeDiA dell’arte, komediami Dell’arte; '
+                    'Azjatami; komedia dell’arte, KOMEDIA DELL’ARTE, KoMeDiA dell’arte, komediami Dell’arte; '
                     'ZA CZYM, Za czym; MASS MEDIAMI; miauczeniem; nieprzekonującego; wymyślić; kanister')
         self.assertEqual(self.fix(samples), expected)
         self.assertEqual(self.fix(samples, DEFAULT_REPLACEMENTS), expected)
@@ -316,10 +318,133 @@ class EditorialRuleRegressionTests(SimpleTestCase):
         started = time.monotonic()
         result = self.fix(source)
         self.assertLess(time.monotonic() - started, 1.5)
-        self.assertIn('nr\u00a012345', result)
-        self.assertIn('67\u00a0890\u00a0kg', result)
+        self.assertIn('nr 12345', result)
+        self.assertIn('67 890 kg', result)
         self.assertIn('. On go', result)
         self.assertIn('Jan. On go widział', result)
+
+
+class NonBreakingSpaceDecisionTests(SimpleTestCase):
+    """Decyzja właściciela: Odkurzacz nie wstawia spacji nierozdzielających, a istniejące zamienia na zwykłe."""
+
+    def test_no_rule_inserts_nonbreaking_spaces(self):
+        source = ('W domu i z nim: 5 kg, 12.50 zł, 2025 r., s. 15, nr 3, 1234567 osób, A. B. Kowalski, '
+                  'A.Kowalski, 20 °C i 300 K, o 9.30 u nas.')
+        for rules in (ALL_EDITORIAL_RULES, FORM_DEFAULT_EDITORIAL_RULES, DEFAULT_EDITORIAL_RULES,
+                      *({key} for key in ALL_EDITORIAL_RULES)):
+            with self.subTest(rules=sorted(rules)[:3]):
+                result = correct_editorial_text(source, rules)
+                self.assertFalse(set(result) & {'\u00a0', '\u202f', '\u2007'}, result)
+        self.assertEqual(correct_editorial_text(source, ALL_EDITORIAL_RULES),
+                         'W domu i z nim: 5 kg, 12,50 zł, 2025 r., s. 15, nr 3, 1 234 567 osób, A. B. Kowalski, '
+                         'A. Kowalski, 20 °C i 300 K, o 09:30 u nas.')
+
+    def test_existing_nonbreaking_spaces_become_plain_spaces(self):
+        source = 'Był\u00a0w\u202fdomu\u2007o 5\u00a0kg.'
+        for rules in ({'spaces'}, {'quotes'}, ALL_EDITORIAL_RULES):
+            with self.subTest(rules=sorted(rules)[:2]):
+                self.assertEqual(correct_editorial_text(source, rules), 'Był w domu o 5 kg.')
+        self.assertEqual(correct_editorial_text(source, []), source)
+
+    def test_single_letter_rule_is_gone_and_labels_do_not_promise_nonbreaking_spaces(self):
+        self.assertNotIn('single_nbsp', ALL_EDITORIAL_RULES)
+        for key, label in EDITORIAL_RULES:
+            with self.subTest(rule=key):
+                self.assertNotIn('nierozdzielaj', label.lower())
+        with self.assertRaisesMessage(ValueError, 'Nieznane reguły korekty'):
+            correct_editorial_text('a b', {'single_nbsp'})
+
+
+class EditorialRuleR7Tests(SimpleTestCase):
+    """Poprawki po przeglądzie r6: zaimki, słownik zamian, skróty, nazwy techniczne, zakresy godzin."""
+
+    def fix(self, text, rules=FORM_DEFAULT_EDITORIAL_RULES, replacements=None):
+        return correct_editorial_text(text, rules, replacements=replacements)
+
+    def test_pronoun_right_after_an_opening_quote_keeps_its_capital(self):
+        for text in ('Czytał „Ja, robot” Asimova.', 'Film "On i ona" wszedł.', 'Tytuł «Ona» znam.',
+                     'Napisał (cytuję) „Ona wie”.'):
+            with self.subTest(text=text):
+                self.assertEqual(correct_editorial_text(text, {'pronouns_lower'}), text)
+        self.assertEqual(correct_editorial_text('Spotkałem Go i dałem Mu to.', {'pronouns_lower'}),
+                         'Spotkałem go i dałem mu to.')
+
+    def test_honorific_second_person_forms_keep_their_capital(self):
+        text = 'Piszę do Ciebie, bo Tobie ufam, z Tobą chcę być, kocham Cię i dam Ci to, a Ty wiesz. Was też, Wam i Wami.'
+        self.assertEqual(correct_editorial_text(text, {'pronouns_lower'}), text)
+        self.assertEqual(correct_editorial_text('Daj TOBIE to.', {'pronouns_lower'}), 'Daj tobie to.')
+
+    def test_replacement_target_spelling_is_kept_unless_the_source_is_all_capitals(self):
+        entries = [{'kind': 'word', 'source': 'nato', 'target': 'NATO'},
+                   {'kind': 'word', 'source': 'iphone', 'target': 'iPhone'},
+                   {'kind': 'word', 'source': 'mcdonalds', 'target': 'McDonald’s'},
+                   {'kind': 'word', 'source': 'pdf', 'target': 'PDF'},
+                   {'kind': 'pattern', 'source': r'\bmac(?P<e>a|iem)?\b', 'target': r'MacBook\g<e>'}]
+        self.assertEqual(
+            self.fix('W nato i Nato; mam iphone, Iphone i IPHONE; w mcdonalds; plik pdf; z maciem.',
+                     {'user_word_corrections'}, entries),
+            'W NATO i NATO; mam iPhone, iPhone i IPHONE; w McDonald’s; plik PDF; z MacBookiem.')
+
+    def test_replacement_words_may_start_or_end_with_punctuation_and_contain_spaces(self):
+        entries = [{'kind': 'word', 'source': 'wg.', 'target': 'według'},
+                   {'kind': 'word', 'source': 'itd.', 'target': 'itp.'},
+                   {'kind': 'word', 'source': "'ten", 'target': 'ten'},
+                   {'kind': 'word', 'source': 'e-book', 'target': 'e-książka'},
+                   {'kind': 'word', 'source': 'na prawdę', 'target': 'naprawdę'}]
+        self.assertEqual(
+            self.fix("Zrobione wg. planu, koty itd. A 'ten' kot; e-book i e-booki. Na  prawdę, na\u00a0prawdę.",
+                     {'user_word_corrections'}, entries),
+            'Zrobione według planu, koty itp. A ten\' kot; e-książka i e-booki. Naprawdę, naprawdę.')
+        # Granice wyrazu nadal obowiązują: „wg.” nie pasuje wewnątrz „swg.”.
+        self.assertEqual(self.fix('swg. i wgx.', {'user_word_corrections'}, entries), 'swg. i wgx.')
+
+    def test_slow_patterns_are_rejected_quickly(self):
+        started = time.perf_counter()
+        for source in (r'\w*\w*\w*\w*!', r'(a?){22}a{22}', r'\s*\s*\s*\s*x', r'(\w+\s?)*$',
+                       r'(.*a){12}', r'(x+x+)+y', r'\d*\d*\d*\d*\d*z'):
+            with self.subTest(source=source):
+                self.assertIsNone(_compile_pattern(source))
+                self.assertIsNone(_compile_pattern(source, 'Z'))
+        self.assertLess(time.perf_counter() - started, 3)
+        # Wzorce domyślnej listy i zwykłe wzorce przechodzą (także z jednym argumentem).
+        for entry in DEFAULT_REPLACEMENTS:
+            if entry['kind'] == 'pattern':
+                with self.subTest(source=entry['source'][:30]):
+                    self.assertIsNotNone(_compile_pattern(entry['source'], entry['target']))
+        self.assertIsNotNone(_compile_pattern(r'\bkot(?P<e>ów|a)?\b'))
+        self.assertIsNotNone(_compile_pattern(r'\b(?:bardzo )+dobry'))
+        self.assertIsNone(_compile_pattern('(kot'))
+
+    def test_more_abbreviations_do_not_start_a_sentence(self):
+        for text in ('Jan, ur. w Krakowie.', 'Kierownik ds. kadr.', 'Pismo dot. sprawy.', 'Dnia dn. piątego.',
+                     'We wt. rano.', 'Podaj temp. wody.', 'Mój tel. komórkowy.', 'Zrobione wg. planu.',
+                     'Rozmowa nt. prozy.', 'W pt. wieczorem.', 'W śr. i czw. rano.'):
+            with self.subTest(text=text):
+                self.assertEqual(correct_editorial_text(text, {'sentence_case', 'after_punct'}), text)
+        self.assertEqual(correct_editorial_text('Zapłacił 5 zł. potem wyszedł.', {'sentence_case'}),
+                         'Zapłacił 5 zł. Potem wyszedł.')
+
+    def test_file_and_technology_names_are_protected_by_every_rule(self):
+        text = 'Plik raport.docx, biblioteka Node.js i Vue.js, platforma ASP.NET.'
+        for rules in ({'after_punct'}, FORM_DEFAULT_EDITORIAL_RULES):
+            with self.subTest(rules=len(rules)):
+                self.assertEqual(self.fix(text, rules), text)
+        self.assertEqual(self.fix('Wrócił do domu.Co dalej?', {'after_punct'}), 'Wrócił do domu. Co dalej?')
+
+    def test_hour_ranges_are_normalized_at_both_ends(self):
+        for text in ('Czynne 8.00-16.00.', 'Czynne 8:00-16:00.', 'Czynne 8:00 - 16:00.', 'Czynne 08:00–16:00.'):
+            with self.subTest(text=text):
+                self.assertEqual(self.fix(text), 'Czynne 08:00–16:00.')
+        self.assertEqual(self.fix('Czynne 8:00-16:00.', {'range_dash'}), 'Czynne 8:00–16:00.')
+        self.assertEqual(self.fix('Czynne 8:00 - 16:00.', {'range_spaces'}), 'Czynne 8:00-16:00.')
+        # Kwoty i inne liczby z kropką nie są godzinami.
+        for text in ('Cena 1.50-2.50 zł.', 'Wzrost 1.20-1.80 punktu.', 'Wersje 2.10-3.10 zostają.'):
+            with self.subTest(text=text):
+                self.assertNotIn(':', self.fix(text))
+
+    def test_inch_marks_are_not_quotes(self):
+        self.assertEqual(self.fix('Zdjęcie 5" x 7" leży.', {'inside_quotes'}), 'Zdjęcie 5" x 7" leży.')
+        self.assertEqual(self.fix('Mówił " tak " i wyszedł.', {'inside_quotes'}), 'Mówił "tak" i wyszedł.')
 
 
 class ProgramFormTests(SimpleTestCase):

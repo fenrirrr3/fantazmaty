@@ -7,9 +7,9 @@ from docx.oxml.ns import qn
 from docx.text.paragraph import Paragraph
 from lxml import etree
 if __package__:
-    from .document_styles import paragraph_property
+    from .document_styles import paragraph_property, paragraph_style, style_chain
 else:
-    from document_styles import paragraph_property
+    from document_styles import paragraph_property, paragraph_style, style_chain
 
 # Word odrzuca dokument, w którym elementy właściwości stoją poza kolejnością
 # schematu (np. w:spacing po w:rPr akapitu albo w:sz po w:lang).
@@ -45,6 +45,23 @@ def _child(parent, tag):
     return element
 
 
+# Wartości w:jc spoza słownika python-docx (np. „start”/„end” z nowszych edytorów).
+_RAW_ALIGNMENT = {'start': 0, 'left': 0, 'center': 1, 'end': 2, 'right': 2, 'both': 3}
+
+
+def _alignment(paragraph):
+    """Wyrównanie akapitu z dziedziczeniem; None = brak (do lewej). Liczby jak WD_ALIGN_PARAGRAPH."""
+    try:
+        return paragraph_property(paragraph, "alignment")
+    except ValueError:
+        owners = [paragraph._p, *(style.element for style in style_chain(paragraph_style(paragraph)))]
+        for owner in owners:
+            jc = owner.find(f'{qn("w:pPr")}/{qn("w:jc")}')
+            if jc is not None:
+                return _RAW_ALIGNMENT.get(jc.get(qn("w:val")), 3)
+        return None
+
+
 def normalize_docx(source, *, justify=False):
     source.seek(0)
     document = Document(source)
@@ -57,6 +74,7 @@ def normalize_docx(source, *, justify=False):
             story = name in ('word/document.xml', 'word/footnotes.xml', 'word/endnotes.xml') or (
                 name.startswith(('word/header', 'word/footer')) and name.endswith('.xml'))
             if story:
+                margin_story = name.startswith(('word/header', 'word/footer'))
                 # python-docx's parser supplies typed elements for Paragraph/style access.
                 from docx.oxml import parse_xml
                 tree = parse_xml(data)
@@ -69,15 +87,21 @@ def normalize_docx(source, *, justify=False):
                     for side in ("top", "bottom", "left", "right"):
                         margins.set(qn("w:" + side), "1417")
                     margins.set(qn("w:gutter"), "0")
+                    # Schemat wymaga także odległości nagłówka i stopki (domyślne Worda: 1,25 cm).
+                    for side in ("header", "footer"):
+                        if margins.get(qn("w:" + side)) is None:
+                            margins.set(qn("w:" + side), "708")
                 for element in tree.iter(qn("w:p")):
                     paragraph = Paragraph(element, document)
-                    alignment = paragraph_property(paragraph, "alignment")
+                    alignment = _alignment(paragraph)
                     props = element.get_or_add_pPr()
 
                     def child(tag):
                         return _child(props, "w:" + tag)
 
-                    if justify and alignment != 1:
+                    # Justujemy tylko tekst wyrównany do lewej lub bez wyrównania; środek, prawa
+                    # strona i nagłówki/stopki (numer strony, tytuł) zostają jak w źródle.
+                    if justify and not margin_story and alignment in (None, 0):
                         child("jc").set(qn("w:val"), "both")
                     spacing = child("spacing")
                     spacing.attrib.clear()

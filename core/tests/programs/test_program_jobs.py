@@ -11,6 +11,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import patch
+from zipfile import ZipFile
 
 from django.core import signing
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -25,7 +26,7 @@ from core.services import program_jobs as jobs
 from core.services.document_converter import ConversionError, conversion_slot, run_converter
 from fantazmaty.testing import create_superuser
 
-from .support import REPETITION_FIELDS, IsolatedProgramDirsMixin, downloaded, saved, sized_docx
+from .support import REPETITION_FIELDS, IsolatedProgramDirsMixin, docx_with_images, downloaded, saved, sized_docx
 
 
 def document(header=False):
@@ -140,6 +141,19 @@ class ProgramJobTests(IsolatedProgramDirsMixin, TestCase):
         result = downloaded(self.client.get(url + '?download=1'))
         self.assertEqual(Document(BytesIO(result)).paragraphs[0].text, 'Ala ma kota. Kot odwiedził ogród.')
         self.assertFalse((folder / 'source.docx').exists())
+
+    def test_real_job_removes_images_and_reports_how_many(self):
+        with patch.object(jobs, 'launch'):
+            response = self.client.post(self.url, {'program_action': 'clean', 'rules': ['spaces'], 'document':
+                                                   SimpleUploadedFile('obrazy.docx', docx_with_images().getvalue())},
+                                        HTTP_X_PROGRAM_JOB='1')
+        self.assertEqual(response.status_code, 202, response.content)
+        url, folder = response.json()['url'], next(jobs.root().iterdir())
+        jobs.execute(folder)
+        state = self.client.get(url).json()
+        self.assertEqual((state['state'], state['removed_images']), ('done', 6), state)
+        with ZipFile(BytesIO(downloaded(self.client.get(url + '?download=1')))) as archive:
+            self.assertFalse([name for name in archive.namelist() if 'media/' in name])
 
     def test_result_warnings_are_shown_and_job_is_removed_after_download(self):
         url, folder = self.create()
@@ -401,6 +415,25 @@ class ConversionQueueTests(IsolatedProgramDirsMixin, SimpleTestCase):
                 pass
         stop.set()
         holder.join()
+
+    def test_queue_wait_covers_the_time_limits_of_jobs_ahead(self):
+        """Zadanie superusera (limit MAX_TIME_LIMIT) przed nami nie może wyczerpać naszego czasu oczekiwania."""
+        from core.services.document_converter import MAX_TIME_LIMIT, TIME_LIMIT
+        mine = self.job_folder('a' * 32, {})
+        self.assertEqual(jobs.queue_wait(mine), jobs.QUEUE_WAIT)
+        self.job_folder('b' * 32, {'timeout': MAX_TIME_LIMIT})
+        self.job_folder('c' * 32, {})
+        self.assertEqual(jobs.queue_wait(mine), MAX_TIME_LIMIT + TIME_LIMIT + 2 * jobs.QUEUE_MARGIN)
+        self.assertGreater(jobs.queue_wait(mine), MAX_TIME_LIMIT)
+        self.assertEqual(jobs.job_time_limit({'timeout': 10 ** 6}), MAX_TIME_LIMIT)
+        self.assertEqual(jobs.job_time_limit({'timeout': 'x'}), TIME_LIMIT)
+
+    def job_folder(self, key, options):
+        folder = jobs.root() / key
+        folder.mkdir(parents=True)
+        jobs.write_json(folder / 'request.json', {'user': 1, 'options': options})
+        jobs.write_json(folder / 'state.json', {'state': 'queued', 'started': time.time()})
+        return folder
 
     def test_queued_job_with_recent_heartbeat_is_alive(self):
         now = time.time()

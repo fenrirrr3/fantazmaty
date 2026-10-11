@@ -5,6 +5,7 @@ from zipfile import BadZipFile, ZipFile
 from django import forms
 
 from core.program_models import ReplacementEntry
+from core.services import odkurzacz
 from core.services.odkurzacz import EDITORIAL_RULES, FORM_DEFAULT_EDITORIAL_RULES
 
 
@@ -23,12 +24,19 @@ class ProgramSettingsMixin:
     """Ustawienia formularza do zapamiętania (bez pliku) i ich bezpieczny odczyt."""
 
     settings_exclude = ('document',)
+    # Pola wielokrotnego wyboru, przy których zapamiętujemy też listę znanych wtedy opcji: opcja dodana
+    # później (np. nowa reguła Odkurzacza) jest zaznaczona tak jak domyślnie, a nie zawsze odznaczona.
+    settings_known_choices = ('rules',)
 
     def settings_fields(self):
         return [name for name in self.fields if name not in self.settings_exclude]
 
     def settings_values(self):
-        return {name: self.cleaned_data[name] for name in self.settings_fields() if name in self.cleaned_data}
+        values = {name: self.cleaned_data[name] for name in self.settings_fields() if name in self.cleaned_data}
+        for name in self.settings_known_choices:
+            if name in values:
+                values[f'known_{name}'] = [str(key) for key, _ in self.fields[name].choices]
+        return values
 
     @classmethod
     def initial_from_settings(cls, stored, **kwargs):
@@ -46,6 +54,10 @@ class ProgramSettingsMixin:
                     continue
                 allowed = {str(key) for key, _ in field.choices}
                 value = [item for item in value if isinstance(item, str) and item in allowed]
+                known = stored.get(f'known_{name}')
+                if name in cls.settings_known_choices and isinstance(known, list):
+                    value += [str(key) for key, _ in field.choices if str(key) not in known
+                              and str(key) in map(str, field.initial or ()) and str(key) not in value]
             elif isinstance(field, forms.BooleanField):
                 if not isinstance(value, bool):
                     continue
@@ -75,7 +87,8 @@ class OdkurzaczForm(ProgramSettingsMixin, forms.Form):
                   "Zamiana miękkich enterów, przebudowa i ujednolicenie formatowania nie są oznaczane.")
     cleaner_summary = forms.BooleanField(
         label="Pokaż podsumowanie zmian", required=False, initial=False,
-        help_text="Po zakończeniu pracy zobaczysz listę reguł z liczbą wprowadzonych zmian.")
+        help_text="Po zakończeniu pracy zobaczysz listę reguł z liczbą wprowadzonych zmian "
+                  "oraz zamiany ze słownika: co na co i ile razy.")
     document = forms.FileField(
         label="Dokument DOCX",
         help_text="Maksymalnie 5 MB. Wynik pobierzesz jako osobny plik.",
@@ -86,7 +99,9 @@ class OdkurzaczForm(ProgramSettingsMixin, forms.Form):
     def __init__(self, *args, max_document_bytes=PROGRAM_MAX_UPLOAD_BYTES, **kwargs):
         super().__init__(*args, **kwargs)
         self.max_document_bytes = max_document_bytes
-        self.fields["document"].help_text = f"Maksymalnie {max_document_bytes // (1024 * 1024)} MB. Wynik pobierzesz jako osobny plik."
+        self.fields["document"].help_text = (f"Maksymalnie {max_document_bytes // (1024 * 1024)} MB. "
+                                             "Obrazy są usuwane z dokumentu przed pracą programu. "
+                                             "Wynik pobierzesz jako osobny plik.")
 
     def clean_document(self):
         upload = self.cleaned_data["document"]
@@ -174,6 +189,16 @@ REPLACEMENT_PATTERN_MAX = 500
 REPLACEMENT_TARGET_MAX = 200
 WORD_SOURCE_RE = re.compile(r"[\w’'\-. ]+")
 EMPTY_MATCH_SAMPLES = ('', ' ', 'a', 'Ala ma kota.', 'ąę – „x”')
+# Odkurzacz bierze najwyżej tyle aktywnych pozycji słownika (dalsze byłyby po cichu pominięte).
+REPLACEMENT_ACTIVE_MAX = getattr(odkurzacz, 'MAX_REPLACEMENTS', 1000)
+
+
+def cleaner_accepts_pattern(source, target):
+    """Czy Odkurzacz użyje tego wzorca (odrzuca błędne i zbyt kosztowne – ryzyko bardzo długiego działania)."""
+    import inspect
+    if len(inspect.signature(odkurzacz._compile_pattern).parameters) >= 2:
+        return odkurzacz._compile_pattern(source, target) is not None
+    return odkurzacz._compile_pattern(source) is not None
 
 
 class ReplacementEntryForm(forms.ModelForm):
@@ -187,8 +212,14 @@ class ReplacementEntryForm(forms.ModelForm):
         help_texts = {
             'source': 'Słowo: całe słowo, bez względu na wielkość liter. '
                       'Wyrażenie regularne: składnia Pythona, bez rozróżniania wielkości liter.',
-            'target': 'Wielkość liter jak w tekście; jeśli zamiana zaczyna się wielką literą, wynik też. '
+            'target': 'Zamiana zapisana małymi literami przejmuje wielkość liter z tekstu (Pickup → Pikap, '
+                      'PICKUP → PIKAP). Zamiana z wielkimi literami (NATO, iPhone) zostaje zapisana dokładnie tak, '
+                      'chyba że w tekście całe słowo jest napisane WIELKIMI literami. '
                       'We wzorcu można użyć grup: \\g<nazwa>.',
+            'position': 'Mniejsza liczba – wcześniejsze wykonanie. Słowa są zamieniane jednocześnie, jednym '
+                        'przejściem: wynik jednej zamiany nie jest ponownie zamieniany przez inną pozycję '
+                        '(a → b i b → c nie daje c), a gdy zapisy się nakładają, wygrywa dłuższy. '
+                        'Wyrażenia regularne działają po kolei, każde na tekście po wcześniejszych pozycjach.',
         }
 
     def __init__(self, *args, allow_patterns=False, **kwargs):
@@ -235,6 +266,18 @@ class ReplacementEntryForm(forms.ModelForm):
                     compiled.sub(target, '')  # sprawdza odwołania do grup i znaki ucieczki w zamianie
                 except (re.error, IndexError) as error:
                     self.add_error('target', f'Nieprawidłowa zamiana: {error}.')
+                else:
+                    # Ta sama kontrola co w Odkurzaczu: wzorzec odrzucony tam byłby po cichu pomijany.
+                    if not cleaner_accepts_pattern(source, target):
+                        self.add_error('source', 'Odkurzacz nie użyje tego wzorca: może działać bardzo długo '
+                                                 '(np. zagnieżdżone powtórzenia jak (a+)+ albo \\w*\\w*). '
+                                                 'Uprość wyrażenie.')
+        if cleaned.get('is_active') and (self.instance.pk is None or not self.instance.is_active):
+            active = ReplacementEntry.objects.filter(is_active=True).exclude(pk=self.instance.pk).count()
+            if active >= REPLACEMENT_ACTIVE_MAX:
+                self.add_error(None, f'Słownik ma już {REPLACEMENT_ACTIVE_MAX} aktywnych pozycji – tyle '
+                                     'najwięcej używa Odkurzacz. Wyłącz lub usuń niepotrzebne pozycje albo dodaj '
+                                     'tę jako wyłączoną.')
         duplicates = ReplacementEntry.objects.filter(kind=kind).exclude(pk=self.instance.pk).only('source')
         if any(entry.source.casefold() == source.casefold() for entry in duplicates):
             self.add_error('source', 'Taka pozycja już jest w słowniku.')

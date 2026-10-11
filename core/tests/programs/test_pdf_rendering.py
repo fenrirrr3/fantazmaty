@@ -20,7 +20,7 @@ from core.services.document_pdf import CELL_NOTE, PAGE_FIELD, PAGES_FIELD, rende
 
 from .support import (
     add_bookmark, add_complex_field, add_footnote_reference, add_gallery_page_number, add_internal_link,
-    add_page_break, add_simple_field, png, with_footnote,
+    add_leading_break, add_page_break, add_simple_field, png, with_footnote,
 )
 
 
@@ -70,11 +70,17 @@ class PdfRenderingTests(SimpleTestCase):
         cell.text = 'Tabela'
         cell.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         tree, _, _ = self.render(doc, '<ol><li>Lista</li></ol><table><tr><td><p>Tabela</p></td></tr></table>')
-        listed = tree.xpath('.//li/p')[0]
+        listed = tree.xpath('./p')[0]  # punkt listy trafia do PDF jako akapit z numerem
+        self.assertEqual(listed.text, '1. Lista')
         self.assertEqual(listed.get('align'), 'center')
         self.assertEqual(listed.get('data-indent'), '0')
         self.assertEqual(listed.get('line-height'), '2.0')
         self.assertEqual(tree.xpath('.//td/p')[0].get('align'), 'right')
+
+    def test_nested_list_items_are_indented_by_level(self):
+        tree, _, _ = self.render(Document(), '<ul><li>Kropka<ol><li>Pierwszy</li><li>Drugi</li></ol>Ogon</li></ul>')
+        self.assertEqual([(p.text, p.get('data-left')) for p in tree.xpath('./p')], [
+            ('• Kropka', '0.0'), ('1. Pierwszy', '6.35'), ('2. Drugi', '6.35'), ('Ogon', '0.0')])
 
     def test_style_font_size_spacing_and_page_breaks(self):
         doc = Document()
@@ -113,6 +119,28 @@ class PdfRenderingTests(SimpleTestCase):
         doc.sections[0].left_margin = doc.sections[0].right_margin = Cm(10)
         with self.assertRaisesMessage(ValueError, 'Unsupported page margins'):
             self.render(doc, '<p>A</p>')
+
+    def test_missing_page_settings_default_to_a4_and_negative_margins_count_as_positive(self):
+        """Regresja: DOCX bez w:sectPr albo w:pgSz (np. z generatorów) i z ujemnym marginesem kończył się błędem."""
+        sizes = []
+        original = FPDF.add_page
+
+        def spy(pdf, *args, **kwargs):
+            original(pdf, *args, **kwargs)
+            sizes.append((round(pdf.w, 1), round(pdf.h, 1), round(pdf.l_margin, 1), round(pdf.t_margin, 1)))
+        without_section = Document()
+        body = without_section.element.body
+        body.remove(body.sectPr)
+        without_size = Document()
+        without_size.sections[0]._sectPr.remove(without_size.sections[0]._sectPr.pgSz)
+        negative = Document()
+        negative.sections[0].top_margin = Cm(-2)
+        with patch.object(FPDF, 'add_page', spy):
+            for doc in (without_section, without_size, negative):
+                self.render(doc, '<p>A</p>')
+        self.assertEqual(sizes[0], (210.0, 297.0, 25.0, 25.0))
+        self.assertEqual(sizes[1][:2], (210.0, 297.0))
+        self.assertEqual(sizes[2][3], 20.0)
 
 
 class PdfWordStructuresTests(SimpleTestCase):
@@ -175,6 +203,63 @@ class PdfWordStructuresTests(SimpleTestCase):
         table.cell(0, 1).text = 'Zwykły'
         _, warnings, markup = self.convert_pdf(doc)
         self.assertIn('<strong>Gruby</strong>', markup)
+        self.assertEqual(warnings, [])
+
+    def test_lists_and_footnotes_keep_their_numbers_and_bullets(self):
+        """Regresja: numery punktów, punktory i numery przypisów znikały w PDF."""
+        doc = Document()
+        for text in ('Pierwszy', 'Drugi'):
+            doc.add_paragraph(text, style='List Number')
+        doc.add_paragraph('Kropka', style='List Bullet')
+        add_footnote_reference(doc.add_paragraph('Zdanie.'))
+        _, _, markup = self.convert_pdf(with_footnote(doc, 'Treść przypisu.'))
+        blocks = html_parser.fragment_fromstring(markup, create_parent='div')
+        texts = {' '.join(block.text_content().split()): block for block in blocks}
+        for expected in ('1. Pierwszy', '2. Drugi', '• Kropka', '1. Treść przypisu.'):
+            self.assertIn(expected, texts)
+        self.assertFalse(blocks.xpath('.//li | .//ol | .//ul'))
+
+    def test_table_row_taller_than_a_page_becomes_paragraphs(self):
+        """Regresja: komórka dłuższa niż strona przerywała cały PDF (ValueError z fpdf2)."""
+        doc = Document()
+        doc.add_paragraph('Przed')
+        doc.add_paragraph()  # regresja: pusty akapit przed tabelą psuł wymiary próbnej strony
+        table = doc.add_table(rows=2, cols=2)
+        table.cell(0, 0).text = 'Zwykła'
+        table.cell(0, 1).text = 'Komórka'
+        table.cell(1, 0).text = 'Długi akapit w ramce. ' * 400
+        table.cell(1, 1).text = 'Obok'
+        doc.add_paragraph('Po')
+        text, warnings, markup = self.convert_pdf(doc)
+        for expected in ('Przed', 'Zwykła', 'Komórka', 'Długi akapit w ramce.', 'Obok', 'Po'):
+            self.assertIn(expected, text)
+        paragraphs = [' '.join(block.text_content().split())[:20]
+                      for block in html_parser.fragment_fromstring(markup, create_parent='div') if block.tag == 'p']
+        self.assertEqual(paragraphs[-5:], ['Zwykła', 'Komórka', 'Długi akapit w ramce', 'Obok', 'Po'])
+        self.assertIn(document_pdf.TALL_TABLE_NOTE, warnings)
+
+    def test_page_break_in_a_list_or_table_does_not_join_words(self):
+        doc = Document()
+        add_page_break(doc.add_paragraph('Punkt', style='List Bullet'), 'dalej')
+        cell = doc.add_table(rows=1, cols=1).cell(0, 0).paragraphs[0]
+        cell.add_run('Komórka')
+        add_page_break(cell, 'obok')
+        _, _, markup = self.convert_pdf(doc)
+        blocks = [' '.join(block.text_content().split())
+                  for block in html_parser.fragment_fromstring(markup, create_parent='div')]
+        self.assertIn('• Punkt', blocks)
+        self.assertIn('dalej', blocks)  # w PDF punkt listy dzieli się na stronie jak zwykły akapit
+        self.assertIn('Komórka obok', blocks)
+
+    def test_glyphs_missing_from_the_font_get_close_substitutes(self):
+        doc = Document()
+        doc.add_paragraph('e\u2011mail 10\u202f000 zł i\u2007s.\u00a05')
+        doc.add_paragraph('⁂')
+        doc.add_paragraph('❦ ❦ ❦')
+        doc.add_paragraph('Dalej')
+        _, warnings, markup = self.convert_pdf(doc)
+        self.assertIn('e-mail 10\u00a0000 zł i\u00a0s.\u00a05', markup)
+        self.assertEqual(markup.count('* * *'), 2)
         self.assertEqual(warnings, [])
 
     def test_characters_missing_from_the_font_are_reported(self):
@@ -315,6 +400,63 @@ class PdfPageFurnitureTests(SimpleTestCase):
         self.assertEqual(texts, ['Przed', 'Po', 'Dalej', 'Koniec'])
         self.assertNotIn('<br', ''.join(part for part, _ in captured))
         self.assertEqual([page for page, _, _ in records], [1, 2, 3])
+
+    def test_consecutive_page_breaks_leave_a_blank_page(self):
+        doc = Document()
+        add_page_break(doc.add_paragraph('Pierwsza'))
+        add_page_break(doc.add_paragraph())
+        doc.add_paragraph('Trzecia')
+        _, _, pages, _ = self.render(doc, '<p>Pierwsza<br class="page-break"></p><p><br class="page-break"></p>'
+                                          '<p>Trzecia</p>')
+        self.assertEqual(pages, 3)
+
+    def test_chapters_opened_with_a_break_start_a_page_and_enter_the_outline(self):
+        doc = Document()
+        doc.add_paragraph('Wstęp')
+        for number, kind in enumerate(('page', 'column'), 1):
+            add_leading_break(doc.add_heading(f'Rozdział {number}', 1), kind)
+            doc.add_paragraph('Treść')
+        source = self.directory / 'source.docx'
+        doc.save(source)
+        sections, original = [], FPDF.start_section
+
+        def section_spy(pdf, name, level=0, strict=True):
+            sections.append((name, level, pdf.page_no()))
+            return original(pdf, name, level, strict)
+        with patch.object(FPDF, 'start_section', section_spy):
+            convert(source, self.directory, ['pdf'], 'Test')
+        self.assertEqual(sections, [('Rozdział 1', 0, 2), ('Rozdział 2', 0, 3)])
+
+    def test_long_header_wraps_and_header_table_is_one_row(self):
+        doc = Document()
+        long_title = ' '.join(['Bardzo długi tytuł w nagłówku strony'] * 6)
+        doc.sections[0].header.paragraphs[0].text = long_title
+        cells = doc.sections[0].footer.add_table(rows=1, cols=3, width=Cm(15)).rows[0].cells
+        for cell, text in zip(cells, ('Autor', 'Tytuł', 'Wydawca')):
+            cell.text = text
+        records, _, _, captured = self.render(doc, '<p>Tekst</p>')
+        # Pusty akapit przed tabelą zostaje (python-docx tworzy go w każdej stopce), tabela to jeden wiersz.
+        self.assertEqual(records[1], (1, 'stopka', [('', 'L'), ('Autor\tTytuł\tWydawca', 'L')]))
+        self.assertEqual([call for call in self.cells if call[0] in ('Autor', 'Tytuł', 'Wydawca')],
+                         [('Autor', 'L'), ('Tytuł', 'C'), ('Wydawca', 'R')])
+        # Cały tekst nagłówka trafia na stronę w kilku wierszach i odsuwa treść w dół.
+        header = [text for text, _ in self.cells if text and text in long_title]
+        self.assertEqual(' '.join(header), long_title)
+        self.assertGreater(len(header), 1)
+        self.assertGreater(captured[0][1], 12.7 + len(header) * 12 * 1.15 / (72 / 25.4) - 0.01)
+
+    def test_literal_nb_in_the_text_is_not_a_page_count(self):
+        from fpdf.output import PDFPage
+        doc = Document()
+        add_complex_field(doc.sections[0].footer.paragraphs[0], 'NUMPAGES', '9')
+        substituted, original = [], PDFPage.add_text_substitution
+
+        def spy(page, fragment):
+            substituted.append(fragment)
+            return original(page, fragment)
+        with patch.object(PDFPage, 'add_text_substitution', spy):
+            _, _, pages, _ = self.render(doc, '<p>Wzór {nb} i {nb}</p>')
+        self.assertEqual(len(substituted), pages)  # tylko pole w stopce, nie tekst akapitu
 
     def test_scene_breaks_are_centred_with_space(self):
         doc = Document()

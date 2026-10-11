@@ -34,10 +34,10 @@ function fixture(saved) {
             });
         },
     });
-    const [label,bar,stop,accept,download,notes,summary] = submit.box.children;
+    const [label,images,bar,stop,accept,download,notes,summary] = submit.box.children;
     async function respond(value) { assert.ok(tasks.length); tasks.shift()(value); await new Promise(resolve => setImmediate(resolve)); }
     async function tick() { const entry = timers.entries().next().value; assert.ok(entry); timers.delete(entry[0]); entry[1](); }
-    return {form,submit,label,bar,stop,accept,download,notes,summary,requests,respond,tick,details,storage: () => storage};
+    return {form,submit,label,images,bar,stop,accept,download,notes,summary,requests,respond,tick,details,storage: () => storage};
 }
 (async () => {
     let f = fixture();
@@ -78,6 +78,28 @@ function fixture(saved) {
     assert.equal(f.summary.children[1].textContent,'Reguły korekty nie wprowadziły zmian.');
     f = fixture(); f.form.events.submit({preventDefault(){},submitter:f.submit});
     await f.respond({url:'/programy/zadania/plain/'}); await f.respond({state:'done',warnings:[]});
-    assert.equal(f.summary.hidden,true);
-    console.log('Program jobs JS: progress, cancellation, early cancellation, reload, confirmation, download, change summary OK');
+    assert.equal(f.summary.hidden,true); assert.equal(f.images.hidden,true);
+    // Usunięte obrazy: wyraźny komunikat z odmianą liczebnika; brak klucza lub 0 – nic.
+    for (const [count, word] of [[1,'obraz'],[3,'obrazy'],[5,'obrazów'],[13,'obrazów'],[22,'obrazy'],[112,'obrazów']]) {
+        f = fixture(); f.form.events.submit({preventDefault(){},submitter:f.submit});
+        await f.respond({url:'/programy/zadania/images/'}); await f.respond({state:'done',warnings:[],removed_images:count});
+        assert.equal(f.images.hidden,false);
+        assert.equal(f.images.textContent,`Usunięto ${count} ${word} z dokumentu – wynik ich nie zawiera.`);
+    }
+    f = fixture(); f.form.events.submit({preventDefault(){},submitter:f.submit});
+    await f.respond({url:'/programy/zadania/noimages/'}); await f.respond({state:'done',warnings:[],removed_images:0});
+    assert.equal(f.images.hidden,true);
+    // Lista zamian słownikowych pod tabelą reguł; uszkodzone wpisy są pomijane.
+    f = fixture(); f.form.events.submit({preventDefault(){},submitter:f.submit});
+    await f.respond({url:'/programy/zadania/replacements/'});
+    await f.respond({state:'done',warnings:[],summary:[{rule:'user_word_corrections',label:'Słownik',count:3}],
+        replacements:[{source:'pickupem',target:'pikapem',count:2},{source:'<b>',target:'x',count:1},null,{source:'a'}]});
+    const list = f.summary.children.at(-1);
+    assert.equal(list.className,'program-replacements');
+    assert.deepEqual(list.children.map(item => item.textContent),['pickupem → pikapem (2)','<b> → x (1)']);
+    f = fixture(); f.form.events.submit({preventDefault(){},submitter:f.submit});
+    await f.respond({url:'/programy/zadania/badreplacements/'});
+    await f.respond({state:'done',warnings:[],summary:[],replacements:'zepsute'});
+    assert.equal(f.summary.children.length,2);
+    console.log('Program jobs JS: progress, cancellation, early cancellation, reload, confirmation, download, change summary, removed images, replacements OK');
 })().catch(error => { console.error(error); process.exitCode = 1; });

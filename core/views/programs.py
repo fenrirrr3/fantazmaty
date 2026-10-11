@@ -7,6 +7,7 @@ odświeża się sama i udostępnia plik do pobrania.
 """
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -29,20 +30,28 @@ def stored_preferences(user):
     return data if isinstance(data, dict) else {}
 
 
+def _locked_preferences(user):
+    """Rekord ustawień zablokowany do końca transakcji: dwie karty zapisują kolejno, nie nadpisują się."""
+    ProgramPreferences.objects.get_or_create(user=user)
+    return ProgramPreferences.objects.select_for_update().get(user=user)
+
+
 def remember_settings(user, action, form):
-    """Zapamiętuje ustawienia poprawnie wysłanego formularza (bez pliku)."""
-    preferences, _ = ProgramPreferences.objects.get_or_create(user=user)
-    data = preferences.data if isinstance(preferences.data, dict) else {}
-    data[action] = form.settings_values()
-    preferences.data = data
-    preferences.save(update_fields=['data', 'updated_at'])
+    """Zapamiętuje ustawienia formularza (bez pliku) przyjętego do pracy – tylko ten jeden program."""
+    with transaction.atomic():
+        preferences = _locked_preferences(user)
+        data = preferences.data if isinstance(preferences.data, dict) else {}
+        data[action] = form.settings_values()
+        preferences.data = data
+        preferences.save(update_fields=['data', 'updated_at'])
 
 
 def forget_settings(user, action):
-    preferences = ProgramPreferences.objects.filter(user=user).first()
-    if preferences and isinstance(preferences.data, dict) and action in preferences.data:
-        del preferences.data[action]
-        preferences.save(update_fields=['data', 'updated_at'])
+    with transaction.atomic():
+        preferences = ProgramPreferences.objects.select_for_update().filter(user=user).first()
+        if preferences and isinstance(preferences.data, dict) and action in preferences.data:
+            del preferences.data[action]
+            preferences.save(update_fields=['data', 'updated_at'])
 
 
 def bound_forms(request, action, preferences=None):
@@ -129,7 +138,6 @@ def programs(request):
         if wants_json:
             return JsonResponse({'errors': {key: [str(message) for message in values] for key, values in form.errors.items()}}, status=400)
         return render_programs(request, forms, action)
-    remember_settings(request.user, action, form)
     try:
         token = jobs.create(request, form.cleaned_data['document'], job_options(action, form, request.user), action)
     except jobs.JobError as error:
@@ -141,6 +149,8 @@ def programs(request):
         if wants_json:
             return JsonResponse({'message': message}, status=503)
         return render_programs(request, forms, action, error=message, status=503)
+    # Ustawienia zapamiętujemy dopiero po przyjęciu zadania (pełna kolejka, błąd zapisu – bez zmian).
+    remember_settings(request.user, action, form)
     url = reverse('core:program_job', args=[token])
     if wants_json:
         return JsonResponse({'url': url}, status=202)

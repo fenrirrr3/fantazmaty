@@ -151,15 +151,50 @@ def _unwrap(node, content):
 TOC_OMISSION = "spis treści (wstaw go ponownie w Wordzie: Odwołania → Spis treści)"
 
 
-def _unwrap_content_controls(body, omissions):
+PLACEHOLDER_STYLES = frozenset({"PlaceholderText"})
+PLACEHOLDER_OMISSION = "oznaczenie tekstu zastępczego kontrolek z wpisaną treścią (treść pozostanie – sprawdź ją)"
+
+
+def placeholder_styles(document):
+    """Identyfikatory stylu „Tekst zastępczy” (w polskim Wordzie np. „Tekstzastpczy”)."""
+    ids = set(PLACEHOLDER_STYLES)
+    for style in document.styles.element.findall(qn("w:style")):
+        name = style.find(qn("w:name"))
+        if name is not None and (name.get(qn("w:val")) or "").casefold() == "placeholder text":
+            ids.add(style.get(qn("w:styleId")))
+    return ids
+
+
+def _only_placeholder(node, styles):
+    """Cała widoczna treść kontrolki ma styl tekstu zastępczego (albo kontrolka jest pusta)."""
+    content = node.find(qn("w:sdtContent"))
+    if content is None:
+        return True
+    for text in content.iter(qn("w:t")):
+        if not (text.text or "").strip():
+            continue
+        run = text.getparent()
+        style = run.find(qn("w:rPr") + "/" + qn("w:rStyle"))
+        if style is None or style.get(qn("w:val")) not in styles:
+            return False
+    return True
+
+
+def _unwrap_content_controls(body, omissions, styles=PLACEHOLDER_STYLES):
     """Kontrolki zawartości (w:sdt) znikają, a ich treść z formatowaniem zostaje na swoim miejscu.
 
     Dotyczy kontrolek blokowych, w akapicie, w wierszach i komórkach tabel. Kontrolka pokazująca tekst
-    zastępczy („Kliknij tutaj…”) nie ma treści – znika razem z nim. Spis treści z galerii Worda
-    (w:docPartObj) usuwamy w całości: jego numery stron nie pasowałyby do nowego dokumentu.
+    zastępczy („Kliknij tutaj…”) znika razem z nim – ale tylko wtedy, gdy cała jej treść ma styl tekstu
+    zastępczego i nie ma w niej innych kontrolek. Kontrolka z oznaczeniem w:showingPlcHdr, w którą wpisano
+    treść (np. program ją wypełnił albo grupa z wypełnionymi polami), jest rozpakowana z uwagą.
+    Spis treści z galerii Worda (w:docPartObj) usuwamy w całości: jego numery stron nie pasowałyby
+    do nowego dokumentu.
     """
+    controls = list(body.iter(qn("w:sdt")))
+    # Przed rozpakowaniem: kontrolki zawierające inne kontrolki (np. grupa pól).
+    nested = {id(node) for node in controls if any(True for _ in node.iterdescendants(qn("w:sdt")))}
     # Od końca: zagnieżdżona kontrolka jest rozpakowana, zanim zajmiemy się zewnętrzną.
-    for node in reversed(list(body.iter(qn("w:sdt")))):
+    for node in reversed(controls):
         parent = node.getparent()
         if parent is None:
             continue
@@ -170,7 +205,11 @@ def _unwrap_content_controls(body, omissions):
             omissions.add(TOC_OMISSION)
             parent.remove(node)
         elif properties is not None and properties.find(qn("w:showingPlcHdr")) is not None:
-            parent.remove(node)
+            if id(node) not in nested and _only_placeholder(node, styles):
+                parent.remove(node)
+            else:
+                omissions.add(PLACEHOLDER_OMISSION)
+                _unwrap(node, node.find(qn("w:sdtContent")))
         else:
             _unwrap(node, node.find(qn("w:sdtContent")))
 
@@ -187,14 +226,14 @@ def _unwrap_simple_fields(body, omissions, label):
         _unwrap(node, node)
 
 
-def _sanitize_body(body, omissions):
+def _sanitize_body(body, omissions, styles=PLACEHOLDER_STYLES):
     # Treść alternatywna (mc:AlternateContent): bierzemy wersję zapasową dla prostszych programów,
     # a bez niej pierwszy wariant. Inaczej pole tekstowe liczyło się podwójnie (DrawingML + VML).
     for node in list(body.iter(MC + "AlternateContent")):
         if node.getparent() is not None:
             _unwrap(node, node.find(MC + "Fallback") if node.find(MC + "Fallback") is not None
                     else node.find(MC + "Choice"))
-    _unwrap_content_controls(body, omissions)
+    _unwrap_content_controls(body, omissions, styles)
     for node in list(body.iter(*FORMAT_HISTORY)):
         if node.getparent() is not None:
             node.getparent().remove(node)
@@ -546,10 +585,10 @@ def _analyze_docx(source, keep_page_format=False):
                 True for _ in root.iter(qn("w:drawing"), qn("w:pict"), qn("w:object"))
             ):
                 omissions.add("niepuste nagłówki lub stopki")
-    _sanitize_body(body, omissions)
+    _sanitize_body(body, omissions, placeholder_styles(original))
     # Po rozpakowaniu kontrolek zawartości: podział sekcji bywa w akapicie wewnątrz kontrolki.
     if len(original.sections) > 1:
-        label = "układu pierwszej" if keep_page_format else "A4"
+        label = "o układzie pierwszej sekcji" if keep_page_format else "A4"
         omissions[f"podziały na sekcje i ustawienia ich układu (pozostanie jedna sekcja {label})"] = (
             len(original.sections) - 1
         )

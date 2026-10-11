@@ -154,12 +154,59 @@ class NormalizationTests(SimpleTestCase):
         self.assertEqual(observed, [12])
 
 
+class FormattingR7Tests(SimpleTestCase):
+    """Wyjustowanie tylko tekstu wyrównanego do lewej, bez nagłówków i stopek; pełne marginesy strony."""
+
+    def test_only_left_or_unaligned_paragraphs_are_justified_and_headers_are_skipped(self):
+        document = Document()
+        document.add_paragraph('Bez wyrównania')
+        document.add_paragraph('Do lewej').alignment = WD_ALIGN_PARAGRAPH.LEFT
+        document.add_paragraph('Do prawej').alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        document.add_paragraph('Wyjustowany').alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        document.styles['Quote'].paragraph_format.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        document.add_paragraph('Prawo ze stylu', style='Quote')
+        document.sections[0].header.paragraphs[0].text = 'Nagłówek'
+        document.sections[0].footer.paragraphs[0].text = 'Stopka'
+        document.sections[0].footer.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.LEFT
+        result = Document(normalize_docx(saved(document), justify=True))
+        self.assertEqual([paragraph.alignment for paragraph in result.paragraphs],
+                         [WD_ALIGN_PARAGRAPH.JUSTIFY, WD_ALIGN_PARAGRAPH.JUSTIFY, WD_ALIGN_PARAGRAPH.RIGHT,
+                          WD_ALIGN_PARAGRAPH.JUSTIFY, None])
+        self.assertIsNone(result.sections[0].header.paragraphs[0].alignment)
+        self.assertEqual(result.sections[0].footer.paragraphs[0].alignment, WD_ALIGN_PARAGRAPH.LEFT)
+
+    def test_alignment_values_unknown_to_python_docx_are_understood(self):
+        """w:jc „start”/„end” (nowsze edytory) nie przerywa ujednolicania; „end” to wyrównanie do prawej."""
+        document = Document()
+        for value in ('start', 'end'):
+            jc = OxmlElement('w:jc', {qn('w:val'): value})
+            document.add_paragraph(value)._p.get_or_add_pPr().append(jc)
+        result = Document(normalize_docx(saved(document), justify=True))
+        self.assertEqual([p._p.pPr.find(qn('w:jc')).get(qn('w:val')) for p in result.paragraphs], ['both', 'end'])
+
+    def test_created_page_margins_have_header_and_footer_distance(self):
+        document = Document()
+        document.add_paragraph('Tekst')
+        section = document.sections[0]._sectPr
+        section.remove(section.find(qn('w:pgMar')))
+        result = Document(normalize_docx(saved(document)))
+        margins = result.sections[0]._sectPr.find(qn('w:pgMar'))
+        self.assertEqual((margins.get(qn('w:header')), margins.get(qn('w:footer'))), ('708', '708'))
+        self.assertEqual(margins.get(qn('w:top')), '1417')
+        # Istniejące odległości nagłówka i stopki zostają.
+        document = Document()
+        document.sections[0].header_distance = Cm(2)
+        margins = Document(normalize_docx(saved(document))).sections[0]._sectPr.find(qn('w:pgMar'))
+        self.assertEqual(margins.get(qn('w:header')), str(Cm(2).twips))
+
+
 class JustificationTests(IsolatedProgramDirsMixin, SimpleTestCase):
     def check_document(self, stream):
         doc = Document(stream)
         self.assertEqual(len(doc.paragraphs), 5)
         self.assertEqual(doc.paragraphs[0].alignment, WD_ALIGN_PARAGRAPH.JUSTIFY)
-        self.assertEqual(doc.paragraphs[1].alignment, WD_ALIGN_PARAGRAPH.JUSTIFY)
+        # Wyrównanie do prawej jest zamierzone (podpis, data) – zostaje.
+        self.assertEqual(doc.paragraphs[1].alignment, WD_ALIGN_PARAGRAPH.RIGHT)
         for paragraph in doc.paragraphs[2:4]:
             self.assertEqual(paragraph.paragraph_format.first_line_indent, 0)
             self.assertTrue(
@@ -259,6 +306,60 @@ class SoftWhitespaceTests(SimpleTestCase):
         (result,) = self.normalized(document)
         self.assertEqual(result.text, 'Początek koniec')
         self.assertEqual(len(result._p.xpath('.//w:del//w:br')), 1)
+
+    def test_soft_break_in_list_items_and_headings_is_kept(self):
+        document = Document()
+        heading = document.add_paragraph('Tytuł\u00a0rozdziału', style='Heading 1')
+        heading.runs[0].add_break()
+        heading.add_run('podtytuł')
+        listed = document.add_paragraph('Punkt', style='List Number')
+        listed.runs[0].add_break()
+        listed.add_run('ciąg dalszy')
+        numbered = document.add_paragraph('Własna')
+        properties = numbered._p.get_or_add_pPr()
+        numbering = OxmlElement('w:numPr')
+        for name, value in (('w:ilvl', '0'), ('w:numId', '1')):
+            numbering.append(OxmlElement(name, {qn('w:val'): value}))
+        properties.append(numbering)
+        numbered.runs[0].add_break()
+        numbered.add_run('lista')
+        outline = document.styles.add_style('Rozdział', WD_STYLE_TYPE.PARAGRAPH)
+        outline.element.get_or_add_pPr().append(OxmlElement('w:outlineLvl', {qn('w:val'): '0'}))
+        derived = document.styles.add_style('Rozdział pochodny', WD_STYLE_TYPE.PARAGRAPH)
+        derived.base_style = outline
+        chapter = document.add_paragraph('Rozdział', style='Rozdział pochodny')
+        chapter.runs[0].add_break()
+        chapter.add_run('drugi wiersz')
+        plain = document.add_paragraph('Zwykły')
+        plain.runs[0].add_break()
+        plain.add_run('akapit\u2007tekstu')
+        result = self.normalized(document)
+        self.assertEqual([paragraph.text for paragraph in result],
+                         ['Tytuł rozdziału\npodtytuł', 'Punkt\nciąg dalszy', 'Własna\nlista', 'Rozdział\ndrugi wiersz',
+                          'Zwykły', 'akapit tekstu'])
+
+    def test_split_tracked_insertion_and_paragraph_mark_get_unique_ids(self):
+        document = Document()
+        paragraph = document.add_paragraph('Początek ')
+        mark = OxmlElement('w:rPr')
+        mark.append(OxmlElement('w:ins', {qn('w:id'): '4', qn('w:author'): 'Redakcja',
+                                          qn('w:date'): '2026-01-01T00:00:00Z'}))
+        paragraph._p.get_or_add_pPr().append(mark)
+        inserted = OxmlElement('w:ins', {qn('w:id'): '7', qn('w:author'): 'Redakcja',
+                                         qn('w:date'): '2026-01-01T00:00:00Z'})
+        run = OxmlElement('w:r')
+        for name, text in (('w:t', 'wstawka'), ('w:br', None), ('w:t', 'dalej'), ('w:br', None), ('w:t', 'koniec')):
+            child = OxmlElement(name)
+            child.text = text
+            run.append(child)
+        inserted.append(run)
+        paragraph._p.append(inserted)
+        result = self.normalized(document)
+        self.assertEqual([''.join(p._p.xpath('.//w:t/text()')) for p in result], ['Początek wstawka', 'dalej', 'koniec'])
+        ids = [node.get(qn('w:id')) for p in result for node in p._p.iter() if node.get(qn('w:id')) is not None]
+        self.assertEqual(len(ids), 6)
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertTrue({'4', '7'} <= set(ids))
 
     def test_oversized_package_is_refused(self):
         stream = BytesIO()

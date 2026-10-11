@@ -9,6 +9,7 @@ from django.test import SimpleTestCase, TestCase, tag
 from django.urls import reverse
 from docx import Document
 from docx.enum.section import WD_ORIENT
+from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
 from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import nsdecls, qn
@@ -17,7 +18,7 @@ from docx.shared import Cm, Pt, RGBColor
 from core.program_test_support import run_program
 from core.services import program_jobs as jobs
 from core.services.document_converter import RebuildConfirmationRequired, convert_document
-from core.services.document_rebuild import RebuildUnsupported, inspect_docx, rebuild_docx
+from core.services.document_rebuild import PLACEHOLDER_OMISSION, RebuildUnsupported, inspect_docx, rebuild_docx
 from core.services.mailbox_import import package_messages
 from fantazmaty.testing import create_superuser
 
@@ -591,6 +592,11 @@ FIELD_WARNING = 'mechanizm pól automatycznych (zwykły tekst wyniku może pozos
 TOC_WARNING = 'spis treści (wstaw go ponownie w Wordzie: Odwołania → Spis treści) (liczba: 1)'
 
 
+def placeholder_run(text, style='PlaceholderText'):
+    """Tekst zastępczy kontrolki tak, jak zapisuje go Word (styl znakowy „Tekst zastępczy”)."""
+    return f'<w:r><w:rPr><w:rStyle w:val="{style}"/></w:rPr><w:t xml:space="preserve">{text}</w:t></w:r>'
+
+
 def texts(document, **options):
     return [p.text for p in Document(rebuild_docx(saved(document), **options)).paragraphs]
 
@@ -634,12 +640,40 @@ class RebuildContentControlTests(SimpleTestCase):
     def test_placeholder_text_is_not_carried(self):
         document = Document()
         paragraph = document.add_paragraph('Data: ')
-        paragraph._p.append(content_control(text_run('Kliknij tutaj, aby wprowadzić datę.'), placeholder=True))
+        paragraph._p.append(content_control(placeholder_run('Kliknij tutaj, aby wprowadzić datę.'), placeholder=True))
         add_block(document, content_control(
-            '<w:p>' + text_run('Kliknij lub naciśnij tutaj, aby wprowadzić tekst.') + '</w:p>', placeholder=True))
+            '<w:p>' + placeholder_run('Kliknij lub naciśnij tutaj, aby wprowadzić tekst.') + '</w:p>',
+            placeholder=True))
         document.add_paragraph('Koniec')
         self.assertEqual(omissions_of(document), [])
         self.assertEqual(texts(document), ['Data: ', 'Koniec'])
+
+    def test_polish_placeholder_style_is_recognized_by_its_name(self):
+        document = Document()
+        style = document.styles.add_style('Tekstzastpczy', WD_STYLE_TYPE.CHARACTER)
+        style.element.find(qn('w:name')).set(qn('w:val'), 'Placeholder Text')
+        style_id = style.element.get(qn('w:styleId'))
+        paragraph = document.add_paragraph('Data: ')
+        paragraph._p.append(content_control(placeholder_run('Kliknij tutaj.', style_id), placeholder=True))
+        self.assertEqual(omissions_of(document), [])
+        self.assertEqual(texts(document), ['Data: '])
+
+    def test_placeholder_flag_with_real_content_keeps_the_text_with_a_warning(self):
+        """Generator dokumentów wpisał treść, a oznaczenie w:showingPlcHdr zostało – treść nie może zniknąć."""
+        document = Document()
+        paragraph = document.add_paragraph('Imię: ')
+        paragraph._p.append(content_control(text_run('Jan'), placeholder=True))
+        add_block(document, content_control('<w:p>' + text_run('TEKST WYPEŁNIONY') + '</w:p>', placeholder=True))
+        self.assertEqual(omissions_of(document), [PLACEHOLDER_OMISSION + ' (liczba: 2)'])
+        self.assertEqual(texts(document, allow_omissions=True), ['Imię: Jan', 'TEKST WYPEŁNIONY'])
+
+    def test_placeholder_group_with_filled_fields_is_unwrapped(self):
+        document = Document()
+        from lxml import etree
+        inner = etree.tostring(content_control(text_run('KOWALSKI')), encoding=str)
+        add_block(document, content_control('<w:p>' + text_run('Nazwisko: ') + inner + '</w:p>', placeholder=True))
+        self.assertEqual(omissions_of(document), [PLACEHOLDER_OMISSION + ' (liczba: 1)'])
+        self.assertEqual(texts(document, allow_omissions=True), ['Nazwisko: KOWALSKI'])
 
     def test_table_of_contents_is_removed_with_one_warning(self):
         document = Document()
@@ -798,7 +832,8 @@ class RebuildKeepPageFormatTests(SimpleTestCase):
         with self.assertRaises(RebuildUnsupported) as caught:
             inspect_docx(saved(document), keep_page_format=True)
         self.assertEqual(caught.exception.omissions, [
-            'podziały na sekcje i ustawienia ich układu (pozostanie jedna sekcja układu pierwszej) (liczba: 1)'])
+            'podziały na sekcje i ustawienia ich układu (pozostanie jedna sekcja o układzie pierwszej sekcji) '
+            '(liczba: 1)'])
         rebuilt = Document(rebuild_docx(saved(document), allow_omissions=True, keep_page_format=True))
         self.assertEqual(len(rebuilt.sections), 1)
         self.assertAlmostEqual(rebuilt.sections[0].page_width.cm, 14.8, places=1)

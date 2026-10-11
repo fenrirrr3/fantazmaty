@@ -8,7 +8,7 @@ from django.urls import reverse
 from docx import Document
 
 from core.models import ReplacementEntry
-from core.odkurzacz_forms import ReplacementEntryForm
+from core.odkurzacz_forms import REPLACEMENT_ACTIVE_MAX, ReplacementEntryForm
 from core.program_test_support import run_program
 from core.services import program_jobs as jobs
 from core.services.odkurzacz import DEFAULT_REPLACEMENTS
@@ -129,6 +129,16 @@ class DictionaryPageTests(TestCase):
         self.pattern.refresh_from_db()
         self.assertFalse(self.pattern.is_active)
 
+    def test_switching_on_an_entry_respects_the_active_limit(self):
+        self.client.force_login(self.coordinator)
+        disabled = ReplacementEntry.objects.create(source='wylaczone', target='x', is_active=False)
+        with patch('core.views.replacements.REPLACEMENT_ACTIVE_MAX', ReplacementEntry.objects.filter(is_active=True).count()):
+            response = self.client.post(reverse('core:replacement_edit', args=[disabled.pk]), {'action': 'toggle'},
+                                        follow=True)
+        self.assertContains(response, 'aktywnych pozycji')
+        disabled.refresh_from_db()
+        self.assertFalse(disabled.is_active)
+
     def test_programs_page_links_to_the_dictionary_with_the_active_count(self):
         self.client.force_login(self.member)
         ReplacementEntry.objects.filter(pk=self.word.pk).update(is_active=False)
@@ -183,6 +193,36 @@ class EntryValidationTests(TestCase):
             with self.subTest(source=empty):
                 self.assertInvalid(self.form(kind='pattern', source=empty, target='y'), 'source', 'pustego tekstu')
         self.assertInvalid(self.form(kind='pattern', source='a' * 501, target='b'), 'source', 'co najwyżej 500')
+
+    def test_costly_patterns_are_refused_like_in_the_cleaner(self):
+        """Odkurzacz po cichu pomija wzorce o ryzyku bardzo długiego działania – formularz ich nie przyjmuje."""
+        for source in ('(a+)+b', r'(\w+\s?)+$', r'\w*\w*\w*\w*!', '(a?){22}a{22}'):
+            with self.subTest(source=source):
+                self.assertInvalid(self.form(kind='pattern', source=source, target='x'), 'source',
+                                   'Odkurzacz nie użyje tego wzorca')
+
+    def test_words_with_dots_hyphens_and_apostrophes_on_the_edges(self):
+        for source in ('np.', 'tzw.', '-owy', "rock'n'roll", "o'"):
+            with self.subTest(source=source):
+                self.assertTrue(self.form(source=source, target='x').is_valid())
+
+    def test_letter_case_and_order_are_explained(self):
+        form = ReplacementEntryForm(allow_patterns=True)
+        self.assertIn('NATO', form.fields['target'].help_text)
+        self.assertIn('nie jest ponownie zamieniany', form.fields['position'].help_text)
+
+    def test_active_entry_limit_is_explained(self):
+        ReplacementEntry.objects.bulk_create(ReplacementEntry(source=f'slowo{index}', target='x', position=index)
+                                             for index in range(REPLACEMENT_ACTIVE_MAX - ReplacementEntry.objects.count()))
+        form = self.form(source='nowe')
+        self.assertFalse(form.is_valid())
+        self.assertIn(f'Słownik ma już {REPLACEMENT_ACTIVE_MAX} aktywnych pozycji', str(form.non_field_errors()))
+        # Wyłączoną pozycję można dodać, a zmiana istniejącej aktywnej pozycji nie liczy jej drugi raz.
+        self.assertTrue(self.form(source='nowe', is_active='').is_valid())
+        existing = ReplacementEntry.objects.get(source='slowo3')
+        self.assertTrue(self.form(source='slowo3', target='y', instance=existing).is_valid())
+        disabled = ReplacementEntry.objects.create(source='wylaczone', target='x', is_active=False)
+        self.assertFalse(self.form(source='wylaczone', instance=disabled).is_valid())
 
     def test_patterns_require_permission(self):
         form = self.form(allow_patterns=False, kind='pattern', source=r'\bkot\b', target='pies')

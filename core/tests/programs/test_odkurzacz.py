@@ -8,12 +8,11 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, SimpleTestCase, TestCase, tag
 from django.urls import reverse
 from docx import Document
-from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import RGBColor
-from lxml import html
+from lxml import etree, html
 
 from core.program_test_support import run_program
 from core.services.document_preparation import prepare_docx
@@ -23,8 +22,9 @@ from core.services.odkurzacz import (
 from fantazmaty.testing import create_member
 
 from .support import (
-    IsolatedProgramDirsMixin, docx_bytes, downloaded, downloaded_document, footnote_text, formatted_docx, saved,
-    set_default_language, set_language, tracked_changes_document, upload, whole_document,
+    IsolatedProgramDirsMixin, add_internal_link, add_page_break, add_text_box, docx_bytes, downloaded,
+    downloaded_document, footnote_text, formatted_docx, saved, set_default_language, set_language,
+    tracked_changes_document, upload, whole_document, with_footnote,
 )
 
 
@@ -65,7 +65,7 @@ class CleanDocxTests(SimpleTestCase):
         self.assertEqual(document.paragraphs[0].text, 'Akapit główny.')
         self.assertEqual(document.tables[0].cell(0, 0).text, 'Lampa świeciła, lampa gasła.')
         self.assertEqual(document.sections[0].header.paragraphs[0].text, 'Nagłówek strony')
-        self.assertIn('Przypis z\u00a0lampą i\u00a0lampą.', footnote_text(BytesIO(result.getvalue())))
+        self.assertIn('Przypis z lampą i lampą.', footnote_text(BytesIO(result.getvalue())))
 
     def test_all_rules_run(self):
         result = Document(clean_docx(BytesIO(docx_bytes('  Ala  ma kota...  ')), [key for key, _ in EDITORIAL_RULES]))
@@ -106,7 +106,7 @@ class CleanDocxTests(SimpleTestCase):
                     self.assertTrue(result.paragraphs[0].runs[-1].italic)
 
     def test_soft_whitespace_keeps_paragraphs_page_breaks_formatting_and_cleans_tables(self):
-        with prepare_docx(BytesIO(soft_whitespace_document()), use_cleaner=True, cleaner_rules=['single_nbsp'],
+        with prepare_docx(BytesIO(soft_whitespace_document()), use_cleaner=True, cleaner_rules=['spaces'],
                           remove_soft_whitespace=True) as stream:
             doc = Document(stream)
         self.assertEqual([p.text for p in doc.paragraphs[:2]], ['Ala ma', 'kota !'])
@@ -142,8 +142,8 @@ class CleanDocxMarkerAndOrderTests(SimpleTestCase):
                 self.assertTrue(result.paragraphs[0].runs[0].bold)
                 self.assertEqual(len(result.paragraphs[0]._p.xpath('.//w:' + marker)), 1)
 
-    def test_nonbreaking_spaces_added_by_the_cleaner_survive_soft_whitespace_removal(self):
-        """Regresja: zamiana twardych spacji szła po Odkurzaczu i kasowała spacje dodane przez jego reguły."""
+    def test_cleaner_after_soft_whitespace_removal_uses_only_plain_spaces(self):
+        """Decyzja właściciela: także po zamianie miękkich enterów nigdzie nie ma spacji nierozdzielających."""
         document = Document()
         run = document.add_paragraph().add_run('Był w\u00a0domu i ogrodzie,')
         run.add_break()
@@ -152,7 +152,7 @@ class CleanDocxMarkerAndOrderTests(SimpleTestCase):
                           remove_soft_whitespace=True) as stream:
             result = Document(stream)
         self.assertEqual([p.text for p in result.paragraphs],
-                         ['Był w\u00a0domu i\u00a0ogrodzie,', 'miał 12\u00a0345\u00a0zł.'])
+                         ['Był w domu i ogrodzie,', 'miał 12 345 zł.'])
 
 
 class CleanDocxStructureTests(SimpleTestCase):
@@ -277,7 +277,7 @@ class TrackChangesTests(SimpleTestCase):
         self.assertTrue({'word/document.xml', 'word/footnotes.xml'} <= changed_parts)
         self.assertTrue(any('header' in name for name in changed_parts))
         self.assertTrue(any('footer' in name for name in changed_parts))
-        self.assertIn('Tabela z\u00a0kropkami…', expected[0])
+        self.assertIn('Tabela z kropkami…', expected[0])
         self.assertIn('Pole tekstowe…', expected[0])
 
     def test_revision_ids_are_unique_and_attributes_complete(self):
@@ -360,15 +360,16 @@ class CleanerSummaryTests(SimpleTestCase):
         self.assertEqual(summary['empty_paragraphs'], 3)
         self.assertEqual(summary['user_word_corrections'], 1)
         self.assertEqual(summary['dates_times'], 1)
-        self.assertEqual(summary['ellipsis'], 6)  # akapit, tabela, pole tekstowe (2 kopie), stopka, przypis
+        self.assertEqual(summary['ellipsis'], 5)  # akapit, tabela, pole tekstowe (kopia zapasowa liczona raz), stopka, przypis
+        self.assertEqual(summary.pop('replacements'), [{'source': 'pickupami', 'target': 'pikapami', 'count': 1}])
         self.assertTrue(all(value > 0 for value in summary.values()))
         self.assertLessEqual(set(summary), set(rules))
 
     def test_counts_for_simple_text(self):
         summary = {}
-        clean_docx(BytesIO(docx_bytes('Ala  ma  kota... i psa.')), ['spaces', 'ellipsis', 'single_nbsp', 'quotes'],
+        clean_docx(BytesIO(docx_bytes('Ala  ma  kota... i psa.')), ['spaces', 'ellipsis', 'quotes'],
                    summary=summary)
-        self.assertEqual(summary, {'spaces': 2, 'ellipsis': 1, 'single_nbsp': 1})
+        self.assertEqual(summary, {'spaces': 2, 'ellipsis': 1})
         summary = {}
         clean_docx(BytesIO(docx_bytes('Bez zmian.')), ['spaces'], summary=summary)
         self.assertEqual(summary, {})
@@ -381,84 +382,116 @@ class CleanerSummaryTests(SimpleTestCase):
 
 
 class LanguageTests(SimpleTestCase):
-    """Fragmenty oznaczone w Wordzie innym językiem niż polski nie są poprawiane."""
+    """Decyzja właściciela: cały dokument jest polski – oznaczenia innego języka niczego nie wyłączają."""
 
     rules = ['spaces', 'ellipsis', 'user_word_corrections', 'pronouns_lower']
 
-    def cleaned(self, document, rules=None, **kwargs):
-        return Document(clean_docx(saved(document), rules or self.rules, **kwargs)).paragraphs
-
-    def test_foreign_run_is_a_barrier_and_polish_text_around_is_cleaned(self):
+    def test_text_marked_with_another_language_is_cleaned_too(self):
         document = Document()
+        set_default_language(document, 'pl-PL')
+        set_language(document.styles['Quote'].element, 'en-GB')
         paragraph = document.add_paragraph()
         paragraph.add_run('Mówił  wtedy... ')
         set_language(paragraph.add_run('Pickup  truck...'), 'en-US')
         paragraph.add_run(' i  pickupem...')
-        result = self.cleaned(document)
-        self.assertEqual(result[0].text, 'Mówił wtedy… Pickup  truck... i pikapem…')
-
-    def test_polish_and_empty_marks_are_polish(self):
-        for value in ('pl-PL', 'pl', 'PL-pl', '', 'x-none'):
-            with self.subTest(value=value):
-                document = Document()
-                set_language(document.add_paragraph().add_run('Ala  ma...'), value)
-                self.assertEqual(self.cleaned(document)[0].text, 'Ala ma…')
-
-    def test_character_and_paragraph_styles_mark_the_language(self):
-        document = Document()
-        set_default_language(document, 'pl-PL')  # jak w polskim Wordzie
-        set_language(document.styles['Emphasis'].element, 'de-DE')
-        set_language(document.styles['Quote'].element, 'en-GB')
-        paragraph = document.add_paragraph()
-        paragraph.add_run('Nein  danke... ', style='Emphasis')
-        paragraph.add_run('Tak  jest...')
-        quote = document.add_paragraph(style='Quote')
-        quote.add_run('To  be...')
-        set_language(quote.add_run(' a  to po polsku...'), 'pl-PL')
-        result = self.cleaned(document)
-        self.assertEqual(result[0].text, 'Nein  danke... Tak jest…')
-        self.assertEqual(result[1].text, 'To  be... a to po polsku…')
-
-    def test_paragraph_style_inherits_language_from_its_base_style(self):
-        document = Document()
-        set_language(document.styles['Quote'].element, 'fr-FR')
-        style = document.styles.add_style('Cytat francuski', WD_STYLE_TYPE.PARAGRAPH)
-        style.base_style = document.styles['Quote']
-        document.add_paragraph('Titre  du...', style='Cytat francuski')
-        self.assertEqual(self.cleaned(document)[0].text, 'Titre  du...')
-
-    def test_document_default_language(self):
-        # python-docx (jak angielski Word i Google Docs) ma w docDefaults en-US: bez jawnych
-        # oznaczeń polskich traktujemy to jako pozostałość szablonu i tekst jest poprawiany.
-        document = Document()
-        document.add_paragraph('Ala  ma...')
-        self.assertEqual(self.cleaned(document)[0].text, 'Ala ma…')
-        # Gdy dokument oznacza polski tekst jawnie, nieoznaczony tekst ma język domyślny.
-        set_language(document.add_paragraph().add_run('Polski  tekst...'), 'pl-PL')
-        result = self.cleaned(document)
-        self.assertEqual([p.text for p in result], ['Ala  ma...', 'Polski tekst…'])
-        # Polskie docDefaults: wszystko po polsku, oprócz jawnie obcych fragmentów.
-        document = Document()
-        set_default_language(document, 'pl-PL')
-        document.add_paragraph('Ala  ma...')
-        set_language(document.add_paragraph().add_run('Hello  world...'), 'en-US')
-        self.assertEqual([p.text for p in self.cleaned(document)], ['Ala ma…', 'Hello  world...'])
-
-    def test_foreign_text_in_headers_and_tracked_mode(self):
-        document = Document()
+        document.add_paragraph('To  be...', style='Quote')
         header = document.sections[0].header.paragraphs[0]
         set_language(header.add_run('Running  head...'), 'en-US')
-        header.add_run(' Strona  główna...')
-        paragraph = document.add_paragraph()
-        set_language(paragraph.add_run('Ich  bin... '), 'de-AT')
-        paragraph.add_run('a  ja...')
-        stream = clean_docx(saved(document), self.rules, track_changes=True)
-        texts = _story_texts(stream, 'accept')
-        self.assertIn('Ich  bin... a ja…', texts[0])
-        self.assertIn('Running  head... Strona główna…', [text for story in texts[1:] for text in story])
-        stream.seek(0)
-        deleted = Document(stream).paragraphs[0]._p.xpath('.//w:delText/text()')
-        self.assertEqual(deleted, [' ', '...'])
+        for track_changes in (False, True):
+            with self.subTest(track_changes=track_changes):
+                stream = clean_docx(saved(document), self.rules, track_changes=track_changes)
+                texts = _story_texts(stream, 'accept')
+                self.assertEqual(texts[0], ['Mówił wtedy… Pikap truck… i pikapem…', 'To be…'])
+                self.assertIn('Running head…', [text for story in texts[1:] for text in story])
+
+
+class CleanerR7Tests(SimpleTestCase):
+    """Poprawki po przeglądzie r6: spacje nierozdzielające, podsumowanie zamian, śledzone zmiany, podział strony."""
+
+    @staticmethod
+    def nbsp_document():
+        document = Document()
+        paragraph = document.add_paragraph('Był\u00a0w\u202fdomu\u2007i ')
+        add_internal_link(paragraph, 'x', 'w\u00a0łączu')
+        document.add_table(rows=1, cols=1).cell(0, 0).text = 'Tabela\u00a0z'
+        add_text_box(document.add_paragraph('Przed.'), 'Pole\u00a0z')
+        document.sections[0].header.paragraphs[0].text = 'Nagłówek\u00a0a'
+        document.sections[0].footer.paragraphs[0].text = 'Stopka\u202fo'
+        return with_footnote(document, 'Przypis\u00a0w')
+
+    def test_existing_nonbreaking_spaces_become_plain_spaces_in_every_part(self):
+        source = self.nbsp_document().getvalue()
+        for rules, track_changes in ((['spaces'], False), (['spaces'], True), ([], False),
+                                     (sorted(ALL_EDITORIAL_RULES), True)):
+            with self.subTest(rules=rules[:1], track_changes=track_changes):
+                summary = {}
+                result = clean_docx(BytesIO(source), rules, track_changes=track_changes, summary=summary)
+                with ZipFile(result) as archive:
+                    xml = ''.join(archive.read(name).decode() for name in archive.namelist() if name.endswith('.xml'))
+                for character in '\u00a0\u202f\u2007':
+                    self.assertNotIn(character, xml)
+                texts = [text for story in _story_texts(result, 'accept') for text in story]
+                for expected in ('Był w domu i w łączu', 'Tabela z', 'Pole z', 'Nagłówek a', 'Stopka o', 'Przypis w'):
+                    self.assertIn(expected, texts)
+                # Zamiana jest cicha (bez tysięcy niewidocznych zmian) i liczona raz, bez kopii zapasowej pola.
+                self.assertFalse(_revisions(result))
+                self.assertEqual(summary.get('nonbreaking_spaces'), 9)
+
+    def test_summary_lists_dictionary_replacements(self):
+        document = Document()
+        document.add_paragraph('Pickupem jechał, Pickupem wrócił, pickupem też. Niechcąco.')
+        add_text_box(document.add_paragraph('Pole'), 'Pickupem w polu.')
+        summary = {}
+        clean_docx(saved(document), ['user_word_corrections'], summary=summary)
+        self.assertEqual(summary['replacements'], [
+            {'source': 'Pickupem', 'target': 'Pikapem', 'count': 3},
+            {'source': 'Niechcąco', 'target': 'Niechcący', 'count': 1},
+            {'source': 'pickupem', 'target': 'pikapem', 'count': 1},
+        ])
+        self.assertEqual(summary['user_word_corrections'], 5)
+        summary = {}
+        clean_docx(saved(document), ['spaces'], summary=summary)
+        self.assertNotIn('replacements', summary)
+
+    def test_paragraph_mark_deleted_earlier_is_not_deleted_twice(self):
+        document = Document()
+        for text in ('A', '', '', 'B'):
+            document.add_paragraph(text)
+        mark = document.paragraphs[1]._p.get_or_add_pPr()
+        properties = OxmlElement('w:rPr')
+        properties.append(OxmlElement('w:del', {qn('w:id'): '3', qn('w:author'): 'Redakcja',
+                                                qn('w:date'): '2026-01-01T00:00:00Z'}))
+        mark.append(properties)
+        result = clean_docx(saved(document), ['empty_paragraphs'], track_changes=True)
+        paragraphs = Document(result).paragraphs
+        self.assertEqual([len(p._p.xpath('./w:pPr/w:rPr/w:del')) for p in paragraphs], [0, 1, 0, 0])
+
+    def test_split_runs_get_unique_formatting_revision_ids(self):
+        document = Document()
+        run = document.add_paragraph().add_run('Ala  ma  kota...')
+        change = OxmlElement('w:rPrChange', {qn('w:id'): '5', qn('w:author'): 'Redakcja',
+                                              qn('w:date'): '2026-01-01T00:00:00Z'})
+        change.append(OxmlElement('w:rPr'))
+        run._r.get_or_add_rPr().append(change)
+        result = clean_docx(saved(document), ['spaces', 'ellipsis'], track_changes=True)
+        with ZipFile(result) as archive:
+            root = etree.fromstring(archive.read('word/document.xml'))
+        ids = [node.get(qn('w:id')) for node in root.iter() if node.get(qn('w:id')) is not None]
+        self.assertGreater(len(root.findall('.//' + qn('w:rPrChange'))), 1)
+        self.assertEqual(len(ids), len(set(ids)))
+
+    def test_text_after_a_page_break_at_paragraph_start_is_trimmed_like_a_paragraph_start(self):
+        for track_changes in (False, True):
+            with self.subTest(track_changes=track_changes):
+                document = Document()
+                paragraph = document.add_paragraph()
+                paragraph.add_run().add_break(WD_BREAK.PAGE)
+                paragraph.add_run('  - Wiem  tak. ')
+                add_page_break(document.add_paragraph('Koniec. '))
+                result = clean_docx(saved(document), FORM_DEFAULT_EDITORIAL_RULES, track_changes=track_changes)
+                texts = _story_texts(result, 'accept')[0]
+                self.assertEqual([text.strip('\n') for text in texts], ['– Wiem tak.', 'Koniec.'])
+                self.assertEqual(len(Document(result).element.xpath('//w:br[@w:type="page"]')), 2)
 
 
 class OdkurzaczPageTests(IsolatedProgramDirsMixin, TestCase):

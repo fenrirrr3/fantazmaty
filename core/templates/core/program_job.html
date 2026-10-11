@@ -5,22 +5,28 @@
 {% block content %}
 <header class="page-header">
     <h1 class="page-title">Postęp programu</h1>
-    <p class="page-description">Dokument jest przetwarzany na serwerze. Strona odświeża się sama.</p>
+    <p class="page-description">{% if refresh %}Dokument jest przetwarzany na serwerze. Strona odświeża się sama.{% else %}Dokument jest przetwarzany na serwerze. Tu zobaczysz wynik i uwagi programu.{% endif %}</p>
 </header>
 <section class="details-card program-job-status" aria-live="polite">
     <div class="card-body">
     {% if state.state == 'done' %}
         <p class="message success" role="status">Gotowe. Po pobraniu plik zostanie usunięty z serwera.</p>
+        {% if state.removed_images > 0 %}{% with n=state.removed_images %}{% with digits=n|stringformat:"d" %}{% with last=digits|slice:"-1:" two=digits|slice:"-2:" %}
+        <p class="message warning program-images"><strong>Usunięto {{ n }} {% if n == 1 %}obraz{% elif last in "234" and two != "12" and two != "13" and two != "14" %}obrazy{% else %}obrazów{% endif %} z dokumentu – wynik ich nie zawiera.</strong></p>
+        {% endwith %}{% endwith %}{% endwith %}{% endif %}
         {% if state.warnings %}<div class="form-warning"><strong>Uwagi do konwersji</strong><ul>{% for warning in state.warnings %}<li>{{ warning }}</li>{% endfor %}</ul></div>{% endif %}
-        {% if state.summary is not None %}<div class="program-summary"><strong>Podsumowanie zmian</strong>
-            {% if state.summary %}<table class="data-table"><thead><tr><th>Reguła</th><th>Zmiany</th></tr></thead><tbody>
+        {% if state.summary is not None or state.replacements %}<div class="program-summary"><strong>Podsumowanie zmian</strong>
+            {% if state.summary %}<table class="data-table" data-pagination="off"><thead><tr><th data-sort="none">Reguła</th><th data-sort="none">Zmiany</th></tr></thead><tbody>
                 {% for row in state.summary %}<tr><td>{{ row.label }}</td><td>{{ row.count }}</td></tr>{% endfor %}
-            </tbody></table>{% else %}<p>Reguły korekty nie wprowadziły zmian.</p>{% endif %}
+            </tbody></table>{% elif state.summary is not None %}<p>Reguły korekty nie wprowadziły zmian.</p>{% endif %}
+            {% if state.replacements %}<div class="program-replacements-block"><p>Zamiany słownikowe:</p>
+                <ul class="program-replacements">{% for item in state.replacements %}{% if item.source and item.count > 0 %}<li><span class="replacement-source">{{ item.source }}</span> → <span class="replacement-source">{{ item.target }}</span> ({{ item.count }})</li>{% endif %}{% endfor %}</ul>
+            </div>{% endif %}
         </div>{% endif %}
         <p><a class="primary-button" href="{{ download_url }}">Pobierz {{ state.filename }}</a></p>
     {% elif state.state == 'confirmation' %}
         <div class="form-warning" role="alert">{{ state.message }}</div>
-        <form method="post">
+        <form method="post" class="actions">
             {% csrf_token %}<input type="hidden" name="view" value="page">
             <button type="submit" name="action" value="confirm" class="primary-button">Akceptuję i kontynuuję</button>
             <button type="submit" name="action" value="cancel" class="secondary-button">Zatrzymaj</button>

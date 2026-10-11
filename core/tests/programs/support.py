@@ -330,3 +330,93 @@ def tracked_changes_document():
     document.sections[0].header.paragraphs[0].text = 'Nagłówek  strony'
     document.sections[0].footer.paragraphs[0].text = 'Stopka...'
     return with_footnote(document, 'Przypis  z tekstem...')
+
+
+PICTURE_DRAWING = (
+    '<w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="190500" cy="95250"/>'
+    '<wp:docPr id="{id}" name="Obraz {id}"/><a:graphic><a:graphicData '
+    'uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr>'
+    '<pic:cNvPr id="{id}" name="obraz.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill>'
+    '<a:blip r:embed="{rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr>'
+    '<a:xfrm><a:off x="0" y="0"/><a:ext cx="190500" cy="95250"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/>'
+    '</a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>'
+)
+IMAGE_NAMESPACES = (
+    'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
+    'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" '
+    'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+    'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" '
+    'xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" '
+    'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" '
+    'xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office"'
+)
+IMAGE_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image'
+
+
+def docx_with_images():
+    """DOCX z obrazami w treści, nagłówku, przypisie i polu tekstowym oraz obrazem VML i obiektem OLE.
+
+    Liczba obrazów do usunięcia: 6 (treść, pole tekstowe, VML, OLE, nagłówek, przypis). Pole tekstowe ma
+    wersję zapasową VML z tym samym obrazem – liczy się raz. Tekst „Pole z obrazem” w polu tekstowym zostaje.
+    """
+    from docx.oxml import parse_xml
+    document = Document()
+    document.add_paragraph('Przed obrazem.')
+    document.add_picture(png(20, 10))
+    body_rid = next(rid for rid, rel in document.part.rels.items() if rel.reltype == IMAGE_REL)
+    ole_rid = document.part.relate_to('embeddings/oleObject1.bin',
+                                      'http://schemas.openxmlformats.org/officeDocument/2006/relationships/oleObject',
+                                      is_external=True)
+    paragraph = document.add_paragraph('Pole: ')
+    picture = PICTURE_DRAWING.format(id=7, rid=body_rid)
+    paragraph._p.append(parse_xml(
+        f'<w:r {IMAGE_NAMESPACES}><mc:AlternateContent><mc:Choice Requires="wps"><w:drawing><wp:inline>'
+        '<wp:docPr id="8" name="Pole"/><a:graphic><a:graphicData '
+        'uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"><wps:wsp><wps:txbx><w:txbxContent>'
+        f'<w:p><w:r><w:t>Pole z obrazem</w:t></w:r><w:r>{picture}</w:r></w:p></w:txbxContent></wps:txbx>'
+        '</wps:wsp></a:graphicData></a:graphic></wp:inline></w:drawing></mc:Choice><mc:Fallback><w:pict>'
+        '<v:shape><v:textbox><w:txbxContent><w:p><w:r><w:t>Pole z obrazem</w:t></w:r><w:r><w:pict><v:shape>'
+        f'<v:imagedata r:id="{body_rid}"/></v:shape></w:pict></w:r></w:p></w:txbxContent></v:textbox></v:shape>'
+        '</w:pict></mc:Fallback></mc:AlternateContent></w:r>'))
+    paragraph._p.append(parse_xml(
+        f'<w:r {IMAGE_NAMESPACES}><w:pict><v:shape style="width:10pt;height:10pt">'
+        f'<v:imagedata r:id="{body_rid}" o:title=""/></v:shape></w:pict></w:r>'))
+    paragraph._p.append(parse_xml(
+        f'<w:r {IMAGE_NAMESPACES}><w:object><v:shape style="width:10pt;height:10pt"><v:imagedata r:id="{body_rid}"/>'
+        f'</v:shape><o:OLEObject Type="Embed" ProgID="Package" ShapeID="_x0000_i1025" r:id="{ole_rid}"/></w:object></w:r>'))
+    document.add_paragraph('Po obrazie.')
+    header = document.sections[0].header
+    header.paragraphs[0].text = 'Nagłówek '
+    header.paragraphs[0].add_run().add_picture(png(20, 10))
+    raw = with_footnote(document, 'Przypis z obrazem')
+    output = BytesIO()
+    with ZipFile(raw) as source, ZipFile(output, 'w', ZIP_DEFLATED) as target:
+        for item in source.infolist():
+            data = source.read(item.filename)
+            if item.filename == 'word/document.xml.rels' or item.filename == 'word/_rels/document.xml.rels':
+                # Obiekt OLE jest osadzony w pakiecie (relacja wewnętrzna).
+                data = data.replace(b'TargetMode="External"', b'')
+            if item.filename == 'word/footnotes.xml':
+                data = data.replace(b'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"',
+                                    IMAGE_NAMESPACES.encode())
+                data = data.replace(b'Przypis z obrazem</w:t></w:r>', b'Przypis z obrazem</w:t></w:r><w:r>'
+                                    + PICTURE_DRAWING.format(id=9, rid='rIdFootImage').encode() + b'</w:r>')
+            target.writestr(item, data)
+        target.writestr('word/_rels/footnotes.xml.rels', (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships '
+            'xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdFootImage" '
+            f'Type="{IMAGE_REL}" Target="media/footnote.png"/></Relationships>'))
+        target.writestr('word/media/footnote.png', png(5, 5).getvalue())
+        target.writestr('word/embeddings/oleObject1.bin', b'OLE')
+    output.seek(0)
+    return output
+
+
+def add_leading_break(paragraph, kind='page'):
+    """Podział strony albo kolumny (w:br w:type) na początku akapitu – tak Word zapisuje rozdział od nowej strony."""
+    from docx.oxml import parse_xml
+    from docx.oxml.ns import nsdecls
+    paragraph._p.insert(1 if paragraph._p.pPr is not None else 0,
+                        parse_xml(f'<w:r {nsdecls("w")}><w:br w:type="{kind}"/></w:r>'))
+    return paragraph

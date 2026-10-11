@@ -1,6 +1,7 @@
 "use strict";
 (() => {
-    // „Zaznacz/Odznacz wszystkie” działa na regułach w tej samej grupie pól.
+    // „Zaznacz/Odznacz wszystkie” działa na wszystkich polach siatki reguł w tej samej
+    // grupie – także na „Usuń miękkie entery i spacje nieprzenoszące”.
     document.querySelectorAll(".rule-actions").forEach((actions) => {
         const group = actions.closest("fieldset");
         if (!group) return;
@@ -8,7 +9,7 @@
         actions.addEventListener("click", (event) => {
             const button = event.target.closest("button[data-rules]");
             if (!button) return;
-            group.querySelectorAll('.odkurzacz-rules input[name$="rules"]').forEach((input) => {
+            group.querySelectorAll('.odkurzacz-rules input[type="checkbox"]').forEach((input) => {
                 input.checked = button.dataset.rules === "all";
             });
         });

@@ -31,16 +31,15 @@ EDITORIAL_RULES = (
     ('dash_spaces', 'Odstępy przy myślnikach i początku kwestii dialogowej'),
     ('range_dash', 'Łącznik w zakresach liczbowych → półpauza'),
     ('range_spaces', 'Usuwanie spacji wewnątrz zakresów liczbowych'),
-    ('single_nbsp', 'Spacja nierozdzielająca po a, i, o, u, w, z'),
-    ('unit_nbsp', 'Spacja nierozdzielająca między liczbą a jednostką'),
+    ('unit_nbsp', 'Jedna zwykła spacja między liczbą a jednostką: 5 kg'),
     ('unit_space', 'Brakująca spacja między liczbą a jednostką'),
-    ('reference_nbsp', 'Spacja nierozdzielająca: 2025 r., s. 15, nr 3'),
+    ('reference_nbsp', 'Jedna zwykła spacja w zapisach: 2025 r., s. 15, nr 3'),
     ('reference_space', 'Brakująca spacja: 2025r., s.15, nr3'),
     ('initials', 'Odstępy przy inicjałach i nazwisku'),
     ('abbreviations', 'Usuń spacje wewnątrz skrótów: m. in. → m.in., t. j. → tj., t. zw. → tzw.'),
     ('dates_times', 'Daty DD.MM.RRRR i godziny HH:MM (jednoznaczne zapisy)'),
     ('decimal', 'Przecinek dziesiętny przy jednostkach i kwotach'),
-    ('digit_groups', 'Grupowanie dużych liczb spacją nierozdzielającą'),
+    ('digit_groups', 'Grupowanie dużych liczb spacją: 12 345'),
     ('temperature', 'Temperatura: 20 °C / 20 °F / 20 K'),
     ('pronouns_lower', 'Zaimki osobowe małą literą – poza początkiem zdania i akapitu'),
     ('user_word_corrections', 'Własne zamiany słownikowe (słownik zamian w CMS)'),
@@ -52,8 +51,11 @@ DEFAULT_EDITORIAL_RULES = ALL_EDITORIAL_RULES - {'pronouns_lower', 'user_word_co
 # Formularz Odkurzacza zaznacza domyślnie także zaimki i zamiany słownikowe;
 # DEFAULT_EDITORIAL_RULES (bez nich) pozostaje dla automatycznego czyszczenia zgłoszeń.
 FORM_DEFAULT_EDITORIAL_RULES = ALL_EDITORIAL_RULES - {'empty_paragraphs'}
-NBSP = '\u00a0'
-H = r'[ \u00a0\u202f]'
+# Decyzja właściciela: Odkurzacz nigdzie nie wstawia spacji nierozdzielających,
+# a istniejące (U+00A0, wąska U+202F, cyfrowa U+2007) zawsze zamienia na zwykłe spacje.
+NONBREAKING_SPACES = '\u00a0\u202f\u2007'
+NONBREAKING_TABLE = str.maketrans(dict.fromkeys(NONBREAKING_SPACES, ' '))
+H = r'[ \u00a0\u202f\u2007]'
 LETTERS = 'A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż'
 LOWER = 'a-ząćęłńóśźż'
 UPPER = 'A-ZĄĆĘŁŃÓŚŹŻ'
@@ -78,6 +80,25 @@ PRONOUN_RE = re.compile(r'\b(?:' + '|'.join(
     sorted({form.capitalize() for form in PERSONAL_PRONOUNS}
            | {form.upper() for form in PERSONAL_PRONOUNS}, key=lambda value: (-len(value), value))
 ) + r')\b')
+
+
+# Zwroty grzecznościowe (listy, dedykacje, modlitwy): wielka litera w środku zdania jest zamierzona.
+HONORIFIC_PRONOUNS = frozenset('Ty Ciebie Cię Tobie Ci Tobą Wy Was Wam Wami'.split())
+OPENING_QUOTES = '„«‹‚'
+AMBIGUOUS_QUOTES = '"“\'‘'
+
+
+def _after_opening_quote(text, start):
+    """Wyraz tuż po cudzysłowie otwierającym (tytuł, cytat: „Ja, robot”)."""
+    window = max(0, start - 4)
+    prefix = text[window:start].rstrip(' \u00a0\u202f\u2007')
+    if not prefix:
+        return False
+    if prefix[-1] in OPENING_QUOTES:
+        return True
+    # Prosty cudzysłów otwiera cytat, gdy nie stoi tuż po literze lub cyfrze.
+    position = window + len(prefix) - 1
+    return prefix[-1] in AMBIGUOUS_QUOTES and (position == 0 or not text[position - 1].isalnum())
 
 
 PRONOUN_CONTINUATION_RE = re.compile(r'\b(?:np\.|m\.in\.|tj\.|tzw\.|por\.|zob\.)$', re.IGNORECASE)
@@ -134,6 +155,8 @@ def _lower_personal_pronouns(text):
             return match[0]
         if match[0].isupper() and len(match[0]) > 1 and (match[0] == 'NIE' or _in_caps_passage(text, match)):
             return match[0]
+        if match[0] in HONORIFIC_PRONOUNS or _after_opening_quote(text, match.start()):
+            return match[0]
         significant = _significant_prefix(text, match.start())
         if not significant or significant[-1] in '!?…:':
             return match[0]
@@ -153,6 +176,8 @@ TECHNICAL_RE = re.compile(
     r'(?:[/?#][^\s<>„”"]*)?|'
     # Nazwy techniczne z kropkami (moduł.klasa.pole) – co najmniej trzy człony małymi literami.
     r'\b(?-i:[a-z_][a-z0-9_]*(?:\.[a-z_][a-z0-9_]*){2,})\b|'
+    # Nazwy technologii z kropką i wersalikami po niej (ASP.NET, Socket.IO); Node.js chroni FILE_NAME_RE.
+    r'\b(?-i:[A-Za-z][\w+#]*\.(?:NET|IO))\b|'
     r'\b(?:\d{1,3}\.){3}\d{1,3}\b|'
     # Kod pocztowy przed nazwą miejscowości (00-950 Warszawa) – nie jest zakresem.
     r'\b\d{2}-\d{3}(?=[ \u00a0]+(?-i:[' + UPPER + r']))|'
@@ -163,7 +188,43 @@ DATE_RE = re.compile(
     r'(?<![\w.])(?:(?P<iso_y>\d{4})-(?P<iso_m>\d{1,2})-(?P<iso_d>\d{1,2})|'
     r'(?P<d>\d{1,2})(?P<sep>[./-])(?P<m>\d{1,2})(?P=sep)(?P<y>\d{4}))(?!\w|\.\d)')
 TIME_RE = re.compile(r'(?<![\w:])\d{1,2}:\d{2}(?::\d{2})?(?![\w:])')
+# Zakres godzin: 8:00-16:00, 8.00 – 16.00. Zapis z kropką uznajemy za godziny tylko przy pełnych
+# kwadransach i bez jednostki po nim (1.50-2.50 zł, 2.10-3.10 to nie godziny).
+TIME_RANGE_RE = re.compile(
+    r'(?<![\w.,:])(?P<h1>\d{1,2})(?P<s1>[:.])(?P<m1>\d{2})(?P<left>' + H + r'*)(?P<dash>[-–—])'
+    r'(?P<right>' + H + r'*)(?P<h2>\d{1,2})(?P<s2>[:.])(?P<m2>\d{2})(?![\w:]|[.,]\d)')
 
+
+
+def _time_range(match, enabled, counts):
+    """Zakres godzin: oba końce jak godzina (HH:MM), półpauza bez spacji – według włączonych reguł.
+
+    None, gdy to nie zakres godzin (kwota, wersja) – wtedy działają zwykłe reguły liczbowe.
+    """
+    hours, minutes = (int(match['h1']), int(match['h2'])), (match['m1'], match['m2'])
+    if max(hours) > 24 or max(map(int, minutes)) > 59 or match['s1'] != match['s2']:
+        return None
+    if match['s1'] == '.':
+        after = match.string[match.end():match.end() + 30]
+        if any(value not in ('00', '15', '30', '45') for value in minutes) or QUANTITY_AFTER_RE.match(after) \
+                or re.match(H + r'*(?:%|°)', after):
+            return None
+    changes = {}
+    ends = [match['h1'] + match['s1'] + match['m1'], match['h2'] + match['s2'] + match['m2']]
+    if 'dates_times' in enabled:
+        normalized = [f'{hour:02d}:{minute}' for hour, minute in zip(hours, minutes)]
+        changes['dates_times'] = sum(a != b for a, b in zip(ends, normalized))
+        ends = normalized
+    dash, left, right = match['dash'], match['left'], match['right']
+    if 'range_dash' in enabled and dash != '–':
+        dash, changes['range_dash'] = '–', 1
+    if 'range_spaces' in enabled and (left or right):
+        left, right, changes['range_spaces'] = '', '', bool(left) + bool(right)
+    if counts is not None:
+        for key, number in changes.items():
+            if number:
+                counts[key] = counts.get(key, 0) + number
+    return ends[0] + left + dash + right + ends[1]
 
 
 def _normalize_dates_times(text):
@@ -225,6 +286,7 @@ cz. rozdz. z. wyd. wydawn. oprac. przeł. tłum. il. rys. ryc. tab. fot.
 bibliogr. art. ust. lit. par. pol. ang. niem. fr. ros. łac. gr. wł.
 hiszp. czes. ukr. hist. daw. arch. żart. iron. pej. wulg. książk. poet.
 sp. sp.j. sp.k. sp.p. o.o. etc. ibid. sic. vs. dr. mgr. nr. mjr. płk. ppłk.
+ur. zm. ds. dot. dn. tel. temp. wg. nt. kl. tow. pn. pon. wt. śr. czw. pt. sob. niedz.
 """.split()) | frozenset(('z o.o.', 'sp. z o.o.', 'et al.', 'op. cit.'))
 
 
@@ -390,49 +452,66 @@ DEFAULT_REPLACEMENTS = (
     + [{'kind': 'pattern', 'source': pattern.pattern, 'target': target} for pattern, target in USER_WORD_PATTERNS]
     + [{'kind': 'pattern', 'source': COMMEDIA_RE.pattern, 'target': r'\g<noun>\g<space>dell’arte'}]
 )
-# Ochrona przed kosztownymi wpisami: moduł re nie ma limitu czasu, więc odrzucamy
-# długie wpisy i wzorce z zagnieżdżonym powtórzeniem w rodzaju (a+)+ lub (a|b)*.
+# Ochrona przed kosztownymi wpisami: moduł re nie ma limitu czasu, więc odrzucamy długie wpisy,
+# wzorce z zagnieżdżonym powtórzeniem w rodzaju (a+)+, (a?){22} lub (a|b)* (czas wykładniczy)
+# oraz wzorce, które na próbkach złośliwego tekstu działają zbyt wolno (np. \w*\w*\w*\w*!).
 MAX_REPLACEMENTS = 1000
 MAX_PATTERN_LENGTH = 500
 MAX_TARGET_LENGTH = 200
+PATTERN_TIME_LIMIT = 0.05  # sekundy na jedną próbkę
+# Do 512 znaków: wzorce kwadratowe (\w+ść) mieszczą się z zapasem także przy obciążonym serwerze,
+# a sześcienne i gorsze odpadają najpóźniej przy 256 znakach (szacunek wzrostu dla 512).
+PROBE_SIZES = (16, 32, 64, 128, 256, 512)
+PROBE_UNITS = ('a', 'ą', 'Ż', '1', ' ', '\t', 'ab', 'a ', 'a.', 'x-', 'aB1 ')
 _TOKEN_SPLIT_RE = re.compile(r'(\s+)')
+_GROUP_REFERENCE_RE = re.compile(r'\\(?:g<[^>]*>|\d+)')
+WORD_GAP = '[ \t\u00a0\u202f\u2007]+'
 
 
-def _apply_replacement_case(source, value, capital):
-    """Wynik małymi literami z wielkością liter źródła; target z wielkiej litery zachowuje ją."""
-    def single(source_part, value_part, first_capital):
-        value_part = value_part.lower()
-        if first_capital:
-            value_part = value_part[:1].upper() + value_part[1:]
-        return _replacement_case(source_part, value_part)
+def _apply_replacement_case(source, value, keep):
+    """Wielkość liter wyniku zamiany.
+
+    keep (cel zawiera wielkie litery: NATO, iPhone, Polak): zapis celu zostaje, chyba że źródło
+    jest całe wielkimi literami – wtedy wynik też. W przeciwnym razie wynik dostaje wielkość
+    liter źródła (pickup → pikap, Pickup → Pikap, PICKUPAMI → PIKAPAMI).
+    """
+    if keep:
+        return value.upper() if source.isupper() else value
+
+    def single(source_part, value_part):
+        return _replacement_case(source_part, value_part.lower())
 
     source_tokens = _TOKEN_SPLIT_RE.split(source)
     value_tokens = _TOKEN_SPLIT_RE.split(value)
     if len(source_tokens) == 1 or len(source_tokens) != len(value_tokens):
-        return single(source, value, capital)
+        return single(source, value)
     # Kilka wyrazów (komedia dellarte): wyraz, którego zamiana nie zmienia,
     # zostaje w zapisie źródła; pozostałe dostają wielkość liter swojego odpowiednika.
     result = []
     for index, (source_part, value_part) in enumerate(zip(source_tokens, value_tokens)):
-        first_capital = capital and index == 0
-        if index % 2 or (source_part.lower() == value_part.lower() and not first_capital):
+        if index % 2 or source_part.lower() == value_part.lower():
             result.append(value_part if index % 2 else source_part)
         else:
-            result.append(single(source_part, value_part, first_capital))
+            result.append(single(source_part, value_part))
     return ''.join(result)
 
 
+def _keeps_target_case(target, pattern=False):
+    literal = _GROUP_REFERENCE_RE.sub('', target) if pattern else target
+    return literal != literal.lower()
+
+
 def _nested_repeat(parsed, inside_repeat=False):
-    """Czy wzorzec ma powtórzenie wewnątrz powtórzenia (ryzyko wykładniczego czasu)."""
+    """Czy wzorzec ma powtórzenie lub alternatywę wewnątrz powtórzenia (ryzyko czasu wykładniczego)."""
     from re import _constants as const
     repeats = (const.MAX_REPEAT, const.MIN_REPEAT, const.POSSESSIVE_REPEAT)
     for op, value in parsed:
         if op in repeats:
             low, high, sub = value
-            many = high > 1
-            if many and inside_repeat:
+            # Także opcjonalny element w powtórzeniu: (a?){22} ma 2^22 sposobów dopasowania.
+            if inside_repeat:
                 return True
-            if _nested_repeat(sub, inside_repeat or many):
+            if _nested_repeat(sub, high > 1):
                 return True
         elif op is const.BRANCH:
             if inside_repeat:
@@ -454,18 +533,103 @@ def _nested_repeat(parsed, inside_repeat=False):
     return False
 
 
-def _compile_pattern(source, target):
-    """Skompilowany wzorzec albo None, gdy wpis jest błędny lub zbyt kosztowny."""
+class _PatternTimeout(Exception):
+    pass
+
+
+def _exhaust(pattern, sample, seconds):
+    """Przejdź wszystkie dopasowania; w głównym wątku (worker, uWSGI) z twardym limitem czasu.
+
+    Moduł re sprawdza sygnały w trakcie dopasowania, więc SIGALRM przerywa nawet bardzo wolny
+    wzorzec. Poza głównym wątkiem (albo gdy timer jest już zajęty) zostaje samo szacowanie.
+    """
+    import signal
+    import threading
+    guarded = (hasattr(signal, 'setitimer') and threading.current_thread() is threading.main_thread()
+               and signal.getsignal(signal.SIGALRM) is not None and not signal.getitimer(signal.ITIMER_REAL)[0])
+    if not guarded:
+        for _ in pattern.finditer(sample):
+            pass
+        return
+    armed = True
+
+    def interrupt(signum, frame):
+        if armed:
+            raise _PatternTimeout
+
+    previous = signal.signal(signal.SIGALRM, interrupt)
+    try:
+        signal.setitimer(signal.ITIMER_REAL, seconds)
+        for _ in pattern.finditer(sample):
+            pass
+    finally:
+        armed = False
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
+
+
+def _too_slow(pattern):
+    r"""Próba czasu na złośliwych napisach (długie ciągi liter, cyfr, spacji) o rosnącej długości.
+
+    Wzorzec, który na próbce przekracza PATTERN_TIME_LIMIT, jest odrzucany. Zanim uruchomimy
+    dwa razy dłuższą próbkę, szacujemy jej czas z tempa wzrostu – wzorzec wielomianowo wolny
+    (np. \w*\w*\w*\w*!) odpada, zanim zajmie sekundy; w głównym wątku pomiar dodatkowo
+    przerywa SIGALRM (_exhaust).
+    Pomiar podejrzanie wolny powtarzamy (najwyżej 3 razy, liczy się najkrótszy), żeby
+    chwilowe obciążenie serwera nie odrzucało poprawnych wzorców.
+    """
+    from time import perf_counter
+
+    def run(sample):
+        started = perf_counter()
+        try:
+            _exhaust(pattern, sample, 2 * PATTERN_TIME_LIMIT)
+        except _PatternTimeout:
+            return float('inf')
+        return perf_counter() - started
+
+    def slow(elapsed, previous, last):
+        if elapsed > PATTERN_TIME_LIMIT:
+            return True
+        growth = elapsed / previous if previous and previous > 0.0002 else 8
+        return not last and elapsed * max(growth, 2) > PATTERN_TIME_LIMIT
+
+    for unit in PROBE_UNITS:
+        for suffix in ('', '!\n'):
+            previous = None
+            for size in PROBE_SIZES:
+                sample = unit * (size // len(unit)) + suffix
+                last = size == PROBE_SIZES[-1]
+                elapsed = run(sample)
+                for _ in range(2):
+                    # Wynik kilka razy ponad limit to nie chwilowe obciążenie – bez powtórek.
+                    if not slow(elapsed, previous, last) or elapsed > 2 * PATTERN_TIME_LIMIT:
+                        break
+                    elapsed = min(elapsed, run(sample))
+                if slow(elapsed, previous, last):
+                    return True
+                previous = elapsed
+    return False
+
+
+def _compile_pattern(source, target=''):
+    """Skompilowany wzorzec albo None, gdy wpis jest błędny lub zbyt kosztowny.
+
+    Publiczne dla formularza słownika zamian (walidacja wpisu „wzorzec”).
+    """
     from re import _parser
+    if not isinstance(source, str) or not isinstance(target, str) or not source \
+            or len(source) > MAX_PATTERN_LENGTH or len(target) > MAX_TARGET_LENGTH:
+        return None
     try:
         pattern = re.compile(source, re.IGNORECASE)
         if _nested_repeat(_parser.parse(source, re.IGNORECASE)):
             return None
         pattern.sub(target, '')  # sprawdza odwołania \g<nazwa> w targecie
-    except (re.error, IndexError, TypeError, ValueError, RecursionError):
+    except (re.error, IndexError, TypeError, ValueError, RecursionError, OverflowError):
         return None
     # Wzorzec dopasowujący pusty napis wstawiałby target między każde dwa znaki.
-    if pattern.fullmatch('') is not None:
+    if pattern.fullmatch('') is not None or _too_slow(pattern):
         return None
     return pattern
 
@@ -480,10 +644,17 @@ class CompiledReplacements:
         def flush_words():
             if words:
                 alternatives = sorted(words, key=lambda value: (-len(value), value))
-                pattern = re.compile(r'\b(?:' + '|'.join(map(re.escape, alternatives)) + r')\b', re.IGNORECASE)
+                # Granice jak \b, ale działają też dla wpisów z kropką, łącznikiem lub apostrofem
+                # na brzegu (wg., itd., 'ten); spacja w źródle pasuje do dowolnego odstępu.
+                pattern = re.compile(r'(?<!\w)(?:' + '|'.join(
+                    WORD_GAP.join(map(re.escape, value.split(' '))) for value in alternatives
+                ) + r')(?!\w)', re.IGNORECASE)
                 mapping = dict(words)
-                self.steps.append((pattern, lambda match: _apply_replacement_case(
-                    match[0], mapping[match[0].lower()][0], mapping[match[0].lower()][1])))
+
+                def replace(match):
+                    target, keep = mapping[' '.join(match[0].lower().split())]
+                    return _apply_replacement_case(match[0], target, keep)
+                self.steps.append((pattern, replace))
                 words.clear()
 
         for entry in list(entries or ())[:MAX_REPLACEMENTS]:
@@ -493,26 +664,36 @@ class CompiledReplacements:
             if (kind not in ('word', 'pattern') or not isinstance(source, str) or not isinstance(target, str)
                     or not source or len(source) > MAX_PATTERN_LENGTH or len(target) > MAX_TARGET_LENGTH):
                 continue
-            capital = target[:1].isupper()
             if kind == 'word':
-                if source.strip() and source.lower() not in words:
-                    words[source.lower()] = (target, capital)
+                key = ' '.join(source.lower().split())
+                if key and key not in words:
+                    words[key] = (target, _keeps_target_case(target))
                 continue
             flush_words()
             pattern = _compile_pattern(source, target)
             if pattern is None:
                 continue
 
-            def replace(match, template=target, capital=capital):
+            def replace(match, template=target, keep=_keeps_target_case(target, pattern=True)):
                 # Końcówki są normalizowane do małych liter przed odtworzeniem
                 # zapisu całego wyrazu, np. PICKUPAMI → PIKAPAMI.
-                return _apply_replacement_case(match[0], match.expand(template), capital)
+                return _apply_replacement_case(match[0], match.expand(template), keep)
             self.steps.append((pattern, replace))
         flush_words()
 
-    def apply(self, text):
+    def apply(self, text, record=None):
+        """Zamiany po kolei; record (słownik) dostaje liczby par (znaleziony zapis, wynik)."""
         for pattern, replace in self.steps:
-            text = pattern.sub(replace, text)
+            if record is None:
+                text = pattern.sub(replace, text)
+                continue
+
+            def counted(match, replace=replace):
+                result = replace(match)
+                if result != match[0]:
+                    record[match[0], result] = record.get((match[0], result), 0) + 1
+                return result
+            text = pattern.sub(counted, text)
         return text
 
 
@@ -531,8 +712,8 @@ def compile_replacements(entries=None):
 _DEFAULT_COMPILED = None
 
 
-def _correct_user_words(text, replacements=None):
-    return compile_replacements(replacements).apply(text)
+def _correct_user_words(text, replacements=None, record=None):
+    return compile_replacements(replacements).apply(text, record)
 
 
 def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *,
@@ -552,6 +733,9 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
         raise ValueError(f'Nieznane reguły korekty: {sorted(unknown)}')
     if not enabled or not text:
         return text
+    # Spacje nierozdzielające zawsze stają się zwykłymi (nie liczymy tego jako zmiany reguły;
+    # w DOCX robi to wcześniej osobny, cichy krok – patrz _replace_nonbreaking_spaces).
+    text = text.translate(NONBREAKING_TABLE)
 
     protected = {}
     occupied = set(text)
@@ -585,6 +769,11 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
     if digits:
         text = DATE_RE.sub(date_protect, text)
     text = TECHNICAL_RE.sub(protect_technical, text)
+    if digits:
+        def time_range(match):
+            value = _time_range(match, enabled, counts)
+            return match[0] if value is None else mask_value(value)
+        text = TIME_RANGE_RE.sub(time_range, text)
     if digits and 'dates_times' in enabled:
         before = text
         text = _normalize_dates_times(text)
@@ -592,13 +781,19 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
             _count(counts, 'dates_times', before, text)
     if digits:
         text = TIME_RE.sub(lambda m: mask_value(m[0]), text)
-    if 'sentence_case' in enabled:
-        text = FILE_NAME_RE.sub(lambda m: mask_value(m[0]), text)
+    # Nazwy plików (raport.docx, Node.js) chronimy zawsze, nie tylko przy wielkich literach po kropce.
+    text = FILE_NAME_RE.sub(lambda m: mask_value(m[0]), text)
     if 'user_word_corrections' in enabled:
         before = text
-        text = _correct_user_words(text, replacements)
+        record = {} if counts is not None else None
+        text = _correct_user_words(text, replacements, record)
         if counts is not None:
             _count(counts, 'user_word_corrections', before, text)
+            # Zamiany słownikowe do podsumowania: (znaleziony zapis, wynik) → liczba.
+            pairs = counts.setdefault('replacements', {})
+            for (source, target), number in record.items():
+                key = (_unmask(source, protected), _unmask(target, protected))
+                pairs[key] = pairs.get(key, 0) + number
 
     if 'tabs' in enabled:
         before = text
@@ -637,7 +832,8 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
         before = text
         text = re.sub(r'([„“])' + H + r'+', r'\1', text)
         text = re.sub(H + r'+([”])', r'\1', text)
-        text = re.sub(r'"([^"\n]+)"', lambda m: '"' + m[1].strip(' \u00a0\u202f') + '"', text)
+        # Cudzysłów prosty tuż po cyfrze to cal (5" x 7"), nie początek cytatu.
+        text = re.sub(r'(?<!\w)"([^"\n]+)"', lambda m: '"' + m[1].strip(' \u00a0\u202f') + '"', text)
         if counts is not None:
             _count(counts, 'inside_quotes', before, text)
     if 'ellipsis' in enabled:
@@ -761,7 +957,7 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
             _count(counts, 'digit_groups', before, text)
     if digits and 'unit_nbsp' in enabled:
         before = text
-        text = re.sub(r'(?<=\d)' + H + r'+(?=' + UNITS + r'(?!\w))', NBSP, text)
+        text = re.sub(r'(?<=\d)' + H + r'+(?=' + UNITS + r'(?!\w))', ' ', text)
         if counts is not None:
             _count(counts, 'unit_nbsp', before, text)
     if digits and 'reference_space' in enabled:
@@ -772,23 +968,23 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
             _count(counts, 'reference_space', before, text)
     if digits and 'reference_nbsp' in enabled:
         before = text
-        text = re.sub(r'\b(\d{4})' + H + r'+(?=r\.)', r'\1' + NBSP, text)
-        text = re.sub(r'\b(s\.|nr)' + H + r'+(?=\d)', r'\1' + NBSP, text)
+        text = re.sub(r'\b(\d{4})' + H + r'+(?=r\.)', r'\1 ', text)
+        text = re.sub(r'\b(s\.|nr)' + H + r'+(?=\d)', r'\1 ', text)
         if counts is not None:
             _count(counts, 'reference_nbsp', before, text)
     if 'initials' in enabled:
         before = text
         text = re.sub(r'\b([' + UPPER + r'])' + H + r'+\.', r'\1.', text)
-        text = re.sub(r'\b([' + UPPER + r']\.)' + H + r'*(?=[' + UPPER + r']\.)', r'\1' + NBSP, text)
+        text = re.sub(r'\b([' + UPPER + r']\.)' + H + r'*(?=[' + UPPER + r']\.)', r'\1 ', text)
         text = re.sub(r'\b([' + UPPER + r']\.)' + H + r'*(?=[' + UPPER + r'][' + LOWER + r']{2,}\b)',
-                      r'\1' + NBSP, text)
+                      r'\1 ', text)
         if counts is not None:
             _count(counts, 'initials', before, text)
     if digits and 'temperature' in enabled:
         before = text
-        text = re.sub('(' + NUMBER + r')' + H + r'*°' + H + r'*([CF])(?!\w)', r'\1' + NBSP + r'°\2', text)
+        text = re.sub('(' + NUMBER + r')' + H + r'*°' + H + r'*([CF])(?!\w)', r'\1 °\2', text)
         # Kelwin tylko po odstępie: „4K” to rozdzielczość, nie temperatura.
-        text = re.sub('(' + NUMBER + r')' + H + r'+K(?!\w)', r'\1' + NBSP + 'K', text)
+        text = re.sub('(' + NUMBER + r')' + H + r'+K(?!\w)', r'\1 K', text)
         if counts is not None:
             _count(counts, 'temperature', before, text)
     if 'after_punct' in enabled:
@@ -814,17 +1010,7 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
         text = re.sub(r'(?<!\d):(?=\d)', ': ', text)
         if counts is not None:
             _count(counts, 'after_punct', before, text, gaps)
-    if 'single_nbsp' in enabled:
-        before = text
-        text = re.sub(r'(?<!\w)([aAiIoOuUwWzZ])' + H + r'+(?=\S)', r'\1' + NBSP, text)
-        if counts is not None:
-            _count(counts, 'single_nbsp', before, text)
-    # Jedno przejście na raz; powtarzamy, gdyby maska zawierała wcześniejszą maskę.
-    while protected:
-        restored = MARKER_RE.sub(lambda match: protected.get(match[0], match[0]), text)
-        if restored == text:
-            break
-        text = restored
+    text = _unmask(text, protected)
     if 'pronouns_lower' in enabled:
         before = text
         # Po przywróceniu masek dostępne są kropki kończące skróty i zdania.
@@ -847,6 +1033,16 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
     return text
 
 
+def _unmask(text, protected):
+    # Jedno przejście na raz; powtarzamy, gdyby maska zawierała wcześniejszą maskę.
+    while protected:
+        restored = MARKER_RE.sub(lambda match: protected.get(match[0], match[0]), text)
+        if restored == text:
+            break
+        text = restored
+    return text
+
+
 IDENTIFIER_LABEL_RE = re.compile(r'\b(?:nr|numer|kod|id|tel\.?)' + H + r'*[:#]?' + H + r'*$', re.I)
 QUANTITY_AFTER_RE = re.compile(H + r'*(?:' + QUANTITIES + r')(?!\w)')
 
@@ -856,7 +1052,7 @@ def _group_number(digits):
     while digits:
         groups.append(digits[-3:])
         digits = digits[:-3]
-    return NBSP.join(reversed(groups))
+    return ' '.join(reversed(groups))
 
 
 def _edit_opcodes(original, corrected):
@@ -940,12 +1136,15 @@ class _Tracker:
             highest = max([highest, *(int(value) for value in values if value.isdigit())])
         self.next_id = highest + 1
 
+    def take_id(self):
+        self.next_id += 1
+        return self.next_id - 1
+
     def mark(self, tag):
         element = OxmlElement(tag)
-        element.set(qn('w:id'), str(self.next_id))
+        element.set(qn('w:id'), str(self.take_id()))
         element.set(qn('w:author'), TRACK_AUTHOR)
         element.set(qn('w:date'), self.date)
-        self.next_id += 1
         return element
 
 
@@ -968,13 +1167,22 @@ def _split_tracked_run(run, changed, tracker):
     from copy import deepcopy
 
     properties = run.find(qn('w:rPr'))
+    copies = 0
 
     def new_run():
+        nonlocal copies
         element = OxmlElement('w:r')
         for key, value in run.attrib.items():
             element.set(key, value)
         if properties is not None:
-            element.append(deepcopy(properties))
+            copied = deepcopy(properties)
+            # Zmiana formatowania (w:rPrChange) ma w:id – każda kopia poza pierwszą dostaje nowy.
+            if copies:
+                for node in copied.iter():
+                    if node.get(qn('w:id')) is not None:
+                        node.set(qn('w:id'), str(tracker.take_id()))
+            copies += 1
+            element.append(copied)
         return element
 
     output, plain = [], None
@@ -1150,100 +1358,13 @@ def _delete_paragraph_tracked(paragraph, tracker):
             following[0].addprevious(mark_properties)
         else:
             properties.append(mark_properties)
+    if mark_properties.find(qn('w:del')) is not None:
+        return  # znak akapitu był już usunięty (wcześniejsza śledzona zmiana)
     inserted = mark_properties.find(qn('w:ins'))
     if inserted is not None:
         inserted.addnext(tracker.mark('w:del'))
     else:
         mark_properties.insert(0, tracker.mark('w:del'))
-
-
-class _Languages:
-    """Język przebiegu: w:lang przebiegu, jego stylu, stylu akapitu, a na końcu docDefaults.
-
-    Polski to brak oznaczenia, pusta wartość, „x-none” i pl/pl-*. Język domyślny
-    dokumentu (docDefaults i domyślny styl akapitu) bywa pozostałością szablonu
-    (np. en-US w dokumentach z angielskiego Worda, Google Docs, python-docx),
-    więc ufamy mu tylko wtedy, gdy dokument gdzieś jawnie oznacza tekst polski.
-    """
-
-    def __init__(self, document, stories):
-        from docx.opc.constants import RELATIONSHIP_TYPE as RT
-        styles_root = None
-        for relationship in document.part.rels.values():
-            if not relationship.is_external and relationship.reltype == RT.STYLES:
-                styles_root = relationship.target_part.element
-        self.styles, self.default_paragraph, self.default_character = {}, None, None
-        self.document_default = None
-        values = []
-        if styles_root is not None:
-            default = styles_root.find(f'{{{W_NS}}}docDefaults/{{{W_NS}}}rPrDefault/{{{W_NS}}}rPr')
-            self.document_default = self._value(default)
-            for style in styles_root.iter(qn('w:style')):
-                style_id, kind = style.get(qn('w:styleId')), style.get(qn('w:type'))
-                based = style.find(qn('w:basedOn'))
-                lang = self._value(style.find(qn('w:rPr')))
-                self.styles[style_id] = (based.get(qn('w:val')) if based is not None else None, lang)
-                values.append(lang)
-                if style.get(qn('w:default')) in ('1', 'true', 'on'):
-                    if kind == 'paragraph':
-                        self.default_paragraph = style_id
-                    elif kind == 'character':
-                        self.default_character = style_id
-        for story in stories:
-            values.extend(node.get(qn('w:val')) for node in story.root.iter(qn('w:lang')))
-        values = [value for value in values if value is not None]
-        self.base_trusted = any(value.strip().lower().split('-')[0] == 'pl' for value in values)
-        self.active = any(map(self._foreign, values)) or (
-            self.base_trusted and self._foreign(self.document_default or ''))
-        self.base_styles = set(self._chain(self.default_paragraph))
-
-    @staticmethod
-    def _value(properties):
-        if properties is None:
-            return None
-        lang = properties.find(qn('w:lang'))
-        return None if lang is None else lang.get(qn('w:val'))
-
-    @staticmethod
-    def _foreign(value):
-        value = value.strip().lower()
-        return not (value in ('', 'x-none', 'pl') or value.startswith('pl-'))
-
-    def _chain(self, style_id):
-        seen = set()
-        while style_id and style_id in self.styles and style_id not in seen:
-            seen.add(style_id)
-            yield style_id
-            style_id = self.styles[style_id][0]
-
-    def _style_lang(self, style_id):
-        for current in self._chain(style_id):
-            lang = self.styles[current][1]
-            if lang is not None:
-                return lang, current in self.base_styles
-        return None, False
-
-    def paragraph_language(self, paragraph):
-        """(język, czy to język domyślny dokumentu) dla przebiegów bez własnego oznaczenia."""
-        style = paragraph.find(f'{{{W_NS}}}pPr/{{{W_NS}}}pStyle')
-        lang, base = self._style_lang(style.get(qn('w:val')) if style is not None else self.default_paragraph)
-        if lang is None:
-            return self.document_default, True
-        return lang, base
-
-    def foreign(self, run, paragraph_language):
-        properties = run.find(qn('w:rPr'))
-        lang = self._value(properties)
-        if lang is not None:
-            return self._foreign(lang)
-        style = properties.find(qn('w:rStyle')) if properties is not None else None
-        lang, _ = self._style_lang(style.get(qn('w:val')) if style is not None else self.default_character)
-        if lang is not None:
-            return self._foreign(lang)
-        lang, base = paragraph_language
-        if lang is None or (base and not self.base_trusted):
-            return False
-        return self._foreign(lang)
 
 
 # Znaczniki bez treści (sprawdzanie pisowni, zakładki, zakresy komentarzy, układ strony
@@ -1255,27 +1376,65 @@ PARAGRAPH_MARKERS = frozenset(qn('w:' + name) for name in (
 RUN_MARKERS = frozenset(qn('w:' + name) for name in ('rPr', 'lastRenderedPageBreak'))
 
 
+FALLBACK_TAG = '{http://schemas.openxmlformats.org/markup-compatibility/2006}Fallback'
+# Podział strony lub kolumny nie kończy zdania ani akapitu: tekst za nim na początku
+# akapitu traktujemy jak początek akapitu (spacja wiodąca, kwestia dialogowa).
+PAGE_BREAK_TYPES = ('page', 'column')
+
+
+def _in_fallback(element):
+    """Kopia zapasowa pola tekstowego (mc:Fallback) – poprawiamy ją, ale nie liczymy drugi raz."""
+    return any(node.tag == FALLBACK_TAG for node in element.iterancestors())
+
+
+def _replace_nonbreaking_spaces(stories, counts):
+    """Spacje nierozdzielające → zwykłe we wszystkich częściach, bez śledzenia zmian.
+
+    Zamiana nie zmienia wyglądu tekstu, więc w trybie śledzenia nie tworzymy dla niej
+    (często tysięcy) niewidocznych zmian; podsumowanie podaje ich liczbę.
+    """
+    replaced = 0
+    for story in stories:
+        for node in story.root.iter(qn('w:t')):
+            text = node.text or ''
+            if any(character in text for character in NONBREAKING_SPACES):
+                if counts is not None and not _in_fallback(node):
+                    replaced += sum(text.count(character) for character in NONBREAKING_SPACES)
+                node.text = text.translate(NONBREAKING_TABLE)
+                node.set(qn('xml:space'), 'preserve')
+    if counts is not None and replaced:
+        counts['nonbreaking_spaces'] = counts.get('nonbreaking_spaces', 0) + replaced
+
+
+def _replacement_summary(pairs):
+    rows = [{'source': source, 'target': target, 'count': count} for (source, target), count in pairs.items()]
+    return sorted(rows, key=lambda row: (-row['count'], row['source'].lower(), row['source'], row['target']))
+
+
 def apply_editorial_corrections(doc, enabled=None, *, track_changes=False, replacements=None, summary=None):
     """Popraw tekst dokumentu w miejscu.
 
     track_changes: zmiany jako śledzone zmiany Worda (autor „Odkurzacz”).
     replacements: lista zamian słownikowych (None = DEFAULT_REPLACEMENTS).
-    summary: słownik, do którego trafia liczba zmian każdej reguły (tylko > 0).
+    summary: słownik, do którego trafia liczba zmian każdej reguły (tylko > 0), liczba spacji
+    nierozdzielających zamienionych na zwykłe („nonbreaking_spaces”) oraz lista zamian
+    słownikowych „replacements”: [{"source", "target", "count"}], malejąco po count.
+    Spacje nierozdzielające są zamieniane zawsze, także bez żadnej reguły.
     """
     enabled = DEFAULT_EDITORIAL_RULES if enabled is None else frozenset(enabled)
     if enabled - ALL_EDITORIAL_RULES:
         raise ValueError('Nieznana reguła korekty edytorskiej.')
-    if not enabled:
-        return
-    compiled = compile_replacements(replacements) if 'user_word_corrections' in enabled else None
     counts = {} if summary is not None else None
-    tracker = _Tracker(doc) if track_changes else None
-    field_depth = 0
     # Treść, tabele, pola tekstowe, nagłówki, stopki i przypisy.
     stories, commit = document_stories(doc)
-    languages = _Languages(doc, stories)
-    if not languages.active:
-        languages = None
+    _replace_nonbreaking_spaces(stories, counts)
+    if not enabled:
+        commit()
+        _store_summary(summary, counts)
+        return
+    compiled = compile_replacements(replacements) if 'user_word_corrections' in enabled else None
+    tracker = _Tracker(doc) if track_changes else None
+    field_depth = 0
     paragraphs = [(number, para) for number, story in enumerate(stories) for para in story.paragraphs]
     current_story = 0
     for paragraph_index, (story_number, para) in enumerate(paragraphs):
@@ -1284,24 +1443,22 @@ def apply_editorial_corrections(doc, enabled=None, *, track_changes=False, repla
         if paragraph_index % 10 == 0:
             report_progress('Odkurzanie – akapity', paragraph_index, len(paragraphs))
         groups, slots = [], []
-        paragraph_language = languages.paragraph_language(para._p) if languages else None
+        paragraph_counts = None if counts is None or _in_fallback(para._p) else counts
 
-        def barrier():
+        def barrier(soft=False):
             if slots:
                 groups.append(list(slots))
                 slots.clear()
-            groups.append(None)
+            groups.append(SOFT_BARRIER if soft else None)
 
         # Korekta widzi sąsiednie runy, ale nie ingeruje w pola, hiperłącza,
         # rysunki, przypisy, podziały wierszy ani znaczniki dokumentu.
-        # Przebieg w innym języku niż polski jest barierą, jak pole.
         for child in para._p:
             if child.tag in PARAGRAPH_MARKERS:
                 continue
             if child.tag != qn('w:r'):
                 barrier()
                 continue
-            foreign = languages is not None and languages.foreign(child, paragraph_language)
             for node in child:
                 if node.tag in RUN_MARKERS:
                     continue
@@ -1312,7 +1469,7 @@ def apply_editorial_corrections(doc, enabled=None, *, track_changes=False, repla
                     elif kind == 'end':
                         field_depth = max(0, field_depth - 1)
                     barrier()
-                elif field_depth or foreign:
+                elif field_depth:
                     barrier()
                 elif node.tag == qn('w:t'):
                     if node.text:
@@ -1320,16 +1477,18 @@ def apply_editorial_corrections(doc, enabled=None, *, track_changes=False, repla
                 elif node.tag == qn('w:tab'):
                     slots.append((node, '\t'))
                 else:
-                    barrier()
+                    barrier(soft=node.tag == qn('w:br') and node.get(qn('w:type')) in PAGE_BREAK_TYPES)
         if slots:
             groups.append(slots)
         for index, group in enumerate(groups):
-            if group:
+            if group and group is not SOFT_BARRIER:
                 original = ''.join(value for _, value in group)
-                corrected = correct_editorial_text(original, enabled,
-                                                   trim_start=index == 0,
-                                                   trim_end=index == len(groups) - 1,
-                                                   replacements=compiled, counts=counts)
+                # Brzeg akapitu: przed (po) grupą są najwyżej podziały strony lub kolumny.
+                corrected = correct_editorial_text(
+                    original, enabled,
+                    trim_start=all(item is SOFT_BARRIER for item in groups[:index]),
+                    trim_end=all(item is SOFT_BARRIER for item in groups[index + 1:]),
+                    replacements=compiled, counts=paragraph_counts)
                 if tracker is not None:
                     _rewrite_tracked(group, corrected, tracker)
                 else:
@@ -1352,8 +1511,19 @@ def apply_editorial_corrections(doc, enabled=None, *, track_changes=False, repla
                 previous_empty = empty
         if counts is not None and removed:
             counts['empty_paragraphs'] = removed
-    if summary is not None:
-        summary.update({key: value for key, value in counts.items() if value})
+    _store_summary(summary, counts)
+
+
+SOFT_BARRIER = object()
+
+
+def _store_summary(summary, counts):
+    if summary is None:
+        return
+    pairs = counts.pop('replacements', None)
+    summary.update({key: value for key, value in counts.items() if value})
+    if pairs:
+        summary['replacements'] = _replacement_summary(pairs)
 
 
 def clean_docx(source, rules, *, track_changes=False, replacements=None, summary=None):

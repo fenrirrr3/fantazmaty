@@ -59,8 +59,7 @@ def prepare_docx(source, *, rebuild=False, normalize_formatting=False,
                                      **({'keep_page_format': True} if keep_page_format else {})}))
     if normalize_formatting:
         steps.append((normalize_docx, {'justify': justify}))
-    # Miękkie entery i twarde spacje autora usuwamy przed Odkurzaczem: zamiana
-    # wszystkich spacji nierozdzielających po nim kasowała te, które dodają jego reguły.
+    # Miękkie entery zamieniamy przed Odkurzaczem, żeby jego reguły widziały już osobne akapity.
     if remove_soft_whitespace:
         if __package__:
             from .document_whitespace import normalize_spacing_docx

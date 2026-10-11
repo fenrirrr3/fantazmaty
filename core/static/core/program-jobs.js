@@ -15,10 +15,15 @@
         download.textContent = 'Pobierz wynik'; download.hidden = true;
         const notes = document.createElement('div'); notes.className = 'form-warning'; notes.hidden = true;
         const summary = document.createElement('div'); summary.className = 'program-summary'; summary.hidden = true;
-        box.append(label, bar, stop, accept, download, notes, summary);
+        // Wyraźny komunikat o obrazach usuniętych z dokumentu przed przetwarzaniem.
+        const images = document.createElement('p'); images.className = 'message warning program-images';
+        images.setAttribute('role', 'status'); images.hidden = true;
+        box.append(label, images, bar, stop, accept, download, notes, summary);
         const submit = form.querySelector('button[type="submit"]');
         if (!submit) return;
-        submit.before(box);
+        // Pasek postępu stoi pod plikiem i przyciskiem (miejsce oznaczone w szablonie).
+        const slot = form.querySelector('[data-program-progress]');
+        if (slot && slot.append) slot.append(box); else submit.before(box);
         const csrf = form.querySelector('[name="csrfmiddlewaretoken"]').value;
         const storageKey = `program-job:${location.pathname}:${index}`;
         let url = null, busy = false, timer = null, stopRequested = false, downloaded = false;
@@ -31,7 +36,7 @@
         }
         function finish(message) {
             clearTimeout(timer); lock(false); remember(null);
-            notes.hidden = true; summary.hidden = true;
+            notes.hidden = true; summary.hidden = true; images.hidden = true;
             bar.hidden = true; stop.hidden = true; accept.hidden = true;
             label.textContent = message;
         }
@@ -50,12 +55,31 @@
         async function action(name) {
             return request(url, {method: 'POST', headers: {'X-CSRFToken': csrf}, body: new URLSearchParams({action: name})});
         }
-        function showSummary(rows) {
-            // Podsumowanie Odkurzacza: reguła i liczba zmian (tylko reguły, które coś zmieniły).
+        function imagesWord(count) {
+            const last = count % 10, lastTwo = count % 100;
+            if (count === 1) return 'obraz';
+            return last >= 2 && last <= 4 && (lastTwo < 12 || lastTwo > 14) ? 'obrazy' : 'obrazów';
+        }
+        function showImages(count) {
+            if (!Number.isInteger(count) || count <= 0) return;
+            images.textContent = `Usunięto ${count} ${imagesWord(count)} z dokumentu – wynik ich nie zawiera.`;
+            images.hidden = false;
+        }
+        function replacementItems(value) {
+            // Zamiany słownikowe {source, target, count}; uszkodzone wpisy są pomijane.
+            if (!Array.isArray(value)) return [];
+            return value.filter(item => item && typeof item.source === 'string' && item.source
+                && typeof item.target === 'string' && Number.isFinite(item.count) && item.count > 0);
+        }
+        function showSummary(rows, replacements) {
+            // Podsumowanie Odkurzacza: reguła i liczba zmian (tylko reguły, które coś zmieniły)
+            // oraz lista zamian słownikowych „źródło → wynik (liczba)”.
             summary.replaceChildren();
             const title = document.createElement('strong'); title.textContent = 'Podsumowanie zmian';
             summary.append(title);
-            if (!rows.length) {
+            if (rows === null) {
+                // Brak tabeli reguł – tylko lista zamian.
+            } else if (!rows.length) {
                 const empty = document.createElement('p'); empty.textContent = 'Reguły korekty nie wprowadziły zmian.';
                 summary.append(empty);
             } else {
@@ -69,6 +93,17 @@
                     table.append(line);
                 });
                 summary.append(table);
+            }
+            if (replacements.length) {
+                const heading = document.createElement('p'); heading.className = 'program-replacements-title';
+                heading.textContent = 'Zamiany słownikowe:';
+                const list = document.createElement('ul'); list.className = 'program-replacements';
+                replacements.forEach(item => {
+                    const entry = document.createElement('li');
+                    entry.textContent = `${item.source} → ${item.target} (${item.count})`;
+                    list.append(entry);
+                });
+                summary.append(heading, list);
             }
             summary.hidden = false;
         }
@@ -86,7 +121,11 @@
                         warnings.forEach(text => { const item = document.createElement('li'); item.textContent = text; list.append(item); });
                         notes.append(title, list); notes.hidden = false;
                     }
-                    if (Array.isArray(data.summary)) showSummary(data.summary);
+                    showImages(data.removed_images);
+                    const replacements = replacementItems(data.replacements);
+                    if (Array.isArray(data.summary) || replacements.length) {
+                        showSummary(Array.isArray(data.summary) ? data.summary : null, replacements);
+                    }
                     download.href = `${url}?download=1`; download.hidden = false;
                     if (!downloaded) { downloaded = true; download.click(); }
                     return;
@@ -143,7 +182,7 @@
             lock(true); url = null; stopRequested = false; downloaded = false;
             box.hidden = false; bar.hidden = false; bar.removeAttribute('value');
             stop.hidden = false; stop.disabled = false; download.hidden = true; accept.hidden = true;
-            notes.hidden = true; summary.hidden = true;
+            notes.hidden = true; summary.hidden = true; images.hidden = true;
             label.textContent = 'Przesyłanie pliku i uruchamianie programu…';
             try {
                 const data = await request(form.action, {method: 'POST', headers: {'X-Program-Job': '1', 'X-CSRFToken': csrf}, body});
@@ -154,7 +193,7 @@
         });
         try { url = sessionStorage.getItem(storageKey); } catch (_) { /* Storage is optional. */ }
         if (url && url.startsWith(location.pathname + 'zadania/')) {
-            lock(true); box.hidden = false; form.closest('details').open = true; poll();
+            lock(true); box.hidden = false; (form.closest('details.program-tool') || form.closest('details')).open = true; poll();
         } else { url = null; }
     });
 })();

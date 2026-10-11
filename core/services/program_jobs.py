@@ -24,12 +24,14 @@ from .document_converter import (
 
 TTL = 1800
 STALE_AFTER = 150      # brak znaku życia procesu przez tyle sekund = błąd
-QUEUE_WAIT = 600       # najdłuższe oczekiwanie w kolejce na wolny konwerter
+QUEUE_WAIT = 600       # najkrótszy limit oczekiwania w kolejce na wolny konwerter (patrz queue_wait)
+QUEUE_MARGIN = 30      # zapas na każde zadanie przed nami w kolejce (start podprocesu, kopiowanie wyniku)
 SALT = 'private-program-job-v1'
 SESSION_KEY = 'program_upload_session'
 # Zadania superusera (analiza bez limitu wielkości) mogą trwać dłużej niż 90 s.
 SUPERUSER_TIME_LIMIT = 300
-SUMMARY_LABELS = {'user_word_corrections': 'Własne zamiany słownikowe (słownik zamian)'}
+SUMMARY_LABELS = {'user_word_corrections': 'Własne zamiany słownikowe (słownik zamian)',
+                  'nonbreaking_spaces': 'Spacje nierozdzielające zamienione na zwykłe'}
 
 
 class JobError(ValueError):
@@ -250,6 +252,11 @@ def status(folder):
         state['warnings'] = []  # dawny zapis: sama liczba uwag
     if 'summary' in state and not isinstance(state['summary'], list):
         state['summary'] = []
+    if 'replacements' in state and not isinstance(state['replacements'], list):
+        state['replacements'] = []
+    if 'removed_images' in state and (not isinstance(state['removed_images'], int)
+                                      or isinstance(state['removed_images'], bool)):
+        state['removed_images'] = 0
     if (folder / 'cancel').exists() and state['state'] == 'confirmation':
         return {'state': 'cancelled', 'message': 'Praca zatrzymana.'}
     if state['state'] in ('queued', 'running') and not alive(state):
@@ -297,9 +304,44 @@ def summary_rows(summary):
         return None
     labels = dict(EDITORIAL_RULES) | SUMMARY_LABELS
     order = {key: index for index, (key, _) in enumerate(EDITORIAL_RULES)}
-    rows = sorted(((key, count) for key, count in summary.items() if count > 0),
+    # Lista zamian słownikowych („replacements”) nie jest wierszem reguły – patrz replacement_rows.
+    rows = sorted(((key, count) for key, count in summary.items()
+                   if isinstance(count, int) and not isinstance(count, bool) and count > 0),
                   key=lambda item: (order.get(item[0], len(order)), item[0]))
     return [{'rule': key, 'label': labels.get(key, key), 'count': count} for key, count in rows[:60]]
+
+
+def replacement_rows(summary):
+    """Zamiany słownikowe z podsumowania: [{source, target, count}] (co na co, ile razy)."""
+    rows = (summary or {}).get('replacements')
+    if not isinstance(rows, list):
+        return []
+    return [{'source': row['source'], 'target': row['target'], 'count': row['count']} for row in rows[:200]
+            if isinstance(row, dict) and isinstance(row.get('source'), str) and isinstance(row.get('target'), str)
+            and isinstance(row.get('count'), int) and not isinstance(row.get('count'), bool) and row['count'] > 0]
+
+
+def job_time_limit(options):
+    """Limit czasu jednego zadania w konwerterze (sekundy)."""
+    from .document_converter import MAX_TIME_LIMIT, TIME_LIMIT
+    value = options.get('timeout', TIME_LIMIT) if isinstance(options, dict) else TIME_LIMIT
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        value = TIME_LIMIT
+    return max(1, min(MAX_TIME_LIMIT, value))
+
+
+def queue_wait(folder):
+    """Najdłuższe oczekiwanie na konwerter: co najmniej QUEUE_WAIT, a gdy w kolejce stoją inne zadania –
+    suma ich limitów czasu z zapasem (zadanie superusera może zająć konwerter na MAX_TIME_LIMIT)."""
+    total = 0
+    for _, other in active_jobs():
+        if other.name == folder.name:
+            continue
+        try:
+            total += job_time_limit(read_json(other / 'request.json').get('options')) + QUEUE_MARGIN
+        except (OSError, ValueError, AttributeError):
+            total += job_time_limit(None) + QUEUE_MARGIN
+    return max(QUEUE_WAIT, total)
 
 
 def refreshed_token(token):
@@ -345,7 +387,7 @@ def execute(folder):
             options['allow_rebuild_omissions'] = True
         with (folder / 'source.docx').open('rb') as source:
             result, extension, mime = convert_document(File(source, name=data['name']), control=control,
-                                                       wait_for_slot=QUEUE_WAIT, on_wait=waiting, **options)
+                                                       wait_for_slot=queue_wait(folder), on_wait=waiting, **options)
         with result, (folder / 'result').open('wb') as target:
             shutil.copyfileobj(result, target)
         if (folder / 'cancel').exists():
@@ -356,8 +398,13 @@ def execute(folder):
             name = Path(name).stem[:120] + suffix + '.docx'
         done = {'state': 'done', 'filename': conversion_filename(name, extension), 'mime': mime,
                 'warnings': list(getattr(result, 'conversion_warnings', []))[:30]}
+        # Liczba obrazów usuniętych z dokumentu przed pracą programu (strona stanu pokazuje komunikat).
+        removed = getattr(result, 'removed_images', 0)
+        done['removed_images'] = removed if isinstance(removed, int) and not isinstance(removed, bool) else 0
         if options.get('cleaner_summary'):
-            done['summary'] = summary_rows(getattr(result, 'cleaner_summary', None) or {})
+            summary = getattr(result, 'cleaner_summary', None) or {}
+            done['summary'] = summary_rows(summary)
+            done['replacements'] = replacement_rows(summary)
         write_json(folder / 'state.json', done)
     except RebuildConfirmationRequired as error:
         write_json(folder / 'state.json', {'state': 'confirmation', 'message': str(error)})

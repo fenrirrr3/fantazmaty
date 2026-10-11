@@ -20,10 +20,12 @@ from PIL import Image
 
 import core.services
 from core.services import document_progress
-from core.services.document_conversion_worker import convert, main, polish_warnings, sanitize_html, split_chapters
+from core.services.document_conversion_worker import (PDF_FAILED_NOTE, convert, main, polish_warnings, sanitize_html,
+                                                      split_chapters)
 from core.services.document_html import list_paragraphs, scene_break, split_page_breaks
 
-from .support import add_footnote_reference, add_page_break, add_tracked_insertion, png, with_footnote
+from .support import (add_footnote_reference, add_leading_break, add_page_break, add_tracked_insertion, png,
+                      with_footnote)
 
 
 class SanitizedHtmlTests(SimpleTestCase):
@@ -45,6 +47,13 @@ class SanitizedHtmlTests(SimpleTestCase):
         self.assertEqual(tree.xpath('//img/@alt'), ['Opis'])
         self.assertEqual((tree.xpath('//td/@colspan'), tree.xpath('//td/@rowspan')), (['2'], []))
         self.assertEqual(headings, [('section-1', 'Tytuł'), ('wlasny', 'Rozdział')])
+
+    def test_external_links_are_valid_urls(self):
+        """Regresja (epubcheck RSC-020): znaki niedozwolone w adresie z Worda psuły walidację EPUB."""
+        content, _ = sanitize_html('<a href="http://example.com/a%20b?x=<1>&amp;y=ą z|w">x</a>'
+                                   '<a href="mailto:jan kowalski@example.com">y</a>', {})
+        self.assertEqual(html.fragment_fromstring(content, create_parent='div').xpath('//a/@href'), [
+            'http://example.com/a%20b?x=%3C1%3E&y=%C4%85%20z%7Cw', 'mailto:jan%20kowalski@example.com'])
 
     def test_list_items_keep_their_paragraph_boundaries(self):
         root = html.fragment_fromstring('<ul><li>Pierwszy <em>akapit</em><ol><li>Zagnieżdżony</li></ol>Ogon</li>'
@@ -212,11 +221,30 @@ class WorkerMainTests(SimpleTestCase):
         runner = runpy.run_path
         with patch('sys.argv', ['bootstrap', str(self.directory)]), \
                 patch('runpy.run_path', side_effect=ImportError('PRIVATE credential')), \
-                self.assertRaises(SystemExit) as caught:
+                patch('resource.setrlimit'), self.assertRaises(SystemExit) as caught:
             runner(str(bootstrap), run_name='__main__')
         self.assertEqual(caught.exception.code, 2)
         self.assertEqual(self.report()['error'], 'ImportError')
         self.assertNotIn('PRIVATE', json.dumps(self.report()))
+
+    def test_bootstrap_limits_the_worker_memory(self):
+        """Mały DOCX z ogromnym XML zjadał gigabajty pamięci serwera: proces dostaje limit przestrzeni adresowej."""
+        import resource
+        bootstrap = Path(core.services.__file__).with_name('document_worker_bootstrap.py')
+        runner = runpy.run_path
+        _, hard = resource.getrlimit(resource.RLIMIT_AS)
+        for config, expected in (({}, 1536), ({'memory_limit_mb': 2048}, 2048), ({'memory_limit_mb': True}, 1536),
+                                 ({'memory_limit_mb': 0}, None)):
+            (self.directory / 'job.json').write_text(json.dumps(config))
+            with self.subTest(config=config), patch('sys.argv', ['bootstrap', str(self.directory)]), \
+                    patch('runpy.run_path'), patch('resource.setrlimit') as setrlimit:
+                runner(str(bootstrap), run_name='__main__')
+                if expected is None:
+                    setrlimit.assert_not_called()
+                else:
+                    limit = expected * 1024 * 1024
+                    setrlimit.assert_called_once_with(
+                        resource.RLIMIT_AS, (limit if hard == resource.RLIM_INFINITY else min(limit, hard), hard))
 
     def test_missing_library_exits_with_code_two(self):
         with patch('core.services.document_conversion_worker.convert', side_effect=ImportError('tajne')):
@@ -292,11 +320,13 @@ class PageBreakAndSceneBreakTests(SimpleTestCase):
         self.directory = Path(temporary.name)
 
     def test_scene_break_paragraphs(self):
-        for text in ('*', '* * *', '***', '#', '# # #', '⁂', '~', '~ ~ ~', '—', '- - -', '• • •', '§'):
+        for text in ('*', '* * *', '***', '#', '# # #', '⁂', '~', '~ ~ ~', '— — —', '- - -', '• • •', '§ § §'):
             with self.subTest(text=text):
                 self.assertTrue(scene_break(html.fromstring(f'<p>{text}</p>')))
-        for markup in ('<p>* Przypis</p>', '<p>___</p>', '<p>== ==</p>', '<p></p>', '<p> </p>', '<h2>***</h2>',
-                       '<p>* * * * * * * * * *</p>', '<p>*<img src="a.png"></p>', '<p>1.</p>'):
+        # Samotna kreska, punktor czy paragraf to zwykle urwana kwestia, pusty punkt albo odsyłacz, nie separator.
+        for markup in ('<p>* Przypis</p>', '<p>___</p>', '<p>== ==</p>', '<p></p>', '<p> </p>', '<h2>***</h2>',
+                       '<p>* * * * * * * * * *</p>', '<p>*<img src="a.png"></p>', '<p>1.</p>', '<p>—</p>',
+                       '<p>–</p>', '<p>-</p>', '<p> • </p>', '<p>§</p>', '<p>·</p>'):
             with self.subTest(markup=markup):
                 self.assertFalse(scene_break(html.fromstring(markup)))
 
@@ -312,8 +342,23 @@ class PageBreakAndSceneBreakTests(SimpleTestCase):
         self.assertEqual([html.tostring(child, encoding='unicode') for child in root], [
             '<p id="a" class="align-center">A<em id="e">b</em></p>',
             '<p class="align-center" data-page-break="1"><em>c</em>d</p>',
-            '<table><tr><td>TU</td></tr></table>',  # w tabeli podział pomijamy
+            '<table><tr><td>T<br>U</td></tr></table>',  # w tabeli podział to zwykły koniec wiersza
             '<p>Dalej</p>',
+        ])
+
+    def test_heading_after_a_break_keeps_its_anchor_and_breaks_add_up(self):
+        root = html.fragment_fromstring(
+            '<p>A</p><h1 id="section-1"><a id="_Toc1"></a><br class="page-break">Rozdział</h1>'
+            '<p><br class="page-break"></p><p>Po<br class="page-break"></p><p><br class="page-break"></p><p>B</p>'
+            '<ul><li><p>Punkt<br class="page-break">dalej</p></li></ul>', create_parent='div')
+        split_page_breaks(root)
+        self.assertEqual([html.tostring(child, encoding='unicode') for child in root], [
+            '<p>A</p>',
+            '<h1 id="section-1" data-page-break="1"><a id="_Toc1"></a>Rozdział</h1>',
+            '<p data-page-break="1">Po</p>',
+            # Dwa podziały z rzędu: w PDF zostaje pusta strona.
+            '<p data-page-break="2">B</p>',
+            '<ul><li><p>Punkt<br>dalej</p></li></ul>',
         ])
 
     def epub(self, document):
@@ -349,6 +394,44 @@ class PageBreakAndSceneBreakTests(SimpleTestCase):
         self.assertEqual(len(chapters), 2)
         self.assertFalse([tree for tree in chapters if tree.xpath('//x:hr', namespaces={'x': XHTML[1:-1]})])
 
+    def test_chapters_opened_with_a_page_or_column_break_stay_in_the_table_of_contents(self):
+        """Regresja (realna książka): rozdział zaczynający się podziałem w akapicie Nagłówka 1 znikał ze spisu."""
+        doc = Document()
+        doc.add_paragraph('Strona tytułowa')
+        for number, kind in enumerate(('page', 'column', 'page'), 1):
+            add_leading_break(doc.add_heading(f'Rozdział {number}', 1), kind)
+            doc.add_paragraph(f'Treść {number}')
+        chapters, _ = self.epub(doc)
+        with ZipFile(self.directory / 'document.epub') as archive:
+            nav = etree.fromstring(archive.read('EPUB/nav.xhtml'))
+            ncx = etree.fromstring(archive.read('EPUB/toc.ncx'))
+        links = nav.xpath('//x:nav//x:a', namespaces={'x': XHTML[1:-1]})
+        self.assertEqual([link.text for link in links], ['Rozdział 1', 'Rozdział 2', 'Rozdział 3'])
+        self.assertEqual(len(ncx.xpath('//n:navPoint', namespaces={'n': 'http://www.daisy.org/z3986/2005/ncx/'})), 3)
+        ids = [tree.xpath('//@id') for tree in chapters]
+        for link in links:
+            name, anchor = link.get('href').split('#')
+            self.assertIn(anchor, ids[int(name[8:11]) - 1])
+        self.assertFalse((self.directory / 'warnings.json').exists())  # podział kolumny nie jest „nieobsługiwany”
+
+    def test_table_of_contents_skips_empty_headings_and_footnote_numbers(self):
+        doc = Document()
+        add_footnote_reference(doc.add_heading('Rozdział 1', 1))
+        doc.add_paragraph('Treść 1')
+        doc.add_heading('', 1)
+        doc.add_paragraph('Treść 2')
+        doc.add_heading('Rozdział 3', 1)
+        doc.add_paragraph('Treść 3')
+        self.epub(Document(with_footnote(doc, 'Przypis')))
+        with ZipFile(self.directory / 'document.epub') as archive:
+            nav = etree.fromstring(archive.read('EPUB/nav.xhtml'))
+            ncx = etree.fromstring(archive.read('EPUB/toc.ncx'))
+        self.assertEqual([''.join(a.itertext()) for a in nav.xpath('//x:nav//x:a', namespaces={'x': XHTML[1:-1]})],
+                         ['Rozdział 1', 'Rozdział 3'])
+        self.assertEqual(ncx.xpath('//n:navLabel/n:text/text()',
+                                   namespaces={'n': 'http://www.daisy.org/z3986/2005/ncx/'}),
+                         ['Rozdział 1', 'Rozdział 3'])
+
     def test_epub_scene_break_is_centred_and_keeps_its_text(self):
         doc = Document()
         doc.add_paragraph('Scena pierwsza.')
@@ -368,6 +451,24 @@ class PageBreakAndSceneBreakTests(SimpleTestCase):
         self.assertNotIn('pagina', etree.tostring(chapter, encoding='unicode'))
         self.assertNotIn('Stopka', etree.tostring(chapter, encoding='unicode'))
         self.assertFalse((self.directory / 'warnings.json').exists())
+
+    def test_pdf_failure_keeps_the_finished_epub(self):
+        doc = Document()
+        doc.add_paragraph('Treść')
+        source = self.directory / 'source.docx'
+        doc.save(source)
+        with patch('core.services.document_pdf.render_pdf', side_effect=RuntimeError('tajne')):
+            convert(source, self.directory, ['epub', 'pdf'], 'Test')
+            self.assertTrue((self.directory / 'document.epub').is_file())
+            self.assertFalse((self.directory / 'document.pdf').exists())
+            warnings = json.loads((self.directory / 'warnings.json').read_text())
+            self.assertIn(PDF_FAILED_NOTE, warnings)
+            report = json.loads((self.directory / 'pdf_error.json').read_text())
+            self.assertEqual((report['stage'], report['error']), ('PDF', 'RuntimeError'))
+            self.assertNotIn('tajne', json.dumps(report))
+            # Sam PDF bez e-booka: błąd idzie dalej, jak dotąd.
+            with self.assertRaises(RuntimeError):
+                convert(source, self.directory, ['pdf'], 'Test')
 
     def test_pdf_starts_a_new_page_at_word_page_breaks(self):
         doc = Document()

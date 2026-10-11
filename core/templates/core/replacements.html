@@ -11,7 +11,7 @@
 <section class="details-card">
     <div class="card-body">
         <p>Słowo zastępuje całe słowo bez względu na wielkość liter, a wynik zachowuje wielkość liter z tekstu (Niechcąco → Niechcący). Jeśli zamiana zaczyna się wielką literą, wynik też (europejczyk → Europejczyk). Wyrażenia regularne obejmują odmianę; dodaje je i zmienia tylko superuser.</p>
-        <p>Pozycje są stosowane po kolei, od najmniejszej liczby w kolumnie „Kolejność”. Wyłączona pozycja zostaje w słowniku, ale nie działa.</p>
+        <p>Pozycje są sprawdzane od najmniejszej liczby w kolumnie „Kolejność”; gdy pozycje słów nakładają się, wygrywa dłuższy zapis (np. „pan kot” przed „pan”), a przy takich samych – pierwsza. Wynik zamiany słowa nie jest ponownie zamieniany przez inne pozycje słów (zamiany nie łączą się w łańcuch). Wyłączona pozycja zostaje w słowniku, ale nie działa.</p>
         {% if not can_edit %}<p class="form-help">Słownik mogą zmieniać koordynatorzy i superuser.</p>{% endif %}
     </div>
 </section>

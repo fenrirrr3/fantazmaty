@@ -21,6 +21,10 @@ logger = logging.getLogger(__name__)
 
 FORMATS = {'pdf': 'application/pdf', 'epub': 'application/epub+zip'}
 MAX_OUTPUT = 50 * 1024 * 1024
+# summary.json: liczniki reguł i lista zamian słownikowych (najwyżej 200 pozycji).
+SUMMARY_LIMIT = 256 * 1024
+# Rozpakowana część XML dokumentu (np. word/document.xml): większa zjada w podprocesie gigabajty pamięci.
+DOCUMENT_XML_LIMIT = 15 * 1024 * 1024
 TIME_LIMIT = 90
 # Najdłuższy dopuszczalny limit (zadania superusera, patrz program_jobs.SUPERUSER_TIME_LIMIT).
 MAX_TIME_LIMIT = 600
@@ -103,6 +107,10 @@ def validate_resources(source):
                 for name in names
             ):
                 raise ConversionError("Nieprawidłowa struktura dokumentu DOCX.")
+            limit = int(getattr(settings, "DOCUMENT_XML_LIMIT", DOCUMENT_XML_LIMIT))
+            if any(item.filename.lower().endswith(".xml") and item.file_size > limit for item in archive.infolist()):
+                from .document_errors import MESSAGES
+                raise ConversionError(MESSAGES["document_too_large"])
             if len(names) != len(set(names)):
                 raise ConversionError(
                     "Dokument zawiera powielone elementy. Zapisz go ponownie w Wordzie."
@@ -295,6 +303,8 @@ def run_converter(directory, timeout, control=None):
             )
         from .document_errors import MESSAGES
 
+        if kind == "MemoryError":
+            raise ConversionError(MESSAGES["memory_limit"])
         public_code = report.get("public_code")
         if (
             kind == "DocumentInputError"
@@ -405,14 +415,30 @@ def convert_document(
             result.conversion_warnings = warnings
             summary_file = directory / "summary.json"
             result.cleaner_summary = None
-            if cleaner_summary and summary_file.is_file() and summary_file.stat().st_size <= 65536:
+            if cleaner_summary and summary_file.is_file() and summary_file.stat().st_size <= SUMMARY_LIMIT:
                 summary = json.loads(summary_file.read_text(encoding="utf-8"))
                 if isinstance(summary, dict):
                     result.cleaner_summary = {
                         str(key)[:80]: value for key, value in summary.items()
                         if isinstance(value, int) and not isinstance(value, bool) and value > 0
                     }
+                    replacements = _replacement_list(summary.get("replacements"))
+                    if replacements:
+                        result.cleaner_summary["replacements"] = replacements
+            result.removed_images = _removed_images(directory / "images.json")
             outputs = [directory / ("document." + kind) for kind in selected]
+            pdf_error = directory / "pdf_error.json"
+            if (
+                pdf_error.is_file()
+                and not (directory / "document.pdf").exists()
+                and (directory / "document.epub").is_file()
+            ):
+                # Nieudany PDF nie zabiera gotowego EPUB; uwaga o tym jest już w warnings.json.
+                try:
+                    logger.error("Błąd PDF (EPUB wydany): %s", pdf_error.read_text(encoding="utf-8")[:4000])
+                except OSError:
+                    pass
+                outputs = [target for target in outputs if target.suffix != ".pdf"]
             if include_docx:
                 shutil.copyfile(source, directory / "document.docx")
                 outputs.append(directory / "document.docx")
@@ -457,6 +483,31 @@ def convert_document(
     except BaseException:
         result.close()
         raise
+
+
+def _replacement_list(value):
+    """Lista zamian słownikowych z summary.json: [{source, target, count}], tylko poprawne pozycje."""
+    if not isinstance(value, list):
+        return []
+    result = []
+    for item in value[:200]:
+        if (isinstance(item, dict) and isinstance(item.get("source"), str) and isinstance(item.get("target"), str)
+                and isinstance(item.get("count"), int) and not isinstance(item.get("count"), bool)
+                and item["count"] > 0):
+            result.append({"source": item["source"][:200], "target": item["target"][:200], "count": item["count"]})
+    return result
+
+
+def _removed_images(path):
+    """Liczba obrazów usuniętych przez podproces (images.json); 0, gdy pliku nie ma lub jest błędny."""
+    try:
+        if path.is_file() and path.stat().st_size <= 1024:
+            value = json.loads(path.read_text(encoding="utf-8")).get("removed_images", 0)
+            if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+                return value
+    except (OSError, ValueError, AttributeError):
+        pass
+    return 0
 
 
 def _write_job(directory, upload, config):

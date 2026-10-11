@@ -299,6 +299,7 @@ class RunConverterTests(IsolatedProgramDirsMixin, SimpleTestCase):
             (2, {'stage': 'PDF', 'error': 'ImportError'}, 'Brakuje bibliotek konwertera. Zainstaluj requirements.txt. PDF: ImportError'),
             (3, {'stage': '<b>', 'error': 'Zły <tag>'}, '(konwersja: błąd procesu)'),
             (3, {'error': 'DocumentInputError', 'public_code': 'nieznany'}, 'DocumentInputError'),
+            (3, {'stage': 'DOCX', 'error': 'MemoryError'}, 'wymaga zbyt dużo pamięci'),
         )
         for code, report, message in cases:
             with self.subTest(message=message), self.assertLogs('core.services.document_converter', 'ERROR'), \
@@ -352,6 +353,18 @@ class ConvertDocumentResultTests(IsolatedProgramDirsMixin, SimpleTestCase):
             self.assertEqual((extension, mime), ('zip', 'application/zip'))
             self.assertEqual(sorted(archive.namelist()), ['document.docx', 'document.pdf'])
             self.assertEqual(archive.read('document.docx'), formatted_docx())
+
+    def test_failed_pdf_does_not_take_away_the_ready_epub(self):
+        def worker(directory, timeout):
+            (directory / 'document.epub').write_bytes(b'PK epub')
+            (directory / 'pdf_error.json').write_text('{"error": "ValueError"}', encoding='utf-8')
+
+        with patch('core.services.document_converter.run_converter', side_effect=worker), \
+                self.assertLogs('core.services.document_converter', 'ERROR'):
+            result, extension, mime = convert_document(BytesIO(formatted_docx()), ['pdf', 'epub'])
+        with result:
+            self.assertEqual((extension, mime), ('epub', 'application/epub+zip'))
+            self.assertEqual(result.read(), b'PK epub')
 
     def test_result_finished_after_the_deadline_is_discarded(self):
         def worker(directory, timeout):

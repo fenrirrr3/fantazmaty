@@ -15,7 +15,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
 
 from core.models import ReplacementEntry
-from core.odkurzacz_forms import ReplacementEntryForm
+from core.odkurzacz_forms import REPLACEMENT_ACTIVE_MAX, ReplacementEntryForm
 from core.permissions import is_coordinator, is_superuser, team_member_required
 
 
@@ -76,6 +76,11 @@ def replacement_edit(request, pk):
         if action == 'toggle':
             with transaction.atomic():
                 entry = ReplacementEntry.objects.select_for_update().get(pk=entry.pk)
+                if not entry.is_active and (ReplacementEntry.objects.filter(is_active=True).count()
+                                            >= REPLACEMENT_ACTIVE_MAX):
+                    messages.error(request, f'Słownik ma już {REPLACEMENT_ACTIVE_MAX} aktywnych pozycji – tyle '
+                                            'najwięcej używa Odkurzacz. Najpierw wyłącz inną pozycję.')
+                    return redirect(reverse('core:replacement_list') + '#replacement-table')
                 entry.is_active = not entry.is_active
                 entry.save(update_fields=['is_active', 'updated_at'])
             messages.success(request, f'{"Włączono" if entry.is_active else "Wyłączono"} pozycję: {entry}.')

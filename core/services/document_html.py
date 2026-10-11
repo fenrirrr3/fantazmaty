@@ -102,12 +102,15 @@ def matched_paragraph(queues, node):
     return matches.popleft() if matches else None
 
 
-# Mammoth zamienia podział strony Worda (Ctrl+Enter, w:br w:type="page") na ten znacznik.
-PAGE_BREAK_STYLE = "br[type='page'] => br.page-break"
+# Mammoth zamienia podział strony Worda (Ctrl+Enter, w:br w:type="page") na ten znacznik. Podział kolumny
+# w tekście jednoszpaltowym Word też przenosi na następną stronę (bywa przed tytułem rozdziału).
+PAGE_BREAK_STYLE = "br[type='page'] => br.page-break\nbr[type='column'] => br.page-break"
 PAGE_BREAK_MARKER = './/br[@class="page-break"]'
 # Znaki separatora sceny: akapit złożony wyłącznie z nich (i odstępów), np. „*”, „* * *”, „#”, „⁂”, „~”, „—”.
 # Bez „_” i „=”: linie z podkreśleń to zwykle miejsce do wpisania tekstu, nie przerwa w narracji.
 SCENE_BREAK_CHARACTERS = frozenset('*∗✱✲✳✻✼❋⁂#~∼•·◆◇◊❖❦❧§⸻—–-')
+# Pojedyncza kreska, punktor czy paragraf to zwykle urwana kwestia dialogu, pusty punkt listy albo odsyłacz.
+_LONE_NOT_SCENE_BREAK = frozenset('—–-•·§')
 
 
 def scene_break(node):
@@ -115,7 +118,13 @@ def scene_break(node):
     text = node.text_content()
     marks = ''.join(text.split())
     return (node.tag == 'p' and 0 < len(marks) and len(text.strip()) <= 15
-            and set(marks) <= SCENE_BREAK_CHARACTERS and not node.xpath('.//img'))
+            and set(marks) <= SCENE_BREAK_CHARACTERS and not node.xpath('.//img')
+            and not (len(marks) == 1 and marks in _LONE_NOT_SCENE_BREAK))
+
+
+def heading_label(node):
+    """Etykieta nagłówka w spisie treści: tekst bez numerów przypisów, najwyżej 200 znaków („” gdy pusty)."""
+    return html_paragraph_key(node)[:200]
 
 
 def _has_content(node):
@@ -155,23 +164,42 @@ def _split_at(node, marker):
     return before, after
 
 
+def _carry_anchors(dropped, part):
+    """Kotwice (id) z pustej części przed podziałem przenosimy do części z treścią.
+
+    Tak Word zapisuje rozdział od nowej strony: podział na początku akapitu Nagłówka 1. Bez tego
+    nagłówek tracił id, a z nim pozycję w spisie treści EPUB i cel odnośników.
+    """
+    for empty in dropped:
+        if empty.get('id') and not part.get('id'):
+            part.set('id', empty.get('id'))
+        anchors = [element for element in empty.iterdescendants() if element.get('id')]
+        for anchor in reversed(anchors):
+            if anchor.getparent() is not None:
+                anchor.getparent().remove(anchor)
+            anchor.tail = part.text
+            part.text = None
+            part.insert(0, anchor)
+
+
 def split_page_breaks(root):
     """Rozetnij bloki najwyższego poziomu w miejscach podziału strony i oznacz bloki od nowej strony.
 
-    Blok zaczynający nową stronę dostaje atrybut data-page-break="1". Akapit z samym podziałem
+    Blok zaczynający nową stronę dostaje atrybut data-page-break z liczbą podziałów przed nim (kilka
+    podziałów z rzędu to puste strony w PDF; EPUB robi z nich jeden odstęp). Akapit z samym podziałem
     (tak zapisuje go Word po Ctrl+Enter) znika, a nowa strona zaczyna się od następnego bloku.
-    Podziały wewnątrz list i tabel pomijamy. Wywołuj po dopasowaniu akapitów DOCX: rozcięcie
-    zmienia tekst akapitu.
+    Podział wewnątrz listy lub tabeli staje się zwykłym końcem wiersza. Wywołuj po dopasowaniu
+    akapitów DOCX: rozcięcie zmienia tekst akapitu.
     """
-    pending = False
+    pending, dropped = 0, []
     for node in list(root):
         markers = node.xpath(PAGE_BREAK_MARKER) if isinstance(node.tag, str) else []
         if node.tag not in ('p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'):
             for marker in markers:
-                marker.drop_tag()
+                del marker.attrib['class']
             if pending:
-                node.set('data-page-break', '1')
-            pending = False
+                node.set('data-page-break', str(pending))
+            pending, dropped = 0, []
             continue
         parts, rest = [], node
         for marker in markers:
@@ -181,17 +209,21 @@ def split_page_breaks(root):
         parts.append(rest)
         if len(parts) == 1:
             if pending:
-                node.set('data-page-break', '1')
-            pending = False
+                node.set('data-page-break', str(max(pending, int(node.get('data-page-break') or 0))))
+            _carry_anchors(dropped, node)
+            pending, dropped = 0, []
             continue
         position = root.index(node)
         root.remove(node)
         for part in parts:
             if part is None:
-                pending = True
+                pending += 1
             elif _has_content(part):
+                _carry_anchors(dropped, part)
                 if pending:
-                    part.set('data-page-break', '1')
-                pending = False
+                    part.set('data-page-break', str(pending))
+                pending, dropped = 0, []
                 root.insert(position, part)
                 position += 1
+            else:
+                dropped.append(part)

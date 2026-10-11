@@ -6,19 +6,19 @@ import traceback
 from importlib.metadata import version, PackageNotFoundError
 from io import BytesIO
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 from uuid import uuid4
 
 CURRENT_STAGE = 'DOCX'
 if __package__:
     from .document_progress import configure, report as report_progress
     from .document_styles import paragraph_properties
-    from .document_html import (PAGE_BREAK_STYLE, list_paragraphs, matched_paragraph, paragraph_queues,
+    from .document_html import (PAGE_BREAK_STYLE, heading_label, list_paragraphs, matched_paragraph, paragraph_queues,
                                 scene_break, split_page_breaks)
 else:
     from document_progress import configure, report as report_progress
     from document_styles import paragraph_properties
-    from document_html import (PAGE_BREAK_STYLE, list_paragraphs, matched_paragraph, paragraph_queues,
+    from document_html import (PAGE_BREAK_STYLE, heading_label, list_paragraphs, matched_paragraph, paragraph_queues,
                                scene_break, split_page_breaks)
 
 CSS = '''
@@ -37,6 +37,8 @@ pre { white-space: pre-wrap; }
 .scene-break { text-align: center; text-indent: 0; margin: 1.5em 0; }
 hr.page-break { border: 0; height: 0; margin: 3em 0 0; }
 '''
+# Znaki dozwolone w URL bez kodowania (RFC 3986: zarezerwowane, niezarezerwowane i „%” istniejących kodów).
+URL_SAFE = "%:/?#[]@!$&'()*+,;=-._~"
 TAGS = set('p h1 h2 h3 h4 h5 h6 strong em u s del sup sub table thead tbody tfoot tr td th caption blockquote ol ul li br hr span a img pre code'.split())
 
 
@@ -58,6 +60,10 @@ def sanitize_html(fragment, assets):
                     "https",
                     "mailto",
                 )
+                if allowed and not value.startswith("#"):
+                    # Adres z Worda bywa nieprawidłowy (spacje, „<”, polskie litery): czytniki i epubcheck
+                    # wymagają poprawnego URL, więc niedozwolone znaki kodujemy (istniejące %XX zostają).
+                    element.set("href", quote(value, safe=URL_SAFE))
             if element.tag == "img" and key == "src":
                 allowed = value in assets
             if element.tag == "img" and key == "alt":
@@ -143,13 +149,14 @@ def split_chapters(content, title):
         while len(group) > 1 and group[-1].tag == "hr" and group[-1].get("class") == "page-break":
             group.pop()  # odstęp po podziale strony nie jest potrzebny na końcu rozdziału
         first = group[0]
-        heading = first.text_content().strip()[:200] if first.tag == level else ""
+        heading = heading_label(first) if first.tag == level else ""
         if not heading and not any(node.text_content().strip() or node.xpath(".//img") for node in group):
             continue  # pusty początek przed pierwszym rozdziałem
         markup = "".join(html.tostring(node, encoding="unicode") for node in group)
-        anchors = [(node.get("id"), node.text_content().strip()[:200])
+        # Pusty nagłówek (albo sam obraz) nie trafia do spisu treści: czytnik pokazałby pustą pozycję.
+        anchors = [(node.get("id"), label)
                    for item in group for node in item.xpath("descendant-or-self::*[self::h1 or self::h2 or self::h3]")
-                   if node.get("id")]
+                   for label in (heading_label(node),) if node.get("id") and label]
         chapters.append((heading or title, markup, anchors))
     return chapters or [(title, "<p>\u00a0</p>", [])]
 
@@ -198,6 +205,21 @@ def epub_markup(root):
             node.addprevious(html.Element("hr", {"class": "page-break"}))
         started = started or bool(node.text_content().strip() or node.xpath(".//img"))
     return "".join(html.tostring(child, encoding="unicode") for child in root)
+
+
+PDF_FAILED_NOTE = ("Nie udało się utworzyć PDF z tego dokumentu – e-book EPUB jest gotowy. "
+                   "Szczegóły błędu zapisano w logu.")
+
+
+def failure_report(error):
+    """Diagnostyka błędu bez treści dokumentu: etap, typ wyjątku i miejsca w kodzie."""
+    return {
+        "stage": CURRENT_STAGE,
+        "error": type(error).__name__,
+        "frames": [{"file": Path(frame.filename).name, "line": frame.lineno, "function": frame.name}
+                   for frame in traceback.extract_tb(error.__traceback__)],
+        "python": sys.version.split()[0],
+    }
 
 
 def convert(source, directory, formats, title):
@@ -334,7 +356,15 @@ def convert(source, directory, formats, title):
             from .document_pdf import render_pdf
         else:
             from document_pdf import render_pdf
-        warnings.extend(render_pdf(source, directory / "document.pdf", content, assets, title, document))
+        try:
+            warnings.extend(render_pdf(source, directory / "document.pdf", content, assets, title, document))
+        except Exception as error:
+            # Gotowy EPUB zostaje: błąd składu PDF nie może zabrać użytkownikowi e-booka.
+            if "epub" not in formats or isinstance(error, (ImportError, MemoryError)):
+                raise
+            (directory / "document.pdf").unlink(missing_ok=True)
+            (directory / "pdf_error.json").write_text(json.dumps(failure_report(error)), encoding="utf-8")
+            warnings.append(PDF_FAILED_NOTE)
     if warnings:
         (directory / "warnings.json").write_text(json.dumps(warnings[:30]), encoding="utf-8")
 
@@ -351,6 +381,18 @@ def main():
     ) - {"pdf", "epub"}:
         return 3
     try:
+        # Decyzja właściciela: obrazy znikają przed wszelkimi zmianami (wszystkie programy),
+        # a cały dokument jest polski. Liczba usuniętych obrazów trafia do images.json.
+        report_progress("Usuwanie obrazów i ustawianie języka polskiego")
+        if __package__:
+            from .document_images import force_polish, strip_images
+        else:
+            from document_images import force_polish, strip_images
+        source = directory / "source.docx"
+        with source.open("rb") as document:
+            stripped, removed_images = strip_images(document)
+        source.write_bytes(force_polish(stripped).getvalue())
+        (directory / "images.json").write_text(json.dumps({"removed_images": removed_images}), encoding="utf-8")
         if config.get("prepare") or config.get("inspect"):
             if __package__:
                 from .document_preparation import prepare_docx, DEFAULT_EDITORIAL_RULES
@@ -392,6 +434,9 @@ def main():
                 payload = prepared.read()
             source.write_bytes(payload)
             if summary is not None:
+                if isinstance(summary.get("replacements"), list):
+                    # Lista zamian słownikowych (co na co) – najczęstsze pozycje, plik ma limit wielkości.
+                    summary["replacements"] = summary["replacements"][:200]
                 (directory / "summary.json").write_text(json.dumps(summary), encoding="utf-8")
         if config.get("repetitions") is not None:
             CURRENT_STAGE = "Powtórzenia"

@@ -15,6 +15,7 @@ from core.models import ProgramPreferences, ReplacementEntry
 from core.odkurzacz_forms import (
     FORM_DEFAULT_RULE_LIST, DocumentConversionForm, OdkurzaczForm,
 )
+from core.services.odkurzacz import EDITORIAL_RULES
 from core.services import document_conversion_worker as worker
 from core.services import document_preparation as preparation
 from core.services import document_repetitions as repetitions
@@ -81,7 +82,8 @@ class RememberedSettingsTests(ProgramViewMixin, TestCase):
                        **REPETITION_FIELDS, 'repetitions-window_size': '50', 'repetitions-color_palette': 'light'})
         data = self.stored()
         self.assertEqual(set(data), {'convert', 'repetitions'})
-        self.assertEqual(data['convert'], {'formats': ['pdf'], 'use_cleaner': True, 'rules': ['spaces']})
+        self.assertEqual(data['convert'], {'formats': ['pdf'], 'use_cleaner': True, 'rules': ['spaces'],
+                                           'known_rules': [key for key, _ in EDITORIAL_RULES]})
         self.assertEqual(data['repetitions']['window_size'], 50)
         context = self.client.get(self.url).context
         self.assertEqual(context['conversion_form'].initial, {'formats': ['pdf'], 'use_cleaner': True, 'rules': ['spaces']})
@@ -98,6 +100,40 @@ class RememberedSettingsTests(ProgramViewMixin, TestCase):
         self.assertNotIn('name="convert-formats" value="epub" id="id_convert-formats_1" checked', html)
         self.assertIn('name="convert-rules" value="spaces" id="id_convert-rules_0" checked', html)
         self.assertNotIn('name="convert-rules" value="trim" id="id_convert-rules_1" checked', html)
+
+    def test_rule_added_after_saving_follows_its_default(self):
+        """Reguła spoza listy znanych w chwili zapisu jest zaznaczona tak jak domyślnie; znane – jak zapisano."""
+        default_rule = FORM_DEFAULT_RULE_LIST[0]
+        known = [key for key, _ in EDITORIAL_RULES if key != default_rule]
+        ProgramPreferences.objects.create(user=self.member, data={
+            'clean': {'rules': ['spaces'], 'known_rules': known},
+            'convert': {'rules': ['spaces'], 'known_rules': [key for key, _ in EDITORIAL_RULES]},
+        })
+        context = self.client.get(self.url).context
+        self.assertEqual(context['form'].initial['rules'], ['spaces', default_rule] if default_rule != 'spaces'
+                         else ['spaces'])
+        self.assertEqual(context['conversion_form'].initial['rules'], ['spaces'])
+        # Zapis bez listy znanych reguł (sprzed tej zmiany) – jak dotąd.
+        ProgramPreferences.objects.filter(user=self.member).update(data={'clean': {'rules': ['trim']}})
+        self.assertEqual(self.client.get(self.url).context['form'].initial['rules'], ['trim'])
+
+    def test_settings_are_remembered_only_when_the_job_is_accepted(self):
+        with patch.object(jobs, 'create', side_effect=jobs.JobError('Kolejka programów jest pełna.')):
+            response = self.client.post(self.url, {'program_action': 'clean', 'document': upload(),
+                                                   'rules': ['spaces']}, HTTP_X_PROGRAM_JOB='1')
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(ProgramPreferences.objects.filter(user=self.member).exists())
+
+    def test_saving_one_program_locks_the_record_and_keeps_the_others(self):
+        """Dwie karty: zapis jednego programu blokuje rekord (select_for_update) i nie gubi drugiego."""
+        from django.db.models import QuerySet
+        ProgramPreferences.objects.create(user=self.member, data={'convert': {'formats': ['pdf']}})
+        original = QuerySet.select_for_update
+        with patch.object(QuerySet, 'select_for_update', autospec=True, side_effect=original) as locked:
+            self.post_job({'program_action': 'clean', 'document': upload(), 'rules': ['spaces']})
+        self.assertTrue(any(call.args[0].model is ProgramPreferences for call in locked.call_args_list))
+        self.assertEqual(set(self.stored()), {'clean', 'convert'})
+        self.assertEqual(self.stored()['convert'], {'formats': ['pdf']})
 
     def test_invalid_submission_is_not_remembered(self):
         response = self.client.post(self.url, {'program_action': 'convert', 'convert-document': upload(),
@@ -259,6 +295,7 @@ class ChangeSummaryTests(IsolatedProgramDirsMixin, TestCase):
             result = BytesIO(formatted_docx())
             result.conversion_warnings = ['Uwaga konwertera.']
             result.cleaner_summary = summary
+            result.removed_images = 3
             self.options = options
             return result, 'docx', 'application/octet-stream'
 
@@ -278,6 +315,33 @@ class ChangeSummaryTests(IsolatedProgramDirsMixin, TestCase):
         self.assertContains(page, '<td>Podwójne i wielokrotne spacje</td><td>5</td>', html=False)
         self.assertContains(page, 'Uwaga konwertera.')
         self.assertTrue(self.options['cleaner_summary'])
+
+    def test_replacements_and_removed_images_reach_the_job_state(self):
+        replacements = [{'source': 'pickupem', 'target': 'pikapem', 'count': 2},
+                        {'source': 'Zapewnie', 'target': 'Zapewne', 'count': 1}]
+        page = self.run_job({'cleaner_summary': 'on'}, {'user_word_corrections': 3, 'replacements': replacements})
+        state = page.context['state']
+        self.assertEqual(state['replacements'], replacements)
+        self.assertEqual(state['removed_images'], 3)
+        self.assertEqual([row['rule'] for row in state['summary']], ['user_word_corrections'])
+        url = page.request['PATH_INFO']
+        data = self.client.get(url).json()
+        self.assertEqual((data['removed_images'], data['replacements']), (3, replacements))
+        # Bez podsumowania liczba usuniętych obrazów i tak trafia do stanu.
+        state = self.run_job({}, {}).context['state']
+        self.assertEqual(state['removed_images'], 3)
+        self.assertNotIn('replacements', state)
+
+    def test_damaged_replacements_and_image_count_in_state_are_ignored(self):
+        folder = jobs.root() / ('b' * 32)
+        folder.mkdir(parents=True)
+        jobs.write_json(folder / 'state.json', {'state': 'done', 'replacements': 'x', 'removed_images': 'dużo'})
+        state = jobs.status(folder)
+        self.assertEqual((state['replacements'], state['removed_images']), ([], 0))
+        self.assertEqual(jobs.replacement_rows({'replacements': [{'source': 'a', 'target': 'b', 'count': 0},
+                                                                  {'source': 'a', 'target': 'b', 'count': True},
+                                                                  {'source': 'a', 'target': 'b', 'count': 2}]}),
+                         [{'source': 'a', 'target': 'b', 'count': 2}])
 
     def test_no_changes_and_summary_off(self):
         page = self.run_job({'cleaner_summary': 'on'}, {})
@@ -357,7 +421,11 @@ class ConverterConfigurationTests(SimpleTestCase):
 
         def worker_run(directory, timeout):
             seen.update(json.loads((directory / 'job.json').read_text(encoding='utf-8')))
-            (directory / 'summary.json').write_text(json.dumps({'spaces': 3, 'trim': 0, 'x': 'tekst', 'y': True}))
+            (directory / 'summary.json').write_text(json.dumps({
+                'spaces': 3, 'trim': 0, 'x': 'tekst', 'y': True,
+                'replacements': [{'source': 'pickupem', 'target': 'pikapem', 'count': 2},
+                                 {'source': 'zły', 'target': 3, 'count': 1}, 'tekst']}))
+            (directory / 'images.json').write_text(json.dumps({'removed_images': 4}))
 
         replacements = [{'kind': 'word', 'source': 'kot', 'target': 'pies'}]
         with TemporaryDirectory() as temporary, self.settings(DOCUMENT_CONVERSION_DIR=Path(temporary)), \
@@ -371,7 +439,18 @@ class ConverterConfigurationTests(SimpleTestCase):
                                                        'keep_page_format', 'analysis_unlimited')},
                          {'track_changes': True, 'cleaner_summary': True, 'replacements': replacements,
                           'keep_page_format': True, 'analysis_unlimited': True})
-        self.assertEqual(result.cleaner_summary, {'spaces': 3})
+        self.assertEqual(result.cleaner_summary, {
+            'spaces': 3, 'replacements': [{'source': 'pickupem', 'target': 'pikapem', 'count': 2}]})
+        self.assertEqual(result.removed_images, 4)
+
+    def test_too_large_document_xml_is_refused_before_the_worker(self):
+        from core.services.document_converter import validate_resources
+        from core.services.document_errors import MESSAGES
+        with self.settings(DOCUMENT_XML_LIMIT=2000), patch('core.services.document_converter.run_converter') as run:
+            with self.assertRaisesMessage(ConversionError, MESSAGES['document_too_large']):
+                convert_document(BytesIO(formatted_docx()), [], include_docx=True)
+            run.assert_not_called()
+        validate_resources(BytesIO(formatted_docx()))  # domyślny limit 15 MB
 
     def test_defaults_keep_the_previous_configuration(self):
         seen = {}
@@ -387,6 +466,7 @@ class ConverterConfigurationTests(SimpleTestCase):
         self.assertEqual((seen['track_changes'], seen['cleaner_summary'], seen['replacements'],
                           seen['keep_page_format'], seen['analysis_unlimited']), (False, False, None, False, False))
         self.assertIsNone(result.cleaner_summary)
+        self.assertEqual(result.removed_images, 0)
         self.assertLessEqual(seen['timeout'], TIME_LIMIT)
 
     def test_superuser_time_limit_is_used_and_reported(self):
@@ -429,7 +509,7 @@ class WorkerConfigurationTests(SimpleTestCase):
 
         with TemporaryDirectory() as temporary:
             directory = Path(temporary)
-            (directory / 'source.docx').write_bytes(b'docx')
+            (directory / 'source.docx').write_bytes(formatted_docx())
             (directory / 'job.json').write_text(json.dumps({'formats': [], 'include_docx': True, 'title': 'T', **config}))
             with patch.object(sys, 'argv', ['worker', str(directory)]), \
                     patch('core.services.document_preparation.prepare_docx', side_effect=prepare), \
@@ -449,6 +529,26 @@ class WorkerConfigurationTests(SimpleTestCase):
         self.assertEqual((options['track_changes'], options['replacements'], options['keep_page_format']),
                          (True, replacements, True))
         self.assertEqual(calls['summary'], {'spaces': 4})
+
+    def test_replacement_list_is_written_to_the_summary(self):
+        def prepare(document, **options):
+            options['summary'].update(spaces=1, replacements=[
+                {'source': f's{index}', 'target': 't', 'count': 1} for index in range(300)])
+            return BytesIO(formatted_docx())
+
+        with TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            (directory / 'source.docx').write_bytes(formatted_docx())
+            (directory / 'job.json').write_text(json.dumps({'formats': [], 'include_docx': True, 'title': 'T',
+                                                            'prepare': True, 'clean': True, 'cleaner_summary': True,
+                                                            'cleaner_rules': ['user_word_corrections']}))
+            with patch.object(sys, 'argv', ['worker', str(directory)]), \
+                    patch('core.services.document_preparation.prepare_docx', side_effect=prepare):
+                self.assertEqual(worker.main(), 0)
+            summary = json.loads((directory / 'summary.json').read_text())
+        self.assertEqual(summary['spaces'], 1)
+        self.assertEqual(len(summary['replacements']), 200)
+        self.assertEqual(summary['replacements'][0], {'source': 's0', 'target': 't', 'count': 1})
 
     def test_old_configuration_keeps_defaults_and_writes_no_summary(self):
         calls = self.run_main({'prepare': True, 'clean': True, 'cleaner_rules': ['spaces']})
