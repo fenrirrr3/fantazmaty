@@ -30,7 +30,6 @@ from core.permissions import (
     can_import_reviews,
     can_manage_reviews,
     can_manage_review_files,
-    can_perform_bulk_actions,
     can_self_assign_reviews,
     can_view_author_data,
     coordinator_required,
@@ -208,7 +207,6 @@ def _permission_context(user, *, archived=False):
         # Profile autorów są otwarte dla koordynatorów (lista Autorzy), więc i link.
         "can_open_author_profiles": is_coordinator(user),
         "can_import_reviews": can_import_reviews(user),
-        "can_perform_bulk_actions": can_perform_bulk_actions(user),
     }
 
 
@@ -421,11 +419,6 @@ def review_list(request):
         {
             "reviews": page_obj,
             "page_obj": page_obj,
-            "bulk_action_form": (
-                CoordinatorReviewBulkActionForm()
-                if can_perform_bulk_actions(request.user)
-                else None
-            ),
         }
     )
 

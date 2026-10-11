@@ -161,13 +161,16 @@ def correction_edit(request, pk):
     version = item.updated_at.isoformat()
     if request.method == "POST" and request.POST.get("version") != version:
         return render(request, "core/edit_conflict.html", status=409)
+    # Walidacja formularza wpisuje nową antologię do item, więc dotychczasową zapamiętujemy wcześniej.
+    original_anthology_id = item.anthology_id
     form = CorrectionForm(request.POST if request.method == "POST" else None, instance=item)
     if request.method == "POST" and form.is_valid():
         selected = form.cleaned_data.get("text")
         if selected:
             selected = get_object_or_404(frontend_scope(Text.objects).select_for_update(), pk=selected.pk)
-        anthology = form.cleaned_data["anthology"]
-        if anthology.pk != item.anthology_id and anthology.status not in ("ready",):
+        # Status antologii sprawdzamy na zablokowanym rekordzie, nie na kopii z walidacji formularza.
+        anthology = get_object_or_404(frontend_scope(Anthology.objects).select_for_update(), pk=form.cleaned_data["anthology"].pk)
+        if anthology.pk != original_anthology_id and anthology.status not in ("ready",):
             form.add_error("anthology", "Antologia nie jest już wydana. Wybierz ją ponownie po zmianie statusu.")
         elif selected and selected.anthology_id != anthology.pk:
             form.add_error("text", "Opowiadanie zmieniło antologię. Wybierz je ponownie.")

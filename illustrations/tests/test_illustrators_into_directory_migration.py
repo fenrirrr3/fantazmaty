@@ -18,7 +18,9 @@ forward = import_module('illustrations.migrations.0009_illustrators_into_directo
 
 def migrate_to_latest():
     executor = MigrationExecutor(connection)
-    executor.migrate(executor.loader.graph.leaf_nodes())
+    # Późniejsze migracje danych (np. people 0017) drukują podsumowanie – w testach go nie pokazujemy.
+    with contextlib.redirect_stdout(io.StringIO()):
+        executor.migrate(executor.loader.graph.leaf_nodes())
 
 
 @tag('migration', 'slow')

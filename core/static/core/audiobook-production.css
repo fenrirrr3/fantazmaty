@@ -233,9 +233,22 @@
 }
 
 /* Nagłówek, podpowiedź i przyciski zajmują cały wiersz; pole daty lub etapu – połowę. */
-.audio-stage-add > :is(h3, .form-help, .actions) {
+.audio-stage-add > :is(h3, .form-help, .actions, .audio-stage-dates) {
     grid-column: 1 / -1;
     margin: 0;
+}
+
+/* Daty etapów: jeden etap w wierszu, rozpoczęcie i zakończenie obok siebie. */
+.audio-stage-dates {
+    display: grid;
+    gap: var(--space-3);
+}
+
+.audio-stage-dates fieldset {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3);
+    align-items: end;
 }
 
 

@@ -1,5 +1,6 @@
 """Kontrole przed wydaniem i spójności danych: lista kontrolna antologii, stopka okładki, możliwe duplikaty i zapisy kolejek."""
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.utils import timezone
 
@@ -51,6 +52,37 @@ class AnthologyChecklistTests(TestCase):
         self.book.refresh_from_db()
         cover = [row for row in anthology_credits(self.book) if row['role'] == 'Okładka']
         self.assertEqual([row['name'] for row in cover], ['Brak danych wykonawcy'])
+
+    def test_ready_book_accepts_only_closed_texts(self):
+        """Antologię oznaczy się jako gotową dopiero, gdy każdy tekst jest gotowy lub wycofany; do gotowej
+        nie przeniesie się niedokończonego tekstu ani nie doda nowego. Gotowej nie sprawdza się ponownie."""
+        self.text('Gotowy', 'ready')
+        self.text('Wycofany', 'withdrawn')
+        open_text = self.text('W redakcji', 'editing')
+        self.book.status = Anthology.Status.READY
+        with self.assertRaisesMessage(ValidationError, f'Niezakończone teksty: W redakcji (#{open_text.pk}).'):
+            self.book.clean()
+        open_text.workflow_stages.update(stage_type='ready')
+        self.book.clean()
+        self.book.save()
+
+        draft = Anthology.objects.create(title='W przygotowaniu')
+        for title, stage_type, allowed in (('Gotowy z naboru', 'ready', True), ('Wycofany z naboru', 'withdrawn', True),
+                                           ('Redagowany', 'editing', False), ('Nowy', None, False)):
+            with self.subTest(title):
+                text = Text(title=title, anthology=draft, length=10)
+                if stage_type:
+                    text.save()
+                    text.workflow_stages.update(is_current=False)
+                    WorkflowStage.objects.create(text=text, stage_type=stage_type)
+                text.anthology = self.book
+                if allowed:
+                    text.clean()
+                else:
+                    with self.assertRaisesMessage(ValidationError, 'Nie można przenieść niedokończonego tekstu'):
+                        text.clean()
+        Text.objects.create(title='Dopisany później', anthology=self.book, length=10)
+        self.book.clean()
 
 
 class DuplicateCandidateTests(TestCase):

@@ -16,7 +16,7 @@ class AuthorPseudonymTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.admin = create_superuser('pseudo-admin')
-        cls.member = create_member('pseudo-member', 'Redaktor')
+        cls.member = create_member('pseudo-member', 'Lektor')
         cls.author = Author.objects.create(first_name='Jawneimię', last_name='Jawnenazwisko',
                                            pseudonym='Mariusz Nowak', email='author@example.test')
         cls.book = Anthology.objects.create(title='Antologia testowa', has_illustrations=True)

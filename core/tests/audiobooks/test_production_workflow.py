@@ -1,4 +1,5 @@
-"""Produkcja audiobooka na stronie audiobooka: stała kolejność etapów, daty, publikacja, blokady, panel admina i walidacja modelu."""
+"""Wpis audiobooka prowadzony przez koordynatora: osoby ze spisu, ręczny status z historią etapów i datami,
+korekta jako jedyny obieg pracy, publikacja, blokady, panel admina i walidacja modelu."""
 from datetime import date, timedelta
 
 import json
@@ -12,7 +13,7 @@ from django.utils import timezone
 from lxml import html
 
 from core.admin import AudiobookAdmin
-from core.models import Audiobook, AudiobookStage, WorkflowEvent
+from core.models import AudioContributor, Audiobook, AudiobookStage, WorkflowEvent
 from core.selectors.texts import text_list_context
 from fantazmaty.testing import form_value
 from texts.models import Anthology, Text
@@ -21,70 +22,90 @@ from workflow.models import WorkflowStage
 from .support import AudiobookProductionTestData
 
 
+def stage_rows(text):
+    return [(s.stage_type, s.started_at, s.start_unknown, s.ended_at, s.is_completed)
+            for s in AudiobookStage.objects.filter(text=text).order_by('position')]
+
+
 class ProductionWorkflowTests(AudiobookProductionTestData, TestCase):
-    def test_preview_and_people_form_preserve_editorial_workflow(self):
+    def test_people_come_from_the_directory_without_accounts(self):
+        engineer = AudioContributor.objects.create(name='Montażysta Spisu', email='mont@example.test')
+        retired = AudioContributor.objects.create(name='Dawny Lektor', is_active=False)
         self.client.force_login(self.coordinator)
-        count = get_user_model().objects.count()
+        accounts = get_user_model().objects.count()
         page = self.client.get(self.url)
         self.assertContains(page, 'Podpis')
         self.assertFalse(Audiobook.objects.exists())
-        self.assertNotContains(page, 'name="proofreader"')
-        self.assertContains(page, 'audio-detail-columns')
+        self.assertNotIn(retired, page.context['people_form'].fields['narrator_contact'].queryset)
+        rejected = {
+            'duplicate of a directory entry': ({'people-new_narrator_name': 'montażysta  spisu'}, 'new_narrator_name'),
+            'email without a name': ({'people-new_engineer_email': 'x@example.test'}, 'new_engineer_name'),
+            'both a choice and a new person': ({'people-engineer_contact': engineer.pk,
+                                                'people-new_engineer_name': 'Ktoś Nowy'}, 'new_engineer_name'),
+        }
+        for case, (fields, field) in rejected.items():
+            with self.subTest(case):
+                response = self.post('people', self.coordinator, **fields)
+                self.assertEqual(response.status_code, 400)
+                self.assertIn(field, response.context['people_form'].errors)
         response = self.post('people', self.coordinator, **{
-            'people-narrator_name': 'Lektor bez konta', 'people-narrator_email': 'private-audio@example.test',
-            'people-engineer_name': 'Dźwiękowiec bez konta', 'status': 'published', 'proofreader': self.reader.pk})
+            'people-new_narrator_name': ' Lektor   bez konta ', 'people-new_narrator_email': 'Private-Audio@example.test',
+            'people-engineer_contact': engineer.pk, 'status': 'published', 'proofreader': self.reader.pk})
         self.assertEqual(response.status_code, 302)
         audio = self.audio()
-        self.assertEqual(audio.status, 'pending')
-        self.assertIsNone(audio.proofreader_id)
-        self.assertFalse(AudiobookStage.objects.exists())
-        self.assertEqual(get_user_model().objects.count(), count)
-        self.assertFalse(WorkflowStage.objects.filter(text=self.text).exists())
+        self.assertEqual((audio.narrator_name, audio.narrator_email, audio.narrator_contact.is_active,
+                          audio.engineer_name, audio.status, audio.proofreader_id),
+                         ('Lektor bez konta', 'private-audio@example.test', True, 'Montażysta Spisu', 'pending', None))
+        self.assertEqual(get_user_model().objects.count(), accounts)
+        self.assertFalse(AudiobookStage.objects.exists() or WorkflowStage.objects.filter(text=self.text).exists())
+        # Nieaktywny wpis zostaje przy dotychczasowym audiobooku.
+        Audiobook.objects.filter(pk=audio.pk).update(narrator_contact=retired)
+        self.assertIn(retired, self.client.get(self.url).context['people_form'].fields['narrator_contact'].queryset)
+        # Lektor z kontem widzi wpis bez adresów e-mail i niczego nie zmienia; redaktor nie ma dostępu.
+        self.client.force_login(self.narrator)
+        page = self.client.get(self.url)
+        self.assertNotContains(page, 'mont@example.test')
+        self.assertFalse(page.context['can_edit'])
+        for action in ('people', 'status', 'dates', 'notes', 'publication'):
+            with self.subTest(action=action):
+                self.assertEqual(self.post(action, self.narrator).status_code, 403)
         self.client.force_login(self.member)
-        self.assertNotContains(self.client.get(self.url), 'private-audio@example.test')
-        self.assertEqual(self.post('people', self.member).status_code, 403)
+        self.assertEqual(self.client.get(self.url).status_code, 403)
 
-    def test_full_production_in_fixed_order_and_publication(self):
+    def test_status_changes_close_and_open_stages_and_proofreading_is_the_only_workflow(self):
         today = timezone.localdate()
-        self.assertEqual(set(Audiobook.Status.labels),
-                         {'Do wzięcia', 'Nagrywanie', 'Korekta', 'Nanoszenie poprawek', 'Montaż', 'Opublikowane'})
+        d1, d2 = today - timedelta(days=9), today - timedelta(days=5)
+        self.assertEqual(Audiobook.Status.labels,
+                         ['Nieprzypisane', 'Nagrywanie', 'Korekta', 'Nanoszenie poprawek', 'Montaż', 'Opublikowane'])
         self.assertEqual(self.client.get(self.public).context['page_obj'].paginator.count, 1)
-        # Do wzięcia → Nagrywanie: rozpoczęcie nagrywania to wzięcie tekstu.
-        self.assertEqual(self.start(self.reader).status_code, 403)
-        self.assertEqual(self.start().status_code, 302)
+        self.assertEqual(self.set_status('recording', self.reader).status_code, 403)
+        self.assertEqual(self.set_status('recording', day=d1).status_code, 302)
+        self.assertEqual(self.set_status('recording').status_code, 400)  # bez zmiany
+        self.assertEqual(self.set_status('proofreading', day=d2).status_code, 302)
         audio = self.audio()
-        self.assertEqual((audio.status, audio.status_label, audio.active_stage.started_at),
-                         ('recording', 'Nagrywanie', today))
-        self.assertEqual(self.finish().status_code, 302)
-        # Koniec nagrywania udostępnia korektę; rozpoczyna ją korektor, przejmując ją.
-        audio = self.audio()
-        self.assertEqual((audio.status, audio.active_stage.queued_at, audio.active_stage.is_started),
-                         ('proofreading', today, False))
-        self.assertEqual(self.finish().status_code, 400)  # nierozpoczętego etapu nie można zakończyć
+        self.assertEqual((audio.status, audio.active_stage.stage_type, audio.active_stage.is_started,
+                          audio.active_stage.queued_at), ('proofreading', 'proofreading', False, d2))
+        # Korekta: korektor przejmuje (dzisiaj) i kończy; status sam przechodzi na „Nanoszenie poprawek”.
+        self.assertEqual(self.finish().status_code, 400)
         self.assertEqual(self.claim(self.reader).status_code, 302)
+        self.assertEqual(self.finish(self.reader, day=today - timedelta(days=1)).status_code, 302)
         audio = self.audio()
-        self.assertEqual((audio.status, audio.proofreader, audio.active_stage.performer,
-                          audio.active_stage.started_at), ('proofreading', self.reader, self.reader, today))
-        self.assertEqual(self.finish(self.reader, day=False).status_code, 302)
-        # Koniec korekty – gotowe do nanoszenia poprawek, potem montaż.
-        for status in ('corrections', 'editing'):
-            audio = self.audio()
-            self.assertEqual((audio.status, audio.active_stage.stage_type, audio.active_stage.is_started,
-                              audio.active_stage.queued_at), (status, status, False, today))
-            self.assertEqual(self.finish().status_code, 400)
-            self.assertEqual(self.start(self.reader).status_code, 403)
-            self.assertEqual(self.start().status_code, 302)
-            self.assertEqual(self.audio().status, status)
-            self.assertEqual(self.finish().status_code, 302)
-        # Koniec montażu – Opublikowane; data premiery i linki uzupełnia się w Publikacji.
+        self.assertEqual((audio.status, audio.active_stage.stage_type, audio.active_stage.is_started),
+                         ('corrections', 'corrections', False))
+        self.assertEqual(self.start().status_code, 400)  # rozpocząć można tylko korektę
+        # Kolejne statusy ustawia koordynator; pusta data – nieznana.
+        self.assertEqual(self.set_status('editing', day='').status_code, 302)
+        self.assertEqual(self.set_status('published').status_code, 302)
+        self.assertEqual(stage_rows(self.text), [
+            ('recording', d1, False, d2, True),
+            ('proofreading', today, False, today, True),
+            ('corrections', None, True, None, True),
+            ('editing', None, True, today, True)])
         audio = self.audio()
         self.assertEqual((audio.status, audio.active_stage_id, audio.is_published), ('published', None, True))
-        self.assertEqual(self.start().status_code, 400)
-        stages = list(AudiobookStage.objects.filter(text=self.text).order_by('position'))
-        self.assertEqual([(s.stage_type, s.position) for s in stages],
-                         [('recording', 1), ('proofreading', 2), ('corrections', 3), ('editing', 4)])
-        self.assertTrue(all(s.is_completed and s.started_at == today and s.ended_at == today for s in stages))
+        self.assertEqual(AudiobookStage.objects.get(stage_type='proofreading').performer, self.reader)
         self.assertTrue(all(event.channel for event in WorkflowEvent.objects.filter(kind='audiobook', text=self.text)))
+        # Publikacja to dane wpisu – nie zmienia statusu.
         self.assertContains(self.client.get(self.url), 'Uzupełnij datę premiery')
         self.assertEqual(self.post('publication', **{'publication-premiere_date': str(today),
                                                      'publication-youtube_url': 'https://youtu.be/film',
@@ -93,50 +114,61 @@ class ProductionWorkflowTests(AudiobookProductionTestData, TestCase):
         table = html.fromstring(self.client.get(self.list_url).content)
         self.assertEqual(len(table.xpath('//a[@href="https://youtu.be/film"]')), 1)
         self.assertEqual(self.client.get(self.list_url, {'status': 'published'}).context['page_obj'].paginator.count, 1)
-        # Usunięcie linków nie cofa publikacji – wynika ona z zakończonego montażu.
-        self.post('publication', **{'publication-premiere_date': '', 'publication-youtube_url': '',
-                                    'publication-hearthis_url': ''})
-        self.assertEqual(self.audio().status, 'published')
+        # Powrót do „Korekty” otwiera nową rundę do przejęcia; jej porzucenie usuwa nieprzejętą rundę.
+        self.set_status('proofreading')
+        self.assertIsNone(self.audio().proofreader_id)
+        self.set_status('editing')
+        self.assertEqual(AudiobookStage.objects.filter(stage_type='proofreading').count(), 1)
 
-    def test_optional_dates_only_for_coordinator(self):
-        # Koordynator może zostawić datę pustą – „data nieznana”.
-        self.assertEqual(self.start(day='').status_code, 302)
-        stage = self.audio().active_stage
-        self.assertEqual((stage.started_at, stage.start_unknown, stage.is_started), (None, True, True))
-        self.assertEqual(self.finish(day='').status_code, 302)
-        stage.refresh_from_db()
-        self.assertEqual((stage.ended_at, stage.is_completed), (None, True))
-        # Korekta dostępna od dziś (koniec nagrywania nieznany).
-        self.assertEqual(self.audio().active_stage.queued_at, timezone.localdate())
-        page = html.fromstring(self.client.get(self.url).content)
-        row = page.xpath('//table/tbody/tr[td[1][starts-with(normalize-space(.),"Nagrywanie")]]')[0]
-        self.assertEqual(["".join(td.itertext()).strip() for td in row.xpath('./td')][2:], ['?', '?', 'Zakończony'])
-        # Korektor nie wybiera daty: zawsze dzisiaj.
-        self.claim(self.reader)
-        self.assertEqual(self.finish(self.reader, day='').status_code, 302)
-        done = AudiobookStage.objects.get(text=self.text, stage_type='proofreading')
-        self.assertEqual(done.ended_at, timezone.localdate())
-
-    def test_stage_validation_stale_and_unknown_actions(self):
-        self.assertEqual(self.start(day=timezone.localdate() + timedelta(days=1)).status_code, 400)
+    def test_status_and_date_validation_stale_and_unknown_actions(self):
+        tomorrow = timezone.localdate() + timedelta(days=1)
+        for status, day in (('recording', tomorrow), ('unknown', None)):
+            with self.subTest(status=status):
+                self.assertEqual(self.set_status(status, day=day).status_code, 400)
         self.assertFalse(AudiobookStage.objects.exists())
-        self.assertEqual(self.start().status_code, 302)
-        self.assertEqual(self.start().status_code, 400)  # już trwa
+        self.set_status('recording', day=timezone.localdate() - timedelta(days=1))
+        # Zakończenie nie może poprzedzać rozpoczęcia.
+        self.assertEqual(self.set_status('proofreading', day=timezone.localdate() - timedelta(days=3)).status_code, 400)
+        self.to_proofreading()
+        self.assign(self.reader)
+        self.start(self.reader)
         stale = self.token()
         for stage_id in (999999, 'abc', '', '１', '1' * 19):
             self.assertEqual(self.post('finish_stage', stage_id=stage_id).status_code, 400)
-        self.assertEqual(self.finish(day=timezone.localdate() - timedelta(days=1)).status_code, 400)
         self.assertEqual(self.finish().status_code, 302)
-        self.assertEqual(self.client.post(self.url, {'action': 'start_stage', '_edit_version': stale}).status_code, 409)
-        self.assertEqual(self.client.post(self.url, {'action': 'start_stage'}).status_code, 409)
-        # Nieznane akcje (np. dawne „queue” i „pause”) są odrzucane.
+        self.assertEqual(self.client.post(self.url, {'action': 'status', '_edit_version': stale}).status_code, 409)
+        self.assertEqual(self.client.post(self.url, {'action': 'status'}).status_code, 409)
         for action in ('queue', 'pause'):
             self.assertEqual(self.post(action).status_code, 400)
-        self.assertEqual(AudiobookStage.objects.count(), 2)
+        self.assertEqual(AudiobookStage.objects.count(), 3)
+
+    def test_coordinator_corrects_stage_dates(self):
+        today = timezone.localdate()
+        self.set_status('recording', day=today - timedelta(days=4))
+        self.set_status('proofreading', day=today - timedelta(days=2))
+        recording, proofreading = AudiobookStage.objects.order_by('position')
+        page = html.fromstring(self.client.get(self.url).content)
+        self.assertEqual(len(page.xpath('//form[input[@value="dates"]]//input[@type="date"]')), 3)  # trwa – bez końca
+        base = {f'dates-start_{recording.pk}': str(today - timedelta(days=6)),
+                f'dates-end_{recording.pk}': str(today - timedelta(days=3)), f'dates-start_{proofreading.pk}': ''}
+        rejected = {
+            'end before start': {f'dates-end_{recording.pk}': str(today - timedelta(days=7))},
+            'future date': {f'dates-start_{recording.pk}': str(today + timedelta(days=1))},
+        }
+        for case, change in rejected.items():
+            with self.subTest(case):
+                self.assertEqual(self.post('dates', **{**base, **change}).status_code, 400)
+        self.assertEqual(self.post('dates', self.narrator, **base).status_code, 403)
+        self.assertEqual(self.post('dates', **base).status_code, 302)
+        self.assertEqual(stage_rows(self.text)[0], ('recording', today - timedelta(days=6), False,
+                                                    today - timedelta(days=3), True))
+        # Usunięcie daty nie cofa rozpoczęcia – data staje się nieznana; korektę może rozpocząć wpisana data.
+        self.post('dates', **{**base, f'dates-start_{recording.pk}': '', f'dates-start_{proofreading.pk}': str(today)})
+        self.assertEqual([row[1:3] for row in stage_rows(self.text)], [(None, True), (today, False)])
+        self.assertTrue(self.audio().active_stage.is_started)
 
     def test_disabled_and_withdrawn_preserve_history_and_forbid_mutations(self):
-        self.start()
-        self.finish()
+        self.to_proofreading()
         self.assign(self.reader)
         self.start()
         stage = self.audio().active_stage
@@ -145,6 +177,7 @@ class ProductionWorkflowTests(AudiobookProductionTestData, TestCase):
         self.assertEqual(self.client.get(self.list_url).context['page_obj'].paginator.count, 0)
         self.assertEqual(self.client.get(self.queue_url).context['page_obj'].paginator.count, 1)
         self.assertEqual(self.finish().status_code, 403)
+        self.assertEqual(self.set_status('corrections').status_code, 403)
         self.assertEqual(self.assign(None).status_code, 403)
         self.assertEqual(self.client.get(self.url).status_code, 200)
         Text.objects.filter(pk=self.text.pk).update(audiobook_blacklisted=False, for_recording=False)
@@ -152,29 +185,29 @@ class ProductionWorkflowTests(AudiobookProductionTestData, TestCase):
         Text.objects.filter(pk=self.text.pk).update(for_recording=True)
         WorkflowStage.objects.create(text=self.text, stage_type='withdrawn')
         self.assertEqual(self.finish().status_code, 403)
-        self.assertEqual(self.start().status_code, 403)
         self.assertEqual(self.audio().active_stage_id, stage.pk)
         novel = Anthology.objects.create(title='Powieść', is_novel=True)
         chapter = Text.objects.create(title='Rozdział 1', anthology=novel, chapter_number=1, length=1)
         self.assertEqual(self.client.get(reverse('core:audiobook_detail', args=[chapter.pk])).status_code, 404)
 
-    def test_disabled_audiobook_metadata_editable_but_stages_blocked(self):
-        audio = Audiobook.objects.create(text=self.text, status='published', narrator_name='Pierwotny lektor')
+    def test_disabled_audiobook_metadata_editable_but_status_blocked(self):
+        audio = Audiobook.objects.create(text=self.text, status='published')
         self.text.audiobook_blacklisted = True
         self.text.save()
         self.client.force_login(self.admin)
         page = self.client.get(self.url)
         self.assertTrue(page.context['can_edit'])
         self.assertFalse(page.context['can_start'] or page.context['can_finish'])
-        self.assertNotContains(page, 'Dodaj etap')
+        self.assertNotContains(page, 'Zmień status')
         data = {'publication-premiere_date': '2020-05-04',
                 'publication-youtube_url': 'https://www.youtube.com/watch?v=abcdefghijk',
                 'publication-hearthis_url': ''}
         self.assertEqual(self.post('publication', **data).status_code, 302)
+        self.assertEqual(self.post('notes', **{'notes-coordinator_notes': 'Nagranie z 2020 r.'}).status_code, 302)
         audio.refresh_from_db()
-        self.assertEqual(audio.premiere_date, date(2020, 5, 4))
-        self.assertEqual(audio.status, 'published')
-        self.assertEqual(self.start().status_code, 403)
+        self.assertEqual((audio.premiere_date, audio.status, audio.coordinator_notes),
+                         (date(2020, 5, 4), 'published', 'Nagranie z 2020 r.'))
+        self.assertEqual(self.set_status('editing').status_code, 403)
         self.assertEqual(self.post('publication', self.member, **data).status_code, 403)
 
     def test_disabled_text_without_audio_cannot_create_metadata(self):
@@ -182,7 +215,7 @@ class ProductionWorkflowTests(AudiobookProductionTestData, TestCase):
         self.text.save()
         self.client.force_login(self.admin)
         self.assertFalse(self.client.get(self.url).context['can_edit'])
-        self.assertEqual(self.post('people', **{'people-narrator_name': 'Nowy lektor'}).status_code, 403)
+        self.assertEqual(self.post('people', **{'people-new_narrator_name': 'Nowy lektor'}).status_code, 403)
         self.assertFalse(Audiobook.objects.exists())
 
     def test_abandoned_audio_metadata_remains_accessible_without_resuming_production(self):
@@ -194,10 +227,9 @@ class ProductionWorkflowTests(AudiobookProductionTestData, TestCase):
         self.assertEqual(page.status_code, 200)
         self.assertTrue(page.context['can_edit'])
         self.assertFalse(page.context['can_start'] or page.context['can_finish'])
-        self.assertEqual(self.post('people', **{'people-narrator_name': 'Uzupełniony lektor'}).status_code, 302)
+        self.assertEqual(self.post('people', **{'people-new_narrator_name': 'Uzupełniony lektor'}).status_code, 302)
         audio.refresh_from_db()
-        self.assertEqual(audio.narrator_name, 'Uzupełniony lektor')
-        self.assertEqual(audio.status, 'published')
+        self.assertEqual((audio.narrator_name, audio.status), ('Uzupełniony lektor', 'published'))
 
     def test_text_preview_shows_real_audio_status_without_creating_record(self):
         audio = Audiobook.objects.create(text=self.text, status='published')
@@ -209,17 +241,18 @@ class ProductionWorkflowTests(AudiobookProductionTestData, TestCase):
             section = html.fromstring(self.client.get(url).content).get_element_by_id('text-audiobook')
             self.assertIn(label, section.text_content())
         empty = Text.objects.create(title='Bez produkcji', anthology=self.book, length=1)
-        self.assertContains(self.client.get(reverse('core:assigned_text_detail', args=[empty.pk])), 'Do wzięcia')
+        self.assertContains(self.client.get(reverse('core:assigned_text_detail', args=[empty.pk])), 'Nieprzypisane')
         self.assertFalse(Audiobook.objects.filter(text=empty).exists())
 
     def test_audiobook_events_do_not_change_text_status_sorting(self):
-        self.start()
+        self.set_status('recording')
         rows = text_list_context(user=self.admin, params={})['texts']
         self.assertIsNone(next(row for row in rows if row['pk'] == self.text.pk)['last_status_change'])
 
     def test_admin_preserves_status_and_corrects_history_dates(self):
-        self.start(day='')
+        self.set_status('recording', day='')
         audio = self.audio()
+        engineer = AudioContributor.objects.create(name='Montażysta')
         request = RequestFactory().get('/')
         request.user = self.admin
         # Korektora zmienia się w panelu tylko podczas korekty.
@@ -230,12 +263,11 @@ class ProductionWorkflowTests(AudiobookProductionTestData, TestCase):
         self.assertEqual(page.status_code, 200)
         self.assertNotContains(page, 'name="status"')
         stale = self.token()
-        data = {'status': 'editing', 'engineer_name': 'Montażysta', 'proofreader': self.reader.pk,
+        data = {'status': 'editing', 'engineer_contact': engineer.pk, 'proofreader': self.reader.pk,
                 '_edit_version': form_value(page), '_save': 'Zapisz'}
         self.assertEqual(self.client.post(url, data).status_code, 302)
         audio.refresh_from_db()
-        self.assertEqual(audio.status, 'recording')
-        self.assertEqual(audio.engineer_name, 'Montażysta')
+        self.assertEqual((audio.status, audio.engineer_name), ('recording', 'Montażysta'))
         self.assertEqual(self.client.post(self.url, {'action': 'people', '_edit_version': stale}).status_code, 409)
         self.assertContains(self.client.get(reverse('admin:index')), 'Historia etapów audiobooków')
         history = reverse('admin:core_audiobookstage_change', args=[audio.active_stage_id])
@@ -246,7 +278,7 @@ class ProductionWorkflowTests(AudiobookProductionTestData, TestCase):
         token = html.fromstring(page.content).xpath('//input[@name="_edit_version"]/@value')
         if token:
             fields['_edit_version'] = token[0]
-        # Trwający etap nie dostaje końca z panelu – kończy się go na stronie audiobooka.
+        # Trwający etap nie dostaje końca z panelu – kończy go zmiana statusu.
         self.assertEqual(self.client.post(history, {**fields, 'ended_at': '2026-01-06'}).status_code, 200)
         self.assertEqual(self.client.post(history, fields).status_code, 302)
         stage = AudiobookStage.objects.get(pk=audio.active_stage_id)
@@ -259,6 +291,7 @@ class ProductionWorkflowTests(AudiobookProductionTestData, TestCase):
         audio = Audiobook.objects.create(text=self.text, status='published', proofreader=self.reader,
                                          youtube_url='https://www.youtube.com/watch?v=first',
                                          hearthis_url='https://hearthis.at/fantazmaty/first/', additional_links=parts)
+        narrator = AudioContributor.objects.create(name='Nowy lektor', email='new@example.test')
         self.client.force_login(self.admin)
         for url in (self.list_url, self.url):
             page = self.client.get(url)
@@ -267,19 +300,15 @@ class ProductionWorkflowTests(AudiobookProductionTestData, TestCase):
             self.assertContains(page, 'YouTube – cz. 2')
         url = reverse('admin:core_audiobook_change', args=[audio.pk])
         response = self.client.post(url, {
-            'narrator_name': 'Nowy lektor', 'narrator_email': 'new@example.test',
-            'engineer_name': 'Nowy dźwiękowiec', 'engineer_email': 'sound@example.test',
-            'proofreader': self.reader.pk, 'additional_links': json.dumps(parts),
+            'narrator_contact': narrator.pk, 'proofreader': self.reader.pk, 'additional_links': json.dumps(parts),
             '_edit_version': form_value(self.client.get(url)), '_save': 'Zapisz'})
         self.assertEqual(response.status_code, 302)
         audio.refresh_from_db()
-        self.assertEqual((audio.narrator_name, audio.narrator_email, audio.engineer_name, audio.engineer_email),
-                         ('Nowy lektor', 'new@example.test', 'Nowy dźwiękowiec', 'sound@example.test'))
-        self.assertEqual(audio.additional_links, parts)
+        self.assertEqual((audio.narrator_name, audio.narrator_email, audio.engineer_name, audio.additional_links),
+                         ('Nowy lektor', 'new@example.test', '', parts))
         # Puste pole dodatkowych linków zapisuje pustą listę.
-        response = self.client.post(url, {'narrator_name': 'Nowy lektor', 'engineer_name': 'Nowy dźwiękowiec',
-                                          'additional_links': '', '_edit_version': form_value(self.client.get(url)),
-                                          '_save': 'Zapisz'})
+        response = self.client.post(url, {'narrator_contact': narrator.pk, 'additional_links': '',
+                                          '_edit_version': form_value(self.client.get(url)), '_save': 'Zapisz'})
         self.assertEqual(response.status_code, 302)
         audio.refresh_from_db()
         self.assertEqual(audio.additional_links, [])
@@ -312,20 +341,16 @@ class AudiobookModelValidationTests(AudiobookProductionTestData, TestCase):
         audio = Audiobook.objects.create(text=self.text, proofreader=self.member)
         audio.clean()
 
-    def test_email_requires_name_and_names_are_normalised(self):
-        audio = Audiobook(text=self.text, narrator_name='   ', narrator_email='n@example.test',
-                          engineer_name='  Jan   Montaż ')
-        self.assertEqual(set(self.errors(audio)), {'narrator_name'})
-        self.assertEqual(audio.engineer_name, 'Jan Montaż')
-
-    def test_partial_save_of_a_name_also_links_the_contact_profile(self):
-        audio = Audiobook.objects.create(text=self.text, status='recording')
-        audio.narrator_name = '  Ewa   Głos '
+    def test_audiobook_mirrors_directory_entry_even_on_partial_save(self):
+        person = AudioContributor.objects.create(name='  Ewa   Głos ', email=' EWA@example.test ')
+        audio = Audiobook.objects.create(text=self.text, status='recording', narrator_name='wpisane ręcznie')
+        self.assertEqual(audio.narrator_name, '')  # osoba tylko ze spisu
+        audio.narrator_contact = person
         audio.status = 'published'  # pole spoza update_fields nie jest zapisywane
-        audio.save(update_fields=['narrator_name'])
-        stored = Audiobook.objects.select_related('narrator_contact').get(pk=audio.pk)
-        self.assertEqual((stored.narrator_name, stored.narrator_contact.name, stored.status),
-                         ('Ewa Głos', 'Ewa Głos', 'recording'))
-        audio.status = 'editing'
-        audio.save(update_fields=['status'])
-        self.assertEqual(Audiobook.objects.get(pk=audio.pk).narrator_contact_id, stored.narrator_contact_id)
+        audio.save(update_fields=['narrator_contact'])
+        stored = Audiobook.objects.get(pk=audio.pk)
+        self.assertEqual((stored.narrator_name, stored.narrator_email, stored.status),
+                         ('Ewa Głos', 'ewa@example.test', 'recording'))
+        person.name = 'Ewa Nowak'
+        person.save()
+        self.assertEqual(Audiobook.objects.get(pk=audio.pk).narrator_name, 'Ewa Nowak')

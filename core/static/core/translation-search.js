@@ -19,6 +19,8 @@ document.addEventListener('DOMContentLoaded', () => {
         [...select.labels].forEach(label => { label.htmlFor = input.id; });
         let timer, controller, sequence = 0, active = -1;
         const invalidate = () => { ++sequence; clearTimeout(timer); controller?.abort(); };
+        // Cancelling an in-flight search must not leave "Szukam…" in the live status region.
+        const cancel = () => { invalidate(); close(); if (status.textContent === 'Szukam…') status.textContent = ''; };
         const close = () => {
             list.replaceChildren(); active = -1;
             input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant');
@@ -77,7 +79,7 @@ document.addEventListener('DOMContentLoaded', () => {
             timer = setTimeout(search, 350);
         });
         input.addEventListener('keydown', event => {
-            if (event.key === 'Escape') { invalidate(); close(); return; }
+            if (event.key === 'Escape') { cancel(); return; }
             if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
                 event.preventDefault(); const choices = [...list.children]; if (!choices.length) return;
                 active = (active + (event.key === 'ArrowDown' ? 1 : -1) + choices.length) % choices.length;
@@ -86,8 +88,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (event.key === 'Enter') { event.preventDefault(); if (active >= 0) list.children[active].click(); else search(); }
         });
-        document.addEventListener('click', event => { if (!wrapper.contains(event.target)) { invalidate(); close(); } });
-        wrapper.addEventListener('focusout', event => { if (!wrapper.contains(event.relatedTarget)) { invalidate(); close(); } });
+        document.addEventListener('click', event => { if (!wrapper.contains(event.target)) cancel(); });
+        wrapper.addEventListener('focusout', event => { if (!wrapper.contains(event.relatedTarget)) cancel(); });
         select.hidden = true; select.after(selected, wrapper, status); wrapper.append(input, list); renderSelected();
     });
 });

@@ -306,8 +306,8 @@ def available_texts(request):
 @require_POST
 @superuser_required
 def set_text_authors(request, text_id):
-    from django.http import HttpResponseForbidden
-    return HttpResponseForbidden("Autorów tekstu można zmieniać wyłącznie w panelu administracyjnym.")
+    # Autorów zmienia się tylko w panelu administracyjnym; strona mówi, gdzie to zrobić.
+    return render(request, "core/text_authors_in_admin.html", {"text_id": text_id}, status=403)
 
 
 @edit_policy(_contributor_policy)

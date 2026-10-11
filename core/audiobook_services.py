@@ -1,11 +1,11 @@
-"""Produkcja audiobooka – etapy w stałej kolejności.
+"""Audiobooki – wpisy prowadzone przez koordynatora (jak ilustracje), z historią etapów jak w obiegu tekstów.
 
-Do wzięcia → Nagrywanie → Korekta → Nanoszenie poprawek → Montaż → Opublikowane.
-Rozpoczęcie nagrywania to wzięcie tekstu. Zakończenie etapu udostępnia kolejny
-(czeka na rozpoczęcie; korektę rozpoczyna korektor, przejmując ją). Zakończenie
-montażu oznacza publikację – data premiery i linki są danymi tego etapu.
-Wszystkie daty są opcjonalne. Status audiobooka jest tylko kopią do filtrowania
-ustawianą przez refresh_status(). Zmiany blokują tekst, tak jak tokeny edycji.
+Status (Nieprzypisane → Nagrywanie → Korekta → Nanoszenie poprawek → Montaż → Opublikowane) ustawia
+koordynator; zmiana statusu zamyka bieżący etap i otwiera etap nowego statusu z datą (pusta = nieznana).
+Daty wszystkich etapów koordynator może poprawić. Jedynym obiegiem pracy jest korekta: status „Korekta”
+udostępnia ją korektorom audiobooków, korektor przejmuje ją i kończy, a status przechodzi na
+„Nanoszenie poprawek”. Lektor i montażysta to wpisy spisu – nie potrzebują kont.
+Zmiany blokują tekst, tak jak tokeny edycji.
 """
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
@@ -35,35 +35,11 @@ def ordered_stages(text):
     return list(AudiobookStage.objects.filter(text=text).order_by('position', 'pk'))
 
 
-def compute_status(audio, stages):
-    """Status i bieżący etap: ostatni niezakończony etap; po montażu (albo z publikacją) – Opublikowane."""
-    stages = [stage for stage in stages if stage.stage_type in STAGE_ORDER]
-    open_stages = [stage for stage in stages if not stage.is_completed]
-    if open_stages:
-        return open_stages[-1].stage_type, open_stages[-1]
-    done = [stage for stage in stages if stage.is_completed]
-    if (done and done[-1].stage_type == StageType.EDITING) or audio.premiere_date or audio.youtube_url \
-            or audio.hearthis_url or audio.additional_links or audio.status == Status.PUBLISHED:
-        return Status.PUBLISHED, None
-    if done:
-        # Stare dane: etap zakończony bez utworzonego następnego – status to następny etap.
-        return NEXT_STAGE[done[-1].stage_type], None
-    return Status.PENDING, None
-
-
-def refresh_status(audio, stages=None):
+def _activate(audio, status, stage):
     """Jedyne miejsce ustawiające status i bieżący etap audiobooka."""
-    stages = ordered_stages(audio.text_id) if stages is None else stages
-    status, current = compute_status(audio, stages)
-    fields = []
-    if audio.status != status:
-        audio.status = status
-        fields.append('status')
-    if audio.active_stage_id != (current.pk if current else None):
-        audio.active_stage = current
-        fields.append('active_stage')
-    if fields:
-        audio.save(update_fields=fields)
+    audio.status = status
+    audio.active_stage = stage
+    audio.save(update_fields=['status', 'active_stage'])
     return audio
 
 
@@ -143,24 +119,104 @@ def _current(audio, stages):
     return stage
 
 
+def _require_coordinator(user):
+    if not is_coordinator(user):
+        raise PermissionDenied('Wpisy audiobooków zmienia koordynator.')
+
+
+def _close(audio, stage, ended_at):
+    """Zamyka bieżący etap przy zmianie statusu. Nieprzejęta korekta znika – nikt jej nie wykonał."""
+    if stage.stage_type == StageType.PROOFREADING and not stage.is_started:
+        _activate(audio, audio.status, None)
+        stage.delete()
+        return
+    _check_date(ended_at, label='Data zakończenia', not_before=stage.started_at)
+    stage.start_unknown = stage.start_unknown or not stage.started_at
+    stage.ended_at = ended_at
+    stage.is_completed = True
+    if stage.stage_type == StageType.PROOFREADING and audio.proofreader_id and not stage.performer_id:
+        stage.performer_id = audio.proofreader_id
+    stage.save(update_fields=['start_unknown', 'ended_at', 'is_completed', 'performer'])
+
+
+@transaction.atomic
+def set_status(*, text_id, user, status, date=None):
+    """Koordynator ustawia status: bieżący etap się kończy, etap nowego statusu zaczyna się w podanym dniu
+    (pusta data – nieznana). Korekta czeka na przejęcie przez korektora (albo przypisanie)."""
+    _require_coordinator(user)
+    if status not in Status.values:
+        raise ValidationError('Wybierz prawidłowy status.')
+    text, audio = _lock(text_id, create=True)
+    if audio.status == status:
+        raise ValidationError('Audiobook ma już ten status.')
+    _check_date(date, label='Data')
+    stages = ordered_stages(text)
+    previous = audio.status_label
+    current = next((stage for stage in stages if stage.pk == audio.active_stage_id), None)
+    if current is not None:
+        _close(audio, current, date)
+    stage = None
+    if status in STAGE_ORDER:
+        stage = _add_stage(text, stages, status, date or timezone.localdate())
+        if status == StageType.PROOFREADING:
+            audio.proofreader = None  # nowa korekta – do przejęcia
+            audio.save(update_fields=['proofreader'])
+        else:
+            stage.started_at = date
+            stage.start_unknown = date is None
+            stage.save(update_fields=['started_at', 'start_unknown'])
+    _activate(audio, status, stage)
+    record_event(text, user, previous=previous, current=audio.status_label,
+                 details=f'Zmieniono status: {audio.status_label}' + (f' ({date:%d.%m.%Y}).' if date else '.'))
+    return audio
+
+
+@transaction.atomic
+def update_stage_dates(*, text_id, user, dates):
+    """Poprawa dat etapów przez koordynatora: dates = {id etapu: (rozpoczęcie, zakończenie)}."""
+    _require_coordinator(user)
+    text, audio = _lock(text_id)
+    if audio is None:
+        raise ValidationError('Audiobook nie ma jeszcze etapów.')
+    changed = []
+    for stage in ordered_stages(text):
+        if stage.pk not in dates:
+            continue
+        started_at, ended_at = dates[stage.pk]
+        label = stage_label(stage.stage_type)
+        _check_date(started_at, label=f'{label}: data rozpoczęcia')
+        _check_date(ended_at, label=f'{label}: data zakończenia', not_before=started_at)
+        if ended_at and not stage.is_completed:
+            raise ValidationError(f'{label}: etap trwa – zakończ go zmianą statusu.')
+        if (stage.started_at, stage.ended_at) == (started_at, ended_at):
+            continue
+        if started_at:
+            stage.start_unknown = False
+            if stage.stage_type == StageType.PROOFREADING and not stage.performer_id:
+                stage.performer_id = audio.proofreader_id
+        elif stage.started_at:
+            stage.start_unknown = True  # usunięcie daty nie cofa rozpoczęcia – data staje się nieznana
+        stage.started_at, stage.ended_at = started_at, ended_at
+        stage.save(update_fields=['started_at', 'ended_at', 'start_unknown', 'performer'])
+        changed.append(label)
+    if changed:
+        record_event(text, user, previous=audio.status_label, current=audio.status_label,
+                     details='Poprawiono daty etapów: ' + ', '.join(changed) + '.')
+    return changed
+
+
 @transaction.atomic
 def start_stage(*, text_id, user, started_at=None):
-    """Rozpoczęcie bieżącego etapu (z „Do wzięcia” – nagrywania). Bez daty (koordynator) – data nieznana."""
-    text, audio = _lock(text_id, create=True)
+    """Rozpoczęcie przypisanej korekty (korektor – dziś; koordynator – podana data albo nieznana)."""
+    text, audio = _lock(text_id)
     stages = ordered_stages(text)
+    stage = _current(audio, stages) if audio else None
+    if stage is None or stage.stage_type != StageType.PROOFREADING:
+        raise ValidationError('Rozpocząć można tylko korektę audiobooka.')
     coordinator = is_coordinator(user)
-    if audio.status == Status.PENDING and not audio.active_stage_id:
-        if not coordinator:
-            raise PermissionDenied('Nagrywanie rozpoczyna koordynator.')
-        stage = _add_stage(text, stages, StageType.RECORDING, None)
-    elif audio.status == Status.PUBLISHED:
-        raise ValidationError('Audiobook jest opublikowany – nie ma etapu do rozpoczęcia.')
-    else:
-        stage = _current(audio, stages)
-    own_proofreading = (stage.stage_type == StageType.PROOFREADING and audio.proofreader_id == user.pk
-                        and has_role(user, 'Korektor audiobooków'))
+    own_proofreading = audio.proofreader_id == user.pk and has_role(user, 'Korektor audiobooków')
     if not coordinator and not own_proofreading:
-        raise PermissionDenied('Etap rozpoczyna koordynator albo przypisany korektor.')
+        raise PermissionDenied('Korektę rozpoczyna przypisany korektor albo koordynator.')
     if stage.is_started:
         raise ValidationError('Ten etap już trwa. Odśwież podgląd.')
     if started_at is None and not coordinator:
@@ -168,14 +224,11 @@ def start_stage(*, text_id, user, started_at=None):
     _check_date(started_at, label='Data rozpoczęcia', not_before=_last_known_end(stages))
     stage.started_at = started_at
     stage.start_unknown = started_at is None
-    if stage.stage_type == StageType.PROOFREADING:
-        stage.performer_id = audio.proofreader_id
+    stage.performer_id = audio.proofreader_id
     stage.save(update_fields=['started_at', 'start_unknown', 'performer'])
-    previous = audio.status_label
-    refresh_status(audio, stages)
-    record_event(text, user, previous=previous, current=audio.status_label,
-                 details=f'Rozpoczęto etap: {stage_label(stage.stage_type)}'
-                 + (f' ({started_at:%d.%m.%Y}).' if started_at else ' (data nieznana).'))
+    _activate(audio, audio.status, stage)
+    record_event(text, user, previous=audio.status_label, current=audio.status_label,
+                 details='Rozpoczęto korektę audiobooka' + (f' ({started_at:%d.%m.%Y}).' if started_at else ' (data nieznana).'))
     return stage
 
 
@@ -197,7 +250,7 @@ def claim_proofreading(*, text_id, user):
     stage.save(update_fields=['started_at', 'start_unknown', 'performer'])
     audio.proofreader = user
     audio.save(update_fields=['proofreader'])
-    refresh_status(audio, stages)
+    _activate(audio, audio.status, stage)
     record_event(text, user, previous='Korekta – do przejęcia', current=audio.status_label,
                  details='Przejęto korektę audiobooka.', personal='Przejęcie: korekta audiobooka')
     return stage
@@ -205,7 +258,7 @@ def claim_proofreading(*, text_id, user):
 
 @transaction.atomic
 def finish_stage(*, text_id, stage_id, user, ended_at=None, unknown_date=False):
-    """Zakończenie trwającego etapu; następny etap czeka na rozpoczęcie, po montażu – Opublikowane."""
+    """Zakończenie trwającej korekty; status przechodzi na „Nanoszenie poprawek” (etap czeka na datę rozpoczęcia)."""
     text, audio = _lock(text_id)
     if not audio or not may_finish(user, audio):
         raise PermissionDenied('Możesz zakończyć tylko przypisaną sobie korektę audiobooka.')
@@ -213,25 +266,23 @@ def finish_stage(*, text_id, stage_id, user, ended_at=None, unknown_date=False):
         raise ValidationError('Ten etap nie jest już aktualny. Odśwież podgląd.')
     stages = ordered_stages(text)
     stage = next(stage for stage in stages if stage.pk == stage_id)
-    coordinator = is_coordinator(user)
-    if not coordinator and stage.stage_type != StageType.PROOFREADING:
-        raise PermissionDenied('Możesz zakończyć tylko etap korekty audiobooka.')
+    if stage.stage_type != StageType.PROOFREADING:
+        raise ValidationError('Pozostałe etapy kończy zmiana statusu.')
     if not stage.is_started:
         raise ValidationError('Etap jeszcze się nie rozpoczął.')
+    coordinator = is_coordinator(user)
     ended_at = None if coordinator and unknown_date else (ended_at or timezone.localdate())
     _check_date(ended_at, label='Data zakończenia', not_before=stage.started_at)
     stage.ended_at = ended_at
     stage.is_completed = True
-    if stage.stage_type == StageType.PROOFREADING and audio.proofreader_id:
+    if audio.proofreader_id:
         stage.performer_id = audio.proofreader_id
     stage.save(update_fields=['ended_at', 'is_completed', 'performer'])
-    following = NEXT_STAGE.get(stage.stage_type)
-    if following:
-        _add_stage(text, stages, following, ended_at or timezone.localdate())
-    refresh_status(audio, stages)
-    own = stage.stage_type == StageType.PROOFREADING and stage.performer_id == user.pk
+    following = _add_stage(text, stages, StageType.CORRECTIONS, ended_at or timezone.localdate())
+    _activate(audio, Status.CORRECTIONS, following)
+    own = stage.performer_id == user.pk
     record_event(text, user, previous=stage_label(stage.stage_type), current=audio.status_label,
-                 details=f'Zakończono etap: {stage_label(stage.stage_type)}. Teraz: {audio.status_label}.',
+                 details=f'Zakończono korektę audiobooka. Teraz: {audio.status_label}.',
                  personal='Zakończenie: korekta audiobooka' if own else '')
     return stage
 

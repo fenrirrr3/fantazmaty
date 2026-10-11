@@ -13,18 +13,18 @@ LISTS = {
     'core:audio_proofreading', 'core:post_layout', 'core:recruitment_list',
     'core:recruitment_mailbox', 'core:review_list', 'core:my_reviews',
     'core:unlinked_reviews', 'core:extract_list', 'core:tag_list', 'core:global_search',
-    'illustrations:illustration_list', 'illustrations:illustrator_list',
+    'illustrations:illustration_list', 'illustrations:illustrator_list', 'core:audio_contributor_list',
 }
 DETAILS = {
     'core:assigned_text_detail', 'core:translation_detail', 'core:audiobook_detail',
     'core:audio_description_detail', 'core:recruitment_detail', 'core:assigned_review_detail',
     'core:post_layout_edit', 'core:link_text_review', 'core:anthology_detail',
-    'core:novel_detail', 'core:chapter_edit', 'core:audio_contributor',
+    'core:novel_detail', 'core:chapter_edit', 'core:audio_contributor', 'core:audio_contributor_add',
     'illustrations:illustration_detail', 'illustrations:illustrator_edit',
 }
 PARENTS = {
     'illustration_detail': 'illustration_list', 'audiobook_detail': 'audiobooks',
-    'audio_contributor': 'audiobooks', 'recruitment_detail': 'recruitment_list',
+    'audio_contributor': 'audiobooks', 'audio_contributor_add': 'audio_contributor_list', 'recruitment_detail': 'recruitment_list',
     'unlinked_reviews': 'review_list', 'post_layout_edit': 'post_layout',
     'link_text_review': 'review_list', 'chapter_edit': 'novel_list',
     'program_job': 'programs', 'replacement_list': 'programs', 'replacement_edit': 'programs',

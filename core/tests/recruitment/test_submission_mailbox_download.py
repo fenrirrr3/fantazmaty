@@ -2,17 +2,18 @@
 from email.message import EmailMessage
 from io import BytesIO
 from unittest.mock import patch
-from zipfile import ZipFile
+from zipfile import BadZipFile, ZipFile
 
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 
-from core.models import MailboxDownload, NewsletterConsent
+from core.models import MailboxConnection, MailboxDownload, NewsletterConsent
 from core.services.document_converter import ConversionError, RebuildConfirmationRequired
 from core.services.mailbox import MailboxError
 from core.services.mailbox_import import _package_messages, parse_message
 from texts.models import Anthology, Review
 
-from .support import CSV_LINE, NAMED_BODY, SubmissionMailboxMixin, csv_mail, named_mail
+from .support import CSV_LINE, NAMED_BODY, SubmissionMailboxMixin, csv_mail, named_mail, submission_selection
 
 
 def failing_package(uid, error):
@@ -269,11 +270,54 @@ class SubmissionDownloadTests(SubmissionMailboxMixin, TestCase):
         self.assertFalse(MailboxDownload.objects.exists())
 
     @patch('core.views.mailbox.fetch_messages')
-    def test_selection_tampering(self, fetch):
-        data = self.payload()
-        data['uids'] = ['13']
-        self.assertEqual(self.client.post(self.url, data).status_code, 400)
-        fetch.assert_not_called()
+    def test_refused_requests_explain_why_and_import_nothing(self, fetch):
+        """Odmowy na ekranie pobierania zgłoszeń: czytelny komunikat, bez archiwum i bez zapisu."""
+        fetch.return_value = [parse_message(12, csv_mail())]
+        stranger = type('Stranger', (), {'pk': self.user.pk + 1})()
+        for name, changes, fetched, message in (
+            ('wiadomość spoza listy', {'uids': ['13']}, False, 'Wybierz wiadomości z pobranej listy.'),
+            ('numer nie jest liczbą', {'uids': ['abc']}, False, 'Nieprawidłowy wybór wiadomości.'),
+            ('zepsuty wybór', {'selection': 'zmieniony'}, False, 'Podgląd wygasł lub ustawienia skrzynki się zmieniły.'),
+            ('wybór innej osoby', {'selection': submission_selection(stranger, self.box, (12,))}, False,
+             'Podgląd wygasł lub ustawienia skrzynki się zmieniły.'),
+            ('nabór usunięty z listy', {'subject_filter': 'Dawny nabór'}, False, 'Wybrany nabór nie jest już dostępny.'),
+            ('nieznana operacja', {'action': 'usun'}, False, 'Nieprawidłowa operacja.'),
+            ('kopiowanie adresów po zmianie filtrów', {'action': 'copy_emails', 'show_downloaded': 'on'}, False,
+             'Zmieniono filtry. Pobierz nagłówki ponownie.'),
+        ):
+            with self.subTest(name):
+                fetch.reset_mock()
+                response = self.client.post(self.url, {**self.payload(), **changes})
+                self.assertEqual(response.status_code, 400)
+                self.assertIn(message, response.context['error'])
+                self.assertEqual(fetch.called, fetched)
+        with patch('core.views.mailbox.package_messages', side_effect=BadZipFile):
+            response = self.client.post(self.url, self.payload())
+        self.assertIn('Nie udało się przetworzyć pliku.', response.context['error'])
+        self.assertFalse(Review.objects.exists())
+
+    @patch('core.views.mailbox.fetch_messages')
+    def test_confirmation_stops_when_mailbox_changes_or_import_fails(self, fetch):
+        """Zatwierdzenie podglądu: zmiana ustawień skrzynki w trakcie albo odmowa zapisu zgłoszenia
+        kończą się komunikatem, bez zgłoszeń i bez znaczników pobrania."""
+        raw = csv_mail()
+
+        def mailbox_changed(*args):
+            MailboxConnection.objects.filter(pk=self.box.pk).update(folder='Archiwum')
+            return [parse_message(12, raw)]
+
+        fetch.side_effect = lambda *args: [parse_message(12, raw)]
+        payload = self.payload()
+        preview = self.client.post(self.url, payload)
+        with patch('core.views.mailbox.import_reviews', side_effect=ValidationError('Zgłoszenie już istnieje.')):
+            response = self.confirm(dict(payload), preview)
+        self.assertEqual((response.status_code, response.context['error']), (400, 'Zgłoszenie już istnieje.'))
+        fetch.side_effect = mailbox_changed
+        response = self.confirm(dict(payload), preview)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.context['error'], 'Ustawienia skrzynki się zmieniły. Pobierz nagłówki ponownie.')
+        self.assertFalse(Review.objects.exists())
+        self.assertFalse(MailboxDownload.objects.exists())
 
     @patch('core.views.mailbox.fetch_messages')
     def test_changed_content_requires_new_preview(self, fetch):

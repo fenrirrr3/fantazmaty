@@ -14,54 +14,13 @@ def contact_key(value):
     return ''.join(ch for ch in unicodedata.normalize('NFKD', value) if not unicodedata.combining(ch))
 
 
-def resolve_contact(name, email, contact=None):
-    """Return the single profile for a narrator or sound engineer, creating it only when new.
-
-    A typed name never renames an existing profile (that is done on the profile itself).
-    """
-    name = ' '.join((name or '').split())
-    email = (email or '').strip().lower()
-    if not name:
-        return None
-    key = contact_key(name)
-    if contact is not None and contact_key(contact.name) == key and email in ('', contact.email):
-        return contact
-    if contact is not None and contact_key(contact.name) == key and not contact.email:
-        if not AudioContributor.objects.filter(email__iexact=email).exclude(pk=contact.pk).exists():
-            contact.email = email
-            contact.save(update_fields=['email'])
-            return contact
-    if email:
-        owners = list(AudioContributor.objects.filter(email__iexact=email))
-        if owners:
-            same = [person for person in owners if contact_key(person.name) == key]
-            if len(same) == 1:
-                return same[0]
-            raise ValidationError(f'Adres {email} ma już kontakt „{owners[0].name}”. Wybierz go z podpowiedzi albo popraw adres.')
-    similar = [person for person in AudioContributor.objects.only('pk', 'name', 'email') if contact_key(person.name) == key]
-    if email:
-        without_email = [person for person in similar if not person.email]
-        if len(without_email) == 1 and len(similar) == 1:
-            person = without_email[0]
-            person.email = email
-            person.save(update_fields=['email'])
-            return person
-        if similar and not without_email:
-            # Same name, different address: another person.
-            return AudioContributor.objects.create(name=name, email=email)
-    if len(similar) == 1:
-        return similar[0]
-    if len(similar) > 1:
-        raise ValidationError(f'W bazie jest kilka kontaktów „{name}”. Wybierz właściwy z podpowiedzi.')
-    return AudioContributor.objects.create(name=name, email=email)
-
-
 class AudioContributor(models.Model):
+    """Wpis spisu lektorów i montażystów – niezależny od kont i ról zespołu (jak spis ilustratorów)."""
     objects = VersionedQuerySet.as_manager()
     name = models.CharField('imię i nazwisko', max_length=255)
     email = models.EmailField('adres e-mail', blank=True)
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name='audio_contacts', verbose_name='powiązane konto (opcjonalne)')
+    is_active = models.BooleanField('aktywny', default=True, db_index=True,
+        help_text='Wyłączenie ukrywa wpis w aktywnym spisie i przy nowych przypisaniach. Dotychczasowe nagrania pozostają.')
 
     class Meta:
         verbose_name = 'lektor / montaż'
@@ -77,11 +36,6 @@ class AudioContributor(models.Model):
         with transaction.atomic():
             self.name = ' '.join(self.name.split())
             self.email = self.email.strip().lower()
-            if not self.pk and not self.user_id and self.email:
-                from django.contrib.auth import get_user_model
-                matches = list(get_user_model().objects.filter(email__iexact=self.email).values_list('pk', flat=True)[:2])
-                if len(matches) == 1:
-                    self.user_id = matches[0]
             super().save(*args, **kwargs)
             for role in ('narrator', 'engineer'):
                 Audiobook.objects.filter(**{f'{role}_contact': self}).update(
@@ -100,8 +54,8 @@ class Audiobook(models.Model):
     objects = VersionedQuerySet.as_manager()
 
     class Status(models.TextChoices):
-        """Bieżący etap (pole jest kopią do filtrowania – ustawia je refresh_status)."""
-        PENDING = 'pending', 'Do wzięcia'
+        """Status ustawia koordynator (jak w ilustracjach); zakończenie korekty przestawia go na poprawki."""
+        PENDING = 'pending', 'Nieprzypisane'
         RECORDING = 'recording', 'Nagrywanie'
         PROOFREADING = 'proofreading', 'Korekta'
         CORRECTIONS = 'corrections', 'Nanoszenie poprawek'
@@ -122,6 +76,7 @@ class Audiobook(models.Model):
     engineer_email = models.EmailField('e-mail dźwiękowca', blank=True)
     proofreader = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
         related_name='proofread_audiobooks', verbose_name='korektor audiobooka')
+    coordinator_notes = models.TextField('uwagi koordynatora', blank=True)
     premiere_date = models.DateField('data premiery', null=True, blank=True)
     youtube_url = models.URLField('YouTube', max_length=1000, blank=True, validators=[validate_youtube_url])
     hearthis_url = models.URLField('HearThis', max_length=1000, blank=True, validators=[validate_hearthis_url])
@@ -137,25 +92,19 @@ class Audiobook(models.Model):
         return str(self.text)
 
     def save(self, *args, **kwargs):
-        from django.db import transaction
-        with transaction.atomic():
-            fields = kwargs.get('update_fields')
-            for role in ('narrator', 'engineer'):
-                if fields is not None and not set(fields) & {f'{role}_name', f'{role}_email', f'{role}_contact'}:
-                    continue
-                contact = getattr(self, f'{role}_contact')
-                name = getattr(self, f'{role}_name')
-                if contact is None and ' '.join(name.split()):
-                    contact = resolve_contact(name, getattr(self, f'{role}_email'))
-                # One profile per person: the audiobook only mirrors the profile data.
-                setattr(self, f'{role}_contact', contact)
-                setattr(self, f'{role}_name', contact.name if contact else '')
-                setattr(self, f'{role}_email', contact.email if contact else '')
-                if fields is not None:
-                    fields = set(fields) | {f'{role}_contact', f'{role}_name', f'{role}_email'}
+        fields = kwargs.get('update_fields')
+        for role in ('narrator', 'engineer'):
+            if fields is not None and not set(fields) & {f'{role}_name', f'{role}_email', f'{role}_contact'}:
+                continue
+            # Osoba pochodzi wyłącznie ze spisu; audiobook przechowuje kopię jej danych (wyszukiwanie, sortowanie).
+            contact = getattr(self, f'{role}_contact')
+            setattr(self, f'{role}_name', contact.name if contact else '')
+            setattr(self, f'{role}_email', contact.email if contact else '')
             if fields is not None:
-                kwargs['update_fields'] = fields
-            return super().save(*args, **kwargs)
+                fields = set(fields) | {f'{role}_contact', f'{role}_name', f'{role}_email'}
+        if fields is not None:
+            kwargs['update_fields'] = fields
+        return super().save(*args, **kwargs)
 
     @property
     def status_label(self):
@@ -188,10 +137,6 @@ class Audiobook(models.Model):
             from core.audiobook_forms import eligible_proofreaders
             if not eligible_proofreaders().filter(pk=self.proofreader_id).exists():
                 errors['proofreader'] = 'Wybierz aktywne konto członka zespołu z rolą Korektor audiobooków.'
-        for name, email in (('narrator_name', 'narrator_email'), ('engineer_name', 'engineer_email')):
-            setattr(self, name, ' '.join(getattr(self, name).split()))
-            if getattr(self, email) and not getattr(self, name):
-                errors[name] = 'Przy adresie e-mail podaj również imię i nazwisko.'
         if errors:
             raise ValidationError(errors)
 

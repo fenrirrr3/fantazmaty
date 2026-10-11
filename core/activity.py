@@ -5,7 +5,8 @@ import time
 logger = logging.getLogger(__name__)
 
 LABELS = {
-    'audio_contributor': 'Profil lektora lub montażysty',
+    'audio_contributor': 'Wpis lektora lub montażysty', 'audio_contributor_list': 'Lektorzy i montaż',
+    'audio_contributor_add': 'Dodanie lektora lub montażysty',
     'contact_suggestions': 'Podpowiedzi kontaktów',
     'claim_audio_proofreading': 'Przejęcie korekty audiobooka',
     'post_layout_edit': 'Edycja korekty poskładowej',

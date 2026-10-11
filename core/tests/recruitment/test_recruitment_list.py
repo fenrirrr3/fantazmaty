@@ -1,5 +1,6 @@
 """Lista zgłoszeń rekrutacyjnych i kolejka na pulpicie: rozpoznawanie kandydata z wiadomości, kolumny, wyszukiwanie, sortowanie, filtry i dostęp."""
 from email.message import EmailMessage
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.db import transaction
@@ -13,6 +14,7 @@ from core.admin import MailboxConnectionForm
 from core.models import MailboxConnection, Recruitment
 from core.recruitment_message import form_fields
 from core.services.recruitment_decisions import set_all_decisions
+from core.services.mailbox import MailboxError
 from core.services.recruitment_samples import parse_sample
 from people.models import Person, Role
 from texts.models import Anthology, Review
@@ -51,6 +53,40 @@ class RecruitmentMessageParsingTests(SimpleTestCase):
         self.assertEqual(form_fields('Zwykła wiadomość\n' + FORM_BODY), {})
 
 
+    def test_unusual_messages_are_stored_with_empty_fields_instead_of_failing(self):
+        """Wiadomość bez części tekstowej, z nieznanym kodowaniem, z samym skryptem lub pustym HTML-em,
+        z niepoprawnym nadawcą i datą spoza zakresu daje zgłoszenie z pustymi polami; tylko nieczytelna
+        struktura przerywa zapis czytelnym błędem."""
+        def message(body=None, subtype='plain', **headers):
+            msg = EmailMessage()
+            for name, value in headers.items():
+                msg[name.replace('_', '-')] = value
+            if body is None:
+                msg.add_attachment(b'%PDF', maintype='application', subtype='pdf', filename='probka.pdf')
+            else:
+                msg.set_content(body, subtype=subtype)
+            return msg.as_bytes()
+
+        for name, raw, expected in (
+            ('tylko załącznik', message(), {'mail_body': '', 'mail_sender': '', 'email': '',
+                                            'mail_subject': '(bez tematu)', 'mail_received_at': None}),
+            ('nieznane kodowanie', 'From: jan@example.test\r\nContent-Type: text/plain; charset="x-nieznany"\r\n\r\n'
+                                   'Treść'.encode(), {'mail_body': 'Treść', 'email': 'jan@example.test'}),
+            ('sam skrypt', message('<script>alert(1)</script>', 'html'), {'mail_body': ''}),
+            ('pusty HTML', message('   ', 'html'), {'mail_body': ''}),
+            ('odpowiedź na niepoprawny adres', message('x', Reply_To='nie-adres', From='jan@example.test'),
+             {'mail_sender': 'nie-adres', 'email': ''}),
+            ('data spoza zakresu', message('x', Date='Mon, 01 Jan 1800 10:00:00 +0000'), {'mail_received_at': None}),
+        ):
+            with self.subTest(name):
+                data = parse_sample(raw)
+                self.assertEqual({key: data[key] for key in expected}, expected)
+        received = parse_sample(message('x', Date='Mon, 01 Jan 2024 10:00:00 -0000'))['mail_received_at']
+        self.assertEqual((received.year, received.tzinfo is not None), (2024, True))
+        with patch('core.services.recruitment_samples.form_fields', side_effect=ValueError), \
+                self.assertRaisesMessage(MailboxError, 'Nie udało się odczytać struktury wiadomości.'):
+            parse_sample(message('x'))
+
 class RecruitmentListTests(RecruitmentTeamMixin, TestCase):
     def test_list_search_and_sort_use_candidate_not_form_sender(self):
         record = Recruitment.objects.create(applicant_name='Maria Anna Nowak-Kowalska', email='candidate@example.test')
@@ -62,6 +98,11 @@ class RecruitmentListTests(RecruitmentTeamMixin, TestCase):
         self.assertEqual([row.pk for row in response.context['items']], [early.pk, record.pk, late.pk])
         response = self.client.get(url, {'q': 'Maria Anna'})
         self.assertEqual([row.pk for row in response.context['items']], [record.pk])
+        set_all_decisions(late, 'accepted')
+        for status, expected in (('accepted', [late.pk]), ('new', [record.pk, early.pk]), ('nieznany', [record.pk, early.pk, late.pk])):
+            with self.subTest(status=status):
+                response = self.client.get(url, {'status': status})
+                self.assertCountEqual([row.pk for row in response.context['items']], expected)
 
     def test_subject_name_columns_and_notes_below_reason_persist(self):
         self.client.force_login(self.admin)

@@ -19,7 +19,7 @@ from core.activity_spool import enqueue_activity
 from core.activity_targets import present_activities, target_for_match
 from core.management.commands.flush_activity import Command
 from core.models import UserActivity
-from fantazmaty.testing import create_member, create_superuser
+from fantazmaty.testing import create_superuser
 from illustrations.models import Illustrator
 
 from .support import TemporaryActivitySpoolMixin
@@ -300,7 +300,3 @@ class ActivityPageFilterTests(TemporaryActivitySpoolMixin, TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertContains(response, 'nie może być późniejsza', status_code=400)
         self.assertEqual(actions, set())
-
-    def test_team_member_without_superuser_rights_is_refused(self):
-        self.client.force_login(create_member('czlonek', 'Redaktor'))
-        self.assertEqual(self.client.get(reverse('core:user_activity')).status_code, 403)

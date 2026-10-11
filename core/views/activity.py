@@ -9,7 +9,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 from core.models import UserActivity
 from core.pagination import paginate_items
-from core.permissions import superuser_required
+from core.permissions import coordinator_required
 
 
 class ActivityFilterForm(forms.Form):
@@ -28,7 +28,7 @@ class ActivityFilterForm(forms.Form):
 @never_cache
 @login_required
 @require_GET
-@superuser_required
+@coordinator_required
 def user_activity(request):
     form = ActivityFilterForm(request.GET)
     rows = UserActivity.objects.select_related('user__person_profile')

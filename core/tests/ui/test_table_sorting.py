@@ -14,7 +14,7 @@ from django.utils import timezone
 from authors.models import Author
 from core.models import Recruitment, WorkflowEvent
 from core.pagination import paginate_items
-from core.selectors.texts import my_texts_context, text_list_context, workflow_list_context
+from core.selectors.texts import _ProjectedRows, _stage_data, my_texts_context, text_list_context, workflow_list_context
 from core.table_sorting import prepare_table_sort
 from fantazmaty.testing.data import CoreTestDataMixin
 from illustrations.models import Illustrator
@@ -97,6 +97,7 @@ class TextTablesSortContractTests(SortableTablesContractData, TestCase):
     def test_text_and_stage_tables_sort_every_data_header_in_both_directions(self):
         self.assert_every_data_header_sorts_in_both_directions(TEXT_TABLE_ROUTES)
 
+    @tag('slow')
     def test_computed_workflow_columns_sort_without_losing_rows(self):
         for context, key in ((workflow_list_context(user=self.superuser, params=QueryDict()), 'stages'),
                              (my_texts_context(user=self.editor, params=QueryDict()), 'texts')):
@@ -197,6 +198,25 @@ class TableSortingTests(CoreTestDataMixin, TestCase):
             values = {r["pk"]: r["last_status_change"] for r in rows}
             self.assertEqual(values[one.pk], first.created_at)
             self.assertEqual(values[two.pk], second.created_at)
+
+    def test_stage_state_column_names_and_orders_each_state(self):
+        """Kolumna „Stan etapu” listy etapów: zakończony, zaplanowany, w trakcie i nierozpoczęty, w obu kierunkach."""
+        text = Text.objects.create(title='Stany', anthology=self.anthology, length=1)
+        today = timezone.localdate()
+        for kind, values in (
+            ('editing', {'started_at': today - timedelta(days=1)}),
+            ('first_verification', {'started_at': today + timedelta(days=3)}),
+            ('first_proofreading', {}),
+            ('second_proofreading', {'started_at': today, 'ended_at': today, 'is_completed': True}),
+        ):
+            WorkflowStage.objects.create(text=text, stage_type=kind, **values)
+        rows = _ProjectedRows(WorkflowStage.objects.filter(text=text, is_current=True), _stage_data)
+        expected = ['first_proofreading', 'editing', 'second_proofreading', 'first_verification']
+        for sort, order in (('completed', expected), ('-completed', expected[::-1])):
+            with self.subTest(sort=sort):
+                items, columns = prepare_table_sort(self.request(sort), rows)
+                self.assertEqual(columns['Stan etapu'], 'completed')
+                self.assertEqual([row['stage_type'] for row in items], order)
 
     def test_mobile_sort_can_return_to_default(self):
         rendered = render_to_string("core/includes/mobile_table_sort.html", {

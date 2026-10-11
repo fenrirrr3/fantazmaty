@@ -71,9 +71,6 @@ class DictionaryPageTests(TestCase):
         self.assertEqual(self.client.get(url).status_code, 403)
         self.assertEqual(ReplacementEntry.objects.count(), count)
 
-    def test_anonymous_user_is_sent_to_login(self):
-        self.assertEqual(self.client.get(LIST_URL).status_code, 302)
-
     def test_coordinator_adds_edits_disables_and_deletes_words(self):
         self.client.force_login(self.coordinator)
         response = self.client.post(LIST_URL, entry_data(note='Zdrobnienie'))

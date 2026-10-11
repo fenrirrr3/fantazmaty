@@ -63,11 +63,10 @@ class AudioContactMergeTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.admin = create_superuser('merge-admin')
-        cls.account = User.objects.create_user('lektor-account', 'konto@example.test')
         book = Anthology.objects.create(title='Nagrania')
         cls.keep = AudioContributor.objects.create(name='Jan Lektor')
         cls.copy = AudioContributor.objects.create(name='Jan Lektor', email='jan@example.test')
-        cls.third = AudioContributor.objects.create(name='J. Lektor', user=cls.account)
+        cls.third = AudioContributor.objects.create(name='J. Lektor')
         cls.audio = Audiobook.objects.create(text=Text.objects.create(title='Nagranie', anthology=book, length=1),
                                              narrator_contact=cls.copy, engineer_contact=cls.third)
 
@@ -86,7 +85,7 @@ class AudioContactMergeTests(TestCase):
         self.assertEqual(list(AudioContributor.objects.all()), [self.keep])
         self.keep.refresh_from_db()
         self.audio.refresh_from_db()
-        self.assertEqual((self.keep.email, self.keep.user), ('jan@example.test', self.account))
+        self.assertEqual(self.keep.email, 'jan@example.test')
         self.assertEqual((self.audio.narrator_contact, self.audio.engineer_contact), (self.keep, self.keep))
         self.assertEqual(self.audio.narrator_email, 'jan@example.test')
         page = self.client.get(reverse('admin:core_audiocontributor_change', args=[self.keep.pk]))

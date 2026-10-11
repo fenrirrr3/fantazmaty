@@ -1,6 +1,7 @@
 """Read-only user preview; the authenticated session always belongs to its owner."""
 from django import forms
 from django.contrib.auth import get_user_model
+from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.shortcuts import redirect, render
 from core.request_match import resolve_request
@@ -47,6 +48,7 @@ def require_preview_owner(request):
 
 
 @never_cache
+@login_required
 @require_http_methods(["GET", "POST"])
 def user_preview(request):
     actor = require_preview_owner(request)
@@ -62,6 +64,7 @@ def user_preview(request):
 
 
 @never_cache
+@login_required
 @require_POST
 def user_preview_stop(request):
     require_preview_owner(request)

@@ -18,7 +18,8 @@ document.querySelectorAll('[data-vocabulary]').forEach(input => {
             url.searchParams.set('q', query);
             try {
                 const response = await fetch(url, {credentials: 'same-origin'});
-                if (!response.ok) return;
+                // A failed or outdated lookup must not leave (or clear) suggestions for another query.
+                if (!response.ok) { if (version === serial) box.replaceChildren(); return; }
                 const data = await response.json();
                 if (version !== serial) return;
                 box.replaceChildren();
@@ -32,7 +33,7 @@ document.querySelectorAll('[data-vocabulary]').forEach(input => {
                     });
                     box.append(button);
                 });
-            } catch (_) { box.replaceChildren(); }
+            } catch (_) { if (version === serial) box.replaceChildren(); }
         }, 200);
     });
 });

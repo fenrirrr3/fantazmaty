@@ -32,4 +32,10 @@ ACTIVITY_SPOOL_DIR = _WORK_DIR / "activity-spool"
 DOCUMENT_CONVERSION_DIR = _WORK_DIR / "conversion"
 
 # Oczekiwane odmowy (400/403/404) w testach nie zaśmiecają wyniku ani adnotacji CI; błędy 500 nadal widać.
+# fontTools (podzbiory czcionek PDF) loguje każdy podzbiór na poziomie INFO.
+LOGGING["loggers"]["fontTools"] = {"handlers": ["console"], "level": "WARNING", "propagate": False}  # noqa: F405
 LOGGING["loggers"]["django.request"] = {"handlers": ["console"], "level": "ERROR", "propagate": False}  # noqa: F405
+
+# Wydruki migracji danych przy tworzeniu bazy testowej są wyciszane (widoczne przy -v 2).
+# Dziedziczą to mysql_integration_settings i release_test_settings.
+TEST_RUNNER = "fantazmaty.testing.runner.QuietMigrationsDiscoverRunner"

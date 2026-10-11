@@ -93,7 +93,6 @@ def _render_report(
             "page_obj": page_obj,
             "can_view_authors": can_view_authors,
             "can_view_author_data": can_view_authors,
-            "can_view_reports": True,
         }
     )
 

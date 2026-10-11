@@ -133,7 +133,13 @@ class StripImagesTests(SimpleTestCase):
 
     def test_result_opens_in_python_docx_after_every_step(self):
         result, _ = strip_images(docx_with_images())
-        Document(force_polish(result))
+        stripped = Document(result)
+        polished = force_polish(result)
+        self.assertEqual(package_problems(polished), [])
+        polished = Document(polished)
+        for document in (stripped, polished):
+            self.assertEqual(document.paragraphs[0].text, 'Przed obrazem.')
+            self.assertEqual(len(document.inline_shapes), 0)
 
 
 def saved_png():

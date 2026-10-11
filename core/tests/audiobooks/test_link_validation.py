@@ -34,9 +34,12 @@ class AdditionalLinksValidationTests(SimpleTestCase):
         return {'service': 'youtube', 'part': 2, 'url': 'https://youtu.be/part-2', **values}
 
     def test_valid_parts_of_both_services(self):
-        validate_audio_links([])
-        validate_audio_links([self.link(), self.link(service='hearthis', url='https://hearthis.at/part-2/'),
-                              self.link(part=100, url='https://youtu.be/part-100')])
+        # Walidator Django zwraca None; poprawna lista (także pusta) nie zgłasza ValidationError.
+        links = [self.link(), self.link(service='hearthis', url='https://hearthis.at/part-2/'),
+                 self.link(part=100, url='https://youtu.be/part-100')]
+        for value in ([], links):
+            with self.subTest(count=len(value)):
+                self.assertIsNone(validate_audio_links(value))
 
     def test_rejects_wrong_shape_values_and_unsafe_or_repeated_links(self):
         too_many = [self.link(part=1 + n % 100, url=f'https://youtu.be/{n}') for n in range(101)]

@@ -1,5 +1,5 @@
 """Wielu ilustratorów jednej ilustracji: przypisanie, formularze strony i panelu admina, filtr
-opublikowanych, ochrona kredytów oraz zakaz ilustracji dla rozdziałów powieści."""
+opublikowanych, ochrona kredytów (także przy usuwaniu zbiorczym) oraz zakaz ilustracji dla rozdziałów powieści."""
 from django.contrib import admin
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -89,6 +89,16 @@ class MultipleIllustratorsTests(TestCase):
             Illustrator.objects.filter(pk=self.first.pk).delete()
         delete_url = reverse('admin:illustrations_illustrator_delete', args=[self.first.pk])
         self.assertEqual(self.client.get(delete_url).status_code, 403)
+        # Usuwanie zbiorcze: kontakt z kredytem blokuje całą operację, także dla kontaktu bez prac.
+        selection = {'action': 'delete_selected', '_selected_action': [self.first.pk, self.second.pk]}
+        changelist = reverse('admin:illustrations_illustrator_changelist')
+        for data in (selection, {**selection, 'post': 'yes'}):
+            with self.subTest(confirmed='post' in data):
+                response = self.client.post(changelist, data)
+                self.assertEqual(response.status_code, 200)
+                self.assertIn(str(self.first), response.context['protected'])
+                self.assertNotIn(str(self.second), response.context['protected'])
+        self.assertEqual(Illustrator.objects.filter(pk__in=[self.first.pk, self.second.pk]).count(), 2)
 
     def test_admin_supports_multiple_artists_and_validates_empty_status(self):
         url = reverse('admin:illustrations_illustration_change', args=[self.illustration.pk])
@@ -114,7 +124,9 @@ class MultipleIllustratorsTests(TestCase):
             '_edit_version': form_value(response),
             'workflow_token': form_value(response, name='workflow_token'),
         })
-        self.assertIn(response.status_code, (403, 409))
+        # Poza panelem admina zmiana autorów zawsze kończy się odmową z informacją, gdzie to zrobić.
+        self.assertContains(response, 'Autorów zmienia się w panelu administracyjnym', status_code=403)
+        self.assertContains(response, reverse('admin:texts_text_change', args=[self.story.pk]), status_code=403)
         self.assertEqual(list(self.story.authors.all()), [self.author])
 
     def test_admin_and_model_reject_new_illustration_for_novel(self):

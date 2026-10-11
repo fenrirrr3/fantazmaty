@@ -78,7 +78,7 @@ class NovelChapterTests(NovelData, TestCase):
             self.assertEqual(chapter.workflow_stages.get().stage_type, 'ready_for_editing')
 
     def test_invalid_ranges_write_nothing(self):
-        for value in ('', '0', '7-4', '1,,2', '1-501', '1-2,abc', '-1', '2147483648', '1-2;4'):
+        for value in ('', '0', '7-4', '1,,2', '1-501', '1-400,401-600', '1-2,abc', '-1', '2147483648', '1-2;4'):
             with self.subTest(value=value), self.assertRaises(ValidationError):
                 parse_chapter_numbers(value)
         self.assertEqual(self.post(action='chapters', **{'add-chapter_numbers': '2, 0'}).status_code, 400)

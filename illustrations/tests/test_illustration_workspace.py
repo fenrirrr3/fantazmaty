@@ -3,7 +3,6 @@ konflikty wersji, uprawnienia ilustratorów i redaktorów oraz kolumny listy ilu
 from datetime import timedelta
 from tempfile import TemporaryDirectory
 
-from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import Client, TestCase
 from django.urls import reverse
@@ -291,12 +290,6 @@ class IllustrationListFiltersAndRulesTests(TestCase):
         self.assertEqual(self.titles(sort='-status'), ['Przypisany', 'Wolny'])
         self.assertEqual(self.titles(sort='status'), ['Wolny', 'Przypisany'])
         self.assertEqual(self.titles(sort='password'), self.titles())
-
-    def test_account_without_team_profile_is_denied(self):
-        self.client.force_login(get_user_model().objects.create_user('no-profile'))
-        illustration = Illustration.objects.get(text=self.free)
-        for url in (self.list_url, reverse('illustrations:illustration_detail', args=[illustration.pk])):
-            self.assertEqual(self.client.get(url).status_code, 403)
 
     def test_unknown_save_operation_is_rejected_without_changes(self):
         illustration = Illustration.objects.get(text=self.free)

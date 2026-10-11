@@ -74,10 +74,10 @@ class PostLayoutAssignmentAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
 @admin.register(AudioContributor)
 class AudioContributorAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
-    list_display = ('name', 'email', 'user')
+    list_display = ('name', 'email', 'is_active')
+    list_filter = ('is_active',)
     search_fields = ('name', 'email')
-    autocomplete_fields = ('user',)
-    fields = ('name', 'email', 'user', 'works_link')
+    fields = ('name', 'email', 'is_active', 'works_link')
     readonly_fields = ('works_link',)
     actions = ('merge_contacts',)
 
@@ -99,8 +99,6 @@ class AudioContributorAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
                     audio.save(update_fields=[f'{role}_contact'])
             if not keep.email:
                 keep.email = next((person.email for person in duplicates if person.email), '')
-            if not keep.user_id:
-                keep.user_id = next((person.user_id for person in duplicates if person.user_id), None)
             AudioContributor.objects.filter(pk__in=ids).delete()
             keep.save()
         self.message_user(request, f'Połączono {len(ids) + 1} profile w „{keep.name}”.', messages.SUCCESS)
@@ -151,10 +149,6 @@ class AudiobookStageAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         if obj.started_at:
             obj.start_unknown = False
         super().save_model(request, obj, form, change)
-        from core.audiobook_services import refresh_status
-        audio = Audiobook.objects.filter(text_id=obj.text_id).first()
-        if audio:
-            refresh_status(audio)
 
     def has_delete_permission(self, request, obj=None):
         return False
@@ -167,12 +161,12 @@ class AudiobookAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     list_filter = ('status', 'text__anthology')
     search_fields = ('text__title', 'narrator_name', 'engineer_name', 'proofreader__last_name')
     list_select_related = ('text__anthology', 'proofreader')
-    autocomplete_fields = ('text',)
+    autocomplete_fields = ('text', 'narrator_contact', 'engineer_contact')
     fieldsets = (
         ('Tekst i status', {'fields': ('text', 'status', 'production_link')}),
-        ('Lektor', {'fields': ('narrator_name', 'narrator_email')}),
+        ('Lektor i montaż (wpisy spisu)', {'fields': ('narrator_contact', 'engineer_contact')}),
         ('Korektor audiobooka', {'fields': ('proofreader',)}),
-        ('Montaż', {'fields': ('engineer_name', 'engineer_email')}),
+        ('Uwagi koordynatora', {'fields': ('coordinator_notes',)}),
         ('Publikacja', {'fields': ('premiere_date', 'youtube_url', 'hearthis_url', 'additional_links')}),
     )
 
@@ -182,11 +176,6 @@ class AudiobookAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             # Jak na stronie: korektora zmienia się tylko w trakcie etapu Korekta, przed jego zakończeniem.
             fields = (*fields, 'proofreader')
         return (*fields, 'text') if obj else fields
-
-    def save_model(self, request, obj, form, change):
-        super().save_model(request, obj, form, change)
-        from core.audiobook_services import refresh_status
-        refresh_status(obj)
 
     @staticmethod
     def proofreader_editable(obj):

@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from django.db.backends.mysql.base import DatabaseWrapper as MySQLWrapper
 from django.db.models import CharField, Value
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, tag
 
 from core.sort_keys import REPLACEMENTS
 from core.views.tags import polish_key
@@ -45,6 +45,7 @@ class TagListTests(TaggedTextsFixture, TestCase):
         for query in ("Łąka", "magia", "podróż", "Fantasy", "Jan Adamczyk", "Antologia A"):
             self.assertEqual(self.ids(q=query), [self.text.pk])
 
+    @tag('slow')
     def test_filters_combine_and_include_coauthors(self):
         self.assertEqual(
             self.ids(anthology=str(self.book.pk), author=str(self.coauthor.pk), genre="Fantasy",
@@ -72,6 +73,7 @@ class TagListTests(TaggedTextsFixture, TestCase):
         ordered = self.ids(sort="genre")
         self.assertLess(ordered.index(self.other.pk), ordered.index(self.text.pk))
 
+    @tag('slow')
     def test_sort_all_columns_both_directions_without_duplicate_rows(self):
         self.other.tags = "zebra"
         self.other.save(update_fields=["tags"])

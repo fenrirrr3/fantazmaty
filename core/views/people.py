@@ -144,7 +144,6 @@ def person_detail(request, person_id):
         "core/person_detail.html",
         {
             "person": person,
-            "audio_profiles": person.user.audio_contacts.all() if person.user_id else [],
             "assignments": assignments,
             "hide_completed": hide_completed,
             "person_summary": person_summary,

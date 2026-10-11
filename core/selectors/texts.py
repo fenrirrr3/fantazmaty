@@ -828,11 +828,13 @@ def text_detail_context(*, user, text):
         not any(s.repetition_id and not s.is_completed for s in stages) and not terminal and not later_phase
         and (coordinator or owned(Role.EDITOR))
     )
-    from workflow.services import completed_stage_exists, editing_follows_first_verification
+    from workflow.services import completed_stage_exists, editing_follows_first_verification, returned_by_coordinator
     first_done = completed_stage_exists(text, StageType.FIRST_VERIFICATION)
     second_done = completed_stage_exists(text, StageType.SECOND_VERIFICATION)
-    first_gate = bool(first_done)
-    second_gate = bool(second_done)
+    # Po zwrocie przez koordynatora redakcji weryfikacje są pomijane (redakcja → kontrola).
+    returned = returned_by_coordinator(text)
+    first_gate = bool(first_done or returned)
+    second_gate = bool(second_done or returned)
 
     can_start_first = bool(
         not any(s.repetition_id and not s.is_completed for s in stages) and not terminal and pending_first and not first_done
@@ -969,6 +971,7 @@ def text_detail_context(*, user, text):
         "active_verification": stage_row(verification),
         "pending_editing": stage_row(pending_editing),
         "pending_first_verification": stage_row(pending_first),
+        "returned_by_coordinator": returned,
         "first_verification_completed": first_done,
         "second_verification_completed": second_done,
         "can_send_to_first_verification": bool(

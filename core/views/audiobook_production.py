@@ -14,14 +14,15 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 
 from authors.models import Author
 from core.audiobook_models import StageType
-from core.audiobook_forms import (AudiobookPeopleForm, AudiobookPublicationForm,
-    AudiobookStageDateForm, AudiobookAssignmentForm, eligible_proofreaders)
+from core.audiobook_forms import (AudiobookPeopleForm, AudiobookPublicationForm, AudiobookNotesForm,
+    AudiobookStatusForm, AudiobookStageDatesForm, AudiobookStageDateForm, AudiobookAssignmentForm, eligible_proofreaders)
 from core.audiobook_services import (require_available, may_finish, start_stage, finish_stage, claim_proofreading,
-    can_claim_proofreading, refresh_status, stage_periods, STAGE_ORDER)
+    can_claim_proofreading, set_status, update_stage_dates, stage_periods, STAGE_ORDER)
 from core.edit_policy import edit_policy
 from core.models import Audiobook, AudiobookStage, EditRevision
 from core.pagination import paginate_items
-from core.permissions import is_coordinator, require_coordinator, team_member_required, can_view_audio_proofreading
+from core.permissions import (is_coordinator, require_coordinator, team_member_required, can_view_audio_proofreading,
+    can_view_audiobooks)
 from core.public_authors import public_name, name_matches
 from texts.models import Text, ForeignAuthor
 from texts.production import active_production_texts
@@ -78,6 +79,8 @@ def list_page(request, *, proofreading=False, bound_assignment=None, status_code
     hide_completed = request.GET.get('hide_completed', '1' if proofreading else '0') == '1'
     if proofreading and not can_view_audio_proofreading(request.user):
         raise PermissionDenied('Dostęp wymaga roli Korektor audiobooków lub koordynatora.')
+    if not proofreading:
+        require_audiobook_access(request.user)
     scope = active_production_texts(audio_texts().filter(for_recording=True, audiobook_blacklisted=False))
     if proofreading:
         scope = proofreading_scope(audio_texts(), request.user, coordinator, hide_completed=hide_completed)
@@ -154,6 +157,11 @@ def list_page(request, *, proofreading=False, bound_assignment=None, status_code
 NON_COORDINATOR_ACTIONS = ('finish_stage', 'start_stage')
 
 
+def require_audiobook_access(user):
+    if not can_view_audiobooks(user):
+        raise PermissionDenied('Audiobooki są dostępne dla koordynatorów, lektorów, montażystów i korektorów audiobooków.')
+
+
 def can_edit_audio(request, obj, kwargs):
     # Korektor rozpoczyna i kończy własną korektę; pozostałe zmiany należą do koordynatora.
     if request.POST.get('action') in NON_COORDINATOR_ACTIONS and may_act_on_proofreading(
@@ -181,11 +189,12 @@ def _stage_id(request):
 @require_http_methods(['GET', 'POST'])
 @team_member_required
 def audiobook_detail(request, text_id):
+    require_audiobook_access(request.user)
     with transaction.atomic() if request.method == 'POST' else nullcontext():
         if request.method == 'POST':
             locked = get_object_or_404(Text.objects.select_for_update(), pk=text_id)
             can_edit_audio(request, locked, {})
-            if request.POST.get('action') not in ('people', 'publication'):
+            if request.POST.get('action') not in ('people', 'publication', 'notes'):
                 require_available(locked)
             elif not Audiobook.objects.filter(text=locked).exists():
                 require_available(locked)
@@ -196,26 +205,41 @@ def audiobook_detail(request, text_id):
             for_recording=True, audiobook_blacklisted=False)).exists()
         coordinator = is_coordinator(request.user)
         editable = coordinator and (eligible or audio.pk is not None)
-        people_form = AudiobookPeopleForm(instance=audio, prefix='people')
-        publication_form = AudiobookPublicationForm(instance=audio, prefix='publication')
-        date_form = AudiobookStageDateForm(prefix='stage', initial={'date': timezone.localdate()})
+        stages = list(text.audiobook_stages.select_related('performer__person_profile').order_by('position', 'pk'))
+        forms = dict(
+            people_form=AudiobookPeopleForm(instance=audio, prefix='people'),
+            publication_form=AudiobookPublicationForm(instance=audio, prefix='publication'),
+            notes_form=AudiobookNotesForm(instance=audio, prefix='notes'),
+            status_form=AudiobookStatusForm(prefix='status', initial={'status': audio.status, 'date': timezone.localdate()}),
+            dates_form=AudiobookStageDatesForm(prefix='dates', stages=stages),
+            date_form=AudiobookStageDateForm(prefix='stage', initial={'date': timezone.localdate()}))
         errors = []
         if request.method == 'POST':
             action = request.POST.get('action')
             try:
-                if action == 'people':
-                    people_form = AudiobookPeopleForm(request.POST, instance=audio, prefix='people')
-                    if people_form.is_valid():
-                        people_form.save()
+                if action in ('people', 'publication', 'notes'):
+                    form_class = {'people': AudiobookPeopleForm, 'publication': AudiobookPublicationForm,
+                                  'notes': AudiobookNotesForm}[action]
+                    form = forms[f'{action}_form'] = form_class(request.POST, instance=audio, prefix=action)
+                    if form.is_valid():
+                        form.save()
+                        messages.success(request, 'Zapisano wpis audiobooka.')
                         return redirect('core:audiobook_detail', text_id=text.pk)
-                elif action == 'publication':
-                    publication_form = AudiobookPublicationForm(request.POST, instance=audio, prefix='publication')
-                    if publication_form.is_valid():
-                        saved = publication_form.save()
-                        refresh_status(saved)
+                elif action == 'status':
+                    form = forms['status_form'] = AudiobookStatusForm(request.POST, prefix='status')
+                    if form.is_valid():
+                        set_status(text_id=text.pk, user=request.user, status=form.cleaned_data['status'],
+                                   date=form.cleaned_data['date'])
+                        messages.success(request, 'Zmieniono status audiobooka.')
+                        return redirect('core:audiobook_detail', text_id=text.pk)
+                elif action == 'dates':
+                    form = forms['dates_form'] = AudiobookStageDatesForm(request.POST, prefix='dates', stages=stages)
+                    if form.is_valid():
+                        changed = update_stage_dates(text_id=text.pk, user=request.user, dates=form.dates())
+                        messages.success(request, 'Zapisano daty etapów.' if changed else 'Daty etapów bez zmian.')
                         return redirect('core:audiobook_detail', text_id=text.pk)
                 elif action in ('start_stage', 'finish_stage'):
-                    date_form = AudiobookStageDateForm(request.POST, prefix='stage')
+                    date_form = forms['date_form'] = AudiobookStageDateForm(request.POST, prefix='stage')
                     if date_form.is_valid():
                         # Puste pole daty oznacza „data nieznana” (tylko koordynator); brak pola – dzisiaj.
                         date = date_form.cleaned_data['date']
@@ -225,11 +249,11 @@ def audiobook_detail(request, text_id):
                         if action == 'start_stage':
                             start_stage(text_id=text.pk, user=request.user,
                                         started_at=None if unknown else (date if coordinator else None))
-                            messages.success(request, 'Rozpoczęto etap.')
+                            messages.success(request, 'Rozpoczęto korektę.')
                         else:
                             finish_stage(text_id=text.pk, stage_id=_stage_id(request), user=request.user,
                                          ended_at=date if coordinator else None, unknown_date=unknown)
-                            messages.success(request, 'Zakończono etap.')
+                            messages.success(request, 'Zakończono korektę.')
                         if request.POST.get('return_to') == 'audio_proofreading':
                             return redirect('core:audio_proofreading')
                         return redirect('core:audiobook_detail', text_id=text.pk)
@@ -237,20 +261,16 @@ def audiobook_detail(request, text_id):
                     raise ValidationError('Nieznana operacja. Odśwież podgląd.')
             except ValidationError as exc:
                 errors = exc.messages
-        stages = list(text.audiobook_stages.select_related('performer__person_profile').order_by('position', 'pk'))
         current = next((stage for stage in stages if stage.pk == audio.active_stage_id), None)
+        proofreading = current is not None and current.stage_type == StageType.PROOFREADING
         own_proofreading = may_act_on_proofreading(request.user, audio)
-        # Z „Do wzięcia” koordynator rozpoczyna nagrywanie; dalej – bieżący etap, gdy jeszcze nie trwa.
-        startable = (audio.status == Audiobook.Status.PENDING and current is None) or (current and not current.is_started)
-        next_label = StageType.RECORDING.label if current is None else current.get_stage_type_display()
         return render(request, 'core/audiobook_detail.html', dict(text=text, audio=audio,
             authors_display=authors_display(text), proofreader_display=proofreader_display(audio),
-            people_form=people_form, publication_form=publication_form, date_form=date_form,
-            stages=stages, current_stage=current, next_label=next_label, errors=errors, can_edit=editable, eligible=eligible,
-            can_coordinate=coordinator,
-            can_start=eligible and bool(startable) and (coordinator
-                or (own_proofreading and current is not None and current.stage_type == 'proofreading')),
-            can_finish=eligible and bool(current) and current.is_started and may_finish(request.user, audio)),
+            stages=stages, current_stage=current, errors=errors, can_edit=editable, eligible=eligible,
+            can_coordinate=coordinator, **forms,
+            can_start=eligible and proofreading and not current.is_started
+                and (coordinator or own_proofreading),
+            can_finish=eligible and proofreading and current.is_started and may_finish(request.user, audio)),
             status=400 if request.method == 'POST' else 200)
 
 

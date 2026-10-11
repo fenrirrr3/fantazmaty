@@ -60,6 +60,7 @@ class RepeatAnalysisTests(SimpleTestCase):
         self.assertTrue(runs[0].bold)
         self.assertTrue(runs[2].italic)
 
+    @tag('slow')
     def test_cross_run_word_and_ignored_inflection(self):
         document = Document()
         p = document.add_paragraph()
@@ -110,6 +111,7 @@ class ModelPipelineTests(SimpleTestCase):
     TEXT = ('Kot spał na oknie, a koty sąsiadów biegały po ogrodzie. – Czy widziałaś Annę? – zapytał Piotr. '
             'Ludzie mówili, że lata mijały szybko; potem przyszły gorsze dni i jeszcze gorsze noce.')
 
+    @tag('slow')
     def test_reduced_pipeline_matches_full_pipeline(self):
         nlp = _get_nlp()
         words = sorted({word.lower() for word in LEXICAL_RE.findall(self.TEXT)})
@@ -160,6 +162,7 @@ class WordMarkupTests(SimpleTestCase):
                 self.assertEqual(len(colors), 1)
                 self.assertIsNotNone(colors.pop())
 
+    @tag('slow')
     def test_decomposed_polish_letters_stay_inside_words(self):
         """Tekst w postaci NFD (np. z Pages lub PDF): „ę” to „e” + ogonek; słowo nie może się rozpaść."""
         decomposed = unicodedata.normalize('NFD', 'Pięść i pięść, a potem Pięść.')

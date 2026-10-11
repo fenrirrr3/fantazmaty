@@ -1,5 +1,9 @@
-"""Listy recenzji: bieżące i archiwum według decyzji, „Moje recenzje”, historia w profilu, sortowanie i filtry."""
+"""Listy recenzji: bieżące i archiwum według decyzji, „Moje recenzje”, historia w profilu, sortowanie i filtry
+(stan przydziałów, liczba opinii, wyszukiwanie, antologia, kolejka powiadomień autorów)."""
+from datetime import timedelta
+
 from django.test import TestCase
+from django.utils import timezone
 from django.urls import reverse
 from lxml import html
 
@@ -187,3 +191,77 @@ class ReviewListSortAndFilterTests(ReviewFixtures):
         self.assertNotContains(response, 'review-bulk-form')
         doc = html.fromstring(response.content)
         self.assertTrue(doc.xpath('//*[contains(@class,"review-filter-bottom")]//*[@data-active-filters-target]'))
+
+    def test_work_filters_search_and_anthology(self):
+        other_book = Anthology.objects.create(title='Drugi tom')
+        empty = self.review
+        one = self.make_review(title='Jeden')
+        self.assign(self.reviewer, review=one)
+        done = self.make_review(title='Ukończone')
+        self.assign(self.reviewer, review=done, opinion='yes')
+        self.assign(self.coordinator, review=done, opinion='no', position=2)
+        full = self.make_review(title='Pełne')
+        self.assign(self.reviewer, review=full, opinion='yes')
+        for position in range(2, ReviewAssignment.MAX_REVIEWERS + 1):
+            # Miejsce po usuniętym koncie nadal jest zajęte.
+            ReviewAssignment.objects.create(review=full, user=None, position=position)
+        elsewhere = self.make_review(title='Gdzie indziej', anthology=other_book, author_last_name='Kowalska')
+        everything = {empty.pk, one.pk, done.pk, full.pk, elsewhere.pk}
+        cases = [
+            (self.admin, {'assignment_state': 'none'}, {empty.pk, elsewhere.pk}),
+            (self.admin, {'assignment_state': 'one'}, {one.pk}),
+            (self.admin, {'assignment_state': 'full'}, {full.pk}),
+            (self.admin, {'assignment_state': 'all_finished'}, {done.pk}),
+            (self.admin, {'assignment_state': 'nieznany'}, everything),
+            (self.admin, {'completed': '2'}, {done.pk}),
+            (self.admin, {'completed': '1'}, {full.pk}),
+            (self.admin, {'completed': '9'}, everything),
+            (self.admin, {'q': 'pełne'}, {full.pk}),
+            (self.admin, {'q': 'drugi tom'}, {elsewhere.pk}),
+            (self.admin, {'q': 'Kowalska'}, {elsewhere.pk}),
+            # Bez dostępu do danych autorów nazwisko nie jest kryterium wyszukiwania.
+            (self.coordinator, {'q': 'Kowalska'}, set()),
+            (self.admin, {'anthology': str(other_book.pk)}, {elsewhere.pk}),
+            (self.admin, {'anthology': '0'}, everything),
+            (self.admin, {'anthology': '١'}, everything),
+            (self.admin, {'anthology': '9' * 20}, everything),
+        ]
+        url = reverse('core:review_list')
+        for user, params, expected in cases:
+            with self.subTest(user=user.username, **params):
+                self.client.force_login(user)
+                page = self.client.get(url, params)
+                self.assertEqual({row['pk'] for row in page.context['reviews']}, expected)
+        page = self.client.get(url, {'anthology': 'abc', 'assignment_state': 'x', 'completed': '-1'})
+        self.assertEqual((page.context['selected_anthology_id'], page.context['selected_assignment_state'],
+                          page.context['selected_completed']), (None, '', ''))
+        self.assertTrue(page.context['filters_are_default'])
+
+    def test_status_sort_and_author_notification_queues(self):
+        today = timezone.localdate()
+        Review.objects.filter(pk=self.review.pk).update(status=Review.Status.IN_REVIEW)
+        waiting = self.make_review(title='Do powiadomienia', status=Review.Status.ACCEPTED, decision_at=today)
+        self.make_review(title='Powiadomiony', status=Review.Status.REJECTED, decision_at=today,
+                         author_notified_at=today)
+        planned = self.make_review(title='Zaplanowany', status=Review.Status.REJECTED, is_hidden=True,
+                                   decision_at=today + timedelta(days=3))
+        newest = self.make_review(title='Nowy')
+        self.client.force_login(self.admin)
+        url = reverse('core:review_list')
+        for sort, expected in (('status', [newest.pk, self.review.pk]), ('-status', [self.review.pk, newest.pk])):
+            with self.subTest(sort=sort):
+                rows = self.client.get(url, {'sort': sort}).context['reviews']
+                self.assertEqual([row['pk'] for row in rows], expected)
+        page = self.client.get(url, {'notification': 'pending', 'status': 'rejected'})
+        self.assertTrue(page.context['old_reviews'])
+        self.assertEqual(page.context['selected_statuses'], [])
+        self.assertEqual([row['pk'] for row in page.context['reviews']], [waiting.pk])
+        queues = [('core:notification_queue', {}, [waiting.pk]),
+                  ('core:notification_queue', {'q': 'POWIADOMIENIA'}, [waiting.pk]),
+                  ('core:notification_queue', {'q': 'author@example'}, [waiting.pk]),
+                  ('core:notification_queue', {'q': 'Zaplanowany'}, []),
+                  ('core:scheduled_rejections', {}, [planned.pk])]
+        for name, params, expected in queues:
+            with self.subTest(name=name, **params):
+                page = self.client.get(reverse(name), params)
+                self.assertEqual([review.pk for review in page.context['reviews']], expected)

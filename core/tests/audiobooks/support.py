@@ -9,7 +9,7 @@ from texts.models import Anthology, Text
 
 
 class AudiobookProductionTestData:
-    """Tekst z gotowej antologii, koordynator, dwie osoby z rolą Korektor audiobooków i redaktor bez uprawnień."""
+    """Tekst z gotowej antologii, koordynator, dwie osoby z rolą Korektor audiobooków, lektor i redaktor bez uprawnień."""
 
     @classmethod
     def setUpTestData(cls):
@@ -19,6 +19,7 @@ class AudiobookProductionTestData:
         cls.reader = create_member('audio-reader', 'Korektor audiobooków')
         cls.other_reader = create_member('other-reader', 'Korektor audiobooków')
         cls.member = create_member('audio-editor', 'Redaktor')
+        cls.narrator = create_member('audio-narrator', 'Lektor')
         cls.book = Anthology.objects.create(title='Audiobookowa antologia', status=Anthology.Status.READY)
         cls.text = Text.objects.create(title='Głos', anthology=cls.book, length=1234, tags='smoki', genre='fantasy')
         cls.text.authors.add(Author.objects.create(first_name='Prywatne', last_name='Nazwisko', pseudonym='Podpis'))
@@ -38,13 +39,23 @@ class AudiobookProductionTestData:
         self.client.force_login(user)
         return self.client.post(self.url, {'action': action, '_edit_version': self.token(user), **fields})
 
+    def set_status(self, status, user=None, day=None):
+        """Zmiana statusu przez koordynatora; day='' – data nieznana, None – dzisiaj."""
+        return self.post('status', user, **{'status-status': status,
+                                             'status-date': '' if day == '' else str(day or timezone.localdate())})
+
+    def to_proofreading(self):
+        """Nagrywanie, potem Korekta czekająca na przejęcie (obie zmiany dzisiaj)."""
+        self.set_status('recording')
+        return self.set_status('proofreading')
+
     def start(self, user=None, day=None):
-        """Rozpoczęcie etapu; day=False – bez pola daty, '' – data nieznana, None – dzisiaj."""
+        """Rozpoczęcie korekty; day=False – bez pola daty, '' – data nieznana, None – dzisiaj."""
         fields = {} if day is False else {'stage-date': str(day or timezone.localdate()) if day != '' else ''}
         return self.post('start_stage', user, **fields)
 
     def finish(self, user=None, day=None):
-        """Zakończenie bieżącego etapu; znaczenie `day` jak w start()."""
+        """Zakończenie bieżącej korekty; znaczenie `day` jak w start()."""
         fields = {'stage_id': self.audio().active_stage_id}
         if day is not False:
             fields['stage-date'] = '' if day == '' else str(day or timezone.localdate())

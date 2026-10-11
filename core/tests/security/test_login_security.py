@@ -1,8 +1,11 @@
-"""Logowanie: limity prób logowania i resetu hasła (throttle), logowanie adresem e-mail i zmiana hasła w układzie CMS."""
+"""Logowanie: limity prób logowania i resetu hasła (throttle), logowanie adresem e-mail, logowanie do panelu admina,
+reset hasła z linku w e-mailu i zmiana hasła w układzie CMS."""
+import re
 from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core import mail
 from django.templatetags.static import static
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -149,3 +152,58 @@ class PasswordChangeTests(TemporaryActivitySpoolMixin, TestCase):
         self.assertTrue(response.wsgi_request.user.is_authenticated)
         self.member.refresh_from_db()
         self.assertTrue(self.member.check_password(self.NEW))
+
+
+class AdminLoginTests(TestCase):
+    """Panel admina loguje wyłącznie aktywnego superusera; pozostali zostają na formularzu bez sesji."""
+
+    PASSWORD = 'valid-password'
+
+    def test_only_active_superuser_logs_into_admin(self):
+        User = get_user_model()
+        cases = [
+            (User.objects.create_user('plain', 'plain@example.test', self.PASSWORD), None),
+            (User.objects.create_user('staff', 'staff@example.test', self.PASSWORD, is_staff=True),
+             'Panel administracyjny jest dostępny tylko dla superusera.'),
+            (User.objects.create_superuser('inactive', 'inactive@example.test', self.PASSWORD, is_active=False),
+             None),
+        ]
+        for user, message in cases:
+            with self.subTest(user=user.username):
+                response = self.client.post(reverse('admin:login'),
+                                            {'username': user.email, 'password': self.PASSWORD})
+                self.assertEqual(response.status_code, 200)
+                self.assertTrue(response.context['form'].errors)
+                if message:
+                    self.assertContains(response, message)
+                self.assertNotIn('_auth_user_id', self.client.session)
+        admin = User.objects.create_superuser('admin', 'admin@example.test', self.PASSWORD)
+        response = self.client.post(reverse('admin:login'), {'username': admin.email, 'password': self.PASSWORD,
+                                                             'next': reverse('admin:index')})
+        self.assertRedirects(response, reverse('admin:index'), fetch_redirect_response=False)
+        self.assertEqual(self.client.session['_auth_user_id'], str(admin.pk))
+
+
+class PasswordResetFlowTests(TemporaryActivitySpoolMixin, TestCase):
+    NEW = 'Reset-password-381!'
+
+    def test_reset_link_from_email_sets_new_password_and_allows_login(self):
+        user = get_user_model().objects.create_user('forgetful', 'forgetful@example.test', 'old-password')
+        response = self.client.post(reverse('password_reset'), {'email': 'forgetful@example.test'})
+        self.assertRedirects(response, reverse('password_reset_done'))
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ['forgetful@example.test'])
+        link = re.search(r'https?://[^/\s]+(/\S+)', mail.outbox[0].body)[1]
+        form_page = self.client.get(link, follow=True)
+        self.assertEqual(form_page.status_code, 200)
+        self.assertTrue(form_page.context['validlink'])
+        response = self.client.post(form_page.redirect_chain[-1][0],
+                                    {'new_password1': self.NEW, 'new_password2': self.NEW})
+        self.assertRedirects(response, reverse('password_reset_complete'))
+        user.refresh_from_db()
+        self.assertTrue(user.check_password(self.NEW))
+        # Link jest jednorazowy.
+        self.assertFalse(self.client.get(link, follow=True).context['validlink'])
+        response = self.client.post(reverse('login'), {'username': user.email, 'password': self.NEW})
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self.client.session['_auth_user_id'], str(user.pk))

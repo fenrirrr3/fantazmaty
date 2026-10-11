@@ -387,17 +387,26 @@ class ArchivedReviewTransferTests(TestCase):
         copy_review_to_text(user=self.user, review_id=self.review.pk, contract_received=True)
         self.assertEqual(pending(), [])
 
-    def test_hide_ready(self):
-        text = Text.objects.create(title="Gotowy", length=100)
-        S.objects.create(text=text, stage_type="ready")
-        self.assertEqual(
-            len(list(workflow_list_context(user=self.user, params={"hide_ready": "1"})["stages"])),
-            0,
-        )
-        self.assertEqual(
-            len(list(workflow_list_context(user=self.user, params={"hide_ready": "0"})["stages"])),
-            1,
-        )
+    def test_hide_ready_stage_and_anthology_filters(self):
+        """Tabelka zbiorcza: ukrywanie gotowych, filtr etapu i antologii; nieznany etap nie zawęża listy."""
+        ready = Text.objects.create(title="Gotowy", length=100)
+        S.objects.create(text=ready, stage_type="ready")
+        first_book, second_book = (Anthology.objects.create(title=title) for title in ("Pierwsza", "Druga"))
+        editing = Text.objects.create(title="Redagowany", length=100, anthology=first_book)
+        proofreading = Text.objects.create(title="Korygowany", length=100, anthology=second_book)
+        for text, kind in ((editing, "editing"), (proofreading, "first_proofreading")):
+            S.objects.create(text=text, stage_type=kind)
+        everything = {ready.pk, editing.pk, proofreading.pk}
+        for params, expected in (
+            ({"hide_ready": "1"}, {editing.pk, proofreading.pk}),
+            ({"hide_ready": "0"}, everything),
+            ({"hide_ready": "0", "stage": "editing"}, {editing.pk}),
+            ({"hide_ready": "0", "anthology": str(second_book.pk)}, {proofreading.pk}),
+            ({"hide_ready": "0", "stage": "nieznany", "anthology": "x"}, everything),
+        ):
+            with self.subTest(params=params):
+                rows = workflow_list_context(user=self.user, params=params)["stages"]
+                self.assertEqual({row["text"]["pk"] for row in rows}, expected)
 
 
 class CompletionLabelsTests(TestCase):

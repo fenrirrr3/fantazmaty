@@ -1,4 +1,5 @@
-"""Narzędzia panelu administracyjnego: akcje zbiorcze, filtry list, dodawanie etapu, odtwarzanie fixture i dostęp."""
+"""Narzędzia panelu administracyjnego: akcje zbiorcze, filtry list, dodawanie etapu, odtwarzanie fixture, dostęp,
+skrzynki pocztowe i wybór tekstu nowego audiobooka."""
 import json
 
 from django.contrib.admin.models import CHANGE, LogEntry
@@ -8,11 +9,12 @@ from django.test import TestCase
 from django.urls import reverse
 
 from core.edit_versions import version_of
-from core.models import NewsletterConsent
+from core.models import Audiobook, MailboxConnection, NewsletterConsent
 from fantazmaty.testing import create_member, create_superuser
 from illustrations.models import Illustration, Illustrator
 from people.models import Person
 from texts.models import Anthology, AnthologyTask, Text
+from workflow.models import WorkflowStage
 
 
 class AdminToolsTests(TestCase):
@@ -125,3 +127,58 @@ class AdminToolsTests(TestCase):
         )
         self.assertTrue(AnthologyTask.objects.filter(pk=20000).exists())
         self.assertTrue(Illustration.objects.filter(text_id=9999).exists())
+
+    def test_mailbox_password_is_encrypted_and_kept_when_left_empty(self):
+        add = reverse('admin:core_mailboxconnection_add')
+        data = {'name': 'Zgłoszenia', 'purpose': 'submissions', 'host': 'imap.example.com', 'port': '993',
+                'security': 'ssl', 'username': 'box@example.com', 'password': 'pierwsze-haslo', 'folder': 'INBOX',
+                'recruitment_subjects': '', 'is_active': 'on', '_save': 'Zapisz'}
+        self.assertEqual(self.client.post(add, data).status_code, 302)
+        box = MailboxConnection.objects.get()
+        self.assertNotIn('pierwsze-haslo', box.encrypted_password)
+        self.assertEqual(box.get_password(), 'pierwsze-haslo')
+        change = reverse('admin:core_mailboxconnection_change', args=[box.pk])
+        for password, expected in (('', 'pierwsze-haslo'), ('nowe-haslo', 'nowe-haslo')):
+            with self.subTest(password=password):
+                page = self.client.get(change)
+                self.assertNotContains(page, expected)
+                response = self.client.post(change, {**data, 'password': password, 'folder': 'Archiwum',
+                                                     '_edit_version': page.context['request'].edit_version_token})
+                self.assertEqual(response.status_code, 302)
+                box.refresh_from_db()
+                self.assertEqual((box.folder, box.get_password()), ('Archiwum', expected))
+
+    def test_mailbox_add_form_follows_recruitment_filter_from_list(self):
+        url = reverse('admin:core_mailboxconnection_add')
+        for filters, purpose, subjects_field in (('purpose__exact=recruitment', 'recruitment', False),
+                                                 ('purpose__exact=submissions', 'submissions', True),
+                                                 ('', 'submissions', True)):
+            with self.subTest(filters=filters):
+                page = self.client.get(url, {'_changelist_filters': filters} if filters else {})
+                form = page.context['adminform'].form
+                self.assertEqual(form['purpose'].value(), purpose)
+                self.assertEqual('recruitment_subjects' in form.fields, subjects_field)
+
+    def test_new_audiobook_offers_only_texts_waiting_for_recording(self):
+        novel = Anthology.objects.create(title='Powieść', is_novel=True)
+        abandoned = Anthology.objects.create(title='Porzucona', status='abandoned')
+        excluded = {
+            'nie do nagrania': Text.objects.create(title='Bez nagrania', anthology=self.book, length=1,
+                                                   for_recording=False),
+            'czarna lista': Text.objects.create(title='Zablokowany', anthology=self.book, length=1,
+                                                audiobook_blacklisted=True),
+            'ma audiobook': Text.objects.create(title='Nagrany', anthology=self.book, length=1),
+            'powieść': Text.objects.create(title='Rozdział', anthology=novel, length=1, chapter_number=1),
+            'porzucona antologia': Text.objects.create(title='Porzucony', anthology=abandoned, length=1),
+            'wycofany': Text.objects.create(title='Wycofany', anthology=self.book, length=1),
+        }
+        Audiobook.objects.create(text=excluded['ma audiobook'])
+        WorkflowStage.objects.create(text=excluded['wycofany'], workflow_cycle=1, stage_type='withdrawn',
+                                     is_current=True, is_released=True)
+        queryset = self.client.get(reverse('admin:core_audiobook_add')).context['adminform'].form.fields['text'].queryset
+        self.assertCountEqual(queryset, [self.story, self.other])
+        response = self.client.post(reverse('admin:core_audiobook_add'),
+                                    {'text': excluded['czarna lista'].pk, 'additional_links': '[]', '_save': 'Zapisz'})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('text', response.context['adminform'].form.errors)
+        self.assertFalse(Audiobook.objects.filter(text=excluded['czarna lista']).exists())

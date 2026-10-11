@@ -15,7 +15,7 @@ from core.models import MailboxConnection, MailboxDownload, Recruitment, Recruit
 from core.recruitment_message import name_in_subject
 from core.recruitment_roles import ROLE_CHOICES
 from core.services.mailbox_import import default_mailbox, mailbox_key
-from core.services.recruitment_samples import attachment_archive
+from core.services.recruitment_samples import attachment_archive, safe_archive_name
 from core.views.recruitment_mailbox import SALT
 from fantazmaty.testing import create_member
 from fantazmaty.testing.data import sample
@@ -81,6 +81,27 @@ class SampleArchiveTests(SimpleTestCase):
             self.assertEqual(len({name.split('/')[0] for name in names}), 2)
             self.assertTrue(all(len(name.split('/')) == 2 for name in names))
             self.assertEqual([archive.read(name) for name in names], [b'one', b'two', b'one', b'two'])
+
+    def test_reserved_or_empty_names_fall_back_and_failed_archive_is_discarded(self):
+        """Nazwy zastrzeżone w Windows i puste dostają nazwę zastępczą; błąd w trakcie pakowania zamyka
+        rozpoczęte archiwum i przekazuje błąd dalej."""
+        for value, expected in (('CON.docx', 'zapas'), ('lpt1', 'zapas'), (' .. ', 'zapas'),
+                                ('a<b>:c.doc', 'a_b__c.doc'), ('CONTRA.docx', 'CONTRA.docx')):
+            with self.subTest(value=value):
+                self.assertEqual(safe_archive_name(value, 'zapas'), expected)
+        streams = []
+
+        class TrackedStream(BytesIO):
+            def __init__(self, *args):
+                super().__init__(*args)
+                streams.append(self)
+
+        with patch('core.services.recruitment_samples.BytesIO', TrackedStream), \
+                patch('core.services.recruitment_samples.attachments',
+                      side_effect=[[('a.docx', b'x')], RuntimeError('uszkodzony załącznik')]), \
+                self.assertRaisesMessage(RuntimeError, 'uszkodzony załącznik'):
+            attachment_archive([sample(1), sample(2)])
+        self.assertTrue(streams[0].closed)
 
 
 class RecruitmentSamplesTests(RecruitmentMailboxMixin, TestCase):
@@ -235,6 +256,48 @@ class RecruitmentSamplesTests(RecruitmentMailboxMixin, TestCase):
         fetch.reset_mock()
         self.assertEqual(self.client.post(self.url, self.payload('bulk', decision='invalid')).status_code, 400)
         fetch.assert_not_called()
+
+    def test_refused_requests_explain_why_and_save_nothing(self):
+        """Odmowy na ekranie próbek: komunikat zamiast zapisu, bez archiwum i bez śladów pobrania."""
+        def mailbox_changed_during_download(*args, **kwargs):
+            MailboxConnection.objects.filter(pk=self.box.pk).update(username='inna@example.test')
+            return [sample(12, attachment=True)]
+
+        for name, data, fetched, message in (
+            ('nieznana operacja', self.payload('archive'), None, 'Nieznana operacja.'),
+            ('numer wiadomości nie jest liczbą', self.payload(selected=['abc']), None,
+             'Nieprawidłowy wybór wiadomości.'),
+            ('wygasły wybór', self.payload(selection='zmieniony'), None, 'Wybór wygasł. Pobierz nagłówki ponownie.'),
+            ('nieznana rola', self.payload(roles=['fake']), None, 'Popraw wybór ról.'),
+            ('wiadomość zniknęła ze skrzynki', self.payload(), [], 'Nie pobrano wszystkich wybranych wiadomości. Niczego nie zapisano.'),
+            ('zmienione ustawienia skrzynki', self.payload('download'), mailbox_changed_during_download,
+             'Zmieniono ustawienia skrzynki. Pobierz nagłówki ponownie.'),
+        ):
+            with self.subTest(name), patch('core.views.recruitment_mailbox.fetch_messages') as fetch:
+                fetch.side_effect = fetched if callable(fetched) else lambda *a, **k: fetched
+                response = self.client.post(self.url, data)
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response.context['error'], message)
+                self.assertNotIn('Content-Disposition', response)
+                self.assertFalse(Recruitment.objects.exists())
+                self.assertFalse(MailboxDownload.objects.exists())
+                self.assertEqual(fetch.called, fetched is not None)
+        MailboxConnection.objects.filter(pk=self.box.pk).update(username=self.box.username)
+        response = self.client.post(self.url, self.payload('set_notified', notified='maybe'))
+        self.assertEqual((response.status_code, response.json()),
+                         (400, {'error': 'Wybierz jedną wiadomość i status Tak lub Nie.'}))
+
+    def test_changed_mailbox_drops_saved_headers_and_missing_mailbox_is_explained(self):
+        """Zmiana ustawień skrzynki unieważnia zapamiętane nagłówki; bez jednej aktywnej skrzynki strona to wyjaśnia."""
+        self.headers.reset_mock()
+        MailboxConnection.objects.filter(pk=self.box.pk).update(folder='Archiwum')
+        self.assertEqual(self.client.get(self.url).status_code, 200)
+        self.assertEqual(self.headers.call_count, 1)
+        MailboxConnection.objects.filter(pk=self.box.pk).update(is_active=False)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('jedną aktywną skrzynkę', response.context['error'])
+        self.assertEqual(self.headers.call_count, 1)
 
     def test_csrf_required_for_writes_and_preview(self):
         client = Client(enforce_csrf_checks=True)

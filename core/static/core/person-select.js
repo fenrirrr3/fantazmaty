@@ -50,8 +50,9 @@
       select.value = chosen || ''; select.dispatchEvent(new Event('change', {bubbles: true})); search();
     });
     input.addEventListener('focus', search);
+    let syncRole = null;
     if (roleSelect) {
-      const syncRole = () => {
+      syncRole = () => {
         options.forEach(option => { option.disabled = !allowed(option.value); });
         if (!allowed(select.value)) { select.value = ''; input.value = ''; }
         input.disabled = !roleSelect.value;
@@ -59,7 +60,6 @@
         status.textContent = roleSelect.value ? 'Wybierz osobę uprawnioną do tej roli.' : 'Najpierw wybierz rolę.';
       };
       roleSelect.addEventListener('change', syncRole);
-      select.form?.addEventListener('reset', () => setTimeout(syncRole, 0));
       syncRole();
     }
     input.addEventListener('keydown', event => {
@@ -73,6 +73,7 @@
       if (event.key === 'Enter' && list.children.length) { event.preventDefault(); if (active >= 0) list.children[active].click(); }
     });
     document.addEventListener('click', event => { if (!wrapper.contains(event.target)) close(); });
-    select.form?.addEventListener('reset', () => setTimeout(() => { input.value = labels.get(select.value) || ''; input.setCustomValidity(''); status.textContent = ''; close(); }, 0));
+    // Defaults are restored after the reset event; the role hint is recomputed last so it is not wiped.
+    select.form?.addEventListener('reset', () => setTimeout(() => { input.value = labels.get(select.value) || ''; input.setCustomValidity(''); status.textContent = ''; close(); syncRole?.(); }, 0));
   });
 })();

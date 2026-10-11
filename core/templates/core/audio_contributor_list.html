@@ -1,0 +1,31 @@
+{% extends "core/base.html" %}
+{% block title %}Lektorzy i montaż | Fantazmaty CMS{% endblock %}
+{% block content %}
+<header class="page-header">
+    <h1 class="page-title">Lektorzy i montaż</h1>
+    <p>Samodzielny spis lektorów i montażystów, niezależny od kont i ról zespołu. Kliknij imię i nazwisko, aby edytować dane.</p>
+    <a class="primary-button" href="{% url 'core:audio_contributor_add' %}">Dodaj wpis</a>
+</header>
+<section class="card"><div class="card-body">
+    <form method="get" class="audio-production-form">
+        <div class="form-field"><label for="audio-contact-search">Szukaj po imieniu, nazwisku lub e-mailu</label><input id="audio-contact-search" type="search" name="q" value="{{ query }}" maxlength="200"></div>
+        <input type="hidden" name="page_size" value="{{ page_obj.selected_page_size }}">
+        <label><input type="checkbox" name="show_inactive" value="1"{% if show_inactive %} checked{% endif %}> Pokaż także nieaktywnych</label>
+        <button class="secondary-button" type="submit">Szukaj</button>
+    </form>
+</div></section>
+<section class="card" aria-label="Spis lektorów i montażu">
+    <div class="table-container" tabindex="0" role="region" aria-label="Tabela lektorów i montażu">
+        <table data-server-paginated="true" class="data-table"><caption class="visually-hidden">Spis lektorów i montażu</caption>
+            <thead><tr><th scope="col">Imię i nazwisko</th><th scope="col">Adres e-mail</th><th scope="col">Nagrania (lektor)</th><th scope="col">Montaże</th></tr></thead>
+            <tbody>{% for person in page_obj %}<tr>
+                <td><a href="{% url 'core:audio_contributor' person.pk %}"><strong>{{ person.name }}</strong></a>{% if not person.is_active %} <span class="muted-text">(nieaktywny)</span>{% endif %}</td>
+                <td>{% if person.email %}<a href="mailto:{{ person.email }}">{{ person.email }}</a>{% else %}Nie podano{% endif %}</td>
+                <td>{{ person.narrated }}</td>
+                <td>{{ person.engineered }}</td>
+            </tr>{% empty %}<tr><td colspan="4">Brak osób spełniających kryteria.</td></tr>{% endfor %}</tbody>
+        </table>
+    </div>
+</section>
+{% include "core/includes/pagination.html" %}
+{% endblock %}

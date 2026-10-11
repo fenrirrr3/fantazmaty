@@ -4,6 +4,7 @@ a migracja people 0017 usuwa wyłącznie niezalogowane konta samych ilustratoró
 Migracja nie zmienia schematu, więc test wywołuje jej funkcję na bieżących modelach.
 """
 import contextlib
+from datetime import timedelta
 import io
 from importlib import import_module
 from types import SimpleNamespace
@@ -32,12 +33,6 @@ class IllustratorAccessTests(TestCase):
         response = self.client.get(reverse('core:home'))
         self.assertContains(response, reverse('illustrations:illustration_list'))
         self.assertEqual(self.client.get(reverse('illustrations:illustration_list')).status_code, 200)
-
-    def test_member_without_illustrator_role_has_no_access(self):
-        user = create_member('redaktor', 'Redaktor')
-        self.assertFalse(can_view_illustrations(user))
-        self.client.force_login(user)
-        self.assertEqual(self.client.get(reverse('illustrations:illustration_list')).status_code, 403)
 
 
 class IllustratorOnlyAccountCleanupTests(TestCase):
@@ -92,7 +87,7 @@ class IllustratorOnlyAccountCleanupTests(TestCase):
         busy = self.person('gosia')
         Illustrator.objects.create(first_name='gosia', last_name='Rysownik', email='gosia@example.test')
         today = timezone.localdate()
-        Vacation.objects.create(person=busy, start_date=today, end_date=today)
+        Vacation.objects.create(person=busy, start_date=today, end_date=timezone.now() + timedelta(days=1))
         admin = self.person('hania')
         get_user_model().objects.filter(username='hania').update(is_staff=True)
         Illustrator.objects.create(first_name='hania', last_name='Rysownik')

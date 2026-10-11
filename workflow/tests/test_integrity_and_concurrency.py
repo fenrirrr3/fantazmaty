@@ -211,6 +211,18 @@ class VerifierConstraintTests(TestCase):
         self.create(Assignment.Role.VERIFIER_2, workflow_cycle=2)
         second = Text.objects.create(title="Inny tekst", length=100)
         Assignment.objects.create(text=second, role=Assignment.Role.VERIFIER_2, assigned_to=self.user)
+        # Wszystkie przypisania zostały zapisane: ta sama osoba jako weryfikator 1 i 2 jest dozwolona
+        # w innym cyklu oraz w innym tekście.
+        self.assertCountEqual(
+            Assignment.objects.filter(assigned_to=self.user).values_list("text__title", "role", "workflow_cycle"),
+            [
+                (self.text.title, Assignment.Role.VERIFIER_1, 1),
+                (self.text.title, Assignment.Role.EDITOR, 1),
+                (self.text.title, Assignment.Role.PROOFREADER_1, 1),
+                (self.text.title, Assignment.Role.VERIFIER_2, 2),
+                ("Inny tekst", Assignment.Role.VERIFIER_2, 1),
+            ],
+        )
 
     def test_unassigned_roles_and_deleted_user_are_allowed(self):
         self.create(Assignment.Role.VERIFIER_1)

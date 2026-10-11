@@ -81,8 +81,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!multiple) { resetIdentity(); input.setCustomValidity(input.value.trim() ? 'Wybierz autora z sugestii albo przejdź do ręcznego wpisania danych.' : ''); select.dispatchEvent(new Event('change', {bubbles:true})); }
             clearTimeout(timer); ++sequence; controller?.abort(); close(); timer = setTimeout(search, 500);
         });
+        // Cancelling (Escape, click elsewhere) also drops an in-flight search so it cannot reopen the list later.
+        const cancel = () => { ++sequence; controller?.abort(); clearTimeout(timer); close(); if (status.textContent === 'Szukam…') status.textContent = ''; };
         input.addEventListener('keydown', event => {
-            if (event.key === 'Escape') { ++sequence; controller?.abort(); clearTimeout(timer); close(); return; }
+            if (event.key === 'Escape') { cancel(); return; }
             if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
                 event.preventDefault(); const choices = [...list.children]; if (!choices.length) return;
                 active = (active + (event.key === 'ArrowDown' ? 1 : -1) + choices.length) % choices.length;
@@ -91,6 +93,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (event.key === 'Enter') { event.preventDefault(); if (active >= 0) list.children[active].click(); else { clearTimeout(timer); search(); } }
         });
-        document.addEventListener('click', event => { if (event.target !== input && !list.contains(event.target)) close(); });
+        document.addEventListener('click', event => { if (event.target !== input && !list.contains(event.target)) cancel(); });
     });
 });

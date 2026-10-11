@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta
 
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, tag
 from django.urls import reverse
 from django.utils import timezone
 
@@ -158,24 +158,109 @@ class EditingAndVerificationFlowTests(WorkflowTestDataMixin, TestCase):
             current_assignment_queryset(self.text).exists()
         )
 
-    def test_editing_cannot_resume_while_verification_waits_to_start(self):
-        self.begin_editing()
-        claim_stage(
-            self.text,
-            StageType.FIRST_VERIFICATION,
-            self.verifier_1,
-        )
-        send_to_first_verification(self.text, self.editor)
+    def fresh_text(self):
+        """Nowy tekst „Do redakcji” – każdy przypadek tabeli zaczyna od czystego stanu."""
+        self.text = Text.objects.create(title="Tekst przypadku", length=1)
+        S.objects.create(text=self.text, stage_type=StageType.READY_FOR_EDITING)
 
-        with self.assertRaises(ValidationError):
+    def at_author(self):
+        self.finish_first_verification()
+        resume_editing(self.text, self.editor)
+        return send_text_to_author(self.text, self.editor)
+
+    @tag('slow')
+    def test_editorial_transitions_refuse_with_reason_and_change_nothing(self):
+        """Każda odmowa przejścia redakcyjnego podaje powód i nie zmienia etapów ani przydziałów."""
+        def dateless_author():
+            S.objects.filter(pk=self.at_author().pk).update(started_at=None)
+
+        def author_and_editing_both_open():
+            author = self.at_author()
             resume_editing(self.text, self.editor)
+            S.objects.filter(pk=author.pk).update(is_completed=False, ended_at=None)
 
-        self.assertFalse(
-            current_stage_queryset(self.text).filter(
-                stage_type=StageType.EDITING,
-                is_completed=False,
-            ).exists()
+        def editing_closed_without_verification():
+            editing = self.begin_editing()
+            self.stage(StageType.FIRST_VERIFICATION).delete()
+            S.objects.filter(pk=editing.pk).update(is_completed=True, ended_at=self.today)
+
+        def handed_to_coordinator():
+            self.finish_second_verification()
+            resume_editing(self.text, self.editor)
+            finish_editing_to_coordinator(self.text, self.editor)
+
+        def coordinator_control_with_inactive_editor():
+            A.objects.create(text=self.text, role=Role.EDITOR, assigned_to=self.other_editor)
+            S.objects.filter(text=self.text).delete()
+            Person.objects.filter(user=self.other_editor).update(is_active=False)
+            return S.objects.create(text=self.text, stage_type=StageType.COORDINATOR_CONTROL,
+                                    started_at=self.today)
+
+        def stale_copy():
+            copy = Text.objects.get(pk=self.text.pk)
+            Text.objects.filter(pk=self.text.pk).update(current_workflow_cycle=2)
+            return copy
+
+        def waiting_verification():
+            self.begin_editing()
+            claim_stage(self.text, StageType.FIRST_VERIFICATION, self.verifier_1)
+            send_to_first_verification(self.text, self.editor)
+
+        cases = (
+            ("rezerwacja W1 z datą", self.begin_editing,
+             lambda _: claim_stage(self.text, StageType.FIRST_VERIFICATION, self.verifier_1,
+                                   started_at=self.today),
+             "Rezerwacja pierwszej weryfikacji nie ustala daty"),
+            ("wznowienie aktywnej redakcji", self.begin_editing,
+             lambda _: resume_editing(self.text, self.editor), "Redakcja jest już aktywna."),
+            ("wznowienie, gdy W1 czeka na start", waiting_verification,
+             lambda _: resume_editing(self.text, self.editor),
+             "Najpierw należy zakończyć oczekującą lub aktywną weryfikację."),
+            ("wznowienie przed W1", editing_closed_without_verification,
+             lambda _: resume_editing(self.text, self.editor),
+             "Redakcja nie może jeszcze zostać wznowiona."),
+            ("wznowienie po etapie autora bez daty", dateless_author,
+             lambda _: resume_editing(self.text, self.editor),
+             "Etap pracy autora nie ma daty rozpoczęcia"),
+            ("wznowienie po przekazaniu koordynatorowi", handed_to_coordinator,
+             lambda _: resume_editing(self.text, self.editor),
+             "Tekst przeszedł już do dalszej części procesu."),
+            ("do autora przed W1", self.begin_editing,
+             lambda _: send_text_to_author(self.text, self.editor),
+             "dopiero po zakończeniu pierwszej weryfikacji"),
+            ("do autora bez aktywnej redakcji", self.finish_first_verification,
+             lambda _: send_text_to_author(self.text, self.editor),
+             "Tekst nie znajduje się obecnie u redaktora."),
+            ("do autora drugi raz", author_and_editing_both_open,
+             lambda _: send_text_to_author(self.text, self.editor), "Tekst znajduje się już u autora."),
+            ("zakończenie redakcji ogólnym przyciskiem", self.begin_editing,
+             lambda editing: complete_stage(editing, self.editor, self.today),
+             "Redakcję zakończ przez przekazanie tekstu"),
+            ("zakończenie etapu u autora", self.at_author,
+             lambda author: complete_stage(author, self.editor, self.today),
+             "Etap u autora zakończ przez wznowienie redakcji."),
+            ("kontrola koordynatora bez aktywnego redaktora", coordinator_control_with_inactive_editor,
+             lambda control: complete_stage(control, self.superuser, self.today),
+             "przypisz aktywnego redaktora z odpowiednią rolą"),
+            ("niezapisany tekst", lambda: None,
+             lambda _: claim_ready_for_editing(Text(title="Nowy", length=1), self.editor),
+             "Tekst musi być zapisany."),
+            ("przebieg zmieniony w międzyczasie", stale_copy,
+             lambda copy: claim_ready_for_editing(copy, self.editor), "Przebieg workflow zmienił się."),
         )
+        def state():
+            return (sorted(S.objects.filter(text=self.text).values_list(
+                        "pk", "stage_type", "started_at", "ended_at", "is_completed", "is_current")),
+                    sorted(A.objects.filter(text=self.text).values_list("pk", "role", "assigned_to")))
+
+        for name, prepare, action, message in cases:
+            with self.subTest(name):
+                self.fresh_text()
+                target = prepare()
+                before = state()
+                with self.assertRaisesMessage(ValidationError, message):
+                    action(target)
+                self.assertEqual(state(), before)
 
     def test_author_round_trip_preserves_previous_editing_iteration(self):
         self.finish_first_verification()
@@ -198,6 +283,7 @@ class EditingAndVerificationFlowTests(WorkflowTestDataMixin, TestCase):
         self.assertGreater(resumed.iteration, editing.iteration)
         self.assertNotEqual(resumed.pk, editing.pk)
 
+    @tag('slow')
     def test_full_workflow_reaches_ready(self):
         self.finish_second_verification()
 
@@ -246,23 +332,6 @@ class EditingAndVerificationFlowTests(WorkflowTestDataMixin, TestCase):
             .exclude(stage_type=StageType.READY)
             .exists()
         )
-
-    def test_editing_cannot_resume_after_handover_to_coordinator(self):
-        self.finish_second_verification()
-        resume_editing(self.text, self.editor)
-        finish_editing_to_coordinator(self.text, self.editor)
-
-        with self.assertRaises(ValidationError):
-            resume_editing(self.text, self.editor)
-
-    def test_generic_completion_cannot_bypass_editing_transitions(self):
-        editing = self.begin_editing()
-
-        with self.assertRaises(ValidationError):
-            complete_stage(editing, self.editor, self.today)
-
-        editing.refresh_from_db()
-        self.assertFalse(editing.is_completed)
 
     def test_repeating_completion_does_not_create_another_next_stage(self):
         self.begin_editing()
@@ -370,6 +439,30 @@ class WorkflowPermissionTests(WorkflowTestDataMixin, TestCase):
 
         with self.assertRaises(PermissionDenied):
             start_first_verification(self.text, self.verifier_2)
+
+    def test_styling_claim_and_stage_completion_rights(self):
+        """Stylowanie przejmuje i zamyka tylko superuser; zamknąć można tylko trwający etap z rolą,
+        poza redakcją i pracą autora (te mają własne przejścia), i tylko jako aktywne konto."""
+        with self.assertRaisesMessage(PermissionDenied, "Stylowanie może przejąć tylko superuser."):
+            claim_stage(self.text, StageType.STYLING, self.coordinator)
+        self.assertFalse(current_assignment_queryset(self.text).exists())
+
+        verifier = A.objects.create(text=self.text, role=Role.VERIFIER_1, assigned_to=self.verifier_1)
+        inactive = type(self.verifier_1).objects.get(pk=self.verifier_1.pk)
+        inactive.is_active = False
+        for kind, assignment, user, allowed in (
+            (StageType.STYLING, None, self.superuser, True),
+            (StageType.STYLING, None, self.coordinator, False),
+            (StageType.FIRST_VERIFICATION, verifier, self.verifier_1, True),
+            (StageType.FIRST_VERIFICATION, verifier, inactive, False),
+            (StageType.EDITING, None, self.superuser, False),
+            (StageType.READY, None, self.superuser, False),
+        ):
+            with self.subTest(kind=kind, user=user.username, active=user.is_active):
+                S.objects.filter(text=self.text).delete()
+                stage = S.objects.create(text=self.text, stage_type=kind, assignment=assignment,
+                                         started_at=self.today)
+                self.assertIs(user_can_complete_stage(stage, user), allowed)
 
     def test_coordinator_cannot_restart_workflow(self):
         with self.assertRaises(PermissionDenied):

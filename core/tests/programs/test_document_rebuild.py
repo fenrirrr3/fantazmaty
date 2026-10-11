@@ -154,7 +154,11 @@ class RebuildPageLayoutWarningTests(SimpleTestCase):
                 section = document.sections[0]
                 section.page_width, section.page_height = Cm(width), Cm(height)
                 section.left_margin = section.right_margin = Cm(2)
-                inspect_docx(saved(document))
+                self.assertIsNone(inspect_docx(saved(document)))  # bez RebuildUnsupported
+                # Przebudowa bez zgody na pominięcia przechodzi i zachowuje treść; wynik ma format A4.
+                rebuilt = Document(rebuild_docx(saved(document)))
+                self.assertEqual([paragraph.text for paragraph in rebuilt.paragraphs], ['Treść'])
+                self.assertAlmostEqual(rebuilt.sections[0].page_width.cm, 21, places=1)
 
 
 class RebuildDetailTests(SimpleTestCase):

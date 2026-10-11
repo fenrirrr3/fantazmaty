@@ -5,10 +5,11 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.test import SimpleTestCase, TestCase
+from django.urls import reverse
 from django.utils import timezone
 
 from core.services.vacations import cancel_planned_vacation, create_vacation, finish_vacation, update_vacation
-from fantazmaty.testing import create_superuser
+from fantazmaty.testing import create_member, create_superuser
 from people.leave_access import is_on_leave, require_available
 from people.models import Person, Role, Vacation
 
@@ -67,8 +68,16 @@ class VacationServiceTests(TestCase):
         """Chroni przed uznaniem urlopu zaczynającego się o północy za nakładający się na poprzedni."""
         midnight = timezone.make_aware(datetime.combine(self.today + timedelta(days=2), time.min))
         Vacation.objects.create(person=self.member, start_date=self.today, end_date=midnight)
-        Vacation(person=self.member, start_date=self.today + timedelta(days=2),
-                 end_date=midnight + timedelta(days=1)).full_clean()
+        following = Vacation(person=self.member, start_date=self.today + timedelta(days=2),
+                             end_date=midnight + timedelta(days=1))
+        following.full_clean()
+        following.save()
+        self.assertEqual(list(Vacation.objects.filter(person=self.member).order_by('start_date')
+                              .values_list('start_date', flat=True)), [self.today, self.today + timedelta(days=2)])
+        # Granica jest dokładnie o północy: urlop od dnia wcześniej już się nakłada.
+        with self.assertRaises(ValidationError):
+            Vacation(person=self.member, start_date=self.today + timedelta(days=1),
+                     end_date=midnight + timedelta(days=1)).full_clean()
 
     def test_planned_vacation_does_not_block_work_yet(self):
         self.create(start_date=self.today + timedelta(days=5), until_revoked=True)
@@ -206,3 +215,31 @@ class LeaveFieldRuleTests(SimpleTestCase):
         self.assertIs(normalize_datetime(aware), aware)
         with self.settings(USE_TZ=False):
             self.assertEqual(normalize_datetime(aware), naive)
+
+
+class VacationConflictPermissionTests(TestCase):
+    """Strona konfliktu wersji (409) pokazuje przesłane i aktualne dane urlopu, więc dostaje ją tylko osoba, która
+    może urlopem zarządzać (właściciel, koordynator, superuser). Pozostali dostają odpowiedź widoku (404)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.owner = create_member('vacation-owner', 'Redaktor')
+        cls.colleague = create_member('vacation-colleague', 'Korektor')
+        cls.coordinator = create_member('vacation-coordinator', 'Koordynator redakcji')
+        cls.admin = create_superuser('vacation-admin')
+        today = timezone.localdate()
+        cls.planned = Vacation.objects.create(person=cls.owner.person_profile, start_date=today + timedelta(days=3),
+                                              until_revoked=True)
+        cls.current = Vacation.objects.create(person=cls.owner.person_profile, start_date=today, until_revoked=True)
+
+    def test_stale_form_conflict_only_for_users_who_manage_the_vacation(self):
+        routes = (('edit_vacation', self.planned), ('end_vacation', self.current), ('cancel_vacation', self.planned))
+        expected = ((self.owner, 409), (self.coordinator, 409), (self.admin, 409), (self.colleague, 404))
+        for user, status in expected:
+            self.client.force_login(user)
+            for name, vacation in routes:
+                with self.subTest(user=user.username, route=name):
+                    response = self.client.post(reverse(f'core:{name}', args=[vacation.pk]),
+                                                {'_edit_version': 'nieaktualny', 'start_date': '2000-01-01'})
+                    self.assertEqual(response.status_code, status)
+        self.assertEqual(Vacation.objects.filter(until_revoked=True).count(), 2)

@@ -316,7 +316,7 @@ class ReviewAdminFormTests(TestCase):
         self.assertIn('czarnej liście', str(form.errors['confirm_submission_warnings']))
 
 
-class ExtractListSearchTests(TestCase):
+class ExtractListAndFormTests(TestCase):
     def test_every_search_word_must_match_some_field(self):
         """Wyszukiwanie w Ekstraktach: każde słowo musi pasować do któregoś pola (autor, e-mail, tytuły, nabór)."""
         author = Author.objects.create(first_name='Ola', last_name='Pióro', pseudonym='Sowa', email='ola@example.com')
@@ -331,3 +331,29 @@ class ExtractListSearchTests(TestCase):
             with self.subTest(query=query):
                 page = self.client.get(url, {'q': query}).context['page_obj']
                 self.assertEqual(sorted(item.title for item in page), titles)
+
+    def test_add_form_checks_title_decisions_and_dates_then_fills_author_data(self):
+        """Dodanie ekstraktu: tytuł przyjęty i odrzucony naraz, decyzja o nienadesłanym tytule i zła data
+        nie zapisują rekordu; poprawny wpis bierze imię i e-mail z autora i ustala rodzaj decyzji."""
+        author = Author.objects.create(first_name='Ola', last_name='Pióro', email='ola@example.com')
+        self.client.force_login(create_superuser())
+        url = reverse('core:extract_add')
+        self.assertEqual(self.client.get(url).status_code, 200)
+        data = {'author': author.pk, 'title': 'Księżyc; Słońce', 'submission_dates': '2026-03-01; 2026-03-04',
+                'recruitment': 'Ekstrakt 2027', 'accepted_titles': 'Księżyc', 'rejected_titles': 'Słońce'}
+        for changes, field, message in (
+            ({'rejected_titles': 'Księżyc'}, 'rejected_titles', 'Ten sam tytuł nie może być przyjęty i odrzucony.'),
+            ({'accepted_titles': 'Mars'}, 'accepted_titles', 'Przyjęte tytuły muszą występować na liście nadesłanych.'),
+            ({'rejected_titles': 'Mars'}, 'rejected_titles', 'Odrzucone tytuły muszą występować na liście nadesłanych.'),
+            ({'submission_dates': 'wczoraj'}, 'submission_dates', ''),
+        ):
+            with self.subTest(changes=changes):
+                response = self.client.post(url, {**data, **changes})
+                self.assertEqual(response.status_code, 400)
+                self.assertIn(message, ' '.join(response.context['form'].errors[field]))
+                self.assertFalse(Extract.objects.exists())
+        response = self.client.post(url, data)
+        self.assertRedirects(response, reverse('core:extract_list'), fetch_redirect_response=False)
+        extract = Extract.objects.get()
+        self.assertEqual((extract.full_name, extract.email, extract.title, extract.status, str(extract.submitted_at)),
+                         ('Ola Pióro', 'ola@example.com', 'Księżyc\nSłońce', Extract.Status.MIXED, '2026-03-01'))

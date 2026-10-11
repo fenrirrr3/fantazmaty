@@ -2,10 +2,11 @@
 from unittest.mock import patch
 
 from django.contrib import admin
-from django.core.exceptions import ValidationError
-from django.db import IntegrityError
+from django.core.exceptions import PermissionDenied, ValidationError
+from django.db import IntegrityError, transaction
 from django.test import Client, RequestFactory, TestCase
 from django.urls import reverse
+from django.utils import timezone
 from lxml import html
 
 from authors.models import Author
@@ -16,7 +17,8 @@ from fantazmaty.testing import create_member, create_superuser
 from illustrations.models import Illustration
 from illustrations.services import sync_required_illustrations
 from texts.models import Anthology, NovelProfile, Text
-from texts.novels import add_chapters, assign_chapters, edit_token, locked_book, new_chapter, validate_ready_novel
+from texts.novels import (add_chapters, assign_chapters, chapters_ready, edit_token, locked_book, new_chapter,
+                          validate_ready_novel)
 from workflow.models import WorkflowRoleAssignment, WorkflowStage
 
 from .support import NovelData
@@ -92,19 +94,79 @@ class NovelLifecycleTests(TestCase):
         self.assertNotIn('authors', form.fields)
         self.assertTrue(form.is_valid(), form.errors)
 
-    def test_ineligible_assignee_and_outside_chapter_are_rejected(self):
-        with self.assertRaises(ValidationError):
-            self.batch([self.first.pk], [('editor', self.member)])
-        with self.assertRaises(ValidationError):
-            self.batch([self.first.pk, self.story.pk], [('editor', self.editor)])
-        self.assertFalse(self.first.workflow_role_assignments.exists())
+    def test_batch_assignment_refusals_write_nothing(self):
+        """Zbiorczy przydział: koordynator, ważny i aktualny formularz, otwarta powieść, do 500 rozdziałów tej
+        powieści, każda rola raz, uprawniona osoba i rozdział z pracą do wykonania – inaczej nic się nie zapisuje."""
+        first = self.first.pk
 
-    def test_stale_snapshot_rejects_changes(self):
-        token = edit_token(self.book, self.admin)
-        self.first.length = 150
-        self.first.save(update_fields=['length'])
-        with self.assertRaises(ValidationError):
-            self.batch([self.first.pk], [('editor', self.editor)], token)
+        def changed_snapshot():
+            token = edit_token(self.book, self.admin)
+            Text.objects.filter(pk=first).update(length=150)
+            return token
+
+        def first_stage(**values):
+            self.first.workflow_stages.update(**values)
+
+        today = timezone.localdate()
+        cases = (
+            ('bez roli koordynatora', None, self.editor, [first], [('editor', self.editor)], PermissionDenied, ''),
+            ('zepsuty formularz', lambda: 'zly-token', self.admin, [first], [('editor', self.editor)],
+             ValidationError, 'Formularz wygasł.'),
+            ('zmieniona powieść', changed_snapshot, self.admin, [first], [('editor', self.editor)],
+             ValidationError, 'Powieść lub jej rozdziały zostały zmienione.'),
+            ('powieść zakończona', lambda: Anthology.objects.filter(pk=self.book.pk).update(status='ready') and None,
+             self.admin, [first], [('editor', self.editor)], ValidationError, 'Najpierw wznów pracę nad powieścią.'),
+            ('ponad 500 rozdziałów', None, self.admin, list(range(1, 502)), [('editor', self.editor)],
+             ValidationError, 'maksymalnie 500 rozdziałów'),
+            ('rozdział spoza powieści', None, self.admin, [first, self.story.pk], [('editor', self.editor)],
+             ValidationError, 'Wybierz rozdziały należące do tej powieści.'),
+            ('bez przydziałów', None, self.admin, [first], [], ValidationError, 'Wybierz przynajmniej jedną rolę'),
+            ('rola dwa razy', None, self.admin, [first], [('editor', self.editor), ('editor', self.admin)],
+             ValidationError, 'każdą rolę tylko raz'),
+            ('osoba bez roli', None, self.admin, [first], [('editor', self.member)], ValidationError, ''),
+            ('rozdział zakończony', lambda: first_stage(stage_type='ready'), self.admin, [first],
+             [('editor', self.editor)], ValidationError, 'jest zakończony lub wycofany'),
+            ('praca już wykonana', lambda: first_stage(stage_type='editing', started_at=today, ended_at=today,
+                                                       is_completed=True),
+             self.admin, [first], [('editor', self.editor)], ValidationError, 'ta praca została już wykonana'),
+        )
+        for name, prepare, user, chapters, assignments, error, message in cases:
+            with self.subTest(name), transaction.atomic():
+                token = prepare() if prepare else None
+                token = token or edit_token(self.book, self.admin)
+                with self.assertRaisesMessage(error, message):
+                    with locked_book(self.book.pk, user, token) as book:
+                        assign_chapters(book, user, chapters, assignments)
+                self.assertFalse(WorkflowRoleAssignment.objects.filter(text__anthology=self.book).exists())
+                transaction.set_rollback(True)
+
+    def test_novel_is_ready_only_when_every_remaining_chapter_is_closed(self):
+        """Gotowość powieści: co najmniej jeden niewycofany rozdział, każdy wydany jako gotowy i bez otwartej pracy."""
+        def close(chapter, kind='ready'):
+            chapter.workflow_stages.update(is_current=False)
+            WorkflowStage.objects.create(text=chapter, stage_type=kind)
+
+        def open_work_beside_ready():
+            close(self.first)
+            close(self.second)
+            WorkflowStage.objects.create(text=self.second, stage_type='first_proofreading')
+
+        empty = Anthology.objects.create(title='Pusta powieść', is_novel=True)
+        for name, book, prepare, ready in (
+            ('bez rozdziałów', empty, lambda: None, False),
+            ('rozdział w pracy', self.book, lambda: close(self.first), False),
+            ('gotowy i wycofany', self.book, lambda: (close(self.first), close(self.second, 'withdrawn')), True),
+            ('wszystkie wycofane', self.book, lambda: (close(self.first, 'withdrawn'), close(self.second, 'withdrawn')),
+             False),
+            ('gotowy z otwartą pracą', self.book, open_work_beside_ready, False),
+        ):
+            with self.subTest(name), transaction.atomic():
+                prepare()
+                self.assertIs(chapters_ready(book), ready)
+                if not ready:
+                    with self.assertRaisesMessage(ValidationError, 'ukończone wszystkie niewycofane rozdziały'):
+                        validate_ready_novel(book)
+                transaction.set_rollback(True)
 
     def test_duplicate_chapter_and_book_type_changes_rejected(self):
         response = self.post(action='chapter', chapter_number=1, title='Inny rozdział', length=300)

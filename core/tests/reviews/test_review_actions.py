@@ -14,6 +14,7 @@ GENERIC_ERROR = 'Nie udało się wykonać operacji'
 
 
 class ReviewPageActionTests(ReviewFixtures):
+    # Odmowy dla tras tylko superusera sprawdza macierz w core/tests/security/test_route_access.py.
     def post(self, user, name, data=None, review=None, args=()):
         review = review or self.review
         self.client.force_login(user)
@@ -99,9 +100,8 @@ class ReviewPageActionTests(ReviewFixtures):
         self.review.refresh_from_db()
         self.assertEqual(self.review.content_warnings, 'Ostrzeżenie')
 
-    def test_author_notification_by_superuser_after_decision(self):
+    def test_author_notification_after_decision(self):
         data = {'author_notified': 'on', 'author_notified_at': timezone.localdate().isoformat()}
-        self.assertEqual(self.post(self.coordinator, 'update_author_notification', data).status_code, 403)
         page = self.post(self.admin, 'update_author_notification', data)
         self.assertEqual(page.status_code, 400)
         self.assertIn('po przyjęciu albo odrzuceniu', str(page.context['author_notification_form'].errors))
@@ -125,7 +125,6 @@ class ReviewPageActionTests(ReviewFixtures):
 
     def test_transfer_to_publication_from_page(self):
         Review.objects.filter(pk=self.review.pk).update(status=S.ACCEPTED, author_notified_at=timezone.localdate())
-        self.assertEqual(self.post(self.coordinator, 'copy_review_to_text').status_code, 403)
         response = self.post(self.admin, 'copy_review_to_text')
         self.assertIn('potwierdź otrzymanie umowy', self.message(response))
         self.assertFalse(Text.objects.exists())
@@ -133,6 +132,40 @@ class ReviewPageActionTests(ReviewFixtures):
         self.assertEqual(self.message(response), 'Tekst jest dodany do procesu wydawniczego.')
         self.review.refresh_from_db()
         self.assertEqual(self.review.copied_text.title, self.review.title)
+
+    def test_superuser_restores_wrongly_hidden_review(self):
+        def hidden(**values):
+            return self.make_review(is_hidden=True, status=S.REJECTED, decision_at=timezone.localdate(),
+                                    author_notified_at=timezone.localdate(), **values)
+
+        def state(review):
+            review.refresh_from_db()
+            return review.is_hidden, review.status, review.decision_at, review.author_notified_at
+
+        review = hidden()
+        unchanged = state(review)
+        self.assertEqual(self.post(self.admin, 'release_hidden_review', {'confirm': 'yes'}).status_code, 404)
+        refused = [(review, {}, 'Potwierdź przywrócenie'),
+                   (hidden(old_reviews=True), {'confirm': 'yes'}, 'Archiwalnego lub skopiowanego'),
+                   (hidden(copied_text=Text.objects.create(title='Kopia', length=1)), {'confirm': 'yes'},
+                    'Archiwalnego lub skopiowanego')]
+        for item, data, message in refused:
+            with self.subTest(message=message, review=item.pk):
+                before = state(item)
+                response = self.post(self.admin, 'release_hidden_review', data, review=item)
+                self.assertRedirects(response, self.detail_url(item), fetch_redirect_response=False)
+                self.assertIn(message, self.message(response))
+                self.assertEqual(state(item), before)
+        self.client.force_login(self.admin)
+        stale = self.client.post(reverse('core:release_hidden_review', args=[review.pk]),
+                                 {'confirm': 'yes', '_edit_version': 'nieaktualny'})
+        self.assertEqual(stale.status_code, 409)
+        self.assertEqual(state(review), unchanged)
+        response = self.post(self.admin, 'release_hidden_review', {'confirm': 'yes'}, review=review)
+        self.assertIn('Przywrócono widoczność', self.message(response))
+        self.assertEqual(state(review), (False, S.NEW, None, None))
+        self.client.force_login(self.reviewer)
+        self.assertEqual(self.client.get(self.detail_url(review)).status_code, 200)
 
     def test_superuser_detail_suggests_author_profile_matching_email_and_name(self):
         Review.objects.filter(pk=self.review.pk).update(phone_number='500 500 500')
@@ -185,8 +218,6 @@ class ReviewBulkActionPageTests(ReviewFixtures):
         response, message = self.bulk([self.review.pk, self.second.pk], action='change_status', status=S.REJECTED)
         self.assertEqual(message, 'Wykonano operację dla 2 zgłoszeń.')
         self.assertEqual(set(Review.objects.values_list('status', flat=True)), {S.REJECTED})
-        self.client.force_login(self.coordinator)
-        self.assertEqual(self.client.post(self.url, {'selected_reviews': [self.review.pk]}).status_code, 403)
 
 
 class MyReviewsAccessTests(ReviewFixtures):

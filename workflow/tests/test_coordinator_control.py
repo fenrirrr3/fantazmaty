@@ -14,7 +14,9 @@ from core.selectors.texts import my_texts_context, text_detail_context, user_wor
 from core.services.texts import start_assigned_stage
 from workflow.admin_stage_dates import StageDatesForm, set_stage_dates
 from workflow.models import WorkflowStage as S, WorkflowRoleAssignment as A, WorkflowRepetition
-from workflow.services import complete_stage, finish_editing_to_coordinator
+from workflow.services import (
+    complete_stage, finish_editing_to_coordinator, send_to_first_verification, send_to_second_verification,
+)
 
 from .support import AnthologyWorkflowMixin
 
@@ -94,6 +96,25 @@ class CoordinatorControlTests(AnthologyWorkflowMixin, TestCase):
             "Zakończone",
         )
 
+    def test_final_control_waits_for_an_active_editor_on_the_text_page(self):
+        """Kontrola koordynatora (ostatnia) przechodzi do redaktora: bez aktywnego redaktora strona tekstu
+        zamiast przycisku zakończenia wyjaśnia, co zrobić."""
+        self.initial_stage.delete()
+        A.objects.create(text=self.text, role="editor", assigned_to=self.editor)
+        control = S.objects.create(text=self.text, stage_type="coordinator_control", started_at=self.today,
+                                   assignment=A.objects.create(text=self.text, role="verification_coordinator",
+                                                               assigned_to=self.coordinator))
+        finish = reverse("core:complete_workflow_stage", args=[control.pk])
+        blocker = "Kontrolę koordynatora można zakończyć dopiero po przypisaniu aktywnego redaktora"
+        page = self.detail(self.coordinator).content.decode()
+        self.assertIn(finish, page)
+        self.assertNotIn(blocker, page)
+        self.editor.person_profile.is_active = False
+        self.editor.person_profile.save()
+        page = self.detail(self.coordinator).content.decode()
+        self.assertNotIn(finish, page)
+        self.assertIn(blocker, page)
+
     def test_proofreading_alone_cannot_substitute_coordinator_approval(self):
         self.control()
         S.objects.create(text=self.text, stage_type="first_proofreading")
@@ -101,15 +122,9 @@ class CoordinatorControlTests(AnthologyWorkflowMixin, TestCase):
         self.assertTrue(self.work().work_waiting)
 
     def test_rejection_opens_next_editorial_pass_and_can_return_for_approval(self):
+        """Po zwrocie przez koordynatora redakcji weryfikacje są pomijane: redakcja wraca prosto do kontroli
+        (także gdy tekst trafił do kontroli bez weryfikacji, np. z importu)."""
         stage = self.control()
-        for kind in ("first_verification", "second_verification"):
-            S.objects.create(
-                text=self.text,
-                stage_type=kind,
-                started_at=self.today - timedelta(days=2),
-                ended_at=self.today - timedelta(days=2),
-                is_completed=True,
-            )
         complete_stage(stage, self.coordinator, self.today, send_to_proofreading=False)
         stage.refresh_from_db()
         self.assertFalse(stage.send_to_proofreading)
@@ -123,7 +138,20 @@ class CoordinatorControlTests(AnthologyWorkflowMixin, TestCase):
         self.assertTrue(self.work().work_waiting)
         self.assertFalse(S.objects.filter(text=self.text, stage_type="first_proofreading").exists())
         start_assigned_stage(user=self.editor, stage_id=editing.pk, started_at=self.today)
+        context = text_detail_context(user=self.editor, text=self.text)
+        self.assertEqual(
+            {key: context[key] for key in ("returned_by_coordinator", "can_send_to_first_verification",
+                                           "can_send_to_second_verification", "can_finish_editing")},
+            {"returned_by_coordinator": True, "can_send_to_first_verification": False,
+             "can_send_to_second_verification": False, "can_finish_editing": True},
+        )
+        self.assertContains(self.detail(self.editor), "weryfikacje są pomijane")
+        for send in (send_to_first_verification, send_to_second_verification):
+            with self.subTest(send=send.__name__), self.assertRaisesMessage(ValidationError, "pomijane"):
+                send(self.text, self.editor, self.today)
         finish_editing_to_coordinator(self.text, self.editor, self.today)
+        self.assertFalse(S.objects.filter(text=self.text, stage_type__in=("first_verification",
+                                                                          "second_verification")).exists())
         again = self.stage("editing_control")
         self.assertEqual(again.iteration, 2)
         start_assigned_stage(user=self.coordinator, stage_id=again.pk, started_at=self.today)
@@ -286,3 +314,14 @@ class CoordinatorControlTests(AnthologyWorkflowMixin, TestCase):
         proof.refresh_from_db()
         self.assertTrue(proof.is_released)
         self.assertEqual(run.stages.filter(stage_type="first_proofreading").count(), 1)
+
+    def test_repeated_editing_after_rejection_returns_straight_to_control(self):
+        """Powtórzona redakcja po zwrocie przez koordynatora: bez weryfikacji i bez pominięcia kontroli."""
+        complete_stage(self.control(), self.coordinator, self.today, send_to_proofreading=False)
+        run = WorkflowRepetition.objects.create(text=self.text, created_by=self.superuser, selected_stages=["editing"])
+        editing = self.stage("editing")
+        S.objects.filter(pk=editing.pk).update(repetition=run, queue_position=0)
+        start_assigned_stage(user=self.editor, stage_id=editing.pk, started_at=self.today)
+        complete_stage(editing, self.editor, self.today)
+        pending = S.objects.filter(text=self.text, is_completed=False).values_list("stage_type", flat=True)
+        self.assertEqual(list(pending), ["editing_control"])

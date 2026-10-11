@@ -329,6 +329,24 @@ def completed_stage_exists(text, stage_type):
     ).exists()
 
 
+def returned_by_coordinator(text):
+    """Koordynator redakcji cofnął tekst do redakcji w bieżącym przebiegu.
+
+    Po takim zwrocie pierwsza i druga weryfikacja są pomijane: zakończona redakcja
+    wraca bezpośrednio do kontroli koordynatora redakcji.
+    """
+    return WorkflowStage.objects.using(_database(text)).filter(
+        text_id=text.pk, workflow_cycle=current_cycle(text), stage_type=StageType.EDITING_CONTROL,
+        is_completed=True, send_to_proofreading=False,
+    ).exclude(repetition__canceled_at__isnull=False).exists()
+
+
+RETURNED_SKIPS_VERIFICATION = (
+    "Koordynator redakcji cofnął tekst do redakcji – weryfikacje są pomijane. "
+    "Po redakcji przekaż tekst bezpośrednio do kontroli koordynatora."
+)
+
+
 def ensure_verification_not_completed(text, stage_type):
     if (stage_type in (StageType.FIRST_VERIFICATION, StageType.SECOND_VERIFICATION)
             and completed_stage_exists(text, stage_type)):
@@ -659,6 +677,8 @@ def send_to_first_verification(text, user, ended_at=None):
 
     if editing_stage is None:
         raise ValidationError("Nie ma aktywnej redakcji do przekazania.")
+    if returned_by_coordinator(text):
+        raise ValidationError(RETURNED_SKIPS_VERIFICATION)
     if completed_stage_exists(text, StageType.FIRST_VERIFICATION):
         raise ValidationError("Pierwsza weryfikacja jest już zakończona.")
     if (
@@ -885,6 +905,8 @@ def send_to_second_verification(text, user, started_at=None):
 
     transition_date = _transition_date(started_at)
 
+    if returned_by_coordinator(text):
+        raise ValidationError(RETURNED_SKIPS_VERIFICATION)
     if not completed_stage_exists(text, StageType.FIRST_VERIFICATION):
         raise ValidationError("Najpierw należy zakończyć pierwszą weryfikację.")
 
@@ -920,7 +942,7 @@ def finish_editing_to_coordinator(text, user, ended_at=None):
 
     transition_date = _transition_date(ended_at)
 
-    if not completed_stage_exists(text, StageType.SECOND_VERIFICATION):
+    if not (completed_stage_exists(text, StageType.SECOND_VERIFICATION) or returned_by_coordinator(text)):
         raise ValidationError(
             "Redakcję można zakończyć dopiero po zakończeniu drugiej weryfikacji."
         )

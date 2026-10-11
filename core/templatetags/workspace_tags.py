@@ -11,6 +11,12 @@ def post_layout_allowed(user):
 
 
 @register.simple_tag
+def audiobooks_allowed(user):
+    from core.permissions import can_view_audiobooks
+    return can_view_audiobooks(user)
+
+
+@register.simple_tag
 def audio_proofreading_allowed(user):
     from core.permissions import can_view_audio_proofreading
     return can_view_audio_proofreading(user)

@@ -84,31 +84,33 @@ class RecruitmentRoleTests(TestCase):
         record.refresh_from_db()
         self.assertCountEqual(record.mail_roles, ["editors", "proofreaders", "sound"])
 
-    def test_admin_can_add_multiple_roles_and_invalid_roles_are_rejected(self):
-        url = reverse("admin:core_recruitment_add")
+    def test_admin_and_page_add_multiple_roles_and_reject_invalid_roles(self):
+        """Dodanie zgłoszenia w adminie i na stronie (core:recruitment_add): kilka ról naraz, nieznana rola odrzuca całość."""
         payload = {
             "first_name": "Nowa",
             "last_name": "Osoba",
             "email": "new@example.test",
             "submitted_at": "2026-10-08",
-            "_save": "Zapisz",
         }
-        self.assertEqual(
-            self.client.post(url, {**payload, "selected_roles": ["editors", "fake"]}).status_code,
-            200,
-        )
-        self.assertFalse(Recruitment.objects.exists())
-        self.assertEqual(
-            self.client.post(
-                url, {**payload, "selected_roles": ["editors", "illustrators"]}
-            ).status_code,
-            302,
-        )
-        record = Recruitment.objects.get()
-        self.assertCountEqual(
-            record.role_decisions.values_list("role", flat=True), ["editors", "illustrators"]
-        )
-        self.assertTrue(all(row.status == "new" for row in record.role_decisions.all()))
+        for url, extra, invalid_status, target in (
+            (reverse("admin:core_recruitment_add"), {"_save": "Zapisz"}, 200, None),
+            (reverse("core:recruitment_add"), {}, 400, reverse("core:recruitment_list")),
+        ):
+            with self.subTest(url=url):
+                Recruitment.objects.all().delete()
+                self.assertEqual(self.client.get(url).status_code, 200)
+                response = self.client.post(url, {**payload, **extra, "selected_roles": ["editors", "fake"]})
+                self.assertEqual(response.status_code, invalid_status)
+                self.assertFalse(Recruitment.objects.exists())
+                response = self.client.post(url, {**payload, **extra, "selected_roles": ["editors", "illustrators"]})
+                self.assertEqual(response.status_code, 302)
+                if target:
+                    self.assertEqual(response.url, target)
+                record = Recruitment.objects.get()
+                self.assertCountEqual(
+                    record.role_decisions.values_list("role", flat=True), ["editors", "illustrators"]
+                )
+                self.assertTrue(all(row.status == "new" for row in record.role_decisions.all()))
 
     def test_legacy_edit_url_changes_actual_roles_and_checks_version(self):
         record = Recruitment.objects.create(

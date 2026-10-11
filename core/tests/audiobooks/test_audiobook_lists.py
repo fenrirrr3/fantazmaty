@@ -22,8 +22,7 @@ from .support import AudiobookProductionTestData
 class ProductionTablesTests(AudiobookProductionTestData, TestCase):
     @tag('slow')
     def test_filters_sorting_pagination_and_query_count(self):
-        self.start()
-        self.finish()
+        self.to_proofreading()
         self.client.force_login(self.admin)
         with CaptureQueriesContext(connection) as single:
             self.client.get(self.queue_url)
@@ -65,7 +64,7 @@ class ProductionTablesTests(AudiobookProductionTestData, TestCase):
         page = self.client.get(self.list_url, {'q': 'Foreign Pen', 'sort': 'author'})
         self.assertEqual(page.context['page_obj'].paginator.count, 1)
         self.assertContains(page, 'Foreign Pen')
-        self.assertContains(page, 'Do wzięcia')
+        self.assertContains(page, 'Nieprzypisane')
         filtered = self.client.get(self.list_url, {'q': 'Foreign Pen', 'status': 'pending'})
         self.assertEqual(filtered.context['page_obj'].paginator.count, 1)
         self.assertFalse(Audiobook.objects.exists())
@@ -77,8 +76,7 @@ class ProductionTablesTests(AudiobookProductionTestData, TestCase):
         narrator = AudioContributor.objects.create(name='Test Lektor')
         engineer = AudioContributor.objects.create(name='Test Montażysta')
         Audiobook.objects.create(text=text, status='proofreading', proofreader=self.reader,
-                                 narrator_contact=narrator, narrator_name=narrator.name,
-                                 engineer_contact=engineer, engineer_name=engineer.name)
+                                 narrator_contact=narrator, engineer_contact=engineer)
         AudiobookStage.objects.create(text=text, performer=self.reader, stage_type='proofreading')
         self.client.force_login(create_member('audio-lists-manager', 'Koordynator korekty'))
         for name in ('core:audio_proofreading', 'core:audiobooks'):
@@ -209,7 +207,8 @@ class ExternalAudiobookTests(TestCase):
         self.assertFalse(PublicAudiobookSettings.objects.exists())
 
     def test_lists_narrator_and_everything_not_yet_published(self):
-        Audiobook.objects.create(text=self.story, narrator_name='Ewa Głos', status='recording')
+        Audiobook.objects.create(text=self.story, narrator_contact=AudioContributor.objects.create(name='Ewa Głos'),
+                                 status='recording')
         published = Text.objects.create(anthology=self.book, title='Drugi', length=10)
         Audiobook.objects.create(text=published, status='published')
         page = self.client.get(self.url)

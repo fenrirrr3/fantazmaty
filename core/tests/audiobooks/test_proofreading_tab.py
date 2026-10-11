@@ -7,7 +7,7 @@ from django.urls import reverse
 from django.utils import timezone
 from lxml import html
 
-from core.audiobook_services import claim_proofreading, finish_stage, refresh_status
+from core.audiobook_services import claim_proofreading, finish_stage
 from core.models import Audiobook, AudiobookStage
 from core.selectors.audio_proofreading import profile_audio_assignments
 from core.selectors.people import profile_assignments
@@ -19,10 +19,18 @@ from workflow.models import WorkflowRoleAssignment, WorkflowStage
 from .support import AudiobookProductionTestData
 
 
+
+
+def refresh_status(audio):
+    """Dane testowe: status i bieżący etap jak po zmianie statusu – ostatni otwarty etap (stare dane: korekta bez etapu)."""
+    stage = AudiobookStage.objects.filter(text=audio.text, is_completed=False).order_by('position', 'pk').last()
+    audio.status = stage.stage_type if stage else 'proofreading'
+    audio.active_stage = stage
+    audio.save(update_fields=['status', 'active_stage'])
+
 class ProofreadingScopeTests(AudiobookProductionTestData, TestCase):
     def test_proofreading_tab_scope_assignment_and_own_finish(self):
-        self.start()
-        self.finish()
+        self.to_proofreading()
         other_book = Anthology.objects.create(title='Antologia innego korektora')
         other = Text.objects.create(title='Cudzy audiobook', anthology=other_book, length=1)
         mine = Audiobook.objects.create(text=other, proofreader=self.other_reader)
@@ -68,9 +76,9 @@ class ProofreadingScopeTests(AudiobookProductionTestData, TestCase):
         self.assertEqual(self.client.get(self.queue_url).status_code, 302)
 
     def test_assignment_validates_roles_inactive_users_status_and_publication_links(self):
-        self.start()
+        self.set_status('recording')
         self.assertEqual(self.assign(self.reader).status_code, 404)
-        self.finish()
+        self.set_status('proofreading')
         self.assertEqual(self.assign(self.member).status_code, 400)
         self.reader.is_active = False
         self.reader.save(update_fields=['is_active'])
@@ -267,7 +275,7 @@ class FinishFromTableTests(TestCase):
                                                    position=0)
         self.client.force_login(self.reader)
         doc = html.fromstring(self.client.get(self.detail).content)
-        self.assertEqual(doc.xpath('//button[contains(@class,"audio-finish-button")]/text()'), ['Zakończ etap'])
+        self.assertEqual(doc.xpath('//button[contains(@class,"audio-finish-button")]/text()'), ['Zakończ korektę'])
         row_xpath = '//table/tbody/tr[td[1][starts-with(normalize-space(.),"Nagrywanie")]]'
         row = doc.xpath(row_xpath)[0]
         cells = ["".join(td.itertext()).strip() for td in row.xpath('./td')]

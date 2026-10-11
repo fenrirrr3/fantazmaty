@@ -12,7 +12,6 @@ from django.views.decorators.http import require_GET
 from core.forms import GlobalSearchForm
 from core.permissions import (
     can_view_author_data,
-    can_view_reports,
     is_coordinator,
     team_member_required,
 )
@@ -64,7 +63,6 @@ def home(request):
             "leave_information": user_leave_information(request.user),
             "search_form": GlobalSearchForm(user=request.user),
             "can_view_authors": can_view_author_data(request.user),
-            "can_view_reports": can_view_reports(request.user),
             "today": today,
             "dashboard_coordinator": coordinator,
             "pending_recruitment": pending_by_role() if coordinator else [],

@@ -1,13 +1,11 @@
-"""Kontakty lektorów i montażystów: jeden profil na osobę, edycja profilu przez koordynatora, linki na stronie audiobooka
-i podpowiedzi kontaktów w formularzach."""
-from django.core.exceptions import ValidationError
+"""Spis lektorów i montażystów (bez kont, jak spis ilustratorów): lista, dodawanie i edycja przez koordynatora,
+linki na stronie audiobooka i podpowiedzi kontaktów w formularzach."""
 from django.test import TestCase
 from django.urls import reverse
 from lxml import html
 
-from core.audiobook_models import resolve_contact
 from core.models import AudioContributor, Audiobook
-from fantazmaty.testing import create_member, create_superuser, edit_token
+from fantazmaty.testing import create_member, create_superuser, form_value
 from illustrations.models import Illustrator
 from people.models import Person
 from texts.models import Anthology, Text
@@ -21,55 +19,32 @@ class AudioContactTests(TestCase):
         cls.first = Text.objects.create(title='Pierwszy', anthology=cls.book, length=10)
         cls.second = Text.objects.create(title='Drugi', anthology=cls.book, length=10)
 
-    def test_one_profile_per_person_typos_and_renaming_only_on_contact_page(self):
-        person = resolve_contact('Łucja Lektorka', 'lucja@example.test')
-        self.assertEqual(resolve_contact('  łucja   lektorka ', ''), person)
-        self.assertEqual(resolve_contact('Lucja Lektorka', 'LUCJA@example.test'), person)
-        with self.assertRaises(ValidationError):
-            resolve_contact('Ktoś Inny', 'lucja@example.test')
-        first = Audiobook.objects.create(text=self.first, narrator_name='Łucja Lektorka')
-        second = Audiobook.objects.create(text=self.second, engineer_name='lucja lektorka',
-                                          engineer_email='lucja@example.test')
-        self.assertEqual(first.narrator_contact, person)
-        self.assertEqual(second.engineer_contact, person)
-        self.assertEqual(first.narrator_email, 'lucja@example.test')
-        self.assertEqual(AudioContributor.objects.count(), 1)
-        self.client.force_login(self.admin)
+    def test_directory_list_add_and_rename_like_illustrators(self):
+        coordinator = create_member('contacts-coord', 'Koordynator')
+        person = AudioContributor.objects.create(name='Łucja Lektorka', email='lucja@example.test')
+        AudioContributor.objects.create(name='Uśpiony Montaż', is_active=False)
+        Audiobook.objects.create(text=self.first, narrator_contact=person)
+        Audiobook.objects.create(text=self.second, engineer_contact=person)
+        list_url = reverse('core:audio_contributor_list')
+        self.client.force_login(coordinator)
+        rows = list(self.client.get(list_url).context['page_obj'])
+        self.assertEqual([(r.name, r.narrated, r.engineered) for r in rows], [('Łucja Lektorka', 1, 1)])
+        self.assertEqual(len(self.client.get(list_url, {'show_inactive': '1'}).context['page_obj']), 2)
+        self.assertEqual([r.name for r in self.client.get(list_url, {'q': 'lucja@', 'show_inactive': '1'})
+                          .context['page_obj']], ['Łucja Lektorka'])
+        response = self.client.post(reverse('core:audio_contributor_add'),
+                                    {'name': ' Nowy   Lektor ', 'email': 'NOWY@example.test', 'is_active': 'on'})
+        created = AudioContributor.objects.get(email='nowy@example.test')
+        self.assertRedirects(response, reverse('core:audio_contributor', args=[created.pk]))
+        self.assertEqual(created.name, 'Nowy Lektor')
+        # Zmiana nazwiska obejmuje wszystkie audiobooki osoby; nieaktualny formularz jest odrzucany.
         url = reverse('core:audio_contributor', args=[person.pk])
+        version = form_value(self.client.get(url), name='version')
         self.assertEqual(len(self.client.get(url).context['current_works']), 2)
-        response = self.client.post(url, {'name': 'Łucja Nowak', 'email': 'lucja@example.test'})
-        self.assertEqual(response.status_code, 302)
-        first.refresh_from_db()
-        self.assertEqual(first.narrator_name, 'Łucja Nowak')
-
-    def test_resolve_contact_fills_missing_email_and_separates_namesakes(self):
-        self.assertIsNone(resolve_contact('   ', 'nikt@example.test'))
-        known = AudioContributor.objects.create(name='Jan Lektor')
-        self.assertEqual(str(known), 'Jan Lektor')
-        # Wybrany profil bez adresu dostaje adres, jeśli nikt inny go nie używa.
-        self.assertEqual(resolve_contact('jan  lektor', '', contact=known), known)
-        self.assertEqual(resolve_contact('Jan Lektor', ' JAN@example.test ', contact=known), known)
-        known.refresh_from_db()
-        self.assertEqual(known.email, 'jan@example.test')
-        # Adres zajęty przez kogoś innego nie trafia do wybranego profilu.
-        AudioContributor.objects.create(name='Zajęty Adres', email='busy@example.test')
-        bare = AudioContributor.objects.create(name='Piotr Głos')
-        with self.assertRaises(ValidationError):
-            resolve_contact('Piotr Głos', 'busy@example.test', contact=bare)
-        # Nowy kontakt z adresem konta zespołu wiąże się z tym kontem.
-        self.assertEqual(resolve_contact('Konto Lektora', self.admin.email.upper()).user, self.admin)
-        # Bez wybranego profilu: jedyny imiennik bez adresu dostaje adres.
-        nameless = AudioContributor.objects.create(name='Ola Montaż')
-        self.assertEqual(resolve_contact('Ola Montaz', 'ola@example.test'), nameless)
-        nameless.refresh_from_db()
-        self.assertEqual(nameless.email, 'ola@example.test')
-        # Ta sama osoba z innym adresem to inny kontakt.
-        other = resolve_contact('Jan Lektor', 'drugi-jan@example.test')
-        self.assertNotIn(other.pk, (known.pk, nameless.pk))
-        self.assertEqual(AudioContributor.objects.filter(name='Jan Lektor').count(), 2)
-        # Kilku imienników – trzeba wybrać profil z podpowiedzi.
-        with self.assertRaises(ValidationError):
-            resolve_contact('JAN LEKTOR', '')
+        data = {'name': 'Łucja Nowak', 'email': 'lucja@example.test', 'is_active': 'on', 'version': version}
+        self.assertEqual(self.client.post(url, data).status_code, 302)
+        self.assertEqual(self.client.post(url, data).status_code, 409)
+        self.assertEqual(Audiobook.objects.get(text=self.first).narrator_name, 'Łucja Nowak')
 
     def test_contact_page_editing_is_for_coordinator_and_rejects_duplicates(self):
         person = AudioContributor.objects.create(name='Łucja Lektorka', email='lucja@example.test')
@@ -78,7 +53,7 @@ class AudioContactTests(TestCase):
         Audiobook.objects.create(text=self.first, narrator_contact=person, status='published')
         Audiobook.objects.create(text=self.second, engineer_contact=person, status='editing')
         url = reverse('core:audio_contributor', args=[person.pk])
-        self.client.force_login(create_member('contacts-member', 'Redaktor'))
+        self.client.force_login(create_member('contacts-member', 'Lektor'))
         page = self.client.get(url)
         self.assertIsNone(page.context['form'])
         self.assertEqual(([a.text for a in page.context['works']], [a.text for a in page.context['current_works']]),
@@ -87,27 +62,12 @@ class AudioContactTests(TestCase):
         self.client.force_login(create_member('contacts-coordinator', 'Koordynator'))
         for data, field in (({'name': 'Łucja Lektorka', 'email': 'BUSY@example.test'}, 'email'),
                             ({'name': 'bez  adresu', 'email': ''}, 'name')):
-            response = self.client.post(url, data)
+            response = self.client.post(url, {**data, 'version': form_value(self.client.get(url), name='version')})
             self.assertEqual(response.status_code, 400)
             self.assertIn(field, response.context['form'].errors)
         person.refresh_from_db()
         self.assertEqual((person.name, person.email), ('Łucja Lektorka', 'lucja@example.test'))
         self.assertEqual(self.client.get(reverse('core:audio_contributor', args=[999999])).status_code, 404)
-
-    def test_people_form_creates_new_profile_instead_of_renaming(self):
-        person = resolve_contact('Jan Lektor', '')
-        audio = Audiobook.objects.create(text=self.first, narrator_contact=person)
-        self.client.force_login(self.admin)
-        response = self.client.post(reverse('core:audiobook_detail', args=[self.first.pk]), {
-            'action': 'people', '_edit_version': edit_token(self.admin, self.first),
-            'people-narrator_name': 'Piotr Lektor', 'people-narrator_contact': person.pk,
-            'people-narrator_email': '', 'people-engineer_name': '', 'people-engineer_email': ''})
-        self.assertEqual(response.status_code, 302)
-        person.refresh_from_db()
-        audio.refresh_from_db()
-        self.assertEqual(person.name, 'Jan Lektor')
-        self.assertEqual(audio.narrator_name, 'Piotr Lektor')
-        self.assertNotEqual(audio.narrator_contact_id, person.pk)
 
     def test_detail_contact_buttons_and_proofreader_link(self):
         reader = create_member('contacts-reader', 'Korektor audiobooków')
@@ -119,10 +79,10 @@ class AudioContactTests(TestCase):
         page = self.client.get(reverse('core:audiobook_detail', args=[self.first.pk]))
         doc = html.fromstring(page.content)
         for role, person in [('narrator', narrator), ('engineer', engineer)]:
-            container = doc.xpath(f'//div[contains(@class,"audio-name-profile")][.//input[@name="people-{role}_name"]]')[0]
+            container = doc.xpath(f'//div[contains(@class,"audio-name-profile")][.//select[@name="people-{role}_contact"]]')[0]
             self.assertEqual(container.xpath('.//a/@href'), [reverse('core:audio_contributor', args=[person.pk])])
         self.assertContains(page, reverse('core:person_detail', args=[reader.person_profile.pk]))
-        self.assertContains(page, 'E-mail dźwiękowca')
+        self.assertContains(page, 'Nowy montażysta – e-mail')
         self.assertNotContains(page, 'Przypisz w Korekcie audiobooków')
         self.assertNotContains(page, '<legend>Dźwiękowiec</legend>')
 

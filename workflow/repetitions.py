@@ -206,7 +206,10 @@ def finish_repetition(stage, ended_at):
     if was_ready:
         next_kind = S.StageType.READY
     elif stage.stage_type == S.StageType.EDITING:
-        if not completed_stage_exists(stage.text, S.StageType.FIRST_VERIFICATION):
+        from workflow.services import returned_by_coordinator
+        if returned_by_coordinator(stage.text):
+            next_kind = S.StageType.EDITING_CONTROL  # po zwrocie przez koordynatora bez weryfikacji
+        elif not completed_stage_exists(stage.text, S.StageType.FIRST_VERIFICATION):
             next_kind = S.StageType.FIRST_VERIFICATION
         elif not completed_stage_exists(stage.text, S.StageType.SECOND_VERIFICATION):
             next_kind = S.StageType.SECOND_VERIFICATION
@@ -216,9 +219,12 @@ def finish_repetition(stage, ended_at):
         next_kind = S.StageType.EDITING
     else:
         next_kind = NEXT_STAGE_TYPES[stage.stage_type]
+    # Kontrola koordynatora zakończona zwrotem do redakcji nie jest zatwierdzeniem – nie wolno jej pominąć.
     completed_kinds = set(
         S.objects.filter(text=stage.text, workflow_cycle=stage.workflow_cycle, is_completed=True)
-        .exclude(repetition__canceled_at__isnull=False).values_list('stage_type', flat=True))
+        .exclude(repetition__canceled_at__isnull=False)
+        .exclude(stage_type=S.StageType.EDITING_CONTROL, send_to_proofreading=False)
+        .values_list('stage_type', flat=True))
     while next_kind not in (S.StageType.READY, S.StageType.EDITING, S.StageType.AUTHOR_EDITING):
         if next_kind not in completed_kinds:
             break

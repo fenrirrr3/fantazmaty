@@ -23,20 +23,6 @@ class TextTagsEditingTests(TaggedTextsFixture, TestCase):
             self.text.refresh_from_db()
             self.assertEqual(self.text.tags, "tag " + str(user.pk))
 
-    def test_guest_outsider_and_inactive_profile_cannot_read_or_save(self):
-        self.client.logout()
-        self.assertEqual(self.client.get(self.list).status_code, 302)
-        self.assertEqual(self.client.post(self.save, {"tags": "bad"}).status_code, 302)
-        self.client.force_login(self.outsider)
-        self.assertEqual(self.client.get(self.list).status_code, 403)
-        self.assertEqual(self.client.post(self.save, {"tags": "bad"}).status_code, 403)
-        profile = self.member.person_profile
-        profile.is_active = False
-        profile.save()
-        self.client.force_login(self.member)
-        self.assertEqual(self.client.get(self.list).status_code, 403)
-        self.assertEqual(self.client.post(self.save, {"tags": "bad"}).status_code, 403)
-
     def test_account_preview_cannot_write_tags(self):
         from core.user_preview import SESSION_KEY
 

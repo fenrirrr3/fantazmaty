@@ -352,6 +352,7 @@
                             <button type="submit" class="complete-stage-button" data-confirm="Przekazać redakcję do kontroli? Redakcja zostanie zamknięta.">
                                 Przekaż redakcję do kontroli
                             </button>
+                            {% if returned_by_coordinator %}<p class="form-help">Koordynator redakcji cofnął tekst do redakcji – weryfikacje są pomijane, a tekst wraca bezpośrednio do kontroli koordynatora.</p>{% endif %}
                         </form>
                     {% endif %}
                 </div>

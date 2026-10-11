@@ -1,11 +1,14 @@
-"""Uwagi do wydanych antologii: zgłaszanie, edycja i usuwanie przez autora uwagi oraz zmiana statusu."""
+"""Uwagi do wydanych antologii: zgłaszanie (także przez AJAX), edycja i usuwanie przez autora uwagi, zmiana statusu,
+wyszukiwanie oraz zmiany antologii lub opowiadania w trakcie zapisu."""
 import uuid
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 from lxml import html
 
+from core.correction_forms import CorrectionForm
 from core.models import AnthologyCorrection
 from people.models import Person
 from texts.models import Anthology, Text
@@ -78,7 +81,14 @@ class CorrectionViewTests(TestCase):
         self.assertEqual(saved.status_code, 302)
         item.refresh_from_db()
         self.assertEqual(item.fragment, 'x')
-        deleted = self.client.post(reverse('core:correction_delete', args=[item.pk]), {'version': item.updated_at.isoformat()})
+        invalid = self.client.post(edit, {'anthology': self.book.pk, 'fragment': 'x', 'problem': '', 'suggestion': 'z',
+                                          'version': item.updated_at.isoformat()})
+        self.assertEqual(invalid.status_code, 400)
+        self.assertIn('problem', invalid.context['form'].errors)
+        delete = reverse('core:correction_delete', args=[item.pk])
+        self.assertEqual(self.client.post(delete, {'version': 'old'}).status_code, 409)
+        self.assertTrue(AnthologyCorrection.objects.exists())
+        deleted = self.client.post(delete, {'version': item.updated_at.isoformat()})
         self.assertEqual(deleted.status_code, 302)
         self.assertFalse(AnthologyCorrection.objects.exists())
 
@@ -104,6 +114,8 @@ class CorrectionViewTests(TestCase):
                                     f'version_{first.pk}': first.updated_at.isoformat(), f'version_{second.pk}': second.updated_at.isoformat()})
         self.assertEqual(ok.status_code, 302)
         self.assertEqual(set(AnthologyCorrection.objects.values_list('status', flat=True)), {'applied'})
+        missing = self.client.post(url, {'selected': [first.pk, second.pk + 100], 'status': 'new'})
+        self.assertEqual(missing.status_code, 409)
         again = self.client.post(url, {'selected': [first.pk], 'status': 'new', f'version_{first.pk}': 'x'})
         self.assertEqual(again.status_code, 302)
         first.refresh_from_db()
@@ -123,3 +135,76 @@ class CorrectionViewTests(TestCase):
         self.assertIn("Tu zgłaszamy uwagi tylko do już wydanych antologii",
                       doc.xpath('string(//header[h1="Uwagi do antologii"]/p)'))
 
+
+    def test_ajax_submission_answers_with_json(self):
+        self.client.force_login(self.member)
+        url = reverse('core:anthology_corrections')
+        ok = self.client.post(url, {'anthology': self.book.pk, 'text': self.text.pk, 'fragment': 'a', 'problem': 'b',
+                                    'suggestion': 'c', 'submission_token': str(uuid.uuid4())},
+                              HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(ok.status_code, 200)
+        body = ok.json()
+        self.assertEqual(body['id'], AnthologyCorrection.objects.get().pk)
+        self.assertEqual(body['list_url'], url)
+        uuid.UUID(body['next_token'])
+        invalid = self.client.post(url, {'anthology': self.book.pk, 'fragment': '', 'problem': 'b', 'suggestion': 'c'},
+                                   HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(invalid.status_code, 400)
+        self.assertIn('fragment', invalid.json()['errors'])
+        self.assertEqual(AnthologyCorrection.objects.count(), 1)
+
+    def test_list_search_matches_title_and_correction_fields(self):
+        for title, problem in (('Opowiadanie', 'Literówka w nazwisku'), ('Inne miejsce', 'Brak przecinka')):
+            AnthologyCorrection.objects.create(anthology=self.book, story_title=title, fragment='f', problem=problem,
+                                               suggestion='s', submitted_by=self.member)
+        self.client.force_login(self.member)
+        for query, expected in (('literówka', ['Opowiadanie']), ('inne MIEJSCE', ['Inne miejsce']), ('brak', ['Inne miejsce']),
+                                ('nic takiego', [])):
+            with self.subTest(query=query):
+                page = self.client.get(reverse('core:anthology_corrections'), {'q': query})
+                self.assertEqual([item.story_title for item in page.context['corrections']], expected)
+
+    def test_anthology_or_story_changed_while_saving_is_rejected(self):
+        """Zmiana statusu antologii albo przeniesienie opowiadania między walidacją a zapisem nie przechodzi."""
+        other_ready = Anthology.objects.create(title='Druga gotowa', status=Anthology.Status.READY)
+        item = self.correction()
+        original_clean = CorrectionForm.clean
+
+        def changing(change):
+            def clean(form):
+                data = original_clean(form)
+                change()
+                return data
+            return clean
+
+        def unready(book):
+            return lambda: Anthology.objects.filter(pk=book.pk).update(status=Anthology.Status.IN_PREPARATION)
+
+        def move_text():
+            Text.objects.filter(pk=self.text.pk).update(anthology=self.draft)
+
+        cases = [
+            ('nowa – antologia już niegotowa', 'core:anthology_corrections', {'anthology': self.book.pk, 'text': ''},
+             unready(self.book), 'anthology'),
+            ('nowa – opowiadanie przeniesione', 'core:anthology_corrections', {}, move_text, 'text'),
+            ('edycja – nowa antologia już niegotowa', 'core:correction_edit',
+             {'anthology': other_ready.pk, 'text': ''}, unready(other_ready), 'anthology'),
+            ('edycja – opowiadanie przeniesione', 'core:correction_edit', {}, move_text, 'text'),
+        ]
+        self.client.force_login(self.member)
+        for label, name, values, change, field in cases:
+            with self.subTest(label):
+                Anthology.objects.filter(pk__in=[self.book.pk, other_ready.pk]).update(status=Anthology.Status.READY)
+                Text.objects.filter(pk=self.text.pk).update(anthology=self.book)
+                item.refresh_from_db()
+                editing = name == 'core:correction_edit'
+                url = reverse(name, args=[item.pk]) if editing else reverse(name)
+                data = {'anthology': self.book.pk, 'text': self.text.pk, 'fragment': 'nowy', 'problem': 'p',
+                        'suggestion': 's', **values}
+                if editing:
+                    data['version'] = item.updated_at.isoformat()
+                with patch.object(CorrectionForm, 'clean', changing(change)):
+                    response = self.client.post(url, data)
+                self.assertEqual(response.status_code, 400)
+                self.assertIn(field, response.context['form'].errors)
+        self.assertEqual(list(AnthologyCorrection.objects.values_list('pk', 'fragment')), [(item.pk, 'a')])

@@ -160,11 +160,6 @@ def has_role(user, role_name):
     return _profile_has_role(person, role_name)
 
 
-def has_coordinator_access(user):
-    """Zgodność z dotychczasową nazwą używaną w widokach."""
-    return is_coordinator(user)
-
-
 def can_use_recruitment_mailbox(user):
     return is_superuser(user) or has_role(user, "Koordynator rekrutacji")
 
@@ -205,6 +200,14 @@ def can_view_illustrations(user):
     return is_coordinator(user) or has_role(user, "Ilustrator")
 
 
+AUDIOBOOK_ROLES = ("Lektor", "Dźwiękowiec", "Korektor audiobooków")
+
+
+def can_view_audiobooks(user):
+    """Jak ilustracje: koordynatorzy oraz osoby z rolą audio (lektorów i montażystów prowadzi spis, nie konta)."""
+    return is_coordinator(user) or any(has_role(user, role) for role in AUDIOBOOK_ROLES)
+
+
 def can_view_post_layout(user):
     return is_coordinator(user) or has_role(user, "Korektor poskładowy")
 
@@ -216,15 +219,6 @@ def can_view_audio_proofreading(user):
 def require_post_layout(user):
     if not can_view_post_layout(user):
         raise PermissionDenied("Dostęp wymaga uprawnień koordynatora lub roli Korektor poskładowy.")
-
-
-def can_view_reports(user):
-    return is_coordinator(user)
-
-
-def can_perform_bulk_actions(user):
-    # Operacje zbiorcze zachowują dotychczasowe ograniczenie do superusera.
-    return is_superuser(user)
 
 
 def can_export_author_data(user):
@@ -307,6 +301,8 @@ def is_reviewer_only(user):
 
 
 def can_view_my_reviews(user):
+    if is_superuser(user):
+        return True  # superuser widzi wszystko, także bez profilu osoby (pusta lista przydziałów)
     if not is_team_member(user):
         return False
     if is_reviewer(user):

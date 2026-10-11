@@ -246,6 +246,32 @@ class AnthologyTaskStatusTests(AnthologyPageData, TestCase):
         self.assertIn(task.status, AnthologyTask.DONE_STATUSES)
         self.assertEqual(task.get_status_display(), 'Nie dotyczy')
 
+    def test_partial_saves_keep_status_assignee_and_commission_date_consistent(self):
+        """Zapis wybranych pól: pusty nic nie zapisuje, „Nie dotyczy” czyści osobę i datę, a zmiana osoby
+        przy zleconym zadaniu odnawia datę zlecenia według statusu zapisanego w bazie."""
+        task = self.book.production_tasks.get(task_type='banners')
+        task.assigned_to = self.member.person_profile
+        task.status = AnthologyTask.Status.COMMISSIONED
+        task.save()
+        old_date = date(2026, 1, 5)
+        AnthologyTask.objects.filter(pk=task.pk).update(commissioned_at=old_date)
+
+        def stored():
+            return AnthologyTask.objects.values_list('status', 'assigned_to', 'commissioned_at').get(pk=task.pk)
+
+        task.status = AnthologyTask.Status.NOT_APPLICABLE
+        task.save(update_fields=[])
+        self.assertEqual(stored(), ('commissioned', self.member.person_profile.pk, old_date))
+
+        task.status = AnthologyTask.Status.READY
+        task.assigned_to = self.manager.person_profile
+        task.save(update_fields=['assigned_to'])
+        self.assertEqual(stored(), ('commissioned', self.manager.person_profile.pk, timezone.localdate()))
+
+        task.status = AnthologyTask.Status.NOT_APPLICABLE
+        task.save(update_fields=['status'])
+        self.assertEqual(stored(), ('not_applicable', None, None))
+
     def test_not_applicable_audio_description_keeps_its_stage(self):
         task = self.book.production_tasks.get(task_type='audio_description')
         task.status = AnthologyTask.Status.NOT_APPLICABLE

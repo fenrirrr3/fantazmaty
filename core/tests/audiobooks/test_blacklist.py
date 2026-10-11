@@ -13,7 +13,7 @@ from texts.models import Anthology, Text
 class TextBlacklistTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.member = create_member('audio-member', 'Redaktor')
+        cls.member = create_member('audio-member', 'Lektor')
         cls.admin = create_superuser('audio-admin')
         cls.book = Anthology.objects.create(title='Audio')
         cls.author = Author.objects.create(first_name='Jan', last_name='Autor', email=None)

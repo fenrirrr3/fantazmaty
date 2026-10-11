@@ -1,6 +1,5 @@
 """Propozycje ilustracji okładkowych: zgłaszanie przez zespół (pola kontrolowane przez serwer,
 walidacja adresu), zmiana statusu wyłącznie przez koordynatora i data zmiany statusu."""
-from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.urls import reverse
 
@@ -14,7 +13,6 @@ class CoverProposalTests(TestCase):
         cls.admin = create_superuser('cover-admin')
         cls.coordinator = create_member('cover-coordinator', 'Koordynator redakcji')
         cls.member = create_member('cover-member', 'Redaktor')
-        cls.outsider = get_user_model().objects.create_user('cover-outsider')
         cls.url = reverse('illustrations:cover_proposal_list')
 
     def status_url(self, proposal):
@@ -38,20 +36,16 @@ class CoverProposalTests(TestCase):
         self.assertContains(page, 'Anna Okładkowa')
         self.assertFalse(page.context['can_manage_proposals'])
 
-    def test_invalid_proposal_is_not_saved_and_outsider_has_no_access(self):
+    def test_invalid_proposal_is_not_saved(self):
         self.client.force_login(self.member)
         response = self.client.post(self.url, {'illustration_author': '', 'illustration_url': 'nie-adres'})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(set(response.context['form'].errors), {'illustration_author', 'illustration_url'})
         self.assertFalse(CoverProposal.objects.exists())
-        self.client.force_login(self.outsider)
-        self.assertEqual(self.client.get(self.url).status_code, 403)
-        self.assertEqual(self.client.post(self.url, {'illustration_author': 'X'}).status_code, 403)
 
     def test_only_coordinator_changes_status_and_change_is_dated(self):
         proposal = self.proposal()
-        self.client.force_login(self.member)
-        self.assertEqual(self.client.post(self.status_url(proposal), {'status': 'approved'}).status_code, 403)
+        # Odmowę dla członka zespołu i osoby spoza zespołu sprawdza macierz tras (core/tests/security/test_route_access.py).
         for user in (self.coordinator, self.admin):
             self.client.force_login(user)
             self.assertTrue(self.client.get(self.url).context['can_manage_proposals'])

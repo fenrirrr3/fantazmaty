@@ -26,7 +26,7 @@ from core.views.unlinked_reviews import unlinked_reviews
 from core.views.audio_descriptions import audio_descriptions, audio_description_detail, claim_audio_description
 from core.views.audiobooks import audiobook_list, update_text_audiobook
 from core.views.audiobook_production import audiobook_detail, assign_audio_proofreader, claim_audio_proofreading, audio_proofreading
-from core.views.audio_contacts import audio_contributor, contact_suggestions
+from core.views.audio_contacts import audio_contributor, audio_contributor_list, contact_suggestions
 from core.views.external_audiobooks import external_audiobooks, audiobook_guidelines_txt
 from core.views import novels, vocabulary
 from core.views.recruitment_detail import recruitment_detail
@@ -46,6 +46,8 @@ app_name = "core"
 
 urlpatterns = [
     path("recenzje/niepowiazane/", unlinked_reviews, name="unlinked_reviews"),
+    path("audiobooki/osoby/", audio_contributor_list, name="audio_contributor_list"),
+    path("audiobooki/osoby/dodaj/", audio_contributor, name="audio_contributor_add"),
     path("audiobooki/osoby/<int:pk>/", audio_contributor, name="audio_contributor"),
     path("kontakty/podpowiedzi/", contact_suggestions, name="contact_suggestions"),
     path('audiobooki/zewnetrzne/', external_audiobooks, name='external_audiobooks'),

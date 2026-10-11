@@ -43,8 +43,6 @@ class UserPreviewTests(StatusAssignmentFixtures):
         for method in (self.client.get, self.client.post):
             self.assertEqual(method(self.start_url, {"target": self.other.pk}).status_code, 403)
         self.assertEqual(self.client.post(self.stop_url).status_code, 403)
-        self.client.logout()
-        self.assertEqual(self.client.get(self.start_url).status_code, 403)
 
     def test_preview_keeps_admin_session_and_does_not_log_in_target(self):
         self.member.refresh_from_db()

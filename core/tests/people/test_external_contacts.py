@@ -24,24 +24,25 @@ class AudioContactTests(TestCase):
         cls.book = Anthology.objects.create(title='Antologia v63', status='ready')
 
     def test_contact_history_survives_rename_and_privacy(self):
-        contact = AudioContributor.objects.create(name='Czytający', email='private63@example.test', user=self.member)
+        """Wpis spisu nie jest powiązany z kontem – także gdy adres zgadza się z kontem członka zespołu."""
+        narrator = create_member('v63-narrator', 'Lektor')
+        contact = AudioContributor.objects.create(name='Czytający', email=narrator.person_profile.email.upper())
+        self.assertFalse(hasattr(contact, 'user_id'))
         for i in range(3):
             text = Text.objects.create(title=f'Nagranie {i}', anthology=self.book, length=1)
-            Audiobook.objects.create(text=text, narrator_name=contact.name, narrator_email=contact.email,
-                                     status='published' if i < 2 else 'recording')
-        self.assertEqual(AudioContributor.objects.count(), 1)
+            Audiobook.objects.create(text=text, narrator_contact=contact, status='published' if i < 2 else 'recording')
         contact.name = 'Poprawiony podpis'
         contact.save()
         self.assertEqual(Audiobook.objects.filter(narrator_name=contact.name).count(), 3)
-        self.client.force_login(self.member)
         url = reverse('core:audio_contributor', args=[contact.pk])
+        self.client.force_login(narrator)
         page = self.client.get(url)
         self.assertEqual(len(page.context['works']), 2)
         self.assertContains(self.client.get(reverse('core:audiobooks')), url)
-        self.assertNotContains(page, 'private63@example.test')
-        self.assertContains(self.client.get(reverse('core:person_detail', args=[self.member.person_profile.pk])), url)
+        self.assertNotContains(page, contact.email)
+        self.assertNotContains(self.client.get(reverse('core:person_detail', args=[narrator.person_profile.pk])), url)
         self.client.force_login(self.coordinator)
-        self.assertContains(self.client.get(url), 'private63@example.test')
+        self.assertContains(self.client.get(url), contact.email)
         self.client.logout()
         self.assertEqual(self.client.get(url).status_code, 302)
 
@@ -59,14 +60,6 @@ class AudioContactTests(TestCase):
         rows = self.client.get(url, {'kind': 'illustration', 'q': 'rys@'}).json()['results']
         self.assertEqual(rows[0]['name'], 'Anna Rysuje')
         self.assertEqual(self.client.get(url, {'kind': 'illustration', 'q': 'old@'}).json()['results'], [])
-
-    def test_contact_account_link_requires_unique_email(self):
-        self.member.email = 'contact63@example.test'
-        self.member.save(update_fields=['email'])
-        contact = AudioContributor.objects.create(name='Lektor', email='CONTACT63@example.test')
-        self.assertEqual(contact.user_id, self.member.pk)
-        other = AudioContributor.objects.create(name=self.member.get_full_name(), email='')
-        self.assertIsNone(other.user_id)
 
 
 class IllustratorContactTests(TestCase):
