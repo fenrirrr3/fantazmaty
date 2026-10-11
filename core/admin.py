@@ -115,17 +115,47 @@ class AudioContributorAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
 @admin.register(AudiobookStage)
 class AudiobookStageAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
-    list_display = ('text', 'stage_type', 'performer', 'started_at', 'ended_at', 'is_completed')
+    """Korekta danych historycznych: daty i wykonawca. Rodzaj, kolejność i zakończenie zmienia proces."""
+    list_display = ('text', 'stage_type', 'performer', 'queued_at', 'started_at', 'ended_at', 'is_completed')
     list_filter = ('stage_type', 'is_completed')
     search_fields = ('text__title',)
     list_select_related = ('text', 'performer')
-    readonly_fields = ('text', 'stage_type', 'performer', 'started_at', 'ended_at', 'is_completed')
+    fields = ('text', 'stage_type', 'position', 'queued_at', 'started_at', 'start_unknown', 'ended_at', 'is_completed', 'performer')
+    readonly_fields = ('text', 'stage_type', 'position', 'is_completed')
 
     def has_add_permission(self, request):
         return False
 
     def has_change_permission(self, request, obj=None):
-        return False
+        return bool(request.user.is_active and request.user.is_superuser)
+
+    def get_form(self, request, obj=None, **kwargs):
+        from django import forms as django_forms
+        from django.utils import timezone
+
+        class StageForm(super().get_form(request, obj, **kwargs)):
+            def clean(self):
+                data = super().clean()
+                today = timezone.localdate()
+                for name in ('queued_at', 'started_at', 'ended_at'):
+                    if data.get(name) and data[name] > today:
+                        self.add_error(name, 'Data nie może być w przyszłości.')
+                start, end = data.get('started_at'), data.get('ended_at')
+                if start and end and end < start:
+                    self.add_error('ended_at', 'Zakończenie nie może poprzedzać rozpoczęcia.')
+                if end and not self.instance.is_completed:
+                    raise django_forms.ValidationError('Etap trwa – zakończ go na stronie audiobooka.')
+                return data
+        return StageForm
+
+    def save_model(self, request, obj, form, change):
+        if obj.started_at:
+            obj.start_unknown = False
+        super().save_model(request, obj, form, change)
+        from core.audiobook_services import refresh_status
+        audio = Audiobook.objects.filter(text_id=obj.text_id).first()
+        if audio:
+            refresh_status(audio)
 
     def has_delete_permission(self, request, obj=None):
         return False
@@ -140,26 +170,29 @@ class AudiobookAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     list_select_related = ('text__anthology', 'proofreader')
     autocomplete_fields = ('text',)
     fieldsets = (
-        ('Tekst i status', {'fields': ('text', 'status', 'production_link')}),
-        ('Lektor', {'fields': ('narrator_name', 'narrator_email', 'recording_started_at', 'corrections_started_at')}),
-        ('Korektor audiobooka', {'fields': ('proofreader', 'proofreading_started_at')}),
-        ('Montaż', {'fields': ('engineer_name', 'engineer_email', 'editing_started_at')}),
-        ('Publikacja', {'fields': ('awaiting_publication_started_at', 'premiere_date', 'youtube_url', 'hearthis_url', 'additional_links')}),
+        ('Tekst i status', {'fields': ('text', 'status', 'paused_at', 'production_link')}),
+        ('Lektor', {'fields': ('narrator_name', 'narrator_email')}),
+        ('Korektor audiobooka', {'fields': ('proofreader',)}),
+        ('Montaż', {'fields': ('engineer_name', 'engineer_email')}),
+        ('Publikacja', {'fields': ('premiere_date', 'youtube_url', 'hearthis_url', 'additional_links')}),
     )
 
     def get_readonly_fields(self, request, obj=None):
-        fields = ('status', 'production_link', 'recording_started_at', 'proofreading_started_at', 'corrections_started_at',
-            'editing_started_at', 'awaiting_publication_started_at')
+        fields = ('status', 'paused_at', 'production_link')
         if obj and not self.proofreader_editable(obj):
             # Jak na stronie: korektora zmienia się tylko w trakcie etapu Korekta, przed jego zakończeniem.
             fields = (*fields, 'proofreader')
         return (*fields, 'text') if obj else fields
 
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        from core.audiobook_services import refresh_status
+        refresh_status(obj, keep_published=False)
+
     @staticmethod
     def proofreader_editable(obj):
         from core.selectors.audio_proofreading import can_assign_proofreader, corrections
-        return obj.status == Audiobook.Status.PROOFREADING and can_assign_proofreader(
-            obj, corrections().filter(text_id=obj.text_id))
+        return can_assign_proofreader(obj, corrections().filter(text_id=obj.text_id))
 
     @admin.display(description='Etapy produkcji')
     def production_link(self, obj):

@@ -13,6 +13,7 @@ from django.urls import reverse
 from lxml import html
 
 from authors.models import Author
+from core.audiobook_services import refresh_status
 from core.models import Audiobook, AudiobookStage
 from core.source_reviews import linkable_reviews, link_source_review
 from texts.extract_whole import SOURCE, ensure_whole_text
@@ -107,17 +108,16 @@ class ChangesV77Tests(TestCase):
         self.assertIsNone(self.book.cover_commissioned_at)
 
     def test_unassigned_audio_history_shows_only_waiting_badge(self):
-        audio = Audiobook.objects.create(text=self.text, status='proofreading')
-        stage = AudiobookStage.objects.create(text=self.text, stage_type='proofreading', started_at=date(2026, 8, 1))
-        audio.active_stage = stage
-        audio.save()
+        audio = Audiobook.objects.create(text=self.text)
+        AudiobookStage.objects.create(text=self.text, stage_type='proofreading', position=1, queued_at=date(2026, 8, 1))
+        refresh_status(audio)
         self.client.force_login(self.admin)
         page = self.client.get(reverse('core:audio_proofreading'), {'hide_completed': '0'})
         self.assertContains(page, 'Oczekuje')
         self.assertNotContains(page, 'Nie zapisano wykonawcy')
         tree = html.fromstring(page.content)
         history = tree.xpath('//ul[contains(@class,"audio-correction-history")]')[0]
-        self.assertEqual(' '.join(history.text_content().split()), 'Oczekuje')
+        self.assertEqual(' '.join(history.text_content().split()), 'Czeka na przejęcie')
 
 
 class WholeExtractTests(TestCase):

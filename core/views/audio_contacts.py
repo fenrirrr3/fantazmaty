@@ -55,8 +55,8 @@ def audio_contributor(request, pk):
             'text__authors', 'text__translation__foreign_authors').order_by('text__anthology__title', 'text__title', 'pk'))
     for audio in works:
         audio.author_display = authors_display(audio.text)
-    published = [audio for audio in works if audio.status == Audiobook.Status.PUBLISHED]
-    current = [audio for audio in works if audio.status != Audiobook.Status.PUBLISHED]
+    published = [audio for audio in works if audio.is_published]
+    current = [audio for audio in works if not audio.is_published]
     return render(request, 'core/audio_contributor.html', {'person': person, 'works': published,
         'current_works': current, 'show_email': coordinator, 'form': form},
         status=400 if request.method == 'POST' else 200)

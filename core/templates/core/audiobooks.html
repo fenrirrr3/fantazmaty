@@ -21,7 +21,7 @@
         <div class="audio-actions"><button class="primary-button" type="submit">Filtruj</button><a class="secondary-button" href="{% url 'core:audiobooks' %}">Wyczyść filtry</a></div>
     </form>
 </div></section>
-<p class="form-help">Etapy: data rozpoczęcia – data zakończenia. „?” oznacza brak zapisanej daty.</p>
+<p class="form-help">Etapy: data rozpoczęcia – data zakończenia. „?” oznacza brak zapisanej daty. Etap oczekujący widać w statusie.</p>
 <section class="card" aria-label="Audiobooki">
     <div class="table-container" role="region" tabindex="0" aria-label="Tabela audiobooków">
         <table data-server-paginated="true" class="data-table audio-table">
@@ -41,8 +41,8 @@
                 <td>{% include "core/includes/audio_periods.html" with periods=text.periods.editing %}</td>
                 <td>{{ audio.premiere_date|date:"d.m.Y"|default:"–" }}</td>
 
-                <td>{% if audio.status == 'published' %}{% for link in audio.publication_links %}{% if link.service == 'youtube' %}<a class="secondary-button" href="{{ link.url }}" target="_blank" rel="noopener noreferrer">{{ link.label }}</a>{% endif %}{% endfor %}{% if not audio.youtube_url %}–{% endif %}{% else %}–{% endif %}</td>
-                <td>{% if audio.status == 'published' %}{% for link in audio.publication_links %}{% if link.service == 'hearthis' %}<a class="secondary-button" href="{{ link.url }}" target="_blank" rel="noopener noreferrer">{{ link.label }}</a>{% endif %}{% endfor %}{% if not audio.hearthis_url %}–{% endif %}{% else %}–{% endif %}</td>
+                <td>{% if audio.is_published %}{% for link in audio.publication_links %}{% if link.service == 'youtube' %}<a class="secondary-button" href="{{ link.url }}" target="_blank" rel="noopener noreferrer">{{ link.label }}</a>{% endif %}{% endfor %}{% if not audio.youtube_url %}–{% endif %}{% else %}–{% endif %}</td>
+                <td>{% if audio.is_published %}{% for link in audio.publication_links %}{% if link.service == 'hearthis' %}<a class="secondary-button" href="{{ link.url }}" target="_blank" rel="noopener noreferrer">{{ link.label }}</a>{% endif %}{% endfor %}{% if not audio.hearthis_url %}–{% endif %}{% else %}–{% endif %}</td>
             </tr>{% endwith %}{% empty %}<tr><td colspan="14">Brak audiobooków pasujących do filtrów.</td></tr>{% endfor %}</tbody>
         </table>
     </div>

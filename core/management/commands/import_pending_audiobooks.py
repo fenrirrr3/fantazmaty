@@ -3,9 +3,13 @@ import hashlib
 import json
 
 from core.management.commands.import_published_audiobooks import Command as BaseImport, known_date
-from core.audiobook_services import DATE_FIELDS
+from core.audiobook_models import StageType
+from core.audiobook_services import refresh_status
 from core.models import Audiobook, AudiobookStage, AudioContributor
 from texts.models import Text
+
+# Statusy z tabeli źródłowej (stary podział); stan w CMS wynika z zapisanych etapów.
+SOURCE_STATUSES = {'pending', 'recording', 'proofreading', 'corrections', 'editing', 'awaiting_publication'}
 
 
 class Command(BaseImport):
@@ -13,7 +17,7 @@ class Command(BaseImport):
     schema = 'fantazmaty-pending-audio-v1'
 
     def import_row(self, row):
-        if row['status'] not in set(Audiobook.Status.values) - {'published'}:
+        if row['status'] not in SOURCE_STATUSES:
             raise ValueError('Plik ma zawierać tylko audiobooki nieopublikowane.')
         matches = list(Text.objects.select_for_update().filter(title=row['title'], anthology__title=row['anthology']).order_by('pk'))
         matches = [t for t in matches if t.title == row['title'] and t.anthology.title == row['anthology']]
@@ -27,7 +31,7 @@ class Command(BaseImport):
         if audio is None:
             audio = Audiobook(text=text)
         proofreader = self.resolve_person(row.get('proofreader', ''))
-        desired = {'status': row['status']}
+        desired = {}
         for field, key in [('narrator_name', 'narrator'), ('engineer_name', 'engineer')]:
             if row.get(key):
                 desired[field] = row[key]
@@ -43,7 +47,7 @@ class Command(BaseImport):
         active_key = None
         for index, source in enumerate(row['stages']):
             kind = source['type']
-            if kind not in set(Audiobook.Status.values) - {'published'}:
+            if kind not in StageType.values:
                 raise ValueError('Nieprawidłowy etap w danych.')
             start, end = known_date(source.get('started_at')), known_date(source.get('ended_at'))
             complete, active = source.get('completed', False), source.get('active', False)
@@ -56,10 +60,11 @@ class Command(BaseImport):
             key = hashlib.sha256(json.dumps(['pending-audio-2026-10', row['anthology'], row['title'], index], ensure_ascii=False).encode()).hexdigest()
             if active:
                 active_key = key
-            if start and kind in DATE_FIELDS:
-                desired[DATE_FIELDS[kind]] = start
             values = {'text_id': text.pk, 'stage_type': kind, 'started_at': start, 'ended_at': end,
-                'is_completed': complete, 'performer_id': proofreader.pk if proofreader and kind == 'proofreading' else None}
+                'is_completed': complete, 'performer_id': proofreader.pk if proofreader and kind == 'proofreading' else None,
+                'position': index + 1,
+                # Trwający etap bez daty: rozpoczęty, data nieznana (korekta bez daty czeka na przejęcie).
+                'start_unknown': bool(active and not start and kind != 'proofreading')}
             specs.append((key, values))
         if not specs:
             raise ValueError('Brak etapów w pliku.')
@@ -70,18 +75,15 @@ class Command(BaseImport):
             if len(existing) != len(specs) or any(any(getattr(s, f) != v for f, v in expected[s.import_key].items()) for s in existing):
                 raise ValueError('Zaimportowana historia została zmieniona. Nie nadpisano późniejszej pracy.')
             active_id = next((s.pk for s in existing if s.import_key == active_key), None)
-            if any(getattr(audio, f) != value for f, value in desired.items()) or audio.active_stage_id != active_id:
+            if any(getattr(audio, f) != value for f, value in desired.items()) or (active_key and audio.active_stage_id != active_id):
                 raise ValueError('Audiobook zmienił się po imporcie. Nie cofnięto produkcji.')
             self.counts['unchanged_audiobooks'] += 1
             return {'text_id': text.pk, 'title': text.title, 'action': 'bez zmian'}
         if existing or audio.active_stage_id or audio.status != 'pending' or audio.youtube_url or audio.hearthis_url or audio.premiere_date or audio.additional_links:
             raise ValueError('Audiobook ma już produkcję lub publikację. Import nie nadpisuje istniejącej pracy.')
-        for field in DATE_FIELDS.values():
-            if getattr(audio, field) and getattr(audio, field) != desired.get(field):
-                raise ValueError(f'Istniejąca data {field} jest inna niż w tabeli. Wymaga porównania.')
         for field, value in desired.items():
             old = getattr(audio, field)
-            if field != 'status' and old not in ('', None, value):
+            if old not in ('', None, value):
                 raise ValueError(f'Konflikt w polu {field}: istnieje już inna wartość.')
         saved = []
         for key, values in specs:
@@ -89,8 +91,6 @@ class Command(BaseImport):
             stage.full_clean()
             stage.save()
             saved.append(stage)
-            if key == active_key:
-                desired['active_stage_id'] = stage.pk
         for field, value in desired.items():
             setattr(audio, field, value)
         # Historic credits require an existing account, without granting roles.
@@ -98,6 +98,7 @@ class Command(BaseImport):
         audio.validate_unique()
         audio.validate_constraints()
         audio.save()
+        refresh_status(audio)
         self.counts['new_audiobooks' if created else 'updated_audiobooks'] += 1
         self.counts['stages_added'] += len(saved)
         if not text.for_recording or text.audiobook_blacklisted:

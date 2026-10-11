@@ -61,7 +61,8 @@ class AudioFinishV72Tests(TestCase):
         self.assertTrue(self.stage.is_completed)
         self.assertEqual(self.stage.performer, self.reader)
         self.assertIsNone(self.audio.active_stage_id)
-        self.assertEqual(self.client.post(self.detail, payload).status_code, 409)
+        # Po zakończeniu korektor nie ma już uprawnień do etapu (a token jest nieaktualny).
+        self.assertIn(self.client.post(self.detail, payload).status_code, (403, 409))
         self.assertNotContains(
             self.client.get(self.queue, {"hide_completed": "0"}),
             'name="action" value="finish_stage"',
@@ -90,25 +91,23 @@ class AudioFinishV72Tests(TestCase):
 
     def test_detail_label_and_unknown_completion_date(self):
         historical = AudiobookStage.objects.create(
-            text=self.text, stage_type="recording", is_completed=True
+            text=self.text, stage_type="recording", is_completed=True, position=0
         )
         self.client.force_login(self.reader)
         page = self.client.get(self.detail)
         doc = html.fromstring(page.content)
         self.assertEqual(
-            doc.xpath('//button[contains(@class,"audio-finish-button")]/text()'), ["Zakończ"]
+            doc.xpath('//button[contains(@class,"audio-finish-button")]/text()'), ["Zakończ etap"]
         )
-        cell = doc.xpath('//table/tbody/tr[td[contains(.,"Trwa nagrywanie")]]/td[3]')[0]
-        self.assertEqual("".join(cell.itertext()).strip(), "Zakończony: data nieznana")
+        row = doc.xpath('//table/tbody/tr[td[1][starts-with(normalize-space(.),"Nagranie")]]')[0]
+        cells = ["".join(td.itertext()).strip() for td in row.xpath("./td")]
+        self.assertEqual(cells[2:], ["?", "?", "Zakończony"])
         historical.ended_at = timezone.localdate()
         historical.save()
-        page = self.client.get(self.detail)
-        cell = html.fromstring(page.content).xpath(
-            '//table/tbody/tr[td[contains(.,"Trwa nagrywanie")]]/td[3]'
-        )[0]
-        self.assertEqual(
-            "".join(cell.itertext()).strip(), timezone.localdate().strftime("%d.%m.%Y")
-        )
+        row = html.fromstring(self.client.get(self.detail).content).xpath(
+            '//table/tbody/tr[td[1][starts-with(normalize-space(.),"Nagranie")]]')[0]
+        self.assertEqual("".join(row.xpath("./td")[3].itertext()).strip(),
+                         timezone.localdate().strftime("%d.%m.%Y"))
 
     def test_coordinator_can_finish_from_table(self):
         self.client.force_login(self.manager)

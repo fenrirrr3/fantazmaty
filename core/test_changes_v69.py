@@ -139,21 +139,20 @@ class AudioTableTests(TestCase):
 
     def test_date_ranges_preserve_repeated_and_incomplete_history_and_legacy_start(self):
         audio = self.audios[0]
-        audio.recording_started_at = date(2020, 1, 1)  # History takes precedence over stale scalar date.
-        audio.proofreading_started_at = date(2026, 1, 4)
-        audio.save()
-        for start, end, kind in [(None, date(2026, 1, 2), 'recording'),
-                (date(2026, 2, 1), None, 'recording'), (None, None, 'editing')]:
-            AudiobookStage.objects.create(text=audio.text, stage_type=kind, started_at=start,
-                ended_at=end, is_completed=bool(end))
+        for position, (start, end, kind, done) in enumerate([(None, date(2026, 1, 2), 'recording', True),
+                (date(2026, 1, 4), None, 'proofreading', True), (date(2026, 2, 1), None, 'recording', False),
+                (None, None, 'editing', False)], start=1):
+            AudiobookStage.objects.create(text=audio.text, stage_type=kind, started_at=start, position=position,
+                ended_at=end, is_completed=done)
         page = self.client.get(self.url, {'q': 'Audio 0'})
         row = list(page.context['texts'])[0]
         self.assertEqual(row['periods']['recording'], [
-            {'started_at': None, 'ended_at': date(2026, 1, 2)},
-            {'started_at': date(2026, 2, 1), 'ended_at': None}])
-        self.assertEqual(row['periods']['proofreading'], [{'started_at': date(2026, 1, 4), 'ended_at': None}])
-        self.assertEqual(row['periods']['editing'], [{'started_at': None, 'ended_at': None}])
-        self.assertNotContains(page, '01.01.2020')
+            {'started_at': None, 'ended_at': date(2026, 1, 2), 'is_completed': True},
+            {'started_at': date(2026, 2, 1), 'ended_at': None, 'is_completed': False}])
+        # Zakończona korekta bez daty końca; oczekujący montaż nie ma jeszcze okresu.
+        self.assertEqual(row['periods']['proofreading'], [{'started_at': date(2026, 1, 4), 'ended_at': None,
+                                                         'is_completed': True}])
+        self.assertEqual(row['periods']['editing'], [])
         self.assertNotContains(page, 'Czeka na publikację od')
         self.assertContains(page, '02.01.2026')
         self.assertEqual(len(html.fromstring(page.content).xpath('//table/thead/tr/th')), 14)

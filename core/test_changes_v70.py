@@ -9,7 +9,7 @@ from django.urls import reverse
 from django.utils import timezone
 from lxml import html
 
-from core.audiobook_services import claim_proofreading, finish_stage
+from core.audiobook_services import claim_proofreading, finish_stage, refresh_status
 from core.edit_versions import version_of
 from core.models import Audiobook, AudiobookStage, AudioContributor, PostLayoutAssignment
 from texts.models import Anthology, AnthologyTask, Text
@@ -25,7 +25,12 @@ class AudioClaimTests(TestCase):
         cls.manager = create_member('v70manager', 'Koordynator korekty')
         cls.book = Anthology.objects.create(title='Korekty nagrań', status='ready')
         cls.text = Text.objects.create(title='Wolna korekta', anthology=cls.book, length=1)
-        cls.audio = Audiobook.objects.create(text=cls.text, status='proofreading')
+        cls.audio = Audiobook.objects.create(text=cls.text)
+        # Nagranie zakończone – korekta czeka na przejęcie.
+        AudiobookStage.objects.create(text=cls.text, stage_type='recording', position=1, is_completed=True,
+                                      start_unknown=True)
+        AudiobookStage.objects.create(text=cls.text, stage_type='proofreading', position=2)
+        refresh_status(cls.audio)
         cls.url = reverse('core:claim_audio_proofreading', args=[cls.text.pk])
         cls.queue = reverse('core:audio_proofreading')
 
@@ -55,7 +60,7 @@ class AudioClaimTests(TestCase):
         self.assertEqual(self.client.post(self.url, {'_edit_version': stale}).status_code, 409)
         with self.assertRaises(ValidationError):
             claim_proofreading(text_id=self.text.pk, user=self.other)
-        self.assertEqual(AudiobookStage.objects.filter(text=self.text).count(), 1)
+        self.assertEqual(AudiobookStage.objects.filter(text=self.text).count(), 2)
         finish_stage(text_id=self.text.pk, stage_id=stage.pk, user=self.reader)
         self.client.force_login(self.reader)
         self.assertEqual(self.client.get(self.queue).context['page_obj'].paginator.count, 0)
@@ -63,21 +68,29 @@ class AudioClaimTests(TestCase):
         with self.assertRaises(ValidationError):
             claim_proofreading(text_id=self.text.pk, user=self.reader)
 
-    def test_preserves_existing_start_and_previous_completed_performer(self):
-        old = AudiobookStage.objects.create(text=self.text, stage_type='proofreading', performer=self.reader,
-            is_completed=True, ended_at=timezone.localdate() - timedelta(days=5))
-        active = AudiobookStage.objects.create(text=self.text, stage_type='proofreading',
-            started_at=timezone.localdate() - timedelta(days=2))
-        self.audio.active_stage = active
-        self.audio.save()
+    def test_repeated_proofreading_keeps_previous_performer(self):
+        AudiobookStage.objects.filter(text=self.text, stage_type='proofreading').update(
+            performer=self.reader, is_completed=True, ended_at=timezone.localdate() - timedelta(days=5))
+        AudiobookStage.objects.create(text=self.text, stage_type='corrections', position=3, is_completed=True,
+                                      start_unknown=True)
+        again = AudiobookStage.objects.create(text=self.text, stage_type='proofreading', position=4)
+        refresh_status(self.audio)
+        self.assertEqual(self.audio.status, 'proofreading_waiting')
         self.client.force_login(self.reader)
         self.assertContains(self.client.get(self.queue), 'Przejmij')
         claim_proofreading(text_id=self.text.pk, user=self.other)
-        active.refresh_from_db()
-        old.refresh_from_db()
-        self.assertEqual(active.started_at, timezone.localdate() - timedelta(days=2))
-        self.assertEqual(active.performer, self.other)
+        again.refresh_from_db()
+        old = AudiobookStage.objects.get(text=self.text, position=2)
+        self.assertEqual((again.started_at, again.performer), (timezone.localdate(), self.other))
         self.assertEqual(old.performer, self.reader)
+
+    def test_started_proofreading_cannot_be_claimed(self):
+        AudiobookStage.objects.filter(text=self.text, position=2).update(
+            started_at=timezone.localdate() - timedelta(days=2))
+        refresh_status(self.audio)
+        self.assertEqual(self.audio.status, 'proofreading')
+        with self.assertRaises(ValidationError):
+            claim_proofreading(text_id=self.text.pk, user=self.other)
 
     def test_role_and_production_guards(self):
         with self.assertRaises(PermissionDenied):
@@ -98,13 +111,17 @@ class AudioClaimTests(TestCase):
         with self.assertRaises(PermissionDenied):
             claim_proofreading(text_id=self.text.pk, user=self.other)
 
-    def test_legacy_start_is_preserved_when_claim_creates_missing_stage(self):
-        self.audio.proofreader = self.reader
-        self.audio.proofreading_started_at = timezone.localdate() - timedelta(days=3)
-        self.audio.save()
+    def test_claim_creates_missing_stage_for_legacy_data(self):
+        Audiobook.objects.filter(pk=self.audio.pk).update(active_stage=None)
+        AudiobookStage.objects.filter(text=self.text, position=2).delete()
+        self.audio.refresh_from_db()
+        refresh_status(self.audio)
+        self.assertEqual((self.audio.status, self.audio.active_stage_id), ('proofreading_waiting', None))
         stage = claim_proofreading(text_id=self.text.pk, user=self.reader)
-        self.assertEqual(stage.started_at, self.audio.proofreading_started_at)
+        self.assertEqual((stage.stage_type, stage.position, stage.started_at), ('proofreading', 2, timezone.localdate()))
         self.assertIsNone(stage.ended_at)
+        self.audio.refresh_from_db()
+        self.assertEqual((self.audio.status, self.audio.active_stage_id), ('proofreading', stage.pk))
 
     def test_detail_contact_buttons_and_proofreader_link(self):
         narrator = AudioContributor.objects.create(name='Lektor Testowy')

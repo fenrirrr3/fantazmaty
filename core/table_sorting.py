@@ -350,22 +350,16 @@ def prepare_table_sort(request, items):
     if request.resolver_match and request.resolver_match.view_name in ('core:audiobooks', 'core:audio_proofreading', 'core:assign_audio_proofreader'):
         fields = {
             'Antologia': ('anthology', 'anthology__title'), 'Autor': ('author', 'audio_author'),
-            'Tytuł': ('title', 'title'), 'Status': ('status', 'audio_status'),
+            'Tytuł': ('title', 'title'), 'Status': ('status', 'audio_status_rank'),
             'Lektor': ('narrator', 'audiobook__narrator_name'), 'Dźwiękowiec': ('engineer', 'audiobook__engineer_name'),
             'Montaż': ('engineer', 'audiobook__engineer_name'),
             'Korektor audiobooka': ('proofreader', 'audiobook__proofreader__person_profile__last_name'),
-            'Nagrywanie od': ('recording', 'audiobook__recording_started_at'),
-            'Korekta od': ('proofreading', 'audiobook__proofreading_started_at'),
-            'Historia korekty': ('proofreading', 'audiobook__proofreading_started_at'),
-            'Poprawki od': ('corrections', 'audiobook__corrections_started_at'),
-            'Montaż od': ('editing', 'audiobook__editing_started_at'),
-            'Czeka na publikację od': ('awaiting', 'audiobook__awaiting_publication_started_at'),
+            'Historia korekty': ('proofreading', 'audio_proofreading_date'),
             'Data premiery': ('premiere', 'audiobook__premiere_date'),
             'YouTube': ('youtube', 'audiobook__youtube_url'), 'HearThis': ('hearthis', 'audiobook__hearthis_url'),
         }
         if request.resolver_match.view_name == 'core:audiobooks':
-            for label in ('Nagrywanie od', 'Korekta od', 'Poprawki od', 'Montaż od', 'Czeka na publikację od', 'Historia korekty'):
-                fields.pop(label, None)
+            fields.pop('Historia korekty', None)
             fields['Montażysta'] = ('engineer', 'audiobook__engineer_name')
             for label, kind in (('Nagrywanie', 'recording'), ('Korekta', 'proofreading'), ('Poprawki', 'corrections'), ('Montaż', 'editing')):
                 fields[label] = (kind, f'audio_{kind}_date')

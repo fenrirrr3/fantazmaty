@@ -24,9 +24,7 @@ class AudiobookProductionForm(forms.ModelForm):
     class Meta:
         model = Audiobook
         exclude = ('text',)
-        widgets = {name: forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}) for name in (
-            'recording_started_at', 'proofreading_started_at', 'corrections_started_at',
-            'editing_started_at', 'awaiting_publication_started_at', 'premiere_date')}
+        widgets = {'premiere_date': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'})}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -93,21 +91,27 @@ class AudiobookAssignmentForm(AudiobookProductionForm):
         exclude = ()
 
 
-class AudiobookStageForm(forms.Form):
-    stage_type = forms.ChoiceField(label='Etap', choices=())
-    started_at = forms.DateField(label='Data rozpoczęcia', initial=timezone.localdate,
-        help_text='Przy etapie Opublikowane to data publikacji; etap nie wymaga zakończenia.',
-        widget=forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}))
+class AudiobookQueueForm(forms.Form):
+    """Decyzja koordynatora: do którego etapu kieruje audiobook."""
+    stage_type = forms.ChoiceField(label='Następny etap', choices=())
 
-    def __init__(self, *args, allowed=None, **kwargs):
+    def __init__(self, *args, allowed=(), **kwargs):
         super().__init__(*args, **kwargs)
-        from core.audiobook_services import STAGE_ORDER
-        labels = dict(Audiobook.Status.choices)
-        kinds = STAGE_ORDER if allowed is None else allowed
-        self.fields['stage_type'].choices = [(kind, labels[kind]) for kind in kinds]
+        from core.audiobook_services import stage_label
+        self.fields['stage_type'].choices = [(kind, stage_label(kind)) for kind in allowed]
 
-    def clean_started_at(self):
-        value = self.cleaned_data['started_at']
-        if value > timezone.localdate():
-            raise forms.ValidationError('Data rozpoczęcia nie może być w przyszłości.')
+
+class AudiobookStageDateForm(forms.Form):
+    """Data rozpoczęcia lub zakończenia. Puste pole = data nieznana (dla starszych nagrań)."""
+    date = forms.DateField(label='Data', required=False,
+                           widget=forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'}))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['date'].widget.attrs['max'] = timezone.localdate().isoformat()
+
+    def clean_date(self):
+        value = self.cleaned_data['date']
+        if value and value > timezone.localdate():
+            raise forms.ValidationError('Data nie może być w przyszłości.')
         return value

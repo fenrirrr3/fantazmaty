@@ -186,16 +186,13 @@ class Command(BaseCommand):
                 started_at=start, ended_at=end, is_completed=True))
             if len(equivalent) > 1 or (equivalent and (equivalent[0].import_key or equivalent[0].performer_id not in (None, performer.pk))):
                 raise ValueError('Istniejąca historia korekty jest niejednoznaczna; nie dodano duplikatu.')
-            stage_obj = equivalent[0] if equivalent else AudiobookStage(**values)
+            stage_obj = equivalent[0] if equivalent else AudiobookStage(**values, position=index + 1)
             stage_obj.performer = performer
             stage_obj.import_key = import_key
             stage_obj.full_clean()
             stage_obj.save()
             stages.append({'id': stage_obj.pk, 'action': 'uzupełniono' if equivalent else 'dodano',
                 'performer_id': performer.pk, 'started_at': start, 'ended_at': end})
-        starts = [known_date(s['started_at']) for s in row.get('proofreading', []) if s['started_at']]
-        if starts:
-            desired['proofreading_started_at'] = min(starts)
         changes = {field: {'old': getattr(audio, field), 'new': value}
             for field, value in desired.items() if getattr(audio, field) != value}
         for field, value in desired.items():

@@ -176,7 +176,7 @@ class ContactsAndRecruitmentTests(TestCase):
     def test_existing_audio_contact_migration_is_idempotent_and_preserves_work(self):
         self.member.email = 'migration63@example.test'
         self.member.save(update_fields=['email'])
-        apps = MigrationExecutor(connection).loader.project_state([('core', '0030_contacts_and_team_status')]).apps
+        apps = MigrationExecutor(connection).loader.project_state([('core', '0043_remove_audiobook_stage_dates')]).apps  # bieżący schemat bazy testowej
         Audio = apps.get_model('core', 'Audiobook')
         rows = []
         for i in range(2):

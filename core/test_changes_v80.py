@@ -162,7 +162,7 @@ class ChangesV80Tests(TestCase):
         url = reverse("core:audiobook_detail", args=[self.text.pk])
         page = self.client.get(url)
         self.assertTrue(page.context["can_edit"])
-        self.assertFalse(page.context["can_manage_stages"])
+        self.assertFalse(page.context["can_queue"] or page.context["can_pause"] or page.context["can_start"])
         self.assertNotContains(page, "Dodaj etap")
         data = {
             "action": "publication",
@@ -179,10 +179,9 @@ class ChangesV80Tests(TestCase):
             self.client.post(
                 url,
                 {
-                    "action": "start_stage",
+                    "action": "queue",
                     "_edit_version": self.token(),
-                    "stage_type": "recording",
-                    "started_at": "2020-05-05",
+                    "queue-stage_type": "recording",
                 },
             ).status_code,
             403,
@@ -333,7 +332,7 @@ class ChangesV80Tests(TestCase):
         page = self.client.get(url)
         self.assertEqual(page.status_code, 200)
         self.assertTrue(page.context["can_edit"])
-        self.assertFalse(page.context["can_manage_stages"])
+        self.assertFalse(page.context["can_queue"] or page.context["can_pause"] or page.context["can_start"])
         self.assertEqual(self.client.post(url, {"action": "people", "_edit_version": self.token(),
             "people-narrator_name": "Uzupełniony lektor"}).status_code, 302)
         audio.refresh_from_db()

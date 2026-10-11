@@ -88,21 +88,37 @@ class AudioContributor(models.Model):
                     **{f'{role}_name': self.name, f'{role}_email': self.email})
 
 
+class StageType(models.TextChoices):
+    """Etapy pracy nad audiobookiem – jak w procesie tekstów: każdy ma daty i wykonawcę."""
+    RECORDING = 'recording', 'Nagranie'
+    PROOFREADING = 'proofreading', 'Korekta'
+    CORRECTIONS = 'corrections', 'Nanoszenie poprawek'
+    EDITING = 'editing', 'Montaż'
+
+
 class Audiobook(models.Model):
     objects = VersionedQuerySet.as_manager()
 
     class Status(models.TextChoices):
-        PENDING = 'pending', 'Do nagrania'
-        RECORDING = 'recording', 'Trwa nagrywanie'
-        PROOFREADING = 'proofreading', 'Korekta'
+        """Stan wyliczany z etapów (pole jest tylko kopią do filtrowania – ustawia je refresh_status)."""
+        PENDING = 'pending', 'Otwarte'
+        RECORDING_WAITING = 'recording_waiting', 'Czeka na nagranie'
+        RECORDING = 'recording', 'Trwa nagranie'
+        PROOFREADING_WAITING = 'proofreading_waiting', 'Czeka na korektę'
+        PROOFREADING = 'proofreading', 'Trwa korekta'
+        AFTER_PROOFREADING = 'after_proofreading', 'Po korekcie'
+        CORRECTIONS_WAITING = 'corrections_waiting', 'Czeka na poprawki'
         CORRECTIONS = 'corrections', 'Nanoszenie poprawek'
-        EDITING = 'editing', 'Montaż'
-        AWAITING_PUBLICATION = 'awaiting_publication', 'Czeka na publikację'
+        AFTER_CORRECTIONS = 'after_corrections', 'Po poprawkach'
+        EDITING_WAITING = 'editing_waiting', 'Oczekuje na montaż'
+        EDITING = 'editing', 'Trwa montaż'
+        AWAITING_PUBLICATION = 'awaiting_publication', 'Oczekuje na publikację'
         PUBLISHED = 'published', 'Opublikowane'
+        PAUSED = 'paused', 'Prace wstrzymane'
 
     text = models.OneToOneField('texts.Text', on_delete=models.PROTECT, related_name='audiobook', verbose_name='tekst')
     active_stage = models.OneToOneField('core.AudiobookStage', on_delete=models.PROTECT, null=True, blank=True,
-        editable=False, related_name='active_for', verbose_name='trwający etap')
+        editable=False, related_name='active_for', verbose_name='bieżący etap (oczekujący lub trwający)')
     status = models.CharField('status audiobooka', max_length=24, choices=Status.choices, default=Status.PENDING, db_index=True)
     narrator_name = models.CharField('lektor – imię i nazwisko', max_length=255, blank=True)
     narrator_contact = models.ForeignKey(AudioContributor, on_delete=models.PROTECT, null=True, blank=True,
@@ -114,11 +130,7 @@ class Audiobook(models.Model):
     engineer_email = models.EmailField('e-mail dźwiękowca', blank=True)
     proofreader = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
         related_name='proofread_audiobooks', verbose_name='korektor audiobooka')
-    recording_started_at = models.DateField('rozpoczęcie nagrywania', null=True, blank=True)
-    proofreading_started_at = models.DateField('rozpoczęcie korekty', null=True, blank=True)
-    corrections_started_at = models.DateField('rozpoczęcie nanoszenia poprawek', null=True, blank=True)
-    editing_started_at = models.DateField('rozpoczęcie montażu', null=True, blank=True)
-    awaiting_publication_started_at = models.DateField('oczekiwanie na publikację od', null=True, blank=True)
+    paused_at = models.DateField('prace wstrzymane od', null=True, blank=True, editable=False)
     premiere_date = models.DateField('data premiery', null=True, blank=True)
     youtube_url = models.URLField('YouTube', max_length=1000, blank=True, validators=[validate_youtube_url])
     hearthis_url = models.URLField('HearThis', max_length=1000, blank=True, validators=[validate_hearthis_url])
@@ -155,13 +167,24 @@ class Audiobook(models.Model):
             return super().save(*args, **kwargs)
 
     @property
-    def awaiting_next_stage(self):
-        return self.status not in (self.Status.PENDING, self.Status.PUBLISHED) and not self.active_stage_id
+    def current_status(self):
+        """Opublikowane dopiero od dnia premiery; wcześniej – oczekuje na publikację."""
+        from django.utils import timezone
+        if self.status == self.Status.PUBLISHED and self.premiere_date and self.premiere_date > timezone.localdate():
+            return self.Status.AWAITING_PUBLICATION
+        return self.status
 
     @property
     def status_label(self):
-        from core.audiobook_services import status_text
-        return status_text(self)
+        return dict(self.Status.choices).get(self.current_status, self.current_status)
+
+    @property
+    def is_published(self):
+        return self.current_status == self.Status.PUBLISHED
+
+    @property
+    def awaiting_decision(self):
+        return self.status in (self.Status.AFTER_PROOFREADING, self.Status.AFTER_CORRECTIONS)
 
     @property
     def publication_links(self):
@@ -195,10 +218,18 @@ class Audiobook(models.Model):
 
 
 class AudiobookStage(models.Model):
+    """Jedno wykonanie etapu. Oczekuje (brak startu), trwa (start lub start_unknown), zakończony.
+
+    Daty i wykonawca są opcjonalne – historyczne nagrania często ich nie mają.
+    """
     objects = VersionedQuerySet.as_manager()
     text = models.ForeignKey('texts.Text', on_delete=models.PROTECT, related_name='audiobook_stages', verbose_name='tekst')
-    stage_type = models.CharField('etap', max_length=24, choices=Audiobook.Status.choices)
+    stage_type = models.CharField('etap', max_length=24, choices=StageType.choices)
+    position = models.PositiveIntegerField('kolejność', default=0, db_index=True)
+    queued_at = models.DateField('oczekuje od', null=True, blank=True)
     started_at = models.DateField('data rozpoczęcia', null=True, blank=True)
+    start_unknown = models.BooleanField('rozpoczęty (data nieznana)', default=False,
+        help_text='Etap trwał lub trwa, ale data rozpoczęcia nie jest znana.')
     ended_at = models.DateField('data zakończenia', null=True, blank=True)
     is_completed = models.BooleanField('zakończony', default=False)
     performer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True,
@@ -208,10 +239,20 @@ class AudiobookStage(models.Model):
     class Meta:
         verbose_name = 'etap audiobooka'
         verbose_name_plural = 'Historia etapów audiobooków'
-        ordering = ('pk',)
+        ordering = ('position', 'pk')
         constraints = [models.CheckConstraint(condition=models.Q(ended_at__isnull=True)
             | models.Q(started_at__isnull=True) | models.Q(ended_at__gte=models.F('started_at')),
             name='audio_stage_end_after_start')]
 
     def __str__(self):
         return f'{self.text} – {self.get_stage_type_display()}'
+
+    @property
+    def is_started(self):
+        return bool(self.started_at or self.start_unknown or self.is_completed)
+
+    @property
+    def state(self):
+        if self.is_completed:
+            return 'completed'
+        return 'active' if self.is_started else 'waiting'
