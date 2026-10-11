@@ -198,6 +198,19 @@ class RebuildDetailTests(SimpleTestCase):
         with self.assertRaisesMessage(RebuildUnsupported, 'nierozpoznany krój czcionki z motywu'):
             inspect_docx(saved(document))
 
+    def test_missing_theme_font_is_reported_once_per_document(self):
+        """Regresja: brak czcionki motywu to jedna uwaga, nie jedna na każdy fragment tekstu."""
+        document = Document()
+        for _ in range(3):
+            document.add_paragraph('Tekst').add_run(' dalej')
+        for key, relationship in list(document.part.rels.items()):
+            if relationship.reltype.endswith('/theme'):
+                document.part.drop_rel(key)
+        with self.assertRaises(RebuildUnsupported) as caught:
+            inspect_docx(saved(document))
+        self.assertEqual(caught.exception.omissions,
+                         ['nierozpoznany krój czcionki z motywu (zastosujemy domyślny) (liczba: 1)'])
+
     def test_one_equation_is_counted_once(self):
         """Regresja: części równania (m:r, m:t) nie są liczone jako osobne równania."""
         document = Document()

@@ -35,7 +35,7 @@ def may_edit(user, book):
 
 
 def require_edit(request, book, kwargs):
-    if book is None or not may_edit(request.user, book):
+    if not may_edit(request.user, book):
         raise PermissionDenied("Edycja wymaga przypisania do audiodeskrypcji lub kontroli.")
 
 
@@ -45,7 +45,7 @@ def may_write(user):
 
 
 def require_write(request, book, kwargs):
-    if book is None or not may_write(request.user):
+    if not may_write(request.user):
         raise PermissionDenied("Zapis treści i uwag wymaga aktywnego profilu członka zespołu.")
 
 

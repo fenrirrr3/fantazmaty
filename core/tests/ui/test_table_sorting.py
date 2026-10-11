@@ -23,8 +23,10 @@ from texts.models import Anthology, Review, ReviewAssignment, Text
 from workflow.models import WorkflowRoleAssignment, WorkflowStage
 
 # Trasy ze stronicowanymi tabelami; „my_reviews” ogląda recenzent, resztę superużytkownik.
-SORTABLE_ROUTES = (
-    'core:text_list', 'core:my_texts', 'core:available_texts', 'core:workflow_list',
+# Listy tekstów i etapów budują rozbudowane zapytania procesu, więc mają osobną klasę testów
+# (przy --parallel obie części kontraktu wykonują się równolegle).
+TEXT_TABLE_ROUTES = ('core:text_list', 'core:my_texts', 'core:available_texts', 'core:workflow_list')
+SORTABLE_ROUTES = TEXT_TABLE_ROUTES + (
     'core:review_list', 'core:my_reviews', 'core:author_list', 'core:people_list',
     'core:anthology_list', 'core:recruitment_list', 'core:extract_list',
     'core:anthology_corrections', 'core:user_activity', 'core:notification_queue',
@@ -46,8 +48,9 @@ def sort_request(sort, user):
     return request
 
 
-@tag('slow')
-class SortableTablesContractTests(CoreTestDataMixin, TestCase):
+class SortableTablesContractData(CoreTestDataMixin):
+    """Dane i sprawdzenie kontraktu: każda kolumna danych ma sortowanie serwera w obu kierunkach."""
+
     @classmethod
     def setUpTestData(cls):
         super().setUpTestData()
@@ -62,8 +65,8 @@ class SortableTablesContractTests(CoreTestDataMixin, TestCase):
         novel.novel.authors.add(cls.author)
         Illustrator.objects.create(first_name='Artysta')
 
-    def test_every_data_header_has_a_server_sort_in_both_directions(self):
-        for route in SORTABLE_ROUTES:
+    def assert_every_data_header_sorts_in_both_directions(self, routes):
+        for route in routes:
             self.client.force_login(self.reviewer if route == 'core:my_reviews' else self.superuser)
             with self.subTest(route=route):
                 response = self.client.get(reverse(route))
@@ -88,6 +91,12 @@ class SortableTablesContractTests(CoreTestDataMixin, TestCase):
                                 result = self.client.get(reverse(route), {param: direction + key})
                                 self.assertEqual(result.status_code, 200)
 
+
+class TextTablesSortContractTests(SortableTablesContractData, TestCase):
+    @tag('slow')
+    def test_text_and_stage_tables_sort_every_data_header_in_both_directions(self):
+        self.assert_every_data_header_sorts_in_both_directions(TEXT_TABLE_ROUTES)
+
     def test_computed_workflow_columns_sort_without_losing_rows(self):
         for context, key in ((workflow_list_context(user=self.superuser, params=QueryDict()), 'stages'),
                              (my_texts_context(user=self.editor, params=QueryDict()), 'texts')):
@@ -97,6 +106,13 @@ class SortableTablesContractTests(CoreTestDataMixin, TestCase):
                 with self.subTest(sort=sort):
                     result, _ = prepare_table_sort(sort_request(sort, self.superuser), rows)
                     self.assertEqual(len(list(result)), len(list(rows)))
+
+
+class OtherTablesSortContractTests(SortableTablesContractData, TestCase):
+    @tag('slow')
+    def test_other_tables_sort_every_data_header_in_both_directions(self):
+        self.assert_every_data_header_sorts_in_both_directions(
+            [route for route in SORTABLE_ROUTES if route not in TEXT_TABLE_ROUTES])
 
 
 class TableSortingTests(CoreTestDataMixin, TestCase):

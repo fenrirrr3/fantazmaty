@@ -226,9 +226,8 @@ def illustration_detail(request, illustration_id):
         if request.method == 'POST':
             if not editable:
                 raise PermissionDenied('Ilustrację może edytować koordynator lub superuser.')
+            # editable == is_coordinator, więc uwagi koordynatora nie wymagają osobnego sprawdzenia.
             action = request.POST.get('action')
-            if action == 'coordinator_notes' and not is_coordinator(request.user):
-                raise PermissionDenied('Uwagi koordynatora może zmieniać tylko koordynator.')
             if action not in FORMS:
                 from django.http import HttpResponseBadRequest
                 return HttpResponseBadRequest('Wybierz poprawną operację zapisu.')

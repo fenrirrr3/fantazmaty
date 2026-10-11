@@ -14,7 +14,7 @@ from fantazmaty.testing import create_member, create_superuser
 from people.models import Person
 from texts.admin import AnthologyAdmin, ExtractVolumeCreditInline, TextAdminForm
 from texts.extract_whole import SOURCE, ensure_whole_text
-from texts.models import Anthology, ExtractTextLink, ExtractVolume, ExtractVolumeCredit, Text
+from texts.models import Anthology, ExtractVolume, ExtractVolumeCredit, Text
 
 from .support import AnthologyPageData
 
@@ -177,7 +177,7 @@ class ExtractVolumeCreditTests(TestCase):
     def test_volume_records_cannot_be_added_or_deleted_in_admin(self):
         request = RequestFactory().get('/')
         request.user = create_superuser('volume-admin')
-        for model in (ExtractVolume, ExtractTextLink):
+        for model in (ExtractVolume,):
             model_admin = admin.site.get_model_admin(model)
             self.assertFalse(model_admin.has_add_permission(request))
             self.assertFalse(model_admin.has_delete_permission(request))

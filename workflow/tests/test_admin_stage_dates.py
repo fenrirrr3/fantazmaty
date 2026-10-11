@@ -322,9 +322,9 @@ class AdminStageDatesTests(TestCase):
     def test_admin_rejects_post_of_completed_dateless_verification(self):
         self.imported_editing_checkpoints('first_verification')
         url = reverse('admin:workflow_stage_dates', args=[self.stage.pk])
-        response = self.client.get(url)
-        self.assertNotContains(response, '<option value="first_verification">')
-        self.assertContains(response, '<option value="second_verification">')
+        choices = dict(self.client.get(url).context['form'].fields['next_stage'].choices)
+        self.assertNotIn('first_verification', choices)
+        self.assertIn('second_verification', choices)
         response = self.client.post(url, {'started_at': self.start.isoformat(),
             'ended_at': self.end.isoformat(), 'finish': 'on', 'next_stage': 'first_verification',
             'version': version_of(self.text)})

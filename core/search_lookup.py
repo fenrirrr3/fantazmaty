@@ -24,16 +24,13 @@ class PolishContains(IContains):
 
     def process_lhs(self, compiler, connection, lhs=None):
         expression = lhs if lhs is not None else self.lhs
+        # Obsługiwane bazy: SQLite (testy) i MySQL (produkcja).
         if connection.vendor == 'sqlite':
             expression = Func(expression, function='cms_fold_text', output_field=TextField())
-        elif connection.vendor == 'mysql':
+        else:
             # The Unicode collation handles accents; ł needs explicit folding.
             expression = Lower(Replace(Replace(expression, Value('ł'), Value('l')), Value('Ł'), Value('L')))
             expression = Collate(Func(expression, function='CONVERT', template='CONVERT(%(expressions)s USING utf8mb4)', output_field=TextField()), 'utf8mb4_unicode_ci')
-        else:
-            for source, target in zip('ĄĆĘŁŃÓŚŹŻąćęłńóśźż', 'ACELNOSZZacelnoszz'):
-                expression = Replace(expression, Value(source), Value(target))
-            expression = Lower(expression)
         return compiler.compile(expression)
 
     def get_rhs_op(self, connection, rhs):

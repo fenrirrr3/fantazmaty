@@ -17,6 +17,9 @@ class RebuildUnsupported(ValueError):
         super().__init__("; ".join(self.omissions))
 
 
+THEME_FONT_OMISSION = "nierozpoznany krój czcionki z motywu (zastosujemy domyślny)"
+
+
 class Omissions(Counter):
     def add(self, label):
         self[label] += 1
@@ -61,7 +64,8 @@ def _format_resolver(original, omissions):
                     value = theme_font(key)
                     if value:
                         return value
-                    omissions.add("nierozpoznany krój czcionki z motywu (zastosujemy domyślny)")
+                    # Brak czcionki motywu dotyczy całego dokumentu: jedna uwaga, nie jedna na fragment.
+                    omissions[THEME_FONT_OMISSION] = 1
                 value = node.get(qn("w:ascii")) or node.get(qn("w:hAnsi"))
                 if value:
                     return value

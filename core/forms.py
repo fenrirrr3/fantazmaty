@@ -545,20 +545,8 @@ class ReviewBulkImportForm(forms.Form):
             email = record["email"]
 
             if email not in author_cache:
-                matches = list(
-                    find_matching_authors(email=email)[:2]
-                )
-
-                if len(matches) > 1:
-                    self.add_error(
-                        "records",
-                        f"Wiersz {record['line_number']}: adres e-mail "
-                        "pasuje do więcej niż jednego autora. "
-                        "Najpierw uporządkuj rekordy autorów w adminie.",
-                    )
-                    continue
-
-                author_cache[email] = matches[0] if matches else None
+                # Unikalny Author.email: co najwyżej jeden autor.
+                author_cache[email] = find_matching_authors(email=email).first()
 
             author = author_cache[email]
             record["author_id"] = author.pk if author is not None else None

@@ -52,3 +52,26 @@ class CreateSuperuserTests(TestCase):
             call_command('createsuperuser', interactive=True, stdin=TTY(), stdout=StringIO(), stderr=errors)
         self.assertIn('Konto z tym adresem e-mail już istnieje.', errors.getvalue())
         self.assertEqual(get_user_model().objects.get(username='anna').email, 'nowa@example.test')
+
+    def test_user_model_required_fields_are_left_unchanged(self):
+        """Regresja: komenda wymaga imienia i nazwiska tylko na czas działania, bez zmiany modelu User."""
+        from core.management.commands.createsuperuser import Command
+        original = ['email']
+        Command()
+        self.assertEqual(get_user_model().REQUIRED_FIELDS, original)
+        self.create('anna@example.test')
+        self.assertEqual(get_user_model().REQUIRED_FIELDS, original)
+        with self.assertRaises(CommandError):
+            self.create('to-nie-adres')
+        self.assertEqual(get_user_model().REQUIRED_FIELDS, original)
+        with self.assertRaisesMessage(CommandError, 'already taken'):  # błąd zgłoszony wewnątrz komendy Django
+            self.create('inna@example.test')
+        self.assertEqual(get_user_model().REQUIRED_FIELDS, original)
+
+    def test_own_required_fields_of_a_user_model_are_restored(self):
+        """Model z własną listą REQUIRED_FIELDS (np. własny model użytkownika) dostaje ją z powrotem."""
+        own = ['email']
+        with patch.object(get_user_model(), 'REQUIRED_FIELDS', own):
+            self.create('anna@example.test')
+            self.assertIs(vars(get_user_model())['REQUIRED_FIELDS'], own)
+        self.assertNotIn('REQUIRED_FIELDS', vars(get_user_model()))

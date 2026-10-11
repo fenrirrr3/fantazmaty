@@ -1,14 +1,7 @@
-from django.db.models import Q
-from django.db.models.signals import m2m_changed, post_save
+from django.db.models.signals import m2m_changed, post_delete, post_save, pre_delete, pre_save
 from django.dispatch import receiver
 from .models import Person, Role
-from django.db.models.signals import pre_save
-from people.coordinator_access import revoke_coordinator, revoking
-from django.db.models.signals import pre_delete, post_delete
-
-
-def coordinator_query():
-    return Q(name__iexact="Koordynator") | Q(name__istartswith="Koordynator ")
+from people.coordinator_access import coordinator_query, revoke_coordinator, revoking
 
 
 # CMS coordination does not confer Django-admin access. Existing role/flag
@@ -47,8 +40,6 @@ def revoke_removed_roles(sender, instance, action, reverse, pk_set, using, **kwa
                 revoke_coordinator(person)
 
 
-
-
 def coordinator_name(name):
     name = name.casefold()
     return name == 'koordynator' or name.startswith('koordynator ')
@@ -60,10 +51,8 @@ def remember_coordinator_members(sender, instance, **kwargs):
     old_name = sender.objects.filter(pk=instance.pk).values_list('name', flat=True).first() if instance.pk else None
     if not old_name or not coordinator_name(old_name):
         instance._coordinator_members = []
-    elif sender is Role:
-        instance._coordinator_members = list(instance.people.values_list('pk', flat=True))
     else:
-        instance._coordinator_members = list(Person.objects.filter(user__groups=instance).values_list('pk', flat=True))
+        instance._coordinator_members = list(instance.people.values_list('pk', flat=True))
 
 
 @receiver(post_save, sender=Role)
@@ -72,6 +61,5 @@ def revoke_lost_coordinator_name(sender, instance, signal, **kwargs):
     if revoking.get() or (signal is post_save and coordinator_name(instance.name)):
         return
     for person in Person.objects.filter(pk__in=getattr(instance, '_coordinator_members', [])):
-        remaining = person.roles.filter(coordinator_query()).exists() if sender is Role else bool(person.user_id and person.user.groups.filter(coordinator_query()).exists())
-        if not remaining and not person.legacy_coordinator_access:
+        if not person.legacy_coordinator_access and not person.roles.filter(coordinator_query()).exists():
             revoke_coordinator(person)

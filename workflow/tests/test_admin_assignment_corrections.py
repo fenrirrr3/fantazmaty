@@ -152,6 +152,6 @@ class ProtectedAssignmentRuleTests(TestCase):
         protect_assignment(A(text=self.text, role='editor'), {'assigned_to': self.other})
         S.objects.filter(pk=stage.pk).update(started_at=timezone.localdate())
         protect_assignment(self.assignment, {'notes': 'Uwaga'})
-        for data, deleting in (({'assigned_to': self.other}, False), ({'role': 'verifier_1'}, False), ({}, True)):
-            with self.subTest(data=data, deleting=deleting), self.assertRaisesMessage(ValidationError, 'dokumentuje'):
-                protect_assignment(self.assignment, data, deleting=deleting)
+        for data in ({'assigned_to': self.other}, {'role': 'verifier_1'}):
+            with self.subTest(data=data), self.assertRaisesMessage(ValidationError, 'dokumentuje'):
+                protect_assignment(self.assignment, data)

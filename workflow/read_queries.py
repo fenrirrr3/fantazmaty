@@ -6,9 +6,11 @@ from workflow.services import STAGE_ROLES, ROLE_GROUPS
 
 
 def stage_role():
+    kinds = {}
+    for kind, role in {'ready_for_editing': A.Role.EDITOR, **STAGE_ROLES}.items():
+        kinds.setdefault(role, []).append(kind)
     return Case(
-        When(stage_type='ready_for_editing', then=Value(A.Role.EDITOR)),
-        *[When(stage_type=kind, then=Value(role)) for kind, role in STAGE_ROLES.items()],
+        *[When(stage_type__in=values, then=Value(role)) for role, values in kinds.items()],
         default=Value(''), output_field=CharField(),
     )
 
@@ -34,8 +36,13 @@ def exclude_obsolete_verification_placeholders(query):
     )
 
 
+def unfinished(query):
+    """Open stages without the placeholder check; use only when verification stages are filtered out."""
+    return query.filter(is_completed=False, ended_at__isnull=True)
+
+
 def open_stages(query):
-    return exclude_obsolete_verification_placeholders(query.filter(is_completed=False, ended_at__isnull=True))
+    return exclude_obsolete_verification_placeholders(unfinished(query))
 
 
 def active_stages(query, today):
@@ -56,7 +63,7 @@ def own_stages(user):
 
 def waiting_editor(query, today):
     return (Exists(open_stages(query).filter(stage_type__in=('first_verification', 'second_verification', 'author_editing')))
-            & ~Exists(active_stages(query, today).filter(stage_type='editing')))
+            & ~Exists(unfinished(query).filter(stage_type='editing', is_released=True, started_at__lte=today)))
 
 
 def reserved_assignments(user, today):
@@ -76,62 +83,64 @@ def reserved_assignments(user, today):
 
 def editorial_approval(stages, today):
     """Editing ends after completed coordinator control and handoff to K1."""
-    proofreading = stages.filter(
+    proofreading = Exists(stages.filter(
         stage_type=S.StageType.FIRST_PROOFREADING, is_released=True,
         is_skipped=False,
-    ).exclude(repetition__canceled_at__isnull=False)
+    ).exclude(repetition__canceled_at__isnull=False))
     # A prior proofreading pass cannot approve a new editorial repetition.
-    editorial_repeat = stages.filter(
+    editorial_repeat = Exists(stages.filter(
         repetition__isnull=False, repetition__completed_at__isnull=True,
         repetition__canceled_at__isnull=True, is_completed=False,
         stage_type__in=('editing', 'author_editing', 'first_verification', 'second_verification'),
-    )
-    # Preserve already closed imported texts whose historical dates are unknown.
-    imported_ready = (Exists(stages.filter(stage_type=S.StageType.READY))
-        & Exists(stages.filter(stage_type=S.StageType.EDITING, imported_completed=True, is_completed=True)))
-    legacy_approval = (Exists(proofreading) & ~Exists(editorial_repeat)) | imported_ready
-    # Existing Ready texts keep their classification even with incomplete history.
+    ))
+    # Existing Ready texts keep their classification even with incomplete history;
+    # imported Ready texts whose historical dates are unknown stay approved.
     ready = Exists(stages.filter(stage_type=S.StageType.READY))
+    imported_editing = Exists(stages.filter(stage_type=S.StageType.EDITING, imported_completed=True, is_completed=True))
+    legacy_approval = (proofreading & ~editorial_repeat) | imported_editing
     control = stages.filter(stage_type=S.StageType.EDITING_CONTROL, is_completed=True,
                             is_skipped=False).exclude(send_to_proofreading=False)
     returned_to_editor = stages.filter(stage_type=S.StageType.EDITING, is_completed=False,
                                        ended_at__isnull=True, is_released=True)
-    return ((ready & legacy_approval) | (~ready & Exists(proofreading)
-            & Exists(control) & ~Exists(editorial_repeat) & ~Exists(returned_to_editor)))
+    return ((ready & legacy_approval) | (~ready & proofreading
+            & Exists(control) & ~editorial_repeat & ~Exists(returned_to_editor)))
 
 
 def annotate_my_work(queryset, user, today):
+    """Work state of the user's texts: active, waiting or completed (mutually exclusive).
+
+    Each subquery is built once and the flags are written in a simplified,
+    equivalent form (every term is a non-null EXISTS):
+      active    = own_active & ~closed
+      waiting   = ~own_active & ~closed & (pending_own | reserved | editor waits for approval)
+      completed = own_completed & ~pending_own & ~editor_remaining & (closed | ~own_active & ~reserved)
+    Repeating whole flags inside each other used to multiply the SQL (and the
+    cost of building it) several times over.
+    """
     stages = S.objects.current_cycle().filter(text_id=OuterRef('pk'))
     own = own_stages(user).filter(text_id=OuterRef('pk'), workflow_cycle=OuterRef('current_workflow_cycle'))
-    pending_own = open_stages(own.filter(is_current=True))
+    pending_own = Exists(open_stages(own.filter(is_current=True)))
     assigned = A.objects.current_cycle().filter(text_id=OuterRef('pk'), assigned_to_id=user.pk)
-    reserved = reserved_assignments(user, today).filter(text_id=OuterRef('pk'), workflow_cycle=OuterRef('current_workflow_cycle'), is_current=True)
+    editor_assigned = Exists(assigned.filter(role=A.Role.EDITOR))
+    reserved = Exists(reserved_assignments(user, today).filter(
+        text_id=OuterRef('pk'), workflow_cycle=OuterRef('current_workflow_cycle'), is_current=True))
     closed = Exists(terminal(stages))
     # Praca redaktora pozostaje w toku podczas poprawek autora. To klasyfikacja
     # tekstu, nie przypisanie redaktorowi etapu wykonywanego przez autora.
-    with_author = (
-        Exists(assigned.filter(role=A.Role.EDITOR))
-        & Exists(open_stages(stages).filter(
-            stage_type=S.StageType.AUTHOR_EDITING, is_released=True,
-        ))
-    )
-    active = (Exists(active_stages(own.filter(is_current=True), today)) | with_author) & ~closed
-    editorial_work = Exists(assigned.filter(role=A.Role.EDITOR)) | Exists(own.filter(_work_role=A.Role.EDITOR))
-    editor_remaining = editorial_work & ~editorial_approval(stages, today)
-    live_editor_waiting = editor_remaining & Exists(assigned.filter(role=A.Role.EDITOR))
+    with_author = editor_assigned & Exists(unfinished(stages).filter(
+        stage_type=S.StageType.AUTHOR_EDITING, is_released=True,
+    ))
+    own_active = Exists(active_stages(own.filter(is_current=True), today)) | with_author
+    approved = editorial_approval(stages, today)
+    editor_remaining = (editor_assigned | Exists(own.filter(_work_role=A.Role.EDITOR))) & ~approved
     # The editor returns only for their own control, covered by pending_own
-    # and active above; the coordinator's control is not the editor's task.
-    pending = ~active & ~closed & (Exists(pending_own)
-        | Exists(reserved) | live_editor_waiting)
-    completed = Exists(own.filter(is_completed=True)) & ~Exists(pending_own) & ~active & ~pending & ~editor_remaining
+    # and own_active; the coordinator's control is not the editor's task.
+    # An assigned editor waits until editorial approval (editor_remaining & editor_assigned).
+    active = own_active & ~closed
+    pending = ~own_active & ~closed & (pending_own | reserved | (editor_assigned & ~approved))
+    completed = (Exists(own.filter(is_completed=True)) & ~pending_own & ~editor_remaining
+                 & (closed | (~own_active & ~reserved)))
     return queryset.annotate(work_active=active, work_waiting=pending, work_completed=completed)
-
-
-def filter_my_texts(queryset, user, selected_view, today):
-    queryset = annotate_my_work(queryset, user, today)
-    if selected_view == 'active':
-        return queryset.filter(Q(work_active=True) | Q(work_waiting=True))
-    return queryset
 
 
 def available_stages(user, access):

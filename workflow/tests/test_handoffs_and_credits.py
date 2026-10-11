@@ -336,9 +336,11 @@ class WithdrawalTests(StatusAssignmentFixtures):
         assignment = A.objects.create(text=story, role='editor', assigned_to=self.member)
         withdrawn = S.objects.create(text=story, stage_type='withdrawn', is_released=True)
         def queues():
-            return [self.client.get(reverse(name)) for name in ('illustrations:illustration_list', 'core:audiobooks')]
-        for response in queues():
-            self.assertNotContains(response, story.title)
+            """Czy tekst jest w kolejce ilustracji i w kolejce audiobooków."""
+            illustrations = self.client.get(reverse('illustrations:illustration_list')).context['page_obj']
+            audiobooks = self.client.get(reverse('core:audiobooks')).context['page_obj']
+            return (story.pk in {item.text_id for item in illustrations}, story.pk in {row['pk'] for row in audiobooks})
+        self.assertEqual(queues(), (False, False))
         illustration.refresh_from_db()
         story.refresh_from_db()
         self.assertEqual(illustration.coordinator_notes, 'Nie usuwać historii')
@@ -348,11 +350,9 @@ class WithdrawalTests(StatusAssignmentFixtures):
         # Historic or unreleased withdrawal must not hide an active text.
         withdrawn.is_current = False
         withdrawn.save(update_fields=['is_current'])
-        for response in queues():
-            self.assertContains(response, story.title)
+        self.assertEqual(queues(), (True, True))
         self.assertEqual(Illustration.objects.get(text=story).pk, illustration.pk)
         withdrawn.is_current = True
         withdrawn.is_released = False
         withdrawn.save(update_fields=['is_current', 'is_released'])
-        for response in queues():
-            self.assertContains(response, story.title)
+        self.assertEqual(queues(), (True, True))

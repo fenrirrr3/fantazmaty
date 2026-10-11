@@ -49,8 +49,6 @@ class AnthologyCorrection(models.Model):
     suggestion = models.TextField("propozycja poprawki", blank=True)
     status = models.CharField("status zmiany", max_length=20, choices=Status.choices, default=Status.NEW)
     submitted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, verbose_name="zgłaszający")
-    reporter_name = models.CharField("zgłaszający (z importu)", max_length=200, blank=True,
-        help_text="Imię i nazwisko z importu, gdy zgłaszający nie ma konta w CMS.")
     created_at = models.DateTimeField("zgłoszono", auto_now_add=True)
     updated_at = models.DateTimeField("zmieniono", auto_now=True)
     submission_key = models.UUIDField(null=True, unique=True, editable=False)

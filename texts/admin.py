@@ -22,7 +22,7 @@ from .models import (
     MAX_REVIEWERS,
     Anthology,
     AnthologyTask,
-    ExtractVolume, ExtractVolumeCredit, ExtractTextLink,
+    ExtractVolume, ExtractVolumeCredit,
     Review,
     ReviewAssignment,
     Reviewers,
@@ -338,7 +338,7 @@ class TextAdminForm(NormalizedFormMixin, forms.ModelForm):
         novel = (self.instance.anthology_id and self.instance.anthology.is_novel) or (
             str(anthology_id or '').isdecimal() and Anthology.objects.filter(pk=anthology_id, is_novel=True).exists())
         if 'length' in self.fields:
-            self.fields['length'].required = not novel and self.instance.import_source not in ('extracts-v1', 'extract-volume-v2')
+            self.fields['length'].required = not novel and self.instance.import_source != 'extract-volume-v2'
         if novel:
             for name in ('title', 'file_url', 'content_warnings'):
                 if name in self.fields:
@@ -1486,20 +1486,6 @@ from . import catalog_admin  # noqa: E402,F401
 class ExtractVolumeAdmin(admin.ModelAdmin):
     list_display = ('number', 'anthology')
     readonly_fields = ('number', 'anthology')
-
-    def has_add_permission(self, request):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False
-
-
-@admin.register(ExtractTextLink)
-class ExtractTextLinkAdmin(admin.ModelAdmin):
-    list_display = ('source_title', 'extract', 'text')
-    readonly_fields = ('source_title', 'title_key', 'extract', 'text')
-    search_fields = ('source_title',)
-    list_select_related = ('extract', 'text')
 
     def has_add_permission(self, request):
         return False

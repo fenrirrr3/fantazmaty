@@ -478,17 +478,29 @@ def my_texts_context(*, user, selected_view="active", params=None):
         selected_view = "active"
     include_authors = can_view_author_data(user)
     today = timezone.localdate()
-    from workflow.read_queries import filter_my_texts
-    texts = filter_my_texts(_user_texts(user, include_authors), user, selected_view, today)
+    from workflow.read_queries import annotate_my_work
+    own_ids = list(_user_texts(user, include_authors).order_by().values_list("pk", flat=True))
+    if selected_view == "active":
+        # Stan pracy liczymy jednym zapytaniem, tylko dla tekstów osoby; wynik zawęża
+        # listę i trafia do wierszy jako proste IN, bez drugiej, kosztownej klasyfikacji.
+        work = [row for row in annotate_my_work(Text.objects.filter(pk__in=own_ids), user, today).values_list(
+            "pk", "work_active", "work_waiting", "work_completed") if row[1] or row[2]] if own_ids else []
+        own_ids = [row[0] for row in work]
     # Zbiór własnych tekstów liczymy raz (lista ID). Zagnieżdżanie tak rozbudowanego
     # zapytania w każdym filtrze listy kosztowało ponad sekundę samego budowania SQL.
-    scope = Text.objects.filter(pk__in=list(texts.order_by().values_list("pk", flat=True)))
+    scope = Text.objects.filter(pk__in=own_ids)
     params = params.copy() if params is not None else {}
     params.setdefault("hide_ready", "0")
     filters = text_list_context(user=user, params=params, scope=scope, include_translations=True, include_novels=True)
     texts = filters.pop("filtered_queryset")
-    from workflow.read_queries import annotate_my_work
-    texts = annotate_my_work(texts, user, today)
+    if selected_view == "active":
+        texts = texts.annotate(**{
+            name: Q(pk__in=[row[0] for row in work if row[index]])
+            for index, name in enumerate(("work_active", "work_waiting", "work_completed"), 1)
+        })
+    else:
+        # Widok „wszystkie”: stan pracy tylko dla wierszy wyświetlanej strony.
+        texts = annotate_my_work(texts, user, today)
     # Show every own execution, including superseded assignments. This only
     # supplies labels; current work and permissions retain their existing rules.
     texts = texts.prefetch_related(Prefetch(

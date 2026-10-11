@@ -121,9 +121,9 @@ class ImportedWorkTests(TestCase):
             self.assertFalse(query.exists())
         self.client.force_login(person.user)
         response = self.client.get(reverse("core:person_detail", args=[person.pk]))
-        self.assertContains(response, "Dawna aktywność")
-        self.assertContains(response, "Weryfikator 4")
-        self.assertContains(response, "Kontrola redakcji")
+        imported = response.context["imported_work_summary"]
+        self.assertEqual({r["role"]: r["texts"] for r in imported}, dict.fromkeys(IMPORT_ONLY_ROLES, 1))
+        self.assertLessEqual({"Weryfikator 4", "Kontrola redakcji"}, {r["label"] for r in imported})
         self.assertEqual(response.context["assignments"], [])
 
     def test_filters_tables_and_people_tiles_hide_import_only_work_and_styling_tile(self):

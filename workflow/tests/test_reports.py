@@ -585,6 +585,24 @@ class ReportPageTests(TestCase):
         self.assertIn('redaktor Testowy', names(mode='login'))
         self.assertEqual(self.get('core:last_activity', self.coordinator, mode='x').context['mode'], 'work')
 
+    def test_last_activity_filters_by_role_and_marks_people_on_leave(self):
+        from people.models import Role, Vacation
+
+        redaktor = Role.objects.get(name='Redaktor')
+        Vacation.objects.create(person=self.other_editor.person_profile, start_date=self.today, until_revoked=True)
+        Vacation.objects.create(person=self.editor.person_profile, start_date=self.today - timedelta(days=9),
+                                end_date=timezone.now() - timedelta(days=1))
+        page = self.get('core:last_activity', self.coordinator, role=redaktor.pk, days=0)
+        self.assertEqual({str(person) for person in page.context['people']}, {'redaktor Testowy', 'inny Testowy'})
+        self.assertEqual({person.pk: person.on_leave for person in page.context['people']},
+                         {self.other_editor.person_profile.pk: True, self.editor.person_profile.pk: False})
+        self.assertEqual(page.context['role'], str(redaktor.pk))
+        self.assertContains(page, 'inny Testowy</a> <span class="inactivity-badge">Na urlopie</span>', html=False)
+        self.assertContains(page, 'Na urlopie', count=1)
+        everyone = self.get('core:last_activity', self.coordinator, role='nie-rola', days=0)
+        self.assertEqual(everyone.context['role'], '')
+        self.assertIn('koordynator Testowy', {str(person) for person in everyone.context['people']})
+
     def test_reviewer_activity_archive_scope(self):
         from core.selectors.reports import reviewer_activity_context
 

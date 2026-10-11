@@ -109,6 +109,14 @@ class VocabularyMergeTests(TestCase):
                 canonicalize(value, kind, register=True)
         self.assertFalse(VocabularyTerm.objects.filter(name__in=['a' * 256, 'g' * 101]).exists())
 
+    def test_rejected_value_registers_none_of_its_terms(self):
+        # Walidacja całej wartości poprzedza zapis: odrzucone pole nie zostawia
+        # w słowniku haseł, które stały przed zbyt długim lub przekroczyły limit sumy.
+        for value, kind in (('poprawne, ' + 'a' * 256, 'tag'), ('x' * 60 + ', ' + 'y' * 60, 'genre')):
+            with self.subTest(kind=kind), self.assertRaises(ValidationError):
+                canonicalize(value, kind, register=True)
+        self.assertFalse(VocabularyTerm.objects.filter(name__in=['poprawne', 'x' * 60, 'y' * 60]).exists())
+
     def test_refresh_adds_missing_terms_without_changing_records(self):
         from texts.models import Anthology
         novel = Anthology.objects.create(title='Powieść słownikowa', is_novel=True).novel

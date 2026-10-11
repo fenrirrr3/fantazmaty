@@ -57,22 +57,3 @@ class ExtractVolumeCredit(models.Model):
     def __str__(self):
         return f"{self.anthology} – {self.role}: {self.person}"
 
-
-class ExtractTextLink(models.Model):
-    extract = models.ForeignKey(
-        "texts.Extract", on_delete=models.PROTECT, related_name="imported_texts"
-    )
-    text = models.OneToOneField(
-        "texts.Text", on_delete=models.PROTECT, related_name="extract_origin"
-    )
-    title_key = models.CharField(max_length=255)
-    source_title = models.CharField(max_length=255)
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=("extract", "title_key"), name="unique_extract_accepted_title"
-            )
-        ]
-        verbose_name = "powiązanie miniatury"
-        verbose_name_plural = "powiązania miniatur"

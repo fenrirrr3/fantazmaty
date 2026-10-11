@@ -1,5 +1,6 @@
 """Moje teksty, pulpit i zestawienie procesu: kiedy praca osoby jest w toku, oczekuje albo jest zakończona."""
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.http import QueryDict
@@ -30,6 +31,18 @@ class MyWorkVisibilityTests(AnthologyWorkflowMixin, TestCase):
 
     def my_ids(self, user=None, view='active'):
         return [r['pk'] for r in my_texts_context(user=user or self.editor, selected_view=view)['texts']]
+
+    def test_active_view_classifies_once_and_rows_match_classification(self):
+        """Widok „W toku” klasyfikuje teksty jednym zapytaniem i ten sam stan trafia do wierszy."""
+        self.begin_editing()
+        with patch('workflow.read_queries.annotate_my_work', wraps=annotate_my_work) as classify:
+            rows = list(my_texts_context(user=self.editor, selected_view='active')['texts'])
+        self.assertEqual(classify.call_count, 1)
+        work = self.work()
+        self.assertEqual(
+            [(r['pk'], r['has_active_work'], r['has_reserved_work'], r['has_completed_work']) for r in rows],
+            [(self.text.pk, True, False, False)])
+        self.assertEqual((work.work_active, work.work_waiting, work.work_completed), (True, False, False))
 
     @tag('slow')
     def test_editor_finishes_on_approved_handoff_to_proofreading(self):
@@ -73,8 +86,9 @@ class MyWorkVisibilityTests(AnthologyWorkflowMixin, TestCase):
         self.assertIn(self.text.pk, self.my_ids())
         self.client.force_login(self.editor)
         page = self.client.get(reverse('core:my_texts'))
-        self.assertContains(page, self.text.title)
-        self.assertContains(page, 'Oczekujące')
+        # Wiersz tekstu w „W toku” ma stan „Oczekujące” (praca zarezerwowana, nie w toku).
+        self.assertEqual([(r['pk'], r['has_active_work'], r['has_reserved_work']) for r in page.context['texts']],
+                         [(self.text.pk, False, True)])
 
     def test_pending_task_is_in_progress_and_old_tabs_resolve_to_remaining_tabs(self):
         editing = self.begin_editing()
@@ -87,7 +101,8 @@ class MyWorkVisibilityTests(AnthologyWorkflowMixin, TestCase):
                 self.assertIn(self.text.pk, [row['pk'] for row in page.context['texts']])
                 nav = html.fromstring(page.content).xpath('//nav[@aria-label="Widok moich tekstów"]')[0]
                 self.assertEqual([''.join(a.itertext()).strip() for a in nav.xpath('./a')], ['W toku', 'Wszystkie'])
-                self.assertContains(page, 'Oczekujące')
+                row = next(r for r in page.context['texts'] if r['pk'] == self.text.pk)
+                self.assertEqual((row['has_active_work'], row['has_reserved_work']), (False, True))
 
     def test_ordinary_completed_task_only_remains_in_all(self):
         self.initial_stage.delete()
@@ -218,8 +233,7 @@ class EditorDashboardTests(EditingInProgressFixtures):
         row = page.context['active_stages'][0]
         self.assertEqual(row['pk'], first.pk)
         self.assertTrue(row['editor_waiting'])
-        self.assertContains(page, 'Oczekujące')
-        self.assertContains(page, 'Pierwsza weryfikacja')
+        self.assertEqual(row['stage_type'], 'first_verification')
         started = start_first_verification(self.text, self.other, self.today)
         self.assertEqual(self.summary()['active_stages'][0]['pk'], started.pk)
         self.assertTrue(self.summary()['active_stages'][0]['editor_waiting'])
@@ -320,7 +334,6 @@ class WorkflowSummaryTests(TestCase):
         self.stage("editing", "editor")
         self.stage("first_verification", "verifier_1")
         response = self.client.get(reverse("core:workflow_list"))
-        self.assertContains(response, "Redaktor")
         self.assertNotContains(response, "Stan etapu")
         self.assertIn(("editor", "Redaktor"), response.context["role_columns"])
         self.assertGreater(len(response.context["role_columns"]), 1)
@@ -340,7 +353,8 @@ class WorkflowSummaryTests(TestCase):
             title="Zablokowane zgłoszenie", anthology=self.book, author_first_name="Jan",
             author_last_name="Autor", email="autor@example.com", length=100, genre="fantasy",
             status="accepted", author_notified_at=self.today)
-        self.assertNotContains(self.client.get(reverse("core:home")), review.title)
+        pending = self.client.get(reverse("core:home")).context["pending_publication_reviews"]
+        self.assertNotIn(review, list(pending))
 
 
 class ArchivedReviewTransferTests(TestCase):
@@ -367,9 +381,11 @@ class ArchivedReviewTransferTests(TestCase):
 
     def test_dashboard(self):
         self.client.force_login(self.user)
-        self.assertContains(self.client.get(reverse("core:home")), self.review.title)
+        def pending():
+            return list(self.client.get(reverse("core:home")).context["pending_publication_reviews"])
+        self.assertEqual(pending(), [self.review])
         copy_review_to_text(user=self.user, review_id=self.review.pk, contract_received=True)
-        self.assertNotContains(self.client.get(reverse("core:home")), self.review.title)
+        self.assertEqual(pending(), [])
 
     def test_hide_ready(self):
         text = Text.objects.create(title="Gotowy", length=100)

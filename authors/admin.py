@@ -136,23 +136,15 @@ class AuthorAdminForm(NormalizedFormMixin, forms.ModelForm):
         ):
             return cleaned_data
 
-        first_name = cleaned_data.get("first_name", "")
-        last_name = cleaned_data.get("last_name", "")
+        # Imię i nazwisko są wymagane, a formularz bez błędów ma je niepuste.
+        conditions = Q(
+            first_name_lower=Lower(Value(cleaned_data["first_name"])),
+            last_name_lower=Lower(Value(cleaned_data["last_name"])),
+        )
+
         pseudonym = cleaned_data.get("pseudonym", "")
-
-        conditions = Q()
-
-        if first_name and last_name:
-            conditions |= Q(
-                first_name_lower=Lower(Value(first_name)),
-                last_name_lower=Lower(Value(last_name)),
-            )
-
         if pseudonym:
             conditions |= Q(pseudonym_lower=Lower(Value(pseudonym)))
-
-        if not conditions:
-            return cleaned_data
 
         queryset = Author.objects.alias(
             first_name_lower=Lower("first_name"),

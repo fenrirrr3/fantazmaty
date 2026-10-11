@@ -24,24 +24,22 @@ def tokens(value):
 
 def canonicalize(value, kind, *, register=False):
     names = tokens(value)
+    if any(len(name) > (100 if kind == 'genre' else 255) for name in names):
+        raise ValidationError('Nazwa hasła słownika jest zbyt długa.')
     entries = {term.key: term for term in VocabularyTerm.objects.filter(
         kind=kind, key__in=[term_key(name) for name in names]).select_related('canonical')}
     result = []
     for name in names:
-        if len(name) > (100 if kind == 'genre' else 255):
-            raise ValidationError('Nazwa hasła słownika jest zbyt długa.')
         term = entries.get(term_key(name))
-        if term:
-            name = (term.canonical or term).name
-        elif register:
-            if len(name) > (100 if kind == 'genre' else 255):
-                raise ValidationError('Nazwa hasła słownika jest zbyt długa.')
-            term, _ = VocabularyTerm.objects.get_or_create(kind=kind, key=term_key(name), defaults={'name': name})
-            name = (term.canonical or term).name
-        result.append(name)
+        result.append((term.canonical or term).name if term else name)
     value = ', '.join(tokens(', '.join(result)))
     if len(value) > (100 if kind == 'genre' else 5000):
         raise ValidationError('Po ujednoliceniu pole przekracza dopuszczalną długość.')
+    # Zapis dopiero po walidacji całej wartości: odrzucone pole nie zostawia haseł w słowniku.
+    if register:
+        for name in names:
+            if term_key(name) not in entries:
+                VocabularyTerm.objects.get_or_create(kind=kind, key=term_key(name), defaults={'name': name})
     return value
 
 

@@ -243,7 +243,18 @@ def last_activity(request):
     mode = request.GET.get('mode', 'work')
     if mode not in {'work', 'login'}:
         mode = 'work'
-    people = Person.objects.active()
+    from django.db.models import Exists
+    from people.models import Vacation
+    from people.role_ordering import ordered_team_roles
+    roles = list(ordered_team_roles())
+    role = request.GET.get('role', '')
+    role = role if role in {str(item.pk) for item in roles} else ''
+    now = timezone.now()
+    on_leave = Vacation.objects.filter(person_id=OuterRef('pk'), start_date__lte=timezone.localdate(now)).filter(
+        Q(until_revoked=True) | Q(end_date__gt=now))
+    people = Person.objects.active().annotate(on_leave=Exists(on_leave))
+    if role:
+        people = people.filter(roles=role)
     if mode == 'login':
         people = people.annotate(last_activity_at=F('user__last_login'), last_action=Value('Logowanie', output_field=CharField()))
     else:
@@ -254,4 +265,5 @@ def last_activity(request):
         people = people.filter(Q(last_activity_at__lte=timezone.now()-timedelta(days=days)) | Q(last_activity_at__isnull=True))
     people = people.order_by(F('last_activity_at').asc(nulls_first=True), 'last_name', 'first_name', 'pk')
     page = paginate_items(request, people)
-    return render(request, 'core/last_activity.html', {'people':page, 'page_obj':page, 'days':days, 'mode':mode})
+    return render(request, 'core/last_activity.html', {'people': page, 'page_obj': page, 'days': days, 'mode': mode,
+                                                       'roles': roles, 'role': role})

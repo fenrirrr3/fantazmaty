@@ -237,8 +237,6 @@ def audiobook_detail(request, text_id):
                     raise ValidationError('Nieznana operacja. Odśwież podgląd.')
             except ValidationError as exc:
                 errors = exc.messages
-            except Audiobook.DoesNotExist:
-                errors = ['Ten etap nie jest już aktualny. Odśwież podgląd.']
         stages = list(text.audiobook_stages.select_related('performer__person_profile').order_by('position', 'pk'))
         current = next((stage for stage in stages if stage.pk == audio.active_stage_id), None)
         own_proofreading = may_act_on_proofreading(request.user, audio)

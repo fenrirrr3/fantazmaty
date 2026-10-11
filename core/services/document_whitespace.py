@@ -65,8 +65,6 @@ def _paragraphs_from_soft_breaks(root):
         if not breaks:
             continue
         parts = _split_inline(paragraph, paragraph=True)
-        if len(parts) == 1:
-            continue
         for index, part in enumerate(parts):
             if index:
                 for key in tuple(part.attrib):

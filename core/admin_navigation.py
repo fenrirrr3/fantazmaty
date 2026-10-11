@@ -22,7 +22,7 @@ GROUPS = (
     ('history', 'Historia i diagnostyka', ('workflow.workflowstage', 'workflow.workflowroleassignment', 'core.workflowevent', 'core.useractivity')),
 )
 EXPANDED = ('submissions', 'texts', 'publication')
-DETAIL_MODELS = ('texts.extracttextlink', 'texts.textnote', 'authors.authornote', 'texts.reviewassignment', 'texts.reviewers',
+DETAIL_MODELS = ('texts.textnote', 'authors.authornote', 'texts.reviewassignment', 'texts.reviewers',
                  'workflow.workflowrepetition', 'workflow.workflowhandoff')
 LABELS = {
     'texts.review': 'Recenzje', 'people.person': 'Zespół', 'texts.extract': 'Ekstrakty',

@@ -170,7 +170,7 @@ class ReviewIntakeTests(TemporaryActivitySpoolMixin, TestCase):
         self.assertTrue(all('open' not in p for p in panels))
         self.assertLess(response.content.index('Wiele zgłoszeń'.encode()),
                         response.content.index('Pojedyncze zgłoszenie'.encode()))
-        self.assertContains(response, 'core/author-search.js')
+        self.assertRegex(response.content.decode(), r'core/author-search(\.[0-9a-f]+)?\.js')
         self.assertNotContains(self.client.get(reverse('core:home')), 'core/author-search.js')
         response = self.client.post(self.create_url, {'title': 'Błąd'})
         self.assertIn('open', IntakePanels(response.content).panels[1])

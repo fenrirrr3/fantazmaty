@@ -44,12 +44,8 @@ def _manageable_vacations(user):
     if is_coordinator(user):
         return queryset
 
-    person = get_active_person_profile(user)
-
-    if person is None:
-        return queryset.none()
-
-    return queryset.filter(person_id=person.pk)
+    # Ten sam warunek co get_active_person_profile, bez osobnej gałęzi „brak profilu”.
+    return queryset.filter(person__user_id=user.pk, person__user__is_active=True, person__is_external=False)
 
 
 def _vacation_redirect(user, vacation):

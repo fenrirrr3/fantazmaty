@@ -122,7 +122,7 @@ class PostLayoutBulkActionsTests(TestCase):
         doc = html.fromstring(self.client.get(url).content)
         self.assertEqual(set(doc.xpath('//*[@data-bulk-action][@hidden]/@data-bulk-action')),
                          {'status', 'assign', 'delete'})
-        self.assertTrue(doc.xpath('//script[contains(@src,"post-layout.js")]'))
+        self.assertTrue(doc.xpath('//script[contains(@src,"/post-layout.")]'))
         data = {'action': 'bulk', 'operation': 'delete', 'selected': [selection_token(self.manager, item)]}
         self.assertEqual(self.client.post(url, data).status_code, 400)
         self.assertEqual(self.client.post(url, {**data, 'confirm_delete': '1'}).status_code, 302)
@@ -159,7 +159,7 @@ class DropboxChooserTests(TestCase):
         response = self.client.get(self.url)
         self.assertContains(response, 'id="dropbox-folder-choose"')
         self.assertContains(response, 'data-app-key="test-public-app-key"')
-        self.assertContains(response, 'dropbox-folder-chooser.js')
+        self.assertRegex(response.content.decode(), r'dropbox-folder-chooser(\.[0-9a-f]+)?\.js')  # także z nazwą z hashem (manifest)
         self.assertContains(response, 'Zapisz link')
         buttons = html.fromstring(response.content).xpath('//*[@id="dropbox-folder-choose"]/parent::div/button')
         self.assertEqual([button.text_content().strip() for button in buttons],

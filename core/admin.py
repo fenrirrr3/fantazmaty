@@ -14,7 +14,6 @@ from authors.admin import SuperuserOnlyAdminMixin
 from core.models import UserActivity
 from core.models import WorkflowEvent
 from core.models import MailboxConnection
-from core.admin_newsletter_recovery import NewsletterRecoveryAdminMixin
 from core.models import PublicAudiobookSettings
 from core.models import Audiobook, AudiobookStage
 from core.models import AudioContributor
@@ -333,7 +332,7 @@ class AnthologyCorrectionAdmin(admin.ModelAdmin):
     form = AdminCorrectionForm
     class Media:
         js = ("core/corrections.js",)
-    list_display = ("anthology", "story_title", "status", "submitted_by", "reporter_name", "created_at")
+    list_display = ("anthology", "story_title", "status", "submitted_by", "created_at")
     list_filter = ("status", "anthology")
     search_fields = ("story_title__plcontains", "problem__plcontains", "fragment__plcontains")
     readonly_fields = ("created_at", "updated_at")
@@ -697,7 +696,7 @@ class MailboxConnectionForm(forms.ModelForm):
 
 
 @admin.register(MailboxConnection)
-class MailboxConnectionAdmin(NewsletterRecoveryAdminMixin, SuperuserOnlyAdminMixin, admin.ModelAdmin):
+class MailboxConnectionAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     form = MailboxConnectionForm
     list_display = ('name', 'purpose', 'host', 'username', 'folder', 'is_active')
     list_filter = ('purpose', 'is_active')

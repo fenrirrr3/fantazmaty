@@ -45,7 +45,7 @@ class ClaimFormsTests(AnthologyWorkflowMixin, TestCase):
         for route in [reverse('core:available_texts'), reverse('core:assigned_text_detail', args=[self.text.pk])]:
             form = self.claim_form(self.client.get(route), pending)
             self.assertEqual(form.xpath('normalize-space(.//button)'), 'Przejmij')
-            self.assertIn('Do rezerwacji', form.text_content())
+            self.assertIn('Obecnie tylko przypisanie', form.text_content())
             self.assertFalse(form.xpath('.//input[@name="started_at"]'))
         data = {node.get('name'): node.get('value', '') for node in form.xpath('.//input[@name]')}
         response = self.client.post(form.get('action'), data)
@@ -61,7 +61,7 @@ class ClaimFormsTests(AnthologyWorkflowMixin, TestCase):
         for route in [reverse('core:available_texts'), reverse('core:assigned_text_detail', args=[self.text.pk])]:
             form = self.claim_form(self.client.get(route), pending)
             self.assertTrue(form.xpath('.//input[@name="started_at"]'))
-            self.assertNotIn('Do rezerwacji', form.text_content())
+            self.assertNotIn('Obecnie tylko przypisanie', form.text_content())
         date = self.today + timedelta(days=2)
         response = self.client.post(reverse('core:take_workflow_stage', args=[pending.pk]), {'started_at': date.isoformat()})
         self.assertEqual(response.status_code, 302)

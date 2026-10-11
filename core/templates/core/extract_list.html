@@ -1,0 +1,17 @@
+{% extends "core/base.html" %}
+{% block title %}{{ title }} | Fantazmaty CMS{% endblock %}
+{% block content %}
+<header class="page-header"><h1 class="page-title">{{ title }}</h1></header>
+<section class="card"><div class="card-body"><p>Ta lista jest informacyjnym rejestrem miniatur i ich autorów. Prace nad całym tomem prowadź w jednym wspólnym tekście:</p><div class="filter-actions">{% for volume in extract_workflows %}<a class="secondary-button" href="{% url 'core:assigned_text_detail' volume.pk %}">{{ volume.title }} – etapy pracy</a>{% empty %}<p>Brak utworzonych tomów w workflow.</p>{% endfor %}</div></div></section><section class="filters-card"><form method="get" class="filters-form" data-filters="{{ route }}">
+<label>Wyszukaj <input name="q" type="search" value="{{ query }}"></label>
+<label>Status <select name="status" multiple>{% for value,label in status_choices %}<option value="{{ value }}" {% if value in selected_statuses %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+<label>Antologia <select name="recruitment"><option value="">Wszystkie</option>{% for value in recruitments %}<option value="{{ value }}" {% if value == recruitment %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></label><button type="submit" class="primary-button">Filtruj</button></form></section>
+<section class="card"><div class="table-container"><table data-copy-table data-server-paginated="true"><thead><tr>
+<th data-sort-key="person">Imię i nazwisko</th><th data-sort-key="email">Adres e-mail</th><th>Numer telefonu</th>
+<th>Nadesłane tytuły</th><th>Daty nadesłania</th><th data-sort-key="anthology">Antologia</th><th>Przyjęte</th><th>Odrzucone</th><th>Akcje</th></tr></thead><tbody>
+{% for item in items %}<tr><td>{{ item.author.display_name }}</td><td>{{ item.email }}</td><td>{{ item.phone_number|default:'–' }}</td>
+<td><strong>{{ item.title|linebreaksbr }}</strong></td><td>{{ item.submission_dates|linebreaksbr }}</td><td>{{ item.recruitment }}</td><td><strong>{{ item.accepted_titles|default:'–'|linebreaksbr }}</strong></td><td><strong>{{ item.rejected_titles|default:'–'|linebreaksbr }}</strong></td><td><a href="{% url 'core:extract_edit' item.pk %}">Edytuj</a></td></tr>
+{% empty %}<tr><td colspan="9">Brak zgłoszeń spełniających kryteria.</td></tr>{% endfor %}
+</tbody></table></div></section>
+{% include "core/includes/table_toolbar.html" %}{% include "core/includes/pagination.html" %}
+{% endblock %}

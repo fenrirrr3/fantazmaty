@@ -30,3 +30,6 @@ EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"
 _WORK_DIR = Path(tempfile.gettempdir()) / "fantazmaty-tests"
 ACTIVITY_SPOOL_DIR = _WORK_DIR / "activity-spool"
 DOCUMENT_CONVERSION_DIR = _WORK_DIR / "conversion"
+
+# Oczekiwane odmowy (400/403/404) w testach nie zaśmiecają wyniku ani adnotacji CI; błędy 500 nadal widać.
+LOGGING["loggers"]["django.request"] = {"handlers": ["console"], "level": "ERROR", "propagate": False}  # noqa: F405

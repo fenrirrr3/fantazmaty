@@ -5,7 +5,7 @@
     {% if workflow_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">{% endif %}
     {% if stage.reservation_only %}
         <button type="submit" class="assign-button" aria-describedby="reservation-help-{{ stage.pk }}">Przejmij</button>
-        <span id="reservation-help-{{ stage.pk }}" class="form-help reservation-label">Do rezerwacji</span>
+        <span id="reservation-help-{{ stage.pk }}" class="form-help reservation-label">Obecnie tylko przypisanie</span>
     {% else %}
         <button type="submit" class="assign-button">Przejmij</button>
         <div class="form-field">

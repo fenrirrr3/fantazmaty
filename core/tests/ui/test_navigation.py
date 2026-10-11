@@ -77,14 +77,15 @@ class DetailNavigationTests(NavigationDataMixin, TestCase):
         book = Anthology.objects.create(title='Ekstrakty 3', is_extracts=True)
         whole = book.texts.get(import_source='extract-volume-v2')
         url = reverse('core:unlinked_reviews')
-        response = self.client.get(url)
-        self.assertContains(response, self.text.title)
-        self.assertNotContains(response, chapter.title)
-        self.assertNotContains(response, whole.title)
-        response = self.client.get(url, {'show_not_applicable': '1'})
-        self.assertContains(response, chapter.title)
-        self.assertContains(response, whole.title)
-        self.assertContains(response, 'Nie dotyczy', count=2)
+        def listed(**params):
+            return {row['pk']: row['not_applicable'] for row in self.client.get(url, params).context['texts']}
+        rows = listed()
+        self.assertIn(self.text.pk, rows)
+        self.assertNotIn(chapter.pk, rows)
+        self.assertNotIn(whole.pk, rows)
+        rows = listed(show_not_applicable='1')
+        # Rozdział powieści i cały tom ekstraktów są oznaczone „Nie dotyczy”, zwykły tekst nie.
+        self.assertEqual({pk for pk, not_applicable in rows.items() if not_applicable}, {chapter.pk, whole.pk})
         response = self.client.get(reverse('core:extract_list'))
         self.assertContains(response, reverse('core:assigned_text_detail', args=[whole.pk]))
         response = self.client.get(reverse('core:assigned_text_detail', args=[whole.pk]))

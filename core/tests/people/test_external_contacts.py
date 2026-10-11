@@ -116,7 +116,7 @@ class IllustratorContactTests(TestCase):
         self.assertEqual(len(doc.xpath('//*[@id="illustrator-source"][@hidden]//input[@checked]')), 2)
         self.assertTrue(doc.xpath('//*[@id="illustrator-search-results"][@hidden]'))
         self.assertFalse(doc.xpath('//select[@name="illustrators"]'))
-        self.assertContains(response, 'illustrator_search.js')
+        self.assertRegex(response.content.decode(), r'illustrator_search(\.[0-9a-f]+)?\.js')
 
     def test_inactive_new_assignment_blocked_both_forms_existing_credit_retained(self):
         artist = Illustrator.objects.create(first_name='Nieaktywny', is_active=False)

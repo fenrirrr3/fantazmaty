@@ -518,18 +518,13 @@ def _resolve_copy_author(review, *, contract_received, update_author_phone=False
                 "Przed przeniesieniem uzupełnij adres e-mail autora."
             )
 
-        matches = list(
+        # Author.email jest unikalny i zapisywany małymi literami (kolacja MySQL
+        # nie rozróżnia wielkości liter), więc pasuje co najwyżej jeden autor.
+        author = (
             Author.objects.select_for_update()
             .filter(email__iexact=email)
-            .order_by("pk")
+            .first()
         )
-        if len(matches) > 1:
-            raise ValidationError(
-                "Adres e-mail pasuje do kilku autorów. "
-                "Najpierw uporządkuj dane i powiąż zgłoszenie z autorem."
-            )
-
-        author = matches[0] if matches else None
 
         if author is not None:
             expected_name = normalize_author_name(

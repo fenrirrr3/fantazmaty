@@ -19,40 +19,6 @@ from texts.models import Extract, Text
 from texts.blacklist import apply_blacklist
 
 
-def _list(request, model, form_class, title, route, fields):
-    query = request.GET.get('q', '').strip()[:500]
-    statuses = [v for v in request.GET.getlist('status') if v in model.Status.values]
-    items = model.objects.all()
-    for term in query.split():
-        condition = Q()
-        for field in fields:
-            condition |= Q(**{f'{field}__plcontains': term})
-        items = items.filter(condition)
-    blacklist = request.GET.get('blacklist', '')
-    if model is Extract:
-        items = items.select_related('author')
-        recruitment = request.GET.get('recruitment', '').strip()
-    else:
-        recruitment = ''
-    dimensions = {'status': ('status', statuses)}
-    if model is Extract:
-        dimensions['recruitment'] = ('recruitment', [recruitment] if recruitment else [])
-    else:
-        department = request.GET.get('department', '')
-        dimensions['department'] = ('department', [department] if department in model.Department.values else [])
-    items, facets = facet_queryset(items, dimensions)
-    page = paginate_items(request, items)
-    return render(request, 'core/intake_list.html', {
-        'title': title, 'route': route, 'is_extract': model is Extract, 'items': page, 'page_obj': page,
-        'query': query, 'status_choices': [(v, label) for v, label in model.Status.choices if v in facets['status']], 'selected_statuses': statuses,
-        'blacklist': blacklist, 'recruitment': recruitment,
-        'selected_department': request.GET.get('department', ''),
-        'departments': [(v, label) for v, label in model.Department.choices if v in facets['department']] if model is Recruitment else [],
-        'extract_workflows': list(non_abandoned(Text.objects).filter(import_source='extract-volume-v2').select_related('anthology').order_by('anthology__title')) if model is Extract else [],
-        'recruitments': sorted(facets['recruitment'], key=str.casefold) if model is Extract else [],
-    })
-
-
 def _edit(request, model, form_class, title, route, pk):
     instance = get_object_or_404(model, pk=pk) if pk else None
     form = form_class(request.POST if request.method == 'POST' else None, instance=instance)
@@ -80,7 +46,27 @@ def _edit(request, model, form_class, title, route, pk):
 @require_http_methods(['GET'])
 @coordinator_required
 def extract_list(request):
-    return _list(request, Extract, ExtractForm, 'Ekstrakty', 'extract', ('full_name', 'author__pseudonym', 'email', 'phone_number', 'title', 'accepted_titles', 'rejected_titles', 'recruitment'))
+    query = request.GET.get('q', '').strip()[:500]
+    statuses = [v for v in request.GET.getlist('status') if v in Extract.Status.values]
+    items = Extract.objects.select_related('author')
+    for term in query.split():
+        condition = Q()
+        for field in ('full_name', 'author__pseudonym', 'email', 'phone_number', 'title', 'accepted_titles', 'rejected_titles', 'recruitment'):
+            condition |= Q(**{f'{field}__plcontains': term})
+        items = items.filter(condition)
+    recruitment = request.GET.get('recruitment', '').strip()
+    items, facets = facet_queryset(items, {
+        'status': ('status', statuses),
+        'recruitment': ('recruitment', [recruitment] if recruitment else []),
+    })
+    page = paginate_items(request, items)
+    return render(request, 'core/extract_list.html', {
+        'title': 'Ekstrakty', 'route': 'extract', 'items': page, 'page_obj': page,
+        'query': query, 'status_choices': [(v, label) for v, label in Extract.Status.choices if v in facets['status']], 'selected_statuses': statuses,
+        'recruitment': recruitment,
+        'extract_workflows': list(non_abandoned(Text.objects).filter(import_source='extract-volume-v2').select_related('anthology').order_by('anthology__title')),
+        'recruitments': sorted(facets['recruitment'], key=str.casefold),
+    })
 
 
 @never_cache

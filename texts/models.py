@@ -158,7 +158,7 @@ class Anthology(models.Model):
             raise ValidationError({'is_extracts': 'Tom Ekstraktów z importu musi pozostać oznaczony jako Ekstrakty.'})
         if self.pk and self.is_extracts:
             was_extracts = type(self).objects.filter(pk=self.pk, is_extracts=True).exists()
-            if not was_extracts and self.texts.exclude(import_source__in=('extract-volume-v2', 'extracts-v1')).exists():
+            if not was_extracts and self.texts.exclude(import_source='extract-volume-v2').exists():
                 raise ValidationError({'is_extracts': 'Antologia ma już zwykłe teksty. Ekstrakty mają jeden wspólny tekst – '
                                                       'najpierw przenieś teksty do innej antologii.'})
         if self.is_novel and self.is_translated:
@@ -482,7 +482,7 @@ class Text(NormalizedModelMixin, models.Model):
         verbose_name_plural = "teksty"
         constraints = [models.UniqueConstraint(fields=("import_source", "import_source_row"), name="unique_text_import_source"),
                        models.UniqueConstraint(fields=('anthology', 'chapter_number'), name='unique_novel_chapter_number'),
-                       models.CheckConstraint(condition=models.Q(chapter_number__isnull=False) | models.Q(length__isnull=False) | models.Q(import_source__in=('extracts-v1', 'extract-volume-v2')),
+                       models.CheckConstraint(condition=models.Q(chapter_number__isnull=False) | models.Q(length__isnull=False) | models.Q(import_source='extract-volume-v2'),
                                               name='ordinary_text_requires_length')]
 
         ordering = ("title", "pk")
@@ -517,7 +517,7 @@ class Text(NormalizedModelMixin, models.Model):
         if self.chapter_number and self.anthology_id and self.anthology.is_novel:
             self.title = f'Rozdział {self.chapter_number}'
         super().clean_fields(exclude=exclude)
-        if self.length is None and not self.chapter_number and self.import_source not in ('extracts-v1', 'extract-volume-v2') and 'length' not in (exclude or ()):
+        if self.length is None and not self.chapter_number and self.import_source != 'extract-volume-v2' and 'length' not in (exclude or ()):
             raise ValidationError({'length': 'Podaj długość tekstu.'})
 
     def _validate_extract_volume(self):
@@ -1200,4 +1200,4 @@ class Extract(NormalizedModelMixin, models.Model):
 
 from .catalog_models import NovelProfile, VocabularyTerm  # noqa: E402,F401
 
-from .extract_volume_models import ExtractVolume, ExtractVolumeCredit, ExtractTextLink  # noqa: E402,F401
+from .extract_volume_models import ExtractVolume, ExtractVolumeCredit  # noqa: E402,F401

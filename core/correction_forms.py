@@ -46,4 +46,4 @@ class AdminCorrectionForm(CorrectionForm):
     required_fields = ()
 
     class Meta(CorrectionForm.Meta):
-        fields = (*CorrectionForm.Meta.fields, "status", "submitted_by", "reporter_name")
+        fields = (*CorrectionForm.Meta.fields, "status", "submitted_by")

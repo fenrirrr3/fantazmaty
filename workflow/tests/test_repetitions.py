@@ -258,6 +258,28 @@ class RepeatStagesTests(StatusAssignmentFixtures):
         with self.assertRaisesMessage(ValidationError, 'Najpierw zakończ wcześniejsze etapy kolejki'):
             start_assigned_stage(user=self.other, stage_id=queue[1].pk, started_at=self.today)
 
+    def test_author_exchange_closing_corrected_queue_returns_to_editing(self):
+        """Po usunięciu w adminie końcowej redakcji kolejki i cofnięciu zakończenia przekazania autorowi
+        kolejka kończy się na przekazaniu autorowi – tekst wraca do redakcji."""
+        from workflow.admin_stage_edit import edit_stage
+        self.completed('author_editing', 'editor', self.member)
+        run = self.change(['editing', 'author_editing'])
+        for stage in run.stages.order_by('queue_position'):
+            stage.refresh_from_db()
+            start_assigned_stage(user=self.other, stage_id=stage.pk, started_at=self.today)
+            stage.refresh_from_db()
+            complete_stage(stage, self.other, self.today)
+        author, last = run.stages.order_by('queue_position')[1:]
+        edit_stage(last.pk, self.admin, version_of(self.text), action='delete')
+        edit_stage(author.pk, self.admin, version_of(self.text), action='reopen')
+        author.refresh_from_db()
+        complete_stage(author, self.other, self.today)
+        run.refresh_from_db()
+        self.assertIsNotNone(run.completed_at)
+        pending = S.objects.current_cycle().get(text=self.text, is_completed=False)
+        self.assertEqual(pending.stage_type, 'editing')
+        self.assertIsNone(pending.repetition_id)
+
     def test_finished_repeat_returns_to_first_stage_not_done_yet(self):
         add_roles(self.member, 'Koordynator korekty')
         S.objects.filter(pk=self.editing.pk).update(ended_at=self.today, is_completed=True)

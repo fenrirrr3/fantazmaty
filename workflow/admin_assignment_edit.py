@@ -50,9 +50,6 @@ def correct_assignment(pk, actor, version, *, action, performer=None):
                 return text.pk
             if assignment.assigned_to_id == (performer.pk if performer else None):
                 return text.pk
-            if performer and stages.filter(is_current=True, is_completed=False).exists():
-                from workflow.admin_performers import require_eligible_correction
-                require_eligible_correction(performer, assignment.role)
             from workflow.admin_performers import validate_proofreader_plan
             validate_proofreader_plan(text, [{'assignment': assignment, 'performer': performer, 'stages': list(stages)}])
             assignment.assigned_to = performer

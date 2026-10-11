@@ -127,7 +127,7 @@ class CoordinatorNotesTests(TestCase):
         self.assertEqual(response.status_code, 409)
         response = self.client.get(url)
         self.assertContains(response, 'id="illustrator-search"')
-        self.assertContains(response, "illustrator_search.js")
+        self.assertRegex(response.content.decode(), r"illustrator_search(\.[0-9a-f]+)?\.js")
         self.ill.refresh_from_db()
         self.ill.set_artists([self.artist_contact], status="assigned")
         self.client.force_login(self.artist)

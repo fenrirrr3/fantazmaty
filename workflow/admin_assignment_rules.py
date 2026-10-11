@@ -14,10 +14,10 @@ def has_recorded_work(assignment):
     return WorkflowStage.objects.filter(text_id=assignment.text_id, workflow_cycle=assignment.workflow_cycle, stage_type__in=kinds).filter(Q(started_at__isnull=False) | Q(ended_at__isnull=False) | Q(is_completed=True)).exists()
 
 
-def protect_assignment(instance, data, deleting=False):
+def protect_assignment(instance, data):
     if not instance.pk:
         return
     previous = WorkflowRoleAssignment.objects.get(pk=instance.pk)
-    changed = deleting or any(data.get(field, getattr(previous, field)) != getattr(previous, field) for field in ('text', 'workflow_cycle', 'role', 'assigned_to'))
+    changed = any(data.get(field, getattr(previous, field)) != getattr(previous, field) for field in ('text', 'workflow_cycle', 'role', 'assigned_to'))
     if changed and has_recorded_work(previous):
         raise ValidationError("Ten przydział dokumentuje rozpoczętą lub zakończoną pracę. Nie można zmienić wykonawcy, roli ani przebiegu lub usunąć przydziału. Zastępstwo rozpocznij w nowym cyklu; poprzednia praca pozostanie w historii.")

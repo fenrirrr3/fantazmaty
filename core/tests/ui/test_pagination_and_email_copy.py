@@ -79,7 +79,7 @@ class PaginationNavigationTests(TestCase):
         self.client.get(reverse('core:people_list'))
         response = self.client.get(url)
         self.assert_jump(response, 1, 2, 'page')
-        self.assertContains(response, ' selected>50</option>')
+        self.assertEqual(response.context['page_obj'].paginator.per_page, 50)
         other_session = Client()
         other_session.force_login(self.user)
         self.assert_jump(other_session.get(url), 1, 3, 'page')
