@@ -1,7 +1,6 @@
 """Zakładka Korekta audiobooków: zakres widoczności, przejmowanie i przypisywanie korekty, kończenie etapu i historia korekt."""
 from datetime import date, timedelta
 
-from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.test import TestCase
 from django.urls import reverse
@@ -10,8 +9,10 @@ from lxml import html
 
 from core.audiobook_services import claim_proofreading, finish_stage, refresh_status
 from core.models import Audiobook, AudiobookStage
+from core.selectors.audio_proofreading import profile_audio_assignments
 from core.selectors.people import profile_assignments
 from fantazmaty.testing import create_member, create_superuser, edit_token
+from people.models import Person
 from texts.models import Anthology, Text
 from workflow.models import WorkflowRoleAssignment, WorkflowStage
 
@@ -60,6 +61,7 @@ class ProofreadingScopeTests(AudiobookProductionTestData, TestCase):
         self.assertEqual(self.client.get(self.queue_url, {'hide_completed': '0'}).context['page_obj'].paginator.count, 1)
         self.client.force_login(self.member)
         self.assertEqual(self.client.get(self.queue_url).status_code, 403)
+        self.assertEqual(self.claim(self.member).status_code, 403)  # przejmuje tylko Korektor audiobooków
         doc = html.fromstring(self.client.get(self.list_url).content)
         self.assertFalse(doc.xpath(f'//nav//a[@href="{self.queue_url}"]|//aside//a[@href="{self.queue_url}"]'))
         self.client.logout()
@@ -359,6 +361,18 @@ class CorrectionHistoryTests(TestCase):
         rows, _ = profile_assignments(self.old.person_profile, include_authors=True)
         self.assertEqual([row['text']['pk'] for row in rows], [self.text.pk])
 
+    def test_correction_without_performer_and_abandoned_one_are_labelled_but_credited_to_nobody(self):
+        AudiobookStage.objects.create(text=self.text, stage_type='proofreading', is_completed=True, position=5)
+        AudiobookStage.objects.create(text=self.text, stage_type='proofreading', performer=self.new, position=6)
+        rows = profile_audio_assignments(self.new.person_profile)
+        self.assertEqual([(row['state_label'], row['has_active_work']) for row in rows],
+                         [('Nieaktywna', False), ('Zakończona', False)])
+        self.assertEqual(profile_audio_assignments(Person.objects.create(first_name='Bez', last_name='Konta')), [])
+        self.client.force_login(self.coordinator)
+        row = list(self.client.get(self.queue, {'hide_completed': '0'}).context['texts'])[0]
+        self.assertEqual([(c['performer'], c['state']) for c in row['corrections']][:2],
+                         [(str(self.new.person_profile), 'Nieaktywna'), ('Nie zapisano wykonawcy', 'Zakończona')])
+
     def test_current_reassignment_does_not_credit_previous_person(self):
         active = AudiobookStage.objects.create(text=self.text, stage_type='proofreading', performer=self.old,
                                                started_at=timezone.localdate())
@@ -388,7 +402,7 @@ class CorrectionHistoryTests(TestCase):
 class CorrectionHistoryRenderingTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.admin = get_user_model().objects.create_superuser('history-render-admin', '', 'test')
+        cls.admin = create_superuser('history-render-admin')
         cls.book = Anthology.objects.create(title='Antologia historii korekt')
         cls.text = Text.objects.create(title='Testowe opowiadanie', anthology=cls.book, length=100)
         cls.queue = reverse('core:audio_proofreading')

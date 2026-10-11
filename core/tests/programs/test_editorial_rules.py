@@ -1,6 +1,9 @@
 """Reguły korekty Odkurzacza na poziomie tekstu oraz pola i limity formularzy programów."""
+import sys
 import time
+from difflib import SequenceMatcher
 from io import BytesIO
+from unittest.mock import patch
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from django.test import SimpleTestCase
@@ -85,6 +88,71 @@ class EditorialTextRuleTests(SimpleTestCase):
         rebuilt = ''.join(source[a:b] if tag == 'equal' else corrected[c:d]
                           for tag, a, b, c, d in opcodes if tag != 'delete')
         self.assertEqual(rebuilt, corrected)
+
+
+class OptionalAndEdgeRuleTests(SimpleTestCase):
+    """Reguły spoza domyślnego zestawu oraz przypadki, które reguły celowo zostawiają bez zmian."""
+
+    def fix(self, text):
+        return correct_editorial_text(text, DEFAULT_EDITORIAL_RULES)
+
+    def test_personal_pronouns_are_lowered_only_inside_sentences(self):
+        self.assertEqual(
+            correct_editorial_text('Spotkałem Go wczoraj. On przyszedł. Dałem Mu to: Ona wie. '
+                                   'Mówił np. Ona przyjdzie! Ja też. Widziałem JEGO.', {'pronouns_lower'}),
+            'Spotkałem go wczoraj. On przyszedł. Dałem mu to: Ona wie. '
+            'Mówił np. ona przyjdzie! Ja też. Widziałem jego.')
+        self.assertEqual(correct_editorial_text('Pisał – Ona wie, https://example.com/On', {'pronouns_lower'}),
+                         'Pisał – ona wie, https://example.com/On')
+
+    def test_user_word_list_keeps_the_original_letter_case(self):
+        self.assertEqual(
+            correct_editorial_text('Pickupem jechał niechcąco, PICKUPAMI; europejczykiem i azjatami; '
+                                   'komedia dellarte; Przekonywujący oddziaływującego', {'user_word_corrections'}),
+            'Pikapem jechał niechcący, PIKAPAMI; Europejczykiem i Azjatami; '
+            'komedia dell’arte; Przekonujący oddziałującego')
+
+    def test_impossible_dates_and_times_stay_unchanged(self):
+        self.assertEqual(correct_editorial_text('31.02.2025, 2025-13-01, godz. 25:00, 24:61 i o 9.30',
+                                                {'dates_times'}),
+                         '31.02.2025, 2025-13-01, godz. 25:00, 24:61 i o 09:30')
+
+    def test_sentence_case_skips_ellipsis_ordinals_initials_and_file_names(self):
+        self.assertEqual(correct_editorial_text('Koniec... dalej. 3. punkt. A. kowalski wrócił. Patrz np. tutaj. '
+                                                'dalej', {'sentence_case'}),
+                         'Koniec... dalej. 3. punkt. A. kowalski wrócił. Patrz np. tutaj. Dalej')
+
+    def test_sentence_case_does_not_change_addresses_starting_a_sentence(self):
+        """Regresja: adres na początku zdania nie dostaje wielkiej litery („Https://…”, „Jan@…”)."""
+        for text in ('Zobacz to. https://example.com/x', 'Koniec! jan@example.com napisał'):
+            with self.subTest(text=text):
+                self.assertEqual(correct_editorial_text(text, {'sentence_case'}), text)
+
+    def test_dashes_between_numbers_and_minus_signs_keep_their_spacing(self):
+        self.assertEqual(correct_editorial_text('10–20 i (–5) oraz =–3, a dalej–tak', {'dash_spaces'}),
+                         '10–20 i (–5) oraz =–3, a dalej – tak')
+
+    def test_identifiers_are_not_grouped_like_quantities(self):
+        self.assertEqual(
+            correct_editorial_text('012345 osób, nr 123456, 123456789 i 123456789 osób, 12345 kg',
+                                   {'digit_groups'}),
+            '012345 osób, nr 123456, 123456789 i 123\u00a0456\u00a0789 osób, 12\u00a0345 kg')
+
+    def test_technical_text_is_protected_from_default_rules(self):
+        source = 'Adres: www.example.pl/strona?a=1. Napisz: jan@example.com, wersja v1.2.3, IP 192.168.0.1'
+        self.assertEqual(self.fix(source), source)
+        # Znak z obszaru prywatnego Unicode w tekście nie myli masek chroniących adresy.
+        marked = '\U000f0000 www.example.pl'
+        self.assertEqual(self.fix(marked), marked)
+
+    def test_unknown_rule_is_refused(self):
+        with self.assertRaisesMessage(ValueError, 'Nieznane reguły korekty'):
+            correct_editorial_text('x', {'nieznana'})
+
+    def test_edit_opcodes_fall_back_to_difflib(self):
+        with patch.dict(sys.modules, {'rapidfuzz.distance': None}):
+            opcodes = _edit_opcodes('Ala  ma', 'Ala ma')
+        self.assertEqual(opcodes, SequenceMatcher(None, 'Ala  ma', 'Ala ma', autojunk=False).get_opcodes())
 
 
 class ProgramFormTests(SimpleTestCase):

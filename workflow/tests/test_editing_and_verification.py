@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta
 
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
@@ -22,6 +22,7 @@ from workflow.services import (
     complete_stage,
     current_assignment_queryset,
     current_stage_queryset,
+    editing_follows_first_verification,
     finish_editing_to_coordinator,
     resume_editing,
     send_text_to_author,
@@ -40,7 +41,9 @@ StageType = WorkflowStage.StageType
 Role = WorkflowRoleAssignment.Role
 
 
-class AssignmentStartDateTests(TestCase):
+class AssignmentStartDateTests(SimpleTestCase):
+    """Dopuszczalna data rozpoczęcia przejmowanej pracy: od dziś do 14 dni naprzód."""
+
     def test_assignment_start_date_accepts_supported_boundaries(self):
         today = timezone.localdate()
 
@@ -69,6 +72,8 @@ class AssignmentStartDateTests(TestCase):
 
 
 class EditingAndVerificationFlowTests(WorkflowTestDataMixin, TestCase):
+    """Pełna ścieżka redakcji i weryfikacji przez usługi procesu."""
+
     def test_claiming_editing_assigns_editor_and_prepares_verification(self):
         editing = self.begin_editing()
 
@@ -316,6 +321,8 @@ class EditingAndVerificationFlowTests(WorkflowTestDataMixin, TestCase):
 
 
 class WorkflowPermissionTests(WorkflowTestDataMixin, TestCase):
+    """Kto może przejąć, przekazać i rozpocząć pracę."""
+
     def test_wrong_role_cannot_claim_editing(self):
         with self.assertRaises(PermissionDenied):
             claim_ready_for_editing(self.text, self.proofreader)
@@ -458,3 +465,31 @@ class FirstVerificationStartTests(WorkflowTestDataMixin, TestCase):
 
     def test_archived_second_is_not_a_missing_stage(self):
         self.assert_archived_verification_cannot_be_added_again('second_verification', 'verifier_2')
+
+
+class EditingAfterFirstVerificationTests(TestCase):
+    """Czy trwająca redakcja jest już przebiegiem po pierwszej weryfikacji (warunek przekazania do drugiej)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.today = timezone.localdate()
+        cls.yesterday = cls.today - timedelta(days=1)
+
+    def editing_with_first(self, **first):
+        text = Text.objects.create(title='Tekst', length=100)
+        editing = S.objects.create(text=text, stage_type='editing', started_at=self.today)
+        if first:
+            with importing():
+                S.objects.create(text=text, stage_type='first_verification', is_completed=True,
+                                 is_current=False, **first)
+        return text, editing
+
+    def test_order_of_editing_and_completed_first_verification(self):
+        for first, expected in (({}, False),
+                                ({'started_at': self.yesterday, 'ended_at': self.yesterday}, True),
+                                # Same day: the W1 record created after editing began does not approve it.
+                                ({'started_at': self.today, 'ended_at': self.today}, False),
+                                ({'imported_completed': True}, True)):
+            with self.subTest(first=first):
+                text, editing = self.editing_with_first(**first)
+                self.assertIs(editing_follows_first_verification(text, editing), expected)

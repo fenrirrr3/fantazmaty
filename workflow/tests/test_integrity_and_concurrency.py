@@ -1,4 +1,5 @@
-"""Spójność danych procesu w bazie: ograniczenia etapów i przypisań, daty przypisania oraz równoczesne przejęcie tekstu."""
+"""Spójność danych procesu: walidacja i ograniczenia etapów i przypisań (także pracy tylko z importu), daty przypisania,
+opisy rekordów oraz równoczesne przejęcie tekstu."""
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from threading import Barrier
@@ -7,6 +8,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, close_old_connections, connections, transaction
 from django.test import TestCase, TransactionTestCase, skipUnlessDBFeature, tag
+from django.utils import timezone
 
 from fantazmaty.testing import create_member
 from fantazmaty.testing.workflow import WorkflowTestDataMixin
@@ -20,6 +22,8 @@ from workflow.services import (
     send_to_first_verification,
 )
 
+from .support import importing
+
 User = get_user_model()
 StageType = WorkflowStage.StageType
 Role = WorkflowRoleAssignment.Role
@@ -27,6 +31,8 @@ Assignment = WorkflowRoleAssignment
 
 
 class WorkflowIntegrityTests(WorkflowTestDataMixin, TestCase):
+    """Ograniczenia bazy i wycofanie nieudanych przejść."""
+
     def test_stage_uniqueness_is_enforced_by_database(self):
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
@@ -175,9 +181,10 @@ class WorkflowIntegrityTests(WorkflowTestDataMixin, TestCase):
 class VerifierConstraintTests(TestCase):
     """Ograniczenie „różni weryfikatorzy 1 i 2” działa też przy zapisie zbiorczym i aktualizacji (także na MySQL)."""
 
-    def setUp(self):
-        self.text = Text.objects.create(title="Test ograniczenia", length=100)
-        self.user = get_user_model().objects.create_user(username="verifier_constraint")
+    @classmethod
+    def setUpTestData(cls):
+        cls.text = Text.objects.create(title="Test ograniczenia", length=100)
+        cls.user = get_user_model().objects.create_user(username="verifier_constraint")
 
     def create(self, role, **kwargs):
         return Assignment.objects.create(
@@ -211,6 +218,96 @@ class VerifierConstraintTests(TestCase):
         self.user.delete()
         self.assertEqual(Assignment.objects.filter(text=self.text, assigned_to__isnull=True).count(), 2)
 
+
+
+class RecordValidationTests(TestCase):
+    """Walidacja modeli: niespójne daty i stany, praca tylko z importu i reguły wykonawców."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.admin = User.objects.create_superuser('admin', 'admin@example.test', 'test')
+        cls.member = create_member('member', 'Weryfikator')
+        cls.text = Text.objects.create(title='Tekst', length=100)
+        cls.today = timezone.localdate()
+
+    def errors(self, record):
+        with self.assertRaises(ValidationError) as caught:
+            record.full_clean()
+        return caught.exception.message_dict
+
+    def test_stage_dates_and_states_must_agree(self):
+        future = self.today + timedelta(days=1)
+        WorkflowStage.objects.create(text=self.text, stage_type='editing', started_at=self.today)
+        for fields, field, message in (
+                ({'is_completed': True, 'started_at': future, 'ended_at': future}, 'started_at', 'przyszłej daty'),
+                ({'is_completed': True, 'started_at': self.today, 'ended_at': future}, 'ended_at', 'przyszłą datą'),
+                ({'is_completed': True, 'ended_at': self.today}, 'started_at', 'musi mieć datę rozpoczęcia'),
+                ({'started_at': self.today, 'ended_at': self.today}, 'is_completed', 'oznaczony jako zakończony'),
+                ({'is_completed': True}, 'ended_at', 'musi mieć datę zakończenia'),
+                ({'iteration': 2}, 'stage_type', 'istnieje już otwarty etap')):
+            with self.subTest(fields=fields):
+                stage = WorkflowStage(text=self.text, stage_type='editing', **fields)
+                self.assertIn(message, ' '.join(self.errors(stage)[field]))
+        with importing():
+            stage = WorkflowStage(text=self.text, stage_type='first_proofreading', imported_completed=True)
+            self.assertIn('pozostać zakończony', ' '.join(self.errors(stage)['is_completed']))
+
+    def test_import_only_work_is_closed_history_written_by_the_importer(self):
+        verifier_4 = Assignment(text=self.text, role='verifier_4', assigned_to=self.member, is_current=False)
+        wrong_role = Assignment.objects.create(text=self.text, role='verifier_1', assigned_to=self.member)
+        with importing():
+            self.assertIn('nie może być bieżącym', str(self.errors(Assignment(text=self.text, role='verifier_4'))))
+            verifier_4.save()
+            closed = dict(text=self.text, stage_type='fourth_verification', is_completed=True,
+                          imported_completed=True, is_current=False, is_released=False)
+            for stage, message in ((WorkflowStage(**dict(closed, is_current=True), assignment=verifier_4),
+                                    'wyłącznie jako zakończona praca z importu'),
+                                   (WorkflowStage(**closed), 'wymaga powiązanego przypisania'),
+                                   (WorkflowStage(**closed, assignment=wrong_role), 'nie odpowiada importowanemu')):
+                with self.subTest(message=message):
+                    self.assertIn(message, str(self.errors(stage)))
+            stage = WorkflowStage.objects.create(**closed, assignment=verifier_4)
+            another = Assignment.objects.create(text=self.text, role='verifier_4', assigned_to=self.admin,
+                                                execution_number=2, is_current=False)
+        stage.assignment = another
+        self.assertIn('wyłącznie importer', str(self.errors(stage)))
+        verifier_4.assigned_to = self.admin
+        with self.assertRaisesMessage(ValidationError, 'wyłącznie importer'):
+            verifier_4.save()
+        ordinary = WorkflowStage(text=self.text, stage_type='first_proofreading', imported_completed=True,
+                                 is_completed=True)
+        self.assertIn('wyłącznie importer zakończonych etapów', str(self.errors(ordinary)))
+
+    def test_assignment_rules_for_styling_and_verifiers(self):
+        styling = Assignment(text=self.text, role='styling', assigned_to=self.member)
+        self.assertIn('assigned_to', self.errors(styling))
+        Assignment(text=self.text, role='styling', assigned_to=self.admin).full_clean()
+        Assignment.objects.create(text=self.text, role='verifier_1', assigned_to=self.member)
+        second = Assignment(text=self.text, role='verifier_2', assigned_to=self.member)
+        self.assertIn('różne osoby', ' '.join(self.errors(second)['assigned_to']))
+
+    def test_saving_records_fills_queue_date_and_ignores_empty_update(self):
+        stage = WorkflowStage.objects.create(text=self.text, stage_type='first_proofreading')
+        WorkflowStage.objects.filter(pk=stage.pk).update(queued_at=None)
+        stage.refresh_from_db()
+        stage.save(update_fields=['is_released'])
+        stage.refresh_from_db()
+        self.assertEqual(stage.queued_at, self.today)
+        assignment = Assignment.objects.create(text=self.text, role='editor', assigned_to=self.member)
+        assignment.assigned_to = None
+        assignment.save(update_fields=[])
+        assignment.refresh_from_db()
+        self.assertEqual(assignment.assigned_to, self.member)
+
+    def test_records_describe_text_role_person_and_execution(self):
+        from workflow.models import WorkflowRepetition
+
+        stage = WorkflowStage.objects.create(text=self.text, stage_type='editing', execution_number=2, iteration=2)
+        self.assertEqual(str(stage), 'Tekst: Redakcja – przebieg 1 (wyk. 2)')
+        empty = Assignment.objects.create(text=self.text, role='editor')
+        self.assertEqual(str(empty), 'Tekst – Redaktor – nieprzypisane – przebieg 1')
+        run = WorkflowRepetition.objects.create(text=self.text)
+        self.assertEqual(str(run), f'Tekst – powtórzenie #{run.pk}')
 
 @tag('slow')
 class WorkflowConcurrencyTests(TransactionTestCase):

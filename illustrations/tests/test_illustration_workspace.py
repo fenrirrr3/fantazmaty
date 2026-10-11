@@ -1,8 +1,10 @@
 """Przestrzeń robocza ilustracji: widoczność, metadane tekstu, przypisanie i daty, link i fragment,
-konflikty wersji oraz uprawnienia ilustratorów i redaktorów."""
+konflikty wersji, uprawnienia ilustratorów i redaktorów oraz kolumny listy ilustracji."""
 from datetime import timedelta
 from tempfile import TemporaryDirectory
 
+from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -10,7 +12,8 @@ from lxml import html
 
 from authors.models import Author
 from fantazmaty.testing import create_member, create_superuser
-from illustrations.models import Illustration, Illustrator
+from illustrations.editing import edit_token
+from illustrations.models import Illustration, Illustrator, PublicIllustrationSettings
 from texts.models import Anthology, Review, Text
 
 
@@ -226,3 +229,94 @@ class IllustrationWorkspaceTests(TestCase):
         csrf_client.force_login(self.admin)
         response = csrf_client.post(self.url, {"action": "excerpt", "illustrated_excerpt": "Nie"})
         self.assertEqual(response.status_code, 403)
+
+
+class IllustrationListTests(TestCase):
+    def test_illustration_columns_removed_only_from_list_with_sorting_intact(self):
+        self.client.force_login(create_superuser())
+        book = Anthology.objects.create(title='Ilustrowana antologia', has_illustrations=True)
+        text = Text.objects.create(title='Tekst ilustracji', anthology=book, length=100, genre='fantasy', tags='znacznik-tagu')
+        art = Illustration.objects.get(text=text)
+        art.story_url = 'https://example.test/opowiadanie'
+        art.illustrated_excerpt = 'Unikatowy fragment'
+        art.trigger_warnings = 'Unikatowe ostrzeżenie'
+        art.save()
+        response = self.client.get(reverse('illustrations:illustration_list'))
+        doc = html.fromstring(response.content)
+        table = doc.get_element_by_id('illustrations-table')
+        headers = [' '.join(node.itertext()).strip() for node in table.xpath('./thead/tr/th')]
+        self.assertEqual(headers, ['Antologia', 'Tytuł tekstu', 'Autorzy', 'Ilustratorzy', 'Status', 'Data przypisania', 'Uwagi koordynatora'])
+        self.assertEqual(len(table.xpath('./tbody/tr/td')), 7)
+        columns = set(response.context['page_obj'].sort_columns)
+        self.assertTrue(set(headers) <= columns)
+        self.assertFalse(columns & {'Gatunek, tagi', 'Ostrzeżenia dotyczące treści', 'Opowiadanie', 'Ilustrowany fragment'})
+        for value in (art.story_url, art.illustrated_excerpt, art.trigger_warnings, 'znacznik-tagu'):
+            self.assertNotContains(response, value)
+        detail = self.client.get(reverse('illustrations:illustration_detail', args=[art.pk]))
+        for value in (art.story_url, art.illustrated_excerpt, art.trigger_warnings, 'znacznik-tagu'):
+            self.assertContains(detail, value)
+
+
+class IllustrationListFiltersAndRulesTests(TestCase):
+    """Filtry i sortowanie listy, dostęp spoza zespołu, nieznana operacja zapisu i reguły modelu."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.admin = create_superuser('filters-admin')
+        cls.contact = Illustrator.objects.create(first_name='Artysta', last_name='Filtrowy')
+        cls.book = Anthology.objects.create(title='Antologia B', has_illustrations=True)
+        cls.other_book = Anthology.objects.create(title='Antologia A', has_illustrations=True)
+        cls.assigned = Text.objects.create(title='Przypisany', anthology=cls.book, length=1, genre='groza', tags='las')
+        cls.free = Text.objects.create(title='Wolny', anthology=cls.other_book, length=1)
+        Illustration.objects.get(text=cls.assigned).set_artists([cls.contact], status='assigned')
+        cls.list_url = reverse('illustrations:illustration_list')
+
+    def setUp(self):
+        self.client.force_login(self.admin)
+
+    def titles(self, **params):
+        response = self.client.get(self.list_url, params)
+        self.assertEqual(response.status_code, 200)
+        return [row.text.title for row in response.context['page_obj']]
+
+    def test_status_anthology_and_sort_filters_with_invalid_values_ignored(self):
+        self.assertEqual(self.titles(status='assigned'), ['Przypisany'])
+        self.assertEqual(self.titles(status='bogus'), ['Wolny', 'Przypisany'])
+        self.assertEqual(self.titles(anthology=str(self.book.pk)), ['Przypisany'])
+        for invalid in ('abc', '0', '-1', '9' * 20, '٣'):
+            with self.subTest(anthology=invalid):
+                self.assertEqual(self.titles(anthology=invalid), ['Wolny', 'Przypisany'])
+        self.assertEqual(self.titles(sort='-title'), ['Wolny', 'Przypisany'])
+        # Status sortuje się po etykiecie („Nieprzypisane” < „Przypisane”).
+        self.assertEqual(self.titles(sort='-status'), ['Przypisany', 'Wolny'])
+        self.assertEqual(self.titles(sort='status'), ['Wolny', 'Przypisany'])
+        self.assertEqual(self.titles(sort='password'), self.titles())
+
+    def test_account_without_team_profile_is_denied(self):
+        self.client.force_login(get_user_model().objects.create_user('no-profile'))
+        illustration = Illustration.objects.get(text=self.free)
+        for url in (self.list_url, reverse('illustrations:illustration_detail', args=[illustration.pk])):
+            self.assertEqual(self.client.get(url).status_code, 403)
+
+    def test_unknown_save_operation_is_rejected_without_changes(self):
+        illustration = Illustration.objects.get(text=self.free)
+        url = reverse('illustrations:illustration_detail', args=[illustration.pk])
+        for action in ('delete', ''):
+            response = self.client.post(url, {'action': action, 'version': edit_token(self.admin, illustration),
+                                              'status': 'assigned'})
+            self.assertEqual(response.status_code, 400)
+        illustration.refresh_from_db()
+        self.assertEqual(illustration.status, 'unassigned')
+
+    def test_model_rules_for_status_date_and_display(self):
+        illustration = Illustration.objects.get(text=self.assigned)
+        self.assertEqual((illustration.anthology, illustration.genre_tags_display), (self.book, 'groza · las'))
+        illustration.status = 'unassigned'
+        with self.assertRaisesMessage(ValidationError, 'zmień status'):
+            illustration.save()
+        # Zapis wybranych pól nadal czyści datę przypisania po odpięciu ilustratorów.
+        illustration.illustrators.clear()
+        illustration.save(update_fields=['status'])
+        illustration.refresh_from_db()
+        self.assertEqual((illustration.status, illustration.assigned_at), ('unassigned', None))
+        self.assertEqual(str(PublicIllustrationSettings()), 'Zewnętrzne ilustracje – wspólny link GDrive')

@@ -1,4 +1,5 @@
-"""Dziennik aktywności: przenoszenie kolejki do bazy (flush_activity) i polskie etykiety wpisów."""
+"""Dziennik aktywności: przenoszenie kolejki do bazy (flush_activity), czyszczenie starych wpisów (prune_activity),
+polskie etykiety wpisów i filtrowanie strony dziennika."""
 import json
 from datetime import timedelta
 from io import StringIO
@@ -7,7 +8,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.db import connection
+from django.db import DatabaseError, connection
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import resolve, reverse
@@ -16,7 +17,9 @@ from django.utils import timezone
 from core.activity import LABELS, describe_request
 from core.activity_spool import enqueue_activity
 from core.activity_targets import present_activities, target_for_match
+from core.management.commands.flush_activity import Command
 from core.models import UserActivity
+from fantazmaty.testing import create_member, create_superuser
 from illustrations.models import Illustrator
 
 from .support import TemporaryActivitySpoolMixin
@@ -88,13 +91,137 @@ class FlushActivityTests(TemporaryActivitySpoolMixin, TestCase):
         with self.assertRaises(CommandError):
             self.flush(limit=0)
 
+    def test_limit_leaves_the_rest_for_the_next_run(self):
+        for i in range(3):
+            enqueue_activity(**entry(path=f'/{i}'))
+        out, _ = self.flush(limit=2)
+        self.assertIn('Przeniesiono wpisów: 2', out)
+        self.assertEqual(len(list(self.spool.glob('*.json'))), 1)
+
+    def test_missing_spool_directory_is_an_empty_run(self):
+        with self.settings(ACTIVITY_SPOOL_DIR=self.spool / 'brak'):
+            out, _ = self.flush()
+        self.assertIn('Przeniesiono wpisów: 0', out)
+
+    def test_every_malformed_record_is_quarantined(self):
+        enqueue_activity(**entry())
+        valid = json.loads(next(self.spool.glob('*.json')).read_text(encoding='utf-8'))
+        broken = {
+            'extra field': {**valid, 'body': 'x'},
+            'naive time': {**valid, 'created_at': '2026-01-01T12:00:00'},
+            'key not matching name': {**valid, 'source_key': '0' * 32},
+            'boolean account': {**valid, 'user_id': True},
+            'negative account': {**valid, 'user_id': -1},
+            'too long action': {**valid, 'action': 'x' * 256},
+            'text field not a string': {**valid, 'target': 5},
+            'invalid HTTP status': {**valid, 'status_code': 99},
+        }
+        for index, data in enumerate(broken.values()):
+            key = f'{index:032x}'
+            data = {**data, 'source_key': data['source_key'] if data['source_key'] != valid['source_key'] else key}
+            (self.spool / f'{key}.json').write_text(json.dumps(data), encoding='utf-8')
+        out, _ = self.flush()
+        self.assertIn('Przeniesiono wpisów: 1', out)
+        self.assertIn(f'Odłożono uszkodzonych: {len(broken)}', out)
+        self.assertEqual(len(list((self.spool / 'quarantine').glob('*.json'))), len(broken))
+
+    def test_entry_removed_meanwhile_is_skipped(self):
+        """Wpis usunięty przez równoległe przeniesienie nie jest ani liczony, ani odkładany jako uszkodzony."""
+        for error in (FileNotFoundError, ValueError):
+            enqueue_activity(**entry())
+
+            def vanish(path, error=error):
+                path.unlink()
+                raise error
+
+            with self.subTest(error=error.__name__), \
+                    patch('core.management.commands.flush_activity.validated_record', side_effect=vanish):
+                out, err = self.flush()
+                self.assertIn('Przeniesiono wpisów: 0. Odłożono uszkodzonych: 0. Do ponowienia: 0.', out)
+                self.assertEqual(err, '')
+
+    def test_unreadable_entry_stays_in_queue_and_fails_the_run(self):
+        enqueue_activity(**entry())
+        with patch('core.management.commands.flush_activity.validated_record', side_effect=PermissionError), \
+                self.assertRaises(CommandError):
+            self.flush()
+        self.assertEqual(len(list(self.spool.glob('*.json'))), 1)
+
+    def test_database_failure_retries_entries_one_by_one(self):
+        """Jeden wpis, którego nie da się zapisać, nie blokuje pozostałych i zostaje w kolejce."""
+        enqueue_activity(**entry(path='/dobry'))
+        enqueue_activity(**entry(path='/zly'))
+        original = Command.write_batch
+
+        def flaky(command, records):
+            if len(records) > 1 or records[0][1]['path'] == '/zly':
+                raise DatabaseError('zajęte')
+            return original(command, records)
+
+        out, err = StringIO(), StringIO()
+        with patch.object(Command, 'write_batch', flaky), self.assertRaises(CommandError):
+            call_command('flush_activity', stdout=out, stderr=err)
+        self.assertIn('Przeniesiono wpisów: 1', out.getvalue())
+        self.assertIn('Do ponowienia: 1', out.getvalue())
+        self.assertIn('pozostaje w kolejce', err.getvalue())
+        self.assertEqual(UserActivity.objects.get().path, '/dobry')
+        remaining = json.loads(next(self.spool.glob('*.json')).read_text(encoding='utf-8'))
+        self.assertEqual(remaining['path'], '/zly')
+
+
+class PruneActivityTests(TestCase):
+    """Czyszczenie dziennika usuwa tylko stare udane odwiedziny i zachowuje ostatnią aktywność każdej osoby."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.user = User.objects.create_user('aktywny', 'aktywny@example.test')
+        cls.idle = User.objects.create_user('nieaktywny', 'nieaktywny@example.test')
+
+        def row(user, action, days=200, **fields):
+            data = {'user': user, 'actor': 'x', 'method': 'GET', 'action': action, 'path': '/', 'status_code': 200}
+            created = UserActivity.objects.create(**{**data, **fields})
+            UserActivity.objects.filter(pk=created.pk).update(created_at=timezone.now() - timedelta(days=days))
+
+        row(cls.user, 'Świeży podgląd', days=0)
+        row(cls.user, 'Stary podgląd')
+        row(cls.user, 'Stary podgląd HEAD', method='HEAD')
+        row(cls.user, 'Stary zapis', method='POST')
+        row(cls.user, 'Stary błąd', status_code=404)
+        row(cls.user, 'Logowanie')
+        row(None, 'Anonimowy podgląd')
+        # Jedyny wpis drugiej osoby to jej ostatnia znana aktywność – raport nieaktywności go potrzebuje.
+        row(cls.idle, 'Ostatni podgląd')
+
+    def prune(self, *args):
+        out = StringIO()
+        call_command('prune_activity', *args, stdout=out)
+        return out.getvalue()
+
+    def remaining(self):
+        return set(UserActivity.objects.values_list('action', flat=True))
+
+    def test_dry_run_counts_without_deleting(self):
+        self.assertIn('Do usunięcia: 3', self.prune('--dry-run'))
+        self.assertEqual(len(self.remaining()), 8)
+
+    def test_only_old_successful_visits_are_removed(self):
+        self.assertIn('Usunięto: 3', self.prune())
+        self.assertEqual(self.remaining(), {'Świeży podgląd', 'Stary zapis', 'Stary błąd', 'Logowanie',
+                                            'Ostatni podgląd'})
+        self.assertIn('Usunięto: 0', self.prune('--days', '1'))
+
+    def test_days_must_be_positive(self):
+        with self.assertRaises(CommandError):
+            self.prune('--days', '0')
+
 
 class ActivityLabelsTests(TestCase):
     """Wpisy dziennika mają polskie etykiety i nazwy obiektów zamiast surowych nazw adresów."""
 
     @classmethod
     def setUpTestData(cls):
-        cls.admin = get_user_model().objects.create_superuser('activityadmin', 'admin@example.test', 'test')
+        cls.admin = create_superuser('activityadmin')
         cls.person = Illustrator.objects.create(first_name='Anna', last_name='Rysuje')
 
     def test_all_named_routes_have_polish_labels_and_admin_uses_model_name(self):
@@ -138,3 +265,42 @@ class ActivityLabelsTests(TestCase):
         self.assertIn('Anna Rysuje', queue.call_args.kwargs['target'])
         match = resolve(reverse('illustrations:illustrator_edit', args=[self.person.pk]))
         self.assertIn('Anna Rysuje', target_for_match(match))
+
+
+class ActivityPageFilterTests(TemporaryActivitySpoolMixin, TestCase):
+    """Strona dziennika: tylko dla superużytkownika, filtry rodzaju i dat, błędny zakres dat bez wyników."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.admin = create_superuser('activityfilter')
+        today = timezone.now()
+        for action, method, days in (('Wpis podglądu', 'GET', 0), ('Wpis formularza', 'POST', 0),
+                                     ('Dawny wpis', 'GET', 10)):
+            row = UserActivity.objects.create(actor='x', method=method, action=action, path='/', status_code=200)
+            UserActivity.objects.filter(pk=row.pk).update(created_at=today - timedelta(days=days))
+
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.admin)
+
+    def actions(self, **params):
+        response = self.client.get(reverse('core:user_activity'), params)
+        return response, {entry.action for entry in response.context['activities']}
+
+    def test_method_and_date_filters(self):
+        today = timezone.localdate()
+        self.assertEqual(self.actions(method='POST')[1], {'Wpis formularza'})
+        self.assertEqual(self.actions(date_from=today.isoformat())[1], {'Wpis podglądu', 'Wpis formularza'})
+        self.assertEqual(self.actions(date_to=(today - timedelta(days=5)).isoformat())[1], {'Dawny wpis'})
+
+    def test_reversed_date_range_is_rejected(self):
+        today = timezone.localdate()
+        response, actions = self.actions(date_from=today.isoformat(),
+                                         date_to=(today - timedelta(days=1)).isoformat())
+        self.assertEqual(response.status_code, 400)
+        self.assertContains(response, 'nie może być późniejsza', status_code=400)
+        self.assertEqual(actions, set())
+
+    def test_team_member_without_superuser_rights_is_refused(self):
+        self.client.force_login(create_member('czlonek', 'Redaktor'))
+        self.assertEqual(self.client.get(reverse('core:user_activity')).status_code, 403)

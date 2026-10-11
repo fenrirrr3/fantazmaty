@@ -79,12 +79,12 @@ class MyWorkVisibilityTests(AnthologyWorkflowMixin, TestCase):
     def test_pending_task_is_in_progress_and_old_tabs_resolve_to_remaining_tabs(self):
         editing = self.begin_editing()
         S.objects.filter(pk=editing.pk).update(started_at=self.today + timedelta(days=1))
-        self.assertIn(self.text.pk, self.my_ids())
         self.client.force_login(self.editor)
         for view, selected in [('active', 'active'), ('waiting', 'active'), ('completed', 'all')]:
             with self.subTest(view=view):
                 page = self.client.get(reverse('core:my_texts'), {'view': view})
                 self.assertEqual(page.context['selected_view'], selected)
+                self.assertIn(self.text.pk, [row['pk'] for row in page.context['texts']])
                 nav = html.fromstring(page.content).xpath('//nav[@aria-label="Widok moich tekstów"]')[0]
                 self.assertEqual([''.join(a.itertext()).strip() for a in nav.xpath('./a')], ['W toku', 'Wszystkie'])
                 self.assertContains(page, 'Oczekujące')
@@ -138,11 +138,12 @@ class MyWorkVisibilityTests(AnthologyWorkflowMixin, TestCase):
 class MyTextsAllOrderingTests(TestCase):
     """Widok „Wszystkie” w Moich tekstach: kolejność alfabetyczna niezależnie od dat zakończenia."""
 
-    def setUp(self):
-        self.today = timezone.localdate()
-        self.member = create_member('member', 'Korektor')
-        self.other = get_user_model().objects.create_user('other', 'other@example.com', 'test')
-        self.book = Anthology.objects.create(title='Test')
+    @classmethod
+    def setUpTestData(cls):
+        cls.today = timezone.localdate()
+        cls.member = create_member('member', 'Korektor')
+        cls.other = get_user_model().objects.create_user('other', 'other@example.com', 'test')
+        cls.book = Anthology.objects.create(title='Test')
 
     def work(self, title, ago=None, editor=False, control_ago=None):
         text = Text.objects.create(title=title, length=100, anthology=self.book)
@@ -279,13 +280,16 @@ class EditorDashboardTests(EditingInProgressFixtures):
 class WorkflowSummaryTests(TestCase):
     """Zestawienie procesu (kolumny ról, stan pracy redaktora, ukrywanie gotowych) i strona główna."""
 
+    @classmethod
+    def setUpTestData(cls):
+        cls.admin = create_superuser()
+        cls.user = create_member('user', 'Redaktor')
+        add_roles(cls.user, 'Weryfikator')
+        cls.book = Anthology.objects.create(title='Nabór')
+        cls.text = Text.objects.create(title='Tytuł', length=100, anthology=cls.book)
+        cls.today = timezone.localdate()
+
     def setUp(self):
-        self.admin = create_superuser()
-        self.user = create_member('user', 'Redaktor')
-        add_roles(self.user, 'Weryfikator')
-        self.book = Anthology.objects.create(title='Nabór')
-        self.text = Text.objects.create(title='Tytuł', length=100, anthology=self.book)
-        self.today = timezone.localdate()
         self.client.force_login(self.admin)
 
     def stage(self, kind, role=None, **kw):
@@ -342,11 +346,12 @@ class WorkflowSummaryTests(TestCase):
 class ArchivedReviewTransferTests(TestCase):
     """Archiwalna recenzja trafia do procesu raz i znika z pulpitu; zestawienie może ukryć gotowe teksty."""
 
-    def setUp(self):
-        self.user = create_superuser()
-        self.book = Anthology.objects.create(title='Nabór')
-        self.review = Review.objects.create(
-            title='Archiwalny test', anthology=self.book, author_first_name='Jan', author_last_name='Test',
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = create_superuser()
+        cls.book = Anthology.objects.create(title='Nabór')
+        cls.review = Review.objects.create(
+            title='Archiwalny test', anthology=cls.book, author_first_name='Jan', author_last_name='Test',
             email='jan@example.com', author_pseudonym='Pseudonim', length=100, old_reviews=True,
             status='accepted', author_notified_at=timezone.localdate())
 
@@ -380,6 +385,8 @@ class ArchivedReviewTransferTests(TestCase):
 
 
 class CompletionLabelsTests(TestCase):
+    """Etykiety „Zakończone” / „W toku” w tabeli prac na profilu osoby."""
+
     def test_profile_finished_labels_cover_media_and_preserve_active_work(self):
         member = create_member('v69work', 'Redaktor')
         book = Anthology.objects.create(title='Ukończone prace', status='ready')

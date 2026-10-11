@@ -10,6 +10,7 @@ from django.urls import reverse
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
 from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from docx.shared import RGBColor
 from lxml import html
 
@@ -19,13 +20,12 @@ from core.services.odkurzacz import (
     DEFAULT_EDITORIAL_RULES, EDITORIAL_RULES, FORM_DEFAULT_EDITORIAL_RULES, clean_docx,
 )
 from fantazmaty.testing import create_member
-from illustrations.models import Illustrator
-from texts.models import Anthology, Text
 
 from .support import (
     IsolatedProgramDirsMixin, docx_bytes, downloaded, downloaded_document, footnote_text, formatted_docx, saved,
     upload, whole_document,
 )
+
 
 def soft_whitespace_document():
     """Twarde spacje, miękki enter i podział strony w akapicie, tabeli i nagłówku."""
@@ -115,6 +115,53 @@ class CleanDocxTests(SimpleTestCase):
         self.assertEqual(len(doc.element.xpath('//w:br[not(@w:type) or @w:type="textWrapping"]')), 0)
         self.assertEqual([p.text for p in doc.tables[0].cell(0, 0).paragraphs], ['Tabela A', 'B'])
         self.assertEqual([p.text for p in doc.sections[0].header.paragraphs], ['Nagłówek A', 'B'])
+
+
+class CleanDocxStructureTests(SimpleTestCase):
+    """Odkurzacz nie zmienia pól Worda ani pustych akapitów, które niosą układ dokumentu."""
+
+    def test_field_code_and_result_are_left_alone(self):
+        document = Document()
+        paragraph = document.add_paragraph()
+        paragraph.add_run('Przed  polem ')
+        for kind, text in (('begin', None), (None, ' HYPERLINK  "x" '), ('separate', None), (None, 'Wynik  pola'),
+                           ('end', None)):
+            run = paragraph.add_run()
+            if kind:
+                marker = OxmlElement('w:fldChar')
+                marker.set(qn('w:fldCharType'), kind)
+                run._r.append(marker)
+            else:
+                code = OxmlElement('w:instrText' if 'HYPERLINK' in text else 'w:t')
+                code.text = text
+                code.set(qn('xml:space'), 'preserve')
+                run._r.append(code)
+        paragraph.add_run(' i  po nim')
+        result = Document(clean_docx(saved(document), ['spaces']))
+        self.assertEqual(result.paragraphs[0].text, 'Przed polem Wynik  pola i po nim')
+        self.assertEqual(result.paragraphs[0]._p.xpath('.//w:instrText/text()'), [' HYPERLINK  "x" '])
+
+    def test_empty_paragraphs_with_layout_are_kept(self):
+        document = Document()
+        document.add_paragraph('A')
+        document.add_paragraph(' \u00a0').add_run().add_tab()
+        document.add_paragraph()                                            # usuwany: drugi pusty z rzędu
+        document.add_paragraph().paragraph_format.page_break_before = True  # podział strony
+        document.add_paragraph('', style='List Number')                      # numeracja
+        document.add_paragraph().add_run().add_break(WD_BREAK.PAGE)          # treść inna niż tekst
+        bookmarked = document.add_paragraph()
+        bookmarked._p.append(OxmlElement('w:bookmarkStart'))
+        document.add_paragraph()
+        document.add_table(rows=1, cols=1)
+        document.add_paragraph()
+        document.add_paragraph('B')
+        result = Document(clean_docx(saved(document), ['empty_paragraphs']))
+        self.assertEqual(len(result.paragraphs), len(document.paragraphs) - 1)
+        self.assertEqual(result.paragraphs[2].paragraph_format.page_break_before, True)
+
+    def test_unknown_rule_is_refused(self):
+        with self.assertRaisesMessage(ValueError, 'Nieznana reguła'):
+            clean_docx(BytesIO(docx_bytes()), ['nieznana'])
 
 
 class OdkurzaczPageTests(IsolatedProgramDirsMixin, TestCase):
@@ -210,22 +257,6 @@ class OdkurzaczPageTests(IsolatedProgramDirsMixin, TestCase):
         self.assertContains(response, 'Nie udało się przetworzyć dokumentu')
         self.assertContains(response, 'Wróć do programów')
         self.assertNotIn('bad package', response.content.decode())
-
-
-class PopulatedCmsProgramTests(IsolatedProgramDirsMixin, TestCase):
-    """Programy dla administratora w CMS z danymi: antologią z ilustracjami, tekstem i ilustratorami."""
-
-    @classmethod
-    def setUpTestData(cls):
-        cls.admin = get_user_model().objects.create_superuser('admin16', 'admin16@example.test', 'test')
-        create_member('artist16', 'Ilustrator')
-        Illustrator.objects.create(first_name='Artysta', last_name='Kontakt')
-        book = Anthology.objects.create(title='Nowa antologia', has_illustrations=True)
-        cls.text = Text.objects.create(title='Nowy tekst', anthology=book, length=20)
-
-    def setUp(self):
-        super().setUp()
-        self.client.force_login(self.admin)
 
     @tag('slow')
     def test_soft_whitespace_checkbox_reaches_cleaner_and_conversion_worker(self):

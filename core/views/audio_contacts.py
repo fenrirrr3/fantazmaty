@@ -75,20 +75,10 @@ def contact_suggestions(request):
         rows = AudioContributor.objects.filter(Q(name__plcontains=query) | Q(email__icontains=query)).order_by('name', 'pk')[:25]
         results = [{'id': r.pk, 'name': r.name, 'email': r.email} for r in rows]
     elif kind == 'illustration':
-        from illustrations.models import Illustrator, Illustration
+        from illustrations.models import Illustrator
         rows = Illustrator.objects.filter(is_active=True).filter(Q(first_name__plcontains=query) |
             Q(last_name__plcontains=query) | Q(pseudonym__plcontains=query) | Q(email__icontains=query))[:25]
         results = [{'id': r.pk, 'name': r.display_name, 'email': r.email or ''} for r in rows]
-        # Preserve the ability to find previously entered independent contacts.
-        manual = Illustration.objects.exclude(manual_illustrator_name='').filter(
-            Q(manual_illustrator_name__plcontains=query) | Q(manual_illustrator_email__icontains=query)
-        ).values_list('manual_illustrator_name', 'manual_illustrator_email').distinct()[:25]
-        inactive = {(r.display_name.casefold(), (r.email or '').casefold()) for r in Illustrator.objects.filter(is_active=False)}
-        seen = {(r['name'].casefold(), r['email'].casefold()) for r in results} | inactive
-        for name, email in manual:
-            if (name.casefold(), email.casefold()) not in seen:
-                results.append({'id': None, 'name': name, 'email': email})
-                seen.add((name.casefold(), email.casefold()))
     elif kind in ('person', 'cover'):
         # Hints for entries without an account: names only, never contact data.
         terms = query.split()

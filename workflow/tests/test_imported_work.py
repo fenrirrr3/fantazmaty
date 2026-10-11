@@ -1,34 +1,30 @@
-"""Praca zaimportowana z archiwum: etapy tylko z importu, profil osoby, listy admina i jednorazowa naprawa importu „Ballad”."""
-from datetime import date, timedelta
-from io import StringIO
-import json
-from pathlib import Path
-import tempfile
+"""Zakończona praca z dawnych importów (fabryka import_completed_workflow): etapy tylko z importu, profil osoby,
+listy admina oraz etykiety wykonań tekstów archiwalnych."""
+from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
-from django.core.management import call_command
-from django.core.management.base import CommandError
 from django.db import IntegrityError, transaction
 from django.http import QueryDict
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from core.management.commands.repair_ballady_import import repair, SOURCE, BOOK, TARGETS
 from people.models import Person, Role
 from texts.models import Text, Anthology
 from workflow.models import WorkflowStage as S, WorkflowRoleAssignment as A
 from workflow.catalog import IMPORT_ONLY_STAGE_TYPES, IMPORT_ONLY_ROLES, active_stage_choices, active_role_choices
-from workflow.completed_import import import_completed_workflow
+from fantazmaty.testing.history import import_completed_workflow
 from workflow.read_queries import annotate_my_work, dashboard_querysets
 from workflow.repetitions import repeat_stages
-from workflow.services import _ensure_editing_phase, claim_stage, create_pending_stage, resume_editing, user_can_complete_stage
-
-from .support import importing
+from workflow.archive_executions import SOURCE as ARCHIVE_SOURCE
+from workflow.labels import assignment_label, stage_label
+from workflow.services import claim_stage, create_pending_stage, user_can_complete_stage
 
 
 class ImportedWorkTests(TestCase):
+    """Tekst z zakończoną historią: dwie redakcje, kontrola redakcji i czwarta weryfikacja z dawnego importu."""
+
     @classmethod
     def setUpTestData(cls):
         cls.admin = get_user_model().objects.create_superuser(
@@ -113,10 +109,10 @@ class ImportedWorkTests(TestCase):
     def test_import_only_work_is_in_profile_summary_but_not_assignments_or_work_lists(self):
         from core.views.people import _profile_assignments, _imported_work_summary
         from core.selectors.texts import my_texts_context
-        self.load()
+        self.load([self.row("editing", 0), *[self.row(kind, 2) for kind in IMPORT_ONLY_STAGE_TYPES]])
         person = self.people[2]
         summary = _imported_work_summary(person)
-        self.assertEqual({r["role"]: r["texts"] for r in summary}, {"editing_reviewer": 1, "verifier_4": 1})
+        self.assertEqual({r["role"]: r["texts"] for r in summary}, dict.fromkeys(IMPORT_ONLY_ROLES, 1))
         rows, totals = _profile_assignments(person, include_authors=False)
         self.assertEqual(rows, [])
         self.assertEqual(totals, {"active": 0, "reserved": 0, "completed": 0})
@@ -180,111 +176,24 @@ class ImportedWorkTests(TestCase):
             response, reverse("admin:workflow_workflowstage_change", args=[stage.pk])
         )
 
-    def test_shared_import_command_previews_then_creates_missing_people_without_roles(self):
-        data = {
-            "schema_version": 1,
-            "source": "test-import-only",
-            "people": [
-                {"first_name": "Dawny", "last_name": "Wykonawca", "email": "past@example.com"}
-            ],
-            "authors": [
-                {"first_name": "Autor", "last_name": "Testowy", "email": "writer@example.com"}
-            ],
-            "texts": [
-                {
-                    "source_row": 1,
-                    "title": "Dawne zgłoszenie",
-                    "anthology": "Dawna antologia",
-                    "length": 100,
-                    "authors": ["writer@example.com"],
-                    "next_stage": "ready",
-                    "stages": [
-                        {"stage_type": kind, "assigned_to": "past@example.com"}
-                        for kind in IMPORT_ONLY_STAGE_TYPES
-                    ],
-                }
-            ],
-        }
-        with tempfile.TemporaryDirectory() as folder:
-            path = Path(folder) / "data.json"
-            path.write_text(json.dumps(data), encoding="utf-8")
-            call_command("import_team_archive", str(path), stdout=StringIO())
-            self.assertFalse(Person.objects.filter(email="past@example.com").exists())
-            self.assertFalse(Text.objects.filter(import_source=data["source"]).exists())
-            for _ in range(2):
-                call_command("import_team_archive", str(path), commit=True, stdout=StringIO())
-        person = Person.objects.select_related("user").get(email="past@example.com")
-        self.assertFalse(
-            person.is_active
-            or person.user.is_active
-            or person.user.is_staff
-            or person.user.is_superuser
-        )
-        self.assertFalse(person.user.has_usable_password())
-        self.assertFalse(person.roles.exists())
-        self.assertEqual(
-            S.objects.filter(text__import_source=data["source"], imported_completed=True).count(),
-            len(IMPORT_ONLY_STAGE_TYPES),
-        )
-
     def test_invalid_import_rolls_back_every_assignment(self):
         with self.assertRaises(ValidationError):
             self.load([self.row("editing"), self.row("fourth_verification", ended_at="not-a-date")])
         self.assertFalse(A.objects.filter(text=self.text).exists())
         self.assertFalse(S.objects.filter(text=self.text).exists())
 
-
-class RepairBalladyImportTests(TestCase):
-    """Jednorazowa naprawa importu antologii „Ballady”: daty pracy z autorem i wznowienie redakcji."""
-
-    def setUp(self):
-        self.user = get_user_model().objects.create_superuser('editor', 'editor@example.com', 'password')
-        self.book = Anthology.objects.create(title=BOOK)
-        with importing():
-            for row, title, end in TARGETS:
-                t = Text.objects.create(title=title, length=123, anthology=self.book,
-                                        import_source=SOURCE, import_source_row=row)
-                for n in range(1, 4 if row == 1 else 2):
-                    a = A.objects.create(text=t, role='editor', assigned_to=self.user, execution_number=n,
-                                         is_current=n == (3 if row == 1 else 1))
-                    S.objects.create(text=t, stage_type='editing', assignment=a, iteration=n, execution_number=n,
-                                     is_current=a.is_current, is_completed=True, imported_completed=True)
-                editor = a
-                for role, kind in [('editing_coordinator', 'editing_control'), ('proofreader_1', 'first_proofreading'),
-                                   ('verifier_1', 'first_verification')]:
-                    a = A.objects.create(text=t, role=role, assigned_to=self.user)
-                    dated = end if kind == 'first_verification' else None
-                    S.objects.create(text=t, stage_type=kind, assignment=a, is_completed=True,
-                                     imported_completed=True, started_at=dated, ended_at=dated)
-                S.objects.create(text=t, stage_type='author_editing', assignment=editor)
-
-    def test_preview_repair_repeat_and_resume(self):
-        counts = (Text.objects.count(), A.objects.count(), S.objects.count())
-        repair()
-        self.assertFalse(
-            S.objects.filter(stage_type="author_editing", started_at__isnull=False).exists()
-        )
-        repair(apply=True)
-        repair(apply=True)
-        self.assertEqual(counts, (Text.objects.count(), A.objects.count(), S.objects.count()))
-        for _, title, end in TARGETS:
-            text = Text.objects.get(title=title)
-            self.assertEqual(S.objects.get(text=text, stage_type="author_editing").started_at, end)
-            _ensure_editing_phase(text)
-            stage = resume_editing(text, self.user, started_at=date(2026, 9, 29))
-            self.assertEqual(stage.stage_type, "editing")
-            self.assertFalse(stage.is_completed)
-        repair(apply=True)  # No resetting of subsequent legitimate work.
-
-    def test_changed_second_text_blocks_all_writes(self):
-        S.objects.filter(text__title=TARGETS[1][1], stage_type="author_editing").update(
-            started_at=date(2026, 9, 25)
-        )
-        with self.assertRaises(CommandError):
-            repair(apply=True)
-        self.assertIsNone(
-            S.objects.get(text__title=TARGETS[0][1], stage_type="author_editing").started_at
-        )
-        self.assertTrue(
-            S.objects.get(text__title=TARGETS[0][1], stage_type="first_proofreading").is_current
-        )
+    def test_archive_table_texts_use_role_names_with_execution_numbers(self):
+        self.load()
+        stage = S.objects.get(stage_type="editing", execution_number=2)
+        self.assertEqual(stage_label(stage), "Redakcja (wyk. 2)")
+        Text.objects.filter(pk=self.text.pk).update(import_source=ARCHIVE_SOURCE, import_source_row=1)
+        stage = S.objects.select_related("text", "assignment__text").get(pk=stage.pk)
+        self.assertEqual(stage_label(stage), "Redaktor (wyk. 2)")
+        self.assertEqual(str(stage), "Zakończona praca: Redaktor (wyk. 2)")
+        self.assertEqual(assignment_label(stage.assignment), "Redaktor (wyk. 2)")
+        self.assertEqual(str(stage.assignment), "Zakończona praca – Redaktor (wyk. 2) – Osoba 1")
+        first = S.objects.get(stage_type="editing", execution_number=1)
+        self.assertEqual(stage_label(first), "Redaktor")
+        # Rows outside the 29 archive rows keep the ordinary stage labels.
+        Text.objects.filter(pk=self.text.pk).update(import_source_row=30)
+        self.assertEqual(stage_label(S.objects.get(pk=stage.pk)), "Redakcja (wyk. 2)")

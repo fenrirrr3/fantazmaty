@@ -2,7 +2,7 @@
 from urllib.parse import parse_qs, urlsplit
 
 from django.http import QueryDict
-from django.test import TestCase
+from django.test import TestCase, tag
 from django.urls import reverse
 from django.utils import timezone
 from lxml import html
@@ -110,6 +110,7 @@ class TranslationVisibilityTests(TranslatedBookData, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, "translation-0-translators")
 
+    @tag('slow')
     def test_translations_in_all_tasks_personal_and_dashboard_but_not_ordinary_workflow(self):
         self.client.force_login(self.member)
         for route in ('text_list', 'my_texts', 'home'):
@@ -163,6 +164,7 @@ class TranslationVisibilityTests(TranslatedBookData, TestCase):
 
 
 class CompletedTranslationTests(CompletedTranslationData, TestCase):
+    @tag('slow')
     def test_completed_translation_is_in_personal_all_and_profile_with_executions(self):
         self.client.force_login(self.member)
         response = self.client.get(reverse('core:my_texts'), {'view': 'all'})
@@ -183,6 +185,7 @@ class CompletedTranslationTests(CompletedTranslationData, TestCase):
         self.assertContains(response, reverse('core:translation_detail', args=[self.text.pk]))
         self.assertEqual(response.context['person_summary']['completed'], 2)
 
+    @tag('slow')
     def test_personal_filters_include_translated_anthology_and_keep_author_ids_separate(self):
         # Give the admin work too so the author filter is available in a personal list.
         for text in (self.text, self.normal):

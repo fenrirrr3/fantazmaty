@@ -16,10 +16,13 @@ from .support import add_roles
 
 
 class ProofreadingPolicyTests(TestCase):
-    def setUp(self):
-        self.admin = create_superuser()
-        self.user = create_member('proof', 'Korektor')
-        self.text = Text.objects.create(title="Test", length=200)
+    """Druga i trzecia korekta dla innych osób niż pierwsza; pomijanie czwartej korekty przez superusera."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.admin = create_superuser()
+        cls.user = create_member('proof', 'Korektor')
+        cls.text = Text.objects.create(title="Test", length=200)
 
     def test_first_performer_cannot_see_or_take_second_and_third(self):
         first = A.objects.create(text=self.text, role=A.Role.PROOFREADER_1, assigned_to=self.user)

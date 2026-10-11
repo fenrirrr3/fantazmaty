@@ -1,3 +1,5 @@
+from datetime import datetime, time
+
 from workflow.anthology_policy import require_working_anthology
 from core.workflow_events import track_workflow
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -358,8 +360,12 @@ def restore_withdrawn_text(*, user, text_id):
     withdrawn = next((s for s in stages if s.stage_type == StageType.WITHDRAWN), None)
     if withdrawn is None:
         raise ValidationError('Tekst nie jest wycofany.')
-    if text.repetitions.filter(cancellation_reason='Wycofano tekst.',
-                               canceled_at__date__gte=withdrawn.started_at).exists():
+    # Zakres czasu zamiast __date: działa także w MySQL bez tabel stref czasowych.
+    since = timezone.make_aware(datetime.combine(withdrawn.started_at, time.min)) if withdrawn.started_at else None
+    cancelled = text.repetitions.filter(cancellation_reason='Wycofano tekst.')
+    if since is not None:
+        cancelled = cancelled.filter(canceled_at__gte=since)
+    if cancelled.exists():
         raise ValidationError('Wycofanie odwołało kolejkę powtórzeń. Takiego tekstu nie da się przywrócić '
                               'jednym przyciskiem – popraw etapy w panelu admina.')
     from core.workflow_events import remember

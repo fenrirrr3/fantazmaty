@@ -57,6 +57,11 @@ class ClaimTests(AudioDescriptionTestData, TestCase):
         self.task.refresh_from_db()
         self.assertIsNone(self.task.assigned_to_id)
 
+    def test_administrator_without_team_profile_cannot_claim(self):
+        self.assertEqual(self.post(self.admin, self.claim).status_code, 403)
+        self.task.refresh_from_db()
+        self.assertEqual((self.task.assigned_to_id, self.task.status), (None, 'not_commissioned'))
+
     def test_missing_version_rejected_and_status_without_assignee_not_saved(self):
         self.client.force_login(self.writer)
         self.assertEqual(self.client.post(self.claim, {}).status_code, 409)
@@ -82,6 +87,30 @@ class AssignmentTests(AudioDescriptionTestData, TestCase):
         self.assertEqual(self.post(self.controller, action='stage', stage='consultation').status_code, 403)
         # Uwagi zapisuje każdy członek zespołu.
         self.assertEqual(self.post(self.controller, action='note', note='x').status_code, 302)
+
+    def test_ready_task_keeps_its_assignee_on_this_page(self):
+        self.task.assigned_to = self.writer.person_profile
+        self.task.status = 'ready'
+        self.task.save()
+        response = self.post(self.manager, assigned_to=self.other.person_profile.pk)
+        self.assertContains(response, 'Wykonawcę zmienisz tylko w panelu admina', status_code=400)
+        # Bez zmiany osoby zapis kontrolerów działa, a zadanie pozostaje gotowe.
+        response = self.post(self.manager, assigned_to=self.writer.person_profile.pk,
+                             controllers=[self.controller.person_profile.pk])
+        self.assertEqual(response.status_code, 302)
+        self.task.refresh_from_db()
+        self.assertEqual((self.task.assigned_to, self.task.status), (self.writer.person_profile, 'ready'))
+        self.assertTrue(self.description.controllers.filter(pk=self.controller.person_profile.pk).exists())
+
+    def test_account_outside_the_team_cannot_change_anything(self):
+        outsider = get_user_model().objects.create_user('ad-outsider')
+        for data in ({'action': 'content', 'content': 'Obca treść'}, {'action': 'note', 'note': 'Obca uwaga'},
+                     {'action': 'stage', 'stage': 'consultation'}, {'assigned_to': outsider.pk}):
+            with self.subTest(data=data):
+                self.assertEqual(self.post(outsider, **data).status_code, 403)
+        self.description.refresh_from_db()
+        self.assertEqual((self.description.content, self.description.stage), ('', 'writing'))
+        self.assertFalse(self.description.notes.exists())
 
     def test_assignee_cannot_change_owner_or_grant_control(self):
         self.post(self.writer, self.claim)

@@ -59,8 +59,8 @@ na SQLite i MySQL, `ruff check`, stylelint oraz `pip-audit`.
    - `python manage.py flush_activity` – przenosi dziennik aktywności do bazy,
    - `python manage.py prune_activity` – usuwa stare wpisy aktywności,
    - `python manage.py clearsessions` – usuwa wygasłe sesje (raz dziennie).
-   Powiadomienia Discord wysyła aplikacja na bieżąco; `dispatch_workflow_notifications`
-   nie jest już używane – usuń to zadanie, jeśli jest zaplanowane.
+   Powiadomienia Discord wysyła aplikacja na bieżąco. Komendy `dispatch_workflow_notifications`
+   już nie ma – usuń to zadanie, jeśli jest zaplanowane.
 5. `python manage.py check --deploy`
 
 ## Struktura

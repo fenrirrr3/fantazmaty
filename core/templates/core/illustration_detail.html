@@ -22,7 +22,6 @@
     <p>Ilustratorzy: <strong>{{ illustration.illustrator_display|default:"Nie przypisano" }}</strong> · {% include "core/includes/illustration_status.html" %}</p>
     {% if can_assign %}
     {% for artist in illustration.illustrators.all %}{% if artist.email %}<p>{{ artist.display_name }}: <a href="mailto:{{ artist.email }}">{{ artist.email }}</a></p>{% endif %}{% endfor %}
-    {% if illustration.manual_illustrator_email %}<p>E-mail ilustratora: <a href="mailto:{{ illustration.manual_illustrator_email }}">{{ illustration.manual_illustrator_email }}</a></p>{% endif %}
     {% endif %}
     <p>Data przypisania: {{ illustration.assigned_at|date:"d.m.Y"|default:"Brak daty" }}</p>
     {% if can_edit %}
@@ -43,9 +42,9 @@
             <p class="form-help">Po dodaniu osoby wyszukaj następną. Zmiany zatwierdź przyciskiem „Zapisz przypisanie i status”.</p>
             <noscript>Wyszukiwanie wymaga JavaScript. Dotychczasowe przypisania są zachowane; można je również zmienić w panelu admina.</noscript>
         </div>
-        <p>Możesz też pozostawić wybór pusty i wpisać dane ręcznie. Spis jest niezależny od kont i profili zespołu.</p>
-        <div class="form-field">{{ forms.assignment.manual_illustrator_name.label_tag }}{{ forms.assignment.manual_illustrator_name }}{{ forms.assignment.manual_illustrator_name.errors }}</div>
-        <div class="form-field">{{ forms.assignment.manual_illustrator_email.label_tag }}{{ forms.assignment.manual_illustrator_email }}{{ forms.assignment.manual_illustrator_email.errors }}</div>
+        <p>Osoby spoza spisu dodasz poniżej – trafi do spisu ilustratorów i zostanie przypisana.</p>
+        <div class="form-field">{{ forms.assignment.new_illustrator_name.label_tag }}{{ forms.assignment.new_illustrator_name }}{{ forms.assignment.new_illustrator_name.errors }}</div>
+        <div class="form-field">{{ forms.assignment.new_illustrator_email.label_tag }}{{ forms.assignment.new_illustrator_email }}{{ forms.assignment.new_illustrator_email.errors }}</div>
         {% endif %}
         <div class="form-field">{{ forms.assignment.status.label_tag }}{{ forms.assignment.status }}{{ forms.assignment.status.errors }}</div>
         <button type="submit" class="primary-button">Zapisz przypisanie i status</button>

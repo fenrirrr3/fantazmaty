@@ -8,6 +8,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Pt
+from PIL import Image
 
 # Poprawne parametry formularza powtórzeń (prefiks dodaje formularz strony programów).
 REPETITION_PARAMETERS = {
@@ -52,6 +53,14 @@ def sized_docx(size):
         archive.writestr('padding.bin', b'0' * (size - len(stream.getvalue()) - overhead))
     assert len(stream.getvalue()) == size
     return SimpleUploadedFile('tekst.docx', stream.getvalue())
+
+
+def png(width, height):
+    """Jednobarwny obraz PNG o zadanych wymiarach (strumień ustawiony na początek)."""
+    stream = BytesIO()
+    Image.new('RGB', (width, height), 'red').save(stream, 'PNG')
+    stream.seek(0)
+    return stream
 
 
 def upload(data=None, name='tekst.docx'):

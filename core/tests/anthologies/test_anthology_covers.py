@@ -4,13 +4,12 @@ from datetime import timedelta
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
-from lxml import html
 
 from illustrations.models import Illustrator
 from texts.cover_forms import CoverAssignmentForm
 from texts.models import Anthology
 
-from .support import AnthologyPageData
+from .support import AnthologyPageData, admin_form_data
 
 
 class CoverAssignmentTests(AnthologyPageData, TestCase):
@@ -118,21 +117,8 @@ class CoverAssignmentTests(AnthologyPageData, TestCase):
         url = reverse("admin:texts_anthology_change", args=[self.book.pk])
 
         def form_data():
-            doc = html.fromstring(self.client.get(url).content)
-            form = doc.xpath('//form[@id="anthology_form"]')[0]
-            data = {}
-            for field in form.xpath(".//input[@name] | .//select[@name] | .//textarea[@name]"):
-                if field.get("type") in ("checkbox", "radio") and field.get("checked") is None:
-                    continue
-                if field.tag == "select":
-                    options = field.xpath("./option[@selected]") or field.xpath("./option")[:1]
-                    value = options[0].get("value", "") if options else ""
-                else:
-                    value = field.get("value", "") if field.tag == "input" else field.text or ""
-                data[field.get("name")] = value
-            data.update(cover_status="in_progress", new_cover_first_name="Administrator",
-                        new_cover_last_name="Dodał", _save="Zapisz")
-            return data
+            return admin_form_data(self.client, url, "anthology_form", cover_status="in_progress",
+                                   new_cover_first_name="Administrator", new_cover_last_name="Dodał", _save="Zapisz")
 
         invalid = {**form_data(), "production_tasks-0-status": "ready"}
         self.assertEqual(self.client.post(url, invalid).status_code, 200)

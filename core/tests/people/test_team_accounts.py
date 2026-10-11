@@ -1,14 +1,10 @@
-"""Profile zespołu i konta: jedno źródło ról i nazwisk, e-maile, osoby zewnętrzne, formularze osoby i konta w adminie."""
+"""Profile zespołu i konta: e-maile, osoby zewnętrzne, koordynacja przez role działowe, formularze osoby w adminie."""
 from datetime import datetime
-from importlib import import_module
-from types import SimpleNamespace
 
 from django.contrib.admin.sites import site
 from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
-from django.core.exceptions import ValidationError
-from django.db import IntegrityError, connection, transaction
-from django.db.migrations.executor import MigrationExecutor
+from django.core.exceptions import PermissionDenied, ValidationError
+from django.db import IntegrityError, transaction
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -29,19 +25,6 @@ class TeamAccountTests(TestCase):
         cls.admin = create_superuser()
         cls.member = create_member('member', 'Redaktor')
         cls.coordinator = create_member('coord', 'Koordynator recenzji')
-
-    def test_roles_and_names_have_one_profile_source(self):
-        person = self.member.person_profile
-        person.last_name = 'Nowe'
-        person.save(update_fields=['last_name'])
-        self.member.refresh_from_db()
-        self.assertEqual(self.member.last_name, 'Nowe')
-        self.member.groups.add(Group.objects.get_or_create(name='Korektor')[0])
-        self.assertTrue(person.roles.filter(name='Korektor').exists())
-        person.roles.remove(*person.roles.filter(name='Korektor'))
-        self.assertFalse(self.member.groups.filter(name='Korektor').exists())
-        self.coordinator.person_profile.roles.clear()
-        self.assertFalse(is_coordinator(self.coordinator))
 
     def test_email_uniqueness_is_enforced_outside_forms(self):
         with self.assertRaises(IntegrityError), transaction.atomic():
@@ -73,7 +56,7 @@ class TeamAccountTests(TestCase):
     def test_external_member_visible_but_cannot_login_or_take_work(self):
         person = self.member.person_profile
         person.is_external = True
-        person.save()
+        person.save(update_fields=['is_external'])
         person.refresh_from_db()
         self.assertFalse(person.is_active)
         self.assertIsNone(get_active_person_profile(self.member))
@@ -102,26 +85,23 @@ class TeamAccountTests(TestCase):
         form = AccountAdmin(get_user_model(), site).get_form(request, user)(instance=user)
         self.assertEqual(form.fields['last_name'].max_length, Person._meta.get_field('last_name').max_length)
 
-    def test_retiring_generic_role_preserves_access_and_revocation(self):
-        """Migracja people.0015 usuwa rolę „Koordynator”, zachowując dostęp koordynatora i możliwość jego odebrania."""
-        apps = MigrationExecutor(connection).loader.project_state([('people', '0014_contacts_and_team_status')]).apps
-        HistoricalPerson, HistoricalRole = apps.get_model('people', 'Person'), apps.get_model('people', 'Role')
-        profile = HistoricalPerson.objects.get(pk=self.member.person_profile.pk)
-        profile.roles.add(HistoricalRole.objects.create(name='Koordynator'))
-        import_module('people.migrations.0015_retire_generic_coordinator').retire(
-            apps, SimpleNamespace(connection=connection))
-        self.assertFalse(Role.objects.filter(name='Koordynator').exists())
-        self.assertTrue(is_coordinator(self.member))
-        self.assertTrue(has_role(self.member, 'Koordynator'))
-        person = Person.objects.get(pk=profile.pk)
-        person.save()
-        self.assertFalse(Role.objects.filter(name='Koordynator').exists())
-        self.assertIn(self.member, eligible_role_users(WorkflowRoleAssignment.Role.EDITING_COORDINATOR))
+    def test_coordinator_flag_follows_department_role_and_removal_revokes_access(self):
+        """Koordynatora daje rola działowa; odebranie flagi zdejmuje rolę, a ogólnej roli „Koordynator” nie da się utworzyć."""
+        person = self.coordinator.person_profile
+        person.refresh_from_db()
+        self.assertTrue(person.is_coordinator)
+        self.assertTrue(has_role(self.coordinator, 'Koordynator'))
+        self.assertIn(self.coordinator, eligible_role_users(WorkflowRoleAssignment.Role.EDITING_COORDINATOR))
         person.is_coordinator = False
         person.save()
-        self.assertFalse(is_coordinator(self.member))
-        with self.assertRaises(ValidationError):
-            Role(name='Koordynator').full_clean()
+        self.assertFalse(is_coordinator(self.coordinator))
+        self.assertNotIn(self.coordinator, eligible_role_users(WorkflowRoleAssignment.Role.EDITING_COORDINATOR))
+        self.assertFalse(person.roles.filter(name__startswith='Koordynator').exists())
+        self.assertFalse(self.coordinator.groups.filter(name__startswith='Koordynator').exists())
+        for name in ('Koordynator', ' koordynator zespołu '):
+            with self.subTest(name=name), self.assertRaises(ValidationError):
+                Role(name=name).full_clean()
+        Role(name='Koordynator recenzji 2').full_clean()
 
 
 class PersonAdminPageTests(TestCase):
@@ -133,30 +113,15 @@ class PersonAdminPageTests(TestCase):
         cls.member.last_login = timezone.make_aware(datetime(2026, 10, 1, 15, 45))
         cls.member.save()
         cls.person = Person.objects.create(user=cls.member, first_name='Ala', last_name='Osoba',
-                                           email=cls.member.email, illustrator_preferences='Zachowaj')
-        cls.role, _ = Role.objects.get_or_create(name='Ilustrator')
-        cls.artist = Person.objects.create(first_name='Jan', last_name='Ilustrator',
-                                           email='artist-ui@example.test', is_active=False)
-        cls.artist.roles.add(cls.role)
+                                           email=cls.member.email, previous_data='Dawne nazwisko')
+        cls.former = Person.objects.create(first_name='Jan', last_name='Dawny',
+                                           email='former-ui@example.test', is_active=False)
 
     def setUp(self):
         self.client.force_login(self.admin)
 
     def person_page(self, person):
         return self.client.get(reverse('admin:people_person_change', args=[person.pk]))
-
-    def test_contact_fields_are_separate_from_team_profiles_regardless_of_role(self):
-        ordinary = self.person_page(self.person)
-        self.assertEqual(ordinary.status_code, 200)
-        for field in ('illustrator_portfolio', 'illustrator_preferences', 'illustrator_covers', 'illustrator_active'):
-            self.assertNotContains(ordinary, f'name="{field}"')
-            self.assertNotContains(self.person_page(self.artist), f'name="{field}"')
-        self.person.roles.add(self.role)
-        self.assertNotContains(self.person_page(self.person), 'name="illustrator_portfolio"')
-        self.person.roles.remove(self.role)
-        self.assertNotContains(self.person_page(self.person), 'name="illustrator_portfolio"')
-        self.person.refresh_from_db()
-        self.assertEqual(self.person.illustrator_preferences, 'Zachowaj')
 
     def test_dates_share_row_with_leave_and_have_empty_states(self):
         page = self.person_page(self.person)
@@ -171,15 +136,73 @@ class PersonAdminPageTests(TestCase):
         self.member.last_login = None
         self.member.save(update_fields=['last_login'])
         self.assertContains(self.person_page(self.person), 'Jeszcze się nie logowano')
-        self.assertContains(self.person_page(self.artist), 'Brak powiązanego konta')
+        self.assertContains(self.person_page(self.former), 'Brak powiązanego konta')
 
-    def test_non_illustrator_save_does_not_erase_hidden_illustrator_data(self):
+    def test_admin_save_normalizes_names_and_links_existing_account(self):
         token = form_value(self.person_page(self.person))
         response = self.client.post(reverse('admin:people_person_change', args=[self.person.pk]), {
-            'first_name': 'Alicja', 'last_name': 'Osoba', 'email': self.person.email,
+            'first_name': '  Alicja   Maria ', 'last_name': ' Osoba ', 'email': self.person.email,
+            'dropbox_email': ' box@example.test ', 'previous_data': 'Dawne nazwisko',
             'is_active': 'on', '_save': 'Zapisz', '_edit_version': token,
         })
         self.assertEqual(response.status_code, 302)
         self.person.refresh_from_db()
-        self.assertEqual(self.person.first_name, 'Alicja')
-        self.assertEqual(self.person.illustrator_preferences, 'Zachowaj')
+        self.member.refresh_from_db()
+        self.assertEqual((self.person.first_name, self.person.last_name), ('Alicja Maria', 'Osoba'))
+        self.assertEqual(self.person.dropbox_email, 'box@example.test')
+        self.assertEqual(self.person.previous_data, 'Dawne nazwisko')
+        self.assertEqual(self.member.first_name, 'Alicja Maria')
+        self.assertContains(self.person_page(self.person),
+                            reverse('admin:auth_user_change', args=[self.member.pk]))
+
+    def test_admin_form_rejects_duplicate_email_and_direct_coordinator_flag(self):
+        data = {'first_name': 'Nowa', 'last_name': 'Osoba', 'is_active': 'on'}
+        for email in ('FORMER-UI@example.test', ' member-ui@example.test '):
+            with self.subTest(email=email):
+                form = PersonAdminForm({**data, 'email': email})
+                self.assertFalse(form.is_valid())
+                self.assertEqual(form.errors['email'].as_data()[0].code, 'duplicate_email')
+        form = PersonAdminForm({**data, 'email': 'nowa@example.test', 'is_coordinator': 'on'})
+        self.assertFalse(form.is_valid())
+        self.assertIn('konkretnego działu', str(form.non_field_errors()))
+        account = get_user_model().objects.create_user('no-mail-ui', email='')
+        form = PersonAdminForm({**data, 'user': account.pk})
+        self.assertFalse(form.is_valid())
+        self.assertIn('wymaga adresu e-mail', str(form.errors['email']))
+
+    def test_clearing_coordinator_flag_in_admin_drops_coordinator_roles(self):
+        coordinator = create_member('coord-ui', 'Koordynator korekty')
+        person = coordinator.person_profile
+        roles = Role.objects.filter(name__in=('Koordynator korekty', 'Korektor'))
+        Role.objects.get_or_create(name='Korektor')
+        form = PersonAdminForm({'first_name': person.first_name, 'last_name': person.last_name,
+                                'email': person.email, 'is_active': 'on', 'user': coordinator.pk,
+                                'roles': list(roles.values_list('pk', flat=True))}, instance=person)
+        self.assertTrue(form.is_valid(), form.errors)
+        form.save()
+        self.assertEqual(set(person.roles.values_list('name', flat=True)), {'Korektor'})
+        self.assertFalse(is_coordinator(coordinator))
+
+    def test_revoke_action_is_superuser_only(self):
+        from people.admin import PersonAdmin
+
+        coordinator = create_member('coord-action', 'Koordynator recenzji')
+        person = coordinator.person_profile
+        request = RequestFactory().post('/')
+        request.user = get_user_model().objects.create_user('staff-ui', is_staff=True)
+        with self.assertRaises(PermissionDenied):
+            PersonAdmin(Person, site).revoke_coordinator_access(request, Person.objects.filter(pk=person.pk))
+        self.assertTrue(is_coordinator(coordinator))
+        response = self.client.post(reverse('admin:people_person_changelist'), {
+            'action': 'revoke_coordinator_access', '_selected_action': [person.pk], 'index': '0'}, follow=True)
+        self.assertContains(response, 'Usunięto funkcje koordynatora')
+        self.assertFalse(is_coordinator(coordinator))
+
+    def test_changelist_and_role_pages(self):
+        page = self.client.get(reverse('admin:people_person_changelist'))
+        self.assertContains(page, 'Ala Osoba')
+        self.assertContains(page, '<td class="field-display_roles">–</td>', html=True)
+        role = Role.objects.get_or_create(name='Lektor')[0]
+        role_page = self.client.get(reverse('admin:people_role_change', args=[role.pk]))
+        self.assertNotContains(role_page, 'name="name"')
+        self.assertContains(self.client.get(reverse('admin:people_role_add')), 'name="name"')

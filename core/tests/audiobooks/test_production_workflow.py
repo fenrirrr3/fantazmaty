@@ -1,8 +1,11 @@
-"""Produkcja audiobooka na stronie audiobooka: stała kolejność etapów, daty, publikacja, blokady i panel admina."""
+"""Produkcja audiobooka na stronie audiobooka: stała kolejność etapów, daty, publikacja, blokady, panel admina i walidacja modelu."""
 from datetime import date, timedelta
+
+import json
 
 from django.contrib.admin.sites import site
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -120,7 +123,8 @@ class ProductionWorkflowTests(AudiobookProductionTestData, TestCase):
         self.assertEqual(self.start().status_code, 302)
         self.assertEqual(self.start().status_code, 400)  # już trwa
         stale = self.token()
-        self.assertEqual(self.post('finish_stage', stage_id=999999).status_code, 400)
+        for stage_id in (999999, 'abc', '', '１', '1' * 19):
+            self.assertEqual(self.post('finish_stage', stage_id=stage_id).status_code, 400)
         self.assertEqual(self.finish(day=timezone.localdate() - timedelta(days=1)).status_code, 400)
         self.assertEqual(self.finish().status_code, 302)
         self.assertEqual(self.client.post(self.url, {'action': 'start_stage', '_edit_version': stale}).status_code, 409)
@@ -248,3 +252,80 @@ class ProductionWorkflowTests(AudiobookProductionTestData, TestCase):
         stage = AudiobookStage.objects.get(pk=audio.active_stage_id)
         self.assertEqual((stage.started_at, stage.start_unknown, stage.is_completed), (date(2026, 1, 5), False, False))
         self.assertEqual(self.audio().status, 'recording')
+
+    def test_admin_edits_contacts_and_all_publication_parts_are_listed(self):
+        parts = [{'service': 'youtube', 'part': 2, 'url': 'https://www.youtube.com/watch?v=second'},
+                 {'service': 'hearthis', 'part': 2, 'url': 'https://hearthis.at/fantazmaty/second/'}]
+        audio = Audiobook.objects.create(text=self.text, status='published', proofreader=self.reader,
+                                         youtube_url='https://www.youtube.com/watch?v=first',
+                                         hearthis_url='https://hearthis.at/fantazmaty/first/', additional_links=parts)
+        self.client.force_login(self.admin)
+        for url in (self.list_url, self.url):
+            page = self.client.get(url)
+            for link in (audio.youtube_url, audio.hearthis_url, *(part['url'] for part in parts)):
+                self.assertContains(page, link)
+            self.assertContains(page, 'YouTube – cz. 2')
+        url = reverse('admin:core_audiobook_change', args=[audio.pk])
+        response = self.client.post(url, {
+            'narrator_name': 'Nowy lektor', 'narrator_email': 'new@example.test',
+            'engineer_name': 'Nowy dźwiękowiec', 'engineer_email': 'sound@example.test',
+            'proofreader': self.reader.pk, 'additional_links': json.dumps(parts),
+            '_edit_version': form_value(self.client.get(url)), '_save': 'Zapisz'})
+        self.assertEqual(response.status_code, 302)
+        audio.refresh_from_db()
+        self.assertEqual((audio.narrator_name, audio.narrator_email, audio.engineer_name, audio.engineer_email),
+                         ('Nowy lektor', 'new@example.test', 'Nowy dźwiękowiec', 'sound@example.test'))
+        self.assertEqual(audio.additional_links, parts)
+        # Puste pole dodatkowych linków zapisuje pustą listę.
+        response = self.client.post(url, {'narrator_name': 'Nowy lektor', 'engineer_name': 'Nowy dźwiękowiec',
+                                          'additional_links': '', '_edit_version': form_value(self.client.get(url)),
+                                          '_save': 'Zapisz'})
+        self.assertEqual(response.status_code, 302)
+        audio.refresh_from_db()
+        self.assertEqual(audio.additional_links, [])
+        audio.additional_links = [{'service': 'youtube', 'part': 2, 'url': 'javascript:evil'}]
+        with self.assertRaises(ValidationError):
+            audio.clean_fields()
+
+
+class AudiobookModelValidationTests(AudiobookProductionTestData, TestCase):
+    def errors(self, audio):
+        with self.assertRaises(ValidationError) as caught:
+            audio.clean()
+        return caught.exception.message_dict
+
+    def test_novel_chapters_and_moving_history_to_another_text_are_rejected(self):
+        novel = Anthology.objects.create(title='Powieść audio', is_novel=True)
+        chapter = Text.objects.create(title='Rozdział 1', anthology=novel, chapter_number=1, length=1)
+        self.assertIn('Rozdziały powieści', self.errors(Audiobook(text=chapter))['text'][0])
+        audio = Audiobook.objects.create(text=self.text)
+        audio.text = Text.objects.create(title='Inny tekst', anthology=self.book, length=1)
+        self.assertIn('Nie można przepiąć', self.errors(audio)['text'][0])
+
+    def test_new_proofreader_must_be_eligible_but_historical_one_is_kept(self):
+        audio = Audiobook(text=self.text, proofreader=self.member)
+        self.assertIn('Korektor audiobooków', self.errors(audio)['proofreader'][0])
+        audio.proofreader = self.reader
+        audio.clean()
+        # Zapisany wcześniej korektor, który stracił rolę, nie blokuje edycji innych pól.
+        Audiobook.objects.filter(text=self.text).delete()
+        audio = Audiobook.objects.create(text=self.text, proofreader=self.member)
+        audio.clean()
+
+    def test_email_requires_name_and_names_are_normalised(self):
+        audio = Audiobook(text=self.text, narrator_name='   ', narrator_email='n@example.test',
+                          engineer_name='  Jan   Montaż ')
+        self.assertEqual(set(self.errors(audio)), {'narrator_name'})
+        self.assertEqual(audio.engineer_name, 'Jan Montaż')
+
+    def test_partial_save_of_a_name_also_links_the_contact_profile(self):
+        audio = Audiobook.objects.create(text=self.text, status='recording')
+        audio.narrator_name = '  Ewa   Głos '
+        audio.status = 'published'  # pole spoza update_fields nie jest zapisywane
+        audio.save(update_fields=['narrator_name'])
+        stored = Audiobook.objects.select_related('narrator_contact').get(pk=audio.pk)
+        self.assertEqual((stored.narrator_name, stored.narrator_contact.name, stored.status),
+                         ('Ewa Głos', 'Ewa Głos', 'recording'))
+        audio.status = 'editing'
+        audio.save(update_fields=['status'])
+        self.assertEqual(Audiobook.objects.get(pk=audio.pk).narrator_contact_id, stored.narrator_contact_id)

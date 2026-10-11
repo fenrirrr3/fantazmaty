@@ -109,8 +109,6 @@ class IllustrationAdmin(admin.ModelAdmin):
         "illustrators__email__plcontains",
         "trigger_warnings__plcontains",
         "illustrated_excerpt__plcontains",
-        "manual_illustrator_name__plcontains",
-        "manual_illustrator_email__plcontains",
     )
 
     autocomplete_fields = (
@@ -141,8 +139,6 @@ class IllustrationAdmin(admin.ModelAdmin):
             {
                 "fields": (
                     "illustrators",
-                    "manual_illustrator_name",
-                    "manual_illustrator_email",
                     "status",
                     "assigned_at",
                 ),

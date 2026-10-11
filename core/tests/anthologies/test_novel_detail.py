@@ -1,6 +1,9 @@
 """Powieści: tworzenie, ukrycie rozdziałów w listach ogólnych, uprawnienia, metadane w adminie, układ strony, brak produkcji i zakończenie pracy."""
+from unittest.mock import patch
+
 from django.contrib import admin
 from django.core.exceptions import ValidationError
+from django.db import IntegrityError
 from django.test import Client, RequestFactory, TestCase
 from django.urls import reverse
 from lxml import html
@@ -228,17 +231,6 @@ class NovelPanelTests(NovelData, TestCase):
         self.assertNotContains(response, 'Końcowa kontrola spójności')
         self.assertNotContains(response, 'name="action" value="metadata"')
 
-    def test_chapter_length_optional_and_regular_story_still_requires_it(self):
-        url = reverse('core:chapter_edit', args=[self.book.pk, self.chapter.pk])
-        for length, expected in [('1500', 1500), ('', None)]:
-            response = self.client.post(url, {'novel_token': edit_token(self.book, self.admin),
-                                            'chapter_number': 1, 'length': length})
-            self.assertEqual(response.status_code, 302)
-            self.chapter.refresh_from_db()
-            self.assertEqual(self.chapter.length, expected)
-        response = self.client.post(url, {'novel_token': edit_token(self.book, self.admin), 'chapter_number': 1, 'length': 0})
-        self.assertEqual(response.status_code, 400)
-
     def test_chapter_tables_and_story_work_stages_skip_pagination(self):
         response = self.client.get(reverse('core:assigned_text_detail', args=[self.chapter.pk]))
         tables = html.fromstring(response.content).xpath('//main//table')
@@ -307,3 +299,94 @@ class NovelProductionTests(NovelData, TestCase):
         self.assertIsNone(response.context.get('page_obj'))
         self.assertNotContains(response, 'name="has_illustrations"')
         self.assertContains(self.client.get(reverse('core:novel_list')), '500')
+
+
+class NovelPageEdgeTests(NovelData, TestCase):
+    """Lista i strona powieści: wyszukiwanie, filtry i odrzucanie nieprawidłowych formularzy bez zapisu."""
+
+    def post(self, **data):
+        return self.client.post(self.url, {'novel_token': edit_token(self.book, self.admin), **data})
+
+    def production_data(self, **changes):
+        response = self.client.get(self.url)
+        data = {'action': 'production'}
+        for form in response.context['task_forms']:
+            data[form.prefix + '-status'] = form['status'].value()
+            data[form.prefix + '-assigned_to'] = form['assigned_to'].value() or ''
+        cover = response.context['cover_form']
+        data.update({name: cover[name].value() or '' for name in ('cover_status', 'print_status')})
+        data.update(changes)
+        return data
+
+    def test_list_searches_title_and_public_author_name_and_filters_status(self):
+        plain = Author.objects.create(first_name='Ewa', last_name='Bezpseudonimu', email=None)
+        other = Anthology.objects.create(title='Druga powieść', is_novel=True)
+        other.novel.authors.add(plain)
+        Anthology.objects.create(title='Porzucona powieść', is_novel=True, status='abandoned')
+        url = reverse('core:novel_list')
+
+        def titles(**params):
+            return [book.title for book in self.client.get(url, params).context['page_obj']]
+
+        self.assertEqual(titles(), ['Druga powieść', 'Książka z rozdziałami'])
+        self.assertEqual(titles(q='Pióro'), ['Książka z rozdziałami'])
+        self.assertEqual(titles(q='Bezpseudonimu'), ['Druga powieść'])
+        self.assertEqual(titles(q='Ewa'), ['Druga powieść'])
+        # Prawdziwe nazwisko autora z pseudonimem nie jest kluczem wyszukiwania.
+        self.assertEqual(titles(q='Kowalski'), [])
+        self.assertEqual(titles(q='druga'), ['Druga powieść'])
+        self.assertEqual(titles(status='ready'), [])
+        self.assertEqual(titles(status='nieznany'), titles())
+        self.assertEqual(titles(sort='-title'), ['Książka z rozdziałami', 'Druga powieść'])
+        self.assertEqual(titles(sort='pk; drop'), titles())
+
+    def test_failed_author_save_rolls_back_new_novel(self):
+        with patch('core.views.novels.NovelForm.save_authors', side_effect=IntegrityError):
+            response = self.client.post(reverse('core:novel_add'), {
+                'title': 'Wyścig', 'new_author_first_name': 'Ola', 'new_author_last_name': 'Nowa'})
+        self.assertEqual(response.status_code, 400)
+        self.assertContains(response, 'Nie zapisano powieści', status_code=400)
+        self.assertFalse(Anthology.objects.filter(title='Wyścig').exists())
+
+    def test_invalid_chapter_and_assignment_forms_save_nothing(self):
+        cases = [
+            ({'action': 'chapter', 'chapter_number': ''}, 'Popraw dane rozdziału.'),
+            ({'action': 'assign', 'chapters': ['abc'], 'assign-role': 'editor',
+              'assign-assignee': self.editor.pk}, 'Nieprawidłowy wybór rozdziałów.'),
+            ({'action': 'assign', 'chapters': ['１'], 'assign-role': 'editor',
+              'assign-assignee': self.editor.pk}, 'Nieprawidłowy wybór rozdziałów.'),
+            ({'action': 'assign', 'chapters': [self.chapter.pk], 'assign-role': 'editor'},
+             'Wybierz rolę i członka zespołu'),
+            ({'action': 'nieznana'}, 'Nieznana operacja.'),
+        ]
+        for data, message in cases:
+            with self.subTest(data=data):
+                response = self.post(**data)
+                self.assertContains(response, message, status_code=400)
+        self.assertEqual(self.book.texts.count(), 1)
+        self.assertFalse(self.chapter.workflow_role_assignments.exists())
+
+    def test_production_tasks_are_saved_together_or_not_at_all(self):
+        person = self.editor.person_profile
+        invalid = self.production_data(**{'blurb-status': 'ready'})
+        response = self.post(**invalid)
+        self.assertEqual(response.status_code, 400)
+        self.assertContains(response, 'Popraw zadania produkcyjne.', status_code=400)
+        self.assertTrue(html.fromstring(response.content).xpath('//details[@id="novel-production"][@open]'))
+        self.assertEqual(self.book.production_tasks.get(task_type='blurb').status, 'not_commissioned')
+        valid = self.production_data(**{'blurb-status': 'commissioned', 'blurb-assigned_to': person.pk,
+                                        'cover_status': 'in_progress', 'new_cover_first_name': 'Ola',
+                                        'new_cover_last_name': 'Okładkowa'})
+        self.assertEqual(self.post(**valid).status_code, 302)
+        task = self.book.production_tasks.get(task_type='blurb')
+        self.assertEqual((task.status, task.assigned_to), ('commissioned', person))
+        self.book.refresh_from_db()
+        self.assertEqual(self.book.cover_status, 'in_progress')
+        self.assertEqual(self.book.cover_author, 'Ola Okładkowa')
+
+    def test_chapter_search_accepts_only_chapter_numbers(self):
+        new_chapter(self.book, self.book.novel, chapter_number=2)
+        for query, expected in ((' 2 ', [2]), ('Rozdział', []), ('9' * 11, [])):
+            with self.subTest(query=query):
+                rows = self.client.get(self.url, {'q': query}).context['rows']
+                self.assertEqual([row['chapter'].chapter_number for row in rows], expected)

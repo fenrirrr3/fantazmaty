@@ -2,11 +2,13 @@
 from datetime import date
 from unittest.mock import patch
 
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from core.models import PostLayoutAssignment
-from core.post_layout import bulk_change, change_status, selection_token
+from core.post_layout import AssignmentEditForm, StaleAssignment, bulk_change, change_status, edit_assignment, selection_token
 
 from .support import PostLayoutTestData
 
@@ -101,6 +103,19 @@ class AssignmentEditTests(PostLayoutTestData, TestCase):
         self.assertEqual(item.completed_on, date(2026, 1, 6))
 
 
+    def test_edit_form_checks_date_order_and_both_ends_of_page_range(self):
+        item = self.completed_item()
+        for values, field in (({'work_start': '2026-01-01'}, 'work_start'), ({'page_from': ''}, 'page_from'),
+                              ({'page_to': ''}, 'page_to'), ({'page_from': 30, 'page_to': 10}, 'page_to')):
+            form = AssignmentEditForm(self.edit_data(item, assigned_start='2026-01-02', **values), instance=item)
+            self.assertFalse(form.is_valid())
+            self.assertIn(field, form.errors)
+        with self.assertRaises(PermissionDenied):
+            edit_assignment(user=self.reader, pk=item.pk, version=item.version, data=self.edit_data(item))
+        item.refresh_from_db()
+        self.assertEqual((item.proofreader, item.version), (self.reader, 1))
+
+
 class BulkOperationTests(PostLayoutTestData, TestCase):
     def test_bulk_reassignment_and_status_change_in_one_transaction(self):
         one = self.item()
@@ -149,3 +164,31 @@ class BulkOperationTests(PostLayoutTestData, TestCase):
         self.assertTrue(PostLayoutAssignment.objects.deleted().filter(pk=item.pk).exists())
         profile = self.client.get(reverse('core:person_detail', args=[self.other.person_profile.pk]))
         self.assertFalse(profile.context['assignments'])
+
+    def test_invalid_bulk_requests_change_nothing(self):
+        item = self.item()
+        deleted = self.item(deleted_at=timezone.now())
+        token = selection_token(self.manager, item)
+        for kwargs, error in [
+                ({'operation': 'archive'}, 'Wybierz operację'),
+                ({'operation': 'assign', 'selected': []}, 'Zaznacz od 1 do 500'),
+                ({'operation': 'assign', 'selected': [token] * 501}, 'Zaznacz od 1 do 500'),
+                ({'operation': 'assign', 'selected': [selection_token(self.admin, item)]}, 'wygasło'),
+                ({'operation': 'assign', 'selected': ['zmyślony']}, 'wygasło'),
+                ({'operation': 'assign', 'selected': [token, selection_token(self.manager, deleted)],
+                  'proofreader': self.other.pk}, 'najpierw przywróć'),
+                ({'operation': 'assign', 'proofreader': 'abc'}, 'Wybierz korektora'),
+                ({'operation': 'assign', 'proofreader': '１'}, 'Wybierz korektora'),
+                ({'operation': 'assign', 'proofreader': self.editor.pk}, 'nie jest aktywnym'),
+                ({'operation': 'assign', 'proofreader': '9' * 19}, 'nie jest aktywnym'),
+                ({'operation': 'status', 'status': 'lost'}, 'prawidłowy status')]:
+            kwargs = {'selected': [token], **kwargs}
+            with self.subTest(kwargs={k: v for k, v in kwargs.items() if k != 'selected'}):
+                with self.assertRaisesMessage(ValidationError, error):
+                    bulk_change(user=self.manager, **kwargs)
+        with self.assertRaises(StaleAssignment):
+            bulk_change(user=self.manager, selected=['zmyślony'], operation='delete')
+        with self.assertRaises(PermissionDenied):
+            bulk_change(user=self.reader, selected=[selection_token(self.reader, item)], operation='delete')
+        item.refresh_from_db()
+        self.assertEqual((item.proofreader, item.status, item.version, item.deleted_at), (self.reader, 'assigned', 1, None))

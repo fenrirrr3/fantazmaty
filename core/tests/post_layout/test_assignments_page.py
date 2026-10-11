@@ -9,6 +9,7 @@ from lxml import html
 
 from core.models import PostLayoutAssignment
 from core.post_layout import AssignmentForm, create_assignment
+from fantazmaty.testing import create_superuser
 from core.selectors.people import profile_assignments
 from people.models import Person, Role
 from texts.models import Anthology, Text
@@ -21,12 +22,12 @@ from .support import PostLayoutTestData
 
 
 class PostLayoutAccessTests(TestCase):
-    def setUp(self):
-        self.admin = get_user_model().objects.create_superuser('layout-admin', 'admin@example.test', 'test')
-        self.member = get_user_model().objects.create_user('layout-member')
-        self.person = Person.objects.create(user=self.member, first_name='Jan', last_name='Test')
-        self.book = Anthology.objects.create(title='Antologia')
-        self.text = Text.objects.create(title='Tekst', anthology=self.book, length=100)
+    @classmethod
+    def setUpTestData(cls):
+        cls.admin = create_superuser('layout-admin')
+        cls.member = get_user_model().objects.create_user('layout-member')
+        cls.person = Person.objects.create(user=cls.member, first_name='Jan', last_name='Test')
+        cls.text = Text.objects.create(title='Tekst', anthology=Anthology.objects.create(title='Antologia'), length=100)
 
     def roles(self, *names):
         self.person.roles.set([Role.objects.get_or_create(name=name)[0] for name in names])
@@ -115,6 +116,22 @@ class AssignmentCreationTests(PostLayoutTestData, TestCase):
             self.assertFalse(AssignmentForm({**data, 'anthology': book.pk}, user=self.manager).is_valid())
         self.assertFalse(PostLayoutAssignment.objects.exists())
 
+    def test_form_token_belongs_to_one_user_and_one_set_of_data(self):
+        for token in (AssignmentForm(user=self.admin).initial['token'], 'zmyślony'):
+            form = AssignmentForm(self.form_data(token=token), user=self.manager)
+            self.assertFalse(form.is_valid())
+            self.assertIn('Formularz wygasł', form.errors['token'][0])
+        form = AssignmentForm(self.form_data(), user=self.manager)
+        self.assertTrue(form.is_valid(), form.errors)
+        first = create_assignment(user=self.manager, **form.cleaned_data, page_from=1, page_to=10)
+        self.assertEqual(create_assignment(user=self.manager, **form.cleaned_data, page_from=1, page_to=10), first)
+        with self.assertRaisesMessage(ValidationError, 'z innymi danymi'):
+            create_assignment(user=self.manager, **form.cleaned_data, page_from=1, page_to=11)
+        # Korektor poskładowy widzi stronę, ale nie dodaje przydziałów nawet z pominięciem formularza.
+        with self.assertRaises(PermissionDenied):
+            create_assignment(user=self.reader, anthology=self.book, proofreader=self.reader, token=uuid.uuid4())
+        self.assertEqual(PostLayoutAssignment.objects.count(), 1)
+
     def test_existing_assignment_of_ready_anthology_stays_readable_and_editable(self):
         item = create_assignment(user=self.manager, anthology=self.book, proofreader=self.reader,
                                  page_from=1, page_to=10, token=uuid.uuid4())
@@ -183,3 +200,20 @@ class AssignmentListTests(PostLayoutTestData, TestCase):
         self.item()
         _, summary = profile_assignments(self.reader.person_profile, include_authors=False)
         self.assertEqual(summary['reserved'], 1)
+
+    def test_search_filters_and_malformed_requests(self):
+        mine = self.create()
+        theirs = self.create(anthology=Anthology.objects.create(title='Inna antologia').pk, proofreader=self.other.pk)
+        self.client.force_login(self.manager)
+        # Szukanie po tytule antologii albo imieniu i nazwisku korektora (bez polskich znaków też).
+        for query, expected in (('poskladowa', [mine]), ('layout-other', [theirs]), ('Testowy', [mine, theirs]),
+                                ('brak', [])):
+            page = self.client.get(self.url, {'q': query})
+            self.assertEqual(sorted(page.context['assignments'], key=lambda item: item.pk), expected)
+        self.assertEqual(self.client.get(self.url, {'assignment': 'abc'}).context['page_obj'].paginator.count, 0)
+        for data in ({'action': 'status', 'pk': 'abc', 'status': 'in_progress'},
+                     {'action': 'status', 'pk': '9' * 19, 'status': 'in_progress'}, {'action': 'archive'}, {}):
+            with self.subTest(data=data):
+                self.assertEqual(self.client.post(self.url, data).status_code, 400)
+        mine.refresh_from_db()
+        self.assertEqual((mine.status, mine.version), ('assigned', 1))

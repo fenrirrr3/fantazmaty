@@ -1,17 +1,21 @@
-"""Ręczne przyjmowanie zgłoszeń tekstów: wklejanie wielu rekordów z podglądem, formularz pojedynczego zgłoszenia, zapis zgód i prywatność wiadomości autora."""
+"""Ręczne przyjmowanie zgłoszeń tekstów: wklejanie wielu rekordów z podglądem, formularz pojedynczego zgłoszenia (ostrzeżenia, autor z bazy), formularz recenzji w adminie, zapis zgód, prywatność wiadomości autora i wyszukiwanie w Ekstraktach."""
 from html.parser import HTMLParser
 from unittest.mock import patch
 
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.urls import reverse
 
+from authors.models import Author
 from core.forms import ReviewBulkImportForm
 from core.intake_forms import SingleReviewForm
 from core.models import NewsletterConsent
+from core.review_submission_forms import ReviewAdminForm
 from core.services.review_import_parser import encode_submission
 from core.services.reviews import import_reviews
 from fantazmaty.testing import FormControls, create_member, create_superuser
-from texts.models import Anthology, Review
+from texts.models import Anthology, Extract, Review, Text
+from workflow.models import WorkflowStage
 
 from .support import LEGACY_EXAMPLE, NAMED_BODY, NAMED_MESSAGE, SUBMISSION_FIELDS, TemporaryActivitySpoolMixin
 
@@ -182,3 +186,148 @@ class ReviewIntakeTests(TemporaryActivitySpoolMixin, TestCase):
         self.assertNotIn('author_message', response.context)
         self.client.force_login(self.admin)
         self.assertContains(self.client.get(url), '&lt;script&gt;private-marker&lt;/script&gt;')
+
+
+
+class SingleReviewSafeguardTests(TemporaryActivitySpoolMixin, TestCase):
+    """Formularz pojedynczego zgłoszenia: podpisane potwierdzenie ostrzeżeń, autor z bazy i wyścig z zamknięciem naboru."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.admin = create_superuser('admin', 'admin@example.com', 'password')
+        cls.book = Anthology.objects.create(title='Nabór')
+        cls.url = reverse('core:review_create')
+        cls.blacklisted = Author.objects.create(first_name='Jan', last_name='Zakazany', email='zakazany@example.com',
+                                                is_blacklisted=True)
+        cls.pseudonymous = Author.objects.create(first_name='Anna', last_name='Prawdziwa', pseudonym='Mroczna',
+                                                 email='anna@example.com', phone_number='600700800')
+
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.admin)
+
+    def data(self, **extra):
+        return {'anthology': self.book.pk, 'author_first_name': 'Jan', 'author_last_name': 'Zakazany',
+                'email': 'zakazany@example.com', 'title': 'Opowieść', 'genre': 'fantasy', 'length': '1234', **extra}
+
+    def test_warning_confirmation_is_bound_to_shown_data(self):
+        """Potwierdzenie działa tylko z podpisem wydanym dla tych samych danych; inaczej ostrzeżenie wraca."""
+        response = self.client.post(self.url, self.data())
+        self.assertContains(response, 'czarnej liście', status_code=400)
+        form = response.context['single_form']
+        token = form.data['submission_warnings_token']
+        self.assertEqual(form.data['confirm_submission_warnings'], '')
+        for data in (self.data(title='Inny tytuł', submission_warnings_token=token, confirm_submission_warnings='on'),
+                     self.data(submission_warnings_token='podrobiony', confirm_submission_warnings='on'),
+                     self.data(submission_warnings_token=token)):
+            with self.subTest(data=data):
+                self.assertContains(self.client.post(self.url, data), 'czarnej liście', status_code=400)
+        self.assertFalse(Review.objects.exists())
+        response = self.client.post(self.url, self.data(submission_warnings_token=token, confirm_submission_warnings='on'))
+        self.assertEqual(response.status_code, 302)
+        review = Review.objects.get()
+        self.assertTrue(review.is_hidden)
+        self.assertEqual(review.status, Review.Status.REJECTED)
+
+    def test_selected_author_fills_contact_data(self):
+        """Autor z bazy: formularz wypełniony pseudonimem, dane kontaktowe i telefon brane z rekordu autora."""
+        response = self.client.get(self.url, {'author': self.pseudonymous.pk})
+        initial = response.context['single_form'].initial
+        self.assertEqual((initial['author_first_name'], initial['author_last_name'], initial['email']),
+                         ('Mroczna', '', 'anna@example.com'))
+        self.assertEqual(self.client.get(self.url, {'author': '١٢'}).context['single_form'].initial, {})
+        response = self.client.post(self.url, self.data(author=self.pseudonymous.pk, author_first_name='',
+                                                        author_last_name='', email=''))
+        self.assertEqual(response.status_code, 302)
+        review = Review.objects.get()
+        self.assertEqual((review.author, review.email, review.author_pseudonym, review.phone_number),
+                         (self.pseudonymous, 'anna@example.com', 'Mroczna', '600700800'))
+
+    def test_historic_author_without_email_and_missing_manual_data(self):
+        historic = Author.objects.create(first_name='Stary', last_name='Autor')
+        response = self.client.post(self.url, self.data(author=historic.pk))
+        self.assertContains(response, 'Uzupełnij adres e-mail autora historycznego', status_code=400)
+        response = self.client.post(self.url, self.data(author_last_name='', email=''))
+        self.assertIn('Uzupełnij dane albo wybierz autora z bazy.', response.context['single_form'].errors['email'])
+        self.assertFalse(Review.objects.exists())
+
+    def test_anthology_closed_during_save_and_model_validation_error(self):
+        data = self.data(email='nowy@example.com', author_last_name='Nowy')
+        with patch('core.views.intake.frontend_scope', return_value=Anthology.objects.none()):
+            response = self.client.post(self.url, data)
+        self.assertContains(response, 'Wybrany nabór nie jest już dostępny', status_code=400)
+        with patch('core.views.intake.apply_blacklist', side_effect=ValidationError('Błąd zapisu zgłoszenia.')):
+            response = self.client.post(self.url, data)
+        self.assertContains(response, 'Błąd zapisu zgłoszenia.', status_code=400)
+        self.assertFalse(Review.objects.exists())
+        self.assertFalse(NewsletterConsent.objects.exists())
+
+    def test_author_lookup_without_javascript_and_suggestions(self):
+        response = self.client.get(self.url, {'author_query': 'mroczna'})
+        self.assertEqual(list(response.context['fallback_authors']), [self.pseudonymous])
+        self.assertEqual(list(self.client.get(self.url).context['fallback_authors']), [])
+        response = self.client.get(reverse('core:author_suggestions'), {'q': '  '})
+        self.assertEqual(response.json(), {'results': []})
+
+
+class ReviewAdminFormTests(TestCase):
+    """Formularz recenzji w adminie: powiązanie z istniejącym tekstem i ostrzeżenia o współautorach."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.book = Anthology.objects.create(title='Nabór')
+        cls.text = Text.objects.create(title='Opowieść', anthology=cls.book, length=1)
+        WorkflowStage.objects.create(text=cls.text, stage_type='ready_for_editing')
+        cls.linked = Review.objects.create(anthology=cls.book, title='Opowieść', length=1, copied_text=cls.text,
+                                           author_first_name='Ala', author_last_name='Autor', email='ala@example.com')
+        cls.review = Review.objects.create(anthology=cls.book, title='Druga', length=1, genre='fantasy',
+                                           author_first_name='Ewa', author_last_name='Zakazana', email='ewa@example.com')
+        cls.banned = Author.objects.create(first_name='Ewa', last_name='Zakazana', email='ewa@example.com',
+                                           is_blacklisted=True)
+
+    def form(self, **changes):
+        unbound = ReviewAdminForm(instance=self.review)
+        data = {}
+        for name, field in unbound.fields.items():
+            value = unbound[name].value()
+            if isinstance(value, list):
+                data[name] = value
+            elif value not in (None, False):
+                data[name] = field.prepare_value(value) if hasattr(field, 'prepare_value') else value
+        data.update(changes)
+        form = ReviewAdminForm(data, instance=self.review)
+        form.is_valid()
+        return form
+
+    def test_editing_other_fields_does_not_repeat_identity_warnings(self):
+        """Adres z czarnej listy ostrzega przy zmianie danych autora, a nie przy każdej edycji gatunku."""
+        form = self.form(genre='horror')
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertIn('czarnej liście', str(self.form(title='Nowy tytuł').errors))
+
+    def test_text_already_linked_needs_confirmation_and_cannot_be_shared(self):
+        errors = self.form(copied_text=self.text.pk).errors
+        self.assertIn('Sprawdź powiązanie', str(errors['confirm_existing_text']))
+        self.assertIn('już powiązany z inną recenzją', str(errors['copied_text']))
+
+    def test_blacklisted_coauthor_requires_confirmation(self):
+        form = self.form(coauthors=[self.banned.pk])
+        self.assertIn('Współautor', str(form.errors['confirm_submission_warnings']))
+        self.assertIn('czarnej liście', str(form.errors['confirm_submission_warnings']))
+
+
+class ExtractListSearchTests(TestCase):
+    def test_every_search_word_must_match_some_field(self):
+        """Wyszukiwanie w Ekstraktach: każde słowo musi pasować do któregoś pola (autor, e-mail, tytuły, nabór)."""
+        author = Author.objects.create(first_name='Ola', last_name='Pióro', pseudonym='Sowa', email='ola@example.com')
+        Extract.objects.create(author=author, full_name='Ola Pióro', email='ola@example.com', title='Księżyc',
+                               recruitment='Ekstrakt 2026')
+        Extract.objects.create(author=author, full_name='Ola Pióro', email='ola@example.com', title='Słońce',
+                               recruitment='Ekstrakt 2025')
+        self.client.force_login(create_superuser())
+        url = reverse('core:extract_list')
+        for query, titles in (('sowa 2026', ['Księżyc']), ('ola@example.com', ['Księżyc', 'Słońce']),
+                              ('sowa brak', [])):
+            with self.subTest(query=query):
+                page = self.client.get(url, {'q': query}).context['page_obj']
+                self.assertEqual(sorted(item.title for item in page), titles)

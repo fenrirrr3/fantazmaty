@@ -231,6 +231,8 @@ def _capitalize_sentences(text):
         start = match.start()
         if any(pos in protected for pos in range(start, start + len(marks))):
             return match[0]
+        if match.start(3) in protected:
+            return match[0]  # adres lub nazwa techniczna zaczynająca zdanie
         if '.' in marks:
             if len(marks) != 1 or (start and text[start - 1] in '.…'):
                 return match[0]  # ellipsis, not a sentence boundary

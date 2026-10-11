@@ -1,4 +1,4 @@
-"""Logowanie: limity prób logowania i resetu hasła (throttle) oraz zmiana hasła w układzie CMS."""
+"""Logowanie: limity prób logowania i resetu hasła (throttle), logowanie adresem e-mail i zmiana hasła w układzie CMS."""
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -10,9 +10,11 @@ from django.utils import timezone
 from django.utils.crypto import salted_hmac
 
 from core import auth_throttle
+from core.auth_backends import EmailBackend
 from core.models import AuthenticationAttempt
-from fantazmaty.testing.workflow import StatusAssignmentFixtures
-from people.models import Role
+from fantazmaty.testing import create_member
+
+from .support import TemporaryActivitySpoolMixin
 
 BAD_LOGIN = {'username': 'no@example.test', 'password': 'bad'}
 
@@ -95,17 +97,38 @@ class LoginThrottleTests(TestCase):
         self.assertFalse(AuthenticationAttempt.objects.filter(key=account_key).exists())
 
 
-class PasswordChangeTests(StatusAssignmentFixtures):
+class EmailBackendTests(TestCase):
+    """Logowanie adresem e-mail: wielkość liter i odstępy nie mają znaczenia, brak danych to brak konta."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = get_user_model().objects.create_user('owner', 'owner@example.test', 'valid-password')
+
+    def test_email_is_matched_case_insensitively_and_missing_credentials_fail(self):
+        backend = EmailBackend()
+        self.assertEqual(backend.authenticate(None, username='  OWNER@example.test ', password='valid-password'),
+                         self.user)
+        for username, password in ((None, 'valid-password'), ('owner@example.test', None), ('   ', 'x'),
+                                   ('owner@example.test', 'bad')):
+            with self.subTest(username=username, password=password):
+                self.assertIsNone(backend.authenticate(None, username=username, password=password))
+
+
+class PasswordChangeTests(TemporaryActivitySpoolMixin, TestCase):
     """Zmiana hasła korzysta z układu CMS (regresja: wcześniej strona Django bez stylów)."""
 
     NEW = 'New-password-927!'
 
+    @classmethod
+    def setUpTestData(cls):
+        # Członek zespołu z rolą – menu CMS w base.html zależy od ról.
+        cls.member = create_member('member', 'Redaktor')
+        cls.member.set_password('test')
+        cls.member.save()
+
     def setUp(self):
         super().setUp()
-        # Członek zespołu z rolą – menu CMS w base.html zależy od ról.
-        self.member.person_profile.roles.add(Role.objects.get_or_create(name='Redaktor')[0])
         self.client.force_login(self.member)
-
     def test_password_change_uses_cms_layout_and_preserves_validation(self):
         response = self.client.get(reverse('password_change'))
         self.assertTemplateUsed(response, 'core/base.html')

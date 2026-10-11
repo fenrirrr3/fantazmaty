@@ -8,7 +8,7 @@ from core.models import AudioContributor, Recruitment
 from fantazmaty.testing import create_member, create_superuser
 from illustrations.models import Illustrator
 from texts.models import Anthology, ForeignAuthor, Review, Text, Translator
-from workflow.completed_import import import_completed_workflow
+from fantazmaty.testing.history import import_completed_workflow
 from workflow.models import WorkflowRoleAssignment, WorkflowStage
 
 

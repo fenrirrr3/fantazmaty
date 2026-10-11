@@ -1,9 +1,6 @@
 """Szczegóły zgłoszenia rekrutacyjnego: niezależne decyzje dla każdej roli, autor uzasadnienia, flaga „powiadomiony”, usuwanie zgłoszenia i ochrona przed nieaktualną edycją."""
-from importlib import import_module
-from types import SimpleNamespace
 from unittest.mock import patch
 
-from django.apps import apps
 from django.contrib import admin
 from django.db import transaction
 from django.test import Client, RequestFactory, TestCase
@@ -12,7 +9,7 @@ from django.utils import timezone
 from lxml import html
 
 from core.admin import RecruitmentAdmin
-from core.models import Recruitment, RecruitmentMailSource, RecruitmentRoleDecision
+from core.models import Recruitment, RecruitmentMailSource
 from core.selectors.recruitment import pending_by_role
 from core.services.recruitment_decisions import set_all_decisions
 from core.views.recruitment_delete import deletion_token
@@ -206,21 +203,6 @@ class RoleDecisionTests(RecruitmentTeamMixin, TestCase):
         self.assertContains(page, 'Dawne wspólne uzasadnienie')
         self.assertNotContains(page, 'name="decision_reason"')
         self.assertNotContains(page, 'name="status"')
-
-    def test_migration_preserves_shared_decisions_and_fallback_department(self):
-        old = Recruitment.objects.create(mail_roles=['editors', 'reviewers', 'editors'], status='accepted',
-                                         decision_reason='Dawny powód', unofficial_notes='Dawna notatka')
-        legacy = Recruitment.objects.create(department='sound', status='rejected')
-        RecruitmentRoleDecision.objects.all().delete()
-        module = import_module('core.migrations.0024_recruitment_role_decisions')
-        module.copy_existing_decisions(apps, SimpleNamespace(connection=SimpleNamespace(alias='default')))
-        self.assertEqual(list(old.role_decisions.values_list('role', 'status', 'decision_reason', 'unofficial_notes')), [
-            ('editors', 'accepted', 'Dawny powód', 'Dawna notatka'),
-            ('reviewers', 'accepted', 'Dawny powód', 'Dawna notatka'),
-        ])
-        self.assertEqual(legacy.role_decisions.get().role, 'sound')
-        old.refresh_from_db()
-        self.assertEqual(old.decision_reason, 'Dawny powód')
 
 
 class RecruitmentNotifiedTests(RecruitmentTeamMixin, TestCase):

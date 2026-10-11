@@ -1,79 +1,96 @@
-"""Konwerter DOCX → PDF/EPUB: proces roboczy i jego diagnostyka, uwagi konwersji, wynik PDF i rozdziały EPUB."""
+"""Konwerter DOCX → PDF/EPUB po stronie serwera: walidacja pakietu DOCX, wybór interpretera, uruchomienie procesu
+roboczego z limitem czasu, tłumaczenie jego błędów, wynik (plik lub ZIP) i strona programu."""
 import json
-import runpy
+import subprocess
+import sys
+import warnings
 from io import BytesIO
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from unittest.mock import patch
 from urllib.parse import unquote
 from zipfile import ZipFile
 
+import django
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase, TestCase, tag
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
-from docx.shared import Cm
-from fpdf import FPDF
 from lxml import etree
 from lxml import html as html_parser
 
-import core.services
 from core.program_test_support import run_program
-from core.services.document_conversion_worker import convert, polish_warnings, split_chapters
+from core.services.document_conversion_worker import convert
 from core.services.document_converter import (
-    ConversionError, conversion_filename, convert_document, run_converter,
+    ConversionError, RebuildConfirmationRequired, conversion_filename, convert_document, converter_python,
+    run_converter, validate_resources,
 )
-from core.services.document_pdf import render_pdf
+from core.services.document_errors import MESSAGES
 from fantazmaty.testing import create_member
 
 from .support import IsolatedProgramDirsMixin, downloaded, formatted_docx, saved, typography_sample
 
-
-def pdf_html_spy(captured):
-    """Podmiana FPDF.write_html zapisująca przekazany HTML i pozycję kursora."""
-    original = FPDF.write_html
-
-    def spy(pdf, content, **kwargs):
-        captured.append((content, pdf.y))
-        return original(pdf, content, **kwargs)
-    return patch.object(FPDF, 'write_html', spy)
+RELATIONSHIPS = 'word/_rels/document.xml.rels'
 
 
-class ConverterWorkerTests(IsolatedProgramDirsMixin, SimpleTestCase):
+def repacked(replace=None, extra=()):
+    """Poprawny DOCX z podmienionymi częściami {nazwa: funkcja(bajty)} i dopisanymi wpisami (nazwa, bajty)."""
+    output = BytesIO()
+    with ZipFile(BytesIO(formatted_docx())) as source, ZipFile(output, 'w') as target:
+        for item in source.infolist():
+            data = source.read(item.filename)
+            target.writestr(item, (replace or {}).get(item.filename, lambda value: value)(data))
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore', UserWarning)  # celowo powielona nazwa wpisu
+            for name, data in extra:
+                target.writestr(name, data)
+    output.seek(0)
+    return output
+
+
+def with_relationship(target, mode='', kind='image'):
+    attributes = f' TargetMode="{mode}"' if mode else ''
+    relationship = (f'<Relationship Id="rIdTest" Type="http://schemas.openxmlformats.org/officeDocument/2006/'
+                    f'relationships/{kind}" Target="{target}"{attributes}/></Relationships>').encode()
+    return repacked({RELATIONSHIPS: lambda data: data.replace(b'</Relationships>', relationship)})
+
+
+class FakeProcess:
+    """Zakończony proces roboczy o zadanym kodzie wyjścia."""
+
+    def __init__(self, code):
+        self.code, self.pid = code, 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def wait(self, timeout=None):
+        return self.code
+
+    def poll(self):
+        return self.code
+
+
+class ConverterServiceTests(IsolatedProgramDirsMixin, SimpleTestCase):
     def test_worker_exposes_only_known_reason_not_document_content(self):
-        for reason in ('analysis_limit', 'tracked_changes'):
-            with self.subTest(reason=reason), TemporaryDirectory() as directory:
-                directory = Path(directory)
-                doc = Document()
-                doc.add_paragraph('PRYWATNY_FRAGMENT' + ('x' * 20001 if reason == 'analysis_limit' else ''))
-                if reason == 'tracked_changes':
-                    doc.element.body.append(OxmlElement('w:ins'))
-                doc.save(directory / 'source.docx')
-                (directory / 'job.json').write_text(
-                    json.dumps({'formats': [], 'include_docx': True, 'repetitions': {}}), encoding='utf-8')
-                with self.assertRaises(ConversionError) as error:
-                    run_converter(directory, 30)
-                report = json.loads((directory / 'error.json').read_text(encoding='utf-8'))
-                self.assertEqual(report['public_code'], reason)
-                self.assertNotIn('PRYWATNY_FRAGMENT', json.dumps(report) + str(error.exception))
-                self.assertNotIn('ValueError', str(error.exception))
-
-    def test_bootstrap_records_failures_before_worker_initialization(self):
-        """Regresja: błąd importu przed startem procesu roboczego ujawniał treść wyjątku."""
-        bootstrap = Path(core.services.__file__).with_name('document_worker_bootstrap.py')
-        runner = runpy.run_path
-        with TemporaryDirectory() as tmp:
-            with (
-                patch('sys.argv', ['bootstrap', tmp]),
-                patch('runpy.run_path', side_effect=ImportError('PRIVATE credential')),
-            ):
-                with self.assertRaises(SystemExit) as caught:
-                    runner(str(bootstrap), run_name='__main__')
-            self.assertEqual(caught.exception.code, 2)
-            report = (Path(tmp) / 'error.json').read_text()
-        self.assertNotIn('PRIVATE', report)
-        self.assertEqual(json.loads(report)['error'], 'ImportError')
+        """Prawdziwy proces roboczy: użytkownik widzi stały komunikat, a nie treść dokumentu ani wyjątku."""
+        doc = Document()
+        doc.add_paragraph('PRYWATNY_FRAGMENT')
+        doc.element.body.append(OxmlElement('w:ins'))
+        directory = self.work_dir
+        doc.save(directory / 'source.docx')
+        (directory / 'job.json').write_text(
+            json.dumps({'formats': [], 'include_docx': True, 'repetitions': {}}), encoding='utf-8')
+        with self.assertLogs('core.services.document_converter', 'ERROR') as logs, \
+                self.assertRaisesMessage(ConversionError, MESSAGES['tracked_changes']):
+            run_converter(directory, 30)
+        self.assertNotIn('PRYWATNY_FRAGMENT', '\n'.join(logs.output))
+        report = (directory / 'error.json').read_text(encoding='utf-8')
+        self.assertEqual(json.loads(report)['public_code'], 'tracked_changes')
+        self.assertNotIn('PRYWATNY_FRAGMENT', report)
 
     def test_warnings_are_returned_with_a_single_file_not_an_archive(self):
         """Regresja: uwagi konwertera zamieniały pojedynczy plik w archiwum ZIP."""
@@ -98,8 +115,8 @@ class ConverterWorkerTests(IsolatedProgramDirsMixin, SimpleTestCase):
     def test_names_cannot_escape_zip_or_inject_response_headers(self):
         self.assertEqual(conversion_filename(r'C:\folder\Tytuł.v1.docx', 'pdf'), 'Tytuł.v1.pdf')
         self.assertEqual(conversion_filename('../../tekst\r\n.docx', 'epub'), 'tekst.epub')
+        self.assertEqual(conversion_filename('..docx', 'pdf'), 'Dokument.pdf')
 
-    @tag('slow')
     def test_conversion_epub_and_pdf_preserve_formatting(self):
         result, _, _ = convert_document(typography_sample(), ['pdf', 'epub'])
         with result, ZipFile(result) as archive:
@@ -154,66 +171,6 @@ class ConverterWorkerTests(IsolatedProgramDirsMixin, SimpleTestCase):
         self.assertIn('align-justify', html)
 
 
-class PdfRenderingTests(SimpleTestCase):
-    def test_pdf_receives_justification_and_empty_lines(self):
-        doc = Document()
-        doc.add_paragraph('Justowany tekst.').alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        rendered = []
-        with TemporaryDirectory() as tmp, pdf_html_spy(rendered):
-            source = Path(tmp) / 'input.docx'
-            doc.save(source)
-            render_pdf(source, Path(tmp) / 'output.pdf', '<p>Justowany tekst.</p><p></p><p></p><p>Koniec</p>',
-                       {}, 'Test')
-        self.assertIn('align="justify"', rendered[0][0])
-        self.assertGreaterEqual(rendered[1][1] - rendered[0][1], 18.9)
-
-    def test_pdf_nested_paragraphs_receive_geometry(self):
-        """Regresja: akapity w listach i tabelach traciły wyrównanie, wcięcie i interlinię w PDF."""
-        doc = Document()
-        listed = doc.add_paragraph('Lista', style='List Number')
-        listed.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        listed.paragraph_format.first_line_indent = Cm(0)
-        listed.paragraph_format.line_spacing = 2
-        cell = doc.add_table(rows=1, cols=1).cell(0, 0).paragraphs[0]
-        cell.text = 'Tabela'
-        cell.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-        captured = []
-        with TemporaryDirectory() as tmp:
-            source = Path(tmp) / 'source.docx'
-            doc.save(source)
-            with pdf_html_spy(captured):
-                render_pdf(source, Path(tmp) / 'result.pdf',
-                           '<ol><li>Lista</li></ol><table><tr><td><p>Tabela</p></td></tr></table>', {}, 'Test')
-            self.assertTrue((Path(tmp) / 'result.pdf').read_bytes().startswith(b'%PDF'))
-        tree = html_parser.fragment_fromstring(''.join(content for content, _ in captured), create_parent='div')
-        listed = tree.xpath('.//li/p')[0]
-        self.assertEqual(listed.get('align'), 'center')
-        self.assertEqual(listed.get('data-indent'), '0')
-        self.assertEqual(listed.get('line-height'), '2.0')
-        self.assertEqual(tree.xpath('.//td/p')[0].get('align'), 'right')
-
-
-class EpubPresentationTests(SimpleTestCase):
-    def test_chapters_follow_the_repeated_heading_level(self):
-        content = ('<h1 id="section-1">Tytuł</h1><p>Wstęp</p><h2 id="section-2">Rozdział 1</h2><p>A</p>'
-                   '<h3 id="section-3">Część</h3><p>B</p><h2 id="section-4">Rozdział 2</h2><p>C</p>')
-        chapters = split_chapters(content, 'Dokument')
-        self.assertEqual([title for title, _, _ in chapters], ['Dokument', 'Rozdział 1', 'Rozdział 2'])
-        self.assertEqual([anchor for anchor, _ in chapters[1][2]], ['section-2', 'section-3'])
-        # Dokument bez nagłówków to jeden rozdział.
-        self.assertEqual(len(split_chapters('<p>Jeden</p><p>Dwa</p>', 'Dokument')), 1)
-
-    def test_warnings_are_polish_and_grouped(self):
-        warnings = polish_warnings([
-            'Unrecognised paragraph style: Cytat (Style ID: Cytat)',
-            'Unrecognised paragraph style: Cytat (Style ID: Cytat)',
-            'Something new',
-        ])
-        self.assertEqual(warnings[0], 'Styl akapitu „Cytat” nie ma odpowiednika w e-booku – tekst zachowano '
-                                      'w zwykłym formacie. (2 razy)')
-        self.assertEqual(warnings[1], 'Uwaga konwertera: Something new')
-
-
 class ConversionPageTests(IsolatedProgramDirsMixin, TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -241,3 +198,142 @@ class ConversionPageTests(IsolatedProgramDirsMixin, TestCase):
                         self.assertEqual(set(archive.namelist()), {'Żółw i smok.v2.pdf', 'Żółw i smok.v2.epub'})
                 else:
                     self.assertTrue(payload.startswith(b'%PDF'))
+
+
+class ResourceValidationTests(SimpleTestCase):
+    """Konwerter nie pobiera plików spoza DOCX i nie przyjmuje podejrzanie zbudowanych pakietów."""
+
+    def test_safe_document_and_external_hyperlink_are_accepted(self):
+        validate_resources(repacked())
+        source = with_relationship('https://example.test', 'External', 'hyperlink')
+        validate_resources(source)
+        self.assertEqual(source.tell(), 0)
+
+    def test_dangerous_packages_are_refused(self):
+        doctype = b'<?xml version="1.0"?><!DOCTYPE x [<!ENTITY e "x">]><Relationships/>'
+        cases = (
+            (repacked(extra=[('../poza.xml', b'x')]), 'Nieprawidłowa struktura'),
+            (repacked(extra=[('word\\plik.xml', b'x')]), 'Nieprawidłowa struktura'),
+            (repacked(extra=[('[Content_Types].xml', b'x')]), 'powielone elementy'),
+            (repacked(extra=[('word/_rels/extra.xml.rels', doctype)]), 'Nieobsługiwany dokument'),
+            (with_relationship('../../../etc/passwd'), 'nieprawidłowe odwołanie'),
+            (with_relationship('C:/obraz.png'), 'nieprawidłowe odwołanie'),
+            (with_relationship('https://example.test/obraz.png', 'External'), 'zewnętrzny obraz'),
+        )
+        for source, message in cases:
+            with self.subTest(message=message), self.assertRaisesMessage(ConversionError, message):
+                validate_resources(source)
+
+
+class ConverterPythonTests(SimpleTestCase):
+    def test_configured_interpreter_must_be_an_existing_absolute_path(self):
+        with self.settings(DOCUMENT_CONVERTER_PYTHON=sys.executable):
+            self.assertEqual(converter_python(), sys.executable)
+        for configured in ('python3', '/nie/ma/pythona'):
+            with self.subTest(configured=configured), self.settings(DOCUMENT_CONVERTER_PYTHON=configured), \
+                    self.assertRaisesMessage(ConversionError, 'DOCUMENT_CONVERTER_PYTHON'):
+                converter_python()
+
+    def test_without_virtualenv_the_running_python_is_used_but_not_a_wsgi_server(self):
+        python = Path(sys.executable).resolve()
+        with self.settings(DOCUMENT_CONVERTER_PYTHON=''), \
+                patch.object(django, '__file__', '/nie/ma/django/__init__.py'), \
+                patch('core.services.document_converter.sys') as fake_sys:
+            fake_sys.prefix = '/nie/ma/prefiksu'
+            fake_sys.executable = str(python)
+            self.assertEqual(converter_python(), str(python))
+            fake_sys.executable = str(python.with_name('uwsgi'))
+            with self.assertRaisesMessage(ConversionError, 'Nie znaleziono Pythona'):
+                converter_python()
+
+
+class RunConverterTests(IsolatedProgramDirsMixin, SimpleTestCase):
+    def setUp(self):
+        super().setUp()
+        self.directory = self.work_dir
+
+    def finished(self, code, report=None):
+        if report is not None:
+            (self.directory / 'error.json').write_text(json.dumps(report), encoding='utf-8')
+        with patch('core.services.document_converter.subprocess.Popen', return_value=FakeProcess(code)):
+            return run_converter(self.directory, 5)
+
+    def test_exhausted_time_or_unstartable_process(self):
+        with patch('core.services.document_converter.subprocess.Popen') as popen, \
+                self.assertRaisesMessage(ConversionError, 'limit 90 sekund'):
+            run_converter(self.directory, 0)
+        popen.assert_not_called()
+        with patch('core.services.document_converter.subprocess.Popen', side_effect=OSError), \
+                self.assertRaisesMessage(ConversionError, 'Nie można uruchomić konwertera'):
+            run_converter(self.directory, 5)
+
+    def test_worker_failures_become_public_messages(self):
+        self.assertIsNone(self.finished(0))
+        cases = (
+            (-9, None, 'Nie udało się przygotować plików (start: ProcessTerminated)'),
+            (2, {'stage': 'PDF', 'error': 'ImportError'}, 'Brakuje bibliotek konwertera. Zainstaluj requirements.txt. PDF: ImportError'),
+            (3, {'stage': '<b>', 'error': 'Zły <tag>'}, '(konwersja: błąd procesu)'),
+            (3, {'error': 'DocumentInputError', 'public_code': 'nieznany'}, 'DocumentInputError'),
+        )
+        for code, report, message in cases:
+            with self.subTest(message=message), self.assertLogs('core.services.document_converter', 'ERROR'), \
+                    self.assertRaisesMessage(ConversionError, message):
+                self.finished(code, report)
+            (self.directory / 'error.json').unlink(missing_ok=True)
+
+    def test_rebuild_omissions_ask_for_confirmation_without_logging_an_error(self):
+        with self.assertNoLogs('core.services.document_converter', 'ERROR'), \
+                self.assertRaises(RebuildConfirmationRequired) as caught:
+            self.finished(3, {'error': 'RebuildUnsupported', 'omissions': ['tabele (liczba: 1)']})
+        self.assertIn('W nowym DOCX zostaną pominięte: tabele (liczba: 1).', str(caught.exception))
+
+    def test_process_over_time_limit_is_killed(self):
+        sleeper = [sys.executable, '-c', 'import time; time.sleep(30)']
+        actual = subprocess.Popen
+        for control in (None, lambda directory: None):
+            processes = []
+
+            def spawn(command, **kwargs):
+                processes.append(actual(sleeper, **kwargs))
+                return processes[-1]
+
+            with self.subTest(control=control), \
+                    patch('core.services.document_converter.subprocess.Popen', side_effect=spawn), \
+                    self.assertRaisesMessage(ConversionError, 'limit 90 sekund'):
+                run_converter(self.directory, 0.3, control=control)
+            self.assertIsNotNone(processes[0].poll())
+
+
+class ConvertDocumentResultTests(IsolatedProgramDirsMixin, SimpleTestCase):
+    def test_unknown_format_is_refused_before_conversion(self):
+        for formats, options in ((['mobi'], {}), ([], {})):
+            with self.subTest(formats=formats), \
+                    patch('core.services.document_converter.run_converter') as worker, \
+                    self.assertRaisesMessage(ConversionError, 'Wybierz co najmniej jeden'):
+                convert_document(BytesIO(formatted_docx()), formats, **options)
+            worker.assert_not_called()
+
+    def test_missing_output_is_an_error_and_several_outputs_are_zipped(self):
+        with patch('core.services.document_converter.run_converter'), \
+                self.assertRaisesMessage(ConversionError, 'nie utworzyła poprawnego pliku'):
+            convert_document(BytesIO(formatted_docx()), ['pdf'])
+
+        def worker(directory, timeout):
+            (directory / 'document.pdf').write_bytes(b'%PDF')
+
+        with patch('core.services.document_converter.run_converter', side_effect=worker):
+            result, extension, mime = convert_document(BytesIO(formatted_docx()), ['pdf'], include_docx=True)
+        with result, ZipFile(result) as archive:
+            self.assertEqual((extension, mime), ('zip', 'application/zip'))
+            self.assertEqual(sorted(archive.namelist()), ['document.docx', 'document.pdf'])
+            self.assertEqual(archive.read('document.docx'), formatted_docx())
+
+    def test_result_finished_after_the_deadline_is_discarded(self):
+        def worker(directory, timeout):
+            (directory / 'document.pdf').write_bytes(b'%PDF')
+
+        clock = iter([0, 0, 0, 10_000])
+        with patch('core.services.document_converter.run_converter', side_effect=worker), \
+                patch('core.services.document_converter.time.monotonic', side_effect=lambda: next(clock)), \
+                self.assertRaisesMessage(ConversionError, 'przekroczyło limit czasu'):
+            convert_document(BytesIO(formatted_docx()), ['pdf'])

@@ -47,7 +47,7 @@ class AssignmentModelForm(forms.ModelForm):
 
     class Meta:
         model = Illustration
-        fields = ('illustrators', 'manual_illustrator_name', 'manual_illustrator_email', 'status')
+        fields = ('illustrators', 'status')
 
     def clean_story_url(self):
         value = self.cleaned_data.get('story_url')
@@ -76,15 +76,18 @@ class ContactCheckboxes(forms.CheckboxSelectMultiple):
 
 
 class AssignmentForm(AssignmentModelForm, IllustrationEditForm):
+    """Przypisanie ilustratorów ze spisu; osobę spoza spisu dopisuje się do spisu przy zapisie."""
+    new_illustrator_name = forms.CharField(label='Nowy ilustrator – imię i nazwisko', max_length=200, required=False,
+        help_text='Tylko gdy osoby nie ma w spisie (także wśród nieaktywnych).')
+    new_illustrator_email = forms.EmailField(label='Nowy ilustrator – e-mail', required=False)
+
     class Meta(AssignmentModelForm.Meta):
         widgets = {'illustrators': ContactCheckboxes(attrs={'class': 'illustrator-choices'})}
 
     def __init__(self, *args, can_assign=False, **kwargs):
         super().__init__(*args, **kwargs)
+        self.new_artist = None
         if can_assign:
-            for field, part in (('manual_illustrator_name', 'name'), ('manual_illustrator_email', 'email')):
-                self.fields[field].widget.attrs.update({'data-contact-kind': 'illustration',
-                    'data-contact-group': 'illustrator', 'data-contact-field': part, 'autocomplete': 'off'})
             from .contact_forms import duplicate_display_names, contact_label
             duplicates = duplicate_display_names()
             selected = self.instance.illustrators.values_list('pk', flat=True) if self.instance.pk else []
@@ -93,8 +96,43 @@ class AssignmentForm(AssignmentModelForm, IllustrationEditForm):
                 Q(pk__in=selected) | Q(is_active=True)
             ).annotate(artist_name=Illustrator.display_name_expression()).order_by('artist_name', 'pk')
         else:
-            for name in ('illustrators', 'manual_illustrator_name', 'manual_illustrator_email'):
+            for name in ('illustrators', 'new_illustrator_name', 'new_illustrator_email'):
                 del self.fields[name]
+
+    def clean(self):
+        cleaned = super().clean()
+        name = ' '.join(cleaned.get('new_illustrator_name', '').split())
+        email = (cleaned.get('new_illustrator_email') or '').strip()
+        if email and not name:
+            self.add_error('new_illustrator_name', 'Podaj imię i nazwisko nowego ilustratora.')
+        if name:
+            from texts.cover_forms import matching_artists
+            first, _, last = name.rpartition(' ') if ' ' in name else (name, '', '')
+            limit = Illustrator._meta.get_field('first_name').max_length
+            if len(first) > limit or len(last) > Illustrator._meta.get_field('last_name').max_length:
+                self.add_error('new_illustrator_name', f'Imię i nazwisko mogą mieć najwyżej po {limit} znaków.')
+                return cleaned
+            existing = Illustrator.objects.filter(email__iexact=email).first() if email else None
+            if existing or matching_artists(first, last):
+                self.add_error('new_illustrator_name', 'Ta osoba jest już w spisie ilustratorów. Wybierz ją z wyszukiwarki.')
+            else:
+                self.new_artist = Illustrator(first_name=first, last_name=last, email=email or None)
+        if self.new_artist is not None and 'illustrators' in self.fields:
+            # Walidacja modelu widzi przypisanie (wpis powstanie przy zapisie).
+            self.instance._selected_illustrator_ids = {p.pk for p in cleaned.get('illustrators', [])} | {0}
+        return cleaned
+
+    def save(self, commit=True):
+        if self.new_artist is not None:
+            from django.db import transaction
+            with transaction.atomic():
+                self.new_artist.full_clean()
+                self.new_artist.save()
+                artists = [*self.cleaned_data.get('illustrators', []), self.new_artist]
+                self.cleaned_data['illustrators'] = artists
+                self.instance._selected_illustrator_ids = {p.pk for p in artists}
+                return super().save(commit)
+        return super().save(commit)
 
 
 class StoryLinkForm(IllustrationEditForm):

@@ -1,4 +1,5 @@
-"""Raporty: zegary bezczynności, aktywność zespołu, zapytania list tekstów i kontrola wielokrotnych przypisań."""
+"""Raporty: zegary bezczynności, strony przestojów i aktywności zespołu (filtry, uprawnienia, dane autorów),
+ostatnia aktywność osób, zapytania list tekstów i kontrola wielokrotnych przypisań."""
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
@@ -159,6 +160,8 @@ class WaitingClockTests(AnthologyWorkflowMixin, TestCase):
 
 
 class ReportTests(StatusAssignmentFixtures):
+    """Raporty aktywności i listy tekstów: etykiety, stronicowanie i liczba zapytań."""
+
     def test_activity_reports_render_rows_and_keep_their_own_labels(self):
         """Raporty aktywności działają dla etapów z osobą i bez niej i mają własne nagłówki."""
         self.client.force_login(self.admin)
@@ -462,3 +465,147 @@ class AssignmentConflictReportTests(TestCase):
         self.assertEqual(
             self.client.get(reverse("core:data_integrity"), {"tab": "unlinked"}).status_code, 403
         )
+
+
+class ReportPageTests(TestCase):
+    """Strony raportów dla koordynatora i superusera: tryby, filtry, sortowanie i ukrywanie danych autorów."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from authors.models import Author
+        from fantazmaty.testing import create_member, create_superuser
+
+        cls.today = timezone.localdate()
+        cls.admin = create_superuser()
+        cls.coordinator = create_member('koordynator', 'Koordynator')
+        cls.editor = create_member('redaktor', 'Redaktor')
+        cls.other_editor = create_member('inny', 'Redaktor')
+        cls.book = Anthology.objects.create(title='Antologia A')
+        cls.other_book = Anthology.objects.create(title='Antologia B')
+        cls.author = Author.objects.create(first_name='Ukryty', last_name='Autorski', email='autor@example.test')
+        cls.stalled = Text.objects.create(title='Zastój redakcji', length=100, anthology=cls.book)
+        cls.stalled.authors.add(cls.author)
+        editor = A.objects.create(text=cls.stalled, role='editor', assigned_to=cls.editor)
+        S.objects.create(text=cls.stalled, stage_type='editing', assignment=editor,
+                         started_at=cls.today - timedelta(days=40))
+        cls.waiting = Text.objects.create(title='Czeka na korektę', length=100, anthology=cls.other_book)
+        S.objects.create(text=cls.waiting, stage_type='first_proofreading', queued_at=cls.today - timedelta(days=10))
+        history = [(cls.stalled, editor, 50)]
+        for user, number in ((cls.other_editor, 1), (cls.editor, 2)):
+            history.append((cls.waiting, A.objects.create(text=cls.waiting, role='editor', assigned_to=user,
+                                                          execution_number=number, is_current=False), 4 - number))
+        for text, assignment, days in history:
+            S.objects.create(text=text, stage_type='author_editing', assignment=assignment,
+                             iteration=assignment.execution_number, execution_number=assignment.execution_number,
+                             started_at=cls.today - timedelta(days=days + 1), ended_at=cls.today - timedelta(days=days),
+                             is_completed=True, is_current=False)
+
+    def get(self, name, user=None, **params):
+        self.client.force_login(user or self.admin)
+        response = self.client.get(reverse(name), params)
+        self.assertEqual(response.status_code, 200)
+        return response
+
+    def inactivity_titles(self, user=None, **params):
+        return [row['text']['title'] for row in self.get('core:workflow_inactivity', user, **params).context['rows']]
+
+    def test_inactivity_modes_filters_and_author_column(self):
+        self.assertEqual(self.inactivity_titles(), ['Zastój redakcji', 'Czeka na korektę'])
+        self.assertEqual(self.inactivity_titles(mode='active'), ['Zastój redakcji'])
+        self.assertEqual(self.inactivity_titles(mode='waiting'), ['Czeka na korektę'])
+        self.assertEqual(self.inactivity_titles(mode='nieznany'), ['Zastój redakcji', 'Czeka na korektę'])
+        self.assertEqual(self.inactivity_titles(stage='first_proofreading'), ['Czeka na korektę'])
+        self.assertEqual(self.inactivity_titles(q='zastoj'), ['Zastój redakcji'])
+        self.assertEqual(self.inactivity_titles(q='Autorski'), ['Zastój redakcji'])
+        self.assertContains(self.get('core:workflow_inactivity'), 'Autorski')
+        page = self.get('core:workflow_inactivity', self.coordinator)
+        self.assertNotContains(page, 'Autorski')
+        self.assertEqual([r['text']['title'] for r in page.context['rows']], ['Zastój redakcji', 'Czeka na korektę'])
+        self.assertEqual(self.inactivity_titles(self.coordinator, q='Autorski'), [])
+        reviews = self.get('core:workflow_inactivity', mode='reviews')
+        self.assertFalse(reviews.context['show_workflow_rows'])
+        self.assertTrue(reviews.context['show_review_section'])
+        self.assertFalse(self.get('core:workflow_inactivity', mode='active').context['show_review_section'])
+        with self.assertRaises(ValueError):
+            workflow_inactivity_context(user=self.admin, params=QueryDict(), active_days=0)
+
+    def test_overdue_review_assignments_are_listed(self):
+        review = Review.objects.create(title='Długa lektura', anthology=self.book, length=1, status='in_review')
+        assignment = ReviewAssignment.objects.create(review=review, user=self.editor, position=1, opinion='reading')
+        ReviewAssignment.objects.filter(pk=assignment.pk).update(assigned_at=timezone.now() - timedelta(days=30))
+        rows = self.get('core:workflow_inactivity').context['overdue_reviews']
+        self.assertEqual([(row['review'].title, row['days']) for row in rows], [('Długa lektura', 30)])
+
+    def test_editor_activity_filters_dates_people_and_sorting(self):
+        def rows(user=None, **params):
+            page = self.get('core:editor_activity', user, **params)
+            return page, [(r['title'], r['person_name'], r['role']) for r in page.context['activity_rows']]
+
+        page, all_rows = rows()
+        self.assertEqual(all_rows[0], ('Czeka na korektę', 'redaktor Testowy', 'Redakcja (wyk. 2)'))
+        self.assertIn(('Zastój redakcji', 'redaktor Testowy', 'Redaktor'), all_rows)
+        self.assertEqual({p['pk'] for p in page.context['editors']},
+                         {self.editor.person_profile.pk, self.other_editor.person_profile.pk})
+        recent_from = (self.today - timedelta(days=10)).isoformat()
+        self.assertEqual(len(rows(date_from=recent_from)[1]), 2)
+        self.assertEqual(rows(date_to=(self.today - timedelta(days=10)).isoformat())[1],
+                         [('Zastój redakcji', 'redaktor Testowy', 'Redaktor')])
+        page, invalid = rows(date_from=recent_from, date_to=(self.today - timedelta(days=20)).isoformat())
+        self.assertEqual(invalid, [])
+        self.assertTrue(page.context['filter_errors'])
+        page, by_person = rows(person=self.other_editor.person_profile.pk)
+        self.assertEqual(by_person, [('Czeka na korektę', 'inny Testowy', 'Redaktor')])
+        # Each filter lists only options that still give results with the other filters.
+        self.assertEqual([a['pk'] for a in page.context['anthologies']], [self.other_book.pk])
+        page, by_book = rows(anthology=self.book.pk)
+        self.assertEqual({row[0] for row in by_book}, {'Zastój redakcji'})
+        self.assertEqual([p['pk'] for p in page.context['editors']], [self.editor.person_profile.pk])
+        self.assertEqual(rows(q='inny')[1], [('Czeka na korektę', 'inny Testowy', 'Redaktor')])
+        self.assertEqual([row[0] for row in rows(sort='title')[1]][0], 'Czeka na korektę')
+        self.assertEqual([row[0] for row in rows(sort='-title')[1]][0], 'Zastój redakcji')
+        self.assertEqual([row[0] for row in rows(sort='-authors')[1]][0], 'Zastój redakcji')
+        self.assertEqual(rows(self.coordinator, q='Autorski')[1], [])
+        self.assertEqual({row[0] for row in rows(q='Autorski')[1]}, {'Zastój redakcji'})
+
+    def test_last_activity_lists_people_without_recent_personal_work(self):
+        from core.models import WorkflowEvent
+
+        WorkflowEvent.objects.create(title='T', actor=self.editor, actor_name='redaktor', previous_status='',
+                                     next_status='', channel='', personal_work=True,
+                                     personal_work_description='Zakończono redakcję')
+
+        def names(**params):
+            return {str(person) for person in self.get('core:last_activity', self.coordinator, **params).context['people']}
+
+        idle = names()
+        self.assertNotIn('redaktor Testowy', idle)
+        self.assertIn('inny Testowy', idle)
+        self.assertEqual(names(days='nie-liczba'), idle)
+        self.assertIn('redaktor Testowy', names(days='0'))
+        self.assertIn('redaktor Testowy', names(mode='login'))
+        self.assertEqual(self.get('core:last_activity', self.coordinator, mode='x').context['mode'], 'work')
+
+    def test_reviewer_activity_archive_scope(self):
+        from core.selectors.reports import reviewer_activity_context
+
+        for title, status in (('Otwarte', 'in_review'), ('Przyjęte', 'accepted')):
+            review = Review.objects.create(title=title, anthology=self.book, length=1, status=status)
+            ReviewAssignment.objects.create(review=review, user=self.editor, position=1, opinion='yes')
+
+        def titles(**params):
+            context = reviewer_activity_context(user=self.admin, params=QueryDict(mutable=True) | params)
+            return context['selected_archive'], sorted(row['title'] for row in context['activity_rows'])
+
+        self.assertEqual(titles(), ('current', ['Otwarte']))
+        self.assertEqual(titles(archive='archived'), ('archived', ['Przyjęte']))
+        self.assertEqual(titles(archive='all'), ('all', ['Otwarte', 'Przyjęte']))
+        self.assertEqual(titles(archive='inne'), ('current', ['Otwarte']))
+        self.assertEqual(titles(archive='all', status='accepted'), ('all', ['Przyjęte']))
+        self.assertEqual(titles(archive='all', date_from=(self.today + timedelta(days=1)).isoformat()), ('all', []))
+        self.assertEqual(titles(archive='all', date_to=self.today.isoformat()), ('all', ['Otwarte', 'Przyjęte']))
+        self.assertEqual(titles(date_from='wczoraj'), ('current', []))
+        self.assertContains(self.get('core:reviewer_activity', archive='all'), 'Przyjęte')
+        with self.assertRaises(ValueError):
+            from core.selectors.reports import workflow_activity_context
+            workflow_activity_context(user=self.admin, params=QueryDict(), stage_roles={'fourth_verification': 'verifier_4'},
+                                      people_role_name='Redaktor', people_context_name='editors')

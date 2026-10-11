@@ -1,11 +1,10 @@
 """Wspólne dane i pomocniki testów produkcji audiobooków (strona audiobooka, Korekta audiobooków)."""
-from django.contrib.auth import get_user_model
 from django.urls import reverse
 from django.utils import timezone
 
 from authors.models import Author
 from core.models import Audiobook
-from fantazmaty.testing import create_member, edit_token
+from fantazmaty.testing import create_member, create_superuser, edit_token
 from texts.models import Anthology, Text
 
 
@@ -15,7 +14,7 @@ class AudiobookProductionTestData:
     @classmethod
     def setUpTestData(cls):
         super().setUpTestData()
-        cls.admin = get_user_model().objects.create_superuser('audio-manager', 'audio@example.test', 'test')
+        cls.admin = create_superuser('audio-manager')
         cls.coordinator = create_member('audio-coordinator', 'Koordynator')
         cls.reader = create_member('audio-reader', 'Korektor audiobooków')
         cls.other_reader = create_member('other-reader', 'Korektor audiobooków')

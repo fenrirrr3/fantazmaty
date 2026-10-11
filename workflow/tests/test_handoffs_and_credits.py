@@ -11,9 +11,9 @@ from lxml import html
 from authors.models import Author
 from core.services.texts import change_scheduled_stage, restore_withdrawn_text, withdraw_text
 from core.supervision import anthology_credit_groups, integrity_issues, text_credit_groups
-from fantazmaty.testing import create_member, create_superuser
+from fantazmaty.testing import create_member, create_superuser, form_value
 from fantazmaty.testing.workflow import StatusAssignmentFixtures
-from illustrations.models import Illustration
+from illustrations.models import Illustration, Illustrator
 from people.models import Person, Vacation
 from texts.models import Anthology, Text
 from workflow.handoffs import handoff_stage
@@ -129,6 +129,47 @@ class HandoffCreditTests(StatusAssignmentFixtures):
         self.assertNotIn("@", " ".join(names))
 
 
+
+class HandoffRulesTests(StatusAssignmentFixtures):
+    """Przekazanie pracy wymaga aktualnego przydziału, innej osoby i otwartego procesu; lista kandydatów to odzwierciedla."""
+
+    def setUp(self):
+        super().setUp()
+        add_roles(self.member, 'Weryfikator')
+        add_roles(self.other, 'Weryfikator')
+        self.v1 = A.objects.create(text=self.text, role='verifier_1', assigned_to=self.member)
+        self.first = S.objects.create(text=self.text, stage_type='first_verification', assignment=self.v1,
+                                      started_at=self.today)
+
+    def handoff(self, person_id, expected=None):
+        return handoff_stage(self.text, self.admin, stage_id=self.first.pk, assigned_to_id=person_id,
+                             expected_assignment_id=expected or self.v1.pk)
+
+    def test_refused_handoffs_keep_the_assignment(self):
+        for person_id, expected, message in ((self.other.pk, self.v1.pk + 100, 'Przydział zmienił się'),
+                                              (999999, None, 'już nie istnieje'),
+                                              (self.member.pk, None, 'Wybierz inną osobę')):
+            with self.subTest(message=message), self.assertRaisesMessage(ValidationError, message):
+                self.handoff(person_id, expected)
+        S.objects.create(text=self.text, stage_type='ready')
+        with self.assertRaisesMessage(ValidationError, 'zamkniętej pracy'):
+            self.handoff(self.other.pk)
+        self.first.refresh_from_db()
+        self.assertEqual(self.first.assignment_id, self.v1.pk)
+        self.assertFalse(WorkflowHandoff.objects.exists())
+
+    def test_candidates_exclude_second_verifier_and_closed_stage(self):
+        from workflow.handoffs import eligible_handoff_users
+
+        self.assertIn(self.other, eligible_handoff_users(self.first))
+        A.objects.create(text=self.text, role='verifier_2', assigned_to=self.other)
+        self.assertNotIn(self.other, eligible_handoff_users(self.first))
+        with self.assertRaises(ValidationError):
+            self.handoff(self.other.pk)
+        S.objects.filter(pk=self.first.pk).update(ended_at=self.today, is_completed=True)
+        self.first.refresh_from_db()
+        self.assertFalse(eligible_handoff_users(self.first).exists())
+
 class HandoffPageTests(TestCase):
     """Formularz przekazania etapu: nazwy osób w liście, opcjonalny powód, historia przekazania."""
 
@@ -191,6 +232,14 @@ class HandoffPageTests(TestCase):
         self.assertIsNone(self.stage.started_at)
         self.client.force_login(self.old)
         self.assertEqual(self.client.get(url).status_code, 403)
+
+    def test_stale_form_shows_service_refusal(self):
+        url = reverse("core:handoff_workflow_stage", args=[self.stage.pk])
+        token = form_value(self.client.get(url))
+        response = self.client.post(url, {"assigned_to": self.new.pk, "expected_assignment_id": self.assignment.pk + 1,
+                                          "_edit_version": token})
+        self.assertContains(response, "Przydział zmienił się")
+        self.assertFalse(WorkflowHandoff.objects.exists())
 
 
 class StageReleaseTests(StatusAssignmentFixtures):
@@ -263,31 +312,27 @@ class StageReleaseTests(StatusAssignmentFixtures):
 class WithdrawalTests(StatusAssignmentFixtures):
     """Wycofanie tekstu ukrywa go w kolejkach bez usuwania historii; przywrócić może tylko superuser."""
 
-    def test_superuser_restores_withdrawn_text(self):
+    def test_only_superuser_restores_withdrawn_text(self):
         S.objects.create(text=self.text, stage_type='editing', started_at=self.today,
                          assignment=A.objects.create(text=self.text, role='editor', assigned_to=self.admin))
         withdraw_text(user=self.admin, text_id=self.text.pk)
         self.client.force_login(self.admin)
         page = self.client.get(reverse('core:assigned_text_detail', args=[self.text.pk])).content.decode()
         self.assertIn('Przywróć do procesu', page)
-        restore_withdrawn_text(user=self.admin, text_id=self.text.pk)
-        self.assertFalse(S.objects.filter(text=self.text, stage_type='withdrawn').exists())
-
-    def test_member_cannot_restore(self):
-        withdraw_text(user=self.admin, text_id=self.text.pk)
         with self.assertRaises(PermissionDenied):
             restore_withdrawn_text(user=self.member, text_id=self.text.pk)
+        self.assertTrue(S.objects.filter(text=self.text, stage_type='withdrawn').exists())
+        restore_withdrawn_text(user=self.admin, text_id=self.text.pk)
+        self.assertFalse(S.objects.filter(text=self.text, stage_type='withdrawn').exists())
 
     def test_withdrawal_hides_queues_and_reopening_restores_same_records(self):
         self.client.force_login(self.admin)
         book = Anthology.objects.create(title='Antologia ilustracji', has_illustrations=True)
         story = Text.objects.create(title='Znikający tekst', anthology=book, length=100)
         illustration = Illustration.objects.get(text=story)
-        illustration.manual_illustrator_name = 'Osoba próbna'
-        illustration.status = Illustration.Status.ASSIGNED
-        # Use a persisted, model-independent history field for the preservation check.
+        artist = Illustrator.objects.create(first_name='Osoba', last_name='Próbna')
         illustration.coordinator_notes = 'Nie usuwać historii'
-        illustration.save()
+        illustration.set_artists([artist], status=Illustration.Status.ASSIGNED)
         assignment = A.objects.create(text=story, role='editor', assigned_to=self.member)
         withdrawn = S.objects.create(text=story, stage_type='withdrawn', is_released=True)
         def queues():
@@ -297,7 +342,7 @@ class WithdrawalTests(StatusAssignmentFixtures):
         illustration.refresh_from_db()
         story.refresh_from_db()
         self.assertEqual(illustration.coordinator_notes, 'Nie usuwać historii')
-        self.assertEqual(illustration.manual_illustrator_name, 'Osoba próbna')
+        self.assertEqual(list(illustration.illustrators.all()), [artist])
         self.assertTrue(story.for_recording)
         self.assertTrue(A.objects.filter(pk=assignment.pk).exists())
         # Historic or unreleased withdrawal must not hide an active text.

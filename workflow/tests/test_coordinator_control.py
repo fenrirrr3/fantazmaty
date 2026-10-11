@@ -20,6 +20,8 @@ from .support import AnthologyWorkflowMixin
 
 
 class CoordinatorControlTests(AnthologyWorkflowMixin, TestCase):
+    """Decyzja koordynatora redakcji po zakończonej redakcji."""
+
     def control(self):
         self.initial_stage.delete()
         editor = A.objects.create(text=self.text, role="editor", assigned_to=self.editor)

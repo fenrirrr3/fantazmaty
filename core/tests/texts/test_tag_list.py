@@ -1,7 +1,13 @@
 """Lista tagów i gatunków tekstów: prezentowane dane i prywatność, wyszukiwanie, filtry, sortowanie
-i paginacja."""
+(także klucz polskiego sortowania w SQL produkcyjnego MySQL) i paginacja."""
+from unittest.mock import patch
+
+from django.db.backends.mysql.base import DatabaseWrapper as MySQLWrapper
 from django.db.models import CharField, Value
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
+
+from core.sort_keys import REPLACEMENTS
+from core.views.tags import polish_key
 
 from texts.models import Text
 
@@ -92,8 +98,6 @@ class TagListTests(TaggedTextsFixture, TestCase):
         self.assertIn("sort=-title", page.previous_url)
 
     def test_polish_sort_key_preserves_null_and_uppercase_order(self):
-        from core.views.tags import polish_key
-
         row = (
             Text.objects.filter(pk=self.text.pk)
             .annotate(
@@ -108,3 +112,18 @@ class TagListTests(TaggedTextsFixture, TestCase):
         )
         self.assertEqual(row.key, "a~c~e~l~n~o~s~z~z~~")
         self.assertIsNone(row.empty_key)
+
+
+class MySQLPolishSortKeyTests(SimpleTestCase):
+    def test_key_lowercases_polish_capitals_and_converts_before_binary_collation(self):
+        mysql = MySQLWrapper({'ENGINE': 'django.db.backends.mysql', 'NAME': '', 'OPTIONS': {}, 'TIME_ZONE': None},
+                             alias='mysql')
+        with patch('core.views.tags.connections', {'mysql': mysql}):
+            key = polish_key('title', 'mysql')
+        sql, params = Text.objects.annotate(key=key).values('key').query.get_compiler(connection=mysql).as_sql()
+        self.assertTrue(sql.startswith('SELECT CONVERT(REPLACE('), sql)
+        self.assertIn('TRIM(LOWER(REPLACE(', sql)
+        self.assertIn('USING utf8mb4) COLLATE `utf8mb4_bin` AS `key`', sql)
+        capitals = [value for letter, _ in REPLACEMENTS for value in (letter.upper(), letter)]
+        keys = [value for pair in REPLACEMENTS for value in pair]
+        self.assertEqual(list(params), capitals + keys)

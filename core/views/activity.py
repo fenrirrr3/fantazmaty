@@ -1,7 +1,10 @@
+from datetime import datetime, time, timedelta
+
 from django import forms
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q
 from django.shortcuts import render
+from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 from core.models import UserActivity
@@ -40,10 +43,12 @@ def user_activity(request):
             rows = rows.filter(aliases | Q(actor__plcontains=term) | Q(user__first_name__plcontains=term) | Q(user__last_name__plcontains=term) | Q(action__plcontains=term) | Q(target__plcontains=term))
         if data['method']:
             rows = rows.filter(method=data['method'])
+        # Zakresy czasu zamiast __date: działają także w MySQL bez tabel stref czasowych.
         if data['date_from']:
-            rows = rows.filter(created_at__date__gte=data['date_from'])
+            rows = rows.filter(created_at__gte=timezone.make_aware(datetime.combine(data['date_from'], time.min)))
         if data['date_to']:
-            rows = rows.filter(created_at__date__lte=data['date_to'])
+            rows = rows.filter(created_at__lt=timezone.make_aware(
+                datetime.combine(data['date_to'] + timedelta(days=1), time.min)))
     else:
         rows = rows.none()
     page = paginate_items(request, rows)

@@ -139,11 +139,13 @@ def _sanitize_body(body, omissions):
             omissions.add(label)
             if node.getparent() is not None:
                 node.getparent().remove(node)
+    math = "{http://schemas.openxmlformats.org/officeDocument/2006/math}"
     for node in list(body.iter()):
-        if node.tag.startswith("{http://schemas.openxmlformats.org/officeDocument/2006/math}"):
+        parent = node.getparent()
+        # Jedno równanie to jeden element najwyższego poziomu; jego części nie są liczone osobno.
+        if node.tag.startswith(math) and parent is not None and not parent.tag.startswith(math):
             omissions.add("równania matematyczne")
-            if node.getparent() is not None:
-                node.getparent().remove(node)
+            parent.remove(node)
     for paragraph in body.iter(qn("w:p")):
         for path, label in (
             ("./w:pPr/w:pBdr", "obramowania akapitów"),

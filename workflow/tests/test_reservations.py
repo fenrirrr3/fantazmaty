@@ -1,9 +1,8 @@
 """Rezerwacje pierwszej weryfikacji i dodawanie brakujących etapów w adminie (także historii bez dat)."""
 from datetime import timedelta
-from io import StringIO
 
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.core.management import call_command, CommandError
+from django.db import transaction
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -14,7 +13,7 @@ from fantazmaty.testing import create_member, create_superuser
 from texts.models import Anthology, Text
 from workflow.admin_add_stage import add_missing_stage
 from workflow.admin_stage_edit import edit_stage
-from workflow.models import WorkflowStage as S, WorkflowRoleAssignment as A
+from workflow.models import WorkflowHandoff, WorkflowRepetition, WorkflowStage as S, WorkflowRoleAssignment as A
 from workflow.read_queries import dashboard_querysets
 from workflow.reservation_repair import restore_first_verification_reservation
 from workflow.services import (
@@ -34,21 +33,22 @@ class FirstVerificationReservationTests(EditingInProgressFixtures):
             return S.objects.create(text=self.text, stage_type='first_verification', assignment=assignment,
                 is_current=False, is_released=False, imported_completed=True, is_completed=True)
 
-    def test_screenshot_state_preview_then_repair_changes_second_button_back_to_first(self):
+    def test_preview_writes_nothing_and_repair_changes_second_button_back_to_first(self):
         first = self.false_completion()
         before = text_detail_context(user=self.member, text=self.text)
         self.assertFalse(before['can_send_to_first_verification'])
         self.assertTrue(before['can_send_to_second_verification'])
         version = version_of(self.text)
-        out = StringIO()
-        call_command('restore_first_verification', text_title=self.text.title, stdout=out)
+        preview = restore_first_verification_reservation(first.pk)
+        self.assertTrue(preview['changed'])
+        self.assertFalse(preview['applied'])
+        self.assertTrue(preview['before']['is_completed'])
         first.refresh_from_db()
         self.assertTrue(first.is_completed)
         self.assertFalse(first.is_current)
         self.assertEqual(version_of(self.text), version)
-        self.assertIn('Podgląd bez zapisu', out.getvalue())
         original_assignment = first.assignment_id
-        call_command('restore_first_verification', text_title=self.text.title, apply=True, stdout=StringIO())
+        restore_first_verification_reservation(first.pk, apply=True)
         first.refresh_from_db()
         self.assertFalse(first.is_completed or first.imported_completed)
         self.assertTrue(first.is_current and first.is_released and first.assignment.is_current)
@@ -108,7 +108,7 @@ class FirstVerificationReservationTests(EditingInProgressFixtures):
         first.refresh_from_db()
         self.assertTrue(first.is_completed)
 
-    def test_repair_rejects_dated_work_further_stages_duplicate_titles_and_previous_cycle(self):
+    def test_repair_rejects_dated_work_further_stages_and_previous_cycle(self):
         first = self.false_completion()
         S.objects.filter(pk=first.pk).update(started_at=self.today, ended_at=self.today)
         with self.assertRaises(ValidationError):
@@ -118,9 +118,6 @@ class FirstVerificationReservationTests(EditingInProgressFixtures):
         with self.assertRaises(ValidationError):
             restore_first_verification_reservation(first.pk, apply=True)
         later.delete()
-        Text.objects.create(title=self.text.title, anthology=self.book, length=100)
-        with self.assertRaises(CommandError):
-            call_command('restore_first_verification', text_title=self.text.title, apply=True, stdout=StringIO())
         self.text.current_workflow_cycle = 2
         self.text.save()
         with self.assertRaises(ValidationError):
@@ -128,6 +125,46 @@ class FirstVerificationReservationTests(EditingInProgressFixtures):
         first.refresh_from_db()
         self.assertTrue(first.is_completed)
         self.assertFalse(first.is_current)
+
+    def test_repair_refuses_ambiguous_history_and_changes_nothing(self):
+        def second_execution(first):
+            S.objects.create(text=self.text, stage_type='first_verification', iteration=2,
+                             is_current=False, is_released=False)
+
+        def other_current_verifier(first):
+            A.objects.create(text=self.text, role='verifier_1', assigned_to=self.admin, execution_number=2)
+
+        def shared_assignment(first):
+            S.objects.create(text=self.text, stage_type='ready_for_editing', assignment=first.assignment,
+                             is_current=False, is_released=False)
+
+        def handoff(first):
+            WorkflowHandoff.objects.create(text=self.text, stage=self.editing, previous_assignment=first.assignment,
+                                           new_assignment=self.editor, actor=self.admin, reason='Test')
+
+        def repetition(first):
+            WorkflowRepetition.objects.create(text=self.text, completed_at=timezone.now(),
+                                              previous_assignment_ids=[first.assignment_id])
+
+        cases = (
+            (second_execution, 'więcej niż jedno wykonanie'),
+            (lambda first: self.close_editing(), 'jednej aktywnej redakcji'),
+            (lambda first: A.objects.filter(pk=first.assignment_id).update(assigned_to=None), 'prawidłowo przypisanej'),
+            (other_current_verifier, 'inne aktualne przypisanie'),
+            (shared_assignment, 'inne wykonania'),
+            (handoff, 'historię przekazania'),
+            (repetition, 'częścią powtórzenia'),
+        )
+        for prepare, message in cases:
+            with self.subTest(message=message), transaction.atomic():
+                savepoint = transaction.savepoint()
+                first = self.false_completion()
+                prepare(first)
+                with self.assertRaisesMessage(ValidationError, message):
+                    restore_first_verification_reservation(first.pk, apply=True)
+                first.refresh_from_db()
+                self.assertTrue(first.is_completed)
+                transaction.savepoint_rollback(savepoint)
 
     def test_admin_adds_first_reservation_during_editing_and_preserves_active_status(self):
         first = self.reserve()
@@ -171,19 +208,35 @@ class FirstVerificationReservationTests(EditingInProgressFixtures):
         first.refresh_from_db()
         self.assertTrue(first.is_completed)
 
+    def test_reservation_needs_single_unstarted_first_verification_during_editing(self):
+        pending = S.objects.create(text=self.text, stage_type='first_verification', started_at=self.today)
+        with self.assertRaisesMessage(ValidationError, 'W1 jest już rozpoczęta'):
+            self.reserve()
+        S.objects.filter(pk=pending.pk).update(started_at=None)
+        second = S.objects.create(text=self.text, stage_type='second_verification')
+        with self.assertRaisesMessage(ValidationError, 'Najpierw zakończ pozostałe otwarte etapy'):
+            self.reserve()
+        second.delete()
+        self.close_editing()
+        with self.assertRaisesMessage(ValidationError, 'Ten etap już istnieje'):
+            self.reserve()
+        pending.refresh_from_db()
+        self.assertIsNone(pending.assignment_id)
+
 
 class AddMissingStageTests(TestCase):
     """Dodawanie brakującego etapu w adminie: oczekujący, zakończony i historyczny (bez dat)."""
 
-    def setUp(self):
-        self.admin = create_superuser()
-        self.users = []
+    @classmethod
+    def setUpTestData(cls):
+        cls.admin = create_superuser()
+        cls.users = []
         for i in range(2):
             user = create_member('u' + str(i), 'Redaktor')
             add_roles(user, 'Korektor', 'Weryfikator')
-            self.users.append(user)
-        self.text = Text.objects.create(title="Test", length=100)
-        self.today = timezone.localdate()
+            cls.users.append(user)
+        cls.text = Text.objects.create(title="Test", length=100)
+        cls.today = timezone.localdate()
 
     def stage(self, kind, role, user, **kw):
         a = A.objects.create(text=self.text, role=role, assigned_to=user)
@@ -290,3 +343,25 @@ class AddMissingStageTests(TestCase):
         self.assertEqual(stage.assignment_id, assignment.pk)
         assignment.refresh_from_db()
         self.assertEqual(assignment.assigned_at, known_date)
+
+    def test_incomplete_requests_are_refused_before_any_change(self):
+        version = version_of(self.text)
+        for kwargs, message in (({'kind': 'ready'}, 'Wybierz etap pracy'),
+                                ({'kind': 'editing', 'historical': 'tak', 'performer': self.users[0]}, 'Nieprawidłowy tryb'),
+                                ({'kind': 'editing', 'historical': True}, 'wymaga wykonawcy'),
+                                ({'kind': 'editing', 'started_at': self.today}, 'Rozpoczęty etap wymaga wykonawcy')):
+            with self.subTest(kwargs=kwargs), self.assertRaisesMessage(ValidationError, message):
+                add_missing_stage(self.text.pk, self.admin, version, **kwargs)
+        WorkflowRepetition.objects.create(text=self.text)
+        with self.assertRaisesMessage(ValidationError, 'kolejkę powtórzeń'):
+            add_missing_stage(self.text.pk, self.admin, version_of(self.text), kind='editing')
+        self.assertFalse(S.objects.filter(text=self.text).exists())
+
+    def test_history_cannot_give_first_proofreading_to_current_later_proofreader(self):
+        self.stage('second_proofreading', 'proofreader_2', self.users[0])
+        with self.assertRaisesMessage(ValidationError, 'Pierwszą korektę musi wykonać inna osoba'):
+            add_missing_stage(self.text.pk, self.admin, version_of(self.text), kind='first_proofreading',
+                              performer=self.users[0], historical=True)
+        stage = add_missing_stage(self.text.pk, self.admin, version_of(self.text), kind='first_proofreading',
+                                  performer=self.users[1], historical=True)
+        self.assertTrue(stage.is_completed)

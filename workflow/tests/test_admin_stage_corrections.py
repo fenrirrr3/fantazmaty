@@ -3,6 +3,7 @@ from datetime import timedelta
 
 from django.contrib.admin.sites import site
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.db import transaction
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -15,7 +16,8 @@ from texts.models import Anthology, Review, Text
 from workflow.admin_assignment_edit import correct_assignment
 from workflow.admin_stage_edit import edit_stage
 from workflow.import_context import importing_completed
-from workflow.models import WorkflowStage as S, WorkflowRoleAssignment as A
+from workflow.handoffs import handoff_stage
+from workflow.models import WorkflowRepetition, WorkflowStage as S, WorkflowRoleAssignment as A
 from workflow.read_queries import annotate_my_work
 from workflow.repetitions import repeat_stages
 from workflow.services import claim_stage, complete_stage
@@ -27,15 +29,18 @@ from .support import importing
 class ReopenStageTests(TestCase):
     """Cofnięcie zakończenia etapu przez superusera: ta sama osoba, wykonanie i data rozpoczęcia."""
 
+    @classmethod
+    def setUpTestData(cls):
+        cls.today = timezone.localdate()
+        cls.admin = create_superuser()
+        cls.member = create_member('member', 'Korektor')
+        cls.book = Anthology.objects.create(title='Test')
+        cls.text = Text.objects.create(title='Tekst', length=100, anthology=cls.book)
+        cls.assignment = A.objects.create(text=cls.text, role='proofreader_1', assigned_to=cls.member)
+        cls.stage = S.objects.create(text=cls.text, assignment=cls.assignment, stage_type='first_proofreading',
+                                     started_at=cls.today - timedelta(days=10), ended_at=cls.today, is_completed=True)
+
     def setUp(self):
-        self.today = timezone.localdate()
-        self.admin = create_superuser()
-        self.member = create_member('member', 'Korektor')
-        self.book = Anthology.objects.create(title='Test')
-        self.text = Text.objects.create(title='Tekst', length=100, anthology=self.book)
-        self.assignment = A.objects.create(text=self.text, role='proofreader_1', assigned_to=self.member)
-        self.stage = S.objects.create(text=self.text, assignment=self.assignment, stage_type='first_proofreading',
-                                      started_at=self.today - timedelta(days=10), ended_at=self.today, is_completed=True)
         self.client.force_login(self.admin)
 
     def reopen(self, actor=None, version=None):
@@ -153,6 +158,34 @@ class ReopenStageTests(TestCase):
         with self.assertRaisesMessage(ValidationError, 'Tekst jest wycofany'):
             self.reopen()
 
+    def test_only_genuinely_performed_current_work_can_be_reopened(self):
+        def canceled_queue():
+            run = WorkflowRepetition.objects.create(text=self.text, canceled_at=timezone.now())
+            S.objects.filter(pk=self.stage.pk).update(repetition=run)
+
+        def other_open_queue():
+            WorkflowRepetition.objects.create(text=self.text)
+
+        cases = (
+            (canceled_queue, 'odwołanej kolejki'),
+            (lambda: S.objects.filter(pk=self.stage.pk).update(is_skipped=True, stage_type='fourth_proofreading',
+                                                               assignment=None, started_at=None,
+                                                               ended_at=None), 'pominięty'),
+            (lambda: S.objects.filter(pk=self.stage.pk).update(started_at=self.today + timedelta(days=1),
+                                                               ended_at=self.today + timedelta(days=1)),
+             'przyszłej daty rozpoczęcia'),
+            (lambda: A.objects.filter(pk=self.assignment.pk).update(is_current=False), 'zastąpionego wykonawcę'),
+            (other_open_queue, 'kolejkę powtórzeń'),
+        )
+        for prepare, message in cases:
+            with self.subTest(message=message), transaction.atomic():
+                savepoint = transaction.savepoint()
+                prepare()
+                with self.assertRaisesMessage(ValidationError, message):
+                    self.reopen()
+                self.assertTrue(S.objects.get(pk=self.stage.pk).is_completed)
+                transaction.savepoint_rollback(savepoint)
+
     def test_ready_marker_is_retired_when_last_work_is_reopened(self):
         assignment = A.objects.create(text=self.text, role='styling', assigned_to=self.admin)
         self.stage.stage_type = 'styling'
@@ -192,12 +225,15 @@ class ReopenStageTests(TestCase):
 class StageDeletionTests(TestCase):
     """Usunięcie etapu w adminie: bez zastępstwa bieżącym staje się ostatni zakończony etap."""
 
+    @classmethod
+    def setUpTestData(cls):
+        cls.admin = create_superuser()
+        cls.member = create_member('reader', 'Recenzent')
+        cls.book = Anthology.objects.create(title='Test')
+        cls.text = Text.objects.create(title='Tekst', length=100, anthology=cls.book)
+        cls.today = timezone.localdate()
+
     def setUp(self):
-        self.admin = create_superuser()
-        self.member = create_member('reader', 'Recenzent')
-        self.book = Anthology.objects.create(title='Test')
-        self.text = Text.objects.create(title='Tekst', length=100, anthology=self.book)
-        self.today = timezone.localdate()
         self.client.force_login(self.admin)
 
     def completed(self, kind='editing', **kwargs):
@@ -270,6 +306,78 @@ class StageDeletionTests(TestCase):
         self.assertEqual(current_stage(list(self.text.workflow_stages.all())).pk, last.pk)
         self.assertEqual(_annotated_texts().get(pk=self.text.pk).current_stage_type, 'editing')
 
+
+
+class StageCorrectionFormTests(TestCase):
+    """Formularz „Popraw wykonanie etapu”: zmiana wykonawcy w miejscu, ochrona historii powtórzeń i przekazań."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.admin = create_superuser()
+        cls.member = create_member('member', 'Redaktor')
+        cls.other = create_member('other', 'Redaktor')
+        cls.today = timezone.localdate()
+
+    def setUp(self):
+        self.text = Text.objects.create(title='Tekst', length=100)
+        self.assignment = A.objects.create(text=self.text, role='editor', assigned_to=self.member)
+        self.stage = S.objects.create(text=self.text, stage_type='editing', assignment=self.assignment,
+                                      started_at=self.today)
+        self.url = reverse('admin:workflow_stage_correct', args=[self.stage.pk])
+        self.client.force_login(self.admin)
+
+    def test_performer_correction_keeps_assignment_and_requires_a_person(self):
+        with self.assertRaisesMessage(ValidationError, 'Wybierz wykonawcę'):
+            edit_stage(self.stage.pk, self.admin, version_of(self.text), action='performer')
+        edit_stage(self.stage.pk, self.admin, version_of(self.text), action='performer', performer=self.other)
+        self.stage.refresh_from_db()
+        self.assertEqual(self.stage.assignment_id, self.assignment.pk)
+        self.assertEqual(self.stage.assignment.assigned_to, self.other)
+        self.assertEqual(self.stage.started_at, self.today)
+
+    def test_open_repetition_queue_blocks_every_correction(self):
+        S.objects.create(text=self.text, stage_type='ready')
+        S.objects.filter(pk=self.stage.pk).update(ended_at=self.today, is_completed=True)
+        run = repeat_stages(self.text, ['editing'], self.admin)
+        queued = run.stages.get()
+        for action in ('performer', 'reopen', 'delete', 'restore_reservation'):
+            with self.subTest(action=action), self.assertRaisesMessage(ValidationError, 'kolejkę powtórzeń'):
+                edit_stage(queued.pk, self.admin, version_of(self.text), action=action, performer=self.other)
+
+    def test_snapshot_stage_and_handed_off_assignment_survive_deletion(self):
+        run = WorkflowRepetition.objects.create(text=self.text, canceled_at=timezone.now(),
+                                                previous_stage_ids=[self.stage.pk])
+        with self.assertRaisesMessage(ValidationError, 'historii powtórzenia'):
+            edit_stage(self.stage.pk, self.admin, version_of(self.text), action='delete')
+        run.delete()
+        # A stage with a recorded handoff is protected by the database and the form says so.
+        handoff_stage(self.text, self.admin, stage_id=self.stage.pk, assigned_to_id=self.other.pk,
+                      expected_assignment_id=self.assignment.pk)
+        response = self.client.post(self.url, {'action': 'delete', 'version': version_of(self.text),
+                                               'confirm': 'on'})
+        self.assertContains(response, 'Etap ma powiązane przekazania pracy')
+        self.assertTrue(S.objects.filter(pk=self.stage.pk).exists())
+        # Deleting the last stage of a handoff participant keeps that assignment.
+        control = S.objects.create(text=self.text, stage_type='editing_control', is_current=False,
+                                   assignment=self.assignment, is_released=False)
+        edit_stage(control.pk, self.admin, version_of(self.text), action='delete')
+        self.assertFalse(S.objects.filter(pk=control.pk).exists())
+        self.assertTrue(A.objects.filter(pk=self.assignment.pk).exists())
+
+    def test_form_defaults_to_performer_and_shows_service_errors(self):
+        response = self.client.get(self.url, {'action': 'drop_table'})
+        self.assertEqual(response.context['form'].initial['action'], 'performer')
+        self.assertEqual(response.context['form'].initial['performer'], self.member.pk)
+        response = self.client.post(self.url, {'action': 'reopen', 'version': version_of(self.text),
+                                               'confirm': 'on'})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Można cofnąć zakończenie tylko aktualnego')
+        response = self.client.post(self.url, {'action': 'performer', 'performer': self.other.pk,
+                                               'version': version_of(self.text), 'confirm': 'on'})
+        self.assertRedirects(response, reverse('admin:texts_text_change', args=[self.text.pk]),
+                             fetch_redirect_response=False)
+        self.assignment.refresh_from_db()
+        self.assertEqual(self.assignment.assigned_to, self.other)
 
 class AdminRecordProtectionTests(StatusAssignmentFixtures):
     """Admin nie usuwa tekstów z zapisaną pracą, nie czyści przypisań z historią i nie zmienia numeru przebiegu."""

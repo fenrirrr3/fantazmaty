@@ -1,6 +1,5 @@
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.core.validators import URLValidator
 from django.db import models
 from django.utils import timezone
 from core.edit_versions import VersionedQuerySet
@@ -87,15 +86,6 @@ class Person(models.Model):
     legacy_coordinator_access = models.BooleanField(default=False, editable=False)
     is_external = models.BooleanField('Zewnętrzny', default=False, db_index=True,
         help_text='Widoczny w zespole, bez logowania i udziału w raportach aktywności. Przypisania historyczne pozostają.')
-    illustrator_active = models.BooleanField("Aktywny ilustrator", default=True, db_index=True,
-        help_text="Wyłączenie ukrywa osobę w spisie ilustratorów i przy nowych przypisaniach. Dotychczasowe prace pozostają. Niezależne od członkostwa w zespole i konta.")
-    illustrator_portfolio = models.URLField(
-        "portfolio", max_length=500, blank=True,
-        validators=[URLValidator(schemes=["http", "https"])],
-    )
-    illustrator_preferences = models.TextField("preferencje", blank=True)
-    illustrator_covers = models.BooleanField("okładki", default=False)
-
     author_profile = models.OneToOneField("authors.Author", null=True, blank=True, on_delete=models.SET_NULL,
         related_name="team_profile", verbose_name="profil autora", help_text="Opcjonalne, jawne powiązanie. E-mail i pseudonim nie zastępują identyfikatora osoby.")
 

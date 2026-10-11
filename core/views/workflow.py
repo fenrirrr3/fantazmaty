@@ -507,7 +507,7 @@ def cancel_workflow_repetition(request, text_id, repetition_id):
     try:
         cancel_repetition(text,request.user,repetition_id=repetition_id)
     except (ValidationError, WorkflowRepetition.DoesNotExist) as exc:
-        messages.error(request,str(exc))
+        messages.error(request, ' '.join(getattr(exc, 'messages', [str(exc)])))
     else:
         messages.success(request,'Anulowano powtórzenie. Przywrócono poprzedni stan tekstu.')
     return _detail_redirect(text_id)
@@ -557,7 +557,7 @@ def handoff_workflow_stage(request, stage_id):
                 reason=form.cleaned_data["reason"],
             )
         except (ValidationError, PermissionDenied, WorkflowStage.DoesNotExist) as exc:
-            form.add_error(None, str(exc))
+            form.add_error(None, ' '.join(getattr(exc, 'messages', [str(exc)])))
         else:
             messages.success(
                 request, "Przekazano pracę. Poprzednie przypisanie pozostało zapisane."

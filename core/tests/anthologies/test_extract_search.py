@@ -9,16 +9,19 @@ from fantazmaty.testing import create_member
 
 
 class ExtractSearchTests(TestCase):
-    def setUp(self):
-        self.manager = create_member('extract-search-manager', 'Koordynator redakcji')
-        self.member = create_member('extract-search-member', 'Redaktor')
-        self.author = Author.objects.create(first_name='Anna', last_name='Żurawska', email='author@example.test')
-        self.entry = Extract.objects.create(
-            author=self.author, full_name='Stary zapis', email='old@example.test',
+    @classmethod
+    def setUpTestData(cls):
+        cls.manager = create_member('extract-search-manager', 'Koordynator redakcji')
+        cls.member = create_member('extract-search-member', 'Redaktor')
+        cls.author = Author.objects.create(first_name='Anna', last_name='Żurawska', email='author@example.test')
+        cls.entry = Extract.objects.create(
+            author=cls.author, full_name='Stary zapis', email='old@example.test',
             recruitment='Ekstrakty 2', title='Mała podróż;Inny tekst;Jeszcze jeden',
             accepted_titles='Mała podróż', rejected_titles='Inny tekst',
         )
-        self.url = reverse('core:global_search')
+        cls.url = reverse('core:global_search')
+
+    def setUp(self):
         self.client.force_login(self.manager)
 
     def test_author_search_finds_extract_titles_and_preserves_decisions_and_links(self):

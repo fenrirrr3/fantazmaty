@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from authors.models import Author
 from core.exports import _safe_filename, csv_response, export_reviews_csv, safe_csv_value
+from fantazmaty.testing import create_superuser
 from texts.models import Anthology, Review
 
 
@@ -44,9 +45,8 @@ class SafeValueTests(SimpleTestCase):
 class ExportAccessTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        User = get_user_model()
-        cls.admin = User.objects.create_superuser('admin', 'admin@example.test', 'x')
-        cls.staff = User.objects.create_user('staff', 'staff@example.test', 'x', is_staff=True)
+        cls.admin = create_superuser()
+        cls.staff = get_user_model().objects.create_user('staff', 'staff@example.test', 'x', is_staff=True)
         book = Anthology.objects.create(title='=Antologia')
         author = Author.objects.create(first_name='Jan', last_name='Autor', email='jan@example.test')
         cls.review = Review.objects.create(title='Tytuł', anthology=book, author=author,

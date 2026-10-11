@@ -1,8 +1,5 @@
-"""Strony tekstów i antologii obok przyjmowania zgłoszeń: stopka tekstu (zasługi), lista osób według roli, zadanie typografii okładki i stałe adresy stron."""
-from importlib import import_module
-from types import SimpleNamespace
-
-from django.apps import apps
+"""Strony tekstów i antologii: stopka tekstu (zasługi), lista osób według roli, zadanie typografii
+okładki i stałe adresy stron."""
 from django.contrib.auth import get_user_model
 from django.urls import resolve, reverse
 
@@ -12,7 +9,7 @@ from fantazmaty.testing import create_superuser
 from fantazmaty.testing.workflow import StatusAssignmentFixtures
 from people.models import Person, Role
 from texts.models import Anthology, Review, ReviewAssignment, Text
-from workflow.completed_import import import_completed_workflow
+from fantazmaty.testing.history import import_completed_workflow
 
 
 class TextPagesTests(StatusAssignmentFixtures):
@@ -50,16 +47,12 @@ class TextPagesTests(StatusAssignmentFixtures):
         self.client.force_login(users['coord'])
         self.assertNotContains(self.client.get(url), 'Lista osób z zespołu według roli')
 
-    def test_new_and_existing_anthologies_get_typography_once_and_edit_form_includes_it(self):
+    def test_new_anthology_gets_one_typography_task_and_edit_form_includes_it(self):
         self.client.force_login(self.admin)
         book = Anthology.objects.create(title='Typografia test')
         task = book.production_tasks.get(task_type='cover_typography')
         self.assertEqual(task.status, 'not_commissioned')
-        task.delete()
-        migration = import_module('texts.migrations.0031_cover_typography_task')
-        editor = SimpleNamespace(connection=SimpleNamespace(alias='default'))
-        migration.add_typography_tasks(apps, editor)
-        migration.add_typography_tasks(apps, editor)
+        book.save()
         self.assertEqual(book.production_tasks.filter(task_type='cover_typography').count(), 1)
         self.assertContains(self.client.get(reverse('core:anthology_detail', args=[book.pk])), 'cover_typography-status')
         response = self.client.get(reverse('core:task_list'), {'task': 'cover_typography'})

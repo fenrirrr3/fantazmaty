@@ -1,12 +1,8 @@
-"""Słownik tagów i gatunków: scalanie haseł, uprawnienia i podpowiedzi, migracja zasilająca oraz
+"""Słownik tagów i gatunków: scalanie haseł, uprawnienia i podpowiedzi oraz
 strona słownika z dwiema niezależnymi kolumnami."""
-from importlib import import_module
-from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
 
-from django.apps import apps
-from django.core.exceptions import ValidationError
-from django.db import connection
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.test import TestCase
 from django.urls import reverse
 from lxml import html
@@ -79,14 +75,54 @@ class VocabularyMergeTests(TestCase):
         response = self.client.get(reverse('core:vocabulary_suggestions'), {'kind': 'tag', 'q': 'science'})
         self.assertEqual(response.json()['results'], ['science fiction'])
 
-    def test_seed_preserves_original_fields_and_distinguishes_polish_letters(self):
-        self.story.tags = 'Łódź, ŁÓDŹ, Lodz'
-        self.story.save(update_fields=['tags'])
-        module = import_module('texts.migrations.0028_seed_vocabulary')
-        module.seed(apps, SimpleNamespace(connection=connection))
-        self.assertEqual(VocabularyTerm.objects.filter(name__in=['Łódź', 'ŁÓDŹ', 'Lodz']).count(), 2)
+
+    def test_merge_page_applies_previewed_change_and_aliases_follow_target(self):
+        alias = VocabularyTerm.objects.create(kind='tag', name='s-f', canonical=self.source)
+        url = reverse('core:vocabulary_merge', args=[self.source.pk])
+        token = self.client.get(url, {'target': self.target.pk}).context['merge_token']
+        response = self.client.post(url, {'target': self.target.pk, 'action': 'apply', 'merge_token': 'zły'})
+        self.assertContains(response, 'Podgląd wygasł', status_code=400)
+        self.assertContains(self.client.post(url, {'action': 'apply'}), 'Wybierz nazwę docelową', status_code=400)
+        response = self.client.post(url, {'target': self.target.pk, 'action': 'apply', 'merge_token': token})
+        self.assertRedirects(response, reverse('core:vocabulary_list'))
+        alias.refresh_from_db()
+        self.source.refresh_from_db()
+        self.assertEqual((alias.canonical, self.source.canonical), (self.target, self.target))
+        self.assertEqual(canonicalize('s-f', 'tag'), 'science fiction')
+        with self.assertRaises(ValidationError):
+            merge_plan(self.target, self.source)  # alias nie może być nazwą docelową
+
+    def test_only_coordinator_applies_merge(self):
+        _, token = self.plan()
+        with self.assertRaises(PermissionDenied):
+            apply_merge(self.source.pk, self.target.pk, self.member, token)
+        self.source.refresh_from_db()
+        self.assertIsNone(self.source.canonical_id)
+
+    def test_canonicalize_registers_new_terms_and_enforces_limits(self):
+        self.assertEqual(canonicalize(' nowe   hasło ', 'tag'), 'nowe hasło')
+        self.assertFalse(VocabularyTerm.objects.filter(name='nowe hasło').exists())
+        self.assertEqual(canonicalize('nowe hasło', 'tag', register=True), 'nowe hasło')
+        self.assertTrue(VocabularyTerm.objects.filter(kind='tag', name='nowe hasło').exists())
+        for value, kind in (('a' * 256, 'tag'), ('g' * 101, 'genre'), ('x' * 60 + ', ' + 'y' * 60, 'genre')):
+            with self.subTest(kind=kind, length=len(value)), self.assertRaises(ValidationError):
+                canonicalize(value, kind, register=True)
+        self.assertFalse(VocabularyTerm.objects.filter(name__in=['a' * 256, 'g' * 101]).exists())
+
+    def test_refresh_adds_missing_terms_without_changing_records(self):
+        from texts.models import Anthology
+        novel = Anthology.objects.create(title='Powieść słownikowa', is_novel=True).novel
+        novel.tags = 'smoki'
+        novel.save()
+        url = reverse('core:vocabulary_list')
+        response = self.client.post(url, {'action': 'refresh'}, follow=True)
+        self.assertContains(response, 'Dodano brakujące hasła: 3.')
+        self.assertEqual(set(VocabularyTerm.objects.filter(kind='tag').values_list('name', flat=True)),
+                         {'sf', 'science fiction', 'magia', 'smoki'})
+        self.assertEqual(list(VocabularyTerm.objects.filter(kind='genre').values_list('name', flat=True)), ['fantasy'])
         self.story.refresh_from_db()
-        self.assertEqual(self.story.tags, 'Łódź, ŁÓDŹ, Lodz')
+        self.assertEqual(self.story.tags, 'sf, magia, science fiction')
+        self.assertContains(self.client.post(url, {'action': 'refresh'}, follow=True), 'Dodano brakujące hasła: 0.')
 
 
 class VocabularyPageTests(TestCase):

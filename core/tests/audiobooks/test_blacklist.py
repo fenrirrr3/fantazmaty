@@ -6,7 +6,7 @@ from django.urls import reverse
 from lxml import html
 
 from authors.models import Author
-from fantazmaty.testing import create_member, edit_token
+from fantazmaty.testing import create_member, create_superuser, edit_token
 from texts.models import Anthology, Text
 
 
@@ -14,7 +14,7 @@ class TextBlacklistTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.member = create_member('audio-member', 'Redaktor')
-        cls.admin = get_user_model().objects.create_superuser('audio-admin', 'audio@example.test', 'test')
+        cls.admin = create_superuser('audio-admin')
         cls.book = Anthology.objects.create(title='Audio')
         cls.author = Author.objects.create(first_name='Jan', last_name='Autor', email=None)
         cls.text = Text.objects.create(title='Nagranie', length=100, anthology=cls.book)

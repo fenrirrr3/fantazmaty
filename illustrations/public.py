@@ -45,7 +45,7 @@ def external_illustrations(request):
     from .models import Illustration, PublicIllustrationSettings
     assigned = Illustration.illustrators.through.objects.filter(illustration_id=OuterRef('pk'))
     rows = visible_illustrations().annotate(has_artist=Exists(assigned)).annotate(
-        public_status=Case(When(Q(has_artist=True) | ~Q(manual_illustrator_name=''), then=Value('Przypisane')),
+        public_status=Case(When(Q(has_artist=True), then=Value('Przypisane')),
                            default=Value('Dostępne'), output_field=CharField()))
     anthology = request.GET.get('anthology', '')
     choices = rows.values('text__anthology_id', 'text__anthology__title').order_by('text__anthology__title').distinct()

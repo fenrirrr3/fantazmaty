@@ -1,4 +1,5 @@
-"""Formatowanie dokumentów: dziedziczenie stylów, normalizacja typografii i strony oraz wyjustowanie."""
+"""Przygotowanie dokumentów: dziedziczenie stylów, normalizacja typografii i strony, wyjustowanie, kolejność kroków
+przygotowania oraz zamiana miękkich enterów i twardych spacji."""
 import json
 from io import BytesIO
 from pathlib import Path
@@ -10,16 +11,22 @@ from django.test import SimpleTestCase, tag
 from docx import Document
 from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from docx.shared import Cm, Pt
+from docx.text.paragraph import Paragraph
 
 from core.services.document_conversion_worker import main as conversion_worker_main
 from core.services.document_formatting import normalize_docx
 from core.services.document_preparation import prepare_docx
 from core.services.document_styles import paragraph_properties, paragraph_property
+from core.services.document_whitespace import normalize_spacing_docx
 from core.services.mailbox_import import package_messages
 from core.services.odkurzacz import clean_docx
 
 from .support import IsolatedProgramDirsMixin, saved, typography_sample
+
+PARA_ID = '{http://schemas.microsoft.com/office/word/2010/wordml}paraId'
 
 
 def justification_sample():
@@ -164,3 +171,67 @@ class JustificationTests(IsolatedProgramDirsMixin, SimpleTestCase):
                 content = epub.read('EPUB/content.xhtml').decode()
                 self.assertIn('align-justify', content)
                 self.assertIn('align-center', content)
+
+
+class PreparationTests(SimpleTestCase):
+    def test_unknown_cleaner_rules_are_refused(self):
+        for rules in (['nieznana'], 'spaces'):
+            with self.subTest(rules=rules), self.assertRaisesMessage(ValueError, 'Invalid cleaner rules'):
+                prepare_docx(typography_sample(), cleaner_rules=rules)
+
+    def test_rebuild_runs_first_and_drops_private_metadata(self):
+        document = Document()
+        document.core_properties.author = 'Prywatny'
+        document.add_paragraph('Ala  ma kota')
+        with prepare_docx(saved(document), rebuild=True, cleaner_rules=['spaces']) as output:
+            result = Document(output)
+        self.assertEqual(result.core_properties.author, '')
+        self.assertEqual(result.paragraphs[0].text, 'Ala ma kota')
+
+
+class SoftWhitespaceTests(SimpleTestCase):
+    """Miękki enter (także U+2028) tworzy nowy akapit; właściwości akapitu trafiają tylko tam, gdzie mają sens."""
+
+    def normalized(self, document):
+        result = Document(normalize_spacing_docx(saved(document)))
+        return [Paragraph(element, result) for element in result.element.body.iter(qn('w:p'))]
+
+    def test_line_separator_splits_paragraph_and_keeps_section_and_page_break_once(self):
+        document = Document()
+        paragraph = document.add_paragraph('Pierwszy\u2028Drugi\u00a0wiersz')
+        paragraph.paragraph_format.page_break_before = True
+        paragraph._p.set(PARA_ID, '1234ABCD')
+        paragraph._p.get_or_add_pPr().append(OxmlElement('w:sectPr'))
+        first, second = self.normalized(document)[:2]
+        self.assertEqual((first.text, second.text), ('Pierwszy', 'Drugi wiersz'))
+        self.assertTrue(first.paragraph_format.page_break_before)
+        self.assertIsNone(second.paragraph_format.page_break_before)
+        self.assertIsNone(first._p.pPr.find(qn('w:sectPr')))
+        self.assertIsNotNone(second._p.pPr.find(qn('w:sectPr')))
+        # Identyfikator akapitu Worda zostaje tylko przy pierwszej części.
+        self.assertEqual((first._p.get(PARA_ID), second._p.get(PARA_ID)), ('1234ABCD', None))
+
+    def test_text_box_paragraph_inside_a_split_paragraph_stays_whole(self):
+        document = Document()
+        outer = document.add_paragraph('Przed')
+        outer.add_run().add_break()
+        box = OxmlElement('w:txbxContent')
+        inner = OxmlElement('w:p')
+        run = OxmlElement('w:r')
+        text = OxmlElement('w:t')
+        text.text = 'Pole tekstowe'
+        run.append(text)
+        inner.append(run)
+        box.append(inner)
+        outer.add_run('Po')._r.append(box)
+        before, after, boxed = self.normalized(document)
+        self.assertEqual([before.text, after.text, boxed.text], ['Przed', 'Po', 'Pole tekstowe'])
+        self.assertEqual(len(after._p.xpath('.//w:txbxContent/w:p')), 1)
+
+    def test_oversized_package_is_refused(self):
+        stream = BytesIO()
+        with ZipFile(stream, 'w') as archive:
+            for index in range(2001):
+                archive.writestr(f'part{index}.xml', b'')
+        with self.assertRaisesMessage(ValueError, 'limit rozpakowanej zawartości'):
+            normalize_spacing_docx(stream)

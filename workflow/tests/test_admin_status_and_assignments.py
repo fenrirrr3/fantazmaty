@@ -1,4 +1,6 @@
 """Status i wykonawcy w adminie: ręczna zmiana statusu, poprawianie wykonawców i zasada różnych osób w kolejnych etapach."""
+from datetime import timedelta
+
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.test import TestCase
@@ -10,16 +12,17 @@ from core.edit_versions import version_of
 from core.selectors.texts import _text_team_members, text_detail_context
 from fantazmaty.testing import create_member, form_value
 from fantazmaty.testing.workflow import StatusAssignmentFixtures
+from people.models import Vacation
 from texts.models import Anthology, Text
 from workflow.admin_assignment_edit import correct_assignment
 from workflow.admin_performers import correct_stage_performers
 from workflow.admin_stage_dates import editing_transition_choices
 from workflow.handoffs import eligible_handoff_users, handoff_stage
 from workflow.labels import assignment_label
-from workflow.models import WorkflowRoleAssignment as A, WorkflowStage as S
+from workflow.models import WorkflowHandoff, WorkflowRoleAssignment as A, WorkflowStage as S
 from workflow.services import STAGE_ROLES, completed_stage_exists, send_to_first_verification
 
-from .support import importing
+from .support import add_roles, importing
 
 
 class ManualStatusTests(StatusAssignmentFixtures):
@@ -122,17 +125,20 @@ class ManualStatusTests(StatusAssignmentFixtures):
 class PerformerCorrectionTests(TestCase):
     """Poprawianie wykonawców (formularz tekstu, przypisanie, zbiorczo): różne osoby w kolejnych korektach i weryfikacjach."""
 
-    def setUp(self):
+    @classmethod
+    def setUpTestData(cls):
         User = get_user_model()
-        self.admin = User.objects.create_superuser('admin', 'admin@example.com', 'test')
-        self.first = User.objects.create_superuser('first', 'first@example.com', 'test')
-        self.later = User.objects.create_superuser('later', 'later@example.com', 'test')
-        self.ordinary = create_member('ordinary', 'Korektor')
-        self.book = Anthology.objects.create(title="Test")
-        self.text = Text.objects.create(title="Tekst", length=100, anthology=self.book)
+        cls.admin = User.objects.create_superuser('admin', 'admin@example.com', 'test')
+        cls.first = User.objects.create_superuser('first', 'first@example.com', 'test')
+        cls.later = User.objects.create_superuser('later', 'later@example.com', 'test')
+        cls.ordinary = create_member('ordinary', 'Korektor')
+        cls.book = Anthology.objects.create(title="Test")
+        cls.text = Text.objects.create(title="Tekst", length=100, anthology=cls.book)
         author = Author.objects.create(first_name="Jan", last_name="Autor", email="author@example.com")
-        self.text.authors.add(author)
-        self.today = timezone.localdate()
+        cls.text.authors.add(author)
+        cls.today = timezone.localdate()
+
+    def setUp(self):
         self.client.force_login(self.admin)
 
     def pair(self, kind="second_proofreading"):
@@ -362,6 +368,85 @@ class PerformerCorrectionTests(TestCase):
         s1.refresh_from_db()
         self.assertEqual(s1.started_at, self.today)
 
+
+
+class PerformerCorrectionRulesTests(StatusAssignmentFixtures):
+    """Poprawka wykonawców sprawdza cały formularz: aktualność wierszy, wspólne przypisania, przekazania i trwającą pracę."""
+
+    def setUp(self):
+        super().setUp()
+        add_roles(self.member, 'Redaktor', 'Korektor')
+        add_roles(self.other, 'Redaktor', 'Korektor')
+        self.editor = A.objects.create(text=self.text, role='editor', assigned_to=self.member)
+        self.editing = S.objects.create(text=self.text, stage_type='editing', assignment=self.editor,
+                                        started_at=self.today)
+
+    def correct(self, changes, version=None):
+        return correct_stage_performers(self.text.pk, changes, self.admin,
+                                        version_of(self.text) if version is None else version)
+
+    def assert_refused(self, changes, message):
+        with self.assertRaisesMessage(ValidationError, message):
+            self.correct(changes)
+        self.editor.refresh_from_db()
+        self.assertEqual(self.editor.assigned_to, self.member)
+
+    def test_live_work_needs_an_active_available_team_member(self):
+        inactive = get_user_model().objects.create_user('inactive', is_active=False)
+        account_only = get_user_model().objects.create_user('account-only')
+        for person in (inactive, account_only):
+            with self.subTest(person=person.username):
+                self.assert_refused({self.editing.pk: person}, 'aktywnego konta')
+        Vacation.objects.create(person=self.other.person_profile, start_date=self.today, until_revoked=True)
+        self.assert_refused({self.editing.pk: self.other}, 'urlopu')
+        styling = S.objects.create(text=self.text, stage_type='styling',
+                                   assignment=A.objects.create(text=self.text, role='styling', assigned_to=self.admin))
+        with self.assertRaisesMessage(ValidationError, 'Stylowanie'):
+            self.correct({styling.pk: self.member})
+
+    def test_form_rows_must_match_current_records(self):
+        other_text = Text.objects.create(title='Inny', length=1, anthology=self.book)
+        foreign = S.objects.create(text=other_text, stage_type='editing')
+        self.assert_refused({foreign.pk: self.other}, 'Lista etapów zmieniła się')
+        ready = S.objects.create(text=self.text, stage_type='ready')
+        self.assert_refused({ready.pk: self.other}, 'nie ma wykonawcy')
+        with self.assertRaisesMessage(ValidationError, 'Dane zmieniły się'):
+            self.correct({self.editing.pk: self.other}, version=version_of(self.text) - 1)
+        ready.delete()
+        verification = S.objects.create(text=self.text, stage_type='first_verification', assignment=self.editor,
+                                        is_current=False, is_released=False)
+        self.assert_refused({verification.pk: self.other}, 'nie odpowiada etapowi')
+
+    def test_rows_sharing_one_assignment_must_name_the_same_person(self):
+        author = S.objects.create(text=self.text, stage_type='author_editing', assignment=self.editor,
+                                  started_at=self.today - timedelta(days=3), ended_at=self.today - timedelta(days=1),
+                                  is_completed=True, is_current=False)
+        self.assert_refused({self.editing.pk: self.other, author.pk: self.admin}, 'jednego przypisania')
+        self.correct({self.editing.pk: self.other, author.pk: self.other})
+        self.editor.refresh_from_db()
+        self.assertEqual(self.editor.assigned_to, self.other)
+        self.assertEqual(set(S.objects.filter(text=self.text).values_list('assignment_id', flat=True)), {self.editor.pk})
+
+    def test_handoff_participants_and_dated_work_keep_their_people(self):
+        self.assert_refused({self.editing.pk: None}, 'Praca ma już daty')
+        replacement = A.objects.create(text=self.text, role='editor', assigned_to=self.other,
+                                       execution_number=2, is_current=False)
+        WorkflowHandoff.objects.create(text=self.text, stage=self.editing, previous_assignment=self.editor,
+                                       new_assignment=replacement, actor=self.admin, reason='Test')
+        self.assert_refused({self.editing.pk: self.other}, 'zarejestrowane przekazanie')
+
+    def test_stage_without_assignment_gets_one_without_assignment_date(self):
+        S.objects.filter(pk=self.editing.pk).update(ended_at=self.today, is_completed=True)
+        A.objects.create(text=self.text, role='proofreader_2')
+        proof = S.objects.create(text=self.text, stage_type='first_proofreading')
+        self.assertIsNone(proof.assignment_id)
+        self.correct({proof.pk: self.other})
+        proof.refresh_from_db()
+        self.assertEqual(proof.assignment.assigned_to, self.other)
+        self.assertEqual(proof.assignment.execution_number, 1)
+        self.assertTrue(proof.assignment.is_current)
+        self.assertIsNone(proof.assignment.assigned_at)
+        self.assertIsNone(proof.started_at)
 
 class AssignmentMergeTests(StatusAssignmentFixtures):
     """Poprawka wykonawcy scala pusty bieżący przydział z historycznym tej samej roli."""

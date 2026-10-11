@@ -4,21 +4,21 @@ from pathlib import Path
 from unittest.mock import patch
 from zipfile import ZipFile
 
-from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase, TestCase, tag
 from django.urls import reverse
 from docx import Document
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
-from docx.shared import Cm
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
+from docx.oxml import OxmlElement, parse_xml
+from docx.oxml.ns import nsdecls, qn
+from docx.shared import Cm, RGBColor
 
 from core.program_test_support import run_program
 from core.services import program_jobs as jobs
 from core.services.document_converter import RebuildConfirmationRequired, convert_document
 from core.services.document_rebuild import RebuildUnsupported, inspect_docx, rebuild_docx
 from core.services.mailbox_import import package_messages
+from fantazmaty.testing import create_superuser
 
 from .support import IsolatedProgramDirsMixin, downloaded_document, saved
 
@@ -120,6 +120,93 @@ class RebuildTests(SimpleTestCase):
         self.assertEqual(rebuilt.paragraphs[0].style.name, 'Heading 1')
 
 
+class RebuildDetailTests(SimpleTestCase):
+    """Elementy wewnątrz akapitów: zachowane (tabulatory, podziały, łączniki, kolory motywu) albo zgłoszone."""
+
+    @staticmethod
+    def element(tag, **attributes):
+        node = OxmlElement(tag)
+        for key, value in attributes.items():
+            node.set(qn(key), value)
+        return node
+
+    def run_with(self, paragraph, text, *properties):
+        run = paragraph.add_run(text)
+        for node in properties:
+            run._r.get_or_add_rPr().append(node)
+        return run
+
+    def detailed_document(self):
+        element = self.element
+        document = Document()
+        paragraph = document.add_paragraph()
+        paragraph.paragraph_format.tab_stops.add_tab_stop(Cm(5))
+        run = paragraph.add_run('A')
+        run.add_tab()
+        run.add_text('B')
+        run.add_break(WD_BREAK.PAGE)
+        run.add_break()
+        run.add_text('C')
+        for node in (element('w:noBreakHyphen'), element('w:softHyphen'), element('w:commentReference', **{'w:id': '1'}),
+                     element('w:ptab')):
+            run._r.append(node)
+        self.run_with(paragraph, 'ciemny', element('w:color', **{'w:val': 'FF0000', 'w:themeShade': '80'}))
+        self.run_with(paragraph, 'jasny', element('w:color', **{'w:val': '000000', 'w:themeTint': '80'}))
+        self.run_with(paragraph, 'auto', element('w:color', **{'w:val': 'auto'}))
+        self.run_with(paragraph, 'motyw', element('w:rFonts', **{'w:asciiTheme': 'majorHAnsi'}))
+        self.run_with(paragraph, 'rozstrzelony', element('w:spacing', **{'w:val': '20'}))
+        framed = document.add_paragraph('Ramka')
+        properties = framed._p.get_or_add_pPr()
+        properties.append(element('w:pBdr'))
+        mark = element('w:rPr')
+        mark.append(element('w:del', **{'w:id': '2', 'w:author': 'Ktoś'}))
+        mark.append(element('w:ins', **{'w:id': '3', 'w:author': 'Ktoś'}))
+        properties.append(mark)
+        document.element.body.insert(0, element('w:bookmarkStart', **{'w:id': '9', 'w:name': 'zakładka'}))
+        return document
+
+    def test_inline_content_is_rebuilt_and_unsupported_parts_are_listed(self):
+        document = self.detailed_document()
+        with self.assertRaises(RebuildUnsupported) as caught:
+            rebuild_docx(saved(document))
+        self.assertEqual(caught.exception.omissions, [
+            'blok bookmarkStart wraz z treścią (liczba: 1)',
+            'element ptab wewnątrz tekstu (liczba: 1)',
+            'obramowania akapitów (liczba: 1)',
+            'oznaczenia usunięcia akapitu (akapit pozostanie) (liczba: 1)',
+            'oznaczenia zmian akapitów (podział na akapity pozostanie) (liczba: 1)',
+            'rozstrzelenie znaków (liczba: 1)',
+        ])
+        result = Document(rebuild_docx(saved(document), allow_omissions=True))
+        paragraph = result.paragraphs[0]
+        self.assertEqual(paragraph.text, 'A\tB\nC\u2011\u00adciemnyjasnyautomotywrozstrzelony')
+        self.assertEqual(paragraph._p.xpath('.//w:br/@w:type'), ['page'])
+        self.assertAlmostEqual(paragraph.paragraph_format.tab_stops[0].position.cm, 5, places=2)
+        runs = {run.text: run for run in paragraph.runs}
+        self.assertEqual(runs['ciemny'].font.color.rgb, RGBColor(0x80, 0, 0))
+        self.assertEqual(runs['jasny'].font.color.rgb, RGBColor(0x7F, 0x7F, 0x7F))
+        self.assertIsNone(runs['auto'].font.color.rgb)
+        self.assertNotEqual(runs['motyw'].font.name, runs['auto'].font.name)
+        self.assertEqual(result.paragraphs[1].text, 'Ramka')
+
+    def test_theme_fonts_without_a_theme_part_are_reported(self):
+        document = Document()
+        document.add_paragraph('Tekst')
+        for key, relationship in list(document.part.rels.items()):
+            if relationship.reltype.endswith('/theme'):
+                document.part.drop_rel(key)
+        with self.assertRaisesMessage(RebuildUnsupported, 'nierozpoznany krój czcionki z motywu'):
+            inspect_docx(saved(document))
+
+    def test_one_equation_is_counted_once(self):
+        """Regresja: części równania (m:r, m:t) nie są liczone jako osobne równania."""
+        document = Document()
+        document.add_paragraph('Wzór')._p.append(
+            parse_xml('<m:oMath %s><m:r><m:t>x</m:t></m:r></m:oMath>' % nsdecls('m')))
+        with self.assertRaisesMessage(RebuildUnsupported, 'równania matematyczne (liczba: 1)'):
+            inspect_docx(saved(document))
+
+
 class RebuildConversionTests(IsolatedProgramDirsMixin, SimpleTestCase):
     def test_real_worker_docx_and_mail_default(self):
         doc = Document()
@@ -169,7 +256,6 @@ class RebuildConversionTests(IsolatedProgramDirsMixin, SimpleTestCase):
             self.assertEqual([p.text for p in result.paragraphs], ['Zachowaj', 'Lista'])
             self.assertTrue(result.paragraphs[0].runs[0].italic)
 
-    @tag('slow')
     def test_mail_batch_collects_warnings_for_all_files(self):
         rows = []
         for uid, kind in enumerate(('table', 'list'), 1):
@@ -192,7 +278,7 @@ class RebuildConversionTests(IsolatedProgramDirsMixin, SimpleTestCase):
 class RebuildPageTests(IsolatedProgramDirsMixin, TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.user = get_user_model().objects.create_superuser('rebuild', 'rebuild@example.com', 'testpassword')
+        cls.user = create_superuser('rebuild')
 
     def setUp(self):
         super().setUp()

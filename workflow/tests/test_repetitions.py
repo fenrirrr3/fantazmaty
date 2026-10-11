@@ -1,14 +1,18 @@
-"""Powtórzenia etapów: nowe wykonanie dla innej osoby, zamknięcie bieżącej pracy, podgląd i wejście z admina."""
+"""Powtórzenia etapów: nowe wykonanie dla innej osoby, zamknięcie bieżącej pracy, walidacja wyboru, kolejka
+powtórzeń i jej zakończenie, anulowanie, podgląd i wejście z admina."""
 from datetime import timedelta
 
-from django.core.exceptions import ValidationError
+from django.contrib.auth import get_user_model
+from django.core.exceptions import PermissionDenied, ValidationError
+from django.db import transaction
 from django.urls import reverse
+from django.utils import timezone
 
 from core.edit_versions import version_of
 from core.forms import RestartWorkflowForm
 from core.services.texts import start_assigned_stage
-from workflow.models import WorkflowRoleAssignment as A, WorkflowStage as S
-from workflow.repetitions import repeat_stages
+from workflow.models import WorkflowRepetition, WorkflowRoleAssignment as A, WorkflowStage as S
+from workflow.repetitions import cancel_repetition, eligible_repeat_users, repeat_stages
 from workflow.services import complete_stage
 from fantazmaty.testing.workflow import StatusAssignmentFixtures
 
@@ -16,6 +20,8 @@ from .support import add_roles
 
 
 class RepeatStagesTests(StatusAssignmentFixtures):
+    """Tekst w trakcie redakcji (Jan Test); Anna Test może przejąć powtórzenie."""
+
     def setUp(self):
         super().setUp()
         for user in (self.member, self.other):
@@ -176,14 +182,123 @@ class RepeatStagesTests(StatusAssignmentFixtures):
         self.assertEqual(old.assignment_id, self.editor.pk)
         self.assertEqual(old.ended_at, self.today - timedelta(days=4))
 
-    def test_finishing_second_editing_execution_continues_to_verification_not_ready(self):
-        run = self.change()
+    def completed(self, kind, role=None, user=None):
+        """Zakończony, zarchiwizowany etap; praca z autorem korzysta z przypisania redaktora."""
+        assignment = (self.editor if role == 'editor' else
+                      A.objects.create(text=self.text, role=role, assigned_to=user) if role else None)
+        return S.objects.create(text=self.text, stage_type=kind, assignment=assignment, started_at=self.today,
+                                ended_at=self.today, is_completed=True, is_current=False)
+
+    def test_finished_editing_execution_continues_with_first_missing_checkpoint(self):
+        for done, expected in (((), 'first_verification'),
+                               (('first_verification',), 'second_verification'),
+                               (('first_verification', 'second_verification'), 'editing_control')):
+            with self.subTest(done=done), transaction.atomic():
+                savepoint = transaction.savepoint()
+                for kind in done:
+                    self.completed(kind)
+                stage = self.change().stages.get()
+                start_assigned_stage(user=self.other, stage_id=stage.pk, started_at=self.today)
+                complete_stage(stage, self.other, self.today)
+                self.assertFalse(S.objects.current_cycle().filter(text=self.text, stage_type='ready').exists())
+                self.assertTrue(S.objects.current_cycle().filter(text=self.text, stage_type=expected,
+                                                               is_completed=False).exists())
+                transaction.savepoint_rollback(savepoint)
+
+    def test_invalid_selection_or_people_change_nothing(self):
+        stranger = get_user_model().objects.create_user('stranger', 'stranger@example.com')
+        self.completed('author_editing', 'editor', self.member)
+        cases = (
+            ([], {'editor': self.other}, 'Wybierz poprawne etapy'),
+            (['ready_for_editing'], {'editor': self.other}, 'Wybierz poprawne etapy'),
+            (['author_editing'], {'editor': self.other}, 'wymaga także wybrania redakcji'),
+            (['editing'], None, 'wybierz nowych wykonawców'),
+            (['editing'], {}, 'Wybierz nową osobę'),
+            (['editing'], {'editor': None}, 'Wybierz nową osobę'),
+            (['editing'], {'editor': stranger}, ''),
+        )
+        before = list(S.objects.filter(text=self.text).values())
+        for selected, assignees, message in cases:
+            with self.subTest(selected=selected, assignees=assignees), self.assertRaisesMessage(ValidationError, message):
+                repeat_stages(self.text, selected, self.admin, assignees=assignees)
+        A.objects.filter(pk=self.editor.pk).update(assigned_to=None)
+        with self.assertRaisesMessage(ValidationError, 'nie ma wykonawcy'):
+            self.change()
+        S.objects.create(text=self.text, stage_type='withdrawn')
+        with self.assertRaisesMessage(ValidationError, 'Wycofanego tekstu'):
+            self.change()
+        self.assertEqual(before, list(S.objects.filter(text=self.text).exclude(stage_type='withdrawn').values()))
+        self.assertFalse(self.text.repetitions.exists())
+
+    def test_proofreading_repeat_keeps_first_proofreader_away_from_later_rounds(self):
+        add_roles(self.other, 'Koordynator korekty')
+        add_roles(self.member, 'Koordynator korekty')
+        self.completed('first_proofreading', 'proofreader_1', self.member)
+        self.completed('second_proofreading', 'proofreader_2', self.admin)
+        self.assertEqual(list(eligible_repeat_users(self.text, 'proofreader_2')), [self.other])
+        for assignees, message in (
+                ({'proofreader_1': self.other, 'proofreader_2': self.other}, 'muszą wykonywać różne osoby'),
+                ({'proofreader_1': self.admin, 'proofreader_2': self.member}, 'pierwszą korektę nie może')):
+            with self.subTest(assignees=assignees), self.assertRaisesMessage(ValidationError, message):
+                repeat_stages(self.text, ['first_proofreading', 'second_proofreading'], self.admin, assignees=assignees)
+
+    def test_author_exchange_queue_waits_for_each_previous_step(self):
+        self.completed('author_editing', 'editor', self.member)
+        run = self.change(['editing', 'author_editing'])
+        queue = list(run.stages.order_by('queue_position'))
+        self.assertEqual([s.stage_type for s in queue], ['editing', 'author_editing', 'editing'])
+        self.assertEqual([s.is_released for s in queue], [True, False, False])
+        with self.assertRaisesMessage(ValidationError, 'czeka na zakończenie poprzedniego'):
+            start_assigned_stage(user=self.other, stage_id=queue[1].pk, started_at=self.today)
+        start_assigned_stage(user=self.other, stage_id=queue[0].pk, started_at=self.today)
+        with self.assertRaises(PermissionDenied):
+            complete_stage(queue[0], self.member, self.today)
+        # Inconsistent data with two released steps still keeps the queue order.
+        S.objects.filter(pk=queue[1].pk).update(is_released=True)
+        with self.assertRaisesMessage(ValidationError, 'Najpierw zakończ wcześniejsze etapy kolejki'):
+            start_assigned_stage(user=self.other, stage_id=queue[1].pk, started_at=self.today)
+
+    def test_finished_repeat_returns_to_first_stage_not_done_yet(self):
+        add_roles(self.member, 'Koordynator korekty')
+        S.objects.filter(pk=self.editing.pk).update(ended_at=self.today, is_completed=True)
+        self.completed('first_proofreading', 'proofreader_1', self.member)
+        self.completed('second_proofreading', 'proofreader_2', self.admin)
+        third = S.objects.create(text=self.text, stage_type='third_verification')
+        run = self.change(['first_proofreading'], {'proofreader_1': self.other})
         stage = run.stages.get()
         start_assigned_stage(user=self.other, stage_id=stage.pk, started_at=self.today)
         complete_stage(stage, self.other, self.today)
-        self.assertFalse(S.objects.current_cycle().filter(text=self.text, stage_type='ready').exists())
-        self.assertTrue(S.objects.current_cycle().filter(text=self.text, stage_type='first_verification',
-                                                       is_completed=False).exists())
+        third.refresh_from_db()
+        self.assertFalse(third.is_current)
+        pending = S.objects.current_cycle().get(text=self.text, is_completed=False)
+        self.assertEqual(pending.stage_type, 'third_verification')
+        self.assertNotEqual(pending.pk, third.pk)
+        self.assertEqual(pending.queued_at, self.today)
+
+    def test_coordinator_approval_inside_repeat_adds_first_proofreading(self):
+        self.completed('editing_control', 'editing_coordinator', self.member)
+        run = self.change(['editing_control'], {'editing_coordinator': self.admin})
+        control = run.stages.get()
+        start_assigned_stage(user=self.admin, stage_id=control.pk, started_at=self.today)
+        complete_stage(control, self.admin, self.today, send_to_proofreading=True)
+        proof = run.stages.get(stage_type='first_proofreading')
+        self.assertTrue(proof.is_released)
+        self.assertEqual(proof.queued_at, self.today)
+        run.refresh_from_db()
+        self.assertIsNone(run.completed_at)
+
+    def test_cancel_needs_superuser_snapshot_and_queue_without_people(self):
+        run = self.change()
+        for user, run_id, error, message in (
+                (self.member, run.pk, PermissionDenied, ''),
+                (self.admin, run.pk, ValidationError, 'rozpoczętą pracą lub rezerwacją'),
+                (self.admin, WorkflowRepetition.objects.create(text=self.text).pk, ValidationError, 'Starsza kolejka'),
+                (self.admin, WorkflowRepetition.objects.create(text=self.text, completed_at=timezone.now()).pk,
+                 ValidationError, 'już zamknięta')):
+            with self.subTest(user=user.username, run_id=run_id), self.assertRaisesMessage(error, message):
+                cancel_repetition(self.text, user, repetition_id=run_id)
+        run.refresh_from_db()
+        self.assertIsNone(run.canceled_at)
 
     def test_finishing_repeated_first_verification_returns_to_editor_and_offers_second(self):
         from core.selectors.texts import text_detail_context

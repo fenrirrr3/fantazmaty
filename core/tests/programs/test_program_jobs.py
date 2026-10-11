@@ -1,24 +1,29 @@
 """Kolejka zadań programów: tworzenie i walidacja, dostęp, anulowanie, potwierdzenie, pobranie i sprzątanie."""
 import json
 import os
+import shutil
 import subprocess
 import threading
 import time
 from io import BytesIO
+from itertools import count
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 from unittest.mock import patch
 
-from django.contrib.auth import get_user_model
+from django.core import signing
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
-from django.test import Client, SimpleTestCase, TestCase
+from django.test import Client, RequestFactory, SimpleTestCase, TestCase
 from django.urls import reverse
 from docx import Document
 
+from core.odkurzacz_forms import PROGRAM_MAX_UPLOAD_BYTES
 from core.program_test_support import run_program
 from core.services import program_jobs as jobs
 from core.services.document_converter import ConversionError, conversion_slot, run_converter
+from fantazmaty.testing import create_superuser
 
 from .support import REPETITION_FIELDS, IsolatedProgramDirsMixin, downloaded, saved, sized_docx
 
@@ -34,8 +39,8 @@ def document(header=False):
 class ProgramJobTests(IsolatedProgramDirsMixin, TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.owner = get_user_model().objects.create_superuser('job-owner', '', 'test')
-        cls.other = get_user_model().objects.create_superuser('job-other', '', 'test')
+        cls.owner = create_superuser('job-owner')
+        cls.other = create_superuser('job-other')
 
     def setUp(self):
         super().setUp()
@@ -216,6 +221,32 @@ class ProgramJobTests(IsolatedProgramDirsMixin, TestCase):
                 self.assertEqual(post_as_other().status_code, 202)
 
 
+    def test_unknown_program_and_server_problems_are_explained(self):
+        response = self.client.post(self.url, {'program_action': 'inne'})
+        self.assertContains(response, 'Wybierz narzędzie', status_code=400)
+        response = self.client.post(self.url, {'program_action': 'inne'}, HTTP_X_PROGRAM_JOB='1')
+        self.assertEqual((response.status_code, response.json()), (400, {'message': 'Wybierz program.'}))
+        for error, status, text in ((jobs.JobError('Kolejka programów jest pełna.'), 400, 'Kolejka programów'),
+                                    (OSError('dysk'), 503, 'Nie można zapisać zadania')):
+            with self.subTest(error=type(error).__name__), patch.object(jobs, 'create', side_effect=error):
+                page = self.client.post(self.url, {'program_action': 'clean', 'document': document()})
+                self.assertContains(page, text, status_code=status)
+                data = self.client.post(self.url, {'program_action': 'clean', 'document': document()},
+                                        HTTP_X_PROGRAM_JOB='1')
+                self.assertEqual(data.status_code, status)
+                self.assertIn(text, data.json()['message'])
+
+    def test_job_page_rejects_unknown_action_and_unreadable_state(self):
+        url, folder = self.create()
+        response = self.client.post(url, {'action': 'inne'})
+        self.assertEqual((response.status_code, response.json()), (404, {'message': 'Nieprawidłowa akcja.'}))
+        (folder / 'state.json').write_text('{uszkodzony', encoding='utf-8')
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()['message'], 'Nie można odczytać zadania. Spróbuj ponownie.')
+        self.assertContains(self.client.get(url + '?view=page'), 'Nie można odczytać zadania', status_code=503)
+
+
 class JobFolderTests(IsolatedProgramDirsMixin, SimpleTestCase):
     def test_cleanup_removes_expired_jobs_and_converter_folders_but_keeps_live_ones(self):
         jobs.root().mkdir(parents=True)
@@ -348,3 +379,176 @@ class ConversionQueueTests(IsolatedProgramDirsMixin, SimpleTestCase):
         now = time.time()
         self.assertTrue(jobs.alive({'state': 'queued', 'started': now - 500, 'heartbeat': now}))
         self.assertFalse(jobs.alive({'state': 'running', 'started': now - 500}))
+
+
+class JobStorageTests(IsolatedProgramDirsMixin, SimpleTestCase):
+    """Pliki stanu: zapis atomowy z ponowieniem (Windows blokuje otwarte pliki) i odporność na śmieci w katalogu."""
+
+    def setUp(self):
+        super().setUp()
+        jobs.root().mkdir(parents=True)
+        sleep = patch('core.services.program_jobs.time.sleep')
+        sleep.start()
+        self.addCleanup(sleep.stop)
+
+    def test_locked_state_file_is_retried_and_finally_reported(self):
+        path = jobs.root() / 'state.json'
+        replace, attempts = os.replace, []
+
+        def locked_once(source, target):
+            attempts.append(target)
+            if len(attempts) == 1:
+                raise PermissionError
+            replace(source, target)
+
+        with patch('core.services.program_jobs.os.replace', side_effect=locked_once):
+            jobs.write_json(path, {'state': 'queued'})
+        self.assertEqual(len(attempts), 2)
+        with patch.object(Path, 'read_text', side_effect=[PermissionError, '{"state": "done"}']):
+            self.assertEqual(jobs.read_json(path), {'state': 'done'})
+        with patch('core.services.program_jobs.os.replace', side_effect=PermissionError), \
+                self.assertRaises(PermissionError):
+            jobs.write_json(path, {'state': 'error'})
+        with patch.object(Path, 'read_text', side_effect=PermissionError), self.assertRaises(PermissionError):
+            jobs.read_json(path)
+        self.assertEqual(jobs.read_json(path), {'state': 'queued'})
+        self.assertEqual([item.name for item in jobs.root().iterdir()], ['state.json'])
+
+    def test_cleanup_handles_links_and_damaged_jobs(self):
+        outside = self.work_dir / 'outside'
+        outside.mkdir()
+        (jobs.root() / ('1' * 32)).symlink_to(outside)
+        damaged = jobs.root() / ('2' * 32)
+        damaged.mkdir()
+        (damaged / 'state.json').write_text('{uszkodzony', encoding='utf-8')
+        old = time.time() - jobs.TTL - 60
+        for folder in (outside, damaged):
+            os.utime(folder, (old, old))
+        jobs.cleanup()
+        self.assertTrue(outside.exists())
+        self.assertFalse(damaged.exists())
+
+    def test_queue_ignores_missing_root_and_unreadable_jobs(self):
+        shutil.rmtree(jobs.root())
+        self.assertEqual(jobs.active_jobs(), [])
+        jobs.root().mkdir()
+        (jobs.root() / ('3' * 32)).mkdir()
+        self.assertEqual(jobs.active_jobs(), [])
+
+    def test_second_creation_waits_for_the_lock_and_gives_up(self):
+        with jobs.creation_lock(), self.assertRaisesMessage(jobs.JobError, 'Serwer przyjmuje teraz inne zadanie'):
+            with jobs.creation_lock(wait=0):
+                pass
+        with jobs.creation_lock(wait=0):
+            pass
+
+
+class JobLifecycleTests(IsolatedProgramDirsMixin, SimpleTestCase):
+    """Uruchomienie procesu, potwierdzenie przebudowy i przerwanie zadania na każdym etapie."""
+
+    def setUp(self):
+        super().setUp()
+        self.folder = jobs.root() / ('a' * 32)
+        self.folder.mkdir(parents=True)
+        jobs.write_json(self.folder / 'request.json', {'user': 1, 'session': 's', 'name': 'Tekst.docx',
+                                                       'action': 'clean', 'options': {}})
+        (self.folder / 'source.docx').write_bytes(b'docx')
+
+    def state(self):
+        return jobs.status(self.folder)
+
+    def test_launch_starts_the_worker_or_records_why_it_could_not(self):
+        with patch('core.services.program_jobs.subprocess.Popen') as popen, \
+                patch('core.services.program_jobs.threading.Thread') as reaper:
+            jobs.launch(self.folder)
+        command = popen.call_args.args[0]
+        self.assertTrue(command[1].endswith('program_job_worker.py'))
+        self.assertEqual(command[2], str(self.folder.resolve()))
+        self.assertIn('DJANGO_SETTINGS_MODULE', popen.call_args.kwargs['env'])
+        reaper.return_value.start.assert_called_once()
+        with patch.object(jobs, 'converter_python', side_effect=ConversionError('brak')), \
+                self.assertRaisesMessage(jobs.JobError, 'Nie można uruchomić programu'):
+            jobs.launch(self.folder)
+        self.assertEqual(self.state()['state'], 'error')
+
+    def test_status_of_stale_or_cancelled_confirmation(self):
+        jobs.write_json(self.folder / 'state.json', {'state': 'running', 'heartbeat': time.time() - 1000})
+        self.assertIn('Proces nie odpowiedział', self.state()['message'])
+        jobs.write_json(self.folder / 'state.json', {'state': 'confirmation', 'message': 'Potwierdź'})
+        (self.folder / 'cancel').touch()
+        self.assertEqual(self.state()['state'], 'cancelled')
+
+    def test_confirmation_is_accepted_once_and_undone_when_it_cannot_start(self):
+        jobs.write_json(self.folder / 'state.json', {'state': 'confirmation', 'message': 'Potwierdź'})
+        (self.folder / 'accepted').touch()
+        with self.assertRaisesMessage(jobs.JobError, 'Potwierdzenie zostało już wysłane'):
+            jobs.confirm(self.folder)
+        (self.folder / 'accepted').unlink()
+        for patcher in (patch.object(jobs, 'require_capacity', side_effect=jobs.JobError('Kolejka pełna')),
+                        patch.object(jobs, 'launch', side_effect=jobs.JobError('Nie można uruchomić'))):
+            with self.subTest(patcher=patcher.attribute), patcher, self.assertRaises(jobs.JobError):
+                jobs.confirm(self.folder)
+            self.assertFalse((self.folder / 'accepted').exists())
+
+    def test_cancel_while_waiting_running_or_after_conversion(self):
+        def waiting(source, control, on_wait, **options):
+            on_wait()
+            self.assertEqual(jobs.read_json(self.folder / 'state.json')['state'], 'queued')
+            (self.folder / 'cancel').touch()
+            on_wait()
+
+        def running(source, control, on_wait, **options):
+            (self.folder / 'cancel').touch()
+            control(self.work_dir)
+
+        def finished(source, control, on_wait, **options):
+            (self.folder / 'cancel').touch()
+            return BytesIO(b'wynik'), 'docx', 'application/octet-stream'
+
+        for converter in (waiting, running, finished):
+            with self.subTest(stage=converter.__name__):
+                (self.folder / 'source.docx').write_bytes(b'docx')
+                clock = count(time.time(), 10)  # każde sprawdzenie „znaku życia” jest 10 s później
+                with patch.object(jobs, 'convert_document', side_effect=converter), \
+                        patch.object(jobs.time, 'time', side_effect=lambda: next(clock)):
+                    jobs.execute(self.folder)
+                self.assertEqual(self.state()['state'], 'cancelled')
+                self.assertFalse((self.folder / 'result').exists())
+                self.assertFalse((self.folder / 'source.docx').exists())
+                (self.folder / 'cancel').unlink()
+
+    def test_errors_show_only_converter_messages(self):
+        for error, message in ((ConversionError('Konwerter zajęty.'), 'Konwerter zajęty.'),
+                               (RuntimeError('/sciezka/tajna'), 'Nie udało się przetworzyć dokumentu.')):
+            with self.subTest(error=type(error).__name__), \
+                    patch.object(jobs, 'convert_document', side_effect=error), \
+                    self.assertLogs('core.services.program_jobs', 'ERROR'):
+                jobs.execute(self.folder)
+            self.assertTrue(self.state()['message'].startswith(message))
+            self.assertNotIn('tajna', self.state()['message'])
+
+
+class JobAccessTests(IsolatedProgramDirsMixin, SimpleTestCase):
+    """Token zadania działa tylko dla właściciela w tej samej sesji i tylko dla prawdziwego folderu zadania."""
+
+    def request(self, user=1, session='nonce'):
+        request = RequestFactory().post('/')
+        request.user = SimpleNamespace(pk=user)
+        request.session = {jobs.SESSION_KEY: session}
+        return request
+
+    def test_forged_or_foreign_tokens_are_rejected(self):
+        folder = jobs.root() / ('b' * 32)
+        folder.mkdir(parents=True)
+        jobs.write_json(folder / 'request.json', {'user': 2, 'session': 'nonce'})
+        (jobs.root() / ('c' * 32)).symlink_to(folder)
+        for key in ('../../etc', 'c' * 32, 'b' * 32):
+            token = signing.dumps({'key': key, 'user': 1, 'session': 'nonce'}, salt=jobs.SALT)
+            with self.subTest(key=key), self.assertRaisesMessage(jobs.JobError, 'Zadanie wygasło'):
+                jobs.resolve(self.request(), token)
+
+    def test_oversized_upload_is_refused_without_creating_a_job(self):
+        upload = SimpleUploadedFile('duzy.docx', b'0' * (PROGRAM_MAX_UPLOAD_BYTES + 1))
+        with self.assertRaisesMessage(jobs.JobError, 'limit 2 MB'):
+            jobs.create(self.request(), upload, {}, 'clean')
+        self.assertEqual(list(jobs.root().iterdir()), [])

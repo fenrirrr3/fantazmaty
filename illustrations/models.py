@@ -98,8 +98,6 @@ class Illustration(models.Model):
         Illustrator, related_name="illustrations", verbose_name="ilustratorzy", blank=True,
     )
 
-    manual_illustrator_name = models.CharField('Ilustrator – imię i nazwisko (ręcznie)', max_length=255, blank=True)
-    manual_illustrator_email = models.EmailField('E-mail ilustratora (ręcznie)', blank=True)
     coordinator_notes = models.TextField('Uwagi koordynatora', blank=True)
 
     def artist_ids(self):
@@ -110,7 +108,7 @@ class Illustration(models.Model):
     @property
     def illustrator_display(self):
         names = [artist.display_name for artist in self.illustrators.all()] if self.pk else []
-        return ", ".join(names) or self.manual_illustrator_name
+        return ", ".join(names)
 
     def set_artists(self, artists, *, status=None, preserve_assignment_date=False):
         """Validate the complete assignment before writing its many-to-many relation."""
@@ -179,13 +177,7 @@ class Illustration(models.Model):
             supported = Text.objects.using(self._state.db or 'default').exclude(anthology__is_novel=True).exclude(anthology__is_translated=True)
             if not supported.filter(pk=self.text_id).exists():
                 errors['text'] = 'Powieści i tłumaczenia nie obsługują ilustracji.'
-        self.manual_illustrator_name = self.manual_illustrator_name.strip()
-        self.manual_illustrator_email = self.manual_illustrator_email.strip()
-        if self.artist_ids() and (self.manual_illustrator_name or self.manual_illustrator_email):
-            errors['manual_illustrator_name'] = 'Wybierz profil z listy albo wpisz osobę ręcznie; nie oba naraz.'
-        if self.manual_illustrator_email and not self.manual_illustrator_name:
-            errors['manual_illustrator_name'] = 'Podaj imię i nazwisko ilustratora.'
-        has_illustrator = bool(self.artist_ids() or self.manual_illustrator_name)
+        has_illustrator = bool(self.artist_ids())
 
         if (
             self.status != self.Status.UNASSIGNED
@@ -210,15 +202,11 @@ class Illustration(models.Model):
 
     def save(self, *args, preserve_assignment_date=False, **kwargs):
         previous = (type(self).objects.filter(pk=self.pk)
-                    .values('status', 'assigned_at', 'manual_illustrator_name', 'manual_illustrator_email').first()) if self.pk else None
-        self.manual_illustrator_name = self.manual_illustrator_name.strip()
-        self.manual_illustrator_email = self.manual_illustrator_email.strip()
-        status_changed_to_assigned = bool(self.artist_ids() or self.manual_illustrator_name) and (
+                    .values('status', 'assigned_at').first()) if self.pk else None
+        status_changed_to_assigned = bool(self.artist_ids()) and (
             (previous is None and self.status == self.Status.ASSIGNED)
             or (previous is not None and (
                 self.artist_ids() != {artist.pk for artist in self.illustrators.all()}
-                or previous['manual_illustrator_name'] != self.manual_illustrator_name
-                or previous['manual_illustrator_email'] != self.manual_illustrator_email
                 or previous['status'] == self.Status.UNASSIGNED
                 or (self.status == self.Status.ASSIGNED and previous['assigned_at'] is None)
             ))

@@ -1,10 +1,5 @@
 """Edycja tagów i gatunku tekstu na stronie tekstu: uprawnienia, normalizacja, konflikty wersji,
 bezpieczeństwo i niezależność od gatunku recenzji."""
-import importlib
-from types import SimpleNamespace
-
-from django.apps import apps
-from django.db import connection
 from django.test import Client, TestCase
 from django.urls import reverse
 from lxml import html
@@ -191,20 +186,6 @@ class TextGenreEditingTests(TagFormMixin, TestCase):
         self.assertEqual(response.status_code, 400)
         self.text.refresh_from_db()
         self.assertEqual((self.text.tags, self.text.genre), ("magia", ""))
-
-    def test_migration_backfill_preserves_existing_values(self):
-        review = source_review(self.text, "Fantasy")
-        migration = importlib.import_module("texts.migrations.0021_text_genre")
-        migration.copy_existing_genres(apps, SimpleNamespace(connection=connection))
-        self.text.refresh_from_db()
-        self.assertEqual(self.text.genre, "Fantasy")
-        self.text.genre = "Groza"
-        self.text.save(update_fields=["genre"])
-        migration.copy_existing_genres(apps, SimpleNamespace(connection=connection))
-        self.text.refresh_from_db()
-        review.refresh_from_db()
-        self.assertEqual(self.text.genre, "Groza")
-        self.assertEqual(review.genre, "Fantasy")
 
     def test_admin_prefill_preserves_source_genre(self):
         from texts.admin import review_source_signature, review_text_initial

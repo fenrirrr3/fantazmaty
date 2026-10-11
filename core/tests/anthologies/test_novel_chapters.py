@@ -8,7 +8,7 @@ from django.utils import timezone
 from lxml import html
 
 from authors.models import Author
-from core.novel_forms import ChapterForm, NovelForm
+from core.novel_forms import ChapterForm, ChapterRangeForm, NovelForm
 from core.selectors.texts import my_texts_context
 from core.services.texts import start_assigned_stage
 from core.tag_forms import TextTagsForm
@@ -204,10 +204,13 @@ class ChapterLengthTests(NovelData, TestCase):
     def test_invalid_lengths_save_no_chapters(self):
         for value in ('500', '2: 0', '2: -4', '2: 1.5', '2: 2147483648', '2: 3, 2: 4', '9: 100', '2: text', '2:3:4'):
             with self.subTest(value=value):
-                response = self.add('2-3', value)
-                self.assertEqual(response.status_code, 400)
-                self.assertIn('chapter_lengths', response.context['chapter_range_form'].errors)
-                self.assertEqual(self.book.texts.count(), 1)
+                form = ChapterRangeForm({'chapter_numbers': '2-3', 'chapter_lengths': value})
+                self.assertFalse(form.is_valid())
+                self.assertIn('chapter_lengths', form.errors)
+        response = self.add('2-3', '2: 3, 2: 4')
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('chapter_lengths', response.context['chapter_range_form'].errors)
+        self.assertEqual(self.book.texts.count(), 1)
 
     def test_coordinator_can_edit_length_member_cannot_even_with_direct_post(self):
         url = reverse('core:chapter_edit', args=[self.book.pk, self.chapter.pk])

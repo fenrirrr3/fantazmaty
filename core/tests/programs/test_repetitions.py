@@ -94,7 +94,6 @@ class RepeatAnalysisTests(SimpleTestCase):
         self.assertIn(WD_COLOR_INDEX.TURQUOISE, highlights)
         self.assertIn(WD_COLOR_INDEX.PINK, highlights)
 
-    @tag('slow')
     def test_repetitions_are_marked_in_tables_and_footnotes(self):
         result = color_document(whole_document())
         document = Document(BytesIO(result.getvalue()))
@@ -165,8 +164,12 @@ class RepetitionsFormTests(SimpleTestCase):
 
 
 class RepetitionsPageTests(IsolatedProgramDirsMixin, TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.member = create_member('reader', 'Redaktor')
+
     def test_member_download_and_separate_form(self):
-        self.client.force_login(create_member('reader', 'Redaktor'))
+        self.client.force_login(self.member)
         response = self.client.get(reverse('core:programs'))
         self.assertContains(response, 'Kolorowanie powtórzeń')
         self.assertContains(response, 'name="repetitions-window_size"')

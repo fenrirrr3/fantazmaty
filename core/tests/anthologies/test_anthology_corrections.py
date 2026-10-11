@@ -1,18 +1,12 @@
-"""Uwagi do wydanych antologii: zgłaszanie, edycja i usuwanie przez autora uwagi, zmiana statusu oraz import z pliku."""
-import json
+"""Uwagi do wydanych antologii: zgłaszanie, edycja i usuwanie przez autora uwagi oraz zmiana statusu."""
 import uuid
-from io import StringIO
-from pathlib import Path
-from tempfile import TemporaryDirectory
 
 from django.contrib.auth import get_user_model
-from django.core.management import CommandError, call_command
 from django.test import TestCase
 from django.urls import reverse
 from lxml import html
 
 from core.models import AnthologyCorrection
-from fantazmaty.testing import create_member
 from people.models import Person
 from texts.models import Anthology, Text
 
@@ -129,85 +123,3 @@ class CorrectionViewTests(TestCase):
         self.assertIn("Tu zgłaszamy uwagi tylko do już wydanych antologii",
                       doc.xpath('string(//header[h1="Uwagi do antologii"]/p)'))
 
-
-class CorrectionImportTests(TestCase):
-    def setUp(self):
-        self.reporter = create_member('import-reporter', 'Redaktor')
-        self.reporter.first_name, self.reporter.last_name = 'Anna', 'Zgłaszająca'
-        self.reporter.save()
-        person = self.reporter.person_profile
-        person.first_name, person.last_name = 'Anna', 'Zgłaszająca'
-        person.save()
-        self.book = Anthology.objects.create(title='Antologia wydana', status=Anthology.Status.READY)
-        self.text = Text.objects.create(title='Opowiadanie pierwsze', anthology=self.book, length=10)
-        self.temp = TemporaryDirectory()
-        self.addCleanup(self.temp.cleanup)
-
-    def write(self, rows, accounts=None):
-        path = Path(self.temp.name) / 'uwagi.json'
-        payload = {'schema': 'anthology-corrections-v1', 'corrections': rows}
-        if accounts is not None:
-            payload['accounts'] = accounts
-        path.write_text(json.dumps(payload, ensure_ascii=False), encoding='utf-8')
-        return str(path)
-
-    def run_import(self, path, *extra):
-        out = StringIO()
-        call_command('import_anthology_corrections', path, *extra, stdout=out)
-        return json.loads(out.getvalue())
-
-    def rows(self):
-        return [
-            {'anthology': 'Antologia wydana', 'reporter': 'Anna Zgłaszająca', 'story': 'Opowiadanie pierwsze',
-             'fragment': 'Ala ma kota', 'problem': 'literówka', 'suggestion': 'Ala ma kota.'},
-            {'anthology': 'antologia  WYDANA', 'reporter': 'Karolina', 'story': 'Inne miejsce',
-             'fragment': 'Paginacja', 'problem': 'zła numeracja', 'suggestion': ''},
-            {'anthology': 'Antologia wydana', 'reporter': 'Karolina', 'story': 'Audiodeskrypcja',
-             'fragment': 'tytuł w cudzysłowie', 'problem': '', 'suggestion': ''},
-        ]
-
-    def test_preview_then_apply_then_repeat(self):
-        path = self.write(self.rows())
-        self.assertEqual(self.run_import(path)['created'], 3)
-        self.assertFalse(AnthologyCorrection.objects.exists())
-        report = self.run_import(path, '--apply')
-        self.assertEqual(report['created'], 3)
-        first = AnthologyCorrection.objects.get(fragment='Ala ma kota')
-        self.assertEqual((first.text, first.submitted_by, first.story_title), (self.text, self.reporter, 'Opowiadanie pierwsze'))
-        other = AnthologyCorrection.objects.get(fragment='Paginacja')
-        self.assertIsNone(other.submitted_by)
-        self.assertEqual((other.reporter_name, other.story_title, other.text), ('Karolina', 'Inne miejsce', None))
-        self.assertEqual(AnthologyCorrection.objects.get(fragment='tytuł w cudzysłowie').story_title, 'Audiodeskrypcja')
-        again = self.run_import(path, '--apply')
-        self.assertEqual((again['created'], again['unchanged']), (0, 3))
-        self.client.force_login(self.reporter)
-        page = self.client.get(reverse('core:anthology_corrections'))
-        self.assertContains(page, 'Karolina')
-
-    def test_inactive_accounts_are_created_for_reporters(self):
-        accounts = [{'first_name': 'Karolina', 'last_name': 'Nowa', 'email': 'karolina.nowa.ab12@fantazmaty.invalid'},
-                    {'first_name': 'Anna', 'last_name': 'Zgłaszająca', 'email': 'anna.duplikat@fantazmaty.invalid'}]
-        rows = self.rows()
-        for row in rows[1:]:
-            row['reporter'] = 'Karolina Nowa'
-        path = self.write(rows, accounts)
-        preview = self.run_import(path)
-        self.assertEqual(len(preview['accounts_created']), 1)
-        self.assertFalse(get_user_model().objects.filter(last_name='Nowa').exists())
-        self.run_import(path, '--apply')
-        user = get_user_model().objects.get(last_name='Nowa')
-        self.assertFalse(user.is_active)
-        self.assertFalse(user.has_usable_password())
-        self.assertEqual(AnthologyCorrection.objects.filter(submitted_by=user).count(), 2)
-        self.assertFalse(get_user_model().objects.filter(email='anna.duplikat@fantazmaty.invalid').exists())
-        again = self.run_import(path, '--apply')
-        self.assertEqual((again['accounts_created'], again['created']), ([], 0))
-
-    def test_unknown_or_unpublished_anthology_stops_everything(self):
-        Anthology.objects.create(title='W przygotowaniu')
-        for title in ('Nie ma takiej', 'W przygotowaniu'):
-            rows = self.rows()
-            rows[1]['anthology'] = title
-            with self.assertRaises(CommandError):
-                self.run_import(self.write(rows), '--apply')
-        self.assertFalse(AnthologyCorrection.objects.exists())

@@ -1,7 +1,9 @@
-"""Przejmowanie etapów: formularze na liście i w szczegółach, rezerwacje, kandydaci oraz blokady zakończonych weryfikacji."""
+"""Przejmowanie etapów: formularze na liście i w szczegółach, rezerwacje, kandydaci, powody braku możliwości
+przejęcia oraz blokady zakończonych weryfikacji."""
 from datetime import timedelta
 from unittest.mock import patch
 
+from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError
@@ -16,8 +18,8 @@ from fantazmaty.testing import create_member, create_superuser
 from fantazmaty.testing.workflow import StatusAssignmentFixtures
 from people.models import Person, Vacation
 from texts.models import Anthology, Text
-from workflow.availability import claim_access, claim_reason
-from workflow.models import WorkflowRoleAssignment as A, WorkflowStage as S
+from workflow.availability import claim_access, claim_reason, eligible_role_users, role_access_reason
+from workflow.models import WorkflowRepetition, WorkflowRoleAssignment as A, WorkflowStage as S
 from workflow.read_queries import available_stages
 from workflow.repetitions import repeat_stages
 from workflow.services import (
@@ -119,14 +121,17 @@ class ClaimFormsTests(AnthologyWorkflowMixin, TestCase):
 class CompletedVerificationClaimTests(TestCase):
     """Zakończona (także importowana bez dat) weryfikacja nie wraca do przejęcia jako pusty etap."""
 
+    @classmethod
+    def setUpTestData(cls):
+        cls.today = timezone.localdate()
+        cls.user = create_member('member', 'Redaktor')
+        add_roles(cls.user, 'Weryfikator', 'Korektor')
+        cls.other = create_member('other', 'Redaktor')
+        cls.admin = create_superuser()
+        cls.text = Text.objects.create(title='Stary tekst', length=100,
+                                       anthology=Anthology.objects.create(title='Antologia'))
+
     def setUp(self):
-        self.today = timezone.localdate()
-        self.user = create_member('member', 'Redaktor')
-        add_roles(self.user, 'Weryfikator', 'Korektor')
-        self.other = create_member('other', 'Redaktor')
-        self.admin = create_superuser()
-        self.text = Text.objects.create(title='Stary tekst', length=100,
-                                        anthology=Anthology.objects.create(title='Antologia'))
         self.client.force_login(self.user)
 
     def imported(self, kind, *, role=None, current=True):
@@ -378,3 +383,90 @@ class AbandonedAnthologyTests(TestCase):
         self.book.save()
         self.assertTrue(frontend_scope(Text.objects).filter(pk=self.text.pk).exists())
         self.assertContains(self.client.get(reverse('core:text_list')), self.text.title)
+
+
+class ClaimReasonTests(TestCase):
+    """Powód, dla którego osoba nie może przejąć etapu – ten sam dla listy „Do wzięcia” i dla zapisu."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.admin = create_superuser()
+        cls.editor = create_member('editor', 'Redaktor')
+        cls.verifier = create_member('verifier', 'Weryfikator')
+        cls.proofreader = create_member('proofreader', 'Korektor')
+        cls.book = Anthology.objects.create(title='Antologia')
+        cls.text = Text.objects.create(title='Tekst', length=100, anthology=cls.book)
+        cls.today = timezone.localdate()
+
+    def reason(self, kind, user, stages=None, assignments=(), **fields):
+        stage = S(text=self.text, stage_type=kind, **fields)
+        return claim_reason(stage, user, [stage] if stages is None else stages, list(assignments))
+
+    def editing(self, **fields):
+        return S(text=self.text, stage_type='editing', **fields)
+
+    def test_closed_or_unreleased_work_cannot_be_claimed(self):
+        for kind, fields, stages, expected in (
+                ('editing', {'is_released': False}, None, 'Etap czeka na zakończenie poprzedniego.'),
+                ('editing', {}, [S(stage_type='ready')], 'Proces jest zamknięty.'),
+                ('editing', {'started_at': self.today}, None, 'Etap nie oczekuje na przejęcie.'),
+                ('ready', {}, [], 'Tego etapu nie można przejąć.'),
+                ('editor_control', {}, [], 'Kontrolę rozpoczyna przypisany redaktor.')):
+            with self.subTest(kind=kind, expected=expected):
+                self.assertEqual(self.reason(kind, self.admin if kind == 'editor_control' else self.editor,
+                                             stages, **fields), expected)
+        for status, expected in (('ready', 'Antologia jest gotowa.'), ('abandoned', 'Antologia została porzucona.')):
+            Anthology.objects.filter(pk=self.book.pk).update(status=status)
+            self.text.anthology.refresh_from_db()
+            self.assertEqual(self.reason('editing', self.editor), expected)
+
+    def test_role_policy_and_leave(self):
+        self.assertEqual(self.reason('first_proofreading', self.editor), 'Brak wymaganej roli.')
+        self.assertEqual(self.reason('second_proofreading', self.proofreader),
+                         'Druga i czwarta korekta są dostępne tylko dla koordynatora korekty.')
+        self.assertEqual(self.reason('styling', self.editor), 'Stylowanie jest dostępne tylko dla superusera.')
+        self.assertEqual(self.reason('styling', self.admin), '')
+        Vacation.objects.create(person=self.editor.person_profile, start_date=self.today, until_revoked=True)
+        self.assertEqual(self.reason('ready_for_editing', self.editor), 'Brak aktywnego dostępu do zespołu.')
+        self.assertEqual(claim_access(self.editor)['member'], False)
+        self.assertEqual(role_access_reason(self.editor, 'editor'), 'Brak aktywnego dostępu do zespołu albo trwa urlop.')
+        account_only = get_user_model().objects.create_user('account-only')
+        self.assertEqual(claim_access(account_only), {'member': False, 'coordinator': False, 'roles': set()})
+        self.assertFalse(eligible_role_users('verifier_4').exists())
+
+    def test_people_already_on_the_text(self):
+        taken = A(text=self.text, role='verifier_1', assigned_to=self.admin)
+        self.assertEqual(self.reason('first_verification', self.verifier, assignments=[taken]),
+                         'Rola ma już przypisanego wykonawcę.')
+        own_first = A(text=self.text, role='verifier_1', assigned_to=self.verifier)
+        self.assertEqual(self.reason('second_verification', self.verifier, assignments=[own_first]),
+                         'Pierwszą i drugą weryfikację wykonują różne osoby.')
+        first = A.objects.create(text=self.text, role='proofreader_1', assigned_to=self.admin)
+        S.objects.create(text=self.text, stage_type='first_proofreading', assignment=first,
+                         started_at=self.today, ended_at=self.today, is_completed=True)
+        self.assertEqual(self.reason('third_proofreading', self.admin),
+                         'Pierwszą korektę tego tekstu wykonywała już ta osoba.')
+        self.assertEqual(self.reason('third_proofreading', self.proofreader), '')
+
+    def test_editorial_order_between_editing_and_verifications(self):
+        waiting_editing = self.editing()
+        self.assertEqual(self.reason('editing', self.editor, [waiting_editing, S(stage_type='first_verification')]),
+                         'Użyj przekazania lub wznowienia redakcji.')
+        first = S(text=self.text, stage_type='first_verification')
+        self.assertEqual(self.reason('first_verification', self.verifier, [waiting_editing, first]),
+                         'Rezerwacja wymaga rozpoczętej redakcji.')
+        self.assertEqual(self.reason('first_verification', self.verifier,
+                                     [self.editing(started_at=self.today), first]), '')
+        second = S(text=self.text, stage_type='second_verification')
+        self.assertEqual(self.reason('second_verification', self.verifier, [waiting_editing, second]),
+                         'Najpierw zakończ pierwszą weryfikację.')
+        S.objects.create(text=self.text, stage_type='first_verification', started_at=self.today,
+                         ended_at=self.today, is_completed=True, is_current=False)
+        self.assertEqual(self.reason('second_verification', self.verifier,
+                                     [self.editing(started_at=self.today), second]),
+                         'Redaktor musi przekazać tekst do drugiej weryfikacji.')
+        self.assertEqual(self.reason('second_verification', self.verifier,
+                                     [self.editing(started_at=self.today, is_completed=True), second]), '')
+        run = WorkflowRepetition.objects.create(text=self.text)
+        self.assertEqual(self.reason('first_verification', self.verifier, [waiting_editing, first],
+                                     repetition=run), '')

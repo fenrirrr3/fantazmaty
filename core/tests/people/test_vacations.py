@@ -1,14 +1,11 @@
-"""Urlopy: uprawnienia i reguły dat w usłudze, strona „Moje urlopy”, usuwanie w adminie i zbiorcza dostępność zespołu."""
+"""Usługa urlopów: uprawnienia, reguły dat i nakładania, zakończenie i odwołanie, zbiorcza dostępność zespołu."""
 from datetime import datetime, time, timedelta
 from unittest.mock import patch
 
-from django.contrib.admin.sites import site
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.test import RequestFactory, TestCase
-from django.urls import reverse
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
-from lxml import html
 
 from core.services.vacations import cancel_planned_vacation, create_vacation, finish_vacation, update_vacation
 from fantazmaty.testing import create_superuser
@@ -134,44 +131,6 @@ class VacationServiceTests(TestCase):
         with self.assertRaises(ValidationError):
             self.create(until_revoked='yes')
 
-    def test_disabled_account_not_in_vacation_choices(self):
-        self.member_user.is_active = False
-        self.member_user.save(update_fields=['is_active'])
-        self.client.force_login(self.coordinator_user)
-        page = self.client.get(reverse('core:my_vacations'))
-        self.assertNotIn(self.member.pk, [p.pk for p in page.context['vacation_people']])
-
-    def test_my_vacations_show_entire_own_history_without_pagination(self):
-        admin = create_superuser('layout57')
-        person = Person.objects.create(user=admin, first_name='Jan', last_name='Admin')
-        start = timezone.now() - timedelta(days=365)
-        Vacation.objects.bulk_create([
-            Vacation(person=person, start_date=(start + timedelta(days=i * 3)).date(),
-                     end_date=start + timedelta(days=i * 3 + 1)) for i in range(60)
-        ])
-        Vacation.objects.create(person=self.other, start_date=start.date(), end_date=start + timedelta(days=1))
-        self.client.force_login(admin)
-        response = self.client.get(reverse('core:my_vacations'), {'page': 2, 'page_size': 25})
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.context['vacations']), 60)
-        self.assertTrue(all(v.person_id == person.pk for v in response.context['vacations']))
-        doc = html.fromstring(response.content)
-        self.assertEqual(len(doc.xpath('//*[@id="my-vacations-table"]/tbody/tr')), 60)
-        self.assertEqual(doc.xpath('//*[@id="my-vacations-table"]/@data-pagination'), ['off'])
-        self.assertFalse(doc.xpath('//*[contains(concat(" ",normalize-space(@class)," ")," cms-pagination ")]'))
-
-    def test_admin_deletes_planned_vacation_of_former_member(self):
-        from core.admin import VacationAdmin
-
-        request = RequestFactory().post('/')
-        request.user = create_superuser()
-        vacation = Vacation.objects.create(person=self.other, start_date=self.today + timedelta(days=10),
-                                           end_date=timezone.now() + timedelta(days=12))
-        self.other.is_active = False
-        self.other.save()
-        VacationAdmin(Vacation, site).delete_model(request, vacation)
-        self.assertFalse(Vacation.objects.filter(pk=vacation.pk).exists())
-
     def test_team_availability_batch_matches_single_lookups(self):
         from core.permissions import get_active_person_profile
         from core.selectors.people import team_availability, user_leave_information
@@ -195,3 +154,55 @@ class VacationServiceTests(TestCase):
                 self.assertEqual(batch[user.pk]['profile'], get_active_person_profile(user))
                 self.assertEqual(batch[user.pk]['on_leave'], is_on_leave(user))
                 self.assertEqual(batch[user.pk]['leave_information'], user_leave_information(user))
+
+
+class LeaveFieldRuleTests(SimpleTestCase):
+    """Reguły dat urlopu w modelach (bez bazy): pola urlopowe osoby, wpis urlopu i jego opis."""
+
+    def assert_errors(self, obj, expected):
+        with self.assertRaises(ValidationError) as caught:
+            obj.clean()
+        self.assertEqual(set(caught.exception.message_dict), expected)
+
+    def test_person_leave_fields_must_form_a_consistent_period(self):
+        today = timezone.localdate()
+        end = timezone.now() + timedelta(days=2)
+        self.assert_errors(Person(leave_end_date=end), {'leave_start_date'})
+        self.assert_errors(Person(leave_until_revoked=True), {'leave_start_date'})
+        self.assert_errors(Person(leave_start_date=today, leave_until_revoked=True, leave_end_date=end),
+                           {'leave_end_date'})
+        self.assert_errors(Person(leave_start_date=today), {'leave_end_date'})
+        self.assert_errors(Person(leave_start_date=today + timedelta(days=5), leave_end_date=end), {'leave_end_date'})
+        Person(leave_start_date=today, leave_end_date=end).clean()
+        Person().clean()
+
+    def test_vacation_entry_rules_and_description(self):
+        today = timezone.localdate()
+        end = timezone.make_aware(datetime(today.year, today.month, today.day, 15, 30)) + timedelta(days=2)
+        self.assert_errors(Vacation(until_revoked=True), {'start_date'})
+        self.assert_errors(Vacation(start_date=today, until_revoked=True, end_date=end), {'end_date'})
+        self.assert_errors(Vacation(start_date=today), {'end_date'})
+        self.assert_errors(Vacation(start_date=today + timedelta(days=5), end_date=end), {'end_date'})
+        person = Person(pk=5, first_name='Jan', last_name='Test')
+        self.assertEqual(str(Vacation(person=person, start_date=today, until_revoked=True)),
+                         f'Jan Test: od {today:%d.%m.%Y} do odwołania')
+        self.assertEqual(str(Vacation(start_date=today, end_date=end)),
+                         f'bez przypisanej osoby: od {today:%d.%m.%Y} do {end:%d.%m.%Y}, 15:30')
+        self.assertEqual(str(Vacation()), 'bez przypisanej osoby: bez daty rozpoczęcia')
+
+    def test_vacation_state_flags_and_naive_dates(self):
+        from people.models import leave_is_active, normalize_datetime
+
+        today = timezone.localdate()
+        self.assertFalse(leave_is_active(None, None, True))
+        planned = Vacation(start_date=today + timedelta(days=1), until_revoked=True)
+        self.assertEqual((planned.is_active, planned.is_upcoming, planned.can_be_edited, planned.can_be_ended),
+                         (False, True, True, False))
+        past = Vacation(start_date=today - timedelta(days=3), end_date=timezone.now() - timedelta(days=1))
+        self.assertEqual((past.is_active, past.is_finished, past.can_be_edited), (False, True, False))
+        naive = datetime(2026, 1, 1, 12, 0)
+        self.assertTrue(timezone.is_aware(normalize_datetime(naive)))
+        aware = timezone.make_aware(naive)
+        self.assertIs(normalize_datetime(aware), aware)
+        with self.settings(USE_TZ=False):
+            self.assertEqual(normalize_datetime(aware), naive)

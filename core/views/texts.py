@@ -36,14 +36,6 @@ from workflow.models import WorkflowRoleAssignment
 from core.edit_policy import edit_policy
 
 
-def _form_error_message(form):
-    return " ".join(
-        str(error)
-        for errors in form.errors.values()
-        for error in errors
-    )
-
-
 def _require_text_contributor(user, text):
     """Uprawnienia dotyczą wyłącznie bieżącego cyklu pracy."""
     if is_coordinator(user):

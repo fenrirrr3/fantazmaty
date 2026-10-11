@@ -1,15 +1,23 @@
-"""Polityka edycji widoków i tokeny wersji: wersja rośnie przy zapisie, aktualizacjach zbiorczych i bulk_create."""
+"""Polityka edycji widoków i tokeny wersji: wersja rośnie przy zapisie, operacjach zbiorczych, zmianach relacji
+i usuwaniu powiązanych osób."""
+from contextlib import contextmanager
+from unittest.mock import patch
+
 from django.apps import apps
-from django.db import connection
+from django.contrib.auth import get_user_model
+from django.db import IntegrityError, connection
+from django.db.models import QuerySet
 from django.test import SimpleTestCase, TestCase
 from django.test.utils import CaptureQueriesContext
 from django.urls import URLResolver, get_resolver
 
-from authors.models import BlacklistEntry
+from authors.models import Author, AuthorNote, BlacklistEntry
+from core.audio_description_models import AudioDescription
 from core.edit_policy import policy_for
-from core.edit_versions import PARENTS, TRACKED, VersionedQuerySet, batched_bumps, version_of
-from core.models import MailboxConnection
-from texts.models import Anthology, Text, TextTranslation
+from core.edit_versions import PARENTS, TRACKED, VersionedQuerySet, batched_bumps, bump, version_of
+from core.models import EditRevision, MailboxConnection
+from people.models import Person
+from texts.models import Anthology, Review, ReviewAssignment, Text, TextNote, TextTranslation, Translator
 from workflow.models import WorkflowStage
 
 
@@ -128,3 +136,82 @@ class BulkWriteVersionTests(TestCase):
                  if 'core_editrevision' in q['sql'] and q['sql'].startswith('UPDATE')]
         self.assertEqual(len(bumps), 1)
         self.assertEqual(version_of(self.text), before + 1)
+
+
+class RelatedChangeVersionTests(TestCase):
+    """Zmiany wykonywane „od drugiej strony” relacji też unieważniają formularz rodzica."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.book = Anthology.objects.create(title='Antologia')
+        cls.text = Text.objects.create(title='Tekst', length=100, anthology=cls.book)
+        cls.other_text = Text.objects.create(title='Drugi tekst', length=100, anthology=cls.book)
+        cls.author = Author.objects.create(first_name='Jan', last_name='Autor', email='jan@example.test')
+        cls.other_author = Author.objects.create(first_name='Ewa', last_name='Autorka', email='ewa@example.test')
+
+    @contextmanager
+    def assertBumped(self, *objects):
+        """Po bloku każdy obiekt ma wyższą wersję niż przed nim."""
+        before = [version_of(obj) for obj in objects]
+        yield
+        for obj, version in zip(objects, before):
+            self.assertGreater(version_of(obj), version, obj)
+
+    def test_moving_a_text_note_bumps_both_texts(self):
+        note = TextNote.objects.create(text=self.text, content='Notatka')
+        with self.assertBumped(self.text, self.other_text):
+            note.text = self.other_text
+            note.save()
+
+    def test_moving_an_author_note_bumps_the_previous_author(self):
+        note = AuthorNote.objects.create(author=self.author, content='Notatka')
+        with self.assertBumped(self.author, self.other_author):
+            note.author = self.other_author
+            note.save()
+
+    def test_reverse_clear_and_remove_bump_records_on_the_other_side(self):
+        self.text.authors.add(self.author)
+        with self.assertBumped(self.author, self.text):
+            self.author.texts.clear()
+        translator = Translator.objects.create(first_name='Tom', last_name='Tłumacz')
+        translation = TextTranslation.objects.create(text=self.text)
+        translation.translators.add(translator)
+        with self.assertBumped(translator, translation, self.text):
+            translator.translations.remove(translation)
+
+    def test_reverse_clear_of_audio_description_bumps_its_anthology(self):
+        person = Person.objects.create(first_name='Kontrola', last_name='AD', email='ad@example.test')
+        description, _ = AudioDescription.objects.get_or_create(anthology=self.book)
+        description.controllers.add(person)
+        with self.assertBumped(description, self.book):
+            person.controlled_audio_descriptions.clear()
+
+    def test_deleting_identities_bumps_their_texts_and_reviews(self):
+        self.text.authors.add(self.other_author)
+        review = Review.objects.create(title='Zgłoszenie', anthology=self.book, author=self.author,
+                                       author_first_name='Jan', author_last_name='Autor', length=100)
+        review.coauthors.add(self.other_author)
+        with self.assertBumped(self.text, review):
+            self.other_author.delete()
+        reviewer = get_user_model().objects.create_user('recenzent', 'recenzent@example.test')
+        ReviewAssignment.objects.create(review=review, user=reviewer, position=1)
+        TextNote.objects.create(text=self.other_text, author=reviewer, content='Notatka')
+        with self.assertBumped(review, self.other_text):
+            reviewer.delete()
+
+    def test_bump_without_primary_key_is_ignored(self):
+        bump('texts.text', None, 'default')
+        self.assertFalse(EditRevision.objects.filter(model_label='texts.text', object_id=None).exists())
+
+    def test_bulk_update_bumps_each_record_once(self):
+        before = version_of(self.text), version_of(self.other_text)
+        self.text.title = 'Nowy tytuł'
+        self.other_text.title = 'Inny tytuł'
+        Text.objects.bulk_update([self.text, self.other_text], ['title'])
+        self.assertEqual((version_of(self.text), version_of(self.other_text)), (before[0] + 1, before[1] + 1))
+
+    def test_concurrently_created_version_rows_fall_back_to_single_bumps(self):
+        """Gdy inna transakcja utworzy wiersz wersji w trakcie partii, podbicie nie ginie."""
+        with patch.object(QuerySet, 'bulk_create', side_effect=IntegrityError), batched_bumps():
+            text = Text.objects.create(title='W partii', length=10, anthology=self.book)
+        self.assertEqual(version_of(text), 1)

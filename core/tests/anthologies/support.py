@@ -1,11 +1,31 @@
 """Wspólne dane i pomocniki testów antologii i powieści."""
 from django.urls import reverse
+from lxml import html
 
 from authors.models import Author
 from core.anthology_tasks import TASK_CHOICES
 from fantazmaty.testing import create_member, create_superuser, edit_token
 from texts.models import Anthology
 from texts.novels import new_chapter
+
+
+def admin_form_data(client, url, form_id, **changes):
+    """Wartości wszystkich pól formularza admina tak, jak wysłałaby je przeglądarka, z podanymi zmianami."""
+    form = html.fromstring(client.get(url).content).xpath(f'//form[@id="{form_id}"]')[0]
+    data = {}
+    for field in form.xpath('.//input[@name] | .//select[@name] | .//textarea[@name]'):
+        if field.get('type') in ('checkbox', 'radio') and field.get('checked') is None:
+            continue
+        if field.tag == 'select':
+            selected = [option.get('value', '') for option in field.xpath('./option[@selected]')]
+            if field.get('multiple') is not None:
+                data[field.get('name')] = selected
+            else:
+                data[field.get('name')] = (selected or field.xpath('./option/@value')[:1] or [''])[0]
+        else:
+            data[field.get('name')] = field.get('value', '') if field.tag == 'input' else field.text or ''
+    data.update(changes)
+    return data
 
 
 class AnthologyPageData:

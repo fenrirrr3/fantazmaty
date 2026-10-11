@@ -1,10 +1,12 @@
 """Wyszukiwarka: wyszukiwanie globalne (sekcje, uprawnienia, prywatność, stronicowanie sekcji),
-wyszukiwarka w nagłówku i polskie dopasowanie bez znaków diakrytycznych."""
+wyszukiwarka w nagłówku i polskie dopasowanie bez znaków diakrytycznych (SQLite w testach i SQL
+dla produkcyjnego MySQL)."""
 from datetime import datetime
 
 from django.contrib.auth import get_user_model
 from django.template.loader import render_to_string
-from django.test import RequestFactory, TestCase
+from django.db.backends.mysql.base import DatabaseWrapper as MySQLWrapper
+from django.test import RequestFactory, SimpleTestCase, TestCase
 from django.urls import reverse
 from django.utils import timezone
 from lxml import html
@@ -150,3 +152,16 @@ class HeaderSearchTests(TestCase):
         request = RequestFactory().get('/')
         request.user = self.member
         self.assertNotIn('data-header-search', render_to_string('core/base.html', request=request))
+
+
+class MySQLPolishContainsTests(SimpleTestCase):
+    """Produkcja działa na MySQL: zapytanie składa się bez połączenia z serwerem."""
+
+    def test_lookup_folds_polish_l_and_uses_accent_insensitive_collation(self):
+        mysql = MySQLWrapper({'ENGINE': 'django.db.backends.mysql', 'NAME': '', 'OPTIONS': {}, 'TIME_ZONE': None},
+                             alias='mysql')
+        query = Author.objects.filter(last_name__plcontains='ŻÓŁĆ').values('pk').query
+        sql, params = query.get_compiler(connection=mysql).as_sql()
+        self.assertIn('CONVERT(LOWER(REPLACE(REPLACE(`authors_author`.`last_name`, %s, %s), %s, %s)) USING utf8mb4)'
+                      ' COLLATE `utf8mb4_unicode_ci` LIKE %s', sql)
+        self.assertEqual(params, ('ł', 'l', 'Ł', 'L', '%zolc%'))

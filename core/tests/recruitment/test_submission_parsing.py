@@ -1,9 +1,11 @@
-"""Rozbiór zgłoszeń tekstów z poczty i z wklejonych rekordów: format z etykietami (CF7), dawne CSV, zgody, granice wiadomości, załączniki, tożsamość wiadomości i paczki ZIP."""
+"""Rozbiór zgłoszeń tekstów z poczty i z wklejonych rekordów: format z etykietami (CF7), dawne CSV, zgody, granice wiadomości, załączniki, tożsamość wiadomości i paczki ZIP (przetwarzanie DOCX, potwierdzenie przebudowy, limity czasu)."""
 from email.message import EmailMessage
 from html import escape
 from io import BytesIO
+from itertools import chain, repeat
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 from zipfile import ZipFile
 
 from django.test import SimpleTestCase, TestCase, tag
@@ -11,7 +13,8 @@ from docx import Document
 
 from core.models import MailboxConnection
 from core.services.mailbox import MailboxError, polish_date, story_title
-from core.services.mailbox_import import package_messages, parse_message, prepare_forms
+from core.services.document_converter import RebuildConfirmationRequired
+from core.services.mailbox_import import package_messages, parse_message, prepare_forms, safe_name
 from core.services.review_import_parser import encode_submission, parse_review_records
 from fantazmaty.testing import create_superuser
 from texts.models import Anthology
@@ -328,3 +331,120 @@ class MessageIdentityTests(TestCase):
         self.assertEqual(len(forms), 1)
         self.assertTrue(rows[1]['downloaded'])
         self.assertEqual(forms[0].data['records'].count('\n'), 0)
+
+
+class MessageStructureErrorTests(SimpleTestCase):
+    """Wiadomości bez treści, bez plików, ze zbyt wieloma plikami albo bez naboru w temacie są odrzucane z opisem."""
+
+    def test_attachment_count_and_missing_body(self):
+        message = EmailMessage()
+        message['From'] = 'Jan <jan@example.test>'
+        message.set_content('Treść bez plików')
+        with self.assertRaisesMessage(MailboxError, 'Jan <jan@example.test>: nie znaleziono załączników'):
+            parse_message(1, message.as_bytes())
+        for number in range(11):
+            message.add_attachment(b'x', maintype='application', subtype='pdf', filename=f'{number}.pdf')
+        with self.assertRaisesMessage(MailboxError, 'znaleziono 11 załączników; limit wynosi 10'):
+            parse_message(1, message.as_bytes())
+        only_file = EmailMessage()
+        only_file['From'] = 'jan@example.test'
+        only_file.add_attachment(b'x', maintype='application', subtype='pdf', filename='tekst.pdf')
+        self.assertEqual(parse_message(1, only_file.as_bytes(), submission=False)['title'], '(bez tytułu)')
+        with self.assertRaisesMessage(MailboxError, 'brak danych zgłoszenia w treści'):
+            parse_message(1, only_file.as_bytes())
+
+    def test_new_format_requires_anthology_in_subject(self):
+        raw = named_mail(encode_submission(list(SUBMISSION_FIELDS)), subject='Jan Autor – Opowieść')
+        with self.assertRaisesMessage(MailboxError, 'w temacie brakuje nazwy antologii'):
+            parse_message(1, raw)
+
+    def test_safe_names_avoid_reserved_and_empty_names(self):
+        self.assertEqual(safe_name('CON'), 'opowiadanie_CON')
+        self.assertEqual(safe_name('lpt1.docx'), 'opowiadanie_lpt1.docx')
+        self.assertEqual(safe_name(' .. '), 'opowiadanie_')
+        self.assertEqual(safe_name('a<b>:c?'), 'a_b__c_')
+
+
+def converted(payload=b'docx', warnings=()):
+    """Wynik convert_document: ZIP z DOCX, PDF i EPUB oraz opcjonalnymi uwagami konwersji."""
+    output = BytesIO()
+    with ZipFile(output, 'w') as archive:
+        for ext in ('docx', 'pdf', 'epub'):
+            archive.writestr('document.' + ext, payload + ext.encode())
+    output.seek(0)
+    output.conversion_warnings = list(warnings)
+    return output, None, None
+
+
+class PackagingErrorTests(SimpleTestCase):
+    """Paczka ZIP: przetwarzanie tylko DOCX, potwierdzenie przebudowy, limity czasu i sprzątanie po błędzie."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.docx = parse_message(12, csv_mail())['files'][0][1]
+
+    def message(self, uid=12, files=None, folder='Opowieść'):
+        return {'uid': uid, 'folder': folder, 'sender': f'Autor {uid}', 'files': files or [('tekst.docx', self.docx)]}
+
+    def names(self, output):
+        with output, ZipFile(output) as archive:
+            return sorted(archive.namelist())
+
+    def test_processing_requires_valid_docx(self):
+        with self.assertRaisesMessage(MailboxError, 'Odkurzacz i konwerter obsługują DOCX'):
+            package_messages([self.message(files=[('tekst.pdf', b'%PDF')])], True, False, False)
+        with self.assertRaisesMessage(MailboxError, 'Nieprawidłowy DOCX: zly.docx. Wyłącz przetwarzanie'):
+            package_messages([self.message(files=[('zly.docx', b'not a zip')])], False, False, True)
+        with self.assertRaisesMessage(MailboxError, 'Nieprawidłowy DOCX: zly.docx.'):
+            package_messages([self.message(files=[('zly.docx', b'not a zip')])], True, False, False)
+        self.assertEqual(self.names(package_messages([self.message(files=[('tekst.pdf', b'%PDF')])], False, False, False)),
+                         ['Opowieść/01_tekst.pdf'])
+
+    @patch('core.services.mailbox_import.inspect_document', side_effect=RebuildConfirmationRequired('pominie tabelę'))
+    def test_rebuild_omissions_need_confirmation(self, inspect):
+        with self.assertRaisesMessage(RebuildConfirmationRequired, 'tekst.docx: pominie tabelę'):
+            package_messages([self.message()], False, False, True)
+        with self.assertRaises(RebuildConfirmationRequired):
+            package_messages([self.message()], False, False, True, skipped_errors=[])
+        warnings, accepted, errors = [], [], []
+        with package_messages([self.message()], False, False, True, skipped_errors=errors, accepted=accepted,
+                              rebuild_warnings=warnings) as output, ZipFile(output) as archive:
+            self.assertEqual(archive.namelist(), [])
+        self.assertEqual(warnings, ['Autor 12: tekst.docx: pominie tabelę'])
+        self.assertEqual([message['uid'] for message in accepted], [12])
+        self.assertEqual(errors, [])
+
+    @patch('core.services.mailbox_import.convert_document')
+    def test_rebuild_only_and_conversion_with_notes(self, convert):
+        convert.side_effect = lambda *args, **kwargs: (BytesIO(b'przebudowany'), None, None)
+        self.assertEqual(self.names(package_messages([self.message()], False, False, True, True)),
+                         ['Opowieść/01_tekst.docx'])
+        self.assertEqual(convert.call_args.args[1], [])
+        self.assertTrue(convert.call_args.kwargs['allow_rebuild_omissions'])
+        convert.side_effect = lambda *args, **kwargs: converted(warnings=['Brak przypisu 3'])
+        self.assertEqual(self.names(package_messages([self.message()], False, True, False)),
+                         ['Opowieść/01_tekst.docx', 'Opowieść/01_tekst.epub', 'Opowieść/01_tekst.pdf',
+                          'Opowieść/01_tekst_uwagi.txt'])
+        convert.side_effect = RebuildConfirmationRequired('utrata obrazu')
+        with self.assertRaisesMessage(RebuildConfirmationRequired, 'tekst.docx: utrata obrazu'):
+            package_messages([self.message()], False, True, True, True)
+
+    def test_equal_folders_get_uid_suffix(self):
+        messages = [self.message(12), self.message(13)]
+        self.assertEqual(self.names(package_messages(messages, False, False, False)),
+                         ['Opowieść/01_tekst.docx', 'Opowieść_13/01_tekst.docx'])
+
+    def test_time_limits(self):
+        for ticks, kwargs in (
+            ([0, 100], {}),
+            ([0, 0, 100], {}),
+            ([0, 100], {'skipped_errors': []}),
+            ([0, 0, 0, 0, 0, 100], {'skipped_errors': []}),
+        ):
+            with (
+                self.subTest(ticks=ticks, **kwargs),
+                patch('core.services.mailbox_import.time.monotonic', side_effect=chain(ticks, repeat(ticks[-1]))),
+                self.assertRaisesMessage(MailboxError, '90 sekund'),
+            ):
+                package_messages([self.message()], False, False, False, **kwargs)

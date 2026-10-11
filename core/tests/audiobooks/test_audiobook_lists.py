@@ -2,7 +2,6 @@
 from datetime import date
 
 from django.contrib.auth import get_user_model
-from django.core.exceptions import ValidationError
 from django.db import IntegrityError, connection, transaction
 from django.test import TestCase, tag
 from django.test.utils import CaptureQueriesContext
@@ -10,10 +9,9 @@ from django.urls import reverse
 from lxml import html
 
 from authors.models import Author
-from core.audiobook_validators import validate_mega_url
 from core.edit_versions import version_of
 from core.models import Audiobook, AudiobookStage, AudioContributor, PublicAudiobookSettings
-from fantazmaty.testing import create_member
+from fantazmaty.testing import create_member, create_superuser
 from people.models import Person, Role
 from texts.models import Anthology, ForeignAuthor, Text, TextTranslation
 from workflow.models import WorkflowStage
@@ -177,7 +175,7 @@ class AudiobookTableTests(TestCase):
 class ExternalAudiobookTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.admin = get_user_model().objects.create_superuser('audio-public-admin', 'admin@example.test', 'test')
+        cls.admin = create_superuser('audio-public-admin')
         cls.member = get_user_model().objects.create_user('audio-public-member', is_staff=True)
         person = Person.objects.create(user=cls.member, first_name='Jan', last_name='Test')
         person.roles.add(Role.objects.get_or_create(name='Koordynator')[0])
@@ -282,11 +280,7 @@ class ExternalAudiobookTests(TestCase):
         self.assertIn('attachment;', response['Content-Disposition'])
         self.assertEqual(self.client.post(self.download, {}).status_code, 405)
 
-    def test_only_safe_mega_urls_are_accepted_and_rendered(self):
-        for url in ('javascript:alert(1)', 'http://mega.nz/', 'https://mega.nz.evil.test/', 'https://mega.nz@evil.test/',
-                    'https://user@mega.nz/', 'https://mega.nz:8443/'):
-            with self.subTest(url=url), self.assertRaises(ValidationError):
-                validate_mega_url(url)
+    def test_unsafe_stored_mega_url_is_not_rendered_and_settings_are_a_singleton(self):
         config = PublicAudiobookSettings.objects.create()
         PublicAudiobookSettings.objects.filter(pk=config.pk).update(mega_url='javascript:alert(1)')
         self.assertNotContains(self.client.get(self.url), 'javascript:')

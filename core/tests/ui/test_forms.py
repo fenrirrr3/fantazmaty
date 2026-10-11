@@ -1,6 +1,9 @@
-"""Formularze interfejsu: zbiorczy import recenzji (podgląd, token, ostrzeżenia), zbiorcze akcje
-korekty poskładowej i wybór folderu Dropbox na stronie tekstu."""
+"""Formularze interfejsu: zbiorczy import recenzji (podgląd, token, ostrzeżenia, odmowy), zbiorcze akcje
+korekty poskładowej, wybór folderu Dropbox na stronie tekstu oraz reguły walidacji formularzy
+(daty etapów i urlopów, powiadomienie autora, notatki, akcje zbiorcze recenzji)."""
+from datetime import time, timedelta
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
@@ -9,10 +12,13 @@ from django.utils import timezone
 from lxml import html
 
 from authors.models import Author
+from core.forms import (AuthorNoteForm, AuthorNotificationForm, CompleteStageForm,
+                        CoordinatorReviewBulkActionForm, ReviewBulkImportForm, ReviewContentWarningsForm,
+                        VacationForm)
 from core.models import PostLayoutAssignment
 from core.post_layout import selection_token
 from fantazmaty.testing import FormControls, create_member, create_superuser
-from people.models import Person
+from people.models import Person, Vacation
 from texts.models import Anthology, Review, Text
 from workflow.models import WorkflowStage
 
@@ -192,3 +198,104 @@ class DropboxChooserTests(TestCase):
         response = self.client.get(self.url)
         self.assertNotContains(response, 'id="dropbox-folder-choose"')
         self.assertNotContains(response, "dropins.js")
+
+
+class FormValidationRulesTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.today = timezone.localdate()
+        cls.person = Person.objects.create(first_name='Urlop', last_name='Testowy')
+        cls.book = Anthology.objects.create(title='Nabór formularzy')
+        cls.importer = create_superuser('import-admin')
+
+    def test_stage_end_cannot_be_in_future_or_before_start(self):
+        stage = SimpleNamespace(stage_type='editing_control', started_at=self.today - timedelta(days=2))
+        form = CompleteStageForm(stage=stage)
+        self.assertIn('send_to_proofreading', form.fields)
+        self.assertEqual(form.fields['ended_at'].widget.attrs['min'], stage.started_at.isoformat())
+        for ended_at, message in ((self.today + timedelta(days=1), 'przyszłą datą'),
+                                  (self.today - timedelta(days=3), 'poprzedzać rozpoczęcia')):
+            form = CompleteStageForm({'ended_at': ended_at.isoformat()}, stage=SimpleNamespace(
+                stage_type='editing', started_at=stage.started_at))
+            self.assertFalse(form.is_valid())
+            self.assertIn(message, form.errors['ended_at'][0])
+        self.assertTrue(CompleteStageForm({'ended_at': self.today.strftime('%d.%m.%Y')}).is_valid())
+
+    def vacation(self, instance=None, **data):
+        data = {key: value.isoformat() if hasattr(value, 'isoformat') else value for key, value in data.items()}
+        return VacationForm(data, instance=instance or Vacation(person=self.person))
+
+    def test_vacation_dates_stay_within_today_and_one_year(self):
+        year = self.today + timedelta(days=366)
+        for data, field in (({'start_date': self.today - timedelta(days=1), 'until_revoked': 'on'}, 'start_date'),
+                            ({'start_date': year, 'until_revoked': 'on'}, 'start_date'),
+                            ({'start_date': self.today, 'end_date': year}, 'end_date'),
+                            ({'start_date': self.today, 'end_date': self.today - timedelta(days=1)}, 'end_date')):
+            with self.subTest(data=data):
+                form = self.vacation(**data)
+                self.assertFalse(form.is_valid())
+                self.assertIn(field, form.errors)
+        form = self.vacation(start_date=self.today, end_date=self.today + timedelta(days=3))
+        self.assertTrue(form.is_valid(), form.errors)
+        end = timezone.localtime(form.cleaned_data['end_date'])
+        self.assertEqual((end.date(), end.time()), (self.today + timedelta(days=3), time.max))
+        form = self.vacation(start_date=self.today, end_date=self.today, until_revoked='on')
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertIsNone(form.cleaned_data['end_date'])
+
+    def test_running_vacation_keeps_its_past_start_date(self):
+        started = self.today - timedelta(days=5)
+        running = Vacation.objects.create(person=self.person, start_date=started, until_revoked=True)
+        form = self.vacation(running, start_date=started, until_revoked='on')
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.fields['start_date'].widget.attrs['min'], started.isoformat())
+
+    def test_author_notification_date_follows_checkbox_and_allowed_range(self):
+        notified = self.today - timedelta(days=3)
+        form = AuthorNotificationForm(review=SimpleNamespace(author_notified_at=notified))
+        self.assertEqual((form.initial['author_notified'], form.initial['author_notified_at']), (True, notified))
+        self.assertFalse(AuthorNotificationForm(review=SimpleNamespace(author_notified_at=None)).initial['author_notified'])
+        form = AuthorNotificationForm({'author_notified_at': notified.isoformat()})
+        self.assertTrue(form.is_valid())
+        self.assertIsNone(form.cleaned_data['author_notified_at'])
+        form = AuthorNotificationForm({'author_notified': 'on'})
+        self.assertTrue(form.is_valid())
+        self.assertEqual(form.cleaned_data['author_notified_at'], self.today)
+        form = AuthorNotificationForm({'author_notified': 'on',
+                                       'author_notified_at': (self.today - timedelta(days=15)).isoformat()})
+        self.assertFalse(form.is_valid())
+        self.assertIn('14 dni', form.errors['author_notified_at'][0])
+
+    def test_notes_warnings_and_bulk_action_rules(self):
+        self.assertIn('Wpisz treść', AuthorNoteForm({'content': '   '}).errors['content'][0])
+        existing = Author.objects.create(first_name='Ala', last_name='Autor').notes.create(content='Stara')
+        form = AuthorNoteForm({'content': '  Nowa  '}, instance=existing)
+        self.assertTrue(form.is_valid())
+        self.assertEqual(form.cleaned_data['content'], 'Nowa')
+        review = SimpleNamespace(content_warnings='Przemoc')
+        self.assertEqual(ReviewContentWarningsForm(instance=review).initial['content_warnings'], 'Przemoc')
+        form = CoordinatorReviewBulkActionForm({'action': 'change_status'})
+        self.assertIn('status', form.errors)
+        self.assertTrue(CoordinatorReviewBulkActionForm({'action': 'export'}).is_valid())
+
+    def import_form(self, records, user=None, **data):
+        return ReviewBulkImportForm({'anthology': self.book.pk, 'records': records, **data},
+                                    user=user or self.importer)
+
+    def test_review_import_refusals(self):
+        line = 'Jan Autor;Tytuł {};fantasy;1000;;jan{}@example.com;'
+        form = self.import_form(line.format(1, 1), user=create_member('import-member', 'Recenzent'))
+        self.assertFalse(form.is_valid())
+        self.assertIn('wyłącznie dla superusera', str(form.errors))
+        form = self.import_form('\n'.join('Zły wiersz' for _ in range(25)))
+        self.assertFalse(form.is_valid())
+        self.assertEqual(len(form.errors['records']), 21)
+        self.assertIn('Pozostałych błędów: 5.', form.errors['records'][-1])
+        form = self.import_form('Jan Autor;Tytuł;fantasy;1000;jan@example.com;;Inny nabór')
+        self.assertFalse(form.is_valid())
+        self.assertIn('nie odpowiada wybranej antologii', str(form.errors['records']))
+        duplicate = '\n'.join([line.format(1, 1), line.format(1, 1)])
+        form = self.import_form(duplicate, submission_warnings_token='podrobiony', confirm_submission_warnings='on')
+        self.assertFalse(form.is_valid())
+        self.assertIn('confirm_submission_warnings', form.errors)
+        self.assertTrue(any('możliwy duplikat' in warning for warning in form.import_warnings))

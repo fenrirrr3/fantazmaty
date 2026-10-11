@@ -54,10 +54,11 @@ class ExternalIllustrationsTests(TestCase):
         self.assertContains(response, self.text.title)
         self.assertNotContains(response, 'PRYWATNY ILUSTRATOR')
         self.assertNotContains(response, 'private-artist@example.test')
+        # Zapisany status bez przypisanych osób nie czyni tekstu zajętym.
         self.illustration.illustrators.clear()
-        Illustration.objects.filter(pk=self.illustration.pk).update(manual_illustrator_name='RĘCZNY ILUSTRATOR', manual_illustrator_email='manual@example.test')
-        self.assertContains(self.client.get(self.url, {'status':'Przypisane'}), self.text.title)
-        self.assertNotContains(self.client.get(self.url),'RĘCZNY ILUSTRATOR')
+        Illustration.objects.filter(pk=self.illustration.pk).update(status='assigned')
+        self.assertNotContains(self.client.get(self.url, {'status': 'Przypisane'}), self.text.title)
+        self.assertContains(self.client.get(self.url, {'status': 'Dostępne'}), self.text.title)
 
     def test_scope_filters_sorting_pagination_and_escaping(self):
         second = Text.objects.create(title='<script>nie wykonuj</script>', anthology=self.book, length=1, tags='smoki', genre='fantasy')
@@ -131,5 +132,3 @@ class ExternalIllustrationsTests(TestCase):
         self.assertEqual(
             csrf.post(self.internal, {"drive_url": link, "version": token}).status_code, 403
         )
-
-

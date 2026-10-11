@@ -1,4 +1,6 @@
-"""Strona tekstu i formularze pomocnicze: skróty do admina, notatki, rozdziały, tłumaczenia, formularz przypisań i logowanie."""
+"""Strona tekstu i formularze pomocnicze: skróty do admina, notatki, rozdziały, tłumaczenia, formularz przypisań,
+sekcje zespołu (bieżący i historia przypisań) i logowanie."""
+import re
 from pathlib import Path
 
 from django.conf import settings
@@ -7,13 +9,17 @@ from django.urls import reverse
 from django.utils import timezone
 from lxml import html
 
+from core.selectors.texts import text_detail_context
 from fantazmaty.testing import create_member, create_superuser, form_value
+from fantazmaty.testing.workflow import StatusAssignmentFixtures
 from texts.models import Anthology, Review, Text
 from texts.novels import new_chapter
-from workflow.models import WorkflowStage as S
+from workflow.models import WorkflowRoleAssignment as A, WorkflowStage as S
 
 
 class TextPageTests(TestCase):
+    """Elementy strony tekstu i formularze pomocnicze widoczne dla zespołu."""
+
     @classmethod
     def setUpTestData(cls):
         cls.admin = create_superuser()
@@ -97,3 +103,39 @@ class TextPageTests(TestCase):
         response = self.client.get(reverse("login"))
         self.assertContains(response, "Adres e-mail")
         self.assertNotContains(response, "Nazwa użytkownika")
+
+
+class TextTeamSectionsTests(StatusAssignmentFixtures):
+    """Sekcje „Osoby przypisane do tekstu” i „Historia przypisań osób”: zastąpione przypisanie trafia do historii."""
+
+    def team_sections(self):
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse('core:assigned_text_detail', args=[self.text.pk]))
+        self.assertEqual(response.status_code, 200)
+        sections = re.findall(r'<details class="text-team"[^>]*>(.*?)</details>', response.content.decode(), re.S)
+        current = next(section for section in sections if 'Osoby przypisane do tekstu' in section)
+        previous = next(section for section in sections if 'Historia przypisań osób' in section)
+        return current, previous
+
+    def test_retired_verifier_is_listed_in_history_with_cycle_and_never_twice(self):
+        today = timezone.localdate()
+        editor = A.objects.create(text=self.text, role='editor', assigned_to=self.admin)
+        S.objects.create(text=self.text, stage_type='editing', assignment=editor, started_at=today)
+        retired = A.objects.create(text=self.text, role='verifier_1', assigned_to=self.member, is_current=False)
+        S.objects.create(text=self.text, stage_type='first_verification', assignment=retired,
+                         started_at=today, ended_at=today, is_completed=True, is_current=False, is_released=False)
+        current, previous = self.team_sections()
+        self.assertEqual(current.count('Weryfikator 1'), 1)
+        self.assertNotIn('Jan Test', current)
+        self.assertIn('Jan Test', previous)
+        self.assertIn('przebieg 1', previous)
+        # A newly selected person takes the current slot; the earlier one stays in history only.
+        A.objects.create(text=self.text, role='verifier_1', assigned_to=self.other, execution_number=2)
+        context = text_detail_context(user=self.admin, text=self.text)
+        members = [row for row in context['team_members'] if row['role'] == 'verifier_1']
+        self.assertEqual([row['user']['pk'] for row in members], [self.other.pk])
+        self.assertEqual([row['user']['pk'] for row in context['previous_team_members']], [self.member.pk])
+
+    def test_history_section_is_always_present(self):
+        current, previous = self.team_sections()
+        self.assertIn('Brak wcześniejszych przypisań', previous)

@@ -305,12 +305,6 @@ class WorkflowRoleAssignmentQuerySet(VersionedQuerySet):
             is_current=True,
         )
 
-    def assigned(self):
-        return self.filter(assigned_to__isnull=False)
-
-    def unassigned(self):
-        return self.filter(assigned_to__isnull=True)
-
 
 class WorkflowRoleAssignment(models.Model):
     class Role(models.TextChoices):

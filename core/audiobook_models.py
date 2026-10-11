@@ -158,10 +158,6 @@ class Audiobook(models.Model):
             return super().save(*args, **kwargs)
 
     @property
-    def current_status(self):
-        return self.status
-
-    @property
     def status_label(self):
         return dict(self.Status.choices).get(self.status, self.status)
 
@@ -233,9 +229,3 @@ class AudiobookStage(models.Model):
     @property
     def is_started(self):
         return bool(self.started_at or self.start_unknown or self.is_completed)
-
-    @property
-    def state(self):
-        if self.is_completed:
-            return 'completed'
-        return 'active' if self.is_started else 'waiting'

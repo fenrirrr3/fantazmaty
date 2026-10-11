@@ -1,4 +1,5 @@
-"""Daty etapów w adminie: ręczne rozpoczęcie i zakończenie, przejścia redakcji, historia importu i kolejność etapów."""
+"""Daty etapów w adminie: ręczne rozpoczęcie i zakończenie, przejścia redakcji, historia importu i kolejność etapów;
+lista etapów i przypisań w adminie (filtry, akcje zbiorcze, korekta dat zaimportowanej pracy)."""
 from datetime import timedelta
 
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -10,7 +11,7 @@ from core.edit_versions import version_of
 from core.models import WorkflowEvent
 from core.selectors.texts import text_detail_context
 from core.services.texts import start_assigned_stage
-from fantazmaty.testing import create_member, create_superuser
+from fantazmaty.testing import create_member, create_superuser, form_value
 from texts.models import Anthology, Text
 from workflow.admin_stage_dates import StageDatesForm, preserve_stage_order, set_stage_dates
 from workflow.models import WorkflowStage as S, WorkflowRoleAssignment as A
@@ -21,18 +22,23 @@ from .support import add_roles, importing
 
 
 class AdminStageDatesTests(TestCase):
+    """Formularz „Ustaw daty / zakończ etap” i set_stage_dates dla trwającej pierwszej korekty."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.today = timezone.localdate()
+        cls.start = cls.today - timedelta(days=10)
+        cls.end = cls.today - timedelta(days=2)
+        cls.admin = create_superuser()
+        cls.member = create_member('member', 'Korektor')
+        add_roles(cls.member, 'Redaktor', 'Weryfikator')
+        cls.book = Anthology.objects.create(title='Test')
+        cls.text = Text.objects.create(title='Tekst', length=100, anthology=cls.book)
+        cls.assignment = A.objects.create(text=cls.text, role='proofreader_1', assigned_to=cls.member)
+        cls.stage = S.objects.create(text=cls.text, assignment=cls.assignment,
+                                     stage_type='first_proofreading', started_at=cls.start)
+
     def setUp(self):
-        self.today = timezone.localdate()
-        self.start = self.today - timedelta(days=10)
-        self.end = self.today - timedelta(days=2)
-        self.admin = create_superuser()
-        self.member = create_member('member', 'Korektor')
-        add_roles(self.member, 'Redaktor', 'Weryfikator')
-        self.book = Anthology.objects.create(title='Test')
-        self.text = Text.objects.create(title='Tekst', length=100, anthology=self.book)
-        self.assignment = A.objects.create(text=self.text, role='proofreader_1', assigned_to=self.member)
-        self.stage = S.objects.create(text=self.text, assignment=self.assignment,
-                                      stage_type='first_proofreading', started_at=self.start)
         self.client.force_login(self.admin)
 
     def save_dates(self, **kwargs):
@@ -398,3 +404,86 @@ class AdminStageDatesTests(TestCase):
         with self.assertRaises(ValidationError):
             preserve_stage_order(first, self.today - timedelta(days=10), self.today - timedelta(days=6))
         preserve_stage_order(first, self.today - timedelta(days=11), self.today - timedelta(days=7))
+
+
+class AdminStageListTests(TestCase):
+    """Lista etapów i przypisań w adminie: filtry aktywnych rodzajów, akcje zbiorcze i ręczna korekta dat."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.admin = create_superuser()
+        cls.member = create_member('member', 'Korektor')
+        cls.today = timezone.localdate()
+
+    def setUp(self):
+        self.text = Text.objects.create(title='Tekst', length=100)
+        self.assignment = A.objects.create(text=self.text, role='proofreader_1', assigned_to=self.member)
+        self.stage = S.objects.create(text=self.text, stage_type='first_proofreading', assignment=self.assignment)
+        self.client.force_login(self.admin)
+
+    def action(self, name, *stages):
+        return self.client.post(reverse('admin:workflow_workflowstage_changelist'),
+                                {'action': name, '_selected_action': [s.pk for s in stages]}, follow=True)
+
+    def test_filters_narrow_stage_and_assignment_lists(self):
+        S.objects.create(text=Text.objects.create(title='Inny', length=1), stage_type='ready_for_editing')
+        stages = self.client.get(reverse('admin:workflow_workflowstage_changelist'), {'stage_type': 'first_proofreading'})
+        self.assertEqual(list(stages.context['cl'].result_list), [self.stage])
+        roles = self.client.get(reverse('admin:workflow_workflowroleassignment_changelist'), {'role': 'editor'})
+        self.assertEqual(list(roles.context['cl'].result_list), [])
+        roles = self.client.get(reverse('admin:workflow_workflowroleassignment_changelist'), {'role': 'proofreader_1'})
+        self.assertEqual(list(roles.context['cl'].result_list), [self.assignment])
+
+    def test_bulk_start_then_finish_creates_next_stage(self):
+        self.assertContains(self.action('start_selected_stages', self.stage), 'Rozpoczęto etapy.')
+        self.stage.refresh_from_db()
+        self.assertEqual(self.stage.started_at, self.today)
+        self.assertContains(self.action('finish_selected_stages', self.stage), 'Zakończono etapy i utworzono następne.')
+        self.stage.refresh_from_db()
+        self.assertTrue(self.stage.is_completed)
+        self.assertTrue(S.objects.filter(text=self.text, stage_type='second_proofreading').exists())
+
+    def test_bulk_action_error_rolls_back_whole_selection(self):
+        other_text = Text.objects.create(title='Drugi', length=100)
+        other = S.objects.create(text=other_text, stage_type='first_proofreading',
+                                 assignment=A.objects.create(text=other_text, role='proofreader_1',
+                                                             assigned_to=self.member))
+        S.objects.filter(pk=self.stage.pk).update(started_at=self.today)
+        # The first text can finish, the second is not started yet: nothing may be saved.
+        response = self.action('finish_selected_stages', self.stage, other)
+        self.assertEqual(len([m for m in response.context['messages'] if m.level_tag == 'error']), 1)
+        self.stage.refresh_from_db()
+        self.assertFalse(self.stage.is_completed)
+        self.assertFalse(S.objects.filter(stage_type='second_proofreading').exists())
+        unassigned = S.objects.create(text=Text.objects.create(title='Trzeci', length=1), stage_type='first_proofreading')
+        response = self.action('start_selected_stages', other, unassigned)
+        self.assertNotContains(response, 'Rozpoczęto etapy.')
+        other.refresh_from_db()
+        self.assertIsNone(other.started_at)
+
+    def test_imported_dates_need_confirmation_and_keep_stage_order(self):
+        start = self.today - timedelta(days=10)
+        S.objects.create(text=self.text, stage_type='editing', started_at=start, ended_at=start + timedelta(days=2),
+                         is_completed=True)
+        with importing():
+            self.stage.imported_completed = True
+            self.stage.is_completed = True
+            self.stage.save()
+        url = reverse('admin:workflow_workflowstage_change', args=[self.stage.pk])
+        page = self.client.get(url)
+        data = {'_edit_version': form_value(page), '_save': 'Save',
+                'started_at': (start + timedelta(days=4)).isoformat(),
+                'ended_at': (start + timedelta(days=5)).isoformat()}
+        response = self.client.post(url, data)
+        self.assertContains(response, 'Ręczna korekta wymaga potwierdzenia')
+        response = self.client.post(url, dict(data, confirm_data_correction='on'))
+        self.assertEqual(response.status_code, 302)
+        self.stage.refresh_from_db()
+        self.assertEqual(self.stage.started_at, start + timedelta(days=4))
+        self.assertTrue(self.stage.is_completed)
+        # Known dates cannot be moved before the end of the preceding editing.
+        data['_edit_version'] = form_value(self.client.get(url))
+        response = self.client.post(url, dict(data, confirm_data_correction='on', started_at=start.isoformat()))
+        self.assertContains(response, 'wcześniejsza niż zakończenie poprzedniej pracy')
+        self.stage.refresh_from_db()
+        self.assertEqual(self.stage.started_at, start + timedelta(days=4))
