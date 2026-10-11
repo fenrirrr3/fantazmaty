@@ -46,7 +46,7 @@
                         </span>
                     </summary>
                     <div class="checkbox-dropdown-options" role="group" aria-labelledby="workflow-anthology-label">
-                    <button type="button" class="checkbox-dropdown-clear" data-checkbox-clear>Wyczyść wybór</button>
+                    <button type="button" class="secondary-button small-button checkbox-dropdown-clear" data-checkbox-clear>Wyczyść wybór</button>
                     {% for anthology in anthologies %}
                         <label>
                             <input type="checkbox" name="anthology" value="{{ anthology.pk }}"
@@ -67,7 +67,7 @@
                         </span>
                     </summary>
                     <div class="checkbox-dropdown-options" role="group" aria-labelledby="workflow-stage-label">
-                    <button type="button" class="checkbox-dropdown-clear" data-checkbox-clear>Wyczyść wybór</button>
+                    <button type="button" class="secondary-button small-button checkbox-dropdown-clear" data-checkbox-clear>Wyczyść wybór</button>
                     {% for value, label in stage_choices %}
                         <label>
                             <input type="checkbox" name="stage" value="{{ value }}"

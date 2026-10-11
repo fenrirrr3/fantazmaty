@@ -56,6 +56,8 @@ def data_integrity(request):
         rows = integrity_issues()
     return render(request, 'core/data_integrity.html', {
         'issues': rows, 'tab': tab, 'candidate_page': candidate_page,
+        'integrity_tabs': (('integrity', 'Powiązania i etapy'), ('assignments', 'Wielokrotne przypisania osób'),
+                           ('unlinked', 'Recenzje bez powiązania')),
         'assignment_filters': assignment_filters, 'assignment_page': assignment_page,
         'assignment_rows': assignment_rows,
     })

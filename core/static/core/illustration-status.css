@@ -34,6 +34,24 @@
     --ill-corrections-border: #b57b4b;
 }
 
+/* Panel admina w trybie automatycznym przy ciemnym motywie systemu. */
+@media (prefers-color-scheme: dark) {
+    [data-theme="auto"] {
+        --ill-unassigned-fg: #ffd1d1;
+        --ill-unassigned-bg: #541e24;
+        --ill-unassigned-border: #b8616b;
+        --ill-assigned-fg: #ffe8a1;
+        --ill-assigned-bg: #514318;
+        --ill-assigned-border: #aa923e;
+        --ill-delivered-fg: #bdf2cc;
+        --ill-delivered-bg: #193f28;
+        --ill-delivered-border: #54996b;
+        --ill-corrections-fg: #ffdbb8;
+        --ill-corrections-bg: #57321b;
+        --ill-corrections-border: #b57b4b;
+    }
+}
+
 /* Geometria jak w odznakach (.badge); tokeny skal ładuje też panel administracyjny. */
 
 .illustration-status {

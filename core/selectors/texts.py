@@ -344,8 +344,11 @@ def text_list_context(*, user, params, scope=None, stage_scope=None, translated=
 
     hide_ready = params.get("hide_ready", "0" if translated else "1").strip() != "0"
 
+    # Bazowe zapytanie budujemy raz; każdy filtr pracuje na jego kopii.
+    base = _annotated_texts(translated=translated, include_translations=include_translations, include_novels=include_novels)
+
     def filtered(exclude=None):
-        result = _annotated_texts(translated=translated, include_translations=include_translations, include_novels=include_novels)
+        result = base.all()
         if scope is not None:
             result = result.filter(pk__in=scope.values("pk"))
         if stage_scope is not None:
@@ -477,10 +480,12 @@ def my_texts_context(*, user, selected_view="active", params=None):
     today = timezone.localdate()
     from workflow.read_queries import filter_my_texts
     texts = filter_my_texts(_user_texts(user, include_authors), user, selected_view, today)
-
+    # Zbiór własnych tekstów liczymy raz (lista ID). Zagnieżdżanie tak rozbudowanego
+    # zapytania w każdym filtrze listy kosztowało ponad sekundę samego budowania SQL.
+    scope = Text.objects.filter(pk__in=list(texts.order_by().values_list("pk", flat=True)))
     params = params.copy() if params is not None else {}
     params.setdefault("hide_ready", "0")
-    filters = text_list_context(user=user, params=params, scope=texts, include_translations=True, include_novels=True)
+    filters = text_list_context(user=user, params=params, scope=scope, include_translations=True, include_novels=True)
     texts = filters.pop("filtered_queryset")
     from workflow.read_queries import annotate_my_work
     texts = annotate_my_work(texts, user, today)
@@ -541,10 +546,16 @@ def available_stages_for_user(*, user, params=None, with_filters=False):
     from workflow.read_queries import available_stages
     include_authors = can_view_author_data(user)
     stages = frontend_scope(available_stages(user, claim_access(user))).select_related("text__anthology")
-    filters = text_list_context(user=user, params=params or {}, stage_scope=stages) if with_filters else None
-    if filters is not None:
+    filters = None
+    if with_filters:
+        # Filtry listy dostają prosty zbiór ID dostępnych etapów. Zagnieżdżanie
+        # pełnego zapytania o dostępność w każdym filtrze wielokrotnie wydłużało
+        # samo budowanie SQL; wynik jest ten sam.
+        stage_ids = list(stages.order_by().values_list("pk", flat=True))
+        filters = text_list_context(user=user, params=params or {},
+                                    stage_scope=WorkflowStage.objects.filter(pk__in=stage_ids))
         filtered = filters.pop("filtered_queryset")
-        stages = stages.filter(text_id__in=filtered.values("pk"))
+        stages = stages.filter(text_id__in=list(filtered.order_by().values_list("pk", flat=True)))
         ordering = [("-" if item.startswith("-") else "") + ("stage_type" if item.lstrip("-") == "current_stage_type" else "text__" + item.lstrip("-")) for item in TEXT_SORTS[filters["sort"]]]
         stages = stages.order_by(*ordering, "pk")
     author_query = Author.objects.order_by("last_name", "first_name", "pk")
@@ -831,9 +842,22 @@ def text_detail_context(*, user, text):
         and not first_done and not verification_open_started
         and not any(s.stage_type == StageType.SECOND_VERIFICATION and _is_open(s) for s in stages)
     )
-    from people.leave_access import is_on_leave as _on_leave
-    actor_on_leave = _on_leave(user)
+    # Profile i urlopy całego zespołu tekstu pobieramy naraz zamiast osobno dla każdej osoby.
+    from core.selectors.people import team_availability
+    team_users = [user, *(item.assigned_to for item in assignments.values()),
+                  *(stage.assignment.assigned_to for stage in stages if stage.assignment_id)]
+    team_state = team_availability(team_users)
+    actor_on_leave = team_state[user.pk]["on_leave"] if user.pk in team_state else False
     availability = {}
+    leave_cache = {}
+    for member in team_users:
+        if member is None or member.pk is None or member.pk not in team_state:
+            continue
+        state = team_state[member.pk]
+        active = bool(member.is_authenticated and member.is_active and (member.is_superuser or state["profile"]))
+        availability[(member.pk, False)] = '' if active else 'ma nieaktywne konto'
+        availability[(member.pk, True)] = ('' if not state["on_leave"] else 'jest na urlopie') if active else 'ma nieaktywne konto'
+        leave_cache[member.pk] = state["leave_information"]
     if first_verifier and unavailable_reason(first_verifier.assigned_to, cache=availability) or actor_on_leave:
         can_start_first = False
     if editor and unavailable_reason(editor.assigned_to, cache=availability) or actor_on_leave:
@@ -852,7 +876,7 @@ def text_detail_context(*, user, text):
         user, text, stages, assignments, text_data,
         terminal=terminal, coordinator=coordinator, today=today,
         can_start_first=can_start_first, can_resume=can_resume or can_restart_editing,
-        availability=availability,
+        availability=availability, leave_cache=leave_cache,
     )
 
     row_by_id = {row["pk"]: row for row in stage_rows}
@@ -1113,7 +1137,7 @@ def unavailable_reason(user, *, leave=True, cache=None):
 
 
 def _detail_stage_rows(user, text, stages, assignments, text_data, *, terminal,
-                       coordinator, today, can_start_first, can_resume, availability=None):
+                       coordinator, today, can_start_first, can_resume, availability=None, leave_cache=None):
     def owned(role):
         assignment = assignments.get(role)
         return bool(assignment and assignment.assigned_to_id == user.pk)
@@ -1121,7 +1145,7 @@ def _detail_stage_rows(user, text, stages, assignments, text_data, *, terminal,
     from core.selectors.people import user_leave_information
     from core.services.texts import release_blocker
     from workflow.services import can_skip_fourth, user_can_complete_stage
-    leave_cache = {}
+    leave_cache = {} if leave_cache is None else leave_cache
     stage_rows = []
     for stage in stages:
         role = STAGE_ROLE_MAP.get(stage.stage_type)

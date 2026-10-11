@@ -1,7 +1,7 @@
 """Real availability and performer changes used by the inactivity report."""
 from django.db.models import Case, When, Value, DateField, CharField, ExpressionWrapper, F, Q, Exists, OuterRef, Subquery
 from django.utils import timezone
-from django.db.models.functions import Cast
+from django.db.models.functions import Cast, Coalesce, Greatest
 from workflow.models import WorkflowStage as S
 
 
@@ -38,13 +38,13 @@ def reset_changed_performers(text, before):
 
 
 def later_date(left, right):
-    """Null-safe maximum, identical on SQLite and MySQL."""
-    return Case(
-        When(**{left + '__isnull': True}, then=F(right)),
-        When(**{right + '__isnull': True}, then=F(left)),
-        When(**{left + '__gte': F(right)}, then=F(left)),
-        default=F(right), output_field=DateField(),
-    )
+    """Null-safe maximum, identical on SQLite and MySQL.
+
+    GREATEST zwraca NULL, gdy któryś argument jest pusty, więc każdy argument
+    uzupełniamy drugim: pusty + data = data, dwie puste = NULL. Każde pole pojawia
+    się w SQL dwa razy (wcześniej cztery), co przy zagnieżdżeniu skraca zapytanie.
+    """
+    return Greatest(Coalesce(F(left), F(right)), Coalesce(F(right), F(left)), output_field=DateField())
 
 
 def annotate_inactivity_clocks(query, today):
@@ -97,13 +97,15 @@ def annotate_inactivity_clocks(query, today):
                 started_at__isnull=False))),
             default=Exists(earlier),
         ),
+    ).alias(
+        # Wartości pośrednie nie trafiają do SELECT – liczy się tylko wynik końcowy.
         _clock_has_previous=Case(When(repetition__isnull=False, then=Exists(repeated_previous)),
                                  default=Exists(normal_previous)),
         _clock_previous_date=Case(
             When(repetition__isnull=False, then=Subquery(repeated_previous.values('ended_at')[:1])),
             default=Subquery(normal_previous.values('ended_at')[:1]), output_field=DateField()),
-    ).annotate(_clock_available=later_date('queued_at', '_clock_previous_date'))
-    query = query.annotate(_clock_after_change=later_date('_clock_available', 'waiting_reset_at'))
+    ).alias(_clock_available=later_date('queued_at', '_clock_previous_date'))
+    query = query.alias(_clock_after_change=later_date('_clock_available', 'waiting_reset_at'))
     return query.annotate(
         report_waiting_since=Cast(Case(
             When(report_blocked=True, then=Value(today)),

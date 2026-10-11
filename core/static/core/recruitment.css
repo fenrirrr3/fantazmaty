@@ -185,6 +185,7 @@
     }
 }
 
-.recruitment-actions {
+/* Rząd z próbkami ma własny, mniejszy odstęp – nie nadpisujemy go tutaj. */
+.recruitment-actions:not(.recruitment-sample-actions) {
     margin-bottom: var(--space-4);
 }

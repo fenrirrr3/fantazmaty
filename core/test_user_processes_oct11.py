@@ -210,3 +210,31 @@ class SharedTemplatesTests(StatusAssignmentFixtures):
             self.assertIn(f'action="{reverse("core:" + name)}"', page)
         self.assertIn('Zakończony etap nie oznacza gotowej redakcji',
                       self.client.get(reverse('core:editor_activity')).content.decode())
+
+
+class TeamAvailabilityTests(StatusAssignmentFixtures):
+    def test_batch_matches_single_lookups(self):
+        from core.permissions import get_active_person_profile
+        from core.selectors.people import team_availability, user_leave_information
+        from people.leave_access import is_on_leave
+        U = get_user_model()
+        on_leave = U.objects.create_user('leave', 'leave@example.com', 'x')
+        Person.objects.create(user=on_leave, first_name='Na', last_name='Urlopie', email=on_leave.email)
+        Vacation.objects.create(person=on_leave.person_profile, start_date=self.today - timedelta(days=1),
+                                end_date=timezone.now() + timedelta(days=3))
+        planned = U.objects.create_user('planned', 'planned@example.com', 'x')
+        Person.objects.create(user=planned, first_name='Plan', last_name='Urlop', email=planned.email)
+        Vacation.objects.create(person=planned.person_profile, start_date=self.today + timedelta(days=10),
+                                end_date=timezone.now() + timedelta(days=12))
+        inactive = U.objects.create_user('inactive', 'inactive@example.com', 'x', is_active=False)
+        Person.objects.create(user=inactive, first_name='Nie', last_name='Aktywny', email=inactive.email)
+        hidden = U.objects.create_user('hidden', 'hidden@example.com', 'x')
+        Person.objects.create(user=hidden, first_name='Ukryty', last_name='Profil', email=hidden.email, is_active=False)
+        Vacation.objects.create(person=hidden.person_profile, start_date=self.today, until_revoked=True)
+        users = [self.admin, self.member, on_leave, planned, inactive, hidden]
+        batch = team_availability(users)
+        for user in users:
+            with self.subTest(user=user.username):
+                self.assertEqual(batch[user.pk]['profile'], get_active_person_profile(user))
+                self.assertEqual(batch[user.pk]['on_leave'], is_on_leave(user))
+                self.assertEqual(batch[user.pk]['leave_information'], user_leave_information(user))

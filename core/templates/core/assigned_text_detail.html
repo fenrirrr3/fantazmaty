@@ -26,8 +26,8 @@
             </div>
 
             <div class="detail-header-actions">
-                {% if is_novel and can_manage_workflow and text.anthology.status != 'ready' %}<a class="secondary-button small-button" href="{% url 'core:chapter_edit' text.anthology.pk text.pk %}">Edytuj rozdział</a>{% endif %}
-                {% if user.is_superuser %}<a class="secondary-button small-button" href="{% url 'admin:texts_text_change' text.pk %}">Edytuj w adminie</a>{% endif %}
+                {% if is_novel and can_manage_workflow and text.anthology.status != 'ready' %}<a class="secondary-button" href="{% url 'core:chapter_edit' text.anthology.pk text.pk %}">Edytuj rozdział</a>{% endif %}
+                {% if user.is_superuser %}<a class="secondary-button" href="{% url 'admin:texts_text_change' text.pk %}">Edytuj w adminie</a>{% endif %}
             <a href="{% if return_url %}{{ return_url }}{% elif is_novel %}{% url 'core:novel_detail' text.anthology.pk %}{% elif is_translation %}{% url 'core:translation_list' %}{% else %}{% url 'core:text_list' %}{% endif %}" class="secondary-button">
                 {% if return_url %}Wróć do poprzedniej listy{% elif is_novel %}Wróć do powieści{% elif is_translation %}Wróć do tłumaczeń{% else %}Wróć do tekstów{% endif %}
             </a>
@@ -221,7 +221,7 @@
                     <div class="quick-stage-card"><strong>{{ stage.get_stage_type_display }} – rezerwacja</strong>
                     <form method="post" action="{% url 'core:change_scheduled_workflow_stage' stage.pk %}">{% include "core/includes/workflow_fields.html" %}
                     <label for="schedule-{{ stage.pk }}">Data rozpoczęcia</label><input id="schedule-{{ stage.pk }}" type="date" name="started_at" min="{{ today_iso }}" value="{{ stage.started_at|date:'Y-m-d' }}" required>
-                    <button type="submit" name="action" value="save" class="primary-button">Zapisz datę</button><button type="submit" name="action" value="cancel" formnovalidate class="secondary-button" data-confirm="Odwołać rezerwację? Etap wróci do puli i może go wziąć inna osoba.">Odwołaj rezerwację</button>
+                    <div class="actions"><button type="submit" name="action" value="save" class="primary-button">Zapisz datę</button><button type="submit" name="action" value="cancel" formnovalidate class="secondary-button" data-confirm="Odwołać rezerwację? Etap wróci do puli i może go wziąć inna osoba.">Odwołaj rezerwację</button></div>
                     </form></div>
                     {% elif stage.can_release %}
                     <div class="quick-stage-card"><strong>{{ stage.get_stage_type_display }}{% if stage.is_reservation %} – rezerwacja{% endif %}</strong>

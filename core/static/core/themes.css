@@ -25,10 +25,16 @@
     --ready-edit-bg: #d3f3f1; --ready-edit-fg: #145d59;
     --reviewer-bg: #ccfbf1; --reviewer-fg: #115e59;
     --coordinator-bg: #ffedd5; --coordinator-fg: #9a3412;
+    --right-hand-bg: #334155; --right-hand-fg: #ffffff;
+    --illustrator-bg: #fce7f3; --illustrator-fg: #86134f;
+    --designer-bg: #e0e7ff; --designer-fg: #373080;
+    --narrator-bg: #efdfca; --narrator-fg: #623a16;
+    --typesetter-bg: #edf0c6; --typesetter-fg: #4b5614;
+    --sound-engineer-bg: #cff3fc; --sound-engineer-fg: #15546b;
     /* Chrome: header bar, sidebar, overlays (constant unless a theme overrides). */
-    --header-fg: #ffffff; --header-muted: #b9c7d7; --header-soft: #dbe5f0;
-    --header-hover: #293e56; --header-accent: #80baff; --header-border: #49617b;
-    --header-control-border: #647589; --header-menu-border: #35495f;
+    --header-fg: #ffffff; --header-muted: #b9c7d7;
+    --header-hover: #293e56; --header-accent: #80baff;
+    --header-control-border: #647589;
     --header-divider: rgb(255 255 255 / 8%);
     --sidebar-heading-bg: #e4eaf2; --sidebar-heading-fg: #293e56;
     --sidebar-link-bg: #f0f3f7; --sidebar-link-ring: #d7dfe9;
@@ -38,7 +44,7 @@
     --warning-accent: #bf8d20;
     --badge-neutral-bg: #edf1f5; --badge-neutral-fg: #526176;
     --accent: #6d28d9; --accent-hover: #4c1d95; --on-accent: #ffffff;
-    --media-bg: #101820; --logo-bg: #ffffff;
+    --logo-bg: #ffffff;
     --backdrop: rgb(15 26 40 / 48%);
 }
 
@@ -65,6 +71,12 @@
     --ready-edit-bg: #163f41; --ready-edit-fg: #91e0dc;
     --reviewer-bg: #143d3b; --reviewer-fg: #99f6e4;
     --coordinator-bg: #492b1b; --coordinator-fg: #fdba74;
+    --right-hand-bg: #475569; --right-hand-fg: #ffffff;
+    --illustrator-bg: #4a2339; --illustrator-fg: #f9b8d9;
+    --designer-bg: #2c305e; --designer-fg: #c9cdff;
+    --narrator-bg: #45331f; --narrator-fg: #f0cfa3;
+    --typesetter-bg: #393e1c; --typesetter-fg: #e1e89b;
+    --sound-engineer-bg: #163e4b; --sound-engineer-fg: #a6e9f8;
     --sidebar-heading-bg: var(--table-header); --sidebar-heading-fg: var(--text);
     --sidebar-link-bg: var(--surface-alt); --sidebar-link-ring: var(--border);
     --table-header-fg: var(--text);
@@ -87,7 +99,7 @@
     --danger-border: #dab0a0; --danger-hover: #f6d9cb;
     --warning: #71500c; --warning-light: #fff0c9;
     --header-muted: #eddbc4; --header-hover: #70472d;
-    --header-border: #b8956f; --header-control-border: #b8956f;
+    --header-control-border: #b8956f;
     --sidebar-heading-bg: var(--table-header); --sidebar-heading-fg: var(--header);
     --sidebar-link-bg: var(--surface-alt); --sidebar-link-ring: var(--border);
     --table-header-fg: #5a4330;
@@ -105,16 +117,16 @@
 [data-palette="withdrawn"] { --palette-bg: var(--danger-light); --palette-fg: var(--danger-dark); }
 [data-palette="reviewer"] { --palette-bg: var(--reviewer-bg); --palette-fg: var(--reviewer-fg); }
 [data-palette="coordinator"] { --palette-bg: var(--coordinator-bg); --palette-fg: var(--coordinator-fg); }
-[data-palette="right-hand"] { --palette-bg: #334155; --palette-fg: #ffffff; }
-[data-palette="illustrator"] { --palette-bg: #fce7f3; --palette-fg: #86134f; }
-[data-palette="designer"] { --palette-bg: #e0e7ff; --palette-fg: #373080; }
-[data-palette="narrator"] { --palette-bg: #efdfca; --palette-fg: #623a16; }
-[data-palette="typesetter"] { --palette-bg: #edf0c6; --palette-fg: #4b5614; }
-[data-palette="sound-engineer"] { --palette-bg: #cff3fc; --palette-fg: #15546b; }
+[data-palette="right-hand"] { --palette-bg: var(--right-hand-bg); --palette-fg: var(--right-hand-fg); }
+[data-palette="illustrator"] { --palette-bg: var(--illustrator-bg); --palette-fg: var(--illustrator-fg); }
+[data-palette="designer"] { --palette-bg: var(--designer-bg); --palette-fg: var(--designer-fg); }
+[data-palette="narrator"] { --palette-bg: var(--narrator-bg); --palette-fg: var(--narrator-fg); }
+[data-palette="typesetter"] { --palette-bg: var(--typesetter-bg); --palette-fg: var(--typesetter-fg); }
+[data-palette="sound-engineer"] { --palette-bg: var(--sound-engineer-bg); --palette-fg: var(--sound-engineer-fg); }
 
 /* Poprawki zależne od motywu, których nie da się wyrazić samymi zmiennymi. */
 /* :where() zeruje specyficzność, więc kolory komponentów (błędy, ostrzeżenia) wygrywają. */
-:where(:root[data-theme="dark"]) :where(p, label, input, textarea, select, .detail-link, .text-title-link) { color: var(--text); }
+:where(:root[data-theme="dark"]) :where(label, input, textarea, select, .detail-link, .text-title-link) { color: var(--text); }
 :root[data-theme="dark"] .brand-text small { color: var(--text); }
 
 /* Wydruk: czarno-biała paleta i ciaśniejsze tabele. */

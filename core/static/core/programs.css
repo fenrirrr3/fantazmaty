@@ -76,8 +76,8 @@
 }
 
 .odkurzacz input[type="file"]:focus-visible {
-    outline: 3px solid var(--primary);
-    outline-offset: 3px;
+    outline: var(--focus-width) solid var(--focus-ring);
+    outline-offset: var(--focus-offset);
 }
 
 .repetitions-fields {
@@ -91,24 +91,33 @@
     justify-self: start;
 }
 
+/* Przyciski w jednym rzędzie z odstępem 12 px (jak .actions); opis, pasek i uwagi w osobnych wierszach. */
 .program-progress {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
     margin: var(--space-4) 0;
+}
+
+.program-progress > :is(p, progress, .form-warning) {
+    flex-basis: 100%;
 }
 
 .program-progress progress {
     display: block;
     width: 100%;
     height: var(--space-4);
-    margin: var(--space-3) 0;
+    margin: 0;
     accent-color: var(--primary);
 }
 
 .program-progress p {
-    margin: 0 0 var(--space-3);
+    margin: 0;
 }
 
 .program-progress :is(button, a) {
-    margin: var(--space-1) var(--space-2) var(--space-1) 0;
+    margin: 0;
 }
 
 @media screen and (max-width: 760px) {

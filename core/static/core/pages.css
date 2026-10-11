@@ -38,7 +38,7 @@
 }
 
 .auth-password-reset {
-    display: table;
+    display: flex;
     width: fit-content;
     margin: var(--space-3) auto 0;
     font-size: var(--font-size-sm);
@@ -215,7 +215,7 @@
 }
 
 .dashboard-grid .dashboard-list-item:focus-within {
-    outline: 2px solid var(--primary);
+    outline: var(--focus-width) solid var(--focus-ring);
     outline-offset: 2px;
 }
 
@@ -486,7 +486,6 @@ section:has(#reserved-assignments-heading) {
 
 .quick-stage-action:has(.start-stage-form) {
     align-items: flex-end;
-    gap: var(--space-5);
 }
 
 .quick-stage-description p {
@@ -573,7 +572,7 @@ section:has(#reserved-assignments-heading) {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(220px, 1fr);
     align-items: center;
-    gap: var(--space-5);
+    gap: var(--space-4);
     padding-block: var(--space-4);
 }
 
@@ -595,7 +594,6 @@ section:has(#reserved-assignments-heading) {
 }
 
 .work-handoff-card .management-action {
-    gap: var(--space-3);
     padding-block: var(--space-3);
 }
 
@@ -744,9 +742,6 @@ section:has(#reserved-assignments-heading) {
     margin-top: var(--space-5);
 }
 
-.correction-form-card form > button {
-    margin: 0 var(--space-2) var(--space-2) 0;
-}
 
 #correction-bulk {
     display: flex;

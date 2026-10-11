@@ -154,6 +154,7 @@
 
 .illustrator-search-results button {
     width: 100%;
+    justify-content: flex-start;
     text-align: left;
 }
 

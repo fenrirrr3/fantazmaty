@@ -48,6 +48,10 @@ def user_leave_information(user):
         .first()
     )
 
+    return _leave_payload(person, vacation, today)
+
+
+def _leave_payload(person, vacation, today):
     if vacation is None:
         return None
 
@@ -83,6 +87,51 @@ def user_leave_information(user):
         "is_active": is_active,
         "is_upcoming": is_upcoming,
     }
+
+
+def team_availability(users):
+    """Profil, urlop i informacja o urlopie dla wielu kont naraz (2 zapytania).
+
+    Wyniki są takie same jak z get_active_person_profile, is_on_leave
+    i user_leave_information wywoływanych osobno dla każdej osoby.
+    """
+    from collections import defaultdict
+    from core.permissions import is_active_user
+    from people.models import Person
+
+    users = {user.pk: user for user in users if user is not None and user.pk is not None}
+    if not users:
+        return {}
+    persons = {person.user_id: person for person in Person.objects.filter(user_id__in=users).select_related("user")}
+    now = timezone.now()
+    today = timezone.localdate(now)
+    vacations = defaultdict(list)
+    for vacation in (
+        Vacation.objects.filter(person__user_id__in=users)
+        .filter(Q(until_revoked=True) | Q(end_date__gt=now))
+        .select_related("person")
+        .order_by("start_date", "pk")
+    ):
+        vacations[vacation.person.user_id].append(vacation)
+    result = {}
+    for pk, user in users.items():
+        person = persons.get(pk)
+        profile = person if (
+            is_active_user(user) and person is not None and person.user.is_active
+            and person.is_active and not person.is_external
+        ) else None
+        own = vacations.get(pk, [])
+        upcoming = next(
+            (item for item in own if item.person.is_active
+             and item.start_date <= today + timedelta(days=UPCOMING_LEAVE_DAYS)),
+            None,
+        ) if profile is not None else None
+        result[pk] = {
+            "profile": profile,
+            "on_leave": any(item.start_date <= today for item in own),
+            "leave_information": _leave_payload(profile, upcoming, today) if profile is not None else None,
+        }
+    return result
 
 def profile_assignments(person, *, include_authors):
     from texts.extract_volumes import profile_volume_credits

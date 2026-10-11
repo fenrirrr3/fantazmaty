@@ -57,6 +57,23 @@ html[data-theme="dark"] {
     }
 }
 
+/* Paginacja CMS w panelu: themes.css nie jest tu ładowany, więc kolory
+   bierzemy ze zmiennych motywu admina (jasny, ciemny i automatyczny). */
+.cms-pagination {
+    --text: var(--body-fg);
+    --surface: var(--body-bg);
+    --surface-hover: var(--darkened-bg);
+    --border-strong: var(--border-color);
+    --primary: var(--link-fg);
+    --focus-ring: var(--cms-focus);
+}
+
+/* Długie fragmenty kodu w opisach pól nie rozpychają strony na telefonie. */
+#content code {
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
+
 #header {
     flex-wrap: wrap;
     gap: var(--space-2) var(--space-4);

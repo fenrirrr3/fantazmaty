@@ -136,7 +136,7 @@
 }
 
 .multi-filter-option:focus-within {
-    outline: 2px solid var(--focus-ring);
+    outline: var(--focus-width) solid var(--focus-ring);
     outline-offset: 2px;
 }
 
@@ -454,6 +454,16 @@ label:is(.boolean-filter-toggle, .important-note-toggle, .vacation-checkbox, .co
     max-width: 100%;
 }
 
+/* Chipy aktywnych filtrów pod formularzem – odstęp jak między wierszami formularza. */
+.filters-form + .active-filters {
+    margin-top: var(--space-3);
+}
+
+/* Zakładki przewijają się w poziomie – pierścień fokusu do środka, bez ucinania. */
+:is(.tabs, .my-texts-filters) > :focus-visible {
+    outline-offset: calc(-1 * var(--focus-width));
+}
+
 .filters-form[data-filters="my_texts"] .stage-filter-field .checkbox-dropdown-options {
     max-width: min(290px, 85vw);
     max-height: 220px;
@@ -661,8 +671,8 @@ fieldset.multi-filter-field {
 }
 
 :is(.intake-panel, .program-tool, .work-handoff-card, .text-team, .archived-stages, .review-summary-details, .text-management-card) > summary:focus-visible {
-    outline: 2px solid var(--focus-ring);
-    outline-offset: -3px;
+    outline: var(--focus-width) solid var(--focus-ring);
+    outline-offset: calc(-1 * var(--focus-width));
 }
 
 /* Rozwijane notatki i opinie wewnątrz kart. */
@@ -1283,7 +1293,8 @@ a[href^="mailto:"] {
     }
 
     .filter-field,
-    .global-search-field {
+    .global-search-field,
+    .filters-form[data-filters="my_texts"] .stage-filter-field {
         width: 100%;
     }
 
@@ -1468,7 +1479,8 @@ a[href^="mailto:"] {
     }
 
     :root[data-theme] :is(.primary-button, .assign-button, .complete-stage-button, .accept-review-button,
-        .danger-button, .withdraw-text-button, .reject-review-button, .unassign-button, .vacation-end-button) {
+        .danger-button, .withdraw-text-button, .reject-review-button, .unassign-button, .vacation-end-button,
+        .audio-finish-button, .secondary-button:is(.audiobook-public-button, .illustration-public-button, .illustration-drive-button)) {
         border-color: gray;
         background: white;
         color: black;

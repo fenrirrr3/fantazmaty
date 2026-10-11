@@ -98,8 +98,8 @@ pre {
 }
 
 :focus-visible {
-    outline: 3px solid var(--focus-ring);
-    outline-offset: 3px;
+    outline: var(--focus-width) solid var(--focus-ring);
+    outline-offset: var(--focus-offset);
 }
 
 .sr-only,

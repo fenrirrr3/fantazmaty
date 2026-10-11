@@ -4,8 +4,8 @@
 <header class="page-header"><h1>{{ person.name }}</h1><p class="page-description">Jeden profil lektora i montażysty – łączy wszystkie nagrania i montaże tej osoby.</p><a class="secondary-button" href="{% url 'core:audiobooks' %}">Audiobooki</a></header>
 <section class="card"><div class="card-body">
 {% if show_email and person.email %}<p>E-mail: <a href="mailto:{{ person.email }}">{{ person.email }}</a></p>{% endif %}
-{% if person.user.person_profile %}<a class="secondary-button" href="{% url 'core:person_detail' person.user.person_profile.pk %}">Profil członka zespołu</a>{% endif %}
-{% if user.is_superuser %}<a class="secondary-button" href="{% url 'admin:core_audiocontributor_change' person.pk %}">Panel admina</a>{% endif %}
+{% if person.user.person_profile or user.is_superuser %}<div class="actions">{% if person.user.person_profile %}<a class="secondary-button" href="{% url 'core:person_detail' person.user.person_profile.pk %}">Profil członka zespołu</a>{% endif %}
+{% if user.is_superuser %}<a class="secondary-button" href="{% url 'admin:core_audiocontributor_change' person.pk %}">Panel admina</a>{% endif %}</div>{% endif %}
 {% if form %}<form method="post" class="audio-production-form" data-warn-unsaved>{% csrf_token %}{{ form.non_field_errors }}
 {% for field in form %}<div class="form-field">{{ field.label_tag }}{{ field }}{% if field.help_text %}<p class="muted-text">{{ field.help_text }}</p>{% endif %}{{ field.errors }}</div>{% endfor %}
 <button class="primary-button" type="submit">Zapisz profil</button></form>{% endif %}

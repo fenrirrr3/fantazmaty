@@ -33,10 +33,12 @@ document.addEventListener('DOMContentLoaded', () => {
             if (params.has('old_reviews')) cleared.set('old_reviews', params.get('old_reviews'));
             if (params.has('view')) cleared.set('view', params.get('view'));
             clear.href = `${location.pathname}?${cleared}`;
-            clear.textContent = 'Wyczyść wszystkie'; 
+            clear.textContent = 'Wyczyść wszystkie';
+            // Ta sama wysokość co chipy filtrów (mały przycisk).
+            clear.className = 'secondary-button small-button';
             const target = form.querySelector('[data-active-filters-target]');
             if (target) target.append(chips);
-            else { clear.className = 'secondary-button'; chips.append(clear); form.after(chips); }
+            else { chips.append(clear); form.after(chips); }
         }
         const empty = main.querySelector('.empty-results-panel');
         if (empty && !form.querySelector('.field-error, .errorlist, [aria-invalid="true"]') && main.querySelector('table tbody tr td[colspan]')) {
@@ -58,7 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
         summaryText.textContent = dropdown.dataset.emptyLabel; summary.append(summaryText);
         const options = document.createElement('div'); options.className = 'checkbox-dropdown-options';
         options.setAttribute('role', 'group'); options.setAttribute('aria-label', select.labels?.[0]?.textContent.trim() || 'Statusy');
-        const clear = document.createElement('button'); clear.type = 'button'; clear.textContent = 'Wyczyść wybór'; clear.dataset.checkboxClear = '';
+        const clear = document.createElement('button'); clear.type = 'button'; clear.textContent = 'Wyczyść wybór'; clear.dataset.checkboxClear = ''; clear.className = 'secondary-button small-button checkbox-dropdown-clear';
         options.append(clear);
         [...select.options].filter(option => option.value).forEach(option => {
             const label = document.createElement('label'); label.className = 'multi-filter-option';

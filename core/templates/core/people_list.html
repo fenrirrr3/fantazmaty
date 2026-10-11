@@ -43,7 +43,7 @@
                 <details class="checkbox-dropdown" data-checkbox-dropdown data-empty-label="Wszystkie role">
                     <summary aria-labelledby="team-roles-label team-roles-summary"><span id="team-roles-summary" data-checkbox-summary>Wszystkie role</span></summary>
                     <div class="checkbox-dropdown-options">
-                        <button type="button" class="secondary-button" data-checkbox-clear>Wyczyść wybór</button>
+                        <button type="button" class="secondary-button small-button checkbox-dropdown-clear" data-checkbox-clear>Wyczyść wybór</button>
                         <div class="multi-filter-options" role="group" aria-labelledby="team-roles-label">
                             {% for checkbox in filter_form.roles %}
                                 <label class="multi-filter-option" for="{{ checkbox.id_for_label }}">

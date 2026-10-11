@@ -9,9 +9,11 @@
                 <div class="form-field"><label class="text-production-checkbox">{{ audiobook_form.audiobook_blacklisted }} {{ audiobook_form.audiobook_blacklisted.label }}</label>{{ audiobook_form.audiobook_blacklisted.errors }}</div>
                 {% if text.audiobook_blacklisted %}<p class="muted-text">Tekst jest na czarnej liście audiobooków. Odblokowanie jest możliwe wyłącznie w panelu admina.</p>
                 {% else %}<p class="muted-text">„Do nagrywania” dodaje opowiadanie do listy audiobooków. „Czarna lista” wyłącza nagrywanie; blokadę można zdjąć wyłącznie w panelu admina.</p>{% endif %}
-                <button type="submit" class="primary-button">Zapisz</button>
-                <a href="{% url 'core:audiobooks' %}" class="secondary-button">Przejdź do Audiobooków</a>
-                <a href="{% url 'core:audiobook_detail' text.pk %}" class="secondary-button">Otwórz audiobook</a>
+                <div class="actions">
+                    <button type="submit" class="primary-button">Zapisz</button>
+                    <a href="{% url 'core:audiobooks' %}" class="secondary-button">Przejdź do Audiobooków</a>
+                    <a href="{% url 'core:audiobook_detail' text.pk %}" class="secondary-button">Otwórz audiobook</a>
+                </div>
             </form>
         </div></section>
         <section class="card" id="text-illustration"><div class="card-body">

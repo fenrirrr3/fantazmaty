@@ -7,6 +7,9 @@
  *   1100px – wąski ekran komputera.
  */
 :root {
+    /* Pierścień fokusu: jedna grubość i odsunięcie w całej aplikacji. */
+    --focus-width: 3px;
+    --focus-offset: 3px;
     /* Odstępy: 4 / 8 / 12 / 16 / 24 / 32 / 48 px. */
     --space-1: 4px;
     --space-2: 8px;
@@ -41,7 +44,6 @@
     --control-height: 36px;
     --control-height-sm: 30px;
     --control-padding-x: var(--space-3);
-    --control-padding-x-sm: var(--space-2);
     --checkbox-size: 16px;
     --badge-height: 24px;
 

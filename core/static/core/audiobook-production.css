@@ -90,6 +90,15 @@
     --badge-fg: #3b5417;
 }
 
+/* Wersje dla ciemnego motywu: ciemne tło, jasny tekst w tej samej barwie. */
+:root[data-theme="dark"] .audio-status { --badge-bg: #2a3443; --badge-fg: #d5dde8; }
+:root[data-theme="dark"] .audio-status--recording { --badge-bg: #463a17; --badge-fg: #ffe08a; }
+:root[data-theme="dark"] .audio-status--proofreading { --badge-bg: #1f3f2c; --badge-fg: #a8e6bf; }
+:root[data-theme="dark"] .audio-status--corrections { --badge-bg: #4a2d18; --badge-fg: #fdc28f; }
+:root[data-theme="dark"] .audio-status--editing { --badge-bg: #382a55; --badge-fg: #d9c6ff; }
+:root[data-theme="dark"] .audio-status--awaiting_publication { --badge-bg: #163f3d; --badge-fg: #9fe6df; }
+:root[data-theme="dark"] .audio-status--published { --badge-bg: #2f3d1b; --badge-fg: #cde3a4; }
+
 /* Tabele */
 
 .audio-table th {
@@ -236,19 +245,19 @@
     min-width: var(--control-height);
 }
 
-@media (max-width: 1100px) {
+@media screen and (max-width: 1100px) {
     .audio-detail-columns {
         grid-template-columns: 1fr;
     }
 }
 
-@media (max-width: 760px) {
+@media screen and (max-width: 760px) {
     .audio-filters, .audio-metadata {
         grid-template-columns: 1fr;
     }
 }
 
-@media (max-width: 480px) {
+@media screen and (max-width: 480px) {
     .audio-name-profile {
         grid-template-columns: 1fr;
     }

@@ -3,7 +3,7 @@
 {% block extra_css %}<link rel="stylesheet" href="{% static 'core/intake.css' %}">{% endblock %}
 {% block content %}
 <header class="page-header"><h1 class="page-title">Pobieranie zgłoszeń</h1><p class="page-description">Jednorazowo do {{ max_messages }} wiadomości.</p></header>
-<p><a class="secondary-button" href="{% url 'core:review_create' %}">Dodaj zgłoszenie lub importuj wiele zgłoszeń</a> <a class="secondary-button" href="{% url 'admin:core_mailboxconnection_changelist' %}">Ustawienia skrzynki</a></p>
+<p class="actions"><a class="secondary-button" href="{% url 'core:review_create' %}">Dodaj zgłoszenie lub importuj wiele zgłoszeń</a><a class="secondary-button" href="{% url 'admin:core_mailboxconnection_changelist' %}">Ustawienia skrzynki</a></p>
 <section class="card mailbox-import-card"><div class="card-body">
 {% if skipped_errors %}<div class="form-error" role="alert"><strong>Pominięte zgłoszenia:</strong><ul>{% for skipped in skipped_errors %}<li>{{ skipped }}</li>{% endfor %}</ul></div>{% endif %}
 {% if error %}<p class="form-error" role="alert">{{ error }}</p>{% endif %}
@@ -29,7 +29,7 @@
 <div class="table-container"><table data-email-mailbox="true"><thead><tr><th>Wybierz</th><th>Data wiadomości</th><th>Nadawca (odpowiedź do)</th><th>Temat</th><th>Pobrano</th></tr></thead><tbody>
 {% for row in result.rows %}<tr><td><input type="checkbox" name="uids" value="{{ row.uid }}" {% if row.uid in selected %}checked{% endif %} aria-label="Wybierz {{ row.subject }}"></td><td>{{ row.date|default:'–' }}</td><td>{{ row.sender|default:'–' }}</td><td>{{ row.subject|default:'(bez tematu)' }}</td><td>{{ row.downloaded|yesno:'Tak,Nie' }}</td></tr>{% empty %}<tr><td colspan="5">Brak wiadomości do wyświetlenia.</td></tr>{% endfor %}
 </tbody></table></div>
-<div class="pagination-bar"><div class="pagination-links">
+<div class="pagination-bar"><div class="pagination-links actions">
 {% if result.previous_cursor %}<button class="secondary-button" name="cursor" value="{{ result.previous_cursor }}">← Nowsze</button>{% endif %}
 {% if result.next_cursor %}<button class="secondary-button" name="cursor" value="{{ result.next_cursor }}">Starsze →</button>{% endif %}
 </div></div>

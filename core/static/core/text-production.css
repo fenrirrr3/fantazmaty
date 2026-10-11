@@ -72,17 +72,12 @@
     margin-top: auto;
 }
 
-.text-tags-form .text-tags-actions button {
-    margin-top: 0;
-}
-
 .text-detail-pair[data-detail-pair="management"] .text-management-content {
     padding: var(--space-3) var(--card-padding);
 }
 
 .text-detail-pair[data-detail-pair="management"] .management-action {
     padding-block: var(--space-2);
-    gap: var(--space-3);
 }
 
 .text-detail-pair[data-detail-pair="management"] .management-action-description p {

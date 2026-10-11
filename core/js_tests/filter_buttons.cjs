@@ -26,6 +26,6 @@ for(const embedded of [true,false]){
  const accepted=chips.children[2];params=new URL(accepted.href,'https://cms.test').searchParams;
  assert.deepEqual(params.getAll('accepted'),['0']);
  assert.equal(accepted.attributes['aria-label'],'Usuń filtr: Przyjęci');
- if(!embedded)assert.equal(chips.children[3].className,'secondary-button');
+ if(!embedded)assert.equal(chips.children[3].className,'secondary-button small-button');
 }
 console.log('OK: embedded filter buttons, separate filter buttons, clear URLs and accessibility labels.');

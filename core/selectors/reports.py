@@ -649,9 +649,12 @@ def _inactivity_stages(today, active_days, waiting_days, mode, selected_stages, 
     waiting_limit = today - timedelta(days=waiting_days)
 
     active_condition = Q(started_at__lte=today, report_active_since__lte=active_limit)
-    waiting_condition = Q(started_at__isnull=True) & (
-        Q(report_waiting_since__lte=waiting_limit) | Q(report_waiting_since__isnull=True)
-    )
+    # Brak daty oczekiwania też jest przestojem; COALESCE zastępuje warunek
+    # „<= próg LUB puste” jednym odwołaniem do (rozbudowanego) wyrażenia daty.
+    from django.db.models import DateField
+    from django.db.models.functions import Coalesce
+    stages = stages.alias(_waiting_key=Coalesce("report_waiting_since", Value(waiting_limit), output_field=DateField()))
+    waiting_condition = Q(started_at__isnull=True, _waiting_key__lte=waiting_limit)
 
     if mode == "active":
         stages = stages.filter(active_condition)

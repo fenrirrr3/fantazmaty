@@ -5,8 +5,8 @@
 <header class="page-header">
 <p class="eyebrow">Powieść</p><h1 class="page-title">{{ book.title }}</h1>
 <p class="page-description">{% for author in profile.authors.all %}{{ author.display_name }}{% if not forloop.last %}, {% endif %}{% empty %}Nie podano autora{% endfor %} · {{ book.get_status_display }}</p>
-<a class="secondary-button" href="{% url 'core:novel_list' %}">Wróć do powieści</a>
-{% if user.is_superuser and profile %}<a class="secondary-button" href="{% url 'admin:texts_novelprofile_change' profile.pk %}">Edytuj dane w panelu admina</a>{% endif %}
+<div class="actions"><a class="secondary-button" href="{% url 'core:novel_list' %}">Wróć do powieści</a>
+{% if user.is_superuser and profile %}<a class="secondary-button" href="{% url 'admin:texts_novelprofile_change' profile.pk %}">Edytuj dane w panelu admina</a>{% endif %}</div>
 </header>
 {% if error %}<div class="message error" role="alert">{{ error }}</div>{% endif %}
 <div class="novel-overview-grid{% if not coordinator or not is_open %} novel-overview-grid-single{% endif %}">
