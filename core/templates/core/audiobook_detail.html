@@ -52,43 +52,33 @@
 </div>
 <section class="card audio-stage-card"><div class="card-body">
     <h2>Etapy audiobooka</h2><p>{% include "core/includes/audiobook_status.html" %}</p>
-    {% if audio.paused_at %}<p class="form-warning">Prace wstrzymane od {{ audio.paused_at|date:"d.m.Y" }}. Etapów nie można rozpoczynać ani kończyć do wznowienia.</p>{% endif %}
     {% if not eligible %}<p class="muted-text">Tekst wyłączono z produkcji audiobooków. Dotychczasowe dane są zachowane.</p>{% endif %}
     {% if errors %}<ul class="errorlist">{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul>{% endif %}
     <div class="table-container" role="region" tabindex="0" aria-label="Historia etapów audiobooka">
-    <table class="data-table" data-pagination="off"><thead><tr><th>Etap</th><th>Oczekuje od</th><th>Rozpoczęcie</th><th>Zakończenie</th><th>Stan</th></tr></thead>
+    <table class="data-table" data-pagination="off"><thead><tr><th>Etap</th><th>Dostępny od</th><th>Rozpoczęcie</th><th>Zakończenie</th><th>Stan</th></tr></thead>
     <tbody>{% for stage in stages %}<tr>
         <td>{{ stage.get_stage_type_display }}{% if stage.stage_type == 'proofreading' %}{% if stage.performer %}<br><span class="muted-text">{{ stage.performer.person_profile|default:stage.performer.get_full_name }}</span>{% elif stage.pk == audio.active_stage_id and audio.proofreader %}<br><span class="muted-text">{{ proofreader_display }}</span>{% endif %}{% endif %}</td>
         <td>{{ stage.queued_at|date:"d.m.Y"|default:"–" }}</td>
         <td>{% if stage.started_at %}{{ stage.started_at|date:"d.m.Y" }}{% elif stage.is_started %}?{% else %}–{% endif %}</td>
         <td>{% if stage.ended_at %}{{ stage.ended_at|date:"d.m.Y" }}{% elif stage.is_completed %}?{% else %}–{% endif %}</td>
-        <td>{% if stage.is_completed %}<span class="stage-status completed">Zakończony</span>{% elif stage.is_started %}<span class="stage-status active">Trwa</span>{% else %}<span class="stage-status pending">Oczekuje</span>{% endif %}</td>
+        <td>{% if stage.is_completed %}<span class="stage-status completed">Zakończony</span>{% elif stage.is_started %}<span class="stage-status active">Trwa</span>{% else %}<span class="stage-status pending">{% if stage.stage_type == 'proofreading' and not audio.proofreader_id %}Do przejęcia{% else %}Do rozpoczęcia{% endif %}</span>{% endif %}</td>
     </tr>{% empty %}<tr><td colspan="5">Nie ma jeszcze etapów.</td></tr>{% endfor %}</tbody></table></div>
 
     {% if can_start %}<form method="post" class="audio-stage-add audio-production-form">
         {% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="start_stage">
-        <h3>Rozpocznij: {{ current_stage.get_stage_type_display }}</h3>
+        <h3>Rozpocznij: {{ next_label }}</h3>
         {% if can_coordinate %}<div class="form-field">{{ date_form.date.label_tag }}{{ date_form.date }}{{ date_form.date.errors }}<p class="form-help">Puste pole – data rozpoczęcia nieznana.</p></div>{% endif %}
-        <div class="actions"><button class="primary-button" data-confirm="Rozpocząć etap „{{ current_stage.get_stage_type_display }}”?">Rozpocznij etap</button></div>
+        {% if current_stage.stage_type == 'proofreading' %}<p class="form-help">Korektę może też przejąć korektor w zakładce Korekta audiobooków.</p>{% endif %}
+        <div class="actions"><button class="primary-button" data-confirm="Rozpocząć etap „{{ next_label }}”?">Rozpocznij</button></div>
     </form>{% endif %}
     {% if can_finish %}<form method="post" class="audio-stage-add audio-production-form">
         {% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="finish_stage"><input type="hidden" name="stage_id" value="{{ current_stage.pk }}">
         <h3>Zakończ: {{ current_stage.get_stage_type_display }}</h3>
         {% if can_coordinate %}<div class="form-field">{{ date_form.date.label_tag }}{{ date_form.date }}{{ date_form.date.errors }}<p class="form-help">Puste pole – data zakończenia nieznana.</p></div>{% endif %}
-        {% if current_stage.stage_type == 'recording' %}<p class="form-help">Po nagraniu audiobook trafi do zakładki Korekta audiobooków.</p>{% elif current_stage.stage_type == 'editing' %}<p class="form-help">Po montażu audiobook będzie oczekiwał na publikację (data premiery i linki).</p>{% else %}<p class="form-help">Dalszy krok wybierze koordynator.</p>{% endif %}
+        <p class="form-help">{% if current_stage.stage_type == 'recording' %}Po nagraniu tekst trafi do zakładki Korekta audiobooków.{% elif current_stage.stage_type == 'proofreading' %}Następny etap: Nanoszenie poprawek.{% elif current_stage.stage_type == 'corrections' %}Następny etap: Montaż.{% else %}Po montażu audiobook będzie oznaczony jako opublikowany – uzupełnij datę premiery i linki w sekcji Publikacja.{% endif %}</p>
         <div class="actions"><button class="audio-finish-button" data-confirm="Zakończyć etap „{{ current_stage.get_stage_type_display }}”?">Zakończ etap</button></div>
     </form>{% endif %}
-    {% if can_queue %}<form method="post" class="audio-stage-add audio-production-form">
-        {% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="queue">
-        <h3>{% if audio.status == 'after_proofreading' %}Po korekcie – co dalej?{% elif audio.status == 'after_corrections' %}Po poprawkach – co dalej?{% elif audio.status == 'awaiting_publication' %}Przed publikacją potrzebna jest jeszcze praca?{% else %}Skieruj do etapu{% endif %}</h3>
-        <div class="form-field">{{ queue_form.stage_type.label_tag }}{{ queue_form.stage_type }}{{ queue_form.stage_type.errors }}</div>
-        <div class="actions"><button class="primary-button" data-confirm="Skierować audiobook do wybranego etapu?">Skieruj</button></div>
-    </form>{% endif %}
-    {% if audio.status == 'awaiting_publication' and can_edit %}<p class="muted-text">Aby opublikować, wpisz datę premiery i linki w sekcji Publikacja.</p>{% endif %}
-    {% if can_pause %}<form method="post" class="audio-pause-form">
-        {% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="{% if audio.paused_at %}resume{% else %}pause{% endif %}">
-        <div class="actions">{% if audio.paused_at %}<button class="secondary-button" data-confirm="Wznowić prace nad audiobookiem?">Wznów prace</button>{% else %}<button class="secondary-button" data-confirm="Wstrzymać prace nad audiobookiem?">Wstrzymaj prace</button>{% endif %}</div>
-    </form>{% endif %}
+    {% if audio.is_published and can_edit and not audio.premiere_date %}<p class="muted-text">Uzupełnij datę premiery i linki w sekcji Publikacja.</p>{% endif %}
 </div></section>
 </div>
 {% endblock %}

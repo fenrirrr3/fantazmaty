@@ -129,5 +129,5 @@ class AudioHistoryTests(TestCase):
             self.assertIn(label, section.text_content())
         empty = Text.objects.create(title='Bez produkcji', anthology=self.book, length=1)
         page = self.client.get(reverse('core:assigned_text_detail', args=[empty.pk]))
-        self.assertContains(page, 'Otwarte')
+        self.assertContains(page, 'Do wzięcia')
         self.assertFalse(Audiobook.objects.filter(text=empty).exists())

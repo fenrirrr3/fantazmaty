@@ -60,7 +60,9 @@ class AudioFinishV72Tests(TestCase):
         self.assertEqual(self.stage.ended_at, timezone.localdate())
         self.assertTrue(self.stage.is_completed)
         self.assertEqual(self.stage.performer, self.reader)
-        self.assertIsNone(self.audio.active_stage_id)
+        # Po korekcie tekst jest gotowy na nanoszenie poprawek (etap czeka na rozpoczęcie).
+        self.assertEqual((self.audio.status, self.audio.active_stage.stage_type), ('corrections', 'corrections'))
+        self.assertFalse(self.audio.active_stage.is_started)
         # Po zakończeniu korektor nie ma już uprawnień do etapu (a token jest nieaktualny).
         self.assertIn(self.client.post(self.detail, payload).status_code, (403, 409))
         self.assertNotContains(
@@ -99,13 +101,13 @@ class AudioFinishV72Tests(TestCase):
         self.assertEqual(
             doc.xpath('//button[contains(@class,"audio-finish-button")]/text()'), ["Zakończ etap"]
         )
-        row = doc.xpath('//table/tbody/tr[td[1][starts-with(normalize-space(.),"Nagranie")]]')[0]
+        row = doc.xpath('//table/tbody/tr[td[1][starts-with(normalize-space(.),"Nagrywanie")]]')[0]
         cells = ["".join(td.itertext()).strip() for td in row.xpath("./td")]
         self.assertEqual(cells[2:], ["?", "?", "Zakończony"])
         historical.ended_at = timezone.localdate()
         historical.save()
         row = html.fromstring(self.client.get(self.detail).content).xpath(
-            '//table/tbody/tr[td[1][starts-with(normalize-space(.),"Nagranie")]]')[0]
+            '//table/tbody/tr[td[1][starts-with(normalize-space(.),"Nagrywanie")]]')[0]
         self.assertEqual("".join(row.xpath("./td")[3].itertext()).strip(),
                          timezone.localdate().strftime("%d.%m.%Y"))
 

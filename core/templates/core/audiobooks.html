@@ -21,7 +21,7 @@
         <div class="audio-actions"><button class="primary-button" type="submit">Filtruj</button><a class="secondary-button" href="{% url 'core:audiobooks' %}">Wyczyść filtry</a></div>
     </form>
 </div></section>
-<p class="form-help">Etapy: data rozpoczęcia – data zakończenia. „?” oznacza brak zapisanej daty. Etap oczekujący widać w statusie.</p>
+<p class="form-help">Etapy: data rozpoczęcia – data zakończenia. „?” oznacza brak zapisanej daty. Status to bieżący etap; jeśli nie ma jeszcze dat, etap czeka na rozpoczęcie (korekta – na przejęcie przez korektora).</p>
 <section class="card" aria-label="Audiobooki">
     <div class="table-container" role="region" tabindex="0" aria-label="Tabela audiobooków">
         <table data-server-paginated="true" class="data-table audio-table">

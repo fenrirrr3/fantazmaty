@@ -13,11 +13,11 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from authors.models import Author
+from core.audiobook_models import StageType
 from core.audiobook_forms import (AudiobookPeopleForm, AudiobookPublicationForm,
-    AudiobookQueueForm, AudiobookStageDateForm, AudiobookAssignmentForm, eligible_proofreaders)
+    AudiobookStageDateForm, AudiobookAssignmentForm, eligible_proofreaders)
 from core.audiobook_services import (require_available, may_finish, start_stage, finish_stage, claim_proofreading,
-    can_claim_proofreading, allowed_next_stages, queue_stage, set_paused, refresh_status, status_filter,
-    stage_periods, STAGE_ORDER)
+    can_claim_proofreading, refresh_status, stage_periods, STAGE_ORDER)
 from core.edit_policy import edit_policy
 from core.models import Audiobook, AudiobookStage, EditRevision
 from core.pagination import paginate_items
@@ -67,7 +67,7 @@ STATUS_RANK = Case(*[When(audiobook__status=value, then=Value(index)) for index,
 def filter_statuses(rows, values):
     if not all(value in Audiobook.Status.values for value in values):
         return rows.none()
-    condition = status_filter(values)
+    condition = Q(audiobook__status__in=values)
     if Audiobook.Status.PENDING in values:
         condition |= Q(audiobook__isnull=True)
     return rows.filter(condition)
@@ -123,7 +123,7 @@ def list_page(request, *, proofreading=False, bound_assignment=None, status_code
         proofreader_display=proofreader_display(getattr(t, 'audiobook', None)),
         **({'corrections': correction_rows(t.audiobook, t.audio_corrections, viewer=None if coordinator else request.user),
             'allow_assignment': coordinator and t.can_produce_audio and can_assign_proofreader(t.audiobook, t.audio_corrections),
-            'can_finish': t.can_produce_audio and not t.audiobook.paused_at and may_finish(request.user, t.audiobook) and any(
+            'can_finish': t.can_produce_audio and may_finish(request.user, t.audiobook) and any(
                 stage.pk == t.audiobook.active_stage_id and stage.is_started and not stage.is_completed
                 for stage in t.audio_corrections),
             'can_claim': claimant and t.can_produce_audio and can_claim_proofreading(t.audiobook, t.audio_corrections, request.user),
@@ -165,7 +165,7 @@ def can_edit_audio(request, obj, kwargs):
 def may_act_on_proofreading(user, audio):
     from core.permissions import has_role
     return bool(audio and audio.proofreader_id == user.pk and has_role(user, 'Korektor audiobooków')
-                and audio.status in (Audiobook.Status.PROOFREADING_WAITING, Audiobook.Status.PROOFREADING))
+                and audio.status == Audiobook.Status.PROOFREADING)
 
 
 def _stage_id(request):
@@ -198,8 +198,6 @@ def audiobook_detail(request, text_id):
         editable = coordinator and (eligible or audio.pk is not None)
         people_form = AudiobookPeopleForm(instance=audio, prefix='people')
         publication_form = AudiobookPublicationForm(instance=audio, prefix='publication')
-        allowed = allowed_next_stages(audio)
-        queue_form = AudiobookQueueForm(allowed=allowed, prefix='queue')
         date_form = AudiobookStageDateForm(prefix='stage', initial={'date': timezone.localdate()})
         errors = []
         if request.method == 'POST':
@@ -214,15 +212,8 @@ def audiobook_detail(request, text_id):
                     publication_form = AudiobookPublicationForm(request.POST, instance=audio, prefix='publication')
                     if publication_form.is_valid():
                         saved = publication_form.save()
-                        refresh_status(saved, keep_published=False)
+                        refresh_status(saved)
                         return redirect('core:audiobook_detail', text_id=text.pk)
-                elif action == 'queue':
-                    queue_form = AudiobookQueueForm(request.POST, allowed=allowed, prefix='queue')
-                    if queue_form.is_valid():
-                        queue_stage(text_id=text.pk, user=request.user, stage_type=queue_form.cleaned_data['stage_type'])
-                        return redirect('core:audiobook_detail', text_id=text.pk)
-                    if not allowed:
-                        raise ValidationError('Ten etap nie może teraz nastąpić.')
                 elif action in ('start_stage', 'finish_stage'):
                     date_form = AudiobookStageDateForm(request.POST, prefix='stage')
                     if date_form.is_valid():
@@ -242,9 +233,6 @@ def audiobook_detail(request, text_id):
                         if request.POST.get('return_to') == 'audio_proofreading':
                             return redirect('core:audio_proofreading')
                         return redirect('core:audiobook_detail', text_id=text.pk)
-                elif action in ('pause', 'resume'):
-                    set_paused(text_id=text.pk, user=request.user, paused=action == 'pause')
-                    return redirect('core:audiobook_detail', text_id=text.pk)
                 else:
                     raise ValidationError('Nieznana operacja. Odśwież podgląd.')
             except ValidationError as exc:
@@ -254,17 +242,17 @@ def audiobook_detail(request, text_id):
         stages = list(text.audiobook_stages.select_related('performer__person_profile').order_by('position', 'pk'))
         current = next((stage for stage in stages if stage.pk == audio.active_stage_id), None)
         own_proofreading = may_act_on_proofreading(request.user, audio)
+        # Z „Do wzięcia” koordynator rozpoczyna nagrywanie; dalej – bieżący etap, gdy jeszcze nie trwa.
+        startable = (audio.status == Audiobook.Status.PENDING and current is None) or (current and not current.is_started)
+        next_label = StageType.RECORDING.label if current is None else current.get_stage_type_display()
         return render(request, 'core/audiobook_detail.html', dict(text=text, audio=audio,
             authors_display=authors_display(text), proofreader_display=proofreader_display(audio),
-            people_form=people_form, publication_form=publication_form, queue_form=queue_form, date_form=date_form,
-            stages=stages, current_stage=current, errors=errors, can_edit=editable, eligible=eligible,
+            people_form=people_form, publication_form=publication_form, date_form=date_form,
+            stages=stages, current_stage=current, next_label=next_label, errors=errors, can_edit=editable, eligible=eligible,
             can_coordinate=coordinator,
-            can_queue=eligible and coordinator and bool(allowed),
-            can_start=eligible and bool(current) and not current.is_started and not audio.paused_at
-                and (coordinator or (own_proofreading and current.stage_type == 'proofreading')),
-            can_finish=eligible and bool(current) and current.is_started and not audio.paused_at
-                and may_finish(request.user, audio),
-            can_pause=eligible and coordinator and audio.pk is not None and audio.status != Audiobook.Status.PUBLISHED),
+            can_start=eligible and bool(startable) and (coordinator
+                or (own_proofreading and current is not None and current.stage_type == 'proofreading')),
+            can_finish=eligible and bool(current) and current.is_started and may_finish(request.user, audio)),
             status=400 if request.method == 'POST' else 200)
 
 
@@ -304,8 +292,7 @@ def assign_audio_proofreader(request, text_id):
     with transaction.atomic():
         text = get_object_or_404(Text.objects.select_for_update(), pk=text_id)
         require_available(text)
-        audio = get_object_or_404(Audiobook, text=text, status__in=(Audiobook.Status.PROOFREADING_WAITING,
-                                                                   Audiobook.Status.PROOFREADING))
+        audio = get_object_or_404(Audiobook, text=text, status=Audiobook.Status.PROOFREADING)
         if not can_assign_proofreader(audio, corrections().filter(text=text)):
             raise PermissionDenied('Korekta została zakończona. Aby przypisać kolejną osobę, skieruj audiobook do ponownej korekty.')
         form = AudiobookAssignmentForm(request.POST, instance=audio, auto_id=f'id_audio_{text.pk}_%s')

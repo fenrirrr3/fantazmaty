@@ -113,7 +113,7 @@ class ChangesV77Tests(TestCase):
         refresh_status(audio)
         self.client.force_login(self.admin)
         page = self.client.get(reverse('core:audio_proofreading'), {'hide_completed': '0'})
-        self.assertContains(page, 'Oczekuje')
+        self.assertContains(page, 'Do przejęcia')
         self.assertNotContains(page, 'Nie zapisano wykonawcy')
         tree = html.fromstring(page.content)
         history = tree.xpath('//ul[contains(@class,"audio-correction-history")]')[0]

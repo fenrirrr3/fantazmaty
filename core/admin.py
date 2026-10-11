@@ -170,7 +170,7 @@ class AudiobookAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     list_select_related = ('text__anthology', 'proofreader')
     autocomplete_fields = ('text',)
     fieldsets = (
-        ('Tekst i status', {'fields': ('text', 'status', 'paused_at', 'production_link')}),
+        ('Tekst i status', {'fields': ('text', 'status', 'production_link')}),
         ('Lektor', {'fields': ('narrator_name', 'narrator_email')}),
         ('Korektor audiobooka', {'fields': ('proofreader',)}),
         ('Montaż', {'fields': ('engineer_name', 'engineer_email')}),
@@ -178,7 +178,7 @@ class AudiobookAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     )
 
     def get_readonly_fields(self, request, obj=None):
-        fields = ('status', 'paused_at', 'production_link')
+        fields = ('status', 'production_link')
         if obj and not self.proofreader_editable(obj):
             # Jak na stronie: korektora zmienia się tylko w trakcie etapu Korekta, przed jego zakończeniem.
             fields = (*fields, 'proofreader')
@@ -187,7 +187,7 @@ class AudiobookAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
         from core.audiobook_services import refresh_status
-        refresh_status(obj, keep_published=False)
+        refresh_status(obj)
 
     @staticmethod
     def proofreader_editable(obj):

@@ -7,7 +7,10 @@ from texts.models import Text
 from texts.production import active_production_texts
 
 
-OPEN_PROOFREADING = (Audiobook.Status.PROOFREADING_WAITING, Audiobook.Status.PROOFREADING)
+OPEN_PROOFREADING = (Audiobook.Status.PROOFREADING,)
+# Korekta do przejęcia: etap jeszcze się nie rozpoczął (albo – stare dane – jeszcze nie powstał).
+NOT_STARTED = (Q(audiobook__active_stage__isnull=True)
+               | Q(audiobook__active_stage__started_at__isnull=True, audiobook__active_stage__start_unknown=False))
 
 
 def corrections():
@@ -24,7 +27,7 @@ def proofreading_scope(texts, user, coordinator, *, hide_completed=False):
         own_audio_correction=Exists(history.filter(performer=user)),
         can_produce_audio=Exists(eligible.filter(pk=OuterRef('pk'))),
     )
-    open_work = Q(audiobook__status__in=OPEN_PROOFREADING, audiobook__paused_at__isnull=True)
+    open_work = Q(audiobook__status__in=OPEN_PROOFREADING)
     if coordinator:
         texts = texts.filter(Q(has_audio_correction=True) | open_work)
         current = open_work
@@ -32,8 +35,8 @@ def proofreading_scope(texts, user, coordinator, *, hide_completed=False):
         from core.audiobook_forms import eligible_proofreaders
         free_work = Q(pk__in=[])
         if eligible_proofreaders().filter(pk=user.pk).exists():
-            free_work = Q(can_produce_audio=True, audiobook__status=Audiobook.Status.PROOFREADING_WAITING,
-                          audiobook__paused_at__isnull=True, audiobook__proofreader__isnull=True)
+            free_work = Q(can_produce_audio=True, audiobook__status=Audiobook.Status.PROOFREADING,
+                          audiobook__proofreader__isnull=True) & NOT_STARTED
         mine = open_work & Q(audiobook__proofreader=user)
         texts = texts.filter(free_work | mine | Q(own_audio_correction=True))
         current = free_work | mine
@@ -43,9 +46,8 @@ def proofreading_scope(texts, user, coordinator, *, hide_completed=False):
 
 
 def can_assign_proofreader(audio, history):
-    # Tylko bieżąca korekta (albo stare dane: korekta czeka, a etap jeszcze nie powstał).
-    return bool(audio and audio.status in OPEN_PROOFREADING
-                and (audio.active_stage_id or audio.status == Audiobook.Status.PROOFREADING_WAITING))
+    # Tylko bieżąca (niezakończona) korekta – zakończonych nie da się przepisać na inną osobę.
+    return bool(audio and audio.status in OPEN_PROOFREADING and audio.active_stage_id)
 
 
 def performer_label(user):

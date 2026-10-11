@@ -1,1 +1,1 @@
-{% if audio %}<span class="audio-status audio-status--{{ audio.current_status }}">{{ audio.status_label }}</span>{% if audio.status == 'published' and audio.current_status != 'published' %}<br><span class="muted-text">Premiera {{ audio.premiere_date|date:"d.m.Y" }}</span>{% endif %}{% else %}<span class="audio-status audio-status--pending">Otwarte</span>{% endif %}
+{% if audio %}<span class="audio-status audio-status--{{ audio.status }}">{{ audio.status_label }}</span>{% else %}<span class="audio-status audio-status--pending">Do wzięcia</span>{% endif %}

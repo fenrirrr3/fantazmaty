@@ -10,7 +10,7 @@ from django.utils import timezone
 
 from authors.models import Author
 from core.audiobook_models import resolve_contact
-from core.audiobook_services import allowed_next_stages, finish_stage, queue_stage, refresh_status, start_stage
+from core.audiobook_services import finish_stage, start_stage
 from core.edit_versions import version_of
 from core.models import (AudioContributor, Audiobook, AudiobookStage, AudioDescription, PostLayoutAssignment,
                          WorkflowEvent)
@@ -36,67 +36,53 @@ class AudiobookQueueTests(TestCase):
         cls.text.authors.add(Author.objects.create(first_name='Anna', last_name='Autorka'))
         cls.url = reverse('core:audiobook_detail', args=[cls.text.pk])
 
-    def queue(self, kind):
-        return queue_stage(text_id=self.text.pk, user=self.admin, stage_type=kind)
+    def start(self):
+        return start_stage(text_id=self.text.pk, user=self.admin, started_at=timezone.localdate())
 
-    def run_stage(self):
-        stage = start_stage(text_id=self.text.pk, user=self.admin, started_at=timezone.localdate())
-        return finish_stage(text_id=self.text.pk, stage_id=stage.pk, user=self.admin)
+    def finish(self):
+        audio = self.audio()
+        return finish_stage(text_id=self.text.pk, stage_id=audio.active_stage_id, user=self.admin)
 
     def audio(self):
         return Audiobook.objects.get(text=self.text)
 
-    def test_order_decisions_and_publication_by_premiere(self):
-        audio = Audiobook.objects.create(text=self.text)
-        self.assertEqual(allowed_next_stages(audio), ['recording', 'proofreading', 'corrections', 'editing'])
+    def test_linear_order_and_publication_after_editing(self):
+        # Do wzięcia → Nagrywanie (rozpoczęcie = wzięcie tekstu).
+        self.start()
+        audio = self.audio()
+        self.assertEqual((audio.status, audio.status_label), ('recording', 'Nagrywanie'))
+        self.finish()
+        # Koniec nagrywania – korekta dostępna, ale jeszcze nierozpoczęta.
+        for status in ('proofreading', 'corrections', 'editing'):
+            audio = self.audio()
+            self.assertEqual((audio.status, audio.active_stage.stage_type), (status, status))
+            self.assertFalse(audio.active_stage.is_started)
+            self.assertEqual(audio.active_stage.queued_at, timezone.localdate())
+            with self.assertRaises(ValidationError):
+                self.finish()
+            self.start()
+            self.assertEqual(self.audio().status, status)
+            self.finish()
+        audio = self.audio()
+        self.assertEqual((audio.status, audio.active_stage_id, audio.is_published), ('published', None, True))
         with self.assertRaises(ValidationError):
-            self.queue('pending')
-        self.queue('recording')
-        self.assertEqual(self.audio().status, 'recording_waiting')
-        self.run_stage()
-        # Po nagraniu korekta czeka na przejęcie automatycznie.
-        audio = self.audio()
-        self.assertEqual(audio.status, 'proofreading_waiting')
-        self.assertEqual(audio.active_stage.stage_type, 'proofreading')
-        self.assertEqual(allowed_next_stages(audio), [])
-        self.run_stage()
-        audio = self.audio()
-        self.assertEqual(audio.status, 'after_proofreading')
-        self.assertEqual(allowed_next_stages(audio), ['corrections', 'editing'])
-        self.queue('corrections')
-        self.run_stage()
-        audio = self.audio()
-        self.assertEqual(audio.status, 'after_corrections')
-        # Po poprawkach koordynator może zlecić ponowną korektę.
-        self.assertIn('proofreading', allowed_next_stages(audio))
-        with self.assertRaises(ValidationError):
-            self.queue('recording')
-        self.queue('editing')
-        self.run_stage()
-        audio = self.audio()
-        self.assertEqual(audio.status, 'awaiting_publication')
-        self.assertIsNone(audio.active_stage_id)
-        audio.premiere_date = timezone.localdate() + timedelta(days=3)
-        audio.save(update_fields=['premiere_date'])
-        refresh_status(audio)
-        self.assertEqual(audio.status, 'published')
-        self.assertEqual(audio.current_status, 'awaiting_publication')
-        self.assertFalse(audio.is_published)
+            self.start()
         self.assertEqual(list(AudiobookStage.objects.filter(text=self.text).values_list('stage_type', 'position')),
                          [('recording', 1), ('proofreading', 2), ('corrections', 3), ('editing', 4)])
         self.assertTrue(all(event.channel for event in WorkflowEvent.objects.filter(kind='audiobook', text=self.text)))
+        self.assertEqual(set(Audiobook.Status.labels),
+                         {'Do wzięcia', 'Nagrywanie', 'Korekta', 'Nanoszenie poprawek', 'Montaż', 'Opublikowane'})
 
-    def test_waiting_filter_on_audiobook_list(self):
-        Audiobook.objects.create(text=self.text)
-        self.queue('recording')
-        self.run_stage()
+    def test_status_filter_on_audiobook_list(self):
+        self.start()
+        self.finish()
         self.client.force_login(self.admin)
-        page = self.client.get(reverse('core:audiobooks'), {'status': 'proofreading_waiting'})
+        page = self.client.get(reverse('core:audiobooks'), {'status': ['proofreading', 'corrections']})
         self.assertEqual(page.context['page_obj'].paginator.count, 1)
-        self.assertContains(page, 'Czeka na korektę')
+        self.assertContains(page, 'audio-status--proofreading')
 
     def test_audiobook_events_do_not_change_text_status_sorting(self):
-        self.queue('recording')
+        self.start()
         from core.selectors.texts import text_list_context
         rows = text_list_context(user=self.admin, params={})['texts']
         self.assertIsNone(next(row for row in rows if row['pk'] == self.text.pk)['last_status_change'])

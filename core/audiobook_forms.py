@@ -91,16 +91,6 @@ class AudiobookAssignmentForm(AudiobookProductionForm):
         exclude = ()
 
 
-class AudiobookQueueForm(forms.Form):
-    """Decyzja koordynatora: do którego etapu kieruje audiobook."""
-    stage_type = forms.ChoiceField(label='Następny etap', choices=())
-
-    def __init__(self, *args, allowed=(), **kwargs):
-        super().__init__(*args, **kwargs)
-        from core.audiobook_services import stage_label
-        self.fields['stage_type'].choices = [(kind, stage_label(kind)) for kind in allowed]
-
-
 class AudiobookStageDateForm(forms.Form):
     """Data rozpoczęcia lub zakończenia. Puste pole = data nieznana (dla starszych nagrań)."""
     date = forms.DateField(label='Data', required=False,
