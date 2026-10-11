@@ -103,6 +103,21 @@ class NormalizationTests(SimpleTestCase):
         self.assertEqual(right.alignment, WD_ALIGN_PARAGRAPH.RIGHT)
         self.assertEqual(doc.tables[0].cell(0, 0).paragraphs[0].runs[0].font.size.pt, 12)
 
+    def test_added_properties_follow_the_word_schema_order(self):
+        """Regresja: odstępy, wcięcie i rozmiar czcionki trafiały za w:rPr/w:lang, a Word odrzuca taki DOCX."""
+        doc = Document()
+        paragraph = doc.add_paragraph()
+        run = paragraph.add_run('Tekst')
+        run.font.underline = True
+        run._r.get_or_add_rPr().append(OxmlElement('w:lang'))
+        paragraph._p.get_or_add_pPr().append(OxmlElement('w:rPr'))
+        with normalize_docx(saved(doc), justify=True) as output:
+            result = Document(output).paragraphs[0]._p
+        names = [child.tag.rsplit('}', 1)[1] for child in result.pPr]
+        self.assertEqual(names, ['spacing', 'ind', 'contextualSpacing', 'jc', 'rPr'])
+        names = [child.tag.rsplit('}', 1)[1] for child in result.r_lst[0].rPr]
+        self.assertEqual(names, ['rFonts', 'sz', 'szCs', 'u', 'lang'])
+
     def test_page_normalization_all_sections(self):
         doc = Document()
         doc.add_paragraph('A')
@@ -227,6 +242,23 @@ class SoftWhitespaceTests(SimpleTestCase):
         before, after, boxed = self.normalized(document)
         self.assertEqual([before.text, after.text, boxed.text], ['Przed', 'Po', 'Pole tekstowe'])
         self.assertEqual(len(after._p.xpath('.//w:txbxContent/w:p')), 1)
+
+    def test_soft_break_in_deleted_text_does_not_split_the_paragraph(self):
+        """Regresja: miękki enter w usuniętym (śledzonym) tekście tworzył nowy akapit z reszty zdania."""
+        document = Document()
+        paragraph = document.add_paragraph('Początek ')
+        deleted = OxmlElement('w:del', {qn('w:id'): '1', qn('w:author'): 'Redakcja'})
+        run = OxmlElement('w:r')
+        for name, text in (('w:delText', 'usunięte'), ('w:br', None), ('w:delText', 'zdanie')):
+            child = OxmlElement(name)
+            child.text = text
+            run.append(child)
+        deleted.append(run)
+        paragraph._p.append(deleted)
+        paragraph.add_run('koniec')
+        (result,) = self.normalized(document)
+        self.assertEqual(result.text, 'Początek koniec')
+        self.assertEqual(len(result._p.xpath('.//w:del//w:br')), 1)
 
     def test_oversized_package_is_refused(self):
         stream = BytesIO()

@@ -1,0 +1,57 @@
+{% extends "core/base.html" %}
+{% load static %}
+{% block title %}Słownik zamian | Fantazmaty CMS{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/programs.css' %}">{% endblock %}
+{% block content %}
+<header class="page-header">
+    <h1 class="page-title">Słownik zamian</h1>
+    <p class="page-description">Pozycje reguły Odkurzacza „Własne zamiany słownikowe”. Aktywne pozycje ({{ active_count }}) działają w Odkurzaczu i w konwerterze z Odkurzaczem, gdy ta reguła jest zaznaczona.</p>
+</header>
+<p><a href="{% url 'core:programs' %}">Wróć do programów</a></p>
+<section class="details-card">
+    <div class="card-body">
+        <p>Słowo zastępuje całe słowo bez względu na wielkość liter, a wynik zachowuje wielkość liter z tekstu (Niechcąco → Niechcący). Jeśli zamiana zaczyna się wielką literą, wynik też (europejczyk → Europejczyk). Wyrażenia regularne obejmują odmianę; dodaje je i zmienia tylko superuser.</p>
+        <p>Pozycje są stosowane po kolei, od najmniejszej liczby w kolumnie „Kolejność”. Wyłączona pozycja zostaje w słowniku, ale nie działa.</p>
+        {% if not can_edit %}<p class="form-help">Słownik mogą zmieniać koordynatorzy i superuser.</p>{% endif %}
+    </div>
+</section>
+{% if form %}
+<section class="details-card" aria-labelledby="replacement-add-heading">
+    <div class="card-body">
+        <h2 id="replacement-add-heading">Dodaj pozycję</h2>
+        <form method="post" class="replacement-form">
+            {% csrf_token %}
+            {% if form.non_field_errors %}<div class="form-error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+            {% include "core/includes/replacement_fields.html" %}
+            <div class="form-field-wide"><button type="submit" class="primary-button">Dodaj pozycję</button></div>
+        </form>
+    </div>
+</section>
+{% endif %}
+<section class="details-card" aria-labelledby="replacement-table-heading">
+    <div class="card-body">
+        <h2 id="replacement-table-heading">Pozycje słownika</h2>
+        <div class="table-container" tabindex="0" role="region" aria-label="Słownik zamian">
+            <table class="data-table" id="replacement-table">
+                <thead><tr><th>Kolejność</th><th>Rodzaj</th><th>Szukany zapis</th><th>Zamiana na</th><th>Stan</th><th>Uwagi</th>{% if can_edit %}<th>Działania</th>{% endif %}</tr></thead>
+                <tbody>{% for entry in entries %}
+                    <tr{% if not entry.is_active %} class="replacement-inactive"{% endif %}>
+                        <td>{{ entry.position }}</td>
+                        <td>{{ entry.get_kind_display }}</td>
+                        <td class="replacement-source">{{ entry.source }}</td>
+                        <td class="replacement-source">{{ entry.target }}</td>
+                        <td>{% if entry.is_active %}Aktywna{% else %}Wyłączona{% endif %}</td>
+                        <td>{{ entry.note }}</td>
+                        {% if can_edit %}<td>{% if entry.can_change %}<div class="actions">
+                            <a class="secondary-button" href="{% url 'core:replacement_edit' entry.pk %}">Edytuj</a>
+                            <form method="post" action="{% url 'core:replacement_edit' entry.pk %}">
+                                {% csrf_token %}<button type="submit" name="action" value="toggle" class="secondary-button">{% if entry.is_active %}Wyłącz{% else %}Włącz{% endif %}</button>
+                            </form></div>
+                        {% else %}<span class="form-help">Tylko superuser</span>{% endif %}</td>{% endif %}
+                    </tr>
+                {% empty %}<tr><td colspan="{% if can_edit %}7{% else %}6{% endif %}">Słownik jest pusty – reguła nie wprowadzi zmian.</td></tr>{% endfor %}</tbody>
+            </table>
+        </div>
+    </div>
+</section>
+{% endblock %}

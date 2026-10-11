@@ -209,6 +209,19 @@ class ResourceValidationTests(SimpleTestCase):
         validate_resources(source)
         self.assertEqual(source.tell(), 0)
 
+    def test_attached_template_and_absolute_internal_targets_are_accepted(self):
+        """Regresja: dokument z szablonu Worda (attachedTemplate) i ścieżki „/word/…” były odrzucane."""
+        validate_resources(with_relationship('file:///C:/Szablony/Normal.dotm', 'External', 'attachedTemplate'))
+        absolute = repacked({RELATIONSHIPS: lambda data: data.replace(b'Target="styles.xml"',
+                                                                     b'Target="/word/styles.xml"')})
+        validate_resources(absolute)
+        with ZipFile(absolute) as archive:
+            self.assertIn(b'Target="/word/styles.xml"', archive.read(RELATIONSHIPS))
+        with self.assertRaisesMessage(ConversionError, 'nieprawidłowe odwołanie'):
+            validate_resources(with_relationship('/../../etc/passwd'))
+        with self.assertRaisesMessage(ConversionError, 'nieprawidłowe odwołanie'):
+            validate_resources(with_relationship('//serwer/udział/obraz.png'))
+
     def test_dangerous_packages_are_refused(self):
         doctype = b'<?xml version="1.0"?><!DOCTYPE x [<!ENTITY e "x">]><Relationships/>'
         cases = (
@@ -219,6 +232,18 @@ class ResourceValidationTests(SimpleTestCase):
             (with_relationship('../../../etc/passwd'), 'nieprawidłowe odwołanie'),
             (with_relationship('C:/obraz.png'), 'nieprawidłowe odwołanie'),
             (with_relationship('https://example.test/obraz.png', 'External'), 'zewnętrzny obraz'),
+        )
+        for source, message in cases:
+            with self.subTest(message=message), self.assertRaisesMessage(ConversionError, message):
+                validate_resources(source)
+
+    def test_unreadable_packages_get_a_conversion_message(self):
+        """Regresja: plik spoza ZIP lub uszkodzone .rels kończyły się ogólnym błędem zadania zamiast komunikatu."""
+        truncated = BytesIO(formatted_docx()[:-200])
+        cases = (
+            (BytesIO(b'To nie jest DOCX'), 'Nie można odczytać pliku'),
+            (truncated, 'Nie można odczytać pliku'),
+            (repacked({RELATIONSHIPS: lambda data: data[:-30]}), 'Nieprawidłowa struktura'),
         )
         for source, message in cases:
             with self.subTest(message=message), self.assertRaisesMessage(ConversionError, message):

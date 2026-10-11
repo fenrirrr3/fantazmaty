@@ -147,3 +147,186 @@ class IsolatedProgramDirsMixin:
         )
         override.enable()
         self.addCleanup(override.disable)
+
+
+def docx_with_paragraph_xml(*fragments):
+    """DOCX z jednym akapitem złożonym z surowych fragmentów OOXML (runy, znaczniki proofErr, zakładki…).
+
+    Fragmenty piszemy bez deklaracji przestrzeni nazw, np. ``'<w:r><w:t>kot</w:t></w:r>'``.
+    """
+    import re
+
+    from docx.oxml import parse_xml
+    from docx.oxml.ns import nsdecls
+
+    document = Document()
+    paragraph = document.add_paragraph()
+    for fragment in fragments:
+        paragraph._p.append(parse_xml(re.sub(r'^<(w:\w+)', r'<\1 ' + nsdecls('w'), fragment, count=1)))
+    return saved(document)
+
+
+def text_run(text):
+    """Fragment OOXML runu z tekstem (spacje zachowane)."""
+    return f'<w:r><w:t xml:space="preserve">{text}</w:t></w:r>'
+
+
+def add_text_box(paragraph, text, *, fallback=True):
+    """Pole tekstowe tak, jak zapisuje je Word: mc:AlternateContent z wersją DrawingML i (opcjonalnie) zapasową VML."""
+    from docx.oxml import parse_xml
+    from docx.oxml.ns import nsdecls
+    box = f'<w:txbxContent><w:p><w:r><w:t>{text}</w:t></w:r></w:p></w:txbxContent>'
+    choice = (
+        '<mc:Choice Requires="wps"><w:drawing><wp:inline><a:graphic><a:graphicData>'
+        '<wps:wsp xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">'
+        f'<wps:txbx>{box}</wps:txbx></wps:wsp></a:graphicData></a:graphic></wp:inline></w:drawing></mc:Choice>'
+    )
+    spare = f'<mc:Fallback><w:pict><v:shape><v:textbox>{box}</v:textbox></v:shape></w:pict></mc:Fallback>'
+    paragraph._p.append(parse_xml(
+        '<w:r %s xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" '
+        'xmlns:v="urn:schemas-microsoft-com:vml"><mc:AlternateContent>%s%s</mc:AlternateContent></w:r>'
+        % (nsdecls('w', 'wp', 'a'), choice, spare if fallback else '')))
+
+
+def add_complex_field(paragraph, instruction, result):
+    """Pole Worda w postaci złożonej: begin, instrukcja, separate, wynik, end."""
+    from docx.oxml import parse_xml
+    from docx.oxml.ns import nsdecls
+    for body in ('<w:fldChar w:fldCharType="begin"/>',
+                 f'<w:instrText xml:space="preserve"> {instruction} </w:instrText>',
+                 '<w:fldChar w:fldCharType="separate"/>',
+                 f'<w:t xml:space="preserve">{result}</w:t>',
+                 '<w:fldChar w:fldCharType="end"/>'):
+        paragraph._p.append(parse_xml(f'<w:r {nsdecls("w")}>{body}</w:r>'))
+
+
+def add_footnote_reference(paragraph, note_id=1):
+    """Odnośnik do przypisu dolnego (treść przypisu dodaje with_footnote)."""
+    from docx.oxml import parse_xml
+    from docx.oxml.ns import nsdecls
+    paragraph._p.append(parse_xml(f'<w:r {nsdecls("w")}><w:footnoteReference w:id="{note_id}"/></w:r>'))
+
+
+def add_bookmark(paragraph, name, text):
+    """Tekst objęty zakładką Worda (np. _Toc… albo _Hlk… tworzone przez Worda)."""
+    from docx.oxml import parse_xml
+    from docx.oxml.ns import nsdecls
+    for body in (f'<w:bookmarkStart {nsdecls("w")} w:id="0" w:name="{name}"/>',
+                 f'<w:r {nsdecls("w")}><w:t xml:space="preserve">{text}</w:t></w:r>',
+                 f'<w:bookmarkEnd {nsdecls("w")} w:id="0"/>'):
+        paragraph._p.append(parse_xml(body))
+
+
+def add_internal_link(paragraph, anchor, text):
+    """Hiperłącze do zakładki w tym samym dokumencie."""
+    from docx.oxml import parse_xml
+    from docx.oxml.ns import nsdecls
+    paragraph._p.append(parse_xml(
+        f'<w:hyperlink {nsdecls("w")} w:anchor="{anchor}"><w:r><w:t xml:space="preserve">{text}</w:t></w:r></w:hyperlink>'))
+
+
+def add_tracked_insertion(paragraph, text):
+    """Tekst wstawiony przy włączonym śledzeniu zmian (w:ins)."""
+    from docx.oxml import parse_xml
+    from docx.oxml.ns import nsdecls
+    paragraph._p.append(parse_xml(
+        f'<w:ins {nsdecls("w")} w:id="9" w:author="Redakcja" w:date="2026-01-01T00:00:00Z">'
+        f'<w:r><w:t xml:space="preserve">{text}</w:t></w:r></w:ins>'))
+
+
+def content_control(content, *, placeholder=False, gallery=None):
+    """Kontrolka zawartości Worda (w:sdt) jako element OOXML do wstawienia w treść, akapit lub tabelę.
+
+    ``content`` to surowe fragmenty bez deklaracji przestrzeni nazw (akapity, runy, wiersze albo komórki);
+    ``placeholder`` – kontrolka pokazuje tekst zastępczy; ``gallery`` – blok z galerii Worda (np. spis treści).
+    """
+    from docx.oxml import parse_xml
+    from docx.oxml.ns import nsdecls
+    properties = '<w:alias w:val="Pole"/><w:id w:val="101"/>'
+    if placeholder:
+        properties += '<w:showingPlcHdr/>'
+    if gallery:
+        properties += (f'<w:docPartObj><w:docPartGallery w:val="{gallery}"/>'
+                       '<w:docPartUnique/></w:docPartObj>')
+    return parse_xml(f'<w:sdt {nsdecls("w")}><w:sdtPr>{properties}</w:sdtPr>'
+                     f'<w:sdtEndPr/><w:sdtContent>{content}</w:sdtContent></w:sdt>')
+
+
+def add_block(document, element):
+    """Element blokowy (np. kontrolka zawartości) na końcu treści dokumentu, przed ustawieniami sekcji."""
+    document.element.body.insert_element_before(element, 'w:sectPr')
+    return element
+
+
+def add_simple_field(paragraph, instruction, result):
+    """Pole Worda w postaci prostej (w:fldSimple) z zapisanym wynikiem."""
+    from docx.oxml import parse_xml
+    from docx.oxml.ns import nsdecls
+    paragraph._p.append(parse_xml(
+        f'<w:fldSimple {nsdecls("w")} w:instr=" {instruction} "><w:r><w:t>{result}</w:t></w:r></w:fldSimple>'))
+
+
+def add_gallery_page_number(story):
+    """Numer strony tak, jak wstawia go galeria Worda: akapit z polem PAGE w kontrolce zawartości (w:sdt)."""
+    from docx.oxml import parse_xml
+    from docx.oxml.ns import nsdecls
+    story._element.append(parse_xml(
+        f'<w:sdt {nsdecls("w")}><w:sdtPr><w:docPartObj><w:docPartGallery w:val="Page Numbers (Bottom of Page)"/>'
+        '</w:docPartObj></w:sdtPr><w:sdtContent><w:p><w:pPr><w:jc w:val="right"/></w:pPr>'
+        '<w:fldSimple w:instr="PAGE   \\* MERGEFORMAT"><w:r><w:t>7</w:t></w:r></w:fldSimple>'
+        '</w:p></w:sdtContent></w:sdt>'))
+
+
+def add_page_break(paragraph, after=''):
+    """Podział strony (Ctrl+Enter, w:br w:type="page") na końcu akapitu, opcjonalnie z dalszym tekstem."""
+    from docx.enum.text import WD_BREAK
+    paragraph.add_run().add_break(WD_BREAK.PAGE)
+    if after:
+        paragraph.add_run(after)
+    return paragraph
+
+
+def set_language(properties_owner, value):
+    """Oznacz język (w:lang w:val) przebiegu, stylu albo rPr – jak Word „Ustaw język sprawdzania”."""
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    element = getattr(properties_owner, '_r', None)
+    if element is None:
+        element = getattr(properties_owner, 'element', properties_owner)
+    properties = element.get_or_add_rPr()
+    lang = properties.find(qn('w:lang'))
+    if lang is None:
+        lang = OxmlElement('w:lang')
+        properties.append(lang)
+    lang.set(qn('w:val'), value)
+
+
+def set_default_language(document, value):
+    """Język w docDefaults (python-docx ma tam domyślnie en-US)."""
+    from docx.oxml.ns import qn
+    for lang in document.styles.element.iter(qn('w:lang')):
+        if lang.getparent().getparent().tag == qn('w:rPrDefault'):
+            lang.set(qn('w:val'), value)
+
+
+def tracked_changes_document():
+    """Wszystkie części dokumentu z poprawkami do śledzenia.
+
+    Akapit z kilkoma przebiegami (pogrubienie, kursywa, tabulator), zastępowane słowo,
+    istniejąca śledzona wstawka (w:id 9) i zakładka, seria pustych akapitów ze spacjami,
+    tabela, pole tekstowe, nagłówek, stopka i przypis.
+    """
+    document = Document()
+    paragraph = document.add_paragraph()
+    paragraph.add_run('Ala  ma ').bold = True
+    paragraph.add_run('kota...\tPotem pickupami jechał.').italic = True
+    add_bookmark(paragraph, '_Hlk1', ' Ona  wie.')
+    add_tracked_insertion(paragraph, 'Dawna  wstawka')
+    for text in ('', '  ', '\t', ''):
+        document.add_paragraph(text)
+    document.add_paragraph('Dnia 1.2.2025 r. wrócił.')
+    document.add_table(rows=1, cols=1).cell(0, 0).text = 'Tabela  z kropkami...'
+    add_text_box(document.add_paragraph('Przed polem.'), 'Pole  tekstowe...')
+    document.sections[0].header.paragraphs[0].text = 'Nagłówek  strony'
+    document.sections[0].footer.paragraphs[0].text = 'Stopka...'
+    return with_footnote(document, 'Przypis  z tekstem...')

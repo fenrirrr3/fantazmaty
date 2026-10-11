@@ -12,7 +12,7 @@ import subprocess
 from contextlib import contextmanager
 from pathlib import Path
 from tempfile import TemporaryDirectory, SpooledTemporaryFile
-from zipfile import ZipFile, ZIP_DEFLATED
+from zipfile import BadZipFile, ZipFile, ZIP_DEFLATED
 
 from django.conf import settings
 from lxml import etree
@@ -22,6 +22,9 @@ logger = logging.getLogger(__name__)
 FORMATS = {'pdf': 'application/pdf', 'epub': 'application/epub+zip'}
 MAX_OUTPUT = 50 * 1024 * 1024
 TIME_LIMIT = 90
+# Najdłuższy dopuszczalny limit (zadania superusera, patrz program_jobs.SUPERUSER_TIME_LIMIT).
+MAX_TIME_LIMIT = 600
+TIMEOUT_MESSAGE = "Konwersja przekroczyła limit {} sekund. Podziel dokument lub wybierz mniej formatów."
 
 
 REBUILD_WARNING = 'W nowym DOCX zostaną pominięte: '
@@ -106,19 +109,26 @@ def validate_resources(source):
                 )
             for name in names:
                 if name.lower().endswith(".rels"):
-                    root = etree.fromstring(
-                        archive.read(name),
-                        etree.XMLParser(resolve_entities=False, no_network=True, load_dtd=False),
-                    )
+                    try:
+                        root = etree.fromstring(
+                            archive.read(name),
+                            etree.XMLParser(resolve_entities=False, no_network=True, load_dtd=False),
+                        )
+                    except etree.XMLSyntaxError:
+                        raise ConversionError("Nieprawidłowa struktura dokumentu DOCX.") from None
                     if root.getroottree().docinfo.doctype:
                         raise ConversionError("Nieobsługiwany dokument DOCX.")
                     for relationship in root:
                         target = relationship.get("Target", "")
                         if relationship.get("TargetMode", "").lower() != "external":
-                            base = posixpath.dirname(posixpath.dirname(name))
-                            resolved = posixpath.normpath(posixpath.join(base, target))
+                            # Ścieżka zaczynająca się od „/” jest w OOXML liczona od korzenia pakietu.
+                            if target.startswith("/") and not target.startswith("//"):
+                                resolved = posixpath.normpath(target.lstrip("/"))
+                            else:
+                                base = posixpath.dirname(posixpath.dirname(name))
+                                resolved = posixpath.normpath(posixpath.join(base, target))
                             if (
-                                target.startswith(("/", "\\"))
+                                target.startswith(("//", "\\"))
                                 or ":" in target
                                 or "\\" in target
                                 or resolved == ".."
@@ -128,10 +138,15 @@ def validate_resources(source):
                                     "Dokument zawiera nieprawidłowe odwołanie do pliku."
                                 )
                         if relationship.get("TargetMode", "").lower() == "external":
-                            if not relationship.get("Type", "").endswith("/hyperlink"):
+                            # Szablon dołączony przez Worda (attachedTemplate) to tylko ścieżka
+                            # w ustawieniach – żadna biblioteka go nie pobiera.
+                            if not relationship.get("Type", "").endswith(("/hyperlink", "/attachedTemplate")):
                                 raise ConversionError(
                                     "Dokument zawiera zewnętrzny obraz lub inny podłączony plik. Osadź go w DOCX przed konwersją."
                                 )
+    except (BadZipFile, OSError, EOFError, NotImplementedError, RuntimeError):
+        # Nie ZIP, uszkodzony ZIP, nieobsługiwana kompresja lub szyfrowanie.
+        raise ConversionError("Nie można odczytać pliku. Wybierz prawidłowy DOCX.") from None
     finally:
         source.seek(0)
 
@@ -177,9 +192,7 @@ def converter_python():
 
 def run_converter(directory, timeout, control=None):
     if timeout <= 0:
-        raise ConversionError(
-            "Konwersja przekroczyła limit 90 sekund. Podziel dokument lub wybierz mniej formatów."
-        )
+        raise ConversionError(TIMEOUT_MESSAGE.format(TIME_LIMIT))
     # Do not pass project credentials to an external document processor.
     env = {
         key: value
@@ -235,9 +248,7 @@ def run_converter(directory, timeout, control=None):
                 else:
                     process.kill()
                 process.wait()
-                raise ConversionError(
-                    "Konwersja przekroczyła limit 90 sekund. Podziel dokument lub wybierz mniej formatów."
-                ) from None
+                raise ConversionError(TIMEOUT_MESSAGE.format(TIME_LIMIT)) from None
             except BaseException:
                 if process.poll() is None:
                     if os.name == "posix":
@@ -329,6 +340,11 @@ def convert_document(
     justify=False,
     preserve_filename=False,
     remove_soft_whitespace=False,
+    track_changes=False,
+    cleaner_summary=False,
+    replacements=None,
+    keep_page_format=False,
+    analysis_unlimited=False,
     control=None,
     wait_for_slot=0,
     on_wait=None,
@@ -344,7 +360,8 @@ def convert_document(
             TemporaryDirectory(prefix="document-", dir=root) as temporary,
         ):
             # Limit czasu liczy się od uzyskania konwertera, nie od wejścia do kolejki.
-            deadline = time.monotonic() + min(TIME_LIMIT, timeout)
+            limit = min(MAX_TIME_LIMIT, timeout)
+            deadline = time.monotonic() + limit
             directory = Path(temporary)
             source = _write_job(
                 directory,
@@ -361,13 +378,24 @@ def convert_document(
                     "justify": justify,
                     "include_docx": include_docx,
                     "repetitions": repetitions,
+                    "track_changes": bool(track_changes),
+                    "cleaner_summary": bool(cleaner_summary),
+                    "replacements": replacements,
+                    "keep_page_format": bool(keep_page_format),
+                    "analysis_unlimited": bool(analysis_unlimited),
                 },
             )
-            if control is None:
-                run_converter(directory, deadline - time.monotonic())
-            else:
-                control(directory)
-                run_converter(directory, deadline - time.monotonic(), control=control)
+            try:
+                if control is None:
+                    run_converter(directory, deadline - time.monotonic())
+                else:
+                    control(directory)
+                    run_converter(directory, deadline - time.monotonic(), control=control)
+            except ConversionError as error:
+                # run_converter zna tylko pozostały czas; komunikat podaje faktyczny limit zadania.
+                if limit > TIME_LIMIT and str(error) == TIMEOUT_MESSAGE.format(TIME_LIMIT):
+                    raise ConversionError(TIMEOUT_MESSAGE.format(int(limit))) from None
+                raise
             warning_file = directory / "warnings.json"
             warnings = (
                 json.loads(warning_file.read_text(encoding="utf-8"))
@@ -375,6 +403,15 @@ def convert_document(
                 else []
             )
             result.conversion_warnings = warnings
+            summary_file = directory / "summary.json"
+            result.cleaner_summary = None
+            if cleaner_summary and summary_file.is_file() and summary_file.stat().st_size <= 65536:
+                summary = json.loads(summary_file.read_text(encoding="utf-8"))
+                if isinstance(summary, dict):
+                    result.cleaner_summary = {
+                        str(key)[:80]: value for key, value in summary.items()
+                        if isinstance(value, int) and not isinstance(value, bool) and value > 0
+                    }
             outputs = [directory / ("document." + kind) for kind in selected]
             if include_docx:
                 shutil.copyfile(source, directory / "document.docx")

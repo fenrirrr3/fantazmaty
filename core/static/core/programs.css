@@ -125,3 +125,65 @@
         grid-template-columns: 1fr;
     }
 }
+
+/* Opcja zależna od innej (np. format strony tylko przy przebudowie). */
+.program-suboption {
+    margin-left: var(--space-5);
+}
+
+.program-reset {
+    margin: var(--space-4) 0 0;
+}
+
+.program-reset .link-button {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--primary);
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.program-reset .link-button:focus-visible {
+    outline: var(--focus-width) solid var(--focus-ring);
+    outline-offset: var(--focus-offset);
+}
+
+.program-summary table {
+    margin: var(--space-3) 0;
+}
+
+.program-summary td:last-child {
+    text-align: right;
+}
+
+.replacement-form {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4);
+    max-width: 960px;
+}
+
+.replacement-form .form-field-wide {
+    grid-column: 1 / -1;
+}
+
+.replacement-form :is(input[type="text"], input[type="number"], select) {
+    width: 100%;
+}
+
+.replacement-source {
+    font-family: var(--font-mono, monospace);
+    overflow-wrap: anywhere;
+}
+
+.replacement-inactive {
+    opacity: .6;
+}
+
+@media screen and (max-width: 760px) {
+    .replacement-form {
+        grid-template-columns: 1fr;
+    }
+}

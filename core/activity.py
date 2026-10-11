@@ -72,6 +72,7 @@ LABELS.update({
     'skip_workflow_stage': 'Pominięcie etapu', 'link_text_review': 'Powiązanie tekstu z recenzją',
     'cancel_workflow_repetition': 'Anulowanie powtórzenia etapu', 'handoff_workflow_stage': 'Przekazanie pracy',
     'change_scheduled_workflow_stage': 'Zmiana terminu etapu', 'program_job': 'Postęp pracy programu',
+    'replacement_list': 'Słownik zamian', 'replacement_edit': 'Edycja pozycji słownika zamian',
     'dashboard_tasks': 'Zadania na Pulpicie', 'update_review_file': 'Zmiana odnośnika do pliku recenzji',
     'password_change': 'Zmiana hasła', 'password_change_done': 'Hasło zmienione',
     'password_reset': 'Resetowanie hasła', 'password_reset_done': 'Wysłanie instrukcji resetowania hasła',

@@ -27,6 +27,7 @@ PARENTS = {
     'audio_contributor': 'audiobooks', 'recruitment_detail': 'recruitment_list',
     'unlinked_reviews': 'review_list', 'post_layout_edit': 'post_layout',
     'link_text_review': 'review_list', 'chapter_edit': 'novel_list',
+    'program_job': 'programs', 'replacement_list': 'programs', 'replacement_edit': 'programs',
 }
 
 

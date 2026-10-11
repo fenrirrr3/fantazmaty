@@ -9,6 +9,7 @@ SEGMENTS = {
     'audiobookstage': 'etap-audiobooka',
     'publicaudiobooksettings': 'zewnetrzne-audiobooki',
     'publicillustrationsettings': 'zewnetrzne-ilustracje',
+    'replacemententry': 'slownik-zamian',
     "blacklistentry": "wpis-czarnej-listy", "workflowrepetition": "powtorzenie-etapow",
     "workflowhandoff": "przekazanie-pracy", "r": "przejdz",
     "mailboxconnection": "skrzynki-zgloszen", "useractivity": "aktywnosc-uzytkownikow",

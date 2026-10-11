@@ -16,6 +16,7 @@ from django.core import signing
 from django.core.files import File
 
 from core.odkurzacz_forms import PROGRAM_MAX_UPLOAD_BYTES
+from core.services.odkurzacz import EDITORIAL_RULES
 from .document_converter import (
     ConversionError, RebuildConfirmationRequired, _try_lock, convert_document,
     conversion_filename, converter_python,
@@ -26,6 +27,9 @@ STALE_AFTER = 150      # brak znaku życia procesu przez tyle sekund = błąd
 QUEUE_WAIT = 600       # najdłuższe oczekiwanie w kolejce na wolny konwerter
 SALT = 'private-program-job-v1'
 SESSION_KEY = 'program_upload_session'
+# Zadania superusera (analiza bez limitu wielkości) mogą trwać dłużej niż 90 s.
+SUPERUSER_TIME_LIMIT = 300
+SUMMARY_LABELS = {'user_word_corrections': 'Własne zamiany słownikowe (słownik zamian)'}
 
 
 class JobError(ValueError):
@@ -200,20 +204,25 @@ def _create(request, upload, options, action):
     payload = upload.read(PROGRAM_MAX_UPLOAD_BYTES + 1)
     upload.seek(0)
     if len(payload) > PROGRAM_MAX_UPLOAD_BYTES:
-        raise JobError('Plik przekracza limit 2 MB.')
+        raise JobError(f'Plik przekracza limit {PROGRAM_MAX_UPLOAD_BYTES // (1024 * 1024)} MB.')
     key = secrets.token_hex(16)
     folder = root() / key
     folder.mkdir(mode=0o700)
     nonce = request.session.get(SESSION_KEY) or secrets.token_hex(24)
     request.session[SESSION_KEY] = nonce
-    with os.fdopen(os.open(folder / 'source.docx', os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600), 'wb') as output:
-        output.write(payload)
-    write_json(folder / 'request.json', {
-        'user': request.user.pk, 'session': nonce, 'name': upload.name,
-        'options': options, 'action': action,
-    })
-    write_json(folder / 'state.json', {'state': 'queued', 'stage': 'Uruchamianie programu', 'started': time.time()})
-    launch(folder)
+    try:
+        with os.fdopen(os.open(folder / 'source.docx', os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600), 'wb') as output:
+            output.write(payload)
+        write_json(folder / 'request.json', {
+            'user': request.user.pk, 'session': nonce, 'name': upload.name,
+            'options': options, 'action': action,
+        })
+        write_json(folder / 'state.json', {'state': 'queued', 'stage': 'Uruchamianie programu', 'started': time.time()})
+        launch(folder)
+    except BaseException:
+        # Użytkownik nie dostanie tokenu, więc kopia dokumentu nie może czekać na sprzątanie.
+        remove(folder)
+        raise
     return signing.dumps({'key': key, 'user': request.user.pk, 'session': nonce}, salt=SALT)
 
 
@@ -239,6 +248,8 @@ def status(folder):
     state = read_json(folder / 'state.json')
     if not isinstance(state.get('warnings', []), list):
         state['warnings'] = []  # dawny zapis: sama liczba uwag
+    if 'summary' in state and not isinstance(state['summary'], list):
+        state['summary'] = []
     if (folder / 'cancel').exists() and state['state'] == 'confirmation':
         return {'state': 'cancelled', 'message': 'Praca zatrzymana.'}
     if state['state'] in ('queued', 'running') and not alive(state):
@@ -272,6 +283,23 @@ def remove(folder):
     """Usuń zadanie razem z wynikiem (po pobraniu pliku)."""
     if re.fullmatch(r'[a-f0-9]{32}', folder.name) and folder.resolve().is_relative_to(root().resolve()):
         shutil.rmtree(folder, ignore_errors=True)
+
+
+def superuser_time_limit():
+    from .document_converter import MAX_TIME_LIMIT, TIME_LIMIT
+    value = int(getattr(settings, 'PROGRAM_SUPERUSER_TIME_LIMIT', SUPERUSER_TIME_LIMIT))
+    return max(TIME_LIMIT, min(MAX_TIME_LIMIT, value))
+
+
+def summary_rows(summary):
+    """Podsumowanie Odkurzacza {reguła: liczba} jako wiersze w kolejności reguł formularza."""
+    if summary is None:
+        return None
+    labels = dict(EDITORIAL_RULES) | SUMMARY_LABELS
+    order = {key: index for index, (key, _) in enumerate(EDITORIAL_RULES)}
+    rows = sorted(((key, count) for key, count in summary.items() if count > 0),
+                  key=lambda item: (order.get(item[0], len(order)), item[0]))
+    return [{'rule': key, 'label': labels.get(key, key), 'count': count} for key, count in rows[:60]]
 
 
 def refreshed_token(token):
@@ -326,8 +354,11 @@ def execute(folder):
         if data['action'] != 'convert':
             suffix = '_powtorzenia' if data['action'] == 'repetitions' else ('_nowy' if options.get('rebuild') else '_odkurzony')
             name = Path(name).stem[:120] + suffix + '.docx'
-        write_json(folder / 'state.json', {'state': 'done', 'filename': conversion_filename(name, extension), 'mime': mime,
-                                          'warnings': list(getattr(result, 'conversion_warnings', []))[:30]})
+        done = {'state': 'done', 'filename': conversion_filename(name, extension), 'mime': mime,
+                'warnings': list(getattr(result, 'conversion_warnings', []))[:30]}
+        if options.get('cleaner_summary'):
+            done['summary'] = summary_rows(getattr(result, 'cleaner_summary', None) or {})
+        write_json(folder / 'state.json', done)
     except RebuildConfirmationRequired as error:
         write_json(folder / 'state.json', {'state': 'confirmation', 'message': str(error)})
         return

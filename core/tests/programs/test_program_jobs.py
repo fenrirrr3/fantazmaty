@@ -55,6 +55,16 @@ class ProgramJobTests(IsolatedProgramDirsMixin, TestCase):
         self.assertEqual(response.status_code, 202, response.content)
         return response.json()['url'], next(jobs.root().iterdir())
 
+    def test_opening_the_programs_page_removes_expired_results(self):
+        """Regresja: niepobrane wyniki czekały na serwerze do następnego zgłoszenia dokumentu."""
+        expired = jobs.root() / ('e' * 32)
+        expired.mkdir(parents=True)
+        jobs.write_json(expired / 'state.json', {'state': 'done', 'heartbeat': time.time()})
+        old = time.time() - jobs.TTL - 60
+        os.utime(expired, (old, old))
+        self.assertEqual(self.client.get(self.url).status_code, 200)
+        self.assertFalse(expired.exists())
+
     def test_all_three_forms_create_jobs_and_validate_before_launch(self):
         forms = [
             {'program_action': 'clean', 'document': document()},
@@ -81,9 +91,26 @@ class ProgramJobTests(IsolatedProgramDirsMixin, TestCase):
         ):
             with self.subTest(action=action), patch('core.services.program_jobs.convert_document') as converter:
                 response = run_program(
-                    self.client, {'program_action': action, field: sized_docx(2 * 1024 * 1024 + 1), **extra})
-                self.assertContains(response, 'Maksymalny rozmiar to 2 MB')
+                    self.client, {'program_action': action, field: sized_docx(PROGRAM_MAX_UPLOAD_BYTES + 1), **extra})
+                self.assertContains(response, 'Maksymalny rozmiar to 5 MB')
                 converter.assert_not_called()
+
+    def test_five_megabyte_upload_is_accepted_by_every_program(self):
+        """Limit pliku wynosi 5 MB we wszystkich programach (wcześniej 2 MB)."""
+        self.assertEqual(PROGRAM_MAX_UPLOAD_BYTES, 5 * 1024 * 1024)
+        self.assertContains(self.client.get(self.url), 'Maksymalnie 5 MB', count=3)
+        for action, field, extra in (
+            ('clean', 'document', {}),
+            ('convert', 'convert-document', {'convert-formats': ['pdf']}),
+            ('repetitions', 'repetitions-document', REPETITION_FIELDS),
+        ):
+            with self.subTest(action=action), patch.object(jobs, 'launch') as launch:
+                response = self.client.post(self.url, {'program_action': action, field: sized_docx(PROGRAM_MAX_UPLOAD_BYTES), **extra},
+                                            HTTP_X_PROGRAM_JOB='1')
+                self.assertEqual(response.status_code, 202, response.content)
+                launch.assert_called_once()
+            for folder in jobs.root().iterdir():
+                jobs.write_json(folder / 'state.json', {'state': 'cancelled'})
 
     def test_owner_session_expiration_and_csrf(self):
         url, folder = self.create()
@@ -547,8 +574,15 @@ class JobAccessTests(IsolatedProgramDirsMixin, SimpleTestCase):
             with self.subTest(key=key), self.assertRaisesMessage(jobs.JobError, 'Zadanie wygasło'):
                 jobs.resolve(self.request(), token)
 
+    def test_failed_start_does_not_leave_the_document_on_the_server(self):
+        """Gdy procesu nie da się uruchomić, nikt nie dostaje tokenu – kopia dokumentu nie może zostać."""
+        with patch.object(jobs, 'converter_python', side_effect=ConversionError('brak')), \
+                self.assertRaisesMessage(jobs.JobError, 'Nie można uruchomić programu'):
+            jobs.create(self.request(), SimpleUploadedFile('tekst.docx', b'docx'), {}, 'clean')
+        self.assertEqual(list(jobs.root().iterdir()), [])
+
     def test_oversized_upload_is_refused_without_creating_a_job(self):
         upload = SimpleUploadedFile('duzy.docx', b'0' * (PROGRAM_MAX_UPLOAD_BYTES + 1))
-        with self.assertRaisesMessage(jobs.JobError, 'limit 2 MB'):
+        with self.assertRaisesMessage(jobs.JobError, 'limit 5 MB'):
             jobs.create(self.request(), upload, {}, 'clean')
         self.assertEqual(list(jobs.root().iterdir()), [])

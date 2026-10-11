@@ -9,14 +9,14 @@
     <h1 class="page-title">Programy</h1>
     <p class="page-description">Uporządkuj spacje, interpunkcję i zapis tekstu w dokumencie Word.</p>
 </header>
-<details class="details-card odkurzacz program-tool" {% if clean_open %}open{% endif %}>
+<details class="details-card odkurzacz program-tool" id="program-clean" {% if clean_open %}open{% endif %}>
     <summary><span>Odkurzacz</span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
     <div class="card-body">
     <p>Wybierz DOCX i potrzebne poprawki, a następnie pobierz poprawiony plik.</p>
-    <p>Reguły redakcyjne Odkurzacza poprawiają cały tekst: treść, tabele, pola tekstowe, nagłówki, stopki i przypisy. Przy zaznaczonej opcji usuwania miękkie entery i spacje nieprzenoszące w tych miejscach są zamieniane odpowiednio na zwykłe entery (nowe akapity) i zwykłe spacje; istniejące podziały stron pozostają. Nie śledzi zmian. Puste akapity pozostają, chyba że wybierzesz ich scalanie.</p>
+    <p>Reguły redakcyjne Odkurzacza poprawiają cały tekst: treść, tabele, pola tekstowe, nagłówki, stopki i przypisy. Przy zaznaczonej opcji usuwania miękkie entery i spacje nieprzenoszące w tych miejscach są zamieniane odpowiednio na zwykłe entery (nowe akapity) i zwykłe spacje; istniejące podziały stron pozostają. Zmiany są wprowadzane bez śledzenia, chyba że wybierzesz pobranie z zaznaczonymi zmianami. Puste akapity pozostają, chyba że wybierzesz ich scalanie.</p>
     <p><strong>Przed odkurzaniem zaakceptuj śledzone zmiany i usuń komentarze albo zaznacz przebudowę do nowego pliku.</strong></p>
     {% if program_error %}<p class="form-error" role="alert">{{ program_error }}</p>{% endif %}
-    <form method="post" enctype="multipart/form-data">
+    <form method="post" enctype="multipart/form-data" data-program-job>
         {% csrf_token %}
 
         {{ form.non_field_errors }}
@@ -34,30 +34,43 @@
         <p class="form-help">Po zaznaczeniu: Times New Roman 12 pkt, interlinia 1,5, wcięcie 1,25 cm, bez odstępów przed i po akapicie, A4 i marginesy 2,5 cm. Tekst jest wyjustowany; wyśrodkowane akapity pozostają wyśrodkowane bez wcięcia. Kursywa, pogrubienia i puste akapity zostają zachowane. Bez zaznaczenia Odkurzacz zachowuje formatowanie.</p>
         <p><label for="{{ form.rebuild.id_for_label }}">{{ form.rebuild }} {{ form.rebuild.label }}</label></p>
         <p class="form-help">Przebudowa tworzy nowy DOCX z tekstem i podstawowym formatowaniem, a następnie stosuje wybrane poprawki. Usuwa stare metadane, komentarze, nagłówki, stopki i ukryty tekst. Akceptuje zmiany tekstu: zachowuje dodany tekst, pomija skreślony. Pominięcie innych elementów wymaga Twojego potwierdzenia. Dane wpisane w treści pozostają.</p>
+        <div class="program-suboption" data-requires="{{ form.rebuild.html_name }}">
+            <p><label for="{{ form.keep_page_format.id_for_label }}">{{ form.keep_page_format }} {{ form.keep_page_format.label }}</label></p>
+            {{ form.keep_page_format.errors }}
+            <p class="form-help" id="{{ form.keep_page_format.auto_id }}_helptext">{{ form.keep_page_format.help_text }}</p>
+        </div>
+        <p><label for="{{ form.track_changes.id_for_label }}">{{ form.track_changes }} {{ form.track_changes.label }}</label></p>
+        {{ form.track_changes.errors }}
+        <p class="form-help" id="{{ form.track_changes.auto_id }}_helptext">{{ form.track_changes.help_text }} W Wordzie: Recenzja → Zaakceptuj wszystkie zmiany daje ten sam tekst co pobranie bez śledzenia.</p>
+        <p><label for="{{ form.cleaner_summary.id_for_label }}">{{ form.cleaner_summary }} {{ form.cleaner_summary.label }}</label></p>
+        {{ form.cleaner_summary.errors }}
+        <p class="form-help" id="{{ form.cleaner_summary.auto_id }}_helptext">{{ form.cleaner_summary.help_text }} Podsumowanie pojawi się obok uwag, przed pobraniem pliku.</p>
         <p>Przy większym dokumencie pobieranie może rozpocząć się po chwili. Oryginał pozostaje na Twoim komputerze.</p>
         <fieldset>
             <legend>Opcje korekty</legend>
             <p>Domyślnie wyłączone jest tylko scalanie pustych akapitów (na końcu listy). Pozostałe poprawki możesz wyłączyć według potrzeb.</p>
-            <div class="odkurzacz-actions" id="rule-actions" hidden>
+            <div class="odkurzacz-actions rule-actions" hidden>
                 <button type="button" class="secondary-button" data-rules="all">Zaznacz wszystkie</button>
                 <button type="button" class="secondary-button" data-rules="none">Odznacz wszystkie</button>
             </div>
             {{ form.rules.errors }}{{ form.remove_soft_whitespace.errors }}
             <div class="odkurzacz-rules">
-                <label for="{{ form.remove_soft_whitespace.id_for_label }}" title="Miękkie entery (Shift+Enter) stają się nowymi akapitami, a spacje nieprzenoszące zwykłymi spacjami. Działa na końcu czyszczenia; podziały stron pozostają.">{{ form.remove_soft_whitespace }} <span>{{ form.remove_soft_whitespace.label }}</span></label>
+                <label for="{{ form.remove_soft_whitespace.id_for_label }}" title="Miękkie entery (Shift+Enter) stają się nowymi akapitami, a spacje nieprzenoszące zwykłymi spacjami. Działa przed regułami korekty, więc spacje nierozdzielające dodane przez Odkurzacz zostają; podziały stron pozostają.">{{ form.remove_soft_whitespace }} <span>{{ form.remove_soft_whitespace.label }}</span></label>
                 {% for checkbox in form.rules %}<label for="{{ checkbox.id_for_label }}">{{ checkbox.tag }} <span>{{ checkbox.choice_label }}</span></label>{% endfor %}
             </div>
         </fieldset>
-        <p>Reguły działają automatycznie – po pobraniu przejrzyj wynik, szczególnie zamiany słownikowe i wielkość liter.</p>
+        <p>Reguły działają automatycznie – po pobraniu przejrzyj wynik, szczególnie zamiany słownikowe i wielkość liter.
+            Pozycje własnych zamian słownikowych są w <a href="{% url 'core:replacement_list' %}">słowniku zamian</a>{% if can_edit_replacements %} – możesz je tam zmieniać{% endif %}.</p>
     </form>
+    {% include "core/includes/program_reset.html" with program="clean" %}
 </div></details>
-<details class="details-card odkurzacz program-tool" {% if conversion_open %}open{% endif %}>
+<details class="details-card odkurzacz program-tool" id="program-convert" {% if conversion_open %}open{% endif %}>
     <summary><span>Konwerter DOCX → PDF i EPUB</span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
     <div class="card-body">
     <p>Wybierz jeden lub kilka formatów. Jeden format pobierzesz jako osobny plik, kilka jako archiwum ZIP. Nazwa pliku pozostaje taka jak nazwa dokumentu wejściowego; zmienia się tylko rozszerzenie. Pliki wewnątrz ZIP również zachowują tę nazwę.</p>
     <p>Konwerter ustawia Times New Roman 12 pkt, interlinię 1,5 i wcięcie 1,25 cm, bez odstępów przed i po akapicie. Zachowuje puste akapity, wyrównanie, kursywę i pogrubienia. Wyśrodkowane akapity pozostają bez wcięcia.</p>
-    <p>Format strony to A4 z marginesami 2,5 cm. PDF używa czcionki podobnej do Times New Roman. Podział stron i złożony układ mogą się zmienić – sprawdź wynik po pobraniu.</p>
-    <p class="form-help">Uwagi konwertera (pominięte elementy, uproszczenia) pojawią się na tej stronie po zakończeniu pracy. Nagłówki Worda (Nagłówek 1, 2, 3) wyznaczają rozdziały EPUB i spis treści. Wynik jest usuwany z serwera zaraz po pobraniu.</p><form method="post" enctype="multipart/form-data">
+    <p>Format strony to A4 z marginesami 2,5 cm. PDF używa czcionki podobnej do Times New Roman, drukuje nagłówki i stopki dokumentu (bez stopki – numery stron), ma spis treści z Nagłówków 1–3, a podział strony (Ctrl+Enter) zaczyna w nim nową stronę. EPUB pomija nagłówki i stopki, a podział strony i separator sceny (np. * * *) pokazuje jako odstęp. Złożony układ może się zmienić – sprawdź wynik po pobraniu.</p>
+    <p class="form-help">Uwagi konwertera (pominięte elementy, uproszczenia) pojawią się na tej stronie po zakończeniu pracy. Nagłówki Worda (Nagłówek 1, 2, 3) wyznaczają rozdziały EPUB i spis treści. Wynik jest usuwany z serwera zaraz po pobraniu.</p><form method="post" enctype="multipart/form-data" data-program-job>
         {% csrf_token %}<input type="hidden" name="program_action" value="convert">
         {{ conversion_form.non_field_errors }}
         {% if conversion_form.errors %}<p role="alert">Sprawdź komunikaty i ponownie wybierz plik przed wysłaniem.</p>{% endif %}
@@ -72,18 +85,31 @@
         </fieldset>
         <p><label for="{{ conversion_form.use_cleaner.id_for_label }}">{{ conversion_form.use_cleaner }} {{ conversion_form.use_cleaner.label }}</label></p>
         {{ conversion_form.use_cleaner.errors }}
-        <p>Ta opcja stosuje domyślne poprawki Odkurzacza przed konwersją, w tym zamianę miękkich enterów na nowe akapity i spacji nieprzenoszących na zwykłe spacje. Ustawienia w osobnej sekcji Odkurzacza nie mają tu wpływu. Przed konwersją zaakceptuj śledzone zmiany i usuń komentarze.</p>
+        <p>Ta opcja stosuje przed konwersją wybrane niżej reguły Odkurzacza oraz zamianę miękkich enterów na nowe akapity i spacji nieprzenoszących na zwykłe spacje. Przed konwersją zaakceptuj śledzone zmiany i usuń komentarze.</p>
+        <fieldset class="program-suboption" data-requires="{{ conversion_form.use_cleaner.html_name }}">
+            <legend>{{ conversion_form.rules.label }}</legend>
+            <p>Działają tylko z zaznaczoną opcją „Użyj Odkurzacza”. Domyślnie zaznaczone są te same reguły co w Odkurzaczu.</p>
+            <div class="odkurzacz-actions rule-actions" hidden>
+                <button type="button" class="secondary-button" data-rules="all">Zaznacz wszystkie</button>
+                <button type="button" class="secondary-button" data-rules="none">Odznacz wszystkie</button>
+            </div>
+            {{ conversion_form.rules.errors }}{{ conversion_form.rules_shown }}
+            <div class="odkurzacz-rules">
+                {% for checkbox in conversion_form.rules %}<label for="{{ checkbox.id_for_label }}">{{ checkbox.tag }} <span>{{ checkbox.choice_label }}</span></label>{% endfor %}
+            </div>
+        </fieldset>
         <button type="submit" class="primary-button">Konwertuj i pobierz</button>
-        <p>Poczekaj na pobranie pliku. Konwersja może potrwać do 90 sekund; nie wysyłaj formularza ponownie w tym czasie.</p>
+        <p>Poczekaj na pobranie pliku. Konwersja może potrwać do {% if superuser_limits %}{{ superuser_time_limit }}{% else %}90{% endif %} sekund; nie wysyłaj formularza ponownie w tym czasie.</p>
     </form>
+    {% include "core/includes/program_reset.html" with program="convert" %}
 </div></details>
-<details class="details-card odkurzacz program-tool" {% if repetitions_open %}open{% endif %}>
+<details class="details-card odkurzacz program-tool" id="program-repetitions" {% if repetitions_open %}open{% endif %}>
     <summary><span>Kolorowanie powtórzeń</span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
     <div class="card-body">
     <p>Oznacz powtarzające się słowa w DOCX, także w rozpoznanych formach odmiany. Narzędzie nie zmienia treści, nie uruchamia Odkurzacza ani nie ujednolica formatowania.</p>
-    <p>Zakres określa liczbę analizowanych słów, także między akapitami. Analiza obejmuje treść z tabelami i polami tekstowymi oraz osobno nagłówki, stopki i przypisy; pomija tylko hiperłącza. Najpierw zaakceptuj śledzone zmiany.</p>
+    <p>Zakres określa liczbę analizowanych słów, także między akapitami. Analiza obejmuje treść z tabelami i polami tekstowymi oraz osobno nagłówki, stopki i przypisy; pomija hiperłącza, pola Worda (np. spis treści, numery stron) i kontrolki zawartości. Najpierw zaakceptuj śledzone zmiany.</p>
     <p>Powtórzenia mają kolorowe litery, a własne słowa – żółte tło. Pozostałe oznaczenia zależą od wybranych opcji. Przejrzyj zaznaczone fragmenty po pobraniu.</p>
-    <form method="post" enctype="multipart/form-data">
+    <form method="post" enctype="multipart/form-data" data-program-job>
         {% csrf_token %}<input type="hidden" name="program_action" value="repetitions">
         {{ repetitions_form.non_field_errors }}
         {% if repetitions_form.errors %}<p role="alert">Sprawdź komunikaty i ponownie wybierz plik przed wysłaniem.</p>{% endif %}
@@ -98,8 +124,10 @@
         </div>
         <p>Wyjątki mają pierwszeństwo przed własną listą słów. Słowa wpisuj po jednym w wierszu albo oddzielaj przecinkami. Kolory mogą różnić się przy kolejnych uruchomieniach.</p>
         <button type="submit" class="primary-button">Oznacz powtórzenia i pobierz DOCX</button>
-        <p>Przetwarzanie może potrwać do 90 sekund. Oryginał pozostaje bez zmian.</p>
+        {% if superuser_limits %}<p class="form-help">Jako superuser nie masz limitu wielkości analizy (zwykle 500 tys. znaków, 20 tys. w akapicie), a przetwarzanie może trwać do {{ superuser_time_limit }} sekund.</p>{% endif %}
+        <p>Przetwarzanie może potrwać do {% if superuser_limits %}{{ superuser_time_limit }}{% else %}90{% endif %} sekund. Oryginał pozostaje bez zmian.</p>
     </form>
+    {% include "core/includes/program_reset.html" with program="repetitions" %}
     </div>
 </details>
 {% endblock %}

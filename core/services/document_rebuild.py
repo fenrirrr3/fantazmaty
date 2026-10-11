@@ -10,6 +10,8 @@ from docx.oxml.ns import qn
 from docx.shared import Cm
 from docx.text.paragraph import Paragraph
 from docx.text.run import Run
+from docx.enum.style import WD_STYLE_TYPE
+from docx.enum.text import WD_BREAK
 
 class RebuildUnsupported(ValueError):
     def __init__(self, omissions):
@@ -18,11 +20,43 @@ class RebuildUnsupported(ValueError):
 
 
 THEME_FONT_OMISSION = "nierozpoznany krój czcionki z motywu (zastosujemy domyślny)"
+MC = "{http://schemas.openxmlformats.org/markup-compatibility/2006}"
+# Znaczniki bez treści (zakładki, zakresy komentarzy, ślady sprawdzania pisowni) – także między akapitami.
+CONTENT_FREE = {
+    qn("w:" + tag)
+    for tag in (
+        "bookmarkStart", "bookmarkEnd", "proofErr", "permStart", "permEnd",
+        "commentRangeStart", "commentRangeEnd", "moveFromRangeStart", "moveFromRangeEnd",
+        "moveToRangeStart", "moveToRangeEnd", "customXmlInsRangeStart", "customXmlInsRangeEnd",
+        "customXmlDelRangeStart", "customXmlDelRangeEnd", "customXmlMoveFromRangeStart",
+        "customXmlMoveFromRangeEnd", "customXmlMoveToRangeStart", "customXmlMoveToRangeEnd",
+    )
+}
+# Zapis poprzedniego formatowania przy śledzonych zmianach; przyjęcie zmian go usuwa.
+FORMAT_HISTORY = tuple(
+    qn("w:" + tag)
+    for tag in (
+        "rPrChange", "pPrChange", "sectPrChange", "tblPrChange", "tblPrExChange",
+        "tblGridChange", "trPrChange", "tcPrChange", "numberingChange",
+    )
+)
+
+
+MISSING = object()  # właściwość nieokreślona na tym poziomie: decyduje kolejny (styl, ustawienia domyślne)
 
 
 class Omissions(Counter):
     def add(self, label):
         self[label] += 1
+
+
+def _hex_byte(value):
+    """Wartość themeShade/themeTint (00–FF); uszkodzona jest pomijana jak w Wordzie."""
+    try:
+        number = int(value, 16) if value else None
+    except ValueError:
+        return None
+    return number if number is not None and 0 <= number <= 255 else None
 
 
 def _format_resolver(original, omissions):
@@ -79,7 +113,7 @@ def _format_resolver(original, omissions):
                 continue
             value = node.get(qn("w:val"))
             key = node.get(qn("w:themeColor"))
-            if key and theme is not None:
+            if key and key.isalnum() and theme is not None:
                 key = {
                     "text1": "dk1",
                     "text2": "dk2",
@@ -91,21 +125,79 @@ def _format_resolver(original, omissions):
                     value = color[0].get("lastClr") or color[0].get("val")
             if value and len(value) == 6 and all(c in "0123456789abcdefABCDEF" for c in value):
                 rgb = [int(value[i : i + 2], 16) for i in (0, 2, 4)]
-                shade = node.get(qn("w:themeShade"))
-                tint = node.get(qn("w:themeTint"))
-                if shade:
-                    rgb = [round(c * int(shade, 16) / 255) for c in rgb]
-                if tint:
-                    rgb = [round(c + (255 - c) * (1 - int(tint, 16) / 255)) for c in rgb]
+                shade = _hex_byte(node.get(qn("w:themeShade")))
+                tint = _hex_byte(node.get(qn("w:themeTint")))
+                if shade is not None:
+                    rgb = [round(c * shade / 255) for c in rgb]
+                if tint is not None:
+                    rgb = [round(c + (255 - c) * (1 - tint / 255)) for c in rgb]
                 return RGBColor(*rgb)
             if value == "auto":
                 return None
-        return None
+        return MISSING
 
     return default_font, default_format, font_name, font_color
 
 
+def _unwrap(node, content):
+    parent = node.getparent()
+    index = parent.index(node)
+    for child in list(content) if content is not None else ():
+        parent.insert(index, child)
+        index += 1
+    parent.remove(node)
+
+
+TOC_OMISSION = "spis treści (wstaw go ponownie w Wordzie: Odwołania → Spis treści)"
+
+
+def _unwrap_content_controls(body, omissions):
+    """Kontrolki zawartości (w:sdt) znikają, a ich treść z formatowaniem zostaje na swoim miejscu.
+
+    Dotyczy kontrolek blokowych, w akapicie, w wierszach i komórkach tabel. Kontrolka pokazująca tekst
+    zastępczy („Kliknij tutaj…”) nie ma treści – znika razem z nim. Spis treści z galerii Worda
+    (w:docPartObj) usuwamy w całości: jego numery stron nie pasowałyby do nowego dokumentu.
+    """
+    # Od końca: zagnieżdżona kontrolka jest rozpakowana, zanim zajmiemy się zewnętrzną.
+    for node in reversed(list(body.iter(qn("w:sdt")))):
+        parent = node.getparent()
+        if parent is None:
+            continue
+        properties = node.find(qn("w:sdtPr"))
+        # Elementy kontrolki nie mają klas python-docx (xpath bez prefiksów), więc szukamy przez find.
+        gallery = node.find("/".join(qn(tag) for tag in ("w:sdtPr", "w:docPartObj", "w:docPartGallery")))
+        if gallery is not None and (gallery.get(qn("w:val")) or "").startswith("Table of Contents"):
+            omissions.add(TOC_OMISSION)
+            parent.remove(node)
+        elif properties is not None and properties.find(qn("w:showingPlcHdr")) is not None:
+            parent.remove(node)
+        else:
+            _unwrap(node, node.find(qn("w:sdtContent")))
+
+
+def _unwrap_simple_fields(body, omissions, label):
+    """Pole proste (w:fldSimple) zostawia swój ostatni wynik jako zwykły tekst – jak pole złożone."""
+    fields = list(body.iter(qn("w:fldSimple")))
+    for node in fields:
+        if not any(parent.tag == node.tag for parent in node.iterancestors()):
+            omissions.add(label)
+    for node in fields:
+        for data in node.findall(qn("w:fldData")):
+            node.remove(data)
+        _unwrap(node, node)
+
+
 def _sanitize_body(body, omissions):
+    # Treść alternatywna (mc:AlternateContent): bierzemy wersję zapasową dla prostszych programów,
+    # a bez niej pierwszy wariant. Inaczej pole tekstowe liczyło się podwójnie (DrawingML + VML).
+    for node in list(body.iter(MC + "AlternateContent")):
+        if node.getparent() is not None:
+            _unwrap(node, node.find(MC + "Fallback") if node.find(MC + "Fallback") is not None
+                    else node.find(MC + "Choice"))
+    _unwrap_content_controls(body, omissions)
+    for node in list(body.iter(*FORMAT_HISTORY)):
+        if node.getparent() is not None:
+            node.getparent().remove(node)
     # Accept inline revisions: retained runs lose reviewer IDs and timestamps.
     for tag in ("del", "moveFrom"):
         for node in list(body.iter(qn("w:" + tag))):
@@ -132,17 +224,23 @@ def _sanitize_body(body, omissions):
         "footnoteReference": "przypisy dolne i ich odsyłacze",
         "endnoteReference": "przypisy końcowe i ich odsyłacze",
         "fldChar": "mechanizm pól automatycznych (zwykły tekst wyniku może pozostać)",
-        "instrText": "instrukcje pól automatycznych",
-        "fldSimple": "pola automatyczne wraz z ich treścią",
+        # Instrukcja jest częścią tego samego pola (liczonego przy fldChar), a nie osobną pozycją.
+        "instrText": None,
         "altChunk": "dołączona treść zewnętrzna",
-        "sdt": "kontrolki zawartości wraz z ich treścią",
         "sym": "symbole specjalne zapisane jako obiekty",
     }
     for tag, label in unsupported.items():
         for node in list(body.iter(qn("w:" + tag))):
-            omissions.add(label)
+            # Jedna tabela czy ilustracja to jedna pozycja, także gdy zawiera zagnieżdżone; pole – jego początek.
+            counted = label and not any(parent.tag == node.tag for parent in node.iterancestors())
+            if tag == "fldChar":
+                counted = node.get(qn("w:fldCharType")) == "begin"
+            if counted:
+                omissions.add(label)
             if node.getparent() is not None:
                 node.getparent().remove(node)
+    # Po usunięciu tabel i ilustracji: pole proste w nich znika razem z nimi i nie jest liczone.
+    _unwrap_simple_fields(body, omissions, unsupported["fldChar"])
     math = "{http://schemas.openxmlformats.org/officeDocument/2006/math}"
     for node in list(body.iter()):
         parent = node.getparent()
@@ -164,6 +262,35 @@ def _sanitize_body(body, omissions):
                 omissions.add(label)
 
 
+LANGUAGE_ATTRIBUTES = ("val", "eastAsia", "bidi")
+
+
+def _document_language(original):
+    """Atrybuty w:lang z ustawień domyślnych dokumentu (np. pl-PL) – słownik i dzielenie wyrazów."""
+    nodes = original.styles.element.xpath("./w:docDefaults/w:rPrDefault/w:rPr/w:lang")
+    if not nodes:
+        return {}
+    return {name: nodes[0].get(qn("w:" + name)) for name in LANGUAGE_ATTRIBUTES if nodes[0].get(qn("w:" + name))}
+
+
+def _language(elements):
+    """Język tekstu łacińskiego: fragment, potem styl znakowy i styl akapitu."""
+    for element in elements:
+        values = element.xpath("./w:rPr/w:lang/@w:val")
+        if values:
+            return values[0]
+    return None
+
+
+def _numbered(elements):
+    """Numeracja z akapitu albo stylu; numId 0 oznacza jej wyłączenie."""
+    for element in elements:
+        values = element.xpath("./w:pPr/w:numPr/w:numId/@w:val")
+        if values:
+            return values[0] != "0"
+    return False
+
+
 def styles(style):
     seen = set()
     while style is not None and style.style_id not in seen:
@@ -180,68 +307,156 @@ def effective(objects, name):
     return None
 
 
+PARAGRAPH_FORMAT = (
+    "alignment",
+    "first_line_indent",
+    "left_indent",
+    "right_indent",
+    "space_before",
+    "space_after",
+    "line_spacing",
+    "line_spacing_rule",
+    "keep_together",
+    "keep_with_next",
+    "page_break_before",
+    "widow_control",
+)
+RUN_FORMAT = (
+    "size",
+    "bold",
+    "italic",
+    "underline",
+    "strike",
+    "double_strike",
+    "superscript",
+    "subscript",
+    "small_caps",
+    "all_caps",
+    "highlight_color",
+)
+BREAKS = {"page": WD_BREAK.PAGE, "column": WD_BREAK.COLUMN}
+
+
+def _tab_stops(paragraph_format):
+    return [(stop.position, stop.alignment, stop.leader) for stop in paragraph_format.tab_stops]
+
+
+class _StyleChains:
+    """Formatowanie wynikające ze stylów i ustawień domyślnych, liczone raz na styl.
+
+    Fragment dziedziczy po: własnym formatowaniu, stylu znakowym (z jego bazowymi), stylu akapitu
+    (z bazowymi) i ustawieniach domyślnych dokumentu. Stylów jest kilkadziesiąt, fragmentów –
+    dziesiątki tysięcy, więc część wspólną liczymy raz, a dla fragmentu czytamy tylko jego własny w:rPr."""
+
+    def __init__(self, original, omissions):
+        self.part = original.part
+        self.default_font, self.default_format, self.font_name, self.font_color = _format_resolver(
+            original, omissions
+        )
+        self._styles = {}
+        self._paragraphs = {}
+        self._runs = {}
+
+    def _style(self, style_id, kind):
+        key = (style_id, kind)
+        if key not in self._styles:
+            self._styles[key] = list(styles(self.part.get_style(style_id, kind)))
+        return self._styles[key]
+
+    def paragraph(self, style_id):
+        if style_id not in self._paragraphs:
+            chain = self._style(style_id, WD_STYLE_TYPE.PARAGRAPH)
+            formats = [s.paragraph_format for s in chain] + [self.default_format]
+            fonts = [s.font for s in chain] + [self.default_font]
+            tabs = next((_tab_stops(f) for f in formats if len(f.tab_stops)), [])
+            self._paragraphs[style_id] = {
+                "styles": chain,
+                "numbered": _numbered([s.element for s in chain]),
+                "heading": next(
+                    (s.name for s in chain if s.name.startswith("Heading ") and s.name[8:].isdigit()),
+                    None,
+                ),
+                "format": {name: effective(formats, name) for name in PARAGRAPH_FORMAT},
+                "tabs": tabs,
+                "mark_size": effective(fonts, "size"),
+                "mark_name": self.font_name(fonts),
+            }
+        return self._paragraphs[style_id]
+
+    def run(self, run_style_id, paragraph_style_id):
+        key = (run_style_id, paragraph_style_id)
+        if key not in self._runs:
+            chain = self._style(run_style_id, WD_STYLE_TYPE.CHARACTER) + self.paragraph(
+                paragraph_style_id
+            )["styles"]
+            fonts = [s.font for s in chain] + [self.default_font]
+            color = self.font_color(fonts)
+            self._runs[key] = {
+                "format": {name: effective(fonts, name) for name in RUN_FORMAT + ("hidden",)},
+                "name": self.font_name(fonts),
+                "color": None if color is MISSING else color,
+                "lang": _language([s.element for s in chain]),
+            }
+        return self._runs[key]
+
+
+def _style_id(properties, tag):
+    node = properties.find(qn(tag)) if properties is not None else None
+    return node.get(qn("w:val")) if node is not None else None
+
+
 def _paragraph_specs(original, omissions):
     body = original.element.body
-    default_font, default_format, font_name, font_color = _format_resolver(original, omissions)
+    chains = _StyleChains(original, omissions)
+    font_name, font_color = chains.font_name, chains.font_color
+    document_language = _document_language(original).get("val")
     paragraphs = []
     for element in body:
         if element.tag == qn("w:sectPr"):
+            continue
+        if element.tag in CONTENT_FREE:
             continue
         if element.tag != qn("w:p"):
             omissions.add("blok " + etree.QName(element).localname + " wraz z treścią")
             continue
         old = Paragraph(element, original)
-        paragraph_styles = list(styles(old.style))
-        if element.xpath("./w:pPr/w:numPr") or any(
-            s.element.xpath("./w:pPr/w:numPr") for s in paragraph_styles
-        ):
+        properties = element.pPr
+        paragraph_style_id = _style_id(properties, "w:pStyle")
+        inherited = chains.paragraph(paragraph_style_id)
+        direct_numbering = element.xpath("./w:pPr/w:numPr/w:numId/@w:val")
+        if direct_numbering[0] != "0" if direct_numbering else inherited["numbered"]:
             omissions.add("automatyczne numerowanie i punktory list (tekst pozycji pozostanie)")
-        heading = next(
-            (
-                st.name
-                for st in paragraph_styles
-                if st.name.startswith("Heading ") and st.name[8:].isdigit()
-            ),
-            None,
-        )
-        paragraph = {"heading": heading, "format": {}, "tabs": [], "runs": []}
+        paragraph = {"heading": inherited["heading"], "format": {}, "tabs": [], "runs": [], "mark": {}}
         paragraphs.append(paragraph)
-        formats = (
-            [old.paragraph_format]
-            + [s.paragraph_format for s in paragraph_styles]
-            + [default_format]
-        )
-        for name in (
-            "alignment",
-            "first_line_indent",
-            "left_indent",
-            "right_indent",
-            "space_before",
-            "space_after",
-            "line_spacing",
-            "line_spacing_rule",
-            "keep_together",
-            "keep_with_next",
-            "page_break_before",
-            "widow_control",
-        ):
-            value = effective(formats, name)
+        # Znak akapitu wyznacza wysokość pustego akapitu (np. odstępu między scenami).
+        mark_properties = properties.find(qn("w:rPr")) if properties is not None else None
+        mark_size, mark_name = inherited["mark_size"], inherited["mark_name"]
+        if mark_properties is not None:
+            mark = OxmlElement("w:r")
+            mark.append(deepcopy(mark_properties))
+            mark_font = Run(mark, old).font
+            mark_size = mark_font.size if mark_font.size is not None else mark_size
+            mark_name = font_name([mark_font]) or mark_name
+        if mark_size is not None:
+            paragraph["mark"]["size"] = mark_size
+        if mark_name:
+            paragraph["mark"]["name"] = mark_name
+        own = old.paragraph_format if properties is not None else None
+        for name in PARAGRAPH_FORMAT:
+            value = getattr(own, name) if own is not None else None
+            if value is None:
+                value = inherited["format"][name]
             if value is not None:
                 paragraph["format"][name] = value
-        for formatting in formats:
-            if len(formatting.tab_stops):
-                for stop in formatting.tab_stops:
-                    paragraph["tabs"].append((stop.position, stop.alignment, stop.leader))
-                break
+        paragraph["tabs"] = (
+            _tab_stops(own) if own is not None and len(own.tab_stops) else list(inherited["tabs"])
+        )
         for element_run in element.iter(qn("w:r")):
-            old_run = Run(element_run, old)
-            fonts = (
-                [old_run.font]
-                + [s.font for s in styles(old_run.style)]
-                + [s.font for s in paragraph_styles]
-                + [default_font]
-            )
-            if effective(fonts, "hidden"):
+            run_properties = element_run.rPr
+            shared = chains.run(_style_id(run_properties, "w:rStyle"), paragraph_style_id)
+            font = Run(element_run, old).font if run_properties is not None else None
+            hidden = font.hidden if font is not None else None
+            if hidden if hidden is not None else shared["format"]["hidden"]:
                 continue
             new_run = {"content": [], "font": {}}
             paragraph["runs"].append(new_run)
@@ -254,17 +469,8 @@ def _paragraph_specs(original, omissions):
                 elif tag == qn("w:tab"):
                     new_run["content"].append(("tab", None))
                 elif tag in (qn("w:br"), qn("w:cr")):
-                    from docx.enum.text import WD_BREAK
-
                     kind = child.get(qn("w:type"), "textWrapping")
-                    new_run["content"].append(
-                        (
-                            "break",
-                            {"page": WD_BREAK.PAGE, "column": WD_BREAK.COLUMN}.get(
-                                kind, WD_BREAK.LINE
-                            ),
-                        )
-                    )
+                    new_run["content"].append(("break", BREAKS.get(kind, WD_BREAK.LINE)))
                 elif tag == qn("w:noBreakHyphen"):
                     new_run["content"].append(("text", "‑"))
                 elif tag == qn("w:softHyphen"):
@@ -273,32 +479,59 @@ def _paragraph_specs(original, omissions):
                     continue
                 else:
                     omissions.add("element " + etree.QName(child).localname + " wewnątrz tekstu")
-            for name in (
-                "size",
-                "bold",
-                "italic",
-                "underline",
-                "strike",
-                "double_strike",
-                "superscript",
-                "subscript",
-                "small_caps",
-                "all_caps",
-                "highlight_color",
-            ):
-                value = effective(fonts, name)
+            for name in RUN_FORMAT:
+                value = getattr(font, name) if font is not None else None
+                if value is None:
+                    value = shared["format"][name]
                 if value is not None:
                     new_run["font"][name] = value
-            name = font_name(fonts)
+            name = (font_name([font]) if font is not None else None) or shared["name"]
             if name:
                 new_run["font"]["name"] = name
-            color = font_color(fonts)
+            color = font_color([font]) if font is not None else MISSING
+            color = shared["color"] if color is MISSING else color
             if color is not None:
                 new_run["color"] = color
+            language = _language([element_run]) or shared["lang"]
+            if language and language != document_language:
+                new_run["lang"] = language
     return paragraphs
 
 
-def _analyze_docx(source):
+PAGE_DIMENSIONS = (
+    "page_width", "page_height", "orientation", "top_margin", "bottom_margin", "left_margin",
+    "right_margin", "header_distance", "footer_distance", "gutter",
+)
+COLUMN_ATTRIBUTES = ("num", "space", "equalWidth", "sep")
+# Ustawienia dokumentu dotyczące marginesów (strony lustrzane w książce, margines na oprawę u góry).
+PAGE_SETTINGS = ("mirrorMargins", "gutterAtTop")
+
+
+def _page_format(original):
+    """Format strony pierwszej sekcji źródła: wymiary, orientacja, marginesy i kolumny.
+
+    Przenosimy same wartości (liczby i atrybuty), budując nowe elementy – nie kopiujemy części źródła.
+    """
+    section = original.sections[0]
+    columns = section._sectPr.find(qn("w:cols"))
+    return {
+        "dimensions": {name: getattr(section, name) for name in PAGE_DIMENSIONS},
+        "columns": None if columns is None else (
+            {name: columns.get(qn("w:" + name)) for name in COLUMN_ATTRIBUTES if columns.get(qn("w:" + name))},
+            [
+                {name: column.get(qn("w:" + name)) for name in ("w", "space") if column.get(qn("w:" + name))}
+                for column in columns.findall(qn("w:col"))
+            ],
+        ),
+        "settings": [
+            name for name in PAGE_SETTINGS
+            if original.settings.element.xpath("./w:%s[not(@w:val) or not(@w:val='0' or @w:val='false'"
+                                               " or @w:val='off')]" % name)
+        ],
+    }
+
+
+def _analyze_docx(source, keep_page_format=False):
     source.seek(0)
     original = Document(source)
     body = original.element.body
@@ -308,43 +541,118 @@ def _analyze_docx(source):
             root = etree.fromstring(
                 rel.target_part.blob, etree.XMLParser(resolve_entities=False, no_network=True)
             )
-            if (
-                any((node.text or "").strip() for node in root.iter(qn("w:t")))
-                or root.find(".//" + qn("w:drawing")) is not None
+            # Znak wodny i grafika w nagłówku nie mają w:t (np. VML v:textpath), a też znikną.
+            if any((node.text or "").strip() for node in root.iter(qn("w:t"))) or any(
+                True for _ in root.iter(qn("w:drawing"), qn("w:pict"), qn("w:object"))
             ):
                 omissions.add("niepuste nagłówki lub stopki")
+    _sanitize_body(body, omissions)
+    # Po rozpakowaniu kontrolek zawartości: podział sekcji bywa w akapicie wewnątrz kontrolki.
     if len(original.sections) > 1:
-        omissions["podziały na sekcje i ustawienia ich układu (pozostanie jedna sekcja A4)"] = (
+        label = "układu pierwszej" if keep_page_format else "A4"
+        omissions[f"podziały na sekcje i ustawienia ich układu (pozostanie jedna sekcja {label})"] = (
             len(original.sections) - 1
         )
+    elif not keep_page_format and _custom_page_layout(original.sections[0]):
+        # Marginesy nie są zgłaszane (Word i LibreOffice mają różne domyślne);
+        # format strony, orientacja i kolumny zmieniają wygląd całej książki.
+        omissions.add("format strony, orientacja lub kolumny (wynik: A4 pionowo, jedna kolumna)")
+    # Liczymy po usunięciu tabel i pól tekstowych: odnośnik z nich nie zostawia „widocznego tekstu”.
     for link in body.iter(qn("w:hyperlink")):
         omissions.add("odnośniki hiperłączy (widoczny tekst pozostanie)")
-    _sanitize_body(body, omissions)
-    return _paragraph_specs(original, omissions), omissions
+    layout = {
+        "paragraphs": _paragraph_specs(original, omissions),
+        "page": _page_format(original) if keep_page_format else None,
+        "language": _document_language(original),
+        "default_tab": original.settings.element.xpath("./w:defaultTabStop/@w:val"),
+        "defaults": {
+            etree.QName(node).localname
+            for node in original.styles.element.xpath(
+                "./w:docDefaults | ./w:docDefaults/w:rPrDefault | ./w:docDefaults/w:pPrDefault"
+            )
+        },
+    }
+    return layout, omissions
 
 
-def inspect_docx(source):
+def inspect_docx(source, *, keep_page_format=False):
     """Return exactly the rebuild warnings without creating or saving an output DOCX."""
-    _, omissions = _analyze_docx(source)
+    _, omissions = _analyze_docx(source, keep_page_format)
     if omissions:
         raise RebuildUnsupported(omissions)
 
 
-def _new_document(paragraphs):
+def _neutral_styles(result, language, present):
+    """Szablon python-docx nie może dokładać własnego wyglądu (10 pt odstępu, 1,15 interlinii, 11 pt,
+    Calibri, niebieskich nagłówków): formatowanie źródła przenosimy jawnie, a czego źródło nie
+    określało, zostaje przy wartościach bazowych Worda – tak jak w oryginale."""
+    styles = result.styles.element
+    for node in styles.xpath("./w:docDefaults/w:rPrDefault/w:rPr | ./w:docDefaults/w:pPrDefault/w:pPr"):
+        for child in list(node):
+            node.remove(child)
+    # Programy różnie traktują brak ustawień domyślnych (np. LibreOffice przyjmuje wtedy wartości
+    # Worda 2007), więc odtwarzamy też samą obecność tych elementów.
+    for name in ("rPrDefault", "pPrDefault"):
+        if name not in present:
+            for node in styles.xpath("./w:docDefaults/w:" + name):
+                node.getparent().remove(node)
+    if "docDefaults" not in present:
+        for node in styles.xpath("./w:docDefaults"):
+            styles.remove(node)
+    if language and styles.xpath("./w:docDefaults/w:rPrDefault/w:rPr"):
+        properties = styles.xpath("./w:docDefaults/w:rPrDefault/w:rPr")[0]
+        node = OxmlElement("w:lang")
+        for name, value in language.items():
+            node.set(qn("w:" + name), value)
+        properties.append(node)
+    for style in styles.xpath("./w:style[@w:type='paragraph']"):
+        for node in style.xpath("./w:rPr"):
+            style.remove(node)
+        for node in style.xpath("./w:pPr/*[not(self::w:outlineLvl)]"):
+            node.getparent().remove(node)
+
+
+def _new_document(layout):
+    paragraphs = layout["paragraphs"]
     result = Document()
+    _neutral_styles(result, layout["language"], layout["defaults"])
+    settings = result.settings.element
+    for node in settings.xpath("./w:proofState"):
+        # Szablon deklaruje „sprawdzono pisownię”; nowy dokument Word ma sprawdzić od nowa.
+        settings.remove(node)
+    if layout["default_tab"]:
+        settings.xpath("./w:defaultTabStop")[0].set(qn("w:val"), layout["default_tab"][0])
     for section in result.sections:
         section.page_width = Cm(21)
         section.page_height = Cm(29.7)
         section.top_margin = section.bottom_margin = section.left_margin = section.right_margin = (
             Cm(2.5)
         )
+        if layout["page"]:
+            _apply_page_format(result, section, layout["page"])
+    heading_styles = {None: None}
     for item in paragraphs:
+        # Wyszukanie stylu po nazwie przegląda wszystkie style; robimy to raz na nazwę, nie na akapit.
         heading = item["heading"]
-        paragraph = result.add_paragraph(style=heading if heading in result.styles else None)
+        if heading not in heading_styles:
+            heading_styles[heading] = result.styles[heading] if heading in result.styles else None
+        paragraph = result.add_paragraph(style=heading_styles[heading])
         for name, value in item["format"].items():
             setattr(paragraph.paragraph_format, name, value)
         for stop in item["tabs"]:
             paragraph.paragraph_format.tab_stops.add_tab_stop(*stop)
+        if item["mark"]:
+            mark = OxmlElement("w:rPr")
+            if "name" in item["mark"]:
+                fonts = OxmlElement("w:rFonts")
+                for key in ("w:ascii", "w:hAnsi"):
+                    fonts.set(qn(key), item["mark"]["name"])
+                mark.append(fonts)
+            if "size" in item["mark"]:
+                size = OxmlElement("w:sz")
+                size.set(qn("w:val"), str(round(item["mark"]["size"].pt * 2)))
+                mark.append(size)
+            paragraph._p.get_or_add_pPr().append(mark)
         for specification in item["runs"]:
             run = paragraph.add_run()
             for kind, value in specification["content"]:
@@ -358,6 +666,12 @@ def _new_document(paragraphs):
                 setattr(run.font, name, value)
             if "color" in specification:
                 run.font.color.rgb = specification["color"]
+            if "lang" in specification:
+                language = OxmlElement("w:lang")
+                language.set(qn("w:val"), specification["lang"])
+                run._r.get_or_add_rPr().insert_element_before(
+                    language, "w:eastAsianLayout", "w:specVanish", "w:oMath"
+                )
     props = result.core_properties
     for name in (
         "author",
@@ -380,11 +694,63 @@ def _new_document(paragraphs):
     return result
 
 
-def rebuild_docx(source, *, allow_omissions=False):
-    paragraphs, omissions = _analyze_docx(source)
+def _apply_page_format(result, section, page):
+    """Format strony źródła; czego źródło nie określało, zostaje jak przy zwykłej przebudowie."""
+    for name, value in page["dimensions"].items():
+        if value is not None:
+            setattr(section, name, value)
+    if page["columns"] is not None:
+        attributes, widths = page["columns"]
+        columns = section._sectPr.find(qn("w:cols"))
+        if columns is None:
+            columns = OxmlElement("w:cols")
+            section._sectPr.insert_element_before(columns, "w:formProt", "w:vAlign", "w:noEndnote",
+                                                   "w:titlePg", "w:textDirection", "w:bidi",
+                                                   "w:rtlGutter", "w:docGrid", "w:printerSettings",
+                                                   "w:sectPrChange")
+        for key in list(columns.attrib):
+            del columns.attrib[key]
+        for child in list(columns):
+            columns.remove(child)
+        for name, value in attributes.items():
+            columns.set(qn("w:" + name), value)
+        for width in widths:
+            column = OxmlElement("w:col")
+            for name, value in width.items():
+                column.set(qn("w:" + name), value)
+            columns.append(column)
+    settings = result.settings.element
+    anchor = settings.find(qn("w:zoom"))
+    index = settings.index(anchor) + 1 if anchor is not None else 0
+    for name in page["settings"]:
+        settings.insert(index, OxmlElement("w:" + name))
+        index += 1
+
+
+def _custom_page_layout(section):
+    """Strona inna niż A4 lub Letter pionowo albo w kilku kolumnach (tolerancja 2 mm).
+
+    Letter (domyślny w angielskim Wordzie) zamieniony na A4 nie zmienia układu książki,
+    więc nie wymaga potwierdzenia; A5, B5, własny format książkowy i orientacja pozioma tak.
+    """
+    width, height = section.page_width, section.page_height
+    if width is not None and height is not None and not any(
+        abs(width - Cm(w)) <= Cm(0.2) and abs(height - Cm(h)) <= Cm(0.2)
+        for w, h in ((21, 29.7), (21.59, 27.94))
+    ):
+        return True
+    columns = section._sectPr.find(qn("w:cols"))
+    try:
+        return columns is not None and int(columns.get(qn("w:num"), "1") or 1) > 1
+    except ValueError:
+        return False
+
+
+def rebuild_docx(source, *, allow_omissions=False, keep_page_format=False):
+    layout, omissions = _analyze_docx(source, keep_page_format)
     if omissions and not allow_omissions:
         raise RebuildUnsupported(omissions)
-    result = _new_document(paragraphs)
+    result = _new_document(layout)
     output = BytesIO()
     result.save(output)
     output.seek(0)

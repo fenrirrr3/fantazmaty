@@ -720,4 +720,26 @@ class MailboxConnectionAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         return fields
 
 
+from core.models import ReplacementEntry  # noqa: E402
+from core.odkurzacz_forms import ReplacementEntryForm  # noqa: E402
+
+
+class ReplacementEntryAdminForm(ReplacementEntryForm):
+    """Panel jest dostępny tylko dla superusera, więc dopuszcza wyrażenia regularne."""
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault('allow_patterns', True)
+        super().__init__(*args, **kwargs)
+
+
+@admin.register(ReplacementEntry)
+class ReplacementEntryAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
+    form = ReplacementEntryAdminForm
+    list_display = ('position', 'kind', 'source', 'target', 'is_active', 'note')
+    list_display_links = ('source',)
+    list_filter = ('kind', 'is_active')
+    search_fields = ('source', 'target', 'note')
+    ordering = ('position', 'pk')
+
+
 from core.audio_description_admin import AudioDescriptionAdmin  # noqa: E402,F401

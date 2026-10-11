@@ -379,3 +379,4 @@ class AuthenticationAttempt(models.Model):
     expires_at = models.DateTimeField(db_index=True)
 
 from .audio_description_models import AudioDescription, AudioDescriptionNote  # noqa: E402,F401
+from .program_models import ProgramPreferences, ReplacementEntry  # noqa: E402,F401

@@ -1,0 +1,8 @@
+{% for field in form %}
+<div class="form-field{% if field.name == 'source' or field.name == 'target' or field.name == 'note' %} form-field-wide{% endif %}">
+    {% if field.name == 'is_active' %}<label for="{{ field.id_for_label }}">{{ field }} {{ field.label|capfirst }}</label>
+    {% else %}<label for="{{ field.id_for_label }}">{{ field.label|capfirst }}</label>{{ field }}{% endif %}
+    {{ field.errors }}
+    {% if field.help_text %}<p class="helptext">{{ field.help_text }}</p>{% endif %}
+</div>
+{% endfor %}

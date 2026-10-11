@@ -1,6 +1,7 @@
 """Repeat analysis from the desktop application, independent of Django/GUI."""
 import random
 import re
+import unicodedata
 from collections import OrderedDict
 from threading import RLock
 from copy import deepcopy
@@ -14,6 +15,7 @@ from docx.oxml.ns import qn
 from docx.shared import RGBColor
 from docx.text.run import Run
 from docx.enum.text import WD_COLOR_INDEX
+from lxml import etree
 
 # The converter worker runs this module without the package context.
 try:
@@ -41,14 +43,38 @@ def _get_nlp():
         raise ImportError('Brakuje polskiego modelu analizy.') from error
 
 
+def _unused_pipes(nlp, purpose):
+    """Składniki modelu zbędne do lematów albo do granic zdań.
+
+    Wyniki są identyczne: lematyzator (edit tree) i parser korzystają tylko ze
+    wspólnego tok2vec. Tagger ma własną sieć, więc jego pominięcie oszczędza
+    około połowy czasu. Lematyzator regułowy potrzebuje części mowy – wtedy
+    zostaje dawny zestaw.
+    """
+    from spacy.pipeline import EditTreeLemmatizer
+    if purpose == 'sentences':
+        needed = {'tok2vec', 'parser', 'senter'}
+    elif 'lemmatizer' in nlp.pipe_names and isinstance(nlp.get_pipe('lemmatizer'), EditTreeLemmatizer):
+        needed = {'tok2vec', 'lemmatizer'}
+    else:
+        # Parser jest potrzebny przy zdaniach, nie przy izolowanych słowach.
+        return [name for name in ('parser', 'senter', 'ner') if name in nlp.pipe_names]
+    return [name for name in nlp.pipe_names if name not in needed]
+
+
 def _lemma_from_doc(doc, fallback: str) -> str:
     if not doc or not doc[0].lemma_:
         return fallback
     return doc[0].lemma_.lower()
 
 
+def _form(word: str) -> str:
+    """Klucz słowa: małe litery w postaci NFC (np. „ę” zapisane jako „e” + ogonek)."""
+    return unicodedata.normalize('NFC', word.lower())
+
+
 def _get_lemma_lower(word: str) -> str:
-    return _lemma_map([word])[word.lower()]
+    return _lemma_map([word])[_form(word)]
 
 
 def get_lemma(word: str) -> str:
@@ -141,7 +167,27 @@ def _child_text(child):
     return probe.text or ''
 
 
-def _apply_run_colors(run, tokens):
+def _styled_rpr(rpr, rpr_key, color, highlight, parent, cache):
+    """rPr runu z kolorem/tłem; wzór liczony raz dla danego rPr i stylu.
+
+    Ustawianie koloru przez python-docx jest kosztowne, a te same rPr
+    powtarzają się w całym dokumencie. Zwraca element do skopiowania lub None.
+    """
+    key = (rpr_key, color, highlight)
+    if key not in cache:
+        probe = OxmlElement('w:r')
+        if rpr is not None:
+            probe.append(deepcopy(rpr))
+        wrapper = Run(probe, parent)
+        if color is not None:
+            wrapper.font.color.rgb = color
+        if highlight is not None:
+            wrapper.font.highlight_color = highlight
+        cache[key] = probe.rPr
+    return cache[key]
+
+
+def _apply_run_colors(run, tokens, styles=None):
     spans = _color_spans(tokens)
     protected_nodes = any(child.tag not in (qn('w:rPr'), qn('w:t'), qn('w:tab'))
                           for child in run._r)
@@ -160,17 +206,15 @@ def _apply_run_colors(run, tokens):
 
     rpr = original.rPr
     replacements = []
+    styles = {} if styles is None else styles
+    rpr_key = None if rpr is None else etree.tostring(rpr)
 
     def new_run(color, highlight):
         element = OxmlElement('w:r')
         element.attrib.update(original.attrib)
-        if rpr is not None:
-            element.append(deepcopy(rpr))
-        wrapper = Run(element, run._parent)
-        if color is not None:
-            wrapper.font.color.rgb = color
-        if highlight is not None:
-            wrapper.font.highlight_color = highlight
+        template = _styled_rpr(rpr, rpr_key, color, highlight, run._parent, styles)
+        if template is not None:
+            element.append(deepcopy(template))
         replacements.append(element)
         return element
 
@@ -224,7 +268,11 @@ def _positive_integer(value, label):
     return int(text)
 
 
-LEXICAL_RE = re.compile(r"[^\W\d_]+(?:[-’'][^\W\d_]+)*", re.UNICODE)
+# Znaki łączące (np. ogonek U+0328) należą do słowa, także w tekście NFD.
+_COMBINING = '\u0300-\u036f'
+WORD_RE = re.compile(rf'\w[\w{_COMBINING}]*')
+_LETTER = rf'(?:[^\W\d_]|[{_COMBINING}])'
+LEXICAL_RE = re.compile(rf"[^\W\d_]{_LETTER}*(?:[-’'][^\W\d_]{_LETTER}*)*", re.UNICODE)
 EMPTY_PAIRS_RE = re.compile(r'\([ \t\u00a0]*\)|\[[ \t\u00a0]*\]|\{[ \t\u00a0]*\}|„[ \t\u00a0]*”|“[ \t\u00a0]*”|"[ \t\u00a0]*"')
 CHECK_DEFAULTS = {
     'duplicates': True, 'long_sentences': True, 'long_paragraphs': True,
@@ -242,7 +290,7 @@ MARK_STYLES = {
 def parse_word_list(value):
     """Jedno słowo na wiersz lub słowa rozdzielone spacjami, przecinkami, średnikami."""
     text = value if isinstance(value, str) else ' '.join(value or ())
-    return tuple(dict.fromkeys(match[0].lower() for match in LEXICAL_RE.finditer(text)))
+    return tuple(dict.fromkeys(_form(match[0]) for match in LEXICAL_RE.finditer(text)))
 
 
 _LEMMA_CACHE_LIMIT = 50000
@@ -251,7 +299,7 @@ _LEMMA_LOCK = RLock()
 
 
 def _lemma_map(forms):
-    unique = dict.fromkeys(form.lower() for form in forms)
+    unique = dict.fromkeys(_form(form) for form in forms)
     if not unique:
         return {}
     # Klucz zawiera nazwę modelu. Cache jest współdzielony z get_lemma().
@@ -266,8 +314,7 @@ def _lemma_map(forms):
                 missing.append(word)
         if missing:
             nlp = _get_nlp()
-            # Parser jest potrzebny przy zdaniach, nie przy izolowanych słowach.
-            disabled = [name for name in ('parser', 'senter', 'ner') if name in nlp.pipe_names]
+            disabled = _unused_pipes(nlp, 'lemmas')
             for word, parsed in zip(missing, nlp.pipe(missing, batch_size=BATCH_SIZE,
                                                     disable=disabled)):
                 lemma = _lemma_from_doc(parsed, word)
@@ -276,6 +323,21 @@ def _lemma_map(forms):
                 while len(_LEMMA_CACHE) > _LEMMA_CACHE_LIMIT:
                     _LEMMA_CACHE.popitem(last=False)
         return result
+
+
+# Niewidoczne znaczniki Worda: nie są tekstem ani przerwą między słowami.
+# Word otacza nimi m.in. powtórzone słowa (proofErr), a zakładka _GoBack
+# lub łącznik miękki trafiają w środek słowa.
+_INVISIBLE_MARKERS = frozenset(qn(tag) for tag in (
+    'w:proofErr', 'w:bookmarkStart', 'w:bookmarkEnd', 'w:commentRangeStart', 'w:commentRangeEnd',
+    'w:permStart', 'w:permEnd',
+))
+_INVISIBLE_RUN_CONTENT = frozenset(qn(tag) for tag in (
+    'w:lastRenderedPageBreak', 'w:commentReference', 'w:softHyphen',
+))
+# Miękki enter i podział strony w akapicie rozdzielają słowa jak biały znak.
+_BREAKS = frozenset((qn('w:br'), qn('w:cr')))
+BARRIER = '\ufffc'  # obiekt w tekście (pole, rysunek, przypis): przerywa słowo i sąsiedztwo
 
 
 def _paragraph_layout(para, field_state=None):
@@ -288,13 +350,13 @@ def _paragraph_layout(para, field_state=None):
     state = field_state if field_state is not None else [0]
     text, pieces, offset = [], [], 0
 
-    def barrier():
+    def barrier(char=BARRIER):
         nonlocal offset
-        text.append('\ufffc')
-        offset += 1
+        text.append(char)
+        offset += len(char)
 
     for child in para._p:
-        if child.tag == qn('w:pPr'):
+        if child.tag == qn('w:pPr') or child.tag in _INVISIBLE_MARKERS:
             continue
         if child.tag != qn('w:r'):
             barrier()
@@ -311,6 +373,10 @@ def _paragraph_layout(para, field_state=None):
                 elif kind == 'end':
                     state[0] = max(0, state[0] - 1)
                 barrier()
+            elif not state[0] and node.tag in _INVISIBLE_RUN_CONTENT:
+                pass
+            elif not state[0] and node.tag in _BREAKS:
+                barrier('\n')
             elif state[0] or node.tag not in (qn('w:t'), qn('w:tab')):
                 barrier()
             elif value:
@@ -361,7 +427,7 @@ def _resolved_spans(text, marks):
     return spans
 
 
-def _apply_layout_marks(layout, marks):
+def _apply_layout_marks(layout, marks, styles=None):
     """Przenieś oznaczenia na istniejące runy; podziel każdy najwyżej raz."""
     from bisect import bisect_right
     text, pieces = layout
@@ -388,7 +454,7 @@ def _apply_layout_marks(layout, marks):
             position = end
         if position < len(value):
             tokens.append(Token(value[position:], False))
-        _apply_run_colors(run, tokens)
+        _apply_run_colors(run, tokens, styles)
 
 
 def _extra_checks(paragraphs, lemmas, ignored, tracked, options, status_callback=None,
@@ -405,7 +471,7 @@ def _extra_checks(paragraphs, lemmas, ignored, tracked, options, status_callback
             marks[p_index].append((0, len(text), 'long_paragraphs'))
             report['long_paragraphs'] += 1
         for word in lexemes:
-            form = word[0].lower()
+            form = _form(word[0])
             lemma = lemmas.get(form, form)
             if lemma in tracked and lemma not in ignored:
                 marks[p_index].append((word.start(), word.end(), 'tracked'))
@@ -436,7 +502,7 @@ def _extra_checks(paragraphs, lemmas, ignored, tracked, options, status_callback
             status_callback('Rozpoznawanie zdań i sprawdzanie ich długości…')
         # Model rozpoznaje zdania w kontekście, zamiast dzielić przy każdej kropce.
         nlp = _get_nlp()
-        disabled = [name for name in ('lemmatizer', 'ner') if name in nlp.pipe_names]
+        disabled = _unused_pipes(nlp, 'sentences')
         for index, parsed in enumerate(nlp.pipe(texts, batch_size=BATCH_SIZE, disable=disabled)):
             for sentence in parsed.sents:
                 if len(LEXICAL_RE.findall(sentence.text)) > checks['sentence_limit']:
@@ -452,7 +518,7 @@ def _extra_checks(paragraphs, lemmas, ignored, tracked, options, status_callback
 
 def color_document(source, *, window_size=35, min_word_length=4,
                    ignored_words='', tracked_words='', analysis_options=None,
-                   include_prefix_matches=False, color_palette='dark'):
+                   include_prefix_matches=False, color_palette='dark', analysis_unlimited=False):
     """Return a marked DOCX; never change its words or editorial formatting."""
     if color_palette not in ('dark', 'light'):
         raise DocumentInputError('analysis_options')
@@ -475,9 +541,9 @@ def color_document(source, *, window_size=35, min_word_length=4,
     stories, commit = document_stories(doc, include_fallback=False)
     stories = [story for story in stories if story.paragraphs]
     lengths = [len(p.text) for story in stories for p in story.paragraphs]
-    if sum(lengths) > 500000 or any(n > 20000 for n in lengths):
+    # analysis_unlimited: tylko zadania superusera (ustawiane przez serwer, nie z formularza).
+    if not analysis_unlimited and (sum(lengths) > 500000 or any(n > 20000 for n in lengths)):
         raise DocumentInputError('analysis_limit')
-    from lxml import etree
     namespaces = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
     if any(etree._Element.xpath(story.root, './/w:ins | .//w:del | .//w:moveFrom | .//w:moveTo',
                                 namespaces=namespaces) for story in stories):
@@ -487,17 +553,17 @@ def color_document(source, *, window_size=35, min_word_length=4,
     for story_layouts in layouts:
         words, locations = [], []
         for p_index, (text, _) in enumerate(story_layouts):
-            for match in re.finditer(r'\w+', text):
-                value = match[0]
+            for match in WORD_RE.finditer(text):
+                value = unicodedata.normalize('NFC', match[0])
                 if len(value) >= min_word_length:
                     words.append(Token(value, True, word_len=len(value),
                                        stem5=first5(value) if len(value) >= 5 else None))
                     locations.append((p_index, match.start(), match.end()))
         story_words.append((words, locations))
     ignored_forms, tracked_forms = parse_word_list(ignored_words), parse_word_list(tracked_words)
-    forms = [w.text.lower() for words, _ in story_words for w in words]
+    forms = [_form(w.text) for words, _ in story_words for w in words]
     if tracked_forms or options['duplicates']:
-        forms.extend(m[0].lower() for story_layouts in layouts for text, _ in story_layouts
+        forms.extend(_form(m[0]) for story_layouts in layouts for text, _ in story_layouts
                      for m in LEXICAL_RE.finditer(text))
     forms.extend(ignored_forms)
     forms.extend(tracked_forms)
@@ -507,10 +573,11 @@ def color_document(source, *, window_size=35, min_word_length=4,
     tracked = {lemmas.get(w, w) for w in tracked_forms}
     report_progress("Wyszukiwanie powtórzeń")
     total = sum(len(story.paragraphs) for story in stories)
+    styles = {}  # wspólne wzory rPr dla wszystkich części dokumentu
     done = 0
     for story, story_layouts, (words, locations) in zip(stories, layouts, story_words):
         for token in words:
-            token.lemma = lemmas.get(token.text.lower(), token.text.lower())
+            token.lemma = lemmas.get(_form(token.text), _form(token.text))
             token.ignored = token.lemma in ignored
         groups = _find_repeat_groups(
             words, window_size=window_size, include_prefix_matches=include_prefix_matches
@@ -525,11 +592,14 @@ def color_document(source, *, window_size=35, min_word_length=4,
         )
         for target, ranges in zip(marks, extra_marks):
             target.extend((a, b, None, MARK_STYLES[k][1], MARK_STYLES[k][0]) for a, b, k in ranges)
-        for layout, ranges in zip(story_layouts, marks):
+        # Od końca: akapit pola tekstowego leży wewnątrz runu akapitu, który
+        # pojawia się wcześniej. Podział tego runu kopiuje pole tekstowe, więc
+        # jego treść musi być oznaczona przed podziałem.
+        for layout, ranges in reversed(list(zip(story_layouts, marks))):
             if done % 10 == 0:
                 report_progress("Kolorowanie – akapity", done, total)
             done += 1
-            _apply_layout_marks(layout, ranges)
+            _apply_layout_marks(layout, ranges, styles)
     commit()
     report_progress("Zapis oznaczonego DOCX")
     output = BytesIO()

@@ -1,4 +1,5 @@
 """Analiza powtórzeń: kolorowanie odmian słów, dodatkowe kontrole, palety kolorów, formularz i strona programu."""
+import unicodedata
 from io import BytesIO
 from unittest.mock import patch
 
@@ -11,12 +12,12 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_COLOR_INDEX
 from core.odkurzacz_forms import RepetitionsForm
 from core.program_test_support import run_program
 from core.services.document_converter import convert_document
-from core.services.document_repetitions import color_document
+from core.services.document_repetitions import LEXICAL_RE, _get_nlp, _unused_pipes, color_document
 from fantazmaty.testing import create_member
 
 from .support import (
-    REPETITION_FIELDS, REPETITION_PARAMETERS, IsolatedProgramDirsMixin, downloaded_document, footnote_text,
-    saved, whole_document,
+    REPETITION_FIELDS, REPETITION_PARAMETERS, IsolatedProgramDirsMixin, docx_with_paragraph_xml,
+    downloaded_document, footnote_text, saved, text_run, whole_document,
 )
 
 ONLY_REPETITIONS = {'duplicates': False, 'long_sentences': False, 'long_paragraphs': False, 'empty_pairs': False}
@@ -101,6 +102,91 @@ class RepeatAnalysisTests(SimpleTestCase):
         self.assertTrue(cell._p.xpath('.//w:color'))
         self.assertEqual(cell.text, 'Lampa świeciła,  lampa gasła.')
         self.assertIn('w:color', footnote_text(BytesIO(result.getvalue())))
+
+
+class ModelPipelineTests(SimpleTestCase):
+    """Pomijane składniki modelu (dla szybkości) nie zmieniają lematów ani granic zdań."""
+
+    TEXT = ('Kot spał na oknie, a koty sąsiadów biegały po ogrodzie. – Czy widziałaś Annę? – zapytał Piotr. '
+            'Ludzie mówili, że lata mijały szybko; potem przyszły gorsze dni i jeszcze gorsze noce.')
+
+    def test_reduced_pipeline_matches_full_pipeline(self):
+        nlp = _get_nlp()
+        words = sorted({word.lower() for word in LEXICAL_RE.findall(self.TEXT)})
+        full = [doc[0].lemma_ for doc in nlp.pipe(words, disable=['parser'])]
+        reduced = [doc[0].lemma_ for doc in nlp.pipe(words, disable=_unused_pipes(nlp, 'lemmas'))]
+        self.assertEqual(reduced, full)
+        self.assertEqual([s.text for s in nlp(self.TEXT, disable=_unused_pipes(nlp, 'sentences')).sents],
+                         [s.text for s in nlp(self.TEXT, disable=['lemmatizer']).sents])
+
+
+class WordMarkupTests(SimpleTestCase):
+    """Niewidoczne znaczniki Worda (sprawdzanie pisowni, zakładki, łamanie stron) nie dzielą tekstu."""
+
+    def marked_paragraph(self, *fragments, **options):
+        source = docx_with_paragraph_xml(*fragments)
+        original = Document(source).paragraphs[0].text
+        source.seek(0)
+        marked = Document(color_document(source, min_word_length=3, analysis_options={
+            'long_sentences': False, 'long_paragraphs': False, 'empty_pairs': False}, **options)).paragraphs[0]
+        self.assertEqual(marked.text, original)
+        return marked
+
+    def test_markers_between_words_do_not_hide_neighbouring_duplicates(self):
+        """Word otacza powtórzone słowo znacznikami proofErr – właśnie to powtórzenie trzeba wykryć."""
+        cases = {
+            'proofErr': (text_run('Ala ma '), '<w:proofErr w:type="spellStart"/>', text_run('kota'),
+                         '<w:proofErr w:type="spellEnd"/>', text_run(' '), '<w:proofErr w:type="spellStart"/>',
+                         text_run('kota'), '<w:proofErr w:type="spellEnd"/>', text_run('.')),
+            'lastRenderedPageBreak': (text_run('Ala ma kota '),
+                                      '<w:r><w:lastRenderedPageBreak/><w:t>kota.</w:t></w:r>'),
+            'komentarz': (text_run('Ala ma kota'), '<w:commentRangeStart w:id="1"/>',
+                          '<w:r><w:commentReference w:id="1"/></w:r>', text_run(' kota.')),
+            'miękki enter': ('<w:r><w:t>Ala ma kota</w:t><w:br/><w:t>kota.</w:t></w:r>',),
+        }
+        for name, fragments in cases.items():
+            with self.subTest(name):
+                paragraph = self.marked_paragraph(*fragments)
+                highlights = [run.font.highlight_color for run in paragraph.runs if 'kota' in run.text]
+                self.assertEqual(highlights, [WD_COLOR_INDEX.BRIGHT_GREEN] * 2)
+
+    def test_marker_inside_a_word_keeps_it_one_word(self):
+        """Zakładka _GoBack lub łącznik miękki w środku słowa nie może go rozdzielić."""
+        for name, marker in (('zakładka', '<w:bookmarkStart w:id="0" w:name="_GoBack"/>'),
+                             ('łącznik miękki', '<w:r><w:softHyphen/></w:r>')):
+            with self.subTest(name):
+                paragraph = self.marked_paragraph(text_run('Ko'), marker, text_run('ty i koty'))
+                colors = {run.font.color.rgb for run in paragraph.runs if run.text in ('Ko', 'ty', 'koty')}
+                self.assertEqual(len(colors), 1)
+                self.assertIsNotNone(colors.pop())
+
+    def test_decomposed_polish_letters_stay_inside_words(self):
+        """Tekst w postaci NFD (np. z Pages lub PDF): „ę” to „e” + ogonek; słowo nie może się rozpaść."""
+        decomposed = unicodedata.normalize('NFD', 'Pięść i pięść, a potem Pięść.')
+        paragraph = self.marked_paragraph(text_run(decomposed), tracked_words='pięść')
+        colored = [run.text for run in paragraph.runs if run.font.color.rgb]
+        self.assertEqual(colored, [unicodedata.normalize('NFD', word) for word in ('Pięść', 'pięść', 'Pięść')])
+        self.assertEqual(len({run.font.color.rgb for run in paragraph.runs if run.font.color.rgb}), 1)
+        self.assertTrue(all(run.font.highlight_color == WD_COLOR_INDEX.YELLOW
+                            for run in paragraph.runs if run.font.color.rgb))
+
+    def test_text_box_in_a_run_with_marked_text_keeps_its_own_marks(self):
+        """Regresja: podział runu z polem tekstowym kopiował pole przed oznaczeniem jego treści."""
+        shape = ('<w:drawing><wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">'
+                 '<wp:extent cx="900000" cy="400000"/><wp:docPr id="9" name="Pole"/>'
+                 '<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+                 '<a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">'
+                 '<wps:wsp xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"><wps:spPr/>'
+                 '<wps:txbx><w:txbxContent><w:p><w:r><w:t>Psa szczeka i psa</w:t></w:r></w:p></w:txbxContent>'
+                 '</wps:txbx><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:inline></w:drawing>')
+        source = docx_with_paragraph_xml(
+            f'<w:r><w:t xml:space="preserve">Kota widać </w:t>{shape}<w:t xml:space="preserve"> i kota.</w:t></w:r>')
+        result = color_document(source, min_word_length=3, analysis_options=ONLY_REPETITIONS)
+        body = Document(result).element.body
+        self.assertEqual(len(body.xpath('.//w:txbxContent')), 1)
+        self.assertEqual(''.join(body.xpath('.//w:txbxContent//w:t/text()')), 'Psa szczeka i psa')
+        self.assertEqual(len(body.xpath('.//w:txbxContent//w:color')), 2)
+        self.assertEqual(len(body.xpath('./w:p/w:r/w:rPr/w:color')), 2)
 
 
 class ColorPaletteTests(SimpleTestCase):

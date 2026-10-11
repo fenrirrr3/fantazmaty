@@ -1,6 +1,7 @@
 """Proces roboczy konwertera (uruchamiany w tym procesie): bezpieczny HTML, akapity list, rozdziały i obrazy EPUB,
-uwagi po polsku oraz raport błędu bez treści dokumentu."""
+podziały stron i separatory scen, uwagi po polsku oraz raport błędu bez treści dokumentu."""
 import json
+import re
 import runpy
 from contextlib import contextmanager
 from io import BytesIO
@@ -11,15 +12,18 @@ from zipfile import ZipFile
 
 from django.test import SimpleTestCase
 from docx import Document
-from lxml import html
+
+from core.services.document_errors import DocumentInputError
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from lxml import etree, html
 from PIL import Image
 
 import core.services
 from core.services import document_progress
 from core.services.document_conversion_worker import convert, main, polish_warnings, sanitize_html, split_chapters
-from core.services.document_html import list_paragraphs
+from core.services.document_html import list_paragraphs, scene_break, split_page_breaks
 
-from .support import png
+from .support import add_footnote_reference, add_page_break, add_tracked_insertion, png, with_footnote
 
 
 class SanitizedHtmlTests(SimpleTestCase):
@@ -75,6 +79,15 @@ class EpubPresentationTests(SimpleTestCase):
                                       'w zwykłym formacie. (2 razy)')
         self.assertEqual(warnings[1], 'Uwaga konwertera: Something new')
 
+    def test_undefined_style_is_reported_once(self):
+        """Mammoth zgłasza brakujący styl dwa razy, drugi raz jako styl „None”."""
+        warnings = polish_warnings([
+            'Run style with ID CommentReference was referenced but not defined in the document',
+            'Unrecognised run style: None (Style ID: CommentReference)',
+        ])
+        self.assertEqual(warnings, ['Dokument odwołuje się do nieistniejącego stylu (CommentReference) – '
+                                    'pominięto jego formatowanie.'])
+
 
 class EmbeddedImageTests(SimpleTestCase):
     def setUp(self):
@@ -107,11 +120,24 @@ class EmbeddedImageTests(SimpleTestCase):
             for item in original.infolist():
                 data = original.read(item)
                 target.writestr(item, icon.getvalue() if item.filename.startswith('word/media/') else data)
-        with self.assertRaisesMessage(ValueError, 'Unsupported image'):
+        with self.assertRaisesMessage(DocumentInputError, 'nie obsługuje'):
             convert(packed, self.directory, ['epub'], 'Obraz')
 
+    def test_unreadable_image_gets_a_clear_message(self):
+        """Regresja: obraz EMF/WMF albo uszkodzony kończył konwersję komunikatem „DOCX: ValueError”."""
+        source = self.source(png(20, 10))
+        packed = self.directory / 'packed.docx'
+        with ZipFile(source) as original, ZipFile(packed, 'w') as target:
+            for item in original.infolist():
+                data = original.read(item)
+                target.writestr(item, b'\x01\x00\x00\x00EMF?' if item.filename.startswith('word/media/') else data)
+        with self.assertRaises(DocumentInputError) as raised:
+            convert(packed, self.directory, ['epub'], 'Obraz')
+        self.assertEqual(raised.exception.public_code, 'unsupported_image')
+        self.assertIn('EMF/WMF', str(raised.exception))
+
     def test_image_with_huge_dimensions_is_refused(self):
-        with self.assertRaisesMessage(ValueError, 'Image dimensions too large'):
+        with self.assertRaisesMessage(DocumentInputError, 'za duży'):
             convert(self.source(png(5000, 5000)), self.directory, ['epub'], 'Obraz')
 
 
@@ -197,3 +223,160 @@ class WorkerMainTests(SimpleTestCase):
             self.assertEqual(self.run_worker(self.document(), formats=['pdf'], prepare=True), 2)
         self.assertEqual(self.report()['error'], 'ImportError')
         self.assertNotIn('tajne', json.dumps(self.report()))
+
+
+XHTML = '{http://www.w3.org/1999/xhtml}'
+
+
+class EpubDocumentTests(SimpleTestCase):
+    """Pełna konwersja DOCX → EPUB w tym procesie."""
+
+    def setUp(self):
+        temporary = TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.directory = Path(temporary.name)
+
+    def epub(self, document):
+        """{nazwa pliku rozdziału: drzewo XHTML}."""
+        source = self.directory / 'source.docx'
+        source.write_bytes(document.getvalue())
+        convert(source, self.directory, ['epub'], 'Test')
+        with ZipFile(self.directory / 'document.epub') as archive:
+            return {Path(name).name: etree.fromstring(archive.read(name)) for name in archive.namelist()
+                    if name.endswith('.xhtml') and not name.endswith('nav.xhtml')}
+
+    def test_alignment_survives_footnotes_soft_breaks_and_insertions(self):
+        """Regresja: akapit z przypisem, miękkim enterem lub wstawką śledzonych zmian tracił wyrównanie."""
+        doc = Document()
+        noted = doc.add_paragraph('Z przypisem')
+        noted.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        add_footnote_reference(noted)
+        broken = doc.add_paragraph('Pierwsza linia')
+        broken.runs[0].add_break()
+        broken.add_run('druga linia')
+        broken.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        inserted = doc.add_paragraph('Przed ')
+        add_tracked_insertion(inserted, 'wstawką')
+        inserted.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        (content,) = self.epub(with_footnote(doc, 'Przypis')).values()
+        classes = {' '.join(''.join(p.itertext()).split()): p.get('class') for p in content.iter(XHTML + 'p')}
+        self.assertEqual(classes['Z przypisem[1]'], 'align-right')
+        self.assertEqual(classes['Pierwsza liniadruga linia'], 'align-center')
+        self.assertEqual(classes['Przed wstawką'], 'align-justify')
+
+    def test_footnote_links_lead_to_the_chapter_with_the_note(self):
+        """Regresja: po podziale na rozdziały odnośniki przypisów wskazywały kotwice w innym pliku."""
+        doc = Document()
+        for number in (1, 2):
+            doc.add_heading(f'Rozdział {number}', 1)
+            doc.add_paragraph(f'Treść {number}')
+        add_footnote_reference(doc.paragraphs[1])
+        chapters = self.epub(with_footnote(doc, 'Przypis'))
+        self.assertEqual(sorted(chapters), ['chapter-001.xhtml', 'chapter-002.xhtml'])
+        ids = {name: set(tree.xpath('//@id')) for name, tree in chapters.items()}
+        links = [(name, href) for name, tree in chapters.items() for href in tree.xpath('//@href')
+                 if '#' in href and not href.endswith('.css')]
+        self.assertIn(('chapter-001.xhtml', 'chapter-002.xhtml#footnote-1'), links)
+        self.assertIn(('chapter-002.xhtml', 'chapter-001.xhtml#footnote-ref-1'), links)
+        for name, href in links:
+            target, anchor = href.split('#')
+            self.assertIn(anchor, ids[target or name], href)
+
+
+class PageBreakAndSceneBreakTests(SimpleTestCase):
+    """Podziały stron Worda i separatory scen: odstęp w EPUB, nowa strona w PDF."""
+
+    def setUp(self):
+        temporary = TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.directory = Path(temporary.name)
+
+    def test_scene_break_paragraphs(self):
+        for text in ('*', '* * *', '***', '#', '# # #', '⁂', '~', '~ ~ ~', '—', '- - -', '• • •', '§'):
+            with self.subTest(text=text):
+                self.assertTrue(scene_break(html.fromstring(f'<p>{text}</p>')))
+        for markup in ('<p>* Przypis</p>', '<p>___</p>', '<p>== ==</p>', '<p></p>', '<p> </p>', '<h2>***</h2>',
+                       '<p>* * * * * * * * * *</p>', '<p>*<img src="a.png"></p>', '<p>1.</p>'):
+            with self.subTest(markup=markup):
+                self.assertFalse(scene_break(html.fromstring(markup)))
+
+    def test_only_the_page_break_marker_class_survives_sanitizing(self):
+        content, _ = sanitize_html('<p>a<br class="page-break">b<br class="inna">c<span class="page-break">d</span></p>', {})
+        self.assertEqual(content, '<p>a<br class="page-break">b<br>c<span>d</span></p>')
+
+    def test_split_keeps_formatting_and_unique_ids(self):
+        root = html.fragment_fromstring(
+            '<p id="a" class="align-center">A<em id="e">b<br class="page-break">c</em>d</p><table><tr><td>'
+            'T<br class="page-break">U</td></tr></table><p>Dalej</p>', create_parent='div')
+        split_page_breaks(root)
+        self.assertEqual([html.tostring(child, encoding='unicode') for child in root], [
+            '<p id="a" class="align-center">A<em id="e">b</em></p>',
+            '<p class="align-center" data-page-break="1"><em>c</em>d</p>',
+            '<table><tr><td>TU</td></tr></table>',  # w tabeli podział pomijamy
+            '<p>Dalej</p>',
+        ])
+
+    def epub(self, document):
+        source = self.directory / 'source.docx'
+        document.save(source)
+        convert(source, self.directory, ['epub'], 'Test')
+        with ZipFile(self.directory / 'document.epub') as archive:
+            names = sorted(name for name in archive.namelist() if name.endswith('.xhtml') and 'nav' not in name)
+            css = archive.read('EPUB/style.css').decode()
+            return [etree.fromstring(archive.read(name)) for name in names], css
+
+    def test_epub_page_breaks_are_gaps_not_chapters(self):
+        doc = Document()
+        add_page_break(doc.add_paragraph())  # podział przed treścią nie daje odstępu
+        add_page_break(doc.add_paragraph('Przed'), 'Po')
+        add_page_break(doc.add_paragraph())
+        doc.add_paragraph('Nowa strona').paragraph_format.page_break_before = True
+        doc.add_paragraph('Koniec')
+        (chapter,), css = self.epub(doc)
+        body = chapter.find(XHTML + 'body')
+        self.assertEqual([(child.tag[len(XHTML):], child.get('class'), ''.join(child.itertext())) for child in body], [
+            ('p', 'align-left', 'Przed'), ('hr', 'page-break', ''), ('p', 'align-left', 'Po'),
+            ('hr', 'page-break', ''), ('p', 'align-left', 'Nowa strona'), ('p', 'align-left', 'Koniec')])
+        self.assertIn('hr.page-break', css)
+        self.assertFalse(chapter.xpath('//@data-page-break'))
+
+    def test_page_break_before_a_chapter_is_dropped_from_the_previous_one(self):
+        doc = Document()
+        for number in (1, 2):
+            doc.add_heading(f'Rozdział {number}', 1)
+            add_page_break(doc.add_paragraph(f'Treść {number}'))
+        chapters, _ = self.epub(doc)
+        self.assertEqual(len(chapters), 2)
+        self.assertFalse([tree for tree in chapters if tree.xpath('//x:hr', namespaces={'x': XHTML[1:-1]})])
+
+    def test_epub_scene_break_is_centred_and_keeps_its_text(self):
+        doc = Document()
+        doc.add_paragraph('Scena pierwsza.')
+        doc.add_paragraph('* * *').alignment = WD_ALIGN_PARAGRAPH.LEFT
+        doc.add_paragraph('Scena druga.')
+        (chapter,), css = self.epub(doc)
+        separators = chapter.xpath('//x:p[@class="scene-break"]', namespaces={'x': XHTML[1:-1]})
+        self.assertEqual([''.join(p.itertext()) for p in separators], ['* * *'])
+        self.assertRegex(css, r'\.scene-break \{ text-align: center; text-indent: 0; margin: [^0]')
+
+    def test_headers_and_footers_stay_out_of_the_epub_without_a_warning(self):
+        doc = Document()
+        doc.sections[0].header.paragraphs[0].text = 'Żywa pagina'
+        doc.sections[0].footer.paragraphs[0].text = 'Stopka'
+        doc.add_paragraph('Treść')
+        (chapter,), _ = self.epub(doc)
+        self.assertNotIn('pagina', etree.tostring(chapter, encoding='unicode'))
+        self.assertNotIn('Stopka', etree.tostring(chapter, encoding='unicode'))
+        self.assertFalse((self.directory / 'warnings.json').exists())
+
+    def test_pdf_starts_a_new_page_at_word_page_breaks(self):
+        doc = Document()
+        add_page_break(doc.add_paragraph('Pierwsza'), 'Druga')
+        add_page_break(doc.add_paragraph())
+        doc.add_paragraph('Trzecia')
+        source = self.directory / 'source.docx'
+        doc.save(source)
+        convert(source, self.directory, ['pdf'], 'Test')
+        pdf = (self.directory / 'document.pdf').read_bytes()
+        self.assertEqual(len(re.findall(rb'/Type /Page\b(?!s)', pdf)), 3)
+        self.assertFalse((self.directory / 'warnings.json').exists())

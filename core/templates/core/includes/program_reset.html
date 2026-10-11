@@ -1,0 +1,5 @@
+<form method="post" class="program-reset" action="{% url 'core:programs' %}">
+    {% csrf_token %}<input type="hidden" name="program_action" value="reset_settings">
+    <p class="form-help">Ustawienia formularza są zapamiętywane przy każdym wysłaniu (bez pliku).
+        <button type="submit" name="program" value="{{ program }}" class="link-button">Przywróć ustawienia domyślne</button></p>
+</form>

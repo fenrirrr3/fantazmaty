@@ -1,28 +1,87 @@
+import re
 from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 
 from django import forms
 
+from core.program_models import ReplacementEntry
 from core.services.odkurzacz import EDITORIAL_RULES, FORM_DEFAULT_EDITORIAL_RULES
 
 
-PROGRAM_MAX_UPLOAD_BYTES = 2 * 1024 * 1024
+PROGRAM_MAX_UPLOAD_BYTES = 5 * 1024 * 1024
+FORM_DEFAULT_RULE_LIST = [key for key, _ in EDITORIAL_RULES if key in FORM_DEFAULT_EDITORIAL_RULES]
 
 
-class OdkurzaczForm(forms.Form):
+def rules_field():
+    return forms.MultipleChoiceField(
+        label="Opcje korekty", choices=EDITORIAL_RULES, initial=list(FORM_DEFAULT_RULE_LIST), required=False,
+        widget=forms.CheckboxSelectMultiple,
+    )
+
+
+class ProgramSettingsMixin:
+    """Ustawienia formularza do zapamiętania (bez pliku) i ich bezpieczny odczyt."""
+
+    settings_exclude = ('document',)
+
+    def settings_fields(self):
+        return [name for name in self.fields if name not in self.settings_exclude]
+
+    def settings_values(self):
+        return {name: self.cleaned_data[name] for name in self.settings_fields() if name in self.cleaned_data}
+
+    @classmethod
+    def initial_from_settings(cls, stored, **kwargs):
+        """Sprawdzone wartości zapisanych ustawień; nieznane klucze i wartości są pomijane."""
+        if not isinstance(stored, dict):
+            return {}
+        form = cls(**kwargs)
+        initial = {}
+        for name in form.settings_fields():
+            if name not in stored:
+                continue
+            field, value = form.fields[name], stored[name]
+            if isinstance(field, forms.MultipleChoiceField):
+                if not isinstance(value, list):
+                    continue
+                allowed = {str(key) for key, _ in field.choices}
+                value = [item for item in value if isinstance(item, str) and item in allowed]
+            elif isinstance(field, forms.BooleanField):
+                if not isinstance(value, bool):
+                    continue
+            elif isinstance(field, forms.IntegerField):
+                if not isinstance(value, int) or isinstance(value, bool):
+                    continue
+            elif not isinstance(value, str):
+                continue
+            try:
+                initial[name] = field.clean(value)
+            except forms.ValidationError:
+                continue
+        return initial
+
+
+class OdkurzaczForm(ProgramSettingsMixin, forms.Form):
     remove_soft_whitespace = forms.BooleanField(label="Usuń miękkie entery i spacje nieprzenoszące", required=False, initial=True)
     normalize_formatting = forms.BooleanField(label="Ujednolić formatowanie", required=False, initial=False)
     rebuild = forms.BooleanField(label="Przebuduj do nowego DOCX przed odkurzaniem", required=False, initial=False)
+    keep_page_format = forms.BooleanField(
+        label="Przy przebudowie zachowaj format strony", required=False, initial=False,
+        help_text="Nowy DOCX dostanie rozmiar strony, orientację, marginesy i kolumny pierwszej sekcji oryginału. "
+                  "Działa tylko razem z przebudową; ujednolicenie formatowania i tak ustawi A4.")
+    track_changes = forms.BooleanField(
+        label="Pobierz z zaznaczonymi zmianami (śledzenie zmian Worda)", required=False, initial=False,
+        help_text="Poprawki reguł korekty będą widoczne w Wordzie jako śledzone zmiany do przejrzenia. "
+                  "Zamiana miękkich enterów, przebudowa i ujednolicenie formatowania nie są oznaczane.")
+    cleaner_summary = forms.BooleanField(
+        label="Pokaż podsumowanie zmian", required=False, initial=False,
+        help_text="Po zakończeniu pracy zobaczysz listę reguł z liczbą wprowadzonych zmian.")
     document = forms.FileField(
         label="Dokument DOCX",
-        help_text="Maksymalnie 2 MB. Wynik pobierzesz jako osobny plik.",
+        help_text="Maksymalnie 5 MB. Wynik pobierzesz jako osobny plik.",
         widget=forms.ClearableFileInput(attrs={"accept": ".docx"}),
     )
-    rules = forms.MultipleChoiceField(
-        label="Opcje korekty", choices=EDITORIAL_RULES,
-        initial=[key for key, _ in EDITORIAL_RULES if key in FORM_DEFAULT_EDITORIAL_RULES], required=False,
-        widget=forms.CheckboxSelectMultiple,
-    )
+    rules = rules_field()
 
     def __init__(self, *args, max_document_bytes=PROGRAM_MAX_UPLOAD_BYTES, **kwargs):
         super().__init__(*args, **kwargs)
@@ -58,14 +117,25 @@ class DocumentConversionForm(OdkurzaczForm):
         error_messages={'required': 'Wybierz co najmniej jeden format.'},
     )
     use_cleaner = forms.BooleanField(label='Użyj Odkurzacza przed konwersją', required=False)
+    # Strona zawsze wysyła ten znacznik razem z listą reguł. Bez niego (starszy
+    # formularz, wywołanie bez listy) Odkurzacz użyje reguł domyślnych.
+    rules_shown = forms.BooleanField(required=False, initial=True, widget=forms.HiddenInput)
+
+    settings_exclude = ('document', 'rules_shown')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Miękkie entery usuwa Odkurzacz – w konwerterze działa to razem z „Użyj Odkurzacza”.
-        del self.fields['remove_soft_whitespace']
-        del self.fields['rules']
-        del self.fields['rebuild']
-        del self.fields['normalize_formatting']
+        for name in ('remove_soft_whitespace', 'rebuild', 'keep_page_format', 'normalize_formatting',
+                     'track_changes', 'cleaner_summary'):
+            del self.fields[name]
+        self.fields['rules'].label = 'Reguły Odkurzacza'
+
+    def clean(self):
+        cleaned = super().clean()
+        if not cleaned.get('rules') and not cleaned.get('rules_shown') and 'rules' not in self.errors:
+            cleaned['rules'] = list(FORM_DEFAULT_RULE_LIST)
+        return cleaned
 
 
 class RepetitionsForm(OdkurzaczForm):
@@ -87,10 +157,9 @@ class RepetitionsForm(OdkurzaczForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        del self.fields['remove_soft_whitespace']
-        del self.fields['rules']
-        del self.fields['rebuild']
-        del self.fields['normalize_formatting']
+        for name in ('remove_soft_whitespace', 'rules', 'rebuild', 'keep_page_format', 'normalize_formatting',
+                     'track_changes', 'cleaner_summary'):
+            del self.fields[name]
 
     def analysis_config(self):
         values = self.cleaned_data
@@ -98,3 +167,75 @@ class RepetitionsForm(OdkurzaczForm):
                 'tracked_words', 'include_prefix_matches')} | {'color_palette': values.get('color_palette') or 'dark', 'analysis_options': {
                 key: values[key] for key in ('duplicates', 'long_sentences', 'sentence_limit',
                                             'long_paragraphs', 'paragraph_limit', 'empty_pairs')}}
+
+
+REPLACEMENT_WORD_MAX = 100
+REPLACEMENT_PATTERN_MAX = 500
+REPLACEMENT_TARGET_MAX = 200
+WORD_SOURCE_RE = re.compile(r"[\w’'\-. ]+")
+EMPTY_MATCH_SAMPLES = ('', ' ', 'a', 'Ala ma kota.', 'ąę – „x”')
+
+
+class ReplacementEntryForm(forms.ModelForm):
+    """Pozycja słownika zamian. Wyrażenia regularne może dodawać i zmieniać tylko superuser."""
+
+    class Meta:
+        model = ReplacementEntry
+        fields = ('kind', 'source', 'target', 'is_active', 'position', 'note')
+        widgets = {'source': forms.TextInput(attrs={'spellcheck': 'false', 'autocomplete': 'off'}),
+                   'target': forms.TextInput(attrs={'spellcheck': 'false', 'autocomplete': 'off'})}
+        help_texts = {
+            'source': 'Słowo: całe słowo, bez względu na wielkość liter. '
+                      'Wyrażenie regularne: składnia Pythona, bez rozróżniania wielkości liter.',
+            'target': 'Wielkość liter jak w tekście; jeśli zamiana zaczyna się wielką literą, wynik też. '
+                      'We wzorcu można użyć grup: \\g<nazwa>.',
+        }
+
+    def __init__(self, *args, allow_patterns=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.allow_patterns = allow_patterns
+        if not allow_patterns:
+            self.fields['kind'].choices = [(value, label) for value, label in self.fields['kind'].choices
+                                           if value == ReplacementEntry.Kind.WORD]
+        self.fields['source'].max_length = REPLACEMENT_PATTERN_MAX
+        self.fields['target'].max_length = REPLACEMENT_TARGET_MAX
+
+    def clean_source(self):
+        return self.cleaned_data['source'].strip()
+
+    def clean_target(self):
+        value = self.cleaned_data['target']
+        if any(ord(char) < 32 for char in value):
+            raise forms.ValidationError('Zamiana nie może zawierać znaków sterujących.')
+        return value
+
+    def clean(self):
+        cleaned = super().clean()
+        kind, source, target = cleaned.get('kind'), cleaned.get('source'), cleaned.get('target')
+        if kind == ReplacementEntry.Kind.PATTERN and not self.allow_patterns:
+            raise forms.ValidationError('Wyrażenia regularne może dodawać i zmieniać tylko superuser.')
+        if not kind or not source:
+            return cleaned
+        if kind == ReplacementEntry.Kind.WORD:
+            if len(source) > REPLACEMENT_WORD_MAX:
+                self.add_error('source', f'Słowo może mieć najwyżej {REPLACEMENT_WORD_MAX} znaków.')
+            elif not WORD_SOURCE_RE.fullmatch(source) or not any(char.isalpha() for char in source):
+                self.add_error('source', 'Słowo może zawierać litery, cyfry, spacje, łączniki, kropki i apostrofy.')
+        else:
+            try:
+                compiled = re.compile(source, re.IGNORECASE)
+            except (re.error, RecursionError, OverflowError) as error:
+                self.add_error('source', f'Nieprawidłowe wyrażenie regularne: {error}.')
+                compiled = None
+            if compiled is not None and any(match.start() == match.end() for sample in EMPTY_MATCH_SAMPLES
+                                            for match in compiled.finditer(sample)):
+                self.add_error('source', 'Wzorzec nie może pasować do pustego tekstu.')
+            elif compiled is not None and target is not None:
+                try:
+                    compiled.sub(target, '')  # sprawdza odwołania do grup i znaki ucieczki w zamianie
+                except (re.error, IndexError) as error:
+                    self.add_error('target', f'Nieprawidłowa zamiana: {error}.')
+        duplicates = ReplacementEntry.objects.filter(kind=kind).exclude(pk=self.instance.pk).only('source')
+        if any(entry.source.casefold() == source.casefold() for entry in duplicates):
+            self.add_error('source', 'Taka pozycja już jest w słowniku.')
+        return cleaned

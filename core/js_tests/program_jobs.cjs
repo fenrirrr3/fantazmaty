@@ -6,6 +6,7 @@ const script = fs.readFileSync(path.resolve(__dirname, '../static/core/program-j
 class Element {
     constructor(tag) { this.tag = tag; this.children = []; this.events = {}; this.attrs = {}; this.hidden = false; }
     append(...children) { this.children.push(...children); }
+    replaceChildren(...children) { this.children = [...children]; }
     setAttribute(k, v) { this.attrs[k] = v; }
     removeAttribute(k) { delete this.attrs[k]; }
     addEventListener(k, fn) { this.events[k] = fn; }
@@ -33,10 +34,10 @@ function fixture(saved) {
             });
         },
     });
-    const [label,bar,stop,accept,download] = submit.box.children;
+    const [label,bar,stop,accept,download,notes,summary] = submit.box.children;
     async function respond(value) { assert.ok(tasks.length); tasks.shift()(value); await new Promise(resolve => setImmediate(resolve)); }
     async function tick() { const entry = timers.entries().next().value; assert.ok(entry); timers.delete(entry[0]); entry[1](); }
-    return {form,submit,label,bar,stop,accept,download,requests,respond,tick,details,storage: () => storage};
+    return {form,submit,label,bar,stop,accept,download,notes,summary,requests,respond,tick,details,storage: () => storage};
 }
 (async () => {
     let f = fixture();
@@ -65,5 +66,18 @@ function fixture(saved) {
     assert.equal(f.requests.at(-1).options.body.get('action'),'cancel');
     await f.respond({state:'cancelling'}); await f.respond({state:'cancelled',message:'Zatrzymano'});
     assert.equal(f.submit.disabled,false);
-    console.log('Program jobs JS: progress, cancellation, early cancellation, reload, confirmation, download OK');
+    f = fixture(); f.form.events.submit({preventDefault(){},submitter:f.submit});
+    await f.respond({url:'/programy/zadania/summary/'});
+    await f.respond({state:'done',warnings:[],summary:[{rule:'spaces',label:'Spacje',count:3}]});
+    assert.equal(f.summary.hidden,false); assert.equal(f.notes.hidden,true);
+    const table = f.summary.children[1];
+    assert.deepEqual(table.children[1].children.map(cell => cell.textContent),['Spacje','3']);
+    f = fixture(); f.form.events.submit({preventDefault(){},submitter:f.submit});
+    await f.respond({url:'/programy/zadania/empty/'});
+    await f.respond({state:'done',warnings:[],summary:[]});
+    assert.equal(f.summary.children[1].textContent,'Reguły korekty nie wprowadziły zmian.');
+    f = fixture(); f.form.events.submit({preventDefault(){},submitter:f.submit});
+    await f.respond({url:'/programy/zadania/plain/'}); await f.respond({state:'done',warnings:[]});
+    assert.equal(f.summary.hidden,true);
+    console.log('Program jobs JS: progress, cancellation, early cancellation, reload, confirmation, download, change summary OK');
 })().catch(error => { console.error(error); process.exitCode = 1; });

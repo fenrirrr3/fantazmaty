@@ -1,6 +1,6 @@
 "use strict";
 (() => {
-    document.querySelectorAll('.program-tool form').forEach((form, index) => {
+    document.querySelectorAll('.program-tool form[data-program-job]').forEach((form, index) => {
         const box = document.createElement('div');
         box.className = 'program-progress'; box.hidden = true;
         const label = document.createElement('p'); label.setAttribute('role', 'status');
@@ -14,7 +14,8 @@
         const download = document.createElement('a'); download.className = 'primary-button';
         download.textContent = 'Pobierz wynik'; download.hidden = true;
         const notes = document.createElement('div'); notes.className = 'form-warning'; notes.hidden = true;
-        box.append(label, bar, stop, accept, download, notes);
+        const summary = document.createElement('div'); summary.className = 'program-summary'; summary.hidden = true;
+        box.append(label, bar, stop, accept, download, notes, summary);
         const submit = form.querySelector('button[type="submit"]');
         if (!submit) return;
         submit.before(box);
@@ -30,7 +31,7 @@
         }
         function finish(message) {
             clearTimeout(timer); lock(false); remember(null);
-            notes.hidden = true;
+            notes.hidden = true; summary.hidden = true;
             bar.hidden = true; stop.hidden = true; accept.hidden = true;
             label.textContent = message;
         }
@@ -49,6 +50,28 @@
         async function action(name) {
             return request(url, {method: 'POST', headers: {'X-CSRFToken': csrf}, body: new URLSearchParams({action: name})});
         }
+        function showSummary(rows) {
+            // Podsumowanie Odkurzacza: reguła i liczba zmian (tylko reguły, które coś zmieniły).
+            summary.replaceChildren();
+            const title = document.createElement('strong'); title.textContent = 'Podsumowanie zmian';
+            summary.append(title);
+            if (!rows.length) {
+                const empty = document.createElement('p'); empty.textContent = 'Reguły korekty nie wprowadziły zmian.';
+                summary.append(empty);
+            } else {
+                const table = document.createElement('table'); table.className = 'data-table';
+                const head = document.createElement('tr');
+                ['Reguła', 'Zmiany'].forEach(text => { const cell = document.createElement('th'); cell.textContent = text; head.append(cell); });
+                table.append(head);
+                rows.forEach(row => {
+                    const line = document.createElement('tr');
+                    [row.label, String(row.count)].forEach(text => { const cell = document.createElement('td'); cell.textContent = text; line.append(cell); });
+                    table.append(line);
+                });
+                summary.append(table);
+            }
+            summary.hidden = false;
+        }
         async function poll() {
             try {
                 const data = await request(url);
@@ -63,6 +86,7 @@
                         warnings.forEach(text => { const item = document.createElement('li'); item.textContent = text; list.append(item); });
                         notes.append(title, list); notes.hidden = false;
                     }
+                    if (Array.isArray(data.summary)) showSummary(data.summary);
                     download.href = `${url}?download=1`; download.hidden = false;
                     if (!downloaded) { downloaded = true; download.click(); }
                     return;
@@ -119,6 +143,7 @@
             lock(true); url = null; stopRequested = false; downloaded = false;
             box.hidden = false; bar.hidden = false; bar.removeAttribute('value');
             stop.hidden = false; stop.disabled = false; download.hidden = true; accept.hidden = true;
+            notes.hidden = true; summary.hidden = true;
             label.textContent = 'Przesyłanie pliku i uruchamianie programu…';
             try {
                 const data = await request(form.action, {method: 'POST', headers: {'X-Program-Job': '1', 'X-CSRFToken': csrf}, body});

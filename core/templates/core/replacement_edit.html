@@ -1,0 +1,26 @@
+{% extends "core/base.html" %}
+{% load static %}
+{% block title %}Edycja pozycji słownika zamian | Fantazmaty CMS{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/programs.css' %}">{% endblock %}
+{% block content %}
+<header class="page-header">
+    <h1 class="page-title">Pozycja słownika zamian</h1>
+    <p class="page-description">{{ entry.source }} → {{ entry.target }}</p>
+</header>
+<p><a href="{% url 'core:replacement_list' %}">Wróć do słownika zamian</a></p>
+<section class="details-card">
+    <div class="card-body">
+        <form method="post" class="replacement-form">
+            {% csrf_token %}
+            {% if form.non_field_errors %}<div class="form-error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+            {% include "core/includes/replacement_fields.html" %}
+            <div class="form-field-wide"><button type="submit" name="action" value="save" class="primary-button">Zapisz</button></div>
+        </form>
+        <form method="post" class="program-reset" data-confirm="Usunąć tę pozycję słownika zamian?">
+            {% csrf_token %}
+            <p class="form-help">Usunięcia nie można cofnąć. Aby pozycja przestała działać, ale została w słowniku, odznacz „Aktywna”.</p>
+            <button type="submit" name="action" value="delete" class="secondary-button cms-danger-button">Usuń pozycję</button>
+        </form>
+    </div>
+</section>
+{% endblock %}

@@ -8,6 +8,8 @@ from lxml import etree
 WORD = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
 SPACE = '{http://www.w3.org/XML/1998/namespace}space'
 PART = re.compile(r'word/(document|header\d*|footer\d*|footnotes|endnotes)\.xml\Z')
+# Usunięty tekst (śledzone zmiany) nie wyznacza granic akapitów po akceptacji zmian.
+DELETED = {WORD+'del', WORD+'moveFrom'}
 
 
 def _soft_break(node):
@@ -28,7 +30,7 @@ def _split_inline(node, *, paragraph=False):
             parts.append(part)
         return parts
     # Text-box paragraphs are processed separately, not as outer run content.
-    if node.tag == WORD+'p' and not paragraph:
+    if node.tag == WORD+'p' and not paragraph or node.tag in DELETED:
         return [deepcopy(node)]
     if not len(node):
         return [deepcopy(node)]
@@ -60,8 +62,9 @@ def _split_inline(node, *, paragraph=False):
 def _paragraphs_from_soft_breaks(root):
     # Innermost paragraphs first, including text boxes, tables and footnotes.
     for paragraph in reversed(list(root.iter(WORD+'p'))):
-        breaks = [node for node in paragraph.iter() if _soft_break(node)
-                  or node.tag == WORD+'t' and '\u2028' in (node.text or '')]
+        breaks = [node for node in paragraph.iter() if (_soft_break(node)
+                  or node.tag == WORD+'t' and '\u2028' in (node.text or ''))
+                  and not any(parent.tag in DELETED for parent in node.iterancestors())]
         if not breaks:
             continue
         parts = _split_inline(paragraph, paragraph=True)

@@ -1,6 +1,7 @@
 {% extends "core/base.html" %}
+{% load static %}
 {% block title %}Postęp programu | Fantazmaty CMS{% endblock %}
-{% block extra_css %}{% if refresh %}<meta http-equiv="refresh" content="2">{% endif %}{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/programs.css' %}">{% if refresh %}<meta http-equiv="refresh" content="2">{% endif %}{% endblock %}
 {% block content %}
 <header class="page-header">
     <h1 class="page-title">Postęp programu</h1>
@@ -11,6 +12,11 @@
     {% if state.state == 'done' %}
         <p class="message success" role="status">Gotowe. Po pobraniu plik zostanie usunięty z serwera.</p>
         {% if state.warnings %}<div class="form-warning"><strong>Uwagi do konwersji</strong><ul>{% for warning in state.warnings %}<li>{{ warning }}</li>{% endfor %}</ul></div>{% endif %}
+        {% if state.summary is not None %}<div class="program-summary"><strong>Podsumowanie zmian</strong>
+            {% if state.summary %}<table class="data-table"><thead><tr><th>Reguła</th><th>Zmiany</th></tr></thead><tbody>
+                {% for row in state.summary %}<tr><td>{{ row.label }}</td><td>{{ row.count }}</td></tr>{% endfor %}
+            </tbody></table>{% else %}<p>Reguły korekty nie wprowadziły zmian.</p>{% endif %}
+        </div>{% endif %}
         <p><a class="primary-button" href="{{ download_url }}">Pobierz {{ state.filename }}</a></p>
     {% elif state.state == 'confirmation' %}
         <div class="form-warning" role="alert">{{ state.message }}</div>

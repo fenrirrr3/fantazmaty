@@ -1,4 +1,5 @@
 """Reguły korekty Odkurzacza na poziomie tekstu oraz pola i limity formularzy programów."""
+import json
 import sys
 import time
 from difflib import SequenceMatcher
@@ -11,7 +12,8 @@ from docx import Document
 
 from core.odkurzacz_forms import DocumentConversionForm, OdkurzaczForm, RepetitionsForm
 from core.services.odkurzacz import (
-    DEFAULT_EDITORIAL_RULES, EDITORIAL_RULES, _edit_opcodes, clean_docx, correct_editorial_text,
+    DEFAULT_EDITORIAL_RULES, DEFAULT_REPLACEMENTS, EDITORIAL_RULES, FORM_DEFAULT_EDITORIAL_RULES, _change_regions,
+    USER_WORD_EXACT, USER_WORD_PATTERNS, _edit_opcodes, clean_docx, correct_editorial_text,
 )
 
 from .support import REPETITION_PARAMETERS, saved, sized_docx, upload
@@ -155,6 +157,171 @@ class OptionalAndEdgeRuleTests(SimpleTestCase):
         self.assertEqual(opcodes, SequenceMatcher(None, 'Ala  ma', 'Ala ma', autojunk=False).get_opcodes())
 
 
+class ReplacementListTests(SimpleTestCase):
+    """Słownik zamian jako dane: DEFAULT_REPLACEMENTS i własna lista `replacements`."""
+
+    def fix(self, text, replacements=None):
+        return correct_editorial_text(text, {'user_word_corrections'}, replacements=replacements)
+
+    def test_default_list_is_data_equivalent_to_the_builtin_list(self):
+        self.assertTrue(all(set(entry) == {'kind', 'source', 'target'} and entry['kind'] in ('word', 'pattern')
+                            for entry in DEFAULT_REPLACEMENTS))
+        self.assertEqual(len(DEFAULT_REPLACEMENTS), len(USER_WORD_EXACT) + len(USER_WORD_PATTERNS) + 1)
+        json.dumps(DEFAULT_REPLACEMENTS)  # nadaje się do zapisania w CMS / konfiguracji zadania
+        samples = ('Pickupem jechał niechcąco, PICKUPAMI; europejczykiem, Europejczykiem i EUROPEJCZYKIEM; '
+                   'azjatami; komedia dellarte, KOMEDIA DELLARTE, KoMeDiA dEllArte, komediami Dellarte; '
+                   'ZACZYM, Zaczym; MASSMEDIAMI; miałczeniem; nieprzekonywującego; wymyśleć; kanister')
+        expected = ('Pikapem jechał niechcący, PIKAPAMI; Europejczykiem, Europejczykiem i EUROPEJCZYKIEM; '
+                    'Azjatami; komedia dell’arte, KOMEDIA DELL’ARTE, KoMeDiA dell’arte, komediami Dell’arte; '
+                    'ZA CZYM, Za czym; MASS MEDIAMI; miauczeniem; nieprzekonującego; wymyślić; kanister')
+        self.assertEqual(self.fix(samples), expected)
+        self.assertEqual(self.fix(samples, DEFAULT_REPLACEMENTS), expected)
+
+    def test_custom_list_replaces_the_builtin_one(self):
+        replacements = [{'kind': 'word', 'source': 'kot', 'target': 'pies'},
+                        {'kind': 'word', 'source': 'nie wiem', 'target': 'nie mam pojęcia'}]
+        self.assertEqual(self.fix('Kot, KOT i kot; kotek; pickup. Nie wiem.', replacements),
+                         'Pies, PIES i pies; kotek; pickup. Nie mam pojęcia.')
+        self.assertEqual(self.fix('pickup', []), 'pickup')
+
+    def test_patterns_use_named_groups_and_capital_targets(self):
+        replacements = [
+            {'kind': 'pattern', 'source': r'\bwarszawiak(?P<ending>iem|owi|a|u)?\b', 'target': r'Warszawiak\g<ending>'},
+            {'kind': 'pattern', 'source': r'\bwziąść\b', 'target': 'wziąć'},
+            {'kind': 'word', 'source': 'polak', 'target': 'Polak'},
+        ]
+        self.assertEqual(self.fix('Z warszawiakiem, WARSZAWIAKOWI; Wziąść i WZIĄŚĆ; polak', replacements),
+                         'Z Warszawiakiem, WARSZAWIAKOWI; Wziąć i WZIĄĆ; Polak')
+
+    def test_invalid_and_costly_entries_are_skipped_without_stopping_the_cleaner(self):
+        good = {'kind': 'word', 'source': 'kot', 'target': 'pies'}
+        broken = (
+            {'kind': 'pattern', 'source': '(kot', 'target': 'x'},                  # błąd kompilacji
+            {'kind': 'pattern', 'source': r'\bkot\b', 'target': r'\g<brak>'},      # nieznana grupa
+            {'kind': 'pattern', 'source': r'\bkot\b', 'target': '\\q'},            # zły znak ucieczki
+            {'kind': 'pattern', 'source': r'(a+)+$', 'target': 'x'},               # zagnieżdżone powtórzenie
+            {'kind': 'pattern', 'source': r'(?:ab|a)*c', 'target': 'x'},           # alternatywa w powtórzeniu
+            {'kind': 'pattern', 'source': r'x*', 'target': 'y'},                   # pasuje do pustego napisu
+            {'kind': 'pattern', 'source': 'a' * 501, 'target': 'x'},               # za długi wzorzec
+            {'kind': 'word', 'source': 'ala', 'target': 'x' * 201},                # za długi target
+            {'kind': 'regex', 'source': 'ala', 'target': 'x'},                     # nieznany rodzaj
+            {'kind': 'word', 'source': '', 'target': 'x'},
+            {'kind': 'word', 'source': 'ala', 'target': None},
+            'ala=x',
+        )
+        text = 'Ala ma kota, kot ' + 'a' * 30 + '!'
+        start = time.perf_counter()
+        for entry in broken:
+            with self.subTest(entry=str(entry)[:40]):
+                self.assertEqual(self.fix(text, [entry, good]), text.replace('kot ', 'pies '))
+        self.assertLess(time.perf_counter() - start, 2)
+        # Bezpieczne powtórzenia i opcjonalne alternatywy są dozwolone.
+        self.assertEqual(self.fix('kotów kocur', [
+            {'kind': 'pattern', 'source': r'\bkot(?P<e>ów|a)?\b', 'target': r'pies\g<e>'},
+            {'kind': 'pattern', 'source': r'\bkoc\w+', 'target': 'pies'}]), 'piesów pies')
+
+    def test_replacements_reach_the_docx_cleaner(self):
+        document = Document()
+        document.add_paragraph('Pickup i kot.')
+        result = Document(clean_docx(saved(document), ['user_word_corrections'],
+                                     replacements=[{'kind': 'word', 'source': 'kot', 'target': 'pies'}]))
+        self.assertEqual(result.paragraphs[0].text, 'Pickup i pies.')
+        result = Document(clean_docx(saved(document), ['user_word_corrections']))
+        self.assertEqual(result.paragraphs[0].text, 'Pikap i kot.')
+
+
+class ChangeRegionTests(SimpleTestCase):
+    """Granularność zmian (śledzenie zmian i podsumowanie): cały wyraz albo sama interpunkcja/odstęp."""
+
+    def regions(self, original, corrected):
+        return [(original[a:b], corrected[c:d]) for a, b, c, d in _change_regions(original, corrected)]
+
+    def test_word_changes_cover_the_whole_word_and_spacing_changes_stay_minimal(self):
+        self.assertEqual(self.regions('Jechał pickupem.', 'Jechał pikapem.'), [('pickupem', 'pikapem')])
+        self.assertEqual(self.regions('Ala  ma kota...', 'Ala ma kota…'), [(' ', ''), ('...', '…')])
+        self.assertEqual(self.regions('w 2025r. i a b', 'w 2025 r. i a b'), [('', ' '), (' ', ' ')])
+        self.assertEqual(self.regions('1.2.2025', '01.02.2025'), [('1', '01'), ('2', '02')])
+        self.assertEqual(self.regions('bez zmian', 'bez zmian'), [])
+
+    def test_summary_counting_does_not_change_the_text(self):
+        for text in ('Ala  ma kota... „tak” – rzekł. On  przyszedł,a potem 1.2.2025 r. 5-7 kg.', '   ', 'a'):
+            counts = {}
+            self.assertEqual(correct_editorial_text(text, FORM_DEFAULT_EDITORIAL_RULES, counts=counts),
+                             correct_editorial_text(text, FORM_DEFAULT_EDITORIAL_RULES))
+
+
+class EditorialRuleRegressionTests(SimpleTestCase):
+    """Regresje znalezione w przeglądzie Odkurzacza (październik 2026)."""
+
+    def fix(self, text, rules=FORM_DEFAULT_EDITORIAL_RULES):
+        return correct_editorial_text(text, rules)
+
+    def test_pronouns_in_capitals_stay_in_titles_and_shouting(self):
+        """Napis wersalikami i partykuła „NIE” nie są wyróżnionym zaimkiem."""
+        rules = {'pronouns_lower'}
+        for text in ('ROZDZIAŁ PIERWSZY. ON I ONA', 'Krzyknął: NIE CHCĘ GO WIDZIEĆ!', 'Powiedziałem NIE.'):
+            with self.subTest(text=text):
+                self.assertEqual(correct_editorial_text(text, rules), text)
+        self.assertEqual(correct_editorial_text('Widziałem JEGO, nie ją.', rules), 'Widziałem jego, nie ją.')
+
+    def test_straight_quote_inside_polish_quote_becomes_second_level(self):
+        self.assertEqual(self.fix('„Powiedział: "nie"” – zaśmiał się.', {'quotes'}),
+                         '„Powiedział: «nie»” – zaśmiał się.')
+        self.assertEqual(self.fix('"Tak" i "nie".', {'quotes'}), '„Tak” i „nie”.')
+
+    def test_postal_code_is_not_a_number_range(self):
+        self.assertEqual(self.fix('Ul. Polna 3, 00-950 Warszawa.', {'range_dash', 'range_spaces'}),
+                         'Ul. Polna 3, 00-950 Warszawa.')
+        self.assertEqual(self.fix('Od 10-200 osób.', {'range_dash'}), 'Od 10–200 osób.')
+
+    def test_missing_space_before_capitalized_word_is_not_a_domain(self):
+        """Regresja: „domu.Co”, „kinie.De” wyglądały jak adresy .co/.de i nie dostawały spacji."""
+        for text, expected in (('Wrócił do domu.Co dalej?', 'Wrócił do domu. Co dalej?'),
+                               ('Był w kinie.De facto nic.', 'Był w kinie. De facto nic.')):
+            with self.subTest(text=text):
+                self.assertEqual(self.fix(text, {'after_punct'}), expected)
+        self.assertEqual(self.fix('Strona fantazmaty.pl i onet.com.pl.', {'after_punct', 'sentence_case'}),
+                         'Strona fantazmaty.pl i onet.com.pl.')
+
+    def test_dotted_technical_names_are_protected(self):
+        text = 'Zobacz core.views.tags. dalej'
+        self.assertEqual(self.fix(text, {'after_punct'}), text)
+        self.assertEqual(self.fix(text, {'sentence_case'}), 'Zobacz core.views.tags. Dalej')
+
+    def test_period_after_time_ends_the_sentence(self):
+        self.assertEqual(self.fix('Wyszedł o 9:30. potem wrócił.', {'sentence_case'}),
+                         'Wyszedł o 9:30. Potem wrócił.')
+        self.assertEqual(self.fix('Rozdział 3. punkt 2.', {'sentence_case'}), 'Rozdział 3. punkt 2.')
+
+    def test_ellipsis_between_words_gets_a_space(self):
+        self.assertEqual(self.fix('Pół godziny…a potem cisza.', {'after_punct'}), 'Pół godziny… a potem cisza.')
+        self.assertEqual(self.fix('…i wtedy, co?…', {'after_punct'}), '…i wtedy, co?…')
+
+    def test_typewriter_double_hyphen_becomes_a_dash(self):
+        rules = {'hyphen_dash', 'dash_spaces', 'range_dash'}
+        for text, expected in (('Tak--powiedział.', 'Tak – powiedział.'), ('-- Wiem -- rzekł.', '– Wiem – rzekł.'),
+                               ('Strony 10--20.', 'Strony 10–20.')):
+            with self.subTest(text=text):
+                self.assertEqual(self.fix(text, rules), expected)
+
+    def test_typewriter_comma_quotes_become_polish_quotes(self):
+        """Regresja: „,,tak''” było psute na „, tak''” przez regułę powtórzonych przecinków."""
+        rules = {'quotes', 'duplicate_punct', 'after_punct'}
+        self.assertEqual(self.fix("Mówił ,,tak'' i ,,nie\".", rules), 'Mówił „tak” i „nie”.')
+        self.assertEqual(self.fix('Liczby a,, b.', rules), 'Liczby a, b.')
+
+    def test_long_paragraph_with_many_numbers_pronouns_and_dashes_is_fast(self):
+        """Reguły patrzą tylko na krótki kontekst; wcześniej koszt rósł z kwadratem długości akapitu."""
+        source = ('– Nie wiem – powiedział Jan. On go widział nr 12345 i 67890 kg, o 9.30, ' * 300)[:20000]
+        started = time.monotonic()
+        result = self.fix(source)
+        self.assertLess(time.monotonic() - started, 1.5)
+        self.assertIn('nr\u00a012345', result)
+        self.assertIn('67\u00a0890\u00a0kg', result)
+        self.assertIn('. On go', result)
+        self.assertIn('Jan. On go widział', result)
+
+
 class ProgramFormTests(SimpleTestCase):
     def test_cleaner_rule_defaults_and_order(self):
         self.assertEqual(EDITORIAL_RULES[-1][0], 'empty_paragraphs')
@@ -171,18 +338,18 @@ class ProgramFormTests(SimpleTestCase):
         self.assertNotIn('normalize_formatting', DocumentConversionForm().fields)
         self.assertNotIn('normalize_formatting', RepetitionsForm().fields)
 
-    def test_all_program_forms_accept_two_mb_and_reject_one_extra_byte(self):
+    def test_all_program_forms_accept_five_mb_and_reject_one_extra_byte(self):
         data = {'formats': ['pdf'], **REPETITION_PARAMETERS}
         for form_class in (OdkurzaczForm, DocumentConversionForm, RepetitionsForm):
             with self.subTest(form=form_class.__name__):
-                form = form_class(data, {'document': sized_docx(2 * 1024 * 1024)})
+                form = form_class(data, {'document': sized_docx(5 * 1024 * 1024)})
                 self.assertTrue(form.is_valid(), form.errors)
-                form = form_class(data, {'document': sized_docx(2 * 1024 * 1024 + 1)})
+                form = form_class(data, {'document': sized_docx(5 * 1024 * 1024 + 1)})
                 self.assertFalse(form.is_valid())
-                self.assertIn('2 MB', str(form.errors['document']))
+                self.assertIn('5 MB', str(form.errors['document']))
 
     def test_mailbox_validator_can_keep_its_existing_ten_mb_limit(self):
-        form = OdkurzaczForm({}, {'document': sized_docx(2 * 1024 * 1024 + 1)},
+        form = OdkurzaczForm({}, {'document': sized_docx(5 * 1024 * 1024 + 1)},
                              max_document_bytes=10 * 1024 * 1024)
         self.assertTrue(form.is_valid(), form.errors)
 
