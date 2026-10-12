@@ -2,7 +2,7 @@ from django import forms
 from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin
-from django.contrib.auth.forms import UserChangeForm, UserCreationForm
+from django.contrib.auth.forms import AdminUserCreationForm, UserChangeForm, UserCreationForm
 from core.models import AnthologyCorrection
 from core.permissions import is_coordinator
 from core.models import Recruitment
@@ -261,10 +261,28 @@ class IdentityFormMixin:
         return " ".join(self.cleaned_data["last_name"].split())
 
 
-class AccountCreationForm(IdentityFormMixin, UserCreationForm):
+class AccountCreationForm(IdentityFormMixin, AdminUserCreationForm):
+    send_invitation = forms.BooleanField(
+        label="Wyślij zaproszenie e-mailem", required=False, initial=True,
+        help_text="Osoba dostanie link do ustawienia własnego hasła. Pola hasła zostaw wtedy puste.")
+
     class Meta(UserCreationForm.Meta):
         model = User
         fields = ("username", "first_name", "last_name", "email")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Zamiast przełącznika Django „logowanie hasłem” – zaproszenie: hasło ustawia sama osoba.
+        self.fields.pop("usable_password", None)
+        for name in ("password1", "password2"):
+            self.fields[name].help_text = "Tylko bez zaproszenia."
+
+    def validate_passwords(self, *args, **kwargs):
+        self.cleaned_data["usable_password"] = "false" if self.cleaned_data.get("send_invitation") else "true"
+        super().validate_passwords(*args, **kwargs)
+
+
+INVITATION_LOG = "Wysłano zaproszenie do CMS-u."
 
 
 class AccountChangeForm(IdentityFormMixin, UserChangeForm):
@@ -273,8 +291,71 @@ class AccountChangeForm(IdentityFormMixin, UserChangeForm):
 
 class AccountAdmin(UserAdmin):
     list_display = ("username", "first_name", "last_name", "email", "is_active", "is_staff", "is_superuser")
-    readonly_fields = (*UserAdmin.readonly_fields, "profile_link")
-    fieldsets = (*UserAdmin.fieldsets, ("Profil członka zespołu", {"fields": ("profile_link",)}))
+    readonly_fields = (*UserAdmin.readonly_fields, "profile_link", "invitation")
+    fieldsets = (*UserAdmin.fieldsets, ("Profil członka zespołu", {"fields": ("profile_link",)}),
+                 ("Zaproszenie do CMS-u", {"fields": ("invitation",)}))
+
+    @admin.display(description="Zaproszenie")
+    def invitation(self, obj):
+        from django.contrib.admin.models import LogEntry
+        from django.urls import reverse
+        from django.utils.html import format_html
+        from core.invitations import invitation_days
+        if not obj or not obj.pk:
+            return "–"
+        last = LogEntry.objects.filter(object_id=str(obj.pk), content_type__model="user",
+                                       change_message=INVITATION_LOG).order_by("-action_time").first()
+        state = (f"Ostatnie zaproszenie: {last.action_time:%d.%m.%Y %H:%M}." if last else "Nie wysłano jeszcze zaproszenia.")
+        if obj.last_login:
+            state += f" Ostatnie logowanie: {obj.last_login:%d.%m.%Y}."
+        return format_html(
+            '<button type="submit" class="button" formaction="{}" formnovalidate name="_invite">Wyślij zaproszenie</button>'
+            '<div class="help" style="margin:var(--space-1, 4px) 0 0">{} Mail z linkiem do ustawienia hasła (ważnym {} dni) trafi na adres {}. Niezapisane zmiany '
+            'w formularzu nie zostaną zapisane.</div>',
+            reverse("admin:auth_user_invite", args=[obj.pk]), state, invitation_days(), obj.email or "– brak adresu –")
+
+    def get_urls(self):
+        from django.urls import path
+        return [path("<int:object_id>/zaproszenie/", self.admin_site.admin_view(self.invite_view),
+                     name="auth_user_invite")] + super().get_urls()
+
+    def invite_view(self, request, object_id):
+        from django.core.exceptions import PermissionDenied
+        from django.http import HttpResponseNotAllowed
+        from django.shortcuts import get_object_or_404, redirect
+        if request.method != "POST":
+            return HttpResponseNotAllowed(["POST"])
+        user = get_object_or_404(User, pk=object_id)
+        if not self.has_change_permission(request, user):
+            raise PermissionDenied
+        self._invite(request, user)
+        return redirect("admin:auth_user_change", user.pk)
+
+    def _invite(self, request, user):
+        from django.contrib import messages
+        from django.core.exceptions import ValidationError
+        from core.invitations import send_invitation
+        try:
+            send_invitation(user, request)
+        except ValidationError as error:
+            self.message_user(request, "Nie wysłano zaproszenia: " + " ".join(error.messages), messages.ERROR)
+        except OSError:
+            self.message_user(request, "Nie udało się wysłać wiadomości – sprawdź konfigurację poczty serwera.",
+                              messages.ERROR)
+        else:
+            self.log_change(request, user, INVITATION_LOG)
+            self.message_user(request, f"Wysłano zaproszenie na adres {user.email}.", messages.SUCCESS)
+
+    def response_add(self, request, obj, post_url_continue=None):
+        form = getattr(request, "_account_add_form", None)
+        if form is not None and form.cleaned_data.get("send_invitation"):
+            self._invite(request, obj)
+        return super().response_add(request, obj, post_url_continue)
+
+    def save_form(self, request, form, change):
+        if not change:
+            request._account_add_form = form
+        return super().save_form(request, form, change)
 
     @admin.display(description="Profil osoby")
     def profile_link(self, obj):
@@ -300,7 +381,7 @@ class AccountAdmin(UserAdmin):
     form = AccountChangeForm
     add_form = AccountCreationForm
     add_fieldsets = ((None, {"classes": ("wide",), "fields": (
-        "username", "first_name", "last_name", "email", "password1", "password2",
+        "username", "first_name", "last_name", "email", "send_invitation", "password1", "password2",
     )}),)
 
 

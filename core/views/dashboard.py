@@ -43,6 +43,7 @@ def home(request):
         workflow_summary = user_workflow_summary(request.user, today=today, limit=6)
 
     pending_reviews = _pending_reviews(request.user)
+    overdue = _overdue_work(request.user, today) if coordinator else None
     return render(
         request,
         "core/home.html",
@@ -65,6 +66,7 @@ def home(request):
             "can_view_authors": can_view_author_data(request.user),
             "today": today,
             "dashboard_coordinator": coordinator,
+            "overdue": overdue,
             "pending_recruitment": pending_by_role() if coordinator else [],
             "pending_publication_reviews": (
                 frontend_scope(Review.objects).accessible_to(request.user).filter(status=Review.Status.ACCEPTED,
@@ -76,6 +78,26 @@ def home(request):
             "pending_notification_count": frontend_scope(Review.objects).awaiting_notification().count() if request.user.is_superuser else 0,
         },
     )
+
+
+OVERDUE_ON_DASHBOARD = 8
+
+
+def _overdue_work(user, today):
+    """Belka koordynatora: najdłużej zalegające etapy (jak w raporcie „Przestoje”) i recenzje bez opinii."""
+    from django.http import QueryDict
+    from core.selectors.reports import overdue_review_rows, workflow_inactivity_context
+    from core.views.reports import ACTIVE_INACTIVITY_DAYS, WAITING_INACTIVITY_DAYS
+    rows = workflow_inactivity_context(user=user, params=QueryDict(), today=today, active_days=ACTIVE_INACTIVITY_DAYS,
+                                       waiting_days=WAITING_INACTIVITY_DAYS)["rows"]
+    return {
+        "rows": rows[:OVERDUE_ON_DASHBOARD],
+        "count": len(rows),
+        "more": max(0, len(rows) - OVERDUE_ON_DASHBOARD),
+        "active_days": ACTIVE_INACTIVITY_DAYS,
+        "waiting_days": WAITING_INACTIVITY_DAYS,
+        "review_count": len(overdue_review_rows(today=today)),
+    }
 
 
 def _pending_reviews(user):

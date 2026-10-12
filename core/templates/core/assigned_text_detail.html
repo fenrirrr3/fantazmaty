@@ -206,6 +206,16 @@
         </div>
         </div>
 
+        {% if stage_file %}
+        <div class="stage-file-name" data-stage-file>
+            <div class="stage-file-text">
+                <span class="stage-file-label">Nazwa pliku – {{ stage_file.stage }}</span>
+                <code class="stage-file-value">{{ stage_file.name }}</code>
+            </div>
+            <button type="button" class="secondary-button copy-value-button" data-copy-value="{{ stage_file.name }}" aria-label="Kopiuj nazwę pliku {{ stage_file.name }}">Kopiuj</button>
+        </div>
+        {% endif %}
+
         {% if text.anthology.status != "ready" %}
         <div class="workflow-folder-layout">
         {% if not is_withdrawn and not is_ready %}

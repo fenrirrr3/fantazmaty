@@ -88,7 +88,10 @@ document.addEventListener('DOMContentLoaded', () => {
             form.requestSubmit();
         };
         // Explicit apply for dropdown filters; do not interrupt a multi-selection.
-        if (!form.querySelector('button[type="submit"], input[type="submit"]')) {
+        // Przycisk bez atrybutu type też wysyła formularz – nie dodajemy drugiego „Filtruj”.
+        const submits = [...form.querySelectorAll('button, input[type="submit"]')]
+            .filter(control => control.tagName === 'INPUT' || (control.getAttribute('type') || 'submit') === 'submit');
+        if (!submits.length) {
             const button = document.createElement('button'); button.type = 'submit'; button.className = 'primary-button'; button.textContent = 'Filtruj'; form.append(button);
         }
         form.addEventListener('change', () => clearTimeout(timer));

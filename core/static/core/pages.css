@@ -765,6 +765,10 @@ section:has(#reserved-assignments-heading) {
     border-left: 4px solid var(--warning);
 }
 
+.dashboard-intake-grid > .notification-queue {
+    margin-bottom: 0;
+}
+
 .notification-urgent {
     border-left-color: var(--danger);
     background: var(--danger-light);
@@ -1048,5 +1052,179 @@ section:has(#reserved-assignments-heading) {
 
     .quick-stage-card :is(.take-stage-form, .start-stage-form) {
         flex-wrap: wrap;
+    }
+}
+
+/* ===== Pulpit koordynatora: zaległe etapy ===== */
+.overdue-banner {
+    margin-bottom: var(--space-5);
+    padding: var(--space-4) var(--space-5);
+    border: 1px solid var(--warning-border);
+    border-left: 4px solid var(--warning-accent);
+    border-radius: var(--radius-md);
+    background: var(--warning-light);
+    box-shadow: var(--shadow-sm);
+}
+
+.overdue-banner-header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: var(--space-3);
+}
+
+.overdue-banner-header h2 {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+    margin: 0 0 var(--space-1);
+    font-size: var(--font-size-xl);
+}
+
+.overdue-banner-header p {
+    margin: 0;
+    color: var(--muted);
+    font-size: var(--font-size-sm);
+}
+
+.overdue-count {
+    min-width: var(--badge-height);
+    padding: 0 var(--space-2);
+    border-radius: var(--radius-pill);
+    background: var(--warning-accent);
+    color: #fff;
+    font-size: var(--font-size-sm);
+    line-height: var(--badge-height);
+    text-align: center;
+}
+
+.overdue-list {
+    display: grid;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.overdue-item {
+    display: grid;
+    grid-template-columns: 4.5rem minmax(0, 1fr) auto;
+    gap: var(--space-3);
+    align-items: center;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+}
+
+.overdue-days {
+    color: var(--muted);
+    font-size: var(--font-size-sm);
+    text-align: center;
+}
+
+.overdue-days strong {
+    display: block;
+    color: var(--warning);
+    font-size: var(--font-size-2xl);
+    line-height: var(--leading-tight);
+}
+
+.overdue-item.is-active .overdue-days strong {
+    color: var(--danger);
+}
+
+.overdue-main {
+    display: grid;
+    min-width: 0;
+}
+
+.overdue-title {
+    overflow: hidden;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.overdue-meta,
+.overdue-kind {
+    color: var(--muted);
+    font-size: var(--font-size-sm);
+}
+
+.overdue-state {
+    display: grid;
+    gap: var(--space-1);
+    justify-items: end;
+}
+
+.overdue-footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-4);
+    margin: var(--space-3) 0 0;
+    font-size: var(--font-size-sm);
+}
+
+@media (max-width: 640px) {
+    .overdue-item {
+        grid-template-columns: 3.5rem minmax(0, 1fr);
+    }
+
+    .overdue-state {
+        grid-column: 2;
+        justify-items: start;
+    }
+}
+
+/* ===== Karta tekstu: nazwa pliku etapu ===== */
+.stage-file-name {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    align-items: center;
+    justify-content: space-between;
+    margin: var(--space-4) var(--card-padding) 0;
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--primary-border);
+    border-radius: var(--radius-md);
+    background: var(--primary-light);
+}
+
+.stage-file-text {
+    display: grid;
+    gap: var(--space-1);
+    min-width: 0;
+}
+
+.stage-file-label {
+    color: var(--muted);
+    font-size: var(--font-size-sm);
+}
+
+.stage-file-value {
+    font-family: var(--font-mono);
+    font-size: var(--font-size-md);
+    overflow-wrap: anywhere;
+}
+
+@media screen and (max-width: 760px) {
+    /* Teksty do wzięcia na telefonie: „Przejmij” i data mieszczą się w karcie (data przechodzi niżej). */
+    .take-stage-form,
+    .start-stage-form {
+        flex-wrap: wrap;
+    }
+
+    .take-stage-compact .stage-date-input,
+    .stage-date-input {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    /* W układzie kolumnowym podstawa 280px stawała się wysokością pola – duża luka nad „Wyszukaj”. */
+    .global-search-form > .global-search-field {
+        flex-basis: auto;
     }
 }

@@ -328,3 +328,17 @@ table .copy-error {
 #changelist-search > div {
     align-items: center;
 }
+
+/* Szerokie wiersze inline (etapy tekstu, przydziały recenzentów) przewijają się w swojej ramce,
+   zamiast rozpychać całą stronę panelu. */
+.inline-group .tabular fieldset.module {
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+@media (max-width: 767px) {
+    /* Długie opcje list wyboru (np. korekta przypisania etapu) nie wychodzą poza ekran telefonu. */
+    #content select {
+        max-width: 100%;
+    }
+}

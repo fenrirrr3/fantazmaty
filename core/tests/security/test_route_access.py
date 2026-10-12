@@ -48,6 +48,7 @@ PUBLIC = {
     'password_reset_done': 'potwierdzenie wysłania linku resetu',
     'password_reset_confirm': 'ustawienie nowego hasła z linku w e-mailu (token chroni konto)',
     'password_reset_complete': 'potwierdzenie ustawienia nowego hasła',
+    'account_invitation': 'ustawienie hasła z linku w zaproszeniu (token chroni konto)',
     'illustrations:external_illustrations': 'publiczna lista ilustracji dla ilustratorów spoza zespołu',
     'core:external_audiobooks': 'publiczna lista audiobooków dla lektorów spoza zespołu',
     'core:audiobook_guidelines_txt': 'wytyczne do pobrania z publicznej listy audiobooków',

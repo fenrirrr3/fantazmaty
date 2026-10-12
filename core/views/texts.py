@@ -130,6 +130,8 @@ def _render_text_detail_page(request, text, *, bound_forms=None, status=200):
     context['text_audiobook'] = Audiobook.objects.filter(text_id=text.pk).only('status').first()
     context['text_illustration'] = Illustration.objects.prefetch_related('illustrators').filter(text_id=text.pk).first()
     context['can_open_text_illustration'] = can_view_illustrations(request.user)
+    from core.permissions import can_view_audiobooks
+    context['can_open_audiobooks'] = can_view_audiobooks(request.user)
     context['anthology_illustrated'] = bool(text.anthology_id and text.anthology.has_illustrations)
     context['text_file_form'] = TextFileForm(instance=text) if request.user.is_superuser else None
     context['dropbox_chooser_app_key'] = getattr(settings, 'DROPBOX_CHOOSER_APP_KEY', '') if request.user.is_superuser else ''

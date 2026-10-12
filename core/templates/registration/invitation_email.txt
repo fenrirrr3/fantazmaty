@@ -1,0 +1,14 @@
+{% autoescape off %}Dzień dobry{% if first_name %}, {{ first_name }}{% endif %}!
+
+Zapraszamy do Fantazmaty CMS – systemu, w którym obsługujemy teksty, recenzje i etapy pracy.
+
+Aby ustawić hasło do swojego konta, otwórz poniższy link:
+
+{{ link }}
+
+Link jest ważny przez {{ days }} dni i działa tylko raz. Po ustawieniu hasła logujesz się adresem e-mail {{ email }} na stronie:
+{{ login_url }}
+
+Jeśli link wygaśnie, na stronie logowania kliknij „Nie pamiętam hasła” albo poproś koordynatora o ponowne zaproszenie.
+
+Zespół Fantazmatów{% endautoescape %}

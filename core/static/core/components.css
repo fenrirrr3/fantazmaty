@@ -205,6 +205,11 @@ label:is(.boolean-filter-toggle, .important-note-toggle, .vacation-checkbox, .co
     flex: 2 1 280px;
 }
 
+/* Pole daty nie rozciąga się na cały wiersz, gdy przeniesie się do nowej linii filtrów. */
+.filter-field:has(> input[type="date"]) {
+    flex: 0 1 200px;
+}
+
 .form-help,
 .helptext {
     display: block;
@@ -1350,6 +1355,11 @@ a[href^="mailto:"] {
     .mobile-review-cards td::before {
         content: attr(data-label);
         font-weight: 600;
+    }
+
+    /* Liczby (np. długość) w karcie: etykieta i wartość od lewej, jak w pozostałych wierszach. */
+    .mobile-review-cards td.numeric-cell {
+        text-align: left;
     }
 
     .mobile-review-cards td[colspan] {

@@ -633,7 +633,7 @@ def _inactivity_stages(today, active_days, waiting_days, mode, selected_stages, 
             report_terminal=Exists(terminal_stage),
         )
         .filter(report_terminal=False)
-        .select_related("text", "text__anthology")
+        .select_related("text", "text__anthology", "assignment__assigned_to__person_profile")
         .order_by("text__title", "stage_type", "pk")
     )
     stages = exclude_obsolete_verification_placeholders(stages)
@@ -711,11 +711,14 @@ def _inactivity_rows(stages, query, include_authors, today):
             "ended_at": stage.ended_at,
             "is_completed": stage.is_completed,
         }
+        assignee = stage.assignment.assigned_to if stage.assignment_id and stage.assignment.assigned_to_id else None
+        person = getattr(assignee, "person_profile", None) if assignee else None
         rows.append(
             {
                 "stage": stage_data,
                 "text": text_data,
                 "authors": authors,
+                "person": (str(person) if person else assignee.get_full_name() or assignee.get_username()) if assignee else "",
                 "inactivity_type": inactivity_type,
                 "since": since,
                 "days": max(0, (today - since).days) if since is not None else None,

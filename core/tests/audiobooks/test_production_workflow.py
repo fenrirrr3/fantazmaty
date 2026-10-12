@@ -244,6 +244,19 @@ class ProductionWorkflowTests(AudiobookProductionTestData, TestCase):
         self.assertContains(self.client.get(reverse('core:assigned_text_detail', args=[empty.pk])), 'Nieprzypisane')
         self.assertFalse(Audiobook.objects.filter(text=empty).exists())
 
+    def test_text_card_links_to_audiobooks_only_for_people_with_access(self):
+        """Karta tekstu pokazuje linki do Audiobooków tylko osobom, które mają do nich dostęp (bez linków na 403)."""
+        url = reverse('core:assigned_text_detail', args=[self.text.pk])
+        for user, visible in [(self.coordinator, True), (self.reader, True), (self.member, False)]:
+            with self.subTest(user=user.username):
+                self.client.force_login(user)
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)
+                section = html.fromstring(response.content).get_element_by_id('text-audiobook')
+                links = {a.get('href') for a in section.iter('a')}
+                self.assertEqual({self.list_url, self.url} <= links, visible)
+                self.assertEqual(bool(links & {self.list_url, self.url}), visible)
+
     def test_audiobook_events_do_not_change_text_status_sorting(self):
         self.set_status('recording')
         rows = text_list_context(user=self.admin, params={})['texts']

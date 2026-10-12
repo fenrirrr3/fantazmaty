@@ -946,8 +946,15 @@ def text_detail_context(*, user, text):
     from workflow.availability import claim_access
     from workflow.read_queries import available_stages
     claimable = available_stages(user, claim_access(user)).filter(text_id=text.pk)
+    from workflow.file_names import file_label, stage_file_name
+    file_stage = current if current is not None and not (current.is_completed and current.stage_type != StageType.READY) else None
+    stage_file = None
+    if file_stage is not None and file_label(file_stage, stages):
+        stage_file = {"stage": file_stage.get_stage_type_display(), "label": file_label(file_stage, stages),
+                      "name": stage_file_name(text_data["title"], text_data["authors"]["all"], file_stage, stages)}
     return {
         "text": text_data,
+        "stage_file": stage_file,
         "user_assignments": [_assignment_data(item) for item in own],
         "stages": stage_rows,
         "claimable_stages": [_stage_data(stage, text_data) for stage in claimable],
