@@ -14,7 +14,9 @@ TEMPLATE_TAGS = {
     'gatunek': 'gatunek',
     'długość': 'długość w znakach ze spacjami',
     'etap': 'nazwa etapu',
+    'dni': 'ile dni tekst czeka na osobę (przypomnienia)',
     'rola': 'oznaczenie roli (bez tego tagu trafia na początek wiadomości)',
+    'link': 'odnośnik „O, tutaj” do podglądu tekstu w CMS-ie (bez tego tagu trafia na koniec wiadomości)',
 }
 TAG_RE = re.compile(r'\[([^\[\]\n]{1,30})\]')
 
@@ -57,6 +59,7 @@ class NotificationRule(models.Model):
         SECOND_VERIFICATION = 'second_verification', 'Nowy tekst do drugiej weryfikacji'
         THIRD_VERIFICATION = 'third_verification', 'Nowy tekst do trzeciej weryfikacji'
         STAGE_COMPLETED = 'stage_completed', 'Zakończenie etapu (wszystkie etapy)'
+        STAGE_WAITING = 'stage_waiting', 'Tekst nadal czeka na osobę (po 7, 14 i 21 dniach)'
 
     objects = VersionedQuerySet.as_manager()
     trigger = models.CharField('kiedy', max_length=32, choices=Trigger.choices, unique=True, editable=False)
@@ -98,6 +101,11 @@ class DiscordNotification(models.Model):
     mention_here = models.BooleanField('@here', default=False)
     text = models.ForeignKey('texts.Text', null=True, blank=True, on_delete=models.SET_NULL, verbose_name='tekst')
     review = models.ForeignKey('texts.Review', null=True, blank=True, on_delete=models.SET_NULL, verbose_name='zgłoszenie')
+    stage = models.ForeignKey('workflow.WorkflowStage', null=True, blank=True, on_delete=models.SET_NULL,
+                              related_name='+', verbose_name='etap')
+    reminder_of = models.ForeignKey('self', null=True, blank=True, on_delete=models.SET_NULL, related_name='reminders',
+                                    verbose_name='przypomnienie o wiadomości')
+    reminder_days = models.PositiveSmallIntegerField('przypomnienie po (dniach)', null=True, blank=True)
     status = models.CharField('stan', max_length=12, default='pending', choices=(
         ('pending', 'Oczekuje'), ('sending', 'Wysyłanie / brak potwierdzenia'), ('sent', 'Wysłano'),
         ('failed', 'Błąd wysyłki'), ('unknown', 'Brak potwierdzenia'), ('disabled', 'Brak skonfigurowanego kanału')))

@@ -67,6 +67,8 @@ EbookLib fpdf2 Pillow rapidfuzz spacy` i modelem `pl_core_news_sm` (polecenia w 
    - `python manage.py flush_activity` – przenosi dziennik aktywności do bazy,
    - `python manage.py prune_activity` – usuwa stare wpisy aktywności,
    - `python manage.py clearsessions` – usuwa wygasłe sesje (raz dziennie).
+   - `python manage.py send_discord_reminders` – przypomnienia Discord o tekstach i zgłoszeniach do recenzji, które od 7, 14 i 21 dni
+     czekają na osobę (raz dziennie; działa, gdy w panelu włączono „Tekst nadal czeka na osobę”).
    Powiadomienia Discord wysyła aplikacja na bieżąco. Komendy `dispatch_workflow_notifications`
    już nie ma – usuń to zadanie, jeśli jest zaplanowane.
 5. `python manage.py check --deploy`

@@ -39,12 +39,15 @@ def channels():
     return result
 
 @sensitive_variables()
-def send_message(url, content, *, role_ids=(), here=False):
+def send_message(url, content, *, role_ids=(), here=False, suppress_embeds=False):
     if not WEBHOOK.fullmatch(url):
         raise DeliveryError('Nieprawidłowy adres webhooka.')
     # Oznaczenia działają tylko dla ról wskazanych w regule (i @here, jeśli wybrano); reszta treści nikogo nie woła.
     mentions = {'parse': ['everyone'] if here else [], 'roles': [r for r in role_ids if str(r).isdigit()][:20]}
-    payload = json.dumps({'content': content, 'allowed_mentions': mentions}, ensure_ascii=False).encode('utf-8')
+    body = {'content': content, 'allowed_mentions': mentions}
+    if suppress_embeds:
+        body['flags'] = 4  # SUPPRESS_EMBEDS – odnośnik bez podglądu strony logowania pod wiadomością
+    payload = json.dumps(body, ensure_ascii=False).encode('utf-8')
     request = Request(url + '?wait=true', data=payload, method='POST', headers={
         'Content-Type': 'application/json', 'User-Agent': 'FantazmatyCMS-DiscordTest/1.0',
     })

@@ -1,18 +1,24 @@
 """Powiadomienia Discord z reguł w panelu admina: treści z tagami, oznaczanie ról, zdarzenia obiegu i recenzji,
 testowa wysyłka z panelu."""
 import json
+import re
+from datetime import timedelta
+from io import StringIO
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.core.management import call_command
+from django.db import transaction
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
-from core.discord_notifications import parse_mention, queue, render
+from core.discord_notifications import parse_mention, queue, render, send_waiting_reminders
 from core.discord_webhook import DeliveryError, send_message
 from core.models import DiscordNotification, DiscordRole, NotificationRule
 from core.notification_models import validate_template_tags
 from core.workflow_events import event_scope
+from core.services.reviews import assign_reviewer
 from core.services.texts import change_scheduled_stage, start_assigned_stage
 from fantazmaty.testing import create_member
 from fantazmaty.testing.workflow import WorkflowTestDataMixin
@@ -22,6 +28,7 @@ from workflow.services import claim_stage, complete_stage, finish_editing_to_coo
 
 StageType = WorkflowStage.StageType
 URL = 'https://discord.com/api/webhooks/123/abc_DEF-1'
+LINK = '[O, tutaj](<https://cms.example/t/1/>)'
 CONTEXT = {'tytuł': 'Latarnik', 'antologia': 'Cienie', 'gatunek': 'fantasy', 'długość': '25 000', 'etap': 'Redakcja'}
 
 
@@ -40,11 +47,26 @@ class RenderTests(SimpleTestCase):
             with self.subTest(case):
                 self.assertEqual(render(template, context, mention), expected)
 
+    def test_preview_link_position(self):
+        cases = {
+            'appended at the end': ('Nowy: [tytuł]', 'Nowy: Latarnik ' + LINK),
+            'placed at [link]': ('[link] czeka „[tytuł]”', LINK + ' czeka „Latarnik”'),
+        }
+        for case, (template, expected) in cases.items():
+            with self.subTest(case):
+                self.assertEqual(render(template, CONTEXT, '', LINK), expected)
+
     def test_message_is_cut_to_discord_limit(self):
-        self.assertEqual(len(render('x' * 1500 + '[tytuł]' * 100, CONTEXT)), 2000)
+        long = 'x' * 1500 + '[tytuł]' * 100
+        cases = {'no link': (long, ''), 'link appended': (long, LINK), 'link inside': ('[link]' + long, LINK)}
+        for case, (template, link) in cases.items():
+            with self.subTest(case):
+                content = render(template, CONTEXT, '', link)
+                self.assertEqual(len(content), 2000)
+                self.assertTrue(content.endswith(link))  # odnośnik nigdy nie jest ucinany
 
     def test_unknown_tags_are_rejected(self):
-        validate_template_tags('[tytuł] [antologia] [rola]')
+        validate_template_tags('[tytuł] [antologia] [rola] [link]')
         with self.assertRaisesMessage(ValidationError, '[autor]'):
             validate_template_tags('[tytuł] [autor]')
 
@@ -59,6 +81,14 @@ class RenderTests(SimpleTestCase):
                 send_message(URL, 'x', role_ids=roles, here=here)
                 payload = json.loads(build.return_value.open.call_args.args[0].data)
                 self.assertEqual(payload['allowed_mentions'], expected)
+                self.assertNotIn('flags', payload)
+
+    def test_webhook_can_suppress_link_previews(self):
+        with patch('core.discord_webhook.build_opener') as build:
+            build.return_value.open.return_value.__enter__.return_value.status = 200
+            build.return_value.open.return_value.__enter__.return_value.read.return_value = b'{"id": "1"}'
+            send_message(URL, 'x', suppress_embeds=True)
+            self.assertEqual(json.loads(build.return_value.open.call_args.args[0].data)['flags'], 4)
 
 
 class MentionTests(TestCase):
@@ -82,7 +112,10 @@ def enable(trigger, template='[etap]: [tytuł]', mention=''):
     return rule
 
 
-@override_settings(DISCORD_WEBHOOKS={'Kanał': URL})
+PREVIEW = re.compile(r' \[O, tutaj\]\(<[^>]+>\)$')
+
+
+@override_settings(DISCORD_WEBHOOKS={'Kanał': URL}, CMS_BASE_URL='https://cms.example/')
 class WorkflowTriggerTests(WorkflowTestDataMixin, TestCase):
     def setUp(self):
         super().setUp()
@@ -93,11 +126,13 @@ class WorkflowTriggerTests(WorkflowTestDataMixin, TestCase):
         self.addCleanup(sender.stop)
 
     def triggers(self):
-        return list(DiscordNotification.objects.order_by('pk').values_list('trigger', 'content'))
+        """(zdarzenie, treść) bez odnośnika do podglądu – ten sprawdza osobny test."""
+        return [(trigger, PREVIEW.sub('', content))
+                for trigger, content in DiscordNotification.objects.order_by('pk').values_list('trigger', 'content')]
 
     def test_default_rules_exist_and_are_disabled(self):
         NotificationRule.objects.update(enabled=False)
-        self.assertEqual(NotificationRule.objects.count(), 8)
+        self.assertEqual(NotificationRule.objects.count(), 9)
         with self.captureOnCommitCallbacks(execute=True):
             self.begin_editing()
         self.assertEqual(self.triggers(), [])
@@ -190,7 +225,9 @@ class WorkflowTriggerTests(WorkflowTestDataMixin, TestCase):
             text = self.text.__class__.objects.create(title='Latarnik', length=25000, anthology=book)
             WorkflowStage.objects.create(text=text, workflow_cycle=1, stage_type=StageType.READY_FOR_EDITING)
         self.assertEqual(self.triggers(), [('ready_for_editing', '<@&777> Nowy tekst „Latarnik” (Cienie miasta, 25 000 zzs)')])
-        self.assertEqual(self.sent.call_args.kwargs, {'role_ids': ['777'], 'here': False})
+        self.assertEqual(self.sent.call_args.kwargs, {'role_ids': ['777'], 'here': False, 'suppress_embeds': True})
+        link = f'[O, tutaj](<https://cms.example{reverse("core:assigned_text_detail", args=[text.pk])}>)'
+        self.assertTrue(DiscordNotification.objects.get().content.endswith(' ' + link))
 
     def test_delivery_problem_never_breaks_workflow(self):
         self.sent.side_effect = RuntimeError('boom')
@@ -200,7 +237,7 @@ class WorkflowTriggerTests(WorkflowTestDataMixin, TestCase):
         self.assertEqual(DiscordNotification.objects.get().status, 'unknown')
 
 
-@override_settings(DISCORD_WEBHOOKS={'Kanał': URL})
+@override_settings(DISCORD_WEBHOOKS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
 class ReviewTriggerTests(TestCase):
     def setUp(self):
         enable('review_new', 'Do recenzji: [tytuł] ([gatunek])')
@@ -219,7 +256,9 @@ class ReviewTriggerTests(TestCase):
         review.title = 'Zmiana'
         with self.captureOnCommitCallbacks(execute=True):
             review.save()
-        self.assertEqual(list(DiscordNotification.objects.values_list('content', flat=True)), ['Do recenzji: Zgłoszenie 0 (horror)'])
+        link = f'[O, tutaj](<https://cms.example{reverse("core:assigned_review_detail", args=[review.pk])}>)'
+        self.assertEqual(list(DiscordNotification.objects.values_list('content', flat=True)),
+                         [f'Do recenzji: Zgłoszenie 0 (horror) {link}'])
 
     def test_bulk_import_is_capped(self):
         with self.captureOnCommitCallbacks(execute=True):
@@ -234,7 +273,7 @@ class ReviewTriggerTests(TestCase):
         self.assertFalse(DiscordNotification.objects.exists())
 
 
-@override_settings(DISCORD_WEBHOOKS={'Kanał': URL})
+@override_settings(DISCORD_WEBHOOKS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
 class AdminPanelTests(TestCase):
     def setUp(self):
         self.admin = get_user_model().objects.create_superuser('admin', 'admin@example.com', 'test')
@@ -273,8 +312,10 @@ class AdminPanelTests(TestCase):
         with patch('core.discord_webhook.send_message', return_value='9') as sent:
             response = self.client.post(url, data)
         self.assertContains(response, 'Wysłano na kanał')
-        sent.assert_called_once_with(URL, '[TEST] <@&555> Trzecia korekta: „Próba” (Antologia X, sf, 12 000)',
-                                     role_ids=['555'], here=False)
+        # Testowego tekstu nie ma w bazie – odnośnik prowadzi do nieistniejącego podglądu nr 0.
+        link = f'[O, tutaj](<https://cms.example{reverse("core:assigned_text_detail", args=[0])}>)'
+        sent.assert_called_once_with(URL, f'[TEST] <@&555> Trzecia korekta: „Próba” (Antologia X, sf, 12 000) {link}',
+                                     role_ids=['555'], here=False, suppress_embeds=True)
         self.assertEqual(DiscordNotification.objects.get().status, 'sent')
 
     def test_test_panel_explains_missing_setup(self):
@@ -328,7 +369,7 @@ class QueueDeliveryTests(TestCase):
             with self.subTest(case):
                 item, sent = self.send(mention=mention)
                 self.assertEqual((item.content, item.role_ids, item.mention_here), (content, role_ids, here))
-                self.assertEqual(sent.call_args.kwargs, {'role_ids': [], 'here': here})
+                self.assertEqual(sent.call_args.kwargs, {'role_ids': [], 'here': here, 'suppress_embeds': True})
 
     def test_disabled_rule_or_rule_without_templates_queues_nothing(self):
         rule = enable('stage_completed')
@@ -363,3 +404,215 @@ class AdminAccessTests(TestCase):
                 self.client.post(urls[1], {'title': 'X', 'trigger': 'stage_completed'})
                 sent.assert_not_called()
         self.assertFalse(DiscordNotification.objects.exists())
+
+
+@override_settings(DISCORD_WEBHOOKS={'Kanał': URL, 'Przypomnienia': URL}, CMS_BASE_URL='https://cms.example')
+class WaitingReminderTests(WorkflowTestDataMixin, TestCase):
+    """Przypomnienia po 7, 14 i 21 dniach od ogłoszenia, że etap jest do wzięcia."""
+
+    def setUp(self):
+        super().setUp()
+        enable('first_verification', 'Do wzięcia: [tytuł]', '@here')
+        self.rule = enable('stage_waiting', '[dni] dni – [etap]: [tytuł]')
+        NotificationRule.objects.filter(pk=self.rule.pk).update(channel='', mention='')
+        sender = patch('core.discord_webhook.send_message', return_value='1')
+        self.sent = sender.start()
+        self.addCleanup(sender.stop)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.begin_editing()  # ogłasza pierwszą weryfikację
+        self.announcement = DiscordNotification.objects.get(trigger='first_verification')
+
+    def run_after(self, days, announcement=None):
+        start = (announcement or self.announcement).created_at
+        with self.captureOnCommitCallbacks(execute=True):
+            return send_waiting_reminders(now=start + timedelta(days=days))
+
+    def reminders(self):
+        return list(DiscordNotification.objects.filter(trigger='stage_waiting').order_by('pk')
+                    .values_list('reminder_days', flat=True))
+
+    def test_reminders_after_7_14_and_21_days_each_once(self):
+        runs = [(1, []), (6.9, []), (7, [7]), (8, [7]), (13, [7]), (14, [7, 14]), (14.5, [7, 14]),
+                (21, [7, 14, 21]), (27, [7, 14, 21])]
+        for days, expected in runs:
+            with self.subTest(day=days):
+                self.run_after(days)
+                self.assertEqual(self.reminders(), expected)
+
+    def test_reminder_content_channel_and_mention_come_from_first_announcement(self):
+        self.run_after(7)
+        item = DiscordNotification.objects.get(trigger='stage_waiting')
+        link = f'[O, tutaj](<https://cms.example{reverse("core:assigned_text_detail", args=[self.text.pk])}>)'
+        self.assertEqual(item.content, f'@here 7 dni – Pierwsza weryfikacja: Tekst do testów workflow {link}')
+        self.assertEqual((item.channel, item.mention_here, item.reminder_of, item.stage_id, item.status),
+                         ('Kanał', True, self.announcement, self.announcement.stage_id, 'sent'))
+        self.assertEqual(self.sent.call_args.kwargs, {'role_ids': [], 'here': True, 'suppress_embeds': True})
+
+    def test_own_channel_and_mention_override_first_announcement(self):
+        DiscordRole.objects.create(name='weryfikator', role_id='321')
+        NotificationRule.objects.filter(pk=self.rule.pk).update(channel='Przypomnienia', mention='@weryfikator')
+        self.run_after(7)
+        item = DiscordNotification.objects.get(trigger='stage_waiting')
+        self.assertEqual((item.channel, item.role_ids, item.mention_here), ('Przypomnienia', '321', False))
+        self.assertTrue(item.content.startswith('<@&321> 7 dni'))
+
+    def test_after_a_break_only_the_latest_overdue_reminder_is_sent(self):
+        cases = {'job resumed on day 15': (15, [14]), 'job resumed on day 25': (25, [21]),
+                 'past the reminder window': (29, [])}
+        for case, (days, expected) in cases.items():
+            DiscordNotification.objects.filter(trigger='stage_waiting').delete()
+            with self.subTest(case):
+                self.run_after(days)
+                self.assertEqual(self.reminders(), expected)
+
+    def test_no_reminder_when_someone_took_the_stage_or_reminders_are_off(self):
+        cases = {
+            'stage claimed': lambda: claim_stage(self.text, StageType.FIRST_VERIFICATION, self.verifier_1),
+            'reminder rule disabled': lambda: NotificationRule.objects.filter(pk=self.rule.pk).update(enabled=False),
+            'reminder rule without templates': lambda: self.rule.templates.all().delete(),
+        }
+        for case, change in cases.items():
+            with self.subTest(case):
+                sid = transaction.savepoint()
+                change()
+                self.assertEqual(self.run_after(7), 0)
+                self.assertEqual(self.reminders(), [])
+                transaction.savepoint_rollback(sid)
+
+    def test_released_stage_restarts_the_count_from_the_new_announcement(self):
+        stage = claim_stage(self.text, StageType.FIRST_VERIFICATION, self.verifier_1)
+        DiscordNotification.objects.filter(pk=self.announcement.pk).update(
+            created_at=self.announcement.created_at - timedelta(days=10))
+        with self.captureOnCommitCallbacks(execute=True):
+            change_scheduled_stage(user=self.verifier_1, stage_id=stage.pk, cancel=True)
+        again = DiscordNotification.objects.filter(trigger='first_verification').latest('pk')
+        self.assertNotEqual(again, self.announcement)
+        self.assertEqual(self.run_after(3, again), 0)  # 13 dni od pierwszego, ale 3 od ponownego ogłoszenia
+        self.run_after(7, again)
+        self.assertEqual(list(DiscordNotification.objects.filter(trigger='stage_waiting')
+                              .values_list('reminder_of', 'reminder_days')), [(again.pk, 7)])
+
+    def test_daily_command(self):
+        DiscordNotification.objects.filter(pk=self.announcement.pk).update(
+            created_at=self.announcement.created_at - timedelta(days=7))
+        out = StringIO()
+        with self.captureOnCommitCallbacks(execute=True):
+            call_command('send_discord_reminders', stdout=out)
+        self.assertIn('Zakolejkowane przypomnienia: 1', out.getvalue())
+        self.assertEqual(self.reminders(), [7])
+
+
+@override_settings(DISCORD_WEBHOOKS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
+class WaitingReminderAdminTests(TestCase):
+    def setUp(self):
+        self.client.force_login(get_user_model().objects.create_superuser('admin', 'admin@example.com', 'test'))
+        self.rule = NotificationRule.objects.get(trigger='stage_waiting')
+
+    def test_default_reminder_rule_is_disabled_with_valid_templates(self):
+        templates = list(self.rule.templates.values_list('content', flat=True))
+        self.assertFalse(self.rule.enabled)
+        self.assertEqual(len(templates), 3)
+        for template in templates:
+            with self.subTest(template=template):
+                validate_template_tags(template)
+                self.assertIn('[dni]', template)
+
+    def test_reminder_rule_can_be_enabled_without_own_channel(self):
+        url = reverse('admin:core_notificationrule_change', args=[self.rule.pk])
+        page = self.client.get(url)
+        self.assertContains(page, 'ten sam co w pierwszym powiadomieniu')
+        response = self.client.post(url, {'templates-TOTAL_FORMS': '0', 'templates-INITIAL_FORMS': '0',
+                                          'templates-MIN_NUM_FORMS': '0', 'templates-MAX_NUM_FORMS': '1000',
+                                          'enabled': 'on', 'channel': '', 'mention': '',
+                                          '_edit_version': page.context['request'].edit_version_token})
+        self.assertEqual(response.status_code, 302)
+        self.rule.refresh_from_db()
+        self.assertEqual((self.rule.enabled, self.rule.channel), (True, ''))
+
+    def test_reminder_rule_page_lists_where_reminders_go(self):
+        NotificationRule.objects.filter(trigger='first_proofreading').update(channel='Kanał', mention='@korektor')
+        page = self.client.get(reverse('admin:core_notificationrule_change', args=[self.rule.pk]))
+        self.assertContains(page, 'po „Nowy tekst do pierwszej korekty” → kanał: Kanał, oznaczenie: @korektor')
+        self.assertContains(page, 'po „Nowy tekst do recenzji” → kanał: – brak (przypomnienie nie wyjdzie) –')
+
+    def test_test_panel_has_reminder_button_for_each_announcement(self):
+        page = self.client.get(reverse('admin:core_notificationrule_test'))
+        for value in ('review_new', 'ready_for_editing', 'first_proofreading', 'third_proofreading',
+                      'first_verification', 'second_verification', 'third_verification'):
+            with self.subTest(value):
+                self.assertContains(page, f'name="reminder_for" value="{value}"')
+        self.assertNotContains(page, 'name="trigger" value="stage_waiting"')
+
+    def test_test_panel_sends_reminder_like_the_first_announcement(self):
+        DiscordRole.objects.create(name='korektor', role_id='555')
+        NotificationRule.objects.filter(trigger='first_proofreading').update(channel='Kanał', mention='@korektor')
+        NotificationRule.objects.filter(trigger='review_new').update(channel='Kanał', mention='@here')
+        self.rule.templates.all().delete()
+        self.rule.templates.create(content='[etap] czeka [dni] dni: [tytuł]')
+        text_link = f'[O, tutaj](<https://cms.example{reverse("core:assigned_text_detail", args=[0])}>)'
+        review_link = f'[O, tutaj](<https://cms.example{reverse("core:assigned_review_detail", args=[0])}>)'
+        cases = {
+            'first proofreading': ('first_proofreading', f'<@&555> Pierwsza korekta czeka 14 dni: Próba {text_link}',
+                                   ['555'], False, 'przypomnienie po: „Nowy tekst do pierwszej korekty”'),
+            'review': ('review_new', f'@here Recenzja czeka 14 dni: Próba {review_link}', [], True,
+                       'przypomnienie po: „Nowy tekst do recenzji”'),
+        }
+        for case, (base, content, roles, here, note) in cases.items():
+            data = {'title': 'Próba', 'days': '14', 'reminder_for': base}
+            with self.subTest(case), patch('core.discord_webhook.send_message', return_value='9') as sent:
+                response = self.client.post(reverse('admin:core_notificationrule_test'), data)
+                self.assertContains(response, note)
+                sent.assert_called_once_with(URL, content, role_ids=roles, here=here, suppress_embeds=True)
+
+    def test_test_panel_rejects_unknown_reminder(self):
+        with patch('core.discord_webhook.send_message') as sent:
+            for data in ({'title': 'X', 'reminder_for': 'stage_completed'}, {'title': 'X', 'trigger': 'stage_waiting'}):
+                with self.subTest(**data):
+                    self.assertContains(self.client.post(reverse('admin:core_notificationrule_test'), data),
+                                        'Nieznany rodzaj wiadomości')
+        sent.assert_not_called()
+
+
+@override_settings(DISCORD_WEBHOOKS={'Recenzje': URL}, CMS_BASE_URL='https://cms.example')
+class ReviewReminderTests(TestCase):
+    """Zgłoszenie do recenzji, którego nikt nie wziął, też dostaje przypomnienia."""
+
+    def setUp(self):
+        rule = enable('review_new', 'Do recenzji: [tytuł]', '@here')
+        NotificationRule.objects.filter(pk=rule.pk).update(channel='Recenzje')
+        waiting = enable('stage_waiting', '[dni] dni – [etap]: [tytuł]')
+        NotificationRule.objects.filter(pk=waiting.pk).update(channel='', mention='')
+        sender = patch('core.discord_webhook.send_message', return_value='1')
+        self.sent = sender.start()
+        self.addCleanup(sender.stop)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.review = Review.objects.create(
+                title='Zgłoszenie', genre='horror', length=1000, email='a@example.com', author_first_name='Jan',
+                author_last_name='Nowak', anthology=Anthology.objects.create(title='Nabór'))
+        self.announcement = DiscordNotification.objects.get(trigger='review_new')
+
+    def run_after(self, days):
+        with self.captureOnCommitCallbacks(execute=True):
+            return send_waiting_reminders(now=self.announcement.created_at + timedelta(days=days))
+
+    def test_unclaimed_review_gets_reminders_on_its_channel(self):
+        for days in (6, 7, 14, 21):
+            self.run_after(days)
+        items = DiscordNotification.objects.filter(trigger='stage_waiting').order_by('pk')
+        self.assertEqual([i.reminder_days for i in items], [7, 14, 21])
+        link = f'[O, tutaj](<https://cms.example{reverse("core:assigned_review_detail", args=[self.review.pk])}>)'
+        self.assertEqual((items[0].content, items[0].channel, items[0].review, items[0].status),
+                         (f'@here 7 dni – Recenzja: Zgłoszenie {link}', 'Recenzje', self.review, 'sent'))
+
+    def test_no_reminder_for_taken_hidden_or_decided_review(self):
+        cases = {
+            'reviewer assigned': lambda: assign_reviewer(user=create_member('recenzent', 'Recenzent'), review_id=self.review.pk),
+            'hidden': lambda: Review.objects.filter(pk=self.review.pk).update(is_hidden=True),
+            'rejected': lambda: Review.objects.filter(pk=self.review.pk).update(status=Review.Status.REJECTED),
+        }
+        for case, change in cases.items():
+            with self.subTest(case):
+                sid = transaction.savepoint()
+                change()
+                self.assertEqual(self.run_after(7), 0)
+                transaction.savepoint_rollback(sid)

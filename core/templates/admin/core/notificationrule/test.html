@@ -19,5 +19,19 @@
 </tr>{% endfor %}
 </tbody></table>
 </div>
+{% if waiting %}<h2>Przypomnienia o tekstach bez chętnych (po 7, 14 i 21 dniach)</h2>
+<p class="help">Treść z ustawień <a href="{{ waiting_url }}">„{{ waiting }}”</a> ({{ waiting.templates.all|length }} treści, {% if waiting.enabled %}włączone{% else %}wyłączone{% endif %}), liczba dni z pola [dni] powyżej. Kanał i oznaczenie – jak w pierwszym powiadomieniu, chyba że przypomnienie ma własne.</p>
+<div class="module">
+<table style="width:100%">
+<thead><tr><th>Przypomnienie po</th><th>Kanał</th><th>Oznaczenie</th><th></th></tr></thead>
+<tbody>
+{% for r in reminders %}<tr>
+<td>{{ r.label }}</td>
+<td>{{ r.channel|default:"– brak –" }}{% if r.inherited_channel and r.channel %} <span class="help">(jak w ogłoszeniu)</span>{% endif %}</td>
+<td>{{ r.mention|default:"–" }}{% if r.inherited_mention and r.mention %} <span class="help">(jak w ogłoszeniu)</span>{% endif %}</td>
+<td><button type="submit" name="reminder_for" value="{{ r.trigger }}" class="button">Wyślij test</button></td>
+</tr>{% endfor %}
+</tbody></table>
+</div>{% endif %}
 </form>
 {% endblock %}
