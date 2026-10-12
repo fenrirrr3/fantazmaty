@@ -12,7 +12,7 @@ from django.utils import timezone
 
 from authors.models import AuthorNote
 from people.models import Vacation, get_local_date
-from texts.models import Anthology, Review, ReviewAssignment, Text, TextNote
+from texts.models import Anthology, ReviewAssignment, Text, TextNote
 from texts.services import (
     find_matching_authors,
     get_review_submission_warnings,
@@ -700,52 +700,3 @@ class PeopleFilterForm(forms.Form):
         widget=forms.CheckboxSelectMultiple,
         help_text="Wyświetl osoby mające co najmniej jedną z wybranych ról.",
     )
-
-
-
-class CoordinatorReviewBulkActionForm(forms.Form):
-    class Action:
-        EXPORT = "export"
-        CHANGE_STATUS = "change_status"
-
-    action = forms.ChoiceField(
-        label="Operacja",
-        choices=(
-            ("", "Wybierz operację"),
-            (Action.EXPORT, "Eksportuj zaznaczone do CSV"),
-            (Action.CHANGE_STATUS, "Zmień status zgłoszeń"),
-        ),
-        widget=forms.Select(
-            attrs={
-                "class": "filter-select",
-                "data-bulk-action-select": "",
-            }
-        ),
-    )
-    status = forms.ChoiceField(
-        label="Nowy status",
-        required=False,
-        choices=(
-            ("", "Wybierz status"),
-            *Review.Status.choices,
-        ),
-        widget=forms.Select(
-            attrs={
-                "class": "filter-select",
-                "data-bulk-field": "status",
-            }
-        ),
-    )
-
-    def clean(self):
-        cleaned_data = super().clean()
-
-        if (
-            cleaned_data.get("action") == self.Action.CHANGE_STATUS
-            and not cleaned_data.get("status")
-        ):
-            self.add_error("status", "Wybierz nowy status zgłoszeń.")
-
-        # Dozwolone przejście i uprawnienia muszą zostać sprawdzone
-        # dla każdego zgłoszenia przez serwis wykonujący operację.
-        return cleaned_data

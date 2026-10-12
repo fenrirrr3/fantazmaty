@@ -8,7 +8,7 @@ import os
 import random
 
 from django.conf import settings
-from django.db import transaction
+from django.db import connections, transaction
 from django.urls import reverse
 from django.utils import timezone
 
@@ -268,21 +268,48 @@ def send_waiting_reminders(now=None, using='default'):
     return sent
 
 
-_pending_reviews = {}
+# Partia zgłoszeń z jednej transakcji żyje na obiekcie połączenia (nie w słowniku modułu dzielonym między
+# transakcjami i wątkami) i znika wraz z zatwierdzeniem albo wycofaniem transakcji.
+_PENDING_ATTR = '_discord_pending_reviews'
+
+
+class _ReviewBatch:
+    """Lista ID zgłoszeń z jednej transakcji; ogłaszana jednym wywołaniem po zatwierdzeniu."""
+
+    def __init__(self, using):
+        self.using = using
+        self.ids = []
+
+    def is_registered(self, connection):
+        # Django po wycofaniu transakcji (również samego punktu zapisu) usuwa jej wywołania on_commit –
+        # partia bez wywołania pochodzi z poprzedniej, wycofanej transakcji i nie może być kontynuowana.
+        return any(entry[1] == self.flush for entry in connection.run_on_commit)
+
+    def flush(self):
+        connection = connections[self.using]
+        if getattr(connection, _PENDING_ATTR, None) is self:
+            delattr(connection, _PENDING_ATTR)
+        _announce_reviews(self.ids, self.using)
 
 
 def review_created(review, using='default'):
     """Nowe zgłoszenie do recenzji; kilka zgłoszeń w jednej transakcji (import) – najwyżej 5 wiadomości."""
     if review.is_hidden or review.status != review.Status.NEW:
         return
-    _pending_reviews.setdefault(using, []).append(review.pk)
-    # Każde zgłoszenie rejestruje opróżnienie kolejki; pierwsze wywołanie wysyła całą partię, kolejne nic nie robią.
-    transaction.on_commit(lambda: _flush_reviews(using), using=using)
+    connection = connections[using]
+    batch = getattr(connection, _PENDING_ATTR, None)
+    if batch is None or not batch.is_registered(connection):
+        batch = _ReviewBatch(using)
+        setattr(connection, _PENDING_ATTR, batch)
+        batch.ids.append(review.pk)
+        # Poza transakcją on_commit wykonuje się od razu, więc pojedyncze zgłoszenie jest ogłaszane natychmiast.
+        transaction.on_commit(batch.flush, using=using)
+        return
+    batch.ids.append(review.pk)
 
 
-def _flush_reviews(using):
+def _announce_reviews(ids, using):
     from texts.models import Review
-    ids = _pending_reviews.pop(using, [])
     reviews = Review.objects.using(using).select_related('anthology').filter(pk__in=ids).order_by('pk')
     for review in reviews[:REVIEWS_PER_COMMIT]:
         safe_queue('review_new', using=using, review=review, context={**text_context(review), 'etap': 'Recenzja'})

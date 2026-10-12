@@ -336,7 +336,7 @@ table .copy-error {
     overflow-x: auto;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 760px) {
     /* Długie opcje list wyboru (np. korekta przypisania etapu) nie wychodzą poza ekran telefonu. */
     #content select {
         max-width: 100%;

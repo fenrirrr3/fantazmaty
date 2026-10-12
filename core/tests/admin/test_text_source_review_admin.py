@@ -93,6 +93,45 @@ class TextSourceReviewAdminTests(TestCase):
         self.assertEqual(review.author.phone_number, '123456789')
         self.assertTrue(review.author.has_contract)
 
+    def test_admin_and_page_transfer_have_identical_effect(self):
+        """Tekst ze zgłoszenia utworzony w adminie i przez copy_review_to_text zostawia ten sam ślad:
+        status i powiązania zgłoszenia, autorów, pierwszy etap oraz jeden wpis WorkflowEvent."""
+        from core.models import WorkflowEvent
+        from core.services.reviews import copy_review_to_text
+
+        coauthor = Author.objects.create(first_name='Anna', last_name='Druga', email='druga@example.com')
+
+        def from_admin(review):
+            url, data, _ = self.popup_data(review)
+            data.update(source_contract_received='on', source_coauthor_contracts=[str(coauthor.pk)])
+            self.assertEqual(self.client.post(url, data).status_code, 200)
+
+        def from_page(review):
+            copy_review_to_text(user=self.admin, review_id=review.pk, contract_received=True,
+                                confirmed_coauthor_ids=[coauthor.pk])
+
+        results = {}
+        for name, transfer, email in (('admin', from_admin, 'a@example.com'), ('strona', from_page, 'b@example.com')):
+            with self.subTest(path=name):
+                review = self.review(email=email)
+                review.coauthors.add(coauthor)
+                transfer(review)
+                review.refresh_from_db()
+                text = review.copied_text
+                self.assertIsNotNone(text)
+                event = WorkflowEvent.objects.get(text=text)
+                results[name] = {
+                    'status': review.status, 'author_email': review.author.email,
+                    'author_contract': review.author.has_contract, 'detached': review.publication_detached,
+                    'authors': set(text.authors.values_list('email', flat=True)) - {email},
+                    'stages': list(text.workflow_stages.values_list(
+                        'stage_type', 'workflow_cycle', 'iteration', 'is_completed', 'started_at')),
+                    'event': (event.previous_status, event.next_status, event.details, event.actor_id),
+                }
+        self.assertEqual(results['admin'] | {'author_email': 'b@example.com'}, results['strona'])
+        self.assertEqual(results['admin']['stages'], [('ready_for_editing', 1, 1, False, None)])
+        self.assertEqual(results['admin']['event'][1], 'Do redakcji')
+
     def test_missing_contract_rolls_back_and_keeps_entered_text(self):
         review = self.review()
         url, data, _ = self.popup_data(review)

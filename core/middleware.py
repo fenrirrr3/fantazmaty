@@ -196,7 +196,6 @@ class EditingMiddleware:
                     return render(request, "core/edit_conflict.html", {
                         "submitted_values": recover_submitted_values(request.POST),
                         "current_values": conflict_values(obj, request),
-                        "retry_url": request.path,
                     }, status=409)
             if obj:
                 request.edit_version_token = signing.dumps([request.user.pk, key, current], salt="cms-edit-version")

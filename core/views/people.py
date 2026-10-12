@@ -44,7 +44,6 @@ def _filter_data(request):
 @team_member_required
 def people_list(request):
     can_view_email = True
-    can_view_dropbox_email = is_superuser(request.user)
     form = PeopleFilterForm(_filter_data(request))
     if not can_view_email:
         form.fields["query"].widget.attrs["placeholder"] = "Imię lub nazwisko"
@@ -95,15 +94,7 @@ def people_list(request):
             "form": form,
             "roles": Role.objects.order_by("name", "pk"),
             "query": query,
-            "selected_role_ids": selected_role_ids,
-            "selected_role_id": (
-                selected_role_ids[0]
-                if len(selected_role_ids) == 1
-                else None
-            ),
-            "can_view_authors": can_view_author_data(request.user),
             "can_view_team_email": can_view_email,
-            "can_view_team_dropbox_email": can_view_dropbox_email,
             "people_column_count": 3,
         },
         status=400 if form.errors else 200,

@@ -12,6 +12,7 @@ from django.core.management import call_command
 from django.db import transaction
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from core.discord_notifications import parse_mention, queue, render, send_waiting_reminders
 from core.discord_webhook import DeliveryError, send_message
@@ -272,6 +273,29 @@ class ReviewTriggerTests(TestCase):
             self.review(2, status=Review.Status.REJECTED)
         self.assertFalse(DiscordNotification.objects.exists())
 
+    def test_rolled_back_review_does_not_leak_into_the_next_transaction(self):
+        """ID zgłoszenia z wycofanej transakcji nie zostaje w partii do ogłoszenia: ukryte zgłoszenie, które po
+        wycofaniu dostaje ten sam pk, nie jest ogłaszane – ogłoszone jest tylko jawne z kolejnej transakcji."""
+        with transaction.atomic():
+            rolled_back = self.review(0)
+            transaction.set_rollback(True)
+        with self.captureOnCommitCallbacks(execute=True):
+            hidden = self.review(1, is_hidden=True)
+            fresh = self.review(2)
+        if hidden.pk != rolled_back.pk:
+            self.skipTest('Baza nie użyła ponownie klucza z wycofanej transakcji – scenariusz wycieku niemożliwy.')
+        self.assertEqual(list(DiscordNotification.objects.values_list('review_id', flat=True)), [fresh.pk])
+
+    def test_batches_are_kept_per_connection_not_in_module_state(self):
+        """Lista zgłoszeń do ogłoszenia żyje na połączeniu tylko do zatwierdzenia transakcji."""
+        from django.db import connection
+        from core.discord_notifications import _PENDING_ATTR
+        with self.captureOnCommitCallbacks(execute=True):
+            self.review(3)
+            self.assertEqual(getattr(connection, _PENDING_ATTR).ids, [Review.objects.get(title='Zgłoszenie 3').pk])
+        self.assertFalse(hasattr(connection, _PENDING_ATTR))
+        self.assertEqual(DiscordNotification.objects.count(), 1)
+
 
 @override_settings(DISCORD_WEBHOOKS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
 class AdminPanelTests(TestCase):
@@ -381,6 +405,50 @@ class QueueDeliveryTests(TestCase):
         NotificationRule.objects.filter(pk=rule.pk).update(enabled=True, channel='Kanał')
         rule.templates.all().delete()
         self.assertIsNone(queue('stage_completed', context=CONTEXT))
+
+
+@override_settings(DISCORD_WEBHOOKS={'Kanał': URL})
+class ResendCommandTests(TestCase):
+    """Komenda resend_discord_notifications: które stany i w jakim wieku są ponawiane."""
+
+    def notification(self, status, age):
+        item = DiscordNotification.objects.create(trigger='stage_completed', channel='Kanał', content='x', status=status)
+        DiscordNotification.objects.filter(pk=item.pk).update(created_at=timezone.now() - age)
+        return item
+
+    def test_which_notifications_are_retried(self):
+        cases = {
+            'fresh pending is left to the application': ('pending', timedelta(minutes=5), 'pending'),
+            'old pending is sent': ('pending', timedelta(minutes=11), 'sent'),
+            'failed is sent': ('failed', timedelta(hours=1), 'sent'),
+            'unknown is never repeated': ('unknown', timedelta(hours=1), 'unknown'),
+            'failed older than 3 days stays failed': ('failed', timedelta(days=3, minutes=1), 'failed'),
+            'sent is untouched': ('sent', timedelta(minutes=11), 'sent'),
+        }
+        items = {case: self.notification(status, age) for case, (status, age, _) in cases.items()}
+        out = StringIO()
+        with patch('core.discord_webhook.send_message', return_value='55') as sent:
+            call_command('resend_discord_notifications', stdout=out)
+        self.assertEqual(sent.call_count, 2)
+        for case, (_, _, expected) in cases.items():
+            with self.subTest(case):
+                items[case].refresh_from_db()
+                self.assertEqual(items[case].status, expected)
+        self.assertEqual(out.getvalue().strip(), 'Ponowione powiadomienia: 2 (Wysłano: 2)')
+
+    def test_failed_retry_is_reported_and_stays_failed(self):
+        item = self.notification('failed', timedelta(hours=1))
+        out = StringIO()
+        with patch('core.discord_webhook.send_message', side_effect=DeliveryError('x')):
+            call_command('resend_discord_notifications', stdout=out)
+        item.refresh_from_db()
+        self.assertEqual(item.status, 'failed')
+        self.assertEqual(out.getvalue().strip(), 'Ponowione powiadomienia: 1 (Błąd wysyłki: 1)')
+        with patch('core.discord_webhook.send_message', return_value='56') as sent:
+            call_command('resend_discord_notifications', stdout=StringIO())
+        self.assertTrue(sent.called)
+        item.refresh_from_db()
+        self.assertEqual((item.status, item.message_id), ('sent', '56'))
 
 
 @override_settings(DISCORD_WEBHOOKS={'Kanał': URL})

@@ -10,7 +10,7 @@ from django.utils import timezone
 from lxml import html
 
 from authors.models import Author
-from fantazmaty.testing import create_member, create_superuser
+from fantazmaty.testing import assign_artists, create_member, create_superuser
 from illustrations.editing import edit_token
 from illustrations.models import Illustration, Illustrator, PublicIllustrationSettings
 from texts.models import Anthology, Review, Text
@@ -267,7 +267,7 @@ class IllustrationListFiltersAndRulesTests(TestCase):
         cls.other_book = Anthology.objects.create(title='Antologia A', has_illustrations=True)
         cls.assigned = Text.objects.create(title='Przypisany', anthology=cls.book, length=1, genre='groza', tags='las')
         cls.free = Text.objects.create(title='Wolny', anthology=cls.other_book, length=1)
-        Illustration.objects.get(text=cls.assigned).set_artists([cls.contact], status='assigned')
+        assign_artists(Illustration.objects.get(text=cls.assigned), [cls.contact], status='assigned')
         cls.list_url = reverse('illustrations:illustration_list')
 
     def setUp(self):

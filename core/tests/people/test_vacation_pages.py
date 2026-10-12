@@ -86,7 +86,7 @@ class MyVacationsPageTests(VacationPageFixtures):
         self.client.force_login(admin)
         page = self.client.get(self.url)
         self.assertEqual(page.context['person'], Person.objects.active().order_by('last_name', 'pk').first())
-        self.assertIsNone(page.context['history_person'])
+        self.assertEqual(list(page.context['vacations']), [])  # Historia urlopów dotyczy tylko własnego profilu.
         Person.objects.update(is_active=False)
         response = self.client.get(self.url)
         self.assertRedirects(response, reverse('core:home'), fetch_redirect_response=False)

@@ -234,3 +234,99 @@ class RepetitionQueueTests(WorkflowTestDataMixin, TestCase):
         self.assertEqual(stage.assignment.assigned_to, self.next_coordinator)
         with self.assertRaisesMessage(ValidationError, 'nie oczekuje na rozpoczęcie'):
             claim_stage(self.text, StageType.FOURTH_PROOFREADING, self.next_coordinator)
+
+
+class NumberingTests(TestCase):
+    """Wspólne liczniki z ``workflow.numbering``: zakres tekst + przebieg (+ rola / rodzaj etapu)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.text = Text.objects.create(title='Numerowany', length=100)
+        cls.other_text = Text.objects.create(title='Inny', length=100)
+
+    def test_next_numbers_count_only_matching_text_cycle_and_kind(self):
+        from workflow.numbering import next_assignment_execution, next_stage_execution, next_stage_iteration
+        cases = [
+            ('brak rekordów', [], [], 1, 1, 1),
+            ('jeden rekord', [dict(execution_number=1)], [dict(iteration=1, execution_number=1)], 2, 2, 2),
+            ('nieaktualne też liczą się',
+             [dict(execution_number=3, is_current=False)], [dict(iteration=3, execution_number=2, is_current=False)],
+             4, 4, 3),
+            ('inny przebieg nie liczy się',
+             [dict(execution_number=2, workflow_cycle=2)], [dict(iteration=2, execution_number=2, workflow_cycle=2)],
+             1, 1, 1),
+            ('inna rola / rodzaj etapu nie liczy się',
+             [dict(execution_number=2, role=Role.VERIFIER_2)],
+             [dict(iteration=2, execution_number=2, stage_type=StageType.SECOND_VERIFICATION)],
+             1, 1, 1),
+            ('inny tekst nie liczy się',
+             [dict(execution_number=2, text=self.other_text)],
+             [dict(iteration=2, execution_number=2, text=self.other_text)],
+             1, 1, 1),
+        ]
+        for name, assignments, stages, assignment_next, iteration_next, execution_next in cases:
+            with self.subTest(case=name):
+                for fields in assignments:
+                    A.objects.create(**{'text': self.text, 'role': Role.VERIFIER_1, **fields})
+                for fields in stages:
+                    S.objects.create(**{'text': self.text, 'stage_type': StageType.FIRST_VERIFICATION, **fields})
+                self.assertEqual(next_assignment_execution(self.text, Role.VERIFIER_1), assignment_next)
+                self.assertEqual(next_stage_iteration(self.text, StageType.FIRST_VERIFICATION), iteration_next)
+                self.assertEqual(next_stage_execution(self.text, StageType.FIRST_VERIFICATION), execution_next)
+                S.objects.all().delete()
+                A.objects.all().delete()
+
+    def test_explicit_cycle_and_stage_execution_from_assignment(self):
+        """Jawny przebieg liczy w nim, a numer etapu wynika z przydziału (brak przydziału → 1)."""
+        from workflow.numbering import next_assignment_execution, next_stage_iteration, stage_execution_for
+        A.objects.create(text=self.text, role=Role.EDITOR, workflow_cycle=2, execution_number=2, is_current=False)
+        S.objects.create(text=self.text, stage_type=StageType.EDITING, workflow_cycle=2, iteration=5, is_current=False)
+        self.assertEqual(next_assignment_execution(self.text, Role.EDITOR, cycle=2), 3)
+        self.assertEqual(next_stage_iteration(self.text, StageType.EDITING, cycle=2), 6)
+        self.assertEqual(next_assignment_execution(self.text, Role.EDITOR), 1)
+        self.assertEqual(stage_execution_for(None), 1)
+        self.assertEqual(stage_execution_for(A(execution_number=4)), 4)
+
+
+class AlignStageExecutionsCommandTests(TestCase):
+    """Komenda ``align_stage_executions``: wyrównuje numer otwartego etapu do przydziału, pomija zakończone,
+    nieaktualne, bez przydziału i po przekazaniu; ``--dry-run`` niczego nie zapisuje."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from workflow.models import WorkflowHandoff
+        cls.text = Text.objects.create(title='Rozjechany', length=100)
+        cls.assignment = A.objects.create(text=cls.text, role=Role.PROOFREADER_1, execution_number=2)
+        make = lambda kind, iteration, **fields: S.objects.create(  # noqa: E731
+            text=cls.text, stage_type=kind, iteration=iteration, assignment=cls.assignment, execution_number=1, **fields)
+        cls.open = make(StageType.FIRST_PROOFREADING, 1)
+        today = timezone.localdate()
+        cls.done = make(StageType.FIRST_PROOFREADING, 2, is_completed=True, started_at=today, ended_at=today)
+        cls.stale = make(StageType.FIRST_PROOFREADING, 3, is_current=False)
+        cls.handed = make(StageType.SECOND_PROOFREADING, 1)
+        previous = A.objects.create(text=cls.text, role=Role.PROOFREADER_1, execution_number=1, is_current=False)
+        WorkflowHandoff.objects.create(text=cls.text, stage=cls.handed, previous_assignment=previous,
+                                       new_assignment=cls.assignment)
+        cls.unassigned = S.objects.create(text=cls.text, stage_type=StageType.EDITING, iteration=1, execution_number=1)
+
+    def numbers(self):
+        return {stage.pk: S.objects.get(pk=stage.pk).execution_number
+                for stage in (self.open, self.done, self.stale, self.handed, self.unassigned)}
+
+    def test_only_open_current_assigned_stages_without_handoff_are_aligned(self):
+        from io import StringIO
+        from django.core.management import call_command
+        before = self.numbers()
+        out = StringIO()
+        call_command('align_stage_executions', '--dry-run', stdout=out)
+        self.assertEqual(self.numbers(), before)
+        self.assertIn('Rozjechany: Pierwsza korekta wyk. 1 -> 2', out.getvalue())
+        self.assertIn('Do zmiany: 1 (bez zapisu).', out.getvalue())
+        out = StringIO()
+        call_command('align_stage_executions', stdout=out)
+        self.assertIn('Poprawiono: 1.', out.getvalue())
+        self.assertEqual(self.numbers(), {**before, self.open.pk: 2})
+        out = StringIO()
+        call_command('align_stage_executions', stdout=out)
+        self.assertIn('Wszystkie otwarte etapy mają numer zgodny z przydziałem.', out.getvalue())
+

@@ -11,7 +11,7 @@ from lxml import html
 from authors.models import Author
 from core.services.texts import change_scheduled_stage, restore_withdrawn_text, withdraw_text
 from core.supervision import anthology_credit_groups, integrity_issues, text_credit_groups
-from fantazmaty.testing import create_member, create_superuser, form_value
+from fantazmaty.testing import assign_artists, create_member, create_superuser, form_value
 from fantazmaty.testing.workflow import StatusAssignmentFixtures
 from illustrations.models import Illustration, Illustrator
 from people.models import Person, Vacation
@@ -332,7 +332,7 @@ class WithdrawalTests(StatusAssignmentFixtures):
         illustration = Illustration.objects.get(text=story)
         artist = Illustrator.objects.create(first_name='Osoba', last_name='Próbna')
         illustration.coordinator_notes = 'Nie usuwać historii'
-        illustration.set_artists([artist], status=Illustration.Status.ASSIGNED)
+        assign_artists(illustration, [artist], status=Illustration.Status.ASSIGNED)
         assignment = A.objects.create(text=story, role='editor', assigned_to=self.member)
         withdrawn = S.objects.create(text=story, stage_type='withdrawn', is_released=True)
         def queues():

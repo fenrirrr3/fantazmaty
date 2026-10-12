@@ -149,13 +149,18 @@ class AudiobookStageDateForm(forms.Form):
         return value
 
 
-class AudiobookStageDatesForm(forms.Form):
-    """Daty wszystkich etapów (koordynator). Puste pole – data nieznana; trwający etap nie ma zakończenia."""
+class AudiobookStagesForm(forms.Form):
+    """Tabela etapów do edycji przez koordynatora: daty wszystkich etapów i wykonawca korekt.
 
-    def __init__(self, *args, stages=(), **kwargs):
+    Puste pole daty – data nieznana; trwający etap nie ma zakończenia. Wykonawcę wybiera się spośród osób
+    z rolą Korektor audiobooków; dotychczasowy wykonawca zostaje na liście, nawet gdy roli już nie ma.
+    """
+
+    def __init__(self, *args, stages=(), audio=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.stages = list(stages)
         today = timezone.localdate().isoformat()
+        eligible = eligible_proofreaders().values('pk')
         for stage in self.stages:
             for prefix, value in (('start', stage.started_at), ('end', stage.ended_at)):
                 if prefix == 'end' and not stage.is_completed:
@@ -163,11 +168,27 @@ class AudiobookStageDatesForm(forms.Form):
                 self.fields[f'{prefix}_{stage.pk}'] = forms.DateField(required=False, initial=value,
                     label=f"{stage.get_stage_type_display()} – {'rozpoczęcie' if prefix == 'start' else 'zakończenie'}",
                     widget=forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date', 'max': today}))
+            if stage.stage_type != 'proofreading':
+                continue
+            # Nierozpoczęta bieżąca korekta nie ma jeszcze wykonawcy – pokazujemy przypisanego korektora.
+            current = stage.performer_id or (audio.proofreader_id if audio and audio.active_stage_id == stage.pk else None)
+            self.fields[f'performer_{stage.pk}'] = ProofreaderChoice(required=False, initial=current,
+                label=f'{stage.get_stage_type_display()} – wykonawca', empty_label='– nie przypisano –',
+                error_messages={'invalid_choice': 'Wybierz aktywne konto z rolą Korektor audiobooków.'},
+                queryset=get_user_model().objects.filter(Q(pk__in=eligible) | Q(pk=current))
+                    .select_related('person_profile').order_by('last_name', 'first_name', 'pk'))
 
     def rows(self):
         return [{'stage': stage, 'start': self[f'start_{stage.pk}'],
-                 'end': self[f'end_{stage.pk}'] if f'end_{stage.pk}' in self.fields else None} for stage in self.stages]
+                 'end': self[f'end_{stage.pk}'] if f'end_{stage.pk}' in self.fields else None,
+                 'performer': self[f'performer_{stage.pk}'] if f'performer_{stage.pk}' in self.fields else None}
+                for stage in self.stages]
 
     def dates(self):
         return {stage.pk: (self.cleaned_data.get(f'start_{stage.pk}'), self.cleaned_data.get(f'end_{stage.pk}'))
                 for stage in self.stages}
+
+    def performers(self):
+        """{id etapu korekty: id wykonawcy albo None}."""
+        return {stage.pk: getattr(self.cleaned_data[f'performer_{stage.pk}'], 'pk', None)
+                for stage in self.stages if f'performer_{stage.pk}' in self.fields}

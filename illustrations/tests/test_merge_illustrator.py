@@ -8,6 +8,7 @@ from django.core.management import CommandError, call_command
 from django.test import TestCase
 
 from core.edit_versions import version_of
+from fantazmaty.testing import assign_artists
 from illustrations.models import Illustration, Illustrator
 from texts.models import Anthology, Text
 
@@ -27,7 +28,7 @@ class MergeIllustratorTests(TestCase):
             text = Text.objects.create(title=f'Tekst {number}', anthology=book, length=10)
             row = Illustration.objects.get(text=text)
             row.assigned_at = date(2020, 2, 3)
-            row.set_artists(artists, status='delivered', preserve_assignment_date=True)
+            assign_artists(row, artists, status='delivered', preserve_assignment_date=True)
             cls.rows.append(row)
 
     def merge(self, apply=False):

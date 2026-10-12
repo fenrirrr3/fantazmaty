@@ -7,7 +7,7 @@ from django.shortcuts import get_object_or_404, redirect
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST
 
-from core.permissions import team_member_required
+from core.permissions import require_coordinator, team_member_required
 from texts.models import Text
 from core.edit_policy import edit_policy
 
@@ -53,13 +53,19 @@ def audiobook_list(request):
     return list_page(request)
 
 
-@edit_policy(require_version=True)
+def _coordinator_policy(request, text, kwargs):
+    require_coordinator(request.user)
+
+
+@edit_policy(_coordinator_policy, require_version=True)
 @never_cache
 @login_required
 @require_POST
 @team_member_required
 def update_text_audiobook(request, text_id):
     from core.views.texts import _render_text_detail
+    # Flagi „do nagrywania” i „czarna lista” ustawia wyłącznie koordynator.
+    require_coordinator(request.user)
     with transaction.atomic():
         text = get_object_or_404(Text.objects.select_for_update().exclude(anthology__is_novel=True), pk=text_id)
         form = AudiobookForm(request.POST, instance=text)

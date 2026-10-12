@@ -240,7 +240,10 @@ class WorkflowStage(models.Model):
                 self.queued_at = timezone.localdate()
                 if kwargs.get('update_fields') is not None:
                     kwargs['update_fields'] = set(kwargs['update_fields']) | {'queued_at'}
-        if not self.is_skipped and not self.assignment_id and self.text_id:
+        # Bieżący przydział roli podpinamy tylko do bieżącego, niezakończonego etapu
+        # (symetrycznie do WorkflowRoleAssignment.save); etap historyczny zostaje bez wykonawcy.
+        if (not self.is_skipped and not self.assignment_id and self.text_id
+                and self.is_current and not self.is_completed):
             from workflow.services import STAGE_ROLES
             role = STAGE_ROLES.get(self.stage_type)
             if role:

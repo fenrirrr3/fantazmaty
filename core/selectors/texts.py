@@ -2,7 +2,7 @@ from core.public_authors import name_matches
 from workflow.catalog import active_stage_choices, active_role_choices, workflow_role_choices, IMPORT_ONLY_ROLES
 from workflow.labels import assignment_label, stage_label
 from core.translation_scope import frontend_scope, non_abandoned
-from core.filtering import facet_queryset
+from core.filtering import facet_queryset, positive_id
 from datetime import date
 
 from django.db.models import (
@@ -43,7 +43,6 @@ EDITOR_PHASE_STAGES = frozenset(
         *VERIFICATION_STAGES,
     }
 )
-MAX_DATABASE_ID = 9_223_372_036_854_775_807
 
 TEXT_SORTS = {
     "title": ("title", "pk"),
@@ -54,19 +53,6 @@ TEXT_SORTS = {
     "-length": ("-length", "title", "pk"),
     "status": ("current_stage_type", "title", "pk"),
     "-status": ("-current_stage_type", "title", "pk"),
-}
-WORKFLOW_SORTS = {
-    "recent": ("_semantic_order", F("_assigned_time").desc(nulls_last=True), F("started_at").desc(nulls_last=True), "-pk"),
-    "-anthology": ("-text__anthology__title", "-pk"),
-    "-stage": ("-stage_type", "-pk"),
-    "ended_at": (F("ended_at").asc(nulls_last=True), "pk"),
-    "-ended_at": (F("ended_at").desc(nulls_last=True), "-pk"),
-    "title": ("text__title", "pk"),
-    "-title": ("-text__title", "-pk"),
-    "anthology": ("text__anthology__title", "text__title", "-pk"),
-    "stage": ("stage_type", "text__title", "-pk"),
-    "started_at": (F("started_at").asc(nulls_last=True), "pk"),
-    "-started_at": (F("started_at").desc(nulls_last=True), "-pk"),
 }
 
 
@@ -105,17 +91,6 @@ class _ProjectedRows:
         return self.projector(self.queryset[key])
 
 
-def _positive_id(value):
-    value = (value or "").strip()
-    if (
-        not value
-        or len(value) > 19
-        or not value.isascii()
-        or not value.isdecimal()
-    ):
-        return None
-    result = int(value)
-    return result if 1 <= result <= MAX_DATABASE_ID else None
 
 
 def _person_data(person):
@@ -331,11 +306,11 @@ def _text_row(text, include_authors):
 def text_list_context(*, user, params, scope=None, stage_scope=None, translated=False, include_translations=False, include_novels=False):
     require_team_member(user)
     include_authors = can_view_author_data(user)
-    anthology_id = _positive_id(params.get("anthology"))
+    anthology_id = positive_id(params.get("anthology"))
     author_value = params.get("author", "")
-    foreign_author_id = _positive_id(author_value[8:]) if include_translations and include_authors and author_value.startswith("foreign:") else None
-    author_id = _positive_id(author_value) if include_authors else None
-    translator_id = _positive_id(params.get("translator")) if translated and include_authors else None
+    foreign_author_id = positive_id(author_value[8:]) if include_translations and include_authors and author_value.startswith("foreign:") else None
+    author_id = positive_id(author_value) if include_authors else None
+    translator_id = positive_id(params.get("translator")) if translated and include_authors else None
     valid_statuses = {value for value, _ in active_stage_choices()} | {"none"}
     requested = params.getlist("status") if hasattr(params, "getlist") else [params.get("status", "")]
     statuses = list(dict.fromkeys(v for v in requested if v in valid_statuses))
@@ -609,7 +584,7 @@ def workflow_list_context(*, user, params):
     )
     anthology_ids = list(dict.fromkeys(
         identifier for value in requested_anthologies
-        if (identifier := _positive_id(value)) is not None
+        if (identifier := positive_id(value)) is not None
     ))
     requested_stages = (
         params.getlist("stage") if hasattr(params, "getlist")
@@ -813,14 +788,6 @@ def text_detail_context(*, user, text):
     author_editing = active(StageType.AUTHOR_EDITING)
     pending_editing = pending(StageType.EDITING)
     pending_first = pending(StageType.FIRST_VERIFICATION)
-    verification = next(
-        (
-            stage for stage in stages
-            if stage.stage_type in VERIFICATION_STAGES
-            and _is_active(stage, today)
-        ),
-        None,
-    )
     verification_open = any(
         stage.stage_type in VERIFICATION_STAGES and _is_open(stage)
         for stage in stages
@@ -979,22 +946,13 @@ def text_detail_context(*, user, text):
         "is_withdrawn": is_withdrawn,
         "is_ready": is_ready,
         "can_manage_workflow": coordinator,
-        "can_control_editing": can_control,
         "editor_assignment": _assignment_data(editor),
-        "first_verifier_assignment": _assignment_data(first_verifier),
-        "active_editing": stage_row(editing),
-        "active_author_editing": stage_row(author_editing),
-        "active_verification": stage_row(verification),
         "pending_editing": stage_row(pending_editing),
-        "pending_first_verification": stage_row(pending_first),
         "returned_by_coordinator": returned,
-        "first_verification_completed": first_done,
-        "second_verification_completed": second_done,
         "can_send_to_first_verification": bool(
             can_control and editing and not first_gate
             and not verification_open_started
         ),
-        "can_start_first_verification": can_start_first,
         "first_verifier_unavailable": first_verifier_unavailable,
         "can_resume_editing": can_resume,
         "can_send_to_author": bool(
@@ -1010,25 +968,6 @@ def text_detail_context(*, user, text):
         ),
         "can_finish_editing": bool(
             can_control and editing and second_gate and not verification_open
-        ),
-        "all_authors": (
-            [_author_data(author) for author in text.selector_authors]
-            if include_authors else []
-        ),
-        "selected_author_ids": (
-            {author.pk for author in text.selector_authors}
-            if include_authors else set()
-        ),
-        "active_workflow_stage": next(
-            (
-                row_by_id[stage.pk] for stage in stages
-                if not terminal and _is_active(stage, today)
-            ),
-            None,
-        ),
-        "active_user_stage": next(
-            (row for row in stage_rows if row["can_complete"]),
-            None,
         ),
     }
 

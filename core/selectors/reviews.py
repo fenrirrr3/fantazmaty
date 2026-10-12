@@ -1,6 +1,6 @@
 from core.public_authors import review_name_matches
 from core.translation_scope import frontend_scope
-from core.filtering import facet_queryset
+from core.filtering import facet_queryset, positive_id
 from django.db.models import Count, F, Prefetch, Q, Case, When, Value, CharField
 from django.db.models.functions import Coalesce
 from django.utils import timezone
@@ -15,7 +15,6 @@ from core.permissions import (
 from texts.models import Anthology, Review, ReviewAssignment, Reviewers
 
 
-MAX_DATABASE_ID = 9_223_372_036_854_775_807
 DEFAULT_STATUSES = (Review.Status.NEW, Review.Status.IN_REVIEW, Review.Status.TO_DECIDE)
 OPEN_STATUSES = frozenset(DEFAULT_STATUSES)
 CURRENT_STATUSES = DEFAULT_STATUSES
@@ -40,19 +39,6 @@ SORT_FIELDS = {
 }
 
 
-def _positive_id(value):
-    value = (value or "").strip()
-
-    if (
-        not value
-        or len(value) > 19
-        or not value.isascii()
-        or not value.isdecimal()
-    ):
-        return None
-
-    result = int(value)
-    return result if 1 <= result <= MAX_DATABASE_ID else None
 
 
 def _user_data(user):
@@ -197,9 +183,7 @@ def _project_reviews(reviews, *, user, include_authors, allow_self_assignment):
             "assigned_reviewer_count": assigned_count,
             "completed_reviewer_count": completed_count,
             "assignments": opinions,
-            "reviewer_opinions": opinions,
             "reviewers_have_free_slot": has_free_slot and not locked,
-            "is_closed_for_assignments": locked,
             "is_locked": locked,
             "is_copied_to_text": review.copied_text_id is not None,
             "copied_text_id": review.copied_text_id,
@@ -210,9 +194,6 @@ def _project_reviews(reviews, *, user, include_authors, allow_self_assignment):
                 and own_assignment is None
             ),
             "can_unassign_review": own_assignment is not None and not locked,
-            "all_reviews_finished": (
-                assigned_count > 0 and completed_count == assigned_count
-            ),
         }
 
         if include_authors:
@@ -312,7 +293,7 @@ def review_list_context(*, user, params):
     if completed not in {str(n) for n in range(7)}:
         completed = ""
 
-    anthology_id = _positive_id(params.get("anthology"))
+    anthology_id = positive_id(params.get("anthology"))
     query = params.get("q", "").strip()
 
     queryset = frontend_scope(Review.objects, include_abandoned=old_reviews).visible_to(user)
@@ -365,24 +346,13 @@ def review_list_context(*, user, params):
             frontend_scope(Anthology.objects, include_abandoned=old_reviews).filter(pk__in=facets["anthology"]).order_by("title", "pk").values("pk", "title")
         ),
         "selected_statuses": selected_statuses,
-        "selected_assignment_state": assignment_state,
         "selected_completed": completed,
         "selected_anthology_id": anthology_id,
         "status_choices": [(v, label) for v, label in Review.Status.choices if v in valid_statuses],
         "query": query,
         "sort": sort,
         "old_reviews": old_reviews,
-        "selected_old_reviews": old_reviews,
         "max_reviewers": MAX_REVIEWERS,
-        "filters_are_default": (
-            not old_reviews
-            and not selected_statuses
-            and not completed
-            and not assignment_state
-            and anthology_id is None
-            and not query
-            and sort == "newest"
-        ),
     }
 
 

@@ -206,13 +206,28 @@ class CompletedVerificationClaimTests(TestCase):
         self.assertEqual(old.assignment.execution_number, 1)
         self.assertEqual(old.assignment.assigned_to_id, self.other.pk)
 
+    def test_claim_gives_open_stage_execution_number_of_new_assignment(self):
+        """Nowe wykonanie przydziału (wyk. 2) nadaje ten sam numer otwartemu etapowi, więc etykieta etapu,
+        etykieta przydziału i snapshot zdarzeń mówią o tym samym wykonaniu."""
+        from core.workflow_events import snapshot
+        from workflow.labels import assignment_label, stage_label
+        self.imported('first_proofreading', role='proofreader_1', current=False)
+        pending = S.objects.create(text=self.text, stage_type='first_proofreading', iteration=2)
+        claimed = claim_stage(self.text, 'first_proofreading', self.user, self.today)
+        self.assertEqual(claimed.pk, pending.pk)
+        self.assertEqual(claimed.execution_number, 2)
+        pending.refresh_from_db()
+        self.assertEqual(pending.execution_number, pending.assignment.execution_number)
+        self.assertEqual(stage_label(pending), 'Pierwsza korekta (wyk. 2)')
+        self.assertEqual(assignment_label(pending.assignment), 'Korektor 1 (wyk. 2)')
+        self.assertTrue(snapshot(self.text.pk, 'default')['stages'][pending.pk][0]
+                        .startswith('Pierwsza korekta – wykonanie 2'))
+
     def test_old_empty_first_does_not_block_continued_editing_or_misreport_status(self):
         completed, obsolete = self.obsolete_first()
         editor = A.objects.create(text=self.text, role='editor', assigned_to=self.user)
         editing = S.objects.create(text=self.text, stage_type='editing', iteration=2, assignment=editor)
         detail = text_detail_context(user=self.user, text=self.text)
-        self.assertFalse(detail['can_start_first_verification'])
-        self.assertIsNone(detail['pending_first_verification'])
         self.assertTrue(detail['can_resume_editing'])
         self.assertEqual(current_stage(self.text.workflow_stages.all()).pk, editing.pk)
         self.assertEqual(_annotated_texts().get(pk=self.text.pk).current_stage_type, 'editing')

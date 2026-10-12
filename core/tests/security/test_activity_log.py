@@ -19,7 +19,7 @@ from core.activity_spool import enqueue_activity
 from core.activity_targets import present_activities, target_for_match
 from core.management.commands.flush_activity import Command
 from core.models import UserActivity
-from fantazmaty.testing import create_superuser
+from fantazmaty.testing import create_member, create_superuser
 from illustrations.models import Illustrator
 
 from .support import TemporaryActivitySpoolMixin
@@ -286,6 +286,18 @@ class ActivityPageFilterTests(TemporaryActivitySpoolMixin, TestCase):
     def actions(self, **params):
         response = self.client.get(reverse('core:user_activity'), params)
         return response, {entry.action for entry in response.context['activities']}
+
+    def test_page_and_menu_link_are_for_superusers_only(self):
+        """Dziennik aktywności jest dla superużytkownika (sekcja System); koordynator nie ma linku ani dostępu."""
+        url = reverse('core:user_activity')
+        self.assertContains(self.client.get(url), 'Aktywność użytkowników')
+        home = self.client.get(reverse('core:home')).content.decode()
+        system = home.index('data-menu-section="system"')
+        self.assertGreater(home.index(url, system), system)
+        coordinator = create_member('activity-koord', 'Koordynator')
+        self.client.force_login(coordinator)
+        self.assertEqual(self.client.get(url).status_code, 403)
+        self.assertNotContains(self.client.get(reverse('core:home')), url)
 
     def test_method_and_date_filters(self):
         today = timezone.localdate()

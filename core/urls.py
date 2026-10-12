@@ -138,19 +138,9 @@ urlpatterns = [
 
     # Teksty.
     path("teksty/", texts.text_list, name="text_list"),
-    path(
-        "teksty/<int:text_id>/autorzy/",
-        texts.set_text_authors,
-        name="set_text_authors",
-    ),
 
     # Recenzje.
     path("recenzje/", reviews.review_list, name="review_list"),
-    path(
-        "recenzje/operacja-zbiorcza/",
-        reviews.bulk_review_action,
-        name="bulk_review_action",
-    ),
     path(
         "recenzje/import/",
         mailbox.mailbox_headers,
@@ -258,11 +248,6 @@ urlpatterns = [
         "moje-teksty/<int:text_id>/redakcja/zakoncz/",
         workflow.finish_text_editing,
         name="finish_text_editing",
-    ),
-    path(
-        "moje-teksty/<int:text_id>/pierwsza-weryfikacja/rozpocznij/",
-        workflow.start_first_verification_stage,
-        name="start_first_verification_stage",
     ),
 
     # Nowy przebieg i wycofanie tekstu.

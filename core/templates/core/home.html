@@ -16,30 +16,26 @@
         <header class="overdue-banner-header">
             <div>
                 <h2 id="overdue-heading">Zaległe etapy <span class="overdue-count">{{ overdue.count }}</span></h2>
-                <p>W toku dłużej niż {{ overdue.active_days }} dni albo bez rozpoczęcia dłużej niż {{ overdue.waiting_days }} dni. Najdłużej zalegające na górze.</p>
+                <p>W toku dłużej niż {{ overdue.active_days }} dni albo bez rozpoczęcia dłużej niż {{ overdue.waiting_days }} dni. Najdłużej zalegające na górze.{% if overdue.scope_label %} Zakres: {{ overdue.scope_label }}.{% endif %}</p>
             </div>
-            <a class="secondary-button" href="{% url 'core:workflow_inactivity' %}">Pełna lista przestojów</a>
+            <a class="secondary-button" href="{% url 'core:workflow_inactivity' %}{% if overdue.stage_params %}?{{ overdue.stage_params }}{% endif %}">Pełna lista przestojów</a>
         </header>
         {% if overdue.rows %}
         <ol class="overdue-list">
-            {% for row in overdue.rows %}
-            <li class="overdue-item {% if row.inactivity_type == 'active' %}is-active{% else %}is-waiting{% endif %}">
-                <span class="overdue-days"><strong>{{ row.days|default_if_none:"?" }}</strong> dni</span>
-                <div class="overdue-main">
-                    <a class="overdue-title" href="{% url 'core:assigned_text_detail' row.text.pk %}">{{ row.text.title }}</a>
-                    <span class="overdue-meta">{% if row.text.anthology %}{{ row.text.anthology.title }}{% else %}Bez antologii{% endif %}{% if row.person %} · {{ row.person }}{% endif %}</span>
-                </div>
-                <div class="overdue-state">
-                    {% include "core/includes/workflow_badge.html" with workflow_stage=row.stage %}
-                    <span class="overdue-kind">{% if row.inactivity_type == 'active' %}w toku od {{ row.since|date:"d.m.Y" }}{% else %}czeka od {{ row.since|date:"d.m.Y" }}{% endif %}</span>
-                </div>
-            </li>
-            {% endfor %}
+            {% for row in overdue.rows %}{% include "core/includes/overdue_item.html" %}{% endfor %}
         </ol>
+        {% if overdue.extra_rows %}
+        <details class="overdue-more">
+            <summary><span class="overdue-more-show">Pokaż kolejne {{ overdue.extra_rows|length }}</span><span class="overdue-more-hide">Zwiń listę</span></summary>
+            <ol class="overdue-list" start="{{ overdue.rows|length|add:1 }}">
+                {% for row in overdue.extra_rows %}{% include "core/includes/overdue_item.html" %}{% endfor %}
+            </ol>
+        </details>
+        {% endif %}
         {% endif %}
         {% if overdue.more or overdue.review_count %}
         <p class="overdue-footer">
-            {% if overdue.more %}<a href="{% url 'core:workflow_inactivity' %}">i jeszcze {{ overdue.more }} – zobacz wszystkie</a>{% endif %}
+            {% if overdue.more %}<a href="{% url 'core:workflow_inactivity' %}{% if overdue.stage_params %}?{{ overdue.stage_params }}{% endif %}">i jeszcze {{ overdue.more }} – zobacz wszystkie</a>{% endif %}
             {% if overdue.review_count %}<a href="{% url 'core:workflow_inactivity' %}?mode=reviews">Recenzje bez opinii dłużej niż 21 dni: {{ overdue.review_count }}</a>{% endif %}
         </p>
         {% endif %}

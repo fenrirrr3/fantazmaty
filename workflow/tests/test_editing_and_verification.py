@@ -3,13 +3,11 @@ from datetime import datetime, timedelta
 
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.test import SimpleTestCase, TestCase, tag
-from django.urls import reverse
 from django.utils import timezone
 
 from core.edit_versions import version_of
 from core.selectors.texts import text_detail_context
 from core.services.texts import start_assigned_stage
-from core.workflow_tokens import make_token
 from fantazmaty.testing.workflow import WorkflowTestDataMixin
 from people.models import Person
 from texts.models import Text
@@ -515,19 +513,6 @@ class FirstVerificationStartTests(WorkflowTestDataMixin, TestCase):
 
     def test_both_entry_points_block_pending_author_editing(self):
         self.assert_start_blocked('author_editing')
-
-    def test_direct_post_cannot_bypass_pending_editorial_work(self):
-        editorial, first = self.pending_first('editing')
-        self.client.force_login(self.verifier_1)
-        response = self.client.post(reverse('core:start_first_verification_stage', args=[self.text.pk]),
-                                    {'workflow_token': make_token(self.text, self.verifier_1)})
-        self.assertEqual(response.status_code, 302)
-        first.refresh_from_db()
-        editorial.refresh_from_db()
-        self.assertIsNone(first.started_at)
-        self.assertFalse(editorial.is_completed)
-        self.assertTrue(any('Tekst nadal znajduje' in str(message)
-                            for message in response.wsgi_request._messages))
 
     def test_completed_editorial_work_allows_first_verification(self):
         editorial, first = self.pending_first('editing')

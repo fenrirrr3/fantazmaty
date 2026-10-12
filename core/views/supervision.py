@@ -185,7 +185,7 @@ def anthology_detail(request, anthology_id):
     show_credits = not ExtractVolume.objects.filter(anthology=anthology, number__in=(1, 2)).exists()
     return render(request, 'core/anthology_detail.html', {
         'anthology': anthology, 'show_checklist': coordinator, 'task_forms': forms_list,
-        'issues': issues, 'issue_groups': grouped_checklist(issues), 'new_person_form': new_person_form,
+        'issue_groups': grouped_checklist(issues), 'new_person_form': new_person_form,
         'credits': anthology_credit_groups(anthology) if show_credits else [],
         'extract_text': anthology.texts.filter(import_source='extract-volume-v2').first(), 'show_credits': show_credits, 'cover_form': cover_form,
         'recordable_count': anthology.texts.filter(audiobook_blacklisted=False).count() if coordinator else 0,
@@ -217,7 +217,7 @@ def person_permissions(request, person_id):
     for role, group in ROLE_GROUPS.items():
         reason = role_access_reason(user, role, access=access) if user else 'Brak powiązanego konta.'
         allowed.append({'label': dict(WorkflowRoleAssignment.Role.choices).get(role, role),
-                        'allowed': not reason, 'role_allowed': not reason, 'block': reason,
+                        'allowed': not reason, 'block': reason,
                         'source': 'Superuser' if user and user.is_superuser else group})
     available = available_stages_for_user(user=user) if active else []
     return render(request, 'core/person_permissions.html', {'person': person, 'roles': roles, 'groups': groups, 'permissions': allowed, 'available_count': len(available), 'access': active, 'coordinator': coordinator, 'reviewer': is_reviewer(user)})

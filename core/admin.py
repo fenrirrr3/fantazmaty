@@ -332,19 +332,25 @@ class AccountAdmin(UserAdmin):
         return redirect("admin:auth_user_change", user.pk)
 
     def _invite(self, request, user):
-        from django.contrib import messages
-        from django.core.exceptions import ValidationError
-        from core.invitations import send_invitation
-        try:
-            send_invitation(user, request)
-        except ValidationError as error:
-            self.message_user(request, "Nie wysłano zaproszenia: " + " ".join(error.messages), messages.ERROR)
-        except OSError:
-            self.message_user(request, "Nie udało się wysłać wiadomości – sprawdź konfigurację poczty serwera.",
-                              messages.ERROR)
-        else:
-            self.log_change(request, user, INVITATION_LOG)
-            self.message_user(request, f"Wysłano zaproszenie na adres {user.email}.", messages.SUCCESS)
+        """Zaproszenie wychodzi dopiero po zatwierdzeniu transakcji – wycofany zapis konta nie wysyła maila."""
+        from django.db import transaction
+
+        def send():
+            from django.contrib import messages
+            from django.core.exceptions import ValidationError
+            from core.invitations import send_invitation
+            try:
+                send_invitation(user, request)
+            except ValidationError as error:
+                self.message_user(request, "Nie wysłano zaproszenia: " + " ".join(error.messages), messages.ERROR)
+            except OSError:
+                self.message_user(request, "Nie udało się wysłać wiadomości – sprawdź konfigurację poczty serwera.",
+                                  messages.ERROR)
+            else:
+                self.log_change(request, user, INVITATION_LOG)
+                self.message_user(request, f"Wysłano zaproszenie na adres {user.email}.", messages.SUCCESS)
+
+        transaction.on_commit(send)
 
     def response_add(self, request, obj, post_url_continue=None):
         form = getattr(request, "_account_add_form", None)
@@ -392,7 +398,7 @@ admin.site.register(User, AccountAdmin)
 
 
 @admin.register(AnthologyCorrection)
-class AnthologyCorrectionAdmin(admin.ModelAdmin):
+class AnthologyCorrectionAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     def has_change_permission(self, request, obj=None):
         return bool(not (obj and obj.is_resolved) and super().has_change_permission(request, obj))
 
@@ -407,17 +413,6 @@ class AnthologyCorrectionAdmin(admin.ModelAdmin):
     list_filter = ("status", "anthology")
     search_fields = ("story_title__plcontains", "problem__plcontains", "fragment__plcontains")
     readonly_fields = ("created_at", "updated_at")
-
-    def has_module_permission(self, request):
-        return request.user.is_active and request.user.is_superuser
-
-    def has_view_permission(self, request, obj=None):
-        return self.has_module_permission(request)
-
-    has_add_permission = has_view_permission
-
-
-
 
 
 class CoordinatorIntakeAdmin(admin.ModelAdmin):
@@ -702,19 +697,14 @@ class UserActivityAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
 
 @admin.register(WorkflowEvent)
-class WorkflowEventAdmin(admin.ModelAdmin):
+class WorkflowEventAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
+    """Dziennik zdarzeń: tylko do odczytu, wyłącznie dla superusera."""
     list_display = ('created_at', 'title', 'previous_status', 'next_status', 'actor_name', 'channel', 'status')
     list_filter = ('status', 'channel')
     search_fields = ('title', 'actor_name')
     readonly_fields = tuple(f.name for f in WorkflowEvent._meta.fields)
 
-    def has_module_permission(self, request):
-        return request.user.is_superuser
-
-    def has_view_permission(self, request, obj=None):
-        return request.user.is_superuser
-
-    def has_add_permission(self, request):
+    def has_add_permission(self, request, obj=None):
         return False
 
     def has_change_permission(self, request, obj=None):

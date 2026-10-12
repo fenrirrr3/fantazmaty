@@ -3,6 +3,8 @@
         <section class="card" id="text-audiobook"><div class="card-body">
             <h2>Audiobook</h2>
             <p><strong>Status:</strong> {% if text_audiobook %}{% include "core/includes/audiobook_status.html" with audio=text_audiobook %}{% elif text.for_recording and not text.audiobook_blacklisted %}{% include "core/includes/audiobook_status.html" with audio=text_audiobook %}{% else %}<span class="muted-text">Brak wpisu audiobooka</span>{% endif %}</p>
+            {% if can_manage_workflow %}
+            {# Flagi „do nagrywania” i „czarna lista” ustawia wyłącznie koordynator. #}
             <form method="post" action="{% url 'core:update_text_audiobook' text.pk %}" data-warn-unsaved>
                 {% csrf_token %}{% edit_version %}{{ audiobook_form.non_field_errors }}
                 <div class="form-field"><label class="text-production-checkbox">{{ audiobook_form.for_recording }} {{ audiobook_form.for_recording.label }}</label>{{ audiobook_form.for_recording.errors }}</div>
@@ -17,6 +19,14 @@
                     {% endif %}
                 </div>
             </form>
+            {% else %}
+            <p><strong>Do nagrywania:</strong> {% if text.audiobook_blacklisted %}nie (czarna lista){% elif text.for_recording %}tak{% else %}nie{% endif %}</p>
+            <p class="muted-text">Zgodę na nagranie i czarną listę ustawia koordynator.</p>
+            {% if can_open_audiobooks %}<div class="actions">
+                <a href="{% url 'core:audiobooks' %}" class="secondary-button">Przejdź do Audiobooków</a>
+                <a href="{% url 'core:audiobook_detail' text.pk %}" class="secondary-button">Otwórz audiobook</a>
+            </div>{% endif %}
+            {% endif %}
         </div></section>
         <section class="card" id="text-illustration"><div class="card-body">
             <h2>Ilustracja</h2>

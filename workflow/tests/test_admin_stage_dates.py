@@ -288,7 +288,6 @@ class AdminStageDatesTests(TestCase):
         self.assertIn('second_verification', choices)
         self.assertNotIn('editing_control', choices)
         detail = text_detail_context(user=self.admin, text=self.text)
-        self.assertTrue(detail['first_verification_completed'])
         self.assertFalse(detail['can_send_to_first_verification'])
         self.assertTrue(detail['can_send_to_second_verification'])
         with self.assertRaisesMessage(ValidationError, 'Pierwsza weryfikacja jest już zakończona'):
@@ -309,7 +308,6 @@ class AdminStageDatesTests(TestCase):
         self.assertNotIn('second_verification', choices)
         self.assertIn('editing_control', choices)
         detail = text_detail_context(user=self.admin, text=self.text)
-        self.assertTrue(detail['second_verification_completed'])
         self.assertTrue(detail['can_finish_editing'])
         self.save_dates(ended_at=self.end, finish=True, next_stage='editing_control')
         self.assertTrue(S.objects.filter(text=self.text, stage_type='editing_control', is_completed=False).exists())

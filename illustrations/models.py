@@ -110,20 +110,6 @@ class Illustration(models.Model):
         names = [artist.display_name for artist in self.illustrators.all()] if self.pk else []
         return ", ".join(names)
 
-    def set_artists(self, artists, *, status=None, preserve_assignment_date=False):
-        """Validate the complete assignment before writing its many-to-many relation."""
-        from django.db import transaction
-        artists = list(artists)
-        self._selected_illustrator_ids = {artist.pk for artist in artists}
-        if status is not None:
-            self.status = status
-        try:
-            with transaction.atomic(using=self._state.db):
-                self.save(preserve_assignment_date=preserve_assignment_date)
-                self.illustrators.set(artists)
-        finally:
-            del self._selected_illustrator_ids
-
     trigger_warnings = models.TextField(
         "trigger warnings",
         blank=True,
@@ -233,10 +219,6 @@ class Illustration(models.Model):
             kwargs["update_fields"] = updated_fields
 
         super().save(*args, **kwargs)
-
-    @property
-    def genre_display(self):
-        return self.text.genre
 
     @property
     def genre_tags_display(self):

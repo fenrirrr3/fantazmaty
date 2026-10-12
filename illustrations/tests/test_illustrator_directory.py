@@ -9,7 +9,7 @@ from django.urls import reverse
 from lxml import html
 
 from core.odkurzacz_forms import OdkurzaczForm
-from fantazmaty.testing import create_member, create_superuser, form_value
+from fantazmaty.testing import assign_artists, create_member, create_superuser, form_value
 from illustrations.directory import edit_token
 from illustrations.editing import AssignmentForm
 from illustrations.models import Illustration, Illustrator
@@ -239,7 +239,7 @@ class IllustratorDirectoryTests(TestCase):
         book = Anthology.objects.create(title="Dawna praca", has_illustrations=True)
         story = Text.objects.create(title="Zachowane przypisanie", anthology=book, length=100)
         illustration = Illustration.objects.get(text=story)
-        illustration.set_artists([self.manual], status="assigned")
+        assign_artists(illustration, [self.manual], status="assigned")
         self.manual.is_active = False
         self.manual.save()
         response = self.client.get(self.list_url, {"q": "krajobrazy"})
@@ -289,7 +289,7 @@ class IllustratorPseudonymTests(TestCase):
         cls.book = Anthology.objects.create(title='Antologia', has_illustrations=True)
         cls.story = Text.objects.create(title='Tekst', anthology=cls.book, length=10)
         cls.illustration = Illustration.objects.get(text=cls.story)
-        cls.illustration.set_artists([cls.artist], status='delivered')
+        assign_artists(cls.illustration, [cls.artist], status='delivered')
 
     def setUp(self):
         self.client.force_login(self.admin)

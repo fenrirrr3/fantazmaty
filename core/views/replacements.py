@@ -50,7 +50,7 @@ def replacement_list(request):
     for entry in entries:
         entry.can_change = _can_change(request.user, entry)
     return render(request, 'core/replacements.html', {
-        'entries': entries, 'form': form, 'can_edit': can_edit, 'allow_patterns': allow_patterns,
+        'entries': entries, 'form': form, 'can_edit': can_edit,
         'active_count': sum(entry.is_active for entry in entries),
     }, status=400 if form is not None and form.is_bound and form.errors else 200)
 

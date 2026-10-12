@@ -174,20 +174,19 @@
 
 .audio-detail-columns {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: var(--space-5);
     align-items: start;
-}
-
-.audio-detail-left {
-    display: grid;
-    gap: var(--space-5);
-    min-width: 0;
 }
 
 .audio-detail-columns .card {
     min-width: 0;
     margin: 0;
+}
+
+/* Historia etapów pod kolumnami – tabela z polami potrzebuje pełnej szerokości. */
+.audio-stage-card {
+    margin-top: var(--space-5);
 }
 
 .audio-production-form {
@@ -221,7 +220,7 @@
     margin: 0;
 }
 
-.audio-detail-left .audio-publication-form {
+.audio-detail-columns .audio-publication-form {
     gap: var(--space-3);
 }
 
@@ -239,24 +238,50 @@
 }
 
 /* Nagłówek, podpowiedź i przyciski zajmują cały wiersz; pole daty lub etapu – połowę. */
-.audio-stage-add > :is(h3, .form-help, .actions, .audio-stage-dates) {
+.audio-stage-add > :is(h3, .form-help, .actions) {
     grid-column: 1 / -1;
     margin: 0;
 }
 
-/* Daty etapów: jeden etap w wierszu, rozpoczęcie i zakończenie obok siebie. */
-.audio-stage-dates {
+/* Tabela etapów jako formularz koordynatora: daty i wykonawca w komórkach, „Usuń” w ostatniej kolumnie. */
+.audio-stage-table-form {
     display: grid;
     gap: var(--space-3);
 }
 
-.audio-stage-dates fieldset {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-3);
-    align-items: end;
+.audio-stage-table-form > :is(.form-help, .actions, .errorlist) {
+    margin: 0;
 }
 
+/* Ciaśniejsze komórki, żeby sześć kolumn z polami mieściło się w karcie na szerokim ekranie. */
+.audio-stage-table :is(th, td) {
+    padding-inline: var(--space-2);
+}
+
+.audio-stage-table .stage-status {
+    white-space: nowrap;
+}
+
+.audio-stage-table select {
+    width: 100%;
+    min-width: 9rem;
+    margin-top: var(--space-1);
+    padding-inline: var(--space-2);
+}
+
+.audio-stage-table input[type="date"] {
+    width: 8.5rem;
+    min-width: 0;
+    padding-inline: var(--space-2);
+}
+
+.audio-stage-table .errorlist {
+    padding-left: var(--space-4);
+}
+
+.audio-stage-remove {
+    text-align: right;
+}
 
 .audio-finish-button {
     min-width: var(--control-height);
@@ -264,14 +289,40 @@
 
 @media screen and (max-width: 1100px) {
     .audio-detail-columns {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media screen and (max-width: 760px) {
+    .audio-detail-columns {
         grid-template-columns: 1fr;
     }
 }
 
 @media screen and (max-width: 760px) {
-    .audio-stage-add,
-    .audio-stage-dates fieldset {
+    .audio-stage-add {
         grid-template-columns: 1fr;
+    }
+
+    /* Karty etapów na telefonie: pola na całą szerokość, „Usuń” bez etykiety. */
+    .audio-stage-table select,
+    .audio-stage-table input[type="date"] {
+        width: 100%;
+        min-width: 0;
+    }
+
+    /* Lista wykonawcy i błędy pól w karcie zajmują cały wiersz pod nazwą etapu. */
+    .audio-stage-table :is(select, .errorlist) {
+        grid-column: 1 / -1;
+    }
+
+    .audio-stage-table td.audio-stage-remove {
+        display: block;
+        text-align: left;
+    }
+
+    .audio-stage-table td.audio-stage-remove::before {
+        content: none;
     }
 }
 

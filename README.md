@@ -69,6 +69,10 @@ EbookLib fpdf2 Pillow rapidfuzz spacy` i modelem `pl_core_news_sm` (polecenia w 
    - `python manage.py clearsessions` – usuwa wygasłe sesje (raz dziennie).
    - `python manage.py send_discord_reminders` – przypomnienia Discord o tekstach i zgłoszeniach do recenzji, które od 7, 14 i 21 dni
      czekają na osobę (raz dziennie; działa, gdy w panelu włączono „Tekst nadal czeka na osobę”).
+   - `python manage.py resend_discord_notifications` – ponawia powiadomienia Discord oczekujące od ponad 10 minut
+     albo nieudane, nie starsze niż 3 dni (co kilkanaście minut; stan „brak potwierdzenia” nie jest ponawiany).
+   Jednorazowo po wdrożeniu z października 2026: `python manage.py align_stage_executions --dry-run`, a po sprawdzeniu
+   bez `--dry-run` – wyrównuje numer wykonania otwartych etapów do numeru przydziału (dawny rozjazd „wyk. 1” / „wyk. 2”).
    Powiadomienia Discord wysyła aplikacja na bieżąco. Komendy `dispatch_workflow_notifications`
    już nie ma – usuń to zadanie, jeśli jest zaplanowane.
 5. `python manage.py check --deploy`

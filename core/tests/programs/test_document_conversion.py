@@ -347,12 +347,13 @@ class ConvertDocumentResultTests(IsolatedProgramDirsMixin, SimpleTestCase):
         def worker(directory, timeout):
             (directory / 'document.pdf').write_bytes(b'%PDF')
 
+        source = formatted_docx()  # jeden egzemplarz – DOCX zbudowany sekundę później ma inne znaczniki czasu w ZIP-ie
         with patch('core.services.document_converter.run_converter', side_effect=worker):
-            result, extension, mime = convert_document(BytesIO(formatted_docx()), ['pdf'], include_docx=True)
+            result, extension, mime = convert_document(BytesIO(source), ['pdf'], include_docx=True)
         with result, ZipFile(result) as archive:
             self.assertEqual((extension, mime), ('zip', 'application/zip'))
             self.assertEqual(sorted(archive.namelist()), ['document.docx', 'document.pdf'])
-            self.assertEqual(archive.read('document.docx'), formatted_docx())
+            self.assertEqual(archive.read('document.docx'), source)
 
     def test_failed_pdf_does_not_take_away_the_ready_epub(self):
         def worker(directory, timeout):

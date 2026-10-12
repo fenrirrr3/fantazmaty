@@ -1,7 +1,8 @@
 from django import forms
-from django.contrib import admin
+from django.contrib import admin, messages
+from django.contrib.admin.actions import delete_selected
 from django.core.exceptions import PermissionDenied
-from django.db.models import Q, Value
+from django.db.models import Count, Q, Value
 from django.db.models.functions import Lower
 from django.http import HttpResponseRedirect
 from django.urls import path, reverse
@@ -326,6 +327,65 @@ class AuthorAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     inlines = (
         AuthorNoteInline,
     )
+
+    # Autora z tekstami albo zgłoszeniami nie da się usunąć – tekst straciłby autora,
+    # a zgłoszenie zablokowałoby usuwanie błędem bazy.
+    @staticmethod
+    def _with_usage(queryset):
+        return queryset.annotate(
+            texts_total=Count("texts", distinct=True),
+            reviews_total=Count("review_submissions", distinct=True)
+            + Count("coauthored_review_submissions", distinct=True),
+        )
+
+    @classmethod
+    def _usage_of(cls, author):
+        if hasattr(author, "texts_total"):
+            return author.texts_total, author.reviews_total
+        return author.texts.count(), (
+            author.review_submissions.count() + author.coauthored_review_submissions.count()
+        )
+
+    @classmethod
+    def _blocked_description(cls, author):
+        texts_total, reviews_total = cls._usage_of(author)
+        parts = []
+        if texts_total:
+            parts.append(f"{texts_total} tekst{'' if texts_total == 1 else 'y' if texts_total < 5 else 'ów'}")
+        if reviews_total:
+            parts.append(
+                f"{reviews_total} zgłosze{'nie' if reviews_total == 1 else 'nia' if reviews_total < 5 else 'ń'}"
+            )
+        return f"{author.last_name} {author.first_name} ({', '.join(parts)})"
+
+    def has_delete_permission(self, request, obj=None):
+        if not super().has_delete_permission(request, obj):
+            return False
+        return obj is None or obj.pk is None or not any(self._usage_of(obj))
+
+    def _split_deletable(self, request, queryset):
+        """Zwraca autorów do usunięcia; pozostałych wymienia w komunikacie błędu."""
+        blocked = [a for a in self._with_usage(queryset) if any(self._usage_of(a))]
+        if blocked:
+            messages.error(
+                request,
+                "Nie można usunąć autora – ma teksty w bazie: "
+                + "; ".join(self._blocked_description(a) for a in blocked) + ".",
+            )
+        return queryset.exclude(pk__in=[a.pk for a in blocked])
+
+    actions = ("delete_selected",)
+
+    @admin.action(description="Usuń wybranych autorów", permissions=("delete",))
+    def delete_selected(self, request, queryset):
+        """Akcja zbiorcza: autorzy z tekstami są pomijani (komunikat), reszta idzie standardową ścieżką."""
+        queryset = self._split_deletable(request, queryset)
+        if not queryset.exists():
+            return None
+        return delete_selected(self, request, queryset)
+
+    def delete_queryset(self, request, queryset):
+        super().delete_queryset(request, self._split_deletable(request, queryset))
 
     def get_urls(self):
         return [

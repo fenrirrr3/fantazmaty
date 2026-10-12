@@ -6,6 +6,7 @@ from django.contrib import messages
 from django.conf import settings
 from django.db import transaction
 from core.file_forms import ReviewFileForm
+from core.filtering import positive_id
 import hashlib
 import json
 from django.db.models import Q
@@ -17,10 +18,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
-from core.exports import export_reviews_csv
 from core.forms import (
     AuthorNotificationForm,
-    CoordinatorReviewBulkActionForm,
     ReviewBulkImportForm,
     ReviewContentWarningsForm,
     ReviewerOpinionForm,
@@ -42,7 +41,6 @@ from core.services.reviews import (
     change_review_status,
     copy_review_to_text as copy_review_to_text_service,
     import_reviews,
-    perform_bulk_review_action,
     save_author_notification,
     save_review_content_warnings,
     save_reviewer_opinion,
@@ -60,8 +58,6 @@ CLOSED_REVIEW_STATUSES = frozenset(
         Review.Status.WITHDRAWN,
     }
 )
-MAX_SELECTED_REVIEWS = 1000
-MAX_DATABASE_ID = 9_223_372_036_854_775_807
 
 # Serwisy mutujące ponownie sprawdzają uprawnienia i aktualny stan.
 # Blokują najpierw Review, następnie jego przydziały, i wykonują całą
@@ -140,49 +136,6 @@ def _assigned_reviewer_policy(request, review, kwargs):
 
 def _review_contributor_policy(request, review, kwargs):
     _require_review_contributor(review, request.user)
-
-
-def _selected_review_ids(data):
-    values = data.getlist("selected_reviews")
-
-    if not values:
-        raise ValidationError("Zaznacz przynajmniej jedno zgłoszenie.")
-
-    if len(values) > MAX_SELECTED_REVIEWS:
-        raise ValidationError(
-            f"Jednorazowo można zaznaczyć najwyżej "
-            f"{MAX_SELECTED_REVIEWS} zgłoszeń."
-        )
-
-    result = set()
-
-    for value in values:
-        value = value.strip()
-
-        if (
-            not value
-            or len(value) > 19
-            or not value.isascii()
-            or not value.isdecimal()
-        ):
-            raise ValidationError("Przesłano nieprawidłowy identyfikator.")
-
-        review_id = int(value)
-
-        if not 1 <= review_id <= MAX_DATABASE_ID:
-            raise ValidationError("Przesłano nieprawidłowy identyfikator.")
-
-        result.add(review_id)
-
-    return sorted(result)
-
-
-def _form_error_message(form):
-    return " ".join(
-        str(error)
-        for errors in form.errors.values()
-        for error in errors
-    )
 
 
 def _service_error_message(user, error):
@@ -771,66 +724,6 @@ def copy_review_to_text(request, review_id):
     return _detail_redirect(review.pk)
 
 
-@never_cache
-@login_required
-@require_POST
-@superuser_required
-def bulk_review_action(request):
-    form = CoordinatorReviewBulkActionForm(request.POST)
-
-    try:
-        review_ids = _selected_review_ids(request.POST)
-    except ValidationError as error:
-        messages.error(request, " ".join(error.messages))
-        return redirect("core:review_list")
-
-    if not form.is_valid():
-        messages.error(request, _form_error_message(form))
-        return redirect("core:review_list")
-
-    action = form.cleaned_data["action"]
-
-    try:
-        if action == CoordinatorReviewBulkActionForm.Action.EXPORT:
-            reviews = list(
-                frontend_scope(Review.objects).filter(pk__in=review_ids)
-                .select_related("anthology", "author")
-                .order_by("anthology__title", "title", "pk")
-            )
-
-            if len(reviews) != len(review_ids):
-                raise ValidationError(
-                    "Nie odnaleziono wszystkich zaznaczonych zgłoszeń. "
-                    "Odśwież listę i ponów wybór."
-                )
-
-            return export_reviews_csv(
-                user=request.user,
-                reviews=reviews,
-                filename="recenzje.csv",
-            )
-
-        # Serwis odrzuca cały wybór, jeśli zawiera archiwalne,
-        # nieistniejące lub niedopuszczające zmiany zgłoszenie.
-        # Stosuje te same reguły przejścia statusu co operacja pojedyncza.
-        changed_count = perform_bulk_review_action(
-            user=request.user,
-            review_ids=review_ids,
-            action=action,
-            new_status=form.cleaned_data["status"],
-        )
-
-    except ValidationError as error:
-        messages.error(request, " ".join(error.messages))
-        return redirect("core:review_list")
-
-    messages.success(
-        request,
-        f"Wykonano operację dla {changed_count} zgłoszeń.",
-    )
-    return redirect("core:review_list")
-
-
 MY_REVIEW_VIEWS = {
     "active": "W toku",
     "completed": "Oddane",
@@ -870,8 +763,7 @@ def my_reviews(request):
     for term in query.split():
         rows = rows.filter(Q(review__title__plcontains=term) | Q(review__anthology__title__plcontains=term))
     from texts.models import Anthology
-    from core.selectors.texts import _positive_id
-    anthology_id = _positive_id(request.GET.get("anthology"))
+    anthology_id = positive_id(request.GET.get("anthology"))
     anthologies = frontend_scope(Anthology.objects, include_abandoned=True).filter(pk__in=own_anthologies).order_by("title", "pk")
     if anthology_id is not None:
         rows = rows.filter(review__anthology_id=anthology_id)
@@ -881,7 +773,7 @@ def my_reviews(request):
     if selected_opinions:
         rows = rows.filter(opinion__in=selected_opinions)
     page = paginate_items(request, rows)
-    return render(request, "core/my_reviews.html", {"opinion_choices": opinion_choices if view != "active" else [], "selected_opinions": selected_opinions, "assignments": page, "page_obj": page, "mobile_sort_columns": [(label, page.sort_columns[label]) for label in ("Antologia", "Tytuł", "Status zgłoszenia", "Moja recenzja", "Data przydziału", "Ostatnia zmiana recenzji") if label in page.sort_columns], "selected_view": view, "review_views": MY_REVIEW_VIEWS.items(), "query": query, "anthologies": anthologies, "selected_anthology_id": str(anthology_id or ""), "can_view_authors": False})
+    return render(request, "core/my_reviews.html", {"opinion_choices": opinion_choices if view != "active" else [], "selected_opinions": selected_opinions, "assignments": page, "page_obj": page, "selected_view": view, "review_views": MY_REVIEW_VIEWS.items(), "query": query, "anthologies": anthologies, "selected_anthology_id": str(anthology_id or ""), "can_view_authors": False})
 
 
 @edit_policy(require_version=True)

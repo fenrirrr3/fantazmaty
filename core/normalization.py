@@ -16,7 +16,12 @@ def upper(value):
 
 
 def person_name(value):
-    return compact(value).title()
+    # Wielkość liter poprawiamy tylko wtedy, gdy wpisano samymi małymi lub samymi
+    # wielkimi literami; mieszana („McGregor”, „de la Cruz”) jest celowa.
+    value = compact(value)
+    if value.islower() or value.isupper():
+        return value.title()
+    return value
 
 
 def email(value):

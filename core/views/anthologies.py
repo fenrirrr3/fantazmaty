@@ -6,7 +6,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 
 from core.pagination import paginate_items
-from core.permissions import can_view_author_data, team_member_required
+from core.permissions import team_member_required
 from texts.models import Anthology, AnthologyTask
 
 
@@ -42,6 +42,5 @@ def anthology_list(request):
         {
             "anthologies": page_obj,
             "page_obj": page_obj,
-            "can_view_authors": can_view_author_data(request.user),
         },
     )

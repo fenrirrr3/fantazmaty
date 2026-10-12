@@ -8,7 +8,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from core.audiobook_services import finish_stage, set_status, start_stage, update_stage_dates
+from core.audiobook_services import delete_stage, finish_stage, set_status, start_stage, update_stage_dates
 from core.models import Audiobook, AudiobookStage
 from fantazmaty.testing import create_member, edit_token
 from texts.models import Anthology, Text
@@ -37,12 +37,19 @@ class AudiobookServiceGuardTests(AudiobookProductionTestData, TestCase):
             'koniec trwającego etapu w poprawce dat': (ValidationError, lambda: update_stage_dates(
                 text_id=self.text.pk, user=self.coordinator,
                 dates={audio.active_stage_id: (timezone.localdate(), timezone.localdate())})),
+            'wykonawca korekty bez roli': (ValidationError, lambda: update_stage_dates(
+                text_id=self.text.pk, user=self.coordinator, dates={}, performers={audio.active_stage_id: self.narrator.pk})),
+            'etapy usuwa tylko koordynator': (PermissionDenied, lambda: delete_stage(
+                text_id=self.text.pk, user=self.reader, stage_id=recording.pk)),
+            'usunięcie bieżącego etapu': (ValidationError, lambda: delete_stage(
+                text_id=self.text.pk, user=self.coordinator, stage_id=audio.active_stage_id)),
         }
         before = list(AudiobookStage.objects.filter(text=self.text).values())
         for case, (error, call) in cases.items():
             with self.subTest(case), self.assertRaises(error):
                 call()
         self.assertEqual(list(AudiobookStage.objects.filter(text=self.text).values()), before)
+        self.assertEqual(self.audio().proofreader, self.reader)
 
     def test_finishing_non_proofreading_stage_is_refused(self):
         self.set_status('recording')
@@ -79,10 +86,10 @@ class AudiobookDatesPageTests(AudiobookProductionTestData, TestCase):
     def dates(self, stages, **changes):
         data = {}
         for stage in stages:
-            data[f'dates-start_{stage.pk}'] = str(stage.started_at or '')
+            data[f'stages-start_{stage.pk}'] = str(stage.started_at or '')
             if stage.is_completed:
-                data[f'dates-end_{stage.pk}'] = str(stage.ended_at or '')
-        return self.post('dates', **{**data, **changes})
+                data[f'stages-end_{stage.pk}'] = str(stage.ended_at or '')
+        return self.post('stages', **{**data, **changes})
 
     def test_unchanged_dates_and_new_end_of_stage_with_unknown_start(self):
         today = timezone.localdate()
@@ -92,10 +99,10 @@ class AudiobookDatesPageTests(AudiobookProductionTestData, TestCase):
         events = self.text.workflowevent_set.count()
         response = self.dates(stages)
         self.assertRedirects(response, self.url, fetch_redirect_response=False)
-        self.assertIn('Daty etapów bez zmian.', [str(m) for m in response.wsgi_request._messages])
+        self.assertIn('Etapy bez zmian.', [str(m) for m in response.wsgi_request._messages])
         self.assertEqual(self.text.workflowevent_set.count(), events)
         recording = stages[0]
-        self.assertEqual(self.dates(stages, **{f'dates-end_{recording.pk}': str(today - timedelta(days=3))}).status_code, 302)
+        self.assertEqual(self.dates(stages, **{f'stages-end_{recording.pk}': str(today - timedelta(days=3))}).status_code, 302)
         recording.refresh_from_db()
         self.assertEqual((recording.started_at, recording.start_unknown, recording.ended_at),
                          (None, True, today - timedelta(days=3)))
@@ -146,7 +153,7 @@ class AudiobookSettingInvalidTextTests(TestCase):
     pokazuje komunikat zamiast błędu 500 i niczego nie zapisuje."""
 
     def test_error_on_field_outside_the_form_is_shown_as_general_error(self):
-        member = create_member('lektor-rozdzial', 'Lektor')
+        member = create_member('koordynator-rozdzial', 'Koordynator redakcji')
         text = Text.objects.create(title='Rozdział', length=100, anthology=Anthology.objects.create(title='Zwykła'))
         Text.objects.filter(pk=text.pk).update(chapter_number=3, for_recording=False)
         text.refresh_from_db()

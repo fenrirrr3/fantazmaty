@@ -8,20 +8,37 @@ from core.edit_versions import version_of
 from fantazmaty.testing import create_member
 from illustrations.models import Illustration
 from texts.models import Anthology, Review, Text
+from workflow.models import WorkflowRoleAssignment
 
-from .support import TagFormMixin, TaggedTextsFixture, source_review
+from .support import TAG_FORM, TagFormMixin, TaggedTextsFixture, source_review
 
 
 class TextTagsEditingTests(TaggedTextsFixture, TestCase):
     def post(self, value):
         return self.client.post(self.save, {"tags": value, "_edit_version": self.tag_form_token()})
 
-    def test_all_active_team_roles_can_edit_without_assignment(self):
-        for user in (self.member, self.artist, self.coordinator, self.admin):
-            self.client.force_login(user)
-            self.assertEqual(self.post("tag " + str(user.pk)).status_code, 302)
-            self.text.refresh_from_db()
-            self.assertEqual(self.text.tags, "tag " + str(user.pk))
+    def test_only_assigned_person_or_coordinator_can_edit(self):
+        """Tagi i gatunek zmienia osoba z przydziałem do bieżącego cyklu tekstu albo koordynator;
+        rola zespołu bez przydziału (Recenzent, Ilustrator) dostaje 403 i nie widzi formularza."""
+        reviewer = create_member("tags-reviewer", "Recenzent")
+        self.client.force_login(reviewer)
+        response = self.client.get(self.detail)
+        self.assertFalse(html.fromstring(response.content).xpath(TAG_FORM.rstrip('/')))
+        self.assertContains(response, "Tagi i gatunek może zmienić osoba przypisana do tekstu lub koordynator.")
+        token = self.tag_form_token_for(self.coordinator)
+        for user in (reviewer, self.artist):
+            with self.subTest(user=user.username):
+                self.client.force_login(user)
+                response = self.client.post(self.save, {"tags": "cudze", "_edit_version": token})
+                self.assertEqual(response.status_code, 403)
+                self.text.refresh_from_db()
+                self.assertEqual(self.text.tags, "magia, podróż")
+        for user in (self.member, self.coordinator, self.admin):
+            with self.subTest(user=user.username):
+                self.client.force_login(user)
+                self.assertEqual(self.post("tag " + str(user.pk)).status_code, 302)
+                self.text.refresh_from_db()
+                self.assertEqual(self.text.tags, "tag " + str(user.pk))
 
     def test_account_preview_cannot_write_tags(self):
         from core.user_preview import SESSION_KEY
@@ -131,6 +148,7 @@ class TextGenreEditingTests(TagFormMixin, TestCase):
         cls.text = Text.objects.create(
             title="Dawny tekst", anthology=cls.book, length=100, tags="magia"
         )
+        WorkflowRoleAssignment.objects.create(text=cls.text, role="editor", assigned_to=cls.user)
 
     def setUp(self):
         self.client.force_login(self.user)
@@ -161,11 +179,11 @@ class TextGenreEditingTests(TagFormMixin, TestCase):
         source_review(self.text, "Fantasy")
         self.text.genre = "Groza"
         self.text.save(update_fields=["genre"])
-        self.assertEqual(Illustration.objects.get(text=self.text).genre_display, "Groza")
+        self.assertEqual(Illustration.objects.get(text=self.text).genre_tags_display, "Groza · magia")
         self.assertEqual(self.post(tags="magia", genre="").status_code, 302)
         self.text.refresh_from_db()
         self.assertEqual(self.text.genre, "")
-        self.assertEqual(Illustration.objects.get(text=self.text).genre_display, "")
+        self.assertEqual(Illustration.objects.get(text=self.text).genre_tags_display, "magia")
 
     def test_oversized_genre_rolls_back_tags_and_displays_error(self):
         response = self.post(tags="changed", genre="g" * 101)

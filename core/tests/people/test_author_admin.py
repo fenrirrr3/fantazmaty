@@ -7,6 +7,8 @@ from django.urls import reverse
 
 from authors.admin import AuthorAdmin, AuthorAdminForm, AuthorNoteAdmin
 from authors.models import Author, AuthorNote, BlacklistEntry
+from texts.models import Anthology, Review, Text
+from core.normalization import person_name
 from fantazmaty.testing import create_superuser
 
 from .support import admin_form_data
@@ -35,6 +37,18 @@ class AuthorAdminFormTests(TestCase):
         self.assertTrue(AuthorAdminForm(author_data(email='anna@example.test', first_name='Anna',
                                                     last_name='Kowalska', pseudonym='Pióro'),
                                         instance=self.author).is_valid())
+
+    def test_person_name_fixes_case_only_for_all_lower_or_all_upper_input(self):
+        """Nazwiska z mieszaną wielkością liter (McGregor, de la Cruz) zostają bez zmian,
+        a wpisane samymi małymi lub wielkimi literami dostają wielkie pierwsze litery."""
+        cases = [('kowalski', 'Kowalski'), ('KOWALSKI', 'Kowalski'), ('McGregor', 'McGregor'),
+                 ('de la Cruz', 'de la Cruz'), ('  jan   kowalski ', 'Jan Kowalski'), ('', '')]
+        for raw, expected in cases:
+            with self.subTest(raw=raw):
+                self.assertEqual(person_name(raw), expected)
+                author = Author(first_name='Jan', last_name=raw)
+                author.normalize_fields()
+                self.assertEqual(author.last_name, expected)
 
     def test_similar_name_or_pseudonym_requires_confirmation(self):
         for values in ({'first_name': 'ANNA', 'last_name': 'kowalska'}, {'pseudonym': 'pióro'}):
@@ -120,6 +134,42 @@ class AuthorAdminPageTests(TestCase):
         with self.assertRaises(ValidationError):
             BlacklistEntry(name='Inny', email='SPAM@example.test').clean()
         self.assertEqual(str(BlacklistEntry(name='Jan', email='a@b.pl')), 'Jan (a@b.pl)')
+
+    def test_author_with_texts_or_submissions_cannot_be_deleted(self):
+        """Autor z tekstem albo zgłoszeniem nie ma uprawnienia do usunięcia (strona usuwania → 403),
+        a akcja zbiorcza pomija go z komunikatem wymieniającym nazwisko i liczbę tekstów."""
+        book = Anthology.objects.create(title='Antologia')
+        with_text = Author.objects.create(first_name='Jan', last_name='Pisarz', email='pisarz@example.test')
+        Text.objects.create(title='Opowiadanie', length=10, anthology=book).authors.add(with_text)
+        with_review = Author.objects.create(first_name='Ewa', last_name='Debiut', email='debiut@example.test')
+        Review.objects.create(title='Zgłoszenie', anthology=book, author=with_review, length=10,
+                              author_first_name='Ewa', author_last_name='Debiut')
+        free = Author.objects.create(first_name='Wolny', last_name='Autor', email='wolny@example.test')
+        model_admin = AuthorAdmin(Author, site)
+        request = RequestFactory().get('/')
+        request.user = self.admin
+        for author, deletable in ((with_text, False), (with_review, False), (free, True)):
+            with self.subTest(author=str(author)):
+                self.assertIs(model_admin.has_delete_permission(request, author), deletable)
+                response = self.client.get(reverse('admin:authors_author_delete', args=[author.pk]))
+                self.assertEqual(response.status_code, 200 if deletable else 403)
+        changelist = reverse('admin:authors_author_changelist')
+        selected = [str(with_text.pk), str(with_review.pk), str(free.pk)]
+        response = self.client.post(changelist, {'action': 'delete_selected', '_selected_action': selected})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'Nie można usunąć autora – ma teksty w bazie: Debiut Ewa (1 zgłoszenie); '
+                                      'Pisarz Jan (1 tekst).')
+        self.assertNotContains(response, 'Jan Pisarz')
+        self.assertContains(response, 'Wolny Autor')
+        response = self.client.post(changelist, {'action': 'delete_selected', '_selected_action': selected,
+                                                 'post': 'yes'}, follow=True)
+        self.assertContains(response, 'Nie można usunąć autora – ma teksty w bazie')
+        self.assertEqual(set(Author.objects.filter(pk__in=[a.pk for a in (with_text, with_review, free)])),
+                         {with_text, with_review})
+        response = self.client.post(changelist, {'action': 'delete_selected', '_selected_action': [str(with_text.pk)]},
+                                    follow=True)
+        self.assertContains(response, 'Nie można usunąć autora – ma teksty w bazie: Pisarz Jan (1 tekst).')
+        self.assertTrue(Author.objects.filter(pk=with_text.pk).exists())
 
     def test_author_data_is_hidden_from_non_superuser_even_if_called_directly(self):
         request = RequestFactory().get('/')

@@ -1,12 +1,12 @@
 """Add a missing workflow stage without rewriting completed work."""
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
-from django.db.models import Max
 from django.utils import timezone
 from core.edit_versions import version_of, bump
 from core.services.texts import _require_eligible_assignee
 from texts.models import Text
 from workflow.models import WorkflowStage as S, WorkflowRoleAssignment as A
+from workflow.numbering import next_assignment_execution, next_stage_iteration, stage_execution_for
 from workflow.services import STAGE_ROLES, _assign_role, ensure_verification_not_completed
 from workflow.anthology_policy import require_working_anthology
 from workflow.admin_status import set_admin_status
@@ -81,9 +81,9 @@ def add_missing_stage(text_id, actor, version, *, kind, performer=None, started_
             assignment = A.objects.filter(text=text, workflow_cycle=text.current_workflow_cycle, role=role,
                                           is_current=True, assigned_to=performer).first()
             if assignment is None:
-                number = (A.objects.filter(text=text, workflow_cycle=text.current_workflow_cycle, role=role).aggregate(n=Max('execution_number'))['n'] or 0) + 1
                 assignment = A(text=text, workflow_cycle=text.current_workflow_cycle, role=role,
-                    assigned_to=performer, is_current=False, execution_number=number)
+                    assigned_to=performer, is_current=False,
+                    execution_number=next_assignment_execution(text, role))
                 assignment.full_clean()
                 assignment.save()
                 # Historical work has no known assignment date. Do not invent today.
@@ -91,9 +91,9 @@ def add_missing_stage(text_id, actor, version, *, kind, performer=None, started_
                 assignment.assigned_at = None
         else:
             assignment = _assign_role(text, role, performer)
-        iteration = (S.objects.filter(text=text, workflow_cycle=text.current_workflow_cycle, stage_type=kind).aggregate(n=Max('iteration'))['n'] or 0) + 1
         stage = S(text=text, workflow_cycle=text.current_workflow_cycle, stage_type=kind,
-                  iteration=iteration, assignment=assignment, execution_number=assignment.execution_number,
+                  iteration=next_stage_iteration(text, kind), assignment=assignment,
+                  execution_number=stage_execution_for(assignment),
                   started_at=started_at, ended_at=ended_at, is_completed=True, imported_completed=historical)
     from workflow.import_context import importing_completed
     token = importing_completed.set(historical)

@@ -66,7 +66,7 @@ class ProductionWorkflowTests(AudiobookProductionTestData, TestCase):
         page = self.client.get(self.url)
         self.assertNotContains(page, 'mont@example.test')
         self.assertFalse(page.context['can_edit'])
-        for action in ('people', 'status', 'dates', 'notes', 'publication'):
+        for action in ('people', 'status', 'stages', 'notes', 'publication'):
             with self.subTest(action=action):
                 self.assertEqual(self.post(action, self.narrator).status_code, 403)
         self.client.force_login(self.member)
@@ -143,29 +143,127 @@ class ProductionWorkflowTests(AudiobookProductionTestData, TestCase):
         self.assertEqual(AudiobookStage.objects.count(), 3)
 
     def test_coordinator_corrects_stage_dates(self):
+        """Daty etapów poprawia się w tabeli etapów (akcja „stages”): walidacja, uprawnienia, nieznana data."""
         today = timezone.localdate()
         self.set_status('recording', day=today - timedelta(days=4))
         self.set_status('proofreading', day=today - timedelta(days=2))
         recording, proofreading = AudiobookStage.objects.order_by('position')
         page = html.fromstring(self.client.get(self.url).content)
-        self.assertEqual(len(page.xpath('//form[input[@value="dates"]]//input[@type="date"]')), 3)  # trwa – bez końca
-        base = {f'dates-start_{recording.pk}': str(today - timedelta(days=6)),
-                f'dates-end_{recording.pk}': str(today - timedelta(days=3)), f'dates-start_{proofreading.pk}': ''}
+        self.assertEqual(len(page.xpath('//form[input[@value="stages"]]//table//input[@type="date"]')), 3)  # trwa – bez końca
+        base = {f'stages-start_{recording.pk}': str(today - timedelta(days=6)),
+                f'stages-end_{recording.pk}': str(today - timedelta(days=3)), f'stages-start_{proofreading.pk}': ''}
         rejected = {
-            'end before start': {f'dates-end_{recording.pk}': str(today - timedelta(days=7))},
-            'future date': {f'dates-start_{recording.pk}': str(today + timedelta(days=1))},
+            'end before start': {f'stages-end_{recording.pk}': str(today - timedelta(days=7))},
+            'future date': {f'stages-start_{recording.pk}': str(today + timedelta(days=1))},
         }
         for case, change in rejected.items():
             with self.subTest(case):
-                self.assertEqual(self.post('dates', **{**base, **change}).status_code, 400)
-        self.assertEqual(self.post('dates', self.narrator, **base).status_code, 403)
-        self.assertEqual(self.post('dates', **base).status_code, 302)
+                self.assertEqual(self.post('stages', **{**base, **change}).status_code, 400)
+        self.assertEqual(self.post('stages', self.narrator, **base).status_code, 403)
+        self.assertEqual(self.post('stages', **base).status_code, 302)
         self.assertEqual(stage_rows(self.text)[0], ('recording', today - timedelta(days=6), False,
                                                     today - timedelta(days=3), True))
         # Usunięcie daty nie cofa rozpoczęcia – data staje się nieznana; korektę może rozpocząć wpisana data.
-        self.post('dates', **{**base, f'dates-start_{recording.pk}': '', f'dates-start_{proofreading.pk}': str(today)})
+        self.post('stages', **{**base, f'stages-start_{recording.pk}': '', f'stages-start_{proofreading.pk}': str(today)})
         self.assertEqual([row[1:3] for row in stage_rows(self.text)], [(None, True), (today, False)])
         self.assertTrue(self.audio().active_stage.is_started)
+
+    def test_stage_table_is_editable_only_for_coordinators(self):
+        """Koordynator widzi w tabeli etapów pola dat, listę wykonawcy korekty i przyciski „Usuń” (bez bieżącego
+        etapu); korektor audiobooków widzi tabelę tylko do odczytu i dostaje 403 na akcję „stages”."""
+        self.to_proofreading()
+        self.assign(self.reader)
+        self.start(self.reader)
+        self.finish(self.reader)  # korekta zakończona, bieżący etap: nanoszenie poprawek
+        recording, proofreading, corrections = AudiobookStage.objects.order_by('position')
+        self.client.force_login(self.coordinator)
+        page = html.fromstring(self.client.get(self.url).content)
+        table = page.xpath('//form[input[@value="stages"]]//table')[0]
+        self.assertEqual([b.get('value') for b in table.xpath('.//button[@name="delete_stage"]')],
+                         [str(recording.pk), str(proofreading.pk)])
+        self.assertEqual(len(table.xpath('.//input[@type="date"]')), 5)  # 2 zakończone etapy × 2 daty + start bieżącego
+        options = table.xpath(f'.//select[@name="stages-performer_{proofreading.pk}"]/option')
+        self.assertEqual(options[0].text, '– nie przypisano –')
+        self.assertEqual({o.get('value') for o in options[1:]}, {str(self.reader.pk), str(self.other_reader.pk)})
+        self.assertEqual([o.get('value') for o in options if o.get('selected') is not None], [str(self.reader.pk)])
+        self.assertEqual(len(page.xpath('//button[text()="Zapisz zmiany"]')), 1)
+        self.client.force_login(self.reader)
+        page = html.fromstring(self.client.get(self.url).content)
+        self.assertEqual(len(page.xpath('//table//input | //table//select | //button[@name="delete_stage"]')), 0)
+        self.assertEqual(len(page.xpath('//table//tr')), 4)
+        for fields in ({f'stages-start_{recording.pk}': ''}, {'delete_stage': recording.pk}):
+            with self.subTest(fields=fields):
+                self.assertEqual(self.post('stages', self.reader, **fields).status_code, 403)
+
+    def test_coordinator_changes_proofreading_performer_from_the_table(self):
+        """Zmiana wykonawcy korekty w tabeli: historycznej – tylko etap, bieżącej – także przypisany korektor;
+        osoba bez roli „Korektor audiobooków” jest odrzucana, a dawny wykonawca zostaje na liście."""
+        today = timezone.localdate()
+        self.to_proofreading()
+        self.assign(self.reader)
+        self.start(self.reader)
+        self.finish(self.reader)
+        self.set_status('proofreading')  # druga korekta – bieżąca, do przejęcia
+        self.assign(self.other_reader)
+        first, second = AudiobookStage.objects.filter(stage_type='proofreading').order_by('position')
+        data = {f'stages-start_{first.pk}': str(today), f'stages-end_{first.pk}': str(today),
+                f'stages-performer_{first.pk}': self.reader.pk, f'stages-performer_{second.pk}': self.other_reader.pk}
+        self.assertEqual(self.post('stages', **data).status_code, 302)
+        self.assertEqual(self.post('stages', **{**data, f'stages-performer_{first.pk}': self.narrator.pk}).status_code, 400)
+        events = self.text.workflowevent_set.count()
+        # Historyczna korekta: zmiana wykonawcy nie dotyka przypisanego korektora bieżącej.
+        self.assertEqual(self.post('stages', **{**data, f'stages-performer_{first.pk}': self.other_reader.pk}).status_code, 302)
+        self.assertEqual((AudiobookStage.objects.get(pk=first.pk).performer, self.audio().proofreader),
+                         (self.other_reader, self.other_reader))
+        self.assertIn('Korekta: wykonawca', self.text.workflowevent_set.order_by('-pk').first().details)
+        # Bieżąca korekta: wykonawca staje się przypisanym korektorem; „nie przypisano” zwalnia korektę.
+        for performer, expected in ((self.reader, self.reader), (None, None)):
+            with self.subTest(performer=performer):
+                response = self.post('stages', **{**data, f'stages-performer_{first.pk}': self.other_reader.pk,
+                                                  f'stages-performer_{second.pk}': performer.pk if performer else ''})
+                self.assertEqual(response.status_code, 302)
+                self.assertEqual((AudiobookStage.objects.get(pk=second.pk).performer, self.audio().proofreader),
+                                 (expected, expected))
+        self.assertEqual(self.text.workflowevent_set.count(), events + 3)
+        # Dawny wykonawca bez roli zostaje w historii i na liście wyboru – ale nie można go wybrać dla innego etapu.
+        self.other_reader.person_profile.roles.clear()
+        self.assertEqual(self.post('stages', **{**data, f'stages-performer_{first.pk}': self.other_reader.pk,
+                                                 f'stages-performer_{second.pk}': ''}).status_code, 302)
+        page = html.fromstring(self.client.get(self.url).content)
+        self.assertEqual([o.get('value') for o in page.xpath(f'//select[@name="stages-performer_{first.pk}"]/option')],
+                         ['', str(self.reader.pk), str(self.other_reader.pk)])
+        self.assertEqual([o.get('value') for o in page.xpath(f'//select[@name="stages-performer_{second.pk}"]/option')],
+                         ['', str(self.reader.pk)])
+        self.assertEqual(self.post('stages', **{**data, f'stages-performer_{first.pk}': self.other_reader.pk,
+                                                 f'stages-performer_{second.pk}': self.other_reader.pk}).status_code, 400)
+
+    def test_coordinator_deletes_stages_from_the_table_except_the_current_one(self):
+        """Przycisk „Usuń” usuwa etap z historii (pozycje pozostałych bez zmian, reszta tabeli niezapisywana);
+        bieżącego etapu nie można usunąć, a nieistniejący etap daje komunikat."""
+        today = timezone.localdate()
+        self.set_status('recording', day=today - timedelta(days=4))
+        self.set_status('editing', day=today - timedelta(days=1))
+        recording, editing = AudiobookStage.objects.order_by('position')
+        rejected = {
+            'bieżący etap': (editing.pk, 'Bieżący etap zamyka zmiana statusu – nie można go usunąć.'),
+            'nieistniejący etap': (editing.pk + 1000, 'Tego etapu już nie ma.'),
+            'nieprawidłowy identyfikator': ('abc', 'Wybierz prawidłowy etap.'),
+        }
+        for case, (stage_id, message) in rejected.items():
+            with self.subTest(case):
+                response = self.post('stages', delete_stage=stage_id)
+                self.assertEqual(response.status_code, 400)
+                self.assertContains(response, message, status_code=400)
+        self.assertEqual(AudiobookStage.objects.count(), 2)
+        events = self.text.workflowevent_set.count()
+        response = self.post('stages', delete_stage=recording.pk, **{f'stages-start_{editing.pk}': str(today)})
+        self.assertRedirects(response, self.url, fetch_redirect_response=False)
+        self.assertEqual([(s.pk, s.position, s.started_at) for s in AudiobookStage.objects.all()],
+                         [(editing.pk, editing.position, today - timedelta(days=1))])  # data z formularza pominięta
+        self.assertEqual((self.audio().status, self.audio().active_stage_id), ('editing', editing.pk))
+        event = self.text.workflowevent_set.order_by('-pk').first()
+        self.assertEqual(self.text.workflowevent_set.count(), events + 1)
+        self.assertEqual(event.details, f'Usunięto etap: Nagrywanie ({today - timedelta(days=4):%d.%m.%Y} – {today - timedelta(days=1):%d.%m.%Y}).')
 
     def test_disabled_and_withdrawn_preserve_history_and_forbid_mutations(self):
         self.to_proofreading()

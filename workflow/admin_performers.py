@@ -1,13 +1,14 @@
 """Correct performers in place; never start work or increment execution numbers."""
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
-from django.db.models import Max, Q
+from django.db.models import Q
 from django.apps import apps
 from core.edit_versions import version_of, bump
 from texts.models import Text
 from workflow.catalog import all_stage_roles, IMPORT_ONLY_ROLES
 from workflow.import_context import importing_completed
 from workflow.models import WorkflowStage as S, WorkflowRoleAssignment as A, WorkflowHandoff
+from workflow.numbering import next_assignment_execution
 from workflow.assignment_merge import role_group, write_group
 
 
@@ -114,9 +115,9 @@ def performer_plan(text, changes):
             require_eligible_correction(performer, item['role'])
         if assignment is None and performer is not None:
             stage = item['stages'][0]
-            number = (A.objects.filter(text=text, workflow_cycle=stage.workflow_cycle, role=item['role']).aggregate(n=Max('execution_number'))['n'] or 0) + 1
             assignment = A(text=text, workflow_cycle=stage.workflow_cycle, role=item['role'],
-                           execution_number=number, is_current=(stage.is_current if stage.repetition_id else stage.workflow_cycle == text.current_workflow_cycle) and item['role'] not in IMPORT_ONLY_ROLES,
+                           execution_number=next_assignment_execution(text, item['role'], cycle=stage.workflow_cycle),
+                           is_current=(stage.is_current if stage.repetition_id else stage.workflow_cycle == text.current_workflow_cycle) and item['role'] not in IMPORT_ONLY_ROLES,
                            repetition=stage.repetition)
             item['assignment'] = assignment
         if assignment:

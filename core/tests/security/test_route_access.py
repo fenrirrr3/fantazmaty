@@ -71,7 +71,6 @@ SUPERUSER = frozenset({'superuser'})
 RECRUITMENT = frozenset({'recruiter', 'superuser'})  # Koordynator rekrutacji albo superuser
 REVIEWER = frozenset({'specialist', 'superuser'})  # recenzent (lub osoba z przydziałem) i superuser – także bez profilu
 SELF_ASSIGN = frozenset({'specialist', 'superuser'})  # has_role('Recenzent') – superuser ma każdą rolę
-NOBODY = frozenset()  # trasa wyłączona: zawsze 403 (zmiana w panelu admina)
 AUDIO_PROOFREADER = frozenset({'specialist'})  # przejęcie korekty audiobooka: tylko rola Korektor audiobooków
 
 ROUTE_LEVELS = {
@@ -82,7 +81,6 @@ ROUTE_LEVELS = {
     # Członkowie zespołu (uprawnienia do konkretnego obiektu sprawdza widok).
     **dict.fromkeys([
         'core:home', 'core:dashboard_tasks', 'core:/dashboard/tasks/', 'core:global_search',
-        'core:update_text_audiobook',
         'core:novel_list', 'core:novel_detail', 'core:vocabulary_list',
         'core:vocabulary_suggestions', 'core:audio_descriptions', 'core:audio_description_detail',
         'core:claim_audio_description', 'core:translation_list', 'core:translation_detail', 'core:tag_list',
@@ -95,7 +93,7 @@ ROUTE_LEVELS = {
         'core:assigned_text_detail', 'core:start_assigned_workflow_stage', 'core:complete_workflow_stage',
         'core:resume_text_editing', 'core:send_text_to_author_stage', 'core:send_to_first_verification_stage',
         'core:send_to_second_verification_stage', 'core:finish_text_editing',
-        'core:start_first_verification_stage', 'core:available_texts', 'core:take_workflow_stage',
+        'core:available_texts', 'core:take_workflow_stage',
         'core:anthology_list', 'core:workflow_list', 'core:/etapy-prac/', 'core:people_list', 'core:person_detail',
         'core:my_vacations', 'core:edit_vacation', 'core:end_vacation', 'core:cancel_vacation',
         'core:active_vacations', 'illustrations:cover_proposal_list',
@@ -113,15 +111,14 @@ ROUTE_LEVELS = {
     'illustrations:illustration_list': ROLE_OR_COORDINATOR,
     'illustrations:illustration_detail': ROLE_OR_COORDINATOR,
     'core:recruitment_mailbox': RECRUITMENT,
-    'core:set_text_authors': NOBODY,
     **dict.fromkeys([
         'core:contact_suggestions', 'core:assign_audio_proofreader', 'core:post_layout_edit', 'core:recruitment_notified', 'core:novel_add', 'core:chapter_edit',
         'core:vocabulary_merge', 'core:task_list', 'core:last_activity', 'core:extract_list', 'core:extract_add',
         'core:extract_edit', 'core:recruitment_list', 'core:recruitment_detail', 'core:recruitment_add',
         'core:recruitment_edit', 'core:editor_activity', 'core:update_review_status', 'core:update_review_file',
         'core:update_coordinator_note', 'core:withdraw_text', 'core:author_list', 'core:author_detail',
+        'core:update_text_audiobook',
         'core:proofreader_activity', 'core:verifier_activity', 'core:reviewer_activity', 'core:workflow_inactivity',
-        'core:user_activity',
         'illustrations:illustrator_list', 'illustrations:illustrator_add', 'illustrations:illustrator_edit',
         'core:audio_contributor_list', 'core:audio_contributor_add',
         'illustrations:update_cover_proposal_status',
@@ -134,7 +131,7 @@ ROUTE_LEVELS = {
         'core:/workflow/<int:stage_id>/przekaz/', 'core:data_integrity', 'core:person_permissions',
         'core:update_text_file', 'core:author_suggestions', 'core:review_create',
         'core:correction_status', 'core:notification_queue', 'core:scheduled_rejections',
-        'core:release_hidden_review', 'core:bulk_review_action', 'core:review_bulk_import',
+        'core:release_hidden_review', 'core:review_bulk_import', 'core:user_activity',
         'core:update_author_notification', 'core:copy_review_to_text', 'core:restart_text_workflow',
         'core:restore_withdrawn_text', 'core:add_author_note',
     ], SUPERUSER),

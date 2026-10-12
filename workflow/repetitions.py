@@ -1,8 +1,10 @@
 """Selective repeats. All writes run under the parent Text lock, never rewrite history."""
 from django.core.exceptions import ValidationError, PermissionDenied
-from django.db.models import Max, F
+from django.db.models import F
 from django.utils import timezone
 from workflow.models import WorkflowStage as S, WorkflowRoleAssignment as A, WorkflowRepetition
+from workflow.numbering import (next_assignment_execution, next_stage_execution, next_stage_iteration,
+    stage_execution_for)
 from workflow.services import (STAGE_ROLES, RESTARTABLE_STAGE_TYPES, _locked_text_operation,
     _ensure_actor, current_stage_queryset, _finish_stage_record, _create_pending_stage,
     _assign_role, _start_stage, user_can_complete_stage)
@@ -121,7 +123,7 @@ def repeat_stages(text, selected, user, *, expected_version=None, assignees=None
             anthology.status = Anthology.Status.IN_PREPARATION
             anthology.save(update_fields=['status'])
     run = WorkflowRepetition.objects.create(text=text, selected_stages=selected, created_by=user, previous_stage_ids=previous_stage_ids, previous_assignment_ids=list(A.objects.current_cycle().filter(text=text,role__in={STAGE_ROLES[k] for k in selected}).values_list('pk',flat=True)))
-    numbers = {kind: (S.objects.filter(text=text, stage_type=kind).aggregate(n=Max('execution_number'))['n'] or 0) + 1 for kind in selected}
+    numbers = {kind: next_stage_execution(text, kind) for kind in selected}
     # The terminal marker becomes history, not a competing current status.
     S.objects.current_cycle().filter(text=text, stage_type__in=[*selected, S.StageType.READY]).update(is_current=False)
     assignments = {}
@@ -129,13 +131,12 @@ def repeat_stages(text, selected, user, *, expected_version=None, assignees=None
     # Retire all replaced slots before writing the batch, including verifier swaps.
     A.objects.current_cycle().filter(text=text, role__in=selected_roles).update(is_current=False)
     for role in selected_roles:
-        number = (A.objects.filter(text=text, workflow_cycle=text.current_workflow_cycle, role=role).aggregate(n=Max('execution_number'))['n'] or 0) + 1
-        assignments[role] = A.objects.create(text=text, workflow_cycle=text.current_workflow_cycle, role=role, execution_number=number, repetition=run,
+        assignments[role] = A.objects.create(text=text, workflow_cycle=text.current_workflow_cycle, role=role,
+                                           execution_number=next_assignment_execution(text, role), repetition=run,
                                            assigned_to=assignees.get(role) if assignees else None)
     for position, kind in enumerate(sequence(selected)):
-        iteration = (S.objects.filter(text=text, workflow_cycle=text.current_workflow_cycle, stage_type=kind).aggregate(n=Max('iteration'))['n'] or 0) + 1
         S.objects.create(text=text, workflow_cycle=text.current_workflow_cycle, stage_type=kind,
-            iteration=iteration, execution_number=numbers[kind], repetition=run,
+            iteration=next_stage_iteration(text, kind), execution_number=numbers[kind], repetition=run,
             queue_position=position, is_released=position == 0, assignment=assignments[STAGE_ROLES[kind]])
     return run
 
@@ -161,11 +162,9 @@ def insert_repeat_continuation(stage, kind, *, released=False):
     run = stage.repetition
     run.stages.filter(queue_position__gt=stage.queue_position).update(queue_position=F('queue_position') + 1)
     assignment = A.objects.current_cycle().filter(text=stage.text, role=STAGE_ROLES[kind]).first()
-    number = assignment.execution_number if assignment else 1
-    iteration = (S.objects.filter(text=stage.text, workflow_cycle=stage.workflow_cycle,
-                                  stage_type=kind).aggregate(n=Max('iteration'))['n'] or 0) + 1
     return S.objects.create(text=stage.text, workflow_cycle=stage.workflow_cycle,
-        stage_type=kind, iteration=iteration, execution_number=number, assignment=assignment,
+        stage_type=kind, iteration=next_stage_iteration(stage.text, kind, cycle=stage.workflow_cycle),
+        execution_number=stage_execution_for(assignment), assignment=assignment,
         repetition=run, queue_position=stage.queue_position + 1, is_released=released)
 
 
@@ -233,8 +232,8 @@ def finish_repetition(stage, ended_at):
         current_stage_queryset(stage.text).exclude(stage_type__in=EDITING_PHASE_TYPES).filter(
             is_completed=True).update(is_current=False, is_released=False)
     next_stage = _create_pending_stage(stage.text, next_kind, queued_at=ended_at)
-    if next_stage.assignment_id and next_stage.execution_number != next_stage.assignment.execution_number:
-        next_stage.execution_number = next_stage.assignment.execution_number
+    if next_stage.assignment_id and next_stage.execution_number != stage_execution_for(next_stage.assignment):
+        next_stage.execution_number = stage_execution_for(next_stage.assignment)
         next_stage.save(update_fields=['execution_number'])
     if next_kind == S.StageType.READY:
         _start_stage(next_stage, ended_at)

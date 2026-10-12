@@ -445,7 +445,6 @@ USER_WORD_PATTERNS = tuple((re.compile(pattern, re.IGNORECASE), replacement)
         (r'\bazjat(?P<ending>ami|ach|ów|om|a|y|ę|ą|o)\b', r'Azjat\g<ending>'),
         (r'\bazjaci(?P<ending>e)?\b', r'Azjaci\g<ending>'),
     ))
-USER_WORD_EXACT_RE = re.compile(r'\b(?:' + '|'.join(map(re.escape, USER_WORD_EXACT)) + r')\b', re.IGNORECASE)
 COMMEDIA_RE = re.compile(
     r'\b(?P<noun>komedi(?:ami|ach|om|a|i|ę|ą|o|e))'
     r'(?P<space>[ \t\u00a0\u202f]+)(?P<term>dellarte)\b', re.IGNORECASE)
@@ -1272,9 +1271,6 @@ class _Tracker:
         element.set(qn('w:author'), TRACK_AUTHOR)
         element.set(qn('w:date'), self.date)
         return element
-
-
-W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 
 
 def _append_text(run, text, deleted=False):

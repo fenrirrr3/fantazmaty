@@ -1,4 +1,4 @@
-"""Akcje na stronie zgłoszenia: przypisanie, opinia, ostrzeżenia, decyzja, powiadomienie, przeniesienie i operacje zbiorcze."""
+"""Akcje na stronie zgłoszenia: przypisanie, opinia, ostrzeżenia, decyzja, powiadomienie i przeniesienie."""
 from django.contrib.messages import get_messages
 from django.urls import reverse
 from django.utils import timezone
@@ -179,45 +179,6 @@ class ReviewPageActionTests(ReviewFixtures):
         self.assertTrue(page.context['copy_phone_differs'])
         Author.objects.filter(pk=author.pk).update(last_name='Inny')
         self.assertIsNone(self.client.get(self.detail_url()).context['matching_author'])
-
-
-class ReviewBulkActionPageTests(ReviewFixtures):
-    url = reverse('core:bulk_review_action')
-
-    def setUp(self):
-        super().setUp()
-        self.second = self.make_review(title='Drugie')
-        self.client.force_login(self.admin)
-
-    def bulk(self, ids, **data):
-        response = self.client.post(self.url, {'selected_reviews': [str(i) for i in ids], **data})
-        messages = [str(m) for m in get_messages(response.wsgi_request)]
-        return response, messages[-1] if messages else None
-
-    def test_invalid_selection_or_form_is_reported_without_changes(self):
-        ids = [self.review.pk, self.second.pk]
-        cases = [([], {'action': 'export'}, 'Zaznacz przynajmniej'),
-                 (['abc'], {'action': 'export'}, 'nieprawidłowy identyfikator'),
-                 (['0'], {'action': 'export'}, 'nieprawidłowy identyfikator'),
-                 (['1'] * 1001, {'action': 'export'}, 'najwyżej 1000'),
-                 (ids, {'action': ''}, 'To pole jest wymagane'),
-                 (ids, {'action': 'change_status'}, 'Wybierz nowy status'),
-                 ([*ids, self.second.pk + 100], {'action': 'export'}, 'Nie odnaleziono'),
-                 (ids, {'action': 'change_status', 'status': S.IN_REVIEW}, 'przynajmniej jednego przydziału')]
-        for selected, data, expected in cases:
-            with self.subTest(expected=expected):
-                response, message = self.bulk(selected, **data)
-                self.assertRedirects(response, reverse('core:review_list'), fetch_redirect_response=False)
-                self.assertIn(expected, message)
-        self.assertEqual(set(Review.objects.values_list('status', flat=True)), {S.NEW})
-
-    def test_export_and_status_change_for_selection(self):
-        response, _ = self.bulk([self.review.pk, self.second.pk], action='export')
-        self.assertEqual(response['Content-Type'].split(';')[0], 'text/csv')
-        self.assertIn('Drugie', response.content.decode('utf-8-sig'))
-        response, message = self.bulk([self.review.pk, self.second.pk], action='change_status', status=S.REJECTED)
-        self.assertEqual(message, 'Wykonano operację dla 2 zgłoszeń.')
-        self.assertEqual(set(Review.objects.values_list('status', flat=True)), {S.REJECTED})
 
 
 class MyReviewsAccessTests(ReviewFixtures):

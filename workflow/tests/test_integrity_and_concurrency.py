@@ -311,6 +311,25 @@ class RecordValidationTests(TestCase):
         assignment.refresh_from_db()
         self.assertEqual(assignment.assigned_to, self.member)
 
+    def test_saving_stage_links_current_role_assignment_only_to_current_open_stage(self):
+        """Zapis etapu bez wykonawcy podpina bieżący przydział roli tylko do bieżącego, niezakończonego etapu;
+        etap historyczny (niebieżący albo zakończony) zostaje bez wykonawcy."""
+        historical = WorkflowStage.objects.create(text=self.text, stage_type='editing', is_current=False,
+                                                  is_released=False)
+        finished = WorkflowStage.objects.create(text=self.text, stage_type='editing', iteration=2, is_completed=True,
+                                                started_at=self.today, ended_at=self.today)
+        current = WorkflowStage.objects.create(text=self.text, stage_type='editing', iteration=3)
+        for stage in (historical, finished, current):
+            WorkflowStage.objects.filter(pk=stage.pk).update(assignment=None)
+        assignment = Assignment.objects.create(text=self.text, role='editor', assigned_to=self.member)
+        WorkflowStage.objects.filter(text=self.text).update(assignment=None)
+        for stage, expected in ((historical, None), (finished, None), (current, assignment)):
+            with self.subTest(stage=stage.pk, current=stage.is_current, completed=stage.is_completed):
+                stage.refresh_from_db()
+                stage.save(update_fields=['is_released'])
+                stage.refresh_from_db()
+                self.assertEqual(stage.assignment, expected)
+
     def test_records_describe_text_role_person_and_execution(self):
         from workflow.models import WorkflowRepetition
 

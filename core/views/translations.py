@@ -70,7 +70,7 @@ def translation_list(request):
     context = dict(text_list_context(user=request.user, params=request.GET, translated=True))
     page = paginate_items(request, context.pop('texts'))
     context.update(_permission_context(request.user))
-    context.update(texts=page, page_obj=page, translations_page=True, list_url_name='core:translation_list')
+    context.update(texts=page, page_obj=page, translations_page=True)
     return render(request, 'core/text_list.html', context)
 
 

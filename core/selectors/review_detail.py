@@ -88,16 +88,12 @@ def review_assignment_data(review, user):
     opinions = []
 
     for assignment in assignments:
-        reviewer_name = (
-            assignment.reviewer_display_name
-        )
         opinions.append(
             {
                 "pk": assignment.pk,
                 "position": assignment.position,
                 "slot": assignment.position,
-                "reviewer_name": reviewer_name,
-                "user_name": reviewer_name,
+                "reviewer_name": assignment.reviewer_display_name,
                 "opinion_value": assignment.opinion,
                 "opinion": assignment.get_opinion_display(),
                 "opinion_display": assignment.get_opinion_display(),

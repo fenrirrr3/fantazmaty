@@ -1,0 +1,11 @@
+<li class="overdue-item {% if row.inactivity_type == 'active' %}is-active{% else %}is-waiting{% endif %}">
+    <span class="overdue-days"><strong>{{ row.days|default_if_none:"?" }}</strong> dni</span>
+    <div class="overdue-main">
+        <a class="overdue-title" href="{% url 'core:assigned_text_detail' row.text.pk %}">{{ row.text.title }}</a>
+        <span class="overdue-meta">{% if row.text.anthology %}{{ row.text.anthology.title }}{% else %}Bez antologii{% endif %}{% if row.person %} · {{ row.person }}{% endif %}</span>
+    </div>
+    <div class="overdue-state">
+        {% include "core/includes/workflow_badge.html" with workflow_stage=row.stage %}
+        <span class="overdue-kind">{% if row.inactivity_type == 'active' %}w toku od {{ row.since|date:"d.m.Y" }}{% else %}czeka od {{ row.since|date:"d.m.Y" }}{% endif %}</span>
+    </div>
+</li>

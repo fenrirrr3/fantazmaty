@@ -1,5 +1,5 @@
 from core.translation_scope import frontend_scope
-from core.filtering import facet_queryset
+from core.filtering import facet_queryset, positive_id
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
@@ -55,23 +55,6 @@ def _ensure_team_access(user):
         )
 
 
-def _positive_id(value):
-    value = (value or "").strip()
-
-    if (
-        not value
-        or len(value) > 19
-        or not value.isascii()
-        or not value.isdecimal()
-    ):
-        return None
-
-    parsed = int(value)
-
-    if not 0 < parsed <= 9223372036854775807:
-        return None
-
-    return parsed
 
 
 def _illustration_ordering(request):
@@ -80,7 +63,6 @@ def _illustration_ordering(request):
     field_name = selected_sort[1:] if descending else selected_sort
 
     if field_name not in ILLUSTRATION_SORT_FIELDS:
-        selected_sort = "anthology"
         field_name = "anthology"
         descending = False
 
@@ -91,7 +73,7 @@ def _illustration_ordering(request):
     ]
     ordering.append(f"{prefix}pk")
 
-    return selected_sort, ordering
+    return ordering
 
 
 @never_cache
@@ -128,7 +110,7 @@ def illustration_list(request):
                     messages.success(request, 'Zapisano wspólny link GDrive dla Zewnętrznych ilustracji.')
                     return redirect('illustrations:illustration_list')
 
-    selected_anthology_id = _positive_id(
+    selected_anthology_id = positive_id(
         request.GET.get("anthology", "")
     )
     selected_statuses = [v for v in request.GET.getlist("status") if v in Illustration.Status.values]
@@ -138,7 +120,7 @@ def illustration_list(request):
         selected_status = ""
 
     hide_published = request.GET.get("hide_published", "1") != "0"
-    selected_sort, ordering = _illustration_ordering(request)
+    ordering = _illustration_ordering(request)
     can_view_authors = request.user.is_superuser
 
     # GET nie tworzy ani nie aktualizuje rekordów.
@@ -197,7 +179,7 @@ def illustration_list(request):
             "status_choices": [(v, label) for v, label in Illustration.Status.choices if v in facets["status"]],
             "selected_anthology_id": selected_anthology_id,
             "selected_status": selected_status, "selected_statuses": selected_statuses,
-            "selected_sort": selected_sort, "hide_published": hide_published,
+            "hide_published": hide_published,
             "can_view_authors": can_view_authors,
             "can_manage_directory": is_coordinator(request.user),
             "public_link_form": link_form,

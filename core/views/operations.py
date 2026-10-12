@@ -56,7 +56,6 @@ def corrections(request):
     items = frontend_scope(AnthologyCorrection.objects).filter(anthology__status__in=("ready",)).select_related("anthology", "submitted_by")
     query = request.GET.get("q", "").strip()[:255]
     statuses = [v for v in request.GET.getlist("status") if v in AnthologyCorrection.Status.values]
-    status = statuses[-1] if statuses else ""
     anthology = request.GET.get("anthology", "")
     if query:
         items = items.filter(Q(story_title__plcontains=query) | Q(problem__plcontains=query) | Q(fragment__plcontains=query) | Q(suggestion__plcontains=query))
@@ -69,7 +68,7 @@ def corrections(request):
         "corrections": page, "statuses": AnthologyCorrection.Status.choices,
         "filter_statuses": [(v, label) for v, label in AnthologyCorrection.Status.choices if v in facets["status"]],
         "anthologies": frontend_scope(Anthology.objects).filter(pk__in=facets["anthology"]).order_by("title"), "query": query,
-        "selected_status": status, "selected_statuses": statuses, "selected_anthology": anthology}, status=400 if request.method == "POST" else 200)
+        "selected_statuses": statuses, "selected_anthology": anthology}, status=400 if request.method == "POST" else 200)
 
 
 @never_cache
@@ -179,7 +178,7 @@ def correction_edit(request, pk):
             form.save()
             messages.success(request, "Zapisano zmiany uwagi.")
             return redirect("core:anthology_corrections")
-    return render(request, "core/correction_edit.html", {"form": form, "item": item, "version": version}, status=400 if request.method == "POST" else 200)
+    return render(request, "core/correction_edit.html", {"form": form, "version": version}, status=400 if request.method == "POST" else 200)
 
 
 @never_cache

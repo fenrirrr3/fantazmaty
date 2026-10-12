@@ -10,7 +10,7 @@ from lxml import html
 
 from authors.models import Author
 from core.supervision import anthology_credits
-from fantazmaty.testing import create_superuser, form_value
+from fantazmaty.testing import assign_artists, create_superuser, form_value
 from illustrations.editing import AssignmentForm, edit_token
 from illustrations.models import Illustration, Illustrator
 from texts.models import Anthology, Text
@@ -37,7 +37,7 @@ class MultipleIllustratorsTests(TestCase):
     def test_multiple_assignment_and_preserved_selected_inactive_contact(self):
         self.first.is_active = False
         self.first.save()
-        self.illustration.set_artists([self.first], status='assigned')
+        assign_artists(self.illustration, [self.first], status='assigned')
         form = AssignmentForm(
             {'illustrators': [self.first.pk, self.second.pk], 'status': 'delivered', 'version': 'test'},
             instance=self.illustration, can_assign=True)
@@ -68,7 +68,7 @@ class MultipleIllustratorsTests(TestCase):
             self.assertTrue(section.xpath('.//input[@name="version"]'))
 
     def test_published_filter_and_sort_do_not_duplicate_texts(self):
-        self.illustration.set_artists([self.first, self.second], status='delivered',
+        assign_artists(self.illustration, [self.first, self.second], status='delivered',
                                       preserve_assignment_date=True)
         self.assertEqual(self.client.get(self.list_url).context['page_obj'].paginator.count, 0)
         response = self.client.get(self.list_url, {'hide_published': '0', 'sort': 'illustrator',
@@ -80,7 +80,7 @@ class MultipleIllustratorsTests(TestCase):
 
     def test_m2m_change_invalidates_stale_post_and_protects_credits(self):
         token = edit_token(self.admin, self.illustration)
-        self.illustration.set_artists([self.first], status='delivered')
+        assign_artists(self.illustration, [self.first], status='delivered')
         response = self.client.post(self.detail, {'action': 'assignment', 'version': token,
                                                   'status': 'delivered', 'illustrators': [self.second.pk]})
         self.assertEqual(response.status_code, 409)
@@ -119,15 +119,6 @@ class MultipleIllustratorsTests(TestCase):
         self.assertNotContains(response, 'Pokaż kolejkę powtórzeń')
         self.assertNotContains(response, 'text-authors-management-form')
         self.assertContains(response, 'Wycofaj tekst z procesu')
-        response = self.client.post(reverse('core:set_text_authors', args=[self.story.pk]), {
-            'authors': [],
-            '_edit_version': form_value(response),
-            'workflow_token': form_value(response, name='workflow_token'),
-        })
-        # Poza panelem admina zmiana autorów zawsze kończy się odmową z informacją, gdzie to zrobić.
-        self.assertContains(response, 'Autorów zmienia się w panelu administracyjnym', status_code=403)
-        self.assertContains(response, reverse('admin:texts_text_change', args=[self.story.pk]), status_code=403)
-        self.assertEqual(list(self.story.authors.all()), [self.author])
 
     def test_admin_and_model_reject_new_illustration_for_novel(self):
         novel = Anthology.objects.create(title="Powieść", is_novel=True)

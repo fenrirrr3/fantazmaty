@@ -698,15 +698,10 @@ fieldset.multi-filter-field {
 }
 
 .reviewer-opinion-content,
-.text-note-content,
-.reviewer-opinion-notes {
+.text-note-content {
     padding: var(--space-4);
     border-top: 1px solid var(--border);
     overflow-wrap: anywhere;
-}
-
-.reviewer-opinion-notes {
-    white-space: pre-wrap;
 }
 
 .text-note-author,
@@ -1113,10 +1108,6 @@ tbody tr > :is(td, th).copy-selected {
 table .copy-error {
     outline: 2px solid var(--danger);
     outline-offset: -2px;
-}
-
-tr:is(.is-selected, [aria-selected="true"]) > td {
-    background: var(--primary-light);
 }
 
 .date-cell,

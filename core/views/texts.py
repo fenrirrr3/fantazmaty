@@ -68,7 +68,6 @@ def _note_policy(request, text, kwargs):
 def _permission_context(user):
     return {
         "can_view_authors": can_view_author_data(user),
-        "can_manage_authors": False,
         "can_manage_workflow": is_coordinator(user),
     }
 
@@ -251,7 +250,7 @@ def assigned_text_detail(request, text_id):
     return _render_text_detail(request, text)
 
 
-@edit_policy(require_version=True)
+@edit_policy(_contributor_policy, require_version=True)
 @never_cache
 @login_required
 @require_POST
@@ -259,6 +258,8 @@ def assigned_text_detail(request, text_id):
 def update_text_tags(request, text_id):
     with transaction.atomic():
         text = get_object_or_404(Text.objects.select_for_update(), pk=text_id)
+        # Tagi i gatunek jak ostrzeżenia: osoba z przydziałem do tekstu albo koordynator.
+        _require_text_contributor(request.user, text)
         if text.anthology_id and text.anthology.is_novel:
             messages.error(request, 'Tagi i gatunek rozdziałów zmienia się w podglądzie powieści.')
             return redirect('core:novel_detail', novel_id=text.anthology_id)
@@ -300,16 +301,6 @@ def available_texts(request):
     )
 
     return render(request, "core/available_texts.html", context)
-
-
-@edit_policy(require_version=True)
-@never_cache
-@login_required
-@require_POST
-@superuser_required
-def set_text_authors(request, text_id):
-    # Autorów zmienia się tylko w panelu administracyjnym; strona mówi, gdzie to zrobić.
-    return render(request, "core/text_authors_in_admin.html", {"text_id": text_id}, status=403)
 
 
 @edit_policy(_contributor_policy)

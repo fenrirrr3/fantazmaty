@@ -1,4 +1,5 @@
-"""Czarna lista audiobooków i zgoda na nagranie: blokada tekstu i całej antologii, odblokowanie tylko w panelu admina."""
+"""Czarna lista audiobooków i zgoda na nagranie: tylko koordynator ustawia flagi, blokada tekstu i całej antologii,
+odblokowanie tylko w panelu admina."""
 from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase
@@ -8,12 +9,14 @@ from lxml import html
 from authors.models import Author
 from fantazmaty.testing import create_member, create_superuser, edit_token
 from texts.models import Anthology, Text
+from workflow.models import WorkflowRoleAssignment
 
 
 class TextBlacklistTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.member = create_member('audio-member', 'Lektor')
+        # Flagi audiobooka ustawia wyłącznie koordynator; „member” jest tu koordynatorem.
+        cls.member = create_member('audio-member', 'Koordynator redakcji')
         cls.admin = create_superuser('audio-admin')
         cls.book = Anthology.objects.create(title='Audio')
         cls.author = Author.objects.create(first_name='Jan', last_name='Autor', email=None)
@@ -106,6 +109,29 @@ class TextBlacklistTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.text.refresh_from_db()
         self.assertFalse(self.text.audiobook_blacklisted)
+
+    def test_only_coordinator_sets_flags_not_reviewer_nor_assigned_editor(self):
+        """Recenzent bez przydziału i redaktor z przydziałem do tekstu dostają 403 i nie widzą formularza;
+        koordynator (``member``) zapisuje flagi."""
+        reviewer = create_member('audio-reviewer', 'Recenzent')
+        editor = create_member('audio-editor', 'Redaktor')
+        WorkflowRoleAssignment.objects.create(text=self.text, role='editor', assigned_to=editor)
+        for user in (reviewer, editor):
+            with self.subTest(user=user.username):
+                self.client.force_login(user)
+                page = self.client.get(self.detail)
+                self.assertEqual(page.status_code, 200)
+                self.assertNotContains(page, self.url)
+                self.assertContains(page, 'Zgodę na nagranie i czarną listę ustawia koordynator.')
+                response = self.client.post(self.url, {'audiobook_blacklisted': 'on', '_edit_version': self.token(user)})
+                self.assertEqual(response.status_code, 403)
+                self.text.refresh_from_db()
+                self.assertEqual((self.text.for_recording, self.text.audiobook_blacklisted), (True, False))
+        self.client.force_login(self.member)
+        self.assertContains(self.client.get(self.detail), self.url)
+        self.assertEqual(self.client.post(self.url, {'_edit_version': self.token()}).status_code, 302)
+        self.text.refresh_from_db()
+        self.assertFalse(self.text.for_recording)
 
 
 class AnthologyRecordingBlockTests(TestCase):

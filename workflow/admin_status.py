@@ -1,9 +1,10 @@
 """Explicit status correction, preserving recorded work and its performers."""
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
-from django.db.models import Max
 from texts.models import Text
 from workflow.models import WorkflowStage as S, WorkflowRoleAssignment as A
+from workflow.numbering import (next_assignment_execution, next_stage_execution, next_stage_iteration,
+    stage_execution_for)
 from workflow.catalog import active_stage_choices
 from workflow.services import STAGE_ROLES, ensure_verification_not_completed
 from workflow.anthology_policy import require_working_anthology
@@ -46,26 +47,19 @@ def set_admin_status(text_id, kind, actor, expected_version):
                 role=target_role, is_current=True,
             ).first()
         if target_role and assignment is None:
-            number = (A.objects.filter(text=text,workflow_cycle=text.current_workflow_cycle,role=target_role).aggregate(n=Max('execution_number'))['n'] or 0)+1
-            assignment = A(text=text,workflow_cycle=text.current_workflow_cycle,role=target_role,execution_number=number)
+            assignment = A(text=text, workflow_cycle=text.current_workflow_cycle, role=target_role,
+                           execution_number=next_assignment_execution(text, target_role))
             assignment.full_clean()
             assignment.save()
             A.objects.filter(pk=assignment.pk).update(assigned_at=None)
-        all_kind = S.objects.filter(
-            text=text, workflow_cycle=text.current_workflow_cycle, stage_type=kind
-        )
-        iteration = (all_kind.aggregate(n=Max("iteration"))["n"] or 0) + 1
-        execution = (
-            S.objects.filter(text=text, stage_type=kind).aggregate(n=Max("execution_number"))["n"]
-            or 0
-        ) + 1
-        if assignment is not None:
-            execution = assignment.execution_number
+        # Etap z rolą dziedziczy numer przydziału; bez roli (np. „Gotowe”) liczy własne wykonania.
+        execution = (stage_execution_for(assignment) if assignment is not None
+                     else next_stage_execution(text, kind))
         stage = S(
             text=text,
             workflow_cycle=text.current_workflow_cycle,
             stage_type=kind,
-            iteration=iteration,
+            iteration=next_stage_iteration(text, kind),
             execution_number=execution,
             assignment=assignment,
         )

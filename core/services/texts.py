@@ -17,6 +17,7 @@ from core.permissions import (
 )
 from texts.models import Text
 from workflow.models import WorkflowRoleAssignment, WorkflowStage
+from workflow.numbering import next_stage_iteration
 from workflow.services import ROLE_GROUPS, STAGE_ROLES, validate_assignment_start_date
 from workflow.state import ORDER as STAGE_ORDER  # kolejność etapów z katalogu procesu
 
@@ -258,14 +259,7 @@ def start_assigned_stage(*, user, stage_id, started_at, allow_past=False):
         # Rezerwacja redaktora już istnieje. Zachowujemy jej właściciela
         # również wtedy, gdy rozpoczęcie zapisuje koordynator.
         stage.stage_type = StageType.EDITING
-        stage.iteration = 1 + max(
-            (
-                item.iteration
-                for item in stages
-                if item.stage_type == StageType.EDITING and item.pk != stage.pk
-            ),
-            default=0,
-        )
+        stage.iteration = next_stage_iteration(text, StageType.EDITING)
         stage.started_at = transition_date
         stage.full_clean()
         stage.save(update_fields=["stage_type", "iteration", "started_at"])
@@ -440,7 +434,7 @@ def change_scheduled_stage(*, user, stage_id, started_at=None, cancel=False):
             assignment.save(update_fields=['assigned_to', 'assigned_at'])
             if stage.stage_type == StageType.EDITING and not stage.repetition_id:
                 stage.stage_type = StageType.READY_FOR_EDITING
-                stage.iteration = 1 + max((s.iteration for s in stages if s.stage_type == StageType.READY_FOR_EDITING), default=0)
+                stage.iteration = next_stage_iteration(text, StageType.READY_FOR_EDITING)
         stage.save(update_fields=['started_at', 'stage_type', 'iteration'])
     else:
         from workflow.availability import ensure_distinct_proofreader

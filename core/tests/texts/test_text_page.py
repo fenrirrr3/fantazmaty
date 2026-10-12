@@ -6,7 +6,7 @@ from django.urls import reverse
 from lxml import html
 
 from authors.models import Author
-from fantazmaty.testing import create_member, create_superuser
+from fantazmaty.testing import assign_artists, create_member, create_superuser
 from illustrations.editing import edit_token
 from illustrations.models import Illustration, Illustrator
 from people.models import Person
@@ -129,7 +129,7 @@ class CoordinatorNotesTests(TestCase):
         self.assertContains(response, 'id="illustrator-search"')
         self.assertRegex(response.content.decode(), r"illustrator_search(\.[0-9a-f]+)?\.js")
         self.ill.refresh_from_db()
-        self.ill.set_artists([self.artist_contact], status="assigned")
+        assign_artists(self.ill, [self.artist_contact], status="assigned")
         self.client.force_login(self.artist)
         response = self.client.post(url, {
             "action": "coordinator_notes",

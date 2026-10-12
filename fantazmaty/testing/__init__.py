@@ -38,6 +38,22 @@ def edit_token(user, obj, label=None):
     return signing.dumps([user.pk, f'{label}:{obj.pk}', version_of(obj)], salt=EDIT_VERSION_SALT)
 
 
+def assign_artists(illustration, artists, *, status=None, preserve_assignment_date=False):
+    """Przypisuje ilustratorów tak jak formularz przypisania: walidacja całości, potem relacja wiele do wielu."""
+    from django.db import transaction
+    artists = list(artists)
+    illustration._selected_illustrator_ids = {artist.pk for artist in artists}
+    if status is not None:
+        illustration.status = status
+    try:
+        with transaction.atomic(using=illustration._state.db):
+            illustration.save(preserve_assignment_date=preserve_assignment_date)
+            illustration.illustrators.set(artists)
+    finally:
+        del illustration._selected_illustrator_ids
+    return illustration
+
+
 def form_value(response, name='_edit_version', form_xpath='//'):
     """Wartość pola z wyrenderowanej strony (np. token wersji z formularza)."""
     return lxml_html.fromstring(response.content).xpath(f'{form_xpath}input[@name="{name}"]/@value')[0]

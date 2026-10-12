@@ -8,6 +8,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
 from core.edit_policy import edit_policy
+from core.filtering import positive_id
 from core.forms import VacationForm
 from core.pagination import paginate_items
 from core.permissions import (
@@ -81,7 +82,6 @@ def _render_my_vacations(request, person, form, *, status=200):
             "form": form,
             "can_manage_team_vacations": is_coordinator(request.user),
             "person": person,
-            "history_person": history_person,
             "vacation_people": Person.objects.active().order_by("last_name", "first_name", "pk") if is_coordinator(request.user) else [],
             "vacations": vacations,
         },
@@ -98,8 +98,7 @@ def my_vacations(request):
     if is_coordinator(request.user):
         selected = request.POST.get("person") if request.method == "POST" else None
         if selected:
-            from core.selectors.texts import _positive_id
-            person = get_object_or_404(Person.objects.active(), pk=_positive_id(selected))
+            person = get_object_or_404(Person.objects.active(), pk=positive_id(selected))
         elif person is None:
             person = Person.objects.active().order_by("last_name", "pk").first()
 
@@ -260,7 +259,6 @@ def active_vacations(request):
         {
             "vacations": page_obj,
             "page_obj": page_obj,
-            "today": today,
             "now": now,
         },
     )

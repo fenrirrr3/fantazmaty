@@ -233,9 +233,7 @@ class ReviewListSortAndFilterTests(ReviewFixtures):
                 page = self.client.get(url, params)
                 self.assertEqual({row['pk'] for row in page.context['reviews']}, expected)
         page = self.client.get(url, {'anthology': 'abc', 'assignment_state': 'x', 'completed': '-1'})
-        self.assertEqual((page.context['selected_anthology_id'], page.context['selected_assignment_state'],
-                          page.context['selected_completed']), (None, '', ''))
-        self.assertTrue(page.context['filters_are_default'])
+        self.assertEqual((page.context['selected_anthology_id'], page.context['selected_completed']), (None, ''))
 
     def test_status_sort_and_author_notification_queues(self):
         today = timezone.localdate()

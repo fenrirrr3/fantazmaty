@@ -120,11 +120,6 @@ class ContactSuggestionTests(TestCase):
         rows = self.results('cover', 'Anna')
         self.assertEqual({(row['note'], row['email']) for row in rows}, {('', ''), ('nieaktywny', '')})
         self.assertEqual([row['note'] for row in self.results('cover', 'kreska')], ['nieaktywny'])
-        # Pełne podpowiedzi lektorów i ilustratorów (z adresem); ilustratorzy – tylko aktywni.
-        contact = AudioContributor.objects.create(name='Anna Lektorka', email='anna@example.test')
-        self.assertEqual(self.results('audio', 'anna@'), [{'id': contact.pk, 'name': 'Anna Lektorka',
-                                                           'email': 'anna@example.test'}])
-        self.assertEqual([row['email'] for row in self.results('illustration', 'Anna')], ['rys@example.test'])
 
     def test_short_query_is_empty_and_unknown_kind_is_rejected(self):
         self.assertEqual(self.results('person', ' a '), [])

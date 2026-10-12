@@ -1,4 +1,4 @@
-"""Statusy i decyzje zgłoszeń: reguły przejść, operacje zbiorcze, powiadomienie autora i ograniczenia w adminie."""
+"""Statusy i decyzje zgłoszeń: reguły przejść, powiadomienie autora i ograniczenia w adminie."""
 from datetime import timedelta
 
 from django.contrib.admin.sites import site
@@ -15,7 +15,6 @@ from core.services.reviews import (
     _validate_status_change,
     assign_reviewer,
     change_review_status,
-    perform_bulk_review_action,
     save_author_notification,
     unassign_reviewer,
 )
@@ -135,28 +134,6 @@ class ReviewStatusTests(ReviewFixtures):
         self.review.refresh_from_db()
         self.assertEqual(self.review.decision_at, timezone.localdate())
         self.assertEqual(self.change(self.admin, S.IN_REVIEW).decision_at, None)
-
-    def test_bulk_change_is_superuser_only_and_all_or_nothing(self):
-        second = self.make_review(title='Drugie')
-        ids = [self.review.pk, second.pk]
-        with self.assertRaises(PermissionDenied):
-            perform_bulk_review_action(user=self.coordinator, review_ids=ids, action='change_status',
-                                       new_status=S.REJECTED)
-        with self.assertRaises(ValidationError):
-            perform_bulk_review_action(user=self.admin, review_ids=ids, action='export', new_status=S.REJECTED)
-        with self.assertRaisesMessage(ValidationError, 'Nie odnaleziono'):
-            perform_bulk_review_action(user=self.admin, review_ids=[*ids, second.pk + 100],
-                                       action='change_status', new_status=S.REJECTED)
-        self.assign(self.reviewer, review=second)
-        with self.assertRaises(ValidationError):
-            perform_bulk_review_action(user=self.admin, review_ids=ids, action='change_status', new_status=S.NEW)
-        self.assertEqual(Review.objects.get(pk=self.review.pk).status, S.NEW)
-        Review.objects.filter(pk=second.pk).update(author_notified_at=timezone.localdate())
-        self.assertEqual(perform_bulk_review_action(user=self.admin, review_ids=ids, action='change_status',
-                                                    new_status=S.REJECTED), 2)
-        self.assertEqual(set(Review.objects.filter(pk__in=ids).values_list('status', 'author_notified_at')),
-                         {(S.REJECTED, None)})
-        self.assertFalse(second.assignments.exists())
 
 class AuthorNotificationRuleTests(ReviewFixtures):
     def notify(self, review=None, when=None, user=None):

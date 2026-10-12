@@ -9,7 +9,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from fantazmaty.testing import create_member, create_superuser
+from fantazmaty.testing import assign_artists, create_member, create_superuser
 from illustrations.editing import AssignmentForm, edit_token
 from illustrations.models import Illustration, Illustrator
 from people.models import Person
@@ -92,7 +92,7 @@ class NewIllustratorAssignmentTests(TestCase):
 
     def test_stale_version_neither_adds_person_nor_changes_assignment(self):
         old = edit_token(self.admin, self.ill)
-        self.ill.set_artists([self.contact], status='assigned')
+        assign_artists(self.ill, [self.contact], status='assigned')
         response = self.post(version=old, new_illustrator_name='Spóźniona Osoba')
         self.assertEqual(response.status_code, 409)
         self.assertContains(response, 'Spóźniona Osoba', status_code=409)

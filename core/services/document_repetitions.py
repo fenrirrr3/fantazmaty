@@ -100,7 +100,6 @@ def first5(word: str) -> str:
 @dataclass
 class Token:
     text: str
-    is_word: bool
     lemma: Optional[str] = None
     context_lemma: Optional[str] = None
     stem5: Optional[str] = None
@@ -479,11 +478,11 @@ def _apply_layout_marks(layout, marks, styles=None):
         value, tokens, position = run.text or '', [], 0
         for start, end, color, highlight in ranges:
             if position < start:
-                tokens.append(Token(value[position:start], False))
-            tokens.append(Token(value[start:end], False, color=color, highlight=highlight))
+                tokens.append(Token(value[position:start]))
+            tokens.append(Token(value[start:end], color=color, highlight=highlight))
             position = end
         if position < len(value):
-            tokens.append(Token(value[position:], False))
+            tokens.append(Token(value[position:]))
         _apply_run_colors(run, tokens, styles)
 
 
@@ -586,7 +585,7 @@ def color_document(source, *, window_size=35, min_word_length=4,
             for match in WORD_RE.finditer(text):
                 value = unicodedata.normalize('NFC', match[0])
                 if len(value) >= min_word_length:
-                    words.append(Token(value, True, word_len=len(value),
+                    words.append(Token(value, word_len=len(value),
                                        stem5=first5(value) if len(value) >= 5 else None))
                     locations.append((p_index, match.start(), match.end()))
         story_words.append((words, locations))

@@ -39,7 +39,6 @@ from workflow.services import (
     send_text_to_author,
     send_to_first_verification,
     send_to_second_verification,
-    start_first_verification,
 )
 from core.edit_policy import edit_policy
 
@@ -329,20 +328,6 @@ def send_to_first_verification_stage(request, text_id):
         transition=send_to_first_verification,
         date_parameter="ended_at",
         success_message="Przekazano tekst do pierwszej weryfikacji.",
-    )
-
-
-@never_cache
-@login_required
-@require_POST
-@team_member_required
-def start_first_verification_stage(request, text_id):
-    return _perform_text_transition(
-        request,
-        text_id,
-        transition=start_first_verification,
-        date_parameter="started_at",
-        success_message="Rozpoczęto pierwszą weryfikację.",
     )
 
 

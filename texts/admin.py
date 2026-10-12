@@ -665,39 +665,17 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             text.tags, text.genre = profile.tags, profile.genre
             text.save(update_fields=['tags', 'genre'])
         if not change:
-            text = form.instance
+            # Zgłoszenie jest zablokowane i sprawdzone w changeform_view; tę samą ścieżkę
+            # przechodzi przeniesienie ze strony (copy_review_to_text), więc efekt jest identyczny.
+            from core.services.reviews import attach_review_to_text, create_first_stage
             source_review = getattr(request, '_source_review', None)
             if source_review is not None:
-                from core.services.reviews import resolve_publication_authors
-                author, coauthors = resolve_publication_authors(source_review,
+                attach_review_to_text(source_review, form.instance,
                     contract_received=form.cleaned_data.get('source_contract_received', False),
                     confirmed_coauthor_ids=[a.pk for a in form.cleaned_data.get('source_coauthor_contracts', [])],
                     update_author_phone=form.cleaned_data.get('source_update_author_phone', False))
-                text.authors.set([author, *coauthors])
-                source_review.author = author
-            stages = WorkflowStage.objects.using(text._state.db).filter(
-                text_id=text.pk,
-                workflow_cycle=text.current_workflow_cycle,
-            )
-            if not stages.exists():
-                stages.create(
-                    text=text,
-                    workflow_cycle=text.current_workflow_cycle,
-                    stage_type=WorkflowStage.StageType.READY_FOR_EDITING,
-                    iteration=1,
-                )
-
-        source_review = getattr(request, '_source_review', None)
-        if not change and source_review is not None:
-            from core.services.reviews import validate_review_publication
-            from workflow.anthology_policy import require_working_anthology
-            validate_review_publication(source_review, contracts=True)
-            require_working_anthology(form.instance)
-            authors = list(form.instance.authors.select_for_update())
-            if not authors or any(not author.has_contract for author in authors):
-                raise ValidationError("Każdy autor tekstu musi mieć potwierdzoną umowę. Nie zapisano tekstu.")
-            source_review.copied_text = form.instance
-            source_review.save(update_fields=['copied_text', 'author'])
+            else:
+                create_first_stage(form.instance)
 
     def changeform_view(self, request, object_id=None, form_url='', extra_context=None):
         try:

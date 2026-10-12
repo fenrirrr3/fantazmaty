@@ -117,6 +117,14 @@ def _profile_has_coordinator_role(person):
                for name in _role_names(person))
 
 
+def coordinates_everything(user):
+    """Superuser, rola „Koordynator” (bez działu) albo dawny dostęp koordynatora – pełny zakres obowiązków."""
+    if is_superuser(user):
+        return True
+    person = get_active_person_profile(user)
+    return bool(person and (person.legacy_coordinator_access or "koordynator" in _role_names(person)))
+
+
 def is_coordinator(user):
     if is_superuser(user):
         return True

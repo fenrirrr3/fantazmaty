@@ -10,13 +10,13 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST
 
 from authors.models import Author, AuthorNote
+from core.filtering import positive_id
 from core.forms import AuthorNoteForm
 from core.pagination import paginate_items
 from core.permissions import superuser_required, coordinator_required
 from texts.models import Anthology, Review, Text
 
 
-MAX_DATABASE_ID = 9_223_372_036_854_775_807
 
 # Pole is_blacklisted pozostaje dostępne wyłącznie w panelu admina.
 AUTHOR_DISPLAY_FIELDS = (
@@ -31,19 +31,6 @@ AUTHOR_DISPLAY_FIELDS = (
 )
 
 
-def _positive_id(value):
-    value = value.strip()
-
-    if (
-        not value
-        or len(value) > 19
-        or not value.isascii()
-        or not value.isdecimal()
-    ):
-        return None
-
-    result = int(value)
-    return result if 1 <= result <= MAX_DATABASE_ID else None
 
 
 def _yes_no_filter(value):
@@ -156,7 +143,6 @@ def _render_author_detail(request, author, *, form=None, status=200):
             "texts": texts,
             "historical_reviews": historical_page,
             "author_summary": author_summary,
-            "can_view_authors": True,
             "can_manage_author_notes": request.user.is_superuser,
             "author_note_form": form if form is not None else AuthorNoteForm(),
         },
@@ -173,7 +159,7 @@ def author_list(request):
     contract_filter = _yes_no_filter(request.GET.get("contract", ""))
     contact_filter = _yes_no_filter(request.GET.get("contact", ""))
     selected_anthology_ids = [value for item in request.GET.getlist("anthology")
-                              if (value := _positive_id(item)) is not None]
+                              if (value := positive_id(item)) is not None]
 
     accepted_only = request.GET.get("accepted", "1").strip() != "0"
     authors = Author.objects.all()
@@ -277,7 +263,6 @@ def author_list(request):
             "contact_filter": contact_filter,
             "accepted_only": accepted_only,
             "selected_anthology_ids": selected_anthology_ids,
-            "can_view_authors": True,
         },
     )
 

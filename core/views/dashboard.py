@@ -12,6 +12,8 @@ from django.views.decorators.http import require_GET
 from core.forms import GlobalSearchForm
 from core.permissions import (
     can_view_author_data,
+    coordinates_everything,
+    has_role,
     is_coordinator,
     team_member_required,
 )
@@ -80,23 +82,58 @@ def home(request):
     )
 
 
-OVERDUE_ON_DASHBOARD = 8
+OVERDUE_VISIBLE = 3  # widoczne od razu; reszta do OVERDUE_ON_DASHBOARD po rozwinięciu
+OVERDUE_ON_DASHBOARD = 10
+
+# Zakres obowiązków koordynatora działu: które etapy widzi w belce zaległości (rola → etapy, nazwa zakresu).
+OVERDUE_SCOPES = {
+    "Koordynator redakcji": (("ready_for_editing", "editing", "author_editing", "editing_control", "editor_control"),
+                             "redakcja"),
+    "Koordynator weryfikacji": (("first_verification", "second_verification", "third_verification",
+                                 "coordinator_control"), "weryfikacja"),
+    "Koordynator korekty": (("first_proofreading", "second_proofreading", "third_proofreading", "fourth_proofreading"),
+                            "korekta"),
+}
+
+
+def overdue_scope(user):
+    """(etapy do pokazania albo None = wszystkie, czy pokazać recenzje, etykieta zakresu) wg ról koordynatora."""
+    if coordinates_everything(user):
+        return None, True, ""
+    stages, labels = [], []
+    for role, (role_stages, label) in OVERDUE_SCOPES.items():
+        if has_role(user, role):
+            stages.extend(role_stages)
+            labels.append(label)
+    reviews = has_role(user, "Koordynator recenzji")
+    if reviews:
+        labels.append("recenzje")
+    return stages, reviews, ", ".join(labels)
 
 
 def _overdue_work(user, today):
-    """Belka koordynatora: najdłużej zalegające etapy (jak w raporcie „Przestoje”) i recenzje bez opinii."""
+    """Belka koordynatora: najdłużej zalegające etapy (jak w raporcie „Przestoje”) i recenzje bez opinii,
+    ograniczone do zakresu obowiązków koordynatora (koordynator redakcji widzi zaległe redakcje itd.)."""
     from django.http import QueryDict
     from core.selectors.reports import overdue_review_rows, workflow_inactivity_context
     from core.views.reports import ACTIVE_INACTIVITY_DAYS, WAITING_INACTIVITY_DAYS
-    rows = workflow_inactivity_context(user=user, params=QueryDict(), today=today, active_days=ACTIVE_INACTIVITY_DAYS,
-                                       waiting_days=WAITING_INACTIVITY_DAYS)["rows"]
+    stages, reviews, scope_label = overdue_scope(user)
+    params = QueryDict(mutable=True)
+    if stages is not None:
+        params.setlist("stage", stages)
+    rows = [] if stages == [] else workflow_inactivity_context(
+        user=user, params=params, today=today, active_days=ACTIVE_INACTIVITY_DAYS,
+        waiting_days=WAITING_INACTIVITY_DAYS)["rows"]
     return {
-        "rows": rows[:OVERDUE_ON_DASHBOARD],
+        "scope_label": scope_label,
+        "stage_params": params.urlencode(),
+        "rows": rows[:OVERDUE_VISIBLE],
+        "extra_rows": rows[OVERDUE_VISIBLE:OVERDUE_ON_DASHBOARD],
         "count": len(rows),
         "more": max(0, len(rows) - OVERDUE_ON_DASHBOARD),
         "active_days": ACTIVE_INACTIVITY_DAYS,
         "waiting_days": WAITING_INACTIVITY_DAYS,
-        "review_count": len(overdue_review_rows(today=today)),
+        "review_count": len(overdue_review_rows(today=today)) if reviews else 0,
     }
 
 

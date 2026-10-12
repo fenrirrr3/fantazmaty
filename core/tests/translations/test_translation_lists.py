@@ -160,7 +160,7 @@ class TranslationVisibilityTests(TranslatedBookData, TestCase):
         self.assertEqual(task.status, 'commissioned')
         self.assertEqual(task.assigned_to_id, self.member.person_profile.pk)
         self.assertEqual(task.commissioned_at, timezone.localdate())
-        self.assertNotIn('Brak autora', str(response.context['issues']))
+        self.assertNotIn('Brak autora', str(response.context['issue_groups']))
 
 
 class CompletedTranslationTests(CompletedTranslationData, TestCase):

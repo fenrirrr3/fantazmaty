@@ -13,7 +13,7 @@ from lxml import html
 
 from authors.models import Author
 from core.forms import (AuthorNoteForm, AuthorNotificationForm, CompleteStageForm,
-                        CoordinatorReviewBulkActionForm, ReviewBulkImportForm, ReviewContentWarningsForm,
+                        ReviewBulkImportForm, ReviewContentWarningsForm,
                         VacationForm)
 from core.models import PostLayoutAssignment
 from core.post_layout import selection_token
@@ -266,7 +266,7 @@ class FormValidationRulesTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn('14 dni', form.errors['author_notified_at'][0])
 
-    def test_notes_warnings_and_bulk_action_rules(self):
+    def test_notes_and_warnings_rules(self):
         self.assertIn('Wpisz treść', AuthorNoteForm({'content': '   '}).errors['content'][0])
         existing = Author.objects.create(first_name='Ala', last_name='Autor').notes.create(content='Stara')
         form = AuthorNoteForm({'content': '  Nowa  '}, instance=existing)
@@ -274,9 +274,6 @@ class FormValidationRulesTests(TestCase):
         self.assertEqual(form.cleaned_data['content'], 'Nowa')
         review = SimpleNamespace(content_warnings='Przemoc')
         self.assertEqual(ReviewContentWarningsForm(instance=review).initial['content_warnings'], 'Przemoc')
-        form = CoordinatorReviewBulkActionForm({'action': 'change_status'})
-        self.assertIn('status', form.errors)
-        self.assertTrue(CoordinatorReviewBulkActionForm({'action': 'export'}).is_valid())
 
     def import_form(self, records, user=None, **data):
         return ReviewBulkImportForm({'anthology': self.book.pk, 'records': records, **data},

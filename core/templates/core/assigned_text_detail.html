@@ -566,7 +566,15 @@
     {% if is_novel %}{% include 'core/includes/text_reviews.html' %}{% elif not is_extract_volume %}
     <section class="card" aria-labelledby="text-tags-heading">
         <header class="section-header"><h2 id="text-tags-heading">Tagi i gatunek</h2></header>
-
+        {% if not can_edit_content_warnings %}
+          {# Tagi i gatunek zmienia osoba z przydziałem do tekstu albo koordynator – reszta widzi je tylko do odczytu. #}
+          <dl class="details-grid">
+            <div class="detail-item"><dt>Tagi</dt><dd>{{ text_tags_form.tags.value|default:"Brak tagów" }}</dd></div>
+            <div class="detail-item"><dt>Gatunek</dt><dd>{{ text_tags_form.genre.value|default:"Nie podano" }}</dd></div>
+          </dl>
+          <p class="muted-text">Tagi i gatunek może zmienić osoba przypisana do tekstu lub koordynator.</p>
+          <div class="text-tags-actions"><a class="secondary-button" href="{% url 'core:tag_list' %}">Przejdź do listy</a></div>
+        {% else %}
           <form method="post" action="{% url 'core:update_text_tags' text.pk %}" class="text-tags-form" data-warn-unsaved>
             {% csrf_token %}{% edit_version %}{{ text_tags_form.non_field_errors }}
             <div class="form-field">{{ text_tags_form.tags.label_tag }}{{ text_tags_form.tags }}{{ text_tags_form.tags.errors }}<p class="muted-text">{{ text_tags_form.tags.help_text }}</p></div>
@@ -574,6 +582,7 @@
             <div class="text-tags-actions"><button class="primary-button" type="submit">Zapisz tagi i gatunek</button>
             <a class="secondary-button" href="{% url 'core:tag_list' %}">Przejdź do listy</a></div>
         </form>
+        {% endif %}
     </section>
     {% endif %}
     </div>

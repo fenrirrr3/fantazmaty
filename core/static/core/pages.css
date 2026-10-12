@@ -1093,11 +1093,16 @@ section:has(#reserved-assignments-heading) {
     min-width: var(--badge-height);
     padding: 0 var(--space-2);
     border-radius: var(--radius-pill);
-    background: var(--warning-accent);
-    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: var(--badge-height);
+    border: 1px solid var(--warning-border);
+    background: var(--warning-light);
+    color: var(--warning);
     font-size: var(--font-size-sm);
-    line-height: var(--badge-height);
-    text-align: center;
+    line-height: 1;
+    vertical-align: middle;
 }
 
 .overdue-list {
@@ -1158,6 +1163,32 @@ section:has(#reserved-assignments-heading) {
     display: grid;
     gap: var(--space-1);
     justify-items: end;
+    text-align: right;
+}
+
+.overdue-state > * {
+    justify-self: end;
+}
+
+.overdue-more {
+    margin-top: var(--space-2);
+}
+
+.overdue-more > summary {
+    width: fit-content;
+    color: var(--primary);
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.overdue-more[open] > summary {
+    margin-bottom: var(--space-2);
+}
+
+.overdue-more:not([open]) .overdue-more-hide,
+.overdue-more[open] .overdue-more-show {
+    display: none;
 }
 
 .overdue-footer {
@@ -1168,7 +1199,7 @@ section:has(#reserved-assignments-heading) {
     font-size: var(--font-size-sm);
 }
 
-@media (max-width: 640px) {
+@media (max-width: 480px) {
     .overdue-item {
         grid-template-columns: 3.5rem minmax(0, 1fr);
     }
@@ -1176,6 +1207,11 @@ section:has(#reserved-assignments-heading) {
     .overdue-state {
         grid-column: 2;
         justify-items: start;
+        text-align: left;
+    }
+
+    .overdue-state > * {
+        justify-self: start;
     }
 }
 

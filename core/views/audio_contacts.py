@@ -115,15 +115,7 @@ def contact_suggestions(request):
     kind = request.GET.get('kind')
     if len(query) < 2:
         return JsonResponse({'results': []})
-    if kind == 'audio':
-        rows = AudioContributor.objects.filter(Q(name__plcontains=query) | Q(email__icontains=query)).order_by('name', 'pk')[:25]
-        results = [{'id': r.pk, 'name': r.name, 'email': r.email} for r in rows]
-    elif kind == 'illustration':
-        from illustrations.models import Illustrator
-        rows = Illustrator.objects.filter(is_active=True).filter(Q(first_name__plcontains=query) |
-            Q(last_name__plcontains=query) | Q(pseudonym__plcontains=query) | Q(email__icontains=query))[:25]
-        results = [{'id': r.pk, 'name': r.display_name, 'email': r.email or ''} for r in rows]
-    elif kind in ('person', 'cover'):
+    if kind in ('person', 'cover'):
         # Hints for entries without an account: names only, never contact data.
         terms = query.split()
         if kind == 'person':

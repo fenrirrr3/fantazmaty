@@ -2,7 +2,7 @@
 
 Status (Nieprzypisane → Nagrywanie → Korekta → Nanoszenie poprawek → Montaż → Opublikowane) ustawia
 koordynator; zmiana statusu zamyka bieżący etap i otwiera etap nowego statusu z datą (pusta = nieznana).
-Daty wszystkich etapów koordynator może poprawić. Jedynym obiegiem pracy jest korekta: status „Korekta”
+Daty etapów i wykonawcę korekt koordynator może poprawić w tabeli etapów, a etap inny niż bieżący – usunąć. Jedynym obiegiem pracy jest korekta: status „Korekta”
 udostępnia ją korektorom audiobooków, korektor przejmuje ją i kończy, a status przechodzi na
 „Nanoszenie poprawek”. Lektor i montażysta to wpisy spisu – nie potrzebują kont.
 Zmiany blokują tekst, tak jak tokeny edycji.
@@ -162,38 +162,77 @@ def set_status(*, text_id, user, status, date=None):
     return audio
 
 
+def _set_performer(audio, stage, performer_id):
+    """Zmiana wykonawcy korekty; nowa osoba musi mieć rolę Korektor audiobooków (historyczna zostaje bez sprawdzania).
+    Wykonawca bieżącej korekty jest zarazem przypisanym korektorem audiobooka."""
+    from core.audiobook_forms import eligible_proofreaders
+    if performer_id and not eligible_proofreaders().filter(pk=performer_id).exists():
+        raise ValidationError(f'{stage_label(stage.stage_type)}: wybierz aktywne konto z rolą Korektor audiobooków.')
+    stage.performer_id = performer_id
+    if audio.active_stage_id == stage.pk and audio.proofreader_id != performer_id:
+        audio.proofreader_id = performer_id
+        audio.save(update_fields=['proofreader'])
+
+
 @transaction.atomic
-def update_stage_dates(*, text_id, user, dates):
-    """Poprawa dat etapów przez koordynatora: dates = {id etapu: (rozpoczęcie, zakończenie)}."""
+def update_stage_dates(*, text_id, user, dates, performers=None):
+    """Poprawa etapów przez koordynatora: dates = {id etapu: (rozpoczęcie, zakończenie)},
+    performers = {id etapu korekty: id wykonawcy albo None}. Zwraca etykiety zmienionych etapów."""
     _require_coordinator(user)
     text, audio = _lock(text_id)
     if audio is None:
         raise ValidationError('Audiobook nie ma jeszcze etapów.')
-    changed = []
+    performers = performers or {}
+    changed, details = [], []
     for stage in ordered_stages(text):
-        if stage.pk not in dates:
-            continue
-        started_at, ended_at = dates[stage.pk]
         label = stage_label(stage.stage_type)
-        _check_date(started_at, label=f'{label}: data rozpoczęcia')
-        _check_date(ended_at, label=f'{label}: data zakończenia', not_before=started_at)
-        if ended_at and not stage.is_completed:
-            raise ValidationError(f'{label}: etap trwa – zakończ go zmianą statusu.')
-        if (stage.started_at, stage.ended_at) == (started_at, ended_at):
-            continue
-        if started_at:
-            stage.start_unknown = False
-            if stage.stage_type == StageType.PROOFREADING and not stage.performer_id:
-                stage.performer_id = audio.proofreader_id
-        elif stage.started_at:
-            stage.start_unknown = True  # usunięcie daty nie cofa rozpoczęcia – data staje się nieznana
-        stage.started_at, stage.ended_at = started_at, ended_at
-        stage.save(update_fields=['started_at', 'ended_at', 'start_unknown', 'performer'])
-        changed.append(label)
+        fields = set()
+        if stage.stage_type == StageType.PROOFREADING and stage.pk in performers and performers[stage.pk] != stage.performer_id:
+            _set_performer(audio, stage, performers[stage.pk])
+            fields.add('performer')
+            details.append(f'{label}: wykonawca')
+        if stage.pk in dates:
+            started_at, ended_at = dates[stage.pk]
+            _check_date(started_at, label=f'{label}: data rozpoczęcia')
+            _check_date(ended_at, label=f'{label}: data zakończenia', not_before=started_at)
+            if ended_at and not stage.is_completed:
+                raise ValidationError(f'{label}: etap trwa – zakończ go zmianą statusu.')
+            if (stage.started_at, stage.ended_at) != (started_at, ended_at):
+                if started_at:
+                    stage.start_unknown = False
+                    if stage.stage_type == StageType.PROOFREADING and not stage.performer_id and stage.pk not in performers:
+                        stage.performer_id = audio.proofreader_id
+                elif stage.started_at:
+                    stage.start_unknown = True  # usunięcie daty nie cofa rozpoczęcia – data staje się nieznana
+                stage.started_at, stage.ended_at = started_at, ended_at
+                fields |= {'started_at', 'ended_at', 'start_unknown', 'performer'}
+                details.append(f'{label}: daty')
+        if fields:
+            stage.save(update_fields=fields)
+            changed.append(label)
     if changed:
         record_event(text, user, previous=audio.status_label, current=audio.status_label,
-                     details='Poprawiono daty etapów: ' + ', '.join(changed) + '.')
+                     details='Poprawiono etapy – ' + ', '.join(details) + '.')
     return changed
+
+
+@transaction.atomic
+def delete_stage(*, text_id, user, stage_id):
+    """Usunięcie etapu z historii przez koordynatora. Bieżącego etapu nie usuwa się – zamyka go zmiana statusu.
+    Pozycje pozostałych etapów zostają bez zmian."""
+    _require_coordinator(user)
+    text, audio = _lock(text_id)
+    stage = AudiobookStage.objects.filter(text=text, pk=stage_id).first()
+    if audio is None or stage is None:
+        raise ValidationError('Tego etapu już nie ma. Odśwież podgląd.')
+    if audio.active_stage_id == stage.pk:
+        raise ValidationError('Bieżący etap zamyka zmiana statusu – nie można go usunąć.')
+    label = stage_label(stage.stage_type)
+    period = ' – '.join(f'{day:%d.%m.%Y}' for day in (stage.started_at, stage.ended_at) if day)
+    stage.delete()
+    record_event(text, user, previous=audio.status_label, current=audio.status_label,
+                 details=f'Usunięto etap: {label}' + (f' ({period}).' if period else '.'))
+    return stage
 
 
 @transaction.atomic

@@ -1,10 +1,10 @@
 from django.core.exceptions import ValidationError
 from django.contrib.auth import get_user_model
-from django.db.models import Max
 from django.utils import timezone
 from core.permissions import require_superuser
 from core.services.texts import _require_eligible_assignee, _require_distinct_verifiers
 from workflow.models import WorkflowStage as S, WorkflowRoleAssignment as A, WorkflowHandoff
+from workflow.numbering import next_assignment_execution
 from workflow.services import _locked_text_operation, current_assignment_queryset
 
 
@@ -40,18 +40,12 @@ def handoff_stage(text, user, *, stage_id, assigned_to_id, expected_assignment_i
     remember(Text, text, text._state.db or "default")
     old.is_current = False
     old.save(update_fields=["is_current"])
-    number = (
-        A.objects.filter(
-            text=text, workflow_cycle=text.current_workflow_cycle, role=old.role
-        ).aggregate(n=Max("execution_number"))["n"]
-        or 0
-    ) + 1
     new = A.objects.create(
         text=text,
         workflow_cycle=text.current_workflow_cycle,
         role=old.role,
         assigned_to=target,
-        execution_number=number,
+        execution_number=next_assignment_execution(text, old.role),
         repetition=old.repetition,
     )
     WorkflowHandoff.objects.create(

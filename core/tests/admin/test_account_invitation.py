@@ -3,10 +3,13 @@ import re
 from datetime import timedelta
 from unittest.mock import patch
 
+from django.contrib import admin
 from django.contrib.admin.models import LogEntry
 from django.contrib.auth import get_user_model
+from django.contrib.messages.storage.fallback import FallbackStorage
 from django.core import mail
-from django.test import TestCase
+from django.db import transaction
+from django.test import RequestFactory, TestCase, TransactionTestCase
 from django.urls import reverse
 
 from core.invitations import invitation_token_generator
@@ -16,16 +19,16 @@ User = get_user_model()
 LINK = re.compile(r'http://testserver(/konto/zaproszenie/[^/\s]+/[^/\s]+/)')
 
 
-class AccountInvitationTests(TestCase):
-    @classmethod
-    def setUpTestData(cls):
-        cls.admin = create_superuser('zaproszenia-admin')
-        cls.member = create_member('nowa-osoba', 'Redaktor')
-        cls.member.email = 'nowa@example.com'
-        cls.member.set_unusable_password()
-        cls.member.save()
+class AccountInvitationTests(TransactionTestCase):
+    """Mail wychodzi po zatwierdzeniu transakcji, więc testy przez klienta HTTP wymagają prawdziwych commitów
+    (w TestCase on_commit nie wykonałby się w trakcie żądania i komunikaty admina nie trafiłyby na stronę)."""
 
     def setUp(self):
+        self.admin = create_superuser('zaproszenia-admin')
+        self.member = create_member('nowa-osoba', 'Redaktor')
+        self.member.email = 'nowa@example.com'
+        self.member.set_unusable_password()
+        self.member.save()
         self.client.force_login(self.admin)
 
     def invite(self, user=None):
@@ -109,3 +112,30 @@ class AccountInvitationTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(User.objects.filter(username='bez-hasla').exists())
         self.assertEqual(len(mail.outbox), 1)
+
+
+class InvitationRollbackTests(TestCase):
+    def test_rolled_back_transaction_sends_no_mail(self):
+        """Zaproszenie zlecone w transakcji, która została wycofana (np. błąd zapisu konta), nie wychodzi;
+        po zatwierdzeniu mail wychodzi, a zaproszenie jest odnotowane w dzienniku."""
+        admin_user = create_superuser('zaproszenia-rollback')
+        member = create_member('wycofana-osoba', 'Redaktor')
+        User.objects.filter(pk=member.pk).update(email='wycofana@example.com')
+        member.refresh_from_db()
+        request = RequestFactory().post('/')
+        request.user, request.session = admin_user, {}
+        request._messages = FallbackStorage(request)
+        model_admin = admin.site._registry[User]
+        with self.captureOnCommitCallbacks(execute=True):
+            with self.assertRaises(RuntimeError), transaction.atomic():
+                model_admin._invite(request, member)
+                raise RuntimeError('błąd zapisu')
+        self.assertEqual(mail.outbox, [])
+        self.assertFalse(LogEntry.objects.filter(object_id=str(member.pk)).exists())
+        with self.captureOnCommitCallbacks(execute=True):
+            with transaction.atomic():
+                model_admin._invite(request, member)
+            self.assertEqual(mail.outbox, [])
+        self.assertEqual([m.to for m in mail.outbox], [['wycofana@example.com']])
+        self.assertTrue(LogEntry.objects.filter(object_id=str(member.pk), change_message='Wysłano zaproszenie do CMS-u.').exists())
+        self.assertEqual([str(m) for m in request._messages], ['Wysłano zaproszenie na adres wycofana@example.com.'])

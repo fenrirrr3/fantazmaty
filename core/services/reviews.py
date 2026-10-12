@@ -423,56 +423,6 @@ def change_review_status(*, user, review_id, new_status):
 
 
 @transaction.atomic
-def perform_bulk_review_action(
-    *,
-    user,
-    review_ids,
-    action,
-    new_status,
-):
-    require_superuser(user)
-
-    if action != "change_status":
-        raise ValidationError("Nieprawidłowa operacja zbiorcza.")
-
-    selected_ids = _normalise_review_ids(review_ids)
-    reviews = list(
-        Review.objects.select_for_update()
-        .filter(pk__in=selected_ids)
-        .order_by("pk")
-    )
-
-    if len(reviews) != len(selected_ids):
-        raise ValidationError(
-            "Nie odnaleziono wszystkich zaznaczonych zgłoszeń. "
-            "Żadna zmiana nie została zapisana."
-        )
-
-    assignments_by_review = {review.pk: [] for review in reviews}
-
-    for assignment in (
-        ReviewAssignment.objects.select_for_update()
-        .filter(review_id__in=selected_ids)
-        .order_by("review_id", "position", "pk")
-    ):
-        assignments_by_review[assignment.review_id].append(assignment)
-
-    for review in reviews:
-        _validate_status_change(
-            user=user,
-            review=review,
-            assignments=assignments_by_review[review.pk],
-            new_status=new_status,
-        )
-
-    today = timezone.localdate()
-    for review in reviews:
-        _apply_status_change(review, new_status, today=today)
-
-    return len(reviews)
-
-
-@transaction.atomic
 def save_author_notification(*, user, review_id, author_notified_at):
     from core.forms import AuthorNotificationForm
 
@@ -626,9 +576,6 @@ def copy_review_to_text(*, user, review_id, contract_received=False, confirmed_c
 
     validate_review_publication(review)
 
-    author, coauthors = resolve_publication_authors(review, contract_received=contract_received,
-        confirmed_coauthor_ids=confirmed_coauthor_ids, update_author_phone=update_author_phone)
-
     text = Text(
         title=review.title,
         genre=review.genre,
@@ -640,8 +587,15 @@ def copy_review_to_text(*, user, review_id, contract_received=False, confirmed_c
     )
     text.full_clean()
     text.save()
-    text.authors.add(author, *coauthors)
+    return attach_review_to_text(review, text, contract_received=contract_received,
+        confirmed_coauthor_ids=confirmed_coauthor_ids, update_author_phone=update_author_phone)
 
+
+def create_first_stage(text):
+    """Otwiera etap „Do redakcji” nowego tekstu, jeśli bieżący przebieg nie ma jeszcze etapów."""
+    stages = WorkflowStage.objects.using(text._state.db).filter(text_id=text.pk, workflow_cycle=text.current_workflow_cycle)
+    if stages.exists():
+        return None
     stage = WorkflowStage(
         text=text,
         workflow_cycle=text.current_workflow_cycle,
@@ -653,6 +607,20 @@ def copy_review_to_text(*, user, review_id, contract_received=False, confirmed_c
     )
     stage.full_clean()
     stage.save()
+    return stage
+
+
+def attach_review_to_text(review, text, *, contract_received=False, confirmed_coauthor_ids=(), update_author_phone=False):
+    """Wspólna część przeniesienia zgłoszenia do zapisanego tekstu (strona i admin).
+
+    Potwierdza umowy i ustala autorów, podmienia autorów tekstu, otwiera pierwszy etap
+    i wiąże zgłoszenie z tekstem. Wywołujący pracuje w transakcji, trzyma blokadę
+    zgłoszenia i wcześniej sprawdził ``validate_review_publication``.
+    """
+    author, coauthors = resolve_publication_authors(review, contract_received=contract_received,
+        confirmed_coauthor_ids=confirmed_coauthor_ids, update_author_phone=update_author_phone)
+    text.authors.set([author, *coauthors])
+    create_first_stage(text)
 
     review.author = author
     review.copied_text = text

@@ -17,6 +17,7 @@ from core.permissions import (
 from texts.models import Text
 
 from .models import WorkflowRoleAssignment, WorkflowStage
+from .numbering import next_assignment_execution, next_stage_iteration
 
 
 StageType = WorkflowStage.StageType
@@ -377,15 +378,6 @@ def get_active_stage(text, stage_type):
     )
 
 
-def next_iteration(text, stage_type):
-    maximum = (
-        WorkflowStage.objects.filter(text=text, workflow_cycle=current_cycle(text), stage_type=stage_type)
-        .aggregate(maximum=Max("iteration"))["maximum"]
-        or 0
-    )
-    return maximum + 1
-
-
 def _create_pending_stage(text, stage_type, *, queued_at=None):
     """Wewnętrzna operacja; wywołujący musi posiadać blokadę Text."""
     ensure_text_is_not_withdrawn(text)
@@ -411,7 +403,7 @@ def _create_pending_stage(text, stage_type, *, queued_at=None):
         text=text,
         workflow_cycle=current_cycle(text),
         stage_type=stage_type,
-        iteration=next_iteration(text, stage_type),
+        iteration=next_stage_iteration(text, stage_type),
         queued_at=queued_at,
         started_at=None,
         ended_at=None,
@@ -513,18 +505,23 @@ def _assign_role(text, role, user):
     ).first()
 
     if assignment is None:
-        number = (WorkflowRoleAssignment.objects.using(_database(text)).filter(
-            text=text, workflow_cycle=current_cycle(text), role=role,
-        ).aggregate(maximum=Max('execution_number'))['maximum'] or 0) + 1
-        return WorkflowRoleAssignment.objects.using(
+        assignment = WorkflowRoleAssignment.objects.using(
             _database(text)
         ).create(
             text=text,
             workflow_cycle=current_cycle(text),
             role=role,
             assigned_to=user,
-            execution_number=number,
+            execution_number=next_assignment_execution(text, role),
         )
+        # Zapis przydziału podpina otwarte etapy tej roli tylko kluczem obcym;
+        # numer wykonania etapu musi zgadzać się z numerem nowego przydziału.
+        current_stage_queryset(text).filter(
+            assignment=assignment, is_completed=False,
+        ).exclude(execution_number=assignment.execution_number).update(
+            execution_number=assignment.execution_number,
+        )
+        return assignment
 
     if assignment.assigned_to_id not in (None, user.pk):
         raise ValidationError("Ta rola jest już przypisana innej osobie.")
@@ -638,6 +635,7 @@ def claim_stage(text, stage_type, user, started_at=None, *, stage_id=None):
         )
 
     _assign_role(text, role, user)
+    stage.refresh_from_db(fields=["assignment", "execution_number"])
 
     # Podczas redakcji W1 jest rezerwacją. Po przekazaniu tekstu
     # przejęcie pierwszej weryfikacji od razu rozpoczyna pracę.
