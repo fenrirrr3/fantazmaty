@@ -99,6 +99,22 @@ class AnthologyAdminFormTests(TestCase):
         self.assertEqual((task.status, task.assigned_to), ('commissioned', self.person))
         self.assertIsNotNone(task.commissioned_at)
 
+    def test_row_for_missing_task_on_existing_anthology_updates_recreated_task(self):
+        """Zapis antologii odtwarza brakujące zadanie domyślne; wiersz tego zadania w tym samym zapisie
+        uzupełnia je zamiast wstawiać drugie (wcześniej błąd 500 z naruszeniem unikalności)."""
+        book = Anthology.objects.create(title='Istniejąca')
+        book.production_tasks.filter(task_type='typesetting').delete()
+        url = reverse('admin:texts_anthology_change', args=[book.pk])
+        data = admin_form_data(self.client, url, 'anthology_form', _save='Zapisz')
+        row = int(data['production_tasks-TOTAL_FORMS'])
+        data.update({'production_tasks-TOTAL_FORMS': str(row + 1), f'production_tasks-{row}-task_type': 'typesetting',
+                     f'production_tasks-{row}-status': 'commissioned',
+                     f'production_tasks-{row}-assigned_to': self.person.pk})
+        self.assertEqual(self.client.post(url, data).status_code, 302)
+        self.assertEqual(book.production_tasks.count(), len(AnthologyTask.TaskType.values))
+        task = book.production_tasks.get(task_type='typesetting')
+        self.assertEqual((task.status, task.assigned_to), ('commissioned', self.person))
+
     def test_novel_form_hides_illustration_and_translation_flags_unless_translation_needs_fixing(self):
         model_admin = admin.site.get_model_admin(Anthology)
         request = RequestFactory().get('/')

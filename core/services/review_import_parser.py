@@ -258,6 +258,14 @@ def parse_review_records(value):
                     + " ".join(error.messages)
                 )
 
+        # Importowane zgłoszenia są bieżące – brak gatunku lub e-maila wykrywamy już w podglądzie, nie przy zapisie.
+        for field_name in ("genre", "email"):
+            if not record[field_name] and not any(
+                    error.startswith(f"Wiersz {line_number}, {Review._meta.get_field(field_name).verbose_name}:")
+                    for error in row_errors):
+                row_errors.append(f"Wiersz {line_number}, {Review._meta.get_field(field_name).verbose_name}: "
+                                  "pole wymagane dla bieżącego zgłoszenia.")
+
         if row_errors:
             errors.extend(row_errors)
         else:

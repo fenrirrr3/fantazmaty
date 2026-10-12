@@ -553,6 +553,13 @@ class Text(NormalizedModelMixin, models.Model):
             if fields is not None:
                 fields = set(fields) | {'for_recording'}
                 kwargs['update_fields'] = fields
+        if (fields is None or {'for_recording', 'anthology', 'anthology_id'} & set(fields)) and \
+                self.anthology_id and self.anthology.is_novel:
+            # Powieści nie są nagrywane: rozdział nigdy nie trafia do audiobooków.
+            self.for_recording = False
+            if fields is not None:
+                fields = set(fields) | {'for_recording'}
+                kwargs['update_fields'] = fields
         if fields is None or 'coordinator_note' in fields:
             previous_note = type(self).objects.using(using).filter(pk=self.pk).values_list('coordinator_note', flat=True).first() if self.pk else ''
             if previous_note != self.coordinator_note:

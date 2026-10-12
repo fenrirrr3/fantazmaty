@@ -501,6 +501,15 @@ def my_texts_context(*, user, selected_view="active", params=None):
     else:
         # Widok „wszystkie”: stan pracy tylko dla wierszy wyświetlanej strony.
         texts = annotate_my_work(texts, user, today)
+        if not params.get("sort"):
+            # Domyślnie najpierw teksty, w których osoba najpóźniej zakończyła swój etap;
+            # teksty bez daty zakończenia – pod nimi, antologiami i tytułami.
+            finished = WorkflowStage.objects.filter(
+                text_id=OuterRef("pk"), assignment__assigned_to_id=user.pk, is_completed=True, ended_at__isnull=False,
+            ).order_by("-ended_at").values("ended_at")[:1]
+            texts = texts.annotate(my_last_completed=Subquery(finished)).order_by(
+                F("my_last_completed").desc(nulls_last=True), "anthology__title", "title", "pk")
+            filters["sort"] = ""
     # Show every own execution, including superseded assignments. This only
     # supplies labels; current work and permissions retain their existing rules.
     texts = texts.prefetch_related(Prefetch(

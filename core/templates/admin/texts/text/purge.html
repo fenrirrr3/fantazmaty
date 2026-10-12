@@ -1,0 +1,15 @@
+{% extends "admin/base_site.html" %}
+{% block breadcrumbs %}<div class="breadcrumbs"><a href="{% url 'admin:index' %}">Strona główna</a> › <a href="{% url 'admin:texts_text_changelist' %}">{{ opts.verbose_name_plural|capfirst }}</a> › <a href="{% url 'admin:texts_text_change' original.pk %}">{{ original.title }}</a> › Usuń z całą historią</div>{% endblock %}
+{% block content %}
+{% if blocker %}
+<p class="errornote">{{ blocker }}</p>
+{% else %}
+<p>Tekst „<strong>{{ original.title }}</strong>”{% if original.anthology %} z antologii „{{ original.anthology.title }}”{% endif %} zostanie <strong>trwale usunięty</strong> razem z:</p>
+<ul>{% for label, count in summary %}<li>{{ label }}: {{ count }}</li>{% empty %}<li>bez etapów i historii – usunięty zostanie sam tekst</li>{% endfor %}</ul>
+<p>Nic poza tym nie zostanie usunięte: osoby, autorzy, antologia i errata zostają. Zgłoszenie, z którego powstał tekst, zostaje w recenzjach, ale nie wróci do listy „do przeniesienia”.</p>
+{% if published %}<p class="errornote">Antologia jest oznaczona jako wydana – upewnij się, że ten tekst naprawdę ma zniknąć z jej spisu.</p>{% endif %}
+<form method="post">{% csrf_token %}{{ form.non_field_errors }}{{ form.as_p }}
+<div class="submit-row"><input type="submit" value="Usuń trwale" class="deletelink" style="background:var(--delete-button-bg);color:#fff"></div></form>
+{% endif %}
+<p><a href="{% url 'admin:texts_text_change' original.pk %}">Wróć do tekstu</a></p>
+{% endblock %}

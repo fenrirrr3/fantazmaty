@@ -1,4 +1,5 @@
 from django import forms
+from django.core.exceptions import NON_FIELD_ERRORS, ValidationError
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
@@ -24,6 +25,15 @@ class AudiobookForm(forms.ModelForm):
             self.fields['audiobook_blacklisted'].disabled = True
             self.fields['for_recording'].disabled = True
             self.initial['for_recording'] = False
+
+    def _update_errors(self, errors):
+        # Błąd danych tekstu w polu spoza formularza (np. numer rozdziału) – komunikat ogólny zamiast błędu 500.
+        if hasattr(errors, 'error_dict'):
+            moved = {}
+            for field, items in errors.error_dict.items():
+                moved.setdefault(field if field in self.fields else NON_FIELD_ERRORS, []).extend(items)
+            errors = ValidationError(moved)
+        super()._update_errors(errors)
 
     def clean(self):
         data = super().clean()

@@ -1,7 +1,11 @@
 """Rozdziały powieści: dodawanie zakresami, długości, numeracja, zbiorcze przypisania, praca na rozdziale i panele strony rozdziału."""
+from importlib import import_module
+from types import SimpleNamespace
 from unittest.mock import patch
 
+from django.apps import apps
 from django.core.exceptions import ValidationError
+from django.db import connection
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -293,3 +297,24 @@ class TextDetailPanelTests(TestCase):
                 self.assertEqual(doc.xpath('normalize-space(//*[@id="text-credits"]/summary/span[1])'), 'Stopka tekstu')
                 if story == self.chapter:
                     self.assertFalse(doc.xpath('//*[@id="text-audiobook"]'))
+
+
+class NovelsAreNotRecordedTests(TestCase):
+    """Powieści nie są nagrywane: rozdział nigdy nie jest „Do nagrywania” – przy zapisie ani po migracji."""
+
+    def test_chapter_is_never_for_recording(self):
+        novels_not_for_recording = import_module(
+            'texts.migrations.0040_novel_chapters_not_for_recording').novels_not_for_recording
+        novel = Anthology.objects.create(title='Powieść do nagrań', is_novel=True)
+        story = Text.objects.create(title='Opowiadanie', length=10, anthology=Anthology.objects.create(title='Zbiór'))
+        chapter = Text.objects.create(anthology=novel, chapter_number=1, length=10)
+        self.assertFalse(chapter.for_recording)
+        chapter.for_recording = True
+        chapter.save(update_fields=['for_recording'])
+        chapter.refresh_from_db()
+        self.assertFalse(chapter.for_recording)
+        # Dane sprzed zmiany (zapis z pominięciem modelu) poprawia migracja; zwykłe opowiadanie zostaje.
+        Text.objects.filter(pk=chapter.pk).update(for_recording=True)
+        novels_not_for_recording(apps, SimpleNamespace(connection=connection))
+        self.assertEqual(dict(Text.objects.filter(pk__in=[chapter.pk, story.pk]).values_list('title', 'for_recording')),
+                         {chapter.title: False, 'Opowiadanie': True})

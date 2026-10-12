@@ -429,7 +429,14 @@ def render_pdf(source, target, content, assets, title, document=None):
         def draw(self, lines, y):
             family, style, size = self.font_family, self.font_style, self.font_size_pt
             x, current = self.x, self.y
-            _draw_lines(self, lines, y)
+            # Nagłówek lub stopka wyższe niż strona nie mogą wywołać łamania strony (a z nim kolejnego
+            # rysowania nagłówka w nieskończoność) – nadmiar wychodzi poza kartkę, konwersja trwa dalej.
+            auto, margin = self.auto_page_break, self.b_margin
+            self.set_auto_page_break(False)
+            try:
+                _draw_lines(self, lines, y)
+            finally:
+                self.set_auto_page_break(auto, margin)
             if family:
                 self.set_font(family, style, size)
             self.set_xy(x, current)

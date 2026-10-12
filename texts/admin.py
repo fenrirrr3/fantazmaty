@@ -50,17 +50,13 @@ def content_preview(value, limit=100):
 
 
 class AnthologyTaskFormSet(BaseInlineFormSet):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.parent_was_new = self.instance.pk is None
-
     def save_new(self, form, commit=True):
-        # Anthology.post_save creates the three default tasks before inline save.
-        # Apply the submitted values to that task instead of inserting it twice.
-        if self.parent_was_new:
-            task = AnthologyTask.objects.using(self.instance._state.db).get(
-                anthology=self.instance, task_type=form.cleaned_data["task_type"],
-            )
+        # Zapis antologii (sygnał post_save) tworzy brakujące zadania domyślne przed zapisem wiersza.
+        # Wiersz „nowego” zadania danego typu uzupełnia wtedy istniejące zadanie zamiast dublować je.
+        task = AnthologyTask.objects.using(self.instance._state.db).filter(
+            anthology=self.instance, task_type=form.cleaned_data["task_type"],
+        ).first()
+        if task is not None:
             form.instance.pk = task.pk
             form.instance._state.adding = False
             form.instance._state.db = task._state.db
@@ -76,7 +72,7 @@ class AnthologyTaskInline(admin.TabularInline):
         from core.admin import AnthologyTaskAdminForm
         return AnthologyTaskAdminForm
     extra = 0
-    max_num = 4
+    max_num = len(AnthologyTask.TaskType.choices)
     can_delete = False
 
     fields = (
@@ -598,13 +594,13 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             fields = (*fields, 'authors', 'tags', 'genre', 'anthology')
         return fields if request.user.is_superuser else (*fields, "file_url")
 
-    readonly_fields = ("repeat_workflow_link", "manual_status_link", "coordinator_note_updated_at", "current_workflow_cycle", "import_source", "import_source_row")
+    readonly_fields = ("repeat_workflow_link", "manual_status_link", "purge_link", "coordinator_note_updated_at", "current_workflow_cycle", "import_source", "import_source_row")
 
     fieldsets = (
         ('Tekst', {'fields': ('title', 'authors', 'anthology', 'chapter_number', 'length', 'tags', 'genre', 'content_warnings', 'file_url',
             'source_author_first_name', 'source_author_last_name', 'source_author_email', 'source_author_pseudonym',
             'source_contract_received', 'source_coauthor_contracts', 'source_update_author_phone')}),
-        ('Status i zarządzanie', {'fields': ('manual_status_link', 'repeat_workflow_link')}),
+        ('Status i zarządzanie', {'fields': ('manual_status_link', 'repeat_workflow_link', 'purge_link')}),
         ('Audiobook', {'fields': ('for_recording', 'audiobook_blacklisted'),
             'description': 'Czarna lista wyłącza nagrywanie. Blokadę można usunąć wyłącznie tutaj lub akcją na liście tekstów. Aby po odblokowaniu przekazać tekst do nagrywania, zaznacz „Do nagrywania”.'}),
         ('Notatki koordynatora', {'classes': ('cms-after-workflow',),
@@ -750,7 +746,48 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     def get_urls(self):
         repeat_view = self.admin_site.admin_view(self.repeat_form)
         repeat_view.model_admin = self
-        return [path('<int:object_id>/powtorz-etapy/', repeat_view, name='texts_text_repeat'), path('<path:object_id>/dodaj-etap/', self.admin_site.admin_view(self.add_stage_view), name='texts_text_add_stage'), path('<path:object_id>/status/', self.admin_site.admin_view(self.change_status_view), name='texts_text_manual_status')] + super().get_urls()
+        return [path('<int:object_id>/powtorz-etapy/', repeat_view, name='texts_text_repeat'), path('<path:object_id>/dodaj-etap/', self.admin_site.admin_view(self.add_stage_view), name='texts_text_add_stage'), path('<path:object_id>/status/', self.admin_site.admin_view(self.change_status_view), name='texts_text_manual_status'), path('<path:object_id>/usun-z-historia/', self.admin_site.admin_view(self.purge_view), name='texts_text_purge')] + super().get_urls()
+
+    @admin.display(description='Usunięcie tekstu')
+    def purge_link(self, obj):
+        from django.utils.html import format_html
+        from django.urls import reverse
+        if not obj or not obj.pk:
+            return '–'
+        return format_html('<a class="deletelink" href="{}">Usuń tekst razem z etapami i całą historią…</a>',
+                           reverse('admin:texts_text_purge', args=[obj.pk]))
+
+    def purge_view(self, request, object_id):
+        from django.template.response import TemplateResponse
+        from django.shortcuts import redirect
+        from core.edit_versions import version_of
+        from texts.purge import purge_blocker, purge_summary, purge_text
+        if not request.user.is_superuser:
+            raise PermissionDenied
+        obj = get_object_or_404(self.get_queryset(request), pk=unquote(object_id))
+
+        class PurgeForm(forms.Form):
+            version = forms.IntegerField(widget=forms.HiddenInput)
+            confirm = forms.BooleanField(label='Rozumiem, że tekst, jego etapy i cała historia zostaną trwale usunięte '
+                                               'i nie da się tego cofnąć.')
+        form = PurgeForm(request.POST if request.method == 'POST' else None, initial={'version': version_of(obj)})
+        blocker = purge_blocker(obj)
+        if request.method == 'POST' and blocker is None and form.is_valid():
+            if form.cleaned_data['version'] != version_of(obj):
+                form.add_error(None, 'Tekst zmienił się w międzyczasie. Sprawdź zmiany i spróbuj ponownie.')
+            else:
+                try:
+                    purge_text(obj)
+                except ValidationError as exc:
+                    form.add_error(None, exc)
+                else:
+                    self.message_user(request, f'Usunięto tekst „{obj.title}” razem z etapami i całą historią.')
+                    return redirect('admin:texts_text_changelist')
+        return TemplateResponse(request, 'admin/texts/text/purge.html', {
+            **self.admin_site.each_context(request), 'title': 'Usuń tekst z całą historią: ' + obj.title,
+            'form': form, 'original': obj, 'opts': self.model._meta, 'blocker': blocker,
+            'summary': [(label, count) for label, count in purge_summary(obj) if count],
+            'published': bool(obj.anthology_id and obj.anthology.status == 'ready')})
 
     @admin.display(description='Status tekstu')
     def manual_status_link(self, obj):

@@ -151,7 +151,8 @@ class MyWorkVisibilityTests(AnthologyWorkflowMixin, TestCase):
 
 
 class MyTextsAllOrderingTests(TestCase):
-    """Widok „Wszystkie” w Moich tekstach: kolejność alfabetyczna niezależnie od dat zakończenia."""
+    """Widok „Wszystkie” w Moich tekstach: najpierw ostatnio zakończona własna praca, potem teksty bez daty
+    (antologiami i tytułami). Klik w nagłówek kolumny nadal sortuje po niej."""
 
     @classmethod
     def setUpTestData(cls):
@@ -160,8 +161,9 @@ class MyTextsAllOrderingTests(TestCase):
         cls.other = get_user_model().objects.create_user('other', 'other@example.com', 'test')
         cls.book = Anthology.objects.create(title='Test')
 
-    def work(self, title, ago=None, editor=False, control_ago=None):
-        text = Text.objects.create(title=title, length=100, anthology=self.book)
+    def work(self, title, ago=None, editor=False, control_ago=None, anthology=None):
+        book = Anthology.objects.get_or_create(title=anthology)[0] if anthology else self.book
+        text = Text.objects.create(title=title, length=100, anthology=book)
         assignment = A.objects.create(text=text, role='editor' if editor else 'proofreader_1', assigned_to=self.member)
         ended = self.today - timedelta(days=ago) if ago is not None else None
         with importing():
@@ -175,25 +177,28 @@ class MyTextsAllOrderingTests(TestCase):
     def rows(self, params=''):
         return list(my_texts_context(user=self.member, selected_view='all', params=QueryDict(params))['texts'])
 
-    def test_all_uses_title_order_including_unknown_completion_dates(self):
+    def test_latest_own_completion_first_then_undated_by_anthology_and_title(self):
         oldest = self.work('A dawny', 20)
         newest = self.work('Z nowy', 1)
         unknown = self.work('B bez daty')
         middle = self.work('C średni', 10)
-        self.assertEqual([r['pk'] for r in self.rows()], [oldest.pk, unknown.pk, middle.pk, newest.pk])
+        unknown_first_book = self.work('Y bez daty', anthology='Alfa')
+        self.assertEqual([r['pk'] for r in self.rows()],
+                         [newest.pk, middle.pk, oldest.pk, unknown_first_book.pk, unknown.pk])
 
     def test_all_includes_editor_waiting_after_control_and_completed_proofreader(self):
         editor = self.work('A redakcja', 30, editor=True, control_ago=1)
         proof = self.work('Z korekta', 5)
-        self.assertEqual([r['pk'] for r in self.rows()], [editor.pk, proof.pk])
+        # Kontrola redakcji (cudza praca) nie przesuwa tekstu redaktora w górę.
+        self.assertEqual([r['pk'] for r in self.rows()], [proof.pk, editor.pk])
 
-    def test_other_performers_completion_does_not_change_title_order(self):
+    def test_other_performers_completion_does_not_count(self):
         old = self.work('A dawny', 20)
         recent = self.work('B nowy', 5)
         other_assignment = A.objects.create(text=old, role='proofreader_2', assigned_to=self.other)
         S.objects.create(text=old, stage_type='second_proofreading', assignment=other_assignment,
                          started_at=self.today, ended_at=self.today, is_completed=True)
-        self.assertEqual([r['pk'] for r in self.rows()], [old.pk, recent.pk])
+        self.assertEqual([r['pk'] for r in self.rows()], [recent.pk, old.pk])
 
     def test_several_own_roles_keep_single_row_and_explicit_header_sort(self):
         both = self.work('A dwa zadania', 20)
@@ -213,7 +218,7 @@ class MyTextsAllOrderingTests(TestCase):
         self.assertEqual(first.status_code, 200)
         self.assertEqual(second.status_code, 200)
         actual = [row['pk'] for response in (first, second) for row in response.context['texts']]
-        self.assertEqual(actual, [text.pk for text in texts])
+        self.assertEqual(actual, [text.pk for text in reversed(texts)])
 
 
 class EditorDashboardTests(EditingInProgressFixtures):

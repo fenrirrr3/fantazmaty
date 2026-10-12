@@ -157,6 +157,9 @@ def set_stage_dates(stage_id, user, version, *, started_at=None, ended_at=None,
         raise ValidationError('Aby zapisać zakończenie, zaznacz przekazanie tekstu do kolejnego etapu.')
     if finish and (not started_at or not ended_at):
         raise ValidationError('Zakończenie etapu wymaga obu dat.')
+    if finish and ended_at > timezone.localdate():
+        # Wcześniej odmowę zgłaszało ogólne sprawdzenie uprawnień („Nie możesz zakończyć tego etapu.”).
+        raise ValidationError('Nie można zakończyć pracy z przyszłą datą.')
 
     if started_at != stage.started_at:
         if started_at:

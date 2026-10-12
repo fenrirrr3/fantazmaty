@@ -54,7 +54,11 @@ def _alignment(paragraph):
     try:
         return paragraph_property(paragraph, "alignment")
     except ValueError:
-        owners = [paragraph._p, *(style.element for style in style_chain(paragraph_style(paragraph)))]
+        try:
+            styles = [style.element for style in style_chain(paragraph_style(paragraph))]
+        except ValueError:
+            styles = []  # styl o błędnym typie (uszkodzony DOCX) – liczy się tylko sam akapit
+        owners = [paragraph._p, *styles]
         for owner in owners:
             jc = owner.find(f'{qn("w:pPr")}/{qn("w:jc")}')
             if jc is not None:

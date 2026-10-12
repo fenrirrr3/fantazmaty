@@ -78,17 +78,6 @@ def home(request):
     )
 
 
-@never_cache
-@login_required
-@require_GET
-@team_member_required
-def audiobooks(request):
-    return render(
-        request,
-        "core/audiobooks.html",
-    )
-
-
 def _pending_reviews(user):
     reading, reserved = _review_tasks(user)
     return (reading | reserved).distinct()

@@ -290,11 +290,6 @@ def _flush_reviews(using):
         logger.info('Skipped %s review notifications in one batch', len(ids) - REVIEWS_PER_COMMIT)
 
 
-def sample_context():
-    return {'tytuł': 'Latarnik', 'antologia': 'Cienie miasta', 'gatunek': 'fantasy', 'długość': '25 000',
-            'etap': 'Redakcja'}
-
-
 def _on_review_saved(sender, instance, created, raw=False, using='default', **kwargs):
     if created and not raw:
         review_created(instance, using)

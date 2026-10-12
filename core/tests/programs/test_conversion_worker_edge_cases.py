@@ -1,0 +1,153 @@
+"""Proces roboczy konwertera: start (limit pamięci, brak pamięci, brak modułu resource), odnośniki między
+rozdziałami EPUB, obrazy odrzucane przy konwersji i raport błędu, którego nie da się zapisać."""
+import json
+import os
+import runpy
+import struct
+import sys
+import zlib
+from io import BytesIO
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
+from zipfile import ZipFile
+
+from django.test import SimpleTestCase, tag
+from docx import Document
+from PIL import Image
+
+import core.services
+from core.services import document_progress
+from core.services.document_conversion_worker import convert, cross_chapter_links, main
+from core.services.document_errors import DocumentInputError
+
+from .support import png
+
+BOOTSTRAP = Path(core.services.__file__).with_name('document_worker_bootstrap.py')
+
+
+class WorkerDirectoryMixin:
+    def setUp(self):
+        super().setUp()
+        temporary = TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.directory = Path(temporary.name)
+        # Proces roboczy kieruje raport postępu do katalogu zadania; po teście wyłączamy go.
+        progress = patch.object(document_progress, '_target', None)
+        progress.start()
+        self.addCleanup(progress.stop)
+
+
+class BootstrapTests(WorkerDirectoryMixin, SimpleTestCase):
+    def run_bootstrap(self, **patches):
+        """Uruchom bootstrap jako __main__ z podmienionym startem procesu roboczego; zwraca kod wyjścia lub None."""
+        runner = runpy.run_path
+        (self.directory / 'job.json').write_text(json.dumps({}), encoding='utf-8')
+        with patch('sys.argv', ['bootstrap', str(self.directory)]), patch('runpy.run_path', **patches):
+            try:
+                runner(str(BOOTSTRAP), run_name='__main__')
+            except SystemExit as stop:
+                return stop.code
+        return None
+
+    def report(self):
+        return json.loads((self.directory / 'error.json').read_text(encoding='utf-8'))
+
+    def test_memory_error_is_reported_without_the_frames_of_later_errors(self):
+        """Brak pamięci – także wtedy, gdy podczas jego obsługi wystąpił kolejny błąd – to raport MemoryError."""
+        def nested(*args, **kwargs):
+            try:
+                raise MemoryError
+            except MemoryError:
+                raise ValueError('PRYWATNE dane z dokumentu') from None
+
+        cases = {'bezpośrednio': MemoryError, 'w trakcie innego błędu': nested}
+        for label, failure in cases.items():
+            with self.subTest(label), patch('resource.setrlimit'):
+                self.assertEqual(self.run_bootstrap(side_effect=failure), 3)
+                report = self.report()
+                self.assertEqual((report['stage'], report['error']), ('konwersja', 'MemoryError'))
+                self.assertTrue(report['frames'])
+                self.assertNotIn('PRYWATNE', json.dumps(report))
+
+    def test_platform_without_resource_module_runs_without_a_limit(self):
+        with patch.dict(sys.modules, {'resource': None}):
+            self.assertIsNone(self.run_bootstrap())
+        self.assertEqual(json.loads((self.directory / 'progress.json').read_text())['stage'], 'start')
+        self.assertFalse((self.directory / 'error.json').exists())
+
+    def test_finite_hard_limit_caps_the_memory_limit(self):
+        import resource
+        hard = 600 * 1024 * 1024
+        with patch('resource.getrlimit', return_value=(hard, hard)), patch('resource.setrlimit') as setrlimit:
+            self.assertIsNone(self.run_bootstrap())
+        setrlimit.assert_called_once_with(resource.RLIMIT_AS, (hard, hard))
+
+
+class CrossChapterLinkTests(SimpleTestCase):
+    def test_only_links_to_other_chapters_get_a_file_name(self):
+        chapters = [
+            ('chapter-1.xhtml', '<p id="a">A <a href="#a">tutaj</a> <a href="#brak">nigdzie</a></p>'),
+            ('chapter-2.xhtml', '<p>B <a href="#a">do pierwszego</a> <a href="#b">tutaj</a></p><p id="b">C</p>'),
+        ]
+        first, second = cross_chapter_links(chapters)
+        self.assertEqual(first, chapters[0][1])  # rozdział bez odnośników do innych plików zostaje bez zmian
+        self.assertIn('href="chapter-1.xhtml#a"', second)
+        self.assertIn('href="#b"', second)
+        self.assertEqual(cross_chapter_links(chapters[:1]), [chapters[0][1]])
+
+
+def png_chunk(kind, data):
+    return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data) & 0xFFFFFFFF)
+
+
+class RejectedImageTests(WorkerDirectoryMixin, SimpleTestCase):
+    def source(self, *pictures):
+        """DOCX z obrazami; ich bajty w paczce zastępujemy podanymi (kolejność plików word/media)."""
+        document = Document()
+        document.add_paragraph('Ilustracja')
+        for _ in pictures:
+            document.add_picture(png(4, 4))
+        original = BytesIO()
+        document.save(original)
+        path = self.directory / 'source.docx'
+        replacements = iter(pictures)
+        with ZipFile(original) as source, ZipFile(path, 'w') as target:
+            for item in source.infolist():
+                data = source.read(item)
+                if item.filename.startswith('word/media/'):
+                    data = next(replacements)
+                target.writestr(item, data)
+        return path
+
+    def test_damaged_or_oversized_images_get_public_codes(self):
+        header = png(4, 4).getvalue()[:33]  # sygnatura i IHDR: Pillow otwiera plik, ale nie wczyta danych
+        truncated = header + png_chunk(b'IDAT', zlib.compress(b'\x00' * 3)[:4])
+        oversized = png(4, 4).getvalue() + b'\x00' * (20 * 1024 * 1024)
+        for label, picture, code in (('ucięte dane obrazu', truncated, 'unsupported_image'),
+                                     ('ponad 20 MB', oversized, 'image_too_large')):
+            with self.subTest(label), self.assertRaises(DocumentInputError) as raised:
+                convert(self.source(picture), self.directory, ['epub'], 'Obraz')
+            self.assertEqual(raised.exception.public_code, code)
+
+    @tag('slow')
+    def test_images_over_the_total_limit_are_refused(self):
+        """Każdy obraz mieści się w limicie, ale razem po rasteryzacji przekraczają 30 MB."""
+        noise = BytesIO()
+        Image.frombytes('RGB', (2150, 2150), os.urandom(2150 * 2150 * 3)).save(noise, 'PNG', compress_level=0)
+        with self.assertRaises(DocumentInputError) as raised:
+            convert(self.source(noise.getvalue(), noise.getvalue()), self.directory, ['epub'], 'Obraz')
+        self.assertEqual(raised.exception.public_code, 'too_many_images')
+
+
+class UnwritableReportTests(WorkerDirectoryMixin, SimpleTestCase):
+    def test_failure_is_returned_even_when_the_report_cannot_be_saved(self):
+        document = Document()
+        document.add_paragraph('Tekst')
+        document.save(self.directory / 'source.docx')
+        (self.directory / 'job.json').write_text(json.dumps({'formats': ['epub'], 'title': 'T'}))
+        (self.directory / 'error.json').mkdir()  # zapis raportu kończy się błędem systemu plików
+        with patch('sys.argv', ['worker', str(self.directory)]), \
+                patch('core.services.document_conversion_worker.convert', side_effect=RuntimeError):
+            self.assertEqual(main(), 3)
+        self.assertTrue((self.directory / 'error.json').is_dir())

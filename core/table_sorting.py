@@ -197,11 +197,6 @@ def _extra_columns(items, queryset, request):
                 ),
             }
         )
-        if request.resolver_match and request.resolver_match.url_name in (
-            "audiobook_list",
-            "audiobooks",
-        ):
-            columns["Autor"] = ("authors", lambda r: _get(r, "authors_display"))
         if request.resolver_match and request.resolver_match.url_name == "translation_list":
             columns["Tłumacz"] = ("translators", lambda r: _get(r, "translators_display"))
         if "work_active" in queryset.query.annotations:

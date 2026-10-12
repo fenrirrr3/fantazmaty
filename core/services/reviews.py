@@ -286,7 +286,9 @@ def save_reviewer_opinion(
     assignment.save(update_fields=update_fields)
 
     review.content_warnings = cleaned["content_warnings"]
-    review.full_clean()
+    # Sprawdzamy tylko zmieniane pole: brak gatunku czy e-maila w zgłoszeniu (sprawa koordynatora)
+    # nie może blokować opinii recenzenta.
+    review.clean_fields(exclude=[field.name for field in Review._meta.fields if field.name != "content_warnings"])
     review.save(update_fields=["content_warnings"])
 
     return assignment

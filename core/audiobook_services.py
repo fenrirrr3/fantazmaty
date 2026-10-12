@@ -9,7 +9,6 @@ Zmiany blokują tekst, tak jak tokeny edycji.
 """
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
-from django.db.models import Max
 from django.utils import timezone
 
 from core.audiobook_models import StageType
@@ -25,10 +24,6 @@ NEXT_STAGE = dict(zip(STAGE_ORDER, STAGE_ORDER[1:]))
 
 def stage_label(stage_type):
     return dict(StageType.choices).get(stage_type, stage_type)
-
-
-def status_label(status):
-    return dict(Status.choices).get(status, status)
 
 
 def ordered_stages(text):
@@ -57,10 +52,6 @@ def record_event(text, user, *, previous, current, details, personal=''):
         details=details, channel=audiobook_channel())
     transaction.on_commit(lambda pk=event.pk: notify_after_commit(pk))
     return event
-
-
-def status_text(audio):
-    return audio.status_label if audio else status_label(Status.PENDING)
 
 
 def require_available(text):
@@ -296,6 +287,3 @@ def stage_periods(stages):
                                               'is_completed': stage.is_completed})
     return periods
 
-
-def next_position(text):
-    return 1 + (AudiobookStage.objects.filter(text=text).aggregate(m=Max('position'))['m'] or 0)

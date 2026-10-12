@@ -17,7 +17,8 @@ PART = re.compile(r'word/(document|header\d*|footer\d*|footnotes|endnotes)\.xml\
 DELETED = {WORD+'del', WORD+'moveFrom'}
 NONBREAKING = str.maketrans(dict.fromkeys('\u00a0\u202f\u2007', ' '))
 WORD_ID = WORD+'id'
-ID_RE = re.compile(rb'\bw:id="(\d+)"')
+# Atrybut w:id="…" (komentarze, zakładki, zmiany) i element <w:id w:val="…"/> (kontrolki zawartości).
+ID_RE = re.compile(rb'\bw:id="(\d+)"|<w:id\s+w:val="(\d+)"')
 HEADING_NAME = re.compile(r'(?:heading|nagłówek|naglowek)\s*\d', re.IGNORECASE)
 
 
@@ -28,7 +29,8 @@ class _Ids:
         highest = 0
         for entry in archive.infolist():
             if entry.filename.endswith('.xml'):
-                highest = max([highest, *map(int, ID_RE.findall(archive.read(entry)))])
+                found = (int(attribute or element) for attribute, element in ID_RE.findall(archive.read(entry)))
+                highest = max([highest, *found])
         self.next = highest + 1
 
     def renumber(self, element):
