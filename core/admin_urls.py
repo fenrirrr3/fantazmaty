@@ -10,6 +10,8 @@ SEGMENTS = {
     'publicaudiobooksettings': 'zewnetrzne-audiobooki',
     'publicillustrationsettings': 'zewnetrzne-ilustracje',
     'replacemententry': 'slownik-zamian',
+    'notificationrule': 'powiadomienia-discord', 'discordrole': 'role-discorda',
+    'discordnotification': 'wyslane-powiadomienia',
     "blacklistentry": "wpis-czarnej-listy", "workflowrepetition": "powtorzenie-etapow",
     "workflowhandoff": "przekazanie-pracy", "r": "przejdz",
     "mailboxconnection": "skrzynki-zgloszen", "useractivity": "aktywnosc-uzytkownikow",

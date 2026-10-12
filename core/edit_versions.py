@@ -31,6 +31,7 @@ TRACKED = {
     'workflow.workflowrepetition', 'people.person', 'people.vacation',
     'people.role', 'authors.author', 'authors.authornote', 'authors.blacklistedauthor', 'authors.blacklistentry',
     'core.mailboxconnection', 'core.newsletterconsent',
+    'core.notificationrule', 'core.notificationtemplate', 'core.discordrole',
     'core.anthologycorrection', 'core.recruitment', 'auth.user', 'auth.group',
 }
 
@@ -40,6 +41,7 @@ PARENTS = {
     'core.audiodescriptionnote': (('description_id', 'core.audiodescription'),),
     'core.audiodescription': (('anthology_id', 'texts.anthology'),),
     'core.audiobook': (('text_id', 'texts.text'),),
+    'core.notificationtemplate': (('rule_id', 'core.notificationrule'),),
     'core.audiobookstage': (('text_id', 'texts.text'),),
     'workflow.workflowstage': (('text_id', 'texts.text'),),
     'workflow.workflowroleassignment': (('text_id', 'texts.text'),),

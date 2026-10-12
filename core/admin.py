@@ -19,6 +19,7 @@ from core.models import Audiobook, AudiobookStage
 from core.models import AudioContributor
 from core.models import PostLayoutAssignment
 from core.audiobook_forms import AudiobookProductionForm
+from core import notification_admin  # noqa: F401 – rejestracja panelu powiadomień Discord
 
 
 class AudiobookAdminForm(AudiobookProductionForm):

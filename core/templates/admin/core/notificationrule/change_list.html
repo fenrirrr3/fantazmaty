@@ -1,0 +1,8 @@
+{% extends "admin/change_list.html" %}
+{% block content_title %}{{ block.super }}<p class="help">Każde zdarzenie ma kanał, opcjonalne oznaczenie roli i jedną lub więcej treści (przy wysyłce losowana jest jedna). Tagi w treści: [tytuł], [antologia], [gatunek], [długość], [etap], [rola] – miejsce oznaczenia roli (bez niego oznaczenie trafia na początek).</p>{% endblock %}
+{% block object-tools-items %}
+<li><a href="{% url 'admin:core_notificationrule_test' %}">Testowe wysyłanie</a></li>
+<li><a href="{% url 'admin:core_discordrole_changelist' %}">Role Discorda</a></li>
+<li><a href="{% url 'admin:core_discordnotification_changelist' %}">Historia wysyłek</a></li>
+{{ block.super }}
+{% endblock %}

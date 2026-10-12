@@ -7,6 +7,10 @@ from core.audiobook_models import Audiobook as Audiobook
 from core.audiobook_models import AudiobookStage as AudiobookStage
 from core.audiobook_models import AudioContributor as AudioContributor
 from core.post_layout_models import PostLayoutAssignment as PostLayoutAssignment
+from core.notification_models import DiscordRole as DiscordRole
+from core.notification_models import NotificationRule as NotificationRule
+from core.notification_models import NotificationTemplate as NotificationTemplate
+from core.notification_models import DiscordNotification as DiscordNotification
 
 
 class PublicAudiobookSettings(models.Model):

@@ -1,0 +1,114 @@
+"""Konfigurowalne powiadomienia Discord: reguły (kanał, oznaczenie roli, treści) i kolejka wysyłek."""
+import re
+
+from django.core.exceptions import ValidationError
+from django.core.validators import RegexValidator
+from django.db import models
+
+from core.edit_versions import VersionedQuerySet
+
+ROLE_NAME_RE = re.compile(r'[0-9A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż_.-]{1,50}')
+TEMPLATE_TAGS = {
+    'tytuł': 'tytuł tekstu',
+    'antologia': 'tytuł antologii',
+    'gatunek': 'gatunek',
+    'długość': 'długość w znakach ze spacjami',
+    'etap': 'nazwa etapu',
+    'rola': 'oznaczenie roli (bez tego tagu trafia na początek wiadomości)',
+}
+TAG_RE = re.compile(r'\[([^\[\]\n]{1,30})\]')
+
+
+def validate_template_tags(value):
+    unknown = sorted({tag for tag in TAG_RE.findall(value) if tag.lower() not in TEMPLATE_TAGS})
+    if unknown:
+        raise ValidationError('Nieznane tagi: %(tags)s. Dostępne: %(allowed)s.', params={
+            'tags': ', '.join(f'[{tag}]' for tag in unknown),
+            'allowed': ', '.join(f'[{tag}]' for tag in TEMPLATE_TAGS)})
+
+
+class DiscordRole(models.Model):
+    """Nazwa używana w regułach (@redaktor) → identyfikator roli na serwerze Discorda."""
+    objects = VersionedQuerySet.as_manager()
+    name = models.CharField('nazwa (bez @)', max_length=50, unique=True,
+                            validators=[RegexValidator(ROLE_NAME_RE, 'Nazwa: litery, cyfry, kropka, podkreślnik lub dywiz.')],
+                            help_text='Np. redaktor – w regule wpiszesz wtedy @redaktor.')
+    role_id = models.CharField('ID roli na Discordzie', max_length=25,
+                               validators=[RegexValidator(r'^[0-9]{5,25}$', 'Wpisz sam numer ID roli.')],
+                               help_text='Discord: Ustawienia serwera → Role → prawy przycisk na roli → Kopiuj ID roli '
+                                         '(wymaga włączonego trybu dewelopera).')
+
+    class Meta:
+        ordering = ('name',)
+        verbose_name = 'rola Discorda'
+        verbose_name_plural = 'role Discorda'
+
+    def __str__(self):
+        return f'@{self.name}'
+
+
+class NotificationRule(models.Model):
+    class Trigger(models.TextChoices):
+        REVIEW = 'review_new', 'Nowy tekst do recenzji'
+        EDITING = 'ready_for_editing', 'Nowy tekst do redakcji'
+        FIRST_PROOFREADING = 'first_proofreading', 'Nowy tekst do pierwszej korekty'
+        THIRD_PROOFREADING = 'third_proofreading', 'Nowy tekst do trzeciej korekty'
+        FIRST_VERIFICATION = 'first_verification', 'Nowy tekst do pierwszej weryfikacji'
+        SECOND_VERIFICATION = 'second_verification', 'Nowy tekst do drugiej weryfikacji'
+        THIRD_VERIFICATION = 'third_verification', 'Nowy tekst do trzeciej weryfikacji'
+        STAGE_COMPLETED = 'stage_completed', 'Zakończenie etapu (wszystkie etapy)'
+
+    objects = VersionedQuerySet.as_manager()
+    trigger = models.CharField('kiedy', max_length=32, choices=Trigger.choices, unique=True, editable=False)
+    enabled = models.BooleanField('włączone', default=False)
+    channel = models.CharField('kanał', max_length=100, blank=True,
+                               help_text='Nazwa kanału z konfiguracji webhooków serwera (DISCORD_WEBHOOKS).')
+    mention = models.CharField('oznacz rolę', max_length=60, blank=True,
+                               help_text='Np. @redaktor (rola z listy „Role Discorda”) albo @here. Puste – bez oznaczenia.')
+
+    class Meta:
+        ordering = ('pk',)
+        verbose_name = 'powiadomienie Discord'
+        verbose_name_plural = 'powiadomienia Discord – ustawienia'
+
+    def __str__(self):
+        return self.get_trigger_display()
+
+
+class NotificationTemplate(models.Model):
+    objects = VersionedQuerySet.as_manager()
+    rule = models.ForeignKey(NotificationRule, on_delete=models.CASCADE, related_name='templates')
+    content = models.TextField('treść', max_length=1500, validators=[validate_template_tags])
+
+    class Meta:
+        ordering = ('pk',)
+        verbose_name = 'treść wiadomości'
+        verbose_name_plural = 'treści wiadomości (losowana jest jedna)'
+
+    def __str__(self):
+        return self.content[:60]
+
+
+class DiscordNotification(models.Model):
+    """Kolejka wysyłek – każda wiadomość z reguły trafia tu przed wysłaniem."""
+    trigger = models.CharField('zdarzenie', max_length=32, choices=NotificationRule.Trigger.choices, db_index=True)
+    channel = models.CharField('kanał', max_length=100)
+    content = models.TextField('treść')
+    role_ids = models.CharField('oznaczone role (ID)', max_length=200, blank=True)
+    mention_here = models.BooleanField('@here', default=False)
+    text = models.ForeignKey('texts.Text', null=True, blank=True, on_delete=models.SET_NULL, verbose_name='tekst')
+    review = models.ForeignKey('texts.Review', null=True, blank=True, on_delete=models.SET_NULL, verbose_name='zgłoszenie')
+    status = models.CharField('stan', max_length=12, default='pending', choices=(
+        ('pending', 'Oczekuje'), ('sending', 'Wysyłanie / brak potwierdzenia'), ('sent', 'Wysłano'),
+        ('failed', 'Błąd wysyłki'), ('unknown', 'Brak potwierdzenia'), ('disabled', 'Brak skonfigurowanego kanału')))
+    message_id = models.CharField(max_length=30, blank=True)
+    sending_started_at = models.DateTimeField(null=True, blank=True, editable=False)
+    created_at = models.DateTimeField('utworzono', auto_now_add=True)
+
+    class Meta:
+        ordering = ('-created_at', '-pk')
+        verbose_name = 'wysłane powiadomienie Discord'
+        verbose_name_plural = 'powiadomienia Discord – historia wysyłek'
+
+    def __str__(self):
+        return f'{self.get_trigger_display()} → {self.channel}'

@@ -18,8 +18,8 @@ GROUPS = (
     ('people', 'Ludzie', ('people.person', 'people.vacation', 'authors.author', 'blacklist')),
     ('recruitment', 'Rekrutacja', ('core.recruitment', 'recruitment_mailbox')),
     ('accounts', 'Konta i uprawnienia', ('auth.user', 'people.role', 'auth.group')),
-    ('settings', 'Ustawienia', ('core.mailboxconnection',)),
-    ('history', 'Historia i diagnostyka', ('workflow.workflowstage', 'workflow.workflowroleassignment', 'core.workflowevent', 'core.useractivity')),
+    ('settings', 'Ustawienia', ('core.mailboxconnection', 'core.notificationrule', 'core.discordrole')),
+    ('history', 'Historia i diagnostyka', ('workflow.workflowstage', 'workflow.workflowroleassignment', 'core.workflowevent', 'core.discordnotification', 'core.useractivity')),
 )
 EXPANDED = ('submissions', 'texts', 'publication')
 DETAIL_MODELS = ('texts.textnote', 'authors.authornote', 'texts.reviewassignment', 'texts.reviewers',
@@ -32,6 +32,8 @@ LABELS = {
     'workflow.workflowstage': 'Etapy pracy', 'workflow.workflowroleassignment': 'Przydziały wykonawców',
     'auth.group': 'Grupy uprawnień', 'texts.reviewassignment': 'Oceny i przydziały recenzentów',
     'texts.reviewers': 'Ogólne uwagi do zgłoszeń',
+    'core.notificationrule': 'Powiadomienia Discord', 'core.discordrole': 'Role Discorda',
+    'core.discordnotification': 'Historia powiadomień Discord',
 }
 
 

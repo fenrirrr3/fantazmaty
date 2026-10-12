@@ -59,7 +59,7 @@ class SendMessageTests(SimpleTestCase):
             self.assertEqual(send_message(URL, 'Treść'), '999')
         request = opener.open.call_args.args[0]
         self.assertTrue(request.full_url.endswith('?wait=true'))
-        self.assertEqual(json.loads(request.data)['allowed_mentions'], {'parse': []})
+        self.assertEqual(json.loads(request.data)['allowed_mentions'], {'parse': [], 'roles': []})
 
     def test_invalid_url_is_refused_before_network(self):
         with patch('core.discord_webhook.build_opener') as build:
