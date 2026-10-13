@@ -1,6 +1,7 @@
 """Tabele Audiobooki i Korekta audiobooków (filtry, sortowanie, okresy etapów, liczba zapytań) oraz publiczna lista zewnętrzna."""
 from datetime import date
 
+from django.templatetags.static import static
 from django.contrib.auth import get_user_model
 from django.db import IntegrityError, connection, transaction
 from django.test import TestCase, tag
@@ -131,6 +132,30 @@ class AudiobookTableTests(TestCase):
         self.assertEqual(len(page.context['texts']), 4)
         self.assertContains(page, 'status=recording&amp;status=editing')
 
+    def test_published_without_premiere_date_filter(self):
+        """Opcja „Opublikowane bez daty publikacji” łączy się z innymi statusami, antologią, wyszukiwaniem i sortowaniem."""
+        dated = Text.objects.create(title='Audio z datą', anthology=self.books[2], length=1)
+        Audiobook.objects.create(text=dated, status='published', premiere_date=date(2024, 5, 1))
+        undated = self.texts[2]
+        other = Text.objects.create(title='Audio 3 bez daty', anthology=self.books[0], length=1)
+        Audiobook.objects.create(text=other, status='published')
+        cases = (
+            ({'status': 'published_no_date'}, {undated.pk, other.pk}),
+            ({'status': 'published'}, {undated.pk, other.pk, dated.pk}),
+            ({'status': ['published_no_date', 'recording']}, {undated.pk, other.pk, self.texts[0].pk}),
+            ({'status': 'published_no_date', 'anthology': self.books[2].pk}, {undated.pk}),
+            ({'status': 'published_no_date', 'q': 'bez daty'}, {other.pk}),
+            ({'status': 'published_no_date', 'sort': '-title', 'page_size': '25'}, {undated.pk, other.pk}),
+        )
+        for params, expected in cases:
+            with self.subTest(params=params):
+                page = self.client.get(self.url, params)
+                self.assertEqual({row['pk'] for row in page.context['texts']}, expected)
+        doc = html.fromstring(self.client.get(self.url, {'status': 'published_no_date'}).content)
+        self.assertEqual(doc.xpath('//select[@name="status"]/option[@selected]/text()'), ['Opublikowane bez daty publikacji'])
+        # Korekta audiobooków nie zna tej opcji – nieznana wartość daje pustą listę jak dotąd.
+        self.assertNotIn('published_no_date', dict(self.client.get(reverse('core:audio_proofreading')).context['status_choices']))
+
     def test_date_ranges_preserve_repeated_and_incomplete_history_and_legacy_start(self):
         audio = self.audios[0]
         for position, (start, end, kind, done) in enumerate([
@@ -200,6 +225,7 @@ class ExternalAudiobookTests(TestCase):
                 self.assertNotContains(response, value)
             self.assertEqual(response['X-Robots-Tag'], 'noindex, nofollow')
             self.assertIn('no-store', response['Cache-Control'])
+            self.assertContains(response, static('core/layout.js'))  # na telefonie wiersze jako karty z etykietami
             self.assertEqual(self.client.post(self.url, {}).status_code, 405)
         self.client.logout()
         self.assertEqual(self.client.get(reverse('core:audiobooks')).status_code, 302)

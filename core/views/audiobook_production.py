@@ -61,14 +61,20 @@ def author_links(text, user):
 
 
 STATUS_FILTERS = list(Audiobook.Status.choices)
+PUBLISHED_NO_DATE = 'published_no_date'
+# Lista audiobooków ma dodatkową opcję do uzupełniania brakujących dat premiery.
+AUDIOBOOK_STATUS_FILTERS = [*STATUS_FILTERS, (PUBLISHED_NO_DATE, 'Opublikowane bez daty publikacji')]
 STATUS_RANK = Case(*[When(audiobook__status=value, then=Value(index)) for index, value in enumerate(Audiobook.Status.values)],
                    default=Value(0), output_field=IntegerField())
 
 
-def filter_statuses(rows, values):
-    if not all(value in Audiobook.Status.values for value in values):
+def filter_statuses(rows, values, *, allowed=STATUS_FILTERS):
+    """Wybrane opcje łączy „lub”; nieznana wartość daje pustą listę."""
+    if not all(value in dict(allowed) for value in values):
         return rows.none()
     condition = Q(audiobook__status__in=values)
+    if PUBLISHED_NO_DATE in values:
+        condition |= Q(audiobook__status=Audiobook.Status.PUBLISHED, audiobook__premiere_date__isnull=True)
     if Audiobook.Status.PENDING in values:
         condition |= Q(audiobook__isnull=True)
     return rows.filter(condition)
@@ -107,8 +113,9 @@ def list_page(request, *, proofreading=False, bound_assignment=None, status_code
         valid = all(v.isascii() and v.isdecimal() and len(v) <= 18 for v in anthologies_selected)
         rows = rows.filter(anthology_id__in=[int(v) for v in anthologies_selected]) if valid else rows.none()
     rows = rows.alias(audio_status_rank=STATUS_RANK)
+    status_choices = STATUS_FILTERS if proofreading else AUDIOBOOK_STATUS_FILTERS
     if statuses_selected:
-        rows = filter_statuses(rows, statuses_selected)
+        rows = filter_statuses(rows, statuses_selected, allowed=status_choices)
     if not proofreading:
         rows = rows.prefetch_related(Prefetch('audiobook_stages',
             queryset=AudiobookStage.objects.order_by('position', 'pk'), to_attr='production_periods'))
@@ -150,7 +157,7 @@ def list_page(request, *, proofreading=False, bound_assignment=None, status_code
     return render(request, 'core/audio_proofreading.html' if proofreading else 'core/audiobooks.html',
         dict(texts=page, page_obj=page, anthologies=anthologies, can_assign=coordinator, can_claim=claimant,
         query=q, selected_anthology=request.GET.get('anthology', ''), selected_status=request.GET.get('status', ''),
-        selected_anthologies=anthologies_selected, selected_statuses=statuses_selected, status_choices=STATUS_FILTERS,
+        selected_anthologies=anthologies_selected, selected_statuses=statuses_selected, status_choices=status_choices,
         hide_completed=hide_completed), status=status_code)
 
 

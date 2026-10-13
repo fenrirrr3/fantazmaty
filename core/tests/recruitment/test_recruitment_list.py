@@ -6,7 +6,6 @@ from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
-from django.utils import timezone
 from lxml import html
 
 from authors.models import Author
@@ -17,7 +16,6 @@ from core.services.recruitment_decisions import set_all_decisions
 from core.services.mailbox import MailboxError
 from core.services.recruitment_samples import parse_sample
 from people.models import Person, Role
-from texts.models import Anthology, Review
 
 from .support import FORM_BODY, RecruitmentTeamMixin
 
@@ -171,12 +169,6 @@ class RecruitmentDashboardTests(TestCase):
         Recruitment.objects.create(mail_subject='Bez roli')
         Recruitment.objects.create(mail_roles=['editors'], status='accepted')
         Recruitment.objects.create(mail_roles=['editors'], status='rejected')
-        anthology = Anthology.objects.create(title='Antologia kolejki')
-        Review.objects.create(anthology=anthology, title='Jawny tytuł', length=1000, author_first_name='Tajny',
-                              author_last_name='Autor', email='secret@example.test', status='accepted',
-                              author_notified_at=timezone.now())
-        Review.objects.create(anthology=anthology, title='Ukryty tytuł', length=1000, status='accepted',
-                              author_notified_at=timezone.now(), is_hidden=True)
 
     def test_counts_and_links_match_pending_records_for_both_privileged_roles(self):
         for user in (self.admin, self.coordinator):
@@ -190,10 +182,6 @@ class RecruitmentDashboardTests(TestCase):
                 self.assertEqual(page.status_code, 200)
                 self.assertEqual(page.context['page_obj'].paginator.count, int(link.text_content().rsplit(':', 1)[1]))
                 self.assertTrue(all(item.status == 'new' for item in page.context['items']))
-            self.assertContains(response, 'Jawny tytuł')
-            if user == self.coordinator:
-                self.assertNotContains(response, 'Tajny Autor')
-                self.assertNotContains(response, 'Ukryty tytuł')
 
     def test_no_pending_hides_entire_card_and_member_cannot_access_queue(self):
         self.client.force_login(self.member)

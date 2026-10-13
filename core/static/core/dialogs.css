@@ -28,7 +28,13 @@
     overflow-wrap: anywhere;
 }
 
-.external-illustrations .external-tags {
+.external-illustrations .external-tags,
+.external-illustrations .external-warnings {
     max-width: 28rem;
     white-space: pre-line;
+}
+
+/* W karcie mobilnej plakietka statusu nie rozciąga się na całą szerokość komórki. */
+.external-illustrations .illustration-status {
+    justify-self: start;
 }

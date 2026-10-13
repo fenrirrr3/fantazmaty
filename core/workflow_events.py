@@ -24,7 +24,8 @@ def snapshot(text_id, using):
     return {'cycle': text.current_workflow_cycle, 'status': stage.get_stage_type_display() if stage else 'Brak otwartego etapu',
             'detail': {s.pk: {'type': s.stage_type, 'type_display': s.get_stage_type_display(), 'released': s.is_released,
                               'started': bool(s.started_at), 'completed': s.is_completed,
-                              'assigned': bool(s.assignment_id and s.assignment.assigned_to_id)} for s in stages},
+                              'assigned': bool(s.assignment_id and s.assignment.assigned_to_id),
+                              'iteration': s.iteration} for s in stages},
             'stages': {s.pk: (f'{s.get_stage_type_display()} – wykonanie {s.execution_number}' + (f' – {s.assignment.assigned_to.get_full_name() or s.assignment.assigned_to.get_username()}' if s.assignment_id and s.assignment.assigned_to_id else ''), str(s.started_at or ''), str(s.ended_at or ''), s.is_completed, s.assignment.assigned_to_id if s.assignment_id else None) for s in stages}}
 
 

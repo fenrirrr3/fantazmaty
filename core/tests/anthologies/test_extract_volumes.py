@@ -212,8 +212,9 @@ class ExtractVolumePageTests(AnthologyPageData, TestCase):
         page = self.client.get(reverse("core:assigned_text_detail", args=[whole.pk]))
         doc = html.fromstring(page.content)
         headings = [x.text_content().strip() for x in doc.xpath("//h2|//summary")]
-        for label in ["Recenzje tekstu", "Audiobook", "Ilustracja", "Wycofaj tekst", "Tagi i gatunek"]:
+        for label in ["Recenzje tekstu", "Audiobook", "Ilustracja", "Wycofaj tekst"]:
             self.assertFalse(any(label in value for value in headings), label)
+        self.assertFalse(doc.xpath('//*[@data-text-info="tags" or @data-text-info="genre"]'))
         self.assertContains(page, "Notatki zespołu")
         self.assertContains(page, "nie dotyczy")
         page = self.client.get(reverse("core:text_list"), {"q": "Ekstrakty"})
@@ -221,4 +222,4 @@ class ExtractVolumePageTests(AnthologyPageData, TestCase):
         self.assertNotContains(page, ">None<")
         normal = self.client.get(reverse("core:assigned_text_detail", args=[normal_text.pk]))
         self.assertContains(normal, "Recenzje tekstu")
-        self.assertContains(normal, "Tagi i gatunek")
+        self.assertEqual(html.fromstring(normal.content).xpath('//*[@data-text-info]/@data-text-info'), ["tags", "genre"])

@@ -107,7 +107,7 @@ class IllustrationAdmin(admin.ModelAdmin):
         "illustrators__last_name__plcontains",
         "illustrators__pseudonym__plcontains",
         "illustrators__email__plcontains",
-        "trigger_warnings__plcontains",
+        "text__content_warnings__plcontains",
         "illustrated_excerpt__plcontains",
     )
 
@@ -148,7 +148,6 @@ class IllustrationAdmin(admin.ModelAdmin):
             "Informacje dodatkowe",
             {
                 "fields": (
-                    "trigger_warnings",
                     "coordinator_notes",
                 ),
             },

@@ -82,6 +82,22 @@ class StylesheetTests(SimpleTestCase):
         self.assertIn('--badge-fg: var(--muted);\n    --badge-border: currentColor;', css)
         self.assertNotIn('--badge-border: transparent', css)
 
+    def test_team_notes_use_theme_tokens_with_dark_variants(self):
+        """Notatki zespołu: żółte tło z tokenów ostrzeżenia, ważne – czerwone; tokeny tła mają wariant ciemny."""
+        css = self.css('components.css')
+        rules = {
+            '.text-notes-card .text-note {': ('var(--warning-light)', 'var(--warning-border)'),
+            '.text-notes-card .text-note.is-important {': ('var(--danger-light)', 'var(--danger-border)'),
+        }
+        for selector, tokens in rules.items():
+            with self.subTest(selector=selector):
+                block = css[css.index(selector):].split('}', 1)[0]
+                for token in tokens:
+                    self.assertIn(token, block)
+        dark = self.css('themes.css').split(':root[data-theme="dark"]', 1)[1].split('}', 1)[0]
+        for token in ('--warning-light:', '--danger-light:', '--danger-border:'):
+            self.assertIn(token, dark)
+
     def test_external_buttons_use_the_accent_colour(self):
         self.assertIn('.audiobook-public-button', self.css('components.css'))
         for theme in ('--accent:', '--accent-hover:'):

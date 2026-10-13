@@ -1,13 +1,20 @@
 """Zapisy na stronie tekstu poza tagami: notatki (dodanie, edycja, usunięcie – autor notatki albo
 koordynator), notatka koordynatora, ostrzeżenia dotyczące treści i folder Dropbox; uprawnienia osób
-przypisanych do bieżącego cyklu, odrzucane dane i rozdziały powieści."""
+przypisanych do bieżącego cyklu, odrzucane dane i rozdziały powieści; oznaczanie nowych notatek
+od ostatniej wizyty na karcie tekstu."""
+from datetime import timedelta
 from tempfile import TemporaryDirectory
 
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
+from lxml import html
+
+from core.edit_versions import version_of
+from core.models import WorkflowEvent
 
 from fantazmaty.testing import create_member, create_superuser, edit_token
-from texts.models import Anthology, Text, TextNote
+from texts.models import Anthology, Text, TextNote, TextVisit
 from workflow.models import WorkflowRoleAssignment
 
 NUL = 'zły\x00znak'  # Formularze odrzucają znak NUL – jedyna niepoprawna treść pól tekstowych.
@@ -153,3 +160,119 @@ class TextFieldsEditingTests(TextFieldsTestData, TestCase):
         self.client.force_login(self.admin)
         self.assertRedirects(self.client.get(reverse('core:assigned_text_detail', args=[translated.pk])),
                              reverse('core:translation_detail', args=[translated.pk]))
+
+
+class TextNewNotesTests(TextFieldsTestData, TestCase):
+    """Komunikat o nowych notatkach zespołu od ostatniej wizyty na karcie tekstu."""
+
+    def visit(self, user):
+        self.client.force_login(user)
+        response = self.client.get(self.detail)
+        self.assertEqual(response.status_code, 200)
+        return response, html.fromstring(response.content)
+
+    def note(self, author, *, age=None, important=False):
+        note = TextNote.objects.create(text=self.text, author=author, content='Treść', is_important=important)
+        if age is not None:
+            TextNote.objects.filter(pk=note.pk).update(created_at=timezone.now() - age)
+        return note
+
+    @staticmethod
+    def alerts(doc):
+        return doc.xpath('//div[contains(@class,"new-notes-alert")]')
+
+    def test_alert_shows_once_and_marks_new_note(self):
+        """Notatka innej osoby dodana po wizycie: baner z autorem i kotwicą do notatek oraz etykieta „Nowa”
+        przy pierwszym wejściu; kolejne odświeżenie już ich nie pokazuje."""
+        self.visit(self.editor)
+        self.note(self.coordinator, important=True)
+        _, doc = self.visit(self.editor)
+        alert = self.alerts(doc)
+        self.assertEqual(len(alert), 1)
+        text = ' '.join(alert[0].text_content().split())
+        self.assertIn('Nowa notatka (ważna) od', text)
+        self.assertIn('od fields-coordinator', text)
+        self.assertEqual(alert[0].xpath('.//a/@href'), ['#text-notes'])
+        self.assertTrue(doc.xpath('//section[@id="text-notes"]'))
+        marked = doc.xpath('//details[contains(concat(" ", @class, " "), " is-new ")]')
+        self.assertEqual(len(marked), 1)
+        self.assertEqual(marked[0].xpath('.//span[@class="new-note-badge"]/text()'), ['Nowa'])
+        _, doc = self.visit(self.editor)
+        self.assertFalse(self.alerts(doc))
+        self.assertFalse(doc.xpath('//*[contains(@class,"new-note-badge")]'))
+
+    def test_which_notes_count_as_new(self):
+        """Nowe są tylko cudze notatki (także z usuniętego konta) nowsze niż poprzednia wizyta;
+        bez zapisu wizyty – cudze notatki z ostatnich 14 dni."""
+        day = timedelta(days=1)
+        cases = [
+            # (opis, wiek poprzedniej wizyty albo None, autor, wiek notatki, czy nowa)
+            ('cudza po wizycie', 2 * day, 'other', day, True),
+            ('z usuniętego konta po wizycie', 2 * day, None, day, True),
+            ('własna po wizycie', 2 * day, 'own', day, False),
+            ('cudza przed wizytą', day, 'other', 2 * day, False),
+            ('pierwsza wizyta – cudza sprzed 13 dni', None, 'other', 13 * day, True),
+            ('pierwsza wizyta – cudza sprzed 15 dni', None, 'other', 15 * day, False),
+            ('pierwsza wizyta – własna z wczoraj', None, 'own', day, False),
+        ]
+        authors = {'other': self.coordinator, 'own': self.editor, None: None}
+        for label, visit_age, author, note_age, expected in cases:
+            with self.subTest(label):
+                TextNote.objects.all().delete()
+                TextVisit.objects.all().delete()
+                if visit_age is not None:
+                    TextVisit.objects.create(user=self.editor, text=self.text,
+                                             last_seen_at=timezone.now() - visit_age)
+                self.note(authors[author], age=note_age)
+                _, doc = self.visit(self.editor)
+                self.assertEqual(len(self.alerts(doc)), int(expected))
+                self.assertEqual(len(doc.xpath('//details[contains(@class,"is-new")]')), int(expected))
+
+    def test_several_new_notes_are_counted_in_one_alert(self):
+        """Kilka nowych notatek – jeden baner z liczbą notatek i liczbą ważnych."""
+        self.visit(self.editor)
+        self.note(self.coordinator)
+        self.note(self.coordinator, important=True)
+        self.note(self.admin)
+        _, doc = self.visit(self.editor)
+        self.assertEqual(' '.join(self.alerts(doc)[0].xpath('./strong')[0].text_content().split()),
+                         'Nowe notatki: 3')
+        self.assertIn('w tym ważne: 1', self.alerts(doc)[0].text_content())
+
+    def test_visit_is_one_row_and_does_not_touch_edit_version_or_logs(self):
+        """Wejście zapisuje jeden wiersz wizyty na parę (osoba, tekst) i go aktualizuje,
+        nie zmieniając wersji edycji tekstu ani dziennika zdarzeń."""
+        self.note(self.coordinator)
+        version, events = version_of(self.text), WorkflowEvent.objects.count()
+        self.visit(self.editor)
+        first = TextVisit.objects.get(user=self.editor, text=self.text).last_seen_at
+        self.visit(self.editor)
+        visits = TextVisit.objects.filter(user=self.editor, text=self.text)
+        self.assertEqual(visits.count(), 1)
+        self.assertGreater(visits.get().last_seen_at, first)
+        self.assertEqual(str(visits.get()), f'{self.text.pk} – {self.editor.pk}')
+        self.assertEqual(version_of(self.text), version)
+        self.assertEqual(WorkflowEvent.objects.count(), events)
+
+    def test_visit_is_not_recorded_in_preview_or_after_rejected_form(self):
+        """Podgląd jako inna osoba i ponowne wyświetlenie strony po błędzie formularza nie zapisują wizyty."""
+        from core.user_preview import SESSION_KEY
+
+        self.client.force_login(self.admin)
+        session = self.client.session
+        session[SESSION_KEY] = {'actor': self.admin.pk, 'target': self.editor.pk}
+        session.save()
+        self.assertEqual(self.client.get(self.detail).status_code, 200)
+        self.assertFalse(TextVisit.objects.exists())
+        self.assertEqual(self.post(self.editor, 'core:add_text_note', {'content': ''}).status_code, 400)
+        self.assertFalse(TextVisit.objects.exists())
+
+    def test_team_notes_are_highlighted_and_important_ones_differ(self):
+        """Notatki zespołu leżą w karcie z podświetleniem; ważna ma dodatkową klasę i plakietkę."""
+        self.note(self.coordinator)
+        self.note(self.coordinator, important=True)
+        _, doc = self.visit(self.coordinator)
+        notes = doc.xpath('//section[contains(@class,"text-notes-card")]//details')
+        self.assertEqual(sorted(note.get('class') for note in notes), ['text-note', 'text-note is-important'])
+        important = [note for note in notes if 'is-important' in note.get('class')][0]
+        self.assertEqual(important.xpath('.//span[@class="important-note-badge"]/text()'), ['Ważna'])

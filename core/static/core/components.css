@@ -714,14 +714,36 @@ fieldset.multi-filter-field {
     color: var(--muted);
 }
 
-.text-note.is-important {
-    border-left: 3px solid var(--warning-accent);
+/* Notatki zespołu na karcie tekstu są podświetlone na żółto, ważne – na czerwono; kolory z tokenów motywu. */
+.text-notes-card .text-note {
+    border-color: var(--warning-border);
+    background: var(--warning-light);
 }
 
-.text-note.is-important,
-.text-note.is-important > summary,
-.text-note.is-important .text-note-content {
-    background: var(--warning-light);
+.text-notes-card .text-note-content {
+    border-top-color: var(--warning-border);
+}
+
+.text-notes-card .text-note.is-new {
+    border-left: 3px solid var(--primary);
+}
+
+.text-notes-card .text-note.is-important {
+    border-color: var(--danger-border);
+    border-left: 3px solid var(--danger);
+    background: var(--danger-light);
+}
+
+.text-notes-card .text-note.is-important .text-note-content {
+    border-top-color: var(--danger-border);
+}
+
+.text-note-badges {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    margin-left: auto;
 }
 
 .text-note-actions {
@@ -753,6 +775,7 @@ fieldset.multi-filter-field {
 .role-badge,
 .workflow-stage-badge,
 .important-note-badge,
+.new-note-badge,
 .inactivity-badge,
 .record-counter {
     /* Wszystkie odznaki mają obramowanie w kolorze tekstu. */
@@ -791,10 +814,19 @@ fieldset.multi-filter-field {
 }
 
 .stage-status.active,
-.important-note-badge,
 .inactivity-badge {
     --badge-bg: var(--warning-light);
     --badge-fg: var(--warning);
+}
+
+.important-note-badge {
+    --badge-bg: var(--danger-light);
+    --badge-fg: var(--danger);
+}
+
+.new-note-badge {
+    --badge-bg: var(--primary-light);
+    --badge-fg: var(--primary-dark);
 }
 
 .stage-status.completed {

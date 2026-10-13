@@ -376,11 +376,27 @@ def main():
     report_progress("Przygotowanie DOCX")
     config = json.loads((directory / "job.json").read_text(encoding="utf-8"))
     formats = config["formats"]
-    if (not formats and not config.get("include_docx") and not config.get("inspect")) or set(
-        formats
-    ) - {"pdf", "epub"}:
+    if (not formats and not config.get("include_docx") and not config.get("inspect")
+            and not config.get("split")) or set(formats) - {"pdf", "epub"}:
         return 3
     try:
+        if config.get("split"):
+            # Podział według Nagłówków 1 nie zmienia tekstu: obrazy, przypisy i język zostają
+            # (każdy plik dostaje tylko te, których używa jego fragment).
+            CURRENT_STAGE = "Podział"
+            report_progress("Podział według Nagłówków 1")
+            if __package__:
+                from .document_split import NoHeadingError, split_document
+            else:
+                from document_split import NoHeadingError, split_document
+            try:
+                with (directory / "document.zip").open("wb") as output:
+                    report = split_document(directory / "source.docx", output)
+            except NoHeadingError:
+                (directory / "document.zip").unlink(missing_ok=True)
+                report = {"error": "no_heading"}
+            (directory / "split.json").write_text(json.dumps(report), encoding="utf-8")
+            return 0
         # Decyzja właściciela: obrazy znikają przed wszelkimi zmianami (wszystkie programy),
         # a cały dokument jest polski. Liczba usuniętych obrazów trafia do images.json.
         report_progress("Usuwanie obrazów i ustawianie języka polskiego")

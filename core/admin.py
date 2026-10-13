@@ -85,24 +85,25 @@ class AudioContributorAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     @admin.action(description='Połącz zaznaczone profile w jeden (zostaje najstarszy)')
     def merge_contacts(self, request, queryset):
         from django.contrib import messages
-        from django.db import transaction
-        from core.models import Audiobook
-        with transaction.atomic():
-            people = list(queryset.select_for_update().order_by('pk'))
-            if len(people) < 2:
-                self.message_user(request, 'Zaznacz co najmniej dwa profile.', messages.ERROR)
-                return
-            keep, *duplicates = people
-            ids = [person.pk for person in duplicates]
-            for role in ('narrator', 'engineer'):
-                for audio in Audiobook.objects.select_for_update().filter(**{f'{role}_contact_id__in': ids}):
-                    setattr(audio, f'{role}_contact', keep)
-                    audio.save(update_fields=[f'{role}_contact'])
-            if not keep.email:
-                keep.email = next((person.email for person in duplicates if person.email), '')
-            AudioContributor.objects.filter(pk__in=ids).delete()
-            keep.save()
-        self.message_user(request, f'Połączono {len(ids) + 1} profile w „{keep.name}”.', messages.SUCCESS)
+        from django.db import IntegrityError, transaction
+        from core.audiobook_merge import merge_audio_contributors
+        from core.odkurzacz_forms import plural
+        try:
+            with transaction.atomic():
+                people = list(queryset.select_for_update().order_by('pk'))
+                if len(people) < 2:
+                    self.message_user(request, 'Zaznacz co najmniej dwa profile.', messages.ERROR)
+                    return
+                keep, *duplicates = people
+                merge_audio_contributors(keep, duplicates)
+        except IntegrityError:
+            # Uzupełniony e-mail dałby parę (imię, e-mail) innego, niezaznaczonego wpisu.
+            self.message_user(request, f'Nie połączono profili: „{keep.name}” z uzupełnionym e-mailem powielałby '
+                              'inny wpis spisu. Zaznacz także ten wpis albo popraw go i spróbuj ponownie.', messages.ERROR)
+            return
+        count = len(duplicates) + 1
+        self.message_user(request, f'Połączono {count} {plural(count, "profil", "profile", "profili")} '
+                          f'w „{keep.name}”.', messages.SUCCESS)
 
     @admin.display(description='Nagrania')
     def works_link(self, obj):

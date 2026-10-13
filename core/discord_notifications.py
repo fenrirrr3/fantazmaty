@@ -190,16 +190,34 @@ def stage_available(stage):
     return bool(stage.get('released') and not stage.get('started') and not stage.get('completed') and not stage.get('assigned'))
 
 
+# Pierwsza weryfikacja powstaje już przy przejęciu redakcji (rezerwacja). Do pracy trafia dopiero po redakcji.
+RESERVATION_PHASE = {'editing', 'author_editing'}
+
+
+def editing_open(stages):
+    """Trwa redakcja (także praca autora) – pierwsza weryfikacja jest wtedy tylko rezerwacją."""
+    return any(stage['type'] in RESERVATION_PHASE and not stage['completed'] for stage in stages.values())
+
+
 def workflow_changes(using, text, before, after):
-    """Porównuje stany tekstu przed zmianą i po niej; kolejkuje wiadomości z reguł."""
+    """Porównuje stany tekstu przed zmianą i po niej; kolejkuje wiadomości z reguł.
+
+    Etap ogłaszamy, gdy trafia do puli „do wzięcia”. Pierwszą weryfikację ogłaszamy też po przekazaniu tekstu
+    z pierwszego przebiegu redakcji, jeśli nikt jej nie zarezerwował – wcześniejsze ogłoszenie dotyczyło tylko
+    rezerwacji. Powtórzone W1 (kolejne podejście) nie dostaje drugiego ogłoszenia przy przekazaniu.
+    """
     from workflow.models import WorkflowStage
     if text is None:
         return
     context = text_context(text)
+    handed_over = editing_open(before) and not editing_open(after)
     for pk, stage in after.items():
         old = before.get(pk)
         trigger = STAGE_TRIGGERS.get(stage['type'])
-        if trigger and stage_available(stage) and not (old and stage_available(old)):
+        first_handover = (handed_over and stage['type'] == 'first_verification'
+                          and stage.get('iteration', 1) == 1)
+        newly_available = not (old and stage_available(old)) or first_handover
+        if trigger and stage_available(stage) and newly_available:
             safe_queue(trigger, using=using, text=text, stage_id=pk, context={**context, 'etap': stage['type_display']})
         if stage['completed'] and not (old and old['completed']) and stage['type'] not in NOT_A_COMPLETION:
             safe_queue('stage_completed', using=using, text=text, context={**context, 'etap': stage['type_display']})

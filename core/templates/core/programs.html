@@ -7,14 +7,14 @@
 {% block content %}
 <header class="page-header">
     <h1 class="page-title">Programy</h1>
-    <p class="page-description">Uporządkuj spacje, interpunkcję i zapis tekstu w dokumencie Word. Opisy opcji są pod znakami „?”.</p>
+    <p class="page-description">Popraw spacje, edytorskie chochliki i zapis tekstu w dokumencie Word. Opisy opcji są pod znakami „?”.</p>
 </header>
 {% if program_error %}<p class="form-error program-page-error" role="alert">{{ program_error }}</p>{% endif %}
 
 {# ===== Odkurzacz ===== #}
 <details class="details-card odkurzacz program-tool" id="program-clean" {% if clean_open %}open{% endif %}>
     <summary><h2 class="program-title">Odkurzacz</h2>
-        <span class="program-lead">Poprawia spacje, interpunkcję i zapis tekstu w dokumencie DOCX.</span>
+        <span class="program-lead">Poprawia spacje, edytorskie chochliki i zapis tekstu w dokumencie DOCX.</span>
         <span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
     <div class="card-body">
     <form method="post" enctype="multipart/form-data" data-program-job>
@@ -294,5 +294,183 @@
     </div>
     </div>
 </details>
+{% if superuser_programs %}
+{# ===== Scalanie DOCX (tylko superuser) ===== #}
+<details class="details-card odkurzacz program-tool" id="program-merge" {% if merge_open %}open{% endif %}>
+    <summary><h2 class="program-title">Scalanie DOCX</h2>
+        <span class="program-lead">Przebudowuje kilka dokumentów DOCX, odkurza je i scala w jeden plik.</span>
+        <span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
+    <div class="card-body">
+    <form method="post" enctype="multipart/form-data" data-program-job>
+        {% csrf_token %}<input type="hidden" name="program_action" value="merge">
+        {{ merge_form.non_field_errors }}
+        {% if merge_form.errors %}<p class="form-error" role="alert">Sprawdź komunikaty i ponownie wybierz pliki przed wysłaniem.</p>{% endif %}
+        <div class="program-main">
+            <div class="odkurzacz-upload">
+                <div class="program-label-row">
+                    <label for="{{ merge_form.documents.id_for_label }}">{{ merge_form.documents.label }}</label>
+                    <details class="help-tip"><summary aria-label="Pomoc: jak działa scalanie" title="Pomoc"><span aria-hidden="true">?</span></summary>
+                        <div class="help-tip-body">
+                            <p>Pliki są scalane w kolejności wyboru: w oknie wyboru zaznaczaj je po kolei (np. z klawiszem Ctrl) albo nazwij je tak, żeby kolejność alfabetyczna była właściwa. Lista pod polem pokazuje kolejność przed wysłaniem.</p>
+                            <p>Każdy plik jest najpierw przebudowany do nowego DOCX (jak przy przebudowie w Odkurzaczu), potem odkurzony wybranymi regułami. Kolejny plik zaczyna się od nowej strony; nagłówki (Nagłówek 1–3) zostają.</p>
+                            <p>Przebudowa pomija m.in. tabele, przypisy, komentarze i automatyczną numerację list – jeśli któryś plik je zawiera, zobaczysz listę pominięć z nazwami plików do akceptacji.</p>
+                            {% include "core/includes/program_document_note.html" %}
+                            <p>Każdy plik może być przetwarzany do {{ superuser_time_limit }} sekund. Oryginały pozostają na Twoim komputerze.</p>
+                        </div>
+                    </details>
+                </div>
+                {{ merge_form.documents.errors }}{{ merge_form.documents }}
+                <p class="helptext" id="{{ merge_form.documents.auto_id }}_helptext">{{ merge_form.documents.help_text }}</p>
+                <ol class="program-file-list" data-file-list="{{ merge_form.documents.id_for_label }}" aria-label="Kolejność scalania" hidden></ol>
+            </div>
+            <button type="submit" class="primary-button">Scal i pobierz DOCX</button>
+        </div>
+        <div class="program-progress-slot" data-program-progress></div>
+
+        <div class="program-options">
+            <div class="program-check">
+                <label for="{{ merge_form.track_changes.id_for_label }}">{{ merge_form.track_changes }} <span>{{ merge_form.track_changes.label }}</span></label>
+                <details class="help-tip"><summary aria-label="Pomoc: {{ merge_form.track_changes.label }}" title="Pomoc"><span aria-hidden="true">?</span></summary>
+                    <div class="help-tip-body"><p>{{ merge_form.track_changes.help_text }}</p></div>
+                </details>
+            </div>
+            <div class="program-check">
+                <label for="{{ merge_form.cleaner_summary.id_for_label }}">{{ merge_form.cleaner_summary }} <span>{{ merge_form.cleaner_summary.label }}</span></label>
+                <details class="help-tip"><summary aria-label="Pomoc: {{ merge_form.cleaner_summary.label }}" title="Pomoc"><span aria-hidden="true">?</span></summary>
+                    <div class="help-tip-body"><p>Liczby zmian są zsumowane dla wszystkich scalanych plików.</p></div>
+                </details>
+            </div>
+            <div class="program-check">
+                <label for="{{ merge_form.use_template.id_for_label }}">{{ merge_form.use_template }} <span>{{ merge_form.use_template.label }}</span></label>
+                <details class="help-tip"><summary aria-label="Pomoc: {{ merge_form.use_template.label }}" title="Pomoc"><span aria-hidden="true">?</span></summary>
+                    <div class="help-tip-body" id="{{ merge_form.use_template.auto_id }}_helptext"><p>{{ merge_form.use_template.help_text }}</p></div>
+                </details>
+            </div>
+            {{ merge_form.track_changes.errors }}{{ merge_form.cleaner_summary.errors }}{{ merge_form.use_template.errors }}
+        </div>
+
+        <fieldset class="program-rules">
+            <legend>Opcje korekty</legend>
+            <div class="program-group-bar">
+                <details class="help-tip"><summary aria-label="Pomoc: opcje korekty scalania" title="Pomoc"><span aria-hidden="true">?</span></summary>
+                    <div class="help-tip-body"><p>Te same reguły co w Odkurzaczu, stosowane do każdego pliku przed scaleniem.</p></div>
+                </details>
+                <div class="odkurzacz-actions rule-actions" hidden>
+                    <button type="button" class="secondary-button small-button" data-rules="all">Zaznacz wszystkie</button>
+                    <button type="button" class="secondary-button small-button" data-rules="none">Odznacz wszystkie</button>
+                </div>
+            </div>
+            {% include "core/includes/program_rules.html" with rules=merge_form.rules soft=merge_form.remove_soft_whitespace %}
+        </fieldset>
+
+        <details class="program-advanced"{% if merge_form.normalize_formatting.value or merge_form.keep_page_format.value or merge_form.normalize_formatting.errors or merge_form.keep_page_format.errors %} open{% endif %}>
+            <summary>Opcje zaawansowane: formatowanie</summary>
+            <div class="program-advanced-body">
+                <div class="program-check">
+                    <label for="{{ merge_form.normalize_formatting.id_for_label }}">{{ merge_form.normalize_formatting }} <span>{{ merge_form.normalize_formatting.label }}</span></label>
+                    <details class="help-tip"><summary aria-label="Pomoc: {{ merge_form.normalize_formatting.label }} przy scalaniu" title="Pomoc"><span aria-hidden="true">?</span></summary>
+                        <div class="help-tip-body"><p>Jak w Odkurzaczu: Times New Roman 12 pkt, interlinia 1,5, wcięcie 1,25 cm, A4 i marginesy 2,5 cm – w każdym scalanym pliku.</p></div>
+                    </details>
+                </div>
+                {{ merge_form.normalize_formatting.errors }}
+                <div class="program-check">
+                    <label for="{{ merge_form.keep_page_format.id_for_label }}">{{ merge_form.keep_page_format }} <span>{{ merge_form.keep_page_format.label }}</span></label>
+                    <details class="help-tip"><summary aria-label="Pomoc: {{ merge_form.keep_page_format.label }} przy scalaniu" title="Pomoc"><span aria-hidden="true">?</span></summary>
+                        <div class="help-tip-body" id="{{ merge_form.keep_page_format.auto_id }}_helptext"><p>{{ merge_form.keep_page_format.help_text }}</p></div>
+                    </details>
+                </div>
+                {{ merge_form.keep_page_format.errors }}
+            </div>
+        </details>
+    </form>
+    <div class="program-footer">
+        {% include "core/includes/program_reset.html" with program="merge" %}
+    </div>
+    </div>
+</details>
+
+{# ===== Podział DOCX (tylko superuser) ===== #}
+<details class="details-card odkurzacz program-tool" id="program-split" {% if split_open %}open{% endif %}>
+    <summary><h2 class="program-title">Podział DOCX</h2>
+        <span class="program-lead">Dzieli dokument na osobne pliki według akapitów ze stylem Nagłówek 1.</span>
+        <span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
+    <div class="card-body">
+    <form method="post" enctype="multipart/form-data" data-program-job>
+        {% csrf_token %}<input type="hidden" name="program_action" value="split">
+        {{ split_form.non_field_errors }}
+        {% if split_form.errors %}<p class="form-error" role="alert">Sprawdź komunikaty i ponownie wybierz plik przed wysłaniem.</p>{% endif %}
+        <div class="program-main">
+            <div class="odkurzacz-upload">
+                <div class="program-label-row">
+                    <label for="{{ split_form.document.id_for_label }}">{{ split_form.document.label }}</label>
+                    <details class="help-tip"><summary aria-label="Pomoc: jak działa podział" title="Pomoc"><span aria-hidden="true">?</span></summary>
+                        <div class="help-tip-body">
+                            <p>Każdy akapit ze stylem Nagłówek 1 zaczyna nowy plik, który trwa do kolejnego Nagłówka 1. Treść przed pierwszym nagłówkiem (np. strona tytułowa antologii) jest pomijana.</p>
+                            <p>Nazwa pliku to numer i tekst nagłówka, np. „01 Tytuł.docx”. Pliki pobierzesz razem jako archiwum ZIP.</p>
+                            <p>Program nie zmienia tekstu: zostają style, numeracja list, obrazy, przypisy i komentarze – każdy plik dostaje tylko te ze swojego fragmentu. Format strony pochodzi z ostatniej sekcji dokumentu.</p>
+                        </div>
+                    </details>
+                </div>
+                {{ split_form.document.errors }}{{ split_form.document }}
+                <p class="helptext" id="{{ split_form.document.auto_id }}_helptext">{{ split_form.document.help_text }}</p>
+            </div>
+            <button type="submit" class="primary-button">Podziel i pobierz ZIP</button>
+        </div>
+        <div class="program-progress-slot" data-program-progress></div>
+    </form>
+    </div>
+</details>
+
+{# ===== Stopki tekstów antologii (tylko superuser) ===== #}
+<details class="details-card odkurzacz program-tool" id="program-credits" {% if credits_open %}open{% endif %}>
+    <summary><h2 class="program-title">Stopki tekstów antologii</h2>
+        <span class="program-lead">Zbiera w jednym miejscu stopki wszystkich tekstów wybranej antologii.</span>
+        <span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
+    <div class="card-body">
+    <form method="get" action="{% url 'core:programs' %}#program-credits" class="program-main program-credits-form">
+        <div class="odkurzacz-upload">
+            <div class="program-label-row">
+                <label for="program-credits-anthology">Antologia</label>
+                <details class="help-tip"><summary aria-label="Pomoc: stopki tekstów" title="Pomoc"><span aria-hidden="true">?</span></summary>
+                    <div class="help-tip-body">
+                        <p>Stopka to ta sama treść co sekcja „Stopka tekstu” na karcie tekstu: wykonane prace, obecni wykonawcy, historia przekazań i recenzje. Puste role są pomijane.</p>
+                        <p>Teksty wycofane są pominięte. Kolejność jak na liście tekstów antologii (alfabetycznie, w powieściach według numerów rozdziałów).</p>
+                    </div>
+                </details>
+            </div>
+            <select name="antologia" id="program-credits-anthology" required>
+                <option value="">Wybierz antologię</option>
+                {% for anthology in credit_anthologies %}<option value="{{ anthology.pk }}"{% if anthology == credits_selected %} selected{% endif %}>{{ anthology.title }}</option>{% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="primary-button">Pokaż stopki</button>
+    </form>
+    {% if credits_error %}<p class="form-error" role="alert">{{ credits_error }}</p>{% endif %}
+    {% if credits_selected %}
+        {% if credits_rows %}
+        <div class="program-credits-all">
+            <div class="program-label-row">
+                <label for="program-credits-text">Wszystkie stopki – {{ credits_selected.title }} ({{ credits_rows|length }})</label>
+                <button type="button" class="secondary-button copy-value-button" data-copy-target="#program-credits-text">Kopiuj wszystko</button>
+            </div>
+            <textarea id="program-credits-text" class="program-credits-text" readonly rows="12">{{ credits_text }}</textarea>
+        </div>
+        <ol class="program-credits-list">
+            {% for row in credits_rows %}<li class="program-credits-item">
+                <div class="program-credits-head">
+                    <h3>{{ row.text.title }}</h3>
+                    <button type="button" class="secondary-button copy-value-button" data-copy-value="{{ row.copy }}" aria-label="Kopiuj stopkę tekstu {{ row.text.title }}">Kopiuj</button>
+                </div>
+                <p class="program-credits-authors">{{ row.authors|default:"Brak autorów" }}</p>
+                <ul class="credits-list">{% for group in row.groups %}<li><strong>{{ group.label }}:</strong> {{ group.names|join:", " }}</li>{% empty %}<li>Brak wpisów w stopce.</li>{% endfor %}</ul>
+            </li>{% endfor %}
+        </ol>
+        {% else %}
+        <p class="form-help">Ta antologia nie ma tekstów do pokazania (poza wycofanymi).</p>
+        {% endif %}
+    {% endif %}
+    </div>
+</details>
+{% endif %}
 {% endblock %}
-{% block scripts %}<script src="{% static 'core/odkurzacz.js' %}" defer></script><script src="{% static 'core/program-help.js' %}" defer></script><script src="{% static 'core/program-jobs.js' %}" defer></script>{% endblock %}
+{% block scripts %}<script src="{% static 'core/odkurzacz.js' %}" defer></script><script src="{% static 'core/program-help.js' %}" defer></script><script src="{% static 'core/program-jobs.js' %}" defer></script>{% if superuser_programs %}<script src="{% static 'core/program-files.js' %}" defer></script>{% endif %}{% endblock %}

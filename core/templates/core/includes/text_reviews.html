@@ -7,15 +7,16 @@
             <div class="review-summary-content">
                 {% if request.user.is_superuser and not source_review %}<p><a class="secondary-button" href="{% url 'core:link_text_review' text.pk %}">Powiąż zgłoszenie z recenzjami</a></p>{% endif %}
                 {% if source_review %}
-                {% if request.user.is_superuser %}<p><a class="secondary-button" href="{% url 'core:link_text_review' text.pk %}">Zmień lub usuń powiązanie</a></p>{% endif %}
-                {% if source_review.can_open %}<p>
-                    <a
+                {% if request.user.is_superuser or source_review.can_open %}<div class="actions source-review-actions">
+                    {% if request.user.is_superuser %}<a class="secondary-button" href="{% url 'core:link_text_review' text.pk %}">Zmień lub usuń powiązanie</a>{% endif %}
+                    {% if source_review.can_open %}<a
                         href="{% url 'core:assigned_review_detail' source_review.pk %}"
                         class="secondary-button"
                     >
                         Otwórz zgłoszenie: {{ source_review.title }}
-                    </a>
-                </p>{% else %}<p>{{ source_review.title }}</p>{% endif %}
+                    </a>{% endif %}
+                </div>{% endif %}
+                {% if not source_review.can_open %}<p>{{ source_review.title }}</p>{% endif %}
                 {% if source_review.general_notes %}<div class="notes-editor-panel"><h3>Uwagi ogólne z recenzji</h3>{{ source_review.general_notes|linebreaksbr }}</div>{% endif %}
 
                 {% if source_review.is_archived %}

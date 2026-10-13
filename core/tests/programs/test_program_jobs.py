@@ -615,7 +615,17 @@ class JobAccessTests(IsolatedProgramDirsMixin, SimpleTestCase):
         self.assertEqual(list(jobs.root().iterdir()), [])
 
     def test_oversized_upload_is_refused_without_creating_a_job(self):
-        upload = SimpleUploadedFile('duzy.docx', b'0' * (PROGRAM_MAX_UPLOAD_BYTES + 1))
-        with self.assertRaisesMessage(jobs.JobError, 'limit 5 MB'):
-            jobs.create(self.request(), upload, {}, 'clean')
-        self.assertEqual(list(jobs.root().iterdir()), [])
+        """Za duży plik, pusta lub za długa lista plików scalania i za duża suma – bez folderu zadania."""
+        def files(count, size=10):
+            return [SimpleUploadedFile(f'{n}.docx', b'0' * size) for n in range(count)]
+        cases = (
+            ('za duży plik', SimpleUploadedFile('duzy.docx', b'0' * (PROGRAM_MAX_UPLOAD_BYTES + 1)), 'limit 5 MB'),
+            ('brak plików', [], f'Wybierz od 1 do {jobs.MERGE_MAX_FILES} plików.'),
+            ('za dużo plików', files(jobs.MERGE_MAX_FILES + 1), f'Wybierz od 1 do {jobs.MERGE_MAX_FILES} plików.'),
+            ('za duża suma', files(3, PROGRAM_MAX_UPLOAD_BYTES), 'Pliki przekraczają łączny limit 10 MB.'),
+        )
+        for label, upload, message in cases:
+            with self.subTest(label), patch.object(jobs, 'MERGE_MAX_TOTAL_BYTES', 10 * 1024 * 1024), \
+                    self.assertRaisesMessage(jobs.JobError, message):
+                jobs.create(self.request(), upload, {}, 'merge')
+            self.assertEqual(list(jobs.root().iterdir()), [])

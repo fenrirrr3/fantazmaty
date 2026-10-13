@@ -13,6 +13,33 @@ PROGRAM_MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 FORM_DEFAULT_RULE_LIST = [key for key, _ in EDITORIAL_RULES if key in FORM_DEFAULT_EDITORIAL_RULES]
 
 
+# Scalanie DOCX: najwięcej plików naraz i łączny rozmiar wysłanych plików.
+MERGE_MAX_FILES = 30
+MERGE_MAX_TOTAL_BYTES = 50 * 1024 * 1024
+
+
+def validate_docx_upload(upload, max_bytes=PROGRAM_MAX_UPLOAD_BYTES):
+    """Sprawdza wysłany DOCX (rozszerzenie, rozmiar, budowa ZIP); zwraca plik ustawiony na początek."""
+    if Path(upload.name).suffix.lower() != ".docx":
+        raise forms.ValidationError("Wybierz plik z rozszerzeniem .docx.")
+    if upload.size > max_bytes:
+        raise forms.ValidationError(f"Plik jest za duży. Maksymalny rozmiar to {max_bytes // (1024 * 1024)} MB.")
+    try:
+        with ZipFile(upload) as archive:
+            entries = archive.infolist()
+            if len(entries) > 2000 or sum(e.file_size for e in entries) > 50 * 1024 * 1024:
+                raise forms.ValidationError("Dokument jest zbyt rozbudowany (limit zawartości: 50 MB).")
+            if any(e.flag_bits & 1 for e in entries):
+                raise forms.ValidationError("Dokument nie może być zaszyfrowany.")
+            if not {"[Content_Types].xml", "word/document.xml"}.issubset(archive.namelist()):
+                raise forms.ValidationError("Ten plik nie jest prawidłowym dokumentem DOCX.")
+    except (BadZipFile, OSError, ValueError) as exc:
+        raise forms.ValidationError("Nie można odczytać pliku. Wybierz prawidłowy DOCX.") from exc
+    finally:
+        upload.seek(0)
+    return upload
+
+
 def rules_field():
     return forms.MultipleChoiceField(
         label="Opcje korekty", choices=EDITORIAL_RULES, initial=list(FORM_DEFAULT_RULE_LIST), required=False,
@@ -104,25 +131,7 @@ class OdkurzaczForm(ProgramSettingsMixin, forms.Form):
                                              "Wynik pobierzesz jako osobny plik.")
 
     def clean_document(self):
-        upload = self.cleaned_data["document"]
-        if Path(upload.name).suffix.lower() != ".docx":
-            raise forms.ValidationError("Wybierz plik z rozszerzeniem .docx.")
-        if upload.size > self.max_document_bytes:
-            raise forms.ValidationError(f"Plik jest za duży. Maksymalny rozmiar to {self.max_document_bytes // (1024 * 1024)} MB.")
-        try:
-            with ZipFile(upload) as archive:
-                entries = archive.infolist()
-                if len(entries) > 2000 or sum(e.file_size for e in entries) > 50 * 1024 * 1024:
-                    raise forms.ValidationError("Dokument jest zbyt rozbudowany (limit zawartości: 50 MB).")
-                if any(e.flag_bits & 1 for e in entries):
-                    raise forms.ValidationError("Dokument nie może być zaszyfrowany.")
-                if not {"[Content_Types].xml", "word/document.xml"}.issubset(archive.namelist()):
-                    raise forms.ValidationError("Ten plik nie jest prawidłowym dokumentem DOCX.")
-        except (BadZipFile, OSError, ValueError) as exc:
-            raise forms.ValidationError("Nie można odczytać pliku. Wybierz prawidłowy DOCX.") from exc
-        finally:
-            upload.seek(0)
-        return upload
+        return validate_docx_upload(self.cleaned_data["document"], self.max_document_bytes)
 
 
 class DocumentConversionForm(OdkurzaczForm):
@@ -182,6 +191,91 @@ class RepetitionsForm(OdkurzaczForm):
                 'tracked_words', 'include_prefix_matches')} | {'color_palette': values.get('color_palette') or 'dark', 'analysis_options': {
                 key: values[key] for key in ('duplicates', 'long_sentences', 'sentence_limit',
                                             'long_paragraphs', 'paragraph_limit', 'empty_pairs')}}
+
+
+class MultipleDocxInput(forms.ClearableFileInput):
+    allow_multiple_selected = True
+
+
+class MultipleDocxField(forms.FileField):
+    """Kilka plików z jednego pola (dokumentacja Django: „Uploading multiple files”); wynik to lista.
+
+    Pole jest zawsze wymagane (scalanie bez plików nie ma sensu).
+    """
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("widget", MultipleDocxInput(attrs={"accept": ".docx"}))
+        super().__init__(*args, **kwargs)
+
+    def clean(self, data, initial=None):
+        files = [item for item in (data if isinstance(data, (list, tuple)) else [data]) if item]
+        if not files:
+            raise forms.ValidationError(self.error_messages["required"], code="required")
+        return [super(MultipleDocxField, self).clean(item, initial) for item in files]
+
+
+def plural(count, one, few, many):
+    """Polska forma liczebnika: 1 plik, 2–4 (22–24…) pliki, 5–21 (25…) plików."""
+    last, two = count % 10, count % 100
+    if count == 1:
+        return one
+    return few if 2 <= last <= 4 and not 12 <= two <= 14 else many
+
+
+class MergeForm(OdkurzaczForm):
+    """Scalanie DOCX: kilka plików w kolejności wyboru, przebudowa i opcje Odkurzacza."""
+
+    documents = MultipleDocxField(label="Dokumenty DOCX (w kolejności scalania)")
+    use_template = forms.BooleanField(
+        label="Użyj stylów szablonu Fantazmatów", required=False, initial=False,
+        help_text="Scalony dokument dostaje wszystkie style z szablonu TEKST Szablon 10-2025 (np. Podstawowy tekst, "
+                  "Gwiazdki, Cytat (motto)), żeby można było je od razu nadawać w Wordzie. Treść i jej formatowanie "
+                  "pozostają jak po przebudowie; z szablonu nie jest przenoszone nic poza stylami.")
+    settings_exclude = ("documents",)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Przebudowa jest zawsze włączona: scalamy przebudowane dokumenty.
+        for name in ("document", "rebuild"):
+            del self.fields[name]
+        self.order_fields(["documents"])
+        self.fields["documents"].help_text = (
+            f"Od 2 do {MERGE_MAX_FILES} plików, każdy do {self.max_document_bytes // (1024 * 1024)} MB, "
+            f"razem do {MERGE_MAX_TOTAL_BYTES // (1024 * 1024)} MB. Kolejność scalania = kolejność wyboru plików.")
+        self.fields["keep_page_format"].help_text = (
+            "Wynik dostanie rozmiar strony, orientację, marginesy i kolumny pierwszego pliku. "
+            "Ujednolicenie formatowania i tak ustawi A4.")
+
+    def clean_documents(self):
+        files = self.cleaned_data["documents"]
+        if len(files) < 2:
+            raise forms.ValidationError("Wybierz co najmniej dwa pliki DOCX do scalenia.")
+        if len(files) > MERGE_MAX_FILES:
+            raise forms.ValidationError(f"Wybrano {len(files)} {plural(len(files), 'plik', 'pliki', 'plików')}. "
+                                        f"Naraz można scalić najwyżej {MERGE_MAX_FILES} plików.")
+        if sum(item.size for item in files) > MERGE_MAX_TOTAL_BYTES:
+            raise forms.ValidationError(f"Wybrane pliki są razem za duże. Łączny limit to "
+                                        f"{MERGE_MAX_TOTAL_BYTES // (1024 * 1024)} MB.")
+        errors = []
+        for item in files:
+            try:
+                validate_docx_upload(item, self.max_document_bytes)
+            except forms.ValidationError as error:
+                errors.extend(f"„{Path(item.name).name}”: {message}" for message in error.messages)
+        if errors:
+            raise forms.ValidationError(errors)
+        return files
+
+
+class SplitForm(OdkurzaczForm):
+    """Podział DOCX według Nagłówków 1 – bez opcji: zostaje tylko pole pliku."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for name in [name for name in self.fields if name != "document"]:
+            del self.fields[name]
+        self.fields["document"].help_text = (f"Plik do {self.max_document_bytes // (1024 * 1024)} MB. "
+                                             "Wynik pobierzesz jako archiwum ZIP z plikami DOCX.")
 
 
 REPLACEMENT_WORD_MAX = 100

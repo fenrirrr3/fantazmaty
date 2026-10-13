@@ -165,6 +165,23 @@ class VacationServiceTests(TestCase):
                 self.assertEqual(batch[user.pk]['leave_information'], user_leave_information(user))
 
 
+    def test_unavailable_reason_without_prepared_cache(self):
+        """Powód niedostępności liczony bez gotowej pamięci zespołu: nieaktywne konto, urlop (o ile się liczy), nic."""
+        from core.selectors.texts import unavailable_reason
+        Vacation.objects.create(person=self.other, start_date=self.today, until_revoked=True)
+        inactive = get_user_model().objects.create_user('nieaktywny', 'nieaktywny@example.test', 'x', is_active=False)
+        cases = ((self.member_user, True, ''), (self.other_user, True, 'jest na urlopie'),
+                 (self.other_user, False, ''), (inactive, True, 'ma nieaktywne konto'), (None, True, ''))
+        cache = {}
+        for user, leave, reason in cases:
+            with self.subTest(user=user and user.username, leave=leave):
+                self.assertEqual(unavailable_reason(user, leave=leave, cache=cache), reason)
+        self.assertEqual(cache[(self.other_user.pk, True)], 'jest na urlopie')
+        self.assertEqual(unavailable_reason(inactive, leave=False), 'ma nieaktywne konto')
+        with patch('people.leave_access.is_on_leave', side_effect=AssertionError('bez zapytania')):
+            self.assertEqual(unavailable_reason(self.other_user, cache=cache), 'jest na urlopie')
+
+
 class LeaveFieldRuleTests(SimpleTestCase):
     """Reguły dat urlopu w modelach (bez bazy): pola urlopowe osoby, wpis urlopu i jego opis."""
 

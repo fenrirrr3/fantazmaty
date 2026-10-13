@@ -14,8 +14,8 @@
     </div>
 </form></section>
 <section class="card"><div class="table-container"><table data-server-paginated="true">
-<thead><tr><th>Antologia</th><th>Tytuł opowiadania</th><th>Tagi</th><th>Gatunek</th><th>Status</th></tr></thead>
-<tbody>{% for row in rows %}<tr><td>{{ row.text__anthology__title }}</td><td><strong>{{ row.text__title }}</strong></td><td class="external-tags">{{ row.text__tags|default:'–' }}</td><td>{{ row.text__genre|default:'–' }}</td><td><span class="illustration-status {% if row.public_status == 'Dostępne' %}illustration-status-delivered{% else %}illustration-status-assigned{% endif %}">{{ row.public_status }}</span></td></tr>{% empty %}<tr><td colspan="5">Brak opowiadań spełniających kryteria.</td></tr>{% endfor %}</tbody>
+<thead><tr><th>Antologia</th><th>Tytuł opowiadania</th><th>Tagi</th><th>Gatunek</th><th>Ostrzeżenia dotyczące treści</th><th>Status</th></tr></thead>
+<tbody>{% for row in rows %}<tr><td>{{ row.text__anthology__title }}</td><td><strong>{{ row.text__title }}</strong></td><td class="external-tags">{{ row.text__tags|default:'–' }}</td><td>{{ row.text__genre|default:'–' }}</td><td class="external-warnings">{{ row.text__content_warnings|default:'–' }}</td><td><span class="illustration-status {% if row.public_status == 'Dostępne' %}illustration-status-delivered{% else %}illustration-status-assigned{% endif %}">{{ row.public_status }}</span></td></tr>{% empty %}<tr><td colspan="6">Brak opowiadań spełniających kryteria.</td></tr>{% endfor %}</tbody>
 </table></div></section>
 {% include 'core/includes/pagination.html' %}
-</main><script src="{% static 'core/ui.js' %}" defer></script><script src="{% static 'core/pagination-controls.js' %}" defer></script></body></html>
+</main><script src="{% static 'core/ui.js' %}" defer></script><script src="{% static 'core/layout.js' %}" defer></script><script src="{% static 'core/pagination-controls.js' %}" defer></script></body></html>

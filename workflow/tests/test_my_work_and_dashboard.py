@@ -349,17 +349,20 @@ class WorkflowSummaryTests(TestCase):
         )
 
     def test_closed_anthology_not_pending_publication(self):
+        """Przyjęte zgłoszenie czeka na pulpicie superusera, dopóki jego antologia nie zostanie zamknięta."""
         self.stage("ready", is_completed=True, started_at=self.today, ended_at=self.today)
         self.text.current_status = "ready"
         self.text.save()
-        self.book.status = "ready"
-        self.book.save()
         review = Review.objects.create(
             title="Zablokowane zgłoszenie", anthology=self.book, author_first_name="Jan",
             author_last_name="Autor", email="autor@example.com", length=100, genre="fantasy",
             status="accepted", author_notified_at=self.today)
-        pending = self.client.get(reverse("core:home")).context["pending_publication_reviews"]
-        self.assertNotIn(review, list(pending))
+        def pending():
+            return list(self.client.get(reverse("core:home")).context["pending_publication_reviews"])
+        self.assertIn(review, pending())
+        self.book.status = "ready"
+        self.book.save()
+        self.assertNotIn(review, pending())
 
 
 class ArchivedReviewTransferTests(TestCase):

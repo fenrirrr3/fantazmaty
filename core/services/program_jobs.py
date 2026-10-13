@@ -1,4 +1,9 @@
-"""Private file jobs for the three document tools; no database or task broker."""
+"""Prywatne zadania programów dokumentów (pliki na dysku, bez bazy i brokera zadań).
+
+Odkurzacz, konwerter i kolorowanie powtórzeń przetwarzają jeden plik. Scalanie
+(„merge”) przebudowuje i odkurza każdy plik osobno, a potem skleja wyniki;
+podział („split”) tnie jeden plik według Nagłówków 1 w izolowanym podprocesie.
+"""
 import json
 import os
 import re
@@ -15,11 +20,11 @@ from django.conf import settings
 from django.core import signing
 from django.core.files import File
 
-from core.odkurzacz_forms import PROGRAM_MAX_UPLOAD_BYTES
+from core.odkurzacz_forms import MERGE_MAX_FILES, MERGE_MAX_TOTAL_BYTES, PROGRAM_MAX_UPLOAD_BYTES, plural
 from core.services.odkurzacz import EDITORIAL_RULES
 from .document_converter import (
-    ConversionError, RebuildConfirmationRequired, _try_lock, convert_document,
-    conversion_filename, converter_python,
+    MAX_OUTPUT, REBUILD_WARNING, ConversionError, RebuildConfirmationRequired, _try_lock, conversion_slot,
+    convert_document, conversion_filename, converter_python, run_converter, validate_resources,
 )
 
 TTL = 1800
@@ -30,6 +35,13 @@ SALT = 'private-program-job-v1'
 SESSION_KEY = 'program_upload_session'
 # Zadania superusera (analiza bez limitu wielkości) mogą trwać dłużej niż 90 s.
 SUPERUSER_TIME_LIMIT = 300
+# Koniec komunikatu o pominięciach przy przebudowie (document_converter.run_converter).
+REBUILD_SUFFIX = '. Po akceptacji powstanie nowy DOCX bez tych elementów.'
+MERGE_REBUILD_SUFFIX = ('. Po akceptacji wszystkie pliki zostaną przebudowane bez tych elementów i scalone. '
+                        'Tekst i obsługiwane formatowanie zostaną przeniesione.')
+NO_HEADING_MESSAGE = ('Dokument nie zawiera akapitów ze stylem „Nagłówek 1”. Oznacz tytuły opowiadań '
+                      'stylem Nagłówek 1 (Narzędzia główne → Style) i spróbuj ponownie.')
+DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 SUMMARY_LABELS = {'user_word_corrections': 'Własne zamiany słownikowe (słownik zamian)',
                   'nonbreaking_spaces': 'Spacje nierozdzielające i nietypowe zamienione na zwykłe'}
 
@@ -194,30 +206,51 @@ def require_capacity(user_id=None):
 
 
 def create(request, upload, options, action):
+    """Zadanie dla jednego pliku albo – przy scalaniu – listy plików (kolejność = kolejność scalania)."""
     cleanup()
     root().mkdir(parents=True, exist_ok=True, mode=0o700)
     with creation_lock():
         return _create(request, upload, options, action)
 
 
-def _create(request, upload, options, action):
-    require_capacity(request.user.pk)
+def _payload(upload):
     upload.seek(0)
     payload = upload.read(PROGRAM_MAX_UPLOAD_BYTES + 1)
     upload.seek(0)
     if len(payload) > PROGRAM_MAX_UPLOAD_BYTES:
         raise JobError(f'Plik przekracza limit {PROGRAM_MAX_UPLOAD_BYTES // (1024 * 1024)} MB.')
+    return payload
+
+
+def _write_private(path, payload):
+    with os.fdopen(os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600), 'wb') as output:
+        output.write(payload)
+
+
+def _create(request, upload, options, action):
+    require_capacity(request.user.pk)
+    uploads = list(upload) if isinstance(upload, (list, tuple)) else [upload]
+    if not uploads or len(uploads) > MERGE_MAX_FILES:
+        raise JobError(f'Wybierz od 1 do {MERGE_MAX_FILES} plików.')
+    payloads = [_payload(item) for item in uploads]
+    if sum(map(len, payloads)) > MERGE_MAX_TOTAL_BYTES:
+        raise JobError(f'Pliki przekraczają łączny limit {MERGE_MAX_TOTAL_BYTES // (1024 * 1024)} MB.')
     key = secrets.token_hex(16)
     folder = root() / key
     folder.mkdir(mode=0o700)
     nonce = request.session.get(SESSION_KEY) or secrets.token_hex(24)
     request.session[SESSION_KEY] = nonce
     try:
-        with os.fdopen(os.open(folder / 'source.docx', os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600), 'wb') as output:
-            output.write(payload)
+        names = [Path(str(item.name).replace('\\', '/')).name for item in uploads]
+        if action == 'merge':
+            (folder / 'sources').mkdir(mode=0o700)
+            for index, payload in enumerate(payloads, 1):
+                _write_private(folder / 'sources' / f'{index:02d}.docx', payload)
+        else:
+            _write_private(folder / 'source.docx', payloads[0])
         write_json(folder / 'request.json', {
-            'user': request.user.pk, 'session': nonce, 'name': upload.name,
-            'options': options, 'action': action,
+            'user': request.user.pk, 'session': nonce, 'name': uploads[0].name,
+            'options': options, 'action': action, **({'names': names} if action == 'merge' else {}),
         })
         write_json(folder / 'state.json', {'state': 'queued', 'stage': 'Uruchamianie programu', 'started': time.time()})
         launch(folder)
@@ -348,6 +381,150 @@ def refreshed_token(token):
     return signing.dumps(signing.loads(token, salt=SALT, max_age=TTL), salt=SALT)
 
 
+def _sum_summaries(summaries):
+    """Podsumowania Odkurzacza z kilku plików: liczby reguł i zamian słownikowych zsumowane."""
+    total, replacements = {}, {}
+    for summary in summaries:
+        for key, count in (summary or {}).items():
+            if isinstance(count, int) and not isinstance(count, bool):
+                total[key] = total.get(key, 0) + count
+        for row in replacement_rows(summary):
+            pair = (row['source'], row['target'])
+            replacements[pair] = replacements.get(pair, 0) + row['count']
+    if replacements:
+        total['replacements'] = sorted(({'source': source, 'target': target, 'count': count}
+                                        for (source, target), count in replacements.items()),
+                                       key=lambda row: -row['count'])
+    return total
+
+
+def _rebuild_omissions(error):
+    """Same pominięcia z komunikatu RebuildConfirmationRequired (bez wstępu i zakończenia)."""
+    message = str(error)
+    if message.startswith(REBUILD_WARNING):
+        message = message[len(REBUILD_WARNING):]
+    return message.split(REBUILD_SUFFIX, 1)[0].strip()
+
+
+def _run_single(folder, data, options, *, control, waiting):
+    with (folder / 'source.docx').open('rb') as source:
+        result, extension, mime = convert_document(File(source, name=data['name']), control=control,
+                                                   wait_for_slot=queue_wait(folder), on_wait=waiting, **options)
+    with result, (folder / 'result').open('wb') as target:
+        shutil.copyfileobj(result, target)
+    name = data['name']
+    if data['action'] != 'convert':
+        suffix = '_powtorzenia' if data['action'] == 'repetitions' else ('_nowy' if options.get('rebuild') else '_odkurzony')
+        name = Path(name).stem[:120] + suffix + '.docx'
+    done = {'state': 'done', 'filename': conversion_filename(name, extension), 'mime': mime,
+            'warnings': list(getattr(result, 'conversion_warnings', []))[:30]}
+    # Liczba obrazów usuniętych z dokumentu przed pracą programu (strona stanu pokazuje komunikat).
+    removed = getattr(result, 'removed_images', 0)
+    done['removed_images'] = removed if isinstance(removed, int) and not isinstance(removed, bool) else 0
+    if options.get('cleaner_summary'):
+        summary = getattr(result, 'cleaner_summary', None) or {}
+        done['summary'] = summary_rows(summary)
+        done['replacements'] = replacement_rows(summary)
+    return done
+
+
+def _run_merge(folder, data, options, *, control, waiting):
+    """Każdy plik przebudowany i odkurzony osobno (jak Odkurzacz z przebudową), potem jeden DOCX.
+
+    Gotowe części zostają w folderze zadania: po akceptacji pominięć przetwarzamy
+    ponownie tylko pliki, które jej wymagały.
+    """
+    from .document_merge import merge_documents
+    from .document_template import apply_template_styles
+
+    # Style szablonu dotyczą tylko scalonego wyniku – konwerter tej opcji nie zna.
+    use_template = options.pop('use_template', False)
+    names = data['names']
+    parts = folder / 'parts'
+    parts.mkdir(mode=0o700, exist_ok=True)
+    warnings, omissions, summaries, removed = [], [], [], 0
+    for index, name in enumerate(names, 1):
+        part = parts / f'{index:02d}.docx'
+        report = parts / f'{index:02d}.json'
+        if not part.exists():
+            prefix = f'Plik {index} z {len(names)}: '
+            try:
+                with (folder / 'sources' / f'{index:02d}.docx').open('rb') as source:
+                    result, _, _ = convert_document(
+                        File(source, name=name), control=lambda directory: control(directory, prefix),
+                        wait_for_slot=queue_wait(folder), on_wait=waiting, **options)
+            except RebuildConfirmationRequired as error:
+                omissions.append(f'„{name}” – {_rebuild_omissions(error)}')
+                continue
+            except ConversionError as error:
+                raise ConversionError(f'„{name}”: {error}') from None
+            with result, part.open('wb') as target:
+                shutil.copyfileobj(result, target)
+            write_json(report, {'warnings': list(getattr(result, 'conversion_warnings', []))[:30],
+                                'removed_images': getattr(result, 'removed_images', 0),
+                                'summary': getattr(result, 'cleaner_summary', None) or {}})
+        details = read_json(report)
+        warnings.extend(f'„{name}”: {text}' for text in details.get('warnings', []) if isinstance(text, str))
+        count = details.get('removed_images', 0)
+        removed += count if isinstance(count, int) and not isinstance(count, bool) else 0
+        summaries.append(details.get('summary') if isinstance(details.get('summary'), dict) else {})
+    if omissions:
+        raise RebuildConfirmationRequired(REBUILD_WARNING + '; '.join(omissions[:30]) + MERGE_REBUILD_SUFFIX)
+    control(None, 'Scalanie plików')
+    merged = merge_documents([(parts / f'{index:02d}.docx').read_bytes() for index in range(1, len(names) + 1)])
+    if use_template:
+        control(None, 'Nadawanie stylów szablonu')
+        merged = apply_template_styles(merged)
+    if len(merged) > MAX_OUTPUT:
+        raise ConversionError('Scalony dokument przekroczył 50 MB. Scal mniej plików naraz.')
+    (folder / 'result').write_bytes(merged)
+    order = ', '.join(f'{index}. „{name}”' for index, name in enumerate(names, 1))
+    done = {'state': 'done', 'mime': DOCX_MIME,
+            'filename': f'Scalone – {len(names)} {plural(len(names), "plik", "pliki", "plików")}.docx',
+            'warnings': [f'Kolejność scalania: {order}.', *warnings][:30], 'removed_images': removed}
+    if options.get('cleaner_summary'):
+        summary = _sum_summaries(summaries)
+        done['summary'] = summary_rows(summary)
+        done['replacements'] = replacement_rows(summary)
+    return done
+
+
+def _run_split(folder, data, options, *, control, waiting):
+    """Podział według Nagłówków 1 w izolowanym podprocesie konwertera (limit pamięci i czasu)."""
+    source = folder / 'source.docx'
+    with source.open('rb') as stream:
+        validate_resources(File(stream, name=data['name']))
+    with conversion_slot(queue_wait(folder), waiting) as base, \
+            tempfile.TemporaryDirectory(prefix='document-', dir=base) as temporary:
+        directory = Path(temporary)
+        shutil.copyfile(source, directory / 'source.docx')
+        (directory / 'job.json').write_text(json.dumps({'formats': [], 'split': True}), encoding='utf-8')
+        control(directory)
+        run_converter(directory, job_time_limit(options), control=control)
+        try:
+            report = json.loads((directory / 'split.json').read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            report = {}
+        if report.get('error') == 'no_heading':
+            raise ConversionError(NO_HEADING_MESSAGE)
+        output = directory / 'document.zip'
+        files = report.get('files')
+        if (not isinstance(files, list) or not files or not output.is_file() or output.is_symlink()
+                or not 0 < output.stat().st_size <= MAX_OUTPUT):
+            raise ConversionError('Podział nie utworzył poprawnego archiwum lub wynik przekroczył 50 MB.')
+        shutil.copyfile(output, folder / 'result')
+    names = [name for name in files if isinstance(name, str)]
+    warnings = [f'Utworzono {len(names)} {plural(len(names), "plik", "pliki", "plików")}: {", ".join(names)}.']
+    if report.get('skipped_intro'):
+        warnings.append('Pominięto treść przed pierwszym Nagłówkiem 1 (np. stronę tytułową) – '
+                        'nie ma jej w żadnym pliku.')
+    return {'state': 'done', 'mime': 'application/zip', 'removed_images': 0, 'warnings': warnings[:30],
+            'filename': conversion_filename(Path(data['name']).stem[:120] + ' – podział', 'zip')}
+
+
+RUNNERS = {'merge': _run_merge, 'split': _run_split}
+
+
 def execute(folder):
     data = read_json(folder / 'request.json')
     started = time.time()
@@ -364,16 +541,22 @@ def execute(folder):
         if time.time() - last_beat >= 2:
             beat('queued', {'stage': 'W kolejce – konwerter kończy inny dokument'})
 
-    def control(directory):
+    def control(directory, prefix=''):
+        """Anulowanie i postęp; prefix opisuje plik scalania („Plik 2 z 5: …”), bez katalogu – sam etap."""
         nonlocal last_progress
         if (folder / 'cancel').exists():
             raise JobCancelled()
-        try:
-            progress = read_json(directory / 'progress.json')
-        except (OSError, ValueError):
-            progress = last_progress or {'stage': 'Uruchamianie konwertera'}
-        if progress.get('stage') == 'start':
-            progress = {'stage': 'Uruchamianie konwertera'}
+        if directory is None:
+            progress = {'stage': prefix}
+        else:
+            try:
+                progress = read_json(directory / 'progress.json')
+            except (OSError, ValueError):
+                progress = last_progress or {'stage': 'Uruchamianie konwertera'}
+            if progress.get('stage') == 'start':
+                progress = {'stage': 'Uruchamianie konwertera'}
+            if prefix:
+                progress = {**progress, 'stage': prefix + str(progress.get('stage', ''))}
         if progress != last_progress or time.time() - last_beat >= 5:
             last_progress = progress
             beat('running', progress)
@@ -385,26 +568,9 @@ def execute(folder):
         options = dict(data['options'])
         if (folder / 'accepted').exists():
             options['allow_rebuild_omissions'] = True
-        with (folder / 'source.docx').open('rb') as source:
-            result, extension, mime = convert_document(File(source, name=data['name']), control=control,
-                                                       wait_for_slot=queue_wait(folder), on_wait=waiting, **options)
-        with result, (folder / 'result').open('wb') as target:
-            shutil.copyfileobj(result, target)
+        done = RUNNERS.get(data['action'], _run_single)(folder, data, options, control=control, waiting=waiting)
         if (folder / 'cancel').exists():
             raise JobCancelled()
-        name = data['name']
-        if data['action'] != 'convert':
-            suffix = '_powtorzenia' if data['action'] == 'repetitions' else ('_nowy' if options.get('rebuild') else '_odkurzony')
-            name = Path(name).stem[:120] + suffix + '.docx'
-        done = {'state': 'done', 'filename': conversion_filename(name, extension), 'mime': mime,
-                'warnings': list(getattr(result, 'conversion_warnings', []))[:30]}
-        # Liczba obrazów usuniętych z dokumentu przed pracą programu (strona stanu pokazuje komunikat).
-        removed = getattr(result, 'removed_images', 0)
-        done['removed_images'] = removed if isinstance(removed, int) and not isinstance(removed, bool) else 0
-        if options.get('cleaner_summary'):
-            summary = getattr(result, 'cleaner_summary', None) or {}
-            done['summary'] = summary_rows(summary)
-            done['replacements'] = replacement_rows(summary)
         write_json(folder / 'state.json', done)
     except RebuildConfirmationRequired as error:
         write_json(folder / 'state.json', {'state': 'confirmation', 'message': str(error)})
@@ -418,3 +584,5 @@ def execute(folder):
         message = str(error) if isinstance(error, ConversionError) else 'Nie udało się przetworzyć dokumentu. Szczegóły zapisano w logu zadania.'
         write_json(folder / 'state.json', {'state': 'error', 'message': message})
     (folder / 'source.docx').unlink(missing_ok=True)
+    for name in ('sources', 'parts'):
+        shutil.rmtree(folder / name, ignore_errors=True)

@@ -1,6 +1,7 @@
 """Ludzie w panelu admina: konta użytkowników i profil osoby, łączenie kontaktów audio, czarna lista i wybór osób."""
 from django.contrib.auth import get_user_model
 from django.contrib.messages import get_messages
+from django.db import transaction
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
@@ -79,6 +80,24 @@ class AudioContactMergeTests(TestCase):
     def test_merge_needs_two_profiles(self):
         self.assertEqual(self.merge(self.keep), ['Zaznacz co najmniej dwa profile.'])
         self.assertEqual(AudioContributor.objects.count(), 3)
+
+    def test_merge_message_uses_the_polish_plural(self):
+        """Komunikat o połączeniu odmienia liczbę profili (2 profile, 5 profili)."""
+        for count, word in ((2, 'profile'), (5, 'profili')):
+            with self.subTest(count=count), transaction.atomic():
+                extra = [AudioContributor.objects.create(name=f'Kopia {n}') for n in range(count - 1)]
+                self.assertEqual(self.merge(self.keep, *extra)[-1], f'Połączono {count} {word} w „Jan Lektor”.')
+                transaction.set_rollback(True)
+
+    def test_merge_creating_a_duplicate_pair_is_refused_without_changes(self):
+        """Uzupełniony e-mail powieliłby niezaznaczony wpis „Jan Lektor” z tym e-mailem – komunikat zamiast błędu 500."""
+        with_email = AudioContributor.objects.create(name='Ktoś Inny', email='jan@example.test')
+        messages = self.merge(self.keep, with_email)
+        self.assertEqual(len(messages), 1)
+        self.assertIn('Nie połączono profili: „Jan Lektor” z uzupełnionym e-mailem powielałby inny wpis', messages[0])
+        self.assertTrue(AudioContributor.objects.filter(pk=with_email.pk).exists())
+        self.keep.refresh_from_db()
+        self.assertEqual(self.keep.email, '')
 
     def test_merge_keeps_oldest_profile_and_moves_recordings_and_contact_data(self):
         self.assertEqual(self.merge(self.third, self.copy, self.keep), ['Połączono 3 profile w „Jan Lektor”.'])

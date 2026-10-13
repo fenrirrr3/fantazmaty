@@ -626,7 +626,6 @@ def prepare_table_sort(request, items):
                 "recruitment",
                 "accepted_titles",
                 "rejected_titles",
-                "trigger_warnings",
                 "illustrated_excerpt",
                 "illustration_author",
                 "target",

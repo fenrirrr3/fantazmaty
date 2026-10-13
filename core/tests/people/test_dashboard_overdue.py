@@ -9,7 +9,7 @@ from lxml import html
 
 from fantazmaty.testing import create_member, create_superuser
 from people.models import Role
-from texts.models import Anthology, Text
+from texts.models import Anthology, Review, Text
 from workflow.models import WorkflowRoleAssignment, WorkflowStage as Stage
 
 
@@ -44,6 +44,26 @@ class DashboardOverdueTests(TestCase):
         for user, visible in ((self.coordinator, True), (self.superuser, True), (self.editor, False)):
             with self.subTest(user=user.username):
                 self.assertEqual(self.banner(user) is not None, visible)
+
+    def test_pending_publication_section_only_for_superuser(self):
+        """Sekcja „Przyjęte teksty do dodania…” i siatka zgłoszeń są tylko u superusera; koordynatorowi nic nie liczymy."""
+        review = Review.objects.create(
+            title='Czeka na proces', anthology=Anthology.objects.get(title='Cienie miasta'), author_first_name='Jan',
+            author_last_name='Autor', email='autor@example.com', length=100, status=Review.Status.ACCEPTED,
+            author_notified_at=timezone.localdate())
+        for user, visible in ((self.superuser, True), (self.coordinator, False), (self.editor, False)):
+            with self.subTest(user=user.username):
+                self.client.force_login(user)
+                response = self.client.get(reverse('core:home'))
+                page = html.fromstring(response.content)
+                headings = page.xpath('//h2[text()="Przyjęte teksty do dodania do procesu wydawniczego"]')
+                self.assertEqual(bool(headings), visible)
+                self.assertEqual(bool(page.xpath('//*[contains(@class, "dashboard-intake-grid")]')), visible)
+                pending = response.context['pending_publication_reviews']
+                if visible:
+                    self.assertEqual(list(pending), [review])
+                else:
+                    self.assertEqual(pending, [])
 
     def test_banner_lists_overdue_stages_longest_first(self):
         banner = self.banner(self.coordinator)
@@ -116,6 +136,18 @@ class DashboardOverdueTests(TestCase):
                 self.assertIn(scope, header)
                 link = banner.xpath('string(.//a[@class="secondary-button"]/@href)')
                 self.assertEqual('stage=' in link, bool(scope))
+
+    def test_review_coordinator_scope_adds_reviews_without_stages(self):
+        """Koordynator recenzji: zakres „recenzje” bez etapów; razem z redakcją – etapy redakcji i oba zakresy."""
+        from core.views.dashboard import OVERDUE_SCOPES, overdue_scope
+        editing = list(OVERDUE_SCOPES['Koordynator redakcji'][0])
+        for roles, expected in ((['Koordynator recenzji'], ([], True, 'recenzje')),
+                                (['Koordynator redakcji', 'Koordynator recenzji'],
+                                 (editing, True, 'redakcja, recenzje'))):
+            with self.subTest(roles=roles):
+                user = create_member(f'pulpit-zakres-{len(roles)}', 'Koordynator ilustracji')
+                user.person_profile.roles.set([Role.objects.get_or_create(name=role)[0] for role in roles])
+                self.assertEqual(overdue_scope(user), expected)
 
     def test_no_banner_without_overdue_work(self):
         Stage.objects.filter(text__title__in=['Praca 40 dni', 'Czeka 12 dni']).delete()

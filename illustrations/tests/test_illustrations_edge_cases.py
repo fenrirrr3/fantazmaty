@@ -38,7 +38,7 @@ class IllustrationAdminGapTests(TestCase):
     def test_change_form_validates_story_link(self):
         url = reverse('admin:illustrations_illustration_change', args=[self.illustration.pk])
         page = self.client.get(url)
-        data = {'status': 'unassigned', 'story_url': 'ftp://example.com/opowiadanie', 'trigger_warnings': '',
+        data = {'status': 'unassigned', 'story_url': 'ftp://example.com/opowiadanie',
                 'coordinator_notes': '', 'illustrated_excerpt': '', '_save': 'Zapisz',
                 '_edit_version': page.context['request'].edit_version_token}
         response = self.client.post(url, data)

@@ -58,9 +58,10 @@ def external_illustrations(request):
     if query:
         rows = rows.filter(Q(text__title__plcontains=query) | Q(text__tags__plcontains=query) |
                            Q(text__genre__plcontains=query) | Q(text__anthology__title__plcontains=query))
-    # No private model instances or related profiles in the public context.
+    # No private model instances or related profiles in the public context. Content
+    # warnings come from the text itself – illustration's own notes stay private.
     rows = rows.order_by('text__anthology__title', 'text__title', 'pk').values(
-        'text__anthology__title', 'text__title', 'text__tags', 'text__genre', 'public_status')
+        'text__anthology__title', 'text__title', 'text__tags', 'text__genre', 'text__content_warnings', 'public_status')
     page = paginate_queryset(request, rows)
     config = PublicIllustrationSettings.objects.filter(pk=1).first()
     return render(request, 'core/external_illustrations.html', {

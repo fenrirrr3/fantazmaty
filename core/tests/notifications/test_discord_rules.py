@@ -25,7 +25,8 @@ from fantazmaty.testing import create_member
 from fantazmaty.testing.workflow import WorkflowTestDataMixin
 from texts.models import Anthology, Review
 from workflow.models import WorkflowStage
-from workflow.services import claim_stage, complete_stage, finish_editing_to_coordinator, resume_editing
+from workflow.services import (claim_stage, complete_stage, finish_editing_to_coordinator, resume_editing,
+                               send_to_first_verification)
 
 StageType = WorkflowStage.StageType
 URL = 'https://discord.com/api/webhooks/123/abc_DEF-1'
@@ -148,11 +149,39 @@ class WorkflowTriggerTests(WorkflowTestDataMixin, TestCase):
         with self.captureOnCommitCallbacks(execute=True):
             self.finish_second_verification()
         triggers = [t for t, _ in self.triggers()]
-        self.assertEqual(triggers.count('first_verification'), 1)  # rezerwacja nie ogłasza ponownie
+        self.assertEqual(triggers.count('first_verification'), 1)  # W1 zarezerwowana – koniec redakcji nie ogłasza jej ponownie
         self.assertEqual(triggers.count('second_verification'), 1)
         completed = [c for t, c in self.triggers() if t == 'stage_completed']
         self.assertIn('Pierwsza weryfikacja: Tekst do testów workflow', completed)
         self.assertIn('Druga weryfikacja: Tekst do testów workflow', completed)
+
+    def test_editing_handoff_announces_first_verification_only_without_verifier(self):
+        """Koniec pierwszego przebiegu redakcji bez zarezerwowanego W1 ponownie ogłasza „do wzięcia” (raz,
+        z odnośnikiem); z zarezerwowanym W1 albo przy powtórzonym W1 (kolejne podejście) – nie."""
+        DiscordRole.objects.create(name='weryfikator', role_id='555')
+        enable('first_verification', 'Do wzięcia: [tytuł]', '@weryfikator')
+        title = 'Tekst do testów workflow'
+        for case, reserved, iteration, expected in (
+            ('bez weryfikatora', False, 1, [('first_verification', f'<@&555> Do wzięcia: {title}'),
+                                            ('stage_completed', f'Redakcja: {title}')]),
+            ('z weryfikatorem', True, 1, [('stage_completed', f'Redakcja: {title}')]),
+            ('powtórzone W1', False, 2, [('stage_completed', f'Redakcja: {title}')]),
+        ):
+            with self.subTest(case):
+                self.text = self.text.__class__.objects.create(title=title, length=25000)
+                WorkflowStage.objects.create(text=self.text, workflow_cycle=1, stage_type=StageType.READY_FOR_EDITING)
+                link = f'[O, tutaj](<https://cms.example{reverse("core:assigned_text_detail", args=[self.text.pk])}>)'
+                self.begin_editing()
+                if reserved:
+                    claim_stage(self.text, StageType.FIRST_VERIFICATION, self.verifier_1)
+                WorkflowStage.objects.filter(pk=self.stage(StageType.FIRST_VERIFICATION).pk).update(iteration=iteration)
+                DiscordNotification.objects.all().delete()
+                with self.captureOnCommitCallbacks(execute=True):
+                    send_to_first_verification(self.text, self.editor, ended_at=self.today)
+                self.assertEqual(sorted(self.triggers()), expected)
+                for item in DiscordNotification.objects.filter(trigger='first_verification'):
+                    self.assertTrue(item.content.endswith(' ' + link))
+                    self.assertEqual(item.stage_id, self.stage(StageType.FIRST_VERIFICATION).pk)
 
     def editing_control(self):
         self.finish_second_verification()

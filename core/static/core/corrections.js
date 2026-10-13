@@ -1,4 +1,8 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // Odnośnik do zwiniętego formularza (lub adres z kotwicą) rozwija sekcję.
+    const openTarget = id => { const target = id && document.getElementById(id); if (target?.tagName === 'DETAILS') target.open = true; };
+    openTarget((location.hash || '').slice(1));
+    document.querySelectorAll('a[data-open-details]').forEach(link => link.addEventListener('click', () => openTarget((link.getAttribute('href') || '').slice(1))));
     const text = document.querySelector('select[data-texts-url]');
     if (!text) return;
     const form = text.form;

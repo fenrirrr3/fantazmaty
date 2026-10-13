@@ -215,6 +215,21 @@ class CleanerOptionsTests(ProgramViewMixin, TestCase):
         self.assertEqual((options['track_changes'], options['cleaner_summary'], options['keep_page_format']),
                          (True, True, True))
 
+    def test_merge_template_styles_option_reaches_the_job_and_is_remembered(self):
+        """Opcja stylów szablonu przy scalaniu: domyślnie wyłączona, trafia do zadania i jest zapamiętana jak inne opcje."""
+        self.client.force_login(self.admin)
+        options = self.post_job({'program_action': 'merge', 'merge-documents': [upload('a.docx'), upload('b.docx')]})
+        self.assertIs(options['use_template'], False)
+        options = self.post_job({'program_action': 'merge', 'merge-documents': [upload('a.docx'), upload('b.docx')],
+                                 'merge-use_template': 'on'})
+        self.assertIs(options['use_template'], True)
+        self.assertIs(ProgramPreferences.objects.get(user=self.admin).data['merge']['use_template'], True)
+        self.assertIs(self.client.get(self.url).context['merge_form'].initial['use_template'], True)
+        self.assertInHTML('<input type="checkbox" name="merge-use_template" id="id_merge-use_template" '
+                          'aria-describedby="id_merge-use_template_helptext" checked>',
+                          self.client.get(self.url).content.decode())
+        self.assertNotIn('use_template', self.post_job({'program_action': 'clean', 'document': upload()}))
+
     def test_page_format_is_kept_only_together_with_rebuild(self):
         options = self.post_job({'program_action': 'clean', 'document': upload(), 'keep_page_format': 'on'})
         self.assertIs(options['keep_page_format'], False)

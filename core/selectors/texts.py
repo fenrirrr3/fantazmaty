@@ -3,7 +3,7 @@ from workflow.catalog import active_stage_choices, active_role_choices, workflow
 from workflow.labels import assignment_label, stage_label
 from core.translation_scope import frontend_scope, non_abandoned
 from core.filtering import facet_queryset, positive_id
-from datetime import date
+from datetime import date, timedelta
 
 from django.db.models import (
     Exists,
@@ -22,7 +22,7 @@ from core.permissions import (
     is_coordinator,
     require_team_member,
 )
-from texts.models import Anthology, Review, ReviewAssignment, Text, TextNote, ForeignAuthor, Translator
+from texts.models import Anthology, Review, ReviewAssignment, Text, TextNote, TextVisit, ForeignAuthor, Translator
 from workflow.models import WorkflowRoleAssignment, WorkflowStage
 from workflow.services import ROLE_GROUPS
 from core.services.texts import STAGE_ROLE_MAP, TERMINAL_STAGES
@@ -977,6 +977,8 @@ def _text_notes(text, user, coordinator):
         {
             "pk": note.pk,
             "author": _user_data(note.author),
+            "author_id": note.author_id,
+            "is_new": False,
             "can_manage": coordinator or note.author_id == user.pk,
             "content": note.content,
             "is_important": note.is_important,
@@ -986,6 +988,57 @@ def _text_notes(text, user, coordinator):
         .select_related("author", "author__person_profile")
         .order_by("-created_at", "-pk")
     ]
+
+
+# Przy pierwszym w ogóle wejściu na kartę tekstu „nowe” są tylko notatki z tego okresu.
+NEW_NOTES_FIRST_VISIT_DAYS = 14
+
+
+def text_last_seen(user, text_id):
+    """Chwila poprzedniego wejścia osoby na kartę tekstu albo None (jedno zapytanie)."""
+    return (
+        TextVisit.objects.filter(user_id=user.pk, text_id=text_id)
+        .values_list("last_seen_at", flat=True)
+        .first()
+    )
+
+
+def mark_new_notes(notes, *, user, last_seen, now):
+    """Oznacza notatki innych osób dodane po poprzedniej wizycie i zwraca podsumowanie.
+
+    Bez zapisu wizyty liczą się tylko notatki z ostatnich NEW_NOTES_FIRST_VISIT_DAYS dni.
+    Notatki są posortowane od najnowszej, więc pierwsza nowa jest najświeższa.
+    """
+    since = last_seen or now - timedelta(days=NEW_NOTES_FIRST_VISIT_DAYS)
+    new = []
+    for note in notes:
+        note["is_new"] = bool(
+            note["author_id"] != user.pk
+            and note["created_at"] is not None
+            and note["created_at"] > since
+        )
+        if note["is_new"]:
+            new.append(note)
+    if not new:
+        return None
+    return {
+        "count": len(new),
+        "latest": new[0],
+        "important": sum(1 for note in new if note["is_important"]),
+    }
+
+
+def record_text_visit(user, text_id, now):
+    """Zapisuje wejście jednym upsertem – bez sygnałów, wersji edycji i dziennika zmian."""
+    from django.db import connections, router
+    using = router.db_for_write(TextVisit)
+    with_target = connections[using].features.supports_update_conflicts_with_target
+    TextVisit.objects.using(using).bulk_create(
+        [TextVisit(user_id=user.pk, text_id=text_id, last_seen_at=now)],
+        update_conflicts=True,
+        unique_fields=("user", "text") if with_target else None,
+        update_fields=("last_seen_at",),
+    )
 
 
 

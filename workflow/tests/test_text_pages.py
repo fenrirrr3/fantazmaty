@@ -48,12 +48,14 @@ class TextPageTests(TestCase):
                 self.assertNotContains(response, 'Edytuj w adminie')
 
     def test_notes_have_accessible_hidden_label_and_short_button(self):
+        """Formularz notatki: etykieta „Treść notatki” ukryta wizualnie (dla czytników ekranu) i krótki przycisk „Dodaj”."""
         self.client.force_login(self.admin)
         response = self.client.get(reverse('core:assigned_text_detail', args=[self.text.pk]))
-        self.assertNotContains(response, '>Nowa notatka</label>')
-        self.assertNotContains(response, '>Dodaj notatkę</button>')
-        self.assertContains(response, '>Dodaj</button>')
-        self.assertContains(response, '>Treść notatki</label>')
+        form = html.fromstring(response.content).xpath('//form[contains(@action, "%s")]' % reverse(
+            'core:add_text_note', args=[self.text.pk]))[0]
+        label = form.xpath('.//label[@for=//textarea[@name="content"]/@id]')[0]
+        self.assertEqual((label.text_content(), label.get('class')), ('Treść notatki', 'visually-hidden'))
+        self.assertEqual([' '.join(b.text_content().split()) for b in form.xpath('.//button[@type="submit"]')], ['Dodaj'])
 
     def test_chapter_pairs_notes_and_reviews_without_tag_editor(self):
         self.client.force_login(self.admin)

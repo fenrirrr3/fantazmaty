@@ -1,7 +1,10 @@
 """Publiczna lista ilustracji do wzięcia: projekcja bez danych prywatnych, status liczony z osób,
 zakres, filtry i sortowanie oraz udostępniany link do folderu GDrive."""
+from django.templatetags.static import static
 from django.contrib.auth import get_user_model
+from django.db import connection
 from django.test import Client, TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from lxml import html
 
@@ -117,11 +120,11 @@ class ExternalIllustrationsTests(TestCase):
         self.assertEqual([a.text_content() for a in buttons], ['Wyczyść filtry', 'Otwórz GDrive'])
         self.assertEqual(buttons[-1].get('href'), link)
         self.assertEqual(buttons[-1].get('target'), '_blank')
-        self.assertEqual(len(public_doc.xpath('//thead/tr/th')), 5)
-        self.assertEqual(len(public_doc.xpath('//tbody/tr[1]/td')), 5)
+        self.assertEqual(len(public_doc.xpath('//thead/tr/th')), 6)
+        self.assertEqual(len(public_doc.xpath('//tbody/tr[1]/td')), 6)
         self.assertFalse(public_doc.xpath('//table//a[@href="%s"]' % link))
         empty_doc = html.fromstring(self.client.get(self.url, {'q': 'brak-wyników'}).content)
-        self.assertEqual(empty_doc.xpath('//tbody/tr/td/@colspan'), ['5'])
+        self.assertEqual(empty_doc.xpath('//tbody/tr/td/@colspan'), ['6'])
         self.assertEqual(len(empty_doc.xpath('//a[@href="%s"]' % link)), 1)
         self.assertEqual(self.client.post(self.internal, {'drive_url':'','version':token}).status_code,409)
         self.assertEqual(PublicIllustrationSettings.objects.get().drive_url,link)
@@ -132,3 +135,36 @@ class ExternalIllustrationsTests(TestCase):
         self.assertEqual(
             csrf.post(self.internal, {"drive_url": link, "version": token}).status_code, 403
         )
+
+    def test_content_warnings_column_shows_text_warnings_only(self):
+        """Kolumna „Ostrzeżenia dotyczące treści” pokazuje ostrzeżenia tekstu (puste – „–”).
+        Strona ładuje layout.js, który na telefonie zamienia wiersze w karty z etykietami kolumn."""
+        self.assertContains(self.client.get(self.url), static('core/layout.js'))
+        cases = (
+            ('przemoc, śmierć zwierzęcia', 'przemoc, śmierć zwierzęcia'),
+            ('przemoc\nkrew', 'przemoc\nkrew'),
+            ('', '–'),
+        )
+        for warnings, expected in cases:
+            with self.subTest(warnings=warnings):
+                Text.objects.filter(pk=self.text.pk).update(content_warnings=warnings)
+                response = self.client.get(self.url)
+                doc = html.fromstring(response.content)
+                headers = [th.text_content().strip() for th in doc.xpath('//thead/tr/th')]
+                self.assertEqual(headers, ['Antologia', 'Tytuł opowiadania', 'Tagi', 'Gatunek', 'Ostrzeżenia dotyczące treści', 'Status'])
+                cells = doc.xpath('//tbody/tr[1]/td')
+                self.assertEqual(cells[headers.index('Ostrzeżenia dotyczące treści')].text_content(), expected)
+                self.assertEqual(set(response.context['rows'][0]), {
+                    'text__anthology__title', 'text__title', 'text__tags', 'text__genre', 'text__content_warnings', 'public_status'})
+
+    def test_query_count_does_not_grow_with_rows(self):
+        """Liczba zapytań strony publicznej jest taka sama dla 1 i 5 ilustracji (brak N+1)."""
+        def count_queries():
+            with CaptureQueriesContext(connection) as queries:
+                self.assertEqual(self.client.get(self.url).status_code, 200)
+            return len(queries)
+        single = count_queries()
+        for number in range(4):
+            Text.objects.create(title=f'Kolejne opowiadanie {number}', anthology=self.book, length=10, content_warnings=f'ostrzeżenie {number}')
+        self.assertEqual(Illustration.objects.filter(text__anthology=self.book).count(), 5)
+        self.assertEqual(count_queries(), single)

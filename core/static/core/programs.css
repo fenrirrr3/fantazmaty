@@ -530,6 +530,88 @@
     opacity: .6;
 }
 
+/* Scalanie DOCX: lista wybranych plików w kolejności scalania. */
+.program-file-list {
+    margin: 0;
+    padding-left: var(--space-5);
+    font-size: var(--font-size-sm);
+}
+
+.program-file-list li {
+    overflow-wrap: anywhere;
+}
+
+/* Stopki tekstów antologii: wybór antologii, blok do skopiowania i lista tekstów. */
+.odkurzacz-upload select {
+    width: 100%;
+    max-width: 100%;
+}
+
+.program-credits-all {
+    display: grid;
+    gap: var(--space-2);
+    margin-top: var(--space-4);
+}
+
+.program-credits-all .program-label-row > label {
+    font-weight: 600;
+}
+
+.program-credits-text {
+    width: 100%;
+    min-height: calc(var(--space-7) * 4);
+    padding: var(--space-3);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    background: var(--surface-alt);
+    font: inherit;
+    font-size: var(--font-size-sm);
+    resize: vertical;
+}
+
+.program-credits-list {
+    display: grid;
+    gap: var(--space-3);
+    margin: var(--space-4) 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.program-credits-item {
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+}
+
+.program-credits-head {
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+    justify-content: space-between;
+}
+
+.program-credits-head h3 {
+    margin: 0;
+    font-size: var(--font-size-md);
+    overflow-wrap: anywhere;
+}
+
+.program-credits-head .copy-value-button {
+    flex: none;
+    margin-left: 0;
+}
+
+.program-credits-authors {
+    margin: var(--space-1) 0 var(--space-2);
+    color: var(--muted);
+    font-size: var(--font-size-sm);
+}
+
+.program-credits-item .credits-list {
+    margin: 0;
+}
+
 @media screen and (max-width: 760px) {
     .replacement-form {
         grid-template-columns: 1fr;

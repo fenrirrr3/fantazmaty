@@ -1,5 +1,6 @@
 // corrections.js: formularz uwag korektorskich – wczytywanie tekstów antologii (blokada wysyłki, przestarzałe
-// odpowiedzi, błąd), zapis „zapisz i dodaj kolejną” przez fetch (sukces, błędy pól, brak potwierdzenia, podwójne kliknięcie).
+// odpowiedzi, błąd), zapis „zapisz i dodaj kolejną” przez fetch (sukces, błędy pól, brak potwierdzenia, podwójne kliknięcie),
+// rozwijanie zwiniętego formularza odnośnikiem.
 const assert = require('node:assert/strict');
 const {Document, fakeFetch, flush, runScript, ready} = require('./support/dom.js');
 
@@ -106,5 +107,18 @@ function fixture({correctionForm = true} = {}) {
     f = fixture({correctionForm: false});
     assert.equal(f.submit(f.more).defaultPrevented, false);
     f.choose('2'); assert.equal(f.net.requests.length, 1);
-    console.log('Corrections JS: text loading (lock, stale, failure), AJAX save and continue, field errors, missing confirmation, double click OK');
+
+    // Odnośnik „Zgłoś pierwszą uwagę” rozwija zwiniętą sekcję formularza.
+    {
+        const doc = new Document();
+        const section = doc.el('details', {attrs: {id: 'zglos-uwage'}});
+        const link = doc.el('a', {attrs: {href: '#zglos-uwage', 'data-open-details': ''}});
+        doc.body.append(section, link);
+        runScript('corrections.js', doc, {});
+        ready(doc);
+        assert.notEqual(section.open, true);
+        link.fire('click');
+        assert.equal(section.open, true);
+    }
+    console.log('Corrections JS: text loading (lock, stale, failure), AJAX save and continue, field errors, missing confirmation, double click, opening the collapsed form OK');
 })().catch(error => { console.error(error); process.exitCode = 1; });

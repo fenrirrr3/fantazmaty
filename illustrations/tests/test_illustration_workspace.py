@@ -74,20 +74,20 @@ class IllustrationWorkspaceTests(TestCase):
             status="assigned", assigned_at=timezone.localdate() - timedelta(days=20)
         )
 
-    def test_list_keeps_summary_and_detail_loads_metadata_and_legacy_warnings(self):
-        self.illustration.trigger_warnings = "Stare ostrzeżenia"
-        self.illustration.save()
+    def test_list_keeps_summary_and_detail_shows_only_text_warnings(self):
+        """Lista pokazuje podsumowanie; szczegóły – gatunek i ostrzeżenia z tekstu (puste – „Nie podano”)."""
         response = self.client.get(reverse("illustrations:illustration_list"))
         for value in ("Ilustrowana", "Jan Autor", self.text.title):
             self.assertContains(response, value)
-        for value in ("Science fantasy", "Ostrzeżenia tekstu", "Stare ostrzeżenia"):
+        for value in ("Science fantasy", "Ostrzeżenia tekstu"):
             self.assertNotContains(response, value)
         detail = self.client.get(self.url)
         for value in ("Science fantasy", "Ostrzeżenia tekstu"):
             self.assertContains(detail, value)
-        self.assertNotContains(detail, "Stare ostrzeżenia")
         Text.objects.filter(pk=self.text.pk).update(content_warnings="")
-        self.assertContains(self.client.get(self.url), "Stare ostrzeżenia")
+        detail = self.client.get(self.url)
+        self.assertNotContains(detail, "Ostrzeżenia tekstu")
+        self.assertContains(detail, "Nie podano")
 
     def test_only_in_preparation_and_illustrated_anthologies_are_visible(self):
         for field, value in (("status", "ready"), ("has_illustrations", False)):
@@ -238,8 +238,8 @@ class IllustrationListTests(TestCase):
         art = Illustration.objects.get(text=text)
         art.story_url = 'https://example.test/opowiadanie'
         art.illustrated_excerpt = 'Unikatowy fragment'
-        art.trigger_warnings = 'Unikatowe ostrzeżenie'
         art.save()
+        Text.objects.filter(pk=text.pk).update(content_warnings='Unikatowe ostrzeżenie')
         response = self.client.get(reverse('illustrations:illustration_list'))
         doc = html.fromstring(response.content)
         table = doc.get_element_by_id('illustrations-table')
@@ -249,10 +249,10 @@ class IllustrationListTests(TestCase):
         columns = set(response.context['page_obj'].sort_columns)
         self.assertTrue(set(headers) <= columns)
         self.assertFalse(columns & {'Gatunek, tagi', 'Ostrzeżenia dotyczące treści', 'Opowiadanie', 'Ilustrowany fragment'})
-        for value in (art.story_url, art.illustrated_excerpt, art.trigger_warnings, 'znacznik-tagu'):
+        for value in (art.story_url, art.illustrated_excerpt, 'Unikatowe ostrzeżenie', 'znacznik-tagu'):
             self.assertNotContains(response, value)
         detail = self.client.get(reverse('illustrations:illustration_detail', args=[art.pk]))
-        for value in (art.story_url, art.illustrated_excerpt, art.trigger_warnings, 'znacznik-tagu'):
+        for value in (art.story_url, art.illustrated_excerpt, 'Unikatowe ostrzeżenie', 'znacznik-tagu'):
             self.assertContains(detail, value)
 
 

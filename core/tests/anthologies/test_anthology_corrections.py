@@ -135,6 +135,22 @@ class CorrectionViewTests(TestCase):
         self.assertIn("Tu zgłaszamy uwagi tylko do już wydanych antologii",
                       doc.xpath('string(//header[h1="Uwagi do antologii"]/p)'))
 
+    def test_form_is_collapsed_above_list_and_opens_on_errors(self):
+        """Sekcja „Zgłoś uwagę” stoi przed listą uwag, domyślnie zwinięta; po błędnym POST jest rozwinięta."""
+        self.client.force_login(self.member)
+        url = reverse('core:anthology_corrections')
+        for case, response, opened in (('GET', self.client.get(url), False),
+                                       ('POST z błędem', self.client.post(url, {'anthology': self.book.pk}), True)):
+            with self.subTest(case):
+                doc = html.fromstring(response.content)
+                [section] = doc.xpath('//details[@id="zglos-uwage"]')
+                self.assertEqual(section.xpath('string(summary/span[1])'), 'Zgłoś uwagę')
+                self.assertEqual('open' in section.attrib, opened)
+                self.assertTrue(section.xpath('.//form[@data-correction-form]'))
+                table = doc.xpath('//table[@data-copy-table]')[0]
+                self.assertEqual(section.xpath('following::table[@data-copy-table]'), [table])
+        self.assertEqual(doc.xpath('//a[text()="Zgłoś pierwszą uwagę"]/@href'), ['#zglos-uwage'])
+
 
     def test_ajax_submission_answers_with_json(self):
         self.client.force_login(self.member)

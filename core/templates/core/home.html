@@ -42,9 +42,9 @@
     </section>
     {% endif %}
 
+    {% if user.is_superuser %}
     <div class="dashboard-intake-grid">
-    {% if user.is_superuser %}<section class="details-card notification-queue{% if pending_notification_count %} notification-urgent{% endif %}"><h2>Autorzy do powiadomienia</h2><div class="general-notes-actions"><a class="primary-button" href="{% url 'core:notification_queue' %}">Obsłuż zgłoszenia: {{ pending_notification_count }}</a><a class="secondary-button" href="{% url 'core:scheduled_rejections' %}">Zaplanowane odrzucenia</a></div></section>{% endif %}
-    {% if dashboard_coordinator %}
+    <section class="details-card notification-queue{% if pending_notification_count %} notification-urgent{% endif %}"><h2>Autorzy do powiadomienia</h2><div class="general-notes-actions"><a class="primary-button" href="{% url 'core:notification_queue' %}">Obsłuż zgłoszenia: {{ pending_notification_count }}</a><a class="secondary-button" href="{% url 'core:scheduled_rejections' %}">Zaplanowane odrzucenia</a></div></section>
     <section class="details-card">
         <h2>Przyjęte teksty do dodania do procesu wydawniczego</h2>
         <p class="form-help">Autor został powiadomiony, ale zgłoszenie nie jest jeszcze powiązane z tekstem w procesie wydawniczym.</p>
@@ -52,8 +52,8 @@
             <li><a href="{% url 'core:assigned_review_detail' review.pk %}">{{ review.title }}</a>{% if can_view_authors %} – {{ review.author_display_name }}{% endif %} ({{ review.anthology.title }}){% if review.old_reviews %} – archiwalne{% endif %}</li>
         {% empty %}<li>Brak tekstów oczekujących na przeniesienie.</li>{% endfor %}</ul>
     </section>
-    {% endif %}
     </div>
+    {% endif %}
     {% if dashboard_coordinator and pending_recruitment %}
     <section class="details-card" data-pending-recruitment>
         <h2>Oczekujące zgłoszenia rekrutacyjne</h2>

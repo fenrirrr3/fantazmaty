@@ -122,17 +122,27 @@ class TextTagsEditingTests(TaggedTextsFixture, TestCase):
         self.assertEqual(tuple(getattr(self.text, name) for name in fields), before)
         self.assertEqual(list(self.text.workflow_stages.values()), stages)
 
-    def test_notes_and_tags_cards_share_container_and_link_to_tag_list(self):
-        response = self.client.get(self.detail)
-        doc = html.fromstring(response.content)
-        cards = doc.xpath('//div[@class="text-notes-tags"]/section')
-        self.assertEqual(
-            [card.get("aria-labelledby") for card in cards],
-            ["text-notes-heading", "text-tags-heading"],
-        )
-        self.assertEqual(cards[1].xpath(".//textarea/@name"), ["tags", "genre"])
-        self.assertContains(response, 'href="' + self.list + '"')
-        self.assertContains(response, "core/tags.")
+    def test_warnings_tags_and_genre_share_one_grid_and_link_to_tag_list(self):
+        """Ostrzeżenia, tagi i gatunek to trzy panele jednej siatki – także w widoku tylko do odczytu;
+        przy edycji tagi i gatunek zapisuje jeden formularz rozpięty na dwie kolumny."""
+        reviewer = create_member("grid-reviewer", "Recenzent")
+        for user, editable in ((self.member, True), (reviewer, False)):
+            with self.subTest(user=user.username):
+                self.client.force_login(user)
+                response = self.client.get(self.detail)
+                grid = html.fromstring(response.content).xpath('//div[@data-text-info-grid]')[0]
+                self.assertEqual(grid.get("class"), "text-info-grid")
+                panels = grid.xpath('./div[contains(@class,"notes-editor-panel")]'
+                                    ' | ./form/div[contains(@class,"notes-editor-panel")]')
+                self.assertEqual([" ".join(panel.xpath("./h3")[0].text_content().split()) for panel in panels],
+                                 ["Ostrzeżenia dotyczące treści", "Tagi", "Gatunek"])
+                forms = grid.xpath('./form[contains(@class,"text-tags-form")]')
+                self.assertEqual(len(forms), int(editable))
+                if editable:
+                    self.assertEqual(forms[0].xpath(".//textarea/@name"), ["tags", "genre"])
+                    self.assertEqual(len(forms[0].xpath('.//button[@type="submit"]')), 1)
+                self.assertContains(response, 'href="' + self.list + '"')
+                self.assertContains(response, "core/tags.")
 
     def test_existing_rows_start_with_empty_tags_without_importing_genre(self):
         self.assertEqual(self.other.tags, "")

@@ -35,6 +35,19 @@
         </div>
     </header>
 
+    {% if new_notes %}
+        <div class="message info new-notes-alert" role="status" data-new-notes="{{ new_notes.count }}">
+            {% if new_notes.count == 1 %}
+                <strong>Nowa notatka{% if new_notes.latest.is_important %} (ważna){% endif %}</strong>
+                od {% if new_notes.latest.author %}{% firstof new_notes.latest.author.get_full_name "Nieuzupełnione dane" %}{% else %}usuniętego konta{% endif %}
+                ({{ new_notes.latest.created_at|date:"d.m.Y, H:i" }})
+            {% else %}
+                <strong>Nowe notatki: {{ new_notes.count }}</strong>{% if new_notes.important %} – w tym ważne: {{ new_notes.important }}{% endif %}
+            {% endif %}
+            – <a href="#text-notes">przejdź do notatek</a>
+        </div>
+    {% endif %}
+
     {% if is_extract_volume and can_manage_workflow %}<p><a class="secondary-button" href="{% url 'core:extract_list' %}?recruitment={{ text.title|urlencode }}">Informacyjny rejestr miniatur</a></p>{% endif %}
     {% if is_translation %}
     <section class="card"><div class="card-body"><h2>Autor zagraniczny i tłumacz</h2>
@@ -401,7 +414,8 @@
     <section class="details-card work-information" aria-labelledby="content-notes-heading">
         <h2 id="content-notes-heading">Informacje do pracy</h2>
 
-        <div class="notes-editor-grid{% if not show_coordinator_note and can_edit_coordinator_note %} has-note-toggle{% endif %}">
+        {# Ostrzeżenia, tagi i gatunek obok siebie; tagi i gatunek zapisuje jeden formularz rozpięty na dwie kolumny. #}
+        <div class="text-info-grid{% if is_novel or is_extract_volume %} is-single{% endif %}" data-text-info-grid>
             <div class="notes-editor-panel">
                 <h3>Ostrzeżenia dotyczące treści{% if is_novel %} całej powieści{% endif %}</h3>
                 {% if is_novel %}<p>{{ text.anthology.novel.content_warnings|default:'Nie dodano ostrzeżeń.'|linebreaksbr }}</p>{% else %}
@@ -440,63 +454,43 @@
                     </div>
                 {% endif %}{% endif %}
             </div>
-
-            {% if show_coordinator_note %}
-                
-                <div class="notes-editor-panel coordinator-note-highlight">
-                    <h3>Notatka koordynatora</h3>
-
-
-                    {% if can_edit_coordinator_note and coordinator_note_form %}
-                        <form
-                            method="post"
-                            action="{% url 'core:update_coordinator_note' text.pk %}"
-                            class="general-notes-form"
-                            data-autosave="coordinator-note-{{ text.pk }}"
-                            data-warn-unsaved
-                        >
-                            {% include "core/includes/workflow_fields.html" %}
-                            {{ coordinator_note_form.non_field_errors }}
-
-                            <div class="form-field">
-                                <label for="{{ coordinator_note_form.coordinator_note.id_for_label }}">
-                                    {{ coordinator_note_form.coordinator_note.label }}
-                                </label>
-                                {{ coordinator_note_form.coordinator_note }}
-                                {{ coordinator_note_form.coordinator_note.errors }}
-                            </div>
-
-                            <div class="general-notes-actions">
-                                <button type="submit" class="secondary-button">
-                                    Zapisz
-                                </button>
-                            </div>
-                        </form>
-                    {% else %}
-                        <div class="coordinator-note-readonly">
-                            {{ text.coordinator_note|linebreaksbr }}
-                        </div>
-                    {% endif %}
-{% if text.coordinator_note_updated_at %}<p class="form-help">Zapisano: {{ text.coordinator_note_updated_at|date:"d.m.Y H:i" }}</p>{% endif %}
+            {% if not is_novel and not is_extract_volume %}
+            {% if not can_edit_content_warnings %}
+                {# Tagi i gatunek zmienia osoba z przydziałem do tekstu albo koordynator – reszta widzi je tylko do odczytu. #}
+                <div class="notes-editor-panel" data-text-info="tags">
+                    <h3 id="text-tags-heading">Tagi</h3>
+                    <p class="text-info-value">{{ text_tags_form.tags.value|default:"Brak tagów" }}</p>
+                    <div class="text-tags-actions"><a class="secondary-button" href="{% url 'core:tag_list' %}">Przejdź do listy</a></div>
                 </div>
+                <div class="notes-editor-panel" data-text-info="genre">
+                    <h3 id="text-genre-heading">Gatunek</h3>
+                    <p class="text-info-value">{{ text_tags_form.genre.value|default:"Nie podano" }}</p>
+                    <p class="muted-text">Tagi i gatunek może zmienić osoba przypisana do tekstu lub koordynator.</p>
+                </div>
+            {% else %}
+                <form method="post" action="{% url 'core:update_text_tags' text.pk %}" class="text-tags-form" aria-label="Tagi i gatunek" data-warn-unsaved>
+                    {% csrf_token %}{% edit_version %}
+                    <div class="notes-editor-panel" data-text-info="tags">
+                        <h3 id="text-tags-heading">Tagi</h3>
+                        {{ text_tags_form.non_field_errors }}
+                        <div class="form-field">{{ text_tags_form.tags.label_tag }}{{ text_tags_form.tags }}{{ text_tags_form.tags.errors }}<p class="muted-text">{{ text_tags_form.tags.help_text }}</p></div>
+                        <div class="text-tags-actions"><a class="secondary-button" href="{% url 'core:tag_list' %}">Przejdź do listy</a></div>
+                    </div>
+                    <div class="notes-editor-panel" data-text-info="genre">
+                        <h3 id="text-genre-heading">Gatunek</h3>
+                        <div class="form-field">{{ text_tags_form.genre.label_tag }}{{ text_tags_form.genre }}{{ text_tags_form.genre.errors }}<p class="muted-text">{{ text_tags_form.genre.help_text }}</p></div>
+                        <div class="text-tags-actions"><button class="primary-button" type="submit">Zapisz tagi i gatunek</button></div>
+                    </div>
+                </form>
             {% endif %}
-            {% if not show_coordinator_note and can_edit_coordinator_note %}
-                <details class="coordinator-note-create"{% if coordinator_note_form.errors %} open{% endif %}>
-                    <summary>Dodaj notatkę koordynatora</summary>
-                    <div class="notes-editor-panel coordinator-note-highlight"><h3>Notatka koordynatora</h3>
-                    <form method="post" action="{% url 'core:update_coordinator_note' text.pk %}"
-                          class="general-notes-form" data-warn-unsaved>
-                        {% include "core/includes/workflow_fields.html" %}
-                        {{ coordinator_note_form.non_field_errors }}<div class="form-field">{{ coordinator_note_form.coordinator_note.label_tag }}{{ coordinator_note_form.coordinator_note }}{{ coordinator_note_form.coordinator_note.errors }}</div>
-                        <button type="submit" class="secondary-button">Zapisz</button>
-                    </form></div>
-                </details>
             {% endif %}
         </div>
     </section>
 
-    <div class="text-notes-tags{% if is_extract_volume %} extract-volume-notes{% endif %}{% if is_novel %} chapter-notes-reviews{% endif %}">
-    <section class="card" aria-labelledby="text-notes-heading">
+    {# Notatki zespołu obok notatki koordynatora; w rozdziale powieści obok recenzji, a notatka koordynatora pod nimi. #}
+    {% if is_novel %}{% include "core/includes/text_coordinator_note.html" %}{% endif %}
+    <div class="{% if is_novel %}text-notes-tags chapter-notes-reviews{% else %}text-notes-pair{% if not show_coordinator_note and not can_edit_coordinator_note %} is-single{% endif %}{% endif %}" data-text-notes-pair>
+    <section class="card text-notes-card" id="text-notes" aria-labelledby="text-notes-heading">
         <header class="section-header">
             <h2 id="text-notes-heading">Notatki zespołu</h2>
             <span class="record-counter">{{ text_notes|length }}</span>
@@ -535,7 +529,7 @@
 
         <div class="text-notes-list">
             {% for note in text_notes %}
-                <details class="text-note{% if note.is_important %} is-important{% endif %}"{% if note.is_important %} open{% endif %}>
+                <details class="text-note{% if note.is_important %} is-important{% endif %}{% if note.is_new %} is-new{% endif %}"{% if note.is_important or note.is_new %} open{% endif %}>
                     <summary>
                         <span class="text-note-author">
                             <strong>
@@ -547,10 +541,11 @@
                             </strong>
                             <small>{{ note.created_at|date:"d.m.Y, H:i" }}</small>
                         </span>
-                        {% if note.is_important %}
-                            <span class="important-note-badge">Ważna</span>
-                        {% endif %}
-                        <span class="dropdown-arrow" aria-hidden="true">▾</span>
+                        <span class="text-note-badges">
+                            {% if note.is_new %}<span class="new-note-badge">Nowa</span>{% endif %}
+                            {% if note.is_important %}<span class="important-note-badge">Ważna</span>{% endif %}
+                            <span class="dropdown-arrow" aria-hidden="true">▾</span>
+                        </span>
                     </summary>
                     <div class="text-note-content">{{ note.content|linebreaksbr }}</div>
                     {% if note.can_manage %}<div class="text-note-actions">
@@ -563,28 +558,7 @@
             {% endfor %}
         </div>
     </section>
-    {% if is_novel %}{% include 'core/includes/text_reviews.html' %}{% elif not is_extract_volume %}
-    <section class="card" aria-labelledby="text-tags-heading">
-        <header class="section-header"><h2 id="text-tags-heading">Tagi i gatunek</h2></header>
-        {% if not can_edit_content_warnings %}
-          {# Tagi i gatunek zmienia osoba z przydziałem do tekstu albo koordynator – reszta widzi je tylko do odczytu. #}
-          <dl class="details-grid">
-            <div class="detail-item"><dt>Tagi</dt><dd>{{ text_tags_form.tags.value|default:"Brak tagów" }}</dd></div>
-            <div class="detail-item"><dt>Gatunek</dt><dd>{{ text_tags_form.genre.value|default:"Nie podano" }}</dd></div>
-          </dl>
-          <p class="muted-text">Tagi i gatunek może zmienić osoba przypisana do tekstu lub koordynator.</p>
-          <div class="text-tags-actions"><a class="secondary-button" href="{% url 'core:tag_list' %}">Przejdź do listy</a></div>
-        {% else %}
-          <form method="post" action="{% url 'core:update_text_tags' text.pk %}" class="text-tags-form" data-warn-unsaved>
-            {% csrf_token %}{% edit_version %}{{ text_tags_form.non_field_errors }}
-            <div class="form-field">{{ text_tags_form.tags.label_tag }}{{ text_tags_form.tags }}{{ text_tags_form.tags.errors }}<p class="muted-text">{{ text_tags_form.tags.help_text }}</p></div>
-            <div class="form-field">{{ text_tags_form.genre.label_tag }}{{ text_tags_form.genre }}{{ text_tags_form.genre.errors }}<p class="muted-text">{{ text_tags_form.genre.help_text }}</p></div>
-            <div class="text-tags-actions"><button class="primary-button" type="submit">Zapisz tagi i gatunek</button>
-            <a class="secondary-button" href="{% url 'core:tag_list' %}">Przejdź do listy</a></div>
-        </form>
-        {% endif %}
-    </section>
-    {% endif %}
+    {% if is_novel %}{% include 'core/includes/text_reviews.html' %}{% else %}{% include "core/includes/text_coordinator_note.html" %}{% endif %}
     </div>
 
     {% if not is_novel and not is_extract_volume %}{% include 'core/includes/text_reviews.html' %}{% endif %}

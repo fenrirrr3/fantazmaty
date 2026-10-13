@@ -706,6 +706,37 @@ class TextNote(models.Model):
         return f"{self.text.title} – {author_name} – {formatted_date}"
 
 
+class TextVisit(models.Model):
+    """Ostatnie wejście osoby na kartę tekstu – do oznaczania nowych notatek zespołu.
+
+    Zapis techniczny: nie podbija wersji edycji tekstu i nie trafia do dziennika zmian.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="text_visits",
+        verbose_name="użytkownik",
+    )
+    text = models.ForeignKey(
+        Text,
+        on_delete=models.CASCADE,
+        related_name="visits",
+        verbose_name="tekst",
+    )
+    last_seen_at = models.DateTimeField("ostatnio widziane")
+
+    class Meta:
+        verbose_name = "wizyta na karcie tekstu"
+        verbose_name_plural = "wizyty na kartach tekstów"
+        constraints = [
+            models.UniqueConstraint(fields=("user", "text"), name="unique_text_visit_per_user"),
+        ]
+
+    def __str__(self):
+        return f"{self.text_id} – {self.user_id}"
+
+
 class ReviewQuerySet(VersionedQuerySet):
     def visible_to(self, user):
         return self if user.is_active and user.is_superuser else self.filter(is_hidden=False)

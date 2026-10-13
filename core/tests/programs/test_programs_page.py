@@ -1,4 +1,5 @@
-"""Wygląd stron programów: zwarte karty, dymki „?” z opisami i strona stanu zadania."""
+"""Strona programów: zwarte karty, dymki „?” z opisami, strona stanu zadania, sekcje superusera
+(scalanie, podział, stopki tekstów antologii)."""
 import re
 from unittest.mock import patch
 
@@ -146,6 +147,164 @@ class SuperuserProgramsPageTests(TestCase):
         tips = ' '.join(text_of(body) for body in css(tree, '.help-tip-body'))
         self.assertIn('nie masz limitu wielkości analizy', tips)
         self.assertIn(f'do {jobs.superuser_time_limit()} sekund', tips)
+
+
+class SuperuserProgramSectionsTests(IsolatedProgramDirsMixin, TestCase):
+    """Sekcje 4–6 (scalanie, podział, stopki) tylko dla superusera – w szablonie i po stronie serwera."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.admin = create_superuser('sekcje-admin')
+        cls.coordinator = create_member('sekcje-koordynator', 'Koordynator')
+
+    def page(self, user, **params):
+        self.client.force_login(user)
+        response = self.client.get(reverse('core:programs'), params)
+        return response, html.fromstring(response.content.decode())
+
+    def test_lead_texts_mention_editorial_gremlins(self):
+        """Opis strony i karty Odkurzacza: spacje, „edytorskie chochliki” i zapis tekstu."""
+        _, tree = self.page(self.coordinator)
+        self.assertEqual(text_of(css(tree, '.page-description')[0]).split('.')[0],
+                         'Popraw spacje, edytorskie chochliki i zapis tekstu w dokumencie Word')
+        self.assertEqual(text_of(css(tree, '#program-clean .program-lead')[0]),
+                         'Poprawia spacje, edytorskie chochliki i zapis tekstu w dokumencie DOCX.')
+
+    def test_superuser_sees_six_sections_coordinator_three(self):
+        """Superuser widzi scalanie, podział i stopki; koordynator tylko trzy dotychczasowe programy."""
+        for user, expected in ((self.admin, ['program-clean', 'program-convert', 'program-repetitions',
+                                             'program-merge', 'program-split', 'program-credits']),
+                               (self.coordinator, ['program-clean', 'program-convert', 'program-repetitions'])):
+            with self.subTest(user=user.username):
+                response, tree = self.page(user)
+                self.assertEqual([card.get('id') for card in css(tree, 'details.program-tool')], expected)
+                ids = tree.xpath('//@id')
+                self.assertEqual(len(ids), len(set(ids)), 'Powtórzone id na stronie')
+        _, tree = self.page(self.admin)
+        merge_input = css(tree, '#program-merge input[type=file]')[0]
+        self.assertIsNotNone(merge_input.get('multiple'))
+        self.assertTrue(css(tree, '#program-merge ol[data-file-list]'))
+        self.assertIsNone(css(tree, '#program-credits')[0].get('open'))
+
+    def test_template_styles_checkbox_only_in_superuser_merge_section(self):
+        """Pole „Użyj stylów szablonu Fantazmatów” jest w sekcji scalania (odznaczone, z dymkiem „?”), koordynator go nie widzi."""
+        response, tree = self.page(self.admin)
+        checkbox = css(tree, '#program-merge input[name=merge-use_template]')[0]
+        self.assertEqual((checkbox.get('type'), checkbox.get('checked')), ('checkbox', None))
+        check = checkbox.getparent().getparent()
+        self.assertEqual(text_of(check.find('label')), 'Użyj stylów szablonu Fantazmatów')
+        tip = text_of(css(check, '.help-tip-body')[0])
+        self.assertIn('TEKST Szablon 10-2025', tip)
+        self.assertIn('z szablonu nie jest przenoszone nic poza stylami', tip)
+        self.assertEqual(css(check, '.help-tip-body')[0].get('id'), checkbox.get('aria-describedby'))
+        response, _ = self.page(self.coordinator)
+        self.assertNotIn('use_template', response.content.decode())
+
+    def test_coordinator_gets_403_for_superuser_programs(self):
+        """Akcje scalania i podziału, reset ich ustawień i stopki odrzucają koordynatora (403), bez zadania."""
+        self.client.force_login(self.coordinator)
+        url = reverse('core:programs')
+        requests = (
+            ({'program_action': 'merge', 'merge-documents': [upload(), upload(name='b.docx')]}, {}),
+            ({'program_action': 'merge', 'merge-documents': [upload(), upload(name='b.docx')]},
+             {'HTTP_X_PROGRAM_JOB': '1'}),
+            ({'program_action': 'split', 'split-document': upload()}, {}),
+            ({'program_action': 'split', 'split-document': upload()}, {'HTTP_X_PROGRAM_JOB': '1'}),
+            ({'program_action': 'reset_settings', 'program': 'merge'}, {}),
+        )
+        for data, headers in requests:
+            with self.subTest(action=data['program_action'], json=bool(headers)), patch.object(jobs, 'launch') as launch:
+                response = self.client.post(url, data, **headers)
+                self.assertEqual(response.status_code, 403)
+                launch.assert_not_called()
+        self.assertEqual(self.client.get(url, {'antologia': '1'}).status_code, 403)
+        self.assertFalse(jobs.root().exists() and any(jobs.root().iterdir()))
+
+    def test_superuser_merge_and_split_create_jobs(self):
+        """Superuser uruchamia scalanie (lista plików w kolejności wyboru) i podział jako zadania w tle."""
+        self.client.force_login(self.admin)
+        for data, expected in (
+            ({'program_action': 'merge', 'merge-documents': [upload(name='b.docx'), upload(name='a.docx')]},
+             ['b.docx', 'a.docx']),
+            ({'program_action': 'split', 'split-document': upload()}, None),
+        ):
+            with self.subTest(action=data['program_action']), patch.object(jobs, 'launch') as launch:
+                response = self.client.post(reverse('core:programs'), data, HTTP_X_PROGRAM_JOB='1')
+                self.assertEqual(response.status_code, 202, response.content)
+                launch.assert_called_once()
+                folder = launch.call_args.args[0]
+                request = jobs.read_json(folder / 'request.json')
+                self.assertEqual(request['action'], data['program_action'])
+                self.assertEqual(request.get('names'), expected)
+                if expected:
+                    self.assertEqual(sorted(path.name for path in (folder / 'sources').iterdir()), ['01.docx', '02.docx'])
+                    self.assertTrue(request['options']['rebuild'])
+                jobs.write_json(folder / 'state.json', {'state': 'cancelled'})
+
+
+class AnthologyCreditsTests(TestCase):
+    """Stopki tekstów antologii: kolejność, autorzy, treść jak na karcie tekstu, bez wycofanych."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from authors.models import Author
+        from core.supervision import text_credit_groups
+        from fantazmaty.testing.history import import_completed_workflow
+        from people.models import Person
+        from texts.models import Anthology, Text
+        from workflow.models import WorkflowStage
+
+        cls.admin = create_superuser('stopki-admin')
+        cls.book = Anthology.objects.create(title='Antologia stopek')
+        Anthology.objects.create(title='Inna antologia')
+        cls.editor = Person.objects.create(user=cls.admin, email='stopki@example.com', first_name='Ala', last_name='Redaktor')
+        authors = [Author.objects.create(first_name='Jan', last_name='Kowalski', email='jan@example.test'),
+                   Author.objects.create(first_name='Anna', last_name='Nowak', pseudonym='A. N. Pióro',
+                                         email='anna@example.test')]
+        cls.texts = {}
+        for title, writers in (('Zmierzch', authors[:1]), ('Brzask', authors), ('Wycofany', authors[:1])):
+            text = Text.objects.create(title=title, anthology=cls.book, length=100)
+            text.authors.add(*writers)
+            cls.texts[title] = text
+        import_completed_workflow(text_id=cls.texts['Brzask'].pk, next_stage='ready', stages=[
+            {'stage_type': 'editing', 'assigned_to': cls.admin.email}])
+        WorkflowStage.objects.create(text=cls.texts['Wycofany'], stage_type='withdrawn', is_released=True,
+                                     is_completed=False)
+        cls.expected_groups = [group for group in text_credit_groups(cls.texts['Brzask']) if group['names']]
+
+    def setUp(self):
+        self.client.force_login(self.admin)
+        self.response = self.client.get(reverse('core:programs'), {'antologia': self.book.pk})
+        self.tree = html.fromstring(self.response.content.decode())
+
+    def test_withdrawn_text_skipped_and_order_by_title(self):
+        """Wycofany tekst nie pojawia się; kolejność jak na liście tekstów antologii (tytuł)."""
+        self.assertIsNotNone(css(self.tree, '#program-credits')[0].get('open'))
+        titles = [text_of(node) for node in css(self.tree, '.program-credits-item h3')]
+        self.assertEqual(titles, ['Brzask', 'Zmierzch'])
+        self.assertNotIn('Wycofany', css(self.tree, '#program-credits-text')[0].text)
+        options = [text_of(option) for option in css(self.tree, '#program-credits-anthology option')][1:]
+        self.assertEqual(options, ['Antologia stopek', 'Inna antologia'])
+
+    def test_copy_block_has_authors_and_the_same_credits_as_the_text_card(self):
+        """Blok do skopiowania: „Tytuł – autorzy” (pseudonim zamiast nazwiska) i niepuste wiersze stopki z karty tekstu."""
+        self.assertTrue(self.expected_groups, 'Dane testu muszą mieć niepustą stopkę')
+        lines = [f'{group["label"]}: {", ".join(group["names"])}' for group in self.expected_groups]
+        expected = '\n'.join(['Brzask – Jan Kowalski, A. N. Pióro', *lines]) + '\n\nZmierzch – Jan Kowalski'
+        self.assertEqual(css(self.tree, '#program-credits-text')[0].text.strip('\n'), expected)
+        first = css(self.tree, '.program-credits-item')[0]
+        self.assertEqual(css(first, 'button.copy-value-button')[0].get('data-copy-value'),
+                         expected.split('\n\n')[0])
+        self.assertEqual(text_of(css(first, '.program-credits-authors')[0]), 'Jan Kowalski, A. N. Pióro')
+        self.assertEqual(self.tree.xpath('//button[@data-copy-target="#program-credits-text"]/text()'),
+                         ['Kopiuj wszystko'])
+
+    def test_unknown_anthology_is_explained(self):
+        """Nieistniejąca antologia lub zły parametr – komunikat zamiast stopek."""
+        for value in ('999999', 'abc'):
+            with self.subTest(value=value):
+                response = self.client.get(reverse('core:programs'), {'antologia': value})
+                self.assertContains(response, 'Nie znaleziono wybranej antologii')
 
 
 class ProgramJobPageTests(IsolatedProgramDirsMixin, TestCase):

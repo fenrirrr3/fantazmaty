@@ -10,7 +10,7 @@ from fantazmaty.testing import assign_artists, create_member, create_superuser
 from illustrations.editing import edit_token
 from illustrations.models import Illustration, Illustrator
 from people.models import Person
-from texts.models import Anthology, Extract, Text
+from texts.models import Anthology, Extract, Review, Text
 from workflow.models import WorkflowStage
 
 
@@ -44,7 +44,8 @@ class TextDetailLayoutTests(TestCase):
             content = response.content.decode()
             self.assertLess(content.index("Recenzje tekstu"), content.index('id="text-audiobook"'))
             self.assertLess(content.index('id="text-audiobook"'), content.index('id="text-handoff"'))
-            self.assertFalse(doc.xpath('//*[contains(@class,"notes-editor-grid")]/p'))
+            self.assertTrue(doc.xpath('//div[@data-text-info-grid]'))
+            self.assertFalse(doc.xpath('//div[@data-text-info-grid]/p'))
             self.assertTrue(doc.xpath('//textarea[@name="coordinator_note"]'))
             email = doc.xpath('//a[@href="mailto:author57@example.test"]')[0]
             self.assertEqual(email.xpath('ancestor::dl[1]/div[1]/dt/text()'), ['E-mail autora'])
@@ -52,6 +53,26 @@ class TextDetailLayoutTests(TestCase):
                 buttons = doc.xpath(f'//textarea[@name="{name}"]/ancestor::form[1]//button[@type="submit"]')
                 self.assertTrue(buttons, name)
                 self.assertEqual([' '.join(b.text_content().split()) for b in buttons], ['Zapisz'])
+
+    def test_team_notes_sit_next_to_coordinator_note_and_review_buttons_share_a_row(self):
+        """Notatki zespołu i notatka koordynatora (albo przełącznik jej dodania) to dwie kolumny jednej siatki;
+        „Zmień lub usuń powiązanie” i „Otwórz zgłoszenie” stoją w jednym kontenerze akcji."""
+        Review.objects.create(title='Zgłoszenie układu', anthology=self.book, length=100, copied_text=self.story)
+        for note, second in (('', 'details'), ('Notatka testowa', 'section')):
+            with self.subTest(note=note):
+                self.story.coordinator_note = note
+                self.story.save()
+                doc = html.fromstring(self.client.get(reverse('core:assigned_text_detail', args=[self.story.pk])).content)
+                pair = doc.xpath('//div[@data-text-notes-pair]')[0]
+                self.assertEqual(pair.get('class'), 'text-notes-pair')
+                self.assertEqual([child.tag for child in pair], ['section', second])
+                self.assertEqual(pair[0].get('id'), 'text-notes')
+                self.assertTrue(pair[1].xpath('descendant-or-self::*[@aria-labelledby="coordinator-note-heading"]'))
+                actions = doc.xpath('//div[contains(@class,"source-review-actions")]')
+                self.assertEqual(len(actions), 1)
+                self.assertEqual([' '.join(a.text_content().split()) for a in actions[0].xpath('./a')],
+                                 ['Zmień lub usuń powiązanie', 'Otwórz zgłoszenie: Zgłoszenie układu'])
+                self.assertIn('actions', actions[0].get('class').split())
 
 
 class TextListPagesTests(TestCase):

@@ -1,0 +1,54 @@
+{# Notatka koordynatora na karcie tekstu: widoczna, gdy ma treść; koordynator może ją dodać z rozwijanego panelu. #}
+{% if show_coordinator_note %}
+    <section class="card coordinator-note-card coordinator-note-highlight" aria-labelledby="coordinator-note-heading">
+        <header class="section-header"><h2 id="coordinator-note-heading">Notatka koordynatora</h2></header>
+        <div class="coordinator-note-body">
+            {% if can_edit_coordinator_note and coordinator_note_form %}
+                <form
+                    method="post"
+                    action="{% url 'core:update_coordinator_note' text.pk %}"
+                    class="general-notes-form"
+                    data-autosave="coordinator-note-{{ text.pk }}"
+                    data-warn-unsaved
+                >
+                    {% include "core/includes/workflow_fields.html" %}
+                    {{ coordinator_note_form.non_field_errors }}
+                    <div class="form-field">
+                        <label class="visually-hidden" for="{{ coordinator_note_form.coordinator_note.id_for_label }}">
+                            {{ coordinator_note_form.coordinator_note.label }}
+                        </label>
+                        {{ coordinator_note_form.coordinator_note }}
+                        {{ coordinator_note_form.coordinator_note.errors }}
+                    </div>
+                    <div class="general-notes-actions">
+                        <button type="submit" class="secondary-button">Zapisz</button>
+                    </div>
+                </form>
+            {% else %}
+                <div class="coordinator-note-readonly">{{ text.coordinator_note|linebreaksbr }}</div>
+            {% endif %}
+            {% if text.coordinator_note_updated_at %}<p class="form-help">Zapisano: {{ text.coordinator_note_updated_at|date:"d.m.Y H:i" }}</p>{% endif %}
+        </div>
+    </section>
+{% elif can_edit_coordinator_note %}
+    <details class="coordinator-note-create"{% if coordinator_note_form.errors %} open{% endif %}>
+        <summary>Dodaj notatkę koordynatora</summary>
+        <section class="card coordinator-note-card coordinator-note-highlight" aria-labelledby="coordinator-note-heading">
+            <header class="section-header"><h2 id="coordinator-note-heading">Notatka koordynatora</h2></header>
+            <div class="coordinator-note-body">
+                <form method="post" action="{% url 'core:update_coordinator_note' text.pk %}" class="general-notes-form" data-warn-unsaved>
+                    {% include "core/includes/workflow_fields.html" %}
+                    {{ coordinator_note_form.non_field_errors }}
+                    <div class="form-field">
+                        <label class="visually-hidden" for="{{ coordinator_note_form.coordinator_note.id_for_label }}">{{ coordinator_note_form.coordinator_note.label }}</label>
+                        {{ coordinator_note_form.coordinator_note }}
+                        {{ coordinator_note_form.coordinator_note.errors }}
+                    </div>
+                    <div class="general-notes-actions">
+                        <button type="submit" class="secondary-button">Zapisz</button>
+                    </div>
+                </form>
+            </div>
+        </section>
+    </details>
+{% endif %}

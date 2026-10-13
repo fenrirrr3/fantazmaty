@@ -110,11 +110,6 @@ class Illustration(models.Model):
         names = [artist.display_name for artist in self.illustrators.all()] if self.pk else []
         return ", ".join(names)
 
-    trigger_warnings = models.TextField(
-        "trigger warnings",
-        blank=True,
-    )
-
     status = models.CharField(
         "status",
         max_length=20,
@@ -226,7 +221,8 @@ class Illustration(models.Model):
 
     @property
     def warnings_display(self):
-        return self.text.content_warnings or self.trigger_warnings
+        """Ostrzeżenia pochodzą wyłącznie z tekstu – ilustracja nie ma własnej listy."""
+        return self.text.content_warnings
 
     @property
     def anthology(self):

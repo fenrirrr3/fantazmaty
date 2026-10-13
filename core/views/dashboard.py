@@ -75,7 +75,7 @@ def home(request):
                     author_notified_at__isnull=False, copied_text__isnull=True, publication_detached=False)
                     .exclude(anthology__status='ready')
                     .select_related('anthology', 'author').prefetch_related('coauthors').order_by('author_notified_at', 'pk')
-                if coordinator else []
+                if request.user.is_superuser else []
             ),
             "pending_notification_count": frontend_scope(Review.objects).awaiting_notification().count() if request.user.is_superuser else 0,
         },

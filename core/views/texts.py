@@ -5,6 +5,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
@@ -26,7 +27,10 @@ from core.permissions import (
 from core.selectors.people import user_leave_information
 from core.selectors.texts import (
     available_stages_for_user,
+    mark_new_notes,
     my_texts_context,
+    record_text_visit,
+    text_last_seen,
     text_detail_context,
     text_list_context,
 )
@@ -88,10 +92,21 @@ def _render_text_detail_page(request, text, *, bound_forms=None, status=200):
     osobom mającym przy nim przypisanie, również w historii.
     """
     text = (Text.objects.select_for_update() if request.method == "POST" else Text.objects).select_related("anthology").get(pk=text.pk)
+    # Nowe notatki liczymy tylko przy zwykłym wejściu (GET 200), nie po odrzuconym formularzu.
+    track_visit = request.method == "GET" and status == 200 and not bound_forms
+    visited_at = timezone.now()
+    last_seen = text_last_seen(request.user, text.pk) if track_visit else None
     context = text_detail_context(
         user=request.user,
         text=text,
     )
+    if track_visit:
+        context["new_notes"] = mark_new_notes(
+            context["text_notes"], user=request.user, last_seen=last_seen, now=visited_at,
+        )
+        # Podgląd jako inny użytkownik jest tylko do odczytu – nie zapisuje jego wizyty.
+        if not getattr(request, "is_user_preview", False):
+            record_text_visit(request.user, text.pk, visited_at)
     context.update(_permission_context(request.user))
     context['is_extract_volume'] = text.import_source == 'extract-volume-v2'
     context['is_novel'] = bool(text.anthology_id and text.anthology.is_novel)

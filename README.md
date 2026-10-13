@@ -73,6 +73,10 @@ EbookLib fpdf2 Pillow rapidfuzz spacy` i modelem `pl_core_news_sm` (polecenia w 
      albo nieudane, nie starsze niż 3 dni (co kilkanaście minut; stan „brak potwierdzenia” nie jest ponawiany).
    Jednorazowo po wdrożeniu z października 2026: `python manage.py align_stage_executions --dry-run`, a po sprawdzeniu
    bez `--dry-run` – wyrównuje numer wykonania otwartych etapów do numeru przydziału (dawny rozjazd „wyk. 1” / „wyk. 2”).
+   Scalenie zdublowanego wpisu w spisie „Lektorzy/montażyści” (źródło znika, nagrania i e-mail przechodzą na cel):
+   `python manage.py merge_audio_contributor "Karolina Stachacz Bartosik" "Karolina Stachacz-Bartosik" --dry-run`,
+   a po sprawdzeniu wyniku to samo bez `--dry-run`. Nazwy muszą być dokładne; przy kilku wpisach o tej samej nazwie
+   komenda poda ich ID – wtedy `--source-id`/`--target-id`.
    Powiadomienia Discord wysyła aplikacja na bieżąco. Komendy `dispatch_workflow_notifications`
    już nie ma – usuń to zadanie, jeśli jest zaplanowane.
 5. `python manage.py check --deploy`

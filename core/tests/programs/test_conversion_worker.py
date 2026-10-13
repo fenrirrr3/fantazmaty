@@ -196,6 +196,21 @@ class WorkerMainTests(SimpleTestCase):
         self.assertEqual(report['error'], 'RebuildUnsupported')
         self.assertEqual(report['omissions'], ['tabele wraz z ich treścią (liczba: 1)'])
 
+    def test_split_writes_the_archive_and_report_or_the_missing_heading_error(self):
+        """Tryb podziału: ZIP z plikami opowiadań i split.json; bez Nagłówka 1 – sam raport błędu, bez archiwum."""
+        story = Document()
+        story.add_heading('Jedyne', level=1)
+        story.add_paragraph('Treść.')
+        for document, report, archive in ((story, {'files': ['01 Jedyne.docx'], 'skipped_intro': False}, True),
+                                          (self.document(), {'error': 'no_heading'}, False)):
+            with self.subTest(report=report):
+                self.assertEqual(self.run_worker(document, split=True), 0)
+                self.assertEqual(json.loads((self.directory / 'split.json').read_text(encoding='utf-8')), report)
+                self.assertEqual((self.directory / 'document.zip').exists(), archive)
+                if archive:
+                    with ZipFile(self.directory / 'document.zip') as result:
+                        self.assertEqual(result.namelist(), report['files'])
+
     def test_repetitions_replace_the_source_with_the_marked_document(self):
         with self.simple_lemmas():
             code = self.run_worker(self.document(), include_docx=True, repetitions={
