@@ -291,6 +291,7 @@ CSRF_COOKIE_SECURE = env_bool(
 # Skrypty pobierają token z pola csrfmiddlewaretoken w formularzu,
 # więc ciasteczko nie musi być dostępne z JavaScriptu.
 CSRF_COOKIE_HTTPONLY = True
+CSRF_FAILURE_VIEW = "core.csrf.csrf_failure"
 
 
 SECURE_SSL_REDIRECT = env_bool(

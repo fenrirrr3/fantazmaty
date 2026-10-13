@@ -1,0 +1,19 @@
+{% extends "core/base.html" %}
+
+{% block title %}Formularz wygasł | Fantazmaty CMS{% endblock %}
+
+{% block content %}
+    <div class="auth-container">
+        <section class="auth-card">
+            <header class="auth-header">
+                <h1>Formularz wygasł</h1>
+                <p>Strona była otwarta zbyt długo albo w międzyczasie zalogowano się lub wylogowano w innej karcie, więc zmiany nie zostały zapisane.</p>
+            </header>
+            <p>Wróć, odśwież stronę i wyślij formularz jeszcze raz. Jeśli wpisany tekst jest długi, skopiuj go przed odświeżeniem.</p>
+            <div class="actions">
+                {% if back_url %}<a class="primary-button" href="{{ back_url }}">Wróć do formularza</a>{% endif %}
+                <a class="secondary-button" href="{% url 'core:home' %}">Pulpit</a>
+            </div>
+        </section>
+    </div>
+{% endblock %}

@@ -7,7 +7,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.core import mail
 from django.templatetags.static import static
-from django.test import TestCase, override_settings
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.crypto import salted_hmac
@@ -207,3 +207,61 @@ class PasswordResetFlowTests(TemporaryActivitySpoolMixin, TestCase):
         response = self.client.post(reverse('login'), {'username': user.email, 'password': self.NEW})
         self.assertEqual(response.status_code, 302)
         self.assertEqual(self.client.session['_auth_user_id'], str(user.pk))
+
+
+class StaleCsrfTokenTests(TestCase):
+    """Nieaktualny token CSRF (strona logowania przywrócona z pamięci telefonu, logowanie w innej karcie):
+    zalogowana osoba przechodzi dalej, niezalogowana dostaje świeży formularz, inne formularze – polski komunikat."""
+
+    STALE = 'x' * 64
+
+    def setUp(self):
+        self.client = Client(enforce_csrf_checks=True)
+        self.user = create_member('csrf-member', 'Redaktor')
+        self.client.get(reverse('login'))  # ciasteczko CSRF jest, ale formularz wysyła inny token
+
+    def post_login(self, next_url=''):
+        data = {'username': 'csrf-member@example.com', 'password': 'whatever', 'csrfmiddlewaretoken': self.STALE}
+        if next_url:
+            data['next'] = next_url
+        return self.client.post(reverse('login'), data)
+
+    def test_stale_login_form_redirects_instead_of_403(self):
+        texts = reverse('core:text_list')
+        for case, logged_in, next_url, expected in (
+            ('zalogowana – do celu', True, texts, texts),
+            ('zalogowana – obcy adres ignorowany', True, 'https://evil.example/', reverse('core:home')),
+            ('zalogowana – bez celu', True, '', reverse('core:home')),
+            ('niezalogowana – świeży formularz z celem', False, texts, f"{reverse('login')}?next=%2Fteksty%2F"),
+            ('niezalogowana – obcy adres ignorowany', False, 'https://evil.example/', reverse('login')),
+        ):
+            with self.subTest(case):
+                self.client.logout()
+                self.client.get(reverse('login'))
+                if logged_in:
+                    self.client.force_login(self.user)
+                response = self.post_login(next_url)
+                self.assertEqual(response.status_code, 302)
+                self.assertEqual(response.url, expected)
+        page = self.client.get(response.url)
+        self.assertContains(page, 'Strona logowania była nieaktualna')
+        self.assertContains(page, 'csrfmiddlewaretoken')
+
+    def test_logged_in_user_opening_login_page_goes_straight_on(self):
+        self.client.force_login(self.user)
+        target = reverse('core:text_list')
+        self.assertRedirects(self.client.get(reverse('login'), {'next': target}), target, fetch_redirect_response=False)
+
+    def test_other_stale_forms_get_polish_page_with_safe_back_link(self):
+        self.client.force_login(self.user)
+        url = reverse('logout')
+        for referer, back in (('http://testserver/teksty/', 'http://testserver/teksty/'),
+                              ('https://evil.example/', None)):
+            with self.subTest(referer=referer):
+                response = self.client.post(url, {'csrfmiddlewaretoken': self.STALE}, HTTP_REFERER=referer)
+                self.assertEqual(response.status_code, 403)
+                self.assertContains(response, 'Formularz wygasł', status_code=403)
+                self.assertEqual('Wróć do formularza' in response.content.decode(), back is not None)
+                if back:
+                    self.assertContains(response, f'href="{back}"', status_code=403)
+

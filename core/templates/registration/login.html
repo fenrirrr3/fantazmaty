@@ -23,12 +23,6 @@
                 </div>
             {% endif %}
 
-            {% if next and user.is_authenticated %}
-                <div class="form-error">
-                    Twoje konto nie ma dostępu do tej strony.
-                </div>
-            {% endif %}
-
             <form method="post" class="auth-form">
                 {% csrf_token %}
 
