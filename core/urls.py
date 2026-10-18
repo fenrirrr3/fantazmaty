@@ -33,6 +33,7 @@ from core.views.recruitment_detail import recruitment_detail
 from core.views.recruitment_notified import recruitment_notified
 from core.views.recruitment_mailbox import recruitment_mailbox
 from core.views.post_layout import post_layout, post_layout_edit
+from core.views.social_media import social_media
 
 
 app_name = "core"
@@ -53,6 +54,7 @@ urlpatterns = [
     path('audiobooki/zewnetrzne/', external_audiobooks, name='external_audiobooks'),
     path('audiobooki/<int:text_id>/', audiobook_detail, name='audiobook_detail'),
     path('audiobooki/zewnetrzne/wytyczne.txt', audiobook_guidelines_txt, name='audiobook_guidelines_txt'),
+    path('social-media/', social_media, name='social_media'),
     path('korekta-poskladowa/', post_layout, name='post_layout'),
     path('korekta-poskladowa/<int:pk>/edycja/', post_layout_edit, name='post_layout_edit'),
     path('korekta-audiobookow/', audio_proofreading, name='audio_proofreading'),
@@ -161,6 +163,7 @@ urlpatterns = [
         reviews.release_reviewer_slot,
         name="release_reviewer_slot",
     ),
+    path("recenzje/<int:review_id>/odblokuj-pobieranie/", reviews.unblock_review_reading, name="unblock_review_reading"),
     path(
         "recenzje/<int:review_id>/status/",
         reviews.update_review_status,

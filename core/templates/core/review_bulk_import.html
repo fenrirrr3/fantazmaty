@@ -1,6 +1,6 @@
 {% extends 'core/base.html' %}{% load static %}
 {% block title %}Pobieranie zgłoszeń | Fantazmaty CMS{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'core/intake.css' %}">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/recruitment.css' %}"><link rel="stylesheet" href="{% static 'core/intake.css' %}">{% endblock %}
 {% block content %}
 <header class="page-header"><h1 class="page-title">Pobieranie zgłoszeń</h1><p class="page-description">Jednorazowo do {{ max_messages }} wiadomości.</p></header>
 <p class="actions"><a class="secondary-button" href="{% url 'core:review_create' %}">Dodaj zgłoszenie lub importuj wiele zgłoszeń</a><a class="secondary-button" href="{% url 'admin:core_mailboxconnection_changelist' %}">Ustawienia skrzynki</a></p>
@@ -8,8 +8,8 @@
 {% if skipped_errors %}<div class="form-error" role="alert"><strong>Pominięte zgłoszenia:</strong><ul>{% for skipped in skipped_errors %}<li>{{ skipped }}</li>{% endfor %}</ul></div>{% endif %}
 {% if error %}<p class="form-error" role="alert">{{ error }}</p>{% endif %}
 {% if mailbox %}
-<form method="post">{% csrf_token %}
-<input type="hidden" name="selection" value="{{ selection }}">
+<form method="post" data-mailbox-import data-preview-field="uids">{% csrf_token %}
+<input type="hidden" name="selection" value="{{ selection }}"><input type="hidden" name="download_token" value="">
 <div class="mailbox-filters mailbox-filters-dated">
 <div class="mailbox-filter-controls"><div class="filter-field"><label for="mailbox-subject-filter">Nabór w temacie wiadomości</label>
 <select id="mailbox-subject-filter" name="subject_filter"><option value="">Wszystkie wiadomości</option>{% for title in subject_choices %}<option value="{{ title }}" {% if subject_filter == title %}selected{% endif %}>{{ title }}</option>{% endfor %}</select></div>
@@ -22,12 +22,17 @@
 {% include "core/includes/mailbox_date.html" %}
 <div class="review-import-actions mailbox-actions">
 <button class="primary-button" name="action" value="headers">Pobierz nagłówki</button>
-<button class="primary-button" name="action" value="download" {% if not result.rows %}disabled{% endif %}>Pobierz teksty</button>
+<button class="primary-button" name="action" value="download" data-mailbox-progress {% if not result.rows %}disabled{% endif %}>Pobierz teksty</button>
 </div>
+<div class="program-progress mailbox-progress" data-mailbox-progress-box hidden><p role="status" aria-live="polite" data-mailbox-progress-label></p><progress aria-label="Postęp pobierania zgłoszeń"></progress></div>
 </div>
 {% if result %}
-<div class="table-container"><table data-email-mailbox="true"><thead><tr><th>Wybierz</th><th>Data wiadomości</th><th>Nadawca (odpowiedź do)</th><th>Temat</th><th>Pobrano</th></tr></thead><tbody>
-{% for row in result.rows %}<tr><td><input type="checkbox" name="uids" value="{{ row.uid }}" {% if row.uid in selected %}checked{% endif %} aria-label="Wybierz {{ row.subject }}"></td><td>{{ row.date|default:'–' }}</td><td>{{ row.sender|default:'–' }}</td><td>{{ row.subject|default:'(bez tematu)' }}</td><td>{{ row.downloaded|yesno:'Tak,Nie' }}</td></tr>{% empty %}<tr><td colspan="5">Brak wiadomości do wyświetlenia.</td></tr>{% endfor %}
+<section class="recruitment-preview-panel mailbox-preview-panel" aria-label="Treść zaznaczonej wiadomości" aria-busy="false" data-mail-preview>
+<h2>Treść wiadomości</h2>
+{% include "core/includes/recruitment_preview.html" %}
+</section>
+<div class="table-container"><table data-email-mailbox="true" data-pagination="off" class="mailbox-import-table"><thead><tr><th><input type="checkbox" data-select-table="uids" aria-label="Zaznacz wszystkie wiadomości"></th><th>Data wiadomości</th><th>Nadawca (odpowiedź do)</th><th>Temat</th><th>Pobrano</th></tr></thead><tbody>
+{% for row in result.rows %}<tr{% if row.blacklisted %} class="mailbox-blacklisted-row"{% endif %}><td><input type="checkbox" name="uids" value="{{ row.uid }}" {% if row.uid in selected %}checked{% endif %} aria-label="Wybierz {{ row.subject }}"></td><td>{{ row.date|default:'–' }}</td><td><div>{{ row.sender|default:'–' }}{% if row.blacklisted %}{% include "core/includes/mailbox_blacklist_choice.html" with uid=row.uid choice=row.blacklist_choice form_id="" %}{% endif %}</div></td><td class="recruitment-subject"><button class="recruitment-subject-button" type="submit" name="preview_uid" value="{{ row.uid }}" data-preview-uid="{{ row.uid }}">{{ row.subject|default:'(bez tematu)' }}</button></td><td>{{ row.downloaded|yesno:'Tak,Nie' }}</td></tr>{% empty %}<tr><td colspan="5">Brak wiadomości do wyświetlenia.</td></tr>{% endfor %}
 </tbody></table></div>
 <div class="pagination-bar"><div class="pagination-links actions">
 {% if result.previous_cursor %}<button class="secondary-button" name="cursor" value="{{ result.previous_cursor }}">← Nowsze</button>{% endif %}
@@ -39,12 +44,17 @@
 {% if preview_messages %}
 <h2>Podgląd zgłoszeń</h2>
 <div class="table-container"><table><thead><tr><th>Autor</th><th>Tytuł</th><th>Gatunek</th><th>Znaki</th><th>E-mail</th><th>Telefon</th><th>Antologia</th><th>Ostrzeżenia</th><th>Premiery</th><th>Nabory</th><th>Wiadomość autora</th><th>Pliki</th><th>Zapis</th></tr></thead><tbody>
-{% for row in preview_messages %}<tr><td>{% firstof row.author_pseudonym row.author %}</td><td><strong>{{ row.title }}</strong></td><td>{{ row.genre }}</td><td>{{ row.length }}</td><td>{{ row.email }}</td><td>{{ row.phone }}</td><td>{{ row.anthology }}</td><td>{{ row.content_warnings|default:"–" }}</td><td>{{ row.newsletter_premieres|yesno:"Tak,Nie" }}</td><td>{{ row.newsletter_recruitment|yesno:"Tak,Nie" }}</td><td>{{ row.author_message|default:"–"|linebreaksbr }}</td><td>{% for name, data in row.files %}{{ name }}<br>{% endfor %}{% if row.ignored_files %}<small>Pominięto obrazy lub załączniki podpisu: {{ row.ignored_files|join:", " }}</small>{% endif %}</td><td>{% if row.downloaded %}Tylko ponowne pobranie{% else %}Nowe zgłoszenie{% endif %}</td></tr>{% endfor %}
+{% for row in preview_messages %}<tr{% if row.blacklisted %} class="mailbox-blacklisted-row"{% endif %}><td>{% firstof row.author_pseudonym row.author %}{% if row.blacklisted %}<br><span class="role-badge mailbox-blacklist-badge">Czarna lista</span>{% endif %}</td><td><strong>{{ row.title }}</strong></td><td>{{ row.genre }}</td><td>{{ row.length }}</td><td>{{ row.email }}</td><td>{{ row.phone }}</td><td>{{ row.anthology }}</td><td>{{ row.content_warnings|default:"–" }}</td><td>{{ row.newsletter_premieres|yesno:"Tak,Nie" }}</td><td>{{ row.newsletter_recruitment|yesno:"Tak,Nie" }}</td><td>{{ row.author_message|default:"–"|linebreaksbr }}</td><td>{% if row.future_rejection %}<span class="form-warning">Przyszłe odrzucenie – plik nie zostanie pobrany ani przetworzony:</span> {{ row.skipped_files|join:", " }}<br>{% endif %}{% for name, data in row.files %}{{ name }}<br>{% endfor %}{% if row.ignored_files %}<small>Pominięto obrazy lub załączniki podpisu: {{ row.ignored_files|join:", " }}</small>{% endif %}</td><td>{% if row.downloaded %}Tylko ponowne pobranie{% elif row.future_rejection %}Nowe zgłoszenie – zaplanowane odrzucenie{% else %}Nowe zgłoszenie{% endif %}</td></tr>{% endfor %}
 </tbody></table></div>
 {% for error in hard_errors %}<p class="form-error">{{ error }}</p>{% endfor %}
 {% for form in forms %}{% for warning in form.mail_display_warnings %}<p class="form-warning">{{ warning }}</p>{% endfor %}{% endfor %}
+{% if blacklisted_messages and not hard_errors %}<fieldset class="mailbox-blacklist-decisions" form="mailbox-confirm-form"><legend>Wiadomości od autorów z czarnej listy</legend>
+{% for row in blacklisted_messages %}<div class="mailbox-blacklist-decision"><strong>{% firstof row.author_pseudonym row.author row.sender %}</strong> – {{ row.title }}{% if row.future_rejection %}{% include "core/includes/mailbox_blacklist_choice.html" with uid=row.uid choice="reject" form_id="mailbox-confirm-form" %}{% else %}{% include "core/includes/mailbox_blacklist_choice.html" with uid=row.uid choice="download" form_id="mailbox-confirm-form" %}{% endif %}</div>{% endfor %}
+<p class="form-help">Domyślnie zgłoszenie trafia do przyszłych odrzuceń bez pobierania pliku. „Pobierz plik” to świadoma decyzja – zgłoszenie przechodzi zwykły import.</p>
+</fieldset>{% endif %}
+{% if future_rejections %}<p class="form-warning">Zgłoszenia od autorów z czarnej listy dodawane do przyszłych odrzuceń: {{ future_rejections }}. Ich pliki nie trafią do paczki ZIP. Zmiana wyboru wymaga nowego podglądu – zatwierdzenie pokaże go ponownie.</p>{% endif %}
 {% if not hard_errors %}
-<form method="post">{% csrf_token %}
+<form method="post" id="mailbox-confirm-form" data-mailbox-import>{% csrf_token %}<input type="hidden" name="download_token" value="">
 <input type="hidden" name="sent_since" value="{{ date_form.sent_since.value|default_if_none:'' }}">{% if date_form.date_filter_enabled.value %}<input type="hidden" name="date_filter_enabled" value="on">{% endif %}
 <input type="hidden" name="selection" value="{{ selection }}"><input type="hidden" name="preview" value="{{ preview_token }}"><input type="hidden" name="subject_filter" value="{{ subject_filter }}">
 {% for uid in selected %}<input type="hidden" name="uids" value="{{ uid }}">{% endfor %}
@@ -58,9 +68,11 @@
 {% if rebuild_warning %}<label class="mailbox-option"><input type="checkbox" name="allow_rebuild_omissions" value="on" required><span>Akceptuję ostrzeżenie i pominięcie wymienionych elementów.</span></label>{% endif %}
 <label class="mailbox-option"><input type="checkbox" name="approve" required><span>Sprawdziłem dane i ostrzeżenia. Potwierdzam zapis zgłoszeń i pobranie plików.</span></label>
 </div>
-<button class="primary-button" name="action" value="confirm">Zapisz zgłoszenia i pobierz ZIP</button>
+<button class="primary-button" name="action" value="confirm" data-mailbox-progress>Zapisz zgłoszenia i pobierz ZIP</button>
+<div class="program-progress mailbox-progress" data-mailbox-progress-box hidden><p role="status" aria-live="polite" data-mailbox-progress-label></p><progress aria-label="Postęp pobierania zgłoszeń"></progress></div>
 </form>
 {% endif %}
 {% endif %}
 </div></section>
 {% endblock %}
+{% block scripts %}<script src="{% static 'core/recruitment-samples.js' %}" defer></script><script src="{% static 'core/mailbox-import.js' %}" defer></script>{% endblock %}

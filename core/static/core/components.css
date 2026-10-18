@@ -398,6 +398,17 @@ label:is(.boolean-filter-toggle, .important-note-toggle, .vacation-checkbox, .co
     gap: var(--space-2);
 }
 
+/* Etykieta stanu osoby (nieaktywny, zewnętrzny) zaraz za nazwiskiem nie przylega do niego. */
+.person-name + :is(.stage-status, .status, .badge) {
+    margin-inline-start: var(--space-2);
+}
+
+/* Etykiety ról pod nazwiskiem lub tytułem mają odstęp od wiersza nad nimi
+   (pierwsze dziecko komórki tabeli i lista w <dd> zostają bez zmian). */
+:not(dt) + .roles-list {
+    margin-top: var(--space-1);
+}
+
 /* ===== Wiersze przycisków ===== */
 .actions,
 .filter-actions,
@@ -919,6 +930,14 @@ fieldset.multi-filter-field {
     border-color: var(--danger);
     background: var(--danger-light);
     color: var(--danger-dark);
+}
+
+/* „Nie doczytałem” – bez głosu za ani przeciw: neutralna, przerywana ramka. */
+.reviewer-bubble.reviewer-opinion-not_read {
+    border-style: dashed;
+    border-color: var(--border-strong);
+    background: var(--surface-alt);
+    color: var(--text);
 }
 
 .reviewers-list {

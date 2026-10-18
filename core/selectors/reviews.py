@@ -6,6 +6,7 @@ from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from core.permissions import (
+    can_manage_reviews,
     can_self_assign_reviews,
     can_view_author_data,
     can_view_review_archive,
@@ -155,6 +156,7 @@ def _project_reviews(reviews, *, user, include_authors, allow_self_assignment):
             for assignment in assignments
         )
         has_free_slot = assigned_count < MAX_REVIEWERS
+        reading_blocked = not locked and review.reading_block_active([item.opinion for item in assignments])
 
         row = {
             "pk": review.pk,
@@ -192,7 +194,9 @@ def _project_reviews(reviews, *, user, include_authors, allow_self_assignment):
                 and not locked
                 and has_free_slot
                 and own_assignment is None
+                and not reading_blocked
             ),
+            "reading_blocked": reading_blocked,
             "can_unassign_review": own_assignment is not None and not locked,
         }
 
@@ -303,6 +307,10 @@ def review_list_context(*, user, params):
         selected_statuses = []
 
 
+    if not old_reviews and not can_manage_reviews(user):
+        # Zablokowane oceną „Nie doczytałem” znika z listy do wzięcia;
+        # przypisani recenzenci nadal widzą swoje zgłoszenie.
+        queryset = queryset.exclude(pk__in=Review.objects.reading_blocked().exclude(assignments__user=user).values("pk"))
     queryset = _filter_review_work(queryset, query, include_authors, completed, assignment_state)
 
     queryset, facets = facet_queryset(queryset, {

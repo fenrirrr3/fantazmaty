@@ -35,8 +35,8 @@ class PersonAdminForm(forms.ModelForm):
         if data.get('user') and data['user'].is_active and not data.get('is_external') and not data.get('email') and 'email' not in self.errors:
             self.add_error('email', 'Aktywne konto wymaga adresu e-mail.')
         if self.instance.pk and self.instance.is_coordinator and not data.get('is_coordinator') and data.get('roles') is not None:
-            from people.coordinator_access import coordinator_query
-            data['roles'] = data['roles'].exclude(coordinator_query())
+            from people.roles import coordinator_role_q
+            data['roles'] = data['roles'].exclude(coordinator_role_q())
         return data
 
     def clean_first_name(self):

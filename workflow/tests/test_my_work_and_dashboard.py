@@ -76,6 +76,73 @@ class MyWorkVisibilityTests(AnthologyWorkflowMixin, TestCase):
         self.assertTrue(self.work().work_completed)
         self.assertEqual(S.objects.filter(text=self.text, stage_type='editing').count(), 3)
 
+    @tag('slow')
+    def test_dashboard_classification_matches_annotate_my_work(self):
+        """Pulpit klasyfikuje teksty w Pythonie z tych samych warunków co annotate_my_work (SQL):
+        w każdym kroku procesu i dla każdej osoby stany „w toku” i „oczekuje” są identyczne."""
+        from workflow.read_queries import classify_user_texts, work_text_ids
+        people = (self.editor, self.other_editor, self.verifier_1, self.verifier_2, self.proofreader, self.coordinator)
+        book = self.text.anthology
+
+        def check(step):
+            for user in people:
+                with self.subTest(step=step, user=user.username):
+                    active, waiting, editor_waiting = classify_user_texts(user, self.today)
+                    expected = work_text_ids(Text.objects.all(), user, self.today)
+                    self.assertEqual((set(active), set(waiting)), (expected['active'], expected['waiting']))
+                    editors = set(A.objects.current_cycle().filter(role='editor', assigned_to=user)
+                                  .values_list('text_id', flat=True))
+                    self.assertEqual(set(editor_waiting), expected['waiting'] & editors)
+
+        # Tła: rezerwacja bez etapu, praca z autorem, tekst wycofany i etap z poprzedniego cyklu.
+        reserved = Text.objects.create(title='Rezerwacja', length=1, anthology=book)
+        A.objects.create(text=reserved, role='verifier_2', assigned_to=self.verifier_2)
+        S.objects.create(text=reserved, stage_type='editing', started_at=self.today)
+        with_author = Text.objects.create(title='Z autorem', length=1, anthology=book)
+        editor = A.objects.create(text=with_author, role='editor', assigned_to=self.other_editor)
+        S.objects.create(text=with_author, stage_type='editing', assignment=editor, started_at=self.today,
+                         ended_at=self.today, is_completed=True)
+        S.objects.create(text=with_author, stage_type='author_editing', started_at=self.today)
+        withdrawn = Text.objects.create(title='Wycofany', length=1, anthology=book)
+        editor = A.objects.create(text=withdrawn, role='editor', assigned_to=self.editor)
+        S.objects.create(text=withdrawn, stage_type='editing', assignment=editor, started_at=self.today)
+        S.objects.create(text=withdrawn, stage_type='withdrawn')
+        old_cycle = Text.objects.create(title='Nowy cykl', length=1, anthology=book, current_workflow_cycle=2)
+        editor = A.objects.create(text=old_cycle, role='editor', assigned_to=self.editor, workflow_cycle=1)
+        S.objects.create(text=old_cycle, stage_type='editing', assignment=editor, started_at=self.today)
+        # Niebieżące, nieukończone wykonanie nie jest oczekującą pracą.
+        replaced = Text.objects.create(title='Zastąpione wykonanie', length=1, anthology=book)
+        verifier = A.objects.create(text=replaced, role='verifier_1', assigned_to=self.verifier_1)
+        S.objects.create(text=replaced, stage_type='editing', started_at=self.today)
+        S.objects.create(text=replaced, stage_type='first_verification', assignment=verifier, started_at=self.today,
+                         ended_at=self.today, is_completed=True)
+        S.objects.create(text=replaced, stage_type='first_verification', assignment=verifier, iteration=2,
+                         is_current=False)
+        check('początek')
+        self.begin_editing()
+        check('redakcja')
+        send_to_first_verification(self.text, self.editor, self.today)
+        check('czeka na weryfikację')
+        first = claim_stage(self.text, 'first_verification', self.verifier_1)
+        check('weryfikacja 1')
+        complete_stage(first, self.verifier_1, self.today)
+        resume_editing(self.text, self.editor, self.today)
+        send_to_second_verification(self.text, self.editor, self.today)
+        second = claim_stage(self.text, 'second_verification', self.verifier_2)
+        check('weryfikacja 2')
+        complete_stage(second, self.verifier_2, self.today)
+        resume_editing(self.text, self.editor, self.today)
+        finish_editing_to_coordinator(self.text, self.editor, self.today)
+        control = claim_stage(self.text, 'editing_control', self.coordinator)
+        check('kontrola')
+        complete_stage(control, self.coordinator, self.today, send_to_proofreading=True)
+        proof = claim_stage(self.text, 'first_proofreading', self.proofreader, started_at=self.today + timedelta(days=1))
+        check('korekta zaplanowana')
+        S.objects.filter(pk=proof.pk).update(started_at=self.today)
+        check('korekta')
+        complete_stage(S.objects.get(pk=proof.pk), self.proofreader, self.today)
+        check('koniec korekty')
+
     def test_imported_editorial_history_does_not_hide_current_editor_waiting_for_verification(self):
         editing = self.begin_editing()
         with importing():

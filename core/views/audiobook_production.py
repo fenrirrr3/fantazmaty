@@ -24,6 +24,7 @@ from core.pagination import paginate_items
 from core.permissions import (is_coordinator, require_coordinator, team_member_required, can_view_audio_proofreading,
     can_view_audiobooks)
 from core.public_authors import public_name, name_matches
+from people.roles import AUDIOBOOK_PROOFREADER
 from texts.models import Text, ForeignAuthor
 from texts.production import active_production_texts
 from core.selectors.audio_proofreading import proofreading_scope, can_assign_proofreader, correction_rows, corrections
@@ -179,7 +180,7 @@ def can_edit_audio(request, obj, kwargs):
 
 def may_act_on_proofreading(user, audio):
     from core.permissions import has_role
-    return bool(audio and audio.proofreader_id == user.pk and has_role(user, 'Korektor audiobooków')
+    return bool(audio and audio.proofreader_id == user.pk and has_role(user, AUDIOBOOK_PROOFREADER)
                 and audio.status == Audiobook.Status.PROOFREADING)
 
 

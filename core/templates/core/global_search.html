@@ -75,12 +75,17 @@
                     <ul class="search-result-list">
                         {% for review in reviews %}
                             <li class="search-result-item">
-                                <a
-                                    href="{% url 'core:assigned_review_detail' review.pk %}"
-                                    class="detail-link"
-                                >
-                                    <strong>{{ review.title }}</strong>
-                                </a>
+                                <div class="search-result-head">
+                                    <a
+                                        href="{% url 'core:assigned_review_detail' review.pk %}"
+                                        class="detail-link"
+                                    >
+                                        <strong>{{ review.title }}</strong>
+                                    </a>
+                                    <span class="stage-status {% if review.status == 'accepted' %}completed{% elif review.status == 'rejected' or review.status == 'withdrawn' %}withdrawn{% elif review.status == 'in_review' %}active{% else %}pending{% endif %}">
+                                        {{ review.get_status_display }}
+                                    </span>
+                                </div>
 
                                 {% if review.anthology %}
                                     <div class="muted-text">
@@ -94,9 +99,6 @@
                                     </div>
                                 {% endif %}
 
-                                <span class="stage-status {% if review.status == 'accepted' %}completed{% elif review.status == 'rejected' or review.status == 'withdrawn' %}withdrawn{% elif review.status == 'in_review' %}active{% else %}pending{% endif %}">
-                                    {{ review.get_status_display }}
-                                </span>
                             </li>
                         {% endfor %}
                     </ul>
@@ -116,12 +118,15 @@
                     <ul class="search-result-list">
                         {% for text in texts %}
                             <li class="search-result-item">
-                                <a
-                                    href="{{ text.url }}"
-                                    class="detail-link"
-                                >
-                                    <strong>{{ text.title }}</strong>
-                                </a>
+                                <div class="search-result-head">
+                                    <a
+                                        href="{{ text.url }}"
+                                        class="detail-link"
+                                    >
+                                        <strong>{{ text.title }}</strong>
+                                    </a>
+                                    <span class="stage-status {{ text.publication.css }}">{{ text.publication.label }}</span>
+                                </div>
 
                                 {% if text.anthology %}
                                     <div class="muted-text">
@@ -204,7 +209,7 @@
                                     href="{% url 'core:person_detail' person.pk %}"
                                     class="detail-link"
                                 >
-                                    <strong>{{ person }}</strong>{% if person.member_state %}<span class="muted-text">{{ person.member_state }}</span>{% endif %}
+                                    <strong class="person-name">{{ person }}</strong>{% if person.member_state %}<span class="stage-status inactive">{{ person.member_state }}</span>{% endif %}
                                 </a>
 
                                 {% if person.roles.all %}
@@ -237,15 +242,17 @@
                     <ul class="search-result-list">
                         {% for anthology in anthologies %}
                             <li class="search-result-item">
-                                <a
-                                    href="{% url 'core:anthology_detail' anthology.pk %}"
-                                    class="detail-link"
-                                >
-                                    <strong>{{ anthology.title }}</strong>
-                                </a>
-                                <span class="stage-status {% if anthology.status == 'ready' %}completed{% elif anthology.status == 'in_preparation' %}active{% else %}pending{% endif %}">
-                                    {{ anthology.get_status_display }}
-                                </span>
+                                <div class="search-result-head">
+                                    <a
+                                        href="{% url 'core:anthology_detail' anthology.pk %}"
+                                        class="detail-link"
+                                    >
+                                        <strong>{{ anthology.title }}</strong>
+                                    </a>
+                                    <span class="stage-status {% if anthology.status == 'ready' %}completed{% elif anthology.status == 'in_preparation' %}active{% else %}pending{% endif %}">
+                                        {{ anthology.get_status_display }}
+                                    </span>
+                                </div>
                             </li>
                         {% endfor %}
                     </ul>

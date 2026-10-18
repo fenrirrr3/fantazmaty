@@ -126,6 +126,30 @@ class AuthorAdminPageTests(TestCase):
         self.assertRedirects(self.client.get(reverse('admin:authors_blacklistedauthor_add')),
                              reverse('admin:authors_blacklistentry_add'), fetch_redirect_response=False)
 
+    def test_blacklist_notes_are_edited_listed_short_and_searchable(self):
+        """„Uwagi – za co wpisany”: edycja w formularzu autora i wpisu niezależnego, skrót na liście, wyszukiwanie."""
+        reason = 'Plagiat opowiadania ' + 'i dalsze szczegóły ' * 10
+        url = reverse('admin:authors_author_change', args=[self.listed.pk])
+        self.assertContains(self.client.get(url), 'Uwagi – za co wpisany')
+        data = admin_form_data(self.client, url, 'author_form', blacklist_notes=reason, is_blacklisted='on', _save='Zapisz')
+        self.assertEqual(self.client.post(url, data).status_code, 302)
+        self.listed.refresh_from_db()
+        self.assertEqual(self.listed.blacklist_notes, reason.strip())
+        entry = BlacklistEntry.objects.create(email='spam@example.test', notes='Wysyła cudze teksty')
+        pages = (('admin:authors_blacklistedauthor_changelist', 'Plagiat', self.listed.pk),
+                 ('admin:authors_blacklistentry_changelist', 'cudze', entry.pk))
+        for name, term, pk in pages:
+            with self.subTest(name):
+                page = self.client.get(reverse(name))
+                self.assertContains(page, 'Uwagi – za co wpisany')
+                found = self.client.get(reverse(name), {'q': term}).context['cl'].result_list
+                self.assertEqual([item.pk for item in found], [pk])
+        page = self.client.get(reverse('admin:authors_blacklistedauthor_changelist'))
+        self.assertContains(page, 'Plagiat opowiadania i dalsze')
+        self.assertNotContains(page, reason.strip())
+        self.assertContains(self.client.get(reverse('admin:authors_blacklistentry_change', args=[entry.pk])),
+                            'Uwagi – za co wpisany')
+
     def test_independent_blacklist_entry_email_is_normalized_and_unique(self):
         entry = BlacklistEntry(email='  Spam@Example.TEST ')
         entry.clean()

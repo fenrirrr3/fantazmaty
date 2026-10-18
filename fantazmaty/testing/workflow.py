@@ -7,6 +7,7 @@ from django.utils import timezone
 
 from core.edit_versions import version_of
 from fantazmaty.testing import create_member
+from people import roles
 from people.models import Person
 from texts.models import Anthology, Text
 from workflow.admin_status import set_admin_status
@@ -24,14 +25,14 @@ class WorkflowTestDataMixin:
     def setUpTestData(cls):
         super().setUpTestData()
 
-        cls.editor = create_member("redaktor", "Redaktor")
-        cls.other_editor = create_member("drugi_redaktor", "Redaktor")
-        cls.verifier_1 = create_member("weryfikator_1", "Weryfikator")
-        cls.verifier_2 = create_member("weryfikator_2", "Weryfikator")
-        cls.proofreader = create_member("korektor", "Korektor")
-        cls.other_proofreader = create_member("drugi_korektor", "Korektor")
-        cls.coordinator = create_member("koordynator", "Koordynator")
-        cls.proofreading_coordinator = create_member("koordynator_korekty", "Koordynator korekty")
+        cls.editor = create_member("redaktor", roles.EDITOR)
+        cls.other_editor = create_member("drugi_redaktor", roles.EDITOR)
+        cls.verifier_1 = create_member("weryfikator_1", roles.VERIFIER)
+        cls.verifier_2 = create_member("weryfikator_2", roles.VERIFIER)
+        cls.proofreader = create_member("korektor", roles.PROOFREADER)
+        cls.other_proofreader = create_member("drugi_korektor", roles.PROOFREADER)
+        cls.coordinator = create_member("koordynator", roles.COORDINATOR)
+        cls.proofreading_coordinator = create_member("koordynator_korekty", roles.PROOFREADING_COORDINATOR)
 
         cls.superuser = User.objects.create_superuser(
             username="superadmin",

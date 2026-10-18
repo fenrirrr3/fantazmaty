@@ -50,6 +50,23 @@ class DetailNavigationTests(NavigationDataMixin, TestCase):
     def setUp(self):
         self.client.force_login(self.admin)
 
+    def test_social_media_tab_is_listed_only_for_coordinators(self):
+        """Zakładka Social Media (na razie pusta) jest w menu i otwiera się tylko koordynatorom i superuserowi."""
+        url = reverse('core:social_media')
+        for user, allowed in ((self.admin, True), (self.manager, True), (self.member, False)):
+            with self.subTest(user=user.username):
+                self.client.force_login(user)
+                links = html.fromstring(self.client.get(reverse('core:home')).content).xpath(
+                    f'//nav//a[@href="{url}"]/text()')
+                self.assertEqual(links, ['Social Media'] if allowed else [])
+                page = self.client.get(url)
+                self.assertEqual(page.status_code, 200 if allowed else 403)
+                if allowed:
+                    doc = html.fromstring(page.content)
+                    self.assertEqual(doc.xpath('//h1/text()'), ['Social Media'])
+                    self.assertIn('Wkrótce.', doc.text_content())
+                    self.assertEqual(doc.xpath(f'//nav//a[@href="{url}"]/@aria-current'), ['page'])
+
     def test_detail_navigation_parents_and_audio_origin(self):
         ordinary = Anthology.objects.create(title='Ilustrowana', has_illustrations=True)
         text = Text.objects.create(title='Ilustracja nawigacyjna', anthology=ordinary, length=100)

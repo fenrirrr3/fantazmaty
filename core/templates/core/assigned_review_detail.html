@@ -58,6 +58,19 @@
     </section>
     {% endif %}
 
+    {% if reading_blocked %}
+    <section class="message warning review-reading-blocked" aria-label="Blokada pobierania do recenzji">
+        <p><strong>Pobieranie zablokowane – ocena „Nie doczytałem” od {{ blocking_opinion.reviewer_name }}{% if blocking_opinion.date %} ({{ blocking_opinion.date|date:"d.m.Y" }}){% endif %}.</strong>
+        Kolejni recenzenci nie mogą wziąć tego zgłoszenia.</p>
+        {% if can_unblock_reading %}
+        <form method="post" action="{% url 'core:unblock_review_reading' review.pk %}">
+            {% csrf_token %}{% edit_version %}
+            <button type="submit" class="secondary-button" data-confirm="Odblokować pobieranie zgłoszenia do recenzji? Kolejni recenzenci znów będą mogli je wziąć.">Odblokuj pobieranie do recenzji</button>
+        </form>
+        {% endif %}
+    </section>
+    {% endif %}
+
     {% if review.is_archived %}
         <div class="message info" role="status">
             <strong>Recenzja archiwalna.</strong>
@@ -207,6 +220,8 @@
                             Jesteś przypisany jako recenzent nr {{ user_slot }}.
                         {% elif not reviewers_have_free_slot %}
                             Zgłoszenie ma komplet recenzentów.
+                        {% elif reading_blocked %}
+                            Pobieranie do recenzji jest zablokowane.
                         {% else %}
                             Nie jesteś przypisany do tego zgłoszenia.
                         {% endif %}

@@ -84,6 +84,7 @@ class AuthorAdminForm(NormalizedFormMixin, forms.ModelForm):
             "has_contract",
             "contact",
             "is_blacklisted",
+            "blacklist_notes",
         )
 
     def clean_first_name(self):
@@ -268,6 +269,7 @@ class AuthorAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         "pseudonym__plcontains",
         "email__plcontains",
         "notes__content__plcontains",
+        "blacklist_notes__plcontains",
     )
 
     ordering = (
@@ -306,6 +308,7 @@ class AuthorAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             {
                 "fields": (
                     "is_blacklisted",
+                    "blacklist_notes",
                 ),
                 "description": (
                     "Oznaczenie jest dostępne wyłącznie "
@@ -444,9 +447,20 @@ class AuthorAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         formset.save_m2m()
 
 
+def notes_preview(value, limit=80):
+    """Uwagi w jednej linii, skrócone do listy w adminie."""
+    value = " ".join((value or "").split())
+    return value if len(value) <= limit else value[:limit - 1].rstrip() + "…"
+
+
 @admin.register(BlacklistedAuthor)
 class BlacklistedAuthorAdmin(AuthorAdmin):
     list_filter = ("has_contract", "contact")
+    list_display = ("full_name", "pseudonym", "email", "blacklist_notes_preview")
+
+    @admin.display(description="Uwagi – za co wpisany")
+    def blacklist_notes_preview(self, obj):
+        return notes_preview(obj.blacklist_notes) or "–"
 
     def add_view(self, request, form_url="", extra_context=None):
         if not self.has_add_permission(request):
@@ -535,7 +549,11 @@ class AuthorNoteAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
 @admin.register(BlacklistEntry)
 class BlacklistEntryAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
-    list_display = ("name", "email", "is_active")
+    list_display = ("name", "email", "is_active", "notes_short")
     search_fields = ("name__plcontains", "email__plcontains", "notes__plcontains")
     list_filter = ("is_active",)
     fields = ("name", "email", "is_active", "notes")
+
+    @admin.display(description="Uwagi – za co wpisany")
+    def notes_short(self, obj):
+        return notes_preview(obj.notes) or "–"

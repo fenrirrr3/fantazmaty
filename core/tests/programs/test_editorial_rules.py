@@ -367,6 +367,98 @@ class NonBreakingSpaceDecisionTests(SimpleTestCase):
             correct_editorial_text('a b', {'single_nbsp'})
 
 
+SPECIAL_SPACES = '\u00a0\u202f\u2009\u2002\u2003\u2007\u2008\u200a\u205f'
+SPECIAL_DASHES = '\u2012\u2014\u2015\u2212'
+UNICODE_HYPHENS = '\u2010\u2011'
+SPECIAL_CHARACTERS = frozenset(SPECIAL_SPACES + SPECIAL_DASHES + UNICODE_HYPHENS + '\u00ad\u200b')
+
+
+class SpecialCharacterTests(SimpleTestCase):
+    """Zadanie 15: spacje specjalne → zwykła spacja, kreski → półpauza, łączniki Unicode → dywiz,
+    miękki dywiz i znak o zerowej szerokości → usunięte."""
+
+    def fix(self, text, rules=FORM_DEFAULT_EDITORIAL_RULES):
+        return correct_editorial_text(text, rules)
+
+    def test_special_spaces_become_plain_spaces_in_typical_contexts(self):
+        """Każda spacja specjalna w środku zdania, przy jednostce, roku, skrócie, inicjale i myślniku."""
+        for space in SPECIAL_SPACES:
+            source = (f'Ala{space}ma kota, 5{space}kg i 2025{space}r., s.{space}15, J.{space}Kowalski, '
+                      f'tak{space}–{space}nie.')
+            with self.subTest(space=f'U+{ord(space):04X}'):
+                result = self.fix(source)
+                self.assertEqual(result, 'Ala ma kota, 5 kg i 2025 r., s. 15, J. Kowalski, tak – nie.')
+                self.assertFalse(set(result) & SPECIAL_CHARACTERS)
+
+    def test_special_spaces_feed_the_space_rules(self):
+        """Po zamianie działają dalsze reguły: podwójna spacja, spacja przed przecinkiem i na brzegu."""
+        for space in SPECIAL_SPACES:
+            with self.subTest(space=f'U+{ord(space):04X}'):
+                self.assertEqual(self.fix(f'{space}Ala {space}ma{space},kota{space}'), 'Ala ma, kota')
+
+    def test_special_dashes_become_en_dash_in_every_context(self):
+        """Pauza cyfrowa, pauza, kreska pozioma i minus: myślnik, dialog, zakres, liczba ujemna, wzór."""
+        for dash in SPECIAL_DASHES:
+            cases = {
+                f'Był tam {dash} i wyszedł.': 'Był tam – i wyszedł.',
+                f'Był tam{dash}i wyszedł.': 'Był tam – i wyszedł.',
+                f'{dash} Idziemy {dash} powiedział.': '– Idziemy – powiedział.',
+                f'Lata 1990{dash}1995 i s. 5 {dash} 7.': 'Lata 1990–1995 i s. 5–7.',
+                f'Wynik 5 {dash} 3 = 2.': 'Wynik 5 – 3 = 2.',
+                f'Słowo {dash}{dash} słowo.': 'Słowo – słowo.',
+            }
+            for source, expected in cases.items():
+                with self.subTest(dash=f'U+{ord(dash):04X}', source=source):
+                    result = self.fix(source)
+                    self.assertEqual(result, expected)
+                    self.assertFalse(set(result) & SPECIAL_CHARACTERS)
+
+    def test_minus_and_figure_dash_before_number_stay_attached(self):
+        """Minus i pauza cyfrowa przed liczbą → półpauza bez odstępu (znak liczby); pauza i kreska
+        pozioma to myślnik, więc dostają odstępy jak dotąd półpauza w tym miejscu."""
+        for dash in SPECIAL_DASHES:
+            minus = dash in '\u2012\u2212'
+            cases = {
+                f'Mróz {dash}5 °C, ({dash}3) i x = {dash}2.':
+                    'Mróz –5 °C, (–3) i x = –2.' if minus else 'Mróz – 5 °C, (–3) i x = –2.',
+                f'{dash}12345 kg i spadek o {dash}5%.':
+                    '–12 345 kg i spadek o –5%.' if minus else '–12 345 kg i spadek o – 5%.',
+                # Ścisły zapis z minusem lub pauzą cyfrową (numer) zostaje bez odstępów.
+                f'Tel. 555{dash}1234.': 'Tel. 555–1234.' if minus else 'Tel. 555 – 1234.',
+            }
+            for source, expected in cases.items():
+                with self.subTest(dash=f'U+{ord(dash):04X}', source=source):
+                    self.assertEqual(self.fix(source), expected)
+
+    def test_unicode_hyphens_become_plain_hyphen(self):
+        """Łącznik Unicode i nierozdzielający → dywiz, także przy liczbach i skrótach."""
+        for hyphen in UNICODE_HYPHENS:
+            with self.subTest(hyphen=f'U+{ord(hyphen):04X}'):
+                self.assertEqual(self.fix(f'Biało{hyphen}czerwony, PRL{hyphen}u i 18{hyphen}latek.'),
+                                 'Biało-czerwony, PRL-u i 18-latek.')
+
+    def test_soft_hyphen_and_zero_width_space_are_removed(self):
+        """Miękki dywiz i znak o zerowej szerokości znikają (reguła invisible_chars)."""
+        for character in '\u00ad\u200b':
+            with self.subTest(character=f'U+{ord(character):04X}'):
+                self.assertEqual(self.fix(f'Odku{character}rzacz i{character} tak.'), 'Odkurzacz i tak.')
+
+    def test_counts_per_rule(self):
+        """Podsumowanie: każda zamieniona kreska liczy się w dash_style, miękki dywiz w invisible_chars."""
+        counts = {}
+        correct_editorial_text('A \u2014 b, c \u2015 d, \u22125 °C, 1990\u20121995, e\u2010f, g\u00adh.',
+                               FORM_DEFAULT_EDITORIAL_RULES, counts=counts)
+        self.assertEqual(counts.get('dash_style'), 5)
+        self.assertEqual(counts.get('invisible_chars'), 1)
+
+    def test_disabled_dash_rule_keeps_dashes_outside_ranges(self):
+        """Bez dash_style kreski zostają; zakres liczb nadal poprawia range_dash (jak dotąd)."""
+        rules = FORM_DEFAULT_EDITORIAL_RULES - {'dash_style'}
+        self.assertEqual(self.fix('Tak \u2014 nie, \u22125 °C, a\u2010b i 1990\u22121995.', rules),
+                         'Tak \u2014 nie, \u22125 °C, a\u2010b i 1990–1995.')
+        self.assertEqual(self.fix('Ala\u2009ma\u00adkota.', set()), 'Ala\u2009ma\u00adkota.')
+
+
 class EditorialRuleR7Tests(SimpleTestCase):
     """Poprawki po przeglądzie r6: zaimki, słownik zamian, skróty, nazwy techniczne, zakresy godzin."""
 

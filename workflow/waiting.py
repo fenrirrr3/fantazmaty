@@ -47,7 +47,12 @@ def later_date(left, right):
     return Greatest(Coalesce(F(left), F(right)), Coalesce(F(right), F(left)), output_field=DateField())
 
 
-def annotate_inactivity_clocks(query, today):
+def _clock_terms():
+    """Elementary terms of the inactivity clocks, correlated with the stage.
+
+    Returns (order, blocked, has_previous, previous_date); `blocked` refers to
+    OuterRef('_clock_order'), so the query must annotate `_clock_order=order`.
+    """
     from workflow.state import ORDER
     from workflow.read_queries import exclude_obsolete_verification_placeholders
     from django.db.models import IntegerField
@@ -80,30 +85,35 @@ def annotate_inactivity_clocks(query, today):
 
     order = Case(*[When(stage_type=kind, then=Value(index)) for kind,index in ORDER.items()],
                  default=Value(-1), output_field=IntegerField())
-    query = query.annotate(_clock_order=order)
     opened = exclude_obsolete_verification_placeholders(same.filter(
         is_current=True, is_released=True, is_completed=False, ended_at__isnull=True,
     ).exclude(pk=OuterRef('pk')))
     earlier = opened.annotate(_clock_order=order).filter(_clock_order__lte=OuterRef('_clock_order'))
     repeat_blockers = same.filter(repetition_id=OuterRef('repetition_id'),
                                  queue_position__lt=OuterRef('queue_position'), is_completed=False)
-    query = query.annotate(
-        report_blocked=Case(
-            When(repetition__isnull=False, then=Exists(repeat_blockers)),
-            When(stage_type='first_verification', then=Exists(opened.filter(
-                stage_type__in=('editing', 'author_editing')))),
-            When(stage_type='editing', then=Exists(opened.filter(
-                stage_type__in=('first_verification', 'second_verification', 'author_editing'),
-                started_at__isnull=False))),
-            default=Exists(earlier),
-        ),
-    ).alias(
+    blocked = Case(
+        When(repetition__isnull=False, then=Exists(repeat_blockers)),
+        When(stage_type='first_verification', then=Exists(opened.filter(
+            stage_type__in=('editing', 'author_editing')))),
+        When(stage_type='editing', then=Exists(opened.filter(
+            stage_type__in=('first_verification', 'second_verification', 'author_editing'),
+            started_at__isnull=False))),
+        default=Exists(earlier),
+    )
+    has_previous = Case(When(repetition__isnull=False, then=Exists(repeated_previous)),
+                        default=Exists(normal_previous))
+    previous_date = Case(
+        When(repetition__isnull=False, then=Subquery(repeated_previous.values('ended_at')[:1])),
+        default=Subquery(normal_previous.values('ended_at')[:1]), output_field=DateField())
+    return order, blocked, has_previous, previous_date
+
+
+def annotate_inactivity_clocks(query, today):
+    order, blocked, has_previous, previous_date = _clock_terms()
+    query = query.annotate(_clock_order=order)
+    query = query.annotate(report_blocked=blocked).alias(
         # Wartości pośrednie nie trafiają do SELECT – liczy się tylko wynik końcowy.
-        _clock_has_previous=Case(When(repetition__isnull=False, then=Exists(repeated_previous)),
-                                 default=Exists(normal_previous)),
-        _clock_previous_date=Case(
-            When(repetition__isnull=False, then=Subquery(repeated_previous.values('ended_at')[:1])),
-            default=Subquery(normal_previous.values('ended_at')[:1]), output_field=DateField()),
+        _clock_has_previous=has_previous, _clock_previous_date=previous_date,
     ).alias(_clock_available=later_date('queued_at', '_clock_previous_date'))
     query = query.alias(_clock_after_change=later_date('_clock_available', 'waiting_reset_at'))
     return query.annotate(
@@ -117,3 +127,37 @@ def annotate_inactivity_clocks(query, today):
         # output_field alone does not cast the database result to a DATE.
         report_active_since=Cast(later_date('started_at', 'waiting_reset_at'), DateField()),
     )
+
+
+CLOCK_FIELDS = ('started_at', 'queued_at', 'waiting_reset_at', 'clock_blocked', 'clock_has_previous',
+                'clock_previous_date')
+
+
+def annotate_clock_terms(query):
+    """Same clock terms as annotate_inactivity_clocks, each selected once (no derived dates).
+
+    Every term appears once in the SQL, so the query is several times shorter to
+    build and compile; inactivity_since() derives the dates from CLOCK_FIELDS.
+    """
+    order, blocked, has_previous, previous_date = _clock_terms()
+    return query.annotate(_clock_order=order).annotate(
+        clock_blocked=blocked, clock_has_previous=has_previous, clock_previous_date=previous_date)
+
+
+def _later(left, right):
+    """Python counterpart of later_date()."""
+    if left is None or right is None:
+        return right if left is None else left
+    return max(left, right)
+
+
+def inactivity_since(started_at, queued_at, waiting_reset_at, clock_blocked, clock_has_previous,
+                     clock_previous_date, *, today):
+    """(waiting since, active since) – the same rules as annotate_inactivity_clocks, in Python."""
+    if clock_blocked:
+        waiting = today
+    elif clock_has_previous and clock_previous_date is None and waiting_reset_at is None:
+        waiting = None
+    else:
+        waiting = _later(_later(queued_at, clock_previous_date), waiting_reset_at)
+    return waiting, _later(started_at, waiting_reset_at)

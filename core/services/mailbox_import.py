@@ -33,6 +33,50 @@ def sender_label(message):
     return f'{name} <{address}>' if name and address else name or address or 'Nieznana osoba'
 
 
+# Wybór przy wiadomości od autora z czarnej listy (import ze skrzynki).
+FUTURE_REJECTION = 'reject'
+DOWNLOAD_FILE = 'download'
+BLACKLIST_CHOICES = ((FUTURE_REJECTION, 'Dodaj do przyszłych odrzuceń'), (DOWNLOAD_FILE, 'Pobierz plik'))
+
+
+def sender_address(value):
+    """Znormalizowany adres z „Imię <adres>” albo samego adresu (nadawca lub pole zgłoszenia)."""
+    from texts.services import normalize_email
+    value = str(value or '')
+    return normalize_email(parseaddr(value)[1] or value)
+
+
+def blacklisted_addresses(addresses):
+    """Adresy (małe litery) pasujące do autora z czarnej listy albo aktywnego wpisu niezależnego."""
+    from django.db.models.functions import Lower
+    from authors.models import Author, BlacklistEntry
+    wanted = {sender_address(value) for value in addresses} - {''}
+    if not wanted:
+        return set()
+    found = set(Author.objects.filter(is_blacklisted=True).annotate(address=Lower('email'))
+                .filter(address__in=wanted).values_list('address', flat=True))
+    found |= set(BlacklistEntry.objects.filter(is_active=True).annotate(address=Lower('email'))
+                 .filter(address__in=wanted).values_list('address', flat=True))
+    return found
+
+
+def mark_blacklisted(messages, choices):
+    """Oznacza wiadomości od autorów z czarnej listy (adres ze zgłoszenia lub nadawcy) i decyzję koordynatora.
+
+    Domyślnie (brak wyboru) wiadomość trafia do przyszłych odrzuceń: załączniki są
+    usuwane z pamięci PRZED przetwarzaniem – nie trafiają do Odkurzacza, konwertera
+    ani paczki ZIP. ``choices`` – {uid: wartość z BLACKLIST_CHOICES}. Zwraca te wiadomości.
+    """
+    found = blacklisted_addresses([value for m in messages for value in (m.get('email'), m.get('sender'))])
+    for message in messages:
+        message['blacklisted'] = bool({sender_address(message.get('email')), sender_address(message.get('sender'))} & found)
+        message['future_rejection'] = message['blacklisted'] and choices.get(message['uid']) != DOWNLOAD_FILE
+        if message['future_rejection']:
+            message['skipped_files'] = [name for name, _data in message.get('files', [])]
+            message['files'] = []
+    return [message for message in messages if message['future_rejection']]
+
+
 def describe_import_error(error, sources):
     """Presentation only: retain original form errors and warning signatures."""
     def replace(match):
@@ -383,6 +427,14 @@ def prepare_forms(messages, config, validity, user, tokens=None, confirmed=False
         form.mail_display_warnings = [
             describe_import_error(warning, form.mail_sources) for warning in form.import_warnings
         ]
+        # Wiersze wiadomości, które koordynator dodaje do przyszłych odrzuceń (patrz import_reviews).
+        form.future_rejection_lines = set()
+        line = 1
+        for message in group:
+            size = len(message["record"].splitlines())
+            if message.get("future_rejection"):
+                form.future_rejection_lines.update(range(line, line + size))
+            line += size
         forms.append(form)
     return forms
 

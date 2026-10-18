@@ -241,6 +241,7 @@
                                 {% endif %}{% endif %}
 
                                 {% if review.status == 'to_decide' %}<div class="form-warning review-designated-note">Dla wyznaczonej osoby</div>{% endif %}
+                                {% if review.reading_blocked %}<div class="form-warning review-reading-blocked-note">Pobieranie zablokowane – „Nie doczytałem”</div>{% endif %}
                                 {% if review.is_copied_to_text %}
                                     <div class="form-help">W procesie wydawniczym</div>
 

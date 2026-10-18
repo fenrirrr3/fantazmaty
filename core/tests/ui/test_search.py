@@ -18,6 +18,7 @@ from fantazmaty.testing import create_member, create_superuser
 from illustrations.models import Illustrator
 from people.models import Person
 from texts.models import Anthology, Review, Text
+from workflow.models import WorkflowStage
 
 from .support import NavigationDataMixin
 
@@ -108,6 +109,62 @@ class GlobalSearchTests(NavigationDataMixin, TestCase):
         review.status = 'withdrawn'
         review.save()
         self.assertEqual(_search_reviews('Archiwalny', user=self.admin, include_authors=False), [])
+
+    def test_author_text_search_includes_texts_in_progress_with_publication_labels(self):
+        """Wyszukanie autora zwraca jego teksty wydane i w opracowaniu (także koordynatorowi i redaktorowi,
+        po podpisie publicznym), pomija porzucone antologie, a każdy wynik ma etykietę stanu wydania."""
+        signed = Author.objects.create(first_name='Ignacy', last_name='Szukany', email='ignacy@example.test')
+        hidden = Author.objects.create(first_name='Prawne', last_name='Nazwisko', pseudonym='Szukany Pseudonim',
+                                       email='pseudo@example.test')
+        books = {status: Anthology.objects.create(title=f'Tom {status}', status=status)
+                 for status in ('ready', 'in_preparation', 'abandoned')}
+        novel = Anthology.objects.create(title='Powieść', is_novel=True)
+        texts = {
+            'Wydany': Text.objects.create(title='Szukany tekst wydany', anthology=books['ready'], length=1),
+            'W opracowaniu': Text.objects.create(title='Szukany tekst w pracy', anthology=books['in_preparation'], length=1),
+            'Wycofany': Text.objects.create(title='Szukany tekst wycofany', anthology=books['in_preparation'], length=1),
+            'Porzucony': Text.objects.create(title='Szukany tekst porzucony', anthology=books['abandoned'], length=1),
+            'Rozdział': Text.objects.create(anthology=novel, chapter_number=1, length=1),
+        }
+        for text in texts.values():
+            text.authors.add(signed)
+        texts['Pseudonim'] = Text.objects.create(title='Tekst pod pseudonimem', anthology=books['in_preparation'], length=1)
+        texts['Pseudonim'].authors.add(hidden)
+        Anthology.objects.filter(pk=novel.pk).update(status='ready')  # gotowość powieści bez rozdziałów do ukończenia
+        WorkflowStage.objects.create(text=texts['Wycofany'], stage_type='withdrawn', is_released=True, is_completed=False)
+        expected = {'Szukany tekst wydany': 'Wydany', 'Szukany tekst w pracy': 'W opracowaniu',
+                    'Szukany tekst wycofany': 'Wycofany', texts['Rozdział'].title: 'Wydany',
+                    'Tekst pod pseudonimem': 'W opracowaniu'}
+        for user in (self.admin, self.manager, self.member):
+            self.client.force_login(user)
+            with self.subTest(user=user.username):
+                page = self.client.get(self.url, {'q': 'Szukany'})
+                self.assertEqual({t['title']: t['publication']['label'] for t in page.context['texts']}, expected)
+                doc = html.fromstring(page.content)
+                labels = doc.xpath('//section[header/h2="Teksty"]//li/div[@class="search-result-head"]'
+                                   '/span[contains(@class, "stage-status")]/text()')
+                self.assertCountEqual([label.strip() for label in labels], expected.values())
+                # Nazwisko prawne autora z pseudonimem nie znajduje tekstu, e-mail – tylko u uprawnionych.
+                for query, allowed in (('Prawne', False), ('pseudo@example', user.is_superuser)):
+                    found = [t['title'] for t in self.client.get(self.url, {'q': query}).context['texts']]
+                    self.assertEqual(found, ['Tekst pod pseudonimem'] if allowed else [], query)
+
+    def test_status_labels_share_a_row_with_the_title_and_person_state_is_a_separate_badge(self):
+        """Etykieta Przyjęty/Odrzucony stoi w wierszu tytułu, a stan osoby jest odznaką za nazwiskiem."""
+        book = Anthology.objects.create(title='Nabór wierszowy')
+        Review.objects.create(title='Wierszowe zgłoszenie', anthology=book, author_first_name='Jan',
+                              author_last_name='Wiersz', email='w@example.test', length=1, status='accepted')
+        inactive = create_member('row-inactive', 'Redaktor').person_profile
+        inactive.first_name, inactive.last_name, inactive.is_active = 'Wierszowa', 'Osoba', False
+        inactive.save()
+        doc = html.fromstring(self.client.get(self.url, {'q': 'Wiersz'}).content)
+        head = doc.xpath('//section[header/h2="Bieżące recenzje"]//li/div[@class="search-result-head"]')[0]
+        self.assertEqual(head.xpath('./a/strong/text()'), ['Wierszowe zgłoszenie'])
+        self.assertEqual(head.xpath('./span[contains(@class, "stage-status")]/text()')[0].strip(), 'Przyjęty')
+        name = doc.xpath('//section[header/h2="Zespół"]//strong[@class="person-name"]')[0]
+        self.assertEqual(name.text, 'Wierszowa Osoba')
+        self.assertEqual(name.getnext().get('class'), 'stage-status inactive')
+        self.assertEqual(name.getnext().text, 'Nieaktywny')
 
     def test_polish_search_preserves_accents_and_literal_percent(self):
         author = Author.objects.create(first_name="Łucja", last_name="ŻÓŁĆ", email="lc@example.test")

@@ -11,6 +11,7 @@ from django.utils import timezone
 
 from core.models import PostLayoutAssignment
 from core.permissions import is_coordinator, require_post_layout
+from people.roles import POST_LAYOUT_PROOFREADER
 from texts.models import Anthology
 
 
@@ -20,7 +21,7 @@ def can_manage(user):
 
 def eligible_proofreaders():
     return get_user_model().objects.filter(is_active=True, person_profile__is_active=True,
-        person_profile__is_external=False, person_profile__roles__name__iexact='Korektor poskładowy').distinct().select_related('person_profile')
+        person_profile__is_external=False, person_profile__roles__name__iexact=POST_LAYOUT_PROOFREADER).distinct().select_related('person_profile')
 
 
 class ProofreaderField(forms.ModelChoiceField):
@@ -30,7 +31,7 @@ class ProofreaderField(forms.ModelChoiceField):
 
 class AssignmentForm(forms.Form):
     anthology = forms.ModelChoiceField(label='Antologia', queryset=Anthology.objects.none())
-    proofreader = ProofreaderField(label='Korektor poskładowy', queryset=get_user_model().objects.none())
+    proofreader = ProofreaderField(label=POST_LAYOUT_PROOFREADER, queryset=get_user_model().objects.none())
     token = forms.CharField(widget=forms.HiddenInput)
 
     def __init__(self, *args, user, **kwargs):
@@ -80,7 +81,7 @@ class StaleAssignment(ValidationError):
 
 
 class AssignmentEditForm(forms.ModelForm):
-    proofreader = ProofreaderField(label='Korektor poskładowy', queryset=get_user_model().objects.none())
+    proofreader = ProofreaderField(label=POST_LAYOUT_PROOFREADER, queryset=get_user_model().objects.none())
 
     class Meta:
         model = PostLayoutAssignment

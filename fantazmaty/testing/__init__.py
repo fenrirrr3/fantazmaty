@@ -16,9 +16,10 @@ EDIT_VERSION_SALT = 'cms-edit-version'
 
 def create_member(username, role_name):
     """Konto członka zespołu z profilem osoby i rolą (także grupą o tej nazwie)."""
+    from people import roles
     from people.models import Person, Role
-    if role_name == 'Koordynator':
-        role_name = 'Koordynator redakcji'
+    if role_name == roles.COORDINATOR:
+        role_name = roles.EDITING_COORDINATOR
     user = get_user_model().objects.create_user(username=username)
     person = Person.objects.create(first_name=username, last_name='Testowy', email=f'{username}@example.com', user=user)
     role, _ = Role.objects.get_or_create(name=role_name)

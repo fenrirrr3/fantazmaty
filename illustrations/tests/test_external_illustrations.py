@@ -50,6 +50,15 @@ class ExternalIllustrationsTests(TestCase):
         self.assertNotContains(self.client.get(self.url),'TAJNE UWAGI')
         self.assertNotContains(self.client.get(reverse('core:home')),self.url)
 
+    def test_contact_notice_above_the_list_links_to_illustrations_mailbox(self):
+        """Nad listą jest informacja, jak zgłosić chęć wzięcia ilustracji, z adresem jako linkiem mailto."""
+        doc = html.fromstring(self.client.get(self.url).content)
+        notice = doc.xpath('//p[contains(@class, "message") and contains(@class, "info")]')[0]
+        self.assertEqual(' '.join(notice.text_content().split()),
+                         'Chcesz wziąć ilustrację? Napisz na ilustracje@fantazmaty.pl, którą ilustrację chcesz wziąć.')
+        self.assertEqual(notice.xpath('./a/@href'), ['mailto:ilustracje@fantazmaty.pl'])
+        self.assertTrue(notice.xpath('following::table'))
+
     def test_status_uses_people_not_stored_status_and_does_not_reveal_names(self):
         artist = Illustrator.objects.create(first_name='PRYWATNY ILUSTRATOR', email='private-artist@example.test')
         self.illustration.illustrators.add(artist)

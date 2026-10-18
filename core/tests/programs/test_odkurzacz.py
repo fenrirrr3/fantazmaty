@@ -437,6 +437,37 @@ class CleanerR7Tests(SimpleTestCase):
                 self.assertFalse(_revisions(result))
                 self.assertEqual(summary.get('nonbreaking_spaces'), 9)
 
+    def test_special_spaces_dashes_and_hyphens_in_docx(self):
+        """Zadanie 15: w wyniku nie zostaje żaden znak specjalny; spacje zamieniane cicho i liczone
+        w nonbreaking_spaces (także wąska, półfiretowa itd.), kreski jako zmiany dash_style."""
+        spaces = '\u00a0\u202f\u2009\u2002\u2003\u2008\u200a\u205f'
+        document = Document()
+        document.add_paragraph('\u2014 Mróz\u2009\u22125\u202f°C \u2015 rzekł, lata 1990\u20121995.')
+        document.add_paragraph('Biało\u2010czerwony i\u2002PRL\u2011u, 5\u00a0kg,\u2003J.\u2008Kowalski\u200a'
+                               'i\u205f2025 r., odku\u00adrza\u200bcz.')
+        source = saved(document).getvalue()
+        expected = ['– Mróz –5 °C – rzekł, lata 1990–1995.',
+                    'Biało-czerwony i PRL-u, 5 kg, J. Kowalski i 2025 r., odkurzacz.']
+        for track_changes in (False, True):
+            with self.subTest(track_changes=track_changes):
+                summary = {}
+                result = clean_docx(BytesIO(source), FORM_DEFAULT_EDITORIAL_RULES, track_changes=track_changes,
+                                    summary=summary)
+                self.assertEqual(_story_texts(result, 'accept')[0], expected)
+                self.assertEqual(summary['nonbreaking_spaces'], 8)
+                self.assertEqual(summary['dash_style'], 6)
+                self.assertEqual(summary['invisible_chars'], 2)
+                revised = ''.join(node.text or '' for _, element in _revisions(result)
+                                  for node in element.iter(qn('w:delText'), qn('w:t')))
+                # Śledzone zmiany obejmują kreski i niewidoczne znaki, ale nie spacje (te są zamieniane cicho).
+                self.assertEqual(bool(revised), track_changes)
+                self.assertFalse(set(revised) & set(spaces))
+        # Bez reguł spacje i tak stają się zwykłe (decyzja właściciela); kreski zostają.
+        summary = {}
+        texts = _story_texts(clean_docx(BytesIO(source), [], summary=summary))[0]
+        self.assertEqual(texts[0], '\u2014 Mróz \u22125 °C \u2015 rzekł, lata 1990\u20121995.')
+        self.assertEqual(summary, {'nonbreaking_spaces': 8})
+
     def test_summary_lists_dictionary_replacements(self):
         document = Document()
         document.add_paragraph('Pickupem jechał, Pickupem wrócił, pickupem też. Niechcąco.')

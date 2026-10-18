@@ -166,3 +166,75 @@
     width: 100%;
     box-sizing: border-box;
 }
+
+/* ===== Pobieranie zgłoszeń: postęp, podgląd maila, czarna lista ===== */
+.mailbox-progress {
+    display: grid;
+    grid-column: 1 / -1;
+    gap: var(--space-2);
+}
+
+.mailbox-progress[hidden],
+.mailbox-progress > [hidden] {
+    display: none;
+}
+
+.mailbox-progress p {
+    margin: 0;
+}
+
+.mailbox-progress progress {
+    width: 100%;
+    height: var(--space-4);
+    accent-color: var(--primary);
+}
+
+.mailbox-confirmation-options + .primary-button + .mailbox-progress {
+    margin-top: var(--space-4);
+}
+
+.mailbox-preview-panel {
+    max-height: 24rem;
+    margin-bottom: var(--space-4);
+}
+
+.mailbox-blacklist-choice {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+}
+
+.mailbox-blacklist-badge {
+    white-space: nowrap;
+    border-color: var(--danger);
+    background: var(--danger-light);
+    color: var(--danger-dark);
+}
+
+.mailbox-blacklist-choice select {
+    max-width: 100%;
+}
+
+.mailbox-blacklisted-row > td:first-child {
+    border-left: 3px solid var(--danger);
+}
+
+.mailbox-blacklist-decisions {
+    display: grid;
+    gap: var(--space-3);
+    margin: var(--space-4) 0;
+    padding: var(--space-4);
+    border: 1px solid var(--danger);
+    border-radius: var(--radius-md);
+}
+
+.mailbox-blacklist-decisions legend {
+    padding-inline: var(--space-2);
+    font-weight: 700;
+}
+
+.mailbox-blacklist-decisions .form-help {
+    margin: 0;
+}

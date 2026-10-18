@@ -1,3 +1,4 @@
+from people import roles
 from core.public_authors import name_matches
 from workflow.catalog import active_stage_choices, active_role_choices, workflow_role_choices, IMPORT_ONLY_ROLES
 from workflow.labels import assignment_label, stage_label
@@ -564,7 +565,7 @@ def available_stages_for_user(*, user, params=None, with_filters=False):
         role = STAGE_ROLE_MAP.get(stage.stage_type)
         text_data = _text_data(stage.text, include_authors)
         row = _stage_data(stage, text_data)
-        row.update(required_group="Superuser" if role == Role.STYLING else ROLE_GROUPS.get(role, "Redaktor"),
+        row.update(required_group="Superuser" if role == Role.STYLING else ROLE_GROUPS.get(role, roles.EDITOR),
                    available_role=role)
         return row
 

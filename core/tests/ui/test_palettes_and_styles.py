@@ -77,6 +77,18 @@ class StylesheetTests(SimpleTestCase):
         self.assertIn('margin-inline: calc(-1 * var(--table-bleed, var(--card-padding)))', css)
         self.assertNotIn('.post-layout-table-wrap {', self.css('post-layout.css'))
 
+    def test_person_state_and_role_badges_have_shared_spacing(self):
+        """Odstępy etykiet przy nazwisku wynikają z reguł ogólnych, nie z poprawek pojedynczych stron."""
+        css = self.css('components.css')
+        for selector, declaration in (
+                ('.person-name + :is(.stage-status, .status, .badge) {', 'margin-inline-start: var(--space-2);'),
+                (':not(dt) + .roles-list {', 'margin-top: var(--space-1);')):
+            with self.subTest(selector=selector):
+                self.assertIn(declaration, css[css.index(selector):].split('}', 1)[0])
+        head = self.css('pages.css').split('.search-result-head {', 1)[1].split('}', 1)[0]
+        for declaration in ('display: flex;', 'flex-wrap: wrap;', 'justify-content: space-between;'):
+            self.assertIn(declaration, head)
+
     def test_every_badge_has_a_border(self):
         css = self.css('components.css')
         self.assertIn('--badge-fg: var(--muted);\n    --badge-border: currentColor;', css)

@@ -2,7 +2,7 @@
 from django.core.management.base import BaseCommand
 from django.db import connections, transaction
 from people.models import Role
-from people.role_ordering import TEAM_ROLE_ORDER
+from people.roles import STANDARD_ROLES
 
 
 class Command(BaseCommand):
@@ -13,7 +13,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         database = options['database']
-        names = tuple(dict.fromkeys((*TEAM_ROLE_ORDER, 'Ilustrator', 'Korektor audiobooków')))
+        names = STANDARD_ROLES
         created = 0
         with transaction.atomic(using=database):
             for name in names:

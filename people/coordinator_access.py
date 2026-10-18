@@ -2,14 +2,10 @@
 from contextvars import ContextVar
 from django.contrib.auth import get_user_model
 from django.db import transaction
-from django.db.models import Q
 from .models import Person
+from .roles import coordinator_role_q
 
 revoking = ContextVar('revoking_coordinator', default=False)
-
-
-def coordinator_query():
-    return Q(name__iexact='Koordynator') | Q(name__istartswith='Koordynator ')
 
 
 @transaction.atomic
@@ -20,14 +16,14 @@ def revoke_coordinator(person):
     try:
         user = get_user_model().objects.select_for_update().filter(pk=person.user_id).first()
         current = Person.objects.select_for_update().get(pk=person.pk)
-        current.roles.remove(*current.roles.filter(coordinator_query()))
+        current.roles.remove(*current.roles.filter(coordinator_role_q()))
         Person.objects.filter(pk=current.pk).update(is_coordinator=False, legacy_coordinator_access=False)
         from core.edit_versions import bump
         bump('people.person', current.pk, current._state.db)
         person.is_coordinator = False
         person.legacy_coordinator_access = False
         if user:
-            user.groups.remove(*user.groups.filter(coordinator_query()))
+            user.groups.remove(*user.groups.filter(coordinator_role_q()))
             # Preserve independent admin permissions and superusers.
             if not user.is_superuser and not user.user_permissions.exists() and not user.groups.filter(permissions__isnull=False).exists():
                 get_user_model().objects.filter(pk=user.pk).update(is_staff=False)

@@ -52,6 +52,10 @@ class Author(NormalizedModelMixin, models.Model):
             "należy wyświetlić ostrzeżenie."
         ),
     )
+    blacklist_notes = models.TextField(
+        "Uwagi – za co wpisany", blank=True,
+        help_text="Powód wpisu na czarną listę. Widoczne wyłącznie w panelu administracyjnym.",
+    )
 
     class Meta:
         verbose_name = "autor"
@@ -142,7 +146,7 @@ class BlacklistEntry(models.Model):
     name = models.CharField("imię i nazwisko / opis", max_length=255, blank=True)
     email = models.EmailField("adres e-mail", unique=True,
         help_text="Dopasowanie zgłoszeń po e-mailu, bez rozróżniania wielkości liter. Nie tworzy profilu autora.")
-    notes = models.TextField("notatka", blank=True)
+    notes = models.TextField("Uwagi – za co wpisany", blank=True)
     is_active = models.BooleanField("aktywny wpis", default=True)
 
     class Meta:

@@ -3,6 +3,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 from core.edit_versions import VersionedQuerySet
+from people.roles import RETIRED_ROLES
 
 
 def get_local_date(value):
@@ -57,7 +58,7 @@ class Role(models.Model):
     objects = VersionedQuerySet.as_manager()
     def clean(self):
         super().clean()
-        if self.name.strip().casefold() in ("koordynator", "koordynator zespołu"):
+        if self.name.strip().casefold() in {name.casefold() for name in RETIRED_ROLES}:
             raise ValidationError({"name": "Ogólna rola została wycofana. Wybierz koordynatora konkretnego działu."})
 
     name = models.CharField(

@@ -14,6 +14,7 @@ from django.utils import timezone
 from core.audiobook_models import StageType
 from core.models import Audiobook, AudiobookStage
 from core.permissions import is_coordinator, has_role
+from people.roles import AUDIOBOOK_PROOFREADER
 from texts.models import Text
 from texts.production import active_production_texts
 
@@ -62,7 +63,7 @@ def require_available(text):
 
 def may_finish(user, audio):
     return bool(is_coordinator(user) or (audio and audio.status == Status.PROOFREADING
-        and audio.proofreader_id == user.pk and has_role(user, 'Korektor audiobooków')))
+        and audio.proofreader_id == user.pk and has_role(user, AUDIOBOOK_PROOFREADER)))
 
 
 def can_claim_proofreading(audio, history, user):
@@ -244,7 +245,7 @@ def start_stage(*, text_id, user, started_at=None):
     if stage is None or stage.stage_type != StageType.PROOFREADING:
         raise ValidationError('Rozpocząć można tylko korektę audiobooka.')
     coordinator = is_coordinator(user)
-    own_proofreading = audio.proofreader_id == user.pk and has_role(user, 'Korektor audiobooków')
+    own_proofreading = audio.proofreader_id == user.pk and has_role(user, AUDIOBOOK_PROOFREADER)
     if not coordinator and not own_proofreading:
         raise PermissionDenied('Korektę rozpoczyna przypisany korektor albo koordynator.')
     if stage.is_started:

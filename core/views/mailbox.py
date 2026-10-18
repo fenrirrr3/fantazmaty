@@ -2,6 +2,7 @@ from zipfile import BadZipFile
 from copy import deepcopy
 import re
 from lxml.etree import XMLSyntaxError
+from django.contrib import messages as notifications
 from django.core import signing
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -17,12 +18,43 @@ from core.permissions import superuser_required
 from core.services.mailbox import read_headers, MailboxError
 from core.services.mailbox_import import (
     default_mailbox, mailbox_key, receipts, fetch_messages, prepare_forms, package_messages, describe_import_error, filter_valid_messages, MAX_MESSAGES,
+    BLACKLIST_CHOICES, DOWNLOAD_FILE, FUTURE_REJECTION, blacklisted_addresses, mark_blacklisted, sender_address,
 )
 from core.services.document_converter import ConversionError, RebuildConfirmationRequired
 from core.services.reviews import import_reviews
 
 HEADERS_SESSION_KEY = 'mailbox_headers_snapshot'
 IMPORT_OPTIONS = ('show_downloaded', 'clean', 'rebuild', 'convert', 'subject_filter')
+# Ciasteczko z tokenem formularza: skrypt strony chowa pasek postępu, gdy przeglądarka dostanie ZIP.
+DOWNLOAD_COOKIE = 'mailbox_import_done'
+PREVIEW_LIMIT = 100000
+
+
+def blacklist_choices(request):
+    """Wybory przy wiadomościach od autorów z czarnej listy: {uid: 'reject' | 'download'}."""
+    result = {}
+    for name, value in request.POST.items():
+        if name.startswith('blacklist_') and name[10:].isdigit() and value in (FUTURE_REJECTION, DOWNLOAD_FILE):
+            result[int(name[10:])] = value
+    return result
+
+
+def mail_preview(config, selection, value):
+    """Treść jednej wiadomości jak w rekrutacji: sam tekst (HTML bez znaczników i zasobów zdalnych)."""
+    from core.services.recruitment_samples import parse_sample
+    try:
+        uid = int(value)
+    except (TypeError, ValueError):
+        raise MailboxError('Nieprawidłowy wybór wiadomości.') from None
+    if uid not in selection['uids']:
+        raise MailboxError('Wybierz wiadomość z pobranej listy.')
+    raw = fetch_messages(config, selection['validity'], [uid], raw_messages=True, max_messages=1)
+    if len(raw) != 1:
+        raise MailboxError('Nie udało się pobrać wiadomości. Pobierz nagłówki ponownie.')
+    preview = parse_sample(raw[0]['raw'])
+    body = preview['mail_body']
+    return {'subject': preview['mail_subject'], 'sender': preview['mail_sender'],
+            'body': body[:PREVIEW_LIMIT], 'truncated': len(body) > PREVIEW_LIMIT}
 
 
 def restore_headers(request, config, key, context):
@@ -35,8 +67,11 @@ def restore_headers(request, config, key, context):
         return
     result = deepcopy(saved['result'])
     already = set(receipts(config, result['validity']).values_list('uid', flat=True))
+    blacklisted = blacklisted_addresses(row.get('sender') for row in result['rows'])
     for row in result['rows']:
         row['downloaded'] = row['uid'] in already
+        row['blacklisted'] = sender_address(row.get('sender')) in blacklisted
+        row['blacklist_choice'] = context['blacklist_selected'].get(row['uid'], FUTURE_REJECTION)
     base = {'user': request.user.pk, 'mailbox': key, 'subject_filter': saved['subject_filter'], 'sent_since': saved['sent_since']}
     for field in ('next_cursor', 'previous_cursor'):
         if result.get(field):
@@ -68,11 +103,13 @@ def load_token(token, user, key, salt):
 @sensitive_post_parameters()
 def mailbox_headers(request):
     archive = None
+    action = 'preview_html' if request.POST.get('preview_uid') else request.POST.get('action', 'headers')
     date_form = MailboxDateForm(request.POST if request.method == 'POST' else None)
     context = {'date_form': date_form, 'result': None, 'max_messages': MAX_MESSAGES, 'show_downloaded': request.POST.get('show_downloaded') == 'on',
                'clean': request.POST.get('clean') == 'on' if request.method == 'POST' else True,
                'rebuild': request.POST.get('rebuild') == 'on' if request.method == 'POST' else True,
-               'convert': request.POST.get('convert') == 'on' if request.method == 'POST' else True}
+               'convert': request.POST.get('convert') == 'on' if request.method == 'POST' else True,
+               'blacklist_options': BLACKLIST_CHOICES, 'blacklist_selected': blacklist_choices(request)}
     try:
         config = default_mailbox()
         context['mailbox'] = config
@@ -89,8 +126,13 @@ def mailbox_headers(request):
                 raise MailboxError('Popraw datę początkową.')
             sent_since = date_form.effective_date()
             base['sent_since'] = sent_since
-            action = request.POST.get('action', 'headers')
-            if action in ('download', 'confirm'):
+            if action in ('preview', 'preview_html'):
+                selection = load_token(request.POST.get('selection', ''), request.user, key, 'mailbox-selection')
+                preview = mail_preview(config, selection, request.POST.get('uid') or request.POST.get('preview_uid'))
+                if action == 'preview':
+                    return render(request, 'core/includes/recruitment_preview.html', {'preview': preview})
+                context['preview'] = preview
+            elif action in ('download', 'confirm'):
                 selection = load_token(request.POST.get('selection', ''), request.user, key, 'mailbox-selection')
                 if selection.get('subject_filter', '') != subject_filter or selection.get('sent_since', '') != sent_since:
                     raise MailboxError('Zmieniono nabór lub datę. Najpierw pobierz nagłówki ponownie.')
@@ -104,20 +146,30 @@ def mailbox_headers(request):
                 skipped_errors = []
                 messages = fetch_messages(config, validity, selected, skipped_errors)
                 digest = [[m['uid'], m['digest']] for m in messages]
+                # Czarna lista sprawdzana przed przetwarzaniem: przyszłe odrzucenia tracą załączniki od razu.
+                mark_blacklisted(messages, context['blacklist_selected'])
+                decisions = {str(m['uid']): FUTURE_REJECTION if m['future_rejection'] else DOWNLOAD_FILE
+                             for m in messages if m['blacklisted']}
                 confirmation = None
                 if action == 'confirm':
                     confirmation = load_token(request.POST.get('preview', ''), request.user, key, 'mailbox-preview')
-                    if confirmation['digest'] != digest or confirmation['clean'] != context['clean'] or confirmation['convert'] != context['convert'] or confirmation.get('rebuild') != context['rebuild']:
+                    if (confirmation['digest'] != digest or confirmation['clean'] != context['clean'] or confirmation['convert'] != context['convert']
+                            or confirmation.get('rebuild') != context['rebuild']
+                            or confirmation.get('choices', {}) != decisions):
                         confirmation = None
                         context['error'] = 'Wiadomości lub opcje się zmieniły. Sprawdź nowy podgląd i zatwierdź go ponownie.'
                 tokens = confirmation['warnings'] if confirmation else {}
                 approved = bool(confirmation and request.POST.get('approve') == 'on')
                 messages = filter_valid_messages(messages, config, validity, request.user, skipped_errors)
+                future = [message for message in messages if message['future_rejection']]
                 accepted, rebuild_warnings = [], []
-                archive = package_messages(messages, clean=context['clean'], convert=context['convert'],
-                    rebuild=context['rebuild'], allow_rebuild_omissions=request.POST.get('allow_rebuild_omissions') == 'on',
-                    skipped_errors=skipped_errors, accepted=accepted, rebuild_warnings=rebuild_warnings)
-                messages = accepted
+                to_package = [message for message in messages if not message['future_rejection']]
+                if to_package:
+                    archive = package_messages(to_package, clean=context['clean'], convert=context['convert'],
+                        rebuild=context['rebuild'], allow_rebuild_omissions=request.POST.get('allow_rebuild_omissions') == 'on',
+                        skipped_errors=skipped_errors, accepted=accepted, rebuild_warnings=rebuild_warnings)
+                kept = {message['uid'] for message in [*accepted, *future]}
+                messages = [message for message in messages if message['uid'] in kept]
                 selected = [message['uid'] for message in messages]
                 digest = [[m['uid'], m['digest']] for m in messages]
                 if confirmation and confirmation['digest'] != digest:
@@ -138,8 +190,12 @@ def mailbox_headers(request):
                 if not messages:
                     context['error'] = 'Brak poprawnych zgłoszeń do zaimportowania. Niczego nie zapisano.'
                 warnings = {str(form.data['anthology']): form.data.get('submission_warnings_token', '') for form in forms}
+                context['future_rejections'] = sum(message['future_rejection'] for message in messages)
+                context['blacklisted_messages'] = [message for message in messages if message['blacklisted']]
                 context['preview_token'] = signing.dumps(dict(base, digest=digest, warnings=warnings,
-                    clean=context['clean'], convert=context['convert'], rebuild=context['rebuild']), salt='mailbox-preview', compress=True)
+                    clean=context['clean'], convert=context['convert'], rebuild=context['rebuild'],
+                    choices={uid: value for uid, value in decisions.items() if int(uid) in selected}),
+                    salt='mailbox-preview', compress=True)
                 if action == 'confirm' and approved and messages and not rebuild_warnings and all(form.is_valid() for form in forms):
                     # Files have been prepared before database writes or locks.
                     with transaction.atomic():
@@ -157,10 +213,20 @@ def mailbox_headers(request):
                         for message in messages:
                             MailboxDownload.objects.update_or_create(mailbox_key=key,
                                 uid_validity=validity, uid=message['uid'], defaults={'fingerprint': message.get('fingerprint', ''), 'message_id': message.get('message_id', '')})
+                    rejected = context['future_rejections']
+                    if rejected:
+                        notifications.success(request, f'Dodano do przyszłych odrzuceń bez pobierania pliku: {rejected}.')
+                    if archive is None:
+                        # Same przyszłe odrzucenia: zapisane zgłoszenia, bez paczki ZIP.
+                        return redirect(request.path)
                     response = FileResponse(archive, as_attachment=True, filename='zgloszenia.zip', content_type='application/zip')
                     archive = None  # The streaming response owns and closes this file.
                     response['Cache-Control'] = 'private, no-store'
                     response['X-Content-Type-Options'] = 'nosniff'
+                    token = request.POST.get('download_token', '')
+                    if re.fullmatch(r'[a-z0-9]{8,40}', token):
+                        response.set_cookie(DOWNLOAD_COOKIE, token, max_age=120, path=request.path, samesite='Strict',
+                                            secure=request.is_secure())
                     return response
                 if action == 'confirm' and not approved and not context.get('error'):
                     context['error'] = 'Sprawdź podgląd i zaznacz potwierdzenie.'
@@ -191,6 +257,8 @@ def mailbox_headers(request):
         context['rebuild_warning_text'] = str(error)
         context['error'] = str(error)
     except (MailboxError, ConversionError) as error:
+        if action == 'preview':
+            return render(request, 'core/includes/recruitment_preview.html', {'preview_error': str(error)}, status=400)
         senders = {row['uid']: row.get('sender') or 'Nieznana osoba' for row in (context.get('result') or {}).get('rows', [])}
         context['error'] = re.sub(r'\bWiadomość\s+(\d+)', lambda match: senders.get(int(match[1]), 'Zgłoszenie'), str(error))
     except (BadZipFile, XMLSyntaxError, ValueError, OSError):

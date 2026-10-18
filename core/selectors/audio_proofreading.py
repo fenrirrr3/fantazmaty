@@ -3,6 +3,7 @@ from django.db.models import Exists, OuterRef, Prefetch, Q
 from django.urls import reverse
 
 from core.models import Audiobook, AudiobookStage
+from people.roles import AUDIOBOOK_PROOFREADER
 from texts.models import Text
 from texts.production import active_production_texts
 
@@ -103,7 +104,7 @@ def profile_audio_assignments(person):
         for stage in correction_rows(audio, history, viewer=person.user):
             result.append({'pk': stage['pk'], 'kind': 'Audiobook', 'kind_key': 'audio',
                 'detail_url': reverse('core:audiobook_detail', args=[text.pk]),
-                'role': 'audio_proofreader', 'get_role_display': 'Korektor audiobooków', 'assigned_at': None,
+                'role': 'audio_proofreader', 'get_role_display': AUDIOBOOK_PROOFREADER, 'assigned_at': None,
                 'has_active_work': stage['is_active'], 'has_completed_work': stage['is_completed'],
                 'has_reserved_work': stage['is_waiting'] and stage['performer_id'] is not None, 'state_label': stage['state'],
                 'latest_stage': {**stage, 'imported_completed': stage['is_completed']},

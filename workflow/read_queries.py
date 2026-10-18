@@ -1,4 +1,7 @@
 """Database predicates for read-only workflow lists; writes use workflow services."""
+from people import roles
+import operator
+
 from workflow.catalog import IMPORT_ONLY_STAGE_TYPES
 from django.db.models import Case, When, Value, CharField, Exists, OuterRef, Q, F, Subquery
 from workflow.models import WorkflowStage as S, WorkflowRoleAssignment as A
@@ -106,41 +109,89 @@ def editorial_approval(stages, today):
             & Exists(control) & ~editorial_repeat & ~Exists(returned_to_editor)))
 
 
-def annotate_my_work(queryset, user, today):
-    """Work state of the user's texts: active, waiting or completed (mutually exclusive).
+def _text_terms(user, today):
+    """Terms of my_work_terms() that depend on the whole text, not on the user's own stages."""
+    stages = S.objects.current_cycle().filter(text_id=OuterRef('pk'))
+    assigned = A.objects.current_cycle().filter(text_id=OuterRef('pk'), assigned_to_id=user.pk)
+    return {
+        'closed': Exists(terminal(stages)),
+        'editor_assigned': Exists(assigned.filter(role=A.Role.EDITOR)),
+        # Praca redaktora pozostaje w toku podczas poprawek autora. To klasyfikacja
+        # tekstu, nie przypisanie redaktorowi etapu wykonywanego przez autora.
+        'author_editing': Exists(unfinished(stages).filter(
+            stage_type=S.StageType.AUTHOR_EDITING, is_released=True,
+        )),
+        'approved': editorial_approval(stages, today),
+    }
 
-    Each subquery is built once and the flags are written in a simplified,
-    equivalent form (every term is a non-null EXISTS):
+
+def my_work_terms(user, today):
+    """Elementary conditions of the user's work on a text (correlated with the text's pk).
+
+    Every term is a non-null EXISTS (or a combination of them), so the flags in
+    work_states() can be evaluated either in SQL or in Python on fetched values.
+    The reservation term is not here: it depends on reserved_assignments(), which
+    is cheaper to evaluate once at the top level (see _classify).
+    """
+    terms = _text_terms(user, today)
+    own = own_stages(user).filter(text_id=OuterRef('pk'), workflow_cycle=OuterRef('current_workflow_cycle'))
+    with_author = terms['editor_assigned'] & terms['author_editing']
+    return {
+        'own_active': Exists(active_stages(own.filter(is_current=True), today)) | with_author,
+        'pending_own': Exists(open_stages(own.filter(is_current=True))),
+        'closed': terms['closed'],
+        'editor_assigned': terms['editor_assigned'],
+        'own_editor': Exists(own.filter(_work_role=A.Role.EDITOR)),
+        'approved': terms['approved'],
+        'own_completed': Exists(own.filter(is_completed=True)),
+    }
+
+
+def _own_stage_rows(user, today):
+    """The user's own_stages() in the current cycle with open_stages()/active_stages() evaluated per row.
+
+    Rows: (pk, text_id, workflow_cycle, is_current, is_completed, work role, open, active).
+    """
+    row = S.objects.filter(pk=OuterRef('pk'))
+    return own_stages(user).filter(workflow_cycle=F('text__current_workflow_cycle')).annotate(
+        work_role=F('_work_role'), stage_open=Exists(open_stages(row)), stage_active=Exists(active_stages(row, today)),
+    ).values_list('pk', 'text_id', 'workflow_cycle', 'is_current', 'is_completed', 'work_role',
+                  'stage_open', 'stage_active')
+
+
+def work_states(terms, reserved, negate):
+    """(active, waiting, completed) from my_work_terms() and the reservation term.
+
+    The same formula serves SQL expressions (negate=operator.invert) and
+    fetched booleans (negate=operator.not_), so both paths cannot diverge:
       active    = own_active & ~closed
       waiting   = ~own_active & ~closed & (pending_own | reserved | editor waits for approval)
       completed = own_completed & ~pending_own & ~editor_remaining & (closed | ~own_active & ~reserved)
-    Repeating whole flags inside each other used to multiply the SQL (and the
-    cost of building it) several times over.
     """
-    stages = S.objects.current_cycle().filter(text_id=OuterRef('pk'))
-    own = own_stages(user).filter(text_id=OuterRef('pk'), workflow_cycle=OuterRef('current_workflow_cycle'))
-    pending_own = Exists(open_stages(own.filter(is_current=True)))
-    assigned = A.objects.current_cycle().filter(text_id=OuterRef('pk'), assigned_to_id=user.pk)
-    editor_assigned = Exists(assigned.filter(role=A.Role.EDITOR))
-    reserved = Exists(reserved_assignments(user, today).filter(
-        text_id=OuterRef('pk'), workflow_cycle=OuterRef('current_workflow_cycle'), is_current=True))
-    closed = Exists(terminal(stages))
-    # Praca redaktora pozostaje w toku podczas poprawek autora. To klasyfikacja
-    # tekstu, nie przypisanie redaktorowi etapu wykonywanego przez autora.
-    with_author = editor_assigned & Exists(unfinished(stages).filter(
-        stage_type=S.StageType.AUTHOR_EDITING, is_released=True,
-    ))
-    own_active = Exists(active_stages(own.filter(is_current=True), today)) | with_author
-    approved = editorial_approval(stages, today)
-    editor_remaining = (editor_assigned | Exists(own.filter(_work_role=A.Role.EDITOR))) & ~approved
+    own_active, closed, pending_own = terms['own_active'], terms['closed'], terms['pending_own']
+    editor_assigned, approved = terms['editor_assigned'], terms['approved']
+    editor_remaining = (editor_assigned | terms['own_editor']) & negate(approved)
     # The editor returns only for their own control, covered by pending_own
     # and own_active; the coordinator's control is not the editor's task.
     # An assigned editor waits until editorial approval (editor_remaining & editor_assigned).
-    active = own_active & ~closed
-    pending = ~own_active & ~closed & (pending_own | reserved | (editor_assigned & ~approved))
-    completed = (Exists(own.filter(is_completed=True)) & ~pending_own & ~editor_remaining
-                 & (closed | (~own_active & ~reserved)))
-    return queryset.annotate(work_active=active, work_waiting=pending, work_completed=completed)
+    active = own_active & negate(closed)
+    waiting = negate(own_active) & negate(closed) & (pending_own | reserved | (editor_assigned & negate(approved)))
+    completed = (terms['own_completed'] & negate(pending_own) & negate(editor_remaining)
+                 & (closed | (negate(own_active) & negate(reserved))))
+    return active, waiting, completed
+
+
+def annotate_my_work(queryset, user, today):
+    """Work state of the user's texts: active, waiting or completed (mutually exclusive).
+
+    Each subquery is built once (my_work_terms) and the flags are combined by
+    work_states(); repeating whole flags inside each other used to multiply the
+    SQL (and the cost of building it) several times over.
+    """
+    reserved = Exists(reserved_assignments(user, today).filter(
+        text_id=OuterRef('pk'), workflow_cycle=OuterRef('current_workflow_cycle'), is_current=True))
+    active, waiting, completed = work_states(my_work_terms(user, today), reserved, operator.invert)
+    return queryset.annotate(work_active=active, work_waiting=waiting, work_completed=completed)
 
 
 def available_stages(user, access):
@@ -156,7 +207,7 @@ def available_stages(user, access):
     kinds = [kind for kind, role in {'ready_for_editing': A.Role.EDITOR, **STAGE_ROLES}.items()
              if (kind != 'styling' or user.is_superuser)
              and (kind not in ('second_proofreading', 'fourth_proofreading') or can_claim_fourth_proofreading(user))
-             and (access['coordinator'] or ROLE_GROUPS.get(role, 'Redaktor').casefold() in access['roles'])]
+             and (access['coordinator'] or ROLE_GROUPS.get(role, roles.EDITOR).casefold() in access['roles'])]
     query = query.filter(stage_type__in=kinds).exclude(stage_type='editor_control', repetition__isnull=True).filter(
         ~Exists(terminal(stages)),
         ~Exists(assignments.filter(role=OuterRef('_work_role'), assigned_to__isnull=False)),
@@ -195,61 +246,118 @@ def user_text_ids(user):
     return ids
 
 
-def classify_user_texts(user, today):
-    """Work state of the user's texts in one query: active, waiting and waiting with editor role."""
+class _Work:
+    """Work state of the user's texts (_classify)."""
+
+    def __init__(self, active=(), waiting=(), editor_waiting=(), editor_active=(), reserved_rows=(),
+                 active_own_stages=()):
+        self.active, self.waiting, self.editor_waiting = list(active), list(waiting), list(editor_waiting)
+        # Active texts with the user as editor: only there author_editing is the user's dashboard work.
+        self.editor_active = list(editor_active)
+        self.reserved_rows = list(reserved_rows)  # (pk, text_id, role) of reserved_assignments()
+        self.active_own_stages = list(active_own_stages)  # active own stages of active texts
+
+
+def _classify(user, today):
+    """Work state of the user's texts and their reservations, computed once.
+
+    The same terms as annotate_my_work, combined by the same work_states(), but
+    fetched as values: the user's own stages once (_own_stage_rows) instead of a
+    correlated copy of own_stages() in every term, the text terms in one query,
+    and reservations once at the top level – reserved_assignments() keeps the
+    current cycle of the text, so a text is reserved exactly when one of its rows
+    points to it.
+    """
     from texts.models import Text
     candidates = user_text_ids(user)
     if not candidates:
-        return [], [], []
-    editor = A.objects.current_cycle().filter(text_id=OuterRef('pk'), role=A.Role.EDITOR, assigned_to_id=user.pk)
-    rows = list(annotate_my_work(Text.objects.filter(pk__in=candidates), user, today)
-                .annotate(editor_assigned=Exists(editor))
-                .values_list('pk', 'work_active', 'work_waiting', 'editor_assigned'))
-    active = [pk for pk, is_active, _, _ in rows if is_active]
-    waiting = [pk for pk, _, is_waiting, _ in rows if is_waiting]
-    editor_waiting = [pk for pk, _, is_waiting, is_editor in rows if is_waiting and is_editor]
-    return active, waiting, editor_waiting
+        return _Work()
+    own = {}
+    for row in _own_stage_rows(user, today):
+        own.setdefault((row[1], row[2]), []).append(row)
+    terms = _text_terms(user, today)
+    names = list(terms)
+    texts = []
+    for pk, cycle, *values in Text.objects.filter(pk__in=candidates).annotate(**terms).values_list(
+        'pk', 'current_workflow_cycle', *names,
+    ):
+        fetched = {name: bool(value) for name, value in zip(names, values)}
+        rows = own.get((pk, cycle), ())
+        active_own = [stage_pk for stage_pk, _, _, current, _, _, _, active in rows if current and active]
+        fetched.update(
+            own_active=bool(active_own) or (fetched['editor_assigned'] and fetched['author_editing']),
+            pending_own=any(current and is_open for _, _, _, current, _, _, is_open, _ in rows),
+            own_editor=any(role == A.Role.EDITOR for _, _, _, _, _, role, _, _ in rows),
+            own_completed=any(completed for _, _, _, _, completed, _, _, _ in rows),
+        )
+        texts.append((pk, fetched, active_own))
+    # Rezerwacja zmienia tylko stan „oczekuje”, możliwy jedynie bez aktywnej pracy
+    # i bez etapu końcowego; bez takich tekstów nie ma też listy rezerwacji.
+    reserved_rows = []
+    if any(not fetched['own_active'] and not fetched['closed'] for _, fetched, _ in texts):
+        reserved_rows = list(reserved_assignments(user, today).values_list('pk', 'text_id', 'role'))
+    reserved_texts = {text_id for _, text_id, _ in reserved_rows}
+    work = _Work(reserved_rows=reserved_rows)
+    for pk, fetched, active_own in texts:
+        is_active, is_waiting, _ = work_states(fetched, pk in reserved_texts, operator.not_)
+        if is_active:
+            work.active.append(pk)
+            work.active_own_stages.extend(active_own)
+            if fetched['editor_assigned']:
+                work.editor_active.append(pk)
+        if is_waiting:
+            work.waiting.append(pk)
+            if fetched['editor_assigned']:
+                work.editor_waiting.append(pk)
+    return work
+
+
+def classify_user_texts(user, today):
+    """Work state of the user's texts: active, waiting and waiting with editor role."""
+    work = _classify(user, today)
+    return work.active, work.waiting, work.editor_waiting
 
 
 def dashboard_querysets(user, today):
-    # Klasyfikacja tekstów jest liczona raz, tylko dla tekstów użytkownika;
+    # Klasyfikacja tekstów i rezerwacje są liczone raz, tylko dla tekstów użytkownika;
     # dalsze zapytania dostają gotowe listy identyfikatorów zamiast podzapytań.
-    active_texts, waiting_texts, editor_waiting_texts = classify_user_texts(user, today)
+    # Teksty w toku i oczekujące nie mają etapu końcowego w bieżącym cyklu (warunek
+    # „closed” w work_states), więc osobne sprawdzanie go tutaj byłoby zbędne.
+    work = _classify(user, today)
     stages = current_stages()
     editor = A.objects.current_cycle().filter(text_id=OuterRef('text_id'),
         workflow_cycle=OuterRef('workflow_cycle'), role=A.Role.EDITOR, assigned_to_id=user.pk)
-    dashboard_work = S.objects.filter(
-        Q(pk__in=own_stages(user).values('pk')) |
-        (Q(stage_type=S.StageType.AUTHOR_EDITING) & Q(Exists(editor))))
-    active = active_stages(dashboard_work, today).filter(text_id__in=active_texts).filter(
-        workflow_cycle=F('text__current_workflow_cycle'), is_current=True).filter(~Exists(terminal(stages)))
-    from workflow.state import state_annotations, ORDER
-    from django.db.models.functions import Coalesce
-    candidates = exclude_obsolete_verification_placeholders(stages.filter(
-        is_released=True, stage_type__in=ORDER,
-    )).annotate(**state_annotations())
-    representative = Coalesce(
-        Subquery(candidates.filter(is_completed=False, ended_at__isnull=True)
-                 .order_by('state_priority', '-state_order', '-iteration', '-pk').values('pk')[:1]),
-        Subquery(candidates.order_by('-state_order', '-iteration', '-pk').values('pk')[:1]),
-    )
-    editorial_waiting_ids = list(S.objects.current_cycle().filter(text_id__in=editor_waiting_texts,
-        is_released=True, pk=representative).filter(~Exists(terminal(stages))).values_list('pk', flat=True)) \
-        if editor_waiting_texts else []
-    active_ids = list(active.values_list('pk', flat=True)) if active_texts else []
+    editorial_waiting_ids = []
+    if work.editor_waiting:
+        from workflow.state import state_annotations, ORDER
+        from django.db.models.functions import Coalesce
+        candidates = exclude_obsolete_verification_placeholders(stages.filter(
+            is_released=True, stage_type__in=ORDER,
+        )).annotate(**state_annotations())
+        representative = Coalesce(
+            Subquery(candidates.filter(is_completed=False, ended_at__isnull=True)
+                     .order_by('state_priority', '-state_order', '-iteration', '-pk').values('pk')[:1]),
+            Subquery(candidates.order_by('-state_order', '-iteration', '-pk').values('pk')[:1]),
+        )
+        editorial_waiting_ids = list(S.objects.current_cycle().filter(
+            text_id__in=work.editor_waiting, is_released=True, pk=representative,
+        ).values_list('pk', flat=True))
+    # Praca na pulpicie: aktywne własne etapy (z klasyfikacji) oraz poprawki autora
+    # w tekstach, w których osoba jest redaktorem (own_stages() ich nie obejmuje).
+    active_ids = list(work.active_own_stages)
+    if work.editor_active:
+        active_ids += active_stages(S.objects.filter(stage_type=S.StageType.AUTHOR_EDITING).filter(Exists(editor)),
+                                    today).filter(text_id__in=work.editor_active).filter(
+            workflow_cycle=F('text__current_workflow_cycle'), is_current=True).values_list('pk', flat=True)
     active = S.objects.filter(pk__in=[*active_ids, *editorial_waiting_ids]).annotate(
         editor_waiting=Q(pk__in=editorial_waiting_ids)
             | (Q(stage_type=S.StageType.AUTHOR_EDITING) & Q(Exists(editor))),
     ).order_by(F('started_at').desc(nulls_last=True), '-pk')
-    reserved = (reserved_assignments(user, today).filter(text_id__in=waiting_texts)
-        .filter(workflow_cycle=F('text__current_workflow_cycle')).filter(~Exists(terminal(stages)))
-        .exclude(Q(role=A.Role.EDITOR) & Q(text_id__in=editor_waiting_texts))
-        .order_by(F('assigned_at').desc(nulls_last=True), '-pk'))
-    if waiting_texts:
-        reserved_ids = list(reserved.values_list('pk', flat=True))
-        reserved = A.objects.filter(pk__in=reserved_ids).order_by(F('assigned_at').desc(nulls_last=True), '-pk')
-    else:
-        reserved = A.objects.none()
+    waiting, editor_waiting = set(work.waiting), set(work.editor_waiting)
+    reserved_ids = [pk for pk, text_id, role in work.reserved_rows if text_id in waiting
+                    and not (role == A.Role.EDITOR and text_id in editor_waiting)]
+    reserved = (A.objects.filter(pk__in=reserved_ids).order_by(F('assigned_at').desc(nulls_last=True), '-pk')
+                if reserved_ids else A.objects.none())
     return active, reserved
 
 

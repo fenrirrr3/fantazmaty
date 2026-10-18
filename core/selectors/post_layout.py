@@ -1,6 +1,7 @@
 from django.urls import reverse
 
 from core.models import PostLayoutAssignment
+from people.roles import POST_LAYOUT_PROOFREADER
 
 
 def profile_post_layout_assignments(person):
@@ -15,7 +16,7 @@ def profile_post_layout_assignments(person):
             continue
         result.append({'pk': item.pk, 'kind': 'Poskładowa', 'kind_key': 'post_layout',
             'detail_url': reverse('core:post_layout') + f'?assignment={item.pk}#post-layout-{item.pk}',
-            'role': 'post_layout_proofreader', 'get_role_display': 'Korektor poskładowy',
+            'role': 'post_layout_proofreader', 'get_role_display': POST_LAYOUT_PROOFREADER,
             'assigned_at': None if item.historical else item.created_at, 'has_active_work': item.status == item.Status.IN_PROGRESS,
             'has_reserved_work': item.status == item.Status.ASSIGNED, 'has_completed_work': completed,
             'state_label': item.get_status_display(), 'page_from': item.page_from, 'page_to': item.page_to,

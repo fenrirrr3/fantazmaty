@@ -1,0 +1,3 @@
+{% comment %}Wybór przy wiadomości od autora z czarnej listy (pobieranie zgłoszeń). choice – wybrana wartość, form_id – formularz poza tabelą.{% endcomment %}
+<div class="mailbox-blacklist-choice"><span class="role-badge mailbox-blacklist-badge">Czarna lista</span>
+<label><span class="visually-hidden">Decyzja dla wiadomości od autora z czarnej listy</span><select name="blacklist_{{ uid }}"{% if form_id %} form="{{ form_id }}"{% endif %}>{% for value, label in blacklist_options %}<option value="{{ value }}"{% if choice == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label></div>

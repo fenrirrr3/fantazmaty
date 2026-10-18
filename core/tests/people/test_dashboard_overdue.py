@@ -152,3 +152,100 @@ class DashboardOverdueTests(TestCase):
     def test_no_banner_without_overdue_work(self):
         Stage.objects.filter(text__title__in=['Praca 40 dni', 'Czeka 12 dni']).delete()
         self.assertIsNone(self.banner(self.coordinator))
+
+
+class OverdueBannerMatchesReportTests(TestCase):
+    """Lekka ścieżka belki (inactivity_overview) daje te same pierwsze wiersze i tę samą liczbę
+    co raport „Przestoje” (workflow_inactivity_context) – kryteria i kolejność nie mogą się rozjechać."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from fantazmaty.testing import create_member as member
+        cls.superuser = create_superuser('przestoje-admin')
+        cls.performer = member('przestoje-redaktor', 'Redaktor')
+        today = timezone.localdate()
+        book = Anthology.objects.create(title='Zegary')
+        abandoned = Anthology.objects.create(title='Porzucona', status=Anthology.Status.ABANDONED)
+
+        def stage(title, kind, *, anthology=book, queued=None, started=None, person=None, role='editor', **extra):
+            text = Text.objects.filter(title=title).first() or Text.objects.create(
+                title=title, length=1, anthology=anthology)
+            assignment = (WorkflowRoleAssignment.objects.create(text=text, role=role, assigned_to=person)
+                          if person else None)
+            created = Stage.objects.create(text=text, stage_type=kind, started_at=started, assignment=assignment,
+                                           **extra)
+            Stage.objects.filter(pk=created.pk).update(queued_at=queued)
+            return created
+
+        days = lambda count: today - timedelta(days=count)  # noqa: E731
+        stage('W toku 40 dni', 'editing', started=days(40), queued=days(41), person=cls.performer)
+        stage('W toku 3 dni', 'editing', started=days(3), queued=days(3))
+        stage('Rezerwacja', 'first_verification', queued=days(20), person=cls.performer, role='verifier_1')
+        stage('Czeka bez daty', 'ready_for_editing', queued=None)
+        # Zablokowana weryfikacja (otwarta redakcja) czeka „od dziś” – nie zalega.
+        stage('Zablokowana', 'editing', started=days(2), queued=days(35))
+        stage('Zablokowana', 'first_verification', queued=days(30))
+        # Poprzednik zakończony później niż wejście do kolejki wyznacza początek oczekiwania.
+        stage('Po kontroli', 'editing', started=days(50), ended_at=days(15), is_completed=True)
+        stage('Po kontroli', 'editing_control', queued=days(30))
+        stage('Wycofany', 'editing', started=days(50), queued=days(50))
+        stage('Wycofany', 'withdrawn')
+        stage('W porzuconej', 'editing', anthology=abandoned, started=days(60), queued=days(60))
+        # Nieaktualne miejsce na weryfikację po wykonanej weryfikacji – pomijane.
+        stage('Miejsce na weryfikację', 'first_verification', started=days(60), ended_at=days(59),
+              is_completed=True, is_current=False)
+        stage('Miejsce na weryfikację', 'first_verification', iteration=2, queued=days(40))
+        # Etap z poprzedniego cyklu nie zalega; liczy się bieżący cykl tekstu.
+        stage('Inny cykl', 'editing', started=days(70), queued=days(70))
+        Text.objects.filter(title='Inny cykl').update(current_workflow_cycle=2)
+        stage('Inny cykl', 'first_proofreading', queued=days(9), workflow_cycle=2)
+        # Te same liczby dni – kolejność po tytule bez względu na wielkość liter, potem po etapie.
+        for index, title in enumerate(('ćma', 'Ala', 'ala', 'Żuraw', 'bez', 'Bez', 'ósmy', 'Ósmy', 'zet', 'Zet')):
+            stage(title, 'first_proofreading' if index % 2 else 'ready_for_editing', queued=days(12))
+        stage('Ala', 'second_proofreading', queued=days(12))
+
+    def test_first_rows_and_count_match_the_report(self):
+        from django.http import QueryDict
+        from core.selectors.reports import inactivity_overview, workflow_inactivity_context
+        from core.views.dashboard import OVERDUE_SCOPES
+        scopes = [[], *(stages for stages, _ in OVERDUE_SCOPES.values())]
+        report = workflow_inactivity_context(user=self.superuser, params=QueryDict(''))['rows']
+        titles = {row['text']['title'] for row in report}
+        self.assertGreater(len(report), 10)
+        self.assertTrue({'W toku 40 dni', 'Rezerwacja', 'Czeka bez daty', 'Po kontroli', 'Inny cykl'} <= titles)
+        self.assertFalse({'W toku 3 dni', 'Zablokowana', 'Wycofany', 'W porzuconej',
+                          'Miejsce na weryfikację'} & titles)
+        for mode in ('all', 'active', 'waiting'):
+            for stages in scopes:
+                for active_days, waiting_days in ((28, 7), (2, 1), (45, 13)):
+                    params = QueryDict(mutable=True)
+                    params['mode'] = mode
+                    params.setlist('stage', stages)
+                    kwargs = dict(user=self.superuser, params=params, active_days=active_days,
+                                  waiting_days=waiting_days)
+                    rows = workflow_inactivity_context(**kwargs)['rows']
+                    for limit in (3, 10):
+                        with self.subTest(mode=mode, stages=stages, days=(active_days, waiting_days), limit=limit):
+                            self.assertEqual(inactivity_overview(limit=limit, **kwargs), (rows[:limit], len(rows)))
+
+    def test_clocks_computed_in_python_match_the_database_clocks(self):
+        """Daty „w toku od” i „czeka od” wyliczane w Pythonie z warunków elementarnych są takie jak w SQL."""
+        from workflow.waiting import CLOCK_FIELDS, annotate_clock_terms, annotate_inactivity_clocks, inactivity_since
+        today = timezone.localdate()
+        expected = list(annotate_inactivity_clocks(Stage.objects.order_by('pk'), today).values_list(
+            'pk', 'report_waiting_since', 'report_active_since'))
+        derived = [(pk, *inactivity_since(*clock, today=today)) for pk, *clock in
+                   annotate_clock_terms(Stage.objects.order_by('pk')).values_list('pk', *CLOCK_FIELDS)]
+        self.assertEqual(derived, expected)
+        self.assertIn(None, [waiting for _, waiting, _ in expected])
+        self.assertIn(today, [waiting for _, waiting, _ in expected])
+
+    def test_dashboard_banner_uses_the_light_path(self):
+        """Pulpit nie buduje całego raportu przestojów, tylko pokazywane wiersze i liczbę."""
+        from core.views import dashboard
+        self.client.force_login(self.superuser)
+        with patch('core.selectors.reports.workflow_inactivity_context') as full:
+            overdue = self.client.get(reverse('core:home')).context['overdue']
+        full.assert_not_called()
+        self.assertEqual(len(overdue['rows']) + len(overdue['extra_rows']), dashboard.OVERDUE_ON_DASHBOARD)
+        self.assertEqual(overdue['more'], overdue['count'] - dashboard.OVERDUE_ON_DASHBOARD)

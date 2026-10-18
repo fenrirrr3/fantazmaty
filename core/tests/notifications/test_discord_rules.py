@@ -14,7 +14,8 @@ from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from core.discord_notifications import parse_mention, queue, render, send_waiting_reminders
+from authors.models import Author
+from core.discord_notifications import parse_mention, queue, render, send_waiting_reminders, text_authors, workflow_changes
 from core.discord_webhook import DeliveryError, send_message
 from core.models import DiscordNotification, DiscordRole, NotificationRule
 from core.notification_models import validate_template_tags
@@ -23,10 +24,10 @@ from core.services.reviews import assign_reviewer
 from core.services.texts import change_scheduled_stage, start_assigned_stage
 from fantazmaty.testing import create_member
 from fantazmaty.testing.workflow import WorkflowTestDataMixin
-from texts.models import Anthology, Review
+from texts.models import Anthology, ForeignAuthor, Review, Text, TextTranslation
 from workflow.models import WorkflowStage
 from workflow.services import (claim_stage, complete_stage, finish_editing_to_coordinator, resume_editing,
-                               send_to_first_verification)
+                               send_text_to_author, send_to_first_verification, send_to_second_verification)
 
 StageType = WorkflowStage.StageType
 URL = 'https://discord.com/api/webhooks/123/abc_DEF-1'
@@ -68,9 +69,9 @@ class RenderTests(SimpleTestCase):
                 self.assertTrue(content.endswith(link))  # odnośnik nigdy nie jest ucinany
 
     def test_unknown_tags_are_rejected(self):
-        validate_template_tags('[tytuł] [antologia] [rola] [link]')
-        with self.assertRaisesMessage(ValidationError, '[autor]'):
-            validate_template_tags('[tytuł] [autor]')
+        validate_template_tags('[tytuł] [autor] [antologia] [osoba] [rola] [link]')
+        with self.assertRaisesMessage(ValidationError, '[nieznany]'):
+            validate_template_tags('[tytuł] [nieznany]')
 
     def test_webhook_allows_only_chosen_mentions(self):
         cases = {'roles': ((['42'], False), {'parse': [], 'roles': ['42']}),
@@ -162,10 +163,9 @@ class WorkflowTriggerTests(WorkflowTestDataMixin, TestCase):
         enable('first_verification', 'Do wzięcia: [tytuł]', '@weryfikator')
         title = 'Tekst do testów workflow'
         for case, reserved, iteration, expected in (
-            ('bez weryfikatora', False, 1, [('first_verification', f'<@&555> Do wzięcia: {title}'),
-                                            ('stage_completed', f'Redakcja: {title}')]),
-            ('z weryfikatorem', True, 1, [('stage_completed', f'Redakcja: {title}')]),
-            ('powtórzone W1', False, 2, [('stage_completed', f'Redakcja: {title}')]),
+            ('bez weryfikatora', False, 1, [('first_verification', f'<@&555> Do wzięcia: {title}')]),
+            ('z weryfikatorem', True, 1, []),
+            ('powtórzone W1', False, 2, []),
         ):
             with self.subTest(case):
                 self.text = self.text.__class__.objects.create(title=title, length=25000)
@@ -370,6 +370,19 @@ class AdminPanelTests(TestCase):
         sent.assert_called_once_with(URL, f'[TEST] <@&555> Trzecia korekta: „Próba” (Antologia X, sf, 12 000) {link}',
                                      role_ids=['555'], here=False, suppress_embeds=True)
         self.assertEqual(DiscordNotification.objects.get().status, 'sent')
+
+    def test_test_panel_fills_author_and_person(self):
+        """„Wyślij test”: [autor] i [osoba] z formularza; przy zgłoszeniu do recenzji autor zawsze „(anonimowo)”."""
+        for trigger in ('stage_completed', 'review_new'):
+            enable(trigger, '[autor] / [osoba]: [tytuł]')
+        url = reverse('admin:core_notificationrule_test')
+        self.assertContains(self.client.get(url), 'Anna Nowak, A.N. Kowal')
+        cases = {'stage_completed': 'Ewa Lis, Mrok / Jan Kowalski: Próba', 'review_new': '(anonimowo) / –: Próba'}
+        for trigger, expected in cases.items():
+            data = {'title': 'Próba', 'author': 'Ewa Lis, Mrok', 'person': 'Jan Kowalski', 'trigger': trigger}
+            with self.subTest(trigger), patch('core.discord_webhook.send_message', return_value='9') as sent:
+                self.client.post(url, data)
+                self.assertTrue(sent.call_args.args[1].startswith(expected))
 
     def test_test_panel_explains_missing_setup(self):
         url = reverse('admin:core_notificationrule_test')
@@ -713,3 +726,153 @@ class ReviewReminderTests(TestCase):
                 change()
                 self.assertEqual(self.run_after(7), 0)
                 transaction.savepoint_rollback(sid)
+
+
+def author(first, last, pseudonym=''):
+    return Author.objects.create(first_name=first, last_name=last, pseudonym=pseudonym, email=f'{first}.{last}@example.com')
+
+
+class AuthorTagTests(TestCase):
+    """[autor]: podpis jak w stopce tekstu – pseudonim albo imię i nazwisko, kilku autorów po przecinku."""
+
+    def test_author_signature(self):
+        cases = {
+            'brak autora': ([], ''),
+            'imię i nazwisko': ([('Anna', 'Nowak', '')], 'Anna Nowak'),
+            'pseudonim zamiast nazwiska': ([('Jan', 'Kowalski', 'J.K. Mrok')], 'J.K. Mrok'),
+            'kilku autorów w kolejności podpisu': ([('Zofia', 'Zięba', ''), ('Adam', 'Abacki', 'Ada')], 'Ada, Zofia Zięba'),
+        }
+        for case, (people, expected) in cases.items():
+            with self.subTest(case):
+                text = Text.objects.create(title=case, length=10)
+                text.authors.set([author(*person) for person in people])
+                self.assertEqual(text_authors(text), expected)
+                self.assertEqual(render('„[tytuł]” – [autor]', {'tytuł': 'T', 'autor': text_authors(text)}),
+                                 f'„T” – {expected or "–"}')
+
+    def test_translation_shows_foreign_authors(self):
+        book = Anthology.objects.create(title='Przekłady', is_translated=True)
+        text = Text.objects.create(title='Przekład', length=10, anthology=book)
+        TextTranslation.objects.get_or_create(text=text)[0].foreign_authors.set([
+            ForeignAuthor.objects.create(first_name='Ursula', last_name='Le Guin')])
+        self.assertEqual(text_authors(text), 'Ursula Le Guin')
+
+
+@override_settings(DISCORD_WEBHOOKS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
+class AuthorInNotificationsTests(WorkflowTestDataMixin, TestCase):
+    """[autor] jest podstawiany we wszystkich wiadomościach o tekstach; przy zgłoszeniach do recenzji
+    (anonimowych dla recenzentów) zawsze „(anonimowo)”."""
+
+    def setUp(self):
+        super().setUp()
+        for trigger in NotificationRule.Trigger.values:
+            enable(trigger, '[autor] | [tytuł]')
+        sender = patch('core.discord_webhook.send_message', return_value='1')
+        self.addCleanup(sender.stop)
+        sender.start()
+
+    def test_every_text_and_review_notification(self):
+        self.text.authors.set([author('Anna', 'Nowak'), author('Jan', 'Kowalski', 'Mrok')])
+        with self.captureOnCommitCallbacks(execute=True), event_scope(self.superuser):
+            text = Text.objects.create(title='Nowy', length=10)
+            text.authors.set([author('Ewa', 'Lis')])
+            WorkflowStage.objects.create(text=text, workflow_cycle=1, stage_type=StageType.READY_FOR_EDITING)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.begin_editing()  # ogłasza pierwszą weryfikację
+            send_to_first_verification(self.text, self.editor, ended_at=self.today)  # przekazanie, bez „zakończono”
+            Review.objects.create(title='Zgłoszenie', genre='horror', length=1000, email='a@example.com',
+                                  author_first_name='Jan', author_last_name='Nowak',
+                                  anthology=Anthology.objects.create(title='Nabór'))
+        start = DiscordNotification.objects.order_by('pk').first().created_at
+        with self.captureOnCommitCallbacks(execute=True):
+            send_waiting_reminders(now=start + timedelta(days=7, minutes=1))
+        rows = DiscordNotification.objects.values_list('trigger', 'content')
+        expected = {('ready_for_editing', 'Ewa Lis'), ('first_verification', 'Mrok, Anna Nowak'),
+                    ('review_new', '(anonimowo)'),
+                    ('stage_waiting', 'Mrok, Anna Nowak'), ('stage_waiting', '(anonimowo)'),
+                    ('stage_waiting', 'Ewa Lis')}
+        self.assertEqual({(trigger, content.split(' | ')[0]) for trigger, content in rows}, expected)
+
+
+class StageCompletedDefaultTests(TestCase):
+    def test_single_disabled_rule_without_channel_with_author_in_default_text(self):
+        """Migracja zostawia jedną wyłączoną regułę bez kanału; domyślna treść ma [autor] i [osoba]."""
+        rule = NotificationRule.objects.get(trigger='stage_completed')
+        self.assertEqual((rule.enabled, rule.channel, rule.mention), (False, '', ''))
+        self.assertEqual(list(rule.templates.values_list('content', flat=True)),
+                         ['Zakończono etap „[etap]”: „[tytuł]” – [autor] ([antologia]). Wykonanie: [osoba].'])
+
+
+@override_settings(DISCORD_WEBHOOKS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
+class StageCompletedTests(WorkflowTestDataMixin, TestCase):
+    """Jedna reguła „Zakończenie etapu” dla wszystkich etapów; bez wiadomości przy przekazaniu pliku autorowi
+    i jego powrocie."""
+
+    NOT_A_COMPLETION = {StageType.READY_FOR_EDITING, StageType.READY, StageType.WITHDRAWN, StageType.AUTHOR_EDITING}
+
+    def setUp(self):
+        super().setUp()
+        self.rule = enable('stage_completed', '[etap] – [osoba]: [tytuł] – [autor]')
+        self.text.authors.set([author('Anna', 'Nowak')])
+        sender = patch('core.discord_webhook.send_message', return_value='1')
+        self.addCleanup(sender.stop)
+        sender.start()
+
+    def completed(self):
+        return list(DiscordNotification.objects.filter(trigger='stage_completed').order_by('pk')
+                    .values_list('content', flat=True))
+
+    def test_every_stage_type_gives_exactly_one_message(self):
+        """Tabela po wszystkich StageType: zakończenie etapu → jedna wiadomość z [etap] i [osoba]
+        (wykonawca etapu; bez wykonawcy – osoba, która wykonała operację). Redakcja – tylko gdy ta sama
+        operacja przekazuje tekst koordynatorowi (otwiera Kontrolę K. redakcji)."""
+        for stage_type, label in StageType.choices:
+            for performer in ('Ewa Wykonawczyni', ''):
+                with self.subTest(stage_type, performer=performer):
+                    DiscordNotification.objects.all().delete()
+                    stage = {'type': stage_type, 'type_display': label, 'released': True, 'started': True,
+                             'assigned': bool(performer), 'iteration': 1, 'performer': performer}
+                    after = {1: {**stage, 'completed': True}}
+                    if stage_type == StageType.EDITING:
+                        after[2] = {'type': 'editing_control', 'type_display': 'Kontrola K. redakcji',
+                                    'released': False, 'started': False, 'assigned': True, 'completed': False}
+                    with self.captureOnCommitCallbacks(execute=True):
+                        workflow_changes('default', self.text, {1: {**stage, 'completed': False}},
+                                         after, actor='Koordynator Główny')
+                    who = performer or 'Koordynator Główny'
+                    expected = ([] if stage_type in self.NOT_A_COMPLETION
+                                else [f'{label} – {who}: Tekst do testów workflow – Anna Nowak'])
+                    self.assertEqual([PREVIEW.sub('', c) for c in self.completed()], expected)
+
+    def test_author_round_trip_reports_only_real_end_of_editing(self):
+        """Redaktor wysyła plik autorowi, autor go oddaje, przekazuje tekst do W2 – bez wiadomości o zakończeniu
+        redakcji; dopiero przekazanie koordynatorowi (ostatnie) – dokładnie jedna wiadomość."""
+        self.finish_first_verification()
+        resume_editing(self.text, self.editor, started_at=self.today)
+        DiscordNotification.objects.all().delete()
+        steps = [
+            ('wysłanie do autora', lambda: send_text_to_author(self.text, self.editor, started_at=self.today), []),
+            ('powrót od autora', lambda: resume_editing(self.text, self.editor, started_at=self.today), []),
+            ('przekazanie do W2', lambda: send_to_second_verification(self.text, self.editor, started_at=self.today),
+             []),
+        ]
+        for case, action, expected in steps:
+            with self.subTest(case):
+                DiscordNotification.objects.all().delete()
+                with self.captureOnCommitCallbacks(execute=True):
+                    action()
+                self.assertEqual([PREVIEW.sub('', c) for c in self.completed()], expected)
+        w2 = claim_stage(self.text, StageType.SECOND_VERIFICATION, self.verifier_2, self.today)
+        complete_stage(w2, self.verifier_2, self.today)
+        resume_editing(self.text, self.editor, started_at=self.today)
+        DiscordNotification.objects.all().delete()
+        with self.captureOnCommitCallbacks(execute=True):
+            finish_editing_to_coordinator(self.text, self.editor, ended_at=self.today)
+        self.assertEqual([PREVIEW.sub('', c) for c in self.completed()],
+                         ['Redakcja – redaktor Testowy: Tekst do testów workflow – Anna Nowak'])
+
+    def test_disabled_rule_sends_nothing(self):
+        NotificationRule.objects.filter(pk=self.rule.pk).update(enabled=False)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.finish_first_verification()
+        self.assertEqual(self.completed(), [])

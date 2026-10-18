@@ -29,7 +29,8 @@ EDITORIAL_RULES = (
     ('duplicate_punct', 'Powtórzone przecinki, średniki, dwukropki i podwójne kropki'),
     ('quote_punct', 'Kropka i przecinek zawsze za cudzysłowem zamykającym: „tak”.'),
     ('hyphen_dash', 'Łącznik użyty jako myślnik → półpauza'),
-    ('dash_style', 'Pauza i inne kreski jako myślnik → półpauza –; powtórzone myślniki → jeden'),
+    ('dash_style', 'Pauza, pauza cyfrowa, kreska pozioma i minus → półpauza –; łączniki Unicode → dywiz -; '
+                   'powtórzone myślniki → jeden'),
     ('dash_spaces', 'Odstępy przy myślnikach i początku kwestii dialogowej'),
     ('range_dash', 'Łącznik w zakresach liczbowych → półpauza'),
     ('range_spaces', 'Usuwanie spacji wewnątrz zakresów liczbowych'),
@@ -59,9 +60,12 @@ NONBREAKING_SPACES = '\u00a0\u202f\u2007'
 # Nietypowe spacje (en, em, cienka, ideograficzna…) także stają się zwykłymi.
 UNUSUAL_SPACES = NONBREAKING_SPACES + ''.join(map(chr, range(0x2000, 0x200b))) + '\u205f\u3000\u1680'
 NONBREAKING_TABLE = str.maketrans(dict.fromkeys(UNUSUAL_SPACES, ' '))
+UNUSUAL_SPACES_RE = re.compile('[' + UNUSUAL_SPACES + ']')
 # Znaki bez szerokości z kopiowania (strony WWW, PDF, czytniki): łamią wyszukiwanie i słownik.
 INVISIBLE_CHARS = '\u200b\u200c\u200d\u2060\ufeff\u00ad\u200e\u200f\u2061\u2062\u2063\u2064'
 INVISIBLE_RE = re.compile('[' + INVISIBLE_CHARS + ']')
+# Reguła dash_style: nietypowe kreski → półpauza, łączniki Unicode → dywiz.
+DASH_TABLE = str.maketrans({'\u2014': '–', '\u2015': '–', '\u2012': '–', '\u2212': '–', '\u2010': '-', '\u2011': '-'})
 # Akapit złożony wyłącznie ze znaków separatora (* * *, - - -, -----) zostaje bez zmian.
 SEPARATOR_CHARS = frozenset('-–—*#~_=. \t')
 # Skrótowce z kropkami, które nie są inicjałami (nie rozdzielamy ich spacjami).
@@ -1003,8 +1007,13 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
             _count(counts, 'hyphen_dash', before, text)
     if 'dash_style' in enabled:
         before = text
-        # Pauza i kreska pozioma → półpauza; łącznik unicode i nierozdzielający → zwykły łącznik.
-        text = text.replace('—', '–').replace('\u2015', '–').replace('\u2010', '-').replace('\u2011', '-')
+        # Minus (U+2212) i pauza cyfrowa (U+2012) tuż przed cyfrą to znak liczby („−5 °C”, „(−3)”) albo
+        # ścisły zapis (555‒1234): półpauza bez odstępów, zamaskowana, żeby dash_spaces nie rozsunął jej
+        # jak myślnika. „1990 −1995” (cyfra i spacja przed) zostaje dla reguł zakresów.
+        text = re.sub(r'(?<!\d )[\u2012\u2212](?=\d)', lambda m: mask_value('–'), text)
+        # Decyzja właściciela: pauza, kreska pozioma, pauza cyfrowa i minus → półpauza w każdym kontekście;
+        # łącznik Unicode i nierozdzielający → zwykły dywiz.
+        text = text.translate(DASH_TABLE)
         # Powtórzone myślniki (– –, ––) → jeden.
         text = re.sub(r'–(?:' + H + r'*–)+', '–', text)
         if counts is not None:
@@ -1510,18 +1519,20 @@ def _in_fallback(element):
 
 
 def _replace_nonbreaking_spaces(stories, counts):
-    """Spacje nierozdzielające → zwykłe we wszystkich częściach, bez śledzenia zmian.
+    """Spacje nierozdzielające i nietypowe (wąska, półfiretowa…) → zwykłe we wszystkich częściach,
+    bez śledzenia zmian.
 
-    Zamiana nie zmienia wyglądu tekstu, więc w trybie śledzenia nie tworzymy dla niej
+    Zamiana prawie nie zmienia wyglądu tekstu, więc w trybie śledzenia nie tworzymy dla niej
     (często tysięcy) niewidocznych zmian; podsumowanie podaje ich liczbę.
     """
     replaced = 0
     for story in stories:
         for node in story.root.iter(qn('w:t')):
             text = node.text or ''
-            if any(character in text for character in NONBREAKING_SPACES):
+            found = len(UNUSUAL_SPACES_RE.findall(text))
+            if found:
                 if counts is not None and not _in_fallback(node):
-                    replaced += sum(text.count(character) for character in NONBREAKING_SPACES)
+                    replaced += found
                 node.text = text.translate(NONBREAKING_TABLE)
                 node.set(qn('xml:space'), 'preserve')
     if counts is not None and replaced:

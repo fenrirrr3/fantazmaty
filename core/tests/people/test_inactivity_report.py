@@ -74,3 +74,14 @@ class InactivityReportTests(TestCase):
         self.assertNotContains(response, str(author))
         self.assertNotContains(response, author.email)
         self.assertEqual(len(self.client.get(URL, {'q': 'lucja zolc'}).context['rows']), 0)
+
+    def test_overdue_reviews_section_uses_card_header_and_inset(self):
+        """Sekcja „Recenzje bez opinii” ma nagłówek karty z licznikiem i tabelę w odstępie karty – jak inne sekcje,
+        a nie tytuł i tabelę przyklejone do krawędzi; pusta sekcja pokazuje komunikat w tym samym odstępie."""
+        from lxml import html
+        self.client.force_login(self.coordinator)
+        page = html.fromstring(self.client.get(URL, {'mode': 'reviews'}).content)
+        section = page.xpath('//section[@aria-labelledby="overdue-reviews-heading"]')[0]
+        self.assertEqual(section.xpath('./header[@class="section-header"]//h2/@id'), ['overdue-reviews-heading'])
+        self.assertEqual(section.xpath('./header//span[@class="record-counter"]/text()'), ['0'])
+        self.assertTrue(section.xpath('./div[@class="profile-table-inset"]/p[@class="empty-results-panel"]'))

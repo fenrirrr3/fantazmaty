@@ -20,6 +20,9 @@ class ReviewOpinion(models.TextChoices):
     MAYBE = "maybe", "MOŻE"
     MAYBE_NO = "maybe_no", "MOŻE/NIE"
     NO = "no", "NIE"
+    # Recenzent przerwał lekturę: bez treści recenzji, nie liczy się jako głos
+    # za ani przeciw i blokuje pobieranie zgłoszenia przez kolejnych recenzentów.
+    NOT_READ = "not_read", "NIE DOCZYTAŁEM"
 
 
 class Anthology(models.Model):
@@ -765,6 +768,14 @@ class ReviewQuerySet(VersionedQuerySet):
     def for_statistics(self):
         return self.filter(models.Q(old_reviews=True) | models.Q(is_hidden=False))
 
+    def reading_blocked(self):
+        """Zgłoszenia z blokadą pobierania do recenzji (jak Review.reading_blocked)."""
+        return self.filter(
+            models.Q(reading_unblocked_at__isnull=True) | models.Q(reading_blocked_at__gt=models.F("reading_unblocked_at")),
+            reading_blocked_at__isnull=False,
+            assignments__opinion=ReviewOpinion.NOT_READ,
+        ).distinct()
+
 
 class Review(NormalizedModelMixin, models.Model):
     @property
@@ -921,6 +932,20 @@ class Review(NormalizedModelMixin, models.Model):
         blank=True,
     )
 
+    # Ocena „Nie doczytałem” blokuje pobieranie do recenzji; koordynator recenzji
+    # może je odblokować. Blokada działa, gdy ostatnia taka ocena jest późniejsza
+    # niż ostatnie odblokowanie (patrz reading_blocked).
+    reading_blocked_at = models.DateTimeField(
+        "ostatnia ocena „Nie doczytałem”", null=True, blank=True, editable=False,
+    )
+    reading_unblocked_at = models.DateTimeField(
+        "odblokowanie pobierania do recenzji", null=True, blank=True, editable=False,
+    )
+    reading_unblocked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+", editable=False, verbose_name="odblokował(a) pobieranie",
+    )
+
     # Domyślny manager zachowuje archiwum m.in. do wykrywania duplikatów.
     # Statystyki muszą korzystać z for_statistics().
     objects = ReviewQuerySet.as_manager()
@@ -941,6 +966,24 @@ class Review(NormalizedModelMixin, models.Model):
     @property
     def is_copied_to_text(self):
         return self.copied_text_id is not None
+
+    @property
+    def reading_blocked(self):
+        return self.reading_block_active()
+
+    def reading_block_active(self, opinions=None):
+        """Pobieranie do recenzji zablokowane oceną „Nie doczytałem” późniejszą niż odblokowanie.
+
+        Wymaga też istniejącej oceny „Nie doczytałem” – zmiana tej oceny na inną
+        przez recenzenta zdejmuje blokadę. ``opinions`` – oceny już pobranych przydziałów.
+        """
+        if self.reading_blocked_at is None:
+            return False
+        if self.reading_unblocked_at is not None and self.reading_unblocked_at >= self.reading_blocked_at:
+            return False
+        if opinions is not None:
+            return ReviewOpinion.NOT_READ in opinions
+        return self.assignments.filter(opinion=ReviewOpinion.NOT_READ).exists()
 
     def clean(self):
         super().clean()

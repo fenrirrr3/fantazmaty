@@ -26,17 +26,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Keep the original anchor for repeated Shift clicks.
             } else anchors.set(key, box);
         });
-        table.addEventListener('change', event => {
-            const all = table.querySelector('[data-select-table]');
-            if (!all) return;
-            const boxes = [...table.querySelectorAll('tbody input[name="selected"]')].filter(visible);
-            if (event.target === all) {
-                const checked = all.checked;
-                boxes.forEach(box => { box.checked = checked; });
-                anchors.clear();
-            }
+        // „Zaznacz wszystkie” w nagłówku: data-select-table="<nazwa pól>" (domyślnie „selected”).
+        const all = table.querySelector('[data-select-table]');
+        if (!all) return;
+        const field = (all.dataset && all.dataset.selectTable) || 'selected';
+        function sync() {
+            const boxes = [...table.querySelectorAll(`tbody input[name="${field}"]`)].filter(visible);
             all.checked = boxes.length > 0 && boxes.every(box => box.checked);
             all.indeterminate = boxes.some(box => box.checked) && !all.checked;
+        }
+        table.addEventListener('change', event => {
+            if (event.target === all) {
+                const checked = all.checked;
+                [...table.querySelectorAll(`tbody input[name="${field}"]`)].filter(visible)
+                    .forEach(box => { box.checked = checked; });
+                anchors.clear();
+            }
+            sync();
         });
+        // Stan po załadowaniu (np. powrót z podglądem i zaznaczonymi wierszami).
+        sync();
     });
 });

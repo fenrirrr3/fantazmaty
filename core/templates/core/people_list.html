@@ -100,9 +100,7 @@
                                     href="{% url 'core:person_detail' person.pk %}"
                                     class="detail-link"
                                 >
-                                    <strong>
-                                        {{ person.first_name }} {{ person.last_name }}{% if person.is_external %} <span class="stage-status inactive">Zewnętrzny</span>{% endif %}
-                                    </strong>
+                                    <strong class="person-name">{{ person.first_name }} {{ person.last_name }}</strong>{% if person.is_external %}<span class="stage-status inactive">Zewnętrzny</span>{% endif %}
                                 </a>
                             </td>
 

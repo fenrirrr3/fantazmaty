@@ -25,7 +25,12 @@ def apply_blacklist(review, *, coauthors=None):
         blacklisted = blacklisted or find_matching_authors(author=coauthor, email=coauthor.email).filter(is_blacklisted=True).exists()
         blacklisted = blacklisted or matching_blacklist_entries(author=coauthor, email=coauthor.email, using=review._state.db).exists()
     if blacklisted:
-        review.is_hidden = True
-        review.status = review.Status.REJECTED
-        review.decision_at = timezone.localdate() + timedelta(days=14 + randbelow(15))
-        review.author_notified_at = None
+        schedule_rejection(review)
+
+
+def schedule_rejection(review):
+    """Przyszłe odrzucenie: ukryte zgłoszenie z decyzją za 14–28 dni (lista „Zaplanowane odrzucenia”)."""
+    review.is_hidden = True
+    review.status = review.Status.REJECTED
+    review.decision_at = timezone.localdate() + timedelta(days=14 + randbelow(15))
+    review.author_notified_at = None

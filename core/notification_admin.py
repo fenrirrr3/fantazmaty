@@ -9,11 +9,16 @@ from django.urls import path, reverse
 from django.utils.html import format_html, format_html_join
 
 from authors.admin import SuperuserOnlyAdminMixin
-from core.discord_notifications import DISCORD_LIMIT, REMINDABLE, REMINDER_DAYS, WAITING, mention_text, parse_mention, preview_link, render
+from core.discord_notifications import (ANONYMOUS_AUTHOR, DISCORD_LIMIT, REMINDABLE, REMINDER_DAYS, WAITING, mention_text,
+                                        parse_mention, preview_link, render)
 from core.models import DiscordNotification, DiscordRole, NotificationRule, NotificationTemplate
 from core.notification_models import TEMPLATE_TAGS
 
 TAGS_HELP = 'Tagi: ' + ', '.join(f'[{tag}] – {label}' for tag, label in TEMPLATE_TAGS.items()) + '.'
+COMPLETED = 'stage_completed'
+COMPLETED_HELP = ('Jedna wiadomość po zakończeniu każdego etapu (redakcja – tylko przy ostatnim przekazaniu, '
+                  'do koordynatora; weryfikacje, korekty, kontrole, stylowanie). Bez wiadomości: przekazanie pliku '
+                  'autorowi i jego powrót, przekazanie redakcji do W1/W2, przejęcie tekstu do redakcji, „Gotowe”, wycofanie. [osoba] – wykonawca etapu.')
 
 
 def configured_channels():
@@ -97,6 +102,8 @@ class NotificationRuleAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
     @admin.display(description='Kiedy')
     def trigger_label(self, obj):
+        if obj.trigger == COMPLETED:
+            return format_html('{}<div class="help">{}</div>', obj.get_trigger_display(), COMPLETED_HELP)
         return obj.get_trigger_display()
 
     def get_fields(self, request, obj=None):
@@ -165,11 +172,15 @@ class NotificationRuleAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
 class TestNotificationForm(forms.Form):
     title = forms.CharField(label='[tytuł]', max_length=300, initial='Latarnik')
+    author = forms.CharField(label='[autor]', max_length=300, initial='Anna Nowak, A.N. Kowal', required=False,
+                             help_text=f'Przy zgłoszeniach do recenzji [autor] to zawsze „{ANONYMOUS_AUTHOR}”.')
     anthology = forms.CharField(label='[antologia]', max_length=300, initial='Cienie miasta', required=False)
     genre = forms.CharField(label='[gatunek]', max_length=100, initial='fantasy', required=False)
     length = forms.IntegerField(label='[długość]', min_value=0, max_value=10_000_000, initial=25000, required=False)
     stage = forms.CharField(label='[etap] (dla „Zakończenie etapu”)', max_length=100, initial='Redakcja', required=False,
                             help_text='Przy pozostałych wiadomościach [etap] przyjmuje nazwę etapu z przycisku.')
+    person = forms.CharField(label='[osoba] (dla „Zakończenie etapu”)', max_length=200, initial='Jan Kowalski',
+                             required=False)
     days = forms.TypedChoiceField(label='[dni] (dla przypomnień)', choices=[(d, d) for d in REMINDER_DAYS], coerce=int,
                                   initial=REMINDER_DAYS[0], required=False, empty_value=REMINDER_DAYS[0])
     mark_test = forms.BooleanField(label='Dopisz „[TEST]” na początku wiadomości', initial=True, required=False)
@@ -209,13 +220,15 @@ def send_test(rule, data, base=None):
     except ValueError as exc:
         return messages.ERROR, f'„{rule}”: {exc}'
     length = data.get('length')
-    context = {'tytuł': data['title'], 'antologia': data.get('anthology', ''), 'gatunek': data.get('genre', ''),
+    review = (base.trigger if base else rule.trigger) == 'review_new'
+    context = {'tytuł': data['title'], 'autor': ANONYMOUS_AUTHOR if review else data.get('author', ''),
+               'osoba': data.get('person', '') if rule.trigger == COMPLETED else '',
+               'antologia': data.get('anthology', ''), 'gatunek': data.get('genre', ''),
                'długość': f'{length:,}'.replace(',', ' ') if length is not None else '',
-               'etap': ((data.get('stage') or 'Redakcja') if rule.trigger == 'stage_completed'
+               'etap': ((data.get('stage') or 'Redakcja') if rule.trigger == COMPLETED
                         else STAGE_NAMES.get(base.trigger if base else rule.trigger, '')),
                'dni': data.get('days') or REMINDER_DAYS[0]}
     # Testowy tekst nie istnieje w bazie – odnośnik prowadzi do pustego podglądu (nr 0).
-    review = (base.trigger if base else rule.trigger) == 'review_new'
     link = preview_link(review_id=0) if review else preview_link(text_id=0)
     content = render(random.choice(templates), context, mention_text(role_ids, here), link)
     if data.get('mark_test'):

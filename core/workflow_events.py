@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 def snapshot(text_id, using):
     from texts.models import Text
     from workflow.state import current_stage
+    from core.discord_notifications import person_name
     text = Text.objects.using(using).filter(pk=text_id).first()
     if text is None:
         return {'cycle': None, 'status': 'Brak tekstu', 'stages': {}, 'detail': {}}
@@ -25,7 +26,9 @@ def snapshot(text_id, using):
             'detail': {s.pk: {'type': s.stage_type, 'type_display': s.get_stage_type_display(), 'released': s.is_released,
                               'started': bool(s.started_at), 'completed': s.is_completed,
                               'assigned': bool(s.assignment_id and s.assignment.assigned_to_id),
-                              'iteration': s.iteration} for s in stages},
+                              'iteration': s.iteration,
+                              'performer': person_name(s.assignment.assigned_to) if s.assignment_id else ''}
+                       for s in stages},
             'stages': {s.pk: (f'{s.get_stage_type_display()} – wykonanie {s.execution_number}' + (f' – {s.assignment.assigned_to.get_full_name() or s.assignment.assigned_to.get_username()}' if s.assignment_id and s.assignment.assigned_to_id else ''), str(s.started_at or ''), str(s.ended_at or ''), s.is_completed, s.assignment.assigned_to_id if s.assignment_id else None) for s in stages}}
 
 
@@ -106,7 +109,7 @@ def event_scope(user):
                 lambda pk=event.pk, db=using: notify_after_commit(pk, db), using=using
             )
             from core.discord_notifications import workflow_changes
-            workflow_changes(using, text, before.get('detail', {}), after.get('detail', {}))
+            workflow_changes(using, text, before.get('detail', {}), after.get('detail', {}), actor=actor)
     finally:
         _scope.reset(token)
 

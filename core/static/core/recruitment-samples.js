@@ -1,6 +1,9 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const form = document.querySelector('[data-recruitment-samples]');
+    // Ten sam podgląd treści maila w rekrutacji i przy pobieraniu zgłoszeń do recenzji.
+    const form = document.querySelector('[data-recruitment-samples], [data-mailbox-import][data-preview-field]');
     if (!form) return;
+    const field = (form.dataset && form.dataset.previewField) || 'selected';
+    const boxSelector = `input[name="${field}"]`;
     const panel = form.querySelector('[data-mail-preview]');
     const state = panel.querySelector('[data-preview-state]');
     const subject = panel.querySelector('[data-preview-subject]');
@@ -18,7 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const revision = ++serial;
         clear('Pobieram treść wiadomości…'); panel.setAttribute('aria-busy', 'true');
         const data = new FormData(form); data.set('action', 'preview'); data.set('uid', uid);
-        data.delete('selected'); data.delete('cursor'); data.delete('preview_uid');
+        data.delete(field); data.delete('cursor'); data.delete('preview_uid');
         try {
             const response = await fetch(form.getAttribute('action') || location.href, {method: 'POST', body: data,
                 credentials: 'same-origin', signal: controller.signal});
@@ -42,7 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (button) { event.preventDefault(); preview(button.dataset.previewUid); }
     });
     form.addEventListener('change', event => {
-        if (!event.target.matches('input[name="selected"], [data-select-table]')) return;
+        if (!event.target.matches(`${boxSelector}, [data-select-table]`)) return;
         clearTimeout(previewTimer);
         if (event.target.matches('[data-select-table]')) {
             controller?.abort(); ++serial;
@@ -50,12 +53,13 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
         previewTimer = setTimeout(() => {
-            const checked = event.target.matches('input[name="selected"]') && event.target.checked ? event.target : form.querySelector('input[name="selected"]:checked');
+            const checked = event.target.matches(boxSelector) && event.target.checked ? event.target : form.querySelector(`${boxSelector}:checked`);
             if (checked) preview(checked.value);
             else { controller?.abort(); ++serial; clear('Kliknij temat wiadomości.'); panel.setAttribute('aria-busy', 'false'); }
         }, 80);
     });
     const roles = form.querySelector('[data-recruitment-roles]');
+    if (!roles) return;
     const boxes = () => [...roles.querySelectorAll('input[name="roles"]')];
     roles.addEventListener('change', event => {
         // „Wszystkie” wyklucza pojedyncze role; pusty wybór wraca do „Wszystkie”.

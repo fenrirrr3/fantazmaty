@@ -4,6 +4,7 @@ from email.message import EmailMessage
 from django.contrib.auth import get_user_model
 
 from authors.models import Author
+from people import roles
 from people.models import Person, Role
 
 
@@ -14,7 +15,7 @@ class CoreTestDataMixin:
         User = get_user_model()
         cls.superuser = User.objects.create_superuser(
             username="superadmin", email="superadmin@example.com", password="test-password")
-        for attr, role_name in (("reviewer", "Recenzent"), ("editor", "Redaktor")):
+        for attr, role_name in (("reviewer", roles.REVIEWER), ("editor", roles.EDITOR)):
             user = User.objects.create_user(username=attr, email=f"{attr}@example.com")
             person = Person.objects.create(first_name=attr, last_name="Testowy", email=user.email, user=user)
             role, _ = Role.objects.get_or_create(name=role_name)

@@ -1,10 +1,11 @@
 """Strony autorów: filtry listy (umowa, kontakt, antologie, wyszukiwanie), profil autora i notatki superusera."""
 from django.test import TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from authors.models import Author, AuthorNote
 from fantazmaty.testing import create_member, create_superuser
-from texts.models import Anthology, Text
+from texts.models import Anthology, Review, Text
 
 
 class AuthorPagesTests(TestCase):
@@ -70,3 +71,26 @@ class AuthorPagesTests(TestCase):
         self.assertEqual((note.content, note.created_by), ('Nowa notatka', self.admin))
         self.assertEqual(self.client.post(reverse('core:add_author_note', args=[99999]), {'content': 'X'}).status_code,
                          404)
+
+    def test_profile_lists_accepted_and_rejected_reviews_without_widening_access(self):
+        """Profil pokazuje odrzucone zgłoszenia niepowiązane z autorem (dopasowane po e-mailu) z etykietą statusu;
+        zgłoszenie innego autora o tym samym e-mailu i ukryte odrzucenie (czarna lista) nie trafiają do koordynatora."""
+        def review(title, **values):
+            data = dict(anthology=self.first_book, title=title, author_first_name='Anna', author_last_name='Umowna',
+                        email='SIGNED@example.test', genre='fantasy', length=10, decision_at=timezone.localdate())
+            return Review.objects.create(**{**data, **values})
+        review('Przyjęte', author=self.signed, status=Review.Status.ACCEPTED)
+        review('Odrzucone', status=Review.Status.REJECTED)
+        review('Cudze', author=self.contact, status=Review.Status.REJECTED)
+        review('Ukryte', status=Review.Status.REJECTED, is_hidden=True)
+        review('Bieżące')
+        expected = {self.coordinator: ['Odrzucone', 'Przyjęte'], self.admin: ['Odrzucone', 'Przyjęte', 'Ukryte']}
+        for user, titles in expected.items():
+            with self.subTest(user=user.username):
+                self.client.force_login(user)
+                page = self.client.get(reverse('core:author_detail', args=[self.signed.pk]))
+                self.assertEqual(sorted(r.title for r in page.context['historical_reviews']), titles)
+                self.assertContains(page, '<span class="stage-status withdrawn">Odrzucony</span>', html=True)
+                self.assertEqual(page.context['author_summary']['rejected'], len(titles) - 1)
+        self.client.force_login(self.member)
+        self.assertEqual(self.client.get(reverse('core:author_detail', args=[self.signed.pk])).status_code, 403)

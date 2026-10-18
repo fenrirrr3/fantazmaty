@@ -5,10 +5,10 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
 from authors.models import Author
+from people import roles
 from core.permissions import (
     can_manage_reviews,
     can_mark_review_for_decision,
-    REVIEWER_ROLE,
     has_role,
     is_superuser,
     require_coordinator,
@@ -30,6 +30,14 @@ from workflow.models import WorkflowStage
 
 
 MAX_BULK_REVIEWS = 1000
+READING_BLOCKED_MESSAGE = (
+    "Pobieranie tego zgłoszenia do recenzji jest zablokowane po ocenie „Nie doczytałem”. "
+    "Odblokować je może koordynator recenzji."
+)
+
+
+class ReviewReadingBlocked(ValidationError):
+    """Odmowa pobrania do recenzji; komunikat nie zawiera danych autora."""
 MAX_DATABASE_ID = 9_223_372_036_854_775_807
 
 OPEN_STATUSES = frozenset(
@@ -154,7 +162,7 @@ def assign_reviewer(*, user, review_id):
     require_available(user)
 
     # Urlop wykluczył już require_available, wystarczy sama rola.
-    if not has_role(user, REVIEWER_ROLE):
+    if not has_role(user, roles.REVIEWER):
         raise PermissionDenied(
             "Do recenzji mogą przypisywać się osoby z rolą recenzenta."
         )
@@ -166,6 +174,9 @@ def assign_reviewer(*, user, review_id):
     existing = _own_assignment(assignments, user)
     if existing is not None:
         return existing
+
+    if review.reading_blocked:
+        raise ReviewReadingBlocked(READING_BLOCKED_MESSAGE)
 
     occupied_positions = {
         assignment.position
@@ -279,6 +290,10 @@ def save_reviewer_opinion(
     if assignment.opinion != cleaned["opinion"]:
         assignment.opinion_changed_at = timezone.localdate()
         update_fields.append("opinion_changed_at")
+        if cleaned["opinion"] == Reviewers.Opinion.NOT_READ:
+            # Nowa ocena „Nie doczytałem” blokuje pobieranie także po wcześniejszym odblokowaniu.
+            review.reading_blocked_at = timezone.now()
+            review.save(update_fields=["reading_blocked_at"])
 
     assignment.opinion = cleaned["opinion"]
     assignment.notes = cleaned["notes"]
@@ -292,6 +307,26 @@ def save_reviewer_opinion(
     review.save(update_fields=["content_warnings"])
 
     return assignment
+
+
+@transaction.atomic
+def unblock_review_reading(*, user, review_id):
+    """Koordynator recenzji lub superuser zdejmuje blokadę po ocenie „Nie doczytałem”.
+
+    Zapisujemy czas i osobę: ta sama ocena nie blokuje ponownie, a nowa ocena
+    „Nie doczytałem” (późniejsza niż odblokowanie) – tak.
+    """
+    require_team_member(user)
+    if not can_mark_review_for_decision(user):
+        raise PermissionDenied("Pobieranie do recenzji może odblokować tylko koordynator recenzji.")
+    review = _lock_review(review_id)
+    _require_open_review(review)
+    if not review.reading_blocked:
+        raise ValidationError("Pobieranie tego zgłoszenia do recenzji nie jest zablokowane.")
+    review.reading_unblocked_at = timezone.now()
+    review.reading_unblocked_by = user
+    review.save(update_fields=["reading_unblocked_at", "reading_unblocked_by"])
+    return review
 
 
 @transaction.atomic
@@ -784,8 +819,12 @@ def import_reviews(*, user, form):
                     + " ".join(error.messages)
                 ) from error
 
-            from texts.blacklist import apply_blacklist
+            from texts.blacklist import apply_blacklist, schedule_rejection
             apply_blacklist(review)
+            # Import ze skrzynki: koordynator wybrał „Dodaj do przyszłych odrzuceń”
+            # (dopasowanie mogło dotyczyć tylko adresu nadawcy, nie adresu ze zgłoszenia).
+            if record["line_number"] in getattr(form, "future_rejection_lines", ()) and not review.is_hidden:
+                schedule_rejection(review)
             pending_reviews.append(review)
 
         if not pending_reviews:

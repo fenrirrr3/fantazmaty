@@ -14,7 +14,7 @@ from authors.models import Author
 from core.forms import GlobalSearchForm
 from core.permissions import can_view_author_data, team_member_required
 from people.models import Person, Role
-from texts.models import Anthology, Extract, Review, Text
+from texts.models import Anthology, Extract, Review
 
 
 RESULT_LIMIT = 15
@@ -103,7 +103,17 @@ def _author_data(author):
     )
 
 
+def _publication_state(text):
+    """Etykieta wyniku: wycofany tekst, tekst z gotowej (wydanej) antologii albo powieści, reszta w opracowaniu."""
+    if getattr(text, "current_stage_type", None) == "withdrawn":
+        return {"label": "Wycofany", "css": "withdrawn"}
+    if text.anthology_id and text.anthology.status == Anthology.Status.READY:
+        return {"label": "Wydany", "css": "completed"}
+    return {"label": "W opracowaniu", "css": "active"}
+
+
 def _search_texts(query, *, include_authors, page=1):
+    from core.selectors.texts import _annotated_texts
     fields = ["title", "anthology__title"]
 
     condition = Q()
@@ -113,10 +123,17 @@ def _search_texts(query, *, include_authors, page=1):
             match |= name_matches(term, 'authors__', email=True)
             match |= name_matches(term, 'translation__foreign_authors__')
             match |= name_matches(term, 'translation__translators__')
+        else:
+            # Podpis publiczny (pseudonim albo imię i nazwisko bez pseudonimu) jest
+            # i tak widoczny w wynikach; e-mail i nazwisko prawne zostają dla uprawnionych.
+            match |= name_matches(term, 'authors__')
+            match |= name_matches(term, 'translation__foreign_authors__')
         condition &= match
 
+    # Teksty wydane i w opracowaniu (także tłumaczenia i rozdziały powieści);
+    # porzucone antologie pomija _annotated_texts tak samo jak non_abandoned.
     queryset = (
-        non_abandoned(Text.objects).filter(condition)
+        _annotated_texts(include_translations=True, include_novels=True).filter(condition)
         .select_related("anthology")
         .order_by("title", "pk")
     )
@@ -136,6 +153,7 @@ def _search_texts(query, *, include_authors, page=1):
                 "title": text.title,
                 "url": reverse("core:translation_detail" if translated else "core:assigned_text_detail", args=[text.pk]),
                 "anthology": _anthology_data(text.anthology),
+                "publication": _publication_state(text),
                 "authors": {
                     "all": (
                         ([str(author.display_name) for author in authors] if translated else [_author_data(author) for author in authors])

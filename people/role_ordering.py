@@ -1,15 +1,7 @@
 """Kolejność ról w filtrze zespołu; dodatkowe role zachowujemy na końcu."""
 from django.db.models import Case, IntegerField, Value, When
 from .models import Role
-
-TEAM_ROLE_ORDER = (
-    "Recenzent", "Redaktor", "Korektor", "Weryfikator", "Korektor poskładowy",
-    "Grafik", "Dźwiękowiec", "Lektor", "Składacz", "Tłumacz",
-    "Koordynator redakcji", "Koordynator audiobooków",
-    "Koordynator weryfikacji", "Koordynator ilustracji",
-    "Koordynator recenzji", "Koordynator korekty",
-    "Koordynator rekrutacji",
-)
+from .roles import TEAM_ROLE_ORDER
 
 
 def ordered_team_roles():

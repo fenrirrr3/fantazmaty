@@ -14,6 +14,7 @@ from core.permissions import (
     has_role,
     is_coordinator,
 )
+from people import roles
 from texts.models import Text
 
 from .models import WorkflowRoleAssignment, WorkflowStage
@@ -25,17 +26,17 @@ Role = WorkflowRoleAssignment.Role
 
 
 ROLE_GROUPS = {
-    Role.EDITOR: "Redaktor",
-    Role.EDITING_COORDINATOR: "Koordynator",
-    Role.PROOFREADER_1: "Korektor",
-    Role.PROOFREADER_2: "Korektor",
-    Role.PROOFREADER_3: "Korektor",
-    Role.PROOFREADER_4: "Korektor",
-    Role.VERIFIER_1: "Weryfikator",
-    Role.VERIFIER_2: "Weryfikator",
-    Role.VERIFIER_3: "Weryfikator",
-    Role.VERIFICATION_COORDINATOR: "Koordynator",
-    Role.STYLING: "Koordynator",
+    Role.EDITOR: roles.EDITOR,
+    Role.EDITING_COORDINATOR: roles.COORDINATOR,
+    Role.PROOFREADER_1: roles.PROOFREADER,
+    Role.PROOFREADER_2: roles.PROOFREADER,
+    Role.PROOFREADER_3: roles.PROOFREADER,
+    Role.PROOFREADER_4: roles.PROOFREADER,
+    Role.VERIFIER_1: roles.VERIFIER,
+    Role.VERIFIER_2: roles.VERIFIER,
+    Role.VERIFIER_3: roles.VERIFIER,
+    Role.VERIFICATION_COORDINATOR: roles.COORDINATOR,
+    Role.STYLING: roles.COORDINATOR,
 }
 
 STAGE_ROLES = {
@@ -543,7 +544,7 @@ def claim_ready_for_editing(text, user, started_at=None):
     ensure_text_is_not_withdrawn(text)
 
     if not (
-        belongs_to_group(user, "Redaktor")
+        belongs_to_group(user, roles.EDITOR)
         or is_coordinator(user)
     ):
         raise PermissionDenied(
@@ -1077,7 +1078,7 @@ def complete_stage(stage, user, ended_at, *, send_to_proofreading=None):
         )
         editor = editor_assignment.assigned_to if editor_assignment else None
         if not _actor_is_active(editor) or not (
-            is_coordinator(editor) or belongs_to_group(editor, "Redaktor")
+            is_coordinator(editor) or belongs_to_group(editor, roles.EDITOR)
         ):
             raise ValidationError(
                 "Przed zakończeniem kontroli koordynatora przypisz aktywnego redaktora z odpowiednią rolą. Etap nie został zakończony."

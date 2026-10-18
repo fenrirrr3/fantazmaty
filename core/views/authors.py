@@ -103,15 +103,20 @@ def _render_author_detail(request, author, *, form=None, status=200):
             }
         )
 
+    # Odrzucone zgłoszenia zwykle nie są powiązane z profilem (wiązanie następuje przy
+    # przeniesieniu przyjętego tekstu), więc dopasowujemy też niepowiązane po e-mailu.
+    own_reviews = Q(author_id=author.pk) | Q(coauthors__pk=author.pk)
+    if author.email:
+        own_reviews |= Q(author__isnull=True, email__iexact=author.email)
     historical_reviews = frontend_scope(Review.objects.accessible_to(request.user), include_abandoned=True).archived().filter(
-        Q(author_id=author.pk) | Q(coauthors__pk=author.pk),
+        own_reviews,
     ).select_related("anthology").distinct().order_by("-created_at", "-pk")
     historical_page = paginate_items(request, historical_reviews,
         page_param='archive_page', size_param='archive_page_size', anchor='#archiwalne-recenzje')
 
     # Archiwalne recenzje nie wpływają na żaden licznik zgłoszeń.
     submissions = frontend_scope(Review.objects.accessible_to(request.user)).filter(
-        Q(author_id=author.pk) | Q(coauthors__pk=author.pk),
+        own_reviews,
         old_reviews=False,
     ).distinct()
     author_summary = submissions.aggregate(

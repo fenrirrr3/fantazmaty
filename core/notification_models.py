@@ -10,11 +10,14 @@ from core.edit_versions import VersionedQuerySet
 ROLE_NAME_RE = re.compile(r'[0-9A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż_.-]{1,50}')
 TEMPLATE_TAGS = {
     'tytuł': 'tytuł tekstu',
+    'autor': 'autorzy tekstu jak w stopce (pseudonim albo imię i nazwisko, kilku – po przecinku); '
+             'przy zgłoszeniach do recenzji „(anonimowo)”',
     'antologia': 'tytuł antologii',
     'gatunek': 'gatunek',
     'długość': 'długość w znakach ze spacjami',
     'etap': 'nazwa etapu',
     'dni': 'ile dni tekst czeka na osobę (przypomnienia)',
+    'osoba': 'kto wykonał zakończony etap – imię i nazwisko z profilu (tylko „Zakończenie etapu”)',
     'rola': 'oznaczenie roli (bez tego tagu trafia na początek wiadomości)',
     'link': 'odnośnik „O, tutaj” do podglądu tekstu w CMS-ie (bez tego tagu trafia na koniec wiadomości)',
 }

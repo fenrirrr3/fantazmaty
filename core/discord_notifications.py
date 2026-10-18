@@ -23,7 +23,11 @@ STAGE_TRIGGERS = {
     'second_verification': 'second_verification',
     'third_verification': 'third_verification',
 }
-NOT_A_COMPLETION = {'ready_for_editing', 'ready', 'withdrawn'}
+# Bez wiadomości „Zakończono etap”: przejęcie tekstu do redakcji, Gotowe, wycofanie oraz powrót pliku od autora
+# (zakończenie etapu „Plik u autora”). Przekazanie pliku autorowi pomija osobno workflow_changes.
+NOT_A_COMPLETION = {'ready_for_editing', 'ready', 'withdrawn', 'author_editing'}
+# Zgłoszenia do recenzji są anonimowe dla recenzentów (dane autora widzi tylko superuser).
+ANONYMOUS_AUTHOR = '(anonimowo)'
 LINK_LABEL = 'O, tutaj'
 WAITING = 'stage_waiting'
 REMINDER_DAYS = (7, 14, 21)
@@ -60,10 +64,46 @@ def _length(value):
     return f'{value:,}'.replace(',', ' ') if isinstance(value, int) else ''
 
 
+def text_authors(text):
+    """Autorzy tekstu jak w stopce: podpis (pseudonim albo imię i nazwisko) w kolejności podpisu, po przecinku.
+
+    W antologii tłumaczeń – autorzy zagraniczni (jak na stronie tekstu).
+    """
+    if getattr(text, 'pk', None) is None:
+        return ''
+    anthology = getattr(text, 'anthology', None)
+    if getattr(anthology, 'is_translated', False):
+        record = getattr(text, 'translation', None)
+        authors = record.foreign_authors.all() if record else []
+    else:
+        authors = text.authors.all()
+    names = []
+    for author in authors:
+        name = author.display_name.strip()
+        if name and name not in names:
+            names.append(name)
+    return ', '.join(names)
+
+
 def text_context(text):
     anthology = getattr(text, 'anthology', None)
-    return {'tytuł': text.title or '', 'antologia': getattr(anthology, 'title', '') or '',
+    return {'tytuł': text.title or '', 'autor': text_authors(text), 'antologia': getattr(anthology, 'title', '') or '',
             'gatunek': getattr(text, 'genre', '') or '', 'długość': _length(getattr(text, 'length', None))}
+
+
+def review_context(review):
+    """Zgłoszenie do recenzji: bez danych autora – kanał czytają recenzenci, dla których zgłoszenia są anonimowe."""
+    anthology = getattr(review, 'anthology', None)
+    return {'tytuł': review.title or '', 'autor': ANONYMOUS_AUTHOR, 'antologia': getattr(anthology, 'title', '') or '',
+            'gatunek': review.genre or '', 'długość': _length(review.length), 'etap': 'Recenzja'}
+
+
+def person_name(user):
+    """Imię i nazwisko z profilu osoby; bez profilu – z konta."""
+    if user is None:
+        return ''
+    person = getattr(user, 'person_profile', None)
+    return (str(person) if person else '') or user.get_full_name() or user.get_username()
 
 
 def base_url():
@@ -199,18 +239,45 @@ def editing_open(stages):
     return any(stage['type'] in RESERVATION_PHASE and not stage['completed'] for stage in stages.values())
 
 
-def workflow_changes(using, text, before, after):
+def sent_to_author(before, after):
+    """Ta zmiana otworzyła etap „Plik u autora” – zakończona przy tym redakcja to tylko przekazanie pliku."""
+    def open_author_stage(stage):
+        return bool(stage and stage['type'] == 'author_editing' and stage.get('released', True)
+                    and not stage['completed'])
+    return any(open_author_stage(stage) and not open_author_stage(before.get(pk)) for pk, stage in after.items())
+
+
+def opened_editing_control(before, after):
+    """Ta zmiana otworzyła „Kontrolę K. redakcji” – redakcja trafiła do koordynatora, czyli zakończyła się
+    ostatecznie. Wcześniejsze przekazania redakcji (do W1, W2) nie są ogłaszane jako zakończenie etapu."""
+    return any(stage['type'] == 'editing_control' and not stage['completed'] and pk not in before
+               for pk, stage in after.items())
+
+
+def workflow_changes(using, text, before, after, actor=''):
     """Porównuje stany tekstu przed zmianą i po niej; kolejkuje wiadomości z reguł.
 
     Etap ogłaszamy, gdy trafia do puli „do wzięcia”. Pierwszą weryfikację ogłaszamy też po przekazaniu tekstu
     z pierwszego przebiegu redakcji, jeśli nikt jej nie zarezerwował – wcześniejsze ogłoszenie dotyczyło tylko
     rezerwacji. Powtórzone W1 (kolejne podejście) nie dostaje drugiego ogłoszenia przy przekazaniu.
+
+    „Zakończono etap” – jedna reguła dla wszystkich etapów; [osoba] to wykonawca etapu (bez przypisania –
+    osoba, która wykonała operację: actor). Przesłanie pliku autorowi i jego powrót nie są zakończeniem etapu,
+    a redakcję ogłaszamy tylko przy ostatnim przekazaniu – do koordynatora (Kontrola K. redakcji).
     """
     from workflow.models import WorkflowStage
     if text is None:
         return
     context = text_context(text)
     handed_over = editing_open(before) and not editing_open(after)
+    to_author = sent_to_author(before, after)
+    # Redakcja kończy się ogłoszeniem tylko przy przekazaniu do koordynatora (nie do autora, W1 ani W2).
+    editing_final = opened_editing_control(before, after) and not to_author
+
+    def completed(type_display, performer=''):
+        safe_queue('stage_completed', using=using, text=text,
+                   context={**context, 'etap': type_display, 'osoba': performer or actor})
+
     for pk, stage in after.items():
         old = before.get(pk)
         trigger = STAGE_TRIGGERS.get(stage['type'])
@@ -219,14 +286,16 @@ def workflow_changes(using, text, before, after):
         newly_available = not (old and stage_available(old)) or first_handover
         if trigger and stage_available(stage) and newly_available:
             safe_queue(trigger, using=using, text=text, stage_id=pk, context={**context, 'etap': stage['type_display']})
-        if stage['completed'] and not (old and old['completed']) and stage['type'] not in NOT_A_COMPLETION:
-            safe_queue('stage_completed', using=using, text=text, context={**context, 'etap': stage['type_display']})
+        if (stage['completed'] and not (old and old['completed']) and stage['type'] not in NOT_A_COMPLETION
+                and not (stage['type'] == 'editing' and not editing_final)):
+            completed(stage['type_display'], stage.get('performer', ''))
     # Etap zakończony i od razu przeniesiony do historii (np. decyzja koordynatora „dalsza redakcja”).
     gone = [pk for pk in before if pk not in after and not before[pk]['completed']]
-    for stage in WorkflowStage.objects.using(using).filter(pk__in=gone, is_completed=True):
-        if stage.stage_type not in NOT_A_COMPLETION:
-            safe_queue('stage_completed', using=using, text=text,
-                       context={**context, 'etap': stage.get_stage_type_display()})
+    for stage in (WorkflowStage.objects.using(using).filter(pk__in=gone, is_completed=True)
+                  .select_related('assignment__assigned_to__person_profile')):
+        if stage.stage_type not in NOT_A_COMPLETION and not (stage.stage_type == 'editing' and not editing_final):
+            completed(stage.get_stage_type_display(),
+                      person_name(stage.assignment.assigned_to) if stage.assignment_id else '')
 
 
 def stage_still_waiting(stage):
@@ -279,7 +348,7 @@ def send_waiting_reminders(now=None, using='default'):
         else:
             if not review_still_waiting(review):
                 continue
-            kwargs = {'review': review, 'context': {**text_context(review), 'etap': 'Recenzja'}}
+            kwargs = {'review': review, 'context': review_context(review)}
         kwargs['context']['dni'] = due[-1]
         if safe_queue(WAITING, using=using, reminder_of=announcement, reminder_days=due[-1], **kwargs):
             sent += 1
@@ -330,7 +399,7 @@ def _announce_reviews(ids, using):
     from texts.models import Review
     reviews = Review.objects.using(using).select_related('anthology').filter(pk__in=ids).order_by('pk')
     for review in reviews[:REVIEWS_PER_COMMIT]:
-        safe_queue('review_new', using=using, review=review, context={**text_context(review), 'etap': 'Recenzja'})
+        safe_queue('review_new', using=using, review=review, context=review_context(review))
     if len(ids) > REVIEWS_PER_COMMIT:
         logger.info('Skipped %s review notifications in one batch', len(ids) - REVIEWS_PER_COMMIT)
 

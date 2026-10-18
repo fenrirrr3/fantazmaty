@@ -5,6 +5,7 @@ from django.contrib.auth.models import Group
 from django.db.models.signals import m2m_changed, post_save, pre_save, post_delete, pre_delete
 from django.dispatch import receiver
 from people.models import Person, Role
+from people.roles import coordinator_role_q, is_coordinator_role_name, is_general_coordinator_name
 
 syncing = ContextVar('syncing_team_identity', default=False)
 
@@ -16,16 +17,13 @@ def sync_person(person, *, copy_groups=False):
     try:
         if person.user_id and copy_groups:
             for name in person.user.groups.values_list("name", flat=True):
-                if name.casefold() == 'koordynator':
+                if is_general_coordinator_name(name):
                     person.legacy_coordinator_access = True
                     Person.objects.filter(pk=person.pk).update(legacy_coordinator_access=True)
                     continue
                 person.roles.add(Role.objects.get_or_create(name=name)[0])
         names = list(person.roles.values_list("name", flat=True))
-        coordinator = person.legacy_coordinator_access or any(
-            name.casefold() == "koordynator" or name.casefold().startswith("koordynator ")
-            for name in names
-        )
+        coordinator = person.legacy_coordinator_access or any(map(is_coordinator_role_name, names))
         Person.objects.filter(pk=person.pk).update(is_coordinator=coordinator)
         if person.user_id:
             user = get_user_model().objects.get(pk=person.user_id)
@@ -57,7 +55,7 @@ def profile_roles_changed(sender, instance, action, reverse, pk_set, **kwargs):
                 sync_person(person)
     elif action.startswith("post_"):
         # The flag mirrors roles; it must not re-add a deliberately removed role.
-        instance.is_coordinator = instance.legacy_coordinator_access or instance.roles.filter(name__istartswith="Koordynator").exists()
+        instance.is_coordinator = instance.legacy_coordinator_access or instance.roles.filter(coordinator_role_q()).exists()
         sync_person(instance)
 
 
@@ -79,15 +77,11 @@ def account_groups_changed(sender, instance, action, reverse, pk_set, **kwargs):
         for user in users:
             person = Person.objects.filter(user=user).first()
             if person:
-                names = [name for name in user.groups.values_list("name", flat=True) if name.casefold() != 'koordynator']
+                names = [name for name in user.groups.values_list("name", flat=True) if not is_general_coordinator_name(name)]
                 roles = [Role.objects.get_or_create(name=name)[0] for name in names]
                 person.roles.set(roles)
                 Person.objects.filter(pk=person.pk).update(
-                    is_coordinator=person.legacy_coordinator_access or any(
-                        name.casefold() == "koordynator"
-                        or name.casefold().startswith("koordynator ")
-                        for name in names
-                    )
+                    is_coordinator=person.legacy_coordinator_access or any(map(is_coordinator_role_name, names))
                 )
     finally:
         syncing.reset(token)

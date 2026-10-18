@@ -12,6 +12,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 
 from django.core.exceptions import PermissionDenied
+from people import roles
 from people.models import Person
 
 
@@ -58,10 +59,6 @@ def _role_names(person):
     if cache is not None:
         cache[key] = names
     return names
-
-
-COORDINATOR_ROLE = "Koordynator"
-REVIEWER_ROLE = "Recenzent"
 
 
 def is_active_user(user):
@@ -113,8 +110,7 @@ def _profile_has_role(person, role_name):
 
 
 def _profile_has_coordinator_role(person):
-    return any(name == "koordynator" or name.startswith("koordynator ")
-               for name in _role_names(person))
+    return any(map(roles.is_coordinator_role_name, _role_names(person)))
 
 
 def coordinates_everything(user):
@@ -122,7 +118,7 @@ def coordinates_everything(user):
     if is_superuser(user):
         return True
     person = get_active_person_profile(user)
-    return bool(person and (person.legacy_coordinator_access or "koordynator" in _role_names(person)))
+    return bool(person and (person.legacy_coordinator_access or roles.COORDINATOR.casefold() in _role_names(person)))
 
 
 def is_coordinator(user):
@@ -158,7 +154,7 @@ def has_role(user, role_name):
         return False
 
     if (
-        role_name.casefold() == COORDINATOR_ROLE.casefold()
+        roles.is_general_coordinator_name(role_name)
         and (
             person.legacy_coordinator_access or _profile_has_coordinator_role(person)
         )
@@ -169,12 +165,12 @@ def has_role(user, role_name):
 
 
 def can_use_recruitment_mailbox(user):
-    return is_superuser(user) or has_role(user, "Koordynator rekrutacji")
+    return is_superuser(user) or has_role(user, roles.RECRUITMENT_COORDINATOR)
 
 
 def require_recruitment_mailbox(user):
     if not can_use_recruitment_mailbox(user):
-        raise PermissionDenied("Pobieranie próbek wymaga roli Koordynator rekrutacji lub superusera.")
+        raise PermissionDenied(f"Pobieranie próbek wymaga roli {roles.RECRUITMENT_COORDINATOR} lub superusera.")
 
 
 def can_view_author_data(user):
@@ -188,11 +184,11 @@ def can_import_reviews(user):
 
 def can_self_assign_reviews(user):
     from people.leave_access import is_on_leave
-    return has_role(user, REVIEWER_ROLE) and not is_on_leave(user)
+    return has_role(user, roles.REVIEWER) and not is_on_leave(user)
 
 
 def can_mark_review_for_decision(user):
-    return is_superuser(user) or has_role(user, "Koordynator recenzji")
+    return is_superuser(user) or has_role(user, roles.REVIEW_COORDINATOR)
 
 
 def can_manage_reviews(user):
@@ -205,28 +201,25 @@ def can_manage_review_files(user):
 
 
 def can_view_illustrations(user):
-    return is_coordinator(user) or has_role(user, "Ilustrator")
-
-
-AUDIOBOOK_ROLES = ("Lektor", "Dźwiękowiec", "Korektor audiobooków")
+    return is_coordinator(user) or has_role(user, roles.ILLUSTRATOR)
 
 
 def can_view_audiobooks(user):
     """Jak ilustracje: koordynatorzy oraz osoby z rolą audio (lektorów i montażystów prowadzi spis, nie konta)."""
-    return is_coordinator(user) or any(has_role(user, role) for role in AUDIOBOOK_ROLES)
+    return is_coordinator(user) or any(has_role(user, role) for role in roles.AUDIOBOOK_ROLES)
 
 
 def can_view_post_layout(user):
-    return is_coordinator(user) or has_role(user, "Korektor poskładowy")
+    return is_coordinator(user) or has_role(user, roles.POST_LAYOUT_PROOFREADER)
 
 
 def can_view_audio_proofreading(user):
-    return is_coordinator(user) or has_role(user, 'Korektor audiobooków')
+    return is_coordinator(user) or has_role(user, roles.AUDIOBOOK_PROOFREADER)
 
 
 def require_post_layout(user):
     if not can_view_post_layout(user):
-        raise PermissionDenied("Dostęp wymaga uprawnień koordynatora lub roli Korektor poskładowy.")
+        raise PermissionDenied(f"Dostęp wymaga uprawnień koordynatora lub roli {roles.POST_LAYOUT_PROOFREADER}.")
 
 
 def can_export_author_data(user):
@@ -297,7 +290,7 @@ post_layout_required = _permission_decorator(require_post_layout)
 
 def is_reviewer(user):
     person = get_active_person_profile(user)
-    return bool(person and _profile_has_role(person, REVIEWER_ROLE))
+    return bool(person and _profile_has_role(person, roles.REVIEWER))
 
 
 def is_reviewer_only(user):
@@ -305,7 +298,7 @@ def is_reviewer_only(user):
     if not person or user.is_superuser or is_coordinator(user) or not is_reviewer(user):
         return False
     names = _role_names(person)
-    return {name.casefold().strip() for name in names} == {"recenzent"}
+    return {name.casefold().strip() for name in names} == {roles.REVIEWER.casefold()}
 
 
 def can_view_my_reviews(user):

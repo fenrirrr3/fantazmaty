@@ -46,6 +46,8 @@ from core.services.reviews import (
     save_reviewer_opinion,
     release_reviewer_slot as release_reviewer_slot_service,
     unassign_reviewer as unassign_reviewer_service,
+    unblock_review_reading as unblock_review_reading_service,
+    ReviewReadingBlocked,
 )
 from texts.models import Review, ReviewAssignment, Reviewers
 from core.edit_policy import edit_policy
@@ -183,6 +185,12 @@ def _render_review_detail(
         and (manager_access or own_assignment is not None)
     )
     has_free_slot = len(assignments) < ReviewAssignment.MAX_REVIEWERS
+    reading_blocked = not is_locked and review.reading_blocked
+    blocking_opinion = None
+    if reading_blocked:
+        blocking = max((item for item in assignments if item.opinion == Reviewers.Opinion.NOT_READ),
+                       key=lambda item: (item.opinion_changed_at or timezone.localdate(), item.pk))
+        blocking_opinion = {"reviewer_name": blocking.reviewer_display_name, "date": blocking.opinion_changed_at}
     opinion_form = None
 
     if own_assignment is not None and not is_locked:
@@ -247,7 +255,11 @@ def _render_review_detail(
                 and not is_locked
                 and own_assignment is None
                 and has_free_slot
+                and not reading_blocked
             ),
+            "reading_blocked": reading_blocked,
+            "blocking_opinion": blocking_opinion,
+            "can_unblock_reading": reading_blocked and decision_access,
             "can_unassign_review": (
                 own_assignment is not None and not is_locked
                 and own_assignment.opinion in ("", Reviewers.Opinion.READING)
@@ -482,6 +494,8 @@ def assign_reviewer(request, review_id):
             user=request.user,
             review_id=review.pk,
         )
+    except ReviewReadingBlocked as error:
+        messages.error(request, " ".join(error.messages))
     except ValidationError as error:
         messages.error(
             request,
@@ -532,6 +546,26 @@ def release_reviewer_slot(request, review_id, assignment_id):
         messages.error(request, str(error) or "Nie masz uprawnień do tej operacji.")
     else:
         messages.success(request, "Zwolniono miejsce recenzenta.")
+    return _detail_redirect(review.pk)
+
+
+@edit_policy(require_version=True)
+@never_cache
+@login_required
+@require_POST
+@team_member_required
+def unblock_review_reading(request, review_id):
+    """Koordynator recenzji zdejmuje blokadę pobierania po ocenie „Nie doczytałem”."""
+    review = _get_review(request.user, review_id)
+    try:
+        _require_open_review(review)
+        unblock_review_reading_service(user=request.user, review_id=review.pk)
+    except ValidationError as error:
+        messages.error(request, _service_error_message(request.user, error))
+    except PermissionDenied as error:
+        messages.error(request, str(error) or "Nie masz uprawnień do tej operacji.")
+    else:
+        messages.success(request, "Odblokowano pobieranie zgłoszenia do recenzji.")
     return _detail_redirect(review.pk)
 
 

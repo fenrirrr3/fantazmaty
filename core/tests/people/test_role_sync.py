@@ -68,6 +68,23 @@ class AccountGroupMirrorTests(TestCase):
         group.delete()
         self.assertEqual(role_names(self.person), {'Redaktor'})
 
+    def test_coordinator_flag_after_adding_role_requires_space_after_prefix(self):
+        """Flaga koordynatora po dodaniu roli: „Koordynator <dział>” ją daje, nazwa bez spacji po „Koordynator” – nie (także w pamięci)."""
+        for index, (name, expected) in enumerate((
+            ('Koordynator redakcji', True),
+            ('Koordynatorzy-stażyści', False),
+            ('Koordynatorka', False),
+        )):
+            with self.subTest(name=name):
+                user = create_member(f'flag-{index}', 'Redaktor')
+                person = user.person_profile
+                person.roles.add(Role.objects.get_or_create(name=name)[0])
+                self.assertEqual(person.is_coordinator, expected)
+                person.save()
+                person.refresh_from_db()
+                self.assertEqual(person.is_coordinator, expected)
+                self.assertEqual(is_coordinator(user), expected)
+
     def test_account_save_keeps_profile_names_and_normalizes_email(self):
         self.member.first_name = 'Inne'
         self.member.email = '  Sync-Member@Example.COM '

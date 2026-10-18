@@ -88,7 +88,8 @@ ROUTE_LEVELS = {
         'core:anthology_detail', 'core:edit_text_note', 'core:delete_text_note', 'core:programs',
         'core:program_job', 'core:replacement_list', 'core:replacement_edit', 'core:correction_edit',
         'core:correction_delete', 'core:correction_texts', 'core:anthology_corrections', 'core:text_list',
-        'core:unassign_reviewer', 'core:release_reviewer_slot', 'core:update_review_content_warnings',
+        'core:unassign_reviewer', 'core:release_reviewer_slot', 'core:unblock_review_reading',
+        'core:update_review_content_warnings',
         'core:assigned_review_detail', 'core:my_texts', 'core:add_text_note', 'core:update_text_content_warnings',
         'core:assigned_text_detail', 'core:start_assigned_workflow_stage', 'core:complete_workflow_stage',
         'core:resume_text_editing', 'core:send_text_to_author_stage', 'core:send_to_first_verification_stage',
@@ -121,7 +122,7 @@ ROUTE_LEVELS = {
         'core:proofreader_activity', 'core:verifier_activity', 'core:reviewer_activity', 'core:workflow_inactivity',
         'illustrations:illustrator_list', 'illustrations:illustrator_add', 'illustrations:illustrator_edit',
         'core:audio_contributor_list', 'core:audio_contributor_add',
-        'illustrations:update_cover_proposal_status',
+        'illustrations:update_cover_proposal_status', 'core:social_media',
     ], COORDINATOR),
     **dict.fromkeys([
         'core:unlinked_reviews', 'core:recruitment_delete', 'core:translation_person_suggestions',

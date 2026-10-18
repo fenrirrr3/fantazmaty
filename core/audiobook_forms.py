@@ -4,11 +4,12 @@ from django.db.models import Q
 from django.utils import timezone
 
 from core.audiobook_models import Audiobook
+from people.roles import AUDIOBOOK_PROOFREADER
 
 
 def eligible_proofreaders():
     return get_user_model().objects.filter(is_active=True, person_profile__is_active=True, person_profile__is_external=False,
-        person_profile__roles__name__iexact='Korektor audiobooków').distinct()
+        person_profile__roles__name__iexact=AUDIOBOOK_PROOFREADER).distinct()
 
 
 class ProofreaderChoice(forms.ModelChoiceField):

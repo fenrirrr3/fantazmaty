@@ -6,6 +6,9 @@ from zipfile import BadZipFile, ZipFile
 
 from django.core.exceptions import ValidationError
 from django.test import TestCase
+from django.utils import timezone
+
+from authors.models import Author, BlacklistEntry
 
 from core.models import MailboxConnection, MailboxDownload, NewsletterConsent
 from core.services.document_converter import ConversionError, RebuildConfirmationRequired
@@ -360,3 +363,112 @@ class SubmissionDownloadTests(SubmissionMailboxMixin, TestCase):
             self.assertEqual(len(archive.namelist()), 1)
         self.assertEqual(Review.objects.count(), 2)
 
+
+
+class BlacklistedSubmissionTests(SubmissionMailboxMixin, TestCase):
+    """Wiadomość od autora z czarnej listy: domyślnie przyszłe odrzucenie bez pobierania pliku, albo świadome „Pobierz plik”."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        Author.objects.create(first_name='Julia', last_name='Moskalik', email='girl@example.com', is_blacklisted=True)
+
+    def preview_and_confirm(self, fetch, **choice):
+        raw = csv_mail()
+        fetch.side_effect = lambda *args: [parse_message(12, raw)]
+        payload = {**self.payload(), **choice}
+        preview = self.client.post(self.url, payload)
+        self.assertEqual(preview.status_code, 200, preview.context.get('error'))
+        payload.update(action='confirm', preview=preview.context['preview_token'], approve='on', download_token='abc12345xyz')
+        return preview, self.client.post(self.url, payload)
+
+    @patch('core.views.mailbox.fetch_messages')
+    def test_future_rejection_saves_record_without_processing_file(self, fetch):
+        """Domyślny wybór: zgłoszenie zapisane jako zaplanowane odrzucenie, plik ani razu nie pakowany ani konwertowany."""
+        with patch('core.services.mailbox_import._package_messages') as package, \
+                patch('core.services.mailbox_import.convert_document') as convert:
+            preview, response = self.preview_and_confirm(fetch)
+            package.assert_not_called()
+            convert.assert_not_called()
+        self.assertContains(preview, 'Przyszłe odrzucenie – plik nie zostanie pobrany')
+        self.assertContains(preview, '<option value="reject" selected>Dodaj do przyszłych odrzuceń</option>', html=True)
+        self.assertEqual(preview.context['preview_messages'][0]['files'], [])
+        self.assertRedirects(response, self.url, fetch_redirect_response=False)
+        self.assertNotIn('mailbox_import_done', response.cookies)
+        review = Review.objects.get()
+        self.assertTrue(review.is_hidden)
+        self.assertEqual(review.status, Review.Status.REJECTED)
+        self.assertGreater(review.decision_at, timezone.localdate())
+        self.assertEqual(list(MailboxDownload.objects.values_list('uid', flat=True)), [12])
+
+    @patch('core.views.mailbox.fetch_messages')
+    def test_download_choice_is_normal_import_with_zip(self, fetch):
+        """„Pobierz plik” – świadoma decyzja: pakowanie jak dotąd, ZIP z plikiem i zgłoszenie zapisane."""
+        preview, response = self.preview_and_confirm(fetch, blacklist_12='download')
+        self.assertFalse(preview.context['preview_messages'][0]['future_rejection'])
+        self.assertTrue(response.streaming)
+        with ZipFile(BytesIO(b''.join(response.streaming_content))) as archive:
+            self.assertEqual(len(archive.namelist()), 1)
+        self.assertEqual(response.cookies['mailbox_import_done'].value, 'abc12345xyz')
+        self.assertEqual(Review.objects.count(), 1)
+
+    @patch('core.views.mailbox.fetch_messages')
+    def test_sender_only_match_and_changed_choice(self, fetch):
+        """Dopasowanie tylko po nadawcy też planuje odrzucenie; zmiana wyboru po podglądzie wymaga nowego podglądu."""
+        Author.objects.filter(email='girl@example.com').update(is_blacklisted=False)
+        BlacklistEntry.objects.create(email='reply@example.com')
+        raw = csv_mail()
+        fetch.side_effect = lambda *args: [parse_message(12, raw)]
+        payload = self.payload()
+        preview = self.client.post(self.url, payload)
+        self.assertTrue(preview.context['preview_messages'][0]['future_rejection'])
+        payload.update(action='confirm', preview=preview.context['preview_token'], approve='on')
+        changed = self.client.post(self.url, {**payload, 'blacklist_12': 'download'})
+        self.assertEqual(changed.status_code, 400)
+        self.assertIn('Sprawdź nowy podgląd', changed.context['error'])
+        self.assertFalse(Review.objects.exists())
+        self.assertRedirects(self.client.post(self.url, payload), self.url, fetch_redirect_response=False)
+        review = Review.objects.get()
+        self.assertTrue(review.is_hidden and review.decision_at > timezone.localdate())
+
+    def test_header_list_offers_choice_select_all_and_progress(self):
+        """Lista nagłówków: wybór przy nadawcy z czarnej listy (domyślnie odrzucenie), „zaznacz wszystkie” i pasek postępu."""
+        self.headers['rows'][0]['sender'] = 'Julia <GIRL@example.com>'
+        self.headers['rows'].append({'uid': 13, 'sender': 'inna@example.com', 'subject': 'Inny', 'date': ''})
+        page = self.fetch_headers()
+        self.assertEqual([row['blacklisted'] for row in page.context['result']['rows']], [True, False])
+        self.assertContains(page, 'name="blacklist_12"')
+        self.assertNotContains(page, 'name="blacklist_13"')
+        self.assertContains(page, '<input type="checkbox" data-select-table="uids" aria-label="Zaznacz wszystkie wiadomości">', html=True)
+        self.assertContains(page, 'data-mailbox-progress-box hidden')
+        self.assertContains(page, 'core/mailbox-import')
+
+
+class SubmissionMailPreviewTests(SubmissionMailboxMixin, TestCase):
+    """Podgląd treści maila na liście pobierania zgłoszeń – ten sam komponent i oczyszczanie co w rekrutacji."""
+
+    def preview(self, raw, **extra):
+        data = {'action': 'preview', 'uid': '12', 'selection': submission_selection(self.user, self.box, (12,)), **extra}
+        with patch('core.views.mailbox.fetch_messages', return_value=[{'uid': 12, 'raw': raw}]) as fetch:
+            return self.client.post(self.url, data), fetch
+
+    def test_preview_shows_escaped_text_only(self):
+        """HTML maila jest sprowadzany do tekstu; znaczniki z treści są escapowane, nic nie trafia jako surowy HTML."""
+        raw = named_mail('<p>Imię: Anna</p><script>alert(1)</script><p>&lt;img src=x onerror=alert(2)&gt;</p>', html=True)
+        response, fetch = self.preview(raw)
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'core/includes/recruitment_preview.html')
+        self.assertEqual(fetch.call_args.kwargs, {'raw_messages': True, 'max_messages': 1})
+        self.assertContains(response, 'Imię: Anna')
+        self.assertNotContains(response, 'alert(1)')
+        self.assertNotContains(response, '<img')
+        self.assertContains(response, '&lt;img src=x onerror=alert(2)&gt;')
+
+    def test_preview_outside_selection_or_without_javascript(self):
+        """Wiadomość spoza listy – błąd 400 bez pobierania; bez JS przycisk tematu pokazuje podgląd na stronie."""
+        response, fetch = self.preview(named_mail(), uid='99')
+        self.assertContains(response, 'Wybierz wiadomość z pobranej listy.', status_code=400)
+        fetch.assert_not_called()
+        response, _ = self.preview(named_mail(), action='', preview_uid='12')
+        self.assertTemplateUsed(response, 'core/review_bulk_import.html')
+        self.assertEqual(response.context['preview']['sender'], 'sender@example.com')

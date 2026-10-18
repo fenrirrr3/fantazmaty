@@ -13,6 +13,7 @@ from core.selectors.reports import (
     workflow_activity_context,
     workflow_inactivity_context,
 )
+from people.roles import EDITOR, PROOFREADER, VERIFIER
 from texts.models import Review
 from workflow.models import WorkflowRoleAssignment, WorkflowStage
 
@@ -108,7 +109,7 @@ def proofreader_activity(request):
         user=request.user,
         params=request.GET,
         stage_roles=dict(PROOFREADER_STAGE_ROLES),
-        people_role_name="Korektor",
+        people_role_name=PROOFREADER,
         people_context_name="proofreaders",
     )
 
@@ -129,7 +130,7 @@ def verifier_activity(request):
         user=request.user,
         params=request.GET,
         stage_roles=dict(VERIFIER_STAGE_ROLES),
-        people_role_name="Weryfikator",
+        people_role_name=VERIFIER,
         people_context_name="verifiers",
     )
 
@@ -220,7 +221,7 @@ def editor_activity(request):
         user=request.user, params=request.GET,
         stage_roles={value: WorkflowRoleAssignment.Role.EDITOR for value in (
             stages.EDITING, stages.AUTHOR_EDITING, stages.EDITOR_CONTROL)},
-        people_role_name="Redaktor", people_context_name="editors",
+        people_role_name=EDITOR, people_context_name="editors",
     )
     return _render_report(request, template_name="core/editor_activity.html",
                           report_context=context, rows_key="activity_rows")

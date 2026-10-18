@@ -5,7 +5,11 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.urls import reverse
 from django.utils import timezone
 
+from django.contrib.messages import get_messages
+
+from core.forms import ReviewerOpinionForm
 from core.permissions import can_self_assign_reviews
+from core.selectors.review_detail import review_assignment_data
 from core.selectors.reports import overdue_review_rows
 from core.services.reviews import (
     assign_reviewer,
@@ -13,10 +17,12 @@ from core.services.reviews import (
     save_review_content_warnings,
     save_reviewer_opinion,
     unassign_reviewer,
+    unblock_review_reading,
+    ReviewReadingBlocked,
 )
-from fantazmaty.testing import create_member
+from fantazmaty.testing import create_member, edit_token
 from people.models import Vacation
-from texts.models import Review, ReviewAssignment, Text
+from texts.models import Review, ReviewAssignment, ReviewOpinion, Text
 
 from .support import ReviewFixtures
 
@@ -152,3 +158,82 @@ class ReviewerOpinionRuleTests(ReviewFixtures):
         save_review_content_warnings(user=self.reviewer, review_id=self.review.pk, content_warnings='Recenzent')
         self.review.refresh_from_db()
         self.assertEqual(self.review.content_warnings, 'Recenzent')
+
+
+class NotReadOpinionTests(ReviewFixtures):
+    """Ocena „Nie doczytałem”: bez treści recenzji, blokada pobierania i odblokowanie przez koordynatora recenzji."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.second = create_member('reader2', 'Recenzent')
+
+    def not_read(self, user=None, position=1):
+        self.assign(user or self.reviewer, position=position)
+        return save_reviewer_opinion(user=user or self.reviewer, review_id=self.review.pk, opinion='not_read', notes='')
+
+    def post(self, user, name):
+        self.client.force_login(user)
+        return self.client.post(reverse(f'core:{name}', args=[self.review.pk]),
+                                {'_edit_version': edit_token(user, self.review)})
+
+    def test_not_read_needs_no_review_text_and_is_listed_after_no(self):
+        """Ocena leży zaraz pod „NIE”, nie wymaga treści recenzji, a inne oceny nadal jej wymagają."""
+        values = [value for value, _ in ReviewOpinion.choices]
+        self.assertEqual(values[values.index('no') + 1], 'not_read')
+        self.assertTrue(ReviewerOpinionForm({'opinion': 'not_read', 'notes': ''}).is_valid())
+        self.assertIn('notes', ReviewerOpinionForm({'opinion': 'no', 'notes': '  '}).errors)
+        item = self.not_read()
+        self.assertEqual((item.opinion, item.notes), ('not_read', ''))
+
+    def test_not_read_blocks_taking_review_until_coordinator_unblocks(self):
+        """Blokada: brak „Biorę”, zgłoszenie znika z listy innego recenzenta, serwis odmawia po polsku."""
+        self.not_read()
+        self.review.refresh_from_db()
+        self.assertTrue(self.review.reading_blocked)
+        with self.assertRaisesMessage(ReviewReadingBlocked, 'zablokowane po ocenie „Nie doczytałem”'):
+            assign_reviewer(user=self.second, review_id=self.review.pk)
+        response = self.post(self.second, 'assign_reviewer')
+        self.assertIn('zablokowane', [str(m) for m in get_messages(response.wsgi_request)][-1])
+        self.assertFalse(self.review.assignments.filter(user=self.second).exists())
+        lists = {self.second: False, self.reviewer: True, self.coordinator: True}
+        for user, visible in lists.items():
+            with self.subTest(user=user.username):
+                self.client.force_login(user)
+                page = self.client.get(reverse('core:review_list'))
+                self.assertEqual(self.review.pk in [row['pk'] for row in page.context['reviews']], visible)
+        self.client.force_login(self.second)
+        detail = self.client.get(reverse('core:assigned_review_detail', args=[self.review.pk]))
+        self.assertContains(detail, 'Pobieranie zablokowane – ocena „Nie doczytałem” od')
+        self.assertFalse(detail.context['can_self_assign_review'])
+        self.assertNotContains(detail, 'Odblokuj pobieranie do recenzji')
+        self.client.force_login(self.coordinator)
+        self.assertContains(self.client.get(reverse('core:assigned_review_detail', args=[self.review.pk])),
+                            'data-confirm="Odblokować pobieranie')
+
+    def test_unblock_is_remembered_and_new_not_read_blocks_again(self):
+        """Odblokowanie zapisuje czas i osobę; ta sama ocena nie blokuje, nowa „Nie doczytałem” – tak."""
+        self.not_read()
+        for user in (self.second, self.other):
+            with self.subTest(user=user.username), self.assertRaises(PermissionDenied):
+                unblock_review_reading(user=user, review_id=self.review.pk)
+        self.post(self.coordinator, 'unblock_review_reading')
+        self.review.refresh_from_db()
+        self.assertEqual(self.review.reading_unblocked_by, self.coordinator)
+        self.assertFalse(self.review.reading_blocked)
+        save_reviewer_opinion(user=self.reviewer, review_id=self.review.pk, opinion='not_read', notes='Bez zmian')
+        assign_reviewer(user=self.second, review_id=self.review.pk)
+        save_reviewer_opinion(user=self.second, review_id=self.review.pk, opinion='not_read', notes='')
+        self.review.refresh_from_db()
+        self.assertTrue(self.review.reading_blocked)
+        self.assertEqual(Review.objects.reading_blocked().get(), self.review)
+        with self.assertRaisesMessage(ValidationError, 'nie jest zablokowane'):
+            unblock_review_reading(user=self.admin, review_id=self.make_review(title='Wolne').pk)
+
+    def test_not_read_is_neither_vote_nor_pending_task(self):
+        """„Nie doczytałem” nie liczy się do TAK ani NIE w podsumowaniu, a przydział nie wisi jako zaległy."""
+        self.assign(self.reviewer, 30)
+        save_reviewer_opinion(user=self.reviewer, review_id=self.review.pk, opinion='not_read', notes='')
+        _, _, _, summary = review_assignment_data(self.review, self.coordinator)
+        self.assertEqual((summary['not_read'], summary['yes'], summary['no'], summary['completed']), (1, 0, 0, 1))
+        self.assertEqual(overdue_review_rows(), [])

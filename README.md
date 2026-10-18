@@ -81,6 +81,20 @@ EbookLib fpdf2 Pillow rapidfuzz spacy` i modelem `pl_core_news_sm` (polecenia w 
    już nie ma – usuń to zadanie, jeśli jest zaplanowane.
 5. `python manage.py check --deploy`
 
+## Powiadomienia Discord
+
+Ustawienia: panel admina → „Powiadomienia Discord – ustawienia” (tylko superuser). Każde zdarzenie ma kanał
+(nazwa z `DISCORD_WEBHOOKS` – adresy webhooków są tylko w zmiennych środowiskowych), opcjonalne oznaczenie roli
+i jedną lub więcej treści. Tagi w treści: `[tytuł]`, `[autor]` (podpis jak w stopce tekstu – pseudonim albo imię
+i nazwisko, kilku autorów po przecinku; przy zgłoszeniach do recenzji zawsze „(anonimowo)”, bo recenzenci nie widzą
+autorów), `[antologia]`, `[gatunek]`, `[długość]`, `[etap]`, `[dni]` (przypomnienia), `[osoba]` (tylko „Zakończenie
+etapu” – wykonawca etapu, a bez przypisania osoba, która zamknęła etap), `[rola]`, `[link]`. Pusty tag daje „–”.
+
+„Zakończenie etapu (wszystkie etapy)” to jedna reguła dla każdego etapu. Nie wysyła wiadomości przy przekazaniu
+pliku autorowi ani przy jego powrocie od autora (etap „Plik u autora (redakcja)”), przy przejęciu tekstu do redakcji,
+„Gotowe” i wycofaniu. Redakcja jest zgłaszana jako zakończona tylko przy ostatnim przekazaniu – do koordynatora
+(Kontrola K. redakcji); przekazania do pierwszej i drugiej weryfikacji nie są ogłaszane.
+
 ## Struktura
 
 | Katalog | Zawartość |

@@ -168,6 +168,24 @@
     text-decoration: underline;
 }
 
+/* Tytuł i etykieta stanu (Przyjęty, Wydany…) w jednym wierszu; na wąskim ekranie etykieta się zawija. */
+.search-result-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-1) var(--space-2);
+}
+
+.search-result-head > a {
+    flex: 1 1 8rem;
+    min-width: 0;
+}
+
+.search-result-head > .stage-status {
+    flex: none;
+}
+
 .dashboard-grid .dashboard-list {
     display: grid;
     gap: var(--space-3);
@@ -321,7 +339,8 @@ section:has(#reserved-assignments-heading) {
     margin-bottom: var(--space-2);
 }
 
-.review-designated-note {
+.review-designated-note,
+.review-reading-blocked-note {
     margin-top: 0;
 }
 
@@ -1344,4 +1363,9 @@ section:has(#reserved-assignments-heading) {
     .global-search-form > .global-search-field {
         flex-basis: auto;
     }
+}
+
+/* Zewnętrzne ilustracje: informacja o zgłaszaniu się nad filtrami listy. */
+.external-illustrations-contact {
+    margin: 0 0 var(--space-4);
 }

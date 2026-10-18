@@ -1,5 +1,6 @@
 """One claim policy shared by displayed availability and the mutation service."""
 from core.permissions import is_coordinator, has_role
+from people import roles
 from workflow.models import WorkflowRoleAssignment as A
 
 
@@ -15,12 +16,11 @@ def eligible_role_users(role):
     required = ROLE_GROUPS.get(role)
     if not required:
         return users.none()
-    coordinator = (Q(person_profile__roles__name__iexact='Koordynator')
-                   | Q(person_profile__roles__name__istartswith='Koordynator ')
+    coordinator = (roles.coordinator_role_q('person_profile__roles__name')
                    | Q(person_profile__legacy_coordinator_access=True))
     permitted = coordinator | Q(person_profile__roles__name__iexact=required)
     if role in (A.Role.PROOFREADER_2, A.Role.PROOFREADER_4):
-        permitted = Q(person_profile__roles__name__iexact='Koordynator korekty')
+        permitted = Q(person_profile__roles__name__iexact=roles.PROOFREADING_COORDINATOR)
     users = users.filter(Q(is_superuser=True) | (Q(person_profile__is_active=True) & permitted))
     if role == A.Role.STYLING:
         users = users.filter(is_superuser=True)
@@ -55,7 +55,7 @@ def role_access_reason(user, role, *, access=None):
         return 'Druga i czwarta korekta są dostępne tylko dla koordynatora korekty.'
     if role == A.Role.STYLING and not user.is_superuser:
         return 'Stylowanie jest dostępne tylko dla superusera.'
-    if not (access['coordinator'] or ROLE_GROUPS.get(role, 'Redaktor').casefold() in access['roles']):
+    if not (access['coordinator'] or ROLE_GROUPS.get(role, roles.EDITOR).casefold() in access['roles']):
         return 'Brak wymaganej roli.'
     return ''
 
@@ -128,7 +128,7 @@ def claim_reason(stage, user, stages, assignments, *, access=None):
 
 def can_claim_fourth_proofreading(user):
     return bool(
-        user and user.is_active and (user.is_superuser or has_role(user, "Koordynator korekty"))
+        user and user.is_active and (user.is_superuser or has_role(user, roles.PROOFREADING_COORDINATOR))
     )
 
 

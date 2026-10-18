@@ -285,6 +285,9 @@ class ReviewerOpinionForm(NormalizedFormMixin, forms.Form):
     )
     notes = forms.CharField(
         label="Uwagi / treść recenzji",
+        # Wymagane w clean(): ocena „Nie doczytałem” nie wymaga treści recenzji.
+        required=False,
+        help_text="Przy ocenie „Nie doczytałem” treść recenzji nie jest wymagana.",
         widget=textarea_widget(
             "review-notes-input",
             rows=10,
@@ -299,6 +302,13 @@ class ReviewerOpinionForm(NormalizedFormMixin, forms.Form):
             placeholder="Dopisz lub uzupełnij trigger warningi...",
         ),
     )
+
+    def clean(self):
+        cleaned_data = super().clean()
+        opinion = cleaned_data.get("opinion")
+        if opinion and opinion != ReviewAssignment.Opinion.NOT_READ and not (cleaned_data.get("notes") or "").strip():
+            self.add_error("notes", forms.ValidationError(self.fields["notes"].error_messages["required"], code="required"))
+        return cleaned_data
 
 
 class TextNoteForm(forms.ModelForm):
