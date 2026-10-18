@@ -17,6 +17,12 @@ def audiobooks_allowed(user):
 
 
 @register.simple_tag
+def social_media_allowed(user):
+    from core.permissions import can_view_social_media
+    return can_view_social_media(user)
+
+
+@register.simple_tag
 def audio_proofreading_allowed(user):
     from core.permissions import can_view_audio_proofreading
     return can_view_audio_proofreading(user)

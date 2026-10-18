@@ -86,7 +86,7 @@ def describe_request(match, method):
     name = match.url_name or getattr(match.func, '__name__', '')
     label = LABELS.get(name, 'Panel administracyjny' if match.namespace == 'admin' else 'Strona CMS')
     if method == 'POST':
-        label = {'assigned_review_detail':'Zapis oceny recenzenta', 'my_vacations':'Dodanie urlopu', 'anthology_corrections':'Zgłoszenie uwagi do antologii'}.get(name, label)
+        label = {'assigned_review_detail':'Zapis oceny recenzenta', 'my_vacations':'Dodanie urlopu', 'anthology_corrections':'Zgłoszenie uwagi do antologii', 'social_media':'Zapis wpisu Social Media'}.get(name, label)
     from core.activity_targets import target_for_match
     target = target_for_match(match, lookup=False)
     if match.namespace == 'admin':

@@ -79,6 +79,8 @@ EbookLib fpdf2 Pillow rapidfuzz spacy` i modelem `pl_core_news_sm` (polecenia w 
    komenda poda ich ID – wtedy `--source-id`/`--target-id`.
    Powiadomienia Discord wysyła aplikacja na bieżąco. Komendy `dispatch_workflow_notifications`
    już nie ma – usuń to zadanie, jeśli jest zaplanowane.
+   Dawnej wysyłki każdej zmiany workflow na jeden kanał (`DISCORD_WORKFLOW_CHANNEL`, `DISCORD_AUDIOBOOK_CHANNEL`)
+   też już nie ma – te zmienne można usunąć z `.env`; powiadomienia wysyłają tylko reguły opisane niżej.
 5. `python manage.py check --deploy`
 
 ## Powiadomienia Discord

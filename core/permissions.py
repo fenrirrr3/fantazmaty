@@ -217,6 +217,16 @@ def can_view_audio_proofreading(user):
     return is_coordinator(user) or has_role(user, roles.AUDIOBOOK_PROOFREADER)
 
 
+def can_view_social_media(user):
+    """Zakładka Social Media: superuser, każdy koordynator działu i osoby z rolą „Social Media”."""
+    return is_coordinator(user) or has_role(user, roles.SOCIAL_MEDIA)
+
+
+def require_social_media(user):
+    if not can_view_social_media(user):
+        raise PermissionDenied(f"Dostęp wymaga uprawnień koordynatora lub roli {roles.SOCIAL_MEDIA}.")
+
+
 def require_post_layout(user):
     if not can_view_post_layout(user):
         raise PermissionDenied(f"Dostęp wymaga uprawnień koordynatora lub roli {roles.POST_LAYOUT_PROOFREADER}.")
@@ -286,6 +296,7 @@ coordinator_required = _permission_decorator(require_coordinator)
 superuser_required = _permission_decorator(require_superuser)
 recruitment_mailbox_required = _permission_decorator(require_recruitment_mailbox)
 post_layout_required = _permission_decorator(require_post_layout)
+social_media_required = _permission_decorator(require_social_media)
 
 
 def is_reviewer(user):

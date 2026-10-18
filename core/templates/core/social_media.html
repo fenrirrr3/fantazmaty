@@ -1,6 +1,65 @@
 {% extends "core/base.html" %}
+{% load static %}
 {% block title %}Social Media | Fantazmaty CMS{% endblock %}
+{% block extra_css %}{{ block.super }}<link rel="stylesheet" href="{% static 'core/social-media.css' %}">{% endblock %}
 {% block content %}
-<header class="page-header"><h1 class="page-title">Social Media</h1><p class="page-description">Planowanie i przygotowanie wpisów promocyjnych.</p></header>
-<section class="card"><div class="empty-results-panel"><strong>Wkrótce.</strong><p>Ta zakładka jest w przygotowaniu.</p></div></section>
+<header class="page-header"><h1 class="page-title">Social Media</h1><p class="page-description">Planowanie i przygotowanie wpisów promocyjnych. Każdy wiersz zapisuje się osobno przyciskiem „Zapisz”.</p></header>
+
+<section class="card social-media-card" aria-labelledby="social-texts-heading">
+    <header class="section-header"><div><h2 id="social-texts-heading">Opowiadania</h2><p>{% if unpublished %}Teksty ze wszystkich antologii w przygotowaniu i gotowych.{% else %}Teksty z antologii o statusie „Gotowa”.{% endif %} Bez tekstów wycofanych, powieści i antologii porzuconych.</p></div><span class="record-counter" title="Liczba opowiadań">{{ page_obj.paginator.count }}</span></header>
+    <div class="card-body social-media-filters-body">
+        <form method="get" class="filters-form social-media-filters" aria-label="Filtry opowiadań">
+            <div class="filter-field social-media-search"><label for="social-q">Szukaj</label><input id="social-q" type="search" name="q" value="{{ query }}" maxlength="200" placeholder="Tytuł, autor, antologia, tagi lub gatunek"></div>
+            <div class="filter-field"><label for="social-anthology">Antologia</label><select id="social-anthology" name="anthology"><option value="">Wszystkie</option>{% for item in anthologies %}<option value="{{ item.pk }}"{% if selected_anthology == item.pk|stringformat:'s' %} selected{% endif %}>{{ item.title }}</option>{% endfor %}</select></div>
+            <div class="filter-field"><label for="social-status">Status</label><select id="social-status" name="status" multiple size="3" data-empty-label="Wszystkie">{% for value, label in status_choices %}<option value="{{ value }}"{% if value in selected_statuses %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+            <label class="social-media-unpublished"><input type="checkbox" name="unpublished" value="1"{% if unpublished %} checked{% endif %}> Pokaż teksty z antologii niewydanych</label>
+            <div class="filter-actions"><button class="primary-button" type="submit">Filtruj</button><a class="secondary-button" href="{% url 'core:social_media' %}">Wyczyść filtry</a></div>
+        </form>
+    </div>
+    <div class="table-container" role="region" tabindex="0" aria-label="Tabela opowiadań do promocji">
+        <table data-server-paginated="true" class="data-table mobile-review-cards social-media-table">
+            <caption class="visually-hidden">Opowiadania – status wpisów w mediach społecznościowych</caption>
+            <thead><tr><th scope="col">Antologia</th><th scope="col">Tytuł</th><th scope="col">Autor</th><th scope="col">Tagi</th><th scope="col">Gatunek</th><th scope="col">Status</th><th scope="col">Data wrzucenia</th><th scope="col">Link</th><th scope="col">Akcje</th></tr></thead>
+            <tbody>{% for row in rows %}<tr id="social-text-{{ row.pk }}"{% if row.errors %} class="has-errors"{% endif %}>
+                <td data-label="Antologia">{% if row.anthology %}<a href="{% url 'core:anthology_detail' row.anthology.pk %}">{{ row.anthology.title }}</a>{% endif %}</td>
+                <td data-label="Tytuł"><a href="{% url 'core:assigned_text_detail' row.pk %}" class="text-title-link"><strong>{{ row.title }}</strong></a></td>
+                <td data-label="Autor">{{ row.authors|default:"–" }}</td>
+                <td data-label="Tagi" class="text-tags-cell">{{ row.tags|default:"–" }}</td>
+                <td data-label="Gatunek">{{ row.genre|default:"–" }}</td>
+                <td data-label="Status"><div class="social-media-field"><span class="status social-status" data-status="{{ row.status }}">{{ row.status_label }}</span><label class="visually-hidden" for="social-text-{{ row.pk }}-status">Zmień status: {{ row.title }}</label><select id="social-text-{{ row.pk }}-status" name="status" form="social-text-form-{{ row.pk }}">{% for value, label in status_choices %}<option value="{{ value }}"{% if value == row.values.status %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>{% for error in row.errors.status %}<span class="field-error">{{ error }}</span>{% endfor %}</div></td>
+                <td data-label="Data wrzucenia"><div class="social-media-field"><label class="visually-hidden" for="social-text-{{ row.pk }}-date">Data wrzucenia: {{ row.title }}</label><input id="social-text-{{ row.pk }}-date" type="date" name="posted_on" value="{{ row.values.posted_on }}" form="social-text-form-{{ row.pk }}">{% for error in row.errors.posted_on %}<span class="field-error">{{ error }}</span>{% endfor %}</div></td>
+                <td data-label="Link"><div class="social-media-field social-media-link-field">{% if row.record.url %}<a class="social-media-link" href="{{ row.record.url }}" target="_blank" rel="noopener noreferrer" title="{{ row.record.url }}">{{ row.record.url }}</a>{% endif %}<label class="visually-hidden" for="social-text-{{ row.pk }}-url">Link: {{ row.title }}</label><input id="social-text-{{ row.pk }}-url" type="url" name="url" value="{{ row.values.url }}" maxlength="1000" placeholder="https://…" form="social-text-form-{{ row.pk }}">{% for error in row.errors.url %}<span class="field-error">{{ error }}</span>{% endfor %}</div></td>
+                <td data-label="Akcje"><form id="social-text-form-{{ row.pk }}" method="post" action="{% url 'core:social_media' %}" class="social-media-row-form" data-warn-unsaved>{% csrf_token %}<input type="hidden" name="text" value="{{ row.pk }}"><input type="hidden" name="version" value="{{ row.token }}"><input type="hidden" name="return_query" value="{{ return_query }}"><button class="primary-button small-button" type="submit" name="action" value="text">Zapisz</button></form>{% for error in row.non_field_errors %}<p class="form-error" role="alert">{{ error }}</p>{% endfor %}</td>
+            </tr>{% empty %}<tr><td colspan="9">Brak opowiadań spełniających kryteria.</td></tr>{% endfor %}</tbody>
+        </table>
+    </div>
+</section>
+{% include "core/includes/pagination.html" %}
+
+<details class="card text-management-card social-media-other" id="social-other"{% if open_other %} open{% endif %}>
+    <summary><span>Inne <span class="record-counter" title="Liczba wpisów">{{ entry_rows|length }}</span></span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
+    <div class="card-body">
+        <p class="form-help">Wpisy niezwiązane z konkretnym opowiadaniem, np. zapowiedzi naborów czy premier.</p>
+        <form method="post" action="{% url 'core:social_media' %}" class="social-media-add" data-warn-unsaved aria-label="Dodaj wpis">{% csrf_token %}<input type="hidden" name="return_query" value="{{ return_query }}">
+            <div class="form-field social-media-description"><label for="social-add-description">Krótki opis</label><input id="social-add-description" type="text" name="description" value="{{ add_values.description }}" maxlength="200" required>{% for error in add_form.errors.description %}<span class="field-error">{{ error }}</span>{% endfor %}</div>
+            <div class="form-field"><label for="social-add-status">Status</label><select id="social-add-status" name="status">{% for value, label in status_choices %}<option value="{{ value }}"{% if value == add_values.status %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>{% for error in add_form.errors.status %}<span class="field-error">{{ error }}</span>{% endfor %}</div>
+            <div class="form-field"><label for="social-add-date">Data</label><input id="social-add-date" type="date" name="posted_on" value="{{ add_values.posted_on }}">{% for error in add_form.errors.posted_on %}<span class="field-error">{{ error }}</span>{% endfor %}</div>
+            <div class="form-field"><label for="social-add-url">Link</label><input id="social-add-url" type="url" name="url" value="{{ add_values.url }}" maxlength="1000" placeholder="https://…">{% for error in add_form.errors.url %}<span class="field-error">{{ error }}</span>{% endfor %}</div>
+            <div class="actions"><button class="primary-button" type="submit" name="action" value="entry_add">Dodaj wpis</button></div>
+        </form>
+    </div>
+    <div class="table-container" role="region" tabindex="0" aria-label="Tabela innych wpisów">
+        <table class="data-table mobile-review-cards social-media-table social-media-other-table" data-pagination="off">
+            <caption class="visually-hidden">Inne wpisy w mediach społecznościowych</caption>
+            <thead><tr><th scope="col" data-sort="none">Krótki opis</th><th scope="col" data-sort="none">Data</th><th scope="col" data-sort="none">Status</th><th scope="col" data-sort="none">Link</th><th scope="col">Akcje</th></tr></thead>
+            <tbody>{% for row in entry_rows %}{% with entry=row.entry %}<tr id="social-entry-{{ entry.pk }}"{% if row.errors %} class="has-errors"{% endif %}>
+                <td data-label="Krótki opis"><div class="social-media-field"><label class="visually-hidden" for="social-entry-{{ entry.pk }}-description">Krótki opis</label><input id="social-entry-{{ entry.pk }}-description" type="text" name="description" value="{{ row.values.description }}" maxlength="200" required form="social-entry-form-{{ entry.pk }}">{% for error in row.errors.description %}<span class="field-error">{{ error }}</span>{% endfor %}</div></td>
+                <td data-label="Data"><div class="social-media-field"><label class="visually-hidden" for="social-entry-{{ entry.pk }}-date">Data: {{ entry.description }}</label><input id="social-entry-{{ entry.pk }}-date" type="date" name="posted_on" value="{{ row.values.posted_on }}" form="social-entry-form-{{ entry.pk }}">{% for error in row.errors.posted_on %}<span class="field-error">{{ error }}</span>{% endfor %}</div></td>
+                <td data-label="Status"><div class="social-media-field"><span class="status social-status" data-status="{{ entry.status }}">{{ entry.get_status_display }}</span><label class="visually-hidden" for="social-entry-{{ entry.pk }}-status">Zmień status: {{ entry.description }}</label><select id="social-entry-{{ entry.pk }}-status" name="status" form="social-entry-form-{{ entry.pk }}">{% for value, label in status_choices %}<option value="{{ value }}"{% if value == row.values.status %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>{% for error in row.errors.status %}<span class="field-error">{{ error }}</span>{% endfor %}</div></td>
+                <td data-label="Link"><div class="social-media-field social-media-link-field">{% if entry.url %}<a class="social-media-link" href="{{ entry.url }}" target="_blank" rel="noopener noreferrer" title="{{ entry.url }}">{{ entry.url }}</a>{% endif %}<label class="visually-hidden" for="social-entry-{{ entry.pk }}-url">Link: {{ entry.description }}</label><input id="social-entry-{{ entry.pk }}-url" type="url" name="url" value="{{ row.values.url }}" maxlength="1000" placeholder="https://…" form="social-entry-form-{{ entry.pk }}">{% for error in row.errors.url %}<span class="field-error">{{ error }}</span>{% endfor %}</div></td>
+                <td data-label="Akcje"><form id="social-entry-form-{{ entry.pk }}" method="post" action="{% url 'core:social_media' %}" class="social-media-row-form" data-warn-unsaved>{% csrf_token %}<input type="hidden" name="entry" value="{{ entry.pk }}"><input type="hidden" name="version" value="{{ row.token }}"><input type="hidden" name="return_query" value="{{ return_query }}"><button class="primary-button small-button" type="submit" name="action" value="entry_edit">Zapisz</button><button class="secondary-button small-button" type="submit" name="action" value="entry_delete" formnovalidate data-confirm="Usunąć wpis „{{ entry.description }}”?">Usuń</button></form>{% for error in row.non_field_errors %}<p class="form-error" role="alert">{{ error }}</p>{% endfor %}</td>
+            </tr>{% endwith %}{% empty %}<tr><td colspan="5">Brak innych wpisów.</td></tr>{% endfor %}</tbody>
+        </table>
+    </div>
+</details>
 {% endblock %}

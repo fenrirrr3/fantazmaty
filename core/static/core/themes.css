@@ -31,6 +31,7 @@
     --narrator-bg: #efdfca; --narrator-fg: #623a16;
     --typesetter-bg: #edf0c6; --typesetter-fg: #4b5614;
     --sound-engineer-bg: #cff3fc; --sound-engineer-fg: #15546b;
+    --social-media-bg: #a21caf; --social-media-fg: #ffffff;
     /* Chrome: header bar, sidebar, overlays (constant unless a theme overrides). */
     --header-fg: #ffffff; --header-muted: #b9c7d7;
     --header-hover: #293e56; --header-accent: #80baff;
@@ -77,6 +78,7 @@
     --narrator-bg: #45331f; --narrator-fg: #f0cfa3;
     --typesetter-bg: #393e1c; --typesetter-fg: #e1e89b;
     --sound-engineer-bg: #163e4b; --sound-engineer-fg: #a6e9f8;
+    --social-media-bg: #86198f; --social-media-fg: #ffffff;
     --sidebar-heading-bg: var(--table-header); --sidebar-heading-fg: var(--text);
     --sidebar-link-bg: var(--surface-alt); --sidebar-link-ring: var(--border);
     --table-header-fg: var(--text);
@@ -123,6 +125,7 @@
 [data-palette="narrator"] { --palette-bg: var(--narrator-bg); --palette-fg: var(--narrator-fg); }
 [data-palette="typesetter"] { --palette-bg: var(--typesetter-bg); --palette-fg: var(--typesetter-fg); }
 [data-palette="sound-engineer"] { --palette-bg: var(--sound-engineer-bg); --palette-fg: var(--sound-engineer-fg); }
+[data-palette="social-media"] { --palette-bg: var(--social-media-bg); --palette-fg: var(--social-media-fg); }
 
 /* Poprawki zależne od motywu, których nie da się wyrazić samymi zmiennymi. */
 /* :where() zeruje specyficzność, więc kolory komponentów (błędy, ostrzeżenia) wygrywają. */

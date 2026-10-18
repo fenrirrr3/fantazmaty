@@ -55,7 +55,7 @@ class ExternalIllustrationsTests(TestCase):
         doc = html.fromstring(self.client.get(self.url).content)
         notice = doc.xpath('//p[contains(@class, "message") and contains(@class, "info")]')[0]
         self.assertEqual(' '.join(notice.text_content().split()),
-                         'Chcesz wziąć ilustrację? Napisz na ilustracje@fantazmaty.pl, którą ilustrację chcesz wziąć.')
+                         'Chcesz wziąć ilustrację? Napisz na ilustracje@fantazmaty.pl i poinformuj, która cię interesuje.')
         self.assertEqual(notice.xpath('./a/@href'), ['mailto:ilustracje@fantazmaty.pl'])
         self.assertTrue(notice.xpath('following::table'))
 

@@ -18,6 +18,7 @@ from core.models import PublicAudiobookSettings
 from core.models import Audiobook, AudiobookStage
 from core.models import AudioContributor
 from core.models import PostLayoutAssignment
+from core.models import SocialMediaEntry, TextSocialMedia
 from core.audiobook_forms import AudiobookProductionForm
 from core import notification_admin  # noqa: F401 – rejestracja panelu powiadomień Discord
 
@@ -215,6 +216,26 @@ class PublicAudiobookSettingsAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+
+@admin.register(TextSocialMedia)
+class TextSocialMediaAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
+    list_display = ('text', 'status', 'posted_on', 'url', 'updated_at')
+    list_filter = ('status',)
+    search_fields = ('text__title', 'url')
+    list_select_related = ('text',)
+    raw_id_fields = ('text',)
+    readonly_fields = ('updated_at', 'updated_by')
+
+
+@admin.register(SocialMediaEntry)
+class SocialMediaEntryAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
+    list_display = ('description', 'status', 'posted_on', 'url', 'updated_at')
+    list_filter = ('status',)
+    search_fields = ('description', 'url')
+    readonly_fields = ('created_at', 'updated_at', 'updated_by')
+
 
 User = get_user_model()
 
@@ -700,10 +721,12 @@ class UserActivityAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 @admin.register(WorkflowEvent)
 class WorkflowEventAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     """Dziennik zdarzeń: tylko do odczytu, wyłącznie dla superusera."""
-    list_display = ('created_at', 'title', 'previous_status', 'next_status', 'actor_name', 'channel', 'status')
-    list_filter = ('status', 'channel')
+    list_display = ('created_at', 'title', 'previous_status', 'next_status', 'actor_name')
+    list_filter = ('kind',)
     search_fields = ('title', 'actor_name')
-    readonly_fields = tuple(f.name for f in WorkflowEvent._meta.fields)
+    # Pola channel, status, message_id i sending_started_at zostały po dawnej wysyłce na Discord – nie są używane.
+    fields = readonly_fields = ('created_at', 'kind', 'text', 'title', 'authors', 'actor', 'actor_name',
+                                'previous_status', 'next_status', 'details', 'personal_work', 'personal_work_description')
 
     def has_add_permission(self, request, obj=None):
         return False

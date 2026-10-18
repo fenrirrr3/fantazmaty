@@ -46,11 +46,11 @@ class AdminNavigationTests(TestCase):
         groups = self.app_list()
         self.assertEqual(
             [g['app_label'] for g in groups],
-            ['submissions', 'texts', 'publication', 'art', 'audio', 'people', 'recruitment',
+            ['submissions', 'texts', 'publication', 'art', 'audio', 'people', 'promotion', 'recruitment',
              'accounts', 'settings', 'history'],
         )
         self.assertEqual([g['collapsed'] for g in groups],
-                         [False, False, False, True, True, True, True, True, True, True])
+                         [False, False, False, True, True, True, True, True, True, True, True])
         by_label = {group['app_label']: group for group in groups}
 
         def names(group):
@@ -65,6 +65,7 @@ class AdminNavigationTests(TestCase):
         # Ekstrakty zamykają grupę Teksty, tak jak w menu strony.
         self.assertEqual(names(by_label['texts'])[-2:], ['extract', 'extractvolume'])
         self.assertIn('author', names(by_label['people']))
+        self.assertEqual(names(by_label['promotion']), ['textsocialmedia', 'socialmediaentry'])
         self.assertIn('workflowstage', names(by_label['history']))
         self.assertIn('workflowroleassignment', names(by_label['history']))
         detail = by_label['history']['subgroups'][0]

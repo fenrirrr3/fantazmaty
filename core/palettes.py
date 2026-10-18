@@ -40,6 +40,7 @@ LABEL_RULES = (
     (re.compile(r'^lektor$'), 'narrator'),
     (re.compile(r'^składacz$'), 'typesetter'),
     (re.compile(r'^dźwiękowiec$'), 'sound-engineer'),
+    (re.compile(r'^social media$'), 'social-media'),
     (re.compile(r'koordynator|^k\. redakcji$|^k\. weryfikacji$'), 'coordinator'),
     (re.compile(r'recenz'), 'reviewer'),
     (re.compile(r'gotow'), 'ready'),

@@ -363,6 +363,20 @@ def prepare_table_sort(request, items):
         return items.order_by(('-' if selected.startswith('-') else '') + field, 'title', 'pk'), {
             label: key for label, (key, _) in fields.items()
         }
+    if (request.resolver_match and request.resolver_match.view_name == 'core:social_media'
+            and isinstance(items, QuerySet) and items.model._meta.label_lower == 'texts.text'):
+        # Adnotacje social_author i social_status_rank dodaje widok (core/views/social_media.py).
+        fields = {
+            'Antologia': ('anthology', 'anthology__title'), 'Tytuł': ('title', 'title'),
+            'Autor': ('author', 'social_author'), 'Tagi': ('tags', 'tags'), 'Gatunek': ('genre', 'genre'),
+            'Status': ('status', 'social_status_rank'), 'Data wrzucenia': ('posted_on', 'social_media__posted_on'),
+            'Link': ('url', 'social_media__url'),
+        }
+        sort = request.GET.get('sort', 'anthology')
+        field = next((field for key, field in fields.values() if key == sort.lstrip('-')), 'anthology__title')
+        return items.order_by(('-' if sort.startswith('-') else '') + field, 'title', 'pk'), {
+            label: key for label, (key, _) in fields.items()
+        }
     if request.resolver_match and request.resolver_match.view_name == 'core:external_audiobooks':
         # Never expose private Text fields through public sorting or projection.
         fields = {

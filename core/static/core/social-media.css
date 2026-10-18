@@ -1,0 +1,127 @@
+/* Social Media: tabela opowiadań do promocji i rozwijana sekcja „Inne”. Kolory wyłącznie z tokenów motywu. */
+
+.social-media-filters-body {
+    border-bottom: 1px solid var(--border);
+}
+
+.social-media-search {
+    flex: 2 1 260px;
+}
+
+.social-media-unpublished {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: var(--control-height);
+}
+
+/* Dziewięć kolumn z polami edycji: węższe odstępy w komórkach, żeby przycisk „Zapisz” był widoczny bez przewijania. */
+.social-media-table:not(.social-media-other-table) {
+    --cell-padding-inline: var(--space-2);
+}
+
+/* Status wpisu: Wolne – neutralny, W przygotowaniu – ostrzegawczy, Wrzucone – sukces. */
+.status.social-status {
+    --badge-bg: var(--badge-neutral-bg);
+    --badge-fg: var(--badge-neutral-fg);
+    white-space: nowrap;
+}
+
+.status.social-status[data-status="in_progress"] {
+    --badge-bg: var(--warning-light);
+    --badge-fg: var(--warning);
+}
+
+.status.social-status[data-status="posted"] {
+    --badge-bg: var(--success-light);
+    --badge-fg: var(--success);
+}
+
+/* Pole edycji w komórce: odznaka lub link nad kontrolką, błąd pod nią. */
+.social-media-field {
+    display: grid;
+    justify-items: stretch;
+    gap: var(--space-1);
+    min-width: 0;
+}
+
+/* Kontrolki w tabeli są niższe i mniejsze niż w formularzach, żeby wiersz mieścił się bez przewijania.
+   Wybór statusu i data mieszczą najdłuższą wartość; link zajmuje resztę kolumny. */
+.social-media-field > :is(select, input) {
+    width: 100%;
+    min-height: var(--control-height-sm);
+    font-size: var(--font-size-md);
+}
+
+.social-media-field > select {
+    min-width: 10rem;
+}
+
+.social-media-field > input[type="date"] {
+    min-width: 8.5rem;
+}
+
+.social-media-field > input:is([type="url"], [type="text"]) {
+    min-width: 9rem;
+}
+
+/* Zapisany link skraca się do szerokości kolumny (width: 0 – nie poszerza tabeli), pełny adres w podpowiedzi. */
+.social-media-link {
+    display: block;
+    width: 0;
+    min-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.social-media-row-form {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: var(--space-2);
+    margin: 0;
+}
+
+.social-media-table tr.has-errors > td {
+    background: var(--danger-light);
+}
+
+.social-media-table .form-error {
+    margin: var(--space-2) 0 0;
+}
+
+/* „Inne”: formularz dodawania w jednym wierszu, opis szerszy od pozostałych pól. */
+.social-media-other {
+    margin-top: var(--space-5);
+}
+
+.social-media-other > summary .record-counter {
+    margin-inline-start: var(--space-2);
+}
+
+.social-media-add {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--space-4);
+    margin-top: var(--space-3);
+}
+
+.social-media-add > .form-field {
+    flex: 1 1 160px;
+}
+
+.social-media-add > .social-media-description {
+    flex: 3 1 280px;
+}
+
+.social-media-other-table .social-media-field > input[name="description"] {
+    min-width: 16rem;
+}
+
+@media (max-width: 760px) {
+    .social-media-field > :is(select, input),
+    .social-media-other-table .social-media-field > input[name="description"] {
+        min-width: 0;
+    }
+}

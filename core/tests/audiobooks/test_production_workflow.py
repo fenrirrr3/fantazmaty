@@ -3,17 +3,18 @@ korekta jako jedyny obieg pracy, publikacja, blokady, panel admina i walidacja m
 from datetime import date, timedelta
 
 import json
+from unittest.mock import patch
 
 from django.contrib.admin.sites import site
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
-from django.test import RequestFactory, TestCase
+from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from lxml import html
 
 from core.admin import AudiobookAdmin
-from core.models import AudioContributor, Audiobook, AudiobookStage, WorkflowEvent
+from core.models import AudioContributor, Audiobook, AudiobookStage, DiscordNotification, NotificationRule, WorkflowEvent
 from core.selectors.texts import text_list_context
 from fantazmaty.testing import form_value
 from texts.models import Anthology, Text
@@ -104,7 +105,6 @@ class ProductionWorkflowTests(AudiobookProductionTestData, TestCase):
         audio = self.audio()
         self.assertEqual((audio.status, audio.active_stage_id, audio.is_published), ('published', None, True))
         self.assertEqual(AudiobookStage.objects.get(stage_type='proofreading').performer, self.reader)
-        self.assertTrue(all(event.channel for event in WorkflowEvent.objects.filter(kind='audiobook', text=self.text)))
         # Publikacja to dane wpisu – nie zmienia statusu.
         self.assertContains(self.client.get(self.url), 'Uzupełnij datę premiery')
         self.assertEqual(self.post('publication', **{'publication-premiere_date': str(today),
@@ -119,6 +119,27 @@ class ProductionWorkflowTests(AudiobookProductionTestData, TestCase):
         self.assertIsNone(self.audio().proofreader_id)
         self.set_status('editing')
         self.assertEqual(AudiobookStage.objects.filter(stage_type='proofreading').count(), 1)
+
+    @override_settings(DISCORD_WEBHOOKS={'Testowy': 'https://discord.com/api/webhooks/1/dawny-kanal',
+                                         'Kanał': 'https://discord.com/api/webhooks/2/reguly'})
+    def test_production_is_logged_without_discord_messages(self):
+        """Zmiany statusu, przejęcie i zakończenie korekty audiobooka trafiają do dziennika (WorkflowEvent), ale nie
+        wysyłają nic na Discord – także przy włączonych wszystkich regułach i skonfigurowanym dawnym kanale."""
+        for rule in NotificationRule.objects.all():
+            rule.enabled, rule.channel = True, 'Kanał'
+            rule.save()
+            rule.templates.create(content='[etap]: [tytuł]')
+        with patch('core.discord_webhook.send_message', return_value='1') as sent, \
+                self.captureOnCommitCallbacks(execute=True):
+            self.to_proofreading()
+            self.claim(self.reader)
+            self.finish(self.reader)
+        self.assertEqual(list(WorkflowEvent.objects.filter(kind='audiobook', text=self.text)
+                              .order_by('pk').values_list('details', flat=True))[2:],
+                         ['Przejęto korektę audiobooka.', 'Zakończono korektę audiobooka. Teraz: Nanoszenie poprawek.'])
+        self.assertEqual(WorkflowEvent.objects.filter(kind='audiobook', text=self.text).count(), 4)
+        sent.assert_not_called()
+        self.assertFalse(DiscordNotification.objects.exists())
 
     def test_status_and_date_validation_stale_and_unknown_actions(self):
         tomorrow = timezone.localdate() + timedelta(days=1)

@@ -40,19 +40,16 @@ def _activate(audio, status, stage):
 
 
 def record_event(text, user, *, previous, current, details, personal=''):
-    """Audit and Discord notification for audiobook production (after commit)."""
+    """Wpis produkcji audiobooka w dzienniku zmian (WorkflowEvent) – bez powiadomienia Discord."""
     from core.models import WorkflowEvent
-    from core.workflow_events import audiobook_channel, notify_after_commit
     person = getattr(user, 'person_profile', None)
     actor = str(person) if person else (user.get_full_name() or user.get_username())
     authors = ', '.join(a.display_name for a in text.authors.all())
-    event = WorkflowEvent.objects.create(
+    return WorkflowEvent.objects.create(
         kind='audiobook', personal_work=bool(personal), personal_work_description=personal[:255],
         text=text, title=text.title, authors=authors, actor=user, actor_name=actor,
         previous_status=f'Audiobook: {previous}'[:100], next_status=f'Audiobook: {current}'[:100],
-        details=details, channel=audiobook_channel())
-    transaction.on_commit(lambda pk=event.pk: notify_after_commit(pk))
-    return event
+        details=details)
 
 
 def require_available(text):

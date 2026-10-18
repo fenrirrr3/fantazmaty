@@ -7,6 +7,8 @@ from core.audiobook_models import Audiobook as Audiobook
 from core.audiobook_models import AudiobookStage as AudiobookStage
 from core.audiobook_models import AudioContributor as AudioContributor
 from core.post_layout_models import PostLayoutAssignment as PostLayoutAssignment
+from core.social_models import SocialMediaEntry as SocialMediaEntry
+from core.social_models import TextSocialMedia as TextSocialMedia
 from core.notification_models import DiscordRole as DiscordRole
 from core.notification_models import NotificationRule as NotificationRule
 from core.notification_models import NotificationTemplate as NotificationTemplate

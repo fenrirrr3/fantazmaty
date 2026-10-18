@@ -6,7 +6,7 @@
 <link rel="stylesheet" href="{% static 'core/dialogs.css' %}">
 </head><body><main class="container external-illustrations" id="main-content">
 <header class="page-header"><h1 class="page-title">Zewnętrzne ilustracje</h1><p class="page-description">Opowiadania do zilustrowania – Fantazmaty</p></header>
-<p class="message info external-illustrations-contact">Chcesz wziąć ilustrację? Napisz na <a href="mailto:ilustracje@fantazmaty.pl">ilustracje@fantazmaty.pl</a>, którą ilustrację chcesz wziąć.</p>
+<p class="message info external-illustrations-contact">Chcesz wziąć ilustrację? Napisz na <a href="mailto:ilustracje@fantazmaty.pl">ilustracje@fantazmaty.pl</a> i poinformuj, która cię interesuje.</p>
 <section class="filters-card"><form method="get" class="filters-form">
     <div class="filter-field"><label for="external-query">Szukaj</label><input id="external-query" type="search" name="q" value="{{ query }}" placeholder="Antologia, tytuł, tag lub gatunek"></div>
     <div class="filter-field"><label for="external-anthology">Antologia</label><select name="anthology" id="external-anthology"><option value="">Wszystkie</option>{% for item in anthologies %}<option value="{{ item.text__anthology_id }}" {% if selected_anthology == item.text__anthology_id|stringformat:'s' %}selected{% endif %}>{{ item.text__anthology__title }}</option>{% endfor %}</select></div>

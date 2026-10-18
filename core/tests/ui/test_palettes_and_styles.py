@@ -8,8 +8,9 @@ from django.template import Context, Template
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
-from core.palettes import STAGE_PALETTES, label_palette, role_palette, stage_palette
+from core.palettes import ROLE_PALETTES, STAGE_PALETTES, label_palette, role_palette, stage_palette
 from fantazmaty.testing import create_member, create_superuser
+from people import roles as team_roles
 from people.models import Person, Role
 from workflow.catalog import workflow_role_choices
 from workflow.models import WorkflowRoleAssignment, WorkflowStage
@@ -66,6 +67,27 @@ class TeamRolePaletteTests(TestCase):
             page = self.client.get(url)
             for palette in colors:
                 self.assertContains(page, f'data-palette="{palette}"')
+
+
+    def test_social_media_role_has_a_unique_palette_in_both_themes(self):
+        """Rola „Social Media” ma własną paletę: inną niż każda rola zespołu, rola workflow i etap,
+        z tokenami w motywie jasnym i ciemnym; lista zespołu pokazuje ją przy osobie."""
+        palette = label_palette(team_roles.SOCIAL_MEDIA)
+        self.assertEqual(palette, 'social-media')
+        others = {label_palette(name) for name in (*team_roles.STANDARD_ROLES, *team_roles.RETIRED_ROLES, 'Prawa ręka')
+                  if name != team_roles.SOCIAL_MEDIA}
+        self.assertNotIn(palette, others | set(ROLE_PALETTES.values()) | set(STAGE_PALETTES.values()))
+        themes = (STATIC / 'themes.css').read_text(encoding='utf-8')
+        self.assertIn('[data-palette="social-media"] { --palette-bg: var(--social-media-bg); '
+                      '--palette-fg: var(--social-media-fg); }', themes)
+        for theme in (themes.split(':root {', 1)[1], themes.split(':root[data-theme="dark"]', 1)[1]):
+            block = theme.split('}', 1)[0]
+            for token in ('--social-media-bg:', '--social-media-fg:'):
+                self.assertIn(token, block)
+        create_member('social-palette', team_roles.SOCIAL_MEDIA)
+        self.client.force_login(create_superuser('social-palette-admin'))
+        page = self.client.get(reverse('core:people_list'))
+        self.assertContains(page, 'data-palette="social-media"')
 
 
 class StylesheetTests(SimpleTestCase):

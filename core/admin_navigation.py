@@ -4,7 +4,7 @@ from django.urls import reverse
 from urllib.parse import urlencode
 
 # Same order and names as the site menu: submissions, texts, anthologies, art, audio,
-# people, recruitment, then accounts, settings and history (admin only).
+# people, promotion, recruitment, then accounts, settings and history (admin only).
 GROUPS = (
     ('submissions', 'Zgłoszenia', ('texts.review',)),
     ('texts', 'Teksty', ('texts.text', 'texts.texttranslation', 'texts.foreignauthor', 'texts.translator', 'novels',
@@ -16,6 +16,7 @@ GROUPS = (
     ('audio', 'Audio', ('core.audiobook', 'core.audiobookstage', 'core.audiocontributor', 'audiobooks_queue', 'audiobooks_blacklist',
                         'core.audiodescription', 'audio_description_tasks', 'core.publicaudiobooksettings')),
     ('people', 'Ludzie', ('people.person', 'people.vacation', 'authors.author', 'blacklist')),
+    ('promotion', 'Promocja', ('core.textsocialmedia', 'core.socialmediaentry')),
     ('recruitment', 'Rekrutacja', ('core.recruitment', 'recruitment_mailbox')),
     ('accounts', 'Konta i uprawnienia', ('auth.user', 'people.role', 'auth.group')),
     ('settings', 'Ustawienia', ('core.mailboxconnection', 'core.notificationrule', 'core.discordrole')),
@@ -27,7 +28,7 @@ DETAIL_MODELS = ('texts.textnote', 'authors.authornote', 'texts.reviewassignment
 LABELS = {
     'texts.review': 'Recenzje', 'people.person': 'Zespół', 'texts.extract': 'Ekstrakty',
     'texts.extractvolume': 'Tomy Ekstraktów', 'core.useractivity': 'Aktywność użytkowników',
-    'core.workflowevent': 'Zmiany workflow i powiadomienia', 'texts.vocabularyterm': 'Słownik tagów i gatunków',
+    'core.workflowevent': 'Zmiany workflow', 'texts.vocabularyterm': 'Słownik tagów i gatunków',
     'auth.user': 'Konta użytkowników', 'texts.anthologytask': 'Zadania antologii',
     'workflow.workflowstage': 'Etapy pracy', 'workflow.workflowroleassignment': 'Przydziały wykonawców',
     'auth.group': 'Grupy uprawnień', 'texts.reviewassignment': 'Oceny i przydziały recenzentów',

@@ -57,11 +57,11 @@ PUBLIC = {
 
 # Aktorzy: 'outsider' – zalogowany bez profilu w zespole; 'former' – były członek (profil nieaktywny, rola została);
 # 'member' – członek zespołu bez ról;
-# 'specialist' – członek z rolami Recenzent, Ilustrator, Korektor poskładowy i Korektor audiobooków
+# 'specialist' – członek z rolami Recenzent, Ilustrator, Korektor poskładowy, Korektor audiobooków i Social Media
 # (żadna z nich nie daje uprawnień koordynatora); 'coordinator' – Koordynator redakcji;
 # 'recruiter' – Koordynator rekrutacji (też koordynator); 'superuser' – superuser bez profilu.
 ACTORS = ('outsider', 'former', 'member', 'specialist', 'coordinator', 'recruiter', 'superuser')
-SPECIALIST_ROLES = ('Recenzent', 'Ilustrator', 'Korektor poskładowy', 'Korektor audiobooków')
+SPECIALIST_ROLES = ('Recenzent', 'Ilustrator', 'Korektor poskładowy', 'Korektor audiobooków', 'Social Media')
 
 ANY_USER = frozenset(ACTORS)
 TEAM = ANY_USER - {'outsider', 'former'}
@@ -109,6 +109,8 @@ ROUTE_LEVELS = {
     'core:audiobook_detail': ROLE_OR_COORDINATOR,
     'core:audio_contributor': ROLE_OR_COORDINATOR,
     'core:post_layout': ROLE_OR_COORDINATOR,
+    # Social Media: koordynatorzy i rola „Social Media” (zapis wierszy to POST na ten sam adres).
+    'core:social_media': ROLE_OR_COORDINATOR,
     'illustrations:illustration_list': ROLE_OR_COORDINATOR,
     'illustrations:illustration_detail': ROLE_OR_COORDINATOR,
     'core:recruitment_mailbox': RECRUITMENT,
@@ -122,7 +124,7 @@ ROUTE_LEVELS = {
         'core:proofreader_activity', 'core:verifier_activity', 'core:reviewer_activity', 'core:workflow_inactivity',
         'illustrations:illustrator_list', 'illustrations:illustrator_add', 'illustrations:illustrator_edit',
         'core:audio_contributor_list', 'core:audio_contributor_add',
-        'illustrations:update_cover_proposal_status', 'core:social_media',
+        'illustrations:update_cover_proposal_status',
     ], COORDINATOR),
     **dict.fromkeys([
         'core:unlinked_reviews', 'core:recruitment_delete', 'core:translation_person_suggestions',

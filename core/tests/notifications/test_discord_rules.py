@@ -17,7 +17,7 @@ from django.utils import timezone
 from authors.models import Author
 from core.discord_notifications import parse_mention, queue, render, send_waiting_reminders, text_authors, workflow_changes
 from core.discord_webhook import DeliveryError, send_message
-from core.models import DiscordNotification, DiscordRole, NotificationRule
+from core.models import DiscordNotification, DiscordRole, NotificationRule, WorkflowEvent
 from core.notification_models import validate_template_tags
 from core.workflow_events import event_scope
 from core.services.reviews import assign_reviewer
@@ -27,10 +27,12 @@ from fantazmaty.testing.workflow import WorkflowTestDataMixin
 from texts.models import Anthology, ForeignAuthor, Review, Text, TextTranslation
 from workflow.models import WorkflowStage
 from workflow.services import (claim_stage, complete_stage, finish_editing_to_coordinator, resume_editing,
-                               send_text_to_author, send_to_first_verification, send_to_second_verification)
+                               send_text_to_author, send_to_first_verification, send_to_second_verification,
+                               start_first_verification)
 
 StageType = WorkflowStage.StageType
 URL = 'https://discord.com/api/webhooks/123/abc_DEF-1'
+OLD_CHANNEL_URL = 'https://discord.com/api/webhooks/456/dawny-kanal'
 LINK = '[O, tutaj](<https://cms.example/t/1/>)'
 CONTEXT = {'tytuł': 'Latarnik', 'antologia': 'Cienie', 'gatunek': 'fantasy', 'długość': '25 000', 'etap': 'Redakcja'}
 
@@ -265,6 +267,27 @@ class WorkflowTriggerTests(WorkflowTestDataMixin, TestCase):
             self.begin_editing()
         self.assertEqual(self.stage(StageType.EDITING).assignment.assigned_to, self.editor)
         self.assertEqual(DiscordNotification.objects.get().status, 'unknown')
+
+    @override_settings(DISCORD_WEBHOOKS={'Kanał': URL, 'Testowy': OLD_CHANNEL_URL})
+    def test_workflow_events_are_logged_but_only_rules_reach_discord(self):
+        """Operacja workflow zapisuje WorkflowEvent, ale na Discord idą wyłącznie wiadomości z reguł – dawny kanał
+        „Testowy” nie dostaje nic; przy wyłączonych regułach nie ma żadnej wysyłki."""
+        NotificationRule.objects.update(enabled=False)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.begin_editing()
+        self.assertTrue(WorkflowEvent.objects.filter(text=self.text, kind=WorkflowEvent.Kind.WORKFLOW).exists())
+        self.sent.assert_not_called()
+        NotificationRule.objects.update(enabled=True)
+        events = WorkflowEvent.objects.count()
+        with self.captureOnCommitCallbacks(execute=True):
+            claim_stage(self.text, StageType.FIRST_VERIFICATION, self.verifier_1)
+            send_to_first_verification(self.text, self.editor, ended_at=self.today)
+            stage = start_first_verification(self.text, self.verifier_1, started_at=self.today)
+            complete_stage(stage, self.verifier_1, self.today)
+        self.assertGreater(WorkflowEvent.objects.count(), events)
+        self.assertEqual(self.sent.call_count, DiscordNotification.objects.count())
+        self.assertGreater(self.sent.call_count, 0)
+        self.assertEqual({call.args[0] for call in self.sent.call_args_list}, {URL})
 
 
 @override_settings(DISCORD_WEBHOOKS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')

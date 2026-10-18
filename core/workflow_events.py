@@ -1,16 +1,15 @@
-"""Best-effort Discord notifications sent only after a successful database commit."""
+"""Dziennik zmian workflow (WorkflowEvent): stan tekstu przed operacją i po niej.
+
+Powiadomienia Discord wysyłają wyłącznie reguły z panelu (core.discord_notifications.workflow_changes).
+"""
 from contextlib import contextmanager
 from contextvars import ContextVar
 from functools import wraps
 from inspect import signature
-import logging
-import os
-from django.conf import settings
 from django.db import transaction
 from django.db.models.signals import pre_save, pre_delete
 
 _scope = ContextVar('workflow_event_scope', default=None)
-logger = logging.getLogger(__name__)
 
 
 def snapshot(text_id, using):
@@ -102,12 +101,9 @@ def event_scope(user):
             person = getattr(user, 'person_profile', None)
             actor = str(person) if person else user.get_full_name() or user.get_username()
             own_work = personal_work_changes(before, after, user.pk)
-            event = WorkflowEvent.objects.using(using).create(personal_work=bool(own_work), personal_work_description="; ".join(own_work)[:255], text=text, title=title, authors=authors,
+            WorkflowEvent.objects.using(using).create(personal_work=bool(own_work), personal_work_description="; ".join(own_work)[:255], text=text, title=title, authors=authors,
                 actor=user, actor_name=actor, previous_status=before['status'], next_status=after['status'],
-                details='\n'.join(changes(before, after)), channel=workflow_channel())
-            transaction.on_commit(
-                lambda pk=event.pk, db=using: notify_after_commit(pk, db), using=using
-            )
+                details='\n'.join(changes(before, after)))
             from core.discord_notifications import workflow_changes
             workflow_changes(using, text, before.get('detail', {}), after.get('detail', {}), actor=actor)
     finally:
@@ -148,66 +144,6 @@ def run_admin_request(request, get_response):
             if scope:
                 scope['before'].clear()
         return response
-
-
-def audiobook_channel():
-    """Separate channel for audiobook production; defaults to the workflow channel."""
-    return str(getattr(settings, 'DISCORD_AUDIOBOOK_CHANNEL', os.environ.get('DISCORD_AUDIOBOOK_CHANNEL', '')) or workflow_channel())
-
-
-def workflow_channel():
-    return str(getattr(settings, 'DISCORD_WORKFLOW_CHANNEL', os.environ.get('DISCORD_WORKFLOW_CHANNEL', 'Testowy')))
-
-
-def message(event):
-    # No emails, phone numbers or mentions. Keep every identifying field even for long titles.
-    status = event.next_status if event.previous_status == event.next_status else f'{event.previous_status} → {event.next_status}'
-    return (f'Tekst: {event.title[:400]}\nAutor: {event.authors[:400]}\n'
-            f'Status: {status}\n'
-            f'Wykonał(a): {event.actor_name[:200]}\n{event.details[:700]}')[:2000]
-
-
-def notify_after_commit(pk, using='default'):
-    # Include database access in the guard: even a failure to record the delivery
-    # result must not turn a committed workflow operation into an HTTP 500.
-    try:
-        deliver(pk, using)
-    except Exception:
-        logger.error('Workflow notification failed after commit; event=%s', pk)
-        try:
-            from core.models import WorkflowEvent
-            WorkflowEvent.objects.using(using).filter(
-                pk=pk, status__in=('pending', 'sending')
-            ).update(status='unknown')
-        except Exception:
-            logger.error('Could not record notification outcome; event=%s', pk)
-
-
-def deliver(pk, using='default'):
-    from core.models import WorkflowEvent
-    from core.discord_webhook import channels, send_message, ConfigurationError, DeliveryError
-    events = WorkflowEvent.objects.using(using)
-    from django.utils import timezone
-    if not events.filter(pk=pk, status='pending').update(status='sending', sending_started_at=timezone.now()):
-        return
-    event = events.get(pk=pk)
-    status, message_id = 'failed', ''
-    try:
-        configured = channels()
-        if event.channel not in configured:
-            status = 'disabled'
-        else:
-            message_id = send_message(configured[event.channel], message(event))
-            status = 'sent'
-    except ConfigurationError:
-        status = 'failed'
-    except DeliveryError as exc:
-        status = 'unknown' if exc.uncertain else 'failed'
-    except Exception:
-        # Never log webhook URLs or exception bodies.
-        logger.error('Unexpected workflow notification failure; event=%s', pk)
-        status = 'unknown'
-    events.filter(pk=pk, status='sending').update(status=status, message_id=message_id)
 
 
 def install():

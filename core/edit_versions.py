@@ -21,6 +21,7 @@ TRACKED = {
     'core.audiobook',
     'core.audiobookstage',
     'core.publicaudiobooksettings',
+    'core.textsocialmedia', 'core.socialmediaentry',
     'texts.novelprofile', 'texts.vocabularyterm',
     'texts.texttranslation', 'texts.foreignauthor', 'texts.translator',
     'texts.text', 'texts.review', 'texts.anthology', 'texts.anthologytask', 'texts.textnote',

@@ -28,6 +28,7 @@ UI_LABELS = {
     'workflow/models.py': {'Redaktor'},  # etykieta roli workflow (WorkflowRoleAssignment.Role)
     'core/selectors/reports.py': {'Recenzent', 'Korektor', 'Weryfikator', 'Redaktor'},  # nagłówki kolumn raportów
     'core/selectors/texts.py': {'Redaktor'},  # nagłówek kolumny
+    'core/activity.py': {'Social Media'},  # nazwa zakładki w dzienniku aktywności (jak etykieta menu)
 }
 
 SKIPPED_DIRS = {'migrations', 'tests', 'staticfiles', 'venv', 'node_modules', '__pycache__'}
