@@ -1,4 +1,4 @@
-"""Role zespołu: profil osoby i grupy konta pozostają zgodne, a utrata roli koordynatorskiej odbiera uprawnienia."""
+"""Role zespołu: profil osoby jest źródłem ról i imion (grupy konta nie są lustrem ról), a utrata roli koordynatorskiej odbiera uprawnienia."""
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.test import TestCase
@@ -31,42 +31,20 @@ class AccountGroupMirrorTests(TestCase):
         self.assertTrue(person.legacy_coordinator_access)
         self.assertTrue(person.is_coordinator)
         self.assertTrue(is_coordinator(user))
-        self.assertEqual(group_names(user), {'Lektor'})
         user.refresh_from_db()
         self.assertEqual((user.first_name, user.last_name), ('Nowa', 'Osoba'))
 
     def test_profile_is_the_single_source_of_names_and_roles(self):
+        """Nazwisko z osoby trafia do konta; grupy konta nie zmieniają ról osoby, a role nie zmieniają grup."""
         self.person.last_name = 'Nowe'
         self.person.save(update_fields=['last_name'])
         self.member.refresh_from_db()
         self.assertEqual(self.member.last_name, 'Nowe')
+        before = group_names(self.member)
         self.member.groups.add(Group.objects.get_or_create(name='Korektor')[0])
-        self.assertIn('Korektor', role_names(self.person))
-        self.person.roles.remove(*self.person.roles.filter(name='Korektor'))
-        self.assertNotIn('Korektor', group_names(self.member))
-
-    def test_role_side_changes_reach_account_groups(self):
-        role = Role.objects.create(name='Grafik')
-        role.people.add(self.person)
-        self.assertIn('Grafik', group_names(self.member))
-        role.people.clear()
-        self.assertNotIn('Grafik', group_names(self.member))
-        role.people.add(self.person)
-        role.name = 'Grafik okładek'
-        role.save()
-        self.assertIn('Grafik okładek', group_names(self.member))
-        role.delete()
-        self.assertEqual(group_names(self.member), {'Redaktor'})
-
-    def test_group_side_changes_reach_profile_roles(self):
-        group = Group.objects.create(name='Tłumacz')
-        group.user_set.add(self.member)
-        self.assertIn('Tłumacz', role_names(self.person))
-        group.user_set.clear()
-        self.assertNotIn('Tłumacz', role_names(self.person))
-        self.member.groups.add(group)
-        group.delete()
-        self.assertEqual(role_names(self.person), {'Redaktor'})
+        self.assertNotIn('Korektor', role_names(self.person))
+        self.person.roles.add(Role.objects.get_or_create(name='Grafik')[0])
+        self.assertEqual(group_names(self.member), before | {'Korektor'})
 
     def test_coordinator_flag_after_adding_role_requires_space_after_prefix(self):
         """Flaga koordynatora po dodaniu roli: „Koordynator <dział>” ją daje, nazwa bez spacji po „Koordynator” – nie (także w pamięci)."""
@@ -102,14 +80,15 @@ class CoordinatorRevocationTests(TestCase):
         get_user_model().objects.filter(pk=cls.coordinator.pk).update(is_staff=True)
         cls.role = Role.objects.get(name='Koordynator recenzji')
 
-    def assert_revoked(self):
+    def assert_revoked(self, roles=('Recenzent',)):
         person = Person.objects.get(user=self.coordinator)
         self.coordinator.refresh_from_db()
         self.assertFalse(person.is_coordinator)
         self.assertFalse(is_coordinator(self.coordinator))
         self.assertFalse(self.coordinator.is_staff)
-        self.assertEqual(role_names(person), {'Recenzent'})
-        self.assertEqual(group_names(self.coordinator), {'Recenzent'})
+        self.assertEqual(role_names(person), set(roles))
+        # Grupy koordynatorskie z dawnego lustra ról są sprzątane.
+        self.assertFalse(self.coordinator.groups.filter(name__startswith='Koordynator').exists())
 
     def test_removing_person_from_coordinator_role_revokes_access(self):
         self.role.people.remove(self.coordinator.person_profile)
@@ -118,7 +97,8 @@ class CoordinatorRevocationTests(TestCase):
     def test_renaming_coordinator_role_to_plain_role_revokes_access(self):
         self.role.name = 'Recenzje – archiwum'
         self.role.save()
-        self.assert_revoked()
+        # Przemianowana rola zostaje przy osobie jako zwykła rola (bez lustra grup nic jej nie zdejmuje).
+        self.assert_revoked(roles=('Recenzent', 'Recenzje – archiwum'))
 
     def test_deleting_coordinator_role_revokes_access(self):
         self.role.delete()

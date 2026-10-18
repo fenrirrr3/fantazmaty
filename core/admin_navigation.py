@@ -4,7 +4,8 @@ from django.urls import reverse
 from urllib.parse import urlencode
 
 # Same order and names as the site menu: submissions, texts, anthologies, art, audio,
-# people, promotion, recruitment, then accounts, settings and history (admin only).
+# people, promotion, recruitment, then settings and history (admin only).
+# Konta logowania nie mają własnej listy – otwiera się je z ekranu osoby; grupy kont nie są używane.
 GROUPS = (
     ('submissions', 'Zgłoszenia', ('texts.review',)),
     ('texts', 'Teksty', ('texts.text', 'texts.texttranslation', 'texts.foreignauthor', 'texts.translator', 'novels',
@@ -15,23 +16,23 @@ GROUPS = (
                         'illustrations.coverproposal', 'illustrations.publicillustrationsettings')),
     ('audio', 'Audio', ('core.audiobook', 'core.audiobookstage', 'core.audiocontributor', 'audiobooks_queue', 'audiobooks_blacklist',
                         'core.audiodescription', 'audio_description_tasks', 'core.publicaudiobooksettings')),
-    ('people', 'Ludzie', ('people.person', 'people.vacation', 'authors.author', 'blacklist')),
+    ('people', 'Ludzie', ('people.person', 'people.vacation', 'people.role', 'authors.author', 'blacklist')),
     ('promotion', 'Promocja', ('core.textsocialmedia', 'core.socialmediaentry')),
     ('recruitment', 'Rekrutacja', ('core.recruitment', 'recruitment_mailbox')),
-    ('accounts', 'Konta i uprawnienia', ('auth.user', 'people.role', 'auth.group')),
     ('settings', 'Ustawienia', ('core.mailboxconnection', 'core.notificationrule', 'core.discordrole')),
     ('history', 'Historia i diagnostyka', ('workflow.workflowstage', 'workflow.workflowroleassignment', 'core.workflowevent', 'core.discordnotification', 'core.useractivity')),
 )
 EXPANDED = ('submissions', 'texts', 'publication')
+HIDDEN = ('auth.user', 'auth.group')
 DETAIL_MODELS = ('texts.textnote', 'authors.authornote', 'texts.reviewassignment', 'texts.reviewers',
                  'workflow.workflowrepetition', 'workflow.workflowhandoff')
 LABELS = {
     'texts.review': 'Recenzje', 'people.person': 'Zespół', 'texts.extract': 'Ekstrakty',
     'texts.extractvolume': 'Tomy Ekstraktów', 'core.useractivity': 'Aktywność użytkowników',
     'core.workflowevent': 'Zmiany workflow', 'texts.vocabularyterm': 'Słownik tagów i gatunków',
-    'auth.user': 'Konta użytkowników', 'texts.anthologytask': 'Zadania antologii',
+    'texts.anthologytask': 'Zadania antologii',
     'workflow.workflowstage': 'Etapy pracy', 'workflow.workflowroleassignment': 'Przydziały wykonawców',
-    'auth.group': 'Grupy uprawnień', 'texts.reviewassignment': 'Oceny i przydziały recenzentów',
+    'texts.reviewassignment': 'Oceny i przydziały recenzentów',
     'texts.reviewers': 'Ogólne uwagi do zgłoszeń',
     'core.notificationrule': 'Powiadomienia Discord', 'core.discordrole': 'Role Discorda',
     'core.discordnotification': 'Historia powiadomień Discord',
@@ -127,6 +128,8 @@ def grouped_app_list(original):
             "admin_url": reverse("admin:blacklist_index"),
             "view_only": True,
         }
+    for key in HIDDEN:
+        models.pop(key, None)
     details = [models.pop(key) for key in DETAIL_MODELS if key in models]
     result = []
     for index, (key, name, members) in enumerate(GROUPS):

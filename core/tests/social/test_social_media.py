@@ -92,7 +92,7 @@ class SocialMediaTextListTests(SocialMediaDataMixin, TestCase):
         self.client.force_login(self.social)
 
     def test_scope_ready_anthologies_by_default_unpublished_on_request(self):
-        """Domyślnie tylko antologie „Gotowe”; z polem „Pokaż teksty z antologii niewydanych” także antologie
+        """Domyślnie tylko antologie „Gotowe”; z polem „Pokaż teksty niewydane” także antologie
         w przygotowaniu. Teksty wycofane, antologie porzucone i rozdziały powieści nie pojawiają się nigdy."""
         for params, expected in (({}, ['Obcy', 'Smocze jajo']), ({'unpublished': '1'}, ['Obcy', 'Smocze jajo', 'Szkic'])):
             with self.subTest(params=params):
@@ -110,7 +110,8 @@ class SocialMediaTextListTests(SocialMediaDataMixin, TestCase):
         self.assertEqual(cells[f'social-text-{self.story.pk}'][:5],
                          ['Gotowa antologia', 'Smocze jajo', 'Jan Kowalski, A. N. Pióro', 'smoki, magia', 'fantasy'])
         self.assertEqual(cells[f'social-text-{self.foreign.pk}'][:5], ['Przekłady', 'Obcy', 'U. K. Le Guin', '–', 'SF'])
-        self.assertTrue(cells[f'social-text-{self.story.pk}'][5].startswith('Wolne'))
+        self.assertEqual(doc.xpath(f'//select[@id="social-text-{self.story.pk}-status"]/option[@selected]/text()'),
+                         ['Wolne'])
         self.assertFalse(TextSocialMedia.objects.exists())
 
     def test_search_status_and_anthology_filters(self):
@@ -172,7 +173,8 @@ class SocialMediaTextSaveTests(SocialMediaDataMixin, TestCase):
         page = self.client.get(URL)
         row = page_doc(page).xpath(f'//tr[@id="social-text-{self.story.pk}"]')[0]
         self.assertEqual(row.xpath('.//a[@class="social-media-link"]/@href'), ['https://facebook.com/fantazmaty/1'])
-        self.assertEqual(row.xpath('.//span[contains(@class, "social-status")]/text()'), ['Wrzucone'])
+        self.assertEqual(row.xpath('.//select[@name="status"]/option[@selected]/text()'), ['Wrzucone'])
+        self.assertFalse(row.xpath('.//span[contains(@class, "status")]'))  # bez osobnej etykiety statusu
         future = (datetime.date.today() + datetime.timedelta(days=30)).isoformat()
         response = self.save_text(self.story, self.row_version(page, f'social-text-form-{self.story.pk}'),
                                   status='in_progress', posted_on=future)
@@ -223,9 +225,13 @@ class SocialMediaOtherEntriesTests(SocialMediaDataMixin, TestCase):
         return page_doc(response).xpath('//details[@id="social-other"]')[0]
 
     def test_add_edit_delete_and_section_state(self):
-        """„Inne”: sekcja domyślnie zwinięta; dodanie, edycja i usunięcie wpisu wracają z rozwiniętą sekcją
+        """„Inne”: sekcja nad tabelą opowiadań, domyślnie zwinięta; dodanie, edycja i usunięcie wpisu wracają z rozwiniętą sekcją
         (tylko raz – następne wejście znów ją zwija); usuwanie ma pytanie potwierdzające."""
-        self.assertIsNone(self.other_section(self.client.get(URL)).get('open'))
+        page = self.client.get(URL)
+        self.assertIsNone(self.other_section(page).get('open'))
+        self.assertEqual([el.get('id') or el.get('aria-labelledby') for el in
+                          page_doc(page).xpath('//details[@id="social-other"] | //section[contains(@class, "social-media-card")]')],
+                         ['social-other', 'social-texts-heading'])
         response = self.client.post(URL, {'action': 'entry_add', 'description': '  Zapowiedź   naboru ',
                                           'status': 'in_progress', 'posted_on': '2026-11-01', 'url': ''}, follow=True)
         entry = SocialMediaEntry.objects.get()

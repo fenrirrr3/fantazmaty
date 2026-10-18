@@ -40,16 +40,20 @@ def _activate(audio, status, stage):
 
 
 def record_event(text, user, *, previous, current, details, personal=''):
-    """Wpis produkcji audiobooka w dzienniku zmian (WorkflowEvent) – bez powiadomienia Discord."""
+    """Wpis produkcji audiobooka w dzienniku zmian (WorkflowEvent) i powiadomienie z reguły „Produkcja audiobooka”
+    (wysyłane po zatwierdzeniu transakcji, tylko gdy reguła jest włączona)."""
+    from core.discord_notifications import audiobook_changed
     from core.models import WorkflowEvent
     person = getattr(user, 'person_profile', None)
     actor = str(person) if person else (user.get_full_name() or user.get_username())
     authors = ', '.join(a.display_name for a in text.authors.all())
-    return WorkflowEvent.objects.create(
+    event = WorkflowEvent.objects.create(
         kind='audiobook', personal_work=bool(personal), personal_work_description=personal[:255],
         text=text, title=text.title, authors=authors, actor=user, actor_name=actor,
         previous_status=f'Audiobook: {previous}'[:100], next_status=f'Audiobook: {current}'[:100],
         details=details)
+    audiobook_changed(text, actor=actor, status=current, change=details)
+    return event
 
 
 def require_available(text):

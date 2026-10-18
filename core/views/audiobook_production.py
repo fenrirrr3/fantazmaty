@@ -16,8 +16,9 @@ from authors.models import Author
 from core.audiobook_models import StageType
 from core.audiobook_forms import (AudiobookPeopleForm, AudiobookPublicationForm, AudiobookNotesForm,
     AudiobookStatusForm, AudiobookStagesForm, AudiobookStageDateForm, AudiobookAssignmentForm, eligible_proofreaders)
-from core.audiobook_services import (require_available, may_finish, start_stage, finish_stage, claim_proofreading,
+from core.audiobook_services import (record_event, require_available, may_finish, start_stage, finish_stage, claim_proofreading,
     can_claim_proofreading, set_status, update_stage_dates, delete_stage, stage_periods, STAGE_ORDER)
+from core.discord_notifications import person_name
 from core.edit_policy import edit_policy
 from core.models import Audiobook, AudiobookStage, EditRevision
 from core.pagination import paginate_items
@@ -330,9 +331,14 @@ def assign_audio_proofreader(request, text_id):
         audio = get_object_or_404(Audiobook, text=text, status=Audiobook.Status.PROOFREADING)
         if not can_assign_proofreader(audio, corrections().filter(text=text)):
             raise PermissionDenied('Korekta została zakończona. Aby przypisać kolejną osobę, skieruj audiobook do ponownej korekty.')
+        previous_proofreader = audio.proofreader
         form = AudiobookAssignmentForm(request.POST, instance=audio, auto_id=f'id_audio_{text.pk}_%s')
         if form.is_valid():
             saved = form.save()
+            if saved.proofreader_id != getattr(previous_proofreader, 'pk', None):
+                record_event(text, request.user, previous=saved.status_label, current=saved.status_label,
+                             details=(f'Przypisano korektora: {person_name(saved.proofreader)}.' if saved.proofreader
+                                      else 'Usunięto przypisanie korektora.'))
             stage = saved.active_stage
             if stage and stage.stage_type == 'proofreading' and stage.is_started and not stage.is_completed:
                 # Zmiana korektora trwającej korekty dotyczy tej korekty (zakończone zachowują wykonawcę).

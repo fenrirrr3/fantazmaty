@@ -448,4 +448,7 @@ class RecruiterMailboxAccessTests(TestCase):
         person.is_active = False
         person.save()
         self.client.force_login(self.recruiter)
-        self.assertEqual(self.client.get(url).status_code, 403)
+        # Odznaczenie „wciąż w ekipie” blokuje konto, więc sesja wygasa i strona odsyła do logowania.
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response['Location'].startswith(reverse('login')))

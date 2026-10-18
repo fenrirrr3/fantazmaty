@@ -206,3 +206,194 @@ class PersonAdminPageTests(TestCase):
         role_page = self.client.get(reverse('admin:people_role_change', args=[role.pk]))
         self.assertNotContains(role_page, 'name="name"')
         self.assertContains(self.client.get(reverse('admin:people_role_add')), 'name="name"')
+
+
+class PersonAccountTests(TestCase):
+    """Ekran osoby jako jedyny punkt pracy z kontem: wspólny e-mail osoby i konta oraz blokada logowania."""
+    PASSWORD = 'Bardzo-trudne-haslo-42'
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.admin = create_superuser('konta-admin')
+        cls.member = User.objects.create_user('ala@example.test', 'ala@example.test', cls.PASSWORD)
+        cls.person = Person.objects.create(user=cls.member, first_name='Ala', last_name='Konto',
+                                           email='ala@example.test', dropbox_email='ala-box@example.test')
+        cls.taken = User.objects.create_user('inne-konto', 'zajety@example.test')
+        cls.old_login = User.objects.create_user('stary-login@example.test', 'inny-adres@example.test')
+
+    def form(self, instance=None, **values):
+        data = {'first_name': 'Ola', 'last_name': 'Nowa', 'email': 'ola@example.test', 'is_active': 'on', **values}
+        return PersonAdminForm({key: value for key, value in data.items() if value is not None}, instance=instance)
+
+    def login(self, email):
+        return EmailBackend().authenticate(None, username=email, password=self.PASSWORD)
+
+    def test_account_creation_and_email_change_are_validated_in_person_form(self):
+        """Konto z ekranu osoby: wymaga e-maila wolnego w kontach (także jako nazwa użytkownika), osoby z ekipy,
+        niezewnętrznej i bez konta; zmiana e-maila osoby z kontem też nie może zająć cudzego loginu."""
+        cases = {
+            'e-mail innego konta': ({'create_account': 'on', 'email': 'ZAJETY@example.test'}, None,
+                                    'email', 'Konto z tym adresem e-mail już istnieje.'),
+            'nazwa użytkownika innego konta': ({'create_account': 'on', 'email': 'stary-login@example.test'}, None,
+                                               'email', 'Konto z tym adresem e-mail już istnieje.'),
+            'zewnętrzny': ({'create_account': 'on', 'is_external': 'on'}, None,
+                           'create_account', 'Zewnętrzny nie loguje się'),
+            'spoza ekipy': ({'create_account': 'on', 'is_active': None}, None,
+                            'create_account', '„wciąż w ekipie”'),
+            'bez e-maila': ({'create_account': 'on', 'email': ''}, None, 'email', 'Konto wymaga adresu e-mail'),
+            'wybrane konto': ({'create_account': 'on', 'user': 'taken'}, None, 'create_account', 'ma już konto'),
+            'zmiana na cudzy login': ({'first_name': 'Ala', 'last_name': 'Konto', 'email': 'zajety@example.test',
+                                       'user': 'member'}, 'person', 'email', 'Konto z tym adresem e-mail już istnieje.'),
+        }
+        for case, (values, instance, field, message) in cases.items():
+            with self.subTest(case):
+                if 'user' in values:
+                    values['user'] = getattr(self, values['user']).pk
+                form = self.form(getattr(self, instance) if instance else None, **values)
+                self.assertFalse(form.is_valid())
+                self.assertIn(message, ' '.join(form.errors.get(field, [])))
+        self.assertTrue(self.form(create_account='on').is_valid())
+
+    def test_email_is_shared_by_person_and_account_in_both_directions(self):
+        """Zmiana e-maila osoby zmienia e-mail i nazwę użytkownika konta (logowanie nowym adresem), a zmiana na ekranie
+        konta zmienia e-mail osoby; e-mail Dropboxa zostaje nietknięty."""
+        form = self.form(self.person, first_name='Ala', last_name='Konto', email=' Ala.Nowa@Example.test ',
+                         dropbox_email='ala-box@example.test', user=self.member.pk)
+        self.assertTrue(form.is_valid(), form.errors)
+        form.save()
+        self.member.refresh_from_db()
+        self.assertEqual((self.member.email, self.member.username), ('ala.nowa@example.test',) * 2)
+        self.assertEqual(self.login('ala.nowa@example.test'), self.member)
+        self.assertIsNone(self.login('ala@example.test'))
+        self.client.force_login(self.admin)
+        url = reverse('admin:auth_user_change', args=[self.member.pk])
+        response = self.client.post(url, {
+            'first_name': 'Ala', 'last_name': 'Konto', 'email': 'Ala.Konto@example.test', 'is_superuser': '',
+            'date_joined_0': '2026-01-01', 'date_joined_1': '10:00:00',
+            '_edit_version': form_value(self.client.get(url)), '_save': 'Zapisz'})
+        self.assertEqual(response.status_code, 302)
+        self.person.refresh_from_db()
+        self.member.refresh_from_db()
+        self.assertEqual((self.person.email, self.member.email, self.member.username), ('ala.konto@example.test',) * 3)
+        self.assertEqual(self.person.dropbox_email, 'ala-box@example.test')
+        page = self.client.post(url, {
+            'first_name': 'Ala', 'last_name': 'Konto', 'email': 'zajety@example.test',
+            'date_joined_0': '2026-01-01', 'date_joined_1': '10:00:00',
+            '_edit_version': form_value(self.client.get(url)), '_save': 'Zapisz'})
+        self.assertIn('Konto z tym adresem e-mail już istnieje.', str(page.context['adminform'].form.errors['email']))
+
+    def test_save_outside_admin_cannot_take_another_accounts_login(self):
+        """Zapis osoby poza formularzem z e-mailem innego konta jest odrzucany – osoba i konto zostają bez zmian."""
+        self.person.email = 'zajety@example.test'
+        with self.assertRaises(ValidationError), transaction.atomic():
+            self.person.save()
+        self.person.refresh_from_db()
+        self.member.refresh_from_db()
+        self.assertEqual((self.person.email, self.member.email), ('ala@example.test', 'ala@example.test'))
+
+    def test_still_in_team_controls_login(self):
+        """Odznaczenie „wciąż w ekipie” od razu blokuje logowanie, zaznaczenie je przywraca; zewnętrzny się nie loguje
+        (także po zaznaczeniu „wciąż w ekipie”). E-mail Dropboxa zostaje bez zmian."""
+        steps = [('odznaczenie', {'is_active': False}, False), ('zaznaczenie', {'is_active': True}, True),
+                 ('zewnętrzny', {'is_external': True}, False),
+                 ('zewnętrzny w ekipie', {'is_external': True, 'is_active': True}, False),
+                 ('powrót z zewnętrznych', {'is_external': False, 'is_active': True}, True)]
+        for step, changes, can_login in steps:
+            for update_fields in (None, list(changes)):
+                with self.subTest(step, update_fields=update_fields):
+                    for name, value in changes.items():
+                        setattr(self.person, name, value)
+                    self.person.save(update_fields=update_fields)
+                    self.member.refresh_from_db()
+                    self.assertEqual(self.member.is_active, can_login)
+                    self.assertEqual(self.login('ala@example.test') == self.member, can_login)
+        self.person.refresh_from_db()
+        self.assertEqual(self.person.dropbox_email, 'ala-box@example.test')
+
+    def test_other_edits_do_not_unblock_and_inactive_link_blocks(self):
+        """Edycja innych pól nie odblokowuje konta zablokowanego osobno; powiązanie konta z osobą spoza ekipy je blokuje."""
+        get_user_model().objects.filter(pk=self.member.pk).update(is_active=False)
+        self.person.last_name = 'Zmienione'
+        for update_fields in (['last_name'], None):
+            with self.subTest(update_fields=update_fields):
+                self.person.save(update_fields=update_fields)
+                self.member.refresh_from_db()
+                self.assertFalse(self.member.is_active)
+        former = Person.objects.create(first_name='Jan', last_name='Dawny', email='inne-konto@example.test',
+                                       is_active=False)
+        former.user = self.taken
+        former.save()
+        self.taken.refresh_from_db()
+        self.assertFalse(self.taken.is_active)
+        self.assertEqual((self.taken.email, self.taken.username), ('inne-konto@example.test',) * 2)
+
+    def test_superuser_account_is_never_blocked_automatically(self):
+        """Superuser z profilem osoby nie traci logowania po odznaczeniu „wciąż w ekipie” ani przez komendę
+        sync_accounts – administrator nie odetnie sobie dostępu; e-mail nadal podąża za osobą."""
+        boss = get_user_model().objects.create_superuser('szef@example.test', 'szef@example.test', self.PASSWORD)
+        person = Person.objects.create(user=boss, first_name='Szef', last_name='Admin', email='szef@example.test')
+        for update_fields in (None, ['is_active']):
+            with self.subTest(update_fields=update_fields):
+                person.is_active = False
+                person.save(update_fields=update_fields)
+                boss.refresh_from_db()
+                self.assertTrue(boss.is_active)
+        from io import StringIO
+        from django.core.management import call_command
+        call_command('sync_accounts', '--apply', stdout=StringIO())
+        boss.refresh_from_db()
+        self.assertTrue(boss.is_active)
+        person.email = 'szef.nowy@example.test'
+        person.save()
+        boss.refresh_from_db()
+        self.assertEqual((boss.email, boss.username), ('szef.nowy@example.test',) * 2)
+
+
+class SyncAccountsCommandTests(TestCase):
+    """Komenda sync_accounts wyrównuje stare dane: bez --apply tylko raport, z --apply naprawia; kolizje pomija."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.superuser = create_superuser('sync-admin')
+        cls.users, cls.people = {}, {}
+        for key, active in (('rozjazd', True), ('byly', False), ('kolizja', True), ('bez-maila', True)):
+            user = User.objects.create_user(f'{key}@example.test', f'{key}@example.test')
+            cls.users[key] = user
+            cls.people[key] = Person.objects.create(user=user, first_name=key, last_name='Sync',
+                                                    email=f'{key}@example.test', dropbox_email=f'{key}-box@example.test')
+        # Stare dane sprzed synchronizacji – zapis z pominięciem sygnałów.
+        people = Person.objects.filter(pk__in=[p.pk for p in cls.people.values()])
+        people.filter(pk=cls.people['rozjazd'].pk).update(email='Nowy.Rozjazd@example.test')
+        people.filter(pk=cls.people['byly'].pk).update(is_active=False)
+        people.filter(pk=cls.people['kolizja'].pk).update(email='sync-admin@example.test')
+        people.filter(pk=cls.people['bez-maila'].pk).update(email=None)
+
+    def run_command(self, *args):
+        from io import StringIO
+        from django.core.management import call_command
+        out = StringIO()
+        call_command('sync_accounts', *args, stdout=out)
+        return out.getvalue()
+
+    def state(self):
+        return {key: get_user_model().objects.values_list('email', 'username', 'is_active').get(pk=user.pk)
+                for key, user in {**self.users, 'superuser': self.superuser}.items()}
+
+    def test_dry_run_reports_and_apply_fixes_except_collisions(self):
+        before = self.state()
+        report = self.run_command()
+        self.assertEqual(self.state(), before)
+        for line in ('Do zmiany: rozjazd Sync', 'nowy.rozjazd@example.test', 'Do zmiany: byly Sync', 'blokada logowania',
+                     'Pominięto: kolizja Sync', 'Pominięto: bez-maila Sync', 'Podgląd – nic nie zapisano'):
+            with self.subTest(line=line):
+                self.assertIn(line, report)
+        report = self.run_command('--apply')
+        self.assertIn('Zapisano. Kont do zmiany: 2, pominiętych: 2.', report)
+        expected = {**before, 'rozjazd': ('nowy.rozjazd@example.test', 'nowy.rozjazd@example.test', True),
+                    'byly': ('byly@example.test', 'byly@example.test', False)}
+        self.assertEqual(self.state(), expected)
+        self.assertEqual(sorted(Person.objects.filter(last_name='Sync').values_list('dropbox_email', flat=True)),
+                         sorted(f'{key}-box@example.test' for key in self.people))
+        self.assertIn('Kont do zmiany: 0', self.run_command())

@@ -1,9 +1,13 @@
-"""Person owns team roles and names; account groups are a compatibility mirror."""
+"""Osoba jest źródłem ról, imion, e-maila logowania i możliwości logowania; konto tylko za nią podąża.
+
+Grupy kont nie są już lustrem ról (uprawnienia wynikają z ról osoby). Grupy starego konta są czytane
+jednorazowo, gdy powstaje dla niego osoba.
+"""
 from contextvars import ContextVar
 from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
-from django.db.models.signals import m2m_changed, post_save, pre_save, post_delete, pre_delete
+from django.db.models.signals import m2m_changed, post_delete, post_save, pre_delete, pre_save
 from django.dispatch import receiver
+from people.accounts import account_changes, apply_account_changes
 from people.models import Person, Role
 from people.roles import coordinator_role_q, is_coordinator_role_name, is_general_coordinator_name
 
@@ -26,20 +30,30 @@ def sync_person(person, *, copy_groups=False):
         coordinator = person.legacy_coordinator_access or any(map(is_coordinator_role_name, names))
         Person.objects.filter(pk=person.pk).update(is_coordinator=coordinator)
         if person.user_id:
-            user = get_user_model().objects.get(pk=person.user_id)
-            get_user_model().objects.filter(pk=user.pk).update(
+            get_user_model().objects.filter(pk=person.user_id).update(
                 first_name=person.first_name, last_name=person.last_name
             )
-            groups = [Group.objects.get_or_create(name=name)[0] for name in names]
-            user.groups.set(groups)
     finally:
         syncing.reset(token)
 
 
+@receiver(pre_save, sender=Person)
+def prepare_account_sync(sender, instance, raw=False, using=None, update_fields=None, **kwargs):
+    """Zmiany konta liczone przed zapisem – kolizja e-maila przerywa zapis osoby (ValidationError)."""
+    instance._account_changes = {}
+    if raw or not instance.user_id:
+        return
+    previous = sender.objects.using(using).filter(pk=instance.pk).values(
+        'user_id', 'is_active', 'is_external').first() if instance.pk else None
+    instance._account_changes = account_changes(instance, using=using, update_fields=update_fields, previous=previous)
+
+
 @receiver(post_save, sender=Person)
-def profile_saved(sender, instance, raw=False, created=False, **kwargs):
+def profile_saved(sender, instance, raw=False, created=False, using=None, **kwargs):
     if not raw:
         sync_person(instance, copy_groups=created)
+        apply_account_changes(instance.user_id, getattr(instance, '_account_changes', {}), using)
+        instance._account_changes = {}
 
 
 @receiver(m2m_changed, sender=Person.roles.through)
@@ -57,34 +71,6 @@ def profile_roles_changed(sender, instance, action, reverse, pk_set, **kwargs):
         # The flag mirrors roles; it must not re-add a deliberately removed role.
         instance.is_coordinator = instance.legacy_coordinator_access or instance.roles.filter(coordinator_role_q()).exists()
         sync_person(instance)
-
-
-@receiver(m2m_changed, sender=get_user_model().groups.through)
-def account_groups_changed(sender, instance, action, reverse, pk_set, **kwargs):
-    if syncing.get():
-        return
-    if reverse:
-        if action == "pre_clear":
-            instance._cms_accounts = list(instance.user_set.values_list("pk", flat=True))
-        ids = getattr(instance, "_cms_accounts", []) if action == "post_clear" else pk_set or ()
-        users = get_user_model().objects.filter(pk__in=ids)
-    else:
-        users = [instance]
-    if not action.startswith("post_"):
-        return
-    token = syncing.set(True)
-    try:
-        for user in users:
-            person = Person.objects.filter(user=user).first()
-            if person:
-                names = [name for name in user.groups.values_list("name", flat=True) if not is_general_coordinator_name(name)]
-                roles = [Role.objects.get_or_create(name=name)[0] for name in names]
-                person.roles.set(roles)
-                Person.objects.filter(pk=person.pk).update(
-                    is_coordinator=person.legacy_coordinator_access or any(map(is_coordinator_role_name, names))
-                )
-    finally:
-        syncing.reset(token)
 
 
 @receiver(pre_save, sender=get_user_model())
@@ -118,11 +104,3 @@ def remember_role_edit(sender, instance, **kwargs):
 def changed_role(sender, instance, **kwargs):
     for person in Person.objects.filter(pk__in=getattr(instance, "_cms_role_people", ())):
         sync_person(person)
-
-
-@receiver(post_delete, sender=Group)
-def deleted_group(sender, instance, **kwargs):
-    if syncing.get():
-        return
-    for person in Person.objects.filter(roles__name=instance.name):
-        person.roles.remove(*person.roles.filter(name=instance.name))

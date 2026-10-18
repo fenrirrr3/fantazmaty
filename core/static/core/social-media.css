@@ -1,4 +1,4 @@
-/* Social Media: tabela opowiadań do promocji i rozwijana sekcja „Inne”. Kolory wyłącznie z tokenów motywu. */
+/* Social Media: rozwijana sekcja „Inne” i tabela opowiadań do promocji. Kolory wyłącznie z tokenów motywu. */
 
 .social-media-filters-body {
     border-bottom: 1px solid var(--border);
@@ -13,31 +13,51 @@
     align-items: center;
     gap: var(--space-2);
     min-height: var(--control-height);
+    margin-inline-end: var(--space-2);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.social-media-unpublished > input {
+    width: 1.1rem;
+    height: 1.1rem;
+    margin: 0;
 }
 
 /* Dziewięć kolumn z polami edycji: węższe odstępy w komórkach, żeby przycisk „Zapisz” był widoczny bez przewijania. */
-.social-media-table:not(.social-media-other-table) {
+.social-media-table {
     --cell-padding-inline: var(--space-2);
 }
 
-/* Status wpisu: Wolne – neutralny, W przygotowaniu – ostrzegawczy, Wrzucone – sukces. */
-.status.social-status {
-    --badge-bg: var(--badge-neutral-bg);
-    --badge-fg: var(--badge-neutral-fg);
-    white-space: nowrap;
+.social-media-table td {
+    vertical-align: middle;
 }
 
-.status.social-status[data-status="in_progress"] {
-    --badge-bg: var(--warning-light);
-    --badge-fg: var(--warning);
+/* Wybrany status jest jedynym oznaczeniem: kolor listy zależy od wybranej wartości
+   (Wolne – zwykłe pole, W przygotowaniu – ostrzegawczy, Wrzucone – sukces). */
+.social-status-select {
+    font-weight: 600;
 }
 
-.status.social-status[data-status="posted"] {
-    --badge-bg: var(--success-light);
-    --badge-fg: var(--success);
+.social-status-select:has(option[value="in_progress"]:checked) {
+    border-color: var(--warning-border);
+    background-color: var(--warning-light);
+    color: var(--warning);
 }
 
-/* Pole edycji w komórce: odznaka lub link nad kontrolką, błąd pod nią. */
+.social-status-select:has(option[value="posted"]:checked) {
+    border-color: var(--success-border);
+    background-color: var(--success-light);
+    color: var(--success);
+}
+
+.social-status-select > option {
+    background-color: var(--surface);
+    color: var(--text);
+    font-weight: 400;
+}
+
+/* Pole edycji w komórce: zapisany link nad kontrolką, błąd pod nią. */
 .social-media-field {
     display: grid;
     justify-items: stretch;
@@ -45,7 +65,7 @@
     min-width: 0;
 }
 
-/* Kontrolki w tabeli są niższe i mniejsze niż w formularzach, żeby wiersz mieścił się bez przewijania.
+/* Kontrolki w tabeli są niższe niż w formularzach, żeby wiersz był zwarty.
    Wybór statusu i data mieszczą najdłuższą wartość; link zajmuje resztę kolumny. */
 .social-media-field > :is(select, input) {
     width: 100%;
@@ -54,15 +74,15 @@
 }
 
 .social-media-field > select {
-    min-width: 10rem;
+    min-width: 10.5rem;
 }
 
 .social-media-field > input[type="date"] {
-    min-width: 8.5rem;
+    min-width: 9rem;
 }
 
 .social-media-field > input:is([type="url"], [type="text"]) {
-    min-width: 9rem;
+    min-width: 10rem;
 }
 
 /* Zapisany link skraca się do szerokości kolumny (width: 0 – nie poszerza tabeli), pełny adres w podpowiedzi. */
@@ -71,6 +91,7 @@
     width: 0;
     min-width: 100%;
     overflow: hidden;
+    font-size: var(--font-size-sm);
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -90,9 +111,9 @@
     margin: var(--space-2) 0 0;
 }
 
-/* „Inne”: formularz dodawania w jednym wierszu, opis szerszy od pozostałych pól. */
+/* „Inne”: nad tabelą opowiadań, domyślnie zwinięte; formularz dodawania w jednym wierszu. */
 .social-media-other {
-    margin-top: var(--space-5);
+    margin-bottom: var(--space-5);
 }
 
 .social-media-other > summary .record-counter {

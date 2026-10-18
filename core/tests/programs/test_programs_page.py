@@ -267,7 +267,7 @@ class AnthologyCreditsTests(TestCase):
             text.authors.add(*writers)
             cls.texts[title] = text
         import_completed_workflow(text_id=cls.texts['Brzask'].pk, next_stage='ready', stages=[
-            {'stage_type': 'editing', 'assigned_to': cls.admin.email}])
+            {'stage_type': 'editing', 'assigned_to': cls.editor.email}])
         WorkflowStage.objects.create(text=cls.texts['Wycofany'], stage_type='withdrawn', is_released=True,
                                      is_completed=False)
         cls.expected_groups = [group for group in text_credit_groups(cls.texts['Brzask']) if group['names']]

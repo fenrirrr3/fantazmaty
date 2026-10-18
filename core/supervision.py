@@ -102,7 +102,8 @@ def integrity_issues():
         issues.append(issue('Konto bez profilu zespołu',str(user),reverse('admin:auth_user_change',args=[user.pk])))
     for person in Person.objects.select_related('user').exclude(user__isnull=True):
         if person.email and person.user.email and person.email.casefold()!=person.user.email.casefold():
-            issues.append(issue('Różne e-maile powiązanej osoby i konta',str(person)+' – powiązanie po ID pozostaje zachowane',reverse('admin:people_person_change',args=[person.pk])))
+            # Nowe zapisy trzymają jeden e-mail; rozjazd zostaje tylko w starych danych.
+            issues.append(issue('Różne e-maile powiązanej osoby i konta',str(person)+' – stare dane: uruchom „manage.py sync_accounts” albo zapisz osobę ponownie',reverse('admin:people_person_change',args=[person.pk])))
     for text in Text.objects.filter(Q(anthology__is_translated=True, translation__foreign_authors__isnull=True) | (Q(anthology__is_translated=False) | Q(anthology__isnull=True)) & Q(authors__isnull=True)).exclude(
             # Tomy „Ekstrakty” zbierają miniatury bez przypisanego autora tekstu.
             Q(anthology__is_extracts=True) | Q(anthology__extract_volume__isnull=False)

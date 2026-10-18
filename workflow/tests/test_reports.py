@@ -571,7 +571,7 @@ class ReportPageTests(TestCase):
         from core.models import WorkflowEvent
 
         WorkflowEvent.objects.create(title='T', actor=self.editor, actor_name='redaktor', previous_status='',
-                                     next_status='', channel='', personal_work=True,
+                                     next_status='', personal_work=True,
                                      personal_work_description='Zakończono redakcję')
 
         def names(**params):

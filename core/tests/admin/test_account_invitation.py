@@ -14,6 +14,7 @@ from django.urls import reverse
 
 from core.invitations import invitation_token_generator
 from fantazmaty.testing import create_member, create_superuser
+from people.models import Person
 
 User = get_user_model()
 LINK = re.compile(r'http://testserver(/konto/zaproszenie/[^/\s]+/[^/\s]+/)')
@@ -99,18 +100,18 @@ class AccountInvitationTests(TransactionTestCase):
 
     def test_new_account_with_invitation_needs_no_password(self):
         url = reverse('admin:auth_user_add')
-        base = {'username': 'zaproszona', 'first_name': 'Zofia', 'last_name': 'Nowa', 'email': 'zofia@example.com',
+        base = {'first_name': 'Zofia', 'last_name': 'Nowa', 'email': 'zofia@example.com',
                 'password1': '', 'password2': ''}
         response = self.client.post(url, {**base, 'send_invitation': 'on'})
         self.assertEqual(response.status_code, 302)
-        user = User.objects.get(username='zaproszona')
+        user = User.objects.get(username='zofia@example.com')
         self.assertFalse(user.has_usable_password())
         self.assertEqual(mail.outbox[-1].to, ['zofia@example.com'])
         self.assertIn('Dzień dobry, Zofia!', mail.outbox[-1].body)
         # Bez zaproszenia hasło jest nadal wymagane.
-        response = self.client.post(url, {**base, 'username': 'bez-hasla', 'email': 'inna@example.com'})
+        response = self.client.post(url, {**base, 'email': 'inna@example.com'})
         self.assertEqual(response.status_code, 200)
-        self.assertFalse(User.objects.filter(username='bez-hasla').exists())
+        self.assertFalse(User.objects.filter(email='inna@example.com').exists())
         self.assertEqual(len(mail.outbox), 1)
 
 
@@ -139,3 +140,75 @@ class InvitationRollbackTests(TestCase):
         self.assertEqual([m.to for m in mail.outbox], [['wycofana@example.com']])
         self.assertTrue(LogEntry.objects.filter(object_id=str(member.pk), change_message='Wysłano zaproszenie do CMS-u.').exists())
         self.assertEqual([str(m) for m in request._messages], ['Wysłano zaproszenie na adres wycofana@example.com.'])
+
+
+class PersonScreenAccountTests(TestCase):
+    """Konto zakładane z ekranu osoby: login = e-mail osoby, zaproszenie po zatwierdzeniu transakcji, stan konta i przycisk zaproszenia."""
+
+    def setUp(self):
+        self.admin = create_superuser('osoba-konto-admin')
+        self.client.force_login(self.admin)
+
+    def add_person(self, **values):
+        data = {'first_name': 'Zofia', 'last_name': 'Nowa', 'email': 'Zofia.Nowa@example.com', 'dropbox_email': 'zofia-box@example.com',
+                'is_active': 'on', 'create_account': 'on', '_save': 'Zapisz', **values}
+        with self.captureOnCommitCallbacks(execute=True):
+            return self.client.post(reverse('admin:people_person_add'), data, follow=True)
+
+    def test_creating_person_with_account_sends_invitation_after_commit(self):
+        self.assertEqual(self.add_person().status_code, 200)
+        person = Person.objects.get(last_name='Nowa')
+        user = person.user
+        self.assertEqual((user.username, user.email, user.first_name, user.last_name),
+                         ('zofia.nowa@example.com', 'zofia.nowa@example.com', 'Zofia', 'Nowa'))
+        self.assertTrue(user.is_active)
+        self.assertFalse(user.has_usable_password())
+        self.assertEqual(person.dropbox_email, 'zofia-box@example.com')
+        self.assertEqual([m.to for m in mail.outbox], [['zofia.nowa@example.com']])
+        self.assertTrue(LogEntry.objects.filter(object_id=str(user.pk), change_message='Wysłano zaproszenie do CMS-u.').exists())
+        page = self.client.get(reverse('admin:people_person_change', args=[person.pk]))
+        for text in ('Logowanie aktywne.', 'Zaproszenie nieprzyjęte – hasło nieustawione.', 'Ostatnie zaproszenie:',
+                     reverse('admin:auth_user_invite', args=[user.pk]), 'zofia.nowa@example.com – <a',
+                     'otwórz konto'):
+            with self.subTest(text=text):
+                self.assertContains(page, text)
+        # Osoba z kontem: bez tworzenia i przepinania konta.
+        for absent in ('name="create_account"', 'name="user"'):
+            with self.subTest(absent=absent):
+                self.assertNotContains(page, absent)
+
+    def test_add_screen_links_existing_account_without_account_shortcuts(self):
+        """Dodawanie osoby: pole „Powiąż istniejące konto” bez przycisków dodawania/edycji konta (konto tworzy pole
+        „Utwórz konto…”) i bez pustego wiersza loginu."""
+        page = self.client.get(reverse('admin:people_person_add'))
+        self.assertContains(page, 'Powiąż istniejące konto')
+        self.assertContains(page, 'name="create_account"')
+        for absent in ('id="add_id_user"', 'id="change_id_user"', 'id="delete_id_user"', 'id="view_id_user"',
+                       'field-account_link'):
+            with self.subTest(absent=absent):
+                self.assertNotContains(page, absent)
+
+    def test_invitation_button_on_person_screen_returns_to_person(self):
+        self.add_person()
+        person = Person.objects.get(last_name='Nowa')
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(reverse('admin:auth_user_invite', args=[person.user_id]), {'_from_person': '1'})
+        self.assertRedirects(response, reverse('admin:people_person_change', args=[person.pk]))
+        self.assertEqual(len(mail.outbox), 2)
+
+    def test_rolled_back_person_save_creates_no_account_and_sends_no_mail(self):
+        """Wycofany zapis osoby nie zostawia konta i nie wysyła zaproszenia."""
+        from people.admin import PersonAdminForm
+        request = RequestFactory().post('/')
+        request.user, request.session = self.admin, {}
+        request._messages = FallbackStorage(request)
+        form = PersonAdminForm({'first_name': 'Jan', 'last_name': 'Wycofany', 'email': 'wycofany@example.com',
+                                'is_active': 'on', 'create_account': 'on'})
+        self.assertTrue(form.is_valid(), form.errors)
+        with self.captureOnCommitCallbacks(execute=True):
+            with self.assertRaises(RuntimeError), transaction.atomic():
+                admin.site._registry[Person].save_model(request, form.save(commit=False), form, False)
+                self.assertTrue(User.objects.filter(username='wycofany@example.com').exists())
+                raise RuntimeError('błąd zapisu')
+        self.assertFalse(User.objects.filter(email='wycofany@example.com').exists())
+        self.assertEqual(mail.outbox, [])

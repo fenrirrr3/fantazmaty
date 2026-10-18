@@ -57,7 +57,10 @@ class PostLayoutAccessTests(TestCase):
         self.assertEqual(list(available_stages(self.member, claim_access(self.member))), [stage])
         self.person.is_active = False
         self.person.save()
-        self.assertEqual(self.client.get(route).status_code, 403)
+        # Odznaczenie „wciąż w ekipie” blokuje konto, więc sesja wygasa i strona odsyła do logowania.
+        response = self.client.get(route)
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(response['Location'].startswith(reverse('login')))
         self.client.force_login(self.admin)
         self.assertEqual(self.client.get(route).status_code, 200)
         self.assertEqual(self.client.get(reverse('core:audio_proofreading')).status_code, 200)

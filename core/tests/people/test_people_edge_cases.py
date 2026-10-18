@@ -35,7 +35,7 @@ class PeopleListFilterTests(TestCase):
     def names(self, params, status=200):
         response = self.client.get(reverse('core:people_list'), params)
         self.assertEqual(response.status_code, status)
-        return response, sorted(person.user.username for person in response.context['people'])
+        return response, sorted(person.first_name for person in response.context['people'])
 
     def test_role_filters_and_legacy_parameters(self):
         """Dawne parametry q i role działają jak nowe; osoba z kilkoma rolami pojawia się raz."""

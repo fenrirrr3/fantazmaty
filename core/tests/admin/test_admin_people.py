@@ -25,15 +25,19 @@ class AccountAdminTests(TestCase):
         self.client.force_login(self.admin)
 
     def add(self, **values):
-        data = {'username': 'nowe-konto', 'first_name': 'Nowa', 'last_name': 'Osoba', 'email': 'nowe@example.test',
+        data = {'first_name': 'Nowa', 'last_name': 'Osoba', 'email': 'nowe@example.test',
                 'password1': 'Bardzo-trudne-haslo-42', 'password2': 'Bardzo-trudne-haslo-42',
                 'usable_password': 'true', '_save': 'Zapisz', **values}
         return self.client.post(reverse('admin:auth_user_add'), data)
 
     def test_new_account_requires_unique_clean_identity(self):
-        cases = [({'username': 'z\tłą'}, 'username', 'znaków sterujących'),
-                 ({'username': 'ACCOUNTS-MEMBER'}, 'username', 'już zajęta'),
-                 ({'email': 'BARE@example.test'}, 'email', ''),
+        """Nowe konto: e-mail wolny w kontach (także jako nazwa użytkownika) i u osób, imię i nazwisko wymagane;
+        nazwa użytkownika powstaje z e-maila."""
+        User.objects.create_user('zajeta@example.test', 'inny@example.test')
+        Person.objects.create(first_name='Ewa', last_name='Bezkonta', email='Ewa@Example.test')
+        cases = [({'email': 'BARE@example.test'}, 'email', 'Konto z tym adresem e-mail już istnieje.'),
+                 ({'email': 'zajeta@example.test'}, 'email', 'Konto z tym adresem e-mail już istnieje.'),
+                 ({'email': 'ewa@example.test'}, 'email', 'Ten adres e-mail ma już osoba „Ewa Bezkonta” – konto załóż na jej ekranie.'),
                  ({'first_name': ''}, 'first_name', ''),
                  ({'last_name': 'x' * 101}, 'last_name', '')]
         for values, field, message in cases:
@@ -41,8 +45,23 @@ class AccountAdminTests(TestCase):
                 page = self.add(**values)
                 self.assertEqual(page.status_code, 200)
                 self.assertIn(message, str(page.context['adminform'].form.errors[field]))
-        self.assertEqual(self.add(first_name='  Nowa   Maria ').status_code, 302)
-        self.assertEqual(User.objects.get(username='nowe-konto').first_name, 'Nowa Maria')
+        self.assertEqual(self.add(first_name='  Nowa   Maria ', email=' Nowe@Example.test').status_code, 302)
+        user = User.objects.get(email='nowe@example.test')
+        self.assertEqual((user.username, user.first_name), ('nowe@example.test', 'Nowa Maria'))
+
+    def test_account_screen_has_no_staff_permissions_or_groups(self):
+        """Ekran konta nie pokazuje is_staff, uprawnień ani grup; nazwa użytkownika jest tylko do odczytu,
+        a aktywność konta powiązanego z osobą ustawia się na ekranie osoby."""
+        for user, active_editable in ((self.member, False), (self.bare, True)):
+            page = self.client.get(reverse('admin:auth_user_change', args=[user.pk]))
+            form = page.context['adminform'].form
+            with self.subTest(user=user.username):
+                for name in ('is_staff', 'user_permissions', 'groups', 'username'):
+                    self.assertNotIn(name, form.fields)
+                self.assertEqual('is_active' in form.fields, active_editable)
+                self.assertIn('is_superuser', form.fields)
+        changelist = self.client.get(reverse('admin:auth_user_changelist'))
+        self.assertNotIn('is_staff', changelist.context['cl'].list_display)
 
     def test_account_names_flow_into_linked_profile_and_link_is_shown(self):
         url = reverse('admin:auth_user_change', args=[self.member.pk])

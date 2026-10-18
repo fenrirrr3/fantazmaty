@@ -24,3 +24,13 @@
         grid-template-columns: minmax(0, 1fr);
     }
 }
+
+/* Stan konta: przycisk zaproszenia i podpowiedź pod tekstem, bez wcięcia pomocy admina. */
+.field-account_status .readonly > .button {
+    margin-top: var(--space-2);
+}
+
+.field-account_status .readonly > .help {
+    margin: var(--space-1) 0 0;
+    padding: 0;
+}

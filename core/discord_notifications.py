@@ -1,4 +1,5 @@
-"""Powiadomienia Discord z reguł w panelu admina: tekst do wzięcia, nowe zgłoszenie do recenzji, zakończenie etapu.
+"""Powiadomienia Discord z reguł w panelu admina: tekst do wzięcia, nowe zgłoszenie do recenzji, zakończenie etapu,
+produkcja audiobooka.
 
 Wiadomości trafiają do kolejki (DiscordNotification) w tej samej transakcji co zmiana w CMS-ie,
 a wysyłka następuje dopiero po zatwierdzeniu transakcji. Błąd wysyłki nigdy nie cofa zmiany.
@@ -111,9 +112,11 @@ def base_url():
     return str(raw).rstrip('/')
 
 
-def preview_link(*, text_id=None, review_id=None):
-    """Odnośnik Markdown „O, tutaj” do podglądu tekstu (albo zgłoszenia do recenzji) w CMS-ie."""
-    if review_id is not None:
+def preview_link(*, text_id=None, review_id=None, audiobook_id=None):
+    """Odnośnik Markdown „O, tutaj” do podglądu tekstu, zgłoszenia do recenzji albo strony audiobooka w CMS-ie."""
+    if audiobook_id is not None:
+        path = reverse('core:audiobook_detail', args=[audiobook_id])
+    elif review_id is not None:
         path = reverse('core:assigned_review_detail', args=[review_id])
     elif text_id is not None:
         path = reverse('core:assigned_text_detail', args=[text_id])
@@ -147,7 +150,7 @@ def render(template, context, mention='', link=''):
 
 
 def queue(trigger, *, using='default', text=None, review=None, stage_id=None, context=None, reminder_of=None,
-          reminder_days=None):
+          reminder_days=None, link=None):
     """Tworzy wiadomość z włączonej reguły; zwraca obiekt kolejki albo None.
 
     Przypomnienie bez własnego kanału lub oznaczenia przejmuje je z pierwszego powiadomienia (reminder_of).
@@ -168,7 +171,8 @@ def queue(trigger, *, using='default', text=None, review=None, stage_id=None, co
         except ValueError:
             logger.warning('Discord notification rule %s has an unknown role mention', trigger)
             role_ids, here = [], False
-    link = preview_link(text_id=getattr(text, 'pk', None), review_id=getattr(review, 'pk', None))
+    if link is None:
+        link = preview_link(text_id=getattr(text, 'pk', None), review_id=getattr(review, 'pk', None))
     content = render(random.choice(templates), context or {}, mention_text(role_ids, here), link)
     notification = DiscordNotification.objects.using(using).create(
         trigger=trigger, channel=channel, content=content, role_ids=','.join(role_ids),
@@ -223,6 +227,16 @@ def deliver(pk, using='default'):
     except DeliveryError as exc:
         status = 'unknown' if exc.uncertain else 'failed'
     rows.filter(pk=pk, status='sending').update(status=status, message_id=message_id)
+
+
+AUDIOBOOK = 'audiobook_production'
+
+
+def audiobook_changed(text, *, actor, status, change, using='default'):
+    """Każda zmiana w produkcji audiobooka (status, etapy, korekta, przypisanie korektora) – jedna reguła.
+    Odnośnik prowadzi do strony audiobooka."""
+    safe_queue(AUDIOBOOK, using=using, text=text, link=preview_link(audiobook_id=text.pk),
+               context={**text_context(text), 'osoba': actor, 'status': status, 'zmiana': change})
 
 
 def stage_available(stage):

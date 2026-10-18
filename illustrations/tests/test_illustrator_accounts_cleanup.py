@@ -71,11 +71,11 @@ class IllustratorOnlyAccountCleanupTests(TestCase):
         Illustrator.objects.create(first_name='dorota', last_name='Rysownik')
         output = self.run_migration()
         self.assertFalse(self.exists(removed))
-        self.assertFalse(get_user_model().objects.filter(username='anna').exists())
+        self.assertFalse(get_user_model().objects.filter(email='anna@example.test').exists())
         self.assertFalse(self.exists(no_account))
         self.assertTrue(self.exists(logged))
         self.assertTrue(self.exists(other_role))
-        self.assertTrue(get_user_model().objects.filter(username='dorota').exists())
+        self.assertTrue(get_user_model().objects.filter(email='dorota@example.test').exists())
         self.assertIn('Usunięte konta samych ilustratorów (2)', output)
         self.assertEqual(Illustrator.objects.count(), 4)
 
@@ -89,7 +89,7 @@ class IllustratorOnlyAccountCleanupTests(TestCase):
         today = timezone.localdate()
         Vacation.objects.create(person=busy, start_date=today, end_date=timezone.now() + timedelta(days=1))
         admin = self.person('hania')
-        get_user_model().objects.filter(username='hania').update(is_staff=True)
+        get_user_model().objects.filter(email='hania@example.test').update(is_staff=True)
         Illustrator.objects.create(first_name='hania', last_name='Rysownik')
         output = self.run_migration()
         for person in (missing, ambiguous, busy, admin):

@@ -47,10 +47,10 @@ class AdminNavigationTests(TestCase):
         self.assertEqual(
             [g['app_label'] for g in groups],
             ['submissions', 'texts', 'publication', 'art', 'audio', 'people', 'promotion', 'recruitment',
-             'accounts', 'settings', 'history'],
+             'settings', 'history'],
         )
         self.assertEqual([g['collapsed'] for g in groups],
-                         [False, False, False, True, True, True, True, True, True, True, True])
+                         [False, False, False, True, True, True, True, True, True, True])
         by_label = {group['app_label']: group for group in groups}
 
         def names(group):
@@ -74,6 +74,24 @@ class AdminNavigationTests(TestCase):
         self.assertIn('textnote', names(detail))
         self.assertIn('authornote', names(detail))
         self.assertIn('reviewassignment', names(detail))
+
+    def test_accounts_and_groups_are_not_listed_but_account_screen_stays(self):
+        """Nawigacja nie ma „Kont użytkowników” ani „Grup uprawnień” (także w „Pozostałych rekordach”), role są w „Ludziach”,
+        a ekran konta nadal się otwiera (wejście z ekranu osoby)."""
+        entries = [(group['app_label'], item) for top in self.app_list()
+                   for group in (top, *top.get('subgroups', ())) for item in group['models']]
+        listed = {(item['object_name'].lower(), label) for label, item in entries}
+        for name in ('user', 'group'):
+            with self.subTest(model=name):
+                self.assertEqual([label for model, label in listed if model == name], [])
+        self.assertIn(('role', 'people'), listed)
+        page = self.client.get(reverse('admin:index'))
+        for label in ('Konta użytkowników', 'Grupy uprawnień', 'Konta i uprawnienia'):
+            with self.subTest(label=label):
+                self.assertNotContains(page, label)
+        self.assertEqual(self.client.get(reverse('admin:auth_user_change', args=[self.user.pk])).status_code, 200)
+        with self.assertRaises(NoReverseMatch):
+            reverse('admin:auth_group_changelist')
 
     def test_shortcuts_resolve_and_admin_does_not_load_client_table_pagination(self):
         keys = {'audiobooks_queue', 'audiobooks_blacklist', 'audio_description_tasks',

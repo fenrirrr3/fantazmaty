@@ -23,9 +23,10 @@ def revoke_coordinator(person):
         person.is_coordinator = False
         person.legacy_coordinator_access = False
         if user:
+            # Sprzątanie grup z dawnego lustra ról; grupy nie dają już żadnych uprawnień.
             user.groups.remove(*user.groups.filter(coordinator_role_q()))
-            # Preserve independent admin permissions and superusers.
-            if not user.is_superuser and not user.user_permissions.exists() and not user.groups.filter(permissions__isnull=False).exists():
+            # Do panelu admina wchodzi tylko superuser, więc is_staff zostaje wyłącznie superuserom.
+            if not user.is_superuser and user.is_staff:
                 get_user_model().objects.filter(pk=user.pk).update(is_staff=False)
                 bump(user._meta.label_lower, user.pk, user._state.db)
     finally:

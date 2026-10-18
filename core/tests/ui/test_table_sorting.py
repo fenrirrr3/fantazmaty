@@ -179,7 +179,7 @@ class TableSortingTests(CoreTestDataMixin, TestCase):
 
         def event(text, previous, next_):
             return WorkflowEvent.objects.create(text=text, title=text.title, actor=user, actor_name="A",
-                                                previous_status=previous, next_status=next_, channel="")
+                                                previous_status=previous, next_status=next_)
 
         first = event(one, "Redakcja", "Weryfikacja")
         second = event(two, "Redakcja", "Korekta")

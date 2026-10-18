@@ -241,9 +241,10 @@ User = get_user_model()
 
 
 class IdentityFormMixin:
+    """Login konta to e-mail: nazwa użytkownika powstaje z niego automatycznie, e-mail jest wspólny z osobą."""
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["username"] = forms.CharField(label="Nazwa użytkownika", max_length=150)
         self.fields["first_name"].required = True
         self.fields["last_name"].required = True
         # Imię i nazwisko trafiają też do profilu osoby, który mieści 100 znaków.
@@ -256,31 +257,35 @@ class IdentityFormMixin:
             self.fields[name].validators.append(MaxLengthValidator(limit))
         self.fields["email"].required = True
         self.fields["email"].label = "Adres e-mail (login)"
-        self.fields["username"].help_text = "Wewnętrzna nazwa konta. Do logowania służy adres e-mail."
-
-    def _get_validation_exclusions(self):
-        return super()._get_validation_exclusions() | {"username"}
-
-    def clean_username(self):
-        value = self.cleaned_data["username"].strip()
-        if any(ord(char) < 32 for char in value):
-            raise forms.ValidationError("Nazwa nie może zawierać znaków sterujących.")
-        if User.objects.filter(username__iexact=value).exclude(pk=self.instance.pk).exists():
-            raise forms.ValidationError("Ta nazwa użytkownika jest już zajęta.")
-        return value
+        self.fields["email"].help_text = "Jest też nazwą użytkownika i adresem kontaktowym osoby."
 
     def clean_first_name(self):
         return " ".join(self.cleaned_data["first_name"].split())
 
     def clean_email(self):
-        from core.account_identity import validate_account_email
-        return validate_account_email(
+        from people.accounts import validate_login_email
+        from people.models import Person
+        value = validate_login_email(
             self.cleaned_data["email"], exclude_pk=self.instance.pk,
             using=self.instance._state.db or "default",
         )
+        others = Person.objects.filter(email__iexact=value)
+        if self.instance.pk:
+            others = others.exclude(user_id=self.instance.pk)
+        other = others.first()
+        if other:
+            hint = "" if self.instance.pk else " – konto załóż na jej ekranie"
+            raise forms.ValidationError(f"Ten adres e-mail ma już osoba „{other}”{hint}.")
+        return value
 
     def clean_last_name(self):
         return " ".join(self.cleaned_data["last_name"].split())
+
+    def _post_clean(self):
+        email = self.cleaned_data.get("email")
+        if email:
+            self.instance.username = email
+        super()._post_clean()
 
 
 class AccountCreationForm(IdentityFormMixin, AdminUserCreationForm):
@@ -290,7 +295,7 @@ class AccountCreationForm(IdentityFormMixin, AdminUserCreationForm):
 
     class Meta(UserCreationForm.Meta):
         model = User
-        fields = ("username", "first_name", "last_name", "email")
+        fields = ("first_name", "last_name", "email")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -307,27 +312,53 @@ class AccountCreationForm(IdentityFormMixin, AdminUserCreationForm):
 INVITATION_LOG = "Wysłano zaproszenie do CMS-u."
 
 
+def invitation_state(user):
+    """Data ostatniego zaproszenia (z dziennika admina) – wspólna dla ekranu konta i osoby."""
+    from django.contrib.admin.models import LogEntry
+    from django.utils import timezone
+    last = LogEntry.objects.filter(object_id=str(user.pk), content_type__model="user",
+                                   change_message=INVITATION_LOG).order_by("-action_time").first()
+    if not last:
+        return "Nie wysłano jeszcze zaproszenia."
+    return f"Ostatnie zaproszenie: {timezone.localtime(last.action_time):%d.%m.%Y %H:%M}."
+
+
 class AccountChangeForm(IdentityFormMixin, UserChangeForm):
     pass
 
 
 class AccountAdmin(UserAdmin):
-    list_display = ("username", "first_name", "last_name", "email", "is_active", "is_staff", "is_superuser")
-    readonly_fields = (*UserAdmin.readonly_fields, "profile_link", "invitation")
-    fieldsets = (*UserAdmin.fieldsets, ("Profil członka zespołu", {"fields": ("profile_link",)}),
-                 ("Zaproszenie do CMS-u", {"fields": ("invitation",)}))
+    """Konto logowania: hasło, superuser i zaproszenie. Role, e-mail i aktywność ustawia się na ekranie osoby."""
+    list_display = ("username", "first_name", "last_name", "email", "is_active", "is_superuser")
+    list_filter = ("is_superuser", "is_active")
+    filter_horizontal = ()
+    readonly_fields = (*UserAdmin.readonly_fields, "username", "profile_link", "invitation")
+    fieldsets = (
+        (None, {"fields": ("username", "password")}),
+        ("Dane osobowe", {"fields": ("first_name", "last_name", "email")}),
+        ("Dostęp", {"fields": ("is_active", "is_superuser"),
+                    "description": "Uprawnienia w CMS-ie wynikają z ról osoby. Do panelu administracyjnego wchodzi tylko superuser."}),
+        ("Ważne daty", {"fields": ("last_login", "date_joined")}),
+        ("Profil członka zespołu", {"fields": ("profile_link",)}),
+        ("Zaproszenie do CMS-u", {"fields": ("invitation",)}),
+    )
+
+    def get_readonly_fields(self, request, obj=None):
+        from people.models import Person
+        fields = super().get_readonly_fields(request, obj)
+        # Logowanie osoby z ekipy włącza i wyłącza pole „wciąż w ekipie” na ekranie osoby.
+        if obj and obj.pk and Person.objects.filter(user_id=obj.pk).exists():
+            fields = (*fields, "is_active")
+        return fields
 
     @admin.display(description="Zaproszenie")
     def invitation(self, obj):
-        from django.contrib.admin.models import LogEntry
         from django.urls import reverse
         from django.utils.html import format_html
         from core.invitations import invitation_days
         if not obj or not obj.pk:
             return "–"
-        last = LogEntry.objects.filter(object_id=str(obj.pk), content_type__model="user",
-                                       change_message=INVITATION_LOG).order_by("-action_time").first()
-        state = (f"Ostatnie zaproszenie: {last.action_time:%d.%m.%Y %H:%M}." if last else "Nie wysłano jeszcze zaproszenia.")
+        state = invitation_state(obj)
         if obj.last_login:
             state += f" Ostatnie logowanie: {obj.last_login:%d.%m.%Y}."
         return format_html(
@@ -345,12 +376,16 @@ class AccountAdmin(UserAdmin):
         from django.core.exceptions import PermissionDenied
         from django.http import HttpResponseNotAllowed
         from django.shortcuts import get_object_or_404, redirect
+        from people.models import Person
         if request.method != "POST":
             return HttpResponseNotAllowed(["POST"])
         user = get_object_or_404(User, pk=object_id)
         if not self.has_change_permission(request, user):
             raise PermissionDenied
         self._invite(request, user)
+        person = Person.objects.filter(user_id=user.pk).first() if request.POST.get("_from_person") else None
+        if person:
+            return redirect("admin:people_person_change", person.pk)
         return redirect("admin:auth_user_change", user.pk)
 
     def _invite(self, request, user):
@@ -396,26 +431,34 @@ class AccountAdmin(UserAdmin):
         return format_html('<a href="{}">Otwórz profil: {}</a>', reverse('admin:people_person_change', args=[person.pk]), person)
 
     def save_model(self, request, obj, form, change):
+        """Imiona i e-mail zmienione na koncie trafiają do osoby (e-mail osoby i konta są zawsze te same)."""
         obj._cms_edit_profile_name = True
         super().save_model(request, obj, form, change)
         from people.models import Person
         person = Person.objects.filter(user_id=obj.pk).first()
-        if person and {'first_name', 'last_name'}.intersection(form.changed_data):
-            person.first_name, person.last_name = obj.first_name, obj.last_name
-            person.save(update_fields=['first_name', 'last_name'])
+        changed = {'first_name', 'last_name', 'email'}.intersection(form.changed_data)
+        if person and changed:
+            for name in changed:
+                setattr(person, name, getattr(obj, name))
+            person.save(update_fields=sorted(changed))
 
     search_fields = ('first_name__plcontains', 'last_name__plcontains', 'email__plcontains', 'username__plcontains')
     ordering = ('last_name', 'first_name', 'pk')
     form = AccountChangeForm
     add_form = AccountCreationForm
     add_fieldsets = ((None, {"classes": ("wide",), "fields": (
-        "username", "first_name", "last_name", "email", "send_invitation", "password1", "password2",
+        "first_name", "last_name", "email", "send_invitation", "password1", "password2",
     )}),)
 
 
 if admin.site.is_registered(User):
     admin.site.unregister(User)
 admin.site.register(User, AccountAdmin)
+
+# Grupy kont nie dają uprawnień w CMS-ie (decydują role osoby), więc nie ma ich w panelu.
+from django.contrib.auth.models import Group  # noqa: E402
+if admin.site.is_registered(Group):
+    admin.site.unregister(Group)
 
 
 
@@ -724,7 +767,6 @@ class WorkflowEventAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     list_display = ('created_at', 'title', 'previous_status', 'next_status', 'actor_name')
     list_filter = ('kind',)
     search_fields = ('title', 'actor_name')
-    # Pola channel, status, message_id i sending_started_at zostały po dawnej wysyłce na Discord – nie są używane.
     fields = readonly_fields = ('created_at', 'kind', 'text', 'title', 'authors', 'actor', 'actor_name',
                                 'previous_status', 'next_status', 'details', 'personal_work', 'personal_work_description')
 

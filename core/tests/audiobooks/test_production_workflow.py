@@ -14,6 +14,7 @@ from django.utils import timezone
 from lxml import html
 
 from core.admin import AudiobookAdmin
+from core.discord_notifications import person_name
 from core.models import AudioContributor, Audiobook, AudiobookStage, DiscordNotification, NotificationRule, WorkflowEvent
 from core.selectors.texts import text_list_context
 from fantazmaty.testing import form_value
@@ -120,24 +121,52 @@ class ProductionWorkflowTests(AudiobookProductionTestData, TestCase):
         self.set_status('editing')
         self.assertEqual(AudiobookStage.objects.filter(stage_type='proofreading').count(), 1)
 
-    @override_settings(DISCORD_WEBHOOKS={'Testowy': 'https://discord.com/api/webhooks/1/dawny-kanal',
-                                         'Kanał': 'https://discord.com/api/webhooks/2/reguly'})
-    def test_production_is_logged_without_discord_messages(self):
-        """Zmiany statusu, przejęcie i zakończenie korekty audiobooka trafiają do dziennika (WorkflowEvent), ale nie
-        wysyłają nic na Discord – także przy włączonych wszystkich regułach i skonfigurowanym dawnym kanale."""
-        for rule in NotificationRule.objects.all():
-            rule.enabled, rule.channel = True, 'Kanał'
-            rule.save()
-            rule.templates.create(content='[etap]: [tytuł]')
+    def production(self):
+        """Pełna ścieżka: Nagrywanie, Korekta, przypisanie korektora, rozpoczęcie i zakończenie korekty."""
         with patch('core.discord_webhook.send_message', return_value='1') as sent, \
                 self.captureOnCommitCallbacks(execute=True):
             self.to_proofreading()
-            self.claim(self.reader)
+            self.assign(self.reader)
+            self.assign(self.reader)  # bez zmiany – bez wpisu
+            self.start(self.reader)
             self.finish(self.reader)
-        self.assertEqual(list(WorkflowEvent.objects.filter(kind='audiobook', text=self.text)
-                              .order_by('pk').values_list('details', flat=True))[2:],
-                         ['Przejęto korektę audiobooka.', 'Zakończono korektę audiobooka. Teraz: Nanoszenie poprawek.'])
-        self.assertEqual(WorkflowEvent.objects.filter(kind='audiobook', text=self.text).count(), 4)
+        return sent
+
+    @override_settings(DISCORD_WEBHOOKS={'Testowy': 'https://discord.com/api/webhooks/1/dawny-kanal',
+                                         'Audiobooki': 'https://discord.com/api/webhooks/2/audiobooki',
+                                         'Kanał': 'https://discord.com/api/webhooks/3/reguly'})
+    def test_each_production_change_is_logged_and_sent_only_by_the_audiobook_rule(self):
+        """Każda zmiana produkcji (status, przypisanie korektora, rozpoczęcie i zakończenie korekty) trafia do dziennika
+        i jako jedna wiadomość z reguły „Produkcja audiobooka” na jej kanał, z odnośnikiem do strony audiobooka.
+        Pozostałe reguły tekstów (także włączone) ani dawny kanał Testowy nic nie dostają."""
+        for rule in NotificationRule.objects.all():
+            rule.enabled = True
+            rule.channel = 'Audiobooki' if rule.trigger == 'audiobook_production' else 'Kanał'
+            rule.save()
+            rule.templates.all().delete()
+            rule.templates.create(content='[zmiana] | [status] | [osoba] | [tytuł]')
+        sent = self.production()
+        details = list(WorkflowEvent.objects.filter(kind='audiobook', text=self.text)
+                       .order_by('pk').values_list('details', flat=True))
+        self.assertEqual(len(details), 5)
+        self.assertEqual(details[2:], [f'Przypisano korektora: {person_name(self.reader)}.',
+                                       'Rozpoczęto korektę audiobooka (' + f'{timezone.localdate():%d.%m.%Y}).',
+                                       'Zakończono korektę audiobooka. Teraz: Nanoszenie poprawek.'])
+        notifications = list(DiscordNotification.objects.order_by('pk'))
+        self.assertEqual({(n.trigger, n.channel, n.status) for n in notifications},
+                         {('audiobook_production', 'Audiobooki', 'sent')})
+        self.assertEqual([n.content.split(' | ')[0] for n in notifications], details)
+        self.assertEqual(notifications[-1].content.split(' | ')[1], 'Nanoszenie poprawek')
+        self.assertIn(reverse('core:audiobook_detail', args=[self.text.pk]), notifications[-1].content)
+        self.assertEqual(sent.call_count, 5)
+        self.assertEqual({call.args[0] for call in sent.call_args_list}, {'https://discord.com/api/webhooks/2/audiobooki'})
+
+    def test_disabled_audiobook_rule_sends_nothing(self):
+        """Wyłączona reguła „Produkcja audiobooka” (stan po migracji): zmiany trafiają tylko do dziennika."""
+        rule = NotificationRule.objects.get(trigger='audiobook_production')
+        self.assertEqual((rule.enabled, rule.channel, rule.templates.count()), (False, '', 1))
+        sent = self.production()
+        self.assertEqual(WorkflowEvent.objects.filter(kind='audiobook', text=self.text).count(), 5)
         sent.assert_not_called()
         self.assertFalse(DiscordNotification.objects.exists())
 

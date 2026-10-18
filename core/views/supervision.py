@@ -208,7 +208,6 @@ def person_permissions(request, person_id):
     person = get_object_or_404(Person.objects.select_related('user', 'author_profile'), pk=person_id)
     user = person.user
     roles = list(person.roles.values_list('name', flat=True))
-    groups = list(user.groups.values_list('name', flat=True)) if user else []
     active = is_team_member(user)
     coordinator = is_coordinator(user)
     from workflow.availability import claim_access, role_access_reason
@@ -220,4 +219,4 @@ def person_permissions(request, person_id):
                         'allowed': not reason, 'block': reason,
                         'source': 'Superuser' if user and user.is_superuser else group})
     available = available_stages_for_user(user=user) if active else []
-    return render(request, 'core/person_permissions.html', {'person': person, 'roles': roles, 'groups': groups, 'permissions': allowed, 'available_count': len(available), 'access': active, 'coordinator': coordinator, 'reviewer': is_reviewer(user)})
+    return render(request, 'core/person_permissions.html', {'person': person, 'roles': roles, 'permissions': allowed, 'available_count': len(available), 'access': active, 'coordinator': coordinator, 'reviewer': is_reviewer(user)})

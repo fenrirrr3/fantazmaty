@@ -1,6 +1,6 @@
 """Social Media: plan wpisów promocyjnych o opowiadaniach i lista innych wpisów.
 
-Lista opowiadań domyślnie obejmuje antologie „Gotowe”; pole „Pokaż teksty z antologii niewydanych”
+Lista opowiadań domyślnie obejmuje antologie „Gotowe”; pole „Pokaż teksty niewydane”
 dokłada antologie w przygotowaniu. Zawsze pomijane są: antologie porzucone, powieści (rozdziały nie są
 osobnymi opowiadaniami), tomy Ekstraktów i teksty wycofane. Każdy wiersz zapisuje się osobno (formularz
 per wiersz), z podpisanym tokenem wersji – nieaktualny formularz nie nadpisze cudzej zmiany.
@@ -162,8 +162,6 @@ def _render(request, query, *, text_form=None, text_pk=None, entry_form=None, en
         page.object_list.append({
             'pk': text.pk, 'title': text.title, 'anthology': text.anthology, 'authors': _authors_display(text),
             'tags': text.tags, 'genre': text.genre, 'record': record,
-            'status': record.status if record else SocialMediaStatus.FREE,
-            'status_label': record.get_status_display() if record else SocialMediaStatus.FREE.label,
             'values': _bound_values(text_form) if bound else _values(record),
             'errors': text_form.errors if bound else {},
             'non_field_errors': text_form.non_field_errors() if bound else [],

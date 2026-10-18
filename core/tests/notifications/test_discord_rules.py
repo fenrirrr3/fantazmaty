@@ -137,7 +137,8 @@ class WorkflowTriggerTests(WorkflowTestDataMixin, TestCase):
 
     def test_default_rules_exist_and_are_disabled(self):
         NotificationRule.objects.update(enabled=False)
-        self.assertEqual(NotificationRule.objects.count(), 9)
+        self.assertEqual(set(NotificationRule.objects.values_list('trigger', flat=True)),
+                         set(NotificationRule.Trigger.values))
         with self.captureOnCommitCallbacks(execute=True):
             self.begin_editing()
         self.assertEqual(self.triggers(), [])
@@ -394,18 +395,37 @@ class AdminPanelTests(TestCase):
                                      role_ids=['555'], here=False, suppress_embeds=True)
         self.assertEqual(DiscordNotification.objects.get().status, 'sent')
 
-    def test_test_panel_fills_author_and_person(self):
-        """„Wyślij test”: [autor] i [osoba] z formularza; przy zgłoszeniu do recenzji autor zawsze „(anonimowo)”."""
-        for trigger in ('stage_completed', 'review_new'):
-            enable(trigger, '[autor] / [osoba]: [tytuł]')
+    def test_test_panel_fills_author_person_and_audiobook_tags(self):
+        """„Wyślij test”: [autor], [osoba], [zmiana] i [status] z formularza; przy zgłoszeniu do recenzji autor zawsze
+        „(anonimowo)”, [zmiana] i [status] tylko przy „Produkcja audiobooka”, której odnośnik prowadzi do audiobooka."""
+        for trigger in ('stage_completed', 'review_new', 'audiobook_production'):
+            enable(trigger, '[autor] / [osoba] / [zmiana] / [status]: [tytuł]')
         url = reverse('admin:core_notificationrule_test')
-        self.assertContains(self.client.get(url), 'Anna Nowak, A.N. Kowal')
-        cases = {'stage_completed': 'Ewa Lis, Mrok / Jan Kowalski: Próba', 'review_new': '(anonimowo) / –: Próba'}
-        for trigger, expected in cases.items():
-            data = {'title': 'Próba', 'author': 'Ewa Lis, Mrok', 'person': 'Jan Kowalski', 'trigger': trigger}
+        page = self.client.get(url)
+        self.assertContains(page, 'Anna Nowak, A.N. Kowal')
+        self.assertContains(page, 'Produkcja audiobooka (wszystkie zmiany)')
+        audio_link = reverse('core:audiobook_detail', args=[0])
+        cases = {'stage_completed': ('Ewa Lis, Mrok / Jan Kowalski / – / –: Próba', 'tekst'),
+                 'review_new': ('(anonimowo) / – / – / –: Próba', 'recenzja'),
+                 'audiobook_production': ('Ewa Lis, Mrok / Jan Kowalski / Zmieniono status: Montaż. / Montaż: Próba',
+                                          audio_link)}
+        for trigger, (expected, link) in cases.items():
+            data = {'title': 'Próba', 'author': 'Ewa Lis, Mrok', 'person': 'Jan Kowalski', 'trigger': trigger,
+                    'change': 'Zmieniono status: Montaż.', 'audio_status': 'Montaż'}
             with self.subTest(trigger), patch('core.discord_webhook.send_message', return_value='9') as sent:
                 self.client.post(url, data)
-                self.assertTrue(sent.call_args.args[1].startswith(expected))
+                self.assertTrue(sent.call_args.args[1].startswith(expected), sent.call_args.args[1])
+                self.assertEqual(audio_link in sent.call_args.args[1], link == audio_link)
+
+    def test_rule_page_explains_collective_rules(self):
+        """Strona reguły zbiorczej („Zakończenie etapu”, „Produkcja audiobooka”) wyjaśnia, kiedy wiadomość wychodzi."""
+        cases = {'stage_completed': 'Jedna wiadomość po zakończeniu każdego etapu',
+                 'audiobook_production': 'Jedna wiadomość po każdej zmianie w produkcji audiobooka'}
+        for trigger, help_text in cases.items():
+            rule = NotificationRule.objects.get(trigger=trigger)
+            with self.subTest(trigger):
+                self.assertContains(self.client.get(reverse('admin:core_notificationrule_change', args=[rule.pk])),
+                                    help_text)
 
     def test_test_panel_explains_missing_setup(self):
         url = reverse('admin:core_notificationrule_test')
