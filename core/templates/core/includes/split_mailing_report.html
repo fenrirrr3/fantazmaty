@@ -1,7 +1,7 @@
 <div class="table-container"><table class="data-table" data-pagination="off">
-    <thead><tr><th>Tytuł</th><th>Adresy e-mail</th><th>Plik</th><th>Wynik</th></tr></thead>
+    <thead><tr><th>Tytuł</th><th>Adresy e-mail</th><th>Plik</th><th>Mail</th><th>Wynik</th></tr></thead>
     <tbody>{% for row in rows %}<tr>
-        <td>{{ row.title }}</td><td>{{ row.emails|join:", " }}</td><td>{{ row.file }}</td>
+        <td>{{ row.title }}</td><td>{{ row.emails|join:", " }}</td><td>{{ row.file }}</td><td>{% if row.mail %}mail {{ row.mail }}{% else %}–{% endif %}</td>
         <td>{% if row.sent %}<span class="stage-status completed">Wysłano</span>{% else %}<span class="stage-status withdrawn">Błąd</span> {{ row.error }}{% endif %}</td>
     </tr>{% endfor %}</tbody>
 </table></div>
