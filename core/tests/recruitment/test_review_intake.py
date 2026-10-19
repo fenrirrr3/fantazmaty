@@ -9,7 +9,7 @@ from django.urls import reverse
 from authors.models import Author
 from core.forms import ReviewBulkImportForm
 from core.intake_forms import SingleReviewForm
-from core.models import NewsletterConsent
+from core.models import MailboxConnection, NewsletterConsent
 from core.review_submission_forms import ReviewAdminForm
 from core.services.review_import_parser import encode_submission
 from core.services.reviews import import_reviews
@@ -21,17 +21,26 @@ from .support import LEGACY_EXAMPLE, NAMED_BODY, NAMED_MESSAGE, SUBMISSION_FIELD
 
 
 class IntakePanels(HTMLParser):
-    """Zwijane panele formularzy przyjmowania (<details class="intake-panel">)."""
+    """Zwijane panele ręcznego przyjmowania (<details class="intake-panel">): {nazwa: czy rozwinięty}."""
+
+    NAMES = {'data-manual-intake': 'manual', 'data-intake-bulk': 'bulk', 'data-intake-single': 'single'}
 
     def __init__(self, content):
         super().__init__()
-        self.panels = []
+        self.panels = {}
         self.feed(content.decode())
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
         if tag == 'details' and 'intake-panel' in attrs.get('class', ''):
-            self.panels.append(attrs)
+            name = next(name for marker, name in self.NAMES.items() if marker in attrs)
+            self.panels[name] = 'open' in attrs
+
+
+def intake_mailbox():
+    """Skrzynka „teksty”, bez której część pobierania na stronie „Dodaj do recenzji” zgłasza błąd."""
+    return MailboxConnection.objects.create(name='teksty', host='imap.example.com', username='teksty@example.com',
+                                            encrypted_password='unused')
 
 
 class ReviewIntakeTests(TemporaryActivitySpoolMixin, TestCase):
@@ -42,6 +51,8 @@ class ReviewIntakeTests(TemporaryActivitySpoolMixin, TestCase):
         cls.book = Anthology.objects.create(title='Nabór')
         cls.bulk_url = reverse('core:review_bulk_submit')
         cls.create_url = reverse('core:review_create')
+        cls.page_url = reverse('core:review_bulk_import')
+        intake_mailbox()
 
     def setUp(self):
         super().setUp()
@@ -134,7 +145,7 @@ class ReviewIntakeTests(TemporaryActivitySpoolMixin, TestCase):
         self.assertEqual([name for name in form.fields if name in expected], expected)
         self.assertEqual(form.fields['length'].label, 'Liczba znaków ze spacjami')
         self.assertNotIn('confirm_existing_text', form.fields)
-        response = self.client.get(self.create_url)
+        response = self.client.get(self.page_url)
         self.assertContains(response, '<legend>Newsletter</legend>')
         self.assertContains(response, 'name="newsletter_premieres"', count=1)
         self.assertContains(response, 'name="newsletter_recruitment"', count=1)
@@ -163,17 +174,46 @@ class ReviewIntakeTests(TemporaryActivitySpoolMixin, TestCase):
         self.assertFalse(consent.recruitment)
         self.assertEqual(Review.objects.get(title='Drugi pojedynczy').author_message, 'Tylko administrator')
 
-    def test_panels_closed_initially_bulk_first_and_errors_open(self):
-        response = self.client.get(self.create_url)
-        panels = IntakePanels(response.content).panels
-        self.assertEqual(len(panels), 2)
-        self.assertTrue(all('open' not in p for p in panels))
-        self.assertLess(response.content.index('Wiele zgłoszeń'.encode()),
-                        response.content.index('Pojedyncze zgłoszenie'.encode()))
-        self.assertRegex(response.content.decode(), r'core/author-search(\.[0-9a-f]+)?\.js')
+    def test_merged_page_mailbox_first_manual_section_collapsed(self):
+        """„Dodaj do recenzji”: najpierw pobieranie ze skrzynki z komunikatem, potem zwinięta sekcja ręczna
+        (wiele zgłoszeń przed pojedynczym); wyszukiwarka autorów tylko na tej stronie."""
+        response = self.client.get(self.page_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(IntakePanels(response.content).panels, {'manual': False, 'bulk': False, 'single': False})
+        content = response.content.decode()
+        order = ['<h1 class="page-title">Dodaj do recenzji</h1>', 'automatycznie doda zgłoszenia do bazy',
+                 'Pobierz nagłówki', 'Dodaj ręcznie (import masowy lub pojedyncze zgłoszenie)', 'Wiele zgłoszeń',
+                 'Pojedyncze zgłoszenie']
+        self.assertEqual(sorted(order, key=content.index), order)
+        self.assertRegex(content, r'core/author-search(\.[0-9a-f]+)?\.js')
         self.assertNotContains(self.client.get(reverse('core:home')), 'core/author-search.js')
-        response = self.client.post(self.create_url, {'title': 'Błąd'})
-        self.assertIn('open', IntakePanels(response.content).panels[1])
+
+    def test_manual_form_errors_open_their_section_on_merged_page(self):
+        """Błąd ręcznego formularza: scalona strona (z częścią skrzynki) z rozwiniętą sekcją tego formularza."""
+        cases = {
+            'single': (self.create_url, {'title': 'Błąd'}, {'manual': True, 'bulk': False, 'single': True}),
+            'bulk': (self.bulk_url, {'anthology': self.book.pk, 'records': 'Niepoprawne', 'import_action': 'preview'},
+                     {'manual': True, 'bulk': True, 'single': False}),
+        }
+        for case, (url, data, panels) in cases.items():
+            with self.subTest(case):
+                response = self.client.post(url, data)
+                self.assertEqual(response.status_code, 400)
+                self.assertTemplateUsed(response, 'core/review_bulk_import.html')
+                self.assertContains(response, 'Pobierz nagłówki', status_code=400)
+                self.assertEqual(IntakePanels(response.content).panels, panels)
+        self.assertFalse(Review.objects.exists())
+
+    def test_old_addresses_redirect_to_merged_page(self):
+        """Dawne adresy ręcznego dodawania (GET) przekierowują na „Dodaj do recenzji” z parametrami autora."""
+        cases = {
+            'single': (self.create_url, {}, self.page_url),
+            'single with author': (self.create_url, {'author': '7'}, f'{self.page_url}?author=7'),
+            'bulk': (self.bulk_url, {}, self.page_url),
+        }
+        for case, (url, query, target) in cases.items():
+            with self.subTest(case):
+                self.assertRedirects(self.client.get(url, query), target, fetch_redirect_response=False)
 
     def test_author_message_private_and_escaped(self):
         """Wiadomość autora widzi tylko superużytkownik, i to jako tekst (bez wykonania HTML)."""
@@ -197,6 +237,8 @@ class SingleReviewSafeguardTests(TemporaryActivitySpoolMixin, TestCase):
         cls.admin = create_superuser('admin', 'admin@example.com', 'password')
         cls.book = Anthology.objects.create(title='Nabór')
         cls.url = reverse('core:review_create')
+        cls.page_url = reverse('core:review_bulk_import')
+        intake_mailbox()
         cls.blacklisted = Author.objects.create(first_name='Jan', last_name='Zakazany', email='zakazany@example.com',
                                                 is_blacklisted=True)
         cls.pseudonymous = Author.objects.create(first_name='Anna', last_name='Prawdziwa', pseudonym='Mroczna',
@@ -214,7 +256,7 @@ class SingleReviewSafeguardTests(TemporaryActivitySpoolMixin, TestCase):
         """Potwierdzenie działa tylko z podpisem wydanym dla tych samych danych; inaczej ostrzeżenie wraca."""
         response = self.client.post(self.url, self.data())
         self.assertContains(response, 'czarnej liście', status_code=400)
-        form = response.context['single_form']
+        form = response.context['manual']['single_form']
         token = form.data['submission_warnings_token']
         self.assertEqual(form.data['confirm_submission_warnings'], '')
         for data in (self.data(title='Inny tytuł', submission_warnings_token=token, confirm_submission_warnings='on'),
@@ -231,11 +273,11 @@ class SingleReviewSafeguardTests(TemporaryActivitySpoolMixin, TestCase):
 
     def test_selected_author_fills_contact_data(self):
         """Autor z bazy: formularz wypełniony pseudonimem, dane kontaktowe i telefon brane z rekordu autora."""
-        response = self.client.get(self.url, {'author': self.pseudonymous.pk})
-        initial = response.context['single_form'].initial
+        response = self.client.get(self.page_url, {'author': self.pseudonymous.pk})
+        initial = response.context['manual']['single_form'].initial
         self.assertEqual((initial['author_first_name'], initial['author_last_name'], initial['email']),
                          ('Mroczna', '', 'anna@example.com'))
-        self.assertEqual(self.client.get(self.url, {'author': '١٢'}).context['single_form'].initial, {})
+        self.assertEqual(self.client.get(self.page_url, {'author': '١٢'}).context['manual']['single_form'].initial, {})
         response = self.client.post(self.url, self.data(author=self.pseudonymous.pk, author_first_name='',
                                                         author_last_name='', email=''))
         self.assertEqual(response.status_code, 302)
@@ -248,7 +290,7 @@ class SingleReviewSafeguardTests(TemporaryActivitySpoolMixin, TestCase):
         response = self.client.post(self.url, self.data(author=historic.pk))
         self.assertContains(response, 'Uzupełnij adres e-mail autora historycznego', status_code=400)
         response = self.client.post(self.url, self.data(author_last_name='', email=''))
-        self.assertIn('Uzupełnij dane albo wybierz autora z bazy.', response.context['single_form'].errors['email'])
+        self.assertIn('Uzupełnij dane albo wybierz autora z bazy.', response.context['manual']['single_form'].errors['email'])
         self.assertFalse(Review.objects.exists())
 
     def test_anthology_closed_during_save_and_model_validation_error(self):
@@ -263,9 +305,9 @@ class SingleReviewSafeguardTests(TemporaryActivitySpoolMixin, TestCase):
         self.assertFalse(NewsletterConsent.objects.exists())
 
     def test_author_lookup_without_javascript_and_suggestions(self):
-        response = self.client.get(self.url, {'author_query': 'mroczna'})
-        self.assertEqual(list(response.context['fallback_authors']), [self.pseudonymous])
-        self.assertEqual(list(self.client.get(self.url).context['fallback_authors']), [])
+        response = self.client.get(self.page_url, {'author_query': 'mroczna'})
+        self.assertEqual(list(response.context['manual']['fallback_authors']), [self.pseudonymous])
+        self.assertEqual(list(self.client.get(self.page_url).context['manual']['fallback_authors']), [])
         response = self.client.get(reverse('core:author_suggestions'), {'q': '  '})
         self.assertEqual(response.json(), {'results': []})
 

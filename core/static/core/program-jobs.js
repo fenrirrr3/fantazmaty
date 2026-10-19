@@ -13,12 +13,15 @@
         accept.className = 'primary-button'; accept.textContent = 'Akceptuję i kontynuuję'; accept.hidden = true;
         const download = document.createElement('a'); download.className = 'primary-button';
         download.textContent = 'Pobierz wynik'; download.hidden = true;
+        // Po podziale DOCX: przejście do wysyłki plików autorom (adres podaje serwer).
+        const mail = document.createElement('a'); mail.className = 'secondary-button';
+        mail.textContent = 'Wyślij autorom'; mail.hidden = true;
         const notes = document.createElement('div'); notes.className = 'form-warning'; notes.hidden = true;
         const summary = document.createElement('div'); summary.className = 'program-summary'; summary.hidden = true;
         // Wyraźny komunikat o obrazach usuniętych z dokumentu przed przetwarzaniem.
         const images = document.createElement('p'); images.className = 'message warning program-images';
         images.setAttribute('role', 'status'); images.hidden = true;
-        box.append(label, images, bar, stop, accept, download, notes, summary);
+        box.append(label, images, bar, stop, accept, download, mail, notes, summary);
         const submit = form.querySelector('button[type="submit"]');
         if (!submit) return;
         // Pasek postępu stoi pod plikiem i przyciskiem (miejsce oznaczone w szablonie).
@@ -26,7 +29,7 @@
         if (slot && slot.append) slot.append(box); else submit.before(box);
         const csrf = form.querySelector('[name="csrfmiddlewaretoken"]').value;
         const storageKey = `program-job:${location.pathname}:${index}`;
-        let url = null, busy = false, timer = null, stopRequested = false, downloaded = false;
+        let url = null, busy = false, timer = null, stopRequested = false, downloaded = false, keepsResult = false;
         function remember(value) {
             try { if (value) sessionStorage.setItem(storageKey, value); else sessionStorage.removeItem(storageKey); } catch (_) { /* Storage is optional. */ }
         }
@@ -127,6 +130,8 @@
                         showSummary(Array.isArray(data.summary) ? data.summary : null, replacements);
                     }
                     download.href = `${url}?download=1`; download.hidden = false;
+                    keepsResult = typeof data.mail_url === 'string' && /^\/(?!\/)/.test(data.mail_url);
+                    if (keepsResult) { mail.href = data.mail_url; mail.hidden = false; }
                     if (!downloaded) { downloaded = true; download.click(); }
                     return;
                 }
@@ -154,6 +159,10 @@
         download.addEventListener('click', () => {
             // Serwer usuwa wynik po pobraniu, więc drugi raz nie da się go pobrać.
             setTimeout(() => {
+                if (keepsResult) {
+                    label.textContent = 'Plik pobrany. Archiwum zostaje na serwerze do 30 minut – możesz wysłać pliki autorom.';
+                    return;
+                }
                 download.hidden = true;
                 label.textContent = 'Plik pobrany. Kopia na serwerze została usunięta.';
             }, 1500);
@@ -179,9 +188,9 @@
             if (busy) return;
             const body = new FormData(form);
             if (event.submitter?.name) body.set(event.submitter.name, event.submitter.value);
-            lock(true); url = null; stopRequested = false; downloaded = false;
+            lock(true); url = null; stopRequested = false; downloaded = false; keepsResult = false;
             box.hidden = false; bar.hidden = false; bar.removeAttribute('value');
-            stop.hidden = false; stop.disabled = false; download.hidden = true; accept.hidden = true;
+            stop.hidden = false; stop.disabled = false; download.hidden = true; mail.hidden = true; accept.hidden = true;
             notes.hidden = true; summary.hidden = true; images.hidden = true;
             label.textContent = 'Przesyłanie pliku i uruchamianie programu…';
             try {

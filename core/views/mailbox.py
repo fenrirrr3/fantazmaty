@@ -9,10 +9,11 @@ from django.db import transaction
 from django.contrib.auth.decorators import login_required
 from django.http import FileResponse, JsonResponse
 from django.shortcuts import render, redirect
+from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_http_methods
-from core.mailbox_date import MailboxDateForm
+from core.mailbox_date import MailboxDateForm, DEFAULT_SENT_SINCE
 from core.models import MailboxConnection, MailboxDownload
 from core.permissions import superuser_required
 from core.services.mailbox import read_headers, MailboxError
@@ -20,6 +21,7 @@ from core.services.mailbox_import import (
     default_mailbox, mailbox_key, receipts, fetch_messages, prepare_forms, package_messages, describe_import_error, filter_valid_messages, MAX_MESSAGES,
     BLACKLIST_CHOICES, DOWNLOAD_FILE, FUTURE_REJECTION, blacklisted_addresses, mark_blacklisted, sender_address,
 )
+from core.services.mailbox_snapshots import automatic_notice, newer_snapshot
 from core.services.document_converter import ConversionError, RebuildConfirmationRequired
 from core.services.reviews import import_reviews
 
@@ -86,6 +88,18 @@ def restore_headers(request, config, key, context):
         context['date_form'] = MailboxDateForm(initial=saved['date_filter'])
 
 
+def load_snapshot(request, config, key):
+    """GET: nocna migawka (domyślne filtry i opcje) zastępuje starsze nagłówki z sesji."""
+    snapshot = newer_snapshot(config, key, request.user, request.session.get(HEADERS_SESSION_KEY))
+    if snapshot is not None and not snapshot.error:
+        request.session[HEADERS_SESSION_KEY] = {
+            'user': request.user.pk, 'mailbox': key, 'sent_since': snapshot.sent_since, 'result': snapshot.result,
+            'date_filter': {'date_filter_enabled': bool(snapshot.sent_since), 'sent_since': snapshot.sent_since or DEFAULT_SENT_SINCE.isoformat()},
+            'show_downloaded': False, 'clean': True, 'rebuild': True, 'convert': True, 'subject_filter': '',
+            'fetched_at': snapshot.fetched_at.isoformat(), 'automatic': True}
+    return snapshot
+
+
 def load_token(token, user, key, salt):
     try:
         payload = signing.loads(token, salt=salt, max_age=3600)
@@ -115,7 +129,10 @@ def mailbox_headers(request):
         context['mailbox'] = config
         context['subject_choices'] = config.subject_choices()
         key = mailbox_key(config)
+        snapshot = load_snapshot(request, config, key) if request.method == 'GET' else None
         restore_headers(request, config, key, context)
+        if request.method == 'GET':
+            context.update(automatic_notice(request.session.get(HEADERS_SESSION_KEY), snapshot))
         subject_filter = request.POST.get('subject_filter', '') if request.method == 'POST' else context.get('subject_filter', '')
         context['subject_filter'] = subject_filter
         if subject_filter and subject_filter not in context['subject_choices']:
@@ -247,6 +264,7 @@ def mailbox_headers(request):
                 excluded = None if context['show_downloaded'] else lambda validity: receipts(config, validity).values_list('uid', flat=True)
                 result = read_headers(config, cursor, excluded=excluded, subject_filter=subject_filter, sent_since=sent_since)
                 request.session[HEADERS_SESSION_KEY] = dict(base, result=result, date_filter=date_form.snapshot(),
+                    fetched_at=timezone.now().isoformat(),
                     **{name: context[name] for name in IMPORT_OPTIONS})
                 # Refresh repeats a GET, not the IMAP fetch submitted by POST.
                 return redirect(request.path)
@@ -268,5 +286,8 @@ def mailbox_headers(request):
     finally:
         if archive is not None:
             archive.close()
+    # Zwinięta sekcja „Dodaj ręcznie”; po błędzie formularza ręcznego przekazuje ją render_intake_page.
+    from core.views.intake import manual_intake
+    context['manual'] = getattr(request, 'manual_intake', None) or manual_intake(request)
     return render(request, 'core/review_bulk_import.html', context,
                   status=400 if context.get('error') else 200)

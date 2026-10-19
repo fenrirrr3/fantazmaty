@@ -10,15 +10,17 @@ from django.db.models import Q, Value, CharField
 from django.db.models.functions import Coalesce, Concat, NullIf, Trim
 from django.http import FileResponse, JsonResponse
 from django.shortcuts import render, redirect
+from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
 
 from core.mailbox_date import MailboxDateForm, DEFAULT_SENT_SINCE
-from core.models import MailboxConnection, Recruitment, RecruitmentMailSource
+from core.models import Recruitment, RecruitmentMailSource
 from core.permissions import recruitment_mailbox_required, require_superuser
 from core.recruitment_roles import ROLE_CHOICES
 from core.services.mailbox import MailboxError, read_headers
 from core.services.mailbox_import import fetch_messages, mailbox_key, receipts
+from core.services.mailbox_snapshots import automatic_notice, imported_uids, newer_snapshot, recruitment_connection
 from core.services.recruitment_samples import MAX_SAMPLES, parse_sample, store_samples, attachment_archive
 
 SALT = 'recruitment-mailbox-v55'
@@ -45,18 +47,6 @@ class RecruitmentBulkForm(forms.Form):
         if not data.get('decision') and not data.get('notified'):
             raise forms.ValidationError('Wybierz zmianę decyzji lub pola Powiadomiony.')
         return data
-
-
-def recruitment_connection():
-    boxes = list(MailboxConnection.objects.filter(purpose=MailboxConnection.Purpose.RECRUITMENT, is_active=True)[:2])
-    if len(boxes) != 1:
-        raise MailboxError('Ustaw w panelu administratora jedną aktywną skrzynkę z przeznaczeniem „Rekrutacja do zespołu”.')
-    return boxes[0]
-
-
-def imported_uids(config, validity):
-    return set(receipts(config, validity).values_list('uid', flat=True)) | set(
-        RecruitmentMailSource.objects.filter(mailbox_key=mailbox_key(config), uid_validity=validity).values_list('uid', flat=True))
 
 
 def recruitment_register(request):
@@ -101,6 +91,16 @@ def recruitment_mailbox(request):
         if saved and ('sent_since' not in saved or saved.get('mailbox') != key or saved.get('user') != request.user.pk):
             saved = None
             request.session.pop(SESSION_KEY, None)
+        if request.method == 'GET':
+            # Nocna migawka (domyślne filtry) zastępuje starsze nagłówki z sesji.
+            snapshot = newer_snapshot(config, key, request.user, saved)
+            if snapshot is not None and not snapshot.error:
+                saved = request.session[SESSION_KEY] = {
+                    'user': request.user.pk, 'mailbox': key, 'roles': [], 'show': False, 'sent_since': snapshot.sent_since,
+                    'result': snapshot.result, 'date_filter': {'date_filter_enabled': bool(snapshot.sent_since),
+                    'sent_since': snapshot.sent_since or DEFAULT_SENT_SINCE.isoformat()},
+                    'fetched_at': snapshot.fetched_at.isoformat(), 'automatic': True}
+            context.update(automatic_notice(saved, snapshot))
         form = RecruitmentMailboxForm(request.POST if request.method == 'POST' else None,
             initial={'roles': saved['roles'] or ['all'], 'show_downloaded': saved['show']} if saved else None)
         date_form = MailboxDateForm(request.POST if request.method == 'POST' else None,
@@ -152,7 +152,8 @@ def recruitment_mailbox(request):
         if action == 'headers':
             cursor = load(request.POST['cursor'], 'cursor')['cursor'] if request.POST.get('cursor') else None
             result = read_headers(config, cursor, excluded=excluded, recruitment_roles=roles, sent_since=sent_since)
-            request.session[SESSION_KEY] = {**identity, 'result': result, 'date_filter': date_form.snapshot() if request.method == 'POST' else {'date_filter_enabled': True, 'sent_since': sent_since}}
+            request.session[SESSION_KEY] = {**identity, 'result': result, 'fetched_at': timezone.now().isoformat(),
+                'date_filter': date_form.snapshot() if request.method == 'POST' else {'date_filter_enabled': True, 'sent_since': sent_since}}
             populate(result)
             if request.method == 'POST':
                 return redirect(request.path)

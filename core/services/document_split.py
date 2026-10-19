@@ -252,7 +252,8 @@ def _package(files, order, compress):
 def split_document(source, output):
     """Dzieli DOCX (ścieżka lub strumień) na pliki opowiadań zapisane jako ZIP w output (strumień).
 
-    Zwraca {"files": [nazwy plików], "skipped_intro": bool}; bez Nagłówka 1 zgłasza NoHeadingError.
+    Zwraca {"files": [nazwy plików], "titles": [teksty nagłówków], "skipped_intro": bool};
+    bez Nagłówka 1 zgłasza NoHeadingError. Tytuły służą dopasowaniu plików do tekstów antologii.
     """
     with ZipFile(source) as archive:
         order = [item.filename for item in archive.infolist() if not item.is_dir()]
@@ -279,7 +280,7 @@ def split_document(source, output):
     for element in children:
         body.remove(element)
     width = max(2, len(str(len(stories))))
-    names = []
+    names, titles = [], []
     with ZipFile(output, 'w', ZIP_STORED) as result:
         for number, elements in enumerate(stories, 1):
             content = [deepcopy(element) for element in elements]
@@ -297,9 +298,11 @@ def split_document(source, output):
                 if part is not None and part in files:
                     _filter_notes(files, part, kind, used[kind])
             _filter_comments(files, main, used['comments'])
-            name = file_name(number, width, _text(elements[0]))
+            title = _text(elements[0])
+            name = file_name(number, width, title)
             names.append(name)
+            titles.append(title)
             result.writestr(name, _package(files, order, compress))
             for element in content:
                 body.remove(element)
-    return {'files': names, 'skipped_intro': _visible(intro)}
+    return {'files': names, 'titles': titles, 'skipped_intro': _visible(intro)}

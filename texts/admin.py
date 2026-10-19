@@ -1,13 +1,14 @@
 from django import forms
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.contrib.admin.utils import unquote
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import router, transaction
+from django.db.models import Q
 from django.forms.models import BaseInlineFormSet
 from django.http import JsonResponse, HttpResponseBadRequest
 import secrets
 import time
-from django.shortcuts import get_object_or_404
+from django.shortcuts import get_object_or_404, redirect
 from django.urls import path, reverse
 from django.utils import timezone
 
@@ -1278,17 +1279,67 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     class Media:
         js = ("texts/admin/review_author_autofill.js", "texts/admin/review_text_link.js",)
 
+    @staticmethod
+    def deletion_blocker(review):
+        """Powód, dla którego zgłoszenia nie wolno usunąć, albo None."""
+        if review.copied_text_id:
+            return 'Ze zgłoszenia utworzono tekst.'
+        if review.assignments.exists():
+            # Przydziały i opinie liczą się do dorobku i obciążenia recenzentów.
+            return 'Do zgłoszenia przypisał się już recenzent.'
+        return None
+
     def has_delete_permission(self, request, obj=None):
         allowed = super().has_delete_permission(request, obj)
-        if not allowed or obj is None or obj.old_reviews:
-            return allowed
-        # Oddane opinie liczą się do dorobku recenzentów – nie kasujemy ich razem ze zgłoszeniem.
-        return not obj.assignments.exclude(opinion__in=('', Reviewers.Opinion.READING)).exists()
+        return bool(allowed and (obj is None or self.deletion_blocker(obj) is None))
 
     def get_actions(self, request):
         actions = super().get_actions(request)
-        actions.pop('delete_selected', None)
+        if 'delete_selected' in actions:
+            # Nazwa zostaje, bo pod nią strona potwierdzenia odsyła wybór.
+            actions['delete_selected'] = (type(self).delete_without_reviewers, 'delete_selected',
+                                          'Usuń zaznaczone zgłoszenia bez recenzentów')
         return actions
+
+    def delete_without_reviewers(self, request, queryset):
+        """Zbiorcze usuwanie z potwierdzeniem – tylko zgłoszenia bez recenzentów i bez utworzonego tekstu."""
+        from django.contrib.admin.actions import delete_selected
+        blocked = queryset.filter(Q(copied_text__isnull=False) | Q(assignments__isnull=False)).distinct()
+        titles = sorted(blocked.values_list('title', flat=True))
+        if titles:
+            self.message_user(request, 'Pominięto zgłoszenia z recenzentem lub utworzonym tekstem: '
+                              + ', '.join(f'„{title}”' for title in titles) + '.', messages.WARNING)
+        deletable = queryset.exclude(pk__in=blocked.values('pk'))
+        if not deletable.exists():
+            return None
+        return delete_selected(self, request, deletable)
+
+    def _delete_reviews(self, ids):
+        """Usuwa zgłoszenia po zablokowaniu wierszy (przydzielanie blokuje ten sam rekord) i ponownym sprawdzeniu."""
+        from core.models import DiscordNotification
+        with transaction.atomic():
+            reviews = list(Review.objects.select_for_update().filter(pk__in=ids).order_by('pk'))
+            for review in reviews:
+                reason = self.deletion_blocker(review)
+                if reason:
+                    raise PermissionDenied(f'Nie można usunąć zgłoszenia „{review.title}”: {reason}')
+            # Niewysłane ogłoszenie o usuniętym zgłoszeniu nie powinno trafić na Discorda.
+            DiscordNotification.objects.filter(review__in=reviews, status='pending').delete()
+            Review.objects.filter(pk__in=[review.pk for review in reviews]).delete()
+
+    def delete_model(self, request, obj):
+        self._delete_reviews([obj.pk])
+
+    def delete_queryset(self, request, queryset):
+        self._delete_reviews(list(queryset.values_list('pk', flat=True)))
+
+    def delete_view(self, request, object_id, extra_context=None):
+        obj = self.get_object(request, unquote(object_id))
+        reason = obj is not None and self.has_superuser_access(request) and self.deletion_blocker(obj)
+        if reason:
+            self.message_user(request, f'Nie można usunąć zgłoszenia: {reason}', messages.ERROR)
+            return redirect(reverse(f'{self.admin_site.name}:texts_review_change', args=[obj.pk]))
+        return super().delete_view(request, object_id, extra_context)
 
     def get_readonly_fields(self, request, obj=None):
         if obj and obj.old_reviews:

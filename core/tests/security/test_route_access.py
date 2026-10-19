@@ -136,7 +136,7 @@ ROUTE_LEVELS = {
         'core:correction_status', 'core:notification_queue', 'core:scheduled_rejections',
         'core:release_hidden_review', 'core:review_bulk_import', 'core:user_activity',
         'core:update_author_notification', 'core:copy_review_to_text', 'core:restart_text_workflow',
-        'core:restore_withdrawn_text', 'core:add_author_note',
+        'core:restore_withdrawn_text', 'core:add_author_note', 'core:split_mailing',
     ], SUPERUSER),
 }
 

@@ -19,7 +19,7 @@ GROUPS = (
     ('people', 'Ludzie', ('people.person', 'people.vacation', 'people.role', 'authors.author', 'blacklist')),
     ('promotion', 'Promocja', ('core.textsocialmedia', 'core.socialmediaentry')),
     ('recruitment', 'Rekrutacja', ('core.recruitment', 'recruitment_mailbox')),
-    ('settings', 'Ustawienia', ('core.mailboxconnection', 'core.notificationrule', 'core.discordrole')),
+    ('settings', 'Ustawienia', ('core.mailboxconnection', 'core.mailboxheadersnapshot', 'core.notificationrule', 'core.discordrole')),
     ('history', 'Historia i diagnostyka', ('workflow.workflowstage', 'workflow.workflowroleassignment', 'core.workflowevent', 'core.discordnotification', 'core.useractivity')),
 )
 EXPANDED = ('submissions', 'texts', 'publication')

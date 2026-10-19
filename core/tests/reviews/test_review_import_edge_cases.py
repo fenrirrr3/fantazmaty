@@ -158,8 +158,8 @@ class ReviewBulkSubmitViewGapTests(TemporaryActivitySpoolMixin, TestCase):
         response = self.client.post(self.url, {'anthology': self.book.pk, 'records': RECORD,
                                                'import_action': 'import', 'preview_token': 'podrobiony'})
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.context['preview_token'])
-        self.assertEqual(len(response.context['preview_rows']), 1)
+        self.assertTrue(response.context['manual']['preview_token'])
+        self.assertEqual(len(response.context['manual']['preview_rows']), 1)
         self.assertFalse(Review.objects.exists())
 
     def test_service_error_after_confirmed_preview_is_shown_on_form(self):
@@ -173,12 +173,12 @@ class ReviewBulkSubmitViewGapTests(TemporaryActivitySpoolMixin, TestCase):
                                                    'preview_token': preview.context['preview_token']})
         self.assertEqual(response.status_code, 200)
         self.assertIn('Wiersz 1: Pole wymagane dla bieżącego zgłoszenia.',
-                      response.context['bulk_form'].non_field_errors())
+                      response.context['manual']['bulk_form'].non_field_errors())
         self.assertFalse(Review.objects.exists())
 
     def test_preview_lists_at_most_thousand_rows(self):
         records = '\n'.join(RECORD.replace('Nowa', f'Nowa {index}') for index in range(1005))
         response = self.preview(records)
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(len(response.context['preview_rows']), 1000)
-        self.assertIn(f'najwyżej {MAX_IMPORT_RECORDS}', str(response.context['bulk_form'].errors))
+        self.assertEqual(len(response.context['manual']['preview_rows']), 1000)
+        self.assertIn(f'najwyżej {MAX_IMPORT_RECORDS}', str(response.context['manual']['bulk_form'].errors))

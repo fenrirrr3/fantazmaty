@@ -124,6 +124,67 @@ class MailboxAdminGapTests(CoreAdminGapData):
         box.refresh_from_db()
         self.assertEqual((box.folder, box.is_active, box.get_password()), ('Kandydaci', True, 'haslo'))
 
+    def split_box(self, **fields):
+        box = MailboxConnection(**{'name': 'Wysyłka', 'host': 'imap.example.com', 'username': 'wysylka@example.com',
+                                   'split_mailing': True, 'smtp_host': 'smtp.example.com', **fields})
+        box.set_password('haslo')
+        box.save()
+        return box
+
+    def test_split_mailing_settings_are_validated(self):
+        """Wysyłka plików autorom: serwer i port SMTP, login będący adresem i najwyżej jedna aktywna skrzynka wysyłkowa."""
+        mailing = {**self.DATA, 'purpose': 'submissions', 'split_mailing': 'on', 'smtp_host': 'smtp.example.com',
+                   'smtp_port': '587', 'smtp_security': 'starttls'}
+        cases = {
+            'bez serwera SMTP': ({'smtp_host': ''}, 'smtp_host', 'serwera SMTP bez protokołu'),
+            'serwer z protokołem': ({'smtp_host': 'smtps://smtp.example.com'}, 'smtp_host', 'bez protokołu'),
+            'port SMTP 0': ({'smtp_port': '0'}, 'smtp_port', 'od 1 do 65535'),
+            'port SMTP za duży': ({'smtp_port': '70000'}, 'smtp_port', 'od 1 do 65535'),
+            'login bez adresu': ({'username': 'wysylka'}, 'username', 'musi być adresem e-mail'),
+            'zły serwer bez wysyłki': ({'split_mailing': '', 'smtp_host': 'smtp/x'}, 'smtp_host', 'bez protokołu'),
+        }
+        for case, (changes, field, message) in cases.items():
+            with self.subTest(case):
+                response = self.client.post(self.URL, {**mailing, **changes})
+                self.assertEqual(response.status_code, 200)
+                self.assertIn(message, ' '.join(response.context['adminform'].form.errors[field]))
+        self.assertFalse(MailboxConnection.objects.exists())
+        self.split_box()
+        response = self.client.post(self.URL, mailing)
+        self.assertIn('tylko jedna skrzynka do wysyłki', ' '.join(response.context['adminform'].form.errors['split_mailing']))
+        self.assertEqual(self.client.post(self.URL, {**mailing, 'name': 'Zapasowa', 'is_active': ''}).status_code, 302)
+        saved = MailboxConnection.objects.get(name='Zapasowa')
+        self.assertEqual((saved.smtp_host, saved.smtp_port, saved.smtp_security), ('smtp.example.com', 587, 'starttls'))
+
+    def test_split_mailing_section_and_defaults_without_smtp_fields(self):
+        """Pola SMTP w osobnej sekcji „Wysyłka plików autorom”; skrzynka bez wysyłki zapisuje się bez nich (port 465, SSL)."""
+        page = self.client.get(self.URL)
+        sections = [(name, list(options['fields'])) for name, options in page.context['adminform'].fieldsets]
+        self.assertEqual(sections[1], ('Wysyłka plików autorom', ['split_mailing', 'smtp_host', 'smtp_port', 'smtp_security']))
+        self.assertNotIn('smtp_host', sections[0][1])
+        self.assertEqual(self.client.post(self.URL, self.DATA).status_code, 302)
+        box = MailboxConnection.objects.get()
+        self.assertEqual((box.split_mailing, box.smtp_host, box.smtp_port, box.smtp_security), (False, '', 465, 'ssl'))
+
+    def test_split_mailing_box_does_not_change_import_mailbox_choice(self):
+        """Skrzynka wysyłkowa (dowolne przeznaczenie) nie zmienia wyboru skrzynki zgłoszeń ani rekrutacji."""
+        from core.services.mailbox_import import default_mailbox
+        from core.services.split_mailing import mailing_mailbox
+        from core.views.recruitment_mailbox import recruitment_connection
+
+        texts = self.split_box(name='teksty', username='teksty@example.com', split_mailing=False, smtp_host='')
+        recruitment = self.split_box(name='Rekrutacja', purpose='recruitment', split_mailing=False, smtp_host='')
+        cases = (('osobna skrzynka zgłoszeń', {}), ('osobna z loginem teksty@', {'username': 'teksty@example.org'}))
+        for case, fields in cases:
+            with self.subTest(case):
+                sender = self.split_box(**fields)
+                self.assertEqual((default_mailbox(), recruitment_connection(), mailing_mailbox()),
+                                 (texts, recruitment, sender))
+                sender.delete()
+        with self.subTest('wysyłka z tej samej skrzynki co import'):
+            MailboxConnection.objects.filter(pk=texts.pk).update(split_mailing=True, smtp_host='smtp.example.com')
+            self.assertEqual((default_mailbox(), mailing_mailbox()), (texts, texts))
+
 
 class IntakeAdminGapTests(CoreAdminGapData):
     def test_recruitment_list_filters_by_role(self):

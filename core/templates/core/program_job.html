@@ -10,7 +10,7 @@
 <section class="details-card program-job-status" aria-live="polite">
     <div class="card-body">
     {% if state.state == 'done' %}
-        <p class="message success" role="status">Gotowe. Po pobraniu plik zostanie usunięty z serwera.</p>
+        <p class="message success" role="status">{% if state.split %}Gotowe. Archiwum zostaje na serwerze do wygaśnięcia zadania (30 minut) – w tym czasie możesz wysłać pliki autorom.{% else %}Gotowe. Po pobraniu plik zostanie usunięty z serwera.{% endif %}</p>
         {% if state.removed_images > 0 %}{% with n=state.removed_images %}{% with digits=n|stringformat:"d" %}{% with last=digits|slice:"-1:" two=digits|slice:"-2:" %}
         <p class="message warning program-images"><strong>Usunięto {{ n }} {% if n == 1 %}obraz{% elif last in "234" and two != "12" and two != "13" and two != "14" %}obrazy{% else %}obrazów{% endif %} z dokumentu – wynik ich nie zawiera.</strong></p>
         {% endwith %}{% endwith %}{% endwith %}{% endif %}
@@ -23,7 +23,7 @@
                 <ul class="program-replacements">{% for item in state.replacements %}{% if item.source and item.count > 0 %}<li><span class="replacement-source">{{ item.source }}</span> → <span class="replacement-source">{{ item.target }}</span> ({{ item.count }})</li>{% endif %}{% endfor %}</ul>
             </div>{% endif %}
         </div>{% endif %}
-        <p><a class="primary-button" href="{{ download_url }}">Pobierz {{ state.filename }}</a></p>
+        <p class="actions"><a class="primary-button" href="{{ download_url }}">Pobierz {{ state.filename }}</a>{% if mail_url %}<a class="secondary-button" href="{{ mail_url }}">Wyślij autorom</a>{% endif %}</p>
     {% elif state.state == 'confirmation' %}
         <div class="form-warning" role="alert">{{ state.message }}</div>
         <form method="post" class="actions">

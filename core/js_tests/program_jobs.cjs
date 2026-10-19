@@ -34,10 +34,10 @@ function fixture(saved) {
             });
         },
     });
-    const [label,images,bar,stop,accept,download,notes,summary] = submit.box.children;
+    const [label,images,bar,stop,accept,download,mail,notes,summary] = submit.box.children;
     async function respond(value) { assert.ok(tasks.length); tasks.shift()(value); await new Promise(resolve => setImmediate(resolve)); }
     async function tick() { const entry = timers.entries().next().value; assert.ok(entry); timers.delete(entry[0]); entry[1](); }
-    return {form,submit,label,images,bar,stop,accept,download,notes,summary,requests,respond,tick,details,storage: () => storage};
+    return {form,submit,label,images,bar,stop,accept,download,mail,notes,summary,requests,respond,tick,details,storage: () => storage};
 }
 (async () => {
     let f = fixture();
@@ -101,5 +101,15 @@ function fixture(saved) {
     await f.respond({url:'/programy/zadania/badreplacements/'});
     await f.respond({state:'done',warnings:[],summary:[],replacements:'zepsute'});
     assert.equal(f.summary.children.length,2);
-    console.log('Program jobs JS: progress, cancellation, early cancellation, reload, confirmation, download, change summary, removed images, replacements OK');
+    // Podział DOCX: przycisk „Wyślij autorom” tylko z adresem serwera; archiwum zostaje po pobraniu.
+    for (const [mailUrl, shown] of [['/programy/zadania/split/wyslij-autorom/',true],[undefined,false],['https://evil.example/',false],['//evil.example/',false]]) {
+        f = fixture(); f.form.events.submit({preventDefault(){},submitter:f.submit});
+        await f.respond({url:'/programy/zadania/split/'}); await f.respond({state:'done',warnings:[],mail_url:mailUrl});
+        assert.equal(f.mail.hidden,!shown);
+        if (shown) assert.equal(f.mail.href,mailUrl);
+        f.download.events.click(); await f.tick();
+        assert.equal(f.download.hidden,!shown);
+        assert.match(f.label.textContent,shown ? /możesz wysłać pliki autorom/ : /Kopia na serwerze została usunięta/);
+    }
+    console.log('Program jobs JS: progress, cancellation, early cancellation, reload, confirmation, download, change summary, removed images, replacements, split mailing OK');
 })().catch(error => { console.error(error); process.exitCode = 1; });

@@ -201,7 +201,7 @@ class WorkerMainTests(SimpleTestCase):
         story = Document()
         story.add_heading('Jedyne', level=1)
         story.add_paragraph('Treść.')
-        for document, report, archive in ((story, {'files': ['01 Jedyne.docx'], 'skipped_intro': False}, True),
+        for document, report, archive in ((story, {'files': ['01 Jedyne.docx'], 'titles': ['Jedyne'], 'skipped_intro': False}, True),
                                           (self.document(), {'error': 'no_heading'}, False)):
             with self.subTest(report=report):
                 self.assertEqual(self.run_worker(document, split=True), 0)

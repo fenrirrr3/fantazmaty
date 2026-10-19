@@ -1,4 +1,4 @@
-// author-search.js: wyszukiwarka autora w formularzu zgłoszenia (review_intake) – debounce, wyniki, klawiatura,
+// author-search.js: wyszukiwarka autora w formularzu pojedynczego zgłoszenia (strona „Dodaj do recenzji”) – debounce, wyniki, klawiatura,
 // wybór wypełnia dane autora, przestarzałe odpowiedzi, błędy sieci, ręczne wpisanie i tryb wielokrotny.
 const assert = require('node:assert/strict');
 const {Document, fakeTimers, fakeFetch, flush, runScript, ready} = require('./support/dom.js');

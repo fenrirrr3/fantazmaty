@@ -6,6 +6,8 @@
 <p class="recruitment-actions"><a class="secondary-button" href="{% url 'core:recruitment_list' %}">Rekrutacja</a>{% if user.is_superuser %}<a class="secondary-button" href="{% url 'admin:core_mailboxconnection_changelist' %}?purpose__exact=recruitment">Ustawienia skrzynki</a>{% endif %}</p>
 <section class="card recruitment-mail-card"><div class="card-body">
 {% if error %}<p class="message error" role="alert">{{ error }}</p>{% endif %}
+{% if automatic_fetch %}<p class="muted-text">Nagłówki pobrane automatycznie: {{ automatic_fetch|date:"j E Y, H:i" }}.</p>{% endif %}
+{% if automatic_error %}<p class="form-warning" role="status">Nocne pobieranie nagłówków ({{ automatic_error_at|date:"j E Y, H:i" }}) nie powiodło się: {{ automatic_error }}</p>{% endif %}
 {% if mailbox %}<p>Skrzynka: {{ mailbox.name }} · {{ mailbox.folder }}</p>
 <form method="post" data-recruitment-samples>{% csrf_token %}
 <div class="recruitment-preview-grid">

@@ -70,6 +70,22 @@ class DetailNavigationTests(NavigationDataMixin, TestCase):
                     self.assertEqual(doc.xpath('//h1/text()'), ['Social Media'])
                     self.assertEqual(doc.xpath(f'//nav//a[@href="{url}"]/@aria-current'), ['page'])
 
+    def test_single_add_to_review_link_active_for_merged_page_and_manual_forms(self):
+        """Jeden link „Dodaj do recenzji” (scalona strona) – aktywny także po wysłaniu formularzy ręcznych."""
+        page_url = reverse('core:review_bulk_import')
+        cases = {
+            'merged page': ('get', page_url),
+            'single submission with errors': ('post', reverse('core:review_create')),
+            'bulk import with errors': ('post', reverse('core:review_bulk_submit')),
+        }
+        for case, (method, url) in cases.items():
+            with self.subTest(case):
+                doc = html.fromstring(getattr(self.client, method)(url).content)
+                section = doc.xpath('//nav//details[@data-menu-section="submissions"]')[0]
+                self.assertEqual(section.xpath(f'.//a[@href="{page_url}"]/text()'), ['Dodaj do recenzji'])
+                self.assertEqual(section.xpath('.//a[@aria-current="page"]/@href'), [page_url])
+                self.assertNotIn('Pobieranie zgłoszeń', section.text_content())
+
     def test_detail_navigation_parents_and_audio_origin(self):
         ordinary = Anthology.objects.create(title='Ilustrowana', has_illustrations=True)
         text = Text.objects.create(title='Ilustracja nawigacyjna', anthology=ordinary, length=100)

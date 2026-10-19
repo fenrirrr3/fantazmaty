@@ -222,7 +222,7 @@
         {% if stage_file %}
         <div class="stage-file-name" data-stage-file>
             <div class="stage-file-text">
-                <span class="stage-file-label">Nazwa pliku – {{ stage_file.stage }}</span>
+                <span class="stage-file-label">{{ stage_file.stage }}. Plik nazwij w ten sposób:</span>
                 <code class="stage-file-value">{{ stage_file.name }}</code>
             </div>
             <button type="button" class="secondary-button copy-value-button" data-copy-value="{{ stage_file.name }}" aria-label="Kopiuj nazwę pliku {{ stage_file.name }}">Kopiuj</button>

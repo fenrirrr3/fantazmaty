@@ -6,8 +6,9 @@ from django.urls import reverse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
 
-from core.permissions import team_member_required
+from core.permissions import is_superuser, team_member_required
 from core.services import program_jobs as jobs
+from core.services.split_mailing import SENT
 
 ACTIVE_STATES = ('queued', 'running')
 
@@ -16,9 +17,16 @@ def _page_url(token):
     return reverse('core:program_job', args=[token]) + '?view=page'
 
 
+def _mail_url(request, token, state):
+    """Przycisk „Wyślij autorom” po zakończonym podziale DOCX (tylko superuser)."""
+    if state.get('state') == 'done' and state.get('split') and is_superuser(request.user):
+        return reverse('core:split_mailing', args=[token])
+    return None
+
+
 def _render_page(request, token, state, *, status=200):
     return render(request, 'core/program_job.html', {
-        'state': state, 'token': token,
+        'state': state, 'token': token, 'mail_url': _mail_url(request, token, state),
         'refresh': state.get('state') in ACTIVE_STATES + ('cancelling',),
         'download_url': reverse('core:program_job', args=[token]) + '?download=1',
     }, status=status)
@@ -53,17 +61,22 @@ def program_job(request, token):
         if download:
             if state['state'] != 'done':
                 raise jobs.JobError('Plik nie jest jeszcze gotowy do pobrania.')
+            if (folder / SENT).exists():
+                raise jobs.JobError('Pliki z tego podziału wysłano już autorom, a archiwum usunięto z serwera.')
             response = FileResponse((folder / 'result').open('rb'), as_attachment=True,
                                     filename=state['filename'], content_type=state['mime'])
             response['Cache-Control'] = 'private, no-store'
             response['X-Content-Type-Options'] = 'nosniff'
             # Po wysłaniu pliku usuwamy zadanie i wynik z serwera (najpierw
-            # zamyka się plik, potem katalog – kolejność zamknięć Django).
-            response._resource_closers.append(lambda: jobs.remove(folder))
+            # zamyka się plik, potem katalog – kolejność zamknięć Django). Podział zostaje
+            # do wygaśnięcia zadania: z tego archiwum CMS wysyła pliki autorom.
+            if not state.get('split'):
+                response._resource_closers.append(lambda: jobs.remove(folder))
             return response
         if page:
             return _render_page(request, token, state)
-        return JsonResponse(state)
+        mail_url = _mail_url(request, token, state)
+        return JsonResponse({**state, 'mail_url': mail_url} if mail_url else state)
     except jobs.JobError as error:
         if download and str(error).startswith('Zadanie wygasło'):
             error = jobs.JobError('Plik został już pobrany i usunięty z serwera albo zadanie wygasło. '

@@ -291,6 +291,14 @@ class MailboxConnection(models.Model):
         help_text='Każdy nabór w osobnym wierszu, bez cudzysłowów i bez prefiksu Nabór:, np. Na pokład, psubraty. Filtr dopasuje temat zawierający Nabór: „Na pokład, psubraty”.')
     folder = models.CharField('folder', max_length=255, default='INBOX', help_text='Nazwa folderu IMAP. Standardowa skrzynka odbiorcza: INBOX.')
     is_active = models.BooleanField('aktywna', default=True)
+    split_mailing = models.BooleanField('wysyłka plików autorom (cięcie nagłówkami)', default=False,
+        help_text='Z tej skrzynki CMS wysyła autorom ich pliki po podziale dokumentu nagłówkami. '
+                  'Wymaga serwera SMTP; login i hasło są te same co do IMAP.')
+    smtp_host = models.CharField('serwer SMTP (wysyłka)', max_length=253, blank=True, default='',
+        help_text='Np. smtp.example.com, bez https://. Wymagany tylko przy wysyłce plików autorom.')
+    smtp_port = models.PositiveIntegerField('port SMTP', default=465)
+    smtp_security = models.CharField('szyfrowanie SMTP', max_length=8, choices=Security.choices, default=Security.SSL,
+        help_text='SSL/TLS – zwykle port 465; STARTTLS – zwykle port 587.')
 
     class Meta:
         verbose_name = 'skrzynka zgłoszeń'
@@ -304,10 +312,12 @@ class MailboxConnection(models.Model):
         import re
         from django.core.exceptions import ValidationError
         super().clean()
-        if not re.fullmatch(r'[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?', self.host or ''):
+        host_pattern = r'[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?'
+        if not re.fullmatch(host_pattern, self.host or ''):
             raise ValidationError({'host': 'Podaj nazwę serwera IMAP bez protokołu, portu i ścieżki.'})
         if self.port is None or not 1 <= self.port <= 65535:
             raise ValidationError({'port': 'Port musi być liczbą od 1 do 65535.'})
+        self.clean_split_mailing(host_pattern)
         subjects = self.subject_choices()
         if len(subjects) > 200 or any(len(title) > 255 or any(ord(c) < 32 or ord(c) == 127 for c in title) for title in subjects):
             raise ValidationError({'recruitment_subjects': 'Maksymalnie 200 nazw, każda do 255 znaków, bez znaków sterujących.'})
@@ -315,6 +325,26 @@ class MailboxConnection(models.Model):
         for field in ('folder', 'username'):
             if any(ord(c) < 32 or ord(c) == 127 for c in getattr(self, field, '')):
                 raise ValidationError({field: 'Usuń znaki sterujące.'})
+
+    def clean_split_mailing(self, host_pattern):
+        """Wysyłka plików autorom: poprawny serwer i port SMTP, login będący adresem nadawcy, jedna aktywna skrzynka."""
+        import re
+        from django.core.exceptions import ValidationError
+        from django.core.validators import validate_email
+        if (self.split_mailing or self.smtp_host) and not re.fullmatch(host_pattern, self.smtp_host or ''):
+            raise ValidationError({'smtp_host': 'Podaj nazwę serwera SMTP bez protokołu, portu i ścieżki.'})
+        if self.smtp_port is None or not 1 <= self.smtp_port <= 65535:
+            raise ValidationError({'smtp_port': 'Port musi być liczbą od 1 do 65535.'})
+        if not self.split_mailing:
+            return
+        try:
+            validate_email(self.username or '')
+        except ValidationError:
+            raise ValidationError({'username': 'Przy wysyłce plików autorom login musi być adresem e-mail – '
+                                               'wiadomości wychodzą z tego adresu.'}) from None
+        if self.is_active and type(self).objects.filter(split_mailing=True, is_active=True).exclude(pk=self.pk).exists():
+            raise ValidationError({'split_mailing': 'Aktywna może być tylko jedna skrzynka do wysyłki plików autorom. '
+                                                    'Najpierw wyłącz wysyłkę w poprzedniej.'})
 
     def subject_choices(self):
         return list(dict.fromkeys(line.strip() for line in self.recruitment_subjects.splitlines() if line.strip()))
@@ -326,6 +356,20 @@ class MailboxConnection(models.Model):
     def get_password(self):
         from core.mailbox_crypto import decrypt_password
         return decrypt_password(self.encrypted_password)
+
+
+class MailboxHeaderSnapshot(models.Model):
+    """Nagłówki pobrane automatycznie (zadanie nocne) – sama lista nagłówków, bez treści i załączników."""
+    mailbox = models.OneToOneField(MailboxConnection, on_delete=models.CASCADE, related_name='header_snapshot')
+    mailbox_key = models.CharField(max_length=64)
+    sent_since = models.CharField(max_length=10, blank=True, default='')
+    result = models.JSONField(default=dict)
+    error = models.TextField(blank=True, default='')
+    fetched_at = models.DateTimeField()
+
+    class Meta:
+        verbose_name = 'automatycznie pobrane nagłówki'
+        verbose_name_plural = 'automatycznie pobrane nagłówki'
 
 
 class MailboxDownload(models.Model):

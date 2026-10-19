@@ -15,7 +15,7 @@ from authors.models import Author
 from core.forms import (AuthorNoteForm, AuthorNotificationForm, CompleteStageForm,
                         ReviewBulkImportForm, ReviewContentWarningsForm,
                         VacationForm)
-from core.models import PostLayoutAssignment
+from core.models import MailboxConnection, PostLayoutAssignment
 from core.post_layout import selection_token
 from fantazmaty.testing import FormControls, create_member, create_superuser
 from people.models import Person, Vacation
@@ -28,6 +28,8 @@ class BulkReviewImportFormTests(TestCase):
     def setUpTestData(cls):
         cls.user = create_superuser("admin", "admin@example.com")
         cls.book = Anthology.objects.create(title="Nabór")
+        MailboxConnection.objects.create(name="teksty", host="imap.example.com", username="teksty@example.com",
+                                         encrypted_password="unused")
 
     def setUp(self):
         tmp = TemporaryDirectory()
@@ -44,7 +46,7 @@ class BulkReviewImportFormTests(TestCase):
         return parser
 
     def test_initial_page_has_actual_bulk_controls(self):
-        response = self.client.get(reverse("core:review_create"))
+        response = self.client.get(reverse("core:review_bulk_import"))
         self.assertContains(response, '<textarea name="records"')
         self.assertContains(response, 'id="id_bulk_anthology"')
         self.assertContains(response, 'id="id_bulk_records"')

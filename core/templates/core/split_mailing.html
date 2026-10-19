@@ -1,0 +1,57 @@
+{% extends "core/base.html" %}
+{% load static %}
+{% block title %}Wysyłka plików autorom | Fantazmaty CMS{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/programs.css' %}">{% endblock %}
+{% block content %}
+<header class="page-header">
+    <h1 class="page-title">Wysyłka plików autorom</h1>
+    <p class="page-description">Każdy autor dostaje osobną wiadomość wyłącznie z plikiem swojego tekstu. W antologii tłumaczonej pliki trafiają do tłumaczy.</p>
+</header>
+<section class="details-card split-mailing">
+    <div class="card-body">
+    {% if error %}<p class="form-error" role="alert">{{ error }}</p>{% endif %}
+    {% if report %}
+        <p class="message success" role="status">Wysłano {{ report.sent }} z {{ report.sent|add:report.failed }} wiadomości{% if report.anthology_title %} – {{ report.anthology_title }}{% endif %}.</p>
+        {% include "core/includes/split_mailing_report.html" with rows=report.rows %}
+    {% elif batch %}
+        {% if failed_report %}<div class="form-error" role="alert"><strong>Nie wysłano żadnej wiadomości.</strong> Popraw ustawienia skrzynki i spróbuj ponownie.
+            {% include "core/includes/split_mailing_report.html" with rows=failed_report.rows %}</div>{% endif %}
+        {% if mailbox_error %}<p class="form-warning" role="alert">{{ mailbox_error }}</p>{% elif mailbox %}<p class="form-help">Nadawca: {{ mailbox.username }} (skrzynka „{{ mailbox.name }}”).</p>{% endif %}
+        <dl class="details-grid">
+            <div class="detail-item"><dt>Antologia</dt><dd>{{ batch.anthology_title }}{% if batch.translated %} (tłumaczona – adresy tłumaczy){% endif %}</dd></div>
+            <div class="detail-item"><dt>Temat</dt><dd>{{ batch.subject }}</dd></div>
+            <div class="detail-item"><dt>Treść</dt><dd>{{ batch.message|linebreaksbr }}</dd></div>
+        </dl>
+        <form method="post">
+            {% csrf_token %}<input type="hidden" name="batch" value="{{ batch_token }}">
+            <h2>Lista kontrolna</h2>
+            <p class="form-help">Sprawdź dopasowania. Wysłane zostaną tylko zaznaczone wiersze o stanie „Gotowe”: gotowe {{ ready_count }} z {{ batch.rows|length }}.</p>
+            <div class="table-container"><table class="data-table" data-pagination="off">
+                <thead><tr><th data-sort="none"><input type="checkbox" data-select-table="rows" aria-label="Zaznacz wszystkie gotowe wiersze"></th><th>Tytuł</th><th>Autorzy</th><th>Plik</th><th>Adresy e-mail</th><th>Stan</th></tr></thead>
+                <tbody>{% for row in batch.rows %}<tr>
+                    <td>{% if row.status == 'ready' %}<input type="checkbox" name="rows" value="{{ row.index }}" checked aria-label="Wyślij: {{ row.title }}">{% endif %}</td>
+                    <td>{% if row.title %}{{ row.title }}{% else %}<span class="muted-text">Nagłówek: {{ row.heading|default:"(pusty)" }}</span>{% endif %}</td>
+                    <td>{{ row.people|join:", "|default:"–" }}{% if row.missing and row.emails %}<br><span class="muted-text">Bez adresu: {{ row.missing|join:", " }}</span>{% endif %}</td>
+                    <td>{{ row.file }}</td>
+                    <td>{{ row.emails|join:", "|default:"–" }}</td>
+                    <td><span class="stage-status {% if row.status == 'ready' %}completed{% elif row.status == 'no_address' %}active{% else %}withdrawn{% endif %}">{% for key, label in status_labels.items %}{% if key == row.status %}{{ label }}{% endif %}{% endfor %}</span>{% if row.note %}<br><span class="muted-text">{{ row.note }}</span>{% endif %}</td>
+                </tr>{% endfor %}</tbody>
+            </table></div>
+            <div class="actions">
+                <button type="submit" name="action" value="send" class="primary-button"{% if not mailbox or not ready_count %} disabled{% endif %}>Wyślij zaznaczone</button>
+                <button type="submit" name="action" value="change" class="secondary-button" formnovalidate>Zmień antologię lub wiadomość</button>
+            </div>
+        </form>
+    {% elif form %}
+        {% if mailbox_error %}<p class="form-warning" role="alert">{{ mailbox_error }}</p>{% endif %}
+        <form method="post">
+            {% csrf_token %}
+            {{ form.non_field_errors }}
+            {% for field in form %}<div class="form-field">{{ field.label_tag }}{{ field }}{% if field.help_text %}<p class="muted-text">{{ field.help_text }}</p>{% endif %}{{ field.errors }}</div>{% endfor %}
+            <div class="actions"><button type="submit" name="action" value="prepare" class="primary-button">Przygotuj listę kontrolną</button></div>
+        </form>
+    {% endif %}
+    <p class="actions">{% if token and not report %}<a href="{% url 'core:program_job' token %}?view=page">Wróć do wyniku podziału</a>{% endif %}<a href="{% url 'core:programs' %}#program-split">Wróć do programów</a></p>
+    </div>
+</section>
+{% endblock %}

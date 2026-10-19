@@ -395,13 +395,12 @@ def review_list(request):
 @require_http_methods(["GET", "POST"])
 @superuser_required
 def review_bulk_submit(request):
-    from core.intake_forms import SingleReviewForm
-    form = ReviewBulkImportForm(
-        request.POST if request.method == "POST" else None,
-        user=request.user, auto_id="id_bulk_%s",
-    )
+    from core.views.intake import intake_page_redirect, render_intake_page
+    if request.method == "GET":
+        return intake_page_redirect(request)
+    form = ReviewBulkImportForm(request.POST, user=request.user, auto_id="id_bulk_%s")
 
-    valid = form.is_valid() if request.method == "POST" else False
+    valid = form.is_valid()
     preview_payload = [request.user.pk, hashlib.sha256(json.dumps([
         request.POST.get("anthology", ""), request.POST.get("records", "").strip()
     ], ensure_ascii=False).encode()).hexdigest()]
@@ -411,7 +410,7 @@ def review_bulk_submit(request):
             confirmed = signing.loads(request.POST.get("preview_token", ""), salt="review-preview", max_age=3600) == preview_payload
         except signing.BadSignature:
             pass
-    if request.method == "POST" and valid and confirmed:
+    if valid and confirmed:
         try:
             # Serwis ponownie waliduje formularz i aktualne ostrzeżenia
             # w transakcji. Sprawdza podpis, użytkownika, nabór, rekordy
@@ -431,50 +430,44 @@ def review_bulk_submit(request):
             )
             return redirect("core:review_list")
 
+    from texts.services import preview_author_matches, normalize_email
     preview_rows = []
-    if request.method == "POST":
-        from texts.services import preview_author_matches, normalize_email
-        records = {row["line_number"]: row for row in getattr(form, "preview_records", form.parsed_records)}
-        author_matches = preview_author_matches(row['email'] for row in records.values())
-        all_errors = [str(error) for errors in form.errors.values() for error in errors]
-        from core.services.review_import_parser import submission_rows
-        try:
-            input_rows = list(submission_rows(request.POST.get("records", "")))
-        except ValidationError:
-            input_rows = [(n, raw, []) for n, raw in enumerate(request.POST.get("records", "").splitlines(), 1)]
-        for line, raw, _fields in input_rows:
-            if not raw.strip():
-                continue
-            if len(preview_rows) >= 1000:
-                break
-            row = records.get(line)
-            warnings = [w for w in form.import_warnings if w.startswith(f"Wiersz {line}:")]
-            errors = [e for e in all_errors if e.startswith((f"Wiersz {line}:", f"Wiersz {line},"))]
-            matched = author_matches.get(normalize_email(row["email"]), []) if row else []
-            preview_rows.append({"line": line, "record": row, "raw": raw, "warnings": warnings,
-                "errors": errors, "matched": matched, "ambiguous": len(matched) > 1})
-    return render(
+    records = {row["line_number"]: row for row in getattr(form, "preview_records", form.parsed_records)}
+    author_matches = preview_author_matches(row['email'] for row in records.values())
+    all_errors = [str(error) for errors in form.errors.values() for error in errors]
+    from core.services.review_import_parser import submission_rows
+    try:
+        input_rows = list(submission_rows(request.POST.get("records", "")))
+    except ValidationError:
+        input_rows = [(n, raw, []) for n, raw in enumerate(request.POST.get("records", "").splitlines(), 1)]
+    for line, raw, _fields in input_rows:
+        if not raw.strip():
+            continue
+        if len(preview_rows) >= 1000:
+            break
+        row = records.get(line)
+        warnings = [w for w in form.import_warnings if w.startswith(f"Wiersz {line}:")]
+        errors = [e for e in all_errors if e.startswith((f"Wiersz {line}:", f"Wiersz {line},"))]
+        matched = author_matches.get(normalize_email(row["email"]), []) if row else []
+        preview_rows.append({"line": line, "record": row, "raw": raw, "warnings": warnings,
+            "errors": errors, "matched": matched, "ambiguous": len(matched) > 1})
+    return render_intake_page(
         request,
-        "core/review_intake.html",
-        {
-            "bulk_form": form,
-            "single_form": SingleReviewForm(),
-            "bulk_open": True,
-            "import_warnings": getattr(form, "import_warnings", []),
-            "preview_rows": preview_rows,
-            "preview_summary": {
-                "new_reviews": sum(bool(r['record']) for r in preview_rows),
-                "matched_authors": len({a.pk for r in preview_rows for a in r['matched']}),
-                "unmatched": sum(bool(r['record']) and not r['matched'] for r in preview_rows),
-                "conflicts": sum(bool(r['errors']) or r['ambiguous'] for r in preview_rows),
-                "warnings": len(form.import_warnings),
-            },
-            "preview_token": signing.dumps(preview_payload, salt="review-preview") if valid else "",
-            "can_import": valid,
+        200 if valid else 400,
+        bulk_form=form,
+        bulk_open=True,
+        import_warnings=getattr(form, "import_warnings", []),
+        preview_rows=preview_rows,
+        preview_summary={
+            "new_reviews": sum(bool(r['record']) for r in preview_rows),
+            "matched_authors": len({a.pk for r in preview_rows for a in r['matched']}),
+            "unmatched": sum(bool(r['record']) and not r['matched'] for r in preview_rows),
+            "conflicts": sum(bool(r['errors']) or r['ambiguous'] for r in preview_rows),
+            "warnings": len(form.import_warnings),
         },
-        status=400 if request.method == "POST" and not valid else 200,
+        preview_token=signing.dumps(preview_payload, salt="review-preview") if valid else "",
+        can_import=valid,
     )
-
 
 @never_cache
 @login_required

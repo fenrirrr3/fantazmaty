@@ -84,23 +84,24 @@ class StageFileOnTextPageTests(WorkflowTestDataMixin, TestCase):
         if not found:
             return None
         button = found[0].xpath('.//button[contains(@class, "copy-value-button")]')[0]
-        return found[0].xpath('string(.//code)'), button.get('data-copy-value'), button.text_content().strip()
+        label = found[0].xpath('string(.//*[@class="stage-file-label"])')
+        return label, found[0].xpath('string(.//code)'), button.get('data-copy-value'), button.text_content().strip()
 
     def test_file_name_follows_the_current_stage(self):
         title = 'Tekst do testów workflow'
         steps = [
-            ('ready for editing', lambda: None, f'ORYGINAŁ Kowalski – {title}'),
-            ('editing', self.begin_editing, f'REDAKCJA R POCZ Kowalski – {title}'),
+            ('ready for editing', lambda: None, 'Do redakcji', f'ORYGINAŁ Kowalski – {title}'),
+            ('editing', self.begin_editing, 'Redakcja', f'REDAKCJA R POCZ Kowalski – {title}'),
         ]
-        for case, action, expected in steps:
+        for case, action, stage_name, expected in steps:
             action()
             with self.subTest(case):
-                self.assertEqual(self.box(), (expected, expected, 'Kopiuj'))
+                self.assertEqual(self.box(), (f'{stage_name}. Plik nazwij w ten sposób:', expected, expected, 'Kopiuj'))
 
     def test_editing_after_first_verification(self):
         self.finish_first_verification()
         resume_editing(self.text, self.editor, started_at=self.today)
-        self.assertEqual(self.box()[0], 'REDAKCJA R ZAK Kowalski – Tekst do testów workflow')
+        self.assertEqual(self.box()[1], 'REDAKCJA R ZAK Kowalski – Tekst do testów workflow')
 
     def test_withdrawn_text_has_no_file_name(self):
         withdraw_text(user=self.coordinator, text_id=self.text.pk)

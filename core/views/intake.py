@@ -6,7 +6,10 @@ from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.core.exceptions import ValidationError
 from django.db.models import Q
+from copy import copy
+from django.http import QueryDict
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
 from core.permissions import coordinator_required, superuser_required
@@ -94,20 +97,69 @@ def recruitment_edit(request, pk=None):
     return _edit(request, Recruitment, RecruitmentAdminForm, 'Zgłoszenie rekrutacyjne', 'recruitment', pk)
 
 
+def _author_initial(request):
+    """Dane autora wybranego parametrem ?author= (formularz pojedynczego zgłoszenia)."""
+    from authors.models import Author
+    raw = request.GET.get('author', '')
+    selected = Author.objects.filter(pk=raw).first() if raw.isascii() and raw.isdecimal() and len(raw) < 19 else None
+    if selected is None:
+        return {}
+    pseudonym = selected.pseudonym.strip()
+    return {'author': selected.pk, 'author_first_name': selected.display_name if pseudonym else selected.first_name,
+            'author_last_name': '' if pseudonym else selected.last_name, 'email': selected.email or '',
+            'phone_number': selected.phone_number or '', 'author_pseudonym': selected.pseudonym}
+
+
+def manual_intake(request, **overrides):
+    """Kontekst zwiniętej sekcji „Dodaj ręcznie” na stronie „Dodaj do recenzji”."""
+    from authors.models import Author
+    from core.forms import ReviewBulkImportForm
+    fallback_query = request.GET.get('author_query', '').strip()[:200]
+    fallback_authors = Author.objects.none()
+    if fallback_query:
+        fallback_authors = Author.objects.all()
+        for term in fallback_query.split():
+            fallback_authors = fallback_authors.filter(name_matches(term, email=True))
+        fallback_authors = fallback_authors.order_by('last_name', 'first_name', 'pk')[:30]
+    context = {'single_form': SingleReviewForm(initial=_author_initial(request)),
+               'bulk_form': ReviewBulkImportForm(user=request.user, auto_id='id_bulk_%s'),
+               'fallback_authors': fallback_authors, 'fallback_query': fallback_query}
+    context.update(overrides)
+    return context
+
+
+def render_intake_page(request, status, **manual):
+    """Strona „Dodaj do recenzji” po wysłaniu formularza ręcznego.
+
+    Część skrzynki powstaje jak przy GET, a sekcja ręczna jest rozwinięta
+    i pokazuje przekazany formularz z błędami lub podglądem.
+    """
+    from core.views.mailbox import mailbox_headers
+    page = copy(request)
+    page.method, page.POST = 'GET', QueryDict()
+    page.manual_intake = manual_intake(request, open=True, **manual)
+    response = mailbox_headers(page)
+    response.status_code = status
+    return response
+
+
+def intake_page_redirect(request):
+    """Dawne adresy ręcznego dodawania prowadzą do scalonej strony (z parametrami wyboru autora)."""
+    query = request.GET.urlencode()
+    return redirect(reverse('core:review_bulk_import') + (f'?{query}' if query else ''))
+
+
 @never_cache
 @login_required
 @require_http_methods(['GET', 'POST'])
 @superuser_required
 def review_create(request):
+    if request.method == 'GET':
+        return intake_page_redirect(request)
+    from authors.models import Author
     with transaction.atomic():
-        from authors.models import Author
-        selected=None
-        raw=request.GET.get('author','')
-        if raw.isascii() and raw.isdecimal() and len(raw)<19:
-            selected=Author.objects.filter(pk=raw).first()
-        initial={'author':selected.pk,'author_first_name':selected.display_name if selected.pseudonym.strip() else selected.first_name,'author_last_name':'' if selected.pseudonym.strip() else selected.last_name,'email':selected.email or '', 'phone_number':selected.phone_number or '', 'author_pseudonym':selected.pseudonym} if selected else {}
-        form = SingleReviewForm(request.POST if request.method == 'POST' else None,initial=initial)
-        if request.method == 'POST' and form.is_valid():
+        form = SingleReviewForm(request.POST)
+        if form.is_valid():
             review = form.save(commit=False)
             from texts.models import Anthology
             # Same lock as bulk imports, including submissions to other calls.
@@ -123,7 +175,7 @@ def review_create(request):
                     list(Author.objects.select_for_update().filter(pk=review.author_id))
                 # Rebuild the form after locks: cached cleaned_data and signed
                 # confirmations must not hide duplicates or a changed blacklist.
-                form = SingleReviewForm(request.POST, initial=initial)
+                form = SingleReviewForm(request.POST)
                 if form.is_valid():
                     review = form.save(commit=False)
                     review.anthology = anthology
@@ -140,18 +192,7 @@ def review_create(request):
                             recruitment=form.cleaned_data['newsletter_recruitment'])
                         messages.success(request, 'Dodano zgłoszenie do recenzji.')
                         return redirect('core:assigned_review_detail', review_id=review.pk)
-    fallback_query=request.GET.get('author_query','').strip()[:200]
-    fallback_authors=Author.objects.none()
-    if fallback_query:
-        fallback_authors=Author.objects.all()
-        for term in fallback_query.split():
-            fallback_authors=fallback_authors.filter(name_matches(term, email=True))
-        fallback_authors=fallback_authors.order_by('last_name','first_name','pk')[:30]
-    from core.forms import ReviewBulkImportForm
-    return render(request, 'core/review_intake.html', {
-        'single_form': form, 'bulk_form': ReviewBulkImportForm(user=request.user, auto_id='id_bulk_%s'),
-        'author_fallback': True, 'fallback_authors': fallback_authors, 'fallback_query': fallback_query,
-    }, status=400 if request.method == 'POST' else 200)
+    return render_intake_page(request, 400, single_form=form)
 
 
 @never_cache

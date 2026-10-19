@@ -1,20 +1,23 @@
 """Ekran pobierania zgłoszeń tekstów z poczty: lista nagłówków zapamiętana w sesji, filtry tematu i daty, kopiowanie adresów i dostęp tylko dla superużytkownika."""
 import time
 from copy import deepcopy
+from datetime import datetime, timedelta, timezone as dt_timezone
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from django.urls import reverse
+from django.utils import timezone
 
 from core.admin import MailboxConnectionForm
-from core.models import MailboxConnection, MailboxDownload
+from authors.models import BlacklistEntry
+from core.models import MailboxConnection, MailboxDownload, MailboxHeaderSnapshot
 from core.services.mailbox import MailboxError
-from core.services.mailbox_import import default_mailbox, mailbox_key
+from core.services.mailbox_import import default_mailbox, mailbox_key, parse_message
 from core.views.mailbox import HEADERS_SESSION_KEY, load_token
 from fantazmaty.testing import create_superuser
 
-from .support import SubmissionMailboxMixin
+from .support import SubmissionMailboxMixin, named_mail
 
 
 class SubmissionHeadersTests(SubmissionMailboxMixin, TestCase):
@@ -180,3 +183,75 @@ class MailboxDateFilterTests(TestCase):
                 page = self.client.get(url)
                 self.assertFalse(page.context['date_form']['date_filter_enabled'].value())
                 self.assertContains(page, 'value="2026-11-01"')
+
+
+class SubmissionSnapshotTests(SubmissionMailboxMixin, TestCase):
+    """Nagłówki z nocnego pobierania (MailboxHeaderSnapshot) na ekranie pobierania zgłoszeń."""
+    ROWS = [{'uid': 13, 'sender': 'nowa@example.com', 'subject': 'Nowa', 'date': ''},
+            {'uid': 12, 'sender': 'anna@example.com', 'subject': 'Zaimportowana rano', 'date': ''},
+            {'uid': 11, 'sender': 'Zły <zly@example.com>', 'subject': 'Z czarnej listy', 'date': ''}]
+
+    def snapshot(self, fetched_at, key=None, error=''):
+        result = {} if error else {'validity': 7, 'rows': deepcopy(self.ROWS), 'total': 30, 'previous_cursor': None,
+                                   'next_cursor': {'anchor': 13, 'validity': 7, 'direction': 'older', 'boundary': 11}}
+        return MailboxHeaderSnapshot.objects.update_or_create(mailbox=self.box, defaults={
+            'mailbox_key': key or mailbox_key(self.box), 'sent_since': '2026-10-02', 'result': result,
+            'error': error, 'fetched_at': fetched_at})[0]
+
+    @patch('core.views.mailbox.fetch_messages')
+    def test_get_shows_snapshot_with_current_marks_and_signed_tokens(self, fetch):
+        """Bez własnych nagłówków strona pokazuje migawkę z czasem lokalnym, aktualnymi znacznikami i działającymi tokenami."""
+        self.snapshot(datetime(2026, 10, 19, 1, 0, tzinfo=dt_timezone.utc))
+        MailboxDownload.objects.create(mailbox_key=mailbox_key(self.box), uid_validity=7, uid=12)
+        BlacklistEntry.objects.create(email='zly@example.com')
+        with patch('core.views.mailbox.read_headers') as read:
+            page = self.client.get(self.url)
+            read.assert_not_called()
+        self.assertContains(page, 'Nagłówki pobrane automatycznie: 19 października 2026, 03:00.')
+        marks = {row['uid']: (row['downloaded'], row['blacklisted']) for row in page.context['result']['rows']}
+        self.assertEqual(marks, {13: (False, False), 12: (True, False), 11: (False, True)})
+        key = mailbox_key(self.box)
+        self.assertEqual(load_token(page.context['result']['next_cursor'], self.user, key, 'mailbox-cursor')['cursor']['boundary'], 11)
+        self.assertEqual(load_token(page.context['selection'], self.user, key, 'mailbox-selection')['uids'], [13, 12, 11])
+        fetch.side_effect = lambda *args: [parse_message(13, named_mail())]
+        preview = self.client.post(self.url, {'action': 'download', 'selection': page.context['selection'], 'uids': [13],
+            'date_filter_enabled': 'on', 'sent_since': '2026-10-02'})
+        self.assertEqual(preview.status_code, 200, preview.context.get('skipped_errors'))
+        self.assertContains(preview, 'A. M. Nowak')
+        self.assertIn('preview_token', preview.context)
+
+    def test_snapshot_versus_session_headers(self):
+        """Migawka zastępuje tylko brak lub starsze nagłówki z sesji; ręczne pobranie wygrywa, inna skrzynka jest pomijana."""
+        manual_at = timezone.now() - timedelta(hours=2)
+        cases = (
+            # (opis, ręczne pobranie przed GET, migawka względem niego, klucz, błąd, UID na stronie, informacja o migawce)
+            ('brak sesji', False, 1, None, '', 13, True),
+            ('starsza sesja', True, 1, None, '', 13, True),
+            ('nowsza sesja', True, -1, None, '', 12, False),
+            ('inna skrzynka', False, 1, 'inny-klucz', '', None, False),
+            ('błąd nocny', True, 1, None, 'Serwer pocztowy nie odpowiada.', 12, False),
+        )
+        for name, manual, shift, key, error, uid, automatic in cases:
+            with self.subTest(name):
+                self.client.logout()
+                self.client.force_login(self.user)
+                MailboxHeaderSnapshot.objects.all().delete()
+                if manual:
+                    with patch('core.views.mailbox.timezone.now', return_value=manual_at):
+                        self.fetch_headers()
+                self.snapshot(manual_at + timedelta(hours=shift), key=key, error=error)
+                with patch('core.views.mailbox.read_headers') as read:
+                    page = self.client.get(self.url)
+                    read.assert_not_called()
+                rows = (page.context['result'] or {}).get('rows', [])
+                self.assertEqual(rows[0]['uid'] if rows else None, uid)
+                self.assertEqual(bool(page.context.get('automatic_fetch')), automatic)
+                if error:
+                    self.assertContains(page, 'Nocne pobieranie nagłówków')
+                    self.assertContains(page, error)
+                    continue
+                if automatic:
+                    # Ręczne pobranie dalej nadpisuje nagłówki z migawki.
+                    page = self.fetch_headers()
+                    self.assertEqual(page.context['result']['rows'][0]['uid'], 12)
+                    self.assertNotContains(page, 'pobrane automatycznie')

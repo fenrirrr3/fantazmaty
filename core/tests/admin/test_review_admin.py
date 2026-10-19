@@ -296,6 +296,102 @@ class ReviewAdminSaveTests(ReviewAdminData):
         self.assertEqual(review.assignments.count(), 1)
 
 
+class ReviewAdminDeletionTests(ReviewAdminData):
+    """Usuwanie zgłoszeń w adminie: tylko superuser i tylko zgłoszenia bez recenzentów i bez utworzonego tekstu."""
+
+    def request(self, user=None):
+        request = RequestFactory().post('/')
+        request.user = user or self.admin
+        return request
+
+    def reviews_by_case(self):
+        text = Text.objects.create(title='Utworzony', anthology=self.book, length=100)
+        reviews = {name: self.make_review(title=name) for name in
+                   ('bez recenzentów', 'czytany', 'z opinią', 'konto usunięte', 'z tekstem', 'archiwalne puste')}
+        Review.objects.filter(pk=reviews['archiwalne puste'].pk).update(old_reviews=True)
+        ReviewAssignment.objects.create(review=reviews['czytany'], user=self.reviewer, position=1)
+        ReviewAssignment.objects.create(review=reviews['z opinią'], user=self.reviewer, position=1, opinion=YES)
+        ReviewAssignment.objects.create(review=reviews['konto usunięte'], user=None, position=1, opinion=YES)
+        Review.objects.filter(pk=reviews['z tekstem'].pk).update(copied_text=text)
+        return {name: Review.objects.get(pk=review.pk) for name, review in reviews.items()}
+
+    def test_delete_permission_per_review(self):
+        """Zgłoszenie da się usunąć, dopóki nikt się nie przypisał (nawet bez opinii) i nie powstał z niego tekst."""
+        model_admin = ReviewAdmin(Review, site)
+        staff = get_user_model().objects.create_user('review-staff', is_staff=True)
+        deletable = {'bez recenzentów', 'archiwalne puste'}
+        for name, review in self.reviews_by_case().items():
+            with self.subTest(name):
+                self.assertEqual(model_admin.has_delete_permission(self.request(), review), name in deletable)
+                self.assertFalse(model_admin.has_delete_permission(self.request(staff), review))
+        self.assertTrue(model_admin.has_delete_permission(self.request()))
+        self.assertIn('delete_selected', model_admin.get_actions(self.request()))
+        self.assertNotIn('delete_selected', model_admin.get_actions(self.request(staff)))
+
+    def test_delete_view_and_change_form_for_blocked_and_free_review(self):
+        """Zablokowane: brak linku „Usuń” i komunikat zamiast potwierdzenia; wolne: usunięcie po potwierdzeniu."""
+        reviews = self.reviews_by_case()
+        cases = [('czytany', 'przypisał się już recenzent'), ('z tekstem', 'utworzono tekst')]
+        for name, reason in cases:
+            with self.subTest(name):
+                review = reviews[name]
+                delete_url = reverse('admin:texts_review_delete', args=[review.pk])
+                self.assertNotContains(self.client.get(self.url(review)), delete_url)
+                for method in ('get', 'post'):
+                    response = getattr(self.client, method)(delete_url, {'post': 'yes'}, follow=True)
+                    self.assertRedirects(response, self.url(review))
+                    self.assertContains(response, reason)
+                self.assertTrue(Review.objects.filter(pk=review.pk).exists())
+        free = reviews['bez recenzentów']
+        delete_url = reverse('admin:texts_review_delete', args=[free.pk])
+        self.assertContains(self.client.get(self.url(free)), delete_url)
+        token = self.client.get(delete_url).context['request'].edit_version_token
+        self.assertEqual(self.client.post(delete_url, {'post': 'yes', '_edit_version': token}).status_code, 302)
+        self.assertFalse(Review.objects.filter(pk=free.pk).exists())
+
+    def test_bulk_action_deletes_only_reviews_without_reviewers(self):
+        """Akcja zbiorcza: strona potwierdzenia tylko z wolnymi zgłoszeniami, ostrzeżenie o pominiętych, zapis po potwierdzeniu."""
+        reviews = self.reviews_by_case()
+        url = reverse('admin:texts_review_changelist')
+        data = {'action': 'delete_selected', '_selected_action': [review.pk for review in reviews.values()]}
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual({review.pk for review in response.context['queryset']},
+                         {reviews['bez recenzentów'].pk, reviews['archiwalne puste'].pk})
+        warning = [str(message) for message in response.context['messages']]
+        self.assertEqual(len(warning), 1)
+        for name in ('czytany', 'z opinią', 'konto usunięte', 'z tekstem'):
+            self.assertIn(f'„{name}”', warning[0])
+        response = self.client.post(url, {**data, '_selected_action': [review.pk for review in response.context['queryset']],
+                                          'post': 'yes'})
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(set(Review.objects.values_list('title', flat=True)),
+                         {'czytany', 'z opinią', 'konto usunięte', 'z tekstem'})
+        response = self.client.post(url, {'action': 'delete_selected', '_selected_action': [reviews['czytany'].pk]},
+                                    follow=True)
+        self.assertContains(response, 'Pominięto zgłoszenia z recenzentem')
+        self.assertTrue(Review.objects.filter(pk=reviews['czytany'].pk).exists())
+
+    def test_deletion_rechecks_reviewers_and_drops_unsent_discord_notice(self):
+        """Usunięcie sprawdza przypisania ponownie (wyścig z przydzieleniem) i kasuje tylko niewysłane ogłoszenia."""
+        from core.models import DiscordNotification
+        model_admin = ReviewAdmin(Review, site)
+        review = self.make_review()
+        notices = {status: DiscordNotification.objects.create(trigger='review_new', channel='kanał', content='x',
+                                                              review=review, status=status)
+                   for status in ('pending', 'sent')}
+        ReviewAssignment.objects.create(review=review, user=self.reviewer, position=1)
+        for delete in (lambda: model_admin.delete_model(self.request(), review),
+                       lambda: model_admin.delete_queryset(self.request(), Review.objects.filter(pk=review.pk))):
+            with self.subTest(delete=delete), self.assertRaisesMessage(PermissionDenied, 'przypisał się już recenzent'):
+                delete()
+        self.assertTrue(Review.objects.filter(pk=review.pk).exists())
+        ReviewAssignment.objects.filter(review=review).delete()
+        model_admin.delete_model(self.request(), review)
+        self.assertFalse(Review.objects.filter(pk=review.pk).exists())
+        self.assertEqual(list(DiscordNotification.objects.values_list('pk', 'review')), [(notices['sent'].pk, None)])
+
+
 class AuthorDetailsViewTests(ReviewAdminData):
     def test_superuser_gets_private_author_data_with_blacklist_warning(self):
         author = Author.objects.create(first_name='Anna', last_name='Dane', email='anna@example.com',

@@ -1,4 +1,6 @@
 """Widoki, których treść zależy od roli: pulpit samego recenzenta i przycisk dodawania zgłoszeń recenzji."""
+import re
+
 from django.test import TestCase
 from django.urls import reverse
 
@@ -46,7 +48,7 @@ class ReviewImportButtonTests(TestCase):
     """Dodawanie zgłoszeń (dane osobowe autorów, ostrzeżenia z czarnej listy) – przycisk tylko dla superusera."""
 
     def test_only_superuser_sees_add_submissions_button_on_review_list(self):
-        button = f'href="{reverse("core:review_create")}"'
+        button = re.compile(rf'href="{reverse("core:review_bulk_import")}"\s+class="primary-button"')
         for user, visible in ((create_member('import-coordinator', 'Koordynator redakcji'), False),
                               (create_member('import-reviewer', 'Recenzent'), False),
                               (create_superuser('import-admin'), True)):
@@ -54,7 +56,7 @@ class ReviewImportButtonTests(TestCase):
                 self.client.force_login(user)
                 page = self.client.get(reverse('core:review_list'))
                 self.assertEqual(page.status_code, 200)
-                self.assertEqual(button in page.content.decode(), visible)
+                self.assertEqual(bool(button.search(page.content.decode())), visible)
 
 
 class RoleNamesPageTests(TestCase):

@@ -71,6 +71,12 @@ EbookLib fpdf2 Pillow rapidfuzz spacy` i modelem `pl_core_news_sm` (polecenia w 
      czekają na osobę (raz dziennie; działa, gdy w panelu włączono „Tekst nadal czeka na osobę”).
    - `python manage.py resend_discord_notifications` – ponawia powiadomienia Discord oczekujące od ponad 10 minut
      albo nieudane, nie starsze niż 3 dni (co kilkanaście minut; stan „brak potwierdzenia” nie jest ponawiany).
+   - `python manage.py fetch_mailbox_headers` – raz na dobę pobiera same nagłówki (bez treści i załączników)
+     ze skrzynek zgłoszeń i rekrutacji, żeby rano strony „Pobieranie zgłoszeń” i „Pobieranie próbek” od razu
+     pokazywały listę. Zadanie w zakładce Tasks: godzinę podaje się w UTC, więc 3:00–4:00 czasu polskiego
+     to 2:00 UTC (3:00 zimą, 4:00 latem); wpisanie 3:00 UTC da 4:00 zimą i 5:00 latem. Polecenie:
+     `cd /home/Fenrirrr3/fantazmaty && /home/Fenrirrr3/.virtualenvs/fantazmaty-venv/bin/python manage.py fetch_mailbox_headers`
+     Kod wyjścia 1 oznacza, że żadna skrzynka nie odpowiedziała; wynik widać też w adminie („Automatycznie pobrane nagłówki”).
    Jednorazowo po wdrożeniu z października 2026: `python manage.py align_stage_executions --dry-run`, a po sprawdzeniu
    bez `--dry-run` – wyrównuje numer wykonania otwartych etapów do numeru przydziału (dawny rozjazd „wyk. 1” / „wyk. 2”).
    Scalenie zdublowanego wpisu w spisie „Lektorzy/montażyści” (źródło znika, nagrania i e-mail przechodzą na cel):

@@ -42,6 +42,8 @@ MERGE_REBUILD_SUFFIX = ('. Po akceptacji wszystkie pliki zostaną przebudowane b
 NO_HEADING_MESSAGE = ('Dokument nie zawiera akapitów ze stylem „Nagłówek 1”. Oznacz tytuły opowiadań '
                       'stylem Nagłówek 1 (Narzędzia główne → Style) i spróbuj ponownie.')
 DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+# Lista części podziału (plik w ZIP i nagłówek) zapisana obok wyniku – korzysta z niej wysyłka autorom.
+SPLIT_PARTS = 'split_parts.json'
 SUMMARY_LABELS = {'user_word_corrections': 'Własne zamiany słownikowe (słownik zamian)',
                   'nonbreaking_spaces': 'Spacje nierozdzielające i nietypowe zamienione na zwykłe'}
 
@@ -514,11 +516,17 @@ def _run_split(folder, data, options, *, control, waiting):
             raise ConversionError('Podział nie utworzył poprawnego archiwum lub wynik przekroczył 50 MB.')
         shutil.copyfile(output, folder / 'result')
     names = [name for name in files if isinstance(name, str)]
+    titles = report.get('titles')
+    if not isinstance(titles, list) or len(titles) != len(files):
+        titles = [''] * len(files)
+    # Nagłówki części dla wysyłki autorom (split_mailing): nazwa pliku w ZIP i pełny tekst nagłówka.
+    write_json(folder / SPLIT_PARTS, [{'file': name, 'title': title if isinstance(title, str) else ''}
+                                      for name, title in zip(files, titles) if isinstance(name, str)])
     warnings = [f'Utworzono {len(names)} {plural(len(names), "plik", "pliki", "plików")}: {", ".join(names)}.']
     if report.get('skipped_intro'):
         warnings.append('Pominięto treść przed pierwszym Nagłówkiem 1 (np. stronę tytułową) – '
                         'nie ma jej w żadnym pliku.')
-    return {'state': 'done', 'mime': 'application/zip', 'removed_images': 0, 'warnings': warnings[:30],
+    return {'state': 'done', 'mime': 'application/zip', 'removed_images': 0, 'warnings': warnings[:30], 'split': True,
             'filename': conversion_filename(Path(data['name']).stem[:120] + ' – podział', 'zip')}
 
 

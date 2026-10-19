@@ -1,4 +1,5 @@
 """Skrzynka rekrutacyjna (próbki): filtry ról, podgląd wiadomości jako tekst, dodawanie zgłoszeń, pobieranie załączników w ZIP, decyzje zbiorcze i uprawnienia."""
+from datetime import timedelta
 from email.message import EmailMessage
 from io import BytesIO
 from unittest.mock import patch
@@ -9,9 +10,10 @@ from django.contrib.auth import get_user_model
 from django.core import signing
 from django.test import Client, SimpleTestCase, TestCase
 from django.urls import reverse
+from django.utils import timezone
 from lxml import html
 
-from core.models import MailboxConnection, MailboxDownload, Recruitment, RecruitmentMailSource
+from core.models import MailboxConnection, MailboxDownload, MailboxHeaderSnapshot, Recruitment, RecruitmentMailSource
 from core.recruitment_message import name_in_subject
 from core.recruitment_roles import ROLE_CHOICES
 from core.services.mailbox_import import default_mailbox, mailbox_key
@@ -405,6 +407,55 @@ class RecruitmentMailboxFiltersTests(RecruitmentMailboxMixin, TestCase):
         self.assertEqual(response.json(), {'emails': ['a@example.test']})
         self.assertEqual(copy.call_args.kwargs['recruitment_roles'], ['editors', 'reviewers'])
         self.assertFalse(MailboxDownload.objects.exists())
+
+
+class RecruitmentSnapshotTests(RecruitmentMailboxMixin, TestCase):
+    """Nagłówki z nocnego pobierania na ekranie próbek (po ręcznym pobraniu w setUp nagłówki UID 12 są w sesji)."""
+
+    def snapshot(self, shift, key=None, error=''):
+        rows = [{'uid': uid, 'sender': 'candidate@example.test', 'subject': f'Redakcja {uid}', 'date': ''} for uid in (14, 13, 12)]
+        result = {} if error else {'validity': 7, 'rows': rows, 'total': 3, 'next_cursor': None, 'previous_cursor': None}
+        MailboxHeaderSnapshot.objects.update_or_create(mailbox=self.box, defaults={
+            'mailbox_key': key or mailbox_key(self.box), 'sent_since': '2026-10-02', 'result': result,
+            'error': error, 'fetched_at': timezone.now() + shift})
+
+    def test_newer_snapshot_shows_current_marks_and_messages_can_be_added(self):
+        """Nowsza migawka zastępuje sesję bez łączenia ze skrzynką, oznacza wiadomości z bazy i pobrane, a jej wybór pozwala dodać zgłoszenie."""
+        self.snapshot(timedelta(minutes=1))
+        RecruitmentMailSource.objects.create(recruitment=Recruitment.objects.create(email='k@example.test'),
+                                             mailbox_key=mailbox_key(self.box), uid_validity=7, uid=13)
+        MailboxDownload.objects.create(mailbox_key=mailbox_key(self.box), uid_validity=7, uid=12)
+        self.headers.reset_mock()
+        page = self.client.get(self.url)
+        self.headers.assert_not_called()
+        self.assertContains(page, 'Nagłówki pobrane automatycznie:')
+        self.assertEqual([(row['uid'], bool(row['record']), row['downloaded']) for row in page.context['rows']],
+                         [(14, False, False), (13, True, False), (12, False, True)])
+        with patch('core.views.recruitment_mailbox.fetch_messages', return_value=[sample(14)]):
+            response = self.client.post(self.url, {'action': 'add', 'selected': ['14'], 'selection': page.context['selection'],
+                                                   'roles': ['all'], 'date_filter_enabled': 'on', 'sent_since': '2026-10-02'})
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(RecruitmentMailSource.objects.filter(uid=14).exists())
+        # Ręczne pobranie dalej nadpisuje nagłówki z migawki (migawka ma czas o minutę w przód).
+        with patch('core.views.recruitment_mailbox.timezone.now', return_value=timezone.now() + timedelta(minutes=2)):
+            self.client.post(self.url, {'action': 'headers', 'roles': ['all'], 'date_filter_enabled': 'on', 'sent_since': '2026-10-02'})
+        page = self.client.get(self.url)
+        self.assertEqual([row['uid'] for row in page.context['rows']], [12])
+        self.assertNotContains(page, 'pobrane automatycznie')
+
+    def test_session_headers_kept_for_older_foreign_or_failed_snapshot(self):
+        """Starsza migawka, migawka innej skrzynki i nieudane nocne pobranie nie zastępują nagłówków z sesji; błąd jest pokazany."""
+        cases = (('starsza', timedelta(hours=-1), None, ''), ('inna skrzynka', timedelta(minutes=1), 'inny-klucz', ''),
+                 ('błąd', timedelta(minutes=1), None, 'Serwer pocztowy nie odpowiada.'))
+        for name, shift, key, error in cases:
+            with self.subTest(name):
+                self.snapshot(shift, key=key, error=error)
+                self.headers.reset_mock()
+                page = self.client.get(self.url)
+                self.headers.assert_not_called()
+                self.assertEqual([row['uid'] for row in page.context['rows']], [12])
+                self.assertNotContains(page, 'pobrane automatycznie')
+                self.assertEqual(error in page.content.decode() and 'Nocne pobieranie nagłówków' in page.content.decode(), bool(error))
 
 
 class RecruiterMailboxAccessTests(TestCase):

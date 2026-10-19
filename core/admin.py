@@ -785,6 +785,10 @@ class WorkflowEventAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
 
 
+# Sekcja „Wysyłka plików autorom” (Programy → Podział DOCX → Wyślij autorom).
+SPLIT_MAILING_FIELDS = ('split_mailing', 'smtp_host', 'smtp_port', 'smtp_security')
+
+
 class MailboxConnectionForm(forms.ModelForm):
     password = forms.CharField(label='Hasło / hasło aplikacji', required=False,
         strip=False, widget=forms.PasswordInput(render_value=False),
@@ -792,7 +796,21 @@ class MailboxConnectionForm(forms.ModelForm):
 
     class Meta:
         model = MailboxConnection
-        fields = ('name', 'purpose', 'host', 'port', 'security', 'username', 'password', 'folder', 'recruitment_subjects', 'is_active')
+        fields = ('name', 'purpose', 'host', 'port', 'security', 'username', 'password', 'folder', 'recruitment_subjects', 'is_active',
+                  *SPLIT_MAILING_FIELDS)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Port i szyfrowanie SMTP mają wartości domyślne – potrzebne tylko przy wysyłce plików autorom.
+        for name in ('smtp_port', 'smtp_security'):
+            self.fields[name].required = False
+
+    def clean_smtp_port(self):
+        value = self.cleaned_data.get('smtp_port')
+        return MailboxConnection._meta.get_field('smtp_port').default if value is None else value
+
+    def clean_smtp_security(self):
+        return self.cleaned_data.get('smtp_security') or MailboxConnection.Security.SSL
 
     def clean_password(self):
         password = self.cleaned_data.get('password', '')
@@ -825,10 +843,20 @@ class MailboxConnectionForm(forms.ModelForm):
 @admin.register(MailboxConnection)
 class MailboxConnectionAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     form = MailboxConnectionForm
-    list_display = ('name', 'purpose', 'host', 'username', 'folder', 'is_active')
-    list_filter = ('purpose', 'is_active')
-    fields = ('name', 'purpose', 'host', 'port', 'security', 'username', 'password', 'folder', 'recruitment_subjects', 'is_active')
+    list_display = ('name', 'purpose', 'host', 'username', 'folder', 'is_active', 'split_mailing')
+    list_filter = ('purpose', 'is_active', 'split_mailing')
+    fields = ('name', 'purpose', 'host', 'port', 'security', 'username', 'password', 'folder', 'recruitment_subjects', 'is_active',
+              *SPLIT_MAILING_FIELDS)
     search_fields = ('name', 'host', 'username')
+
+    def get_fieldsets(self, request, obj=None):
+        fields = self.get_fields(request, obj)
+        return [(None, {'fields': [name for name in fields if name not in SPLIT_MAILING_FIELDS]}),
+                ('Wysyłka plików autorom', {
+                    'fields': [name for name in fields if name in SPLIT_MAILING_FIELDS],
+                    'description': 'Skrzynka, z której CMS wysyła autorom ich pliki po podziale dokumentu '
+                                   'nagłówkami (Programy → Podział DOCX). Login i hasło są te same co do IMAP; '
+                                   'login musi być adresem e-mail nadawcy. Przeznaczenie skrzynki może być dowolne.'})]
 
     def get_changeform_initial_data(self, request):
         from urllib.parse import parse_qs
@@ -845,6 +873,30 @@ class MailboxConnectionAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         if purpose == MailboxConnection.Purpose.RECRUITMENT:
             fields.remove('recruitment_subjects')
         return fields
+
+
+from core.models import MailboxHeaderSnapshot  # noqa: E402
+
+
+@admin.register(MailboxHeaderSnapshot)
+class MailboxHeaderSnapshotAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
+    """Wynik nocnego pobierania nagłówków – tylko do odczytu (odświeża go komenda fetch_mailbox_headers)."""
+    list_display = ('mailbox', 'fetched_at', 'header_count', 'error')
+    fields = ('mailbox', 'fetched_at', 'sent_since', 'header_count', 'error')
+    readonly_fields = fields
+
+    @admin.display(description='nagłówki')
+    def header_count(self, obj):
+        return len(obj.result.get('rows', []))
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 from core.models import ReplacementEntry  # noqa: E402

@@ -16,6 +16,7 @@ from .views import (
 )
 from core.views.programs import programs
 from core.views.program_jobs import program_job
+from core.views.split_mailing import split_mailing
 from core.views.replacements import replacement_edit, replacement_list
 from core.views.activity import user_activity
 from core.views.recruitment_delete import recruitment_delete
@@ -102,6 +103,7 @@ urlpatterns = [
     path("teksty/<int:text_id>/notatki/<int:note_id>/usun/", texts.delete_text_note, name="delete_text_note"),
     path("programy/", programs, name="programs"),
     path('programy/zadania/<str:token>/', program_job, name='program_job'),
+    path('programy/zadania/<str:token>/wyslij-autorom/', split_mailing, name='split_mailing'),
     path('programy/slownik-zamian/', replacement_list, name='replacement_list'),
     path('programy/slownik-zamian/<int:pk>/', replacement_edit, name='replacement_edit'),
     path("autorzy/sugestie/", intake.author_suggestions, name="author_suggestions"),

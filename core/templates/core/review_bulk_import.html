@@ -1,12 +1,15 @@
 {% extends 'core/base.html' %}{% load static %}
-{% block title %}Pobieranie zgłoszeń | Fantazmaty CMS{% endblock %}
+{% block title %}Dodaj do recenzji | Fantazmaty CMS{% endblock %}
 {% block extra_css %}<link rel="stylesheet" href="{% static 'core/recruitment.css' %}"><link rel="stylesheet" href="{% static 'core/intake.css' %}">{% endblock %}
 {% block content %}
-<header class="page-header"><h1 class="page-title">Pobieranie zgłoszeń</h1><p class="page-description">Jednorazowo do {{ max_messages }} wiadomości.</p></header>
-<p class="actions"><a class="secondary-button" href="{% url 'core:review_create' %}">Dodaj zgłoszenie lub importuj wiele zgłoszeń</a><a class="secondary-button" href="{% url 'admin:core_mailboxconnection_changelist' %}">Ustawienia skrzynki</a></p>
+<header class="page-header"><h1 class="page-title">Dodaj do recenzji</h1><p class="page-description">Pobierz zgłoszenia ze skrzynki – jednorazowo do {{ max_messages }} wiadomości.</p></header>
+<p class="message info">Pobranie tekstów ze skrzynki automatycznie doda zgłoszenia do bazy – recenzenci zobaczą je na liście recenzji.</p>
+<p class="actions"><a class="secondary-button" href="{% url 'admin:core_mailboxconnection_changelist' %}">Ustawienia skrzynki</a></p>
 <section class="card mailbox-import-card"><div class="card-body">
 {% if skipped_errors %}<div class="form-error" role="alert"><strong>Pominięte zgłoszenia:</strong><ul>{% for skipped in skipped_errors %}<li>{{ skipped }}</li>{% endfor %}</ul></div>{% endif %}
 {% if error %}<p class="form-error" role="alert">{{ error }}</p>{% endif %}
+{% if automatic_fetch %}<p class="muted-text">Nagłówki pobrane automatycznie: {{ automatic_fetch|date:"j E Y, H:i" }}.</p>{% endif %}
+{% if automatic_error %}<p class="form-warning" role="status">Nocne pobieranie nagłówków ({{ automatic_error_at|date:"j E Y, H:i" }}) nie powiodło się: {{ automatic_error }}</p>{% endif %}
 {% if mailbox %}
 <form method="post" data-mailbox-import data-preview-field="uids">{% csrf_token %}
 <input type="hidden" name="selection" value="{{ selection }}"><input type="hidden" name="download_token" value="">
@@ -74,5 +77,6 @@
 {% endif %}
 {% endif %}
 </div></section>
+{% include 'core/includes/review_manual_intake.html' %}
 {% endblock %}
-{% block scripts %}<script src="{% static 'core/recruitment-samples.js' %}" defer></script><script src="{% static 'core/mailbox-import.js' %}" defer></script>{% endblock %}
+{% block scripts %}<script src="{% static 'core/recruitment-samples.js' %}" defer></script><script src="{% static 'core/mailbox-import.js' %}" defer></script><script src="{% static 'core/author-search.js' %}" defer></script>{% endblock %}

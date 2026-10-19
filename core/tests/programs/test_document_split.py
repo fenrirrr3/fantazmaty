@@ -1,23 +1,31 @@
-"""Podział DOCX według Nagłówków 1 (tylko superuser): pliki opowiadań w ZIP, tylko własne przypisy, obrazy i komentarze."""
+"""Podział DOCX według Nagłówków 1 (tylko superuser): pliki opowiadań w ZIP, tylko własne przypisy, obrazy i komentarze;
+wysyłka plików autorom (dopasowanie do tekstów antologii, lista kontrolna, SMTP, ochrona przed podwójną wysyłką)."""
+import json
+import smtplib
+import time
 from contextlib import nullcontext
 from io import BytesIO
 from unittest.mock import patch
 from urllib.parse import unquote
 from zipfile import ZIP_DEFLATED, ZipFile
 
+from django.core import mail, signing
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import SimpleTestCase, TestCase, tag
+from django.core.mail import get_connection
+from django.test import Client, SimpleTestCase, TestCase, tag
 from django.urls import reverse
 from docx import Document
 
 from docx.oxml import parse_xml
 from docx.oxml.ns import nsdecls
-from lxml import etree
+from lxml import etree, html
 
+from core.models import MailboxConnection
 from core.program_test_support import run_program
 from core.services import program_jobs as jobs
+from core.services import split_mailing as mailing
 from core.services.document_split import NoHeadingError, file_name, heading_style_ids, split_document
-from fantazmaty.testing import create_superuser
+from fantazmaty.testing import create_member, create_superuser
 
 from .support import IsolatedProgramDirsMixin, add_footnote_reference, docx_bytes, downloaded, png, saved
 
@@ -172,7 +180,8 @@ class SplitDocumentTests(SimpleTestCase):
         for intro in (True, False):
             with self.subTest(intro=intro):
                 report, files = split(anthology(intro))
-                self.assertEqual(report, {'files': EXPECTED, 'skipped_intro': intro})
+                self.assertEqual(report, {'files': EXPECTED, 'titles': [title for title, _ in STORIES],
+                                          'skipped_intro': intro})
                 assert_story_files(self, files)
 
     def test_heading_one_is_found_by_style_name_id_or_default_id(self):
@@ -217,6 +226,7 @@ class SplitDocumentTests(SimpleTestCase):
         report, files = split(saved(document).getvalue())
         self.assertEqual(report['files'], ['01 Opowiadanie.docx', '02 Ten sam.docx', '03 Ten sam.docx',
                                            '04 ' + 'Ż' * 80 + '.docx', '05 Z tabem.docx'])
+        self.assertEqual(report['titles'], ['', 'Ten sam', 'Ten sam', 'Ż' * 120, 'Z tabem'])
         self.assertEqual(list(files), report['files'])
         self.assertEqual(Document(BytesIO(files['03 Ten sam.docx'])).paragraphs[1].text, 'Treść 3.')
 
@@ -405,3 +415,348 @@ class SplitProgramTests(IsolatedProgramDirsMixin, TestCase):
         """Bez akapitu w stylu Nagłówek 1 nie powstaje żaden plik – komunikat po polsku."""
         response = self.run_split(docx_bytes('Sam tekst bez nagłówków.'))
         self.assertContains(response, 'nie zawiera akapitów ze stylem „Nagłówek 1”', status_code=200)
+
+
+# ===== Wysyłka plików autorom po podziale =====
+
+PARTS = (('01 Pierwsze opowiadanie.docx', 'Pierwsze opowiadanie'), ('02 Drugie „cytat”.docx', 'Drugie: „cytat”?'),
+         ('03 Trzecie.docx', 'Trzecie'), ('04 Wstęp redakcji.docx', 'Wstęp redakcji'), ('05 Czwarte.docx', 'Czwarte'))
+
+
+def locmem_connection(mailbox):
+    """Zamiast prawdziwego SMTP – skrzynka testowa Django (mail.outbox)."""
+    return get_connection('django.core.mail.backends.locmem.EmailBackend')
+
+
+class SplitMailingData(TestCase):
+    """Antologia z autorami (z adresem, dwoje autorów, bez adresu), tekst wycofany i skrzynka wysyłkowa."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from authors.models import Author
+        from texts.models import Anthology, Text, Translator
+        from workflow.models import WorkflowStage
+
+        cls.admin = create_superuser('wysylka-admin')
+        cls.mailbox = MailboxConnection(name='Wysyłka', host='imap.example.test', username='wysylka@example.test',
+                                        split_mailing=True, smtp_host='smtp.example.test', smtp_port=587,
+                                        smtp_security=MailboxConnection.Security.STARTTLS)
+        cls.mailbox.set_password('tajne')
+        cls.mailbox.save()
+        cls.book = Anthology.objects.create(title='Zbiór')
+        jan = Author.objects.create(first_name='Jan', last_name='Kowalski', email='jan@example.test')
+        anna = Author.objects.create(first_name='Anna', last_name='Nowak', pseudonym='A. Pióro', email='anna@example.test')
+        cls.silent = Author.objects.create(first_name='Ewa', last_name='Cicha', email=None)
+        cls.texts = {}
+        for title, writers in (('Pierwsze opowiadanie', [jan]), ('DRUGIE – "Cytat"', [jan, anna]),
+                               ('Trzecie', [cls.silent]), ('Czwarte', [jan])):
+            cls.texts[title] = Text.objects.create(title=title, anthology=cls.book, length=100)
+            cls.texts[title].authors.add(*writers)
+        WorkflowStage.objects.create(text=cls.texts['Czwarte'], stage_type='withdrawn', is_released=True,
+                                     is_completed=False)
+        cls.translated = Anthology.objects.create(title='Przekłady', is_translated=True)
+        cls.translator = Translator.objects.create(first_name='Olga', last_name='Tłumacz', email='olga@example.test')
+        foreign = Text.objects.create(title='Pierwsze opowiadanie', anthology=cls.translated, length=100)
+        foreign.authors.add(jan)
+        foreign.translation.translators.add(cls.translator)
+        cls.untranslated = Text.objects.create(title='Trzecie', anthology=cls.translated, length=100)
+
+
+class SplitMailingMatchTests(SplitMailingData):
+    """Dopasowanie nagłówków do tekstów antologii i adresy odbiorców."""
+
+    def test_title_normalization_ignores_case_spaces_quotes_and_punctuation_only(self):
+        """Porównanie bez wielkości liter, białych znaków, cudzysłowów i interpunkcji – ale bez zgadywania."""
+        cases = (
+            ('Drugie: „cytat”?', 'DRUGIE – "Cytat"', True),
+            ('Dom  nad\tjeziorem', 'Dom nad jeziorem', True),
+            ('Rozdział 1.', 'rozdział 1', True),
+            ('Żółw', 'Zolw', False),
+            ('Ala', 'Ala 2', False),
+            ('Kot', 'Koty', False),
+        )
+        for heading, title, same in cases:
+            with self.subTest(heading=heading, title=title):
+                self.assertEqual(mailing.normalized_title(heading) == mailing.normalized_title(title), same)
+
+    def test_rows_report_match_address_and_reason(self):
+        """Lista kontrolna: gotowe, brak adresu, brak dopasowania (także tekst wycofany, powtórzony nagłówek i kilka tekstów o tym tytule)."""
+        from texts.models import Text
+
+        parts = [{'file': name, 'title': title} for name, title in PARTS]
+        cases = (
+            ('zwykła lista', parts, [
+                ('ready', 'Pierwsze opowiadanie', ['jan@example.test'], ''),
+                ('ready', 'DRUGIE – "Cytat"', ['jan@example.test', 'anna@example.test'], ''),
+                ('no_address', 'Trzecie', [], ''),
+                ('no_match', '', [], ''),
+                ('no_match', '', [], '')]),
+            ('powtórzony nagłówek', parts[:1] * 2, [('no_match', '', [], 'Ten sam nagłówek ma kilka części dokumentu.')] * 2),
+            ('stary wynik bez tytułów', [{'file': '01 Pierwsze opowiadanie.docx'}],
+             [('ready', 'Pierwsze opowiadanie', ['jan@example.test'], '')]),
+        )
+        for label, rows, expected in cases:
+            with self.subTest(label):
+                result = mailing.build_rows(rows, self.book)
+                self.assertEqual([(row['status'], row['title'], row['emails'], row['note']) for row in result], expected)
+        Text.objects.create(title='Trzecie!', anthology=self.book, length=100).authors.add(self.silent)
+        with self.subTest('kilka tekstów o tym tytule'):
+            row = mailing.build_rows(parts[2:3], self.book)[0]
+            self.assertEqual((row['status'], row['note']), ('no_match', 'Kilka tekstów antologii ma ten tytuł.'))
+
+    def test_recipients_are_authors_or_translators(self):
+        """Autor, kilku autorów (jedna wiadomość do wszystkich), tłumacz w antologii tłumaczonej i brak adresu."""
+        from authors.models import Author
+
+        partial = self.texts['Trzecie']
+        cases = (
+            ('jeden autor', self.texts['Pierwsze opowiadanie'], False, (['Jan Kowalski'], ['jan@example.test'], [])),
+            ('dwoje autorów', self.texts['DRUGIE – "Cytat"'], False,
+             (['Jan Kowalski', 'A. Pióro'], ['jan@example.test', 'anna@example.test'], [])),
+            ('tłumacz', self.translator.translations.get().text, True, (['Olga Tłumacz'], ['olga@example.test'], [])),
+            ('tłumaczenie bez tłumacza', self.untranslated, True, ([], [], [])),
+            ('brak adresu', partial, False, (['Ewa Cicha'], [], ['Ewa Cicha'])),
+        )
+        for label, text, translated, expected in cases:
+            with self.subTest(label):
+                self.assertEqual(mailing.recipients(text, translated), expected)
+        partial.authors.add(Author.objects.create(first_name='Piotr', last_name='Głośny', email='piotr@example.test'))
+        with self.subTest('jeden z autorów bez adresu – wysyłka do pozostałych'):
+            row = mailing.build_rows([{'file': '03 Trzecie.docx', 'title': 'Trzecie'}], self.book)[0]
+            self.assertEqual((row['status'], row['emails'], row['missing']), ('ready', ['piotr@example.test'], ['Ewa Cicha']))
+
+    def test_smtp_connection_uses_mailbox_settings(self):
+        """Połączenie SMTP z danych skrzynki: serwer, port, login i hasło IMAP, SSL albo STARTTLS, limit czasu."""
+        for security, ssl in ((MailboxConnection.Security.SSL, True), (MailboxConnection.Security.STARTTLS, False)):
+            with self.subTest(security=security):
+                self.mailbox.smtp_security = security
+                backend = mailing.smtp_connection(self.mailbox)
+                self.assertEqual((backend.host, backend.port, backend.username, backend.password, backend.use_ssl,
+                                  backend.use_tls, backend.timeout, backend.fail_silently),
+                                 ('smtp.example.test', 587, 'wysylka@example.test', 'tajne', ssl, not ssl,
+                                  mailing.SMTP_TIMEOUT, False))
+
+    def test_translated_anthology_rows_go_to_translators(self):
+        """W antologii tłumaczonej plik idzie do tłumacza; tekst bez tłumacza – brak adresu z wyjaśnieniem."""
+        rows = mailing.build_rows([{'file': name, 'title': title} for name, title in (PARTS[0], PARTS[2])], self.translated)
+        self.assertEqual([(row['status'], row['emails'], row['note']) for row in rows],
+                         [('ready', ['olga@example.test'], ''), ('no_address', [], 'Tekst nie ma przypisanych tłumaczy.')])
+
+
+class SplitMailingViewTests(IsolatedProgramDirsMixin, SplitMailingData):
+    """Formularz, lista kontrolna, wysyłka (SMTP podmienione), raport, uprawnienia i ochrona przed podwójną wysyłką."""
+
+    FORM = {'action': 'prepare', 'subject': 'Twój tekst po podziale', 'message': 'Dzień dobry,\nw załączniku plik.'}
+
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.admin)
+        patcher = patch.object(mailing, 'smtp_connection', side_effect=locmem_connection)
+        self.smtp = patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def split_job(self, client=None, parts=PARTS, **state):
+        """Zakończone zadanie podziału bez konwertera (ZIP części i lista nagłówków); zwraca adres wysyłki i folder."""
+        with patch.object(jobs, 'launch'):
+            response = (client or self.client).post(reverse('core:programs'), {
+                'program_action': 'split', 'split-document': SimpleUploadedFile('A.docx', docx_bytes())},
+                HTTP_X_PROGRAM_JOB='1')
+        token = response.json()['url'].rstrip('/').rsplit('/', 1)[-1]
+        folder = jobs.root() / signing.loads(token, salt=jobs.SALT)['key']
+        output = BytesIO()
+        with ZipFile(output, 'w') as archive:
+            for name, _ in parts:
+                archive.writestr(name, f'plik {name}'.encode())
+        (folder / 'result').write_bytes(output.getvalue())
+        jobs.write_json(folder / jobs.SPLIT_PARTS, [{'file': name, 'title': title} for name, title in parts])
+        jobs.write_json(folder / 'state.json', {'state': 'done', 'split': True, 'mime': 'application/zip',
+                                                'filename': 'A – podział.zip', 'warnings': [], **state})
+        return reverse('core:split_mailing', args=[token]), folder
+
+    def prepare(self, url, anthology=None):
+        response = self.client.post(url, {**self.FORM, 'anthology': (anthology or self.book).pk})
+        self.assertEqual(response.status_code, 302, response.content.decode()[:500])
+        return response['Location']
+
+    def checklist(self, url):
+        page = self.client.get(url)
+        return page, page.context['batch_token']
+
+    def test_checklist_then_each_author_gets_only_own_file(self):
+        """Lista kontrolna z tytułem, autorami, plikiem, adresami i stanem; każdy e-mail ma tylko plik swojego tekstu."""
+        url, folder = self.split_job()
+        self.assertContains(self.client.get(url), 'Przygotuj listę kontrolną')
+        url = self.prepare(url)
+        page, token = self.checklist(url)
+        tree = html.fromstring(page.content.decode())
+        cells = [[' '.join(cell.text_content().split()) for cell in row.xpath('./td')[1:]]
+                 for row in tree.xpath('//table//tbody/tr')]
+        self.assertEqual(cells[1], ['DRUGIE – "Cytat"', 'Jan Kowalski, A. Pióro', '02 Drugie „cytat”.docx',
+                                    'jan@example.test, anna@example.test', 'Gotowe'])
+        self.assertEqual([row[-1] for row in cells], ['Gotowe', 'Gotowe', 'Brak adresu', 'Brak dopasowania',
+                                                      'Brak dopasowania'])
+        self.assertEqual(tree.xpath('//input[@name="rows"]/@value'), ['0', '1'])
+        response = self.client.post(url, {'action': 'send', 'batch': token, 'rows': ['0', '1', '2', '3']}, follow=True)
+        self.assertContains(response, 'Wysłano 2 z 2 wiadomości')
+        self.assertEqual([(message.to, message.from_email, message.subject, message.body,
+                           [(name, content) for name, content, _ in message.attachments]) for message in mail.outbox], [
+            (['jan@example.test'], 'wysylka@example.test', self.FORM['subject'], self.FORM['message'],
+             [('Pierwsze opowiadanie.docx', b'plik 01 Pierwsze opowiadanie.docx')]),
+            (['jan@example.test', 'anna@example.test'], 'wysylka@example.test', self.FORM['subject'], self.FORM['message'],
+             [('Drugie „cytat”.docx', 'plik 02 Drugie „cytat”.docx'.encode())]),
+        ])
+        self.assertFalse((folder / 'result').exists())
+        entries = [json.loads(path.read_text(encoding='utf-8')) for path in (self.work_dir / 'activity').glob('*.json')]
+        self.assertIn(('Wysyłka plików autorom', 'Zbiór: wysłano 2 z 2'),
+                      [(entry['action'], entry['target']) for entry in entries])
+        self.assertNotIn('Dzień dobry', json.dumps(entries, ensure_ascii=False))
+        download = self.client.get(reverse('core:program_job', args=[url.rstrip('/').split('/')[-2]]) + '?download=1')
+        self.assertContains(download, 'wysłano już autorom', status_code=404)
+
+    def test_only_checked_ready_rows_are_sent(self):
+        """Odznaczony wiersz nie wychodzi; wiersze bez dopasowania lub adresu nie wychodzą nigdy."""
+        cases = ((['1'], [['jan@example.test', 'anna@example.test']]), (['2', '3', '4'], []))
+        for rows, expected in cases:
+            with self.subTest(rows=rows):
+                mail.outbox = []
+                url = self.prepare(self.split_job()[0])
+                _, token = self.checklist(url)
+                response = self.client.post(url, {'action': 'send', 'batch': token, 'rows': rows})
+                self.assertEqual([message.to for message in mail.outbox], expected)
+                if not expected:
+                    self.assertContains(response, 'Zaznacz co najmniej jeden wiersz', status_code=400)
+
+    def test_second_send_of_the_same_batch_sends_nothing(self):
+        """Ponowne zatwierdzenie (podwójne kliknięcie), wysyłka w toku w innej karcie i stara lista kontrolna – bez wysyłki."""
+        url, folder = self.split_job()
+        url = self.prepare(url)
+        _, token = self.checklist(url)
+        data = {'action': 'send', 'batch': token, 'rows': ['0']}
+        self.client.post(url, data)
+        self.assertContains(self.client.post(url, data), 'Wysłano 1 z 1')
+        self.assertEqual(len(mail.outbox), 1)
+        url, folder = self.split_job()
+        url = self.prepare(url)
+        _, token = self.checklist(url)
+        (folder / mailing.SENT).touch()
+        self.assertContains(self.client.post(url, {**data, 'batch': token}), 'nie wysyłam jej drugi raz', status_code=400)
+        (folder / mailing.SENT).unlink()
+        self.prepare(url)
+        self.assertContains(self.client.post(url, {**data, 'batch': token}), 'Lista kontrolna wygasła', status_code=400)
+        self.assertContains(self.client.post(url, {**data, 'batch': 'zmyślony'}), 'Lista kontrolna wygasła', status_code=400)
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_missing_mailbox_is_explained_and_nothing_is_sent(self):
+        """Bez aktywnej skrzynki wysyłkowej: ostrzeżenie na formularzu i liście, wysyłka zablokowana."""
+        MailboxConnection.objects.update(is_active=False)
+        url, folder = self.split_job()
+        self.assertContains(self.client.get(url), 'Brak skrzynki do wysyłki')
+        url = self.prepare(url)
+        page, token = self.checklist(url)
+        self.assertContains(page, 'Brak skrzynki do wysyłki')
+        response = self.client.post(url, {'action': 'send', 'batch': token, 'rows': ['0']})
+        self.assertContains(response, 'Brak skrzynki do wysyłki', status_code=400)
+        self.assertEqual((mail.outbox, (folder / mailing.SENT).exists()), ([], False))
+
+    def test_smtp_failures_are_reported_and_batch_can_be_retried(self):
+        """Błąd logowania SMTP – nic nie wyszło, partię można wysłać ponownie; odrzucony adres – błąd tylko w tym wierszu."""
+        url, folder = self.split_job()
+        url = self.prepare(url)
+        _, token = self.checklist(url)
+        data = {'action': 'send', 'batch': token, 'rows': ['0', '1']}
+        broken = locmem_connection(None)
+        broken.open = lambda: (_ for _ in ()).throw(smtplib.SMTPAuthenticationError(535, b'no'))
+        self.smtp.side_effect = lambda mailbox: broken
+        response = self.client.post(url, data)
+        self.assertContains(response, 'Serwer SMTP odrzucił login lub hasło skrzynki.')
+        self.assertEqual((mail.outbox, (folder / mailing.SENT).exists(), (folder / 'result').exists()), ([], False, True))
+        partial = locmem_connection(None)
+        original = partial.send_messages
+
+        def refuse_anna(messages):
+            if 'anna@example.test' in messages[0].to:
+                raise smtplib.SMTPRecipientsRefused({'anna@example.test': (550, b'no')})
+            return original(messages)
+        partial.send_messages = refuse_anna
+        self.smtp.side_effect = lambda mailbox: partial
+        response = self.client.post(url, data, follow=True)
+        self.assertContains(response, 'Wysłano 1 z 2 wiadomości')
+        self.assertContains(response, 'Serwer SMTP odrzucił adres odbiorcy.')
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_form_validation_and_changing_settings(self):
+        """Temat w jednym wierszu, wymagana antologia; „Zmień” wraca do formularza z poprzednimi wartościami."""
+        url, _ = self.split_job()
+        cases = (({'subject': 'Temat\nBcc: ktoś@example.test'}, 'subject'), ({'anthology': ''}, 'anthology'),
+                 ({'message': ''}, 'message'))
+        for change, field in cases:
+            with self.subTest(field=field):
+                response = self.client.post(url, {**self.FORM, 'anthology': self.book.pk, **change})
+                self.assertEqual(response.status_code, 400)
+                self.assertIn(field, response.context['form'].errors)
+        url = self.prepare(url)
+        response = self.client.post(url, {'action': 'change'})
+        self.assertEqual(response.context['form'].initial['subject'], self.FORM['subject'])
+        self.assertIsNone(mailing.read_batch(next(jobs.root().iterdir())))
+
+    def test_access_only_for_superuser_owner_of_finished_split(self):
+        """Członek zespołu – 403; inny superuser (inna sesja) – 404; zadanie nie-podziału lub w toku – 404."""
+        url, folder = self.split_job()
+        member = create_member('wysylka-redaktor', 'Redaktor')
+        other = create_superuser('wysylka-inny')
+        for label, user, expected in (('redaktor', member, 403), ('inny superuser', other, 404)):
+            with self.subTest(label):
+                client = Client()
+                client.force_login(user)
+                self.assertEqual(client.post(url, {**self.FORM, 'anthology': self.book.pk}).status_code, expected)
+        for label, state in (('w toku', {'state': 'running', 'stage': 'x', 'heartbeat': time.time()}),
+                             ('nie podział', {'state': 'done', 'filename': 'a.docx', 'mime': 'x', 'warnings': []})):
+            with self.subTest(label):
+                jobs.write_json(folder / 'state.json', state)
+                self.assertContains(self.client.get(url), 'po zakończonym podziale DOCX', status_code=404)
+        self.assertEqual(mail.outbox, [])
+
+    def test_job_page_offers_mailing_and_split_result_survives_download(self):
+        """Strona i JSON zadania podziału mają „Wyślij autorom”; po pobraniu ZIP archiwum zostaje dla wysyłki."""
+        url, folder = self.split_job()
+        job_url = reverse('core:program_job', args=[url.rstrip('/').split('/')[-2]])
+        self.assertEqual(self.client.get(job_url).json()['mail_url'], url)
+        self.assertContains(self.client.get(job_url + '?view=page'), f'href="{url}"')
+        downloaded(self.client.get(job_url + '?download=1'))
+        self.assertTrue((folder / 'result').exists())
+        self.assertEqual(self.client.get(url).status_code, 200)
+
+
+@tag('slow')
+class SplitMailingEndToEndTests(IsolatedProgramDirsMixin, TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        from authors.models import Author
+        from texts.models import Anthology, Text
+
+        cls.admin = create_superuser('wysylka-e2e')
+        box = MailboxConnection(name='Wysyłka', host='imap.example.test', username='wysylka@example.test',
+                                split_mailing=True, smtp_host='smtp.example.test')
+        box.set_password('tajne')
+        box.save()
+        cls.book = Anthology.objects.create(title='Zbiór')
+        for number, (title, _) in enumerate(STORIES, 1):
+            author = Author.objects.create(first_name='Autor', last_name=str(number), email=f'a{number}@example.test')
+            Text.objects.create(title=title.replace(':', ''), anthology=cls.book, length=100).authors.add(author)
+
+    def test_real_split_files_reach_their_authors(self):
+        """Prawdziwy podział antologii: nagłówki z dokumentu pasują do tytułów, każdy autor dostaje swój plik."""
+        self.client.force_login(self.admin)
+        with patch.object(jobs, 'launch', side_effect=jobs.execute):
+            response = self.client.post(reverse('core:programs'), {
+                'program_action': 'split', 'split-document': SimpleUploadedFile('A.docx', anthology())},
+                HTTP_X_PROGRAM_JOB='1')
+        url = self.client.get(response.json()['url']).json()['mail_url']
+        self.client.post(url, {'action': 'prepare', 'anthology': self.book.pk, 'subject': 'Plik', 'message': 'Treść'})
+        page = self.client.get(url)
+        with patch.object(mailing, 'smtp_connection', side_effect=locmem_connection):
+            self.client.post(url, {'action': 'send', 'batch': page.context['batch_token'], 'rows': ['0', '1', '2']})
+        self.assertEqual([(message.to, message.attachments[0][0]) for message in mail.outbox],
+                         [([f'a{number}@example.test'], name.split(' ', 1)[1]) for number, name in enumerate(EXPECTED, 1)])
+        for message, (title, _) in zip(mail.outbox, STORIES):
+            self.assertEqual(Document(BytesIO(message.attachments[0][1])).paragraphs[0].text, title)

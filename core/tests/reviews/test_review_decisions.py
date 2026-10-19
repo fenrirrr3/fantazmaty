@@ -182,8 +182,3 @@ class ReviewAdminRestrictionTests(ReviewFixtures):
     def test_hidden_flag_is_read_only_for_current_reviews(self):
         self.assertIn('is_hidden', self.model_admin().get_readonly_fields(self.request, self.review))
 
-    def test_review_with_submitted_opinion_cannot_be_deleted(self):
-        self.assertTrue(self.model_admin().has_delete_permission(self.request, self.review))
-        self.assign(self.reviewer, opinion='yes')
-        self.assertFalse(self.model_admin().has_delete_permission(self.request, self.review))
-        self.assertNotIn('delete_selected', self.model_admin().get_actions(self.request))

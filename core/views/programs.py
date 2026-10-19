@@ -12,7 +12,6 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.db.models import F, Q
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -129,16 +128,11 @@ def anthology_credits(anthology):
 
     Treść stopki pochodzi z tej samej funkcji co sekcja „Stopka tekstu” na karcie tekstu.
     """
-    from core.selectors.texts import _annotated_texts
+    from core.services.split_mailing import anthology_texts
     from core.supervision import text_credit_groups
 
-    texts = (_annotated_texts(include_translations=True, include_novels=True)
-             .filter(anthology=anthology)
-             .filter(Q(current_stage_type__isnull=True) | ~Q(current_stage_type='withdrawn'))
-             .select_related('anthology').prefetch_related('authors')
-             .order_by(F('chapter_number').asc(nulls_last=True), 'title', 'pk'))
     rows = []
-    for text in texts:
+    for text in anthology_texts(anthology):
         # Puste role („–” na karcie tekstu) pomijamy: stopka jest do wklejenia w antologii.
         groups = [group for group in text_credit_groups(text) if group['names']]
         lines = [f'{group["label"]}: {", ".join(group["names"])}' for group in groups]
