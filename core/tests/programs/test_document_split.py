@@ -438,8 +438,9 @@ class SplitMailingData(TestCase):
         from workflow.models import WorkflowStage
 
         cls.admin = create_superuser('wysylka-admin')
-        cls.mailbox = MailboxConnection(name='Wysyłka', host='imap.example.test', username='wysylka@example.test',
-                                        split_mailing=True, smtp_host='smtp.example.test', smtp_port=587,
+        cls.mailbox = MailboxConnection(name='Wysyłka', username='wysylka@example.test',
+                                        purpose=MailboxConnection.Purpose.SPLIT_MAILING,
+                                        smtp_host='smtp.example.test', smtp_port=587,
                                         smtp_security=MailboxConnection.Security.STARTTLS)
         cls.mailbox.set_password('tajne')
         cls.mailbox.save()
@@ -735,8 +736,8 @@ class SplitMailingEndToEndTests(IsolatedProgramDirsMixin, TestCase):
         from texts.models import Anthology, Text
 
         cls.admin = create_superuser('wysylka-e2e')
-        box = MailboxConnection(name='Wysyłka', host='imap.example.test', username='wysylka@example.test',
-                                split_mailing=True, smtp_host='smtp.example.test')
+        box = MailboxConnection(name='Wysyłka', username='wysylka@example.test',
+                                purpose=MailboxConnection.Purpose.SPLIT_MAILING, smtp_host='smtp.example.test')
         box.set_password('tajne')
         box.save()
         cls.book = Anthology.objects.create(title='Zbiór')

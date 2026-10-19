@@ -29,8 +29,10 @@ REPORT = 'mailing-report.json'
 SMTP_TIMEOUT = 30
 READY, NO_MATCH, NO_ADDRESS = 'ready', 'no_match', 'no_address'
 STATUS_LABELS = {READY: 'Gotowe', NO_MATCH: 'Brak dopasowania', NO_ADDRESS: 'Brak adresu'}
-NO_MAILBOX = ('Brak skrzynki do wysyłki. W panelu administratora (Skrzynki zgłoszeń) zaznacz w jednej aktywnej '
-              'skrzynce „wysyłkę plików autorom” i podaj serwer SMTP.')
+NO_MAILBOX = ('Brak skrzynki do wysyłki. W panelu administratora (Skrzynki zgłoszeń) dodaj skrzynkę z przeznaczeniem '
+              '„Wysyłka plików autorom” i podaj jej serwer SMTP.')
+MANY_MAILBOXES = ('Aktywnych skrzynek „Wysyłka plików autorom” jest kilka. W panelu administratora '
+                  '(Skrzynki zgłoszeń) zostaw aktywną tylko jedną.')
 
 
 class MailingError(ValueError):
@@ -38,9 +40,10 @@ class MailingError(ValueError):
 
 
 def mailing_mailbox():
-    boxes = list(MailboxConnection.objects.filter(split_mailing=True, is_active=True)[:2])
+    """Jedyna aktywna skrzynka z przeznaczeniem „Wysyłka plików autorom”."""
+    boxes = list(MailboxConnection.objects.filter(purpose=MailboxConnection.Purpose.SPLIT_MAILING, is_active=True)[:2])
     if len(boxes) != 1:
-        raise MailingError(NO_MAILBOX)
+        raise MailingError(MANY_MAILBOXES if boxes else NO_MAILBOX)
     return boxes[0]
 
 

@@ -59,6 +59,18 @@ class RefreshSnapshotsTests(MailboxSnapshotMixin, TestCase):
                 self.assertEqual((snapshot.mailbox_key, snapshot.sent_since, snapshot.error), (mailbox_key(box), '2026-10-02', ''))
         self.assertFalse(any(call.args[0] in ('STORE', 'EXPUNGE') for call in client.uid.call_args_list))
 
+    def test_sender_mailbox_is_never_read(self):
+        """Skrzynka „Wysyłka plików autorom” (bez serwera IMAP) jest pomijana, nawet gdy nazywa się „teksty”."""
+        sender = MailboxConnection.objects.create(name='teksty', purpose='split_mailing', username='teksty@example.org',
+                                                  smtp_host='smtp.example.test', encrypted_password='unused')
+        read = []
+        with patch('core.services.mailbox_snapshots.read_headers',
+                   side_effect=lambda config, **options: read.append(config) or HEADERS):
+            summary = refresh_snapshots()
+        self.assertEqual([item['status'] for item in summary], ['ok', 'ok'])
+        self.assertEqual(read, [self.submissions, self.recruitment])
+        self.assertFalse(MailboxHeaderSnapshot.objects.filter(mailbox=sender).exists())
+
     def test_failure_of_one_mailbox_is_saved_without_credentials_and_other_continues(self):
         """Błąd jednej skrzynki trafia do migawki (bez danych logowania) i czyści jej stare nagłówki; druga skrzynka się odświeża."""
         login = 'Nie udało się zalogować do skrzynki. Sprawdź login, hasło aplikacji i dostęp do IMAP.'

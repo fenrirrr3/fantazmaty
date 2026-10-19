@@ -2,6 +2,7 @@
 oraz etykiety modeli – przypadki dotąd nieobjęte testami."""
 from datetime import timedelta
 
+from django.templatetags.static import static
 from django.contrib.admin import site
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied
@@ -124,66 +125,105 @@ class MailboxAdminGapTests(CoreAdminGapData):
         box.refresh_from_db()
         self.assertEqual((box.folder, box.is_active, box.get_password()), ('Kandydaci', True, 'haslo'))
 
-    def split_box(self, **fields):
-        box = MailboxConnection(**{'name': 'Wysyłka', 'host': 'imap.example.com', 'username': 'wysylka@example.com',
-                                   'split_mailing': True, 'smtp_host': 'smtp.example.com', **fields})
+    SENDER = {'name': 'Wysyłka', 'purpose': 'split_mailing', 'username': 'wysylka@example.com', 'password': 'haslo',
+              'is_active': 'on', 'smtp_host': 'smtp.example.com', 'smtp_port': '587', 'smtp_security': 'starttls',
+              '_save': 'Zapisz'}
+
+    def box(self, **fields):
+        box = MailboxConnection(**{'name': 'Wysyłka', 'purpose': 'split_mailing', 'username': 'wysylka@example.com',
+                                   'smtp_host': 'smtp.example.com', **fields})
         box.set_password('haslo')
         box.save()
         return box
 
-    def test_split_mailing_settings_are_validated(self):
-        """Wysyłka plików autorom: serwer i port SMTP, login będący adresem i najwyżej jedna aktywna skrzynka wysyłkowa."""
-        mailing = {**self.DATA, 'purpose': 'submissions', 'split_mailing': 'on', 'smtp_host': 'smtp.example.com',
-                   'smtp_port': '587', 'smtp_security': 'starttls'}
+    def test_validation_depends_on_purpose(self):
+        """Wysyłka: serwer i port SMTP, login będący adresem; zgłoszenia i rekrutacja: serwer IMAP. Jedna aktywna wysyłkowa."""
         cases = {
-            'bez serwera SMTP': ({'smtp_host': ''}, 'smtp_host', 'serwera SMTP bez protokołu'),
-            'serwer z protokołem': ({'smtp_host': 'smtps://smtp.example.com'}, 'smtp_host', 'bez protokołu'),
-            'port SMTP 0': ({'smtp_port': '0'}, 'smtp_port', 'od 1 do 65535'),
-            'port SMTP za duży': ({'smtp_port': '70000'}, 'smtp_port', 'od 1 do 65535'),
-            'login bez adresu': ({'username': 'wysylka'}, 'username', 'musi być adresem e-mail'),
-            'zły serwer bez wysyłki': ({'split_mailing': '', 'smtp_host': 'smtp/x'}, 'smtp_host', 'bez protokołu'),
+            'wysyłka bez serwera SMTP': (self.SENDER, {'smtp_host': ''}, 'smtp_host', 'serwera SMTP bez protokołu'),
+            'wysyłka – serwer z protokołem': (self.SENDER, {'smtp_host': 'smtps://smtp.example.com'}, 'smtp_host', 'bez protokołu'),
+            'wysyłka – port SMTP 0': (self.SENDER, {'smtp_port': '0'}, 'smtp_port', 'od 1 do 65535'),
+            'wysyłka – port SMTP za duży': (self.SENDER, {'smtp_port': '70000'}, 'smtp_port', 'od 1 do 65535'),
+            'wysyłka – login bez adresu': (self.SENDER, {'username': 'wysylka'}, 'username', 'musi być adresem e-mail'),
+            'zgłoszenia bez serwera IMAP': (self.DATA, {'purpose': 'submissions', 'host': ''}, 'host', 'serwera IMAP'),
+            'rekrutacja bez serwera IMAP': (self.DATA, {'host': ''}, 'host', 'serwera IMAP'),
         }
-        for case, (changes, field, message) in cases.items():
+        for case, (data, changes, field, message) in cases.items():
             with self.subTest(case):
-                response = self.client.post(self.URL, {**mailing, **changes})
+                response = self.client.post(self.URL, {**data, **changes})
                 self.assertEqual(response.status_code, 200)
                 self.assertIn(message, ' '.join(response.context['adminform'].form.errors[field]))
         self.assertFalse(MailboxConnection.objects.exists())
-        self.split_box()
-        response = self.client.post(self.URL, mailing)
-        self.assertIn('tylko jedna skrzynka do wysyłki', ' '.join(response.context['adminform'].form.errors['split_mailing']))
-        self.assertEqual(self.client.post(self.URL, {**mailing, 'name': 'Zapasowa', 'is_active': ''}).status_code, 302)
-        saved = MailboxConnection.objects.get(name='Zapasowa')
-        self.assertEqual((saved.smtp_host, saved.smtp_port, saved.smtp_security), ('smtp.example.com', 587, 'starttls'))
+        self.box()
+        response = self.client.post(self.URL, self.SENDER)
+        self.assertIn('tylko jedna skrzynka „Wysyłka plików autorom”',
+                      ' '.join(response.context['adminform'].form.errors['is_active']))
+        self.assertEqual(self.client.post(self.URL, {**self.SENDER, 'name': 'Zapasowa', 'is_active': ''}).status_code, 302)
 
-    def test_split_mailing_section_and_defaults_without_smtp_fields(self):
-        """Pola SMTP w osobnej sekcji „Wysyłka plików autorom”; skrzynka bez wysyłki zapisuje się bez nich (port 465, SSL)."""
-        page = self.client.get(self.URL)
-        sections = [(name, list(options['fields'])) for name, options in page.context['adminform'].fieldsets]
-        self.assertEqual(sections[1], ('Wysyłka plików autorom', ['split_mailing', 'smtp_host', 'smtp_port', 'smtp_security']))
-        self.assertNotIn('smtp_host', sections[0][1])
-        self.assertEqual(self.client.post(self.URL, self.DATA).status_code, 302)
-        box = MailboxConnection.objects.get()
-        self.assertEqual((box.split_mailing, box.smtp_host, box.smtp_port, box.smtp_security), (False, '', 465, 'ssl'))
-
-    def test_split_mailing_box_does_not_change_import_mailbox_choice(self):
-        """Skrzynka wysyłkowa (dowolne przeznaczenie) nie zmienia wyboru skrzynki zgłoszeń ani rekrutacji."""
-        from core.services.mailbox_import import default_mailbox
-        from core.services.split_mailing import mailing_mailbox
-        from core.views.recruitment_mailbox import recruitment_connection
-
-        texts = self.split_box(name='teksty', username='teksty@example.com', split_mailing=False, smtp_host='')
-        recruitment = self.split_box(name='Rekrutacja', purpose='recruitment', split_mailing=False, smtp_host='')
-        cases = (('osobna skrzynka zgłoszeń', {}), ('osobna z loginem teksty@', {'username': 'teksty@example.org'}))
-        for case, fields in cases:
+    def test_fields_of_other_protocol_are_optional_and_reset(self):
+        """Skrzynka wysyłkowa zapisuje się bez pól IMAP, zgłoszeń – bez SMTP; pola drugiego protokołu wracają do domyślnych."""
+        imap = {'host': 'imap.example.com', 'port': '143', 'security': 'starttls', 'folder': 'Wysłane',
+                'recruitment_subjects': 'Nabór'}
+        defaults = {'host': '', 'port': 993, 'security': 'ssl', 'folder': 'INBOX', 'recruitment_subjects': '',
+                    'smtp_host': '', 'smtp_port': 465, 'smtp_security': 'ssl'}
+        cases = {
+            'wysyłka bez pól IMAP': ({**self.SENDER}, {'smtp_host': 'smtp.example.com', 'smtp_port': 587, 'smtp_security': 'starttls'}),
+            'wysyłka z wypełnionymi polami IMAP': ({**self.SENDER, **imap}, {'smtp_host': 'smtp.example.com', 'smtp_port': 587,
+                                                                               'smtp_security': 'starttls'}),
+            'zgłoszenia z błędnymi polami SMTP': ({**self.DATA, 'purpose': 'submissions', 'smtp_host': 'smtp/x', 'smtp_port': '0'},
+                                                  {'host': 'imap.example.com'}),
+            'zgłoszenia bez portu i folderu': ({**self.DATA, 'purpose': 'submissions', 'port': '', 'security': '', 'folder': ''},
+                                               {'host': 'imap.example.com'}),
+        }
+        for case, (data, expected) in cases.items():
             with self.subTest(case):
-                sender = self.split_box(**fields)
-                self.assertEqual((default_mailbox(), recruitment_connection(), mailing_mailbox()),
-                                 (texts, recruitment, sender))
-                sender.delete()
-        with self.subTest('wysyłka z tej samej skrzynki co import'):
-            MailboxConnection.objects.filter(pk=texts.pk).update(split_mailing=True, smtp_host='smtp.example.com')
-            self.assertEqual((default_mailbox(), mailing_mailbox()), (texts, texts))
+                self.assertEqual(self.client.post(self.URL, data).status_code, 302)
+                box = MailboxConnection.objects.get()
+                self.assertEqual({name: getattr(box, name) for name in defaults}, {**defaults, **expected})
+                self.assertEqual(box.get_password(), 'haslo')
+                box.delete()
+
+    def test_add_form_offers_sender_purpose_with_sections(self):
+        """Formularz dodawania: przeznaczenie „Wysyłka plików autorom”, osobne sekcje IMAP i SMTP przełączane skryptem."""
+        page = self.client.get(self.URL)
+        sections = [(name, list(options['fields']), options.get('classes', ()))
+                    for name, options in page.context['adminform'].fieldsets]
+        self.assertEqual(sections, [
+            (None, ['name', 'purpose', 'username', 'password', 'is_active'], ()),
+            ('Odbiór poczty (IMAP)', ['host', 'port', 'security', 'folder', 'recruitment_subjects'], ('mailbox-imap',)),
+            ('Wysyłka plików autorom (SMTP)', ['smtp_host', 'smtp_port', 'smtp_security'], ('mailbox-smtp',)),
+        ])
+        self.assertContains(page, '<option value="split_mailing">Wysyłka plików autorom</option>', html=True)
+        self.assertContains(page, static('core/mailbox-admin.js'))
+        self.box()
+        changelist = self.client.get(reverse('admin:core_mailboxconnection_changelist'))
+        self.assertContains(changelist, 'smtp.example.com')
+
+    def test_mailbox_choice_by_purpose(self):
+        """Import zgłoszeń, rekrutacja i wysyłka wybierają skrzynki po przeznaczeniu – skrzynka wysyłkowa nie zastępuje importu."""
+        from core.services.mailbox import MailboxError
+        from core.services.mailbox_import import default_mailbox
+        from core.services.mailbox_snapshots import recruitment_connection
+        from core.services.split_mailing import MailingError, mailing_mailbox
+
+        texts = self.box(name='teksty', purpose='submissions', host='imap.example.com', username='teksty@example.com',
+                         smtp_host='')
+        recruitment = self.box(name='Rekrutacja', purpose='recruitment', host='imap.example.com', smtp_host='')
+        sender = self.box(name='teksty', username='teksty@example.org')
+        self.assertEqual((default_mailbox(), recruitment_connection(), mailing_mailbox()), (texts, recruitment, sender))
+        MailboxConnection.objects.filter(pk__in=[texts.pk, recruitment.pk]).update(is_active=False)
+        for function, error in ((default_mailbox, MailboxError), (recruitment_connection, MailboxError)):
+            with self.subTest(function.__name__), self.assertRaises(error):
+                function()
+        cases = {
+            'brak aktywnej wysyłkowej': ({'is_active': False}, 'Brak skrzynki do wysyłki'),
+            'dwie aktywne wysyłkowe': ({'is_active': True}, 'jest kilka'),
+        }
+        self.box(name='Druga', is_active=False)
+        for case, (changes, message) in cases.items():
+            with self.subTest(case):
+                MailboxConnection.objects.filter(purpose='split_mailing').update(**changes)
+                with self.assertRaisesMessage(MailingError, message):
+                    mailing_mailbox()
 
 
 class IntakeAdminGapTests(CoreAdminGapData):

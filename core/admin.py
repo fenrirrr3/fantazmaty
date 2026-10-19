@@ -785,10 +785,6 @@ class WorkflowEventAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
 
 
-# Sekcja „Wysyłka plików autorom” (Programy → Podział DOCX → Wyślij autorom).
-SPLIT_MAILING_FIELDS = ('split_mailing', 'smtp_host', 'smtp_port', 'smtp_security')
-
-
 class MailboxConnectionForm(forms.ModelForm):
     password = forms.CharField(label='Hasło / hasło aplikacji', required=False,
         strip=False, widget=forms.PasswordInput(render_value=False),
@@ -796,21 +792,16 @@ class MailboxConnectionForm(forms.ModelForm):
 
     class Meta:
         model = MailboxConnection
-        fields = ('name', 'purpose', 'host', 'port', 'security', 'username', 'password', 'folder', 'recruitment_subjects', 'is_active',
-                  *SPLIT_MAILING_FIELDS)
+        fields = ('name', 'purpose', 'username', 'password', 'is_active',
+                  *MailboxConnection.IMAP_FIELDS, *MailboxConnection.SMTP_FIELDS)
+
+    # Pola z wartością domyślną: puste znaczy „domyślne” (pole drugiego protokołu bywa ukryte i niewypełnione).
+    DEFAULTED = ('port', 'security', 'folder', 'smtp_port', 'smtp_security')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Port i szyfrowanie SMTP mają wartości domyślne – potrzebne tylko przy wysyłce plików autorom.
-        for name in ('smtp_port', 'smtp_security'):
+        for name in self.DEFAULTED:
             self.fields[name].required = False
-
-    def clean_smtp_port(self):
-        value = self.cleaned_data.get('smtp_port')
-        return MailboxConnection._meta.get_field('smtp_port').default if value is None else value
-
-    def clean_smtp_security(self):
-        return self.cleaned_data.get('smtp_security') or MailboxConnection.Security.SSL
 
     def clean_password(self):
         password = self.cleaned_data.get('password', '')
@@ -820,6 +811,9 @@ class MailboxConnectionForm(forms.ModelForm):
 
     def clean(self):
         data = super().clean()
+        for name in self.DEFAULTED:
+            if name in data and data[name] in (None, ''):
+                data[name] = MailboxConnection._meta.get_field(name).get_default()
         # Import rekrutacji wymaga dokładnie jednej aktywnej skrzynki tego typu.
         if data.get('is_active') and data.get('purpose') == MailboxConnection.Purpose.RECRUITMENT:
             others = MailboxConnection.objects.filter(purpose=MailboxConnection.Purpose.RECRUITMENT, is_active=True)
@@ -843,20 +837,35 @@ class MailboxConnectionForm(forms.ModelForm):
 @admin.register(MailboxConnection)
 class MailboxConnectionAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     form = MailboxConnectionForm
-    list_display = ('name', 'purpose', 'host', 'username', 'folder', 'is_active', 'split_mailing')
-    list_filter = ('purpose', 'is_active', 'split_mailing')
-    fields = ('name', 'purpose', 'host', 'port', 'security', 'username', 'password', 'folder', 'recruitment_subjects', 'is_active',
-              *SPLIT_MAILING_FIELDS)
-    search_fields = ('name', 'host', 'username')
+    list_display = ('name', 'purpose', 'server', 'username', 'folder', 'is_active')
+    list_filter = ('purpose', 'is_active')
+    fields = ('name', 'purpose', 'username', 'password', 'is_active',
+              *MailboxConnection.IMAP_FIELDS, *MailboxConnection.SMTP_FIELDS)
+    search_fields = ('name', 'host', 'smtp_host', 'username')
+
+    class Media:
+        # Pokazuje tylko sekcję pasującą do wybranego przeznaczenia (IMAP albo SMTP).
+        js = ('core/mailbox-admin.js',)
+
+    @admin.display(description='serwer', ordering='host')
+    def server(self, obj):
+        return obj.smtp_host if obj.is_sender else obj.host
 
     def get_fieldsets(self, request, obj=None):
         fields = self.get_fields(request, obj)
-        return [(None, {'fields': [name for name in fields if name not in SPLIT_MAILING_FIELDS]}),
-                ('Wysyłka plików autorom', {
-                    'fields': [name for name in fields if name in SPLIT_MAILING_FIELDS],
-                    'description': 'Skrzynka, z której CMS wysyła autorom ich pliki po podziale dokumentu '
-                                   'nagłówkami (Programy → Podział DOCX). Login i hasło są te same co do IMAP; '
-                                   'login musi być adresem e-mail nadawcy. Przeznaczenie skrzynki może być dowolne.'})]
+        imap, smtp = MailboxConnection.IMAP_FIELDS, MailboxConnection.SMTP_FIELDS
+        return [(None, {'fields': [name for name in fields if name not in imap + smtp],
+                        'description': 'Login to zwykle pełny adres e-mail skrzynki; przy wysyłce plików autorom musi nim być '
+                                       '(to adres nadawcy). Pozostałe pola zależą od przeznaczenia.'}),
+                ('Odbiór poczty (IMAP)', {
+                    'fields': [name for name in fields if name in imap], 'classes': ('mailbox-imap',),
+                    'description': 'Dla zgłoszeń tekstów i rekrutacji. Skrzynka „Wysyłka plików autorom” '
+                                   'nie odbiera poczty – tych pól nie wypełnia się.'}),
+                ('Wysyłka plików autorom (SMTP)', {
+                    'fields': [name for name in fields if name in smtp], 'classes': ('mailbox-smtp',),
+                    'description': 'Tylko dla przeznaczenia „Wysyłka plików autorom”: z tej skrzynki CMS wysyła '
+                                   'autorom ich pliki po podziale dokumentu nagłówkami (Programy → Podział DOCX). '
+                                   'Login (adres nadawcy) i hasło jak wyżej.'})]
 
     def get_changeform_initial_data(self, request):
         from urllib.parse import parse_qs
