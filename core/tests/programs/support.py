@@ -119,6 +119,74 @@ def with_footnote(document, text):
     return output
 
 
+NOTE_PARTS = {
+    'footnote': ('footnotes', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes'),
+    'endnote': ('endnotes', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes'),
+}
+
+
+def noted_document(parts, kind='footnote', note_text=' Treść  przypisu...', *, notes=None, note_runs=None,
+                   reference='', mark=True):
+    """DOCX z jednym akapitem: napisy to przebiegi tekstu, liczby – odsyłacze przypisu (w:id) z rStyle.
+
+    notes – identyfikatory przypisów w części (domyślnie te, do których są odsyłacze); note_runs – surowy
+    OOXML treści akapitu przypisu za znakiem przypisu (domyślnie przebieg z note_text); „{id}” w treści
+    zastępuje numer przypisu; reference – dodatkowe atrybuty odsyłacza (np. w:customMarkFollows);
+    mark=False – przypis bez znaku przypisu (w:footnoteRef) na początku treści.
+    """
+    from docx.oxml import parse_xml
+    from docx.oxml.ns import nsdecls
+    name, reltype = NOTE_PARTS[kind]
+    style = 'FootnoteReference' if kind == 'footnote' else 'EndnoteReference'
+    document = Document()
+    paragraph = document.add_paragraph()
+    for part in parts:
+        if isinstance(part, int):
+            paragraph._p.append(parse_xml(
+                f'<w:r {nsdecls("w")}><w:rPr><w:rStyle w:val="{style}"/></w:rPr>'
+                f'<w:{kind}Reference {reference} w:id="{part}"/></w:r>'))
+        else:
+            paragraph.add_run(part)
+    if notes is None:
+        notes = sorted({part for part in parts if isinstance(part, int)})
+    content = note_runs if note_runs is not None else f'<w:r><w:t xml:space="preserve">{note_text}</w:t></w:r>'
+    if mark:
+        content = f'<w:r><w:rPr><w:rStyle w:val="{style}"/></w:rPr><w:{kind}Ref/></w:r>' + content
+    notes_xml = ''.join(
+        f'<w:{kind} w:id="{number}"><w:p>{content.replace("{id}", str(number))}</w:p></w:{kind}>'
+        for number in notes)
+    raw, output = saved(document), BytesIO()
+    with ZipFile(raw) as source, ZipFile(output, 'w') as target:
+        for item in source.infolist():
+            data = source.read(item.filename)
+            if item.filename == '[Content_Types].xml':
+                data = data.replace(b'</Types>', (
+                    f'<Override PartName="/word/{name}.xml" ContentType="application/vnd.openxmlformats-'
+                    f'officedocument.wordprocessingml.{name}+xml"/></Types>').encode())
+            if item.filename == 'word/_rels/document.xml.rels':
+                data = data.replace(b'</Relationships>', (
+                    f'<Relationship Id="rIdNotes" Type="{reltype}" Target="{name}.xml"/></Relationships>').encode())
+            target.writestr(item, data)
+        target.writestr(f'word/{name}.xml', (
+            f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:{name} {nsdecls("w")}>{notes_xml}</w:{name}>'))
+    output.seek(0)
+    return output
+
+
+def noted_text(root):
+    """Tekst drzewa XML części; odsyłacz jako [w:id], znak przypisu w jego treści jako [ref]."""
+    from docx.oxml.ns import qn
+    pieces = []
+    for node in root.iter():
+        if node.tag == qn('w:t'):
+            pieces.append(node.text or '')
+        elif node.tag in (qn('w:footnoteReference'), qn('w:endnoteReference')):
+            pieces.append(f'[{node.get(qn("w:id"))}]')
+        elif node.tag in (qn('w:footnoteRef'), qn('w:endnoteRef')):
+            pieces.append('[ref]')
+    return ''.join(pieces)
+
+
 def footnote_text(stream):
     with ZipFile(stream) as archive:
         return archive.read('word/footnotes.xml').decode()

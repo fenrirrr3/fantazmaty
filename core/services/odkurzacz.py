@@ -1518,8 +1518,11 @@ NOTE_ABBREVIATION_RE = re.compile(
 
 
 def _note_reference_run(run):
-    """Przebieg z samym odsyłaczem (i formatowaniem); odsyłacz z własnym znakiem tekstowym pozostaje barierą."""
-    return all(node.tag in RUN_MARKERS or node.tag in NOTE_REFERENCES for node in run)
+    """Przebieg z samym odsyłaczem (i formatowaniem). Odsyłacz z własnym znakiem (customMarkFollows – znak stoi
+    jako tekst tuż za nim, także w osobnym przebiegu) pozostaje barierą, żeby reguły go nie oddzieliły od znaku."""
+    return all(node.tag in RUN_MARKERS or (node.tag in NOTE_REFERENCES
+                                          and node.get(qn('w:customMarkFollows')) not in ('1', 'true', 'on'))
+               for node in run)
 
 
 @lru_cache(maxsize=8)

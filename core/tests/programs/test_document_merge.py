@@ -24,10 +24,11 @@ from core.program_test_support import run_program
 from core.services import program_jobs as jobs
 from core.services.document_converter import ConversionError, RebuildConfirmationRequired
 from core.services.document_merge import MergeError, merge_documents
+from core.services.document_rebuild import rebuild_docx
 from core.services.document_template import TEMPLATE_PATH, apply_template_styles
 from fantazmaty.testing import create_superuser
 
-from .support import IsolatedProgramDirsMixin, docx_bytes, downloaded, saved
+from .support import IsolatedProgramDirsMixin, docx_bytes, downloaded, noted_document, noted_text, saved
 
 W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 R_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
@@ -138,13 +139,14 @@ class MergeFormTests(SimpleTestCase):
 
 class MergeDocumentsTests(SimpleTestCase):
     def test_content_the_rebuild_never_creates_stops_the_merge(self):
-        """Przypisy, komentarze, numeracja list, obrazy i hiperłącza w którymkolwiek pliku przerywają scalanie;
-        numeracja wyłączona (numId 0) i komentarz XML w treści nie przeszkadzają."""
-        notes = 'bez przypisów, komentarzy i numeracji list'
+        """Odsyłacze do nieistniejących przypisów, komentarze, numeracja list, obrazy i hiperłącza w którymkolwiek
+        pliku przerywają scalanie; numeracja wyłączona (numId 0) i komentarz XML w treści nie przeszkadzają."""
+        notes = 'bez komentarzy i numeracji list'
+        missing = 'odsyłacz przypisu bez treści przypisu'
         relations = 'bez obrazów i hiperłączy'
         cases = (
-            ('przypis', '<w:r><w:footnoteReference w:id="1"/></w:r>', notes),
-            ('przypis końcowy', '<w:r><w:endnoteReference w:id="1"/></w:r>', notes),
+            ('przypis', '<w:r><w:footnoteReference w:id="1"/></w:r>', missing),
+            ('przypis końcowy', '<w:r><w:endnoteReference w:id="1"/></w:r>', missing),
             ('komentarz', '<w:r><w:commentReference w:id="0"/></w:r>', notes),
             ('lista', '<w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="3"/></w:numPr></w:pPr>', notes),
             ('hiperłącze', '<w:hyperlink r:id="rId99"><w:r><w:t>link</w:t></w:r></w:hyperlink>', relations),
@@ -162,6 +164,37 @@ class MergeDocumentsTests(SimpleTestCase):
                             merge_documents(list(order))
                     else:
                         self.assertEqual(len(Document(BytesIO(merge_documents(list(order)))).paragraphs), 2)
+
+    def test_notes_of_all_files_get_new_numbers(self):
+        """Przypisy dolne i końcowe kolejnych plików: numery od 1 w kolejności plików, część przypisów (z relacją,
+        typem zawartości, ustawieniami i stylami) także wtedy, gdy pierwszy plik jej nie ma; w:id zmian
+        w treści przypisów pozostają unikalne w całym dokumencie."""
+        footnotes = rebuild_docx(noted_document(['A', 1, 'B', 2], note_text='Przypis {id}')).getvalue()
+        endnotes = rebuild_docx(noted_document(['C', 1], 'endnote', note_text='Końcowy')).getvalue()
+        tracked = noted_document(['D', 1], note_runs='<w:ins w:id="1" w:author="A"><w:r><w:t>wstawka</w:t></w:r></w:ins>'
+                                 '<w:ins w:id="2" w:author="A"><w:r><w:t>!</w:t></w:r></w:ins>').getvalue()
+        merged = merge_documents([docx_bytes('Bez przypisów'), footnotes, endnotes, footnotes, tracked, tracked])
+        with ZipFile(BytesIO(merged)) as archive:
+            files = {name: archive.read(name) for name in archive.namelist()}
+        body = etree.fromstring(files['word/document.xml'])
+        self.assertEqual(noted_text(body), 'Bez przypisówA[1]B[2]C[1]A[3]B[4]D[5]D[6]')
+        for kind, expected in (('footnote', ['[ref]Przypis 1', '[ref]Przypis 2', '[ref]Przypis 1', '[ref]Przypis 2',
+                                             '[ref]wstawka!', '[ref]wstawka!']),
+                               ('endnote', ['[ref]Końcowy'])):
+            with self.subTest(kind):
+                root = etree.fromstring(files[f'word/{kind}s.xml'])
+                self.assertEqual([noted_text(note) for note in root.findall(qn('w:' + kind))
+                                  if note.get(qn('w:type')) is None], expected)
+                self.assertIn(f'/word/{kind}s.xml'.encode(), files['[Content_Types].xml'])
+                self.assertIn(f'relationships/{kind}s"'.encode(), files['word/_rels/document.xml.rels'])
+                self.assertIn(f'<w:{kind}Pr>'.encode(), files['word/settings.xml'])
+                for style in ('Text', 'Reference'):
+                    self.assertIn(f'w:styleId="{kind.capitalize()}{style}"'.encode(), files['word/styles.xml'])
+        changes = [node.get(qn('w:id')) for name in ('word/document.xml', 'word/footnotes.xml')
+                   for node in etree.fromstring(files[name]).iter(qn('w:ins'))]
+        self.assertEqual(len(changes), len(set(changes)))
+        self.assertEqual(len(changes), 4)
+        Document(BytesIO(merged))
 
     def test_missing_input_or_body_is_an_error(self):
         """Pusta lista plików albo dokument bez w:body – MergeError zamiast uszkodzonego wyniku."""

@@ -23,9 +23,9 @@ from core.services.odkurzacz import (
 from fantazmaty.testing import create_member
 
 from .support import (
-    IsolatedProgramDirsMixin, add_internal_link, add_page_break, add_text_box, docx_bytes, downloaded,
-    downloaded_document, footnote_text, formatted_docx, saved, set_default_language, set_language,
-    tracked_changes_document, upload, whole_document, with_footnote,
+    NOTE_PARTS, IsolatedProgramDirsMixin, add_internal_link, add_page_break, add_text_box, docx_bytes, downloaded,
+    downloaded_document, footnote_text, formatted_docx, noted_document, noted_text, saved, set_default_language,
+    set_language, tracked_changes_document, upload, whole_document, with_footnote,
 )
 
 
@@ -707,63 +707,12 @@ class CleanerR9Tests(SimpleTestCase):
         self.assertEqual(self.visible_text(result).replace('cytatem"', ''), 'Tekst z „cytatem”')
 
 
-NOTE_PARTS = {
-    'footnote': ('footnotes', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes'),
-    'endnote': ('endnotes', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes'),
-}
-
-
-def _noted_document(parts, kind='footnote', note_text=' Treść  przypisu...'):
-    """DOCX z jednym akapitem: napisy to przebiegi tekstu, liczby – odsyłacze przypisu (w:id) z rStyle."""
-    from docx.oxml import parse_xml
-    from docx.oxml.ns import nsdecls
-    name, reltype = NOTE_PARTS[kind]
-    style = 'FootnoteReference' if kind == 'footnote' else 'EndnoteReference'
-    document = Document()
-    paragraph = document.add_paragraph()
-    for part in parts:
-        if isinstance(part, int):
-            paragraph._p.append(parse_xml(
-                f'<w:r {nsdecls("w")}><w:rPr><w:rStyle w:val="{style}"/></w:rPr>'
-                f'<w:{kind}Reference w:id="{part}"/></w:r>'))
-        else:
-            paragraph.add_run(part)
-    notes = ''.join(
-        f'<w:{kind} w:id="{number}"><w:p><w:r><w:rPr><w:rStyle w:val="{style}"/></w:rPr><w:{kind}Ref/></w:r>'
-        f'<w:r><w:t xml:space="preserve">{note_text}</w:t></w:r></w:p></w:{kind}>'
-        for number in sorted({part for part in parts if isinstance(part, int)}))
-    raw, output = saved(document), BytesIO()
-    with ZipFile(raw) as source, ZipFile(output, 'w') as target:
-        for item in source.infolist():
-            data = source.read(item.filename)
-            if item.filename == '[Content_Types].xml':
-                data = data.replace(b'</Types>', (
-                    f'<Override PartName="/word/{name}.xml" ContentType="application/vnd.openxmlformats-'
-                    f'officedocument.wordprocessingml.{name}+xml"/></Types>').encode())
-            if item.filename == 'word/_rels/document.xml.rels':
-                data = data.replace(b'</Relationships>', (
-                    f'<Relationship Id="rIdNotes" Type="{reltype}" Target="{name}.xml"/></Relationships>').encode())
-            target.writestr(item, data)
-        target.writestr(f'word/{name}.xml', (
-            f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:{name} {nsdecls("w")}>{notes}</w:{name}>'))
-    output.seek(0)
-    return output
-
-
 def _noted_texts(stream, part='word/document.xml'):
     """Tekst części po przyjęciu zmian; odsyłacz jako [w:id], odsyłacz wewnątrz przypisu jako [ref]."""
     with ZipFile(BytesIO(stream.getvalue())) as archive:
         root = etree.fromstring(archive.read(part))
     _resolve_revisions(root, accept=True)
-    pieces = []
-    for node in root.iter():
-        if node.tag == qn('w:t'):
-            pieces.append(node.text or '')
-        elif node.tag in (qn('w:footnoteReference'), qn('w:endnoteReference')):
-            pieces.append(f'[{node.get(qn("w:id"))}]')
-        elif node.tag in (qn('w:footnoteRef'), qn('w:endnoteRef')):
-            pieces.append('[ref]')
-    return ''.join(pieces)
+    return noted_text(root)
 
 
 class NoteReferenceTests(SimpleTestCase):
@@ -799,7 +748,7 @@ class NoteReferenceTests(SimpleTestCase):
         """Każdy przypadek bez śledzenia i ze śledzeniem (po przyjęciu zmian), z regułą i bez niej."""
         for name, (parts, with_rule, without_rule, *kind) in self.CASES.items():
             kind = kind[0] if kind else 'footnote'
-            source = _noted_document(parts, kind).getvalue()
+            source = noted_document(parts, kind).getvalue()
             ids = [str(part) for part in parts if isinstance(part, int)]
             for rules, expected in ((self.on, with_rule), (self.off, without_rule)):
                 for track_changes in (False, True):
@@ -818,6 +767,12 @@ class NoteReferenceTests(SimpleTestCase):
                             self.assertEqual([child.tag for child in run], [qn('w:rPr'), node.tag])
                             self.assertEqual(run.getparent().tag, qn('w:p'))
 
+    def test_custom_mark_reference_stays_with_its_mark(self):
+        """Odsyłacz z własnym znakiem (customMarkFollows, znak „*” w osobnym przebiegu) jest barierą: reguła
+        note_references nie oddziela go od znaku."""
+        source = noted_document(['Tekst.', 1, '* dalej.'], reference='w:customMarkFollows="1"')
+        self.assertEqual(_noted_texts(clean_docx(source, self.on)), 'Tekst.[1]* dalej.')
+
     def test_rule_alone_and_plain_text(self):
         """Odstęp przed odsyłaczem znika zawsze (bez reguły liczy go „spaces”); bez quote_punct odsyłacz idzie
         za cudzysłów zamykający razem z kropką w środku; w tekście bez odsyłaczy reguła nic nie robi."""
@@ -828,11 +783,11 @@ class NoteReferenceTests(SimpleTestCase):
         ):
             with self.subTest(name):
                 summary = {}
-                result = clean_docx(_noted_document(parts), rules, summary=summary)
+                result = clean_docx(noted_document(parts), rules, summary=summary)
                 self.assertEqual(_noted_texts(result), expected)
                 # Treść przypisu daje własne liczniki – odejmujemy je (ten sam dokument bez akapitu treści).
                 baseline = {}
-                clean_docx(_noted_document([1]), rules, summary=baseline)
+                clean_docx(noted_document([1]), rules, summary=baseline)
                 self.assertEqual({key: summary.get(key, 0) - baseline.get(key, 0)
                                   for key in ('note_references', 'spaces')
                                   if summary.get(key, 0) != baseline.get(key, 0)}, counted)
@@ -845,5 +800,5 @@ class NoteReferenceTests(SimpleTestCase):
         for kind in NOTE_PARTS:
             for track_changes in (False, True):
                 with self.subTest(kind, track_changes=track_changes):
-                    result = clean_docx(_noted_document(['Tekst.', 1], kind), self.on, track_changes=track_changes)
+                    result = clean_docx(noted_document(['Tekst.', 1], kind), self.on, track_changes=track_changes)
                     self.assertEqual(_noted_texts(result, f'word/{kind}s.xml'), '[ref] Treść przypisu…')

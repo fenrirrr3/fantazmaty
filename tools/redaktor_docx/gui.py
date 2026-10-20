@@ -394,8 +394,8 @@ def launch_gui():
     notebook.add(tab, text='Przebudowa')
     ttk.Label(tab, wraplength=880, justify='left', text=(
         'Przebudowa tworzy nowy, czysty DOCX z treścią i podstawowym formatowaniem źródła (bez ukrytych '
-        'ustawień, kontrolek, pól i spisu treści z galerii). Elementy, których nie da się przenieść, są '
-        'wymieniane przed przebudową. Wynik: „nazwa_przebudowa.docx”.')).grid(row=0, column=0, sticky='w', pady=(0, 10))
+        'ustawień, kontrolek, pól i spisu treści z galerii); przypisy dolne i końcowe zostają. Elementy, '
+        'których nie da się przenieść, są wymieniane przed przebudową. Wynik: „nazwa_przebudowa.docx”.')).grid(row=0, column=0, sticky='w', pady=(0, 10))
     for row, (key, label) in enumerate((('allow_omissions', 'Pozwól pominąć nieobsługiwane elementy'),
                                         ('keep_page_format', 'Zachowaj format strony (rozmiar, orientacja, marginesy, kolumny)')), 1):
         variables[key] = tk.BooleanVar(value=settings[key])

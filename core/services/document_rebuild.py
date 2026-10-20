@@ -2,11 +2,14 @@
 from io import BytesIO
 from collections import Counter
 from copy import deepcopy
-from docx.oxml import OxmlElement
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
+from docx.opc.packuri import PackURI
+from docx.opc.part import XmlPart
+from docx.oxml import OxmlElement, parse_xml
 from docx.shared import RGBColor
 from lxml import etree
 from docx import Document
-from docx.oxml.ns import qn
+from docx.oxml.ns import nsdecls, qn
 from docx.shared import Cm
 from docx.text.paragraph import Paragraph
 from docx.text.run import Run
@@ -148,6 +151,7 @@ def _unwrap(node, content):
     parent.remove(node)
 
 
+HYPERLINK_OMISSION = "odnośniki hiperłączy (widoczny tekst pozostanie)"
 TOC_OMISSION = "spis treści (wstaw go ponownie w Wordzie: Odwołania → Spis treści)"
 
 
@@ -260,8 +264,6 @@ def _sanitize_body(body, omissions, styles=PLACEHOLDER_STYLES):
         "drawing": "ilustracje i pola tekstowe wraz z ich treścią",
         "pict": "ilustracje i pola tekstowe wraz z ich treścią",
         "object": "obiekty osadzone",
-        "footnoteReference": "przypisy dolne i ich odsyłacze",
-        "endnoteReference": "przypisy końcowe i ich odsyłacze",
         "fldChar": "mechanizm pól automatycznych (zwykły tekst wyniku może pozostać)",
         # Instrukcja jest częścią tego samego pola (liczonego przy fldChar), a nie osobną pozycją.
         "instrText": None,
@@ -444,20 +446,86 @@ def _style_id(properties, tag):
     return node.get(qn("w:val")) if node is not None else None
 
 
-def _paragraph_specs(original, omissions):
-    body = original.element.body
+NOTE_KINDS = ("footnote", "endnote")
+NOTE_REFERENCE_TAGS = {qn("w:" + kind + "Reference"): kind for kind in NOTE_KINDS}
+NOTE_MARK_TAGS = frozenset(qn("w:" + kind + "Ref") for kind in NOTE_KINDS)
+NOTE_MISSING_OMISSION = "odsyłacze do nieistniejących przypisów"
+# Style Worda (identyfikator, nazwa) tekstu przypisu i odsyłacza.
+NOTE_STYLES = {
+    "footnote": (("FootnoteText", "footnote text"), ("FootnoteReference", "footnote reference")),
+    "endnote": (("EndnoteText", "endnote text"), ("EndnoteReference", "endnote reference")),
+}
+NOTE_RELATIONSHIPS = {"footnote": RT.FOOTNOTES, "endnote": RT.ENDNOTES}
+
+
+class _SourceNotes:
+    """Przypisy dolne i końcowe źródła, odtwarzane w kolejności odsyłaczy (nowe w:id od 1).
+
+    Treść przypisu przechodzi tę samą sanityzację i to samo odtwarzanie akapitów co treść główna,
+    a pominięcia w niej liczą się razem z resztą. Przypis bez odsyłacza w tekście znika bez uwagi;
+    odsyłacz do nieistniejącego przypisu znika z uwagą. Odsyłacz z własnym znakiem (customMarkFollows)
+    zachowuje ten atrybut – sam znak to zwykły tekst za odsyłaczem i zostaje jak każdy tekst."""
+
+    def __init__(self, original, omissions, placeholders):
+        self.omissions = omissions
+        self.placeholders = placeholders
+        self.source = {kind: {} for kind in NOTE_KINDS}
+        for rel in original.part.rels.values():
+            for kind in NOTE_KINDS:
+                if not rel.is_external and rel.reltype == NOTE_RELATIONSHIPS[kind]:
+                    for note in parse_xml(rel.target_part.blob).findall(qn("w:" + kind)):
+                        if note.get(qn("w:type"), "normal") == "normal":
+                            self.source[kind].setdefault(note.get(qn("w:id")), note)
+        self.notes = {kind: [] for kind in NOTE_KINDS}
+        self._built = {}
+
+    def reference(self, node, build):
+        """Nowy przypis (rodzaj, w:id, własny znak) dla odsyłacza albo None, gdy przypisu brak."""
+        kind = NOTE_REFERENCE_TAGS[node.tag]
+        key = (kind, node.get(qn("w:id")))
+        note = self.source[kind].get(key[1])
+        if note is None:
+            self.omissions.add(NOTE_MISSING_OMISSION)
+            return None
+        custom = node.get(qn("w:customMarkFollows")) in ("1", "true", "on")
+        if key not in self._built:
+            _sanitize_body(note, self.omissions, self.placeholders)
+            for _ in note.iter(qn("w:hyperlink")):
+                self.omissions.add(HYPERLINK_OMISSION)
+            marks = []
+            paragraphs = build(note, marks) or [{"heading": None, "format": {}, "tabs": [], "runs": [], "mark": {}}]
+            for paragraph in paragraphs:
+                paragraph["heading"] = None
+                paragraph["style"] = NOTE_STYLES[kind][0][0]
+            # Znak przypisu zawsze na początku treści; przy własnym znaku tylko wtedy, gdy był w źródle.
+            if marks or not custom:
+                paragraphs[0]["runs"].insert(0, {**(marks[0] if marks else {"font": {}}), "content": [("mark", kind)]})
+            self._built[key] = paragraphs
+        self.notes[kind].append(self._built[key])
+        return kind, len(self.notes[kind]), custom
+
+
+def _paragraph_specs(original, omissions, notes):
+    """Opisy akapitów treści głównej; odsyłacze przypisów (notes) budują też opisy treści przypisów."""
     chains = _StyleChains(original, omissions)
     font_name, font_color = chains.font_name, chains.font_color
     document_language = _document_language(original).get("val")
-    paragraphs = []
-    for element in body:
-        if element.tag == qn("w:sectPr"):
-            continue
-        if element.tag in CONTENT_FREE:
-            continue
-        if element.tag != qn("w:p"):
-            omissions.add("blok " + etree.QName(element).localname + " wraz z treścią")
-            continue
+
+    def blocks(container, marks=None):
+        """Akapity kontenera (treść albo przypis); marks zbiera formatowanie znaku przypisu."""
+        paragraphs = []
+        for element in container:
+            if element.tag == qn("w:sectPr"):
+                continue
+            if element.tag in CONTENT_FREE:
+                continue
+            if element.tag != qn("w:p"):
+                omissions.add("blok " + etree.QName(element).localname + " wraz z treścią")
+                continue
+            paragraphs.append(paragraph_spec(element, marks))
+        return paragraphs
+
+    def paragraph_spec(element, marks):
         old = Paragraph(element, original)
         properties = element.pPr
         paragraph_style_id = _style_id(properties, "w:pStyle")
@@ -466,7 +534,6 @@ def _paragraph_specs(original, omissions):
         if direct_numbering[0] != "0" if direct_numbering else inherited["numbered"]:
             omissions.add("automatyczne numerowanie i punktory list (tekst pozycji pozostanie)")
         paragraph = {"heading": inherited["heading"], "format": {}, "tabs": [], "runs": [], "mark": {}}
-        paragraphs.append(paragraph)
         # Znak akapitu wyznacza wysokość pustego akapitu (np. odstępu między scenami).
         mark_properties = properties.find(qn("w:rPr")) if properties is not None else None
         mark_size, mark_name = inherited["mark_size"], inherited["mark_name"]
@@ -490,6 +557,7 @@ def _paragraph_specs(original, omissions):
         paragraph["tabs"] = (
             _tab_stops(own) if own is not None and len(own.tab_stops) else list(inherited["tabs"])
         )
+        runs = paragraph["runs"]
         for element_run in element.iter(qn("w:r")):
             run_properties = element_run.rPr
             shared = chains.run(_style_id(run_properties, "w:rStyle"), paragraph_style_id)
@@ -497,12 +565,48 @@ def _paragraph_specs(original, omissions):
             hidden = font.hidden if font is not None else None
             if hidden if hidden is not None else shared["format"]["hidden"]:
                 continue
-            new_run = {"content": [], "font": {}}
-            paragraph["runs"].append(new_run)
+            formatting = {"font": {}}
+            for name in RUN_FORMAT:
+                value = getattr(font, name) if font is not None else None
+                if value is None:
+                    value = shared["format"][name]
+                if value is not None:
+                    formatting["font"][name] = value
+            name = (font_name([font]) if font is not None else None) or shared["name"]
+            if name:
+                formatting["font"]["name"] = name
+            color = font_color([font]) if font is not None else MISSING
+            color = shared["color"] if color is MISSING else color
+            if color is not None:
+                formatting["color"] = color
+            language = _language([element_run]) or shared["lang"]
+            if language and language != document_language:
+                formatting["lang"] = language
+            # Odsyłacz i znak przypisu dostają własny przebieg (styl odsyłacza nie obejmie tekstu obok);
+            # tekst za nimi trafia do kolejnego przebiegu o tym samym formatowaniu.
+            new_run = {**formatting, "content": []}
+            runs.append(new_run)
             for child in element_run:
                 tag = child.tag
                 if tag == qn("w:rPr"):
                     continue
+                if tag in NOTE_MARK_TAGS and marks is not None:
+                    marks.append(formatting)
+                    if new_run is not None and not new_run["content"]:
+                        runs.pop()
+                    new_run = None
+                    continue
+                if tag in NOTE_REFERENCE_TAGS and marks is None:
+                    reference = notes.reference(child, blocks)
+                    if reference is not None:
+                        if new_run is not None and not new_run["content"]:
+                            runs.pop()
+                        runs.append({**formatting, "content": [("note", reference)]})
+                        new_run = None
+                    continue
+                if new_run is None:
+                    new_run = {**formatting, "content": []}
+                    runs.append(new_run)
                 if tag == qn("w:t"):
                     new_run["content"].append(("text", child.text or ""))
                 elif tag == qn("w:tab"):
@@ -513,28 +617,14 @@ def _paragraph_specs(original, omissions):
                 elif tag == qn("w:noBreakHyphen"):
                     new_run["content"].append(("text", "‑"))
                 elif tag == qn("w:softHyphen"):
-                    new_run["content"].append(("text", "\u00ad"))
+                    new_run["content"].append(("text", "­"))
                 elif tag in (qn("w:commentReference"), qn("w:lastRenderedPageBreak")):
                     continue
                 else:
                     omissions.add("element " + etree.QName(child).localname + " wewnątrz tekstu")
-            for name in RUN_FORMAT:
-                value = getattr(font, name) if font is not None else None
-                if value is None:
-                    value = shared["format"][name]
-                if value is not None:
-                    new_run["font"][name] = value
-            name = (font_name([font]) if font is not None else None) or shared["name"]
-            if name:
-                new_run["font"]["name"] = name
-            color = font_color([font]) if font is not None else MISSING
-            color = shared["color"] if color is MISSING else color
-            if color is not None:
-                new_run["color"] = color
-            language = _language([element_run]) or shared["lang"]
-            if language and language != document_language:
-                new_run["lang"] = language
-    return paragraphs
+        return paragraph
+
+    return blocks(original.element.body)
 
 
 PAGE_DIMENSIONS = (
@@ -585,7 +675,8 @@ def _analyze_docx(source, keep_page_format=False):
                 True for _ in root.iter(qn("w:drawing"), qn("w:pict"), qn("w:object"))
             ):
                 omissions.add("niepuste nagłówki lub stopki")
-    _sanitize_body(body, omissions, placeholder_styles(original))
+    placeholders = placeholder_styles(original)
+    _sanitize_body(body, omissions, placeholders)
     # Po rozpakowaniu kontrolek zawartości: podział sekcji bywa w akapicie wewnątrz kontrolki.
     if len(original.sections) > 1:
         label = "o układzie pierwszej sekcji" if keep_page_format else "A4"
@@ -598,9 +689,11 @@ def _analyze_docx(source, keep_page_format=False):
         omissions.add("format strony, orientacja lub kolumny (wynik: A4 pionowo, jedna kolumna)")
     # Liczymy po usunięciu tabel i pól tekstowych: odnośnik z nich nie zostawia „widocznego tekstu”.
     for link in body.iter(qn("w:hyperlink")):
-        omissions.add("odnośniki hiperłączy (widoczny tekst pozostanie)")
+        omissions.add(HYPERLINK_OMISSION)
+    notes = _SourceNotes(original, omissions, placeholders)
     layout = {
-        "paragraphs": _paragraph_specs(original, omissions),
+        "paragraphs": _paragraph_specs(original, omissions, notes),
+        "notes": notes.notes,
         "page": _page_format(original) if keep_page_format else None,
         "language": _document_language(original),
         "default_tab": original.settings.element.xpath("./w:defaultTabStop/@w:val"),
@@ -675,42 +768,8 @@ def _new_document(layout):
         heading = item["heading"]
         if heading not in heading_styles:
             heading_styles[heading] = result.styles[heading] if heading in result.styles else None
-        paragraph = result.add_paragraph(style=heading_styles[heading])
-        for name, value in item["format"].items():
-            setattr(paragraph.paragraph_format, name, value)
-        for stop in item["tabs"]:
-            paragraph.paragraph_format.tab_stops.add_tab_stop(*stop)
-        if item["mark"]:
-            mark = OxmlElement("w:rPr")
-            if "name" in item["mark"]:
-                fonts = OxmlElement("w:rFonts")
-                for key in ("w:ascii", "w:hAnsi"):
-                    fonts.set(qn(key), item["mark"]["name"])
-                mark.append(fonts)
-            if "size" in item["mark"]:
-                size = OxmlElement("w:sz")
-                size.set(qn("w:val"), str(round(item["mark"]["size"].pt * 2)))
-                mark.append(size)
-            paragraph._p.get_or_add_pPr().append(mark)
-        for specification in item["runs"]:
-            run = paragraph.add_run()
-            for kind, value in specification["content"]:
-                if kind == "text":
-                    run.add_text(value)
-                elif kind == "tab":
-                    run.add_tab()
-                else:
-                    run.add_break(value)
-            for name, value in specification["font"].items():
-                setattr(run.font, name, value)
-            if "color" in specification:
-                run.font.color.rgb = specification["color"]
-            if "lang" in specification:
-                language = OxmlElement("w:lang")
-                language.set(qn("w:val"), specification["lang"])
-                run._r.get_or_add_rPr().insert_element_before(
-                    language, "w:eastAsianLayout", "w:specVanish", "w:oMath"
-                )
+        _fill_paragraph(result.add_paragraph(style=heading_styles[heading]), item)
+    _add_notes(result, layout["notes"])
     props = result.core_properties
     for name in (
         "author",
@@ -731,6 +790,122 @@ def _new_document(layout):
             props._element.remove(node)
     props.revision = 1
     return result
+
+
+def _fill_paragraph(paragraph, item):
+    """Formatowanie i przebiegi akapitu według opisu z _paragraph_specs (treść główna i przypisy)."""
+    if "style" in item:
+        paragraph._p.style = item["style"]
+    for name, value in item["format"].items():
+        setattr(paragraph.paragraph_format, name, value)
+    for stop in item["tabs"]:
+        paragraph.paragraph_format.tab_stops.add_tab_stop(*stop)
+    if item["mark"]:
+        mark = OxmlElement("w:rPr")
+        if "name" in item["mark"]:
+            fonts = OxmlElement("w:rFonts")
+            for key in ("w:ascii", "w:hAnsi"):
+                fonts.set(qn(key), item["mark"]["name"])
+            mark.append(fonts)
+        if "size" in item["mark"]:
+            size = OxmlElement("w:sz")
+            size.set(qn("w:val"), str(round(item["mark"]["size"].pt * 2)))
+            mark.append(size)
+        paragraph._p.get_or_add_pPr().append(mark)
+    for specification in item["runs"]:
+        run = paragraph.add_run()
+        for kind, value in specification["content"]:
+            if kind == "text":
+                run.add_text(value)
+            elif kind == "tab":
+                run.add_tab()
+            elif kind == "note":
+                note_kind, number, custom = value
+                run._r.style = NOTE_STYLES[note_kind][1][0]
+                reference = OxmlElement("w:" + note_kind + "Reference")
+                if custom:
+                    reference.set(qn("w:customMarkFollows"), "1")
+                reference.set(qn("w:id"), str(number))
+                run._r.append(reference)
+            elif kind == "mark":
+                run._r.style = NOTE_STYLES[value][1][0]
+                run._r.append(OxmlElement("w:" + value + "Ref"))
+            else:
+                run.add_break(value)
+        for name, value in specification["font"].items():
+            setattr(run.font, name, value)
+        if "color" in specification:
+            run.font.color.rgb = specification["color"]
+        if "lang" in specification:
+            language = OxmlElement("w:lang")
+            language.set(qn("w:val"), specification["lang"])
+            run._r.get_or_add_rPr().insert_element_before(
+                language, "w:eastAsianLayout", "w:specVanish", "w:oMath"
+            )
+
+
+# Elementy ustawień (schemat w:settings), przed którymi stoją w:footnotePr i w:endnotePr.
+SETTINGS_AFTER_NOTES = tuple(
+    qn(tag)
+    for tag in (
+        "w:endnotePr", "w:compat", "w:docVars", "w:rsids", "m:mathPr", "w:attachedSchema", "w:themeFontLang",
+        "w:clrSchemeMapping", "w:doNotIncludeSubdocsInStats", "w:doNotAutoCompressPictures", "w:forceUpgrade",
+        "w:captions", "w:readModeInkLockDown", "w:smartTagType", "sl:schemaLibrary", "w:shapeDefaults",
+        "w:doNotEmbedSmartTags", "w:decimalSymbol", "w:listSeparator",
+    )
+)
+
+
+def _add_notes(result, notes):
+    """Nowe części przypisów dolnych i końcowych z separatorami jak w Wordzie (w:id -1 i 0).
+
+    Style tekstu przypisu i odsyłacza są neutralne jak pozostałe (_neutral_styles): formatowanie
+    źródła niosą akapity i przebiegi, a styl odsyłacza daje tylko indeks górny, jak w Wordzie.
+    """
+    styles, settings = result.styles.element, result.settings.element
+    for kind in NOTE_KINDS:
+        if not notes.get(kind):
+            continue
+        (text_id, text_name), (reference_id, reference_name) = NOTE_STYLES[kind]
+        if result.styles.element.get_by_id(text_id) is None:
+            styles.append(parse_xml(
+                f'<w:style {nsdecls("w")} w:type="paragraph" w:styleId="{text_id}"><w:name w:val="{text_name}"/>'
+                '<w:basedOn w:val="Normal"/><w:uiPriority w:val="99"/><w:unhideWhenUsed/></w:style>'))
+        if result.styles.element.get_by_id(reference_id) is None:
+            styles.append(parse_xml(
+                f'<w:style {nsdecls("w")} w:type="character" w:styleId="{reference_id}">'
+                f'<w:name w:val="{reference_name}"/><w:basedOn w:val="DefaultParagraphFont"/>'
+                '<w:uiPriority w:val="99"/><w:unhideWhenUsed/><w:rPr><w:vertAlign w:val="superscript"/></w:rPr>'
+                '</w:style>'))
+        separators = "".join(
+            f'<w:{kind} w:type="{name}" w:id="{number}"><w:p><w:pPr><w:spacing w:after="0" w:line="240" '
+            f'w:lineRule="auto"/></w:pPr><w:r><w:{name}/></w:r></w:p></w:{kind}>'
+            for number, name in ((-1, "separator"), (0, "continuationSeparator"))
+        )
+        root = parse_xml(f'<w:{kind}s {nsdecls("w")}>{separators}</w:{kind}s>')
+        for number, paragraphs in enumerate(notes[kind], 1):
+            note = OxmlElement("w:" + kind)
+            note.set(qn("w:id"), str(number))
+            root.append(note)
+            for item in paragraphs:
+                element = OxmlElement("w:p")
+                note.append(element)
+                _fill_paragraph(Paragraph(element, result._body), item)
+        part = XmlPart(
+            PackURI(f"/word/{kind}s.xml"),
+            f"application/vnd.openxmlformats-officedocument.wordprocessingml.{kind}s+xml",
+            root,
+            result.part.package,
+        )
+        result.part.relate_to(part, NOTE_RELATIONSHIPS[kind])
+        properties = parse_xml(
+            f'<w:{kind}Pr {nsdecls("w")}><w:{kind} w:id="-1"/><w:{kind} w:id="0"/></w:{kind}Pr>'
+        )
+        anchor = next((node for node in settings if node.tag in SETTINGS_AFTER_NOTES), None)
+        if anchor is None:
+            settings.append(properties)
+        else:
+            anchor.addprevious(properties)
 
 
 def _apply_page_format(result, section, page):

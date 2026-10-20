@@ -14,18 +14,22 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
 from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import nsdecls, qn
 from docx.shared import Cm, Pt, RGBColor
+from lxml import etree
 
 from core.program_test_support import run_program
 from core.services import program_jobs as jobs
 from core.services.document_converter import RebuildConfirmationRequired, convert_document
+from core.services.document_preparation import DEFAULT_EDITORIAL_RULES, prepare_docx
 from core.services.document_rebuild import PLACEHOLDER_OMISSION, RebuildUnsupported, inspect_docx, rebuild_docx
 from core.services.mailbox_import import package_messages
 from fantazmaty.testing import create_superuser
 
 from .support import (
-    IsolatedProgramDirsMixin, add_block, add_complex_field, add_text_box, content_control, downloaded_document,
-    saved, text_run, with_footnote,
+    NOTE_PARTS, IsolatedProgramDirsMixin, add_block, add_complex_field, add_text_box, content_control,
+    downloaded_document, noted_document, noted_text, saved, text_run,
 )
+
+NS = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
 
 
 class RebuildTests(SimpleTestCase):
@@ -447,15 +451,105 @@ class RebuildWarningAccuracyTests(SimpleTestCase):
             '<v:textpath string="POUFNE"/></v:shape></w:pict></w:r>' % nsdecls('w')))
         self.assertEqual(omissions_of(document), ['niepuste nagłówki lub stopki (liczba: 1)'])
 
-    def test_footnote_reference_is_reported_and_note_text_is_not_carried(self):
-        document = Document()
-        paragraph = document.add_paragraph('Zdanie')
-        paragraph._p.append(parse_xml('<w:r %s><w:footnoteReference w:id="1"/></w:r>' % nsdecls('w')))
-        source = with_footnote(document, 'Treść przypisu')
-        with self.assertRaisesMessage(RebuildUnsupported, 'przypisy dolne i ich odsyłacze (liczba: 1)'):
-            inspect_docx(source)
-        with rebuild_docx(source, allow_omissions=True) as out, ZipFile(out) as archive:
-            self.assertNotIn('word/footnotes.xml', archive.namelist())
+
+def note_parts(stream, kind):
+    """(tekst treści z odsyłaczami, teksty kolejnych przypisów, korzeń części przypisów albo None, pliki pakietu)."""
+    with ZipFile(stream) as archive:
+        files = {name: archive.read(name) for name in archive.namelist()}
+    notes = files.get(f'word/{kind}s.xml')
+    root = etree.fromstring(notes) if notes is not None else None
+    texts = [noted_text(note) for note in root.findall(qn('w:' + kind)) if note.get(qn('w:type')) is None] if notes else []
+    return noted_text(etree.fromstring(files['word/document.xml'])), texts, root, files
+
+
+class RebuildNotesTests(SimpleTestCase):
+    """Przypisy dolne i końcowe: odsyłacz na swoim miejscu, treść w nowej części, sanityzowana jak treść główna."""
+
+    def test_notes_are_recreated_in_a_new_part(self):
+        """Nowa część z separatorami (w:id -1 i 0), relacją, typem zawartości, ustawieniami i stylami;
+        odsyłacz we własnym przebiegu ze stylem odsyłacza, znak przypisu na początku treści, bez XML źródła."""
+        for kind, (name, reltype) in NOTE_PARTS.items():
+            title = kind.capitalize()
+            with self.subTest(kind):
+                source = noted_document(['Zdanie', 1, ' dalej.'], kind, note_runs=(
+                    '<w:r w:rsidR="00ABCDEF"><w:t xml:space="preserve"> Treść przypisu.</w:t></w:r>'))
+                inspect_docx(source)
+                result = rebuild_docx(source)
+                body, texts, root, files = note_parts(result, kind)
+                self.assertEqual(body, 'Zdanie[1] dalej.')
+                self.assertEqual(texts, ['[ref] Treść przypisu.'])
+                self.assertNotIn(b'00ABCDEF', files[f'word/{name}.xml'])
+                self.assertEqual([(note.get(qn('w:type')), note.get(qn('w:id'))) for note in root],
+                                 [('separator', '-1'), ('continuationSeparator', '0'), (None, '1')])
+                document = Document(result)
+                reference = next(document.element.body.iter(qn(f'w:{kind}Reference')))
+                self.assertEqual([child.tag for child in reference.getparent()], [qn('w:rPr'), reference.tag])
+                self.assertEqual(reference.getparent().style, f'{title}Reference')
+                self.assertEqual(root.xpath('./w:*[@w:id="1"]/w:p/w:pPr/w:pStyle/@w:val', namespaces=NS),
+                                 [f'{title}Text'])
+                styles = document.styles.element
+                self.assertEqual(styles.get_by_id(f'{title}Text').type, WD_STYLE_TYPE.PARAGRAPH)
+                self.assertEqual(styles.get_by_id(f'{title}Reference').xpath('./w:rPr/w:vertAlign/@w:val'),
+                                 ['superscript'])
+                self.assertEqual(document.settings.element.xpath(f'./w:{kind}Pr/w:{kind}/@w:id'), ['-1', '0'])
+                self.assertIn(f'PartName="/word/{name}.xml" ContentType="application/vnd.openxmlformats-officedocument.'
+                              f'wordprocessingml.{name}+xml"'.encode(), files['[Content_Types].xml'])
+                self.assertIn(f'Type="{reltype}"'.encode(), files['word/_rels/document.xml.rels'])
+                other = 'endnote' if kind == 'footnote' else 'footnote'
+                self.assertNotIn(f'word/{other}s.xml', files)
+
+    def test_note_content_follows_the_rules_of_the_main_text(self):
+        """Formatowanie, pominięcia (liczone razem z treścią), kolejność i numeracja, brakujący przypis,
+        przypis bez odsyłacza i własny znak odsyłacza."""
+        drawing = '<w:r><w:t>Tekst</w:t></w:r><w:r><w:drawing/></w:r>'
+        table = ('<w:r><w:t>Tekst</w:t></w:r></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>komórka</w:t></w:r></w:p>'
+                 '</w:tc></w:tr></w:tbl><w:p>')
+        # nazwa: (przebiegi, opcje noted_document, pominięcia, treść, przypisy, XPath w części przypisów)
+        cases = {
+            'kursywa': (['A', 1], {'note_runs': '<w:r><w:rPr><w:i/></w:rPr><w:t>kursywa</w:t></w:r>'}, [],
+                        'A[1]', ['[ref]kursywa'], './/w:r[w:t="kursywa"]/w:rPr/w:i'),
+            'ilustracje w dwóch przypisach': (
+                ['A', 1, 'B', 2], {'note_runs': drawing},
+                ['ilustracje i pola tekstowe wraz z ich treścią (liczba: 2)'], 'A[1]B[2]', ['[ref]Tekst'] * 2, None),
+            'tabela w przypisie': (['A', 1], {'note_runs': table}, ['tabele wraz z ich treścią (liczba: 1)'],
+                                   'A[1]', ['[ref]Tekst'], None),
+            'kolejność i numeracja': (['A', 3, 'B', 1, 'C', 2], {'note_text': 'Przypis {id}'}, [], 'A[1]B[2]C[3]',
+                                      ['[ref]Przypis 3', '[ref]Przypis 1', '[ref]Przypis 2'], None),
+            'odsyłacz do brakującego przypisu': (
+                ['A', 1, 2], {'notes': [1], 'note_text': 'Przypis {id}'},
+                ['odsyłacze do nieistniejących przypisów (liczba: 1)'], 'A[1]', ['[ref]Przypis 1'], None),
+            'przypis bez odsyłacza': (['A', 2], {'notes': [1, 2, 3], 'note_text': 'Przypis {id}'}, [], 'A[1]',
+                                      ['[ref]Przypis 2'], None),
+            'własny znak bez znaku przypisu w treści': (
+                ['A', 1, '*'], {'reference': 'w:customMarkFollows="1"', 'note_text': '* Gwiazdka', 'mark': False},
+                [], 'A[1]*', ['* Gwiazdka'], './/w:*[@w:id="1"]'),
+        }
+        for label, (parts, options, omissions, body, notes, xpath) in cases.items():
+            with self.subTest(label):
+                source = noted_document(parts, **options)
+                try:
+                    inspect_docx(source)
+                    found = []
+                except RebuildUnsupported as error:
+                    found = error.omissions
+                self.assertEqual(found, omissions)
+                result = rebuild_docx(source, allow_omissions=True)
+                text, texts, root, files = note_parts(result, 'footnote')
+                self.assertEqual((text, texts), (body, notes))
+                if xpath:
+                    self.assertTrue(root.xpath(xpath, namespaces=NS))
+                custom = Document(result).element.body.xpath('.//w:footnoteReference/@w:customMarkFollows')
+                self.assertEqual(custom, ['1'] if 'reference' in options else [])
+
+    def test_notes_survive_the_whole_preparation_with_the_cleaner(self):
+        """Przebudowa → ujednolicenie → miękkie entery → Odkurzacz: treść przypisu poprawiona,
+        odsyłacz przesunięty przed kropkę (note_references), bez pominięć."""
+        for kind in NOTE_PARTS:
+            with self.subTest(kind):
+                result = prepare_docx(noted_document(['Tekst.', 1], kind), rebuild=True, normalize_formatting=True,
+                                      remove_soft_whitespace=True, cleaner_rules=list(DEFAULT_EDITORIAL_RULES))
+                body, texts, _, _ = note_parts(result, kind)
+                self.assertEqual((body, texts), ('Tekst[1].', ['[ref] Treść przypisu…']))
 
 
 class RebuildConversionTests(IsolatedProgramDirsMixin, SimpleTestCase):
