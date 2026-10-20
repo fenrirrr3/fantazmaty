@@ -46,6 +46,11 @@ class Anthology(models.Model):
         IN_PROGRESS = "in_progress", "Zlecone"
         READY = "ready", "Gotowe"
 
+    class DiscordNotifications(models.TextChoices):
+        ALL = "all", "Włączone"
+        OFF = "off", "Wyłączone"
+        STAGES = "stages", "Tylko rozpoczęcia i zakończenia etapów"
+
     title = models.CharField(
         "tytuł antologii",
         max_length=255,
@@ -100,6 +105,15 @@ class Anthology(models.Model):
     cover_notes = models.TextField(
         "informacje o okładce",
         blank=True,
+    )
+
+    discord_notifications = models.CharField(
+        "powiadomienia Discord",
+        max_length=10,
+        choices=DiscordNotifications.choices,
+        default=DiscordNotifications.ALL,
+        help_text="Wiadomości o tekstach tej antologii: do wzięcia, rozpoczęcia i zakończenia etapów, przypomnienia "
+                  "i produkcja audiobooków. Zgłoszeń do recenzji to nie dotyczy.",
     )
 
     class Meta:

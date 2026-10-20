@@ -48,6 +48,7 @@
     <button type="submit" class="primary-button">Zapisz zadania</button>
   </form>
 </div></section>
+{% include "core/includes/anthology_notifications_form.html" with form=notifications_form %}
 {% endif %}
 {% if show_credits %}<section class="card"><div class="card-body"><h2>Osoby i wykonane prace</h2><p>Ukończone prace, także zapisane bez dat. Każda osoba pojawia się raz w danej kategorii.</p><ul class="credits-list">{% for row in credits %}<li><strong>{{ row.label }}:</strong> {{ row.names|join:", "|default:"–" }}</li>{% endfor %}</ul></div></section>{% endif %}
 {% endblock %}

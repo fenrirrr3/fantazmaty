@@ -17,7 +17,7 @@ from people.models import Person
 from texts.models import Anthology, AnthologyTask
 from texts.models import ExtractVolume
 from texts.cover_forms import CoverAssignmentForm
-from core.anthology_tasks import CompactCoverAssignmentForm, NewTaskPersonForm, grouped_checklist, task_people, TaskPersonChoice
+from core.anthology_tasks import AnthologyNotificationsForm, CompactCoverAssignmentForm, NewTaskPersonForm, grouped_checklist, task_people, TaskPersonChoice
 from workflow.services import ROLE_GROUPS
 from workflow.models import WorkflowRoleAssignment
 
@@ -105,6 +105,7 @@ def anthology_detail(request, anthology_id):
     forms_list = _task_forms(anthology) if coordinator else []
     cover_form = CompactCoverAssignmentForm(instance=anthology, prefix='cover') if coordinator else None
     new_person_form = NewTaskPersonForm(anthology=anthology, prefix='new-person') if coordinator else None
+    notifications_form = AnthologyNotificationsForm(instance=anthology, prefix='discord') if coordinator else None
     if request.method == 'POST':
         if not coordinator:
             raise PermissionDenied
@@ -114,9 +115,10 @@ def anthology_detail(request, anthology_id):
             if removal not in (*AnthologyTask.TaskType.values, 'cover'):
                 return HttpResponse('Nieznane zadanie.', status=400)
             action = 'remove_person'
-        if action not in ('', 'cover', 'tasks_and_cover', 'new_person', 'remove_person', 'block_recording'):
+        versioned = ('cover', 'tasks_and_cover', 'new_person', 'remove_person', 'block_recording', 'notifications')
+        if action not in ('', *versioned):
             return HttpResponse('Nieznana operacja.', status=400)
-        if action in ('cover', 'tasks_and_cover', 'new_person', 'remove_person', 'block_recording') and not request.POST.get('_edit_version'):
+        if action in versioned and not request.POST.get('_edit_version'):
             return HttpResponse('Odśwież stronę i ponów zapis. Brak wersji formularza.', status=409)
         with transaction.atomic():
             anthology = get_object_or_404(Anthology.objects.select_for_update(), pk=anthology_id)
@@ -131,7 +133,13 @@ def anthology_detail(request, anthology_id):
                 messages.success(request, f'Zablokowano nagrywanie audiobooków: {blocked} tekstów trafiło na czarną listę. '
                                           'Audiodeskrypcja antologii pozostaje bez zmian.')
                 return redirect('core:anthology_detail', anthology_id=anthology.pk)
-            if action == 'remove_person':
+            if action == 'notifications':
+                notifications_form = AnthologyNotificationsForm(request.POST, instance=anthology, prefix='discord')
+                if notifications_form.is_valid():
+                    notifications_form.save(commit=False).save(update_fields=['discord_notifications'])
+                    messages.success(request, 'Zapisano ustawienie powiadomień Discord.')
+                    return redirect('core:anthology_detail', anthology_id=anthology.pk)
+            elif action == 'remove_person':
                 finished = (anthology.cover_status == Anthology.CoverStatus.READY if removal == 'cover' else
                             AnthologyTask.objects.filter(anthology=anthology, task_type=removal,
                                                          status=AnthologyTask.Status.READY).exists())
@@ -188,6 +196,7 @@ def anthology_detail(request, anthology_id):
         'issue_groups': grouped_checklist(issues), 'new_person_form': new_person_form,
         'credits': anthology_credit_groups(anthology) if show_credits else [],
         'extract_text': anthology.texts.filter(import_source='extract-volume-v2').first(), 'show_credits': show_credits, 'cover_form': cover_form,
+        'notifications_form': notifications_form,
         'recordable_count': anthology.texts.filter(audiobook_blacklisted=False).count() if coordinator else 0,
         'has_texts': anthology.texts.exists(),
     }, status=400 if request.method == 'POST' else 200)

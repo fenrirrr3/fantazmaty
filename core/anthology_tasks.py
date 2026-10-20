@@ -27,6 +27,14 @@ class CompactCoverAssignmentForm(CoverAssignmentForm):
         self.fields.pop('new_cover_last_name')
 
 
+class AnthologyNotificationsForm(forms.ModelForm):
+    """Ustawienie „Powiadomienia Discord” na stronie antologii i powieści (koordynator)."""
+
+    class Meta:
+        model = Anthology
+        fields = ('discord_notifications',)
+
+
 class NewTaskPersonForm(forms.Form):
     first_name = forms.CharField(label='Nowa osoba – imię', max_length=100)
     last_name = forms.CharField(label='Nowa osoba – nazwisko', max_length=100)

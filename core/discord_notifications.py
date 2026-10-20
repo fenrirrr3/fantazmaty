@@ -1,8 +1,9 @@
-"""Powiadomienia Discord z reguł w panelu admina: tekst do wzięcia, nowe zgłoszenie do recenzji, zakończenie etapu,
-produkcja audiobooka.
+"""Powiadomienia Discord z reguł w panelu admina: tekst do wzięcia, nowe zgłoszenie do recenzji, rozpoczęcie
+i zakończenie etapu, produkcja audiobooka.
 
 Wiadomości trafiają do kolejki (DiscordNotification) w tej samej transakcji co zmiana w CMS-ie,
 a wysyłka następuje dopiero po zatwierdzeniu transakcji. Błąd wysyłki nigdy nie cofa zmiany.
+Ustawienie antologii „Powiadomienia Discord” ogranicza wiadomości o jej tekstach (queue()).
 """
 import logging
 import os
@@ -24,9 +25,13 @@ STAGE_TRIGGERS = {
     'second_verification': 'second_verification',
     'third_verification': 'third_verification',
 }
-# Bez wiadomości „Zakończono etap”: przejęcie tekstu do redakcji, Gotowe, wycofanie oraz powrót pliku od autora
-# (zakończenie etapu „Plik u autora”). Przekazanie pliku autorowi pomija osobno workflow_changes.
+# Bez wiadomości „Rozpoczęto” ani „Zakończono”: przejęcie tekstu do redakcji (zakończenie „Do redakcji”), Gotowe,
+# wycofanie oraz praca autora (przekazanie pliku autorowi i jego powrót pomija osobno workflow_changes).
 NOT_A_COMPLETION = {'ready_for_editing', 'ready', 'withdrawn', 'author_editing'}
+STAGE_EVENTS = 'stage_completed'
+EVENT_STARTED, EVENT_COMPLETED = 'Rozpoczęto', 'Zakończono'
+AUDIOBOOK = 'audiobook_production'
+
 # Zgłoszenia do recenzji są anonimowe dla recenzentów (dane autora widzi tylko superuser).
 ANONYMOUS_AUTHOR = '(anonimowo)'
 LINK_LABEL = 'O, tutaj'
@@ -184,13 +189,30 @@ def render(template, context, mention='', link=''):
     return content[:DISCORD_LIMIT]
 
 
+def anthology_allows(trigger, text, using='default'):
+    """Ustawienie „Powiadomienia Discord” antologii tekstu: „Wyłączone” – nic, „Tylko rozpoczęcia i zakończenia
+    etapów” – tylko reguła STAGE_EVENTS. Tekst bez antologii – jak „Włączone”."""
+    from texts.models import Anthology
+    anthology_id = getattr(text, 'anthology_id', None)
+    if not anthology_id:
+        return True
+    setting = Anthology.objects.using(using).filter(pk=anthology_id).values_list(
+        'discord_notifications', flat=True).first()
+    if setting == Anthology.DiscordNotifications.OFF:
+        return False
+    return setting != Anthology.DiscordNotifications.STAGES or trigger == STAGE_EVENTS
+
+
 def queue(trigger, *, using='default', text=None, review=None, stage_id=None, context=None, reminder_of=None,
           reminder_days=None, link=None):
     """Tworzy wiadomość z włączonej reguły; zwraca obiekt kolejki albo None.
 
     Przypomnienie bez własnego kanału lub oznaczenia przejmuje je z pierwszego powiadomienia (reminder_of).
+    Wiadomości o tekście podlegają ustawieniu jego antologii (anthology_allows).
     """
     from core.models import DiscordNotification, NotificationRule
+    if text is not None and not anthology_allows(trigger, text, using):
+        return None
     rule = NotificationRule.objects.using(using).filter(trigger=trigger, enabled=True).first()
     channel = (rule.channel or getattr(reminder_of, 'channel', '')) if rule else ''
     if not channel:
@@ -264,9 +286,6 @@ def deliver(pk, using='default'):
     rows.filter(pk=pk, status='sending').update(status=status, message_id=message_id)
 
 
-AUDIOBOOK = 'audiobook_production'
-
-
 def audiobook_changed(text, *, actor, status, change, using='default'):
     """Każda zmiana w produkcji audiobooka (status, etapy, korekta, przypisanie korektora) – jedna reguła.
     Odnośnik prowadzi do strony audiobooka."""
@@ -310,6 +329,12 @@ def handover_target(before, after, handed_over):
     return ''
 
 
+def returned_from_author(before, after):
+    """Ta zmiana zakończyła etap „Plik u autora” – wznowiona przy tym redakcja to tylko powrót pliku."""
+    return any(stage['type'] == 'author_editing' and stage['completed'] and not (before.get(pk) or {}).get('completed')
+               for pk, stage in after.items())
+
+
 def workflow_changes(using, text, before, after, actor=''):
     """Porównuje stany tekstu przed zmianą i po niej; kolejkuje wiadomości z reguł.
 
@@ -317,10 +342,12 @@ def workflow_changes(using, text, before, after, actor=''):
     z pierwszego przebiegu redakcji, jeśli nikt jej nie zarezerwował – wcześniejsze ogłoszenie dotyczyło tylko
     rezerwacji. Powtórzone W1 (kolejne podejście) nie dostaje drugiego ogłoszenia przy przekazaniu.
 
-    „Zakończono etap” – jedna reguła dla wszystkich etapów; [osoba] to wykonawca etapu (bez przypisania –
-    osoba, która wykonała operację: actor). Każde przekazanie redakcji (do W1, W2, koordynatora; w Ekstraktach
-    do W1 albo K1) jest ogłaszane, a [etap] wskazuje cel, np. „Redakcja → Pierwsza weryfikacja”. Przesłanie pliku
-    autorowi i jego powrót nie są zakończeniem etapu.
+    „Rozpoczęcie i zakończenie etapu” – jedna reguła dla wszystkich etapów, [zdarzenie] to „Rozpoczęto” albo
+    „Zakończono”, a [osoba] – wykonawca etapu (bez przypisania – osoba, która wykonała operację: actor).
+    Rozpoczęcie: także przejęcie tekstu do redakcji i wznowienie redakcji po weryfikacji; etap rozpoczęty
+    i zakończony w jednej operacji – tylko zakończenie; sama rezerwacja W1 – nic. Każde przekazanie redakcji
+    (do W1, W2, koordynatora; w Ekstraktach do W1 albo K1) jest ogłaszane, a [etap] wskazuje cel, np. „Redakcja →
+    Pierwsza weryfikacja”. Przesłanie pliku autorowi i jego powrót nie są ani rozpoczęciem, ani zakończeniem etapu.
     """
     from workflow.models import WorkflowStage
     if text is None:
@@ -328,11 +355,12 @@ def workflow_changes(using, text, before, after, actor=''):
     context = text_context(text)
     handed_over = editing_open(before) and not editing_open(after)
     to_author = sent_to_author(before, after)
+    from_author = returned_from_author(before, after)
     target = handover_target(before, after, handed_over)
 
-    def completed(type_display, performer=''):
-        safe_queue('stage_completed', using=using, text=text,
-                   context={**context, 'etap': type_display, 'osoba': performer or actor})
+    def stage_event(event, type_display, performer=''):
+        safe_queue(STAGE_EVENTS, using=using, text=text,
+                   context={**context, 'zdarzenie': event, 'etap': type_display, 'osoba': performer or actor})
 
     for pk, stage in after.items():
         old = before.get(pk)
@@ -342,19 +370,24 @@ def workflow_changes(using, text, before, after, actor=''):
         newly_available = not (old and stage_available(old)) or first_handover
         if trigger and stage_available(stage) and newly_available:
             safe_queue(trigger, using=using, text=text, stage_id=pk, context={**context, 'etap': stage['type_display']})
-        if stage['completed'] and not (old and old['completed']) and stage['type'] not in NOT_A_COMPLETION:
+        if stage['type'] in NOT_A_COMPLETION:
+            continue
+        if stage['completed'] and not (old and old['completed']):
             if stage['type'] != 'editing':
-                completed(stage['type_display'], stage.get('performer', ''))
+                stage_event(EVENT_COMPLETED, stage['type_display'], stage.get('performer', ''))
             elif not to_author:
                 label = f"{stage['type_display']} → {target}" if target else stage['type_display']
-                completed(label, stage.get('performer', ''))
+                stage_event(EVENT_COMPLETED, label, stage.get('performer', ''))
+        elif (stage.get('started') and not stage['completed'] and not (old and old.get('started'))
+              and not (stage['type'] == 'editing' and from_author)):
+            stage_event(EVENT_STARTED, stage['type_display'], stage.get('performer', ''))
     # Etap zakończony i od razu przeniesiony do historii (np. decyzja koordynatora „dalsza redakcja”).
     gone = [pk for pk in before if pk not in after and not before[pk]['completed']]
     for stage in (WorkflowStage.objects.using(using).filter(pk__in=gone, is_completed=True)
                   .select_related('assignment__assigned_to__person_profile')):
         if stage.stage_type not in NOT_A_COMPLETION and not (stage.stage_type == 'editing' and to_author):
-            completed(stage.get_stage_type_display(),
-                      person_name(stage.assignment.assigned_to) if stage.assignment_id else '')
+            stage_event(EVENT_COMPLETED, stage.get_stage_type_display(),
+                        person_name(stage.assignment.assigned_to) if stage.assignment_id else '')
 
 
 def stage_still_waiting(stage):

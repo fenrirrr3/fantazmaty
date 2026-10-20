@@ -171,4 +171,4 @@ class WebhookAndLabelTests(TestCase):
     def test_labels(self):
         role = DiscordRole.objects.create(name='korektor', role_id='5')
         item = DiscordNotification(trigger='stage_completed', channel='Kanał', content='x')
-        self.assertEqual((str(role), str(item)), ('@korektor', 'Zakończenie etapu (wszystkie etapy) → Kanał'))
+        self.assertEqual((str(role), str(item)), ('@korektor', 'Rozpoczęcie i zakończenie etapu (wszystkie etapy) → Kanał'))

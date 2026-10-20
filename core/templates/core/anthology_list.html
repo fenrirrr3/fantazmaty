@@ -47,6 +47,7 @@
                                     >
                                         <strong>{{ anthology.title }}</strong>
                                     </a>
+                                    {% if anthology.discord_notifications == 'off' %}<span class="muted-text">Discord: powiadomienia wyłączone</span>{% elif anthology.discord_notifications == 'stages' %}<span class="muted-text">Discord: tylko etapy</span>{% endif %}
                                 </td>
 
                                 <td>

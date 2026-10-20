@@ -6,6 +6,7 @@ from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET, require_http_methods
 
+from core.anthology_tasks import AnthologyNotificationsForm
 from core.novel_forms import NovelForm, ChapterForm, ChapterRangeForm, AssignmentForm, CoverForm
 from core.pagination import paginate_items
 from core.permissions import team_member_required, coordinator_required, is_coordinator
@@ -79,6 +80,12 @@ def novel_detail(request, novel_id):
                 if action == 'reopen':
                     book.status = Anthology.Status.IN_PREPARATION
                     book.save(update_fields=['status'])
+                elif action == 'notifications':
+                    form = AnthologyNotificationsForm(request.POST, instance=book, prefix='discord')
+                    forms['notifications_form'] = form
+                    if not form.is_valid():
+                        raise ValidationError('Wybierz ustawienie powiadomień Discord.')
+                    form.save(commit=False).save(update_fields=['discord_notifications'])
                 else:
                     novels.require_open(book)
                     if action == 'chapters':
@@ -144,7 +151,8 @@ def novel_detail(request, novel_id):
         'novel_token': novels.edit_token(book, request.user) if coordinator else '',
         'chapter_form': ChapterForm(), 'chapter_range_form': ChapterRangeForm(prefix='add'),
         'assignment_form': AssignmentForm(prefix='assign'),
-        'task_forms': _task_forms(book) if coordinator else [], 'cover_form': CoverForm(instance=book) if coordinator else None}
+        'task_forms': _task_forms(book) if coordinator else [], 'cover_form': CoverForm(instance=book) if coordinator else None,
+        'notifications_form': AnthologyNotificationsForm(instance=book, prefix='discord') if coordinator else None}
     context.update(forms)
     return render(request, 'core/novels/detail.html', context, status=400 if error else 200)
 

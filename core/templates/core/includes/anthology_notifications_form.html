@@ -1,0 +1,9 @@
+<section class="card" id="discord-notifications" aria-labelledby="discord-notifications-heading"><div class="card-body">
+  <h2 id="discord-notifications-heading">Powiadomienia Discord</h2>
+  <p class="muted-text">Wiadomości o tekstach tej publikacji: do wzięcia, rozpoczęcia i zakończenia etapów, przypomnienia i produkcja audiobooków. „Tylko rozpoczęcia i zakończenia etapów” – bez ogłoszeń do wzięcia, przypomnień i audiobooków. Zgłoszeń do recenzji to nie dotyczy.</p>
+  <form method="post" data-warn-unsaved>
+    {% csrf_token %}{% if novel_token %}<input type="hidden" name="novel_token" value="{{ novel_token }}">{% else %}{% edit_version %}{% endif %}<input type="hidden" name="action" value="notifications">
+    <div class="form-field">{{ form.discord_notifications.label_tag }}{{ form.discord_notifications }}{{ form.discord_notifications.errors }}</div>
+    <button type="submit" class="primary-button">Zapisz ustawienie</button>
+  </form>
+</div></section>

@@ -16,9 +16,10 @@ TEMPLATE_TAGS = {
     'gatunek': 'gatunek',
     'długość': 'długość w znakach ze spacjami',
     'etap': 'nazwa etapu',
+    'zdarzenie': '„Rozpoczęto” albo „Zakończono” (tylko „Rozpoczęcie i zakończenie etapu”)',
     'dni': 'ile dni tekst czeka na osobę (przypomnienia)',
-    'osoba': 'kto wykonał zakończony etap (przy „Zakończenie etapu”) albo kto wprowadził zmianę '
-             '(przy „Produkcja audiobooka”) – imię i nazwisko z profilu',
+    'osoba': 'wykonawca rozpoczętego lub zakończonego etapu (przy „Rozpoczęcie i zakończenie etapu”) albo kto '
+             'wprowadził zmianę (przy „Produkcja audiobooka”) – imię i nazwisko z profilu',
     'zmiana': 'opis zmiany w produkcji audiobooka, np. „Zmieniono status: Montaż.” (tylko „Produkcja audiobooka”)',
     'status': 'status audiobooka po zmianie (tylko „Produkcja audiobooka”)',
     'rola': 'oznaczenie roli (bez tego tagu trafia na początek wiadomości)',
@@ -65,7 +66,7 @@ class NotificationRule(models.Model):
         FIRST_VERIFICATION = 'first_verification', 'Nowy tekst do pierwszej weryfikacji'
         SECOND_VERIFICATION = 'second_verification', 'Nowy tekst do drugiej weryfikacji'
         THIRD_VERIFICATION = 'third_verification', 'Nowy tekst do trzeciej weryfikacji'
-        STAGE_COMPLETED = 'stage_completed', 'Zakończenie etapu (wszystkie etapy)'
+        STAGE_COMPLETED = 'stage_completed', 'Rozpoczęcie i zakończenie etapu (wszystkie etapy)'
         STAGE_WAITING = 'stage_waiting', 'Tekst nadal czeka na osobę (po 7, 14 i 21 dniach)'
         AUDIOBOOK = 'audiobook_production', 'Produkcja audiobooka (wszystkie zmiany)'
 

@@ -178,6 +178,7 @@ class AnthologyAdmin(admin.ModelAdmin):
         "has_illustrations",
         "is_translated",
         "print_status",
+        "discord_notifications",
     )
     search_fields = (
         "title__plcontains",
@@ -197,7 +198,8 @@ class AnthologyAdmin(admin.ModelAdmin):
                     "is_extracts",
                     "status",
                     "has_illustrations",
-        "is_translated",
+                    "is_translated",
+                    "discord_notifications",
                 ),
             },
         ),

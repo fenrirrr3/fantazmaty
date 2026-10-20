@@ -106,13 +106,22 @@ Ustawienia: panel admina → „Powiadomienia Discord – ustawienia” (tylko s
 (nazwa z `DISCORD_WEBHOOKS` – adresy webhooków są tylko w zmiennych środowiskowych), opcjonalne oznaczenie roli
 i jedną lub więcej treści. Tagi w treści: `[tytuł]`, `[autor]` (podpis jak w stopce tekstu – pseudonim albo imię
 i nazwisko, kilku autorów po przecinku; przy zgłoszeniach do recenzji zawsze „(anonimowo)”, bo recenzenci nie widzą
-autorów), `[antologia]`, `[gatunek]`, `[długość]`, `[etap]`, `[dni]` (przypomnienia), `[osoba]` (tylko „Zakończenie
-etapu” – wykonawca etapu, a bez przypisania osoba, która zamknęła etap), `[rola]`, `[link]`. Pusty tag daje „–”.
+autorów), `[antologia]`, `[gatunek]`, `[długość]`, `[etap]`, `[zdarzenie]` („Rozpoczęto” albo „Zakończono”), `[dni]`
+(przypomnienia), `[osoba]` (przy „Rozpoczęcie i zakończenie etapu” wykonawca etapu, a bez przypisania osoba, która
+wykonała operację), `[rola]`, `[link]`. Pusty tag daje „–”.
 
-„Zakończenie etapu (wszystkie etapy)” to jedna reguła dla każdego etapu. Nie wysyła wiadomości przy przekazaniu
-pliku autorowi ani przy jego powrocie od autora (etap „Plik u autora (redakcja)”), przy przejęciu tekstu do redakcji,
-„Gotowe” i wycofaniu. Każde przekazanie redakcji (do pierwszej i drugiej weryfikacji, do koordynatora, a w Ekstraktach
-do W1 albo K1) jest ogłaszane, a `[etap]` wskazuje cel, np. „Redakcja → Pierwsza weryfikacja”.
+„Rozpoczęcie i zakończenie etapu (wszystkie etapy)” to jedna reguła dla każdego etapu: ogłasza rozpoczęcie (przejęcie
+z rozpoczęciem pracy, rozpoczęcie przypisanego etapu, także przejęcie tekstu do redakcji z „Teksty do wzięcia”
+i wznowienie redakcji po weryfikacji) oraz zakończenie. Etap rozpoczęty i zakończony w jednej operacji daje tylko
+wiadomość o zakończeniu, a sama rezerwacja pierwszej weryfikacji – żadnej. Reguła nie wysyła wiadomości przy
+przekazaniu pliku autorowi ani przy jego powrocie od autora (etap „Plik u autora (redakcja)”), przy „Gotowe”, wycofaniu
+ani przy korektach historii w adminie. Każde przekazanie redakcji (do pierwszej i drugiej weryfikacji, do koordynatora,
+a w Ekstraktach do W1 albo K1) jest ogłaszane, a `[etap]` wskazuje cel, np. „Redakcja → Pierwsza weryfikacja”.
+
+Pole antologii „Powiadomienia Discord” (strona antologii lub powieści – koordynator – i panel admina): „Włączone”
+(domyślnie), „Wyłączone” – żadnych wiadomości o tekstach tej antologii (do wzięcia, rozpoczęcia i zakończenia etapów,
+przypomnienia, produkcja audiobooków), „Tylko rozpoczęcia i zakończenia etapów” – wyłącznie ta reguła. Zgłoszeń do
+recenzji i testów z panelu to nie dotyczy. `python manage.py discord_diagnose` wypisuje antologie z ograniczeniem.
 
 ## Struktura
 

@@ -1,4 +1,5 @@
-"""Diagnostyka powiadomień Discord (tylko odczyt): stan reguł, ostatnie wysyłki i dziennik zmian workflow.
+"""Diagnostyka powiadomień Discord (tylko odczyt): stan reguł, antologie z ograniczonymi powiadomieniami,
+ostatnie wysyłki i dziennik zmian workflow.
 
 Nie wypisuje adresów webhooków ani danych osób – z historii pokazuje tylko datę, stan i tytuł tekstu.
 """
@@ -9,6 +10,7 @@ from django.utils import timezone
 
 from core.discord_notifications import configured_channel_names, parse_mention, rule_problems
 from core.models import DiscordNotification, DiscordRole, NotificationRule, WorkflowEvent
+from texts.models import Anthology
 
 HISTORY = 10
 EVENT_DAYS = 7
@@ -50,6 +52,11 @@ class Command(BaseCommand):
             problems = rule_problems(rule, configured, roles)
             out(f'  Uwagi: {"; ".join(problems)}' if problems else '  Działa.')
         out('')
+        limited = Anthology.objects.exclude(discord_notifications=Anthology.DiscordNotifications.ALL).order_by('title', 'pk')
+        out('Antologie z ograniczonymi powiadomieniami:' + ('' if limited else ' brak'))
+        for anthology in limited:
+            out(f'- „{anthology.title}”: {anthology.get_discord_notifications_display()}')
+        out('')
         out(f'Historia wysyłek (ostatnie {HISTORY} wpisów na zdarzenie):')
         for trigger, label in NotificationRule.Trigger.choices:
             items = list(DiscordNotification.objects.filter(trigger=trigger).select_related('text')[:HISTORY])
@@ -67,9 +74,10 @@ class Command(BaseCommand):
         since = timezone.now() - timedelta(days=EVENT_DAYS)
         events = WorkflowEvent.objects.filter(kind=WorkflowEvent.Kind.WORKFLOW, created_at__gte=since)
         completions = events.filter(details__contains=COMPLETED_LINE).count()
-        sent = DiscordNotification.objects.filter(trigger='stage_completed', created_at__gte=since).count()
+        rule = NotificationRule.Trigger.STAGE_COMPLETED
+        sent = DiscordNotification.objects.filter(trigger=rule, created_at__gte=since).count()
         out(f'Dziennik zmian workflow – ostatnie {EVENT_DAYS} dni: {events.count()} zmian, w tym {completions} '
-            f'z zakończeniem etapu; wpisy „Zakończenie etapu” w historii wysyłek: {sent}.')
+            f'z zakończeniem etapu; wpisy „{rule.label}” w historii wysyłek: {sent}.')
         if completions and not sent:
-            out('Etapy się kończą, ale nie powstała żadna wiadomość „Zakończenie etapu” – sprawdź uwagi tej reguły '
-                'powyżej (najczęściej: reguła wyłączona albo bez kanału lub treści).')
+            out(f'Etapy się kończą, ale nie powstała żadna wiadomość „{rule.label}” – sprawdź uwagi tej reguły '
+                'powyżej (najczęściej: reguła wyłączona albo bez kanału lub treści) i ustawienia antologii.')

@@ -9,25 +9,28 @@ from django.urls import path, reverse
 from django.utils.html import format_html, format_html_join
 
 from authors.admin import SuperuserOnlyAdminMixin
-from core.discord_notifications import (ANONYMOUS_AUTHOR, AUDIOBOOK, DISABLED_NOTE, DISCORD_LIMIT, REMINDABLE, REMINDER_DAYS,
-                                        WAITING, configured_channel_names, mention_text, parse_mention, preview_link,
+from core.discord_notifications import (ANONYMOUS_AUTHOR, AUDIOBOOK, DISABLED_NOTE, DISCORD_LIMIT, EVENT_COMPLETED,
+                                        EVENT_STARTED, REMINDABLE, REMINDER_DAYS, STAGE_EVENTS, WAITING,
+                                        configured_channel_names, mention_text, parse_mention, preview_link,
                                         render, rule_problems)
 from core.models import DiscordNotification, DiscordRole, NotificationRule, NotificationTemplate
 from core.notification_models import TEMPLATE_TAGS
 
 TAGS_HELP = 'Tagi: ' + ', '.join(f'[{tag}] – {label}' for tag, label in TEMPLATE_TAGS.items()) + '.'
-COMPLETED = 'stage_completed'
-COMPLETED_HELP = ('Jedna wiadomość po zakończeniu każdego etapu (weryfikacje, korekty, kontrole, stylowanie) i po '
-                  'każdym przekazaniu redakcji – do W1, W2, koordynatora, a w Ekstraktach do W1 albo K1; [etap] '
-                  'wskazuje wtedy cel, np. „Redakcja → Pierwsza weryfikacja”. Bez wiadomości: przekazanie pliku '
-                  'autorowi i jego powrót, przejęcie tekstu do redakcji, „Gotowe”, wycofanie, uzupełnianie i korekty '
-                  'historii w adminie (brakujący etap, daty, wykonawca, cofnięcie zakończenia). [osoba] – wykonawca etapu.')
+COMPLETED_HELP = ('Jedna wiadomość po rozpoczęciu i po zakończeniu każdego etapu (redakcja – także jej przejęcie '
+                  'z „Teksty do wzięcia” i wznowienie po weryfikacji – weryfikacje, korekty, kontrole, stylowanie). '
+                  '[zdarzenie] – „Rozpoczęto” albo „Zakończono”; etap rozpoczęty i zakończony w jednej operacji – tylko '
+                  'zakończenie; sama rezerwacja pierwszej weryfikacji – bez wiadomości. Każde przekazanie redakcji – '
+                  'do W1, W2, koordynatora, a w Ekstraktach do W1 albo K1 – [etap] wskazuje cel, np. „Redakcja → '
+                  'Pierwsza weryfikacja”. Bez wiadomości: przekazanie pliku autorowi i jego powrót, „Gotowe”, '
+                  'wycofanie, uzupełnianie i korekty historii w adminie (brakujący etap, daty, wykonawca, cofnięcie '
+                  'zakończenia). [osoba] – wykonawca etapu.')
 
 AUDIOBOOK_HELP = ('Jedna wiadomość po każdej zmianie w produkcji audiobooka: zmiana statusu, rozpoczęcie, przejęcie '
                   'i zakończenie korekty, przypisanie korektora, poprawa dat i wykonawców etapów, usunięcie etapu. '
                   'Bez wiadomości: edycja lektora, montażysty, uwag i publikacji. [zmiana] – opis zmiany, '
                   '[status] – status po zmianie, [osoba] – kto wprowadził zmianę, [link] – strona audiobooka.')
-TRIGGER_HELP = {COMPLETED: COMPLETED_HELP, AUDIOBOOK: AUDIOBOOK_HELP}
+TRIGGER_HELP = {STAGE_EVENTS: COMPLETED_HELP, AUDIOBOOK: AUDIOBOOK_HELP}
 
 
 def configured_channels():
@@ -199,10 +202,14 @@ class TestNotificationForm(forms.Form):
     anthology = forms.CharField(label='[antologia]', max_length=300, initial='Cienie miasta', required=False)
     genre = forms.CharField(label='[gatunek]', max_length=100, initial='fantasy', required=False)
     length = forms.IntegerField(label='[długość]', min_value=0, max_value=10_000_000, initial=25000, required=False)
-    stage = forms.CharField(label='[etap] (dla „Zakończenie etapu”)', max_length=100, initial='Redakcja', required=False,
+    event = forms.ChoiceField(label='[zdarzenie] (dla „Rozpoczęcie i zakończenie etapu”)', required=False,
+                              choices=[(EVENT_COMPLETED, EVENT_COMPLETED), (EVENT_STARTED, EVENT_STARTED)],
+                              initial=EVENT_COMPLETED)
+    stage = forms.CharField(label='[etap] (dla „Rozpoczęcie i zakończenie etapu”)', max_length=100, initial='Redakcja',
+                            required=False,
                             help_text='Przy pozostałych wiadomościach [etap] przyjmuje nazwę etapu z przycisku.')
-    person = forms.CharField(label='[osoba] (dla „Zakończenie etapu” i „Produkcja audiobooka”)', max_length=200,
-                             initial='Jan Kowalski', required=False)
+    person = forms.CharField(label='[osoba] (dla „Rozpoczęcie i zakończenie etapu” i „Produkcja audiobooka”)',
+                             max_length=200, initial='Jan Kowalski', required=False)
     change = forms.CharField(label='[zmiana] (dla „Produkcja audiobooka”)', max_length=300,
                              initial='Zmieniono status: Montaż.', required=False)
     audio_status = forms.CharField(label='[status] (dla „Produkcja audiobooka”)', max_length=100, initial='Montaż',
@@ -249,12 +256,13 @@ def send_test(rule, data, base=None):
     review = (base.trigger if base else rule.trigger) == 'review_new'
     audiobook = rule.trigger == AUDIOBOOK
     context = {'tytuł': data['title'], 'autor': ANONYMOUS_AUTHOR if review else data.get('author', ''),
-               'osoba': data.get('person', '') if rule.trigger in (COMPLETED, AUDIOBOOK) else '',
+               'osoba': data.get('person', '') if rule.trigger in (STAGE_EVENTS, AUDIOBOOK) else '',
+               'zdarzenie': (data.get('event') or EVENT_COMPLETED) if rule.trigger == STAGE_EVENTS else '',
                'zmiana': data.get('change', '') if audiobook else '',
                'status': data.get('audio_status', '') if audiobook else '',
                'antologia': data.get('anthology', ''), 'gatunek': data.get('genre', ''),
                'długość': f'{length:,}'.replace(',', ' ') if length is not None else '',
-               'etap': ((data.get('stage') or 'Redakcja') if rule.trigger == COMPLETED
+               'etap': ((data.get('stage') or 'Redakcja') if rule.trigger == STAGE_EVENTS
                         else STAGE_NAMES.get(base.trigger if base else rule.trigger, '')),
                'dni': data.get('days') or REMINDER_DAYS[0]}
     # Testowy tekst nie istnieje w bazie – odnośnik prowadzi do pustego podglądu (nr 0).
