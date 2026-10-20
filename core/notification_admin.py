@@ -9,16 +9,19 @@ from django.urls import path, reverse
 from django.utils.html import format_html, format_html_join
 
 from authors.admin import SuperuserOnlyAdminMixin
-from core.discord_notifications import (ANONYMOUS_AUTHOR, AUDIOBOOK, DISCORD_LIMIT, REMINDABLE, REMINDER_DAYS, WAITING, mention_text,
-                                        parse_mention, preview_link, render)
+from core.discord_notifications import (ANONYMOUS_AUTHOR, AUDIOBOOK, DISABLED_NOTE, DISCORD_LIMIT, REMINDABLE, REMINDER_DAYS,
+                                        WAITING, configured_channel_names, mention_text, parse_mention, preview_link,
+                                        render, rule_problems)
 from core.models import DiscordNotification, DiscordRole, NotificationRule, NotificationTemplate
 from core.notification_models import TEMPLATE_TAGS
 
 TAGS_HELP = 'Tagi: ' + ', '.join(f'[{tag}] – {label}' for tag, label in TEMPLATE_TAGS.items()) + '.'
 COMPLETED = 'stage_completed'
-COMPLETED_HELP = ('Jedna wiadomość po zakończeniu każdego etapu (redakcja – tylko przy ostatnim przekazaniu, '
-                  'do koordynatora; weryfikacje, korekty, kontrole, stylowanie). Bez wiadomości: przekazanie pliku '
-                  'autorowi i jego powrót, przekazanie redakcji do W1/W2, przejęcie tekstu do redakcji, „Gotowe”, wycofanie. [osoba] – wykonawca etapu.')
+COMPLETED_HELP = ('Jedna wiadomość po zakończeniu każdego etapu (weryfikacje, korekty, kontrole, stylowanie) i po '
+                  'każdym przekazaniu redakcji – do W1, W2, koordynatora, a w Ekstraktach do W1 albo K1; [etap] '
+                  'wskazuje wtedy cel, np. „Redakcja → Pierwsza weryfikacja”. Bez wiadomości: przekazanie pliku '
+                  'autorowi i jego powrót, przejęcie tekstu do redakcji, „Gotowe”, wycofanie, uzupełnianie i korekty '
+                  'historii w adminie (brakujący etap, daty, wykonawca, cofnięcie zakończenia). [osoba] – wykonawca etapu.')
 
 AUDIOBOOK_HELP = ('Jedna wiadomość po każdej zmianie w produkcji audiobooka: zmiana statusu, rozpoczęcie, przejęcie '
                   'i zakończenie korekty, przypisanie korektora, poprawa dat i wykonawców etapów, usunięcie etapu. '
@@ -99,7 +102,7 @@ class DiscordRoleAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 class NotificationRuleAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     form = NotificationRuleForm
     inlines = (NotificationTemplateInline,)
-    list_display = ('__str__', 'enabled', 'channel', 'mention', 'template_count')
+    list_display = ('__str__', 'enabled', 'channel', 'mention', 'template_count', 'problems')
     list_display_links = ('__str__',)
     list_editable = ()
     fields = ('trigger_label', 'enabled', 'channel', 'mention')
@@ -126,7 +129,17 @@ class NotificationRuleAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
     @admin.display(description='Treści')
     def template_count(self, obj):
-        return obj.templates.count()
+        return len(obj.templates.all())
+
+    @admin.display(description='Uwagi')
+    def problems(self, obj):
+        found = rule_problems(obj, configured_channel_names())
+        return format_html_join('', '<div{}>{}</div>', (
+            (format_html(' style="color:var(--error-fg);font-weight:bold"') if text == DISABLED_NOTE else '', text)
+            for text in found)) if found else 'działa'
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).prefetch_related('templates')
 
     def has_add_permission(self, request):
         return False
@@ -161,7 +174,10 @@ class NotificationRuleAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     def test_context(self, request, form, rules):
         def url(value):
             return reverse('admin:core_notificationrule_change', args=[rules[value].pk]) if value in rules else ''
-        buttons = [{'trigger': value, 'label': label, 'rule': rules.get(value), 'url': url(value)}
+        configured = configured_channel_names()
+        roles = {r.name.lower(): r.role_id for r in DiscordRole.objects.all()}
+        buttons = [{'trigger': value, 'label': label, 'rule': rules.get(value), 'url': url(value),
+                    'problems': rule_problems(rules[value], configured, roles) if value in rules else []}
                    for value, label in NotificationRule.Trigger.choices if value != WAITING]
         waiting = rules.get(WAITING)
         reminders = []
@@ -262,6 +278,9 @@ def send_test(rule, data, base=None):
                                        suppress_embeds=True)
         item.status = 'sent'
         item.save(update_fields=['status', 'message_id'])
+        if not rule.enabled:
+            return messages.WARNING, format_html('Wysłano na kanał „{}”{}: {} Uwaga: to powiadomienie jest {}.',
+                                                 channel, note, content, DISABLED_NOTE)
         return messages.SUCCESS, format_html('Wysłano na kanał „{}”{}: {}', channel, note, content)
     except (ConfigurationError, DeliveryError) as exc:
         item.status = 'unknown' if getattr(exc, 'uncertain', False) else 'failed'

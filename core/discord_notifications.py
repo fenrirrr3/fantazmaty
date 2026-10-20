@@ -57,6 +57,41 @@ def parse_mention(raw, roles=None):
     return [role_id], False
 
 
+DISABLED_NOTE = 'WYŁĄCZONE – test z panelu wysyła mimo to, ale zwykłe zdarzenia nie'
+
+
+def configured_channel_names():
+    """Nazwy kanałów z DISCORD_WEBHOOKS (bez adresów); None – konfiguracja serwera jest błędna."""
+    from core.discord_webhook import channels, ConfigurationError
+    try:
+        return set(channels())
+    except ConfigurationError:
+        return None
+
+
+def rule_problems(rule, configured, roles=None):
+    """Powody, dla których reguła nie wyśle wiadomości przy zwykłym zdarzeniu; pusta lista – reguła działa.
+
+    configured – wynik configured_channel_names(), roles – {nazwa roli małymi literami: ID} (None – z bazy).
+    """
+    problems = [] if rule.enabled else [DISABLED_NOTE]
+    if configured is None:
+        problems.append('błędna konfiguracja kanałów na serwerze (DISCORD_WEBHOOKS)')
+    if not rule.channel:
+        if rule.trigger != WAITING:
+            problems.append('brak kanału')
+    elif configured is not None and rule.channel not in configured:
+        problems.append(f'kanału „{rule.channel}” nie ma w konfiguracji serwera – wysyłka skończy się stanem '
+                        '„Brak skonfigurowanego kanału”')
+    if not len(rule.templates.all()):
+        problems.append('brak treści wiadomości')
+    try:
+        parse_mention(rule.mention, roles)
+    except ValueError as exc:
+        problems.append(f'oznaczenie {rule.mention} zostanie pominięte: {exc}')
+    return problems
+
+
 def mention_text(role_ids, here):
     return '@here' if here else ' '.join(f'<@&{role_id}>' for role_id in role_ids)
 
@@ -261,11 +296,18 @@ def sent_to_author(before, after):
     return any(open_author_stage(stage) and not open_author_stage(before.get(pk)) for pk, stage in after.items())
 
 
-def opened_editing_control(before, after):
-    """Ta zmiana otworzyła „Kontrolę K. redakcji” – redakcja trafiła do koordynatora, czyli zakończyła się
-    ostatecznie. Wcześniejsze przekazania redakcji (do W1, W2) nie są ogłaszane jako zakończenie etapu."""
-    return any(stage['type'] == 'editing_control' and not stage['completed'] and pk not in before
-               for pk, stage in after.items())
+# Etapy, do których redaktor przekazuje tekst (W1, W2, koordynator; w Ekstraktach także K1).
+HANDOVER_TARGETS = ('first_verification', 'second_verification', 'editing_control', 'first_proofreading')
+
+
+def handover_target(before, after, handed_over):
+    """Etap, do którego ta zmiana przekazała tekst z redakcji: nowo otwarty albo – przy pierwszej weryfikacji –
+    zarezerwowany wcześniej i teraz przekazany do pracy. Zwraca nazwę etapu albo ''."""
+    for pk, stage in after.items():
+        if stage['type'] in HANDOVER_TARGETS and not stage['completed'] and (
+                pk not in before or (handed_over and stage['type'] == 'first_verification')):
+            return stage['type_display']
+    return ''
 
 
 def workflow_changes(using, text, before, after, actor=''):
@@ -276,8 +318,9 @@ def workflow_changes(using, text, before, after, actor=''):
     rezerwacji. Powtórzone W1 (kolejne podejście) nie dostaje drugiego ogłoszenia przy przekazaniu.
 
     „Zakończono etap” – jedna reguła dla wszystkich etapów; [osoba] to wykonawca etapu (bez przypisania –
-    osoba, która wykonała operację: actor). Przesłanie pliku autorowi i jego powrót nie są zakończeniem etapu,
-    a redakcję ogłaszamy tylko przy ostatnim przekazaniu – do koordynatora (Kontrola K. redakcji).
+    osoba, która wykonała operację: actor). Każde przekazanie redakcji (do W1, W2, koordynatora; w Ekstraktach
+    do W1 albo K1) jest ogłaszane, a [etap] wskazuje cel, np. „Redakcja → Pierwsza weryfikacja”. Przesłanie pliku
+    autorowi i jego powrót nie są zakończeniem etapu.
     """
     from workflow.models import WorkflowStage
     if text is None:
@@ -285,8 +328,7 @@ def workflow_changes(using, text, before, after, actor=''):
     context = text_context(text)
     handed_over = editing_open(before) and not editing_open(after)
     to_author = sent_to_author(before, after)
-    # Redakcja kończy się ogłoszeniem tylko przy przekazaniu do koordynatora (nie do autora, W1 ani W2).
-    editing_final = opened_editing_control(before, after) and not to_author
+    target = handover_target(before, after, handed_over)
 
     def completed(type_display, performer=''):
         safe_queue('stage_completed', using=using, text=text,
@@ -300,14 +342,17 @@ def workflow_changes(using, text, before, after, actor=''):
         newly_available = not (old and stage_available(old)) or first_handover
         if trigger and stage_available(stage) and newly_available:
             safe_queue(trigger, using=using, text=text, stage_id=pk, context={**context, 'etap': stage['type_display']})
-        if (stage['completed'] and not (old and old['completed']) and stage['type'] not in NOT_A_COMPLETION
-                and not (stage['type'] == 'editing' and not editing_final)):
-            completed(stage['type_display'], stage.get('performer', ''))
+        if stage['completed'] and not (old and old['completed']) and stage['type'] not in NOT_A_COMPLETION:
+            if stage['type'] != 'editing':
+                completed(stage['type_display'], stage.get('performer', ''))
+            elif not to_author:
+                label = f"{stage['type_display']} → {target}" if target else stage['type_display']
+                completed(label, stage.get('performer', ''))
     # Etap zakończony i od razu przeniesiony do historii (np. decyzja koordynatora „dalsza redakcja”).
     gone = [pk for pk in before if pk not in after and not before[pk]['completed']]
     for stage in (WorkflowStage.objects.using(using).filter(pk__in=gone, is_completed=True)
                   .select_related('assignment__assigned_to__person_profile')):
-        if stage.stage_type not in NOT_A_COMPLETION and not (stage.stage_type == 'editing' and not editing_final):
+        if stage.stage_type not in NOT_A_COMPLETION and not (stage.stage_type == 'editing' and to_author):
             completed(stage.get_stage_type_display(),
                       person_name(stage.assignment.assigned_to) if stage.assignment_id else '')
 

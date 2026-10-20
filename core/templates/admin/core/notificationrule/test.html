@@ -2,6 +2,7 @@
 {% block breadcrumbs %}<div class="breadcrumbs"><a href="{% url 'admin:index' %}">Strona główna</a> › <a href="{% url 'admin:core_notificationrule_changelist' %}">Powiadomienia Discord – ustawienia</a> › Testowe wysyłanie</div>{% endblock %}
 {% block content %}
 <p>Wpisz dane tekstu i kliknij przycisk etapu. Wiadomość zostanie wysłana od razu – na kanał, z oznaczeniem roli i jedną z treści ustawionych dla danego zdarzenia (także gdy powiadomienie jest wyłączone). Każda wysyłka trafia do historii.</p>
+<p><strong>Udany test nie oznacza, że wiadomości wychodzą przy zwykłych zdarzeniach w CMS-ie</strong> – wychodzą tylko z powiadomień włączonych, z kanałem i treścią (kolumna „Stan”). Stan wszystkich reguł i ostatnie wysyłki pokazuje też komenda serwera <code>python manage.py discord_diagnose</code>.</p>
 <p class="help">{{ tags_help }}</p>
 <form method="post" class="notification-test-form">{% csrf_token %}
 <div class="module"><table class="notification-test-data">{{ form.as_table }}</table></div>
@@ -14,13 +15,13 @@
 <td>{{ b.rule.channel|default:"– brak –" }}</td>
 <td>{{ b.rule.mention|default:"–" }}</td>
 <td>{{ b.rule.templates.all|length }}</td>
-<td>{% if b.rule.enabled %}włączone{% else %}wyłączone{% endif %}</td>
+<td>{% for problem in b.problems %}<div{% if forloop.first and not b.rule.enabled %} style="color:var(--error-fg);font-weight:bold"{% endif %}>{{ problem }}</div>{% empty %}włączone – działa{% endfor %}</td>
 <td><button type="submit" name="trigger" value="{{ b.trigger }}" class="button">Wyślij test</button></td>
 </tr>{% endfor %}
 </tbody></table>
 </div>
 {% if waiting %}<h2>Przypomnienia o tekstach bez chętnych (po 7, 14 i 21 dniach)</h2>
-<p class="help">Treść z ustawień <a href="{{ waiting_url }}">„{{ waiting }}”</a> ({{ waiting.templates.all|length }} treści, {% if waiting.enabled %}włączone{% else %}wyłączone{% endif %}), liczba dni z pola [dni] powyżej. Kanał i oznaczenie – jak w pierwszym powiadomieniu, chyba że przypomnienie ma własne.</p>
+<p class="help">Treść z ustawień <a href="{{ waiting_url }}">„{{ waiting }}”</a> ({{ waiting.templates.all|length }} treści, {% if waiting.enabled %}włączone{% else %}<strong>WYŁĄCZONE – test wysyła mimo to, ale codzienne przypomnienia nie</strong>{% endif %}), liczba dni z pola [dni] powyżej. Kanał i oznaczenie – jak w pierwszym powiadomieniu, chyba że przypomnienie ma własne.</p>
 <div class="module">
 <table style="width:100%">
 <thead><tr><th>Przypomnienie po</th><th>Kanał</th><th>Oznaczenie</th><th></th></tr></thead>

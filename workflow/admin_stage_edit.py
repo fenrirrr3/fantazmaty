@@ -80,6 +80,8 @@ def _reopen_stage(text, stage):
 def edit_stage(stage_id, actor, version, *, action, performer=None, replacement=None):
     if not actor.is_active or not actor.is_superuser:
         raise PermissionDenied
+    from core.workflow_events import history_correction
+    history_correction()
     with transaction.atomic():
         text_id=S.objects.values_list('text_id',flat=True).get(pk=stage_id)
         text=Text.objects.select_for_update().get(pk=text_id)

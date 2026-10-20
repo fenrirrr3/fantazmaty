@@ -79,6 +79,14 @@ def personal_work_changes(before, after, actor_id):
     return result
 
 
+def history_correction():
+    """Bieżąca operacja uzupełnia lub poprawia historię w adminie (brakujący etap, korekta dat, wykonawcy,
+    cofnięcie zakończenia): zmiana trafia do dziennika, ale bez powiadomień Discord – to nie jest zdarzenie."""
+    scope = _scope.get()
+    if scope is not None:
+        scope['correction'] = True
+
+
 @contextmanager
 def event_scope(user):
     if _scope.get() is not None or not user or not user.is_authenticated:
@@ -104,8 +112,9 @@ def event_scope(user):
             WorkflowEvent.objects.using(using).create(personal_work=bool(own_work), personal_work_description="; ".join(own_work)[:255], text=text, title=title, authors=authors,
                 actor=user, actor_name=actor, previous_status=before['status'], next_status=after['status'],
                 details='\n'.join(changes(before, after)))
-            from core.discord_notifications import workflow_changes
-            workflow_changes(using, text, before.get('detail', {}), after.get('detail', {}), actor=actor)
+            if not state.get('correction'):
+                from core.discord_notifications import workflow_changes
+                workflow_changes(using, text, before.get('detail', {}), after.get('detail', {}), actor=actor)
     finally:
         _scope.reset(token)
 

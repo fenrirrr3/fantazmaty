@@ -16,6 +16,8 @@ from workflow.admin_status import set_admin_status
 def add_missing_stage(text_id, actor, version, *, kind, performer=None, started_at=None, ended_at=None, historical=False):
     if not actor.is_active or not actor.is_superuser:
         raise PermissionDenied
+    from core.workflow_events import history_correction
+    history_correction()
     text = Text.objects.select_for_update().get(pk=text_id)
     require_working_anthology(text)
     if version != version_of(text):

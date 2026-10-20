@@ -10,11 +10,12 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.db import transaction
-from django.test import SimpleTestCase, TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings, tag
 from django.urls import reverse
 from django.utils import timezone
 
 from authors.models import Author
+from core.edit_versions import version_of
 from core.discord_notifications import parse_mention, queue, render, send_waiting_reminders, text_authors, workflow_changes
 from core.discord_webhook import DeliveryError, send_message
 from core.models import DiscordNotification, DiscordRole, NotificationRule, WorkflowEvent
@@ -22,13 +23,14 @@ from core.notification_models import validate_template_tags
 from core.workflow_events import event_scope
 from core.services.reviews import assign_reviewer
 from core.services.texts import change_scheduled_stage, start_assigned_stage
+from core.workflow_tokens import make_token
 from fantazmaty.testing import create_member
 from fantazmaty.testing.workflow import WorkflowTestDataMixin
 from texts.models import Anthology, ForeignAuthor, Review, Text, TextTranslation
 from workflow.models import WorkflowStage
-from workflow.services import (claim_stage, complete_stage, finish_editing_to_coordinator, resume_editing,
-                               send_text_to_author, send_to_first_verification, send_to_second_verification,
-                               start_first_verification)
+from workflow.services import (claim_stage, complete_stage, current_stage_queryset, finish_editing_to_coordinator,
+                               resume_editing, send_text_to_author, send_to_first_verification,
+                               send_to_second_verification, start_first_verification)
 
 StageType = WorkflowStage.StageType
 URL = 'https://discord.com/api/webhooks/123/abc_DEF-1'
@@ -181,7 +183,7 @@ class WorkflowTriggerTests(WorkflowTestDataMixin, TestCase):
                 DiscordNotification.objects.all().delete()
                 with self.captureOnCommitCallbacks(execute=True):
                     send_to_first_verification(self.text, self.editor, ended_at=self.today)
-                self.assertEqual(sorted(self.triggers()), expected)
+                self.assertEqual(sorted(t for t in self.triggers() if t[0] == 'first_verification'), expected)
                 for item in DiscordNotification.objects.filter(trigger='first_verification'):
                     self.assertTrue(item.content.endswith(' ' + link))
                     self.assertEqual(item.stage_id, self.stage(StageType.FIRST_VERIFICATION).pk)
@@ -439,6 +441,42 @@ class AdminPanelTests(TestCase):
                 response = self.client.post(url, {'title': 'X', 'trigger': 'second_verification'})
                 self.assertContains(response, error)
                 sent.assert_not_called()
+
+    def test_list_and_test_panel_warn_why_rule_will_not_send(self):
+        """Lista reguł i panel testowy pokazują, dlaczego zwykłe zdarzenie nie wyśle wiadomości: reguła wyłączona
+        (test wysyła mimo to), kanał spoza DISCORD_WEBHOOKS, brak treści, nieznana rola; poprawna – „działa”."""
+        rule = NotificationRule.objects.get(trigger='stage_completed')
+        cases = {
+            'wyłączona': ({'enabled': False}, ['WYŁĄCZONE – test z panelu wysyła mimo to, ale zwykłe zdarzenia nie']),
+            'kanał spoza konfiguracji': ({'channel': 'Dawny'}, ['kanału „Dawny” nie ma w konfiguracji serwera']),
+            'bez treści': ({'templates': False}, ['brak treści wiadomości']),
+            'nieznana rola': ({'mention': '@nikt'}, ['oznaczenie @nikt zostanie pominięte: Nie ma roli @nikt']),
+            'działa': ({}, []),
+        }
+        lists = (reverse('admin:core_notificationrule_changelist'), reverse('admin:core_notificationrule_test'))
+        for case, (change, expected) in cases.items():
+            with self.subTest(case):
+                enable('stage_completed')
+                NotificationRule.objects.filter(pk=rule.pk).update(
+                    enabled=change.get('enabled', True), channel=change.get('channel', 'Kanał'),
+                    mention=change.get('mention', ''))
+                if change.get('templates') is False:
+                    rule.templates.all().delete()
+                for url in lists:
+                    page = self.client.get(url).content.decode()
+                    for text in expected or ['działa']:
+                        self.assertIn(text, page, url)
+
+    def test_test_from_disabled_rule_is_sent_with_warning(self):
+        """„Wyślij test” z wyłączonej reguły wysyła wiadomość, ale komunikat ostrzega, że zwykłe zdarzenia nie wyjdą."""
+        for enabled, warned in ((False, True), (True, False)):
+            enable('stage_completed')
+            NotificationRule.objects.filter(trigger='stage_completed').update(enabled=enabled)
+            with self.subTest(enabled=enabled), patch('core.discord_webhook.send_message', return_value='9'):
+                response = self.client.post(reverse('admin:core_notificationrule_test'),
+                                            {'title': 'X', 'trigger': 'stage_completed'})
+                self.assertContains(response, 'Wysłano na kanał')
+                self.assertEqual('Uwaga: to powiadomienie jest WYŁĄCZONE' in response.content.decode(), warned)
 
 
 @override_settings(DISCORD_WEBHOOKS={'Kanał': URL})
@@ -822,7 +860,7 @@ class AuthorInNotificationsTests(WorkflowTestDataMixin, TestCase):
             WorkflowStage.objects.create(text=text, workflow_cycle=1, stage_type=StageType.READY_FOR_EDITING)
         with self.captureOnCommitCallbacks(execute=True):
             self.begin_editing()  # ogłasza pierwszą weryfikację
-            send_to_first_verification(self.text, self.editor, ended_at=self.today)  # przekazanie, bez „zakończono”
+            send_to_first_verification(self.text, self.editor, ended_at=self.today)
             Review.objects.create(title='Zgłoszenie', genre='horror', length=1000, email='a@example.com',
                                   author_first_name='Jan', author_last_name='Nowak',
                                   anthology=Anthology.objects.create(title='Nabór'))
@@ -831,6 +869,7 @@ class AuthorInNotificationsTests(WorkflowTestDataMixin, TestCase):
             send_waiting_reminders(now=start + timedelta(days=7, minutes=1))
         rows = DiscordNotification.objects.values_list('trigger', 'content')
         expected = {('ready_for_editing', 'Ewa Lis'), ('first_verification', 'Mrok, Anna Nowak'),
+                    ('stage_completed', 'Mrok, Anna Nowak'),
                     ('review_new', '(anonimowo)'),
                     ('stage_waiting', 'Mrok, Anna Nowak'), ('stage_waiting', '(anonimowo)'),
                     ('stage_waiting', 'Ewa Lis')}
@@ -848,8 +887,8 @@ class StageCompletedDefaultTests(TestCase):
 
 @override_settings(DISCORD_WEBHOOKS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
 class StageCompletedTests(WorkflowTestDataMixin, TestCase):
-    """Jedna reguła „Zakończenie etapu” dla wszystkich etapów; bez wiadomości przy przekazaniu pliku autorowi
-    i jego powrocie."""
+    """Jedna reguła „Zakończenie etapu” dla wszystkich etapów; każde przekazanie redakcji z celem w [etap],
+    bez wiadomości przy przekazaniu pliku autorowi i jego powrocie."""
 
     NOT_A_COMPLETION = {StageType.READY_FOR_EDITING, StageType.READY, StageType.WITHDRAWN, StageType.AUTHOR_EDITING}
 
@@ -867,8 +906,8 @@ class StageCompletedTests(WorkflowTestDataMixin, TestCase):
 
     def test_every_stage_type_gives_exactly_one_message(self):
         """Tabela po wszystkich StageType: zakończenie etapu → jedna wiadomość z [etap] i [osoba]
-        (wykonawca etapu; bez wykonawcy – osoba, która wykonała operację). Redakcja – tylko gdy ta sama
-        operacja przekazuje tekst koordynatorowi (otwiera Kontrolę K. redakcji)."""
+        (wykonawca etapu; bez wykonawcy – osoba, która wykonała operację). Redakcja z celem przekazania
+        (tu: koordynator – Kontrola K. redakcji)."""
         for stage_type, label in StageType.choices:
             for performer in ('Ewa Wykonawczyni', ''):
                 with self.subTest(stage_type, performer=performer):
@@ -883,13 +922,41 @@ class StageCompletedTests(WorkflowTestDataMixin, TestCase):
                         workflow_changes('default', self.text, {1: {**stage, 'completed': False}},
                                          after, actor='Koordynator Główny')
                     who = performer or 'Koordynator Główny'
+                    shown = 'Redakcja → Kontrola K. redakcji' if stage_type == StageType.EDITING else label
                     expected = ([] if stage_type in self.NOT_A_COMPLETION
-                                else [f'{label} – {who}: Tekst do testów workflow – Anna Nowak'])
+                                else [f'{shown} – {who}: Tekst do testów workflow – Anna Nowak'])
                     self.assertEqual([PREVIEW.sub('', c) for c in self.completed()], expected)
 
+    def test_editing_handover_label_names_target(self):
+        """[etap] zakończonej redakcji wskazuje etap, do którego trafił tekst; przy wysłaniu pliku autorowi – brak
+        wiadomości; bez rozpoznanego celu – sama „Redakcja”."""
+        editing = {'type': 'editing', 'type_display': 'Redakcja', 'released': True, 'started': True,
+                   'assigned': True, 'iteration': 1, 'performer': 'Ewa', 'completed': False}
+        reserved_w1 = {'type': 'first_verification', 'type_display': 'Pierwsza weryfikacja', 'released': False,
+                       'started': False, 'assigned': True, 'iteration': 1, 'completed': False}
+
+        def opened(kind, label):
+            return {'type': kind, 'type_display': label, 'released': True, 'started': False, 'assigned': False,
+                    'iteration': 1, 'completed': False}
+        for case, before_extra, after_extra, expected in (
+            ('W1 (rezerwacja przekazana do pracy)', {2: reserved_w1}, {2: {**reserved_w1, 'released': True}},
+             ['Redakcja → Pierwsza weryfikacja – Ewa']),
+            ('K1 (Ekstrakty)', {}, {3: opened('first_proofreading', 'Pierwsza korekta')},
+             ['Redakcja → Pierwsza korekta – Ewa']),
+            ('autor', {}, {3: opened('author_editing', 'Plik u autora')}, []),
+            ('bez celu', {}, {}, ['Redakcja – Ewa']),
+        ):
+            with self.subTest(case):
+                DiscordNotification.objects.all().delete()
+                self.rule.templates.update(content='[etap] – [osoba]')
+                with self.captureOnCommitCallbacks(execute=True):
+                    workflow_changes('default', self.text, {1: editing, **before_extra},
+                                     {1: {**editing, 'completed': True}, **after_extra}, actor='Koordynator')
+                self.assertEqual([PREVIEW.sub('', c) for c in self.completed()], expected)
+
     def test_author_round_trip_reports_only_real_end_of_editing(self):
-        """Redaktor wysyła plik autorowi, autor go oddaje, przekazuje tekst do W2 – bez wiadomości o zakończeniu
-        redakcji; dopiero przekazanie koordynatorowi (ostatnie) – dokładnie jedna wiadomość."""
+        """Wysłanie pliku autorowi i jego powrót – bez wiadomości; przekazanie do W2 i do koordynatora – po jednej
+        wiadomości z celem przekazania."""
         self.finish_first_verification()
         resume_editing(self.text, self.editor, started_at=self.today)
         DiscordNotification.objects.all().delete()
@@ -897,7 +964,7 @@ class StageCompletedTests(WorkflowTestDataMixin, TestCase):
             ('wysłanie do autora', lambda: send_text_to_author(self.text, self.editor, started_at=self.today), []),
             ('powrót od autora', lambda: resume_editing(self.text, self.editor, started_at=self.today), []),
             ('przekazanie do W2', lambda: send_to_second_verification(self.text, self.editor, started_at=self.today),
-             []),
+             ['Redakcja → Druga weryfikacja – redaktor Testowy: Tekst do testów workflow – Anna Nowak']),
         ]
         for case, action, expected in steps:
             with self.subTest(case):
@@ -912,10 +979,274 @@ class StageCompletedTests(WorkflowTestDataMixin, TestCase):
         with self.captureOnCommitCallbacks(execute=True):
             finish_editing_to_coordinator(self.text, self.editor, ended_at=self.today)
         self.assertEqual([PREVIEW.sub('', c) for c in self.completed()],
-                         ['Redakcja – redaktor Testowy: Tekst do testów workflow – Anna Nowak'])
+                         ['Redakcja → Kontrola K. redakcji – redaktor Testowy: Tekst do testów workflow – Anna Nowak'])
 
     def test_disabled_rule_sends_nothing(self):
         NotificationRule.objects.filter(pk=self.rule.pk).update(enabled=False)
         with self.captureOnCommitCallbacks(execute=True):
             self.finish_first_verification()
         self.assertEqual(self.completed(), [])
+
+
+@tag('slow')
+@override_settings(DISCORD_WEBHOOKS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
+class StageCompletedHttpTests(WorkflowTestDataMixin, TestCase):
+    """Jak na produkcji: włączona reguła „Zakończenie etapu” z kanałem i treścią, operacje wyłącznie przez żądania
+    HTTP (karta tekstu, „Teksty do wzięcia”, admin). Każdy krok porównuje wiadomość o zakończeniu z ogłoszeniem
+    następnego etapu w tym samym żądaniu."""
+
+    def setUp(self):
+        super().setUp()
+        for trigger in NotificationRule.Trigger.values:
+            enable(trigger, '[etap]')
+        self.text.anthology = Anthology.objects.create(title='Antologia testowa')
+        self.text.save()
+        sender = patch('core.discord_webhook.send_message', return_value='1')
+        self.sent = sender.start()
+        self.addCleanup(sender.stop)
+        self.day = self.today.isoformat()
+
+    def post(self, user, name, *args, **data):
+        self.client.force_login(user)
+        return self.client.post(reverse(name, args=args or [self.text.pk]), data, follow=True)
+
+    def text_action(self, user, name):
+        """Przycisk przejścia redakcji na karcie tekstu (z tokenem stanu tekstu)."""
+        self.text.refresh_from_db()
+        return self.post(user, name, workflow_token=make_token(self.text, user))
+
+    def open_stage(self, kind):
+        return current_stage_queryset(self.text).filter(stage_type=kind, is_completed=False).latest('pk')
+
+    def take(self, user, kind, **data):
+        return self.post(user, 'core:take_workflow_stage', self.open_stage(kind).pk, **data)
+
+    def take_and_complete(self, user, kind, *, assigned=False, **data):
+        """Przejmuje etap z puli (assigned – już przypisany: tylko rozpoczyna) i kończy go dzisiejszą datą."""
+        if assigned:
+            self.post(user, 'core:start_assigned_workflow_stage', self.open_stage(kind).pk, started_at=self.day)
+        else:
+            self.take(user, kind, started_at=self.day)
+        return self.post(user, 'core:complete_workflow_stage', self.open_stage(kind).pk, ended_at=self.day, **data)
+
+    def run_steps(self, steps):
+        """Wykonuje kroki (opis, akcja, oczekiwane (zdarzenie, [etap])) i sprawdza wiadomości każdego z nich
+        – także, że zostały wysłane na Discord (stan „Wysłano”)."""
+        for case, action, expected in steps:
+            DiscordNotification.objects.all().delete()
+            with self.captureOnCommitCallbacks(execute=True):
+                response = action()
+            with self.subTest(case):
+                self.assertEqual(response.status_code, 200)
+                rows = DiscordNotification.objects.order_by('pk')
+                self.assertEqual(sorted((item.trigger, PREVIEW.sub('', item.content)) for item in rows),
+                                 sorted(expected))
+                self.assertEqual({item.status for item in rows}, {'sent'} if expected else set())
+
+    def test_main_workflow_through_pages(self):
+        """Pełna ścieżka zwykłej antologii: każde przekazanie redakcji (W1, W2, koordynator) – wiadomość z celem,
+        wysłanie do autora i powrót – bez wiadomości; W1, W2, kontrole, K1–K4, W3 i stylowanie – po jednej."""
+        verifier_3 = create_member('weryfikator_3', 'Weryfikator')
+        done = 'stage_completed'
+        self.run_steps([
+            ('przejęcie redakcji', lambda: self.take(self.editor, 'ready_for_editing', started_at=self.day),
+             [('first_verification', 'Pierwsza weryfikacja')]),
+            ('rezerwacja W1', lambda: self.take(self.verifier_1, 'first_verification'), []),
+            ('redakcja → W1', lambda: self.text_action(self.editor, 'core:send_to_first_verification_stage'),
+             [(done, 'Redakcja → Pierwsza weryfikacja')]),
+            ('rozpoczęcie W1', lambda: self.post(self.verifier_1, 'core:start_assigned_workflow_stage',
+                                                 self.open_stage('first_verification').pk, started_at=self.day), []),
+            ('zakończenie W1', lambda: self.post(self.verifier_1, 'core:complete_workflow_stage',
+                                                 self.open_stage('first_verification').pk, ended_at=self.day),
+             [(done, 'Pierwsza weryfikacja')]),
+            ('wznowienie redakcji', lambda: self.text_action(self.editor, 'core:resume_text_editing'), []),
+            ('redakcja → autor', lambda: self.text_action(self.editor, 'core:send_text_to_author_stage'), []),
+            ('powrót od autora', lambda: self.text_action(self.editor, 'core:resume_text_editing'), []),
+            ('redakcja → W2', lambda: self.text_action(self.editor, 'core:send_to_second_verification_stage'),
+             [(done, 'Redakcja → Druga weryfikacja'), ('second_verification', 'Druga weryfikacja')]),
+            ('W2', lambda: self.take_and_complete(self.verifier_2, 'second_verification'),
+             [(done, 'Druga weryfikacja')]),
+            ('wznowienie redakcji', lambda: self.text_action(self.editor, 'core:resume_text_editing'), []),
+            ('redakcja → koordynator', lambda: self.text_action(self.editor, 'core:finish_text_editing'),
+             [(done, 'Redakcja → Kontrola K. redakcji')]),
+            ('kontrola K. redakcji → dalsza redakcja',
+             lambda: self.take_and_complete(self.coordinator, 'editing_control', send_to_proofreading='false'),
+             [(done, 'Kontrola K. redakcji')]),
+            ('rozpoczęcie dalszej redakcji', lambda: self.post(
+                self.editor, 'core:start_assigned_workflow_stage', self.open_stage('editing').pk,
+                started_at=self.day), []),
+            ('redakcja → koordynator (ponownie)', lambda: self.text_action(self.editor, 'core:finish_text_editing'),
+             [(done, 'Redakcja → Kontrola K. redakcji')]),
+            ('kontrola K. redakcji → K1',
+             lambda: self.take_and_complete(self.coordinator, 'editing_control', assigned=True,
+                                            send_to_proofreading='true'),
+             [(done, 'Kontrola K. redakcji'), ('first_proofreading', 'Pierwsza korekta')]),
+            ('K1', lambda: self.take_and_complete(self.proofreader, 'first_proofreading'),
+             [(done, 'Pierwsza korekta')]),
+            ('K2', lambda: self.take_and_complete(self.proofreading_coordinator, 'second_proofreading'),
+             [(done, 'Druga korekta'), ('third_verification', 'Trzecia weryfikacja')]),
+            ('W3', lambda: self.take_and_complete(verifier_3, 'third_verification'), [(done, 'Trzecia weryfikacja')]),
+            ('kontrola koordynatora', lambda: self.take_and_complete(self.coordinator, 'coordinator_control'),
+             [(done, 'Kontr. wer. (koordynator)')]),
+            ('kontrola redaktora', lambda: self.take_and_complete(self.editor, 'editor_control', assigned=True),
+             [(done, 'Kontr. wer. (redaktor)'), ('third_proofreading', 'Trzecia korekta')]),
+            ('K3', lambda: self.take_and_complete(self.other_proofreader, 'third_proofreading'),
+             [(done, 'Trzecia korekta')]),
+            ('K4', lambda: self.take_and_complete(self.proofreading_coordinator, 'fourth_proofreading'),
+             [(done, 'Czwarta korekta')]),
+            ('stylowanie', lambda: self.take_and_complete(self.superuser, 'styling'), [(done, 'Stylowanie')]),
+        ])
+
+    def to_editing_control(self):
+        """Redakcja z W1 i W2 przekazana koordynatorowi, który przejął i rozpoczął kontrolę K. redakcji."""
+        self.take(self.editor, 'ready_for_editing', started_at=self.day)
+        self.text_action(self.editor, 'core:send_to_first_verification_stage')
+        self.take_and_complete(self.verifier_1, 'first_verification')
+        self.text_action(self.editor, 'core:resume_text_editing')
+        self.text_action(self.editor, 'core:send_to_second_verification_stage')
+        self.take_and_complete(self.verifier_2, 'second_verification')
+        self.text_action(self.editor, 'core:resume_text_editing')
+        self.text_action(self.editor, 'core:finish_text_editing')
+        self.take(self.coordinator, 'editing_control', started_at=self.day)
+
+    def finish_control(self):
+        """Admin „Daty i przekazanie”: zakończenie kontroli K. redakcji i przekazanie do K1."""
+        self.text.refresh_from_db()
+        return self.post(self.superuser, 'admin:workflow_stage_dates', self.open_stage('editing_control').pk,
+                         started_at=self.day, ended_at=self.day, finish='on', send_to_proofreading='true',
+                         version=version_of(self.text))
+
+    def test_admin_finish_actions(self):
+        """Admin: „Daty i przekazanie” (zakończenie kontroli K. redakcji) i akcja listy „Zakończ etap i utwórz
+        następny” (K1) – wiadomość o zakończeniu jak przy przyciskach na karcie tekstu."""
+        self.to_editing_control()
+
+        def list_action():
+            stage = self.open_stage('first_proofreading')
+            self.take(self.proofreader, 'first_proofreading', started_at=self.day)
+            self.client.force_login(self.superuser)
+            return self.client.post(reverse('admin:workflow_workflowstage_changelist'),
+                                    {'action': 'finish_selected_stages', '_selected_action': [stage.pk]}, follow=True)
+
+        self.run_steps([
+            ('Daty i przekazanie', self.finish_control,
+             [('stage_completed', 'Kontrola K. redakcji'), ('first_proofreading', 'Pierwsza korekta')]),
+            ('akcja „Zakończ etap”', list_action, [('stage_completed', 'Pierwsza korekta')]),
+        ])
+
+    def test_admin_history_corrections_send_nothing(self):
+        """Uzupełnianie i poprawianie historii w adminie (brakujący etap – historyczny i z datami, korekta dat
+        zakończonego etapu, cofnięcie zakończenia, korekta wykonawcy) to korekta danych, nie zdarzenie: bez
+        „Zakończenia etapu” i bez ogłoszeń „do wzięcia”, choć zmiana trafia do dziennika zmian workflow. Ponowne
+        zakończenie cofniętego etapu formularzem „Daty i przekazanie” wysyła wiadomości jak zwykle."""
+        self.to_editing_control()
+        self.finish_control()
+        stages = WorkflowStage.objects.filter(text=self.text)
+
+        def add_stage(kind, performer, **data):
+            self.text.refresh_from_db()
+            return self.post(self.superuser, 'admin:texts_text_add_stage', self.text.pk, kind=kind,
+                             performer=performer.pk, version=version_of(self.text), **data)
+
+        def stage_dates(kind):
+            self.text.refresh_from_db()
+            stage = stages.get(stage_type=kind)
+            return self.post(self.superuser, 'admin:workflow_stage_dates', stage.pk, started_at=stage.started_at,
+                             ended_at=self.day, version=version_of(self.text))
+
+        def correct(kind, action, **data):
+            self.text.refresh_from_db()
+            return self.post(self.superuser, 'admin:workflow_stage_correct', stages.get(stage_type=kind).pk,
+                             action=action, confirm='on', version=version_of(self.text), **data)
+
+        steps = [
+            ('cofnięcie zakończenia', lambda: correct('editing_control', 'reopen'),
+             lambda: not stages.get(stage_type='editing_control').is_completed),
+            ('korekta wykonawcy', lambda: correct('editing_control', 'performer', performer=self.superuser.pk),
+             lambda: stages.get(stage_type='editing_control').assignment.assigned_to == self.superuser),
+            ('korekta dat zakończonego etapu', lambda: stage_dates('second_verification'),
+             lambda: stages.get(stage_type='second_verification').ended_at == self.today),
+            ('brakujący etap historyczny', lambda: add_stage('third_verification', self.verifier_1, historical='on'),
+             lambda: stages.filter(stage_type='third_verification', is_completed=True).exists()),
+            ('brakujący etap z datami', lambda: add_stage('second_proofreading', self.proofreading_coordinator,
+                                                          started_at=self.day, ended_at=self.day),
+             lambda: stages.filter(stage_type='second_proofreading', is_completed=True).exists()),
+        ]
+        events = WorkflowEvent.objects.count()
+        for case, action, done in steps:
+            self.run_steps([(case, action, [])])
+            with self.subTest(case, check='operacja wykonana'):
+                self.assertTrue(done())
+            if case == 'korekta wykonawcy':
+                self.run_steps([('ponowne zakończenie kontroli', self.finish_control,
+                                 [('stage_completed', 'Kontrola K. redakcji'),
+                                  ('first_proofreading', 'Pierwsza korekta')])])
+        self.assertGreater(WorkflowEvent.objects.count(), events)
+
+    def test_extracts_workflow_through_pages(self):
+        """Ekstrakty (Redakcja → W1 → K1 → Gotowe): przekazanie redakcji do W1 – wiadomość z celem."""
+        book = Anthology.objects.create(title='Ekstrakty 9', is_extracts=True)
+        self.text = book.texts.get()
+        self.run_steps([
+            ('przejęcie redakcji', lambda: self.take(self.editor, 'ready_for_editing', started_at=self.day),
+             [('first_verification', 'Pierwsza weryfikacja')]),
+            ('redakcja → W1', lambda: self.text_action(self.editor, 'core:send_to_first_verification_stage'),
+             [('stage_completed', 'Redakcja → Pierwsza weryfikacja'), ('first_verification', 'Pierwsza weryfikacja')]),
+            ('W1 → K1', lambda: self.take_and_complete(self.verifier_1, 'first_verification'),
+             [('stage_completed', 'Pierwsza weryfikacja'), ('first_proofreading', 'Pierwsza korekta')]),
+            ('K1 → Gotowe', lambda: self.take_and_complete(self.proofreader, 'first_proofreading'),
+             [('stage_completed', 'Pierwsza korekta')]),
+        ])
+
+
+@override_settings(DISCORD_WEBHOOKS={'Kanał': 'https://discord.com/api/webhooks/1/tajny'})
+class DiagnoseCommandTests(TestCase):
+    """Komenda discord_diagnose: stan reguł, historia wysyłek i dziennik zmian – bez adresów webhooków
+    i bez danych osób (tylko tytuły tekstów)."""
+
+    def test_report(self):
+        DiscordRole.objects.create(name='korektor', role_id='555')
+        enable('stage_completed', '[osoba]: [etap]')
+        NotificationRule.objects.filter(trigger='stage_completed').update(enabled=False)
+        enable('first_proofreading', '[etap]', '@korektor')
+        enable('third_proofreading', '[etap]', '@nikt')
+        NotificationRule.objects.filter(trigger='third_proofreading').update(channel='Dawny')
+        text = Text.objects.create(title='Latarnik', length=1)
+        DiscordNotification.objects.create(trigger='first_proofreading', channel='Kanał', content='Jan Tajny',
+                                           status='sent', text=text)
+        DiscordNotification.objects.create(trigger='stage_completed', channel='Kanał', content='[TEST] Jan Tajny',
+                                           status='disabled')
+        WorkflowEvent.objects.create(text=text, title='Latarnik', actor_name='Jan Tajny', previous_status='a',
+                                     next_status='b', details='Zakończono etap: Redakcja – wykonanie 1 – Jan Tajny')
+        out = StringIO()
+        call_command('discord_diagnose', stdout=out)
+        report = out.getvalue()
+        expected = [
+            'Kanały na serwerze (DISCORD_WEBHOOKS): Kanał',
+            'Zakończenie etapu (wszystkie etapy) [stage_completed]: włączona: nie; kanał: „Kanał” '
+            '(w konfiguracji serwera: tak); treści: 1; oznaczenie: brak',
+            'Uwagi: WYŁĄCZONE – test z panelu wysyła mimo to, ale zwykłe zdarzenia nie',
+            '[first_proofreading]: włączona: tak; kanał: „Kanał” (w konfiguracji serwera: tak); treści: 1; '
+            'oznaczenie: @korektor (poprawne)\n  Działa.',
+            'kanał: „Dawny” (w konfiguracji serwera: nie)', 'oznaczenie: @nikt (BŁĘDNE – nie ma takiej roli)',
+            '– Wysłano – „Latarnik”', '– Brak skonfigurowanego kanału – test z panelu',
+            'ostatnie 7 dni: 1 zmian, w tym 1 z zakończeniem etapu; wpisy „Zakończenie etapu” w historii wysyłek: 1.',
+        ]
+        for text_part in expected:
+            with self.subTest(text_part):
+                self.assertIn(text_part, report)
+        for secret in ('tajny', 'Tajny', '555'):
+            with self.subTest(secret=secret):
+                self.assertNotIn(secret, report)
+
+    def test_hint_when_stages_end_without_messages(self):
+        """Etapy kończą się (dziennik zmian), a wiadomości „Zakończenie etapu” brak – komenda podpowiada przyczynę."""
+        WorkflowEvent.objects.create(title='Latarnik', actor_name='x', previous_status='a', next_status='b',
+                                     details='Zakończono etap: Pierwsza korekta')
+        for sent, hint in ((False, True), (True, False)):
+            if sent:
+                DiscordNotification.objects.create(trigger='stage_completed', channel='Kanał', content='x')
+            out = StringIO()
+            call_command('discord_diagnose', stdout=out)
+            with self.subTest(sent=sent):
+                self.assertEqual('nie powstała żadna wiadomość „Zakończenie etapu”' in out.getvalue(), hint)

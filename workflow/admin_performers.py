@@ -156,6 +156,8 @@ def performer_plan(text, changes):
 def correct_stage_performers(text_id, changes, actor, expected_version):
     if not actor.is_active or not actor.is_superuser:
         raise PermissionDenied
+    from core.workflow_events import history_correction
+    history_correction()
     text = Text.objects.select_for_update().get(pk=text_id)
     if version_of(text) != expected_version:
         raise ValidationError('Dane zmieniły się. Odśwież formularz.')

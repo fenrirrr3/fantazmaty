@@ -111,8 +111,8 @@ etapu” – wykonawca etapu, a bez przypisania osoba, która zamknęła etap), 
 
 „Zakończenie etapu (wszystkie etapy)” to jedna reguła dla każdego etapu. Nie wysyła wiadomości przy przekazaniu
 pliku autorowi ani przy jego powrocie od autora (etap „Plik u autora (redakcja)”), przy przejęciu tekstu do redakcji,
-„Gotowe” i wycofaniu. Redakcja jest zgłaszana jako zakończona tylko przy ostatnim przekazaniu – do koordynatora
-(Kontrola K. redakcji); przekazania do pierwszej i drugiej weryfikacji nie są ogłaszane.
+„Gotowe” i wycofaniu. Każde przekazanie redakcji (do pierwszej i drugiej weryfikacji, do koordynatora, a w Ekstraktach
+do W1 albo K1) jest ogłaszane, a `[etap]` wskazuje cel, np. „Redakcja → Pierwsza weryfikacja”.
 
 ## Struktura
 

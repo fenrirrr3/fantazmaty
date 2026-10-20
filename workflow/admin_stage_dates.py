@@ -154,6 +154,8 @@ def set_stage_dates(stage_id, user, version, *, started_at=None, ended_at=None,
     if stage.is_completed:
         if finish:
             raise ValidationError('Ten etap został już zakończony.')
+        from core.workflow_events import history_correction
+        history_correction()
         preserve_stage_order(stage, started_at, ended_at)
         stage.started_at = started_at
         stage.ended_at = ended_at
