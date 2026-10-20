@@ -83,6 +83,13 @@ EbookLib fpdf2 Pillow rapidfuzz spacy` i modelem `pl_core_news_sm` (polecenia w 
    `python manage.py merge_audio_contributor "Karolina Stachacz Bartosik" "Karolina Stachacz-Bartosik" --dry-run`,
    a po sprawdzeniu wyniku to samo bez `--dry-run`. Nazwy muszą być dokładne; przy kilku wpisach o tej samej nazwie
    komenda poda ich ID – wtedy `--source-id`/`--target-id`.
+   Import decyzji do naboru Ekstraktów z pliku TSV (UTF-8, tabulatory; nagłówek
+   `imię i nazwisko | pseudonim | e-mail | tytuły (rozdzielone |) | decyzja`, decyzja „przyjęte” albo „odrzucone”,
+   tytuły rozdzielone `|` – przecinki są częścią tytułu): najpierw podgląd
+   `python manage.py import_extracts plik.tsv --recruitment "Nazwa naboru" [--date RRRR-MM-DD]`, a po sprawdzeniu
+   to samo z `--apply`. Autor jest dopasowywany po e-mailu, potem po imieniu i nazwisku (imię = pierwsze słowo,
+   nazwisko = reszta); jego dane nie są zmieniane. Błąd dowolnego wiersza (np. czarna lista, tytuł z przeciwną
+   decyzją) oznacza, że nic nie zostanie zapisane. Plików z danymi autorów nie dodawaj do repozytorium (`import_data/`).
    Konta logowania podążają za osobą (e-mail osoby = login i nazwa użytkownika, odznaczenie „wciąż w ekipie”
    blokuje logowanie). Stare rozjazdy wyrównuje jednorazowo `python manage.py sync_accounts` (sam raport),
    a po sprawdzeniu `python manage.py sync_accounts --apply`. Kolizji adresów i osób bez e-maila komenda nie zmienia,
