@@ -45,8 +45,8 @@ TAGS = {
 }
 # Tag: do 30 znaków w nawiasach kwadratowych, bez białych znaków – „[w załączniku plik]” zostaje zwykłym tekstem.
 TAG_RE = re.compile(r'\[([^\[\]\s]{1,30})\]')
-READY, NO_MATCH, NO_ADDRESS = 'ready', 'no_match', 'no_address'
-STATUS_LABELS = {READY: 'Gotowe', NO_MATCH: 'Brak dopasowania', NO_ADDRESS: 'Brak adresu'}
+READY, NO_MATCH, NO_ADDRESS, BLACKLISTED = 'ready', 'no_match', 'no_address', 'blacklisted'
+STATUS_LABELS = {READY: 'Gotowe', NO_MATCH: 'Brak dopasowania', NO_ADDRESS: 'Brak adresu', BLACKLISTED: 'Czarna lista'}
 NO_MAILBOX = ('Brak skrzynki do wysyłki. W panelu administratora (Skrzynki zgłoszeń) dodaj skrzynkę z przeznaczeniem '
               '„Wysyłka plików autorom” i podaj jej serwer SMTP.')
 INVALID_ADDRESS = 'Nieprawidłowy adres e-mail odbiorcy – popraw go w danych osoby.'
@@ -127,7 +127,8 @@ def mail_content(batch, rows, prefix=''):
     """Temat (jeden wiersz, ≤ SUBJECT_LIMIT, bez łamania słów) i treść maila z uzupełnionymi tagami."""
     values = {
         'antologia': batch.get('anthology_title', ''),
-        'tytuł-tekstu': join_list(row.get('title') or row.get('heading') or '' for row in rows),
+        'tytuł-tekstu': join_list(title for row in rows
+                                  for title in (row.get('titles') or [row.get('title') or row.get('heading') or ''])),
         'autor': join_list(dict.fromkeys(name for row in rows for name in row.get('authors', []))),
     }
     subject = prefix + ' '.join(fill_tags(batch['subject'], values).split())
@@ -146,7 +147,13 @@ def _heading(part):
 
 
 def build_rows(parts, anthology):
-    """Lista kontrolna: część podziału ↔ tekst antologii o tym samym tytule (bez dopasowań „na siłę”)."""
+    """Lista kontrolna: część podziału ↔ tekst antologii o tym samym tytule (bez dopasowań „na siłę”).
+
+    W Ekstraktach nagłówek części to autor – zob. build_extract_rows."""
+    from texts.extract_whole import is_extract_anthology
+
+    if is_extract_anthology(anthology):
+        return build_extract_rows(parts, anthology)
     translated = anthology.is_translated
     by_title = {}
     for text in anthology_texts(anthology):
@@ -168,6 +175,65 @@ def build_rows(parts, anthology):
                        authors=signature(text, translated), status=READY if emails else NO_ADDRESS)
             if not people:
                 row['note'] = 'Tekst nie ma przypisanych tłumaczy.' if translated else 'Tekst nie ma przypisanych autorów.'
+        rows.append(row)
+    return rows
+
+
+def extract_entries(anthology):
+    """Wpisy rejestru Ekstraktów z naboru o nazwie antologii (spacje znormalizowane, bez wielkości liter)."""
+    from texts.extract_data import normalize_key
+    from texts.models import Extract
+
+    key = normalize_key(anthology.title)
+    return [entry for entry in Extract.objects.select_related('author').order_by('pk')
+            if normalize_key(entry.recruitment) == key]
+
+
+def _author_keys(entry):
+    """Klucze nagłówka dla wpisu: imię i nazwisko z wpisu, imię i nazwisko autora, pseudonim autora."""
+    author = entry.author
+    names = (entry.full_name, f'{author.first_name} {author.last_name}', author.pseudonym)
+    return {normalized_title(name) for name in names} - {''}
+
+
+def build_extract_rows(parts, anthology):
+    """Lista kontrolna Ekstraktów: nagłówek części (autor) ↔ wpis naboru – tylko dokładne, jednoznaczne dopasowanie.
+
+    Odbiorca – e-mail wpisu, a gdy pusty – e-mail autora; autor z czarnej listy nie dostaje pliku."""
+    from core.services.mailbox_import import blacklisted_addresses, sender_address
+    from texts.extract_data import split_list
+
+    by_key = {}
+    for entry in extract_entries(anthology):
+        for key in _author_keys(entry):
+            by_key.setdefault(key, []).append(entry)
+    keys = [normalized_title(_heading(part)) for part in parts]
+    found = {}
+    for key in keys:
+        if len(by_key.get(key, [])) == 1:
+            entry = by_key[key][0]
+            found[key] = (entry, ((entry.email or '').strip() or (entry.author.email or '').strip()))
+    blocked = blacklisted_addresses([value for entry, email in found.values()
+                                     for value in (email, entry.author.email or '')])
+    rows = []
+    for index, (part, key) in enumerate(zip(parts, keys)):
+        row = {'index': index, 'file': part['file'], 'heading': _heading(part), 'text_id': None, 'title': '',
+               'titles': [], 'people': [], 'authors': [], 'emails': [], 'missing': [], 'status': NO_MATCH, 'note': ''}
+        candidates = by_key.get(key, []) if key else []
+        if len(candidates) > 1:
+            row['note'] = 'Nagłówek pasuje do kilku autorów naboru.'
+        elif candidates and keys.count(key) > 1:
+            row['note'] = 'Ten sam nagłówek ma kilka części dokumentu.'
+        elif candidates and not split_list(candidates[0].accepted_titles):
+            row['note'] = 'Autor nie ma przyjętych tekstów w tym naborze.'
+        elif candidates:
+            entry, email = found[key]
+            titles, name = split_list(entry.accepted_titles), entry.author.display_name
+            row.update(extract_id=entry.pk, title=join_list(titles), titles=titles, people=[name], authors=[name],
+                       emails=[email] if email else [], missing=[] if email else [name],
+                       status=READY if email else NO_ADDRESS)
+            if entry.author.is_blacklisted or {sender_address(email), sender_address(entry.author.email)} & blocked:
+                row.update(status=BLACKLISTED, note='Autor jest na czarnej liście – pliku nie wysyłamy.')
         rows.append(row)
     return rows
 
@@ -242,6 +308,8 @@ def _sizes(folder):
 
 def prepare(folder, anthology, subject, message):
     """Zapisuje nową partię (ustawienia i listę kontrolną); poprzednia lista kontrolna przestaje być ważna."""
+    from texts.extract_whole import is_extract_anthology
+
     if (folder / SENT).exists() or read_report(folder) is not None:
         raise MailingError('Pliki z tego podziału zostały już wysłane.')
     rows = build_rows(read_parts(folder), anthology)
@@ -251,7 +319,8 @@ def prepare(folder, anthology, subject, message):
     batch = secrets.token_hex(16)
     jobs.write_json(folder / BATCH, {
         'batch': batch, 'anthology': anthology.pk, 'anthology_title': anthology.title,
-        'translated': anthology.is_translated, 'subject': subject, 'message': message, 'rows': rows})
+        'translated': anthology.is_translated, 'extracts': is_extract_anthology(anthology),
+        'subject': subject, 'message': message, 'rows': rows})
     # Partia przedłuża życie zadania: sprzątanie liczy czas od request.json.
     os.utime(folder / 'request.json', None)
 

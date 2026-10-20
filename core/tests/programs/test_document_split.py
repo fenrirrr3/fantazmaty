@@ -464,6 +464,43 @@ class SplitMailingData(TestCase):
         foreign.authors.add(jan)
         foreign.translation.translators.add(cls.translator)
         cls.untranslated = Text.objects.create(title='Trzecie', anthology=cls.translated, length=100)
+        cls.extracts = cls.extract_volume()
+
+    @classmethod
+    def extract_volume(cls):
+        """Antologia Ekstraktów i wpisy rejestru naboru (zmyślone): różne źródła klucza autora i adresu,
+        dwa wpisy o tym samym nazwisku, wpis bez przyjętych tytułów, czarna lista i wpis innego naboru."""
+        from authors.models import Author, BlacklistEntry
+        from texts.models import Anthology, Extract
+
+        book = Anthology.objects.create(title='Ekstrakty Próbne', is_extracts=True)
+        entries = (
+            # imię, nazwisko, pseudonim, e-mail autora, full_name wpisu, e-mail wpisu, nadesłane, przyjęte, nabór
+            ('Marta', 'Lis', '', 'marta@example.test', 'Marta Lis', 'marta.wpis@example.test', 'Kot; Pies; Mysz',
+             'Kot; Pies', 'ekstrakty  próbne'),
+            ('Piotr', 'Zając', 'P. Zet', 'zet@example.test', 'Piotr Zając', '', 'Zając', 'Zając', 'Ekstrakty Próbne'),
+            ('Karol', 'Wiśniewski-Nowy', '', 'karol@example.test', 'Karol Wiśniewski', 'karol@example.test',
+             'Wiśnia; Śliwa; Grusza', 'Wiśnia; Śliwa; Grusza', 'Ekstrakty Próbne'),
+            ('Ola', 'Bez', '', None, 'Ola Bez', '', 'Cisza', 'Cisza', 'Ekstrakty Próbne'),
+            ('Adam', 'Mały', '', 'adam1@example.test', 'Adam Mały', 'adam1@example.test', 'A1', 'A1', 'Ekstrakty Próbne'),
+            ('Adam', 'Mały', '', 'adam2@example.test', 'Adam Mały', 'adam2@example.test', 'A2', 'A2', 'Ekstrakty Próbne'),
+            ('Zofia', 'Rzadka', '', 'zofia@example.test', 'Zofia Rzadka', 'zofia@example.test', 'Odrzut', '',
+             'Ekstrakty Próbne'),
+            ('Tomasz', 'Obcy', '', 'tomasz@example.test', 'Tomasz Obcy', 'tomasz@example.test', 'Obce', 'Obce',
+             'Ekstrakty Inne'),
+            ('Czarny', 'Kruk', '', 'kruk@example.test', 'Czarny Kruk', 'kruk@example.test', 'Kra', 'Kra',
+             'Ekstrakty Próbne'),
+            ('Biały', 'Gołąb', '', 'golab@example.test', 'Biały Gołąb', 'golab.wpis@example.test', 'Gru', 'Gru',
+             'Ekstrakty Próbne'),
+        )
+        for first, last, pseudonym, author_email, full_name, email, title, accepted, recruitment in entries:
+            author = Author.objects.create(first_name=first, last_name=last, pseudonym=pseudonym, email=author_email,
+                                           is_blacklisted=last == 'Kruk')
+            Extract.objects.create(author=author, full_name=full_name, email=email, title=title,
+                                   accepted_titles=accepted, rejected_titles='Odrzut' if not accepted else '',
+                                   recruitment=recruitment)
+        BlacklistEntry.objects.create(email='golab.wpis@example.test')
+        return book
 
 
 class SplitMailingMatchTests(SplitMailingData):
@@ -554,6 +591,54 @@ class SplitMailingMatchTests(SplitMailingData):
         self.assertEqual([(row['status'], row['emails'], row['note'], row['authors']) for row in rows],
                          [('ready', ['olga@example.test'], '', ['H. C. Andersen']),
                           ('no_address', [], 'Tekst nie ma przypisanych tłumaczy.', [])])
+
+
+    def test_extract_rows_match_heading_to_recruitment_authors(self):
+        """Ekstrakty: nagłówek ↔ autor naboru (full_name, imię i nazwisko autora, pseudonim; bez wielkości liter
+        i interpunkcji), adres z wpisu albo autora, przyjęte tytuły; niejednoznaczne, bez przyjętych, inny nabór,
+        czarna lista i powtórzony nagłówek – bez wysyłki."""
+        cases = (
+            ('full_name, adres z wpisu', 'marta LIS.', ('ready', 'Kot i Pies', ['marta.wpis@example.test'], ['Marta Lis'], '')),
+            ('pseudonim, adres autora', '„p zet”', ('ready', 'Zając', ['zet@example.test'], ['P. Zet'], '')),
+            ('imię i nazwisko autora', 'Piotr Zając', ('ready', 'Zając', ['zet@example.test'], ['P. Zet'], '')),
+            ('full_name innego niż autor', 'Karol Wiśniewski',
+             ('ready', 'Wiśnia, Śliwa i Grusza', ['karol@example.test'], ['Karol Wiśniewski-Nowy'], '')),
+            ('nazwisko autora', 'KAROL WIŚNIEWSKI–NOWY',
+             ('ready', 'Wiśnia, Śliwa i Grusza', ['karol@example.test'], ['Karol Wiśniewski-Nowy'], '')),
+            ('ogonki zostają', 'Karol Wisniewski', ('no_match', '', [], [], '')),
+            ('brak adresu', 'Ola Bez', ('no_address', 'Cisza', [], ['Ola Bez'], '')),
+            ('dwa wpisy', 'Adam Mały', ('no_match', '', [], [], 'Nagłówek pasuje do kilku autorów naboru.')),
+            ('bez przyjętych', 'Zofia Rzadka',
+             ('no_match', '', [], [], 'Autor nie ma przyjętych tekstów w tym naborze.')),
+            ('inny nabór', 'Tomasz Obcy', ('no_match', '', [], [], '')),
+            ('autor na czarnej liście', 'Czarny Kruk', ('blacklisted', 'Kra', ['kruk@example.test'], ['Czarny Kruk'],
+                                                         'Autor jest na czarnej liście – pliku nie wysyłamy.')),
+            ('adres na niezależnej czarnej liście', 'Biały Gołąb',
+             ('blacklisted', 'Gru', ['golab.wpis@example.test'], ['Biały Gołąb'],
+              'Autor jest na czarnej liście – pliku nie wysyłamy.')),
+            ('tytuł zamiast autora', 'Kot', ('no_match', '', [], [], '')),
+        )
+        for label, heading, expected in cases:
+            with self.subTest(label):
+                row = mailing.build_rows([{'file': '01 x.docx', 'title': heading}], self.extracts)[0]
+                self.assertEqual((row['status'], row['title'], row['emails'], row['people'], row['note']), expected)
+        with self.subTest('powtórzony nagłówek'):
+            rows = mailing.build_rows([{'file': '01 a.docx', 'title': 'Marta Lis'},
+                                       {'file': '02 b.docx', 'title': 'marta lis'}], self.extracts)
+            self.assertEqual({(row['status'], row['note']) for row in rows},
+                             {('no_match', 'Ten sam nagłówek ma kilka części dokumentu.')})
+
+    def test_extract_tags_use_author_signature_and_accepted_titles(self):
+        """Ekstrakty: [autor] – podpis autora (pseudonim), [tytuł-tekstu] – przyjęte tytuły wpisu, także w grupie."""
+        rows = mailing.build_rows([{'file': '01 a.docx', 'title': 'P. Zet'}, {'file': '02 b.docx', 'title': 'Marta Lis'}],
+                                  self.extracts)
+        batch = {'anthology_title': 'Ekstrakty Próbne', 'subject': '[autor]: [tytuł-tekstu] ([antologia])', 'message': ''}
+        cases = (('pseudonim', rows[:1], 'P. Zet: Zając (Ekstrakty Próbne)'),
+                 ('dwa przyjęte', rows[1:], 'Marta Lis: Kot i Pies (Ekstrakty Próbne)'),
+                 ('kilka wierszy w mailu', rows, 'P. Zet i Marta Lis: Zając, Kot i Pies (Ekstrakty Próbne)'))
+        for label, group, expected in cases:
+            with self.subTest(label):
+                self.assertEqual(mailing.mail_content(batch, group)[0], expected)
 
 
 class SplitMailingGroupTests(SimpleTestCase):
@@ -929,6 +1014,32 @@ class SplitMailingViewTests(IsolatedProgramDirsMixin, SplitMailingData):
         self.assertNotIn('Dzień dobry', json.dumps(entries, ensure_ascii=False))
         download = self.client.get(reverse('core:program_job', args=[url.rstrip('/').split('/')[-2]]) + '?download=1')
         self.assertContains(download, 'wysłano już autorom', status_code=404)
+
+    def test_extracts_checklist_and_each_author_gets_only_own_part(self):
+        """Ekstrakty: opis trybu nad listą, „Tytuł” = przyjęte teksty, podpis i adres autora; każdy autor dostaje
+        tylko swoją część, a wiersze bez dopasowania i z czarnej listy nie wychodzą."""
+        parts = (('01 Marta Lis.docx', 'Marta Lis'), ('02 P. Zet.docx', 'P. Zet'), ('03 Adam Mały.docx', 'Adam Mały'),
+                 ('04 Czarny Kruk.docx', 'Czarny Kruk'), ('05 Wstęp.docx', 'Wstęp'))
+        url, _ = self.split_job(parts=parts)
+        url = self.prepare(url, self.extracts)
+        page, token = self.checklist(url)
+        self.assertContains(page, 'Tryb Ekstraktów: nagłówek części to autor.')
+        tree = html.fromstring(page.content.decode())
+        cells = [[' '.join(cell.text_content().split()) for cell in row.xpath('./td')[1:]]
+                 for row in tree.xpath('//table//tbody/tr')]
+        self.assertEqual([row[:2] + row[3:5] for row in cells], [
+            ['Kot i Pies', 'Marta Lis', 'marta.wpis@example.test', 'Gotowe'],
+            ['Zając', 'P. Zet', 'zet@example.test', 'Gotowe'],
+            ['Nagłówek: Adam Mały', '–', '–', 'Brak dopasowaniaNagłówek pasuje do kilku autorów naboru.'],
+            ['Kra', 'Czarny Kruk', 'kruk@example.test',
+             'Czarna listaAutor jest na czarnej liście – pliku nie wysyłamy.'],
+            ['Nagłówek: Wstęp', '–', '–', 'Brak dopasowania']])
+        self.assertEqual(cells[0][-1], 'mail 1Temat: Twój tekst Kot i Pies (Ekstrakty Próbne)')
+        self.client.post(url, {'action': 'send', 'batch': token, 'rows': ['0', '1', '2', '3', '4']})
+        self.assertEqual([(message.to, message.body, [name for name, _, _ in message.attachments])
+                          for message in mail.outbox], [
+            (['marta.wpis@example.test'], 'Dzień dobry, Marta Lis,\nw załączniku plik.', ['Marta Lis.docx']),
+            (['zet@example.test'], 'Dzień dobry, P. Zet,\nw załączniku plik.', ['P. Zet.docx'])])
 
     def test_only_checked_ready_rows_are_sent(self):
         """Odznaczony wiersz nie wychodzi; wiersze bez dopasowania lub adresu nie wychodzą nigdy."""

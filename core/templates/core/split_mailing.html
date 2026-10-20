@@ -34,6 +34,7 @@
         <form method="post">
             {% csrf_token %}<input type="hidden" name="batch" value="{{ batch_token }}">
             <h2>Lista kontrolna</h2>
+            {% if batch.extracts %}<p class="form-help">Tryb Ekstraktów: nagłówek części to autor. Dopasowujemy go do wpisów naboru „{{ batch.anthology_title }}” (imię i nazwisko lub pseudonim), plik idzie na adres z wpisu, a „Tytuł” to przyjęte teksty autora.</p>{% endif %}
             <p class="form-help">Sprawdź dopasowania. Wysłane zostaną tylko zaznaczone wiersze o stanie „Gotowe”: gotowe {{ ready_count }} z {{ batch.rows|length }}, wiadomości: {{ mail_count }}.</p>
             <p class="form-help">Teksty o tym samym zestawie adresów idą w jednym mailu (kolumna „Mail”), np. dwa teksty autora A – jeden mail z dwoma plikami. Tekst A i B oraz tekst samego A to dwa maile: każdy plik trafia tylko do autorów swojego tekstu. Mail z plikami ponad 14 MB dzielimy na kilka.</p>
             <div class="table-container"><table class="data-table" data-pagination="off">

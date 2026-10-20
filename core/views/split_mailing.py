@@ -42,7 +42,8 @@ def _known_tags(value):
 
 class SplitMailingForm(forms.Form):
     anthology = forms.ModelChoiceField(label='Antologia', queryset=None, empty_label='Wybierz antologię',
-                                       help_text='Nagłówki części porównujemy z tytułami tekstów tej antologii.')
+                                       help_text='Nagłówki części porównujemy z tytułami tekstów tej antologii, '
+                                                 'a w Ekstraktach – z autorami naboru o tej nazwie.')
     subject = forms.CharField(label='Temat wiadomości', max_length=200, help_text=TAGS_HELP)
     message = forms.CharField(label='Treść wiadomości', max_length=5000, widget=forms.Textarea(attrs={'rows': 6}),
                               help_text='Każdy autor dostaje tylko pliki swoich tekstów; tagi jak w temacie '
