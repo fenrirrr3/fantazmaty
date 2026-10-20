@@ -23,7 +23,7 @@ ONLY_REPETITIONS = {'duplicates': False, 'long_sentences': False, 'long_paragrap
 @contextmanager
 def simple_language():
     """Lemat = słowo małymi literami, bez lematów z kontekstu i z jednym zdaniem na akapit (bez modelu)."""
-    def context(texts, *, sentences, status_callback=None):
+    def context(texts, *, sentences):
         return [({}, [(0, len(text))]) for text in texts]
 
     with patch.object(repetitions, '_lemma_map', side_effect=lambda words: {w.lower(): w.lower() for w in words}), \
@@ -85,18 +85,26 @@ class LanguageModelTests(SimpleTestCase):
 
     @tag('slow')
     def test_extra_checks_can_find_sentences_and_mark_the_document(self):
-        """Wywołane samodzielnie: same rozpoznają zdania (z komunikatami postępu) i od razu oznaczają tekst."""
+        """Wywołane samodzielnie: same rozpoznają zdania i od razu oznaczają tekst."""
         document = Document()
         document.add_paragraph('Krótko. Bardzo długie zdanie ma tutaj wiele słów.')
-        messages = []
         report = repetitions._extra_checks(document.paragraphs, {}, set(), set(),
-                                           {**ONLY_REPETITIONS, 'long_sentences': True, 'sentence_limit': 3},
-                                           status_callback=messages.append)
+                                           {**ONLY_REPETITIONS, 'long_sentences': True, 'sentence_limit': 3})
         self.assertEqual(report['long_sentences'], 1)
-        self.assertEqual(messages, ['Rozpoznawanie zdań i sprawdzanie ich długości…'])
         runs = document.paragraphs[0].runs
         self.assertEqual([run.font.highlight_color for run in runs], [None, WD_COLOR_INDEX.TURQUOISE])
         self.assertEqual(runs[1].text, 'Bardzo długie zdanie ma tutaj wiele słów.')
+
+
+    def test_extra_checks_find_sentences_with_stubbed_language_model(self):
+        """Z zastępczym modelem języka (jedno zdanie na akapit): granice zdań są rozpoznawane, raport jak z modelem."""
+        document = Document()
+        document.add_paragraph('Jedno zdanie o wielu słowach.')
+        with simple_language():
+            report = repetitions._extra_checks(document.paragraphs, {}, set(), set(),
+                                               {**ONLY_REPETITIONS, 'long_sentences': True, 'sentence_limit': 3})
+        self.assertEqual(report['long_sentences'], 1)
+        self.assertEqual(document.paragraphs[0].runs[0].font.highlight_color, WD_COLOR_INDEX.TURQUOISE)
 
 
 class GroupingTests(SimpleTestCase):

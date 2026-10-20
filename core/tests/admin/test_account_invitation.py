@@ -72,8 +72,11 @@ class AccountInvitationTests(TransactionTestCase):
         for case, (later, valid) in cases.items():
             with self.subTest(case), patch.object(invitation_token_generator, '_now', return_value=now + later):
                 self.assertEqual(invitation_token_generator.check_token(self.member, token), valid)
-        self.assertFalse(invitation_token_generator.check_token(self.member, 'zly-token'))
-        self.assertFalse(invitation_token_generator.check_token(self.member, 'xyz'))
+        for case, user, value in (('obcy token', self.member, 'zly-token'), ('bez myślnika', self.member, 'xyz'),
+                                  ('pusty token', self.member, ''), ('brak konta', None, token),
+                                  ('znacznik czasu spoza base36', self.member, 'ż!-' + token.split('-')[1])):
+            with self.subTest(case):
+                self.assertFalse(invitation_token_generator.check_token(user, value))
 
     def test_inactive_account_or_missing_email_get_no_mail(self):
         cases = {'inactive': ({'is_active': False}, 'Konto jest nieaktywne'),

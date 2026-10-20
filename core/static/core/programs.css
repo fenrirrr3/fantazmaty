@@ -439,12 +439,23 @@
     display: none;
 }
 
-.program-job-status .card-body {
+/* Strona zadania i wysyłka autorom: bloki karty jeden pod drugim w stałych odstępach. */
+:is(.program-job-status, .split-mailing) .card-body {
     display: grid;
     gap: var(--space-4);
 }
 
-.program-job-status .card-body > * {
+:is(.program-job-status, .split-mailing) .card-body > * {
+    margin: 0;
+}
+
+/* Krok wysyłki (formularz, lista kontrolna, mail testowy): nagłówek, opis, pola i przyciski. */
+.split-mailing-step {
+    display: grid;
+    gap: var(--space-3);
+}
+
+.split-mailing .split-mailing-step > :is(h2, p, .form-field) {
     margin: 0;
 }
 

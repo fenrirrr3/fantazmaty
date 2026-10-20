@@ -14,7 +14,7 @@
         {% if state.removed_images > 0 %}{% with n=state.removed_images %}{% with digits=n|stringformat:"d" %}{% with last=digits|slice:"-1:" two=digits|slice:"-2:" %}
         <p class="message warning program-images"><strong>Usunięto {{ n }} {% if n == 1 %}obraz{% elif last in "234" and two != "12" and two != "13" and two != "14" %}obrazy{% else %}obrazów{% endif %} z dokumentu – wynik ich nie zawiera.</strong></p>
         {% endwith %}{% endwith %}{% endwith %}{% endif %}
-        {% if state.warnings %}<div class="form-warning"><strong>Uwagi do konwersji</strong><ul>{% for warning in state.warnings %}<li>{{ warning }}</li>{% endfor %}</ul></div>{% endif %}
+        {% if state.warnings %}<div class="form-warning"><strong>Uwagi programu</strong><ul>{% for warning in state.warnings %}<li>{{ warning }}</li>{% endfor %}</ul></div>{% endif %}
         {% if state.summary is not None or state.replacements %}<div class="program-summary"><strong>Podsumowanie zmian</strong>
             {% if state.summary %}<table class="data-table" data-pagination="off"><thead><tr><th data-sort="none">Reguła</th><th data-sort="none">Zmiany</th></tr></thead><tbody>
                 {% for row in state.summary %}<tr><td>{{ row.label }}</td><td>{{ row.count }}</td></tr>{% endfor %}

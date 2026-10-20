@@ -7,7 +7,8 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from core.discord_notifications import deliver, deliver_after_commit, safe_queue, workflow_changes
+from core.discord_notifications import (configured_channel_names, deliver, deliver_after_commit, rule_problems, safe_queue,
+                                        workflow_changes)
 from core.discord_webhook import DeliveryError, NoRedirect, send_message
 from core.models import DiscordNotification, DiscordRole, NotificationRule
 from core.notification_admin import NotificationRuleForm
@@ -93,6 +94,15 @@ class TestPanelGapTests(TestCase):
 
 
 class RuleFormChannelTests(TestCase):
+    def test_rule_problems_name_broken_server_configuration(self):
+        """Błędne DISCORD_WEBHOOKS: lista kanałów to None, a reguła dostaje jeden powód zamiast skargi na kanał."""
+        rule = configure('first_proofreading')
+        with override_settings(DISCORD_WEBHOOKS=['nie słownik']):
+            configured = configured_channel_names()
+        self.assertIsNone(configured)
+        self.assertEqual(rule_problems(rule, configured), ['błędna konfiguracja kanałów na serwerze (DISCORD_WEBHOOKS)'])
+        self.assertEqual(rule_problems(rule, {'Kanał'}), [])
+
     def test_channel_choices_follow_server_configuration(self):
         rule = NotificationRule.objects.get(trigger='first_proofreading')
         rule.channel = 'Dawny kanał'

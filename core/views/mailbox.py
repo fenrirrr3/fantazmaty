@@ -22,7 +22,7 @@ from core.services.mailbox_import import (
     BLACKLIST_CHOICES, DOWNLOAD_FILE, FUTURE_REJECTION, blacklisted_addresses, mark_blacklisted, sender_address,
 )
 from core.services.mailbox_snapshots import automatic_notice, newer_snapshot
-from core.services.document_converter import ConversionError, RebuildConfirmationRequired
+from core.services.document_converter import ConversionError
 from core.services.reviews import import_reviews
 
 HEADERS_SESSION_KEY = 'mailbox_headers_snapshot'
@@ -270,10 +270,6 @@ def mailbox_headers(request):
                 return redirect(request.path)
             else:
                 raise MailboxError('Nieprawidłowa operacja.')
-    except RebuildConfirmationRequired as error:
-        context['rebuild_warning'] = True
-        context['rebuild_warning_text'] = str(error)
-        context['error'] = str(error)
     except (MailboxError, ConversionError) as error:
         if action == 'preview':
             return render(request, 'core/includes/recruitment_preview.html', {'preview_error': str(error)}, status=400)
@@ -281,8 +277,6 @@ def mailbox_headers(request):
         context['error'] = re.sub(r'\bWiadomość\s+(\d+)', lambda match: senders.get(int(match[1]), 'Zgłoszenie'), str(error))
     except (BadZipFile, XMLSyntaxError, ValueError, OSError):
         context['error'] = 'Nie udało się przetworzyć pliku. Sprawdź załączniki lub spróbuj pobrać same oryginały.'
-    except ValidationError as error:
-        context['error'] = ' '.join(error.messages)
     finally:
         if archive is not None:
             archive.close()

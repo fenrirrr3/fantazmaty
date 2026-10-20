@@ -1,6 +1,5 @@
-"""Luki pokrycia infrastruktury: limity logowania, dziennik aktywności, podgląd użytkownika, wersje edycji, CSV."""
+"""Luki pokrycia infrastruktury: limity logowania, dziennik aktywności, podgląd użytkownika, wersje edycji."""
 import asyncio
-from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -21,7 +20,6 @@ from core.activity_spool import enqueue_activity
 from core.activity_targets import object_name, present_activities
 from core.admin_urls import polish_admin_patterns
 from core.edit_versions import version_of
-from core.exports import safe_csv_value
 from core.models import AuthenticationAttempt, UserActivity
 from core.user_preview import SESSION_KEY, UserPreviewMiddleware
 from fantazmaty.testing import create_member, create_superuser
@@ -179,16 +177,3 @@ class SmallInfrastructureGapTests(TestCase):
         self.assertIsNone(nested.url_patterns[0].name)
         self.assertEqual(alias.resolve('authors/author/5/').kwargs, {'pk': 5})
 
-
-class CsvValueGapTests(SimpleTestCase):
-    def test_cell_values_are_protected_without_changing_content(self):
-        naive = datetime(2026, 10, 12, 8, 30, 15)
-        cases = {
-            'pusty tekst': ('', ''),
-            'same odstępy': ('   ', '   '),
-            'data bez strefy': (naive, '2026-10-12 08:30:15'),
-            'formuła po odstępach': ('  =1+1', "'  =1+1"),
-        }
-        for name, (value, expected) in cases.items():
-            with self.subTest(name):
-                self.assertEqual(safe_csv_value(value), expected)

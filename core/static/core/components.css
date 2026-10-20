@@ -429,7 +429,6 @@ label:is(.boolean-filter-toggle, .important-note-toggle, .vacation-checkbox, .co
 .audiodesc-filter-actions,
 .audiobook-public-actions,
 .illustration-public-actions,
-.odkurzacz-actions,
 .text-tags-actions,
 .tag-filter-actions,
 .post-layout-row-actions,
@@ -783,6 +782,7 @@ fieldset.multi-filter-field {
 .badge,
 .status,
 .stage-status,
+.audio-status,
 .role-badge,
 .workflow-stage-badge,
 .important-note-badge,
@@ -868,10 +868,7 @@ fieldset.multi-filter-field {
     letter-spacing: 0.06em;
 }
 
-.role-badge[data-palette="emperor"]::before {
-    content: "✠";
-}
-
+.role-badge[data-palette="emperor"]::before,
 .role-badge[data-palette="emperor"]::after {
     content: "✠";
 }

@@ -10,7 +10,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 from zipfile import ZipFile
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, tag
 from docx import Document
 
 from core.services.document_errors import DocumentInputError
@@ -211,7 +211,9 @@ class WorkerMainTests(SimpleTestCase):
                     with ZipFile(self.directory / 'document.zip') as result:
                         self.assertEqual(result.namelist(), report['files'])
 
+    @tag('slow')
     def test_repetitions_replace_the_source_with_the_marked_document(self):
+        """Lematy w kontekście liczy prawdziwy model językowy (ładowany kilka sekund), więc test jest wolny."""
         with self.simple_lemmas():
             code = self.run_worker(self.document(), include_docx=True, repetitions={
                 'analysis_options': {'long_sentences': False, 'long_paragraphs': False}})

@@ -75,12 +75,6 @@
     margin-bottom: var(--space-4);
 }
 
-@media screen and (max-width: 760px) {
-    .mailbox-filters {
-        grid-template-columns: minmax(0,1fr);
-    }
-}
-
 .intake-stack > .intake-panel {
     width: 100%;
     box-sizing: border-box;
@@ -135,11 +129,14 @@
 }
 
 @media screen and (max-width: 760px) {
+    .mailbox-filters {
+        grid-template-columns: minmax(0,1fr);
+    }
+
     .mailbox-filters-dated, .recruitment-date-row {
         grid-template-columns: minmax(0, 1fr);
     }
 }
-
 @media screen and (max-width: 480px) {
     .mailbox-options-grid {
         grid-template-columns: minmax(0, 1fr);

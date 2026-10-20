@@ -75,10 +75,7 @@
                         <p>Pozycje własnych zamian słownikowych są w słowniku zamian{% if can_edit_replacements %} – możesz je tam zmieniać{% endif %}.</p>
                     </div>
                 </details>
-                <div class="odkurzacz-actions rule-actions" hidden>
-                    <button type="button" class="secondary-button small-button" data-rules="all">Zaznacz wszystkie</button>
-                    <button type="button" class="secondary-button small-button" data-rules="none">Odznacz wszystkie</button>
-                </div>
+                {% include "core/includes/program_rule_actions.html" %}
             </div>
             {% include "core/includes/program_rules.html" with rules=form.rules soft=form.remove_soft_whitespace %}
         </fieldset>
@@ -185,10 +182,7 @@
                 <details class="help-tip"><summary aria-label="Pomoc: {{ conversion_form.rules.label }}" title="Pomoc"><span aria-hidden="true">?</span></summary>
                     <div class="help-tip-body"><p>Działają tylko z zaznaczoną opcją „Użyj Odkurzacza”. Domyślnie zaznaczone są te same reguły co w Odkurzaczu.</p></div>
                 </details>
-                <div class="odkurzacz-actions rule-actions" hidden>
-                    <button type="button" class="secondary-button small-button" data-rules="all">Zaznacz wszystkie</button>
-                    <button type="button" class="secondary-button small-button" data-rules="none">Odznacz wszystkie</button>
-                </div>
+                {% include "core/includes/program_rule_actions.html" %}
             </div>
             {{ conversion_form.rules_shown }}
             {% include "core/includes/program_rules.html" with rules=conversion_form.rules soft=None %}
@@ -356,10 +350,7 @@
                 <details class="help-tip"><summary aria-label="Pomoc: opcje korekty scalania" title="Pomoc"><span aria-hidden="true">?</span></summary>
                     <div class="help-tip-body"><p>Te same reguły co w Odkurzaczu, stosowane do każdego pliku przed scaleniem.</p></div>
                 </details>
-                <div class="odkurzacz-actions rule-actions" hidden>
-                    <button type="button" class="secondary-button small-button" data-rules="all">Zaznacz wszystkie</button>
-                    <button type="button" class="secondary-button small-button" data-rules="none">Odznacz wszystkie</button>
-                </div>
+                {% include "core/includes/program_rule_actions.html" %}
             </div>
             {% include "core/includes/program_rules.html" with rules=merge_form.rules soft=merge_form.remove_soft_whitespace %}
         </fieldset>

@@ -242,7 +242,7 @@
                 {% for stage in stages %}
                     {% if stage.can_edit_schedule %}
                     <div class="quick-stage-card"><strong>{{ stage.get_stage_type_display }} – rezerwacja</strong>
-                    <form method="post" action="{% url 'core:change_scheduled_workflow_stage' stage.pk %}">{% include "core/includes/workflow_fields.html" %}
+                    <form method="post" action="{% url 'core:change_scheduled_workflow_stage' stage.pk %}" data-warn-unsaved>{% include "core/includes/workflow_fields.html" %}
                     <label for="schedule-{{ stage.pk }}">Data rozpoczęcia</label><input id="schedule-{{ stage.pk }}" type="date" name="started_at" min="{{ today_iso }}" value="{{ stage.started_at|date:'Y-m-d' }}" required>
                     <div class="actions"><button type="submit" name="action" value="save" class="primary-button">Zapisz datę</button><button type="submit" name="action" value="cancel" formnovalidate class="secondary-button" data-confirm="Odwołać rezerwację? Etap wróci do puli i może go wziąć inna osoba.">Odwołaj rezerwację</button></div>
                     </form></div>

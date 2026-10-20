@@ -6,6 +6,7 @@ from django.db import transaction
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.http import HttpResponse
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_http_methods
 from core.edit_policy import edit_policy
 from core.permissions import superuser_required, require_coordinator, require_team_member, is_team_member, is_coordinator, is_reviewer
@@ -21,6 +22,7 @@ from core.anthology_tasks import AnthologyNotificationsForm, CompactCoverAssignm
 from workflow.services import ROLE_GROUPS
 from workflow.models import WorkflowRoleAssignment
 
+@never_cache
 @login_required
 @require_GET
 @superuser_required
@@ -69,10 +71,14 @@ class AnthologyTaskForm(forms.ModelForm):
         model = AnthologyTask
         fields = ('status', 'assigned_to')
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, people=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['assigned_to'].widget.attrs['data-searchable-person'] = 'true'
-        self.fields['assigned_to'].queryset = task_people(self.instance.assigned_to_id)
+        if people is None:
+            self.fields['assigned_to'].queryset = task_people(self.instance.assigned_to_id)
+        else:
+            # Lista osób wspólna dla wszystkich formularzy zadań strony (jedno zapytanie zamiast pięciu).
+            self.fields['assigned_to'].use_people(people)
         if self.locked:
             # A finished audio description is reopened only in the admin panel.
             for field in self.fields.values():
@@ -87,13 +93,15 @@ class AnthologyTaskForm(forms.ModelForm):
 
 def _task_forms(anthology, data=None, **kwargs):
     tasks = {task.task_type: task for task in anthology.production_tasks.all()}
-    return [AnthologyTaskForm(data=data, prefix=kind,
+    people = task_people(*(task.assigned_to_id for task in tasks.values()))
+    return [AnthologyTaskForm(data=data, prefix=kind, people=people,
                 instance=tasks.get(kind) or AnthologyTask(anthology=anthology, task_type=kind))
             for kind in (AnthologyTask.TaskType.BANNERS, AnthologyTask.TaskType.BLURB,
                          AnthologyTask.TaskType.TYPESETTING, AnthologyTask.TaskType.COVER_TYPOGRAPHY, AnthologyTask.TaskType.AUDIO_DESCRIPTION)]
 
 
 @edit_policy(lambda request, anthology, kwargs: require_coordinator(request.user))
+@never_cache
 @login_required
 @require_http_methods(['GET', 'POST'])
 def anthology_detail(request, anthology_id):
@@ -202,6 +210,7 @@ def anthology_detail(request, anthology_id):
     }, status=400 if request.method == 'POST' else 200)
 
 
+@never_cache
 @login_required
 @require_GET
 @superuser_required
@@ -210,6 +219,7 @@ def role_names(request):
     return render(request, 'core/role_names.html', role_names_context(request.GET))
 
 
+@never_cache
 @login_required
 @require_GET
 @superuser_required

@@ -196,6 +196,62 @@ class MergeDocumentsTests(SimpleTestCase):
         self.assertEqual(len(changes), 4)
         Document(BytesIO(merged))
 
+    def test_note_part_is_taken_from_the_donor_only_when_the_base_lacks_it(self):
+        """Pakiet bez relacji dokumentu albo z relacją do nieistniejącej części przypisów nie ma przypisów
+        (odsyłacz to błąd); pierwszy plik z własną częścią przypisów zachowuje ją; przy dodawaniu części z dawcy
+        zajęty rId jest omijany, a ustawienia przypisów trafiają na koniec, gdy nie ma elementu kotwiczącego,
+        i nie są dublowane, gdy już są; bez word/settings.xml albo bez stylów dawcy scalanie też działa."""
+        footnotes = rebuild_docx(noted_document(['A', 1], note_text='Przypis')).getvalue()
+        rels = 'word/_rels/document.xml.rels'
+        missing = 'odsyłacz przypisu bez treści przypisu'
+        for label, broken in (('bez relacji dokumentu', replace_part(footnotes, rels, lambda root: None, drop=(rels,))),
+                              ('relacja do brakującej części', replace_part(footnotes, rels, lambda root: None,
+                                                                            drop=('word/footnotes.xml',)))):
+            with self.subTest(label), self.assertRaisesMessage(MergeError, missing):
+                merge_documents([docx_bytes(), broken])
+
+        def take_next_rid(root):
+            root.append(etree.Element(f'{{{root.nsmap[None]}}}Relationship', Id=f'rId{len(root) + 2}',
+                                      Type='http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings',
+                                      Target='settings.xml'))
+
+        def keep_only_zoom(root):
+            for node in list(root):
+                if etree.QName(node).localname != 'zoom':
+                    root.remove(node)
+
+        def add_footnote_properties(root):
+            root.insert(0, etree.Element(qn('w:footnotePr')))
+
+        plain = docx_bytes('Bez przypisów')
+        cases = (
+            ('przypisy w pierwszym pliku', [footnotes, plain, footnotes], 'A[1]Bez przypisówA[2]', 1),
+            ('zajęty rId', [replace_part(plain, rels, take_next_rid), footnotes], 'Bez przypisówA[1]', 1),
+            ('ustawienia bez kotwicy', [replace_part(plain, 'word/settings.xml', keep_only_zoom), footnotes],
+             'Bez przypisówA[1]', 1),
+            ('ustawienia już z przypisami', [replace_part(plain, 'word/settings.xml', add_footnote_properties), footnotes],
+             'Bez przypisówA[1]', 1),
+            ('bez ustawień', [replace_part(plain, 'word/settings.xml', lambda root: None, drop=('word/settings.xml',)),
+                              footnotes], 'Bez przypisówA[1]', None),
+            ('dawca bez stylów', [plain, replace_part(footnotes, 'word/styles.xml', lambda root: None,
+                                                      drop=('word/styles.xml',))], 'Bez przypisówA[1]', 1),
+        )
+        for label, parts, text, properties in cases:
+            with self.subTest(label):
+                merged = merge_documents(parts)
+                with ZipFile(BytesIO(merged)) as archive:
+                    files = {name: archive.read(name) for name in archive.namelist()}
+                self.assertEqual(noted_text(etree.fromstring(files['word/document.xml'])), text)
+                relationships = etree.fromstring(files[rels])
+                ids = [node.get('Id') for node in relationships]
+                self.assertEqual(len(ids), len(set(ids)))
+                self.assertEqual(sum(node.get('Type', '').endswith('/footnotes') for node in relationships), 1)
+                if properties is None:
+                    self.assertNotIn('word/settings.xml', files)
+                else:
+                    self.assertEqual(files['word/settings.xml'].count(b'<w:footnotePr'), properties)
+                    Document(BytesIO(merged))
+
     def test_missing_input_or_body_is_an_error(self):
         """Pusta lista plików albo dokument bez w:body – MergeError zamiast uszkodzonego wyniku."""
         no_body = replace_document(docx_bytes(), lambda root: root.remove(root.find(qn('w:body'))))

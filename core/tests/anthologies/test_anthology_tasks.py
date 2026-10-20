@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from django.contrib import admin
 from django.contrib.auth import get_user_model
+from django.db.models import Q
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -105,6 +106,24 @@ class AnthologyTaskPanelTests(AnthologyPageData, TestCase):
         data.update({'blurb-status': 'commissioned', 'blurb-assigned_to': person.pk})
         self.assertEqual(self.client.post(self.url, data).status_code, 302)
         self.assertEqual(self.book.production_tasks.get(task_type='blurb').assigned_to, person)
+
+    def test_task_forms_share_one_people_query(self):
+        """Pięć formularzy zadań pobiera listę osób raz (zadania, osoby i blokada gotowej audiodeskrypcji = 3 zapytania);
+        każde pole ma te same opcje, także osobę nieaktywną z zadania, a walidacja wartości działa na pełnym querysecie."""
+        retired = Person.objects.create(first_name='Dawna', last_name='Osoba', is_active=False, email='dawna@example.com')
+        task = self.book.production_tasks.get(task_type='banners')
+        task.assigned_to, task.status = retired, 'commissioned'
+        task.save()
+        with self.assertNumQueries(3):
+            forms_list = _task_forms(self.book)
+            rendered = [[value for value, _ in form.fields['assigned_to'].choices] for form in forms_list]
+        expected = ['', *Person.objects.filter(Q(is_active=True) | Q(pk=retired.pk)).order_by(
+            'last_name', 'first_name', 'pk').values_list('pk', flat=True)]
+        self.assertEqual(rendered, [expected] * 5)
+        self.assertEqual(len(forms_list[0].fields['assigned_to'].choices), len(expected))
+        self.assertEqual(forms_list[1].fields['assigned_to'].clean(str(retired.pk)), retired)
+        self.assertEqual(self.client.get(self.url).context['task_forms'][0].fields['assigned_to'].queryset.get(pk=retired.pk),
+                         retired)
 
     def test_duplicate_illustrator_is_not_created(self):
         Illustrator.objects.create(first_name='Nowa', last_name='cover', is_active=False)

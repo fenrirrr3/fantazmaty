@@ -11,7 +11,7 @@ from core.permissions import (
     can_view_author_data, is_superuser, team_member_required,
 )
 from core.selectors.people import (user_leave_information, profile_assignments as _profile_assignments, imported_work_summary as _imported_work_summary)
-from people.models import Person, Role
+from people.models import Person
 from texts.models import Review, ReviewAssignment
 
 
@@ -43,11 +43,7 @@ def _filter_data(request):
 @require_GET
 @team_member_required
 def people_list(request):
-    can_view_email = True
     form = PeopleFilterForm(_filter_data(request))
-    if not can_view_email:
-        form.fields["query"].widget.attrs["placeholder"] = "Imię lub nazwisko"
-
     people = (
         Person.objects.filter(Q(pk__in=Person.objects.active().values('pk')) | Q(is_external=True))
         .select_related("user")
@@ -91,10 +87,7 @@ def people_list(request):
             "people": page_obj,
             "page_obj": page_obj,
             "filter_form": form,
-            "form": form,
-            "roles": Role.objects.order_by("name", "pk"),
             "query": query,
-            "can_view_team_email": can_view_email,
             "people_column_count": 3,
         },
         status=400 if form.errors else 200,

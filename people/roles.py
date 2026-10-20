@@ -24,7 +24,6 @@ SOCIAL_MEDIA = "Social Media"
 
 # Rola honorowa – wyłącznie wyróżniona etykieta, nie daje żadnych uprawnień ani dostępu.
 EMPEROR = "Imperator Ludzkości"
-HONORARY_ROLES = (EMPEROR,)
 
 # Koordynatorzy działów.
 EDITING_COORDINATOR = "Koordynator redakcji"

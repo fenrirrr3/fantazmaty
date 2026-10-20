@@ -464,6 +464,19 @@ class SubmissionMailPreviewTests(SubmissionMailboxMixin, TestCase):
         self.assertNotContains(response, '<img')
         self.assertContains(response, '&lt;img src=x onerror=alert(2)&gt;')
 
+    def test_preview_refuses_bad_uid_and_missing_message(self):
+        """Numer wiadomości nie jest liczbą – odmowa bez pobierania; wiadomość zniknęła ze skrzynki – błąd 400."""
+        for name, uid, message, fetched in (('litery', 'abc', 'Nieprawidłowy wybór wiadomości.', False),
+                                            ('brak', '', 'Nieprawidłowy wybór wiadomości.', False)):
+            with self.subTest(name):
+                response, fetch = self.preview(named_mail(), uid=uid)
+                self.assertContains(response, message, status_code=400)
+                self.assertEqual(fetch.called, fetched)
+        data = {'action': 'preview', 'uid': '12', 'selection': submission_selection(self.user, self.box, (12,))}
+        with patch('core.views.mailbox.fetch_messages', return_value=[]):
+            response = self.client.post(self.url, data)
+        self.assertContains(response, 'Nie udało się pobrać wiadomości. Pobierz nagłówki ponownie.', status_code=400)
+
     def test_preview_outside_selection_or_without_javascript(self):
         """Wiadomość spoza listy – błąd 400 bez pobierania; bez JS przycisk tematu pokazuje podgląd na stronie."""
         response, fetch = self.preview(named_mail(), uid='99')

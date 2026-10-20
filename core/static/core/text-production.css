@@ -24,12 +24,6 @@
     gap: var(--space-2);
 }
 
-@media screen and (max-width: 760px) {
-    .text-production {
-        grid-template-columns: minmax(0, 1fr);
-    }
-}
-
 /* Equal-width collapsible panels in both story and chapter details. */
 
 .text-detail-pair {
@@ -63,11 +57,14 @@
 }
 
 @media screen and (max-width: 760px) {
+    .text-production {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
     .text-detail-pair {
         grid-template-columns: minmax(0, 1fr);
     }
 }
-
 .text-tags-actions {
     margin-top: auto;
 }
@@ -105,8 +102,4 @@
 
 .text-detail-pair[data-detail-pair="assignment-history"] {
     align-items: start;
-}
-
-.text-notes-tags.extract-volume-notes {
-    grid-template-columns: minmax(0, 1fr);
 }

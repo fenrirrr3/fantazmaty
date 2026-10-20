@@ -649,14 +649,7 @@ section:has(#reserved-assignments-heading) {
     color: var(--success);
 }
 
-/* Notatki koordynatora i redakcyjne obok siebie. */
-.notes-editor-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-5);
-    align-items: start;
-}
-
+/* Panel notatki (koordynatora, redakcyjnej, tagów). */
 .notes-editor-panel {
     min-width: 0;
     padding: var(--card-padding);
@@ -673,22 +666,14 @@ section:has(#reserved-assignments-heading) {
     background: var(--danger-light);
 }
 
-.notes-editor-grid textarea {
-    min-height: 160px;
-}
-
 .coordinator-note-create > summary {
     color: var(--primary);
     cursor: pointer;
 }
 
-/* Na stronie tekstu panele są niższe, a przełącznik notatki stoi nad siatką. */
+/* Na stronie tekstu panele są niższe. */
 .work-information .notes-editor-panel {
     padding: var(--space-4);
-}
-
-.work-information .notes-editor-grid.has-note-toggle {
-    margin-top: var(--space-7);
 }
 
 .work-information .form-field > label {
@@ -835,7 +820,6 @@ section:has(#reserved-assignments-heading) {
 .correction-form-card {
     margin-top: var(--space-5);
 }
-
 
 #correction-bulk {
     display: flex;
@@ -1064,7 +1048,6 @@ section:has(#reserved-assignments-heading) {
     .dashboard-grid,
     .dashboard-intake-grid,
     .global-search-results,
-    .notes-editor-grid,
     .text-info-grid:not(.is-single),
     .text-notes-pair,
     .management-action,
@@ -1121,37 +1104,22 @@ section:has(#reserved-assignments-heading) {
         --table-bleed: var(--space-4);
         padding-inline: var(--space-4);
     }
-}
 
-@media screen and (max-width: 480px) {
-    .auth-card {
-        padding: var(--space-5);
-    }
-
-    .dashboard-summary {
-        grid-template-columns: minmax(0, 1fr);
-    }
-
-    .profile-summary-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .global-search-form,
-    .complete-stage-form,
-    .workflow-action-buttons,
-    .vacation-actions {
-        flex-direction: column;
-        align-items: stretch;
-    }
-
-    .workflow-action-buttons :is(form, button),
-    .vacation-actions > *,
-    .stage-date-input {
-        width: 100%;
-    }
-
-    .quick-stage-card :is(.take-stage-form, .start-stage-form) {
+    /* Teksty do wzięcia na telefonie: „Przejmij” i data mieszczą się w karcie (data przechodzi niżej). */
+    .take-stage-form,
+    .start-stage-form {
         flex-wrap: wrap;
+    }
+
+    .take-stage-compact .stage-date-input,
+    .stage-date-input {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    /* W układzie kolumnowym podstawa 280px stawała się wysokością pola – duża luka nad „Wyszukaj”. */
+    .global-search-form > .global-search-field {
+        flex-basis: auto;
     }
 }
 
@@ -1299,7 +1267,37 @@ section:has(#reserved-assignments-heading) {
     font-size: var(--font-size-sm);
 }
 
-@media (max-width: 480px) {
+@media screen and (max-width: 480px) {
+    .auth-card {
+        padding: var(--space-5);
+    }
+
+    .dashboard-summary {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .profile-summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .global-search-form,
+    .complete-stage-form,
+    .workflow-action-buttons,
+    .vacation-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .workflow-action-buttons :is(form, button),
+    .vacation-actions > *,
+    .stage-date-input {
+        width: 100%;
+    }
+
+    .quick-stage-card :is(.take-stage-form, .start-stage-form) {
+        flex-wrap: wrap;
+    }
+
     .overdue-item {
         grid-template-columns: 3.5rem minmax(0, 1fr);
     }
@@ -1314,7 +1312,6 @@ section:has(#reserved-assignments-heading) {
         justify-self: start;
     }
 }
-
 /* ===== Karta tekstu: nazwa pliku etapu ===== */
 .stage-file-name {
     display: flex;
@@ -1344,25 +1341,6 @@ section:has(#reserved-assignments-heading) {
     font-family: var(--font-mono);
     font-size: var(--font-size-md);
     overflow-wrap: anywhere;
-}
-
-@media screen and (max-width: 760px) {
-    /* Teksty do wzięcia na telefonie: „Przejmij” i data mieszczą się w karcie (data przechodzi niżej). */
-    .take-stage-form,
-    .start-stage-form {
-        flex-wrap: wrap;
-    }
-
-    .take-stage-compact .stage-date-input,
-    .stage-date-input {
-        min-width: 0;
-        max-width: 100%;
-    }
-
-    /* W układzie kolumnowym podstawa 280px stawała się wysokością pola – duża luka nad „Wyszukaj”. */
-    .global-search-form > .global-search-field {
-        flex-basis: auto;
-    }
 }
 
 /* Zewnętrzne ilustracje: informacja o zgłaszaniu się nad filtrami listy. */

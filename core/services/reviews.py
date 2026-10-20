@@ -29,7 +29,6 @@ from texts.services import (
 from workflow.models import WorkflowStage
 
 
-MAX_BULK_REVIEWS = 1000
 READING_BLOCKED_MESSAGE = (
     "Pobieranie tego zgłoszenia do recenzji jest zablokowane po ocenie „Nie doczytałem”. "
     "Odblokować je może koordynator recenzji."
@@ -38,8 +37,6 @@ READING_BLOCKED_MESSAGE = (
 
 class ReviewReadingBlocked(ValidationError):
     """Odmowa pobrania do recenzji; komunikat nie zawiera danych autora."""
-MAX_DATABASE_ID = 9_223_372_036_854_775_807
-
 OPEN_STATUSES = frozenset(
     {
         Review.Status.NEW,
@@ -126,33 +123,6 @@ def _validate_form(form):
         )
 
     return form.cleaned_data
-
-
-def _normalise_review_ids(review_ids):
-    if review_ids is None or isinstance(review_ids, (str, bytes)):
-        raise ValidationError("Przesłano nieprawidłową listę zgłoszeń.")
-
-    result = set()
-
-    for index, review_id in enumerate(review_ids):
-        if index >= MAX_BULK_REVIEWS:
-            raise ValidationError(
-                f"Jednorazowo można zmienić najwyżej "
-                f"{MAX_BULK_REVIEWS} zgłoszeń."
-            )
-
-        if (
-            type(review_id) is not int
-            or not 1 <= review_id <= MAX_DATABASE_ID
-        ):
-            raise ValidationError("Przesłano nieprawidłowy identyfikator.")
-
-        result.add(review_id)
-
-    if not result:
-        raise ValidationError("Zaznacz przynajmniej jedno zgłoszenie.")
-
-    return sorted(result)
 
 
 @transaction.atomic

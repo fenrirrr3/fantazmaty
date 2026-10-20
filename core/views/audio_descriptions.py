@@ -75,9 +75,11 @@ class DescriptionForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.description = description
         current = list(description.controllers.values_list("pk", flat=True)) if description else []
-        self.fields["controllers"].queryset = task_people(*current)
+        # Jedna lista osób dla obu pól (zapisani kontrolerzy i wykonawca są w niej zawsze).
+        people = task_people(self.instance.assigned_to_id, *current)
+        self.fields["controllers"].use_people(people)
         self.fields["controllers"].initial = current
-        self.fields["assigned_to"].queryset = task_people(self.instance.assigned_to_id)
+        self.fields["assigned_to"].use_people(people)
         self.fields["assigned_to"].widget.attrs["data-searchable-person"] = "true"
         for field in self.fields.values():
             field.widget.attrs["class"] = "form-control"

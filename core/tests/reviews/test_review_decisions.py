@@ -4,14 +4,12 @@ from datetime import timedelta
 from django.contrib.admin.sites import site
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.http import QueryDict
-from django.test import RequestFactory, SimpleTestCase
+from django.test import RequestFactory
 from django.urls import reverse
 from django.utils import timezone
 
 from core.selectors.reviews import review_list_context
-from core.services import reviews as service
 from core.services.reviews import (
-    MAX_BULK_REVIEWS,
     _validate_status_change,
     assign_reviewer,
     change_review_status,
@@ -155,15 +153,6 @@ class AuthorNotificationRuleTests(ReviewFixtures):
         yesterday = timezone.localdate() - timedelta(days=1)
         self.assertEqual(self.notify(rejected, yesterday).author_notified_at, yesterday)
         self.assertIsNone(self.notify(rejected, None).author_notified_at)
-
-
-class ReviewIdListTests(SimpleTestCase):
-    def test_bulk_selection_must_be_a_bounded_list_of_positive_ids(self):
-        for value in (None, '1,2', b'1', [], ['1'], [0], [True], [service.MAX_DATABASE_ID + 1],
-                      list(range(1, MAX_BULK_REVIEWS + 2))):
-            with self.subTest(value=str(value)[:30]), self.assertRaises(ValidationError):
-                service._normalise_review_ids(value)
-        self.assertEqual(service._normalise_review_ids((3, 1, 3)), [1, 3])
 
 
 class ReviewAdminRestrictionTests(ReviewFixtures):

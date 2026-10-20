@@ -755,6 +755,8 @@ class ReviewAssignmentAdmin(ServiceOwnedReviewAdmin):
 @admin.register(Reviewers)
 class ReviewersAdmin(ServiceOwnedReviewAdmin):
     list_display = ('__str__',)
+    # Etykieta wiersza to tytuł zgłoszenia – bez złączenia lista robiła zapytanie na wiersz.
+    list_select_related = ('review',)
 
 
 

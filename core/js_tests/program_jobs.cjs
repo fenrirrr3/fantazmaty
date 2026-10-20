@@ -101,6 +101,12 @@ function fixture(saved) {
     await f.respond({url:'/programy/zadania/badreplacements/'});
     await f.respond({state:'done',warnings:[],summary:[],replacements:'zepsute'});
     assert.equal(f.summary.children.length,2);
+    // Uwagi programu: komunikat i nagłówek nie mówią o konwerterze, bo pokazuje je każdy program.
+    f = fixture(); f.form.events.submit({preventDefault(){},submitter:f.submit});
+    await f.respond({url:'/programy/zadania/warned/'}); await f.respond({state:'done',warnings:['Utworzono 3 pliki.']});
+    assert.equal(f.notes.hidden,false); assert.equal(f.notes.children[0].textContent,'Uwagi programu');
+    assert.equal(f.label.textContent,'Gotowe. Program zgłosił uwagi – są wypisane poniżej.');
+    assert.deepEqual(f.notes.children[1].children.map(item => item.textContent),['Utworzono 3 pliki.']);
     // Podział DOCX: przycisk „Wyślij autorom” tylko z adresem serwera; archiwum zostaje po pobraniu.
     for (const [mailUrl, shown] of [['/programy/zadania/split/wyslij-autorom/',true],[undefined,false],['https://evil.example/',false],['//evil.example/',false]]) {
         f = fixture(); f.form.events.submit({preventDefault(){},submitter:f.submit});
@@ -111,5 +117,5 @@ function fixture(saved) {
         assert.equal(f.download.hidden,!shown);
         assert.match(f.label.textContent,shown ? /możesz wysłać pliki autorom/ : /Kopia na serwerze została usunięta/);
     }
-    console.log('Program jobs JS: progress, cancellation, early cancellation, reload, confirmation, download, change summary, removed images, replacements, split mailing OK');
+    console.log('Program jobs JS: progress, cancellation, early cancellation, reload, confirmation, download, change summary, removed images, replacements, program notes, split mailing OK');
 })().catch(error => { console.error(error); process.exitCode = 1; });

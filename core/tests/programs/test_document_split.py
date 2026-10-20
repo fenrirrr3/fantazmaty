@@ -980,6 +980,25 @@ class SplitMailingViewTests(IsolatedProgramDirsMixin, SplitMailingData):
         page = self.client.get(url)
         return page, page.context['batch_token']
 
+    def test_mailing_pages_use_shared_form_markup(self):
+        """Formularz wiadomości i mail testowy mają pola jak inne programy: etykieta, podpowiedź z identyfikatorem
+        dla aria-describedby, ostrzeżenie o niezapisanych zmianach; neutralne uwagi programu na stronie zadania."""
+        url, folder = self.split_job(warnings=['Utworzono 2 pliki.'])
+        tree = html.fromstring(self.client.get(url).content.decode())
+        form = tree.xpath('//form[@data-warn-unsaved]')[0]
+        self.assertEqual(form.xpath('.//div[@class="form-field"]/p[@class="helptext"]/@id'),
+                         ['id_anthology_helptext', 'id_subject_helptext', 'id_message_helptext'])
+        self.assertEqual(form.xpath('.//select[@name="anthology"]/@aria-describedby'), ['id_anthology_helptext'])
+        self.assertFalse(tree.xpath('//p[@class="muted-text"]'))
+        page, _token = self.checklist(self.prepare(url))
+        tree = html.fromstring(page.content.decode())
+        self.assertEqual(tree.xpath('//form[contains(@class, "split-mailing-step")]/h2/text()'),
+                         ['Lista kontrolna', 'Mail testowy'])
+        self.assertEqual(tree.xpath('//input[@name="test_address"]/@aria-describedby'), ['id_test_address_helptext'])
+        job = self.client.get(url.replace('wyslij-autorom/', '') + '?view=page')
+        self.assertContains(job, 'Uwagi programu')
+        self.assertNotContains(job, 'Uwagi do konwersji')
+
     def test_checklist_then_each_author_gets_only_own_file(self):
         """Lista kontrolna z tytułem, autorami, plikiem, adresami i stanem; każdy e-mail ma tylko plik swojego tekstu."""
         url, folder = self.split_job()
@@ -1158,6 +1177,43 @@ class SplitMailingViewTests(IsolatedProgramDirsMixin, SplitMailingData):
             with self.subTest(action=data['action']):
                 self.assertContains(self.client.post(url, data), expected, status_code=status)
         self.assertEqual(len(mail.outbox), 3)
+
+    def test_retry_and_test_errors_after_partial_send_keep_the_report(self):
+        """Po częściowej wysyłce: zły adres testu, wyłączona skrzynka i błąd SMTP przy ponowieniu – komunikat na
+        stronie raportu (400) z przyciskiem ponowienia, nic nie wychodzi, partia pozostaje otwarta."""
+        url, folder = self.split_job()
+        url = self.prepare(url)
+        _, token = self.checklist(url)
+        partial = locmem_connection(None)
+        original = partial.send_messages
+
+        def refuse_anna(messages):
+            if 'anna@example.test' in messages[0].to:
+                raise smtplib.SMTPRecipientsRefused({'anna@example.test': (550, b'no')})
+            return original(messages)
+        partial.send_messages = refuse_anna
+        self.smtp.side_effect = lambda mailbox: partial
+        page = self.client.post(url, {'action': 'send', 'batch': token, 'rows': ['0', '1']}, follow=True)
+        retry_token = page.context['batch_token']
+        sent = len(mail.outbox)
+
+        self.smtp.side_effect = locmem_connection
+        cases = (
+            ('zły adres testu', {'action': 'test', 'batch': retry_token, 'test_address': 'nie-adres'}, False,
+             'Wprowadź poprawny adres email.'),
+            ('ponowienie ze zmienioną listą kontrolną', {'action': 'retry', 'batch': retry_token + 'x'}, False,
+             'Lista kontrolna wygasła'),
+            ('ponowienie bez skrzynki', {'action': 'retry', 'batch': retry_token}, True, 'Brak skrzynki do wysyłki'),
+        )
+        for label, data, disable_mailbox, expected in cases:
+            with self.subTest(label):
+                if disable_mailbox:
+                    MailboxConnection.objects.update(is_active=False)
+                response = self.client.post(url, data)
+                self.assertContains(response, expected, status_code=400)
+                self.assertContains(response, 'Wyślij ponownie nieudane (1)', status_code=400)
+                self.assertEqual(len(mail.outbox), sent)
+        self.assertEqual([(folder / name).exists() for name in ('result', mailing.SENT)], [True, False])
 
     def test_test_mail_goes_to_owner_and_leaves_batch_ready(self):
         """„Wyślij test”: jeden mail „[TEST]” z plikiem losowego gotowego wiersza; adres w sesji, wpis w dzienniku,

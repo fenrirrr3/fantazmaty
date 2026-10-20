@@ -124,6 +124,8 @@ class DiscordNotification(models.Model):
 
     class Meta:
         ordering = ('-created_at', '-pk')
+        # Ponawianie wysyłek i diagnostyka filtrują po stanie i czasie utworzenia.
+        indexes = [models.Index(fields=['status', 'created_at'], name='discord_status_time_idx')]
         verbose_name = 'wysłane powiadomienie Discord'
         verbose_name_plural = 'powiadomienia Discord – historia wysyłek'
 

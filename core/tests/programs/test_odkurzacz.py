@@ -767,6 +767,61 @@ class NoteReferenceTests(SimpleTestCase):
                             self.assertEqual([child.tag for child in run], [qn('w:rPr'), node.tag])
                             self.assertEqual(run.getparent().tag, qn('w:p'))
 
+    def test_note_references_beside_existing_tracked_changes(self):
+        """Istniejące w:ins/w:del i w:rPrChange wokół odsyłacza: usunięty tekst jest pomijany, przesunięta kropka
+        nie dziedziczy w:rPrChange (nowy przebieg), identyfikatory zmian pozostają unikalne, a tekst przed
+        odsyłaczem na początku akapitu (cudzysłów zamykający) dostaje nowy przebieg przed odsyłaczem."""
+        def wrap(root, index, tag, delete=False):
+            paragraph = root.find('.//' + qn('w:p'))
+            run = [node for node in paragraph if node.tag == qn('w:r')][index]
+            change = etree.Element(qn('w:' + tag), {qn('w:id'): '9', qn('w:author'): 'A'})
+            run.addprevious(change)
+            change.append(run)
+            if delete:
+                for node in run.findall(qn('w:t')):
+                    node.tag = qn('w:delText')
+
+        def property_change(root):
+            run = root.find('.//' + qn('w:r'))
+            properties = etree.Element(qn('w:rPr'))
+            run.insert(0, properties)
+            etree.SubElement(etree.SubElement(properties, qn('w:rPrChange'), {qn('w:id'): '5', qn('w:author'): 'A'}),
+                             qn('w:rPr'))
+
+        cases = (
+            ('wstawiony tekst przed odsyłaczem', ['Tekst.', 1], lambda root: wrap(root, 0, 'ins'), 'Tekst[1].'),
+            ('usunięty tekst przed odsyłaczem', ['Stare', 'Tekst.', 1], lambda root: wrap(root, 0, 'del', True),
+             'Tekst[1].'),
+            ('zmiana formatowania sąsiedniego przebiegu', ['Tekst.', 1], property_change, 'Tekst[1].'),
+            ('cudzysłów za odsyłaczem na początku akapitu', [1, '”'], lambda root: None, '”[1]'),
+        )
+        for name, parts, change, expected in cases:
+            for track_changes in (False, True):
+                with self.subTest(name, track_changes=track_changes):
+                    source = noted_document(parts)
+                    output = BytesIO()
+                    with ZipFile(source) as archive, ZipFile(output, 'w') as target:
+                        for item in archive.infolist():
+                            data = archive.read(item.filename)
+                            if item.filename == 'word/document.xml':
+                                root = etree.fromstring(data)
+                                change(root)
+                                data = etree.tostring(root)
+                            target.writestr(item, data)
+                    output.seek(0)
+                    summary = {}
+                    result = clean_docx(output, self.on, track_changes=track_changes, summary=summary)
+                    self.assertEqual(_noted_texts(result), expected)
+                    self.assertEqual(summary.get('note_references'), 1)
+                    body = Document(BytesIO(result.getvalue())).element.body
+                    ids = [node.get(qn('w:id')) for node in body.iter(qn('w:ins'), qn('w:del'), qn('w:rPrChange'))]
+                    self.assertEqual(len(ids), len(set(ids)))
+                    reference = body.find('.//' + qn('w:footnoteReference'))
+                    self.assertEqual([child.tag for child in reference.getparent()], [qn('w:rPr'), reference.tag])
+                    for run in body.iter(qn('w:r')):
+                        if run.find(qn('w:t')) is not None and (run.find(qn('w:t')).text or '') in ('.', '”'):
+                            self.assertIsNone(run.find(qn('w:rPr') + '/' + qn('w:rPrChange')))
+
     def test_custom_mark_reference_stays_with_its_mark(self):
         """Odsyłacz z własnym znakiem (customMarkFollows, znak „*” w osobnym przebiegu) jest barierą: reguła
         note_references nie oddziela go od znaku."""

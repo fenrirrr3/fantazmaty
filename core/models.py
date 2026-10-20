@@ -256,7 +256,9 @@ class WorkflowEvent(models.Model):
 
     class Meta:
         ordering = ('-created_at', '-pk')
-        indexes = [models.Index(fields=['actor', 'created_at', 'id'], name='workflow_actor_time_idx')]
+        indexes = [models.Index(fields=['actor', 'created_at', 'id'], name='workflow_actor_time_idx'),
+                   # Historia tekstu i podzapytanie „ostatnia zmiana statusu” (sortowanie listy tekstów).
+                   models.Index(fields=['text', 'created_at', 'id'], name='workflow_text_time_idx')]
         verbose_name = 'zmiana workflow'
         verbose_name_plural = 'zmiany workflow'
 

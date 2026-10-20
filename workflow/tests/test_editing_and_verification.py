@@ -454,6 +454,7 @@ class WorkflowPermissionTests(WorkflowTestDataMixin, TestCase):
             (StageType.FIRST_VERIFICATION, verifier, self.verifier_1, True),
             (StageType.FIRST_VERIFICATION, verifier, inactive, False),
             (StageType.EDITING, None, self.superuser, False),
+            (StageType.AUTHOR_EDITING, None, self.superuser, False),
             (StageType.READY, None, self.superuser, False),
         ):
             with self.subTest(kind=kind, user=user.username, active=user.is_active):

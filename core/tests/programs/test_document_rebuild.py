@@ -523,6 +523,14 @@ class RebuildNotesTests(SimpleTestCase):
             'własny znak bez znaku przypisu w treści': (
                 ['A', 1, '*'], {'reference': 'w:customMarkFollows="1"', 'note_text': '* Gwiazdka', 'mark': False},
                 [], 'A[1]*', ['* Gwiazdka'], './/w:*[@w:id="1"]'),
+            'hiperłącze w przypisie': (
+                ['A', 1], {'note_runs': '<w:hyperlink><w:r><w:t>link</w:t></w:r></w:hyperlink>'},
+                ['odnośniki hiperłączy (widoczny tekst pozostanie) (liczba: 1)'], 'A[1]', ['[ref]link'], None),
+            'dwa odsyłacze do tego samego przypisu': (['A', 1, 'B', 1], {'note_text': 'Jeden'}, [], 'A[1]B[2]',
+                                                      ['[ref]Jeden', '[ref]Jeden'], None),
+            'znak przypisu dopiero po tekście': (
+                ['A', 1], {'mark': False, 'note_runs': '<w:r><w:t>x</w:t><w:footnoteRef/></w:r>'},
+                [], 'A[1]', ['[ref]x'], None),
         }
         for label, (parts, options, omissions, body, notes, xpath) in cases.items():
             with self.subTest(label):
@@ -540,6 +548,31 @@ class RebuildNotesTests(SimpleTestCase):
                     self.assertTrue(root.xpath(xpath, namespaces=NS))
                 custom = Document(result).element.body.xpath('.//w:footnoteReference/@w:customMarkFollows')
                 self.assertEqual(custom, ['1'] if 'reference' in options else [])
+
+    def test_text_in_the_reference_run_and_rebuilt_separators(self):
+        """Tekst w tym samym przebiegu przed odsyłaczem i za nim trafia do osobnych przebiegów; ponowna przebudowa
+        wyniku (część z separatorami w:type) odtwarza tylko zwykłe przypisy."""
+        source = noted_document(['A', 1], note_text='Przypis')
+        output = BytesIO()
+        with ZipFile(source) as archive, ZipFile(output, 'w') as target:
+            for item in archive.infolist():
+                data = archive.read(item.filename)
+                if item.filename == 'word/document.xml':
+                    root = etree.fromstring(data)
+                    reference = root.xpath('.//w:footnoteReference', namespaces=NS)[0]
+                    reference.addprevious(parse_xml(f'<w:t {nsdecls("w")}>przed</w:t>'))
+                    reference.getparent().append(parse_xml(f'<w:t {nsdecls("w")}>po</w:t>'))
+                    data = etree.tostring(root)
+                target.writestr(item, data)
+        output.seek(0)
+        first = rebuild_docx(output)
+        self.assertEqual(note_parts(first, 'footnote')[:2], ('Aprzed[1]po', ['[ref]Przypis']))
+        runs = Document(first).paragraphs[0].runs
+        self.assertEqual([run.text for run in runs], ['A', 'przed', '', 'po'])
+        second = rebuild_docx(BytesIO(first.getvalue()))
+        _, texts, root, _ = note_parts(second, 'footnote')
+        self.assertEqual(texts, ['[ref]Przypis'])
+        self.assertEqual(root.xpath('./w:footnote/@w:type', namespaces=NS), ['separator', 'continuationSeparator'])
 
     def test_notes_survive_the_whole_preparation_with_the_cleaner(self):
         """Przebudowa → ujednolicenie → miękkie entery → Odkurzacz: treść przypisu poprawiona,

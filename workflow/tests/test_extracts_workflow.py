@@ -163,6 +163,23 @@ class ExtractsWorkflowTests(WorkflowTestDataMixin, TestCase):
         with self.assertRaisesMessage(ValidationError, 'dotyczy tylko Ekstraktów'):
             send_to_first_proofreading(ordinary, self.editor, self.today)
 
+    def test_first_proofreading_shortcut_needs_active_editing_and_no_other_open_stages(self):
+        """Po W1 skrót do K1 wymaga trwającej redakcji; inny otwarty etap redakcyjny (zaległa W2) blokuje go."""
+        cases = (
+            ('brak aktywnej redakcji', (('first_verification', 'done'), ('editing', 'done')),
+             'Nie ma aktywnej redakcji do zakończenia.'),
+            ('otwarta druga weryfikacja', (('first_verification', 'done'), ('editing', 'active'),
+                                          ('second_verification', 'active')),
+             'Najpierw zakończ pozostałe otwarte etapy redakcyjne.'),
+        )
+        for name, rows, message in cases:
+            with self.subTest(name):
+                self.legacy(*rows)
+                before = self.open_kinds()
+                with self.assertRaisesMessage(ValidationError, message):
+                    send_to_first_proofreading(self.text, self.editor, self.today)
+                self.assertEqual(self.open_kinds(), before)
+
     # --- zaległe wyłączone etapy -------------------------------------------------------------------
 
     def test_completing_disabled_stage_leads_to_nearest_allowed_stage(self):

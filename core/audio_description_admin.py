@@ -45,9 +45,20 @@ class AudioDescriptionAdmin(admin.ModelAdmin):
         js = ("core/person-multiselect.js",)
         css = {"all": ("core/person-multiselect.css",)}
 
+    def get_queryset(self, request):
+        # Lista: zadanie audiodeskrypcji z wykonawcą pobrane zbiorczo zamiast zapytania na wiersz.
+        from django.db.models import Prefetch
+        from texts.models import AnthologyTask
+        return super().get_queryset(request).prefetch_related(Prefetch(
+            "anthology__production_tasks", to_attr="audio_description_tasks",
+            queryset=AnthologyTask.objects.filter(task_type="audio_description").select_related("assigned_to")))
+
     @admin.display(description="Wykonawca i status")
     def task_link(self, obj):
-        task = obj.anthology.production_tasks.filter(task_type="audio_description").first()
+        tasks = getattr(obj.anthology, "audio_description_tasks", None)
+        if tasks is None:
+            tasks = obj.anthology.production_tasks.filter(task_type="audio_description").select_related("assigned_to")
+        task = next(iter(tasks), None)
         if task is None:
             return "Brak zadania"
         return format_html(

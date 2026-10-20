@@ -3,14 +3,16 @@ import sys
 import django
 from django.core.management.base import BaseCommand, CommandError
 
-# Musi być równa wersji przypiętej w requirements.txt (pilnuje tego test komendy).
-REQUIRED_DJANGO = '5.2.18'
+from core.runtime_checks import pinned_django_version
 
 
 class Command(BaseCommand):
     help = 'Sprawdza przypiętą wersję Django i pokazuje używany interpreter.'
     def handle(self, *args, **options):
         self.stdout.write(f'Python: {platform.python_version()}\nInterpreter: {sys.executable}\nDjango: {django.get_version()}')
-        if django.get_version() != REQUIRED_DJANGO:
-            raise CommandError(f'Wymagane Django {REQUIRED_DJANGO}. Uruchom pip install -r requirements.txt w środowisku aplikacji.')
+        required = pinned_django_version()
+        if required is None:
+            raise CommandError('Nie udało się odczytać przypiętej wersji Django z requirements.txt.')
+        if django.get_version() != required:
+            raise CommandError(f'Wymagane Django {required}. Uruchom pip install -r requirements.txt w środowisku aplikacji.')
         self.stdout.write(self.style.SUCCESS('Wersja Django zgodna z projektem i testami.'))

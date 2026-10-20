@@ -171,6 +171,22 @@ class PeopleChoicesTests(TestCase):
         self.assertFalse(people.filter(pk=stranger.pk).exists())
         self.assertIn('nieaktywny', form.fields['assigned_to'].label_from_instance(former))
 
+    def test_form_fields_share_one_people_query(self):
+        """Pola „Kto pisze” i „Konsultacja” korzystają z jednej listy osób: formularz robi 2 zapytania (kontrolerzy
+        i osoby), a wyświetlenie obu list opcji nie dodaje kolejnych; zapisany kontroler jest wśród opcji obu pól."""
+        from core.views.audio_descriptions import DescriptionForm
+        book = Anthology.objects.create(title='AD z dwoma polami')
+        controller = Person.objects.create(first_name='Była', last_name='Kontrolerka', is_active=False)
+        book.audio_description.controllers.add(controller)
+        task = book.production_tasks.get(task_type='audio_description')
+        with self.assertNumQueries(2):
+            form = DescriptionForm(instance=task, description=book.audio_description)
+            single = [value for value, _ in form.fields['assigned_to'].choices]
+            multiple = [value for value, _ in form.fields['controllers'].choices]
+        self.assertEqual(single, ['', *multiple])
+        self.assertIn(controller.pk, multiple)
+        self.assertEqual(form.fields['controllers'].clean([str(controller.pk)])[0], controller)
+
 
 class AnthologyTaskTableTests(TestCase):
     def test_task_table_and_audio_description_list_share_assignment(self):

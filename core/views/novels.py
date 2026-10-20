@@ -4,6 +4,7 @@ from django.core.exceptions import ValidationError, PermissionDenied
 from django.db import transaction, IntegrityError
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_http_methods
 
 from core.anthology_tasks import AnthologyNotificationsForm
@@ -17,6 +18,7 @@ from texts import novels
 from texts.vocabulary import canonicalize
 
 
+@never_cache
 @login_required
 @require_GET
 @team_member_required
@@ -39,6 +41,7 @@ def novel_list(request):
         'sort': sort, 'statuses': Anthology.Status.choices, 'coordinator': is_coordinator(request.user)})
 
 
+@never_cache
 @login_required
 @require_http_methods(['GET', 'POST'])
 @coordinator_required
@@ -61,6 +64,7 @@ def novel_add(request):
     return render(request, 'core/novels/form.html', {'form': form, 'heading': 'Dodaj powieść'}, status=400 if request.method == 'POST' else 200)
 
 
+@never_cache
 @login_required
 @require_http_methods(['GET', 'POST'])
 @team_member_required
@@ -96,12 +100,6 @@ def novel_detail(request, novel_id):
                         count = novels.add_chapters(book, profile, form.cleaned_data['chapter_numbers'],
                                                    lengths=form.cleaned_data['chapter_lengths'])
                         messages.info(request, f'Dodano rozdziały: {count}. Istniejące numery pozostawiono bez zmian.')
-                    elif action == 'chapter':
-                        form = ChapterForm(request.POST, instance=Text(anthology=book))
-                        forms['chapter_form'] = form
-                        if not form.is_valid():
-                            raise ValidationError('Popraw dane rozdziału.')
-                        novels.new_chapter(book, profile, **form.cleaned_data)
                     elif action == 'assign':
                         assignment_form = AssignmentForm(request.POST, prefix='assign')
                         forms['assignment_form'] = assignment_form
@@ -149,7 +147,7 @@ def novel_detail(request, novel_id):
     context = {'book': book, 'profile': profile, 'rows': rows, 'q': search,
         'coordinator': coordinator, 'error': error, 'production_open': request.GET.get('tasks') == '1' or bool(error and request.POST.get('action') in ('production', 'finish')), 'is_open': book.status != Anthology.Status.READY,
         'novel_token': novels.edit_token(book, request.user) if coordinator else '',
-        'chapter_form': ChapterForm(), 'chapter_range_form': ChapterRangeForm(prefix='add'),
+        'chapter_range_form': ChapterRangeForm(prefix='add'),
         'assignment_form': AssignmentForm(prefix='assign'),
         'task_forms': _task_forms(book) if coordinator else [], 'cover_form': CoverForm(instance=book) if coordinator else None,
         'notifications_form': AnthologyNotificationsForm(instance=book, prefix='discord') if coordinator else None}
@@ -157,6 +155,7 @@ def novel_detail(request, novel_id):
     return render(request, 'core/novels/detail.html', context, status=400 if error else 200)
 
 
+@never_cache
 @login_required
 @require_http_methods(['GET', 'POST'])
 @coordinator_required

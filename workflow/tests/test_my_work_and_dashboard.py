@@ -80,19 +80,19 @@ class MyWorkVisibilityTests(AnthologyWorkflowMixin, TestCase):
     def test_dashboard_classification_matches_annotate_my_work(self):
         """Pulpit klasyfikuje teksty w Pythonie z tych samych warunków co annotate_my_work (SQL):
         w każdym kroku procesu i dla każdej osoby stany „w toku” i „oczekuje” są identyczne."""
-        from workflow.read_queries import classify_user_texts, work_text_ids
+        from workflow.read_queries import _classify, work_text_ids
         people = (self.editor, self.other_editor, self.verifier_1, self.verifier_2, self.proofreader, self.coordinator)
         book = self.text.anthology
 
         def check(step):
             for user in people:
                 with self.subTest(step=step, user=user.username):
-                    active, waiting, editor_waiting = classify_user_texts(user, self.today)
+                    work = _classify(user, self.today)
                     expected = work_text_ids(Text.objects.all(), user, self.today)
-                    self.assertEqual((set(active), set(waiting)), (expected['active'], expected['waiting']))
+                    self.assertEqual((set(work.active), set(work.waiting)), (expected['active'], expected['waiting']))
                     editors = set(A.objects.current_cycle().filter(role='editor', assigned_to=user)
                                   .values_list('text_id', flat=True))
-                    self.assertEqual(set(editor_waiting), expected['waiting'] & editors)
+                    self.assertEqual(set(work.editor_waiting), expected['waiting'] & editors)
 
         # Tła: rezerwacja bez etapu, praca z autorem, tekst wycofany i etap z poprzedniego cyklu.
         reserved = Text.objects.create(title='Rezerwacja', length=1, anthology=book)

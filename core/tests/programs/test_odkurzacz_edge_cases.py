@@ -115,6 +115,14 @@ class CleanDocxGapTests(SimpleTestCase):
         texts = [node.text for node in cleaned.iter(qn('w:t'))]
         self.assertEqual(texts, ['Ala ma ', 'Jan  Nowak', None, ' kota i psa'])
 
+    def test_characters_inserted_beside_a_kept_tabulator(self):
+        """Odstępy wokół półpauzy między tabulatorami: tabulatory zostają, nowe spacje trafiają obok nich."""
+        source = docx_with_paragraph_xml('<w:r><w:t>Tekst</w:t><w:tab/><w:t>–</w:t><w:tab/><w:t>dalej</w:t></w:r>')
+        with clean_docx(source, {'dash_spaces'}) as result:
+            paragraph = Document(result).paragraphs[0]
+        self.assertEqual(paragraph.text, 'Tekst\t – \tdalej')
+        self.assertEqual(len(paragraph._p.findall('.//' + qn('w:tab'))), 2)
+
     def test_tracked_changes_keep_run_attributes_and_join_neighbouring_deletions(self):
         source = docx_with_paragraph_xml(
             '<w:r w:rsidR="00AB12CD"><w:t xml:space="preserve">Ala </w:t><w:t xml:space="preserve">ma </w:t>'

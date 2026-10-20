@@ -41,54 +41,28 @@
     overflow-wrap: anywhere;
 }
 
-/* Status audiobooka: odznaka z kolorem etapu, czytelnym w każdym motywie. */
-
-.audio-status {
-    --badge-bg: #f1f5f9;
-    --badge-fg: #334155;
-    --badge-border: currentColor;
-    display: inline-flex;
-    align-items: center;
-    min-height: var(--badge-height);
-    padding: 0 var(--space-2);
-    border: 1px solid var(--badge-border);
-    border-radius: var(--radius-sm);
-    background: var(--badge-bg);
-    color: var(--badge-fg);
-    font-size: var(--font-size-xs);
-    font-weight: 600;
-    line-height: var(--leading-tight);
-}
-
-/* Barwy jak w dawnym arkuszu: nagrywanie i poprawki – czerwień, korekta – zieleń,
-   montaż – fiolet, opublikowane – jasna zieleń. */
+/* Status audiobooka: geometria odznaki jest w components.css, tu tylko kolory etapów z palet motywu:
+   nagrywanie i poprawki – czerwień redakcji, korekta – zieleń, montaż – fiolet, opublikowane – zieleń sukcesu. */
 .audio-status--recording,
 .audio-status--corrections {
-    --badge-bg: #fde2e1;
-    --badge-fg: #8a1f1b;
+    --badge-bg: var(--editing-bg);
+    --badge-fg: var(--editing-fg);
 }
 
 .audio-status--proofreading {
-    --badge-bg: #e0f3e7;
-    --badge-fg: #1a5a35;
+    --badge-bg: var(--proofreading-bg);
+    --badge-fg: var(--proofreading-fg);
 }
 
 .audio-status--editing {
-    --badge-bg: #ede5ff;
-    --badge-fg: #5b2885;
+    --badge-bg: var(--ready-bg);
+    --badge-fg: var(--ready-fg);
 }
 
 .audio-status--published {
-    --badge-bg: #d4f5c4;
-    --badge-fg: #22560f;
+    --badge-bg: var(--success-light);
+    --badge-fg: var(--success);
 }
-
-/* Wersje dla ciemnego motywu: ciemne tło, jasny tekst w tej samej barwie. */
-:root[data-theme="dark"] .audio-status { --badge-bg: #2a3443; --badge-fg: #d5dde8; }
-:root[data-theme="dark"] :is(.audio-status--recording, .audio-status--corrections) { --badge-bg: #4a1f1d; --badge-fg: #ffb4ae; }
-:root[data-theme="dark"] .audio-status--proofreading { --badge-bg: #1f3f2c; --badge-fg: #a8e6bf; }
-:root[data-theme="dark"] .audio-status--editing { --badge-bg: #382a55; --badge-fg: #d9c6ff; }
-:root[data-theme="dark"] .audio-status--published { --badge-bg: #24461a; --badge-fg: #bdf0a3; }
 
 /* Tabele */
 
@@ -297,9 +271,7 @@
     .audio-detail-columns {
         grid-template-columns: 1fr;
     }
-}
 
-@media screen and (max-width: 760px) {
     .audio-stage-add {
         grid-template-columns: 1fr;
     }
@@ -324,14 +296,11 @@
     .audio-stage-table td.audio-stage-remove::before {
         content: none;
     }
-}
 
-@media screen and (max-width: 760px) {
     .audio-filters, .audio-metadata {
         grid-template-columns: 1fr;
     }
 }
-
 @media screen and (max-width: 480px) {
     .audio-name-profile {
         grid-template-columns: 1fr;

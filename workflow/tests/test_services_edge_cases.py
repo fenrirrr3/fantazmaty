@@ -1,5 +1,7 @@
 """Strażnicy usług procesu tekstu: odmowy przejść przy niespójnym stanie, powtórzenia etapów
 i pomijanie czwartej korekty w kolejce powtórzeń."""
+from datetime import timedelta
+
 from django.contrib.auth.models import AnonymousUser
 from django.core.exceptions import ValidationError
 from django.test import TestCase
@@ -143,6 +145,16 @@ class TransitionGuardTests(WorkflowTestDataMixin, TestCase):
         self.assert_refused(lambda: resume_editing(self.text, self.editor), 'W powtórzeniu użyj przycisku')
 
 
+    def test_stage_cannot_end_before_it_started(self):
+        """Data zakończenia wcześniejsza niż rozpoczęcie etapu jest odrzucana, etap pozostaje otwarty."""
+        self.begin_editing()
+        claim_stage(self.text, StageType.FIRST_VERIFICATION, self.verifier_1)
+        send_to_first_verification(self.text, self.editor, ended_at=self.today)
+        stage = start_first_verification(self.text, self.verifier_1, started_at=self.today)
+        self.assert_refused(lambda: complete_stage(stage, self.verifier_1, self.today - timedelta(days=1)),
+                            'Data zakończenia nie może być wcześniejsza niż data rozpoczęcia.')
+
+
 class EditingAfterFirstVerificationTests(WorkflowTestDataMixin, TestCase):
     """Czy trwająca redakcja nastąpiła po zakończonej pierwszej weryfikacji."""
 
@@ -151,6 +163,7 @@ class EditingAfterFirstVerificationTests(WorkflowTestDataMixin, TestCase):
         self.assertFalse(editing_follows_first_verification(self.text, None))
         # Rezerwacja W1 nadal czeka, więc redakcja nie jest drugą rundą.
         self.assertFalse(editing_follows_first_verification(self.text, editing))
+
 
 
 class CycleEntryClaimTests(TestCase):
@@ -286,47 +299,4 @@ class NumberingTests(TestCase):
         self.assertEqual(next_assignment_execution(self.text, Role.EDITOR), 1)
         self.assertEqual(stage_execution_for(None), 1)
         self.assertEqual(stage_execution_for(A(execution_number=4)), 4)
-
-
-class AlignStageExecutionsCommandTests(TestCase):
-    """Komenda ``align_stage_executions``: wyrównuje numer otwartego etapu do przydziału, pomija zakończone,
-    nieaktualne, bez przydziału i po przekazaniu; ``--dry-run`` niczego nie zapisuje."""
-
-    @classmethod
-    def setUpTestData(cls):
-        from workflow.models import WorkflowHandoff
-        cls.text = Text.objects.create(title='Rozjechany', length=100)
-        cls.assignment = A.objects.create(text=cls.text, role=Role.PROOFREADER_1, execution_number=2)
-        make = lambda kind, iteration, **fields: S.objects.create(  # noqa: E731
-            text=cls.text, stage_type=kind, iteration=iteration, assignment=cls.assignment, execution_number=1, **fields)
-        cls.open = make(StageType.FIRST_PROOFREADING, 1)
-        today = timezone.localdate()
-        cls.done = make(StageType.FIRST_PROOFREADING, 2, is_completed=True, started_at=today, ended_at=today)
-        cls.stale = make(StageType.FIRST_PROOFREADING, 3, is_current=False)
-        cls.handed = make(StageType.SECOND_PROOFREADING, 1)
-        previous = A.objects.create(text=cls.text, role=Role.PROOFREADER_1, execution_number=1, is_current=False)
-        WorkflowHandoff.objects.create(text=cls.text, stage=cls.handed, previous_assignment=previous,
-                                       new_assignment=cls.assignment)
-        cls.unassigned = S.objects.create(text=cls.text, stage_type=StageType.EDITING, iteration=1, execution_number=1)
-
-    def numbers(self):
-        return {stage.pk: S.objects.get(pk=stage.pk).execution_number
-                for stage in (self.open, self.done, self.stale, self.handed, self.unassigned)}
-
-    def test_only_open_current_assigned_stages_without_handoff_are_aligned(self):
-        from io import StringIO
-        from django.core.management import call_command
-        before = self.numbers()
-        out = StringIO()
-        call_command('align_stage_executions', '--dry-run', stdout=out)
-        self.assertEqual(self.numbers(), before)
-        self.assertIn('Rozjechany: Pierwsza korekta wyk. 1 -> 2', out.getvalue())
-        self.assertIn('Do zmiany: 1 (bez zapisu).', out.getvalue())
-        out = StringIO()
-        call_command('align_stage_executions', stdout=out)
-        self.assertIn('Poprawiono: 1.', out.getvalue())
-        self.assertEqual(self.numbers(), {**before, self.open.pk: 2})
-        out = StringIO()
-        call_command('align_stage_executions', stdout=out)
-        self.assertIn('Wszystkie otwarte etapy mają numer zgodny z przydziałem.', out.getvalue())
 

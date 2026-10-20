@@ -116,9 +116,8 @@ class TeamRolePaletteTests(TestCase):
                     self.assertGreaterEqual((light + 0.05) / (dark + 0.05), 4.5)
         components = (STATIC / 'components.css').read_text(encoding='utf-8')
         self.assertIn('linear-gradient(135deg, var(--emperor-bg), var(--emperor-bg-end))', components)
-        for side in ('before', 'after'):
-            with self.subTest(side=side):
-                self.assertIn(f'.role-badge[data-palette="emperor"]::{side} {{\n    content: "✠";', components)
+        self.assertIn('.role-badge[data-palette="emperor"]::before,\n.role-badge[data-palette="emperor"]::after {\n    content: "✠";',
+                      components)
         member = create_member('emperor-badge', team_roles.EMPEROR)
         self.client.force_login(create_superuser('emperor-badge-admin'))
         for url in (reverse('core:people_list'), reverse('core:person_detail', args=[member.person_profile.pk]),

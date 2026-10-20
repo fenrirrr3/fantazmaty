@@ -454,6 +454,28 @@ class SocialMediaQuoteTests(SocialMediaDataMixin, TestCase):
                          [('Smok spał na złocie.', 'social-editor Testowy'), ('Drugi cytat', 'social-person Testowy')])
         self.assertEqual(SocialMediaQuote.objects.get(pk=first.pk).added_by, None)
 
+    def test_members_without_roles_or_with_honorary_role_only_add_quotes(self):
+        """Osoba w ekipie bez żadnej roli i osoba tylko z rolą honorową „Imperator Ludzkości” widzą samą sekcję
+        „Cytaty”, dodają cytaty, ale nie zmieniają statusu (403); konto bez profilu osoby nie wchodzi wcale."""
+        no_roles = create_member('social-none', roles.EDITOR)
+        no_roles.person_profile.roles.clear()
+        no_roles.groups.clear()
+        emperor = create_member('social-emperor', roles.EMPEROR)
+        stranger = get_user_model().objects.create_user('social-stranger')
+        self.client.force_login(stranger)
+        self.assertEqual(self.client.get(URL).status_code, 403)
+        for user in (no_roles, emperor):
+            with self.subTest(user=user.username):
+                self.client.force_login(user)
+                page = self.client.get(URL)
+                self.assertEqual(page_doc(page).xpath('//details/@id'), ['social-quotes'])
+                self.assertEqual(self.add_quote(self.story, f'Cytat {user.username}').status_code, 302)
+                quote = SocialMediaQuote.objects.get(added_by=user)
+                self.assertEqual(self.change_quote(user, quote, 'quote_edit', status='posted',
+                                                   posted_on='2026-11-05').status_code, 403)
+                self.assertEqual(self.change_quote(user, quote, 'quote_delete').status_code, 302)
+                self.assertFalse(SocialMediaQuote.objects.filter(pk=quote.pk).exists())
+
     def test_status_and_date_are_changed_by_social_media_only(self):
         """Osoba od Social Media zmienia status i datę cudzego cytatu; autor cytatu bez tej roli dostaje 403
         i widzi status jako etykietę, bez listy wyboru."""

@@ -117,14 +117,49 @@ def task_people(*selected_ids):
     ).order_by('last_name', 'first_name', 'pk')
 
 
-class TaskPersonChoice(forms.ModelChoiceField):
+class _SharedPeopleIterator(forms.models.ModelChoiceIterator):
+    """Opcje z listy osób pobranej raz dla wszystkich pól strony (bez zapytania na pole)."""
+
+    def __iter__(self):
+        if self.field.empty_label is not None:
+            yield ('', self.field.empty_label)
+        for person in self.field.people:
+            yield self.choice(person)
+
+    def __len__(self):
+        return len(self.field.people) + (self.field.empty_label is not None)
+
+    def __bool__(self):
+        return self.field.empty_label is not None or bool(self.field.people)
+
+
+class _SharedPeopleMixin:
+    """Pole osób, które może korzystać ze wspólnej, już pobranej listy ``task_people``.
+
+    Po ``use_people(people)`` opcje pochodzą z listy, a queryset służy tylko walidacji wartości.
+    """
+    people = None
+
+    def use_people(self, people):
+        self.people = list(people)
+        self.queryset = people
+
+    def _get_choices(self):
+        if self.people is None:
+            return super()._get_choices()
+        return _SharedPeopleIterator(self)
+
+    choices = property(_get_choices, forms.ChoiceField.choices.fset)
+
+
+class TaskPersonChoice(_SharedPeopleMixin, forms.ModelChoiceField):
     def label_from_instance(self, person):
         if person.is_external:
             return f'{person} – zewnętrzny'
         return f'{person}' if person.is_active else f'{person} – nieaktywny'
 
 
-class TaskPeopleChoice(forms.ModelMultipleChoiceField):
+class TaskPeopleChoice(_SharedPeopleMixin, forms.ModelMultipleChoiceField):
     label_from_instance = TaskPersonChoice.label_from_instance
 
 

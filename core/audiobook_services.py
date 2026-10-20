@@ -20,7 +20,6 @@ from texts.production import active_production_texts
 
 Status = Audiobook.Status
 STAGE_ORDER = tuple(StageType.values)
-NEXT_STAGE = dict(zip(STAGE_ORDER, STAGE_ORDER[1:]))
 
 
 def stage_label(stage_type):

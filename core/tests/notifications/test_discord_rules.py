@@ -834,7 +834,9 @@ class AuthorTagTests(TestCase):
             'imię i nazwisko': ([('Anna', 'Nowak', '')], 'Anna Nowak'),
             'pseudonim zamiast nazwiska': ([('Jan', 'Kowalski', 'J.K. Mrok')], 'J.K. Mrok'),
             'kilku autorów w kolejności podpisu': ([('Zofia', 'Zięba', ''), ('Adam', 'Abacki', 'Ada')], 'Ada, Zofia Zięba'),
+            'ten sam pseudonim dwóch autorów raz': ([('Jan', 'Kowal', 'Mrok'), ('Jan', 'Nowak', 'Mrok')], 'Mrok'),
         }
+        self.assertEqual(text_authors(Text(title='Niezapisany', length=1)), '')
         for case, (people, expected) in cases.items():
             with self.subTest(case):
                 text = Text.objects.create(title=case, length=10)
@@ -1201,6 +1203,24 @@ class StageCompletedHttpTests(WorkflowTestDataMixin, TestCase):
             ('akcja „Zakończ etap”', list_action, [self.began('Pierwsza korekta'), self.ended('Pierwsza korekta')]),
         ])
 
+    def test_admin_start_date_starts_the_stage_once(self):
+        """Admin „Daty i przekazanie”: data rozpoczęcia zarezerwowanej, nierozpoczętej W1 to rozpoczęcie etapu
+        („Rozpoczęto”); ponowny zapis daty rozpoczętego etapu to poprawka danych – bez wiadomości."""
+        self.take(self.editor, 'ready_for_editing', started_at=self.day)
+        self.take(self.verifier_1, 'first_verification')
+        self.text_action(self.editor, 'core:send_to_first_verification_stage')
+
+        def dates():
+            self.text.refresh_from_db()
+            return self.post(self.superuser, 'admin:workflow_stage_dates', self.open_stage('first_verification').pk,
+                             started_at=self.day, version=version_of(self.text))
+
+        self.run_steps([
+            ('rozpoczęcie z admina', dates, [self.began('Pierwsza weryfikacja')]),
+            ('ponowny zapis daty rozpoczętego etapu', dates, []),
+        ])
+        self.assertEqual(self.open_stage('first_verification').started_at, self.today)
+
     def test_admin_history_corrections_send_nothing(self):
         """Uzupełnianie i poprawianie historii w adminie (brakujący etap – historyczny i z datami, korekta dat
         zakończonego etapu, cofnięcie zakończenia, korekta wykonawcy) to korekta danych, nie zdarzenie: bez
@@ -1328,6 +1348,33 @@ class AnthologyNotificationSettingTests(WorkflowTestDataMixin, TestCase):
                 with self.subTest(setting or 'bez antologii', case=case):
                     self.assertEqual(self.triggers(action), cases[case])
 
+    def test_setting_changed_while_stages_are_open(self):
+        """Zmiana ustawienia w trakcie procesu działa od razu dla kolejnych zdarzeń: po włączeniu powiadomień
+        przekazanie do W1 jest ogłaszane i przypominane, po wyłączeniu przypomnienia i zakończenie etapu milkną;
+        Ekstrakty i powieść podlegają temu samemu polu."""
+        books = {'antologia': Anthology.objects.create(title='Zmienna', discord_notifications=Setting.OFF),
+                 'Ekstrakty': Anthology.objects.create(title='Ekstrakty 9', is_extracts=True,
+                                                       discord_notifications=Setting.OFF),
+                 'powieść': Anthology.objects.create(title='Powieść', is_novel=True, discord_notifications=Setting.OFF)}
+        for case, book in books.items():
+            with self.subTest(case):
+                self.text = book.texts.first() or Text.objects.create(
+                    title=f'Tekst {case}', length=100, anthology=book, chapter_number=1 if book.is_novel else None)
+                WorkflowStage.objects.filter(text=self.text).delete()
+                WorkflowStage.objects.create(text=self.text, workflow_cycle=1, stage_type=StageType.READY_FOR_EDITING)
+                self.assertEqual(self.triggers(self.begin_editing), [])
+                Anthology.objects.filter(pk=book.pk).update(discord_notifications=Setting.ALL)
+                self.assertEqual(self.triggers(lambda: send_to_first_verification(self.text, self.editor,
+                                                                                  ended_at=self.today)),
+                                 ['first_verification', 'stage_completed'])
+                DiscordNotification.objects.update(created_at=timezone.now() - timedelta(days=8))
+                self.assertEqual(send_waiting_reminders(), 1)
+                Anthology.objects.filter(pk=book.pk).update(discord_notifications=Setting.OFF)
+                DiscordNotification.objects.filter(trigger='stage_waiting').delete()
+                self.assertEqual(send_waiting_reminders(), 0)
+                stage = claim_stage(self.text, StageType.FIRST_VERIFICATION, self.verifier_1)
+                self.assertEqual(self.triggers(lambda: complete_stage(stage, self.verifier_1, self.today)), [])
+
     def test_review_notifications_ignore_anthology_setting(self):
         """Zgłoszenie do recenzji (bez tekstu) wychodzi także z antologii z wyłączonymi powiadomieniami."""
         book = Anthology.objects.create(title='Cicha', discord_notifications=Setting.OFF)
@@ -1432,6 +1479,32 @@ class DiagnoseCommandTests(TestCase):
         for secret in ('tajny', 'Tajny', '555', 'Zwykła'):
             with self.subTest(secret=secret):
                 self.assertNotIn(secret, report)
+
+    def test_broken_or_empty_server_configuration(self):
+        """Brak kanałów w .env – „brak”; błędna konfiguracja – ostrzeżenie, kanał reguły bez oceny, uwaga przy
+        regule; zgłoszenie do recenzji w historii bez tytułu ani danych osoby."""
+        enable('first_proofreading', '[etap]')
+        review = Review.objects.create(anthology=Anthology.objects.create(title='Nabór'), title='Tajny tytuł',
+                                       author_first_name='Jan', author_last_name='Tajny', email='jan@example.com',
+                                       genre='fantasy', length=10)
+        DiscordNotification.objects.create(trigger='review_new', channel='Kanał', content='x', status='sent',
+                                           review=review)
+        cases = {
+            'brak kanałów': ({}, ['Kanały na serwerze (DISCORD_WEBHOOKS): brak', 'kanał: „Kanał” (w konfiguracji serwera: nie)',
+                                  'kanału „Kanał” nie ma w konfiguracji serwera']),
+            'błędna konfiguracja': (['nie słownik'], ['BŁĘDNA KONFIGURACJA – żadna wiadomość nie wyjdzie',
+                                                     'kanał: „Kanał”; treści: 1',
+                                                     'Uwagi: błędna konfiguracja kanałów na serwerze (DISCORD_WEBHOOKS)']),
+        }
+        for case, (webhooks, expected) in cases.items():
+            with self.subTest(case), override_settings(DISCORD_WEBHOOKS=webhooks):
+                out = StringIO()
+                call_command('discord_diagnose', stdout=out)
+                report = out.getvalue()
+                for text_part in expected:
+                    self.assertIn(text_part, report)
+                self.assertIn('– Wysłano – zgłoszenie do recenzji', report)
+                self.assertNotIn('Tajny', report)
 
     def test_hint_when_stages_end_without_messages(self):
         """Etapy kończą się (dziennik zmian), a wiadomości „Rozpoczęcie i zakończenie etapu” brak – komenda podpowiada

@@ -41,7 +41,7 @@
             <div class="filter-field social-media-search"><label for="social-q">Szukaj</label><input id="social-q" type="search" name="q" value="{{ query }}" maxlength="200" placeholder="Tytuł, autor, antologia, tagi lub gatunek"></div>
             <div class="filter-field"><label for="social-anthology">Antologia</label><select id="social-anthology" name="anthology"><option value="">Wszystkie</option>{% for item in anthologies %}<option value="{{ item.pk }}"{% if selected_anthology == item.pk|stringformat:'s' %} selected{% endif %}>{{ item.title }}</option>{% endfor %}</select></div>
             <div class="filter-field"><label for="social-status">Status</label><select id="social-status" name="status" multiple size="3" data-empty-label="Wszystkie">{% for value, label in status_choices %}<option value="{{ value }}"{% if value in selected_statuses %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
-            <div class="filter-actions"><label class="social-media-unpublished"><input type="checkbox" name="unpublished" value="1"{% if unpublished %} checked{% endif %}> Pokaż teksty niewydane</label><button class="primary-button" type="submit">Filtruj</button><a class="secondary-button" href="{% url 'core:social_media' %}">Wyczyść filtry</a></div>
+            <div class="filter-actions"><label class="boolean-filter-toggle"><input type="checkbox" name="unpublished" value="1"{% if unpublished %} checked{% endif %}> Pokaż teksty niewydane</label><button class="primary-button" type="submit">Filtruj</button><a class="secondary-button" href="{% url 'core:social_media' %}">Wyczyść filtry</a></div>
         </form>
     </div>
     <div class="table-container" role="region" tabindex="0" aria-label="Tabela opowiadań do promocji">

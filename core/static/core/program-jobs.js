@@ -115,11 +115,11 @@
                 const data = await request(url);
                 if (data.state === 'done') {
                     const warnings = Array.isArray(data.warnings) ? data.warnings : [];
-                    finish(warnings.length ? 'Gotowe. Konwerter zgłosił uwagi – są wypisane poniżej.' : 'Gotowe. Plik jest pobierany.');
+                    finish(warnings.length ? 'Gotowe. Program zgłosił uwagi – są wypisane poniżej.' : 'Gotowe. Plik jest pobierany.');
                     bar.hidden = false; bar.value = 100;
                     if (warnings.length) {
                         notes.replaceChildren();
-                        const title = document.createElement('strong'); title.textContent = 'Uwagi do konwersji';
+                        const title = document.createElement('strong'); title.textContent = 'Uwagi programu';
                         const list = document.createElement('ul');
                         warnings.forEach(text => { const item = document.createElement('li'); item.textContent = text; list.append(item); });
                         notes.append(title, list); notes.hidden = false;

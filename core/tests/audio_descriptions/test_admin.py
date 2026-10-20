@@ -37,6 +37,28 @@ class AudioDescriptionAdminTests(AudioDescriptionTestData, TestCase):
         form = AudioDescriptionAdminForm(instance=self.description)
         self.assertIn(person, form.fields['controllers'].queryset)
 
+    def test_admin_list_query_count_does_not_grow_with_descriptions(self):
+        """Lista audiodeskrypcji z kolumną „Wykonawca i status”: 1 i 4 antologie – ta sama liczba zapytań,
+        a kolumna pokazuje wykonawcę i status zadania każdego wiersza."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        self.task.assigned_to, self.task.status = self.writer.person_profile, 'commissioned'
+        self.task.save()
+        self.client.force_login(self.admin)
+        url = reverse('admin:core_audiodescription_changelist')
+        counts = []
+        for total in (1, 4):
+            for number in range(Anthology.objects.count(), total):
+                Anthology.objects.create(title=f'Kolejna antologia {number}')
+            self.client.get(url)  # rozgrzewka: sesja i pamięć podręczna
+            with CaptureQueriesContext(connection) as queries:
+                response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            counts.append(len(queries))
+        self.assertEqual(counts[0], counts[1])
+        self.assertContains(response, f'{self.writer.person_profile} – Zlecone')
+        self.assertContains(response, 'Nieprzypisane – Niezlecone', count=3)
+
     def test_controller_assignment_protects_anthology_from_admin_delete(self):
         self.description.controllers.add(self.controller.person_profile)
         request = RequestFactory().get('/')

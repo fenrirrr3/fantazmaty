@@ -169,8 +169,8 @@ class NovelLifecycleTests(TestCase):
                 transaction.set_rollback(True)
 
     def test_duplicate_chapter_and_book_type_changes_rejected(self):
-        response = self.post(action='chapter', chapter_number=1, title='Inny rozdział', length=300)
-        self.assertEqual(response.status_code, 400)
+        with self.assertRaises(ValidationError):
+            new_chapter(self.book, self.profile, chapter_number=1, length=300)
         self.assertEqual(self.book.texts.count(), 2)
         self.book.is_novel = False
         with self.assertRaises(ValidationError):
@@ -181,11 +181,11 @@ class NovelLifecycleTests(TestCase):
         response = self.client.get(self.url)
         self.assertContains(response, 'Pseudonim')
         self.assertNotContains(response, 'Ukryte Nazwisko')
-        self.assertEqual(self.client.post(self.url, {'action': 'chapter'}).status_code, 403)
+        self.assertEqual(self.client.post(self.url, {'action': 'chapters'}).status_code, 403)
         self.assertEqual(self.client.get(reverse('core:novel_add')).status_code, 403)
         client = Client(enforce_csrf_checks=True)
         client.force_login(self.admin)
-        self.assertEqual(client.post(self.url, {'action': 'chapter'}).status_code, 403)
+        self.assertEqual(client.post(self.url, {'action': 'chapters'}).status_code, 403)
 
     def test_pages_render_and_chapter_workflow_remains_accessible(self):
         for url in [reverse('core:novel_list'), self.url, reverse('core:novel_add'),
@@ -412,7 +412,7 @@ class NovelPageEdgeTests(NovelData, TestCase):
 
     def test_invalid_chapter_and_assignment_forms_save_nothing(self):
         cases = [
-            ({'action': 'chapter', 'chapter_number': ''}, 'Popraw dane rozdziału.'),
+            ({'action': 'chapters', 'add-chapter_numbers': ''}, 'Popraw numery rozdziałów lub liczby znaków.'),
             ({'action': 'assign', 'chapters': ['abc'], 'assign-role': 'editor',
               'assign-assignee': self.editor.pk}, 'Nieprawidłowy wybór rozdziałów.'),
             ({'action': 'assign', 'chapters': ['１'], 'assign-role': 'editor',

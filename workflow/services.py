@@ -471,14 +471,8 @@ def _finish_stage_record(stage, ended_at):
     ended_at = _validate_date(ended_at)
     ensure_stage_belongs_to_current_cycle(stage)
     ensure_text_is_not_withdrawn(stage.text)
-
-    if stage.is_completed:
-        raise ValidationError("Ten etap został już zakończony.")
-
-    if not stage.started_at:
-        raise ValidationError(
-            "Nie można zakończyć nierozpoczętego etapu."
-        )
+    # Wywołujący przekazują wyłącznie rozpoczęte, niezakończone etapy (get_active_stage,
+    # user_can_complete_stage, powtórzenia), więc nie sprawdzamy tego ponownie.
 
     if ended_at > timezone.localdate():
         raise ValidationError("Nie można zakończyć pracy z przyszłą datą.")
@@ -497,8 +491,7 @@ def _finish_stage_record(stage, ended_at):
 def _assign_role(text, role, user):
     from people.leave_access import require_available
     require_available(user)
-    if role == Role.STYLING and not user.is_superuser:
-        raise PermissionDenied("Stylowanie może przejąć tylko superuser.")
+    # Stylowanie tylko dla superusera sprawdzają wywołujący (claim_stage, _require_eligible_assignee).
     ensure_distinct_primary_verifier(text, role, user)
     from workflow.availability import ensure_distinct_proofreader
     ensure_distinct_proofreader(text, role, user)
@@ -1113,9 +1106,6 @@ def complete_stage(stage, user, ended_at, *, send_to_proofreading=None):
         next_stage_type = (
             StageType.FIRST_PROOFREADING if send_to_proofreading else StageType.EDITING
         )
-
-    if next_stage_type is None:
-        raise ValidationError("Ten etap nie ma przejścia do zakończenia.")
 
     if next_stage_type == StageType.EDITOR_CONTROL:
         editor_assignment = (

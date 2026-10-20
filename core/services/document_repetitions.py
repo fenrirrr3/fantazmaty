@@ -109,8 +109,7 @@ class Token:
     ignored: bool = False
 
 
-def _find_repeat_groups(words, progress=None, window_size=WINDOW_SIZE,
-                        include_prefix_matches=False):
+def _find_repeat_groups(words, window_size=WINDOW_SIZE, include_prefix_matches=False):
     """Indeks pozycji; sąsiednie pozycje wystarczą do wykrycia członków grupy.
 
     Kolejność grup odpowiada pierwszej parze w dawnej pętli i,j.
@@ -128,8 +127,6 @@ def _find_repeat_groups(words, progress=None, window_size=WINDOW_SIZE,
             if include_prefix_matches and token.stem5:
                 category = 5 if token.word_len == 5 else 6
                 buckets.setdefault(('stem5', token.stem5, category), []).append(i)
-        if progress is not None:
-            progress.update(1)
     groups, first_pairs = {}, {}
     for (kind, value, _), positions in buckets.items():
         key = (kind, value)
@@ -335,15 +332,13 @@ def _lemma_map(forms):
         return result
 
 
-def _context_analysis(texts, *, sentences, status_callback=None):
+def _context_analysis(texts, *, sentences):
     """Jeden przebieg modelu po akapitach: lematy słów w kontekście i (opcjonalnie) granice zdań.
 
     Model był uczony na zdaniach, więc lemat słowa w kontekście bywa inny (zwykle lepszy)
     niż lemat słowa podanego osobno; grupowanie powtórzeń korzysta z obu.
     Zwraca listę par: ({początek słowa: lemat}, [(początek zdania, koniec zdania)]).
     """
-    if status_callback:
-        status_callback('Analiza językowa – lematy w kontekście i granice zdań…')
     nlp = _get_nlp()
     disabled = _unused_pipes(nlp, 'context' if sentences else 'lemmas')
     result = []
@@ -486,8 +481,7 @@ def _apply_layout_marks(layout, marks, styles=None):
         _apply_run_colors(run, tokens, styles)
 
 
-def _extra_checks(paragraphs, lemmas, ignored, tracked, options, status_callback=None,
-                  layouts=None, apply_marks=True, sentence_spans=None):
+def _extra_checks(paragraphs, lemmas, ignored, tracked, options, layouts=None, apply_marks=True, sentence_spans=None):
     checks = {**CHECK_DEFAULTS, **options}
     layouts = _document_layout(paragraphs) if layouts is None else layouts
     texts = [layout[0] for layout in layouts]
@@ -528,8 +522,6 @@ def _extra_checks(paragraphs, lemmas, ignored, tracked, options, status_callback
                 report['empty_pairs'] += 1
     if checks['long_sentences']:
         if sentence_spans is None:
-            if status_callback:
-                status_callback('Rozpoznawanie zdań i sprawdzanie ich długości…')
             # Model rozpoznaje zdania w kontekście, zamiast dzielić przy każdej kropce.
             sentence_spans = [spans for _, spans in _context_analysis(texts, sentences=True)]
         for index, (text, spans) in enumerate(zip(texts, sentence_spans)):

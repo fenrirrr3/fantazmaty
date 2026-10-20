@@ -96,11 +96,13 @@ class RefreshSnapshotsTests(MailboxSnapshotMixin, TestCase):
 
 
 class FetchMailboxHeadersCommandTests(MailboxSnapshotMixin, TestCase):
-    def run_command(self, failing=()):
-        """Uruchamia komendę z atrapą odczytu; skrzynki o przeznaczeniu z `failing` zgłaszają błąd."""
+    def run_command(self, failing=(), empty=()):
+        """Uruchamia komendę z atrapą odczytu; skrzynki o przeznaczeniu z `failing` zgłaszają błąd, z `empty` są puste."""
         def read(config, **options):
             if config.purpose in failing:
                 raise MailboxError('Serwer pocztowy nie odpowiada.')
+            if config.purpose in empty:
+                return {**HEADERS, 'rows': [], 'total': 0}
             return HEADERS
 
         out, err = StringIO(), StringIO()
@@ -122,6 +124,11 @@ class FetchMailboxHeadersCommandTests(MailboxSnapshotMixin, TestCase):
         with self.assertRaisesMessage(CommandError, 'Nie udało się pobrać nagłówków z żadnej skrzynki.'):
             self.run_command(('submissions', 'recruitment'))
         self.assertEqual(MailboxHeaderSnapshot.objects.count(), 2)
+        # Pusta skrzynka to poprawny wynik (0 nagłówków), zapisany jako migawka bez błędu.
+        out, err = self.run_command(empty=('submissions',))
+        self.assertEqual((out.splitlines()[0], err), ('Zgłoszenia: pobrano nagłówki – 0.', ''))
+        snapshot = MailboxHeaderSnapshot.objects.get(mailbox=self.submissions)
+        self.assertEqual((snapshot.error, snapshot.result['rows']), ('', []))
 
     def test_missing_mailbox_is_skipped_with_information(self):
         """Brak aktywnej skrzynki rekrutacyjnej: pominięcie z wyjaśnieniem, bez migawki i bez kodu błędu."""

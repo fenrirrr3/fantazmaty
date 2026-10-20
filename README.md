@@ -77,8 +77,6 @@ EbookLib fpdf2 Pillow rapidfuzz spacy` i modelem `pl_core_news_sm` (polecenia w 
      to 2:00 UTC (3:00 zimą, 4:00 latem); wpisanie 3:00 UTC da 4:00 zimą i 5:00 latem. Polecenie:
      `cd /home/Fenrirrr3/fantazmaty && /home/Fenrirrr3/.virtualenvs/fantazmaty-venv/bin/python manage.py fetch_mailbox_headers`
      Kod wyjścia 1 oznacza, że żadna skrzynka nie odpowiedziała; wynik widać też w adminie („Automatycznie pobrane nagłówki”).
-   Jednorazowo po wdrożeniu z października 2026: `python manage.py align_stage_executions --dry-run`, a po sprawdzeniu
-   bez `--dry-run` – wyrównuje numer wykonania otwartych etapów do numeru przydziału (dawny rozjazd „wyk. 1” / „wyk. 2”).
    Scalenie zdublowanego wpisu w spisie „Lektorzy/montażyści” (źródło znika, nagrania i e-mail przechodzą na cel):
    `python manage.py merge_audio_contributor "Karolina Stachacz Bartosik" "Karolina Stachacz-Bartosik" --dry-run`,
    a po sprawdzeniu wyniku to samo bez `--dry-run`. Nazwy muszą być dokładne; przy kilku wpisach o tej samej nazwie
@@ -94,6 +92,9 @@ EbookLib fpdf2 Pillow rapidfuzz spacy` i modelem `pl_core_news_sm` (polecenia w 
    blokuje logowanie). Stare rozjazdy wyrównuje jednorazowo `python manage.py sync_accounts` (sam raport),
    a po sprawdzeniu `python manage.py sync_accounts --apply`. Kolizji adresów i osób bez e-maila komenda nie zmienia,
    tylko je wypisuje (popraw je na ekranie osoby i uruchom ponownie); kont bez osoby (np. superuserów) nie rusza.
+   Pomocniczy spis zespołu w TSV (wiersz na osobę i rolę; kolumny: nazwisko i imię, e-mail, e-mail Dropbox, funkcja,
+   ID osoby, konta i autora) wypisuje `python manage.py export_team_members > zespol.tsv`; z `--include-inactive`
+   także dawni członkowie. To tylko raport z identyfikatorami do porównań, nie kopia bazy ani format importu.
    Powiadomienia Discord wysyła aplikacja na bieżąco. Komendy `dispatch_workflow_notifications`
    już nie ma – usuń to zadanie, jeśli jest zaplanowane.
    Dawnej wysyłki każdej zmiany workflow na jeden kanał (`DISCORD_WORKFLOW_CHANNEL`, `DISCORD_AUDIOBOOK_CHANNEL`)

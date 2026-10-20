@@ -232,10 +232,6 @@ def require_post_layout(user):
         raise PermissionDenied(f"Dostęp wymaga uprawnień koordynatora lub roli {roles.POST_LAYOUT_PROOFREADER}.")
 
 
-def can_export_author_data(user):
-    return is_superuser(user)
-
-
 def can_manage_vacation(user, vacation):
     if not is_active_user(user) or vacation is None:
         return False

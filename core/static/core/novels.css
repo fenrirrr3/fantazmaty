@@ -31,12 +31,6 @@
     margin-top: var(--space-5);
 }
 
-@media screen and (max-width: 760px) {
-    .novel-assignment-grid {
-        grid-template-columns: minmax(0, 1fr);
-    }
-}
-
 .novel-assignment-grid .person-select {
     min-width: 0;
 }
@@ -97,12 +91,14 @@
 }
 
 @media screen and (max-width: 760px) {
+    .novel-assignment-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
     .novel-overview-grid {
         grid-template-columns: minmax(0, 1fr);
     }
-}
 
-@media screen and (max-width: 760px) {
     .novel-bulk-fields {
         grid-template-columns: minmax(0, 1fr);
     }

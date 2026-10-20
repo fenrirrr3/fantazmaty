@@ -296,6 +296,26 @@ class ReviewAdminSaveTests(ReviewAdminData):
         self.assertEqual(review.assignments.count(), 1)
 
 
+class ReviewersAdminListTests(ReviewAdminData):
+    def test_list_query_count_does_not_grow_with_rows(self):
+        """Lista „oceny recenzentów” pokazuje tytuły zgłoszeń bez zapytania na wiersz: 2 i 6 wierszy – tyle samo zapytań."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from texts.models import Reviewers
+        url = reverse('admin:texts_reviewers_changelist')
+        counts = []
+        for total in (2, 6):
+            for number in range(Reviewers.objects.count(), total):
+                Reviewers.objects.create(review=self.make_review(title=f'Zgłoszenie {number}'))
+            self.client.get(url)  # rozgrzewka: sesja i pamięć podręczna
+            with CaptureQueriesContext(connection) as queries:
+                response = self.client.get(url)
+            self.assertEqual(response.status_code, 200)
+            counts.append(len(queries))
+        self.assertEqual(counts[0], counts[1])
+        self.assertContains(response, 'Oceny: Zgłoszenie 5')
+
+
 class ReviewAdminDeletionTests(ReviewAdminData):
     """Usuwanie zgłoszeń w adminie: tylko superuser i tylko zgłoszenia bez recenzentów i bez utworzonego tekstu."""
 

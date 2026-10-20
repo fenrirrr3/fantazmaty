@@ -234,3 +234,16 @@ class RoleAccessMatrixTests(TestCase):
 
     def test_superuser(self):
         self.assert_matrix('superuser')
+
+    def test_pages_for_logged_in_users_are_never_cached(self):
+        """Każda strona wymagająca logowania (GET z odpowiedzią 200 dla superusera) ma nagłówek „no-store”,
+        żeby przeglądarka nie pokazała jej po wylogowaniu ani innej osobie na tym samym komputerze."""
+        self.client.force_login(self.users['superuser'])
+        cached = []
+        for key, url in sorted(all_routes().items()):
+            if key in PUBLIC:
+                continue
+            response = self.client.get(url)
+            if response.status_code == 200 and 'no-store' not in response.get('Cache-Control', ''):
+                cached.append(f'{key} {url}')
+        self.assertEqual(cached, [])

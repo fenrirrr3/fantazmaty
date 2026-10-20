@@ -1,5 +1,8 @@
-"""Luki pokrycia na stronie zgłoszenia i w danych recenzji: błędy serwisu, walidacja bez zapisu, raporty i eksport."""
+"""Luki pokrycia na stronie zgłoszenia i w danych recenzji: błędy serwisu, walidacja bez zapisu i raporty."""
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
+from django.contrib.messages import get_messages
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.http import QueryDict
@@ -9,7 +12,6 @@ from django.utils import timezone
 
 from authors.models import Author
 from core.edit_versions import version_of
-from core.exports import export_reviews_csv
 from core.selectors.reports import reviewer_activity_context
 from core.selectors.reviews import review_list_context
 from core.services.reviews import resolve_publication_authors
@@ -44,6 +46,35 @@ class ReviewPageServiceErrorTests(ReviewFixtures):
                 self.review.refresh_from_db()
                 self.assertEqual((item.opinion, item.notes, self.review.content_warnings),
                                  ('yes', f'Bez {field}', 'przemoc'))
+
+    def test_unblock_reading_errors_are_shown_as_messages(self):
+        """Odblokowanie pobierania ze strony: brak blokady (walidacja) i brak uprawnień – komunikat, bez zmian."""
+        Review.objects.filter(pk=self.review.pk).update(reading_blocked_at=timezone.now())
+        cases = (
+            ('nie koordynator', self.other, 'tylko koordynator recenzji'),
+            ('nie zablokowane', self.admin, 'nie jest zablokowane'),
+        )
+        for name, user, fragment in cases:
+            if name == 'nie zablokowane':
+                Review.objects.filter(pk=self.review.pk).update(reading_blocked_at=None)
+            with self.subTest(name):
+                response = self.post(user, 'unblock_review_reading', {})
+                self.assertRedirects(response, reverse('core:assigned_review_detail', args=[self.review.pk]),
+                                     fetch_redirect_response=False)
+                self.assertIn(fragment, [str(m) for m in get_messages(response.wsgi_request)][-1])
+        self.review.refresh_from_db()
+        self.assertIsNone(self.review.reading_unblocked_by)
+
+    def test_service_refusal_of_opinion_lands_on_the_form(self):
+        """Odmowa serwisu przy poprawnym formularzu (np. zgłoszenie zamknięte w międzyczasie) trafia
+        do błędów formularza, bez zapisu opinii."""
+        item = self.assign(self.reviewer)
+        with patch('core.views.reviews.save_reviewer_opinion', side_effect=ValidationError('Za późno.')):
+            response = self.post(self.reviewer, 'assigned_review_detail', {'opinion': 'yes', 'notes': 'Dobre'})
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.context['opinion_form'].non_field_errors(), [GENERIC_ERROR + '. Sprawdź aktualny status recenzji, przypisanie oraz wprowadzone dane.'])
+        item.refresh_from_db()
+        self.assertEqual(item.opinion, 'reading')
 
     def test_content_warnings_refused_for_transferred_review_and_invalid_input(self):
         """Ostrzeżeń nie zapisuje zgłoszenie przeniesione do procesu ani niepoprawny formularz."""
@@ -126,12 +157,3 @@ class SourceReviewLinkGapTests(ReviewFixtures):
         self.review.refresh_from_db()
         self.assertEqual((self.review.copied_text_id, self.review.publication_detached), (text.pk, False))
 
-
-class ReviewExportGapTests(ReviewFixtures):
-    def test_unordered_queryset_is_exported_in_primary_key_order(self):
-        """Zestaw bez sortowania jest eksportowany w kolejności kluczy, a nie w przypadkowej kolejności bazy."""
-        self.make_review(title='Drugie')
-        response = export_reviews_csv(self.admin, Review.objects.order_by())
-        rows = response.content.decode('utf-8-sig').splitlines()
-        self.assertEqual(rows[0], '"Nabór";"Autor";"Tytuł";"Status"')
-        self.assertEqual([row.split(';')[2] for row in rows[1:]], ['"Tekst"', '"Drugie"'])

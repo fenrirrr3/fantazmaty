@@ -87,7 +87,7 @@
                     <tr>
                         <th scope="col" data-sort-key="person">Imię i nazwisko</th>
                         <th scope="col">Role</th>
-                        {% if can_view_team_email %}<th scope="col" data-sort-key="email">Adres e-mail</th>{% endif %}
+                        <th scope="col" data-sort-key="email">Adres e-mail</th>
                         
                     </tr>
                 </thead>
@@ -114,7 +114,6 @@
                                 </div>
                             </td>
 
-                            {% if can_view_team_email %}
                             <td class="email-cell" data-double-copy data-copy-value="{% if person.can_show_team_contact %}{{ person.email }}{% endif %}">
                                 {% if person.email and person.can_show_team_contact %}
                                     <a href="mailto:{{ person.email }}" class="detail-link">
@@ -126,7 +125,6 @@
                                     <span class="muted-text">Nie podano</span>
                                 {% endif %}
                             </td>
-                            {% endif %}
 
                         </tr>
                     {% empty %}

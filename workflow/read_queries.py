@@ -315,12 +315,6 @@ def _classify(user, today):
     return work
 
 
-def classify_user_texts(user, today):
-    """Work state of the user's texts: active, waiting and waiting with editor role."""
-    work = _classify(user, today)
-    return work.active, work.waiting, work.editor_waiting
-
-
 def dashboard_querysets(user, today):
     # Klasyfikacja tekstów i rezerwacje są liczone raz, tylko dla tekstów użytkownika;
     # dalsze zapytania dostają gotowe listy identyfikatorów zamiast podzapytań.

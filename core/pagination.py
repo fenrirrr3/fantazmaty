@@ -99,7 +99,6 @@ def paginate_items(request, items, default=DEFAULT_PAGE_SIZE, *, page_param='pag
     page_obj.sort_columns = sort_columns
     page_obj.sort_param = sort_param
     page_obj.selected_page_size = page_size
-    page_obj.allowed_page_sizes = tuple(sorted(ALLOWED_PAGE_SIZES))
     page_obj.page_param = page_param
     page_obj.size_param = size_param
     page_obj.anchor = anchor
@@ -108,7 +107,6 @@ def paginate_items(request, items, default=DEFAULT_PAGE_SIZE, *, page_param='pag
         size_parameters = parameters.copy()
         size_parameters[size_param] = str(size)
         page_obj.size_options.append({'size': size, 'url': _page_url(size_parameters, 1, page_param, anchor)})
-    page_obj.query_string = parameters.urlencode()
 
     # QueryDict zachowuje wielokrotne wartości, np. roles=1&roles=2.
     # Szablony powinny używać zwykłego autoescape, bez filtra safe.

@@ -64,6 +64,43 @@ class ExtractImportTests(TestCase):
         out, error = self.run_import(header='imię\te-mail')
         self.assertIn('Nieprawidłowy nagłówek', error)
 
+    def test_file_and_row_edge_cases(self):
+        """Pusty i nieczytelny plik, nagłówek i wiersz z końcowymi tabulatorami, powtórzone i puste tytuły,
+        odrzucony zapis (za długie nazwisko) oraz wpis bez nowych tytułów."""
+        long_name = 'Jan ' + 'x' * 101
+        cases = (
+            ('pusty plik', b'\n\n', '', HEADER, 'Plik jest pusty.'),
+            ('nagłówek i wiersz z końcowymi tabulatorami', None, 'Jan Nowak\t\tjan@example.test\tA\tprzyjęte\t\t',
+             HEADER + '\t\t', 'przyjęte: „A”'),
+            ('powtórzone i puste tytuły', None, 'Jan Nowak\t\tjan@example.test\tA| a |A||B\tprzyjęte', HEADER,
+             'przyjęte: „A”, „B”'),
+            ('same puste tytuły', None, 'Jan Nowak\t\tjan@example.test\t | \tprzyjęte', HEADER, 'brak tytułów.'),
+            ('zapis odrzucony', None, f'{long_name}\t\tjan@example.test\tA\tprzyjęte', HEADER, 'BŁĄD: zapis odrzucony:'),
+            ('wpis bez zmian', None, 'Anna Zięba\t\tanna@example.test\tMgła nad rzeką\tprzyjęte', HEADER,
+             f'istniejący wpis Ekstraktów #{self.entry.pk} – bez zmian'),
+        )
+        for label, raw, row, header, expected in cases:
+            with self.subTest(label):
+                out, error = self.run_import(row, raw=raw, header=header)
+                self.assertIn(expected, out + (error or ''))
+                self.assertEqual(bool(error), label in ('pusty plik', 'same puste tytuły', 'zapis odrzucony'))
+        out, error = self.run_import(raw=b'\xff\xfe zle kodowanie')
+        self.assertIn('Nie można odczytać pliku', error)
+        self.assertEqual((Author.objects.count(), Extract.objects.count()), (1, 1))
+
+    def test_recruitment_name_must_not_be_blank_and_several_spellings_use_the_first(self):
+        """Pusta nazwa naboru to błąd; przy kilku pisowniach w bazie używana jest pierwsza alfabetycznie z ostrzeżeniem."""
+        row = 'Jan Nowak\t\tjan@example.test\tTytuł\tprzyjęte'
+        _, error = self.run_import(row, args=['--recruitment', '   '])
+        self.assertEqual(error, 'Podaj nazwę naboru.')
+        other = Author.objects.create(first_name='Ewa', last_name='Łoś', email='ewa@example.test')
+        Extract.objects.create(author=other, full_name='Ewa Łoś', email='ewa@example.test', recruitment='EKSTRAKTY PRÓBNE',
+                               title='T', accepted_titles='T', submission_dates='2026-01-05')
+        out, error = self.run_import(row, apply=True)
+        self.assertIsNone(error)
+        self.assertIn('nabór ma kilka pisowni: „EKSTRAKTY PRÓBNE”, „Ekstrakty Próbne” – użyto „EKSTRAKTY PRÓBNE”', out)
+        self.assertEqual(Extract.objects.get(author__email='jan@example.test').recruitment, 'EKSTRAKTY PRÓBNE')
+
     def test_author_matching_and_new_author_with_pseudonym(self):
         """Autor dopasowany po e-mailu (bez wielkości liter) lub po imieniu i nazwisku; inaczej nowy autor z pseudonimem."""
         Author.objects.create(first_name='Ewa', last_name='Łoś', email='ewa@example.test', pseudonym='Sowa')

@@ -7,6 +7,7 @@ from django.core.exceptions import ValidationError, PermissionDenied
 from django.db import IntegrityError, transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_http_methods
 
 from core.pagination import paginate_items
@@ -30,6 +31,7 @@ class TermForm(forms.ModelForm):
         fields = ('kind', 'name')
 
 
+@never_cache
 @login_required
 @require_http_methods(['GET', 'POST'])
 @team_member_required
@@ -91,6 +93,7 @@ def vocabulary_list(request):
         status=400 if error else 200)
 
 
+@never_cache
 @login_required
 @require_GET
 @team_member_required
@@ -106,6 +109,7 @@ def vocabulary_suggestions(request):
     return JsonResponse({'results': names})
 
 
+@never_cache
 @login_required
 @require_http_methods(['GET', 'POST'])
 @coordinator_required

@@ -184,12 +184,6 @@ html[data-theme="dark"] {
     }
 }
 
-@media print {
-    .cms-admin-quick-links {
-        display: none;
-    }
-}
-
 html[data-theme="autumn"] {
     color-scheme: light;
     --body-bg: #fffcf5;
@@ -318,11 +312,14 @@ table .copy-error {
 }
 
 @media print {
+    .cms-admin-quick-links {
+        display: none;
+    }
+
     .cms-admin-navigation, .copy-toast, .copy-value-button {
         display: none;
     }
 }
-
 /* Wyszukiwarka listy: pole i przycisk w jednej linii także na telefonie. */
 
 #changelist-search > div {
@@ -336,7 +333,7 @@ table .copy-error {
     overflow-x: auto;
 }
 
-@media (max-width: 760px) {
+@media screen and (max-width: 760px) {
     /* Długie opcje list wyboru (np. korekta przypisania etapu) nie wychodzą poza ekran telefonu. */
     #content select {
         max-width: 100%;

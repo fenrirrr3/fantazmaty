@@ -12,7 +12,7 @@ from docx import Document
 
 from core.odkurzacz_forms import DocumentConversionForm, OdkurzaczForm, RepetitionsForm
 from core.services.odkurzacz import (
-    ALL_EDITORIAL_RULES, DEFAULT_EDITORIAL_RULES, DEFAULT_REPLACEMENTS, EDITORIAL_RULES, FORM_DEFAULT_EDITORIAL_RULES,
+    ALL_EDITORIAL_RULES, CONTEXT, DEFAULT_EDITORIAL_RULES, DEFAULT_REPLACEMENTS, EDITORIAL_RULES, FORM_DEFAULT_EDITORIAL_RULES,
     _change_regions, _compile_pattern, USER_WORD_EXACT, USER_WORD_PATTERNS, _edit_opcodes, clean_docx,
     correct_editorial_text,
 )
@@ -66,6 +66,18 @@ class EditorialTextRuleTests(SimpleTestCase):
         self.assertEqual(correct_editorial_text(' - narracja', rules, trim_start=False), ' – narracja')
         self.assertEqual(correct_editorial_text('tekst – ', rules, trim_end=False), 'tekst – ')
         self.assertEqual(correct_editorial_text('  –Hę?', rules), '– Hę?')
+
+    def test_dash_context_looks_past_a_long_run_of_spaces(self):
+        """Sąsiedztwo myślnika: gdy w oknie kontekstu są same spacje, decyduje najbliższy znak poza oknem,
+        więc fragment bez przycinania nie jest brany za początek dialogu."""
+        gap = ' ' * (CONTEXT + 5)
+        for text, expected in (
+            (f'a{gap}–b', 'a – b'),
+            (f'a–{gap}b', 'a – b'),
+            (f'{gap}–b', f'{gap}–b'),
+        ):
+            with self.subTest(text=text.strip()):
+                self.assertEqual(correct_editorial_text(text, ['dash_spaces'], trim_start=False, trim_end=False), expected)
 
     def test_typographic_rules_are_available_and_can_be_disabled(self):
         added = {'unit_nbsp', 'reference_nbsp', 'dates_times', 'decimal', 'digit_groups'}
