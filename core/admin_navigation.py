@@ -17,7 +17,7 @@ GROUPS = (
     ('audio', 'Audio', ('core.audiobook', 'core.audiobookstage', 'core.audiocontributor', 'audiobooks_queue', 'audiobooks_blacklist',
                         'core.audiodescription', 'audio_description_tasks', 'core.publicaudiobooksettings')),
     ('people', 'Ludzie', ('people.person', 'people.vacation', 'people.role', 'authors.author', 'blacklist')),
-    ('promotion', 'Promocja', ('core.textsocialmedia', 'core.socialmediaentry')),
+    ('promotion', 'Promocja', ('core.textsocialmedia', 'core.socialmediaentry', 'core.socialmediaquote')),
     ('recruitment', 'Rekrutacja', ('core.recruitment', 'recruitment_mailbox')),
     ('settings', 'Ustawienia', ('core.mailboxconnection', 'core.mailboxheadersnapshot', 'core.notificationrule', 'core.discordrole')),
     ('history', 'Historia i diagnostyka', ('workflow.workflowstage', 'workflow.workflowroleassignment', 'core.workflowevent', 'core.discordnotification', 'core.useractivity')),

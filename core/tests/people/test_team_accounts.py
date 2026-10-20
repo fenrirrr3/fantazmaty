@@ -230,7 +230,8 @@ class PersonAccountTests(TestCase):
         return EmailBackend().authenticate(None, username=email, password=self.PASSWORD)
 
     def test_account_creation_and_email_change_are_validated_in_person_form(self):
-        """Konto z ekranu osoby: wymaga e-maila wolnego w kontach (także jako nazwa użytkownika), osoby z ekipy,
+        """Konto z ekranu osoby: wymaga e-maila wolnego w kontach (także jako nazwa użytkownika) i mieszczącego się
+        w nazwie użytkownika, osoby z ekipy,
         niezewnętrznej i bez konta; zmiana e-maila osoby z kontem też nie może zająć cudzego loginu."""
         cases = {
             'e-mail innego konta': ({'create_account': 'on', 'email': 'ZAJETY@example.test'}, None,
@@ -243,6 +244,8 @@ class PersonAccountTests(TestCase):
                             'create_account', '„wciąż w ekipie”'),
             'bez e-maila': ({'create_account': 'on', 'email': ''}, None, 'email', 'Konto wymaga adresu e-mail'),
             'wybrane konto': ({'create_account': 'on', 'user': 'taken'}, None, 'create_account', 'ma już konto'),
+            'e-mail dłuższy niż login': ({'create_account': 'on', 'email': f'{"a" * 60}@{"b" * 60}.{"c" * 60}.pl'}, None,
+                                         'email', 'Adres e-mail jest zbyt długi, by służyć jako login.'),
             'zmiana na cudzy login': ({'first_name': 'Ala', 'last_name': 'Konto', 'email': 'zajety@example.test',
                                        'user': 'member'}, 'person', 'email', 'Konto z tym adresem e-mail już istnieje.'),
         }
@@ -327,6 +330,15 @@ class PersonAccountTests(TestCase):
         self.taken.refresh_from_db()
         self.assertFalse(self.taken.is_active)
         self.assertEqual((self.taken.email, self.taken.username), ('inne-konto@example.test',) * 2)
+
+    def test_person_without_existing_account_changes_nothing(self):
+        """Osoba bez konta albo z kontem usuniętym w międzyczasie (nieaktualne user_id) – brak zmian konta."""
+        from people.accounts import account_changes
+        for label, user_id in (('bez konta', None), ('konto usunięte', 999999)):
+            with self.subTest(label):
+                person = Person(first_name='Ola', last_name='Nowa', email='ola@example.test', is_active=False,
+                                user_id=user_id)
+                self.assertEqual(account_changes(person, previous=None), {})
 
     def test_superuser_account_is_never_blocked_automatically(self):
         """Superuser z profilem osoby nie traci logowania po odznaczeniu „wciąż w ekipie” ani przez komendę

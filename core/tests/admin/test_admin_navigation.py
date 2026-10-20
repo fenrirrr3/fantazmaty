@@ -65,7 +65,7 @@ class AdminNavigationTests(TestCase):
         # Ekstrakty zamykają grupę Teksty, tak jak w menu strony.
         self.assertEqual(names(by_label['texts'])[-2:], ['extract', 'extractvolume'])
         self.assertIn('author', names(by_label['people']))
-        self.assertEqual(names(by_label['promotion']), ['textsocialmedia', 'socialmediaentry'])
+        self.assertEqual(names(by_label['promotion']), ['textsocialmedia', 'socialmediaentry', 'socialmediaquote'])
         self.assertIn('workflowstage', names(by_label['history']))
         self.assertIn('workflowroleassignment', names(by_label['history']))
         detail = by_label['history']['subgroups'][0]

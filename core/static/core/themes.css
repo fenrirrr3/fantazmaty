@@ -32,6 +32,7 @@
     --typesetter-bg: #edf0c6; --typesetter-fg: #4b5614;
     --sound-engineer-bg: #cff3fc; --sound-engineer-fg: #15546b;
     --social-media-bg: #a21caf; --social-media-fg: #ffffff;
+    --emperor-bg: #7f1d1d; --emperor-bg-end: #1c1917; --emperor-fg: #fcd34d;
     /* Chrome: header bar, sidebar, overlays (constant unless a theme overrides). */
     --header-fg: #ffffff; --header-muted: #b9c7d7;
     --header-hover: #293e56; --header-accent: #80baff;
@@ -79,6 +80,7 @@
     --typesetter-bg: #393e1c; --typesetter-fg: #e1e89b;
     --sound-engineer-bg: #163e4b; --sound-engineer-fg: #a6e9f8;
     --social-media-bg: #86198f; --social-media-fg: #ffffff;
+    --emperor-bg: #5c0f0f; --emperor-bg-end: #0c0a09; --emperor-fg: #fbbf24;
     --sidebar-heading-bg: var(--table-header); --sidebar-heading-fg: var(--text);
     --sidebar-link-bg: var(--surface-alt); --sidebar-link-ring: var(--border);
     --table-header-fg: var(--text);
@@ -126,6 +128,7 @@
 [data-palette="typesetter"] { --palette-bg: var(--typesetter-bg); --palette-fg: var(--typesetter-fg); }
 [data-palette="sound-engineer"] { --palette-bg: var(--sound-engineer-bg); --palette-fg: var(--sound-engineer-fg); }
 [data-palette="social-media"] { --palette-bg: var(--social-media-bg); --palette-fg: var(--social-media-fg); }
+[data-palette="emperor"] { --palette-bg: var(--emperor-bg); --palette-fg: var(--emperor-fg); }
 
 /* Poprawki zależne od motywu, których nie da się wyrazić samymi zmiennymi. */
 /* :where() zeruje specyficzność, więc kolory komponentów (błędy, ostrzeżenia) wygrywają. */
@@ -174,6 +177,9 @@
         --reviewer-fg: #000;
         --coordinator-bg: #fff;
         --coordinator-fg: #000;
+        --emperor-bg: #fff;
+        --emperor-bg-end: #fff;
+        --emperor-fg: #000;
     }
     :where(:root[data-theme]) :where(p,label,input,textarea,select,.detail-link,.text-title-link),
     :root[data-theme] thead th {

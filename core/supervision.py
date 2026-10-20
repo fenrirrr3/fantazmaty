@@ -42,6 +42,8 @@ def integrity_issues():
         if role and (a is None or a.assigned_to_id is None):
             issues.append(issue('Rozpoczęty etap bez wykonawcy',f'{stage.text.title}: {stage.get_stage_type_display()}',reverse('core:assigned_text_detail',args=[stage.text_id])))
     from workflow.services import NEXT_STAGE_TYPES
+    from workflow.catalog import extracts_successor, extracts_text_q
+    extracts_ids = set(Text.objects.all().filter(extracts_text_q()).values_list('pk', flat=True))
     grouped = defaultdict(list)
     for stage in current:
         grouped[(stage.text_id, stage.workflow_cycle)].append(stage)
@@ -58,8 +60,13 @@ def integrity_issues():
             if len(repeated) > 1:
                 issues.append(issue('Kilka otwartych etapów tego samego rodzaju', f'{text.title}: {repeated[0].get_stage_type_display()}', url))
         if not any(s.stage_type in ('ready', 'withdrawn') for s in stages) and not any(s.repetition_id for s in stages):
+            extracts = text.pk in extracts_ids
             for stage in stages:
                 successor = NEXT_STAGE_TYPES.get(stage.stage_type)
+                if extracts and stage.stage_type in NEXT_STAGE_TYPES:
+                    # Ekstrakty: następnik wg skróconej ścieżki (pomija wykonane już etapy).
+                    successor = extracts_successor(stage.stage_type, {
+                        s.stage_type for s in stages if s.is_completed and s.pk != stage.pk})
                 if stage.is_completed and not stage.imported_completed and successor and not any(s.stage_type == successor and (s.pk > stage.pk or (s.started_at and stage.ended_at and s.started_at >= stage.ended_at)) for s in stages):
                     issues.append(issue('Brak następnego etapu po zakończeniu', f'{text.title}: {stage.get_stage_type_display()}', url))
     for a in assignments.values():

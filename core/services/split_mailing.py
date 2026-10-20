@@ -3,8 +3,10 @@
 Pliki pochodzą z wyniku zadania podziału (archiwum ZIP w katalogu zadania programu), więc dokumentu
 nie trzeba wgrywać ponownie. Wiersze o tym samym zbiorze odbiorców idą w jednym mailu (kilka załączników, suma
 do MAX_MAIL_BYTES); mail testowy idzie na adres właściciela i partii nie zmienia. Partia – ustawienia wiadomości i lista kontrolna – leży w katalogu
-zadania i znika razem z nim. Wysyłka zakłada wyłącznie (O_EXCL) znacznik SENT: drugie zatwierdzenie
-tej samej partii (podwójne kliknięcie, druga karta) niczego nie wysyła.
+zadania i znika razem z nim. Wysyłka zakłada wyłącznie (O_EXCL) znacznik SENDING („trwa wysyłka”), a wysłane
+wiersze zapisuje w raporcie (REPORT) przed jego zdjęciem: drugie zatwierdzenie (podwójne kliknięcie, druga karta)
+nie wysyła nic w trakcie i nigdy nie wysyła drugi raz wiersza już wysłanego. Po częściowej wysyłce archiwum zostaje
+i można ponowić tylko nieudane wiersze; dopiero gdy wyjdą wszystkie, znacznik SENT zamyka partię i archiwum znika.
 """
 import os
 import random
@@ -27,7 +29,8 @@ from core.services import program_jobs as jobs
 
 SALT = 'split-mailing-batch-v1'
 BATCH = 'mailing.json'
-SENT = 'mailing-sent'
+SENT = 'mailing-sent'  # partia zakończona: wszystkie zaznaczone wiersze wysłane, archiwum usunięte
+SENDING = 'mailing-sending'  # trwa wysyłka (zakładany wyłącznie)
 REPORT = 'mailing-report.json'
 SMTP_TIMEOUT = 30
 # Suma załączników jednej wiadomości; większa grupa idzie w kilku mailach, większy plik – sam.
@@ -46,6 +49,7 @@ READY, NO_MATCH, NO_ADDRESS = 'ready', 'no_match', 'no_address'
 STATUS_LABELS = {READY: 'Gotowe', NO_MATCH: 'Brak dopasowania', NO_ADDRESS: 'Brak adresu'}
 NO_MAILBOX = ('Brak skrzynki do wysyłki. W panelu administratora (Skrzynki zgłoszeń) dodaj skrzynkę z przeznaczeniem '
               '„Wysyłka plików autorom” i podaj jej serwer SMTP.')
+INVALID_ADDRESS = 'Nieprawidłowy adres e-mail odbiorcy – popraw go w danych osoby.'
 MANY_MAILBOXES = ('Aktywnych skrzynek „Wysyłka plików autorom” jest kilka. W panelu administratora '
                   '(Skrzynki zgłoszeń) zostaw aktywną tylko jedną.')
 
@@ -238,7 +242,7 @@ def _sizes(folder):
 
 def prepare(folder, anthology, subject, message):
     """Zapisuje nową partię (ustawienia i listę kontrolną); poprzednia lista kontrolna przestaje być ważna."""
-    if (folder / SENT).exists():
+    if (folder / SENT).exists() or read_report(folder) is not None:
         raise MailingError('Pliki z tego podziału zostały już wysłane.')
     rows = build_rows(read_parts(folder), anthology)
     sizes = _sizes(folder)
@@ -299,16 +303,56 @@ def attachment_name(file):
     return rest if stem.isdecimal() and rest else file
 
 
+def sent_indices(report):
+    """Wiersze raportu, które już wyszły – nie wysyłamy ich drugi raz."""
+    return {row['index'] for row in (report or {}).get('rows', []) if row.get('sent')}
+
+
+def failed_indices(report):
+    """Wiersze raportu do ponowienia (zaznaczone, ale niewysłane)."""
+    return {row['index'] for row in (report or {}).get('rows', []) if not row.get('sent')}
+
+
 def send(folder, batch, selected, mailbox):
-    """Wysyła zaznaczone gotowe wiersze – jeden mail na zbiór odbiorców z plikami ich tekstów – i zapisuje raport."""
-    rows = [row for row in batch['rows'] if row.get('status') == READY and str(row.get('index')) in selected]
-    if not rows:
-        raise MailingError('Zaznacz co najmniej jeden wiersz o stanie „Gotowe”.')
+    """Wysyła zaznaczone gotowe, jeszcze niewysłane wiersze – jeden mail na zbiór odbiorców z plikami ich tekstów.
+
+    Raport jest zbiorczy (wcześniejsze próby i ta); `last` opisuje tylko tę próbę. Archiwum znika, gdy wszystkie
+    wiersze raportu wyszły; dopóki któryś czeka, partię można ponowić (tylko nieudane wiersze)."""
+    if (folder / SENT).exists():
+        raise MailingError('Ta partia została już wysłana – nie wysyłam jej drugi raz.')
     try:
-        with (folder / SENT).open('x'):
+        with (folder / SENDING).open('x'):
             pass
     except FileExistsError:
-        raise MailingError('Ta partia została już wysłana – nie wysyłam jej drugi raz.') from None
+        raise MailingError('Wysyłka tej partii już trwa – nie wysyłam jej drugi raz.') from None
+    locked = False
+    try:
+        return _send_locked(folder, batch, selected, mailbox)
+    except _ReportNotSaved:
+        # Bez raportu nie wiadomo, co wyszło – znacznik zostaje, żeby nic nie poszło drugi raz.
+        locked = True
+        raise MailingError('Nie udało się zapisać raportu wysyłki. Partia jest zablokowana, żeby żaden plik '
+                           'nie wyszedł drugi raz – sprawdź skrzynkę nadawczą.') from None
+    finally:
+        if not locked:
+            (folder / SENDING).unlink(missing_ok=True)
+
+
+class _ReportNotSaved(Exception):
+    pass
+
+
+def _send_locked(folder, batch, selected, mailbox):
+    previous = read_report(folder)
+    if previous is not None and previous.get('batch') != batch.get('batch'):
+        raise MailingError('Lista kontrolna wygasła albo została zmieniona. Sprawdź ją ponownie przed wysyłką.')
+    done = sent_indices(previous)
+    rows = [row for row in batch['rows'] if row.get('status') == READY and str(row.get('index')) in selected
+            and row.get('index') not in done]
+    if not rows:
+        raise MailingError('Zaznacz co najmniej jeden wiersz o stanie „Gotowe”, który nie został jeszcze wysłany.')
+    # Numeracja maili ciągnie się przez kolejne próby.
+    offset = max((row.get('mail') or 0 for row in (previous or {}).get('rows', [])), default=0)
     results, mails = {}, 0
     try:
         with ZipFile(folder / 'result') as archive:
@@ -321,7 +365,7 @@ def send(folder, batch, selected, mailbox):
             connection = smtp_connection(mailbox)
             connection.open()
             try:
-                for number, group in enumerate(plan, 1):
+                for number, group in enumerate(plan, offset + 1):
                     error = _send_mail(archive, connection, mailbox, *mail_content(batch, group),
                                        group[0]['emails'], [row['file'] for row in group])
                     mails += not error
@@ -337,16 +381,24 @@ def send(folder, batch, selected, mailbox):
         for row in rows:
             results.setdefault(row['index'], {'sent': False, 'error': message, 'mail': None})
     sent = sum(result['sent'] for result in results.values())
-    report = {'anthology_title': batch.get('anthology_title', ''), 'sent': sent, 'failed': len(rows) - sent,
-              'mails': mails, 'finished': time.time(),
-              'rows': [{**row, **results[row['index']]} for row in rows]}
-    if sent:
-        jobs.write_json(folder / REPORT, report)
-        # Pliki wysłane – archiwum nie jest już potrzebne na serwerze.
+    merged = {row['index']: row for row in (previous or {}).get('rows', [])}
+    merged.update({row['index']: {**row, **results[row['index']]} for row in rows})
+    report_rows = sorted(merged.values(), key=lambda row: row['index'])
+    total = sum(bool(row['sent']) for row in report_rows)
+    report = {'batch': batch.get('batch'), 'anthology_title': batch.get('anthology_title', ''),
+              'sent': total, 'failed': len(report_rows) - total,
+              'mails': (previous or {}).get('mails', 0) + mails, 'finished': time.time(), 'rows': report_rows,
+              'last': {'sent': sent, 'failed': len(rows) - sent, 'mails': mails}}
+    if total:
+        # Zapis przed zdjęciem znacznika SENDING: kolejna próba widzi już wysłane wiersze.
+        try:
+            jobs.write_json(folder / REPORT, report)
+        except OSError:
+            raise _ReportNotSaved() from None
+    if total and not report['failed']:
+        (folder / SENT).touch()
+        # Wszystkie pliki wysłane – archiwum nie jest już potrzebne na serwerze.
         (folder / 'result').unlink(missing_ok=True)
-    else:
-        # Nic nie wyszło (np. zły serwer SMTP): partię można poprawić i wysłać ponownie.
-        (folder / SENT).unlink(missing_ok=True)
     return report
 
 
@@ -359,6 +411,10 @@ def _send_mail(archive, connection, mailbox, subject, body, to, files):
         message.send()
     except (OSError, smtplib.SMTPException) as error:
         return smtp_error(error)
+    except ValueError:
+        # Backend SMTP odrzuca adres, którego nie da się zakodować (np. „jan@” ze starych danych), zanim
+        # połączy się z serwerem – błąd dotyczy tego maila, a nie całej partii (SENT zostałby bez raportu).
+        return INVALID_ADDRESS
     return ''
 
 

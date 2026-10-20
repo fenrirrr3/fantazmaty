@@ -177,6 +177,20 @@ class PersonScreenAccountTests(TestCase):
             with self.subTest(absent=absent):
                 self.assertNotContains(page, absent)
 
+    def test_account_created_concurrently_is_a_field_error(self):
+        """Wyścig: konto z tym e-mailem powstaje między walidacją a zapisem (IntegrityError) – formularz wraca z błędem
+        pola e-mail zamiast 500, a zapis jest wycofany: bez osoby, bez konta i bez zaproszenia."""
+        from django.db import IntegrityError
+        from people.admin import ACCOUNT_CONFLICT
+
+        with patch.object(User.objects, 'create_user', side_effect=IntegrityError('UNIQUE constraint failed')) as create:
+            response = self.add_person()
+        self.assertEqual((response.status_code, create.call_count), (200, 1))
+        self.assertEqual(response.context['adminform'].form.errors['email'], [ACCOUNT_CONFLICT])
+        self.assertFalse(Person.objects.filter(last_name='Nowa').exists())
+        self.assertFalse(User.objects.filter(email='zofia.nowa@example.com').exists())
+        self.assertEqual(mail.outbox, [])
+
     def test_add_screen_links_existing_account_without_account_shortcuts(self):
         """Dodawanie osoby: pole „Powiąż istniejące konto” bez przycisków dodawania/edycji konta (konto tworzy pole
         „Utwórz konto…”) i bez pustego wiersza loginu."""

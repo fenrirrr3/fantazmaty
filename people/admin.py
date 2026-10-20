@@ -5,8 +5,17 @@ from django.db.models.functions import Lower
 
 from .models import Person, Role, format_local_datetime
 
+ACCOUNT_CONFLICT = "Konto z tym adresem e-mail założono przed chwilą (np. w innej karcie). Sprawdź dane i zapisz ponownie."
+
+
+class AccountConflict(Exception):
+    """Konto z e-mailem osoby powstało równolegle – zapis osoby jest wycofywany, formularz pokazuje błąd pola."""
+
 
 class PersonAdminForm(forms.ModelForm):
+    # Ustawiane przez PersonAdmin po wycofanym zapisie (wyścig przy zakładaniu konta).
+    account_conflict = False
+
     create_account = forms.BooleanField(
         label="Utwórz konto logowania i wyślij zaproszenie", required=False,
         help_text="Loginem będzie adres e-mail osoby. Osoba ustawi hasło z linku w mailu.")
@@ -50,6 +59,8 @@ class PersonAdminForm(forms.ModelForm):
         from people.accounts import normalize_email, validate_login_email
         account = data.get('user') if 'user' in self.fields else self.instance.user
         email = normalize_email(data.get('email'))
+        if data.get('create_account') and self.account_conflict:
+            return self.add_error('email', ACCOUNT_CONFLICT)
         if data.get('create_account'):
             if account:
                 return self.add_error('create_account', 'Osoba ma już konto – nie zaznaczaj tworzenia nowego.')
@@ -222,7 +233,18 @@ class PersonAdmin(admin.ModelAdmin):
             field.label = 'Powiąż istniejące konto'
             for name in ('can_add_related', 'can_change_related', 'can_delete_related', 'can_view_related'):
                 setattr(field.widget, name, False)
+        if getattr(request, '_account_conflict', False):
+            form = type(form.__name__, (form,), {'account_conflict': True})
         return form
+
+    def changeform_view(self, request, object_id=None, form_url='', extra_context=None):
+        """Wyścig przy zakładaniu konta: transakcja zapisu jest wycofana (bez osoby, konta i zaproszenia),
+        a formularz wraca z błędem pola e-mail zamiast błędu 500."""
+        try:
+            return super().changeform_view(request, object_id, form_url, extra_context)
+        except AccountConflict:
+            request._account_conflict = True
+            return super().changeform_view(request, object_id, form_url, extra_context)
 
     def save_model(self, request, obj, form, change):
         """Konto z ekranu osoby: login = e-mail osoby, hasło ustawia sama osoba z zaproszenia (wysyłanego po commit)."""
@@ -232,8 +254,14 @@ class PersonAdmin(admin.ModelAdmin):
         created = None
         if form.cleaned_data.get('create_account') and not obj.user_id:
             email = normalize_email(obj.email)
-            created = User.objects.create_user(username=email, email=email,
-                                               first_name=obj.first_name, last_name=obj.last_name)
+            from django.db import IntegrityError, transaction
+            try:
+                with transaction.atomic():
+                    created = User.objects.create_user(username=email, email=email,
+                                                       first_name=obj.first_name, last_name=obj.last_name)
+            except IntegrityError:
+                # Konto z tym adresem powstało po walidacji formularza (druga karta, inny administrator).
+                raise AccountConflict() from None
             obj.user = created
         super().save_model(request, obj, form, change)
         if created:

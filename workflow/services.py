@@ -1,4 +1,5 @@
-from workflow.catalog import active_stage_choices
+from workflow.catalog import (active_stage_choices, extracts_next_stage, is_extracts_text,
+                              require_stage_allowed)
 from workflow.anthology_policy import require_working_anthology
 from datetime import date, datetime, timedelta
 from functools import wraps
@@ -385,6 +386,7 @@ def _create_pending_stage(text, stage_type, *, queued_at=None):
 
     if stage_type not in dict(active_stage_choices()):
         raise ValidationError("Nieprawidłowy typ etapu.")
+    require_stage_allowed(text, stage_type)
     ensure_verification_not_completed(text, stage_type)
 
     stage = (
@@ -585,6 +587,7 @@ def claim_stage(text, stage_type, user, started_at=None, *, stage_id=None):
     _ensure_actor(user)
     ensure_text_is_not_withdrawn(text)
 
+    require_stage_allowed(text, stage_type)
     role = STAGE_ROLES.get(stage_type)
     if role == Role.STYLING and not user.is_superuser:
         raise PermissionDenied("Stylowanie może przejąć tylko superuser.")
@@ -798,6 +801,8 @@ def resume_editing(text, user, started_at=None):
         )
         .first()
     )
+    if author_stage is not None and is_extracts_text(text):
+        raise ValidationError(EXTRACTS_AUTHOR_STAGE)
     if author_stage is not None and author_stage.started_at is None:
         raise ValidationError(
             "Etap pracy autora nie ma daty rozpoczęcia. Uzupełnij ją w panelu administratora przed wznowieniem redakcji."
@@ -871,6 +876,7 @@ def editing_follows_first_verification(text, editing_stage):
 @_locked_text_operation
 def send_text_to_author(text, user, started_at=None):
     ensure_editor_access(text, user)
+    require_stage_allowed(text, StageType.AUTHOR_EDITING)
     ensure_text_is_not_withdrawn(text)
     _ensure_editing_phase(text)
 
@@ -898,6 +904,7 @@ def send_text_to_author(text, user, started_at=None):
 @_locked_text_operation
 def send_to_second_verification(text, user, started_at=None):
     ensure_editor_access(text, user)
+    require_stage_allowed(text, StageType.SECOND_VERIFICATION)
     ensure_text_is_not_withdrawn(text)
     _ensure_editing_phase(text)
     ensure_verification_not_completed(text, StageType.SECOND_VERIFICATION)
@@ -933,9 +940,38 @@ def send_to_second_verification(text, user, started_at=None):
     return _create_pending_stage(text, StageType.SECOND_VERIFICATION, queued_at=transition_date)
 
 
+EXTRACTS_AUTHOR_STAGE = (
+    "W Ekstraktach etap „Plik u autora” jest wyłączony. Zakończ go przyciskiem „Zakończ etap” – "
+    "tekst przejdzie do najbliższego dozwolonego etapu."
+)
+
+
+@_locked_text_operation
+def send_to_first_proofreading(text, user, ended_at=None):
+    """Ekstrakty: redakcja po pierwszej weryfikacji kończy się pierwszą korektą."""
+    ensure_editor_access(text, user)
+    ensure_text_is_not_withdrawn(text)
+    if not is_extracts_text(text):
+        raise ValidationError("Bezpośrednie przekazanie redakcji do pierwszej korekty dotyczy tylko Ekstraktów.")
+    _ensure_editing_phase(text)
+    transition_date = _transition_date(ended_at)
+    if not (completed_stage_exists(text, StageType.FIRST_VERIFICATION) or returned_by_coordinator(text)):
+        raise ValidationError("Najpierw przekaż tekst do pierwszej weryfikacji.")
+    editing_stage = get_active_stage(text, StageType.EDITING)
+    if editing_stage is None:
+        raise ValidationError("Nie ma aktywnej redakcji do zakończenia.")
+    from workflow.state import operational_stages
+    if any(stage.stage_type != StageType.EDITING and not stage.is_completed
+           for stage in operational_stages(current_stage_queryset(text))):
+        raise ValidationError("Najpierw zakończ pozostałe otwarte etapy redakcyjne.")
+    _finish_stage_record(editing_stage, transition_date)
+    return _create_pending_stage(text, StageType.FIRST_PROOFREADING, queued_at=transition_date)
+
+
 @_locked_text_operation
 def finish_editing_to_coordinator(text, user, ended_at=None):
     ensure_editor_access(text, user)
+    require_stage_allowed(text, StageType.EDITING_CONTROL)
     ensure_text_is_not_withdrawn(text)
     _ensure_editing_phase(text)
 
@@ -976,10 +1012,11 @@ def user_can_complete_stage(stage, user):
     if role is None:
         return False
 
-    if (
-        stage.stage_type in (StageType.EDITING, StageType.AUTHOR_EDITING)
-        and not stage.repetition_id
-    ):
+    if stage.stage_type == StageType.EDITING and not stage.repetition_id:
+        return False
+    # Ekstrakty nie mają etapu u autora: zaległy etap zamyka redaktor lub koordynator.
+    if (stage.stage_type == StageType.AUTHOR_EDITING and not stage.repetition_id
+            and not is_extracts_text(stage.text)):
         return False
 
     # Kontrolę wykonuje przypisany redaktor; superuser może ją zamknąć w adminie.
@@ -1014,6 +1051,12 @@ def validate_editorial_decision(stage, decision):
         return
     if current_stage_queryset(stage.text).filter(stage_type=StageType.READY).exists():
         raise ValidationError("Tekst jest już gotowy. Nie zmieniono jego etapów.")
+    if is_extracts_text(stage.text):
+        # Zaległa kontrola w Ekstraktach prowadzi tylko do pierwszej korekty.
+        if decision is False:
+            raise ValidationError("W Ekstraktach nie ma powrotu do dalszej redakcji po kontroli – "
+                                  "zakończenie kontroli przekazuje tekst do pierwszej korekty.")
+        return
     if type(decision) is not bool:
         raise ValidationError(
             "Wybierz, czy przekazać tekst do pierwszej korekty, czy do dalszej redakcji. "
@@ -1051,7 +1094,8 @@ def complete_stage(stage, user, ended_at, *, send_to_proofreading=None):
             "Redakcję zakończ przez przekazanie tekstu do weryfikacji, autora albo koordynatora."
         )
 
-    if stage.stage_type == StageType.AUTHOR_EDITING:
+    extracts = is_extracts_text(stage.text)
+    if stage.stage_type == StageType.AUTHOR_EDITING and not extracts:
         raise ValidationError("Etap u autora zakończ przez wznowienie redakcji.")
 
     if stage.is_completed:
@@ -1061,7 +1105,11 @@ def complete_stage(stage, user, ended_at, *, send_to_proofreading=None):
         raise PermissionDenied("Nie możesz zakończyć tego etapu.")
 
     next_stage_type = NEXT_STAGE_TYPES.get(stage.stage_type)
-    if stage.stage_type == StageType.EDITING_CONTROL:
+    if extracts:
+        next_stage_type = extracts_next_stage(stage.text, stage.stage_type)
+        if stage.stage_type == StageType.EDITING_CONTROL:
+            send_to_proofreading = True
+    elif stage.stage_type == StageType.EDITING_CONTROL:
         next_stage_type = (
             StageType.FIRST_PROOFREADING if send_to_proofreading else StageType.EDITING
         )
@@ -1096,14 +1144,17 @@ def complete_stage(stage, user, ended_at, *, send_to_proofreading=None):
                 is_current=False, is_released=False
             )
         stage.save(update_fields=["send_to_proofreading", "is_current", "is_released"])
-    next_stage = _create_pending_stage(stage.text, next_stage_type)
-    next_stage.queued_at = ended_at
-    next_stage.save(update_fields=["queued_at"])
-
-    if next_stage_type == StageType.READY:
-        _start_stage(next_stage, ended_at)
-
+    _open_next_stage(stage.text, next_stage_type, ended_at)
     return stage
+
+
+def _open_next_stage(text, stage_type, queued_at):
+    next_stage = _create_pending_stage(text, stage_type)
+    next_stage.queued_at = queued_at
+    next_stage.save(update_fields=["queued_at"])
+    if stage_type == StageType.READY:
+        _start_stage(next_stage, queued_at)
+    return next_stage
 
 
 def can_skip_fourth(stage, user):
@@ -1150,6 +1201,9 @@ def skip_fourth_proofreading(stage, user):
             from workflow.repetitions import finish_repetition
 
             finish_repetition(stage, timezone.localdate())
+    elif is_extracts_text(stage.text):
+        # Zaległa czwarta korekta Ekstraktów prowadzi od razu do „Gotowe”.
+        _open_next_stage(stage.text, extracts_next_stage(stage.text, stage.stage_type), timezone.localdate())
     else:
         _create_pending_stage(stage.text, NEXT_STAGE_TYPES[stage.stage_type])
     return stage

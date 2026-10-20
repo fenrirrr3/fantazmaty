@@ -1,0 +1,6 @@
+<form method="post">
+    {% csrf_token %}<input type="hidden" name="batch" value="{{ batch_token }}">
+    <h2>Mail testowy</h2>
+    {% with field=test_form.test_address %}<div class="form-field">{{ field.label_tag }}{{ field }}<p class="muted-text">{{ field.help_text }}</p>{{ field.errors }}</div>{% endwith %}
+    <div class="actions"><button type="submit" name="action" value="test" class="secondary-button"{% if not mailbox %} disabled{% endif %}>Wyślij test</button></div>
+</form>

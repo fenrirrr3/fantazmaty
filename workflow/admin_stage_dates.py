@@ -13,7 +13,7 @@ from workflow.models import WorkflowStage as S
 from workflow.services import (
     complete_stage, ensure_stage_belongs_to_current_cycle,
     ensure_text_is_not_withdrawn, finish_editing_to_coordinator, resume_editing,
-    send_text_to_author, send_to_first_verification, send_to_second_verification,
+    send_text_to_author, send_to_first_proofreading, send_to_first_verification, send_to_second_verification,
     validate_assignment_start_date, _validate_date, STAGE_ROLES, current_stage_queryset,
     completed_stage_exists,
 )
@@ -24,6 +24,8 @@ EDITING_TRANSITIONS = {
     S.StageType.AUTHOR_EDITING: send_text_to_author,
     S.StageType.SECOND_VERIFICATION: send_to_second_verification,
     S.StageType.EDITING_CONTROL: finish_editing_to_coordinator,
+    # Tylko Ekstrakty: redakcja po pierwszej weryfikacji kończy się pierwszą korektą.
+    S.StageType.FIRST_PROOFREADING: send_to_first_proofreading,
 }
 
 
@@ -36,6 +38,15 @@ def editing_transition_choices(text):
                if not stage.is_completed and stage.started_at is not None}
     existing = {stage.stage_type for stage in stages}
     available = []
+    labels = dict(S.StageType.choices)
+    from workflow.catalog import is_extracts_text
+    from workflow.services import returned_by_coordinator
+    if is_extracts_text(text):
+        if not first_done and not returned_by_coordinator(text) and S.StageType.FIRST_VERIFICATION not in started:
+            available.append(S.StageType.FIRST_VERIFICATION)
+        elif first_done or returned_by_coordinator(text):
+            available.append(S.StageType.FIRST_PROOFREADING)
+        return [(kind, labels[kind]) for kind in available]
     if not first_done and S.StageType.FIRST_VERIFICATION not in started:
         available.append(S.StageType.FIRST_VERIFICATION)
     if first_done and S.StageType.AUTHOR_EDITING not in started:
@@ -44,7 +55,6 @@ def editing_transition_choices(text):
         available.append(S.StageType.SECOND_VERIFICATION)
     if second_done:
         available.append(S.StageType.EDITING_CONTROL)
-    labels = dict(S.StageType.choices)
     return [(kind, labels[kind]) for kind in available]
 
 
@@ -72,7 +82,9 @@ class StageDatesForm(forms.Form):
     def __init__(self, *args, stage, **kwargs):
         super().__init__(*args, **kwargs)
         self.stage = stage
-        if stage.stage_type == S.StageType.EDITING_CONTROL and not stage.is_completed:
+        from workflow.catalog import is_extracts_text
+        if (stage.stage_type == S.StageType.EDITING_CONTROL and not stage.is_completed
+                and not is_extracts_text(stage.text)):
             from workflow.decision_forms import editorial_decision_field
             self.fields['send_to_proofreading'] = editorial_decision_field(required=False)
         if (stage.is_completed or not stage.is_current or not stage.is_released
@@ -187,12 +199,14 @@ def set_stage_dates(stage_id, user, version, *, started_at=None, ended_at=None,
         stage.save(update_fields=['started_at'])
 
     if finish:
+        from workflow.catalog import is_extracts_text
         if stage.stage_type == S.StageType.EDITING and not stage.repetition_id:
             transition = EDITING_TRANSITIONS.get(next_stage)
             if transition is None:
                 raise ValidationError('Wybierz kolejny etap redakcji.')
             transition(text, user, ended_at)
-        elif stage.stage_type == S.StageType.AUTHOR_EDITING and not stage.repetition_id:
+        elif (stage.stage_type == S.StageType.AUTHOR_EDITING and not stage.repetition_id
+              and not is_extracts_text(text)):
             resume_editing(text, user, ended_at)
         else:
             complete_stage(stage, user, ended_at, send_to_proofreading=send_to_proofreading)

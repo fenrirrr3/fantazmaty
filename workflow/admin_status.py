@@ -5,7 +5,7 @@ from texts.models import Text
 from workflow.models import WorkflowStage as S, WorkflowRoleAssignment as A
 from workflow.numbering import (next_assignment_execution, next_stage_execution, next_stage_iteration,
     stage_execution_for)
-from workflow.catalog import active_stage_choices
+from workflow.catalog import active_stage_choices, require_stage_allowed
 from workflow.services import STAGE_ROLES, ensure_verification_not_completed
 from workflow.anthology_policy import require_working_anthology
 from core.edit_versions import version_of
@@ -22,6 +22,7 @@ def set_admin_status(text_id, kind, actor, expected_version):
         if version_of(text) != expected_version:
             raise ValidationError('Tekst zmienił się. Odśwież stronę przed zmianą statusu.')
         require_working_anthology(text)
+        require_stage_allowed(text, kind)
         ensure_verification_not_completed(text, kind)
         if text.repetitions.filter(completed_at__isnull=True, canceled_at__isnull=True).exists():
             raise ValidationError('Najpierw zakończ lub odwołaj aktywną kolejkę powtórzeń.')

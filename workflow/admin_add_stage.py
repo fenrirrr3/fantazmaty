@@ -23,6 +23,8 @@ def add_missing_stage(text_id, actor, version, *, kind, performer=None, started_
     from workflow.catalog import active_stage_choices
     if kind not in dict(active_stage_choices()) or kind not in STAGE_ROLES:
         raise ValidationError('Wybierz etap pracy. Status zmienia się osobnym formularzem.')
+    from workflow.catalog import require_stage_allowed
+    require_stage_allowed(text, kind)
     if text.repetitions.filter(completed_at__isnull=True, canceled_at__isnull=True).exists():
         raise ValidationError('Najpierw zakończ lub odwołaj kolejkę powtórzeń.')
     current = S.objects.current_cycle().filter(text=text)

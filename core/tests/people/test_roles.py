@@ -1,14 +1,22 @@
 """Nazwy ról zespołu: jeden moduł people.roles, spójny z komendą ensure_team_roles i bez rozproszonych literałów."""
+import importlib
+import inspect
 import re
 from io import StringIO
+from types import SimpleNamespace
 from pathlib import Path
 
+from django.apps import apps as django_apps
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.core.management import call_command
+from django.db import connection
 from django.test import SimpleTestCase, TestCase
 
+from core import permissions
+from fantazmaty.testing import create_member
 from people import roles
-from people.models import Role
+from people.models import Person, Role
 
 ROLE_CONSTANTS = {
     name: value for name, value in vars(roles).items()
@@ -109,3 +117,91 @@ class RoleQueryTests(TestCase):
         Role.objects.all().delete()
         call_command('ensure_team_roles', stdout=StringIO())
         self.assertEqual(set(Role.objects.values_list('name', flat=True)), set(roles.STANDARD_ROLES))
+
+
+class HonoraryRoleTests(TestCase):
+    def test_emperor_role_exists_and_grants_nothing(self):
+        """„Imperator Ludzkości” powstaje przy migrate, jest pierwsza w kolejności ról i nie jest rolą koordynatora;
+        osoba z samą tą rolą ma dokładnie te uprawnienia co członek zespołu bez ról (każda funkcja can_/is_
+        z core.permissions przyjmująca samo konto)."""
+        self.assertTrue(Role.objects.filter(name=roles.EMPEROR).exists())
+        self.assertEqual(roles.TEAM_ROLE_ORDER[0], roles.EMPEROR)
+        self.assertFalse(roles.is_coordinator_role_name(roles.EMPEROR))
+        self.assertFalse(Role.objects.filter(roles.coordinator_role_q(), name=roles.EMPEROR).exists())
+        emperor, plain = create_member('emperor', roles.EMPEROR), create_member('plain', roles.EDITOR)
+        plain.person_profile.roles.clear()
+        checks = [(name, function) for name, function in vars(permissions).items()
+                  if name.startswith(('can_', 'is_', 'coordinates_')) and inspect.isfunction(function)
+                  and list(inspect.signature(function).parameters) == ['user']]
+        self.assertGreater(len(checks), 10)
+        for name, function in checks:
+            with self.subTest(check=name):
+                self.assertEqual(function(emperor), function(plain))
+        self.assertTrue(permissions.has_role(emperor, roles.EMPEROR))
+        self.assertFalse(permissions.can_manage_social_media(emperor))
+
+
+class EmperorRoleMigrationTests(TestCase):
+    migration = importlib.import_module('people.migrations.0019_add_emperor_role')
+
+    def run_migration(self, function):
+        getattr(self.migration, function)(django_apps, SimpleNamespace(connection=connection))
+
+    def holders(self):
+        return list(Person.objects.filter(roles__name=self.migration.ROLE).values_list('last_name', flat=True))
+
+    def test_role_goes_to_person_by_profile_or_account_email(self):
+        """Rolę dostaje osoba z e-mailem profilu (bez wielkości liter), a gdy takiej nie ma – osoba, której konto
+        ma ten e-mail; bez pasującej osoby powstaje tylko rola. Cofnięcie usuwa przypisanie i rolę."""
+        account = get_user_model().objects.create_user('emperor-account')
+        cases = (
+            ('brak osoby', [], []),
+            ('e-mail konta', [dict(last_name='Konto', email='inny@example.com', user=account)], ['Konto']),
+            ('e-mail profilu', [dict(last_name='Konto', email='inny@example.com', user=account),
+                                dict(last_name='Profil', email='DAWIDWIKTORSKI@gmail.com')], ['Profil']),
+        )
+        for label, people, expected in cases:
+            with self.subTest(label):
+                Person.objects.all().delete()
+                self.run_migration('remove_emperor_role')
+                self.assertFalse(Role.objects.filter(name=self.migration.ROLE).exists())
+                for data in people:
+                    Person.objects.create(first_name='Osoba', **data)
+                # Konto zwykle podąża za e-mailem osoby; starsze konta mogą mieć inny – stąd update() z pominięciem sygnałów.
+                get_user_model().objects.filter(pk=account.pk).update(email='DawidWiktorski@Gmail.com')
+                self.run_migration('add_emperor_role')
+                self.run_migration('add_emperor_role')  # ponowne uruchomienie niczego nie dubluje
+                self.assertEqual(Role.objects.filter(name__iexact=self.migration.ROLE).count(), 1)
+                self.assertEqual(self.holders(), expected)
+                self.run_migration('remove_emperor_role')
+                self.assertEqual((Role.objects.filter(name=self.migration.ROLE).exists(), self.holders()), (False, []))
+                self.assertEqual(Person.objects.count(), len(people))
+
+
+class EmperorRoleRenameMigrationTests(TestCase):
+    migration = importlib.import_module('people.migrations.0020_rename_emperor_role')
+
+    def run_migration(self, function):
+        getattr(self.migration, function)(django_apps, SimpleNamespace(connection=connection))
+
+    def test_rename_keeps_holders_and_merges_existing_role(self):
+        """Zmiana nazwy „Bóg-Imperator” → „Imperator Ludzkości” zachowuje przypisania i da się cofnąć; gdy rola
+        o nowej nazwie już istnieje, przypisania przechodzą do niej, a stara rola znika; brak starej roli – bez zmian."""
+        old, new = self.migration.OLD, self.migration.NEW
+        cases = (('zwykła zmiana nazwy', False), ('nowa nazwa już istnieje', True))
+        for label, new_exists in cases:
+            with self.subTest(label):
+                Role.objects.filter(name__in=[old, new]).delete()
+                person = Person.objects.create(first_name='Osoba', last_name=label)
+                person.roles.add(Role.objects.create(name=old))
+                if new_exists:
+                    Role.objects.create(name=new)
+                self.run_migration('forwards')
+                self.assertFalse(Role.objects.filter(name=old).exists())
+                self.assertEqual(list(person.roles.values_list('name', flat=True)), [new])
+                self.run_migration('backwards')
+                self.assertEqual(list(person.roles.values_list('name', flat=True)), [old])
+                self.assertFalse(Role.objects.filter(name=new).exists())
+        Role.objects.filter(name__in=[old, new]).delete()
+        self.run_migration('forwards')
+        self.assertFalse(Role.objects.filter(name__in=[old, new]).exists())

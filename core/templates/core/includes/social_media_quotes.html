@@ -1,0 +1,38 @@
+<details class="card text-management-card social-media-other social-media-quotes" id="social-quotes"{% if open_quotes %} open{% endif %}>
+    <summary><span>Cytaty <span class="record-counter" title="Liczba cytatów">{{ quote_count }}</span></span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
+    <div class="card-body social-media-filters-body">
+        <p class="form-help">Cytaty z opowiadań do wpisów promocyjnych. Każdy członek zespołu może dodać cytat przy tekście i usunąć własny, dopóki ma status „Wolne”{% if can_manage %}; status i datę wrzucenia ustawia osoba od Social Media. Wyszukiwanie i wybór antologii są wspólne z listą opowiadań{% endif %}.</p>
+        <form method="get" action="#social-quotes" class="filters-form social-media-filters" aria-label="Filtry cytatów"><input type="hidden" name="quotes_page" value="1">
+            <div class="filter-field social-media-search"><label for="social-quotes-q">Szukaj</label><input id="social-quotes-q" type="search" name="q" value="{{ query }}" maxlength="200" placeholder="Tytuł, autor, antologia, tagi lub gatunek"></div>
+            <div class="filter-field"><label for="social-quotes-anthology">Antologia</label><select id="social-quotes-anthology" name="anthology"><option value="">Wszystkie</option>{% for item in anthologies %}<option value="{{ item.pk }}"{% if selected_anthology == item.pk|stringformat:'s' %} selected{% endif %}>{{ item.title }}</option>{% endfor %}</select></div>
+            <div class="filter-actions"><label class="social-media-unpublished"><input type="checkbox" name="unpublished" value="1"{% if unpublished %} checked{% endif %}> Pokaż teksty niewydane</label><button class="primary-button" type="submit">Filtruj</button><a class="secondary-button" href="{% url 'core:social_media' %}?quotes_page=1#social-quotes">Wyczyść filtry</a></div>
+        </form>
+    </div>
+    <div class="table-container" role="region" tabindex="0" aria-label="Tabela cytatów z opowiadań">
+        <table data-server-paginated="true" class="data-table mobile-review-cards social-media-table social-media-quotes-table">
+            <caption class="visually-hidden">Cytaty z opowiadań do wpisów w mediach społecznościowych</caption>
+            <thead><tr><th scope="col">Antologia</th><th scope="col">Tytuł</th><th scope="col">Autor</th><th scope="col" data-sort="none">Cytat</th><th scope="col" data-sort="none">Kto dodał</th><th scope="col" data-sort="none">Data wrzucenia</th><th scope="col" data-sort="none">Status</th><th scope="col">Akcje</th></tr></thead>
+            {% for row in quote_rows %}<tbody id="social-quote-text-{{ row.pk }}" class="social-quote-group">
+                <tr class="social-quote-text{% if row.new_quote_errors %} has-errors{% endif %}">
+                    <td data-label="Antologia">{% if row.anthology %}<a href="{% url 'core:anthology_detail' row.anthology.pk %}">{{ row.anthology.title }}</a>{% endif %}</td>
+                    <td data-label="Tytuł"><a href="{% url 'core:assigned_text_detail' row.pk %}" class="text-title-link"><strong>{{ row.title }}</strong></a></td>
+                    <td data-label="Autor">{{ row.authors|default:"–" }}</td>
+                    <td colspan="5"><form method="post" action="{% url 'core:social_media' %}" class="social-quote-add" data-warn-unsaved>{% csrf_token %}<input type="hidden" name="text" value="{{ row.pk }}"><input type="hidden" name="return_query" value="{{ return_query }}">
+                        <div class="social-media-field"><label class="visually-hidden" for="social-quote-new-{{ row.pk }}">Nowy cytat: {{ row.title }}</label><textarea id="social-quote-new-{{ row.pk }}" name="content" rows="2" maxlength="{{ quote_max_length }}" required placeholder="Nowy cytat z „{{ row.title }}”">{{ row.new_quote }}</textarea>{% for error in row.new_quote_errors %}<span class="field-error">{{ error }}</span>{% endfor %}</div>
+                        <button class="primary-button small-button" type="submit" name="action" value="quote_add">Zapisz cytat</button></form></td>
+                </tr>
+                {% for item in row.quotes %}{% with quote=item.quote %}<tr id="social-quote-{{ quote.pk }}" class="social-quote-row{% if item.errors %} has-errors{% endif %}">
+                    <td colspan="3" class="social-quote-spacer"><span class="visually-hidden">Cytat do „{{ row.title }}”</span></td>
+                    <td data-label="Cytat"><div class="social-quote-content">{{ quote.content }}</div></td>
+                    <td data-label="Kto dodał">{{ item.author|default:"–" }}</td>
+                    {% if can_manage %}<td data-label="Data wrzucenia"><div class="social-media-field"><label class="visually-hidden" for="social-quote-{{ quote.pk }}-date">Data wrzucenia cytatu</label><input id="social-quote-{{ quote.pk }}-date" type="date" name="posted_on" value="{{ item.values.posted_on }}" required form="social-quote-form-{{ quote.pk }}">{% for error in item.errors.posted_on %}<span class="field-error">{{ error }}</span>{% endfor %}</div></td>
+                    <td data-label="Status"><div class="social-media-field"><label class="visually-hidden" for="social-quote-{{ quote.pk }}-status">Status cytatu</label><select id="social-quote-{{ quote.pk }}-status" class="social-status-select" name="status" form="social-quote-form-{{ quote.pk }}">{% for value, label in status_choices %}<option value="{{ value }}"{% if value == item.values.status %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>{% for error in item.errors.status %}<span class="field-error">{{ error }}</span>{% endfor %}</div></td>
+                    {% else %}<td data-label="Data wrzucenia">{{ quote.posted_on|date:"d.m.Y" }}</td>
+                    <td data-label="Status">{% include "core/includes/social_status_label.html" with status=quote.status label=quote.get_status_display %}</td>{% endif %}
+                    <td data-label="Akcje">{% if can_manage or item.can_delete %}<form id="social-quote-form-{{ quote.pk }}" method="post" action="{% url 'core:social_media' %}" class="social-media-row-form"{% if can_manage %} data-warn-unsaved{% endif %}>{% csrf_token %}<input type="hidden" name="quote" value="{{ quote.pk }}"><input type="hidden" name="version" value="{{ item.token }}"><input type="hidden" name="return_query" value="{{ return_query }}">{% if can_manage %}<button class="primary-button small-button" type="submit" name="action" value="quote_edit">Zapisz</button>{% endif %}{% if item.can_delete %}<button class="secondary-button small-button" type="submit" name="action" value="quote_delete" formnovalidate data-confirm="Usunąć cytat do „{{ row.title }}”?">Usuń</button>{% endif %}</form>{% else %}–{% endif %}{% for error in item.non_field_errors %}<p class="form-error" role="alert">{{ error }}</p>{% endfor %}</td>
+                </tr>{% endwith %}{% endfor %}
+            </tbody>{% empty %}<tbody><tr><td colspan="8">Brak opowiadań spełniających kryteria.</td></tr></tbody>{% endfor %}
+        </table>
+    </div>
+    {% include "core/includes/pagination.html" with page_obj=quote_page %}
+</details>

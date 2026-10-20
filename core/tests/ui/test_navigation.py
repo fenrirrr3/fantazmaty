@@ -2,6 +2,7 @@
 lista recenzji bez tekstu, nawigacja Ekstraktów i zwinięte panele historii tekstu."""
 from urllib.parse import urlencode
 
+from django.contrib.auth import get_user_model
 from django.http import HttpResponseRedirect
 from django.test import RequestFactory, SimpleTestCase, TestCase
 from django.urls import reverse
@@ -52,12 +53,14 @@ class DetailNavigationTests(NavigationDataMixin, TestCase):
     def setUp(self):
         self.client.force_login(self.admin)
 
-    def test_social_media_tab_is_listed_for_coordinators_and_social_media_role(self):
-        """Zakładka Social Media jest w menu (sekcja Promocja) i otwiera się superuserowi, koordynatorom
-        i osobom z rolą „Social Media”; pozostali członkowie zespołu nie widzą linku i dostają 403."""
+    def test_social_media_tab_is_listed_for_whole_team(self):
+        """Zakładka Social Media jest w menu (sekcja Promocja) i otwiera się całemu zespołowi – superuserowi,
+        koordynatorom, roli „Social Media” i członkom bez tej roli; konto spoza zespołu nie widzi linku i dostaje 403."""
         url = reverse('core:social_media')
         social = create_member('nav-social', roles.SOCIAL_MEDIA)
-        for user, allowed in ((self.admin, True), (self.manager, True), (social, True), (self.member, False)):
+        outsider = get_user_model().objects.create_user('nav-outsider')
+        for user, allowed in ((self.admin, True), (self.manager, True), (social, True), (self.member, True),
+                              (outsider, False)):
             with self.subTest(user=user.username):
                 self.client.force_login(user)
                 links = html.fromstring(self.client.get(reverse('core:home')).content).xpath(
@@ -125,7 +128,7 @@ class DetailNavigationTests(NavigationDataMixin, TestCase):
         response = self.client.get(reverse('core:extract_list'))
         self.assertContains(response, reverse('core:assigned_text_detail', args=[whole.pk]))
         response = self.client.get(reverse('core:assigned_text_detail', args=[whole.pk]))
-        self.assertContains(response, 'Informacyjny rejestr miniatur')
+        self.assertContains(response, '>Lista tekstów</a>')
 
     def test_history_panels_are_siblings_and_initially_collapsed(self):
         Anthology.objects.create(title="Fantazmaty 4", status="ready")  # wydany tom źródłowy

@@ -822,9 +822,13 @@ def text_detail_context(*, user, text):
         )
         and (coordinator or owned(Role.VERIFIER_1))
     )
+    from workflow.catalog import is_extracts_text
+    extracts = is_extracts_text(text)
     can_resume = bool(
         can_control and not editing and not verification_open
         and (author_editing or pending_editing)
+        # Ekstrakty: zaległy etap u autora kończy się przyciskiem „Zakończ etap”.
+        and not (extracts and any(s.stage_type == StageType.AUTHOR_EDITING and _is_open(s) for s in stages))
     )
     # Po przekazaniu pierwszej redakcji nowy redaktor startuje etap, choć
     # rezerwacja pierwszej weryfikacji nadal czeka.
@@ -867,7 +871,7 @@ def text_detail_context(*, user, text):
         user, text, stages, assignments, text_data,
         terminal=terminal, coordinator=coordinator, today=today,
         can_start_first=can_start_first, can_resume=can_resume or can_restart_editing,
-        availability=availability, leave_cache=leave_cache,
+        availability=availability, leave_cache=leave_cache, extracts=extracts,
     )
 
     row_by_id = {row["pk"]: row for row in stage_rows}
@@ -956,19 +960,21 @@ def text_detail_context(*, user, text):
         ),
         "first_verifier_unavailable": first_verifier_unavailable,
         "can_resume_editing": can_resume,
+        "is_extracts_workflow": extracts,
         "can_send_to_author": bool(
-            can_control and editing and first_gate and not verification_open
+            not extracts and can_control and editing and first_gate and not verification_open
         ),
         "can_send_to_second_verification": bool(
-            can_control and editing and first_gate and not second_gate
+            not extracts and can_control and editing and first_gate and not second_gate
             and editing_follows_first_verification(text, editing)
             and not any(
                 stage.stage_type == StageType.SECOND_VERIFICATION
                 for stage in stages
             )
         ),
+        # Ekstrakty: po pierwszej weryfikacji redakcja kończy się pierwszą korektą.
         "can_finish_editing": bool(
-            can_control and editing and second_gate and not verification_open
+            can_control and editing and (first_gate if extracts else second_gate) and not verification_open
         ),
     }
 
@@ -1161,7 +1167,8 @@ def unavailable_reason(user, *, leave=True, cache=None):
 
 
 def _detail_stage_rows(user, text, stages, assignments, text_data, *, terminal,
-                       coordinator, today, can_start_first, can_resume, availability=None, leave_cache=None):
+                       coordinator, today, can_start_first, can_resume, availability=None, leave_cache=None,
+                       extracts=False):
     def owned(role):
         assignment = assignments.get(role)
         return bool(assignment and assignment.assigned_to_id == user.pk)
@@ -1215,7 +1222,8 @@ def _detail_stage_rows(user, text, stages, assignments, text_data, *, terminal,
                 and stage.stage_type not in TERMINAL_STAGES | {
                     StageType.READY_FOR_EDITING,
                     StageType.EDITING,
-                    StageType.AUTHOR_EDITING,
+                    # W Ekstraktach zaległy etap u autora zamyka się jak zwykły etap.
+                    *(() if extracts else (StageType.AUTHOR_EDITING,)),
                 }
             ),
         )
@@ -1226,7 +1234,7 @@ def _detail_stage_rows(user, text, stages, assignments, text_data, *, terminal,
         if not available or (assigned_user and unavailable_reason(assigned_user, cache=availability)):
             row['can_start'] = False
         row['complete_blocker'] = ''
-        if row['can_complete'] and stage.stage_type == StageType.COORDINATOR_CONTROL:
+        if row['can_complete'] and stage.stage_type == StageType.COORDINATOR_CONTROL and not extracts:
             editor_assignment = assignments.get(Role.EDITOR)
             editor_user = editor_assignment.assigned_to if editor_assignment else None
             if not editor_user or unavailable_reason(editor_user, leave=False, cache=availability):

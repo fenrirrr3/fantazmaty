@@ -19,6 +19,7 @@ from core.services import split_mailing as mailing
 
 TEST_ADDRESS = 'split_mailing_test_address'
 TEST_ACTION = 'Test wysyłki plików autorom'
+RETRY_ACTION = 'Ponowienie wysyłki plików autorom'
 
 
 def _no_control_characters(value, label):
@@ -110,15 +111,14 @@ def split_mailing(request, token):
         return _render(request, {'error': 'Wysyłka autorom jest dostępna po zakończonym podziale DOCX.'}, status=404)
     report = mailing.read_report(folder)
     action = request.POST.get('action') if request.method == 'POST' else None
-    if report is not None:
-        error = 'Pliki z tej partii zostały już wysłane – test nie jest już możliwy.' if action == 'test' else ''
-        return _render(request, {'report': report, 'token': token, 'error': error}, status=400 if error else 200)
     try:
         mailbox, mailbox_error = mailing.mailing_mailbox(), ''
     except mailing.MailingError as error:
         mailbox, mailbox_error = None, str(error)
     batch = mailing.read_batch(folder)
     context = {'token': token, 'mailbox': mailbox, 'mailbox_error': mailbox_error}
+    if report is not None:
+        return _report_page(request, folder, report, batch, context, action)
     if action == 'prepare':
         form = SplitMailingForm(request.POST)
         if not form.is_valid():
@@ -144,9 +144,7 @@ def split_mailing(request, token):
             if batch is None:
                 return _render(request, {**context, 'form': SplitMailingForm(), 'error': str(error)}, status=400)
             return _render(request, {**context, **_checklist(request, batch), 'error': str(error)}, status=400)
-        _record_activity(request, LABELS['split_mailing'],
-                         f'{report["anthology_title"]}: wiadomości {report["mails"]}, '
-                         f'pliki {report["sent"]} z {report["sent"] + report["failed"]}')
+        _record_send(request, LABELS['split_mailing'], report)
         if report['sent']:
             # Raport pokazuje strona partii (PRG): odświeżenie nie wysyła ponownie.
             return redirect(_url(token))
@@ -157,24 +155,74 @@ def split_mailing(request, token):
             batch = mailing.checked_batch(folder, request.user, request.POST.get('batch'))
             if not test_form.is_valid():
                 return _render(request, {**context, **_checklist(request, batch, test_form)}, status=400)
-            if mailbox is None:
-                raise mailing.MailingError(mailbox_error)
-            address = test_form.cleaned_data['test_address']
-            request.session[TEST_ADDRESS] = address
-            file = mailing.send_test(folder, batch, address, mailbox)
+            _send_test(request, folder, batch, mailbox, mailbox_error, test_form)
         except mailing.MailingError as error:
             if batch is None:
                 return _render(request, {**context, 'form': SplitMailingForm(), 'error': str(error)}, status=400)
             return _render(request, {**context, **_checklist(request, batch, test_form), 'error': str(error)},
                            status=400)
-        _record_activity(request, TEST_ACTION, f'{batch.get("anthology_title", "")}: test na {address}')
-        messages.success(request, f'Wysłano test na {address} (plik: {file}).')
         return redirect(_url(token))
     if action not in (None, 'change'):
         return _render(request, {**context, 'error': 'Nieprawidłowa akcja.'}, status=400)
     if batch is None:
         return _render(request, {**context, 'form': SplitMailingForm()})
     return _render(request, {**context, **_checklist(request, batch)})
+
+
+def _record_send(request, action, report):
+    """Wpis w dzienniku dla jednej próby wysyłki (pierwszej albo ponowienia) – liczby tej próby."""
+    last = report.get('last', report)
+    _record_activity(request, action, f'{report["anthology_title"]}: wiadomości {last["mails"]}, '
+                                      f'pliki {last["sent"]} z {last["sent"] + last["failed"]}')
+
+
+def _send_test(request, folder, batch, mailbox, mailbox_error, test_form):
+    """Mail testowy na adres z formularza; MailingError przy braku skrzynki lub błędzie wysyłki."""
+    if mailbox is None:
+        raise mailing.MailingError(mailbox_error)
+    address = test_form.cleaned_data['test_address']
+    request.session[TEST_ADDRESS] = address
+    file = mailing.send_test(folder, batch, address, mailbox)
+    _record_activity(request, TEST_ACTION, f'{batch.get("anthology_title", "")}: test na {address}')
+    messages.success(request, f'Wysłano test na {address} (plik: {file}).')
+
+
+def _report_page(request, folder, report, batch, context, action):
+    """Raport po wysyłce. Gdy część wierszy nie wyszła: ponowienie tylko nieudanych i mail testowy."""
+    complete = not report['failed'] or (folder / mailing.SENT).exists()
+    token = context['token']
+
+    def page(error='', test_form=None, status=200):
+        extra = {}
+        if not complete and batch is not None:
+            extra = {'batch_token': mailing.batch_token(request.user, batch),
+                     'test_form': test_form or TestMailForm(initial={'test_address': request.session.get(TEST_ADDRESS, '')})}
+        return _render(request, {**context, **extra, 'report': report, 'complete': complete, 'error': error},
+                       status=status)
+
+    if action == 'test' and complete:
+        return page('Pliki z tej partii zostały już wysłane – test nie jest już możliwy.', status=400)
+    if action not in ('retry', 'test') or complete:
+        return page()
+    test_form = TestMailForm(request.POST) if action == 'test' else None
+    try:
+        batch = mailing.checked_batch(folder, request.user, request.POST.get('batch'))
+        if action == 'test':
+            if not test_form.is_valid():
+                return page(test_form=test_form, status=400)
+            _send_test(request, folder, batch, context['mailbox'], context['mailbox_error'], test_form)
+            return redirect(_url(token))
+        if context['mailbox'] is None:
+            raise mailing.MailingError(context['mailbox_error'])
+        report = mailing.send(folder, batch, {str(index) for index in mailing.failed_indices(report)},
+                              context['mailbox'])
+    except mailing.MailingError as error:
+        return page(str(error), test_form, status=400)
+    _record_send(request, RETRY_ACTION, report)
+    last = report['last']
+    (messages.success if not last['failed'] else messages.warning)(
+        request, f'Ponowiono wysyłkę: pliki {last["sent"]} z {last["sent"] + last["failed"]}.')
+    return redirect(_url(token))
 
 
 def _checklist(request, batch, test_form=None):

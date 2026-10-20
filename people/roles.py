@@ -22,6 +22,10 @@ ILLUSTRATOR = "Ilustrator"
 AUDIOBOOK_PROOFREADER = "Korektor audiobooków"
 SOCIAL_MEDIA = "Social Media"
 
+# Rola honorowa – wyłącznie wyróżniona etykieta, nie daje żadnych uprawnień ani dostępu.
+EMPEROR = "Imperator Ludzkości"
+HONORARY_ROLES = (EMPEROR,)
+
 # Koordynatorzy działów.
 EDITING_COORDINATOR = "Koordynator redakcji"
 AUDIOBOOK_COORDINATOR = "Koordynator audiobooków"
@@ -48,7 +52,7 @@ AUDIOBOOK_ROLES = (NARRATOR, SOUND_ENGINEER, AUDIOBOOK_PROOFREADER)
 
 # Kolejność ról w filtrze zespołu; pozostałe role trafiają na koniec.
 TEAM_ROLE_ORDER = (
-    REVIEWER, EDITOR, PROOFREADER, VERIFIER, POST_LAYOUT_PROOFREADER,
+    EMPEROR, REVIEWER, EDITOR, PROOFREADER, VERIFIER, POST_LAYOUT_PROOFREADER,
     DESIGNER, SOUND_ENGINEER, NARRATOR, TYPESETTER, TRANSLATOR, SOCIAL_MEDIA,
     EDITING_COORDINATOR, AUDIOBOOK_COORDINATOR,
     VERIFICATION_COORDINATOR, ILLUSTRATION_COORDINATOR,

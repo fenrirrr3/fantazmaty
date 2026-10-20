@@ -1,33 +1,41 @@
-"""Social Media: plan wpisów promocyjnych o opowiadaniach i lista innych wpisów.
+"""Social Media: plan wpisów promocyjnych o opowiadaniach, lista innych wpisów i cytaty z opowiadań.
 
+Stronę widzi cały zespół. Opowiadania, Inne oraz status i datę cytatów widzą i zmieniają tylko superuser,
+koordynatorzy i rola „Social Media”; pozostali widzą wyłącznie Cytaty – dodają je i usuwają własne, dopóki mają
+status „Wolne”.
 Lista opowiadań domyślnie obejmuje antologie „Gotowe”; pole „Pokaż teksty niewydane”
 dokłada antologie w przygotowaniu. Zawsze pomijane są: antologie porzucone, powieści (rozdziały nie są
 osobnymi opowiadaniami), tomy Ekstraktów i teksty wycofane. Każdy wiersz zapisuje się osobno (formularz
 per wiersz), z podpisanym tokenem wersji – nieaktualny formularz nie nadpisze cudzej zmiany.
 """
+from collections import defaultdict
 from copy import copy
 
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core import signing
+from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Case, CharField, Exists, F, IntegerField, OuterRef, Q, Subquery, Value, When
 from django.db.models.functions import Coalesce
 from django.http import Http404, HttpResponseBadRequest, QueryDict
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.formats import date_format
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
 
 from authors.models import Author
+from core.discord_notifications import person_name
 from core.edit_versions import version_of
-from core.models import EditRevision, SocialMediaEntry, TextSocialMedia
+from core.models import EditRevision, SocialMediaEntry, SocialMediaQuote, TextSocialMedia
 from core.pagination import paginate_items
-from core.permissions import social_media_required
+from core.permissions import can_manage_social_media, team_member_required
 from core.public_authors import name_matches, public_name
-from core.social_forms import SocialMediaEntryForm, TextSocialMediaForm
+from core.social_forms import (SocialMediaEntryForm, SocialMediaQuoteForm, SocialMediaQuoteStatusForm,
+                               TextSocialMediaForm)
 from core.social_models import SocialMediaStatus
 from texts.models import Anthology, ForeignAuthor, Text
 from texts.production import active_production_texts
@@ -35,8 +43,11 @@ from texts.production import active_production_texts
 SALT = 'social-media'
 UNPUBLISHED = 'unpublished'
 # Parametry listy, które wracają po zapisie wiersza (filtry, sortowanie, strona).
-LIST_PARAMS = ('q', 'status', 'anthology', UNPUBLISHED, 'sort', 'page', 'page_size', 'filters_applied')
+# Cytaty mają własne stronicowanie i sortowanie (quotes_*), filtry wyszukiwania i antologii są wspólne.
+QUOTE_PARAMS = ('quotes_page', 'quotes_page_size', 'quotes_sort')
+LIST_PARAMS = ('q', 'status', 'anthology', UNPUBLISHED, 'sort', 'page', 'page_size', 'filters_applied', *QUOTE_PARAMS)
 OPEN_OTHER = 'social_media_open_other'
+OPEN_QUOTES = 'social_media_open_quotes'
 STATUS_RANK = Case(*[When(social_status=value, then=Value(index)) for index, value in enumerate(SocialMediaStatus.values)],
                    default=Value(0), output_field=IntegerField())
 CONFLICT = 'Ktoś zmienił ten wpis w międzyczasie (obecnie: {current}). Sprawdź dane i zapisz ponownie.'
@@ -104,7 +115,7 @@ def _describe(record):
     parts = [record.get_status_display()]
     if record.posted_on:
         parts.append(date_format(record.posted_on, 'd.m.Y'))
-    if record.url:
+    if getattr(record, 'url', ''):
         parts.append(record.url)
     return ', '.join(parts)
 
@@ -131,9 +142,6 @@ def _text_queryset(query):
         rows = rows.alias(_local=Exists(local), _foreign=Exists(foreign)).filter(
             Q(title__plcontains=q) | Q(anthology__title__plcontains=q) | Q(tags__plcontains=q) | Q(genre__plcontains=q)
             | Q(anthology__is_translated=False, _local=True) | Q(anthology__is_translated=True, _foreign=True))
-    statuses = [value for value in query.getlist('status') if value]
-    if statuses:
-        rows = rows.filter(social_status__in=statuses) if set(statuses) <= set(SocialMediaStatus.values) else rows.none()
     anthology = query.get('anthology', '')
     if anthology:
         rows = rows.filter(anthology_id=_positive_id(anthology)) if _positive_id(anthology) else rows.none()
@@ -148,11 +156,47 @@ def _text_queryset(query):
     return scope, rows, unpublished
 
 
-def _render(request, query, *, text_form=None, text_pk=None, entry_form=None, entry_pk=None, add_form=None, status=200):
-    list_request = copy(request)
-    list_request.GET = query
-    scope, rows, unpublished = _text_queryset(query)
-    page = paginate_items(list_request, rows)
+def _status_filter(rows, query):
+    """Filtr statusu promocji tekstu – tylko dla Opowiadań (cytaty mają własne statusy)."""
+    statuses = [value for value in query.getlist('status') if value]
+    if not statuses:
+        return rows
+    return rows.filter(social_status__in=statuses) if set(statuses) <= set(SocialMediaStatus.values) else rows.none()
+
+
+def _quote_rows(request, texts, manage, *, quote_form=None, quote_pk=None, add_quote_form=None, add_quote_pk=None):
+    """Wiersze sekcji Cytaty: tekst z formularzem nowego cytatu i jego cytaty (pobrane zbiorczo)."""
+    quotes = defaultdict(list)
+    for quote in SocialMediaQuote.objects.filter(text_id__in=[text.pk for text in texts]).select_related(
+            'added_by__person_profile'):
+        quotes[quote.text_id].append(quote)
+    versions = _versions(SocialMediaQuote, [quote.pk for items in quotes.values() for quote in items])
+    rows = []
+    for text in texts:
+        items = []
+        for quote in quotes[text.pk]:
+            bound = quote_form is not None and quote.pk == quote_pk
+            can_delete = manage or (quote.added_by_id == request.user.pk and quote.status == SocialMediaStatus.FREE)
+            items.append({
+                'quote': quote, 'author': person_name(quote.added_by) or quote.added_by_name, 'can_delete': can_delete,
+                'values': {name: quote_form.data.get(name, '') for name in ('status', 'posted_on')} if bound else
+                {'status': quote.status, 'posted_on': quote.posted_on.isoformat()},
+                'errors': quote_form.errors if bound else {},
+                'non_field_errors': quote_form.non_field_errors() if bound else [],
+                'token': _token(request.user, 'quote', quote.pk, versions.get(quote.pk, 0)) if manage or can_delete else '',
+            })
+        adding = add_quote_form is not None and text.pk == add_quote_pk
+        rows.append({
+            'pk': text.pk, 'title': text.title, 'anthology': text.anthology, 'authors': _authors_display(text),
+            'quotes': items, 'new_quote': add_quote_form.data.get('content', '') if adding else '',
+            'new_quote_errors': add_quote_form.errors.get('content', []) if adding else [],
+        })
+    return rows
+
+
+def _manage_context(request, query, list_request, all_rows, *, text_form, text_pk, entry_form, entry_pk, add_form):
+    """Sekcje Opowiadania i Inne (tylko dla osób z prawem edycji – pozostali ich nie widzą)."""
+    page = paginate_items(list_request, _status_filter(all_rows, query))
     texts = list(page.object_list)
     versions = _versions(TextSocialMedia, [text.social_media.pk for text in texts if _record(text)])
     page.object_list = []
@@ -176,16 +220,39 @@ def _render(request, query, *, text_form=None, text_pk=None, entry_form=None, en
         'non_field_errors': entry_form.non_field_errors() if entry_form is not None and entry.pk == entry_pk else [],
         'token': _token(request.user, 'entry', entry.pk, entry_versions.get(entry.pk, 0)),
     } for entry in entries]
-    open_other = bool(request.session.pop(OPEN_OTHER, False)) or entry_form is not None or (
-        add_form is not None and bool(add_form.errors))
-    anthologies = Anthology.objects.filter(pk__in=scope.order_by().values('anthology_id')).only('pk', 'title').order_by('title', 'pk')
-    return render(request, 'core/social_media.html', {
+    return {
         'page_obj': page, 'rows': page.object_list, 'entry_rows': entry_rows,
         'add_form': add_form or SocialMediaEntryForm(auto_id='social-add-%s'),
         'add_values': _bound_values(add_form) if add_form is not None else _values(None),
-        'open_other': open_other, 'return_query': query.urlencode(), 'unpublished': unpublished,
-        'query': query.get('q', ''), 'selected_statuses': query.getlist('status'),
-        'selected_anthology': query.get('anthology', ''), 'anthologies': anthologies,
+        'open_other': bool(request.session.pop(OPEN_OTHER, False)) or entry_form is not None or (
+            add_form is not None and bool(add_form.errors)),
+        'selected_statuses': query.getlist('status'),
+    }
+
+
+def _render(request, query, *, text_form=None, text_pk=None, entry_form=None, entry_pk=None, add_form=None,
+            quote_form=None, quote_pk=None, add_quote_form=None, add_quote_pk=None, status=200):
+    manage = can_manage_social_media(request.user)
+    list_request = copy(request)
+    list_request.GET = query
+    scope, all_rows, unpublished = _text_queryset(query)
+    context = _manage_context(request, query, list_request, all_rows, text_form=text_form, text_pk=text_pk,
+                              entry_form=entry_form, entry_pk=entry_pk, add_form=add_form) if manage else {}
+    # Cytaty: ten sam zakres i wyszukiwanie co Opowiadania (bez filtra statusu tekstu), osobna paginacja.
+    # Osoby bez prawa edycji widzą tylko tę sekcję – od razu rozwiniętą.
+    quote_page = paginate_items(list_request, all_rows, page_param='quotes_page', size_param='quotes_page_size',
+                                sort_param='quotes_sort', anchor='#social-quotes')
+    quote_page.object_list = _quote_rows(request, list(quote_page.object_list), manage, quote_form=quote_form,
+                                         quote_pk=quote_pk, add_quote_form=add_quote_form, add_quote_pk=add_quote_pk)
+    open_quotes = bool(request.session.pop(OPEN_QUOTES, False)) or not manage or quote_form is not None or (
+        add_quote_form is not None) or any(key in query for key in QUOTE_PARAMS)
+    anthologies = Anthology.objects.filter(pk__in=scope.order_by().values('anthology_id')).only('pk', 'title').order_by('title', 'pk')
+    return render(request, 'core/social_media.html', {
+        **context, 'can_manage': manage, 'return_query': query.urlencode(), 'unpublished': unpublished,
+        'quote_page': quote_page, 'quote_rows': quote_page.object_list, 'open_quotes': open_quotes,
+        'quote_count': SocialMediaQuote.objects.filter(text__in=all_rows.order_by().values('pk')).count(),
+        'quote_max_length': SocialMediaQuote._meta.get_field('content').max_length,
+        'query': query.get('q', ''), 'selected_anthology': query.get('anthology', ''), 'anthologies': anthologies,
         'status_choices': SocialMediaStatus.choices,
     }, status=status)
 
@@ -270,17 +337,87 @@ def _save_entry(request, query, action):
     return _render(request, query, entry_form=form, entry_pk=entry_pk, status=400)
 
 
+def _add_quote(request, query):
+    text_pk = _positive_id(request.POST.get('text'))
+    if text_pk is None:
+        return HttpResponseBadRequest('Nie wskazano tekstu.')
+    text = story_texts().filter(pk=text_pk).first()
+    if text is None:
+        raise Http404('Tego tekstu nie ma w tabeli Social Media.')
+    form = SocialMediaQuoteForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, f'Nie zapisano cytatu do „{text.title}” – popraw treść.')
+        return _render(request, query, add_quote_form=form, add_quote_pk=text.pk, status=400)
+    quote = form.save(commit=False)
+    quote.text, quote.posted_on = text, timezone.localdate()
+    quote.added_by = quote.updated_by = request.user
+    quote.added_by_name = person_name(request.user)[:200]
+    quote.save()
+    messages.success(request, f'Zapisano cytat do „{text.title}”.')
+    request.session[OPEN_QUOTES] = True
+    return redirect(list_url(query, f'social-quote-text-{text.pk}'))
+
+
+def _change_quote(request, query, action, manage):
+    """Status i data cytatu – tylko Social Media; usunięcie – Social Media albo autor cytatu ze statusem „Wolne”."""
+    quote_pk = _positive_id(request.POST.get('quote'))
+    if quote_pk is None:
+        return HttpResponseBadRequest('Nie wskazano cytatu.')
+    with transaction.atomic():
+        quote = SocialMediaQuote.objects.select_for_update().select_related('text').filter(pk=quote_pk).first()
+        if quote is None:
+            raise Http404('Cytat nie istnieje.')
+        own_free = quote.added_by_id == request.user.pk and quote.status == SocialMediaStatus.FREE
+        if not manage and not (action == 'quote_delete' and own_free):
+            raise PermissionDenied('Status i datę cytatu zmienia osoba od Social Media; usunąć można własny cytat, '
+                                   'dopóki ma status „Wolne”.')
+        title, anchor = quote.text.title, f'social-quote-text-{quote.text_id}'
+        if not _token_matches(request.POST.get('version'), request.user, 'quote', quote.pk, version_of(quote)):
+            if action == 'quote_delete':
+                messages.error(request, f'Nie usunięto cytatu do „{title}” – ktoś zmienił go w międzyczasie.')
+                request.session[OPEN_QUOTES] = True
+                return redirect(list_url(query, anchor))
+            current = _describe(quote)
+            form = SocialMediaQuoteStatusForm(request.POST, instance=quote)
+            form.is_valid()
+            form.add_error(None, CONFLICT.format(current=current))
+            messages.error(request, f'Nie zapisano cytatu do „{title}” – ktoś zmienił go w międzyczasie.')
+            return _render(request, query, quote_form=form, quote_pk=quote.pk, status=409)
+        if action == 'quote_delete':
+            quote.delete()
+            messages.success(request, f'Usunięto cytat do „{title}”.')
+            request.session[OPEN_QUOTES] = True
+            return redirect(list_url(query, anchor))
+        form = SocialMediaQuoteStatusForm(request.POST, instance=quote)
+        if form.is_valid():
+            saved = form.save(commit=False)
+            saved.updated_by = request.user
+            saved.save()
+            messages.success(request, f'Zapisano cytat do „{title}”.')
+            request.session[OPEN_QUOTES] = True
+            return redirect(list_url(query, anchor))
+    messages.error(request, f'Nie zapisano cytatu do „{title}” – popraw zaznaczone pola.')
+    return _render(request, query, quote_form=form, quote_pk=quote_pk, status=400)
+
+
 @never_cache
 @login_required
 @require_http_methods(['GET', 'POST'])
-@social_media_required
+@team_member_required
 def social_media(request):
     if request.method == 'GET':
         return _render(request, request.GET)
     query = list_query(request.POST.get('return_query'))
     action = request.POST.get('action')
+    manage = can_manage_social_media(request.user)
+    if action == 'quote_add':
+        return _add_quote(request, query)
+    if action in ('quote_edit', 'quote_delete'):
+        return _change_quote(request, query, action, manage)
+    if action not in ('text', 'entry_add', 'entry_edit', 'entry_delete'):
+        return HttpResponseBadRequest('Nieznana operacja.')
+    if not manage:
+        raise PermissionDenied('Opowiadania i inne wpisy zmienia osoba od Social Media albo koordynator.')
     if action == 'text':
         return _save_text(request, query)
-    if action in ('entry_add', 'entry_edit', 'entry_delete'):
-        return _save_entry(request, query, action)
-    return HttpResponseBadRequest('Nieznana operacja.')
+    return _save_entry(request, query, action)

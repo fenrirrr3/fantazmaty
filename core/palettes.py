@@ -34,6 +34,7 @@ STAGE_PALETTES = {
 
 # Team role names ("Redaktor", "Koordynator redakcji", ...) in order of precedence.
 LABEL_RULES = (
+    (re.compile(r'^imperator ludzkości$'), 'emperor'),  # rola honorowa
     (re.compile(r'^prawa ręka$'), 'right-hand'),
     (re.compile(r'^ilustrator$'), 'illustrator'),
     (re.compile(r'^grafik$'), 'designer'),

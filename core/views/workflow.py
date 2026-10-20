@@ -37,6 +37,7 @@ from workflow.services import (
     finish_editing_to_coordinator,
     resume_editing,
     send_text_to_author,
+    send_to_first_proofreading,
     send_to_first_verification,
     send_to_second_verification,
 )
@@ -350,6 +351,13 @@ def send_to_second_verification_stage(request, text_id):
 @require_POST
 @team_member_required
 def finish_text_editing(request, text_id):
+    from workflow.catalog import is_extracts_text
+    if is_extracts_text(get_object_or_404(Text, pk=text_id)):
+        # Ekstrakty: po pierwszej weryfikacji redakcja przechodzi od razu do pierwszej korekty.
+        return _perform_text_transition(
+            request, text_id, transition=send_to_first_proofreading, date_parameter="ended_at",
+            success_message="Zakończono redakcję. Przekazano tekst do pierwszej korekty.",
+        )
     return _perform_text_transition(
         request,
         text_id,
@@ -375,6 +383,7 @@ def restart_text_workflow(request, text_id):
     from django.core import signing
     from core.edit_versions import version_of
     from workflow.repetitions import validate_repeat, repeat_stages, sequence
+    from workflow.catalog import is_extracts_text
     try:
         selected = validate_repeat(text, form.cleaned_data['stages'])
         assignees = form.cleaned_data['assignees']
@@ -382,7 +391,7 @@ def restart_text_workflow(request, text_id):
         if request.POST.get('confirm_restart') != 'yes':
             return render(request, 'core/restart_preview.html', {
                 'text': text, 'selected': selected,
-                'queue_labels': [dict(WorkflowStage.StageType.choices)[k] for k in sequence(selected)],
+                'queue_labels': [dict(WorkflowStage.StageType.choices)[k] for k in sequence(selected, extracts=is_extracts_text(text))],
                 'performers': [{'name': f'performer_{role}', 'value': person.pk,
                                 'label': dict(WorkflowRoleAssignment.Role.choices)[role],
                                 'person': person.get_full_name() or person.get_username()}

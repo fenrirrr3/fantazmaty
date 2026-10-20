@@ -7,7 +7,8 @@ from django.utils import timezone
 from .models import WorkflowRoleAssignment, WorkflowStage
 from .admin_performer_forms import PerformerChoiceField
 from django.contrib.admin.widgets import AutocompleteSelect
-from .catalog import IMPORT_ONLY_STAGE_TYPES, IMPORT_ONLY_ROLES, active_stage_choices, active_role_choices
+from .catalog import (IMPORT_ONLY_STAGE_TYPES, IMPORT_ONLY_ROLES, active_stage_choices, active_role_choices,
+                      stage_choices_for)
 from workflow.models import WorkflowRepetition
 from workflow.models import WorkflowHandoff
 
@@ -181,7 +182,8 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
             )
             replacement = forms.ChoiceField(
                 label="Status po usunięciu bieżącego etapu",
-                choices=[("", "Ostatni pozostały etap workflow"), *active_stage_choices()],
+                choices=[("", "Ostatni pozostały etap workflow"),
+                         *stage_choices_for(stage.text, active_stage_choices())],
                 required=False,
                 help_text="Puste pole zachowuje ostatni pozostały etap, także zakończony. Nie rozpoczyna pracy ponownie.",
             )
@@ -201,6 +203,11 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
                 "performer": stage.assignment.assigned_to_id if stage.assignment else None,
             },
         )
+        from workflow.catalog import stage_allowed
+        if not stage_allowed(stage.text, stage.stage_type):
+            # Ekstrakty: wyłączonego etapu nie otwiera się ponownie.
+            form.fields["action"].choices = [
+                choice for choice in form.fields["action"].choices if choice[0] != "reopen"]
         if request.method == "POST" and form.is_valid():
             try:
                 edit_stage(

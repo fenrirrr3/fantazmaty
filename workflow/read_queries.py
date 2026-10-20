@@ -208,6 +208,9 @@ def available_stages(user, access):
              if (kind != 'styling' or user.is_superuser)
              and (kind not in ('second_proofreading', 'fourth_proofreading') or can_claim_fourth_proofreading(user))
              and (access['coordinator'] or ROLE_GROUPS.get(role, roles.EDITOR).casefold() in access['roles'])]
+    from workflow.catalog import EXTRACTS_STAGE_TYPES, extracts_text_q
+    # Ekstrakty: wyłączone etapy (także zaległe) nie trafiają do „Teksty do wzięcia”.
+    query = query.exclude(Q(extracts_text_q('text__')) & ~Q(stage_type__in=EXTRACTS_STAGE_TYPES))
     query = query.filter(stage_type__in=kinds).exclude(stage_type='editor_control', repetition__isnull=True).filter(
         ~Exists(terminal(stages)),
         ~Exists(assignments.filter(role=OuterRef('_work_role'), assigned_to__isnull=False)),

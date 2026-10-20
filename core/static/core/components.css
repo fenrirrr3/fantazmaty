@@ -857,6 +857,25 @@ fieldset.multi-filter-field {
     --badge-border: currentColor;
 }
 
+/* Rola honorowa „Imperator Ludzkości”: gotycki styl – złoto na gradiencie od szkarłatu do czerni,
+   kapitaliki, krzyże ✠ po obu stronach i złota obwódka. */
+.role-badge[data-palette="emperor"] {
+    --badge-border: var(--emperor-fg);
+    background-image: linear-gradient(135deg, var(--emperor-bg), var(--emperor-bg-end));
+    font-family: Georgia, "Times New Roman", serif;
+    font-variant: small-caps;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+}
+
+.role-badge[data-palette="emperor"]::before {
+    content: "✠";
+}
+
+.role-badge[data-palette="emperor"]::after {
+    content: "✠";
+}
+
 /* Etapy w tabelce zbiorczej: kolor wynika z etapu wiersza. */
 .workflow-stage-row .workflow-stage-badge:not([data-palette]) {
     --badge-bg: var(--workflow-badge-background, var(--badge-neutral-bg));

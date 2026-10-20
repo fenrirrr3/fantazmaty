@@ -61,7 +61,10 @@ class CompleteStageForm(forms.Form):
     def __init__(self, *args, stage=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.stage = stage
-        if stage is not None and stage.stage_type == 'editing_control':
+        from workflow.catalog import is_extracts_text
+        # W Ekstraktach zaległa kontrola prowadzi tylko do pierwszej korekty – bez wyboru.
+        if (stage is not None and stage.stage_type == 'editing_control'
+                and not is_extracts_text(getattr(stage, 'text', None))):
             from workflow.decision_forms import editorial_decision_field
             self.fields['send_to_proofreading'] = editorial_decision_field()
 
@@ -127,7 +130,9 @@ class RestartWorkflowForm(forms.Form):
         from workflow.repetitions import REPEATABLE, eligible_repeat_users
         from workflow.services import STAGE_ROLES
         self.text = text
+        from workflow.catalog import stage_choices_for
         choices = [(kind, label) for kind, label in WorkflowStage.StageType.choices if kind in REPEATABLE]
+        choices = stage_choices_for(text, choices)
         if text is not None:
             recorded = set(WorkflowStage.objects.filter(text=text, workflow_cycle=text.current_workflow_cycle)
                            .exclude(repetition__canceled_at__isnull=False).values_list('stage_type', flat=True))

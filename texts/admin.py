@@ -275,6 +275,9 @@ class WorkflowStageInline(SuperuserOnlyAdminMixin, admin.TabularInline):
                 or obj.workflow_cycle != obj.text.current_workflow_cycle
                 or obj.stage_type in ('ready', 'withdrawn')):
             return '–'
+        from workflow.catalog import stage_allowed
+        if not stage_allowed(obj.text, obj.stage_type):
+            return '–'
         from django.utils.html import format_html
         return format_html('<a href="{}?action=reopen">Cofnij zakończenie</a>', reverse('admin:workflow_stage_correct', args=[obj.pk]))
 
@@ -782,7 +785,7 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         from django.template.response import TemplateResponse
         from django.shortcuts import redirect
         from workflow.admin_add_stage import add_missing_stage
-        from workflow.catalog import active_stage_choices
+        from workflow.catalog import active_stage_choices, stage_choices_for
         from workflow.services import STAGE_ROLES
         from workflow.admin_performer_forms import PerformerChoiceField
         from django.contrib.admin.widgets import AutocompleteSelect
@@ -792,7 +795,7 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             raise PermissionDenied
         obj = get_object_or_404(self.get_queryset(request), pk=unquote(object_id))
         class AddStageForm(forms.Form):
-            kind = forms.ChoiceField(label='Etap', choices=[(k,v) for k,v in active_stage_choices() if k in STAGE_ROLES])
+            kind = forms.ChoiceField(label='Etap', choices=stage_choices_for(obj, [(k,v) for k,v in active_stage_choices() if k in STAGE_ROLES]))
             performer = PerformerChoiceField(label='Wykonawca', required=False,
                 queryset=get_user_model().objects.all().order_by('last_name','first_name','pk'),
                 widget=AutocompleteSelect(WorkflowRoleAssignment._meta.get_field('assigned_to'), admin.site))
@@ -817,13 +820,13 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         from django.template.response import TemplateResponse
         from django.shortcuts import redirect
         from workflow.admin_status import set_admin_status
-        from workflow.catalog import active_stage_choices
+        from workflow.catalog import active_stage_choices, stage_choices_for
         from core.edit_versions import version_of
         if not request.user.is_superuser:
             raise PermissionDenied
         obj = get_object_or_404(self.get_queryset(request), pk=unquote(object_id))
         class StatusForm(forms.Form):
-            stage = forms.ChoiceField(label='Nowy status / etap', choices=active_stage_choices())
+            stage = forms.ChoiceField(label='Nowy status / etap', choices=stage_choices_for(obj, active_stage_choices()))
             version = forms.IntegerField(widget=forms.HiddenInput)
             confirm = forms.BooleanField(label='Potwierdzam ręczną korektę statusu i zachowanie wcześniejszych wykonań w historii.')
         form = StatusForm(request.POST if request.method == 'POST' else None, initial={'version':version_of(obj)})

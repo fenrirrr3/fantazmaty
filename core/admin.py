@@ -18,7 +18,8 @@ from core.models import PublicAudiobookSettings
 from core.models import Audiobook, AudiobookStage
 from core.models import AudioContributor
 from core.models import PostLayoutAssignment
-from core.models import SocialMediaEntry, TextSocialMedia
+from core.models import SocialMediaEntry, SocialMediaQuote, TextSocialMedia
+from core.discord_notifications import person_name
 from core.audiobook_forms import AudiobookProductionForm
 from core import notification_admin  # noqa: F401 – rejestracja panelu powiadomień Discord
 
@@ -235,6 +236,22 @@ class SocialMediaEntryAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     list_filter = ('status',)
     search_fields = ('description', 'url')
     readonly_fields = ('created_at', 'updated_at', 'updated_by')
+
+
+@admin.register(SocialMediaQuote)
+class SocialMediaQuoteAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
+    list_display = ('__str__', 'added_by_name', 'posted_on', 'status', 'updated_at')
+    list_filter = ('status',)
+    search_fields = ('text__title', 'content', 'added_by_name')
+    list_select_related = ('text',)
+    raw_id_fields = ('text',)
+    readonly_fields = ('added_by', 'added_by_name', 'created_at', 'updated_at', 'updated_by')
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.added_by, obj.added_by_name = request.user, person_name(request.user)[:200]
+        obj.updated_by = request.user
+        super().save_model(request, obj, form, change)
 
 
 User = get_user_model()

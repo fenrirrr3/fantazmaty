@@ -1,4 +1,4 @@
-/* Social Media: rozwijana sekcja „Inne” i tabela opowiadań do promocji. Kolory wyłącznie z tokenów motywu. */
+/* Social Media: rozwijane sekcje „Inne” i „Cytaty” oraz tabela opowiadań do promocji. Kolory wyłącznie z tokenów motywu. */
 
 .social-media-filters-body {
     border-bottom: 1px solid var(--border);
@@ -46,6 +46,28 @@
 }
 
 .social-status-select:has(option[value="posted"]:checked) {
+    border-color: var(--success-border);
+    background-color: var(--success-light);
+    color: var(--success);
+}
+
+/* Status bez prawa edycji: ten sam kolor co wybrana wartość listy. */
+.social-status-label {
+    display: inline-block;
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.social-status-label[data-status="in_progress"] {
+    border-color: var(--warning-border);
+    background-color: var(--warning-light);
+    color: var(--warning);
+}
+
+.social-status-label[data-status="posted"] {
     border-color: var(--success-border);
     background-color: var(--success-light);
     color: var(--success);
@@ -140,9 +162,58 @@
     min-width: 16rem;
 }
 
+/* „Cytaty”: wiersz tekstu z formularzem nowego cytatu, pod nim cytaty jako wcięte pod-wiersze. */
+.social-quote-group + .social-quote-group > tr:first-child > td {
+    border-top: 2px solid var(--border-strong);
+}
+
+.social-quote-row > td {
+    background: var(--surface-alt);
+}
+
+.social-quote-add {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--space-2);
+    margin: 0;
+}
+
+.social-quote-add > .social-media-field {
+    flex: 1 1 auto;
+}
+
+.social-quote-add textarea {
+    width: 100%;
+    min-width: 16rem;
+    min-height: var(--control-height);
+    resize: vertical;
+}
+
+.social-quote-content {
+    min-width: 16rem;
+    max-width: 40rem;
+    white-space: pre-line;
+}
+
 @media (max-width: 760px) {
     .social-media-field > :is(select, input),
-    .social-media-other-table .social-media-field > input[name="description"] {
+    .social-media-other-table .social-media-field > input[name="description"],
+    .social-quote-add textarea,
+    .social-quote-content {
         min-width: 0;
+    }
+
+    .social-quote-add {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    /* Karta cytatu nie powtarza danych tekstu – są w karcie tekstu nad nią. */
+    .mobile-review-cards .social-quote-spacer {
+        display: none;
+    }
+
+    .social-quote-row {
+        margin-inline-start: var(--space-4);
     }
 }

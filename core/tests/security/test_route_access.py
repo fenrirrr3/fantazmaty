@@ -97,7 +97,7 @@ ROUTE_LEVELS = {
         'core:available_texts', 'core:take_workflow_stage',
         'core:anthology_list', 'core:workflow_list', 'core:/etapy-prac/', 'core:people_list', 'core:person_detail',
         'core:my_vacations', 'core:edit_vacation', 'core:end_vacation', 'core:cancel_vacation',
-        'core:active_vacations', 'illustrations:cover_proposal_list',
+        'core:active_vacations', 'illustrations:cover_proposal_list', 'core:social_media',
     ], TEAM),
     'core:my_reviews': REVIEWER,
     'core:assign_reviewer': SELF_ASSIGN,
@@ -110,7 +110,6 @@ ROUTE_LEVELS = {
     'core:audio_contributor': ROLE_OR_COORDINATOR,
     'core:post_layout': ROLE_OR_COORDINATOR,
     # Social Media: koordynatorzy i rola „Social Media” (zapis wierszy to POST na ten sam adres).
-    'core:social_media': ROLE_OR_COORDINATOR,
     'illustrations:illustration_list': ROLE_OR_COORDINATOR,
     'illustrations:illustration_detail': ROLE_OR_COORDINATOR,
     'core:recruitment_mailbox': RECRUITMENT,

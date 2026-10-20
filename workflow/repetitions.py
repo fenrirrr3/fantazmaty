@@ -16,6 +16,9 @@ def validate_repeat(text, selected):
     selected = set(selected)
     if not selected or selected - set(REPEATABLE):
         raise ValidationError('Wybierz poprawne etapy do powtórzenia.')
+    from workflow.catalog import require_stage_allowed
+    for kind in sorted(selected, key=REPEATABLE.index):
+        require_stage_allowed(text, kind)
     current = current_stage_queryset(text)
     if text.repetitions.filter(completed_at__isnull=True, canceled_at__isnull=True).exists():
         raise ValidationError('Najpierw zakończ aktualną kolejkę powtórzeń.')
@@ -75,11 +78,16 @@ def validate_repeat_assignees(text, selected, assignees, *, lock=False):
     return assignees
 
 
-def sequence(selected):
-    """An editorial pass resumes after each explicitly selected verification/author exchange."""
+def sequence(selected, *, extracts=False):
+    """An editorial pass resumes after each explicitly selected verification/author exchange.
+
+    W Ekstraktach pierwsza weryfikacja nie wraca do redakcji.
+    """
     result = []
     for kind in selected:
         result.append(kind)
+        if extracts:
+            continue
         if S.StageType.EDITING in selected and kind in (S.StageType.FIRST_VERIFICATION, S.StageType.AUTHOR_EDITING, S.StageType.SECOND_VERIFICATION):
             result.append(S.StageType.EDITING)
     return result
@@ -134,7 +142,8 @@ def repeat_stages(text, selected, user, *, expected_version=None, assignees=None
         assignments[role] = A.objects.create(text=text, workflow_cycle=text.current_workflow_cycle, role=role,
                                            execution_number=next_assignment_execution(text, role), repetition=run,
                                            assigned_to=assignees.get(role) if assignees else None)
-    for position, kind in enumerate(sequence(selected)):
+    from workflow.catalog import is_extracts_text
+    for position, kind in enumerate(sequence(selected, extracts=is_extracts_text(text))):
         S.objects.create(text=text, workflow_cycle=text.current_workflow_cycle, stage_type=kind,
             iteration=next_stage_iteration(text, kind), execution_number=numbers[kind], repetition=run,
             queue_position=position, is_released=position == 0, assignment=assignments[STAGE_ROLES[kind]])
@@ -202,8 +211,12 @@ def finish_repetition(stage, ended_at):
     run.save(update_fields=['completed_at'])
     was_ready = S.objects.filter(text=stage.text, pk__in=run.previous_stage_ids,
                                  stage_type=S.StageType.READY).exists()
+    from workflow.catalog import extracts_next_stage, is_extracts_text
+    extracts = is_extracts_text(stage.text)
     if was_ready:
         next_kind = S.StageType.READY
+    elif extracts:
+        next_kind = extracts_next_stage(stage.text, stage.stage_type)
     elif stage.stage_type == S.StageType.EDITING:
         from workflow.services import returned_by_coordinator
         if returned_by_coordinator(stage.text):
@@ -224,7 +237,7 @@ def finish_repetition(stage, ended_at):
         .exclude(repetition__canceled_at__isnull=False)
         .exclude(stage_type=S.StageType.EDITING_CONTROL, send_to_proofreading=False)
         .values_list('stage_type', flat=True))
-    while next_kind not in (S.StageType.READY, S.StageType.EDITING, S.StageType.AUTHOR_EDITING):
+    while not extracts and next_kind not in (S.StageType.READY, S.StageType.EDITING, S.StageType.AUTHOR_EDITING):
         if next_kind not in completed_kinds:
             break
         next_kind = NEXT_STAGE_TYPES[next_kind]

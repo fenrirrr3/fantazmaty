@@ -2,6 +2,7 @@
 from django.conf import settings
 from django.core.validators import URLValidator
 from django.db import models
+from django.utils import timezone
 
 from core.edit_versions import VersionedQuerySet
 
@@ -58,3 +59,34 @@ class SocialMediaEntry(SocialMediaFields):
 
     def __str__(self):
         return self.description
+
+
+class SocialMediaQuote(models.Model):
+    """Cytat z opowiadania do wpisu promocyjnego; jeden tekst może mieć wiele cytatów od wielu osób.
+
+    Usunięcie tekstu usuwa jego cytaty (CASCADE, jak stan promocji tekstu): cytat bez tekstu nie ma sensu,
+    a PROTECT blokowałby usuwanie tekstów z powodu notatek promocyjnych.
+    """
+    objects = VersionedQuerySet.as_manager()
+    text = models.ForeignKey('texts.Text', on_delete=models.CASCADE, related_name='social_quotes', verbose_name='tekst')
+    content = models.TextField('cytat', max_length=2000)
+    status = models.CharField('status', max_length=20, choices=SocialMediaStatus.choices,
+                              default=SocialMediaStatus.FREE, db_index=True)
+    posted_on = models.DateField('data wrzucenia', default=timezone.localdate)
+    added_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+                                 related_name='+', verbose_name='dodał(a)', editable=False)
+    # Podpis dodającego zostaje, gdy konto zostanie usunięte.
+    added_by_name = models.CharField('dodał(a) – podpis', max_length=200, blank=True, editable=False)
+    created_at = models.DateTimeField('utworzono', auto_now_add=True)
+    updated_at = models.DateTimeField('zmieniono', auto_now=True)
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+                                   related_name='+', verbose_name='zmienił(a)', editable=False)
+
+    class Meta:
+        verbose_name = 'social media – cytat'
+        verbose_name_plural = 'Social Media – cytaty'
+        ordering = ('created_at', 'pk')
+
+    def __str__(self):
+        content = ' '.join(self.content.split())
+        return f'{self.text} – {content[:60]}{"…" if len(content) > 60 else ""}'

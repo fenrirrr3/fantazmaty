@@ -17,6 +17,9 @@ def _reopen_stage(text, stage):
             or stage.stage_type not in ORDER
             or stage.stage_type in ('ready_for_editing', 'ready', 'withdrawn')):
         raise ValidationError('Można cofnąć zakończenie tylko aktualnego, zakończonego etapu pracy.')
+    from workflow.catalog import require_stage_allowed
+    # Ekstrakty: cofnięcie nie może ponownie otworzyć wyłączonego etapu.
+    require_stage_allowed(text, stage.stage_type)
     if stage.repetition_id and stage.repetition.canceled_at:
         raise ValidationError('Etap należy do odwołanej kolejki powtórzeń.')
     if stage.is_skipped:

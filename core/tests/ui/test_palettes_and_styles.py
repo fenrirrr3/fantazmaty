@@ -90,6 +90,44 @@ class TeamRolePaletteTests(TestCase):
         self.assertContains(page, 'data-palette="social-media"')
 
 
+    def test_emperor_role_has_a_distinct_readable_gothic_badge(self):
+        """Rola honorowa „Imperator Ludzkości”: własna paleta (inna niż pozostałe role i etapy), złoty napis o kontraście
+        ≥ 4,5:1 z oboma kolorami gradientu w motywie jasnym i ciemnym, krzyże ✠ po obu stronach dodawane CSS-em; etykieta
+        z paletą na liście zespołu, w profilu osoby, w wyszukiwarce i na liście urlopów."""
+        palette = label_palette(team_roles.EMPEROR)
+        self.assertEqual(palette, 'emperor')
+        others = {label_palette(name) for name in (*team_roles.STANDARD_ROLES, *team_roles.RETIRED_ROLES, 'Prawa ręka')
+                  if name != team_roles.EMPEROR}
+        self.assertNotIn(palette, others | set(ROLE_PALETTES.values()) | set(STAGE_PALETTES.values()))
+        themes = (STATIC / 'themes.css').read_text(encoding='utf-8')
+        self.assertIn('[data-palette="emperor"] { --palette-bg: var(--emperor-bg); --palette-fg: var(--emperor-fg); }',
+                      themes)
+
+        def luminance(color):
+            channels = [int(color[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+            r, g, b = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in channels]
+            return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+        for theme, block in (('jasny', themes.split(':root {', 1)[1]), ('ciemny', themes.split(':root[data-theme="dark"]', 1)[1])):
+            tokens = dict(re.findall(r'--(emperor-[a-z-]+): (#[0-9a-f]{6})', block.split('}', 1)[0]))
+            for background in ('emperor-bg', 'emperor-bg-end'):
+                with self.subTest(theme=theme, background=background):
+                    light, dark = sorted((luminance(tokens['emperor-fg']), luminance(tokens[background])), reverse=True)
+                    self.assertGreaterEqual((light + 0.05) / (dark + 0.05), 4.5)
+        components = (STATIC / 'components.css').read_text(encoding='utf-8')
+        self.assertIn('linear-gradient(135deg, var(--emperor-bg), var(--emperor-bg-end))', components)
+        for side in ('before', 'after'):
+            with self.subTest(side=side):
+                self.assertIn(f'.role-badge[data-palette="emperor"]::{side} {{\n    content: "✠";', components)
+        member = create_member('emperor-badge', team_roles.EMPEROR)
+        self.client.force_login(create_superuser('emperor-badge-admin'))
+        for url in (reverse('core:people_list'), reverse('core:person_detail', args=[member.person_profile.pk]),
+                    reverse('core:global_search') + '?q=emperor-badge'):
+            with self.subTest(url=url):
+                self.assertContains(self.client.get(url), f'<span class="role-badge" data-palette="emperor">{team_roles.EMPEROR}</span>',
+                                    html=True)
+
+
 class StylesheetTests(SimpleTestCase):
     def css(self, name):
         return (STATIC / name).read_text(encoding='utf-8')

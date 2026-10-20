@@ -79,6 +79,9 @@ def claim_reason(stage, user, stages, assignments, *, access=None):
         return "Etap nie oczekuje na przejęcie."
     if not role:
         return "Tego etapu nie można przejąć."
+    from workflow.catalog import disabled_stage_message, stage_allowed
+    if not stage_allowed(stage.text, kind):
+        return disabled_stage_message(kind)
     reason = role_access_reason(user, role, access=access)
     if reason:
         return reason

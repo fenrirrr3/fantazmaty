@@ -11,6 +11,7 @@ from unittest.mock import patch
 from urllib.parse import unquote
 from zipfile import ZIP_DEFLATED, ZipFile
 
+from cryptography.fernet import InvalidToken
 from django.core import mail, signing
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.mail import get_connection
@@ -508,7 +509,8 @@ class SplitMailingMatchTests(SplitMailingData):
             self.assertEqual((row['status'], row['note']), ('no_match', 'Kilka tekstów antologii ma ten tytuł.'))
 
     def test_recipients_are_authors_or_translators(self):
-        """Autor, kilku autorów (jedna wiadomość do wszystkich), tłumacz w antologii tłumaczonej i brak adresu."""
+        """Autor, kilku autorów (jedna wiadomość do wszystkich), tłumacz w antologii tłumaczonej, brak adresu
+        i tekst bez rekordu tłumaczenia (brak odbiorców i podpisu)."""
         from authors.models import Author
 
         partial = self.texts['Trzecie']
@@ -519,10 +521,13 @@ class SplitMailingMatchTests(SplitMailingData):
             ('tłumacz', self.translator.translations.get().text, True, (['Olga Tłumacz'], ['olga@example.test'], [])),
             ('tłumaczenie bez tłumacza', self.untranslated, True, ([], [], [])),
             ('brak adresu', partial, False, (['Ewa Cicha'], [], ['Ewa Cicha'])),
+            ('antologia tłumaczona, tekst bez rekordu tłumaczenia', partial, True, ([], [], [])),
         )
         for label, text, translated, expected in cases:
             with self.subTest(label):
                 self.assertEqual(mailing.recipients(text, translated), expected)
+        with self.subTest('podpis tekstu bez rekordu tłumaczenia'):
+            self.assertEqual(mailing.signature(partial, True), [])
         partial.authors.add(Author.objects.create(first_name='Piotr', last_name='Głośny', email='piotr@example.test'))
         with self.subTest('jeden z autorów bez adresu – wysyłka do pozostałych'):
             row = mailing.build_rows([{'file': '03 Trzecie.docx', 'title': 'Trzecie'}], self.book)[0]
@@ -617,6 +622,19 @@ class SplitMailingGroupTests(SimpleTestCase):
                           (2, False, 2, 'Serwer SMTP odrzucił adres odbiorcy.')])
         self.assertEqual((report['mails'], report['sent'], report['failed']), (1, 1, 2))
 
+    def test_invalid_recipient_address_fails_only_its_mail(self):
+        """Adres, którego backend SMTP nie zakoduje (stare dane, np. „jan@”) – błąd tylko tego maila; pozostałe
+        wychodzą, a partia kończy się raportem (wcześniej wyjątek przerywał wysyłkę i zostawiał znacznik SENT bez raportu)."""
+        from django.core.mail.backends.smtp import EmailBackend
+
+        connection = EmailBackend(host='smtp.example.test', port=25, use_tls=False, use_ssl=False)
+        with patch('django.core.mail.backends.smtp.smtplib.SMTP') as server:
+            _, report = self.send([(['jan@'], mailing.READY), (['a@example.test'], mailing.READY)], connection=connection)
+        self.assertEqual([call.args[1] for call in server.return_value.sendmail.call_args_list], [['a@example.test']])
+        self.assertEqual([(row['sent'], row['error']) for row in report['rows']],
+                         [(False, mailing.INVALID_ADDRESS), (True, '')])
+        self.assertEqual((report['mails'], report['sent'], report['failed']), (1, 1, 1))
+
     def test_checklist_numbers_planned_mails_for_ready_rows(self):
         """Lista kontrolna: maile gotowych wierszy (te same adresy – jeden mail) z tematem po uzupełnieniu tagów."""
         rows = [{'index': 0, 'title': 'A', 'emails': ['a@x.test'], 'status': mailing.READY, 'size': 1},
@@ -660,6 +678,181 @@ class SplitMailingGroupTests(SimpleTestCase):
                 subject, _ = mailing.mail_content({'subject': template, 'message': ''}, [{'title': title}], prefix)
                 self.assertEqual(subject, expected)
                 self.assertLessEqual(len(subject), mailing.SUBJECT_LIMIT)
+
+
+class SplitMailingServiceErrorTests(SimpleTestCase):
+    """Serwis wysyłki przy uszkodzonym wyniku podziału, po wysłaniu partii i przy błędach SMTP."""
+
+    MAILBOX = MailboxConnection(username='wysylka@example.test')
+    ROW = {'index': 0, 'file': '01 A.docx', 'title': 'A', 'emails': ['a@example.test'], 'status': mailing.READY}
+
+    def folder(self, archive=b'zip', parts=None, sent=False):
+        """Katalog zadania: archiwum (b'zip' – poprawne z plikiem wiersza, inne bajty – uszkodzone, None – brak)."""
+        folder = Path(self.enterContext(TemporaryDirectory()))
+        if archive == b'zip':
+            with ZipFile(folder / 'result', 'w') as result:
+                result.writestr(self.ROW['file'], b'x' * 5)
+        elif archive is not None:
+            (folder / 'result').write_bytes(archive)
+        if parts is not None:
+            (folder / jobs.SPLIT_PARTS).write_text(parts, encoding='utf-8')
+        if sent:
+            (folder / mailing.SENT).touch()
+        return folder
+
+    def test_missing_or_broken_part_list_is_an_error(self):
+        """Brak, uszkodzony lub niepełny split_parts.json – komunikat o ponownym podziale."""
+        for label, parts in (('brak pliku', None), ('nie JSON', '{'), ('pusta lista', '[]'), ('nie lista', '{"file": "a"}'),
+                             ('wiersz bez pliku', '[{"title": "A"}]'), ('wiersz nie słownik', '["01 A.docx"]')):
+            with self.subTest(label):
+                with self.assertRaisesMessage(mailing.MailingError, 'Uruchom podział ponownie.'):
+                    mailing.read_parts(self.folder(parts=parts))
+
+    def test_broken_archive_has_no_sizes(self):
+        """Uszkodzone lub brakujące archiwum – rozmiary nieznane (0), lista kontrolna powstaje mimo to."""
+        for archive in (b'nie zip', None):
+            with self.subTest(archive=archive):
+                self.assertEqual(mailing._sizes(self.folder(archive)), {})
+        self.assertEqual(mailing._sizes(self.folder()), {'01 A.docx': 5})
+
+    def test_sent_batch_cannot_be_prepared_or_tested_again(self):
+        """Po wysłaniu (znacznik SENT) nie można przygotować nowej partii ani wysłać testu."""
+        folder = self.folder(sent=True)
+        for label, call, message in (
+                ('nowa partia', lambda: mailing.prepare(folder, None, 'T', 'M'), 'zostały już wysłane.'),
+                ('test', lambda: mailing.send_test(folder, {'rows': [self.ROW]}, 'ja@example.test', self.MAILBOX),
+                 'test nie jest już możliwy')):
+            with self.subTest(label):
+                with self.assertRaisesMessage(mailing.MailingError, message):
+                    call()
+
+    def test_smtp_error_messages(self):
+        """Błędy połączenia SMTP po polsku, bez haseł; nieznany błąd serwera – ucięty do 200 znaków."""
+        cases = (
+            (smtplib.SMTPAuthenticationError(535, b'no'), 'Serwer SMTP odrzucił login lub hasło skrzynki.'),
+            (smtplib.SMTPRecipientsRefused({}), 'Serwer SMTP odrzucił adres odbiorcy.'),
+            (InvalidToken(), 'Nie można odczytać hasła skrzynki. Zapisz je ponownie w panelu administratora.'),
+            (TimeoutError(), 'Serwer SMTP nie odpowiada. Sprawdź serwer, port i szyfrowanie.'),
+            (ConnectionRefusedError(), 'Serwer SMTP nie odpowiada. Sprawdź serwer, port i szyfrowanie.'),
+            (smtplib.SMTPDataError(552, 'x' * 300), f'Błąd serwera SMTP: {str(smtplib.SMTPDataError(552, "x" * 300))[:200]}'),
+            (OSError('gaierror'), 'Nie można połączyć się z serwerem SMTP. Sprawdź serwer, port i szyfrowanie.'),
+        )
+        for error, expected in cases:
+            with self.subTest(error=type(error).__name__):
+                self.assertEqual(mailing.smtp_error(error), expected)
+
+    def test_send_with_missing_or_broken_files(self):
+        """Plik z listy, którego nie ma w archiwum – błąd tego wiersza; uszkodzone archiwum – błąd wszystkich wierszy.
+        W obu przypadkach partia nie jest zamknięta (bez znacznika SENT i SENDING), a archiwum zostaje do ponowienia."""
+        missing = {**self.ROW, 'index': 1, 'file': '02 B.docx'}
+        cases = (
+            ('brak pliku w archiwum', b'zip', [(0, True, ''), (1, False, 'Brak pliku w archiwum podziału.')]),
+            ('uszkodzone archiwum', b'nie zip', [(index, False, 'Nie można odczytać plików podziału. Uruchom podział ponownie.')
+                                                 for index in (0, 1)]),
+        )
+        for label, archive, expected in cases:
+            with self.subTest(label):
+                folder = self.folder(archive)
+                mail.outbox = []
+                with patch.object(mailing, 'smtp_connection', side_effect=locmem_connection):
+                    report = mailing.send(folder, {'subject': 'T', 'message': 'M', 'rows': [self.ROW, missing]},
+                                          {'0', '1'}, self.MAILBOX)
+                self.assertEqual([(row['index'], row['sent'], row['error']) for row in report['rows']], expected)
+                self.assertEqual(len(mail.outbox), int(expected[0][1]))
+                self.assertEqual([(folder / name).exists() for name in (mailing.SENT, mailing.SENDING, 'result')],
+                                 [False, False, True])
+
+    def test_test_mail_errors(self):
+        """Test: uszkodzone archiwum i odrzucenie maila przez serwer – MailingError z komunikatem, bez maila."""
+        refused = locmem_connection(None)
+        refused.send_messages = lambda messages: (_ for _ in ()).throw(smtplib.SMTPRecipientsRefused({}))
+        cases = (('uszkodzone archiwum', b'nie zip', locmem_connection(None), 'Uruchom podział ponownie.'),
+                 ('serwer odrzucił adres', b'zip', refused, 'Serwer SMTP odrzucił adres odbiorcy.'))
+        for label, archive, connection, message in cases:
+            with self.subTest(label):
+                mail.outbox = []
+                with patch.object(mailing, 'smtp_connection', return_value=connection), \
+                        self.assertRaisesMessage(mailing.MailingError, message):
+                    mailing.send_test(self.folder(archive), {'subject': 'T', 'message': 'M', 'rows': [self.ROW]},
+                                      'ja@example.test', self.MAILBOX)
+                self.assertEqual(mail.outbox, [])
+
+
+class SplitMailingRetryTests(SimpleTestCase):
+    """Ponowienie częściowej wysyłki: tylko niewysłane wiersze, znacznik „trwa wysyłka”, archiwum do pełnej wysyłki."""
+
+    MAILBOX = MailboxConnection(username='wysylka@example.test')
+
+    def setUp(self):
+        self.folder = Path(self.enterContext(TemporaryDirectory()))
+        rows = [{'index': index, 'file': f'0{index + 1} T{index}.docx', 'title': f'T{index}', 'emails': [address],
+                 'status': mailing.READY} for index, address in enumerate(('a@example.test', 'b@example.test'))]
+        with ZipFile(self.folder / 'result', 'w') as archive:
+            for row in rows:
+                archive.writestr(row['file'], b'x')
+        self.batch = {'batch': 'b1', 'subject': 'Temat', 'message': 'Treść', 'anthology_title': 'Zbiór', 'rows': rows}
+        mail.outbox = []
+
+    def send(self, selected=('0', '1'), refuse=()):
+        """Wysyłka przez locmem; adresy z `refuse` serwer odrzuca. Zwraca adresatów tej próby i raport."""
+        connection = locmem_connection(None)
+        original = connection.send_messages
+
+        def deliver(messages):
+            if set(messages[0].to) & set(refuse):
+                raise smtplib.SMTPRecipientsRefused({})
+            return original(messages)
+        connection.send_messages = deliver
+        before = len(mail.outbox)
+        with patch.object(mailing, 'smtp_connection', return_value=connection):
+            report = mailing.send(self.folder, self.batch, set(selected), self.MAILBOX)
+        return [message.to for message in mail.outbox[before:]], report
+
+    def exists(self):
+        return [(self.folder / name).exists() for name in ('result', mailing.SENT, mailing.SENDING)]
+
+    def test_retry_sends_only_failed_rows_then_closes_batch(self):
+        """Pierwsza próba: wysłany A, odrzucony B – archiwum zostaje. Ponowienie z zaznaczeniem obu wysyła tylko B,
+        numer maila rośnie dalej, raport jest zbiorczy, a pełna wysyłka zamyka partię i usuwa archiwum."""
+        sent, report = self.send(refuse=['b@example.test'])
+        self.assertEqual((sent, report['sent'], report['failed'], self.exists()),
+                         ([['a@example.test']], 1, 1, [True, False, False]))
+        self.assertEqual(mailing.failed_indices(mailing.read_report(self.folder)), {1})
+        with self.subTest('sam wysłany wiersz'):
+            with self.assertRaisesMessage(mailing.MailingError, 'nie został jeszcze wysłany'):
+                self.send(selected=['0'])
+        sent, report = self.send()
+        self.assertEqual(sent, [['b@example.test']])
+        self.assertEqual([(row['index'], row['sent'], row['mail']) for row in report['rows']], [(0, True, 1), (1, True, 3)])
+        self.assertEqual((report['sent'], report['failed'], report['mails'], report['last']),
+                         (2, 0, 2, {'sent': 1, 'failed': 0, 'mails': 1}))
+        self.assertEqual(self.exists(), [False, True, False])
+        with self.assertRaisesMessage(mailing.MailingError, 'nie wysyłam jej drugi raz'):
+            self.send()
+        self.assertEqual(len(mail.outbox), 2)
+
+    def test_send_in_progress_or_other_batch_sends_nothing(self):
+        """Trwająca wysyłka (druga karta, podwójne kliknięcie) i raport innej partii – nic nie wychodzi; cudzy znacznik
+        „trwa wysyłka” zostaje nietknięty."""
+        (self.folder / mailing.SENDING).touch()
+        with self.assertRaisesMessage(mailing.MailingError, 'Wysyłka tej partii już trwa'):
+            self.send()
+        self.assertTrue((self.folder / mailing.SENDING).exists())
+        (self.folder / mailing.SENDING).unlink()
+        jobs.write_json(self.folder / mailing.REPORT, {'batch': 'inna', 'rows': []})
+        with self.assertRaisesMessage(mailing.MailingError, 'Lista kontrolna wygasła'):
+            self.send()
+        self.assertEqual((mail.outbox, self.exists()), ([], [True, False, False]))
+
+    def test_unsaved_report_keeps_the_batch_locked(self):
+        """Nie udało się zapisać raportu po wysłaniu – znacznik „trwa wysyłka” zostaje, więc nic nie wyjdzie drugi raz."""
+        with patch.object(jobs, 'write_json', side_effect=OSError('dysk pełny')), \
+                self.assertRaisesMessage(mailing.MailingError, 'Partia jest zablokowana'):
+            self.send()
+        self.assertEqual(self.exists(), [True, False, True])
+        with self.assertRaisesMessage(mailing.MailingError, 'już trwa'):
+            self.send()
+        self.assertEqual(len(mail.outbox), 2)
 
 
 class SplitMailingViewTests(IsolatedProgramDirsMixin, SplitMailingData):
@@ -808,6 +1001,53 @@ class SplitMailingViewTests(IsolatedProgramDirsMixin, SplitMailingData):
         self.assertContains(response, 'Serwer SMTP odrzucił adres odbiorcy.')
         self.assertEqual(len(mail.outbox), 1)
 
+    def test_partial_send_can_be_retried_for_failed_rows_only(self):
+        """Po częściowej wysyłce: raport z „Wyślij ponownie nieudane”, archiwum zostaje, test jest dozwolony, nowa lista
+        kontrolna i ponowna wysyłka całej partii nic nie wysyłają; ponowienie wysyła tylko nieudany wiersz, ma osobny wpis
+        w dzienniku, zamyka partię i usuwa archiwum – potem test i kolejne ponowienie są zablokowane."""
+        url, folder = self.split_job()
+        url = self.prepare(url)
+        _, token = self.checklist(url)
+        partial = locmem_connection(None)
+        original = partial.send_messages
+
+        def refuse_anna(messages):
+            if 'anna@example.test' in messages[0].to:
+                raise smtplib.SMTPRecipientsRefused({'anna@example.test': (550, b'no')})
+            return original(messages)
+        partial.send_messages = refuse_anna
+        self.smtp.side_effect = lambda mailbox: partial
+        page = self.client.post(url, {'action': 'send', 'batch': token, 'rows': ['0', '1']}, follow=True)
+        self.assertContains(page, 'Wyślij ponownie nieudane (1)')
+        self.assertEqual([(folder / name).exists() for name in ('result', mailing.SENT, mailing.SENDING)],
+                         [True, False, False])
+        retry_token = page.context['batch_token']
+        with self.subTest('mail testowy po częściowej wysyłce'):
+            self.smtp.side_effect = locmem_connection
+            response = self.client.post(url, {'action': 'test', 'batch': retry_token, 'test_address': 'ja@example.test'},
+                                        follow=True)
+            self.assertContains(response, 'Wysłano test na ja@example.test')
+        with self.subTest('bez nowej listy kontrolnej i bez ponownej wysyłki całej partii'):
+            for data in ({**self.FORM, 'anthology': self.book.pk}, {'action': 'send', 'batch': token, 'rows': ['0', '1']}):
+                self.assertContains(self.client.post(url, data), 'Wysłane pliki: 1 z 2')
+        self.assertEqual(len(mail.outbox), 2)
+        response = self.client.post(url, {'action': 'retry', 'batch': retry_token}, follow=True)
+        self.assertContains(response, 'Ponowiono wysyłkę: pliki 1 z 1.')
+        self.assertContains(response, 'Wysłane pliki: 2 z 2, wiadomości: 2')
+        self.assertNotContains(response, 'Wyślij ponownie nieudane')
+        self.assertEqual([message.to for message in mail.outbox[2:]], [['jan@example.test', 'anna@example.test']])
+        self.assertEqual([(folder / name).exists() for name in ('result', mailing.SENT)], [False, True])
+        entries = [json.loads(path.read_text(encoding='utf-8')) for path in (self.work_dir / 'activity').glob('*.json')]
+        self.assertTrue({('Wysyłka plików autorom', 'Zbiór: wiadomości 1, pliki 1 z 2'),
+                         ('Ponowienie wysyłki plików autorom', 'Zbiór: wiadomości 1, pliki 1 z 1')}
+                        <= {(entry['action'], entry['target']) for entry in entries})
+        for data, expected, status in (({'action': 'retry', 'batch': retry_token}, 'Wysłane pliki: 2 z 2', 200),
+                                       ({'action': 'test', 'batch': retry_token, 'test_address': 'ja@example.test'},
+                                        'test nie jest już możliwy', 400)):
+            with self.subTest(action=data['action']):
+                self.assertContains(self.client.post(url, data), expected, status_code=status)
+        self.assertEqual(len(mail.outbox), 3)
+
     def test_test_mail_goes_to_owner_and_leaves_batch_ready(self):
         """„Wyślij test”: jeden mail „[TEST]” z plikiem losowego gotowego wiersza; adres w sesji, wpis w dzienniku,
         partia nie jest oznaczona jako wysłana, a właściwa wysyłka działa dalej."""
@@ -885,12 +1125,14 @@ class SplitMailingViewTests(IsolatedProgramDirsMixin, SplitMailingData):
         self.assertEqual(mail.outbox, [])
 
     def test_form_validation_and_changing_settings(self):
-        """Temat w jednym wierszu, wymagana antologia, tylko znane tagi; „Zmień” wraca do formularza z poprzednimi wartościami."""
+        """Temat w jednym wierszu, wymagana antologia, tylko znane tagi, treść bez znaków sterujących;
+        „Zmień” wraca do formularza z poprzednimi wartościami."""
         url, _ = self.split_job()
         unknown = 'Nieznane tagi: [tytul]. Dostępne: [antologia], [tytuł-tekstu], [autor].'
         cases = (({'subject': 'Temat\nBcc: ktoś@example.test'}, 'subject', None), ({'anthology': ''}, 'anthology', None),
                  ({'message': ''}, 'message', None), ({'subject': '[tytul] z [ANTOLOGIA]'}, 'subject', unknown),
-                 ({'message': 'Plik [tytul], [Autor]'}, 'message', unknown))
+                 ({'message': 'Plik [tytul], [Autor]'}, 'message', unknown),
+                 ({'message': 'Treść\x07z dzwonkiem'}, 'message', 'Treść: usuń znaki sterujące.'))
         for change, field, error in cases:
             with self.subTest(field=field, error=error):
                 response = self.client.post(url, {**self.FORM, 'anthology': self.book.pk, **change})
@@ -920,6 +1162,53 @@ class SplitMailingViewTests(IsolatedProgramDirsMixin, SplitMailingData):
                 jobs.write_json(folder / 'state.json', state)
                 self.assertContains(self.client.get(url), 'po zakończonym podziale DOCX', status_code=404)
         self.assertEqual(mail.outbox, [])
+
+    def test_errors_without_checklist_broken_job_or_unknown_action(self):
+        """Wysyłka i test bez listy kontrolnej – formularz z komunikatem; nieczytelny stan zadania – 503;
+        brak listy plików podziału przy przygotowaniu, test bez skrzynki i nieznana akcja – 400. Nic nie wychodzi."""
+        def no_parts(folder):
+            (folder / jobs.SPLIT_PARTS).unlink()
+
+        def no_mailbox(folder):
+            self.prepare(self.url)
+            MailboxConnection.objects.update(is_active=False)
+
+        cases = (
+            ('wysyłka bez listy', None, lambda url: {'action': 'send', 'batch': 'x', 'rows': ['0']}, 400,
+             'Lista kontrolna wygasła'),
+            ('test bez listy', None, lambda url: {'action': 'test', 'batch': 'x', 'test_address': 'ja@example.test'},
+             400, 'Lista kontrolna wygasła'),
+            ('uszkodzony stan zadania', lambda folder: (folder / 'state.json').write_text('{', encoding='utf-8'),
+             lambda url: {}, 503, 'Nie można odczytać zadania. Spróbuj ponownie.'),
+            ('brak listy plików', no_parts, lambda url: {**self.FORM, 'anthology': self.book.pk}, 400,
+             'Brak listy plików z tego podziału. Uruchom podział ponownie.'),
+            ('test bez skrzynki', no_mailbox,
+             lambda url: {'action': 'test', 'batch': self.checklist(url)[1], 'test_address': 'ja@example.test'}, 400,
+             'Brak skrzynki do wysyłki'),
+            ('nieznana akcja', None, lambda url: {'action': 'usuń'}, 400, 'Nieprawidłowa akcja.'),
+        )
+        for label, setup, data, status, message in cases:
+            with self.subTest(label):
+                MailboxConnection.objects.update(is_active=True)
+                self.url, folder = self.split_job()
+                if setup:
+                    setup(folder)
+                response = self.client.post(self.url, data(self.url)) if data(self.url) else self.client.get(self.url)
+                self.assertContains(response, message, status_code=status)
+                if label.endswith('bez listy'):
+                    self.assertIn('form', response.context)
+        self.assertEqual(mail.outbox, [])
+
+    def test_activity_log_failure_does_not_break_sending(self):
+        """Błąd zapisu dziennika aktywności (OSError) trafia do logu, a wysyłka kończy się raportem."""
+        url = self.prepare(self.split_job()[0])
+        _, token = self.checklist(url)
+        with patch('core.activity_spool.enqueue_activity', side_effect=OSError('dysk pełny')), \
+                self.assertLogs(level='ERROR') as logs:  # także middleware aktywności – ten sam zapis
+            response = self.client.post(url, {'action': 'send', 'batch': token, 'rows': ['0']}, follow=True)
+        self.assertContains(response, 'Wysłane pliki: 1 z 1')
+        self.assertTrue(any(line.startswith('ERROR:core.views.split_mailing:') for line in logs.output), logs.output)
+        self.assertEqual(len(mail.outbox), 1)
 
     def test_job_page_offers_mailing_and_split_result_survives_download(self):
         """Strona i JSON zadania podziału mają „Wyślij autorom”; po pobraniu ZIP archiwum zostaje dla wysyłki."""

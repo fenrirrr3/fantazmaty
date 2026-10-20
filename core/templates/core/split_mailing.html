@@ -11,8 +11,17 @@
     <div class="card-body">
     {% if error %}<p class="form-error" role="alert">{{ error }}</p>{% endif %}
     {% if report %}
-        <p class="message success" role="status">Wysłane pliki: {{ report.sent }} z {{ report.sent|add:report.failed }}, wiadomości: {{ report.mails|default:report.sent }}{% if report.anthology_title %} – {{ report.anthology_title }}{% endif %}.</p>
+        <p class="message {% if complete %}success{% else %}warning{% endif %}" role="status">Wysłane pliki: {{ report.sent }} z {{ report.sent|add:report.failed }}, wiadomości: {{ report.mails|default:report.sent }}{% if report.anthology_title %} – {{ report.anthology_title }}{% endif %}.</p>
         {% include "core/includes/split_mailing_report.html" with rows=report.rows %}
+        {% if not complete and batch_token %}
+            {% if mailbox_error %}<p class="form-warning" role="alert">{{ mailbox_error }}</p>{% endif %}
+            <form method="post">
+                {% csrf_token %}<input type="hidden" name="batch" value="{{ batch_token }}">
+                <p class="form-help">Wysłane wiersze są zablokowane – ponowienie wyśle tylko pliki z błędem. Archiwum zostaje na serwerze, dopóki nie wyjdą wszystkie pliki (albo nie wygaśnie zadanie).</p>
+                <div class="actions"><button type="submit" name="action" value="retry" class="primary-button"{% if not mailbox %} disabled{% endif %}>Wyślij ponownie nieudane ({{ report.failed }})</button></div>
+            </form>
+            {% include "core/includes/split_mailing_test.html" %}
+        {% endif %}
     {% elif batch %}
         {% if failed_report %}<div class="form-error" role="alert"><strong>Nie wysłano żadnej wiadomości.</strong> Popraw ustawienia skrzynki i spróbuj ponownie.
             {% include "core/includes/split_mailing_report.html" with rows=failed_report.rows %}</div>{% endif %}
@@ -44,12 +53,7 @@
                 <button type="submit" name="action" value="change" class="secondary-button" formnovalidate>Zmień antologię lub wiadomość</button>
             </div>
         </form>
-        <form method="post">
-            {% csrf_token %}<input type="hidden" name="batch" value="{{ batch_token }}">
-            <h2>Mail testowy</h2>
-            {% with field=test_form.test_address %}<div class="form-field">{{ field.label_tag }}{{ field }}<p class="muted-text">{{ field.help_text }}</p>{{ field.errors }}</div>{% endwith %}
-            <div class="actions"><button type="submit" name="action" value="test" class="secondary-button"{% if not mailbox %} disabled{% endif %}>Wyślij test</button></div>
-        </form>
+        {% include "core/includes/split_mailing_test.html" %}
     {% elif form %}
         {% if mailbox_error %}<p class="form-warning" role="alert">{{ mailbox_error }}</p>{% endif %}
         <form method="post">
