@@ -1,5 +1,6 @@
 """Updated editorial rules from the desktop cleaner, with web limits."""
 import re
+from functools import lru_cache
 from io import BytesIO
 from docx import Document
 from docx.oxml import OxmlElement
@@ -28,6 +29,9 @@ EDITORIAL_RULES = (
     ('ellipsis', 'Wielokropek → …'),
     ('duplicate_punct', 'Powtórzone przecinki, średniki, dwukropki i podwójne kropki'),
     ('quote_punct', 'Kropka i przecinek zawsze za cudzysłowem zamykającym: „tak”.'),
+    ('note_references', 'Odsyłacze przypisów wg polskich norm: bez spacji przed odsyłaczem; przed kropką, '
+                        'przecinkiem, średnikiem i dwukropkiem; za cudzysłowem i nawiasem zamykającym, '
+                        'pytajnikiem, wykrzyknikiem i wielokropkiem'),
     ('hyphen_dash', 'Łącznik użyty jako myślnik → półpauza'),
     ('dash_style', 'Pauza, pauza cyfrowa, kreska pozioma i minus → półpauza –; łączniki Unicode → dywiz -; '
                    'powtórzone myślniki → jeden'),
@@ -804,6 +808,7 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
     `replacements`: słownik zamian (lista wpisów lub CompiledReplacements),
     None = DEFAULT_REPLACEMENTS. `counts`: słownik, do którego dopisujemy
     liczbę zmian każdej reguły (liczenie nie wpływa na wynik).
+    Reguła note_references działa tylko w DOCX (_correct_noted_group) – tu nic nie zmienia.
     """
     enabled = DEFAULT_EDITORIAL_RULES if enabled is None else frozenset(enabled)
     unknown = enabled - ALL_EDITORIAL_RULES
@@ -1505,6 +1510,167 @@ PARAGRAPH_MARKERS = frozenset(qn('w:' + name) for name in (
     'pPr', 'proofErr', 'bookmarkStart', 'bookmarkEnd', 'commentRangeStart', 'commentRangeEnd',
     'permStart', 'permEnd'))
 RUN_MARKERS = frozenset(qn('w:' + name) for name in ('rPr', 'lastRenderedPageBreak'))
+# Odsyłacze przypisów w tekście nie przerywają zdania: w grupie są nieruchomymi kotwicami.
+NOTE_REFERENCES = frozenset(qn('w:' + name) for name in ('footnoteReference', 'endnoteReference'))
+# Kropka skrótu lub inicjału przed odsyłaczem zostaje na miejscu (itd.¹, r.¹, J.¹).
+NOTE_ABBREVIATION_RE = re.compile(
+    r'(?:' + CAPITALIZATION_ABBREVIATION_RE.pattern + r'|(?<!\w)(?-i:[' + UPPER + r'])\.)$', re.IGNORECASE)
+
+
+def _note_reference_run(run):
+    """Przebieg z samym odsyłaczem (i formatowaniem); odsyłacz z własnym znakiem tekstowym pozostaje barierą."""
+    return all(node.tag in RUN_MARKERS or node.tag in NOTE_REFERENCES for node in run)
+
+
+@lru_cache(maxsize=8)
+def _note_patterns(marker):
+    """Wzorce reguły note_references dla tekstu, w którym `marker` zastępuje odsyłacz."""
+    mark = re.escape(marker)
+    return (
+        # Spacje między wyrazem (lub interpunkcją) a odsyłaczem; początek linii, myślnik i otwarcie zostają.
+        re.compile(r'(?<=[^\s–—\-(\[{„«‚‹' + mark + r'])[ \t]+(?=' + mark + ')'),
+        # Odsyłacz przed cudzysłowem lub nawiasem zamykającym → za nim.
+        re.compile('(' + mark + r'+)([”»)\]]|[’"](?!\w))'),
+        # Odsyłacz za kropką, przecinkiem, średnikiem lub dwukropkiem → przed nimi (kropki „...” zostają).
+        re.compile(r'(?<!\.)([.,;:])(' + mark + '+)(?!\\.)'),
+    )
+
+
+def _place_note_references(text, marker, *, spaces_only=False):
+    """Reguła note_references (do punktu stałego) na tekście z odsyłaczami zastąpionymi przez `marker`.
+
+    Odsyłacz stojący przed ? ! … zostaje (autor mógł odnieść przypis do wyrazu); za nimi – także.
+    spaces_only: tylko usunięcie odstępu przed odsyłaczem (zawsze, także przy wyłączonej regule).
+    """
+    spaces, closers, punctuation = _note_patterns(marker)
+    if spaces_only:
+        return spaces.sub('', text)
+
+    def before_punct(match):
+        if match[1] == '.':
+            prefix = match.string[max(0, match.start() - CONTEXT):match.end(1)].replace(marker, '')
+            if NOTE_ABBREVIATION_RE.search(prefix):
+                return match[0]
+        return match[2] + match[1]
+
+    for _ in range(len(text) + 1):
+        previous = text
+        text = punctuation.sub(before_punct, closers.sub(r'\2\1', spaces.sub('', text)))
+        if text == previous:
+            break
+    return text
+
+
+def _note_positions(original, corrected, positions):
+    """Pozycje odsyłaczy w poprawionym tekście: tuż za obrazem znaku, za którym stały w oryginale."""
+    image = [None] * len(original)
+    for tag, a, b, c, d in _edit_opcodes(original, corrected):
+        if tag in ('equal', 'replace'):
+            for shift in range(min(b - a, d - c)):
+                image[a + shift] = c + shift
+    result, floor = [], 0
+    for position in positions:
+        target = next((image[i] + 1 for i in range(position - 1, -1, -1) if image[i] is not None), 0)
+        # Odstępy po obu stronach odsyłacza złączone w jeden: odstęp zostaje za odsyłaczem.
+        if (position < len(original) and original[position] in ' \t' and 0 < target < len(corrected)
+                and corrected[target - 1] in ' \t' and corrected[target] not in ' \t'):
+            target -= 1
+        floor = max(floor, target)
+        result.append(floor)
+    return result
+
+
+def _moved_note_blocks(before, after, marker):
+    """Liczba bloków odsyłaczy (¹²), których sąsiedztwo zmieniła reguła note_references."""
+    blocks = re.compile(re.escape(marker) + '+')
+
+    def contexts(text):
+        found = []
+        for match in blocks.finditer(text):
+            context = (text[match.start() - 1:match.start()], text[match.end():match.end() + 1])
+            found.extend([(context, match.start())] * len(match[0]))
+        return found
+
+    return len({block for (context, block), (previous, _) in zip(contexts(after), contexts(before))
+                if context != previous})
+
+
+def _new_text_slot(group, anchor, after):
+    """Pusty przebieg tekstu tuż za (after) albo przed odsyłaczem, z formatowaniem najbliższego tekstu grupy."""
+    from copy import deepcopy
+    position = next(index for index, (node, _) in enumerate(group) if node is anchor)
+    before = [node for node, value in group[:position] if value is not None]
+    behind = [node for node, value in group[position + 1:] if value is not None]
+    source = (before[-1] if before and (after or not behind) else behind[0]).getparent()
+    run = OxmlElement('w:r')
+    properties = source.find(qn('w:rPr'))
+    if properties is not None:
+        properties = deepcopy(properties)
+        for change in properties.findall(qn('w:rPrChange')):
+            properties.remove(change)  # w:id zmiany formatowania musi być unikalny
+        run.append(properties)
+    node = OxmlElement('w:t')
+    node.set(qn('xml:space'), 'preserve')
+    node.text = ''
+    run.append(node)
+    if after:
+        anchor.getparent().addnext(run)
+    else:
+        anchor.getparent().addprevious(run)
+    return node, ''
+
+
+def _correct_noted_group(group, enabled, tracker, options):
+    """Korekta grupy z odsyłaczami przypisów (sloty z wartością None).
+
+    Reguły widzą tekst bez odsyłaczy, odsyłacze wracają za znak, za którym stały, a reguła
+    note_references przesuwa je w tekście. Odsyłacz zostaje tym samym elementem w tym samym
+    miejscu XML – zmienia się wyłącznie tekst po obu jego stronach (także jako śledzone zmiany).
+    """
+    segments, anchors = [[]], []
+    for node, value in group:
+        if value is None:
+            anchors.append(node)
+            segments.append([])
+        else:
+            segments[-1].append((node, value))
+    texts = [''.join(value for _, value in segment) for segment in segments]
+    original = ''.join(texts)
+    if not original:
+        return
+    # Odsyłacz na brzegu akapitu: tekst za nim (przed nim) nie zaczyna (nie kończy) akapitu.
+    options = {**options, 'trim_start': options['trim_start'] and bool(texts[0]),
+               'trim_end': options['trim_end'] and bool(texts[-1])}
+    corrected = correct_editorial_text(original, enabled, **options)
+    ends, offset = [], 0
+    for text in texts[:-1]:
+        offset += len(text)
+        ends.append(offset)
+    marker = next(chr(code) for code in range(0xE000, 0xF900) if chr(code) not in corrected)
+    pieces, start = [], 0
+    for position in _note_positions(original, corrected, ends):
+        pieces.append(corrected[start:position])
+        start = position
+    marked = marker.join([*pieces, corrected[start:]])
+    # Odsyłacza nigdy nie poprzedza odstęp; pełne miejsce wg norm – tylko z regułą note_references
+    # (bez niej usunięty odstęp liczy reguła spaces).
+    full = 'note_references' in enabled
+    placed = _place_note_references(marked, marker, spaces_only=not full)
+    counts = options['counts']
+    changed = _moved_note_blocks(marked, placed, marker)
+    if counts is not None and changed:
+        key = 'note_references' if full else 'spaces'
+        counts[key] = counts.get(key, 0) + changed
+    marked = placed
+    for index, (segment, text) in enumerate(zip(segments, marked.split(marker))):
+        if not segment:
+            if not text:
+                continue
+            segment = [_new_text_slot(group, anchors[index - 1] if index else anchors[0], after=index > 0)]
+        if tracker is not None:
+            _rewrite_tracked(segment, text, tracker)
+        else:
+            _rewrite_text_nodes(segment, text)
 
 
 FALLBACK_TAG = '{http://schemas.openxmlformats.org/markup-compatibility/2006}Fallback'
@@ -1609,6 +1775,8 @@ def apply_editorial_corrections(doc, enabled=None, *, track_changes=False, repla
                         slots.append((node, node.text))
                 elif node.tag == qn('w:tab'):
                     slots.append((node, '\t'))
+                elif node.tag in NOTE_REFERENCES and _note_reference_run(child):
+                    slots.append((node, None))  # odsyłacz: nieruchoma kotwica, nie bariera
                 elif node.tag == qn('w:cr') or (node.tag == qn('w:br')
                                                 and node.get(qn('w:type'), 'textWrapping') == 'textWrapping'):
                     barrier(soft=LINE_BARRIER)  # miękki enter: koniec i początek linii
@@ -1618,16 +1786,18 @@ def apply_editorial_corrections(doc, enabled=None, *, track_changes=False, repla
             groups.append(slots)
         for index, group in enumerate(groups):
             if group and group not in (SOFT_BARRIER, LINE_BARRIER):
-                original = ''.join(value for _, value in group)
                 # Brzeg akapitu: przed (po) grupą są najwyżej podziały strony lub kolumny;
                 # miękki enter tuż obok daje brzeg linii (spacje, kwestia dialogowa).
-                corrected = correct_editorial_text(
-                    original, enabled,
+                options = dict(
                     trim_start=(index > 0 and groups[index - 1] is LINE_BARRIER)
                     or all(item is SOFT_BARRIER for item in groups[:index]),
                     trim_end=(index + 1 < len(groups) and groups[index + 1] is LINE_BARRIER)
                     or all(item is SOFT_BARRIER for item in groups[index + 1:]),
                     replacements=compiled, counts=paragraph_counts)
+                if any(value is None for _, value in group):
+                    _correct_noted_group(group, enabled, tracker, options)
+                    continue
+                corrected = correct_editorial_text(''.join(value for _, value in group), enabled, **options)
                 if tracker is not None:
                     _rewrite_tracked(group, corrected, tracker)
                 else:

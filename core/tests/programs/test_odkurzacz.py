@@ -18,6 +18,7 @@ from core.program_test_support import run_program
 from core.services.document_preparation import prepare_docx
 from core.services.odkurzacz import (
     ALL_EDITORIAL_RULES, DEFAULT_EDITORIAL_RULES, EDITORIAL_RULES, FORM_DEFAULT_EDITORIAL_RULES, clean_docx,
+    correct_editorial_text,
 )
 from fantazmaty.testing import create_member
 
@@ -704,3 +705,145 @@ class CleanerR9Tests(SimpleTestCase):
         insertion = next(result.element.body.iter(qn('w:ins')))
         self.assertTrue(any(node.tag == qn('w:del') for node in insertion.iter()))
         self.assertEqual(self.visible_text(result).replace('cytatem"', ''), 'Tekst z „cytatem”')
+
+
+NOTE_PARTS = {
+    'footnote': ('footnotes', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes'),
+    'endnote': ('endnotes', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/endnotes'),
+}
+
+
+def _noted_document(parts, kind='footnote', note_text=' Treść  przypisu...'):
+    """DOCX z jednym akapitem: napisy to przebiegi tekstu, liczby – odsyłacze przypisu (w:id) z rStyle."""
+    from docx.oxml import parse_xml
+    from docx.oxml.ns import nsdecls
+    name, reltype = NOTE_PARTS[kind]
+    style = 'FootnoteReference' if kind == 'footnote' else 'EndnoteReference'
+    document = Document()
+    paragraph = document.add_paragraph()
+    for part in parts:
+        if isinstance(part, int):
+            paragraph._p.append(parse_xml(
+                f'<w:r {nsdecls("w")}><w:rPr><w:rStyle w:val="{style}"/></w:rPr>'
+                f'<w:{kind}Reference w:id="{part}"/></w:r>'))
+        else:
+            paragraph.add_run(part)
+    notes = ''.join(
+        f'<w:{kind} w:id="{number}"><w:p><w:r><w:rPr><w:rStyle w:val="{style}"/></w:rPr><w:{kind}Ref/></w:r>'
+        f'<w:r><w:t xml:space="preserve">{note_text}</w:t></w:r></w:p></w:{kind}>'
+        for number in sorted({part for part in parts if isinstance(part, int)}))
+    raw, output = saved(document), BytesIO()
+    with ZipFile(raw) as source, ZipFile(output, 'w') as target:
+        for item in source.infolist():
+            data = source.read(item.filename)
+            if item.filename == '[Content_Types].xml':
+                data = data.replace(b'</Types>', (
+                    f'<Override PartName="/word/{name}.xml" ContentType="application/vnd.openxmlformats-'
+                    f'officedocument.wordprocessingml.{name}+xml"/></Types>').encode())
+            if item.filename == 'word/_rels/document.xml.rels':
+                data = data.replace(b'</Relationships>', (
+                    f'<Relationship Id="rIdNotes" Type="{reltype}" Target="{name}.xml"/></Relationships>').encode())
+            target.writestr(item, data)
+        target.writestr(f'word/{name}.xml', (
+            f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:{name} {nsdecls("w")}>{notes}</w:{name}>'))
+    output.seek(0)
+    return output
+
+
+def _noted_texts(stream, part='word/document.xml'):
+    """Tekst części po przyjęciu zmian; odsyłacz jako [w:id], odsyłacz wewnątrz przypisu jako [ref]."""
+    with ZipFile(BytesIO(stream.getvalue())) as archive:
+        root = etree.fromstring(archive.read(part))
+    _resolve_revisions(root, accept=True)
+    pieces = []
+    for node in root.iter():
+        if node.tag == qn('w:t'):
+            pieces.append(node.text or '')
+        elif node.tag in (qn('w:footnoteReference'), qn('w:endnoteReference')):
+            pieces.append(f'[{node.get(qn("w:id"))}]')
+        elif node.tag in (qn('w:footnoteRef'), qn('w:endnoteRef')):
+            pieces.append('[ref]')
+    return ''.join(pieces)
+
+
+class NoteReferenceTests(SimpleTestCase):
+    """Odsyłacze przypisów: reguły widzą zdanie ciągłe, a reguła note_references stawia odsyłacz wg norm."""
+
+    on = FORM_DEFAULT_EDITORIAL_RULES
+    off = FORM_DEFAULT_EDITORIAL_RULES - {'note_references'}
+
+    # nazwa: (przebiegi, wynik z regułą, wynik bez reguły, rodzaj przypisu)
+    CASES = {
+        'cudzysłów przez odsyłacz': (['Powiedział "cytat', 1, '" i wyszedł'],
+                                     'Powiedział „cytat”[1] i wyszedł', 'Powiedział „cytat[1]” i wyszedł'),
+        'wielka litera po odsyłaczu': (['To zdanie.', 1, ' następne zdanie.'],
+                                       'To zdanie[1]. Następne zdanie.', 'To zdanie.[1] Następne zdanie.'),
+        'spacja przed interpunkcją za odsyłaczem': (['Słowo', 1, ' , dalej.'], 'Słowo[1], dalej.', 'Słowo[1], dalej.'),
+        'spacja przed odsyłaczem': (['Słowo ', 1, ' dalej.'], 'Słowo[1] dalej.', 'Słowo[1] dalej.'),
+        'kropka': (['Tekst.', 1], 'Tekst[1].', 'Tekst.[1]'),
+        'przecinek': (['Tekst,', 1, ' dalej.'], 'Tekst[1], dalej.', 'Tekst,[1] dalej.'),
+        'kropka skrótu': (['I tak dalej itd.', 1], 'I tak dalej itd.[1]', 'I tak dalej itd.[1]'),
+        'cudzysłów zamykający': (['„Cytat', 1, '”'], '„Cytat”[1]', '„Cytat[1]”'),
+        'kropka w cudzysłowie': (['„Cytat.', 1, '”'], '„Cytat”[1].', '„Cytat”.[1]'),
+        'nawias zamykający': (['(dopisek', 1, ')'], '(dopisek)[1]', '(dopisek[1])'),
+        'kropka w nawiasie': (['(Całe zdanie.', 1, ')'], '(Całe zdanie.)[1]', '(Całe zdanie.[1])'),
+        'za pytajnikiem': (['Naprawdę?', 1], 'Naprawdę?[1]', 'Naprawdę?[1]'),
+        'przed pytajnikiem': (['Naprawdę', 1, '?'], 'Naprawdę[1]?', 'Naprawdę[1]?'),
+        'dwa odsyłacze obok siebie': (['Tekst.', 1, 2], 'Tekst[1][2].', 'Tekst.[1][2]'),
+        'początek akapitu': ([1, ' Tekst na początku.'], '[1] Tekst na początku.', '[1] Tekst na początku.'),
+        'przypis końcowy': (['Koniec.', 1], 'Koniec[1].', 'Koniec.[1]', 'endnote'),
+    }
+
+    @tag('slow')
+    def test_note_references_keep_continuity_and_follow_polish_rules(self):
+        """Każdy przypadek bez śledzenia i ze śledzeniem (po przyjęciu zmian), z regułą i bez niej."""
+        for name, (parts, with_rule, without_rule, *kind) in self.CASES.items():
+            kind = kind[0] if kind else 'footnote'
+            source = _noted_document(parts, kind).getvalue()
+            ids = [str(part) for part in parts if isinstance(part, int)]
+            for rules, expected in ((self.on, with_rule), (self.off, without_rule)):
+                for track_changes in (False, True):
+                    with self.subTest(name, rule='note_references' in rules, track_changes=track_changes):
+                        summary = {}
+                        result = clean_docx(BytesIO(source), rules, track_changes=track_changes, summary=summary)
+                        self.assertEqual(_noted_texts(result), expected)
+                        moved = 'note_references' in rules and with_rule != without_rule
+                        self.assertEqual(summary.get('note_references'), 1 if moved else None)
+                        # Odsyłacz zostaje tym samym przebiegiem: ten sam w:id i styl, poza śledzonymi zmianami.
+                        body = Document(BytesIO(result.getvalue())).element.body
+                        references = list(body.iter(qn(f'w:{kind}Reference')))
+                        self.assertEqual([node.get(qn('w:id')) for node in references], ids)
+                        for node in references:
+                            run = node.getparent()
+                            self.assertEqual([child.tag for child in run], [qn('w:rPr'), node.tag])
+                            self.assertEqual(run.getparent().tag, qn('w:p'))
+
+    def test_rule_alone_and_plain_text(self):
+        """Odstęp przed odsyłaczem znika zawsze (bez reguły liczy go „spaces”); bez quote_punct odsyłacz idzie
+        za cudzysłów zamykający razem z kropką w środku; w tekście bez odsyłaczy reguła nic nie robi."""
+        for name, rules, parts, expected, counted in (
+            ('sama reguła', ['note_references'], ['Słowo ', 1, ' dalej.'], 'Słowo[1] dalej.', {'note_references': 1}),
+            ('bez reguły', ['ellipsis'], ['Słowo ', 1], 'Słowo[1]', {'spaces': 1}),
+            ('bez quote_punct', self.on - {'quote_punct'}, ['„Cytat.', 1, '”'], '„Cytat.”[1]', {'note_references': 1}),
+        ):
+            with self.subTest(name):
+                summary = {}
+                result = clean_docx(_noted_document(parts), rules, summary=summary)
+                self.assertEqual(_noted_texts(result), expected)
+                # Treść przypisu daje własne liczniki – odejmujemy je (ten sam dokument bez akapitu treści).
+                baseline = {}
+                clean_docx(_noted_document([1]), rules, summary=baseline)
+                self.assertEqual({key: summary.get(key, 0) - baseline.get(key, 0)
+                                  for key in ('note_references', 'spaces')
+                                  if summary.get(key, 0) != baseline.get(key, 0)}, counted)
+        self.assertEqual(correct_editorial_text('Tekst. „Cytat.” (dopisek)', {'note_references'}),
+                         'Tekst. „Cytat.” (dopisek)')
+        self.assertIn('note_references', DEFAULT_EDITORIAL_RULES)
+
+    def test_note_text_is_corrected_and_its_mark_is_untouched(self):
+        """Treść przypisu nadal jest poprawiana, a w:footnoteRef / w:endnoteRef zostaje na początku."""
+        for kind in NOTE_PARTS:
+            for track_changes in (False, True):
+                with self.subTest(kind, track_changes=track_changes):
+                    result = clean_docx(_noted_document(['Tekst.', 1], kind), self.on, track_changes=track_changes)
+                    self.assertEqual(_noted_texts(result, f'word/{kind}s.xml'), '[ref] Treść przypisu…')
