@@ -43,6 +43,11 @@ def _names_for_roles(by_role, role_names):
     return [name for _, name in sorted(people.values())]
 
 
+def _with_manual(names, manual):
+    """Nazwiska z ról, a za nimi wpisane ręcznie w podanej kolejności; bez powtórzeń."""
+    return list(dict.fromkeys([*names, *manual]))
+
+
 def team_sections(include_disabled=False):
     """Działy z grupami i nazwiskami; ``include_disabled`` dołącza też wyłączone (dla podglądu)."""
     by_role = _people_by_role()
@@ -65,7 +70,9 @@ def team_sections(include_disabled=False):
             'w_nawigacji': section.in_navigation, 'etykieta_nawigacji': section.navigation_label or section.title,
             'liczba': unique if section.show_count else None,
             'liczba_tekst': people_count_text(unique) if section.show_count else '',
-            'koordynacja': _names_for_roles(by_role, [role.name for role in section.coordinator_roles.all()]),
+            'koordynacja': _with_manual(
+                _names_for_roles(by_role, [role.name for role in section.coordinator_roles.all()]),
+                section.manual_coordinator_list),
             'notka': clean_note(section.note),
             'grupy': groups,
         })

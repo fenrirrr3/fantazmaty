@@ -127,7 +127,8 @@ recenzji i testów z panelu to nie dotyczy. `python manage.py discord_diagnose` 
 ## Strona WWW (ekipa na fantazmaty.pl)
 
 Strona https://fantazmaty.pl/o-projekcie/ekipa/ pobiera działy ekipy z CMS-a (CMS niczego nie wysyła).
-Działy, podgrupy (z ról albo ręczna lista nazwisk), kolejność i notki ustawia się w panelu admina
+Działy, podgrupy (z ról albo ręczna lista nazwisk), koordynację (role koordynatorów i osoby wpisane ręcznie),
+kolejność i notki ustawia się w panelu admina
 („Ustawienia” → „Strona WWW – działy ekipy”), a redaktora prowadzącego i opiekuna strony w zakładce
 System → „Strona WWW” (`/system/strona-www/`, tylko superuser), która pokazuje też dokładnie to, co dostanie
 strona, ostrzeżenia (osoby z rolą bez działu, działy z ról bez osób, brak klucza) i datę ostatniego pobrania.

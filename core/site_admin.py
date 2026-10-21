@@ -20,7 +20,7 @@ class SiteTeamSectionAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     list_editable = ('position', 'is_enabled')
     ordering = ('position', 'pk')
     fields = ('title', 'slug', 'position', 'is_enabled', 'show_count', 'in_navigation', 'navigation_label',
-              'coordinator_roles', 'note', 'preview_link')
+              'coordinator_roles', 'manual_coordinators', 'note', 'preview_link')
     readonly_fields = ('preview_link',)
     filter_horizontal = ('coordinator_roles',)
     inlines = (SiteTeamGroupInline,)

@@ -50,12 +50,13 @@ class SiteTeamAdminTests(TestCase):
                 self.assertIn(self.client.get(url).status_code, (302, 403))
 
     def test_change_form_saves_section_and_new_group(self):
-        """Zapis działu z nową ręczną podgrupą przez formularz admina; notka zostaje oczyszczona."""
+        """Zapis działu z nową ręczną podgrupą i ręcznym koordynatorem przez formularz admina; notka oczyszczona."""
         data = {
             'title': 'Dział audio', 'slug': 'audio', 'position': '8', 'is_enabled': 'on', 'show_count': 'on',
             'in_navigation': 'on', 'navigation_label': 'Audio',
             'coordinator_roles': [Role.objects.get(name=roles.AUDIOBOOK_COORDINATOR).pk],
             'note': '<p>Notka <b>x</b> <a href="https://x.pl/">y</a></p>',
+            'manual_coordinators': 'Agata Graczyk\n',
             'groups-TOTAL_FORMS': '1', 'groups-INITIAL_FORMS': '0', 'groups-MIN_NUM_FORMS': '0',
             'groups-MAX_NUM_FORMS': '1000',
             'groups-0-title': 'Nowi', 'groups-0-position': '9', 'groups-0-source': 'manual',
@@ -67,6 +68,7 @@ class SiteTeamAdminTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.section.refresh_from_db()
         self.assertEqual(self.section.note, 'Notka x <a href="https://x.pl/">y</a>')
+        self.assertEqual(self.section.manual_coordinator_list, ['Agata Graczyk'])
         self.assertEqual(self.section.groups.count(), 4)
         self.assertEqual(self.section.groups.last().manual_list, ['Anna Nowa', 'Jan Nowy'])
 

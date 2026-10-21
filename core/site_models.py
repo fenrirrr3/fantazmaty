@@ -21,6 +21,9 @@ class SiteTeamSection(models.Model):
     coordinator_roles = models.ManyToManyField('people.Role', blank=True, related_name='+',
                                                verbose_name='role koordynatorów',
                                                help_text='Osoby z tymi rolami trafiają do linii „Koordynacja”.')
+    manual_coordinators = models.TextField('koordynatorzy wpisani ręcznie', blank=True,
+                                           help_text='Po jednym imieniu i nazwisku w wierszu; dopisywani za osobami z ról '
+                                                     '(np. koordynator bez konta w CMS-ie).')
     note = models.TextField('notka', blank=True,
                             help_text='Akapit zamiast listy osób (np. Ilustracje). Dozwolone znaczniki: '
                                       '<a href="https://…">, <strong>, <em>; pozostałe są usuwane.')
@@ -39,6 +42,10 @@ class SiteTeamSection(models.Model):
     @property
     def anchor(self):
         return f'ekipa-{self.slug}'
+
+    @property
+    def manual_coordinator_list(self):
+        return [line.strip() for line in self.manual_coordinators.splitlines() if line.strip()]
 
     def clean(self):
         super().clean()

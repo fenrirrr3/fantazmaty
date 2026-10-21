@@ -19,14 +19,21 @@
  *   [fz_ekipa_strona]     – <p>Imię Nazwisko</p> opiekuna strony
  *   [fz_ekipa_dzialy]     – wszystkie działy (nagłówek z liczbą osób, koordynacja, listy albo notka)
  *
- * ODŚWIEŻANIE: dane są pamiętane godzinę (transient fz_ekipa_dane); ostatnia poprawna kopia jest w opcji
- * fz_ekipa_ostatnie i służy, gdy CMS nie odpowie. Zalogowany administrator wchodzi na stronę
- * z ?fz_odswiez=1, żeby pobrać dane od razu (czyszczone są też cache wtyczek, jeśli są zainstalowane).
+ * DIAGNOSTYKA: gdy strona nie ma danych, zalogowany administrator widzi w miejscu shortcode'u czerwoną
+ * ramkę z przyczyną (brak klucza, kod odpowiedzi CMS-a, błąd połączenia). Inni widzą tylko komentarz HTML.
+ *
+ * ODŚWIEŻANIE: dane są pamiętane 2 dni (transient fz_ekipa_dane; liczba 172800 w fz_ekipa_dane to sekundy),
+ * potem pierwsze wejście na stronę pobiera je na nowo. Ostatnia poprawna kopia jest w opcji fz_ekipa_ostatnie
+ * i służy, gdy CMS nie odpowie. Zalogowany administrator wchodzi na stronę z ?fz_odswiez=1, żeby pobrać
+ * dane od razu (czyszczone są też cache wtyczek, jeśli są zainstalowane).
+ *
+ * AKTUALIZACJA SNIPPETU: najpierw dezaktywuj snippet, potem podmień kod, zapisz i aktywuj (inaczej Code
+ * Snippets zgłosi „Cannot redeclare function”, bo sprawdza nowy kod przy załadowanym starym).
  *
  * CSS (do wspólnego pliku CSS strony – działy są teraz w jednym kontenerze Avady, więc odstępy
  * między nimi muszą dać sekcje; dawniej dawały je osobne kontenery):
- *   .fzo-team-sections .fzo-team-section + .fzo-team-section { margin-top: 3rem; }
  *   .fzo-team-sections .fzo-team-section { scroll-margin-top: 6rem; }   (kotwica – id na <section> – pod stałym nagłówkiem)
+ *   Odstęp między działami daje reguła .fz-page.fzo-team-section { margin-bottom: 34px } z CSS strony.
  */
 
 if ( ! defined( 'FZ_CMS_URL' ) ) {
@@ -40,27 +47,39 @@ function fz_ekipa_klucz() {
 	return (string) get_option( 'fz_cms_key', '' );
 }
 
-/** Pobiera dane z CMS-a; przy błędzie zwraca null. */
+/** Zapamiętuje przyczynę ostatniego nieudanego pobrania (do diagnostyki przez ?fz_odswiez=1). */
+function fz_ekipa_zapisz_blad( $tekst ) {
+	update_option( 'fz_ekipa_blad', array( 'kiedy' => current_time( 'mysql' ), 'tekst' => $tekst ), false );
+	return null;
+}
+
+/** Pobiera dane z CMS-a; przy błędzie zwraca null i zapisuje przyczynę. */
 function fz_ekipa_pobierz() {
 	$klucz = fz_ekipa_klucz();
 	if ( '' === $klucz ) {
-		return null;
+		return fz_ekipa_zapisz_blad( 'Brak klucza: ustaw FZ_CMS_KEY w wp-config.php albo opcję fz_cms_key.' );
 	}
 	$odpowiedz = wp_remote_get( FZ_CMS_URL, array(
 		'timeout' => 8,
 		'headers' => array( 'X-Site-Key' => $klucz, 'Accept' => 'application/json' ),
 	) );
-	if ( is_wp_error( $odpowiedz ) || 200 !== (int) wp_remote_retrieve_response_code( $odpowiedz ) ) {
-		return null;
+	if ( is_wp_error( $odpowiedz ) ) {
+		return fz_ekipa_zapisz_blad( 'Połączenie z ' . FZ_CMS_URL . ' nie powiodło się: ' . $odpowiedz->get_error_message() );
 	}
-	$dane = json_decode( wp_remote_retrieve_body( $odpowiedz ), true );
+	$kod = (int) wp_remote_retrieve_response_code( $odpowiedz );
+	$tresc = wp_remote_retrieve_body( $odpowiedz );
+	if ( 200 !== $kod ) {
+		return fz_ekipa_zapisz_blad( 'CMS odpowiedział kodem ' . $kod . ' (' . FZ_CMS_URL . '): ' . mb_substr( wp_strip_all_tags( $tresc ), 0, 200 ) );
+	}
+	$dane = json_decode( $tresc, true );
 	if ( ! is_array( $dane ) || ! isset( $dane['dzialy'] ) || ! is_array( $dane['dzialy'] ) ) {
-		return null;
+		return fz_ekipa_zapisz_blad( 'Odpowiedź CMS-a nie jest oczekiwanym JSON-em (początek: ' . mb_substr( wp_strip_all_tags( $tresc ), 0, 120 ) . ').' );
 	}
+	delete_option( 'fz_ekipa_blad' );
 	return $dane;
 }
 
-/** Dane ekipy: transient (1 h) → CMS → ostatnia poprawna kopia → null. */
+/** Dane ekipy: transient (2 dni) → CMS → ostatnia poprawna kopia → null. */
 function fz_ekipa_dane() {
 	static $cache = false;
 	if ( false !== $cache ) {
@@ -70,7 +89,7 @@ function fz_ekipa_dane() {
 	if ( ! is_array( $dane ) ) {
 		$dane = fz_ekipa_pobierz();
 		if ( is_array( $dane ) ) {
-			set_transient( 'fz_ekipa_dane', $dane, HOUR_IN_SECONDS );
+			set_transient( 'fz_ekipa_dane', $dane, 172800 ); // 2 dni
 			update_option( 'fz_ekipa_ostatnie', $dane, false );
 		} else {
 			$dane = get_option( 'fz_ekipa_ostatnie', null );
@@ -100,11 +119,27 @@ function fz_ekipa_odswiez() {
 		}
 		do_action( 'litespeed_purge_post', $id );
 	}
+	// WP Fastest Cache („Delete Cache” w pasku admina) i Autoptimize – czyszczone w całości.
+	if ( function_exists( 'wpfc_clear_all_cache' ) ) {
+		wpfc_clear_all_cache( true );
+	}
+	if ( class_exists( 'autoptimizeCache' ) && method_exists( 'autoptimizeCache', 'clearall' ) ) {
+		autoptimizeCache::clearall();
+	}
+	wp_cache_flush();
 }
 add_action( 'template_redirect', 'fz_ekipa_odswiez', 1 );
 
+/** Bez danych: komentarz HTML; zalogowany administrator widzi przyczynę na stronie. */
 function fz_ekipa_brak() {
-	return "<!-- fz-ekipa: brak danych -->";
+	$blad = get_option( 'fz_ekipa_blad', array() );
+	$tekst = is_array( $blad ) && ! empty( $blad['tekst'] ) ? $blad['tekst'] : 'brak danych';
+	$html = '<!-- fz-ekipa: ' . esc_html( $tekst ) . ' -->';
+	if ( is_user_logged_in() && current_user_can( 'manage_options' ) ) {
+		$html .= '<p class="fz-ekipa-blad" style="border:2px solid #b00;padding:.5rem 1rem"><strong>Ekipa z CMS-a (widzi tylko administrator):</strong> '
+			. esc_html( $tekst ) . ( ! empty( $blad['kiedy'] ) ? ' (' . esc_html( $blad['kiedy'] ) . ')' : '' ) . '</p>';
+	}
+	return $html;
 }
 
 function fz_ekipa_notka_kses( $html ) {
@@ -130,7 +165,14 @@ add_shortcode( 'fz_ekipa_nawigacja', function ( $atts = array() ) {
 	}
 	// strona="" wyłącza końcowy przycisk do sekcji „Strona” (kotwica ekipa-strona zostaje w Avadzie).
 	$atts = shortcode_atts( array( 'strona' => 'Strona' ), $atts, 'fz_ekipa_nawigacja' );
-	$html = '<nav aria-label="Działy">';
+	$html = '';
+	// Potwierdzenie dla administratora po ?fz_odswiez=1: skąd są dane i z jakiej wersji CMS-a.
+	if ( ! empty( $_GET['fz_odswiez'] ) && is_user_logged_in() && current_user_can( 'manage_options' ) ) {
+		$html .= '<p class="fz-ekipa-info" style="border:2px solid #080;padding:.5rem 1rem"><strong>Ekipa z CMS-a (widzi tylko administrator):</strong> '
+			. 'pobrano świeże dane, wersja z CMS-a: ' . esc_html( isset( $dane['wersja'] ) ? $dane['wersja'] : '?' )
+			. '. Jeśli lista jest nieaktualna, zmiana nie dotarła do CMS-a (zakładka System → Strona WWW pokazuje to, co wysyła).</p>';
+	}
+	$html .= '<nav aria-label="Działy">';
 	foreach ( $dane['dzialy'] as $dzial ) {
 		if ( empty( $dzial['w_nawigacji'] ) ) {
 			continue;
@@ -162,23 +204,25 @@ add_shortcode( 'fz_ekipa_dzialy', function () {
 	$html = '';
 	foreach ( $dane['dzialy'] as $dzial ) {
 		$kotwica = esc_attr( $dzial['kotwica'] );
-		$html .= '<section class="fzo-team-section" id="' . $kotwica . '">';
-		$html .= '<h2 class="fz-h2">' . esc_html( $dzial['tytul'] );
+		// Znaczniki jak z Avady (klasy kontenera, fusion-title, fusion-text), żeby CSS strony działał bez zmian.
+		$html .= '<section class="fz-page fz-about fzo-body fzo-team-section" id="' . $kotwica . '">';
+		$html .= '<div class="fusion-title title fusion-title-size-two fz-h2">'
+			. '<h2 class="fusion-title-heading title-heading-left fz-h2">' . esc_html( $dzial['tytul'] );
 		if ( ! empty( $dzial['liczba_tekst'] ) ) {
 			$html .= ' <span class="fzo-team-count">' . esc_html( $dzial['liczba_tekst'] ) . '</span>';
 		}
-		$html .= '</h2>';
+		$html .= '</h2></div>';
 		if ( ! empty( $dzial['koordynacja'] ) ) {
-			$html .= '<p class="fzo-team-coord"><strong>Koordynacja:</strong> '
-				. esc_html( implode( ', ', $dzial['koordynacja'] ) ) . '</p>';
+			$html .= '<div class="fusion-text fzo-team-coord"><p><strong>Koordynacja:</strong> '
+				. esc_html( implode( ', ', $dzial['koordynacja'] ) ) . '</p></div>';
 		}
 		$grupy = isset( $dzial['grupy'] ) ? (array) $dzial['grupy'] : array();
 		if ( ! empty( $dzial['notka'] ) ) {
-			$html .= '<p class="fzo-team-note">' . fz_ekipa_notka_kses( $dzial['notka'] ) . '</p>';
+			$html .= '<div class="fusion-text fzo-team-note"><p>' . fz_ekipa_notka_kses( $dzial['notka'] ) . '</p></div>';
 		} elseif ( 1 === count( $grupy ) && '' === (string) $grupy[0]['tytul'] ) {
-			$html .= '<div class="fzo-team-list">' . fz_ekipa_lista( $grupy[0]['osoby'] ) . '</div>';
+			$html .= '<div class="fusion-text fzo-team-list">' . fz_ekipa_lista( $grupy[0]['osoby'] ) . '</div>';
 		} elseif ( $grupy ) {
-			$html .= '<div class="fzo-team-list"><div class="fzo-team-groups">';
+			$html .= '<div class="fusion-text fzo-team-list"><div class="fzo-team-groups">';
 			foreach ( $grupy as $grupa ) {
 				if ( empty( $grupa['osoby'] ) ) {
 					continue;

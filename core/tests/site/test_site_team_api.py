@@ -61,7 +61,10 @@ class SiteTeamApiPayloadTests(TestCase):
         cls.editors = section('redakcja', 1, title='Redakcja', navigation_label='Red.')
         cls.editors.coordinator_roles.add(role(roles.EDITING_COORDINATOR))
         roles_group(cls.editors, roles.EDITOR, roles.VERIFIER)
-        cls.audio = section('audio', 2, title='Dział audio', show_count=False, in_navigation=False)
+        # Koordynatorzy wpisani ręcznie: za osobami z ról, w podanej kolejności, bez powtórzeń (także z rolą).
+        cls.audio = section('audio', 2, title='Dział audio', show_count=False, in_navigation=False,
+                            manual_coordinators='Agata Graczyk\n\n Magdalena Świerczek \nAgata Graczyk\n')
+        cls.audio.coordinator_roles.add(role(roles.EDITING_COORDINATOR))
         SiteTeamGroup.objects.create(section=cls.audio, title='Lektorzy', position=1,
                                      source=SiteTeamGroup.Source.MANUAL, manual_names='Zenon Lektor\n\n  Anna Głos  \n')
         roles_group(cls.audio, roles.SOUND_ENGINEER, title='Dźwiękowcy', position=2)
@@ -86,7 +89,7 @@ class SiteTeamApiPayloadTests(TestCase):
     def test_payload_matches_specification(self):
         """Tylko włączone działy w kolejności; dział z ról: osoby aktywne i niezewnętrzne, bez duplikatów,
         według nazwiska i imienia (polskie znaki jak w alfabecie); ręczny: wiersze w podanej kolejności;
-        notka oczyszczona; liczba i jej odmiana tylko przy show_count."""
+        notka oczyszczona; liczba i jej odmiana tylko przy show_count; koordynacja z ról, a za nią wpisana ręcznie."""
         data = self.fetch().json()
         self.assertEqual(data['prowadzacy'], 'Dawid Wiktorski')
         self.assertEqual(data['strona'], 'Dawid Wiktorski')
@@ -103,7 +106,7 @@ class SiteTeamApiPayloadTests(TestCase):
         self.assertFalse(audio['w_nawigacji'])
         self.assertIsNone(audio['liczba'])
         self.assertEqual(audio['liczba_tekst'], '')
-        self.assertEqual(audio['koordynacja'], [])
+        self.assertEqual(audio['koordynacja'], ['Magdalena Świerczek', 'Agata Graczyk'])
         self.assertEqual(audio['grupy'], [{'tytul': 'Lektorzy', 'osoby': ['Zenon Lektor', 'Anna Głos']},
                                           {'tytul': 'Dźwiękowcy', 'osoby': ['Teodor Dźwięk']}])
         self.assertEqual(art['grupy'], [])
