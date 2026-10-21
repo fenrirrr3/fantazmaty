@@ -1,0 +1,129 @@
+/* Strona WWW (System): ustawienia strony „Ekipa” i podgląd działów wysyłanych na fantazmaty.pl. Kolory wyłącznie z tokenów. */
+
+.site-www-fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+    gap: var(--space-4);
+}
+
+.site-www-status {
+    margin-top: var(--space-5);
+}
+
+.site-www-alert {
+    color: var(--warning);
+    font-weight: 600;
+}
+
+.site-www-warnings {
+    margin-top: var(--space-5);
+}
+
+.site-www-warnings ul {
+    margin: var(--space-2) 0 var(--space-3);
+    padding-left: var(--space-5);
+}
+
+.site-www-warnings > :last-child {
+    margin-bottom: 0;
+}
+
+.site-www-description code {
+    white-space: nowrap;
+}
+
+.site-www-sections {
+    display: grid;
+    gap: var(--space-4);
+}
+
+.site-www-section {
+    padding: var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-alt);
+}
+
+/* Wyłączony dział: wyszarzony, ale widoczny – żeby było wiadomo, co nie trafia na stronę. */
+.site-www-section.is-disabled {
+    opacity: 0.6;
+    border-style: dashed;
+}
+
+.site-www-section-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2) var(--space-4);
+}
+
+.site-www-section h3 {
+    margin: 0;
+}
+
+.site-www-count {
+    color: var(--muted);
+    font-size: var(--font-size-sm);
+    font-weight: 400;
+}
+
+.site-www-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin: 0;
+}
+
+.site-www-badge-off {
+    --badge-bg: var(--warning-light);
+    --badge-fg: var(--warning);
+}
+
+.site-www-badge-manual {
+    --badge-bg: var(--primary-light);
+    --badge-fg: var(--primary);
+}
+
+.site-www-groups {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+    gap: var(--space-4);
+    margin-top: var(--space-3);
+}
+
+.site-www-group h4 {
+    margin: 0 0 var(--space-2);
+    font-size: var(--font-size-base);
+}
+
+.site-www-group ul {
+    margin: 0;
+    padding-left: var(--space-5);
+    columns: 2;
+    column-gap: var(--space-5);
+}
+
+.site-www-note {
+    margin: var(--space-3) 0 0;
+}
+
+@media (max-width: 760px) {
+    .site-www-group ul {
+        columns: 1;
+    }
+}
+
+@media (max-width: 480px) {
+    .site-www-section {
+        padding: var(--space-3);
+    }
+
+    .site-www-section-header {
+        display: block;
+    }
+
+    .site-www-meta {
+        margin-top: var(--space-2);
+    }
+}

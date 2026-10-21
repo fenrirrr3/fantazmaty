@@ -22,6 +22,7 @@ from core.models import SocialMediaEntry, SocialMediaQuote, TextSocialMedia
 from core.discord_notifications import person_name
 from core.audiobook_forms import AudiobookProductionForm
 from core import notification_admin  # noqa: F401 – rejestracja panelu powiadomień Discord
+from core import site_admin  # noqa: F401 – rejestracja działów i ustawień strony WWW
 
 
 class AudiobookAdminForm(AudiobookProductionForm):

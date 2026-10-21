@@ -458,3 +458,6 @@ PROGRAM_MAX_QUEUED_JOBS = env_int("PROGRAM_MAX_QUEUED_JOBS", 5, minimum=1)
 
 # Public application key for the Dropbox folder picker (not an app secret).
 DROPBOX_CHOOSER_APP_KEY = os.environ.get("DROPBOX_CHOOSER_APP_KEY", "").strip()
+
+# Klucz, którym strona fantazmaty.pl pobiera dane ekipy (nagłówek X-Site-Key). Pusty – endpoint odpowiada 503.
+SITE_API_KEY = os.environ.get("SITE_API_KEY", "").strip()

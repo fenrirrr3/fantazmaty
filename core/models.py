@@ -14,6 +14,9 @@ from core.notification_models import DiscordRole as DiscordRole
 from core.notification_models import NotificationRule as NotificationRule
 from core.notification_models import NotificationTemplate as NotificationTemplate
 from core.notification_models import DiscordNotification as DiscordNotification
+from core.site_models import SiteTeamGroup as SiteTeamGroup
+from core.site_models import SiteTeamSection as SiteTeamSection
+from core.site_models import SiteTeamSettings as SiteTeamSettings
 
 
 class PublicAudiobookSettings(models.Model):

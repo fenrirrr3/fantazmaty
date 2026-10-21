@@ -65,7 +65,7 @@ class RoleNamesPageTests(TestCase):
     def test_page_lists_people_with_selected_role_and_reports_empty_role(self):
         create_member('names-member', 'Redaktor')
         create_member('names-other', 'Korektor')
-        empty = Role.objects.create(name='Grafik')
+        empty = Role.objects.get_or_create(name='Grafik')[0]  # rolę tworzy też seed strony WWW (core 0060)
         self.client.force_login(create_superuser('names-admin'))
         url = reverse('core:role_names')
         page = self.client.get(url, {'role': Role.objects.get(name='Redaktor').pk})

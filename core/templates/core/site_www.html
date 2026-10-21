@@ -1,0 +1,38 @@
+{% extends "core/base.html" %}
+{% load static %}
+{% block title %}Strona WWW | Fantazmaty CMS{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/site-www.css' %}">{% endblock %}
+{% block content %}
+<header class="page-header"><h1 class="page-title">Strona WWW</h1><p class="page-description site-www-description">Dane, które fantazmaty.pl pobiera z CMS-a. Strona odświeża je sama (co godzinę) albo po wejściu administratora z <code>?fz_odswiez=1</code>.</p></header>
+<section class="card"><div class="card-body">
+<h2>Ekipa</h2>
+<form method="post" class="site-www-form">{% csrf_token %}{{ form.non_field_errors }}
+<div class="site-www-fields">{% for field in form.visible_fields %}{% include "core/includes/form_field.html" %}{% endfor %}</div>
+<div class="actions"><button type="submit" class="primary-button">Zapisz ustawienia</button><a class="secondary-button" href="{% url 'admin:core_siteteamsection_changelist' %}">Edytuj działy</a><a class="secondary-button" href="?format=json">Pokaż JSON</a></div>
+</form>
+<dl class="details-grid site-www-status">
+<div class="detail-item"><dt>Klucz dostępu</dt><dd>{% if has_api_key %}Ustawiony (<code>SITE_API_KEY</code>).{% else %}<span class="site-www-alert">Brak <code>SITE_API_KEY</code> w konfiguracji – strona nie pobierze danych.</span>{% endif %}</dd></div>
+<div class="detail-item"><dt>Pobranie przez stronę</dt><dd>{% if team_settings.last_fetched_at %}Strona pobrała dane: {{ team_settings.last_fetched_at|date:"d.m.Y H:i" }}{% else %}<span class="site-www-alert">Strona jeszcze nie pobierała danych.</span>{% endif %}</dd></div>
+</dl>
+{% if warnings.missing_people or warnings.empty_sections %}<div class="form-warning site-www-warnings">
+{% if warnings.missing_people %}<p><strong>Osoby z rolą wykonawczą, które nie trafiają do żadnego działu:</strong></p><ul>{% for item in warnings.missing_people %}<li>{{ item }}</li>{% endfor %}</ul>{% endif %}
+{% if warnings.empty_sections %}<p><strong>Działy z ról bez żadnej osoby:</strong> {{ warnings.empty_sections|join:", " }}</p>{% endif %}
+</div>{% endif %}
+</div></section>
+<section class="card"><div class="card-body">
+<h2>Podgląd</h2>
+<p class="muted-text">Dokładnie to, co dostaje strona: redaktor prowadzący „{{ team_settings.lead_editor }}”, strona „{{ team_settings.site_person }}” i poniższe działy.</p>
+<div class="site-www-sections">
+{% for section in sections %}<section class="site-www-section{% if not section.wlaczony %} is-disabled{% endif %}" id="podglad-{{ section.slug }}">
+<header class="site-www-section-header"><h3>{{ section.tytul }}{% if section.liczba_tekst %} <span class="site-www-count">{{ section.liczba_tekst }}</span>{% endif %}</h3>
+<p class="site-www-meta"><span class="badge">#{{ section.kotwica }}</span>{% if not section.w_nawigacji %}<span class="badge">poza nawigacją</span>{% endif %}{% if not section.wlaczony %}<span class="badge site-www-badge-off">wyłączony – nie trafia na stronę</span>{% endif %}</p></header>
+{% if section.koordynacja %}<p><strong>Koordynacja:</strong> {{ section.koordynacja|join:", " }}</p>{% endif %}
+{% if section.notka %}<p class="site-www-note">{{ section.notka|safe }}</p>{% endif %}
+{% if section.grupy %}<div class="site-www-groups">{% for group in section.grupy %}<div class="site-www-group">
+<h4>{{ group.tytul|default:"Lista osób" }} <span class="badge{% if group.zrodlo == 'manual' %} site-www-badge-manual{% endif %}">{% if group.zrodlo == 'manual' %}ręcznie{% else %}z ról{% endif %}</span></h4>
+<ul>{% for name in group.osoby %}<li>{{ name }}</li>{% empty %}<li class="muted-text">Brak osób.</li>{% endfor %}</ul>
+</div>{% endfor %}</div>{% endif %}
+</section>{% empty %}<p>Brak działów. Dodaj je w panelu administracyjnym.</p>{% endfor %}
+</div>
+</div></section>
+{% endblock %}

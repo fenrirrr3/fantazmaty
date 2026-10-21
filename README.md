@@ -124,6 +124,31 @@ Pole antologii „Powiadomienia Discord” (strona antologii lub powieści – k
 przypomnienia, produkcja audiobooków), „Tylko rozpoczęcia i zakończenia etapów” – wyłącznie ta reguła. Zgłoszeń do
 recenzji i testów z panelu to nie dotyczy. `python manage.py discord_diagnose` wypisuje antologie z ograniczeniem.
 
+## Strona WWW (ekipa na fantazmaty.pl)
+
+Strona https://fantazmaty.pl/o-projekcie/ekipa/ pobiera działy ekipy z CMS-a (CMS niczego nie wysyła).
+Działy, podgrupy (z ról albo ręczna lista nazwisk), kolejność i notki ustawia się w panelu admina
+(„Ustawienia” → „Strona WWW – działy ekipy”), a redaktora prowadzącego i opiekuna strony w zakładce
+System → „Strona WWW” (`/system/strona-www/`, tylko superuser), która pokazuje też dokładnie to, co dostanie
+strona, ostrzeżenia (osoby z rolą bez działu, działy z ról bez osób, brak klucza) i datę ostatniego pobrania.
+
+Endpoint `GET /api/strona/ekipa/` nie wymaga logowania, ale nagłówka `X-Site-Key` równego zmiennej
+`SITE_API_KEY` z `.env` (bez niej odpowiada 503, ze złym kluczem 403). Odpowiedź to JSON z polami `wersja`,
+`prowadzacy`, `strona` i `dzialy` (tytuł, kotwica, liczba osób z odmianą, koordynacja, grupy z nazwiskami albo
+notka); nigdy e-maile, konta ani role wewnętrzne. Podgląd tego samego JSON-a dla zalogowanego superusera:
+`/system/strona-www/?format=json`.
+
+Wdrożenie:
+
+1. Na PythonAnywhere dopisz `SITE_API_KEY=<długi losowy ciąg>` do `.env` i przeładuj aplikację; w `wp-config.php`
+   strony dodaj `define('FZ_CMS_URL', 'https://<domena-cms>/api/strona/ekipa/');` i `define('FZ_CMS_KEY', '<ten sam klucz>');`.
+2. Wklej `tools/wordpress/fz-ekipa.php` (bez pierwszej linii `<?php`) jako nowy snippet w Code Snippets i aktywuj.
+3. Podmień kod strony „Ekipa” w Avadzie na `tools/wordpress/ekipa-strona.txt` (shortcode'y `[fz_ekipa_nawigacja]`,
+   `[fz_ekipa_prowadzacy]`, `[fz_ekipa_dzialy]`, `[fz_ekipa_strona]`); odstępy między działami w jednym
+   kontenerze daje kilka linii CSS z komentarza na początku snippetu.
+4. Strona pamięta dane godzinę; po zmianach w CMS-ie zalogowany administrator wchodzi na stronę
+   z `?fz_odswiez=1`. Gdy CMS nie odpowiada, strona pokazuje ostatnią poprawną kopię.
+
 ## Struktura
 
 | Katalog | Zawartość |

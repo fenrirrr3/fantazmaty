@@ -19,7 +19,8 @@ GROUPS = (
     ('people', 'Ludzie', ('people.person', 'people.vacation', 'people.role', 'authors.author', 'blacklist')),
     ('promotion', 'Promocja', ('core.textsocialmedia', 'core.socialmediaentry', 'core.socialmediaquote')),
     ('recruitment', 'Rekrutacja', ('core.recruitment', 'recruitment_mailbox')),
-    ('settings', 'Ustawienia', ('core.mailboxconnection', 'core.mailboxheadersnapshot', 'core.notificationrule', 'core.discordrole')),
+    ('settings', 'Ustawienia', ('core.mailboxconnection', 'core.mailboxheadersnapshot', 'core.notificationrule', 'core.discordrole',
+                                'core.siteteamsection', 'core.siteteamsettings')),
     ('history', 'Historia i diagnostyka', ('workflow.workflowstage', 'workflow.workflowroleassignment', 'core.workflowevent', 'core.discordnotification', 'core.useractivity')),
 )
 EXPANDED = ('submissions', 'texts', 'publication')
@@ -36,6 +37,7 @@ LABELS = {
     'texts.reviewers': 'Ogólne uwagi do zgłoszeń',
     'core.notificationrule': 'Powiadomienia Discord', 'core.discordrole': 'Role Discorda',
     'core.discordnotification': 'Historia powiadomień Discord',
+    'core.siteteamsection': 'Strona WWW – działy ekipy', 'core.siteteamsettings': 'Strona WWW – ustawienia',
 }
 
 

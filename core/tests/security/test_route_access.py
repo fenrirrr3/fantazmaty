@@ -52,6 +52,7 @@ PUBLIC = {
     'illustrations:external_illustrations': 'publiczna lista ilustracji dla ilustratorów spoza zespołu',
     'core:external_audiobooks': 'publiczna lista audiobooków dla lektorów spoza zespołu',
     'core:audiobook_guidelines_txt': 'wytyczne do pobrania z publicznej listy audiobooków',
+    'core:site_team_api': 'dane ekipy dla fantazmaty.pl – zamiast logowania nagłówek X-Site-Key (bez klucza 503, ze złym 403)',
 }
 
 
@@ -135,7 +136,7 @@ ROUTE_LEVELS = {
         'core:correction_status', 'core:notification_queue', 'core:scheduled_rejections',
         'core:release_hidden_review', 'core:review_bulk_import', 'core:user_activity',
         'core:update_author_notification', 'core:copy_review_to_text', 'core:restart_text_workflow',
-        'core:restore_withdrawn_text', 'core:add_author_note', 'core:split_mailing',
+        'core:restore_withdrawn_text', 'core:add_author_note', 'core:split_mailing', 'core:site_www',
     ], SUPERUSER),
 }
 

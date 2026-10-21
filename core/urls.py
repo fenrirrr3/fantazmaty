@@ -35,6 +35,7 @@ from core.views.recruitment_notified import recruitment_notified
 from core.views.recruitment_mailbox import recruitment_mailbox
 from core.views.post_layout import post_layout, post_layout_edit
 from core.views.social_media import social_media
+from core.views.site_www import site_team_api, site_www
 
 
 app_name = "core"
@@ -99,6 +100,8 @@ urlpatterns = [
     path("zespol/<int:person_id>/uprawnienia/", supervision.person_permissions, name="person_permissions"),
     path("teksty/<int:text_id>/plik/", texts.update_text_file, name="update_text_file"),
     path("aktywnosc-uzytkownikow/", user_activity, name="user_activity"),
+    path("system/strona-www/", site_www, name="site_www"),
+    path("api/strona/ekipa/", site_team_api, name="site_team_api"),
     path("teksty/<int:text_id>/notatki/<int:note_id>/edytuj/", texts.edit_text_note, name="edit_text_note"),
     path("teksty/<int:text_id>/notatki/<int:note_id>/usun/", texts.delete_text_note, name="delete_text_note"),
     path("programy/", programs, name="programs"),
