@@ -1,6 +1,7 @@
-"""Strona WWW: działy ekipy i katalog opowiadań szukajki publikowane na fantazmaty.pl (endpointy z kluczem)."""
+"""Strona WWW: działy ekipy, katalog opowiadań szukajki i antologie strony „Słuchaj” publikowane na fantazmaty.pl
+(endpointy z kluczem)."""
 from django.core.exceptions import ValidationError
-from django.core.validators import URLValidator
+from django.core.validators import RegexValidator, URLValidator
 from django.db import models
 
 from core.edit_versions import VersionedQuerySet
@@ -179,6 +180,14 @@ class SiteTeamSettings(models.Model):
                                               editable=False)
     catalog_fetch_version = models.CharField('wersja ostatniego pobrania katalogu', max_length=40, blank=True,
                                              editable=False)
+    listen_page_url = models.URLField('adres strony „Słuchaj”', max_length=500, blank=True,
+                                      validators=[URLValidator(schemes=['https'])],
+                                      help_text='Np. https://fantazmaty.pl/sluchaj/ – daje odnośnik „Odśwież stronę”. '
+                                                'Puste – bez odnośnika.')
+    listen_fetched_at = models.DateTimeField('ostatnie pobranie nagrań przez stronę', null=True, blank=True,
+                                             editable=False)
+    listen_fetch_version = models.CharField('wersja ostatniego pobrania nagrań', max_length=40, blank=True,
+                                            editable=False)
 
     class Meta:
         verbose_name = 'ustawienia strony WWW'
@@ -195,6 +204,98 @@ class SiteTeamSettings(models.Model):
     @property
     def catalog_refresh_url(self):
         """Adres szukajki z ``?fz_odswiez=1`` (pobranie danych od razu przez zalogowanego administratora)."""
-        if not self.catalog_page_url:
-            return ''
-        return self.catalog_page_url + ('&' if '?' in self.catalog_page_url else '?') + 'fz_odswiez=1'
+        return refresh_url(self.catalog_page_url)
+
+    @property
+    def listen_refresh_url(self):
+        """Adres strony „Słuchaj” z ``?fz_odswiez=1``."""
+        return refresh_url(self.listen_page_url)
+
+
+def refresh_url(url):
+    """Adres strony z ``fz_odswiez=1``; pusty adres – pusty napis."""
+    if not url:
+        return ''
+    return url + ('&' if '?' in url else '?') + 'fz_odswiez=1'
+
+
+def validate_site_url(value):
+    if value and not value.startswith('https://fantazmaty.pl/'):
+        raise ValidationError('Adres musi zaczynać się od https://fantazmaty.pl/.')
+
+
+CARD_ID_RE = r'^[a-zA-Z0-9_-]+$'
+DURATION_RE = r'^(?:\d{1,2}:)?\d{1,2}:\d{2}$'
+
+
+class SiteListenAnthology(models.Model):
+    """Antologia na stronie „Słuchaj” (fantazmaty.pl/sluchaj/): identyfikator filtra, nazwa i okładka kart."""
+    objects = VersionedQuerySet.as_manager()
+    anthology = models.OneToOneField('texts.Anthology', on_delete=models.SET_NULL, null=True, blank=True,
+                                     related_name='site_listen', verbose_name='antologia w CMS-ie',
+                                     help_text='Opublikowane audiobooki tekstów tej antologii trafiają na stronę.')
+    slug = models.SlugField('identyfikator na stronie', max_length=100, unique=True,
+                            help_text='Wartość filtra antologii, np. nanofantazje-30. Małe litery, cyfry i myślniki.')
+    title = models.CharField('nazwa na stronie', max_length=255)
+    cover_url = models.URLField('adres okładki', max_length=500, blank=True,
+                                validators=[URLValidator(schemes=['https']), validate_site_url],
+                                help_text='Plik okładki na fantazmaty.pl (https://fantazmaty.pl/wp-content/…). '
+                                          'Bez okładki antologia nie trafia na stronę.')
+    position = models.PositiveSmallIntegerField('kolejność', default=0)
+    is_enabled = models.BooleanField('włączona', default=True, help_text='Wyłączona antologia nie trafia na stronę.')
+
+    class Meta:
+        verbose_name = 'antologia na stronie „Słuchaj”'
+        verbose_name_plural = 'Słuchaj WWW – antologie i czasy nagrań'
+        ordering = ('position', 'pk')
+
+    def __str__(self):
+        return self.title
+
+
+class SiteListenRecording(models.Model):
+    """Nagranie (część audiobooka) na stronie „Słuchaj”: stały identyfikator karty i czasy z YouTube i HearThis.
+
+    CMS nie zna czasów nagrań, więc są tutaj. Wpis bez audiobooka to nagranie z dawnej strony, którego nie udało się
+    dopasować do CMS-u (pola „ze strony” służą do dopasowania i ostrzeżeń).
+    """
+    objects = VersionedQuerySet.as_manager()
+    listen_anthology = models.ForeignKey(SiteListenAnthology, on_delete=models.CASCADE, related_name='recordings',
+                                         verbose_name='antologia na stronie')
+    audiobook = models.ForeignKey('core.Audiobook', on_delete=models.SET_NULL, null=True, blank=True,
+                                  related_name='site_listen_recordings', verbose_name='audiobook w CMS-ie')
+    part = models.PositiveSmallIntegerField('część', default=1, help_text='1 – główne nagranie; kolejne części jak '
+                                                                          'w linkach audiobooka.')
+    card_id = models.CharField('identyfikator karty', max_length=40, unique=True, blank=True,
+                               validators=[RegexValidator(CARD_ID_RE, 'Dozwolone litery, cyfry, „-” i „_”.')],
+                               help_text='Kotwica karty na stronie; puste – nadawane automatycznie (fza-a<audiobook>-<część>).')
+    youtube_duration = models.CharField('czas na YouTube', max_length=8, blank=True,
+                                        validators=[RegexValidator(DURATION_RE, 'Czas w formacie m:ss albo g:mm:ss.')])
+    hearthis_duration = models.CharField('czas na HearThis', max_length=8, blank=True,
+                                         validators=[RegexValidator(DURATION_RE, 'Czas w formacie m:ss albo g:mm:ss.')])
+    source_title = models.CharField('tytuł ze strony', max_length=255, blank=True, editable=False)
+    source_author = models.CharField('autor ze strony', max_length=255, blank=True, editable=False)
+    source_youtube = models.URLField('YouTube ze strony', max_length=1000, blank=True, editable=False)
+    source_hearthis = models.URLField('HearThis ze strony', max_length=1000, blank=True, editable=False)
+
+    class Meta:
+        verbose_name = 'nagranie na stronie „Słuchaj”'
+        verbose_name_plural = 'nagrania i czasy'
+        ordering = ('listen_anthology', 'pk')
+        constraints = [models.UniqueConstraint(fields=('audiobook', 'part'), name='unique_site_listen_part')]
+
+    def __str__(self):
+        return self.card_id or self.source_title or f'nagranie {self.pk}'
+
+    def clean(self):
+        super().clean()
+        if not self.card_id and not self.audiobook_id:
+            raise ValidationError({'card_id': 'Podaj identyfikator karty albo wybierz audiobook.'})
+        anthology_id = self.listen_anthology.anthology_id if self.listen_anthology_id else None
+        if self.audiobook_id and anthology_id and self.audiobook.text.anthology_id != anthology_id:
+            raise ValidationError({'audiobook': 'Audiobook należy do innej antologii.'})
+
+    def save(self, *args, **kwargs):
+        if not self.card_id and self.audiobook_id:
+            self.card_id = f'fza-a{self.audiobook_id}-{self.part}'
+        super().save(*args, **kwargs)

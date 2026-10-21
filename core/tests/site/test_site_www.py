@@ -15,7 +15,7 @@ URL = reverse('core:site_www')
 
 class SiteWwwAccessTests(TestCase):
     def test_only_superuser_sees_link_and_opens_page(self):
-        """Linki „Ekipa WWW” i „Szukajka WWW” w sekcji System tylko dla superusera; koordynator i redaktor dostają 403."""
+        """Linki „Ekipa WWW”, „Szukajka WWW” i „Słuchaj WWW” w sekcji System tylko dla superusera; koordynator i redaktor dostają 403."""
         cases = ((create_superuser('www-admin'), True), (create_member('www-coordinator', roles.COORDINATOR), False),
                  (create_member('www-editor', roles.EDITOR), False))
         for user, allowed in cases:
@@ -24,7 +24,7 @@ class SiteWwwAccessTests(TestCase):
                 links = html.fromstring(self.client.get(reverse('core:home')).content).xpath(
                     '//nav//details[@data-menu-section="system"]//a[contains(@class, "sidebar-link")]/text()')
                 self.assertEqual([link for link in links if link.endswith('WWW')],
-                                 ['Ekipa WWW', 'Szukajka WWW'] if allowed else [])
+                                 ['Ekipa WWW', 'Szukajka WWW', 'Słuchaj WWW'] if allowed else [])
                 page = self.client.get(URL)
                 self.assertEqual(page.status_code, 200 if allowed else 403)
                 self.assertEqual(self.client.get(URL, {'format': 'json'}).status_code, 200 if allowed else 403)

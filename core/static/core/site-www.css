@@ -1,4 +1,4 @@
-/* Ekipa WWW i Szukajka WWW (System): ustawienia strony, podgląd działów i katalog opowiadań wysyłane na fantazmaty.pl.
+/* Ekipa WWW, Szukajka WWW i Słuchaj WWW (System): ustawienia strony, podgląd działów i katalog opowiadań wysyłane na fantazmaty.pl.
    Kolory wyłącznie z tokenów. */
 
 .site-www-fields {
@@ -168,6 +168,29 @@
 
 .site-catalog-add h3 {
     margin-top: var(--space-5);
+}
+
+/* Słuchaj WWW: podgląd JSON-u wysyłanego stronie. */
+.site-listen-json {
+    margin-top: var(--space-4);
+}
+
+.site-listen-json summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.site-listen-json pre {
+    max-height: 32rem;
+    margin: var(--space-2) 0 0;
+    padding: var(--space-3);
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-alt);
+    font-size: var(--font-size-sm);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
 }
 
 @media (max-width: 760px) {

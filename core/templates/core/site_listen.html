@@ -1,0 +1,65 @@
+{% extends "core/base.html" %}
+{% load static %}
+{% block title %}Słuchaj WWW | Fantazmaty CMS{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/site-www.css' %}">{% endblock %}
+{% block content %}
+<header class="page-header"><h1 class="page-title">Słuchaj WWW</h1><p class="page-description site-www-description">Lista audiobooków, którą strona <a href="https://fantazmaty.pl/sluchaj/">fantazmaty.pl/sluchaj/</a> pobiera z CMS-a: audiobooki o statusie „Opublikowane” z datą premiery i co najmniej jednym linkiem (YouTube albo HearThis), z lektorem, korektą i montażem. Strona odświeża ją sama (co 2 dni) albo po wejściu administratora z <code>?fz_odswiez=1</code>. Audiodeskrypcje okładek zostają na stronie bez zmian.</p></header>
+<section class="card"><div class="card-body">
+<h2>Nagrania</h2>
+<dl class="site-catalog-counters" aria-label="Liczby nagrań">
+<div class="site-catalog-counter"><dt>Antologie</dt><dd>{{ counts.antologie }}</dd></div>
+<div class="site-catalog-counter"><dt>Nagrania</dt><dd>{{ counts.nagrania }}</dd></div>
+<div class="site-catalog-counter"><dt>Z YouTube</dt><dd>{{ counts.youtube }}</dd></div>
+<div class="site-catalog-counter"><dt>Z HearThis</dt><dd>{{ counts.hearthis }}</dd></div>
+<div class="site-catalog-counter"><dt>Bez czasu</dt><dd>{{ counts.bez_czasu }}</dd></div>
+<div class="site-catalog-counter"><dt>Bez twórców</dt><dd>{{ counts.bez_tworcow }}</dd></div>
+</dl>
+<p class="muted-text">Na stronie: „{{ counts_text }}”. Każda część audiobooka to osobna karta. „Bez czasu” – brak czasu platformy, na której jest nagranie; „bez twórców” – karta bez paska Lektor / Korekta / Montaż.</p>
+<div class="actions"><a class="secondary-button" href="?format=json">Pokaż JSON</a><a class="secondary-button" href="{% url 'admin:core_sitelistenanthology_changelist' %}">Edytuj antologie i czasy</a>{% if site_settings.listen_refresh_url %}<a class="secondary-button" href="{{ site_settings.listen_refresh_url }}" rel="noopener">Odśwież stronę</a>{% endif %}</div>
+<dl class="details-grid site-www-status">
+<div class="detail-item"><dt>Klucz dostępu</dt><dd>{% if has_api_key %}Ustawiony (<code>SITE_API_KEY</code>).{% else %}<span class="site-www-alert">Brak <code>SITE_API_KEY</code> w konfiguracji – strona nie pobierze danych.</span>{% endif %}</dd></div>
+<div class="detail-item"><dt>Pobranie przez stronę</dt><dd>{% if site_settings.listen_fetched_at %}Strona pobrała dane: {{ site_settings.listen_fetched_at|date:"d.m.Y H:i" }}{% else %}<span class="site-www-alert">Strona jeszcze nie pobierała nagrań.</span>{% endif %}</dd></div>
+</dl>
+<form method="post" class="site-www-form site-catalog-settings">{% csrf_token %}<input type="hidden" name="action" value="settings">{{ settings_form.non_field_errors }}
+<div class="site-www-fields">{% for field in settings_form.visible_fields %}{% include "core/includes/form_field.html" %}{% endfor %}</div>
+<div class="actions"><button type="submit" class="secondary-button">Zapisz adres</button></div>
+</form>
+{% with w=warnings %}{% if w.no_links or w.no_premiere or w.no_entry or w.no_cover or w.disabled or w.skipped_kind or w.no_author or w.no_time or w.unmatched or w.stale or w.duplicate_ids %}<div class="form-warning site-www-warnings">
+{% if w.no_links %}<p><strong>Opublikowane audiobooki bez linków do YouTube i HearThis:</strong> {{ w.no_links|join:"; " }}</p>{% endif %}
+{% if w.no_premiere %}<p><strong>Opublikowane audiobooki – brak daty premiery</strong> (pominięte): {{ w.no_premiere|join:"; " }}</p>{% endif %}
+{% if w.no_entry %}<p><strong>Antologie z opublikowanymi audiobookami, których nie ma na stronie</strong> (nagrania pominięte – dodaj antologię niżej): {{ w.no_entry|join:", " }}</p>{% endif %}
+{% if w.no_cover %}<p><strong>Antologie bez okładki</strong> (nagrania pominięte): {{ w.no_cover|join:", " }}</p>{% endif %}
+{% if w.no_author %}<p><strong>Nagrania bez autora</strong> (pominięte – strona wymaga autora): {{ w.no_author|join:"; " }}</p>{% endif %}
+{% if w.duplicate_ids %}<p><strong>Powtórzone identyfikatory kart</strong> (pominięte): {{ w.duplicate_ids|join:"; " }}</p>{% endif %}
+{% if w.no_time %}<details class="site-catalog-warning-list"><summary>Nagrania bez czasu ({{ w.no_time|length }})</summary><ul>{% for item in w.no_time %}<li>{{ item }}</li>{% endfor %}</ul></details>{% endif %}
+{% if w.unmatched %}<details class="site-catalog-warning-list"><summary>Nagrania z dawnej strony bez audiobooka w CMS-ie ({{ w.unmatched|length }})</summary><ul>{% for item in w.unmatched %}<li>{{ item }}</li>{% endfor %}</ul></details>{% endif %}
+{% if w.stale %}<details class="site-catalog-warning-list"><summary>Czasy nagrań, których nie ma na stronie ({{ w.stale|length }})</summary><p class="muted-text">Audiobook nie jest opublikowany, nie ma tej części albo jego antologia jest pominięta.</p><ul>{% for item in w.stale %}<li>{{ item }}</li>{% endfor %}</ul></details>{% endif %}
+{% if w.disabled %}<p class="muted-text"><strong>Wyłączone antologie</strong> (nagrania nie trafiają na stronę): {{ w.disabled|join:", " }}</p>{% endif %}
+{% if w.skipped_kind %}<p class="muted-text"><strong>Pominięte – Ekstrakty i powieści</strong> (strona ich nie pokazuje): {{ w.skipped_kind|join:"; " }}</p>{% endif %}
+</div>{% endif %}{% endwith %}
+</div></section>
+<section class="card" id="dodaj-antologie"><div class="card-body">
+<h2>Dodaj antologię na stronę</h2>
+{% if has_candidates or add_form.is_bound %}
+<p class="muted-text">Antologie z CMS-u (bez Ekstraktów i powieści) z opublikowanym audiobookiem, których nie ma jeszcze na stronie. Trafiają na koniec listy antologii; identyfikator filtra powstaje z nazwy, a czasy nagrań można dopisać w panelu administracyjnym.</p>
+<form method="post" class="site-www-form">{% csrf_token %}<input type="hidden" name="action" value="add">{{ add_form.non_field_errors }}
+<div class="site-www-fields">{% for field in add_form.visible_fields %}{% include "core/includes/form_field.html" %}{% endfor %}</div>
+<div class="actions"><button type="submit" class="primary-button">Dodaj na stronę</button></div>
+</form>
+{% else %}<p class="muted-text">Wszystkie antologie z opublikowanymi audiobookami są już na stronie.</p>{% endif %}
+{% if warnings.unmatched %}<form method="post" class="site-www-form site-catalog-settings">{% csrf_token %}<input type="hidden" name="action" value="relink">
+<p class="muted-text">Nagrania z dawnej strony dopasowuje się do audiobooków po linku YouTube albo HearThis, a potem po antologii i tytule. Po uzupełnieniu linków w CMS-ie można dopasować je ponownie.</p>
+<div class="actions"><button type="submit" class="secondary-button">Dopasuj ponownie</button></div>
+</form>{% endif %}
+</div></section>
+<section class="card"><div class="card-body">
+<h2>Podgląd</h2>
+{% if rows %}<div class="table-container"><table class="data-table site-catalog-table" data-pagination="off">
+<thead><tr><th>Antologia</th><th>Identyfikator</th><th>Nagrania</th><th>Z YouTube</th><th>Z HearThis</th><th>Bez czasu</th><th>Bez twórców</th></tr></thead>
+<tbody>{% for row in rows %}<tr>
+<td>{{ row.item.nazwa }}</td><td><code>{{ row.item.id }}</code></td><td>{{ row.counts.nagrania }}</td><td>{{ row.counts.youtube }}</td><td>{{ row.counts.hearthis }}</td>
+<td>{% if row.counts.bez_czasu %}<span class="site-www-alert">{{ row.counts.bez_czasu }}</span>{% else %}0{% endif %}</td><td>{{ row.counts.bez_tworcow }}</td>
+</tr>{% endfor %}</tbody></table></div>{% else %}<p>Brak nagrań dla strony. Opublikuj audiobook z linkiem albo dodaj jego antologię.</p>{% endif %}
+<details class="site-listen-json"><summary>JSON dla strony</summary><pre><code>{{ preview }}</code></pre></details>
+</div></section>
+{% endblock %}

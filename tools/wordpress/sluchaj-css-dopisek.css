@@ -1,0 +1,15 @@
+/* Słuchaj WWW – dopisek do fantazmaty.css: wkleić na końcu sekcji C3. SŁUCHAJ (przed /*! C4.).
+   Istniejące reguły .fza-card zostają bez zmian; te tylko dokładają drugi wiersz karty. */
+
+/* Pasek twórców nagrania (Lektor / Korekta / Montaż) — tylko w kartach, które go mają */
+.fz-page .fza-card:has(.fza-credits){grid-template-rows:1fr auto;row-gap:14px}
+.fz-page .fza-credits{grid-column:1/-1;align-self:end;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0;padding:12px 0 0;border-top:1px solid var(--fz-line)}
+.fz-page .fza-credits>div{min-width:0}
+.fz-page .fza-credits dt{color:var(--fz-accent);font-size:10px;font-weight:700;line-height:1.5;letter-spacing:.8px;text-transform:uppercase}
+.fz-page .fza-credits dd{margin:1px 0 0;color:var(--fz-text);font-size:13px;line-height:1.4}
+@media(max-width:640px){
+  .fz-page .fza-card:has(.fza-credits){row-gap:12px}
+  .fz-page .fza-credits{grid-template-columns:1fr;gap:4px}
+  .fz-page .fza-credits>div{display:flex;align-items:baseline;gap:8px}
+  .fz-page .fza-credits dt{flex:0 0 74px}
+}

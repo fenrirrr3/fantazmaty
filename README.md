@@ -124,11 +124,11 @@ Pole antologii „Powiadomienia Discord” (strona antologii lub powieści – k
 przypomnienia, produkcja audiobooków), „Tylko rozpoczęcia i zakończenia etapów” – wyłącznie ta reguła. Zgłoszeń do
 recenzji i testów z panelu to nie dotyczy. `python manage.py discord_diagnose` wypisuje antologie z ograniczeniem.
 
-## Strona WWW (ekipa i szukajka na fantazmaty.pl)
+## Strona WWW (ekipa, szukajka i „Słuchaj” na fantazmaty.pl)
 
-Strona fantazmaty.pl pobiera dane z CMS-a (CMS niczego nie wysyła) dwoma endpointami bez logowania, ale z nagłówkiem
+Strona fantazmaty.pl pobiera dane z CMS-a (CMS niczego nie wysyła) trzema endpointami bez logowania, ale z nagłówkiem
 `X-Site-Key` równym zmiennej `SITE_API_KEY` z `.env` (bez niej odpowiadają 503, ze złym kluczem 403; odpowiedź
-`Cache-Control: no-store`). Obie zakładki są w menu System (tylko superuser) i pokazują dokładnie to, co dostanie
+`Cache-Control: no-store`). Zakładki są w menu System (tylko superuser) i pokazują dokładnie to, co dostanie
 strona (`?format=json` – sam JSON), stan klucza, datę ostatniego pobrania i ostrzeżenia.
 
 ### Ekipa WWW
@@ -165,6 +165,31 @@ rzymskie I–IV jak 1–4; tytuł tekstu w antologii z ujednoliconymi cudzysłow
 w adminie. Ostrzeżenia zakładki: włączona antologia bez adresu, opowiadania bez gatunku lub tagów, gotowe antologie
 CMS-u poza katalogiem, wpisy bez powiązania, powtórzone tytuły.
 
+### Słuchaj WWW
+
+Strona https://fantazmaty.pl/sluchaj/ pobiera listę audiobooków z `GET /api/strona/sluchaj/`: JSON `{"antologie":
+[{"id", "nazwa", "okladka", "nagrania": [{"id", "tytul", "autor", "youtube", "hearthis", "czasYoutube",
+"czasHearthis", "lektor", "korekta", "montaz"}]}], "wersja", "liczby": {antologie, nagrania}}` – format bloku
+`#fza-audio-data`; puste pola są pomijane. Nagrania to audiobooki o statusie „Opublikowane” z ustawioną datą premiery i co
+najmniej jednym linkiem do YouTube lub HearThis (opublikowane bez daty premiery albo bez linków są pomijane
+z ostrzeżeniem w zakładce; każda część z „linków do kolejnych części” to osobna karta „Tytuł, cz. N”); tytuł i autor jak w stopce
+tekstu. Twórcy: Lektor – `Audiobook.narrator_name` (spis „Lektorzy i montaż”), Montaż – `Audiobook.engineer_name`,
+Korekta – wykonawcy etapów „Korekta” (`AudiobookStage.performer`, kilka osób po przecinku, bez powtórzeń), a bez
+nich bieżący `Audiobook.proofreader`; imię i nazwisko z profilu osoby, nigdy login ani e-mail. Antologie strony
+(`SiteListenAnthology`: identyfikator filtra, nazwa, okładka z fantazmaty.pl, kolejność, włączenie) i czasy nagrań
+(`SiteListenRecording`: audiobook, część, identyfikator karty, czas YouTube i HearThis – CMS ich nie zna) edytuje się
+w panelu admina („Ustawienia” → „Słuchaj WWW – antologie i czasy nagrań”). W antologii nagrania idą od najnowszej
+premiery; nagranie bez wpisu czasu ma identyfikator `fza-a<audiobook>-<część>` i kartę bez czasu. Antologia bez wpisu,
+bez okładki albo wyłączona, Ekstrakty i nagrania bez autora są pomijane z ostrzeżeniem. Seed (migracja `core` 0066
+z `core/site_listen_seed.json`: 11 antologii, 116 nagrań ze strony z identyfikatorami kart i czasami) dopasowuje
+nagrania do audiobooków po linku YouTube/HearThis (youtu.be, www, końcowy `/` bez znaczenia, także kolejne części),
+a potem po antologii i tytule (`core.site_listen.link_listen_to_cms`).
+
+Zakładka System → „Słuchaj WWW” (`/system/sluchaj-www/`): liczniki (antologie, nagrania, z YouTube, z HearThis, bez
+czasu, bez twórców), adres strony z odnośnikiem „Odśwież stronę”, dodanie antologii z CMS-u na koniec listy (z adresem
+okładki), „Dopasuj ponownie” dla niedopasowanych nagrań z dawnej strony, ostrzeżenia i podgląd JSON-u. Audiodeskrypcje
+okładek zostają na stronie wpisane ręcznie.
+
 ### Wdrożenie
 
 1. Na PythonAnywhere dopisz `SITE_API_KEY=<długi losowy ciąg>` do `.env` i przeładuj aplikację; w `wp-config.php`
@@ -180,7 +205,15 @@ CMS-u poza katalogiem, wpisy bez powiązania, powtórzone tytuły.
    (`[fz_katalog_antologie]`, `[fz_katalog_opowiadania]`) i blok „DANE KATALOGU” (`[fz_katalog_dane]` w elemencie
    tekstowym zamiast bloku kodu); wyszukiwarka, filtry, lista wyników, mechanizm JS i CSS strony bez zmian.
    W zakładce „Szukajka WWW” wpisz adres szukajki, żeby mieć odnośnik „Odśwież stronę”.
-5. Strona pamięta dane ekipy i katalogu 2 dni; po zmianach w CMS-ie zalogowany administrator wchodzi na stronę
+5. Słuchaj: wklej `tools/wordpress/fz-sluchaj.php` jako kolejny snippet (adres
+   `https://cms.fantazmaty.pl/api/strona/sluchaj/` wpisany, inny – stałą `FZ_CMS_SLUCHAJ_URL`), dopisz
+   `tools/wordpress/sluchaj-css-dopisek.css` na końcu sekcji C3. SŁUCHAJ w `fantazmaty.css` i podmień kod strony na
+   `tools/wordpress/sluchaj-strona.txt`: zmienione są tylko licznik nad listą (`[fz_sluchaj_licznik]`), blok „DANE
+   AUDIOBOOKÓW” (`[fz_sluchaj_dane]` w elemencie tekstowym – daje też akapit `#fza-data-message` i `<noscript>`)
+   i mechanizm JS (pasek twórców Lektor / Korekta / Montaż, opcjonalne czasy i jedna z platform, wyszukiwanie także
+   po lektorze); wyszukiwarka, panel platform, losowanie, polecane nagranie i audiodeskrypcje bez zmian. Czasy nowych
+   nagrań dopisuj w panelu admina, potem wejdź na stronę z `?fz_odswiez=1` (odnośnik w zakładce).
+6. Strona pamięta dane ekipy, katalogu i nagrań 2 dni; po zmianach w CMS-ie zalogowany administrator wchodzi na stronę
    z `?fz_odswiez=1`. Gdy CMS nie odpowiada, strona pokazuje ostatnią poprawną kopię.
 
 ## Struktura

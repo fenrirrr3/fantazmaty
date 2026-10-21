@@ -36,7 +36,7 @@ from core.views.recruitment_mailbox import recruitment_mailbox
 from core.views.post_layout import post_layout, post_layout_edit
 from core.views.social_media import social_media
 from core.views.site_www import (site_catalog, site_catalog_api, site_catalog_update, site_catalog_update_all,
-                                 site_team_api, site_www)
+                                 site_listen, site_listen_api, site_team_api, site_www)
 
 
 app_name = "core"
@@ -108,6 +108,8 @@ urlpatterns = [
     path("system/szukajka-www/<int:pk>/aktualizuj/", site_catalog_update, name="site_catalog_update"),
     path("system/szukajka-www/aktualizuj-wszystkie/", site_catalog_update_all, name="site_catalog_update_all"),
     path("api/strona/katalog/", site_catalog_api, name="site_catalog_api"),
+    path("system/sluchaj-www/", site_listen, name="site_listen"),
+    path("api/strona/sluchaj/", site_listen_api, name="site_listen_api"),
     path("teksty/<int:text_id>/notatki/<int:note_id>/edytuj/", texts.edit_text_note, name="edit_text_note"),
     path("teksty/<int:text_id>/notatki/<int:note_id>/usun/", texts.delete_text_note, name="delete_text_note"),
     path("programy/", programs, name="programs"),

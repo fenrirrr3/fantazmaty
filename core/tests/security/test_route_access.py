@@ -54,6 +54,7 @@ PUBLIC = {
     'core:audiobook_guidelines_txt': 'wytyczne do pobrania z publicznej listy audiobooków',
     'core:site_team_api': 'dane ekipy dla fantazmaty.pl – zamiast logowania nagłówek X-Site-Key (bez klucza 503, ze złym 403)',
     'core:site_catalog_api': 'katalog szukajki dla fantazmaty.pl – ten sam nagłówek X-Site-Key co dane ekipy',
+    'core:site_listen_api': 'lista audiobooków strony „Słuchaj” dla fantazmaty.pl – ten sam nagłówek X-Site-Key',
 }
 
 
@@ -138,7 +139,7 @@ ROUTE_LEVELS = {
         'core:release_hidden_review', 'core:review_bulk_import', 'core:user_activity',
         'core:update_author_notification', 'core:copy_review_to_text', 'core:restart_text_workflow',
         'core:restore_withdrawn_text', 'core:add_author_note', 'core:split_mailing', 'core:site_www',
-        'core:site_catalog', 'core:site_catalog_update', 'core:site_catalog_update_all',
+        'core:site_catalog', 'core:site_catalog_update', 'core:site_catalog_update_all', 'core:site_listen',
     ], SUPERUSER),
 }
 

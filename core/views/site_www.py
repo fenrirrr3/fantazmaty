@@ -1,6 +1,7 @@
-"""Strona WWW: endpointy dla fantazmaty.pl (ekipa, katalog szukajki) i zakładki System → „Ekipa WWW”,
-„Szukajka WWW”."""
+"""Strona WWW: endpointy dla fantazmaty.pl (ekipa, katalog szukajki, nagrania strony „Słuchaj”) i zakładki
+System → „Ekipa WWW”, „Szukajka WWW”, „Słuchaj WWW”."""
 import hmac
+import json
 
 from django import forms
 from django.conf import settings
@@ -18,7 +19,9 @@ from core.site_catalog import (PLAN_SALT, apply_add, apply_update, apply_update_
                                catalog_anthologies, catalog_counts, catalog_payload, catalog_warnings, count_text,
                                plan_add, plan_digest, plan_update, plan_update_all, plans_digest, record_catalog_fetch,
                                story_entry, update_blocked_reason)
-from core.site_models import SiteCatalogAnthology, SiteTeamSettings
+from core.site_listen import (add_anthology, candidate_anthologies as listen_candidates, count_text as recording_text,
+                              link_listen_to_cms, listen_counts, listen_data, listen_payload, record_listen_fetch)
+from core.site_models import SiteCatalogAnthology, SiteTeamSettings, validate_site_url
 from core.site_team import record_fetch, team_payload, team_sections, team_warnings
 from texts.models import Anthology
 
@@ -54,6 +57,12 @@ def site_team_api(request):
 @require_GET
 def site_catalog_api(request):
     return _site_api(request, catalog_payload, record_catalog_fetch)
+
+
+@never_cache
+@require_GET
+def site_listen_api(request):
+    return _site_api(request, listen_payload, record_listen_fetch)
 
 
 class SiteTeamSettingsForm(forms.ModelForm):
@@ -259,4 +268,70 @@ def site_catalog_update_all(request):
         plan['notes'] = len(plan['reports']) + len(plan['missing']) + len(plan['unlinked'])
     return render(request, 'core/site_catalog_update_all.html', {
         'overview': overview, 'plan_token': _plan_token(overview['changed'], plans_digest),
+    }, status=status)
+
+
+# --- Słuchaj WWW ----------------------------------------------------------------------------------------------------
+
+class SiteListenSettingsForm(forms.ModelForm):
+    class Meta:
+        model = SiteTeamSettings
+        fields = ('listen_page_url',)
+
+
+class ListenAddForm(forms.Form):
+    """Dodanie antologii CMS-u z opublikowanymi audiobookami na koniec strony „Słuchaj”."""
+    anthology = forms.ModelChoiceField(label='Antologia z CMS-u', queryset=Anthology.objects.none(),
+                                       empty_label='– wybierz –')
+    cover_url = forms.URLField(label='Adres okładki', max_length=500, assume_scheme='https',
+                               validators=[validate_site_url],
+                               help_text='https://fantazmaty.pl/wp-content/uploads/…')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['anthology'].queryset = listen_candidates()
+
+
+@never_cache
+@login_required
+@require_http_methods(['GET', 'POST'])
+@superuser_required
+def site_listen(request):
+    """Karta „Słuchaj WWW”: liczniki, adres strony, dodanie antologii z CMS-u, ponowne dopasowanie nagrań z dawnej
+    strony, ostrzeżenia i podgląd JSON-u; ``?format=json`` – sam JSON."""
+    site_settings = SiteTeamSettings.load()
+    if request.GET.get('format') == 'json':
+        return _json(listen_payload())
+    action = request.POST.get('action', '') if request.method == 'POST' else ''
+    settings_form = SiteListenSettingsForm(request.POST if action == 'settings' else None, instance=site_settings)
+    add_form = ListenAddForm(request.POST if action == 'add' else None)
+    status = 200
+    if action == 'settings':
+        if settings_form.is_valid():
+            settings_form.save()
+            messages.success(request, 'Adres strony zapisany.')
+            return redirect('core:site_listen')
+        status = 400
+    elif action == 'add':
+        if add_form.is_valid():
+            added = add_anthology(add_form.cleaned_data['anthology'], add_form.cleaned_data['cover_url'])
+            messages.success(request, f'Dodano antologię „{added.title}” na koniec strony.')
+            return redirect('core:site_listen')
+        status = 400
+    elif action == 'relink':
+        with transaction.atomic():
+            linked = link_listen_to_cms()
+        messages.success(request, f'Dopasowano: {count_text(linked["antologie"], ANTHOLOGY_FORMS)}, '
+                                  f'{recording_text(linked["nagrania"])}.')
+        return redirect('core:site_listen')
+    elif action:
+        status = 400
+    data = listen_data()
+    payload = listen_payload(data)
+    return render(request, 'core/site_listen.html', {
+        'settings_form': settings_form, 'add_form': add_form, 'counts': data['liczniki'],
+        'counts_text': recording_text(data['liczniki']['nagrania']), 'warnings': data['ostrzezenia'],
+        'rows': [{'item': item, 'counts': listen_counts([item])} for item in data['antologie']], 'preview': json.dumps(payload, ensure_ascii=False, indent=2),
+        'site_settings': site_settings, 'has_api_key': bool(settings.SITE_API_KEY),
+        'has_candidates': listen_candidates().exists(),
     }, status=status)

@@ -13,7 +13,7 @@ SEGMENTS = {
     'notificationrule': 'powiadomienia-discord', 'discordrole': 'role-discorda',
     'discordnotification': 'wyslane-powiadomienia',
     'siteteamsection': 'strona-www-dzialy', 'siteteamsettings': 'strona-www-ustawienia',
-    'sitecataloganthology': 'szukajka-www-katalog',
+    'sitecataloganthology': 'szukajka-www-katalog', 'sitelistenanthology': 'sluchaj-www-antologie',
     "blacklistentry": "wpis-czarnej-listy", "workflowrepetition": "powtorzenie-etapow",
     "workflowhandoff": "przekazanie-pracy", "r": "przejdz",
     "mailboxconnection": "skrzynki-zgloszen", "useractivity": "aktywnosc-uzytkownikow",

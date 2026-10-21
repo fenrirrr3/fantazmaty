@@ -1,4 +1,5 @@
-"""Panel administracyjny strony WWW: działy ekipy z podgrupami, ustawienia strony i katalog szukajki."""
+"""Panel administracyjny strony WWW: działy ekipy z podgrupami, ustawienia strony, katalog szukajki i antologie
+strony „Słuchaj” z czasami nagrań."""
 from django import forms
 from django.contrib import admin
 from django.db import models
@@ -6,8 +7,8 @@ from django.urls import reverse
 from django.utils.html import format_html
 
 from authors.admin import SuperuserOnlyAdminMixin
-from core.site_models import (SiteCatalogAnthology, SiteCatalogStory, SiteTeamGroup, SiteTeamSection,
-                              SiteTeamSettings)
+from core.site_models import (SiteCatalogAnthology, SiteCatalogStory, SiteListenAnthology, SiteListenRecording,
+                              SiteTeamGroup, SiteTeamSection, SiteTeamSettings)
 
 
 class SiteTeamGroupInline(SuperuserOnlyAdminMixin, admin.StackedInline):
@@ -46,8 +47,10 @@ class SiteTeamSectionAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 @admin.register(SiteTeamSettings)
 class SiteTeamSettingsAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     fields = ('lead_editor', 'site_person', 'last_fetched_at', 'last_fetch_version',
-              'catalog_page_url', 'catalog_fetched_at', 'catalog_fetch_version')
-    readonly_fields = ('last_fetched_at', 'last_fetch_version', 'catalog_fetched_at', 'catalog_fetch_version')
+              'catalog_page_url', 'catalog_fetched_at', 'catalog_fetch_version',
+              'listen_page_url', 'listen_fetched_at', 'listen_fetch_version')
+    readonly_fields = ('last_fetched_at', 'last_fetch_version', 'catalog_fetched_at', 'catalog_fetch_version',
+                       'listen_fetched_at', 'listen_fetch_version')
 
     def has_add_permission(self, request):
         return super().has_add_permission(request) and not SiteTeamSettings.objects.exists()
@@ -92,3 +95,51 @@ class SiteCatalogAnthologyAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
     def get_queryset(self, request):
         return super().get_queryset(request).select_related('anthology').prefetch_related('stories')
+
+
+class SiteListenRecordingInline(SuperuserOnlyAdminMixin, admin.TabularInline):
+    model = SiteListenRecording
+    extra = 0
+    fields = ('audiobook', 'part', 'card_id', 'youtube_duration', 'hearthis_duration', 'source')
+    readonly_fields = ('source',)
+    raw_id_fields = ('audiobook',)
+
+    @admin.display(description='z dawnej strony')
+    def source(self, obj):
+        if not obj.source_title:
+            return '–'
+        return f'{obj.source_title} – {obj.source_author}' if obj.source_author else obj.source_title
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('audiobook__text')
+
+
+@admin.register(SiteListenAnthology)
+class SiteListenAnthologyAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
+    list_display = ('title', 'slug', 'cms_link', 'has_cover', 'recording_count', 'position', 'is_enabled')
+    list_editable = ('position', 'is_enabled')
+    ordering = ('position', 'pk')
+    search_fields = ('title', 'slug', 'recordings__source_title', 'recordings__card_id')
+    fields = ('title', 'slug', 'anthology', 'cover_url', 'position', 'is_enabled', 'preview_link')
+    readonly_fields = ('preview_link',)
+    inlines = (SiteListenRecordingInline,)
+    save_on_top = True
+
+    @admin.display(description='powiązanie z CMS-em', ordering='anthology__title')
+    def cms_link(self, obj):
+        return obj.anthology.title if obj.anthology_id else '–'
+
+    @admin.display(description='okładka', boolean=True)
+    def has_cover(self, obj):
+        return bool(obj.cover_url)
+
+    @admin.display(description='wpisy nagrań')
+    def recording_count(self, obj):
+        return len(obj.recordings.all())
+
+    @admin.display(description='podgląd')
+    def preview_link(self, obj):
+        return format_html('<a href="{}">Zakładka System → Słuchaj WWW</a>', reverse('core:site_listen'))
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('anthology').prefetch_related('recordings')

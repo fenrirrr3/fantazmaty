@@ -83,6 +83,7 @@ LABELS.update({
     'site_catalog': 'Szukajka WWW', 'site_catalog_update': 'Aktualizacja antologii w szukajce WWW',
     'site_catalog_update_all': 'Aktualizacja wszystkich antologii w szukajce WWW',
     'site_catalog_api': 'Pobranie katalogu szukajki przez stronę WWW',
+    'site_listen': 'Słuchaj WWW', 'site_listen_api': 'Pobranie nagrań strony „Słuchaj” przez stronę WWW',
     'index': 'Panel administracyjny', 'app_list': 'Sekcja panelu administracyjnego',
     'autocomplete': 'Wyszukiwanie w panelu administracyjnym', 'jsi18n': 'Tłumaczenia panelu administracyjnego',
 })
