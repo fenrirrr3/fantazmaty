@@ -1,0 +1,4787 @@
+{
+ "antologie": [
+  {
+   "nazwa": "Bogowie i pielgrzymi",
+   "url": "https://fantazmaty.pl/czytaj/antologie/bogowie-i-pielgrzymi/",
+   "opowiadania": [
+    {
+     "tytul": "Nadzorca",
+     "autor": "Marcin Moń",
+     "gatunki": [
+      "science fiction",
+      "groza psychologiczna"
+     ],
+     "tagi": [
+      "kosmici",
+      "niewola",
+      "monitoring",
+      "eksperymenty",
+      "ucieczka",
+      "niepewna rzeczywistość"
+     ]
+    },
+    {
+     "tytul": "Uchwycone w zwierciadle",
+     "autor": "Marcin Moń",
+     "gatunki": [
+      "psychologiczna science fiction"
+     ],
+     "tagi": [
+      "kolonizacja kosmosu",
+      "hibernacja",
+      "obca planeta",
+      "anomalie",
+      "władza",
+      "miłość"
+     ]
+    },
+    {
+     "tytul": "Gdy gwiazdy się ułożą",
+     "autor": "Marcin Moń",
+     "gatunki": [
+      "science fiction",
+      "groza"
+     ],
+     "tagi": [
+      "Cthulhu",
+      "implanty",
+      "modyfikacja pamięci",
+      "rzeczywistość rozszerzona",
+      "eksperymenty",
+      "obsesja"
+     ]
+    },
+    {
+     "tytul": "Jedna długa noc",
+     "autor": "Marcin Moń",
+     "gatunki": [
+      "filozoficzna science fiction"
+     ],
+     "tagi": [
+      "cyfrowa świadomość",
+      "kopie umysłu",
+      "statki kosmiczne",
+      "poszukiwanie planet",
+      "poświęcenie"
+     ]
+    },
+    {
+     "tytul": "Drugie miasto",
+     "autor": "Marcin Moń",
+     "gatunki": [
+      "science fiction",
+      "weird fiction"
+     ],
+     "tagi": [
+      "Poznań",
+      "narkotyki",
+      "halucynacje",
+      "alternatywne miasto",
+      "percepcja",
+      "obsesja"
+     ]
+    },
+    {
+     "tytul": "Szept pielgrzymów",
+     "autor": "Marcin Moń",
+     "gatunki": [
+      "science fiction",
+      "fantastyka filozoficzna"
+     ],
+     "tagi": [
+      "meteoryt",
+      "Antarktyda",
+      "obce życie",
+      "przypadek",
+      "pielgrzymka",
+      "wolna wola"
+     ]
+    }
+   ]
+  },
+  {
+   "nazwa": "Dragoneza",
+   "url": "https://fantazmaty.pl/czytaj/antologie/dragoneza/",
+   "opowiadania": [
+    {
+     "tytul": "Kobieta, która słyszała smoki",
+     "autor": "Agnieszka Fulińska",
+     "gatunki": [
+      "fantasy historyczne",
+      "kryminał"
+     ],
+     "tagi": [
+      "smoki",
+      "obrazy",
+      "sztuka",
+      "śledztwo",
+      "dziecko",
+      "Paryż"
+     ]
+    },
+    {
+     "tytul": "Wspiąć się na górę Niitaka",
+     "autor": "Michał Mądrawski",
+     "gatunki": [
+      "fantasy historyczne",
+      "fantastyka militarna"
+     ],
+     "tagi": [
+      "smoki",
+      "Pearl Harbor",
+      "II wojna światowa",
+      "żołnierze",
+      "pętla czasowa"
+     ]
+    },
+    {
+     "tytul": "Miluś",
+     "autor": "Artur Olchowy",
+     "gatunki": [
+      "urban fantasy",
+      "komedia"
+     ],
+     "tagi": [
+      "smoki",
+      "zwierzęta domowe",
+      "opieka",
+      "związek",
+      "przyjaźń",
+      "humor"
+     ]
+    },
+    {
+     "tytul": "Norddragen",
+     "autor": "Aleksandra Cebo",
+     "gatunki": [
+      "fantasy mitologiczne",
+      "fantasy przygodowe"
+     ],
+     "tagi": [
+      "smoki",
+      "wikingowie",
+      "statki",
+      "runy",
+      "zemsta",
+      "Skandynawia"
+     ]
+    },
+    {
+     "tytul": "Żywożmija",
+     "autor": "Barbara Mikulska",
+     "gatunki": [
+      "fantasy historyczne",
+      "groza ludowa"
+     ],
+     "tagi": [
+      "smoki",
+      "wieś",
+      "rodzina",
+      "przemiana",
+      "łowca potworów",
+      "folklor"
+     ]
+    },
+    {
+     "tytul": "Katechon",
+     "autor": "Marcin Tomasiewicz",
+     "gatunki": [
+      "fantasy historyczne"
+     ],
+     "tagi": [
+      "smoki",
+      "średniowiecze",
+      "templariusze",
+      "religia",
+      "sekta",
+      "tajemnica"
+     ]
+    },
+    {
+     "tytul": "Siej kwiaty, zbieraj ogień",
+     "autor": "Krzysztof Matkowski",
+     "gatunki": [
+      "realizm magiczny",
+      "groza"
+     ],
+     "tagi": [
+      "smoki",
+      "kwiaty",
+      "dzieciństwo",
+      "rodzina",
+      "ambicja",
+      "uzależnienie"
+     ]
+    },
+    {
+     "tytul": "Zimna perła",
+     "autor": "Barbara Januszewska",
+     "gatunki": [
+      "science fantasy"
+     ],
+     "tagi": [
+      "smoki",
+      "perły",
+      "nurkowanie",
+      "telepatia",
+      "eksperymenty",
+      "zniewolenie"
+     ]
+    },
+    {
+     "tytul": "Na psa urok",
+     "autor": "Michał Rybiński",
+     "gatunki": [
+      "urban fantasy",
+      "fantastyka sensacyjna"
+     ],
+     "tagi": [
+      "smoki",
+      "psy",
+      "policja",
+      "tresura",
+      "partnerstwo",
+      "polowanie"
+     ]
+    },
+    {
+     "tytul": "Żmije",
+     "autor": "Przemysław Morawski",
+     "gatunki": [
+      "fantasy historyczne"
+     ],
+     "tagi": [
+      "smoki",
+      "szlachta",
+      "Rzeczpospolita",
+      "zakon",
+      "smocze jajo",
+      "konflikt rodzinny"
+     ]
+    },
+    {
+     "tytul": "Co dwie głowy, to nie jedna",
+     "autor": "Krzysztof Rewiuk",
+     "gatunki": [
+      "fantasy humorystyczne"
+     ],
+     "tagi": [
+      "smoki",
+      "dwie głowy",
+      "król",
+      "monety",
+      "negocjacje",
+      "humor"
+     ]
+    },
+    {
+     "tytul": "Dzieci Posejdona",
+     "autor": "Magdalena Kucenty",
+     "gatunki": [
+      "science fiction"
+     ],
+     "tagi": [
+      "smoki",
+      "ocean",
+      "obca planeta",
+      "roboty",
+      "niepełnosprawność",
+      "przyjaźń"
+     ]
+    },
+    {
+     "tytul": "Wycinki z utraconego świata",
+     "autor": "Maciej Bachorski",
+     "gatunki": [
+      "fantastyka postapokaliptyczna",
+      "fantastyka katastroficzna"
+     ],
+     "tagi": [
+      "smoki",
+      "inwazja",
+      "wojna",
+      "ocaleni",
+      "odbudowa",
+      "relacje świadków"
+     ]
+    },
+    {
+     "tytul": "Coś do naprawy",
+     "autor": "Anna Maria Sutkowska",
+     "gatunki": [
+      "urban fantasy"
+     ],
+     "tagi": [
+      "smoki",
+      "dziecko",
+      "weterynarz",
+      "zegarki",
+      "ukryta ulica",
+      "pomoc"
+     ]
+    },
+    {
+     "tytul": "Stary bajarz",
+     "autor": "Krzysztof Banach",
+     "gatunki": [
+      "fantasy mitologiczne"
+     ],
+     "tagi": [
+      "smoki",
+      "mnich",
+      "opowieści",
+      "pamięć",
+      "poczucie winy",
+      "Chiny"
+     ]
+    },
+    {
+     "tytul": "Egzegeza Szalonego Gnostyka",
+     "autor": "Sylwester Gdela",
+     "gatunki": [
+      "weird fiction"
+     ],
+     "tagi": [
+      "pisarstwo",
+      "wyobraźnia",
+      "gnoza",
+      "potwory",
+      "wyobcowanie",
+      "smoki"
+     ]
+    },
+    {
+     "tytul": "Jedna jedyna",
+     "autor": "Aleksandra Buczek-Stachowska",
+     "gatunki": [
+      "science fantasy"
+     ],
+     "tagi": [
+      "smoki",
+      "genetyka",
+      "terraformowanie",
+      "sztuczna inteligencja",
+      "eksperymenty",
+      "małżeństwo"
+     ]
+    },
+    {
+     "tytul": "Popiół",
+     "autor": "Krzysztof Sauter",
+     "gatunki": [
+      "fantasy"
+     ],
+     "tagi": [
+      "smoki",
+      "wulkan",
+      "pająki",
+      "miasto",
+      "ratunek",
+      "przetrwanie"
+     ]
+    },
+    {
+     "tytul": "Miniaturka",
+     "autor": "Magda Brumirska-Zielińska",
+     "gatunki": [
+      "urban fantasy",
+      "komedia"
+     ],
+     "tagi": [
+      "smoki",
+      "weterynaria",
+      "zwierzęta domowe",
+      "wyścigi",
+      "opieka",
+      "humor"
+     ]
+    },
+    {
+     "tytul": "Donnerwetter",
+     "autor": "Krzysztof Adamski",
+     "gatunki": [
+      "fantasy militarne",
+      "steampunk"
+     ],
+     "tagi": [
+      "smoki",
+      "krasnoludy",
+      "elfy",
+      "pociąg pancerny",
+      "złoto",
+      "wojna"
+     ]
+    }
+   ]
+  },
+  {
+   "nazwa": "Fantazmaty 1",
+   "url": "https://fantazmaty.pl/czytaj/antologie/fantazmaty-1/",
+   "opowiadania": [
+    {
+     "tytul": "Trupy",
+     "autor": "Paweł Majka",
+     "gatunki": [
+      "socjologiczna science fiction",
+      "dystopia"
+     ],
+     "tagi": [
+      "podróż w czasie",
+      "postaci historyczne",
+      "turystyka",
+      "nierówności społeczne",
+      "małżeństwo"
+     ]
+    },
+    {
+     "tytul": "Pod skórą",
+     "autor": "Agnieszka Hałas",
+     "gatunki": [
+      "realizm magiczny",
+      "urban fantasy"
+     ],
+     "tagi": [
+      "koty",
+      "tatuaże",
+      "muzyka",
+      "rodzina",
+      "trauma",
+      "zaświaty"
+     ]
+    },
+    {
+     "tytul": "Babie lato",
+     "autor": "Piotr Borlik",
+     "gatunki": [
+      "fantasy słowiańskie"
+     ],
+     "tagi": [
+      "wieś",
+      "pajęczyny",
+      "klątwa",
+      "mitologia słowiańska",
+      "burza"
+     ]
+    },
+    {
+     "tytul": "Następna stacja: Katastrofa",
+     "autor": "Piotr Gruchalski",
+     "gatunki": [
+      "science fiction",
+      "thriller katastroficzny"
+     ],
+     "tagi": [
+      "pociąg",
+      "tunel",
+      "trzęsienie ziemi",
+      "sztuczna inteligencja",
+      "katastrofa"
+     ]
+    },
+    {
+     "tytul": "Zachwyt",
+     "autor": "Wojciech Gunia",
+     "gatunki": [
+      "groza",
+      "weird fiction"
+     ],
+     "tagi": [
+      "pisarstwo",
+      "książki",
+      "obsesja",
+      "opętanie",
+      "tożsamość"
+     ]
+    },
+    {
+     "tytul": "Na podobieństwo",
+     "autor": "Alicja Janusz",
+     "gatunki": [
+      "fantasy przygodowe"
+     ],
+     "tagi": [
+      "bardowie",
+      "muzyka",
+      "mistrz i uczeń",
+      "bogowie",
+      "demony",
+      "wędrówka"
+     ]
+    },
+    {
+     "tytul": "Wieczne życie",
+     "autor": "Tomasz Przyłucki",
+     "gatunki": [
+      "urban fantasy",
+      "satyra"
+     ],
+     "tagi": [
+      "babcia i wnuk",
+      "diabeł",
+      "nieśmiertelność",
+      "biurokracja",
+      "polityka",
+      "humor"
+     ]
+    },
+    {
+     "tytul": "Śnienie",
+     "autor": "Marcin Rusnak",
+     "gatunki": [
+      "fantastyka superbohaterska",
+      "komedia"
+     ],
+     "tagi": [
+      "superbohaterowie",
+      "rodzicielstwo",
+      "sny",
+      "ożywione zabawki",
+      "syreny",
+      "humor"
+     ]
+    },
+    {
+     "tytul": "Dzień Walpurgii",
+     "autor": "Ahsan Ridha Hassan",
+     "gatunki": [
+      "groza psychologiczna"
+     ],
+     "tagi": [
+      "choroba psychiczna",
+      "śmierć",
+      "miłość",
+      "szpital",
+      "Kraków"
+     ]
+    },
+    {
+     "tytul": "Pan Kukiełka",
+     "autor": "Dawid Kain",
+     "gatunki": [
+      "groza psychologiczna",
+      "weird fiction"
+     ],
+     "tagi": [
+      "żałoba",
+      "ojciec i syn",
+      "bóg",
+      "las",
+      "nagrania"
+     ]
+    },
+    {
+     "tytul": "Dwie głowy węża",
+     "autor": "Magdalena Kucenty",
+     "gatunki": [
+      "fantasy polityczne"
+     ],
+     "tagi": [
+      "dworskie intrygi",
+      "religia",
+      "bliźnięta",
+      "macierzyństwo",
+      "władza",
+      "kazirodztwo"
+     ]
+    },
+    {
+     "tytul": "AJAS 22.9.5.12.11.9",
+     "autor": "Jacek Łukawski",
+     "gatunki": [
+      "militarna science fiction"
+     ],
+     "tagi": [
+      "czołgi",
+      "wojna",
+      "maszyny",
+      "amnezja",
+      "kontrola",
+      "tożsamość"
+     ]
+    },
+    {
+     "tytul": "Księga Daat",
+     "autor": "Anna Szumacher",
+     "gatunki": [
+      "fantasy przygodowe"
+     ],
+     "tagi": [
+      "anioły",
+      "magiczna księga",
+      "pióro",
+      "pościg",
+      "wojna",
+      "wędrówka"
+     ]
+    },
+    {
+     "tytul": "Błędny rycerz",
+     "autor": "Andrzej Sawicki",
+     "gatunki": [
+      "science fiction"
+     ],
+     "tagi": [
+      "mechy",
+      "kosmos",
+      "gwiazdy",
+      "naukowcy",
+      "religia",
+      "świadomość"
+     ]
+    },
+    {
+     "tytul": "Drakodoncja stosowana",
+     "autor": "Kamila Dankowska",
+     "gatunki": [
+      "urban fantasy",
+      "komedia"
+     ],
+     "tagi": [
+      "smoki",
+      "dentysta",
+      "Kraków",
+      "wojsko",
+      "medycyna",
+      "humor"
+     ]
+    },
+    {
+     "tytul": "Ego te absolvo",
+     "autor": "Agnieszka Sudomir",
+     "gatunki": [
+      "socjologiczna science fiction",
+      "dystopia"
+     ],
+     "tagi": [
+      "tortury",
+      "religia",
+      "indoktrynacja",
+      "kontrola społeczna",
+      "media"
+     ]
+    },
+    {
+     "tytul": "Na obraz i podobieństwo",
+     "autor": "Krzysztof Rewiuk",
+     "gatunki": [
+      "science fiction"
+     ],
+     "tagi": [
+      "szympansy",
+      "neandertalczycy",
+      "eksperymenty",
+      "ewolucja",
+      "religia",
+      "Chiny"
+     ]
+    },
+    {
+     "tytul": "Rzeczy, które robisz w Łodzi, będąc martwym",
+     "autor": "Istvan Vizvary",
+     "gatunki": [
+      "urban fantasy"
+     ],
+     "tagi": [
+      "życie po śmierci",
+      "podróż w czasie",
+      "policjant",
+      "duchy",
+      "Łódź",
+      "Rosja"
+     ]
+    },
+    {
+     "tytul": "Gang Higiena",
+     "autor": "Kazimierz Kyrcz Jr, Michał Walczak",
+     "gatunki": [
+      "groteska fantastyczna"
+     ],
+     "tagi": [
+      "ożywione przedmioty",
+      "łazienka",
+      "gang",
+      "spisek",
+      "czarny humor"
+     ]
+    },
+    {
+     "tytul": "I moją głowę też",
+     "autor": "Alicja Tempłowicz",
+     "gatunki": [
+      "fantastyka postapokaliptyczna",
+      "groza"
+     ],
+     "tagi": [
+      "telepatia",
+      "apokalipsa",
+      "Poznań",
+      "zbiorowa świadomość",
+      "macierzyństwo",
+      "przetrwanie"
+     ]
+    }
+   ]
+  },
+  {
+   "nazwa": "Fantazmaty 2",
+   "url": "https://fantazmaty.pl/czytaj/antologie/fantazmaty-2/",
+   "opowiadania": [
+    {
+     "tytul": "Baśń o Łowcy",
+     "autor": "Marcin Moń",
+     "gatunki": [
+      "science fiction",
+      "fantastyka postapokaliptyczna"
+     ],
+     "tagi": [
+      "nanotechnologia",
+      "łowca",
+      "ruiny",
+      "wirtualna rzeczywistość",
+      "zemsta",
+      "daleka przyszłość"
+     ]
+    },
+    {
+     "tytul": "Budzenie zmarłych",
+     "autor": "Filip Laskowski",
+     "gatunki": [
+      "fantastyka postapokaliptyczna",
+      "militarna science fiction"
+     ],
+     "tagi": [
+      "żołnierze",
+      "schron",
+      "zima",
+      "Ukraina",
+      "dorastanie",
+      "przetrwanie"
+     ]
+    },
+    {
+     "tytul": "Nedd",
+     "autor": "Daniel Nogal",
+     "gatunki": [
+      "fantasy industrialne",
+      "steampunk"
+     ],
+     "tagi": [
+      "tkacze",
+      "fabryki",
+      "maszyny",
+      "bunt robotników",
+      "postęp",
+      "gremliny"
+     ]
+    },
+    {
+     "tytul": "Imię",
+     "autor": "Maciej Oleszek",
+     "gatunki": [
+      "urban fantasy",
+      "dark fantasy"
+     ],
+     "tagi": [
+      "snajper",
+      "zemsta",
+      "bóstwa",
+      "imiona",
+      "skażenie",
+      "Kraków"
+     ]
+    },
+    {
+     "tytul": "Ciemność i lustro",
+     "autor": "Artur Laisen",
+     "gatunki": [
+      "dark fantasy"
+     ],
+     "tagi": [
+      "magowie",
+      "lustra",
+      "poezja",
+      "wspomnienia",
+      "przeznaczenie",
+      "wolna wola"
+     ]
+    },
+    {
+     "tytul": "Jam Jest",
+     "autor": "Michał Sobociński",
+     "gatunki": [
+      "fantastyka postapokaliptyczna",
+      "science fiction"
+     ],
+     "tagi": [
+      "ojciec i syn",
+      "schron",
+      "genetyka",
+      "mutanty",
+      "religia",
+      "samotność"
+     ]
+    },
+    {
+     "tytul": "Zofia i korzenie",
+     "autor": "Anna Karnicka",
+     "gatunki": [
+      "dark fantasy",
+      "groza"
+     ],
+     "tagi": [
+      "rośliny",
+      "małżeństwo",
+      "sny",
+      "labirynt",
+      "przemoc domowa"
+     ]
+    },
+    {
+     "tytul": "Lot motyla",
+     "autor": "Magdalena Świerczek-Gryboś",
+     "gatunki": [
+      "science fantasy",
+      "satyra polityczna"
+     ],
+     "tagi": [
+      "reptilianie",
+      "kosmici",
+      "polityka",
+      "spisek",
+      "inne wymiary",
+      "religia"
+     ]
+    },
+    {
+     "tytul": "Rękojeść z masy perłowej",
+     "autor": "Maciej Musialik",
+     "gatunki": [
+      "fantastyka historyczna",
+      "realizm magiczny"
+     ],
+     "tagi": [
+      "II wojna światowa",
+      "obóz koncentracyjny",
+      "broń",
+      "jasnowidzenie",
+      "trauma",
+      "przeznaczenie"
+     ]
+    },
+    {
+     "tytul": "Topiel",
+     "autor": "Natalia Wójcik",
+     "gatunki": [
+      "urban fantasy",
+      "kryminał"
+     ],
+     "tagi": [
+      "śledztwo",
+      "jezioro",
+      "topielica",
+      "zemsta",
+      "dusza",
+      "tajna organizacja"
+     ]
+    },
+    {
+     "tytul": "Czarna mewa",
+     "autor": "Wojciech Boratyński",
+     "gatunki": [
+      "science fiction",
+      "dystopia",
+      "cyberpunk"
+     ],
+     "tagi": [
+      "nierówności społeczne",
+      "androidy",
+      "policja",
+      "bunt",
+      "propaganda",
+      "inwigilacja"
+     ]
+    },
+    {
+     "tytul": "Dziewczyny-maliny",
+     "autor": "Rafał Cuprjak",
+     "gatunki": [
+      "realizm magiczny",
+      "fantastyka historyczna"
+     ],
+     "tagi": [
+      "II wojna światowa",
+      "Zagłada",
+      "siostry",
+      "ucieczka",
+      "pisarstwo",
+      "równoległe światy"
+     ]
+    },
+    {
+     "tytul": "Dziewczyna z chlebem",
+     "autor": "Michał Studniarek",
+     "gatunki": [
+      "urban fantasy",
+      "realizm magiczny"
+     ],
+     "tagi": [
+      "Warszawa",
+      "II wojna światowa",
+      "duchy",
+      "pamięć",
+      "miasto",
+      "chleb"
+     ]
+    },
+    {
+     "tytul": "Incydent helenowski",
+     "autor": "Tomasz Krzywik",
+     "gatunki": [
+      "groza kosmiczna"
+     ],
+     "tagi": [
+      "tunele",
+      "eksperymenty",
+      "obce byty",
+      "tajemnica",
+      "szaleństwo",
+      "Helenów"
+     ]
+    },
+    {
+     "tytul": "Bajka o głupim Jasiu",
+     "autor": "Anna Grzanek",
+     "gatunki": [
+      "baśń",
+      "dark fantasy"
+     ],
+     "tagi": [
+      "psy",
+      "mówiące zwierzęta",
+      "wędrówka",
+      "woda życia",
+      "odrzucenie",
+      "przyjaźń"
+     ]
+    },
+    {
+     "tytul": "Nagroda wojownika",
+     "autor": "Sylwia Finklińska",
+     "gatunki": [
+      "dark fantasy"
+     ],
+     "tagi": [
+      "życie po śmierci",
+      "harem",
+      "religia",
+      "kobiecość",
+      "zniewolenie",
+      "bunt"
+     ]
+    },
+    {
+     "tytul": "Dom",
+     "autor": "Anna Hrycyszyn",
+     "gatunki": [
+      "science fiction"
+     ],
+     "tagi": [
+      "przemyt",
+      "statki kosmiczne",
+      "dziecko",
+      "samotność",
+      "opieka",
+      "tęsknota"
+     ]
+    },
+    {
+     "tytul": "Iskra z Edry",
+     "autor": "Maria Zdybska",
+     "gatunki": [
+      "fantasy przygodowe"
+     ],
+     "tagi": [
+      "wyrocznia",
+      "przepowiednie",
+      "kapłanki",
+      "ucieczka",
+      "dziecko",
+      "władza"
+     ]
+    },
+    {
+     "tytul": "Zdrada w Schiverheim",
+     "autor": "Łukasz Trykowski",
+     "gatunki": [
+      "dark fantasy",
+      "fantasy polityczne"
+     ],
+     "tagi": [
+      "spisek",
+      "zamach",
+      "religia",
+      "fanatyzm",
+      "elfy",
+      "zdrada"
+     ]
+    },
+    {
+     "tytul": "Niezwykła kobieta",
+     "autor": "Dagmara Adwentowska",
+     "gatunki": [
+      "urban fantasy",
+      "groza",
+      "fantastyka historyczna"
+     ],
+     "tagi": [
+      "strzygi",
+      "archeologia",
+      "śledztwo",
+      "postaci historyczne",
+      "władza",
+      "zemsta"
+     ]
+    }
+   ]
+  },
+  {
+   "nazwa": "Fantazmaty 3",
+   "url": "https://fantazmaty.pl/czytaj/antologie/fantazmaty-3/",
+   "opowiadania": [
+    {
+     "tytul": "Mój Ragnarök",
+     "autor": "Marcin Rusnak",
+     "gatunki": [
+      "fantasy mitologiczne"
+     ],
+     "tagi": [
+      "mitologia nordycka",
+      "Loki",
+      "bogowie",
+      "opowieści",
+      "koniec świata"
+     ]
+    },
+    {
+     "tytul": "Obcy w dolinie",
+     "autor": "Joanna Gajzler",
+     "gatunki": [
+      "fantasy"
+     ],
+     "tagi": [
+      "smoki",
+      "górska wieś",
+      "rycerze",
+      "uczony",
+      "zabobony",
+      "zazdrość"
+     ]
+    },
+    {
+     "tytul": "Paradox",
+     "autor": "Antoni Kaja",
+     "gatunki": [
+      "fantasy"
+     ],
+     "tagi": [
+      "wyrocznia",
+      "przeznaczenie",
+      "bogowie",
+      "bunt",
+      "sny",
+      "równoległe światy"
+     ]
+    },
+    {
+     "tytul": "Długi marsz",
+     "autor": "Filip Laskowski",
+     "gatunki": [
+      "fantastyka apokaliptyczna",
+      "fantastyka postapokaliptyczna"
+     ],
+     "tagi": [
+      "wieczna zima",
+      "schron",
+      "żołnierze",
+      "wyprawa",
+      "przetrwanie",
+      "dorastanie"
+     ]
+    },
+    {
+     "tytul": "Defragmentacja",
+     "autor": "Przemysław Morawski",
+     "gatunki": [
+      "science fiction",
+      "groza"
+     ],
+     "tagi": [
+      "psychodeliki",
+      "eksperymenty",
+      "grzyby",
+      "rap",
+      "telepatia",
+      "zbiorowa świadomość"
+     ]
+    },
+    {
+     "tytul": "Czarnobyl cię kocha, biorobocie",
+     "autor": "Magdalena Świerczek-Gryboś",
+     "gatunki": [
+      "fantastyka apokaliptyczna",
+      "groza"
+     ],
+     "tagi": [
+      "Czarnobyl",
+      "zona",
+      "promieniowanie",
+      "anomalie",
+      "wyprawa",
+      "podróż w czasie"
+     ]
+    }
+   ]
+  },
+  {
+   "nazwa": "Fantazmaty 4",
+   "url": "https://fantazmaty.pl/czytaj/antologie/fantazmaty-4/",
+   "opowiadania": [
+    {
+     "tytul": "Krótka instrukcja obsługi Pana",
+     "autor": "Krzysztof Matkowski",
+     "gatunki": [
+      "socjologiczna science fiction"
+     ],
+     "tagi": [
+      "klony",
+      "sobowtóry",
+      "kult jednostki",
+      "tożsamość",
+      "równoległe światy"
+     ]
+    },
+    {
+     "tytul": "Kto pierwszy, ten...",
+     "autor": "Maciej Oleszek",
+     "gatunki": [
+      "fantasy",
+      "komedia"
+     ],
+     "tagi": [
+      "nieśmiertelność",
+      "rywalizacja",
+      "przyjaźń",
+      "religia",
+      "upływ czasu"
+     ]
+    },
+    {
+     "tytul": "A światłość w ciemności sczerwienieje",
+     "autor": "Jerzy Bogusławski",
+     "gatunki": [
+      "science fiction",
+      "space opera"
+     ],
+     "tagi": [
+      "koniec wszechświata",
+      "postludzie",
+      "statki kosmiczne",
+      "implanty",
+      "religia",
+      "przetrwanie"
+     ]
+    },
+    {
+     "tytul": "Przystanek: Etiologia nieznana",
+     "autor": "Monika Fenc",
+     "gatunki": [
+      "groza",
+      "science fiction"
+     ],
+     "tagi": [
+      "tramwaj",
+      "epidemie",
+      "wirusy",
+      "eksperymenty",
+      "umowa",
+      "uwięzienie"
+     ]
+    },
+    {
+     "tytul": "Zbrodnia bez kary",
+     "autor": "Michał Sobociński",
+     "gatunki": [
+      "fantasy",
+      "groza"
+     ],
+     "tagi": [
+      "poltergeist",
+      "życie po śmierci",
+      "hotel",
+      "okrucieństwo",
+      "zemsta"
+     ]
+    },
+    {
+     "tytul": "Diabeł z La Thieuloye",
+     "autor": "Wiktor Orłowski",
+     "gatunki": [
+      "fantasy historyczne",
+      "groza"
+     ],
+     "tagi": [
+      "kat",
+      "egzekucje",
+      "tortury",
+      "rewolucja francuska",
+      "postaci historyczne",
+      "diabeł"
+     ]
+    },
+    {
+     "tytul": "Uchodźca",
+     "autor": "Edward Strun",
+     "gatunki": [
+      "socjologiczna science fiction"
+     ],
+     "tagi": [
+      "kosmici",
+      "uchodźcy",
+      "rodzina",
+      "uprzedzenia",
+      "teorie spiskowe",
+      "strach"
+     ]
+    }
+   ]
+  },
+  {
+   "nazwa": "Gastronomicon",
+   "url": "https://fantazmaty.pl/czytaj/antologie/gastronomicon/",
+   "opowiadania": [
+    {
+     "tytul": "Ciasteczko Śnieżyny",
+     "autor": "Mika Modrzyńska",
+     "gatunki": [
+      "antybaśń"
+     ],
+     "tagi": [
+      "Śnieżka",
+      "Jaś i Małgosia",
+      "wypieki",
+      "trucizna",
+      "przemoc domowa",
+      "zemsta"
+     ]
+    },
+    {
+     "tytul": "Roślinoludy",
+     "autor": "Katarzyna Szymonik",
+     "gatunki": [
+      "fantasy",
+      "science fiction",
+      "dystopia"
+     ],
+     "tagi": [
+      "wirtualna rzeczywistość",
+      "roślinoludy",
+      "rolnictwo",
+      "kanibalizm",
+      "niewolnictwo",
+      "długi"
+     ]
+    },
+    {
+     "tytul": "Nostalgia",
+     "autor": "Mateusz Kimak",
+     "gatunki": [
+      "obyczajowa science fiction",
+      "satyra"
+     ],
+     "tagi": [
+      "pizza",
+      "dostawca",
+      "sztuczna żywność",
+      "smak",
+      "konflikt pokoleń",
+      "wspomnienia"
+     ]
+    },
+    {
+     "tytul": "Nienażarty",
+     "autor": "Joanna Dzięciołowska",
+     "gatunki": [
+      "fantasy",
+      "groteska"
+     ],
+     "tagi": [
+      "pożeranie emocji",
+      "szpital",
+      "sny",
+      "manipulacja",
+      "równoległe światy",
+      "pasożytnictwo"
+     ]
+    },
+    {
+     "tytul": "Tort szwarcwaldzki",
+     "autor": "Marta Kers",
+     "gatunki": [
+      "urban fantasy"
+     ],
+     "tagi": [
+      "restauracja",
+      "magiczne wypieki",
+      "romans",
+      "magiczne stworzenia",
+      "drzewo życia",
+      "ptaki"
+     ]
+    },
+    {
+     "tytul": "Ości",
+     "autor": "Joanna Gajzler",
+     "gatunki": [
+      "dark fantasy"
+     ],
+     "tagi": [
+      "degustatorka",
+      "trucizna",
+      "więzienie",
+      "kara śmierci",
+      "księżna",
+      "siostry"
+     ]
+    },
+    {
+     "tytul": "Bateria",
+     "autor": "Radosław Dąbrowski",
+     "gatunki": [
+      "science fiction",
+      "kryminał"
+     ],
+     "tagi": [
+      "roboty",
+      "gotowanie",
+      "śledztwo",
+      "ucieczka",
+      "mistrz i uczeń",
+      "wolność"
+     ]
+    },
+    {
+     "tytul": "Jadłodajnia Djetetyczna",
+     "autor": "Maja Podolska",
+     "gatunki": [
+      "groza",
+      "body horror"
+     ],
+     "tagi": [
+      "pisarz",
+      "blokada twórcza",
+      "restauracja",
+      "kanibalizm",
+      "ambicja",
+      "przemiana ciała"
+     ]
+    },
+    {
+     "tytul": "Stypendia i olbrzymy",
+     "autor": "Łukasz Kucharczyk",
+     "gatunki": [
+      "fantasy humorystyczne",
+      "groteska"
+     ],
+     "tagi": [
+      "olbrzymy",
+      "niziołek",
+      "doktorant",
+      "magiczne przedmioty",
+      "wegetarianizm",
+      "biurokracja"
+     ]
+    },
+    {
+     "tytul": "Nie ma jak u babci",
+     "autor": "Anna Sikorska",
+     "gatunki": [
+      "rural fantasy"
+     ],
+     "tagi": [
+      "babcia",
+      "duchy",
+      "wiedźmy",
+      "gotowanie",
+      "małżeństwo",
+      "restauracja"
+     ]
+    },
+    {
+     "tytul": "Truskawkowy amok",
+     "autor": "Krzysztof Banach",
+     "gatunki": [
+      "groteska",
+      "groza satyryczna"
+     ],
+     "tagi": [
+      "truskawki",
+      "reklama",
+      "polityka",
+      "manipulacja",
+      "kanibalizm",
+      "epidemia"
+     ]
+    },
+    {
+     "tytul": "Dobranoc, smoku",
+     "autor": "Barbara Zambrzycka",
+     "gatunki": [
+      "fantasy",
+      "satyra"
+     ],
+     "tagi": [
+      "smoki",
+      "magowie",
+      "program kulinarny",
+      "hodowla",
+      "prawa zwierząt",
+      "bunt"
+     ]
+    }
+   ]
+  },
+  {
+   "nazwa": "Ja, legenda",
+   "url": "https://fantazmaty.pl/czytaj/antologie/ja-legenda/",
+   "opowiadania": [
+    {
+     "tytul": "Babel z moich snów",
+     "autor": "Alicja Janusz",
+     "gatunki": [
+      "fantasy"
+     ],
+     "tagi": [
+      "Babilon",
+      "wieża Babel",
+      "bardowie",
+      "sny",
+      "iluzje",
+      "muzyka"
+     ]
+    },
+    {
+     "tytul": "Zakrzywienie czasozefiru",
+     "autor": "Kamil Kulig",
+     "gatunki": [
+      "przygodowa science fiction"
+     ],
+     "tagi": [
+      "bracia",
+      "inne wymiary",
+      "podróż w czasie",
+      "wiatr",
+      "wynalazki",
+      "ratunek"
+     ]
+    },
+    {
+     "tytul": "Szósta minuta na językach",
+     "autor": "Krzysztof Matkowski",
+     "gatunki": [
+      "urban fantasy"
+     ],
+     "tagi": [
+      "magowie",
+      "sława",
+      "media",
+      "uzdrawianie",
+      "przyjaźń",
+      "prywatność"
+     ]
+    },
+    {
+     "tytul": "Dzwoneczek i Klub Solipsystów",
+     "autor": "Michał Brzozowski",
+     "gatunki": [
+      "filozoficzna science fiction"
+     ],
+     "tagi": [
+      "filozofia",
+      "solipsyzm",
+      "wirtualna rzeczywistość",
+      "świadomość",
+      "eksperymenty"
+     ]
+    },
+    {
+     "tytul": "Clean up & Go",
+     "autor": "Michał Pięta",
+     "gatunki": [
+      "science fiction"
+     ],
+     "tagi": [
+      "izolacja",
+      "sprzątanie",
+      "awaria",
+      "tajny projekt",
+      "pierwszy kontakt"
+     ]
+    },
+    {
+     "tytul": "Serce szwajcarskiego bohatera",
+     "autor": "Weronika Seliman",
+     "gatunki": [
+      "humorystyczna science fiction"
+     ],
+     "tagi": [
+      "nanoroboty",
+      "sztuczna inteligencja",
+      "statki kosmiczne",
+      "dawna cywilizacja",
+      "humor"
+     ]
+    },
+    {
+     "tytul": "Farsa",
+     "autor": "Michał Puchalski",
+     "gatunki": [
+      "fantasy arturiańskie",
+      "urban fantasy"
+     ],
+     "tagi": [
+      "legendy arturiańskie",
+      "rycerze",
+      "błazen",
+      "mistrz i uczeń",
+      "wyprawa"
+     ]
+    },
+    {
+     "tytul": "Jedna długa noc",
+     "autor": "Katarzyna Szymonik",
+     "gatunki": [
+      "urban fantasy"
+     ],
+     "tagi": [
+      "wiedźmy",
+      "diabeł",
+      "starość",
+      "młodość",
+      "samotność",
+      "Kielce"
+     ]
+    },
+    {
+     "tytul": "Louise",
+     "autor": "Magda Wilk",
+     "gatunki": [
+      "przygodowa science fiction"
+     ],
+     "tagi": [
+      "kosmici",
+      "lodowa planeta",
+      "ucieczka",
+      "przetrwanie",
+      "rodzina"
+     ]
+    },
+    {
+     "tytul": "Der Fischerkönig",
+     "autor": "Krzysztof Rewiuk",
+     "gatunki": [
+      "fantasy historyczne"
+     ],
+     "tagi": [
+      "Ludwik II",
+      "Bawaria",
+      "Lohengrin",
+      "opera",
+      "legendy arturiańskie"
+     ]
+    },
+    {
+     "tytul": "Kroki komandora",
+     "autor": "Agnieszka Fulińska",
+     "gatunki": [
+      "fantastyka historyczna",
+      "groza"
+     ],
+     "tagi": [
+      "wojny napoleońskie",
+      "fałszywa tożsamość",
+      "więzienie",
+      "artefakt",
+      "ambicja"
+     ]
+    },
+    {
+     "tytul": "Instrukcja obsługi drzwi/Latać jak ptaki",
+     "autor": "Łukasz Skoneczny",
+     "gatunki": [
+      "socjologiczna science fiction",
+      "weird fiction"
+     ],
+     "tagi": [
+      "język",
+      "propaganda",
+      "manipulacja",
+      "eksperymenty",
+      "rzeczywistość"
+     ]
+    },
+    {
+     "tytul": "Nowy gracz na rynku many",
+     "autor": "Sylwia Finklińska",
+     "gatunki": [
+      "urban fantasy",
+      "fantasy humorystyczne"
+     ],
+     "tagi": [
+      "miejskie legendy",
+      "internet",
+      "plotki",
+      "gangsterzy",
+      "ucieczka",
+      "humor"
+     ]
+    },
+    {
+     "tytul": "Przygoda wesoła i niebezpieczna Pupca Sierotki",
+     "autor": "Łukasz Kuliński",
+     "gatunki": [
+      "fantasy humorystyczne"
+     ],
+     "tagi": [
+      "błazen",
+      "golem",
+      "turniej",
+      "magia",
+      "podstęp",
+      "teatr"
+     ]
+    },
+    {
+     "tytul": "Deszczowy żołnierz",
+     "autor": "Filip Laskowski",
+     "gatunki": [
+      "militarna science fiction",
+      "fantastyka postapokaliptyczna"
+     ],
+     "tagi": [
+      "drony",
+      "wojna",
+      "polowanie",
+      "przetrwanie",
+      "poświęcenie"
+     ]
+    },
+    {
+     "tytul": "Rdza",
+     "autor": "Justyna Macina",
+     "gatunki": [
+      "realizm magiczny"
+     ],
+     "tagi": [
+      "drzewa",
+      "rdza",
+      "psy",
+      "żałoba",
+      "samotność",
+      "badania naukowe"
+     ]
+    },
+    {
+     "tytul": "Dzikuska",
+     "autor": "Michał Stachnik",
+     "gatunki": [
+      "fantasy baśniowe"
+     ],
+     "tagi": [
+      "Czerwony Kapturek",
+      "bracia Grimm",
+      "wilki",
+      "dorastanie",
+      "rodzina"
+     ]
+    },
+    {
+     "tytul": "Status ofiary ściśle reglamentowany",
+     "autor": "Jerzy Bogusławski",
+     "gatunki": [
+      "socjologiczna science fiction",
+      "thriller polityczny"
+     ],
+     "tagi": [
+      "wojna",
+      "propaganda",
+      "media",
+      "cyborgi",
+      "uprzedzenia",
+      "polityka"
+     ]
+    },
+    {
+     "tytul": "Sztuka Gordiana del Monte",
+     "autor": "Marek Betlejewski",
+     "gatunki": [
+      "groza"
+     ],
+     "tagi": [
+      "malarstwo",
+      "mistrz i uczeń",
+      "demony",
+      "ambicja",
+      "poczucie winy"
+     ]
+    },
+    {
+     "tytul": "Skala wartości",
+     "autor": "Miłosz Śmiałek",
+     "gatunki": [
+      "fantastyka filozoficzna",
+      "urban fantasy"
+     ],
+     "tagi": [
+      "Bóg",
+      "religia",
+      "ateizm",
+      "moralność",
+      "media społecznościowe"
+     ]
+    },
+    {
+     "tytul": "Karpia dzień, czyli JaFonowi wypaplane",
+     "autor": "Dariusz Skrzydło",
+     "gatunki": [
+      "dystopia",
+      "satyra"
+     ],
+     "tagi": [
+      "nagrania",
+      "przemoc",
+      "kanibalizm",
+      "wolność",
+      "obyczaje",
+      "czarny humor"
+     ]
+    },
+    {
+     "tytul": "Jestem Legenda",
+     "autor": "Marzena Zawierska",
+     "gatunki": [
+      "fantasy współczesne"
+     ],
+     "tagi": [
+      "góry",
+      "wspinaczka",
+      "sława",
+      "ambicja",
+      "rodzina",
+      "przetrwanie"
+     ]
+    },
+    {
+     "tytul": "Kilka rzeczy do zrobienia",
+     "autor": "Krzysztof Górski",
+     "gatunki": [
+      "przygodowa science fiction"
+     ],
+     "tagi": [
+      "kolonizacja kosmosu",
+      "gady",
+      "obca inteligencja",
+      "hibernacja",
+      "przetrwanie"
+     ]
+    },
+    {
+     "tytul": "Siódmy dzień",
+     "autor": "Michał Woźny",
+     "gatunki": [
+      "science fiction",
+      "fantastyka religijna"
+     ],
+     "tagi": [
+      "Watykan",
+      "papieżyca",
+      "religia",
+      "koniec świata",
+      "kosmos",
+      "naukowcy"
+     ]
+    },
+    {
+     "tytul": "Zwykły Szary Henio i Korpoprzyjaciel",
+     "autor": "Mateusz Hengier",
+     "gatunki": [
+      "cyberpunk",
+      "dystopia"
+     ],
+     "tagi": [
+      "korporacje",
+      "sztuczna inteligencja",
+      "śledztwo",
+      "inwigilacja",
+      "manipulacja"
+     ]
+    }
+   ]
+  },
+  {
+   "nazwa": "Kocha, lubi, zgubi",
+   "url": "https://fantazmaty.pl/czytaj/antologie/kocha-lubi-zgubi/",
+   "opowiadania": [
+    {
+     "tytul": "Pomarańczowa parasolka",
+     "autor": "Aleksandra Knap",
+     "gatunki": [
+      "urban fantasy",
+      "groza"
+     ],
+     "tagi": [
+      "spełnianie życzeń",
+      "telepatia",
+      "magiczne przedmioty",
+      "samotność",
+      "miłość",
+      "ogień"
+     ]
+    },
+    {
+     "tytul": "Miłość i mróz",
+     "autor": "Judyta Formanowska",
+     "gatunki": [
+      "fantasy obyczajowe",
+      "fantasy baśniowe"
+     ],
+     "tagi": [
+      "wieczna zima",
+      "arystokracja",
+      "bale",
+      "siostry",
+      "magiczna kraina",
+      "uwięzienie"
+     ]
+    },
+    {
+     "tytul": "Zakręt",
+     "autor": "Marcin Łukasiewicz",
+     "gatunki": [
+      "bizarro"
+     ],
+     "tagi": [
+      "kolej",
+      "maszynista",
+      "nieumarli",
+      "panna młoda",
+      "ptaki",
+      "absurd"
+     ]
+    },
+    {
+     "tytul": "Wzór na długie i szczęśliwe życie Jeremy'ego Barretta",
+     "autor": "Aleksandra Żyłkowska",
+     "gatunki": [
+      "science fiction",
+      "thriller"
+     ],
+     "tagi": [
+      "sztuczna inteligencja",
+      "inteligentny dom",
+      "obsesyjna miłość",
+      "kontrola",
+      "algorytmy",
+      "nadopiekuńczość"
+     ]
+    },
+    {
+     "tytul": "Może wśród gwiazd",
+     "autor": "Anna Gersten",
+     "gatunki": [
+      "fantasy romantyczne"
+     ],
+     "tagi": [
+      "księżniczka",
+      "wojna",
+      "miłość",
+      "zdrada",
+      "dworskie intrygi",
+      "trucizna"
+     ]
+    },
+    {
+     "tytul": "Entropia",
+     "autor": "Ella Raj",
+     "gatunki": [
+      "new weird fantasy"
+     ],
+     "tagi": [
+      "faun",
+      "faerie",
+      "sny",
+      "twórca i dzieło",
+      "nieodwzajemniona miłość",
+      "utrata tożsamości"
+     ]
+    },
+    {
+     "tytul": "Rycerz, panna i wielka niedźwiedzica",
+     "autor": "Barbara Kaczyńska",
+     "gatunki": [
+      "fantasy baśniowe"
+     ],
+     "tagi": [
+      "rycerze",
+      "dworskie intrygi",
+      "zakazana miłość",
+      "dziwożona",
+      "przemiana",
+      "magiczny sen"
+     ]
+    },
+    {
+     "tytul": "Prorocy Galei",
+     "autor": "Zuzanna Koźlicka",
+     "gatunki": [
+      "fantastyka apokaliptyczna",
+      "science fantasy"
+     ],
+     "tagi": [
+      "prorocy",
+      "bogowie",
+      "pielgrzymka",
+      "utrata pamięci",
+      "technologia",
+      "zbawienie"
+     ]
+    },
+    {
+     "tytul": "Zegarmistrz życia zakrwawiony",
+     "autor": "Jacek Małas",
+     "gatunki": [
+      "fantasy",
+      "gearpunk"
+     ],
+     "tagi": [
+      "zegarmistrz",
+      "automaty",
+      "dusza",
+      "ojciec i córka",
+      "choroba",
+      "rytuał"
+     ]
+    },
+    {
+     "tytul": "Oksytocyna",
+     "autor": "Michał Klasa",
+     "gatunki": [
+      "psychologiczna science fiction"
+     ],
+     "tagi": [
+      "rozstanie",
+      "samotność",
+      "wirtualna rzeczywistość",
+      "eksperymenty",
+      "pamięć",
+      "neurochemia"
+     ]
+    },
+    {
+     "tytul": "Upadek domu von Planethofów",
+     "autor": "Marta Rakoczy",
+     "gatunki": [
+      "fantasy obyczajowe"
+     ],
+     "tagi": [
+      "magowie",
+      "arystokracja",
+      "rodowe tajemnice",
+      "trauma wojenna",
+      "romans",
+      "rodzicielstwo"
+     ]
+    }
+   ]
+  },
+  {
+   "nazwa": "Kryształowe Smoki",
+   "url": "https://fantazmaty.pl/czytaj/antologie/krysztalowe-smoki-2019/",
+   "opowiadania": [
+    {
+     "tytul": "Układ czasowy",
+     "autor": "Alicja Huk",
+     "gatunki": [
+      "fantasy mitologiczne"
+     ],
+     "tagi": [
+      "stworzenie świata",
+      "bogowie",
+      "czas",
+      "rywalizacja",
+      "natura"
+     ]
+    },
+    {
+     "tytul": "Czwarta zwrotka",
+     "autor": "Maria Bieszczad",
+     "gatunki": [
+      "fantastyka współczesna",
+      "thriller"
+     ],
+     "tagi": [
+      "pętla czasowa",
+      "muzyka",
+      "wypadek",
+      "telefon",
+      "przeznaczenie"
+     ]
+    },
+    {
+     "tytul": "82°55′50′′ в. д.",
+     "autor": "Katarzyna Hajok",
+     "gatunki": [
+      "urban fantasy",
+      "groza"
+     ],
+     "tagi": [
+      "Nowosybirsk",
+      "Kościej",
+      "balet",
+      "czas",
+      "sekta",
+      "opętanie"
+     ]
+    },
+    {
+     "tytul": "Mungo",
+     "autor": "Zuzanna Kania",
+     "gatunki": [
+      "fantasy",
+      "dystopia"
+     ],
+     "tagi": [
+      "pętla czasowa",
+      "miasto",
+      "wędrówka",
+      "doskonałość",
+      "wykluczenie"
+     ]
+    },
+    {
+     "tytul": "Świadomość żmii",
+     "autor": "Mika Modrzyńska",
+     "gatunki": [
+      "science fiction"
+     ],
+     "tagi": [
+      "hibernacja",
+      "sny",
+      "statki kosmiczne",
+      "kolonizacja kosmosu",
+      "ratunek"
+     ]
+    },
+    {
+     "tytul": "Monotonia 8:11",
+     "autor": "Martyna Nowak",
+     "gatunki": [
+      "fantastyka oniryczna"
+     ],
+     "tagi": [
+      "pętla czasowa",
+      "rutyna",
+      "samotność",
+      "szkoła",
+      "autobus"
+     ]
+    },
+    {
+     "tytul": "Royal Casino Club",
+     "autor": "Wiktor Orłowski",
+     "gatunki": [
+      "urban fantasy",
+      "groza"
+     ],
+     "tagi": [
+      "kasyno",
+      "hazard",
+      "czas",
+      "uzależnienie",
+      "zjawy",
+      "Londyn"
+     ]
+    }
+   ]
+  },
+  {
+   "nazwa": "Machine de Pologne",
+   "url": "https://fantazmaty.pl/czytaj/antologie/machine-de-pologne/",
+   "opowiadania": [
+    {
+     "tytul": "Machine de Pologne",
+     "autor": "Andrzej Sawicki",
+     "gatunki": [
+      "fantasy historyczne"
+     ],
+     "tagi": [
+      "potop szwedzki",
+      "husaria",
+      "smoki",
+      "latające maszyny",
+      "dworskie intrygi",
+      "Sobieski"
+     ]
+    },
+    {
+     "tytul": "Żegnaj, laleczko",
+     "autor": "Andrzej Sawicki",
+     "gatunki": [
+      "fantasy historyczne"
+     ],
+     "tagi": [
+      "II wojna światowa",
+      "getto",
+      "zaklęta broń",
+      "dusza",
+      "ojcostwo",
+      "ruch oporu"
+     ]
+    },
+    {
+     "tytul": "Przy świetle księżyca",
+     "autor": "Andrzej Sawicki",
+     "gatunki": [
+      "fantasy historyczne"
+     ],
+     "tagi": [
+      "Warszawa",
+      "powstanie styczniowe",
+      "syrena",
+      "magia",
+      "miłość",
+      "przemiana"
+     ]
+    },
+    {
+     "tytul": "Czas przemienienia",
+     "autor": "Andrzej Sawicki",
+     "gatunki": [
+      "fantasy historyczne"
+     ],
+     "tagi": [
+      "dżin",
+      "alchemia",
+      "Warszawa",
+      "insurekcja kościuszkowska",
+      "religia",
+      "wynalazki"
+     ]
+    },
+    {
+     "tytul": "Księżniczka i śpiący rycerze",
+     "autor": "Andrzej Sawicki",
+     "gatunki": [
+      "fantasy",
+      "science fantasy"
+     ],
+     "tagi": [
+      "księżniczka",
+      "mechaniczne ciała",
+      "latające miasto",
+      "wojna",
+      "bunt",
+      "bogowie"
+     ]
+    },
+    {
+     "tytul": "Opowieść o wróżce",
+     "autor": "Andrzej Sawicki",
+     "gatunki": [
+      "mroczna baśń"
+     ],
+     "tagi": [
+      "wróżki",
+      "Londyn",
+      "zemsta",
+      "prostytucja",
+      "miłość",
+      "wykluczenie"
+     ]
+    },
+    {
+     "tytul": "Diazepina",
+     "autor": "Andrzej Sawicki",
+     "gatunki": [
+      "alchempunk"
+     ],
+     "tagi": [
+      "Warszawa",
+      "bogowie",
+      "wiedźmy",
+      "rodzeństwo",
+      "korporacje",
+      "reality show"
+     ]
+    }
+   ]
+  },
+  {
+   "nazwa": "Na zawsze, do jutra, już nigdy",
+   "url": "https://fantazmaty.pl/czytaj/antologie/na-zawsze-do-jutra-juz-nigdy/",
+   "opowiadania": [
+    {
+     "tytul": "Szeregowiec Yanek",
+     "autor": "Piotr Jedliński",
+     "gatunki": [
+      "science fiction",
+      "komedia"
+     ],
+     "tagi": [
+      "żołnierze",
+      "kosmiczna wojna",
+      "małżeństwo",
+      "przysięga",
+      "biurokracja",
+      "manipulacja"
+     ]
+    },
+    {
+     "tytul": "Dmuchawce",
+     "autor": "Marian Siwiak, Marlena Siwiak",
+     "gatunki": [
+      "science fiction"
+     ],
+     "tagi": [
+      "statki kosmiczne",
+      "dzieci",
+      "sztuczna inteligencja",
+      "rodzicielstwo",
+      "kolonizacja",
+      "opowiadanie baśni"
+     ]
+    },
+    {
+     "tytul": "Poszukiwacze zaginionego związku",
+     "autor": "Mateusz Kimak",
+     "gatunki": [
+      "fantasy przygodowe",
+      "historia alternatywna",
+      "komedia"
+     ],
+     "tagi": [
+      "małżeństwo",
+      "rozwód",
+      "poszukiwanie artefaktów",
+      "kwiat paproci",
+      "Lechici",
+      "naziści"
+     ]
+    },
+    {
+     "tytul": "Dziesięć ton miłości",
+     "autor": "Michał Antosiewicz",
+     "gatunki": [
+      "space opera"
+     ],
+     "tagi": [
+      "najemnik",
+      "roboty",
+      "sztuczna inteligencja",
+      "miłość",
+      "porwanie",
+      "technomancja"
+     ]
+    },
+    {
+     "tytul": "Nie zadzieraj z czarownicą",
+     "autor": "Anna Olejnik",
+     "gatunki": [
+      "fantasy humorystyczne"
+     ],
+     "tagi": [
+      "wiedźmy",
+      "klątwa",
+      "pech",
+      "rycerze",
+      "smoki",
+      "niewierność"
+     ]
+    },
+    {
+     "tytul": "Pakt",
+     "autor": "Izabela Grabda",
+     "gatunki": [
+      "fantastyka",
+      "urban fantasy"
+     ],
+     "tagi": [
+      "cyrograf",
+      "diabeł",
+      "małżeństwo",
+      "opieka nad chorym",
+      "telepatia",
+      "poczucie winy"
+     ]
+    },
+    {
+     "tytul": "Miliardy",
+     "autor": "Adam Barcikowski",
+     "gatunki": [
+      "science fiction"
+     ],
+     "tagi": [
+      "rozstanie",
+      "nieodwzajemniona miłość",
+      "kolonizacja",
+      "hibernacja",
+      "transfer świadomości",
+      "nowe ciało"
+     ]
+    },
+    {
+     "tytul": "Tryby serca",
+     "autor": "Aleksandra Bednarska, Grzegorz Kałużny",
+     "gatunki": [
+      "steampunk"
+     ],
+     "tagi": [
+      "zegar",
+      "konstruktorka",
+      "roboty",
+      "samotność",
+      "zazdrość",
+      "podziemne miasto"
+     ]
+    },
+    {
+     "tytul": "Ubezpieczenie od miłości",
+     "autor": "Magdalena Sakowska",
+     "gatunki": [
+      "science fiction",
+      "groteska"
+     ],
+     "tagi": [
+      "ubezpieczenia",
+      "algorytmy",
+      "miłość",
+      "małżeństwo",
+      "korporacje",
+      "manipulacja"
+     ]
+    },
+    {
+     "tytul": "Matecznik",
+     "autor": "Agata Garbowska",
+     "gatunki": [
+      "groza"
+     ],
+     "tagi": [
+      "dziennikarz",
+      "dzieciobójstwo",
+      "księżyc",
+      "rodzina",
+      "trauma",
+      "śledztwo"
+     ]
+    },
+    {
+     "tytul": "Fałszywa melodia",
+     "autor": "Katarzyna Wierzbicka",
+     "gatunki": [
+      "urban fantasy",
+      "groza"
+     ],
+     "tagi": [
+      "muzyka",
+      "nadprzyrodzone zdolności",
+      "miłość",
+      "tajna organizacja",
+      "inne wymiary",
+      "manipulacja"
+     ]
+    }
+   ]
+  },
+  {
+   "nazwa": "Na zgliszczach",
+   "url": "https://fantazmaty.pl/czytaj/antologie/na-zgliszczach/",
+   "opowiadania": [
+    {
+     "tytul": "Drzewa życia",
+     "autor": "Paula Wanarska",
+     "gatunki": [
+      "fantastyka postapokaliptyczna"
+     ],
+     "tagi": [
+      "Gdańsk",
+      "ekspansywne rośliny",
+      "ruiny",
+      "ekspedycja",
+      "rodzina",
+      "przetrwanie"
+     ]
+    },
+    {
+     "tytul": "Bezimienne dusze",
+     "autor": "Aleksander Killman",
+     "gatunki": [
+      "fantasy",
+      "groza"
+     ],
+     "tagi": [
+      "kopalnia",
+      "zaginione osiedle",
+      "ksiądz",
+      "PRL",
+      "tajemnica",
+      "poczucie winy"
+     ]
+    },
+    {
+     "tytul": "Człowiek z maszyny",
+     "autor": "Barbara Zambrzycka",
+     "gatunki": [
+      "fantastyka postapokaliptyczna",
+      "fantasy historyczne"
+     ],
+     "tagi": [
+      "Łódź",
+      "II wojna światowa",
+      "ucieczka z getta",
+      "maszyny",
+      "sztuka",
+      "rzeki"
+     ]
+    },
+    {
+     "tytul": "Kurort Makabra",
+     "autor": "Barbara Zosiuk",
+     "gatunki": [
+      "dark fantasy",
+      "fantastyka postapokaliptyczna"
+     ],
+     "tagi": [
+      "anioły",
+      "demony",
+      "niewola",
+      "obóz pracy",
+      "skrzydlaty koń",
+      "przetrwanie"
+     ]
+    },
+    {
+     "tytul": "Era Wodnika",
+     "autor": "Magdalena Owczarek",
+     "gatunki": [
+      "fantastyka postapokaliptyczna"
+     ],
+     "tagi": [
+      "Wrocław",
+      "susza",
+      "woda",
+      "modyfikacje ciała",
+      "wyprawa",
+      "uprzedzenia"
+     ]
+    },
+    {
+     "tytul": "Muzeum XXI wieku",
+     "autor": "Tomasz Niziński",
+     "gatunki": [
+      "fantastyka postapokaliptyczna",
+      "filozoficzna science fiction"
+     ],
+     "tagi": [
+      "muzeum",
+      "symulacja",
+      "sztuczna inteligencja",
+      "świadomość",
+      "cielesność",
+      "wolna wola"
+     ]
+    },
+    {
+     "tytul": "Długość dźwięku przeciętności",
+     "autor": "Krzysztof Matkowski",
+     "gatunki": [
+      "fantastyka apokaliptyczna",
+      "dystopia"
+     ],
+     "tagi": [
+      "Opole",
+      "samotność",
+      "utrata indywidualności",
+      "zbiorowa świadomość",
+      "ojciec i syn",
+      "wędrówka"
+     ]
+    }
+   ]
+  },
+  {
+   "nazwa": "nanoFantazje 1.0",
+   "url": "https://fantazmaty.pl/czytaj/antologie/nanofantazje-1-0/",
+   "opowiadania": [
+    {
+     "tytul": "Oddział dla opętanych",
+     "autor": "Krzysztof Rewiuk",
+     "gatunki": [
+      "socjologiczna science fiction",
+      "dystopia"
+     ],
+     "tagi": [
+      "nieśmiertelność",
+      "szpital",
+      "pamięć",
+      "lekarze",
+      "eksperymenty",
+      "etyka"
+     ]
+    },
+    {
+     "tytul": "Chwyt",
+     "autor": "Łukasz Krukowski",
+     "gatunki": [
+      "weird fiction",
+      "groza psychologiczna"
+     ],
+     "tagi": [
+      "rower",
+      "bezsenność",
+      "samotność",
+      "lęk",
+      "obsesja"
+     ]
+    },
+    {
+     "tytul": "Kosmiczny biznes",
+     "autor": "Adam Dura",
+     "gatunki": [
+      "humorystyczna science fiction"
+     ],
+     "tagi": [
+      "wszechświaty",
+      "stwórca",
+      "naukowcy",
+      "czarna dziura",
+      "handel",
+      "humor"
+     ]
+    },
+    {
+     "tytul": "Starsza pani musi zniknąć",
+     "autor": "Wiktor Orłowski",
+     "gatunki": [
+      "urban fantasy",
+      "czarna komedia"
+     ],
+     "tagi": [
+      "teściowa",
+      "rodzina",
+      "zniknięcie",
+      "wspomnienia",
+      "diabeł",
+      "czarny humor"
+     ]
+    },
+    {
+     "tytul": "Książę łabędzi",
+     "autor": "Zbigniew Bierzyński",
+     "gatunki": [
+      "baśń",
+      "fantasy mitologiczne"
+     ],
+     "tagi": [
+      "bardowie",
+      "muzyka",
+      "miłość",
+      "klątwa",
+      "łabędzie",
+      "topielce"
+     ]
+    },
+    {
+     "tytul": "Ćmy",
+     "autor": "Emilian Sornat",
+     "gatunki": [
+      "dark fantasy",
+      "groza"
+     ],
+     "tagi": [
+      "ćmy",
+      "magowie",
+      "potwory",
+      "strach",
+      "inne wymiary",
+      "poświęcenie"
+     ]
+    },
+    {
+     "tytul": "Modlitwa do Archimedesa",
+     "autor": "Krzysztof Matkowski",
+     "gatunki": [
+      "realizm magiczny",
+      "weird fiction"
+     ],
+     "tagi": [
+      "starość",
+      "samotność",
+      "obraz",
+      "wspomnienia",
+      "ojciec i syn",
+      "śmierć"
+     ]
+    },
+    {
+     "tytul": "Komar i sito",
+     "autor": "Alicja Tempłowicz",
+     "gatunki": [
+      "weird fiction",
+      "body horror"
+     ],
+     "tagi": [
+      "pisarstwo",
+      "historie",
+      "sztuczne ciała",
+      "pasożyty",
+      "dziedzictwo"
+     ]
+    },
+    {
+     "tytul": "Muerte Blanca",
+     "autor": "Magdalena Świerczek-Gryboś",
+     "gatunki": [
+      "fantasy metafizyczne"
+     ],
+     "tagi": [
+      "życie po śmierci",
+      "miasto",
+      "światło i mrok",
+      "odradzanie",
+      "minerały",
+      "sztuka"
+     ]
+    },
+    {
+     "tytul": "Granica Roche'a",
+     "autor": "Anna Wybraniec",
+     "gatunki": [
+      "groza ludowa",
+      "weird fiction"
+     ],
+     "tagi": [
+      "szeptucha",
+      "wieś",
+      "etnografia",
+      "zioła",
+      "transpłciowość",
+      "wyobcowanie"
+     ]
+    }
+   ]
+  },
+  {
+   "nazwa": "nanoFantazje 2.0",
+   "url": "https://fantazmaty.pl/czytaj/antologie/nanofantazje-2/",
+   "opowiadania": [
+    {
+     "tytul": "Prestiż",
+     "autor": "Jerzy Rzymowski",
+     "gatunki": [
+      "groza psychologiczna"
+     ],
+     "tagi": [
+      "iluzjonista",
+      "przedstawienie",
+      "paraliż",
+      "szpital",
+      "złudzenia"
+     ]
+    },
+    {
+     "tytul": "Szalony Stangret i Kareta Wynalazków",
+     "autor": "Krzysztof Niedzielski",
+     "gatunki": [
+      "dark fantasy"
+     ],
+     "tagi": [
+      "pamięć przedmiotów",
+      "kareta",
+      "wynalazki",
+      "odmienność",
+      "wędrówka",
+      "zemsta"
+     ]
+    },
+    {
+     "tytul": "Bogostan",
+     "autor": "Radosław Dąbrowski",
+     "gatunki": [
+      "urban fantasy",
+      "dystopia"
+     ],
+     "tagi": [
+      "bogowie",
+      "kapłani",
+      "teokracja",
+      "samochody",
+      "kariera",
+      "ofiary"
+     ]
+    },
+    {
+     "tytul": "Śladami Kartezjusza",
+     "autor": "Michał Brzozowski",
+     "gatunki": [
+      "filozoficzna science fiction",
+      "fantastyka humorystyczna"
+     ],
+     "tagi": [
+      "filozofia",
+      "dziecko",
+      "istnienie",
+      "matematyka",
+      "równoległe światy",
+      "humor"
+     ]
+    },
+    {
+     "tytul": "Arabeski nad hebanowymi schodami",
+     "autor": "Maciej Żołnowski",
+     "gatunki": [
+      "weird fiction"
+     ],
+     "tagi": [
+      "dzieciństwo",
+      "stary dom",
+      "schody",
+      "wyobraźnia",
+      "wspomnienia"
+     ]
+    },
+    {
+     "tytul": "Prekursorium",
+     "autor": "Patrycja Paliczka",
+     "gatunki": [
+      "science fiction",
+      "body horror"
+     ],
+     "tagi": [
+      "eksperymenty",
+      "bezpłodność",
+      "dzieci",
+      "mutacje",
+      "ucieczka",
+      "krew"
+     ]
+    },
+    {
+     "tytul": "Trudno uwierzyć, że nic nie zostało",
+     "autor": "Michał Puczyński",
+     "gatunki": [
+      "groza"
+     ],
+     "tagi": [
+      "zmora",
+      "piwnica",
+      "głód",
+      "ojciec i syn",
+      "poświęcenie"
+     ]
+    },
+    {
+     "tytul": "Rekonstrukcja ostatnich dni doktora Diuela",
+     "autor": "Michał Gralak",
+     "gatunki": [
+      "groza kosmiczna",
+      "weird fiction"
+     ],
+     "tagi": [
+      "sny",
+      "paraliż senny",
+      "eksperymenty",
+      "naukowcy",
+      "inne wymiary"
+     ]
+    },
+    {
+     "tytul": "Pakty",
+     "autor": "Tomasz Kempski",
+     "gatunki": [
+      "groza",
+      "fantasy współczesne"
+     ],
+     "tagi": [
+      "pakt z diabłem",
+      "choroba",
+      "ojciec i syn",
+      "zemsta",
+      "dusza",
+      "przebaczenie"
+     ]
+    }
+   ]
+  },
+  {
+   "nazwa": "nanoFantazje 3.0",
+   "url": "https://fantazmaty.pl/czytaj/antologie/nanofantazje-3-0/",
+   "opowiadania": [
+    {
+     "tytul": "Projekt Gepetto",
+     "autor": "Jagna Wiatrowska",
+     "gatunki": [
+      "fantasy",
+      "satyra"
+     ],
+     "tagi": [
+      "Pinokio",
+      "Śnieżka",
+      "kukiełki",
+      "dyplomacja",
+      "wojna",
+      "broń masowego rażenia"
+     ]
+    },
+    {
+     "tytul": "First we take Manhattan",
+     "autor": "Krzysztof Rewiuk",
+     "gatunki": [
+      "historia alternatywna",
+      "dieselpunk"
+     ],
+     "tagi": [
+      "II wojna światowa",
+      "Japonia",
+      "naziści",
+      "protezy",
+      "bomba atomowa",
+      "podstęp"
+     ]
+    },
+    {
+     "tytul": "Gdańsk 76",
+     "autor": "Marcin Popiel",
+     "gatunki": [
+      "groza"
+     ],
+     "tagi": [
+      "autostrada",
+      "nocna podróż",
+      "samochody",
+      "pętla czasowa",
+      "wyścig"
+     ]
+    },
+    {
+     "tytul": "Skarb",
+     "autor": "Agnieszka Fulińska",
+     "gatunki": [
+      "fantasy baśniowe"
+     ],
+     "tagi": [
+      "las",
+      "wiewiórka",
+      "niewidomy",
+      "żałoba",
+      "miłość",
+      "przemiana"
+     ]
+    },
+    {
+     "tytul": "Śpij, królewno",
+     "autor": "Wiktor Orłowski",
+     "gatunki": [
+      "science fantasy",
+      "fantastyka postapokaliptyczna"
+     ],
+     "tagi": [
+      "zakazana wiedza",
+      "technologia",
+      "choroba",
+      "ucieczka",
+      "uprzedzenia",
+      "przyjaźń"
+     ]
+    },
+    {
+     "tytul": "Ludzkości Historia Prawdziwa",
+     "autor": "Jagna Wiatrowska",
+     "gatunki": [
+      "science fiction",
+      "satyra"
+     ],
+     "tagi": [
+      "pochodzenie ludzkości",
+      "kosmici",
+      "ekspedycja",
+      "równoległe światy",
+      "religia",
+      "ewolucja"
+     ]
+    },
+    {
+     "tytul": "Później",
+     "autor": "Błażej Jaworowski",
+     "gatunki": [
+      "science fiction",
+      "fantastyka postapokaliptyczna"
+     ],
+     "tagi": [
+      "postludzie",
+      "biotechnologia",
+      "niewola",
+      "pamięć",
+      "osobliwość",
+      "podróż w czasie"
+     ]
+    },
+    {
+     "tytul": "Kyfoum, czyli Słowa",
+     "autor": "Sylwester Gdela",
+     "gatunki": [
+      "baśń"
+     ],
+     "tagi": [
+      "konstruktor",
+      "alchemia",
+      "sztuczne życie",
+      "magia słów",
+      "mistrz i uczeń",
+      "odrodzenie świata"
+     ]
+    },
+    {
+     "tytul": "Mit założycielski",
+     "autor": "Marek Kolenda",
+     "gatunki": [
+      "soft science fiction"
+     ],
+     "tagi": [
+      "statki kosmiczne",
+      "kolonizacja",
+      "hibernacja",
+      "programista",
+      "spisek",
+      "dyktatura"
+     ]
+    },
+    {
+     "tytul": "Córy nieba",
+     "autor": "Joanna Kołakowska",
+     "gatunki": [
+      "baśń"
+     ],
+     "tagi": [
+      "cieśla",
+      "ożywione rzeźby",
+      "nieodwzajemniona miłość",
+      "samotność",
+      "noc polarna"
+     ]
+    },
+    {
+     "tytul": "Na ławce",
+     "autor": "Łukasz Wojtylak",
+     "gatunki": [
+      "realizm magiczny"
+     ],
+     "tagi": [
+      "staruszki",
+      "park",
+      "włóczka",
+      "przeznaczenie",
+      "pech",
+      "śmierć"
+     ]
+    },
+    {
+     "tytul": "Niebieski flaming grający na bongosach",
+     "autor": "Michał Brzozowski",
+     "gatunki": [
+      "baśń",
+      "groteska"
+     ],
+     "tagi": [
+      "psychiatra",
+      "naukowcy",
+      "porwanie",
+      "zmienianie rzeczywistości",
+      "modelina",
+      "absurd"
+     ]
+    },
+    {
+     "tytul": "Nocny skowronek",
+     "autor": "Aleksandra Klęczar",
+     "gatunki": [
+      "baśń",
+      "fantasy mitologiczne"
+     ],
+     "tagi": [
+      "mitologia grecka",
+      "Hades",
+      "zaświaty",
+      "ptaki",
+      "przemiana",
+      "akceptacja"
+     ]
+    },
+    {
+     "tytul": "Dziesięć dni błękitu",
+     "autor": "Monika Fenc",
+     "gatunki": [
+      "realizm magiczny",
+      "dramat psychologiczny"
+     ],
+     "tagi": [
+      "szpital psychiatryczny",
+      "nastolatki",
+      "samookaleczanie",
+      "światło",
+      "ojciec i syn",
+      "samotność"
+     ]
+    },
+    {
+     "tytul": "Sen o Eurydyce",
+     "autor": "Joanna Kołakowska",
+     "gatunki": [
+      "fantasy mitologiczne"
+     ],
+     "tagi": [
+      "mitologia grecka",
+      "Orfeusz",
+      "Eurydyka",
+      "zaświaty",
+      "małżeństwo",
+      "starość"
+     ]
+    },
+    {
+     "tytul": "Zagroda",
+     "autor": "Anna Sikorska",
+     "gatunki": [
+      "rural fantasy",
+      "groza"
+     ],
+     "tagi": [
+      "agroturystyka",
+      "las",
+      "zaginione kobiety",
+      "magiczne obrazy",
+      "pułapka"
+     ]
+    }
+   ]
+  },
+  {
+   "nazwa": "O podbojach sfer niebieskich",
+   "url": "https://fantazmaty.pl/czytaj/antologie/o-podbojach/",
+   "opowiadania": [
+    {
+     "tytul": "Zderzenia atomowe",
+     "autor": "Dariusz Sprenglewski",
+     "gatunki": [
+      "hard science fiction"
+     ],
+     "tagi": [
+      "czarna dziura",
+      "stacja kosmiczna",
+      "równoległe światy",
+      "kosmologia",
+      "zagłada",
+      "poświęcenie"
+     ]
+    },
+    {
+     "tytul": "Jedna z tysiąca pierwszych",
+     "autor": "Małgorzata Sanchez",
+     "gatunki": [
+      "socjologiczna science fiction"
+     ],
+     "tagi": [
+      "Mars",
+      "kolonizacja",
+      "pszczoły",
+      "ciąża",
+      "izolacja",
+      "tęsknota za domem"
+     ]
+    },
+    {
+     "tytul": "Druga strona osobliwości",
+     "autor": "Marek Kolenda",
+     "gatunki": [
+      "space opera"
+     ],
+     "tagi": [
+      "czarna dziura",
+      "równoległe światy",
+      "kosmiczne imperium",
+      "starożytna technologia",
+      "wojna",
+      "podzielona świadomość"
+     ]
+    },
+    {
+     "tytul": "Dożynki",
+     "autor": "Agnieszka Kwiatkowska",
+     "gatunki": [
+      "groza psychologiczna"
+     ],
+     "tagi": [
+      "wieś",
+      "radio",
+      "tajemnicze sygnały",
+      "dziecko",
+      "macierzyństwo",
+      "przemoc domowa"
+     ]
+    },
+    {
+     "tytul": "Indig",
+     "autor": "Piotr Jedliński",
+     "gatunki": [
+      "psychologiczna science fiction",
+      "filozoficzna science fiction"
+     ],
+     "tagi": [
+      "statek kolonizacyjny",
+      "symulacja",
+      "natura rzeczywistości",
+      "eksperymenty",
+      "psychoterapia",
+      "wolna wola"
+     ]
+    },
+    {
+     "tytul": "Inferno",
+     "autor": "Artur Laisen",
+     "gatunki": [
+      "science fiction",
+      "quantum fiction"
+     ],
+     "tagi": [
+      "wojna",
+      "obce cywilizacje",
+      "anomalie",
+      "fizyka kwantowa",
+      "świadomość",
+      "zbrodnie wojenne"
+     ]
+    }
+   ]
+  },
+  {
+   "nazwa": "Opowieści niesamowite",
+   "url": "https://fantazmaty.pl/czytaj/antologie/opowiesci-niesamowite/",
+   "opowiadania": [
+    {
+     "tytul": "Zaginięcie Benedicta Constantine'a",
+     "autor": "Marcin Rusnak",
+     "gatunki": [
+      "fantasy",
+      "kryminał"
+     ],
+     "tagi": [
+      "zaginięcie",
+      "śledztwo",
+      "malarstwo",
+      "magia",
+      "spisek"
+     ]
+    },
+    {
+     "tytul": "Kołysanki dla umarłych",
+     "autor": "Marcin Rusnak",
+     "gatunki": [
+      "fantastyka postapokaliptyczna"
+     ],
+     "tagi": [
+      "radio",
+      "muzyka",
+      "samotność",
+      "wędrówka",
+      "ocaleni"
+     ]
+    },
+    {
+     "tytul": "Zły szeląg",
+     "autor": "Marcin Rusnak",
+     "gatunki": [
+      "cyberpunk",
+      "thriller"
+     ],
+     "tagi": [
+      "implanty",
+      "podwodne miasto",
+      "poszukiwania",
+      "korupcja",
+      "obsesja"
+     ]
+    },
+    {
+     "tytul": "Pielgrzymka",
+     "autor": "Marcin Rusnak",
+     "gatunki": [
+      "science fiction"
+     ],
+     "tagi": [
+      "kosmici",
+      "statki kosmiczne",
+      "pielgrzymka",
+      "ojciec i syn",
+      "upadek cywilizacji"
+     ]
+    },
+    {
+     "tytul": "Pojedynek",
+     "autor": "Marcin Rusnak",
+     "gatunki": [
+      "fantastyka superbohaterska"
+     ],
+     "tagi": [
+      "superbohaterowie",
+      "arcywróg",
+      "pojedynek",
+      "zemsta",
+      "sens życia"
+     ]
+    },
+    {
+     "tytul": "Bociani zagon",
+     "autor": "Marcin Rusnak",
+     "gatunki": [
+      "fantasy"
+     ],
+     "tagi": [
+      "magowie",
+      "lekarz",
+      "chore dziecko",
+      "diagnoza",
+      "tajemnica rodzinna"
+     ]
+    },
+    {
+     "tytul": "Opowieść, którą znam tylko ja",
+     "autor": "Marcin Rusnak",
+     "gatunki": [
+      "urban fantasy"
+     ],
+     "tagi": [
+      "niespełniona miłość",
+      "magia",
+      "diabeł",
+      "muzyka",
+      "ambicja"
+     ]
+    },
+    {
+     "tytul": "Farid Tkacz i latający dywan",
+     "autor": "Marcin Rusnak",
+     "gatunki": [
+      "fantasy baśniowe"
+     ],
+     "tagi": [
+      "latający dywan",
+      "tkactwo",
+      "mistrz i uczeń",
+      "miłość",
+      "dziedzictwo"
+     ]
+    },
+    {
+     "tytul": "Zabijając ptaki",
+     "autor": "Marcin Rusnak",
+     "gatunki": [
+      "fantasy",
+      "dystopia"
+     ],
+     "tagi": [
+      "terroryzm",
+      "prześladowania",
+      "religia",
+      "ptaki",
+      "miłość",
+      "poczucie winy"
+     ]
+    },
+    {
+     "tytul": "Koszmar z Yelland",
+     "autor": "Marcin Rusnak",
+     "gatunki": [
+      "groza",
+      "kryminał"
+     ],
+     "tagi": [
+      "klasztor",
+      "śledztwo",
+      "morderstwa",
+      "zakonnicy",
+      "Anglia"
+     ]
+    },
+    {
+     "tytul": "Białe piekło",
+     "autor": "Marcin Rusnak",
+     "gatunki": [
+      "dramat psychologiczny"
+     ],
+     "tagi": [
+      "pustynia",
+      "śpiączka",
+      "szpital",
+      "miłość",
+      "poczucie winy"
+     ]
+    },
+    {
+     "tytul": "Pudełko pełne cudów",
+     "autor": "Marcin Rusnak",
+     "gatunki": [
+      "groza"
+     ],
+     "tagi": [
+      "szkatułka",
+      "spełnianie życzeń",
+      "spadek",
+      "pokusa",
+      "tajemnica rodzinna"
+     ]
+    },
+    {
+     "tytul": "Ostatni śnieg w roku",
+     "autor": "Marcin Rusnak",
+     "gatunki": [
+      "weird fiction"
+     ],
+     "tagi": [
+      "Conan Doyle",
+      "Sherlock Holmes",
+      "pisarstwo",
+      "fikcja i rzeczywistość",
+      "tożsamość"
+     ]
+    }
+   ]
+  },
+  {
+   "nazwa": "Retrowizje",
+   "url": "https://fantazmaty.pl/czytaj/antologie/retrowizje/",
+   "opowiadania": [
+    {
+     "tytul": "Mysterium cosmographicum",
+     "autor": "Agnieszka Fulińska",
+     "gatunki": [
+      "historia alternatywna",
+      "retrofantastyka"
+     ],
+     "tagi": [
+      "Ludwik XIV",
+      "Wersal",
+      "wynalazki",
+      "mechaniczne ciała",
+      "teatr",
+      "nieśmiertelność"
+     ]
+    },
+    {
+     "tytul": "Miasto dymu i popiołu",
+     "autor": "Michał Gola",
+     "gatunki": [
+      "fantasy historyczne",
+      "fantastyka obyczajowa"
+     ],
+     "tagi": [
+      "Makau",
+      "kolonializm",
+      "wynalazca",
+      "flogiston",
+      "latające maszyny",
+      "odpowiedzialność"
+     ]
+    },
+    {
+     "tytul": "Homo sapiens planifacialis",
+     "autor": "Radosław Puchała",
+     "gatunki": [
+      "paleofantastyka",
+      "science fiction",
+      "historia alternatywna"
+     ],
+     "tagi": [
+      "praludzie",
+      "ewolucja",
+      "wynalazki",
+      "rolnictwo",
+      "religia",
+      "rasizm"
+     ]
+    },
+    {
+     "tytul": "Wielki dług",
+     "autor": "Witold Hess",
+     "gatunki": [
+      "historia alternatywna",
+      "science fiction"
+     ],
+     "tagi": [
+      "Aztekowie",
+      "Paryż",
+      "sztuczna inteligencja",
+      "ofiary z ludzi",
+      "ruch oporu",
+      "równoległe światy"
+     ]
+    },
+    {
+     "tytul": "Świt nad doliną",
+     "autor": "Wiktor Orłowski",
+     "gatunki": [
+      "dark fantasy",
+      "fantasy mitologiczne"
+     ],
+     "tagi": [
+      "mitologia indyjska",
+      "wojna",
+      "bracia",
+      "broń masowego rażenia",
+      "naukowcy",
+      "odpowiedzialność"
+     ]
+    },
+    {
+     "tytul": "Pogrobowiec Boga Wi",
+     "autor": "Agata Poważyńska",
+     "gatunki": [
+      "steampunk",
+      "westernpunk"
+     ],
+     "tagi": [
+      "rdzenni Amerykanie",
+      "nekromancja",
+      "maszyny",
+      "kolonializm",
+      "religia",
+      "opowiadanie historii"
+     ]
+    },
+    {
+     "tytul": "Wielkie łowy",
+     "autor": "Michał Puchalski",
+     "gatunki": [
+      "historia alternatywna",
+      "przygodowa science fiction"
+     ],
+     "tagi": [
+      "Australia",
+      "emu",
+      "mechaniczne zwierzęta",
+      "myśliwy",
+      "kangur",
+      "szalony naukowiec"
+     ]
+    },
+    {
+     "tytul": "Latawce nad Chang'anem",
+     "autor": "Sylwia Wełna",
+     "gatunki": [
+      "fantasy historyczne",
+      "silkpunk"
+     ],
+     "tagi": [
+      "Chiny",
+      "cesarzowa",
+      "dworskie intrygi",
+      "wynalazki",
+      "latające maszyny",
+      "trucizna"
+     ]
+    },
+    {
+     "tytul": "Atoma",
+     "autor": "Sebastian Zarębski",
+     "gatunki": [
+      "dystopia",
+      "retrofantastyka"
+     ],
+     "tagi": [
+      "mechaniczny olbrzym",
+      "Kaukaz",
+      "astronomia",
+      "wynalazca",
+      "mitologia",
+      "władza"
+     ]
+    }
+   ]
+  },
+  {
+   "nazwa": "Technofobie",
+   "url": "https://fantazmaty.pl/czytaj/antologie/technofobie/",
+   "opowiadania": [
+    {
+     "tytul": "Częstotliwość",
+     "autor": "Wojciech Gunia",
+     "gatunki": [
+      "science fiction",
+      "weird fiction"
+     ],
+     "tagi": [
+      "transmisje świadomości",
+      "pamięć",
+      "tożsamość",
+      "internet",
+      "śmierć",
+      "śledztwo"
+     ]
+    },
+    {
+     "tytul": "Przeze mnie szarańcza",
+     "autor": "Krzysztof Matkowski",
+     "gatunki": [
+      "science fiction",
+      "groza"
+     ],
+     "tagi": [
+      "meduzy",
+      "obca planeta",
+      "podwodna baza",
+      "wskrzeszanie",
+      "rodzina",
+      "poczucie winy"
+     ]
+    },
+    {
+     "tytul": "Zwierciadła w pustce",
+     "autor": "Mateusz Wyszyński",
+     "gatunki": [
+      "science fiction",
+      "groza"
+     ],
+     "tagi": [
+      "statki kosmiczne",
+      "sztuczna inteligencja",
+      "sobowtóry",
+      "roboty",
+      "samotność",
+      "uwięzienie"
+     ]
+    },
+    {
+     "tytul": "Przeskok p-adyczny",
+     "autor": "Monika Zakrzewska",
+     "gatunki": [
+      "science fiction",
+      "groza"
+     ],
+     "tagi": [
+      "szpital psychiatryczny",
+      "eksperymenty",
+      "świadomość",
+      "matematyka",
+      "czas",
+      "nieskończoność"
+     ]
+    },
+    {
+     "tytul": "UVB-77",
+     "autor": "Sylwester Gdela",
+     "gatunki": [
+      "groza psychologiczna"
+     ],
+     "tagi": [
+      "telewizja",
+      "izolacja",
+      "propaganda",
+      "paranoja",
+      "trauma",
+      "utrata tożsamości"
+     ]
+    },
+    {
+     "tytul": "Idunn",
+     "autor": "Alicja Tempłowicz",
+     "gatunki": [
+      "science fiction",
+      "fantastyka postapokaliptyczna"
+     ],
+     "tagi": [
+      "kolonia kosmiczna",
+      "bunkier",
+      "aktor",
+      "ekspedycja",
+      "izolacja",
+      "zagłada ludzkości"
+     ]
+    }
+   ]
+  },
+  {
+   "nazwa": "Umieranie to parszywa robota",
+   "url": "https://fantazmaty.pl/czytaj/antologie/umieranie-to-parszywa-robota/",
+   "opowiadania": [
+    {
+     "tytul": "Jedenaste słowo",
+     "autor": "Katja Tomczyk",
+     "gatunki": [
+      "dystopia",
+      "socjologiczna science fiction"
+     ],
+     "tagi": [
+      "limit słów",
+      "język",
+      "kontrola społeczna",
+      "nierówności społeczne",
+      "bunt"
+     ]
+    },
+    {
+     "tytul": "Szarość, odcień czerni",
+     "autor": "Olga Niziołek",
+     "gatunki": [
+      "dark fantasy",
+      "urban fantasy"
+     ],
+     "tagi": [
+      "duchy",
+      "zemsta",
+      "głód",
+      "gotowanie",
+      "bezdomne psy",
+      "wykluczenie"
+     ]
+    },
+    {
+     "tytul": "Pamięć kamieni",
+     "autor": "Kornel Mikołajczyk",
+     "gatunki": [
+      "fantasy"
+     ],
+     "tagi": [
+      "żywe zamki",
+      "kamienie",
+      "pamięć",
+      "oblężenie",
+      "mistrz i uczeń",
+      "żałoba"
+     ]
+    },
+    {
+     "tytul": "T4N2M1",
+     "autor": "Marek Zychla",
+     "gatunki": [
+      "fantastyka religijna"
+     ],
+     "tagi": [
+      "anioł stróż",
+      "nowotwór",
+      "palenie",
+      "małżeństwo",
+      "umieranie"
+     ]
+    },
+    {
+     "tytul": "Gniew inspektora",
+     "autor": "Jakub Sokołowski",
+     "gatunki": [
+      "fantasy mitologiczne",
+      "fantastyka humorystyczna"
+     ],
+     "tagi": [
+      "Prometeusz",
+      "mitologia grecka",
+      "biurokracja",
+      "demony",
+      "zemsta"
+     ]
+    },
+    {
+     "tytul": "Bosman Przędziorek musi umrzeć",
+     "autor": "Michał Renc",
+     "gatunki": [
+      "steampunk",
+      "kryminał"
+     ],
+     "tagi": [
+      "latający okręt",
+      "załoga",
+      "pisarstwo",
+      "planowanie zbrodni",
+      "trucizna",
+      "humor"
+     ]
+    },
+    {
+     "tytul": "Pamiętasz mit o Tanatosie?",
+     "autor": "Wiktor Orłowski",
+     "gatunki": [
+      "urban fantasy",
+      "thriller"
+     ],
+     "tagi": [
+      "zmartwychwstanie",
+      "policja",
+      "zakładnicy",
+      "negocjacje",
+      "Wrocław"
+     ]
+    },
+    {
+     "tytul": "Krew Śpiącej Królewny przyzywa moją duszę",
+     "autor": "Justyna Lech",
+     "gatunki": [
+      "science fantasy"
+     ],
+     "tagi": [
+      "planety",
+      "równoległe światy",
+      "korporacje",
+      "rodzina",
+      "miłość",
+      "śmierć"
+     ]
+    },
+    {
+     "tytul": "Słowa, których nie powiem Łucji",
+     "autor": "Krzysztof Matkowski",
+     "gatunki": [
+      "fantastyka metafizyczna"
+     ],
+     "tagi": [
+      "życie po śmierci",
+      "cudze ciała",
+      "miłość",
+      "żałoba",
+      "podróż w czasie"
+     ]
+    },
+    {
+     "tytul": "Lot Dedala",
+     "autor": "Grzegorz Gajek",
+     "gatunki": [
+      "filozoficzna science fiction"
+     ],
+     "tagi": [
+      "Dedal i Ikar",
+      "nieśmiertelność",
+      "wirtualna rzeczywistość",
+      "ojciec i syn",
+      "wolność"
+     ]
+    },
+    {
+     "tytul": "Inwazja obcych! Hip, hip, hurra!",
+     "autor": "Wojciech Terlecki",
+     "gatunki": [
+      "humorystyczna science fiction",
+      "satyra"
+     ],
+     "tagi": [
+      "kosmici",
+      "inwazja",
+      "broń",
+      "przemoc",
+      "propaganda",
+      "czarny humor"
+     ]
+    },
+    {
+     "tytul": "Ofiara",
+     "autor": "Aleksandra Stanisz",
+     "gatunki": [
+      "dark fantasy"
+     ],
+     "tagi": [
+      "rytuał",
+      "ofiara z człowieka",
+      "potwór",
+      "teatr",
+      "magia",
+      "zaświaty"
+     ]
+    },
+    {
+     "tytul": "Odpoczniesz po śmierci",
+     "autor": "Agnieszka Sudomir",
+     "gatunki": [
+      "urban fantasy",
+      "fantasy humorystyczne"
+     ],
+     "tagi": [
+      "anioły",
+      "sny",
+      "sprzątanie",
+      "praca",
+      "zaświaty",
+      "humor"
+     ]
+    },
+    {
+     "tytul": "Lustra śmierci",
+     "autor": "Monika Glibowska",
+     "gatunki": [
+      "kryminał paranormalny",
+      "groza"
+     ],
+     "tagi": [
+      "lustra",
+      "jasnowidzenie",
+      "zaginięcie",
+      "porwanie",
+      "śledztwo"
+     ]
+    },
+    {
+     "tytul": "ULTRA HARDKOR",
+     "autor": "Łukasz Skoneczny",
+     "gatunki": [
+      "filozoficzna science fiction",
+      "weird fiction"
+     ],
+     "tagi": [
+      "reinkarnacja",
+      "pamięć",
+      "tożsamość",
+      "wymieranie",
+      "koniec wszechświata",
+      "absurd"
+     ]
+    },
+    {
+     "tytul": "Prędkość duszy",
+     "autor": "Jakub Rewiuk",
+     "gatunki": [
+      "science fantasy",
+      "fantastyka filozoficzna"
+     ],
+     "tagi": [
+      "dusza",
+      "czarna dziura",
+      "podróże kosmiczne",
+      "Bóg",
+      "ambicja"
+     ]
+    },
+    {
+     "tytul": "Ostatnia bitwa Franza Maira",
+     "autor": "Agnieszka Fulińska",
+     "gatunki": [
+      "fantasy historyczne"
+     ],
+     "tagi": [
+      "wojny napoleońskie",
+      "żołnierze",
+      "kolejne życia",
+      "pierścień",
+      "odkupienie"
+     ]
+    },
+    {
+     "tytul": "Dziecko",
+     "autor": "Grzegorz Piórkowski",
+     "gatunki": [
+      "filozoficzna science fiction"
+     ],
+     "tagi": [
+      "androidy",
+      "sztuczna inteligencja",
+      "sens życia",
+      "śmiertelność",
+      "samotność"
+     ]
+    },
+    {
+     "tytul": "Kres Adama",
+     "autor": "Sylwia Błach",
+     "gatunki": [
+      "dystopia",
+      "science fiction"
+     ],
+     "tagi": [
+      "nieśmiertelność",
+      "sztuczna inteligencja",
+      "kontrola społeczna",
+      "prawo do śmierci",
+      "kara"
+     ]
+    },
+    {
+     "tytul": "Pokój z widokiem na wojnę",
+     "autor": "Marian Siwiak, Marlena Siwiak",
+     "gatunki": [
+      "fantastyka postapokaliptyczna",
+      "militarna science fiction"
+     ],
+     "tagi": [
+      "nieśmiertelność",
+      "wojna",
+      "ruiny",
+      "wojsko",
+      "ucieczka",
+      "przetrwanie"
+     ]
+    }
+   ]
+  },
+  {
+   "nazwa": "Gdy Ziemia miała nas dość",
+   "url": "https://fantazmaty.pl/czytaj/antologie/gdy-ziemia-miala-nas-dosc/",
+   "opowiadania": [
+    {
+     "tytul": "Białe mięso, czerwona krew",
+     "autor": "Dawid Juraszek",
+     "gatunki": [
+      "fantastyka postapokaliptyczna"
+     ],
+     "tagi": [
+      "katastrofa klimatyczna",
+      "przetrwanie",
+      "zagłada przyrody",
+      "samotność",
+      "elektrownia jądrowa",
+      "Beskidy"
+     ]
+    },
+    {
+     "tytul": "Pieśń dla wieloryba",
+     "autor": "Bohdan Pękacki",
+     "gatunki": [
+      "fantastyka postapokaliptyczna",
+      "psychologiczna science fiction"
+     ],
+     "tagi": [
+      "wieloryby",
+      "ocean",
+      "katastrofa klimatyczna",
+      "wędrówka",
+      "poczucie winy",
+      "wymieranie"
+     ]
+    },
+    {
+     "tytul": "Zerwany kaganiec",
+     "autor": "Grzegorz Piórkowski",
+     "gatunki": [
+      "science fantasy",
+      "fantastyka postapokaliptyczna"
+     ],
+     "tagi": [
+      "bunt natury",
+      "mutanty",
+      "sztuczna inteligencja",
+      "wojna",
+      "inżynieria genetyczna",
+      "miłość",
+      "zdrada"
+     ]
+    },
+    {
+     "tytul": "Dog days",
+     "autor": "Andrzej W. Sawicki",
+     "gatunki": [
+      "fantastyka postapokaliptyczna",
+      "przygodowa science fiction"
+     ],
+     "tagi": [
+      "mutanty",
+      "inżynieria genetyczna",
+      "katastrofa klimatyczna",
+      "cyborgi",
+      "przetrwanie",
+      "wędrówka",
+      "wolność"
+     ]
+    },
+    {
+     "tytul": "Buran",
+     "autor": "Stanisław Truchan",
+     "gatunki": [
+      "fantastyka postapokaliptyczna",
+      "kryminał"
+     ],
+     "tagi": [
+      "katastrofa klimatyczna",
+      "śledztwo",
+      "terroryzm",
+      "sekta",
+      "jaskinie",
+      "spisek",
+      "Polska"
+     ]
+    },
+    {
+     "tytul": "Zielone płuca koszmaru",
+     "autor": "Agnieszka Zerka",
+     "gatunki": [
+      "fantastyka postapokaliptyczna",
+      "body horror"
+     ],
+     "tagi": [
+      "bunt natury",
+      "pasożyty",
+      "las",
+      "przetrwanie",
+      "epidemia",
+      "izolacja",
+      "ucieczka"
+     ]
+    }
+   ]
+  },
+  {
+   "nazwa": "Światła na niebie",
+   "url": "https://fantazmaty.pl/czytaj/antologie/swiatla-na-niebie/",
+   "opowiadania": [
+    {
+     "tytul": "Robaczywe miasto",
+     "autor": "Michał Brzozowski",
+     "gatunki": [
+      "weird fiction",
+      "groza"
+     ],
+     "tagi": [
+      "pasożyty",
+      "umysł",
+      "eksperymenty",
+      "depresja",
+      "tożsamość",
+      "spisek",
+      "epidemia"
+     ]
+    },
+    {
+     "tytul": "Niepodważalny dowód, niezachwiana wiara",
+     "autor": "Jerzy Bogusławski",
+     "gatunki": [
+      "science fantasy"
+     ],
+     "tagi": [
+      "religia",
+      "badania naukowe",
+      "fanatyzm",
+      "pierwszy kontakt",
+      "rodzina",
+      "eksperymenty",
+      "latające miasto"
+     ]
+    },
+    {
+     "tytul": "Aberracja mrozowiska",
+     "autor": "Anna Maria Wybraniec",
+     "gatunki": [
+      "groza",
+      "science fiction"
+     ],
+     "tagi": [
+      "rodzeństwo",
+      "przemoc domowa",
+      "mróz",
+      "owady",
+      "kosmici",
+      "wieś",
+      "tajemnica rodzinna"
+     ]
+    },
+    {
+     "tytul": "Doświadczenie umarłego miasta",
+     "autor": "Łukasz Krukowski",
+     "gatunki": [
+      "weird fiction",
+      "groza kosmiczna"
+     ],
+     "tagi": [
+      "opuszczone miasto",
+      "rytuał",
+      "tajemniczy dom",
+      "niepewna rzeczywistość",
+      "inne wymiary",
+      "tożsamość",
+      "obce byty"
+     ]
+    },
+    {
+     "tytul": "Karły stoją na ramionach gigantów",
+     "autor": "Sebastian Zarębski",
+     "gatunki": [
+      "psychologiczna science fiction"
+     ],
+     "tagi": [
+      "Kraków",
+      "pierwszy kontakt",
+      "wirtualna rzeczywistość",
+      "pamięć",
+      "szpital psychiatryczny",
+      "świadomość",
+      "trauma"
+     ]
+    },
+    {
+     "tytul": "Dokąd odeszli Psiogłowcy?",
+     "autor": "Jakub Rewiuk",
+     "gatunki": [
+      "science fiction",
+      "cyberpunk"
+     ],
+     "tagi": [
+      "kolonizacja kosmosu",
+      "pierwszy kontakt",
+      "cyborgi",
+      "androidy",
+      "transhumanizm",
+      "sonda kosmiczna",
+      "tożsamość"
+     ]
+    },
+    {
+     "tytul": "Madonna z UFO. Palimpsest",
+     "autor": "Krzysztof Rewiuk",
+     "gatunki": [
+      "fantastyka historyczna",
+      "science fiction"
+     ],
+     "tagi": [
+      "malarstwo",
+      "UFO",
+      "renesans",
+      "religia",
+      "miłość",
+      "władza",
+      "tajemnica z przeszłości"
+     ]
+    },
+    {
+     "tytul": "Podarunek",
+     "autor": "Magdalena Manuszak",
+     "gatunki": [
+      "science fiction",
+      "kryminał"
+     ],
+     "tagi": [
+      "śledztwo",
+      "telepatia",
+      "implanty",
+      "korporacje",
+      "eksperymenty",
+      "obca technologia",
+      "nierówności społeczne"
+     ]
+    },
+    {
+     "tytul": "Schizma",
+     "autor": "Kamila Regel",
+     "gatunki": [
+      "socjologiczna science fiction"
+     ],
+     "tagi": [
+      "pierwszy kontakt",
+      "religia",
+      "szamanizm",
+      "konflikt kulturowy",
+      "dziecko",
+      "władza",
+      "kosmici"
+     ]
+    },
+    {
+     "tytul": "Czas milczenia i czas mówienia",
+     "autor": "Dariusz Skrzydło",
+     "gatunki": [
+      "science fiction",
+      "dystopia"
+     ],
+     "tagi": [
+      "religia",
+      "eksperymenty",
+      "Syberia",
+      "UFO",
+      "początki życia",
+      "cenzura",
+      "spisek"
+     ]
+    }
+   ]
+  },
+  {
+   "nazwa": "Zbrodnia doskonała",
+   "url": "https://fantazmaty.pl/czytaj/antologie/zbrodnia-doskonala/",
+   "opowiadania": [
+    {
+     "tytul": "Al",
+     "autor": "Krzysztof Rewiuk",
+     "gatunki": [
+      "filozoficzna science fiction",
+      "thriller psychologiczny"
+     ],
+     "tagi": [
+      "wolna wola",
+      "eksperymenty",
+      "psychiatria",
+      "szczury",
+      "manipulacja",
+      "zbrodnia",
+      "odpowiedzialność"
+     ]
+    },
+    {
+     "tytul": "Inspicjent Brzeszczot",
+     "autor": "Alicja Korzewska",
+     "gatunki": [
+      "groza ludowa",
+      "kryminał"
+     ],
+     "tagi": [
+      "wieś",
+      "pogrzeb",
+      "rytuał",
+      "duchy",
+      "opętanie",
+      "przestępczość",
+      "matka i syn"
+     ]
+    },
+    {
+     "tytul": "Oko Henrietty",
+     "autor": "Marianna Szygoń",
+     "gatunki": [
+      "fantasy historyczne",
+      "kryminał"
+     ],
+     "tagi": [
+      "detektyw",
+      "podróże astralne",
+      "lata trzydzieste",
+      "małżeństwo",
+      "zazdrość",
+      "dusza",
+      "demony"
+     ]
+    },
+    {
+     "tytul": "Baran, gwiazda podwójna i morze w cynowej wannie",
+     "autor": "Magdalena Kucenty, Magdalena Świerczek-Gryboś",
+     "gatunki": [
+      "science fantasy",
+      "groteska"
+     ],
+     "tagi": [
+      "Mały Książę",
+      "moc opowieści",
+      "podróże kosmiczne",
+      "zemsta",
+      "miłość",
+      "przemiana",
+      "czarny humor"
+     ]
+    },
+    {
+     "tytul": "Cmentarz doskonałych",
+     "autor": "Agnieszka Osikowicz-Chwaja",
+     "gatunki": [
+      "dark fantasy",
+      "kryminał"
+     ],
+     "tagi": [
+      "śledztwo",
+      "zaginięcie",
+      "sekta",
+      "rytuał",
+      "nieśmiertelność",
+      "las",
+      "izolacja"
+     ]
+    },
+    {
+     "tytul": "Śmierć starszej pani",
+     "autor": "Agnieszka Biskup",
+     "gatunki": [
+      "groza",
+      "czarna komedia"
+     ],
+     "tagi": [
+      "koty",
+      "spadek",
+      "chciwość",
+      "rodzina",
+      "zbrodnia",
+      "starość",
+      "zemsta"
+     ]
+    },
+    {
+     "tytul": "De profundis",
+     "autor": "Wiktor Orłowski",
+     "gatunki": [
+      "urban fantasy",
+      "kryminał"
+     ],
+     "tagi": [
+      "Watykan",
+      "śledztwo",
+      "demony",
+      "opętanie",
+      "religia",
+      "trauma",
+      "zemsta"
+     ]
+    }
+   ]
+  },
+  {
+   "nazwa": "Obieżyświaty",
+   "url": "https://fantazmaty.pl/czytaj/antologie/obiezyswiaty/",
+   "opowiadania": [
+    {
+     "tytul": "Nieznane dzieło",
+     "autor": "Paul van Leeuwenkamp",
+     "gatunki": [
+      "urban fantasy",
+      "satyra"
+     ],
+     "tagi": [
+      "pisarstwo",
+      "elfy",
+      "portale",
+      "starość",
+      "samotność",
+      "przekład literacki",
+      "moc opowieści"
+     ]
+    },
+    {
+     "tytul": "Rekompensata",
+     "autor": "Charles Victor Tench",
+     "gatunki": [
+      "science fiction",
+      "kryminał"
+     ],
+     "tagi": [
+      "naukowcy",
+      "eksperymenty",
+      "zaginięcie",
+      "zemsta",
+      "laboratorium",
+      "wynalazki",
+      "przyjaźń"
+     ]
+    },
+    {
+     "tytul": "Somadewa: Sutra Niebiańskiej Rzeki",
+     "autor": "Vandana Singh",
+     "gatunki": [
+      "filozoficzna science fiction"
+     ],
+     "tagi": [
+      "moc opowieści",
+      "podróże kosmiczne",
+      "Indie",
+      "tożsamość",
+      "pamięć",
+      "mitologia",
+      "pętla czasowa"
+     ]
+    },
+    {
+     "tytul": "Nieszczepiony",
+     "autor": "APP Pekurinen",
+     "gatunki": [
+      "socjologiczna science fiction"
+     ],
+     "tagi": [
+      "ojciec i syn",
+      "ból",
+      "empatia",
+      "szczepionki",
+      "zwierzęta",
+      "moralność",
+      "dzieciństwo"
+     ]
+    },
+    {
+     "tytul": "Krewniacy elfów",
+     "autor": "Lord Dunsany",
+     "gatunki": [
+      "fantasy baśniowe"
+     ],
+     "tagi": [
+      "elfy",
+      "dusza",
+      "muzyka",
+      "przemiana",
+      "natura",
+      "industrializacja",
+      "tęsknota za domem"
+     ]
+    },
+    {
+     "tytul": "Rozbójnicy",
+     "autor": "Lord Dunsany",
+     "gatunki": [
+      "baśń",
+      "fantastyka religijna"
+     ],
+     "tagi": [
+      "przyjaźń",
+      "rozbójnicy",
+      "dusza",
+      "zaświaty",
+      "pogrzeb",
+      "odkupienie"
+     ]
+    },
+    {
+     "tytul": "Ciężar wschodzącego słońca",
+     "autor": "Vylar Kaftan",
+     "gatunki": [
+      "historia alternatywna"
+     ],
+     "tagi": [
+      "Inkowie",
+      "epidemia",
+      "szczepionki",
+      "dyplomacja",
+      "niewolnictwo",
+      "rodzina",
+      "dworskie intrygi"
+     ]
+    },
+    {
+     "tytul": "Upadek Babbulkund",
+     "autor": "Lord Dunsany",
+     "gatunki": [
+      "fantasy mitologiczne"
+     ],
+     "tagi": [
+      "legendarne miasto",
+      "podróż",
+      "bogowie",
+      "przepowiednie",
+      "upływ czasu",
+      "piękno",
+      "zagłada"
+     ]
+    },
+    {
+     "tytul": "Człowiek, który poznał prawdę",
+     "autor": "Algernon Blackwood",
+     "gatunki": [
+      "weird fiction",
+      "groza psychologiczna"
+     ],
+     "tagi": [
+      "zakazana wiedza",
+      "naukowcy",
+      "mistycyzm",
+      "sens życia",
+      "starożytne artefakty",
+      "pamięć",
+      "obsesja"
+     ]
+    },
+    {
+     "tytul": ">RESTART SYSTEMU",
+     "autor": "Novae Caelum",
+     "gatunki": [
+      "cyberpunk",
+      "psychologiczna science fiction"
+     ],
+     "tagi": [
+      "cyfrowa świadomość",
+      "wirtualna rzeczywistość",
+      "muzyka",
+      "przetrwanie",
+      "poświęcenie",
+      "ojciec i córka",
+      "tożsamość"
+     ]
+    },
+    {
+     "tytul": "W domu pogodnego seniora na końcu świata",
+     "autor": "John P. Murphy",
+     "gatunki": [
+      "fantasy humorystyczne"
+     ],
+     "tagi": [
+      "nieśmiertelność",
+      "starość",
+      "czarnoksiężnicy",
+      "dom opieki",
+      "samotność",
+      "codzienność",
+      "humor"
+     ]
+    },
+    {
+     "tytul": "Gość",
+     "autor": "Lord Dunsany",
+     "gatunki": [
+      "fantastyka filozoficzna"
+     ],
+     "tagi": [
+      "śmierć",
+      "nieodwzajemniona miłość",
+      "samotność",
+      "restauracja",
+      "Londyn",
+      "rozmowa"
+     ]
+    }
+   ]
+  },
+  {
+   "nazwa": "Sępom na pożarcie",
+   "url": "https://fantazmaty.pl/czytaj/antologie/sepom-na-pozarcie/",
+   "opowiadania": [
+    {
+     "tytul": "Przelatujące wrony zwiastują dobry dzień",
+     "autor": "Bernhard Jaumann",
+     "gatunki": [
+      "kryminał",
+      "thriller psychologiczny"
+     ],
+     "tagi": [
+      "zemsta",
+      "żałoba",
+      "więzienie",
+      "utrata dziecka",
+      "obsesja",
+      "tożsamość",
+      "Niemcy"
+     ]
+    },
+    {
+     "tytul": "Sępom na pożarcie",
+     "autor": "Bernhard Jaumann",
+     "gatunki": [
+      "thriller psychologiczny",
+      "kryminał"
+     ],
+     "tagi": [
+      "Namibia",
+      "pustynia",
+      "kradzież tożsamości",
+      "sobowtóry",
+      "Stasi",
+      "przetrwanie",
+      "przekład literacki"
+     ]
+    },
+    {
+     "tytul": "Noc nad Unną",
+     "autor": "Bernhard Jaumann",
+     "gatunki": [
+      "kryminał",
+      "dramat psychologiczny"
+     ],
+     "tagi": [
+      "matka i dziecko",
+      "uzależnienie",
+      "negocjacje",
+      "policja",
+      "żałoba",
+      "muzyka",
+      "wykluczenie",
+      "Niemcy"
+     ]
+    },
+    {
+     "tytul": "To nie jest bajka dla Bönen",
+     "autor": "Bernhard Jaumann",
+     "gatunki": [
+      "kryminał"
+     ],
+     "tagi": [
+      "śledztwo",
+      "zaginięcie",
+      "dziennikarz",
+      "wspomnienia",
+      "tajemnica z przeszłości",
+      "monarchia",
+      "Niemcy"
+     ]
+    },
+    {
+     "tytul": "Śnieg na Blutkuppe",
+     "autor": "Bernhard Jaumann",
+     "gatunki": [
+      "kryminał",
+      "thriller psychologiczny"
+     ],
+     "tagi": [
+      "Namibia",
+      "pustynia",
+      "poczucie winy",
+      "manipulacja",
+      "małżeństwo",
+      "Boże Narodzenie",
+      "tajemnica z przeszłości"
+     ]
+    },
+    {
+     "tytul": "Bad Feilnbach, po prostu",
+     "autor": "Bernhard Jaumann",
+     "gatunki": [
+      "kryminał",
+      "czarna komedia"
+     ],
+     "tagi": [
+      "Bawaria",
+      "zbrodnie wojenne",
+      "zbiorowa odpowiedzialność",
+      "turystyka",
+      "hipokryzja",
+      "jedzenie",
+      "zmowa milczenia"
+     ]
+    },
+    {
+     "tytul": "Hagen, Równina 2",
+     "autor": "Bernhard Jaumann",
+     "gatunki": [
+      "kryminał",
+      "dramat społeczny"
+     ],
+     "tagi": [
+      "emigracja",
+      "rasizm",
+      "solidarność",
+      "poczucie winy",
+      "sztuka",
+      "śledztwo",
+      "Niemcy"
+     ]
+    },
+    {
+     "tytul": "Magda i Mario",
+     "autor": "Bernhard Jaumann",
+     "gatunki": [
+      "kryminał",
+      "thriller psychologiczny"
+     ],
+     "tagi": [
+      "miłość",
+      "więzienie",
+      "korespondencja",
+      "zaufanie",
+      "tajemnica",
+      "szpital",
+      "Niemcy"
+     ]
+    }
+   ]
+  },
+  {
+   "nazwa": "Raz jeszcze w wyłom",
+   "url": "https://fantazmaty.pl/czytaj/antologie/raz-jeszcze-w-wylom/",
+   "opowiadania": [
+    {
+     "tytul": "Kolor piekła",
+     "autor": "Wiktor Orłowski",
+     "gatunki": [
+      "humorystyczna science fiction",
+      "satyra"
+     ],
+     "tagi": [
+      "konsumpcjonizm",
+      "chciwość",
+      "nierówności społeczne",
+      "religia",
+      "wojna",
+      "przyjaźń",
+      "poświęcenie",
+      "trauma"
+     ]
+    },
+    {
+     "tytul": "Wyrywając dusze",
+     "autor": "Andrzej W. Sawicki",
+     "gatunki": [
+      "steampunk",
+      "science fantasy"
+     ],
+     "tagi": [
+      "wojna",
+      "nieśmiertelność",
+      "klony",
+      "transfer świadomości",
+      "tożsamość",
+      "fanatyzm",
+      "propaganda",
+      "zdrada"
+     ]
+    },
+    {
+     "tytul": "Władcy Ludzkich Ciał",
+     "autor": "Krzysztof Niedzielski",
+     "gatunki": [
+      "fantasy przygodowe",
+      "dark fantasy"
+     ],
+     "tagi": [
+      "niewola",
+      "wolność",
+      "bunt",
+      "magia",
+      "zaklęta broń",
+      "latający okręt",
+      "zdrada",
+      "zakładnicy"
+     ]
+    },
+    {
+     "tytul": "Kluczarnia",
+     "autor": "Anna Maria Wybraniec, Łukasz Krukowski",
+     "gatunki": [
+      "groteska fantastyczna",
+      "satyra"
+     ],
+     "tagi": [
+      "szkoła",
+      "biurokracja",
+      "bunt",
+      "manipulacja",
+      "konformizm",
+      "kontrola społeczna",
+      "absurd"
+     ]
+    },
+    {
+     "tytul": "Biała brama",
+     "autor": "Joanna Pastuszka-Roczek",
+     "gatunki": [
+      "fantasy metafizyczne",
+      "dark fantasy"
+     ],
+     "tagi": [
+      "wojna",
+      "utrata pamięci",
+      "tożsamość",
+      "przyjaźń",
+      "poświęcenie",
+      "przemiana",
+      "imiona",
+      "portale"
+     ]
+    },
+    {
+     "tytul": "Słońce Austerlitz",
+     "autor": "Agnieszka Fulińska",
+     "gatunki": [
+      "fantasy historyczne",
+      "groza"
+     ],
+     "tagi": [
+      "wojny napoleońskie",
+      "postaci historyczne",
+      "telepatia",
+      "nadprzyrodzone zdolności",
+      "potwory",
+      "zamach",
+      "tajemnica",
+      "przyjaźń"
+     ]
+    }
+   ]
+  }
+ ]
+}

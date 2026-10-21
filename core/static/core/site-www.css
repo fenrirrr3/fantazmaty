@@ -1,4 +1,5 @@
-/* Strona WWW (System): ustawienia strony „Ekipa” i podgląd działów wysyłanych na fantazmaty.pl. Kolory wyłącznie z tokenów. */
+/* Ekipa WWW i Szukajka WWW (System): ustawienia strony, podgląd działów i katalog opowiadań wysyłane na fantazmaty.pl.
+   Kolory wyłącznie z tokenów. */
 
 .site-www-fields {
     display: grid;
@@ -108,8 +109,70 @@
     margin: var(--space-3) 0 0;
 }
 
+/* Szukajka WWW: liczniki jak na stronie, tabela katalogu, listy zmian. */
+.site-catalog-counters {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(140px, 100%), 1fr));
+    gap: var(--space-3);
+    margin: 0 0 var(--space-4);
+}
+
+.site-catalog-counter {
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-alt);
+}
+
+.site-catalog-counter dt {
+    color: var(--muted);
+    font-size: var(--font-size-sm);
+}
+
+.site-catalog-counter dd {
+    margin: 0;
+    font-size: var(--font-size-2xl);
+    font-weight: 600;
+}
+
+.site-catalog-settings {
+    margin-top: var(--space-5);
+}
+
+.site-catalog-warning-list summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.site-catalog-warning-list ul {
+    columns: 2;
+    column-gap: var(--space-5);
+}
+
+.site-catalog-table td {
+    vertical-align: top;
+}
+
+.site-catalog-table tr.is-disabled td {
+    opacity: 0.6;
+}
+
+.site-catalog-table .secondary-button {
+    white-space: nowrap;
+}
+
+.site-catalog-changes {
+    margin: var(--space-2) 0 var(--space-4);
+    padding-left: var(--space-5);
+}
+
+.site-catalog-add h3 {
+    margin-top: var(--space-5);
+}
+
 @media (max-width: 760px) {
-    .site-www-group ul {
+    .site-www-group ul,
+    .site-catalog-warning-list ul {
         columns: 1;
     }
 }

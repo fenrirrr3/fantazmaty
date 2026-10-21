@@ -1,4 +1,4 @@
-"""Zakładka System → „Strona WWW”: dostęp tylko dla superusera, link w menu, podgląd działów z ostrzeżeniami,
+"""Zakładka System → „Ekipa WWW”: dostęp tylko dla superusera, link w menu, podgląd działów z ostrzeżeniami,
 zapis ustawień i podgląd JSON-a identyczny z endpointem."""
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -15,15 +15,16 @@ URL = reverse('core:site_www')
 
 class SiteWwwAccessTests(TestCase):
     def test_only_superuser_sees_link_and_opens_page(self):
-        """Link „Strona WWW” w sekcji System tylko dla superusera; koordynator i redaktor dostają 403."""
+        """Linki „Ekipa WWW” i „Szukajka WWW” w sekcji System tylko dla superusera; koordynator i redaktor dostają 403."""
         cases = ((create_superuser('www-admin'), True), (create_member('www-coordinator', roles.COORDINATOR), False),
                  (create_member('www-editor', roles.EDITOR), False))
         for user, allowed in cases:
             with self.subTest(user=user.username):
                 self.client.force_login(user)
                 links = html.fromstring(self.client.get(reverse('core:home')).content).xpath(
-                    f'//nav//details[@data-menu-section="system"]//a[@href="{URL}"]/text()')
-                self.assertEqual(links, ['Strona WWW'] if allowed else [])
+                    '//nav//details[@data-menu-section="system"]//a[contains(@class, "sidebar-link")]/text()')
+                self.assertEqual([link for link in links if link.endswith('WWW')],
+                                 ['Ekipa WWW', 'Szukajka WWW'] if allowed else [])
                 page = self.client.get(URL)
                 self.assertEqual(page.status_code, 200 if allowed else 403)
                 self.assertEqual(self.client.get(URL, {'format': 'json'}).status_code, 200 if allowed else 403)

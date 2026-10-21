@@ -1,9 +1,9 @@
 {% extends "core/base.html" %}
 {% load static %}
-{% block title %}Strona WWW | Fantazmaty CMS{% endblock %}
+{% block title %}Ekipa WWW | Fantazmaty CMS{% endblock %}
 {% block extra_css %}<link rel="stylesheet" href="{% static 'core/site-www.css' %}">{% endblock %}
 {% block content %}
-<header class="page-header"><h1 class="page-title">Strona WWW</h1><p class="page-description site-www-description">Dane, które fantazmaty.pl pobiera z CMS-a. Strona odświeża je sama (co godzinę) albo po wejściu administratora z <code>?fz_odswiez=1</code>.</p></header>
+<header class="page-header"><h1 class="page-title">Ekipa WWW</h1><p class="page-description site-www-description">Działy ekipy, które strona <a href="https://fantazmaty.pl/o-projekcie/ekipa/">fantazmaty.pl/o-projekcie/ekipa/</a> pobiera z CMS-a. Strona odświeża je sama (co 2 dni) albo po wejściu administratora z <code>?fz_odswiez=1</code>.</p></header>
 <section class="card"><div class="card-body">
 <h2>Ekipa</h2>
 <form method="post" class="site-www-form">{% csrf_token %}{{ form.non_field_errors }}

@@ -20,7 +20,7 @@ GROUPS = (
     ('promotion', 'Promocja', ('core.textsocialmedia', 'core.socialmediaentry', 'core.socialmediaquote')),
     ('recruitment', 'Rekrutacja', ('core.recruitment', 'recruitment_mailbox')),
     ('settings', 'Ustawienia', ('core.mailboxconnection', 'core.mailboxheadersnapshot', 'core.notificationrule', 'core.discordrole',
-                                'core.siteteamsection', 'core.siteteamsettings')),
+                                'core.siteteamsection', 'core.siteteamsettings', 'core.sitecataloganthology')),
     ('history', 'Historia i diagnostyka', ('workflow.workflowstage', 'workflow.workflowroleassignment', 'core.workflowevent', 'core.discordnotification', 'core.useractivity')),
 )
 EXPANDED = ('submissions', 'texts', 'publication')
@@ -38,6 +38,7 @@ LABELS = {
     'core.notificationrule': 'Powiadomienia Discord', 'core.discordrole': 'Role Discorda',
     'core.discordnotification': 'Historia powiadomień Discord',
     'core.siteteamsection': 'Strona WWW – działy ekipy', 'core.siteteamsettings': 'Strona WWW – ustawienia',
+    'core.sitecataloganthology': 'Szukajka WWW – katalog opowiadań',
 }
 
 

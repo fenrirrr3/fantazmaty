@@ -1,11 +1,12 @@
-"""Panel admina strony WWW: działy z podgrupami w jednym formularzu, pojedynczy rekord ustawień, grupa „Ustawienia”
-w nawigacji i walidacja modeli (notka oczyszczona, ręczna podgrupa bez nazwisk)."""
+"""Panel admina strony WWW: działy z podgrupami w jednym formularzu, pojedynczy rekord ustawień, katalog szukajki
+z opowiadaniami w inline, grupa „Ustawienia” w nawigacji i walidacja modeli (notka oczyszczona, ręczna podgrupa
+bez nazwisk, adres antologii tylko na fantazmaty.pl)."""
 from django.contrib import admin
 from django.core.exceptions import ValidationError
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
 
-from core.site_models import SiteTeamGroup, SiteTeamSection, SiteTeamSettings
+from core.site_models import SiteCatalogAnthology, SiteCatalogStory, SiteTeamGroup, SiteTeamSection, SiteTeamSettings
 from fantazmaty.testing import create_member, create_superuser
 from people import roles
 from people.models import Role
@@ -29,6 +30,7 @@ class SiteTeamAdminTests(TestCase):
         names = {model['object_name'].lower(): model['name'] for model in groups['settings']['models']}
         self.assertEqual(names['siteteamsection'], 'Strona WWW – działy ekipy')
         self.assertEqual(names['siteteamsettings'], 'Strona WWW – ustawienia')
+        self.assertEqual(names['sitecataloganthology'], 'Szukajka WWW – katalog opowiadań')
         change = reverse('admin:core_siteteamsection_change', args=[self.section.pk])
         self.assertEqual(change, f'/panel/organizacja/strona-www-dzialy/{self.section.pk}/edytuj/')
         page = self.client.get(change)
@@ -43,6 +45,7 @@ class SiteTeamAdminTests(TestCase):
         self.assertContains(listing, 'Lektorzy (ręcznie)')
         settings_page = self.client.get(reverse('admin:core_siteteamsettings_change', args=[1]))
         self.assertContains(settings_page, 'Dawid Wiktorski')
+        self.assertContains(settings_page, 'catalog_page_url')
         self.assertEqual(self.client.get(reverse('admin:core_siteteamsettings_add')).status_code, 403)
         self.client.force_login(create_member('www-coordinator', roles.COORDINATOR))
         for url in (change, reverse('admin:core_siteteamsection_changelist')):
@@ -83,3 +86,56 @@ class SiteTeamAdminTests(TestCase):
         self.assertEqual(SiteTeamSettings.load().pk, 1)
         self.assertEqual(SiteTeamSettings.objects.count(), 1)
         self.assertEqual(self.section.anchor, 'ekipa-audio')
+
+
+class SiteCatalogAdminTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.admin = create_superuser('www-admin')
+        cls.catalog = SiteCatalogAnthology.objects.get(title='Dragoneza')
+
+    def setUp(self):
+        self.client.force_login(self.admin)
+
+    def test_list_change_form_with_inline_and_save(self):
+        """Lista pod polskim adresem z kolejnością i włączeniem do edycji; formularz z inline opowiadań (textarea
+        gatunków i tagów) i odnośnikiem do zakładki; zapis zmiany tytułu i nowego opowiadania; koordynator bez dostępu."""
+        change = reverse('admin:core_sitecataloganthology_change', args=[self.catalog.pk])
+        self.assertEqual(change, f'/panel/organizacja/szukajka-www-katalog/{self.catalog.pk}/edytuj/')
+        listing = self.client.get(reverse('admin:core_sitecataloganthology_changelist'))
+        self.assertContains(listing, 'name="form-0-position"')
+        self.assertContains(listing, 'name="form-0-is_enabled"')
+        page = self.client.get(change)
+        content = page.content.decode()
+        for expected in ('name="stories-TOTAL_FORMS"', '<textarea name="stories-0-genres"', 'stories-0-tags',
+                         reverse('core:site_catalog'), 'Dragoneza'):
+            with self.subTest(expected=expected):
+                self.assertIn(expected, content)
+        total = self.catalog.stories.count()
+        data = {'title': 'Dragoneza (2018)', 'anthology': '', 'url': self.catalog.url, 'position': '2',
+                'is_enabled': 'on', 'stories-TOTAL_FORMS': '1', 'stories-INITIAL_FORMS': '0',
+                'stories-MIN_NUM_FORMS': '0', 'stories-MAX_NUM_FORMS': '1000',
+                'stories-0-position': '99', 'stories-0-title': 'Nowe', 'stories-0-author': 'Ktoś',
+                'stories-0-genres': 'fantasy\nsf', 'stories-0-tags': 'a', 'stories-0-text': '',
+                'stories-0-anthology': str(self.catalog.pk)}
+        data['_edit_version'] = self.client.get(change).context['request'].edit_version_token
+        self.assertEqual(self.client.post(change, data).status_code, 302)
+        self.catalog.refresh_from_db()
+        self.assertEqual(self.catalog.title, 'Dragoneza (2018)')
+        self.assertEqual(self.catalog.stories.count(), total + 1)
+        self.assertEqual(SiteCatalogStory.objects.get(title='Nowe').genre_list, ['fantasy', 'sf'])
+        self.client.force_login(create_member('www-coordinator', roles.COORDINATOR))
+        self.assertIn(self.client.get(change).status_code, (302, 403))
+
+    def test_anthology_url_must_point_to_fantazmaty(self):
+        """Adres antologii w katalogu: tylko https://fantazmaty.pl/…; pusty dozwolony."""
+        for url, valid in (('https://fantazmaty.pl/czytaj/antologie/x/', True), ('', True),
+                           ('http://fantazmaty.pl/x/', False), ('https://inna.pl/', False)):
+            with self.subTest(url=url):
+                item = SiteCatalogAnthology(title='Test', url=url)
+                if valid:
+                    item.full_clean()
+                else:
+                    with self.assertRaises(ValidationError) as caught:
+                        item.full_clean()
+                    self.assertIn('url', caught.exception.message_dict)

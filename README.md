@@ -133,30 +133,63 @@ Pole antologii „Powiadomienia Discord” (strona antologii lub powieści – k
 przypomnienia, produkcja audiobooków), „Tylko rozpoczęcia i zakończenia etapów” – wyłącznie ta reguła. Zgłoszeń do
 recenzji i testów z panelu to nie dotyczy. `python manage.py discord_diagnose` wypisuje antologie z ograniczeniem.
 
-## Strona WWW (ekipa na fantazmaty.pl)
+## Strona WWW (ekipa i szukajka na fantazmaty.pl)
 
-Strona https://fantazmaty.pl/o-projekcie/ekipa/ pobiera działy ekipy z CMS-a (CMS niczego nie wysyła).
-Działy, podgrupy (z ról albo ręczna lista nazwisk), koordynację (role koordynatorów i osoby wpisane ręcznie),
-kolejność i notki ustawia się w panelu admina
-(„Ustawienia” → „Strona WWW – działy ekipy”), a redaktora prowadzącego i opiekuna strony w zakładce
-System → „Strona WWW” (`/system/strona-www/`, tylko superuser), która pokazuje też dokładnie to, co dostanie
-strona, ostrzeżenia (osoby z rolą bez działu, działy z ról bez osób, brak klucza) i datę ostatniego pobrania.
+Strona fantazmaty.pl pobiera dane z CMS-a (CMS niczego nie wysyła) dwoma endpointami bez logowania, ale z nagłówkiem
+`X-Site-Key` równym zmiennej `SITE_API_KEY` z `.env` (bez niej odpowiadają 503, ze złym kluczem 403; odpowiedź
+`Cache-Control: no-store`). Obie zakładki są w menu System (tylko superuser) i pokazują dokładnie to, co dostanie
+strona (`?format=json` – sam JSON), stan klucza, datę ostatniego pobrania i ostrzeżenia.
 
-Endpoint `GET /api/strona/ekipa/` nie wymaga logowania, ale nagłówka `X-Site-Key` równego zmiennej
-`SITE_API_KEY` z `.env` (bez niej odpowiada 503, ze złym kluczem 403). Odpowiedź to JSON z polami `wersja`,
-`prowadzacy`, `strona` i `dzialy` (tytuł, kotwica, liczba osób z odmianą, koordynacja, grupy z nazwiskami albo
-notka); nigdy e-maile, konta ani role wewnętrzne. Podgląd tego samego JSON-a dla zalogowanego superusera:
-`/system/strona-www/?format=json`.
+### Ekipa WWW
 
-Wdrożenie:
+Strona https://fantazmaty.pl/o-projekcie/ekipa/ pobiera działy ekipy z `GET /api/strona/ekipa/`. Działy, podgrupy
+(z ról albo ręczna lista nazwisk), koordynację (role koordynatorów i osoby wpisane ręcznie), kolejność i notki
+ustawia się w panelu admina („Ustawienia” → „Strona WWW – działy ekipy”), a redaktora prowadzącego i opiekuna strony
+w zakładce System → „Ekipa WWW” (`/system/strona-www/`), która pokazuje też ostrzeżenia (osoby z rolą bez działu,
+działy z ról bez osób). JSON ma pola `wersja`, `prowadzacy`, `strona` i `dzialy` (tytuł, kotwica, liczba osób
+z odmianą, koordynacja, grupy z nazwiskami albo notka); nigdy e-maile, konta ani role wewnętrzne.
+
+### Szukajka WWW
+
+Wyszukiwarka opowiadań https://fantazmaty.pl/czytaj/szukaj/ pobiera katalog z `GET /api/strona/katalog/`: JSON
+`{"wersja", "liczby": {antologie, opowiadania, gatunki, tagi}, "antologie": [{"nazwa", "url", "opowiadania":
+[{"tytul", "autor", "gatunki": [...], "tagi": [...]}]}]}` – dokładnie format bloku `#fzs-data`, który dotąd był
+wpisywany na stronie ręcznie (mechanizm JS strony pomija nieznane klucze). Katalog (`SiteCatalogAnthology`,
+`SiteCatalogStory`, seed z `core/site_catalog_seed.json`: 27 antologii, 297 opowiadań ze strony) edytuje się
+w panelu admina („Ustawienia” → „Szukajka WWW – katalog opowiadań”: kolejność, włączenie, adres antologii,
+opowiadania z gatunkami i tagami po jednym w wierszu). Wyłączona antologia nie trafia do JSON-a.
+
+Zakładka System → „Szukajka WWW” (`/system/szukajka-www/`) pokazuje liczniki jak na stronie, pozwala ustawić adres
+szukajki (odnośnik „Odśwież stronę” z `?fz_odswiez=1`), dodać gotową antologię z CMS-u (select antologii spoza
+katalogu, adres strony, podgląd opowiadań → „Dodaj do katalogu”) i dla antologii powiązanych z CMS-em sprawdzić
+aktualizacje (`/system/szukajka-www/<id>/aktualizuj/`: nowe opowiadania, brakujące gatunki i tagi, rozbieżne tytuły
+i autorzy tylko w raporcie → „Zastosuj”). Aktualizacja dopisuje, nigdy nie usuwa ani nie nadpisuje ręcznie
+dopracowanych wpisów. Źródło w CMS-ie: tytuł tekstu, autorzy jak w stopce (pseudonim albo imię i nazwisko, w
+tłumaczeniach autor zagraniczny), gatunki z pola „gatunek” (rozdzielone `,`, `;` albo `|`) i tagi; pomijane są
+teksty wycofane. Import (dodanie i aktualizacja) działa tylko dla antologii o statusie „Gotowa”, które nie są
+Ekstraktami; powieść trafia jako jedna pozycja w całości (tytuł, autorzy, gatunki i tagi z danych powieści,
+rozdziały pomijane, bez powiązania z tekstem). Powiązania wpisów katalogu z antologiami i tekstami CMS-u ustala
+migracja seedu (`core.site_catalog.link_catalog_to_cms`: tytuł antologii bez wielkości liter i diakrytyków,
+rzymskie I–IV jak 1–4; tytuł tekstu w antologii z ujednoliconymi cudzysłowami); niedopasowane wpisy można powiązać
+w adminie. Ostrzeżenia zakładki: włączona antologia bez adresu, opowiadania bez gatunku lub tagów, gotowe antologie
+CMS-u poza katalogiem, wpisy bez powiązania, powtórzone tytuły.
+
+### Wdrożenie
 
 1. Na PythonAnywhere dopisz `SITE_API_KEY=<długi losowy ciąg>` do `.env` i przeładuj aplikację; w `wp-config.php`
-   strony dodaj `define('FZ_CMS_URL', 'https://<domena-cms>/api/strona/ekipa/');` i `define('FZ_CMS_KEY', '<ten sam klucz>');`.
-2. Wklej `tools/wordpress/fz-ekipa.php` (bez pierwszej linii `<?php`) jako nowy snippet w Code Snippets i aktywuj.
+   strony dodaj `define('FZ_CMS_KEY', '<ten sam klucz>');` oraz adresy endpointów:
+   `define('FZ_CMS_URL', 'https://<domena-cms>/api/strona/ekipa/');` i
+   `define('FZ_CMS_KATALOG_URL', 'https://<domena-cms>/api/strona/katalog/');`.
+2. Wklej `tools/wordpress/fz-ekipa.php` i `tools/wordpress/fz-katalog.php` (bez pierwszej linii `<?php`) jako
+   osobne snippety w Code Snippets i aktywuj.
 3. Podmień kod strony „Ekipa” w Avadzie na `tools/wordpress/ekipa-strona.txt` (shortcode'y `[fz_ekipa_nawigacja]`,
    `[fz_ekipa_prowadzacy]`, `[fz_ekipa_dzialy]`, `[fz_ekipa_strona]`); odstępy między działami w jednym
    kontenerze daje kilka linii CSS z komentarza na początku snippetu.
-4. Strona pamięta dane godzinę; po zmianach w CMS-ie zalogowany administrator wchodzi na stronę
+4. Podmień kod strony szukajki na `tools/wordpress/szukajka-strona.txt`: zmienione są tylko liczniki w nagłówku
+   (`[fz_katalog_antologie]`, `[fz_katalog_opowiadania]`) i blok „DANE KATALOGU” (`[fz_katalog_dane]` w elemencie
+   tekstowym zamiast bloku kodu); wyszukiwarka, filtry, lista wyników, mechanizm JS i CSS strony bez zmian.
+   W zakładce „Szukajka WWW” wpisz adres szukajki, żeby mieć odnośnik „Odśwież stronę”.
+5. Strona pamięta dane ekipy i katalogu 2 dni; po zmianach w CMS-ie zalogowany administrator wchodzi na stronę
    z `?fz_odswiez=1`. Gdy CMS nie odpowiada, strona pokazuje ostatnią poprawną kopię.
 
 ## Struktura

@@ -78,7 +78,9 @@ LABELS.update({
     'password_reset': 'Resetowanie hasła', 'password_reset_done': 'Wysłanie instrukcji resetowania hasła',
     'password_reset_confirm': 'Ustawienie nowego hasła', 'password_reset_complete': 'Hasło ustawione',
     'account_invitation': 'Ustawienie hasła z zaproszenia',
-    'site_www': 'Strona WWW', 'site_team_api': 'Pobranie ekipy przez stronę WWW',
+    'site_www': 'Ekipa WWW', 'site_team_api': 'Pobranie ekipy przez stronę WWW',
+    'site_catalog': 'Szukajka WWW', 'site_catalog_update': 'Aktualizacja antologii w szukajce WWW',
+    'site_catalog_api': 'Pobranie katalogu szukajki przez stronę WWW',
     'index': 'Panel administracyjny', 'app_list': 'Sekcja panelu administracyjnego',
     'autocomplete': 'Wyszukiwanie w panelu administracyjnym', 'jsi18n': 'Tłumaczenia panelu administracyjnego',
 })

@@ -1,0 +1,67 @@
+{% extends "core/base.html" %}
+{% load static %}
+{% block title %}Szukajka WWW | Fantazmaty CMS{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/site-www.css' %}">{% endblock %}
+{% block content %}
+<header class="page-header"><h1 class="page-title">Szukajka WWW</h1><p class="page-description site-www-description">Katalog opowiadań, który wyszukiwarka na fantazmaty.pl pobiera z CMS-a. Strona odświeża go sama (co 2 dni) albo po wejściu administratora z <code>?fz_odswiez=1</code>.</p></header>
+<section class="card"><div class="card-body">
+<h2>Katalog</h2>
+<dl class="site-catalog-counters" aria-label="Liczby w katalogu">
+<div class="site-catalog-counter"><dt>Antologie</dt><dd>{{ counts.antologie }}</dd></div>
+<div class="site-catalog-counter"><dt>Opowiadania</dt><dd>{{ counts.opowiadania }}</dd></div>
+<div class="site-catalog-counter"><dt>Gatunki</dt><dd>{{ counts.gatunki }}</dd></div>
+<div class="site-catalog-counter"><dt>Tagi</dt><dd>{{ counts.tagi }}</dd></div>
+</dl>
+<p class="muted-text">Na stronie: „{{ counts_text }}”. Liczby dotyczą włączonych antologii – dokładnie tych, które dostaje strona.</p>
+<div class="actions"><a class="secondary-button" href="?format=json">Pokaż JSON</a><a class="secondary-button" href="{% url 'admin:core_sitecataloganthology_changelist' %}">Edytuj katalog</a>{% if site_settings.catalog_refresh_url %}<a class="secondary-button" href="{{ site_settings.catalog_refresh_url }}" rel="noopener">Odśwież stronę</a>{% endif %}</div>
+<dl class="details-grid site-www-status">
+<div class="detail-item"><dt>Klucz dostępu</dt><dd>{% if has_api_key %}Ustawiony (<code>SITE_API_KEY</code>).{% else %}<span class="site-www-alert">Brak <code>SITE_API_KEY</code> w konfiguracji – strona nie pobierze danych.</span>{% endif %}</dd></div>
+<div class="detail-item"><dt>Pobranie przez stronę</dt><dd>{% if site_settings.catalog_fetched_at %}Strona pobrała dane: {{ site_settings.catalog_fetched_at|date:"d.m.Y H:i" }}{% else %}<span class="site-www-alert">Strona jeszcze nie pobierała katalogu.</span>{% endif %}</dd></div>
+</dl>
+<form method="post" class="site-www-form site-catalog-settings">{% csrf_token %}<input type="hidden" name="action" value="settings">{{ settings_form.non_field_errors }}
+<div class="site-www-fields">{% for field in settings_form.visible_fields %}{% include "core/includes/form_field.html" %}{% endfor %}</div>
+<div class="actions"><button type="submit" class="secondary-button">Zapisz adres</button></div>
+</form>
+{% if warnings.no_url or warnings.no_genre or warnings.no_tags or warnings.candidates or warnings.unlinked_anthologies or warnings.unlinked_stories or warnings.duplicates %}<div class="form-warning site-www-warnings">
+{% if warnings.no_url %}<p><strong>Włączone antologie bez adresu strony:</strong> {{ warnings.no_url|join:", " }}</p>{% endif %}
+{% if warnings.candidates %}<p><strong>Gotowe antologie CMS-u, których nie ma w katalogu:</strong> {{ warnings.candidates|join:", " }}</p>{% endif %}
+{% if warnings.duplicates %}<p><strong>Powtórzone tytuły w antologii:</strong> {{ warnings.duplicates|join:"; " }}</p>{% endif %}
+{% if warnings.no_genre %}<details class="site-catalog-warning-list"><summary>Opowiadania bez gatunku ({{ warnings.no_genre|length }})</summary><ul>{% for item in warnings.no_genre %}<li>{{ item }}</li>{% endfor %}</ul></details>{% endif %}
+{% if warnings.no_tags %}<details class="site-catalog-warning-list"><summary>Opowiadania bez tagów ({{ warnings.no_tags|length }})</summary><ul>{% for item in warnings.no_tags %}<li>{{ item }}</li>{% endfor %}</ul></details>{% endif %}
+{% if warnings.unlinked_anthologies %}<p class="muted-text"><strong>Bez powiązania z antologią w CMS-ie</strong> (np. antologie spoza CMS-u; aktualizacja niedostępna): {{ warnings.unlinked_anthologies|join:", " }}</p>{% endif %}
+{% if warnings.unlinked_stories %}<details class="site-catalog-warning-list"><summary>Opowiadania bez powiązania z tekstem w CMS-ie ({{ warnings.unlinked_stories|length }})</summary><ul>{% for item in warnings.unlinked_stories %}<li>{{ item }}</li>{% endfor %}</ul></details>{% endif %}
+</div>{% endif %}
+</div></section>
+<section class="card" id="dodaj-antologie"><div class="card-body">
+<h2>Dodaj antologię do katalogu</h2>
+{% if has_candidates or add_form.is_bound %}
+<p class="muted-text">Gotowe antologie z CMS-u (bez Ekstraktów), których nie ma jeszcze w katalogu. Opowiadania, gatunki i tagi są brane z tekstów CMS-u; powieść trafia jako jedna pozycja w całości (dane z profilu powieści, bez rozdziałów). Po dodaniu można wszystko dopracować w panelu administracyjnym.</p>
+<form method="post" class="site-www-form site-catalog-add">{% csrf_token %}{{ add_form.non_field_errors }}
+<div class="site-www-fields">{% for field in add_form.visible_fields %}{% include "core/includes/form_field.html" %}{% endfor %}</div>
+<div class="actions"><button type="submit" name="action" value="preview" class="secondary-button">Pokaż podgląd</button>{% if add_plan %}<input type="hidden" name="plan" value="{{ add_plan_token }}"><button type="submit" name="action" value="add" class="primary-button">Dodaj do katalogu</button>{% endif %}</div>
+{% if add_plan %}
+<h3>Podgląd: {{ add_plan.anthology.title }} <span class="site-www-count">{% if add_plan.anthology.is_novel %}powieść – jedna pozycja{% else %}{{ add_plan.stories|length }} opow.{% endif %}</span></h3>
+{% if add_plan.stories %}<div class="table-container"><table class="data-table site-catalog-table" data-pagination="off">
+<thead><tr><th>Tytuł</th><th>Autor</th><th>Gatunki</th><th>Tagi</th><th>Uwagi</th></tr></thead>
+<tbody>{% for story in add_plan.stories %}<tr>
+<td>{{ story.tytul }}</td><td>{{ story.autor|default:"–" }}</td><td>{{ story.gatunki|join:", "|default:"–" }}</td><td>{{ story.tagi|join:", "|default:"–" }}</td>
+<td>{% if story.ostrzezenia %}<span class="site-www-alert">{{ story.ostrzezenia|join:", " }}</span>{% else %}–{% endif %}</td>
+</tr>{% endfor %}</tbody></table></div>{% else %}<p class="form-warning">Antologia nie ma tekstów, które trafiłyby do katalogu (bez wycofanych).</p>{% endif %}
+{% endif %}
+</form>
+{% else %}<p class="muted-text">Wszystkie gotowe antologie z CMS-u są już w katalogu.</p>{% endif %}
+</div></section>
+<section class="card"><div class="card-body">
+<h2>Antologie w katalogu</h2>
+{% if rows %}<div class="table-container"><table class="data-table site-catalog-table" data-pagination="off">
+<thead><tr><th>Antologia</th><th>CMS</th><th>Adres</th><th>Opowiadania</th><th>Włączona</th><th>Aktualizacja</th></tr></thead>
+<tbody>{% for row in rows %}<tr id="katalog-{{ row.item.pk }}"{% if not row.item.is_enabled %} class="is-disabled"{% endif %}>
+<td><a href="{% url 'admin:core_sitecataloganthology_change' row.item.pk %}">{{ row.item.title }}</a>{% if row.novel %} <span class="badge site-www-badge-manual">powieść</span>{% endif %}</td>
+<td>{% if row.item.anthology_id %}tak{% if row.item.anthology.title != row.item.title %} <span class="muted-text">({{ row.item.anthology.title }})</span>{% endif %}{% else %}<span class="muted-text">nie</span>{% endif %}</td>
+<td>{% if row.item.url %}<a href="{{ row.item.url }}" rel="noopener">{{ row.item.url|cut:"https://fantazmaty.pl" }}</a>{% else %}<span class="site-www-alert">brak</span>{% endif %}</td>
+<td>{{ row.stories }}{% if row.item.anthology_id and not row.novel and row.linked_stories != row.stories %} <span class="muted-text">(z CMS-u: {{ row.linked_stories }})</span>{% endif %}</td>
+<td>{% if row.item.is_enabled %}tak{% else %}<span class="badge site-www-badge-off">wyłączona</span>{% endif %}</td>
+<td>{% if not row.blocked %}<a class="secondary-button" href="{% url 'core:site_catalog_update' row.item.pk %}">Sprawdź aktualizacje</a>{% else %}<button type="button" class="secondary-button" disabled title="{{ row.blocked }}">Sprawdź aktualizacje</button>{% endif %}</td>
+</tr>{% endfor %}</tbody></table></div>{% else %}<p>Katalog jest pusty. Dodaj antologię z CMS-u albo wpisy w panelu administracyjnym.</p>{% endif %}
+</div></section>
+{% endblock %}

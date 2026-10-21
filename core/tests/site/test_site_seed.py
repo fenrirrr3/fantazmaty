@@ -1,8 +1,16 @@
-"""Seed z migracji core 0060: działy strony „Ekipa” odtwarzające obecną stronę są w świeżej bazie."""
+"""Seedy z migracji core 0060 (działy strony „Ekipa”) i 0063 (katalog szukajki z ``core/site_catalog_seed.json``)
+są w świeżej bazie; dopasowanie katalogu do antologii i tekstów CMS-u."""
+import json
+from pathlib import Path
+
 from django.test import TestCase
 
-from core.site_models import SiteTeamGroup, SiteTeamSection, SiteTeamSettings
+from core.site_catalog import anthology_key, fold, link_catalog_to_cms
+from core.site_models import SiteCatalogAnthology, SiteCatalogStory, SiteTeamGroup, SiteTeamSection, SiteTeamSettings
 from people import roles
+from texts.models import Anthology, Text
+
+SEED = Path(__file__).resolve().parents[2] / 'site_catalog_seed.json'
 
 
 class SiteTeamSeedTests(TestCase):
@@ -43,3 +51,59 @@ class SiteTeamSeedTests(TestCase):
         self.assertEqual(sections['audio'].navigation_label, 'Audio')
         settings = SiteTeamSettings.objects.get(pk=1)
         self.assertEqual((settings.lead_editor, settings.site_person), ('Dawid Wiktorski', 'Dawid Wiktorski'))
+
+
+class SiteCatalogSeedTests(TestCase):
+    def test_catalog_matches_seed_file(self):
+        """27 antologii i 297 opowiadań w kolejności pliku, z adresami https://fantazmaty.pl/…, gatunkami i tagami
+        po jednym w wierszu; w pustej bazie bez powiązań z CMS-em."""
+        data = json.loads(SEED.read_text(encoding='utf-8'))
+        anthologies = list(SiteCatalogAnthology.objects.prefetch_related('stories'))
+        self.assertEqual(len(anthologies), 27)
+        self.assertEqual(SiteCatalogStory.objects.count(), 297)
+        self.assertEqual([item.title for item in anthologies], [item['nazwa'] for item in data['antologie']])
+        self.assertEqual([item.position for item in anthologies], list(range(1, 28)))
+        for item, expected in zip(anthologies, data['antologie'], strict=True):
+            with self.subTest(anthology=item.title):
+                self.assertTrue(item.url.startswith('https://fantazmaty.pl/'))
+                self.assertTrue(item.is_enabled)
+                self.assertIsNone(item.anthology_id)
+                self.assertEqual([(story.title, story.author, story.genre_list, story.tag_list)
+                                  for story in item.stories.all()],
+                                 [(story['tytul'], story['autor'], story['gatunki'], story['tagi'])
+                                  for story in expected['opowiadania']])
+        self.assertFalse(SiteCatalogStory.objects.exclude(text__isnull=True).exists())
+        self.assertEqual(SiteTeamSettings.load().catalog_page_url, '')
+
+    def test_link_catalog_to_cms_matches_titles(self):
+        """Ponowne dopasowanie: antologia po tytule (rzymskie I–IV jak 1–4, bez wielkości liter), teksty po tytule
+        w antologii (ujednolicone apostrofy); niejednoznaczne i nieznane tytuły zostają bez powiązania;
+        dopasowanie nie nadpisuje istniejących powiązań."""
+        book = Anthology.objects.create(title='Kocha, Lubi, Zgubi', status=Anthology.Status.READY)
+        matched = Text.objects.create(title='Wzór na długie i szczęśliwe życie Jeremy’ego Barretta', anthology=book,
+                                      length=100)
+        roman = Anthology.objects.create(title='Fantazmaty I')
+        Text.objects.create(title='Nieznany tekst', anthology=book, length=100)
+        for title in ('Dwa razy', 'dwa RAZY'):
+            Text.objects.create(title=title, anthology=book, length=100)
+        for title in ('dragoneza', 'DRAGONEZA'):
+            Anthology.objects.create(title=title)
+        self.assertEqual(link_catalog_to_cms(), {'antologie': 2, 'opowiadania': 1})
+        catalog = SiteCatalogAnthology.objects.get(title='Kocha, lubi, zgubi')
+        self.assertEqual(catalog.anthology, book)
+        self.assertEqual(SiteCatalogAnthology.objects.get(title='Fantazmaty 1').anthology, roman)
+        self.assertEqual(SiteCatalogStory.objects.get(text=matched).anthology, catalog)
+        self.assertIsNone(SiteCatalogAnthology.objects.get(title='Dragoneza').anthology_id)
+        self.assertEqual(link_catalog_to_cms(), {'antologie': 0, 'opowiadania': 0})
+
+    def test_keys_fold_quotes_case_diacritics_and_roman_numerals(self):
+        """Klucze porównania: cudzysłowy i apostrofy ujednolicone, bez wielkości liter i diakrytyków, pojedyncze
+        odstępy; rzymskie I–IV w kluczu antologii odpowiadają cyfrom."""
+        for value, expected in (('Granica Roche’a', "granica roche'a"), ('„Łódź”  Żółta', '"lodz" zolta'),
+                                ('  A   B ', 'a b'), ('', '')):
+            with self.subTest(value=value):
+                self.assertEqual(fold(value), expected)
+        for value, expected in (('Fantazmaty I', 'fantazmaty 1'), ('Fantazmaty IV', 'fantazmaty 4'),
+                                ('Fantazmaty 4', 'fantazmaty 4'), ('Ja, legenda', 'ja, legenda')):
+            with self.subTest(value=value):
+                self.assertEqual(anthology_key(value), expected)

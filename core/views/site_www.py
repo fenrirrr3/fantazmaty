@@ -1,18 +1,24 @@
-"""Strona WWW: endpoint z danymi ekipy dla fantazmaty.pl i zakładka System → „Strona WWW”."""
+"""Strona WWW: endpointy dla fantazmaty.pl (ekipa, katalog szukajki) i zakładki System → „Ekipa WWW”,
+„Szukajka WWW”."""
 import hmac
 
 from django import forms
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core import signing
 from django.http import JsonResponse
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_http_methods
 
 from core.permissions import superuser_required
-from core.site_models import SiteTeamSettings
+from core.site_catalog import (PLAN_SALT, apply_add, apply_update, candidate_anthologies, catalog_anthologies,
+                               catalog_counts, catalog_payload, catalog_warnings, count_text, is_importable, plan_add,
+                               plan_digest, plan_update, record_catalog_fetch, story_entry)
+from core.site_models import SiteCatalogAnthology, SiteTeamSettings
 from core.site_team import record_fetch, team_payload, team_sections, team_warnings
+from texts.models import Anthology
 
 JSON_PARAMS = {'ensure_ascii': False}
 
@@ -23,9 +29,7 @@ def _json(data, status=200):
     return response
 
 
-@never_cache
-@require_GET
-def site_team_api(request):
+def _site_api(request, build_payload, record):
     """GET bez logowania; wymaga nagłówka X-Site-Key równego SITE_API_KEY. Brak klucza w konfiguracji – 503."""
     key = settings.SITE_API_KEY
     if not key:
@@ -33,9 +37,21 @@ def site_team_api(request):
     provided = request.headers.get('X-Site-Key', '')
     if not hmac.compare_digest(provided.encode(), key.encode()):
         return _json({'blad': 'Brak dostępu.'}, status=403)
-    payload = team_payload()
-    record_fetch(payload['wersja'])
+    payload = build_payload()
+    record(payload['wersja'])
     return _json(payload)
+
+
+@never_cache
+@require_GET
+def site_team_api(request):
+    return _site_api(request, team_payload, record_fetch)
+
+
+@never_cache
+@require_GET
+def site_catalog_api(request):
+    return _site_api(request, catalog_payload, record_catalog_fetch)
 
 
 class SiteTeamSettingsForm(forms.ModelForm):
@@ -49,7 +65,7 @@ class SiteTeamSettingsForm(forms.ModelForm):
 @require_http_methods(['GET', 'POST'])
 @superuser_required
 def site_www(request):
-    """Karta „Ekipa”: ustawienia, podgląd danych dla strony i ostrzeżenia; ``?format=json`` – sam JSON."""
+    """Karta „Ekipa WWW”: ustawienia, podgląd danych dla strony i ostrzeżenia; ``?format=json`` – sam JSON."""
     team_settings = SiteTeamSettings.load()
     if request.GET.get('format') == 'json':
         return _json(team_payload())
@@ -64,3 +80,143 @@ def site_www(request):
         'form': form, 'sections': sections, 'warnings': team_warnings(sections),
         'team_settings': team_settings, 'has_api_key': bool(settings.SITE_API_KEY),
     }, status=400 if form.errors else 200)
+
+
+# --- Szukajka WWW ---------------------------------------------------------------------------------------------------
+
+class SiteCatalogSettingsForm(forms.ModelForm):
+    class Meta:
+        model = SiteTeamSettings
+        fields = ('catalog_page_url',)
+
+
+class CatalogAddForm(forms.Form):
+    """Dodanie antologii z CMS-u do katalogu: wybór spośród gotowych antologii spoza katalogu i adres strony."""
+    anthology = forms.ModelChoiceField(label='Antologia z CMS-u', queryset=Anthology.objects.none(),
+                                       empty_label='– wybierz –')
+    url = forms.URLField(label='Adres antologii na stronie', max_length=500, assume_scheme='https',
+                         help_text='https://fantazmaty.pl/czytaj/antologie/…/')
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['anthology'].queryset = candidate_anthologies()
+
+    def clean_url(self):
+        url = self.cleaned_data['url']
+        if not url.startswith('https://fantazmaty.pl/'):
+            raise forms.ValidationError('Adres musi zaczynać się od https://fantazmaty.pl/.')
+        return url
+
+
+def _plan_token(plan):
+    return signing.dumps(plan_digest(plan), salt=PLAN_SALT)
+
+
+def _plan_matches(token, plan):
+    try:
+        return signing.loads(token or '', salt=PLAN_SALT, max_age=settings.SESSION_COOKIE_AGE) == plan_digest(plan)
+    except signing.BadSignature:
+        return False
+
+
+def _catalog_rows():
+    rows = []
+    for item in catalog_anthologies(include_disabled=True):
+        stories = list(item.stories.all())
+        anthology = item.anthology
+        if anthology is None:
+            blocked = 'Antologia nie jest powiązana z CMS-em – powiąż ją w panelu administracyjnym.'
+        elif anthology.is_extracts:
+            blocked = 'Ekstrakty nie trafiają do katalogu szukajki.'
+        elif not is_importable(anthology):
+            blocked = 'Antologia niegotowa – aktualizacja po ukończeniu antologii w CMS-ie.'
+        else:
+            blocked = ''
+        rows.append({'item': item, 'stories': len(stories), 'novel': bool(anthology and anthology.is_novel),
+                     'linked_stories': len(stories) if anthology and anthology.is_novel
+                     else sum(1 for s in stories if s.text_id), 'blocked': blocked})
+    return rows
+
+
+@never_cache
+@login_required
+@require_http_methods(['GET', 'POST'])
+@superuser_required
+def site_catalog(request):
+    """Karta „Szukajka WWW”: liczniki, adres szukajki, dodanie antologii z CMS-u (podgląd → dodanie), tabela
+    katalogu z przyciskami aktualizacji i ostrzeżenia; ``?format=json`` – sam JSON."""
+    site_settings = SiteTeamSettings.load()
+    if request.GET.get('format') == 'json':
+        return _json(catalog_payload())
+    action = request.POST.get('action', '') if request.method == 'POST' else ''
+    settings_form = SiteCatalogSettingsForm(request.POST if action == 'settings' else None, instance=site_settings)
+    add_form = CatalogAddForm(request.POST if action in ('preview', 'add') else None)
+    add_plan, status = None, 200
+    if action == 'settings':
+        if settings_form.is_valid():
+            settings_form.save()
+            messages.success(request, 'Adres szukajki zapisany.')
+            return redirect('core:site_catalog')
+        status = 400
+    elif action in ('preview', 'add'):
+        if add_form.is_valid():
+            anthology = add_form.cleaned_data['anthology']
+            add_plan = plan_add(anthology)  # kandydaci formularza są już Gotowi i spoza Ekstraktów
+            if action == 'add':
+                if _plan_matches(request.POST.get('plan'), add_plan):
+                    added = apply_add(anthology, add_form.cleaned_data['url'], add_plan)
+                    messages.success(request, f'Dodano antologię „{added.title}” '
+                                              f'({count_text(len(add_plan["stories"]), STORY_FORMS)}).')
+                    return redirect('core:site_catalog')
+                messages.error(request, 'Dane w CMS-ie zmieniły się od podglądu – sprawdź je ponownie.')
+                status = 409
+        else:
+            status = 400
+    payload = catalog_payload()
+    return render(request, 'core/site_catalog.html', {
+        'settings_form': settings_form, 'add_form': add_form, 'add_plan': add_plan,
+        'add_plan_token': _plan_token(add_plan) if add_plan else '',
+        'counts': payload['liczby'], 'counts_text': _counts_text(payload['liczby']),
+        'rows': _catalog_rows(), 'warnings': catalog_warnings(), 'site_settings': site_settings,
+        'has_api_key': bool(settings.SITE_API_KEY), 'has_candidates': candidate_anthologies().exists(),
+    }, status=status)
+
+
+STORY_FORMS = ('opowiadanie', 'opowiadania', 'opowiadań')
+ANTHOLOGY_FORMS = ('antologia', 'antologie', 'antologii')
+
+
+def _counts_text(counts):
+    return f'{count_text(counts["opowiadania"], STORY_FORMS)} · {count_text(counts["antologie"], ANTHOLOGY_FORMS)}'
+
+
+@never_cache
+@login_required
+@require_http_methods(['GET', 'POST'])
+@superuser_required
+def site_catalog_update(request, pk):
+    """Podgląd różnic między katalogiem a CMS-em dla jednej antologii; POST „Zastosuj” dopisuje nowe
+    opowiadania, gatunki i tagi (bez usuwania i nadpisywania)."""
+    catalog_anthology = get_object_or_404(SiteCatalogAnthology.objects.select_related('anthology'), pk=pk)
+    try:
+        plan = plan_update(catalog_anthology)
+    except ValueError as error:
+        messages.error(request, f'„{catalog_anthology.title}”: {error}')
+        return redirect('core:site_catalog')
+    status = 200
+    if request.method == 'POST':
+        if not plan['has_changes']:
+            messages.info(request, f'„{catalog_anthology.title}”: brak zmian do zastosowania.')
+            return redirect('core:site_catalog')
+        if _plan_matches(request.POST.get('plan'), plan):
+            result = apply_update(plan)
+            messages.success(request, f'„{catalog_anthology.title}”: dodano {count_text(result["added"], STORY_FORMS)}, '
+                                      f'uzupełniono gatunki lub tagi w {result["updated"]}.')
+            return redirect('core:site_catalog')
+        messages.error(request, 'Dane w CMS-ie zmieniły się od podglądu – sprawdź je ponownie.')
+        status = 409
+    return render(request, 'core/site_catalog_update.html', {
+        'catalog_anthology': catalog_anthology, 'plan': plan, 'plan_token': _plan_token(plan),
+        'current_stories': [story_entry(story) for story in catalog_anthology.stories.all()],
+        'counts': catalog_counts([{'opowiadania': [story_entry(s) for s in catalog_anthology.stories.all()]}]),
+    }, status=status)
