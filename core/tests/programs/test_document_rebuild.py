@@ -423,6 +423,14 @@ class RebuildWarningAccuracyTests(SimpleTestCase):
                 rebuilt = Document(rebuild_docx(saved(document), allow_omissions=True))
                 self.assertEqual(rebuilt.paragraphs[0].text, 'Tekst')
                 self.assertEqual(rebuilt.paragraphs[0].paragraph_format.alignment, expected)
+        with self.subTest('tabulator o nieznanym wyrównaniu'):
+            document = Document()
+            paragraph = document.add_paragraph('A\tB')
+            paragraph._p.get_or_add_pPr().append(parse_xml(
+                f'<w:tabs {nsdecls("w")}><w:tab w:val="zzz" w:pos="2835"/><w:tab w:val="right" w:pos="5670"/></w:tabs>'))
+            self.assertEqual(omissions_of(document), [UNKNOWN_FORMAT_OMISSION + ' (liczba: 1)'])
+            rebuilt = Document(rebuild_docx(saved(document), allow_omissions=True))
+            self.assertEqual([stop.position for stop in rebuilt.paragraphs[0].paragraph_format.tab_stops], [5670 * 635])
         with self.subTest('nieznane podkreślenie fragmentu'):
             document = Document()
             run = document.add_paragraph().add_run('Tekst')

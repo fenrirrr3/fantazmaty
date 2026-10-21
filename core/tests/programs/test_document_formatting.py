@@ -61,6 +61,29 @@ class ParagraphStyleTests(SimpleTestCase):
         for name, value in expected.items():
             self.assertEqual(paragraph_property(paragraph, name), value)
 
+    def test_alignment_values_unknown_to_python_docx_are_resolved(self):
+        """Regresja: w:jc „start”/„end” (OOXML Strict z LibreOffice, Google Docs) w akapicie albo stylu
+        przerywało konwersję do EPUB/PDF wyjątkiem python-docx; nieznana wartość liczy się jako brak."""
+        cases = (
+            ('start w akapicie', 'start', None, WD_ALIGN_PARAGRAPH.LEFT),
+            ('end w akapicie', 'end', None, WD_ALIGN_PARAGRAPH.RIGHT),
+            ('end w stylu', None, 'end', WD_ALIGN_PARAGRAPH.RIGHT),
+            ('nieznane w akapicie, styl do środka', 'zzz', 'center', WD_ALIGN_PARAGRAPH.CENTER),
+            ('nieznane w stylu', None, 'zzz', None),
+        )
+        for case, own, in_style, expected in cases:
+            with self.subTest(case):
+                document = Document()
+                style = document.styles.add_style('Własny', WD_STYLE_TYPE.PARAGRAPH)
+                if in_style:
+                    style.element.get_or_add_pPr().append(OxmlElement('w:jc', {qn('w:val'): in_style}))
+                paragraph = document.add_paragraph('Tekst', style=style)
+                if own:
+                    paragraph._p.get_or_add_pPr().append(OxmlElement('w:jc', {qn('w:val'): own}))
+                self.assertEqual(paragraph_properties(paragraph, ('alignment', 'page_break_before')),
+                                 {'alignment': expected, 'page_break_before': None})
+                self.assertEqual(paragraph_property(paragraph, 'alignment'), expected)
+
     def test_missing_properties_in_cyclic_styles_remain_unset(self):
         document = Document()
         one = document.styles.add_style('CycleOne', WD_STYLE_TYPE.PARAGRAPH)

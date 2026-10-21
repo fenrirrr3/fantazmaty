@@ -88,6 +88,15 @@ EbookLib fpdf2 Pillow rapidfuzz spacy` i modelem `pl_core_news_sm` (polecenia w 
    to samo z `--apply`. Autor jest dopasowywany po e-mailu, potem po imieniu i nazwisku (imię = pierwsze słowo,
    nazwisko = reszta); jego dane nie są zmieniane. Błąd dowolnego wiersza (np. czarna lista, tytuł z przeciwną
    decyzją) oznacza, że nic nie zostanie zapisane. Plików z danymi autorów nie dodawaj do repozytorium (`import_data/`).
+   Import publikacji audiobooków z pliku TSV (UTF-8, tabulatory; nagłówek `antologia | autor | tytuł | data premiery |
+   youtube | hearthis | kolejne części | lektor | uwagi`, data DD.MM.RRRR, kolejne części rozdzielone `|`, uwagi pomijane):
+   podgląd `python manage.py import_audiobook_publications plik.tsv`, a po sprawdzeniu to samo z `--apply`.
+   Tekst jest dopasowywany po tytule antologii i tytule tekstu (kolumna autora rozstrzyga tylko powtórzone tytuły).
+   Brakujący audiobook powstaje jako „Opublikowane” bez etapów; istniejącemu komenda tylko uzupełnia puste pola
+   (data, linki, lektor ze spisu – nowy wpis w spisie, gdy go nie ma) i dopisuje kolejne części, a różnice wypisuje
+   w raporcie bez zmian (`--overwrite-premiere` zastępuje datę premiery). Statusu i etapów nie zmienia. Wpis w dzienniku
+   zapisuje konto z `--user adres@e-mail` (domyślnie pierwszy superuser) bez powiadomień Discord. Błąd dowolnego wiersza
+   oznacza, że nic nie zostanie zapisane.
    Konta logowania podążają za osobą (e-mail osoby = login i nazwa użytkownika, odznaczenie „wciąż w ekipie”
    blokuje logowanie). Stare rozjazdy wyrównuje jednorazowo `python manage.py sync_accounts` (sam raport),
    a po sprawdzeniu `python manage.py sync_accounts --apply`. Kolizji adresów i osób bez e-maila komenda nie zmienia,

@@ -14,7 +14,13 @@ from docx.shared import Cm
 from docx.text.paragraph import Paragraph
 from docx.text.run import Run
 from docx.enum.style import WD_STYLE_TYPE
-from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
+from docx.enum.text import WD_BREAK
+
+if __package__:
+    from .document_styles import unknown_format_value
+else:
+    from document_styles import unknown_format_value
+
 
 class RebuildUnsupported(ValueError):
     def __init__(self, omissions):
@@ -341,25 +347,19 @@ def styles(style):
 
 
 UNKNOWN_FORMAT_OMISSION = "nierozpoznana wartość formatowania (zastosujemy ustawienie ze stylu lub domyślne)"
-# Wyrównanie z OOXML Strict / LibreOffice / Google Docs, którego python-docx nie zna.
-ALIGNMENT_ALIASES = {"start": WD_ALIGN_PARAGRAPH.LEFT, "end": WD_ALIGN_PARAGRAPH.RIGHT}
 
 
 def read_format(obj, name, omissions=None):
     """Właściwość formatowania python-docx; wartość spoza jego słownika (ValueError) nie przerywa
-    przebudowy: „start”/„end” wyrównania są mapowane, reszta jest pomijana i liczona w pominięciach."""
+    przebudowy: „start”/„end” wyrównania są mapowane (document_styles), reszta jest pomijana i liczona
+    w pominięciach."""
     try:
         return getattr(obj, name)
     except ValueError:
-        if name == "alignment":
-            properties = getattr(obj._element, "pPr", None)
-            jc = properties.jc if properties is not None else None
-            alias = ALIGNMENT_ALIASES.get(jc.get(qn("w:val")) if jc is not None else None)
-            if alias is not None:
-                return alias
-        if omissions is not None:
+        value = unknown_format_value(obj, name)
+        if value is None and omissions is not None:
             omissions.add(UNKNOWN_FORMAT_OMISSION)
-        return None
+        return value
 
 
 def effective(objects, name, omissions=None):
@@ -400,8 +400,16 @@ RUN_FORMAT = (
 BREAKS = {"page": WD_BREAK.PAGE, "column": WD_BREAK.COLUMN}
 
 
-def _tab_stops(paragraph_format):
-    return [(stop.position, stop.alignment, stop.leader) for stop in paragraph_format.tab_stops]
+def _tab_stops(paragraph_format, omissions=None):
+    """Tabulatory akapitu; tabulator o nieznanym wyrównaniu lub wypełnieniu jest pomijany i liczony."""
+    stops = []
+    for stop in paragraph_format.tab_stops:
+        try:
+            stops.append((stop.position, stop.alignment, stop.leader))
+        except ValueError:
+            if omissions is not None:
+                omissions.add(UNKNOWN_FORMAT_OMISSION)
+    return stops
 
 
 class _StyleChains:
@@ -432,7 +440,7 @@ class _StyleChains:
             chain = self._style(style_id, WD_STYLE_TYPE.PARAGRAPH)
             formats = [s.paragraph_format for s in chain] + [self.default_format]
             fonts = [s.font for s in chain] + [self.default_font]
-            tabs = next((_tab_stops(f) for f in formats if len(f.tab_stops)), [])
+            tabs = next((_tab_stops(f, self.omissions) for f in formats if len(f.tab_stops)), [])
             self._paragraphs[style_id] = {
                 "styles": chain,
                 "numbered": _numbered([s.element for s in chain]),
@@ -578,7 +586,7 @@ def _paragraph_specs(original, omissions, notes):
             if value is not None:
                 paragraph["format"][name] = value
         paragraph["tabs"] = (
-            _tab_stops(own) if own is not None and len(own.tab_stops) else list(inherited["tabs"])
+            _tab_stops(own, omissions) if own is not None and len(own.tab_stops) else list(inherited["tabs"])
         )
         runs = paragraph["runs"]
         for element_run in element.iter(qn("w:r")):
