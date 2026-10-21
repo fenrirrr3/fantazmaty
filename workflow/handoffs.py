@@ -54,7 +54,7 @@ def handoff_stage(text, user, *, stage_id, assigned_to_id, expected_assignment_i
         previous_assignment=old,
         new_assignment=new,
         actor=user,
-        original_started_at=stage.started_at,
+        original_started_at=stage.planned_start,
         reason=reason,
     )
     # Completed work stays with the previous person; unfinished returns follow the new assignment.
@@ -62,7 +62,7 @@ def handoff_stage(text, user, *, stage_id, assigned_to_id, expected_assignment_i
     pending.update(waiting_reset_at=timezone.localdate())
     # Waiting for the author continues regardless of who takes over editing.
     pending.filter(stage_type=S.StageType.AUTHOR_EDITING).update(assignment=new)
-    pending.exclude(stage_type=S.StageType.AUTHOR_EDITING).update(assignment=new, started_at=None)
+    pending.exclude(stage_type=S.StageType.AUTHOR_EDITING).update(assignment=new, started_at=None, held_started_at=None)
     return new
 
 

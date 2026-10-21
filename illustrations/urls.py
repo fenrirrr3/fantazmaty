@@ -14,6 +14,7 @@ urlpatterns = [
     path("ilustratorzy/dodaj/", directory.illustrator_edit, name="illustrator_add"),
     path("ilustratorzy/<int:illustrator_id>/", directory.illustrator_edit, name="illustrator_edit"),
     path("<int:illustration_id>/", views.illustration_detail, name="illustration_detail"),
+    path("tekst/<int:text_id>/utworz/", views.create_illustration, name="create_illustration"),
     path(
         "",
         views.illustration_list,

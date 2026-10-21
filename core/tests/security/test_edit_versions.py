@@ -39,7 +39,7 @@ class EditPolicyTests(SimpleTestCase):
         'update_text_tags', 'update_text_audiobook', 'cancel_workflow_repetition',
         'handoff_workflow_stage', 'link_text_review', 'set_translators',
         'update_coordinator_note', 'update_text_content_warnings', 'edit_text_note',
-        'delete_text_note', 'update_text_file', 'update_review_file',
+        'delete_text_note', 'update_text_file', 'toggle_text_take_lock', 'update_review_file',
         'update_review_content_warnings', 'update_author_notification', 'update_review_status',
         'assigned_review_detail',
     }

@@ -1,3 +1,5 @@
+from datetime import date
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
@@ -7,6 +9,12 @@ from django.utils import timezone
 from texts.models import Text
 from workflow.catalog import IMPORT_ONLY_STAGE_TYPES, IMPORT_ONLY_ROLES, IMPORT_ONLY_STAGE_ROLES
 from core.edit_versions import VersionedQuerySet
+
+# Data zastępcza w `started_at` etapu wstrzymanego blokadą tekstu: zawsze „w przyszłości”, więc wszystkie
+# porównania z dzisiejszą datą traktują etap jak rezerwację, która jeszcze się nie zaczęła. Prawdziwa data
+# czeka w `held_started_at` i wraca przy odblokowaniu.
+HELD_START = date(9999, 12, 31)
+HELD_LABEL = "Wstrzymany (tekst zablokowany)"
 
 
 class WorkflowStageQuerySet(VersionedQuerySet):
@@ -91,6 +99,11 @@ class WorkflowStage(models.Model):
         "data zakończenia",
         null=True,
         blank=True,
+    )
+
+    held_started_at = models.DateField(
+        "wstrzymana data rozpoczęcia", null=True, blank=True, editable=False,
+        help_text="Rezerwacja wstrzymana blokadą tekstu; po odblokowaniu wraca do daty rozpoczęcia.",
     )
 
     is_completed = models.BooleanField(
@@ -229,6 +242,16 @@ class WorkflowStage(models.Model):
             return
         if self.imported_completed != bool(previous and previous["imported_completed"]):
             raise ValidationError("Wyjątek dla dat może nadać wyłącznie importer zakończonych etapów.")
+
+    @property
+    def is_held(self):
+        """Rezerwacja wstrzymana blokadą tekstu (nie rozpoczyna się do odblokowania)."""
+        return self.held_started_at is not None and self.started_at == HELD_START
+
+    @property
+    def planned_start(self):
+        """Data rozpoczęcia do pokazania: przy wstrzymaniu – zapamiętana data rezerwacji."""
+        return self.held_started_at if self.is_held else self.started_at
 
     def save(self, *args, **kwargs):
         self._validate_import_origin()

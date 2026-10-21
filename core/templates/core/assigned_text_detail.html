@@ -26,6 +26,7 @@
             </div>
 
             <div class="detail-header-actions">
+                {% if user.is_superuser %}<form method="post" action="{% url 'core:toggle_text_take_lock' text.pk %}" data-take-lock-toggle>{% csrf_token %}{% edit_version %}<button type="submit" class="secondary-button{% if not take_lock %} cms-danger-button{% endif %}">{% if take_lock %}Odblokuj tekst{% else %}Zablokuj tekst{% endif %}</button></form>{% endif %}
                 {% if is_novel and can_manage_workflow and text.anthology.status != 'ready' %}<a class="secondary-button" href="{% url 'core:chapter_edit' text.anthology.pk text.pk %}">Edytuj rozdział</a>{% endif %}
                 {% if user.is_superuser %}<a class="secondary-button" href="{% url 'admin:texts_text_change' text.pk %}">Edytuj w adminie</a>{% endif %}
             <a href="{% if return_url %}{{ return_url }}{% elif is_novel %}{% url 'core:novel_detail' text.anthology.pk %}{% elif is_translation %}{% url 'core:translation_list' %}{% else %}{% url 'core:text_list' %}{% endif %}" class="secondary-button">
@@ -34,6 +35,15 @@
             </div>
         </div>
     </header>
+
+    {% if take_lock %}
+        <div class="message warning" role="status" data-take-lock>
+            <strong>Zablokowany</strong>
+            od {{ take_lock.at|date:"d.m.Y, H:i" }} ({{ take_lock.by }}).
+            {% if user.is_superuser %}Pobieranie do etapów jest możliwe tylko dla superusera.{% else %}Do odblokowania nie można pobrać, zarezerwować ani rozpocząć żadnego etapu tego tekstu.{% endif %}
+            Zaplanowane rozpoczęcia są wstrzymane, a daty rezerwacji zamrożone{% if user.is_superuser %} (zmienić je może tylko superuser){% endif %}; po odblokowaniu wstrzymany etap zacznie się w swoim terminie, a jeśli ten minął – w dniu odblokowania.
+        </div>
+    {% endif %}
 
     {% if new_notes %}
         <div class="message info new-notes-alert" role="status" data-new-notes="{{ new_notes.count }}">
@@ -191,6 +201,8 @@
                                     <span class="stage-status completed">Zakończony</span>
                                 {% elif is_withdrawn or is_ready %}
                                     <span class="stage-status inactive">Nieaktywny</span>
+                                {% elif stage.is_held %}
+                                    <span class="stage-status pending" data-held-stage>Wstrzymany (tekst zablokowany)</span>
                                 {% elif stage.started_at %}
                                     {% if stage.started_at|date:"Y-m-d" > today_iso %}
                                         <span class="stage-status pending">Zaplanowany</span>
@@ -240,7 +252,13 @@
                     </div>
                 {% endfor %}
                 {% for stage in stages %}
-                    {% if stage.can_edit_schedule %}
+                    {% if stage.can_edit_schedule and stage.schedule_frozen %}
+                    <div class="quick-stage-card" data-schedule-frozen><strong>{{ stage.get_stage_type_display }} – rezerwacja</strong>
+                    <form method="post" action="{% url 'core:change_scheduled_workflow_stage' stage.pk %}">{% include "core/includes/workflow_fields.html" %}
+                    <p class="form-help">Data rozpoczęcia ({{ stage.started_at|date:"d.m.Y" }}) jest zamrożona, dopóki tekst jest zablokowany. Rezerwację można odwołać.</p>
+                    <button type="submit" name="action" value="cancel" class="secondary-button" data-confirm="Odwołać rezerwację? Etap wróci do puli i może go wziąć inna osoba.">Odwołaj rezerwację</button>
+                    </form></div>
+                    {% elif stage.can_edit_schedule %}
                     <div class="quick-stage-card"><strong>{{ stage.get_stage_type_display }} – rezerwacja</strong>
                     <form method="post" action="{% url 'core:change_scheduled_workflow_stage' stage.pk %}" data-warn-unsaved>{% include "core/includes/workflow_fields.html" %}
                     <label for="schedule-{{ stage.pk }}">Data rozpoczęcia</label><input id="schedule-{{ stage.pk }}" type="date" name="started_at" min="{{ today_iso }}" value="{{ stage.started_at|date:'Y-m-d' }}" required>
@@ -630,6 +648,8 @@
                                         Poprzedni cykl – niezakończony
                                     {% elif is_withdrawn or is_ready %}
                                         Nieaktywny
+                                    {% elif stage.is_held %}
+                                        Wstrzymany (tekst zablokowany)
                                     {% elif stage.started_at %}
                                         {% if stage.started_at|date:"Y-m-d" > today_iso %}
                                             Zaplanowany

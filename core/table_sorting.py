@@ -170,6 +170,9 @@ def _stage_state(row):
 
     if _get(row, "is_completed"):
         return "Zakończony"
+    if _get(row, "is_held"):
+        from workflow.models import HELD_LABEL
+        return HELD_LABEL
     started = _get(row, "started_at")
     if not started:
         return "Nierozpoczęty"

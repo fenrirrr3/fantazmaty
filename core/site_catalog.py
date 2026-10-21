@@ -161,6 +161,18 @@ def is_importable(anthology):
     return bool(anthology and anthology.status == Anthology.Status.READY and not anthology.is_extracts)
 
 
+def update_blocked_reason(catalog_anthology):
+    """Dlaczego wpisu katalogu nie da się aktualizować z CMS-u; pusty napis – da się."""
+    anthology = catalog_anthology.anthology
+    if anthology is None:
+        return 'Antologia nie jest powiązana z CMS-em – powiąż ją w panelu administracyjnym.'
+    if anthology.is_extracts:
+        return 'Ekstrakty nie trafiają do katalogu szukajki.'
+    if not is_importable(anthology):
+        return 'Antologia niegotowa – aktualizacja po ukończeniu antologii w CMS-ie.'
+    return ''
+
+
 def require_importable(anthology):
     if anthology is None:
         raise ValueError('Wpis katalogu nie jest powiązany z antologią w CMS-ie.')
@@ -314,6 +326,40 @@ def apply_update(plan):
     if added or updated:
         catalog_anthology.save(update_fields=['updated_at'])
     return {'added': added, 'updated': updated}
+
+
+def plan_update_all():
+    """``plan_update`` dla każdego wpisu katalogu, który da się aktualizować (bez zapisu): ``changed`` – plany ze
+    zmianami, ``unchanged`` – bez zmian, ``skipped`` – pominięte wpisy z powodem (niepowiązane, niegotowe)."""
+    overview = {'changed': [], 'unchanged': [], 'skipped': []}
+    for item in catalog_anthologies(include_disabled=True):
+        reason = update_blocked_reason(item)
+        if reason:
+            overview['skipped'].append({'anthology': item, 'reason': reason})
+            continue
+        plan = plan_update(item)
+        overview['changed' if plan['has_changes'] else 'unchanged'].append(plan)
+    return overview
+
+
+def plans_digest(plans):
+    """Skrót zestawu planów (wpis katalogu + ``plan_digest``): zbiorcze zastosowanie wymaga tego samego podglądu."""
+    data = [[plan['anthology'].pk, plan_digest(plan)] for plan in plans]
+    return hashlib.sha256(json.dumps(data).encode()).hexdigest()[:32]
+
+
+@transaction.atomic
+def apply_update_all(plans):
+    """Stosuje wszystkie plany w jednej transakcji (``apply_update`` po kolei); zwraca liczniki zmian."""
+    totals = {'anthologies': 0, 'added': 0, 'updated': 0, 'genres': 0, 'tags': 0}
+    for plan in plans:
+        result = apply_update(plan)
+        totals['anthologies'] += 1
+        totals['added'] += result['added']
+        totals['updated'] += result['updated']
+        totals['genres'] += sum(len(change['new_genres']) for change in plan['updates'])
+        totals['tags'] += sum(len(change['new_tags']) for change in plan['updates'])
+    return totals
 
 
 # --- ostrzeżenia -----------------------------------------------------------------------------------------------------

@@ -97,6 +97,19 @@ class SiteWwwPageTests(TestCase):
         self.assertNotIn('site-www-warnings', content)
         self.assertEqual(page.context['warnings'], {'missing_people': [], 'empty_sections': []})
 
+    def test_warnings_skip_disabled_sections_and_accept_manual_names(self):
+        """Osoba tylko w dziale wyłączonym nie trafia na stronę – ostrzeżenie; osoba z rolą wpisana ręcznie
+        we włączonym dziale (lista albo koordynacja) – bez ostrzeżenia; wyłączony dział bez osób nie jest „pusty”."""
+        roles_group(self.off, roles.TYPESETTER, title='Skład', position=2)
+        person('Stefan', 'Składacz', roles.TYPESETTER)
+        person('Ręczna', 'Osoba', roles.TYPESETTER)
+        self.empty.manual_coordinators = 'Jan Poza'
+        self.empty.save()
+        SiteTeamGroup.objects.create(section=self.editors, title='Ręcznie', position=2,
+                                     source=SiteTeamGroup.Source.MANUAL, manual_names='Ręczna Osoba')
+        self.assertEqual(self.client.get(URL).context['warnings'], {
+            'missing_people': ['Stefan Składacz (Składacz)'], 'empty_sections': ['Korekta']})
+
     def test_settings_form_saves_and_rejects_empty_values(self):
         """Zapis prowadzącego i opiekuna strony; puste pole to błąd 400 bez zapisu."""
         response = self.client.post(URL, {'lead_editor': 'Anna Nowa', 'site_person': 'Jan Strona'})

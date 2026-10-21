@@ -35,7 +35,8 @@ from core.views.recruitment_notified import recruitment_notified
 from core.views.recruitment_mailbox import recruitment_mailbox
 from core.views.post_layout import post_layout, post_layout_edit
 from core.views.social_media import social_media
-from core.views.site_www import site_catalog, site_catalog_api, site_catalog_update, site_team_api, site_www
+from core.views.site_www import (site_catalog, site_catalog_api, site_catalog_update, site_catalog_update_all,
+                                 site_team_api, site_www)
 
 
 app_name = "core"
@@ -99,11 +100,13 @@ urlpatterns = [
     path("antologie/<int:anthology_id>/", supervision.anthology_detail, name="anthology_detail"),
     path("zespol/<int:person_id>/uprawnienia/", supervision.person_permissions, name="person_permissions"),
     path("teksty/<int:text_id>/plik/", texts.update_text_file, name="update_text_file"),
+    path("teksty/<int:text_id>/blokada-pobierania/", texts.toggle_text_take_lock, name="toggle_text_take_lock"),
     path("aktywnosc-uzytkownikow/", user_activity, name="user_activity"),
     path("system/strona-www/", site_www, name="site_www"),
     path("api/strona/ekipa/", site_team_api, name="site_team_api"),
     path("system/szukajka-www/", site_catalog, name="site_catalog"),
     path("system/szukajka-www/<int:pk>/aktualizuj/", site_catalog_update, name="site_catalog_update"),
+    path("system/szukajka-www/aktualizuj-wszystkie/", site_catalog_update_all, name="site_catalog_update_all"),
     path("api/strona/katalog/", site_catalog_api, name="site_catalog_api"),
     path("teksty/<int:text_id>/notatki/<int:note_id>/edytuj/", texts.edit_text_note, name="edit_text_note"),
     path("teksty/<int:text_id>/notatki/<int:note_id>/usun/", texts.delete_text_note, name="delete_text_note"),

@@ -10,6 +10,13 @@ def illustration_texts_queryset(using='default'):
     return frontend_scope(Text.objects.using(using)).filter(anthology__has_illustrations=True)
 
 
+def missing_illustration_texts(using='default'):
+    """Teksty, którym koordynator może ręcznie założyć wpis ilustracji: ilustrowana antologia w dowolnym statusie
+    (także Gotowa – stare, importowane antologie nie dostały wpisów z sygnałów), bez powieści, tłumaczeń,
+    porzuconych antologii i wycofanych tekstów, bez istniejącego wpisu."""
+    return active_production_texts(illustration_texts_queryset(using)).filter(illustration__isnull=True)
+
+
 def required_texts_queryset(using='default'):
     return active_production_texts(illustration_texts_queryset(using)).filter(
         anthology__status=Anthology.Status.IN_PREPARATION,

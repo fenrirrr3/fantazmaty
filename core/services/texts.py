@@ -196,6 +196,8 @@ def start_assigned_stage(*, user, stage_id, started_at, allow_past=False):
         pk=text_id,
     )
     require_working_anthology(text)
+    from workflow.services import ensure_take_allowed
+    ensure_take_allowed(text, user)
     stages = _current_stages(text)
     assignments = _current_assignments(text)
 
@@ -426,7 +428,7 @@ def change_scheduled_stage(*, user, stage_id, started_at=None, cancel=False):
         prior_work = any(s.pk != stage.pk and s.assignment_id == assignment.pk and STAGE_ROLE_MAP.get(s.stage_type) == role and (s.started_at or s.is_completed) for s in stages)
         if not future_booking and stage.started_at and prior_work:
             raise ValidationError('Ta osoba ma już wcześniejszą pracę w tej roli – zamiast cofać przydział, przekaż pracę innej osobie.')
-        stage.started_at = None
+        stage.started_at = stage.held_started_at = None
         # Keep a historical assignee when this is a later return to the same role.
         if not prior_work:
             assignment.assigned_to = None
@@ -435,8 +437,11 @@ def change_scheduled_stage(*, user, stage_id, started_at=None, cancel=False):
             if stage.stage_type == StageType.EDITING and not stage.repetition_id:
                 stage.stage_type = StageType.READY_FOR_EDITING
                 stage.iteration = next_stage_iteration(text, StageType.READY_FOR_EDITING)
-        stage.save(update_fields=['started_at', 'stage_type', 'iteration'])
+        stage.save(update_fields=['started_at', 'held_started_at', 'stage_type', 'iteration'])
     else:
+        # Blokada zamraża daty rezerwacji (przyspieszenie i przesunięcie); odwołanie zwalnia tekst, więc zostaje.
+        from workflow.services import ensure_take_allowed
+        ensure_take_allowed(text, user)
         from workflow.availability import ensure_distinct_proofreader
         ensure_distinct_proofreader(text, role, assignment.assigned_to)
         _require_eligible_assignee(assignment.assigned_to, role, existing=True)
@@ -444,6 +449,49 @@ def change_scheduled_stage(*, user, stage_id, started_at=None, cancel=False):
         previous = [s.ended_at for s in stages if s.is_completed and s.ended_at]
         if previous and date < max(previous):
             raise ValidationError('Data nie może poprzedzać zakończenia wcześniejszych prac.')
-        stage.started_at = date
-        stage.save(update_fields=['started_at'])
+        if text.take_locked and date > today:
+            # Superuser przy blokadzie: nowa data czeka wstrzymana do odblokowania.
+            from workflow.models import HELD_START
+            stage.started_at, stage.held_started_at = HELD_START, date
+        else:
+            stage.started_at, stage.held_started_at = date, None
+        stage.save(update_fields=['started_at', 'held_started_at'])
     return stage
+
+
+TAKE_LOCK_EVENTS = {
+    True: "Zablokowano pobieranie tekstu do etapów.",
+    False: "Odblokowano pobieranie tekstu do etapów.",
+}
+
+
+@transaction.atomic
+def toggle_take_lock(*, user, text_id):
+    """Superuser włącza albo wyłącza blokadę pobierania tekstu do etapów; zwraca nowy stan.
+
+    Blokada wstrzymuje rezerwacje z przyszłą datą rozpoczęcia (nie zaczną się, gdy data minie), a odblokowanie
+    przywraca ich daty – datę, która minęła w trakcie blokady, przesuwa na dzień odblokowania. Zmiana trafia
+    do dziennika zmian workflow (bez powiadomień Discord – rozpoczęcie przez upływ daty nie jest ogłaszane,
+    a wpis ma ten sam status przed i po, więc nie liczy się jako zmiana statusu).
+    """
+    from workflow.services import hold_future_bookings, release_held_bookings
+    require_superuser(user)
+    text = get_object_or_404(Text.objects.select_for_update(), pk=text_id)
+    locked = not text.take_locked
+    text.take_locked_at = timezone.now() if locked else None
+    text.take_locked_by = user if locked else None
+    text.save(update_fields=["take_locked_at", "take_locked_by"])
+    (hold_future_bookings if locked else release_held_bookings)(text, timezone.localdate())
+
+    from core.models import WorkflowEvent
+    from core.workflow_events import snapshot
+    using = text._state.db or "default"
+    status = snapshot(text.pk, using)["status"]
+    person = getattr(user, "person_profile", None)
+    WorkflowEvent.objects.using(using).create(
+        text=text, title=text.title, authors=", ".join(a.display_name for a in text.authors.all()),
+        actor=user, actor_name=str(person) if person else user.get_full_name() or user.get_username(),
+        previous_status=status, next_status=status,
+        details=TAKE_LOCK_EVENTS[locked],
+    )
+    return locked

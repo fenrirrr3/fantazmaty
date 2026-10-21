@@ -600,13 +600,14 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             fields = (*fields, 'authors', 'tags', 'genre', 'anthology')
         return fields if request.user.is_superuser else (*fields, "file_url")
 
-    readonly_fields = ("repeat_workflow_link", "manual_status_link", "purge_link", "coordinator_note_updated_at", "current_workflow_cycle", "import_source", "import_source_row")
+    readonly_fields = ("repeat_workflow_link", "manual_status_link", "purge_link", "take_locked_at", "take_locked_by", "coordinator_note_updated_at", "current_workflow_cycle", "import_source", "import_source_row")
 
     fieldsets = (
         ('Tekst', {'fields': ('title', 'authors', 'anthology', 'chapter_number', 'length', 'tags', 'genre', 'content_warnings', 'file_url',
             'source_author_first_name', 'source_author_last_name', 'source_author_email', 'source_author_pseudonym',
             'source_contract_received', 'source_coauthor_contracts', 'source_update_author_phone')}),
-        ('Status i zarządzanie', {'fields': ('manual_status_link', 'repeat_workflow_link', 'purge_link')}),
+        ('Status i zarządzanie', {'fields': ('manual_status_link', 'repeat_workflow_link', 'purge_link', 'take_locked_at', 'take_locked_by'),
+            'description': 'Blokadę pobierania do etapów włącza i wyłącza superuser przyciskiem „Zablokuj tekst” / „Odblokuj tekst” w podglądzie tekstu.'}),
         ('Audiobook', {'fields': ('for_recording', 'audiobook_blacklisted'),
             'description': 'Czarna lista wyłącza nagrywanie. Blokadę można usunąć wyłącznie tutaj lub akcją na liście tekstów. Aby po odblokowaniu przekazać tekst do nagrywania, zaznacz „Do nagrywania”.'}),
         ('Notatki koordynatora', {'classes': ('cms-after-workflow',),

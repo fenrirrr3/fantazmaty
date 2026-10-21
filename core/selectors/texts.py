@@ -24,7 +24,7 @@ from core.permissions import (
     require_team_member,
 )
 from texts.models import Anthology, Review, ReviewAssignment, Text, TextNote, TextVisit, ForeignAuthor, Translator
-from workflow.models import WorkflowRoleAssignment, WorkflowStage
+from workflow.models import HELD_LABEL, WorkflowRoleAssignment, WorkflowStage
 from workflow.services import ROLE_GROUPS
 from core.services.texts import STAGE_ROLE_MAP, TERMINAL_STAGES
 from workflow.state import stage_is_open as _is_open, stage_is_active as _is_active, operational_stages
@@ -152,7 +152,8 @@ def _stage_data(stage, text_data=None):
         stage_type=stage.stage_type,
         get_stage_type_display=stage_label(stage) + (" – powrót do redaktora" if stage.repetition_id and stage.stage_type == StageType.EDITING and stage.queue_position > 0 else ""),
         iteration=stage.iteration,
-        started_at=stage.started_at,
+        started_at=stage.planned_start,
+        is_held=stage.is_held,
         ended_at=stage.ended_at,
         is_completed=stage.is_completed,
         editor_waiting=getattr(stage, 'editor_waiting', False),
@@ -211,6 +212,7 @@ def _text_data(text, include_authors):
         anthology_id=text.anthology_id,
         anthology=_anthology_data(text.anthology),
         current_workflow_cycle=text.current_workflow_cycle,
+        take_locked=text.take_locked,
         content_warnings=text.content_warnings,
         genre=text.genre,
         coordinator_note=text.coordinator_note,
@@ -297,7 +299,7 @@ def _text_row(text, include_authors):
             for stage in stages
             if _is_open(stage)
         ],
-        current_status_started_at=current.started_at if current else None,
+        current_status_started_at=current.planned_start if current else None,
         current_status_ended_at=current.ended_at if current else None,
         last_status_change=getattr(text, "last_status_change", None),
     )
@@ -702,6 +704,8 @@ def workflow_list_context(*, user, params):
                         and not stage.is_completed and stage.ended_at is None]
                 if any(stage_is_active(stage, today) for stage in live):
                     state, tone = 'W trakcie', 'active'
+                elif any(stage.is_held for stage in live):
+                    state, tone = HELD_LABEL, 'pending'
                 elif any(stage.started_at and stage.started_at > today for stage in live):
                     state, tone = 'Zarezerwowano', 'pending'
                 elif live:
@@ -858,6 +862,11 @@ def text_detail_context(*, user, text):
     if editor and unavailable_reason(editor.assigned_to, cache=availability) or actor_on_leave:
         can_resume = False
         can_restart_editing = False
+    # Blokada pobierania: bez rozpoczęcia, wznowienia ani przejęcia (poza superuserem).
+    from workflow.services import take_blocked
+    blocked = take_blocked(text, user)
+    if blocked:
+        can_start_first = can_resume = can_restart_editing = False
     first_verifier_unavailable = ''
     if pending_first and first_verifier and first_verifier.assigned_to_id:
         reason = unavailable_reason(first_verifier.assigned_to, cache=availability)
@@ -874,6 +883,10 @@ def text_detail_context(*, user, text):
         availability=availability, leave_cache=leave_cache, extracts=extracts,
     )
 
+    for row in stage_rows:
+        row["schedule_frozen"] = blocked
+        if blocked:
+            row["can_start"] = False
     row_by_id = {row["pk"]: row for row in stage_rows}
 
     def stage_row(stage):
@@ -924,8 +937,14 @@ def text_detail_context(*, user, text):
     if file_stage is not None and file_label(file_stage, stages):
         stage_file = {"stage": file_stage.get_stage_type_display(), "label": file_label(file_stage, stages),
                       "name": stage_file_name(text_data["title"], text_data["authors"]["all"], file_stage, stages)}
+    take_lock = None
+    if text.take_locked:
+        locked_by = text.take_locked_by
+        take_lock = {"at": text.take_locked_at,
+                     "by": (locked_by.get_full_name() or locked_by.get_username()) if locked_by else "usunięte konto"}
     return {
         "text": text_data,
+        "take_lock": take_lock,
         "stage_file": stage_file,
         "user_assignments": [_assignment_data(item) for item in own],
         "stages": stage_rows,

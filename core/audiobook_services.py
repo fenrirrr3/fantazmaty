@@ -38,10 +38,9 @@ def _activate(audio, status, stage):
     return audio
 
 
-def record_event(text, user, *, previous, current, details, personal='', notify=True):
+def record_event(text, user, *, previous, current, details, personal=''):
     """Wpis produkcji audiobooka w dzienniku zmian (WorkflowEvent) i powiadomienie z reguły „Produkcja audiobooka”
-    (wysyłane po zatwierdzeniu transakcji, tylko gdy reguła jest włączona). `notify=False` – sam wpis w dzienniku
-    (import historycznych danych)."""
+    (wysyłane po zatwierdzeniu transakcji, tylko gdy reguła jest włączona)."""
     from core.discord_notifications import audiobook_changed
     from core.models import WorkflowEvent
     person = getattr(user, 'person_profile', None)
@@ -52,8 +51,7 @@ def record_event(text, user, *, previous, current, details, personal='', notify=
         text=text, title=text.title, authors=authors, actor=user, actor_name=actor,
         previous_status=f'Audiobook: {previous}'[:100], next_status=f'Audiobook: {current}'[:100],
         details=details)
-    if notify:
-        audiobook_changed(text, actor=actor, status=current, change=details)
+    audiobook_changed(text, actor=actor, status=current, change=details)
     return event
 
 

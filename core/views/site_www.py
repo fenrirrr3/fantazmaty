@@ -7,15 +7,17 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core import signing
+from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_http_methods
 
 from core.permissions import superuser_required
-from core.site_catalog import (PLAN_SALT, apply_add, apply_update, candidate_anthologies, catalog_anthologies,
-                               catalog_counts, catalog_payload, catalog_warnings, count_text, is_importable, plan_add,
-                               plan_digest, plan_update, record_catalog_fetch, story_entry)
+from core.site_catalog import (PLAN_SALT, apply_add, apply_update, apply_update_all, candidate_anthologies,
+                               catalog_anthologies, catalog_counts, catalog_payload, catalog_warnings, count_text,
+                               plan_add, plan_digest, plan_update, plan_update_all, plans_digest, record_catalog_fetch,
+                               story_entry, update_blocked_reason)
 from core.site_models import SiteCatalogAnthology, SiteTeamSettings
 from core.site_team import record_fetch, team_payload, team_sections, team_warnings
 from texts.models import Anthology
@@ -108,13 +110,13 @@ class CatalogAddForm(forms.Form):
         return url
 
 
-def _plan_token(plan):
-    return signing.dumps(plan_digest(plan), salt=PLAN_SALT)
+def _plan_token(plan, digest=plan_digest):
+    return signing.dumps(digest(plan), salt=PLAN_SALT)
 
 
-def _plan_matches(token, plan):
+def _plan_matches(token, plan, digest=plan_digest):
     try:
-        return signing.loads(token or '', salt=PLAN_SALT, max_age=settings.SESSION_COOKIE_AGE) == plan_digest(plan)
+        return signing.loads(token or '', salt=PLAN_SALT, max_age=settings.SESSION_COOKIE_AGE) == digest(plan)
     except signing.BadSignature:
         return False
 
@@ -124,17 +126,9 @@ def _catalog_rows():
     for item in catalog_anthologies(include_disabled=True):
         stories = list(item.stories.all())
         anthology = item.anthology
-        if anthology is None:
-            blocked = 'Antologia nie jest powiązana z CMS-em – powiąż ją w panelu administracyjnym.'
-        elif anthology.is_extracts:
-            blocked = 'Ekstrakty nie trafiają do katalogu szukajki.'
-        elif not is_importable(anthology):
-            blocked = 'Antologia niegotowa – aktualizacja po ukończeniu antologii w CMS-ie.'
-        else:
-            blocked = ''
         rows.append({'item': item, 'stories': len(stories), 'novel': bool(anthology and anthology.is_novel),
                      'linked_stories': len(stories) if anthology and anthology.is_novel
-                     else sum(1 for s in stories if s.text_id), 'blocked': blocked})
+                     else sum(1 for s in stories if s.text_id), 'blocked': update_blocked_reason(item)})
     return rows
 
 
@@ -184,6 +178,9 @@ def site_catalog(request):
 
 STORY_FORMS = ('opowiadanie', 'opowiadania', 'opowiadań')
 ANTHOLOGY_FORMS = ('antologia', 'antologie', 'antologii')
+IN_ANTHOLOGY_FORMS = ('antologii', 'antologiach', 'antologiach')
+GENRE_FORMS = ('gatunek', 'gatunki', 'gatunków')
+TAG_FORMS = ('tag', 'tagi', 'tagów')
 
 
 def _counts_text(counts):
@@ -197,7 +194,16 @@ def _counts_text(counts):
 def site_catalog_update(request, pk):
     """Podgląd różnic między katalogiem a CMS-em dla jednej antologii; POST „Zastosuj” dopisuje nowe
     opowiadania, gatunki i tagi (bez usuwania i nadpisywania)."""
-    catalog_anthology = get_object_or_404(SiteCatalogAnthology.objects.select_related('anthology'), pk=pk)
+    with transaction.atomic():
+        return _site_catalog_update(request, pk)
+
+
+def _site_catalog_update(request, pk):
+    # POST blokuje wpis katalogu: drugie równoczesne „Zastosuj” czeka i liczy plan od nowa (bez duplikatów).
+    queryset = SiteCatalogAnthology.objects.select_related('anthology')
+    if request.method == 'POST':
+        queryset = queryset.select_for_update()
+    catalog_anthology = get_object_or_404(queryset, pk=pk)
     try:
         plan = plan_update(catalog_anthology)
     except ValueError as error:
@@ -219,4 +225,38 @@ def site_catalog_update(request, pk):
         'catalog_anthology': catalog_anthology, 'plan': plan, 'plan_token': _plan_token(plan),
         'current_stories': [story_entry(story) for story in catalog_anthology.stories.all()],
         'counts': catalog_counts([{'opowiadania': [story_entry(s) for s in catalog_anthology.stories.all()]}]),
+    }, status=status)
+
+
+@never_cache
+@login_required
+@require_http_methods(['GET', 'POST'])
+@superuser_required
+def site_catalog_update_all(request):
+    """Zbiorczy podgląd różnic katalogu z CMS-em dla wszystkich antologii, które da się aktualizować; POST
+    „Zastosuj wszystkie” stosuje wszystkie plany w jednej transakcji, jeśli dane nie zmieniły się od podglądu."""
+    status = 200
+    with transaction.atomic():
+        if request.method == 'POST':
+            # Jak przy pojedynczej aktualizacji: równoczesne „Zastosuj wszystkie” wykonują się po kolei.
+            list(SiteCatalogAnthology.objects.select_for_update().values_list('pk', flat=True))
+        overview = plan_update_all()
+        if request.method == 'POST':
+            changed = overview['changed']
+            if not changed:
+                messages.info(request, 'Brak zmian do zastosowania – katalog jest zgodny z CMS-em.')
+                return redirect('core:site_catalog')
+            if _plan_matches(request.POST.get('plan'), changed, plans_digest):
+                totals = apply_update_all(changed)
+                messages.success(request, (
+                    f'Zaktualizowano katalog w {count_text(totals["anthologies"], IN_ANTHOLOGY_FORMS)}: dodano '
+                    f'{count_text(totals["added"], STORY_FORMS)}, dopisano {count_text(totals["genres"], GENRE_FORMS)} '
+                    f'i {count_text(totals["tags"], TAG_FORMS)}.'))
+                return redirect('core:site_catalog')
+            messages.error(request, 'Dane w CMS-ie zmieniły się od podglądu – sprawdź je ponownie.')
+            status = 409
+    for plan in overview['changed'] + overview['unchanged']:
+        plan['notes'] = len(plan['reports']) + len(plan['missing']) + len(plan['unlinked'])
+    return render(request, 'core/site_catalog_update_all.html', {
+        'overview': overview, 'plan_token': _plan_token(overview['changed'], plans_digest),
     }, status=status)

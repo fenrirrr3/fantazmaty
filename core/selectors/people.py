@@ -271,12 +271,14 @@ def profile_assignments(person, *, include_authors):
                         ),
                         "iteration": latest_stage.iteration,
                         "imported_completed": latest_stage.imported_completed,
-                        "started_at": latest_stage.started_at,
+                        "started_at": latest_stage.planned_start,
                         "ended_at": latest_stage.ended_at,
                         "is_completed": latest_stage.is_completed,
                         "is_active": has_active_work,
+                        "is_held": latest_stage.is_held and not is_terminal,
                         "is_scheduled": (
-                            latest_stage.started_at is not None
+                            not latest_stage.is_held
+                            and latest_stage.started_at is not None
                             and latest_stage.started_at > today
                             and not latest_stage.is_completed
                             and not is_terminal

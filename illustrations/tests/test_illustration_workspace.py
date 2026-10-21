@@ -313,3 +313,120 @@ class IllustrationListFiltersAndRulesTests(TestCase):
         illustration.refresh_from_db()
         self.assertEqual((illustration.status, illustration.assigned_at), ('unassigned', None))
         self.assertEqual(str(PublicIllustrationSettings()), 'Zewnętrzne ilustracje – wspólny link GDrive')
+
+
+class LegacyIllustrationTests(TestCase):
+    """Stare (importowane) antologie ilustrowane, już Gotowe: sygnały nie zakładają wpisów, więc tekst bez wpisu
+    dostaje go z podglądu tekstu, a niespójny wpis („Oddane” bez ilustratorki) da się uzupełnić – koordynatorowi
+    i superuserowi; ilustrator i redaktor nadal nie mogą."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.users = {'superuser': create_superuser('legacy-admin'),
+                     'koordynator': create_member('legacy-coordinator', 'Koordynator ilustracji'),
+                     'ilustrator': create_member('legacy-artist', 'Ilustrator'),
+                     'redaktor': create_member('legacy-editor', 'Redaktor')}
+        cls.book = Anthology.objects.create(title='Stara ilustrowana', status='ready', has_illustrations=True)
+        cls.plain = Anthology.objects.create(title='Stara bez ilustracji', status='ready')
+        cls.without_entry = Text.objects.create(title='Bez wpisu', anthology=cls.book, length=1)
+        cls.not_illustrated = Text.objects.create(title='Nieilustrowany', anthology=cls.plain, length=1)
+        legacy_text = Text.objects.create(title='Oddane bez ilustratorki', anthology=cls.book, length=1)
+        # Import pomijał walidację modelu: status „Oddane” bez przypisanej osoby.
+        Illustration.objects.bulk_create([Illustration(text=legacy_text, status='delivered')])
+        cls.legacy = Illustration.objects.get(text=legacy_text)
+
+    def setUp(self):
+        temporary = TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        override = self.settings(ACTIVITY_SPOOL_DIR=temporary.name)
+        override.enable()
+        self.addCleanup(override.disable)
+
+    def test_missing_entry_is_created_from_text_page_only_by_coordinators(self):
+        """Gotowa antologia nie dostaje wpisów automatycznie; podgląd tekstu pokazuje koordynatorowi i superuserowi
+        „Utwórz wpis ilustracji”, POST zakłada wpis (bez duplikatu przy powtórzeniu) i otwiera go; ilustrator
+        i redaktor – bez przycisku i 403; tekst z nieilustrowanej antologii – odmowa bez wpisu."""
+        self.assertFalse(Illustration.objects.filter(text=self.without_entry).exists())
+        page = reverse('core:assigned_text_detail', args=[self.without_entry.pk])
+        create = reverse('illustrations:create_illustration', args=[self.without_entry.pk])
+        for name, allowed in (('ilustrator', False), ('redaktor', False), ('superuser', True), ('koordynator', True)):
+            with self.subTest(user=name):
+                self.client.force_login(self.users[name])
+                response = self.client.get(page)
+                if response.status_code == 200:
+                    self.assertEqual('Utwórz wpis ilustracji' in response.content.decode(), allowed)
+                response = self.client.post(create)
+                if not allowed:
+                    self.assertEqual(response.status_code, 403)
+                    self.assertFalse(Illustration.objects.filter(text=self.without_entry).exists())
+                    continue
+                illustration = Illustration.objects.get(text=self.without_entry)
+                detail = reverse('illustrations:illustration_detail', args=[illustration.pk])
+                self.assertRedirects(response, detail)
+                self.assertEqual(illustration.status, 'unassigned')
+                self.assertRedirects(self.client.post(create), detail)
+                self.assertEqual(Illustration.objects.filter(text=self.without_entry).count(), 1)
+                self.assertContains(self.client.get(page), f'href="{detail}"')
+                illustration.delete()
+        response = self.client.post(reverse('illustrations:create_illustration', args=[self.not_illustrated.pk]),
+                                    follow=True)
+        self.assertContains(response, 'Ten tekst nie może mieć ilustracji')
+        self.assertFalse(Illustration.objects.filter(text=self.not_illustrated).exists())
+
+    def test_legacy_entry_without_illustrator_is_completed_by_coordinators(self):
+        """Wpis „Oddane” bez ilustratorki: koordynator i superuser zapisują link (wcześniej błąd 500) i dopisują
+        brakującą ilustratorkę bez zmiany statusu; ilustrator i redaktor dostają 403 bez zmian; zmiana samego
+        statusu bez ilustratora nadal jest odrzucana."""
+        url = reverse('illustrations:illustration_detail', args=[self.legacy.pk])
+        for name in ('ilustrator', 'redaktor'):
+            with self.subTest(user=name):
+                self.client.force_login(self.users[name])
+                response = self.client.post(url, {'action': 'link', 'version': edit_token(self.users[name], self.legacy),
+                                                  'story_url': 'https://example.org/obce'})
+                self.assertEqual(response.status_code, 403)
+        for number, name in enumerate(('superuser', 'koordynator')):
+            with self.subTest(user=name):
+                user = self.users[name]
+                self.client.force_login(user)
+                Illustration.objects.filter(pk=self.legacy.pk).update(status='delivered', story_url='')
+                self.legacy.illustrators.clear()
+                self.assertContains(self.client.get(url), 'Zapisz przypisanie i status')
+                response = self.client.post(url, {'action': 'link', 'version': edit_token(user, self.legacy),
+                                                  'story_url': 'https://example.org/stare'})
+                self.assertEqual(response.status_code, 302)
+                self.legacy.refresh_from_db()
+                response = self.client.post(url, {
+                    'action': 'assignment', 'version': edit_token(user, self.legacy), 'status': 'delivered',
+                    'new_illustrator_name': f'Anna Ilustratorka{number}'})
+                self.assertEqual(response.status_code, 302)
+                self.legacy.refresh_from_db()
+                self.assertEqual((self.legacy.story_url, self.legacy.status, self.legacy.illustrator_display),
+                                 ('https://example.org/stare', 'delivered', f'Anna Ilustratorka{number}'))
+        self.legacy.illustrators.clear()
+        self.legacy.status = 'assigned'
+        with self.assertRaisesMessage(ValidationError, 'wymaga wybrania ilustratora'):
+            self.legacy.save()
+
+    def test_create_refuses_texts_outside_illustration_production(self):
+        """„Utwórz wpis ilustracji” przez adres dla tekstu, który nie może mieć ilustracji mimo ilustrowanej
+        antologii (porzucona antologia, powieść, tłumaczenie, tekst wycofany): odmowa z komunikatem, bez wpisu
+        i bez przycisku w podglądzie."""
+        from workflow.models import WorkflowStage
+        abandoned = Anthology.objects.create(title='Porzucona ilustrowana', status='abandoned', has_illustrations=True)
+        novel = Anthology.objects.create(title='Powieść ilustrowana', is_novel=True, has_illustrations=True)
+        translated = Anthology.objects.create(title='Tłumaczona ilustrowana', is_translated=True, has_illustrations=True)
+        withdrawn = Text.objects.create(title='Wycofany', anthology=self.book, length=1)
+        WorkflowStage.objects.create(text=withdrawn, stage_type='withdrawn', started_at=timezone.localdate())
+        cases = {
+            'porzucona antologia': Text.objects.create(title='W porzuconej', anthology=abandoned, length=1),
+            'powieść': Text.objects.create(title='Rozdział', anthology=novel, chapter_number=1, length=1),
+            'tłumaczenie': Text.objects.create(title='Przekład', anthology=translated, length=1),
+            'tekst wycofany': withdrawn,
+        }
+        self.client.force_login(self.users['superuser'])
+        for case, text in cases.items():
+            with self.subTest(case):
+                response = self.client.post(reverse('illustrations:create_illustration', args=[text.pk]), follow=True)
+                self.assertContains(response, 'Ten tekst nie może mieć ilustracji')
+                self.assertNotContains(response, 'Utwórz wpis ilustracji')
+                self.assertFalse(Illustration.objects.filter(text=text).exists())

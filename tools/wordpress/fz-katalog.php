@@ -29,8 +29,11 @@
  *
  * ODŚWIEŻANIE: dane są pamiętane 2 dni (transient fz_katalog_dane; liczba 172800 to sekundy), potem pierwsze
  * wejście na stronę pobiera je na nowo. Ostatnia poprawna kopia jest w opcji fz_katalog_ostatnie i służy, gdy
- * CMS nie odpowie. Zalogowany administrator wchodzi na stronę z ?fz_odswiez=1, żeby pobrać dane od razu
- * (czyszczone są też cache wtyczek, jeśli są zainstalowane) – zakładka „Szukajka WWW” w CMS-ie ma do tego odnośnik.
+ * CMS nie odpowie (wtedy kolejna próba pobrania najwcześniej po godzinie – liczba 3600). Dane w złym kształcie
+ * (np. opowiadanie bez tytułu, przez które mechanizm wyszukiwarki nie wczytałby katalogu) są odrzucane jak błąd
+ * i nie zastępują ostatniej poprawnej kopii. Zalogowany administrator wchodzi na stronę z ?fz_odswiez=1, żeby
+ * pobrać dane od razu (czyszczone są też cache wtyczek, jeśli są zainstalowane) – zakładka „Szukajka WWW”
+ * w CMS-ie ma do tego odnośnik.
  *
  * AKTUALIZACJA SNIPPETU: najpierw dezaktywuj snippet, potem podmień kod, zapisz i aktywuj (inaczej Code
  * Snippets zgłosi „Cannot redeclare function”, bo sprawdza nowy kod przy załadowanym starym).
@@ -53,6 +56,28 @@ function fz_katalog_zapisz_blad( $tekst ) {
 	return null;
 }
 
+/** Czy dane mają kształt, który przyjmie mechanizm wyszukiwarki (te same warunki co w jego JS). */
+function fz_katalog_poprawne( $dane ) {
+	if ( ! is_array( $dane ) || ! isset( $dane['antologie'] ) || ! is_array( $dane['antologie'] ) ) {
+		return false;
+	}
+	$opowiadania = 0;
+	foreach ( $dane['antologie'] as $antologia ) {
+		if ( ! is_array( $antologia ) || ! isset( $antologia['nazwa'], $antologia['opowiadania'] ) || ! is_scalar( $antologia['nazwa'] )
+			|| '' === trim( (string) $antologia['nazwa'] ) || ! is_array( $antologia['opowiadania'] ) ) {
+			return false;
+		}
+		foreach ( $antologia['opowiadania'] as $opowiadanie ) {
+			if ( ! is_array( $opowiadanie ) || ! isset( $opowiadanie['tytul'] ) || ! is_scalar( $opowiadanie['tytul'] )
+				|| '' === trim( (string) $opowiadanie['tytul'] ) ) {
+				return false;
+			}
+			$opowiadania++;
+		}
+	}
+	return $opowiadania > 0;
+}
+
 /** Pobiera katalog z CMS-a; przy błędzie zwraca null i zapisuje przyczynę. */
 function fz_katalog_pobierz() {
 	$klucz = fz_katalog_klucz();
@@ -72,7 +97,7 @@ function fz_katalog_pobierz() {
 		return fz_katalog_zapisz_blad( 'CMS odpowiedział kodem ' . $kod . ' (' . FZ_CMS_KATALOG_URL . '): ' . mb_substr( wp_strip_all_tags( $tresc ), 0, 200 ) );
 	}
 	$dane = json_decode( $tresc, true );
-	if ( ! is_array( $dane ) || ! isset( $dane['antologie'] ) || ! is_array( $dane['antologie'] ) ) {
+	if ( ! fz_katalog_poprawne( $dane ) ) {
 		return fz_katalog_zapisz_blad( 'Odpowiedź CMS-a nie jest oczekiwanym JSON-em (początek: ' . mb_substr( wp_strip_all_tags( $tresc ), 0, 120 ) . ').' );
 	}
 	delete_option( 'fz_katalog_blad' );
@@ -88,7 +113,7 @@ function fz_katalog_dane() {
 	// Po ?fz_odswiez=1 (administrator) transient jest pomijany w tym żądaniu, nawet jeśli coś już go wczytało.
 	$wymus = ! empty( $GLOBALS['fz_katalog_wymus'] );
 	$dane = $wymus ? false : get_transient( 'fz_katalog_dane' );
-	if ( ! is_array( $dane ) ) {
+	if ( ! fz_katalog_poprawne( $dane ) ) {
 		$dane = fz_katalog_pobierz();
 		$GLOBALS['fz_katalog_pobrano'] = is_array( $dane );
 		if ( is_array( $dane ) ) {
@@ -96,7 +121,10 @@ function fz_katalog_dane() {
 			update_option( 'fz_katalog_ostatnie', $dane, false );
 		} else {
 			$dane = get_option( 'fz_katalog_ostatnie', null );
-			$dane = is_array( $dane ) ? $dane : null;
+			$dane = fz_katalog_poprawne( $dane ) ? $dane : null;
+			if ( $dane ) {
+				set_transient( 'fz_katalog_dane', $dane, 3600 ); // CMS nie odpowiada – ponowna próba za godzinę, nie przy każdym wejściu
+			}
 		}
 	}
 	$cache = $dane;
@@ -185,9 +213,8 @@ add_shortcode( 'fz_katalog_dane', function () {
 			. '.</p>';
 	}
 	// Do strony idzie tylko lista antologii (mechanizm JS i tak ignoruje inne klucze).
-	$json = wp_json_encode( array( 'antologie' => $dane['antologie'] ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
-	// Zabezpieczenie bloku <script>: „</script” w treści nie może zamknąć bloku.
-	$json = str_ireplace( '</script', '<\/script', $json );
+	// JSON_HEX_TAG: „<” i „>” jako \u003C/\u003E – ani „</script”, ani „<!--” w treści nie zepsują bloku <script>.
+	$json = wp_json_encode( array( 'antologie' => $dane['antologie'] ), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_HEX_TAG );
 	return $html . '<script type="application/json" id="fzs-data">' . $json . '</script>';
 } );
 

@@ -143,6 +143,23 @@ class PlanUpdateTests(CatalogSyncDataMixin, TestCase):
         bare.refresh_from_db()
         self.assertEqual(plan_add(bare)['stories'][0]['ostrzezenia'], ['brak gatunku', 'brak tagów', 'brak autora'])
 
+    def test_novel_entry_without_stories_gets_its_single_position(self):
+        """Wpis katalogu powieści bez pozycji (np. usuniętej w panelu): plan proponuje jedną pozycję powieści,
+        zastosowanie ją dodaje, a kolejny plan nie ma zmian (pozycja nie jest dodawana drugi raz)."""
+        novel = Anthology.objects.create(title='Pusta powieść', is_novel=True)
+        Anthology.objects.filter(pk=novel.pk).update(status=Anthology.Status.READY)
+        profile = NovelProfile.objects.get_or_create(anthology=novel)[0]
+        profile.genre, profile.tags = 'groza', 'mgła'
+        profile.save()
+        entry = SiteCatalogAnthology.objects.select_related('anthology').get(
+            pk=catalog_anthology('Pusta powieść', 5, anthology=novel).pk)
+        plan = plan_update(entry)
+        self.assertEqual([(item['tytul'], item['text_id'], item['gatunki']) for item in plan['new_stories']],
+                         [('Pusta powieść', None, ['groza'])])
+        self.assertEqual(apply_update(plan), {'added': 1, 'updated': 0})
+        self.assertFalse(plan_update(entry)['has_changes'])
+        self.assertEqual(list(entry.stories.values_list('title', 'tags')), [('Pusta powieść', 'mgła')])
+
     def test_translated_anthology_uses_foreign_authors(self):
         """W antologii tłumaczeń autorem jest autor zagraniczny (pseudonim albo imię i nazwisko), nie tłumacz."""
         translated = Anthology.objects.create(title='Przekłady', status=Anthology.Status.READY, is_translated=True)

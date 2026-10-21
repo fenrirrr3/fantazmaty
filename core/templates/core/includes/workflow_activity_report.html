@@ -214,6 +214,8 @@
                             <td>
                                 {% if row.is_completed %}
                                     <span class="stage-status completed">Zakończony</span>
+                                {% elif row.is_held %}
+                                    <span class="stage-status pending">Wstrzymany (tekst zablokowany)</span>
                                 {% elif row.started_at %}
                                     {% if row.started_at|date:"Y-m-d" > today_iso %}
                                         <span class="stage-status pending">Zaplanowany</span>

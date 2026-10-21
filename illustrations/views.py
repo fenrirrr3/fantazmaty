@@ -235,6 +235,31 @@ def illustration_detail(request, illustration_id):
 
 @never_cache
 @login_required
+@require_POST
+def create_illustration(request, text_id):
+    """Zakłada brakujący wpis ilustracji tekstu (koordynator, superuser) i otwiera go do edycji.
+
+    Wpisy powstają same tylko w antologiach „W przygotowaniu”; tekst ze starej (np. importowanej, już Gotowej)
+    antologii ilustrowanej mógł go nie dostać – wtedy nie dało się dopisać ilustratora."""
+    _ensure_team_access(request.user)
+    if not is_coordinator(request.user):
+        raise PermissionDenied('Wpis ilustracji może założyć koordynator lub superuser.')
+    from .services import missing_illustration_texts
+    with transaction.atomic():
+        text = get_object_or_404(Text.objects.select_for_update(), pk=text_id)
+        illustration = Illustration.objects.filter(text=text).first()
+        if illustration is None:
+            if not missing_illustration_texts().filter(pk=text.pk).exists():
+                messages.error(request, 'Ten tekst nie może mieć ilustracji (antologia nieilustrowana, powieść, '
+                                        'tłumaczenie albo tekst wycofany).')
+                return redirect('core:assigned_text_detail', text_id=text.pk)
+            illustration = Illustration.objects.create(text=text, status=Illustration.Status.UNASSIGNED)
+            messages.success(request, 'Utworzono wpis ilustracji – uzupełnij ilustratorów i status.')
+    return redirect('illustrations:illustration_detail', illustration_id=illustration.pk)
+
+
+@never_cache
+@login_required
 @require_http_methods(["GET", "POST"])
 def cover_proposal_list(request):
     _ensure_team_access(request.user)

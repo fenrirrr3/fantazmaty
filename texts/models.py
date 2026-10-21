@@ -494,6 +494,18 @@ class Text(NormalizedModelMixin, models.Model):
         validators=[MinValueValidator(1)],
     )
 
+    # Blokada superusera: dopóki trwa, nikt poza superuserem nie pobiera tekstu do żadnego etapu.
+    # Zmienia się wyłącznie przyciskiem w podglądzie tekstu (wpis w dzienniku zmian workflow).
+    take_locked_at = models.DateTimeField("zablokowano pobieranie do etapów", null=True, blank=True, editable=False)
+    take_locked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, verbose_name="blokadę pobierania ustawił", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="+", editable=False,
+    )
+
+    @property
+    def take_locked(self):
+        return self.take_locked_at is not None
+
     class Meta:
         verbose_name = "tekst"
         verbose_name_plural = "teksty"

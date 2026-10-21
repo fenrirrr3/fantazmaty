@@ -125,7 +125,7 @@ ROUTE_LEVELS = {
         'core:proofreader_activity', 'core:verifier_activity', 'core:reviewer_activity', 'core:workflow_inactivity',
         'illustrations:illustrator_list', 'illustrations:illustrator_add', 'illustrations:illustrator_edit',
         'core:audio_contributor_list', 'core:audio_contributor_add',
-        'illustrations:update_cover_proposal_status',
+        'illustrations:update_cover_proposal_status', 'illustrations:create_illustration',
     ], COORDINATOR),
     **dict.fromkeys([
         'core:unlinked_reviews', 'core:recruitment_delete', 'core:translation_person_suggestions',
@@ -133,12 +133,12 @@ ROUTE_LEVELS = {
         'core:skip_workflow_stage', 'core:/workflow/<int:stage_id>/pomin/', 'core:review_bulk_submit',
         'core:link_text_review', 'core:cancel_workflow_repetition', 'core:handoff_workflow_stage',
         'core:/workflow/<int:stage_id>/przekaz/', 'core:data_integrity', 'core:person_permissions',
-        'core:update_text_file', 'core:author_suggestions', 'core:review_create',
+        'core:update_text_file', 'core:toggle_text_take_lock', 'core:author_suggestions', 'core:review_create',
         'core:correction_status', 'core:notification_queue', 'core:scheduled_rejections',
         'core:release_hidden_review', 'core:review_bulk_import', 'core:user_activity',
         'core:update_author_notification', 'core:copy_review_to_text', 'core:restart_text_workflow',
         'core:restore_withdrawn_text', 'core:add_author_note', 'core:split_mailing', 'core:site_www',
-        'core:site_catalog', 'core:site_catalog_update',
+        'core:site_catalog', 'core:site_catalog_update', 'core:site_catalog_update_all',
     ], SUPERUSER),
 }
 

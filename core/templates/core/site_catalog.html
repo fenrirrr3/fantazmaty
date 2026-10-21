@@ -52,7 +52,7 @@
 {% else %}<p class="muted-text">Wszystkie gotowe antologie z CMS-u są już w katalogu.</p>{% endif %}
 </div></section>
 <section class="card"><div class="card-body">
-<h2>Antologie w katalogu</h2>
+<div class="site-www-section-header"><h2>Antologie w katalogu</h2>{% if rows %}<a class="secondary-button" href="{% url 'core:site_catalog_update_all' %}">Sprawdź aktualizacje wszystkich</a>{% endif %}</div>
 {% if rows %}<div class="table-container"><table class="data-table site-catalog-table" data-pagination="off">
 <thead><tr><th>Antologia</th><th>CMS</th><th>Adres</th><th>Opowiadania</th><th>Włączona</th><th>Aktualizacja</th></tr></thead>
 <tbody>{% for row in rows %}<tr id="katalog-{{ row.item.pk }}"{% if not row.item.is_enabled %} class="is-disabled"{% endif %}>

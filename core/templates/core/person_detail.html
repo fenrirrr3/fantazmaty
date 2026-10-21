@@ -253,6 +253,8 @@
                                     <span class="stage-status completed">Zakończone</span>
                                 {% elif assignment.has_active_work %}
                                     <span class="stage-status active">W toku</span>
+                                {% elif assignment.latest_stage.is_held %}
+                                    <span class="stage-status pending">Wstrzymany (tekst zablokowany)</span>
                                 {% elif assignment.latest_stage.is_scheduled %}
                                     <span class="stage-status pending">Zaplanowany</span>
                                 {% elif assignment.has_reserved_work %}

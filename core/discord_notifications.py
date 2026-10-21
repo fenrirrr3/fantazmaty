@@ -8,6 +8,7 @@ Ustawienie antologii „Powiadomienia Discord” ogranicza wiadomości o jej tek
 import logging
 import os
 import random
+import re
 
 from django.conf import settings
 from django.db import connections, transaction
@@ -165,6 +166,22 @@ def preview_link(*, text_id=None, review_id=None, audiobook_id=None):
     return f'[{LINK_LABEL}](<{base_url()}{path}>)'
 
 
+EVENT_WORD_RE = re.compile(r'\b(?:zakończono|zakończenie|zakończony|rozpoczęto|rozpoczęcie|rozpoczęty)\b', re.IGNORECASE)
+
+
+def with_event_tag(template):
+    """Treść reguły „Rozpoczęcie i zakończenie etapu” zawsze rozróżnia zdarzenie.
+
+    Treść bez [zdarzenie] (np. dawna „Zakończono etap…” wpisana w panelu) dostaje tag w miejscu pierwszego słowa
+    „zakończono/rozpoczęto” (także „zakończenie”, „zakończony”…), a bez takiego słowa – na początku. Dzięki temu
+    rozpoczęcie etapu nigdy nie jest ogłaszane jako zakończenie.
+    """
+    if '[zdarzenie]' in template.lower():
+        return template
+    replaced, count = EVENT_WORD_RE.subn('[zdarzenie]', template, count=1)
+    return replaced if count else f'[zdarzenie]: {template}'
+
+
 def render(template, context, mention='', link=''):
     from core.notification_models import TAG_RE
     used = set()
@@ -230,7 +247,10 @@ def queue(trigger, *, using='default', text=None, review=None, stage_id=None, co
             role_ids, here = [], False
     if link is None:
         link = preview_link(text_id=getattr(text, 'pk', None), review_id=getattr(review, 'pk', None))
-    content = render(random.choice(templates), context or {}, mention_text(role_ids, here), link)
+    template = random.choice(templates)
+    if trigger == STAGE_EVENTS and (context or {}).get('zdarzenie'):
+        template = with_event_tag(template)
+    content = render(template, context or {}, mention_text(role_ids, here), link)
     notification = DiscordNotification.objects.using(using).create(
         trigger=trigger, channel=channel, content=content, role_ids=','.join(role_ids),
         mention_here=here, text=text, review=review, stage_id=stage_id, reminder_of=reminder_of,

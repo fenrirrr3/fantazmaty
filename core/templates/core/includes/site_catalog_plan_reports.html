@@ -1,0 +1,6 @@
+{# Raport „tylko do wiadomości” z planu aktualizacji: rozbieżne tytuły i autorzy, wycofane i niepowiązane wpisy. #}
+<ul class="site-catalog-changes">
+{% for change in plan.reports %}{% if change.new_title %}<li><strong>{{ change.story.title }}</strong> – w CMS-ie tytuł: „{{ change.new_title }}”</li>{% endif %}{% if change.new_author %}<li><strong>{{ change.story.title }}</strong> – w CMS-ie autor: {{ change.new_author }} (w katalogu: {{ change.story.author|default:"–" }})</li>{% endif %}{% endfor %}
+{% for story in plan.missing %}<li><strong>{{ story.title }}</strong> – powiązany tekst nie trafia już do katalogu (wycofany lub przeniesiony); wpis zostaje, usuń go ręcznie, jeśli trzeba</li>{% endfor %}
+{% for story in plan.unlinked %}<li><strong>{{ story.title }}</strong> – bez powiązania z tekstem w CMS-ie</li>{% endfor %}
+</ul>

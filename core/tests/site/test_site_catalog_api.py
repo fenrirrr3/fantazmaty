@@ -22,14 +22,16 @@ def story(owner, title, author='Autor Testowy', genres='', tags='', position=Non
 
 class SiteCatalogApiAccessTests(TestCase):
     def test_missing_key_gives_503_wrong_header_403_post_405(self):
-        """Bez SITE_API_KEY – 503; bez nagłówka, ze złym kluczem albo jego prefiksem – 403; POST – 405."""
+        """Bez SITE_API_KEY – 503; bez nagłówka, ze złym kluczem, jego prefiksem albo kluczem ze znakami spoza
+        ASCII – 403 (nie 500); POST – 405."""
         with override_settings(SITE_API_KEY=''):
             response = self.client.get(URL, HTTP_X_SITE_KEY='cokolwiek')
             self.assertEqual(response.status_code, 503)
             self.assertEqual(response.json(), {'blad': 'Brak klucza SITE_API_KEY w konfiguracji.'})
         with override_settings(SITE_API_KEY='tajny-klucz'):
             for case, headers in (('brak nagłówka', {}), ('zły klucz', {'HTTP_X_SITE_KEY': 'inny'}),
-                                  ('prefiks klucza', {'HTTP_X_SITE_KEY': 'tajny'})):
+                                  ('prefiks klucza', {'HTTP_X_SITE_KEY': 'tajny'}),
+                                  ('znaki spoza ASCII', {'HTTP_X_SITE_KEY': 'tajny-klucz-żółć'})):
                 with self.subTest(case):
                     response = self.client.get(URL, **headers)
                     self.assertEqual(response.status_code, 403)

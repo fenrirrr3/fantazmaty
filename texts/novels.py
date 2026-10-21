@@ -150,7 +150,10 @@ def new_chapter(book, profile, *, authors=None, **fields):
 @track_workflow
 def assign_chapter(text, user, role, assignee):
     from core.services.texts import _require_eligible_assignee
-    from workflow.services import STAGE_ROLES
+    from workflow.services import STAGE_ROLES, take_blocked
+    # Przypisanie przez koordynatora to też pobranie do etapu; rekord rozdziału blokujemy jak w serwisach workflow.
+    if take_blocked(Text.objects.select_for_update().get(pk=text.pk), user):
+        raise ValidationError(f'Rozdział „{text.title}” jest tymczasowo zablokowany.')
     _require_eligible_assignee(assignee, role, lock=True)
     stages = text.workflow_stages.filter(workflow_cycle=text.current_workflow_cycle, is_current=True)
     if stages.filter(stage_type__in=[WorkflowStage.StageType.READY, WorkflowStage.StageType.WITHDRAWN]).exists():

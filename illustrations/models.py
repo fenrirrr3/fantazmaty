@@ -153,30 +153,20 @@ class Illustration(models.Model):
 
         errors = {}
         # Existing credits remain editable when their anthology is hidden later.
-        previous_text = type(self).objects.using(self._state.db or 'default').filter(pk=self.pk).values_list('text_id', flat=True).first() if self.pk else None
-        if self.text_id and self.text_id != previous_text:
+        previous = type(self).objects.using(self._state.db or 'default').filter(pk=self.pk).values(
+            'text_id', 'status').first() if self.pk else None
+        if self.text_id and self.text_id != (previous or {}).get('text_id'):
             supported = Text.objects.using(self._state.db or 'default').exclude(anthology__is_novel=True).exclude(anthology__is_translated=True)
             if not supported.filter(pk=self.text_id).exists():
                 errors['text'] = 'Powieści i tłumaczenia nie obsługują ilustracji.'
-        has_illustrator = bool(self.artist_ids())
-
-        if (
-            self.status != self.Status.UNASSIGNED
-            and not has_illustrator
-        ):
-            errors["status"] = (
-                "Status inny niż „Nieprzypisane” wymaga "
-                "wybrania ilustratora."
-            )
-
-        if (
-            self.status == self.Status.UNASSIGNED
-            and has_illustrator
-        ):
-            errors["status"] = (
-                "Jeżeli wybrano ilustratora, zmień status "
-                "na „Przypisane”."
-            )
+        # Stare (importowane) wpisy bywają niespójne, np. „Oddane” bez ilustratora. Zgodność statusu z przypisaniem
+        # sprawdzamy przy zmianie statusu albo ilustratorów – zapis linku, fragmentu czy uwag jej nie wymaga.
+        if previous is None or previous['status'] != self.status or hasattr(self, '_selected_illustrator_ids'):
+            has_illustrator = bool(self.artist_ids())
+            if self.status != self.Status.UNASSIGNED and not has_illustrator:
+                errors['status'] = 'Status inny niż „Nieprzypisane” wymaga wybrania ilustratora.'
+            if self.status == self.Status.UNASSIGNED and has_illustrator:
+                errors['status'] = 'Jeżeli wybrano ilustratora, zmień status na „Przypisane”.'
 
         if errors:
             raise ValidationError(errors)

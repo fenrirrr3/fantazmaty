@@ -239,7 +239,8 @@ def workflow_activity_context(
             "person_id": stage.report_person_id,
             "person_name": stage.report_person_name,
             "assigned_at": stage.report_assigned_at,
-            "started_at": stage.started_at,
+            "started_at": stage.planned_start,
+            "is_held": stage.is_held,
             "ended_at": stage.ended_at,
             "is_completed": stage.is_completed,
         }

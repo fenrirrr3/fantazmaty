@@ -1,0 +1,38 @@
+{% extends "core/base.html" %}
+{% load static %}
+{% block title %}Aktualizacja wszystkich | Szukajka WWW | Fantazmaty CMS{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/site-www.css' %}">{% endblock %}
+{% block content %}
+<header class="page-header"><h1 class="page-title">Szukajka WWW – aktualizacja wszystkich antologii</h1><p class="page-description">Różnice między katalogiem a CMS-em dla każdej antologii, którą da się aktualizować (powiązanej z Gotową antologią CMS-u, bez Ekstraktów; powieść jako jedna pozycja). „Zastosuj wszystkie” dopisuje nowe opowiadania oraz brakujące gatunki i tagi naraz; niczego nie usuwa ani nie nadpisuje.</p></header>
+<section class="card"><div class="card-body">
+<h2>Podsumowanie</h2>
+<dl class="site-catalog-counters" aria-label="Wynik sprawdzenia">
+<div class="site-catalog-counter"><dt>Do aktualizacji</dt><dd>{{ overview.changed|length }}</dd></div>
+<div class="site-catalog-counter"><dt>Bez zmian</dt><dd>{{ overview.unchanged|length }}</dd></div>
+<div class="site-catalog-counter"><dt>Pominięte</dt><dd>{{ overview.skipped|length }}</dd></div>
+</dl>
+{% if overview.changed %}<form method="post" class="site-www-form">{% csrf_token %}<input type="hidden" name="plan" value="{{ plan_token }}">
+<div class="actions"><button type="submit" class="primary-button">Zastosuj wszystkie</button><a class="secondary-button" href="{% url 'core:site_catalog' %}">Wróć bez zmian</a></div>
+</form>{% else %}<p class="muted-text">Brak zmian – katalog ma wszystkie opowiadania, gatunki i tagi z CMS-u.</p>
+<div class="actions"><a class="secondary-button" href="{% url 'core:site_catalog' %}">Wróć</a></div>{% endif %}
+</div></section>
+{% if overview.changed %}<section class="card"><div class="card-body">
+<h2>Zmiany do zastosowania</h2>
+<div class="site-www-sections">{% for plan in overview.changed %}
+<section class="site-www-section" id="zmiany-{{ plan.anthology.pk }}"><div class="site-www-section-header"><h3><a href="{% url 'core:site_catalog_update' plan.anthology.pk %}">{{ plan.anthology.title }}</a>{% if plan.novel %} <span class="badge site-www-badge-manual">powieść</span>{% endif %}</h3>
+<p class="site-www-meta site-www-count">{% if plan.new_stories %}nowe opowiadania: {{ plan.new_stories|length }}{% endif %}{% if plan.new_stories and plan.updates %} · {% endif %}{% if plan.updates %}nowe gatunki lub tagi: {{ plan.updates|length }}{% endif %}</p></div>
+{% include "core/includes/site_catalog_plan_changes.html" with level=4 %}
+{% if plan.notes %}<details class="site-catalog-warning-list"><summary>Tylko do wiadomości ({{ plan.notes }})</summary>{% include "core/includes/site_catalog_plan_reports.html" %}</details>{% endif %}
+</section>{% endfor %}</div>
+</div></section>{% endif %}
+{% if overview.unchanged %}<section class="card"><div class="card-body">
+<h2>Bez zmian <span class="site-www-count">{{ overview.unchanged|length }}</span></h2>
+<details class="site-catalog-warning-list"><summary>Antologie zgodne z CMS-em ({{ overview.unchanged|length }})</summary><ul>
+{% for plan in overview.unchanged %}<li><a href="{% url 'core:site_catalog_update' plan.anthology.pk %}">{{ plan.anthology.title }}</a>{% if plan.notes %} <span class="muted-text">(tylko do wiadomości: {{ plan.notes }})</span>{% endif %}</li>{% endfor %}
+</ul></details>
+</div></section>{% endif %}
+{% if overview.skipped %}<section class="card"><div class="card-body">
+<h2>Pominięte <span class="site-www-count">{{ overview.skipped|length }}</span></h2>
+{% regroup overview.skipped|dictsort:"reason" by reason as groups %}<ul class="site-catalog-changes">{% for group in groups %}<li><strong>{{ group.grouper }}</strong> ({{ group.list|length }}): {% for item in group.list %}{{ item.anthology.title }}{% if not forloop.last %}, {% endif %}{% endfor %}</li>{% endfor %}</ul>
+</div></section>{% endif %}
+{% endblock %}

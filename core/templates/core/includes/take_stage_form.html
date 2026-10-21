@@ -1,4 +1,4 @@
-<form method="post" action="{% url 'core:take_workflow_stage' stage.pk %}"
+{% if stage.text.take_locked and not user.is_superuser %}<p class="form-warning" data-take-locked>Zablokowany</p>{% else %}<form method="post" action="{% url 'core:take_workflow_stage' stage.pk %}"
       class="take-stage-form{% if compact %} take-stage-compact{% endif %}"
       aria-label="Przejmij etap: {{ stage.get_stage_type_display }} – {{ stage.text.title }}">
     {% csrf_token %}{% edit_version %}
@@ -17,4 +17,4 @@
                    required>
         </div>
     {% endif %}
-</form>
+</form>{% endif %}

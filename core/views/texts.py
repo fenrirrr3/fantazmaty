@@ -147,6 +147,9 @@ def _render_text_detail_page(request, text, *, bound_forms=None, status=200):
     from core.permissions import can_view_audiobooks
     context['can_open_audiobooks'] = can_view_audiobooks(request.user)
     context['anthology_illustrated'] = bool(text.anthology_id and text.anthology.has_illustrations)
+    if context['text_illustration'] is None and context['anthology_illustrated'] and coordinator_access:
+        from illustrations.services import missing_illustration_texts
+        context['can_create_text_illustration'] = missing_illustration_texts().filter(pk=text.pk).exists()
     context['text_file_form'] = TextFileForm(instance=text) if request.user.is_superuser else None
     context['dropbox_chooser_app_key'] = getattr(settings, 'DROPBOX_CHOOSER_APP_KEY', '') if request.user.is_superuser else ''
     # Only this text's email addresses are revealed, never source-review identity.
@@ -483,6 +486,19 @@ def update_text_file(request, text_id):
             messages.success(request, 'Zapisano link do folderu Dropbox.')
             return redirect('core:assigned_text_detail', text_id=text.pk)
     return _render_text_detail(request, text, bound_forms={'text_file_form':form}, status=400)
+
+
+@edit_policy(require_version=True)
+@never_cache
+@login_required
+@require_POST
+@superuser_required
+def toggle_text_take_lock(request, text_id):
+    """„Zablokuj tekst” / „Odblokuj tekst” w podglądzie: blokada pobierania do etapów (tylko superuser)."""
+    from core.services.texts import toggle_take_lock
+    locked = toggle_take_lock(user=request.user, text_id=text_id)
+    messages.success(request, "Zablokowano pobieranie tekstu." if locked else "Odblokowano pobieranie tekstu.")
+    return redirect("core:assigned_text_detail", text_id=text_id)
 
 
 @edit_policy(require_version=True)

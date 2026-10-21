@@ -7,16 +7,7 @@
 <section class="card"><div class="card-body">
 <h2>Zmiany do zastosowania</h2>
 {% if plan.has_changes %}
-{% if plan.new_stories %}<h3>Nowe opowiadania <span class="site-www-count">{{ plan.new_stories|length }}</span></h3>
-<div class="table-container"><table class="data-table site-catalog-table" data-pagination="off">
-<thead><tr><th>Tytuł</th><th>Autor</th><th>Gatunki</th><th>Tagi</th><th>Uwagi</th></tr></thead>
-<tbody>{% for story in plan.new_stories %}<tr>
-<td>{{ story.tytul }}</td><td>{{ story.autor|default:"–" }}</td><td>{{ story.gatunki|join:", "|default:"–" }}</td><td>{{ story.tagi|join:", "|default:"–" }}</td>
-<td>{% if story.ostrzezenia %}<span class="site-www-alert">{{ story.ostrzezenia|join:", " }}</span>{% else %}–{% endif %}</td>
-</tr>{% endfor %}</tbody></table></div>{% endif %}
-{% if plan.updates %}<h3>Nowe gatunki i tagi <span class="site-www-count">{{ plan.updates|length }}</span></h3><ul class="site-catalog-changes">
-{% for change in plan.updates %}<li><strong>{{ change.story.title }}</strong>{% if change.new_genres %} – gatunki: {{ change.new_genres|join:", " }}{% endif %}{% if change.new_tags %} – tagi: {{ change.new_tags|join:", " }}{% endif %}</li>
-{% endfor %}</ul>{% endif %}
+{% include "core/includes/site_catalog_plan_changes.html" %}
 <form method="post" class="site-www-form">{% csrf_token %}<input type="hidden" name="plan" value="{{ plan_token }}">
 <div class="actions"><button type="submit" class="primary-button">Zastosuj</button><a class="secondary-button" href="{% url 'core:site_catalog' %}#katalog-{{ catalog_anthology.pk }}">Wróć bez zmian</a></div>
 </form>
@@ -26,11 +17,7 @@
 <section class="card"><div class="card-body">
 <h2>Tylko do wiadomości</h2>
 <p class="muted-text">Tytuły i podpisy autorów nie są zmieniane automatycznie – popraw je w panelu administracyjnym, jeśli strona ma pokazywać wersję z CMS-u.</p>
-{% if plan.reports or plan.missing or plan.unlinked %}<ul class="site-catalog-changes">
-{% for change in plan.reports %}{% if change.new_title %}<li><strong>{{ change.story.title }}</strong> – w CMS-ie tytuł: „{{ change.new_title }}”</li>{% endif %}{% if change.new_author %}<li><strong>{{ change.story.title }}</strong> – w CMS-ie autor: {{ change.new_author }} (w katalogu: {{ change.story.author|default:"–" }})</li>{% endif %}{% endfor %}
-{% for story in plan.missing %}<li><strong>{{ story.title }}</strong> – powiązany tekst nie trafia już do katalogu (wycofany lub przeniesiony); wpis zostaje, usuń go ręcznie, jeśli trzeba</li>{% endfor %}
-{% for story in plan.unlinked %}<li><strong>{{ story.title }}</strong> – bez powiązania z tekstem w CMS-ie</li>{% endfor %}
-</ul>{% else %}<p class="muted-text">Tytuły i autorzy zgodne z CMS-em; wszystkie wpisy powiązane z tekstami.</p>{% endif %}
+{% if plan.reports or plan.missing or plan.unlinked %}{% include "core/includes/site_catalog_plan_reports.html" %}{% else %}<p class="muted-text">Tytuły i autorzy zgodne z CMS-em; wszystkie wpisy powiązane z tekstami.</p>{% endif %}
 <dl class="details-grid site-www-status">
 <div class="detail-item"><dt>W katalogu</dt><dd>{{ counts.opowiadania }} opow., {{ counts.gatunki }} gatunków, {{ counts.tagi }} tagów</dd></div>
 <div class="detail-item"><dt>Edycja</dt><dd><a href="{% url 'admin:core_sitecataloganthology_change' catalog_anthology.pk %}">Panel administracyjny → „{{ catalog_anthology.title }}”</a></dd></div>

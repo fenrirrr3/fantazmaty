@@ -883,7 +883,7 @@ class AuthorInNotificationsTests(WorkflowTestDataMixin, TestCase):
             send_waiting_reminders(now=start + timedelta(days=7, minutes=1))
         rows = DiscordNotification.objects.values_list('trigger', 'content')
         expected = {('ready_for_editing', 'Ewa Lis'), ('first_verification', 'Mrok, Anna Nowak'),
-                    ('stage_completed', 'Mrok, Anna Nowak'),
+                    ('stage_completed', 'Rozpoczęto: Mrok, Anna Nowak'), ('stage_completed', 'Zakończono: Mrok, Anna Nowak'),
                     ('review_new', '(anonimowo)'),
                     ('stage_waiting', 'Mrok, Anna Nowak'), ('stage_waiting', '(anonimowo)'),
                     ('stage_waiting', 'Ewa Lis')}
@@ -899,6 +899,40 @@ class StageCompletedDefaultTests(TestCase):
         self.assertEqual(str(rule), 'Rozpoczęcie i zakończenie etapu (wszystkie etapy)')
         self.assertEqual(list(rule.templates.values_list('content', flat=True)),
                          ['[zdarzenie] etap „[etap]”: „[tytuł]” – [autor] ([antologia]). Wykonanie: [osoba].'])
+
+    def test_migration_0064_adds_event_tag_only_to_stage_rule(self):
+        """Migracja 0064 daje to samo co wysyłka (with_event_tag): zmienia tylko pierwsze słowo zdarzenia i tylko
+        w regule etapów; całe słowa – „zakończeniu” (inny przypadek) nie jest zdarzeniem; [Zdarzenie] wielką literą
+        zostaje; treść innej reguły z „Zakończono” bez zmian; ponowne uruchomienie niczego nie zmienia."""
+        from importlib import import_module
+        from types import SimpleNamespace
+
+        from django.apps import apps
+        from django.db import connection
+
+        from core.discord_notifications import with_event_tag
+        migration = import_module('core.migrations.0064_discord_stage_event_tag')
+        stage_rule = NotificationRule.objects.get(trigger='stage_completed')
+        stage_rule.templates.all().delete()
+        cases = {
+            'ZAKOŃCZONO etap [etap]; rozpoczęcie kolejnego wkrótce': '[zdarzenie] etap [etap]; rozpoczęcie kolejnego wkrótce',
+            'Po zakończeniu etapu [etap] – [osoba]': '[zdarzenie]: Po zakończeniu etapu [etap] – [osoba]',
+            'Etap [etap] rozpoczęty': 'Etap [etap] [zdarzenie]',
+            '[Zdarzenie] [etap]': '[Zdarzenie] [etap]',
+        }
+        for content in cases:
+            stage_rule.templates.create(content=content)
+        audiobook = NotificationRule.objects.get(trigger='audiobook_production').templates.create(
+            content='Zakończono montaż: [tytuł]')
+        editor = SimpleNamespace(connection=connection)
+        for run in (1, 2):
+            with self.subTest(run=run):
+                migration.forwards(apps, editor)
+                self.assertEqual(dict(zip(cases, stage_rule.templates.order_by('pk').values_list('content', flat=True))),
+                                 cases)
+                self.assertEqual({content: with_event_tag(content) for content in cases}, cases)
+                audiobook.refresh_from_db()
+                self.assertEqual(audiobook.content, 'Zakończono montaż: [tytuł]')
 
 
 @override_settings(DISCORD_WEBHOOKS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
@@ -956,15 +990,15 @@ class StageCompletedTests(WorkflowTestDataMixin, TestCase):
                     'iteration': 1, 'completed': False}
         for case, before_extra, after_extra, expected in (
             ('W1 (rezerwacja przekazana do pracy)', {2: reserved_w1}, {2: {**reserved_w1, 'released': True}},
-             ['Redakcja → Pierwsza weryfikacja – Ewa']),
+             ['Zakończono Redakcja → Pierwsza weryfikacja – Ewa']),
             ('K1 (Ekstrakty)', {}, {3: opened('first_proofreading', 'Pierwsza korekta')},
-             ['Redakcja → Pierwsza korekta – Ewa']),
+             ['Zakończono Redakcja → Pierwsza korekta – Ewa']),
             ('autor', {}, {3: opened('author_editing', 'Plik u autora')}, []),
-            ('bez celu', {}, {}, ['Redakcja – Ewa']),
+            ('bez celu', {}, {}, ['Zakończono Redakcja – Ewa']),
         ):
             with self.subTest(case):
                 DiscordNotification.objects.all().delete()
-                self.rule.templates.update(content='[etap] – [osoba]')
+                self.rule.templates.update(content='[zdarzenie] [etap] – [osoba]')
                 with self.captureOnCommitCallbacks(execute=True):
                     workflow_changes('default', self.text, {1: editing, **before_extra},
                                      {1: {**editing, 'completed': True}, **after_extra}, actor='Koordynator')
@@ -1034,6 +1068,27 @@ class StageCompletedTests(WorkflowTestDataMixin, TestCase):
                 with self.captureOnCommitCallbacks(execute=True):
                     workflow_changes('default', self.text, before, after, actor='Koordynator')
                 self.assertEqual([PREVIEW.sub('', c) for c in self.completed()], expected)
+
+    def test_template_without_event_tag_still_distinguishes_start(self):
+        """Treść bez [zdarzenie] (np. dawna „Zakończono etap…” z panelu): rozpoczęcie nie jest ogłaszane jako
+        zakończenie – tag zastępuje pierwsze słowo „Zakończono/Rozpoczęto…”, a bez niego trafia na początek."""
+        stage = {'type': 'first_proofreading', 'type_display': 'Pierwsza korekta', 'released': True, 'assigned': True,
+                 'iteration': 1, 'performer': 'Ewa', 'started': False, 'completed': False}
+        for template, started, completed in (
+            ('Zakończono etap [etap] – [osoba]', 'Rozpoczęto etap Pierwsza korekta – Ewa',
+             'Zakończono etap Pierwsza korekta – Ewa'),
+            ('Etap zakończony: [etap]', 'Etap Rozpoczęto: Pierwsza korekta', 'Etap Zakończono: Pierwsza korekta'),
+            ('[etap] – [osoba]', 'Rozpoczęto: Pierwsza korekta – Ewa', 'Zakończono: Pierwsza korekta – Ewa'),
+        ):
+            for event, after, expected in (('start', {**stage, 'started': True}, started),
+                                           ('koniec', {**stage, 'started': True, 'completed': True}, completed)):
+                with self.subTest(template=template, event=event):
+                    DiscordNotification.objects.all().delete()
+                    self.rule.templates.update(content=template)
+                    before = {1: stage if event == 'start' else {**stage, 'started': True}}
+                    with self.captureOnCommitCallbacks(execute=True):
+                        workflow_changes('default', self.text, before, {1: after}, actor='Koordynator')
+                    self.assertEqual([PREVIEW.sub('', c) for c in self.completed()], [expected])
 
     def test_disabled_rule_sends_nothing(self):
         NotificationRule.objects.filter(pk=self.rule.pk).update(enabled=False)

@@ -5,7 +5,7 @@ from pathlib import Path
 
 from django.test import TestCase
 
-from core.site_catalog import anthology_key, fold, link_catalog_to_cms
+from core.site_catalog import anthology_key, catalog_payload, fold, link_catalog_to_cms
 from core.site_models import SiteCatalogAnthology, SiteCatalogStory, SiteTeamGroup, SiteTeamSection, SiteTeamSettings
 from people import roles
 from texts.models import Anthology, Text
@@ -74,6 +74,15 @@ class SiteCatalogSeedTests(TestCase):
                                   for story in expected['opowiadania']])
         self.assertFalse(SiteCatalogStory.objects.exclude(text__isnull=True).exists())
         self.assertEqual(SiteTeamSettings.load().catalog_page_url, '')
+
+    def test_seed_payload_counts_match_live_search_page(self):
+        """JSON dla strony z seedu ma te same liczby co szukajka na fantazmaty.pl (84 gatunki i 819 tagów
+        w filtrach – liczone bez wielkości liter i diakrytyków) i każde opowiadanie z tytułem, bez którego
+        mechanizm wyszukiwarki odrzuca cały katalog."""
+        data = catalog_payload()
+        self.assertEqual(data['liczby'], {'antologie': 27, 'opowiadania': 297, 'gatunki': 84, 'tagi': 819})
+        self.assertTrue(all(item['nazwa'].strip() and all(story['tytul'].strip() for story in item['opowiadania'])
+                            for item in data['antologie']))
 
     def test_link_catalog_to_cms_matches_titles(self):
         """Ponowne dopasowanie: antologia po tytule (rzymskie I–IV jak 1–4, bez wielkości liter), teksty po tytule

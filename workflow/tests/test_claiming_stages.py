@@ -1,32 +1,35 @@
 """Przejmowanie etapów: formularze na liście i w szczegółach, rezerwacje, kandydaci, powody braku możliwości
-przejęcia oraz blokady zakończonych weryfikacji."""
+przejęcia, blokady zakończonych weryfikacji oraz blokada pobierania ustawiana przez superusera."""
 from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
+from lxml import html
 
 from core.selectors.texts import _annotated_texts, text_detail_context, text_list_context
-from core.services.texts import start_assigned_stage
+from core.models import WorkflowEvent
+from core.services.texts import TAKE_LOCK_EVENTS, change_scheduled_stage, start_assigned_stage, toggle_take_lock
 from core.translation_scope import frontend_scope
-from fantazmaty.testing import create_member, create_superuser
+from fantazmaty.testing import create_member, create_superuser, edit_token
 from fantazmaty.testing.workflow import StatusAssignmentFixtures
 from people.models import Person, Vacation
 from texts.models import Anthology, Text
+from texts.novels import assign_chapters, edit_token as novel_token, locked_book, new_chapter
 from workflow.availability import claim_access, claim_reason, eligible_role_users, role_access_reason
 from workflow.models import WorkflowRepetition, WorkflowRoleAssignment as A, WorkflowStage as S
 from workflow.read_queries import available_stages
 from workflow.repetitions import repeat_stages
 from workflow.services import (
     claim_ready_for_editing, claim_stage, complete_stage, create_pending_stage, resume_editing,
-    send_to_first_verification, send_to_second_verification, start_first_verification,
+    send_to_first_verification, send_to_second_verification, start_first_verification, TAKE_LOCKED_MESSAGE,
 )
-from workflow.state import current_stage
+from workflow.state import current_stage, stage_is_active
 
 from .support import AnthologyWorkflowMixin, add_roles, importing
 
@@ -485,3 +488,215 @@ class ClaimReasonTests(TestCase):
         run = WorkflowRepetition.objects.create(text=self.text)
         self.assertEqual(self.reason('first_verification', self.verifier, [waiting_editing, first],
                                      repetition=run), '')
+
+
+class TakeLockTests(AnthologyWorkflowMixin, TestCase):
+    """„Zablokuj tekst”: superuser wstrzymuje pobieranie tekstu do etapów i w tym samym miejscu je przywraca."""
+
+    def toggle(self, user):
+        self.client.force_login(user)
+        return self.client.post(reverse('core:toggle_text_take_lock', args=[self.text.pk]),
+                                {'_edit_version': edit_token(user, self.text)})
+
+    def lock(self):
+        toggle_take_lock(user=self.superuser, text_id=self.text.pk)
+
+    def work_state(self):
+        return (list(S.objects.filter(text=self.text).order_by('pk').values_list('pk', 'stage_type', 'started_at',
+                                                                                    'is_completed', 'assignment_id')),
+                list(A.objects.filter(text=self.text).order_by('pk').values_list('pk', 'role', 'assigned_to_id')))
+
+    def test_superuser_toggles_lock_with_message_and_event_log(self):
+        """Dwa kliknięcia: blokada (data, kto, komunikat, wpis w dzienniku bez zmiany statusu) i odblokowanie."""
+        for expected, message in ((True, 'Zablokowano pobieranie tekstu.'), (False, 'Odblokowano pobieranie tekstu.')):
+            with self.subTest(locked=expected):
+                response = self.toggle(self.superuser)
+                self.assertRedirects(response, reverse('core:assigned_text_detail', args=[self.text.pk]),
+                                     fetch_redirect_response=False)
+                self.assertEqual([str(m) for m in response.wsgi_request._messages._queued_messages], [message])
+                self.text.refresh_from_db()
+                self.assertEqual(self.text.take_locked, expected)
+                self.assertEqual(self.text.take_locked_by, self.superuser if expected else None)
+                event = WorkflowEvent.objects.filter(text=self.text).first()
+                self.assertEqual(event.details, TAKE_LOCK_EVENTS[expected])
+                self.assertEqual((event.actor, event.previous_status), (self.superuser, event.next_status))
+        self.assertEqual(WorkflowEvent.objects.filter(text=self.text).count(), 2)
+
+    def test_toggle_and_button_are_superuser_only(self):
+        """Koordynator i redaktor: 403 bez zmiany stanu i bez przycisku; superuser ma przycisk po lewej stronie."""
+        for user in (self.coordinator, self.editor):
+            with self.subTest(user=user.username):
+                self.assertEqual(self.toggle(user).status_code, 403)
+                self.text.refresh_from_db()
+                self.assertFalse(self.text.take_locked)
+                self.assertNotContains(self.detail(user), 'data-take-lock-toggle')
+        self.client.force_login(self.superuser)
+        self.assertEqual(self.client.get(reverse('core:toggle_text_take_lock', args=[self.text.pk])).status_code, 405)
+        for label in ('Zablokuj tekst', 'Odblokuj tekst'):
+            with self.subTest(label=label):
+                actions = html.fromstring(self.detail(self.superuser).content).xpath(
+                    '//div[@class="detail-header-actions"]/*')
+                self.assertEqual(actions[0].get('action'), reverse('core:toggle_text_take_lock', args=[self.text.pk]))
+                self.assertEqual(actions[0].xpath('normalize-space(.//button)'), label)
+                self.assertEqual(actions[1].text_content().strip(), 'Edytuj w adminie')
+                self.lock()
+
+    def test_locked_text_rejects_every_take_path_except_superuser(self):
+        """Pobranie „Do redakcji”, rezerwacja i przejęcie weryfikacji, rozpoczęcie przypisanego etapu (także przez
+        koordynatora), rozpoczęcie W1, wznowienie redakcji i przypisanie rozdziału przez koordynatora: przy blokadzie
+        odmowa z komunikatem i bez zmian, superuser może, po odblokowaniu znów działa."""
+        def handed_over():
+            self.begin_editing()
+            claim_stage(self.text, 'first_verification', self.verifier_1)
+            send_to_first_verification(self.text, self.editor, self.today)
+
+        def second_verification():
+            self.finish_first_verification()
+            resume_editing(self.text, self.editor, self.today)
+            send_to_second_verification(self.text, self.editor, self.today)
+
+        def start_assigned(user):
+            start_assigned_stage(user=user, stage_id=self.stage('first_verification').pk, started_at=self.today)
+
+        book = Anthology.objects.create(title='Powieść z blokadą', is_novel=True)
+        chapter = new_chapter(book, book.novel, chapter_number=1, length=100)
+
+        def assign_chapter(user):
+            with locked_book(book.pk, user, novel_token(book, user)) as locked:
+                assign_chapters(locked, user, [chapter.pk], [('editor', self.editor)])
+
+        cases = (
+            ('pobranie „Do redakcji”', None, self.editor, self.text,
+             lambda user: claim_ready_for_editing(self.text, user, self.today)),
+            ('rezerwacja W1', self.begin_editing, self.verifier_1, self.text,
+             lambda user: claim_stage(self.text, 'first_verification', user)),
+            ('przejęcie W2', second_verification, self.verifier_2, self.text,
+             lambda user: claim_stage(self.text, 'second_verification', user)),
+            ('rozpoczęcie W1', handed_over, self.verifier_1, self.text,
+             lambda user: start_first_verification(self.text, user, self.today)),
+            ('rozpoczęcie przypisanego etapu przez koordynatora', handed_over, self.coordinator, self.text,
+             start_assigned),
+            ('wznowienie redakcji', self.finish_first_verification, self.editor, self.text,
+             lambda user: resume_editing(self.text, user, self.today)),
+            ('przypisanie rozdziału przez koordynatora', None, self.coordinator, chapter, assign_chapter),
+        )
+        for name, prepare, actor, text, act in cases:
+            with self.subTest(name), transaction.atomic():
+                if prepare:
+                    prepare()
+                toggle_take_lock(user=self.superuser, text_id=text.pk)
+                before = self.work_state(), list(A.objects.filter(text=chapter).values_list('assigned_to_id'))
+                with self.assertRaisesMessage(ValidationError, 'tymczasowo zablokowany'):
+                    act(actor)
+                self.assertEqual((self.work_state(), list(A.objects.filter(text=chapter).values_list('assigned_to_id'))),
+                                 before)
+                with transaction.atomic():
+                    act(self.superuser)
+                    transaction.set_rollback(True)
+                toggle_take_lock(user=self.superuser, text_id=text.pk)
+                act(actor)
+                transaction.set_rollback(True)
+
+    def test_locked_text_shows_note_instead_of_take_forms(self):
+        """Lista „Teksty do wzięcia” i podgląd: zablokowany tekst widoczny z dopiskiem, bez przycisku „Przejmij”
+        (superuser nadal go ma); informacja o blokadzie widoczna dla wszystkich; przejęcie przez adres – odmowa."""
+        self.lock()
+        pages = (reverse('core:available_texts'), reverse('core:assigned_text_detail', args=[self.text.pk]))
+        for user, can_take in ((self.editor, False), (self.superuser, True)):
+            self.client.force_login(user)
+            for page in pages:
+                with self.subTest(user=user.username, page=page):
+                    response = self.client.get(page)
+                    self.assertContains(response, self.text.title)
+                    take_url = reverse('core:take_workflow_stage', args=[self.initial_stage.pk])
+                    self.assertEqual(f'action="{take_url}"' in response.content.decode(), can_take)
+                    self.assertEqual('data-take-locked' in response.content.decode(), not can_take)
+        detail = self.detail(self.editor)
+        self.assertContains(detail, 'Zablokowany')
+        self.assertContains(detail, self.superuser.get_username())
+        response = self.client.post(reverse('core:take_workflow_stage', args=[self.initial_stage.pk]),
+                                    {'started_at': self.today.isoformat()}, follow=True)
+        self.assertContains(response, TAKE_LOCKED_MESSAGE)
+        self.assertFalse(A.objects.filter(text=self.text, assigned_to=self.editor).exists())
+
+    def test_locked_text_hides_start_and_resume_buttons(self):
+        """Przy blokadzie podgląd nie pokazuje „Rozpocznij etap” ani „Wznów redakcję” (superuser – tak)."""
+        def handed_over():
+            self.begin_editing()
+            claim_stage(self.text, 'first_verification', self.verifier_1)
+            send_to_first_verification(self.text, self.editor, self.today)
+
+        cases = (('Rozpocznij etap', handed_over, self.verifier_1), ('Wznów redakcję', self.finish_first_verification,
+                                                                    self.editor))
+        for label, prepare, user in cases:
+            with self.subTest(label), transaction.atomic():
+                prepare()
+                self.assertContains(self.detail(user), label)
+                self.lock()
+                self.assertNotContains(self.detail(user), label)
+                self.assertContains(self.detail(self.superuser), label)
+                transaction.set_rollback(True)
+
+    def test_locked_text_freezes_booking_date_but_allows_cancel(self):
+        """Rezerwacja z przyszłą datą sprzed blokady: każda zmiana daty (przyspieszenie, także na dziś, i przesunięcie
+        na później) – odmowa bez zmian; superuser może (data dalej czeka na odblokowanie); odwołanie – dozwolone."""
+        booking = claim_ready_for_editing(self.text, self.editor, self.today + timedelta(days=5))
+        self.lock()
+        for days in (0, 3, 7):
+            with self.subTest(days=days):
+                with self.assertRaisesMessage(ValidationError, TAKE_LOCKED_MESSAGE):
+                    change_scheduled_stage(user=self.editor, stage_id=booking.pk,
+                                           started_at=self.today + timedelta(days=days))
+                booking.refresh_from_db()
+                self.assertEqual((booking.is_held, booking.planned_start), (True, self.today + timedelta(days=5)))
+        change_scheduled_stage(user=self.superuser, stage_id=booking.pk, started_at=self.today + timedelta(days=7))
+        booking.refresh_from_db()
+        self.assertEqual((booking.is_held, booking.planned_start), (True, self.today + timedelta(days=7)))
+        detail = html.fromstring(self.detail(self.editor).content)
+        self.assertTrue(detail.xpath('//*[@data-schedule-frozen]//button[@value="cancel"]'))
+        self.assertFalse(detail.xpath('//input[@name="started_at"][@id="schedule-%d"]' % booking.pk))
+        change_scheduled_stage(user=self.editor, stage_id=booking.pk, cancel=True)
+        booking.refresh_from_db()
+        self.assertEqual((booking.started_at, booking.held_started_at), (None, None))
+
+    def test_lock_holds_future_booking_until_unlock(self):
+        """Rezerwacja na za 5 dni + blokada: po minięciu daty etap się nie rozpoczyna (stan „Wstrzymany”, bez
+        przekazania pracy, odmowa przy próbie); po odblokowaniu startuje w dniu odblokowania. Etap rozpoczęty przed
+        blokadą zostaje bez zmian. Odblokowanie przed terminem przywraca pierwotną datę."""
+        later = self.today + timedelta(days=6)
+        booking = claim_ready_for_editing(self.text, self.editor, self.today + timedelta(days=5))
+        claim_stage(self.text, 'first_verification', self.verifier_1)
+        self.lock()
+        with patch('django.utils.timezone.localdate', return_value=later):
+            booking.refresh_from_db()
+            self.assertFalse(stage_is_active(booking, later))
+            response = self.detail(self.editor)
+            self.assertContains(response, 'Wstrzymany (tekst zablokowany)')
+            self.assertContains(response, (self.today + timedelta(days=5)).strftime('%d.%m.%Y'))
+            self.assertNotContains(response, 'W trakcie')
+            self.assertFalse(response.context['can_send_to_first_verification'])
+            self.assertContains(response, 'Zaplanowane rozpoczęcia są wstrzymane')
+            self.client.force_login(self.superuser)
+            self.assertContains(self.client.get(reverse('core:person_detail', args=[self.editor.person_profile.pk])),
+                                'Wstrzymany (tekst zablokowany)')
+            with transaction.atomic(), self.assertRaisesMessage(ValidationError, TAKE_LOCKED_MESSAGE):
+                send_to_first_verification(self.text, self.editor, later)
+            self.lock()
+            booking.refresh_from_db()
+            self.assertEqual((booking.started_at, booking.held_started_at, booking.is_held), (later, None, False))
+            self.assertTrue(stage_is_active(booking, later))
+            response = self.detail(self.editor)
+            self.assertNotContains(response, 'Wstrzymany (tekst zablokowany)')
+            self.assertTrue(response.context['can_send_to_first_verification'])
+
+        for name, starts_in, after_unlock in (('termin nie minął', 5, 5), ('rozpoczęty przed blokadą', 0, 0)):
+            with self.subTest(name), transaction.atomic():
+                S.objects.filter(pk=booking.pk).update(started_at=self.today + timedelta(days=starts_in))
+                self.lock()
+                booking.refresh_from_db()
+                self.assertEqual(booking.is_held, starts_in > 0)
+                self.lock()
+                booking.refresh_from_db()
+                self.assertEqual((booking.started_at, booking.held_started_at),
+                                 (self.today + timedelta(days=after_unlock), None))
+                transaction.set_rollback(True)

@@ -18,7 +18,7 @@ from core.permissions import (
 from people import roles
 from texts.models import Text
 
-from .models import WorkflowRoleAssignment, WorkflowStage
+from .models import HELD_START, WorkflowRoleAssignment, WorkflowStage
 from .numbering import next_assignment_execution, next_stage_iteration
 
 
@@ -307,6 +307,40 @@ def ensure_text_is_not_withdrawn(text):
         )
 
 
+TAKE_LOCKED_MESSAGE = "Tekst jest tymczasowo zablokowany."
+
+
+def take_blocked(text, user):
+    """Blokada pobierania ustawiona przez superusera obowiązuje wszystkich poza superuserem."""
+    return text.take_locked_at is not None and not (user and user.is_superuser)
+
+
+def hold_future_bookings(text, today):
+    """Blokada tekstu: otwarte rezerwacje z datą po dzisiejszej zostają wstrzymane (nie rozpoczną się same)."""
+    for stage in WorkflowStage.objects.filter(text=text, is_completed=False, ended_at__isnull=True,
+                                              started_at__gt=today, held_started_at__isnull=True):
+        stage.held_started_at, stage.started_at = stage.started_at, HELD_START
+        stage.save(update_fields=["held_started_at", "started_at"])
+
+
+def release_held_bookings(text, today):
+    """Odblokowanie: wstrzymana rezerwacja wraca do swojej daty, a gdy ta już minęła – zaczyna się dziś."""
+    for stage in WorkflowStage.objects.filter(text=text, held_started_at__isnull=False):
+        if stage.started_at == HELD_START:
+            stage.started_at = max(stage.held_started_at, today)
+        stage.held_started_at = None
+        stage.save(update_fields=["held_started_at", "started_at"])
+
+
+def ensure_take_allowed(text, user):
+    """Pobranie, rezerwacja, rozpoczęcie i przypisanie etapu tekstu (nie: zakończenie trwającego etapu).
+
+    Wywoływać na rekordzie zablokowanym (select_for_update), żeby przełącznik nie wyprzedził operacji.
+    """
+    if take_blocked(text, user):
+        raise ValidationError(TAKE_LOCKED_MESSAGE)
+
+
 def _ensure_editing_phase(text):
     if text.repetitions.filter(completed_at__isnull=True, canceled_at__isnull=True).exists():
         raise ValidationError("W powtórzeniu użyj przycisku Zakończ etap; kolejność wynika z wybranej kolejki.")
@@ -476,6 +510,8 @@ def _finish_stage_record(stage, ended_at):
 
     if ended_at > timezone.localdate():
         raise ValidationError("Nie można zakończyć pracy z przyszłą datą.")
+    if stage.is_held:
+        raise ValidationError(TAKE_LOCKED_MESSAGE)
     if ended_at < stage.started_at:
         raise ValidationError(
             "Data zakończenia nie może być wcześniejsza "
@@ -537,6 +573,7 @@ def _assign_role(text, role, user):
 def claim_ready_for_editing(text, user, started_at=None):
     _ensure_actor(user)
     ensure_text_is_not_withdrawn(text)
+    ensure_take_allowed(text, user)
 
     if not (
         belongs_to_group(user, roles.EDITOR)
@@ -579,6 +616,7 @@ def claim_ready_for_editing(text, user, started_at=None):
 def claim_stage(text, stage_type, user, started_at=None, *, stage_id=None):
     _ensure_actor(user)
     ensure_text_is_not_withdrawn(text)
+    ensure_take_allowed(text, user)
 
     require_stage_allowed(text, stage_type)
     role = STAGE_ROLES.get(stage_type)
@@ -703,6 +741,7 @@ def start_first_verification(text, user, started_at=None):
     require_available(user)
     _ensure_actor(user)
     ensure_text_is_not_withdrawn(text)
+    ensure_take_allowed(text, user)
     _ensure_editing_phase(text)
     ensure_verification_not_completed(text, StageType.FIRST_VERIFICATION)
 
@@ -768,6 +807,8 @@ def resume_editing(text, user, started_at=None):
     if assigned_editor:
         require_available(assigned_editor.assigned_to)
     ensure_text_is_not_withdrawn(text)
+    # Wznowienie otwiera nowy etap redakcji – to też pobranie do etapu.
+    ensure_take_allowed(text, user)
     _ensure_editing_phase(text)
 
     transition_date = _transition_date(started_at)

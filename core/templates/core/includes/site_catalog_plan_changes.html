@@ -1,0 +1,13 @@
+{# Zmiany z planu aktualizacji katalogu (``plan_update``): nowe opowiadania i brakujące gatunki/tagi; ``level`` – poziom nagłówków. #}
+{% with h=level|default:3 %}
+{% if plan.new_stories %}<h{{ h }}>Nowe opowiadania <span class="site-www-count">{{ plan.new_stories|length }}</span></h{{ h }}>
+<div class="table-container"><table class="data-table site-catalog-table" data-pagination="off">
+<thead><tr><th>Tytuł</th><th>Autor</th><th>Gatunki</th><th>Tagi</th><th>Uwagi</th></tr></thead>
+<tbody>{% for story in plan.new_stories %}<tr>
+<td>{{ story.tytul }}</td><td>{{ story.autor|default:"–" }}</td><td>{{ story.gatunki|join:", "|default:"–" }}</td><td>{{ story.tagi|join:", "|default:"–" }}</td>
+<td>{% if story.ostrzezenia %}<span class="site-www-alert">{{ story.ostrzezenia|join:", " }}</span>{% else %}–{% endif %}</td>
+</tr>{% endfor %}</tbody></table></div>{% endif %}
+{% if plan.updates %}<h{{ h }}>Nowe gatunki i tagi <span class="site-www-count">{{ plan.updates|length }}</span></h{{ h }}><ul class="site-catalog-changes">
+{% for change in plan.updates %}<li><strong>{{ change.story.title }}</strong>{% if change.new_genres %} – gatunki: {{ change.new_genres|join:", " }}{% endif %}{% if change.new_tags %} – tagi: {{ change.new_tags|join:", " }}{% endif %}</li>
+{% endfor %}</ul>{% endif %}
+{% endwith %}
