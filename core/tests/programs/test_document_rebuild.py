@@ -20,7 +20,8 @@ from core.program_test_support import run_program
 from core.services import program_jobs as jobs
 from core.services.document_converter import RebuildConfirmationRequired, convert_document
 from core.services.document_preparation import DEFAULT_EDITORIAL_RULES, prepare_docx
-from core.services.document_rebuild import PLACEHOLDER_OMISSION, RebuildUnsupported, inspect_docx, rebuild_docx
+from core.services.document_rebuild import (PLACEHOLDER_OMISSION, UNKNOWN_FORMAT_OMISSION, RebuildUnsupported,
+                                            inspect_docx, rebuild_docx)
 from core.services.mailbox_import import package_messages
 from fantazmaty.testing import create_superuser
 
@@ -395,6 +396,40 @@ class RebuildWarningAccuracyTests(SimpleTestCase):
         document = Document()
         document.add_table(rows=1, cols=1).cell(0, 0).add_table(rows=1, cols=1)
         self.assertEqual(omissions_of(document), ['tabele wraz z ich treścią (liczba: 1)'])
+
+    def test_unknown_formatting_values_do_not_stop_the_rebuild(self):
+        """Wartości spoza słownika python-docx (np. w:jc „start”/„end” z OOXML Strict, LibreOffice, Google Docs)
+        nie przerywają przebudowy: start → do lewej, end → do prawej bez ostrzeżenia; nieznane wyrównanie
+        i nieznane podkreślenie – pominięte i policzone (także w stylu akapitu)."""
+        def jc(value):
+            return parse_xml(f'<w:jc {nsdecls("w")} w:val="{value}"/>')
+
+        cases = (
+            ('start w akapicie', 'start', None, WD_ALIGN_PARAGRAPH.LEFT, []),
+            ('end w akapicie', 'end', None, WD_ALIGN_PARAGRAPH.RIGHT, []),
+            ('nieznane w akapicie', 'zzz', None, None, [UNKNOWN_FORMAT_OMISSION + ' (liczba: 1)']),
+            ('end w stylu', None, 'end', WD_ALIGN_PARAGRAPH.RIGHT, []),
+            ('nieznane w stylu', None, 'zzz', None, [UNKNOWN_FORMAT_OMISSION + ' (liczba: 1)']),
+        )
+        for case, own, in_style, expected, omissions in cases:
+            with self.subTest(case):
+                document = Document()
+                paragraph = document.add_paragraph('Tekst')
+                if own:
+                    paragraph._p.get_or_add_pPr().append(jc(own))
+                if in_style:
+                    document.styles['Normal'].element.get_or_add_pPr().append(jc(in_style))
+                self.assertEqual(omissions_of(document), omissions)
+                rebuilt = Document(rebuild_docx(saved(document), allow_omissions=True))
+                self.assertEqual(rebuilt.paragraphs[0].text, 'Tekst')
+                self.assertEqual(rebuilt.paragraphs[0].paragraph_format.alignment, expected)
+        with self.subTest('nieznane podkreślenie fragmentu'):
+            document = Document()
+            run = document.add_paragraph().add_run('Tekst')
+            run._r.get_or_add_rPr().append(parse_xml(f'<w:u {nsdecls("w")} w:val="zzz"/>'))
+            self.assertEqual(omissions_of(document), [UNKNOWN_FORMAT_OMISSION + ' (liczba: 1)'])
+            rebuilt = Document(rebuild_docx(saved(document), allow_omissions=True))
+            self.assertEqual(rebuilt.paragraphs[0].runs[0].text, 'Tekst')
 
     def test_content_free_markers_between_paragraphs_are_not_reported(self):
         document = Document()

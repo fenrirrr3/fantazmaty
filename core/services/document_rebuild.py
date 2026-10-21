@@ -14,7 +14,7 @@ from docx.shared import Cm
 from docx.text.paragraph import Paragraph
 from docx.text.run import Run
 from docx.enum.style import WD_STYLE_TYPE
-from docx.enum.text import WD_BREAK
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
 
 class RebuildUnsupported(ValueError):
     def __init__(self, omissions):
@@ -340,9 +340,31 @@ def styles(style):
         style = style.base_style
 
 
-def effective(objects, name):
+UNKNOWN_FORMAT_OMISSION = "nierozpoznana wartość formatowania (zastosujemy ustawienie ze stylu lub domyślne)"
+# Wyrównanie z OOXML Strict / LibreOffice / Google Docs, którego python-docx nie zna.
+ALIGNMENT_ALIASES = {"start": WD_ALIGN_PARAGRAPH.LEFT, "end": WD_ALIGN_PARAGRAPH.RIGHT}
+
+
+def read_format(obj, name, omissions=None):
+    """Właściwość formatowania python-docx; wartość spoza jego słownika (ValueError) nie przerywa
+    przebudowy: „start”/„end” wyrównania są mapowane, reszta jest pomijana i liczona w pominięciach."""
+    try:
+        return getattr(obj, name)
+    except ValueError:
+        if name == "alignment":
+            properties = getattr(obj._element, "pPr", None)
+            jc = properties.jc if properties is not None else None
+            alias = ALIGNMENT_ALIASES.get(jc.get(qn("w:val")) if jc is not None else None)
+            if alias is not None:
+                return alias
+        if omissions is not None:
+            omissions.add(UNKNOWN_FORMAT_OMISSION)
+        return None
+
+
+def effective(objects, name, omissions=None):
     for obj in objects:
-        value = getattr(obj, name)
+        value = read_format(obj, name, omissions)
         if value is not None:
             return value
     return None
@@ -391,6 +413,7 @@ class _StyleChains:
 
     def __init__(self, original, omissions):
         self.part = original.part
+        self.omissions = omissions
         self.default_font, self.default_format, self.font_name, self.font_color = _format_resolver(
             original, omissions
         )
@@ -417,9 +440,9 @@ class _StyleChains:
                     (s.name for s in chain if s.name.startswith("Heading ") and s.name[8:].isdigit()),
                     None,
                 ),
-                "format": {name: effective(formats, name) for name in PARAGRAPH_FORMAT},
+                "format": {name: effective(formats, name, self.omissions) for name in PARAGRAPH_FORMAT},
                 "tabs": tabs,
-                "mark_size": effective(fonts, "size"),
+                "mark_size": effective(fonts, "size", self.omissions),
                 "mark_name": self.font_name(fonts),
             }
         return self._paragraphs[style_id]
@@ -433,7 +456,7 @@ class _StyleChains:
             fonts = [s.font for s in chain] + [self.default_font]
             color = self.font_color(fonts)
             self._runs[key] = {
-                "format": {name: effective(fonts, name) for name in RUN_FORMAT + ("hidden",)},
+                "format": {name: effective(fonts, name, self.omissions) for name in RUN_FORMAT + ("hidden",)},
                 "name": self.font_name(fonts),
                 "color": None if color is MISSING else color,
                 "lang": _language([s.element for s in chain]),
@@ -549,7 +572,7 @@ def _paragraph_specs(original, omissions, notes):
             paragraph["mark"]["name"] = mark_name
         own = old.paragraph_format if properties is not None else None
         for name in PARAGRAPH_FORMAT:
-            value = getattr(own, name) if own is not None else None
+            value = read_format(own, name, omissions) if own is not None else None
             if value is None:
                 value = inherited["format"][name]
             if value is not None:
@@ -562,12 +585,12 @@ def _paragraph_specs(original, omissions, notes):
             run_properties = element_run.rPr
             shared = chains.run(_style_id(run_properties, "w:rStyle"), paragraph_style_id)
             font = Run(element_run, old).font if run_properties is not None else None
-            hidden = font.hidden if font is not None else None
+            hidden = read_format(font, "hidden", omissions) if font is not None else None
             if hidden if hidden is not None else shared["format"]["hidden"]:
                 continue
             formatting = {"font": {}}
             for name in RUN_FORMAT:
-                value = getattr(font, name) if font is not None else None
+                value = read_format(font, name, omissions) if font is not None else None
                 if value is None:
                     value = shared["format"][name]
                 if value is not None:
