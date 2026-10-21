@@ -6,8 +6,9 @@
  * otwierający tag; wklejenie `<?php` daje błąd składni). Typ: „Run snippet everywhere”. Zapisz i aktywuj.
  * Snippet jest niezależny od fz-ekipa.php (własne funkcje fz_katalog_*), ale używa tego samego klucza.
  *
- * KONFIGURACJA (wp-config.php, nad linią „That's all, stop editing”):
- *   define('FZ_CMS_KATALOG_URL', 'https://<domena-cms>/api/strona/katalog/');
+ * KONFIGURACJA: adres katalogu jest wpisany niżej (https://cms.fantazmaty.pl/api/strona/katalog/);
+ * inny adres można ustawić w wp-config.php: define('FZ_CMS_KATALOG_URL', '…'); – stała ma pierwszeństwo.
+ * Klucz (wp-config.php, nad linią „That's all, stop editing”):
  *   define('FZ_CMS_KEY', '<ten sam klucz co SITE_API_KEY w .env CMS-a>');   // wspólny z fz-ekipa.php
  * Bez dostępu do wp-config.php klucz można zapisać w opcji WordPressa (jednorazowo, np. w WP-CLI
  * albo w drugim tymczasowym snippecie): update_option('fz_cms_key', '<klucz>', false);
@@ -36,7 +37,7 @@
  */
 
 if ( ! defined( 'FZ_CMS_KATALOG_URL' ) ) {
-	define( 'FZ_CMS_KATALOG_URL', 'https://<domena-cms>/api/strona/katalog/' );  // ustaw w wp-config.php (patrz wyżej)
+	define( 'FZ_CMS_KATALOG_URL', 'https://cms.fantazmaty.pl/api/strona/katalog/' );
 }
 
 function fz_katalog_klucz() {

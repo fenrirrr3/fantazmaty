@@ -97,6 +97,11 @@ EbookLib fpdf2 Pillow rapidfuzz spacy` i modelem `pl_core_news_sm` (polecenia w 
    w raporcie bez zmian (`--overwrite-premiere` zastępuje datę premiery). Statusu i etapów nie zmienia. Wpis w dzienniku
    zapisuje konto z `--user adres@e-mail` (domyślnie pierwszy superuser) bez powiadomień Discord. Błąd dowolnego wiersza
    oznacza, że nic nie zostanie zapisane.
+   Import ostrzeżeń dotyczących treści z pliku TSV (nagłówek zaczyna się od `antologia | tytuł | tytuł w bazie |
+   ostrzeżenia`, dalsze kolumny są pomijane): podgląd `python manage.py import_content_warnings plik.tsv`, a po
+   sprawdzeniu to samo z `--apply`. Tekst jest szukany po „tytule w bazie” albo „tytule”; gdy „tytuł” jest inny, staje
+   się tytułem tekstu. Komenda uzupełnia tylko puste ostrzeżenia, inne istniejące wypisuje (`--overwrite` je zastępuje).
+   Błąd dowolnego wiersza oznacza, że nic nie zostanie zapisane.
    Konta logowania podążają za osobą (e-mail osoby = login i nazwa użytkownika, odznaczenie „wciąż w ekipie”
    blokuje logowanie). Stare rozjazdy wyrównuje jednorazowo `python manage.py sync_accounts` (sam raport),
    a po sprawdzeniu `python manage.py sync_accounts --apply`. Kolizji adresów i osób bez e-maila komenda nie zmienia,
@@ -178,8 +183,8 @@ CMS-u poza katalogiem, wpisy bez powiązania, powtórzone tytuły.
 
 1. Na PythonAnywhere dopisz `SITE_API_KEY=<długi losowy ciąg>` do `.env` i przeładuj aplikację; w `wp-config.php`
    strony dodaj `define('FZ_CMS_KEY', '<ten sam klucz>');` oraz adresy endpointów:
-   `define('FZ_CMS_URL', 'https://<domena-cms>/api/strona/ekipa/');` i
-   `define('FZ_CMS_KATALOG_URL', 'https://<domena-cms>/api/strona/katalog/');`.
+   `define('FZ_CMS_URL', 'https://<domena-cms>/api/strona/ekipa/');` (`fz-katalog.php` ma już wpisany adres
+   `https://cms.fantazmaty.pl/api/strona/katalog/`; inny można nadpisać stałą `FZ_CMS_KATALOG_URL`).
 2. Wklej `tools/wordpress/fz-ekipa.php` i `tools/wordpress/fz-katalog.php` (bez pierwszej linii `<?php`) jako
    osobne snippety w Code Snippets i aktywuj.
 3. Podmień kod strony „Ekipa” w Avadzie na `tools/wordpress/ekipa-strona.txt` (shortcode'y `[fz_ekipa_nawigacja]`,
