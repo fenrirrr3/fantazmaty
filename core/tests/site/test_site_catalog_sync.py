@@ -1,11 +1,11 @@
-"""Synchronizacja katalogu szukajki z CMS-em: plan różnic bez zapisu i jego zastosowanie (nowe opowiadania, brakujące
-gatunki i tagi, raport rozbieżności tytułu/autora, pomijanie wycofanych), tylko antologie Gotowe spoza Ekstraktów,
-powieść jako jedna pozycja z danych powieści, dodanie antologii z CMS-u i ostrzeżenia zakładki."""
+"""Synchronizacja katalogu szukajki z CMS-em: plan bez zapisu i jego zastosowanie (nowe opowiadania, raport wpisów
+wycofanych i niepowiązanych), tylko antologie Gotowe spoza Ekstraktów, powieść jako jedna pozycja z danych powieści,
+dodanie antologii z CMS-u i ostrzeżenia zakładki (na danych na żywo)."""
 from django.test import TestCase
 
 from authors.models import Author
 from core.site_catalog import (apply_add, apply_update, candidate_anthologies, catalog_warnings, cms_texts, plan_add,
-                               plan_digest, plan_update, split_genres)
+                               plan_digest, plan_update, split_genres, story_entry)
 from core.site_models import SiteCatalogAnthology
 from texts.models import Anthology, ForeignAuthor, NovelProfile, Text, TextTranslation
 from workflow.models import WorkflowStage
@@ -42,18 +42,14 @@ class CatalogSyncDataMixin:
 
 
 class PlanUpdateTests(CatalogSyncDataMixin, TestCase):
-    def test_plan_reports_new_story_terms_and_differences_without_saving(self):
-        """Plan: nowe opowiadanie z CMS-u (bez wycofanego), brakujące gatunki i tagi z pisownią z CMS-u (porównanie
-        bez wielkości liter i diakrytyków), rozbieżny tytuł tylko w raporcie, wpis bez powiązania; nic nie zapisane."""
+    def test_plan_lists_new_stories_and_unlinked_without_saving(self):
+        """Plan: tylko nowe opowiadanie z CMS-u (bez wycofanego) i wpis bez powiązania; powiązany wpis z innym tytułem
+        i brakującymi gatunkami nie jest zmianą (strona bierze je z CMS-u na żywo); nic nie zapisane."""
         plan = plan_update(self.catalog)
-        self.assertEqual([entry['tytul'] for entry in plan['new_stories']], ['Nowe opowiadanie'])
-        self.assertEqual(plan['new_stories'][0], {'text_id': self.fresh.pk, 'tytul': 'Nowe opowiadanie',
-                                                  'autor': 'Ola Zięba', 'gatunki': ['science fiction'],
-                                                  'tagi': ['kosmos'], 'ostrzezenia': []})
-        self.assertEqual([(c['story'], c['new_genres'], c['new_tags']) for c in plan['updates']],
-                         [(self.story, ['groza', 'weird fiction'], ['magia', 'Łódź'])])
-        self.assertEqual([(r['story'], r['new_title'], r['new_author']) for r in plan['reports']],
-                         [(self.story, 'Smocze jajo', '')])
+        self.assertEqual(set(plan), {'anthology', 'new_stories', 'unlinked', 'missing', 'novel', 'has_changes'})
+        self.assertEqual(plan['new_stories'], [{'text_id': self.fresh.pk, 'tytul': 'Nowe opowiadanie',
+                                                'autor': 'Ola Zięba', 'gatunki': ['science fiction'],
+                                                'tagi': ['kosmos'], 'ostrzezenia': []}])
         self.assertEqual(plan['unlinked'], [self.manual])
         self.assertEqual(plan['missing'], [])
         self.assertTrue(plan['has_changes'])
@@ -62,23 +58,22 @@ class PlanUpdateTests(CatalogSyncDataMixin, TestCase):
         self.assertEqual(self.catalog.stories.count(), 2)
 
     def test_apply_adds_without_removing_and_second_run_has_no_changes(self):
-        """Zastosowanie dopisuje nowe opowiadanie na końcu i dokłada brakujące gatunki/tagi za ręcznymi; ręczne wpisy
-        zostają; tytuł nie jest zmieniany; drugi plan nie ma zmian; skrót planu zmienia się wraz z danymi."""
+        """Zastosowanie dopisuje nowe opowiadanie na końcu; istniejące wpisy zostają bez zmian (ich gatunki i tagi
+        z CMS-u dokłada dopiero JSON); drugi plan nie ma zmian; skrót planu zmienia się wraz z danymi."""
         plan = plan_update(self.catalog)
         digest = plan_digest(plan)
-        self.assertEqual(apply_update(plan), {'added': 1, 'updated': 1})
+        self.assertEqual(apply_update(plan), 1)
         self.story.refresh_from_db()
         self.assertEqual((self.story.title, self.story.genre_list, self.story.tag_list),
-                         ('Jajo smocze', ['fantasy', 'baśń', 'groza', 'weird fiction'],
-                          ['Smoki', 'ręcznie dodany', 'magia', 'Łódź']))
+                         ('Jajo smocze', ['fantasy', 'baśń'], ['Smoki', 'ręcznie dodany']))
         titles = list(self.catalog.stories.values_list('title', 'position', 'text_id'))
         self.assertEqual(titles, [('Jajo smocze', 1, self.known.pk), ('Spoza CMS-u', 2, None),
                                   ('Nowe opowiadanie', 3, self.fresh.pk)])
         again = plan_update(self.catalog)
         self.assertFalse(again['has_changes'])
-        self.assertEqual((again['new_stories'], again['updates']), ([], []))
+        self.assertEqual(again['new_stories'], [])
         self.assertNotEqual(plan_digest(again), digest)
-        self.assertEqual(apply_update(again), {'added': 0, 'updated': 0})
+        self.assertEqual(apply_update(again), 0)
 
     def test_withdrawn_chapters_extracts_and_unready_are_skipped(self):
         """Źródło z CMS-u pomija wycofane teksty, rozdziały powieści, Ekstrakty i antologie niegotowe; powiązany
@@ -106,8 +101,8 @@ class PlanUpdateTests(CatalogSyncDataMixin, TestCase):
 
     def test_novel_is_one_entry_from_its_profile(self):
         """Gotowa powieść: jedna pozycja z tytułem antologii, autorami, gatunkami i tagami z danych powieści, bez
-        powiązania z tekstem; rozdziały pomijane; aktualizacja dopisuje brakujące gatunki/tagi do tej jednej pozycji,
-        a pusty profil daje pozycję z ostrzeżeniami."""
+        powiązania z tekstem; rozdziały pomijane; zmiany profilu nie wymagają aktualizacji – pozycja na stronie bierze
+        tytuł, autorów, gatunki i tagi z profilu na żywo; pusty profil daje pozycję z ostrzeżeniami."""
         novel = Anthology.objects.create(title='Smocza powieść', is_novel=True)
         profile = NovelProfile.objects.get_or_create(anthology=novel)[0]
         profile.genre, profile.tags = 'fantasy | epicka', 'smoki, wojna'
@@ -132,12 +127,14 @@ class PlanUpdateTests(CatalogSyncDataMixin, TestCase):
         profile.tags = 'smoki, wojna, magia'
         profile.genre = 'Fantasy, epicka, przygodowa'
         profile.save()
+        profile.authors.add(Author.objects.create(first_name='Ewa', last_name='Lis'))
+        Anthology.objects.filter(pk=novel.pk).update(title='Smocza powieść. Tom 1')
         added = SiteCatalogAnthology.objects.select_related('anthology').get(pk=added.pk)
         plan = plan_update(added)
-        self.assertEqual([(c['new_genres'], c['new_tags']) for c in plan['updates']], [(['przygodowa'], ['magia'])])
         self.assertEqual((plan['new_stories'], plan['unlinked'], plan['missing'], plan['novel']), ([], [], [], True))
-        self.assertEqual(apply_update(plan), {'added': 0, 'updated': 1})
-        self.assertEqual(added.stories.get().tag_list, ['smoki', 'wojna', 'magia'])
+        self.assertEqual(story_entry(added.stories.get()), {
+            'tytul': 'Smocza powieść. Tom 1', 'autor': 'Jan Kowalski, Ewa Lis, A. N. Pióro',
+            'gatunki': ['fantasy', 'epicka', 'przygodowa'], 'tagi': ['smoki', 'wojna', 'magia']})
         bare = Anthology.objects.create(title='Pusty profil', is_novel=True)
         Anthology.objects.filter(pk=bare.pk).update(status=Anthology.Status.READY)
         bare.refresh_from_db()
@@ -156,7 +153,7 @@ class PlanUpdateTests(CatalogSyncDataMixin, TestCase):
         plan = plan_update(entry)
         self.assertEqual([(item['tytul'], item['text_id'], item['gatunki']) for item in plan['new_stories']],
                          [('Pusta powieść', None, ['groza'])])
-        self.assertEqual(apply_update(plan), {'added': 1, 'updated': 0})
+        self.assertEqual(apply_update(plan), 1)
         self.assertFalse(plan_update(entry)['has_changes'])
         self.assertEqual(list(entry.stories.values_list('title', 'tags')), [('Pusta powieść', 'mgła')])
 

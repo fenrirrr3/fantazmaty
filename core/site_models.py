@@ -1,5 +1,8 @@
 """Strona WWW: działy ekipy, katalog opowiadań szukajki i antologie strony „Słuchaj” publikowane na fantazmaty.pl
 (endpointy z kluczem)."""
+import hashlib
+import json
+
 from django.core.exceptions import ValidationError
 from django.core.validators import RegexValidator, URLValidator
 from django.db import models
@@ -123,7 +126,12 @@ class SiteCatalogAnthology(models.Model):
         ordering = ('position', 'pk')
 
     def __str__(self):
-        return self.title
+        return self.display_title
+
+    @property
+    def display_title(self):
+        """Nazwa na stronie: z CMS-u dla powiązanej antologii, inaczej zapisana w katalogu."""
+        return linked_title(self)
 
     def clean(self):
         super().clean()
@@ -132,7 +140,12 @@ class SiteCatalogAnthology(models.Model):
 
 
 class SiteCatalogStory(models.Model):
-    """Opowiadanie w katalogu szukajki: tytuł i autor jak na stronie, gatunki i tagi po jednym w wierszu."""
+    """Opowiadanie w katalogu szukajki: tytuł i autor jak na stronie, gatunki i tagi po jednym w wierszu.
+
+    Wpis powiązany z tekstem (albo pozycja powieści) dostaje na stronie tytuł i autora z CMS-u, a gatunki i tagi
+    z CMS-u dokładane za zapisanymi tutaj (``core.site_catalog.story_entry``); pola tytułu i autora są wtedy tylko
+    kopią na wypadek zerwania powiązania.
+    """
     objects = VersionedQuerySet.as_manager()
     anthology = models.ForeignKey(SiteCatalogAnthology, on_delete=models.CASCADE, related_name='stories',
                                   verbose_name='antologia w katalogu')
@@ -160,6 +173,18 @@ class SiteCatalogStory(models.Model):
     @property
     def tag_list(self):
         return term_lines(self.tags)
+
+
+def linked_title(entry):
+    """Nazwa antologii na stronie: ``Anthology.title`` dla wpisu powiązanego z CMS-em, inaczej pole ``title``."""
+    return entry.anthology.title if entry.anthology_id else entry.title
+
+
+def with_version(payload):
+    """Słownik dla strony z polem ``wersja`` – skrótem treści (bez czasu), który jest też ETag-iem endpointu:
+    te same dane dają tę samą wersję, każda zmiana – inną."""
+    content = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(',', ':'))
+    return {**payload, 'wersja': hashlib.sha256(content.encode()).hexdigest()[:20]}
 
 
 class SiteTeamSettings(models.Model):
@@ -250,7 +275,12 @@ class SiteListenAnthology(models.Model):
         ordering = ('position', 'pk')
 
     def __str__(self):
-        return self.title
+        return self.display_title
+
+    @property
+    def display_title(self):
+        """Nazwa na stronie: z CMS-u dla powiązanej antologii, inaczej zapisana tutaj."""
+        return linked_title(self)
 
 
 class SiteListenRecording(models.Model):

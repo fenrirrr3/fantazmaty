@@ -3,7 +3,7 @@
 {% block title %}Ekipa WWW | Fantazmaty CMS{% endblock %}
 {% block extra_css %}<link rel="stylesheet" href="{% static 'core/site-www.css' %}">{% endblock %}
 {% block content %}
-<header class="page-header"><h1 class="page-title">Ekipa WWW</h1><p class="page-description site-www-description">Działy ekipy, które strona <a href="https://fantazmaty.pl/o-projekcie/ekipa/">fantazmaty.pl/o-projekcie/ekipa/</a> pobiera z CMS-a. Strona odświeża je sama (co 2 dni) albo po wejściu administratora z <code>?fz_odswiez=1</code>.</p></header>
+<header class="page-header"><h1 class="page-title">Ekipa WWW</h1><p class="page-description site-www-description">Działy ekipy, które strona <a href="https://fantazmaty.pl/o-projekcie/ekipa/">fantazmaty.pl/o-projekcie/ekipa/</a> pobiera z CMS-a. Imiona i nazwiska są brane z profili osób na bieżąco. Strona co 10 minut sprawdza, czy dane się zmieniły, i wtedy je podmienia; od razu – po wejściu administratora z <code>?fz_odswiez=1</code>.</p></header>
 <section class="card"><div class="card-body">
 <h2>Ekipa</h2>
 <form method="post" class="site-www-form">{% csrf_token %}{{ form.non_field_errors }}

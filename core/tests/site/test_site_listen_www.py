@@ -40,8 +40,7 @@ class SiteListenApiTests(ListenDataMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('no-store', response['Cache-Control'])
         data = response.json()
-        self.assertEqual({key: value for key, value in data.items() if key != 'wersja'},
-                         {key: value for key, value in listen_payload().items() if key != 'wersja'})
+        self.assertEqual(data, listen_payload())
         self.assertIn('Przykładowa', response.content.decode())
         settings = SiteTeamSettings.load()
         self.assertEqual(settings.listen_fetch_version, data['wersja'])

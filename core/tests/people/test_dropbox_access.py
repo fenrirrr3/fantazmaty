@@ -142,15 +142,27 @@ class DropboxClientTests(SimpleTestCase):
                     client.add_member('11', 'x@example.test', 'editor')
 
     def test_connection_failure_and_nested_folder(self):
-        """Błąd sieci z urlopen → DropboxError; folder wewnątrz udostępnionego nie jest udostępniany."""
+        """Błąd sieci z urlopen → DropboxError; o folderze wewnątrz udostępnionego decyduje Dropbox (w folderze
+        zespołu podfolder da się udostępnić, w zwykłym – błąd inside_shared_folder z podpowiedzią)."""
         with patch('people.dropbox_sharing.urllib.request.urlopen', side_effect=urllib.error.URLError('timeout')):
             with self.assertRaisesMessage(DropboxError, 'Brak połączenia z Dropboxem (timeout)'):
                 DropboxClient().access_token()
-        client, transport = self.client_with(token=[TOKEN], files__get_metadata=[
-            {'.tag': 'folder', 'sharing_info': {'parent_shared_folder_id': '5'}}])
-        with self.assertRaisesMessage(DropboxError, 'wewnątrz innego udostępnionego folderu'):
-            client.ensure_shared('/Fantazmaty/Wspólny/test')
-        self.assertEqual(transport.calls('sharing/share_folder'), [])
+        nested = {'.tag': 'folder', 'sharing_info': {'parent_shared_folder_id': '5'}}
+        refused = (409, {'error_summary': 'bad_path/inside_shared_folder/..',
+                         'error': {'.tag': 'bad_path', 'bad_path': {'.tag': 'inside_shared_folder'}}})
+        cases = [('folder zespołu', {'.tag': 'complete', 'shared_folder_id': '77'}, '77'),
+                 ('zwykły udostępniony folder', refused, None)]
+        for label, answer, expected in cases:
+            with self.subTest(label):
+                cache.clear()
+                client, transport = self.client_with(token=[TOKEN], files__get_metadata=[nested],
+                                                     sharing__share_folder=[answer])
+                if expected:
+                    self.assertEqual(client.ensure_shared('/Fantazmaty/test CMS'), expected)
+                else:
+                    with self.assertRaisesMessage(DropboxError, 'cofnij udostępnienie folderu nadrzędnego'):
+                        client.ensure_shared('/Fantazmaty/test CMS')
+                self.assertEqual(len(transport.calls('sharing/share_folder')), 1)
 
     @override_settings(DROPBOX_REFRESH_TOKEN='')
     def test_missing_configuration(self):

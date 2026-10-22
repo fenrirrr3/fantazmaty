@@ -5,7 +5,7 @@ Do JSON-a trafiają wyłącznie imiona i nazwiska – nigdy e-maile, konta ani r
 from django.utils import timezone
 
 from core.odkurzacz_forms import plural
-from core.site_models import SiteTeamGroup, SiteTeamSection, SiteTeamSettings
+from core.site_models import SiteTeamGroup, SiteTeamSection, SiteTeamSettings, with_version
 from core.site_note import clean_note
 from core.sort_keys import text_key
 from people import roles
@@ -80,14 +80,14 @@ def team_sections(include_disabled=False):
 
 
 def team_payload():
-    """Słownik wysyłany stronie: wersja, osoby z ustawień i włączone działy."""
+    """Słownik wysyłany stronie: osoby z ustawień, włączone działy (nazwiska na bieżąco z ``Person``) i ``wersja``
+    (skrót treści)."""
     settings = SiteTeamSettings.load()
     sections = []
     for section in team_sections():
         sections.append({key: value for key, value in section.items() if key != 'wlaczony'})
         sections[-1]['grupy'] = [{'tytul': group['tytul'], 'osoby': group['osoby']} for group in section['grupy']]
-    return {'wersja': timezone.now().isoformat(timespec='seconds'),
-            'prowadzacy': settings.lead_editor, 'strona': settings.site_person, 'dzialy': sections}
+    return with_version({'prowadzacy': settings.lead_editor, 'strona': settings.site_person, 'dzialy': sections})
 
 
 def record_fetch(version):

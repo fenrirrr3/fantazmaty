@@ -1,15 +1,20 @@
 """Panel admina strony WWW: działy z podgrupami w jednym formularzu, pojedynczy rekord ustawień, katalog szukajki
-z opowiadaniami w inline, grupa „Ustawienia” w nawigacji i walidacja modeli (notka oczyszczona, ręczna podgrupa
-bez nazwisk, adres antologii tylko na fantazmaty.pl)."""
+z opowiadaniami w inline, pola „z CMS-u” tylko do odczytu dla wpisów powiązanych (szukajka i „Słuchaj”), grupa
+„Ustawienia” w nawigacji i walidacja modeli (notka oczyszczona, ręczna podgrupa bez nazwisk, adres antologii tylko
+na fantazmaty.pl)."""
 from django.contrib import admin
 from django.core.exceptions import ValidationError
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
+from lxml import html
 
-from core.site_models import SiteCatalogAnthology, SiteCatalogStory, SiteTeamGroup, SiteTeamSection, SiteTeamSettings
+from authors.models import Author
+from core.site_models import (SiteCatalogAnthology, SiteCatalogStory, SiteListenAnthology, SiteTeamGroup,
+                              SiteTeamSection, SiteTeamSettings)
 from fantazmaty.testing import create_member, create_superuser
 from people import roles
 from people.models import Role
+from texts.models import Anthology, Text
 
 
 class SiteTeamAdminTests(TestCase):
@@ -139,3 +144,73 @@ class SiteCatalogAdminTests(TestCase):
                     with self.assertRaises(ValidationError) as caught:
                         item.full_clean()
                     self.assertIn('url', caught.exception.message_dict)
+
+
+class LinkedCmsFieldsAdminTests(TestCase):
+    """Wpisy powiązane z CMS-em: nazwa, tytuł i autor pokazane z CMS-u i nieedytowalne; wpisy spoza CMS-u – edytowalne."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.admin = create_superuser('www-admin')
+        cls.book = Anthology.objects.create(title='Antologia z CMS-u')
+        cls.text = Text.objects.create(title='Tytuł z CMS-u', anthology=cls.book, length=1000)
+        cls.text.authors.add(Author.objects.create(first_name='Jan M.', last_name='Kowalski'))
+        cls.catalog = SiteCatalogAnthology.objects.create(title='Stara nazwa', anthology=cls.book, position=50)
+        cls.linked = SiteCatalogStory.objects.create(anthology=cls.catalog, text=cls.text, title='Stary tytuł',
+                                                     author='Jan Kowalski', position=1)
+        cls.manual = SiteCatalogStory.objects.create(anthology=cls.catalog, title='Ręczne', author='Obcy', position=2)
+        cls.listen = SiteListenAnthology.objects.create(anthology=cls.book, slug='z-cms', title='Stara nazwa',
+                                                        position=50)
+
+    def setUp(self):
+        self.client.force_login(self.admin)
+
+    def test_change_forms_show_cms_values_read_only(self):
+        """Szukajka i „Słuchaj”: zamiast pola nazwy – nazwa z CMS-u z dopiskiem; w inline opowiadanie powiązane
+        ma tytuł i autora z CMS-u w zablokowanych polach, a ręczne – zwykłe pola; listy pokazują nazwę ze strony."""
+        catalog = html.fromstring(self.client.get(
+            reverse('admin:core_sitecataloganthology_change', args=[self.catalog.pk])).content.decode())
+        listen = html.fromstring(self.client.get(
+            reverse('admin:core_sitelistenanthology_change', args=[self.listen.pk])).content.decode())
+        for name, doc in (('szukajka', catalog), ('słuchaj', listen)):
+            with self.subTest(form=name):
+                self.assertEqual(doc.xpath('//input[@name="title"]'), [])
+                self.assertIn('Antologia z CMS-u (z CMS-u – nazwę zmienia się w antologii)',
+                              doc.xpath('normalize-space(//div[contains(@class,"field-cms_title")])'))
+        for prefix, value, author, disabled, source in (('stories-0', 'Tytuł z CMS-u', 'Jan M. Kowalski', True, 'z CMS-u'),
+                                                        ('stories-1', 'Ręczne', 'Obcy', False, 'z katalogu')):
+            with self.subTest(story=value):
+                title = catalog.xpath(f'//input[@name="{prefix}-title"]')[0]
+                self.assertEqual((title.get('value'), title.get('disabled') is not None), (value, disabled))
+                self.assertEqual(catalog.xpath(f'//input[@name="{prefix}-author"]/@value'), [author])
+                self.assertEqual(catalog.xpath(f'normalize-space(//td[@class="field-source"][ancestor::tr[@id="{prefix}"]])'),
+                                 source)
+        for changelist in ('admin:core_sitecataloganthology_changelist', 'admin:core_sitelistenanthology_changelist'):
+            with self.subTest(changelist=changelist):
+                self.assertContains(self.client.get(reverse(changelist)), 'Antologia z CMS-u')
+
+    def test_unlinked_entry_keeps_editable_title(self):
+        """Wpis bez powiązania z CMS-em ma zwykłe pole nazwy na stronie."""
+        entry = SiteListenAnthology.objects.create(slug='spoza', title='Spoza CMS-u', position=51)
+        page = self.client.get(reverse('admin:core_sitelistenanthology_change', args=[entry.pk]))
+        self.assertContains(page, 'name="title"')
+        self.assertEqual(entry.display_title, 'Spoza CMS-u')
+
+    def test_saving_inline_refreshes_copy_from_cms(self):
+        """Zapis formularza z wierszem powiązanym: przesłany tytuł jest ignorowany, a kopia w katalogu dostaje
+        wartości z CMS-u (ręczny wiersz zapisuje to, co wpisano)."""
+        change = reverse('admin:core_sitecataloganthology_change', args=[self.catalog.pk])
+        data = {'anthology': str(self.book.pk), 'url': '', 'position': '50', 'is_enabled': 'on',
+                'stories-TOTAL_FORMS': '2', 'stories-INITIAL_FORMS': '2', 'stories-MIN_NUM_FORMS': '0',
+                'stories-MAX_NUM_FORMS': '1000'}
+        for index, (story, title) in enumerate(((self.linked, 'Podrobiony'), (self.manual, 'Ręczne poprawione'))):
+            data.update({f'stories-{index}-id': str(story.pk), f'stories-{index}-anthology': str(self.catalog.pk),
+                         f'stories-{index}-position': str(story.position), f'stories-{index}-title': title,
+                         f'stories-{index}-author': 'Ktoś', f'stories-{index}-genres': 'fantasy',
+                         f'stories-{index}-tags': '', f'stories-{index}-text': str(story.text_id or '')})
+        data['_edit_version'] = self.client.get(change).context['request'].edit_version_token
+        self.assertEqual(self.client.post(change, data).status_code, 302)
+        self.assertEqual(list(self.catalog.stories.values_list('title', 'author', 'genres')),
+                         [('Tytuł z CMS-u', 'Jan M. Kowalski', 'fantasy'), ('Ręczne poprawione', 'Ktoś', 'fantasy')])
+        self.catalog.refresh_from_db()
+        self.assertEqual(self.catalog.title, 'Stara nazwa')

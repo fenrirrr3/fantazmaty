@@ -127,6 +127,13 @@ class SiteTeamApiPayloadTests(TestCase):
         self.assertIsNotNone(settings.last_fetched_at)
         self.assertEqual(settings.last_fetch_version, response.json()['wersja'])
 
+    def test_names_follow_person_profile_at_once(self):
+        """Inicjał dopisany w profilu osoby (i zmiana nazwiska) jest od razu w JSON-ie, także w kolejności."""
+        Person.objects.filter(last_name='Żyła').update(first_name='Agata M.', last_name='Abacka')
+        editors = self.fetch().json()['dzialy'][0]
+        self.assertEqual(editors['grupy'][0]['osoby'], ['Agata M. Abacka', 'Adam Abacki', 'Bogdan Abacki',
+                                                         'Anita Szynal', 'Magdalena Świerczek'])
+
     def test_people_count_text_uses_polish_plural_forms(self):
         """1 osoba, 2–4 osoby, 5+ osób, przy czym 12–14 to „osób”, a 22–24 „osoby”; przy liczbie w dziale
         osoba w dwóch grupach liczy się raz."""

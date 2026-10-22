@@ -3,7 +3,7 @@
 {% block title %}Szukajka WWW | Fantazmaty CMS{% endblock %}
 {% block extra_css %}<link rel="stylesheet" href="{% static 'core/site-www.css' %}">{% endblock %}
 {% block content %}
-<header class="page-header"><h1 class="page-title">Szukajka WWW</h1><p class="page-description site-www-description">Katalog opowiadań, który wyszukiwarka na fantazmaty.pl pobiera z CMS-a. Strona odświeża go sama (co 2 dni) albo po wejściu administratora z <code>?fz_odswiez=1</code>.</p></header>
+<header class="page-header"><h1 class="page-title">Szukajka WWW</h1><p class="page-description site-www-description">Katalog opowiadań, który wyszukiwarka na fantazmaty.pl pobiera z CMS-a. Dla wpisów powiązanych z CMS-em nazwa antologii, tytuł i autor są brane z CMS-u na bieżąco, a gatunki i tagi z CMS-u są dokładane do zapisanych w katalogu. Strona co 10 minut sprawdza, czy dane się zmieniły, i wtedy je podmienia; od razu – po wejściu administratora z <code>?fz_odswiez=1</code>.</p></header>
 <section class="card"><div class="card-body">
 <h2>Katalog</h2>
 <dl class="site-catalog-counters" aria-label="Liczby w katalogu">
@@ -35,7 +35,7 @@
 <section class="card" id="dodaj-antologie"><div class="card-body">
 <h2>Dodaj antologię do katalogu</h2>
 {% if has_candidates or add_form.is_bound %}
-<p class="muted-text">Gotowe antologie z CMS-u (bez Ekstraktów), których nie ma jeszcze w katalogu. Opowiadania, gatunki i tagi są brane z tekstów CMS-u; powieść trafia jako jedna pozycja w całości (dane z profilu powieści, bez rozdziałów). Po dodaniu można wszystko dopracować w panelu administracyjnym.</p>
+<p class="muted-text">Gotowe antologie z CMS-u (bez Ekstraktów), których nie ma jeszcze w katalogu. Opowiadania, gatunki i tagi są brane z tekstów CMS-u; powieść trafia jako jedna pozycja w całości (dane z profilu powieści, bez rozdziałów). Po dodaniu tytuły i autorzy zmieniają się razem z CMS-em; w panelu administracyjnym można dopisać gatunki i tagi spoza CMS-u.</p>
 <form method="post" class="site-www-form site-catalog-add">{% csrf_token %}{{ add_form.non_field_errors }}
 <div class="site-www-fields">{% for field in add_form.visible_fields %}{% include "core/includes/form_field.html" %}{% endfor %}</div>
 <div class="actions"><button type="submit" name="action" value="preview" class="secondary-button">Pokaż podgląd</button>{% if add_plan %}<input type="hidden" name="plan" value="{{ add_plan_token }}"><button type="submit" name="action" value="add" class="primary-button">Dodaj do katalogu</button>{% endif %}</div>
@@ -56,8 +56,8 @@
 {% if rows %}<div class="table-container"><table class="data-table site-catalog-table" data-pagination="off">
 <thead><tr><th>Antologia</th><th>CMS</th><th>Adres</th><th>Opowiadania</th><th>Włączona</th><th>Aktualizacja</th></tr></thead>
 <tbody>{% for row in rows %}<tr id="katalog-{{ row.item.pk }}"{% if not row.item.is_enabled %} class="is-disabled"{% endif %}>
-<td><a href="{% url 'admin:core_sitecataloganthology_change' row.item.pk %}">{{ row.item.title }}</a>{% if row.novel %} <span class="badge site-www-badge-manual">powieść</span>{% endif %}</td>
-<td>{% if row.item.anthology_id %}tak{% if row.item.anthology.title != row.item.title %} <span class="muted-text">({{ row.item.anthology.title }})</span>{% endif %}{% else %}<span class="muted-text">nie</span>{% endif %}</td>
+<td><a href="{% url 'admin:core_sitecataloganthology_change' row.item.pk %}">{{ row.item.display_title }}</a>{% if row.novel %} <span class="badge site-www-badge-manual">powieść</span>{% endif %}</td>
+<td>{% if row.item.anthology_id %}tak{% else %}<span class="muted-text">nie</span>{% endif %}</td>
 <td>{% if row.item.url %}<a href="{{ row.item.url }}" rel="noopener">{{ row.item.url|cut:"https://fantazmaty.pl" }}</a>{% else %}<span class="site-www-alert">brak</span>{% endif %}</td>
 <td>{{ row.stories }}{% if row.item.anthology_id and not row.novel and row.linked_stories != row.stories %} <span class="muted-text">(z CMS-u: {{ row.linked_stories }})</span>{% endif %}</td>
 <td>{% if row.item.is_enabled %}tak{% else %}<span class="badge site-www-badge-off">wyłączona</span>{% endif %}</td>

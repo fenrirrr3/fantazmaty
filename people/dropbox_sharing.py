@@ -43,7 +43,8 @@ ERROR_MESSAGES = (
     ("too_many_invitees", "Za dużo zaproszeń naraz – spróbuj ponownie później."),
     ("rate_limit", "Przekroczono limit zaproszeń Dropboxa – spróbuj ponownie później."),
     ("insufficient_plan", "Plan konta Dropbox nie pozwala na tę operację."),
-    ("inside_shared_folder", "Folder leży wewnątrz innego udostępnionego folderu – Dropbox nie pozwala udostępnić go osobno."),
+    ("inside_shared_folder", "Folder leży wewnątrz innego udostępnionego folderu – Dropbox nie pozwala udostępnić go osobno. "
+     "Przenieś go poza udostępniony folder albo cofnij udostępnienie folderu nadrzędnego."),
     ("contains_shared_folder", "Folder zawiera udostępnione podfoldery – Dropbox nie pozwala udostępnić go w całości."),
     ("is_file", "Ścieżka wskazuje plik, a nie folder."),
     ("not_found", "Na koncie Dropbox aplikacji nie ma takiego folderu."),
@@ -231,13 +232,14 @@ class DropboxClient:
         return sorted(folders, key=lambda folder: folder["name"].casefold())
 
     def ensure_shared(self, path):
-        """Identyfikator udostępnienia folderu; nieudostępniony folder zostaje udostępniony (konto aplikacji – właściciel)."""
+        """Identyfikator udostępnienia folderu; nieudostępniony folder zostaje udostępniony (konto aplikacji – właściciel).
+
+        O zagnieżdżeniu decyduje Dropbox (w folderach zespołu podfoldery można udostępniać osobno), więc
+        ``parent_shared_folder_id`` nie blokuje próby – błąd ``inside_shared_folder`` przychodzi z API."""
         metadata = self.folder_metadata(path)
         shared = _shared_id(metadata)
         if shared:
             return shared
-        if (metadata.get("sharing_info") or {}).get("parent_shared_folder_id"):
-            raise DropboxError(message_for("inside_shared_folder"), "inside_shared_folder")
         try:
             result = self.call("sharing/share_folder", {"path": path, "force_async": False})
         except DropboxError as error:

@@ -1,11 +1,16 @@
 """Szukajka WWW: katalog opowiadań dla wyszukiwarki na fantazmaty.pl/czytaj/szukaj/.
 
 Ten sam słownik dla endpointu i podglądu w zakładce, dopasowanie wpisów katalogu do antologii i tekstów CMS-u
-oraz synchronizacja z CMS-em (plan różnic bez zapisu → zastosowanie w jednej transakcji). Do JSON-a trafiają
-wyłącznie tytuły, podpisy autorów, gatunki i tagi – nigdy e-maile ani dane wewnętrzne.
+oraz dodawanie z CMS-u nowych antologii i opowiadań (plan bez zapisu → zastosowanie w jednej transakcji). Do JSON-a
+trafiają wyłącznie tytuły, podpisy autorów, gatunki i tagi – nigdy e-maile ani dane wewnętrzne.
 
-Z CMS-u importowane są tylko antologie Gotowe i niebędące Ekstraktami. Powieść jest jedną pozycją w całości:
-wpis katalogu powieści ma dokładnie jedno „opowiadanie” (tytuł powieści, autorzy, gatunki i tagi z ``NovelProfile``),
+Dane na żywo: dla wpisów powiązanych z CMS-em JSON bierze nazwę antologii z ``Anthology.title``, a tytuł i autora
+opowiadania z tekstu (``cms_entry``) albo – dla powieści – z ``NovelProfile`` (``novel_entry``); gatunki i tagi
+z CMS-u są dokładane za zapisanymi w katalogu (bez powtórzeń). Dotyczy to każdego powiązanego wpisu, niezależnie
+od statusu antologii. Wpisy spoza CMS-u – jak zapisano w katalogu.
+
+Z CMS-u dodawane są tylko antologie Gotowe i niebędące Ekstraktami. Powieść jest jedną pozycją w całości:
+wpis katalogu powieści ma jedno „opowiadanie” (tytuł powieści, autorzy, gatunki i tagi z ``NovelProfile``),
 bez powiązania ``text`` – rozdziały są pomijane.
 """
 import hashlib
@@ -13,11 +18,12 @@ import json
 import unicodedata
 
 from django.db import transaction
+from django.db.models import Prefetch
 from django.utils import timezone
 
 from core.discord_notifications import text_authors
 from core.odkurzacz_forms import plural
-from core.site_models import SiteCatalogAnthology, SiteCatalogStory, SiteTeamSettings, term_lines
+from core.site_models import SiteCatalogAnthology, SiteCatalogStory, SiteTeamSettings, with_version
 from texts.models import Anthology, Text
 from texts.production import active_production_texts
 from texts.vocabulary import tokens
@@ -51,10 +57,11 @@ def _fold_set(items):
     return {fold(item) for item in items}
 
 
-def _missing(new_items, existing):
-    """Elementy ``new_items`` nieobecne w ``existing`` (porównanie po ``fold``), pisownia z CMS-u, bez powtórzeń."""
-    present, result = _fold_set(existing), []
-    for item in new_items:
+def merge_terms(saved, cms):
+    """Gatunki albo tagi zapisane w katalogu, a za nimi te z CMS-u, których jeszcze nie ma (porównanie po ``fold``,
+    pisownia z CMS-u, bez powtórzeń)."""
+    present, result = _fold_set(saved), list(saved)
+    for item in cms:
         if fold(item) not in present:
             present.add(fold(item))
             result.append(item)
@@ -64,12 +71,42 @@ def _missing(new_items, existing):
 # --- dane dla strony ---------------------------------------------------------------------------------------------
 
 def catalog_anthologies(include_disabled=False):
-    queryset = SiteCatalogAnthology.objects.select_related('anthology').prefetch_related('stories')
+    """Wpisy katalogu z wszystkim, czego potrzebują dane na żywo (antologia, profil powieści, teksty z autorami)
+    – stała liczba zapytań niezależnie od liczby opowiadań."""
+    stories = SiteCatalogStory.objects.select_related('text__anthology').prefetch_related(
+        'text__authors', 'text__translation__foreign_authors')
+    queryset = SiteCatalogAnthology.objects.select_related('anthology__novel').prefetch_related(
+        Prefetch('stories', queryset=stories), 'anthology__novel__authors')
     return queryset if include_disabled else queryset.filter(is_enabled=True)
 
 
+def cms_source(story):
+    """Dane CMS-u dla wpisu katalogu: ``cms_entry`` powiązanego tekstu, ``novel_entry`` dla pozycji powieści
+    (wpis bez tekstu w antologii-powieści); ``None`` – wpis spoza CMS-u."""
+    if story.text_id:
+        return cms_entry(story.text)
+    anthology = story.anthology.anthology
+    if anthology is not None and anthology.is_novel:
+        return novel_entry(anthology)
+    return None
+
+
 def story_entry(story):
-    return {'tytul': story.title, 'autor': story.author, 'gatunki': story.genre_list, 'tagi': story.tag_list}
+    """Opowiadanie dla strony: tytuł i autor z CMS-u (pusty w CMS-ie – z katalogu), gatunki i tagi z katalogu
+    uzupełnione o te z CMS-u; wpis spoza CMS-u – jak zapisano w katalogu."""
+    entry = {'tytul': story.title, 'autor': story.author, 'gatunki': story.genre_list, 'tagi': story.tag_list}
+    source = cms_source(story)
+    if source:
+        entry['tytul'] = source['tytul'] or story.title
+        entry['autor'] = source['autor'] or story.author
+        entry['gatunki'] = merge_terms(entry['gatunki'], source['gatunki'])
+        entry['tagi'] = merge_terms(entry['tagi'], source['tagi'])
+    return entry
+
+
+def anthology_entry(item):
+    return {'nazwa': item.display_title, 'url': item.url,
+            'opowiadania': [story_entry(story) for story in item.stories.all()]}
 
 
 def catalog_counts(anthologies):
@@ -86,12 +123,9 @@ def catalog_counts(anthologies):
 
 
 def catalog_payload():
-    """Słownik wysyłany stronie: dokładnie format bloku ``#fzs-data`` plus ``wersja`` i ``liczby``."""
-    anthologies = [{'nazwa': item.title, 'url': item.url,
-                    'opowiadania': [story_entry(story) for story in item.stories.all()]}
-                   for item in catalog_anthologies()]
-    return {'wersja': timezone.now().isoformat(timespec='seconds'), 'liczby': catalog_counts(anthologies),
-            'antologie': anthologies}
+    """Słownik wysyłany stronie: dokładnie format bloku ``#fzs-data`` plus ``liczby`` i ``wersja`` (skrót treści)."""
+    anthologies = [anthology_entry(item) for item in catalog_anthologies()]
+    return with_version({'liczby': catalog_counts(anthologies), 'antologie': anthologies})
 
 
 def record_catalog_fetch(version):
@@ -266,66 +300,44 @@ def apply_add(anthology, url, plan=None):
 
 
 def plan_update(catalog_anthology):
-    """Różnice między katalogiem a CMS-em bez zapisu: nowe opowiadania, brakujące gatunki i tagi, rozbieżne
-    tytuły i autorzy (tylko raport), wpisy bez tekstu w CMS-ie. Tylko antologie Gotowe spoza Ekstraktów
-    (``ValueError``); powieść porównywana jako jedna pozycja z pierwszym wpisem."""
+    """Nowe opowiadania z CMS-u bez zapisu i raport: wpisy bez powiązania z tekstem oraz powiązane teksty, które
+    nie trafiają już do katalogu. Tytułów, autorów, gatunków i tagów nie trzeba aktualizować – powiązane wpisy biorą
+    je z CMS-u na bieżąco. Tylko antologie Gotowe spoza Ekstraktów (``ValueError``); powieść dostaje swoją jedyną
+    pozycję, gdy wpis katalogu jest pusty."""
     anthology = catalog_anthology.anthology
     require_importable(anthology)
     stories = list(catalog_anthology.stories.all())
-    by_text = {story.text_id: story for story in stories if story.text_id}
-    plan = {'anthology': catalog_anthology, 'new_stories': [], 'updates': [], 'reports': [], 'unlinked': [],
-            'missing': [], 'novel': anthology.is_novel}
-    seen = set()
-    for entry in cms_entries(anthology):
-        if anthology.is_novel:
-            story = stories[0] if stories else None
-        else:
-            seen.add(entry['text_id'])
-            story = by_text.get(entry['text_id'])
-        if story is None:
-            plan['new_stories'].append(entry)
-            continue
-        new_genres = _missing(entry['gatunki'], story.genre_list)
-        new_tags = _missing(entry['tagi'], story.tag_list)
-        if new_genres or new_tags:
-            plan['updates'].append({'story': story, 'new_genres': new_genres, 'new_tags': new_tags})
-        new_title = entry['tytul'] if fold(entry['tytul']) != fold(story.title) else ''
-        new_author = entry['autor'] if entry['autor'] and fold(entry['autor']) != fold(story.author) else ''
-        if new_title or new_author:
-            plan['reports'].append({'story': story, 'new_title': new_title, 'new_author': new_author})
-    if not anthology.is_novel:
+    plan = {'anthology': catalog_anthology, 'new_stories': [], 'unlinked': [], 'missing': [],
+            'novel': anthology.is_novel}
+    if anthology.is_novel:
+        plan['new_stories'] = [] if stories else [novel_entry(anthology)]
+    else:
+        linked = {story.text_id for story in stories if story.text_id}
+        entries = cms_entries(anthology)
+        seen = {entry['text_id'] for entry in entries}
+        plan['new_stories'] = [entry for entry in entries if entry['text_id'] not in linked]
         plan['unlinked'] = [story for story in stories if not story.text_id]
         plan['missing'] = [story for story in stories if story.text_id and story.text_id not in seen]
-    plan['has_changes'] = bool(plan['new_stories'] or plan['updates'])
+    plan['has_changes'] = bool(plan['new_stories'])
     return plan
 
 
 def plan_digest(plan):
-    """Skrót zmian do zapisu (nowe opowiadania, gatunki, tagi): zastosowanie wymaga tego samego planu co podgląd."""
-    data = {'new': [entry['text_id'] for entry in plan.get('new_stories', plan.get('stories', []))],
-            'updates': [(c['story'].pk, c['new_genres'], c['new_tags']) for c in plan.get('updates', [])]}
-    return hashlib.sha256(json.dumps(data, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:32]
+    """Skrót nowych opowiadań planu: zastosowanie wymaga tego samego planu co podgląd."""
+    data = [entry['text_id'] for entry in plan.get('new_stories', plan.get('stories', []))]
+    return hashlib.sha256(json.dumps(data).encode()).hexdigest()[:32]
 
 
 @transaction.atomic
 def apply_update(plan):
-    """Dopisuje nowe opowiadania i brakujące gatunki/tagi; nigdy nie usuwa ani nie nadpisuje istniejących."""
+    """Dopisuje nowe opowiadania na końcu antologii; niczego nie usuwa ani nie nadpisuje. Zwraca ich liczbę."""
     catalog_anthology = plan['anthology']
-    added = updated = 0
     position = catalog_anthology.stories.order_by('-position').values_list('position', flat=True).first() or 0
-    for entry in plan['new_stories']:
-        position += 1
+    for position, entry in enumerate(plan['new_stories'], start=position + 1):
         _create_story(catalog_anthology, entry, position)
-        added += 1
-    for change in plan['updates']:
-        story = change['story']
-        story.genres = '\n'.join([*story.genre_list, *change['new_genres']])
-        story.tags = '\n'.join([*story.tag_list, *change['new_tags']])
-        story.save(update_fields=['genres', 'tags'])
-        updated += 1
-    if added or updated:
+    if plan['new_stories']:
         catalog_anthology.save(update_fields=['updated_at'])
-    return {'added': added, 'updated': updated}
+    return len(plan['new_stories'])
 
 
 def plan_update_all():
@@ -350,42 +362,37 @@ def plans_digest(plans):
 
 @transaction.atomic
 def apply_update_all(plans):
-    """Stosuje wszystkie plany w jednej transakcji (``apply_update`` po kolei); zwraca liczniki zmian."""
-    totals = {'anthologies': 0, 'added': 0, 'updated': 0, 'genres': 0, 'tags': 0}
-    for plan in plans:
-        result = apply_update(plan)
-        totals['anthologies'] += 1
-        totals['added'] += result['added']
-        totals['updated'] += result['updated']
-        totals['genres'] += sum(len(change['new_genres']) for change in plan['updates'])
-        totals['tags'] += sum(len(change['new_tags']) for change in plan['updates'])
-    return totals
+    """Stosuje wszystkie plany w jednej transakcji (``apply_update`` po kolei); zwraca liczby antologii i opowiadań."""
+    return {'anthologies': len(plans), 'added': sum(apply_update(plan) for plan in plans)}
 
 
 # --- ostrzeżenia -----------------------------------------------------------------------------------------------------
 
 def catalog_warnings():
-    """Ostrzeżenia zakładki: antologia włączona bez adresu, opowiadania bez gatunku i bez tagów, gotowe antologie
-    CMS-u poza katalogiem, wpisy bez powiązania z CMS-em (informacyjnie), powtórzone tytuły w antologii."""
+    """Ostrzeżenia zakładki (na danych, które dostaje strona): antologia włączona bez adresu, opowiadania bez gatunku
+    i bez tagów, gotowe antologie CMS-u poza katalogiem, wpisy bez powiązania z CMS-em (informacyjnie), powtórzone
+    tytuły w antologii."""
     warnings = {'no_url': [], 'no_genre': [], 'no_tags': [], 'candidates': [], 'unlinked_anthologies': [],
                 'unlinked_stories': [], 'duplicates': []}
     for item in catalog_anthologies(include_disabled=True):
+        name = item.display_title
         novel = bool(item.anthology_id and item.anthology.is_novel)
         if item.is_enabled and not item.url:
-            warnings['no_url'].append(item.title)
+            warnings['no_url'].append(name)
         if not item.anthology_id:
-            warnings['unlinked_anthologies'].append(item.title)
+            warnings['unlinked_anthologies'].append(name)
         titles = {}
         for story in item.stories.all():
-            label = f'{item.title}: {story.title}'
-            if not term_lines(story.genres):
+            entry = story_entry(story)
+            label = f'{name}: {entry["tytul"]}'
+            if not entry['gatunki']:
                 warnings['no_genre'].append(label)
-            if not term_lines(story.tags):
+            if not entry['tagi']:
                 warnings['no_tags'].append(label)
             if not story.text_id and not novel:
                 warnings['unlinked_stories'].append(label)
-            titles.setdefault(fold(story.title), []).append(story.title)
-        warnings['duplicates'].extend(f'{item.title}: {names[0]} ({len(names)}×)'
+            titles.setdefault(fold(entry['tytul']), []).append(entry['tytul'])
+        warnings['duplicates'].extend(f'{name}: {names[0]} ({len(names)}×)'
                                       for names in titles.values() if len(names) > 1)
     warnings['candidates'] = [anthology.title for anthology in candidate_anthologies()]
     return warnings

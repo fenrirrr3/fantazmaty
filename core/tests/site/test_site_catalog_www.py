@@ -1,6 +1,6 @@
 """Zakładka System → „Szukajka WWW”: dostęp tylko dla superusera, liczniki i ostrzeżenia, zapis adresu szukajki,
 dodanie antologii z CMS-u przez HTTP (podgląd → dodanie), aktualizacja (podgląd różnic → zastosuj), zbiorcza
-aktualizacja wszystkich antologii, ``?format=json`` identyczny z endpointem."""
+aktualizacja wszystkich antologii (tylko nowe opowiadania), ``?format=json`` identyczny z endpointem."""
 from unittest import mock
 
 from django.test import TestCase, override_settings
@@ -61,15 +61,15 @@ class SiteCatalogPageTests(CatalogSyncDataMixin, TestCase):
 
     @override_settings(SITE_API_KEY='')
     def test_page_shows_counts_rows_warnings_and_status(self):
-        """Liczniki jak w JSON-ie, tekst „3 opowiadania · 3 antologie”, wiersz z przyciskiem aktualizacji
+        """Liczniki jak w JSON-ie (z gatunkami i tagami z CMS-u), tekst „3 opowiadania · 3 antologie”, wiersz z przyciskiem aktualizacji
         (nieaktywny dla antologii bez powiązania i dla niegotowej powieści – wejście na jej aktualizację wraca
         z komunikatem), znacznik „powieść”, ostrzeżenia, brak klucza i brak pobrania, brak odnośnika
         „Odśwież stronę” bez adresu szukajki."""
         page = self.client.get(URL)
         self.assertEqual(page.status_code, 200)
-        self.assertEqual(page.context['counts'], {'antologie': 3, 'opowiadania': 3, 'gatunki': 3, 'tagi': 4})
+        self.assertEqual(page.context['counts'], {'antologie': 3, 'opowiadania': 3, 'gatunki': 5, 'tagi': 6})
         doc = html.fromstring(page.content)
-        self.assertEqual(doc.xpath('//dl[contains(@class,"site-catalog-counters")]//dd/text()'), ['3', '3', '3', '4'])
+        self.assertEqual(doc.xpath('//dl[contains(@class,"site-catalog-counters")]//dd/text()'), ['3', '3', '5', '6'])
         content = page.content.decode()
         update = reverse('core:site_catalog_update', args=[self.catalog.pk])
         for expected in ('3 opowiadania · 3 antologie', f'href="{update}"', 'Brak <code>SITE_API_KEY</code>',
@@ -173,25 +173,26 @@ class SiteCatalogPageTests(CatalogSyncDataMixin, TestCase):
                 self.assertEqual(site_settings.catalog_refresh_url, expected)
 
     def test_update_preview_then_apply(self):
-        """Podgląd różnic pokazuje nowe opowiadanie, nowe gatunki i tagi oraz raport tytułu; „Zastosuj” z tokenem
-        dopisuje i wraca do zakładki; drugi podgląd – „Brak zmian”, a POST bez zmian tylko informuje."""
+        """Podgląd pokazuje nowe opowiadanie i wpis bez powiązania (bez raportu tytułów i gatunków – są na żywo);
+        „Zastosuj” z tokenem dopisuje i wraca do zakładki; drugi podgląd – „Brak zmian”, a POST bez zmian tylko
+        informuje."""
         update = reverse('core:site_catalog_update', args=[self.catalog.pk])
         page = self.client.get(update)
         self.assertEqual(page.status_code, 200)
         content = page.content.decode()
-        for expected in ('Nowe opowiadanie', 'gatunki: groza, weird fiction', 'tagi: magia, Łódź',
-                         'w CMS-ie tytuł: „Smocze jajo”', 'bez powiązania z tekstem w CMS-ie', 'Zastosuj'):
+        for expected in ('<td>Nowe opowiadanie</td>', 'bez powiązania z tekstem w CMS-ie', 'Zastosuj'):
             with self.subTest(expected=expected):
                 self.assertIn(expected, content)
+        for absent in ('w CMS-ie tytuł', 'Nowe gatunki i tagi'):
+            with self.subTest(absent=absent):
+                self.assertNotIn(absent, content)
         token = html.fromstring(page.content).xpath('//input[@name="plan"]/@value')[0]
         self.assertEqual(self.client.post(update, {'plan': 'zły'}).status_code, 409)
         self.assertEqual(self.catalog.stories.count(), 2)
         response = self.client.post(update, {'plan': token}, follow=True)
         self.assertEqual(response.redirect_chain, [(URL, 302)])
-        self.assertContains(response, '„Smocza antologia”: dodano 1 opowiadanie, uzupełniono gatunki lub tagi w 1.')
+        self.assertContains(response, '„Smocza antologia”: dodano 1 opowiadanie.')
         self.assertEqual(self.catalog.stories.count(), 3)
-        self.story.refresh_from_db()
-        self.assertEqual(self.story.tag_list, ['Smoki', 'ręcznie dodany', 'magia', 'Łódź'])
         again = self.client.get(update)
         self.assertContains(again, 'Brak zmian')
         self.assertNotContains(again, 'name="plan"')
@@ -201,7 +202,7 @@ class SiteCatalogPageTests(CatalogSyncDataMixin, TestCase):
 
     @override_settings(SITE_API_KEY='tajny-klucz')
     def test_json_preview_equals_endpoint_without_recording_fetch(self):
-        """``?format=json`` daje ten sam JSON co endpoint (poza wersją z czasem) i nie zapisuje śladu pobrania."""
+        """``?format=json`` daje ten sam JSON co endpoint (z tą samą wersją) i nie zapisuje śladu pobrania."""
         preview = self.client.get(URL, {'format': 'json'})
         self.assertEqual(preview['Content-Type'], 'application/json')
         self.assertIn('no-store', preview['Cache-Control'])
@@ -209,15 +210,15 @@ class SiteCatalogPageTests(CatalogSyncDataMixin, TestCase):
         self.client.logout()
         live = self.client.get(reverse('core:site_catalog_api'), HTTP_X_SITE_KEY='tajny-klucz').json()
         expected = preview.json()
-        self.assertTrue(expected.pop('wersja'))
-        live.pop('wersja')
+        self.assertTrue(expected['wersja'])
         self.assertEqual(live, expected)
         self.assertEqual([item['nazwa'] for item in expected['antologie']],
                          ['Smocza antologia', 'Spoza CMS-u', 'Powieść w toku'])
 
 
 class SiteCatalogUpdateAllTests(CatalogSyncDataMixin, TestCase):
-    """Zbiorcza aktualizacja: zmiany w dwóch antologiach, jedna bez zmian, pominięte niepowiązana i niegotowa."""
+    """Zbiorcza aktualizacja: nowe opowiadanie w jednej antologii, dwie bez zmian (nowy tag w CMS-ie to nie zmiana
+    – jest na żywo), pominięte niepowiązana i niegotowa."""
 
     @classmethod
     def setUpTestData(cls):
@@ -242,23 +243,23 @@ class SiteCatalogUpdateAllTests(CatalogSyncDataMixin, TestCase):
         return list(SiteCatalogStory.objects.order_by('pk').values_list('pk', 'genres', 'tags'))
 
     def test_tab_button_and_preview_group_anthologies_without_saving(self):
-        """Zakładka ma przycisk „Sprawdź aktualizacje wszystkich”; podgląd: dwie antologie ze zmianami (nowe
-        opowiadanie, gatunki, tagi, raport tytułu), „Zgodna” bez zmian, niepowiązana i niegotowa pominięte
-        z powodem; nic nie zapisane."""
+        """Zakładka ma przycisk „Sprawdź aktualizacje wszystkich”; podgląd: antologia z nowym opowiadaniem,
+        „Druga gotowa” (tylko nowy tag w CMS-ie) i „Zgodna” bez zmian, niepowiązana i niegotowa pominięte z powodem;
+        nic nie zapisane."""
         tab = html.fromstring(self.client.get(URL).content)
         self.assertEqual(tab.xpath(f'//a[@href="{UPDATE_ALL}"]/text()'), ['Sprawdź aktualizacje wszystkich'])
         before = self.snapshot()
         page = self.client.get(UPDATE_ALL)
         self.assertEqual(page.status_code, 200)
         overview = page.context['overview']
-        self.assertEqual([plan['anthology'].title for plan in overview['changed']], ['Smocza antologia', 'Druga gotowa'])
-        self.assertEqual([plan['anthology'].title for plan in overview['unchanged']], ['Zgodna'])
+        self.assertEqual([plan['anthology'].title for plan in overview['changed']], ['Smocza antologia'])
+        self.assertEqual([plan['anthology'].title for plan in overview['unchanged']], ['Druga gotowa', 'Zgodna'])
         self.assertEqual([(item['anthology'].title, item['reason']) for item in overview['skipped']], [
             ('Spoza CMS-u', 'Antologia nie jest powiązana z CMS-em – powiąż ją w panelu administracyjnym.'),
             ('W przygotowaniu', 'Antologia niegotowa – aktualizacja po ukończeniu antologii w CMS-ie.')])
         content = page.content.decode()
-        for expected in ('<td>Nowe opowiadanie</td>', 'gatunki: groza, weird fiction', 'tagi: nowy-tag',
-                         'w CMS-ie tytuł: „Smocze jajo”', 'Antologie zgodne z CMS-em (1)', 'Zastosuj wszystkie',
+        for expected in ('<td>Nowe opowiadanie</td>', 'nowe opowiadania: 1', 'Antologie zgodne z CMS-em (2)',
+                         'Zastosuj wszystkie',
                          'panelu administracyjnym.</strong> (1): Spoza CMS-u',
                          'ukończeniu antologii w CMS-ie.</strong> (1): W przygotowaniu'):
             with self.subTest(expected=expected):
@@ -291,8 +292,7 @@ class SiteCatalogUpdateAllTests(CatalogSyncDataMixin, TestCase):
         self.assertEqual((calls, self.snapshot()), (['Smocza antologia', 'Druga gotowa'], before))
         response = self.client.post(UPDATE_ALL, {'plan': token}, follow=True)
         self.assertEqual(response.redirect_chain, [(URL, 302)])
-        self.assertContains(response, 'Zaktualizowano katalog w 2 antologiach: dodano 2 opowiadania, '
-                                      'dopisano 2 gatunki i 3 tagi.')
+        self.assertContains(response, 'Zaktualizowano katalog w 2 antologiach: dodano 2 opowiadania.')
         self.assertEqual(list(self.second.stories.values_list('title', flat=True)), ['Drugie', 'Dopisane później'])
         self.assertEqual(self.catalog.stories.count(), 3)
         again = self.client.get(UPDATE_ALL)

@@ -22,12 +22,16 @@
  * DIAGNOSTYKA: gdy strona nie ma danych, zalogowany administrator widzi w miejscu shortcode'u czerwoną
  * ramkę z przyczyną (brak klucza, kod odpowiedzi CMS-a, błąd połączenia). Inni widzą tylko komentarz HTML.
  *
- * ODŚWIEŻANIE: dane są pamiętane 2 dni (transient fz_ekipa_dane; liczba 172800 w fz_ekipa_dane to sekundy),
- * potem pierwsze wejście na stronę pobiera je na nowo. Ostatnia poprawna kopia jest w opcji fz_ekipa_ostatnie
- * i służy, gdy CMS nie odpowie (wtedy kolejna próba pobrania najwcześniej po godzinie – liczba 3600). Dane
- * w złym kształcie (np. lista osób, która nie jest listą napisów) są odrzucane jak błąd i nie zastępują ostatniej
- * poprawnej kopii. Zalogowany administrator wchodzi na stronę z ?fz_odswiez=1, żeby pobrać dane od razu
- * (czyszczone są też cache wtyczek, jeśli są zainstalowane).
+ * ODŚWIEŻANIE: ostatnia poprawna kopia danych jest w opcji fz_ekipa_ostatnie (razem z ETag-iem w fz_ekipa_etag).
+ * Co FZ_EKIPA_CO_ILE sekund (600 = 10 minut; stała niżej, można ją też ustawić w wp-config.php) pierwsze wejście
+ * na stronę pyta CMS, czy dane się zmieniły (nagłówek If-None-Match): 304 – kopia zostaje, 200 – nowe dane
+ * zastępują kopię i czyszczony jest cache tej strony we wtyczkach cache (jak przy ?fz_odswiez=1), błąd – zostaje
+ * stara kopia, a kolejna próba jest dopiero po FZ_EKIPA_CO_ILE sekundach (nie przy każdym wejściu; znacznik to
+ * transient fz_ekipa_sprawdzono). Dane w złym kształcie (np. lista osób, która nie jest listą napisów) są
+ * odrzucane jak błąd i nie zastępują ostatniej poprawnej kopii. Zalogowany administrator wchodzi na stronę z
+ * ?fz_odswiez=1, żeby pobrać dane od razu, bez czekania (czyszczone są też cache wtyczek, jeśli są zainstalowane).
+ * Jeśli strona jest serwowana z cache HTML (np. WP Fastest Cache), snippet działa dopiero przy budowie strony od
+ * nowa – zmiana z CMS-u pojawi się najpóźniej po wygaśnięciu cache HTML (albo od razu po ?fz_odswiez=1).
  *
  * AKTUALIZACJA SNIPPETU: najpierw dezaktywuj snippet, potem podmień kod, zapisz i aktywuj (inaczej Code
  * Snippets zgłosi „Cannot redeclare function”, bo sprawdza nowy kod przy załadowanym starym).
@@ -37,6 +41,10 @@
  *   .fzo-team-sections .fzo-team-section { scroll-margin-top: 6rem; }   (kotwica – id na <section> – pod stałym nagłówkiem)
  *   Odstęp między działami daje reguła .fz-page.fzo-team-section { margin-bottom: 34px } z CSS strony.
  */
+
+if ( ! defined( 'FZ_EKIPA_CO_ILE' ) ) {
+	define( 'FZ_EKIPA_CO_ILE', 600 ); // co ile sekund sprawdzać w CMS-ie, czy dane się zmieniły (600 = 10 minut)
+}
 
 if ( ! defined( 'FZ_CMS_URL' ) ) {
 	define( 'FZ_CMS_URL', 'https://<domena-cms>/api/strona/ekipa/' );  // ustaw w wp-config.php (patrz wyżej)
@@ -99,20 +107,31 @@ function fz_ekipa_poprawne( $dane ) {
 	return true;
 }
 
-/** Pobiera dane z CMS-a; przy błędzie zwraca null i zapisuje przyczynę. */
-function fz_ekipa_pobierz() {
+/**
+ * Pobiera dane z CMS-a. Z $etag wysyła If-None-Match: 304 daje array( 'dane' => null, 'etag' => $etag ) (bez zmian),
+ * 200 – array( 'dane' => …, 'etag' => nowy ETag ). Przy błędzie zwraca null i zapisuje przyczynę.
+ */
+function fz_ekipa_pobierz( $etag = '' ) {
 	$klucz = fz_ekipa_klucz();
 	if ( '' === $klucz ) {
 		return fz_ekipa_zapisz_blad( 'Brak klucza: ustaw FZ_CMS_KEY w wp-config.php albo opcję fz_cms_key.' );
 	}
+	$naglowki = array( 'X-Site-Key' => $klucz, 'Accept' => 'application/json' );
+	if ( '' !== $etag ) {
+		$naglowki['If-None-Match'] = $etag;
+	}
 	$odpowiedz = wp_remote_get( FZ_CMS_URL, array(
 		'timeout' => 8,
-		'headers' => array( 'X-Site-Key' => $klucz, 'Accept' => 'application/json' ),
+		'headers' => $naglowki,
 	) );
 	if ( is_wp_error( $odpowiedz ) ) {
 		return fz_ekipa_zapisz_blad( 'Połączenie z ' . FZ_CMS_URL . ' nie powiodło się: ' . $odpowiedz->get_error_message() );
 	}
 	$kod = (int) wp_remote_retrieve_response_code( $odpowiedz );
+	if ( 304 === $kod && '' !== $etag ) {
+		delete_option( 'fz_ekipa_blad' );
+		return array( 'dane' => null, 'etag' => $etag );
+	}
 	$tresc = wp_remote_retrieve_body( $odpowiedz );
 	if ( 200 !== $kod ) {
 		return fz_ekipa_zapisz_blad( 'CMS odpowiedział kodem ' . $kod . ' (' . FZ_CMS_URL . '): ' . mb_substr( wp_strip_all_tags( $tresc ), 0, 200 ) );
@@ -122,29 +141,38 @@ function fz_ekipa_pobierz() {
 		return fz_ekipa_zapisz_blad( 'Odpowiedź CMS-a nie jest oczekiwanym JSON-em (początek: ' . mb_substr( wp_strip_all_tags( $tresc ), 0, 120 ) . ').' );
 	}
 	delete_option( 'fz_ekipa_blad' );
-	return $dane;
+	$nowy_etag = wp_remote_retrieve_header( $odpowiedz, 'etag' );
+	return array( 'dane' => $dane, 'etag' => is_string( $nowy_etag ) ? $nowy_etag : '' );
 }
 
-/** Dane ekipy: transient (2 dni) → CMS → ostatnia poprawna kopia → null. */
+/**
+ * Dane: ostatnia poprawna kopia (opcja fz_ekipa_ostatnie), co FZ_EKIPA_CO_ILE sekund sprawdzana w CMS-ie
+ * z If-None-Match (304 – bez zmian, 200 – nowa kopia i czyszczenie cache strony, błąd – stara kopia);
+ * null, gdy kopii nie ma.
+ */
 function fz_ekipa_dane() {
 	static $cache = false;
 	if ( false !== $cache ) {
 		return $cache;
 	}
-	// Po ?fz_odswiez=1 (administrator) transient jest pomijany w tym żądaniu, nawet jeśli coś już go wczytało.
+	// Po ?fz_odswiez=1 (administrator) dane są pobierane w tym żądaniu w całości (bez If-None-Match).
 	$wymus = ! empty( $GLOBALS['fz_ekipa_wymus'] );
-	$dane = $wymus ? false : get_transient( 'fz_ekipa_dane' );
-	if ( ! fz_ekipa_poprawne( $dane ) ) {
-		$dane = fz_ekipa_pobierz();
-		$GLOBALS['fz_ekipa_pobrano'] = is_array( $dane );
-		if ( is_array( $dane ) ) {
-			set_transient( 'fz_ekipa_dane', $dane, 172800 ); // 2 dni
+	$dane = get_option( 'fz_ekipa_ostatnie', null );
+	$dane = fz_ekipa_poprawne( $dane ) ? $dane : null;
+	if ( $wymus || ! get_transient( 'fz_ekipa_sprawdzono' ) ) {
+		// Znacznik przed pytaniem CMS-a: równoczesne wejścia nie pytają drugi raz, a po błędzie kolejna próba
+		// jest dopiero za FZ_EKIPA_CO_ILE sekund.
+		set_transient( 'fz_ekipa_sprawdzono', 1, FZ_EKIPA_CO_ILE );
+		$wynik = fz_ekipa_pobierz( $dane && ! $wymus ? (string) get_option( 'fz_ekipa_etag', '' ) : '' );
+		$GLOBALS['fz_ekipa_pobrano'] = is_array( $wynik );
+		if ( is_array( $wynik ) && null !== $wynik['dane'] ) {
+			$zmiana = $wynik['dane'] !== $dane;
+			$dane = $wynik['dane'];
 			update_option( 'fz_ekipa_ostatnie', $dane, false );
-		} else {
-			$dane = get_option( 'fz_ekipa_ostatnie', null );
-			$dane = fz_ekipa_poprawne( $dane ) ? $dane : null;
-			if ( $dane ) {
-				set_transient( 'fz_ekipa_dane', $dane, 3600 ); // CMS nie odpowiada – ponowna próba za godzinę, nie przy każdym wejściu
+			update_option( 'fz_ekipa_etag', $wynik['etag'], false );
+			if ( $zmiana && ! $wymus ) {
+				fz_ekipa_wyczysc_cache();
+				set_transient( 'fz_ekipa_sprawdzono', 1, FZ_EKIPA_CO_ILE ); // wp_cache_flush() mógł skasować znacznik
 			}
 		}
 	}
@@ -152,13 +180,8 @@ function fz_ekipa_dane() {
 	return $dane;
 }
 
-/** ?fz_odswiez=1 dla zalogowanego administratora: kasuje transient i cache strony. */
-function fz_ekipa_odswiez() {
-	if ( empty( $_GET['fz_odswiez'] ) || ! is_user_logged_in() || ! current_user_can( 'manage_options' ) ) {
-		return;
-	}
-	$GLOBALS['fz_ekipa_wymus'] = true;
-	delete_transient( 'fz_ekipa_dane' );
+/** Czyści cache strony z danymi we wtyczkach cache (jeśli są) – po ?fz_odswiez=1 i gdy CMS dał nowe dane. */
+function fz_ekipa_wyczysc_cache() {
 	$id = get_queried_object_id();
 	if ( $id ) {
 		if ( function_exists( 'rocket_clean_post' ) ) {
@@ -181,7 +204,16 @@ function fz_ekipa_odswiez() {
 	}
 	wp_cache_flush();
 }
-add_action( 'init', 'fz_ekipa_odswiez', 1 );
+
+/** ?fz_odswiez=1 dla zalogowanego administratora: pobranie danych od razu i czyszczenie cache strony. */
+function fz_ekipa_odswiez() {
+	if ( empty( $_GET['fz_odswiez'] ) || ! is_user_logged_in() || ! current_user_can( 'manage_options' ) ) {
+		return;
+	}
+	$GLOBALS['fz_ekipa_wymus'] = true;
+	fz_ekipa_wyczysc_cache();
+}
+add_action( 'wp', 'fz_ekipa_odswiez', 1 ); // po rozpoznaniu strony – get_queried_object_id() zna jej identyfikator
 
 /** Bez danych: komentarz HTML; zalogowany administrator widzi przyczynę na stronie. */
 function fz_ekipa_brak() {

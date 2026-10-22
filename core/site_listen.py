@@ -3,6 +3,8 @@
 Ten sam słownik dla endpointu i podglądu w zakładce. Nagrania to audiobooki CMS-u o statusie „Opublikowane” z ustawioną
 datą premiery i co najmniej jednym linkiem (YouTube albo HearThis); każda część (``Audiobook.additional_links``) to osobna karta. Antologię, okładkę i kolejność daje
 ``SiteListenAnthology``, czasy nagrań i stały identyfikator karty – ``SiteListenRecording`` (CMS nie zna czasów).
+Tytuł i autor nagrania są brane z tekstu CMS-u, a nazwa antologii – z ``Anthology.title`` (dla wpisu powiązanego),
+więc zmiana w CMS-ie trafia do JSON-a od razu.
 Twórcy: Lektor – ``Audiobook.narrator_name``, Montaż – ``Audiobook.engineer_name``, Korekta – wykonawcy etapów
 „Korekta” (``AudiobookStage.performer``), a bez nich bieżący ``Audiobook.proofreader``. Do JSON-a trafiają wyłącznie
 tytuły, podpisy autorów, imiona i nazwiska twórców, adresy nagrań i okładek – nigdy e-maile ani loginy.
@@ -18,7 +20,7 @@ from core.audiobook_models import Audiobook, AudiobookStage, StageType
 from core.discord_notifications import text_authors
 from core.odkurzacz_forms import plural
 from core.site_catalog import anthology_key, fold
-from core.site_models import SiteListenAnthology, SiteListenRecording, SiteTeamSettings
+from core.site_models import SiteListenAnthology, SiteListenRecording, SiteTeamSettings, with_version
 from texts.models import Anthology
 
 PART_SUFFIX_RE = re.compile(r',?\s*cz\.\s*(\d+)\s*$', re.IGNORECASE)
@@ -164,23 +166,24 @@ def listen_data():
                     'czasYoutube': recording.youtube_duration if recording and 'youtube' in links else '',
                     'czasHearthis': recording.hearthis_duration if recording and 'hearthis' in links else '', **people}
             if item['id'] in seen_ids:
-                warnings['duplicate_ids'].append(f'{entry.title}: {title} ({item["id"]})')
+                warnings['duplicate_ids'].append(f'{entry.display_title}: {title} ({item["id"]})')
                 continue
             seen_ids.add(item['id'])
             emitted.add((audio.pk, part))
             if (item['youtube'] and not item['czasYoutube']) or (item['hearthis'] and not item['czasHearthis']):
-                warnings['no_time'].append(f'{entry.title}: {title}')
+                warnings['no_time'].append(f'{entry.display_title}: {title}')
             groups[entry.pk].append((_sort_key(audio, part), {key: value for key, value in item.items() if value}))
-    for recording in SiteListenRecording.objects.select_related('listen_anthology', 'audiobook__text').order_by(
+    for recording in SiteListenRecording.objects.select_related('listen_anthology__anthology', 'audiobook__text').order_by(
             'listen_anthology__position', 'listen_anthology', 'pk'):
+        name = recording.listen_anthology.display_title
         if recording.audiobook_id is None:
-            warnings['unmatched'].append(f'{recording.listen_anthology.title}: {recording.source_title or recording.card_id}'
+            warnings['unmatched'].append(f'{name}: {recording.source_title or recording.card_id}'
                                          f'{f" – {recording.source_author}" if recording.source_author else ""}'
                                          f' ({recording.card_id})')
         elif (recording.audiobook_id, recording.part) not in emitted:
-            warnings['stale'].append(f'{recording.listen_anthology.title}: {recording.audiobook.text.title}, '
+            warnings['stale'].append(f'{name}: {recording.audiobook.text.title}, '
                                      f'cz. {recording.part} ({recording.card_id})')
-    anthologies = [{'id': entry.slug, 'nazwa': entry.title, 'okladka': entry.cover_url,
+    anthologies = [{'id': entry.slug, 'nazwa': entry.display_title, 'okladka': entry.cover_url,
                     'nagrania': [item for _, item in sorted(groups[entry.pk], key=lambda row: row[0])]}
                    for entry in entries if groups[entry.pk]]
     for key in ('no_entry', 'no_cover', 'disabled'):
@@ -207,10 +210,10 @@ def listen_counts(anthologies):
 
 
 def listen_payload(data=None):
-    """Słownik wysyłany stronie: dokładnie format bloku ``#fza-audio-data`` plus ``wersja`` i ``liczby``."""
+    """Słownik wysyłany stronie: dokładnie format bloku ``#fza-audio-data`` plus ``liczby`` i ``wersja`` (skrót treści)."""
     data = data or listen_data()
-    return {'antologie': data['antologie'], 'wersja': timezone.now().isoformat(timespec='seconds'),
-            'liczby': {'antologie': data['liczniki']['antologie'], 'nagrania': data['liczniki']['nagrania']}}
+    return with_version({'antologie': data['antologie'],
+                         'liczby': {'antologie': data['liczniki']['antologie'], 'nagrania': data['liczniki']['nagrania']}})
 
 
 def record_listen_fetch(version):

@@ -1,5 +1,8 @@
 """Strona WWW: endpointy dla fantazmaty.pl (ekipa, katalog szukajki, nagrania strony „Słuchaj”) i zakładki
-System → „Ekipa WWW”, „Szukajka WWW”, „Słuchaj WWW”."""
+System → „Ekipa WWW”, „Szukajka WWW”, „Słuchaj WWW”.
+
+Endpointy zwracają ``ETag`` równy wersji danych (skrót treści); żądanie z ``If-None-Match`` o tej samej wartości
+dostaje ``304`` bez treści – snippety WordPressa sprawdzają tak co kilka minut, czy coś się zmieniło."""
 import hmac
 import json
 
@@ -11,14 +14,15 @@ from django.core import signing
 from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.cache import get_conditional_response
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_http_methods
 
 from core.permissions import superuser_required
-from core.site_catalog import (PLAN_SALT, apply_add, apply_update, apply_update_all, candidate_anthologies,
-                               catalog_anthologies, catalog_counts, catalog_payload, catalog_warnings, count_text,
-                               plan_add, plan_digest, plan_update, plan_update_all, plans_digest, record_catalog_fetch,
-                               story_entry, update_blocked_reason)
+from core.site_catalog import (PLAN_SALT, anthology_entry, apply_add, apply_update, apply_update_all,
+                               candidate_anthologies, catalog_anthologies, catalog_counts, catalog_payload,
+                               catalog_warnings, count_text, plan_add, plan_digest, plan_update, plan_update_all,
+                               plans_digest, record_catalog_fetch, update_blocked_reason)
 from core.site_listen import (add_anthology, candidate_anthologies as listen_candidates, count_text as recording_text,
                               link_listen_to_cms, listen_counts, listen_data, listen_payload, record_listen_fetch)
 from core.site_models import SiteCatalogAnthology, SiteTeamSettings, validate_site_url
@@ -35,7 +39,10 @@ def _json(data, status=200):
 
 
 def _site_api(request, build_payload, record):
-    """GET bez logowania; wymaga nagłówka X-Site-Key równego SITE_API_KEY. Brak klucza w konfiguracji – 503."""
+    """GET bez logowania; wymaga nagłówka X-Site-Key równego SITE_API_KEY. Brak klucza w konfiguracji – 503.
+
+    ``ETag`` to wersja danych; zgodny ``If-None-Match`` daje 304 bez treści. Każde pobranie (200 i 304) zapisuje
+    ślad z wersją, którą strona ma po tym żądaniu."""
     key = settings.SITE_API_KEY
     if not key:
         return _json({'blad': 'Brak klucza SITE_API_KEY w konfiguracji.'}, status=503)
@@ -44,7 +51,9 @@ def _site_api(request, build_payload, record):
         return _json({'blad': 'Brak dostępu.'}, status=403)
     payload = build_payload()
     record(payload['wersja'])
-    return _json(payload)
+    response = _json(payload)
+    response['ETag'] = f'"{payload["wersja"]}"'
+    return get_conditional_response(request, etag=response['ETag'], response=response)
 
 
 @never_cache
@@ -188,8 +197,6 @@ def site_catalog(request):
 STORY_FORMS = ('opowiadanie', 'opowiadania', 'opowiadań')
 ANTHOLOGY_FORMS = ('antologia', 'antologie', 'antologii')
 IN_ANTHOLOGY_FORMS = ('antologii', 'antologiach', 'antologiach')
-GENRE_FORMS = ('gatunek', 'gatunki', 'gatunków')
-TAG_FORMS = ('tag', 'tagi', 'tagów')
 
 
 def _counts_text(counts):
@@ -201,39 +208,36 @@ def _counts_text(counts):
 @require_http_methods(['GET', 'POST'])
 @superuser_required
 def site_catalog_update(request, pk):
-    """Podgląd różnic między katalogiem a CMS-em dla jednej antologii; POST „Zastosuj” dopisuje nowe
-    opowiadania, gatunki i tagi (bez usuwania i nadpisywania)."""
+    """Podgląd nowych opowiadań z CMS-u dla jednej antologii; POST „Zastosuj” dopisuje je (bez usuwania
+    i nadpisywania)."""
     with transaction.atomic():
         return _site_catalog_update(request, pk)
 
 
 def _site_catalog_update(request, pk):
     # POST blokuje wpis katalogu: drugie równoczesne „Zastosuj” czeka i liczy plan od nowa (bez duplikatów).
-    queryset = SiteCatalogAnthology.objects.select_related('anthology')
     if request.method == 'POST':
-        queryset = queryset.select_for_update()
-    catalog_anthology = get_object_or_404(queryset, pk=pk)
+        list(SiteCatalogAnthology.objects.select_for_update().filter(pk=pk).values_list('pk', flat=True))
+    catalog_anthology = get_object_or_404(catalog_anthologies(include_disabled=True), pk=pk)
     try:
         plan = plan_update(catalog_anthology)
     except ValueError as error:
-        messages.error(request, f'„{catalog_anthology.title}”: {error}')
+        messages.error(request, f'„{catalog_anthology.display_title}”: {error}')
         return redirect('core:site_catalog')
     status = 200
     if request.method == 'POST':
         if not plan['has_changes']:
-            messages.info(request, f'„{catalog_anthology.title}”: brak zmian do zastosowania.')
+            messages.info(request, f'„{catalog_anthology.display_title}”: brak zmian do zastosowania.')
             return redirect('core:site_catalog')
         if _plan_matches(request.POST.get('plan'), plan):
-            result = apply_update(plan)
-            messages.success(request, f'„{catalog_anthology.title}”: dodano {count_text(result["added"], STORY_FORMS)}, '
-                                      f'uzupełniono gatunki lub tagi w {result["updated"]}.')
+            added = apply_update(plan)
+            messages.success(request, f'„{catalog_anthology.display_title}”: dodano {count_text(added, STORY_FORMS)}.')
             return redirect('core:site_catalog')
         messages.error(request, 'Dane w CMS-ie zmieniły się od podglądu – sprawdź je ponownie.')
         status = 409
     return render(request, 'core/site_catalog_update.html', {
         'catalog_anthology': catalog_anthology, 'plan': plan, 'plan_token': _plan_token(plan),
-        'current_stories': [story_entry(story) for story in catalog_anthology.stories.all()],
-        'counts': catalog_counts([{'opowiadania': [story_entry(s) for s in catalog_anthology.stories.all()]}]),
+        'counts': catalog_counts([anthology_entry(catalog_anthology)]),
     }, status=status)
 
 
@@ -242,7 +246,7 @@ def _site_catalog_update(request, pk):
 @require_http_methods(['GET', 'POST'])
 @superuser_required
 def site_catalog_update_all(request):
-    """Zbiorczy podgląd różnic katalogu z CMS-em dla wszystkich antologii, które da się aktualizować; POST
+    """Zbiorczy podgląd nowych opowiadań z CMS-u dla wszystkich antologii, które da się aktualizować; POST
     „Zastosuj wszystkie” stosuje wszystkie plany w jednej transakcji, jeśli dane nie zmieniły się od podglądu."""
     status = 200
     with transaction.atomic():
@@ -259,13 +263,12 @@ def site_catalog_update_all(request):
                 totals = apply_update_all(changed)
                 messages.success(request, (
                     f'Zaktualizowano katalog w {count_text(totals["anthologies"], IN_ANTHOLOGY_FORMS)}: dodano '
-                    f'{count_text(totals["added"], STORY_FORMS)}, dopisano {count_text(totals["genres"], GENRE_FORMS)} '
-                    f'i {count_text(totals["tags"], TAG_FORMS)}.'))
+                    f'{count_text(totals["added"], STORY_FORMS)}.'))
                 return redirect('core:site_catalog')
             messages.error(request, 'Dane w CMS-ie zmieniły się od podglądu – sprawdź je ponownie.')
             status = 409
     for plan in overview['changed'] + overview['unchanged']:
-        plan['notes'] = len(plan['reports']) + len(plan['missing']) + len(plan['unlinked'])
+        plan['notes'] = len(plan['missing']) + len(plan['unlinked'])
     return render(request, 'core/site_catalog_update_all.html', {
         'overview': overview, 'plan_token': _plan_token(overview['changed'], plans_digest),
     }, status=status)

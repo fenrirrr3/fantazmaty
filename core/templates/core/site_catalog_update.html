@@ -1,9 +1,9 @@
 {% extends "core/base.html" %}
 {% load static %}
-{% block title %}Aktualizacja: {{ catalog_anthology.title }} | Szukajka WWW | Fantazmaty CMS{% endblock %}
+{% block title %}Aktualizacja: {{ catalog_anthology.display_title }} | Szukajka WWW | Fantazmaty CMS{% endblock %}
 {% block extra_css %}<link rel="stylesheet" href="{% static 'core/site-www.css' %}">{% endblock %}
 {% block content %}
-<header class="page-header"><h1 class="page-title">Szukajka WWW – aktualizacja „{{ catalog_anthology.title }}”</h1><p class="page-description">Różnice między katalogiem a {% if plan.novel %}powieścią{% else %}antologią{% endif %} „{{ catalog_anthology.anthology.title }}” w CMS-ie.{% if plan.novel %} Powieść jest jedną pozycją w całości (dane z profilu powieści, rozdziały pomijane).{% endif %} Zastosowanie dopisuje nowe opowiadania oraz brakujące gatunki i tagi; niczego nie usuwa ani nie nadpisuje.</p></header>
+<header class="page-header"><h1 class="page-title">Szukajka WWW – aktualizacja „{{ catalog_anthology.display_title }}”</h1><p class="page-description">{% if plan.novel %}Pozycja powieści{% else %}Nowe opowiadania antologii{% endif %} „{{ catalog_anthology.anthology.title }}” z CMS-u, których nie ma jeszcze w katalogu.{% if plan.novel %} Powieść jest jedną pozycją w całości (dane z profilu powieści, rozdziały pomijane).{% endif %} Zastosowanie dopisuje je na końcu; niczego nie usuwa. Tytuły, autorzy, gatunki i tagi wpisów już powiązanych są brane z CMS-u na bieżąco – nie wymagają aktualizacji.</p></header>
 <section class="card"><div class="card-body">
 <h2>Zmiany do zastosowania</h2>
 {% if plan.has_changes %}
@@ -11,16 +11,15 @@
 <form method="post" class="site-www-form">{% csrf_token %}<input type="hidden" name="plan" value="{{ plan_token }}">
 <div class="actions"><button type="submit" class="primary-button">Zastosuj</button><a class="secondary-button" href="{% url 'core:site_catalog' %}#katalog-{{ catalog_anthology.pk }}">Wróć bez zmian</a></div>
 </form>
-{% else %}<p class="muted-text">Brak zmian – katalog ma wszystkie opowiadania, gatunki i tagi z CMS-u.</p>
+{% else %}<p class="muted-text">Brak zmian – katalog ma wszystkie opowiadania z CMS-u.</p>
 <div class="actions"><a class="secondary-button" href="{% url 'core:site_catalog' %}#katalog-{{ catalog_anthology.pk }}">Wróć</a></div>{% endif %}
 </div></section>
 <section class="card"><div class="card-body">
 <h2>Tylko do wiadomości</h2>
-<p class="muted-text">Tytuły i podpisy autorów nie są zmieniane automatycznie – popraw je w panelu administracyjnym, jeśli strona ma pokazywać wersję z CMS-u.</p>
-{% if plan.reports or plan.missing or plan.unlinked %}{% include "core/includes/site_catalog_plan_reports.html" %}{% else %}<p class="muted-text">Tytuły i autorzy zgodne z CMS-em; wszystkie wpisy powiązane z tekstami.</p>{% endif %}
+{% if plan.missing or plan.unlinked %}{% include "core/includes/site_catalog_plan_reports.html" %}{% else %}<p class="muted-text">Wszystkie wpisy powiązane z tekstami w CMS-ie.</p>{% endif %}
 <dl class="details-grid site-www-status">
 <div class="detail-item"><dt>W katalogu</dt><dd>{{ counts.opowiadania }} opow., {{ counts.gatunki }} gatunków, {{ counts.tagi }} tagów</dd></div>
-<div class="detail-item"><dt>Edycja</dt><dd><a href="{% url 'admin:core_sitecataloganthology_change' catalog_anthology.pk %}">Panel administracyjny → „{{ catalog_anthology.title }}”</a></dd></div>
+<div class="detail-item"><dt>Edycja</dt><dd><a href="{% url 'admin:core_sitecataloganthology_change' catalog_anthology.pk %}">Panel administracyjny → „{{ catalog_anthology.display_title }}”</a></dd></div>
 </dl>
 </div></section>
 {% endblock %}

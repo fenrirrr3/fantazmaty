@@ -123,7 +123,7 @@ class SiteWwwPageTests(TestCase):
 
     @override_settings(SITE_API_KEY='tajny-klucz')
     def test_json_preview_equals_endpoint_without_recording_fetch(self):
-        """``?format=json`` daje ten sam JSON co endpoint (poza wersją z czasem) i nie zapisuje śladu pobrania."""
+        """``?format=json`` daje ten sam JSON co endpoint (z tą samą wersją) i nie zapisuje śladu pobrania."""
         preview = self.client.get(URL, {'format': 'json'})
         self.assertEqual(preview['Content-Type'], 'application/json')
         self.assertIn('no-store', preview['Cache-Control'])
@@ -131,7 +131,6 @@ class SiteWwwPageTests(TestCase):
         self.client.logout()
         live = self.client.get(reverse('core:site_team_api'), HTTP_X_SITE_KEY='tajny-klucz').json()
         expected = preview.json()
-        self.assertTrue(expected.pop('wersja'))
-        live.pop('wersja')
+        self.assertTrue(expected['wersja'])
         self.assertEqual(live, expected)
         self.assertEqual([item['slug'] for item in expected['dzialy']], ['redakcja', 'korekta'])

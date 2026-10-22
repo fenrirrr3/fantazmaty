@@ -7,7 +7,9 @@ from pathlib import Path
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 
 from authors.models import Author
 from core.models import Audiobook, AudiobookStage, AudioContributor
@@ -84,14 +86,15 @@ class ListenDataMixin:
 
 class ListenPayloadTests(ListenDataMixin, TestCase):
     def test_payload_has_exact_site_format(self):
-        """Antologie wg kolejności ustawień; w antologii od najnowszej premiery; każda część to
+        """Antologie wg kolejności ustawień, nazwa z antologii CMS-u (nie z wpisu „Druga”); w antologii od najnowszej
+        premiery; każda część to
         osobna karta „, cz. N”; puste pola pominięte; czasy i id karty z wpisu nagrania, bez wpisu – fza-a<pk>-<część>;
         korekta – wykonawcy etapów bez powtórzeń, montaż i lektor z audiobooka."""
         data = listen_payload()
         self.assertEqual(set(data), {'antologie', 'wersja', 'liczby'})
         self.assertEqual(data['liczby'], {'antologie': 2, 'nagrania': 5})
         self.assertEqual(data['antologie'], [
-            {'id': 'druga', 'nazwa': 'Druga', 'okladka': COVER, 'nagrania': [
+            {'id': 'druga', 'nazwa': 'Druga antologia', 'okladka': COVER, 'nagrania': [
                 {'id': f'fza-a{self.in_other.pk}-1', 'tytul': 'W drugiej', 'autor': 'Jan Autor',
                  'youtube': 'https://youtu.be/druga', 'korekta': 'Jan Testowy'}]},
             {'id': 'antologia-sluchana', 'nazwa': 'Antologia słuchana', 'okladka': COVER, 'nagrania': [
@@ -106,6 +109,29 @@ class ListenPayloadTests(ListenDataMixin, TestCase):
                 {'id': f'fza-a{self.bare.pk}-1', 'tytul': 'Tylko HearThis', 'autor': 'Jan Autor',
                  'hearthis': 'https://hearthis.at/fantazmaty/bez/'}]},
         ])
+
+    def test_titles_authors_and_anthology_name_follow_cms(self):
+        """Zmiana tytułu tekstu, inicjał dopisany autorowi i nowa nazwa antologii w CMS-ie są od razu w JSON-ie
+        (bez zmiany wpisu „Słuchaj”); liczba zapytań nie rośnie z liczbą nagrań i antologii."""
+        def count():
+            with CaptureQueriesContext(connection) as queries:
+                listen_payload()
+            return len(queries)
+
+        before = count()
+        Text.objects.filter(pk=self.in_other.text_id).update(title='W drugiej (nowy tytuł)')
+        Author.objects.filter(texts=self.in_other.text_id).update(first_name='Jan K.')
+        Anthology.objects.filter(pk=self.other.pk).update(title='Druga antologia – wydanie 2')
+        first = listen_payload()['antologie'][0]
+        self.assertEqual((first['nazwa'], first['nagrania'][0]['tytul'], first['nagrania'][0]['autor']),
+                         ('Druga antologia – wydanie 2', 'W drugiej (nowy tytuł)', 'Jan K. Autor'))
+        self.assertEqual(SiteListenAnthology.objects.get(pk=self.first_entry.pk).title, 'Druga')
+        third = Anthology.objects.create(title='Trzecia')
+        SiteListenAnthology.objects.create(anthology=third, slug='trzecia', title='Trzecia', cover_url=COVER, position=3)
+        for number in range(3):
+            proofreading(published(third, f'Nowe {number}', youtube=f'https://youtu.be/n{number}',
+                                   proofreader=self.reader), self.reader2, 1)
+        self.assertEqual(count(), before)
 
     def test_counts_and_warnings(self):
         """Liczniki zakładki i ostrzeżenia: audiobook bez linków, antologia bez wpisu, bez okładki, wyłączona,
@@ -141,7 +167,7 @@ class ListenPayloadTests(ListenDataMixin, TestCase):
             'no_cover': ['Bez okładki (2 nagrania)'], 'disabled': ['Wyłączona (1 nagranie)'],
             'skipped_kind': [f'Ekstrakty 3: {volume.title}'], 'no_author': ['Antologia słuchana: Bez autora'],
             'no_time': ['Antologia słuchana: Tylko HearThis', 'Antologia słuchana: Wieloczęściowe, cz. 1',
-                        'Druga: W drugiej'],
+                        'Druga antologia: W drugiej'],
             'unmatched': ['Antologia słuchana: Stare – Ktoś (fza-9)'],
             'stale': ['Antologia słuchana: Pełne, cz. 5 (fza-10)'], 'duplicate_ids': []})
         content = json.dumps(listen_payload(data), ensure_ascii=False)
