@@ -1,0 +1,34 @@
+{% extends "admin/base_site.html" %}
+{% block breadcrumbs %}<div class="breadcrumbs"><a href="{% url 'admin:index' %}">Strona główna</a> › <a href="{% url 'admin:people_dropboxfolder_changelist' %}">Foldery Dropbox</a> › Przejmij obecnych członków z Dropboxa</div>{% endblock %}
+{% block content %}
+<p>Podgląd – nic nie zostało jeszcze zapisane ani zmienione. „Zastosuj” zapisze w CMS-ie dostępy osób, które już są członkami folderów w Dropboxie, z poziomem z Dropboxa – bez wysyłania zaproszeń i bez zmian w Dropboxie (poza odebraniem dostępu zaznaczonym osobom spoza ekipy). Od tej chwili CMS zarządza tymi dostępami: odznaczenie „wciąż w ekipie” albo „Brak dostępu” usunie osobę z folderu.</p>
+{% if error %}<p class="errornote">{{ error }}</p>{% else %}
+<form method="post">{% csrf_token %}
+<input type="hidden" name="ids" value="{{ ids }}"><input type="hidden" name="token" value="{{ token }}">
+{% for plan in plans %}
+<h2>{{ plan.folder.name }} <small><code>{{ plan.folder.path }}</code></small></h2>
+{% if plan.error %}<p class="errornote">{{ plan.error }}</p>
+{% elif plan.not_shared %}<p>Folder nie jest udostępniony w Dropboxie – brak członków do przejęcia (CMS go nie udostępnia).</p>
+{% else %}
+{% if plan.owners %}<p class="help">Właściciel folderu (konto aplikacji) – pominięty: {{ plan.owners|join:", " }}.</p>{% endif %}
+{% for name, label, help_text, rows in plan.groups %}
+<div class="module"><h3 style="padding:6px 8px;margin:0">{{ label }} ({{ rows|length }})</h3>
+{% if help_text %}<p class="help" style="padding:0 8px">{{ help_text }}</p>{% endif %}
+<table style="width:100%">
+<thead><tr>{% if name == "other_email" or name == "inactive" %}<th scope="col">{% if name == "other_email" %}Ustaw jako e-mail Dropbox{% else %}Odbierz dostęp{% endif %}</th>{% endif %}<th scope="col">Adres w Dropboxie</th><th scope="col">Osoba</th><th scope="col">Poziom w Dropboxie</th><th scope="col">Uwagi</th></tr></thead>
+<tbody>
+{% for entry in rows %}<tr>
+{% if name == "other_email" %}<td><input type="checkbox" name="set_email" value="{{ entry.key }}" id="set-{{ entry.key }}" aria-label="Ustaw {{ entry.email }} jako e-mail Dropbox osoby {{ entry.person }}"></td>
+{% elif name == "inactive" %}<td><input type="checkbox" name="revoke" value="{{ entry.key }}" id="revoke-{{ entry.key }}" aria-label="Odbierz dostęp {{ entry.email }}"></td>{% endif %}
+<td>{{ entry.email }}{% if entry.member.invitee %} <span class="help">(zaproszenie bez konta)</span>{% endif %}</td>
+<td>{% if entry.person %}<a href="{% url 'admin:people_person_change' entry.person.pk %}">{{ entry.person }}</a>{% else %}–{% endif %}</td>
+<td>{{ entry.dropbox_level }}</td>
+<td>{{ entry.note|default:"–" }}</td>
+</tr>{% endfor %}
+</tbody></table></div>
+{% empty %}<p>Folder nie ma członków poza właścicielem.</p>{% endfor %}
+{% endif %}
+{% endfor %}
+<div class="submit-row"><input type="submit" class="default" name="apply" value="Zastosuj"> <a href="{% url 'admin:people_dropboxfolder_changelist' %}">Anuluj</a></div>
+</form>{% endif %}
+{% endblock %}

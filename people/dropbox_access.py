@@ -6,7 +6,8 @@ wycofany zapis niczego w Dropboxie nie zmienia, a błąd Dropboxa nie cofa zapis
 i do komunikatu w adminie. Ponowną próbę uruchamia akcja „Synchronizuj ponownie” albo komenda sync_dropbox_access.
 
 CMS zarządza wyłącznie folderami z listy DropboxFolder i usuwa z nich wyłącznie adresy, którym sam nadał dostęp
-(granted_email); osób dodanych w Dropboxie ręcznie nie rusza.
+(granted_email); osób dodanych w Dropboxie ręcznie nie rusza, dopóki ich dostęp nie zostanie przejęty
+(people.dropbox_import) – od tej chwili zarządza nim jak nadanym.
 """
 import logging
 from dataclasses import dataclass
@@ -27,8 +28,10 @@ State = DropboxAccess.State
 LEVEL_LABELS = dict(DropboxAccess.Level.choices)
 ACTION_LABELS = {
     "grant": "nadanie dostępu", "invite": "zaproszenie do folderu", "update": "zmiana poziomu dostępu",
-    "remove": "odebranie dostępu",
+    "remove": "odebranie dostępu", "import": "przejęcie dostępu z Dropboxa",
 }
+FOLDER_GONE = ("Folderu nie ma już w Dropboxie – usuń go z listy (Foldery Dropbox → akcja „Usuń z listy”) "
+               "albo popraw ścieżkę.")
 NOT_CONFIGURED_NOTICE = ("Dropbox nie jest skonfigurowany – dostęp zostanie nadany po konfiguracji "
                          "(komenda sync_dropbox_access).")
 
@@ -205,6 +208,8 @@ def _sync_folder(client, folder, rows, *, actor, dry_run):
                 folder.shared_folder_id = shared_id
         members = client.folder_members(shared_id) if shared_id else {}
     except DropboxError as error:
+        if dropbox_sharing.is_gone(error):
+            return [_finish(access, _folder_gone(access, dry_run=dry_run), dry_run=dry_run) for access in rows]
         return [_finish(access, Result(access, error=str(error)), dry_run=dry_run) for access in rows]
     results = []
     for access in rows:
@@ -251,13 +256,24 @@ def _sync_access(client, access, shared_id, members, *, dry_run):
         raise DropboxError("Ten adres to właściciel folderu w Dropboxie – CMS nie zmienia jego dostępu.")
     elif member.inherited:
         raise DropboxError(dropbox_sharing.message_for("no_explicit_access"), "no_explicit_access")
-    elif member.level != access.level:
+    elif dropbox_sharing.cms_level(member.level) != access.level:
+        # „viewer_no_comment” to dla CMS-u Odczyt – bez zmiany poziomu w Dropboxie.
         client.update_member(shared_id, target, access.level)
         members[target] = Member(access.level, member.invitee)
         result.action = result.action or "update"
     access.granted_email = target
     access._invitee = members[target].invitee
     return result
+
+
+def _folder_gone(access, *, dry_run):
+    """Folderu nie ma w Dropboxie: odebranie dostępu jest zakończone (nikt go już nie ma), nadanie – błąd z podpowiedzią."""
+    if target_email(access):
+        return Result(access, error=FOLDER_GONE)
+    removed, access.granted_email = access.granted_email, ""
+    if removed and not dry_run:
+        _save(access, granted_email="")
+    return Result(access, action="remove" if removed else "", removed=removed)
 
 
 def _used_elsewhere(access, email):

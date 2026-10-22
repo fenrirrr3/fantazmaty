@@ -160,14 +160,35 @@ polem folderu oraz na liście „Dostęp do folderów Dropbox” (akcja „Synch
 - Odznaczenie „wciąż w ekipie” (także zaznaczenie „Zewnętrzny”, akcja „Usuń z zespołu” na liście osób i usunięcie
   osoby) odbiera dostęp do wszystkich folderów. Ponowne zaznaczenie „wciąż w ekipie” go nie przywraca – trzeba
   ponownie wybrać poziom.
-- CMS zmienia wyłącznie foldery z listy i usuwa z nich wyłącznie adresy, którym sam nadał dostęp; osób dodanych
-  w Dropboxie ręcznie i właściciela folderu nie rusza.
+- CMS zmienia wyłącznie foldery z listy i usuwa z nich wyłącznie adresy, którym sam nadał dostęp albo których
+  dostęp przejął (niżej); innych osób dodanych w Dropboxie ręcznie i właściciela folderu nie rusza.
 - Bez kluczy w `.env` zapis dostępu jest możliwy (stan „Oczekuje na synchronizację”), a dostęp zostanie nadany po
   konfiguracji komendą `python manage.py sync_dropbox_access`.
 
 Komenda `python manage.py sync_dropbox_access --dry-run` wypisuje plan (bez zmian w Dropboxie i bazie), a bez
 `--dry-run` nadaje, zmienia i odbiera dostęp oraz sprawdza dostępy już nadane (np. dodaje ponownie osobę usuniętą
 z folderu ręcznie, choć w CMS-ie ma dostęp). Każda zmiana trafia do dziennika aktywności („Dropbox: …”).
+
+**Przejęcie obecnych członków** (folder udostępniony wcześniej ręcznie): „Foldery Dropbox” → zaznacz foldery → akcja
+„Przejmij obecnych członków z Dropboxa” (albo przycisk o tej nazwie na stronie folderu). Najpierw podgląd bez zapisu:
+członkowie folderu dopasowani do osób po „adresie e-mail Dropboxa” (bez wielkości liter), w grupach – do przejęcia,
+zaproszenia bez konta, dopasowanie po innym adresie (e-mail kontaktowy lub konta; przejmowane tylko po zaznaczeniu
+„ustaw jako e-mail Dropbox”), zarządzane już przez CMS (także z innym poziomem), osoby spoza ekipy z dostępem (pole
+„odbierz dostęp”), do wyjaśnienia (adres kilku osób, dostęp przez folder nadrzędny) i adresy spoza bazy (CMS ich nie
+rusza). „Zastosuj” zapisuje dostępy z poziomem z Dropboxa („Odczyt bez komentarzy” = Odczyt) bez zaproszeń i zmian
+w Dropboxie; jeśli coś zmieniło się od podglądu, pokazuje nowy podgląd. Od tej chwili CMS zarządza tymi dostępami
+(np. odznaczenie „wciąż w ekipie” usuwa osobę z folderu). Właściciel folderu jest pomijany; nieudostępnionego folderu
+przejęcie nie udostępnia. To samo bez dopasowań po innym adresie i bez osób spoza ekipy:
+`python manage.py sync_dropbox_access --import-members [--dry-run]`.
+
+**Usunięcie folderu z listy:** „Foldery Dropbox” → zaznacz → akcja „Usuń z listy” (albo przycisk na stronie folderu;
+zwykłe usuwanie jest wyłączone). CMS sprawdza folder w Dropboxie: usunięty tam albo nieudostępniony – znika z listy
+razem z wpisami dostępu bez łączenia się z Dropboxem; istniejący – do wyboru „tylko przestań zarządzać” (członkowie
+zostają) albo „odbierz dostęp, potem usuń” (folder zostaje, jeśli odebranie się nie uda); bez konfiguracji lub przy
+błędzie API – tylko „przestań zarządzać” po potwierdzeniu. Folder w Dropboxie nigdy nie jest usuwany. „Pobierz foldery
+z Dropboxa” wymienia foldery z listy, których nie ma już w folderze głównym („usunięty w Dropboxie” albo nowa ścieżka
+po przeniesieniu). Synchronizacja folderu usuniętego w Dropboxie kończy odbieranie dostępu (np. przy dezaktywacji
+osoby) bez błędu, a nadanie oznacza błędem z podpowiedzią.
 
 ## Strona WWW (ekipa, szukajka i „Słuchaj” na fantazmaty.pl)
 

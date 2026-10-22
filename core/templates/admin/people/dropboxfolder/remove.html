@@ -1,0 +1,24 @@
+{% extends "admin/base_site.html" %}
+{% block breadcrumbs %}<div class="breadcrumbs"><a href="{% url 'admin:index' %}">Strona główna</a> › <a href="{% url 'admin:people_dropboxfolder_changelist' %}">Foldery Dropbox</a> › Usuń foldery z listy</div>{% endblock %}
+{% block content %}
+<p>Usunięcie folderu z listy kasuje też jego wpisy dostępu w CMS-ie. Folder w Dropboxie nie jest usuwany.</p>
+<form method="post">{% csrf_token %}
+<input type="hidden" name="ids" value="{{ ids }}"><input type="hidden" name="token" value="{{ token }}">
+{% for check in checks %}
+<fieldset class="module aligned" style="padding:8px">
+<h2>{{ check.folder.name }} <small><code>{{ check.folder.path }}</code></small></h2>
+<p><strong>{{ check.label }}.</strong> {{ check.note }} Wpisy dostępu: {{ check.rows }}, z nadanym lub przejętym dostępem: {{ check.granted }}.</p>
+{% if check.state == "gone" or check.state == "unshared" %}
+<p>Nikt nie ma przez ten folder dostępu – folder i jego wpisy zostaną usunięte z CMS-u bez łączenia się z Dropboxem.</p>
+{% elif check.state == "exists" %}
+<p><label><input type="radio" name="mode_{{ check.folder.pk }}" value="stop"> Tylko przestań zarządzać – członkowie zostają w Dropboxie z obecnym dostępem.</label></p>
+<p><label><input type="radio" name="mode_{{ check.folder.pk }}" value="revoke"> Odbierz dostęp osobom, którym CMS go nadał albo przejął, potem usuń z listy (folder zostanie, jeśli odebranie się nie uda).</label></p>
+{% else %}
+<p class="errornote">Nie da się sprawdzić folderu w Dropboxie – można tylko przestać nim zarządzać; osoby, które mają dostęp, zachowają go.</p>
+<p><label><input type="checkbox" name="mode_{{ check.folder.pk }}" value="stop"> Przestań zarządzać i usuń z listy.</label></p>
+{% endif %}
+</fieldset>
+{% endfor %}
+<div class="submit-row"><input type="submit" class="default" value="Usuń z listy"> <a href="{% url 'admin:people_dropboxfolder_changelist' %}">Anuluj</a></div>
+</form>
+{% endblock %}

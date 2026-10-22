@@ -1,0 +1,6 @@
+{% extends "admin/change_form.html" %}
+{% block object-tools-items %}
+{% if original.pk and request.user.is_superuser %}<li><a href="{% url 'admin:people_dropboxfolder_import' %}?ids={{ original.pk }}">Przejmij obecnych członków z Dropboxa</a></li>
+<li><a href="{% url 'admin:people_dropboxfolder_remove' %}?ids={{ original.pk }}">Usuń z listy</a></li>{% endif %}
+{{ block.super }}
+{% endblock %}

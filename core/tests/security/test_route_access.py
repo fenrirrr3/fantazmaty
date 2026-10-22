@@ -279,7 +279,8 @@ class EmailCopyAccessTests(TestCase):
                     self.client.force_login(self.users[actor])
                 page = self.client.get(reverse('core:home'), follow=True)
                 self.assertEqual('data-email-copy-toggle' in page.content.decode(), allowed)
-                self.assertEqual('core/email-copy.js' in page.content.decode(), allowed)
+                # Bez rozszerzenia: ManifestStaticFilesStorage (wydanie) dokleja skrót – core/email-copy.<skrót>.js.
+                self.assertEqual('core/email-copy.' in page.content.decode(), allowed)
                 if actor:
                     self.client.get(reverse('core:people_list'), {'page_size': 500}, HTTP_X_CMS_EMAIL_COPY='1')
                     remembered = self.client.session.get('cms_page_sizes', {})

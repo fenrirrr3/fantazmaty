@@ -1,5 +1,5 @@
 {% extends "admin/change_list.html" %}
-{% block search %}<p class="help">Foldery, do których CMS nadaje dostęp członkom zespołu (poziom ustawia się na ekranie osoby). CMS usuwa z folderu tylko adresy, którym sam nadał dostęp – osób dodanych w Dropboxie ręcznie nie zmienia. Folder bez identyfikatora udostępnienia zostanie udostępniony przy pierwszym nadaniu dostępu.</p>{{ block.super }}{% endblock %}
+{% block search %}<p class="help">Foldery, do których CMS nadaje dostęp członkom zespołu (poziom ustawia się na ekranie osoby). CMS usuwa z folderu tylko adresy, którym sam nadał dostęp albo których dostęp przejął („Przejmij obecnych członków z Dropboxa”) – innych osób dodanych w Dropboxie ręcznie nie zmienia. Folder bez identyfikatora udostępnienia zostanie udostępniony przy pierwszym nadaniu dostępu.</p>{{ block.super }}{% endblock %}
 {% block object-tools-items %}
 <li><a href="{% url 'admin:people_dropboxfolder_fetch' %}">Pobierz foldery z Dropboxa</a></li>
 <li><a href="{% url 'admin:people_dropboxaccess_changelist' %}">Stan dostępów</a></li>

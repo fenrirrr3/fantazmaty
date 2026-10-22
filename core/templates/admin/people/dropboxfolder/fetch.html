@@ -15,5 +15,9 @@
 </tr>{% empty %}<tr><td colspan="4">Folder {{ root }} nie ma podfolderów.</td></tr>{% endfor %}
 </tbody></table></div>
 {% if folders %}<div class="submit-row"><input type="submit" class="default" value="Dodaj zaznaczone"></div>{% endif %}
-</form>{% endif %}
+</form>
+{% if missing %}<h2>Foldery z listy CMS-u, których nie ma w {{ root }}</h2>
+<p class="help">Usunięte w Dropboxie, przeniesione albo przemianowane. Przed usunięciem z listy CMS sprawdzi ich stan w Dropboxie.</p>
+<ul>{% for folder, moved in missing %}<li><strong>{{ folder.name }}</strong> <code>{{ folder.path }}</code> – {% if moved %}w Dropboxie pod ścieżką <code>{{ moved }}</code> (popraw ścieżkę w CMS-ie){% else %}usunięty w Dropboxie{% endif %} – <a href="{% url 'admin:people_dropboxfolder_remove' %}?ids={{ folder.pk }}">usuń z listy</a></li>{% endfor %}</ul>
+{% endif %}{% endif %}
 {% endblock %}

@@ -51,11 +51,17 @@ ERROR_MESSAGES = (
     ("member_error/not_a_member", "Tej osoby nie ma już w folderze w Dropboxie – synchronizuj ponownie."),
     ("no_explicit_access","Ta osoba ma dostęp przez folder nadrzędny – zmień go w Dropboxie przy tamtym folderze."),
     ("team_folder", "To folder zespołu Dropbox – jego członków nie można zmieniać przez API."),
-    ("invalid_id", "Dropbox nie zna tego udostępnionego folderu – sprawdź ścieżkę folderu w CMS-ie."),
+    ("invalid_id", "Dropbox nie zna tego udostępnionego folderu – folder usunięto albo cofnięto jego udostępnienie."),
+    ("unmounted", "Udostępniony folder nie jest już w Dropboxie konta aplikacji (usunięty)."),
     ("no_permission", "Konto aplikacji nie ma uprawnień do zarządzania tym folderem (folder nie należy do konta)."),
     ("not_a_member", "Konto aplikacji nie jest członkiem tego folderu (folder nie należy do konta)."),
     ("access_error", "Konto aplikacji nie ma dostępu do tego folderu."),
 )
+
+
+# Tagi błędów oznaczające, że folderu (albo jego udostępnienia) nie ma już w Dropboxie: ścieżka nie istnieje,
+# nieznany identyfikator udostępnienia, folder odmontowany z konta właściciela (usunięty).
+GONE_TAGS = frozenset({"not_found", "invalid_id", "unmounted"})
 
 
 class DropboxError(Exception):
@@ -76,6 +82,25 @@ class Member:
     level: str
     invitee: bool = False
     inherited: bool = False
+
+
+# Poziomy dostępu Dropboxa (AccessLevel) → poziom w CMS-ie. „viewer_no_comment” (odczyt bez komentowania) to dla CMS-u
+# Odczyt; „owner” (konto aplikacji), „traverse” i „no_access” nie mają odpowiednika – CMS ich nie przejmuje ani nie zmienia.
+CMS_LEVELS = {"editor": "editor", "viewer": "viewer", "viewer_no_comment": "viewer"}
+DROPBOX_LEVEL_LABELS = {
+    "owner": "Właściciel", "editor": "Edycja", "viewer": "Odczyt", "viewer_no_comment": "Odczyt bez komentarzy",
+    "traverse": "Tylko przechodzenie", "no_access": "Brak dostępu",
+}
+
+
+def cms_level(level):
+    """Poziom CMS-u („editor”/„viewer”) dla poziomu Dropboxa; pusty, gdy CMS go nie obsługuje."""
+    return CMS_LEVELS.get(level, "")
+
+
+def is_gone(error):
+    """Błąd mówi, że folderu nie ma już w Dropboxie (porównanie całych tagów error_summary, nie fragmentów)."""
+    return bool(GONE_TAGS & set(getattr(error, "summary", "").split("/")))
 
 
 def is_configured():
@@ -219,6 +244,10 @@ class DropboxClient:
             raise DropboxError(message_for("is_file"), "is_file")
         return metadata
 
+    def shared_folder_metadata(self, shared_folder_id):
+        """Metadane udostępnionego folderu; „path_lower” jest tylko wtedy, gdy folder jest w Dropboxie konta aplikacji."""
+        return self.call("sharing/get_folder_metadata", {"shared_folder_id": shared_folder_id})
+
     def list_subfolders(self, path):
         """Podfoldery (bez zagłębiania): nazwa, ścieżka i identyfikator udostępnienia (pusty – nieudostępniony)."""
         result = self.call("files/list_folder", {"path": path, "recursive": False, "include_mounted_folders": True})
@@ -291,7 +320,8 @@ class DropboxClient:
         })
 
     def remove_member(self, shared_folder_id, email):
-        """Usuwa osobę bez zostawiania jej kopii plików; osoba, której już nie ma w folderze, nie jest błędem."""
+        """Usuwa osobę bez zostawiania jej kopii plików; osoba, której już nie ma w folderze (albo usunięty folder),
+        nie jest błędem."""
         try:
             result = self.call("sharing/remove_folder_member", {
                 "shared_folder_id": shared_folder_id, "member": {".tag": "email", "email": email},
@@ -300,7 +330,8 @@ class DropboxClient:
             if result.get(".tag") == "async_job_id":
                 self._wait("sharing/check_remove_member_job_status", result["async_job_id"])
         except DropboxError as error:
-            if "member_error/not_a_member" not in error.summary:
+            # Osoby już nie ma w folderze albo folderu nie ma już w Dropboxie – dostępu i tak nie ma.
+            if "member_error/not_a_member" not in error.summary and not is_gone(error):
                 raise
 
 

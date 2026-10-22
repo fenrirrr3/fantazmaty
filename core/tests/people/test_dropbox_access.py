@@ -13,7 +13,7 @@ from django.urls import reverse
 from core.tests.people.support import admin_form_data
 from fantazmaty.testing import create_member, create_superuser, form_value
 from people.dropbox_access import NOT_CONFIGURED_NOTICE
-from people.dropbox_sharing import DropboxClient, DropboxError, Member
+from people.dropbox_sharing import DropboxClient, DropboxError, Member, message_for
 from people.models import DropboxAccess, DropboxFolder, Person
 
 CONFIGURED = override_settings(DROPBOX_APP_KEY='app-key', DROPBOX_APP_SECRET='app-secret',
@@ -113,11 +113,26 @@ class DropboxClientTests(SimpleTestCase):
         self.assertEqual(transport.calls('sharing/check_remove_member_job_status'), [{'async_job_id': 'job-2'}])
 
     def test_removing_someone_already_gone_is_not_an_error(self):
-        client, _ = self.client_with(
-            token=[TOKEN], sharing__remove_folder_member=[{'.tag': 'async_job_id', 'async_job_id': 'job-3'}],
-            sharing__check_remove_member_job_status=[{'.tag': 'failed', 'failed': {
-                '.tag': 'member_error', 'member_error': {'.tag': 'not_a_member'}}}])
-        client.remove_member('11', 'gone@example.test')
+        """Usunięcie osoby, której nie ma już w folderze, albo z folderu usuniętego w Dropboxie – bez błędu (dostępu
+        i tak nie ma); inny błąd usuwania zostaje błędem."""
+        job = [{'.tag': 'async_job_id', 'async_job_id': 'job-3'}]
+        cases = [
+            ('osoby nie ma w folderze', job, [{'.tag': 'failed', 'failed': {
+                '.tag': 'member_error', 'member_error': {'.tag': 'not_a_member'}}}], None),
+            ('folder usunięty', [(409, {'error_summary': 'access_error/invalid_id/..'})], [], None),
+            ('folder odmontowany', [(409, {'error_summary': 'access_error/unmounted/.'})], [], None),
+            ('brak uprawnień', [(409, {'error_summary': 'access_error/no_permission/..'})], [], 'nie ma uprawnień'),
+        ]
+        for label, remove, status, error in cases:
+            with self.subTest(label):
+                cache.clear()
+                client, _ = self.client_with(token=[TOKEN], sharing__remove_folder_member=list(remove),
+                                             sharing__check_remove_member_job_status=list(status))
+                if error:
+                    with self.assertRaisesMessage(DropboxError, error):
+                        client.remove_member('11', 'gone@example.test')
+                else:
+                    client.remove_member('11', 'gone@example.test')
 
     def test_api_errors_become_polish_messages(self):
         """Błędy API, tokenu i połączenia → czytelny komunikat po polsku."""
@@ -228,25 +243,45 @@ class DropboxClientTests(SimpleTestCase):
 class FakeDropbox:
     """Dropbox w pamięci dla synchronizacji: członkowie folderów, konta istniejące i wymuszone błędy."""
 
-    def __init__(self, accounts=()):
+    def __init__(self, accounts=(), shared=None):
         self.accounts = {email.lower() for email in accounts}
         self.members = {}
         self.calls = []
         self.failures = {}
+        self.shared = dict(shared or {})  # ścieżka → identyfikator folderu udostępnionego już w Dropboxie
+        self.locations = {}  # identyfikator udostępnienia → obecna ścieżka folderu
+        self.deleted = set()  # ścieżki i identyfikatory folderów usuniętych w Dropboxie
+
+    def _gone(self, *keys):
+        """Folder usunięty w Dropboxie – błędy jak z API (ścieżka: not_found, udostępnienie: invalid_id)."""
+        for key in keys:
+            if key in self.deleted:
+                summary = 'path/not_found/..' if key.startswith('/') else 'access_error/invalid_id/..'
+                raise DropboxError(message_for(summary), summary)
 
     def _fail(self, operation):
         if operation in self.failures:
             raise DropboxError(self.failures[operation])
 
     def folder_metadata(self, path):
-        return {'.tag': 'folder', 'sharing_info': None}
+        self._gone(path)
+        shared = self.shared.get(path)
+        return {'.tag': 'folder', 'sharing_info': {'shared_folder_id': shared} if shared else None}
 
     def ensure_shared(self, path):
         self._fail('share')
         self.calls.append(('share', path))
         return 'sf-' + path.rsplit('/', 1)[-1]
 
+    def shared_folder_metadata(self, shared_id):
+        self._fail('metadata')
+        self._gone(shared_id)
+        path = self.locations[shared_id]
+        return {'shared_folder_id': shared_id, 'path_lower': path.lower(), 'path_display': path}
+
     def folder_members(self, shared_id):
+        self._fail('members')
+        self._gone(shared_id)
         return dict(self.members.setdefault(shared_id, {'owner@example.test': Member('owner')}))
 
     def add_member(self, shared_id, email, level):
@@ -524,15 +559,6 @@ class DropboxFolderAdminTests(TestCase):
             self.client.post(url, {'path': ['/Fantazmaty/Świąteczna łódź']})
         self.assertTrue(DropboxFolder.objects.filter(name='Świąteczna łódź', path='/Fantazmaty/Świąteczna łódź').exists())
 
-    def test_folder_with_access_history_cannot_be_deleted(self):
-        """Folder, w którym CMS nadawał dostęp, nie jest usuwany (zostałyby osoby bez możliwości odebrania dostępu)."""
-        folder = DropboxFolder.objects.get()
-        person = Person.objects.create(first_name='Ola', last_name='Historia', email='hist@example.test')
-        access = DropboxAccess.objects.create(person=person, folder=folder, wanted=False)
-        DropboxAccess.objects.filter(pk=access.pk).update(state=State.REMOVED)
-        response = self.client.get(reverse('admin:people_dropboxfolder_delete', args=[folder.pk]))
-        self.assertEqual(response.status_code, 403)
-
     def test_fetch_without_configuration_shows_error(self):
         page = self.client.get(reverse('admin:people_dropboxfolder_fetch'))
         self.assertContains(page, 'Dropbox nie jest skonfigurowany')
@@ -694,3 +720,433 @@ class SyncEdgeCaseTests(TestCase):
         self.assertIn(('remove', 'sf-1', 'ola-box@example.test'), self.fake.calls)
         self.assertEqual((access.state, access.granted_email), (State.REMOVED, ''))
         self.assertEqual(self.fake.members['sf-1'], {})
+
+
+class DropboxImportTests(TestCase):
+    """Przejęcie obecnych członków folderu z Dropboxa (people.dropbox_import, admin folderów, komenda): podgląd bez
+    zapisu, dopasowanie osób, zastosowanie bez zaproszeń i zmian w Dropboxie, skrót planu i brak konfiguracji."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.admin = create_superuser('import-admin')
+        cls.folder = DropboxFolder.objects.create(name='Redakcja', path='/Fantazmaty/Redakcja',
+                                                  shared_folder_id='sf-Redakcja')
+
+        def person(name, dropbox_email='', **fields):
+            fields.setdefault('email', f'{name}@example.test')
+            return Person.objects.create(first_name=name, last_name='Import', dropbox_email=dropbox_email, **fields)
+
+        cls.ola = person('ola', 'Ola-Box@Example.test')
+        cls.ewa = person('ewa', 'ewa-box@example.test')
+        cls.nina = person('nina', 'nina-box@example.test')
+        cls.jan = person('jan')
+        cls.kasia = create_member('kasia', 'Redaktor').person_profile
+        cls.kasia.user.email = 'kasia-konto@example.test'
+        cls.kasia.user.save()
+        cls.piotr = person('piotr', 'piotr-box@example.test')
+        cls.marek = person('marek', 'marek-box@example.test')
+        cls.adam = person('adam', 'adam-box@example.test', is_active=False)
+        cls.wspolny = [person(f'wspolny{index}', 'wspolny@example.test') for index in (1, 2)]
+        # bulk_create bez sygnałów: partia synchronizacji z setUpTestData nie przejmowałaby wierszy z testów.
+        DropboxAccess.objects.bulk_create([
+            DropboxAccess(person=who, folder=cls.folder, level=level, state=State.GRANTED, granted_email=who.dropbox_email)
+            for who, level in ((cls.piotr, 'editor'), (cls.marek, 'viewer'))])
+
+    def setUp(self):
+        self.client.force_login(self.admin)
+        self.fake = FakeDropbox()
+        self.fake.members['sf-Redakcja'] = {
+            'owner@example.test': Member('owner'), 'ola-box@example.test': Member('editor'),
+            'ewa-box@example.test': Member('viewer', invitee=True), 'nina-box@example.test': Member('viewer_no_comment'),
+            'jan@example.test': Member('viewer'), 'kasia-konto@example.test': Member('editor'),
+            'piotr-box@example.test': Member('viewer'), 'marek-box@example.test': Member('viewer'),
+            'adam-box@example.test': Member('editor'), 'wspolny@example.test': Member('editor'),
+            'obcy@example.test': Member('editor')}
+        for target in ('people.dropbox_import.DropboxClient', 'people.dropbox_access.DropboxClient'):
+            patcher = patch(target, return_value=self.fake)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        activity = patch('core.activity_spool.enqueue_activity')
+        self.activity = activity.start()
+        self.addCleanup(activity.stop)
+        self.url = reverse('admin:people_dropboxfolder_import') + f'?ids={self.folder.pk}'
+
+    def preview(self):
+        with CONFIGURED:
+            return self.client.get(self.url)
+
+    def apply(self, token=None, **choices):
+        """„Zastosuj” z tokenem podglądu (domyślnie świeżego); zwraca (odpowiedź, komunikaty)."""
+        token = token or self.preview().context['token']
+        data = {'ids': str(self.folder.pk), 'token': token, **choices}
+        with CONFIGURED, self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(reverse('admin:people_dropboxfolder_import'), data)
+        return response, [str(message) for message in response.wsgi_request._messages]
+
+    def key(self, email):
+        return f'{self.folder.pk}:{email}'
+
+    def rows(self):
+        return {access.person.first_name: (access.state, access.level, access.granted_email, access.wanted)
+                for access in DropboxAccess.objects.select_related('person')}
+
+    def test_preview_groups_members_without_changes(self):
+        """Podgląd: grupy według dopasowania (adres Dropbox bez wielkości liter, inny adres osoby – kontaktowy i konta,
+        niejednoznaczny, spoza bazy, osoba spoza ekipy, różnica poziomu); właściciel pominięty; nic nie jest zapisywane."""
+        before = self.rows()
+        page = self.preview()
+        [plan] = page.context['plans']
+        groups = {entry.email: entry.group for entry in plan.entries}
+        cases = [('ola-box@example.test', 'import'), ('nina-box@example.test', 'import'),
+                 ('ewa-box@example.test', 'invited'), ('jan@example.test', 'other_email'),
+                 ('kasia-konto@example.test', 'other_email'), ('piotr-box@example.test', 'level'),
+                 ('marek-box@example.test', 'managed'), ('adam-box@example.test', 'inactive'),
+                 ('wspolny@example.test', 'problems'), ('obcy@example.test', 'outside')]
+        for email, group in cases:
+            with self.subTest(email):
+                self.assertEqual(groups.pop(email), group)
+        self.assertEqual(groups, {})
+        self.assertEqual(plan.owners, ['owner@example.test'])
+        self.assertContains(page, 'W Dropboxie Odczyt, w CMS-ie Edycja.')
+        self.assertContains(page, 'Adres pasuje do kilku osób: wspolny1 Import, wspolny2 Import.')
+        self.assertContains(page, 'name="set_email"', count=2)
+        self.assertContains(page, 'name="revoke"', count=1)
+        self.assertNotContains(page, 'checked')
+        self.assertEqual((self.rows(), self.fake.calls), (before, []))
+
+    def test_apply_takes_over_without_calls_to_dropbox(self):
+        """„Zastosuj” bez zaznaczeń: wiersze z poziomem i adresem z Dropboxa (zaproszenie – „zaproszenie wysłane”),
+        poziom z Dropboxa przy różnicy; dopasowania po innym adresie, osoby spoza ekipy i spoza bazy bez zmian;
+        żadnego wywołania add/update/remove – także przy późniejszej synchronizacji („Odczyt bez komentarzy” = Odczyt)."""
+        response, messages = self.apply()
+        self.assertRedirects(response, reverse('admin:people_dropboxfolder_changelist'))
+        self.assertIn('Przejęto 4 dostępy w folderze Redakcja.', messages)
+        self.assertEqual(self.rows(), {
+            'ola': (State.GRANTED, 'editor', 'ola-box@example.test', True),
+            'ewa': (State.INVITED, 'viewer', 'ewa-box@example.test', True),
+            'nina': (State.GRANTED, 'viewer', 'nina-box@example.test', True),
+            'piotr': (State.GRANTED, 'viewer', 'piotr-box@example.test', True),
+            'marek': (State.GRANTED, 'viewer', 'marek-box@example.test', True)})
+        self.jan.refresh_from_db()
+        self.assertEqual(self.jan.dropbox_email, '')
+        actions = sorted(call.kwargs['action'] for call in self.activity.call_args_list
+                         if call.kwargs['action'].startswith('Dropbox:'))
+        self.assertEqual(actions, ['Dropbox: przejęcie dostępu z Dropboxa (Edycja)']
+                         + ['Dropbox: przejęcie dostępu z Dropboxa (Odczyt)'] * 3)
+        from people.dropbox_access import sync
+        with CONFIGURED:
+            results = sync(DropboxAccess.objects.all())
+        self.assertEqual([result.action for result in results if result.action or result.error], [])
+        self.assertEqual(self.fake.calls, [])
+
+    def test_checked_options_set_dropbox_email_or_revoke(self):
+        """Zaznaczone „ustaw jako e-mail Dropbox” – adres trafia do osoby i dostęp jest przejęty (bez zaproszenia);
+        zaznaczone „odbierz dostęp” – osoba spoza ekipy jest usuwana z folderu istniejącym mechanizmem."""
+        cases = [
+            ('set_email', 'jan@example.test', self.jan,
+             lambda: self.assertEqual(Person.objects.get(pk=self.jan.pk).dropbox_email, 'jan@example.test'),
+             (State.GRANTED, 'viewer', 'jan@example.test', True), []),
+            ('revoke', 'adam-box@example.test', self.adam, lambda: None,
+             (State.REMOVED, 'editor', '', False), [('remove', 'sf-Redakcja', 'adam-box@example.test')]),
+        ]
+        for field_name, email, who, check, row, calls in cases:
+            with self.subTest(field_name):
+                DropboxAccess.objects.filter(person__in=[self.ola, self.ewa, self.nina]).delete()
+                self.fake.calls = []
+                response, messages = self.apply(**{field_name: [self.key(email)]})
+                self.assertEqual(response.status_code, 302)
+                check()
+                self.assertEqual(self.rows()[who.first_name], row)
+                self.assertEqual(self.fake.calls, calls)
+        self.assertIn('Dropbox – adam Import → Redakcja: odebrano dostęp (adam-box@example.test).', messages)
+        self.assertNotIn('kasia', self.rows())
+
+    def test_changed_state_requires_new_preview(self):
+        """Zmiana w Dropboxie albo w CMS-ie między podglądem a „Zastosuj” (albo zły token): nic nie jest zapisywane,
+        komunikat i nowy podgląd."""
+        def new_member():
+            self.fake.members['sf-Redakcja']['nowy@example.test'] = Member('editor')
+
+        def person_changed():
+            Person.objects.filter(pk=self.jan.pk).update(dropbox_email='jan@example.test')
+
+        cases = [('nowy członek w Dropboxie', new_member, None), ('zmiana osoby w CMS-ie', person_changed, None),
+                 ('zły token', lambda: None, 'zly-token')]
+        for label, change, token in cases:
+            with self.subTest(label):
+                token = token or self.preview().context['token']
+                change()
+                before = self.rows()
+                response, messages = self.apply(token)
+                self.assertEqual(response.status_code, 200)
+                self.assertIn('zmienił się od podglądu', ' '.join(messages))
+                self.assertEqual(self.rows(), before)
+                self.assertNotEqual(response.context['token'], token)
+
+    def test_errors_and_unshared_folder(self):
+        """Brak konfiguracji i błąd API – komunikat zamiast 500, bez zapisu; folder nieudostępniony w Dropboxie –
+        „brak członków”, bez udostępniania."""
+        unshared = DropboxFolder.objects.create(name='Nowy', path='/Fantazmaty/Nowy')
+        response = self.client.get(self.url)
+        self.assertContains(response, 'Dropbox nie jest skonfigurowany')
+        self.assertNotContains(response, 'name="apply"')
+        self.fake.failures['members'] = 'Dropbox jest chwilowo niedostępny.'
+        self.assertContains(self.preview(), 'Dropbox jest chwilowo niedostępny.')
+        response, messages = self.apply()
+        self.assertIn('Folder Redakcja: Dropbox jest chwilowo niedostępny.', messages)
+        self.assertEqual(DropboxAccess.objects.count(), 2)
+        url = reverse('admin:people_dropboxfolder_import') + f'?ids={unshared.pk}'
+        with CONFIGURED:
+            self.assertContains(self.client.get(url), 'Folder nie jest udostępniony w Dropboxie – brak członków')
+        self.assertEqual(self.fake.calls, [])
+        self.fake.shared['/Fantazmaty/Nowy'] = 'sf-Nowy'
+        del self.fake.failures['members']
+        with CONFIGURED:
+            self.client.post(reverse('admin:people_dropboxfolder_import'),
+                             {'ids': str(unshared.pk), 'token': self.client.get(url).context['token']})
+        unshared.refresh_from_db()
+        self.assertEqual(unshared.shared_folder_id, 'sf-Nowy')
+
+    def test_superuser_only(self):
+        """Podgląd, zastosowanie, akcja i przycisk na stronie folderu – tylko superuser."""
+        change_page = self.client.get(reverse('admin:people_dropboxfolder_change', args=[self.folder.pk]))
+        self.assertContains(change_page, self.url)
+        changelist = self.client.post(reverse('admin:people_dropboxfolder_changelist'),
+                                      {'action': 'import_members', '_selected_action': [self.folder.pk], 'index': '0'})
+        self.assertRedirects(changelist, self.url, fetch_redirect_response=False)
+        staff = create_member('import-staff', 'Redaktor')
+        staff.is_staff = True
+        staff.save()
+        from django.contrib.auth.models import Permission
+        staff.user_permissions.add(*Permission.objects.filter(codename__endswith='dropboxfolder'))
+        for user in (staff, create_member('import-coordinator', 'Koordynator redakcji')):
+            self.client.force_login(user)
+            for method in ('get', 'post'):
+                with self.subTest(user=user.username, method=method), CONFIGURED:
+                    response = getattr(self.client, method)(self.url, {'ids': str(self.folder.pk)} if method == 'post' else None)
+                    self.assertIn(response.status_code, (302, 403))
+                    self.assertNotEqual(response.get('Location', ''), reverse('admin:people_dropboxfolder_changelist'))
+        self.assertEqual(DropboxAccess.objects.count(), 2)
+
+    def test_command_imports_only_direct_matches(self):
+        """sync_dropbox_access --import-members: --dry-run tylko wypisuje; bez niego przejmuje dopasowania po adresie
+        Dropbox (bez dopasowań po innym adresie i osób spoza ekipy); bez konfiguracji – błąd."""
+        with self.assertRaisesMessage(CommandError, 'Dropbox nie jest skonfigurowany'):
+            call_command('sync_dropbox_access', '--import-members', stdout=StringIO())
+        out = StringIO()
+        with CONFIGURED:
+            call_command('sync_dropbox_access', '--import-members', '--dry-run', stdout=out)
+        self.assertIn('[próba] Do przejęcia: 4 dostępy w folderze Redakcja.', out.getvalue())
+        self.assertIn('[próba] Redakcja: Osoby spoza ekipy z dostępem – adam-box@example.test (adam Import)',
+                      out.getvalue())
+        self.assertEqual(DropboxAccess.objects.count(), 2)
+        out = StringIO()
+        with CONFIGURED:
+            call_command('sync_dropbox_access', '--import-members', stdout=out)
+        self.assertIn('Przejęto 4 dostępy w folderze Redakcja.', out.getvalue())
+        self.assertEqual(set(self.rows()), {'ola', 'ewa', 'nina', 'piotr', 'marek'})
+        self.assertEqual(self.fake.calls, [])
+
+
+class DropboxFolderRemovalTests(TestCase):
+    """Usuwanie folderów z listy (people.dropbox_removal, admin folderów): stan w Dropboxie, wybór „przestań zarządzać”
+    albo „odbierz dostęp”, skrót stanu, folder usunięty w Dropboxie przy synchronizacji i na liście „Pobierz foldery”."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.admin = create_superuser('remove-admin')
+        cls.ola = Person.objects.create(first_name='Ola', last_name='Usuwa', email='ola@example.test',
+                                        dropbox_email='ola-box@example.test')
+
+    def setUp(self):
+        self.client.force_login(self.admin)
+        self.fake = FakeDropbox()
+        for target in ('people.dropbox_removal.DropboxClient', 'people.dropbox_access.DropboxClient'):
+            patcher = patch(target, return_value=self.fake)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        activity = patch('core.activity_spool.enqueue_activity')
+        self.activity = activity.start()
+        self.addCleanup(activity.stop)
+
+    def make_folder(self, kind, state=State.GRANTED, wanted=True):
+        """Folder z dostępem Oli: gone – usunięty w Dropboxie, live – udostępniony (Ola i osoba dodana ręcznie),
+        unshared – istnieje bez udostępnienia (wiersz czeka na nadanie)."""
+        path = f'/Fantazmaty/{kind}'
+        shared = '' if kind == 'unshared' else f'sf-{kind}'
+        folder = DropboxFolder.objects.create(name=kind, path=path, shared_folder_id=shared)
+        granted = 'ola-box@example.test' if shared else ''
+        DropboxAccess.objects.bulk_create([DropboxAccess(person=self.ola, folder=folder, wanted=wanted,
+                                                         state=state if shared else State.PENDING, granted_email=granted)])
+        if kind == 'gone':
+            self.fake.deleted |= {path, shared}
+        elif shared:
+            self.fake.locations[shared] = path
+            self.fake.members[shared] = {'owner@example.test': Member('owner'), granted: Member('editor'),
+                                         'reczny@example.test': Member('viewer')}
+        return folder
+
+    def url(self, *folders):
+        return reverse('admin:people_dropboxfolder_remove') + '?ids=' + ','.join(str(f.pk) for f in folders)
+
+    def check(self, *folders):
+        with CONFIGURED:
+            return self.client.get(self.url(*folders))
+
+    def remove(self, folders, token=None, configured=True, modes=None):
+        """Potwierdzenie usunięcia z tokenem świeżego sprawdzenia; modes: {folder: tryb}."""
+        settings = CONFIGURED if configured else override_settings()
+        with settings:
+            token = token or self.client.get(self.url(*folders)).context['token']
+            data = {'ids': ','.join(str(f.pk) for f in folders), 'token': token,
+                    **{f'mode_{folder.pk}': mode for folder, mode in (modes or {}).items()}}
+            with self.captureOnCommitCallbacks(execute=True):
+                response = self.client.post(reverse('admin:people_dropboxfolder_remove'), data)
+        return response, [str(message) for message in response.wsgi_request._messages]
+
+    def test_check_shows_state_without_changes(self):
+        """Sprawdzenie: usunięty w Dropboxie, udostępniony, przeniesiony, nieudostępniony, błąd API i brak konfiguracji;
+        nic nie jest zmieniane."""
+        gone, live, unshared = self.make_folder('gone'), self.make_folder('live'), self.make_folder('unshared')
+        moved = self.make_folder('moved')
+        self.fake.locations['sf-moved'] = '/Archiwum/moved'
+        failing = self.make_folder('failing')
+        self.fake.locations.pop('sf-failing')
+        page = self.check(gone, live, unshared, moved)
+        states = {check.folder.name: (check.state, check.rows, check.granted) for check in page.context['checks']}
+        self.assertEqual(states, {'gone': ('gone', 1, 1), 'live': ('exists', 1, 1), 'unshared': ('unshared', 1, 0),
+                                  'moved': ('exists', 1, 1)})
+        self.assertContains(page, 'Folder jest teraz w Dropboxie pod ścieżką /Archiwum/moved.')
+        self.assertContains(page, 'name="mode_%d" value="revoke"' % live.pk)
+        self.assertNotContains(page, 'name="mode_%d"' % gone.pk)
+        cases = [('błąd API', CONFIGURED, 'Dropbox jest chwilowo niedostępny.'),
+                 ('brak konfiguracji', override_settings(), 'Dropbox nie jest skonfigurowany')]
+        self.fake.failures['metadata'] = 'Dropbox jest chwilowo niedostępny.'
+        for label, settings, note in cases:
+            with self.subTest(label), settings:
+                page = self.client.get(self.url(failing))
+                [check] = page.context['checks']
+                self.assertEqual(check.state, 'unknown')
+                self.assertIn(note, check.note)
+                self.assertContains(page, 'type="checkbox" name="mode_%d" value="stop"' % failing.pk)
+                self.assertNotContains(page, 'value="revoke"')
+        self.assertEqual((DropboxFolder.objects.count(), DropboxAccess.objects.count(), self.fake.calls), (5, 5, []))
+
+    def test_remove_by_state_and_choice(self):
+        """Usunięcie według stanu: usunięty w Dropboxie i nieudostępniony – bez API; istniejący – „przestań zarządzać”
+        (członkowie zostają) albo „odbierz dostęp” (folder znika dopiero po udanym odebraniu, błąd zostawia folder);
+        bez wyboru i stan nieznany bez potwierdzenia – folder zostaje."""
+        remove_call = ('remove', 'sf-live', 'ola-box@example.test')
+        cases = [
+            # (rodzaj, tryb, konfiguracja, awaria, usunięty, wywołania, komunikat)
+            ('gone', None, True, None, True, [], 'Usunięto folder gone z listy (usunięty w dropboxie).'),
+            ('unshared', None, True, None, True, [], 'Usunięto folder unshared z listy'),
+            ('live', 'stop', True, None, True, [], 'Usunięto folder live z listy'),
+            ('live', None, True, None, False, [], 'nie wybrano, co zrobić z dostępem'),
+            ('live', 'revoke', True, None, True, [remove_call], 'Usunięto folder live z listy'),
+            ('live', 'revoke', True, 'remove', False, [], 'nie udało się odebrać dostępu wszystkim osobom'),
+            ('live', 'stop', False, None, True, [], 'Usunięto folder live z listy (stan nieznany).'),
+            ('live', 'revoke', False, None, False, [], 'nie wybrano, co zrobić z dostępem'),
+        ]
+        for kind, mode, configured, failure, removed, calls, message in cases:
+            with self.subTest(kind=kind, mode=mode, configured=configured, failure=failure):
+                DropboxAccess.objects.all().delete()
+                DropboxFolder.objects.all().delete()
+                self.fake.calls, self.fake.failures = [], ({failure: 'Dropbox jest chwilowo niedostępny.'} if failure else {})
+                self.activity.reset_mock()
+                folder = self.make_folder(kind)
+                response, messages = self.remove([folder], configured=configured, modes={folder: mode} if mode else None)
+                self.assertRedirects(response, reverse('admin:people_dropboxfolder_changelist'))
+                self.assertIn(message, ' '.join(messages))
+                self.assertEqual(DropboxFolder.objects.filter(pk=folder.pk).exists(), not removed)
+                self.assertEqual(DropboxAccess.objects.filter(folder_id=folder.pk).exists(), not removed)
+                self.assertEqual(self.fake.calls, calls)
+                logged = [call.kwargs['action'] for call in self.activity.call_args_list
+                          if 'usunięcie folderu' in call.kwargs['action']]
+                self.assertEqual(len(logged), int(removed))
+                if kind == 'live' and mode == 'stop':
+                    self.assertIn('ola-box@example.test', self.fake.members['sf-live'])
+                if failure:
+                    access = DropboxAccess.objects.get(folder=folder)
+                    self.assertEqual((access.state, access.wanted, access.granted_email),
+                                     (State.ERROR, False, 'ola-box@example.test'))
+                    self.assertIn('Dropbox – Ola Usuwa → live: Dropbox jest chwilowo niedostępny.', messages)
+        self.assertIn('reczny@example.test', self.fake.members['sf-live'])
+
+    def test_changed_state_requires_new_check(self):
+        """Folder usunięty w Dropboxie po sprawdzeniu (inny stan niż w tokenie) – nic nie jest usuwane, komunikat."""
+        folder = self.make_folder('live')
+        token = self.check(folder).context['token']
+        self.fake.deleted.add('sf-live')
+        response, messages = self.remove([folder], token=token, modes={folder: 'stop'})
+        self.assertIn('Stan folderów zmienił się od sprawdzenia', ' '.join(messages))
+        self.assertTrue(DropboxFolder.objects.filter(pk=folder.pk).exists())
+
+    def test_superuser_only_and_builtin_delete_disabled(self):
+        """Usuwanie tylko przez „Usuń z listy” (akcja i przycisk na stronie folderu) i tylko dla superusera;
+        zwykłe usuwanie (strona usunięcia, akcja delete_selected) jest wyłączone dla każdego folderu."""
+        folder, empty = self.make_folder('gone'), DropboxFolder.objects.create(name='Pusty', path='/Fantazmaty/Pusty')
+        self.assertContains(self.client.get(reverse('admin:people_dropboxfolder_change', args=[folder.pk])), self.url(folder))
+        for target in (folder, empty):
+            with self.subTest(target.name):
+                self.assertEqual(self.client.get(reverse('admin:people_dropboxfolder_delete', args=[target.pk])).status_code, 403)
+        changelist = reverse('admin:people_dropboxfolder_changelist')
+        actions = self.client.get(changelist).context['action_form'].fields['action'].choices
+        self.assertNotIn('delete_selected', dict(actions))
+        response = self.client.post(changelist, {'action': 'remove_from_list', '_selected_action': [folder.pk], 'index': '0'})
+        self.assertRedirects(response, self.url(folder), fetch_redirect_response=False)
+        staff = create_member('remove-staff', 'Redaktor')
+        staff.is_staff = True
+        staff.save()
+        from django.contrib.auth.models import Permission
+        staff.user_permissions.add(*Permission.objects.filter(codename__endswith='dropboxfolder'))
+        self.client.force_login(staff)
+        for method in ('get', 'post'):
+            with self.subTest(method=method), CONFIGURED:
+                response = getattr(self.client, method)(self.url(folder))
+                self.assertIn(response.status_code, (302, 403))
+                self.assertNotEqual(response.get('Location', ''), reverse('admin:people_dropboxfolder_changelist'))
+        self.assertEqual(DropboxFolder.objects.count(), 2)
+
+    def test_sync_with_folder_deleted_in_dropbox(self):
+        """Folder usunięty w Dropboxie nie blokuje synchronizacji: odebranie (dezaktywacja) kończy się stanem
+        „usunięty” bez wywołań, nadanie – czytelnym błędem, a drugi folder synchronizuje się normalnie."""
+        from people.dropbox_access import FOLDER_GONE, sync
+        from people.dropbox_sharing import is_gone
+        gone = self.make_folder('gone')
+        self.make_folder('live')
+        other = Person.objects.create(first_name='Ewa', last_name='Nowa', email='ewa@example.test',
+                                      dropbox_email='ewa-box@example.test')
+        DropboxAccess.objects.bulk_create([DropboxAccess(person=other, folder=gone, state=State.PENDING)])
+        self.ola.is_active = False
+        with CONFIGURED, self.captureOnCommitCallbacks(execute=True):
+            self.ola.save()
+        rows = {(a.person.first_name, a.folder.name): (a.state, a.granted_email, a.last_error)
+                for a in DropboxAccess.objects.select_related('person', 'folder')}
+        self.assertEqual(rows[('Ola', 'gone')], (State.REMOVED, '', ''))
+        self.assertEqual(rows[('Ola', 'live')], (State.REMOVED, '', ''))
+        self.assertEqual(self.fake.calls, [('remove', 'sf-live', 'ola-box@example.test')])
+        sync(DropboxAccess.objects.filter(person=other), client=self.fake)
+        access = DropboxAccess.objects.get(person=other)
+        self.assertEqual((access.state, access.last_error), (State.ERROR, FOLDER_GONE))
+        for summary, expected in (('path/not_found/..', True), ('access_error/invalid_id/..', True),
+                                  ('access_error/unmounted/.', True), ('member_error/not_a_member/..', False),
+                                  ('add_folder_member/bad_member/invalid_email/..', False)):
+            with self.subTest(summary):
+                self.assertEqual(is_gone(DropboxError('x', summary)), expected)
+
+    def test_fetch_marks_folders_missing_in_dropbox(self):
+        """„Pobierz foldery z Dropboxa”: foldery z listy CMS-u, których nie ma w folderze głównym – „usunięty
+        w Dropboxie” (albo nowa ścieżka po przeniesieniu) z odnośnikiem do usunięcia; foldery spoza folderu głównego
+        nie są oznaczane."""
+        gone = self.make_folder('gone')
+        self.make_folder('live')
+        DropboxFolder.objects.create(name='Poza', path='/Inny/Poza')
+        listing = [{'name': 'nowa nazwa', 'path': '/Fantazmaty/nowa nazwa', 'shared_folder_id': 'sf-live'}]
+        with patch('people.dropbox_sharing.DropboxClient') as client:
+            client.return_value.list_subfolders.return_value = listing
+            page = self.client.get(reverse('admin:people_dropboxfolder_fetch'))
+        self.assertEqual([(folder.name, moved) for folder, moved in page.context['missing']],
+                         [('gone', ''), ('live', '/Fantazmaty/nowa nazwa')])
+        self.assertContains(page, 'usunięty w Dropboxie')
+        self.assertContains(page, self.url(gone))

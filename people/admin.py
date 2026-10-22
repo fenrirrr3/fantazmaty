@@ -477,7 +477,9 @@ def sync_dropbox_rows(model_admin, request, queryset):
 class DropboxFolderAdmin(admin.ModelAdmin):
     """Foldery, którymi zarządza CMS; dodawane ręcznie albo z listy podfolderów folderu głównego."""
     change_list_template = "admin/people/dropboxfolder/change_list.html"
+    change_form_template = "admin/people/dropboxfolder/change_form.html"
     list_display = ("name", "path", "is_shared", "is_active", "access_count")
+    actions = ("import_members", "remove_from_list")
     list_filter = ("is_active",)
     search_fields = ("name__plcontains", "path__plcontains")
     fields = ("name", "path", "is_active", "shared_folder_id")
@@ -494,7 +496,127 @@ class DropboxFolderAdmin(admin.ModelAdmin):
     def get_urls(self):
         from django.urls import path
         return [path("pobierz/", self.admin_site.admin_view(self.fetch_view), name="people_dropboxfolder_fetch"),
+                path("przejmij/", self.admin_site.admin_view(self.import_view), name="people_dropboxfolder_import"),
+                path("usun/", self.admin_site.admin_view(self.remove_view), name="people_dropboxfolder_remove"),
                 *super().get_urls()]
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if not request.user.is_superuser:
+            actions.pop("import_members", None)
+            actions.pop("remove_from_list", None)
+        return actions
+
+    @admin.action(description="Usuń z listy (po sprawdzeniu stanu w Dropboxie)")
+    def remove_from_list(self, request, queryset):
+        from django.shortcuts import redirect
+        from django.urls import reverse
+        ids = ",".join(str(pk) for pk in queryset.order_by("pk").values_list("pk", flat=True))
+        return redirect(f"{reverse('admin:people_dropboxfolder_remove')}?ids={ids}")
+
+    def remove_view(self, request):
+        """Usunięcie folderów z listy: sprawdzenie stanu w Dropboxie i wybór (podgląd), potem usunięcie tego samego
+        stanu (skrót w tokenie) – people.dropbox_removal."""
+        from django.conf import settings
+        from django.contrib import messages
+        from django.core import signing
+        from django.core.exceptions import PermissionDenied
+        from django.shortcuts import redirect
+        from django.template.response import TemplateResponse
+        from people import dropbox_import, dropbox_removal
+        if not request.user.is_superuser:
+            raise PermissionDenied
+        source = request.POST if request.method == "POST" else request.GET
+        folders = dropbox_import.folders_by_ids(source.get("ids", "").split(","))
+        if not folders:
+            self.message_user(request, "Nie wybrano folderów.", messages.WARNING)
+            return redirect("admin:people_dropboxfolder_changelist")
+        salt = "people.dropbox_removal"
+        checks = dropbox_removal.check_folders(folders)
+        if request.method == "POST":
+            try:
+                expected = signing.loads(request.POST.get("token", ""), salt=salt, max_age=settings.SESSION_COOKIE_AGE)
+            except signing.BadSignature:
+                expected = ""
+            if expected != dropbox_removal.checks_digest(checks):
+                self.message_user(request, "Stan folderów zmienił się od sprawdzenia – sprawdź go ponownie i potwierdź.",
+                                  messages.WARNING)
+            else:
+                for check in checks:
+                    mode = request.POST.get(f"mode_{check.folder.pk}", "")
+                    removed, failed = dropbox_removal.remove(check, mode, actor=request.user)
+                    name = check.folder.name
+                    if removed:
+                        self.message_user(request, f"Usunięto folder {name} z listy ({check.label.lower()}).",
+                                          messages.SUCCESS)
+                    elif failed or (mode == dropbox_removal.REVOKE and check.state == dropbox_removal.EXISTS):
+                        self.message_user(request, f"Folder {name} został na liście – nie udało się odebrać "
+                                          "dostępu wszystkim osobom.", messages.ERROR)
+                        for result in failed:
+                            self.message_user(request, result.describe(), messages.ERROR)
+                    else:
+                        self.message_user(request, f"Folder {name} został na liście – nie wybrano, co zrobić "
+                                          "z dostępem.", messages.WARNING)
+                return redirect("admin:people_dropboxfolder_changelist")
+        return TemplateResponse(request, "admin/people/dropboxfolder/remove.html", {
+            **self.admin_site.each_context(request), "opts": self.model._meta, "title": "Usuń foldery z listy",
+            "checks": checks, "ids": ",".join(str(folder.pk) for folder in folders),
+            "token": signing.dumps(dropbox_removal.checks_digest(checks), salt=salt),
+        })
+
+    @admin.action(description="Przejmij obecnych członków z Dropboxa")
+    def import_members(self, request, queryset):
+        from django.shortcuts import redirect
+        from django.urls import reverse
+        ids = ",".join(str(pk) for pk in queryset.order_by("pk").values_list("pk", flat=True))
+        return redirect(f"{reverse('admin:people_dropboxfolder_import')}?ids={ids}")
+
+    def import_view(self, request):
+        """Przejęcie członków folderów z Dropboxa: podgląd bez zapisu, „Zastosuj” – ten sam plan (skrót w tokenie)."""
+        from django.conf import settings
+        from django.contrib import messages
+        from django.core import signing
+        from django.core.exceptions import PermissionDenied
+        from django.shortcuts import redirect
+        from django.template.response import TemplateResponse
+        from people import dropbox_import
+        from people.dropbox_access import admin_messages
+        from people.dropbox_sharing import DropboxError
+        if not request.user.is_superuser:
+            raise PermissionDenied
+        source = request.POST if request.method == "POST" else request.GET
+        folders = dropbox_import.folders_by_ids(source.get("ids", "").split(","))
+        if not folders:
+            self.message_user(request, "Nie wybrano folderów.", messages.WARNING)
+            return redirect("admin:people_dropboxfolder_changelist")
+        salt = "people.dropbox_import"
+        error, plans = "", []
+        try:
+            plans = dropbox_import.plan_folders(folders)
+        except DropboxError as exception:
+            error = str(exception)
+        if request.method == "POST" and not error:
+            try:
+                expected = signing.loads(request.POST.get("token", ""), salt=salt, max_age=settings.SESSION_COOKIE_AGE)
+            except signing.BadSignature:
+                expected = ""
+            plans, counts = dropbox_import.apply_plans(
+                plans, set_email=request.POST.getlist("set_email"), revoke=request.POST.getlist("revoke"),
+                actor=request.user, request=request, notify=admin_messages(self, request), expected=expected)
+            if counts is None:
+                self.message_user(request, "Stan w Dropboxie albo w CMS-ie zmienił się od podglądu – sprawdź nowy "
+                                  "podgląd i zastosuj ponownie.", messages.WARNING)
+            else:
+                for plan in plans:
+                    level = messages.ERROR if plan.error else messages.SUCCESS
+                    self.message_user(request, dropbox_import.summary(plan, counts[plan.folder.pk]), level)
+                return redirect("admin:people_dropboxfolder_changelist")
+        return TemplateResponse(request, "admin/people/dropboxfolder/import.html", {
+            **self.admin_site.each_context(request), "opts": self.model._meta,
+            "title": "Przejmij obecnych członków z Dropboxa", "error": error, "plans": plans,
+            "ids": ",".join(str(folder.pk) for folder in folders),
+            "token": signing.dumps(dropbox_import.plans_digest(plans), salt=salt),
+        })
 
     def fetch_view(self, request):
         """Podfoldery folderu głównego z Dropboxa; zaznaczone trafiają na listę folderów CMS-u."""
@@ -503,6 +625,7 @@ class DropboxFolderAdmin(admin.ModelAdmin):
         from django.core.exceptions import PermissionDenied
         from django.shortcuts import redirect
         from django.template.response import TemplateResponse
+        from people.dropbox_removal import missing_in_listing
         from people.dropbox_sharing import DropboxClient, DropboxError
         if not self.has_add_permission(request):
             raise PermissionDenied
@@ -530,11 +653,13 @@ class DropboxFolderAdmin(admin.ModelAdmin):
         return TemplateResponse(request, "admin/people/dropboxfolder/fetch.html", {
             **self.admin_site.each_context(request), "opts": self.model._meta, "title": "Pobierz foldery z Dropboxa",
             "root": root, "folders": folders, "error": error_message,
+            "missing": [] if error_message else missing_in_listing(folders, root),
         })
 
     def has_delete_permission(self, request, obj=None):
-        # Folder z historią dostępów (także odebranych) zostaje – wyłącz go polem „do wyboru przy osobach”.
-        return super().has_delete_permission(request, obj) and not (obj and obj.accesses.exists())
+        # Zwykłe usuwanie wyłączone: folder usuwa się akcją „Usuń z listy”, która sprawdza stan w Dropboxie
+        # i decyduje o dostępach osób (wiersze dostępu chroni PROTECT).
+        return False
 
 
 @admin.register(DropboxAccess)
