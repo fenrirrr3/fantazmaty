@@ -39,7 +39,7 @@
             {% if user.is_authenticated and user.is_active %}
                 <div class="header-actions">
                 {% header_search user %}
-                {% if user.is_superuser %}{% include "core/includes/email_copy.html" %}{% endif %}
+                {% email_copy_allowed user as email_copy %}{% if email_copy %}{% include "core/includes/email_copy.html" %}{% endif %}
                 <button
                     id="menu-button"
                     class="menu-button"
@@ -105,7 +105,7 @@
     <script src="{% static 'core/pagination.js' %}" defer></script>
     {% if user.is_authenticated %}<span hidden data-vocabulary-endpoint="{% url 'core:vocabulary_suggestions' %}"></span><script src="{% static 'core/vocabulary.js' %}" defer></script>{% endif %}
     <script src="{% static 'core/table-selection.js' %}" defer></script>
-    {% if user.is_superuser %}<script src="{% static 'core/email-copy.js' %}" defer></script>{% endif %}
+    {% if email_copy %}<script src="{% static 'core/email-copy.js' %}" defer></script>{% endif %}
     {% block scripts %}{% endblock %}
 </body>
 </html>

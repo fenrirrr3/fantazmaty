@@ -471,7 +471,8 @@ class RecruiterMailboxAccessTests(TestCase):
     @patch('core.views.recruitment_mailbox.read_headers', return_value={
         'validity': 7, 'rows': [{'uid': 12, 'subject': 'Redakcja', 'sender': 'candidate@example.test', 'date': ''}],
         'total': 1, 'next_cursor': None, 'previous_cursor': None})
-    def test_recruiter_mailbox_access_detail_link_and_copy_remains_superuser_only(self, headers):
+    def test_recruiter_mailbox_access_detail_link_and_copy(self, headers):
+        """Koordynator rekrutacji: skrzynka, odnośnik do zgłoszenia i kopiowanie nadawców (koperta), bez ustawień skrzynki."""
         RecruitmentMailSource.objects.create(recruitment=self.record, mailbox_key=mailbox_key(self.box), uid_validity=7, uid=12)
         detail = reverse('core:recruitment_detail', args=[self.record.pk])
         filters = {'roles': 'all', 'date_filter_enabled': 'on', 'sent_since': '2026-10-02'}
@@ -481,8 +482,9 @@ class RecruiterMailboxAccessTests(TestCase):
         self.assertContains(page, detail)
         self.assertNotContains(page, 'Ustawienia skrzynki')
         self.assertContains(self.client.get(reverse('core:home')), url)
-        response = self.client.post(url, {'action': 'copy_emails', 'selection': page.context['selection'], **filters})
-        self.assertEqual(response.status_code, 403)
+        with patch('core.services.mailbox_email_copy.sender_emails', return_value=['candidate@example.test']):
+            response = self.client.post(url, {'action': 'copy_emails', 'selection': page.context['selection'], **filters})
+        self.assertEqual(response.json(), {'emails': ['candidate@example.test']})
         # Ta rola może też dodać inną wiadomość ze skrzynki.
         headers.return_value['rows'][0]['uid'] = 13
         page = self.client.post(url, {'action': 'headers', **filters}, follow=True)

@@ -71,6 +71,8 @@ EbookLib fpdf2 Pillow rapidfuzz spacy` i modelem `pl_core_news_sm` (polecenia w 
      czekają na osobę (raz dziennie; działa, gdy w panelu włączono „Tekst nadal czeka na osobę”).
    - `python manage.py resend_discord_notifications` – ponawia powiadomienia Discord oczekujące od ponad 10 minut
      albo nieudane, nie starsze niż 3 dni (co kilkanaście minut; stan „brak potwierdzenia” nie jest ponawiany).
+   - `python manage.py sync_dropbox_access` – opcjonalnie raz na dobę: ponawia nieudane nadania i odebrania dostępu
+     do folderów Dropbox i sprawdza nadane (opis niżej, „Udostępnianie folderów Dropbox”).
    - `python manage.py fetch_mailbox_headers` – raz na dobę pobiera same nagłówki (bez treści i załączników)
      ze skrzynek zgłoszeń i rekrutacji, żeby rano strony „Pobieranie zgłoszeń” i „Pobieranie próbek” od razu
      pokazywały listę. Zadanie w zakładce Tasks: godzinę podaje się w UTC, więc 3:00–4:00 czasu polskiego
@@ -123,6 +125,49 @@ Pole antologii „Powiadomienia Discord” (strona antologii lub powieści – k
 (domyślnie), „Wyłączone” – żadnych wiadomości o tekstach tej antologii (do wzięcia, rozpoczęcia i zakończenia etapów,
 przypomnienia, produkcja audiobooków), „Tylko rozpoczęcia i zakończenia etapów” – wyłącznie ta reguła. Zgłoszeń do
 recenzji i testów z panelu to nie dotyczy. `python manage.py discord_diagnose` wypisuje antologie z ograniczeniem.
+
+## Udostępnianie folderów Dropbox
+
+CMS nadaje członkom zespołu dostęp do wybranych folderów Dropbox (poziom „Edycja” albo „Odczyt”) i odbiera go,
+gdy osoba przestaje być członkiem zespołu. Folder główny to `/Fantazmaty`, folder testowy – `/Fantazmaty/test CMS`
+(wielkość liter w ścieżkach nie ma znaczenia).
+
+**Aplikacja Dropbox (jednorazowo, na koncie właściciela folderów):**
+1. https://www.dropbox.com/developers/apps → *Create app* → *Scoped access* → *Full Dropbox* → dowolna nazwa.
+2. Zakładka *Permissions*: zaznacz `account_info.read`, `files.metadata.read`, `sharing.read`, `sharing.write`
+   i kliknij *Submit*.
+3. Zakładka *Settings*: skopiuj *App key* i *App secret*.
+4. Refresh token (bezterminowy): zalogowany na konto właściciela folderów otwórz
+   `https://www.dropbox.com/oauth2/authorize?client_id=APP_KEY&response_type=code&token_access_type=offline`,
+   zatwierdź i skopiuj kod, a potem (kod jest ważny kilka minut):
+   `curl https://api.dropboxapi.com/oauth2/token -d code=KOD -d grant_type=authorization_code -u APP_KEY:APP_SECRET`
+   – z odpowiedzi weź `refresh_token`. Po każdej zmianie uprawnień w *Permissions* wygeneruj nowy refresh token.
+5. W `.env` na serwerze: `DROPBOX_APP_KEY`, `DROPBOX_APP_SECRET`, `DROPBOX_REFRESH_TOKEN` (opcjonalnie
+   `DROPBOX_ROOT_FOLDER`, domyślnie `/Fantazmaty`) i przeładuj aplikację (*Reload* w zakładce *Web*).
+
+**Użycie:** panel admina → Ludzie → „Foldery Dropbox” → „Pobierz foldery z Dropboxa” – podfoldery `/Fantazmaty`
+z oznaczeniem „udostępniony/nieudostępniony”; zaznacz `test CMS` (na początek tylko ten) i dodaj. Na ekranie osoby
+(także przy dodawaniu osoby z „Utwórz konto logowania i wyślij zaproszenie”) sekcja „Dostęp do folderów Dropbox” ma
+pole „Brak dostępu / Edycja / Odczyt” dla każdego folderu; nadanie wymaga pola „adres e-mail Dropboxa”. Po zapisie
+CMS łączy się z Dropboxem (po zatwierdzeniu zapisu) i pokazuje wynik w komunikacie; stan i ostatni błąd widać pod
+polem folderu oraz na liście „Dostęp do folderów Dropbox” (akcja „Synchronizuj ponownie”).
+
+- Nieudostępniony folder zostaje udostępniony przy pierwszym nadaniu (konto aplikacji staje się jego właścicielem).
+  Folderu wewnątrz innego udostępnionego folderu Dropbox nie pozwala udostępnić osobno.
+- Osoba bez konta Dropbox dostaje zaproszenie e-mailem (stan „Zaproszenie wysłane”).
+- Zmiana adresu Dropbox przenosi dostęp: stary adres jest usuwany z folderów, nowy dodawany. Zmiana poziomu – zmienia
+  poziom; „Brak dostępu” – usuwa adres z folderu (bez zostawiania kopii plików).
+- Odznaczenie „wciąż w ekipie” (także zaznaczenie „Zewnętrzny”, akcja „Usuń z zespołu” na liście osób i usunięcie
+  osoby) odbiera dostęp do wszystkich folderów. Ponowne zaznaczenie „wciąż w ekipie” go nie przywraca – trzeba
+  ponownie wybrać poziom.
+- CMS zmienia wyłącznie foldery z listy i usuwa z nich wyłącznie adresy, którym sam nadał dostęp; osób dodanych
+  w Dropboxie ręcznie i właściciela folderu nie rusza.
+- Bez kluczy w `.env` zapis dostępu jest możliwy (stan „Oczekuje na synchronizację”), a dostęp zostanie nadany po
+  konfiguracji komendą `python manage.py sync_dropbox_access`.
+
+Komenda `python manage.py sync_dropbox_access --dry-run` wypisuje plan (bez zmian w Dropboxie i bazie), a bez
+`--dry-run` nadaje, zmienia i odbiera dostęp oraz sprawdza dostępy już nadane (np. dodaje ponownie osobę usuniętą
+z folderu ręcznie, choć w CMS-ie ma dostęp). Każda zmiana trafia do dziennika aktywności („Dropbox: …”).
 
 ## Strona WWW (ekipa, szukajka i „Słuchaj” na fantazmaty.pl)
 

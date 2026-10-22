@@ -13,6 +13,8 @@ def admin_form_data(client, url, form_id, **changes):
             selected = [option.get('value', '') for option in field.xpath('./option[@selected]')]
             data[field.get('name')] = selected if field.get('multiple') is not None else (selected or [''])[0]
         else:
-            data[field.get('name')] = field.get('value', '') if field.tag == 'input' else field.text or ''
+            # Zaznaczone pole wyboru bez atrybutu value przeglądarka wysyła jako „on”.
+            default = 'on' if field.get('type') in ('checkbox', 'radio') else ''
+            data[field.get('name')] = field.get('value', default) if field.tag == 'input' else field.text or ''
     data.update(changes)
     return {name: value for name, value in data.items() if value is not None}

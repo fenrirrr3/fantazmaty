@@ -3,7 +3,10 @@ from django.contrib import admin
 from django.db.models import Value
 from django.db.models.functions import Lower
 
-from .models import Person, Role, format_local_datetime
+from .models import DropboxAccess, DropboxFolder, Person, Role, format_local_datetime
+
+DROPBOX_FIELD = "dropbox_folder_"
+DROPBOX_CHOICES = (("", "Brak dostępu"), *DropboxAccess.Level.choices)
 
 ACCOUNT_CONFLICT = "Konto z tym adresem e-mail założono przed chwilą (np. w innej karcie). Sprawdź dane i zapisz ponownie."
 
@@ -39,10 +42,50 @@ class PersonAdminForm(forms.ModelForm):
             "leave_until_revoked",
         )
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._add_dropbox_fields()
+
+    def _add_dropbox_fields(self):
+        """Pole wyboru poziomu dla każdego folderu z listy (people.dropbox_access.folders_for)."""
+        from people.dropbox_access import folders_for
+        person = self.instance if self.instance.pk else None
+        rows = {access.folder_id: access for access in person.dropbox_accesses.all()} if person else {}
+        self.dropbox_folders = {}
+        for folder in folders_for(person):
+            name = f"{DROPBOX_FIELD}{folder.pk}"
+            access = rows.get(folder.pk)
+            self.fields[name] = forms.ChoiceField(
+                label=f"Dropbox: {folder.name}", choices=DROPBOX_CHOICES, required=False,
+                initial=access.level if access and access.wanted else "",
+                help_text=dropbox_state(access, folder))
+            self.dropbox_folders[name] = folder
+
+    def dropbox_levels(self):
+        """{folder: poziom albo ''} z wysłanego formularza. Pole nieobecne w danych (inny formularz) – bez zmian;
+        osoba spoza zespołu – nic nie jest nadawane (dostępy odbiera dezaktywacja)."""
+        data = self.cleaned_data
+        if not data.get('is_active') or data.get('is_external'):
+            return {}
+        return {folder: data.get(name, '') for name, folder in self.dropbox_folders.items() if name in self.data}
+
+    def _clean_dropbox(self, data):
+        chosen = [name for name, folder in self.dropbox_folders.items() if name in self.data and data.get(name)]
+        if not chosen:
+            return
+        if not data.get('is_active') or data.get('is_external'):
+            for name in chosen:
+                if name in self.changed_data:
+                    self.add_error(name, 'Dostęp do folderów mają tylko osoby „wciąż w ekipie”.')
+            return
+        if not data.get('dropbox_email') and 'dropbox_email' not in self.errors:
+            self.add_error('dropbox_email', 'Podaj adres e-mail Dropboxa – bez niego nie można nadać dostępu do folderów.')
+
     def clean(self):
         data = super().clean()
         if data.get('is_external'):
             data['is_active'] = False
+        self._clean_dropbox(data)
         if data.get('is_coordinator') and not self.instance.is_coordinator:
             raise forms.ValidationError('Nadaj koordynatora konkretnego działu w polu Role.')
         if data.get('user') and data['user'].is_active and not data.get('is_external') and not data.get('email') and 'email' not in self.errors:
@@ -115,6 +158,21 @@ class PersonAdminForm(forms.ModelForm):
         return self.cleaned_data["dropbox_email"].strip()
 
 
+def dropbox_state(access, folder):
+    """Opis stanu dostępu pod polem folderu na ekranie osoby."""
+    if access is None:
+        return f"Folder {folder.path}. Dostęp nie był nadawany."
+    text = f"Folder {folder.path}. Stan: {access.get_state_display()}"
+    if access.granted_email:
+        text += f" ({access.granted_email})"
+    if access.synced_at:
+        text += f", synchronizacja {format_local_datetime(access.synced_at)}"
+    text += "."
+    if access.last_error:
+        text += f" Ostatni błąd: {access.last_error}"
+    return text
+
+
 @admin.register(Role)
 class RoleAdmin(admin.ModelAdmin):
     def get_readonly_fields(self, request, obj=None):
@@ -146,7 +204,24 @@ class PersonAdmin(admin.ModelAdmin):
     class Media:
         css = {"all": ("core/admin-person.css",)}
 
-    actions = ('revoke_coordinator_access',)
+    actions = ('revoke_coordinator_access', 'remove_from_team', 'sync_dropbox_access')
+
+    @admin.action(description="Usuń z zespołu (odznacz „wciąż w ekipie”, odbierz dostęp do Dropboxa)")
+    def remove_from_team(self, request, queryset):
+        """Jak odznaczenie „wciąż w ekipie” na ekranie osoby: blokada logowania i odebranie folderów Dropbox."""
+        from django.db import transaction
+        from people.dropbox_access import admin_messages, report_to
+        with transaction.atomic():
+            report_to(request, admin_messages(self, request))
+            people = list(queryset.select_for_update().filter(is_active=True).order_by('pk'))
+            for person in people:
+                person.is_active = False
+                person.save(update_fields=['is_active'])
+        self.message_user(request, f"Usunięto z zespołu: {len(people)}.")
+
+    @admin.action(description="Synchronizuj ponownie dostęp do folderów Dropbox")
+    def sync_dropbox_access(self, request, queryset):
+        sync_dropbox_rows(self, request, DropboxAccess.objects.filter(person__in=queryset))
 
     @admin.action(description="Odbierz wszystkie uprawnienia koordynatora")
     def revoke_coordinator_access(self, request, queryset):
@@ -220,12 +295,28 @@ class PersonAdmin(admin.ModelAdmin):
     )
 
     def get_fieldsets(self, request, obj=None):
-        """Z kontem: login z odnośnikiem i stan konta. Bez konta: powiązanie istniejącego konta albo utworzenie nowego."""
+        """Z kontem: login z odnośnikiem i stan konta. Bez konta: powiązanie istniejącego konta albo utworzenie nowego.
+        Za kontem – poziom dostępu do folderów Dropbox (po jednym polu na folder)."""
         hidden = {'user', 'create_account'} if obj and obj.user_id else {'account_link'}
-        return [(name, {**options, 'fields': tuple(f for f in options['fields'] if f not in hidden)})
-                for name, options in self.fieldsets]
+        fieldsets = [(name, {**options, 'fields': tuple(f for f in options['fields'] if f not in hidden)})
+                     for name, options in self.fieldsets]
+        index = next(i for i, (name, _) in enumerate(fieldsets) if name.startswith('Powiązane konto')) + 1
+        fieldsets.insert(index, ('Dostęp do folderów Dropbox', {
+            'fields': tuple(f"{DROPBOX_FIELD}{folder.pk}" for folder in self.dropbox_folders(obj)),
+            'description': dropbox_description(),
+        }))
+        return fieldsets
+
+    @staticmethod
+    def dropbox_folders(obj):
+        from people.dropbox_access import folders_for
+        return folders_for(obj)
 
     def get_form(self, request, obj=None, **kwargs):
+        # Pola folderów dodaje sam formularz (lista zależy od bazy), więc nie trafiają do modelform_factory.
+        from django.contrib.admin.utils import flatten_fieldsets
+        fields = kwargs['fields'] if kwargs.get('fields') is not None else flatten_fieldsets(self.get_fieldsets(request, obj))
+        kwargs['fields'] = [name for name in fields if not name.startswith(DROPBOX_FIELD)]
         form = super().get_form(request, obj, **kwargs)
         field = form.base_fields.get('user')
         if field is not None:
@@ -250,7 +341,10 @@ class PersonAdmin(admin.ModelAdmin):
         """Konto z ekranu osoby: login = e-mail osoby, hasło ustawia sama osoba z zaproszenia (wysyłanego po commit)."""
         from django.contrib.auth import get_user_model
         from people.accounts import normalize_email
+        from people.dropbox_access import admin_messages, report_to
         User = get_user_model()
+        # Wyniki synchronizacji Dropboxa (po zatwierdzeniu zapisu) trafią do komunikatów tej strony.
+        report_to(request, admin_messages(self, request))
         created = None
         if form.cleaned_data.get('create_account') and not obj.user_id:
             email = normalize_email(obj.email)
@@ -266,6 +360,24 @@ class PersonAdmin(admin.ModelAdmin):
         super().save_model(request, obj, form, change)
         if created:
             self.admin_site._registry[User]._invite(request, created)
+
+    def save_related(self, request, form, formsets, change):
+        from people.dropbox_access import set_person_access
+        super().save_related(request, form, formsets, change)
+        set_person_access(form.instance, form.dropbox_levels())
+
+    def delete_model(self, request, obj):
+        from people.dropbox_access import admin_messages, report_to
+        report_to(request, admin_messages(self, request))
+        super().delete_model(request, obj)
+
+    def delete_queryset(self, request, queryset):
+        """Usunięcie osób odbiera ich dostęp do folderów Dropbox (wiersze zostają do czasu usunięcia adresu)."""
+        from django.db import transaction
+        from people.dropbox_access import admin_messages, report_to
+        with transaction.atomic():
+            report_to(request, admin_messages(self, request))
+            super().delete_queryset(request, queryset)
 
     @admin.display(description="Stan konta")
     def account_status(self, obj):
@@ -331,6 +443,131 @@ class PersonAdmin(admin.ModelAdmin):
             role.name
             for role in obj.roles.all()
         ) or "–"
+
+
+def dropbox_description():
+    from django.urls import reverse
+    from django.utils.html import format_html
+    from people.dropbox_access import NOT_CONFIGURED_NOTICE
+    from people.dropbox_sharing import is_configured
+    text = ('Poziom „Edycja” albo „Odczyt” wymaga adresu e-mail Dropboxa. Osoba bez konta Dropbox dostanie '
+            'zaproszenie e-mailem. Zmiana adresu przenosi dostęp na nowy adres, a odznaczenie „wciąż w ekipie” '
+            'odbiera wszystkie dostępy (ponowne zaznaczenie ich nie przywraca).')
+    if not is_configured():
+        text = f'{NOT_CONFIGURED_NOTICE} {text}'
+    return format_html('{} <a href="{}">Lista folderów</a>.', text, reverse('admin:people_dropboxfolder_changelist'))
+
+
+def sync_dropbox_rows(model_admin, request, queryset):
+    """Akcja „Synchronizuj ponownie”: od razu, z komunikatami wyników."""
+    from django.contrib import messages
+    from people.dropbox_access import NOT_CONFIGURED_NOTICE, sync
+    results = sync(queryset, actor=request.user)
+    if not results:
+        model_admin.message_user(request, "Brak dostępów do synchronizacji.", messages.WARNING)
+    elif any(result.skipped for result in results):
+        model_admin.message_user(request, NOT_CONFIGURED_NOTICE, messages.WARNING)
+        return
+    for result in results:
+        level = messages.ERROR if result.error else messages.SUCCESS
+        model_admin.message_user(request, result.describe(), level)
+
+
+@admin.register(DropboxFolder)
+class DropboxFolderAdmin(admin.ModelAdmin):
+    """Foldery, którymi zarządza CMS; dodawane ręcznie albo z listy podfolderów folderu głównego."""
+    change_list_template = "admin/people/dropboxfolder/change_list.html"
+    list_display = ("name", "path", "is_shared", "is_active", "access_count")
+    list_filter = ("is_active",)
+    search_fields = ("name__plcontains", "path__plcontains")
+    fields = ("name", "path", "is_active", "shared_folder_id")
+    readonly_fields = ("shared_folder_id",)
+
+    @admin.display(description="udostępniony", boolean=True)
+    def is_shared(self, obj):
+        return bool(obj.shared_folder_id)
+
+    @admin.display(description="osoby z dostępem")
+    def access_count(self, obj):
+        return obj.accesses.filter(wanted=True).count()
+
+    def get_urls(self):
+        from django.urls import path
+        return [path("pobierz/", self.admin_site.admin_view(self.fetch_view), name="people_dropboxfolder_fetch"),
+                *super().get_urls()]
+
+    def fetch_view(self, request):
+        """Podfoldery folderu głównego z Dropboxa; zaznaczone trafiają na listę folderów CMS-u."""
+        from django.conf import settings
+        from django.contrib import messages
+        from django.core.exceptions import PermissionDenied
+        from django.shortcuts import redirect
+        from django.template.response import TemplateResponse
+        from people.dropbox_sharing import DropboxClient, DropboxError
+        if not self.has_add_permission(request):
+            raise PermissionDenied
+        root = settings.DROPBOX_ROOT_FOLDER
+        known = {path.casefold() for path in DropboxFolder.objects.values_list("path", flat=True)}
+        try:
+            folders = DropboxClient().list_subfolders(root)
+        except DropboxError as error:
+            folders, error_message = [], str(error)
+        else:
+            error_message = ""
+        for folder in folders:
+            folder["known"] = folder["path"].casefold() in known
+        if request.method == "POST" and not error_message:
+            chosen = set(request.POST.getlist("path"))
+            added = [DropboxFolder.objects.create(name=folder["name"], path=folder["path"],
+                                                  shared_folder_id=folder["shared_folder_id"])
+                     for folder in folders if folder["path"] in chosen and not folder["known"]]
+            if added:
+                self.message_user(request, "Dodano foldery: " + ", ".join(folder.name for folder in added) + ".",
+                                  messages.SUCCESS)
+            else:
+                self.message_user(request, "Nie zaznaczono nowych folderów.", messages.WARNING)
+            return redirect("admin:people_dropboxfolder_changelist")
+        return TemplateResponse(request, "admin/people/dropboxfolder/fetch.html", {
+            **self.admin_site.each_context(request), "opts": self.model._meta, "title": "Pobierz foldery z Dropboxa",
+            "root": root, "folders": folders, "error": error_message,
+        })
+
+    def has_delete_permission(self, request, obj=None):
+        # Folder z historią dostępów (także odebranych) zostaje – wyłącz go polem „do wyboru przy osobach”.
+        return super().has_delete_permission(request, obj) and not (obj and obj.accesses.exists())
+
+
+@admin.register(DropboxAccess)
+class DropboxAccessAdmin(admin.ModelAdmin):
+    """Podgląd stanu dostępów; poziom ustawia się na ekranie osoby."""
+    list_display = ("person_label", "folder", "level", "wanted", "state", "granted_email", "short_error", "synced_at")
+    list_filter = ("state", "level", "wanted", "folder")
+    search_fields = ("person__first_name__plcontains", "person__last_name__plcontains", "granted_email")
+    list_select_related = ("person", "folder")
+    actions = ("sync_again",)
+    readonly_fields = ("person", "folder", "level", "wanted", "state", "granted_email", "last_error", "synced_at",
+                       "updated_at")
+
+    @admin.display(description="osoba", ordering="person__last_name")
+    def person_label(self, obj):
+        return str(obj.person) if obj.person_id else f"osoba usunięta ({obj.granted_email or 'bez adresu'})"
+
+    @admin.display(description="błąd")
+    def short_error(self, obj):
+        return obj.last_error[:120] or "–"
+
+    @admin.action(description="Synchronizuj ponownie")
+    def sync_again(self, request, queryset):
+        sync_dropbox_rows(self, request, queryset)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 # Urlopy rejestrowane są w core.admin. Jedyny model rekrutacji to core.Recruitment.

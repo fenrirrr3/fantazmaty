@@ -251,3 +251,36 @@ class RoleAccessMatrixTests(TestCase):
             if response.status_code == 200 and 'no-store' not in response.get('Cache-Control', ''):
                 cached.append(f'{key} {url}')
         self.assertEqual(cached, [])
+
+
+class EmailCopyAccessTests(TestCase):
+    """Koperta w nagłówku (kopiowanie adresów e-mail z tabel strony) – superuser i koordynatorzy, nie pozostali.
+
+    Koperta nie ma własnej trasy: to skrypt na stronach, które użytkownik i tak widzi. Pobieranie kolejnych stron listy
+    z nagłówkiem X-CMS-Email-Copy nie zmienia zapamiętanego rozmiaru strony – tylko dla uprawnionych do koperty."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.users = {
+            'superuser': create_superuser('copy-superuser'),
+            'coordinator': create_member('copy-coordinator', 'Koordynator redakcji'),
+            'recruiter': create_member('copy-recruiter', 'Koordynator rekrutacji'),
+            'specialist': create_member('copy-specialist', 'Recenzent'),
+            'member': create_member('copy-member', 'Redaktor'),
+        }
+
+    def test_envelope_by_actor(self):
+        cases = [('superuser', True), ('coordinator', True), ('recruiter', True), ('specialist', False),
+                 ('member', False), (None, False)]
+        for actor, allowed in cases:
+            with self.subTest(actor=actor or 'gość'):
+                self.client.logout()
+                if actor:
+                    self.client.force_login(self.users[actor])
+                page = self.client.get(reverse('core:home'), follow=True)
+                self.assertEqual('data-email-copy-toggle' in page.content.decode(), allowed)
+                self.assertEqual('core/email-copy.js' in page.content.decode(), allowed)
+                if actor:
+                    self.client.get(reverse('core:people_list'), {'page_size': 500}, HTTP_X_CMS_EMAIL_COPY='1')
+                    remembered = self.client.session.get('cms_page_sizes', {})
+                    self.assertEqual(bool(remembered), not allowed)

@@ -5,6 +5,7 @@ from django import forms
 from django.contrib import messages as notifications
 from django.contrib.auth.decorators import login_required
 from django.core import signing
+from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Q, Value, CharField
 from django.db.models.functions import Coalesce, Concat, NullIf, Trim
@@ -16,7 +17,7 @@ from django.views.decorators.http import require_http_methods
 
 from core.mailbox_date import MailboxDateForm, DEFAULT_SENT_SINCE
 from core.models import Recruitment, RecruitmentMailSource
-from core.permissions import recruitment_mailbox_required, require_superuser
+from core.permissions import can_copy_emails, recruitment_mailbox_required
 from core.recruitment_roles import ROLE_CHOICES
 from core.services.mailbox import MailboxError, read_headers
 from core.services.mailbox_import import fetch_messages, mailbox_key, receipts
@@ -160,7 +161,8 @@ def recruitment_mailbox(request):
         else:
             selection = load(request.POST.get('selection', ''), 'selection')
             if action == 'copy_emails':
-                require_superuser(request.user)
+                if not can_copy_emails(request.user):
+                    raise PermissionDenied('Kopiowanie adresów jest dostępne dla koordynatorów i superusera.')
                 from core.services.mailbox_email_copy import sender_emails
                 return JsonResponse({'emails': sender_emails(config, selection['validity'], excluded=excluded, recruitment_roles=roles, sent_since=sent_since)})
             if action not in ('preview', 'preview_html', 'download', 'add', 'bulk', 'set_notified'):

@@ -459,5 +459,14 @@ PROGRAM_MAX_QUEUED_JOBS = env_int("PROGRAM_MAX_QUEUED_JOBS", 5, minimum=1)
 # Public application key for the Dropbox folder picker (not an app secret).
 DROPBOX_CHOOSER_APP_KEY = os.environ.get("DROPBOX_CHOOSER_APP_KEY", "").strip()
 
+# Udostępnianie folderów Dropbox członkom zespołu (people/dropbox_sharing.py). Puste – funkcja wyłączona,
+# a dostępy czekają na komendę sync_dropbox_access. Konto, dla którego wygenerowano refresh token, jest
+# właścicielem folderów.
+DROPBOX_APP_KEY = os.environ.get("DROPBOX_APP_KEY", "").strip()
+DROPBOX_APP_SECRET = os.environ.get("DROPBOX_APP_SECRET", "").strip()
+DROPBOX_REFRESH_TOKEN = os.environ.get("DROPBOX_REFRESH_TOKEN", "").strip()
+# Folder, którego podfoldery admin pokazuje do wyboru („Pobierz foldery z Dropboxa”).
+DROPBOX_ROOT_FOLDER = os.environ.get("DROPBOX_ROOT_FOLDER", "").strip() or "/Fantazmaty"
+
 # Klucz, którym strona fantazmaty.pl pobiera dane ekipy (nagłówek X-Site-Key). Pusty – endpoint odpowiada 503.
 SITE_API_KEY = os.environ.get("SITE_API_KEY", "").strip()

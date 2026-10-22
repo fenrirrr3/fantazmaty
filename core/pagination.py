@@ -12,6 +12,12 @@ DEFAULT_PAGE_SIZE = 25
 ALLOWED_PAGE_SIZES = frozenset({25, 50, 100, 250, 500})
 
 
+def _can_copy_emails(request):
+    from core.permissions import can_copy_emails
+    user = getattr(request, 'user', None)
+    return bool(user is not None and can_copy_emails(user))
+
+
 def _positive_integer(value, default):
     if value is None:
         return default
@@ -48,7 +54,8 @@ def get_page_size(request, default=DEFAULT_PAGE_SIZE, *, size_param='page_size')
     requested = _positive_integer(request.GET.get(size_param), None)
     if requested not in ALLOWED_PAGE_SIZES:
         return saved
-    email_copy = request.headers.get('X-CMS-Email-Copy') == '1' and getattr(getattr(request, 'user', None), 'is_superuser', False)
+    # Pobieranie wszystkich stron przez kopertę (core/email-copy.js) nie zmienia zapamiętanego rozmiaru strony.
+    email_copy = request.headers.get('X-CMS-Email-Copy') == '1' and _can_copy_emails(request)
     if session is not None and not email_copy and preferences.get(key) != requested:
         preferences.pop(key, None)
         preferences[key] = requested

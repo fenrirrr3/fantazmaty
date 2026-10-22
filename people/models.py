@@ -377,3 +377,99 @@ class Vacation(models.Model):
     @property
     def can_be_ended(self):
         return self.is_active
+
+
+def normalize_dropbox_path(value):
+    """Ścieżka Dropboxa w jednej postaci: ukośnik na początku, bez podwójnych i końcowych ukośników."""
+    parts = [part.strip() for part in (value or "").replace("\\", "/").split("/")]
+    return "/" + "/".join(part for part in parts if part)
+
+
+class DropboxFolder(models.Model):
+    """Folder Dropboxa, do którego CMS nadaje dostęp członkom zespołu (konto aplikacji jest jego właścicielem)."""
+
+    name = models.CharField("nazwa", max_length=200)
+    path = models.CharField(
+        "ścieżka w Dropboxie", max_length=500, unique=True,
+        help_text="Np. /Fantazmaty/test CMS. Wielkość liter nie ma znaczenia.")
+    shared_folder_id = models.CharField(
+        "identyfikator udostępnienia", max_length=100, blank=True, editable=False,
+        help_text="Uzupełniany automatycznie przy pierwszym nadaniu dostępu.")
+    is_active = models.BooleanField(
+        "do wyboru przy osobach", default=True,
+        help_text="Wyłączony folder nie pojawia się przy nowych osobach; nadane dostępy zostają bez zmian.")
+
+    class Meta:
+        verbose_name = "folder Dropbox"
+        verbose_name_plural = "foldery Dropbox"
+        ordering = ("name", "pk")
+
+    def __str__(self):
+        return f"{self.name} ({self.path})"
+
+    def clean(self):
+        super().clean()
+        self.path = normalize_dropbox_path(self.path)
+        if self.path == "/":
+            raise ValidationError({"path": "Podaj ścieżkę folderu, np. /Fantazmaty/test CMS."})
+        if DropboxFolder.objects.filter(path__iexact=self.path).exclude(pk=self.pk).exists():
+            raise ValidationError({"path": "Ten folder jest już na liście."})
+
+    def save(self, *args, **kwargs):
+        self.path = normalize_dropbox_path(self.path)
+        if self.pk:
+            old = DropboxFolder.objects.filter(pk=self.pk).values_list("path", flat=True).first()
+            # Inna ścieżka to inny folder – identyfikator udostępnienia zostanie pobrany na nowo.
+            if old is not None and old.casefold() != self.path.casefold():
+                self.shared_folder_id = ""
+                if kwargs.get("update_fields") is not None:
+                    kwargs["update_fields"] = set(kwargs["update_fields"]) | {"shared_folder_id"}
+        super().save(*args, **kwargs)
+
+
+class DropboxAccess(models.Model):
+    """Dostęp osoby do folderu Dropbox nadawany przez CMS.
+
+    „wanted” to decyzja w CMS-ie (nadać albo odebrać), „granted_email” – adres, dla którego dostęp naprawdę nadano
+    w Dropboxie (CMS usuwa z folderu wyłącznie ten adres). Wiersz osoby usuniętej z bazy zostaje bez osoby,
+    dopóki dostęp nie zostanie odebrany w Dropboxie.
+    """
+
+    class Level(models.TextChoices):
+        EDITOR = "editor", "Edycja"
+        VIEWER = "viewer", "Odczyt"
+
+    class State(models.TextChoices):
+        PENDING = "pending", "Oczekuje na synchronizację"
+        GRANTED = "granted", "Nadany"
+        INVITED = "invited", "Zaproszenie wysłane (brak konta Dropbox)"
+        TO_REMOVE = "to_remove", "Do usunięcia"
+        REMOVED = "removed", "Usunięty"
+        ERROR = "error", "Błąd"
+
+    person = models.ForeignKey(
+        Person, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name="dropbox_accesses", verbose_name="osoba")
+    folder = models.ForeignKey(
+        DropboxFolder, on_delete=models.PROTECT, related_name="accesses", verbose_name="folder")
+    level = models.CharField("poziom", max_length=10, choices=Level.choices, default=Level.EDITOR)
+    wanted = models.BooleanField("dostęp ma być nadany", default=True)
+    state = models.CharField("stan", max_length=20, choices=State.choices, default=State.PENDING)
+    granted_email = models.EmailField(
+        "adres z dostępem", blank=True,
+        help_text="Adres, dla którego CMS nadał dostęp w Dropboxie (przy zmianie adresu ten zostanie usunięty).")
+    last_error = models.TextField("ostatni błąd", blank=True)
+    synced_at = models.DateTimeField("ostatnia synchronizacja", null=True, blank=True)
+    updated_at = models.DateTimeField("zmieniono", auto_now=True)
+
+    class Meta:
+        verbose_name = "dostęp do folderu Dropbox"
+        verbose_name_plural = "dostęp do folderów Dropbox"
+        ordering = ("folder__name", "person__last_name", "person__first_name", "pk")
+        constraints = [
+            models.UniqueConstraint(fields=("person", "folder"), name="dropbox_access_person_folder"),
+        ]
+
+    def __str__(self):
+        person = str(self.person) if self.person_id else f"osoba usunięta ({self.granted_email or 'bez adresu'})"
+        return f"{person} – {self.folder.name}"

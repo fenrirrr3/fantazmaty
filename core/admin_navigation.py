@@ -16,7 +16,8 @@ GROUPS = (
                         'illustrations.coverproposal', 'illustrations.publicillustrationsettings')),
     ('audio', 'Audio', ('core.audiobook', 'core.audiobookstage', 'core.audiocontributor', 'audiobooks_queue', 'audiobooks_blacklist',
                         'core.audiodescription', 'audio_description_tasks', 'core.publicaudiobooksettings')),
-    ('people', 'Ludzie', ('people.person', 'people.vacation', 'people.role', 'authors.author', 'blacklist')),
+    ('people', 'Ludzie', ('people.person', 'people.vacation', 'people.role', 'people.dropboxfolder', 'people.dropboxaccess',
+                          'authors.author', 'blacklist')),
     ('promotion', 'Promocja', ('core.textsocialmedia', 'core.socialmediaentry', 'core.socialmediaquote')),
     ('recruitment', 'Rekrutacja', ('core.recruitment', 'recruitment_mailbox')),
     ('settings', 'Ustawienia', ('core.mailboxconnection', 'core.mailboxheadersnapshot', 'core.notificationrule', 'core.discordrole',
@@ -41,6 +42,7 @@ LABELS = {
     'core.siteteamsection': 'Strona WWW – działy ekipy', 'core.siteteamsettings': 'Strona WWW – ustawienia',
     'core.sitecataloganthology': 'Szukajka WWW – katalog opowiadań',
     'core.sitelistenanthology': 'Słuchaj WWW – antologie i czasy nagrań',
+    'people.dropboxfolder': 'Foldery Dropbox', 'people.dropboxaccess': 'Dostęp do folderów Dropbox',
 }
 
 

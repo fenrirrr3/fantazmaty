@@ -1,0 +1,19 @@
+{% extends "admin/base_site.html" %}
+{% block breadcrumbs %}<div class="breadcrumbs"><a href="{% url 'admin:index' %}">Strona główna</a> › <a href="{% url 'admin:people_dropboxfolder_changelist' %}">Foldery Dropbox</a> › Pobierz foldery z Dropboxa</div>{% endblock %}
+{% block content %}
+<p>Podfoldery folderu <code>{{ root }}</code> na koncie Dropbox aplikacji. Zaznacz te, do których CMS ma nadawać dostęp. „Nieudostępniony” folder zostanie udostępniony przy pierwszym nadaniu dostępu.</p>
+{% if error %}<p class="errornote">{{ error }}</p>{% else %}
+<form method="post">{% csrf_token %}
+<div class="module"><table style="width:100%">
+<thead><tr><th scope="col">Dodaj</th><th scope="col">Folder</th><th scope="col">Ścieżka</th><th scope="col">Udostępnienie</th></tr></thead>
+<tbody>
+{% for folder in folders %}<tr>
+<td>{% if folder.known %}<span class="help">już na liście</span>{% else %}<input type="checkbox" name="path" value="{{ folder.path }}" id="dropbox-folder-{{ forloop.counter }}" aria-label="Dodaj folder {{ folder.name }}">{% endif %}</td>
+<td><label for="dropbox-folder-{{ forloop.counter }}">{{ folder.name }}</label></td>
+<td><code>{{ folder.path }}</code></td>
+<td>{% if folder.shared_folder_id %}udostępniony{% else %}nieudostępniony{% endif %}</td>
+</tr>{% empty %}<tr><td colspan="4">Folder {{ root }} nie ma podfolderów.</td></tr>{% endfor %}
+</tbody></table></div>
+{% if folders %}<div class="submit-row"><input type="submit" class="default" value="Dodaj zaznaczone"></div>{% endif %}
+</form>{% endif %}
+{% endblock %}

@@ -124,7 +124,9 @@ class EmailCopyTests(TestCase):
         self.assertNotIn('excluded@example.test', emails)
         self.assertEqual(self.client.get(url).context['page_obj'].paginator.per_page, 50)
 
-    def test_clipboard_control_only_for_superuser_and_theme_buttons_exist(self):
+    def test_clipboard_control_hidden_for_member_and_theme_buttons_exist(self):
+        """Koperta i przyciski motywu u superusera; członek bez roli koordynatora koperty nie ma (pełna tabela ról:
+        core/tests/security/test_route_access.py)."""
         self.client.force_login(self.admin)
         response = self.client.get(reverse('core:recruitment_list'))
         self.assertContains(response, 'data-email-copy-toggle')

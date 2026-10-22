@@ -47,6 +47,12 @@ def coordinator_allowed(user):
 
 
 @register.simple_tag
+def email_copy_allowed(user):
+    from core.permissions import can_copy_emails
+    return can_copy_emails(user)
+
+
+@register.simple_tag
 def reviewer_allowed(user):
     from core.permissions import can_view_my_reviews
     return can_view_my_reviews(user)

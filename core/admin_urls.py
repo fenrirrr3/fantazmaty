@@ -29,6 +29,7 @@ SEGMENTS = {
     "reviewassignment": "przydzial-recenzji", "reviewers": "recenzenci",
     "anthology": "antologia", "anthologytask": "zadania-antologii", "textnote": "notatki-tekstu",
     "people": "zespol", "person": "osoba", "role": "rola", "vacation": "urlop",
+    "dropboxfolder": "foldery-dropbox", "dropboxaccess": "dostep-dropbox",
     "workflow": "etapy", "workflowstage": "etap-pracy", "workflowroleassignment": "przypisanie-roli",
     "illustrations": "ilustracje", "illustration": "ilustracja", "illustrator": "ilustrator", "coverproposal": "propozycja-okladki",
     "add": "dodaj", "change": "edytuj", "delete": "usun", "history": "historia",

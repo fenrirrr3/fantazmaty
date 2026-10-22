@@ -254,6 +254,14 @@ def require_team_member(user):
         )
 
 
+def can_copy_emails(user):
+    """Koperta w nagłówku (kopiowanie adresów e-mail z tabel strony): koordynatorzy i superuser.
+
+    Kopiuje tylko adresy z tabel, które użytkownik i tak widzi (wszystkie strony listy według jego filtrów),
+    oraz nadawców z nagłówków skrzynki, którą może przeglądać – nie rozszerza dostępu do danych."""
+    return is_coordinator(user)
+
+
 def require_coordinator(user):
     if not is_coordinator(user):
         raise PermissionDenied(
