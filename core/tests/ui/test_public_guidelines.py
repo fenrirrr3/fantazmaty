@@ -212,6 +212,8 @@ class PublicGuidelinesPagesTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
+        # Migracja illustrations 0012 wpisuje wytyczne – testy zaczynają od pustych ustawień.
+        PublicIllustrationSettings.objects.all().delete()
         cls.admin = create_superuser('guidelines-admin')
         cls.staff = get_user_model().objects.create_user('guidelines-staff', is_staff=True)
 

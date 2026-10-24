@@ -19,6 +19,8 @@ from workflow.models import WorkflowStage
 class ExternalIllustrationsTests(TestCase):
     @classmethod
     def setUpTestData(cls):
+        # Migracja 0012 tworzy ustawienia z wytycznymi – testy zaczynają od stanu bez ustawień.
+        PublicIllustrationSettings.objects.all().delete()
         cls.admin = create_superuser('external-admin', 'admin@example.test')
         # Rola o ogólnej nazwie „Koordynator” (nie przez create_member, które ją zamienia).
         cls.coordinator = get_user_model().objects.create_user('external-coordinator')

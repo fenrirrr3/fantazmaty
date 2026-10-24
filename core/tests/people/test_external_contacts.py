@@ -132,7 +132,7 @@ class IllustratorContactTests(TestCase):
         old = 'https://drive.google.com/drive/folders/old'
         new = 'https://drive.google.com/drive/folders/new'
         last = 'https://drive.google.com/drive/folders/last'
-        settings = PublicIllustrationSettings.objects.create(drive_url=old)
+        settings, _ = PublicIllustrationSettings.objects.update_or_create(pk=1, defaults={"drive_url": old})
         url = reverse('admin:illustrations_publicillustrationsettings_change', args=[1])
         token = self.token(url)
         version = version_of(settings)
