@@ -1,25 +1,19 @@
-.anthology-preparation-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-5);
-    margin-bottom: var(--space-5);
-    align-items: start;
-}
+/* Antologia (szczegóły): przygotowanie do wydania, lista kontrolna, okładka, nowa osoba i zadania antologii. */
 
-.anthology-preparation-grid > .card {
-    min-width: 0;
-    margin: 0;
+.anthology-preparation-grid {
+    align-items: start;
+    margin-bottom: var(--space-5);
 }
 
 .anthology-checklist {
-    padding-left: var(--space-5);
     margin-bottom: 0;
+    padding-left: var(--space-5);
 }
 
 .anthology-checklist li {
     margin-bottom: var(--space-3);
-    overflow-wrap: anywhere;
     line-height: var(--leading);
+    overflow-wrap: anywhere;
 }
 
 .anthology-checklist li:last-child {
@@ -32,8 +26,25 @@
     gap: var(--space-4);
 }
 
-.anthology-new-person .form-field, .anthology-cover-fields .form-field {
+.anthology-new-person .form-field,
+.anthology-cover-fields .form-field {
     margin-bottom: var(--space-4);
+}
+
+.anthology-cover-fields .muted-text {
+    margin: 0;
+}
+
+/* Zadania antologii: pola w kolumnach (sześć zadań – trzy kolumny). */
+.anthology-tasks {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+    gap: var(--space-4);
+    margin-block: var(--space-4);
+}
+
+.anthology-tasks fieldset {
+    min-width: 0;
 }
 
 .anthology-tasks.anthology-six-tasks {
@@ -44,10 +55,6 @@
     min-height: 4rem;
 }
 
-.anthology-cover-fields .muted-text {
-    margin: 0;
-}
-
 @media screen and (max-width: 1100px) {
     .anthology-tasks.anthology-six-tasks {
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -55,7 +62,8 @@
 }
 
 @media screen and (max-width: 760px) {
-    .anthology-preparation-grid, .anthology-person-name, .anthology-tasks.anthology-six-tasks {
+    .anthology-person-name,
+    .anthology-tasks.anthology-six-tasks {
         grid-template-columns: 1fr;
     }
 }

@@ -6,7 +6,8 @@ from django import forms
 
 from core.program_models import ReplacementEntry
 from core.services import odkurzacz
-from core.services.odkurzacz import EDITORIAL_RULES, FORM_DEFAULT_EDITORIAL_RULES
+from core.services.document_errors import MESSAGES, foreign_format
+from core.services.odkurzacz import EDITORIAL_RULES, FORM_DEFAULT_EDITORIAL_RULES, ORTHOGRAPHY_2026_KEYS
 
 
 PROGRAM_MAX_UPLOAD_BYTES = 5 * 1024 * 1024
@@ -24,6 +25,12 @@ def validate_docx_upload(upload, max_bytes=PROGRAM_MAX_UPLOAD_BYTES):
         raise forms.ValidationError("Wybierz plik z rozszerzeniem .docx.")
     if upload.size > max_bytes:
         raise forms.ValidationError(f"Plik jest za duży. Maksymalny rozmiar to {max_bytes // (1024 * 1024)} MB.")
+    # Inny format z rozszerzeniem .docx (np. .doc, ODT, DOCX z hasłem) albo odmiana DOCX, której programy nie czytają.
+    upload.seek(0)
+    kind = foreign_format(upload.read())
+    upload.seek(0)
+    if kind:
+        raise forms.ValidationError(MESSAGES[kind])
     try:
         with ZipFile(upload) as archive:
             entries = archive.infolist()
@@ -54,6 +61,8 @@ class ProgramSettingsMixin:
     # Pola wielokrotnego wyboru, przy których zapamiętujemy też listę znanych wtedy opcji: opcja dodana
     # później (np. nowa reguła Odkurzacza) jest zaznaczona tak jak domyślnie, a nie zawsze odznaczona.
     settings_known_choices = ('rules',)
+    # Zapis sprzed listy znanych opcji znał wszystkie opcje poza dodanymi później (reguły „Ortografia 2026”).
+    settings_later_choices = {'rules': ORTHOGRAPHY_2026_KEYS}
 
     def settings_fields(self):
         return [name for name in self.fields if name not in self.settings_exclude]
@@ -81,8 +90,10 @@ class ProgramSettingsMixin:
                     continue
                 allowed = {str(key) for key, _ in field.choices}
                 value = [item for item in value if isinstance(item, str) and item in allowed]
-                known = stored.get(f'known_{name}')
-                if name in cls.settings_known_choices and isinstance(known, list):
+                if name in cls.settings_known_choices:
+                    known = stored.get(f'known_{name}')
+                    if not isinstance(known, list):
+                        known = allowed - set(cls.settings_later_choices.get(name, ()))
                     value += [str(key) for key, _ in field.choices if str(key) not in known
                               and str(key) in map(str, field.initial or ()) and str(key) not in value]
             elif isinstance(field, forms.BooleanField):
@@ -306,8 +317,8 @@ class ReplacementEntryForm(forms.ModelForm):
         help_texts = {
             'source': 'Słowo: całe słowo, bez względu na wielkość liter. '
                       'Wyrażenie regularne: składnia Pythona, bez rozróżniania wielkości liter.',
-            'target': 'Zamiana zapisana małymi literami przejmuje wielkość liter z tekstu (Pickup → Pikap, '
-                      'PICKUP → PIKAP). Zamiana z wielkimi literami (NATO, iPhone) zostaje zapisana dokładnie tak, '
+            'target': 'Zamiana zapisana małymi literami przejmuje wielkość liter z tekstu (Mentlik → Mętlik, '
+                      'MENTLIK → MĘTLIK). Zamiana z wielkimi literami (NATO, iPhone) zostaje zapisana dokładnie tak, '
                       'chyba że w tekście całe słowo jest napisane WIELKIMI literami. '
                       'We wzorcu można użyć grup: \\g<nazwa>.',
             'position': 'Mniejsza liczba – wcześniejsze wykonanie. Słowa są zamieniane jednocześnie, jednym '

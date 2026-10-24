@@ -4,12 +4,14 @@ from .editing import AssignmentModelForm
 from .models import CoverProposal, Illustration, Illustrator
 from core.permissions import can_view_illustrations
 from authors.admin import SuperuserOnlyAdminMixin
+from core.admin import PublicGuidelinesAdminMixin
 from .models import PublicIllustrationSettings
 
 
 @admin.register(PublicIllustrationSettings)
-class PublicIllustrationSettingsAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
-    fields = ('drive_url',)
+class PublicIllustrationSettingsAdmin(PublicGuidelinesAdminMixin, SuperuserOnlyAdminMixin, admin.ModelAdmin):
+    fields = ('drive_url', 'guidelines', 'public_page_link')
+    public_page = 'illustrations:external_illustrations'
 
     def has_add_permission(self, request):
         return super().has_add_permission(request) and not PublicIllustrationSettings.objects.exists()

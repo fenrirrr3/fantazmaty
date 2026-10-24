@@ -1,14 +1,14 @@
 {% extends "core/base.html" %}{% load static %}
 {% block title %}Zgłoszenie rekrutacyjne | Fantazmaty CMS{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'core/recruitment.css' %}"><link rel="stylesheet" href="{% static 'core/intake.css' %}"><link rel="stylesheet" href="{% static 'core/dialogs.css' %}">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/recruitment.css' %}">{% endblock %}
 {% block content %}
 <header class="page-header"><h1 class="page-title recruitment-detail-heading">{{ candidate_name }}</h1><p class="page-description recruitment-detail-heading">{{ record.mail_subject|default:'Zgłoszenie rekrutacyjne' }}</p><a class="secondary-button" href="{% if return_url %}{{ return_url }}{% else %}{% url 'core:recruitment_list' %}{% endif %}">Wróć do Rekrutacji</a></header>
-<div class="recruitment-actions">
+<div class="actions recruitment-actions">
     <a class="secondary-button" href="{% url 'core:recruitment_detail' record.pk %}">Odśwież dane</a>
-    {% if user.is_superuser %}<a class="secondary-button cms-danger-button" href="{% url 'core:recruitment_delete' record.pk %}" data-dialog-open="delete-recruitment">Usuń zgłoszenie</a>{% endif %}
+    {% if user.is_superuser %}<a class="danger-button" href="{% url 'core:recruitment_delete' record.pk %}" data-dialog-open="delete-recruitment">Usuń zgłoszenie</a>{% endif %}
 </div>
 {% if user.is_superuser %}<dialog id="delete-recruitment" class="cms-dialog" aria-labelledby="delete-recruitment-heading">{% include 'core/includes/recruitment_delete_form.html' %}</dialog>{% endif %}
-<div class="recruitment-detail-grid">
+<div class="two-columns recruitment-detail-grid">
     <div class="recruitment-decision-column">
         <section class="details-card">
             <h2>Dane zgłoszenia</h2>
@@ -28,7 +28,7 @@
                 {{ section.form.as_p }}
                 {% if section.decision.reason_author_name %}<p class="form-help">Uzasadnienie: {{ section.decision.reason_author_name }} · {{ section.decision.reason_updated_at|date:'d.m.Y H:i' }}</p>{% elif section.decision.decision_reason %}<p class="form-help">Autor wcześniejszego uzasadnienia: brak zapisanej informacji.</p>{% endif %}
                 <p class="form-help">Zapis dotyczy wyłącznie tej roli. Nie wysyła wiadomości ani nie zmienia pola Powiadomiony.</p>
-                <div class="recruitment-actions"><button class="primary-button" type="submit">Zapisz decyzję: {{ section.label }}</button></div>
+                <div class="actions recruitment-actions"><button class="primary-button" type="submit">Zapisz decyzję: {{ section.label }}</button></div>
             </form>
         </details>
         {% endfor %}

@@ -30,7 +30,7 @@ class GlobalSearchTests(NavigationDataMixin, TestCase):
 
     def test_search_hides_empty_sections_and_preserves_result_order_and_markup(self):
         doc = html.fromstring(self.client.get(self.url, {"q": "ZZZnothingmatch"}).content)
-        self.assertEqual(doc.xpath('//div[@class="global-search-results"]/section'), [])
+        self.assertEqual(doc.xpath('//div[contains(@class, "global-search-results")]/section'), [])
         self.assertIn('Brak wyników dla podanego zapytania.', doc.text_content())
         AudioContributor.objects.create(name="Wspólny Lektor")
         Illustrator.objects.create(first_name="Wspólny", last_name="Ilustrator")
@@ -38,7 +38,7 @@ class GlobalSearchTests(NavigationDataMixin, TestCase):
         Anthology.objects.create(title="Wspólny tytuł powieści", is_novel=True)
         doc = html.fromstring(self.client.get(self.url, {"q": "Wspólny"}).content)
         expected = ["Powieści", "Lektorzy i montaż", "Ilustratorzy", "Rekrutacja"]
-        self.assertEqual(doc.xpath('//div[@class="global-search-results"]/section/header/h2/text()'), expected)
+        self.assertEqual(doc.xpath('//div[contains(@class, "global-search-results")]/section/header/h2/text()'), expected)
         for label in expected:
             section = doc.xpath('//section[header/h2[text()="' + label + '"]]')[0]
             self.assertTrue(

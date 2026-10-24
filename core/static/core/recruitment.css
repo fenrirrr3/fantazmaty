@@ -1,5 +1,212 @@
-/* Rekrutacja: rejestr, szczegóły zgłoszenia i pobieranie próbek. */
+/*
+ * Rekrutacja i zgłoszenia tekstów: rejestr i szczegóły zgłoszeń do zespołu, pobieranie próbek,
+ * skrzynki pocztowe (nagłówki, podgląd maila, czarna lista, postęp) oraz import recenzji („Dodaj do recenzji”).
+ */
 
+/* ===== Dodaj do recenzji: panele zgłoszeń ===== */
+.intake-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-4);
+}
+
+.intake-panel {
+    min-width: 0;
+    padding: 0;
+    overflow: visible;
+}
+
+.intake-stack > .intake-panel {
+    width: 100%;
+    box-sizing: border-box;
+    margin: 0;
+}
+
+.intake-panel .table-container {
+    overflow-x: auto;
+}
+
+.intake-panel-body .intake-form {
+    width: 100%;
+    max-width: none;
+}
+
+.review-import-card {
+    max-width: 1100px;
+}
+
+.intake-panel-body .review-import-card {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+.review-import-textarea {
+    min-height: 340px;
+    font-family: var(--font-mono);
+    font-size: var(--font-size-sm);
+}
+
+.import-preview-table td {
+    height: auto;
+    white-space: normal;
+    vertical-align: top;
+}
+
+.import-preview-table p {
+    margin-block: var(--space-1);
+}
+
+.mailbox-import-card td {
+    overflow-wrap: anywhere;
+}
+
+/* ===== Skrzynki: filtry, opcje i postęp pobierania ===== */
+.mailbox-header-action {
+    margin-top: var(--space-3);
+}
+
+.mailbox-filters {
+    display: grid;
+    grid-template-columns: minmax(0, 24rem) minmax(0, 32rem);
+    gap: var(--space-4);
+    align-items: start;
+    margin-bottom: var(--space-4);
+}
+
+.mailbox-filters-dated {
+    grid-template-columns: minmax(0, 2fr) minmax(14rem, 1fr);
+}
+
+.mailbox-filters .filter-field {
+    margin: 0;
+}
+
+.mailbox-filter-controls {
+    min-width: 0;
+}
+
+.mailbox-filter-controls .filter-field {
+    margin-bottom: var(--space-4);
+}
+
+.mailbox-options {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-3);
+    min-width: 0;
+}
+
+.mailbox-options-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--space-3) var(--space-4);
+}
+
+.mailbox-option {
+    display: flex;
+    max-width: 100%;
+    margin: 0;
+    font-weight: 400;
+}
+
+.mailbox-option span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.mailbox-date-filter {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+}
+
+.mailbox-date-filter input[type="date"] {
+    width: 100%;
+    max-width: 15rem;
+}
+
+.mailbox-actions {
+    grid-column: 1 / -1;
+    margin: 0;
+}
+
+.mailbox-confirmation-options {
+    max-width: 32rem;
+    margin-block: var(--space-4);
+}
+
+.submission-newsletters {
+    max-width: 32rem;
+    margin-bottom: var(--space-4);
+}
+
+.mailbox-progress {
+    display: grid;
+    grid-column: 1 / -1;
+    gap: var(--space-2);
+}
+
+.mailbox-progress p {
+    margin: 0;
+}
+
+.mailbox-progress progress {
+    width: 100%;
+    height: var(--space-4);
+    accent-color: var(--primary);
+}
+
+.mailbox-confirmation-options + .primary-button + .mailbox-progress {
+    margin-top: var(--space-4);
+}
+
+.mailbox-preview-panel {
+    max-height: var(--scroll-panel-height);
+    margin-bottom: var(--space-4);
+}
+
+/* Czarna lista autorów przy pobieraniu zgłoszeń. */
+.mailbox-blacklist-choice {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+}
+
+.mailbox-blacklist-choice select {
+    max-width: 100%;
+}
+
+.mailbox-blacklisted-row > td:first-child {
+    border-left: 3px solid var(--danger);
+}
+
+.mailbox-blacklist-decisions {
+    display: grid;
+    gap: var(--space-3);
+    margin: var(--space-4) 0;
+    padding: var(--space-4);
+    border: 1px solid var(--danger);
+    border-radius: var(--radius-md);
+}
+
+.mailbox-blacklist-decisions legend {
+    padding-inline: var(--space-2);
+    font-weight: 700;
+}
+
+.mailbox-blacklist-decisions .form-help {
+    margin: 0;
+}
+
+/* ===== Rekrutacja: rejestr, próbki i podgląd maila ===== */
 .recruitment-mail-roles {
     width: min(100%, 30rem);
     margin: 0;
@@ -15,8 +222,8 @@
 
 .recruitment-role-options > label {
     display: flex;
-    gap: var(--space-2);
     align-items: center;
+    gap: var(--space-2);
     margin: 0;
 }
 
@@ -24,23 +231,29 @@
     margin: var(--space-4) 0;
 }
 
-.mailbox-header-action {
-    margin-top: var(--space-3);
+.recruitment-operations-grid {
+    margin-block: var(--space-4);
+}
+
+.recruitment-bulk {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: var(--space-3);
+    margin: var(--space-4) 0;
+}
+
+.recruitment-operations-grid .recruitment-bulk {
+    margin: 0;
+}
+
+.recruitment-bulk label {
+    display: grid;
+    gap: var(--field-gap);
 }
 
 .recruitment-role-panel .mailbox-options {
     margin-bottom: var(--space-4);
-}
-
-.recruitment-preview-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: var(--space-5);
-    align-items: stretch;
-}
-
-.recruitment-role-panel, .recruitment-preview-panel {
-    background: var(--surface-alt);
 }
 
 .recruitment-preview-panel {
@@ -65,41 +278,33 @@
 }
 
 .recruitment-preview-body {
+    flex: 1;
     min-height: 10rem;
     overflow: auto;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
-    flex: 1;
 }
 
 .recruitment-sample-actions {
     margin: var(--space-4) 0 var(--space-2);
 }
 
-.recruitment-bulk {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: end;
-    gap: var(--space-3);
-    margin: var(--space-4) 0;
-}
-
-.recruitment-bulk label {
-    display: grid;
-    gap: var(--field-gap);
-}
-
-.recruitment-samples-table .recruitment-subject {
-    white-space: normal;
-    overflow-wrap: anywhere;
-    min-width: 12rem;
-    max-width: 25rem;
+/* Rząd z próbkami ma własny, mniejszy odstęp. */
+.recruitment-actions:not(.recruitment-sample-actions) {
+    margin-bottom: var(--space-4);
 }
 
 .recruitment-samples-table td {
+    max-width: 25rem;
     white-space: normal;
     overflow-wrap: anywhere;
+}
+
+.recruitment-samples-table .recruitment-subject {
+    min-width: var(--cell-min-width);
     max-width: 25rem;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 .recruitment-subject-button {
@@ -152,22 +357,16 @@
     max-width: 100%;
 }
 
-.recruitment-notified [role=status] {
+.recruitment-notified [role="status"] {
     display: block;
     margin-top: var(--space-1);
-    white-space: normal;
     font-size: var(--font-size-md);
+    white-space: normal;
 }
 
+/* ===== Szczegóły zgłoszenia do zespołu ===== */
 .recruitment-detail-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: var(--space-5);
     align-items: start;
-}
-
-.recruitment-detail-grid .details-card {
-    min-width: 0;
 }
 
 .recruitment-detail-heading {
@@ -179,13 +378,44 @@
     overflow-wrap: anywhere;
 }
 
+.recruitment-date-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--space-4);
+    margin-bottom: var(--space-4);
+}
+
+.recruitment-decision-column {
+    display: grid;
+    gap: var(--space-4);
+    align-content: start;
+    min-width: 0;
+}
+
+.recruitment-role-decision > summary {
+    overflow-wrap: anywhere;
+    cursor: pointer;
+}
+
+.recruitment-role-decision[open] > summary {
+    margin-bottom: var(--space-4);
+}
+
+.recruitment-role-decision textarea {
+    width: 100%;
+    box-sizing: border-box;
+}
+
 @media screen and (max-width: 760px) {
-    .recruitment-preview-grid, .recruitment-detail-grid {
+    .mailbox-filters,
+    .mailbox-filters-dated,
+    .recruitment-date-row {
         grid-template-columns: minmax(0, 1fr);
     }
 }
 
-/* Rząd z próbkami ma własny, mniejszy odstęp – nie nadpisujemy go tutaj. */
-.recruitment-actions:not(.recruitment-sample-actions) {
-    margin-bottom: var(--space-4);
+@media screen and (max-width: 480px) {
+    .mailbox-options-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
 }

@@ -12,7 +12,7 @@
 {% if program_error %}<p class="form-error program-page-error" role="alert">{{ program_error }}</p>{% endif %}
 
 {# ===== Odkurzacz ===== #}
-<details class="details-card odkurzacz program-tool" id="program-clean" {% if clean_open %}open{% endif %}>
+<details class="details-card odkurzacz collapsible-card program-tool" id="program-clean" {% if clean_open %}open{% endif %}>
     <summary><h2 class="program-title">Odkurzacz</h2>
         <span class="program-lead">Poprawia spacje, edytorskie chochliki i zapis tekstu w dokumencie DOCX.</span>
         <span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
@@ -27,7 +27,7 @@
                     <label for="{{ form.document.id_for_label }}">{{ form.document.label }}</label>
                     <details class="help-tip"><summary aria-label="Pomoc: jak działa Odkurzacz" title="Pomoc"><span aria-hidden="true">?</span></summary>
                         <div class="help-tip-body">
-                            <p><strong>Przed odkurzaniem zaakceptuj śledzone zmiany i usuń komentarze albo zaznacz przebudowę do nowego pliku.</strong></p>
+                            <p>Komentarze i śledzone zmiany zostają w pliku (z nazwiskami autorów i datami). Reguły poprawiają tekst widoczny po przyjęciu zmian – tekstu usuniętego śledzoną zmianą nie zmieniają.</p>
                             <p>Reguły redakcyjne poprawiają cały tekst: treść, tabele, pola tekstowe, nagłówki, stopki i przypisy. Zmiany są wprowadzane bez śledzenia, chyba że wybierzesz pobranie z zaznaczonymi zmianami. Puste akapity pozostają, chyba że wybierzesz ich scalanie.</p>
                             {% include "core/includes/program_document_note.html" %}
                             <p>Przy większym dokumencie pobieranie może rozpocząć się po chwili{% if superuser_limits %}, a jako superuser możesz czekać do {{ superuser_time_limit }} sekund{% endif %}. Oryginał pozostaje na Twoim komputerze.</p>
@@ -71,6 +71,7 @@
                     <div class="help-tip-body">
                         <p>Domyślnie wyłączone jest tylko scalanie pustych akapitów (na końcu listy). Pozostałe poprawki możesz wyłączyć według potrzeb.</p>
                         <p>Reguły działają automatycznie – po pobraniu przejrzyj wynik, szczególnie zamiany słownikowe i wielkość liter.</p>
+                        <p>Reguły „Ortografia 2026” stosują zasady pisowni obowiązujące od 1 stycznia 2026 r. (np. nienajlepszy, czy by, nibyartysta, pół-Polak). Zmieniają tylko zapisy jednoznaczne – sporne zostają bez zmian, np. przeciwstawienie („nie lepszy, lecz gorszy”), pytanie („Czy to nie najlepszy pomysł?”), miara i czas („nie dalej niż”, „nie później niż”) oraz „pół” ilościowe (pół godziny).</p>
                         <p>Spacje twarde, wąskie, półfiretowe i inne nietypowe zawsze stają się zwykłymi spacjami, także przy wyłączonych regułach. Pauzę, pauzę cyfrową, kreskę poziomą i minus zamienia na półpauzę, a łączniki Unicode na zwykły dywiz reguła kresek (minus przed liczbą zostaje przy niej: –5 °C).</p>
                         <p>Pozycje własnych zamian słownikowych są w słowniku zamian{% if can_edit_replacements %} – możesz je tam zmieniać{% endif %}.</p>
                     </div>
@@ -97,8 +98,8 @@
                     <label for="{{ form.rebuild.id_for_label }}">{{ form.rebuild }} <span>{{ form.rebuild.label }}</span></label>
                     <details class="help-tip"><summary aria-label="Pomoc: {{ form.rebuild.label }}" title="Pomoc"><span aria-hidden="true">?</span></summary>
                         <div class="help-tip-body">
-                            <p>Przebudowa tworzy nowy DOCX z tekstem i podstawowym formatowaniem, a następnie stosuje wybrane poprawki. Przypisy dolne i końcowe zostają. Usuwa stare metadane, komentarze, nagłówki, stopki i ukryty tekst.</p>
-                            <p>Akceptuje zmiany tekstu: zachowuje dodany tekst, pomija skreślony. Pominięcie innych elementów wymaga Twojego potwierdzenia. Dane wpisane w treści pozostają.</p>
+                            <p>Przebudowa tworzy nowy DOCX z tekstem i podstawowym formatowaniem, a następnie stosuje wybrane poprawki. Przypisy dolne i końcowe, komentarze (z odpowiedziami) i śledzone zmiany zostają. Usuwa stare metadane, nagłówki, stopki i ukryty tekst.</p>
+                            <p>Śledzone zmiany zostają do przejrzenia w Wordzie (z autorami i datami) – w pliku zostają więc nazwiska autorów komentarzy i zmian. Pominięcie innych elementów wymaga Twojego potwierdzenia. Dane wpisane w treści pozostają.</p>
                         </div>
                     </details>
                 </div>
@@ -122,7 +123,7 @@
 </details>
 
 {# ===== Konwerter ===== #}
-<details class="details-card odkurzacz program-tool" id="program-convert" {% if conversion_open %}open{% endif %}>
+<details class="details-card odkurzacz collapsible-card program-tool" id="program-convert" {% if conversion_open %}open{% endif %}>
     <summary><h2 class="program-title">Konwerter DOCX → PDF i EPUB</h2>
         <span class="program-lead">Zamienia dokument DOCX na PDF, EPUB albo oba formaty naraz.</span>
         <span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
@@ -170,7 +171,7 @@
                 <details class="help-tip"><summary aria-label="Pomoc: {{ conversion_form.use_cleaner.label }}" title="Pomoc"><span aria-hidden="true">?</span></summary>
                     <div class="help-tip-body">
                         <p>Ta opcja stosuje przed konwersją wybrane reguły Odkurzacza oraz zamianę miękkich enterów na nowe akapity i spacji nieprzenoszących na zwykłe spacje.</p>
-                        <p><strong>Przed konwersją zaakceptuj śledzone zmiany i usuń komentarze.</strong></p>
+                        <p>E-book i PDF zawierają tekst po przyjęciu śledzonych zmian, bez komentarzy.</p>
                     </div>
                 </details>
             </div>
@@ -195,7 +196,7 @@
 </details>
 
 {# ===== Kolorowanie powtórzeń ===== #}
-<details class="details-card odkurzacz program-tool" id="program-repetitions" {% if repetitions_open %}open{% endif %}>
+<details class="details-card odkurzacz collapsible-card program-tool" id="program-repetitions" {% if repetitions_open %}open{% endif %}>
     <summary><h2 class="program-title">Kolorowanie powtórzeń</h2>
         <span class="program-lead">Oznacza kolorami powtarzające się słowa, nie zmieniając treści.</span>
         <span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
@@ -291,7 +292,7 @@
 </details>
 {% if superuser_programs %}
 {# ===== Scalanie DOCX (tylko superuser) ===== #}
-<details class="details-card odkurzacz program-tool" id="program-merge" {% if merge_open %}open{% endif %}>
+<details class="details-card odkurzacz collapsible-card program-tool" id="program-merge" {% if merge_open %}open{% endif %}>
     <summary><h2 class="program-title">Scalanie DOCX</h2>
         <span class="program-lead">Przebudowuje kilka dokumentów DOCX, odkurza je i scala w jeden plik.</span>
         <span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
@@ -308,7 +309,7 @@
                         <div class="help-tip-body">
                             <p>Pliki są scalane w kolejności wyboru: w oknie wyboru zaznaczaj je po kolei (np. z klawiszem Ctrl) albo nazwij je tak, żeby kolejność alfabetyczna była właściwa. Lista pod polem pokazuje kolejność przed wysłaniem.</p>
                             <p>Każdy plik jest najpierw przebudowany do nowego DOCX (jak przy przebudowie w Odkurzaczu), potem odkurzony wybranymi regułami. Kolejny plik zaczyna się od nowej strony; nagłówki (Nagłówek 1–3) zostają.</p>
-                            <p>Przebudowa zachowuje przypisy, ale pomija m.in. tabele, komentarze i automatyczną numerację list – jeśli któryś plik je zawiera, zobaczysz listę pominięć z nazwami plików do akceptacji.</p>
+                            <p>Przebudowa zachowuje przypisy, komentarze i śledzone zmiany (z nazwiskami autorów i datami), ale pomija m.in. tabele i automatyczną numerację list – jeśli któryś plik je zawiera, zobaczysz listę pominięć z nazwami plików do akceptacji.</p>
                             {% include "core/includes/program_document_note.html" %}
                             <p>Każdy plik może być przetwarzany do {{ superuser_time_limit }} sekund. Oryginały pozostają na Twoim komputerze.</p>
                         </div>
@@ -382,7 +383,7 @@
 </details>
 
 {# ===== Podział DOCX (tylko superuser) ===== #}
-<details class="details-card odkurzacz program-tool" id="program-split" {% if split_open %}open{% endif %}>
+<details class="details-card odkurzacz collapsible-card program-tool" id="program-split" {% if split_open %}open{% endif %}>
     <summary><h2 class="program-title">Podział DOCX</h2>
         <span class="program-lead">Dzieli dokument na osobne pliki według akapitów ze stylem Nagłówek 1.</span>
         <span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
@@ -400,7 +401,7 @@
                             <p>Każdy akapit ze stylem Nagłówek 1 zaczyna nowy plik, który trwa do kolejnego Nagłówka 1. Treść przed pierwszym nagłówkiem (np. strona tytułowa antologii) jest pomijana.</p>
                             <p>Nazwa pliku to numer i tekst nagłówka, np. „01 Tytuł.docx”. Pliki pobierzesz razem jako archiwum ZIP.</p>
                             <p>Po podziale przycisk „Wyślij autorom” dopasuje pliki do tekstów wybranej antologii i – po sprawdzeniu listy kontrolnej – wyśle każdemu autorowi jego plik.</p>
-                            <p>Program nie zmienia tekstu: zostają style, numeracja list, obrazy, przypisy i komentarze – każdy plik dostaje tylko te ze swojego fragmentu. Format strony pochodzi z ostatniej sekcji dokumentu.</p>
+                            <p>Program nie zmienia tekstu: zostają style, numeracja list, obrazy, przypisy, komentarze i śledzone zmiany – każdy plik dostaje tylko te ze swojego fragmentu (komentarz trafia do pliku ze swoim odwołaniem). Obrazy połączone z plikami spoza dokumentu znikają razem z linkiem. Format strony pochodzi z ostatniej sekcji dokumentu.</p>
                         </div>
                     </details>
                 </div>
@@ -415,7 +416,7 @@
 </details>
 
 {# ===== Stopki tekstów antologii (tylko superuser) ===== #}
-<details class="details-card odkurzacz program-tool" id="program-credits" {% if credits_open %}open{% endif %}>
+<details class="details-card odkurzacz collapsible-card program-tool" id="program-credits" {% if credits_open %}open{% endif %}>
     <summary><h2 class="program-title">Stopki tekstów antologii</h2>
         <span class="program-lead">Zbiera w jednym miejscu stopki wszystkich tekstów wybranej antologii.</span>
         <span class="dropdown-arrow" aria-hidden="true">▾</span></summary>

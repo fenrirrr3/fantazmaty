@@ -1,4 +1,5 @@
 from django.urls import path
+from django.views.generic import RedirectView
 from .views import operations, intake, supervision, mailbox, newsletters
 from core.user_preview import user_preview, user_preview_stop
 
@@ -28,7 +29,7 @@ from core.views.audio_descriptions import audio_descriptions, audio_description_
 from core.views.audiobooks import audiobook_list, update_text_audiobook
 from core.views.audiobook_production import audiobook_detail, assign_audio_proofreader, claim_audio_proofreading, audio_proofreading
 from core.views.audio_contacts import audio_contributor, audio_contributor_list, contact_suggestions
-from core.views.external_audiobooks import external_audiobooks, audiobook_guidelines_txt
+from core.views.external_audiobooks import external_audiobooks, audiobook_guidelines_pdf
 from core.views import novels, vocabulary
 from core.views.recruitment_detail import recruitment_detail
 from core.views.recruitment_notified import recruitment_notified
@@ -56,7 +57,10 @@ urlpatterns = [
     path("kontakty/podpowiedzi/", contact_suggestions, name="contact_suggestions"),
     path('audiobooki/zewnetrzne/', external_audiobooks, name='external_audiobooks'),
     path('audiobooki/<int:text_id>/', audiobook_detail, name='audiobook_detail'),
-    path('audiobooki/zewnetrzne/wytyczne.txt', audiobook_guidelines_txt, name='audiobook_guidelines_txt'),
+    path('audiobooki/zewnetrzne/wytyczne.pdf', audiobook_guidelines_pdf, name='audiobook_guidelines_pdf'),
+    # Dawny plik TXT: linki mogły trafić do lektorów, więc adres prowadzi teraz do PDF.
+    path('audiobooki/zewnetrzne/wytyczne.txt', RedirectView.as_view(pattern_name='core:audiobook_guidelines_pdf',
+         permanent=True), name='audiobook_guidelines_txt'),
     path('social-media/', social_media, name='social_media'),
     path('korekta-poskladowa/', post_layout, name='post_layout'),
     path('korekta-poskladowa/<int:pk>/edycja/', post_layout_edit, name='post_layout_edit'),

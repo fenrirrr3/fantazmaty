@@ -6,6 +6,13 @@ samo jak Mammoth: z poprawkami wstawionymi, bez usuniętych, bez numerów
 przypisów i z miękkim enterem jako odstępem.
 """
 from collections import defaultdict, deque
+from io import BytesIO
+from zipfile import ZIP_DEFLATED, ZipFile
+
+if __package__:
+    from .document_styles import merge_drop_caps
+else:
+    from document_styles import merge_drop_caps
 
 WORD = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
 CHOICE = '{http://schemas.openxmlformats.org/markup-compatibility/2006}Choice'
@@ -16,6 +23,107 @@ _SPACES = {WORD + name for name in ('tab', 'ptab', 'br', 'cr')}
 _CHARACTERS = {WORD + 'noBreakHyphen': '\u2011', WORD + 'softHyphen': '\u00ad'}
 _NOTE_REFERENCES = ('footnote-ref-', 'endnote-ref-')
 
+
+# Kopia DOCX dla Mammotha (mammoth_source): części z treścią, którą czyta Mammoth.
+MAMMOTH_PARTS = ('word/document.xml', 'word/footnotes.xml', 'word/endnotes.xml')
+_MAMMOTH_UNWRAPPED = {WORD + name for name in ('fldSimple', 'dir', 'bdo')}
+_MAMMOTH_DROPPED = {WORD + name for name in ('fldData', 'smartTagPr', 'customXmlPr')}
+_MAMMOTH_RENAMED = {WORD + 'cr': WORD + 'br', WORD + 'ptab': WORD + 'tab'}
+_GRAPHIC_DATA = '{http://schemas.openxmlformats.org/drawingml/2006/main}graphicData'
+_FALLBACK = '{http://schemas.openxmlformats.org/markup-compatibility/2006}Fallback'
+# Rysunki bez obrazu i tekstu dla Mammotha: wykres, SmartArt, nowy wykres Office 2016.
+_GRAPHIC_KINDS = ('/chart', '/diagram', '/chartex')
+MAMMOTH_NOTES = {
+    'missing_note': 'Pominięto odsyłacz do przypisu, którego nie ma w dokumencie.',
+    'hidden': 'Pominięto tekst ukryty w Wordzie (efekt czcionki „Ukryty”) – jak przy wydruku.',
+    'graphic': 'Pominięto wykres lub diagram SmartArt – e-book i PDF go nie zawierają.',
+}
+
+
+def _hidden(properties, hidden_styles):
+    """Czy przebieg jest ukryty: własne w:vanish albo styl znakowy z w:vanish (bez dziedziczenia stylów)."""
+    if properties is None:
+        return False
+    vanish = properties.find(WORD + 'vanish')
+    if vanish is not None:
+        return vanish.get(WORD + 'val', 'true') not in ('0', 'false', 'off')
+    style = properties.find(WORD + 'rStyle')
+    return style is not None and style.get(WORD + 'val') in hidden_styles
+
+
+def mammoth_source(data):
+    """Kopia DOCX dla Mammotha i dopasowania akapitów PDF: (bajty, uwagi dla użytkownika).
+
+    Mammoth pomija w:fldSimple, w:dir i w:bdo razem z treścią (numer podpisu, pole korespondencji, tekst
+    od prawej do lewej), skleja słowa wokół w:cr i w:ptab, pokazuje tekst ukryty i przerywa pracę na
+    odsyłaczu do nieistniejącego przypisu. W kopii treść tych elementów to zwykłe przebiegi, w:cr to w:br,
+    w:ptab to w:tab, ukrytych przebiegów (poza znacznikami pól) i odsyłaczy donikąd nie ma, a inicjał
+    wraca do swojego akapitu. DOCX wynikowy zostaje bez zmian. Uwagi mówią o tym, czego nie będzie
+    w e-booku i PDF (także o wykresach i diagramach, które Mammoth pomija bez ostrzeżenia).
+    """
+    from collections import Counter
+    from lxml import etree
+
+    parser = etree.XMLParser(resolve_entities=False, no_network=True)
+    with ZipFile(BytesIO(data)) as archive:
+        names = set(archive.namelist())
+        roots = {name: etree.fromstring(archive.read(name), parser) for name in MAMMOTH_PARTS if name in names}
+        styles = etree.fromstring(archive.read('word/styles.xml'), parser) if 'word/styles.xml' in names else None
+    hidden_styles = set() if styles is None else {
+        style.get(WORD + 'styleId') for style in styles.iter(WORD + 'style')
+        if style.get(WORD + 'type') == 'character' and _hidden(style.find(WORD + 'rPr'), ())}
+    notes = {}
+    for kind in ('footnote', 'endnote'):
+        root = roots.get(f'word/{kind}s.xml')
+        notes[kind] = set() if root is None else {
+            note.get(WORD + 'id') for note in root.iter(WORD + kind) if note.get(WORD + 'type', 'normal') == 'normal'}
+    counts, changed = Counter(), set()
+    for name, root in roots.items():
+        edits = merge_drop_caps(root)
+        for run in list(root.iter(WORD + 'r')):
+            if (run.getparent() is not None and _hidden(run.find(WORD + 'rPr'), hidden_styles)
+                    and run.find(WORD + 'fldChar') is None):
+                run.getparent().remove(run)
+                counts['hidden'] += 1
+                edits += 1
+        for kind, valid in notes.items():
+            for reference in list(root.iter(WORD + kind + 'Reference')):
+                if reference.get(WORD + 'id') not in valid:
+                    reference.getparent().remove(reference)
+                    counts['missing_note'] += 1
+                    edits += 1
+        for node in list(root.iter(*_MAMMOTH_DROPPED)):
+            node.getparent().remove(node)
+            edits += 1
+        for node in reversed(list(root.iter(*_MAMMOTH_UNWRAPPED))):
+            parent, index = node.getparent(), node.getparent().index(node)
+            for child in list(node):
+                parent.insert(index, child)
+                index += 1
+            parent.remove(node)
+            edits += 1
+        for node in list(root.iter(*_MAMMOTH_RENAMED)):
+            node.tag = _MAMMOTH_RENAMED[node.tag]
+            node.attrib.clear()
+            edits += 1
+        counts['graphic'] += sum(1 for node in root.iter(_GRAPHIC_DATA)
+                                 if node.get('uri', '').endswith(_GRAPHIC_KINDS)
+                                 and not any(ancestor.tag == _FALLBACK for ancestor in node.iterancestors()))
+        if edits:
+            changed.add(name)
+    warnings = [text if counts[key] == 1 else f'{text} ({counts[key]} razy)'
+                for key, text in MAMMOTH_NOTES.items() if counts[key]]
+    if not changed:
+        return data, warnings
+    output = BytesIO()
+    with ZipFile(BytesIO(data)) as source, ZipFile(output, 'w', ZIP_DEFLATED) as target:
+        for item in source.infolist():
+            payload = source.read(item.filename)
+            if item.filename in changed:
+                payload = etree.tostring(roots[item.filename], xml_declaration=True, encoding='UTF-8',
+                                         standalone=True)
+            target.writestr(item, payload, compress_type=ZIP_DEFLATED)
+    return output.getvalue(), warnings
 
 def list_paragraphs(root):
     from lxml import html

@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     main.querySelectorAll('form[data-filters]').forEach(form => {
         const params = new URLSearchParams(new FormData(form));
-        const chips = document.createElement('div'); chips.className = 'active-filters'; chips.setAttribute('aria-label', 'Aktywne filtry');
+        const chips = document.createElement('div'); chips.className = 'actions active-filters'; chips.setAttribute('aria-label', 'Aktywne filtry');
         for (const [name, value] of params) {
             if (!value || ['page', 'page_size', 'sort', 'old_reviews', 'filters_applied', 'filters'].includes(name)) continue;
             const fields = [...form.elements].filter(field => field.name === name);

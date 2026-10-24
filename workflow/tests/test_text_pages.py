@@ -114,7 +114,7 @@ class TextTeamSectionsTests(StatusAssignmentFixtures):
         self.client.force_login(self.admin)
         response = self.client.get(reverse('core:assigned_text_detail', args=[self.text.pk]))
         self.assertEqual(response.status_code, 200)
-        sections = re.findall(r'<details class="text-team"[^>]*>(.*?)</details>', response.content.decode(), re.S)
+        sections = re.findall(r'<details class="card collapsible-card text-team"[^>]*>(.*?)</details>', response.content.decode(), re.S)
         current = next(section for section in sections if 'Osoby przypisane do tekstu' in section)
         previous = next(section for section in sections if 'Historia przypisań osób' in section)
         return current, previous

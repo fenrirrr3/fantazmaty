@@ -1,11 +1,20 @@
 """Zgodność z edytorami: DOCX „jak z LibreOffice” (Transitional i Strict) i „jak z Google Docs” przechodzą
 cały łańcuch programów (przegląd, przebudowa, przygotowanie z Odkurzaczem, miękkie entery, powtórzenia,
-konwersja do EPUB/PDF, podział i scalanie) bez wyjątku, a generator wiernie odtwarza cechy próbek."""
+konwersja do EPUB/PDF, podział i scalanie) bez wyjątku, a generator wiernie odtwarza cechy próbek.
+
+Scenariusze skrajne (editor_fixtures_exotic: Word 365/2007, WPS, OnlyOffice, Pages, Google Docs, minimalne
+eksportery i elementy problematyczne): przegląd i przebudowa bez wyjątku i bez cichej utraty tekstu,
+konwersja bez utraty widocznego tekstu, a pliki innych formatów i niebezpieczne pakiety – z czytelnym
+komunikatem przed konwersją."""
+import json
+import re
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 from zipfile import ZipFile
 
+from django import forms
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase, tag
 from docx import Document
@@ -13,8 +22,12 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from lxml import etree
 
-from core.services.document_conversion_worker import convert
-from core.services.document_converter import convert_document
+from core.odkurzacz_forms import validate_docx_upload
+from core.services import document_progress
+from core.services.document_conversion_worker import convert, main
+from core.services.document_converter import DAMAGED_MESSAGE, ConversionError, convert_document, validate_resources
+from core.services.document_errors import MESSAGES
+from core.services.document_images import force_polish, strip_images
 from core.services.document_merge import merge_documents
 from core.services.document_preparation import prepare_docx
 from core.services.document_rebuild import (
@@ -27,7 +40,9 @@ from core.services.document_whitespace import normalize_spacing_docx
 from .editor_fixtures import (
     ALIGNED, HEADER_TEXT, LAST, LINK_TEXT, NOTE_TEXT, TEXT_BOX, expected_texts, google_docs_docx, libreoffice_docx,
 )
+from .editor_fixtures_exotic import EDITOR_SCENARIOS, FEATURE_SCENARIOS, REFUSED_SCENARIOS, foreign_file
 from .support import IsolatedProgramDirsMixin
+from .test_pdf_rendering import pdf_html_spy
 
 LISTS_OMISSION = 'automatyczne numerowanie i punktory list (tekst pozycji pozostanie)'
 TEXT_BOX_OMISSION = 'ilustracje i pola tekstowe wraz z ich treścią'
@@ -337,3 +352,247 @@ class EditorConversionTests(IsolatedProgramDirsMixin, SimpleTestCase):
                 result = Document(color_document(build(), min_word_length=3))
                 self.assertEqual([p.text for p in result.paragraphs], texts_of(case))
                 self.assertTrue(result.element.body.xpath('.//w:highlight | .//w:color[@w:val!="000000"]'))
+
+
+# --- Scenariusze skrajne (editor_fixtures_exotic) ----------------------------------------------------------
+
+W = '{%s}' % NS['w']
+SKIPPED = {W + 'del', W + 'moveFrom', '{http://schemas.openxmlformats.org/markup-compatibility/2006}Choice'}
+NOT_NOTES = ('separator', 'continuationSeparator', 'continuationNotice')
+EXOTIC = {**EDITOR_SCENARIOS, **FEATURE_SCENARIOS}
+# Pliki odrzucane przed pracą programów: (komunikat formularza albo None, komunikat konwertera).
+FORMAT_ERRORS = {
+    'strict': 'format_strict', 'docm': 'format_template', 'dotx': 'format_template', 'dotm': 'format_template',
+    'foreign_doc': 'format_doc', 'foreign_encrypted': 'format_encrypted', 'foreign_rtf': 'format_rtf',
+    'foreign_odt': 'format_odt', 'foreign_word2003': 'format_word_xml', 'foreign_html': 'format_html',
+}
+REFUSED = {
+    **{name: (MESSAGES[code], MESSAGES[code]) for name, code in FORMAT_ERRORS.items()},
+    **{f'doctype_{kind}': (None, 'Nieobsługiwany dokument DOCX.')
+       for kind in ('internal', 'external', 'expansion', 'styles')},
+    'package_backslash_target': (None, 'Dokument zawiera nieprawidłowe odwołanie do pliku.'),
+    'package_backslash_entry': (None, 'Nieprawidłowa struktura dokumentu DOCX.'),
+    'package_duplicate': (None, 'Dokument zawiera powielone elementy. Zapisz go ponownie w Wordzie.'),
+    'package_case_mismatch': (None, DAMAGED_MESSAGE),
+    'package_missing_part': (None, DAMAGED_MESSAGE),
+}
+# Treść, której e-book i PDF nie mają (równania, wykresy, wstawki altChunk, odsyłacz donikąd) – z uwagą.
+CONVERSION_NOTES = {
+    'math': 'Pominięto równanie (wzór matematyczny)',
+    'chart_and_smart_art': 'Pominięto wykres lub diagram SmartArt',
+    'alt_chunk': 'Pominięto treść dołączoną z innego pliku',
+    'unusual_notes': 'Pominięto odsyłacz do przypisu, którego nie ma w dokumencie.',
+}
+
+
+# Koniec bloku i podział wiersza w HTML rozdzielają słowa (tekst sąsiednich akapitów nie może się skleić).
+BLOCK_END = re.compile(r'<(?:br|hr|/(?:p|h[1-6]|li|td|th))\b[^>]*>')
+
+
+def words(text):
+    """Słowa tekstu (litery i cyfry); miękki dywiz nie dzieli słowa."""
+    return set(re.findall(r'\w+', text.replace('\u00ad', '')))
+
+
+def markup_words(markup):
+    """Słowa tekstu z HTML/XHTML (e-book albo HTML przekazany do składu PDF)."""
+    tree = etree.HTML('<div>' + BLOCK_END.sub(lambda match: ' ' + match[0], markup) + '</div>')
+    return words(etree.tostring(tree, method='text', encoding='unicode'))
+
+
+def hidden(node):
+    vanish = node.getparent().find(f'{W}rPr/{W}vanish')
+    return vanish is not None and vanish.get(W + 'val', 'true') not in ('0', 'false')
+
+
+def visible_words(stream):
+    """Słowa widocznego tekstu treści i przypisów: bez usuniętych poprawek, ukrytych przebiegów, kopii mc:Choice
+    i separatorów przypisów; inicjał (w:dropCap) jest początkiem następnego akapitu."""
+    found, carried = set(), ''
+    with ZipFile(stream) as archive:
+        for name in ('word/document.xml', 'word/footnotes.xml', 'word/endnotes.xml'):
+            if name not in archive.namelist():
+                continue
+            for paragraph in etree.fromstring(archive.read(name)).iter(W + 'p'):
+                if any(node.tag in SKIPPED or node.get(W + 'type') in NOT_NOTES for node in paragraph.iterancestors()):
+                    continue
+                text, carried = carried, ''
+                for node in paragraph.iter(W + 't', W + 'tab', W + 'ptab', W + 'br', W + 'cr', W + 'noBreakHyphen'):
+                    if (next(node.iterancestors(W + 'p')) is not paragraph or hidden(node)
+                            or any(ancestor.tag in SKIPPED for ancestor in node.iterancestors())):
+                        continue
+                    text += (node.text or '') if node.tag == W + 't' else '-' if 'Hyphen' in node.tag else ' '
+                if paragraph.xpath('./w:pPr/w:framePr[@w:dropCap="drop"]', namespaces=NS):
+                    carried = text
+                    continue
+                found |= words(text)
+    return found
+
+
+def prepared(build):
+    """Plik po pierwszym kroku procesu roboczego: bez obrazów, w języku polskim."""
+    stripped, _ = strip_images(build())
+    return force_polish(stripped)
+
+
+class ExoticFixtureFidelityTests(SimpleTestCase):
+    """Generatory scenariuszy skrajnych odtwarzają cechy opisane w docstringach editor_fixtures_exotic."""
+
+    def test_editors_and_features_carry_the_described_markup(self):
+        traits = {
+            'word365': ('word/document.xml', '<w16se:symEx w16se:font="Segoe UI Emoji"'),
+            'word2007': ('word/document.xml', '<w:smartTag w:uri='),
+            'wps': ('word/_rels/document.xml.rels', 'Target="../customXml/item1.xml"'),
+            'onlyoffice': ('word/footer1.xml', '<w:fldSimple w:instr="PAGE \\* MERGEFORMAT">'),
+            'pages': ('word/styles.xml', 'w:styleId="Body"><w:name w:val="Body"/>'),
+            'google_docs_extras': ('word/document.xml', 'w:name="id.x1y2z3"'),
+            'minimal': ('[Content_Types].xml', '/word/document.xml'),
+            'unusual_notes': ('word/footnotes.xml', '<w:footnote w:type="separator" w:id="0">'),
+            'frames_and_drop_cap': ('word/document.xml', 'w:dropCap="drop"'),
+            'image_svg': ('word/document.xml', '<asvg:svgBlip r:embed="rIdSvg"/>'),
+        }
+        for name, (part_name, marker) in traits.items():
+            with self.subTest(name):
+                self.assertIn(marker, part(EXOTIC[name](), part_name))
+        with ZipFile(EXOTIC['minimal']()) as archive:
+            self.assertEqual(sorted(archive.namelist()), ['[Content_Types].xml', '_rels/.rels',
+                                                          'word/_rels/document.xml.rels', 'word/document.xml'])
+        self.assertIn('xmlns:w="http://purl.oclc.org/ooxml/wordprocessingml/main"',
+                      part(REFUSED_SCENARIOS['strict'](), 'word/document.xml'))
+
+    def test_foreign_files_have_the_signatures_of_the_real_samples(self):
+        """Sygnatury jak w plikach z LibreOffice 24.2: OLE (z EncryptedPackage dla hasła), RTF, ODT, XML 2003."""
+        self.assertTrue(foreign_file('doc').startswith(bytes.fromhex('d0cf11e0a1b11ae1')))
+        self.assertIn('WordDocument'.encode('utf-16-le'), foreign_file('doc'))
+        self.assertIn('EncryptedPackage'.encode('utf-16-le'), foreign_file('encrypted'))
+        self.assertTrue(foreign_file('rtf').startswith(b'{\\rtf1'))
+        with ZipFile(BytesIO(foreign_file('odt'))) as archive:
+            self.assertEqual(archive.namelist()[0], 'mimetype')
+        self.assertIn(b'<?mso-application progid="Word.Document"?><w:wordDocument', foreign_file('word2003'))
+
+
+class ExoticChainTests(SimpleTestCase):
+    """Przegląd, przebudowa, Odkurzacz i miękkie entery na każdym scenariuszu – w tym procesie."""
+
+    def test_rebuild_never_fails_and_never_drops_text_silently(self):
+        """Regresja: dokument bez w:sectPr (minimalny eksport) przerywał przegląd i przebudowę (IndexError).
+        Utracony tekst zawsze ma pozycję w liście pominięć."""
+        for name, build in EXOTIC.items():
+            for keep_page_format in (False, True):
+                with self.subTest(name, keep_page_format=keep_page_format):
+                    source = prepared(build)
+                    try:
+                        inspect_docx(source, keep_page_format=keep_page_format)
+                        omissions = []
+                    except RebuildUnsupported as error:
+                        omissions = error.omissions
+                    rebuilt = rebuild_docx(source, allow_omissions=True, keep_page_format=keep_page_format)
+                    Document(rebuilt)
+                    lost = visible_words(source) - visible_words(rebuilt)
+                    if lost:
+                        self.assertTrue(omissions, f'utracono bez uwagi: {sorted(lost)}')
+
+    def test_cleaner_and_soft_breaks_keep_the_text_of_every_scenario(self):
+        """Odkurzacz (cudzysłowy, spacje) i zamiana miękkich enterów na oryginalnym zapisie każdego edytora."""
+        for name, build in EXOTIC.items():
+            with self.subTest(name):
+                source = prepared(build)
+                output = prepare_docx(source, use_cleaner=True, cleaner_rules=CLEANER_RULES,
+                                      remove_soft_whitespace=True)
+                Document(output)
+                self.assertEqual(visible_words(output), visible_words(source))
+
+
+class ExoticRefusedFileTests(SimpleTestCase):
+    """Pliki innych formatów, nieobsługiwane odmiany DOCX i niebezpieczne pakiety: czytelny komunikat
+    formularza (gdy rozpoznaje go już formularz) i konwertera, zanim plik trafi do programów."""
+
+    def form_error(self, data):
+        try:
+            validate_docx_upload(SimpleUploadedFile('tekst.docx', data))
+        except forms.ValidationError as error:
+            return ' '.join(error.messages)
+        return None
+
+    def test_refused_files_get_a_clear_message(self):
+        """Regresja: .doc, ODT, RTF, DOCX z hasłem, Strict, szablon i dokument z makrami kończyły się ogólnym
+        „Nie można odczytać pliku” albo błędem procesu (ValueError, KeyError); DOCTYPE poza .rels i brak części
+        pakietu – błędem procesu."""
+        self.assertEqual(set(REFUSED), set(REFUSED_SCENARIOS))
+        for name, (form_message, message) in REFUSED.items():
+            with self.subTest(name):
+                data = REFUSED_SCENARIOS[name]().getvalue()
+                self.assertEqual(self.form_error(data), form_message)
+                with self.assertRaises(ConversionError) as raised:
+                    validate_resources(BytesIO(data))
+                self.assertEqual(str(raised.exception), message)
+
+    def test_other_scenarios_are_accepted(self):
+        """Pozostałe scenariusze (także brak pliku obrazu, który i tak zostanie usunięty) przechodzą sprawdzenie."""
+        for name, build in EXOTIC.items():
+            with self.subTest(name):
+                data = build().getvalue()
+                validate_resources(BytesIO(data))
+                # Część główna o innej nazwie (word/document2.xml) – formularz wymaga word/document.xml.
+                if name != 'package_renamed_main':
+                    self.assertIsNone(self.form_error(data))
+
+
+@tag('slow')
+class ExoticConversionTests(SimpleTestCase):
+    """Proces roboczy (main w tym procesie, jak przy konwersji z formularza): EPUB i PDF z każdego scenariusza."""
+
+    def setUp(self):
+        temporary = TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.directory = Path(temporary.name)
+        progress = patch.object(document_progress, '_target', None)
+        progress.start()
+        self.addCleanup(progress.stop)
+
+    def convert(self, source, **config):
+        """(słowa EPUB, słowa HTML przekazanego do składu PDF, uwagi) albo błąd testu; config – dodatkowe opcje
+        zadania (np. przebudowa)."""
+        for leftover in self.directory.iterdir():
+            leftover.unlink()
+        (self.directory / 'source.docx').write_bytes(source.getvalue())
+        (self.directory / 'job.json').write_text(json.dumps(
+            {'formats': ['epub', 'pdf'], 'prepare': True, 'normalize': True, 'title': 'Test', **config}),
+            encoding='utf-8')
+        captured = []
+        with patch('sys.argv', ['worker', str(self.directory)]), pdf_html_spy(captured):
+            code = main()
+        error = self.directory / 'error.json'
+        self.assertEqual(code, 0, error.read_text(encoding='utf-8') if error.exists() else '')
+        with ZipFile(self.directory / 'document.epub') as epub:
+            chapters = ' '.join(epub.read(name).decode('utf-8') for name in epub.namelist()
+                                if name.endswith('.xhtml') and 'nav' not in name)
+        notes = self.directory / 'warnings.json'
+        return (markup_words(chapters), markup_words(' '.join(content for content, _ in captured)),
+                json.loads(notes.read_text(encoding='utf-8')) if notes.exists() else [])
+
+    def test_every_scenario_keeps_its_visible_text(self):
+        """Regresja: e-book i PDF gubiły wynik w:fldSimple (numer podpisu, pole korespondencji) i tekst w w:dir/
+        w:bdo, sklejały słowa wokół w:cr i w:ptab, a odsyłacz do nieistniejącego przypisu przerywał konwersję."""
+        for name, build in EXOTIC.items():
+            with self.subTest(name):
+                expected = visible_words(prepared(build))
+                epub, pdf, notes = self.convert(build())
+                self.assertEqual(expected - epub, set(), 'EPUB')
+                self.assertEqual(expected - pdf, set(), 'PDF')
+                if name in CONVERSION_NOTES:
+                    self.assertTrue(any(note.startswith(CONVERSION_NOTES[name]) for note in notes), notes)
+
+    def test_review_markup_stays_out_of_ebook_and_pdf(self):
+        """Plik ze zmianami i komentarzami (Word 365, LibreOffice), bez przebudowy i z nią: konwersja się udaje,
+        e-book i PDF mają tekst po przyjęciu zmian – bez usuniętego i przeniesionego skąd tekstu oraz bez treści
+        komentarzy, ze wstawkami."""
+        deleted = {'usunięty', 'cofnięty', 'Cały'}
+        comments = {'Uwaga', 'Pytanie', 'Odpowiedź', 'Rozwiązane', 'punktowy'}
+        for name in ('review', 'libreoffice_review'):
+            for rebuild in (False, True):
+                with self.subTest(name, rebuild=rebuild):
+                    epub, pdf, _ = self.convert(EXOTIC[name](), rebuild=rebuild, allow_rebuild_omissions=rebuild)
+                    for words in (epub, pdf):
+                        self.assertEqual(words & (deleted | comments), set())
+                        self.assertLessEqual({'wstawiony', 'Przeniesiony', 'Koniec'}, words)

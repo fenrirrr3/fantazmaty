@@ -1,7 +1,7 @@
 {% extends "core/base.html" %}
 {% load static %}
 {% block title %}Tagi | Fantazmaty CMS{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'core/tags.css' %}">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/texts.css' %}">{% endblock %}
 {% block content %}
 <header class="page-header"><h1 class="page-title">Tagi</h1><p>Tagi tekstów przyjętych do wydania. Kliknij tytuł, aby uzupełnić tagi i gatunek obok notatek zespołu.</p></header>
 <section class="card"><div class="card-body">
@@ -19,7 +19,7 @@
         <option value="tags" {% if selected_sort == 'tags' %}selected{% endif %}>Tagi A–Z</option><option value="-tags" {% if selected_sort == '-tags' %}selected{% endif %}>Tagi Z–A</option>
         <option value="genre" {% if selected_sort == 'genre' %}selected{% endif %}>Gatunek A–Z</option><option value="-genre" {% if selected_sort == '-genre' %}selected{% endif %}>Gatunek Z–A</option>
     </select></div>
-    <div class="tag-filter-actions"><button class="primary-button" type="submit">Filtruj</button><a class="secondary-button" href="{% url 'core:tag_list' %}">Wyczyść filtry</a></div>
+    <div class="actions tag-filter-actions"><button class="primary-button" type="submit">Filtruj</button><a class="secondary-button" href="{% url 'core:tag_list' %}">Wyczyść filtry</a></div>
 </form></div></section>
 <section class="card"><div class="table-container" tabindex="0" role="region" aria-label="Tabela tagów">
     <table data-server-paginated="true"><caption class="visually-hidden">Tagi tekstów przyjętych do wydania</caption><thead><tr><th scope="col">Antologia</th><th scope="col">Tytuł</th><th scope="col">Autor</th><th scope="col">Tagi</th><th scope="col">Gatunek</th></tr></thead><tbody>

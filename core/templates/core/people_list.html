@@ -10,7 +10,7 @@
         </p>
     </header>
 
-    <section class="filters-card" aria-label="Filtry zespołu">
+    <section class="details-card filters-card" aria-label="Filtry zespołu">
         <form
             method="get"
             action="{% url 'core:people_list' %}"
@@ -57,7 +57,7 @@
                 {% for error in filter_form.roles.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
             </div>
 
-            <div class="filter-actions">
+            <div class="actions filter-actions">
                 <button type="submit" class="primary-button">Filtruj</button>
                 <a
                     href="{% url 'core:people_list' %}"
@@ -78,7 +78,7 @@
             aria-label="Tabela zespołu"
             tabindex="0"
         >
-            <table data-copy-table data-server-paginated="true" id="people-table">
+            <table data-copy-table data-server-paginated="true" id="people-table" class="people-table">
                 <caption class="visually-hidden">
                     Aktywni członkowie zespołu spełniający wybrane filtry
                 </caption>

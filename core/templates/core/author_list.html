@@ -10,7 +10,7 @@
         </p>
     </header>
 
-    <section class="filters-card" aria-label="Filtry autorów">
+    <section class="details-card filters-card" aria-label="Filtry autorów">
         <form
             method="get"
             action="{% url 'core:author_list' %}"
@@ -77,14 +77,14 @@
 
             <div class="filter-field">
                 <input type="hidden" name="accepted" value="0">
-                <label for="author-accepted" class="filter-toggle-button">
+                <label for="author-accepted" class="multi-filter-option">
                     <input id="author-accepted" type="checkbox" name="accepted" value="1"
                         {% if accepted_only %}checked{% endif %}>
                     Przyjęci
                 </label>
             </div>
 
-            <div class="filter-actions">
+            <div class="actions filter-actions">
                 <button type="submit" class="primary-button">Filtruj</button>
                 <a
                     href="{% url 'core:author_list' %}"

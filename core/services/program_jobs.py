@@ -26,6 +26,7 @@ from .document_converter import (
     MAX_OUTPUT, REBUILD_WARNING, ConversionError, RebuildConfirmationRequired, _try_lock, conversion_slot,
     convert_document, conversion_filename, converter_python, run_converter, validate_resources,
 )
+from .document_images import linked_images_note
 
 TTL = 1800
 STALE_AFTER = 150      # brak znaku życia procesu przez tyle sekund = błąd
@@ -526,6 +527,10 @@ def _run_split(folder, data, options, *, control, waiting):
     if report.get('skipped_intro'):
         warnings.append('Pominięto treść przed pierwszym Nagłówkiem 1 (np. stronę tytułową) – '
                         'nie ma jej w żadnym pliku.')
+    # Obrazy połączone z plikami spoza dokumentu – podproces usuwa je razem z linkiem przed podziałem.
+    linked = report.get('linked_images', 0)
+    if isinstance(linked, int) and not isinstance(linked, bool) and linked > 0:
+        warnings.append(linked_images_note(linked))
     return {'state': 'done', 'mime': 'application/zip', 'removed_images': 0, 'warnings': warnings[:30], 'split': True,
             'filename': conversion_filename(Path(data['name']).stem[:120] + ' – podział', 'zip')}
 

@@ -7,7 +7,7 @@
 
 {% block content %}
     <div class="auth-container">
-        <section class="auth-card">
+        <section class="card auth-card">
             <header class="auth-header">
                 <img class="auth-brand-image" src="{% static 'core/fantazmaty-logo.png' %}" alt="Fantazmaty">
                 <h1>Logowanie</h1>
@@ -26,7 +26,7 @@
             <form method="post" class="auth-form">
                 {% csrf_token %}
 
-                <div class="form-group">
+                <div class="form-field">
                     <label for="{{ form.username.id_for_label }}">
                         Adres e-mail
                     </label>
@@ -34,7 +34,7 @@
                     {{ form.username }}
                 </div>
 
-                <div class="form-group">
+                <div class="form-field">
                     <label for="{{ form.password.id_for_label }}">
                         Hasło
                     </label>
@@ -61,7 +61,7 @@
             >
                 Nie pamiętam hasła
             </a>
-            <blockquote id="login-quote">
+            <blockquote id="login-quote" class="login-quote">
                 <p data-quote-text>Wchodzący we mnie, zostawcie nadzieję!</p>
                 <footer>
                     <span data-quote-author>Dante Alighieri</span>,

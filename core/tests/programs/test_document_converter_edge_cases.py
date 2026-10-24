@@ -1,5 +1,6 @@
 """Konwerter po stronie serwera: czekanie na wolny konwerter, zatrzymanie procesu, który już się zakończył,
-za duży raport błędu i uszkodzone pliki pomocnicze wyniku (summary.json, images.json)."""
+za duży raport błędu, uszkodzone pliki pomocnicze wyniku (summary.json, images.json) oraz obrazy połączone
+z plikami zewnętrznymi (przyjmowane, z uwagą dla użytkownika)."""
 import json
 import os
 import subprocess
@@ -7,12 +8,16 @@ import sys
 from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
+from zipfile import ZipFile
 
 from django.test import SimpleTestCase
 
-from core.services.document_converter import ConversionError, conversion_slot, convert_document, run_converter
+from core.services.document_converter import (
+    LINKED_FILE_MESSAGE, ConversionError, conversion_slot, convert_document, run_converter, validate_resources,
+)
+from core.services.document_images import linked_images_note
 
-from .support import IsolatedProgramDirsMixin, formatted_docx
+from .support import IsolatedProgramDirsMixin, docx_with_linked_images, formatted_docx
 
 
 class Process:
@@ -166,3 +171,41 @@ class DamagedResultFilesTests(IsolatedProgramDirsMixin, SimpleTestCase):
             self.assertEqual(extension, 'epub')
             self.assertEqual(result.cleaner_summary, expected[label])
             self.assertEqual(result.removed_images, 0)
+
+
+class LinkedImageValidationTests(IsolatedProgramDirsMixin, SimpleTestCase):
+    """Decyzja właściciela: obraz połączony z plikiem zewnętrznym nie blokuje pliku – proces roboczy usuwa link."""
+
+    def test_linked_images_pass_validation_and_other_linked_files_do_not(self):
+        """Regresja: plik z obrazem połączonym był odrzucany („Osadź go w DOCX”). Inne podłączone pliki
+        (np. połączony obiekt OLE) nadal są odrzucane – CMS nigdy nie pobiera zasobów z zewnątrz."""
+        source = docx_with_linked_images()
+        validate_resources(source)
+        self.assertEqual(source.tell(), 0)
+        linked_object = BytesIO()
+        with ZipFile(source) as archive, ZipFile(linked_object, 'w') as target:
+            for item in archive.infolist():
+                data = archive.read(item.filename)
+                if item.filename == 'word/_rels/document.xml.rels':
+                    data = data.replace(b'relationships/hyperlink" Target="https://example.test/"',
+                                        b'relationships/oleObject" Target="file:///C:/Arkusz.xlsx"')
+                target.writestr(item, data)
+        with self.assertRaisesMessage(ConversionError, LINKED_FILE_MESSAGE):
+            validate_resources(linked_object)
+
+    def test_linked_images_get_a_note_before_other_warnings(self):
+        """Liczba obrazów tylko połączonych (images.json → linked_images) daje osobną uwagę na początku listy;
+        liczba usuniętych obrazów osadzonych zostaje w removed_images."""
+        for label, images, expected in (
+                ('obrazy połączone', {'removed_images': 1, 'linked_images': 2}, [linked_images_note(2), 'Uwaga']),
+                ('bez obrazów połączonych', {'removed_images': 1}, ['Uwaga'])):
+            def worker(directory, timeout, images=images):
+                (directory / 'document.epub').write_bytes(b'PK epub')
+                (directory / 'warnings.json').write_text(json.dumps(['Uwaga']), encoding='utf-8')
+                (directory / 'images.json').write_text(json.dumps(images), encoding='utf-8')
+
+            with self.subTest(label), patch('core.services.document_converter.run_converter', side_effect=worker):
+                result, _, _ = convert_document(BytesIO(formatted_docx()), ['epub'])
+                result.close()
+                self.assertEqual(result.conversion_warnings, expected)
+                self.assertEqual(result.removed_images, 1)

@@ -12,7 +12,7 @@
     </header>
 
     <div class="vacation-layout">
-        <section class="card vacation-form-card" aria-labelledby="vacation-form-heading">
+        <section class="details-card" aria-labelledby="vacation-form-heading">
             <h2 id="vacation-form-heading">Zgłoś urlop</h2>
             {% if can_manage_team_vacations %}<p class="form-help">Możesz zgłosić urlop swój lub innej osoby. Wybierz ją poniżej.</p>{% endif %}
 
@@ -65,7 +65,7 @@
                 <div class="form-field">
                     <label
                         for="{{ form.until_revoked.id_for_label }}"
-                        class="vacation-checkbox"
+                        class="checkbox-field"
                     >
                         {{ form.until_revoked }}
                         <span>{{ form.until_revoked.label }}</span>
@@ -81,7 +81,7 @@
                     </p>
                 </div>
 
-                <div class="dialog-actions">
+                <div class="actions form-actions">
                     <button type="submit" class="primary-button">
                         Zgłoś urlop
                     </button>
@@ -90,7 +90,7 @@
         </section>
 
         <section class="card vacation-history" aria-labelledby="vacation-history-heading">
-            <header class="vacation-history-header">
+            <header class="section-header">
                 <div>
                     <h2 id="vacation-history-heading">Moje zgłoszenia</h2>
                     <p class="form-help">
@@ -161,7 +161,7 @@
                                 </td>
 
                                 <td data-copy="false">
-                                    <div class="vacation-actions">
+                                    <div class="actions vacation-actions">
                                         {% if vacation.can_be_edited %}
                                             <a
                                                 href="{% url 'core:edit_vacation' vacation.pk %}"
@@ -185,7 +185,7 @@
                 
                                                 <button
                                                     type="submit"
-                                                    class="vacation-end-button"
+                                                    class="danger-button"
                                                     aria-label="Zakończ teraz urlop rozpoczęty {{ vacation.start_date|date:'d.m.Y' }}"
                                                 >
                                                     Zakończ teraz

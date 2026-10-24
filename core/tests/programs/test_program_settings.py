@@ -13,9 +13,9 @@ from docx import Document
 
 from core.models import ProgramPreferences, ReplacementEntry
 from core.odkurzacz_forms import (
-    FORM_DEFAULT_RULE_LIST, DocumentConversionForm, OdkurzaczForm,
+    FORM_DEFAULT_RULE_LIST, DocumentConversionForm, MergeForm, OdkurzaczForm,
 )
-from core.services.odkurzacz import EDITORIAL_RULES
+from core.services.odkurzacz import EDITORIAL_RULES, ORTHOGRAPHY_2026_RULES
 from core.services import document_conversion_worker as worker
 from core.services import document_preparation as preparation
 from core.services import document_repetitions as repetitions
@@ -113,9 +113,30 @@ class RememberedSettingsTests(ProgramViewMixin, TestCase):
         self.assertEqual(context['form'].initial['rules'], ['spaces', default_rule] if default_rule != 'spaces'
                          else ['spaces'])
         self.assertEqual(context['conversion_form'].initial['rules'], ['spaces'])
-        # Zapis bez listy znanych reguł (sprzed tej zmiany) – jak dotąd.
+        # Zapis bez listy znanych reguł (sprzed tej zmiany) znał wszystkie reguły poza „Ortografią 2026”:
+        # odznaczone wtedy reguły zostają odznaczone, nowe są włączone jak domyślnie.
         ProgramPreferences.objects.filter(user=self.member).update(data={'clean': {'rules': ['trim']}})
-        self.assertEqual(self.client.get(self.url).context['form'].initial['rules'], ['trim'])
+        self.assertEqual(self.client.get(self.url).context['form'].initial['rules'],
+                         ['trim', *(key for key, _ in ORTHOGRAPHY_2026_RULES)])
+
+    def test_orthography_2026_rules_are_switched_on_in_remembered_settings(self):
+        """Reguły „Ortografia 2026” w zapamiętanych ustawieniach Odkurzacza, konwersji i scalania: włączone,
+        gdy zapis ich nie znał (z listą znanych reguł i bez niej); świadomie odznaczone – zostają odznaczone."""
+        ortho = [key for key, _ in ORTHOGRAPHY_2026_RULES]
+        before = [key for key, _ in EDITORIAL_RULES if key not in ortho]
+        cases = {
+            'lista znanych sprzed reformy': ({'rules': ['spaces'], 'known_rules': before}, ['spaces', *ortho]),
+            'bez listy znanych': ({'rules': ['spaces']}, ['spaces', *ortho]),
+            'odznaczone po zmianie': ({'rules': ['spaces'], 'known_rules': [key for key, _ in EDITORIAL_RULES]},
+                                      ['spaces']),
+        }
+        for name, (stored, expected) in cases.items():
+            for form_class in (OdkurzaczForm, DocumentConversionForm, MergeForm):
+                with self.subTest(name, form=form_class.__name__):
+                    self.assertEqual(form_class.initial_from_settings(stored)['rules'], expected)
+            with self.subTest(name, page=True):
+                ProgramPreferences.objects.update_or_create(user=self.member, defaults={'data': {'clean': stored}})
+                self.assertEqual(self.client.get(self.url).context['form'].initial['rules'], expected)
 
     def test_settings_are_remembered_only_when_the_job_is_accepted(self):
         with patch.object(jobs, 'create', side_effect=jobs.JobError('Kolejka programów jest pełna.')):
@@ -152,7 +173,9 @@ class RememberedSettingsTests(ProgramViewMixin, TestCase):
             'nieznany': {'x': 1},
         })
         context = self.client.get(self.url).context
-        self.assertEqual(context['form'].initial, {'rules': ['spaces'], 'cleaner_summary': True})
+        # Zapis bez listy znanych reguł nie znał reguł „Ortografia 2026” – dostają wartość domyślną (włączone).
+        self.assertEqual(context['form'].initial, {'rules': ['spaces', *(key for key, _ in ORTHOGRAPHY_2026_RULES)],
+                                                   'cleaner_summary': True})
         self.assertEqual(context['conversion_form'].initial, {'use_cleaner': True})
         self.assertEqual(context['repetitions_form'].initial, {'ignored_words': 'kot', 'sentence_limit': 40})
 
@@ -332,7 +355,7 @@ class ChangeSummaryTests(IsolatedProgramDirsMixin, TestCase):
         self.assertTrue(self.options['cleaner_summary'])
 
     def test_replacements_and_removed_images_reach_the_job_state(self):
-        replacements = [{'source': 'pickupem', 'target': 'pikapem', 'count': 2},
+        replacements = [{'source': 'mentlikiem', 'target': 'mętlikiem', 'count': 2},
                         {'source': 'Zapewnie', 'target': 'Zapewne', 'count': 1}]
         page = self.run_job({'cleaner_summary': 'on'}, {'user_word_corrections': 3, 'replacements': replacements})
         state = page.context['state']
@@ -438,7 +461,7 @@ class ConverterConfigurationTests(SimpleTestCase):
             seen.update(json.loads((directory / 'job.json').read_text(encoding='utf-8')))
             (directory / 'summary.json').write_text(json.dumps({
                 'spaces': 3, 'trim': 0, 'x': 'tekst', 'y': True,
-                'replacements': [{'source': 'pickupem', 'target': 'pikapem', 'count': 2},
+                'replacements': [{'source': 'mentlikiem', 'target': 'mętlikiem', 'count': 2},
                                  {'source': 'zły', 'target': 3, 'count': 1}, 'tekst']}))
             (directory / 'images.json').write_text(json.dumps({'removed_images': 4}))
 
@@ -455,7 +478,7 @@ class ConverterConfigurationTests(SimpleTestCase):
                          {'track_changes': True, 'cleaner_summary': True, 'replacements': replacements,
                           'keep_page_format': True, 'analysis_unlimited': True})
         self.assertEqual(result.cleaner_summary, {
-            'spaces': 3, 'replacements': [{'source': 'pickupem', 'target': 'pikapem', 'count': 2}]})
+            'spaces': 3, 'replacements': [{'source': 'mentlikiem', 'target': 'mętlikiem', 'count': 2}]})
         self.assertEqual(result.removed_images, 4)
 
     def test_too_large_document_xml_is_refused_before_the_worker(self):

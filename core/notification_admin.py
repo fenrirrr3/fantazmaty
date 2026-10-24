@@ -126,7 +126,7 @@ class NotificationRuleAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     def reminder_targets(self, obj):
         rules = {rule.trigger: rule for rule in NotificationRule.objects.filter(trigger__in=REMINDABLE)}
         rows = [(rules[value], *reminder_target(obj, rules[value])) for value in REMINDABLE if value in rules]
-        return format_html('<ul style="margin:0;padding-left:1.2em">{}</ul>', format_html_join(
+        return format_html('<ul class="cms-compact-list">{}</ul>', format_html_join(
             '', '<li>po „{}” → kanał: {}, oznaczenie: {}</li>',
             ((base, channel or '– brak (przypomnienie nie wyjdzie) –', mention or '–') for base, channel, mention in rows)))
 
@@ -138,7 +138,7 @@ class NotificationRuleAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     def problems(self, obj):
         found = rule_problems(obj, configured_channel_names())
         return format_html_join('', '<div{}>{}</div>', (
-            (format_html(' style="color:var(--error-fg);font-weight:bold"') if text == DISABLED_NOTE else '', text)
+            (format_html(' class="cms-error-text"') if text == DISABLED_NOTE else '', text)
             for text in found)) if found else 'działa'
 
     def get_queryset(self, request):

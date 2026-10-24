@@ -28,6 +28,38 @@ def read_property(formatting, name):
         return unknown_format_value(formatting, name)
 
 
+DROP_CAP_RUN_PROPERTIES = ('w:sz', 'w:szCs', 'w:position')
+
+
+def merge_drop_caps(root):
+    """Inicjały Worda (akapit z w:framePr w:dropCap) wracają na początek następnego akapitu; zwraca ich liczbę.
+
+    Word zapisuje inicjał jako osobny akapit z pierwszą literą w ramce, a resztę słowa w akapicie następnym –
+    bez scalenia e-book, PDF i przebudowa pokazałyby „W” i „ielki…” jako dwa akapity. Litera traci rozmiar
+    i przesunięcie inicjału (dostaje formatowanie akapitu). Inicjał bez akapitu po nim zostaje bez zmian.
+    """
+    count = 0
+    for paragraph in list(root.iter(qn('w:p'))):
+        frame = paragraph.find(f'{qn("w:pPr")}/{qn("w:framePr")}')
+        following = paragraph.getnext()
+        if (frame is None or frame.get(qn('w:dropCap')) not in ('drop', 'margin')
+                or following is None or following.tag != qn('w:p')):
+            continue
+        properties = following.find(qn('w:pPr'))
+        index = 0 if properties is None else following.index(properties) + 1
+        for child in list(paragraph):
+            if child.tag == qn('w:pPr'):
+                continue
+            for run_properties in child.iter(qn('w:rPr')):
+                for node in [node for name in DROP_CAP_RUN_PROPERTIES for node in run_properties.findall(qn(name))]:
+                    run_properties.remove(node)
+            following.insert(index, child)
+            index += 1
+        paragraph.getparent().remove(paragraph)
+        count += 1
+    return count
+
+
 def style_chain(style):
     seen = set()
     while style is not None and style.style_id not in seen:

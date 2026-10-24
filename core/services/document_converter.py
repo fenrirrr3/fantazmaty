@@ -17,6 +17,8 @@ from zipfile import BadZipFile, ZipFile, ZIP_DEFLATED
 from django.conf import settings
 from lxml import etree
 
+from .document_images import is_linked_image, linked_images_note
+
 logger = logging.getLogger(__name__)
 
 FORMATS = {'pdf': 'application/pdf', 'epub': 'application/epub+zip'}
@@ -96,9 +98,33 @@ def conversion_slot(wait=0, on_wait=None):
                 msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
 
 
+# Relacje obrazów i osadzonych plików: proces roboczy usuwa je przed pracą programów, więc brak pliku nie szkodzi.
+OPTIONAL_TARGETS = ("/image", "/oleObject", "/package", "/hdphoto", "/media", "/video", "/audio",
+                    "/metadata/thumbnail")
+# Deklaracja DTD lub encji w części XML (Word jej nie zapisuje): także w UTF-16.
+DOCTYPE_MARKERS = tuple(marker.encode(encoding) for marker in ("<!DOCTYPE", "<!ENTITY")
+                        for encoding in ("ascii", "utf-16-le", "utf-16-be"))
+DAMAGED_MESSAGE = ("Dokument jest uszkodzony – brakuje jednej z jego części. "
+                   "Otwórz go w Wordzie lub LibreOffice i zapisz ponownie.")
+# Zewnętrzne relacje inne niż hiperłącza, szablon i obrazy połączone (np. połączony obiekt OLE, film, dźwięk).
+LINKED_FILE_MESSAGE = ("Dokument zawiera podłączony plik zewnętrzny (np. obiekt, film lub dźwięk). "
+                       "Osadź go w DOCX przed konwersją.")
+
+
 def validate_resources(source):
-    """Do not let conversion fetch linked files, remote images or templates."""
+    """Do not let conversion fetch linked files, remote images or templates.
+
+    Plik innego formatu (np. .doc, ODT, zaszyfrowany DOCX) albo nieobsługiwana odmiana DOCX dostaje własny
+    komunikat; deklaracja DTD w dowolnej części XML i brak części, do której prowadzi relacja (python-docx
+    przerwałby wtedy pracę), też kończą się czytelnym błędem.
+    """
+    from .document_errors import MESSAGES, foreign_format
+
     source.seek(0)
+    kind = foreign_format(source.read())
+    source.seek(0)
+    if kind:
+        raise ConversionError(MESSAGES[kind])
     try:
         with ZipFile(source) as archive:
             names = archive.namelist()
@@ -109,13 +135,17 @@ def validate_resources(source):
                 raise ConversionError("Nieprawidłowa struktura dokumentu DOCX.")
             limit = int(getattr(settings, "DOCUMENT_XML_LIMIT", DOCUMENT_XML_LIMIT))
             if any(item.filename.lower().endswith(".xml") and item.file_size > limit for item in archive.infolist()):
-                from .document_errors import MESSAGES
                 raise ConversionError(MESSAGES["document_too_large"])
             if len(names) != len(set(names)):
                 raise ConversionError(
                     "Dokument zawiera powielone elementy. Zapisz go ponownie w Wordzie."
                 )
+            present = set(names)
             for name in names:
+                if name.lower().endswith(".xml"):
+                    with archive.open(name) as part:
+                        if any(marker in part.read(65536) for marker in DOCTYPE_MARKERS):
+                            raise ConversionError("Nieobsługiwany dokument DOCX.")
                 if name.lower().endswith(".rels"):
                     try:
                         root = etree.fromstring(
@@ -145,13 +175,20 @@ def validate_resources(source):
                                 raise ConversionError(
                                     "Dokument zawiera nieprawidłowe odwołanie do pliku."
                                 )
+                            folder, rels_file = posixpath.split(name)
+                            owner = posixpath.join(posixpath.dirname(folder), rels_file[: -len(".rels")])
+                            if (target and resolved not in present
+                                    and (owner == "" or owner in present)
+                                    and not relationship.get("Type", "").endswith(OPTIONAL_TARGETS)):
+                                raise ConversionError(DAMAGED_MESSAGE)
                         if relationship.get("TargetMode", "").lower() == "external":
                             # Szablon dołączony przez Worda (attachedTemplate) to tylko ścieżka
-                            # w ustawieniach – żadna biblioteka go nie pobiera.
-                            if not relationship.get("Type", "").endswith(("/hyperlink", "/attachedTemplate")):
-                                raise ConversionError(
-                                    "Dokument zawiera zewnętrzny obraz lub inny podłączony plik. Osadź go w DOCX przed konwersją."
-                                )
+                            # w ustawieniach – żadna biblioteka go nie pobiera. Obraz połączony
+                            # z plikiem zewnętrznym proces roboczy usuwa przed pracą programów
+                            # (unlink_external_images, decyzja właściciela: usuwamy sam link).
+                            if not (relationship.get("Type", "").endswith(("/hyperlink", "/attachedTemplate"))
+                                    or is_linked_image(name, relationship)):
+                                raise ConversionError(LINKED_FILE_MESSAGE)
     except (BadZipFile, OSError, EOFError, NotImplementedError, RuntimeError):
         # Nie ZIP, uszkodzony ZIP, nieobsługiwana kompresja lub szyfrowanie.
         raise ConversionError("Nie można odczytać pliku. Wybierz prawidłowy DOCX.") from None
@@ -426,6 +463,10 @@ def convert_document(
                     if replacements:
                         result.cleaner_summary["replacements"] = replacements
             result.removed_images = _removed_images(directory / "images.json")
+            # Obrazy tylko połączone z plikami zewnętrznymi (usunięte razem z linkiem) – osobna uwaga.
+            note = linked_images_note(_removed_images(directory / "images.json", "linked_images"))
+            if note:
+                result.conversion_warnings = [note, *warnings][:30]
             outputs = [directory / ("document." + kind) for kind in selected]
             pdf_error = directory / "pdf_error.json"
             if (
@@ -498,11 +539,12 @@ def _replacement_list(value):
     return result
 
 
-def _removed_images(path):
-    """Liczba obrazów usuniętych przez podproces (images.json); 0, gdy pliku nie ma lub jest błędny."""
+def _removed_images(path, key="removed_images"):
+    """Liczba obrazów usuniętych przez podproces (images.json; key="linked_images" – obrazów tylko
+    połączonych z plikami zewnętrznymi); 0, gdy pliku nie ma lub jest błędny."""
     try:
         if path.is_file() and path.stat().st_size <= 1024:
-            value = json.loads(path.read_text(encoding="utf-8")).get("removed_images", 0)
+            value = json.loads(path.read_text(encoding="utf-8")).get(key, 0)
             if isinstance(value, int) and not isinstance(value, bool) and value > 0:
                 return value
     except (OSError, ValueError, AttributeError):

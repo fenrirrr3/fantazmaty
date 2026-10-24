@@ -19,7 +19,7 @@
 {% if overview.changed %}<section class="card"><div class="card-body">
 <h2>Zmiany do zastosowania</h2>
 <div class="site-www-sections">{% for plan in overview.changed %}
-<section class="site-www-section" id="zmiany-{{ plan.anthology.pk }}"><div class="site-www-section-header"><h3><a href="{% url 'core:site_catalog_update' plan.anthology.pk %}">{{ plan.anthology.display_title }}</a>{% if plan.novel %} <span class="badge site-www-badge-manual">powieść</span>{% endif %}</h3>
+<section class="panel is-muted site-www-section" id="zmiany-{{ plan.anthology.pk }}"><div class="site-www-section-header"><h3><a href="{% url 'core:site_catalog_update' plan.anthology.pk %}">{{ plan.anthology.display_title }}</a>{% if plan.novel %} <span class="badge is-info">powieść</span>{% endif %}</h3>
 <p class="site-www-meta site-www-count">nowe opowiadania: {{ plan.new_stories|length }}</p></div>
 {% include "core/includes/site_catalog_plan_changes.html" with level=4 %}
 {% if plan.notes %}<details class="site-catalog-warning-list"><summary>Tylko do wiadomości ({{ plan.notes }})</summary>{% include "core/includes/site_catalog_plan_reports.html" %}</details>{% endif %}

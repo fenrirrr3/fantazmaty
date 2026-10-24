@@ -64,7 +64,7 @@ class TextDetailLayoutTests(TestCase):
                 self.story.save()
                 doc = html.fromstring(self.client.get(reverse('core:assigned_text_detail', args=[self.story.pk])).content)
                 pair = doc.xpath('//div[@data-text-notes-pair]')[0]
-                self.assertEqual(pair.get('class'), 'text-notes-pair')
+                self.assertEqual(pair.get('class'), 'two-columns text-notes-pair')
                 self.assertEqual([child.tag for child in pair], ['section', second])
                 self.assertEqual(pair[0].get('id'), 'text-notes')
                 self.assertTrue(pair[1].xpath('descendant-or-self::*[@aria-labelledby="coordinator-note-heading"]'))

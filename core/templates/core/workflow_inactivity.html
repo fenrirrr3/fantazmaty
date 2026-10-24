@@ -15,7 +15,7 @@
         </p>
     </header>
 
-    <section class="filters-card" aria-label="Filtry przestojów">
+    <section class="details-card filters-card" aria-label="Filtry przestojów">
         <form
             method="get"
             action="{% url 'core:workflow_inactivity' %}"
@@ -70,7 +70,7 @@
                 </details>
             </div>
 
-            <div class="filter-actions">
+            <div class="actions filter-actions">
                 <button type="submit" class="primary-button">Filtruj</button>
                 <a
                     href="{% url 'core:workflow_inactivity' %}"
@@ -197,7 +197,7 @@
                             </td>
 
                             <td>
-                                <span class="inactivity-badge{% if row.inactivity_type == 'active' %} is-active{% endif %}">
+                                <span class="badge {% if row.inactivity_type == 'active' %}is-danger{% else %}is-warning{% endif %}">
                                     {% if row.inactivity_type == "active" %}
                                         Przedłużająca się praca
                                     {% else %}

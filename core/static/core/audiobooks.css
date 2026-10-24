@@ -1,10 +1,16 @@
-/* Audiobooki: lista, szczegóły produkcji, korekta audiobooków i profile osób. */
+/*
+ * Audiobooki i audiodeskrypcje: lista, szczegóły produkcji, korekta audiobooków, osoby (lektorzy, montaż),
+ * publiczna lista audiobooków do nagrania oraz audiodeskrypcje antologii. Kolory wyłącznie z tokenów.
+ */
 
+/* ===== Filtry, metadane i formularze ===== */
 .audio-actions {
     margin: var(--space-3) 0;
 }
 
-.audio-filters, .audio-metadata, .audio-name-profile {
+.audio-filters,
+.audio-metadata,
+.audio-name-profile {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--space-4) var(--space-5);
@@ -41,6 +47,35 @@
     overflow-wrap: anywhere;
 }
 
+.audio-production-form {
+    display: grid;
+    gap: var(--space-4);
+}
+
+.audio-production-form button {
+    justify-self: start;
+}
+
+.audio-production-form fieldset {
+    display: grid;
+    gap: var(--space-3);
+    min-width: 0;
+}
+
+.audio-production-form fieldset > :is(.actions, details) {
+    margin: 0;
+}
+
+.audio-production-form .form-field + .form-field {
+    margin-top: var(--space-3);
+}
+
+/* Formularze w siatce: odstęp wyznacza gap, więc pola nie mają marginesów. */
+:is(.audio-publication-form, .audio-stage-add) .form-field,
+:is(.audio-publication-form, .audio-stage-add) .form-field + .form-field {
+    margin: 0;
+}
+
 /* Status audiobooka: geometria odznaki jest w components.css, tu tylko kolory etapów z palet motywu:
    nagrywanie i poprawki – czerwień redakcji, korekta – zieleń, montaż – fiolet, opublikowane – zieleń sukcesu. */
 .audio-status--recording,
@@ -64,8 +99,7 @@
     --badge-fg: var(--success);
 }
 
-/* Tabele */
-
+/* ===== Tabele ===== */
 .audio-table th {
     min-width: 7rem;
     white-space: normal;
@@ -73,7 +107,7 @@
 
 .audio-table .text-title-link {
     display: block;
-    min-width: 12rem;
+    min-width: var(--cell-min-width);
 }
 
 .audio-table tbody a:not(.text-title-link) {
@@ -89,7 +123,7 @@
 }
 
 .audio-correction-history {
-    min-width: 12rem;
+    min-width: var(--cell-min-width);
     margin: 0;
     padding: 0;
     list-style: none;
@@ -106,7 +140,6 @@
 }
 
 /* Przypisanie korektora i przejęcie korekty w komórce tabeli. */
-
 .audio-table-actions {
     display: grid;
     grid-template-columns: auto auto;
@@ -144,8 +177,11 @@
     margin: 0;
 }
 
-/* Szczegóły audiobooka */
+.audio-finish-button {
+    min-width: var(--control-height);
+}
 
+/* ===== Szczegóły audiobooka ===== */
 .audio-detail-columns {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -158,44 +194,13 @@
     margin: 0;
 }
 
+.audio-detail-columns .audio-publication-form {
+    gap: var(--space-3);
+}
+
 /* Historia etapów pod kolumnami – tabela z polami potrzebuje pełnej szerokości. */
 .audio-stage-card {
     margin-top: var(--space-5);
-}
-
-.audio-production-form {
-    display: grid;
-    gap: var(--space-4);
-}
-
-.audio-production-form button {
-    justify-self: start;
-}
-
-.audio-production-form fieldset {
-    display: grid;
-    gap: var(--space-3);
-    min-width: 0;
-}
-
-.audio-production-form fieldset > :is(.actions, details) {
-    margin: 0;
-}
-
-.audio-production-form .form-field + .form-field {
-    margin-top: var(--space-3);
-}
-
-/* Formularze w siatce: odstęp wyznacza gap, więc pola nie mają marginesów. */
-
-:is(.audio-publication-form, .audio-stage-add) .form-field,
-
-:is(.audio-publication-form, .audio-stage-add) .form-field + .form-field {
-    margin: 0;
-}
-
-.audio-detail-columns .audio-publication-form {
-    gap: var(--space-3);
 }
 
 .audio-stage-add {
@@ -257,8 +262,58 @@
     text-align: right;
 }
 
-.audio-finish-button {
-    min-width: var(--control-height);
+/* ===== Publiczna lista audiobooków do nagrania ===== */
+.external-audiobooks {
+    max-width: 1440px;
+    margin: var(--space-6) auto;
+    padding: 0 var(--space-4);
+}
+
+.audiobook-public-actions {
+    margin-top: var(--space-4);
+}
+
+.audiobook-filter-actions {
+    flex-basis: 100%;
+}
+
+/* Status w jednym wierszu („Nanoszenie poprawek” nie zajmuje dwóch linii). */
+.external-audiobooks .stage-status {
+    white-space: nowrap;
+}
+
+.external-audio-tags {
+    min-width: var(--cell-min-width);
+    max-width: 32rem;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+/* ===== Audiodeskrypcje ===== */
+.audiodesc-columns {
+    margin-bottom: var(--space-5);
+}
+
+.audiodesc-form .form-field {
+    margin-bottom: var(--space-4);
+}
+
+.audiodesc-content {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.audiodesc-note {
+    margin-top: var(--space-4);
+    padding-top: var(--space-4);
+    border-top: 1px solid var(--border);
+}
+
+.audiodesc-note header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-4);
+    margin-bottom: var(--space-2);
 }
 
 @media screen and (max-width: 1100px) {
@@ -268,11 +323,10 @@
 }
 
 @media screen and (max-width: 760px) {
-    .audio-detail-columns {
-        grid-template-columns: 1fr;
-    }
-
-    .audio-stage-add {
+    .audio-detail-columns,
+    .audio-stage-add,
+    .audio-filters,
+    .audio-metadata {
         grid-template-columns: 1fr;
     }
 
@@ -296,11 +350,8 @@
     .audio-stage-table td.audio-stage-remove::before {
         content: none;
     }
-
-    .audio-filters, .audio-metadata {
-        grid-template-columns: 1fr;
-    }
 }
+
 @media screen and (max-width: 480px) {
     .audio-name-profile {
         grid-template-columns: 1fr;

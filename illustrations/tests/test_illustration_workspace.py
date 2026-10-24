@@ -312,7 +312,7 @@ class IllustrationListFiltersAndRulesTests(TestCase):
         illustration.save(update_fields=['status'])
         illustration.refresh_from_db()
         self.assertEqual((illustration.status, illustration.assigned_at), ('unassigned', None))
-        self.assertEqual(str(PublicIllustrationSettings()), 'Zewnętrzne ilustracje – wspólny link GDrive')
+        self.assertEqual(str(PublicIllustrationSettings()), 'Zewnętrzne ilustracje – GDrive i wytyczne')
 
 
 class LegacyIllustrationTests(TestCase):

@@ -135,13 +135,23 @@ def open_result_file(path):
 
 
 def _prepare_source(path, strip):
-    """Tak jak w CMS: najpierw usunięcie obrazów i narzucenie języka polskiego (opcjonalne lokalnie)."""
+    """Tak jak w CMS: najpierw usunięcie połączeń obrazów z plikami zewnętrznymi (zawsze), potem usunięcie
+    obrazów i narzucenie języka polskiego (opcjonalne lokalnie).
+
+    Zwraca (dokument, liczba usuniętych obrazów, liczba usuniętych obrazów tylko połączonych z plikami
+    zewnętrznymi). Plik innego formatu z rozszerzeniem .docx (np. .doc, ODT, DOCX z hasłem) kończy się
+    komunikatem z CMS.
+    """
     with open(path, 'rb') as handle:
         data = BytesIO(handle.read())
+    kind = foreign_format(data.getvalue())
+    if kind:
+        raise ValueError(MESSAGES[kind])
+    data, linked = unlink_external_images(data)
     if not strip:
-        return data, 0
+        return data, 0, linked
     stripped, removed = strip_images(data)
-    return force_polish(stripped), removed
+    return force_polish(stripped), removed, linked
 
 
 def run_program(program, source, settings, progress):
@@ -153,9 +163,11 @@ def run_program(program, source, settings, progress):
     rules = [key for key, enabled in settings['rules'].items() if enabled]
     try:
         progress('Przygotowanie dokumentu…')
-        payload, removed = _prepare_source(source, settings['strip_images'])
+        payload, removed, linked = _prepare_source(source, settings['strip_images'])
         if removed:
             notes.append(f'Usunięto obrazy: {removed}.')
+        if linked:
+            notes.append(linked_images_note(linked))
         if program == 'Przebudowa':
             progress('Przebudowa DOCX…')
             try:
@@ -296,8 +308,9 @@ def launch_gui():
     inner = scrollable(tab)
     inner.columnconfigure(0, weight=1)
     ttk.Label(inner, wraplength=880, justify='left', text=(
-        'Odkurzacz poprawia spacje, interpunkcję, cudzysłowy, myślniki i zapis liczb we wszystkich częściach '
-        'dokumentu. Wynik zapisuje obok pliku źródłowego jako „nazwa_odkurzony.docx”.')).grid(row=0, column=0, sticky='w')
+        'Odkurzacz poprawia spacje, interpunkcję, cudzysłowy, myślniki, zapis liczb i pisownię według zasad z 2026 r. '
+        '(reguły „Ortografia 2026”) we wszystkich częściach dokumentu. Wynik zapisuje obok pliku źródłowego jako '
+        '„nazwa_odkurzony.docx”.')).grid(row=0, column=0, sticky='w')
     options = ttk.Frame(inner)
     options.grid(row=1, column=0, sticky='w', pady=8)
     for column, (key, label) in enumerate((

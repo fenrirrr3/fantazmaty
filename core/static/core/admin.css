@@ -1,0 +1,525 @@
+/*
+ * Panel administracyjny (Django admin): kolory motywów, nawigacja z grupami, pulpit, formularz osoby,
+ * kopiowanie z tabel i drobne klasy zamiast stylów inline w szablonach i komunikatach panelu.
+ * Django admin ma własne zmienne kolorów, więc wartości hex są tu dozwolone; skale (odstępy, zaokrąglenia)
+ * pochodzą z tokens.css. Motyw ustawia core/theme.js (data-theme: light, dark albo autumn).
+ */
+
+/* ===== Kolory motywów ===== */
+:root,
+html[data-theme="light"] {
+    --primary: #1761b0;
+    --secondary: #172434;
+    --accent: #ffffff;
+    --primary-fg: #ffffff;
+    --header-color: #ffffff;
+    --header-branding-color: #ffffff;
+    --header-bg: #172434;
+    --header-link-color: #e5edf7;
+    --breadcrumbs-fg: #e5edf7;
+    --breadcrumbs-link-fg: #ffffff;
+    --breadcrumbs-bg: #263b52;
+    --link-fg: #1761b0;
+    --link-hover-color: #114b89;
+    --link-selected-fg: #114b89;
+    --button-bg: #1761b0;
+    --button-hover-bg: #114b89;
+    --default-button-bg: #1761b0;
+    --default-button-hover-bg: #114b89;
+    --selected-bg: #eaf3ff;
+    --selected-row: #eaf3ff;
+    --cms-focus: #1761b0;
+    --cms-copied-bg: #eaf6ef;
+    --cms-copied-fg: #176643;
+    --cms-error: #b12b36;
+    --cms-toast-bg: #172434;
+    --cms-toast-border: #49617b;
+    --cms-toast-fg: #ffffff;
+    --cms-flag-bg: #edf2f6;
+    --cms-flag-fg: #465467;
+    --cms-flag-on-bg: #fce4e4;
+    --cms-flag-on-fg: #991b1b;
+}
+
+html[data-theme="dark"] {
+    --link-fg: #8bbfff;
+    --link-hover-color: #bedcff;
+    --link-selected-fg: #bedcff;
+    --selected-bg: #253b52;
+    --selected-row: #253b52;
+    --cms-focus: #8bbfff;
+    --cms-copied-bg: #183b2b;
+    --cms-copied-fg: #a5e4be;
+    --cms-error: #ff9ca5;
+    --cms-flag-bg: #2a394d;
+    --cms-flag-fg: #b8c4d3;
+    --cms-flag-on-bg: #4a2228;
+    --cms-flag-on-fg: #ffb4be;
+}
+
+html[data-theme="autumn"] {
+    color-scheme: light;
+    --body-bg: #fffcf5;
+    --body-fg: #382c22;
+    --body-quiet-color: #67513d;
+    --body-loud-color: #382c22;
+    --primary: #904313;
+    --secondary: #503322;
+    --accent: #ffffff;
+    --primary-fg: #ffffff;
+    --header-bg: #503322;
+    --header-color: #ffffff;
+    --header-branding-color: #ffffff;
+    --header-link-color: #fff1dc;
+    --breadcrumbs-bg: #70472d;
+    --breadcrumbs-fg: #f6e4cd;
+    --breadcrumbs-link-fg: #ffffff;
+    --link-fg: #904313;
+    --link-hover-color: #6d310d;
+    --link-selected-fg: #6d310d;
+    --button-bg: #904313;
+    --button-fg: #ffffff;
+    --button-hover-bg: #6d310d;
+    --default-button-bg: #904313;
+    --default-button-hover-bg: #6d310d;
+    --hairline-color: #d7c3a8;
+    --border-color: #a58360;
+    --darkened-bg: #f8efdf;
+    --selected-bg: #f9e4c8;
+    --selected-row: #f9e4c8;
+    --close-button-bg: #67513d;
+    --error-fg: #a02f2c;
+    --message-success-bg: #edf2df;
+    --message-warning-bg: #fff0c9;
+    --message-error-bg: #fff0e9;
+    --cms-focus: #934412;
+    --cms-copied-bg: #edf2df;
+    --cms-copied-fg: #405e29;
+    --cms-error: #a02f2c;
+    --cms-pressed-bg: #f9e4c8;
+    --cms-pressed-fg: #503322;
+    --cms-flag-bg: #efe3d0;
+    --cms-flag-fg: #67513d;
+    --cms-flag-on-bg: #fff0e9;
+    --cms-flag-on-fg: #7e2422;
+}
+
+/* Paginacja CMS w panelu: themes.css nie jest tu ładowany, więc kolory
+   bierzemy ze zmiennych motywu admina. */
+.cms-pagination {
+    --text: var(--body-fg);
+    --surface: var(--body-bg);
+    --surface-hover: var(--darkened-bg);
+    --border-strong: var(--border-color);
+    --primary: var(--link-fg);
+    --focus-ring: var(--cms-focus);
+}
+
+/* ===== Nagłówek i nawigacja ===== */
+#header {
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-4);
+}
+
+#header .cms-admin-quick-links {
+    flex-basis: 100%;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+    margin: var(--space-2) 0 0;
+}
+
+#header .theme-toggle {
+    width: auto;
+    height: auto;
+    margin: 0;
+    padding: 2px var(--space-2);
+    border: 1px solid var(--header-link-color);
+    border-radius: var(--radius-sm);
+    color: var(--header-link-color);
+    font: inherit;
+    line-height: var(--leading-tight);
+    vertical-align: middle;
+}
+
+#header .theme-toggle:focus-visible {
+    outline: 2px solid var(--header-link-color);
+    outline-offset: 3px;
+}
+
+#header [data-theme-autumn][aria-pressed="true"] {
+    background: var(--cms-pressed-bg);
+    color: var(--cms-pressed-fg);
+}
+
+.cms-admin-navigation {
+    font-size: var(--font-size-sm);
+}
+
+.cms-admin-navigation a {
+    color: var(--header-link-color);
+    text-underline-offset: 3px;
+}
+
+.cms-admin-navigation a:focus-visible {
+    outline: 2px solid var(--header-link-color);
+    outline-offset: var(--space-1);
+}
+
+.cms-admin-quick-links {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-4);
+}
+
+.cms-admin-quick-links a {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+/* Grupy modeli (menu boczne i pulpit). */
+.cms-admin-group {
+    margin: 0 0 var(--space-4);
+    border: 1px solid var(--hairline-color);
+    border-radius: var(--radius-sm);
+    background: var(--body-bg);
+}
+
+.cms-admin-group > summary {
+    padding: var(--space-3) var(--space-4);
+    color: var(--body-fg);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.cms-admin-group > summary:focus-visible {
+    outline: 2px solid var(--link-fg);
+    outline-offset: -3px;
+}
+
+.cms-admin-group > .module {
+    max-width: 100%;
+    margin: 0;
+    overflow-x: auto;
+}
+
+.cms-admin-group > .cms-admin-group {
+    margin: var(--space-3);
+}
+
+.cms-admin-group table {
+    width: 100%;
+}
+
+#nav-sidebar .cms-admin-group {
+    margin: var(--space-2);
+}
+
+#nav-sidebar .cms-admin-group > summary {
+    padding: var(--space-3);
+}
+
+#nav-sidebar .cms-admin-group > .cms-admin-group {
+    margin: var(--space-2);
+}
+
+#nav-sidebar .cms-admin-group th {
+    overflow-wrap: anywhere;
+}
+
+/* ===== Pulpit panelu (admin/index.html) ===== */
+.dashboard #content {
+    width: auto;
+    max-width: none;
+}
+
+.cms-admin-dashboard {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 15rem;
+    gap: var(--space-5);
+    align-items: start;
+}
+
+.cms-admin-dashboard #content-main {
+    float: none;
+    width: auto;
+    min-width: 0;
+}
+
+.cms-admin-menu-columns {
+    columns: 2;
+    column-gap: var(--space-5);
+}
+
+.cms-admin-menu-columns > .cms-admin-group {
+    break-inside: avoid;
+    overflow: hidden;
+}
+
+.cms-admin-recent {
+    min-width: 0;
+    border: 1px solid var(--hairline-color);
+    border-radius: var(--radius-sm);
+}
+
+.cms-admin-recent summary {
+    padding: var(--space-3);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.cms-admin-recent .actionlist {
+    margin: var(--space-2) var(--space-3) var(--space-4);
+    overflow-wrap: anywhere;
+}
+
+.cms-admin-recent .actionlist li {
+    margin-bottom: var(--space-3);
+}
+
+/* ===== Formularz osoby ===== */
+.person-admin-fieldsets {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-5);
+    margin-bottom: var(--space-5);
+}
+
+.person-admin-fieldsets > fieldset {
+    grid-column: 1 / -1;
+    min-width: 0;
+    margin-bottom: 0;
+}
+
+.person-admin-fieldsets > .person-account-half {
+    grid-column: span 1;
+}
+
+.person-account-half .readonly {
+    overflow-wrap: anywhere;
+}
+
+/* Stan konta (osoba i konto): przycisk zaproszenia i podpowiedź pod tekstem, bez wcięcia pomocy admina
+   (selektor mocniejszy niż „form .aligned div.help” z Django). */
+.form-row .readonly > .cms-invite-button {
+    margin-top: var(--space-2);
+}
+
+.form-row .readonly > .cms-inline-help {
+    margin: var(--space-1) 0 0;
+    padding: 0;
+}
+
+/* ===== Drobne elementy szablonów i komunikatów panelu ===== */
+/* Tabela w module na całą szerokość (Dropbox, testy powiadomień). */
+.cms-full-table {
+    width: 100%;
+}
+
+/* Nagłówek grupy i podpowiedź w module bez paska tytułu (przejęcie członków Dropboxa). */
+.module > .cms-module-heading {
+    margin: 0;
+    padding: var(--space-2);
+}
+
+.module > .cms-module-help {
+    padding: 0 var(--space-2);
+}
+
+/* Moduł z wewnętrznym odstępem (usuwanie folderów Dropbox). */
+.cms-padded-module {
+    padding: var(--space-2);
+}
+
+/* Krótka lista w polu tylko do odczytu (przypomnienia Discord). */
+.cms-compact-list {
+    margin: 0;
+    padding-left: var(--space-5);
+}
+
+/* Ostrzeżenie w komórce tabeli (wyłączone powiadomienie). */
+.cms-error-text {
+    color: var(--error-fg);
+    font-weight: 700;
+}
+
+/* Znacznik tak/nie (czarna lista autorów). */
+.cms-flag {
+    display: inline-block;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    background: var(--cms-flag-bg);
+    color: var(--cms-flag-fg);
+}
+
+.cms-flag.is-on {
+    background: var(--cms-flag-on-bg);
+    color: var(--cms-flag-on-fg);
+}
+
+/* Przycisk usunięcia jako <input> w wierszu przycisków (usunięcie tekstu z historią). */
+.submit-row input.deletelink {
+    background: var(--delete-button-bg);
+    color: var(--button-fg);
+}
+
+.submit-row input.deletelink:hover {
+    background: var(--delete-button-hover-bg);
+}
+
+/* ===== Listy, formularze i tabele ===== */
+/* Długie fragmenty kodu w opisach pól nie rozpychają strony na telefonie. */
+#content code {
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
+
+/* Wyszukiwarka listy: pole i przycisk w jednej linii także na telefonie. */
+#changelist-search > div {
+    align-items: center;
+}
+
+/* Szerokie wiersze inline (etapy tekstu, przydziały recenzentów) przewijają się w swojej ramce,
+   zamiast rozpychać całą stronę panelu. */
+.inline-group .tabular fieldset.module {
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+/* Sortowanie kolumn (ui.js zamienia nagłówki tabel w przyciski) – płaskie jak w części redakcyjnej. */
+.table-sort-button {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+    text-align: left;
+    text-transform: inherit;
+    cursor: pointer;
+}
+
+.table-sort-button:hover {
+    color: var(--link-hover-color);
+}
+
+.table-sort-button .sort-indicator {
+    color: var(--link-fg);
+}
+
+/* Kopiowanie komórek tabel (ui.js). */
+table td,
+table tbody th {
+    cursor: cell;
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+table :is(a, button, summary, select, input[type="checkbox"]) {
+    cursor: pointer;
+}
+
+table :is(input:not([type="checkbox"]):not([type="radio"]), textarea) {
+    cursor: text;
+}
+
+table [data-copy="false"] {
+    cursor: auto;
+}
+
+table tr > :is(td, th).copied-cell {
+    outline: 2px solid var(--cms-copied-fg);
+    outline-offset: -2px;
+    background: var(--cms-copied-bg);
+    color: var(--cms-copied-fg);
+}
+
+table tr > :is(td, th).copy-selected {
+    outline: 2px solid var(--cms-focus);
+    outline-offset: -2px;
+    background: var(--selected-bg);
+}
+
+table .copy-error {
+    outline: 2px solid var(--cms-error);
+    outline-offset: -2px;
+}
+
+.copy-value-button.is-copied {
+    background: var(--cms-copied-bg);
+    color: var(--cms-copied-fg);
+}
+
+.copy-toast {
+    position: fixed;
+    right: var(--space-5);
+    bottom: var(--space-5);
+    z-index: var(--z-toast);
+    max-width: min(380px, calc(100vw - 2 * var(--space-5)));
+    padding: var(--space-3) var(--space-4);
+    overflow-wrap: anywhere;
+    border: 1px solid var(--cms-toast-border);
+    border-radius: var(--radius-md);
+    background: var(--cms-toast-bg);
+    color: var(--cms-toast-fg);
+    box-shadow: var(--shadow-lg);
+    font-size: var(--font-size-md);
+    line-height: var(--leading);
+    pointer-events: none;
+}
+
+.copy-toast[hidden] {
+    display: none;
+}
+
+.copy-toast.is-error {
+    border-color: var(--cms-error);
+}
+
+@media screen and (max-width: 1100px) {
+    #header .cms-admin-quick-links {
+        flex-basis: auto;
+        align-self: stretch;
+        justify-content: center;
+    }
+
+    #header #branding,
+    #header #user-tools {
+        min-width: 0;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+    }
+
+    .cms-admin-dashboard,
+    .person-admin-fieldsets {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .cms-admin-recent {
+        max-width: 30rem;
+    }
+}
+
+@media screen and (max-width: 760px) {
+    .cms-admin-menu-columns {
+        columns: 1;
+    }
+
+    /* Długie opcje list wyboru (np. korekta przypisania etapu) nie wychodzą poza ekran telefonu. */
+    #content select {
+        max-width: 100%;
+    }
+}
+
+@media print {
+    .cms-admin-navigation,
+    .copy-toast,
+    .copy-value-button {
+        display: none;
+    }
+}

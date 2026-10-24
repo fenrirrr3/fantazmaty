@@ -1,5 +1,8 @@
 """Obrazy i język dokumentu przed wszelkimi zmianami (wszystkie programy).
 
+unlink_external_images – usuwa połączenia obrazów z plikami spoza dokumentu (relacje
+TargetMode="External"): obraz osadzony i połączony zostaje bez linku, obraz tylko
+połączony znika. CMS nigdy nie pobiera takich plików.
 strip_images – usuwa obrazy z każdej części dokumentu (treść, nagłówki, stopki,
 przypisy, komentarze, pola tekstowe, numeracja z obrazkowymi punktorami) razem
 z nieużywanymi plikami mediów, ich relacjami i wpisami [Content_Types].xml.
@@ -33,6 +36,8 @@ IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'jpe', 'gif', 'bmp', 'dib', 'tif', 'ti
                     'svg', 'webp', 'pict', 'jfif', 'wdp', 'ico'}
 # Skrót, czy część w ogóle może zawierać obraz (bez parsowania dużych plików XML).
 IMAGE_MARKERS = (b'drawing', b'pict', b'object', b'imagedata', b'blip', b'background', b'PicBullet', b'fill')
+# Część XML w UTF-16 (znacznik BOM) skrót bajtowy by pominął – taką część zawsze parsujemy.
+UTF16_BOMS = (b'\xff\xfe', b'\xfe\xff')
 # Kolejność elementów w w:rPr (CT_RPr) – w:lang musi stać przed tymi elementami.
 AFTER_LANG = {f'{{{W}}}{name}' for name in ('eastAsianLayout', 'specVanish', 'oMath', 'rPrChange')}
 
@@ -193,7 +198,7 @@ def strip_images(source):
     for name, data in payloads.items():
         if name.endswith('.rels') or name == '[Content_Types].xml':
             continue
-        if not any(marker in data for marker in IMAGE_MARKERS):
+        if not data.startswith(UTF16_BOMS) and not any(marker in data for marker in IMAGE_MARKERS):
             continue
         try:
             root = etree.fromstring(data, PARSER)
@@ -276,6 +281,149 @@ def strip_images(source):
     return _write(original, parts, removed_parts), count
 
 
+# Obraz połączony (Wstaw → Obrazy → Połącz z plikiem; pole INCLUDEPICTURE): relacja obrazu z TargetMode="External".
+LINKED_IMAGE_RELATIONSHIPS = ('/image', '/hdphoto')
+SVG_IMAGES = 'http://schemas.microsoft.com/office/drawing/2016/SVG/main'
+# Atrybuty, którymi rysunek lub kształt VML wskazuje plik obrazu.
+IMAGE_SOURCE_ATTRIBUTES = (_q(R, 'embed'), _q(R, 'link'), _q(R, 'id'), _q(R, 'pict'), _q(OFFICE, 'relid'))
+
+
+def is_linked_image(rels_name, relationship):
+    """Czy relacja (element Relationship z pliku `rels_name`) to obraz połączony z plikiem spoza pakietu
+    – także zewnętrzna miniatura pakietu. Takie relacje usuwa unlink_external_images."""
+    if relationship.get('TargetMode', '').lower() != 'external':
+        return False
+    kind = relationship.get('Type', '')
+    return kind.endswith(LINKED_IMAGE_RELATIONSHIPS) or (
+        rels_name == '_rels/.rels' and kind.endswith(THUMBNAIL_RELATIONSHIP))
+
+
+def _remove_picture(node):
+    """Usuwa obraz, któremu po usunięciu linku nie zostało źródło; True, gdy coś usunięto.
+
+    Rysunek z samym obrazem znika w całości, obraz w grupie – sam, wypełnienie kształtu obrazem
+    staje się brakiem wypełnienia, kształt VML i obiekt OLE znikają (pole tekstowe VML traci tylko
+    obraz), obrazkowy punktor listy – razem z odwołaniami poziomów list.
+    """
+    bullet = next(node.iterancestors(_q(W, 'numPicBullet')), None)
+    if bullet is not None:
+        identifier = bullet.get(_q(W, 'numPicBulletId'))
+        for reference in list(node.getroottree().getroot().iter(_q(W, 'lvlPicBulletId'))):
+            if reference.get(_q(W, 'val')) == identifier:
+                _remove(reference)
+        _remove(bullet)
+        return True
+    picture = next(node.iterancestors(_q(PIC, 'pic')), None)
+    if picture is not None:
+        drawing = next(picture.iterancestors(_q(W, 'drawing')), None)
+        data = picture.getparent()
+        whole = drawing is not None and data is not None and data.get('uri', '').endswith('/picture')
+        _remove(drawing if whole else picture)
+        return True
+    parent = node.getparent()
+    if node.tag == _q(A, 'blip'):
+        if parent is None or parent.tag != _q(A, 'blipFill'):
+            return False  # inne użycie (np. punktor DrawingML): zostaje bez źródła
+        parent.addnext(etree.Element(_q(A, 'noFill')))
+        _remove(parent)
+        return True
+    if node.tag == _q(V, 'imagedata'):
+        holder = next(node.iterancestors(_q(W, 'object'), _q(W, 'pict')), None)
+        if holder is not None and (holder.tag == _q(W, 'object') or not any(
+                True for _ in holder.iter(_q(V, 'textbox'), _q(W, 'txbxContent')))):
+            _remove(holder)
+            return True
+    _remove(node)
+    return True
+
+
+def _unlink_part(root, external):
+    """Usuwa z części odwołania do relacji `external`; zwraca liczbę usuniętych obrazów tylko połączonych."""
+    count = 0
+    for node in list(root.iter()):
+        if not isinstance(node.tag, str) or node.getroottree().getroot() is not root:
+            continue  # komentarz XML albo element usunięty razem z rysunkiem
+        linked = [key for key, value in node.attrib.items()
+                  if (key.startswith(f'{{{R}}}') or key == _q(OFFICE, 'relid')) and value in external]
+        if not linked:
+            continue
+        for key in linked:
+            del node.attrib[key]
+        if node.tag == _q(V, 'imagedata'):
+            node.attrib.pop(_q(OFFICE, 'href'), None)  # zapisana ścieżka połączonego pliku
+        if node.tag in (_q(A, 'blip'), _q(V, 'imagedata'), _q(V, 'fill')):
+            if not any(node.get(key) for key in IMAGE_SOURCE_ATTRIBUTES):
+                counted = _counted(node)
+                count += _remove_picture(node) and counted
+        elif node.tag == _q(SVG_IMAGES, 'svgBlip') and not node.get(_q(R, 'embed')):
+            # Wersja SVG obrazu bez pliku: zostaje obraz zastępczy z a:blip.
+            extension = node.getparent()
+            if extension is not None and extension.tag == _q(A, 'ext'):
+                extensions = extension.getparent()
+                _remove(extension)
+                if extensions is not None and len(extensions) == 0:
+                    _remove(extensions)
+    for node in list(root.iter(_q(MC, 'AlternateContent'))):
+        if node.getparent() is not None and all(len(branch) == 0 for branch in node):
+            _remove(node)
+    return count
+
+
+def unlink_external_images(source):
+    """(BytesIO bez połączeń obrazów z plikami spoza dokumentu, liczba usuniętych obrazów tylko połączonych).
+
+    Decyzja właściciela: obraz połączony (relacja TargetMode="External") nie blokuje pliku – usuwamy
+    sam link. Obraz osadzony i połączony (r:embed i r:link) zostaje osadzony, bez linku; obraz tylko
+    połączony znika, bo bez linku nie miałby źródła. Relacje znikają z pakietu, więc żaden program
+    (ani biblioteka konwertera) ich nie odczyta. Hiperłącza zewnętrzne to nie obrazy – zostają.
+    """
+    original = _read(source)
+    parts, count = {}, 0
+    with ZipFile(BytesIO(original)) as archive:
+        names = set(archive.namelist())
+        for rels_name in archive.namelist():
+            if not rels_name.endswith('.rels'):
+                continue
+            data = archive.read(rels_name)
+            if b'external' not in data.lower() and not data.startswith(UTF16_BOMS):
+                continue
+            try:
+                rels = etree.fromstring(data, PARSER)
+            except etree.XMLSyntaxError:
+                continue
+            linked = [relationship for relationship in rels if is_linked_image(rels_name, relationship)]
+            if not linked:
+                continue
+            for relationship in linked:
+                rels.remove(relationship)
+            parts[rels_name] = _serialize(rels)
+            part = _source_part(rels_name)
+            if part in names and _is_xml(part):
+                try:
+                    root = etree.fromstring(archive.read(part), PARSER)
+                except etree.XMLSyntaxError:
+                    continue
+                count += _unlink_part(root, {relationship.get('Id') for relationship in linked})
+                parts[part] = _serialize(root)
+    if not parts:
+        return BytesIO(original), 0
+    return _write(original, parts), count
+
+
+def linked_images_note(count):
+    """Uwaga dla użytkownika o usuniętych obrazach połączonych z plikami spoza dokumentu ('' – nie było ich)."""
+    if count <= 0:
+        return ''
+    last, two = count % 10, count % 100
+    if count == 1:
+        words = 'obraz połączony z plikiem zewnętrznym'
+    elif 2 <= last <= 4 and not 12 <= two <= 14:
+        words = 'obrazy połączone z plikami zewnętrznymi'
+    else:
+        words = 'obrazów połączonych z plikami zewnętrznymi'
+    return f'Usunięto {count} {words} – pliki spoza dokumentu nie są pobierane.'
+
+
 def _polish_rpr(rpr):
     lang = rpr.find(_q(W, 'lang'))
     if lang is None:
@@ -298,7 +446,7 @@ def force_polish(source):
                 continue
             data = archive.read(name)
             is_styles = name == 'word/styles.xml'
-            if b'lang' not in data and b'Lang' not in data and not is_styles:
+            if b'lang' not in data and b'Lang' not in data and not is_styles and not data.startswith(UTF16_BOMS):
                 continue
             try:
                 root = etree.fromstring(data, PARSER)

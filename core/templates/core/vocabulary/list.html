@@ -1,13 +1,13 @@
 {% extends 'core/base.html' %}{% load static %}
 {% block title %}Słownik tagów i gatunków | Fantazmaty CMS{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'core/vocabulary.css' %}">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/texts.css' %}">{% endblock %}
 {% block content %}
 <header class="page-header">
     <h1 class="page-title">Słownik tagów i gatunków</h1>
     <p class="page-description">Wspólne nazwy i aliasy. Aby zmienić nazwę, dodaj nową, a następnie scal z nią poprzednią. Każde scalenie ma podgląd zmian.</p>
 </header>
 {% if error %}<div class="message error" role="alert">{{ error }}</div>{% endif %}
-<div class="vocabulary-columns">
+<div class="two-columns vocabulary-columns">
 {% for section in sections %}
     <section class="card vocabulary-column" id="{{ section.kind }}-dictionary" aria-labelledby="{{ section.kind }}-heading">
         <header class="section-header"><h2 id="{{ section.kind }}-heading">{{ section.label }}</h2></header>
@@ -19,7 +19,7 @@
             <form method="get" class="vocabulary-search" action="#{{ section.kind }}-dictionary">
                 {% for key,value in section.preserved %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
                 <div class="form-field"><label for="{{ section.kind }}-q">Szukaj hasła</label><input type="search" id="{{ section.kind }}-q" name="{{ section.q_param }}" value="{{ section.q }}"></div>
-                <div class="filter-actions"><button class="primary-button" type="submit">Szukaj</button><a class="secondary-button" href="{{ section.clear_url }}">Wyczyść</a></div>
+                <div class="actions filter-actions"><button class="primary-button" type="submit">Szukaj</button><a class="secondary-button" href="{{ section.clear_url }}">Wyczyść</a></div>
             </form>
         </div>
         <div class="profile-table-inset">

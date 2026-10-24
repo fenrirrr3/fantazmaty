@@ -43,8 +43,8 @@
     {% endif %}
 
     {% if user.is_superuser %}
-    <div class="dashboard-intake-grid">
-    <section class="details-card notification-queue{% if pending_notification_count %} notification-urgent{% endif %}"><h2>Autorzy do powiadomienia</h2><div class="general-notes-actions"><a class="primary-button" href="{% url 'core:notification_queue' %}">Obsłuż zgłoszenia: {{ pending_notification_count }}</a><a class="secondary-button" href="{% url 'core:scheduled_rejections' %}">Zaplanowane odrzucenia</a></div></section>
+    <div class="two-columns dashboard-intake-grid">
+    <section class="details-card notification-queue{% if pending_notification_count %} notification-urgent{% endif %}"><h2>Autorzy do powiadomienia</h2><div class="actions form-actions"><a class="primary-button" href="{% url 'core:notification_queue' %}">Obsłuż zgłoszenia: {{ pending_notification_count }}</a><a class="secondary-button" href="{% url 'core:scheduled_rejections' %}">Zaplanowane odrzucenia</a></div></section>
     <section class="details-card">
         <h2>Przyjęte teksty do dodania do procesu wydawniczego</h2>
         <p class="form-help">Autor został powiadomiony, ale zgłoszenie nie jest jeszcze powiązane z tekstem w procesie wydawniczym.</p>
@@ -58,7 +58,7 @@
     <section class="details-card" data-pending-recruitment>
         <h2>Oczekujące zgłoszenia rekrutacyjne</h2>
         <p class="form-help">Zgłoszenia bez decyzji. Zgłoszenie do kilku działów jest liczone w każdym z nich.</p>
-        <div class="recruitment-actions">
+        <div class="actions recruitment-actions">
         {% for group in pending_recruitment %}
             <a class="secondary-button" href="{% url 'core:recruitment_list' %}?status=new&amp;role={{ group.role|urlencode }}">{{ group.label }}: {{ group.count }}</a>
         {% endfor %}
@@ -95,7 +95,7 @@
 
     <section aria-label="Podsumowanie twojej pracy">
         <div class="dashboard-summary">
-            <div class="dashboard-counter">
+            <div class="panel dashboard-counter">
                 <span>Etapy w toku</span>
                 <strong>{{ active_stage_count|default:0 }}</strong>
                 <a href="{% if reviewer_only %}{% url 'core:my_reviews' %}{% else %}{% url 'core:my_texts' %}{% endif %}?view=active" class="detail-link">
@@ -103,7 +103,7 @@
                 </a>
             </div>
 
-            <div class="dashboard-counter">
+            <div class="panel dashboard-counter">
                 <span>Zarezerwowane zadania</span>
                 <strong>{{ reserved_assignment_count|default:0 }}</strong>
                 <a href="{% if reviewer_only %}{% url 'core:my_reviews' %}{% else %}{% url 'core:my_texts' %}{% endif %}?view=waiting" class="detail-link">
@@ -111,13 +111,13 @@
                 </a>
             </div>
 
-            <div class="dashboard-counter">
+            <div class="panel dashboard-counter">
                 <span>Recenzje do ukończenia</span>
                 <strong>{{ reviewer_load.reading|default:0 }}</strong>
                 <span class="muted-text">W bieżących zgłoszeniach</span>
             </div>
 
-            <div class="dashboard-counter">
+            <div class="panel dashboard-counter">
                 <span>Oddane recenzje</span>
                 <strong>{{ reviewer_load.completed|default:0 }}</strong>
                 <span class="muted-text">Bez archiwalnych recenzji</span>
@@ -125,8 +125,8 @@
         </div>
     </section>
 
-    <div class="dashboard-grid">
-        <section class="card" aria-labelledby="active-stages-heading">
+    <div class="two-columns dashboard-grid">
+        <section class="card dashboard-work-card" aria-labelledby="active-stages-heading">
             <header class="section-header">
                 <div>
                     <h2 id="active-stages-heading">Prace w toku</h2>
@@ -162,7 +162,7 @@
         </section>
 
         <div class="dashboard-right-stack">
-        <section class="card dashboard-reservations" aria-labelledby="reserved-assignments-heading">
+        <section class="card dashboard-work-card dashboard-reservations" aria-labelledby="reserved-assignments-heading">
             <header class="section-header">
                 <div>
                     <h2 id="reserved-assignments-heading">Rezerwacje</h2>
@@ -204,7 +204,7 @@
         </div>
     </div>
 
-    <section class="filters-card" aria-labelledby="dashboard-search-heading">
+    <section class="details-card filters-card dashboard-search" aria-labelledby="dashboard-search-heading">
         <h2 id="dashboard-search-heading">Wyszukaj w systemie</h2>
 
         <form

@@ -283,7 +283,7 @@ class RecruitmentDeletionTests(RecruitmentTeamMixin, TestCase):
             self.assertEqual(getattr(self.client, method)(self.url).status_code, 403)
         self.client.force_login(self.admin)
         page = self.client.get(self.detail)
-        self.assertContains(page, 'cms-danger-button')
+        self.assertContains(page, 'class="danger-button"')
         self.assertContains(page, 'Odśwież dane')
         self.assertEqual(self.client.get(self.url).status_code, 200)
         self.assertTrue(Recruitment.objects.filter(pk=self.record.pk).exists())

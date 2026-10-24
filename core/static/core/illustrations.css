@@ -1,3 +1,25 @@
+/*
+ * Ilustracje: lista, szczegóły i edycja ilustracji, spis ilustratorów oraz publiczna lista zewnętrznych ilustracji.
+ * Status ilustracji (plakietka) jest w illustration-status.css – korzysta z niego także panel administracyjny.
+ */
+
+/* ===== Lista i filtry ===== */
+.illustration-public-actions {
+    align-self: end;
+}
+
+.illustration-filter-bottom {
+    display: grid;
+    flex-basis: 100%;
+    gap: var(--space-4);
+    min-width: 0;
+}
+
+.illustration-filter-bottom .filter-actions {
+    margin: 0;
+}
+
+/* ===== Szczegóły i edycja ilustracji ===== */
 .illustration-edit-form {
     display: grid;
     gap: var(--field-gap);
@@ -14,8 +36,8 @@
     height: 8rem;
     min-height: 8rem;
     max-height: 8rem;
-    resize: none;
     overflow-y: auto;
+    resize: none;
 }
 
 .illustration-excerpt-preview {
@@ -38,6 +60,7 @@
     overflow-wrap: anywhere;
 }
 
+/* Pierwsza karta (opis) zajmuje lewą kolumnę, pozostałe trzy – prawą, jedna pod drugą. */
 .illustration-detail-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -46,9 +69,14 @@
     margin-block: var(--space-5);
 }
 
+.illustration-detail-grid > .card {
+    min-width: 0;
+    margin: 0;
+}
+
 .illustration-detail-grid > .card:first-child {
-    grid-column: 1;
     grid-row: 1 / span 3;
+    grid-column: 1;
 }
 
 .illustration-detail-grid > .card:not(:first-child) {
@@ -67,6 +95,10 @@
     grid-row: 3;
 }
 
+.illustration-detail-grid .card-body {
+    overflow-wrap: anywhere;
+}
+
 .illustration-detail-grid > .card:not(:first-child) .card-body {
     padding: var(--space-4) var(--space-5);
 }
@@ -79,8 +111,8 @@
     height: 5rem;
     min-height: 5rem;
     max-height: 5rem;
-    resize: none;
     overflow-y: auto;
+    resize: none;
 }
 
 .illustration-detail-grid > .card:not(:first-child) p {
@@ -91,32 +123,12 @@
     max-height: 8rem;
 }
 
-.illustration-detail-grid > .card {
-    min-width: 0;
-    margin: 0;
-}
-
-.illustration-detail-grid .card-body {
-    overflow-wrap: anywhere;
-}
-
-@media screen and (max-width: 760px) {
-    .illustration-detail-grid {
-        grid-template-columns: minmax(0, 1fr);
-    }
-    .illustration-detail-grid > .card:nth-child(n) {
-        grid-column: auto;
-        grid-row: auto;
-    }
-}
-
+/* ===== Ilustratorzy: wybór wielu osób z wyszukiwaniem (zaznaczone zostają przy filtrowaniu) ===== */
 .illustrator-checkbox {
     display: flex;
     align-items: center;
     gap: var(--space-2);
 }
-
-/* Searchable multiple selection, retaining selected people while filtering. */
 
 .illustrator-choices {
     max-height: 20rem;
@@ -139,10 +151,11 @@
     min-width: 0;
 }
 
-.illustrator-search-results, .illustrator-selected {
-    list-style: none;
+.illustrator-search-results,
+.illustrator-selected {
     margin: 0;
     padding: 0;
+    list-style: none;
 }
 
 .illustrator-search-results {
@@ -178,4 +191,43 @@
 
 .illustrator-selected button {
     padding: var(--space-1) var(--space-2);
+}
+
+/* ===== Publiczna lista zewnętrznych ilustracji ===== */
+.external-illustrations {
+    padding-block: var(--space-6);
+}
+
+/* Informacja o zgłaszaniu się nad filtrami listy. */
+.external-illustrations-contact {
+    margin: 0 0 var(--space-4);
+}
+
+.external-illustrations td {
+    overflow-wrap: anywhere;
+}
+
+.external-illustrations .external-tags,
+.external-illustrations .external-warnings {
+    max-width: 28rem;
+    white-space: pre-line;
+}
+
+/* W karcie mobilnej plakietka statusu nie rozciąga się na całą szerokość komórki;
+   status nie łamie się w środku wyrazu („Przypisan-e”) – kolumna dostaje szerokość plakietki. */
+.external-illustrations .illustration-status {
+    justify-self: start;
+    white-space: nowrap;
+    overflow-wrap: normal;
+}
+
+@media screen and (max-width: 760px) {
+    .illustration-detail-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .illustration-detail-grid > .card:nth-child(n) {
+        grid-row: auto;
+        grid-column: auto;
+    }
 }

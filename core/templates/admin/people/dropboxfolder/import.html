@@ -12,9 +12,9 @@
 {% else %}
 {% if plan.owners %}<p class="help">Właściciel folderu (konto aplikacji) – pominięty: {{ plan.owners|join:", " }}.</p>{% endif %}
 {% for name, label, help_text, rows in plan.groups %}
-<div class="module"><h3 style="padding:6px 8px;margin:0">{{ label }} ({{ rows|length }})</h3>
-{% if help_text %}<p class="help" style="padding:0 8px">{{ help_text }}</p>{% endif %}
-<table style="width:100%">
+<div class="module"><h3 class="cms-module-heading">{{ label }} ({{ rows|length }})</h3>
+{% if help_text %}<p class="help cms-module-help">{{ help_text }}</p>{% endif %}
+<table class="cms-full-table">
 <thead><tr>{% if name == "other_email" or name == "inactive" %}<th scope="col">{% if name == "other_email" %}Ustaw jako e-mail Dropbox{% else %}Odbierz dostęp{% endif %}</th>{% endif %}<th scope="col">Adres w Dropboxie</th><th scope="col">Osoba</th><th scope="col">Poziom w Dropboxie</th><th scope="col">Uwagi</th></tr></thead>
 <tbody>
 {% for entry in rows %}<tr>

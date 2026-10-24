@@ -201,9 +201,6 @@ class PersonAdmin(admin.ModelAdmin):
     readonly_fields = ("account_link", "account_status", "account_date_joined", "account_last_login",
                        "leave_start_date", "leave_end_date", "leave_until_revoked")
 
-    class Media:
-        css = {"all": ("core/admin-person.css",)}
-
     actions = ('revoke_coordinator_access', 'remove_from_team', 'sync_dropbox_access')
 
     @admin.action(description="Usuń z zespołu (odznacz „wciąż w ekipie”, odbierz dostęp do Dropboxa)")
@@ -391,8 +388,8 @@ class PersonAdmin(admin.ModelAdmin):
         password = ("Hasło ustawione." if user.has_usable_password()
                     else "Zaproszenie nieprzyjęte – hasło nieustawione.")
         return format_html(
-            '{} {} {}<br><button type="submit" class="button" formaction="{}" formnovalidate name="_from_person" value="1">'
-            'Wyślij zaproszenie</button><div class="help">Zaproszenie trafi na adres {}. Niezapisane zmiany w formularzu '
+            '{} {} {}<br><button type="submit" class="button cms-invite-button" formaction="{}" formnovalidate name="_from_person" '
+            'value="1">Wyślij zaproszenie</button><div class="help cms-inline-help">Zaproszenie trafi na adres {}. Niezapisane zmiany w formularzu '
             'nie zostaną zapisane.</div>',
             login, password, invitation_state(user), reverse('admin:auth_user_invite', args=[user.pk]),
             user.email or '– brak adresu –')

@@ -7,7 +7,7 @@
     <h1 class="page-title">Postęp programu</h1>
     <p class="page-description">{% if refresh %}Dokument jest przetwarzany na serwerze. Strona odświeża się sama.{% else %}Dokument jest przetwarzany na serwerze. Tu zobaczysz wynik i uwagi programu.{% endif %}</p>
 </header>
-<section class="details-card program-job-status" aria-live="polite">
+<section class="details-card odkurzacz program-tool" aria-live="polite">
     <div class="card-body">
     {% if state.state == 'done' %}
         <p class="message success" role="status">{% if state.split %}Gotowe. Archiwum zostaje na serwerze do wygaśnięcia zadania (30 minut) – w tym czasie możesz wysłać pliki autorom.{% else %}Gotowe. Po pobraniu plik zostanie usunięty z serwera.{% endif %}</p>
@@ -23,13 +23,15 @@
                 <ul class="program-replacements">{% for item in state.replacements %}{% if item.source and item.count > 0 %}<li><span class="replacement-source">{{ item.source }}</span> → <span class="replacement-source">{{ item.target }}</span> ({{ item.count }})</li>{% endif %}{% endfor %}</ul>
             </div>{% endif %}
         </div>{% endif %}
-        <p class="actions"><a class="primary-button" href="{{ download_url }}">Pobierz {{ state.filename }}</a>{% if mail_url %}<a class="secondary-button" href="{{ mail_url }}">Wyślij autorom</a>{% endif %}</p>
+        <div class="actions"><a class="primary-button" href="{{ download_url }}">Pobierz {{ state.filename }}</a>{% if mail_url %}<a class="secondary-button" href="{{ mail_url }}">Wyślij autorom</a>{% endif %}</div>
     {% elif state.state == 'confirmation' %}
         <div class="form-warning" role="alert">{{ state.message }}</div>
-        <form method="post" class="actions">
+        <form method="post">
             {% csrf_token %}<input type="hidden" name="view" value="page">
-            <button type="submit" name="action" value="confirm" class="primary-button">Akceptuję i kontynuuję</button>
-            <button type="submit" name="action" value="cancel" class="secondary-button">Zatrzymaj</button>
+            <div class="actions">
+                <button type="submit" name="action" value="confirm" class="primary-button">Akceptuję i kontynuuję</button>
+                <button type="submit" name="action" value="cancel" class="secondary-button">Zatrzymaj</button>
+            </div>
         </form>
     {% elif state.state == 'error' or state.state == 'cancelled' %}
         <p class="{% if state.state == 'error' %}form-error{% else %}form-help{% endif %}" role="alert">{{ state.message|default:"Praca zatrzymana." }}</p>
@@ -37,10 +39,10 @@
         <p role="status">{{ state.stage|default:"Przetwarzanie…" }}{% if state.total %} ({{ state.completed }} z {{ state.total }}){% endif %}</p>
         <form method="post">
             {% csrf_token %}<input type="hidden" name="view" value="page">
-            <button type="submit" name="action" value="cancel" class="secondary-button">Zatrzymaj</button>
+            <div class="actions"><button type="submit" name="action" value="cancel" class="secondary-button">Zatrzymaj</button></div>
         </form>
     {% endif %}
-    <p><a href="{% url 'core:programs' %}">Wróć do programów</a></p>
+    <div class="program-footer"><p><a href="{% url 'core:programs' %}">Wróć do programów</a></p></div>
     </div>
 </section>
 {% endblock %}

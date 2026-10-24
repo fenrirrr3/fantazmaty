@@ -95,6 +95,21 @@ class ProgramsPageLayoutTests(TestCase):
                 self.assertIn(text, tips)
                 self.assertNotIn(text, visible)
 
+    def test_tips_describe_kept_review_markup_and_linked_images(self):
+        """Pomoc mówi, że komentarze i śledzone zmiany zostają (z nazwiskami autorów), a obrazy połączone znikają
+        z linkiem; nie obiecuje już usuwania komentarzy ani przyjmowania zmian przez przebudowę."""
+        tips = self.tip_text()
+        for text in ('komentarze (z odpowiedziami) i śledzone zmiany zostają',
+                     'w pliku zostają więc nazwiska autorów komentarzy i zmian',
+                     'Komentarze i śledzone zmiany zostają w pliku (z nazwiskami autorów i datami)',
+                     'tekst po przyjęciu śledzonych zmian, bez komentarzy',
+                     'obrazy połączone z plikami spoza dokumentu – razem z linkiem'):
+            with self.subTest(text=text):
+                self.assertIn(text, tips)
+        for text in ('Usuwa stare metadane, komentarze', 'pomija skreślony', 'usuń komentarze'):
+            with self.subTest(removed=text):
+                self.assertNotIn(text, tips)
+
     def test_tips_inform_about_removed_images_and_polish_language(self):
         for card in css(self.tree, 'details.program-tool'):
             with self.subTest(card=card.get('id')):
@@ -140,6 +155,18 @@ class ProgramsPageLayoutTests(TestCase):
 
 
 class SuperuserProgramsPageTests(TestCase):
+    def test_merge_and_split_tips_describe_review_markup(self):
+        """Scalanie i podział (tylko superuser): komentarze i śledzone zmiany zostają, obrazy połączone znikają z linkiem."""
+        self.client.force_login(create_superuser('pomoc-admin'))
+        tree = html.fromstring(self.client.get(reverse('core:programs')).content.decode())
+        tips = ' '.join(text_of(body) for body in css(tree, '.help-tip-body'))
+        for text in ('Przebudowa zachowuje przypisy, komentarze i śledzone zmiany (z nazwiskami autorów i datami)',
+                     'komentarz trafia do pliku ze swoim odwołaniem',
+                     'Obrazy połączone z plikami spoza dokumentu znikają razem z linkiem'):
+            with self.subTest(text=text):
+                self.assertIn(text, tips)
+        self.assertNotIn('pomija m.in. tabele, komentarze', tips)
+
     def test_superuser_limits_are_in_tips(self):
         admin = create_superuser('wyglad-admin')
         self.client.force_login(admin)

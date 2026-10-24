@@ -7,7 +7,7 @@
     <a class="primary-button" href="{% url 'core:audio_contributor_add' %}">Dodaj wpis</a>
 </header>
 <section class="card"><div class="card-body">
-    <form method="get" class="audio-production-form">
+    <form method="get">
         <div class="form-field"><label for="audio-contact-search">Szukaj po imieniu, nazwisku lub e-mailu</label><input id="audio-contact-search" type="search" name="q" value="{{ query }}" maxlength="200"></div>
         <input type="hidden" name="page_size" value="{{ page_obj.selected_page_size }}">
         <label><input type="checkbox" name="show_inactive" value="1"{% if show_inactive %} checked{% endif %}> Pokaż także nieaktywnych</label>

@@ -15,17 +15,20 @@ from docx.shared import RGBColor
 from lxml import etree, html
 
 from core.program_test_support import run_program
+from core.services import program_jobs as jobs
+from core.services.document_images import linked_images_note
 from core.services.document_preparation import prepare_docx
 from core.services.odkurzacz import (
-    ALL_EDITORIAL_RULES, DEFAULT_EDITORIAL_RULES, EDITORIAL_RULES, FORM_DEFAULT_EDITORIAL_RULES, clean_docx,
-    correct_editorial_text,
+    ALL_EDITORIAL_RULES, DEFAULT_EDITORIAL_RULES, EDITORIAL_RULES, FORM_DEFAULT_EDITORIAL_RULES,
+    ORTHOGRAPHY_2026_KEYS, clean_docx, correct_editorial_text,
 )
 from fantazmaty.testing import create_member
 
 from .support import (
-    NOTE_PARTS, IsolatedProgramDirsMixin, add_internal_link, add_page_break, add_text_box, docx_bytes, downloaded,
-    downloaded_document, footnote_text, formatted_docx, noted_document, noted_text, saved, set_default_language,
-    set_language, tracked_changes_document, upload, whole_document, with_footnote,
+    IMAGE_NAMESPACES, IMAGE_REL, LINKED_IMAGE, NOTE_PARTS, PICTURE_DRAWING, IsolatedProgramDirsMixin, add_internal_link,
+    add_page_break, add_text_box, docx_bytes, downloaded, downloaded_document, external_images, footnote_text,
+    formatted_docx, noted_document, noted_text, saved, set_default_language, set_language, text_run,
+    tracked_changes_document, upload, whole_document, with_footnote,
 )
 
 
@@ -204,32 +207,44 @@ class CleanDocxStructureTests(SimpleTestCase):
 
 
 W_DEL, W_INS = qn('w:del'), qn('w:ins')
+DELETIONS, INSERTIONS = (W_DEL, qn('w:moveFrom')), (W_INS, qn('w:moveTo'))
 
 
-def _resolve_revisions(root, accept):
-    """Programowe „Zaakceptuj wszystkie” / „Odrzuć wszystkie” zmiany w drzewie XML jednej części."""
-    remove, unwrap = (W_DEL, W_INS) if accept else (W_INS, W_DEL)
+def _resolve_revisions(root, accept, authors=None):
+    """Programowe „Zaakceptuj wszystkie” / „Odrzuć wszystkie” zmiany w drzewie XML jednej części.
+
+    authors – tylko zmiany tych autorów (np. odrzucenie samych poprawek Odkurzacza). Obsługuje wstawki,
+    usunięcia i przeniesienia tekstu oraz wstawione i usunięte znaki akapitu.
+    """
+    def chosen(element):
+        return authors is None or element.get(qn('w:author')) in authors
+
     for paragraph in list(root.iter(qn('w:p'))):
-        mark = paragraph.find(f"{qn('w:pPr')}/{qn('w:rPr')}/{W_DEL}")
-        if mark is None:
-            continue
-        mark.getparent().remove(mark)
+        mark = paragraph.find(f"{qn('w:pPr')}/{qn('w:rPr')}")
+        changes = [] if mark is None else [
+            change for change in mark if change.tag in DELETIONS + INSERTIONS and chosen(change)]
+        for change in changes:
+            mark.remove(change)
         following = paragraph.getnext()
-        if accept and following is not None and following.tag == qn('w:p'):
-            # Usunięty znak akapitu: treść łączy się z następnym akapitem.
+        # Usunięty znak akapitu po przyjęciu (wstawiony – po odrzuceniu): treść łączy się z następnym akapitem.
+        if any((change.tag in DELETIONS) == accept for change in changes) \
+                and following is not None and following.tag == qn('w:p'):
             position = 1 if following.find(qn('w:pPr')) is not None else 0
             for child in [child for child in paragraph if child.tag != qn('w:pPr')]:
                 following.insert(position, child)
                 position += 1
             paragraph.getparent().remove(paragraph)
-    for element in list(root.iter(remove)):
-        element.getparent().remove(element)
-    for element in list(root.iter(unwrap)):
+    remove, unwrap = (DELETIONS, INSERTIONS) if accept else (INSERTIONS, DELETIONS)
+    for element in [element for element in root.iter(*remove) if chosen(element)]:
+        if element.getparent() is not None:
+            element.getparent().remove(element)
+    for element in [element for element in root.iter(*unwrap) if chosen(element)]:
         for child in list(element):
             element.addprevious(child)
         element.getparent().remove(element)
     for node in root.iter(qn('w:delText')):
-        node.tag = qn('w:t')
+        if not any(ancestor.tag in DELETIONS for ancestor in node.iterancestors()):
+            node.tag = qn('w:t')
 
 
 def _story_texts(stream, resolve=None):
@@ -300,14 +315,14 @@ class TrackChangesTests(SimpleTestCase):
         document = Document()
         paragraph = document.add_paragraph()
         paragraph.add_run('Ala  ma ').bold = True
-        paragraph.add_run('kota... Potem pickupami.').italic = True
+        paragraph.add_run('kota... Potem karnistrami.').italic = True
         result = Document(clean_docx(saved(document), ['spaces', 'ellipsis', 'user_word_corrections'],
                                      track_changes=True))
         p = result.paragraphs[0]._p
         deleted = [(node.text, node.getparent().find(qn('w:rPr'))) for node in p.iter(qn('w:delText'))]
         inserted = [(node.text, node.getparent().find(qn('w:rPr'))) for node in p.xpath('./w:ins//w:t')]
-        self.assertEqual([text for text, _ in deleted], [' ', '...', 'pickupami'])
-        self.assertEqual([text for text, _ in inserted], ['…', 'pikapami'])
+        self.assertEqual([text for text, _ in deleted], [' ', '...', 'karnistrami'])
+        self.assertEqual([text for text, _ in inserted], ['…', 'kanistrami'])
         self.assertIsNotNone(deleted[0][1].find(qn('w:b')))
         self.assertTrue(all(props.find(qn('w:i')) is not None for _, props in deleted[1:] + inserted))
         # Niezmieniony tekst zostaje w zwykłych przebiegach z formatowaniem źródła.
@@ -362,7 +377,7 @@ class CleanerSummaryTests(SimpleTestCase):
         self.assertEqual(summary['user_word_corrections'], 1)
         self.assertEqual(summary['dates_times'], 1)
         self.assertEqual(summary['ellipsis'], 5)  # akapit, tabela, pole tekstowe (kopia zapasowa liczona raz), stopka, przypis
-        self.assertEqual(summary.pop('replacements'), [{'source': 'pickupami', 'target': 'pikapami', 'count': 1}])
+        self.assertEqual(summary.pop('replacements'), [{'source': 'karnistrami', 'target': 'kanistrami', 'count': 1}])
         self.assertTrue(all(value > 0 for value in summary.values()))
         self.assertLessEqual(set(summary), set(rules))
 
@@ -393,8 +408,8 @@ class LanguageTests(SimpleTestCase):
         set_language(document.styles['Quote'].element, 'en-GB')
         paragraph = document.add_paragraph()
         paragraph.add_run('Mówił  wtedy... ')
-        set_language(paragraph.add_run('Pickup  truck...'), 'en-US')
-        paragraph.add_run(' i  pickupem...')
+        set_language(paragraph.add_run('Tonic  water...'), 'en-US')
+        paragraph.add_run(' i  tonicem...')
         document.add_paragraph('To  be...', style='Quote')
         header = document.sections[0].header.paragraphs[0]
         set_language(header.add_run('Running  head...'), 'en-US')
@@ -402,7 +417,7 @@ class LanguageTests(SimpleTestCase):
             with self.subTest(track_changes=track_changes):
                 stream = clean_docx(saved(document), self.rules, track_changes=track_changes)
                 texts = _story_texts(stream, 'accept')
-                self.assertEqual(texts[0], ['Mówił wtedy… Pikap truck… i pikapem…', 'To be…'])
+                self.assertEqual(texts[0], ['Mówił wtedy… Tonik water… i tonikiem…', 'To be…'])
                 self.assertIn('Running head…', [text for story in texts[1:] for text in story])
 
 
@@ -471,14 +486,14 @@ class CleanerR7Tests(SimpleTestCase):
 
     def test_summary_lists_dictionary_replacements(self):
         document = Document()
-        document.add_paragraph('Pickupem jechał, Pickupem wrócił, pickupem też. Niechcąco.')
-        add_text_box(document.add_paragraph('Pole'), 'Pickupem w polu.')
+        document.add_paragraph('Mentlikiem jechał, Mentlikiem wrócił, mentlikiem też. Niechcąco.')
+        add_text_box(document.add_paragraph('Pole'), 'Mentlikiem w polu.')
         summary = {}
         clean_docx(saved(document), ['user_word_corrections'], summary=summary)
         self.assertEqual(summary['replacements'], [
-            {'source': 'Pickupem', 'target': 'Pikapem', 'count': 3},
+            {'source': 'Mentlikiem', 'target': 'Mętlikiem', 'count': 3},
+            {'source': 'mentlikiem', 'target': 'mętlikiem', 'count': 1},
             {'source': 'Niechcąco', 'target': 'Niechcący', 'count': 1},
-            {'source': 'pickupem', 'target': 'pikapem', 'count': 1},
         ])
         self.assertEqual(summary['user_word_corrections'], 5)
         summary = {}
@@ -641,6 +656,41 @@ class OdkurzaczPageTests(IsolatedProgramDirsMixin, TestCase):
             [p.text_content().strip() for p in html.fromstring(content).xpath('//p')][:2],
             ['Ala ma', 'kota!'],  # Odkurzacz usuwa też spację przed wykrzyknikiem.
         )
+
+    @tag('slow')
+    def test_linked_image_is_unlinked_instead_of_refusing_the_file(self):
+        """Regresja: plik z obrazem połączonym z plikiem zewnętrznym był odrzucany („Osadź go w DOCX”). Odkurzacz
+        (także z przebudową) i konwersja usuwają link razem z obrazem, a strona wyniku podaje osobną uwagę."""
+        from docx.oxml import parse_xml
+        document = Document()
+        paragraph = document.add_paragraph('Tekst  z obrazem ')
+        rid = document.part.relate_to(LINKED_IMAGE, IMAGE_REL, is_external=True)
+        paragraph._p.append(parse_xml(
+            f'<w:r {IMAGE_NAMESPACES}>{PICTURE_DRAWING.format(id=7, rid=rid).replace("r:embed=", "r:link=")}</w:r>'))
+        data = saved(document).getvalue()
+        for label, fields in (
+                ('Odkurzacz', {'program_action': 'clean', 'document': 'tekst.docx', 'rules': ['spaces']}),
+                ('Odkurzacz z przebudową', {'program_action': 'clean', 'document': 'tekst.docx', 'rules': ['spaces'],
+                                            'rebuild': 'on'}),
+                ('konwersja', {'program_action': 'convert', 'convert-document': 'tekst.docx',
+                               'convert-formats': ['epub']})):
+            with self.subTest(label):
+                fields = {key: SimpleUploadedFile(value, data) if key.endswith('document') else value
+                          for key, value in fields.items()}
+                with patch.object(jobs, 'launch'):
+                    response = self.client.post(self.url, fields, HTTP_X_PROGRAM_JOB='1')
+                self.assertEqual(response.status_code, 202, response.content)
+                url = response.json()['url']
+                jobs.execute(next(jobs.root().iterdir()))
+                state = self.client.get(url).json()
+                self.assertEqual((state['state'], state['removed_images']), ('done', 0), state)
+                self.assertEqual(state['warnings'][0], linked_images_note(1))
+                result = BytesIO(downloaded(self.client.get(url + '?download=1')))
+                if label == 'konwersja':
+                    self.assertIn('Tekst  z obrazem', ZipFile(result).read('EPUB/content.xhtml').decode())
+                    continue
+                self.assertEqual(external_images(result), [])
+                self.assertEqual(Document(result).paragraphs[0].text.strip(), 'Tekst z obrazem')
 
 
 class CleanerR9Tests(SimpleTestCase):
@@ -850,6 +900,19 @@ class NoteReferenceTests(SimpleTestCase):
                          'Tekst. „Cytat.” (dopisek)')
         self.assertIn('note_references', DEFAULT_EDITORIAL_RULES)
 
+    def test_abbreviations_in_docx_keep_their_dots_and_the_note_after_them(self):
+        """DOCX: skróty wielokropkowe (także rozcięte między przebiegi) bez spacji w środku, mała litera po
+        skrócie, a odsyłacz za kropką skrótu „i in.” zostaje na miejscu – z regułą note_references i bez niej."""
+        parts = ['Był p.', 'o. dyrektora firmy s.c. (Dz.U. z 2020 r.), m.st. Warszawy i wymienił świętych i in.', 1,
+                 ' potem pw. św. Anny, popr. i uzup.']
+        expected = ('Był p.o. dyrektora firmy s.c. (Dz.U. z 2020 r.), m.st. Warszawy i wymienił świętych i in.[1] '
+                    'potem pw. św. Anny, popr. i uzup.')
+        for rules in (self.on, self.off):
+            for track_changes in (False, True):
+                with self.subTest(rule='note_references' in rules, track_changes=track_changes):
+                    result = clean_docx(noted_document(parts), rules, track_changes=track_changes)
+                    self.assertEqual(_noted_texts(result), expected)
+
     def test_note_text_is_corrected_and_its_mark_is_untouched(self):
         """Treść przypisu nadal jest poprawiana, a w:footnoteRef / w:endnoteRef zostaje na początku."""
         for kind in NOTE_PARTS:
@@ -857,3 +920,415 @@ class NoteReferenceTests(SimpleTestCase):
                 with self.subTest(kind, track_changes=track_changes):
                     result = clean_docx(noted_document(['Tekst.', 1], kind), self.on, track_changes=track_changes)
                     self.assertEqual(_noted_texts(result, f'word/{kind}s.xml'), '[ref] Treść przypisu…')
+
+
+# --- Cudze zmiany śledzone i komentarze ---------------------------------------------------------------------------
+
+REDAKCJA = 'w:author="Redakcja" w:date="2025-05-01T10:00:00Z"'
+AUTOR = 'w:author="Autor" w:date="2025-06-02T11:00:00Z"'
+NS_W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+W14 = 'http://schemas.microsoft.com/office/word/2010/wordml'
+W15 = 'http://schemas.microsoft.com/office/word/2012/wordml'
+
+
+def _deleted_run(text):
+    return f'<w:r><w:delText xml:space="preserve">{text}</w:delText></w:r>'
+
+
+def _change(tag, number, content, author=REDAKCJA):
+    return f'<w:{tag} w:id="{number}" {author}>{content}</w:{tag}>'
+
+
+def _comment_start(number):
+    return f'<w:commentRangeStart w:id="{number}"/>'
+
+
+def _comment_end(number):
+    """Koniec zakresu komentarza i przebieg z odwołaniem (dymkiem) za nim – jak zapisuje Word."""
+    return (f'<w:commentRangeEnd w:id="{number}"/><w:r><w:rPr><w:rStyle w:val="Odwoaniedokomentarza"/></w:rPr>'
+            f'<w:commentReference w:id="{number}"/></w:r>')
+
+
+def _mark(tag, number):
+    """Właściwości akapitu ze śledzoną zmianą jego znaku (wstawiony albo usunięty znak akapitu)."""
+    return f'<w:pPr><w:rPr><w:{tag} w:id="{number}" {REDAKCJA}/></w:rPr></w:pPr>'
+
+
+def revisions_docx(paragraphs, comments=(), footnote=None):
+    """DOCX z akapitami z surowego OOXML [(właściwości akapitu, treść)] i komentarzami.
+
+    comments: (id, autor, treść, paraId, paraId komentarza nadrzędnego albo None, rozwiązany) – części
+    comments.xml i commentsExtended.xml (odpowiedzi i rozwiązanie jak w Wordzie 2013+); footnote – treść
+    przypisu dolnego o w:id 1.
+    """
+    from docx.oxml import parse_xml
+    from docx.oxml.ns import nsdecls
+    document = Document()
+    body = document.element.body
+    for properties, content in paragraphs:
+        body.insert(len(body) - 1, parse_xml(f'<w:p {nsdecls("w")}>{properties}{content}</w:p>'))
+    raw = saved(document) if footnote is None else with_footnote(document, footnote)
+    if not comments:
+        return raw
+    items = ''.join(
+        f'<w:comment w:id="{number}" w:author="{author}" w:date="2025-05-01T10:00:00Z" w:initials="R">'
+        f'<w:p w14:paraId="{para}" w14:textId="77777777"><w:r><w:annotationRef/></w:r>{text_run(text)}</w:p></w:comment>'
+        for number, author, text, para, _, _ in comments)
+    extended = ''.join(
+        f'<w15:commentEx w15:paraId="{para}"' + (f' w15:paraIdParent="{parent}"' if parent else '')
+        + f' w15:done="{int(done)}"/>' for _, _, _, para, parent, done in comments)
+    output = BytesIO()
+    with ZipFile(raw) as source, ZipFile(output, 'w') as target:
+        for item in source.infolist():
+            data = source.read(item.filename)
+            if item.filename == '[Content_Types].xml':
+                data = data.replace(b'</Types>', b''.join(
+                    f'<Override PartName="/word/{name}.xml" ContentType="application/vnd.openxmlformats-officedocument.'
+                    f'wordprocessingml.{name}+xml"/>'.encode() for name in ('comments', 'commentsExtended')) + b'</Types>')
+            if item.filename == 'word/_rels/document.xml.rels':
+                data = data.replace(b'</Relationships>', (
+                    '<Relationship Id="rIdComments" Type="http://schemas.openxmlformats.org/officeDocument/2006/'
+                    'relationships/comments" Target="comments.xml"/><Relationship Id="rIdCommentsEx" Type="http://'
+                    'schemas.microsoft.com/office/2011/relationships/commentsExtended" Target="commentsExtended.xml"/>'
+                    '</Relationships>').encode())
+            target.writestr(item, data)
+        target.writestr('word/comments.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                        f'<w:comments {nsdecls("w")} xmlns:w14="{W14}">{items}</w:comments>')
+        target.writestr('word/commentsExtended.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                        f'<w15:commentsEx xmlns:w15="{W15}">{extended}</w15:commentsEx>')
+    output.seek(0)
+    return output
+
+
+def _part_root(stream, name='word/document.xml'):
+    with ZipFile(BytesIO(stream.getvalue())) as archive:
+        return etree.fromstring(archive.read(name))
+
+
+def _paragraph_texts(root):
+    """Widoczny tekst każdego akapitu części (także we wstawkach i przeniesieniach, bez usuniętego)."""
+    return [''.join('\t' if node.tag == qn('w:tab') else node.text or ''
+                    for node in paragraph.iter(qn('w:t'), qn('w:tab'))
+                    if not any(ancestor.tag in DELETIONS for ancestor in node.iterancestors()))
+            for paragraph in root.iter(qn('w:p'))]
+
+
+def _resolved_texts(stream, accept, authors=None, then_accept=None):
+    """Teksty akapitów treści po przyjęciu albo odrzuceniu zmian (then_accept – potem wszystkie pozostałe)."""
+    root = _part_root(stream)
+    _resolve_revisions(root, accept, authors)
+    if then_accept is not None:
+        _resolve_revisions(root, then_accept)
+    return _paragraph_texts(root)
+
+
+def _commented_texts(root):
+    """Widoczny tekst w zakresie każdego komentarza (granice akapitów jako „¶”)."""
+    opened, found = {}, {}
+    for node in root.iter():
+        if node.tag == qn('w:commentRangeStart'):
+            opened[node.get(qn('w:id'))] = []
+        elif node.tag == qn('w:commentRangeEnd'):
+            found[node.get(qn('w:id'))] = ''.join(opened.pop(node.get(qn('w:id'))))
+        elif node.tag == qn('w:t') and not any(ancestor.tag in DELETIONS for ancestor in node.iterancestors()):
+            for pieces in opened.values():
+                pieces.append(node.text or '')
+        elif node.tag == qn('w:p'):
+            for pieces in opened.values():
+                if pieces:
+                    pieces.append('¶')
+    return found
+
+
+def _foreign_revisions(root):
+    """Cudze zmiany: zbiór (rodzic, znacznik, autor, data) i teksty kolejnych cudzych usunięć i przeniesień."""
+    kinds, removed = set(), []
+    for node in root.iter():
+        author = node.get(qn('w:author'))
+        if author is None or author == 'Odkurzacz':
+            continue
+        kinds.add((etree.QName(node.getparent()).localname, etree.QName(node).localname, author,
+                   node.get(qn('w:date'))))
+        if node.tag in DELETIONS:
+            removed.append(''.join(node.itertext()))
+    return kinds, removed
+
+
+class ForeignRevisionsAndCommentsTests(SimpleTestCase):
+    """Decyzja właściciela: komentarze i istniejące zmiany śledzone innych osób zostają po Odkurzaczu.
+
+    Tekst usunięty (w:del, w:moveFrom) nie jest zmieniany ani liczony; tekst cudzej wstawki (w:ins, w:moveTo)
+    jest poprawiany jak zwykły, a jej opakowanie z autorem i datą zostaje. Ze śledzeniem zmian Odkurzacz
+    zapisuje się jak Word: usunięcie fragmentu cudzej wstawki to w:del wewnątrz niej, własna wstawka stoi obok
+    (cudza wstawka dzieli się na dwie części). Treść comments.xml nie jest zmieniana (to uwagi redakcji, nie tekst).
+    """
+
+    on = FORM_DEFAULT_EDITORIAL_RULES
+    rules = on | {'empty_paragraphs'}
+    COMMENTS = (
+        (0, 'Redakcja', 'Uwaga na kilka akapitów', '10000000', None, False),
+        (1, 'Autor', 'Uwaga  punktowa...', '10000001', None, True),
+        (2, 'Redakcja', 'Pusty akapit', '10000002', None, False),
+        (3, 'Redakcja', 'Odpowiedź', '10000003', '10000001', False),
+        (4, 'Autor', 'Cytat', '10000004', None, False),
+    )
+    MOVED = 'Przeniesione zdanie... '
+    PARAGRAPHS = (
+        # Spacja na granicy cudzej wstawki, wyraz rozcięty cudzym usunięciem, komentarz punktowy z odpowiedzią
+        # (te same miejsca) i początek komentarza na kilka akapitów.
+        ('', _comment_start(0) + text_run('Ala ') + _change('ins', 101, text_run(' ma  kota')) + text_run(' i Ment')
+         + _change('del', 102, _deleted_run('stary')) + text_run('likiem jechał...') + text_run(' Zobacz ') + _comment_start(1)
+         + _comment_start(3) + text_run('to  słowo') + _comment_end(1) + _comment_end(3) + text_run(' ,tak.')),
+        # Cudza wstawka z poprawkami w środku i usunięcie cudzej wstawki przez drugiego autora.
+        ('', text_run('Tekst ') + _change('ins', 103, text_run('dopisany  '))
+         + _change('ins', 104, _change('del', 105, _deleted_run('i  skreślony... '), AUTOR))
+         + _change('ins', 106, text_run('fragment... mentlikiem')) + text_run(' koniec.')),
+        # Przeniesienie – źródło (w:moveFrom ma zwykłe w:t, także ze spacją nierozdzielającą).
+        ('', f'<w:moveFromRangeStart w:id="107" {REDAKCJA} w:name="move1"/>' + _change('moveFrom', 108, text_run(MOVED))
+         + '<w:moveFromRangeEnd w:id="107"/>' + text_run('Zostaje  tu.')),
+        # Wstawiony znak akapitu i koniec komentarza na kilka akapitów.
+        (_mark('ins', 109), text_run('Wstawiony  znak') + _comment_end(0) + text_run(' akapitu. ')),
+        # Usunięty znak akapitu: po przyjęciu zmian akapit łączy się z następnym – spacja między nimi zostaje.
+        (_mark('del', 110), text_run('Usunięty znak akapitu ')),
+        ('', text_run('ciąg  dalszy.')),
+        # Przeniesienie – cel.
+        ('', f'<w:moveToRangeStart w:id="111" {REDAKCJA} w:name="move1"/>' + _change('moveTo', 112, text_run(MOVED))
+         + '<w:moveToRangeEnd w:id="111"/>' + text_run('Po  przeniesieniu.')),
+        # Zmiany formatowania akapitu i przebiegu.
+        (f'<w:pPr><w:jc w:val="center"/><w:pPrChange w:id="113" {REDAKCJA}><w:pPr/></w:pPrChange></w:pPr>',
+         f'<w:r><w:rPr><w:b/><w:rPrChange w:id="114" {REDAKCJA}><w:rPr/></w:rPrChange></w:rPr>'
+         '<w:t xml:space="preserve">Pogrubiony  tekst...</w:t></w:r>'),
+        # Poprawka na pierwszym i ostatnim znaku zakresu komentarza; wielokropek z kropką w cudzej wstawce.
+        ('', text_run('Mówił ') + _comment_start(4) + text_run('"cytat"') + _comment_end(4) + text_run(' dalej.')),
+        ('', text_run('Prawie koniec..') + _change('ins', 115, text_run('.'))),
+        # Puste akapity: zwykłe, ze śledzonymi zmianami znaku akapitu i formatowania oraz z komentarzem.
+        ('', ''), ('', ''), (_mark('ins', 116), ''), ('', _comment_start(2) + _comment_end(2)), (_mark('del', 117), ''),
+        (f'<w:pPr><w:pPrChange w:id="118" {REDAKCJA}><w:pPr/></w:pPrChange></w:pPr>', ''), ('', ''),
+        ('', text_run('Koniec.')),
+    )
+    ACCEPTED = ['Ala ma kota i Mętlikiem jechał… Zobacz to słowo, tak.', 'Tekst dopisany fragment… mętlikiem koniec.',
+                'Zostaje tu.', 'Wstawiony znak akapitu.', 'Usunięty znak akapitu ciąg dalszy.',
+                'Przeniesione zdanie… Po przeniesieniu.', 'Pogrubiony tekst…', 'Mówił „cytat” dalej.', 'Prawie koniec…',
+                'Koniec.']
+    COMMENTED = {'0': 'Ala ma kota i Mętlikiem jechał… Zobacz to słowo, tak.¶Tekst dopisany fragment… mętlikiem koniec.'
+                      '¶Zostaje tu.¶Wstawiony znak', '1': 'to słowo', '3': 'to słowo', '2': '', '4': '„cytat”'}
+
+    def test_foreign_revisions_and_comments_survive_with_and_without_tracking(self):
+        """Po przyjęciu zmian tekst jest poprawiony, cudze zmiany (autor, data, usunięty tekst) i komentarze
+        zostają na tych samych słowach; ze śledzeniem odrzucenie samych poprawek Odkurzacza przywraca oryginał,
+        a podsumowanie nie liczy tekstu usuniętego ani źródła przeniesienia."""
+        source = revisions_docx(self.PARAGRAPHS, self.COMMENTS)
+        original = _part_root(source)
+        expected_summary = {'nonbreaking_spaces': 1, 'user_word_corrections': 2, 'spaces': 9, 'ellipsis': 5,
+                            'before_punct': 1, 'after_punct': 1, 'quotes': 2, 'trim': 1}
+        # Bez śledzenia znika tylko zwykły pusty akapit, ze śledzeniem także ten z cudzą zmianą (jako śledzone
+        # usunięcie znaku akapitu); akapit z usuniętym znakiem albo komentarzem zostaje zawsze.
+        for track_changes, removed, empty_after in ((False, 1, 5), (True, 3, 3)):
+            with self.subTest(track_changes=track_changes):
+                summary = {}
+                result = clean_docx(BytesIO(source.getvalue()), self.rules, track_changes=track_changes,
+                                    summary=summary)
+                Document(BytesIO(result.getvalue()))
+                root = _part_root(result)
+                accepted = _resolved_texts(result, True)
+                self.assertEqual([text for text in accepted if text], self.ACCEPTED)
+                self.assertEqual(accepted.count(''), empty_after)
+                self.assertEqual(_foreign_revisions(root), _foreign_revisions(original))
+                accepted_root = _part_root(result)
+                _resolve_revisions(accepted_root, True)
+                self.assertEqual(_commented_texts(accepted_root), self.COMMENTED)
+                self.assertEqual([node.get(qn('w:id')) for node in root.iter(qn('w:commentReference'))],
+                                 ['1', '3', '0', '4', '2'])
+                for run in root.iter(qn('w:r')):
+                    if run.find(qn('w:commentReference')) is not None:
+                        self.assertEqual([child.tag for child in run], [qn('w:rPr'), qn('w:commentReference')])
+                for name in ('word/comments.xml', 'word/commentsExtended.xml'):
+                    self.assertEqual(etree.tostring(_part_root(result, name), method='c14n'),
+                                     etree.tostring(_part_root(source, name), method='c14n'))
+                self.assertEqual(summary.pop('replacements'),
+                                 [{'source': 'Mentlikiem', 'target': 'Mętlikiem', 'count': 1},
+                                  {'source': 'mentlikiem', 'target': 'mętlikiem', 'count': 1}])
+                self.assertEqual(summary, {**expected_summary, 'empty_paragraphs': removed})
+                if not track_changes:
+                    self.assertFalse(root.xpath('//*[@w:author="Odkurzacz"]', namespaces={'w': NS_W}))
+                    continue
+                # Odrzucenie samych poprawek Odkurzacza: oryginał po przyjęciu i po odrzuceniu reszty zmian. W tekście
+                # widocznym spacja nierozdzielająca staje się zwykła cicho, bez śledzenia (decyzja właściciela);
+                # w źródle przeniesienia (tekst usunięty) zostaje.
+                for accept in (True, False):
+                    expected = _resolved_texts(source, accept)
+                    if accept:
+                        expected = [text.replace('\u00a0', ' ') for text in expected]
+                    self.assertEqual(_resolved_texts(result, False, {'Odkurzacz'}, then_accept=accept), expected)
+                # Jak Word: nasza wstawka nigdy w cudzej, nasze usunięcie fragmentu cudzej wstawki – w niej.
+                ours = '[@w:author="Odkurzacz"]'
+                foreign = '[@w:author!="Odkurzacz"]'
+                self.assertFalse(root.xpath(f'//w:ins{foreign}//w:ins{ours} | //w:moveTo//w:ins{ours}',
+                                            namespaces={'w': NS_W}))
+                self.assertTrue(root.xpath(f'//w:ins{foreign}/w:del{ours} | //w:moveTo/w:del{ours}',
+                                           namespaces={'w': NS_W}))
+                ids = [node.get(qn('w:id')) for node in root.iter(*DELETIONS, *INSERTIONS, qn('w:rPrChange'),
+                                                                  qn('w:pPrChange'))]
+                self.assertEqual(len(ids), len(set(ids)))
+
+    def test_comment_reference_does_not_split_the_sentence(self):
+        """Regresja: przebieg z odwołaniem do komentarza przerywał zdanie – cudzysłów nie łączył się w parę,
+        po kropce nie było wielkiej litery, a odsyłacz przypisu za dymkiem nie trafiał przed kropkę. Dymek
+        i zakres komentarza zostają na miejscu (kropka przeniesiona za odsyłacz wychodzi z zakresu)."""
+        footnote = '<w:r><w:rPr><w:rStyle w:val="FootnoteReference"/></w:rPr><w:footnoteReference w:id="1"/></w:r>'
+        cases = (
+            ('cudzysłów', text_run('Powiedział "') + _comment_start(5) + text_run('tak') + _comment_end(5)
+             + text_run('" i wyszedł .'), 'Powiedział „tak” i wyszedł.', 'tak'),
+            ('wielka litera', _comment_start(5) + text_run('Koniec zdania.') + _comment_end(5) + text_run(' następne.'),
+             'Koniec zdania. Następne.', 'Koniec zdania.'),
+            ('odsyłacz przypisu', _comment_start(5) + text_run('Tekst z uwagą.') + _comment_end(5) + footnote
+             + text_run(' dalej.'), 'Tekst z uwagą[1]. Dalej.', 'Tekst z uwagą'),
+        )
+        comment = ((5, 'Redakcja', 'Uwaga', '10000005', None, False),)
+        for name, content, expected, commented in cases:
+            for track_changes in (False, True):
+                with self.subTest(name, track_changes=track_changes):
+                    source = revisions_docx([('', content)], comment, footnote='Przypis.')
+                    result = clean_docx(source, self.on, track_changes=track_changes)
+                    root = _part_root(result)
+                    _resolve_revisions(root, True)
+                    self.assertEqual(noted_text(root.find(f'.//{qn("w:p")}')), expected)
+                    self.assertEqual(_commented_texts(root), {'5': commented})
+                    reference = root.find(f'.//{qn("w:commentReference")}').getparent()
+                    self.assertEqual([child.tag for child in reference], [qn('w:rPr'), qn('w:commentReference')])
+                    self.assertEqual(reference.getparent().tag, qn('w:p'))
+
+    def test_empty_paragraph_series_keeps_revision_marks_and_comment_anchors(self):
+        """Regresja: bez śledzenia zmian reguła empty_paragraphs usuwała pusty akapit z cudzą zmianą (wstawiony
+        znak akapitu, zmiana formatowania), a akapit z usuniętym znakiem liczyła jako usunięty, choć nic nie
+        zmieniała. Seria: „A”, pusty, akapit sprawdzany, pusty, „B”; (bez śledzenia, ze śledzeniem) – liczba
+        usuniętych pustych akapitów."""
+        cases = (
+            ('zwykły pusty akapit', ('', ''), (2, 2)),
+            ('wstawiony znak akapitu', (_mark('ins', 120), ''), (0, 2)),
+            ('usunięty znak akapitu', (_mark('del', 120), ''), (0, 0)),
+            ('zmiana formatowania akapitu', (f'<w:pPr><w:pPrChange w:id="120" {REDAKCJA}><w:pPr/></w:pPrChange>'
+                                             '</w:pPr>', ''), (0, 2)),
+            ('zakotwiczony komentarz', ('', _comment_start(6) + _comment_end(6)), (0, 0)),
+        )
+        comment = ((6, 'Redakcja', 'Uwaga', '10000006', None, False),)
+        for name, paragraph, counts in cases:
+            source = revisions_docx([('', text_run('A')), ('', ''), paragraph, ('', ''), ('', text_run('B'))], comment)
+            for track_changes, removed in zip((False, True), counts):
+                with self.subTest(name, track_changes=track_changes):
+                    summary = {}
+                    result = clean_docx(BytesIO(source.getvalue()), ['empty_paragraphs'],
+                                        track_changes=track_changes, summary=summary)
+                    self.assertEqual(summary.get('empty_paragraphs', 0), removed)
+                    root = _part_root(result)
+                    self.assertEqual(_foreign_revisions(root), _foreign_revisions(_part_root(source)))
+                    self.assertEqual(len(root.findall(f'.//{qn("w:commentReference")}')),
+                                     len(_part_root(source).findall(f'.//{qn("w:commentReference")}')))
+                    # Ze śledzeniem nasze usunięcie znaku akapitu stoi za cudzą wstawką znaku (jak w Wordzie).
+                    for mark in root.iter(qn('w:rPr')):
+                        tags = [etree.QName(child).localname for child in mark if child.tag in DELETIONS + INSERTIONS]
+                        self.assertIn(tags, ([], ['ins'], ['del'], ['ins', 'del']))
+
+    def test_spaces_beside_foreign_deletions_keep_words_apart(self):
+        """Regresja (zgłoszenie A): reguły spacji zbijały odstępy po obu stronach cudzego usunięcia, więc po
+        odrzuceniu zmian wyrazy się sklejały („i usuniętyoraz”). Odstęp stykający się z wyrazem usuniętego
+        tekstu zostaje (granica w:del/w:moveFrom jest barierą dla reguł spacji); poprawki z dala od granicy
+        i usunięcie z własnym odstępem (zapis Worda) działają jak dotąd. Sprawdzamy widok po przyjęciu
+        wszystkiego i po odrzuceniu samych cudzych zmian (poprawki Odkurzacza przyjęte) – z i bez śledzenia."""
+        footnote = '<w:r><w:rPr><w:rStyle w:val="FootnoteReference"/></w:rPr><w:footnoteReference w:id="1"/></w:r>'
+
+        def deleted(text):
+            return _change('del', 130, _deleted_run(text))
+
+        cases = (
+            ('podwójna spacja wokół usunięcia', text_run(' i ') + deleted('usunięty') + text_run(' oraz '),
+             'i  oraz', 'i usunięty oraz'),
+            ('spacja przed usunięciem na końcu akapitu', text_run('Tekst ') + deleted('usunięte'),
+             'Tekst ', 'Tekst usunięte'),
+            ('spacja przed przecinkiem za usunięciem', text_run('Słowo ') + deleted('x') + text_run(', dalej.'),
+             'Słowo , dalej.', 'Słowo x, dalej.'),
+            ('usunięcie z odstępem (zapis Worda)', text_run('Ala ma ') + deleted('bardzo ') + text_run('kota  i psa.'),
+             'Ala ma kota i psa.', 'Ala ma bardzo kota i psa.'),
+            ('źródło przeniesienia', text_run(' i ') + _change('moveFrom', 130, text_run('przeniesione'))
+             + text_run(' oraz'), 'i  oraz', 'i przeniesione oraz'),
+            ('grupa z odsyłaczem przypisu', text_run('Tekst  i ') + deleted('usunięty') + text_run(' koniec.')
+             + footnote, 'Tekst i  koniec[1].', 'Tekst i usunięty koniec[1].'),
+        )
+        for name, content, accepted, rejected in cases:
+            source = revisions_docx([('', content)], footnote='Przypis.')
+            for track_changes in (False, True):
+                with self.subTest(name, track_changes=track_changes):
+                    result = clean_docx(BytesIO(source.getvalue()), self.on, track_changes=track_changes)
+                    views = []
+                    for authors, accept in ((None, True), ({'Redakcja'}, False)):
+                        root = _part_root(result)
+                        _resolve_revisions(root, accept, authors)
+                        _resolve_revisions(root, True)
+                        views.append(noted_text(root.find(f'.//{qn("w:p")}')))
+                    self.assertEqual(views, [accepted, rejected])
+
+
+class Orthography2026DocxTests(SimpleTestCase):
+    """Reguły „Ortografia 2026” w DOCX: wyraz rozcięty na dwa przebiegi, treść przypisu, odsyłacz przypisu,
+    śledzenie zmian (najmniejsza zmiana: spacja albo łącznik) i granica cudzego usunięcia."""
+
+    rules = sorted(ORTHOGRAPHY_2026_KEYS)
+
+    @staticmethod
+    def views(stream, part):
+        """Tekst części po przyjęciu i po odrzuceniu wszystkich zmian (odsyłacze jako [w:id], znak przypisu [ref])."""
+        texts = []
+        for accept in (True, False):
+            root = _part_root(stream, part)
+            _resolve_revisions(root, accept)
+            texts.append(noted_text(root))
+        return texts
+
+    def test_rules_in_split_runs_and_footnotes_with_and_without_tracking(self):
+        """Po przyjęciu zmian tekst poprawiony w treści i w przypisie, po odrzuceniu – oryginał; podsumowanie
+        liczy każdą regułę; śledzone zmiany obejmują tylko usuniętą spację lub łącznik i wstawione znaki."""
+        source = noted_document(['To nie ', 'najlepszy pomysł, czy', 'by nie wyjść z niby-artystami', 1, '.'],
+                                note_text=' Był pół Polakiem, pół Szkotem, nie lepiej niż superPolak.')
+        original = ('To nie najlepszy pomysł, czyby nie wyjść z niby-artystami[1].',
+                    '[ref] Był pół Polakiem, pół Szkotem, nie lepiej niż superPolak.')
+        expected = ('To nienajlepszy pomysł, czy by nie wyjść z nibyartystami[1].',
+                    '[ref] Był pół-Polakiem, pół-Szkotem, nielepiej niż super-Polak.')
+        for track_changes in (False, True):
+            with self.subTest(track_changes=track_changes):
+                summary = {}
+                result = clean_docx(BytesIO(source.getvalue()), self.rules, track_changes=track_changes,
+                                    summary=summary)
+                for index, part in enumerate(('word/document.xml', 'word/footnotes.xml')):
+                    self.assertEqual(self.views(result, part),
+                                     [expected[index], original[index] if track_changes else expected[index]])
+                self.assertEqual(summary, {'nie_comparative': 2, 'by_separate': 1, 'niby_quasi': 1,
+                                           'pol_compounds': 2, 'prefix_hyphen': 1})
+                if track_changes:
+                    body, notes = _part_root(result), _part_root(result, 'word/footnotes.xml')
+                    namespaces = {'w': NS_W}
+                    self.assertEqual(body.xpath('//w:delText/text()', namespaces=namespaces), [' ', '-'])
+                    self.assertEqual(body.xpath('//w:ins//w:t/text()', namespaces=namespaces), [' '])
+                    self.assertEqual(notes.xpath('//w:delText/text()', namespaces=namespaces), [' ', ' ', ' '])
+                    self.assertEqual(notes.xpath('//w:ins//w:t/text()', namespaces=namespaces), ['-', '-', '-'])
+
+    def test_nie_is_not_joined_across_a_foreign_deletion(self):
+        """„nie” i stopień wyższy rozdzielone cudzym usunięciem (z odstępem przy wyrazie) zostają osobno: po
+        odrzuceniu cudzej zmiany wróciłby inny tekst („nie bardzo najlepiej”); ten sam zapis bez usunięcia –
+        łącznie. Bez śledzenia i ze śledzeniem."""
+        cases = (
+            ('cudze usunięcie', text_run('Było nie ') + _change('del', 140, _deleted_run('bardzo')) + text_run(' najlepiej.'),
+             'Było nie  najlepiej.', 'Było nie bardzo najlepiej.'),
+            ('bez usunięcia', text_run('Było nie ') + text_run('najlepiej.'), 'Było nienajlepiej.', 'Było nienajlepiej.'),
+        )
+        for name, content, accepted, rejected in cases:
+            source = revisions_docx([('', content)])
+            for track_changes in (False, True):
+                with self.subTest(name, track_changes=track_changes):
+                    result = clean_docx(BytesIO(source.getvalue()), ['nie_comparative'], track_changes=track_changes)
+                    views = []
+                    for authors, accept in ((None, True), ({'Redakcja'}, False)):
+                        root = _part_root(result)
+                        _resolve_revisions(root, accept, authors)
+                        _resolve_revisions(root, True)
+                        views.append(noted_text(root.find(f'.//{qn("w:p")}')))
+                    self.assertEqual(views, [accepted, rejected])

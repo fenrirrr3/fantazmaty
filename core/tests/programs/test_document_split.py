@@ -27,10 +27,13 @@ from core.models import MailboxConnection
 from core.program_test_support import run_program
 from core.services import program_jobs as jobs
 from core.services import split_mailing as mailing
+from core.services.document_images import linked_images_note
 from core.services.document_split import NoHeadingError, file_name, heading_style_ids, split_document
 from fantazmaty.testing import create_member, create_superuser
 
+from .editor_fixtures_exotic import review_stories_docx
 from .support import IsolatedProgramDirsMixin, add_footnote_reference, docx_bytes, downloaded, png, saved
+from .test_document_rebuild import comments_of, review_markup_errors, review_parts, revisions
 
 STORIES = (('Pierwsze opowiadanie', (20, 10)), ('Drugie: „cytat”?', (30, 15)), ('Trzecie', None))
 EXPECTED = ['01 Pierwsze opowiadanie.docx', '02 Drugie „cytat”.docx', '03 Trzecie.docx']
@@ -341,6 +344,31 @@ class SplitDocumentTests(SimpleTestCase):
                     self.assertNotIn(value, text)
                 self.assertIn('w:type="separator"', package['word/endnotes.xml'].decode())
 
+    def test_review_markup_follows_its_story(self):
+        """Regresja: komentarz w przypisie znikał z comments.xml (odwołanie zostawało bez komentarza), a zakres
+        komentarza i przeniesienia przecięty granicą opowiadań zostawał bez pary. Teraz komentarz trafia do
+        opowiadania z odwołaniem (zakres od początku opowiadania), w pierwszym jego znaczniki znikają, przeniesienie
+        między opowiadaniami traci zakresy (tekst i oznaczenia zmian zostają), odpowiedź i rozwiązanie zostają."""
+        report, files = split(review_stories_docx().getvalue())
+        self.assertEqual(report['files'], ['01 Pierwsze.docx', '02 Drugie.docx'])
+        expected = {
+            # plik: (komentarze: treść, zakres, słowo przed odwołaniem, komentarz nadrzędny, rozwiązany; zmiany)
+            '01 Pierwsze.docx': ([('Punktowy.', None, 'punkt', None, False)],
+                                 ['ins', 'moveFrom', 'moveFrom']),
+            '02 Drugie.docx': ([('Odpowiedź.', 'Pytanie', 'Pytanie', 'Pytanie?', False),
+                                ('Przez granicę.', 'Drugie¶Koniec komentarza', 'komentarza', None, False),
+                                ('Pytanie?', 'Pytanie', 'Pytanie', None, False),
+                                ('W przypisie.', 'uwagą', 'uwagą', None, True)],
+                               ['moveTo', 'moveTo']),
+        }
+        for name, (comments, changes) in expected.items():
+            with self.subTest(name):
+                review = review_parts(BytesIO(files[name]))
+                self.assertEqual([comment[3:4] + comment[5:] for comment in comments_of(review)], comments)
+                self.assertEqual([change[0] for change in revisions(review)], changes)
+                self.assertEqual(review_markup_errors(review), [])
+                self.assertEqual(len(Document(BytesIO(files[name])).comments), len(comments))
+
 
 def _without_section(data):
     root = etree.fromstring(data)
@@ -413,6 +441,29 @@ class SplitProgramTests(IsolatedProgramDirsMixin, TestCase):
                 self.assertEqual(state['message'] if expected == 'error' else state['warnings'][0], message)
                 if expected == 'done':
                     self.assertEqual(downloaded(self.client.get(response.json()['url'] + '?download=1')), b'PK')
+
+    def test_linked_images_are_reported(self):
+        """Obrazy połączone z plikami spoza dokumentu (liczba z raportu podprocesu) – uwaga w podsumowaniu; brak,
+        zero i wartość niebędąca liczbą – bez uwagi."""
+        def converter(directory, limit, control):
+            (directory / 'split.json').write_text(report, encoding='utf-8')
+            (directory / 'document.zip').write_bytes(b'PK')
+        cases = (
+            ('brak', '{"files": ["01 A.docx"]}', None),
+            ('zero', '{"files": ["01 A.docx"], "linked_images": 0}', None),
+            ('nie liczba', '{"files": ["01 A.docx"], "linked_images": true}', None),
+            ('jeden', '{"files": ["01 A.docx"], "linked_images": 1}', linked_images_note(1)),
+            ('dwa', '{"files": ["01 A.docx"], "linked_images": 2}', linked_images_note(2)),
+        )
+        for label, report, note in cases:
+            with self.subTest(label), patch.object(jobs, 'run_converter', side_effect=converter), \
+                    patch.object(jobs, 'launch', side_effect=jobs.execute):
+                response = self.client.post(reverse('core:programs'), {
+                    'program_action': 'split', 'split-document': SimpleUploadedFile('A.docx', anthology())},
+                    HTTP_X_PROGRAM_JOB='1')
+                state = self.client.get(response.json()['url']).json()
+                self.assertEqual(state['state'], 'done', state)
+                self.assertEqual(state['warnings'][1:], [note] if note else [])
 
     def test_document_without_heading_one_is_an_error(self):
         """Bez akapitu w stylu Nagłówek 1 nie powstaje żaden plik – komunikat po polsku."""
@@ -982,7 +1033,8 @@ class SplitMailingViewTests(IsolatedProgramDirsMixin, SplitMailingData):
 
     def test_mailing_pages_use_shared_form_markup(self):
         """Formularz wiadomości i mail testowy mają pola jak inne programy: etykieta, podpowiedź z identyfikatorem
-        dla aria-describedby, ostrzeżenie o niezapisanych zmianach; neutralne uwagi programu na stronie zadania."""
+        dla aria-describedby, ostrzeżenie o niezapisanych zmianach; neutralne uwagi programu na stronie zadania;
+        strona zadania i wysyłka mają kartę z klasami kart strony programów i stopkę z powrotem do programów."""
         url, folder = self.split_job(warnings=['Utworzono 2 pliki.'])
         tree = html.fromstring(self.client.get(url).content.decode())
         form = tree.xpath('//form[@data-warn-unsaved]')[0]
@@ -992,12 +1044,18 @@ class SplitMailingViewTests(IsolatedProgramDirsMixin, SplitMailingData):
         self.assertFalse(tree.xpath('//p[@class="muted-text"]'))
         page, _token = self.checklist(self.prepare(url))
         tree = html.fromstring(page.content.decode())
-        self.assertEqual(tree.xpath('//form[contains(@class, "split-mailing-step")]/h2/text()'),
+        self.assertEqual(tree.xpath('//form/h2/text()'),
                          ['Lista kontrolna', 'Mail testowy'])
         self.assertEqual(tree.xpath('//input[@name="test_address"]/@aria-describedby'), ['id_test_address_helptext'])
         job = self.client.get(url.replace('wyslij-autorom/', '') + '?view=page')
         self.assertContains(job, 'Uwagi programu')
         self.assertNotContains(job, 'Uwagi do konwersji')
+        for name, response in (('wysyłka', page), ('zadanie', job)):
+            with self.subTest(name):
+                card, = html.fromstring(response.content.decode()).xpath('//main//section[.//form or .//a]')
+                self.assertEqual(card.get('class').split(), ['details-card', 'odkurzacz', 'program-tool'])
+                self.assertEqual(card.xpath('./div[@class="card-body"]/div[@class="program-footer"]//a/text()')[-1],
+                                 'Wróć do programów')
 
     def test_checklist_then_each_author_gets_only_own_file(self):
         """Lista kontrolna z tytułem, autorami, plikiem, adresami i stanem; każdy e-mail ma tylko plik swojego tekstu."""

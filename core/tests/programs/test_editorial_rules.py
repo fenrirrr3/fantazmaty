@@ -10,11 +10,14 @@ from zipfile import ZIP_DEFLATED, ZipFile
 from django.test import SimpleTestCase
 from docx import Document
 
-from core.odkurzacz_forms import DocumentConversionForm, OdkurzaczForm, RepetitionsForm
+from core.odkurzacz_forms import (
+    REPLACEMENT_WORD_MAX, WORD_SOURCE_RE, DocumentConversionForm, OdkurzaczForm, RepetitionsForm,
+)
 from core.services.odkurzacz import (
-    ALL_EDITORIAL_RULES, CONTEXT, DEFAULT_EDITORIAL_RULES, DEFAULT_REPLACEMENTS, EDITORIAL_RULES, FORM_DEFAULT_EDITORIAL_RULES,
-    _change_regions, _compile_pattern, USER_WORD_EXACT, USER_WORD_PATTERNS, _edit_opcodes, clean_docx,
-    correct_editorial_text,
+    ABBREVIATION_GROUPS, ALL_EDITORIAL_RULES, CONTEXT, DEFAULT_EDITORIAL_RULES, DEFAULT_REPLACEMENTS, EDITORIAL_RULES,
+    FORM_DEFAULT_EDITORIAL_RULES, MAX_PATTERN_LENGTH, ORTHOGRAPHY_2026_KEYS, ORTHOGRAPHY_2026_RULES,
+    SENTENCE_ABBREVIATIONS, _change_regions, _compile_pattern, USER_WORD_EXACT, USER_WORD_PATTERNS, _edit_opcodes,
+    clean_docx, compile_replacements, correct_editorial_text,
 )
 
 from .support import REPETITION_PARAMETERS, saved, sized_docx, upload
@@ -135,9 +138,9 @@ class OptionalAndEdgeRuleTests(SimpleTestCase):
 
     def test_user_word_list_keeps_the_original_letter_case(self):
         self.assertEqual(
-            correct_editorial_text('Pickupem jechał niechcąco, PICKUPAMI; europejczykiem i azjatami; '
+            correct_editorial_text('Mentlikiem jechał niechcąco, MENTLIKAMI; europejczykiem i azjatami; '
                                    'komedia dellarte; Przekonywujący oddziaływującego', {'user_word_corrections'}),
-            'Pikapem jechał niechcący, PIKAPAMI; Europejczykiem i Azjatami; '
+            'Mętlikiem jechał niechcący, MĘTLIKAMI; Europejczykiem i Azjatami; '
             'komedia dell’arte; Przekonujący oddziałującego')
 
     def test_impossible_dates_and_times_stay_unchanged(self):
@@ -194,10 +197,10 @@ class ReplacementListTests(SimpleTestCase):
                             for entry in DEFAULT_REPLACEMENTS))
         self.assertEqual(len(DEFAULT_REPLACEMENTS), len(USER_WORD_EXACT) + len(USER_WORD_PATTERNS) + 1)
         json.dumps(DEFAULT_REPLACEMENTS)  # nadaje się do zapisania w CMS / konfiguracji zadania
-        samples = ('Pickupem jechał niechcąco, PICKUPAMI; europejczykiem, Europejczykiem i EUROPEJCZYKIEM; '
+        samples = ('Mentlikiem jechał niechcąco, MENTLIKAMI; europejczykiem, Europejczykiem i EUROPEJCZYKIEM; '
                    'azjatami; komedia dellarte, KOMEDIA DELLARTE, KoMeDiA dEllArte, komediami Dellarte; '
                    'ZACZYM, Zaczym; MASSMEDIAMI; miałczeniem; nieprzekonywującego; wymyśleć; kanister')
-        expected = ('Pikapem jechał niechcący, PIKAPAMI; Europejczykiem, Europejczykiem i EUROPEJCZYKIEM; '
+        expected = ('Mętlikiem jechał niechcący, MĘTLIKAMI; Europejczykiem, Europejczykiem i EUROPEJCZYKIEM; '
                     'Azjatami; komedia dell’arte, KOMEDIA DELL’ARTE, KoMeDiA dell’arte, komediami Dell’arte; '
                     'ZA CZYM, Za czym; MASS MEDIAMI; miauczeniem; nieprzekonującego; wymyślić; kanister')
         self.assertEqual(self.fix(samples), expected)
@@ -206,9 +209,9 @@ class ReplacementListTests(SimpleTestCase):
     def test_custom_list_replaces_the_builtin_one(self):
         replacements = [{'kind': 'word', 'source': 'kot', 'target': 'pies'},
                         {'kind': 'word', 'source': 'nie wiem', 'target': 'nie mam pojęcia'}]
-        self.assertEqual(self.fix('Kot, KOT i kot; kotek; pickup. Nie wiem.', replacements),
-                         'Pies, PIES i pies; kotek; pickup. Nie mam pojęcia.')
-        self.assertEqual(self.fix('pickup', []), 'pickup')
+        self.assertEqual(self.fix('Kot, KOT i kot; kotek; mentlik. Nie wiem.', replacements),
+                         'Pies, PIES i pies; kotek; mentlik. Nie mam pojęcia.')
+        self.assertEqual(self.fix('mentlik', []), 'mentlik')
 
     def test_patterns_use_named_groups_and_capital_targets(self):
         replacements = [
@@ -248,12 +251,12 @@ class ReplacementListTests(SimpleTestCase):
 
     def test_replacements_reach_the_docx_cleaner(self):
         document = Document()
-        document.add_paragraph('Pickup i kot.')
+        document.add_paragraph('Mentlik i kot.')
         result = Document(clean_docx(saved(document), ['user_word_corrections'],
                                      replacements=[{'kind': 'word', 'source': 'kot', 'target': 'pies'}]))
-        self.assertEqual(result.paragraphs[0].text, 'Pickup i pies.')
+        self.assertEqual(result.paragraphs[0].text, 'Mentlik i pies.')
         result = Document(clean_docx(saved(document), ['user_word_corrections']))
-        self.assertEqual(result.paragraphs[0].text, 'Pikap i kot.')
+        self.assertEqual(result.paragraphs[0].text, 'Mętlik i kot.')
 
 
 class ChangeRegionTests(SimpleTestCase):
@@ -263,7 +266,7 @@ class ChangeRegionTests(SimpleTestCase):
         return [(original[a:b], corrected[c:d]) for a, b, c, d in _change_regions(original, corrected)]
 
     def test_word_changes_cover_the_whole_word_and_spacing_changes_stay_minimal(self):
-        self.assertEqual(self.regions('Jechał pickupem.', 'Jechał pikapem.'), [('pickupem', 'pikapem')])
+        self.assertEqual(self.regions('Był w mentliku.', 'Był w mętliku.'), [('mentliku', 'mętliku')])
         self.assertEqual(self.regions('Ala  ma kota...', 'Ala ma kota…'), [(' ', ''), ('...', '…')])
         self.assertEqual(self.regions('w 2025r. i a b', 'w 2025 r. i a b'), [('', ' '), (' ', ' ')])
         self.assertEqual(self.regions('1.2.2025', '01.02.2025'), [('1', '01'), ('2', '02')])
@@ -680,3 +683,476 @@ class EditorialRuleR9Tests(SimpleTestCase):
         with patch('core.services.odkurzacz._too_slow', return_value=False) as probe:
             CompiledReplacements([{'kind': 'pattern', 'source': r'\bkot\b', 'target': 'pies'}])
         probe.assert_called_once()
+
+
+class AbbreviationListTests(SimpleTestCase):
+    """Lista skrótów Odkurzacza: kropki wewnątrz skrótu bez spacji, mała litera po skrócie,
+    zachowany zapis ze spacją, scalanie jednoznacznych skrótów i zwykłe wyrazy na końcu zdania."""
+
+    # grupa listy: zdania, w których skrót stoi w środku zdania (żadna reguła domyślna ich nie zmienia)
+    SENTENCES = {
+        'ogólne': ('Ta w.w. osoba wymieniła Piotra i in. świętych.', 'Patrz s. 5 i nast. strony, zał. nr 2.',
+                   'Dom z c.o. i wew. instalacją, odp. kwota.'),
+        # p.p. (per procura) nie ma na liście: ciąg liter z kropkami nie rozpada się na „p. p.”.
+        'tytuły, stopnie i funkcje': ('Pismo podpisał p.o. dyrektora, w.z. kierownika, p.p. Jan Nowak.',
+                                      'Był prof. nadzw. uczelni.',
+                                      'Podpisał z up. kierownika Sz.P. Jan, r.pr. Nowak.'),
+        'kościelne': ('Kościół p.w. Najświętszej Marii Panny i pw. świętych Piotra.',
+                      'Parafia rz.-kat. w mieście.', 'Modlili się za śś. męczenników.'),
+        'wojskowe i służbowe': ('Awansował na st. szer. rezerwy.', 'Był rtm. kawalerii i adm. floty.'),
+        'adresowe': ('Mieszka w m.st. Warszawie, w bl. czwartym, pok. siódmy.', 'Wieś leży na płn. od miasta.'),
+        'firmy i instytucje': ('Firma s.c. i spółka sp.j. oraz sp. z o.o.', 'Spółka w likw. ogłosiła upadłość.'),
+        'prawo i urzędy': ('Zgodnie z art. 5 k.p.c., k.r.o. i k.s.h. oraz rozp. ministra, z późn. zm.',
+                           'Ogłoszono w Dz.U. i M.P. z 2020 r., l.dz. 5, sygn. akt II K 1/20.',
+                           'Sąd wydał wyr. zaoczny.'),
+        'bibliografia i wydawnictwa': ('Wyd. 2, popr. i uzup., b.m.w. i b.r.w.', 'Tom 2, tabl. i wykr. w aneksie.'),
+        'czas i miary': ('W maju ub.r. i b.r. było ciepło, a ub.m. też.', 'Szczyt ma 300 m n.p.m., ok. 2 km wys. i jest stromy.',
+                         'Trwało 5 sek. dłużej.'),
+        'językowe': ('Słowo przestarz. i rzad. używane, gw. regionalne.', 'Forma zdr. od imienia, jęz. polski.'),
+    }
+
+    def test_list_has_unique_entries_in_named_groups(self):
+        """Każdy wpis listy jest jeden raz, małymi literami i kończy się kropką; grupy pokrywają testy."""
+        entries = [entry for _, group in ABBREVIATION_GROUPS for entry in group.split()]
+        duplicates = sorted({entry for entry in entries if entries.count(entry) > 1})
+        self.assertEqual(duplicates, [])
+        self.assertEqual(len(SENTENCE_ABBREVIATIONS), len(entries))
+        for entry in entries:
+            with self.subTest(entry=entry):
+                self.assertTrue(entry.endswith('.') and entry == entry.lower())
+        self.assertEqual({name for name, _ in ABBREVIATION_GROUPS}, set(self.SENTENCES))
+
+    def test_abbreviations_keep_internal_dots_and_lowercase_after_them(self):
+        """after_punct nie rozdziela kropek wewnątrz skrótu, a sentence_case nie zaczyna po nim zdania."""
+        for group, sentences in self.SENTENCES.items():
+            for text in sentences:
+                for rules in ({'after_punct'}, {'sentence_case'}, FORM_DEFAULT_EDITORIAL_RULES):
+                    with self.subTest(group=group, text=text, rules=len(rules)):
+                        self.assertEqual(correct_editorial_text(text, rules), text)
+
+    def test_missing_space_after_an_abbreviation_is_added_once(self):
+        """Brakująca spacja po całym skrócie (także przed cudzysłowem); kropki w środku skrótu zostają."""
+        cases = {
+            'Był p.o.Dyrektora i np.w domu.': 'Był p.o. Dyrektora i np. w domu.',
+            'Kościół p.w.Świętej Anny, firma s.c.Kowalski.': 'Kościół p.w. Świętej Anny, firma s.c. Kowalski.',
+            'Książka pt.„Lalka” i Dz.U.Nr 5.': 'Książka pt. „Lalka” i Dz.U. Nr 5.',
+        }
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual(correct_editorial_text(text, FORM_DEFAULT_EDITORIAL_RULES), expected)
+
+    def test_existing_spaced_forms_stay_unchanged(self):
+        """Zapis ze spacją wewnątrz skrótu (Dz. U., p. o.) i bez niej zostaje taki, jaki był."""
+        for text in ('Był p. o. dyrektora.', 'Ogłoszono w Dz. U. z 2020 r. i Dz. Urz. woj.',
+                     'Mieszka w m. st. Warszawie.', 'Spotkanie ub. r. i b. r. minęło.', 'Art. 5 k. p. c. stanowi.',
+                     'Ogłoszono w Dz.U. z 2020 r. i Dz.Urz. woj.'):
+            with self.subTest(text=text):
+                self.assertEqual(correct_editorial_text(text, FORM_DEFAULT_EDITORIAL_RULES), text)
+
+    def test_only_unambiguous_spaced_abbreviations_are_merged(self):
+        """Reguła abbreviations scala n. p. m., p. p. m. i p. n. e.; „t.j.” przed Dz.U. to tekst jednolity."""
+        cases = {
+            'Rok 50 p. n. e., 300 m n. p. m. i 2 m p.p. m.': 'Rok 50 p.n.e., 300 m n.p.m. i 2 m p.p.m.',
+            '(t.j. Dz.U. z 2020 r.) i (t. j. Dz. U.)': '(t.j. Dz.U. z 2020 r.) i (t. j. Dz. U.)',
+            'Był t. j. kierownikiem, m. in. tam.': 'Był tj. kierownikiem, m.in. tam.',
+            'Był p. o. dyrektora, b. r. i N. P. M. Kowalski.': 'Był p. o. dyrektora, b. r. i N. P. M. Kowalski.',
+        }
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual(correct_editorial_text(text, {'abbreviations'}), expected)
+
+    def test_words_equal_to_skipped_abbreviations_still_end_a_sentence(self):
+        """Wyrazy równe pominiętym skrótom (kat., im., rzecz., sport. …) kończą zdanie: dalej wielka litera."""
+        for word in ('kat', 'im', 'rzecz', 'sport', 'lis', 'nauk', 'czas', 'post', 'sąd', 'mat', 'ser', 'pułk',
+                     'marsz', 'miejsc', 'dom', 'las', 'pan', 'bal'):
+            with self.subTest(word=word):
+                self.assertNotIn(f'{word}.', SENTENCE_ABBREVIATIONS)
+                self.assertEqual(correct_editorial_text(f'Był tam {word}. potem wyszedł.', {'sentence_case'}),
+                                 f'Był tam {word}. Potem wyszedł.')
+
+    def test_abbreviation_at_the_end_of_a_sentence_keeps_the_next_capital(self):
+        """Po skrócie kończącym zdanie wielka litera i zaimek zostają (itd. Potem, i in. On)."""
+        for text in ('Mówił o kotach, psach itd. Potem wyszedł.', 'Wymienił Jana i in. On przyszedł.',
+                     'Tekst ustawy z późn. zm. Ona obowiązuje.'):
+            with self.subTest(text=text):
+                self.assertEqual(correct_editorial_text(text, FORM_DEFAULT_EDITORIAL_RULES), text)
+
+    def test_numbers_after_reference_abbreviations_get_a_space(self):
+        """Brakująca spacja między skrótem a liczbą także po rys., tab., zał., sygn., pkt."""
+        self.assertEqual(
+            correct_editorial_text('Patrz rys.3, ryc.4, tab.5, il.2, fot.1, zał.3, sygn.12, pkt3, zd.2, wyd.2 i nr3.',
+                                   {'reference_space'}),
+            'Patrz rys. 3, ryc. 4, tab. 5, il. 2, fot. 1, zał. 3, sygn. 12, pkt 3, zd. 2, wyd. 2 i nr 3.')
+        self.assertEqual(correct_editorial_text('Opkt3 i tabela5.', {'reference_space'}), 'Opkt3 i tabela5.')
+
+    def test_long_paragraph_full_of_abbreviations_is_fast(self):
+        """Kilkaset skrótów w jednym wzorcu: najdłuższy akapit nadal szybko (wzorzec grupowany po literze)."""
+        source = ('Był p.o. dyrektora, m.in. prof. Kowalski z ul. Polnej 5, pt.„Lalka”, wyd. 2, popr. i uzup., '
+                  's. 15 i nast. Potem ks. proboszcz parafii pw. św. Anny (Dz.U. z 2020 r. poz. 5) i in. ' * 120)[:20000]
+        started = time.monotonic()
+        result = correct_editorial_text(source, FORM_DEFAULT_EDITORIAL_RULES)
+        self.assertLess(time.monotonic() - started, 1.5)
+        self.assertIn('Był p.o. dyrektora, m.in. prof. Kowalski z ul. Polnej 5, pt. „Lalka”', result)
+        self.assertIn('poz. 5) i in. Był', result)
+
+
+class OwnerReplacementListTests(SimpleTestCase):
+    """Lista automatycznych zamian właściciela (październik 2026): pełna fleksja, wielkość liter jak w tekście
+    (nazwy mieszkańców i ras – wielką literą), poprawne wyrazy-sąsiedzi bez zmian; pickup → pikap usunięte."""
+
+    # nazwa: ({błędna forma: poprawna}, [formy, które muszą zostać])
+    CASES = {
+        'absorpcja': ({'absorbcja': 'absorpcja', 'absorbcji': 'absorpcji', 'absorbcją': 'absorpcją',
+                       'absorbcjami': 'absorpcjami', 'absorbcyjny': 'absorpcyjny', 'absorbcyjnych': 'absorpcyjnych',
+                       'absorbcyjność': 'absorpcyjność'}, ['absorpcja', 'absorbować', 'absorbuje', 'absorbent']),
+        'Azjata, Azjatka': ({'azjata': 'Azjata', 'azjacie': 'Azjacie', 'azjatów': 'Azjatów', 'azjatka': 'Azjatka',
+                             'azjatce': 'Azjatce', 'azjatek': 'Azjatek', 'azjatkami': 'Azjatkami'},
+                            ['azjatycki', 'azjatyckiej']),
+        'cętkowany, cętka': ({'centkowana': 'cętkowana', 'centkowanego': 'cętkowanego', 'centkowani': 'cętkowani',
+                              'centka': 'cętka', 'centki': 'cętki', 'centce': 'cętce', 'centek': 'cętek',
+                              'centkami': 'cętkami'},
+                             ['cent', 'centa', 'centów', 'centem', 'cencie', 'Centkiewicz', 'Centkiewiczowie',
+                              'procent', 'centrum']),
+        'Europejczyk, Europejka': ({'europejczykiem': 'Europejczykiem', 'europejczycy': 'Europejczycy',
+                                    'europejka': 'Europejka', 'europejce': 'Europejce', 'europejek': 'Europejek'},
+                                   ['europejski', 'europejska', 'europejskie']),
+        'greckokatolicki': ({'grekokatolicki': 'greckokatolicki', 'grekokatolickiej': 'greckokatolickiej',
+                             'grekokatoliccy': 'greckokatoliccy', 'grekokatolickimi': 'greckokatolickimi'},
+                            ['grekokatolik', 'grekokatolika', 'grekokatolicy', 'grekokatolików', 'greckokatolicki']),
+        'indywidualny': ({'indywidulany': 'indywidualny', 'indywidulanej': 'indywidualnej',
+                          'indywidulani': 'indywidualni', 'indywidulanie': 'indywidualnie'}, ['indywidualista']),
+        'dell’arte': ({'dellarte': 'dell’arte', 'komedia dellarte': 'komedia dell’arte',
+                       'komedii dellarte': 'komedii dell’arte'}, ['dell’arte']),
+        'Kreol, Kreolka': ({'kreol': 'Kreol', 'kreola': 'Kreola', 'kreolowie': 'Kreolowie', 'kreolami': 'Kreolami',
+                            'kreolka': 'Kreolka', 'kreolce': 'Kreolce'},
+                           ['kreolski', 'kreolska', 'kreolskich', 'kreolszczyzna', 'kreolszczyzny']),
+        'księżmi': ({'księżami': 'księżmi'}, ['księżmi', 'księży', 'księża', 'księżom']),
+        'kurewstwo': ({'kurestwo': 'kurewstwo', 'kurestwa': 'kurewstwa', 'kurestwem': 'kurewstwem',
+                       'kurestwie': 'kurewstwie', 'kurestw': 'kurewstw'}, ['kurewstwo']),
+        'mityng, mityngowy': ({'miting': 'mityng', 'mitingu': 'mityngu', 'mitingiem': 'mityngiem',
+                               'mitingów': 'mityngów', 'mitingowy': 'mityngowy', 'mitingowej': 'mityngowej'},
+                              ['mityng', 'mitygować']),
+        'Mulat, Mulatka': ({'mulat': 'Mulat', 'mulata': 'Mulata', 'mulacie': 'Mulacie', 'mulaci': 'Mulaci',
+                            'mulatów': 'Mulatów', 'mulatka': 'Mulatka', 'mulatce': 'Mulatce', 'mulatek': 'Mulatek'},
+                           ['mulacki', 'mulacka', 'mulackie', 'muła', 'mułach']),
+        'nabazgrzę': ({'nabazgram': 'nabazgrzę', 'nabazgrasz': 'nabazgrzesz', 'nabazgra': 'nabazgrze',
+                       'nabazgramy': 'nabazgrzemy', 'nabazgracie': 'nabazgrzecie', 'nabazgrają': 'nabazgrzą'},
+                      ['nabazgrał', 'nabazgrała', 'nabazgrali', 'nabazgrać', 'nabazgrzę', 'nabazgrany']),
+        'nie dowierzać': ({'niedowierza': 'nie dowierza', 'niedowierzam': 'nie dowierzam',
+                           'niedowierzają': 'nie dowierzają', 'niedowierzać': 'nie dowierzać',
+                           'niedowierzał': 'nie dowierzał', 'niedowierzałaby': 'nie dowierzałaby',
+                           'niedowierzaliśmy': 'nie dowierzaliśmy', 'niedowierzając': 'nie dowierzając'},
+                          ['niedowierzanie', 'niedowierzaniem', 'niedowierzający', 'niedowierzająca',
+                           'niedowierzającym', 'niedowiarek', 'nie dowierza']),
+        # Reforma 2026 (decyzja właściciela): „nie” ze stopniem wyższym i najwyższym łącznie – słownik nie rozdziela.
+        'nie ze stopniem wyższym i najwyższym': ({}, ['niemniejszy', 'niemniejsza', 'niemniejsi', 'nienajgorszy',
+                                                       'nienajgorzej', 'nienajlepsza', 'nienajlepsi', 'nienajlepiej',
+                                                       'niemniej', 'nie mniej niż', 'nienajedzony']),
+        'nie wiadomo': ({'niewiadomo': 'nie wiadomo'}, ['niewiadoma', 'niewiadomą', 'niewiadome', 'niewiadomych']),
+        'oddziałujący': ({'oddziaływujący': 'oddziałujący', 'nieoddziaływujących': 'nieoddziałujących',
+                          'oddziaływuje': 'oddziałuje', 'oddziaływują': 'oddziałują', 'oddziaływując': 'oddziałując'},
+                         ['oddziaływać', 'oddziaływał', 'oddziaływanie', 'oddziałujący', 'oddziaływający']),
+        'oldbojów': ({'oldboi': 'oldbojów'}, ['oldbojów', 'oldboje', 'oldboj']),
+        'przeciwwskazany': ({'przeciwskazana': 'przeciwwskazana', 'przeciwskazanych': 'przeciwwskazanych',
+                             'przeciwskazanie': 'przeciwwskazanie', 'przeciwskazań': 'przeciwwskazań'},
+                            ['przeciwwskazana', 'wskazana']),
+        'przekonujący': ({'przekonywujący': 'przekonujący', 'nieprzekonywującego': 'nieprzekonującego',
+                          'przekonywująco': 'przekonująco', 'przekonywuje': 'przekonuje',
+                          'przekonywujesz': 'przekonujesz'},
+                         ['przekonywać', 'przekonywał', 'przekonywający', 'przekonujący', 'przekonywanie']),
+        'przysiągł': ({'przysięgł': 'przysiągł', 'przysięgłem': 'przysiągłem', 'przysięgłeś': 'przysiągłeś',
+                       'przysięgłby': 'przysiągłby', 'zaprzysięgł': 'zaprzysiągł'},
+                      ['przysięgła', 'przysięgły', 'przysięgłe', 'przysięgłego', 'przysięgłych', 'przysięgli',
+                       'przysięgłam', 'zaprzysięgły', 'zaprzysięgła']),
+        'kategoryzować (nie ma „skategoryzować”)': (
+            {'skategoryzować': 'kategoryzować', 'skategoryzował': 'kategoryzował', 'skategoryzuję': 'kategoryzuję',
+             'skategoryzowany': 'kategoryzowany', 'skategoryzowanie': 'kategoryzowanie',
+             'nieskategoryzowane': 'niekategoryzowane'}, ['kategoryzacja', 'kategoria']),
+        'średnio zaawansowany': ({'średniozaawansowany': 'średnio zaawansowany',
+                                  'średniozaawansowanych': 'średnio zaawansowanych',
+                                  'średniozaawansowani': 'średnio zaawansowani'}, ['zaawansowany']),
+        'tonik': ({'tonic': 'tonik', 'tonicu': 'toniku', 'tonicem': 'tonikiem', 'tonicy': 'toniki'}, ['toniku']),
+        'wykrztusić': ({'wyksztusić': 'wykrztusić', 'wyksztusił': 'wykrztusił', 'wyksztuszę': 'wykrztuszę',
+                        'wyksztuś': 'wykrztuś', 'wyksztuszony': 'wykrztuszony', 'wyksztusiła': 'wykrztusiła'},
+                       ['wykrztusić', 'wykształcić', 'wykształcony']),
+        'zadowalający': ({'zadawalający': 'zadowalający', 'niezadawalających': 'niezadowalających',
+                          'zadawalająco': 'zadowalająco', 'zadawala': 'zadowala', 'zadawalał': 'zadowalał'},
+                         ['zadawał', 'zadawała', 'zadawali', 'zadowalający', 'zadawać']),
+        'zapewne': ({'zapewnie': 'zapewne'}, ['zapewnię', 'zapewni', 'zapewne']),
+        'zarządzanie': ({'zarzadzaniu': 'zarządzaniu', 'zarzadzanie': 'zarządzanie', 'zarzadza': 'zarządza',
+                         'zarzadzający': 'zarządzający', 'zarzadzenie': 'zarządzenie'}, ['zarządzaniu', 'zarząd']),
+        'scentralizowany': ({'zcentralizowana': 'scentralizowana', 'zcentralizować': 'scentralizować',
+                             'niezcentralizowanych': 'niescentralizowanych'},
+                            ['scentralizowana', 'zdecentralizowana', 'centralizować']),
+        'miauczeć': ({'miałczeć': 'miauczeć', 'miałczał': 'miauczał', 'zamiałczała': 'zamiauczała',
+                      'miałczenie': 'miauczenie', 'miałcząc': 'miaucząc', 'pomiałczmy': 'pomiauczmy'}, ['miauczeć']),
+        'pozostałe pozycje': ({'niechcąco': 'niechcący', 'zaczym': 'za czym', 'władnie': 'władny',
+                               'terefere': 'tere-fere', 'inąd': 'skądinąd', 'wszechczasów': 'wszech czasów',
+                               'karnister': 'kanister', 'karnistrem': 'kanistrem', 'massmediach': 'mass mediach',
+                               'mentlikiem': 'mętlikiem', 'wymyśleć': 'wymyślić', 'domyśleć': 'domyślić',
+                               'dopatrzeć': 'dopatrzyć', 'dopatrzał': 'dopatrzył'},
+                              ['skądinąd', 'wymyślał', 'wymyślę', 'domyślał', 'dopatrzył']),
+        'pickup zostaje (decyzja właściciela)': ({}, ['pickup', 'pickupem', 'Pickupami', 'PICKUP']),
+    }
+
+    @staticmethod
+    def fix(text):
+        return correct_editorial_text(text, {'user_word_corrections'})
+
+    @staticmethod
+    def capital(text):
+        return text[:1].upper() + text[1:]
+
+    def test_every_form_is_changed_with_its_letter_case_and_neighbours_stay(self):
+        """Każda błędna forma małymi literami, od wielkiej litery i WERSALIKAMI (wynik w tym samym zapisie;
+        nazwy mieszkańców zawsze wielką literą), także w zdaniu; poprawne wyrazy podobne zostają."""
+        for name, (changed, kept) in self.CASES.items():
+            with self.subTest(name):
+                for source, target in changed.items():
+                    self.assertEqual(self.fix(source), target)
+                    self.assertEqual(self.fix(self.capital(source)), self.capital(target))
+                    self.assertEqual(self.fix(source.upper()), target.upper())
+                    self.assertEqual(self.fix(f'Było to, {source}, a potem.'), f'Było to, {target}, a potem.')
+                for word in kept:
+                    self.assertEqual(self.fix(word), word)
+                    self.assertEqual(self.fix(word.upper()), word.upper())
+
+    def test_default_entries_pass_the_dictionary_checks_and_stay_fast(self):
+        """Wpisy domyślne przechodzą tę samą kontrolę co formularz słownika (składnia, zagnieżdżone powtórzenia,
+        próba czasu, limity długości), a cała lista na długim akapicie działa szybko."""
+        for entry in DEFAULT_REPLACEMENTS:
+            with self.subTest(entry['source'][:40]):
+                self.assertNotIn('pickup', entry['source'])
+                if entry['kind'] == 'word':
+                    self.assertTrue(WORD_SOURCE_RE.fullmatch(entry['source']))
+                    self.assertLessEqual(len(entry['source']), REPLACEMENT_WORD_MAX)
+                else:
+                    self.assertLessEqual(len(entry['source']), MAX_PATTERN_LENGTH)
+                    self.assertIsNotNone(_compile_pattern(entry['source'], entry['target']))
+        words = [source for changed, kept in self.CASES.values() for source in [*changed, *kept]]
+        paragraph = ' '.join(words * (20_000 // len(' '.join(words)) + 1))[:20_000]
+        compiled = compile_replacements()
+        start = time.perf_counter()
+        compiled.apply(paragraph)
+        self.assertLess(time.perf_counter() - start, 1)
+
+
+class Orthography2026RuleTests(SimpleTestCase):
+    """Grupa „Ortografia 2026” (komunikat RJP z 10 maja 2024 r., część A): -by po spójnikach i partykułach,
+    niby/quasi/pseudo, łącznik po przedrostku przed wielką literą, pół oraz „nie” ze stopniem wyższym
+    i najwyższym. Każda reguła działa sama, w każdej wielkości liter i w zdaniu; wyjątki zostają."""
+
+    @staticmethod
+    def fix(text, rules):
+        return correct_editorial_text(text, rules)
+
+    def assertChanges(self, rule, changed, kept):
+        """Zmieniane formy (tak jak w tabeli, od wielkiej litery, w zdaniu) i formy, które zostają."""
+        for source, target in changed.items():
+            with self.subTest(rule=rule, source=source):
+                self.assertEqual(self.fix(source, {rule}), target)
+                self.assertEqual(self.fix(f'Był to, {source}, a potem.', {rule}), f'Był to, {target}, a potem.')
+                if source.islower():
+                    capital = source[:1].upper() + source[1:]
+                    self.assertEqual(self.fix(capital, {rule}), target[:1].upper() + target[1:])
+        for text in kept:
+            with self.subTest(rule=rule, kept=text):
+                self.assertEqual(self.fix(text, {rule}), text)
+                self.assertEqual(self.fix(text, FORM_DEFAULT_EDITORIAL_RULES - {'sentence_case', 'pronouns_lower'}),
+                                 self.fix(text, FORM_DEFAULT_EDITORIAL_RULES - ORTHOGRAPHY_2026_KEYS
+                                          - {'sentence_case', 'pronouns_lower'}))
+
+    def test_rules_form_one_group_switched_on_by_default(self):
+        """Pięć osobnych reguł jedna po drugiej, przed wielką literą po kropce; etykiety z nazwą grupy
+        i przykładem; domyślnie włączone w formularzu i w automatycznym czyszczeniu zgłoszeń z poczty."""
+        keys = [key for key, _ in EDITORIAL_RULES]
+        group = [key for key, _ in ORTHOGRAPHY_2026_RULES]
+        self.assertEqual(group, ['by_separate', 'niby_quasi', 'prefix_hyphen', 'pol_compounds', 'nie_comparative'])
+        start = keys.index(group[0])
+        self.assertEqual(keys[start:start + len(group)], group)
+        self.assertLess(start, keys.index('sentence_case'))
+        for key, label in ORTHOGRAPHY_2026_RULES:
+            with self.subTest(key=key):
+                self.assertTrue(label.startswith('Ortografia 2026: ') and '→' in label)
+        self.assertTrue(ORTHOGRAPHY_2026_KEYS <= DEFAULT_EDITORIAL_RULES)
+        self.assertTrue(ORTHOGRAPHY_2026_KEYS <= FORM_DEFAULT_EDITORIAL_RULES)
+        self.assertTrue(ORTHOGRAPHY_2026_KEYS <= set(OdkurzaczForm().fields['rules'].initial))
+
+    def test_by_is_written_separately_after_conjunctions_and_particles(self):
+        """Zmiana 3: czyby → czy by we wszystkich końcówkach; zrosty (aby, żeby, gdyby, jakby, czyżby, niechby…),
+        niejednoznaczne toby, jeśliby, niżeliby i rzeczowniki boby, nimby zostają."""
+        changed = {
+            'czyby': 'czy by', 'czybym': 'czy bym', 'czybyś': 'czy byś', 'czybyśmy': 'czy byśmy',
+            'czybyście': 'czy byście', 'alebym': 'ale bym', 'ależby': 'ależ by', 'alboby': 'albo by',
+            'albowiemby': 'albowiem by', 'aniby': 'ani by', 'ażby': 'aż by', 'bowiemby': 'bowiem by',
+            'chybaby': 'chyba by', 'czyliby': 'czyli by', 'dopókibyś': 'dopóki byś', 'jednakby': 'jednak by',
+            'jednakżeby': 'jednakże by', 'jeszczebym': 'jeszcze bym', 'jużbyśmy': 'już byśmy', 'leczby': 'lecz by',
+            'lubby': 'lub by', 'możeby': 'może by', 'natomiastby': 'natomiast by', 'nawetby': 'nawet by',
+            'nużby': 'nuż by', 'orazby': 'oraz by', 'ponieważby': 'ponieważ by', 'pókiby': 'póki by',
+            'przecieżbyś': 'przecież byś', 'przetoby': 'przeto by', 'skoroby': 'skoro by', 'tedyby': 'tedy by',
+            'teżbym': 'też bym', 'toteżby': 'toteż by', 'tylkoby': 'tylko by', 'więcby': 'więc by',
+            'wszakby': 'wszak by', 'wszakżeby': 'wszakże by', 'zanimby': 'zanim by', 'zatemby': 'zatem by',
+            'zaśbyście': 'zaś byście', 'bobym': 'bo bym', 'bobyście': 'bo byście', 'nimbyś': 'nim byś',
+            'CZYBY': 'CZY BY', 'Zastanawiam się, czyby nie pojechać w góry.': 'Zastanawiam się, czy by nie pojechać w góry.',
+        }
+        kept = ['aby', 'abym', 'ażeby', 'żeby', 'żebyś', 'iżby', 'gdyby', 'gdybyśmy', 'oby', 'niby', 'jakby', 'jakbym',
+                'jakoby', 'coby', 'byleby', 'choćby', 'chociażby', 'czyżby', 'czyliżby', 'gdzieżby', 'jakżeby', 'niżby',
+                'bodajby', 'niechby', 'niechajby', 'niechżeby', 'toby', 'jeśliby', 'jeżeliby', 'aniżeliby', 'niżeliby',
+                'niźliby', 'boby', 'nimby', 'zęby', 'osoby', 'mógłby', 'chciałabym', 'czy by', 'e-czyby', 'czyby-',
+                'www.czyby.pl', 'plik czyby.docx', 'jan.czyby@example.com']
+        self.assertChanges('by_separate', changed, kept)
+
+    def test_niby_quasi_pseudo_are_joined_before_lower_case_and_hyphenated_before_capitals(self):
+        """Zmiana 10: niby-artysta → nibyartysta (także łącznik Unicode i wersaliki), nibyPolak → niby-Polak;
+        osobne „niby”, niby-Polak, niby-e-book, nazwy od wielkiej litery i człon o końcówce formy czasownika
+        (niby-żyję, quasi-myślę, niby-spał – a także quasi-naukę, niby-artystą) zostają."""
+        changed = {
+            'niby-artysta': 'nibyartysta', 'quasi-naukowy': 'quasinaukowy', 'pseudo-naukowy': 'pseudonaukowy',
+            'niby‑romantycznie': 'nibyromantycznie', 'quasi‐opiekun': 'quasiopiekun',
+            'NIBY-ARTYSTA': 'NIBYARTYSTA', 'nibyPolak': 'niby-Polak', 'quasiAnglia': 'quasi-Anglia',
+            'pseudoKopernik': 'pseudo-Kopernik', 'quasiNATO': 'quasi-NATO', 'quasiGMO': 'quasi-GMO',
+            'nibyPRL-u': 'niby-PRL-u',
+        }
+        kept = ['niby-żyję', 'quasi-myślę', 'niby-spał', 'niby-spała', 'quasi-istnieć', 'niby-robisz', 'quasi-naukę',
+                'niby-artystą', 'quasi-pracujemy', 'niby-mówicie', 'quasi-wierzą',
+                'nibyartysta', 'quasinauka', 'niby-Polak', 'quasi-Anglia', 'Niby-Polak', 'niby tak', 'Niby nic',
+                'niby e-book', 'niby-e-book', 'pseudonim', 'Nibylandia', 'NibyPolak', 'niby-', 'quasi -naukowy',
+                'pseudo-Kowalski', 'quasiNarodowy']
+        self.assertChanges('niby_quasi', changed, kept)
+
+    def test_prefix_before_a_capital_letter_gets_a_hyphen(self):
+        """Zmiana 9a: superPolak → super-Polak, także przed skrótowcem i z końcówką (antyPiS, anty-NATO, post-PRL-u).
+        Bez zmian: utrwalone terminy i nazwy z jawnej listy (mikroRNA, miniUSB, proALPHA, także z końcówką),
+        przymiotnik na -ski/-cki/-dzki (proRosyjski, antyPolski – albo nazwisko; decyzja koordynatora) i na -owy
+        (postSolidarnościowy), nazwy od wielkiej litery (MiniMax) oraz „pan”/„para” + nazwisko (brak spacji)."""
+        changed = {'superPolak': 'super-Polak', 'antyPiS': 'anty-PiS', 'proPiS-u': 'pro-PiS-u', 'antyNATO': 'anty-NATO',
+                   'neoPO': 'neo-PO', 'postPRL-u': 'post-PRL-u', 'eksMiss': 'eks-Miss',
+                   'proEuropejczyk': 'pro-Europejczyk', 'antyPolacy': 'anty-Polacy', 'wiceMarszałek': 'wice-Marszałek',
+                   'megaGwiazdor': 'mega-Gwiazdor', 'postSolidarność': 'post-Solidarność', 'antyGMO': 'anty-GMO'}
+        kept = ['superX', 'miniB-2', 'mikroRNA', 'miniDV', 'proALPHA', 'miniUSB', 'miniUSB-a', 'mikroUSB', 'miniSD', 'mikroSDHC', 'miniHDMI',
+                'microSD', 'antyPolski', 'antyPolskiego', 'proRosyjski', 'proRosyjskich', 'antyNiemiecki',
+                'antyNiemieccy', 'proAmerykańską', 'postRadzieccy', 'arcyKowalski', 'MiniMax', 'SuperNova', 'EkoPark',
+                'panKowalski', 'paraPolicja', 'postSolidarnościowy', 'antyhitlerowski', 'anty-Polak', 'super Polak',
+                'iPhone', 'eBay', 'nanoFantazje', 'super-Polak', 'www.superPolak.pl', 'plik superPolak.docx']
+        self.assertChanges('prefix_hyphen', changed, kept)
+
+    def test_pol_is_joined_in_fixed_expressions_and_hyphenated_before_people(self):
+        """Zmiana 6: pół żartem, pół serio → półżartem, półserio; pół Polak, pół Szkot → pół-Polak, pół-Szkot
+        (mianownik i narzędnik, także pojedynczo); „pół” ilościowe zostaje, a zapis równy dopełniaczowi nazwy
+        krainy (pół Niemiec, pół Włoch) zmienia się tylko w jednym zdaniu z pewną nazwą osoby."""
+        changed = {
+            'pół żartem': 'półżartem', 'pół serio': 'półserio', 'pół żartem, pół serio': 'półżartem, półserio',
+            'PÓŁ ŻARTEM': 'PÓŁŻARTEM', 'pół Polak, pół Szkot': 'pół-Polak, pół-Szkot',
+            'pół Polka, pół Francuzka': 'pół-Polka, pół-Francuzka', 'pół Polakiem, pół Niemcem': 'pół-Polakiem, pół-Niemcem',
+            'pół Niemiec, pół Polak': 'pół-Niemiec, pół-Polak', 'pół Polką i pół Włoszką': 'pół-Polką i pół-Włoszką',
+            'pół Azjatą': 'pół-Azjatą', 'półPolak': 'pół-Polak', 'pół Ukraińcem': 'pół-Ukraińcem',
+            'pół Turkiem': 'pół-Turkiem', 'pół Węgrem': 'pół-Węgrem',
+            'Zwiedził pół Niemiec. Pół Polak, pół Szkot': 'Zwiedził pół Niemiec. Pół-Polak, pół-Szkot',
+        }
+        kept = ['pół Polak, pół byk', 'pół byk, pół Polak', 'pół godziny', 'pół roku', 'pół na pół', 'pół litra',
+                'Pół Polski, pół Europy', 'pół Warszawy',
+                'pół Niemiec', 'pół Niemiec i pół Włoch', 'pół Kaszub', 'pół-Polak', 'półżartem', 'pół Polaka',
+                'pół Żartem', 'pół Elon Musk', 'pół Polakowi', 'półtora']
+        self.assertChanges('pol_compounds', changed, kept)
+
+    def test_nie_is_joined_with_comparatives_and_superlatives(self):
+        """Zmiana 11, tylko zapisy jednoznaczne: „nie” łącznie z przymiotnikiem w stopniu wyższym lub najwyższym
+        (-ejszy, tematy na -szy, naj-) i z przysłówkiem lepiej, gorzej, prędzej, na -niej, -ściej, -ciej (lista)."""
+        changed = {
+            'nie najlepszy': 'nienajlepszy', 'nie najlepiej': 'nienajlepiej', 'NIE NAJLEPSZY': 'NIENAJLEPSZY',
+            'nie lepiej niż ty': 'nielepiej niż ty', 'nie gorzej': 'niegorzej', 'nie prędzej': 'nieprędzej',
+            'nie najprędzej': 'nienajprędzej', 'nie ładniejszy': 'nieładniejszy', 'nie ładniejsi': 'nieładniejsi',
+            'nie mniejszy': 'niemniejszy', 'nie mniejszą': 'niemniejszą', 'nie większe': 'niewiększe',
+            'nie lepsi': 'nielepsi', 'nie gorsza': 'niegorsza', 'nie najgorszych': 'nienajgorszych',
+            'nie tańszych': 'nietańszych', 'nie droższym': 'niedroższym', 'nie milszy': 'niemilszy',
+            'nie najmilszy': 'nienajmilszy', 'nie najstaranniej': 'nienajstaranniej', 'nie ładniej': 'nieładniej',
+            'nie szybciej': 'nieszybciej', 'nie częściej': 'nieczęściej', 'nie najczęściej': 'nienajczęściej',
+            'nie wyraźniej': 'niewyraźniej', 'nie taniej': 'nietaniej', 'nie cierpliwsza': 'niecierpliwsza',
+            'nie najciekawszy': 'nienajciekawszy', 'nie nowszy': 'nienowszy', 'nie bystrzejszy': 'niebystrzejszy',
+            'nie najpiękniejsza': 'nienajpiękniejsza', 'nie najszczęśliwsi': 'nienajszczęśliwsi',
+            'nie obfitszy': 'nieobfitszy', 'nie\tnajlepszy': 'nienajlepszy',
+            'To był nie najlepszy dzień.': 'To był nienajlepszy dzień.',
+            'Nie najlepiej się czuł.': 'Nienajlepiej się czuł.',
+            'Nie najlepszy, a nawet najgorszy.': 'Nienajlepszy, a nawet najgorszy.',
+            'Głos sprawiał nie mniejszy ból niż światło.': 'Głos sprawiał niemniejszy ból niż światło.',
+        }
+        self.assertChanges('nie_comparative', changed, [])
+
+    def test_nie_stays_separate_in_exceptions(self):
+        """Decyzja właściciela – każdy zapis sporny zostaje: miara, czas, miejsce i znaczenia niestopniowe (dalej,
+        wcześniej, później, dłuższy, dalszy, późniejszy, starszy…), tryb rozkazujący (siej, wyśmiej, miej), liczebniki
+        i przysłówki nieodprzymiotnikowe, wyrazy o podobnej budowie, zaimek „nie” po przyimku, całe zdanie pytające,
+        „czy nie”, warunek (jeśli, o ile, gdyby), przeciwstawienie, stan pośredni (ale i nie, choć nie), „nie”
+        po „wcale”, „bynajmniej”, „ani” oraz zapis mieszany wielkimi i małymi literami."""
+        kept = [
+            # miara, czas, miejsce, znaczenia niestopniowe
+            'Nie dalej jak dwa lata temu.', 'nie dalej niż dwa metry', 'nie najdalej', 'nie bliżej', 'nie najbliżej',
+            'nie wcześniej niż w dziesiątym i nie później niż w dwunastym dniu', 'nie najwcześniej', 'nie najpóźniej',
+            'nie dawniej niż', 'nie dłużej niż', 'nie krócej', 'nie wyżej', 'nie niżej', 'nie najwyżej',
+            'nie dłuższym niż pięć dni', 'nie krótszy', 'nie późniejszą niż dzisiejsza', 'nie wcześniejszą',
+            'nie dalszy ciąg', 'nie bliższe informacje', 'nie wyższa uczelnia', 'nie niższy', 'nie najwyżsi',
+            'nie starszy pan', 'nie młodszy brat', 'nie dawniejszy',
+            # tryb rozkazujący i inne przysłówki spoza listy
+            'nie siej zamętu', 'nie wyśmiej go', 'nie miej pretensji', 'nie śmiej się', 'nie zasiej', 'nie rozwiej',
+            'nie zechciej', 'nie chciej', 'nie czerwieniej', 'nie łatwiej', 'nie ciszej', 'nie zdrowiej', 'nie milej',
+            # liczebniki, przysłówki nieodprzymiotnikowe, partykuły, wyrazy o podobnej budowie
+            'nie mniej niż pięć', 'niemniej ciekawy', 'nie więcej', 'nie najwięcej', 'nie bardziej', 'nie najbardziej',
+            'nie najmniej', 'nie pierwszy', 'nie najpierw', 'nie najwyraźniej', 'nie najprawdopodobniej',
+            'nie dzisiejszy', 'nie tutejsza', 'nie niniejszy', 'nie ostatniej', 'nie średniej', 'nie kilkuletniej',
+            'nie zachodniej', 'nie trzeciej', 'nie złodziej', 'nie turniej', 'nie najadłszy się', 'nie określiwszy',
+            'nie zmniejsza', 'to nie pomniejszy zasług', 'nie najem',
+            # zapis
+            'nie Najlepszy', 'nie NAJLEPSZY', 'Nie Lepiej', 'nie-najlepszy', 'nienajlepszy', 'www.nie-najlepszy.pl',
+            # kontekst
+            'Patrzył na nie łaskawiej.', 'Liczył za nie ładniej.', 'Czy to nie najlepszy pomysł?',
+            'A nie lepiej odejść?', 'Nie lepiej odpocząć?', '– Nie lepiej odstrzelić go teraz? – mruknął.',
+            'Czy nie lepiej…?', 'Czuł się nie najlepiej?', 'Sam nie wiem, czy nie przyjemniejsza niż sen.',
+            'Skończyłby z siniakiem, jeśli nie gorzej.', 'jeżeli nie lepiej', 'o ile nie gorzej', 'gdyby nie lepiej',
+            'Nie najmądrzejszy, ale mądry.', 'Nie wyższy, tylko najwyższy.', 'nie lepszy, lecz gorszy',
+            'nie lepiej, a gorzej', 'Mądry, a nie najmądrzejszy.', 'Nie najlepiej, ale i nie najgorzej.',
+            'nie najlepszy, ale nie najgorszy', 'nie lepszy, choć nie gorszy', 'nie ładniejsza, ale też nie brzydsza',
+            'Wcale nie lepsza ode mnie.', 'wcale a wcale nie lepszy', 'Bynajmniej nie najmądrzejszy.',
+            'ani nie lepszy, ani nie gorszy',
+        ]
+        self.assertChanges('nie_comparative', {}, kept)
+
+    def test_interaction_with_other_rules(self):
+        """Zaimki małą literą działają przed „nie” (Nie w środku zdania), wielka litera po kropce – po nim;
+        skróty, słownik zamian i maski adresów współpracują z nowymi regułami (wszystkie reguły naraz)."""
+        rules = FORM_DEFAULT_EDITORIAL_RULES
+        cases = {
+            'Zobaczyłem Nie najlepszy film.': 'Zobaczyłem nienajlepszy film.',
+            'Tak. nie najlepiej, czyby nie.': 'Tak. Nienajlepiej, czy by nie.',
+            'Był m. in. nie najlepszy i pół żartem karnistrem.': 'Był m.in. nienajlepszy i półżartem kanistrem.',
+            'Adres www.czyby.pl i superPolak pisał:  nie lepiej.': 'Adres www.czyby.pl i super-Polak pisał: nielepiej.',
+            '„Niby-artysta” – rzekł pół Polak, pół Szkot...': '„Nibyartysta” – rzekł pół-Polak, pół-Szkot…',
+        }
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                self.assertEqual(correct_editorial_text(text, rules), expected)
+        self.assertEqual(correct_editorial_text('Zobaczyłem Nie najlepszy film.', {'nie_comparative'}),
+                         'Zobaczyłem Nienajlepszy film.')
+        # Lista słownikowa sprzed cofnięcia (nienajlepszy → nie najlepszy) nie wygrywa z regułą.
+        old_entry = [{'kind': 'pattern', 'source': r'\bnienaj(?P<e>lepsz\w*)\b', 'target': r'nie naj\g<e>'}]
+        self.assertEqual(correct_editorial_text('Nienajlepszy dzień.', {'user_word_corrections', 'nie_comparative'},
+                                                replacements=old_entry), 'Nienajlepszy dzień.')
+
+    def test_counts_and_disabled_rules(self):
+        """Podsumowanie liczy zmiany każdej reguły osobno; wyłączona reguła niczego nie zmienia."""
+        text = 'Czyby to nie najlepszy niby-artysta, superPolak i pół żartem, pół serio pół Polak.'
+        counts = {}
+        result = correct_editorial_text(text, FORM_DEFAULT_EDITORIAL_RULES, counts=counts)
+        self.assertEqual(result, 'Czy by to nienajlepszy nibyartysta, super-Polak i półżartem, półserio pół-Polak.')
+        self.assertEqual({key: counts.get(key) for key in ORTHOGRAPHY_2026_KEYS},
+                         {'by_separate': 1, 'niby_quasi': 1, 'prefix_hyphen': 1, 'pol_compounds': 3,
+                          'nie_comparative': 1})
+        self.assertEqual(correct_editorial_text(text, FORM_DEFAULT_EDITORIAL_RULES - ORTHOGRAPHY_2026_KEYS), text)
+
+    def test_long_paragraph_with_many_candidates_is_fast(self):
+        """Wzorce bez kosztownych konstrukcji: najdłuższy akapit pełen kandydatów i wyjątków działa szybko."""
+        source = ('Czyby to nie najlepszy niby-artysta. Nie lepiej, a gorzej. Pół żartem pół Polakiem, '
+                  'pół Niemiec, superPolak, na nie łaskawiej, nie dzisiejszy złodziej, aby gdyby, ' * 200)[:20000]
+        started = time.monotonic()
+        result = correct_editorial_text(source, FORM_DEFAULT_EDITORIAL_RULES)
+        self.assertLess(time.monotonic() - started, 1.5)
+        self.assertIn('Czy by to nienajlepszy nibyartysta.', result)

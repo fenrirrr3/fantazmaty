@@ -9,7 +9,7 @@
         </p>
     </header>
 
-    <section class="filters-card" aria-label="Filtry aktywności {{ people_genitive }}">
+    <section class="details-card filters-card" aria-label="Filtry aktywności {{ people_genitive }}">
         <form
             method="get"
             action="{% url url_name %}"
@@ -124,7 +124,7 @@
                 {% endif %}
             </div>
 
-            <div class="filter-actions">
+            <div class="actions filter-actions">
                 <button type="submit" class="primary-button">Filtruj</button>
                 <a
                     href="{% url url_name %}"

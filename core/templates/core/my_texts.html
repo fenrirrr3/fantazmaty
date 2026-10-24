@@ -11,17 +11,17 @@
         </p>
     </header>
 
-    <nav class="my-texts-filters" aria-label="Widok moich tekstów">
+    <nav class="tabs" aria-label="Widok moich tekstów">
         <a
             href="{% text_view_url "active" %}"
-            class="my-texts-filter{% if selected_view == 'active' %} is-active{% endif %}"
+            class="tab-link{% if selected_view == 'active' %} is-active{% endif %}"
             {% if selected_view == "active" %}aria-current="page"{% endif %}
         >
             W toku
         </a>
         <a
             href="{% text_view_url "all" %}"
-            class="my-texts-filter{% if selected_view == 'all' %} is-active{% endif %}"
+            class="tab-link{% if selected_view == 'all' %} is-active{% endif %}"
             {% if selected_view == "all" %}aria-current="page"{% endif %}
         >
             Wszystkie

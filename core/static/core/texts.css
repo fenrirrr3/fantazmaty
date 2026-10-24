@@ -1,0 +1,589 @@
+/*
+ * Teksty: karta tekstu (etapy pracy, przekazanie, zespół, notatki, tagi i gatunek, produkcja),
+ * lista tagów i słownik tagów i gatunków.
+ * Ładują go: assigned_text_detail.html, tag_list.html i vocabulary/list.html.
+ */
+
+/* ===== Karta tekstu: etapy pracy ===== */
+/* Szybkie akcje etapu: opis po lewej, przycisk lub formularz po prawej. */
+.quick-stage-action {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+}
+
+.quick-stage-action:has(.start-stage-form) {
+    align-items: flex-end;
+}
+
+.quick-stage-description p {
+    margin: var(--space-1) 0 0;
+    color: var(--muted);
+}
+
+.quick-stage-card:has(> .take-stage-form) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: var(--space-3) var(--space-5);
+}
+
+.quick-stage-card:has(> .take-stage-form) > strong {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--control-height);
+}
+
+/* Zakończenie etapu: opis, ewentualna decyzja redakcyjna i przycisk jeden pod drugim. */
+.stage-finish-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+    padding: var(--space-4);
+}
+
+.stage-finish-card .quick-stage-action {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+}
+
+.editorial-decision {
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.editorial-decision legend {
+    margin-bottom: var(--space-2);
+    padding: 0;
+}
+
+.editorial-decision label {
+    display: flex;
+    margin: var(--space-2) 0;
+}
+
+.complete-stage-form:has(.editorial-decision) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+}
+
+.complete-stage-form:has(.editorial-decision) .success-button {
+    justify-self: start;
+    max-width: 100%;
+}
+
+.stage-finish-card:has(.editorial-decision) .quick-stage-action {
+    width: 100%;
+    min-width: 0;
+}
+
+/* Akcje etapu obok folderu Dropbox. */
+.workflow-folder-layout {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4);
+    align-items: stretch;
+    padding: var(--card-padding);
+}
+
+.workflow-folder-layout > .editing-control-content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    min-width: 0;
+    padding: 0;
+}
+
+.workflow-folder-layout .quick-stage-card {
+    margin: 0;
+    padding: var(--space-4);
+}
+
+.workflow-folder-layout .stage-finish-card {
+    flex: 1;
+}
+
+.workflow-table-frame {
+    --table-bleed: var(--space-5);
+    min-width: 0;
+    padding: 0 var(--space-5) var(--space-4);
+}
+
+.workflow-table-frame > .table-container {
+    width: 100%;
+    margin: 0;
+}
+
+.workflow-table-frame > .cms-pagination {
+    margin: var(--space-3) 0 0;
+}
+
+.stage-leave-warning {
+    display: inline-flex;
+    margin: var(--space-2) 0 0 var(--space-2);
+    padding: var(--space-1) var(--space-2);
+    border: 1px solid var(--danger);
+    border-radius: var(--radius-md);
+    background: var(--danger-light);
+    color: var(--danger);
+}
+
+/* Nazwa pliku etapu z przyciskiem „Kopiuj”. */
+.stage-file-name {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin: var(--space-4) var(--card-padding) 0;
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--primary-border);
+    border-radius: var(--radius-md);
+    background: var(--primary-light);
+}
+
+.stage-file-text {
+    display: grid;
+    gap: var(--space-1);
+    min-width: 0;
+}
+
+.stage-file-label {
+    color: var(--muted);
+    font-size: var(--font-size-sm);
+}
+
+.stage-file-value {
+    font-family: var(--font-mono);
+    font-size: var(--font-size-md);
+    overflow-wrap: anywhere;
+}
+
+/* ===== Karta tekstu: zarządzanie i przekazanie pracy ===== */
+.management-action {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 1fr);
+    align-items: center;
+    gap: var(--space-4);
+    padding-block: var(--space-4);
+}
+
+.management-action + .management-action {
+    border-top: 1px solid var(--border);
+}
+
+.management-action-description p {
+    margin: var(--space-2) 0 0;
+    color: var(--muted);
+}
+
+.work-handoff-card {
+    margin-block: var(--space-5);
+}
+
+.work-handoff-card .text-management-content {
+    padding-block: var(--space-2);
+}
+
+.work-handoff-card .management-action {
+    padding-block: var(--space-3);
+}
+
+.work-handoff-card h3 {
+    margin: 0;
+    font-size: var(--font-size-lg);
+}
+
+.work-handoff-link {
+    justify-self: start;
+    max-width: 100%;
+    white-space: normal;
+}
+
+/* Rozwijane karty zespołu, archiwalnych etapów i recenzji: odstęp od elementu nad nimi
+   (pod spodem obowiązuje wspólny odstęp kart na stronie). */
+.text-team,
+.archived-stages,
+.review-summary-details {
+    margin-top: var(--space-4);
+}
+
+/* ===== Karta tekstu: zespół ===== */
+.text-team-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
+    gap: var(--space-3);
+    padding: var(--card-padding);
+}
+
+.text-team-member-role {
+    display: block;
+    margin-bottom: var(--space-2);
+    color: var(--muted);
+    font-size: var(--font-size-xs);
+}
+
+.text-team-member.is-unassigned {
+    background: var(--surface-alt);
+    color: var(--muted);
+}
+
+/* ===== Karta tekstu: informacje, notatki, tagi i gatunek ===== */
+/* Panel notatki (koordynatora, redakcyjnej, tagów). */
+.notes-editor-panel {
+    min-width: 0;
+    padding: var(--card-padding);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+}
+
+.notes-editor-panel h3 {
+    margin: 0 0 var(--space-3);
+}
+
+.notes-editor-panel.coordinator-note-highlight,
+.coordinator-note-card.coordinator-note-highlight {
+    border-color: var(--danger-border);
+    background: var(--danger-light);
+}
+
+.coordinator-note-create > summary {
+    color: var(--primary);
+    cursor: pointer;
+}
+
+/* Na stronie tekstu panele są niższe. */
+.work-information .notes-editor-panel {
+    padding: var(--space-4);
+}
+
+.work-information .form-field > label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+}
+
+.work-information textarea {
+    height: 6rem;
+    min-height: 6rem;
+}
+
+.work-information .coordinator-note-create {
+    position: relative;
+    min-width: 0;
+}
+
+.work-information .coordinator-note-create > summary {
+    position: absolute;
+    bottom: calc(100% + var(--space-2));
+}
+
+.work-information .coordinator-note-highlight > .form-help {
+    margin: var(--space-2) 0;
+}
+
+.work-information .general-notes-form button[type="submit"] {
+    justify-self: start;
+    min-width: 7rem;
+}
+
+/* Ostrzeżenia, tagi i gatunek w trzech kolumnach.
+   Tagi i gatunek zapisuje jeden formularz – display: contents rozkłada jego panele na dwie kolumny siatki. */
+.text-info-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-5);
+    align-items: stretch;
+}
+
+.text-info-grid.is-single {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.text-info-grid > .text-tags-form {
+    display: contents;
+}
+
+.text-info-grid .notes-editor-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
+.text-info-grid .notes-editor-panel h3,
+.text-info-grid .notes-editor-panel .muted-text,
+.text-info-value {
+    margin: 0;
+}
+
+.text-info-grid .text-tags-form .form-field {
+    display: grid;
+    gap: var(--field-gap);
+}
+
+.text-tags-form {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--card-padding);
+}
+
+.text-tags-form .muted-text {
+    margin: 0;
+    font-size: var(--font-size-md);
+}
+
+.text-tags-form textarea {
+    min-height: 4rem;
+}
+
+.text-tags-form textarea[name="tags"] {
+    height: 6rem;
+}
+
+.text-tags-form textarea[name="genre"] {
+    height: 4rem;
+}
+
+.text-tags-form button {
+    align-self: flex-start;
+}
+
+.text-tags-actions {
+    margin-top: auto;
+}
+
+/* Notatki zespołu obok notatki koordynatora (w powieści – notatki obok recenzji). */
+.text-notes-pair {
+    align-items: start;
+}
+
+.text-notes-pair.is-single {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.text-notes-tags > .card {
+    display: flex;
+    flex-direction: column;
+}
+
+.text-notes-tags .text-note-form textarea {
+    min-height: 12rem;
+}
+
+.coordinator-note-body {
+    padding: var(--card-padding);
+}
+
+.coordinator-note-body > .form-help {
+    margin: var(--space-2) 0 0;
+}
+
+.coordinator-note-body textarea {
+    min-height: 8rem;
+}
+
+.text-notes-pair .coordinator-note-create > summary {
+    padding: var(--space-3) 0;
+}
+
+/* Notatki zespołu są podświetlone na żółto, ważne – na czerwono; kolory z tokenów motywu. */
+.text-notes-card .text-note {
+    border-color: var(--warning-border);
+    background: var(--warning-light);
+}
+
+.text-notes-card .text-note-content {
+    border-top-color: var(--warning-border);
+}
+
+.text-notes-card .text-note.is-new {
+    border-left: 3px solid var(--primary);
+}
+
+.text-notes-card .text-note.is-important {
+    border-color: var(--danger-border);
+    border-left: 3px solid var(--danger);
+    background: var(--danger-light);
+}
+
+.text-notes-card .text-note.is-important .text-note-content {
+    border-top-color: var(--danger-border);
+}
+
+.text-note-actions {
+    padding: var(--space-3) var(--space-4);
+}
+
+.text-note-badges {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    margin-left: auto;
+}
+
+.new-notes-alert a {
+    font-weight: 600;
+}
+
+/* ===== Karta tekstu: produkcja i rozwijane panele szczegółów ===== */
+.text-production {
+    margin-top: var(--space-5);
+}
+
+.text-production .card-body {
+    overflow-wrap: anywhere;
+}
+
+.text-production-checkbox {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+/* Panele o równej szerokości – w opowiadaniach i rozdziałach powieści. */
+.text-detail-pair {
+    margin-block: var(--space-5);
+}
+
+.text-detail-pair[data-detail-pair="assignment-history"] {
+    align-items: start;
+}
+
+.text-detail-pair:empty {
+    display: none;
+}
+
+.text-detail-pair > details {
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.text-detail-pair > details:only-child {
+    grid-column: 1 / -1;
+}
+
+.text-detail-pair .table-container {
+    max-width: 100%;
+}
+
+.text-detail-pair .management-action {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.text-detail-pair[data-detail-pair="management"] .text-management-content {
+    padding: var(--space-3) var(--card-padding);
+}
+
+.text-detail-pair[data-detail-pair="management"] .management-action {
+    padding-block: var(--space-2);
+}
+
+.text-detail-pair[data-detail-pair="management"] .management-action-description p {
+    margin: 0;
+}
+
+.chapter-notes-reviews > .review-summary-details {
+    min-width: 0;
+    margin: 0;
+}
+
+.chapter-notes-reviews .text-note-form textarea {
+    height: 6rem;
+    min-height: 6rem;
+}
+
+.chapter-notes-reviews :is(.section-header, .review-summary-toggle) {
+    padding-block: var(--space-3);
+}
+
+.chapter-notes-reviews :is(.text-notes-list, .review-summary-content) {
+    max-height: var(--scroll-panel-height);
+    overflow: auto;
+}
+
+/* ===== Lista tagów ===== */
+.tag-filters {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: var(--space-4);
+}
+
+.tag-filters .tag-search,
+.tag-filter-actions {
+    grid-column: 1 / -1;
+}
+
+.text-tags-cell {
+    min-width: 180px;
+    max-width: 360px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+/* ===== Słownik tagów i gatunków ===== */
+.vocabulary-columns {
+    align-items: start;
+    margin-bottom: var(--space-5);
+}
+
+.vocabulary-search {
+    display: grid;
+    gap: var(--space-3);
+}
+
+.vocabulary-search input[type="search"] {
+    width: 100%;
+}
+
+.vocabulary-add {
+    border-top: 1px solid var(--border);
+}
+
+@media screen and (max-width: 1100px) {
+    .text-info-grid:not(.is-single) {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .text-info-grid:not(.is-single) > .notes-editor-panel:first-child {
+        grid-column: 1 / -1;
+    }
+
+    .vocabulary-columns {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+@media screen and (max-width: 760px) {
+    .text-info-grid:not(.is-single),
+    .management-action,
+    .workflow-folder-layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .work-information .coordinator-note-create {
+        margin-top: var(--space-7);
+    }
+
+    .work-handoff-link {
+        justify-self: stretch;
+    }
+}
+
+@media screen and (max-width: 480px) {
+    .quick-stage-card :is(.take-stage-form, .start-stage-form) {
+        flex-wrap: wrap;
+    }
+}

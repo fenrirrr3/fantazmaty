@@ -5,7 +5,7 @@
 <form method="post">{% csrf_token %}
 <input type="hidden" name="ids" value="{{ ids }}"><input type="hidden" name="token" value="{{ token }}">
 {% for check in checks %}
-<fieldset class="module aligned" style="padding:8px">
+<fieldset class="module aligned cms-padded-module">
 <h2>{{ check.folder.name }} <small><code>{{ check.folder.path }}</code></small></h2>
 <p><strong>{{ check.label }}.</strong> {{ check.note }} Wpisy dostępu: {{ check.rows }}, z nadanym lub przejętym dostępem: {{ check.granted }}.</p>
 {% if check.state == "gone" or check.state == "unshared" %}

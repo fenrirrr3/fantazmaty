@@ -209,7 +209,6 @@ class ExternalAudiobookTests(TestCase):
         cls.story.authors.add(Author.objects.create(first_name='Prywatne', last_name='Nazwisko',
                                                     email='private@example.test'))
         cls.url = reverse('core:external_audiobooks')
-        cls.download = reverse('core:audiobook_guidelines_txt')
 
     def test_public_projection_is_read_only_and_internal_pages_stay_protected(self):
         for login in (False, True):
@@ -243,6 +242,42 @@ class ExternalAudiobookTests(TestCase):
         self.assertEqual(page.context['page_obj'].paginator.count, 1)
         self.assertNotContains(page, 'Drugi')
         self.assertNotContains(page, '@')
+
+    def test_published_status_filter_uses_the_same_scope_and_projection(self):
+        """Status „Opublikowane”: tylko opublikowane audiobooki z tymi samymi warunkami co reszta listy (zgoda
+        na nagranie, poza czarną listą, gotowa antologia, tekst niewycofany), antologie w filtrze z tego zakresu,
+        ta sama projekcja pól bez e-maili; widok domyślny i pozostałe statusy opublikowanych nie pokazują."""
+        released = Anthology.objects.create(title='Antologia z premierami', status=Anthology.Status.READY)
+        preparing = Anthology.objects.create(title='Antologia w przygotowaniu')
+        narrator = AudioContributor.objects.create(name='Ola Lektorka', email='ola@example.test')
+        for name, fields in [('Premiera', {'anthology': released}), ('Czarna lista', {'audiobook_blacklisted': True}),
+                             ('Brak zgody', {'for_recording': False}), ('W przygotowaniu', {'anthology': preparing}),
+                             ('Wycofany', {})]:
+            story = Text.objects.create(**{'anthology': self.book, 'title': name, 'length': 100, **fields})
+            Audiobook.objects.create(text=story, status=Audiobook.Status.PUBLISHED, narrator_contact=narrator)
+            if name == 'Wycofany':
+                WorkflowStage.objects.create(text=story, stage_type='withdrawn')
+        response = self.client.get(self.url, {'status': 'published'})
+        rows = list(response.context['rows'])
+        self.assertEqual([(row['title'], row['public_status'], row['audiobook__narrator_name']) for row in rows],
+                         [('Premiera', 'Opublikowane', 'Ola Lektorka')])
+        self.assertEqual(set(rows[0]), {'anthology__title', 'title', 'tags', 'genre', 'public_status', 'audio_status',
+                                        'audiobook__narrator_name'})
+        self.assertEqual(list(response.context['anthologies']),
+                         [{'anthology_id': released.pk, 'anthology__title': released.title}])
+        self.assertContains(response, '<option value="published" selected>Opublikowane</option>', html=True)
+        self.assertContains(response, 'stage-status completed')
+        self.assertNotContains(response, '@')
+        self.assertEqual(response['X-Robots-Tag'], 'noindex, nofollow')
+        for params, titles in [({}, [self.story.title]), ({'status': 'pending'}, [self.story.title]),
+                               ({'status': 'published', 'anthology': self.book.pk}, []),
+                               ({'status': 'published', 'q': 'lektorka'}, ['Premiera']),
+                               ({'status': 'published', 'sort': '-status'}, ['Premiera'])]:
+            with self.subTest(**params):
+                response = self.client.get(self.url, params)
+                self.assertEqual([row['title'] for row in response.context['rows']], titles)
+        self.assertEqual(list(self.client.get(self.url).context['anthologies']),
+                         [{'anthology_id': self.book.pk, 'anthology__title': self.book.title}])
 
     def test_all_scope_conditions_and_visibility_after_changes(self):
         preparing = Anthology.objects.create(title='Antologia w przygotowaniu')
@@ -287,23 +322,12 @@ class ExternalAudiobookTests(TestCase):
         for sort in ('anthology', 'title', 'tags', 'genre', 'status', 'authors__email'):
             self.assertEqual(self.client.get(self.url, {'sort': '-' + sort}).status_code, 200)
 
-    def test_guidelines_escape_html_and_download_original_utf8_text(self):
-        page = self.client.get(self.url)
-        self.assertContains(page, 'https://mega.nz/')
-        self.assertContains(page, 'Wytyczne zostaną uzupełnione.')
-        self.assertEqual(self.client.get(self.download).status_code, 404)
-        content = 'Wytyczne: zażółć gęślą jaźń.\n<script>alert(1)</script>\nDrugi akapit.'
-        PublicAudiobookSettings.objects.create(mega_url='https://mega.nz/folder/example#key', guidelines=content)
-        response = self.client.get(self.url)
-        self.assertContains(response, '&lt;script&gt;')
-        self.assertNotContains(response, '<script>alert(1)</script>')
-        self.assertContains(response, 'https://mega.nz/folder/example#key')
-        self.assertFalse(html.fromstring(response.content).xpath('//details[@class="audiobook-guidelines"][@open]'))
-        response = self.client.get(self.download)
-        self.assertEqual(response.content.decode('utf-8'), content)
-        self.assertEqual(response['Content-Type'], 'text/plain; charset=utf-8')
-        self.assertIn('attachment;', response['Content-Disposition'])
-        self.assertEqual(self.client.post(self.download, {}).status_code, 405)
+    def test_mega_link_uses_default_or_saved_address(self):
+        """Bez ustawień przycisk MegaNZ prowadzi do mega.nz, po zapisie – do zapisanego folderu.
+        Wytyczne (panel, PDF, dawny adres TXT) sprawdza core/tests/ui/test_public_guidelines.py."""
+        self.assertContains(self.client.get(self.url), 'href="https://mega.nz/"')
+        PublicAudiobookSettings.objects.create(mega_url='https://mega.nz/folder/example#key')
+        self.assertContains(self.client.get(self.url), 'https://mega.nz/folder/example#key')
 
     def test_unsafe_stored_mega_url_is_not_rendered_and_settings_are_a_singleton(self):
         config = PublicAudiobookSettings.objects.create()

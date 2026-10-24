@@ -2,7 +2,7 @@
 (() => {
     document.querySelectorAll('.program-tool form[data-program-job]').forEach((form, index) => {
         const box = document.createElement('div');
-        box.className = 'program-progress'; box.hidden = true;
+        box.className = 'panel program-progress'; box.hidden = true;
         const label = document.createElement('p'); label.setAttribute('role', 'status');
         label.setAttribute('aria-live', 'polite');
         const bar = document.createElement('progress'); bar.max = 100;

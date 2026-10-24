@@ -1,6 +1,6 @@
 {% extends 'core/base.html' %}{% load static %}
 {% block title %}Dodaj do recenzji | Fantazmaty CMS{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'core/recruitment.css' %}"><link rel="stylesheet" href="{% static 'core/intake.css' %}">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/recruitment.css' %}">{% endblock %}
 {% block content %}
 <header class="page-header"><h1 class="page-title">Dodaj do recenzji</h1><p class="page-description">Pobierz zgłoszenia ze skrzynki – jednorazowo do {{ max_messages }} wiadomości.</p></header>
 <p class="message info">Pobranie tekstów ze skrzynki automatycznie doda zgłoszenia do bazy – recenzenci zobaczą je na liście recenzji.</p>
@@ -23,14 +23,14 @@
 <label class="mailbox-option"><input type="checkbox" name="convert" {% if convert %}checked{% endif %}><span>Konwertuj do PDF i EPUB</span></label>
 </div></div>
 {% include "core/includes/mailbox_date.html" %}
-<div class="review-import-actions mailbox-actions">
+<div class="actions mailbox-actions">
 <button class="primary-button" name="action" value="headers">Pobierz nagłówki</button>
 <button class="primary-button" name="action" value="download" data-mailbox-progress {% if not result.rows %}disabled{% endif %}>Pobierz teksty</button>
 </div>
-<div class="program-progress mailbox-progress" data-mailbox-progress-box hidden><p role="status" aria-live="polite" data-mailbox-progress-label></p><progress aria-label="Postęp pobierania zgłoszeń"></progress></div>
+<div class="panel program-progress mailbox-progress" data-mailbox-progress-box hidden><p role="status" aria-live="polite" data-mailbox-progress-label></p><progress aria-label="Postęp pobierania zgłoszeń"></progress></div>
 </div>
 {% if result %}
-<section class="recruitment-preview-panel mailbox-preview-panel" aria-label="Treść zaznaczonej wiadomości" aria-busy="false" data-mail-preview>
+<section class="panel is-muted recruitment-preview-panel mailbox-preview-panel" aria-label="Treść zaznaczonej wiadomości" aria-busy="false" data-mail-preview>
 <h2>Treść wiadomości</h2>
 {% include "core/includes/recruitment_preview.html" %}
 </section>
@@ -47,7 +47,7 @@
 {% if preview_messages %}
 <h2>Podgląd zgłoszeń</h2>
 <div class="table-container"><table><thead><tr><th>Autor</th><th>Tytuł</th><th>Gatunek</th><th>Znaki</th><th>E-mail</th><th>Telefon</th><th>Antologia</th><th>Ostrzeżenia</th><th>Premiery</th><th>Nabory</th><th>Wiadomość autora</th><th>Pliki</th><th>Zapis</th></tr></thead><tbody>
-{% for row in preview_messages %}<tr{% if row.blacklisted %} class="mailbox-blacklisted-row"{% endif %}><td>{% firstof row.author_pseudonym row.author %}{% if row.blacklisted %}<br><span class="role-badge mailbox-blacklist-badge">Czarna lista</span>{% endif %}</td><td><strong>{{ row.title }}</strong></td><td>{{ row.genre }}</td><td>{{ row.length }}</td><td>{{ row.email }}</td><td>{{ row.phone }}</td><td>{{ row.anthology }}</td><td>{{ row.content_warnings|default:"–" }}</td><td>{{ row.newsletter_premieres|yesno:"Tak,Nie" }}</td><td>{{ row.newsletter_recruitment|yesno:"Tak,Nie" }}</td><td>{{ row.author_message|default:"–"|linebreaksbr }}</td><td>{% if row.future_rejection %}<span class="form-warning">Przyszłe odrzucenie – plik nie zostanie pobrany ani przetworzony:</span> {{ row.skipped_files|join:", " }}<br>{% endif %}{% for name, data in row.files %}{{ name }}<br>{% endfor %}{% if row.ignored_files %}<small>Pominięto obrazy lub załączniki podpisu: {{ row.ignored_files|join:", " }}</small>{% endif %}</td><td>{% if row.downloaded %}Tylko ponowne pobranie{% elif row.future_rejection %}Nowe zgłoszenie – zaplanowane odrzucenie{% else %}Nowe zgłoszenie{% endif %}</td></tr>{% endfor %}
+{% for row in preview_messages %}<tr{% if row.blacklisted %} class="mailbox-blacklisted-row"{% endif %}><td>{% firstof row.author_pseudonym row.author %}{% if row.blacklisted %}<br><span class="badge is-danger">Czarna lista</span>{% endif %}</td><td><strong>{{ row.title }}</strong></td><td>{{ row.genre }}</td><td>{{ row.length }}</td><td>{{ row.email }}</td><td>{{ row.phone }}</td><td>{{ row.anthology }}</td><td>{{ row.content_warnings|default:"–" }}</td><td>{{ row.newsletter_premieres|yesno:"Tak,Nie" }}</td><td>{{ row.newsletter_recruitment|yesno:"Tak,Nie" }}</td><td>{{ row.author_message|default:"–"|linebreaksbr }}</td><td>{% if row.future_rejection %}<span class="form-warning">Przyszłe odrzucenie – plik nie zostanie pobrany ani przetworzony:</span> {{ row.skipped_files|join:", " }}<br>{% endif %}{% for name, data in row.files %}{{ name }}<br>{% endfor %}{% if row.ignored_files %}<small>Pominięto obrazy lub załączniki podpisu: {{ row.ignored_files|join:", " }}</small>{% endif %}</td><td>{% if row.downloaded %}Tylko ponowne pobranie{% elif row.future_rejection %}Nowe zgłoszenie – zaplanowane odrzucenie{% else %}Nowe zgłoszenie{% endif %}</td></tr>{% endfor %}
 </tbody></table></div>
 {% for error in hard_errors %}<p class="form-error">{{ error }}</p>{% endfor %}
 {% for form in forms %}{% for warning in form.mail_display_warnings %}<p class="form-warning">{{ warning }}</p>{% endfor %}{% endfor %}
@@ -72,7 +72,7 @@
 <label class="mailbox-option"><input type="checkbox" name="approve" required><span>Sprawdziłem dane i ostrzeżenia. Potwierdzam zapis zgłoszeń i pobranie plików.</span></label>
 </div>
 <button class="primary-button" name="action" value="confirm" data-mailbox-progress>Zapisz zgłoszenia i pobierz ZIP</button>
-<div class="program-progress mailbox-progress" data-mailbox-progress-box hidden><p role="status" aria-live="polite" data-mailbox-progress-label></p><progress aria-label="Postęp pobierania zgłoszeń"></progress></div>
+<div class="panel program-progress mailbox-progress" data-mailbox-progress-box hidden><p role="status" aria-live="polite" data-mailbox-progress-label></p><progress aria-label="Postęp pobierania zgłoszeń"></progress></div>
 </form>
 {% endif %}
 {% endif %}

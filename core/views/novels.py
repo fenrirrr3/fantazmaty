@@ -10,7 +10,7 @@ from django.views.decorators.http import require_GET, require_http_methods
 from core.anthology_tasks import AnthologyNotificationsForm
 from core.novel_forms import NovelForm, ChapterForm, ChapterRangeForm, AssignmentForm, CoverForm
 from core.pagination import paginate_items
-from core.permissions import team_member_required, coordinator_required, is_coordinator
+from core.permissions import team_member_required, coordinator_required, is_coordinator, is_superuser, require_superuser
 from core.selectors.texts import _annotated_texts
 from core.views.supervision import _task_forms
 from texts.models import Anthology, NovelProfile, Text
@@ -77,6 +77,8 @@ def novel_detail(request, novel_id):
     if request.method == 'POST':
         if not coordinator:
             raise PermissionDenied
+        if request.POST.get('action') == 'notifications':
+            require_superuser(request.user)
         try:
             with novels.locked_book(novel_id, request.user, request.POST.get('novel_token', '')) as book:
                 profile, _ = NovelProfile.objects.get_or_create(anthology=book)
@@ -150,7 +152,7 @@ def novel_detail(request, novel_id):
         'chapter_range_form': ChapterRangeForm(prefix='add'),
         'assignment_form': AssignmentForm(prefix='assign'),
         'task_forms': _task_forms(book) if coordinator else [], 'cover_form': CoverForm(instance=book) if coordinator else None,
-        'notifications_form': AnthologyNotificationsForm(instance=book, prefix='discord') if coordinator else None}
+        'notifications_form': AnthologyNotificationsForm(instance=book, prefix='discord') if is_superuser(request.user) else None}
     context.update(forms)
     return render(request, 'core/novels/detail.html', context, status=400 if error else 200)
 

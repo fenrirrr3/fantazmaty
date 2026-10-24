@@ -597,7 +597,7 @@ class ReportPageTests(TestCase):
         self.assertEqual({person.pk: person.on_leave for person in page.context['people']},
                          {self.other_editor.person_profile.pk: True, self.editor.person_profile.pk: False})
         self.assertEqual(page.context['role'], str(redaktor.pk))
-        self.assertContains(page, 'inny Testowy</a> <span class="inactivity-badge">Na urlopie</span>', html=False)
+        self.assertContains(page, 'inny Testowy</a> <span class="badge is-warning">Na urlopie</span>', html=False)
         self.assertContains(page, 'Na urlopie', count=1)
         everyone = self.get('core:last_activity', self.coordinator, role='nie-rola', days=0)
         self.assertEqual(everyone.context['role'], '')

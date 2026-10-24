@@ -32,7 +32,7 @@
                 </p>
             </div>
 
-            <div class="detail-header-actions">
+            <div class="actions detail-header-actions">
                 {% if user.is_superuser %}<a class="secondary-button" href="{% url 'admin:texts_review_change' review.pk %}">Edytuj w adminie</a>{% endif %}
             <a
                 href="{% if return_url %}{{ return_url }}{% elif not can_browse_reviews and review.copied_text_id %}{% url 'core:assigned_text_detail' review.copied_text_id %}{% else %}{% url 'core:review_list' %}?old_reviews={% if review.is_archived %}1{% else %}0{% endif %}{% endif %}"
@@ -44,7 +44,7 @@
         </div>
     </header>
     {% if can_mark_for_decision or can_restore_from_decision %}
-    <section class="review-decision-actions" aria-label="Kierowanie do decyzji">
+    <section class="actions review-decision-actions" aria-label="Kierowanie do decyzji">
         <form method="post" action="{% url 'core:update_review_status' review.pk %}">
             {% csrf_token %}{% edit_version %}
             {% if can_mark_for_decision %}
@@ -77,7 +77,7 @@
             Zgłoszenie zostało przyjęte lub odrzucone. Oddane opinie są liczone do dorobku, ale nie do bieżącego obciążenia.
         </div>
     {% elif is_review_locked %}
-        <div class="review-locked-alert" role="status">
+        <div class="message" role="status">
             <strong>Recenzja jest zamknięta.</strong>
             Opinie i przydziały recenzentów są zablokowane.
         </div>
@@ -187,7 +187,7 @@
                     {{ review_content_warnings_form.content_warnings.errors }}
                 </div>
 
-                <div class="general-notes-actions">
+                <div class="actions form-actions">
                     <button type="submit" class="secondary-button">
                         Zapisz ostrzeżenia
                     </button>
@@ -211,7 +211,7 @@
     {% endif %}
 
     {% if not is_review_locked %}
-        <section class="review-assignment-card" aria-labelledby="review-assignment-heading">
+        <section class="details-card" aria-labelledby="review-assignment-heading">
             <div class="review-assignment-row">
                 <div>
                     <h2 id="review-assignment-heading">Twój przydział</h2>
@@ -234,7 +234,7 @@
                         action="{% url 'core:assign_reviewer' review.pk %}"
                     >
                         {% csrf_token %}{% edit_version %}
-                        <button type="submit" class="assign-button">
+                        <button type="submit" class="primary-button">
                             Biorę
                         </button>
                     </form>
@@ -253,7 +253,7 @@
                         action="{% url 'core:unassign_reviewer' review.pk %}"
                     >
                         {% csrf_token %}{% edit_version %}
-                        <button type="submit" class="unassign-button" data-confirm="Zrezygnować z recenzji? Twoja opinia i notatki zostaną usunięte.">
+                        <button type="submit" class="danger-button" data-confirm="Zrezygnować z recenzji? Twoja opinia i notatki zostaną usunięte.">
                             Usuń mój przydział i opinię
                         </button>
                     </form>
@@ -264,7 +264,7 @@
 
     <div class="review-workspace{% if not opinion_form %} review-workspace-readonly{% endif %}">
         {% if opinion_form %}
-            <section class="card review-form-card" aria-labelledby="my-opinion-heading">
+            <section class="details-card" aria-labelledby="my-opinion-heading">
                 <h2 id="my-opinion-heading">Twoja opinia</h2>
 
                 {% if user_status %}
@@ -330,7 +330,7 @@
                         </p>
                     </div>
 
-                    <div class="review-form-actions">
+                    <div class="actions form-actions">
                         <button type="submit" class="primary-button">
                             Zapisz opinię
                         </button>
@@ -338,7 +338,7 @@
                 </form>
             </section>
         {% elif user_slot %}
-            <section class="card review-locked-card" aria-labelledby="saved-opinion-heading">
+            <section class="details-card" aria-labelledby="saved-opinion-heading">
                 <h2 id="saved-opinion-heading">Twoja zapisana opinia</h2>
                 <p>
                     <strong class="reviewer-bubble reviewer-opinion-{{ user_opinion_value }}">{{ user_status }}</strong>
@@ -354,17 +354,17 @@
             </section>
         {% endif %}
 
-        <section class="card other-reviews-card" aria-labelledby="review-opinions-heading">
+        <section class="details-card other-reviews-card" aria-labelledby="review-opinions-heading">
             <h2 id="review-opinions-heading">
                 {% if user_slot %}Pozostałe opinie{% else %}Opinie recenzentów{% endif %}
             </h2>
 
             <div class="review-summary-grid">
-                <div class="summary-tile">
+                <div class="panel summary-tile">
                     <span>Przypisani recenzenci</span>
                     <strong>{{ opinion_summary.assigned }}</strong>
                 </div>
-                <div class="summary-tile">
+                <div class="panel summary-tile">
                     <span>Oddane opinie</span>
                     <strong>{{ opinion_summary.completed }}</strong>
                 </div>
@@ -398,13 +398,13 @@
                                 <form method="post" action="{% url 'core:release_reviewer_slot' review.pk opinion.pk %}" class="release-reviewer-form">
                                     {% csrf_token %}{% edit_version %}
                                     <p class="form-help">Przypisano {{ opinion.assigned_at|date:"d.m.Y" }}.</p>
-                                    <button type="submit" class="unassign-button" data-confirm="Zwolnić miejsce recenzenta {{ opinion.reviewer_name }}? Jego przydział zostanie usunięty.">Zwolnij miejsce</button>
+                                    <button type="submit" class="danger-button" data-confirm="Zwolnić miejsce recenzenta {{ opinion.reviewer_name }}? Jego przydział zostanie usunięty.">Zwolnij miejsce</button>
                                 </form>
                             {% endif %}
                         </div>
                     </details>
                 {% empty %}
-                    <div class="empty-reviewer-opinions">
+                    <div class="empty-results-panel">
                         {% if user_slot %}
                             Brak innych przypisanych recenzentów.
                         {% else %}
@@ -415,7 +415,7 @@
             </div>
 
             {% if general_notes %}
-                <div class="coordinator-note-readonly">
+                <div class="panel is-muted coordinator-note-readonly">
                     <h3>Uwagi ogólne</h3>
                     {{ general_notes|linebreaksbr }}
                 </div>
@@ -425,7 +425,7 @@
 
     {% if review.status == 'to_decide' %}<p class="form-warning" role="status">Tekst jest na etapie „Do decyzji”. Recenzję powinna przejąć tylko wyznaczona osoba. Możliwość przejęcia pozostaje otwarta.</p>{% endif %}
     {% if can_change_review_status %}
-        <section class="review-decision-card" aria-labelledby="review-decision-heading">
+        <section class="details-card" aria-labelledby="review-decision-heading">
             <div class="review-decision-header">
                 <div>
                     <h2 id="review-decision-heading">Decyzja dotycząca tekstu</h2>
@@ -434,7 +434,7 @@
                     </p>
                 </div>
 
-                <div class="review-decision-actions">
+                <div class="actions review-decision-actions">
                     {% if review.status != "accepted" %}
                         <form
                             method="post"
@@ -442,7 +442,7 @@
                         >
                             {% csrf_token %}{% edit_version %}
                             <input type="hidden" name="status" value="accepted">
-                            <button type="submit" class="accept-review-button" data-confirm="Przyjąć tekst? Przyjęcie zamyka edycję opinii i przydziałów.">
+                            <button type="submit" class="success-button" data-confirm="Przyjąć tekst? Przyjęcie zamyka edycję opinii i przydziałów.">
                                 Przyjmij tekst
                             </button>
                         </form>
@@ -455,7 +455,7 @@
                         >
                             {% csrf_token %}{% edit_version %}
                             <input type="hidden" name="status" value="rejected">
-                            <button type="submit" class="reject-review-button" data-confirm="Odrzucić tekst? Odrzucenie zamyka edycję opinii i przydziałów.">
+                            <button type="submit" class="danger-button" data-confirm="Odrzucić tekst? Odrzucenie zamyka edycję opinii i przydziałów.">
                                 Odrzuć tekst
                             </button>
                         </form>
@@ -483,7 +483,7 @@
 
                     <label
                         for="{{ author_notification_form.author_notified.id_for_label }}"
-                        class="boolean-filter-toggle"
+                        class="checkbox-field"
                     >
                         {{ author_notification_form.author_notified }}
                         <span>{{ author_notification_form.author_notified.label }}</span>
@@ -498,7 +498,7 @@
                         {{ author_notification_form.author_notified_at.errors }}
                     </div>
 
-                    <div class="general-notes-actions">
+                    <div class="actions form-actions">
                         <button type="submit" class="secondary-button">
                             Zapisz powiadomienie
                         </button>
@@ -525,7 +525,7 @@
                     {% if author_has_contract %}
                         <p class="contract-confirmed">Umowa autora jest potwierdzona.</p>
                     {% else %}
-                        <label class="contract-checkbox">
+                        <label class="checkbox-field">
                             <input
                                 type="checkbox"
                                 name="contract_received"
@@ -538,13 +538,13 @@
 
                     {% for coauthor in copy_coauthors %}
                         {% if coauthor.has_contract %}<p>Umowa współautora {{ coauthor.display_name }} jest potwierdzona.</p>
-                        {% else %}<label class="contract-checkbox"><input type="checkbox" name="coauthor_contract_received" value="{{ coauthor.pk }}" required> Potwierdzam otrzymanie umowy: {{ coauthor.display_name }}.</label>{% endif %}
+                        {% else %}<label class="checkbox-field"><input type="checkbox" name="coauthor_contract_received" value="{{ coauthor.pk }}" required> Potwierdzam otrzymanie umowy: {{ coauthor.display_name }}.</label>{% endif %}
                     {% endfor %}
                     {% if copy_phone_differs %}
                         <p>Telefon w profilu: {{ copy_profile_phone|default:"brak" }}. W zgłoszeniu: {{ review.phone_number }}.</p>
-                        <label class="contract-checkbox"><input type="checkbox" name="update_author_phone" value="yes"> Zapisz telefon ze zgłoszenia w profilu autora.</label>
+                        <label class="checkbox-field"><input type="checkbox" name="update_author_phone" value="yes"> Zapisz telefon ze zgłoszenia w profilu autora.</label>
                     {% endif %}
-                    <div class="general-notes-actions">
+                    <div class="actions form-actions">
                         <button type="submit" class="primary-button">
                             Dodaj tekst do procesu
                         </button>

@@ -111,7 +111,7 @@ class ExternalIllustrationsTests(TestCase):
         self.client.force_login(self.coordinator)
         page = self.client.get(self.internal)
         doc = html.fromstring(page.content)
-        self.assertTrue(doc.xpath('//div[@class="illustration-public-actions"]/a'))
+        self.assertTrue(doc.xpath('//div[contains(@class, "illustration-public-actions")]/a'))
         public_link = doc.xpath('//a[@href="%s"]' % self.url)[0]
         self.assertEqual(public_link.get("target"), "_blank")
         self.assertEqual(set(public_link.get("rel").split()), {"noopener", "noreferrer"})
@@ -125,7 +125,7 @@ class ExternalIllustrationsTests(TestCase):
         public_page = self.client.get(self.url)
         self.assertContains(public_page, link)
         public_doc = html.fromstring(public_page.content)
-        buttons = public_doc.xpath('//div[@class="filter-actions"]/a')
+        buttons = public_doc.xpath('//div[contains(@class, "filter-actions")]/a')
         self.assertEqual([a.text_content() for a in buttons], ['Wyczyść filtry', 'Otwórz GDrive'])
         self.assertEqual(buttons[-1].get('href'), link)
         self.assertEqual(buttons[-1].get('target'), '_blank')

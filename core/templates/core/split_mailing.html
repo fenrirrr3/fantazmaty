@@ -7,7 +7,7 @@
     <h1 class="page-title">Wysyłka plików autorom</h1>
     <p class="page-description">Każdy autor dostaje wyłącznie pliki swoich tekstów – jeden mail na ten sam zestaw odbiorców. W antologii tłumaczonej pliki trafiają do tłumaczy.</p>
 </header>
-<section class="details-card split-mailing">
+<section class="details-card odkurzacz program-tool">
     <div class="card-body">
     {% if error %}<p class="form-error" role="alert">{{ error }}</p>{% endif %}
     {% if mailbox_error and not complete %}<p class="form-warning" role="alert">{{ mailbox_error }}</p>{% elif mailbox and batch and not report %}<p class="form-help">Nadawca: {{ mailbox.username }} (skrzynka „{{ mailbox.name }}”).</p>{% endif %}
@@ -15,7 +15,7 @@
         <p class="message {% if complete %}success{% else %}warning{% endif %}" role="status">Wysłane pliki: {{ report.sent }} z {{ report.sent|add:report.failed }}, wiadomości: {{ report.mails|default:report.sent }}{% if report.anthology_title %} – {{ report.anthology_title }}{% endif %}.</p>
         {% include "core/includes/split_mailing_report.html" with rows=report.rows %}
         {% if not complete and batch_token %}
-            <form method="post" class="split-mailing-step">
+            <form method="post">
                 {% csrf_token %}<input type="hidden" name="batch" value="{{ batch_token }}">
                 <h2>Ponowna wysyłka</h2>
                 <p class="form-help">Wysłane wiersze są zablokowane – ponowienie wyśle tylko pliki z błędem. Archiwum zostaje na serwerze, dopóki nie wyjdą wszystkie pliki (albo nie wygaśnie zadanie).</p>
@@ -31,7 +31,7 @@
             <div class="detail-item"><dt>Temat (wzór z tagami)</dt><dd>{{ batch.subject }}</dd></div>
             <div class="detail-item"><dt>Treść</dt><dd>{{ batch.message|linebreaksbr }}</dd></div>
         </dl>
-        <form method="post" class="split-mailing-step">
+        <form method="post">
             {% csrf_token %}<input type="hidden" name="batch" value="{{ batch_token }}">
             <h2>Lista kontrolna</h2>
             {% if batch.extracts %}<p class="form-help">Tryb Ekstraktów: nagłówek części to autor. Dopasowujemy go do wpisów naboru „{{ batch.anthology_title }}” (imię i nazwisko lub pseudonim), plik idzie na adres z wpisu, a „Tytuł” to przyjęte teksty autora.</p>{% endif %}
@@ -56,14 +56,14 @@
         </form>
         {% include "core/includes/split_mailing_test.html" %}
     {% elif form %}
-        <form method="post" class="split-mailing-step" data-warn-unsaved>
+        <form method="post" data-warn-unsaved>
             {% csrf_token %}
             {{ form.non_field_errors }}
             {% for field in form %}{% include "core/includes/form_field.html" %}{% endfor %}
             <div class="actions"><button type="submit" name="action" value="prepare" class="primary-button">Przygotuj listę kontrolną</button></div>
         </form>
     {% endif %}
-    <p class="actions">{% if token and not report %}<a href="{% url 'core:program_job' token %}?view=page">Wróć do wyniku podziału</a>{% endif %}<a href="{% url 'core:programs' %}#program-split">Wróć do programów</a></p>
+    <div class="program-footer">{% if token and not report %}<p><a href="{% url 'core:program_job' token %}?view=page">Wróć do wyniku podziału</a></p>{% endif %}<p><a href="{% url 'core:programs' %}#program-split">Wróć do programów</a></p></div>
     </div>
 </section>
 {% endblock %}

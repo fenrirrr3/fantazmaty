@@ -8,6 +8,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 
 from core.pagination import paginate_queryset
+from core.public_guidelines import PublicGuidelines, external_page_headers
 from core.translation_scope import frontend_scope
 from texts.models import Anthology, Text
 from texts.production import active_production_texts
@@ -29,6 +30,9 @@ def valid_link_version(user, url, token):
         return signing.loads(token, salt='public-illustrations-link', max_age=86400) == [user.pk, url]
     except (signing.BadSignature, TypeError):
         return False
+
+
+GUIDELINES = PublicGuidelines('Wytyczne dla ilustratorów', 'wytyczne-ilustracje.pdf', 'illustrations:illustration_guidelines_pdf')
 
 
 def visible_illustrations():
@@ -63,9 +67,18 @@ def external_illustrations(request):
     rows = rows.order_by('text__anthology__title', 'text__title', 'pk').values(
         'text__anthology__title', 'text__title', 'text__tags', 'text__genre', 'text__content_warnings', 'public_status')
     page = paginate_queryset(request, rows)
-    config = PublicIllustrationSettings.objects.filter(pk=1).first()
-    return render(request, 'core/external_illustrations.html', {
+    config = PublicIllustrationSettings.objects.filter(pk=1).values('drive_url', 'guidelines').first() or {
+        'drive_url': '', 'guidelines': ''}
+    return external_page_headers(render(request, 'core/external_illustrations.html', {
         'rows': page, 'page_obj': page, 'anthologies': choices, 'selected_anthology': anthology,
         'selected_status': status, 'query': query,
-        'drive_url': config.drive_url if config else '',
-    })
+        'drive_url': config['drive_url'], 'guidelines': GUIDELINES.context(config['guidelines']),
+    }))
+
+
+@never_cache
+@require_GET
+def illustration_guidelines_pdf(request):
+    from .models import PublicIllustrationSettings
+    text = PublicIllustrationSettings.objects.filter(pk=1).values_list('guidelines', flat=True).first()
+    return GUIDELINES.pdf_response(text or '')

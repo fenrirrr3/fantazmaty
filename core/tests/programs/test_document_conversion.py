@@ -231,7 +231,7 @@ class ResourceValidationTests(SimpleTestCase):
             (repacked(extra=[('word/_rels/extra.xml.rels', doctype)]), 'Nieobsługiwany dokument'),
             (with_relationship('../../../etc/passwd'), 'nieprawidłowe odwołanie'),
             (with_relationship('C:/obraz.png'), 'nieprawidłowe odwołanie'),
-            (with_relationship('https://example.test/obraz.png', 'External'), 'zewnętrzny obraz'),
+            (with_relationship('file:///C:/Arkusz.xlsx', 'External', 'oleObject'), 'podłączony plik zewnętrzny'),
         )
         for source, message in cases:
             with self.subTest(message=message), self.assertRaisesMessage(ConversionError, message):

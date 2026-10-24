@@ -209,9 +209,31 @@ class AudiobookAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         return False
 
 
+class PublicGuidelinesAdminMixin:
+    """Ustawienia strony zewnętrznej: ściąga składni przy polu wytycznych i odnośnik do strony."""
+    public_page = ''  # nazwa trasy strony zewnętrznej
+    readonly_fields = ('public_page_link',)
+
+    def formfield_for_dbfield(self, db_field, request, **kwargs):
+        field = super().formfield_for_dbfield(db_field, request, **kwargs)
+        if db_field.name == 'guidelines':
+            from core.public_guidelines import SYNTAX_HELP
+            field.help_text = SYNTAX_HELP
+            field.widget.attrs['rows'] = 20
+        return field
+
+    @admin.display(description='Strona zewnętrzna')
+    def public_page_link(self, obj):
+        from django.urls import reverse
+        from django.utils.html import format_html
+        return format_html('<a href="{}" target="_blank" rel="noopener noreferrer">Zobacz na stronie</a>',
+                           reverse(self.public_page))
+
+
 @admin.register(PublicAudiobookSettings)
-class PublicAudiobookSettingsAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
-    fields = ('mega_url', 'guidelines')
+class PublicAudiobookSettingsAdmin(PublicGuidelinesAdminMixin, SuperuserOnlyAdminMixin, admin.ModelAdmin):
+    fields = ('mega_url', 'guidelines', 'public_page_link')
+    public_page = 'core:external_audiobooks'
 
     def has_add_permission(self, request):
         return super().has_add_permission(request) and not PublicAudiobookSettings.objects.exists()
@@ -381,7 +403,7 @@ class AccountAdmin(UserAdmin):
             state += f" Ostatnie logowanie: {obj.last_login:%d.%m.%Y}."
         return format_html(
             '<button type="submit" class="button" formaction="{}" formnovalidate name="_invite">Wyślij zaproszenie</button>'
-            '<div class="help" style="margin:var(--space-1, 4px) 0 0">{} Mail z linkiem do ustawienia hasła (ważnym {} dni) trafi na adres {}. Niezapisane zmiany '
+            '<div class="help cms-inline-help">{} Mail z linkiem do ustawienia hasła (ważnym {} dni) trafi na adres {}. Niezapisane zmiany '
             'w formularzu nie zostaną zapisane.</div>',
             reverse("admin:auth_user_invite", args=[obj.pk]), state, invitation_days(), obj.email or "– brak adresu –")
 

@@ -1,11 +1,11 @@
 {% extends "core/base.html" %}
 {% load static %}
 {% block title %}Audiobook: {{ text.title }} | Fantazmaty CMS{% endblock %}
-{% block extra_css %}{{ block.super }}<link rel="stylesheet" href="{% static 'core/audiobook-production.css' %}">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/audiobooks.css' %}">{% endblock %}
 {% block content %}
 <header class="page-header">
     <h1 class="page-title">Audiobook: {{ text.title }}</h1>
-    <div class="audio-actions">
+    <div class="actions audio-actions">
         <a class="secondary-button" href="{% if return_url %}{{ return_url }}{% else %}{% url 'core:audiobooks' %}{% endif %}">Wróć do Audiobooków</a>
         <a class="secondary-button" href="{% if text.anthology.is_translated %}{% url 'core:translation_detail' text.pk %}{% else %}{% url 'core:assigned_text_detail' text.pk %}{% endif %}">Otwórz tekst</a>
     </div>
@@ -52,7 +52,7 @@
         {% for field in publication_form %}<div class="form-field">{{ field.label_tag }}{{ field }}{{ field.errors }}</div>{% endfor %}
         <button class="primary-button">Zapisz</button>
     </form>{% else %}<p><strong>Data premiery:</strong> {{ audio.premiere_date|date:"d.m.Y"|default:"Brak daty" }}</p>{% endif %}
-    {% if audio.is_published %}<div class="audio-actions">
+    {% if audio.is_published %}<div class="actions audio-actions">
         {% for link in audio.publication_links %}<a class="secondary-button" href="{{ link.url }}" target="_blank" rel="noopener noreferrer">Otwórz {{ link.label }}</a>{% endfor %}
     </div>{% endif %}
 </div></section>
@@ -96,7 +96,7 @@
         <h3>Zakończ korektę</h3>
         {% if can_coordinate %}<div class="form-field">{{ date_form.date.label_tag }}{{ date_form.date }}{{ date_form.date.errors }}<p class="form-help">Puste pole – data zakończenia nieznana.</p></div>{% endif %}
         <p class="form-help">Następny status: Nanoszenie poprawek.</p>
-        <div class="actions"><button class="audio-finish-button" data-confirm="Zakończyć korektę?">Zakończ korektę</button></div>
+        <div class="actions"><button class="success-button audio-finish-button" data-confirm="Zakończyć korektę?">Zakończ korektę</button></div>
     </form>{% endif %}
     {% if audio.is_published and can_edit and not audio.premiere_date %}<p class="muted-text">Uzupełnij datę premiery i linki w sekcji Publikacja.</p>{% endif %}
 </div></section>

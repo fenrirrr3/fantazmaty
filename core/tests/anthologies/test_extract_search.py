@@ -36,7 +36,7 @@ class ExtractSearchTests(TestCase):
         self.assertContains(response, reverse('core:extract_edit', args=[self.entry.pk]))
         self.assertEqual(self.client.get(reverse('core:extract_edit', args=[self.entry.pk])).status_code, 200)
         document = html.fromstring(response.content)
-        self.assertEqual(document.xpath('//div[@class="global-search-results"]/section/header/h2/text()'),
+        self.assertEqual(document.xpath('//div[contains(@class, "global-search-results")]/section/header/h2/text()'),
                          ['Ekstrakty', 'Autorzy'])
 
     def test_title_anthology_and_current_pseudonym_search_without_old_name_leaks(self):
@@ -66,11 +66,11 @@ class ExtractSearchTests(TestCase):
         Text.objects.create(title='Samotny wynik', anthology=book, length=1)
         response = self.client.get(self.url, {'q': 'Samotny wynik'})
         document = html.fromstring(response.content)
-        self.assertEqual(document.xpath('//div[@class="global-search-results"]/section/header/h2/text()'), ['Teksty'])
+        self.assertEqual(document.xpath('//div[contains(@class, "global-search-results")]/section/header/h2/text()'), ['Teksty'])
         self.assertNotContains(response, 'Brak wyników dla podanego zapytania.')
         response = self.client.get(self.url, {'q': 'Niematakwpisanegorekordu'})
         document = html.fromstring(response.content)
-        self.assertFalse(document.xpath('//div[@class="global-search-results"]/section'))
+        self.assertFalse(document.xpath('//div[contains(@class, "global-search-results")]/section'))
         self.assertContains(response, 'Brak wyników dla podanego zapytania.', count=1)
         self.assertNotContains(self.client.get(self.url), 'Brak wyników dla podanego zapytania.')
 

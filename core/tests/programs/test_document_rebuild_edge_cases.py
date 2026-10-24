@@ -1,13 +1,15 @@
 """Przebudowa DOCX: dokument bez ustawień domyślnych, kolory motywu spoza palety i błędne kolory, puste
-kontrolki tekstu zastępczego, nieznane bloki treści, pusty nagłówek, znak akapitu i błędna liczba kolumn."""
+kontrolki tekstu zastępczego, nieznane bloki treści, pusty nagłówek, znak akapitu i błędna liczba kolumn,
+a z rzadszych edytorów: polskie nazwy stylów nagłówków, styl bez nazwy i inicjał (w:dropCap)."""
 from django.test import SimpleTestCase
 from docx import Document
 from docx.oxml import OxmlElement, parse_xml
 from docx.oxml.ns import nsdecls, qn
 from docx.shared import Pt, RGBColor
 
-from core.services.document_rebuild import RebuildUnsupported, inspect_docx, rebuild_docx
+from core.services.document_rebuild import DROP_CAP_OMISSION, RebuildUnsupported, inspect_docx, rebuild_docx
 
+from .editor_fixtures_exotic import STYLES, frames_and_drop_cap, localized_style_names, p, r, word_docx
 from .support import add_block, saved
 
 
@@ -67,11 +69,14 @@ class RebuildGapTests(SimpleTestCase):
         document.sections[0].header.is_linked_to_previous = False
         document.sections[0]._sectPr.find(qn('w:cols')).set(qn('w:num'), 'dwie')
         self.assertEqual(omissions_of(document), [])
-        add_block(document, parse_xml(f'<w:customXml {nsdecls("w")} w:element="dane"><w:p><w:r><w:t>Ukryte</w:t>'
-                                      '</w:r></w:p></w:customXml>'))
-        self.assertEqual(omissions_of(document), ['blok customXml wraz z treścią (liczba: 1)'])
+        # Blok własnego XML (Word 2007) Word 2010+ zdejmuje przy otwarciu, zostawiając treść – przebudowa też.
+        add_block(document, parse_xml(f'<w:customXml {nsdecls("w")} w:element="dane"><w:customXmlPr/><w:p><w:r>'
+                                      '<w:t>Dane</w:t></w:r></w:p></w:customXml>'))
+        self.assertEqual(omissions_of(document), [])
+        add_block(document, parse_xml(f'<w:subDoc {nsdecls("w", "r")} r:id="rIdBrak"/>'))
+        self.assertEqual(omissions_of(document), ['blok subDoc wraz z treścią (liczba: 1)'])
         self.assertEqual([p.text for p in Document(rebuild_docx(saved(document), allow_omissions=True)).paragraphs],
-                         ['Tekst'])
+                         ['Tekst', 'Dane'])
 
     def test_paragraph_mark_with_only_a_size_or_only_a_font(self):
         """Znak akapitu przenosi tylko to, co określono: sam rozmiar albo sam krój (gdy domyślnych brak)."""
@@ -87,3 +92,35 @@ class RebuildGapTests(SimpleTestCase):
         self.assertEqual(marks[0].find(qn('w:sz')).get(qn('w:val')), str(int(Pt(16).pt * 2)))
         self.assertEqual([child.tag for child in marks[1]], [qn('w:rFonts')])
         self.assertEqual(marks[1].find(qn('w:rFonts')).get(qn('w:ascii')), 'Georgia')
+
+
+class RebuildEditorQuirksTests(SimpleTestCase):
+    """Zapis rzadszych edytorów i konwerterów (editor_fixtures_exotic)."""
+
+    def test_polish_heading_names_and_a_style_without_a_name(self):
+        """Regresja: styl o nazwie „Nagłówek 1” (zamiast wbudowanej „heading 1”) tracił w przebudowie status
+        nagłówka bez uwagi, a styl bez w:name przerywał przebudowę (AttributeError)."""
+        rebuilt = Document(rebuild_docx(localized_style_names()))
+        self.assertEqual([(paragraph.text, paragraph.style.name) for paragraph in rebuilt.paragraphs], [
+            ('Tytuł książki', 'Normal'), ('Rozdział pierwszy', 'Heading 1'), ('Treść pierwszego.', 'Normal'),
+            ('Podrozdział', 'Heading 2'), ('Rozdział drugi', 'Heading 1'), ('Treść drugiego.', 'Normal')])
+        unnamed = word_docx(p(r('Akapit w stylu bez nazwy.'), properties='<w:pStyle w:val="Bez"/>'),
+                            styles=STYLES + '<w:style w:type="paragraph" w:styleId="Bez"><w:basedOn w:val="Normalny"/>'
+                                            '</w:style>')
+        self.assertEqual([paragraph.text for paragraph in Document(rebuild_docx(unnamed)).paragraphs],
+                         ['Akapit w stylu bez nazwy.'])
+
+    def test_drop_cap_letter_returns_to_its_paragraph(self):
+        """Regresja: inicjał Worda (pierwsza litera w osobnym akapicie z w:framePr w:dropCap) dawał w nowym DOCX
+        akapit „W” i akapit „ielki…”. Litera wraca do słowa bez powiększenia; zwykła ramka akapitu jest
+        zgłaszana jak dotąd."""
+        try:
+            inspect_docx(frames_and_drop_cap())
+        except RebuildUnsupported as error:
+            omissions = error.omissions
+        self.assertEqual(omissions, [f'{DROP_CAP_OMISSION} (liczba: 1)', 'ramki akapitów (liczba: 1)'])
+        rebuilt = Document(rebuild_docx(frames_and_drop_cap(), allow_omissions=True))
+        self.assertEqual([paragraph.text for paragraph in rebuilt.paragraphs],
+                         ['Wielki inicjał zaczyna ten akapit.', 'Tekst w ramce akapitu.', 'Zwykły akapit.'])
+        # Litera inicjału ma rozmiar akapitu (12 pt z ustawień domyślnych), nie 42 pt inicjału.
+        self.assertEqual([run.font.size for run in rebuilt.paragraphs[0].runs], [Pt(12), Pt(12)])

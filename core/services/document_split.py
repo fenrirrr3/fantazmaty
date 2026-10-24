@@ -8,6 +8,11 @@ Plik opowiadania to kopia pakietu z treścią ograniczoną do fragmentu i ostatn
 style, numeracja, motyw i ustawienia zostają, a przypisy, komentarze, obrazy, hiperłącza
 i nagłówki stron, do których fragment się nie odwołuje, są usuwane razem z nieużywanymi
 częściami pakietu (także miniatura pierwszej strony) – plik nie niesie treści innych opowiadań.
+
+Śledzone zmiany zostają bez zmian. Komentarz trafia do opowiadania ze swoim odwołaniem (także
+w przypisie); zakres przecięty granicą opowiadań zaczyna się tam na początku opowiadania, a w innych
+opowiadaniach jego znaczniki znikają. Zakres przeniesienia, którego drugiej połowy (albo drugiej
+strony przeniesienia) nie ma w opowiadaniu, znika – przeniesiony tekst i jego oznaczenia zostają.
 """
 import posixpath
 import re
@@ -171,12 +176,60 @@ def _filter_rels(files, part, used):
 
 
 def _filter_notes(files, part, kind, used):
+    """Tylko przypisy użyte we fragmencie; zwraca korzeń części (do odczytu odwołań do komentarzy)."""
     root = _parse(files[part])
     for note in list(root.findall(w(NOTE_TYPES[kind]))):
         if note.get(w('type')) in (None, 'normal') and note.get(w('id')) not in used:
             root.remove(note)
     files[part] = _serialize(root)
     _filter_rels(files, part, _referenced([root])['rels'])
+    return root
+
+
+COMMENT_RANGES = (w('commentRangeStart'), w('commentRangeEnd'))
+MOVE_RANGES = {w(f'{kind}Range{edge}'): (kind, edge) for kind in ('moveFrom', 'moveTo') for edge in ('Start', 'End')}
+
+
+def _review_ranges(content, notes):
+    """Zakresy komentarzy i przeniesień przecięte granicą opowiadania (content – elementy treści, notes – korzenie
+    użytych przypisów); zwraca w:id komentarzy z odwołaniem w opowiadaniu (te zostają w comments.xml)."""
+    referenced = {node.get(w('id')) for root in [*content, *notes] for node in root.iter(w('commentReference'))}
+    found = {}
+    for element in content:
+        for node in element.iter(*COMMENT_RANGES):
+            found.setdefault(node.get(w('id')), {})[node.tag] = node
+    first = next((element for element in content if element.tag == w('p')), None)
+    for comment_id, nodes in found.items():
+        if comment_id not in referenced:
+            for node in nodes.values():
+                node.getparent().remove(node)
+        elif w('commentRangeStart') not in nodes and first is not None:
+            # Zakres zaczęty w poprzednim opowiadaniu: tu obejmuje jego początek.
+            start = etree.Element(w('commentRangeStart'))
+            start.set(w('id'), comment_id)
+            properties = first.find(w('pPr'))
+            first.insert(0 if properties is None else first.index(properties) + 1, start)
+        elif w('commentRangeEnd') not in nodes:
+            reference = next((node for element in content for node in element.iter(w('commentReference'))
+                              if node.get(w('id')) == comment_id), None)
+            if reference is not None:
+                end = etree.Element(w('commentRangeEnd'))
+                end.set(w('id'), comment_id)
+                reference.getparent().addprevious(end)
+    moves = {}
+    for element in content:
+        for node in element.iter(*MOVE_RANGES):
+            moves.setdefault((MOVE_RANGES[node.tag][0], node.get(w('id'))), []).append(node)
+    names = {key: next((node.get(w('name')) for node in nodes if MOVE_RANGES[node.tag][1] == 'Start'), None)
+             for key, nodes in moves.items()}
+    complete = {(key[0], names[key]) for key, nodes in moves.items()
+                if sorted(MOVE_RANGES[node.tag][1] for node in nodes) == ['End', 'Start']}
+    other = {'moveFrom': 'moveTo', 'moveTo': 'moveFrom'}
+    for key, nodes in moves.items():
+        if (key[0], names[key]) not in complete or (other[key[0]], names[key]) not in complete:
+            for node in nodes:
+                node.getparent().remove(node)
+    return referenced
 
 
 def _local_attribute(node, name):
@@ -205,6 +258,11 @@ def _filter_comments(files, main, used):
                 tree.remove(node)
             elif suffix == '/commentsIds':
                 durable.add(_local_attribute(node, 'durableId'))
+            elif isinstance(node.tag, str):
+                # Odpowiedź na komentarz z innego opowiadania staje się zwykłym komentarzem.
+                for name in [name for name in node.attrib if etree.QName(name).localname == 'paraIdParent']:
+                    if node.get(name) not in paragraphs:
+                        del node.attrib[name]
         files[extra] = _serialize(tree)
     extensible = _part_of_type(files, main, '/commentsExtensible')
     if extensible is not None and extensible in files:
@@ -290,19 +348,21 @@ def split_document(source, output):
             if section is not None:
                 body.append(section)
             files = dict(original)
-            files[main] = _serialize(root)
             used = _referenced(content + ([section] if section is not None else []))
             _filter_rels(files, main, used['rels'])
+            notes = []
             for kind in NOTE_TYPES:
                 part = _part_of_type(files, main, '/' + kind)
                 if part is not None and part in files:
-                    _filter_notes(files, part, kind, used[kind])
-            _filter_comments(files, main, used['comments'])
+                    notes.append(_filter_notes(files, part, kind, used[kind]))
+            _filter_comments(files, main, _review_ranges(content, notes))
+            files[main] = _serialize(root)
             title = _text(elements[0])
             name = file_name(number, width, title)
             names.append(name)
             titles.append(title)
             result.writestr(name, _package(files, order, compress))
             for element in content:
-                body.remove(element)
+                if element.getparent() is body:  # znacznik zakresu między akapitami mógł już zniknąć
+                    body.remove(element)
     return {'files': names, 'titles': titles, 'skipped_intro': _visible(intro)}

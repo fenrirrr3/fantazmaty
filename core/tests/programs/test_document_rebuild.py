@@ -1,10 +1,14 @@
-"""Przebudowa dokumentu do nowego DOCX: zachowana treść i formatowanie, usunięte metadane, ostrzeżenia o pominięciach."""
+"""Przebudowa dokumentu do nowego DOCX: zachowana treść i formatowanie, usunięte metadane, ostrzeżenia o pominięciach;
+zmiany śledzone i komentarze zostają (także po ujednoliceniu formatowania, zamianie miękkich enterów i Odkurzaczu)."""
+import re
+from copy import deepcopy
 from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
 from zipfile import ZipFile
 
 from django.core.files.uploadedfile import SimpleUploadedFile
+
 from django.test import SimpleTestCase, TestCase, tag
 from django.urls import reverse
 from docx import Document
@@ -19,18 +23,192 @@ from lxml import etree
 from core.program_test_support import run_program
 from core.services import program_jobs as jobs
 from core.services.document_converter import RebuildConfirmationRequired, convert_document
+from core.services.document_formatting import _SEQUENCES
 from core.services.document_preparation import DEFAULT_EDITORIAL_RULES, prepare_docx
-from core.services.document_rebuild import (PLACEHOLDER_OMISSION, UNKNOWN_FORMAT_OMISSION, RebuildUnsupported,
+from core.services.document_rebuild import (FORMAT_HISTORY_OMISSION, HYPERLINK_OMISSION, LOST_COMMENTS_OMISSION,
+                                            PLACEHOLDER_OMISSION, UNKNOWN_FORMAT_OMISSION, RebuildUnsupported,
                                             inspect_docx, rebuild_docx)
 from core.services.mailbox_import import package_messages
 from fantazmaty.testing import create_superuser
 
+from .editor_fixtures import _rels
+from .editor_fixtures_exotic import (_comment_parts, google_docs_extras_docx, libreoffice_review_docx, note_reference,
+                                     notes_part, p, r, review_docx, word_docx)
 from .support import (
     NOTE_PARTS, IsolatedProgramDirsMixin, add_block, add_complex_field, add_text_box, content_control,
     downloaded_document, noted_document, noted_text, saved, text_run,
 )
 
 NS = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
+W = '{%s}' % NS['w']
+W14 = '{http://schemas.microsoft.com/office/word/2010/wordml}'
+W15 = '{http://schemas.microsoft.com/office/word/2012/wordml}'
+REVISION_NAMES = ('ins', 'del', 'moveFrom', 'moveTo')
+# Kolejność schematu: znak akapitu (w:pPr/w:rPr) zaczyna się od zmian, potem formatowanie jak w przebiegu.
+SCHEMA_ORDER = {W + 'rPr': [W + name for name in REVISION_NAMES + tuple(_SEQUENCES['w:rPr'].split())],
+                W + 'pPr': [W + name for name in _SEQUENCES['w:pPr'].split()]}
+
+
+# --- Recenzja: zmiany śledzone i komentarze w pakiecie (pomocniki testów) ---------------------------------
+
+def review_parts(stream):
+    """Korzenie XML części pakietu: document, footnotes, comments, commentsExtended (brak części – None)."""
+    with ZipFile(stream) as archive:
+        names = set(archive.namelist())
+        return {name: etree.fromstring(archive.read(f'word/{name}.xml')) if f'word/{name}.xml' in names else None
+                for name in ('document', 'footnotes', 'comments', 'commentsExtended')}
+
+
+def local(node):
+    return etree.QName(node).localname
+
+
+def text_of(node):
+    """Tekst węzła: w:t i w:delText, tabulator i podział wiersza (bez tabulatorów z w:pPr/w:tabs)."""
+    glyphs = {W + 'tab': '\t', W + 'br': '\n', W + 'cr': '\n'}
+    return ''.join(glyphs.get(item.tag, item.text or '') for item in node.iter(W + 't', W + 'delText', *glyphs)
+                   if item.getparent().tag == W + 'r')
+
+
+def stories(parts):
+    """Akapity kolejnych tekstów: treść główna (akapity wprost w w:body) i każdy zwykły przypis dolny."""
+    result = [parts['document'].find(W + 'body').findall(W + 'p')]
+    if parts['footnotes'] is not None:
+        result += [note.findall(W + 'p') for note in parts['footnotes'] if note.get(W + 'type') is None]
+    return result
+
+
+def resolved(parts, accept):
+    """Teksty akapitów (treści i każdego przypisu) po przyjęciu (accept=True) albo odrzuceniu wszystkich zmian,
+    jak w Wordzie: przyjęcie usuwa w:del/w:moveFrom, odrzucenie – w:ins/w:moveTo; akapit, którego znak akapitu
+    znika (usunięty przy przyjęciu, wstawiony przy odrzuceniu), łączy się z następnym."""
+    gone = ('del', 'moveFrom') if accept else ('ins', 'moveTo')
+    result = []
+    for paragraphs in stories(parts):
+        texts, carried = [], None
+        for paragraph in paragraphs:
+            paragraph = deepcopy(paragraph)
+            for node in list(paragraph.iter(*(W + name for name in REVISION_NAMES))):
+                parent = node.getparent()
+                if parent is None or parent.tag == W + 'rPr':
+                    continue
+                if local(node) not in gone:
+                    for child in list(node):
+                        node.addprevious(child)
+                parent.remove(node)
+            text = (carried or '') + text_of(paragraph)
+            mark = paragraph.find(f'{W}pPr/{W}rPr')
+            if mark is not None and any(local(child) in gone for child in mark):
+                carried = text
+            else:
+                texts.append(text)
+                carried = None
+        result.append(texts + ([carried] if carried is not None else []))
+    return result
+
+
+def revisions(parts):
+    """Śledzone zmiany w kolejności tekstu: (rodzaj, autor, data, tekst; dla znaku akapitu None)."""
+    return [(local(node), node.get(W + 'author'), node.get(W + 'date'),
+             None if node.getparent().tag == W + 'rPr' else text_of(node))
+            for paragraphs in stories(parts) for paragraph in paragraphs
+            for node in paragraph.iter(*(W + name for name in REVISION_NAMES))]
+
+
+def format_changes(parts):
+    """Zmiany formatowania: (rodzaj, autor, data, tekst, obecne i poprzednie pogrubienie/kursywa/wyrównanie)."""
+    def marks(properties, names=('b', 'i', 'jc')):
+        if properties is None:
+            return ()
+        return tuple(f'{name}={node.get(W + "val", "1")}' for name in names for node in properties.findall(W + name))
+
+    found = []
+    for paragraphs in stories(parts):
+        for paragraph in paragraphs:
+            for change in paragraph.iter(W + 'rPrChange', W + 'pPrChange'):
+                owner = change.getparent()
+                text = text_of(owner.getparent() if local(change) == 'rPrChange' else paragraph)
+                found.append((local(change), change.get(W + 'author'), change.get(W + 'date'), text, marks(owner),
+                              marks(change.find(W + ('rPr' if local(change) == 'rPrChange' else 'pPr')))))
+    return found
+
+
+def comment_anchors(parts):
+    """w:id komentarza → (tekst zakresu z ¶ między akapitami albo None, słowo tuż przed odwołaniem)."""
+    anchors = {}
+    for root in (parts['document'], parts['footnotes']):
+        opened, before = {}, ''
+        for node in root.iter() if root is not None else ():
+            key = node.get(W + 'id')
+            if node.tag == W + 'p':
+                opened = {name: text + '¶' if text else text for name, text in opened.items()}
+                before = ''
+            elif node.tag == W + 'commentRangeStart':
+                opened[key] = ''
+            elif node.tag == W + 'commentRangeEnd':
+                anchors.setdefault(key, [None, None])[0] = opened.pop(key, None)
+            elif node.tag == W + 'commentReference':
+                anchors.setdefault(key, [None, None])[1] = (before.split() or [''])[-1]
+            elif node.tag in (W + 't', W + 'delText'):
+                opened = {name: text + (node.text or '') for name, text in opened.items()}
+                before += node.text or ''
+    return {key: tuple(value) for key, value in anchors.items()}
+
+
+def comments_of(parts):
+    """Komentarze (posortowane): autor, inicjały, data, treść (akapity), pogrubione i pochylone fragmenty treści,
+    tekst zakresu, słowo przed odwołaniem, treść komentarza nadrzędnego (odpowiedź) i stan „rozwiązany”."""
+    if parts['comments'] is None:
+        return []
+    threads = {entry.get(W15 + 'paraId'): (entry.get(W15 + 'paraIdParent'), entry.get(W15 + 'done') in ('1', 'true'))
+               for entry in (parts['commentsExtended'] if parts['commentsExtended'] is not None else ())}
+    anchors, contents, found = comment_anchors(parts), {}, []
+    for comment in parts['comments'].findall(W + 'comment'):
+        paragraphs = comment.findall(W + 'p')
+        contents[paragraphs[-1].get(W14 + 'paraId')] = '\n'.join(text_of(paragraph) for paragraph in paragraphs)
+    for comment in parts['comments'].findall(W + 'comment'):
+        paragraphs = comment.findall(W + 'p')
+        parent, done = threads.get(paragraphs[-1].get(W14 + 'paraId'), (None, False))
+        emphasis = tuple((text_of(run), local(flag)) for run in comment.iter(W + 'r')
+                         for flag in run.findall(f'{W}rPr/*') if local(flag) in ('b', 'i', 'u'))
+        found.append((comment.get(W + 'author'), comment.get(W + 'initials'), comment.get(W + 'date'),
+                      '\n'.join(text_of(paragraph) for paragraph in paragraphs), emphasis,
+                      *anchors.get(comment.get(W + 'id'), (None, None)), contents.get(parent) if parent else None, done))
+    return sorted(found, key=repr)
+
+
+def review_markup_errors(parts):
+    """Błędy zapisu ważne dla Worda: powtórzone w:id (zmiany i komentarze razem), zakresy komentarzy i przeniesień
+    bez pary, przeniesienie bez drugiej strony, odwołania do brakujących komentarzy i komentarze bez odwołania,
+    kolejność elementów w:rPr i w:pPr (także w zmianach formatowania) niezgodna ze schematem."""
+    roots = [root for name, root in parts.items() if name in ('document', 'footnotes') and root is not None]
+
+    def found(tag, attribute=W + 'id'):
+        return sorted(node.get(attribute) for root in roots for node in root.iter(W + tag))
+
+    errors = []
+    changed = [value for tag in (*REVISION_NAMES, 'rPrChange', 'pPrChange', 'moveFromRangeStart', 'moveToRangeStart')
+               for value in found(tag)]
+    comments = [node.get(W + 'id') for node in parts['comments']] if parts['comments'] is not None else []
+    identifiers = changed + comments
+    if len(identifiers) != len(set(identifiers)):
+        errors.append(f'powtórzone w:id: {sorted(set(i for i in identifiers if identifiers.count(i) > 1))}')
+    if found('commentReference') != sorted(comments):
+        errors.append(f'odwołania {found("commentReference")} a komentarze {sorted(comments)}')
+    for start, end in (('commentRangeStart', 'commentRangeEnd'), ('moveFromRangeStart', 'moveFromRangeEnd'),
+                       ('moveToRangeStart', 'moveToRangeEnd')):
+        if found(start) != found(end) or len(set(found(start))) != len(found(start)):
+            errors.append(f'{start} {found(start)} a {end} {found(end)}')
+    if found('moveFromRangeStart', W + 'name') != found('moveToRangeStart', W + 'name'):
+        errors.append('przeniesienie bez drugiej strony')
+    for root in roots:
+        for node in root.iter(W + 'rPr', W + 'pPr'):
+            order = SCHEMA_ORDER[node.tag]
+            positions = [order.index(child.tag) if child.tag in order else -1 for child in node]
+            if -1 in positions or positions != sorted(positions):
+                errors.append(f'kolejność w {local(node)}: {[local(child) for child in node]}')
+    return sorted(set(errors))
+
 
 
 class RebuildTests(SimpleTestCase):
@@ -77,18 +255,22 @@ class RebuildTests(SimpleTestCase):
         self.assertEqual(rebuilt.paragraphs[0].runs[0].font.name, 'Courier New')
 
     def test_revisions_and_hidden_text(self):
+        """Ukryty tekst znika; wstawka i usunięcie zostają śledzonymi zmianami (tekst po przyjęciu i odrzuceniu)."""
         doc = Document()
         p = doc.add_paragraph('A')
         p.add_run('hidden').font.hidden = True
         for tag_name, text in [('ins', 'B'), ('del', 'C')]:
             wrapper = OxmlElement('w:' + tag_name)
+            wrapper.set(qn('w:author'), 'Redaktor')
             run = OxmlElement('w:r')
             t = OxmlElement('w:t' if tag_name == 'ins' else 'w:delText')
             t.text = text
             run.append(t)
             wrapper.append(run)
             p._p.append(wrapper)
-        self.assertEqual(Document(rebuild_docx(saved(doc))).paragraphs[0].text, 'AB')
+        parts = review_parts(rebuild_docx(saved(doc)))
+        self.assertEqual((resolved(parts, accept=True), resolved(parts, accept=False)), ([['AB']], [['AC']]))
+        self.assertEqual(revisions(parts), [('ins', 'Redaktor', None, 'B'), ('del', 'Redaktor', None, 'C')])
 
     def test_tables_and_numbering_fail_explicitly(self):
         for kind in ('table', 'list'):
@@ -215,14 +397,15 @@ class RebuildDetailTests(SimpleTestCase):
         document = self.detailed_document()
         with self.assertRaises(RebuildUnsupported) as caught:
             rebuild_docx(saved(document))
+        # Usunięty i wstawiony znak akapitu (w:pPr/w:rPr) nie są już pomijane – zostają w nowym dokumencie.
         self.assertEqual(caught.exception.omissions, [
             'element ptab wewnątrz tekstu (liczba: 1)',
             'obramowania akapitów (liczba: 1)',
-            'oznaczenia usunięcia akapitu (akapit pozostanie) (liczba: 1)',
-            'oznaczenia zmian akapitów (podział na akapity pozostanie) (liczba: 1)',
             'rozstrzelenie znaków (liczba: 1)',
         ])
         result = Document(rebuild_docx(saved(document), allow_omissions=True))
+        self.assertEqual([etree.QName(node).localname for node in result.paragraphs[1]._p.xpath('w:pPr/w:rPr/*')][:2],
+                         ['ins', 'del'])
         paragraph = result.paragraphs[0]
         self.assertEqual(paragraph.text, 'A\tB\nC\u2011\u00adciemnyjasnyautomotywrozstrzelony')
         self.assertEqual(paragraph._p.xpath('.//w:br/@w:type'), ['page'])
@@ -462,20 +645,43 @@ class RebuildWarningAccuracyTests(SimpleTestCase):
         self.assertEqual(omissions_of(numbered),
                          ['automatyczne numerowanie i punktory list (tekst pozycji pozostanie) (liczba: 1)'])
 
-    def test_formatting_history_of_tracked_changes_is_not_reported(self):
-        document = Document()
-        paragraph = document.add_paragraph()
-        run = paragraph.add_run('Tekst')
-        run.bold = True
-        run._r.get_or_add_rPr().append(parse_xml(
-            '<w:rPrChange %s w:id="5" w:author="Redaktor"><w:rPr><w:spacing w:val="20"/>'
-            '<w:shd w:fill="FF0000"/></w:rPr></w:rPrChange>' % nsdecls('w')))
-        paragraph._p.get_or_add_pPr().append(parse_xml(
-            '<w:pPrChange %s w:id="6" w:author="Redaktor"><w:pPr><w:pBdr/></w:pPr></w:pPrChange>' % nsdecls('w')))
-        self.assertEqual(omissions_of(document), [])
-        rebuilt = Document(rebuild_docx(saved(document)))
-        self.assertTrue(rebuilt.paragraphs[0].runs[0].bold)
-        self.assertEqual(rebuilt.element.body.xpath('.//w:rPrChange | .//w:pPrChange'), [])
+    def test_formatting_history_is_kept_when_the_previous_formatting_can_be_rebuilt(self):
+        """Zmiana formatowania zostaje (poprzednie formatowanie odtworzone jak obecne: kursywa, wyrównanie, styl
+        nagłówka), a gdy poprzednie formatowanie ma to, czego przebudowa nie przenosi (rozstrzelenie, cieniowanie,
+        obramowanie, numeracja), zmiana jest przyjmowana z jedną uwagą na zmianę."""
+        history = FORMAT_HISTORY_OMISSION + ' (liczba: {})'
+        cases = (
+            # nazwa, poprzednie w:rPr, poprzednie w:pPr, pominięcia, XPath każdej zachowanej zmiany
+            ('kursywa i wyrównanie', '<w:i/>', '<w:jc w:val="right"/>', [],
+             ['w:r/w:rPr/w:rPrChange/w:rPr/w:i', 'w:pPr/w:pPrChange/w:pPr/w:jc[@w:val="right"]']),
+            ('styl nagłówka', '', '<w:pStyle w:val="Heading1"/>', [],
+             ['w:r/w:rPr/w:rPrChange', 'w:pPr/w:pPrChange/w:pPr/w:pStyle[@w:val="Heading1"]']),
+            ('rozstrzelenie i obramowanie', '<w:spacing w:val="20"/><w:shd w:fill="FF0000"/>', '<w:pBdr/>',
+             [history.format(2)], []),
+            ('numeracja', '', '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>', [history.format(1)],
+             ['w:r/w:rPr/w:rPrChange']),
+            ('numeracja ze stylu', '', '<w:pStyle w:val="ListNumber"/>', [history.format(1)], ['w:r/w:rPr/w:rPrChange']),
+        )
+        for label, run_before, paragraph_before, omissions, kept in cases:
+            with self.subTest(label):
+                document = Document()
+                paragraph = document.add_paragraph()
+                run = paragraph.add_run('Tekst')
+                run.bold = True
+                run._r.get_or_add_rPr().append(parse_xml(
+                    f'<w:rPrChange {nsdecls("w")} w:id="5" w:author="Redaktor"><w:rPr>{run_before}</w:rPr></w:rPrChange>'))
+                paragraph._p.get_or_add_pPr().append(parse_xml(
+                    f'<w:pPrChange {nsdecls("w")} w:id="6" w:author="Redaktor" w:date="2026-01-01T00:00:00Z">'
+                    f'<w:pPr>{paragraph_before}</w:pPr></w:pPrChange>'))
+                self.assertEqual(omissions_of(document), omissions)
+                rebuilt = Document(rebuild_docx(saved(document), allow_omissions=True))
+                self.assertTrue(rebuilt.paragraphs[0].runs[0].bold)
+                changes = rebuilt.paragraphs[0]._p.xpath('.//w:rPrChange | .//w:pPrChange')
+                self.assertEqual(len(changes), len(kept))
+                for path in kept:
+                    self.assertTrue(rebuilt.paragraphs[0]._p.xpath(path), path)
+                self.assertEqual(review_markup_errors(review_parts(rebuild_docx(saved(document),
+                                                                                allow_omissions=True))), [])
 
     def test_link_inside_removed_table_is_not_promised_to_stay(self):
         """„Widoczny tekst pozostanie” nie może dotyczyć odnośnika, który znika razem z tabelą."""
@@ -626,6 +832,230 @@ class RebuildNotesTests(SimpleTestCase):
                                       remove_soft_whitespace=True, cleaner_rules=list(DEFAULT_EDITORIAL_RULES))
                 body, texts, _, _ = note_parts(result, kind)
                 self.assertEqual((body, texts), ('Tekst[1].', ['[ref] Treść przypisu…']))
+
+
+REVIEW_FIXTURES = {
+    'Word 365': review_docx,
+    'LibreOffice 24.2': libreoffice_review_docx,
+    'Google Docs': google_docs_extras_docx,
+}
+# Kroki przygotowania bez Odkurzacza: opcje prepare_docx i czy zaczynają od przebudowy (nowe, poprawne w:id).
+REVIEW_STEPS = {
+    'przebudowa': ({'rebuild': True}, True),
+    'przebudowa i ujednolicenie': ({'rebuild': True, 'normalize_formatting': True}, True),
+    'przebudowa, ujednolicenie i miękkie entery': (
+        {'rebuild': True, 'normalize_formatting': True, 'remove_soft_whitespace': True}, True),
+    'ujednolicenie': ({'normalize_formatting': True}, False),
+    'miękkie entery': ({'remove_soft_whitespace': True}, False),
+}
+
+
+def review_docx_with(body, comments='', **options):
+    """DOCX „jak z Worda 365” z podaną treścią i komentarzami (w:comment) – bez części Worda 365 poza comments.xml."""
+    parts, relationships, overrides = _comment_parts(comments, word365=False)
+    return word_docx(body, parts={**parts, **options.pop('parts', {})},
+                     relationships=[*relationships, *options.pop('relationships', [])],
+                     overrides=[*overrides, *options.pop('overrides', [])], **options)
+
+
+def comment_xml(number, text, author='Recenzentka'):
+    return (f'<w:comment w:id="{number}" w:author="{author}" w:date="2026-02-01T10:00:00Z" w:initials="R">'
+            f'<w:p>{text}</w:p></w:comment>')
+
+
+def comment_reference(number):
+    return f'<w:r><w:commentReference w:id="{number}"/></w:r>'
+
+
+def table(*paragraphs):
+    return ('<w:tbl><w:tblPr/><w:tblGrid><w:gridCol w:w="4000"/></w:tblGrid><w:tr><w:tc>' + ''.join(paragraphs)
+            + '</w:tc></w:tr></w:tbl>')
+
+
+class RebuildReviewTests(SimpleTestCase):
+    """Zmiany śledzone (wstawki, usunięcia, przeniesienia, znaki akapitu, zmiany formatowania) i komentarze (zakresy,
+    odpowiedzi, rozwiązanie) zostają po przebudowie i kolejnych krokach przygotowania bez Odkurzacza."""
+
+    def test_review_survives_every_preparation_step(self):
+        """Pliki z Worda 365, LibreOffice i Google Docs: te same zmiany (rodzaj, autor, data, tekst), ten sam tekst
+        po przyjęciu i po odrzuceniu wszystkich zmian (treść i przypisy), te same zmiany formatowania i komentarze
+        (autor, inicjały, data, treść z pogrubieniem i kursywą, zakres na tych samych słowach, komentarz punktowy,
+        odpowiedź, rozwiązanie, komentarz w przypisie). Wynik otwiera python-docx (z komentarzami), a zapis jest
+        poprawny: po przebudowie bez błędów, bez przebudowy – bez nowych błędów (identyfikatory źródła zostają)."""
+        for editor, build in REVIEW_FIXTURES.items():
+            source = review_parts(build())
+            for step, (options, rebuilt) in REVIEW_STEPS.items():
+                with self.subTest(editor, step=step):
+                    output = prepare_docx(build(), allow_omissions=True, **options)
+                    parts = review_parts(output)
+                    for accept in (True, False):
+                        self.assertEqual(resolved(parts, accept), resolved(source, accept))
+                    self.assertEqual(revisions(parts), revisions(source))
+                    self.assertEqual(format_changes(parts), format_changes(source))
+                    self.assertEqual(comments_of(parts), comments_of(source))
+                    self.assertEqual(len(Document(output).comments), len(comments_of(source)))
+                    if rebuilt:
+                        self.assertEqual(review_markup_errors(parts), [])
+                    else:
+                        self.assertLessEqual(set(review_markup_errors(parts)), set(review_markup_errors(source)))
+
+    def test_word_review_fixture_has_the_expected_texts(self):
+        """Pomocniki przyjęcia i odrzucenia zmian na pliku z Worda: oczekiwane teksty, zmiany i wątki komentarzy."""
+        parts = review_parts(rebuild_docx(review_docx()))
+        self.assertEqual(resolved(parts, accept=True), [[
+            'Początek komentarza, wstawiony i  oraz  tekst.', 'Dalszy ciąg pogrubiony i koniec komentarza.',
+            'Punkt bez zakresu i przypis.', 'Akapit z nowym znakiem końca', 'i dalszy ciąg, połączony po przyjęciu.',
+            'Przeniesiony akapit.', 'Rozwiązany komentarz.', 'Koniec.'], [' Przypis z uwagą i wstawką.']])
+        self.assertEqual(resolved(parts, accept=False), [[
+            'Początek komentarza,  i usunięty oraz  tekst.', 'Dalszy ciąg pogrubiony i koniec komentarza.',
+            'Punkt bez zakresu i przypis.', 'Przeniesiony akapit.', 'Akapit z nowym znakiem końcai dalszy ciąg, ',
+            'połączony po przyjęciu.', 'Rozwiązany komentarz.', 'Cały usunięty akapit.', 'Koniec.'],
+            [' Przypis z uwagą.']])
+        self.assertEqual([change[:2] for change in revisions(parts)[:4]],
+                         [('ins', 'Recenzentka'), ('del', 'Recenzentka'), ('ins', 'Autorka'), ('del', 'Recenzentka')])
+        threads = {comment[3]: comment[-2:] for comment in comments_of(parts)}
+        self.assertEqual(threads['Odpowiedź.'], ('Pytanie?', False))
+        self.assertEqual(threads['Rozwiązane.'], (None, True))
+        self.assertEqual(comment_anchors(parts)['1'], (None, 'Punkt'))
+
+    def test_review_markup_is_not_reported_as_lost(self):
+        """Przegląd nie zgłasza już zmian i komentarzy (zostają); Word 365 i LibreOffice – bez żadnych uwag."""
+        for editor, build in REVIEW_FIXTURES.items():
+            with self.subTest(editor):
+                try:
+                    inspect_docx(build())
+                    omissions = []
+                except RebuildUnsupported as error:
+                    omissions = error.omissions
+                if editor != 'Google Docs':
+                    self.assertEqual(omissions, [])
+                self.assertFalse([item for item in omissions if 'komentarz' in item or 'zmian' in item], omissions)
+
+    def test_word_365_extension_parts_are_not_carried(self):
+        """commentsIds, commentsExtensible i people (identyfikatory kont autorów) nie są potrzebne do odpowiedzi ani
+        rozwiązania – nowy dokument ich nie ma, a nowe części komentarzy mają w14:paraId z mc:Ignorable."""
+        with ZipFile(rebuild_docx(review_docx())) as archive:
+            names = archive.namelist()
+            payload = b''.join(archive.read(name) for name in names)
+            comments = archive.read('word/comments.xml')
+        self.assertIn('word/commentsExtended.xml', names)
+        for name in ('commentsIds', 'commentsExtensible', 'people'):
+            self.assertNotIn(f'word/{name}.xml', names)
+        self.assertNotIn(b'wydawnictwo.test', payload)
+        self.assertNotIn(b'dateUtc', payload)
+        self.assertIn(b'mc:Ignorable="w14"', comments)
+
+    def test_comments_and_changes_next_to_omitted_content(self):
+        """Komentarz w pomijanej tabeli – uwaga; odwołanie do brakującego komentarza i znacznik bez pary znikają bez
+        uwagi; koniec zakresu w tabeli – koniec przed odwołaniem; początek w tabeli – komentarz punktowy; odnośnik
+        w komentarzu – tekst zostaje z uwagą; zmiana śledzona w tabeli znika z tabelą (bez osobnej uwagi); przypis
+        z komentarzem wskazany dwoma odsyłaczami (treść odtwarzana dwa razy) – znaczniki komentarza tylko raz."""
+        tables = 'tabele wraz z ich treścią (liczba: 1)'
+        lost = LOST_COMMENTS_OMISSION + ' (liczba: 1)'
+        link = ('<w:hyperlink r:id="rIdLink">' + r('strona') + '</w:hyperlink>')
+        cases = (
+            # nazwa, treść, komentarze, opcje, pominięcia, oczekiwane komentarze (treść, zakres, słowo przed odwołaniem)
+            ('komentarz w tabeli', p(r('Tekst.')) + table(p('<w:commentRangeStart w:id="0"/>', r('Komórka'),
+                                                            '<w:commentRangeEnd w:id="0"/>', comment_reference(0))),
+             comment_xml(0, r('W tabeli.')), {}, [lost, tables], []),
+            ('brakujący komentarz', p('<w:commentRangeStart w:id="7"/>', r('Tekst'), '<w:commentRangeEnd w:id="7"/>',
+                                      comment_reference(7)), comment_xml(0, r('Inny.')), {}, [], []),
+            ('koniec zakresu w tabeli', p('<w:commentRangeStart w:id="0"/>', r('Początek'))
+             + table(p(r('Komórka'), '<w:commentRangeEnd w:id="0"/>')) + p(r('Dalej'), comment_reference(0)),
+             comment_xml(0, r('Uwaga.')), {}, [tables], [('Uwaga.', 'Początek¶Dalej', 'Dalej')]),
+            ('początek zakresu w tabeli', table(p('<w:commentRangeStart w:id="0"/>', r('Komórka')))
+             + p(r('Dalej'), '<w:commentRangeEnd w:id="0"/>', comment_reference(0)),
+             comment_xml(0, r('Uwaga.')), {}, [tables], [('Uwaga.', None, 'Dalej')]),
+            ('odnośnik w komentarzu', p('<w:commentRangeStart w:id="0"/>', r('Tekst'), '<w:commentRangeEnd w:id="0"/>',
+                                        comment_reference(0)), comment_xml(0, r('Zobacz ') + link),
+             {'parts': {'word/_rels/comments.xml.rels': _rels_with_link()}}, [HYPERLINK_OMISSION + ' (liczba: 1)'],
+             [('Zobacz strona', 'Tekst', 'Tekst')]),
+            ('przeniesienie bez pary', '<w:moveFromRangeStart w:id="1" w:author="A" w:name="m"/>'
+             + p('<w:moveFrom w:id="2" w:author="A">' + r('Stąd.') + '</w:moveFrom>')
+             + '<w:moveFromRangeEnd w:id="1"/>' + table(p('<w:moveToRangeStart w:id="3" w:author="A" w:name="m"/>',
+                                                          '<w:moveTo w:id="4" w:author="A">' + r('Stąd.') + '</w:moveTo>',
+                                                          '<w:moveToRangeEnd w:id="3"/>')), '', {}, [tables], []),
+            ('usunięcie w tabeli', p(r('Tekst.')) + table(p('<w:del w:id="1" w:author="A"><w:r><w:delText>usunięte'
+                                                            '</w:delText></w:r></w:del>')), '', {}, [tables], []),
+            ('przypis z komentarzem i dwoma odsyłaczami',
+             p(r('A'), note_reference('footnote', 1), r(' B'), note_reference('footnote', 1)), comment_xml(0, r('K.')),
+             {'parts': {'word/footnotes.xml': notes_part('footnote', {1: '<w:commentRangeStart w:id="0"/>' + r('uwaga')
+                                                                     + '<w:commentRangeEnd w:id="0"/>'
+                                                                     + comment_reference(0)})},
+              'relationships': [('rIdFoot', NOTE_PARTS['footnote'][1], 'footnotes.xml')],
+              'overrides': [('/word/footnotes.xml', 'application/vnd.openxmlformats-officedocument.wordprocessingml.'
+                                                    'footnotes+xml')]},
+             [], [('K.', 'uwaga', 'uwaga')]),
+        )
+        for label, body, comments, options, omissions, expected in cases:
+            with self.subTest(label):
+                try:
+                    inspect_docx(review_docx_with(body, comments, **dict(options)))
+                    found = []
+                except RebuildUnsupported as error:
+                    found = error.omissions
+                self.assertEqual(found, omissions)
+                parts = review_parts(rebuild_docx(review_docx_with(body, comments, **dict(options)),
+                                                  allow_omissions=True))
+                self.assertEqual([comment[3:4] + comment[5:7] for comment in comments_of(parts)], expected)
+                self.assertEqual(review_markup_errors(parts), [])
+                self.assertEqual(parts['comments'] is None, not expected)
+
+
+def words_of(texts):
+    """Słowa (małymi literami) kolejnych akapitów kolejnych tekstów – bez odstępów i interpunkcji."""
+    return [[re.findall(r'\w+', text.casefold()) for text in story] for story in texts]
+
+
+def cleaned_review(build, track_changes):
+    """Pełne przygotowanie: przebudowa, ujednolicenie, miękkie entery i Odkurzacz (reguły domyślne)."""
+    return prepare_docx(build(), rebuild=True, normalize_formatting=True, remove_soft_whitespace=True,
+                        use_cleaner=True, cleaner_rules=list(DEFAULT_EDITORIAL_RULES), track_changes=track_changes,
+                        allow_omissions=True)
+
+
+class ReviewCleanerChainTests(SimpleTestCase):
+    """Pełny łańcuch prepare_docx z Odkurzaczem (ze śledzeniem zmian i bez) na plikach z recenzją."""
+
+    def test_full_preparation_keeps_the_review(self):
+        """Zmiany i komentarze innych osób zostają (rodzaj, autor, data, tekst; treść, autor, wątek, rozwiązanie),
+        słowa tekstu po przyjęciu zmian są te same co w źródle (Odkurzacz zmienia odstępy i interpunkcję), a tekst
+        po przyjęciu jest taki sam ze śledzeniem i bez; ze śledzeniem odrzucenie wszystkich zmian (także Odkurzacza)
+        daje dokładnie tekst źródła. Zapis poprawny, python-docx otwiera wynik z komentarzami."""
+        for editor, build in REVIEW_FIXTURES.items():
+            source = review_parts(build())
+            accepted = {}
+            for track_changes in (False, True):
+                with self.subTest(editor, track_changes=track_changes):
+                    output = cleaned_review(build, track_changes)
+                    parts = review_parts(output)
+                    accepted[track_changes] = resolved(parts, accept=True)
+                    self.assertEqual(words_of(accepted[track_changes]), words_of(resolved(source, accept=True)))
+                    if track_changes:
+                        self.assertEqual(resolved(parts, accept=False), resolved(source, accept=False))
+                    self.assertEqual([change for change in revisions(parts) if change[1] != 'Odkurzacz'],
+                                     revisions(source))
+                    self.assertEqual([comment[:5] + comment[7:] for comment in comments_of(parts)],
+                                     [comment[:5] + comment[7:] for comment in comments_of(source)])
+                    self.assertEqual(review_markup_errors(parts), [])
+                    self.assertEqual(len(Document(output).comments), len(comments_of(source)))
+            with self.subTest(editor, compare='ze śledzeniem i bez'):
+                self.assertEqual(accepted[True], accepted[False])
+
+    def test_rejecting_changes_after_cleaning_without_tracking_keeps_the_words(self):
+        """Bez śledzenia zmian Odkurzacz nie zbija spacji wokół cudzego usunięcia („ i ” + usunięty + „ oraz ”),
+        więc po odrzuceniu zmian słowa się nie sklejają („usunięty oraz”, nie „usuniętyoraz”)."""
+        for editor, build in REVIEW_FIXTURES.items():
+            with self.subTest(editor):
+                parts = review_parts(cleaned_review(build, track_changes=False))
+                self.assertEqual(words_of(resolved(parts, accept=False)),
+                                 words_of(resolved(review_parts(build()), accept=False)))
+
+
+def _rels_with_link():
+    """Relacje części komentarzy z odnośnikiem zewnętrznym rIdLink."""
+    return _rels([('rIdLink', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink',
+                   'https://example.test/', 'External')])
 
 
 class RebuildConversionTests(IsolatedProgramDirsMixin, SimpleTestCase):

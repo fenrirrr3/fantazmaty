@@ -7,6 +7,7 @@ from django.utils import timezone
 from texts.models import Text
 from .validators import validate_drive_url
 from core.edit_versions import VersionedQuerySet
+from core.public_guidelines import guidelines_field
 
 
 class PublicIllustrationSettings(models.Model):
@@ -14,6 +15,7 @@ class PublicIllustrationSettings(models.Model):
     id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
     drive_url = models.URLField('wspólny link GDrive', max_length=1000, blank=True, default='', validators=[validate_drive_url],
         help_text='Link publiczny, pokazywany przy każdym tekście w Zewnętrznych ilustracjach.')
+    guidelines = guidelines_field()
 
     class Meta:
         verbose_name = 'ustawienia zewnętrznych ilustracji'
@@ -21,7 +23,7 @@ class PublicIllustrationSettings(models.Model):
         constraints = [models.CheckConstraint(condition=models.Q(id=1), name='single_public_illustration_settings')]
 
     def __str__(self):
-        return 'Zewnętrzne ilustracje – wspólny link GDrive'
+        return 'Zewnętrzne ilustracje – GDrive i wytyczne'
 
 
 class Illustrator(models.Model):

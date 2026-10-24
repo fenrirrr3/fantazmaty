@@ -96,7 +96,7 @@ class TranslationVisibilityTests(TranslatedBookData, TestCase):
     def test_translation_person_buttons_in_one_action_group(self):
         page = self.client.get(reverse('core:translation_detail', args=[self.text.pk]))
         self.assertEqual(page.status_code, 200)
-        group = html.fromstring(page.content).xpath('//div[@class="translation-person-actions"]')[0]
+        group = html.fromstring(page.content).xpath('//div[contains(@class, "translation-person-actions")]')[0]
         self.assertEqual(len(group.xpath('./a[contains(@class,"secondary-button")]')), 2)
         self.assertEqual(group[-1].text_content(), 'Zapisz osoby')
 

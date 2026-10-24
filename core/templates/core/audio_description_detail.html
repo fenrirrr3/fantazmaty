@@ -1,9 +1,9 @@
 {% extends "core/base.html" %}{% load static %}
 {% block title %}Audiodeskrypcja: {{ anthology.title }} | Fantazmaty CMS{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'core/audiobook-production.css' %}"><link rel="stylesheet" href="{% static 'core/audio-descriptions.css' %}"><link rel="stylesheet" href="{% static 'core/person-multiselect.css' %}">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/audiobooks.css' %}"><link rel="stylesheet" href="{% static 'core/person-multiselect.css' %}">{% endblock %}
 {% block content %}
-<header class="page-header"><h1 class="page-title">Audiodeskrypcja: {{ anthology.title }}</h1><div class="audio-actions"><a class="secondary-button" href="{% if return_url %}{{ return_url }}{% else %}{% url 'core:audio_descriptions' %}{% endif %}">Wróć do listy</a><a class="secondary-button" href="{% url 'core:anthology_detail' anthology.pk %}">Otwórz antologię</a></div></header>
-<div class="audiodesc-columns">
+<header class="page-header"><h1 class="page-title">Audiodeskrypcja: {{ anthology.title }}</h1><div class="actions audio-actions"><a class="secondary-button" href="{% if return_url %}{{ return_url }}{% else %}{% url 'core:audio_descriptions' %}{% endif %}">Wróć do listy</a><a class="secondary-button" href="{% url 'core:anthology_detail' anthology.pk %}">Otwórz antologię</a></div></header>
+<div class="two-columns audiodesc-columns">
 <section class="card"><div class="card-body"><h2>Przypisanie</h2>
 <p>Status zadania antologii: <strong>{{ task.get_status_display }}</strong>{% if can_manage %} – zmieniasz go na <a href="{% url 'core:anthology_detail' anthology.pk %}#task-audio_description">stronie antologii</a>{% endif %}.</p>
 {% if can_manage %}<form method="post" class="audio-production-form audiodesc-form" data-warn-unsaved>{% csrf_token %}{% edit_version %}<input type="hidden" name="action" value="assignment">{{ form.non_field_errors }}

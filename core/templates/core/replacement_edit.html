@@ -19,7 +19,7 @@
         <form method="post" class="program-reset" data-confirm="Usunąć tę pozycję słownika zamian?">
             {% csrf_token %}
             <p class="form-help">Usunięcia nie można cofnąć. Aby pozycja przestała działać, ale została w słowniku, odznacz „Aktywna”.</p>
-            <button type="submit" name="action" value="delete" class="secondary-button cms-danger-button">Usuń pozycję</button>
+            <button type="submit" name="action" value="delete" class="danger-button">Usuń pozycję</button>
         </form>
     </div>
 </section>

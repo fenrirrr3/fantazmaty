@@ -9,4 +9,4 @@
 {% for value in selected %}<input type="hidden" name="stages" value="{{ value }}">{% endfor %}
 {% for row in performers %}<input type="hidden" name="{{ row.name }}" value="{{ row.value }}">{% endfor %}
 <input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="confirm_restart" value="yes">
-<div class="general-notes-actions"><a class="secondary-button" href="{% url 'core:assigned_text_detail' text.pk %}">Anuluj</a><button class="primary-button" type="submit">Utwórz powtórzenie etapów</button></div></form></div></section>{% endblock %}
+<div class="actions form-actions"><a class="secondary-button" href="{% url 'core:assigned_text_detail' text.pk %}">Anuluj</a><button class="primary-button" type="submit">Utwórz powtórzenie etapów</button></div></form></div></section>{% endblock %}

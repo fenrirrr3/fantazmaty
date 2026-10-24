@@ -136,7 +136,7 @@ class AudioDescriptionContentTests(AudioDescriptionTestData, TestCase):
         self.assertEqual(self.client.get(self.list_url, {'hide_completed': '1'}).context['page_obj'].paginator.count, 0)
         self.client.force_login(self.manager)
         doc = html.fromstring(self.client.get(self.detail).content)
-        self.assertEqual(len(doc.xpath('//div[@class="audiodesc-columns"]/section')), 2)
+        self.assertEqual(len(doc.xpath('//div[contains(@class, "audiodesc-columns")]/section')), 2)
         # Ukończony etap jest zablokowany; przypisanie, treść i uwagi pozostają dostępne.
         self.assertEqual(doc.xpath('//form/input[@name="action"]/@value'), ['assignment', 'content', 'note'])
         self.assertTrue(doc.xpath('//select[@name="controllers"][@multiple][@data-person-multiple]'))

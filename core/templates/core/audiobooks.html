@@ -1,13 +1,13 @@
 {% extends "core/base.html" %}
 {% load static %}
-{% block extra_css %}{{ block.super }}<link rel="stylesheet" href="{% static 'core/external-audiobooks.css' %}"><link rel="stylesheet" href="{% static 'core/audiobook-production.css' %}">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/audiobooks.css' %}">{% endblock %}
 {% block title %}Audiobooki | Fantazmaty CMS{% endblock %}
 {% block content %}
 <header class="page-header">
     <h1 class="page-title">Audiobooki</h1>
     <p class="page-description">Przypisania, postęp produkcji i publikacje tekstów oznaczonych jako „Do nagrywania”.</p>
-    <div class="audiobook-public-actions">
-        <a class="secondary-button audiobook-public-button" href="{% url 'core:external_audiobooks' %}" target="_blank" rel="noopener noreferrer">Zewnętrzne audiobooki</a>
+    <div class="actions audiobook-public-actions">
+        <a class="accent-button" href="{% url 'core:external_audiobooks' %}" target="_blank" rel="noopener noreferrer">Zewnętrzne audiobooki</a>
         {% if user.is_superuser %}<a class="secondary-button" href="{% url 'admin:core_publicaudiobooksettings_changelist' %}">MegaNZ i wytyczne – ustawienia</a>{% endif %}
     </div>
 </header>
@@ -18,7 +18,7 @@
             <div class="form-field"><label for="audio-anthology">Antologia</label><select name="anthology" id="audio-anthology" multiple size="4"><option value="">Wszystkie</option>{% for book in anthologies %}{% if book.anthology_id %}<option value="{{ book.anthology_id }}"{% if book.anthology_id|stringformat:'s' in selected_anthologies %} selected{% endif %}>{{ book.anthology__title }}</option>{% endif %}{% endfor %}</select></div>
             <div class="form-field"><label for="audio-status">Status audiobooka</label><select name="status" id="audio-status" multiple size="4"><option value="">Wszystkie</option>{% for value, label in status_choices %}<option value="{{ value }}"{% if value in selected_statuses %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
         </div>
-        <div class="audio-actions"><button class="primary-button" type="submit">Filtruj</button><a class="secondary-button" href="{% url 'core:audiobooks' %}">Wyczyść filtry</a></div>
+        <div class="actions audio-actions"><button class="primary-button" type="submit">Filtruj</button><a class="secondary-button" href="{% url 'core:audiobooks' %}">Wyczyść filtry</a></div>
     </form>
 </div></section>
 <p class="form-help">Etapy: data rozpoczęcia – data zakończenia. „?” oznacza brak zapisanej daty. Status to bieżący etap; jeśli nie ma jeszcze dat, etap czeka na rozpoczęcie (korekta – na przejęcie przez korektora).</p>

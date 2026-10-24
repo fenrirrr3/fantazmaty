@@ -72,23 +72,23 @@
         </p>
 
         <div class="profile-summary-grid">
-            <div class="summary-tile">
+            <div class="panel summary-tile">
                 <span>Teksty w bazie</span>
                 <strong>{{ author_summary.texts|default:0 }}</strong>
             </div>
-            <div class="summary-tile">
+            <div class="panel summary-tile">
                 <span>Zgłoszenia</span>
                 <strong>{{ author_summary.submissions|default:0 }}</strong>
             </div>
-            <div class="summary-tile">
+            <div class="panel summary-tile">
                 <span>Przyjęte</span>
                 <strong>{{ author_summary.accepted|default:0 }}</strong>
             </div>
-            <div class="summary-tile">
+            <div class="panel summary-tile">
                 <span>Odrzucone</span>
                 <strong>{{ author_summary.rejected|default:0 }}</strong>
             </div>
-            <div class="summary-tile">
+            <div class="panel summary-tile">
                 <span>Antologie</span>
                 <strong>{{ author_summary.anthologies|default:0 }}</strong>
             </div>
@@ -134,7 +134,7 @@
                     {% endfor %}
                 </div>
 
-                <div class="general-notes-actions">
+                <div class="actions form-actions">
                     <button type="submit" class="primary-button">
                         Dodaj notatkę
                     </button>
@@ -163,7 +163,7 @@
                         </div>
                     </details>
                 {% empty %}
-                    <div class="empty-text-notes">
+                    <div class="empty-results-panel">
                         Nie dodano jeszcze żadnej notatki o autorze.
                     </div>
                 {% endfor %}
@@ -278,7 +278,7 @@
             <tbody>
                 {% for review in historical_reviews %}
                     <tr>
-                        <td data-double-copy class="sticky-title"><a href="{% url 'core:assigned_review_detail' review.pk %}" class=" text-title-link"><strong>{{ review.title }}</strong></a></td>
+                        <td data-double-copy class="sticky-title"><a href="{% url 'core:assigned_review_detail' review.pk %}" class="text-title-link"><strong>{{ review.title }}</strong></a></td>
                         <td>{{ review.anthology.title }}</td>
                         <td>{{ review.created_at|date:"d.m.Y" }}</td>
                         <td>{% include "core/includes/review_status_badge.html" %}</td>

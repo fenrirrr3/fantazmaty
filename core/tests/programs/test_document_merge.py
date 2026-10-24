@@ -25,10 +25,13 @@ from core.services import program_jobs as jobs
 from core.services.document_converter import ConversionError, RebuildConfirmationRequired
 from core.services.document_merge import MergeError, merge_documents
 from core.services.document_rebuild import rebuild_docx
+from core.services.document_split import split_document
 from core.services.document_template import TEMPLATE_PATH, apply_template_styles
 from fantazmaty.testing import create_superuser
 
+from .editor_fixtures_exotic import libreoffice_review_docx, review_docx, review_stories_docx
 from .support import IsolatedProgramDirsMixin, docx_bytes, downloaded, noted_document, noted_text, saved
+from .test_document_rebuild import comments_of, resolved, review_markup_errors, review_parts, revisions
 
 W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
 R_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
@@ -139,15 +142,17 @@ class MergeFormTests(SimpleTestCase):
 
 class MergeDocumentsTests(SimpleTestCase):
     def test_content_the_rebuild_never_creates_stops_the_merge(self):
-        """Odsyłacze do nieistniejących przypisów, komentarze, numeracja list, obrazy i hiperłącza w którymkolwiek
-        pliku przerywają scalanie; numeracja wyłączona (numId 0) i komentarz XML w treści nie przeszkadzają."""
-        notes = 'bez komentarzy i numeracji list'
+        """Odsyłacze do nieistniejących przypisów i komentarzy, numeracja list, obrazy i hiperłącza w którymkolwiek
+        pliku przerywają scalanie; numeracja wyłączona (numId 0) i komentarz XML w treści nie przeszkadzają
+        (komentarze z treścią są scalane – ReviewMergeTests)."""
+        notes = 'bez numeracji list'
         missing = 'odsyłacz przypisu bez treści przypisu'
         relations = 'bez obrazów i hiperłączy'
         cases = (
             ('przypis', '<w:r><w:footnoteReference w:id="1"/></w:r>', missing),
             ('przypis końcowy', '<w:r><w:endnoteReference w:id="1"/></w:r>', missing),
-            ('komentarz', '<w:r><w:commentReference w:id="0"/></w:r>', notes),
+            ('komentarz bez treści', '<w:r><w:commentReference w:id="0"/></w:r>',
+             'odwołanie do komentarza bez treści komentarza'),
             ('lista', '<w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="3"/></w:numPr></w:pPr>', notes),
             ('hiperłącze', '<w:hyperlink r:id="rId99"><w:r><w:t>link</w:t></w:r></w:hyperlink>', relations),
             ('obraz', '<w:r><w:pict><v:imagedata xmlns:v="urn:schemas-microsoft-com:vml" r:id="rId98"/></w:pict></w:r>',
@@ -308,6 +313,73 @@ class MergeDocumentsTests(SimpleTestCase):
             self.assertIsNotNone(body[index].find(qn('w:pPr') + '/' + qn('w:pageBreakBefore')))
         properties = [etree.QName(child).localname for child in body[4].find(qn('w:pPr'))]
         self.assertEqual(properties, ['pStyle', 'keepNext', 'pageBreakBefore', 'jc'])
+
+
+def merged_review(payloads):
+    """(części recenzji scalonego pliku, scalone bajty) dla listy plików DOCX."""
+    merged = merge_documents(payloads)
+    return review_parts(BytesIO(merged)), merged
+
+
+class ReviewMergeTests(SimpleTestCase):
+    """Komentarze (z odpowiedziami i rozwiązaniem) i zmiany śledzone wszystkich scalanych plików zostają."""
+
+    def test_comments_and_tracked_changes_of_all_files_are_merged(self):
+        """Pliki z Worda 365 i LibreOffice po przebudowie, także z plikiem bez komentarzy na początku lub na końcu:
+        tekst po przyjęciu i po odrzuceniu zmian (treść i przypisy), te same zmiany i komentarze (treść, zakres,
+        odpowiedź, rozwiązanie); w:id komentarzy od 0, zmian – unikalne za nimi, pary zakresów wspólne, nazwy
+        przeniesień unikalne; część komentarzy (z relacją, typem i stylami) także wtedy, gdy pierwszy plik jej nie ma."""
+        word = rebuild_docx(review_docx()).getvalue()
+        libreoffice = rebuild_docx(libreoffice_review_docx()).getvalue()
+        plain = docx_bytes('Bez uwag.')
+        cases = (
+            ('Word i LibreOffice', [word, libreoffice], ['move1', 'move1_2']),
+            ('najpierw plik bez komentarzy', [plain, libreoffice], ['move1']),
+            ('na końcu plik bez komentarzy', [libreoffice, plain], ['move1']),
+        )
+        for label, payloads, names in cases:
+            with self.subTest(label):
+                sources = [review_parts(BytesIO(payload)) for payload in payloads]
+                parts, merged = merged_review(payloads)
+                for accept in (True, False):
+                    bodies = [resolved(source, accept) for source in sources]
+                    self.assertEqual(resolved(parts, accept), [[text for body in bodies for text in body[0]],
+                                                               *[note for body in bodies for note in body[1:]]])
+                self.assertEqual(sorted(revisions(parts), key=repr),
+                                 sorted([change for source in sources for change in revisions(source)], key=repr))
+                self.assertEqual(comments_of(parts), sorted([comment for source in sources
+                                                             for comment in comments_of(source)], key=repr))
+                self.assertEqual(review_markup_errors(parts), [])
+                self.assertEqual(sorted(parts['document'].xpath('//w:moveFromRangeStart/@w:name', namespaces={
+                    'w': W_NS})), names)
+                document = Document(BytesIO(merged))
+                self.assertEqual(len(document.comments), len(comments_of(parts)))
+                self.assertIsNotNone(document.styles.element.get_by_id('CommentReference'))
+
+    def test_rebuild_split_and_merge_keep_the_review(self):
+        """Łańcuch przebudowa → podział → scalanie: teksty po przyjęciu i odrzuceniu zmian i zmiany jak w źródle,
+        wszystkie komentarze z odpowiedzią i rozwiązaniem; komentarz przecięty granicą opowiadań obejmuje drugie
+        opowiadanie od początku, a przeniesienie między opowiadaniami nie ma już zakresów."""
+        source = review_parts(review_stories_docx())
+        archive = BytesIO()
+        report = split_document(rebuild_docx(review_stories_docx()), archive)
+        with ZipFile(archive) as stories:
+            payloads = [stories.read(name) for name in report['files']]
+        parts, merged = merged_review(payloads)
+        for accept in (True, False):
+            self.assertEqual(resolved(parts, accept), resolved(source, accept))
+        self.assertEqual(sorted(revisions(parts), key=repr), sorted(revisions(source), key=repr))
+        self.assertEqual({comment[3]: comment[5:] for comment in comments_of(parts)}, {
+            'Przez granicę.': ('Drugie¶Koniec komentarza', 'komentarza', None, False),
+            'Punktowy.': (None, 'punkt', None, False),
+            'Pytanie?': ('Pytanie', 'Pytanie', None, False),
+            'Odpowiedź.': ('Pytanie', 'Pytanie', 'Pytanie?', False),
+            'W przypisie.': ('uwagą', 'uwagą', None, True),
+        })
+        self.assertEqual(review_markup_errors(parts), [])
+        self.assertEqual(parts['document'].xpath('//w:moveFromRangeStart | //w:moveToRangeStart',
+                                                 namespaces={'w': W_NS}), [])
+        self.assertEqual(len(Document(BytesIO(merged)).comments), 5)
 
 
 class MergeReportTests(SimpleTestCase):

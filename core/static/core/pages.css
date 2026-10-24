@@ -1,6 +1,8 @@
 /*
- * Reguły konkretnych widoków, których nie obejmują komponenty.
- * Większe widoki mają własne arkusze ładowane w bloku extra_css.
+ * Widoki wspólne, ładowane na każdej stronie: logowanie, pulpit i wyszukiwarka, recenzje, formularze etapów
+ * (Teksty do wzięcia, karta tekstu, recenzje), zgłoszenia i poprawki, ludzie, urlopy i raporty, zaległe etapy.
+ * Sekcje z własnym arkuszem (blok extra_css): texts.css, programs.css, recruitment.css, audiobooks.css,
+ * illustrations.css, anthology.css, novels.css, post-layout.css, social-media.css, site-www.css.
  */
 
 /* ===== Logowanie ===== */
@@ -45,28 +47,28 @@
     text-align: center;
 }
 
-#login-quote {
+.login-quote {
     margin: var(--space-5) 0 0;
     color: var(--muted);
     text-align: center;
 }
 
-#login-quote [data-quote-text] {
+.login-quote [data-quote-text] {
     margin: 0;
     font-style: italic;
     white-space: pre-line;
 }
 
-#login-quote footer {
+.login-quote footer {
     margin-top: var(--space-2);
     font-size: var(--font-size-sm);
 }
 
-#login-quote [data-quote-source] {
+.login-quote [data-quote-source] {
     color: inherit;
 }
 
-#login-quote [data-quote-translator] {
+.login-quote [data-quote-translator] {
     display: block;
 }
 
@@ -104,10 +106,6 @@
 .dashboard-intake-grid,
 .dashboard-grid,
 .global-search-results {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-5);
-    align-items: stretch;
     margin-bottom: var(--space-5);
 }
 
@@ -140,8 +138,8 @@
     min-height: 6rem;
 }
 
-.dashboard-list,
 /* Wyniki wyszukiwania wyglądają jak wpisy „Prace w toku” na Pulpicie. */
+.dashboard-list,
 .search-result-list {
     display: grid;
     gap: var(--space-3);
@@ -150,7 +148,8 @@
     list-style: none;
 }
 
-.search-result-item {
+.search-result-item,
+.dashboard-grid .dashboard-list-item {
     min-width: 0;
     padding: var(--space-4);
     border: 1px solid var(--border);
@@ -186,30 +185,14 @@
     flex: none;
 }
 
-.dashboard-grid .dashboard-list {
-    display: grid;
-    gap: var(--space-3);
-    padding: 0 var(--space-4) var(--space-4);
-}
-
 .dashboard-right-stack .dashboard-list {
-    max-height: 24rem;
+    max-height: var(--scroll-panel-height);
     overflow-y: auto;
 }
 
 .dashboard-grid .dashboard-list-item {
     display: grid;
     gap: var(--space-2);
-    min-width: 0;
-    padding: var(--space-4);
-    border: 1px solid var(--border);
-    border-left: 3px solid var(--primary);
-    border-radius: var(--radius-md);
-    background: var(--surface-alt);
-}
-
-.dashboard-list-item[hidden] {
-    display: none;
 }
 
 .dashboard-grid .dashboard-list-item > .detail-link {
@@ -241,7 +224,7 @@
     margin: 0 var(--space-4) var(--space-4);
 }
 
-section[aria-labelledby="dashboard-search-heading"] {
+.dashboard-search {
     margin-top: var(--space-6);
 }
 
@@ -257,8 +240,8 @@ section[aria-labelledby="dashboard-search-heading"] {
     border-top: 1px solid var(--border);
 }
 
-section:has(#active-stages-heading),
-section:has(#reserved-assignments-heading) {
+/* Prace w toku i rezerwacje: mocniejsza ramka niż pozostałe karty pulpitu. */
+.dashboard-work-card {
     border: 1px solid var(--border-strong);
     box-shadow: var(--shadow-sm);
 }
@@ -294,7 +277,7 @@ section:has(#reserved-assignments-heading) {
     gap: var(--field-gap);
 }
 
-.general-notes-form .general-notes-actions {
+.general-notes-form .form-actions {
     margin-top: 0;
 }
 
@@ -367,49 +350,6 @@ section:has(#reserved-assignments-heading) {
     white-space: nowrap;
 }
 
-.review-import-card {
-    max-width: 1100px;
-}
-
-.review-import-textarea {
-    min-height: 340px;
-    font-family: var(--font-mono);
-    font-size: var(--font-size-sm);
-}
-
-.editorial-decision {
-    min-width: 0;
-    margin: 0;
-    padding: 0;
-    border: 0;
-}
-
-.editorial-decision legend {
-    margin-bottom: var(--space-2);
-    padding: 0;
-}
-
-.editorial-decision label {
-    display: flex;
-    margin: var(--space-2) 0;
-}
-
-.complete-stage-form:has(.editorial-decision) {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    width: 100%;
-}
-
-.complete-stage-form:has(.editorial-decision) .complete-stage-button {
-    justify-self: start;
-    max-width: 100%;
-}
-
-.stage-finish-card:has(.editorial-decision) .quick-stage-action {
-    width: 100%;
-    min-width: 0;
-}
-
 .selected-authors {
     display: flex;
     flex-wrap: wrap;
@@ -431,7 +371,7 @@ section:has(#reserved-assignments-heading) {
     margin: 0 0 var(--space-3);
 }
 
-/* ===== Teksty: etapy, przejmowanie i notatki ===== */
+/* ===== Formularze etapów: przejęcie, rozpoczęcie, zakończenie (teksty i recenzje) ===== */
 .complete-stage-form,
 .reviewer-action-form,
 .take-stage-form,
@@ -491,300 +431,11 @@ section:has(#reserved-assignments-heading) {
     white-space: nowrap;
 }
 
-.quick-stage-action {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-4);
-}
-
-.quick-stage-action:has(.start-stage-form) {
-    align-items: flex-end;
-}
-
-.quick-stage-description p {
-    margin: var(--space-1) 0 0;
-    color: var(--muted);
-}
-
-.quick-stage-card:has(> .take-stage-form) {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-end;
-    gap: var(--space-3) var(--space-5);
-}
-
-.quick-stage-card:has(> .take-stage-form) > strong {
-    display: inline-flex;
-    align-items: center;
-    min-height: var(--control-height);
-}
-
-.stage-finish-card {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--space-2);
-}
-
-.stage-finish-card .quick-stage-action {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: var(--space-2);
-}
-
-.workflow-folder-layout {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-4);
-    align-items: stretch;
-    padding: var(--card-padding);
-}
-
-.workflow-folder-layout > .editing-control-content {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-    min-width: 0;
-    padding: 0;
-}
-
-.workflow-folder-layout .quick-stage-card {
-    margin: 0;
-}
-
-.workflow-folder-layout .stage-finish-card {
-    flex: 1;
-}
-
-.workflow-table-frame {
-    --table-bleed: var(--space-5);
-    min-width: 0;
-    padding: 0 var(--space-5) var(--space-4);
-}
-
-.workflow-table-frame > .table-container {
-    width: 100%;
-    margin: 0;
-}
-
-.workflow-table-frame > .cms-pagination {
-    margin: var(--space-3) 0 0;
-}
-
-.stage-leave-warning {
-    display: inline-flex;
-    margin: var(--space-2) 0 0 var(--space-2);
-    padding: var(--space-1) var(--space-2);
-    border: 1px solid var(--danger);
-    border-radius: var(--radius-md);
-    background: var(--danger-light);
-    color: var(--danger);
-}
-
-.management-action {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(220px, 1fr);
-    align-items: center;
-    gap: var(--space-4);
-    padding-block: var(--space-4);
-}
-
-.management-action + .management-action {
-    border-top: 1px solid var(--border);
-}
-
-.management-action-description p {
-    margin: var(--space-2) 0 0;
-    color: var(--muted);
-}
-
-.work-handoff-card {
-    margin-block: var(--space-5);
-}
-
-.work-handoff-card .text-management-content {
-    padding-block: var(--space-2);
-}
-
-.work-handoff-card .management-action {
-    padding-block: var(--space-3);
-}
-
-.work-handoff-card h3 {
-    margin: 0;
-    font-size: var(--font-size-lg);
-}
-
-.work-handoff-link {
-    justify-self: start;
-    max-width: 100%;
-    white-space: normal;
-}
-
-.text-team-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
-    gap: var(--space-3);
-    padding: var(--card-padding);
-}
-
-.text-team-member-role {
-    display: block;
-    margin-bottom: var(--space-2);
-    color: var(--muted);
-    font-size: var(--font-size-xs);
-}
-
-.text-team-member.is-unassigned {
-    background: var(--surface-alt);
-    color: var(--muted);
-}
-
 .contract-confirmed {
     padding: var(--space-3);
     border-radius: var(--radius-md);
     background: var(--success-light);
     color: var(--success);
-}
-
-/* Panel notatki (koordynatora, redakcyjnej, tagów). */
-.notes-editor-panel {
-    min-width: 0;
-    padding: var(--card-padding);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-}
-
-.notes-editor-panel h3 {
-    margin: 0 0 var(--space-3);
-}
-
-.notes-editor-panel.coordinator-note-highlight {
-    border-color: var(--danger-border);
-    background: var(--danger-light);
-}
-
-.coordinator-note-create > summary {
-    color: var(--primary);
-    cursor: pointer;
-}
-
-/* Na stronie tekstu panele są niższe. */
-.work-information .notes-editor-panel {
-    padding: var(--space-4);
-}
-
-.work-information .form-field > label {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-}
-
-.work-information textarea {
-    height: 6rem;
-    min-height: 6rem;
-}
-
-.work-information .coordinator-note-create {
-    position: relative;
-    min-width: 0;
-}
-
-.work-information .coordinator-note-create > summary {
-    position: absolute;
-    bottom: calc(100% + var(--space-2));
-}
-
-.work-information .coordinator-note-highlight > .form-help {
-    margin: var(--space-2) 0;
-}
-
-.work-information .general-notes-form button[type="submit"] {
-    justify-self: start;
-    min-width: 7rem;
-}
-
-/* Karta tekstu: ostrzeżenia, tagi i gatunek w trzech kolumnach.
-   Tagi i gatunek zapisuje jeden formularz – display: contents rozkłada jego panele na dwie kolumny siatki. */
-.text-info-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: var(--space-5);
-    align-items: stretch;
-}
-
-.text-info-grid.is-single {
-    grid-template-columns: minmax(0, 1fr);
-}
-
-.text-info-grid > .text-tags-form {
-    display: contents;
-}
-
-.text-info-grid .notes-editor-panel {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-}
-
-.text-info-grid .notes-editor-panel h3,
-.text-info-grid .notes-editor-panel .muted-text,
-.text-info-value {
-    margin: 0;
-}
-
-.text-info-grid .text-tags-actions {
-    margin-top: auto;
-}
-
-.text-info-grid .text-tags-form .form-field {
-    display: grid;
-    gap: var(--field-gap);
-}
-
-/* Notatki zespołu obok notatki koordynatora. */
-.text-notes-pair {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-5);
-    align-items: start;
-}
-
-.text-notes-pair.is-single {
-    grid-template-columns: minmax(0, 1fr);
-}
-
-.text-notes-pair > * {
-    min-width: 0;
-}
-
-.coordinator-note-card.coordinator-note-highlight {
-    border-color: var(--danger-border);
-    background: var(--danger-light);
-}
-
-.coordinator-note-body {
-    padding: var(--card-padding);
-}
-
-.coordinator-note-body > .form-help {
-    margin: var(--space-2) 0 0;
-}
-
-.coordinator-note-body textarea {
-    min-height: 8rem;
-}
-
-.text-notes-pair .coordinator-note-create > summary {
-    padding: var(--space-3) 0;
-}
-
-.new-notes-alert a {
-    font-weight: 600;
 }
 
 /* ===== Zgłoszenia, uwagi i poprawki ===== */
@@ -821,7 +472,7 @@ section:has(#reserved-assignments-heading) {
     margin-top: var(--space-5);
 }
 
-#correction-bulk {
+.correction-bulk {
     display: flex;
     flex-wrap: wrap;
     align-items: flex-end;
@@ -829,13 +480,9 @@ section:has(#reserved-assignments-heading) {
     margin: var(--space-3) 0 var(--space-4);
 }
 
-#correction-bulk > label {
+.correction-bulk > label {
     display: grid;
     gap: var(--field-gap);
-}
-
-.mailbox-import-card td {
-    overflow-wrap: anywhere;
 }
 
 .notification-queue {
@@ -858,17 +505,6 @@ section:has(#reserved-assignments-heading) {
     font-size: var(--font-size-sm);
 }
 
-.anthology-tasks {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
-    gap: var(--space-4);
-    margin-block: var(--space-4);
-}
-
-.anthology-tasks fieldset {
-    min-width: 0;
-}
-
 /* ===== Ludzie, urlopy i raporty ===== */
 .people-filters-form {
     display: grid;
@@ -885,7 +521,7 @@ section:has(#reserved-assignments-heading) {
     grid-template-columns: 1fr;
 }
 
-#people-table .roles-list {
+.people-table .roles-list {
     gap: 2px var(--space-1);
 }
 
@@ -995,18 +631,6 @@ section:has(#reserved-assignments-heading) {
     margin-top: var(--space-1);
 }
 
-.recruitment-operations-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-5);
-    align-items: stretch;
-    margin-block: var(--space-4);
-}
-
-.recruitment-operations-grid .recruitment-bulk {
-    margin: 0;
-}
-
 /* Podpowiedzi wpisów (osoby, tagi). */
 .contact-suggestions,
 .vocabulary-suggestions {
@@ -1023,104 +647,6 @@ section:has(#reserved-assignments-heading) {
 .issue-list li {
     margin: var(--space-3) 0;
     overflow-wrap: anywhere;
-}
-
-@media screen and (max-width: 1100px) {
-    .text-info-grid:not(.is-single) {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .text-info-grid:not(.is-single) > .notes-editor-panel:first-child {
-        grid-column: 1 / -1;
-    }
-
-    .review-workspace,
-    .vacation-layout {
-        grid-template-columns: minmax(0, 1fr);
-    }
-}
-
-@media screen and (max-width: 760px) {
-    .dashboard-summary {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    .dashboard-grid,
-    .dashboard-intake-grid,
-    .global-search-results,
-    .text-info-grid:not(.is-single),
-    .text-notes-pair,
-    .management-action,
-    .review-filter-bottom,
-    .recruitment-operations-grid,
-    .source-review-grid,
-    .review-folder-layout,
-    .workflow-folder-layout,
-    .people-filters-form,
-    .activity-filters {
-        grid-template-columns: minmax(0, 1fr);
-    }
-
-    .dashboard-right-stack {
-        grid-template-rows: auto auto;
-    }
-
-    .review-filter-bottom .filter-actions {
-        padding-top: 0;
-    }
-
-    .activity-filters {
-        grid-template-rows: auto;
-    }
-
-    .activity-filters .filter-field {
-        grid-row: auto;
-        grid-template-rows: auto auto auto;
-    }
-
-    .activity-filters > button {
-        grid-row: auto;
-        grid-column: 1;
-    }
-
-    .work-information .coordinator-note-create {
-        margin-top: var(--space-7);
-    }
-
-    .work-handoff-link {
-        justify-self: stretch;
-    }
-
-    .review-opinion-form .primary-button {
-        width: 100%;
-    }
-
-    .review-summary-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .profile-table-inset,
-    .author-table-inset {
-        --table-bleed: var(--space-4);
-        padding-inline: var(--space-4);
-    }
-
-    /* Teksty do wzięcia na telefonie: „Przejmij” i data mieszczą się w karcie (data przechodzi niżej). */
-    .take-stage-form,
-    .start-stage-form {
-        flex-wrap: wrap;
-    }
-
-    .take-stage-compact .stage-date-input,
-    .stage-date-input {
-        min-width: 0;
-        max-width: 100%;
-    }
-
-    /* W układzie kolumnowym podstawa 280px stawała się wysokością pola – duża luka nad „Wyszukaj”. */
-    .global-search-form > .global-search-field {
-        flex-basis: auto;
-    }
 }
 
 /* ===== Pulpit koordynatora: zaległe etapy ===== */
@@ -1267,6 +793,80 @@ section:has(#reserved-assignments-heading) {
     font-size: var(--font-size-sm);
 }
 
+@media screen and (max-width: 1100px) {
+    .review-workspace,
+    .vacation-layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+@media screen and (max-width: 760px) {
+    .dashboard-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .review-filter-bottom,
+    .source-review-grid,
+    .review-folder-layout,
+    .people-filters-form,
+    .activity-filters {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .dashboard-right-stack {
+        grid-template-rows: auto auto;
+    }
+
+    .review-filter-bottom .filter-actions {
+        padding-top: 0;
+    }
+
+    .activity-filters {
+        grid-template-rows: auto;
+    }
+
+    .activity-filters .filter-field {
+        grid-row: auto;
+        grid-template-rows: auto auto auto;
+    }
+
+    .activity-filters > button {
+        grid-row: auto;
+        grid-column: 1;
+    }
+
+    .review-opinion-form .primary-button {
+        width: 100%;
+    }
+
+    .review-summary-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .profile-table-inset,
+    .author-table-inset {
+        --table-bleed: var(--space-4);
+        padding-inline: var(--space-4);
+    }
+
+    /* Teksty do wzięcia na telefonie: „Przejmij” i data mieszczą się w karcie (data przechodzi niżej). */
+    .take-stage-form,
+    .start-stage-form {
+        flex-wrap: wrap;
+    }
+
+    .take-stage-compact .stage-date-input,
+    .stage-date-input {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    /* W układzie kolumnowym podstawa 280px stawała się wysokością pola – duża luka nad „Wyszukaj”. */
+    .global-search-form > .global-search-field {
+        flex-basis: auto;
+    }
+}
+
 @media screen and (max-width: 480px) {
     .auth-card {
         padding: var(--space-5);
@@ -1294,10 +894,6 @@ section:has(#reserved-assignments-heading) {
         width: 100%;
     }
 
-    .quick-stage-card :is(.take-stage-form, .start-stage-form) {
-        flex-wrap: wrap;
-    }
-
     .overdue-item {
         grid-template-columns: 3.5rem minmax(0, 1fr);
     }
@@ -1311,39 +907,4 @@ section:has(#reserved-assignments-heading) {
     .overdue-state > * {
         justify-self: start;
     }
-}
-/* ===== Karta tekstu: nazwa pliku etapu ===== */
-.stage-file-name {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-    align-items: center;
-    justify-content: space-between;
-    margin: var(--space-4) var(--card-padding) 0;
-    padding: var(--space-3) var(--space-4);
-    border: 1px solid var(--primary-border);
-    border-radius: var(--radius-md);
-    background: var(--primary-light);
-}
-
-.stage-file-text {
-    display: grid;
-    gap: var(--space-1);
-    min-width: 0;
-}
-
-.stage-file-label {
-    color: var(--muted);
-    font-size: var(--font-size-sm);
-}
-
-.stage-file-value {
-    font-family: var(--font-mono);
-    font-size: var(--font-size-md);
-    overflow-wrap: anywhere;
-}
-
-/* Zewnętrzne ilustracje: informacja o zgłaszaniu się nad filtrami listy. */
-.external-illustrations-contact {
-    margin: 0 0 var(--space-4);
 }

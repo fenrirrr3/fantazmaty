@@ -1,5 +1,6 @@
 """Proces roboczy konwertera: start (limit pamięci, brak pamięci, brak modułu resource), odnośniki między
-rozdziałami EPUB, obrazy odrzucane przy konwersji i raport błędu, którego nie da się zapisać."""
+rozdziałami EPUB, obrazy odrzucane przy konwersji, raport błędu, którego nie da się zapisać, oraz zapis
+rzadszych edytorów: polskie nazwy stylów nagłówków i uwagi o elementach pominiętych w e-booku."""
 import json
 import os
 import runpy
@@ -18,9 +19,12 @@ from PIL import Image
 
 import core.services
 from core.services import document_progress
-from core.services.document_conversion_worker import convert, cross_chapter_links, main
+from fpdf import FPDF
+
+from core.services.document_conversion_worker import convert, cross_chapter_links, main, polish_warnings
 from core.services.document_errors import DocumentInputError
 
+from .editor_fixtures_exotic import localized_style_names
 from .support import png
 
 BOOTSTRAP = Path(core.services.__file__).with_name('document_worker_bootstrap.py')
@@ -151,3 +155,48 @@ class UnwritableReportTests(WorkerDirectoryMixin, SimpleTestCase):
                 patch('core.services.document_conversion_worker.convert', side_effect=RuntimeError):
             self.assertEqual(main(), 3)
         self.assertTrue((self.directory / 'error.json').is_dir())
+
+
+class EditorMarkupConversionTests(WorkerDirectoryMixin, SimpleTestCase):
+    def test_polish_heading_names_make_chapters_and_the_pdf_outline(self):
+        """Regresja: styl „Nagłówek 1” (polska nazwa zamiast wbudowanej „heading 1”) był w e-booku zwykłym
+        akapitem – bez rozdziałów, spisu treści i konspektu PDF."""
+        source = self.directory / 'source.docx'
+        source.write_bytes(localized_style_names().getvalue())
+        sections, original = [], FPDF.start_section
+
+        def section_spy(pdf, name, level=0, strict=True):
+            sections.append((name, level))
+            return original(pdf, name, level, strict)
+        with patch.object(FPDF, 'start_section', section_spy):
+            convert(source, self.directory, ['epub', 'pdf'], 'Książka')
+        with ZipFile(self.directory / 'document.epub') as epub:
+            chapters = sorted(name for name in epub.namelist() if name.startswith('EPUB/chapter-'))
+            second = epub.read(chapters[1]).decode('utf-8')
+        self.assertEqual(len(chapters), 3)  # strona tytułowa i dwa rozdziały
+        self.assertIn('<h1 id="section-1" class="align-left">Rozdział pierwszy</h1>', second)
+        self.assertIn('<h2 id="section-2" class="align-left">Podrozdział</h2>', second)
+        self.assertEqual(sections, [('Rozdział pierwszy', 0), ('Podrozdział', 1), ('Rozdział drugi', 0)])
+
+    def test_warnings_about_equations_attachments_shapes_and_linked_images(self):
+        """Uwagi o równaniach, wstawkach altChunk i obrazach połączonych są po polsku; wygląd kształtów VML
+        (wypełnienie, obrys) z zapasowej wersji pola tekstowego – np. z LibreOffice – nie jest zgłaszany."""
+        unrecognised = 'An unrecognised element was ignored: '
+        cases = {
+            unrecognised + '{http://schemas.openxmlformats.org/officeDocument/2006/math}oMathPara':
+                'Pominięto równanie (wzór matematyczny) – e-book i PDF go nie zawierają.',
+            unrecognised + '{http://schemas.openxmlformats.org/officeDocument/2006/math}oMath':
+                'Pominięto równanie (wzór matematyczny) – e-book i PDF go nie zawierają.',
+            unrecognised + 'w:altChunk': 'Pominięto treść dołączoną z innego pliku (w:altChunk) – otwórz dokument '
+                                          'w Wordzie i zapisz go ponownie, aby ją scalić.',
+            "could not open external image 'file:///C:/Obrazy/a.jpg', external file access is disabled":
+                'Pominięto obraz połączony z plikiem spoza dokumentu – wstaw obraz do DOCX.',
+            unrecognised + 'v:fill': None,
+            unrecognised + 'v:stroke': None,
+            unrecognised + 'o:lock': None,
+            unrecognised + 'w10:wrap': None,
+            unrecognised + 'w:ruby': 'Pominięto nieobsługiwany element dokumentu (w:ruby).',
+        }
+        for message, expected in cases.items():
+            with self.subTest(message):
+                self.assertEqual(polish_warnings([message]), [expected] if expected else [])

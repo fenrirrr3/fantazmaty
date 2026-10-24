@@ -31,8 +31,9 @@ LABELS = {
 }
 
 LABELS.update({
-    'external_audiobooks': 'Zewnętrzne audiobooki', 'audiobook_guidelines_txt': 'Pobranie wytycznych audiobooków',
-    'external_illustrations': 'Zewnętrzne ilustracje', 'recruitment_delete': 'Usunięcie zgłoszenia rekrutacyjnego',
+    'external_audiobooks': 'Zewnętrzne audiobooki', 'audiobook_guidelines_pdf': 'Pobranie wytycznych audiobooków',
+    'audiobook_guidelines_txt': 'Pobranie wytycznych audiobooków (dawny adres TXT)',
+    'external_illustrations': 'Zewnętrzne ilustracje', 'illustration_guidelines_pdf': 'Pobranie wytycznych ilustracji', 'recruitment_delete': 'Usunięcie zgłoszenia rekrutacyjnego',
     'discord_test': 'Test wysyłki Discord',
     'data_integrity':'Spójność danych', 'person_permissions':'Podgląd uprawnień osoby',
     'anthology_detail':'Podgląd antologii', 'role_names':'Lista osób według roli', 'newsletter_list':'Zgody newsletterowe',

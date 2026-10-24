@@ -1,0 +1,8 @@
+{# Wytyczne strony zewnętrznej (ostatni element rzędu .actions): guidelines = PublicGuidelines.context(). #}
+<details class="guidelines">
+    <summary class="secondary-button"><span data-label="closed">Otwórz wytyczne</span><span data-label="open">Zamknij wytyczne</span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
+    <section class="panel" aria-labelledby="guidelines-title">
+        <header><h2 id="guidelines-title">{{ guidelines.title }}</h2>{% if guidelines.html %}<a class="secondary-button small-button" href="{{ guidelines.pdf_url }}" download>Pobierz PDF</a>{% endif %}</header>
+        <article>{% if guidelines.html %}{{ guidelines.html }}{% else %}<p>Wytyczne zostaną uzupełnione.</p>{% endif %}</article>
+    </section>
+</details>

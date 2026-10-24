@@ -13,13 +13,13 @@ CURRENT_STAGE = 'DOCX'
 if __package__:
     from .document_progress import configure, report as report_progress
     from .document_styles import paragraph_properties
-    from .document_html import (PAGE_BREAK_STYLE, heading_label, list_paragraphs, matched_paragraph, paragraph_queues,
-                                scene_break, split_page_breaks)
+    from .document_html import (PAGE_BREAK_STYLE, heading_label, list_paragraphs, mammoth_source, matched_paragraph,
+                                paragraph_queues, scene_break, split_page_breaks)
 else:
     from document_progress import configure, report as report_progress
     from document_styles import paragraph_properties
-    from document_html import (PAGE_BREAK_STYLE, heading_label, list_paragraphs, matched_paragraph, paragraph_queues,
-                               scene_break, split_page_breaks)
+    from document_html import (PAGE_BREAK_STYLE, heading_label, list_paragraphs, mammoth_source, matched_paragraph,
+                               paragraph_queues, scene_break, split_page_breaks)
 
 CSS = '''
 body { font-family: "Times New Roman", serif; font-size: 12pt; line-height: 1.5; }
@@ -39,6 +39,8 @@ hr.page-break { border: 0; height: 0; margin: 3em 0 0; }
 '''
 # Znaki dozwolone w URL bez kodowania (RFC 3986: zarezerwowane, niezarezerwowane i „%” istniejących kodów).
 URL_SAFE = "%:/?#[]@!$&'()*+,;=-._~"
+# Nagłówki o polskiej nazwie stylu („Nagłówek 1”, bez angielskiej nazwy wbudowanej) – jak domyślne „Heading N”.
+HEADING_STYLE_MAP = '\n'.join(f"p[style-name='Nagłówek {level}'] => h{level}:fresh" for level in range(1, 7))
 TAGS = set('p h1 h2 h3 h4 h5 h6 strong em u s del sup sub table thead tbody tfoot tr td th caption blockquote ol ul li br hr span a img pre code'.split())
 
 
@@ -103,6 +105,16 @@ WARNING_PATTERNS = (
     (r"Image of type (.*) is unlikely to display in web browsers",
      lambda m: f"Obraz w formacie {m[1]} może się nie wyświetlić w czytniku."),
     (r"A v:imagedata element without a relationship ID was ignored", lambda m: "Pominięto obraz bez źródła."),
+    (r"An unrecognised element was ignored: \{http://schemas\.openxmlformats\.org/officeDocument/2006/math\}oMath(?:Para)?",
+     lambda m: "Pominięto równanie (wzór matematyczny) – e-book i PDF go nie zawierają."),
+    (r"An unrecognised element was ignored: w:altChunk",
+     lambda m: "Pominięto treść dołączoną z innego pliku (w:altChunk) – otwórz dokument w Wordzie i zapisz go "
+               "ponownie, aby ją scalić."),
+    # Wygląd kształtu VML (wypełnienie, obrys, cień) w zapasowej wersji pola tekstowego – tekst pola zostaje.
+    (r"An unrecognised element was ignored: (?:v:(?:fill|stroke|shadow|path|formulas|handles|shapetype)|o:\w+|w10:\w+)",
+     lambda m: None),
+    (r"could not open external image '.*', external file access is disabled",
+     lambda m: "Pominięto obraz połączony z plikiem spoza dokumentu – wstaw obraz do DOCX."),
     (r"An unrecognised element was ignored: (.*)", lambda m: f"Pominięto nieobsługiwany element dokumentu ({m[1]})."),
     (r"Ignoring complex field .*", lambda m: "Pominięto uszkodzone pole Worda (np. spis treści lub odsyłacz)."),
 )
@@ -266,18 +278,19 @@ def convert(source, directory, formats, title):
         assets[name] = data
         return {"src": name}
 
-    with source.open("rb") as document:
-        result = mammoth.convert_to_html(
-            document,
-            convert_image=mammoth.images.img_element(convert_image),
-            external_file_access=False,
-            include_embedded_style_map=False,
-            style_map="u => u\n" + PAGE_BREAK_STYLE,
-            ignore_empty_paragraphs=False,
-        )
+    # Mammoth i dopasowanie akapitów PDF czytają tę samą kopię z poprawkami zgodności (document_html).
+    payload, notes = mammoth_source(source.read_bytes())
+    result = mammoth.convert_to_html(
+        BytesIO(payload),
+        convert_image=mammoth.images.img_element(convert_image),
+        external_file_access=False,
+        include_embedded_style_map=False,
+        style_map="u => u\n" + PAGE_BREAK_STYLE + "\n" + HEADING_STYLE_MAP,
+        ignore_empty_paragraphs=False,
+    )
     if any(message.type == "error" for message in result.messages):
         raise ValueError("Document could not be read completely")
-    warnings = polish_warnings(
+    warnings = notes + polish_warnings(
         str(message.message)[:500] for message in result.messages if message.type == "warning"
     )
     content, headings = sanitize_html(result.value, assets)
@@ -286,7 +299,7 @@ def convert(source, directory, formats, title):
     from docx import Document
     from lxml import html
 
-    document = Document(source)
+    document = Document(BytesIO(payload))
     paragraphs = paragraph_queues(document)
     root = html.fragment_fromstring(content or "<p></p>", create_parent="div")
     list_paragraphs(root)
@@ -369,6 +382,20 @@ def convert(source, directory, formats, title):
         (directory / "warnings.json").write_text(json.dumps(warnings[:30]), encoding="utf-8")
 
 
+def _unlink_images(source):
+    """Usuwa połączenia obrazów z plikami zewnętrznymi w pliku `source` (w miejscu); zwraca liczbę
+    usuniętych obrazów tylko połączonych. Nic nie jest pobierane spoza dokumentu."""
+    if __package__:
+        from .document_images import unlink_external_images
+    else:
+        from document_images import unlink_external_images
+    original = source.read_bytes()
+    unlinked, count = unlink_external_images(original)
+    if unlinked.getvalue() != original:
+        source.write_bytes(unlinked.getvalue())
+    return count
+
+
 def main():
     global CURRENT_STAGE
     directory = Path(sys.argv[1])
@@ -389,26 +416,34 @@ def main():
                 from .document_split import NoHeadingError, split_document
             else:
                 from document_split import NoHeadingError, split_document
+            linked_images = _unlink_images(directory / "source.docx")
             try:
                 with (directory / "document.zip").open("wb") as output:
                     report = split_document(directory / "source.docx", output)
             except NoHeadingError:
                 (directory / "document.zip").unlink(missing_ok=True)
                 report = {"error": "no_heading"}
+            if linked_images:
+                report["linked_images"] = linked_images
             (directory / "split.json").write_text(json.dumps(report), encoding="utf-8")
             return 0
         # Decyzja właściciela: obrazy znikają przed wszelkimi zmianami (wszystkie programy),
-        # a cały dokument jest polski. Liczba usuniętych obrazów trafia do images.json.
+        # a cały dokument jest polski. Liczba usuniętych obrazów trafia do images.json; obrazy
+        # tylko połączone z plikami zewnętrznymi (usunięte razem z linkiem) liczymy osobno.
         report_progress("Usuwanie obrazów i ustawianie języka polskiego")
         if __package__:
             from .document_images import force_polish, strip_images
         else:
             from document_images import force_polish, strip_images
         source = directory / "source.docx"
+        linked_images = _unlink_images(source)
         with source.open("rb") as document:
             stripped, removed_images = strip_images(document)
         source.write_bytes(force_polish(stripped).getvalue())
-        (directory / "images.json").write_text(json.dumps({"removed_images": removed_images}), encoding="utf-8")
+        images = {"removed_images": removed_images}
+        if linked_images:
+            images["linked_images"] = linked_images
+        (directory / "images.json").write_text(json.dumps(images), encoding="utf-8")
         if config.get("prepare") or config.get("inspect"):
             if __package__:
                 from .document_preparation import prepare_docx, DEFAULT_EDITORIAL_RULES

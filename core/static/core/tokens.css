@@ -62,6 +62,13 @@
     /* Układ. */
     --header-height: 64px;
     --sidebar-width: 240px;
+    --page-max-width: 1600px;
+    /* Węższa treść (karty programów, słownik zamian). */
+    --content-narrow-width: 960px;
+    /* Najmniejsza szerokość kolumny z tytułem lub opisem w tabeli. */
+    --cell-min-width: 12rem;
+    /* Wysokość przewijanych list w kartach (pulpit, podgląd maila, notatki rozdziału). */
+    --scroll-panel-height: 24rem;
     --card-padding: var(--space-5);
     --field-gap: var(--space-2);
     --cell-padding-block: var(--space-3);

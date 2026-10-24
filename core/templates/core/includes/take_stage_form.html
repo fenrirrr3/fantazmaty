@@ -1,13 +1,13 @@
-{% if stage.text.take_locked and not user.is_superuser %}<p class="form-warning" data-take-locked>Zablokowany</p>{% else %}<form method="post" action="{% url 'core:take_workflow_stage' stage.pk %}"
+{% if stage.text.take_locked and not user.is_superuser %}<span class="badge is-warning" data-take-locked>Zablokowany</span>{% else %}<form method="post" action="{% url 'core:take_workflow_stage' stage.pk %}"
       class="take-stage-form{% if compact %} take-stage-compact{% endif %}"
       aria-label="Przejmij etap: {{ stage.get_stage_type_display }} – {{ stage.text.title }}">
     {% csrf_token %}{% edit_version %}
     {% if workflow_token %}<input type="hidden" name="workflow_token" value="{{ workflow_token }}">{% endif %}
     {% if stage.reservation_only %}
-        <button type="submit" class="assign-button" aria-describedby="reservation-help-{{ stage.pk }}">Przejmij</button>
+        <button type="submit" class="primary-button" aria-describedby="reservation-help-{{ stage.pk }}">Przejmij</button>
         <span id="reservation-help-{{ stage.pk }}" class="form-help reservation-label">Obecnie tylko przypisanie</span>
     {% else %}
-        <button type="submit" class="assign-button">Przejmij</button>
+        <button type="submit" class="primary-button">Przejmij</button>
         <div class="form-field">
             <label {% if compact %}class="visually-hidden" {% endif %}for="started-at-{{ stage.pk }}">Data rozpoczęcia</label>
             <input id="started-at-{{ stage.pk }}" type="date" name="started_at"

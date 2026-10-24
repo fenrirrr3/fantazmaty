@@ -13,7 +13,7 @@
         </p>
     </header>
 
-    <section class="filters-card" aria-label="Wyszukiwarka">
+    <section class="details-card filters-card" aria-label="Wyszukiwarka">
         <form
             method="get"
             action="{% url 'core:global_search' %}"
@@ -39,7 +39,7 @@
                 {% endfor %}
             </div>
 
-            <div class="filter-actions">
+            <div class="actions filter-actions">
                 <button type="submit" class="primary-button">
                     Wyszukaj
                 </button>
@@ -63,7 +63,7 @@
             </p>
         </header>
 
-        <div class="global-search-results">
+        <div class="two-columns global-search-results">
             {% if reviews %}
             <section class="card" aria-labelledby="search-reviews-heading">
                 <header class="section-header">

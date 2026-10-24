@@ -11,7 +11,7 @@
         </p>
     </header>
 
-    <section class="filters-card" aria-label="Filtry aktywności recenzentów">
+    <section class="details-card filters-card" aria-label="Filtry aktywności recenzentów">
         <form
             method="get"
             action="{% url 'core:reviewer_activity' %}"
@@ -142,7 +142,7 @@
                 {% endif %}
             </div>
 
-            <div class="filter-actions">
+            <div class="actions filter-actions">
                 <button type="submit" class="primary-button">Filtruj</button>
                 <a
                     href="{% url 'core:reviewer_activity' %}"

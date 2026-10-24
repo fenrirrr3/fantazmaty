@@ -535,7 +535,7 @@ class TakeLockTests(AnthologyWorkflowMixin, TestCase):
         for label in ('Zablokuj tekst', 'Odblokuj tekst'):
             with self.subTest(label=label):
                 actions = html.fromstring(self.detail(self.superuser).content).xpath(
-                    '//div[@class="detail-header-actions"]/*')
+                    '//div[contains(@class, "detail-header-actions")]/*')
                 self.assertEqual(actions[0].get('action'), reverse('core:toggle_text_take_lock', args=[self.text.pk]))
                 self.assertEqual(actions[0].xpath('normalize-space(.//button)'), label)
                 self.assertEqual(actions[1].text_content().strip(), 'Edytuj w adminie')

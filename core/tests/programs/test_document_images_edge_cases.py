@@ -1,6 +1,6 @@
 """Usuwanie obrazów w nietypowym zapisie OOXML (tło strony, grupy kształtów, pole tekstowe VML z wypełnieniem,
-tekst „ogona” po rysunku) oraz relacje i części pakietu: adresy bezwzględne, zewnętrzne, osierocone,
-uszkodzony XML, wpisy typów i miniatura pakietu."""
+tekst „ogona” po rysunku, część XML w UTF-16) oraz relacje i części pakietu: adresy bezwzględne, zewnętrzne,
+osierocone, uszkodzony XML, wpisy typów i miniatura pakietu."""
 import re
 from io import BytesIO
 from zipfile import ZipFile
@@ -160,6 +160,25 @@ class PackageRelationshipTests(SimpleTestCase):
         self.assertIn('rIdD', read(output, 'word/_rels/damaged.xml.rels'))
         types = etree.fromstring(read(output, '[Content_Types].xml').encode())
         self.assertFalse([entry for entry in types if entry.get('PartName') == f'/{media}'])
+
+    def test_part_in_utf16_loses_its_images_and_becomes_polish(self):
+        """Regresja: część XML zapisana w UTF-16 (z BOM) omijała skrót po bajtach ASCII – obraz zostawał
+        w dokumencie wbrew zasadzie „bez obrazów”, a język tekstu nie był zmieniany na polski."""
+        document, _ = picture_document()
+        document.paragraphs[0].add_run('Tekst')._r.get_or_add_rPr().append(etree.fromstring(
+            '<w:lang xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" w:val="en-US"/>'))
+        data = repack(saved(document).getvalue(), replace={'word/document.xml': lambda value: value.decode(
+            'utf-8').replace("encoding='UTF-8'", "encoding='UTF-16'").replace(
+            'encoding="UTF-8"', 'encoding="UTF-16"').encode('utf-16')})
+        self.assertTrue(data_part(data, 'word/document.xml').startswith(b'\xff\xfe'))
+        stripped, removed = strip_images(data)
+        self.assertEqual(removed, 1)
+        with ZipFile(force_polish(stripped)) as archive:
+            self.assertFalse([name for name in archive.namelist() if name.startswith('word/media/')])
+            body = archive.read('word/document.xml').decode('utf-8')
+        self.assertNotIn('<w:drawing', body)
+        self.assertIn('<w:lang w:val="pl-PL"/>', body)
+        self.assertEqual(Document(force_polish(stripped)).paragraphs[0].text, 'Tekst')
 
     def test_damaged_part_with_language_is_left_unchanged(self):
         data = repack(saved(Document()).getvalue(), extra={'word/broken.xml': b'<w:lang w:val="en-US"'})

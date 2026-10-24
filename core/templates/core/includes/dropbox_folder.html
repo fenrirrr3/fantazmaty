@@ -9,7 +9,7 @@
         {{ folder_form.file_url }}
         {{ folder_form.file_url.errors }}
     </div>
-    <div class="dropbox-folder-actions">
+    <div class="actions">
         <button type="button" class="secondary-button" id="dropbox-folder-choose" data-input-id="{{ folder_form.file_url.id_for_label }}" {% if not dropbox_chooser_app_key %}disabled{% endif %}>Wybierz folder Dropbox</button>
         <button type="submit" class="secondary-button">Zapisz link</button>
     </div>

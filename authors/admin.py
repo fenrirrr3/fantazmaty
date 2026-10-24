@@ -421,10 +421,8 @@ class AuthorAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     @admin.display(description="czarna lista", ordering="is_blacklisted")
     def blacklist_status(self, obj):
         return format_html(
-            '<strong style="display:inline-block;padding:4px 9px;border-radius:4px;'
-            'background:{};color:{}" aria-label="Czarna lista: {}">{}</strong>',
-            "#fce4e4" if obj.is_blacklisted else "#edf2f6",
-            "#991b1b" if obj.is_blacklisted else "#465467",
+            '<strong class="cms-flag{}" aria-label="Czarna lista: {}">{}</strong>',
+            " is-on" if obj.is_blacklisted else "",
             "tak" if obj.is_blacklisted else "nie",
             "✓ TAK" if obj.is_blacklisted else "✗ NIE",
         )

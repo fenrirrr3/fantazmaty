@@ -140,7 +140,7 @@ class StylesheetTests(SimpleTestCase):
         """Odstępy etykiet przy nazwisku wynikają z reguł ogólnych, nie z poprawek pojedynczych stron."""
         css = self.css('components.css')
         for selector, declaration in (
-                ('.person-name + :is(.stage-status, .status, .badge) {', 'margin-inline-start: var(--space-2);'),
+                ('.person-name + :is(.stage-status, .badge) {', 'margin-inline-start: var(--space-2);'),
                 (':not(dt) + .roles-list {', 'margin-top: var(--space-1);')):
             with self.subTest(selector=selector):
                 self.assertIn(declaration, css[css.index(selector):].split('}', 1)[0])
@@ -155,7 +155,7 @@ class StylesheetTests(SimpleTestCase):
 
     def test_team_notes_use_theme_tokens_with_dark_variants(self):
         """Notatki zespołu: żółte tło z tokenów ostrzeżenia, ważne – czerwone; tokeny tła mają wariant ciemny."""
-        css = self.css('components.css')
+        css = self.css('texts.css')
         rules = {
             '.text-notes-card .text-note {': ('var(--warning-light)', 'var(--warning-border)'),
             '.text-notes-card .text-note.is-important {': ('var(--danger-light)', 'var(--danger-border)'),
@@ -170,9 +170,19 @@ class StylesheetTests(SimpleTestCase):
             self.assertIn(token, dark)
 
     def test_external_buttons_use_the_accent_colour(self):
-        self.assertIn('.audiobook-public-button', self.css('components.css'))
+        self.assertIn('.accent-button {\n    border-color: var(--accent);', self.css('components.css'))
         for theme in ('--accent:', '--accent-hover:'):
             self.assertGreaterEqual(self.css('themes.css').count(theme), 3)
+
+    def test_guidelines_are_one_shared_component(self):
+        """Wytyczne obu stron zewnętrznych to jeden komponent .guidelines w components.css (panel w nowym
+        wierszu rzędu przycisków); dawne klasy audiobook-guidelines* zniknęły z arkuszy i szablonów."""
+        templates = (Path(settings.BASE_DIR) / 'core' / 'templates').rglob('*.html')
+        files = [*STATIC.glob('*.css'), *templates]
+        self.assertEqual([path.name for path in files if 'audiobook-guidelines' in path.read_text(encoding='utf-8')], [])
+        self.assertEqual([path.name for path in STATIC.glob('*.css') if '.guidelines' in path.read_text(encoding='utf-8')],
+                         ['components.css'])
+        self.assertIn('.actions > .guidelines::details-content {\n        flex-basis: 100%;', self.css('components.css'))
 
     def test_no_ad_prefixed_classes(self):
         """Blokery reklam ukrywają elementy o klasach „ad-…” – audiodeskrypcja ich nie używa."""

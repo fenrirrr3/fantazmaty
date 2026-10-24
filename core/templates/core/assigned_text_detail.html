@@ -4,7 +4,7 @@
 {% block title %}{{ text.title }} | Fantazmaty CMS{% endblock %}
 
 
-{% block extra_css %}<link rel="stylesheet" href="{% static 'core/tags.css' %}"><link rel="stylesheet" href="{% static 'core/text-production.css' %}"><link rel="stylesheet" href="{% static 'core/audiobook-production.css' %}">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/texts.css' %}"><link rel="stylesheet" href="{% static 'core/audiobooks.css' %}">{% endblock %}
 
 {% block content %}
     {% now "Y-m-d" as today_iso %}
@@ -25,8 +25,8 @@
                 </p>
             </div>
 
-            <div class="detail-header-actions">
-                {% if user.is_superuser %}<form method="post" action="{% url 'core:toggle_text_take_lock' text.pk %}" data-take-lock-toggle>{% csrf_token %}{% edit_version %}<button type="submit" class="secondary-button{% if not take_lock %} cms-danger-button{% endif %}">{% if take_lock %}Odblokuj tekst{% else %}Zablokuj tekst{% endif %}</button></form>{% endif %}
+            <div class="actions detail-header-actions">
+                {% if user.is_superuser %}<form method="post" action="{% url 'core:toggle_text_take_lock' text.pk %}" data-take-lock-toggle>{% csrf_token %}{% edit_version %}<button type="submit" class="{% if take_lock %}secondary-button{% else %}danger-button{% endif %}">{% if take_lock %}Odblokuj tekst{% else %}Zablokuj tekst{% endif %}</button></form>{% endif %}
                 {% if is_novel and can_manage_workflow and text.anthology.status != 'ready' %}<a class="secondary-button" href="{% url 'core:chapter_edit' text.anthology.pk text.pk %}">Edytuj rozdział</a>{% endif %}
                 {% if user.is_superuser %}<a class="secondary-button" href="{% url 'admin:texts_text_change' text.pk %}">Edytuj w adminie</a>{% endif %}
             <a href="{% if return_url %}{{ return_url }}{% elif is_novel %}{% url 'core:novel_detail' text.anthology.pk %}{% elif is_translation %}{% url 'core:translation_list' %}{% else %}{% url 'core:text_list' %}{% endif %}" class="secondary-button">
@@ -61,7 +61,7 @@
     {% if is_extract_volume and can_manage_workflow %}<p><a class="secondary-button" href="{% url 'core:extract_list' %}?recruitment={{ text.title|urlencode }}">Lista tekstów</a></p>{% endif %}
     {% if is_translation %}
     <section class="card"><div class="card-body"><h2>Autor zagraniczny i tłumacz</h2>
-    {% if translation_form %}<form method="post" class="intake-form" action="{% url 'core:set_translators' text.pk %}">{% csrf_token %}{% edit_version %}{{ translation_form.as_p }}<div class="translation-person-actions"><a class="secondary-button" href="{% url 'admin:texts_foreignauthor_add' %}">Dodaj autora zagranicznego</a><a class="secondary-button" href="{% url 'admin:texts_translator_add' %}">Dodaj tłumacza</a><button class="primary-button" type="submit">Zapisz osoby</button></div></form>
+    {% if translation_form %}<form method="post" class="intake-form" action="{% url 'core:set_translators' text.pk %}">{% csrf_token %}{% edit_version %}{{ translation_form.as_p }}<div class="actions translation-person-actions"><a class="secondary-button" href="{% url 'admin:texts_foreignauthor_add' %}">Dodaj autora zagranicznego</a><a class="secondary-button" href="{% url 'admin:texts_translator_add' %}">Dodaj tłumacza</a><button class="primary-button" type="submit">Zapisz osoby</button></div></form>
     {% else %}<p>{% for translator in translators %}{{ translator.display_name }}{% if not forloop.last %}, {% endif %}{% empty %}Nie przypisano tłumacza.{% endfor %}</p><p><strong>Weryfikacja z oryginałem:</strong> {{ original_verifier|default:"Nie podano" }}</p>{% endif %}
     </div></section>{% endif %}
 
@@ -149,8 +149,8 @@
         </dl>
     </section>
 
-    <section class="editing-control-card" aria-labelledby="workflow-heading">
-        <header class="editing-control-header">
+    <section class="card editing-control-card" aria-labelledby="workflow-heading">
+        <header class="section-header">
             <div>
                 <h2 id="workflow-heading">Etapy pracy</h2>
                 <p>Bieżący stan i ostatnio zakończony etap.</p>
@@ -246,39 +246,39 @@
         {% if not is_withdrawn and not is_ready %}
             <div class="editing-control-content">
                 {% for stage in claimable_stages %}
-                    <div class="quick-stage-card">
+                    <div class="details-card quick-stage-card">
                         <strong>{{ stage.get_stage_type_display }}</strong>
                         {% include "core/includes/take_stage_form.html" %}
                     </div>
                 {% endfor %}
                 {% for stage in stages %}
                     {% if stage.can_edit_schedule and stage.schedule_frozen %}
-                    <div class="quick-stage-card" data-schedule-frozen><strong>{{ stage.get_stage_type_display }} – rezerwacja</strong>
+                    <div class="details-card quick-stage-card" data-schedule-frozen><strong>{{ stage.get_stage_type_display }} – rezerwacja</strong>
                     <form method="post" action="{% url 'core:change_scheduled_workflow_stage' stage.pk %}">{% include "core/includes/workflow_fields.html" %}
                     <p class="form-help">Data rozpoczęcia ({{ stage.started_at|date:"d.m.Y" }}) jest zamrożona, dopóki tekst jest zablokowany. Rezerwację można odwołać.</p>
                     <button type="submit" name="action" value="cancel" class="secondary-button" data-confirm="Odwołać rezerwację? Etap wróci do puli i może go wziąć inna osoba.">Odwołaj rezerwację</button>
                     </form></div>
                     {% elif stage.can_edit_schedule %}
-                    <div class="quick-stage-card"><strong>{{ stage.get_stage_type_display }} – rezerwacja</strong>
+                    <div class="details-card quick-stage-card"><strong>{{ stage.get_stage_type_display }} – rezerwacja</strong>
                     <form method="post" action="{% url 'core:change_scheduled_workflow_stage' stage.pk %}" data-warn-unsaved>{% include "core/includes/workflow_fields.html" %}
                     <label for="schedule-{{ stage.pk }}">Data rozpoczęcia</label><input id="schedule-{{ stage.pk }}" type="date" name="started_at" min="{{ today_iso }}" value="{{ stage.started_at|date:'Y-m-d' }}" required>
                     <div class="actions"><button type="submit" name="action" value="save" class="primary-button">Zapisz datę</button><button type="submit" name="action" value="cancel" formnovalidate class="secondary-button" data-confirm="Odwołać rezerwację? Etap wróci do puli i może go wziąć inna osoba.">Odwołaj rezerwację</button></div>
                     </form></div>
                     {% elif stage.can_release %}
-                    <div class="quick-stage-card"><strong>{{ stage.get_stage_type_display }}{% if stage.is_reservation %} – rezerwacja{% endif %}</strong>
+                    <div class="details-card quick-stage-card"><strong>{{ stage.get_stage_type_display }}{% if stage.is_reservation %} – rezerwacja{% endif %}</strong>
                     <form method="post" action="{% url 'core:change_scheduled_workflow_stage' stage.pk %}">{% include "core/includes/workflow_fields.html" %}
                     <p class="form-help">{% if stage.is_reservation %}Rezerwacja weryfikacji zostanie zwolniona – etap będzie mogła wziąć inna osoba.{% else %}Etap wróci do puli bez wykonawcy i bez daty rozpoczęcia. Użyj tego, jeśli nie możesz dokończyć pracy.{% endif %}</p>
                     <button type="submit" name="action" value="cancel" class="secondary-button" data-confirm="{% if stage.is_reservation %}Odwołać rezerwację weryfikacji?{% else %}Cofnąć przydział? Zniknie data rozpoczęcia, a etap będzie mógł przejąć ktoś inny.{% endif %}">{% if stage.is_reservation %}Odwołaj rezerwację{% else %}Cofnij przydział{% endif %}</button>
                     </form></div>
                     {% endif %}
                     {% if stage.can_skip %}
-                    <form method="post" action="{% url 'core:skip_workflow_stage' stage.pk %}" class="quick-stage-card">{% include "core/includes/workflow_fields.html" %}<strong>Czwarta korekta</strong><p class="form-help">Przejście dalej bez wykonawcy i dat pracy.</p><button type="submit" class="secondary-button" data-confirm="Pominąć czwartą korektę?">Pomiń etap</button></form>
+                    <form method="post" action="{% url 'core:skip_workflow_stage' stage.pk %}" class="details-card quick-stage-card">{% include "core/includes/workflow_fields.html" %}<strong>Czwarta korekta</strong><p class="form-help">Przejście dalej bez wykonawcy i dat pracy.</p><button type="submit" class="secondary-button" data-confirm="Pominąć czwartą korektę?">Pomiń etap</button></form>
                     {% endif %}
                     {% if stage.complete_blocker %}
-                        <div class="quick-stage-card"><strong>{{ stage.get_stage_type_display }}</strong><p class="form-warning">{{ stage.complete_blocker }}</p></div>
+                        <div class="details-card quick-stage-card"><strong>{{ stage.get_stage_type_display }}</strong><p class="form-warning">{{ stage.complete_blocker }}</p></div>
                     {% endif %}
                     {% if stage.can_complete %}
-                        <div class="quick-stage-card stage-finish-card">
+                        <div class="details-card quick-stage-card stage-finish-card">
                             <div class="quick-stage-action">
                                 <div class="quick-stage-description">
                                     <strong>{{ stage.get_stage_type_display }}</strong>
@@ -303,14 +303,14 @@
                                         <input id="end-stage-{{ stage.pk }}" type="date" name="ended_at" class="stage-date-input"
                                             value="{{ today_iso }}" max="{{ today_iso }}"{% if stage.started_at %} min="{{ stage.started_at|date:'Y-m-d' }}"{% endif %} required>
                                     </div>
-                                    <button type="submit" class="complete-stage-button" data-confirm="Zakończyć etap „{{ stage.get_stage_type_display }}”? Tej operacji nie cofniesz samodzielnie.">
+                                    <button type="submit" class="success-button" data-confirm="Zakończyć etap „{{ stage.get_stage_type_display }}”? Tej operacji nie cofniesz samodzielnie.">
                                         Zakończ etap
                                     </button>
                                 </form>
                             </div>
                         </div>
                     {% elif stage.can_start %}
-                        <div class="quick-stage-card">
+                        <div class="details-card quick-stage-card">
                             <div class="quick-stage-action">
                                 <div class="quick-stage-description">
                                     <strong>{{ stage.get_stage_type_display }}</strong>
@@ -348,7 +348,7 @@
                     {% endif %}
                 {% endfor %}
 
-                <div class="workflow-action-buttons">
+                <div class="actions workflow-action-buttons">
                     {% if can_send_to_first_verification %}
                         <form method="post" action="{% url 'core:send_to_first_verification_stage' text.pk %}">
                             {% include "core/includes/workflow_fields.html" %}
@@ -390,7 +390,7 @@
                     {% if can_finish_editing and is_extracts_workflow %}
                         <form method="post" action="{% url 'core:finish_text_editing' text.pk %}">
                             {% include "core/includes/workflow_fields.html" %}
-                            <button type="submit" class="complete-stage-button" data-confirm="Przekazać tekst do pierwszej korekty? Redakcja zostanie zamknięta.">
+                            <button type="submit" class="success-button" data-confirm="Przekazać tekst do pierwszej korekty? Redakcja zostanie zamknięta.">
                                 Przekaż do pierwszej korekty
                             </button>
                             <p class="form-help">Ekstrakty mają skrócony workflow: po pierwszej weryfikacji i redakcji tekst trafia od razu do pierwszej korekty.</p>
@@ -398,7 +398,7 @@
                     {% elif can_finish_editing %}
                         <form method="post" action="{% url 'core:finish_text_editing' text.pk %}">
                             {% include "core/includes/workflow_fields.html" %}
-                            <button type="submit" class="complete-stage-button" data-confirm="Przekazać redakcję do kontroli? Redakcja zostanie zamknięta.">
+                            <button type="submit" class="success-button" data-confirm="Przekazać redakcję do kontroli? Redakcja zostanie zamknięta.">
                                 Przekaż redakcję do kontroli
                             </button>
                             {% if returned_by_coordinator %}<p class="form-help">Koordynator redakcji cofnął tekst do redakcji – weryfikacje są pomijane, a tekst wraca bezpośrednio do kontroli koordynatora.</p>{% endif %}
@@ -407,15 +407,15 @@
                 </div>
             </div>
         {% endif %}
-        {% if not is_novel %}<aside class="quick-stage-card dropbox-folder-card" aria-labelledby="dropbox-folder-heading">
+        {% if not is_novel %}<aside class="details-card quick-stage-card dropbox-folder-card" aria-labelledby="dropbox-folder-heading">
             {% url 'core:update_text_file' text.pk as folder_save_url %}
             {% include 'core/includes/dropbox_folder.html' with folder_url=file_url folder_form=text_file_form folder_heading_id="dropbox-folder-heading" %}
-        </aside>{% elif text.anthology.novel.file_url %}<aside class="quick-stage-card"><a class="secondary-button" href="{{ text.anthology.novel.file_url }}" target="_blank" rel="noopener noreferrer">Folder całej powieści</a></aside>{% endif %}
+        </aside>{% elif text.anthology.novel.file_url %}<aside class="details-card quick-stage-card"><a class="secondary-button" href="{{ text.anthology.novel.file_url }}" target="_blank" rel="noopener noreferrer">Folder całej powieści</a></aside>{% endif %}
         </div>
         {% endif %}
     </section>
 
-    <details class="text-team">
+    <details class="card collapsible-card text-team">
         <summary>
             <span>Osoby przypisane do tekstu</span>
             <span class="dropdown-arrow" aria-hidden="true">▾</span>
@@ -423,7 +423,7 @@
 
         <div class="text-team-grid">
             {% for member in team_members %}
-                <div class="text-team-member{% if not member.is_assigned %} is-unassigned{% endif %}">
+                <div class="panel text-team-member{% if not member.is_assigned %} is-unassigned{% endif %}">
                     <span class="text-team-member-role">{{ member.label }}</span>
                     {% if member.user %}
                         <strong>
@@ -464,14 +464,14 @@
                             {{ text_content_warnings_form.content_warnings.errors }}
                         </div>
 
-                        <div class="general-notes-actions">
+                        <div class="actions form-actions">
                             <button type="submit" class="secondary-button">
                                 Zapisz
                             </button>
                         </div>
                     </form>
                 {% else %}
-                    <div class="coordinator-note-readonly">
+                    <div class="panel is-muted coordinator-note-readonly">
                         {% if text.content_warnings %}
                             {{ text.content_warnings|linebreaksbr }}
                         {% else %}
@@ -486,7 +486,7 @@
                 <div class="notes-editor-panel" data-text-info="tags">
                     <h3 id="text-tags-heading">Tagi</h3>
                     <p class="text-info-value">{{ text_tags_form.tags.value|default:"Brak tagów" }}</p>
-                    <div class="text-tags-actions"><a class="secondary-button" href="{% url 'core:tag_list' %}">Przejdź do listy</a></div>
+                    <div class="actions text-tags-actions"><a class="secondary-button" href="{% url 'core:tag_list' %}">Przejdź do listy</a></div>
                 </div>
                 <div class="notes-editor-panel" data-text-info="genre">
                     <h3 id="text-genre-heading">Gatunek</h3>
@@ -500,12 +500,12 @@
                         <h3 id="text-tags-heading">Tagi</h3>
                         {{ text_tags_form.non_field_errors }}
                         <div class="form-field">{{ text_tags_form.tags.label_tag }}{{ text_tags_form.tags }}{{ text_tags_form.tags.errors }}<p class="muted-text">{{ text_tags_form.tags.help_text }}</p></div>
-                        <div class="text-tags-actions"><a class="secondary-button" href="{% url 'core:tag_list' %}">Przejdź do listy</a></div>
+                        <div class="actions text-tags-actions"><a class="secondary-button" href="{% url 'core:tag_list' %}">Przejdź do listy</a></div>
                     </div>
                     <div class="notes-editor-panel" data-text-info="genre">
                         <h3 id="text-genre-heading">Gatunek</h3>
                         <div class="form-field">{{ text_tags_form.genre.label_tag }}{{ text_tags_form.genre }}{{ text_tags_form.genre.errors }}<p class="muted-text">{{ text_tags_form.genre.help_text }}</p></div>
-                        <div class="text-tags-actions"><button class="primary-button" type="submit">Zapisz tagi i gatunek</button></div>
+                        <div class="actions text-tags-actions"><button class="primary-button" type="submit">Zapisz tagi i gatunek</button></div>
                     </div>
                 </form>
             {% endif %}
@@ -515,7 +515,7 @@
 
     {# Notatki zespołu obok notatki koordynatora; w rozdziale powieści obok recenzji, a notatka koordynatora pod nimi. #}
     {% if is_novel %}{% include "core/includes/text_coordinator_note.html" %}{% endif %}
-    <div class="{% if is_novel %}text-notes-tags chapter-notes-reviews{% else %}text-notes-pair{% if not show_coordinator_note and not can_edit_coordinator_note %} is-single{% endif %}{% endif %}" data-text-notes-pair>
+    <div class="two-columns {% if is_novel %}text-notes-tags chapter-notes-reviews{% else %}text-notes-pair{% if not show_coordinator_note and not can_edit_coordinator_note %} is-single{% endif %}{% endif %}" data-text-notes-pair>
     <section class="card text-notes-card" id="text-notes" aria-labelledby="text-notes-heading">
         <header class="section-header">
             <h2 id="text-notes-heading">Notatki zespołu</h2>
@@ -539,10 +539,10 @@
                     {{ text_note_form.content.errors }}
                 </div>
 
-                <div class="general-notes-actions">
+                <div class="actions form-actions">
                     <label
                         for="{{ text_note_form.is_important.id_for_label }}"
-                        class="important-note-toggle"
+                        class="checkbox-field"
                     >
                         {{ text_note_form.is_important }}
                         <span>Ważna notatka</span>
@@ -568,19 +568,19 @@
                             <small>{{ note.created_at|date:"d.m.Y, H:i" }}</small>
                         </span>
                         <span class="text-note-badges">
-                            {% if note.is_new %}<span class="new-note-badge">Nowa</span>{% endif %}
-                            {% if note.is_important %}<span class="important-note-badge">Ważna</span>{% endif %}
+                            {% if note.is_new %}<span class="badge is-info">Nowa</span>{% endif %}
+                            {% if note.is_important %}<span class="badge is-danger">Ważna</span>{% endif %}
                             <span class="dropdown-arrow" aria-hidden="true">▾</span>
                         </span>
                     </summary>
                     <div class="text-note-content">{{ note.content|linebreaksbr }}</div>
-                    {% if note.can_manage %}<div class="text-note-actions">
+                    {% if note.can_manage %}<div class="actions text-note-actions">
                         <a class="secondary-button" href="{% url 'core:edit_text_note' text.pk note.pk %}">Edytuj</a>
                         <form method="post" action="{% url 'core:delete_text_note' text.pk note.pk %}" data-confirm="Usunąć tę notatkę?">{% include "core/includes/workflow_fields.html" %}<button class="secondary-button" type="submit">Usuń</button></form>
                     </div>{% endif %}
                 </details>
             {% empty %}
-                <div class="empty-text-notes">Nie dodano jeszcze żadnej notatki.</div>
+                <div class="empty-results-panel">Nie dodano jeszcze żadnej notatki.</div>
             {% endfor %}
         </div>
     </section>
@@ -593,9 +593,9 @@
 
     {% if can_cancel_repetition %}<form method="post" action="{% url 'core:cancel_workflow_repetition' text.pk open_repetition.pk %}" data-confirm="Anulować niepodjęte powtórzenie i przywrócić poprzedni stan?">{% csrf_token %}{% edit_version %}<button type="submit" class="secondary-button">Anuluj niepodjęte powtórzenie</button><p class="form-help">Dostępne, jeśli nie rozpoczęto ani nie zarezerwowano pracy.</p></form>{% endif %}
     {% if user.is_superuser or can_view_stage_history %}
-    <div class="text-detail-pair" data-detail-pair="credits-history">
+    <div class="two-columns text-detail-pair" data-detail-pair="credits-history">
         {% include "core/includes/text_credits.html" %}
-        {% if can_view_stage_history %}<details class="archived-stages" id="text-stage-history">
+        {% if can_view_stage_history %}<details class="card collapsible-card archived-stages" id="text-stage-history">
         <summary>
             <span>Historia etapów</span>
             <span class="dropdown-arrow" aria-hidden="true">▾</span>
@@ -677,16 +677,16 @@
     </details>{% endif %}
     </div>
     {% endif %}
-    <div class="text-detail-pair" data-detail-pair="assignment-history">
-    <details class="text-team" id="handoff-history"><summary><span>Historia przekazania pracy</span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary><div class="card-body">{% for item in handoffs %}<p>{{ item.stage.get_stage_type_display }}: {% firstof item.previous_assignment.assigned_to.get_full_name "Brak danych" %} → {% firstof item.new_assignment.assigned_to.get_full_name "Brak danych" %} · {{ item.created_at|date:"d.m.Y H:i" }}{% if item.reason %}<br>{{ item.reason }}{% endif %}</p>{% empty %}<p class="muted-text">Brak przekazań pracy.</p>{% endfor %}</div></details>
-    <details class="text-team" id="assignment-history">
+    <div class="two-columns text-detail-pair" data-detail-pair="assignment-history">
+    <details class="card collapsible-card text-team" id="handoff-history"><summary><span>Historia przekazania pracy</span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary><div class="card-body">{% for item in handoffs %}<p>{{ item.stage.get_stage_type_display }}: {% firstof item.previous_assignment.assigned_to.get_full_name "Brak danych" %} → {% firstof item.new_assignment.assigned_to.get_full_name "Brak danych" %} · {{ item.created_at|date:"d.m.Y H:i" }}{% if item.reason %}<br>{{ item.reason }}{% endif %}</p>{% empty %}<p class="muted-text">Brak przekazań pracy.</p>{% endfor %}</div></details>
+    <details class="card collapsible-card text-team" id="assignment-history">
         <summary>
             <span>Historia przypisań osób</span>
             <span class="dropdown-arrow" aria-hidden="true">▾</span>
         </summary>
         <div class="text-team-grid">
             {% for member in previous_team_members %}
-                <div class="text-team-member">
+                <div class="panel text-team-member">
                     <span class="text-team-member-role">{{ member.label }}{% if not member.archive_execution %} · przebieg {{ member.workflow_cycle }}{% endif %}</span>
                     <strong>{% firstof member.user.get_full_name "Nieuzupełnione dane" %}</strong>
                 </div>
@@ -696,8 +696,8 @@
     </div>
     {% if repeat_queue %}<section class="card"><div class="card-body"><h2>Kolejka powtórzeń</h2><ol class="credits-list">{% for item in repeat_queue %}<li>{{ item.get_stage_type_display }}: {% if item.is_released %}bieżący etap{% else %}oczekuje na poprzedni etap{% endif %}</li>{% endfor %}</ol></div></section>{% endif %}
     {% if can_manage_workflow and not is_withdrawn and not is_ready and text.anthology.status != "ready" or request.user.is_superuser and can_manage_workflow and not is_ready and not is_withdrawn %}
-    <div class="text-detail-pair" data-detail-pair="management">
-        {% if not is_extract_volume and can_manage_workflow and not is_withdrawn and not is_ready and text.anthology.status != "ready" %}<details class="text-management-card" id="text-withdraw">
+    <div class="two-columns text-detail-pair" data-detail-pair="management">
+        {% if not is_extract_volume and can_manage_workflow and not is_withdrawn and not is_ready and text.anthology.status != "ready" %}<details class="card collapsible-card" id="text-withdraw">
             <summary class="text-management-toggle"><span>Wycofaj tekst</span><span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
             <div class="text-management-content">
                     <div class="management-action">
@@ -711,14 +711,14 @@
 
                         <form method="post" action="{% url 'core:withdraw_text' text.pk %}">
                             {% include "core/includes/workflow_fields.html" %}
-                            <button type="submit" class="withdraw-text-button" data-confirm="Wycofać tekst z procesu? Dalsza praca w tym cyklu zostanie zablokowana.">
+                            <button type="submit" class="danger-button" data-confirm="Wycofać tekst z procesu? Dalsza praca w tym cyklu zostanie zablokowana.">
                                 Wycofaj tekst z procesu
                             </button>
                         </form>
                     </div>
             </div>
         </details>{% endif %}
-        {% if request.user.is_superuser and can_manage_workflow and not is_ready and not is_withdrawn %}<details class="text-management-card work-handoff-card" id="text-handoff">
+        {% if request.user.is_superuser and can_manage_workflow and not is_ready and not is_withdrawn %}<details class="card collapsible-card work-handoff-card" id="text-handoff">
             <summary class="text-management-toggle">
                 <span>Przekazanie pracy</span>
                 <span class="dropdown-arrow" aria-hidden="true">▾</span>

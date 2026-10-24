@@ -56,11 +56,11 @@
 {% if rows %}<div class="table-container"><table class="data-table site-catalog-table" data-pagination="off">
 <thead><tr><th>Antologia</th><th>CMS</th><th>Adres</th><th>Opowiadania</th><th>Włączona</th><th>Aktualizacja</th></tr></thead>
 <tbody>{% for row in rows %}<tr id="katalog-{{ row.item.pk }}"{% if not row.item.is_enabled %} class="is-disabled"{% endif %}>
-<td><a href="{% url 'admin:core_sitecataloganthology_change' row.item.pk %}">{{ row.item.display_title }}</a>{% if row.novel %} <span class="badge site-www-badge-manual">powieść</span>{% endif %}</td>
+<td><a href="{% url 'admin:core_sitecataloganthology_change' row.item.pk %}">{{ row.item.display_title }}</a>{% if row.novel %} <span class="badge is-info">powieść</span>{% endif %}</td>
 <td>{% if row.item.anthology_id %}tak{% else %}<span class="muted-text">nie</span>{% endif %}</td>
 <td>{% if row.item.url %}<a href="{{ row.item.url }}" rel="noopener">{{ row.item.url|cut:"https://fantazmaty.pl" }}</a>{% else %}<span class="site-www-alert">brak</span>{% endif %}</td>
 <td>{{ row.stories }}{% if row.item.anthology_id and not row.novel and row.linked_stories != row.stories %} <span class="muted-text">(z CMS-u: {{ row.linked_stories }})</span>{% endif %}</td>
-<td>{% if row.item.is_enabled %}tak{% else %}<span class="badge site-www-badge-off">wyłączona</span>{% endif %}</td>
+<td>{% if row.item.is_enabled %}tak{% else %}<span class="badge is-warning">wyłączona</span>{% endif %}</td>
 <td>{% if not row.blocked %}<a class="secondary-button" href="{% url 'core:site_catalog_update' row.item.pk %}">Sprawdź aktualizacje</a>{% else %}<button type="button" class="secondary-button" disabled title="{{ row.blocked }}">Sprawdź aktualizacje</button>{% endif %}</td>
 </tr>{% endfor %}</tbody></table></div>{% else %}<p>Katalog jest pusty. Dodaj antologię z CMS-u albo wpisy w panelu administracyjnym.</p>{% endif %}
 </div></section>

@@ -1,9 +1,21 @@
 /* Programy: Odkurzacz, konwerter, powtórzenia, postęp zadań w tle i słownik zamian. */
 
+/* Karta programu – także strona wyniku zadania i wysyłka plików autorom (section zamiast details). */
 .program-tool {
-    max-width: 960px;
+    max-width: var(--content-narrow-width);
     margin: var(--space-4) 0;
     padding: 0;
+}
+
+/* Wnętrze karty: bloki (formularz, komunikaty, wynik, stopka) jeden pod drugim w stałych odstępach. */
+.program-tool > .card-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+}
+
+.program-tool > .card-body > * {
+    margin: 0;
 }
 
 /* Nagłówek karty: krótki tytuł, jedno zdanie opisu i strzałka po prawej. */
@@ -33,17 +45,18 @@
     grid-column: 2;
 }
 
-.program-tool[open] > summary .dropdown-arrow {
-    transform: rotate(180deg);
-}
-
 .program-page-error {
-    max-width: 960px;
+    max-width: var(--content-narrow-width);
 }
 
 .odkurzacz form {
     display: grid;
     gap: var(--space-4);
+}
+
+/* Odstępy w formularzu wyznacza siatka (np. kroki wysyłki autorom: nagłówek, opis, pola i przyciski). */
+.odkurzacz form > :is(h2, p, .form-field) {
+    margin: 0;
 }
 
 .odkurzacz fieldset {
@@ -212,10 +225,6 @@
     gap: var(--space-2);
 }
 
-.odkurzacz-actions[hidden] {
-    display: none;
-}
-
 /* Reguły w zwartej siatce kolumn (3 na komputerze, 2 na tablecie, 1 na telefonie). */
 .odkurzacz-rules {
     display: grid;
@@ -268,10 +277,6 @@
     margin-left: var(--space-5);
 }
 
-.program-suboption[hidden] {
-    display: none;
-}
-
 .repetitions-fields {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
@@ -305,7 +310,6 @@
     align-items: baseline;
     justify-content: space-between;
     gap: var(--space-2) var(--space-4);
-    margin-top: var(--space-4);
     padding-top: var(--space-3);
     border-top: 1px solid var(--border);
 }
@@ -434,31 +438,6 @@
     margin: 0;
 }
 
-.program-progress[hidden],
-.program-progress > [hidden] {
-    display: none;
-}
-
-/* Strona zadania i wysyłka autorom: bloki karty jeden pod drugim w stałych odstępach. */
-:is(.program-job-status, .split-mailing) .card-body {
-    display: grid;
-    gap: var(--space-4);
-}
-
-:is(.program-job-status, .split-mailing) .card-body > * {
-    margin: 0;
-}
-
-/* Krok wysyłki (formularz, lista kontrolna, mail testowy): nagłówek, opis, pola i przyciski. */
-.split-mailing-step {
-    display: grid;
-    gap: var(--space-3);
-}
-
-.split-mailing .split-mailing-step > :is(h2, p, .form-field) {
-    margin: 0;
-}
-
 .program-images {
     font-size: var(--font-size-lg);
     font-weight: 600;
@@ -521,7 +500,7 @@
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--space-4);
-    max-width: 960px;
+    max-width: var(--content-narrow-width);
 }
 
 .replacement-form .form-field-wide {
@@ -533,12 +512,12 @@
 }
 
 .replacement-source {
-    font-family: var(--font-mono, monospace);
+    font-family: var(--font-mono);
     overflow-wrap: anywhere;
 }
 
 .replacement-inactive {
-    opacity: .6;
+    opacity: 0.6;
 }
 
 /* Scalanie DOCX: lista wybranych plików w kolejności scalania. */
@@ -561,7 +540,6 @@
 .program-credits-all {
     display: grid;
     gap: var(--space-2);
-    margin-top: var(--space-4);
 }
 
 .program-credits-all .program-label-row > label {
@@ -583,7 +561,6 @@
 .program-credits-list {
     display: grid;
     gap: var(--space-3);
-    margin: var(--space-4) 0 0;
     padding: 0;
     list-style: none;
 }

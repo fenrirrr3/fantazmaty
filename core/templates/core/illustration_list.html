@@ -3,7 +3,7 @@
 {% block title %}Ilustracje | Fantazmaty CMS{% endblock %}
 
 {% load static %}
-{% block extra_css %}{{ block.super }}<link rel="stylesheet" href="{% static 'core/illustrations.css' %}"><link rel="stylesheet" href="{% static 'core/dialogs.css' %}">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/illustrations.css' %}">{% endblock %}
 {% block content %}
     <header class="page-header">
         <h1 class="page-title">Ilustracje</h1>
@@ -13,7 +13,7 @@
         </p>
     </header>
 
-    <section class="filters-card" aria-label="Filtry ilustracji">
+    <section class="details-card filters-card" aria-label="Filtry ilustracji">
         <form
             method="get"
             action="{% url 'illustrations:illustration_list' %}"
@@ -56,12 +56,12 @@
                 </select>
             </div>
 
-            <div class="illustration-public-actions">
-                <a class="secondary-button illustration-public-button" href="{% url 'illustrations:external_illustrations' %}" target="_blank" rel="noopener noreferrer" title="Otwórz w nowej karcie">Zewnętrzne ilustracje</a>
+            <div class="actions illustration-public-actions">
+                <a class="accent-button" href="{% url 'illustrations:external_illustrations' %}" target="_blank" rel="noopener noreferrer" title="Otwórz w nowej karcie">Zewnętrzne ilustracje</a>
                 {% if can_manage_directory %}<a class="secondary-button" href="?edit_public_link=1" data-dialog-open="public-illustration-link">Link GDrive</a>{% endif %}
             </div>
             <div class="illustration-filter-bottom">
-            <div class="filter-actions">
+            <div class="actions filter-actions">
                 <button type="submit" class="primary-button">Filtruj</button>
                 <a
                     href="{% url 'illustrations:illustration_list' %}"
@@ -80,7 +80,7 @@
         <h2 id="public-link-heading">Wspólny link GDrive</h2>
         <p>Ten sam link będzie publicznie widoczny przy każdym opowiadaniu w Zewnętrznych ilustracjach. Puste pole usuwa link z tabeli.</p>
         <form method="post" action="{% url 'illustrations:illustration_list' %}">{% csrf_token %}{{ public_link_form.as_p }}
-            <div class="recruitment-actions"><button class="primary-button" type="submit">Zapisz link</button><a class="secondary-button" href="{% url 'illustrations:illustration_list' %}" data-dialog-close>Anuluj</a></div>
+            <div class="actions recruitment-actions"><button class="primary-button" type="submit">Zapisz link</button><a class="secondary-button" href="{% url 'illustrations:illustration_list' %}" data-dialog-close>Anuluj</a></div>
         </form>
     </dialog>{% endif %}
 

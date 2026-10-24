@@ -38,13 +38,6 @@
     gap: var(--space-4);
 }
 
-.site-www-section {
-    padding: var(--space-4);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    background: var(--surface-alt);
-}
-
 /* Wyłączony dział: wyszarzony, ale widoczny – żeby było wiadomo, co nie trafia na stronę. */
 .site-www-section.is-disabled {
     opacity: 0.6;
@@ -74,16 +67,6 @@
     flex-wrap: wrap;
     gap: var(--space-2);
     margin: 0;
-}
-
-.site-www-badge-off {
-    --badge-bg: var(--warning-light);
-    --badge-fg: var(--warning);
-}
-
-.site-www-badge-manual {
-    --badge-bg: var(--primary-light);
-    --badge-fg: var(--primary);
 }
 
 .site-www-groups {
@@ -193,14 +176,14 @@
     overflow-wrap: anywhere;
 }
 
-@media (max-width: 760px) {
+@media screen and (max-width: 760px) {
     .site-www-group ul,
     .site-catalog-warning-list ul {
         columns: 1;
     }
 }
 
-@media (max-width: 480px) {
+@media screen and (max-width: 480px) {
     .site-www-section {
         padding: var(--space-3);
     }

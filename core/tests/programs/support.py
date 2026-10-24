@@ -387,7 +387,7 @@ def tracked_changes_document():
     document = Document()
     paragraph = document.add_paragraph()
     paragraph.add_run('Ala  ma ').bold = True
-    paragraph.add_run('kota...\tPotem pickupami jechał.').italic = True
+    paragraph.add_run('kota...\tPotem karnistrami jechał.').italic = True
     add_bookmark(paragraph, '_Hlk1', ' Ona  wie.')
     add_tracked_insertion(paragraph, 'Dawna  wstawka')
     for text in ('', '  ', '\t', ''):
@@ -488,3 +488,90 @@ def add_leading_break(paragraph, kind='page'):
     paragraph._p.insert(1 if paragraph._p.pPr is not None else 0,
                         parse_xml(f'<w:r {nsdecls("w")}><w:br w:type="{kind}"/></w:r>'))
     return paragraph
+
+
+LINKED_IMAGE = 'file:///C:/Obrazy/zdjecie.jpg'
+HYPERLINK_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink'
+
+
+def docx_with_linked_images(heading=False):
+    """DOCX z obrazami połączonymi z plikami zewnętrznymi (relacje obrazów z TargetMode="External").
+
+    Obrazy tylko połączone (7): rysunek wp:inline i wp:anchor z a:blip r:link, kształt VML (v:imagedata r:id
+    z o:href), pole tekstowe z obrazem w mc:Choice i zapasowym VML (liczone raz), obraz w nagłówku, w stopce
+    (VML) i w przypisie. Obraz osadzony i połączony w jednym a:blip (r:embed + r:link) – po usunięciu linku
+    zostaje osadzony. Hiperłącze zewnętrzne „strona” obrazem nie jest. heading – pierwszy akapit to
+    Nagłówek 1 (plik do podziału).
+    """
+    from docx.oxml import parse_xml
+    document = Document()
+    if heading:
+        document.add_heading('Opowiadanie', level=1)
+    document.add_paragraph('Przed obrazami.')
+    document.add_picture(png(20, 10))
+    linked = document.part.relate_to(LINKED_IMAGE, IMAGE_REL, is_external=True)
+    document.paragraphs[-1]._p.xpath('.//a:blip')[0].set(
+        '{http://schemas.openxmlformats.org/officeDocument/2006/relationships}link',
+        document.part.relate_to('file:///C:/Obrazy/oryginal.png', IMAGE_REL, is_external=True))
+    inline = PICTURE_DRAWING.format(id=7, rid=linked).replace('r:embed=', 'r:link=')
+    anchor = inline.replace('<wp:inline distT="0" distB="0" distL="0" distR="0">', (
+        '<wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="1" behindDoc="0" '
+        'locked="0" layoutInCell="1" allowOverlap="1"><wp:simplePos x="0" y="0"/><wp:positionH relativeFrom='
+        '"column"><wp:posOffset>0</wp:posOffset></wp:positionH><wp:positionV relativeFrom="paragraph">'
+        '<wp:posOffset>0</wp:posOffset></wp:positionV>')).replace('</wp:inline>', '</wp:anchor>').replace(
+        '<wp:docPr id="7" name="Obraz 7"/>', '<wp:wrapNone/><wp:docPr id="8" name="Obraz 8"/>')
+    vml = (f'<w:pict><v:shape style="width:10pt;height:10pt"><v:imagedata r:id="{linked}" o:href="{LINKED_IMAGE}" '
+           'o:title=""/></v:shape></w:pict>')
+    paragraph = document.add_paragraph('Obrazy: ')
+    for content in (inline, anchor, vml):
+        paragraph._p.append(parse_xml(f'<w:r {IMAGE_NAMESPACES}>{content}</w:r>'))
+    link = document.part.relate_to('https://example.test/', HYPERLINK_REL, is_external=True)
+    paragraph._p.append(parse_xml(f'<w:hyperlink {IMAGE_NAMESPACES} r:id="{link}"><w:r><w:t>strona</w:t></w:r>'
+                                  '</w:hyperlink>'))
+    box = (f'<w:p><w:r><w:t>Pole z obrazem</w:t></w:r><w:r>{PICTURE_DRAWING.format(id=9, rid=linked)}</w:r></w:p>'
+           ).replace('r:embed=', 'r:link=')
+    spare = f'<w:p><w:r><w:t>Pole z obrazem</w:t></w:r><w:r>{vml}</w:r></w:p>'
+    document.add_paragraph()._p.append(parse_xml(
+        f'<w:r {IMAGE_NAMESPACES}><mc:AlternateContent><mc:Choice Requires="wps"><w:drawing><wp:inline>'
+        '<wp:docPr id="10" name="Pole"/><a:graphic><a:graphicData uri="http://schemas.microsoft.com/office/word/2010/'
+        f'wordprocessingShape"><wps:wsp><wps:txbx><w:txbxContent>{box}</w:txbxContent></wps:txbx></wps:wsp>'
+        '</a:graphicData></a:graphic></wp:inline></w:drawing></mc:Choice><mc:Fallback><w:pict><v:shape><v:textbox>'
+        f'<w:txbxContent>{spare}</w:txbxContent></v:textbox></v:shape></w:pict></mc:Fallback></mc:AlternateContent>'
+        '</w:r>'))
+    section = document.sections[0]
+    for story, text, content in ((section.header, 'Nagłówek ', PICTURE_DRAWING.format(id=11, rid='{rid}').replace(
+            'r:embed=', 'r:link=')), (section.footer, 'Stopka ', vml.replace(linked, '{rid}'))):
+        story.paragraphs[0].text = text
+        rid = story.part.relate_to(LINKED_IMAGE, IMAGE_REL, is_external=True)
+        story.paragraphs[0]._p.append(parse_xml(f'<w:r {IMAGE_NAMESPACES}>{content.replace("{rid}", rid)}</w:r>'))
+    raw, output = with_footnote(document, 'Przypis z obrazem'), BytesIO()
+    with ZipFile(raw) as source, ZipFile(output, 'w', ZIP_DEFLATED) as target:
+        for item in source.infolist():
+            data = source.read(item.filename)
+            if item.filename == 'word/footnotes.xml':
+                data = data.replace(b'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"',
+                                    IMAGE_NAMESPACES.encode())
+                data = data.replace(b'Przypis z obrazem</w:t></w:r>', b'Przypis z obrazem</w:t></w:r><w:r>' + (
+                    PICTURE_DRAWING.format(id=12, rid='rIdNoteImage').replace('r:embed=', 'r:link=').encode())
+                    + b'</w:r>')
+            target.writestr(item, data)
+        target.writestr('word/_rels/footnotes.xml.rels', (
+            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.'
+            f'openxmlformats.org/package/2006/relationships"><Relationship Id="rIdNoteImage" Type="{IMAGE_REL}" '
+            f'Target="{LINKED_IMAGE}" TargetMode="External"/></Relationships>'))
+    output.seek(0)
+    return output
+
+
+def external_images(stream):
+    """Relacje obrazów z TargetMode="External" we wszystkich częściach pakietu: [(plik .rels, adres)]."""
+    from lxml import etree
+    found = []
+    with ZipFile(stream) as archive:
+        for name in archive.namelist():
+            if name.endswith('.rels'):
+                for relationship in etree.fromstring(archive.read(name)):
+                    if relationship.get('TargetMode') == 'External' and relationship.get('Type').endswith('/image'):
+                        found.append((name, relationship.get('Target')))
+    stream.seek(0)
+    return found

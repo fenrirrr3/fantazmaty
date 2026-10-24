@@ -1,24 +1,24 @@
 {% extends "core/base.html" %}{% load static %}
 {% block title %}Pobieranie próbek | Fantazmaty CMS{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'core/recruitment.css' %}"><link rel="stylesheet" href="{% static 'core/intake.css' %}">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'core/recruitment.css' %}">{% endblock %}
 {% block content %}
 <header class="page-header"><h1 class="page-title">Pobieranie próbek</h1></header>
-<p class="recruitment-actions"><a class="secondary-button" href="{% url 'core:recruitment_list' %}">Rekrutacja</a>{% if user.is_superuser %}<a class="secondary-button" href="{% url 'admin:core_mailboxconnection_changelist' %}?purpose__exact=recruitment">Ustawienia skrzynki</a>{% endif %}</p>
+<p class="actions recruitment-actions"><a class="secondary-button" href="{% url 'core:recruitment_list' %}">Rekrutacja</a>{% if user.is_superuser %}<a class="secondary-button" href="{% url 'admin:core_mailboxconnection_changelist' %}?purpose__exact=recruitment">Ustawienia skrzynki</a>{% endif %}</p>
 <section class="card recruitment-mail-card"><div class="card-body">
 {% if error %}<p class="message error" role="alert">{{ error }}</p>{% endif %}
 {% if automatic_fetch %}<p class="muted-text">Nagłówki pobrane automatycznie: {{ automatic_fetch|date:"j E Y, H:i" }}.</p>{% endif %}
 {% if automatic_error %}<p class="form-warning" role="status">Nocne pobieranie nagłówków ({{ automatic_error_at|date:"j E Y, H:i" }}) nie powiodło się: {{ automatic_error }}</p>{% endif %}
 {% if mailbox %}<p>Skrzynka: {{ mailbox.name }} · {{ mailbox.folder }}</p>
 <form method="post" data-recruitment-samples>{% csrf_token %}
-<div class="recruitment-preview-grid">
-    <section class="recruitment-role-panel" aria-label="Wybór roli">
+<div class="two-columns">
+    <section class="panel is-muted recruitment-role-panel" aria-label="Wybór roli">
         <fieldset class="filter-field recruitment-mail-roles" data-recruitment-roles><legend class="form-label">{{ form.roles.label }}</legend>
             <div class="recruitment-role-options">{% for checkbox in form.roles %}<label for="{{ checkbox.id_for_label }}">{{ checkbox.tag }} <span>{{ checkbox.choice_label }}</span></label>{% endfor %}</div>
             {{ form.roles.errors }}<p class="muted-text">{{ form.roles.help_text }}</p></fieldset>
         <div class="recruitment-date-row"><div class="mailbox-options"><label class="mailbox-option">{{ form.show_downloaded }}<span>{{ form.show_downloaded.label }}</span></label><div class="mailbox-header-action"><button class="primary-button" type="submit" name="action" value="headers">Pobierz nagłówki od początku</button></div></div>
 {% include "core/includes/mailbox_date.html" %}</div>
     </section>
-    <section class="recruitment-preview-panel" aria-label="Treść zaznaczonej wiadomości" aria-busy="false" data-mail-preview>
+    <section class="panel is-muted recruitment-preview-panel" aria-label="Treść zaznaczonej wiadomości" aria-busy="false" data-mail-preview>
         <h2>Treść wiadomości</h2>
         {% include "core/includes/recruitment_preview.html" %}
     </section>
@@ -26,13 +26,13 @@
 {% if selection %}
 <input type="hidden" name="selection" value="{{ selection }}">
 <p>Dopasowane wiadomości: {{ total }}. Maksymalnie {{ max_samples }} wiadomości jednocześnie.</p>
-<div class="recruitment-operations-grid"><section class="sample-download-panel" aria-label="Pobranie załączników i dodanie do bazy"><h2>Pobieranie i zapis</h2>
-<div class="recruitment-actions recruitment-sample-actions">
+<div class="two-columns recruitment-operations-grid"><section class="panel sample-download-panel" aria-label="Pobranie załączników i dodanie do bazy"><h2>Pobieranie i zapis</h2>
+<div class="actions recruitment-actions recruitment-sample-actions">
 <button class="primary-button" name="action" value="download">Pobranie załączników</button>
 <button class="secondary-button" name="action" value="add">Dodanie do bazy</button>
 </div>
 <p class="muted-text">Oba działania zapisują zgłoszenia w Rekrutacji. Ponowny zapis nie tworzy duplikatów.</p>
-</section><section class="sample-edit-panel" aria-label="Edycja zaznaczonych zgłoszeń"><fieldset class="recruitment-bulk"><legend>Edycja zaznaczonych zgłoszeń</legend>
+</section><section class="panel sample-edit-panel" aria-label="Edycja zaznaczonych zgłoszeń"><fieldset class="panel recruitment-bulk"><legend>Edycja zaznaczonych zgłoszeń</legend>
 <label>Przyjęty/Odrzucony {{ bulk_form.decision }}{{ bulk_form.decision.errors }}</label>
 <label>Powiadomiony {{ bulk_form.notified }}{{ bulk_form.notified.errors }}</label>
 <button class="secondary-button" name="action" value="bulk">Zastosuj do zaznaczonych</button>

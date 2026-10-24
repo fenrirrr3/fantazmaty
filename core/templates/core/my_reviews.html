@@ -3,8 +3,8 @@
 {% block title %}Moje recenzje | Fantazmaty CMS{% endblock %}
 {% block content %}
 <header class="page-header"><h1 class="page-title">Moje recenzje</h1><p class="page-description">Teksty przypisane ci do recenzji.</p></header>
-<nav class="my-texts-filters" aria-label="Widok moich recenzji">
-{% for value, label in review_views %}<a href="{% text_view_url value %}" class="my-texts-filter{% if selected_view == value %} is-active{% endif %}" {% if selected_view == value %}aria-current="page"{% endif %}>{{ label }}</a>
+<nav class="tabs" aria-label="Widok moich recenzji">
+{% for value, label in review_views %}<a href="{% text_view_url value %}" class="tab-link{% if selected_view == value %} is-active{% endif %}" {% if selected_view == value %}aria-current="page"{% endif %}>{{ label }}</a>
 {% endfor %}
 </nav>
 {% include "core/includes/text_filters.html" with compact_filters=True %}

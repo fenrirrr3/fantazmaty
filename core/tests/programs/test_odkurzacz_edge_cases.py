@@ -95,13 +95,13 @@ class PatternCheckTests(SimpleTestCase):
 class ReplacementDictionaryTests(SimpleTestCase):
     def test_first_entry_of_a_word_wins_and_unchanged_matches_are_not_counted(self):
         compiled = CompiledReplacements([
-            {'kind': 'word', 'source': 'pickup', 'target': 'pikap'},
-            {'kind': 'word', 'source': 'PICKUP', 'target': 'furgonetka'},
+            {'kind': 'word', 'source': 'tonic', 'target': 'tonik'},
+            {'kind': 'word', 'source': 'TONIC', 'target': 'napój'},
             {'kind': 'pattern', 'source': r'\bkot\b', 'target': 'kot', 'checked': True},
         ])
         record = {}
-        self.assertEqual(compiled.apply('Pickup i kot.', record), 'Pikap i kot.')
-        self.assertEqual(record, {('Pickup', 'Pikap'): 1})
+        self.assertEqual(compiled.apply('Tonic i kot.', record), 'Tonik i kot.')
+        self.assertEqual(record, {('Tonic', 'Tonik'): 1})
 
 
 class CleanDocxGapTests(SimpleTestCase):

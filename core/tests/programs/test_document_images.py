@@ -15,11 +15,11 @@ from docx.oxml.ns import nsdecls, qn
 from lxml import etree
 
 from core.services import document_conversion_worker as worker
-from core.services.document_images import force_polish, strip_images
+from core.services.document_images import force_polish, linked_images_note, strip_images, unlink_external_images
 
 from .support import (
-    IMAGE_NAMESPACES, docx_bytes, docx_with_images, footnote_text, saved, set_default_language, set_language,
-    with_footnote,
+    IMAGE_NAMESPACES, docx_bytes, docx_with_images, docx_with_linked_images, external_images, footnote_text, saved,
+    set_default_language, set_language, with_footnote,
 )
 
 R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
@@ -263,3 +263,79 @@ class WorkerImageTests(SimpleTestCase):
     def test_document_without_images_reports_zero(self):
         seen = self.run_main({'prepare': True}, BytesIO(docx_bytes()))
         self.assertEqual(seen['images'], {'removed_images': 0})
+
+    def test_linked_images_are_unlinked_before_every_program_and_counted_apart(self):
+        """Obrazy tylko połączone z plikami zewnętrznymi znikają razem z linkiem przed pracą programu i są liczone
+        osobno (linked_images); obraz osadzony i połączony traci link, a potem znika jak każdy obraz."""
+        seen = self.run_main({'prepare': True, 'clean': True, 'cleaner_rules': ['spaces']}, docx_with_linked_images())
+        self.assertStripped(seen['prepare'])
+        self.assertEqual(seen['images'], {'removed_images': 1, 'linked_images': 7})
+        self.assertEqual(external_images(BytesIO(seen['prepare'])), [])
+
+    def test_split_unlinks_images_and_keeps_embedded_ones(self):
+        """Podział nie usuwa obrazów, ale i tu link do pliku zewnętrznego znika (liczba w split.json); obraz
+        osadzony i połączony zostaje w pliku opowiadania jako osadzony."""
+        with TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            (directory / 'source.docx').write_bytes(docx_with_linked_images(heading=True).getvalue())
+            (directory / 'job.json').write_text(json.dumps({'formats': [], 'split': True, 'title': 'T'}))
+            with patch.object(sys, 'argv', ['worker', str(directory)]):
+                self.assertEqual(worker.main(), 0)
+            report = json.loads((directory / 'split.json').read_text())
+            self.assertEqual(report['linked_images'], 7)
+            with ZipFile(directory / 'document.zip') as archive:
+                story = BytesIO(archive.read(report['files'][0]))
+        self.assertEqual(external_images(story), [])
+        with ZipFile(story) as archive:
+            self.assertTrue([name for name in archive.namelist() if name.startswith('word/media/')])
+            body = archive.read('word/document.xml').decode()
+        self.assertIn('r:embed=', body)
+        self.assertNotIn('r:link=', body)
+
+
+
+class LinkedImageTests(SimpleTestCase):
+    """Decyzja właściciela: obraz połączony z plikiem zewnętrznym nie blokuje pliku – usuwamy sam link."""
+
+    def test_links_are_removed_and_only_linked_images_disappear(self):
+        """Obrazy tylko połączone (rysunek wp:inline i wp:anchor, VML, pole tekstowe liczone raz, nagłówek, stopka,
+        przypis) znikają; obraz osadzony i połączony zostaje bez r:link; hiperłącze zewnętrzne i tekst zostają,
+        w pakiecie nie ma odwołań bez relacji."""
+        source = docx_with_linked_images()
+        self.assertEqual(len(external_images(source)), 5)  # treść (2), nagłówek, stopka, przypisy
+        result, count = unlink_external_images(source)
+        self.assertEqual(count, 7)
+        self.assertEqual(external_images(result), [])
+        self.assertEqual(package_problems(result), [])
+        with ZipFile(result) as archive:
+            parts = {name: archive.read(name).decode() for name in archive.namelist() if name.endswith(('.xml', '.rels'))}
+        result.seek(0)
+        self.assertIn('https://example.test/', parts['word/_rels/document.xml.rels'])
+        self.assertFalse([name for name, xml in parts.items() if 'r:link=' in xml or 'o:href=' in xml])
+        self.assertEqual(parts['word/document.xml'].count('<a:blip '), 1)
+        self.assertEqual(parts['word/document.xml'].count('<pic:pic>'), 1)
+        for text in ('Pole z obrazem', 'strona'):
+            self.assertIn(text, parts['word/document.xml'])
+        self.assertIn('Przypis z obrazem', parts['word/footnotes.xml'])
+        document = Document(result)
+        self.assertEqual([paragraph.text for paragraph in document.paragraphs],
+                         ['Przed obrazami.', '', 'Obrazy: strona', ''])
+        self.assertEqual(document.sections[0].header.paragraphs[0].text, 'Nagłówek ')
+        self.assertEqual(document.sections[0].footer.paragraphs[0].text, 'Stopka ')
+        # Obraz osadzony usuwa dopiero strip_images (liczony jak każdy obraz).
+        self.assertEqual(strip_images(result)[1], 1)
+        # Dokument bez obrazów połączonych wraca bez zmian.
+        data = docx_with_images().getvalue()
+        unchanged, count = unlink_external_images(data)
+        self.assertEqual((unchanged.getvalue(), count), (data, 0))
+
+    def test_note_names_the_number_of_linked_images(self):
+        for count, expected in ((0, ''), (1, 'Usunięto 1 obraz połączony z plikiem zewnętrznym'),
+                                (3, 'Usunięto 3 obrazy połączone z plikami zewnętrznymi'),
+                                (5, 'Usunięto 5 obrazów połączonych z plikami zewnętrznymi'),
+                                (12, 'Usunięto 12 obrazów połączonych z plikami zewnętrznymi'),
+                                (22, 'Usunięto 22 obrazy połączone z plikami zewnętrznymi')):
+            with self.subTest(count=count):
+                note = linked_images_note(count)
+                self.assertEqual(note.split(' – ')[0], expected)
+                self.assertEqual(bool(note), bool(count))

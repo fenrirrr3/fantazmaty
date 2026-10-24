@@ -142,7 +142,7 @@ class TextTagsEditingTests(TaggedTextsFixture, TestCase):
                     self.assertEqual(forms[0].xpath(".//textarea/@name"), ["tags", "genre"])
                     self.assertEqual(len(forms[0].xpath('.//button[@type="submit"]')), 1)
                 self.assertContains(response, 'href="' + self.list + '"')
-                self.assertContains(response, "core/tags.")
+                self.assertContains(response, "core/texts.")
 
     def test_existing_rows_start_with_empty_tags_without_importing_genre(self):
         self.assertEqual(self.other.tags, "")

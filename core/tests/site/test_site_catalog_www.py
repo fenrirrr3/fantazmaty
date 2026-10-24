@@ -84,7 +84,7 @@ class SiteCatalogPageTests(CatalogSyncDataMixin, TestCase):
                          ['Sprawdź aktualizacje'])
         self.assertEqual(doc.xpath('//tr[@id="katalog-%d"]//button[@disabled]/@title' % self.unready.pk),
                          ['Antologia niegotowa – aktualizacja po ukończeniu antologii w CMS-ie.'])
-        self.assertEqual(doc.xpath('//tr[@id="katalog-%d"]//span[@class="badge site-www-badge-manual"]/text()'
+        self.assertEqual(doc.xpath('//tr[@id="katalog-%d"]//span[@class="badge is-info"]/text()'
                                    % self.unready.pk), ['powieść'])
         response = self.client.get(reverse('core:site_catalog_update', args=[self.unready.pk]), follow=True)
         self.assertContains(response, 'nie ma statusu „Gotowa”')

@@ -9,7 +9,8 @@ from django.http import HttpResponse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_http_methods
 from core.edit_policy import edit_policy
-from core.permissions import superuser_required, require_coordinator, require_team_member, is_team_member, is_coordinator, is_reviewer
+from core.permissions import (superuser_required, require_coordinator, require_superuser, require_team_member, is_team_member,
+    is_coordinator, is_reviewer, is_superuser)
 from core.supervision import unlinked_review_candidates, integrity_issues, anthology_checklist, anthology_credit_groups
 from core.assignment_integrity import AssignmentIntegrityFilters, AssignmentConflictTable, assignment_conflicts, assignment_conflict_details
 from core.pagination import paginate_items
@@ -113,7 +114,8 @@ def anthology_detail(request, anthology_id):
     forms_list = _task_forms(anthology) if coordinator else []
     cover_form = CompactCoverAssignmentForm(instance=anthology, prefix='cover') if coordinator else None
     new_person_form = NewTaskPersonForm(anthology=anthology, prefix='new-person') if coordinator else None
-    notifications_form = AnthologyNotificationsForm(instance=anthology, prefix='discord') if coordinator else None
+    # Powiadomienia Discord antologii zmienia tylko superuser; koordynator widzi ustawienie do odczytu.
+    notifications_form = AnthologyNotificationsForm(instance=anthology, prefix='discord') if is_superuser(request.user) else None
     if request.method == 'POST':
         if not coordinator:
             raise PermissionDenied
@@ -126,6 +128,8 @@ def anthology_detail(request, anthology_id):
         versioned = ('cover', 'tasks_and_cover', 'new_person', 'remove_person', 'block_recording', 'notifications')
         if action not in ('', *versioned):
             return HttpResponse('Nieznana operacja.', status=400)
+        if action == 'notifications':
+            require_superuser(request.user)
         if action in versioned and not request.POST.get('_edit_version'):
             return HttpResponse('Odśwież stronę i ponów zapis. Brak wersji formularza.', status=409)
         with transaction.atomic():

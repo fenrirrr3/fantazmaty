@@ -8,7 +8,7 @@
     "no-duplicate-selectors": true,
     "property-no-unknown": true,
     "selector-pseudo-class-no-unknown": true,
-    "selector-pseudo-element-no-unknown": true,
+    "selector-pseudo-element-no-unknown": [true, { "ignorePseudoElements": ["details-content"] }],
     "unit-no-unknown": true,
     "media-feature-name-value-allowed-list": {
       "max-width": ["480px", "760px", "950px", "1100px"],
@@ -31,7 +31,7 @@
     {
       "files": [
         "**/themes.css",
-        "**/admin-navigation.css",
+        "**/admin.css",
         "**/illustration-status.css",
         "**/pagination.css",
         "**/person-multiselect.css"

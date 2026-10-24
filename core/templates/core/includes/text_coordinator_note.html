@@ -20,12 +20,12 @@
                         {{ coordinator_note_form.coordinator_note }}
                         {{ coordinator_note_form.coordinator_note.errors }}
                     </div>
-                    <div class="general-notes-actions">
+                    <div class="actions form-actions">
                         <button type="submit" class="secondary-button">Zapisz</button>
                     </div>
                 </form>
             {% else %}
-                <div class="coordinator-note-readonly">{{ text.coordinator_note|linebreaksbr }}</div>
+                <div class="panel is-muted coordinator-note-readonly">{{ text.coordinator_note|linebreaksbr }}</div>
             {% endif %}
             {% if text.coordinator_note_updated_at %}<p class="form-help">Zapisano: {{ text.coordinator_note_updated_at|date:"d.m.Y H:i" }}</p>{% endif %}
         </div>
@@ -44,7 +44,7 @@
                         {{ coordinator_note_form.coordinator_note }}
                         {{ coordinator_note_form.coordinator_note.errors }}
                     </div>
-                    <div class="general-notes-actions">
+                    <div class="actions form-actions">
                         <button type="submit" class="secondary-button">Zapisz</button>
                     </div>
                 </form>

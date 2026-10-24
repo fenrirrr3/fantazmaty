@@ -46,6 +46,14 @@ PDF_CHARACTERS = str.maketrans({
 SCENE_BREAK_TEXT = '* * *'
 
 
+def add_document_font(pdf, font_dir, family='Document'):
+    """Rejestruje w fpdf2 dołączoną czcionkę Nimbus Roman (polskie znaki) w odmianach zwykłej, B, I i BI.
+
+    Katalog podaje wywołujący: program lokalny (tools/redaktor_docx) ma czcionki w innym miejscu."""
+    for style, suffix in (('', 'Regular'), ('B', 'Bold'), ('I', 'Italic'), ('BI', 'BoldItalic')):
+        pdf.add_font(family, style=style, fname=font_dir / f'NimbusRoman-{suffix}.ttf')
+
+
 def _plain_link_targets(root):
     """fpdf2 nie obsługuje zakładek ani odnośników wewnątrz dokumentu: zostaje sam tekst."""
     for link in root.xpath(".//a"):
@@ -457,8 +465,7 @@ def render_pdf(source, target, content, assets, title, document=None):
     def new_pdf(cls):
         pdf = cls(format=page_format)
         pdf.HTML2FPDF_CLASS = WordHTML
-        for style, suffix in (('', 'Regular'), ('B', 'Bold'), ('I', 'Italic'), ('BI', 'BoldItalic')):
-            pdf.add_font('Document', style=style, fname=font_dir / ('NimbusRoman-' + suffix + '.ttf'))
+        add_document_font(pdf, font_dir)
         return pdf
 
     pdf = new_pdf(WordPDF)

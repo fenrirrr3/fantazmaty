@@ -196,10 +196,10 @@ class TextNewNotesTests(TextFieldsTestData, TestCase):
         self.assertTrue(doc.xpath('//section[@id="text-notes"]'))
         marked = doc.xpath('//details[contains(concat(" ", @class, " "), " is-new ")]')
         self.assertEqual(len(marked), 1)
-        self.assertEqual(marked[0].xpath('.//span[@class="new-note-badge"]/text()'), ['Nowa'])
+        self.assertEqual(marked[0].xpath('.//span[@class="badge is-info"]/text()'), ['Nowa'])
         _, doc = self.visit(self.editor)
         self.assertFalse(self.alerts(doc))
-        self.assertFalse(doc.xpath('//*[contains(@class,"new-note-badge")]'))
+        self.assertFalse(doc.xpath('//details[contains(@class,"text-note")]//span[@class="badge is-info"]'))
 
     def test_which_notes_count_as_new(self):
         """Nowe są tylko cudze notatki (także z usuniętego konta) nowsze niż poprzednia wizyta;
@@ -275,4 +275,4 @@ class TextNewNotesTests(TextFieldsTestData, TestCase):
         notes = doc.xpath('//section[contains(@class,"text-notes-card")]//details')
         self.assertEqual(sorted(note.get('class') for note in notes), ['text-note', 'text-note is-important'])
         important = [note for note in notes if 'is-important' in note.get('class')][0]
-        self.assertEqual(important.xpath('.//span[@class="important-note-badge"]/text()'), ['Ważna'])
+        self.assertEqual(important.xpath('.//span[@class="badge is-danger"]/text()'), ['Ważna'])

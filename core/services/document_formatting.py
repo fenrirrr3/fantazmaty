@@ -1,4 +1,9 @@
-"""Normalize conversion typography without replacing text or inline markup."""
+"""Normalize conversion typography without replacing text or inline markup.
+
+Śledzone zmiany i komentarze zostają nietknięte. Poprzednie formatowanie zapisane w zmianach formatowania
+(w:rPrChange, w:pPrChange) jest ujednolicane tak samo jak obecne: zmiana pokazuje wtedy tylko to, co zmienił
+redaktor, a jej odrzucenie nie cofa ujednolicenia."""
+from copy import deepcopy
 from io import BytesIO
 from zipfile import ZipFile, ZIP_DEFLATED
 from docx import Document
@@ -110,6 +115,70 @@ def _heading_lookup(document):
     return is_heading_or_list
 
 
+def _schema_order(properties):
+    """Elementy właściwości w kolejności schematu, gdy wszystkie są znane – np. LibreOffice zapisuje w:pPrChange
+    przed w:rPr, a Word odrzuca taki dokument jako uszkodzony."""
+    sequence = _ORDER.get(properties.tag, ())
+    if any(child.tag not in sequence for child in properties):
+        return
+    ordered = sorted(properties, key=lambda child: sequence.index(child.tag))
+    if ordered != list(properties):
+        for child in ordered:
+            properties.append(child)
+
+
+def _normalize_paragraph(props, alignment, *, justify, margin_story, in_table, listed):
+    """Wyrównanie (justowanie), odstępy i wcięcie pierwszego wiersza we właściwościach akapitu."""
+    def child(tag):
+        return _child(props, "w:" + tag)
+
+    # Justujemy tylko tekst wyrównany do lewej lub bez wyrównania; środek, prawa
+    # strona i nagłówki/stopki (numer strony, tytuł) zostają jak w źródle.
+    if justify and not margin_story and not in_table and alignment in (None, 0):
+        child("jc").set(qn("w:val"), "both")
+    if not in_table:
+        spacing = child("spacing")
+        spacing.attrib.clear()
+        for key, value in dict(before="0", after="0", line="360", lineRule="auto").items():
+            spacing.set(qn("w:" + key), value)
+        child("contextualSpacing").set(qn("w:val"), "0")
+    if not in_table and not listed:
+        indent = child("ind")
+        for key in ("firstLineChars", "hanging", "hangingChars"):
+            indent.attrib.pop(qn("w:" + key), None)
+        indent.set(qn("w:firstLine"), "0" if alignment == 1 else "709")
+    _schema_order(props)
+
+
+def _normalize_run(run, rpr):
+    """Times New Roman 12 pt we właściwościach przebiegu (rpr – obecne albo poprzednie z w:rPrChange)."""
+    # _child zachowuje kolejność schematu (w:rPrChange na końcu), python-docx dopisałby w:rFonts za nią.
+    fonts = _child(rpr, "w:rFonts")
+    for key in list(fonts.attrib):
+        if key.endswith("Theme"):
+            del fonts.attrib[key]
+    if not _symbol_run(run, fonts):
+        for key in ("ascii", "hAnsi", "eastAsia", "cs"):
+            fonts.set(qn("w:" + key), "Times New Roman")
+    for tag in ("sz", "szCs"):
+        size = _child(rpr, "w:" + tag)
+        size.set(qn("w:val"), "24")
+    _schema_order(rpr)
+
+
+def _previous_properties(owner, change, tag):
+    """Poprzednie właściwości ze zmiany formatowania (tworzone, gdy edytor ich nie zapisał – np. LibreOffice
+    zapisuje pusty w:pPrChange)."""
+    node = owner.find(qn(change))
+    if node is None:
+        return None
+    properties = node.find(qn(tag))
+    if properties is None:
+        properties = OxmlElement(tag)
+        node.append(properties)
+    return properties
+
+
 def normalize_docx(source, *, justify=False):
     source.seek(0)
     document = Document(source)
@@ -142,46 +211,26 @@ def normalize_docx(source, *, justify=False):
                 heading = _heading_lookup(document)
                 for element in tree.iter(qn("w:p")):
                     paragraph = Paragraph(element, document)
-                    alignment = _alignment(paragraph)
                     props = element.get_or_add_pPr()
                     # Komórki tabel zachowują swój układ; listy i nagłówki zachowują wcięcia
                     # (wcięcie listy pochodzi z numeracji, a akapit by je nadpisał).
-                    in_table = any(parent.tag == qn("w:tc") for parent in element.iterancestors())
-                    listed = heading(paragraph)
-
-                    def child(tag):
-                        return _child(props, "w:" + tag)
-
-                    # Justujemy tylko tekst wyrównany do lewej lub bez wyrównania; środek, prawa
-                    # strona i nagłówki/stopki (numer strony, tytuł) zostają jak w źródle.
-                    if justify and not margin_story and not in_table and alignment in (None, 0):
-                        child("jc").set(qn("w:val"), "both")
-                    if not in_table:
-                        spacing = child("spacing")
-                        spacing.attrib.clear()
-                        for key, value in dict(
-                            before="0", after="0", line="360", lineRule="auto"
-                        ).items():
-                            spacing.set(qn("w:" + key), value)
-                        child("contextualSpacing").set(qn("w:val"), "0")
-                    if not in_table and not listed:
-                        indent = child("ind")
-                        for key in ("firstLineChars", "hanging", "hangingChars"):
-                            indent.attrib.pop(qn("w:" + key), None)
-                        indent.set(qn("w:firstLine"), "0" if alignment == 1 else "709")
+                    options = dict(justify=justify, margin_story=margin_story,
+                                   in_table=any(parent.tag == qn("w:tc") for parent in element.iterancestors()))
+                    previous = _previous_properties(props, "w:pPrChange", "w:pPr")
+                    if previous is not None:
+                        # Poprzednie formatowanie akapitu: wyrównanie i lista według niego samego.
+                        before = OxmlElement("w:p")
+                        before.append(deepcopy(previous))
+                        before = Paragraph(before, document)
+                        _normalize_paragraph(previous, _alignment(before), listed=heading(before), **options)
+                    _normalize_paragraph(props, _alignment(paragraph), listed=heading(paragraph), **options)
                     # Includes hyperlinks and runs inside other inline containers.
                     for run in element.iter(qn("w:r")):
                         rpr = run.get_or_add_rPr()
-                        fonts = rpr.get_or_add_rFonts()
-                        for key in list(fonts.attrib):
-                            if key.endswith("Theme"):
-                                del fonts.attrib[key]
-                        if not _symbol_run(run, fonts):
-                            for key in ("ascii", "hAnsi", "eastAsia", "cs"):
-                                fonts.set(qn("w:" + key), "Times New Roman")
-                        for tag in ("sz", "szCs"):
-                            size = _child(rpr, "w:" + tag)
-                            size.set(qn("w:val"), "24")
+                        _normalize_run(run, rpr)
+                        previous = _previous_properties(rpr, "w:rPrChange", "w:rPr")
+                        if previous is not None:
+                            _normalize_run(run, previous)
                 data = etree.tostring(tree, xml_declaration=True, encoding="UTF-8", standalone=True)
             outgoing.writestr(entry, data)
     source.seek(0)

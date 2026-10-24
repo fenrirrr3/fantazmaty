@@ -7,7 +7,7 @@
 <form method="post" class="notification-test-form">{% csrf_token %}
 <div class="module"><table class="notification-test-data">{{ form.as_table }}</table></div>
 <div class="module">
-<table style="width:100%">
+<table class="cms-full-table">
 <thead><tr><th>Zdarzenie</th><th>Kanał</th><th>Oznaczenie</th><th>Treści</th><th>Stan</th><th></th></tr></thead>
 <tbody>
 {% for b in buttons %}<tr>
@@ -15,7 +15,7 @@
 <td>{{ b.rule.channel|default:"– brak –" }}</td>
 <td>{{ b.rule.mention|default:"–" }}</td>
 <td>{{ b.rule.templates.all|length }}</td>
-<td>{% for problem in b.problems %}<div{% if forloop.first and not b.rule.enabled %} style="color:var(--error-fg);font-weight:bold"{% endif %}>{{ problem }}</div>{% empty %}włączone – działa{% endfor %}</td>
+<td>{% for problem in b.problems %}<div{% if forloop.first and not b.rule.enabled %} class="cms-error-text"{% endif %}>{{ problem }}</div>{% empty %}włączone – działa{% endfor %}</td>
 <td><button type="submit" name="trigger" value="{{ b.trigger }}" class="button">Wyślij test</button></td>
 </tr>{% endfor %}
 </tbody></table>
@@ -23,7 +23,7 @@
 {% if waiting %}<h2>Przypomnienia o tekstach bez chętnych (po 7, 14 i 21 dniach)</h2>
 <p class="help">Treść z ustawień <a href="{{ waiting_url }}">„{{ waiting }}”</a> ({{ waiting.templates.all|length }} treści, {% if waiting.enabled %}włączone{% else %}<strong>WYŁĄCZONE – test wysyła mimo to, ale codzienne przypomnienia nie</strong>{% endif %}), liczba dni z pola [dni] powyżej. Kanał i oznaczenie – jak w pierwszym powiadomieniu, chyba że przypomnienie ma własne.</p>
 <div class="module">
-<table style="width:100%">
+<table class="cms-full-table">
 <thead><tr><th>Przypomnienie po</th><th>Kanał</th><th>Oznaczenie</th><th></th></tr></thead>
 <tbody>
 {% for r in reminders %}<tr>

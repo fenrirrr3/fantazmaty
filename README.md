@@ -304,16 +304,37 @@ w stałej kolejności warstw:
 
 1. `tokens.css` – skale: odstępy 4/8/12/16/24/32/48 px (`--space-1…7`), rozmiary
    tekstu 12–24 px, interlinia 1,25 (nagłówki) i 1,5 (tekst), zaokrąglenia 4/8/12 px
-   i pigułka, wysokość kontrolek 36 px (małe 30 px), trzy cienie, pięć warstw `z-index`.
+   i pigułka, wysokość kontrolek 36 px (małe 30 px), trzy cienie, pięć warstw `z-index`,
+   wspólne wymiary układu (szerokość strony, węższa treść, kolumna tekstu w tabeli).
    Ładuje go także panel administracyjny.
 2. `themes.css` – kolory motywów (jasny, ciemny, „Jesieniara”), palety ról, wydruk.
+   Każdy token koloru użyty w komponentach ma wartość we wszystkich trzech motywach
+   (albo świadomie dziedziczy jasną, jak palety ról).
 3. `base.css` – reset i wygląd elementów HTML (pola, tabele, okna dialogowe).
 4. `layout.css` – nagłówek, menu boczne, obszar strony, stopka.
-5. `components.css` – przyciski (główny, zwykły, zatwierdzający, niebezpieczny + mały),
-   pola formularzy, odznaki, karty, wiersze przycisków, filtry, tabele, komunikaty.
+5. `components.css` – jedna klasa na komponent, warianty jako modyfikatory: przyciski
+   (`primary-`, `secondary-`, `success-`, `danger-`, `accent-button` + `small-button`),
+   pola (`form-field`, `checkbox-field`), wiersze przycisków (`actions`, `form-actions`),
+   filtry, układ dwóch kolumn (`two-columns`), karty (`card`, `details-card`, `card-body`,
+   `collapsible-card`, `panel` + `is-muted`, `section-header`), wytyczne stron zewnętrznych
+   (`guidelines` – przycisk w rzędzie `actions` rozwija panel z treścią i „Pobierz PDF”), odznaki (`badge` +
+   `is-info/is-success/is-warning/is-danger`, `stage-status`, `role-badge`), zakładki,
+   komunikaty, puste stany i tabele. Klasa strony obok komponentu (np.
+   `actions review-decision-actions`) dodaje tylko to, czym strona się różni.
 6. `pagination.css`, `illustration-status.css` – komponenty używane też w panelu.
-7. `pages.css` – reguły widoków bez własnego arkusza.
-8. Arkusze stron (`novels.css`, `recruitment.css`, …) w bloku `extra_css`.
+7. `pages.css` – widoki wspólne: logowanie, pulpit, wyszukiwarka, recenzje, formularze
+   etapów, zgłoszenia i poprawki, ludzie, urlopy, raporty.
+8. Arkusze sekcji w bloku `extra_css` (ładowane tylko na swoich stronach):
+   `texts.css` (karta tekstu, tagi, słownik tagów), `programs.css` (programy, wynik
+   zadania, wysyłka autorom, słownik zamian), `recruitment.css` (rekrutacja, skrzynki,
+   „Dodaj do recenzji”), `audiobooks.css` (audiobooki, korekta, zewnętrzne audiobooki,
+   audiodeskrypcje), `illustrations.css`, `anthology.css`, `novels.css`,
+   `post-layout.css`, `social-media.css`, `site-www.css` (Ekipa, Szukajka i Słuchaj WWW)
+   oraz widżet `person-multiselect.css` (także w panelu).
+
+Panel administracyjny ładuje `tokens.css`, `admin.css` (kolory motywów admina, nawigacja,
+pulpit, formularz osoby, klasy zamiast stylów inline) i `pagination.css`. Style inline
+(`style="…"`) w szablonach i w HTML-u generowanym w Pythonie zastępujemy klasami.
 
 Wartości spoza skal, `!important` i powtórzone selektory blokuje stylelint
 (`.stylelintrc.json`, zadanie `css` w CI):

@@ -1,4 +1,4 @@
-<form method="post" class="split-mailing-step">
+<form method="post">
     {% csrf_token %}<input type="hidden" name="batch" value="{{ batch_token }}">
     <h2>Mail testowy</h2>
     {% include "core/includes/form_field.html" with field=test_form.test_address %}

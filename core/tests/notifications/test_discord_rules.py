@@ -1440,11 +1440,11 @@ class AnthologyNotificationSettingTests(WorkflowTestDataMixin, TestCase):
 
 
 class AnthologyNotificationFormTests(AnthologyPageData, TestCase):
-    """Pole „Powiadomienia Discord” na stronie antologii (także Ekstraktów), na stronie powieści – dla koordynatora –
-    i w panelu admina antologii."""
+    """Pole „Powiadomienia Discord” na stronie antologii (także Ekstraktów), na stronie powieści i w panelu admina
+    antologii – zmienia je tylko superuser."""
 
     def save_on_page(self, book, value, user=None):
-        user = user or self.manager
+        user = user or self.admin
         self.client.force_login(user)
         if book.is_novel:
             return self.client.post(reverse('core:novel_detail', args=[book.pk]), {
@@ -1455,7 +1455,7 @@ class AnthologyNotificationFormTests(AnthologyPageData, TestCase):
             'discord-discord_notifications': value})
 
     def test_pages_save_setting(self):
-        """Koordynator zapisuje każde z trzech ustawień na stronie antologii, Ekstraktów i powieści."""
+        """Superuser zapisuje każde z trzech ustawień na stronie antologii, Ekstraktów i powieści."""
         books = {'antologia': self.book, 'Ekstrakty': Anthology.objects.create(title='Ekstrakty 9', is_extracts=True),
                  'powieść': Anthology.objects.create(title='Powieść', is_novel=True)}
         for case, book in books.items():
@@ -1464,16 +1464,45 @@ class AnthologyNotificationFormTests(AnthologyPageData, TestCase):
                     self.assertEqual(self.save_on_page(book, value).status_code, 302)
                     book.refresh_from_db()
                     self.assertEqual(book.discord_notifications, value)
-            with self.subTest(case, check='formularz widoczny dla koordynatora'):
+            with self.subTest(case, check='formularz widoczny dla superusera'):
                 url = reverse('core:novel_detail' if book.is_novel else 'core:anthology_detail', args=[book.pk])
                 self.assertContains(self.client.get(url), 'name="discord-discord_notifications"')
 
-    def test_only_coordinator_sees_and_saves_setting(self):
-        """Redaktor nie widzi pola i nie może go zapisać; zapis bez wersji formularza jest odrzucany."""
-        self.client.force_login(self.member)
-        self.assertNotContains(self.client.get(self.url), 'discord_notifications')
-        self.assertEqual(self.save_on_page(self.book, Setting.OFF, self.member).status_code, 403)
-        self.client.force_login(self.manager)
+    def test_only_superuser_changes_setting(self):
+        """Tabela uprawnień na stronie antologii, powieści i w panelu admina: formularz i zapis tylko dla superusera;
+        koordynator i koordynator rekrutacji widzą ustawienie do odczytu, redaktor – wcale. Zapis innych osób
+        kończy się 403 (panel admina – przekierowaniem do logowania) i nie zmienia wartości; zapis superusera
+        bez wersji formularza – 409."""
+        novel = Anthology.objects.create(title='Powieść', is_novel=True)
+        recruiter = create_member('anthology-recruiter', 'Koordynator rekrutacji')
+        people = {'superuser': (self.admin, 'formularz'), 'koordynator': (self.manager, 'odczyt'),
+                  'koordynator rekrutacji': (recruiter, 'odczyt'), 'redaktor': (self.member, None)}
+        for book in (self.book, novel):
+            page = reverse('core:novel_detail' if book.is_novel else 'core:anthology_detail', args=[book.pk])
+            for name, (user, view) in people.items():
+                with self.subTest(book.title, user=name):
+                    Anthology.objects.filter(pk=book.pk).update(discord_notifications=Setting.ALL)
+                    self.client.force_login(user)
+                    content = self.client.get(page).content.decode()
+                    self.assertEqual('name="discord-discord_notifications"' in content, view == 'formularz')
+                    self.assertEqual('Ustawienie: <strong>Włączone</strong>' in content, view == 'odczyt')
+                    self.assertEqual(self.save_on_page(book, Setting.OFF, user).status_code,
+                                     302 if view == 'formularz' else 403)
+                    book.refresh_from_db()
+                    self.assertEqual(book.discord_notifications, Setting.OFF if view == 'formularz' else Setting.ALL)
+        admin_url = reverse('admin:texts_anthology_change', args=[self.book.pk])
+        for name, (user, view) in people.items():
+            if view == 'formularz':
+                continue  # zapis superusera w adminie: test_admin_saves_setting
+            with self.subTest('panel admina', user=name):
+                self.client.force_login(user)
+                for response in (self.client.get(admin_url),
+                                 self.client.post(admin_url, {'title': self.book.title, 'discord_notifications': 'off'})):
+                    self.assertRedirects(response, f"{reverse('admin:login')}?next={admin_url}",
+                                         fetch_redirect_response=False)
+                self.book.refresh_from_db()
+                self.assertEqual(self.book.discord_notifications, Setting.ALL)
+        self.client.force_login(self.admin)
         response = self.client.post(self.url, {'action': 'notifications', 'discord-discord_notifications': 'off'})
         self.assertEqual(response.status_code, 409)
         self.book.refresh_from_db()

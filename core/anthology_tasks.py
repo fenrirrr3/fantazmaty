@@ -28,7 +28,7 @@ class CompactCoverAssignmentForm(CoverAssignmentForm):
 
 
 class AnthologyNotificationsForm(forms.ModelForm):
-    """Ustawienie „Powiadomienia Discord” na stronie antologii i powieści (koordynator)."""
+    """Ustawienie „Powiadomienia Discord” na stronie antologii i powieści – zmienia tylko superuser."""
 
     class Meta:
         model = Anthology

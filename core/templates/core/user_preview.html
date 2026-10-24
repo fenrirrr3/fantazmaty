@@ -9,7 +9,7 @@
     <form method="post" class="general-notes-form">
         {% csrf_token %}
         {{ form.as_p }}
-        <div class="general-notes-actions">
+        <div class="actions form-actions">
             <button type="submit" class="primary-button">Pokaż serwis jako wybrany użytkownik</button>
             <a href="{% url 'core:home' %}" class="secondary-button">Wróć do pulpitu</a>
         </div>

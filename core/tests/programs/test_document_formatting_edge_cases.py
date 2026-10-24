@@ -1,11 +1,11 @@
-"""Ujednolicanie formatowania: nieznane python-docx wyrównanie ze stylu, poziom konspektu wpisany w akapit
-i styl akapitu o błędnym typie."""
+"""Ujednolicanie formatowania: nieznane python-docx wyrównanie ze stylu, poziom konspektu wpisany w akapit,
+styl akapitu o błędnym typie i poprzednie formatowanie w zmianach formatowania (w:rPrChange, w:pPrChange)."""
 from django.test import SimpleTestCase
 from docx import Document
 from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
+from docx.oxml import OxmlElement, parse_xml
+from docx.oxml.ns import nsdecls, qn
 
 from core.services.document_formatting import normalize_docx
 
@@ -65,3 +65,42 @@ class FormattingGapTests(SimpleTestCase):
         fonts = Document(normalize_docx(saved(document))).paragraphs[0].runs[0]._r.rPr.rFonts
         self.assertIsNone(fonts.get(qn('w:asciiTheme')))
         self.assertEqual(fonts.get(qn('w:ascii')), 'Times New Roman')
+
+    def test_previous_formatting_of_tracked_changes_is_normalized_too(self):
+        """Poprzednie formatowanie zmiany dostaje to samo ujednolicenie (czcionka, odstępy, wcięcie), więc zmiana
+        pokazuje tylko pracę redaktora. Regresja: w:rFonts dopisywany za w:rPrChange (python-docx nie zna jej
+        miejsca w schemacie) – Word uznaje taki plik za uszkodzony; pusty w:pPrChange z LibreOffice dostaje w:pPr,
+        a jego miejsce przed w:rPr w w:pPr (zapis LibreOffice) jest poprawiane."""
+        change = f'w:id="1" w:author="Redaktor" {nsdecls("w")}'
+        cases = (
+            # nazwa, w:pPr akapitu, w:rPr przebiegu, oczekiwane dzieci w:pPr, w:rPr i poprzednich właściwości
+            ('sama zmiana formatowania znaków', '', f'<w:rPrChange {change}><w:rPr><w:i/></w:rPr></w:rPrChange>',
+             None, ['rFonts', 'sz', 'szCs', 'rPrChange'], ['rFonts', 'i', 'sz', 'szCs']),
+            ('zmiana akapitu z LibreOffice', f'<w:jc w:val="center"/><w:pPrChange {change}/><w:rPr/>', '',
+             ['spacing', 'ind', 'contextualSpacing', 'jc', 'rPr', 'pPrChange'], None,
+             ['spacing', 'ind', 'contextualSpacing']),
+        )
+        for label, paragraph_xml, run_xml, paragraph_children, run_children, previous_children in cases:
+            with self.subTest(label):
+                document = Document()
+                paragraph = document.add_paragraph()
+                run = paragraph.add_run('Tekst')
+                if paragraph_xml:
+                    properties = parse_xml(f'<w:pPr {nsdecls("w")}>{paragraph_xml}</w:pPr>')
+                    paragraph._p.insert(0, properties)
+                if run_xml:
+                    run._r.insert(0, parse_xml(f'<w:rPr {nsdecls("w")}>{run_xml}</w:rPr>'))
+                result = Document(normalize_docx(saved(document))).paragraphs[0]
+
+                def names(node):
+                    return [child.tag.split('}')[1] for child in node]
+
+                if paragraph_children is not None:
+                    self.assertEqual(names(result._p.pPr), paragraph_children)
+                    previous = result._p.pPr.find(f'{qn("w:pPrChange")}/{qn("w:pPr")}')
+                    self.assertEqual(previous.find(qn('w:ind')).get(qn('w:firstLine')), '709')
+                else:
+                    self.assertEqual(names(result.runs[0]._r.rPr), run_children)
+                    previous = result.runs[0]._r.rPr.find(f'{qn("w:rPrChange")}/{qn("w:rPr")}')
+                    self.assertEqual(previous.find(qn('w:rFonts')).get(qn('w:ascii')), 'Times New Roman')
+                self.assertEqual(names(previous), previous_children)

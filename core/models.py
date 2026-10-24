@@ -3,6 +3,7 @@ from django.db import models
 from django.utils import timezone
 from core.edit_versions import VersionedQuerySet
 from core.audiobook_validators import validate_mega_url
+from core.public_guidelines import guidelines_field
 from core.audiobook_models import Audiobook as Audiobook
 from core.audiobook_models import AudiobookStage as AudiobookStage
 from core.audiobook_models import AudioContributor as AudioContributor
@@ -27,10 +28,7 @@ class PublicAudiobookSettings(models.Model):
         validators=[validate_mega_url],
         help_text='Publiczny link wspólny dla opowiadań na stronie zewnętrznej.',
     )
-    guidelines = models.TextField(
-        'wytyczne', blank=True, default='', max_length=40000,
-        help_text='Tekst publiczny. Można go rozwinąć na stronie i pobrać jako TXT.',
-    )
+    guidelines = guidelines_field()
 
     class Meta:
         verbose_name = 'ustawienia zewnętrznych audiobooków'

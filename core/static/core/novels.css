@@ -1,3 +1,17 @@
+/* Powieści: lista, szczegóły powieści (przegląd, przypisania osób, rozdziały i dodawanie rozdziałów). */
+
+.novel-overview-grid {
+    margin-block: var(--space-5);
+}
+
+.novel-overview-grid-single {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.novel-overview-grid .card-body {
+    overflow-wrap: anywhere;
+}
+
 .novel-assignment-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -23,41 +37,16 @@
     margin-bottom: var(--space-5);
 }
 
+.novel-chapters {
+    margin-block: var(--space-5);
+}
+
 .novel-select-all {
     display: flex;
     align-items: center;
     gap: var(--field-gap);
-    margin-bottom: var(--space-4);
     margin-top: var(--space-5);
-}
-
-.novel-assignment-grid .person-select {
-    min-width: 0;
-}
-
-.novel-overview-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-5);
-    align-items: stretch;
-    margin-block: var(--space-5);
-}
-
-.novel-overview-grid > .card {
-    min-width: 0;
-    margin: 0;
-}
-
-.novel-overview-grid .card-body {
-    overflow-wrap: anywhere;
-}
-
-.novel-overview-grid-single {
-    grid-template-columns: minmax(0, 1fr);
-}
-
-.novel-chapters {
-    margin-block: var(--space-5);
+    margin-bottom: var(--space-4);
 }
 
 .novel-bulk-fields {
@@ -68,17 +57,13 @@
 }
 
 .novel-bulk-fields > .form-field {
+    align-content: start;
     min-width: 0;
     margin-bottom: 0;
-    align-content: start;
 }
 
 .novel-bulk-fields .lookup-status {
     margin-top: 0;
-}
-
-.novel-chapter-add .chapter-lengths-input {
-    min-height: 96px;
 }
 
 .novel-bulk-fields button {
@@ -86,19 +71,16 @@
     margin-bottom: var(--space-3);
 }
 
+.novel-chapter-add .chapter-lengths-input {
+    min-height: 96px;
+}
+
 .novel-status-action {
     margin-top: var(--space-5);
 }
 
 @media screen and (max-width: 760px) {
-    .novel-assignment-grid {
-        grid-template-columns: minmax(0, 1fr);
-    }
-
-    .novel-overview-grid {
-        grid-template-columns: minmax(0, 1fr);
-    }
-
+    .novel-assignment-grid,
     .novel-bulk-fields {
         grid-template-columns: minmax(0, 1fr);
     }

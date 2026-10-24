@@ -43,7 +43,8 @@ EDITORIAL_RULES = (
     ('reference_nbsp', 'Jedna zwykła spacja w zapisach: 2025 r., s. 15, nr 3'),
     ('reference_space', 'Brakująca spacja: 2025r., s.15, nr3, ok.5; błędne „nr.” → nr'),
     ('initials', 'Odstępy przy inicjałach i nazwisku'),
-    ('abbreviations', 'Usuń spacje wewnątrz skrótów: m. in. → m.in., t. j. → tj., t. zw. → tzw.'),
+    ('abbreviations', 'Usuń spacje wewnątrz skrótów: m. in. → m.in., t. j. → tj., t. zw. → tzw., '
+                      'n. p. m. → n.p.m., p. p. m. → p.p.m., p. n. e. → p.n.e.'),
     ('dates_times', 'Daty DD.MM.RRRR i godziny HH:MM (jednoznaczne zapisy)'),
     ('decimal', 'Przecinek dziesiętny przy jednostkach i kwotach'),
     ('digit_groups', 'Grupowanie dużych liczb spacją: 12 345'),
@@ -51,12 +52,29 @@ EDITORIAL_RULES = (
     ('pronouns_lower', 'Zaimki osobowe małą literą – poza początkiem zdania i akapitu'),
     ('user_word_corrections', 'Własne zamiany słownikowe (słownik zamian w CMS)'),
 )
-EDITORIAL_RULES += (('sentence_case', 'Wielka litera po . ? ! – z wyjątkami dla skrótów, liczb i dialogów'),
-                    ('empty_paragraphs', 'Wielokrotne puste akapity → jeden pusty akapit'))
+# Grupa „Ortografia 2026”: zmiany zasad pisowni obowiązujące od 1 stycznia 2026 r. (komunikat RJP
+# z 10 maja 2024 r., zmiany 3, 6, 9a, 10 i 11) – tylko zapisy rozpoznawalne bez rozumienia zdania.
+ORTHOGRAPHY_2026_RULES = (
+    ('by_separate', 'Ortografia 2026: -by osobno po spójnikach i partykułach (czyby → czy by, alebym → ale bym; '
+                    'aby, żeby, gdyby, jakby, niby bez zmian)'),
+    ('niby_quasi', 'Ortografia 2026: niby, quasi, pseudo łącznie przed małą literą, z łącznikiem przed wielką '
+                   '(niby-artysta → nibyartysta, quasiAnglia → quasi-Anglia)'),
+    ('prefix_hyphen', 'Ortografia 2026: łącznik po przedrostku przed wielką literą (superPolak → super-Polak, '
+                      'antyPiS → anty-PiS)'),
+    ('pol_compounds', 'Ortografia 2026: pół żartem, pół serio → półżartem, półserio; pół Polak, pół Szkot → '
+                      'pół-Polak, pół-Szkot („pół godziny” bez zmian)'),
+    ('nie_comparative', 'Ortografia 2026: „nie” łącznie ze stopniem wyższym i najwyższym (nie najlepszy → '
+                        'nienajlepszy, nie lepiej niż → nielepiej niż; zapisy sporne bez zmian)'),
+)
+ORTHOGRAPHY_2026_KEYS = frozenset(key for key, _ in ORTHOGRAPHY_2026_RULES)
+EDITORIAL_RULES += ORTHOGRAPHY_2026_RULES + (
+    ('sentence_case', 'Wielka litera po . ? ! – z wyjątkami dla skrótów, liczb i dialogów'),
+    ('empty_paragraphs', 'Wielokrotne puste akapity → jeden pusty akapit'))
 ALL_EDITORIAL_RULES = frozenset(key for key, _ in EDITORIAL_RULES)
 DEFAULT_EDITORIAL_RULES = ALL_EDITORIAL_RULES - {'pronouns_lower', 'user_word_corrections', 'empty_paragraphs'}
 # Formularz Odkurzacza zaznacza domyślnie także zaimki i zamiany słownikowe;
 # DEFAULT_EDITORIAL_RULES (bez nich) pozostaje dla automatycznego czyszczenia zgłoszeń.
+# Reguły „Ortografia 2026” są w obu zestawach (decyzja właściciela: pewne, domyślnie włączone).
 FORM_DEFAULT_EDITORIAL_RULES = ALL_EDITORIAL_RULES - {'empty_paragraphs'}
 # Decyzja właściciela: Odkurzacz nigdzie nie wstawia spacji nierozdzielających,
 # a istniejące (U+00A0, wąska U+202F, cyfrowa U+2007) zawsze zamienia na zwykłe spacje.
@@ -76,8 +94,9 @@ SEPARATOR_CHARS = frozenset('-–—*#~_=. \t')
 DOTTED_ACRONYM_RE = re.compile(r'(?<!\w)(?:S\.A\.|P\.S\.|P\.P\.S\.|U\.S\.A\.|N\.N\.|S\.J\.|S\.C\.|A\.D\.|R\.I\.P\.)(?!\w)')
 # Data z miesiącem rzymskim (5.X.2024) – chroniona jak data, bez zmiany zapisu.
 ROMAN_DATE_RE = re.compile(r'(?<![\w.])\d{1,2}\.[IVX]{1,4}\.\d{4}(?!\w)')
-# Skróty, po których zwykle stoi liczba (ok.5 → ok. 5); „nr” nie ma kropki.
-NUMBER_ABBREVIATIONS = r'(?:s|t|cz|poz|rozdz|art|ust|par|godz|str|ok|ur|zm)\.'
+# Skróty, po których zwykle stoi liczba (ok.5 → ok. 5, rys.3 → rys. 3); „nr” i „pkt” nie mają kropki.
+NUMBER_ABBREVIATIONS = (r'(?:(?:s|t|cz|poz|rozdz|art|ust|par|zd|godz|str|ok|ur|zm|zał|sygn|wyd|vol|'
+                        r'rys|ryc|il|fot|tab)\.|pkt)')
 MARKER_CLASS = '\U000F0000-\U000FFFFD'
 H = r'[ \u00a0\u202f\u2007]'
 LETTERS = 'A-Za-zĄĆĘŁŃÓŚŹŻąćęłńóśźż'
@@ -264,12 +283,13 @@ def _normalize_dates_times(text):
     return TIME_RE.sub(time_repl, text)
 
 
-# Własna lista użytkownika. To jawne zamiany redakcyjne, a nie ocena
-# poprawności przez słownik Worda. Niektóre formy mogą być poprawne
-# w innym znaczeniu; wyłączenie opcji wyłącza całą poniższą listę.
-# Warianty docelowe: pikap, przekonujący, oddziałujący.
-# Fleksja korzysta z jawnych końcówek, ponieważ model językowy nie musi
-# rozpoznawać lematów wyrazów zapisanych błędnie.
+# Własna lista użytkownika (lista właściciela). To jawne zamiany redakcyjne, a nie ocena
+# poprawności przez słownik Worda; wyłączenie opcji wyłącza całą poniższą listę.
+# Warianty docelowe: przekonujący, oddziałujący; „tere-fere” z łącznikiem (nie z półpauzą).
+# Fleksja korzysta z jawnych końcówek, ponieważ model językowy nie musi rozpoznawać lematów
+# wyrazów zapisanych błędnie. Gdy każdy wyraz zaczynający się od wadliwego tematu jest błędny
+# (absorbcja, absorbcyjny…), wzorzec bierze cały wyraz (\w*); gdy obok są poprawne wyrazy
+# (niedowierzanie, przysięgły, kreolski, Centkiewicz), końcówki są wyliczone.
 USER_WORD_EXACT = {
     'niechcąco': 'niechcący',
     'zaczym': 'za czym',
@@ -279,24 +299,86 @@ USER_WORD_EXACT = {
     'inąd': 'skądinąd',
     'wszechczasów': 'wszech czasów',
     'zapewnie': 'zapewne',
+    'dellarte': 'dell’arte',
+    'księżami': 'księżmi',
+    'oldboi': 'oldbojów',
+    # nabazgrać: nabazgrzę, nabazgrzesz… (decyzja właściciela; czas przeszły nabazgrał jest poprawny).
+    'nabazgram': 'nabazgrzę',
+    'nabazgrasz': 'nabazgrzesz',
+    'nabazgra': 'nabazgrze',
+    'nabazgramy': 'nabazgrzemy',
+    'nabazgracie': 'nabazgrzecie',
+    'nabazgrają': 'nabazgrzą',
 }
+# Końcówki rzeczownika żeńskiego na -ka (Azjatka, Mulatka…) po temacie bez „k” i końcówki przymiotnika.
+FEMININE_KA = r'k(?:a|i|ę|ą|o|om|ami|ach)|ce|ek'
+ADJECTIVE_ENDINGS = r'(?:y|a|e|ego|emu|ej|ą|ym|ymi|ych|i)'
 
 
-SENTENCE_ABBREVIATIONS = frozenset("""
-np. m.in. tj. tzn. tzw. itd. itp. ew. ewent. prawdop. przyp. dosł. przen.
-pot. właśc. zob. por. patrz. cyt. ww. jw. j.w. cd. cdn. c.d. c.d.n.
-p. prof. hab. doc. inż. lic. lek. med. wet. mec. adw. red. dyr. kier.
-zast. sekr. prez. min. amb. sen. jun. ks. o. s. św. bł. śp. ś.p.
-kard. abp. bp. oo. ss. gen. bryg. dyw. kpt. por. ppor. chor. sierż.
-plut. kpr. st. mł. szt. asp. kom. podkom. nadkom. insp. podinsp. nadinsp.
-ul. al. pl. os. bud. lok. m. woj. pow. gm. r. w. godz. tyg. mies. kw.
-ub. br. bm. n.e. p.n.e. ok. tys. szt. egz. poz. proc. maks. str. t.
-cz. rozdz. z. wyd. wydawn. oprac. przeł. tłum. il. rys. ryc. tab. fot.
-bibliogr. art. ust. lit. par. pol. ang. niem. fr. ros. łac. gr. wł.
-hiszp. czes. ukr. hist. daw. arch. żart. iron. pej. wulg. książk. poet.
-sp. sp.j. sp.k. sp.p. o.o. etc. ibid. sic. vs. dr. mgr. nr. mjr. płk. ppłk.
-ur. zm. ds. dot. dn. tel. temp. wg. nt. kl. tow. pn. pon. wt. śr. czw. pt. sob. niedz.
-""".split()) | frozenset(('z o.o.', 'sp. z o.o.', 'et al.', 'op. cit.'))
+# Skróty z kropką, po których zdanie zwykle trwa dalej. Kropki wewnątrz skrótu nie dostają spacji
+# (after_punct), po jego kropce nie wstawiamy wielkiej litery (sentence_case), a odsyłacz przypisu
+# zostaje za kropką skrótu (note_references). Wielkość liter nie ma znaczenia (dz.u. = Dz.U.), a skrót
+# wieloczłonowy pasuje także z odstępami (p. o., Dz. U.) – istniejący zapis zostaje bez zmian.
+# Podkreślnik to spacja w skrócie wielowyrazowym (z_o.o. = „z o.o.”). Wpis o kilku znaczeniach stoi
+# w jednej grupie (por. – porównaj i porucznik, pt. – pod tytułem i piątek).
+# Celowo pomijamy skróty równe wyrazom, którymi może kończyć się zdanie – po nich nowe zdanie dalej
+# dostaje wielką literę: kat., im., cel., nauk., prac., farm., miejsc., rzecz., czas., sport., bot.,
+# mat., praw., sąd., post., ser., aut., druk., map., sztab., marsz., pułk., bat., bomb., port., rum.,
+# nor., tur., serb., hol., bar., wyż., niż., hm., upadł., tir., a także pr. i hr. (PR, HR) oraz nazwy
+# miesięcy (lut., lip., lis., sie.). Pojedynczych liter (b., k., n., ż.) nie dopisujemy: po małej
+# literze z kropką sentence_case i tak nie zaczyna zdania.
+ABBREVIATION_GROUPS = (
+    ('ogólne', """
+        np. m.in. tj. tzn. tzw. itd. itp. in. inn. nast. poprz. ew. ewent. prawdop. ok. ca. ww. w.w. jw.
+        j.w. cd. cdn. c.d. c.d.n. zob. por. patrz. czyt. cyt. przyp. dot. odn. ds. nt. ws. wg. zał. odp.
+        uw. nb. wzgl. zw. zwł. zazw. ozn. zn. tel. wew. b.u. c.o. etc. vs. cf.
+    """),
+    ('tytuły, stopnie i funkcje', """
+        p. pp. ob. sz. szan. sz.p. prof. hab. doc. dr. mgr. inż. lic. lek. stom. dent. med. wet. mec. adw.
+        r.pr. dypl. nadzw. dziek. prodz. koresp. czł. kol. tow. red. dyr. wicedyr. kier. zast. przew. sekr.
+        prez. min. amb. sen. jun. asyst. ref. nacz. burm. p.o. w.z. z_up.
+    """),
+    ('kościelne', """
+        ks. o. oo. ss. św. śś. bł. śp. ś.p. kard. abp. bp. pw. p.w. prob. wik. kan. prał. diec. archidiec.
+        kośc. rz.-kat. gr.-kat. ewang. prawosł.
+    """),
+    ('wojskowe i służbowe', """
+        gen. adm. kontradm. wiceadm. bryg. dyw. płk. ppłk. mjr. kmdr. kpt. rtm. ppor. pchor. chor. st. mł.
+        sierż. wachm. ogn. plut. kpr. szer. szt. sekc. asp. kom. podkom. nadkom. insp. podinsp. nadinsp.
+    """),
+    ('adresowe', """
+        ul. al. pl. os. bud. bl. lok. m. pok. kl. wyb. bulw. skw. zauł. przys. woj. pow. gm. m.st. skr.
+        poczt. pn. pd. płn. płd. wsch. zach.
+    """),
+    ('firmy i instytucje', """
+        sp. sp.j. sp.k. sp.p. o.o. z_o.o. sp._z_o.o. s.c. likw. oddz. zakł. przeds. spółdz. stow. fund.
+        inst. akad. uniw. wydz.
+    """),
+    ('prawo i urzędy', """
+        art. ust. par. lit. zd. poz. k.c. k.k. k.p. k.w. k.m. k.p.a. k.p.c. k.p.k. k.p.w. k.r.o. k.r._i_o.
+        k.k.s. k.k.w. k.s.h. k.p.s.w. dz.u. dz.urz. m.p. t.j. jedn. późn. rozp. uchw. orz. wyr. zb. sygn.
+        l.dz. spr. prot. zarz. obw. cyw. karn. wiecz.
+    """),
+    ('bibliografia i wydawnictwa', """
+        s. str. t. tt. cz. rozdz. z. zesz. nr. vol. rocz. wyd. wydawn. nakł. oprac. przeł. tłum. przekł.
+        wst. posł. prow. popr. uzup. rozsz. przejrz. il. ilustr. rys. ryc. tab. tabl. wykr. fot. bibliogr.
+        dz. kk. b.d. b.m. b.m.w. b.r.w. i_n. ibid. sic. op._cit. loc._cit. et_al.
+    """),
+    ('czas i miary', """
+        r. w. b.r. ub.r. r.b. ub.m. bm. br. ub. n.e. p.n.e. godz. sek. tyg. mies. kw. pon. wt. śr. czw. pt.
+        sob. niedz. nd. ur. zm. dn. tys. proc. maks. egz. kpl. opak. temp. wys. dł. gł. obj. poj. n.p.m.
+        p.p.m.
+    """),
+    ('językowe', """
+        pot. posp. książk. podn. poet. przen. dosł. właśc. daw. przestarz. rzad. arch. hist. żart. iron.
+        pej. lekcew. wulg. ekspr. zdr. zdrobn. zgrub. środ. reg. gw. urz. techn. jęz. wym. lp. lm.
+        ndm. ndk. dk. przym. przysł. przyim. spój. wykrz. zaim. muz. zool. chem. fiz. biol. geogr. geol.
+        filoz. ekon. polit. rel. wojsk. lotn. szk. pol. ang. niem. fr. franc. ros. łac. gr. wł. hiszp.
+        czes. słow. ukr. białorus. łot. węg. fiń. szw. duń. bułg. chorw. hebr. chiń. stpol.
+    """),
+)
+SENTENCE_ABBREVIATIONS = frozenset(
+    entry.replace('_', ' ') for _, entries in ABBREVIATION_GROUPS for entry in entries.split())
 
 
 def _abbreviation_pattern(value):
@@ -313,12 +395,34 @@ def _abbreviation_pattern(value):
     return pattern
 
 
+def _abbreviation_alternatives(values):
+    """Wzorce skrótów pogrupowane według pierwszej litery, w grupie dłuższy przed krótszym (p.o. przed p.).
+
+    Przy kilkuset skrótach regex w każdym miejscu tekstu sprawdza wtedy kilkadziesiąt liter,
+    a nie wszystkie skróty po kolei.
+    """
+    groups = {}
+    for value in sorted(values, key=lambda x: (-len(x), x)):
+        groups.setdefault(value[0], []).append(_abbreviation_pattern(value[1:]))
+    return '|'.join(re.escape(first) + '(?:' + '|'.join(rest) + ')' for first, rest in sorted(groups.items()))
+
+
+# Ciąg pojedynczych liter z kropkami (n.p.m., k.p.c., U.S.A.) jest sprawdzany najpierw, żeby
+# jednoliterowy skrót z listy (p., s., w.) nie odcinał początku: p.p. zostaje, a nie „p. p.”.
 CAPITALIZATION_ABBREVIATION_RE = re.compile(
-    r'(?<![^\W\d])(?:' + '|'.join(
-        _abbreviation_pattern(value)
-        for value in sorted(SENTENCE_ABBREVIATIONS, key=lambda x: (-len(x), x))
-    ) + r')|\b(?:[' + UPPER + r']\.){2,}', re.IGNORECASE)
+    r'(?<![^\W\d])(?:\b(?:[' + UPPER + r']\.){2,}|' + _abbreviation_alternatives(SENTENCE_ABBREVIATIONS) + ')',
+    re.IGNORECASE)
 ABBREVIATION_RE = CAPITALIZATION_ABBREVIATION_RE
+# Reguła abbreviations: tylko jednoznaczne skróty, których rozstrzelony zapis jest błędem. „t.j.” przed
+# Dz.U. to tekst jednolity, a nie „tj.”. Pozostałe zapisy ze spacją (p. o., Dz. U., b. r.) zostają.
+ABBREVIATION_MERGES = tuple((re.compile(pattern), replacement) for pattern, replacement in (
+    (r'\bm\.' + H + r'*in\.', 'm.in.'),
+    (r'\bt\.' + H + r'*j\.(?!' + H + r'*[Dd]z\.)', 'tj.'),
+    (r'\bt\.' + H + r'*zw\.', 'tzw.'),
+    (r'\bn\.' + H + r'*p\.' + H + r'*m\.', 'n.p.m.'),
+    (r'\bp\.' + H + r'*p\.' + H + r'*m\.', 'p.p.m.'),
+    (r'\bp\.' + H + r'*n\.' + H + r'*e\.', 'p.n.e.'),
+))
 FILE_NAME_RE = re.compile(r'(?<![\w.])[\w-]+(?:\.[\w-]+)*\.(?:docx?|pdf|epub|mobi|txt|rtf|odt|xlsx?|csv|zip|rar|jpg|jpeg|png|gif|py|html?|js|css)(?!\w)', re.IGNORECASE)
 
 
@@ -399,6 +503,268 @@ def _capitalize_sentences(text):
     return SENTENCE_START_RE.sub(replace, text)
 
 
+# ---- Ortografia 2026 (reguły działają po przywróceniu masek, więc same omijają adresy i nazwy plików) ----
+
+def _alternatives(words):
+    return '|'.join(sorted(words.split(), key=lambda word: (-len(word), word)))
+
+
+def _orthography_sub(pattern, replace, text):
+    """pattern.sub poza adresami, nazwami technicznymi i plików; replace(match) zwraca nowy zapis albo None."""
+    spans = starts = None
+
+    def guarded(match):
+        nonlocal spans, starts
+        if spans is None:
+            spans = _merged([(found.start(), found.end()) for protected in (TECHNICAL_RE, FILE_NAME_RE)
+                             for found in protected.finditer(text)])
+            starts = [begin for begin, _ in spans]
+        if _covers(spans, starts, match.start()) or _covers(spans, starts, match.end() - 1):
+            return match[0]
+        result = replace(match)
+        return match[0] if result is None else result
+    return pattern.sub(guarded, text)
+
+
+# Zmiana 3: cząstka -by (-bym, -byś, -byśmy, -byście) osobno po spójnikach i partykułach – zamknięta lista
+# połączeń pisanych dotąd łącznie. Zrosty aby, ażeby, żeby, iżby, gdyby, oby, niby, jakby, jakoby, coby, byleby,
+# choćby, chociażby, czyżby, czyliżby, gdzieżby, jakżeby, niżby, bodajby i niechby (niechajby, niechżeby) zostają,
+# niejednoznaczne toby, jeśliby, jeżeliby, aniżeliby, niżeliby i niźliby – też. „Boby” (bób) i „nimby” (nimb)
+# to rzeczowniki, więc po „bo” i „nim” rozdzielamy tylko dłuższe końcówki (bobym → bo bym).
+BY_SEPARATE_RE = re.compile(
+    r'(?<![\w-])(?P<word>' + _alternatives(
+        'ale ależ albo albowiem ani aż bowiem chyba czy czyli dopóki jednak jednakże jeszcze już lecz lub może '
+        'natomiast nawet nuż oraz ponieważ póki przecież przeto skoro tedy też toteż tylko więc wszak wszakże '
+        'zanim zatem zaś') + r'|bo(?=byś|bym)|nim(?=byś|bym))(?P<by>by(?:śmy|ście|m|ś)?)(?![\w-])', re.IGNORECASE)
+
+
+def _separate_by(text):
+    return _orthography_sub(BY_SEPARATE_RE, lambda match: f"{match['word']} {match['by']}", text)
+
+
+# Zmiana 10: niby, quasi (i pseudo, pisane łącznie już od 1957 r.) łącznie z wyrazem pisanym małą literą,
+# z łącznikiem przed wielką literą (nibyPolak → niby-Polak). Wyraz dalej z łącznikiem (niby-e-book) zostaje.
+NIBY_RE = re.compile(r'(?<![\w-])(?P<prefix>(?i:niby|quasi|pseudo))(?:[-\u2010\u2011](?P<word>[' + LETTERS + r']+)'
+                     r'|(?P<capital>[' + UPPER + r'][\w-]*))(?![\w-])')
+# Zmiana 9a: przedrostek przed wyrazem pisanym wielką literą – z łącznikiem (superPolak → super-Polak,
+# antyPiS → anty-PiS, antyNATO → anty-NATO, postPRL-u → post-PRL-u). Zapis od wielkiej litery (MiniMax,
+# EkoPark) to zwykle nazwa własna – zostaje; „pan” i „para” to także zwykłe wyrazy (brak spacji: panKowalski),
+# więc ich nie ma na liście.
+PREFIX_CAPITAL_RE = re.compile(
+    r'(?<![\w-])(?P<prefix>' + _alternatives(
+        'anty arcy eks ekstra eko hiper kontr makro maksi mega midi mikro mini multi neo post pra pre pro super '
+        'turbo ultra wege wice') + r')(?P<capital>[' + UPPER + r'][\w-]*)(?![\w-])')
+# Przymiotnik na -owy od nazwy (postSolidarnościowy) piszemy małą literą i łącznie – nie zgadujemy, zostaje.
+NAME_ADJECTIVE_RE = re.compile(r'[' + UPPER + r'][' + LOWER + r']+ow(?:y|a|e|ego|ej|emu|ym|ą|ych|ymi|i)')
+# Utrwalone terminy i nazwy zapisywane łącznie (złącza, nośniki, technologie, marki) – bez łącznika, także
+# z końcówką po łączniku (miniUSB-a). Wersje z micro- (microSD, microUSB) i tak nie pasują do listy przedrostków.
+FIXED_PREFIX_TERMS = frozenset('''
+    mikroRNA miniDV miniUSB mikroUSB miniSD miniSDHC mikroSD mikroSDHC mikroSDXC miniHDMI mikroHDMI miniDP
+    miniPCIe miniLED mikroLED proALPHA
+'''.split())
+
+
+def _capital_after_prefix(match):
+    """Łącznik między przedrostkiem pisanym małą literą a wyrazem od wielkiej litery (nie przymiotnikiem na -owy
+    ani utrwalonym terminem z FIXED_PREFIX_TERMS)."""
+    if (not match['prefix'][0].islower() or NAME_ADJECTIVE_RE.fullmatch(match['capital'])
+            or match['prefix'] + match['capital'].split('-')[0] in FIXED_PREFIX_TERMS):
+        return None
+    return f"{match['prefix']}-{match['capital']}"
+
+
+# Człon po łączniku wyglądający na formę czasownika zostaje (niby-żyję, quasi-myślę, niby-spał) – decyzja
+# właściciela: lepiej zostawić też rzeczownik w bierniku lub narzędniku (quasi-naukę) niż zepsuć czasownik.
+VERB_LIKE_RE = re.compile(r'\w*(?:ę|esz|isz|ysz|emy|imy|ymy|ecie|icie|ycie|ą|ał|ała|ało|ali|ały|ać|eć|ić|yć)')
+
+
+def _niby_quasi(text):
+    def replace(match):
+        if match['capital'] is not None:
+            return _capital_after_prefix(match)
+        word = match['word']
+        # Z łącznikiem zostaje wyraz pisany wielką literą (niby-Polak); wersaliki całego zapisu to nie nazwa.
+        if word[0].isupper() and not (match['prefix'].isupper() and word.isupper()):
+            return None
+        if VERB_LIKE_RE.fullmatch(word.lower()):
+            return None
+        return match['prefix'] + word
+    return _orthography_sub(NIBY_RE, replace, text)
+
+
+# Decyzja koordynatora: przymiotnik na -ski, -cki, -dzki po przedrostku zostaje (proRosyjski, antyPolski:
+# poprawnie prorosyjski, antypolski, ale to może być też nazwisko – nie zgadujemy).
+NAME_SKI_RE = re.compile(r'[' + UPPER + r'][' + LOWER + r']*(?:(?:sk|ck|dzk)(?:i|a|ie|iego|iej|iemu|im|ą|ich|imi)'
+                         r'|(?:s|c|dz)cy)')
+
+
+def _prefix_hyphen(text):
+    def replace(match):
+        # Pojedyncza litera (superX, miniB) to zwykle oznaczenie lub nazwa – zostaje.
+        if len(match['capital'].split('-')[0]) < 2 or NAME_SKI_RE.fullmatch(match['capital']):
+            return None
+        return _capital_after_prefix(match)
+    return _orthography_sub(PREFIX_CAPITAL_RE, replace, text)
+
+
+# Zmiana 6: pół łącznie w wyrażeniach półżartem, półserio, z łącznikiem przed nazwą osoby pisaną wielką literą
+# (pół-Polka, pół-Francuzka). „Pół” ilościowe zostaje (pół godziny, pół Polski, pół Europy), a półzabawa
+# czy półspał wymagałyby rozumienia zdania – rozpoznajemy tylko te wyrażenia i zamkniętą listę nazw narodowości
+# w mianowniku i narzędniku (był pół-Polakiem, pół-Szkotem).
+POL_EXPRESSION_RE = re.compile(r'(?<![\w-])(?P<pol>(?i:pół))[ \t]+(?P<word>(?i:żartem|serio))(?![\w-])')
+POL_PEOPLE = (
+    'Afrykanin Amerykanin Anglik Arab Argentyńczyk Australijczyk Austriak Azjata Belg Białorusin Brazylijczyk Bułgar '
+    'Chińczyk Chorwat Cygan Czech Duńczyk Estończyk Europejczyk Fin Francuz Góral Grek Gruzin Hindus Hiszpan Holender '
+    'Indianin Irlandczyk Islandczyk Japończyk Kanadyjczyk Kaszub Koreańczyk Kreol Litwin Łotysz Meksykanin Mulat '
+    'Niemiec Norweg Ormianin Persjanin Polak Portugalczyk Rosjanin Rumun Serb Słowak Słoweniec Szkot Szwajcar Szwed '
+    'Ślązak Tatar Turek Ukrainiec Walijczyk Węgier Wietnamczyk Włoch Żyd '
+    'Afrykanka Amerykanka Angielka Arabka Argentynka Australijka Austriaczka Azjatka Belgijka Białorusinka Brazylijka '
+    'Bułgarka Chinka Chorwatka Cyganka Czeszka Dunka Estonka Europejka Finka Francuzka Góralka Greczynka Gruzinka '
+    'Hinduska Hiszpanka Holenderka Indianka Irlandka Islandka Japonka Kanadyjka Kaszubka Koreanka Kreolka Litwinka '
+    'Łotyszka Meksykanka Mulatka Niemka Norweżka Ormianka Persjanka Polka Portugalka Rosjanka Rumunka Serbka '
+    'Słowaczka Słowenka Szkotka Szwajcarka Szwedka Ślązaczka Tatarka Turczynka Ukrainka Walijka Węgierka Wietnamka '
+    'Włoszka Żydówka').split()
+# Narzędnik nieregularny; pozostałe: -a → -ą, -k/-g → -kiem/-giem, inne → -em.
+POL_PEOPLE_INSTRUMENTAL = {'Niemiec': 'Niemcem', 'Ukrainiec': 'Ukraińcem', 'Słoweniec': 'Słoweńcem',
+                           'Turek': 'Turkiem', 'Węgier': 'Węgrem', 'Holender': 'Holendrem'}
+# Te same zapisy to dopełniacz nazw krain (pół Niemiec, pół Włoch, pół Kaszub) – osoba tylko w parze z inną.
+POL_AMBIGUOUS_PEOPLE = frozenset('Niemiec Czech Włoch Węgier Kaszub'.split())
+POL_PEOPLE_FORMS = frozenset(POL_PEOPLE) | frozenset(
+    POL_PEOPLE_INSTRUMENTAL.get(name) or (name[:-1] + 'ą' if name.endswith('a') else
+                                          name + ('iem' if name[-1] in 'kg' else 'em')) for name in POL_PEOPLE)
+POL_COMMON_RE = re.compile(r'(?<![\w-])(?i:pół)[ \t]+[' + LOWER + r']')
+POL_PERSON_RE = re.compile(r'(?<![\w-])(?P<pol>pół|Pół)[ \t]*(?P<person>'
+                           + _alternatives(' '.join(POL_PEOPLE_FORMS)) + r')(?![\w-])')
+
+
+def _pol_compounds(text):
+    from bisect import bisect_left
+
+    def expression(match):
+        if match['word'][0].isupper() and not match['pol'].isupper():
+            return None
+        return match['pol'] + match['word']
+
+    text = _orthography_sub(POL_EXPRESSION_RE, expression, text)
+    certain = [match.start() for match in POL_PERSON_RE.finditer(text)
+               if match['person'] not in POL_AMBIGUOUS_PEOPLE]
+
+    def same_sentence(positions, start):
+        nearby = positions[bisect_left(positions, start - 59):bisect_left(positions, start + 60)]
+        return any(set(text[min(other, start):max(other, start)]).isdisjoint('.!?…;\n') for other in nearby)
+
+    common = [match.start() for match in POL_COMMON_RE.finditer(text)]
+
+    def person(match):
+        # Zapis niejednoznaczny – tylko w tym samym zdaniu co pewna nazwa osoby (pół Niemiec, pół Polak);
+        # para z wyrazem pospolitym („pół Polak, pół byk”) jest sporna – zostaje.
+        if match['person'] in POL_AMBIGUOUS_PEOPLE and not same_sentence(certain, match.start()):
+            return None
+        if same_sentence(common, match.start()):
+            return None
+        return f"{match['pol']}-{match['person']}"
+    return _orthography_sub(POL_PERSON_RE, person, text)
+
+
+# Zmiana 11: „nie” łącznie z przymiotnikami i przysłówkami odprzymiotnikowymi także w stopniu wyższym
+# i najwyższym. Decyzja właściciela: zmieniamy tylko zapisy jednoznaczne, każdy sporny zostaje. Stopień
+# rozpoznajemy po budowie wyrazu: przymiotniki na -ejszy i inne na -szy według tematów (lepszy, większy, tańszy,
+# milszy, nowszy…) oraz naj- + taki przymiotnik; przysłówki: lepiej, gorzej, prędzej (przykłady RJP), -niej
+# (z -źniej), -ściej i krótka lista na -ciej (szybciej) – także z naj-. Ogólne -iej/-ej to często tryb
+# rozkazujący (śmiej, siej, wiej, miej, wyśmiej, zasiej) – nie zmieniamy. Bez zmian zostają też miara, czas,
+# miejsce i znaczenia niestopniowe (dalej, bliżej, wcześniej, później, dawniej, dłużej, krócej, wyżej, niżej;
+# dalszy, bliższy, wcześniejszy, późniejszy, dłuższy, krótszy, wyższy, niższy, starszy, młodszy), liczebniki
+# i przysłówki nieodprzymiotnikowe (mniej, więcej, bardziej, najpierw) oraz wyrazy o podobnej budowie
+# (dzisiejszy, ostatniej, średniej, trzeciej, złodziej, turniej).
+DEGREE_ENDINGS = r'(?:sz(?:y|a|e|ego|ej|emu|ym|ą|ych|ymi)|si)'
+COMPARATIVE_RE = re.compile(
+    r'(?:\w{2,}ej|\w*(?:[iy]st|[iy]t|[aeiuy]l|ń|ow)|' + _alternatives(
+        'blad bled bogat brzyd błah chud chyż cich cięż czyst częst droż dzik elegant gor goręt grub gęst gład głuch '
+        'głup głęb kruch lep lich mięk mędr pręd prost płyt rzad skąp sroż such szczer szer szyb słab słod tward '
+        'tęp tęż tłust uboż więk węż zacięt zawzięt zażart śwież święt żółt ciekaw jaskraw łaskaw łzaw plugaw żwaw '
+        'prawdziw leniw poczciw uczciw chciw godziw sędziw właściw żyw natarczyw uporczyw fałszyw cierpliw '
+        'szczęśliw sprawiedliw możliw wrażliw życzliw złośliw troskliw gorliw żarliw') + r')' + DEGREE_ENDINGS
+    # Inne tematy na -liw: bez formy -liwszy (domyśliwszy, określiwszy to imiesłowy).
+    + r'|\w*[^\Waeiouyąęó]liw(?:sz(?:a|e|ego|ej|emu|ym|ą|ych|ymi)|si)'
+    + r'|\w{2,}niej|\w+ściej|' + _alternatives(
+        'lepiej gorzej prędzej szybciej bogaciej otwarciej uparciej obficiej pracowiciej znakomiciej przyzwoiciej'))
+# Wyrazy o budowie stopnia wyższego, które nim nie są albo są sporne (przysłówki taniej, cieniej, biedniej –
+# jednoznaczne; czerwieniej, zieleniej to też tryb rozkazujący – zostają).
+NOT_COMPARATIVE_RE = re.compile(
+    r'mniej|wcześniej|później|dawniej|naj(?:wyraźniej|widoczniej|prawdopodobniej|pewniej)'
+    r'|(?:\w*(?:dzisi|jutrz|gdysi|ongisi|tamt|tut|teraźni)|ichni|nini|(?:z|u|po|poz)mni|dal|wcześni|późni|dawni)'
+    r'(?:ej)?' + DEGREE_ENDINGS
+    + r'|(?!(?:taniej|cwaniej|cieniej|szaleniej|uczeniej|biedniej|odpowiedniej|wredniej)$)'
+    r'\w*(?:[aeiouyąęó]niej|edniej|letniej|ostatniej|wschodniej|zachodniej|wierzchniej|turniej)'
+    r'|przechodniej|przewodniej|przyrodniej|dodatniej|sobotniej|dożywotniej|armatniej|herbatniej|bratniej|żytniej'
+    r'|zbytniej|ichniej|bliźniej|spodniej|zadniej|wyżniej|niżniej|istniej|zaistniej|bynajmniej|przynajmniej|czerniej'
+    r'|\w*niebieściej|zniewieściej')
+NIE_DEGREE_RE = re.compile(r'(?<![\w-])(?P<nie>nie|Nie|NIE)[ \t]+(?P<word>[^\W\d_]+)(?![\w-])')
+# Bez zmian: zaimek „nie” po przyimku (patrzył na nie łaskawiej); „nie” po „wcale”, „bynajmniej”, „ani”,
+# w „…, a nie X”, po „czy” (czy nie przyjemniejsza), w warunku (jeśli, jeżeli, gdyby, o ile – „nie” przeczy
+# pominiętemu orzeczeniu: jeśli nie gorzej) i w stanie pośrednim (ale nie, ale i nie, choć nie).
+NIE_KEPT_AFTER = frozenset('na w we za przez o po pod nad przed między pomiędzy ponad poza wcale bynajmniej ani a '
+                           'czy czyż jeśli jeżeli gdyby ale lecz choć chociaż'.split())
+NIE_KEPT_AFTER_PAIRS = frozenset({('o', 'ile'), ('ale', 'i'), ('ale', 'też'), ('ale', 'także'), ('lecz', 'też'),
+                                  ('choć', 'też'), ('a', 'też')})
+PREVIOUS_WORDS_RE = re.compile(r'(?:(\w+)[ \t]+)?(\w+)[ \t]*$')
+# Całe zdanie pytające („Czy to nie najlepszy pomysł?”, „A nie lepiej…?”) – pytajnik w tym samym zdaniu.
+QUESTION_REST_RE = re.compile(r'[^.!?\n]{0,200}\?')
+# Przeciwstawienie tuż dalej w zdaniu: „nie lepszy, lecz gorszy”, „nie wyższy od niej, tylko najwyższy”
+# (ale nie stopniowanie i ciąg dalszy: „…, a nawet”, „…, a potem”, „…, a ja”).
+NIE_CONTRAST_RE = re.compile(
+    r'[^.!?;:…\n]{0,30}?[\s,](?:ale|lecz|tylko|jeno|a|raczej)[ \t]+(?!(?:nie|też|także|również|nawet|wręcz|i|'
+    r'przecież|jednak|potem|później|wtedy|teraz|zarazem|ponadto|do|w|we|na|z|ze|po|przy|od|że|to|co|kiedy|gdy|'
+    r'jak|ja|ty|on|ona|ono|my|wy|oni|one|się)\b)\w', re.IGNORECASE)
+# Stan pośredni: „nie najlepszy, ale (i) nie najgorszy”, „nie lepszy, choć nie gorszy”.
+NIE_BETWEEN_RE = re.compile(r'[^.!?;:…\n]{0,40}?[\s,](?:ale|lecz|choć|chociaż|ani)'
+                            r'(?:[ \t]+(?:i|też|także|również))?[ \t]+nie\b', re.IGNORECASE)
+
+
+def _comparative(word):
+    """Przymiotnik albo przysłówek odprzymiotnikowy w stopniu wyższym lub najwyższym (po budowie wyrazu)."""
+    word = word.lower()
+    if NOT_COMPARATIVE_RE.fullmatch(word):
+        return False  # najwyraźniej, najprawdopodobniej, najpewniej – w funkcji partykuły
+    if word.startswith('naj') and len(word) > 5:
+        word = word[3:]
+    return COMPARATIVE_RE.fullmatch(word) is not None and NOT_COMPARATIVE_RE.fullmatch(word) is None
+
+
+def _nie_comparative(text):
+    def replace(match):
+        nie, word = match['nie'], match['word']
+        if (word.isupper() and len(word) > 1) != (nie == 'NIE') or (nie != 'NIE' and not word.islower()):
+            return None
+        if not _comparative(word):
+            return None
+        previous = PREVIOUS_WORDS_RE.search(text, max(0, match.start() - 30), match.start())
+        if previous:
+            pair = (previous[1] or '').lower(), previous[2].lower()
+            if pair[1] in NIE_KEPT_AFTER or pair in NIE_KEPT_AFTER_PAIRS:
+                return None
+        if (QUESTION_REST_RE.match(text, match.end()) or NIE_CONTRAST_RE.match(text, match.end())
+                or NIE_BETWEEN_RE.match(text, match.end())):
+            return None
+        return nie + word
+    return _orthography_sub(NIE_DEGREE_RE, replace, text)
+
+
+ORTHOGRAPHY_2026_STEPS = (('by_separate', _separate_by), ('niby_quasi', _niby_quasi),
+                          ('prefix_hyphen', _prefix_hyphen), ('pol_compounds', _pol_compounds),
+                          ('nie_comparative', _nie_comparative))
+
+
+def _orthography_2026(text, enabled, counts):
+    for key, step in ORTHOGRAPHY_2026_STEPS:
+        if key in enabled:
+            before = text
+            text = step(text)
+            if counts is not None:
+                _count(counts, key, before, text)
+    return text
+
+
 
 def _replacement_case(source, replacement):
     if source.isupper():
@@ -412,25 +778,17 @@ def _replacement_case(source, replacement):
 # Granice wyrazu zapobiegają zmianom wewnątrz innych słów.
 USER_WORD_PATTERNS = tuple((re.compile(pattern, re.IGNORECASE), replacement)
     for pattern, replacement in (
-        (r'\bpickup(?P<ending>owi|ów|om|ami|ach|em|ie|a|y|u)?\b', r'pikap\g<ending>'),
         (r'\btonicem\b', r'tonikiem'),
         (r'\btonicy\b', r'toniki'),
         (r'\btonic(?P<ending>owi|ów|om|ami|ach|iem|a|u|i)?\b', r'tonik\g<ending>'),
         (r'\bmentlik(?P<ending>owi|ów|om|ami|ach|iem|a|u|i)?\b', r'mętlik\g<ending>'),
-        (r'\b(?P<neg>nie)?przekonywując(?P<ending>ego|emu|ymi|ych|ej|ym|y|a|e|ą|o)?\b',
-         r'\g<neg>przekonując\g<ending>'),
-        (r'\b(?P<neg>nie)?oddziaływując(?P<ending>ego|emu|ymi|ych|ej|ym|y|a|e|ą|o)?\b',
-         r'\g<neg>oddziałując\g<ending>'),
-        (r'\b(?P<neg>nie)?zadawalając(?P<ending>ego|emu|ymi|ych|ej|ym|y|a|e|ą|o)?\b',
-         r'\g<neg>zadowalając\g<ending>'),
-        # Czasownik: miałczeć, miałczę, miałczysz, miałczała, miałczeli…
-        # Obejmuje też imiesłowy i rzeczownik odczasownikowy.
-        (r'\bmiałcz(?P<ending>eć|ę|ysz|y|ymy|ycie|ą|'
-         r'ałem|ałam|ałeś|ałaś|ał|ała|ało|ałyśmy|ałyście|ały|'
-         r'eliśmy|eliście|eli|ałbym|ałbyś|ałby|ałabym|ałabyś|ałaby|ałoby|'
-         r'elibyśmy|elibyście|eliby|ałybyśmy|ałybyście|ałyby|'
-         r'my|cie|ąc|ący|ąca|ące|ącą|ącego|ącej|ącemu|ącym|ącymi|ących|'
-         r'enie|enia|eniu|eniem|eń|eniom|eniami|eniach)?\b', r'miaucz\g<ending>'),
+        # -ywuj- jest błędne w każdej formie: przekonywujący, przekonywująco, przekonywuje, oddziaływują…
+        (r'\b(?P<neg>nie)?przekonywuj(?P<ending>\w*)', r'\g<neg>przekonuj\g<ending>'),
+        (r'\b(?P<neg>nie)?oddziaływuj(?P<ending>\w*)', r'\g<neg>oddziałuj\g<ending>'),
+        # zadawalać (błędne w każdej formie): zadawalający, zadawalająco, zadawala, zadawalał…
+        (r'\b(?P<neg>nie)?zadawala(?P<ending>\w*)', r'\g<neg>zadowala\g<ending>'),
+        # Czasownik: miałczeć, miałczę, miałczała, miałczeli, imiesłowy, miałczenie; zamiałczał, pomiałczeć.
+        (r'\b(?P<prefix>za|po|roz)?miałcz(?P<ending>\w*)', r'\g<prefix>miaucz\g<ending>'),
         # Zmieniamy wadliwy bezokolicznik oraz formy z wadliwym „-leli”.
         # Poprawne „wymyślał”, „wymyślę”, „wymyślenie” pozostają bez zmian.
         (r'\bwymyśle(?P<ending>ć|liśmy|liście|li|libyśmy|libyście|liby)\b',
@@ -450,8 +808,32 @@ USER_WORD_PATTERNS = tuple((re.compile(pattern, re.IGNORECASE), replacement)
         (r'\beuropejczyk(?P<ending>owi|ów|om|ami|ach|iem|a|u)?\b',
          r'Europejczyk\g<ending>'),
         (r'\beuropejczycy\b', r'Europejczycy'),
-        (r'\bazjat(?P<ending>ami|ach|ów|om|a|y|ę|ą|o)\b', r'Azjat\g<ending>'),
+        (r'\bazjat(?P<ending>ami|ach|ów|om|a|y|ę|ą|o|' + FEMININE_KA + r')\b', r'Azjat\g<ending>'),
         (r'\bazjaci(?P<ending>e)?\b', r'Azjaci\g<ending>'),
+        (r'\beuropej(?P<ending>' + FEMININE_KA + r')\b', r'Europej\g<ending>'),
+        (r'\bkreol(?P<ending>a|owi|em|u|e|owie|ów|om|ami|ach|' + FEMININE_KA + r')?\b', r'Kreol\g<ending>'),
+        (r'\bmula(?P<ending>t|ta|towi|tem|cie|ci|tów|tom|tami|tach|ty|tk(?:a|i|ę|ą|o|om|ami|ach)|tce|tek)\b',
+         r'Mula\g<ending>'),
+        # Rzeczownik i przymiotnik: absorbcja, absorbcyjny; mitingowy; cętka, cętkowany (nie Centkiewicz).
+        (r'\babsorbc(?P<ending>\w+)', r'absorpc\g<ending>'),
+        (r'\bmiting(?P<ending>\w*)', r'mityng\g<ending>'),
+        (r'\bcent(?P<ending>k(?:a|i|ę|ą|o|om|ami|ach|owan' + ADJECTIVE_ENDINGS + r')|ce|ek)\b', r'cęt\g<ending>'),
+        (r'\bkurestw(?P<ending>\w*)', r'kurewstw\g<ending>'),
+        (r'\bindywidulan(?P<ending>\w*)', r'indywidualn\g<ending>'),
+        (r'\bprzeciwskaza(?P<ending>\w*)', r'przeciwwskaza\g<ending>'),
+        (r'\bśredniozaawansowan(?P<ending>\w*)', r'średnio zaawansowan\g<ending>'),
+        # Przymiotnik (grekokatolicki, grekokatoliccy); rzeczownik grekokatolik jest poprawny.
+        (r'\bgrekokatolic(?P<ending>[kc]\w*)', r'greckokatolic\g<ending>'),
+        # Czasowniki: wszystkie formy, imiesłowy i rzeczowniki odczasownikowe.
+        (r'\bwyksztu(?P<ending>[sś]\w*)', r'wykrztu\g<ending>'),
+        (r'\bzarzadz(?P<ending>\w*)', r'zarządz\g<ending>'),
+        (r'\b(?P<neg>nie)?zcentraliz(?P<ending>\w*)', r'\g<neg>scentraliz\g<ending>'),
+        # Decyzja właściciela: nie ma formy dokonanej „skategoryzować” – wszystkie jej formy → kategoryzować.
+        (r'\b(?P<neg>nie)?skategoryz(?P<ending>\w*)', r'\g<neg>kategoryz\g<ending>'),
+        # Czas przeszły przysiąc; przysięgła, przysięgły (też przymiotnik) są poprawne.
+        (r'\b(?P<prefix>za)?przysięgł(?P<ending>em|eś|by|bym|byś)?\b', r'\g<prefix>przysiągł\g<ending>'),
+        # nie dowierzać – osobno; niedowierzanie i niedowierzający (imiesłów przymiotnikowy) – razem.
+        (r'\bniedowierza(?P<ending>ć|m|sz|my|cie|ją|j|jmy|jcie|jąc|ł\w*|l\w*)?\b', r'nie dowierza\g<ending>'),
     ))
 COMMEDIA_RE = re.compile(
     r'\b(?P<noun>komedi(?:ami|ach|om|a|i|ę|ą|o|e))'
@@ -486,7 +868,7 @@ def _apply_replacement_case(source, value, keep):
 
     keep (cel zawiera wielkie litery: NATO, iPhone, Polak): zapis celu zostaje, chyba że źródło
     jest całe wielkimi literami – wtedy wynik też. W przeciwnym razie wynik dostaje wielkość
-    liter źródła (pickup → pikap, Pickup → Pikap, PICKUPAMI → PIKAPAMI).
+    liter źródła (mentlik → mętlik, Mentlik → Mętlik, MENTLIKIEM → MĘTLIKIEM).
     """
     if keep:
         return value.upper() if source.isupper() else value
@@ -690,7 +1072,7 @@ class CompiledReplacements:
 
             def replace(match, template=target, keep=_keeps_target_case(target, pattern=True)):
                 # Końcówki są normalizowane do małych liter przed odtworzeniem
-                # zapisu całego wyrazu, np. PICKUPAMI → PIKAPAMI.
+                # zapisu całego wyrazu, np. MENTLIKIEM → MĘTLIKIEM.
                 return _apply_replacement_case(match[0], match.expand(template), keep)
             self.steps.append((pattern, replace))
         flush_words()
@@ -897,12 +1279,8 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
             _count(counts, 'spaces', before, text)
     if 'abbreviations' in enabled:
         before = text
-        for pattern, replacement in (
-            (r'\bm\.' + H + r'*in\.', 'm.in.'),
-            (r'\bt\.' + H + r'*j\.', 'tj.'),
-            (r'\bt\.' + H + r'*zw\.', 'tzw.'),
-        ):
-            text = re.sub(pattern, replacement, text)
+        for pattern, replacement in ABBREVIATION_MERGES:
+            text = pattern.sub(replacement, text)
         if counts is not None:
             _count(counts, 'abbreviations', before, text)
     if 'quotes' in enabled:
@@ -1156,6 +1534,9 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
         text = _lower_personal_pronouns(text)
         if counts is not None:
             _count(counts, 'pronouns_lower', before, text)
+    # Po zaimkach: „Był Nie najlepszy” → „nie najlepszy” → „nienajlepszy”; przed wielką literą po kropce.
+    if enabled & ORTHOGRAPHY_2026_KEYS:
+        text = _orthography_2026(text, enabled, counts)
     if 'sentence_case' in enabled:
         before = text
         text = _capitalize_sentences(text)
@@ -1217,7 +1598,7 @@ def _change_regions(original, corrected):
     """Zmiany jako przedziały (a, b, c, d): original[a:b] → corrected[c:d].
 
     Sąsiednie operacje łączymy, a zmianę dotykającą liter lub cyfr rozszerzamy do
-    granic wyrazu (pickup → pikap to jedna zmiana całego wyrazu, a nie trzy
+    granic wyrazu (mentlik → mętlik to jedna zmiana całego wyrazu, a nie dwie
     zmiany pojedynczych liter). Zmiany samych odstępów i interpunkcji zostają
     najmniejsze, np. „kota...” → „kota…” zmienia tylko kropki.
     """
@@ -1351,6 +1732,38 @@ def _split_tracked_run(run, changed, tracker):
     for element in output:
         run.addprevious(element)
     run.getparent().remove(run)
+    for element in output:
+        if element.tag == qn('w:ins'):
+            _lift_insertion(element, tracker)
+
+
+INSERTED_CONTAINERS = frozenset(qn('w:' + name) for name in ('ins', 'moveTo'))
+
+
+def _lift_insertion(insertion, tracker):
+    """Nasza wstawka wewnątrz cudzej (w:ins, w:moveTo) staje obok niej, jak u Worda.
+
+    Cudza wstawka dzieli się na część przed naszą i za nią (ta dostaje kopię opakowania z nowym
+    w:id, tym samym autorem i datą). Tekst nie zmienia autora, a nasze usunięcia fragmentów cudzej
+    wstawki zostają w niej zagnieżdżone (w:ins > w:del) – tak zapisuje je Word.
+    """
+    parent = insertion.getparent()
+    while parent is not None and parent.tag in INSERTED_CONTAINERS:
+        before = insertion.getprevious() is not None
+        after = list(insertion.itersiblings())
+        if before and after:
+            rest = parent.makeelement(parent.tag, dict(parent.attrib))
+            rest.set(qn('w:id'), str(tracker.take_id()))
+            for node in after:
+                rest.append(node)
+            parent.addnext(rest)
+        if before:
+            parent.addnext(insertion)
+        else:
+            parent.addprevious(insertion)
+            if not after:
+                parent.getparent().remove(parent)
+        parent = insertion.getparent()
 
 
 def _rewrite_tracked(slots, corrected, tracker):
@@ -1449,13 +1862,51 @@ def _blank_run(run):
     return True
 
 
+MARK_CHANGES = frozenset(qn('w:' + name) for name in ('ins', 'del', 'moveFrom', 'moveTo'))
+
+
+def _mark_changes(paragraph):
+    """Śledzone zmiany znaku akapitu (w:pPr/w:rPr: w:ins, w:del, w:moveFrom, w:moveTo)."""
+    mark = paragraph.find(f"{qn('w:pPr')}/{qn('w:rPr')}")
+    return [] if mark is None else [child for child in mark if child.tag in MARK_CHANGES]
+
+
+def _mark_deleted(paragraph):
+    """Znak akapitu usunięty (także przeniesiony): po przyjęciu zmian akapit łączy się z następnym."""
+    return (paragraph is not None and paragraph.tag == qn('w:p')
+            and any(change.tag in DELETED_CONTAINERS for change in _mark_changes(paragraph)))
+
+
+def _previous_paragraph(paragraph):
+    """Poprzedni akapit tego samego kontenera; znaczniki bez treści między akapitami nie przeszkadzają."""
+    for sibling in paragraph.itersiblings(preceding=True):
+        if sibling.tag == qn('w:p'):
+            return sibling
+        if sibling.tag not in PARAGRAPH_MARKERS:
+            return None
+    return None
+
+
 def _safe_empty_paragraph(element, tracked=False):
+    """Pusty akapit, który reguła empty_paragraphs może usunąć.
+
+    Zostają akapity z treścią, zakotwiczonym komentarzem, zakładką, układem strony i listą,
+    a także z usuniętym znakiem akapitu (po przyjęciu zmian i tak łączy się z następnym). Akapit
+    z inną śledzoną zmianą (wstawiony znak akapitu, zmiana formatowania) usuwamy tylko jako śledzone
+    usunięcie – bez śledzenia zniknęłaby cudza zmiana.
+    """
     if element.tag != qn('w:p'):
         return False
     for child in element:
         if child.tag == qn('w:pPr'):
             if any(child.find(qn('w:' + name)) is not None
                    for name in ('sectPr', 'numPr', 'pageBreakBefore')):
+                return False
+            changes = _mark_changes(element)
+            if any(change.tag in DELETED_CONTAINERS for change in changes):
+                return False
+            if not tracked and (changes or child.find(qn('w:pPrChange')) is not None
+                                or child.find(f"{qn('w:rPr')}/{qn('w:rPrChange')}") is not None):
                 return False
         elif child.tag == qn('w:r'):
             if not _blank_run(child):
@@ -1503,13 +1954,17 @@ def _delete_paragraph_tracked(paragraph, tracker):
         mark_properties.insert(0, tracker.mark('w:del'))
 
 
-# Znaczniki bez treści (sprawdzanie pisowni, zakładki, zakresy komentarzy, układ strony
+# Znaczniki bez treści (sprawdzanie pisowni, zakładki, zakresy komentarzy i przeniesień, układ strony
 # zapamiętany przez Worda) nie przerywają tekstu: korekta widzi zdanie w całości,
 # a znaczniki zostają na swoich miejscach między węzłami tekstu.
 PARAGRAPH_MARKERS = frozenset(qn('w:' + name) for name in (
     'pPr', 'proofErr', 'bookmarkStart', 'bookmarkEnd', 'commentRangeStart', 'commentRangeEnd',
-    'permStart', 'permEnd'))
-RUN_MARKERS = frozenset(qn('w:' + name) for name in ('rPr', 'lastRenderedPageBreak'))
+    'permStart', 'permEnd', 'moveFromRangeStart', 'moveFromRangeEnd', 'moveToRangeStart', 'moveToRangeEnd',
+    'customXmlInsRangeStart', 'customXmlInsRangeEnd', 'customXmlDelRangeStart', 'customXmlDelRangeEnd',
+    'customXmlMoveFromRangeStart', 'customXmlMoveFromRangeEnd', 'customXmlMoveToRangeStart',
+    'customXmlMoveToRangeEnd'))
+# Odwołanie do komentarza (dymek na marginesie) też jest tylko znacznikiem: przebieg zostaje na miejscu.
+RUN_MARKERS = frozenset(qn('w:' + name) for name in ('rPr', 'lastRenderedPageBreak', 'commentReference'))
 # Odsyłacze przypisów w tekście nie przerywają zdania: w grupie są nieruchomymi kotwicami.
 NOTE_REFERENCES = frozenset(qn('w:' + name) for name in ('footnoteReference', 'endnoteReference'))
 # Kropka skrótu lub inicjału przed odsyłaczem zostaje na miejscu (itd.¹, r.¹, J.¹).
@@ -1602,8 +2057,8 @@ def _new_text_slot(group, anchor, after):
     """Pusty przebieg tekstu tuż za (after) albo przed odsyłaczem, z formatowaniem najbliższego tekstu grupy."""
     from copy import deepcopy
     position = next(index for index, (node, _) in enumerate(group) if node is anchor)
-    before = [node for node, value in group[:position] if value is not None]
-    behind = [node for node, value in group[position + 1:] if value is not None]
+    before = [node for node, value in group[:position] if value is not None and node.tag not in DELETED_CONTAINERS]
+    behind = [node for node, value in group[position + 1:] if value is not None and node.tag not in DELETED_CONTAINERS]
     source = (before[-1] if before and (after or not behind) else behind[0]).getparent()
     run = OxmlElement('w:r')
     properties = source.find(qn('w:rPr'))
@@ -1623,7 +2078,7 @@ def _new_text_slot(group, anchor, after):
     return node, ''
 
 
-def _correct_noted_group(group, enabled, tracker, options):
+def _correct_noted_group(group, enabled, tracker, options, boundary=None):
     """Korekta grupy z odsyłaczami przypisów (sloty z wartością None).
 
     Reguły widzą tekst bez odsyłaczy, odsyłacze wracają za znak, za którym stały, a reguła
@@ -1670,10 +2125,7 @@ def _correct_noted_group(group, enabled, tracker, options):
             if not text:
                 continue
             segment = [_new_text_slot(group, anchors[index - 1] if index else anchors[0], after=index > 0)]
-        if tracker is not None:
-            _rewrite_tracked(segment, text, tracker)
-        else:
-            _rewrite_text_nodes(segment, text)
+        _rewrite(segment, text, tracker, boundary)
 
 
 FALLBACK_TAG = '{http://schemas.openxmlformats.org/markup-compatibility/2006}Fallback'
@@ -1699,6 +2151,8 @@ def _replace_nonbreaking_spaces(stories, counts):
         for node in story.root.iter(qn('w:t')):
             text = node.text or ''
             found = len(UNUSUAL_SPACES_RE.findall(text))
+            if found and _deleted(node):
+                continue  # tekst przeniesiony (w:moveFrom ma w:t) albo usunięty zostaje nietknięty
             if found:
                 if counts is not None and not _in_fallback(node):
                     replaced += found
@@ -1722,6 +2176,11 @@ def apply_editorial_corrections(doc, enabled=None, *, track_changes=False, repla
     nierozdzielających zamienionych na zwykłe („nonbreaking_spaces”) oraz lista zamian
     słownikowych „replacements”: [{"source", "target", "count"}], malejąco po count.
     Spacje nierozdzielające są zamieniane zawsze, także bez żadnej reguły.
+
+    Istniejące zmiany śledzone i komentarze zostają (decyzja właściciela): tekst usunięty (w:del,
+    w:moveFrom) nie jest zmieniany ani liczony, tekst wstawiony (w:ins, w:moveTo) jest poprawiany
+    w swoim opakowaniu, a znaczniki komentarzy, zmian formatowania i znaku akapitu stoją na miejscu.
+    Treści komentarzy (comments.xml) Odkurzacz nie poprawia – to uwagi do tekstu, nie tekst.
     """
     enabled = DEFAULT_EDITORIAL_RULES if enabled is None else frozenset(enabled)
     if enabled - ALL_EDITORIAL_RULES:
@@ -1756,8 +2215,11 @@ def apply_editorial_corrections(doc, enabled=None, *, track_changes=False, repla
         # Korekta widzi sąsiednie runy (także w cudzych wstawkach, hiperłączach i kontrolkach),
         # ale nie ingeruje w pola, rysunki, przypisy ani znaczniki dokumentu.
         for child in _paragraph_runs(para._p):
-            if child is DELETED_CONTENT:
-                continue  # usunięty tekst nie przerywa zdania (po przyjęciu zmian go nie ma)
+            if child.tag in DELETED_CONTAINERS:
+                # Usunięty tekst nie przerywa zdania (po przyjęciu zmian go nie ma); granicę zapamiętuje
+                # pusty slot – patrz _deletion_boundaries.
+                slots.append((child, ''))
+                continue
             if child.tag != qn('w:r'):
                 barrier()
                 continue
@@ -1787,24 +2249,28 @@ def apply_editorial_corrections(doc, enabled=None, *, track_changes=False, repla
                     barrier(soft=node.tag == qn('w:br') and node.get(qn('w:type')) in PAGE_BREAK_TYPES)
         if slots:
             groups.append(slots)
+        # Usunięty (śledzony) znak akapitu: po przyjęciu zmian akapit łączy się z następnym, więc jego
+        # koniec i początek następnego nie są brzegami akapitu (spacja między nimi zostaje).
+        joined_after = _mark_deleted(para._p)
+        joined_before = _mark_deleted(_previous_paragraph(para._p))
         for index, group in enumerate(groups):
             if group and group not in (SOFT_BARRIER, LINE_BARRIER):
+                group, boundary = _deletion_boundaries(group)
+                if not group:
+                    continue
                 # Brzeg akapitu: przed (po) grupą są najwyżej podziały strony lub kolumny;
                 # miękki enter tuż obok daje brzeg linii (spacje, kwestia dialogowa).
                 options = dict(
                     trim_start=(index > 0 and groups[index - 1] is LINE_BARRIER)
-                    or all(item is SOFT_BARRIER for item in groups[:index]),
+                    or (not joined_before and all(item is SOFT_BARRIER for item in groups[:index])),
                     trim_end=(index + 1 < len(groups) and groups[index + 1] is LINE_BARRIER)
-                    or all(item is SOFT_BARRIER for item in groups[index + 1:]),
+                    or (not joined_after and all(item is SOFT_BARRIER for item in groups[index + 1:])),
                     replacements=compiled, counts=paragraph_counts)
                 if any(value is None for _, value in group):
-                    _correct_noted_group(group, enabled, tracker, options)
+                    _correct_noted_group(group, enabled, tracker, options, boundary)
                     continue
                 corrected = correct_editorial_text(''.join(value for _, value in group), enabled, **options)
-                if tracker is not None:
-                    _rewrite_tracked(group, corrected, tracker)
-                else:
-                    _rewrite_text_nodes(group, corrected)
+                _rewrite(group, corrected, tracker, boundary)
     commit()
     if 'empty_paragraphs' in enabled:
         previous_empty, removed = False, 0
@@ -1828,7 +2294,6 @@ def apply_editorial_corrections(doc, enabled=None, *, track_changes=False, repla
 
 SOFT_BARRIER = object()
 LINE_BARRIER = object()
-DELETED_CONTENT = object()
 # Opakowania tekstu, do których korekta wchodzi jak do zwykłych przebiegów.
 TRANSPARENT_CONTAINERS = frozenset(qn('w:' + name) for name in (
     'ins', 'moveTo', 'hyperlink', 'sdt', 'sdtContent', 'smartTag', 'customXml', 'dir', 'bdo'))
@@ -1836,18 +2301,102 @@ CONTAINER_PROPERTIES = frozenset(qn('w:' + name) for name in ('sdtPr', 'sdtEndPr
 DELETED_CONTAINERS = frozenset(qn('w:' + name) for name in ('del', 'moveFrom'))
 
 
+def _deleted(node):
+    """Węzeł wewnątrz usunięcia (w:del) albo źródła przeniesienia (w:moveFrom)."""
+    return any(ancestor.tag in DELETED_CONTAINERS for ancestor in node.iterancestors())
+
+
 def _paragraph_runs(paragraph):
     """Dzieci akapitu w kolejności tekstu: przebiegi także z wnętrza wstawek, hiperłączy
-    i kontrolek; usunięty tekst (w:del) jako DELETED_CONTENT; reszta jako bariery."""
+    i kontrolek; usunięty tekst (w:del, w:moveFrom) jako cały element; reszta jako bariery."""
     for child in paragraph:
         if child.tag in PARAGRAPH_MARKERS or child.tag in CONTAINER_PROPERTIES:
             continue
         if child.tag in DELETED_CONTAINERS:
-            yield DELETED_CONTENT
+            yield child
         elif child.tag in TRANSPARENT_CONTAINERS:
             yield from _paragraph_runs(child)
         else:
             yield child
+
+
+def _deleted_text(element):
+    """Tekst usuniętego fragmentu (w:delText, w:t w źródle przeniesienia, tabulatory)."""
+    return ''.join('\t' if node.tag == qn('w:tab') else node.text or ''
+                   for node in element.iter(qn('w:delText'), qn('w:t'), qn('w:tab')))
+
+
+def _deletion_boundaries(group):
+    """Granice cudzych usunięć w grupie (sloty (w:del albo w:moveFrom, '')) → (grupa, separator albo None).
+
+    Odstęp tekstu widocznego, który styka się z wyrazem usuniętego tekstu, musi zostać: po odrzuceniu
+    zmian bez niego wyrazy by się skleiły („i ” + usunięte „usunięty” + „ oraz” → „i usuniętyoraz”).
+    Taka granica dostaje znak-separator spoza tekstu: reguły nie zbiją odstępów po obu jej stronach ani
+    nie usuną odstępu przy niej, a tekst jest zapisywany osobno po każdej stronie (_rewrite). Granica bez
+    odstępu obok znika z grupy – zdanie i wyraz rozcięty usunięciem są poprawiane w całości.
+    """
+    merged = []
+    for node, value in group:
+        deleted = value == '' and node.tag in DELETED_CONTAINERS
+        if deleted and merged and merged[-1][0] is None:
+            merged[-1][1].append(node)  # kilka usunięć tuż obok siebie to jedna granica
+        elif deleted:
+            merged.append((None, [node]))
+        else:
+            merged.append((node, value))
+    visible = ''.join(value for node, value in merged if node is not None and value)
+    boundary = next(chr(code) for code in range(0xE000, 0xF900) if chr(code) not in visible)
+    result, used = [], False
+
+    def neighbour(items):
+        for node, value in items:
+            if node is None or value == '':
+                continue
+            return 'x' if value is None else value  # odsyłacz przypisu to nie odstęp
+        return ''
+
+    for index, (node, value) in enumerate(merged):
+        if node is not None:
+            result.append((node, value))
+            continue
+        removed = ''.join(_deleted_text(element) for element in value)
+        left, right = neighbour(reversed(merged[:index]))[-1:], neighbour(merged[index + 1:])[:1]
+        if removed and ((left.isspace() and not removed[0].isspace())
+                        or (right.isspace() and not removed[-1].isspace())):
+            result.append((value[0], boundary))
+            used = True
+    return result, boundary if used else None
+
+
+def _rewrite(slots, corrected, tracker, boundary=None):
+    """Zapisz poprawiony tekst w węzłach (ze śledzeniem zmian albo bez).
+
+    Separator granicy cudzego usunięcia (_deletion_boundaries) dzieli tekst na części zapisywane osobno:
+    nic nie przechodzi na drugą stronę usuniętego fragmentu.
+    """
+    parts = [[]]
+    for node, value in slots:
+        if boundary is not None and value == boundary and node.tag in DELETED_CONTAINERS:
+            parts.append([])
+        else:
+            parts[-1].append((node, value))
+    pieces = corrected.split(boundary) if boundary is not None else [corrected]
+    if len(pieces) != len(parts):  # reguła usunęła separator (nie powinna) – zapis bez podziału
+        parts, pieces = [[slot for part in parts for slot in part]], [corrected.replace(boundary, '')]
+    for index, part in enumerate(parts):
+        if not part and pieces[index]:
+            # Tekst dopisany po stronie bez węzłów (np. usunięcie na brzegu akapitu) – do sąsiedniej części.
+            neighbour = index + 1 if index + 1 < len(parts) else index - 1
+            pieces[neighbour] = (pieces[index] + pieces[neighbour] if neighbour > index
+                                 else pieces[neighbour] + pieces[index])
+            pieces[index] = ''
+    for part, piece in zip(parts, pieces):
+        if not part:
+            continue
+        if tracker is not None:
+            _rewrite_tracked(part, piece, tracker)
+        else:
+            _rewrite_text_nodes(part, piece)
 
 
 def _store_summary(summary, counts):

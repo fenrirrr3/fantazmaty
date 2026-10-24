@@ -1,4 +1,4 @@
-    <section class="filters-card" aria-label="Filtry tekstów">
+    <section class="details-card filters-card" aria-label="Filtry tekstów">
         <form
             method="get"
             action="{{ request.path }}"
@@ -78,7 +78,7 @@
 
             <div class="filter-field boolean-filter-field">
                 <input type="hidden" name="hide_ready" value="0">
-                <label class="boolean-filter-toggle" for="text-hide-ready">
+                <label class="checkbox-field" for="text-hide-ready">
                     <input
                         id="text-hide-ready"
                         type="checkbox"
@@ -91,7 +91,7 @@
             </div>
 
             {% endif %}
-            <div class="filter-actions">
+            <div class="actions filter-actions">
                 <button type="submit" class="primary-button">Filtruj</button>
                 <a
                     href="{{ request.path }}{% if selected_view %}?view={{ selected_view }}{% endif %}"
