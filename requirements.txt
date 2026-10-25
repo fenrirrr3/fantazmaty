@@ -16,6 +16,9 @@ rapidfuzz==3.10.1
 spacy==3.8.7
 pydantic==2.12.5
 click>=8.0,<9
+# preshed 3.0.14 (24.10.2026) psuje wczytywanie modelu spaCy („OverflowError: Python int too large
+# to convert to C ssize_t”). Przed podniesieniem sprawdź: python -c "import spacy; spacy.load('pl_core_news_sm')".
+preshed==3.0.13
 # Model spaCy jako zwykła zależność z wersją: pip pobiera go tylko raz. Zapis „nazwa @ adres” kazał
 # pipowi pobierać i instalować model przy każdym „pip install -r”.
 --find-links https://github.com/explosion/spacy-models/releases/download/pl_core_news_sm-3.8.0/pl_core_news_sm-3.8.0-py3-none-any.whl
