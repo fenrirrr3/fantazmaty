@@ -1,4 +1,5 @@
 """Read-only IMAP headers with stable UID cursors and modified UTF-7 folders."""
+from contextlib import contextmanager
 from datetime import date
 import base64
 import imaplib
@@ -12,11 +13,27 @@ from django.utils.formats import date_format
 from django.utils.translation import override
 from cryptography.fernet import InvalidToken
 
+from core.models import MailboxConnection
+
 PAGE_SIZE = 50
 
 
 class MailboxError(Exception):
     pass
+
+
+def active_mailbox(purpose, missing, several=None, *, error=MailboxError, narrowing=({},)):
+    """Jedyna aktywna skrzynka danego przeznaczenia; brak – błąd `missing`, kilka – `several` (domyślnie też `missing`).
+
+    `narrowing` – kolejne zawężenia wyboru: następne sprawdzamy tylko wtedy, gdy poprzednie nic nie znalazło."""
+    active = MailboxConnection.objects.filter(purpose=purpose, is_active=True)
+    for lookup in narrowing:
+        boxes = list(active.filter(**lookup)[:2])
+        if boxes:
+            break
+    if len(boxes) != 1:
+        raise error(several if boxes and several else missing)
+    return boxes[0]
 
 
 def encode_folder(value):
@@ -71,6 +88,50 @@ def _header_rows(client, uids, *, recruitment=False):
     return rows
 
 
+@contextmanager
+def imap_folder(config):
+    """Folder skrzynki otwarty tylko do odczytu: (klient IMAP, UIDVALIDITY).
+
+    Połączenie jest zawsze zamykane, a błędy hasła, połączenia, logowania i serwera (także w bloku `with`)
+    zamieniane na MailboxError z opisem po polsku."""
+    client = None
+    try:
+        password = config.get_password()
+        context = ssl.create_default_context()
+        if config.security == 'ssl':
+            client = imaplib.IMAP4_SSL(config.host, config.port, ssl_context=context, timeout=15)
+        elif config.security == 'starttls':
+            client = imaplib.IMAP4(config.host, config.port, timeout=15)
+            client.starttls(ssl_context=context)
+        else:
+            raise MailboxError('Nieobsługiwany sposób szyfrowania połączenia.')
+        try:
+            client.login(config.username, password)
+        except imaplib.IMAP4.error:
+            raise MailboxError('Nie udało się zalogować do skrzynki. Sprawdź login, hasło aplikacji i dostęp do IMAP.') from None
+        folder = '"' + encode_folder(config.folder).replace('\\', '\\\\').replace('"', '\\"') + '"'
+        if client.select(folder, readonly=True)[0] != 'OK':
+            raise MailboxError('Nie można otworzyć folderu. Sprawdź jego nazwę w ustawieniach skrzynki.')
+        _, validity = client.response('UIDVALIDITY')
+        if not validity or not validity[0]:
+            raise MailboxError('Serwer nie podał UIDVALIDITY. Nie można bezpiecznie przeglądać kolejnych stron.')
+        yield client, _positive(int(validity[0]))
+    except InvalidToken:
+        raise MailboxError('Nie można odszyfrować hasła. Zapisz hasło skrzynki ponownie w panelu administratora.') from None
+    except ssl.SSLError:
+        raise MailboxError('Nie udało się nawiązać bezpiecznego połączenia TLS. Sprawdź serwer, port i certyfikat.') from None
+    except (TimeoutError, OSError):
+        raise MailboxError('Serwer pocztowy nie odpowiada lub połączenie zostało przerwane. Spróbuj ponownie.') from None
+    except (imaplib.IMAP4.error, ValueError, UnicodeError, TypeError):
+        raise MailboxError('Nie udało się odczytać danych IMAP. Sprawdź ustawienia skrzynki lub pobierz nagłówki ponownie.') from None
+    finally:
+        if client is not None:
+            try:
+                client.logout()
+            except (imaplib.IMAP4.error, OSError):
+                pass
+
+
 def read_headers(config, cursor=None, excluded=None, subject_filter="", *, recruitment_roles=None, sent_since=""):
     if subject_filter and subject_filter not in config.subject_choices():
         raise MailboxError("Wybierz nabór zapisany w ustawieniach skrzynki.")
@@ -87,30 +148,7 @@ def read_headers(config, cursor=None, excluded=None, subject_filter="", *, recru
             raise MailboxError('Podaj poprawną datę początkową.') from None
         months = ('Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')
         date_search = ['SENTSINCE', f'{cutoff.day:02d}-{months[cutoff.month - 1]}-{cutoff.year:04d}']
-    client = None
-    try:
-        password = config.get_password()
-        context = ssl.create_default_context()
-        if config.security == 'ssl':
-            client = imaplib.IMAP4_SSL(config.host, config.port, ssl_context=context, timeout=15)
-        elif config.security == 'starttls':
-            client = imaplib.IMAP4(config.host, config.port, timeout=15)
-            client.starttls(ssl_context=context)
-        else:
-            raise MailboxError('Nieobsługiwany sposób szyfrowania połączenia.')
-        try:
-            client.login(config.username, password)
-        except imaplib.IMAP4.error:
-            raise MailboxError('Nie udało się zalogować do skrzynki. Sprawdź login, hasło aplikacji i dostęp do IMAP.') from None
-        folder = encode_folder(config.folder)
-        folder = '"' + folder.replace('\\', '\\\\').replace('"', '\\"') + '"'
-        status, data = client.select(folder, readonly=True)
-        if status != 'OK':
-            raise MailboxError('Nie można otworzyć folderu. Sprawdź jego nazwę w ustawieniach skrzynki.')
-        _, validity_data = client.response('UIDVALIDITY')
-        if not validity_data or not validity_data[0]:
-            raise MailboxError('Serwer nie podał UIDVALIDITY. Nie można bezpiecznie przeglądać kolejnych stron.')
-        validity = _positive(int(validity_data[0]))
+    with imap_folder(config) as (client, validity):
         anchor = None
         if cursor:
             if not isinstance(cursor, dict) or cursor.get('validity') != validity:
@@ -184,20 +222,6 @@ def read_headers(config, cursor=None, excluded=None, subject_filter="", *, recru
         result['rows'] = [headers[uid] for uid in selected if uid in headers]
         result['rows'].sort(key=lambda item: item['uid'], reverse=True)
         return result
-    except InvalidToken:
-        raise MailboxError('Nie można odszyfrować hasła. Zapisz hasło skrzynki ponownie w panelu administratora.') from None
-    except ssl.SSLError:
-        raise MailboxError('Nie udało się nawiązać bezpiecznego połączenia TLS. Sprawdź serwer, port i certyfikat.') from None
-    except (TimeoutError, OSError):
-        raise MailboxError('Serwer pocztowy nie odpowiada lub połączenie zostało przerwane. Spróbuj ponownie.') from None
-    except (imaplib.IMAP4.error, ValueError, UnicodeError, TypeError):
-        raise MailboxError('Nie udało się odczytać danych IMAP. Sprawdź ustawienia skrzynki lub pobierz nagłówki ponownie.') from None
-    finally:
-        if client is not None:
-            try:
-                client.logout()
-            except (imaplib.IMAP4.error, OSError):
-                pass
 
 
 def story_title(subject):

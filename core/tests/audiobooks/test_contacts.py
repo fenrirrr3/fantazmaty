@@ -1,8 +1,6 @@
-"""Spis lektorów i montażystów (bez kont, jak spis ilustratorów): lista, dodawanie i edycja przez koordynatora, scalanie,
+"""Spis lektorów i montażystów (bez kont, jak spis ilustratorów): lista, dodawanie i edycja przez koordynatora,
 linki na stronie audiobooka i podpowiedzi kontaktów w formularzach."""
-import json
 
-from django.db import transaction
 from django.test import TestCase
 from django.urls import reverse
 from lxml import html
@@ -129,93 +127,3 @@ class ContactSuggestionTests(TestCase):
         self.assertEqual(self.results('unknown', 'Anna', status=400), [])
         self.assertEqual(self.results('', 'Anna', status=400), [])
         self.assertEqual(self.client.post(self.url, {'kind': 'person', 'q': 'Anna'}).status_code, 405)
-
-
-class MergeAudioContributorCommandTests(TestCase):
-    """Komenda merge_audio_contributor: przepięcie nagrań i kopii danych, uzupełnienie e-maila, podgląd i błędy."""
-
-    SOURCE, TARGET = 'Karolina Stachacz Bartosik', 'Karolina Stachacz-Bartosik'
-
-    @classmethod
-    def setUpTestData(cls):
-        book = Anthology.objects.create(title='Scalanie', status=Anthology.Status.READY)
-        cls.source = AudioContributor.objects.create(name=cls.SOURCE, email='karolina@example.test')
-        cls.target = AudioContributor.objects.create(name=cls.TARGET)
-        cls.other = AudioContributor.objects.create(name='Inny Lektor')
-        cls.narrated = Audiobook.objects.create(text=Text.objects.create(title='Czytany', anthology=book, length=1),
-                                                narrator_contact=cls.source, engineer_contact=cls.other)
-        cls.engineered = Audiobook.objects.create(text=Text.objects.create(title='Montowany', anthology=book, length=1),
-                                                  narrator_contact=cls.target, engineer_contact=cls.source)
-
-    def run_command(self, *args):
-        from io import StringIO
-        from django.core.management import call_command
-        out = StringIO()
-        call_command('merge_audio_contributor', *args, stdout=out)
-        return json.loads(out.getvalue())
-
-    def assert_merged(self):
-        self.assertFalse(AudioContributor.objects.filter(pk=self.source.pk).exists())
-        self.target.refresh_from_db()
-        self.assertEqual((self.target.name, self.target.email), (self.TARGET, 'karolina@example.test'))
-        self.narrated.refresh_from_db()
-        self.engineered.refresh_from_db()
-        self.assertEqual((self.narrated.narrator_contact, self.narrated.narrator_name, self.narrated.narrator_email),
-                         (self.target, self.TARGET, 'karolina@example.test'))
-        self.assertEqual((self.engineered.engineer_contact, self.engineered.engineer_name),
-                         (self.target, self.TARGET))
-        self.assertEqual(self.narrated.engineer_contact, self.other)
-
-    def test_merge_by_name_and_by_id(self):
-        for case, args in (('nazwy', (self.SOURCE, self.TARGET)),
-                           ('ID', ('--source-id', str(self.source.pk), '--target-id', str(self.target.pk))),
-                           ('ID źródła i nazwa celu', ('--source-id', str(self.source.pk), self.TARGET))):
-            with self.subTest(case), transaction.atomic():
-                report = self.run_command(*args)
-                self.assertEqual(report['moved'], {'core.Audiobook.narrator_contact': [self.narrated.pk],
-                                                   'core.Audiobook.engineer_contact': [self.engineered.pk]})
-                self.assert_merged()
-                transaction.set_rollback(True)
-
-    def test_dry_run_changes_nothing(self):
-        report = self.run_command(self.SOURCE, self.TARGET, '--dry-run')
-        self.assertEqual(report['mode'], 'podgląd – nic nie zapisano')
-        self.assertEqual(report['target_after']['email'], 'karolina@example.test')
-        self.assertTrue(AudioContributor.objects.filter(pk=self.source.pk).exists())
-        self.narrated.refresh_from_db()
-        self.assertEqual(self.narrated.narrator_contact, self.source)
-
-    def test_ambiguous_or_missing_entries_are_rejected(self):
-        from django.core.management.base import CommandError
-        AudioContributor.objects.create(name='Inny Lektor', email='drugi@example.test')
-        cases = {
-            'brak źródła': ((self.TARGET.lower(), self.TARGET), 'znaleziono: 0'),
-            'kilka wpisów': (('Inny Lektor', self.TARGET), 'znaleziono: 2 (ID: '),
-            'ten sam wpis': ((self.TARGET, self.TARGET), 'ten sam wpis'),
-            'brak celu': ((self.SOURCE,), 'Podaj cel'),
-            'nazwa i ID naraz': ((self.SOURCE, self.TARGET, '--target-id', str(self.target.pk)), 'jedno z dwóch'),
-        }
-        for case, (args, message) in cases.items():
-            with self.subTest(case), self.assertRaisesMessage(CommandError, message):
-                self.run_command(*args)
-        self.assertTrue(AudioContributor.objects.filter(pk=self.source.pk).exists())
-
-    def test_conflicting_email_and_activity_are_reported(self):
-        """Inny e-mail celu i inna aktywność – ostrzeżenia w raporcie; cel zachowuje swoje dane."""
-        AudioContributor.objects.filter(pk=self.target.pk).update(email='cel@example.test', is_active=False)
-        report = self.run_command(self.SOURCE, self.TARGET)
-        self.assertEqual(report['warnings'], [
-            'Cel ma już e-mail cel@example.test; e-mail źródła karolina@example.test zostanie pominięty.',
-            'Zachowano aktywność celu (nieaktywny).'])
-        self.target.refresh_from_db()
-        self.assertEqual((self.target.email, self.target.is_active), ('cel@example.test', False))
-
-    def test_duplicate_pair_after_filling_the_email_saves_nothing(self):
-        """Uzupełniony e-mail dałby parę (imię, e-mail) innego wpisu – błąd komendy i brak zmian w bazie."""
-        from django.core.management.base import CommandError
-        AudioContributor.objects.create(name=self.TARGET, email='karolina@example.test')
-        with self.assertRaisesMessage(CommandError, 'Nic nie zapisano: '):
-            self.run_command(self.SOURCE, '--target-id', str(self.target.pk))
-        self.assertTrue(AudioContributor.objects.filter(pk=self.source.pk).exists())
-        self.narrated.refresh_from_db()
-        self.assertEqual(self.narrated.narrator_contact, self.source)

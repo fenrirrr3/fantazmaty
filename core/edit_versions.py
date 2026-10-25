@@ -109,6 +109,46 @@ def version_of(obj):
     ).values_list('version', flat=True).first() or 0
 
 
+# Sól tokenu {% edit_version %} sprawdzanego przez middleware (core.middleware).
+EDIT_VERSION_SALT = 'cms-edit-version'
+
+
+def signed_state(state, salt):
+    """Podpisany stan formularza (lista wartości JSON) do porównania przy zapisie."""
+    from django.core import signing
+    return signing.dumps(state, salt=salt)
+
+
+def signed_state_matches(token, state, salt, max_age=86400):
+    """Czy token podpisano dla tego samego stanu i nie wygasł."""
+    from django.core import signing
+    try:
+        return signing.loads(token, salt=salt, max_age=max_age) == state
+    except (signing.BadSignature, TypeError):
+        return False
+
+
+def object_token(user, obj, salt):
+    """Token formularza jednego rekordu: konto, rekord i jego wersja edycji."""
+    return signed_state([user.pk, obj.pk, version_of(obj)], salt)
+
+
+def object_token_matches(token, user, obj, salt):
+    return signed_state_matches(token, [user.pk, obj.pk, version_of(obj)], salt)
+
+
+def edit_tokens(user, label, ids):
+    """Tokeny {% edit_version %} (format middleware) dla wielu rekordów jednym zapytaniem: {pk: token}."""
+    from django.core import signing
+    from core.models import EditRevision
+    ids = list(ids)
+    if not ids:
+        return {}
+    versions = dict(EditRevision.objects.filter(model_label=label, object_id__in=ids)
+                    .values_list('object_id', 'version'))
+    return {pk: signing.dumps([user.pk, f'{label}:{pk}', versions.get(pk, 0)], salt=EDIT_VERSION_SALT) for pk in ids}
+
+
 def bump(label, pk, using):
     if not pk:
         return

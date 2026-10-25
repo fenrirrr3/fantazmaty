@@ -6,7 +6,6 @@ from datetime import datetime, time, timedelta
 
 from django import forms
 from django.contrib.auth import get_user_model
-from django.core import signing
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
@@ -25,6 +24,8 @@ from workflow.services import (
 )
 
 from .normalization import NormalizedFormMixin, TEXT_FIELDS
+from core.permissions import can_import_reviews, is_superuser
+from core.review_submission_forms import require_warning_confirmation
 from core.services.review_import_parser import (
     parse_review_records, MAX_IMPORT_CHARACTERS, MAX_IMPORT_ERRORS,
 )
@@ -370,11 +371,6 @@ class ReviewContentWarningsForm(NormalizedFormMixin, forms.Form):
         widget=textarea_widget("content-warnings-input", placeholder="Wpisz trigger warningi zauważone w tekście..."),
     )
 
-    def __init__(self, *args, instance=None, **kwargs):
-        if instance is not None:
-            kwargs['initial'] = {"content_warnings": instance.content_warnings, **kwargs.get('initial', {})}
-        super().__init__(*args, **kwargs)
-
 
 class AuthorNotificationForm(forms.Form):
     author_notified = forms.BooleanField(
@@ -391,7 +387,7 @@ class AuthorNotificationForm(forms.Form):
         widget=date_widget(),
     )
 
-    def __init__(self, *args, review=None, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         today = timezone.localdate()
@@ -401,14 +397,6 @@ class AuthorNotificationForm(forms.Form):
             "min": (today - timedelta(days=14)).isoformat(),
             "max": (today + timedelta(days=14)).isoformat(),
         })
-
-        if review is not None and not self.is_bound:
-            self.initial.update(
-                {
-                    "author_notified": review.author_notified_at is not None,
-                    "author_notified_at": review.author_notified_at or timezone.localdate(),
-                }
-            )
 
     def clean(self):
         cleaned_data = super().clean()
@@ -498,16 +486,9 @@ class ReviewBulkImportForm(forms.Form):
         self.import_warnings = []
         self.warning_payload = None
 
-    def _can_import(self):
-        return bool(
-            self.user
-            and self.user.is_authenticated
-            and self.user.is_active
-            and self.user.is_superuser
-        )
-
     def clean_records(self):
-        if not self._can_import():
+        # Pole sprawdzane przed clean(): bez uprawnień nie przetwarzamy danych autorów.
+        if not can_import_reviews(self.user):
             raise ValidationError(
                 "Import danych autorów jest dostępny wyłącznie "
                 "dla superusera."
@@ -537,12 +518,6 @@ class ReviewBulkImportForm(forms.Form):
 
     def clean(self):
         cleaned_data = super().clean()
-
-        if not self._can_import():
-            raise ValidationError(
-                "Import danych autorów jest dostępny wyłącznie "
-                "dla superusera."
-            )
 
         if self.errors:
             return cleaned_data
@@ -630,41 +605,10 @@ class ReviewBulkImportForm(forms.Form):
             "warnings_digest": warnings_digest,
         }
 
-        previous_payload = None
-        token = cleaned_data.get("submission_warnings_token", "")
-
-        if token:
-            try:
-                previous_payload = signing.loads(
-                    token,
-                    salt=self.WARNING_TOKEN_SALT,
-                    max_age=3600,
-                )
-            except signing.BadSignature:
-                pass
-
-        confirmed = (
-            cleaned_data.get("confirm_submission_warnings")
-            and previous_payload == self.warning_payload
+        require_warning_confirmation(
+            self, self.warning_payload, self.WARNING_TOKEN_SALT,
+            "Wykryto ostrzeżenia. Sprawdź listę, zaznacz potwierdzenie i ponownie zatwierdź import.",
         )
-
-        if not confirmed:
-            self.data = self.data.copy()
-            self.data[self.add_prefix("submission_warnings_token")] = (
-                signing.dumps(
-                    self.warning_payload,
-                    salt=self.WARNING_TOKEN_SALT,
-                    compress=True,
-                )
-            )
-            self.data[self.add_prefix("confirm_submission_warnings")] = ""
-
-            self.add_error(
-                "confirm_submission_warnings",
-                "Wykryto ostrzeżenia. Sprawdź listę, zaznacz "
-                "potwierdzenie i ponownie zatwierdź import.",
-            )
-
         return cleaned_data
 
 
@@ -685,12 +629,7 @@ class GlobalSearchForm(forms.Form):
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
 
-        if (
-            user
-            and user.is_authenticated
-            and user.is_active
-            and user.is_superuser
-        ):
+        if is_superuser(user):
             self.fields["query"].widget.attrs["placeholder"] = (
                 "Tytuł, autor, pseudonim, antologia, e-mail lub osoba"
             )

@@ -13,3 +13,10 @@ ROLE_CHOICES = (
     ('promotion', 'Promocja i social media'),
     ('other', 'Inny pomysł'),
 )
+
+# Role do ręcznego wyboru w adminie (dawne działy), których formularz nie wysyła – nie trafiają
+# do ROLE_CHOICES, więc nie są rozpoznawane w temacie ani treści maila.
+MANUAL_ROLE_CHOICES = (
+    ('sound', 'Dźwiękowcy'),
+    ('designers', 'Graficy'),
+)

@@ -19,10 +19,10 @@ from docx.enum.style import WD_STYLE_TYPE
 from docx.shared import Pt
 from lxml import etree
 
-from core.odkurzacz_forms import MERGE_MAX_FILES, MergeForm, plural
-from core.program_test_support import run_program
+from core.inflection import plural
+from core.odkurzacz_forms import MERGE_MAX_FILES, MergeForm
 from core.services import program_jobs as jobs
-from core.services.document_converter import ConversionError, RebuildConfirmationRequired
+from core.services.document_converter import ConversionError
 from core.services.document_merge import MergeError, merge_documents
 from core.services.document_rebuild import rebuild_docx
 from core.services.document_split import split_document
@@ -30,7 +30,7 @@ from core.services.document_template import TEMPLATE_PATH, apply_template_styles
 from fantazmaty.testing import create_superuser
 
 from .editor_fixtures_exotic import libreoffice_review_docx, review_docx, review_stories_docx
-from .support import IsolatedProgramDirsMixin, docx_bytes, downloaded, noted_document, noted_text, saved
+from .support import IsolatedProgramDirsMixin, docx_bytes, downloaded, noted_document, noted_text, run_program, saved
 from .test_document_rebuild import comments_of, resolved, review_markup_errors, review_parts, revisions
 
 W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
@@ -384,24 +384,17 @@ class ReviewMergeTests(SimpleTestCase):
 
 class MergeReportTests(SimpleTestCase):
     def test_summaries_of_all_files_are_added_up(self):
-        """Liczby reguł i zamiany słownikowe z kilku plików sumują się (wartości nieliczbowe pomijamy), zamiany od najczęstszej."""
+        """Liczby reguł i zamiany słownikowe z kilku plików sumują się, zamiany od najczęstszej."""
         def row(source, target, count):
             return {'source': source, 'target': target, 'count': count}
         total = jobs._sum_summaries([
-            {'spaces': 2, 'dashes': True, 'replacements': [row('kot', 'pies', 1)]},
-            None,
+            {'spaces': 2, 'replacements': [row('kot', 'pies', 1)]},
+            {},
             {'spaces': 1, 'quotes': 4, 'replacements': [row('kot', 'pies', 2), row('ala', 'ola', 5)]},
         ])
         self.assertEqual(total, {'spaces': 3, 'quotes': 4,
                                  'replacements': [row('ala', 'ola', 5), row('kot', 'pies', 3)]})
         self.assertEqual(jobs._sum_summaries([{'spaces': 1}, {}]), {'spaces': 1})
-
-    def test_rebuild_omissions_are_cut_out_of_the_converter_message(self):
-        """Z komunikatu o pominięciach zostaje sama lista elementów – z wstępem i zakończeniem albo bez nich."""
-        from core.services.document_converter import REBUILD_WARNING
-        for message in (REBUILD_WARNING + 'tabele (liczba: 1)' + jobs.REBUILD_SUFFIX, 'tabele (liczba: 1)'):
-            with self.subTest(message=message):
-                self.assertEqual(jobs._rebuild_omissions(RebuildConfirmationRequired(message)), 'tabele (liczba: 1)')
 
 
 @tag('slow')

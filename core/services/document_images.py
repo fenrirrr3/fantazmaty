@@ -17,16 +17,17 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 from lxml import etree
 
+if __package__:
+    from .document_xml import MC, R, W, is_internal, parse_part, part_target, rels_path, serialize_part, source_part
+else:
+    from document_xml import MC, R, W, is_internal, parse_part, part_target, rels_path, serialize_part, source_part
+
 POLISH = 'pl-PL'
-W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
-R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
 A = 'http://schemas.openxmlformats.org/drawingml/2006/main'
 PIC = 'http://schemas.openxmlformats.org/drawingml/2006/picture'
-MC = 'http://schemas.openxmlformats.org/markup-compatibility/2006'
 V = 'urn:schemas-microsoft-com:vml'
 OFFICE = 'urn:schemas-microsoft-com:office:office'
 CT = 'http://schemas.openxmlformats.org/package/2006/content-types'
-PARSER = etree.XMLParser(resolve_entities=False, no_network=True, load_dtd=False)
 
 # Relacje prowadzące do obrazów i osadzonych obiektów: po usunięciu odwołań w treści znikają.
 MEDIA_RELATIONSHIPS = ('/image', '/oleObject', '/package', '/hdphoto', '/media', '/video', '/audio')
@@ -55,31 +56,6 @@ def _read(source):
 
 def _is_xml(name):
     return name.lower().endswith(('.xml', '.rels'))
-
-
-def _serialize(root):
-    return etree.tostring(root, xml_declaration=True, encoding='UTF-8', standalone=True)
-
-
-def _rels_name(part):
-    folder, name = posixpath.split(part)
-    return posixpath.join(folder, '_rels', name + '.rels')
-
-
-def _source_part(rels_name):
-    """word/_rels/document.xml.rels → word/document.xml; _rels/.rels → ''."""
-    folder, name = posixpath.split(rels_name)
-    return posixpath.join(posixpath.dirname(folder), name[:-len('.rels')])
-
-
-def _target(rels_name, relationship):
-    target = relationship.get('Target', '')
-    if relationship.get('TargetMode', '').lower() == 'external':
-        return None
-    if target.startswith('/'):
-        return posixpath.normpath(target.lstrip('/'))
-    base = posixpath.dirname(_source_part(rels_name))
-    return posixpath.normpath(posixpath.join(base, target))
 
 
 def _write(original, parts, removed=()):
@@ -201,35 +177,35 @@ def strip_images(source):
         if not data.startswith(UTF16_BOMS) and not any(marker in data for marker in IMAGE_MARKERS):
             continue
         try:
-            root = etree.fromstring(data, PARSER)
+            root = parse_part(data)
         except etree.XMLSyntaxError:
             continue
         removed = _strip_part(root)
         if removed:
             count += removed
-            parts[name] = _serialize(root)
+            parts[name] = serialize_part(root)
             roots[name] = root
     # Relacje obrazów, do których nic już nie odsyła, i ich pliki.
     dropped_targets = set()
     for rels_name, data in payloads.items():
         if not rels_name.endswith('.rels'):
             continue
-        part = _source_part(rels_name)
+        part = source_part(rels_name)
         if part not in names and rels_name != '_rels/.rels':
             continue
         media = None
         try:
-            rels = etree.fromstring(data, PARSER)
+            rels = parse_part(data)
         except etree.XMLSyntaxError:
             continue
         for relationship in list(rels):
             kind = relationship.get('Type', '')
             if rels_name == '_rels/.rels' and kind.endswith(THUMBNAIL_RELATIONSHIP) and count:
-                target = _target(rels_name, relationship)
+                target = part_target(part, relationship)
                 rels.remove(relationship)
                 if target:
                     dropped_targets.add(target)
-                parts[rels_name] = _serialize(rels)
+                parts[rels_name] = serialize_part(rels)
                 continue
             if not kind.endswith(MEDIA_RELATIONSHIPS):
                 continue
@@ -237,35 +213,35 @@ def strip_images(source):
                 root = roots.get(part)
                 if root is None:
                     try:
-                        root = etree.fromstring(payloads.get(part, b''), PARSER)
+                        root = parse_part(payloads.get(part, b''))
                     except etree.XMLSyntaxError:
                         media = {relationship.get('Id') for relationship in rels}  # nie ruszamy
                         continue
                 media = _references(root)
             if relationship.get('Id') in media:
                 continue
-            target = _target(rels_name, relationship)
+            target = part_target(part, relationship)
             rels.remove(relationship)
             if target:
                 dropped_targets.add(target)
-            parts[rels_name] = _serialize(rels)
+            parts[rels_name] = serialize_part(rels)
     # Plik usuwamy, gdy żadna pozostała relacja w pakiecie już do niego nie prowadzi.
     still_used = set()
     for rels_name, data in payloads.items():
         if not rels_name.endswith('.rels'):
             continue
         try:
-            rels = etree.fromstring(parts.get(rels_name, data), PARSER)
+            rels = parse_part(parts.get(rels_name, data))
         except etree.XMLSyntaxError:
             continue
         for relationship in rels:
-            target = _target(rels_name, relationship)
+            target = part_target(source_part(rels_name), relationship)
             if target:
                 still_used.add(target)
     removed_parts = {name for name in dropped_targets - still_used if name in names}
-    removed_parts |= {_rels_name(name) for name in removed_parts if _rels_name(name) in names}
+    removed_parts |= {rels_path(name) for name in removed_parts if rels_path(name) in names}
     if removed_parts:
-        types = etree.fromstring(payloads['[Content_Types].xml'], PARSER)
+        types = parse_part(payloads['[Content_Types].xml'])
         remaining = [name for name in names if name not in removed_parts]
         used_extensions = {posixpath.splitext(name)[1].lstrip('.').lower() for name in remaining}
         for entry in list(types):
@@ -275,7 +251,7 @@ def strip_images(source):
                 extension = entry.get('Extension', '').lower()
                 if extension in IMAGE_EXTENSIONS and extension not in used_extensions:
                     types.remove(entry)
-        parts['[Content_Types].xml'] = _serialize(types)
+        parts['[Content_Types].xml'] = serialize_part(types)
     if not parts:
         return BytesIO(original), 0
     return _write(original, parts, removed_parts), count
@@ -291,7 +267,7 @@ IMAGE_SOURCE_ATTRIBUTES = (_q(R, 'embed'), _q(R, 'link'), _q(R, 'id'), _q(R, 'pi
 def is_linked_image(rels_name, relationship):
     """Czy relacja (element Relationship z pliku `rels_name`) to obraz połączony z plikiem spoza pakietu
     – także zewnętrzna miniatura pakietu. Takie relacje usuwa unlink_external_images."""
-    if relationship.get('TargetMode', '').lower() != 'external':
+    if is_internal(relationship):
         return False
     kind = relationship.get('Type', '')
     return kind.endswith(LINKED_IMAGE_RELATIONSHIPS) or (
@@ -388,7 +364,7 @@ def unlink_external_images(source):
             if b'external' not in data.lower() and not data.startswith(UTF16_BOMS):
                 continue
             try:
-                rels = etree.fromstring(data, PARSER)
+                rels = parse_part(data)
             except etree.XMLSyntaxError:
                 continue
             linked = [relationship for relationship in rels if is_linked_image(rels_name, relationship)]
@@ -396,15 +372,15 @@ def unlink_external_images(source):
                 continue
             for relationship in linked:
                 rels.remove(relationship)
-            parts[rels_name] = _serialize(rels)
-            part = _source_part(rels_name)
+            parts[rels_name] = serialize_part(rels)
+            part = source_part(rels_name)
             if part in names and _is_xml(part):
                 try:
-                    root = etree.fromstring(archive.read(part), PARSER)
+                    root = parse_part(archive.read(part))
                 except etree.XMLSyntaxError:
                     continue
                 count += _unlink_part(root, {relationship.get('Id') for relationship in linked})
-                parts[part] = _serialize(root)
+                parts[part] = serialize_part(root)
     if not parts:
         return BytesIO(original), 0
     return _write(original, parts), count
@@ -449,7 +425,7 @@ def force_polish(source):
             if b'lang' not in data and b'Lang' not in data and not is_styles and not data.startswith(UTF16_BOMS):
                 continue
             try:
-                root = etree.fromstring(data, PARSER)
+                root = parse_part(data)
             except etree.XMLSyntaxError:
                 continue
             changed = False
@@ -475,7 +451,7 @@ def force_polish(source):
                     _polish_rpr(properties)
                     changed = True
             if changed:
-                parts[name] = _serialize(root)
+                parts[name] = serialize_part(root)
     if not parts:
         return BytesIO(original)
     return _write(original, parts)

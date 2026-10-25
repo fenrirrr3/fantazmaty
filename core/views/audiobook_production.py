@@ -3,7 +3,6 @@ from contextlib import nullcontext
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.core import signing
 from django.db import transaction
 from django.db.models import Q, Value, OuterRef, Subquery, Case, When, CharField, IntegerField, Prefetch
 from django.shortcuts import get_object_or_404, redirect, render
@@ -18,9 +17,11 @@ from core.audiobook_forms import (AudiobookPeopleForm, AudiobookPublicationForm,
     AudiobookStatusForm, AudiobookStagesForm, AudiobookStageDateForm, AudiobookAssignmentForm, eligible_proofreaders)
 from core.audiobook_services import (record_event, require_available, may_finish, start_stage, finish_stage, claim_proofreading,
     can_claim_proofreading, set_status, update_stage_dates, delete_stage, stage_periods, STAGE_ORDER)
-from core.discord_notifications import person_name
+from core.account_identity import person_name
 from core.edit_policy import edit_policy
-from core.models import Audiobook, AudiobookStage, EditRevision
+from core.edit_versions import edit_tokens
+from core.filtering import positive_id
+from core.models import Audiobook, AudiobookStage
 from core.pagination import paginate_items
 from core.permissions import (is_coordinator, require_coordinator, team_member_required, can_view_audio_proofreading,
     can_view_audiobooks)
@@ -37,25 +38,15 @@ def audio_texts(*, include_abandoned=False):
         'authors', 'translation__foreign_authors').exclude(anthology__is_novel=True)
 
 
-def authors_display(text):
-    if text.anthology_id and text.anthology.is_translated:
-        translation = getattr(text, 'translation', None)
-        return ', '.join(person.display_name for person in translation.foreign_authors.all()) if translation else ''
-    return text.authors_display
-
-
 def proofreader_display(audio):
     if not audio or not audio.proofreader_id:
         return ''
-    user = audio.proofreader
-    profile = getattr(user, 'person_profile', None)
-    return str(profile) if profile else (user.get_full_name() or user.username)
+    return person_name(audio.proofreader)
 
 
 def author_links(text, user):
     translated = bool(text.anthology_id and text.anthology.is_translated)
-    translation = getattr(text, 'translation', None) if translated else None
-    people = translation.foreign_authors.all() if translation else ([] if translated else text.authors.all())
+    people = text.source_authors()
     allowed = user.is_superuser if translated else is_coordinator(user)
     return [{'name': person.display_name, 'url': (
         reverse('core:translation_person_detail', args=['author', person.pk]) if translated else
@@ -112,8 +103,8 @@ def list_page(request, *, proofreading=False, bound_assignment=None, status_code
                 matches = matches.filter(performer=request.user)
             rows = scope.filter(Q(pk__in=rows.values('pk')) | Q(pk__in=matches.values('text_id')))
     if anthologies_selected:
-        valid = all(v.isascii() and v.isdecimal() and len(v) <= 18 for v in anthologies_selected)
-        rows = rows.filter(anthology_id__in=[int(v) for v in anthologies_selected]) if valid else rows.none()
+        ids = [positive_id(value) for value in anthologies_selected]
+        rows = rows.filter(anthology_id__in=ids) if None not in ids else rows.none()
     rows = rows.alias(audio_status_rank=STATUS_RANK)
     status_choices = STATUS_FILTERS if proofreading else AUDIOBOOK_STATUS_FILTERS
     if statuses_selected:
@@ -131,21 +122,20 @@ def list_page(request, *, proofreading=False, bound_assignment=None, status_code
     page = paginate_items(request, rows)
     claimant = proofreading and eligible_proofreaders().filter(pk=request.user.pk).exists()
     page.object_list = [dict(pk=t.pk, title=t.title, anthology=t.anthology,
-        authors_display=authors_display(t), author_links=author_links(t, request.user), audio=getattr(t, 'audiobook', None),
+        authors_display=t.source_authors_display, author_links=author_links(t, request.user), audio=getattr(t, 'audiobook', None),
         proofreader_display=proofreader_display(getattr(t, 'audiobook', None)),
         **({'corrections': correction_rows(t.audiobook, t.audio_corrections, viewer=None if coordinator else request.user),
-            'allow_assignment': coordinator and t.can_produce_audio and can_assign_proofreader(t.audiobook, t.audio_corrections),
+            'allow_assignment': coordinator and t.can_produce_audio and can_assign_proofreader(t.audiobook),
             'can_finish': t.can_produce_audio and may_finish(request.user, t.audiobook) and any(
                 stage.pk == t.audiobook.active_stage_id and stage.is_started and not stage.is_completed
                 for stage in t.audio_corrections),
-            'can_claim': claimant and t.can_produce_audio and can_claim_proofreading(t.audiobook, t.audio_corrections, request.user),
+            'can_claim': claimant and t.can_produce_audio and can_claim_proofreading(t.audiobook, request.user),
             'production_disabled': not t.can_produce_audio} if proofreading else {'periods': stage_periods(t.production_periods)})) for t in page.object_list]
     if proofreading:
-        versions = dict(EditRevision.objects.filter(model_label='texts.text',
-            object_id__in=[r['pk'] for r in page.object_list]).values_list('object_id', 'version'))
-        for row in page.object_list:
-            if row['can_claim'] or row['can_finish'] or (coordinator and row['allow_assignment']):
-                row['edit_token'] = signing.dumps([request.user.pk, f"texts.text:{row['pk']}", versions.get(row['pk'], 0)], salt='cms-edit-version')
+        rows = {row['pk']: row for row in page.object_list
+                if row['can_claim'] or row['can_finish'] or (coordinator and row['allow_assignment'])}
+        for pk, token in edit_tokens(request.user, 'texts.text', rows).items():
+            rows[pk]['edit_token'] = token
     if proofreading and coordinator:
         choices = [(user.pk, str(user.person_profile)) for user in eligible_proofreaders().select_related('person_profile').order_by('last_name', 'first_name', 'pk')]
         choice_ids = {pk for pk, label in choices}
@@ -186,10 +176,10 @@ def may_act_on_proofreading(user, audio):
 
 
 def _stage_id(request, field='stage_id'):
-    raw = request.POST.get(field, '')
-    if not raw.isascii() or not raw.isdecimal() or len(raw) > 18:
+    stage_id = positive_id(request.POST.get(field))
+    if stage_id is None:
         raise ValidationError('Wybierz prawidłowy etap.')
-    return int(raw)
+    return stage_id
 
 
 @edit_policy(check=can_edit_audio, require_version=True)
@@ -281,7 +271,7 @@ def audiobook_detail(request, text_id):
         own_proofreading = may_act_on_proofreading(request.user, audio)
         can_edit_stages = editable and eligible and bool(stages)
         return render(request, 'core/audiobook_detail.html', dict(text=text, audio=audio,
-            authors_display=authors_display(text), proofreader_display=proofreader_display(audio),
+            authors_display=text.source_authors_display, proofreader_display=proofreader_display(audio),
             stages=stages, current_stage=current, errors=errors, can_edit=editable, eligible=eligible,
             can_edit_stages=can_edit_stages,
             stage_rows=forms['stages_form'].rows() if can_edit_stages else [{'stage': stage} for stage in stages],
@@ -329,14 +319,14 @@ def assign_audio_proofreader(request, text_id):
         text = get_object_or_404(Text.objects.select_for_update(), pk=text_id)
         require_available(text)
         audio = get_object_or_404(Audiobook, text=text, status=Audiobook.Status.PROOFREADING)
-        if not can_assign_proofreader(audio, corrections().filter(text=text)):
+        if not can_assign_proofreader(audio):
             raise PermissionDenied('Korekta została zakończona. Aby przypisać kolejną osobę, skieruj audiobook do ponownej korekty.')
         previous_proofreader = audio.proofreader
         form = AudiobookAssignmentForm(request.POST, instance=audio, auto_id=f'id_audio_{text.pk}_%s')
         if form.is_valid():
             saved = form.save()
             if saved.proofreader_id != getattr(previous_proofreader, 'pk', None):
-                record_event(text, request.user, previous=saved.status_label, current=saved.status_label,
+                record_event(text, request.user, previous=saved.get_status_display(), current=saved.get_status_display(),
                              details=(f'Przypisano korektora: {person_name(saved.proofreader)}.' if saved.proofreader
                                       else 'Usunięto przypisanie korektora.'))
             stage = saved.active_stage

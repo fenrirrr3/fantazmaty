@@ -18,23 +18,13 @@ from core.permissions import (
 from texts.models import Text
 from workflow.models import WorkflowRoleAssignment, WorkflowStage
 from workflow.numbering import next_stage_iteration
-from workflow.services import ROLE_GROUPS, STAGE_ROLES, validate_assignment_start_date
+from workflow.services import (OPPOSITE_VERIFIER, ROLE_GROUPS, STAGE_ROLE_MAP, TERMINAL_STAGES, latest_end,
+                               require_start_after_previous_work, validate_assignment_start_date)
 from workflow.state import ORDER as STAGE_ORDER  # kolejność etapów z katalogu procesu
 
 
 StageType = WorkflowStage.StageType
 Role = WorkflowRoleAssignment.Role
-
-
-TERMINAL_STAGES = frozenset({StageType.READY, StageType.WITHDRAWN})
-
-STAGE_ROLE_MAP = {
-    **STAGE_ROLES,
-    StageType.READY_FOR_EDITING: Role.EDITOR,
-    StageType.EDITING: Role.EDITOR,
-    StageType.AUTHOR_EDITING: Role.EDITOR,
-    StageType.EDITOR_CONTROL: Role.EDITOR,
-}
 
 def _current_stages(text):
     return list(
@@ -95,10 +85,7 @@ def _require_eligible_assignee(user, role, *, lock=True, existing=False):
 
 
 def _require_distinct_verifiers(assignments, role, user_id):
-    conflicting_role = {
-        Role.VERIFIER_1: Role.VERIFIER_2,
-        Role.VERIFIER_2: Role.VERIFIER_1,
-    }.get(role)
+    conflicting_role = OPPOSITE_VERIFIER.get(role)
 
     if conflicting_role and any(
         assignment.role == conflicting_role
@@ -117,8 +104,6 @@ def _require_start_order(stage, stages):
         return
     from workflow.services import ensure_verification_not_completed
     ensure_verification_not_completed(stage.text, stage.stage_type)
-    from workflow.state import operational_stages
-    stages = operational_stages(stages)
     open_others = [
         item
         for item in stages
@@ -247,15 +232,7 @@ def start_assigned_stage(*, user, stage_id, started_at, allow_past=False):
     _require_distinct_verifiers(assignments, role, assignment.assigned_to_id)
     _require_start_order(stage, stages)
 
-    previous_end_dates = [
-        item.ended_at
-        for item in stages
-        if item.is_completed and item.ended_at is not None
-    ]
-    if previous_end_dates and transition_date < max(previous_end_dates):
-        raise ValidationError(
-            "Rozpoczęcie nie może poprzedzać zakończenia wcześniejszych prac."
-        )
+    require_start_after_previous_work(transition_date, latest_end(stages))
 
     if stage.stage_type == StageType.READY_FOR_EDITING:
         # Rezerwacja redaktora już istnieje. Zachowujemy jej właściciela
@@ -446,9 +423,7 @@ def change_scheduled_stage(*, user, stage_id, started_at=None, cancel=False):
         ensure_distinct_proofreader(text, role, assignment.assigned_to)
         _require_eligible_assignee(assignment.assigned_to, role, existing=True)
         date = validate_assignment_start_date(started_at)
-        previous = [s.ended_at for s in stages if s.is_completed and s.ended_at]
-        if previous and date < max(previous):
-            raise ValidationError('Data nie może poprzedzać zakończenia wcześniejszych prac.')
+        require_start_after_previous_work(date, latest_end(stages))
         if text.take_locked and date > today:
             # Superuser przy blokadzie: nowa data czeka wstrzymana do odblokowania.
             from workflow.models import HELD_START
@@ -483,15 +458,9 @@ def toggle_take_lock(*, user, text_id):
     text.save(update_fields=["take_locked_at", "take_locked_by"])
     (hold_future_bookings if locked else release_held_bookings)(text, timezone.localdate())
 
-    from core.models import WorkflowEvent
-    from core.workflow_events import snapshot
+    from core.workflow_events import record_event, snapshot
     using = text._state.db or "default"
     status = snapshot(text.pk, using)["status"]
-    person = getattr(user, "person_profile", None)
-    WorkflowEvent.objects.using(using).create(
-        text=text, title=text.title, authors=", ".join(a.display_name for a in text.authors.all()),
-        actor=user, actor_name=str(person) if person else user.get_full_name() or user.get_username(),
-        previous_status=status, next_status=status,
-        details=TAKE_LOCK_EVENTS[locked],
-    )
+    record_event(using, text, user, title=text.title, previous_status=status, next_status=status,
+                 details=TAKE_LOCK_EVENTS[locked])
     return locked

@@ -191,10 +191,6 @@ class OverdueBannerMatchesReportTests(TestCase):
         stage('Wycofany', 'editing', started=days(50), queued=days(50))
         stage('Wycofany', 'withdrawn')
         stage('W porzuconej', 'editing', anthology=abandoned, started=days(60), queued=days(60))
-        # Nieaktualne miejsce na weryfikację po wykonanej weryfikacji – pomijane.
-        stage('Miejsce na weryfikację', 'first_verification', started=days(60), ended_at=days(59),
-              is_completed=True, is_current=False)
-        stage('Miejsce na weryfikację', 'first_verification', iteration=2, queued=days(40))
         # Etap z poprzedniego cyklu nie zalega; liczy się bieżący cykl tekstu.
         stage('Inny cykl', 'editing', started=days(70), queued=days(70))
         Text.objects.filter(title='Inny cykl').update(current_workflow_cycle=2)
@@ -213,8 +209,7 @@ class OverdueBannerMatchesReportTests(TestCase):
         titles = {row['text']['title'] for row in report}
         self.assertGreater(len(report), 10)
         self.assertTrue({'W toku 40 dni', 'Rezerwacja', 'Czeka bez daty', 'Po kontroli', 'Inny cykl'} <= titles)
-        self.assertFalse({'W toku 3 dni', 'Zablokowana', 'Wycofany', 'W porzuconej',
-                          'Miejsce na weryfikację'} & titles)
+        self.assertFalse({'W toku 3 dni', 'Zablokowana', 'Wycofany', 'W porzuconej'} & titles)
         for mode in ('all', 'active', 'waiting'):
             for stages in scopes:
                 for active_days, waiting_days in ((28, 7), (2, 1), (45, 13)):
@@ -227,18 +222,6 @@ class OverdueBannerMatchesReportTests(TestCase):
                     for limit in (3, 10):
                         with self.subTest(mode=mode, stages=stages, days=(active_days, waiting_days), limit=limit):
                             self.assertEqual(inactivity_overview(limit=limit, **kwargs), (rows[:limit], len(rows)))
-
-    def test_clocks_computed_in_python_match_the_database_clocks(self):
-        """Daty „w toku od” i „czeka od” wyliczane w Pythonie z warunków elementarnych są takie jak w SQL."""
-        from workflow.waiting import CLOCK_FIELDS, annotate_clock_terms, annotate_inactivity_clocks, inactivity_since
-        today = timezone.localdate()
-        expected = list(annotate_inactivity_clocks(Stage.objects.order_by('pk'), today).values_list(
-            'pk', 'report_waiting_since', 'report_active_since'))
-        derived = [(pk, *inactivity_since(*clock, today=today)) for pk, *clock in
-                   annotate_clock_terms(Stage.objects.order_by('pk')).values_list('pk', *CLOCK_FIELDS)]
-        self.assertEqual(derived, expected)
-        self.assertIn(None, [waiting for _, waiting, _ in expected])
-        self.assertIn(today, [waiting for _, waiting, _ in expected])
 
     def test_dashboard_banner_uses_the_light_path(self):
         """Pulpit nie buduje całego raportu przestojów, tylko pokazywane wiersze i liczbę."""

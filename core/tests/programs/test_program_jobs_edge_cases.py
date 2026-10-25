@@ -80,7 +80,7 @@ class CleanupFailureTests(IsolatedProgramDirsMixin, SimpleTestCase):
 class CreationLockTests(IsolatedProgramDirsMixin, SimpleTestCase):
     def test_creation_waits_until_the_lock_is_free(self):
         jobs.root().mkdir(parents=True)
-        with patch('core.services.program_jobs._try_lock', side_effect=[False, False, True]), \
+        with patch('core.services.document_converter._try_lock', side_effect=[False, False, True]), \
                 patch('core.services.program_jobs.time.sleep') as sleep:
             with jobs.creation_lock(wait=5):
                 pass

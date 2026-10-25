@@ -39,16 +39,16 @@ def create_anthology_tasks(
 ):
     if raw:
         return
+    tasks = AnthologyTask.objects.using(using)
+    # Zwykle wszystkie zadania już istnieją – jedno zapytanie zamiast get_or_create dla każdego rodzaju.
+    existing = set(tasks.filter(anthology=instance).values_list("task_type", flat=True))
     for task_type, _label in AnthologyTask.TaskType.choices:
-        AnthologyTask.objects.using(using).get_or_create(
-            anthology=instance,
-            task_type=task_type,
-            defaults={
-                "status": (
-                    AnthologyTask.Status.NOT_COMMISSIONED
-                ),
-            },
-        )
+        if task_type not in existing:
+            tasks.get_or_create(
+                anthology=instance,
+                task_type=task_type,
+                defaults={"status": AnthologyTask.Status.NOT_COMMISSIONED},
+            )
 
 
 @receiver(post_save, sender=Anthology, dispatch_uid='texts.create_audio_description')

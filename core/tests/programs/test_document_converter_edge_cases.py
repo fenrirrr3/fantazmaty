@@ -134,7 +134,7 @@ class RunConverterEdgeTests(IsolatedProgramDirsMixin, SimpleTestCase):
 class DamagedResultFilesTests(IsolatedProgramDirsMixin, SimpleTestCase):
     def test_unreadable_pdf_error_report_does_not_block_the_epub(self):
         """Raport błędu PDF, którego nie da się odczytać, nie zabiera gotowego EPUB (log pomijany)."""
-        def worker(directory, timeout):
+        def worker(directory, timeout, **_):
             (directory / 'document.epub').write_bytes(b'PK epub')
             (directory / 'pdf_error.json').write_text('{"error": "ValueError"}', encoding='utf-8')
 
@@ -152,15 +152,21 @@ class DamagedResultFilesTests(IsolatedProgramDirsMixin, SimpleTestCase):
             self.assertEqual((extension, result.read()), ('epub', b'PK epub'))
 
     def test_unexpected_summary_and_image_counts_are_ignored(self):
+        """Granica zaufania: konwerter przepuszcza z summary.json i images.json tylko dodatnie liczby całkowite
+        i poprawne zamiany słownikowe – program_jobs nie sprawdza ich ponownie."""
         cases = {
             'lista zamiast słownika': ('[1, 2]', '[3]'),
             'uszkodzony JSON': ('{"spaces": 2}', '{uszkodzony'),
             'liczba jako tekst': ('{"spaces": 2, "replacements": "x"}', '{"removed_images": "3"}'),
+            'błędne zamiany': ('{"spaces": 2, "zero": 0, "flaga": true, "replacements": ['
+                               '{"source": "a", "target": "b", "count": 0}, {"source": "a", "target": "b", "count": true},'
+                               '{"source": "a", "target": "b", "count": 2}]}', '{}'),
         }
         expected = {'lista zamiast słownika': None, 'uszkodzony JSON': {'spaces': 2},
-                    'liczba jako tekst': {'spaces': 2}}
+                    'liczba jako tekst': {'spaces': 2},
+                    'błędne zamiany': {'spaces': 2, 'replacements': [{'source': 'a', 'target': 'b', 'count': 2}]}}
         for label, (summary, images) in cases.items():
-            def worker(directory, timeout, summary=summary, images=images):
+            def worker(directory, timeout, summary=summary, images=images, **_):
                 (directory / 'document.epub').write_bytes(b'PK epub')
                 (directory / 'summary.json').write_text(summary, encoding='utf-8')
                 (directory / 'images.json').write_text(images, encoding='utf-8')
@@ -199,7 +205,7 @@ class LinkedImageValidationTests(IsolatedProgramDirsMixin, SimpleTestCase):
         for label, images, expected in (
                 ('obrazy połączone', {'removed_images': 1, 'linked_images': 2}, [linked_images_note(2), 'Uwaga']),
                 ('bez obrazów połączonych', {'removed_images': 1}, ['Uwaga'])):
-            def worker(directory, timeout, images=images):
+            def worker(directory, timeout, images=images, **_):
                 (directory / 'document.epub').write_bytes(b'PK epub')
                 (directory / 'warnings.json').write_text(json.dumps(['Uwaga']), encoding='utf-8')
                 (directory / 'images.json').write_text(json.dumps(images), encoding='utf-8')

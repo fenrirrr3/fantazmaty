@@ -10,18 +10,17 @@ WORK_LABELS = {
 }
 
 
-def execution_label(label, number, *, show_first=False):
+def execution_label(label, number):
     return f'{label} (wyk. {number})' if number > 1 else label
 
 
-def assignment_label(assignment, *, show_first=False):
+def assignment_label(assignment):
     from workflow.archive_executions import archive_work_label
     special = archive_work_label(assignment.text, assignment.role, assignment.execution_number) if assignment.text_id else None
     if special:
         return special
     # An execution number describes the assignment's history, not a new role.
-    return execution_label(assignment.get_role_display(), assignment.execution_number,
-                           show_first=show_first)
+    return execution_label(assignment.get_role_display(), assignment.execution_number)
 
 
 def stage_label(stage, text=None):

@@ -28,8 +28,9 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
 
 from authors.models import Author
-from core.discord_notifications import person_name
+from core.account_identity import person_name
 from core.edit_versions import version_of
+from core.filtering import positive_id
 from core.models import EditRevision, SocialMediaEntry, SocialMediaQuote, TextSocialMedia
 from core.pagination import paginate_items
 from core.permissions import can_manage_social_media, team_member_required
@@ -51,11 +52,6 @@ OPEN_QUOTES = 'social_media_open_quotes'
 STATUS_RANK = Case(*[When(social_status=value, then=Value(index)) for index, value in enumerate(SocialMediaStatus.values)],
                    default=Value(0), output_field=IntegerField())
 CONFLICT = 'Ktoś zmienił ten wpis w międzyczasie (obecnie: {current}). Sprawdź dane i zapisz ponownie.'
-
-
-def _positive_id(value):
-    value = str(value or '')
-    return int(value) if value.isascii() and value.isdecimal() and 0 < len(value) <= 18 and int(value) else None
 
 
 def list_query(raw):
@@ -120,14 +116,6 @@ def _describe(record):
     return ', '.join(parts)
 
 
-def _authors_display(text):
-    """Podpis jak na stronie tekstu: autorzy zagraniczni w tłumaczeniach, pseudonim zamiast nazwiska."""
-    if text.anthology.is_translated:
-        translation = getattr(text, 'translation', None)
-        return ', '.join(person.display_name for person in translation.foreign_authors.all()) if translation else ''
-    return ', '.join(author.display_name for author in text.authors.all())
-
-
 def _text_queryset(query):
     unpublished = query.get(UNPUBLISHED) == '1'
     scope = story_texts()
@@ -144,7 +132,7 @@ def _text_queryset(query):
             | Q(anthology__is_translated=False, _local=True) | Q(anthology__is_translated=True, _foreign=True))
     anthology = query.get('anthology', '')
     if anthology:
-        rows = rows.filter(anthology_id=_positive_id(anthology)) if _positive_id(anthology) else rows.none()
+        rows = rows.filter(anthology_id=anthology_id) if (anthology_id := positive_id(anthology)) else rows.none()
     local = Author.objects.filter(texts=OuterRef('pk')).annotate(signature=public_name()).order_by('signature')
     foreign = ForeignAuthor.objects.filter(translations__text_id=OuterRef('pk')).annotate(
         signature=public_name()).order_by('signature')
@@ -187,7 +175,7 @@ def _quote_rows(request, texts, manage, *, quote_form=None, quote_pk=None, add_q
             })
         adding = add_quote_form is not None and text.pk == add_quote_pk
         rows.append({
-            'pk': text.pk, 'title': text.title, 'anthology': text.anthology, 'authors': _authors_display(text),
+            'pk': text.pk, 'title': text.title, 'anthology': text.anthology, 'authors': text.source_authors_display,
             'quotes': items, 'new_quote': add_quote_form.data.get('content', '') if adding else '',
             'new_quote_errors': add_quote_form.errors.get('content', []) if adding else [],
         })
@@ -204,7 +192,7 @@ def _manage_context(request, query, list_request, all_rows, *, text_form, text_p
         record = _record(text)
         bound = text_form is not None and text.pk == text_pk
         page.object_list.append({
-            'pk': text.pk, 'title': text.title, 'anthology': text.anthology, 'authors': _authors_display(text),
+            'pk': text.pk, 'title': text.title, 'anthology': text.anthology, 'authors': text.source_authors_display,
             'tags': text.tags, 'genre': text.genre, 'record': record,
             'values': _bound_values(text_form) if bound else _values(record),
             'errors': text_form.errors if bound else {},
@@ -265,7 +253,7 @@ def _record(text):
 
 
 def _save_text(request, query):
-    text_pk = _positive_id(request.POST.get('text'))
+    text_pk = positive_id(request.POST.get('text'))
     if text_pk is None:
         return HttpResponseBadRequest('Nie wskazano tekstu.')
     with transaction.atomic():
@@ -302,7 +290,7 @@ def _save_entry(request, query, action):
         messages.success(request, 'Dodano wpis.')
         request.session[OPEN_OTHER] = True
         return redirect(list_url(query, f'social-entry-{entry.pk}'))
-    entry_pk = _positive_id(request.POST.get('entry'))
+    entry_pk = positive_id(request.POST.get('entry'))
     if entry_pk is None:
         return HttpResponseBadRequest('Nie wskazano wpisu.')
     with transaction.atomic():
@@ -338,7 +326,7 @@ def _save_entry(request, query, action):
 
 
 def _add_quote(request, query):
-    text_pk = _positive_id(request.POST.get('text'))
+    text_pk = positive_id(request.POST.get('text'))
     if text_pk is None:
         return HttpResponseBadRequest('Nie wskazano tekstu.')
     text = story_texts().filter(pk=text_pk).first()
@@ -360,7 +348,7 @@ def _add_quote(request, query):
 
 def _change_quote(request, query, action, manage):
     """Status i data cytatu – tylko Social Media; usunięcie – Social Media albo autor cytatu ze statusem „Wolne”."""
-    quote_pk = _positive_id(request.POST.get('quote'))
+    quote_pk = positive_id(request.POST.get('quote'))
     if quote_pk is None:
         return HttpResponseBadRequest('Nie wskazano cytatu.')
     with transaction.atomic():

@@ -13,14 +13,12 @@ import re
 from urllib.parse import parse_qs, urlsplit
 
 from django.db.models import Prefetch
-from django.utils import timezone
 from django.utils.text import slugify
 
 from core.audiobook_models import Audiobook, AudiobookStage, StageType
-from core.discord_notifications import text_authors
-from core.odkurzacz_forms import plural
-from core.site_catalog import anthology_key, fold
-from core.site_models import SiteListenAnthology, SiteListenRecording, SiteTeamSettings, with_version
+from core.inflection import count_text
+from core.site_catalog import cms_models, fold, link_anthologies
+from core.site_models import SiteListenAnthology, SiteListenRecording, with_version
 from texts.models import Anthology
 
 PART_SUFFIX_RE = re.compile(r',?\s*cz\.\s*(\d+)\s*$', re.IGNORECASE)
@@ -151,7 +149,7 @@ def listen_data():
         if reason:
             warnings[reason][anthology.title] = warnings[reason].get(anthology.title, 0) + len(parts)
             continue
-        author = text_authors(text)
+        author = text.source_authors_display
         if not author:
             warnings['no_author'].append(label)
             continue
@@ -187,12 +185,8 @@ def listen_data():
                     'nagrania': [item for _, item in sorted(groups[entry.pk], key=lambda row: row[0])]}
                    for entry in entries if groups[entry.pk]]
     for key in ('no_entry', 'no_cover', 'disabled'):
-        warnings[key] = [f'{title} ({count_text(count)})' for title, count in sorted(warnings[key].items())]
+        warnings[key] = [f'{title} ({count_text(count, RECORDING_FORMS)})' for title, count in sorted(warnings[key].items())]
     return {'antologie': anthologies, 'liczniki': listen_counts(anthologies), 'ostrzezenia': warnings}
-
-
-def count_text(count):
-    return f'{count} {plural(count, *RECORDING_FORMS)}'
 
 
 def listen_counts(anthologies):
@@ -214,11 +208,6 @@ def listen_payload(data=None):
     data = data or listen_data()
     return with_version({'antologie': data['antologie'],
                          'liczby': {'antologie': data['liczniki']['antologie'], 'nagrania': data['liczniki']['nagrania']}})
-
-
-def record_listen_fetch(version):
-    SiteTeamSettings.load()
-    SiteTeamSettings.objects.filter(pk=1).update(listen_fetched_at=timezone.now(), listen_fetch_version=version[:40])
 
 
 # --- antologie spoza strony -------------------------------------------------------------------------------------------
@@ -259,24 +248,9 @@ def link_listen_to_cms(apps=None):
     ``apps`` to rejestr modeli historycznych z migracji; bez niego używane są modele bieżące. Zwraca liczby nowo
     powiązanych antologii i nagrań.
     """
-    if apps is None:
-        anthology_model, audiobook_model = Anthology, Audiobook
-        entry_model, recording_model = SiteListenAnthology, SiteListenRecording
-    else:
-        anthology_model, audiobook_model = apps.get_model('texts', 'Anthology'), apps.get_model('core', 'Audiobook')
-        entry_model = apps.get_model('core', 'SiteListenAnthology')
-        recording_model = apps.get_model('core', 'SiteListenRecording')
-    linked = {'antologie': 0, 'nagrania': 0}
-    taken = set(entry_model.objects.exclude(anthology__isnull=True).values_list('anthology_id', flat=True))
-    keys = {}
-    for pk, title in anthology_model.objects.values_list('pk', 'title'):
-        keys.setdefault(anthology_key(title), []).append(pk)
-    for pk, title in entry_model.objects.filter(anthology__isnull=True).values_list('pk', 'title'):
-        match = keys.get(anthology_key(title), [])
-        if len(match) == 1 and match[0] not in taken:
-            entry_model.objects.filter(pk=pk).update(anthology_id=match[0])
-            taken.add(match[0])
-            linked['antologie'] += 1
+    anthology_model, audiobook_model, entry_model, recording_model = cms_models(
+        apps, 'texts.Anthology', 'core.Audiobook', 'core.SiteListenAnthology', 'core.SiteListenRecording')
+    linked = {'antologie': link_anthologies(anthology_model, entry_model), 'nagrania': 0}
 
     by_url, by_title = {}, {}
     rows = audiobook_model.objects.values_list('pk', 'text__anthology_id', 'text__title', 'youtube_url', 'hearthis_url',

@@ -1,13 +1,13 @@
 {% load workspace_tags %}
-{% illustrations_allowed user as show_illustrations %}
-{% post_layout_allowed user as show_post_layout %}
-{% audio_proofreading_allowed user as show_audio_proofreading %}
-{% audiobooks_allowed user as show_audiobooks %}
-{% social_media_allowed user as show_social_media %}
-{% coordinator_allowed user as can_coordinate %}
-{% recruitment_mailbox_allowed user as can_download_samples %}
-{% reviewer_allowed user as show_my_reviews %}
-{% review_list_allowed user as show_review_list %}
+{% allowed "illustrations" user as show_illustrations %}
+{% allowed "post_layout" user as show_post_layout %}
+{% allowed "audio_proofreading" user as show_audio_proofreading %}
+{% allowed "audiobooks" user as show_audiobooks %}
+{% allowed "social_media" user as show_social_media %}
+{% allowed "coordinator" user as can_coordinate %}
+{% allowed "recruitment_mailbox" user as can_download_samples %}
+{% allowed "my_reviews" user as show_my_reviews %}
+{% allowed "review_list" user as show_review_list %}
 {% account_person user as own_person %}
 {% if user.is_authenticated and user.is_active %}
     <aside

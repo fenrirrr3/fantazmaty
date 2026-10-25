@@ -5,7 +5,7 @@ from core.permissions import require_superuser
 from core.services.texts import _require_eligible_assignee, _require_distinct_verifiers
 from workflow.models import WorkflowStage as S, WorkflowRoleAssignment as A, WorkflowHandoff
 from workflow.numbering import next_assignment_execution
-from workflow.services import _locked_text_operation, current_assignment_queryset
+from workflow.services import OPPOSITE_VERIFIER, _locked_text_operation, current_assignment_queryset
 
 
 @_locked_text_operation
@@ -67,9 +67,7 @@ def handoff_stage(text, user, *, stage_id, assigned_to_id, expected_assignment_i
 
 
 def eligible_handoff_users(stage):
-    from django.db.models import Q
-    from django.utils import timezone
-    from workflow.availability import eligible_role_users
+    from workflow.availability import eligible_role_users, first_proofreading_assignments
 
     users = (
         get_user_model().objects.filter(is_active=True).order_by("last_name", "first_name", "pk")
@@ -83,18 +81,11 @@ def eligible_handoff_users(stage):
     ):
         return users.none()
     role = stage.assignment.role
-    now = timezone.now()
     users = eligible_role_users(role).exclude(pk=stage.assignment.assigned_to_id)
     if role in (A.Role.PROOFREADER_2, A.Role.PROOFREADER_3):
-        first = A.objects.filter(text=stage.text, role=A.Role.PROOFREADER_1).filter(
-            Q(stages__is_completed=True)
-            | Q(stages__started_at__lte=timezone.localdate(now))
-            | Q(handoffs_from__isnull=False)
-        )
+        first = first_proofreading_assignments().filter(text=stage.text)
         users = users.exclude(pk__in=first.exclude(assigned_to=None).values("assigned_to_id"))
-    opposite = {A.Role.VERIFIER_1: A.Role.VERIFIER_2, A.Role.VERIFIER_2: A.Role.VERIFIER_1}.get(
-        role
-    )
+    opposite = OPPOSITE_VERIFIER.get(role)
     if opposite:
         users = users.exclude(
             pk__in=current_assignment_queryset(stage.text)

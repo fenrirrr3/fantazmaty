@@ -10,11 +10,12 @@ from docx import Document
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.text.paragraph import Paragraph
-from lxml import etree
 if __package__:
-    from .document_styles import paragraph_property, paragraph_style, style_chain
+    from .document_styles import document_outline, paragraph_properties, paragraph_style, style_chain
+    from .document_xml import serialize_part
 else:
-    from document_styles import paragraph_property, paragraph_style, style_chain
+    from document_styles import document_outline, paragraph_properties, paragraph_style, style_chain
+    from document_xml import serialize_part
 
 # Word odrzuca dokument, w którym elementy właściwości stoją poza kolejnością
 # schematu (np. w:spacing po w:rPr akapitu albo w:sz po w:lang).
@@ -57,7 +58,7 @@ _RAW_ALIGNMENT = {'start': 0, 'left': 0, 'center': 1, 'end': 2, 'right': 2, 'bot
 def _alignment(paragraph):
     """Wyrównanie akapitu z dziedziczeniem; None = brak (do lewej). Liczby jak WD_ALIGN_PARAGRAPH."""
     try:
-        return paragraph_property(paragraph, "alignment")
+        return paragraph_properties(paragraph, ("alignment",))["alignment"]
     except ValueError:
         try:
             styles = [style.element for style in style_chain(paragraph_style(paragraph))]
@@ -80,39 +81,6 @@ def _symbol_run(run, fonts):
     if any(name.lower() in SYMBOL_FONTS for name in names):
         return True
     return any(0xF000 <= ord(char) <= 0xF0FF for node in run.iter(qn("w:t")) for char in (node.text or ""))
-
-
-def _heading_lookup(document):
-    """Funkcja: akapit → czy to nagłówek albo punkt listy (bezpośrednio lub ze stylu, z dziedziczeniem)."""
-    def owned(element):
-        props = element.find(qn("w:pPr"))
-        if props is None:
-            return None
-        numbering = props.find(f'{qn("w:numPr")}/{qn("w:numId")}')
-        if numbering is not None:
-            return numbering.get(qn("w:val")) != "0"
-        level = props.find(qn("w:outlineLvl"))
-        if level is not None:
-            return level.get(qn("w:val")) != "9"
-        return None
-
-    def is_heading_or_list(paragraph):
-        own = owned(paragraph._p)
-        if own is not None:
-            return own
-        try:
-            chain = list(style_chain(paragraph_style(paragraph)))
-        except (KeyError, ValueError, AttributeError):
-            return False
-        for style in chain:
-            name = (style.name or "").lower()
-            if name.startswith(("heading", "nagłówek", "naglowek")) or (style.style_id or "").lower().startswith("heading"):
-                return True
-            inherited = owned(style.element)
-            if inherited is not None:
-                return inherited
-        return False
-    return is_heading_or_list
 
 
 def _schema_order(properties):
@@ -184,6 +152,12 @@ def normalize_docx(source, *, justify=False):
     document = Document(source)
     source.seek(0)
     output = BytesIO()
+    outline = document_outline(document)
+
+    def keeps_indent(element):
+        # Nagłówki i listy zachowują wcięcia (wcięcie listy pochodzi z numeracji, a akapit by je nadpisał).
+        return outline.heading_level(element) is not None or outline.is_list_item(element)
+
     with ZipFile(source) as incoming, ZipFile(output, 'w', ZIP_DEFLATED) as outgoing:
         for entry in incoming.infolist():
             data = incoming.read(entry.filename)
@@ -208,12 +182,10 @@ def normalize_docx(source, *, justify=False):
                     for side in ("header", "footer"):
                         if margins.get(qn("w:" + side)) is None:
                             margins.set(qn("w:" + side), "708")
-                heading = _heading_lookup(document)
                 for element in tree.iter(qn("w:p")):
                     paragraph = Paragraph(element, document)
                     props = element.get_or_add_pPr()
-                    # Komórki tabel zachowują swój układ; listy i nagłówki zachowują wcięcia
-                    # (wcięcie listy pochodzi z numeracji, a akapit by je nadpisał).
+                    # Komórki tabel zachowują swój układ.
                     options = dict(justify=justify, margin_story=margin_story,
                                    in_table=any(parent.tag == qn("w:tc") for parent in element.iterancestors()))
                     previous = _previous_properties(props, "w:pPrChange", "w:pPr")
@@ -222,8 +194,8 @@ def normalize_docx(source, *, justify=False):
                         before = OxmlElement("w:p")
                         before.append(deepcopy(previous))
                         before = Paragraph(before, document)
-                        _normalize_paragraph(previous, _alignment(before), listed=heading(before), **options)
-                    _normalize_paragraph(props, _alignment(paragraph), listed=heading(paragraph), **options)
+                        _normalize_paragraph(previous, _alignment(before), listed=keeps_indent(before._p), **options)
+                    _normalize_paragraph(props, _alignment(paragraph), listed=keeps_indent(element), **options)
                     # Includes hyperlinks and runs inside other inline containers.
                     for run in element.iter(qn("w:r")):
                         rpr = run.get_or_add_rPr()
@@ -231,7 +203,7 @@ def normalize_docx(source, *, justify=False):
                         previous = _previous_properties(rpr, "w:rPrChange", "w:rPr")
                         if previous is not None:
                             _normalize_run(run, previous)
-                data = etree.tostring(tree, xml_declaration=True, encoding="UTF-8", standalone=True)
+                data = serialize_part(tree)
             outgoing.writestr(entry, data)
     source.seek(0)
     output.seek(0)

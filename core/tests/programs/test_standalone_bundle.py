@@ -1,5 +1,6 @@
 """Program lokalny (jeden plik): budowa z modułów core/services i działanie wszystkich czterech programów
 bez Django."""
+import ast
 import importlib.util
 import json
 import sys
@@ -28,12 +29,36 @@ def load_bundle(path):
     return module
 
 
+def load_build():
+    spec = importlib.util.spec_from_file_location('redaktor_docx_build', BUILD)
+    build = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(build)
+    return build
+
+
+class BundleNamesTests(SimpleTestCase):
+    def test_bundled_modules_define_each_global_name_once(self):
+        """Scalone moduły nie definiują tej samej nazwy globalnej (funkcji, klasy, stałej) dwa razy: w jednym
+        pliku późniejsza definicja nadpisałaby wcześniejszą – tak przebudowa przypisów i komentarzy w programie
+        lokalnym wołała kiedyś funkcję _story_blocks z modułu PDF."""
+        build = load_build()
+        owners = {}
+        for module in build.MODULES:
+            tree = ast.parse((build.SERVICES / f'{module}.py').read_text(encoding='utf-8'))
+            names = {node.name for node in tree.body if isinstance(node, (ast.FunctionDef, ast.ClassDef))}
+            names |= {target.id for node in tree.body if isinstance(node, (ast.Assign, ast.AnnAssign))
+                      for target in getattr(node, 'targets', [getattr(node, 'target', None)])
+                      if isinstance(target, ast.Name)}
+            renames = build.RENAMES.get(module, {})
+            for name in names:
+                owners.setdefault(renames.get(name, name), []).append(module)
+        self.assertEqual({name: modules for name, modules in owners.items() if len(modules) > 1}, {})
+
+
 @tag('slow')
 class StandaloneBundleTests(SimpleTestCase):
     def test_bundle_builds_and_runs_every_program_without_django(self):
-        spec = importlib.util.spec_from_file_location('redaktor_docx_build', BUILD)
-        build = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(build)
+        build = load_build()
         with TemporaryDirectory() as folder:
             target = Path(folder) / 'redaktor_docx.py'
             build.build(target)
@@ -83,9 +108,7 @@ class StandaloneBundleTests(SimpleTestCase):
 
     def test_bundle_names_files_of_other_formats(self):
         """Plik .doc albo ODT z rozszerzeniem .docx: program lokalny pokazuje ten sam komunikat co CMS."""
-        spec = importlib.util.spec_from_file_location('redaktor_docx_build', BUILD)
-        build = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(build)
+        build = load_build()
         with TemporaryDirectory() as folder, patch.dict('os.environ', {'XDG_CONFIG_HOME': str(Path(folder) / 'config')}):
             target = Path(folder) / 'redaktor_docx.py'
             build.build(target)
@@ -102,9 +125,7 @@ class StandaloneBundleTests(SimpleTestCase):
         """Program lokalny jak CMS: link obrazu do pliku zewnętrznego znika zawsze (z uwagą), także gdy obrazy
         nie są usuwane – wtedy obraz osadzony i połączony zostaje jako osadzony."""
         from zipfile import ZipFile
-        spec = importlib.util.spec_from_file_location('redaktor_docx_build', BUILD)
-        build = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(build)
+        build = load_build()
         with TemporaryDirectory() as folder, patch.dict('os.environ', {'XDG_CONFIG_HOME': str(Path(folder) / 'config')}):
             target = Path(folder) / 'redaktor_docx.py'
             build.build(target)

@@ -10,6 +10,7 @@ from django.urls import reverse
 from django.utils.html import format_html
 
 from authors.admin import SuperuserOnlyAdminMixin
+from core.admin_access import SingleRecordAdminMixin
 from core.site_catalog import cms_source
 from core.site_models import (SiteCatalogAnthology, SiteCatalogStory, SiteListenAnthology, SiteListenRecording,
                               SiteTeamGroup, SiteTeamSection, SiteTeamSettings)
@@ -49,18 +50,12 @@ class SiteTeamSectionAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
 
 @admin.register(SiteTeamSettings)
-class SiteTeamSettingsAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
+class SiteTeamSettingsAdmin(SingleRecordAdminMixin, SuperuserOnlyAdminMixin, admin.ModelAdmin):
     fields = ('lead_editor', 'site_person', 'last_fetched_at', 'last_fetch_version',
               'catalog_page_url', 'catalog_fetched_at', 'catalog_fetch_version',
               'listen_page_url', 'listen_fetched_at', 'listen_fetch_version')
     readonly_fields = ('last_fetched_at', 'last_fetch_version', 'catalog_fetched_at', 'catalog_fetch_version',
                        'listen_fetched_at', 'listen_fetch_version')
-
-    def has_add_permission(self, request):
-        return super().has_add_permission(request) and not SiteTeamSettings.objects.exists()
-
-    def has_delete_permission(self, request, obj=None):
-        return False
 
 
 CMS_FIELD_TITLE = 'Z CMS-u – zmień w tekście (albo profilu powieści) i u autora; pole tylko do odczytu.'

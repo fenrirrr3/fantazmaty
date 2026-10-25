@@ -9,16 +9,19 @@ CMS zarządza wyłącznie folderami z listy DropboxFolder i usuwa z nich wyłąc
 (granted_email); osób dodanych w Dropboxie ręcznie nie rusza, dopóki ich dostęp nie zostanie przejęty
 (people.dropbox_import) – od tej chwili zarządza nim jak nadanym.
 """
+import hashlib
+import json
 import logging
 from dataclasses import dataclass
 
 from django.db import connections, transaction
 from django.db.models import Q
-from django.db.models.signals import post_delete, post_save, pre_delete, pre_save
+from django.db.models.signals import post_delete, post_save, pre_delete
 from django.dispatch import receiver
 from django.utils import timezone
 
 from people import dropbox_sharing
+from people.accounts import login_allowed
 from people.dropbox_sharing import DropboxClient, DropboxError, Member
 from people.models import DropboxAccess, DropboxFolder, Person
 
@@ -36,9 +39,8 @@ NOT_CONFIGURED_NOTICE = ("Dropbox nie jest skonfigurowany – dostęp zostanie n
                          "(komenda sync_dropbox_access).")
 
 
-def person_is_member(person):
-    """Członek zespołu w rozumieniu dostępu do folderów: „wciąż w ekipie” i nie zewnętrzny."""
-    return bool(person and person.is_active and not person.is_external)
+# Członek zespołu w rozumieniu dostępu do folderów: jak logowanie – „wciąż w ekipie” i nie zewnętrzny.
+person_is_member = login_allowed
 
 
 def target_email(access):
@@ -309,20 +311,30 @@ def _save(access, **fields):
         setattr(access, name, value)
 
 
-def _log(actor, access, action, email):
-    """Wpis w dzienniku aktywności: działanie, osoba, adres i folder (bez danych logowania Dropboxa)."""
+def log_activity(actor, action, target, path, failure, log=logger):
+    """Wpis w dzienniku aktywności o działaniu CMS-u w Dropboxie (bez danych logowania Dropboxa)."""
     from core.activity_spool import enqueue_activity
+    account = (getattr(actor, "email", "") or actor.get_username()) if getattr(actor, "pk", None) else "CMS (automatycznie)"
+    try:
+        enqueue_activity(user_id=actor.pk if getattr(actor, "pk", None) else None, actor=account[:254], method="POST",
+                         action=action[:255], target=target[:255], path=path, status_code=200)
+    except OSError:
+        log.exception(failure)
+
+
+def _log(actor, access, action, email):
+    """Wpis w dzienniku aktywności: działanie, osoba, adres i folder."""
     label = ACTION_LABELS[action]
     if action != "remove":
         label += f" ({LEVEL_LABELS[access.level]})"
     who = (str(access.person) if access.person_id else "osoba usunięta") + f" <{email}>"
-    account = (getattr(actor, "email", "") or actor.get_username()) if getattr(actor, "pk", None) else "CMS (automatycznie)"
-    try:
-        enqueue_activity(user_id=actor.pk if getattr(actor, "pk", None) else None, actor=account[:254], method="POST",
-                         action=f"Dropbox: {label}"[:255], target=f"{who}: {access.folder.path}"[:255],
-                         path="/dropbox/sync_dropbox_access", status_code=200)
-    except OSError:
-        logger.exception("Nie udało się zapisać zmiany dostępu do Dropboxa w dzienniku aktywności.")
+    log_activity(actor, f"Dropbox: {label}", f"{who}: {access.folder.path}", "/dropbox/sync_dropbox_access",
+                 "Nie udało się zapisać zmiany dostępu do Dropboxa w dzienniku aktywności.")
+
+
+def state_digest(data):
+    """Skrót stanu pokazanego w podglądzie (zastosowanie wymaga tego samego stanu)."""
+    return hashlib.sha256(json.dumps(data, default=str).encode()).hexdigest()[:32]
 
 
 class _DryRun:
@@ -378,27 +390,23 @@ def folders_for(person):
     return list(DropboxFolder.objects.filter(query).distinct().order_by("name", "pk"))
 
 
+def revoke_rows(rows):
+    """Odbiera dostęp wierszom (bez sygnałów) i zwraca te, które trzeba zsynchronizować z Dropboxem."""
+    rows.filter(wanted=True).update(wanted=False)
+    return rows.filter(~Q(granted_email="") | ~Q(state=State.REMOVED))
+
+
 def revoke_all(person_ids, using="default"):
     """Odbiera wszystkie dostępy osób (dezaktywacja, usunięcie z zespołu) i planuje ich usunięcie w Dropboxie."""
     rows = DropboxAccess.objects.using(using).filter(person_id__in=person_ids)
-    rows.filter(wanted=True).update(wanted=False)
-    schedule(rows.filter(~Q(granted_email="") | ~Q(state=State.REMOVED)).values_list("pk", flat=True), using)
+    schedule(revoke_rows(rows).values_list("pk", flat=True), using)
 
 
 # Sygnały
 
-@receiver(pre_save, sender=Person, dispatch_uid="dropbox-person-before")
-def remember_person(sender, instance, raw=False, using=None, **kwargs):
-    instance._dropbox_before = None
-    if not raw and instance.pk:
-        instance._dropbox_before = sender.objects.using(using).filter(pk=instance.pk).values(
-            "is_active", "is_external", "dropbox_email").first()
-
-
 @receiver(post_save, sender=Person, dispatch_uid="dropbox-person-saved")
 def person_saved(sender, instance, raw=False, using=None, **kwargs):
-    before = getattr(instance, "_dropbox_before", None)
-    instance._dropbox_before = None
+    before = instance._previous_row  # stan sprzed zapisu: people.models.remember_person_row
     if raw or not before:
         return
     was_member = before["is_active"] and not before["is_external"]

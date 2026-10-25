@@ -21,24 +21,22 @@ def response(status=200, body=None):
 
 
 class ChannelConfigTests(SimpleTestCase):
-    @override_settings(DISCORD_WEBHOOKS={'Kanał': URL})
+    @override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': URL})
     def test_valid_configuration(self):
         self.assertEqual(channels(), {'Kanał': URL})
 
     def test_rejects_foreign_hosts_and_bad_shapes(self):
         for value in ({'x': 'https://evil.example/api/webhooks/1/a'}, {'x': 'http://discord.com/api/webhooks/1/a'},
                       {'': URL}, ['not', 'a', 'dict'], {f'k{i}': URL for i in range(21)}):
-            with self.subTest(value=str(value)[:40]), override_settings(DISCORD_WEBHOOKS=value):
+            with self.subTest(value=str(value)[:40]), override_settings(DISCORD_WEBHOOK_SECRETS=value):
                 with self.assertRaises(ConfigurationError):
                     channels()
 
-    @override_settings()
-    def test_environment_json_is_parsed(self):
-        from django.conf import settings
-        del settings.DISCORD_WEBHOOKS
-        with patch.dict('os.environ', {'DISCORD_WEBHOOKS': json.dumps({'Kanał': URL})}):
+    def test_environment_json_text_is_parsed(self):
+        """DISCORD_WEBHOOKS ze zmiennej środowiskowej to tekst JSON – sprawdzany przy wysyłce, błąd to ConfigurationError."""
+        with override_settings(DISCORD_WEBHOOK_SECRETS=json.dumps({'Kanał': URL})):
             self.assertEqual(channels(), {'Kanał': URL})
-        with patch.dict('os.environ', {'DISCORD_WEBHOOKS': '{broken'}), self.assertRaises(ConfigurationError):
+        with override_settings(DISCORD_WEBHOOK_SECRETS='{broken'), self.assertRaises(ConfigurationError):
             channels()
 
 

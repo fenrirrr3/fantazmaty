@@ -1,7 +1,9 @@
 from core.public_authors import review_name_matches
 from core.translation_scope import frontend_scope
 from core.filtering import facet_queryset, positive_id
-from django.db.models import Count, F, Prefetch, Q, Case, When, Value, CharField
+from functools import partial
+
+from django.db.models import Count, Prefetch, Q
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
@@ -13,91 +15,12 @@ from core.permissions import (
     can_view_archived_review_authors,
     require_team_member,
 )
+from core.services.reviews import OPEN_STATUSES
 from texts.models import Anthology, Review, ReviewAssignment, Reviewers
 
 
-DEFAULT_STATUSES = (Review.Status.NEW, Review.Status.IN_REVIEW, Review.Status.TO_DECIDE)
-OPEN_STATUSES = frozenset(DEFAULT_STATUSES)
-CURRENT_STATUSES = DEFAULT_STATUSES
 READING_OPINIONS = ("", Reviewers.Opinion.READING)
 MAX_REVIEWERS = ReviewAssignment.MAX_REVIEWERS
-
-ASSIGNMENT_STATES = frozenset(
-    {"none", "one", "full", "all_finished"}
-)
-
-SORT_FIELDS = {
-    "newest": ("-pk",),
-    "oldest": ("pk",),
-    "title": ("title", "pk"),
-    "-title": ("-title", "-pk"),
-    "anthology": ("anthology__title", "title", "pk"),
-    "-anthology": ("-anthology__title", "title", "pk"),
-    "length": ("length", "pk"),
-    "-length": ("-length", "-pk"),
-    "status": ("status_label", "title", "pk"),
-    "-status": ("-status_label", "title", "pk"),
-}
-
-
-
-
-def _user_data(user):
-    if user is None:
-        return None
-
-    return {
-        "pk": user.pk,
-        "username": "",
-        "get_full_name": user.get_full_name(),
-        "display_name": user.get_full_name() or "Nieuzupełnione dane",
-        "is_active": user.is_active,
-    }
-
-
-def _empty_workload():
-    return {"reading": 0, "completed": 0, "total": 0}
-
-
-def _workloads_for_users(user_ids):
-    user_ids = set(user_ids)
-    if not user_ids:
-        return {}
-
-    rows = (
-        frontend_scope(ReviewAssignment.objects).for_statistics()
-        .annotate(reviewer_user_id=Coalesce("user_id", "historical_person__user_id"))
-        .filter(reviewer_user_id__in=user_ids)
-        .order_by()
-        .values("reviewer_user_id")
-        .annotate(
-            reading_count=Count(
-                "pk",
-                filter=Q(
-                    opinion__in=READING_OPINIONS,
-                    review__old_reviews=False,
-                    review__status__in=OPEN_STATUSES,
-                ),
-            ),
-            completed_count=Count(
-                "pk",
-                filter=~Q(opinion__in=READING_OPINIONS),
-            ),
-        )
-    )
-
-    result = {user_id: _empty_workload() for user_id in user_ids}
-
-    for row in rows:
-        reading = row["reading_count"]
-        completed = row["completed_count"]
-        result[row["reviewer_user_id"]] = {
-            "reading": reading,
-            "completed": completed,
-            "total": reading + completed,
-        }
-
-    return result
 
 
 def reviewer_workload(user):
@@ -108,7 +31,16 @@ def reviewer_workload(user):
     zamkniętej recenzji nie jest zadaniem oczekującym na wykonanie.
     """
     require_team_member(user)
-    return _workloads_for_users({user.pk}).get(user.pk, _empty_workload())
+    return (
+        frontend_scope(ReviewAssignment.objects).for_statistics()
+        .annotate(reviewer_user_id=Coalesce("user_id", "historical_person__user_id"))
+        .filter(reviewer_user_id=user.pk)
+        .aggregate(
+            reading=Count("pk", filter=Q(opinion__in=READING_OPINIONS, review__old_reviews=False,
+                                         review__status__in=OPEN_STATUSES)),
+            completed=Count("pk", filter=~Q(opinion__in=READING_OPINIONS)),
+        )
+    )
 
 
 def _project_reviews(reviews, *, user, include_authors, allow_self_assignment):
@@ -125,30 +57,16 @@ def _project_reviews(reviews, *, user, include_authors, allow_self_assignment):
             None,
         )
         locked = review.old_reviews or review.status not in OPEN_STATUSES
-        opinions = []
-
-        for assignment in assignments:
-            reviewer = _user_data(assignment.user)
-            reviewer_name = (
-                assignment.reviewer_display_name
-            )
-            opinions.append(
-                {
-                    "pk": assignment.pk,
-                    "position": assignment.position,
-                    "slot": assignment.position,
-                    "user": reviewer,
-                    "reviewer_name": reviewer_name,
-                    "opinion_value": assignment.opinion,
-                    "opinion": assignment.get_opinion_display(),
-                    "opinion_display": assignment.get_opinion_display(),
-                    "get_opinion_display": assignment.get_opinion_display(),
-                    "assigned_at": assignment.assigned_at,
-                    "opinion_changed_at": assignment.opinion_changed_at,
-                    "status_changed_at": assignment.opinion_changed_at,
-                    "is_own": assignment.user_id == user.pk,
-                }
-            )
+        # Tylko pola czytane przez szablon listy.
+        opinions = [
+            {
+                "reviewer_name": assignment.reviewer_display_name,
+                "opinion_value": assignment.opinion,
+                "opinion_display": assignment.get_opinion_display(),
+                "opinion_changed_at": assignment.opinion_changed_at,
+            }
+            for assignment in assignments
+        ]
 
         assigned_count = len(assignments)
         completed_count = sum(
@@ -163,14 +81,11 @@ def _project_reviews(reviews, *, user, include_authors, allow_self_assignment):
             "title": review.title,
             "genre": review.genre,
             "length": review.length,
-            "content_warnings": review.content_warnings,
             "status": review.status,
             "get_status_display": review.display_status,
             "created_at": review.created_at,
             "decision_at": review.decision_at,
-            "old_reviews": review.old_reviews,
             "is_archived": review.is_archived,
-            "anthology_id": review.anthology_id,
             "anthology": (
                 {
                     "pk": review.anthology.pk,
@@ -185,10 +100,7 @@ def _project_reviews(reviews, *, user, include_authors, allow_self_assignment):
             "assigned_reviewer_count": assigned_count,
             "completed_reviewer_count": completed_count,
             "assignments": opinions,
-            "reviewers_have_free_slot": has_free_slot and not locked,
-            "is_locked": locked,
             "is_copied_to_text": review.copied_text_id is not None,
-            "copied_text_id": review.copied_text_id,
             "can_self_assign_review": (
                 allow_self_assignment
                 and not locked
@@ -197,20 +109,14 @@ def _project_reviews(reviews, *, user, include_authors, allow_self_assignment):
                 and not reading_blocked
             ),
             "reading_blocked": reading_blocked,
-            "can_unassign_review": own_assignment is not None and not locked,
         }
 
         if include_authors:
             row.update(
                 {
                     "authors": review.display_authors,
-                    "author_id": review.author_id,
                     "author_display_name": review.author_display_name,
-                    "author_first_name": review.author_first_name,
-                    "author_last_name": review.author_last_name,
-                    "author_pseudonym": review.author_pseudonym,
                     "email": review.email,
-                    "phone_number": review.phone_number,
                     "author_notified_at": review.author_notified_at,
                     "notification_scheduled": bool(review.decision_at and review.decision_at > timezone.localdate()),
                 }
@@ -222,15 +128,15 @@ def _project_reviews(reviews, *, user, include_authors, allow_self_assignment):
 
 
 class _ReviewRows:
-    """Stronicuje w bazie i zbiorczo przygotowuje dane wybranej strony."""
+    """Stronicuje w bazie i zbiorczo przygotowuje dane wybranej strony.
 
-    def __init__(self, queryset, *, user, include_authors):
+    Bez atrybutu `projector`: sortowanie po kolumnie wyliczanej (Autor) czyta pole z rekordu,
+    a wybraną stronę projektuje zbiorczo (`batch_projector`).
+    """
+
+    def __init__(self, queryset, batch_projector):
         self.queryset = queryset
-        self.user = user
-        self.include_authors = include_authors
-        self.allow_self_assignment = can_self_assign_reviews(user)
-        # Sortowanie po kolumnie wyliczanej (Autor) czyta pole z rekordu, a stronę projektuje zbiorczo.
-        self.batch_projector = self._project
+        self.batch_projector = batch_projector
 
     def count(self):
         return self.queryset.count()
@@ -238,30 +144,16 @@ class _ReviewRows:
     def __len__(self):
         return self.count()
 
-    def _project(self, reviews):
-        return _project_reviews(
-            reviews,
-            user=self.user,
-            include_authors=self.include_authors,
-            allow_self_assignment=self.allow_self_assignment,
-        )
-
     def __getitem__(self, key):
         if isinstance(key, slice):
-            return self._project(list(self.queryset[key]))
-        return self._project([self.queryset[key]])[0]
+            return self.batch_projector(list(self.queryset[key]))
+        return self.batch_projector([self.queryset[key]])[0]
 
     def __iter__(self):
         # Iteracja poza paginatorem również nie pobiera całej bazy naraz.
         offset = 0
-        batch_size = 100
-
-        while True:
-            batch = list(self.queryset[offset:offset + batch_size])
-            if not batch:
-                return
-
-            yield from self._project(batch)
+        while batch := list(self.queryset[offset:offset + 100]):
+            yield from self.batch_projector(batch)
             offset += len(batch)
 
 
@@ -269,11 +161,10 @@ def review_list_context(*, user, params):
     require_team_member(user)
     requested_statuses = set(params.getlist("status"))
     old_reviews = can_view_review_archive(user) and (params.get("old_reviews", "0").strip() == "1"
-        or bool(requested_statuses and requested_statuses <= {"accepted", "rejected"})
-        or params.get("notification") == "pending")
+        or bool(requested_statuses and requested_statuses <= {"accepted", "rejected"}))
     include_authors = can_view_author_data(user) or (old_reviews and can_view_archived_review_authors(user))
 
-    valid_statuses = {"accepted", "rejected"} if old_reviews else set(CURRENT_STATUSES)
+    valid_statuses = {"accepted", "rejected"} if old_reviews else OPEN_STATUSES
     filters_applied = (
         params.get("filters_applied") == "1" or "status" in params
     )
@@ -289,10 +180,6 @@ def review_list_context(*, user, params):
     else:
         selected_statuses = []
 
-    assignment_state = params.get("assignment_state", "").strip()
-    if assignment_state not in ASSIGNMENT_STATES:
-        assignment_state = ""
-
     completed = params.get("completed", "").strip()
     if completed not in {str(n) for n in range(7)}:
         completed = ""
@@ -302,30 +189,17 @@ def review_list_context(*, user, params):
 
     queryset = frontend_scope(Review.objects, include_abandoned=old_reviews).visible_to(user)
     queryset = queryset.archived() if old_reviews else queryset.current()
-    if params.get("notification") == "pending":
-        queryset = queryset.awaiting_notification()
-        selected_statuses = []
-
 
     if not old_reviews and not can_manage_reviews(user):
         # Zablokowane oceną „Nie doczytałem” znika z listy do wzięcia;
         # przypisani recenzenci nadal widzą swoje zgłoszenie.
         queryset = queryset.exclude(pk__in=Review.objects.reading_blocked().exclude(assignments__user=user).values("pk"))
-    queryset = _filter_review_work(queryset, query, include_authors, completed, assignment_state)
+    queryset = _filter_review_work(queryset, query, include_authors, completed)
 
     queryset, facets = facet_queryset(queryset, {
         'status': ('status', selected_statuses),
         'anthology': ('anthology_id', [anthology_id] if anthology_id else []),
     })
-    sort = params.get("sort", "newest")
-    if sort not in SORT_FIELDS:
-        sort = "newest"
-
-    if sort in ('status', '-status'):
-        queryset = queryset.annotate(status_label=Case(
-            *[When(status=value, then=Value(label)) for value, label in Review.Status.choices],
-            default=F('status'), output_field=CharField(),
-        ))
     if include_authors:
         queryset = queryset.select_related("author").prefetch_related("coauthors")
 
@@ -341,15 +215,14 @@ def review_list_context(*, user, params):
                 to_attr="selector_assignments",
             )
         )
-        .order_by(*SORT_FIELDS[sort])
+        # Kolejność z nagłówka tabeli ustawia paginate_items (core.table_sorting); domyślnie od najnowszych.
+        .order_by("-pk")
     )
+    project = partial(_project_reviews, user=user, include_authors=include_authors,
+                      allow_self_assignment=can_self_assign_reviews(user))
 
     return {
-        "reviews": _ReviewRows(
-            queryset,
-            user=user,
-            include_authors=include_authors,
-        ),
+        "reviews": _ReviewRows(queryset, project),
         "anthologies": list(
             frontend_scope(Anthology.objects, include_abandoned=old_reviews).filter(pk__in=facets["anthology"]).order_by("title", "pk").values("pk", "title")
         ),
@@ -358,13 +231,12 @@ def review_list_context(*, user, params):
         "selected_anthology_id": anthology_id,
         "status_choices": [(v, label) for v, label in Review.Status.choices if v in valid_statuses],
         "query": query,
-        "sort": sort,
         "old_reviews": old_reviews,
         "max_reviewers": MAX_REVIEWERS,
     }
 
 
-def _filter_review_work(queryset, query, include_authors, completed, assignment_state):
+def _filter_review_work(queryset, query, include_authors, completed):
     for term in query.split():
         condition = (
             Q(title__plcontains=term)
@@ -378,10 +250,8 @@ def _filter_review_work(queryset, query, include_authors, completed, assignment_
 
         queryset = queryset.filter(condition)
 
-    # Liczymy rekordy przydziałów, również po usunięciu konta.
-    # Usunięcie użytkownika nie zwalnia automatycznie zajętej pozycji.
+    # Liczymy rekordy przydziałów, również po usunięciu konta (sortowanie „Recenzenci i opinie” czyta tę adnotację).
     queryset = queryset.annotate(
-        assigned_count=Count("assignments", distinct=True),
         completed_count=Count(
             "assignments",
             filter=~Q(assignments__opinion__in=READING_OPINIONS),
@@ -391,17 +261,5 @@ def _filter_review_work(queryset, query, include_authors, completed, assignment_
 
     if completed != "":
         queryset = queryset.filter(completed_count=int(completed))
-
-    if assignment_state == "none":
-        queryset = queryset.filter(assigned_count=0)
-    elif assignment_state == "one":
-        queryset = queryset.filter(assigned_count=1)
-    elif assignment_state == "full":
-        queryset = queryset.filter(assigned_count__gte=MAX_REVIEWERS)
-    elif assignment_state == "all_finished":
-        queryset = queryset.filter(
-            assigned_count__gt=0,
-            completed_count=F("assigned_count"),
-        )
 
     return queryset

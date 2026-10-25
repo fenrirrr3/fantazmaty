@@ -1,21 +1,18 @@
 """Administrator date corrections and ordinary workflow transitions."""
 from django import forms
-from django.core.exceptions import PermissionDenied, ValidationError
-from django.db import transaction
+from django.core.exceptions import ValidationError
 from django.db.models import Max
 from django.utils import timezone
 
-from core.edit_versions import version_of
 from core.workflow_events import track_workflow
-from texts.models import Text
-from workflow.anthology_policy import require_working_anthology
+from workflow.admin_status import admin_correction
 from workflow.models import WorkflowStage as S
 from workflow.services import (
     complete_stage, ensure_stage_belongs_to_current_cycle,
     ensure_text_is_not_withdrawn, finish_editing_to_coordinator, resume_editing,
     send_text_to_author, send_to_first_proofreading, send_to_first_verification, send_to_second_verification,
     validate_assignment_start_date, _validate_date, STAGE_ROLES, current_stage_queryset,
-    completed_stage_exists,
+    completed_stage_exists, require_start_after_previous_work,
 )
 
 
@@ -42,9 +39,10 @@ def editing_transition_choices(text):
     from workflow.catalog import is_extracts_text
     from workflow.services import returned_by_coordinator
     if is_extracts_text(text):
-        if not first_done and not returned_by_coordinator(text) and S.StageType.FIRST_VERIFICATION not in started:
+        returned = not first_done and returned_by_coordinator(text)
+        if not first_done and not returned and S.StageType.FIRST_VERIFICATION not in started:
             available.append(S.StageType.FIRST_VERIFICATION)
-        elif first_done or returned_by_coordinator(text):
+        elif first_done or returned:
             available.append(S.StageType.FIRST_PROOFREADING)
         return [(kind, labels[kind]) for kind in available]
     if not first_done and S.StageType.FIRST_VERIFICATION not in started:
@@ -137,20 +135,18 @@ def preserve_stage_order(stage, started_at, ended_at):
                                   'Popraw najpierw daty wcześniejszych etapów.')
 
 
-@transaction.atomic
 @track_workflow
 def set_stage_dates(stage_id, user, version, *, started_at=None, ended_at=None,
                     finish=False, next_stage=None, send_to_proofreading=None):
-    if not user.is_active or not user.is_superuser:
-        raise PermissionDenied
-    text_id = S.objects.values_list('text_id', flat=True).get(pk=stage_id)
-    text = Text.objects.select_for_update().get(pk=text_id)
-    stage = S.objects.select_for_update().select_related('assignment__assigned_to').get(pk=stage_id)
-    stage.text = text
-    if version_of(text) != version:
-        raise ValidationError('Workflow zmienił się. Odśwież formularz.')
-    require_working_anthology(text)
+    # Korektą historii jest tylko zmiana dat zakończonego etapu; przekazanie dalej to zdarzenie workflow.
+    with admin_correction(user, version, of=(S, stage_id), history=False) as text:
+        stage = S.objects.select_for_update().select_related('assignment__assigned_to').get(pk=stage_id)
+        stage.text = text
+        return _set_stage_dates(text, stage, user, started_at=started_at, ended_at=ended_at, finish=finish,
+                                next_stage=next_stage, send_to_proofreading=send_to_proofreading)
 
+
+def _set_stage_dates(text, stage, user, *, started_at, ended_at, finish, next_stage, send_to_proofreading):
     if stage.is_completed:
         if finish:
             raise ValidationError('Ten etap został już zakończony.')
@@ -192,10 +188,8 @@ def set_stage_dates(stage_id, user, version, *, started_at=None, ended_at=None,
                 if not stage.assignment_id or not stage.assignment.assigned_to_id:
                     raise ValidationError('Najpierw przypisz osobę do tego etapu.')
                 _require_eligible_assignee(stage.assignment.assigned_to, STAGE_ROLES.get(stage.stage_type), existing=True)
-                latest = S.objects.current_cycle().filter(text=text, is_completed=True).aggregate(
-                    latest=Max('ended_at'))['latest']
-                if latest and started_at < latest:
-                    raise ValidationError('Rozpoczęcie nie może poprzedzać zakończenia wcześniejszych prac.')
+                require_start_after_previous_work(started_at, S.objects.current_cycle().filter(
+                    text=text, is_completed=True).aggregate(latest=Max('ended_at'))['latest'])
         stage.started_at = started_at
         stage.full_clean()
         stage.save(update_fields=['started_at'])

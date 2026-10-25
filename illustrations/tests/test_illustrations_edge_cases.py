@@ -1,9 +1,7 @@
-"""Ilustracje: lista i formularz w panelu admina, wyścig przy zapisie kontaktu w spisie, nieprawidłowy token
-wspólnego linku oraz odmowy komendy merge_illustrator – przypadki dotąd nieobjęte testami."""
-from io import StringIO
+"""Ilustracje: lista i formularz w panelu admina, wyścig przy zapisie kontaktu w spisie i nieprawidłowy token
+wspólnego linku – przypadki dotąd nieobjęte testami."""
 from unittest.mock import patch
 
-from django.core.management import CommandError, call_command
 from django.test import TestCase
 from django.urls import reverse
 
@@ -80,32 +78,3 @@ class DirectoryAndPublicLinkGapTests(TestCase):
             'drive_url': 'https://drive.google.com/drive/folders/x', 'version': 'podrobiony-token'})
         self.assertEqual(response.status_code, 409)
         self.assertFalse(PublicIllustrationSettings.objects.exclude(drive_url='').exists())
-
-
-class MergeIllustratorRefusalTests(TestCase):
-    def merge(self, first='Przemek', last='Świszcz', pseudonym='Graphos'):
-        call_command('merge_illustrator', first_name=first, last_name=last, pseudonym=pseudonym, apply=True,
-                     stdout=StringIO())
-
-    def test_refusals_change_nothing(self):
-        target = Illustrator.objects.create(first_name='Przemek', last_name='Świszcz')
-        cases = {
-            'pseudonim taki jak imię i nazwisko': (lambda: None, {'pseudonym': ' przemek  świszcz '},
-                                                  'odrębny pseudonim'),
-            'brak wpisu imiennego': (lambda: None, {'first': 'Nikt'}, 'znaleziono: 0'),
-            'wpis imienny ma inny pseudonim': (
-                lambda: Illustrator.objects.filter(pk=target.pk).update(pseudonym='Inny'), {}, 'inny pseudonim'),
-            'wpis do scalenia ma drugi pseudonim': (
-                lambda: Illustrator.objects.create(first_name='Graphos', pseudonym='Grafik'), {},
-                'dodatkowy, inny pseudonim'),
-            'pseudonim za długi dla wpisu': (lambda: None, {'pseudonym': 'P' * 101}, 'Nic nie zapisano'),
-        }
-        for case, (prepare, arguments, message) in cases.items():
-            with self.subTest(case):
-                Illustrator.objects.filter(pk=target.pk).update(pseudonym='')
-                Illustrator.objects.exclude(pk=target.pk).delete()
-                prepare()
-                before = list(Illustrator.objects.order_by('pk').values())
-                with self.assertRaisesMessage(CommandError, message):
-                    self.merge(**arguments)
-                self.assertEqual(list(Illustrator.objects.order_by('pk').values()), before)

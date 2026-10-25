@@ -14,16 +14,17 @@ from core.models import Audiobook, AudiobookStage
 from core.selectors.texts import my_texts_context, workflow_list_context
 from core.services.reviews import copy_review_to_text
 from fantazmaty.testing import create_member, create_superuser
+from fantazmaty.testing.workflow import start_reserved_first_verification
 from texts.models import Anthology, Review, Text
 from workflow.models import WorkflowStage as S, WorkflowRoleAssignment as A
-from workflow.read_queries import annotate_my_work, dashboard_querysets
+from workflow.read_queries import classify_work, dashboard_querysets
 from workflow.repetitions import repeat_stages
 from workflow.services import (
     claim_stage, complete_stage, finish_editing_to_coordinator, resume_editing,
-    send_to_first_verification, send_to_second_verification, start_first_verification,
+    send_to_first_verification, send_to_second_verification,
 )
 
-from .support import AnthologyWorkflowMixin, EditingInProgressFixtures, add_roles, importing
+from .support import AnthologyWorkflowMixin, EditingInProgressFixtures, add_roles, importing, work_state
 
 
 class MyWorkVisibilityTests(AnthologyWorkflowMixin, TestCase):
@@ -35,7 +36,7 @@ class MyWorkVisibilityTests(AnthologyWorkflowMixin, TestCase):
     def test_active_view_classifies_once_and_rows_match_classification(self):
         """Widok „W toku” klasyfikuje teksty jednym zapytaniem i ten sam stan trafia do wierszy."""
         self.begin_editing()
-        with patch('workflow.read_queries.annotate_my_work', wraps=annotate_my_work) as classify:
+        with patch('workflow.read_queries.classify_work', wraps=classify_work) as classify:
             rows = list(my_texts_context(user=self.editor, selected_view='active')['texts'])
         self.assertEqual(classify.call_count, 1)
         work = self.work()
@@ -75,73 +76,6 @@ class MyWorkVisibilityTests(AnthologyWorkflowMixin, TestCase):
         complete_stage(S.objects.get(pk=proof.pk), self.proofreader, self.today)
         self.assertTrue(self.work().work_completed)
         self.assertEqual(S.objects.filter(text=self.text, stage_type='editing').count(), 3)
-
-    @tag('slow')
-    def test_dashboard_classification_matches_annotate_my_work(self):
-        """Pulpit klasyfikuje teksty w Pythonie z tych samych warunków co annotate_my_work (SQL):
-        w każdym kroku procesu i dla każdej osoby stany „w toku” i „oczekuje” są identyczne."""
-        from workflow.read_queries import _classify, work_text_ids
-        people = (self.editor, self.other_editor, self.verifier_1, self.verifier_2, self.proofreader, self.coordinator)
-        book = self.text.anthology
-
-        def check(step):
-            for user in people:
-                with self.subTest(step=step, user=user.username):
-                    work = _classify(user, self.today)
-                    expected = work_text_ids(Text.objects.all(), user, self.today)
-                    self.assertEqual((set(work.active), set(work.waiting)), (expected['active'], expected['waiting']))
-                    editors = set(A.objects.current_cycle().filter(role='editor', assigned_to=user)
-                                  .values_list('text_id', flat=True))
-                    self.assertEqual(set(work.editor_waiting), expected['waiting'] & editors)
-
-        # Tła: rezerwacja bez etapu, praca z autorem, tekst wycofany i etap z poprzedniego cyklu.
-        reserved = Text.objects.create(title='Rezerwacja', length=1, anthology=book)
-        A.objects.create(text=reserved, role='verifier_2', assigned_to=self.verifier_2)
-        S.objects.create(text=reserved, stage_type='editing', started_at=self.today)
-        with_author = Text.objects.create(title='Z autorem', length=1, anthology=book)
-        editor = A.objects.create(text=with_author, role='editor', assigned_to=self.other_editor)
-        S.objects.create(text=with_author, stage_type='editing', assignment=editor, started_at=self.today,
-                         ended_at=self.today, is_completed=True)
-        S.objects.create(text=with_author, stage_type='author_editing', started_at=self.today)
-        withdrawn = Text.objects.create(title='Wycofany', length=1, anthology=book)
-        editor = A.objects.create(text=withdrawn, role='editor', assigned_to=self.editor)
-        S.objects.create(text=withdrawn, stage_type='editing', assignment=editor, started_at=self.today)
-        S.objects.create(text=withdrawn, stage_type='withdrawn')
-        old_cycle = Text.objects.create(title='Nowy cykl', length=1, anthology=book, current_workflow_cycle=2)
-        editor = A.objects.create(text=old_cycle, role='editor', assigned_to=self.editor, workflow_cycle=1)
-        S.objects.create(text=old_cycle, stage_type='editing', assignment=editor, started_at=self.today)
-        # Niebieżące, nieukończone wykonanie nie jest oczekującą pracą.
-        replaced = Text.objects.create(title='Zastąpione wykonanie', length=1, anthology=book)
-        verifier = A.objects.create(text=replaced, role='verifier_1', assigned_to=self.verifier_1)
-        S.objects.create(text=replaced, stage_type='editing', started_at=self.today)
-        S.objects.create(text=replaced, stage_type='first_verification', assignment=verifier, started_at=self.today,
-                         ended_at=self.today, is_completed=True)
-        S.objects.create(text=replaced, stage_type='first_verification', assignment=verifier, iteration=2,
-                         is_current=False)
-        check('początek')
-        self.begin_editing()
-        check('redakcja')
-        send_to_first_verification(self.text, self.editor, self.today)
-        check('czeka na weryfikację')
-        first = claim_stage(self.text, 'first_verification', self.verifier_1)
-        check('weryfikacja 1')
-        complete_stage(first, self.verifier_1, self.today)
-        resume_editing(self.text, self.editor, self.today)
-        send_to_second_verification(self.text, self.editor, self.today)
-        second = claim_stage(self.text, 'second_verification', self.verifier_2)
-        check('weryfikacja 2')
-        complete_stage(second, self.verifier_2, self.today)
-        resume_editing(self.text, self.editor, self.today)
-        finish_editing_to_coordinator(self.text, self.editor, self.today)
-        control = claim_stage(self.text, 'editing_control', self.coordinator)
-        check('kontrola')
-        complete_stage(control, self.coordinator, self.today, send_to_proofreading=True)
-        proof = claim_stage(self.text, 'first_proofreading', self.proofreader, started_at=self.today + timedelta(days=1))
-        check('korekta zaplanowana')
-        S.objects.filter(pk=proof.pk).update(started_at=self.today)
-        check('korekta')
-        complete_stage(S.objects.get(pk=proof.pk), self.proofreader, self.today)
-        check('koniec korekty')
 
     def test_imported_editorial_history_does_not_hide_current_editor_waiting_for_verification(self):
         editing = self.begin_editing()
@@ -193,7 +127,7 @@ class MyWorkVisibilityTests(AnthologyWorkflowMixin, TestCase):
         run = repeat_stages(self.text, ['editing'], self.superuser,
                             assignees={'editor': self.other_editor})
         self.assertIn(self.text.pk, self.my_ids(self.other_editor))
-        row = annotate_my_work(Text.objects.all(), self.other_editor, self.today).get(pk=self.text.pk)
+        row = work_state(self.other_editor, self.text)
         self.assertTrue(row.work_waiting)
         self.assertFalse(row.work_completed)
         self.assertIsNone(run.stages.get().started_at)
@@ -306,7 +240,7 @@ class EditorDashboardTests(EditingInProgressFixtures):
         self.assertEqual(row['pk'], first.pk)
         self.assertTrue(row['editor_waiting'])
         self.assertEqual(row['stage_type'], 'first_verification')
-        started = start_first_verification(self.text, self.other, self.today)
+        started = start_reserved_first_verification(self.text, self.other, self.today)
         self.assertEqual(self.summary()['active_stages'][0]['pk'], started.pk)
         self.assertTrue(self.summary()['active_stages'][0]['editor_waiting'])
 

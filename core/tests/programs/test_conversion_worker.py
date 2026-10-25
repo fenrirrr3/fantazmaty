@@ -30,7 +30,7 @@ from .support import (add_footnote_reference, add_leading_break, add_page_break,
 
 class SanitizedHtmlTests(SimpleTestCase):
     def test_only_allowed_tags_attributes_and_links_survive(self):
-        content, headings = sanitize_html(
+        content = sanitize_html(
             'Wstęp<!-- komentarz --><script>alert(1)</script><p onclick="x()" id="a">Tekst <font>bez</font></p>'
             '<a href="javascript:alert(1)">zły</a><a href="https://example.test">dobry</a><a href="#przypis">#</a>'
             '<img src="assets/image-1.png" alt="Opis" onerror="x()"><img src="https://example.test/x.png">'
@@ -46,12 +46,12 @@ class SanitizedHtmlTests(SimpleTestCase):
         self.assertEqual(tree.xpath('//img/@src'), ['assets/image-1.png'])
         self.assertEqual(tree.xpath('//img/@alt'), ['Opis'])
         self.assertEqual((tree.xpath('//td/@colspan'), tree.xpath('//td/@rowspan')), (['2'], []))
-        self.assertEqual(headings, [('section-1', 'Tytuł'), ('wlasny', 'Rozdział')])
+        self.assertEqual(tree.xpath('//h1/@id | //h2/@id'), ['section-1', 'wlasny'])
 
     def test_external_links_are_valid_urls(self):
         """Regresja (epubcheck RSC-020): znaki niedozwolone w adresie z Worda psuły walidację EPUB."""
-        content, _ = sanitize_html('<a href="http://example.com/a%20b?x=<1>&amp;y=ą z|w">x</a>'
-                                   '<a href="mailto:jan kowalski@example.com">y</a>', {})
+        content = sanitize_html('<a href="http://example.com/a%20b?x=<1>&amp;y=ą z|w">x</a>'
+                                '<a href="mailto:jan kowalski@example.com">y</a>', {})
         self.assertEqual(html.fragment_fromstring(content, create_parent='div').xpath('//a/@href'), [
             'http://example.com/a%20b?x=%3C1%3E&y=%C4%85%20z%7Cw', 'mailto:jan%20kowalski@example.com'])
 
@@ -348,7 +348,7 @@ class PageBreakAndSceneBreakTests(SimpleTestCase):
                 self.assertFalse(scene_break(html.fromstring(markup)))
 
     def test_only_the_page_break_marker_class_survives_sanitizing(self):
-        content, _ = sanitize_html('<p>a<br class="page-break">b<br class="inna">c<span class="page-break">d</span></p>', {})
+        content = sanitize_html('<p>a<br class="page-break">b<br class="inna">c<span class="page-break">d</span></p>', {})
         self.assertEqual(content, '<p>a<br class="page-break">b<br>c<span>d</span></p>')
 
     def test_split_keeps_formatting_and_unique_ids(self):
@@ -474,7 +474,7 @@ class PageBreakAndSceneBreakTests(SimpleTestCase):
         doc.add_paragraph('Treść')
         source = self.directory / 'source.docx'
         doc.save(source)
-        with patch('core.services.document_pdf.render_pdf', side_effect=RuntimeError('tajne')):
+        with patch('core.services.document_conversion_worker.render_pdf', side_effect=RuntimeError('tajne')):
             convert(source, self.directory, ['epub', 'pdf'], 'Test')
             self.assertTrue((self.directory / 'document.epub').is_file())
             self.assertFalse((self.directory / 'document.pdf').exists())

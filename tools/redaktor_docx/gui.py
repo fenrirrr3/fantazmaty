@@ -47,8 +47,6 @@ def _settings_dir():
     return (Path(base) if base else Path.home() / '.config') / 'RedaktorDOCX'
 
 
-SUMMARY_LABELS = {**dict(EDITORIAL_RULES),
-                  'nonbreaking_spaces': 'Spacje nierozdzielające i nietypowe zamienione na zwykłe'}
 PROGRAMS = ('Odkurzacz', 'Konwersja', 'Powtórzenia', 'Przebudowa')
 
 

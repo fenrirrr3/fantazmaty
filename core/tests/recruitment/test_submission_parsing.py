@@ -14,8 +14,9 @@ from docx import Document
 from core.models import MailboxConnection
 from core.services.mailbox import MailboxError, polish_date, story_title
 from core.services.document_converter import RebuildConfirmationRequired
-from core.services.mailbox_import import package_messages, parse_message, prepare_forms, safe_name
+from core.services.mailbox_import import _package_messages, package_messages, parse_message, prepare_forms, safe_name
 from core.services.review_import_parser import encode_submission, parse_review_records
+from core.tests.programs.support import sized_docx
 from fantazmaty.testing import create_superuser
 from texts.models import Anthology
 
@@ -291,7 +292,7 @@ class SubmissionPackagingTests(SimpleTestCase):
             for clean, convert in ((False, False), (True, False), (False, True), (True, True)):
                 with (
                     self.subTest(clean=clean, convert=convert),
-                    package_messages([row], clean, convert) as out,
+                    _package_messages([row], clean, convert) as out,
                     ZipFile(out) as z,
                 ):
                     self.assertEqual(len(z.namelist()), 3 if convert else 1)
@@ -393,20 +394,28 @@ class PackagingErrorTests(SimpleTestCase):
 
     def test_processing_requires_valid_docx(self):
         with self.assertRaisesMessage(MailboxError, 'Odkurzacz i konwerter obsługują DOCX'):
-            package_messages([self.message(files=[('tekst.pdf', b'%PDF')])], True, False, False)
+            _package_messages([self.message(files=[('tekst.pdf', b'%PDF')])], True, False, False)
         with self.assertRaisesMessage(MailboxError, 'Nieprawidłowy DOCX: zly.docx. Wyłącz przetwarzanie'):
-            package_messages([self.message(files=[('zly.docx', b'not a zip')])], False, False, True)
+            _package_messages([self.message(files=[('zly.docx', b'not a zip')])], False, False, True)
         with self.assertRaisesMessage(MailboxError, 'Nieprawidłowy DOCX: zly.docx.'):
-            package_messages([self.message(files=[('zly.docx', b'not a zip')])], True, False, False)
-        self.assertEqual(self.names(package_messages([self.message(files=[('tekst.pdf', b'%PDF')])], False, False, False)),
+            _package_messages([self.message(files=[('zly.docx', b'not a zip')])], True, False, False)
+        self.assertEqual(self.names(_package_messages([self.message(files=[('tekst.pdf', b'%PDF')])], False, False, False)),
                          ['Opowieść/01_tekst.pdf'])
+
+    @patch('core.services.mailbox_import.convert_document', side_effect=lambda *args, **kwargs: (BytesIO(b'x'), None, None))
+    def test_mail_documents_keep_ten_mb_limit(self, convert):
+        """DOCX z poczty sprawdzamy jak pliki w programach, ale z limitem 10 MB zamiast 5 MB."""
+        def package(size):
+            return _package_messages([self.message(files=[('tekst.docx', sized_docx(size).read())])], True, False, False)
+
+        self.assertEqual(self.names(package(5 * 1024 * 1024 + 1)), ['Opowieść/01_tekst.docx'])
+        with self.assertRaisesMessage(MailboxError, 'Nieprawidłowy DOCX: tekst.docx. Plik jest za duży. Maksymalny rozmiar to 10 MB.'):
+            package(10 * 1024 * 1024 + 1)
 
     @patch('core.services.mailbox_import.inspect_document', side_effect=RebuildConfirmationRequired('pominie tabelę'))
     def test_rebuild_omissions_need_confirmation(self, inspect):
         with self.assertRaisesMessage(RebuildConfirmationRequired, 'tekst.docx: pominie tabelę'):
-            package_messages([self.message()], False, False, True)
-        with self.assertRaises(RebuildConfirmationRequired):
-            package_messages([self.message()], False, False, True, skipped_errors=[])
+            _package_messages([self.message()], False, False, True)
         warnings, accepted, errors = [], [], []
         with package_messages([self.message()], False, False, True, skipped_errors=errors, accepted=accepted,
                               rebuild_warnings=warnings) as output, ZipFile(output) as archive:
@@ -418,33 +427,37 @@ class PackagingErrorTests(SimpleTestCase):
     @patch('core.services.mailbox_import.convert_document')
     def test_rebuild_only_and_conversion_with_notes(self, convert):
         convert.side_effect = lambda *args, **kwargs: (BytesIO(b'przebudowany'), None, None)
-        self.assertEqual(self.names(package_messages([self.message()], False, False, True, True)),
+        self.assertEqual(self.names(_package_messages([self.message()], False, False, True, True)),
                          ['Opowieść/01_tekst.docx'])
         self.assertEqual(convert.call_args.args[1], [])
         self.assertTrue(convert.call_args.kwargs['allow_rebuild_omissions'])
         convert.side_effect = lambda *args, **kwargs: converted(warnings=['Brak przypisu 3'])
-        self.assertEqual(self.names(package_messages([self.message()], False, True, False)),
+        self.assertEqual(self.names(_package_messages([self.message()], False, True, False)),
                          ['Opowieść/01_tekst.docx', 'Opowieść/01_tekst.epub', 'Opowieść/01_tekst.pdf',
                           'Opowieść/01_tekst_uwagi.txt'])
         convert.side_effect = RebuildConfirmationRequired('utrata obrazu')
         with self.assertRaisesMessage(RebuildConfirmationRequired, 'tekst.docx: utrata obrazu'):
-            package_messages([self.message()], False, True, True, True)
+            _package_messages([self.message()], False, True, True, True)
 
     def test_equal_folders_get_uid_suffix(self):
         messages = [self.message(12), self.message(13)]
-        self.assertEqual(self.names(package_messages(messages, False, False, False)),
+        self.assertEqual(self.names(_package_messages(messages, False, False, False)),
                          ['Opowieść/01_tekst.docx', 'Opowieść_13/01_tekst.docx'])
 
     def test_time_limits(self):
-        for ticks, kwargs in (
-            ([0, 100], {}),
-            ([0, 0, 100], {}),
-            ([0, 100], {'skipped_errors': []}),
-            ([0, 0, 0, 0, 0, 100], {'skipped_errors': []}),
+        """Limit 90 sekund: w trakcie i po zakończeniu paczki jednej partii oraz całej paczki wiadomości."""
+        def per_message(messages, *options):
+            return package_messages(messages, *options, skipped_errors=[], accepted=[], rebuild_warnings=[])
+
+        for package, ticks in (
+            (_package_messages, [0, 100]),
+            (_package_messages, [0, 0, 100]),
+            (per_message, [0, 100]),
+            (per_message, [0, 0, 0, 0, 0, 100]),
         ):
             with (
-                self.subTest(ticks=ticks, **kwargs),
+                self.subTest(package=package.__name__, ticks=ticks),
                 patch('core.services.mailbox_import.time.monotonic', side_effect=chain(ticks, repeat(ticks[-1]))),
                 self.assertRaisesMessage(MailboxError, '90 sekund'),
             ):
-                package_messages([self.message()], False, False, False, **kwargs)
+                package([self.message()], False, False, False)

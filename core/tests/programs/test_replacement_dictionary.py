@@ -11,12 +11,11 @@ from docx import Document
 
 from core.models import ReplacementEntry
 from core.odkurzacz_forms import REPLACEMENT_ACTIVE_MAX, ReplacementEntryForm
-from core.program_test_support import run_program
 from core.services import program_jobs as jobs
 from core.services.odkurzacz import DEFAULT_REPLACEMENTS, correct_editorial_text
 from fantazmaty.testing import create_member, create_superuser
 
-from .support import IsolatedProgramDirsMixin, downloaded_document, saved
+from .support import IsolatedProgramDirsMixin, downloaded_document, run_program, saved
 
 INITIAL = importlib.import_module('core.migrations.0047_initial_replacements').INITIAL_REPLACEMENTS
 OWNER_LIST = importlib.import_module('core.migrations.0067_replacements_owner_list')

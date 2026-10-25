@@ -50,4 +50,4 @@
 <form method="post" class="intake-form novel-status-action">{% csrf_token %}<input type="hidden" name="novel_token" value="{{ novel_token }}">{% if is_open %}<button class="secondary-button" name="action" value="finish">Oznacz powieść jako gotową</button>{% else %}<button class="secondary-button" name="action" value="reopen">Wznów pracę nad powieścią</button>{% endif %}</form>
 </div></details>{% include "core/includes/anthology_notifications_form.html" with form=notifications_form publication=book %}{% endif %}
 {% endblock %}
-{% block scripts %}<script src="{% static 'core/person-select.js' %}" defer></script><script src="{% static 'core/novels.js' %}" defer></script>{% endblock %}
+{% block scripts %}<script src="{% static 'core/lookup.js' %}" defer></script><script src="{% static 'core/person-select.js' %}" defer></script><script src="{% static 'core/novels.js' %}" defer></script>{% endblock %}

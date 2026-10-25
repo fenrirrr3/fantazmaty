@@ -1,25 +1,35 @@
+"""Walidatory linków: dozwolone domeny (audiobooki, ilustracje) i dodatkowe części nagrań.
+
+Nazwy walidatorów pól są w migracjach – zostają funkcjami na poziomie modułu.
+"""
 from urllib.parse import urlsplit
 
 from django.core.exceptions import ValidationError
 
 
-def _media_url(value, hosts, label):
+def validate_allowed_url(value, hosts, message, *, allow_http=False):
+    """Link tylko z podanych domen, bez loginu i hasła w adresie i z domyślnym portem; inaczej ``message``.
+
+    Bez ``allow_http`` – tylko HTTPS (port 443)."""
+    schemes, ports = (('http', 'https'), (None, 80, 443)) if allow_http else (('https',), (None, 443))
     try:
         parsed = urlsplit(value)
-        valid = (parsed.scheme in ('http', 'https') and parsed.hostname in hosts
-                 and not parsed.username and not parsed.password and parsed.port in (None, 80, 443))
+        valid = (parsed.scheme in schemes and parsed.hostname in hosts
+                 and not parsed.username and not parsed.password and parsed.port in ports)
     except ValueError:
         valid = False
     if not valid:
-        raise ValidationError(f'Wklej prawidłowy link do {label}.')
+        raise ValidationError(message)
 
 
 def validate_youtube_url(value):
-    _media_url(value, ('youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be'), 'YouTube')
+    validate_allowed_url(value, ('youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be'),
+                         'Wklej prawidłowy link do YouTube.', allow_http=True)
 
 
 def validate_hearthis_url(value):
-    _media_url(value, ('hearthis.at', 'www.hearthis.at'), 'HearThis')
+    validate_allowed_url(value, ('hearthis.at', 'www.hearthis.at'), 'Wklej prawidłowy link do HearThis.',
+                         allow_http=True)
 
 
 def validate_audio_links(value):
@@ -40,15 +50,5 @@ def validate_audio_links(value):
 
 
 def validate_mega_url(value):
-    try:
-        parsed = urlsplit(value)
-        valid = (
-            parsed.scheme == 'https'
-            and parsed.hostname in ('mega.nz', 'www.mega.nz', 'mega.co.nz', 'www.mega.co.nz')
-            and not parsed.username and not parsed.password
-            and parsed.port in (None, 443)
-        )
-    except ValueError:
-        valid = False
-    if not valid:
-        raise ValidationError('Wklej link HTTPS z mega.nz lub mega.co.nz.')
+    validate_allowed_url(value, ('mega.nz', 'www.mega.nz', 'mega.co.nz', 'www.mega.co.nz'),
+                         'Wklej link HTTPS z mega.nz lub mega.co.nz.')

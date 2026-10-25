@@ -6,7 +6,7 @@ from django.conf import settings
 
 
 def _cipher():
-    secrets = [settings.SECRET_KEY, *getattr(settings, 'SECRET_KEY_FALLBACKS', [])]
+    secrets = [settings.SECRET_KEY, *settings.SECRET_KEY_FALLBACKS]
     return MultiFernet([Fernet(base64.urlsafe_b64encode(
         hashlib.sha256(('fantazmaty:mailbox:v1:' + secret).encode()).digest()
     )) for secret in secrets])

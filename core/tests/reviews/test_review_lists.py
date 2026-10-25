@@ -54,7 +54,7 @@ class ReviewListByDecisionTests(TestCase):
         waiting = self.make_review('Oczekujący', 'new')
         reading = self.make_review('Czytany', 'in_review', 'reading')
         rated = self.make_review('Oceniony przed decyzją', 'new', 'yes')
-        rated_in_review = self.make_review('Oceniony w recenzjach', 'in_review', 'no')
+        rated_in_review = self.make_review('Oceniony w trakcie', 'in_review', 'no')
         accepted = self.make_review('Przyjęty', 'accepted', 'yes')
         historic = self.make_review('Importowany', 'rejected', 'no', legacy=True)
         other = self.make_review('Cudzy', 'new', user=self.other)
@@ -67,12 +67,11 @@ class ReviewListByDecisionTests(TestCase):
         self.assertNotIn(other.pk, {x.review_id for x in all_page.context['assignments']})
         doc = html.fromstring(all_page.content)
         self.assertEqual(doc.xpath('//nav[@aria-label="Widok moich recenzji"]/a/text()'), ['W toku', 'Oddane'])
-        for view in ['archived', 'completed', 'decided', 'all']:
-            with self.subTest(view=view):
-                page = self.client.get(url, {'view': view})
-                self.assertEqual({x.review_id for x in page.context['assignments']},
-                                 {rated.pk, rated_in_review.pk, accepted.pk, historic.pk})
-                self.assertEqual(page.context['page_obj'].paginator.count, 4)
+        self.assertEqual({x.review_id for x in all_page.context['assignments']},
+                         {rated.pk, rated_in_review.pk, accepted.pk, historic.pk})
+        self.assertEqual(all_page.context['page_obj'].paginator.count, 4)
+        # Dawne zakładki (archived, decided, all) nie są już obsługiwane – pokazują widok domyślny.
+        self.assertEqual(self.client.get(url, {'view': 'archived'}).context['selected_view'], 'active')
 
     def test_profile_archive_uses_decision_and_preserves_hidden_permissions(self):
         accepted = self.make_review('Przyjęty', 'accepted', 'yes')
@@ -110,7 +109,7 @@ class ReviewHistoryTests(TestCase):
     def test_own_completed_and_archived_remain_without_abandoned_pending_work(self):
         self.client.force_login(self.member)
         done = ['Archiwalna recenzja', 'Oddana recenzja']
-        expected = {'completed': done, 'all': done, 'archived': done, 'active': [], 'waiting': []}
+        expected = {'completed': done, 'active': [], 'waiting': []}
         for view, titles in expected.items():
             with self.subTest(view=view):
                 page = self.client.get(reverse('core:my_reviews'), {'view': view})
@@ -167,7 +166,7 @@ class ReviewHistoryTests(TestCase):
         self.assertContains(page, review.title)
         page = self.client.get(reverse('core:assigned_review_detail', args=[review.pk]))
         self.assertTrue(page.context['is_review_locked'])
-        self.assertContains(self.client.get(reverse('core:my_reviews'), {'view': 'archived'}), old.title)
+        self.assertContains(self.client.get(reverse('core:my_reviews'), {'view': 'completed'}), old.title)
 
 
 class ReviewListSortAndFilterTests(ReviewFixtures):
@@ -208,11 +207,7 @@ class ReviewListSortAndFilterTests(ReviewFixtures):
         elsewhere = self.make_review(title='Gdzie indziej', anthology=other_book, author_last_name='Kowalska')
         everything = {empty.pk, one.pk, done.pk, full.pk, elsewhere.pk}
         cases = [
-            (self.admin, {'assignment_state': 'none'}, {empty.pk, elsewhere.pk}),
-            (self.admin, {'assignment_state': 'one'}, {one.pk}),
-            (self.admin, {'assignment_state': 'full'}, {full.pk}),
-            (self.admin, {'assignment_state': 'all_finished'}, {done.pk}),
-            (self.admin, {'assignment_state': 'nieznany'}, everything),
+            (self.admin, {'completed': '0'}, {empty.pk, one.pk, elsewhere.pk}),
             (self.admin, {'completed': '2'}, {done.pk}),
             (self.admin, {'completed': '1'}, {full.pk}),
             (self.admin, {'completed': '9'}, everything),
@@ -232,7 +227,7 @@ class ReviewListSortAndFilterTests(ReviewFixtures):
                 self.client.force_login(user)
                 page = self.client.get(url, params)
                 self.assertEqual({row['pk'] for row in page.context['reviews']}, expected)
-        page = self.client.get(url, {'anthology': 'abc', 'assignment_state': 'x', 'completed': '-1'})
+        page = self.client.get(url, {'anthology': 'abc', 'completed': '-1'})
         self.assertEqual((page.context['selected_anthology_id'], page.context['selected_completed']), (None, ''))
 
     def test_status_sort_and_author_notification_queues(self):
@@ -250,10 +245,6 @@ class ReviewListSortAndFilterTests(ReviewFixtures):
             with self.subTest(sort=sort):
                 rows = self.client.get(url, {'sort': sort}).context['reviews']
                 self.assertEqual([row['pk'] for row in rows], expected)
-        page = self.client.get(url, {'notification': 'pending', 'status': 'rejected'})
-        self.assertTrue(page.context['old_reviews'])
-        self.assertEqual(page.context['selected_statuses'], [])
-        self.assertEqual([row['pk'] for row in page.context['reviews']], [waiting.pk])
         queues = [('core:notification_queue', {}, [waiting.pk]),
                   ('core:notification_queue', {'q': 'POWIADOMIENIA'}, [waiting.pk]),
                   ('core:notification_queue', {'q': 'author@example'}, [waiting.pk]),

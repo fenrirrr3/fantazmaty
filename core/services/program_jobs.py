@@ -20,11 +20,12 @@ from django.conf import settings
 from django.core import signing
 from django.core.files import File
 
-from core.odkurzacz_forms import MERGE_MAX_FILES, MERGE_MAX_TOTAL_BYTES, PROGRAM_MAX_UPLOAD_BYTES, plural
-from core.services.odkurzacz import EDITORIAL_RULES
+from core.inflection import count_text
+from core.odkurzacz_forms import FILE_FORMS, MERGE_MAX_FILES, MERGE_MAX_TOTAL_BYTES, PROGRAM_MAX_UPLOAD_BYTES
+from core.services.odkurzacz import EDITORIAL_RULES, SUMMARY_LABELS
 from .document_converter import (
-    MAX_OUTPUT, REBUILD_WARNING, ConversionError, RebuildConfirmationRequired, _try_lock, conversion_slot,
-    convert_document, conversion_filename, converter_python, run_converter, validate_resources,
+    MAX_OUTPUT, MAX_TIME_LIMIT, TIME_LIMIT, ConversionError, RebuildConfirmationRequired, conversion_slot,
+    convert_document, conversion_filename, converter_python, exclusive_lock, run_converter, validate_resources,
 )
 from .document_images import linked_images_note
 
@@ -36,21 +37,23 @@ SALT = 'private-program-job-v1'
 SESSION_KEY = 'program_upload_session'
 # Zadania superusera (analiza bez limitu wielkości) mogą trwać dłużej niż 90 s.
 SUPERUSER_TIME_LIMIT = 300
-# Koniec komunikatu o pominięciach przy przebudowie (document_converter.run_converter).
-REBUILD_SUFFIX = '. Po akceptacji powstanie nowy DOCX bez tych elementów.'
 MERGE_REBUILD_SUFFIX = ('. Po akceptacji wszystkie pliki zostaną przebudowane bez tych elementów i scalone. '
                         'Tekst i obsługiwane formatowanie zostaną przeniesione.')
-NO_HEADING_MESSAGE = ('Dokument nie zawiera akapitów ze stylem „Nagłówek 1”. Oznacz tytuły opowiadań '
-                      'stylem Nagłówek 1 (Narzędzia główne → Style) i spróbuj ponownie.')
+NO_HEADING_MESSAGE = ('Dokument nie zawiera Nagłówków 1 (w panelu nawigacji Worda nie ma pozycji na poziomie 1). '
+                      'Oznacz tytuły opowiadań stylem Nagłówek 1 (Narzędzia główne → Style) i spróbuj ponownie.')
 DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 # Lista części podziału (plik w ZIP i nagłówek) zapisana obok wyniku – korzysta z niej wysyłka autorom.
 SPLIT_PARTS = 'split_parts.json'
-SUMMARY_LABELS = {'user_word_corrections': 'Własne zamiany słownikowe (słownik zamian)',
-                  'nonbreaking_spaces': 'Spacje nierozdzielające i nietypowe zamienione na zwykłe'}
+# Podpisy wierszy podsumowania Odkurzacza (w CMS słownik zamian ma krótszy podpis niż w formularzu reguł).
+ROW_LABELS = SUMMARY_LABELS | {'user_word_corrections': 'Własne zamiany słownikowe (słownik zamian)'}
 
 
 class JobError(ValueError):
     pass
+
+
+class JobExpired(JobError):
+    """Zadanie wygasło, zostało usunięte albo należy do innej sesji."""
 
 
 class JobCancelled(Exception):
@@ -58,7 +61,7 @@ class JobCancelled(Exception):
 
 
 def root():
-    return Path(getattr(settings, 'DOCUMENT_CONVERSION_DIR', settings.BASE_DIR / 'var' / 'conversion')) / 'program_jobs'
+    return Path(settings.DOCUMENT_CONVERSION_DIR) / 'program_jobs'
 
 
 def write_json(path, value):
@@ -132,22 +135,9 @@ def creation_lock(wait=5):
     """Jedno tworzenie zadania naraz – limit kolejki działa też przy podwójnym kliknięciu."""
     root().mkdir(parents=True, exist_ok=True, mode=0o700)
     # Plik blokady obok katalogu zadań: w środku są wyłącznie foldery zadań.
-    with (root().parent / 'program_jobs.lock').open('a+b') as lock:
-        deadline = time.monotonic() + wait
-        while not _try_lock(lock):
-            if time.monotonic() >= deadline:
-                raise JobError('Serwer przyjmuje teraz inne zadanie. Spróbuj ponownie za chwilę.')
-            time.sleep(0.1)
-        try:
-            yield
-        finally:
-            if os.name == 'posix':
-                import fcntl
-                fcntl.flock(lock, fcntl.LOCK_UN)
-            else:
-                import msvcrt
-                lock.seek(0)
-                msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
+    busy = JobError('Serwer przyjmuje teraz inne zadanie. Spróbuj ponownie za chwilę.')
+    with exclusive_lock(root().parent / 'program_jobs.lock', wait, busy, interval=0.1):
+        yield
 
 
 def launch(folder):
@@ -178,7 +168,7 @@ def max_queued_jobs():
     Dokumenty są przetwarzane po kolei (conversion_slot); pozostałe czekają
     w kolejce. Każde zadanie w kolejce to lekki proces nadzorcy.
     """
-    return max(1, int(getattr(settings, 'PROGRAM_MAX_QUEUED_JOBS', 5)))
+    return settings.PROGRAM_MAX_QUEUED_JOBS
 
 
 def active_jobs():
@@ -279,20 +269,11 @@ def resolve(request, token):
             raise ValueError()
         return folder
     except (signing.BadSignature, ValueError, KeyError, OSError):
-        raise JobError('Zadanie wygasło lub nie jest dostępne w tej sesji. Wybierz plik ponownie.') from None
+        raise JobExpired('Zadanie wygasło lub nie jest dostępne w tej sesji. Wybierz plik ponownie.') from None
 
 
 def status(folder):
     state = read_json(folder / 'state.json')
-    if not isinstance(state.get('warnings', []), list):
-        state['warnings'] = []  # dawny zapis: sama liczba uwag
-    if 'summary' in state and not isinstance(state['summary'], list):
-        state['summary'] = []
-    if 'replacements' in state and not isinstance(state['replacements'], list):
-        state['replacements'] = []
-    if 'removed_images' in state and (not isinstance(state['removed_images'], int)
-                                      or isinstance(state['removed_images'], bool)):
-        state['removed_images'] = 0
     if (folder / 'cancel').exists() and state['state'] == 'confirmation':
         return {'state': 'cancelled', 'message': 'Praca zatrzymana.'}
     if state['state'] in ('queued', 'running') and not alive(state):
@@ -329,37 +310,31 @@ def remove(folder):
 
 
 def superuser_time_limit():
-    from .document_converter import MAX_TIME_LIMIT, TIME_LIMIT
     value = int(getattr(settings, 'PROGRAM_SUPERUSER_TIME_LIMIT', SUPERUSER_TIME_LIMIT))
     return max(TIME_LIMIT, min(MAX_TIME_LIMIT, value))
 
 
 def summary_rows(summary):
-    """Podsumowanie Odkurzacza {reguła: liczba} jako wiersze w kolejności reguł formularza."""
+    """Podsumowanie Odkurzacza {reguła: liczba} jako wiersze w kolejności reguł formularza.
+
+    Liczby sprawdził już konwerter (document_converter.convert_document: tylko dodatnie liczby całkowite).
+    """
     if summary is None:
         return None
-    labels = dict(EDITORIAL_RULES) | SUMMARY_LABELS
     order = {key: index for index, (key, _) in enumerate(EDITORIAL_RULES)}
     # Lista zamian słownikowych („replacements”) nie jest wierszem reguły – patrz replacement_rows.
-    rows = sorted(((key, count) for key, count in summary.items()
-                   if isinstance(count, int) and not isinstance(count, bool) and count > 0),
+    rows = sorted(((key, count) for key, count in summary.items() if key != 'replacements'),
                   key=lambda item: (order.get(item[0], len(order)), item[0]))
-    return [{'rule': key, 'label': labels.get(key, key), 'count': count} for key, count in rows[:60]]
+    return [{'rule': key, 'label': ROW_LABELS.get(key, key), 'count': count} for key, count in rows[:60]]
 
 
 def replacement_rows(summary):
-    """Zamiany słownikowe z podsumowania: [{source, target, count}] (co na co, ile razy)."""
-    rows = (summary or {}).get('replacements')
-    if not isinstance(rows, list):
-        return []
-    return [{'source': row['source'], 'target': row['target'], 'count': row['count']} for row in rows[:200]
-            if isinstance(row, dict) and isinstance(row.get('source'), str) and isinstance(row.get('target'), str)
-            and isinstance(row.get('count'), int) and not isinstance(row.get('count'), bool) and row['count'] > 0]
+    """Zamiany słownikowe z podsumowania: [{source, target, count}] (co na co, ile razy; sprawdzone w konwerterze)."""
+    return summary.get('replacements', [])[:200]
 
 
 def job_time_limit(options):
     """Limit czasu jednego zadania w konwerterze (sekundy)."""
-    from .document_converter import MAX_TIME_LIMIT, TIME_LIMIT
     value = options.get('timeout', TIME_LIMIT) if isinstance(options, dict) else TIME_LIMIT
     if not isinstance(value, (int, float)) or isinstance(value, bool):
         value = TIME_LIMIT
@@ -388,8 +363,8 @@ def _sum_summaries(summaries):
     """Podsumowania Odkurzacza z kilku plików: liczby reguł i zamian słownikowych zsumowane."""
     total, replacements = {}, {}
     for summary in summaries:
-        for key, count in (summary or {}).items():
-            if isinstance(count, int) and not isinstance(count, bool):
+        for key, count in summary.items():
+            if key != 'replacements':
                 total[key] = total.get(key, 0) + count
         for row in replacement_rows(summary):
             pair = (row['source'], row['target'])
@@ -399,14 +374,6 @@ def _sum_summaries(summaries):
                                         for (source, target), count in replacements.items()),
                                        key=lambda row: -row['count'])
     return total
-
-
-def _rebuild_omissions(error):
-    """Same pominięcia z komunikatu RebuildConfirmationRequired (bez wstępu i zakończenia)."""
-    message = str(error)
-    if message.startswith(REBUILD_WARNING):
-        message = message[len(REBUILD_WARNING):]
-    return message.split(REBUILD_SUFFIX, 1)[0].strip()
 
 
 def _run_single(folder, data, options, *, control, waiting):
@@ -422,8 +389,7 @@ def _run_single(folder, data, options, *, control, waiting):
     done = {'state': 'done', 'filename': conversion_filename(name, extension), 'mime': mime,
             'warnings': list(getattr(result, 'conversion_warnings', []))[:30]}
     # Liczba obrazów usuniętych z dokumentu przed pracą programu (strona stanu pokazuje komunikat).
-    removed = getattr(result, 'removed_images', 0)
-    done['removed_images'] = removed if isinstance(removed, int) and not isinstance(removed, bool) else 0
+    done['removed_images'] = getattr(result, 'removed_images', 0)
     if options.get('cleaner_summary'):
         summary = getattr(result, 'cleaner_summary', None) or {}
         done['summary'] = summary_rows(summary)
@@ -457,7 +423,7 @@ def _run_merge(folder, data, options, *, control, waiting):
                         File(source, name=name), control=lambda directory: control(directory, prefix),
                         wait_for_slot=queue_wait(folder), on_wait=waiting, **options)
             except RebuildConfirmationRequired as error:
-                omissions.append(f'„{name}” – {_rebuild_omissions(error)}')
+                omissions.append(f'„{name}” – {"; ".join(error.omissions)}')
                 continue
             except ConversionError as error:
                 raise ConversionError(f'„{name}”: {error}') from None
@@ -466,13 +432,13 @@ def _run_merge(folder, data, options, *, control, waiting):
             write_json(report, {'warnings': list(getattr(result, 'conversion_warnings', []))[:30],
                                 'removed_images': getattr(result, 'removed_images', 0),
                                 'summary': getattr(result, 'cleaner_summary', None) or {}})
+        # Raport części zapisaliśmy sami z wyniku konwertera (wyżej albo przed akceptacją pominięć).
         details = read_json(report)
-        warnings.extend(f'„{name}”: {text}' for text in details.get('warnings', []) if isinstance(text, str))
-        count = details.get('removed_images', 0)
-        removed += count if isinstance(count, int) and not isinstance(count, bool) else 0
-        summaries.append(details.get('summary') if isinstance(details.get('summary'), dict) else {})
+        warnings.extend(f'„{name}”: {text}' for text in details['warnings'] if isinstance(text, str))
+        removed += details['removed_images']
+        summaries.append(details['summary'])
     if omissions:
-        raise RebuildConfirmationRequired(REBUILD_WARNING + '; '.join(omissions[:30]) + MERGE_REBUILD_SUFFIX)
+        raise RebuildConfirmationRequired.listing(omissions[:30], MERGE_REBUILD_SUFFIX)
     control(None, 'Scalanie plików')
     merged = merge_documents([(parts / f'{index:02d}.docx').read_bytes() for index in range(1, len(names) + 1)])
     if use_template:
@@ -483,7 +449,7 @@ def _run_merge(folder, data, options, *, control, waiting):
     (folder / 'result').write_bytes(merged)
     order = ', '.join(f'{index}. „{name}”' for index, name in enumerate(names, 1))
     done = {'state': 'done', 'mime': DOCX_MIME,
-            'filename': f'Scalone – {len(names)} {plural(len(names), "plik", "pliki", "plików")}.docx',
+            'filename': f'Scalone – {count_text(len(names), FILE_FORMS)}.docx',
             'warnings': [f'Kolejność scalania: {order}.', *warnings][:30], 'removed_images': removed}
     if options.get('cleaner_summary'):
         summary = _sum_summaries(summaries)
@@ -523,7 +489,7 @@ def _run_split(folder, data, options, *, control, waiting):
     # Nagłówki części dla wysyłki autorom (split_mailing): nazwa pliku w ZIP i pełny tekst nagłówka.
     write_json(folder / SPLIT_PARTS, [{'file': name, 'title': title if isinstance(title, str) else ''}
                                       for name, title in zip(files, titles) if isinstance(name, str)])
-    warnings = [f'Utworzono {len(names)} {plural(len(names), "plik", "pliki", "plików")}: {", ".join(names)}.']
+    warnings = [f'Utworzono {count_text(len(names), FILE_FORMS)}: {", ".join(names)}.']
     if report.get('skipped_intro'):
         warnings.append('Pominięto treść przed pierwszym Nagłówkiem 1 (np. stronę tytułową) – '
                         'nie ma jej w żadnym pliku.')

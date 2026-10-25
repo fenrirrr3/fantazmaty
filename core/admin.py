@@ -3,14 +3,15 @@ from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin
 from django.contrib.auth.forms import AdminUserCreationForm, UserChangeForm, UserCreationForm
+from core.filtering import positive_id
 from core.models import AnthologyCorrection
-from core.permissions import is_coordinator
 from core.models import Recruitment
 from texts.models import Extract
 from core.intake_forms import ExtractForm
 from people.models import Vacation
 from texts.models import AnthologyTask, Reviewers, ReviewAssignment
 from authors.admin import SuperuserOnlyAdminMixin
+from core.admin_access import ReadOnlyAdminMixin, SingleRecordAdminMixin
 from core.models import UserActivity
 from core.models import WorkflowEvent
 from core.models import MailboxConnection
@@ -19,7 +20,7 @@ from core.models import Audiobook, AudiobookStage
 from core.models import AudioContributor
 from core.models import PostLayoutAssignment
 from core.models import SocialMediaEntry, SocialMediaQuote, TextSocialMedia
-from core.discord_notifications import person_name
+from core.account_identity import person_name
 from core.audiobook_forms import AudiobookProductionForm
 from core import notification_admin  # noqa: F401 – rejestracja panelu powiadomień Discord
 from core import site_admin  # noqa: F401 – rejestracja działów i ustawień strony WWW
@@ -90,7 +91,7 @@ class AudioContributorAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         from django.contrib import messages
         from django.db import IntegrityError, transaction
         from core.audiobook_merge import merge_audio_contributors
-        from core.odkurzacz_forms import plural
+        from core.inflection import count_text
         try:
             with transaction.atomic():
                 people = list(queryset.select_for_update().order_by('pk'))
@@ -105,7 +106,7 @@ class AudioContributorAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
                               'inny wpis spisu. Zaznacz także ten wpis albo popraw go i spróbuj ponownie.', messages.ERROR)
             return
         count = len(duplicates) + 1
-        self.message_user(request, f'Połączono {count} {plural(count, "profil", "profile", "profili")} '
+        self.message_user(request, f'Połączono {count_text(count, ("profil", "profile", "profili"))} '
                           f'w „{keep.name}”.', messages.SUCCESS)
 
     @admin.display(description='Nagrania')
@@ -127,9 +128,6 @@ class AudiobookStageAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
     def has_add_permission(self, request):
         return False
-
-    def has_change_permission(self, request, obj=None):
-        return bool(request.user.is_active and request.user.is_superuser)
 
     def get_form(self, request, obj=None, **kwargs):
         from django import forms as django_forms
@@ -184,8 +182,8 @@ class AudiobookAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
     @staticmethod
     def proofreader_editable(obj):
-        from core.selectors.audio_proofreading import can_assign_proofreader, corrections
-        return can_assign_proofreader(obj, corrections().filter(text_id=obj.text_id))
+        from core.selectors.audio_proofreading import can_assign_proofreader
+        return can_assign_proofreader(obj)
 
     @admin.display(description='Etapy produkcji')
     def production_link(self, obj):
@@ -231,15 +229,10 @@ class PublicGuidelinesAdminMixin:
 
 
 @admin.register(PublicAudiobookSettings)
-class PublicAudiobookSettingsAdmin(PublicGuidelinesAdminMixin, SuperuserOnlyAdminMixin, admin.ModelAdmin):
+class PublicAudiobookSettingsAdmin(PublicGuidelinesAdminMixin, SingleRecordAdminMixin, SuperuserOnlyAdminMixin,
+                                   admin.ModelAdmin):
     fields = ('mega_url', 'guidelines', 'public_page_link')
     public_page = 'core:external_audiobooks'
-
-    def has_add_permission(self, request):
-        return super().has_add_permission(request) and not PublicAudiobookSettings.objects.exists()
-
-    def has_delete_permission(self, request, obj=None):
-        return False
 
 
 
@@ -384,10 +377,9 @@ class AccountAdmin(UserAdmin):
     )
 
     def get_readonly_fields(self, request, obj=None):
-        from people.models import Person
         fields = super().get_readonly_fields(request, obj)
         # Logowanie osoby z ekipy włącza i wyłącza pole „wciąż w ekipie” na ekranie osoby.
-        if obj and obj.pk and Person.objects.filter(user_id=obj.pk).exists():
+        if obj and obj.pk and getattr(obj, "person_profile", None):
             fields = (*fields, "is_active")
         return fields
 
@@ -416,14 +408,13 @@ class AccountAdmin(UserAdmin):
         from django.core.exceptions import PermissionDenied
         from django.http import HttpResponseNotAllowed
         from django.shortcuts import get_object_or_404, redirect
-        from people.models import Person
         if request.method != "POST":
             return HttpResponseNotAllowed(["POST"])
         user = get_object_or_404(User, pk=object_id)
         if not self.has_change_permission(request, user):
             raise PermissionDenied
         self._invite(request, user)
-        person = Person.objects.filter(user_id=user.pk).first() if request.POST.get("_from_person") else None
+        person = getattr(user, "person_profile", None) if request.POST.get("_from_person") else None
         if person:
             return redirect("admin:people_person_change", person.pk)
         return redirect("admin:auth_user_change", user.pk)
@@ -462,10 +453,9 @@ class AccountAdmin(UserAdmin):
 
     @admin.display(description="Profil osoby")
     def profile_link(self, obj):
-        from people.models import Person
         from django.urls import reverse
         from django.utils.html import format_html
-        person = Person.objects.filter(user_id=obj.pk).first() if obj and obj.pk else None
+        person = getattr(obj, "person_profile", None) if obj and obj.pk else None
         if person is None:
             return "Brak powiązanego profilu"
         return format_html('<a href="{}">Otwórz profil: {}</a>', reverse('admin:people_person_change', args=[person.pk]), person)
@@ -474,8 +464,7 @@ class AccountAdmin(UserAdmin):
         """Imiona i e-mail zmienione na koncie trafiają do osoby (e-mail osoby i konta są zawsze te same)."""
         obj._cms_edit_profile_name = True
         super().save_model(request, obj, form, change)
-        from people.models import Person
-        person = Person.objects.filter(user_id=obj.pk).first()
+        person = getattr(obj, "person_profile", None)
         changed = {'first_name', 'last_name', 'email'}.intersection(form.changed_data)
         if person and changed:
             for name in changed:
@@ -520,20 +509,6 @@ class AnthologyCorrectionAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     readonly_fields = ("created_at", "updated_at")
 
 
-class CoordinatorIntakeAdmin(admin.ModelAdmin):
-    """Uprawnienia modelu nie omijają wymaganej roli koordynatora."""
-    def has_module_permission(self, request):
-        return is_coordinator(request.user)
-
-    def has_view_permission(self, request, obj=None):
-        return is_coordinator(request.user)
-
-    has_add_permission = has_view_permission
-    has_change_permission = has_view_permission
-    has_delete_permission = has_view_permission
-    readonly_fields = ('created_at', 'updated_at')
-
-
 class RecruitmentRoleFilter(admin.SimpleListFilter):
     title = 'rola zgłoszenia'
     parameter_name = 'recruitment_role'
@@ -550,7 +525,7 @@ class RecruitmentRoleFilter(admin.SimpleListFilter):
 
 
 @admin.register(Recruitment)
-class RecruitmentAdmin(CoordinatorIntakeAdmin):
+class RecruitmentAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     from core.recruitment_admin_forms import RecruitmentAdminForm
     form = RecruitmentAdminForm
     list_display = ('candidate_display', 'email', 'mail_subject', 'roles_display', 'submitted_at', 'accepted', 'notified', 'notified_at')
@@ -565,9 +540,7 @@ class RecruitmentAdmin(CoordinatorIntakeAdmin):
 
     @admin.display(description='Role zgłoszenia')
     def roles_display(self, obj):
-        from core.selectors.recruitment import record_roles, role_choices
-        roles = record_roles(obj.mail_roles, obj.department)
-        return ', '.join(label for role, label in role_choices() if role in roles)
+        return obj.mail_roles_display
 
     @admin.display(description='Archiwalne decyzje usuniętych ról')
     def archived_decisions(self, obj):
@@ -575,7 +548,7 @@ class RecruitmentAdmin(CoordinatorIntakeAdmin):
         from django.utils.html import format_html_join
         if not obj or not obj.pk:
             return 'Brak'
-        rows = list(obj.role_decisions.exclude(role__in=record_roles(obj.mail_roles, obj.department)))
+        rows = list(obj.role_decisions.exclude(role__in=record_roles(obj.mail_roles)))
         return format_html_join('', '<p><strong>{} – {}</strong><br>Uzasadnienie: {}<br>Notatki: {}</p>',
                                 ((row.role_label, row.get_status_display(), row.decision_reason or '–', row.unofficial_notes or '–') for row in rows)) if rows else 'Brak'
 
@@ -605,7 +578,7 @@ class RecruitmentAdmin(CoordinatorIntakeAdmin):
 
 
 @admin.register(Extract)
-class ExtractAdmin(CoordinatorIntakeAdmin):
+class ExtractAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     form = ExtractForm
     readonly_fields = ('updated_at', 'submitted_at', 'status')
     list_display = ('full_name', 'email', 'phone_number', 'submitted_titles_display', 'dates_display', 'recruitment', 'accepted_display', 'rejected_display')
@@ -656,20 +629,9 @@ class VacationAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         from people.models import Person
         with transaction.atomic():
             if request.method == "POST" and not object_id:
-                person_id = request.POST.get("person", "")
-                if person_id.isdecimal() and len(person_id) < 19:
-                    Person.objects.select_for_update().filter(pk=int(person_id)).first()
+                if person_id := positive_id(request.POST.get("person")):
+                    Person.objects.select_for_update().filter(pk=person_id).first()
             return super().changeform_view(request, object_id, form_url, extra_context)
-
-    def save_model(self, request, obj, form, change):
-        from django.db import transaction
-        from django.utils import timezone
-        from people.models import Person
-        from core.services.vacations import _sync_person_leave
-        with transaction.atomic():
-            person = Person.objects.select_for_update().get(pk=obj.person_id)
-            super().save_model(request, obj, form, change)
-            _sync_person_leave(person, now=timezone.now())
 
     def has_delete_permission(self, request, obj=None):
         from django.utils import timezone
@@ -692,18 +654,11 @@ class VacationAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     def delete_model(self, request, obj):
         # Superuser odwołuje zaplanowany urlop także osobie, która odeszła z zespołu
         # (usługa na stronie by tego odmówiła i kończyło się błędem 500).
-        from django.db import transaction
-        from django.utils import timezone
-        from people.models import Person
         from django.core.exceptions import PermissionDenied
-        from core.services.vacations import _sync_person_leave
-        with transaction.atomic():
-            person = Person.objects.select_for_update().get(pk=obj.person_id)
-            now = timezone.now()
-            if obj.start_date <= timezone.localdate(now):
-                raise PermissionDenied('Usunąć można tylko urlop, który jeszcze się nie rozpoczął.')
-            obj.delete()
-            _sync_person_leave(person, now=now)
+        from django.utils import timezone
+        if obj.start_date <= timezone.localdate():
+            raise PermissionDenied('Usunąć można tylko urlop, który jeszcze się nie rozpoczął.')
+        obj.delete()
 
 
 class AnthologyTaskAdminForm(forms.ModelForm):
@@ -785,41 +740,23 @@ class ReviewersAdmin(ServiceOwnedReviewAdmin):
 
 
 @admin.register(UserActivity)
-class UserActivityAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
+class UserActivityAdmin(ReadOnlyAdminMixin, SuperuserOnlyAdminMixin, admin.ModelAdmin):
     list_display = ('created_at', 'actor', 'action', 'target', 'method', 'status_code')
     list_filter = ('method', 'created_at')
     search_fields = ('actor', 'action', 'target')
     readonly_fields = tuple(field.name for field in UserActivity._meta.fields)
     actions = None
 
-    def has_add_permission(self, request):
-        return False
-
-    def has_change_permission(self, request, obj=None):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False
-
 
 
 @admin.register(WorkflowEvent)
-class WorkflowEventAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
+class WorkflowEventAdmin(ReadOnlyAdminMixin, SuperuserOnlyAdminMixin, admin.ModelAdmin):
     """Dziennik zdarzeń: tylko do odczytu, wyłącznie dla superusera."""
     list_display = ('created_at', 'title', 'previous_status', 'next_status', 'actor_name')
     list_filter = ('kind',)
     search_fields = ('title', 'actor_name')
     fields = readonly_fields = ('created_at', 'kind', 'text', 'title', 'authors', 'actor', 'actor_name',
                                 'previous_status', 'next_status', 'details', 'personal_work', 'personal_work_description')
-
-    def has_add_permission(self, request, obj=None):
-        return False
-
-    def has_change_permission(self, request, obj=None):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False
 
 
 
@@ -930,7 +867,7 @@ from core.models import MailboxHeaderSnapshot  # noqa: E402
 
 
 @admin.register(MailboxHeaderSnapshot)
-class MailboxHeaderSnapshotAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
+class MailboxHeaderSnapshotAdmin(ReadOnlyAdminMixin, SuperuserOnlyAdminMixin, admin.ModelAdmin):
     """Wynik nocnego pobierania nagłówków – tylko do odczytu (odświeża go komenda fetch_mailbox_headers)."""
     list_display = ('mailbox', 'fetched_at', 'header_count', 'error')
     fields = ('mailbox', 'fetched_at', 'sent_since', 'header_count', 'error')
@@ -939,15 +876,6 @@ class MailboxHeaderSnapshotAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     @admin.display(description='nagłówki')
     def header_count(self, obj):
         return len(obj.result.get('rows', []))
-
-    def has_add_permission(self, request, obj=None):
-        return False
-
-    def has_change_permission(self, request, obj=None):
-        return False
-
-    def has_delete_permission(self, request, obj=None):
-        return False
 
 
 from core.models import ReplacementEntry  # noqa: E402

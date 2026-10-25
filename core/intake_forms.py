@@ -1,6 +1,6 @@
+from core.filtering import positive_id
 from core.translation_scope import frontend_scope
 from django import forms
-from core.models import Recruitment
 from texts.models import Extract, Anthology
 from django.urls import reverse
 from core.review_submission_forms import ReviewAdminForm
@@ -36,20 +36,6 @@ class ExtractForm(forms.ModelForm):
         return data
 
 
-class RecruitmentForm(forms.ModelForm):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if self.instance.mail_fingerprint:
-            # Imported messages need not reveal a candidate's real name yet.
-            for name in ('first_name', 'last_name', 'email'):
-                self.fields[name].required = False
-
-    class Meta:
-        model = Recruitment
-        fields = ('first_name', 'last_name', 'applicant_name', 'email', 'department', 'submitted_at', 'notified', 'notes')
-        widgets = {'notes': forms.Textarea(attrs={'rows': 3}), 'unofficial_notes': forms.Textarea(attrs={'rows': 3}), 'submitted_at': forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'})}
-
-
 class SingleReviewForm(ReviewAdminForm):
     newsletter_premieres = forms.BooleanField(label="Zgoda na newsletter o premierach", required=False)
     newsletter_recruitment = forms.BooleanField(label="Zgoda na newsletter o naborach", required=False)
@@ -80,8 +66,8 @@ class SingleReviewForm(ReviewAdminForm):
         self.fields['anthology'].queryset = frontend_scope(Anthology.objects).filter(is_novel=False).filter(status=Anthology.Status.IN_PREPARATION).order_by('title', 'pk')
         self.fields['author'].widget.attrs['data-author-search-url'] = reverse('core:author_suggestions')
         from authors.models import Author
-        author_id = self.data.get('author') if self.is_bound else self.initial.get('author', self.instance.author_id)
-        self.fields['author'].queryset = Author.objects.filter(pk=author_id) if str(author_id or '').isascii() and str(author_id or '').isdecimal() and len(str(author_id)) < 19 else Author.objects.none()
+        author_id = positive_id(str((self.data.get('author') if self.is_bound else self.initial.get('author', self.instance.author_id)) or ''))
+        self.fields['author'].queryset = Author.objects.filter(pk=author_id) if author_id else Author.objects.none()
         # Without JavaScript the form still accepts manually entered author details.
 
         self.fields['author'].label_from_instance = lambda author: author.display_name

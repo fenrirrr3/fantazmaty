@@ -1,9 +1,10 @@
 """Role kandydatów w rekrutacji: edycja ról w adminie i starym formularzu, zachowanie decyzji, notatek i kontrola wersji."""
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
 from core.models import Recruitment
-from core.selectors.recruitment import pending_by_role
+from core.recruitment_roles import ROLE_CHOICES
+from core.selectors.recruitment import pending_by_role, record_roles, role_choices
 from fantazmaty.testing import create_superuser, form_value
 
 
@@ -43,8 +44,6 @@ class RecruitmentRoleTests(TestCase):
             "submitted_at": "2026-10-08",
             "_save": "Zapisz",
         }
-        page = self.client.get(url)
-        self.assertNotIn("department", page.context["adminform"].form.fields)
         for roles in (["proofreaders", "promotion"], ["editors", "proofreaders", "sound"]):
             response = self.client.post(
                 url, {**payload, "selected_roles": roles, "_edit_version": self.token(url)}
@@ -123,7 +122,8 @@ class RecruitmentRoleTests(TestCase):
         url = reverse("core:recruitment_edit", args=[record.pk])
         page = self.client.get(url)
         self.assertEqual(page.status_code, 200)
-        self.assertNotIn("department", page.context["form"].fields)
+        self.assertEqual(list(page.context["form"].fields), ["first_name", "last_name", "applicant_name", "email",
+                                                             "selected_roles", "submitted_at", "notified", "notes"])
         payload = {
             "first_name": "Jan",
             "last_name": "Kandydat",
@@ -140,3 +140,28 @@ class RecruitmentRoleTests(TestCase):
             ["editors", "proofreaders", "illustrators"],
         )
         self.assertEqual(self.client.post(url, payload).status_code, 409)
+
+
+class RecruitmentRoleChoicesTests(SimpleTestCase):
+    def test_role_list_and_fallback_without_recognized_role(self):
+        """Lista ról do wyboru: role z formularza, a po nich Dźwiękowcy i Graficy (dawne działy, nierozpoznawane
+        w mailach); zgłoszenie bez rozpoznanej roli ma tylko rolę „Inny pomysł”."""
+        self.assertEqual(role_choices(), [
+            ('editors', 'Redakcja'), ('proofreaders', 'Korekta'), ('verifiers', 'Weryfikacja'),
+            ('reviewers', 'Recenzje'), ('narrators', 'Lektor'), ('audio_proofreaders', 'Korekta audiobooków'),
+            ('illustrators', 'Ilustracje'), ('typesetters', 'Skład i e-booki'), ('post_layout', 'Korekta poskładowa'),
+            ('promotion', 'Promocja i social media'), ('other', 'Inny pomysł'),
+            ('sound', 'Dźwiękowcy'), ('designers', 'Graficy'),
+        ])
+        self.assertFalse({'sound', 'designers'} & set(dict(ROLE_CHOICES)))
+        cases = {
+            'brak ról': ([], {'other'}),
+            'puste pole': (None, {'other'}),
+            'tylko nieznane wartości': (['nieznana', 5], {'other'}),
+            'rozpoznane role': (['sound', 'editors', 'nieznana'], {'sound', 'editors'}),
+        }
+        for case, (mail_roles, expected) in cases.items():
+            with self.subTest(case):
+                self.assertEqual(record_roles(mail_roles), expected)
+                self.assertEqual(Recruitment(mail_roles=mail_roles or []).mail_roles_display,
+                                 ', '.join(label for key, label in role_choices() if key in expected))

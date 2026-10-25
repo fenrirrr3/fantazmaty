@@ -9,19 +9,25 @@ from inspect import signature
 from django.db import transaction
 from django.db.models.signals import pre_save, pre_delete
 
+from core.account_identity import person_name
+
 _scope = ContextVar('workflow_event_scope', default=None)
 
 
 def snapshot(text_id, using):
+    return _snapshot(text_id, using)[1]
+
+
+def _snapshot(text_id, using):
+    """(tekst albo None, stan workflow tekstu) – stan porównuje się przed operacją i po niej."""
     from texts.models import Text
     from workflow.state import current_stage
-    from core.discord_notifications import person_name
     text = Text.objects.using(using).filter(pk=text_id).first()
     if text is None:
-        return {'cycle': None, 'status': 'Brak tekstu', 'stages': {}, 'detail': {}}
+        return None, {'cycle': None, 'status': 'Brak tekstu', 'stages': {}, 'detail': {}}
     stages = list(text.workflow_stages.using(using).filter(workflow_cycle=text.current_workflow_cycle, is_current=True).select_related('assignment__assigned_to__person_profile'))
     stage = current_stage(stages)
-    return {'cycle': text.current_workflow_cycle, 'status': stage.get_stage_type_display() if stage else 'Brak otwartego etapu',
+    return text, {'cycle': text.current_workflow_cycle, 'status': stage.get_stage_type_display() if stage else 'Brak otwartego etapu',
             'detail': {s.pk: {'type': s.stage_type, 'type_display': s.get_stage_type_display(), 'released': s.is_released,
                               'started': bool(s.started_at), 'completed': s.is_completed,
                               'assigned': bool(s.assignment_id and s.assignment.assigned_to_id),
@@ -79,6 +85,15 @@ def personal_work_changes(before, after, actor_id):
     return result
 
 
+def record_event(using, text, user, *, title, previous_status, next_status, details, **fields):
+    """Wpis dziennika zmian workflow dla tekstu (lub usuniętego tekstu – wtedy text=None)."""
+    from core.models import WorkflowEvent
+    return WorkflowEvent.objects.using(using).create(
+        text=text, title=title, authors=', '.join(a.display_name for a in text.authors.all()) if text else 'brak',
+        actor=user, actor_name=person_name(user), previous_status=previous_status, next_status=next_status,
+        details=details, **fields)
+
+
 def history_correction():
     """Bieżąca operacja uzupełnia lub poprawia historię w adminie (brakujący etap, korekta dat, wykonawcy,
     cofnięcie zakończenia): zmiana trafia do dziennika, ale bez powiadomień Discord – to nie jest zdarzenie."""
@@ -96,38 +111,35 @@ def event_scope(user):
     token = _scope.set(state)
     try:
         yield
-        from core.models import WorkflowEvent
-        from texts.models import Text
         for (using, text_id), before in state['before'].items():
-            after = snapshot(text_id, using)
+            text, after = _snapshot(text_id, using)
             if before == after:
                 continue
-            text = Text.objects.using(using).filter(pk=text_id).first()
-            # Deleted texts have no destination detail; keep a readable audit record.
-            title = text.title if text else f'Usunięty tekst #{text_id}'
-            authors = ', '.join(a.display_name for a in text.authors.all()) if text else 'brak'
-            person = getattr(user, 'person_profile', None)
-            actor = str(person) if person else user.get_full_name() or user.get_username()
             own_work = personal_work_changes(before, after, user.pk)
-            WorkflowEvent.objects.using(using).create(personal_work=bool(own_work), personal_work_description="; ".join(own_work)[:255], text=text, title=title, authors=authors,
-                actor=user, actor_name=actor, previous_status=before['status'], next_status=after['status'],
-                details='\n'.join(changes(before, after)))
+            # Deleted texts have no destination detail; keep a readable audit record.
+            record_event(using, text, user, title=text.title if text else f'Usunięty tekst #{text_id}',
+                         previous_status=before['status'], next_status=after['status'],
+                         details='\n'.join(changes(before, after)), personal_work=bool(own_work),
+                         personal_work_description="; ".join(own_work)[:255])
             if not state.get('correction'):
                 from core.discord_notifications import workflow_changes
-                workflow_changes(using, text, before.get('detail', {}), after.get('detail', {}), actor=actor)
+                workflow_changes(using, text, before.get('detail', {}), after.get('detail', {}),
+                                 actor=person_name(user))
     finally:
         _scope.reset(token)
 
 
 def track_workflow(function):
+    parameters = signature(function)
+
     @wraps(function)
     def tracked(*args, **kwargs):
-        user = signature(function).bind(*args, **kwargs).arguments.get('user')
+        bound = parameters.bind(*args, **kwargs).arguments
+        user = bound.get('user')
         obj = args[0] if args else None
         using = getattr(getattr(obj, '_state', None), 'db', None) or 'default'
         with transaction.atomic(using=using), event_scope(user):
             scope = _scope.get()
-            bound = signature(function).bind(*args, **kwargs).arguments
             candidate = bound.get('text') or bound.get('stage')
             text_id = getattr(candidate, 'text_id', None) or getattr(candidate, 'pk', None) or bound.get('text_id')
             if text_id is None and bound.get('stage_id'):

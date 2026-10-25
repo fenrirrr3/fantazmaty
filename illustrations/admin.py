@@ -2,22 +2,17 @@ from django.contrib import admin
 
 from .editing import AssignmentModelForm
 from .models import CoverProposal, Illustration, Illustrator
-from core.permissions import can_view_illustrations
 from authors.admin import SuperuserOnlyAdminMixin
 from core.admin import PublicGuidelinesAdminMixin
+from core.admin_access import SingleRecordAdminMixin
 from .models import PublicIllustrationSettings
 
 
 @admin.register(PublicIllustrationSettings)
-class PublicIllustrationSettingsAdmin(PublicGuidelinesAdminMixin, SuperuserOnlyAdminMixin, admin.ModelAdmin):
+class PublicIllustrationSettingsAdmin(PublicGuidelinesAdminMixin, SingleRecordAdminMixin, SuperuserOnlyAdminMixin,
+                                      admin.ModelAdmin):
     fields = ('drive_url', 'guidelines', 'public_page_link')
     public_page = 'illustrations:external_illustrations'
-
-    def has_add_permission(self, request):
-        return super().has_add_permission(request) and not PublicIllustrationSettings.objects.exists()
-
-    def has_delete_permission(self, request, obj=None):
-        return False
 
 
 @admin.register(Illustrator)
@@ -63,21 +58,6 @@ class IllustrationAdmin(admin.ModelAdmin):
     def status_badge(self, obj):
         from django.utils.html import format_html
         return format_html('<span class="illustration-status illustration-status-{}">{}</span>', obj.status, obj.get_status_display())
-
-    def has_module_permission(self, request):
-        return can_view_illustrations(request.user) and super().has_module_permission(request)
-
-    def has_view_permission(self, request, obj=None):
-        return can_view_illustrations(request.user) and super().has_view_permission(request, obj)
-
-    def has_change_permission(self, request, obj=None):
-        return can_view_illustrations(request.user) and super().has_change_permission(request, obj)
-
-    def has_add_permission(self, request):
-        return can_view_illustrations(request.user) and super().has_add_permission(request)
-
-    def has_delete_permission(self, request, obj=None):
-        return can_view_illustrations(request.user) and super().has_delete_permission(request, obj)
 
     list_display = (
         "display_title",

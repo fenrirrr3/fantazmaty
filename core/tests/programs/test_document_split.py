@@ -24,15 +24,15 @@ from docx.oxml.ns import nsdecls
 from lxml import etree, html
 
 from core.models import MailboxConnection
-from core.program_test_support import run_program
 from core.services import program_jobs as jobs
 from core.services import split_mailing as mailing
 from core.services.document_images import linked_images_note
-from core.services.document_split import NoHeadingError, file_name, heading_style_ids, split_document
+from core.services.document_split import NoHeadingError, file_name, split_document
 from fantazmaty.testing import create_member, create_superuser
 
 from .editor_fixtures_exotic import review_stories_docx
-from .support import IsolatedProgramDirsMixin, add_footnote_reference, docx_bytes, downloaded, png, saved
+from .support import (OUTLINE_CASES, IsolatedProgramDirsMixin, add_footnote_reference, docx_bytes, downloaded,
+                      outline_document, png, run_program, saved)
 from .test_document_rebuild import comments_of, review_markup_errors, review_parts, revisions
 
 STORIES = (('Pierwsze opowiadanie', (20, 10)), ('Drugie: „cytat”?', (30, 15)), ('Trzecie', None))
@@ -153,18 +153,6 @@ def assert_story_files(test, files):
 
 
 class SplitHelpersTests(SimpleTestCase):
-    def test_heading_one_is_recognised_by_style_name_or_id(self):
-        """Nagłówek 1 rozpoznajemy po nazwie stylu (bez względu na wielkość liter) albo po id Heading1/Nagwek1."""
-        def styles(style_id, name):
-            return (f'<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
-                    f'<w:style w:type="paragraph" w:styleId="{style_id}"><w:name w:val="{name}"/></w:style>'
-                    f'</w:styles>').encode()
-        for style_id, name, expected in (('Tytuopowiadania', 'heading 1', True),
-                                         ('Moj', 'Nagłówek 1', True), ('NAGWEK1', 'cokolwiek', True),
-                                         ('Heading2', 'heading 2', False)):
-            with self.subTest(style_id=style_id, name=name):
-                self.assertEqual(style_id in heading_style_ids(styles(style_id, name)), expected)
-
     def test_file_names_are_numbered_cleaned_and_shortened(self):
         """Nazwa pliku: numer z zerem wiodącym, tytuł bez znaków niedozwolonych, skrócony; pusty tytuł zastąpiony."""
         for number, width, title, expected in ((1, 2, 'A/B: C?', '01 A B C.docx'), (7, 3, '  ...  ', '007 Opowiadanie.docx'),
@@ -208,6 +196,13 @@ class SplitDocumentTests(SimpleTestCase):
                 report, files = split(variant)
                 self.assertEqual(report['files'], ['01 Jeden.docx', '02 Dwa.docx'])
                 self.assertEqual(Document(BytesIO(files['02 Dwa.docx'])).paragraphs[1].text, 'Treść 2.')
+
+    def test_every_level_one_heading_starts_a_story(self):
+        """Cięcie na każdym akapicie, któremu reguła nagłówków daje poziom 1 (OUTLINE_CASES): „Nagłówek 1”,
+        „Naglowek 1”, styl oparty na nagłówku 1, styl i akapit z poziomem konspektu 1, id Heading1, nagłówek z numId 0;
+        nagłówek 1 z poziomem 9 i nagłówek 2 nie tną."""
+        report, _ = split(saved(outline_document()).getvalue())
+        self.assertEqual(report['titles'], [text for text, (_, _, level, _) in OUTLINE_CASES.items() if level == 1])
 
     def test_document_without_heading_one_or_main_part_is_rejected(self):
         """Bez Nagłówka 1 (także bez treści) – NoHeadingError; pakiet bez głównej części – błąd zamiast pustego ZIP."""
@@ -468,7 +463,7 @@ class SplitProgramTests(IsolatedProgramDirsMixin, TestCase):
     def test_document_without_heading_one_is_an_error(self):
         """Bez akapitu w stylu Nagłówek 1 nie powstaje żaden plik – komunikat po polsku."""
         response = self.run_split(docx_bytes('Sam tekst bez nagłówków.'))
-        self.assertContains(response, 'nie zawiera akapitów ze stylem „Nagłówek 1”', status_code=200)
+        self.assertContains(response, 'nie zawiera Nagłówków 1', status_code=200)
 
 
 # ===== Wysyłka plików autorom po podziale =====

@@ -1,28 +1,19 @@
 """Forms and optimistic locking for the illustration workspace."""
 from django import forms
-from django.core import signing
 from django.core.validators import URLValidator
 from django.db.models import Q
 
-from core.edit_versions import version_of
+from core.edit_versions import object_token, object_token_matches
 from core.permissions import is_coordinator
 from .models import Illustration, Illustrator
 
 
-def can_edit_illustration(user, illustration):
-    return is_coordinator(user)
-
-
 def edit_token(user, illustration):
-    return signing.dumps([user.pk, illustration.pk, version_of(illustration)], salt='illustration-edit')
+    return object_token(user, illustration, 'illustration-edit')
 
 
 def token_matches(token, user, illustration):
-    try:
-        return signing.loads(token, salt='illustration-edit', max_age=86400) == [
-            user.pk, illustration.pk, version_of(illustration)]
-    except signing.BadSignature:
-        return False
+    return object_token_matches(token, user, illustration, 'illustration-edit')
 
 
 class IllustrationEditForm(forms.ModelForm):

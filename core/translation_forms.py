@@ -1,6 +1,7 @@
 from django import forms
 from django.urls import reverse
 from texts.models import TextTranslation
+from core.filtering import positive_id
 
 
 class TranslationForm(forms.ModelForm):
@@ -23,8 +24,7 @@ class TranslationForm(forms.ModelForm):
                     values = [values]
             else:
                 values = self.initial.get(name, [])
-            ids = [str(getattr(value, 'pk', value)) for value in values]
-            ids = [value for value in ids if len(value) <= 19 and value.isascii() and value.isdecimal() and 0 < int(value) <= 9_223_372_036_854_775_807]
+            ids = [pk for value in values if (pk := positive_id(str(getattr(value, 'pk', value))))]
             # Render only the selected people; suggestions are fetched on demand.
             # On POST the model field still verifies that each supplied ID exists.
             field.queryset = field.queryset.filter(pk__in=ids)

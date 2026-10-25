@@ -15,6 +15,7 @@ from django.utils import timezone
 from authors.admin import SuperuserOnlyAdminMixin
 from authors.models import Author
 from people.models import Person
+from core.filtering import positive_id
 from core.normalization import NormalizedFormMixin, TEXT_FIELDS
 from workflow.models import WorkflowRoleAssignment, WorkflowStage
 from workflow.catalog import IMPORT_ONLY_STAGE_TYPES
@@ -244,12 +245,10 @@ class WorkflowStageInline(SuperuserOnlyAdminMixin, admin.TabularInline):
     template = "admin/texts/text/workflow_inline.html"
 
     def get_queryset(self, request):
-        from django.db.models import Case, When, IntegerField, Value
-        from workflow.catalog import active_stage_choices
-        order = [kind for kind, _ in active_stage_choices()]
+        from workflow.state import stage_order
         return (super().get_queryset(request).exclude(stage_type__in=IMPORT_ONLY_STAGE_TYPES)
                 .select_related('text','assignment__assigned_to')
-                .annotate(_workflow_order=Case(*[When(stage_type=kind,then=Value(i)) for i,kind in enumerate(order)],default=Value(999),output_field=IntegerField()))
+                .annotate(_workflow_order=stage_order(default=999))
                 .order_by('-workflow_cycle','_workflow_order','execution_number','iteration','pk'))
 
     @admin.display(description="Etap")
@@ -332,13 +331,13 @@ class TextAdminForm(NormalizedFormMixin, forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         source = getattr(self, 'source_review', None)
-        anthology_id = self.data.get('anthology') if self.is_bound else self.initial.get('anthology')
+        anthology_id = positive_id(str((self.data.get('anthology') if self.is_bound else self.initial.get('anthology')) or ''))
         translated = (self.instance.anthology_id and self.instance.anthology.is_translated) or (
-            str(anthology_id or '').isdecimal() and Anthology.objects.filter(pk=anthology_id, is_translated=True).exists())
+            anthology_id and Anthology.objects.filter(pk=anthology_id, is_translated=True).exists())
         if (translated or self.instance.import_source == 'extract-volume-v2') and 'authors' in self.fields:
             self.fields['authors'].required = False
         novel = (self.instance.anthology_id and self.instance.anthology.is_novel) or (
-            str(anthology_id or '').isdecimal() and Anthology.objects.filter(pk=anthology_id, is_novel=True).exists())
+            anthology_id and Anthology.objects.filter(pk=anthology_id, is_novel=True).exists())
         if 'length' in self.fields:
             self.fields['length'].required = not novel and self.instance.import_source != 'extract-volume-v2'
         if novel:
@@ -366,11 +365,6 @@ class TextAdminForm(NormalizedFormMixin, forms.ModelForm):
     def clean(self):
         data = super().clean()
         source = getattr(self, 'source_review', None)
-        anthology_id = self.data.get('anthology') if self.is_bound else self.initial.get('anthology')
-        translated = (self.instance.anthology_id and self.instance.anthology.is_translated) or (
-            str(anthology_id or '').isdecimal() and Anthology.objects.filter(pk=anthology_id, is_translated=True).exists())
-        if (translated or self.instance.import_source == 'extract-volume-v2') and 'authors' in self.fields:
-            self.fields['authors'].required = False
         if source is not None:
             from core.services.reviews import resolve_publication_authors
             try:
@@ -495,11 +489,7 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         initial = super().get_changeform_initial_data(request)
         for key in ('source_author_first_name', 'source_author_last_name', 'source_author_email', 'source_author_pseudonym'):
             initial.pop(key, None)
-        source = request.GET.get("source_review", "")
-        if source.isdecimal() and len(source) < 19:
-            review = get_object_or_404(Review, pk=int(source))
-            initial.update(review_text_initial(review))
-            initial['source_review_id'] = review.pk
+        # Recenzję z parametru (?source_review= lub ?prefill=) sprawdza i blokuje _validated_changeform_view.
         source_review = getattr(request, '_source_review', None)
         if source_review is not None:
             initial.update(review_text_initial(source_review))
@@ -598,7 +588,7 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         fields = super().get_readonly_fields(request, obj)
         if obj and obj.anthology_id and obj.anthology.is_novel:
             fields = (*fields, 'authors', 'tags', 'genre', 'anthology')
-        return fields if request.user.is_superuser else (*fields, "file_url")
+        return fields
 
     readonly_fields = ("repeat_workflow_link", "manual_status_link", "purge_link", "take_locked_at", "take_locked_by", "coordinator_note_updated_at", "current_workflow_cycle", "import_source", "import_source_row")
 
@@ -706,7 +696,7 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
                 if snapshot.get('user') != request.user.pk or not 0 <= time.time() - snapshot.get('at', 0) < 900:
                     return HttpResponseBadRequest('Dane formularza wygasły. Zamknij okno i ponownie użyj + w recenzji. Nie zapisano tekstu.')
                 source_id = snapshot.get('review_id')
-            elif not source_id.isdecimal() or len(source_id) >= 19:
+            elif positive_id(source_id) is None:
                 return HttpResponseBadRequest('Nieprawidłowa recenzja źródłowa.')
             with transaction.atomic():
                 review = Review.objects.select_for_update().filter(pk=source_id).first()
@@ -747,8 +737,6 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         from django.shortcuts import redirect
         from core.edit_versions import version_of
         from texts.purge import purge_blocker, purge_summary, purge_text
-        if not request.user.is_superuser:
-            raise PermissionDenied
         obj = get_object_or_404(self.get_queryset(request), pk=unquote(object_id))
 
         class PurgeForm(forms.Form):
@@ -794,8 +782,6 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         from django.contrib.admin.widgets import AutocompleteSelect
         from django.contrib.auth import get_user_model
         from core.edit_versions import version_of
-        if not request.user.is_active or not request.user.is_superuser:
-            raise PermissionDenied
         obj = get_object_or_404(self.get_queryset(request), pk=unquote(object_id))
         class AddStageForm(forms.Form):
             kind = forms.ChoiceField(label='Etap', choices=stage_choices_for(obj, [(k,v) for k,v in active_stage_choices() if k in STAGE_ROLES]))
@@ -825,8 +811,6 @@ class TextAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         from workflow.admin_status import set_admin_status
         from workflow.catalog import active_stage_choices, stage_choices_for
         from core.edit_versions import version_of
-        if not request.user.is_superuser:
-            raise PermissionDenied
         obj = get_object_or_404(self.get_queryset(request), pk=unquote(object_id))
         class StatusForm(forms.Form):
             stage = forms.ChoiceField(label='Nowy status / etap', choices=stage_choices_for(obj, active_stage_choices()))
@@ -920,9 +904,6 @@ class TextNoteAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             super().delete_queryset(request, queryset)
 
     def save_model(self, request, obj, form, change):
-        if not self.has_superuser_access(request):
-            raise PermissionDenied
-
         if obj._state.adding:
             obj.author = request.user
 
@@ -1049,12 +1030,7 @@ class ReviewAssignmentInlineFormSet(BaseInlineFormSet):
             )
 
 
-class ArchivedReviewInlineMixin(SuperuserOnlyAdminMixin):
-    """Archive can be corrected only in the superuser administration panel."""
-    pass
-
-
-class ReviewersInline(ArchivedReviewInlineMixin, admin.StackedInline):
+class ReviewersInline(SuperuserOnlyAdminMixin, admin.StackedInline):
     verbose_name = "Ogólne uwagi do zgłoszenia"
     verbose_name_plural = "Ogólne uwagi do zgłoszenia"
     model = Reviewers
@@ -1074,10 +1050,7 @@ class ReviewersInline(ArchivedReviewInlineMixin, admin.StackedInline):
         return 0 if Reviewers.objects.filter(review=obj).exists() else 1
 
 
-class ReviewAssignmentInline(
-    ArchivedReviewInlineMixin,
-    admin.TabularInline,
-):
+class ReviewAssignmentInline(SuperuserOnlyAdminMixin, admin.TabularInline):
     verbose_name_plural = "Oceny recenzentów"
     model = ReviewAssignment
     form = ReviewAssignmentAdminForm
@@ -1104,20 +1077,20 @@ class ReviewAssignmentInline(
 
     def get_fields(self, request, obj=None):
         fields = super().get_fields(request, obj)
-        if obj and obj.old_reviews and request.user.is_superuser:
+        if obj and obj.old_reviews:
             return tuple("archive_" + name if name in self.readonly_fields else name for name in fields)
         return fields
 
     def get_readonly_fields(self, request, obj=None):
-        if obj and obj.old_reviews and request.user.is_superuser:
+        if obj and obj.old_reviews:
             return ()
         return (*self.readonly_fields, "position", "user", "historical_person", "opinion")
 
     def has_add_permission(self, request, obj=None):
-        return bool(obj and obj.old_reviews and request.user.is_superuser)
+        return bool(obj and obj.old_reviews)
 
     def has_delete_permission(self, request, obj=None):
-        return bool(obj and obj.old_reviews and request.user.is_superuser)
+        return bool(obj and obj.old_reviews)
 
     def get_queryset(self, request):
         return (
@@ -1341,7 +1314,7 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
 
     def delete_view(self, request, object_id, extra_context=None):
         obj = self.get_object(request, unquote(object_id))
-        reason = obj is not None and self.has_superuser_access(request) and self.deletion_blocker(obj)
+        reason = obj is not None and self.deletion_blocker(obj)
         if reason:
             self.message_user(request, f'Nie można usunąć zgłoszenia: {reason}', messages.ERROR)
             return redirect(reverse(f'{self.admin_site.name}:texts_review_change', args=[obj.pk]))
@@ -1364,13 +1337,11 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         ] + super().get_urls()
 
     def prepare_text_view(self, request):
-        if not self.has_superuser_access(request):
-            raise PermissionDenied
         if request.method != 'POST':
             return JsonResponse({'error': 'POST required'}, status=405)
-        try:
-            review = Review.objects.get(pk=int(request.POST.get('review_id', '')))
-        except (ValueError, Review.DoesNotExist):
+        review_id = positive_id(request.POST.get('review_id'))
+        review = Review.objects.filter(pk=review_id).first() if review_id else None
+        if review is None:
             return JsonResponse({'error': 'Najpierw zapisz recenzję, a następnie użyj +.'}, status=400)
         if review.copied_text_id:
             return JsonResponse({'error': 'Recenzja ma już powiązany tekst. Odśwież formularz.'}, status=409)
@@ -1409,9 +1380,6 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         return response
 
     def author_details_view(self, request, author_id):
-        if not self.has_superuser_access(request):
-            raise PermissionDenied
-
         author = get_object_or_404(Author, pk=author_id)
 
         response = JsonResponse(
@@ -1465,7 +1433,7 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         extra_context=None,
     ):
         extra_context = {**(extra_context or {}), "title": "Edycja zgłoszenia do recenzji" if object_id else "Dodaj zgłoszenie do recenzji"}
-        if request.method != "POST" or not self.has_superuser_access(request):
+        if request.method != "POST":
             return super().changeform_view(
                 request,
                 object_id,
@@ -1496,9 +1464,6 @@ class ReviewAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             )
 
     def save_model(self, request, obj, form, change):
-        if not self.has_superuser_access(request):
-            raise PermissionDenied
-
         if obj.author_id is not None:
             obj.author_first_name = obj.author.first_name
             obj.author_last_name = obj.author.last_name

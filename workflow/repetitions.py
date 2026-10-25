@@ -42,15 +42,12 @@ def previous_performer_id(text, role):
 
 
 def eligible_repeat_users(text, role):
-    from django.db.models import Q
-    from workflow.availability import eligible_role_users
+    from workflow.availability import eligible_role_users, first_proofreading_assignments
 
     users = eligible_role_users(role).exclude(pk=previous_performer_id(text, role))
     if role in (A.Role.PROOFREADER_2, A.Role.PROOFREADER_3):
-        first_users = A.objects.filter(text=text, role=A.Role.PROOFREADER_1).filter(
-            Q(stages__is_completed=True) | Q(stages__started_at__lte=timezone.localdate())
-            | Q(handoffs_from__isnull=False)).exclude(assigned_to=None).values('assigned_to_id')
-        users = users.exclude(pk__in=first_users)
+        first_users = first_proofreading_assignments().filter(text=text).exclude(assigned_to=None)
+        users = users.exclude(pk__in=first_users.values('assigned_to_id'))
     return users.distinct().order_by('last_name', 'first_name', 'pk')
 
 

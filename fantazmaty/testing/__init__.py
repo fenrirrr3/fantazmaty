@@ -6,12 +6,9 @@ from html.parser import HTMLParser
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
-from django.core import signing
 from lxml import html as lxml_html
 
-from core.edit_versions import version_of
-
-EDIT_VERSION_SALT = 'cms-edit-version'
+from core.edit_versions import edit_tokens
 
 
 def create_member(username, role_name):
@@ -36,7 +33,7 @@ def create_superuser(username='admin', email=None, password='test'):
 def edit_token(user, obj, label=None):
     """Token wersji edycji, jaki strona umieszcza w polu _edit_version formularza obiektu."""
     label = label or obj._meta.concrete_model._meta.label_lower
-    return signing.dumps([user.pk, f'{label}:{obj.pk}', version_of(obj)], salt=EDIT_VERSION_SALT)
+    return edit_tokens(user, label, [obj.pk])[obj.pk]
 
 
 def assign_artists(illustration, artists, *, status=None, preserve_assignment_date=False):

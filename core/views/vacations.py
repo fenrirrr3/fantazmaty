@@ -1,7 +1,6 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
@@ -27,9 +26,7 @@ from people.models import Vacation, Person
 
 # Serwisy zapisujące urlopy sprawdzają uprawnienia ponownie.
 # W jednej transakcji blokują najpierw Person, następnie Vacation,
-# walidują aktualny stan i synchronizują pola urlopowe osoby.
-# Synchronizacja uwzględnia wszystkie jej urlopy: przyszły urlop
-# nie może przesłonić urlopu trwającego obecnie.
+# i walidują aktualny stan.
 
 
 def _vacation_policy(request, vacation, kwargs):
@@ -229,17 +226,9 @@ def end_vacation(request, vacation_id):
 @team_member_required
 def active_vacations(request):
     now = timezone.now()
-    today = timezone.localdate(now)
-
     vacations = (
-        Vacation.objects.filter(
-            person__is_active=True,
-            start_date__lte=today,
-        )
-        .filter(
-            Q(until_revoked=True)
-            | Q(end_date__gt=now)
-        )
+        Vacation.objects.filter(person__is_active=True)
+        .active(now)
         .select_related("person")
         .prefetch_related("person__roles")
         .order_by(

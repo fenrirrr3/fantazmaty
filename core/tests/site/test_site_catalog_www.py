@@ -65,7 +65,9 @@ class SiteCatalogPageTests(CatalogSyncDataMixin, TestCase):
         (nieaktywny dla antologii bez powiązania i dla niegotowej powieści – wejście na jej aktualizację wraca
         z komunikatem), znacznik „powieść”, ostrzeżenia, brak klucza i brak pobrania, brak odnośnika
         „Odśwież stronę” bez adresu szukajki."""
-        page = self.client.get(URL)
+        # Katalog (z prefetchami) pobierany raz dla liczników, tabeli i ostrzeżeń.
+        with self.assertNumQueries(15):
+            page = self.client.get(URL)
         self.assertEqual(page.status_code, 200)
         self.assertEqual(page.context['counts'], {'antologie': 3, 'opowiadania': 3, 'gatunki': 5, 'tagi': 6})
         doc = html.fromstring(page.content)
@@ -83,11 +85,11 @@ class SiteCatalogPageTests(CatalogSyncDataMixin, TestCase):
         self.assertEqual(doc.xpath('//tr[@id="katalog-%d"]//button[@disabled]/text()' % self.orphan.pk),
                          ['Sprawdź aktualizacje'])
         self.assertEqual(doc.xpath('//tr[@id="katalog-%d"]//button[@disabled]/@title' % self.unready.pk),
-                         ['Antologia niegotowa – aktualizacja po ukończeniu antologii w CMS-ie.'])
+                         ['Antologia niegotowa – import z CMS-u po nadaniu jej statusu „Gotowa”.'])
         self.assertEqual(doc.xpath('//tr[@id="katalog-%d"]//span[@class="badge is-info"]/text()'
                                    % self.unready.pk), ['powieść'])
         response = self.client.get(reverse('core:site_catalog_update', args=[self.unready.pk]), follow=True)
-        self.assertContains(response, 'nie ma statusu „Gotowa”')
+        self.assertContains(response, 'Antologia niegotowa – import z CMS-u po nadaniu jej statusu „Gotowa”.')
         self.assertEqual(response.redirect_chain, [(URL, 302)])
         self.assertEqual(doc.xpath('//a[contains(@href, "fz_odswiez")]'), [])
         self.assertNotIn('@', content.split('<main', 1)[-1].split('class="site-sidebar"')[0])
@@ -256,12 +258,12 @@ class SiteCatalogUpdateAllTests(CatalogSyncDataMixin, TestCase):
         self.assertEqual([plan['anthology'].title for plan in overview['unchanged']], ['Druga gotowa', 'Zgodna'])
         self.assertEqual([(item['anthology'].title, item['reason']) for item in overview['skipped']], [
             ('Spoza CMS-u', 'Antologia nie jest powiązana z CMS-em – powiąż ją w panelu administracyjnym.'),
-            ('W przygotowaniu', 'Antologia niegotowa – aktualizacja po ukończeniu antologii w CMS-ie.')])
+            ('W przygotowaniu', 'Antologia niegotowa – import z CMS-u po nadaniu jej statusu „Gotowa”.')])
         content = page.content.decode()
         for expected in ('<td>Nowe opowiadanie</td>', 'nowe opowiadania: 1', 'Antologie zgodne z CMS-em (2)',
                          'Zastosuj wszystkie',
                          'panelu administracyjnym.</strong> (1): Spoza CMS-u',
-                         'ukończeniu antologii w CMS-ie.</strong> (1): W przygotowaniu'):
+                         'statusu „Gotowa”.</strong> (1): W przygotowaniu'):
             with self.subTest(expected=expected):
                 self.assertIn(expected, content)
         self.assertEqual(self.snapshot(), before)

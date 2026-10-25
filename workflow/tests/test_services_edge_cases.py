@@ -9,7 +9,8 @@ from django.utils import timezone
 
 from core.edit_versions import version_of
 from fantazmaty.testing import create_member, create_superuser
-from fantazmaty.testing.workflow import WorkflowTestDataMixin
+from core.services.texts import start_assigned_stage
+from fantazmaty.testing.workflow import WorkflowTestDataMixin, start_reserved_first_verification
 from texts.models import Anthology, Text
 from workflow.admin_status import set_admin_status
 from workflow.models import WorkflowRoleAssignment, WorkflowStage
@@ -27,7 +28,6 @@ from workflow.services import (
     send_to_first_verification,
     send_to_second_verification,
     skip_fourth_proofreading,
-    start_first_verification,
     user_can_complete_stage,
     user_is_assigned_editor,
 )
@@ -108,13 +108,16 @@ class TransitionGuardTests(WorkflowTestDataMixin, TestCase):
     def test_first_verification_start_needs_assignee_and_a_waiting_stage(self):
         self.begin_editing()
         send_to_first_verification(self.text, self.editor)
-        self.assert_refused(lambda: start_first_verification(self.text, self.verifier_1),
-                            'nie przypisano osoby')
+        first = self.stage(StageType.FIRST_VERIFICATION)
+
+        def start():
+            return start_assigned_stage(user=self.verifier_1, stage_id=first.pk, started_at=self.today)
+
+        self.assert_refused(start, 'Najpierw przypisz osobę do tego etapu.')
         claim_stage(self.text, StageType.FIRST_VERIFICATION, self.verifier_1)
-        self.stage(StageType.FIRST_VERIFICATION).refresh_from_db()
-        self.assertIsNotNone(self.stage(StageType.FIRST_VERIFICATION).started_at)
-        self.assert_refused(lambda: start_first_verification(self.text, self.verifier_1),
-                            'nie oczekuje na rozpoczęcie')
+        first.refresh_from_db()
+        self.assertIsNotNone(first.started_at)
+        self.assert_refused(start, 'Data rozpoczęcia tego etapu jest już zapisana.')
 
     def test_started_first_verification_blocks_second_handoff_during_editing(self):
         """Niespójne dane z korekty w adminie: W1 ma datę rozpoczęcia, a redakcja nadal trwa."""
@@ -150,9 +153,56 @@ class TransitionGuardTests(WorkflowTestDataMixin, TestCase):
         self.begin_editing()
         claim_stage(self.text, StageType.FIRST_VERIFICATION, self.verifier_1)
         send_to_first_verification(self.text, self.editor, ended_at=self.today)
-        stage = start_first_verification(self.text, self.verifier_1, started_at=self.today)
+        stage = start_reserved_first_verification(self.text, self.verifier_1, started_at=self.today)
         self.assert_refused(lambda: complete_stage(stage, self.verifier_1, self.today - timedelta(days=1)),
                             'Data zakończenia nie może być wcześniejsza niż data rozpoczęcia.')
+
+
+    def test_stage_completion_checks_withdrawal_once_and_opens_next_stage_in_one_insert(self):
+        """Zakończenie etapu pod blokadą tekstu: stan wycofania sprawdzany raz (nie w każdym kroku),
+        następny etap powstaje jednym INSERT-em z datą kolejki, a zapytania o bieżące etapy
+        i przydziały nie łączą tabeli tekstów."""
+        import re
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from core.workflow_events import event_scope
+
+        self.initial_stage.delete()
+        assignment = WorkflowRoleAssignment.objects.create(text=self.text, role='proofreader_1',
+                                                           assigned_to=self.proofreader)
+        stage = WorkflowStage.objects.create(text=self.text, stage_type=StageType.FIRST_PROOFREADING,
+                                             assignment=assignment, started_at=self.today)
+        # Dziennik zmian (po operacji) zapisuje zewnętrzny zakres – tu liczymy tylko samo przejście.
+        with event_scope(self.superuser), CaptureQueriesContext(connection) as queries:
+            complete_stage(stage, self.proofreader, self.today)
+        sql = [query['sql'] for query in queries.captured_queries]
+        self.assertEqual(len([q for q in sql if re.search(r"stage_type[`\"]? = 'withdrawn'", q)]), 1)
+        self.assertEqual(len([q for q in sql if q.startswith('INSERT') and 'workflow_workflowstage' in q]), 1)
+        self.assertFalse([q for q in sql if q.startswith('UPDATE') and 'queued_at' in q.split(' WHERE ')[0]])
+        self.assertFalse([q for q in sql if re.search(r'= \(?[`"]texts_text[`"]\.[`"]current_workflow_cycle', q)])
+        following = self.stage(StageType.SECOND_PROOFREADING)
+        self.assertEqual(following.queued_at, self.today)
+
+
+    def test_change_log_entry_reuses_text_read_with_the_final_state(self):
+        """Wpis dziennika zmian po operacji bierze tekst z odczytu stanu końcowego – bez ponownego pobrania."""
+        import re
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from core.models import WorkflowEvent
+
+        self.initial_stage.delete()
+        assignment = WorkflowRoleAssignment.objects.create(text=self.text, role='proofreader_1',
+                                                           assigned_to=self.proofreader)
+        stage = WorkflowStage.objects.create(text=self.text, stage_type=StageType.FIRST_PROOFREADING,
+                                             assignment=assignment, started_at=self.today)
+        with CaptureQueriesContext(connection) as queries:
+            complete_stage(stage, self.proofreader, self.today)
+        text_reads = [query['sql'] for query in queries.captured_queries
+                      if re.match(r'SELECT [^(]*? FROM [`"]texts_text[`"] WHERE', query['sql'])]
+        # Stan przed operacją, blokada tekstu i stan po operacji.
+        self.assertEqual(len(text_reads), 3, text_reads)
+        self.assertTrue(WorkflowEvent.objects.filter(text=self.text, previous_status='Pierwsza korekta').exists())
 
 
 class EditingAfterFirstVerificationTests(WorkflowTestDataMixin, TestCase):

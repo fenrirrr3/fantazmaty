@@ -22,9 +22,11 @@ from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_BREAK
 
 if __package__:
-    from .document_styles import merge_drop_caps, unknown_format_value
+    from .document_styles import document_outline, merge_drop_caps, style_chain, unknown_format_value
+    from .document_xml import CHOICE, FALLBACK, MC, mc, parse_part
 else:
-    from document_styles import merge_drop_caps, unknown_format_value
+    from document_styles import document_outline, merge_drop_caps, style_chain, unknown_format_value
+    from document_xml import CHOICE, FALLBACK, MC, mc, parse_part
 
 
 class RebuildUnsupported(ValueError):
@@ -34,7 +36,6 @@ class RebuildUnsupported(ValueError):
 
 
 THEME_FONT_OMISSION = "nierozpoznany krój czcionki z motywu (zastosujemy domyślny)"
-MC = "{http://schemas.openxmlformats.org/markup-compatibility/2006}"
 W15 = "{http://schemas.microsoft.com/office/word/2012/wordml}"
 # Znaczniki bez treści (zakładki, ślady sprawdzania pisowni) – także między akapitami; znikają bez uwagi.
 CONTENT_FREE = {
@@ -109,9 +110,7 @@ def _format_resolver(original, omissions):
     theme = None
     for rel in original.part.rels.values():
         if rel.reltype.endswith("/theme") and not rel.is_external:
-            theme = etree.fromstring(
-                rel.target_part.blob, etree.XMLParser(resolve_entities=False, no_network=True)
-            )
+            theme = parse_part(rel.target_part.blob)
     ns = {"a": "http://schemas.openxmlformats.org/drawingml/2006/main"}
 
     def theme_font(key):
@@ -276,10 +275,9 @@ def _sanitize_body(body, omissions, styles=PLACEHOLDER_STYLES):
         omissions[DROP_CAP_OMISSION] += drop_caps
     # Treść alternatywna (mc:AlternateContent): bierzemy wersję zapasową dla prostszych programów,
     # a bez niej pierwszy wariant. Inaczej pole tekstowe liczyło się podwójnie (DrawingML + VML).
-    for node in list(body.iter(MC + "AlternateContent")):
+    for node in list(body.iter(mc("AlternateContent"))):
         if node.getparent() is not None:
-            _unwrap(node, node.find(MC + "Fallback") if node.find(MC + "Fallback") is not None
-                    else node.find(MC + "Choice"))
+            _unwrap(node, node.find(FALLBACK) if node.find(FALLBACK) is not None else node.find(CHOICE))
     _unwrap_content_controls(body, omissions, styles)
     # Śledzone zmiany w akapitach zostają (odtwarza je _paragraph_specs). Zmiana obejmująca całe akapity
     # (niezgodna ze schematem, ale bywa w generatorach) jest przyjmowana jak dawniej.
@@ -338,9 +336,9 @@ def _sanitize_body(body, omissions, styles=PLACEHOLDER_STYLES):
 
 def _format_history(body, omissions):
     """Zmiany formatowania znaków i akapitów (w:rPrChange, w:pPrChange) zostają, gdy przebudowa odtworzy poprzednie
-    formatowanie; z obramowaniem, cieniowaniem, rozstrzeleniem, ramką, kierunkiem tekstu albo numeracją są
-    przyjmowane z uwagą. Zmiana układu sekcji też jest przyjmowana z uwagą (sekcja powstaje od nowa), a pozostałe
-    (numeracja, tabele) – bez uwagi, jak dotąd."""
+    formatowanie; z obramowaniem, cieniowaniem, rozstrzeleniem, ramką albo kierunkiem tekstu są przyjmowane z uwagą
+    (poprzednie formatowanie z numeracją – w paragraph_spec, według reguły list). Zmiana układu sekcji też jest
+    przyjmowana z uwagą (sekcja powstaje od nowa), a pozostałe (numeracja, tabele) – bez uwagi, jak dotąd."""
     reported = (qn("w:rPrChange"), qn("w:pPrChange"), qn("w:sectPrChange"))
     for node in list(body.iter(*FORMAT_HISTORY)):
         parent = node.getparent()
@@ -352,8 +350,7 @@ def _format_history(body, omissions):
                 continue
         elif node.tag == qn("w:pPrChange"):
             previous = node.find(qn("w:pPr"))
-            if previous is None or not (any(child.tag in PARAGRAPH_LOST for child in previous)
-                                        or previous.xpath("./w:numPr/w:numId[@w:val!='0']")):
+            if previous is None or not any(child.tag in PARAGRAPH_LOST for child in previous):
                 continue
         if node.tag in reported:
             omissions.add(FORMAT_HISTORY_OMISSION)
@@ -378,23 +375,6 @@ def _language(elements):
         if values:
             return values[0]
     return None
-
-
-def _numbered(elements):
-    """Numeracja z akapitu albo stylu; numId 0 oznacza jej wyłączenie."""
-    for element in elements:
-        values = element.xpath("./w:pPr/w:numPr/w:numId/@w:val")
-        if values:
-            return values[0] != "0"
-    return False
-
-
-def styles(style):
-    seen = set()
-    while style is not None and style.style_id not in seen:
-        seen.add(style.style_id)
-        yield style
-        style = style.base_style
 
 
 UNKNOWN_FORMAT_OMISSION = "nierozpoznana wartość formatowania (zastosujemy ustawienie ze stylu lub domyślne)"
@@ -483,7 +463,7 @@ class _StyleChains:
     def _style(self, style_id, kind):
         key = (style_id, kind)
         if key not in self._styles:
-            self._styles[key] = list(styles(self.part.get_style(style_id, kind)))
+            self._styles[key] = list(style_chain(self.part.get_style(style_id, kind)))
         return self._styles[key]
 
     def paragraph(self, style_id):
@@ -494,8 +474,6 @@ class _StyleChains:
             tabs = next((_tab_stops(f, self.omissions) for f in formats if len(f.tab_stops)), [])
             self._paragraphs[style_id] = {
                 "styles": chain,
-                "numbered": _numbered([s.element for s in chain]),
-                "heading": next((name for name in map(_heading_name, chain) if name), None),
                 "format": {name: effective(formats, name, self.omissions) for name in PARAGRAPH_FORMAT},
                 "tabs": tabs,
                 "mark_size": effective(fonts, "size", self.omissions),
@@ -518,19 +496,6 @@ class _StyleChains:
                 "lang": _language([s.element for s in chain]),
             }
         return self._runs[key]
-
-
-# Nazwy wbudowanych nagłówków: Word zapisuje „heading N”, niektóre programy nazwę polską („Nagłówek N”).
-HEADING_PREFIXES = ("heading ", "nagłówek ", "naglowek ")
-
-
-def _heading_name(style):
-    """„Heading N” dla stylu nagłówka (także o polskiej nazwie), inaczej None; styl bez nazwy to nie nagłówek."""
-    name = (style.name or "").casefold()
-    for prefix in HEADING_PREFIXES:
-        if name.startswith(prefix) and name[len(prefix):].isdigit():
-            return "Heading " + name[len(prefix):]
-    return None
 
 
 def _style_id(properties, tag):
@@ -587,7 +552,7 @@ class _SourceNotes:
             for _ in note.iter(qn("w:hyperlink")):
                 self.omissions.add(HYPERLINK_OMISSION)
             marks = []
-            paragraphs = _story_blocks(build(note, marks), NOTE_STYLES[kind][0][0])
+            paragraphs = _annotation_paragraphs(build(note, marks), NOTE_STYLES[kind][0][0])
             # Znak przypisu zawsze na początku treści; przy własnym znaku tylko wtedy, gdy był w źródle.
             if marks or not custom:
                 first = next(item for item in paragraphs if "marker" not in item)
@@ -597,7 +562,7 @@ class _SourceNotes:
         return kind, len(self.notes[kind]), custom
 
 
-def _story_blocks(items, style):
+def _annotation_paragraphs(items, style):
     """Akapity przypisu albo komentarza: własny styl (także w poprzednim formatowaniu), bez nagłówków;
     pusta treść (albo same znaczniki zakresów) dostaje pusty akapit."""
     if all("marker" in item for item in items):
@@ -632,7 +597,6 @@ class _SourceComments:
         self.omissions, self.placeholders = omissions, placeholders
         self.source, self.threads = {}, {}
         referenced = {node.get(qn("w:id")) for node in original.element.body.iter(qn("w:commentReference"))}
-        parser = etree.XMLParser(resolve_entities=False, no_network=True)
         stories = (RT.HEADER, RT.FOOTER, RT.FOOTNOTES, RT.ENDNOTES)
         for rel in original.part.rels.values():
             if rel.is_external:
@@ -641,11 +605,11 @@ class _SourceComments:
                 for comment in parse_xml(rel.target_part.blob).findall(qn("w:comment")):
                     self.source.setdefault(comment.get(qn("w:id")), comment)
             elif rel.reltype == COMMENTS_EXTENDED:
-                for entry in etree.fromstring(rel.target_part.blob, parser).iter(W15 + "commentEx"):
+                for entry in parse_part(rel.target_part.blob).iter(W15 + "commentEx"):
                     self.threads[entry.get(W15 + "paraId")] = (
                         entry.get(W15 + "paraIdParent"), entry.get(W15 + "done") in ("1", "true", "on"))
             elif rel.reltype in stories:
-                root = etree.fromstring(rel.target_part.blob, parser)
+                root = parse_part(rel.target_part.blob)
                 referenced.update(node.get(qn("w:id")) for node in root.iter(qn("w:commentReference")))
         self.referenced_in_source = referenced & set(self.source)
         self.found = {}  # w:id źródła → {"start", "end", "referenced"} w kolejności pierwszego wystąpienia
@@ -705,7 +669,7 @@ class _SourceComments:
             _sanitize_body(source, self.omissions, self.placeholders)
             for _ in source.iter(qn("w:hyperlink")):
                 self.omissions.add(HYPERLINK_OMISSION)
-            paragraphs = _story_blocks(build(source, []), COMMENT_STYLES[0][0])
+            paragraphs = _annotation_paragraphs(build(source, []), COMMENT_STYLES[0][0])
             first = next(item for item in paragraphs if "marker" not in item)
             first["runs"].insert(0, {"font": {}, "content": [("annotation", None)]})
             comments.append({
@@ -729,6 +693,7 @@ def _paragraph_specs(original, omissions, notes, comments):
     rodzaj, (autor, data)) od zewnętrznej – sąsiednie przebiegi tej samej zmiany trafiają do jednego
     nowego w:ins/w:del, a zagnieżdżenia (usunięcie cudzej wstawki) zostają."""
     chains = _StyleChains(original, omissions)
+    outline = document_outline(original)
     font_name, font_color = chains.font_name, chains.font_color
     document_language = _document_language(original).get("val")
     revision_keys = {}
@@ -806,6 +771,11 @@ def _paragraph_specs(original, omissions, notes, comments):
         tabs = _tab_stops(own, omissions) if own is not None and len(own.tab_stops) else list(inherited["tabs"])
         return result, tabs
 
+    def template_heading(element):
+        """Styl szablonu „Heading N” dla nagłówka poziomu N (document_styles.ParagraphOutline), inaczej None."""
+        level = outline.heading_level(element)
+        return f"Heading {level}" if level else None
+
     def previous(change, tag):
         """Element z poprzednimi właściwościami ze zmiany formatowania, opakowany jak w źródle (w:r albo w:p)."""
         wrapper = OxmlElement(tag)
@@ -835,10 +805,9 @@ def _paragraph_specs(original, omissions, notes, comments):
         properties = element.pPr
         paragraph_style_id = _style_id(properties, "w:pStyle")
         inherited = chains.paragraph(paragraph_style_id)
-        direct_numbering = element.xpath("./w:pPr/w:numPr/w:numId/@w:val")
-        if direct_numbering[0] != "0" if direct_numbering else inherited["numbered"]:
+        if outline.is_list_item(element):
             omissions.add("automatyczne numerowanie i punktory list (tekst pozycji pozostanie)")
-        paragraph = {"heading": inherited["heading"], "format": {}, "tabs": [], "runs": [], "mark": {}}
+        paragraph = {"heading": template_heading(element), "format": {}, "tabs": [], "runs": [], "mark": {}}
         mark_properties = properties.find(qn("w:rPr")) if properties is not None else None
         paragraph["mark"] = mark_font(mark_properties, inherited, old)
         if mark_properties is not None:
@@ -856,12 +825,11 @@ def _paragraph_specs(original, omissions, notes, comments):
         if change is not None:
             before = previous(change, "w:p")
             before_style = chains.paragraph(_style_id(before.pPr, "w:pStyle"))
-            numbering = before.xpath("./w:pPr/w:numPr/w:numId/@w:val")
-            if numbering[0] != "0" if numbering else before_style["numbered"]:
-                omissions.add(FORMAT_HISTORY_OMISSION)  # numeracji ze stylu po odrzuceniu zmiany nie będzie
+            if outline.is_list_item(before):
+                omissions.add(FORMAT_HISTORY_OMISSION)  # numeracji po odrzuceniu zmiany nie będzie
             else:
                 before_format, before_tabs = paragraph_format(before, Paragraph(before, original), before_style)
-                paragraph["change"] = {"attributes": _change_attributes(change), "heading": before_style["heading"],
+                paragraph["change"] = {"attributes": _change_attributes(change), "heading": template_heading(before),
                                        "format": before_format, "tabs": before_tabs}
         runs = paragraph["runs"]
         for element_run in element.iter(qn("w:r"), *RANGE_MARKERS):
@@ -974,9 +942,7 @@ def _analyze_docx(source, keep_page_format=False):
     omissions = Omissions()
     for rel in original.part.rels.values():
         if not rel.is_external and rel.reltype.endswith(("/header", "/footer")):
-            root = etree.fromstring(
-                rel.target_part.blob, etree.XMLParser(resolve_entities=False, no_network=True)
-            )
+            root = parse_part(rel.target_part.blob)
             # Znak wodny i grafika w nagłówku nie mają w:t (np. VML v:textpath), a też znikną.
             if any((node.text or "").strip() for node in root.iter(qn("w:t"))) or any(
                 True for _ in root.iter(qn("w:drawing"), qn("w:pict"), qn("w:object"))
@@ -1420,7 +1386,7 @@ def _add_comments(result, review_layout, review):
         return
     _add_style(result, "paragraph", *COMMENT_STYLES[0])
     _add_style(result, "character", *COMMENT_STYLES[1])
-    root = parse_xml(f'<w:comments {nsdecls("w", "w14")} xmlns:mc="{MC[1:-1]}" mc:Ignorable="w14"/>')
+    root = parse_xml(f'<w:comments {nsdecls("w", "w14")} xmlns:mc="{MC}" mc:Ignorable="w14"/>')
     last = []
     for number, comment in enumerate(comments):
         node = OxmlElement("w:comment")
@@ -1440,8 +1406,8 @@ def _add_comments(result, review_layout, review):
     result.part.relate_to(part, RT.COMMENTS)
     if not review_layout["threads"]:
         return
-    extended = etree.Element(W15 + "commentsEx", nsmap={"w15": W15[1:-1], "mc": MC[1:-1]})
-    extended.set(MC + "Ignorable", "w15")
+    extended = etree.Element(W15 + "commentsEx", nsmap={"w15": W15[1:-1], "mc": MC})
+    extended.set(mc("Ignorable"), "w15")
     sources = {comment["source"]: number for number, comment in enumerate(comments)}
     for number, comment in enumerate(comments):
         entry = etree.SubElement(extended, W15 + "commentEx")

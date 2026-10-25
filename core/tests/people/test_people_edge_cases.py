@@ -1,4 +1,4 @@
-"""Luki pokrycia obszaru ludzi: dawne filtry listy zespołu, kilka urlopów naraz, odbieranie koordynacji i uprawnienia."""
+"""Luki pokrycia obszaru ludzi: filtry listy zespołu, kilka urlopów naraz, odbieranie koordynacji i uprawnienia."""
 import json
 from datetime import timedelta
 
@@ -37,15 +37,14 @@ class PeopleListFilterTests(TestCase):
         self.assertEqual(response.status_code, status)
         return response, sorted(person.first_name for person in response.context['people'])
 
-    def test_role_filters_and_legacy_parameters(self):
-        """Dawne parametry q i role działają jak nowe; osoba z kilkoma rolami pojawia się raz."""
+    def test_role_filters_and_ignored_legacy_parameters(self):
+        """Filtr ról: osoba z kilkoma rolami pojawia się raz; dawnych parametrów q i role już się nie obsługuje."""
+        everyone = ['lista-korektor', 'lista-oboje', 'lista-redaktor']
         cases = {
-            'dawne q': ({'q': 'lista-korektor'}, ['lista-korektor']),
-            'dawne role': ({'role': [str(self.proofreader_role.pk), ' ']}, ['lista-korektor', 'lista-oboje']),
-            'kilka ról': ({'roles': [self.editor_role.pk, self.proofreader_role.pk]},
-                          ['lista-korektor', 'lista-oboje', 'lista-redaktor']),
-            'nowe role mają pierwszeństwo': ({'roles': [self.editor_role.pk], 'role': [self.proofreader_role.pk]},
-                                             ['lista-oboje', 'lista-redaktor']),
+            'fraza': ({'query': 'lista-korektor'}, ['lista-korektor']),
+            'kilka ról': ({'roles': [self.editor_role.pk, self.proofreader_role.pk]}, everyone),
+            'dawne q': ({'q': 'lista-korektor'}, everyone),
+            'dawne role': ({'role': [str(self.proofreader_role.pk)]}, everyone),
         }
         for name, (params, expected) in cases.items():
             with self.subTest(name):
@@ -62,6 +61,8 @@ class PeopleListFilterTests(TestCase):
 
 
 class VacationSelectionTests(TestCase):
+    """Urlop przy osobie w panelu: trwający albo najbliższy zaplanowany, liczony z urlopów."""
+
     @classmethod
     def setUpTestData(cls):
         cls.user = create_member('urlopowicz', 'Redaktor')
@@ -71,27 +72,27 @@ class VacationSelectionTests(TestCase):
     def end(self, days):
         return timezone.now() + timedelta(days=days)
 
+    def shown(self):
+        from people.admin import PersonAdmin
+        return PersonAdmin._leave(Person.objects.get(pk=self.person.pk))
+
     def test_nearest_of_several_planned_vacations_is_shown(self):
         later = create_vacation(user=self.user, person_id=self.person.pk, start_date=self.today + timedelta(days=20),
                                 end_date=self.end(25))
         nearest = create_vacation(user=self.user, person_id=self.person.pk,
                                   start_date=self.today + timedelta(days=5), end_date=self.end(8))
-        self.person.refresh_from_db()
-        self.assertEqual(self.person.leave_start_date, nearest.start_date)
+        self.assertEqual(self.shown(), nearest)
         cancel_planned_vacation(user=self.user, vacation_id=nearest.pk)
-        self.person.refresh_from_db()
-        self.assertEqual(self.person.leave_start_date, later.start_date)
+        self.assertEqual(self.shown(), later)
 
     def test_overlapping_legacy_vacations_use_the_earliest_current_one(self):
-        """Dawne dane z nakładającymi się trwającymi urlopami: pole profilu pokazuje wcześniejszy z nich."""
+        """Dawne dane z nakładającymi się trwającymi urlopami: przy osobie widać wcześniejszy z nich."""
         first = Vacation.objects.create(person=self.person, start_date=self.today - timedelta(days=5),
                                         until_revoked=True)
         Vacation.objects.create(person=self.person, start_date=self.today - timedelta(days=2), end_date=self.end(3))
-        planned = Vacation.objects.create(person=self.person, start_date=self.today + timedelta(days=40),
-                                          end_date=self.end(41))
-        cancel_planned_vacation(user=self.user, vacation_id=planned.pk)
-        self.person.refresh_from_db()
-        self.assertEqual((self.person.leave_start_date, self.person.leave_end_date), (first.start_date, None))
+        Vacation.objects.create(person=self.person, start_date=self.today - timedelta(days=9),
+                                end_date=self.end(-1))
+        self.assertEqual(self.shown(), first)
         self.assertTrue(is_on_leave(self.user))
 
 

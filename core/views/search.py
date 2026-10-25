@@ -118,16 +118,12 @@ def _search_texts(query, *, include_authors, page=1):
 
     condition = Q()
     for term in query.split():
-        match = _matching_terms(term, fields)
+        # Podpis publiczny (pseudonim albo imię i nazwisko bez pseudonimu) jest i tak widoczny w wynikach;
+        # e-mail autora i tłumacze zostają dla uprawnionych.
+        match = (_matching_terms(term, fields) | name_matches(term, 'authors__', email=include_authors)
+                 | name_matches(term, 'translation__foreign_authors__'))
         if include_authors:
-            match |= name_matches(term, 'authors__', email=True)
-            match |= name_matches(term, 'translation__foreign_authors__')
             match |= name_matches(term, 'translation__translators__')
-        else:
-            # Podpis publiczny (pseudonim albo imię i nazwisko bez pseudonimu) jest
-            # i tak widoczny w wynikach; e-mail i nazwisko prawne zostają dla uprawnionych.
-            match |= name_matches(term, 'authors__')
-            match |= name_matches(term, 'translation__foreign_authors__')
         condition &= match
 
     # Teksty wydane i w opracowaniu (także tłumaczenia i rozdziały powieści);
@@ -145,8 +141,7 @@ def _search_texts(query, *, include_authors, page=1):
 
     for text in page_obj:
         translated = bool(text.anthology_id and text.anthology.is_translated)
-        record = getattr(text, 'translation', None) if translated else None
-        authors = list(record.foreign_authors.all()) if record else list(text.authors.all())
+        authors = text.source_authors()
         results.append(
             {
                 "pk": text.pk,
@@ -323,9 +318,7 @@ def _additional_results(query, user, pages=None):
         'items': _page_results(contacts, pages.get('audio_page', 1), lambda person: {
             'label': person.name, 'url': reverse('core:audio_contributor', args=[person.pk])})}]
     if coordinator:
-        artists = Illustrator.objects.all()
-        for term in query.split():
-            artists = artists.filter(_matching_terms(term, ('first_name', 'last_name', 'pseudonym', 'email')))
+        artists = Illustrator.objects.filter(_matching_terms(query, ('first_name', 'last_name', 'pseudonym', 'email')))
         groups.append({'key': 'illustrators', 'label': 'Ilustratorzy', 'empty': 'Brak pasujących ilustratorów.',
             'items': _page_results(artists.order_by('last_name', 'first_name', 'pk'), pages.get('illustrators_page', 1), lambda person: {
                 'label': str(person) + (f' ({person.pseudonym})' if person.pseudonym else ''),
@@ -365,8 +358,6 @@ def global_search(request):
         "anthologies": [],
         "novels": [],
         "can_view_authors": include_authors,
-        "can_search_authors": True,
-        "can_view_author_data": include_authors,
         "result_limit": RESULT_LIMIT,
     }
 

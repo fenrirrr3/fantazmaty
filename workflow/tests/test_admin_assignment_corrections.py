@@ -1,5 +1,4 @@
-"""Korekta pojedynczego przypisania w adminie (zmiana osoby, odłączenie, usunięcie) i reguła ochrony
-przypisań, które dokumentują zapisaną pracę."""
+"""Korekta pojedynczego przypisania w adminie (zmiana osoby, odłączenie, usunięcie)."""
 from datetime import timedelta
 
 from django.core.exceptions import PermissionDenied, ValidationError
@@ -11,7 +10,6 @@ from core.edit_versions import version_of
 from fantazmaty.testing import create_member, create_superuser
 from texts.models import Anthology, Text
 from workflow.admin_assignment_edit import correct_assignment
-from workflow.admin_assignment_rules import protect_assignment
 from workflow.models import WorkflowHandoff, WorkflowRepetition, WorkflowRoleAssignment as A, WorkflowStage as S
 
 
@@ -134,24 +132,3 @@ class AssignmentCorrectionPageTests(TestCase):
                              fetch_redirect_response=False)
         self.assignment.refresh_from_db()
         self.assertIsNone(self.assignment.assigned_to_id)
-
-
-class ProtectedAssignmentRuleTests(TestCase):
-    """Reguła formularza admina: przydział z rozpoczętą lub zakończoną pracą nie zmienia osoby, roli ani przebiegu."""
-
-    @classmethod
-    def setUpTestData(cls):
-        cls.member = create_member('member', 'Redaktor')
-        cls.other = create_member('other', 'Redaktor')
-        cls.text = Text.objects.create(title='Tekst', length=100)
-        cls.assignment = A.objects.create(text=cls.text, role='editor', assigned_to=cls.member)
-
-    def test_recorded_work_blocks_identity_changes_but_not_notes(self):
-        stage = S.objects.create(text=self.text, stage_type='editing', assignment=self.assignment)
-        protect_assignment(self.assignment, {'assigned_to': self.other})
-        protect_assignment(A(text=self.text, role='editor'), {'assigned_to': self.other})
-        S.objects.filter(pk=stage.pk).update(started_at=timezone.localdate())
-        protect_assignment(self.assignment, {'notes': 'Uwaga'})
-        for data in ({'assigned_to': self.other}, {'role': 'verifier_1'}):
-            with self.subTest(data=data), self.assertRaisesMessage(ValidationError, 'dokumentuje'):
-                protect_assignment(self.assignment, data)

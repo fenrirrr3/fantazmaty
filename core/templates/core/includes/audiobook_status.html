@@ -1,1 +1,1 @@
-{% if audio %}<span class="badge audio-status--{{ audio.status }}">{{ audio.status_label }}</span>{% else %}<span class="badge audio-status--pending">Nieprzypisane</span>{% endif %}
+{% if audio %}<span class="badge audio-status--{{ audio.status }}">{{ audio.get_status_display }}</span>{% else %}<span class="badge audio-status--pending">Nieprzypisane</span>{% endif %}

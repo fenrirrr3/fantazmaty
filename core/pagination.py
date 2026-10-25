@@ -131,8 +131,3 @@ def paginate_items(request, items, default=DEFAULT_PAGE_SIZE, *, page_param='pag
     )
 
     return page_obj
-
-
-def paginate_queryset(request, queryset, default=DEFAULT_PAGE_SIZE):
-    """Zachowuje interfejs używany przez moduł ilustracji."""
-    return paginate_items(request, queryset, default=default)

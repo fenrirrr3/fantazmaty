@@ -1,8 +1,7 @@
-from django.core.exceptions import ValidationError, PermissionDenied
-from django.db import transaction
+from django.core.exceptions import ValidationError
 from texts.models import Text
+from workflow.admin_status import admin_correction
 from workflow.models import WorkflowStage as S, WorkflowRoleAssignment as A, WorkflowRepetition, WorkflowHandoff
-from workflow.anthology_policy import require_working_anthology
 from core.edit_versions import version_of
 
 
@@ -78,17 +77,8 @@ def _reopen_stage(text, stage):
 
 
 def edit_stage(stage_id, actor, version, *, action, performer=None, replacement=None):
-    if not actor.is_active or not actor.is_superuser:
-        raise PermissionDenied
-    from core.workflow_events import history_correction
-    history_correction()
-    with transaction.atomic():
-        text_id=S.objects.values_list('text_id',flat=True).get(pk=stage_id)
-        text=Text.objects.select_for_update().get(pk=text_id)
+    with admin_correction(actor, version, of=(S, stage_id)) as text:
         stage=S.objects.select_for_update().select_related('assignment').get(pk=stage_id)
-        if version_of(text)!=version:
-            raise ValidationError('Dane zmieniły się. Odśwież formularz.')
-        require_working_anthology(text)
         if stage.repetition_id and not stage.repetition.completed_at and not stage.repetition.canceled_at:
             raise ValidationError('Najpierw zakończ lub odwołaj kolejkę powtórzeń.')
         if action == 'restore_reservation':

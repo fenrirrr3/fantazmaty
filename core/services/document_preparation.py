@@ -9,13 +9,14 @@ if __package__:
     from .document_progress import report
     from .document_rebuild import rebuild_docx
     from .document_formatting import normalize_docx
-    # DEFAULT_EDITORIAL_RULES is re-exported for document_conversion_worker.
-    from .odkurzacz import clean_docx, ALL_EDITORIAL_RULES, DEFAULT_EDITORIAL_RULES  # noqa: F401
+    from .document_whitespace import normalize_spacing_docx
+    from .odkurzacz import clean_docx, ALL_EDITORIAL_RULES
 else:
     from document_progress import report
     from document_rebuild import rebuild_docx
     from document_formatting import normalize_docx
-    from odkurzacz import clean_docx, ALL_EDITORIAL_RULES, DEFAULT_EDITORIAL_RULES  # noqa: F401
+    from document_whitespace import normalize_spacing_docx
+    from odkurzacz import clean_docx, ALL_EDITORIAL_RULES
 
 
 REPLACEMENT_KINDS = ('word', 'pattern')
@@ -45,8 +46,7 @@ def prepare_docx(source, *, rebuild=False, normalize_formatting=False,
     """Kolejne kroki przygotowania DOCX.
 
     track_changes, replacements i summary trafiają do Odkurzacza (clean_docx),
-    keep_page_format do przebudowy. Domyślne wartości nie są przekazywane dalej,
-    więc zachowanie bez nowych opcji pozostaje takie jak wcześniej.
+    keep_page_format do przebudowy.
     """
     if not isinstance(cleaner_rules, (list, tuple)) or set(cleaner_rules) - set(ALL_EDITORIAL_RULES):
         raise ValueError('Invalid cleaner rules')
@@ -57,26 +57,15 @@ def prepare_docx(source, *, rebuild=False, normalize_formatting=False,
     payload = source.read()
     steps = []
     if rebuild:
-        steps.append((rebuild_docx, {'allow_omissions': allow_omissions,
-                                     **({'keep_page_format': True} if keep_page_format else {})}))
+        steps.append((rebuild_docx, {'allow_omissions': allow_omissions, 'keep_page_format': bool(keep_page_format)}))
     if normalize_formatting:
         steps.append((normalize_docx, {'justify': justify}))
     # Miękkie entery zamieniamy przed Odkurzaczem, żeby jego reguły widziały już osobne akapity.
     if remove_soft_whitespace:
-        if __package__:
-            from .document_whitespace import normalize_spacing_docx
-        else:
-            from document_whitespace import normalize_spacing_docx
         steps.append((normalize_spacing_docx, {}))
     if cleaner_rules or use_cleaner:
-        cleaner = {'rules': cleaner_rules}
-        if track_changes:
-            cleaner['track_changes'] = True
-        if replacements is not None:
-            cleaner['replacements'] = replacements
-        if summary is not None:
-            cleaner['summary'] = summary
-        steps.append((clean_docx, cleaner))
+        steps.append((clean_docx, {'rules': cleaner_rules, 'track_changes': bool(track_changes),
+                                   'replacements': replacements, 'summary': summary}))
     for operation, options in steps:
         report({'rebuild_docx': 'Przebudowa DOCX', 'normalize_docx': 'Ujednolicanie formatowania',
                 'clean_docx': 'Odkurzanie tekstu', 'normalize_spacing_docx': 'Zamiana miękkich enterów i spacji'}.get(getattr(operation, '__name__', ''), 'Przygotowanie DOCX'))

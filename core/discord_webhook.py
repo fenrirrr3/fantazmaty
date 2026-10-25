@@ -1,6 +1,5 @@
 """Outbound Discord transport. Only configured HTTPS Discord webhook endpoints."""
 import json
-import os
 import re
 from urllib.request import Request, build_opener, HTTPRedirectHandler
 from urllib.error import HTTPError, URLError
@@ -23,11 +22,11 @@ class NoRedirect(HTTPRedirectHandler):
 
 @sensitive_variables()
 def channels():
-    raw = getattr(settings, 'DISCORD_WEBHOOKS', None)
-    if raw is None:
+    raw = settings.DISCORD_WEBHOOK_SECRETS
+    if isinstance(raw, str):  # tekst JSON ze zmiennej środowiskowej (fantazmaty/settings.py)
         try:
-            raw = json.loads(os.environ.get('DISCORD_WEBHOOKS', '{}'))
-        except (ValueError, TypeError):
+            raw = json.loads(raw)
+        except ValueError:
             raise ConfigurationError('Nieprawidłowa konfiguracja kanałów Discorda.') from None
     if not isinstance(raw, dict) or len(raw) > 20:
         raise ConfigurationError('Konfiguracja wymaga słownika: nazwa kanału → webhook (maks. 20).')

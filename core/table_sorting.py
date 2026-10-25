@@ -1,6 +1,5 @@
 """Allowlisted sorting before pagination, shared by table headers."""
 from core.translation_scope import frontend_scope
-from workflow.catalog import active_role_choices
 from copy import copy
 from datetime import date, datetime
 from core.sort_keys import text_key, sql_text_key
@@ -20,7 +19,7 @@ MODELS = {
  'workflow.workflowstage': {
   'Antologia': ('anthology', ('text__anthology__title',)), 'Tytuł': ('title', ('text__title',)),
   'Długość': ('length', ('text__length',)), 'Etap': ('stage', ('stage_type',)), 'Rozpoczęcie': ('started_at', ('started_at',)),
-  'Zakończenie': ('ended_at', ('ended_at',)), 'Stan etapu': ('completed', ('is_completed',)),
+  'Zakończenie': ('ended_at', ('ended_at',)),
  },
  'texts.reviewassignment': {
   'Antologia': ('anthology', ('review__anthology__title',)), 'Tytuł': ('title', ('review__title',)),
@@ -40,7 +39,7 @@ def _columns(**fields):
     return {label: (field, (field,)) for label, field in fields.items()}
 
 MODELS['core.recruitment'].update(_columns(**{
-    'Imię':'first_name', 'Nazwisko':'last_name', 'Dział':'department',
+    'Imię':'first_name', 'Nazwisko':'last_name',
     'Czy powiadomiono':'notified', 'Uwagi':'notes', 'Uwagi nieoficjalne':'unofficial_notes'}))
 MODELS['core.anthologycorrection'].update(_columns(**{
     'Fragment':'fragment', 'Co jest źle':'problem', 'Propozycja poprawki':'suggestion'}))
@@ -165,20 +164,6 @@ def _joined(items):
     return ", ".join(sorted((str(item) for item in items), key=text_key))
 
 
-def _stage_state(row):
-    from django.utils import timezone
-
-    if _get(row, "is_completed"):
-        return "Zakończony"
-    if _get(row, "is_held"):
-        from workflow.models import HELD_LABEL
-        return HELD_LABEL
-    started = _get(row, "started_at")
-    if not started:
-        return "Nierozpoczęty"
-    return "Zaplanowany" if started > timezone.localdate() else "W trakcie"
-
-
 def _extra_columns(items, queryset, request):
     """Computed columns use the existing projection, before pagination.
 
@@ -251,20 +236,6 @@ def _extra_columns(items, queryset, request):
             )
     if model == "workflow.workflowstage" and projected:
         columns["Autorzy"] = ("authors", lambda r: _get(r, "text.authors_display"))
-        columns["Wymagana rola"] = ("required_role", lambda r: _get(r, "required_group"))
-        columns["Stan etapu"] = ("completed", _stage_state)
-        for role, label in active_role_choices():
-            columns[label] = (
-                "role_" + role,
-                lambda r, role=role: next(
-                    (
-                        _get(c, "user.get_full_name")
-                        for c in r.get("role_cells", [])
-                        if c["role"] == role
-                    ),
-                    None,
-                ),
-            )
     if model == "core.useractivity":
         columns["Użytkownik"] = ("person", lambda r: str(_get(r, "user.person_profile") or r.actor))
     if model == "people.person":
@@ -336,155 +307,62 @@ def _extra_columns(items, queryset, request):
     return columns
 
 
+# Widoki z własnymi adnotacjami: etykieta -> (klucz w adresie, pole), dodatkowe sortowanie.
+_AUDIO = {
+    'Antologia': ('anthology', 'anthology__title'), 'Autor': ('author', 'audio_author'),
+    'Tytuł': ('title', 'title'), 'Status': ('status', 'audio_status_rank'),
+    'Lektor': ('narrator', 'audiobook__narrator_name'), 'Dźwiękowiec': ('engineer', 'audiobook__engineer_name'),
+    'Montaż': ('engineer', 'audiobook__engineer_name'),
+    'Korektor audiobooka': ('proofreader', 'audiobook__proofreader__person_profile__last_name'),
+    'Historia korekty': ('proofreading', 'audio_proofreading_date'),
+    'Data premiery': ('premiere', 'audiobook__premiere_date'),
+    'YouTube': ('youtube', 'audiobook__youtube_url'), 'HearThis': ('hearthis', 'audiobook__hearthis_url'),
+}
+_AUDIOBOOKS = {label: spec for label, spec in _AUDIO.items() if label != 'Historia korekty'}
+_AUDIOBOOKS['Montażysta'] = ('engineer', 'audiobook__engineer_name')
+_AUDIOBOOKS.update({label: (kind, f'audio_{kind}_date') for label, kind in (
+    ('Nagrywanie', 'recording'), ('Korekta', 'proofreading'), ('Poprawki', 'corrections'), ('Montaż', 'editing'))})
+FIXED_SORTS = {
+    'core:post_layout': ({
+        'Antologia': ('anthology', 'anthology__title'), 'Korektor': ('proofreader', 'proofreader__person_profile__last_name'),
+        'Strony': ('pages', 'page_from'), 'Status': ('status', 'status'),
+        'Przydzielony od': ('assigned_start', 'assigned_start'), 'Przydzielony do': ('assigned_end', 'assigned_end'),
+        'W trakcie od': ('work_start', 'work_start'), 'W trakcie do': ('work_end', 'work_end'),
+        'Zakończony': ('completed', 'completed_on')}, ('page_from', 'pk')),
+    'core:audiobooks': (_AUDIOBOOKS, ('title', 'pk')),
+    'core:audio_proofreading': (_AUDIO, ('title', 'pk')),
+    'core:assign_audio_proofreader': (_AUDIO, ('title', 'pk')),
+    # Adnotacje social_author i social_status_rank dodaje widok (core/views/social_media.py).
+    'core:social_media': ({
+        'Antologia': ('anthology', 'anthology__title'), 'Tytuł': ('title', 'title'),
+        'Autor': ('author', 'social_author'), 'Tagi': ('tags', 'tags'), 'Gatunek': ('genre', 'genre'),
+        'Status': ('status', 'social_status_rank'), 'Data wrzucenia': ('posted_on', 'social_media__posted_on'),
+        'Link': ('url', 'social_media__url')}, ('title', 'pk')),
+    # Listy publiczne: nigdy nie udostępniają prywatnych pól tekstu ani ilustracji.
+    'core:external_audiobooks': ({
+        'Antologia': ('anthology', 'anthology__title'), 'Tytuł opowiadania': ('title', 'title'),
+        'Tagi': ('tags', 'tags'), 'Gatunek': ('genre', 'genre'), 'Status': ('status', 'public_status')}, ('title', 'pk')),
+    'illustrations:external_illustrations': ({
+        'Antologia': ('anthology', 'text__anthology__title'), 'Tytuł opowiadania': ('title', 'text__title'),
+        'Tagi': ('tags', 'text__tags'), 'Gatunek': ('genre', 'text__genre'), 'Status': ('status', 'public_status')}, ('pk',)),
+}
+
+
 def prepare_table_sort(request, items):
-    if request.resolver_match and request.resolver_match.view_name == 'core:post_layout':
-        fields = {'Antologia': ('anthology', 'anthology__title'), 'Korektor': ('proofreader', 'proofreader__person_profile__last_name'),
-            'Strony': ('pages', 'page_from'), 'Status': ('status', 'status'),
-            'Przydzielony od': ('assigned_start', 'assigned_start'), 'Przydzielony do': ('assigned_end', 'assigned_end'),
-            'W trakcie od': ('work_start', 'work_start'), 'W trakcie do': ('work_end', 'work_end'), 'Zakończony': ('completed', 'completed_on')}
+    view = request.resolver_match.view_name if request.resolver_match else None
+    if view in FIXED_SORTS and (view != 'core:social_media' or (
+            isinstance(items, QuerySet) and items.model._meta.label_lower == 'texts.text')):
+        fields, tiebreak = FIXED_SORTS[view]
+        # Nieznany klucz sortuje po antologii, z zachowaniem kierunku („-” = malejąco).
         selected = request.GET.get('sort', 'anthology')
-        field = next((field for key, field in fields.values() if key == selected.lstrip('-')), 'anthology__title')
-        return items.order_by(('-' if selected.startswith('-') else '') + field, 'page_from', 'pk'), {label: key for label, (key, _) in fields.items()}
-    if request.resolver_match and request.resolver_match.view_name in ('core:audiobooks', 'core:audio_proofreading', 'core:assign_audio_proofreader'):
-        fields = {
-            'Antologia': ('anthology', 'anthology__title'), 'Autor': ('author', 'audio_author'),
-            'Tytuł': ('title', 'title'), 'Status': ('status', 'audio_status_rank'),
-            'Lektor': ('narrator', 'audiobook__narrator_name'), 'Dźwiękowiec': ('engineer', 'audiobook__engineer_name'),
-            'Montaż': ('engineer', 'audiobook__engineer_name'),
-            'Korektor audiobooka': ('proofreader', 'audiobook__proofreader__person_profile__last_name'),
-            'Historia korekty': ('proofreading', 'audio_proofreading_date'),
-            'Data premiery': ('premiere', 'audiobook__premiere_date'),
-            'YouTube': ('youtube', 'audiobook__youtube_url'), 'HearThis': ('hearthis', 'audiobook__hearthis_url'),
-        }
-        if request.resolver_match.view_name == 'core:audiobooks':
-            fields.pop('Historia korekty', None)
-            fields['Montażysta'] = ('engineer', 'audiobook__engineer_name')
-            for label, kind in (('Nagrywanie', 'recording'), ('Korekta', 'proofreading'), ('Poprawki', 'corrections'), ('Montaż', 'editing')):
-                fields[label] = (kind, f'audio_{kind}_date')
-        selected = request.GET.get('sort', 'anthology')
-        field = next((field for key, field in fields.values() if key == selected.lstrip('-')), 'anthology__title')
-        return items.order_by(('-' if selected.startswith('-') else '') + field, 'title', 'pk'), {
-            label: key for label, (key, _) in fields.items()
-        }
-    if (request.resolver_match and request.resolver_match.view_name == 'core:social_media'
-            and isinstance(items, QuerySet) and items.model._meta.label_lower == 'texts.text'):
-        # Adnotacje social_author i social_status_rank dodaje widok (core/views/social_media.py).
-        fields = {
-            'Antologia': ('anthology', 'anthology__title'), 'Tytuł': ('title', 'title'),
-            'Autor': ('author', 'social_author'), 'Tagi': ('tags', 'tags'), 'Gatunek': ('genre', 'genre'),
-            'Status': ('status', 'social_status_rank'), 'Data wrzucenia': ('posted_on', 'social_media__posted_on'),
-            'Link': ('url', 'social_media__url'),
-        }
-        sort = request.GET.get('sort', 'anthology')
-        field = next((field for key, field in fields.values() if key == sort.lstrip('-')), 'anthology__title')
-        return items.order_by(('-' if sort.startswith('-') else '') + field, 'title', 'pk'), {
-            label: key for label, (key, _) in fields.items()
-        }
-    if request.resolver_match and request.resolver_match.view_name == 'core:external_audiobooks':
-        # Never expose private Text fields through public sorting or projection.
-        fields = {
-            'Antologia': ('anthology', 'anthology__title'),
-            'Tytuł opowiadania': ('title', 'title'),
-            'Tagi': ('tags', 'tags'),
-            'Gatunek': ('genre', 'genre'),
-            'Status': ('status', 'public_status'),
-        }
-        sort = request.GET.get('sort', 'anthology')
-        field = next((field for key, field in fields.values() if key == sort.lstrip('-')), 'anthology__title')
-        return items.order_by(('-' if sort.startswith('-') else '') + field, 'title', 'pk'), {
-            label: key for label, (key, _) in fields.items()
-        }
-    if (
-        request.resolver_match
-        and request.resolver_match.view_name == "illustrations:external_illustrations"
-    ):
-        # A public projection must never opt into private illustration columns.
-        fields = {
-            "Antologia": ("anthology", "text__anthology__title"),
-            "Tytuł opowiadania": ("title", "text__title"),
-            "Tagi": ("tags", "text__tags"),
-            "Gatunek": ("genre", "text__genre"),
-            "Status": ("status", "public_status"),
-        }
-        sort = request.GET.get("sort", "anthology")
-        field = next(
-            (field for key, field in fields.values() if key == sort.lstrip("-")),
-            "text__anthology__title",
-        )
-        return items.order_by(("-" if sort.startswith("-") else "") + field, "pk"), {
-            label: key for label, (key, _) in fields.items()
-        }
+        field = next((field for key, field in fields.values() if key == selected.lstrip('-')), fields['Antologia'][1])
+        return items.order_by(('-' if selected.startswith('-') else '') + field, *tiebreak), {
+            label: key for label, (key, _) in fields.items()}
     if hasattr(items, "sort_table"):
         return items.sort_table(request)
     queryset = items if isinstance(items, QuerySet) else getattr(items, "queryset", None)
     if queryset is None:
-        if not isinstance(items, (list, tuple)) or not items or not isinstance(items[0], dict):
-            return items, {}
-        candidates = {
-            "Antologia": "anthology_title",
-            "Tytuł": "title",
-            "Autor": "author_name",
-            "Autorzy": "authors",
-            "Recenzent": "reviewer_name",
-            "Redaktor": "person_name",
-            "Korektor": "person_name",
-            "Weryfikator": "person_name",
-            "Osoba": "person_name",
-            "Rozpoczęcie": "started_at",
-            "Zakończenie": "ended_at",
-            "Ocena": "opinion",
-            "Recenzja": "opinion",
-            "Opinia": "opinion",
-            "Przydział": "position",
-            "Stan etapu": "is_completed",
-            "Rola": "role",
-            "Data oceny": "opinion_at",
-            "Data decyzji": "decision_at",
-            "Status zgłoszenia": "review_status",
-            "Data recenzji": "opinion_at",
-            "Status": "review_status",
-            "Rodzaj przestoju": "inactivity_type",
-            "Od": "since",
-            "Liczba dni": "days",
-        }
-        if "stage" in items[0] and "days" in items[0]:
-            candidates.update(
-                {
-                    "Antologia": "text.anthology.title",
-                    "Tytuł": "text.title",
-                    "Etap": "stage.get_stage_type_display",
-                }
-            )
-        if "task" in items[0] and "anthology_title" in items[0]:
-            candidates.update(
-                {"Zadanie": "name", "Osoba": "person", "Status": "status", "Data zlecenia": "date"}
-            )
-        if "before" in items[0] and "after" in items[0]:
-            candidates = {"Tekst / powieść": "title", "Przed": "before", "Po": "after"}
-        fields = {
-            label: path for label, path in candidates.items() if path.split(".")[0] in items[0]
-        }
-        public = {
-            "anthology_title": "anthology",
-            "text.anthology.title": "anthology",
-            "text.title": "title",
-            "stage.get_stage_type_display": "status",
-            "author_name": "author",
-            "reviewer_name": "person",
-            "person_name": "person",
-            "is_completed": "completed",
-            "decision_at": "decision",
-            "review_status": "status",
-        }
-        columns = {label: public.get(path, path) for label, path in fields.items()}
-        requested = request.GET.get("sort", "")
-        path = next(
-            (path for label, path in fields.items() if columns[label] == requested.lstrip("-")),
-            None,
-        )
-        if path:
-            items = _sorted_rows(items, lambda row: _get(row, path), requested.startswith("-"))
-        return items, columns
+        return items, {}
     model = queryset.model._meta.label_lower
     columns = MODELS.get(model, {}).copy()
     if model == "illustrations.illustrator" and "artist_name" in queryset.query.annotations:
@@ -534,7 +412,6 @@ def prepare_table_sort(request, items):
             "method",
             "status_code",
             "story_title",
-            "department",
             "notified_at",
         }:
             label = str(field.verbose_name).capitalize()
@@ -585,21 +462,12 @@ def prepare_table_sort(request, items):
         }
     fields = next((fields for _, (name, fields) in columns.items() if name == key), None)
     if fields:
-        from workflow.state import ORDER
+        from workflow.state import stage_order
 
         ordered_fields = []
         for field in fields:
             if field in ("stage_type", "current_stage_type"):
-                queryset = queryset.annotate(
-                    _semantic_stage_order=Case(
-                        *[
-                            When(**{field: kind}, then=Value(index))
-                            for kind, index in ORDER.items()
-                        ],
-                        default=Value(999),
-                        output_field=IntegerField(),
-                    )
-                )
+                queryset = queryset.annotate(_semantic_stage_order=stage_order(default=999, field=field))
                 ordered_fields.append("_semantic_stage_order")
             elif (
                 "__" not in field

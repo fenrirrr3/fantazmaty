@@ -1,7 +1,5 @@
 """Kontakty zewnętrzne (lektorzy, ilustratorzy): historia i prywatność, podpowiedzi, aktywność, duplikaty i konflikty zapisu."""
-from io import StringIO
 
-from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
 from lxml import html
@@ -172,10 +170,9 @@ class IllustratorContactTests(TestCase):
         self.assertEqual(result.status_code, 200)
         self.assertEqual(Illustrator.objects.count(), count + 1)
 
-    def test_legacy_duplicate_labels_have_ids_and_can_edit_contacts_then_merge(self):
+    def test_legacy_duplicate_labels_have_ids_and_contacts_stay_editable(self):
         artist = Illustrator.objects.create(first_name='Przemek', last_name='Świszcz', pseudonym='Graphos')
         duplicate = Illustrator.objects.create(first_name='Graphos')
-        count = Illustrator.objects.count()
         page = self.client.get(reverse('illustrations:illustrator_list'))
         self.assertContains(page, f'Przemek Świszcz (Graphos) (ID {artist.pk})')
         self.assertContains(page, f'Graphos (ID {duplicate.pk})')
@@ -186,8 +183,4 @@ class IllustratorContactTests(TestCase):
             '_edit_version': self.token(url), 'first_name': 'Przemek', 'last_name': 'Świszcz',
             'pseudonym': 'Graphos', 'email': 'updated@example.test', 'is_active': 'on'})
         self.assertEqual(response.status_code, 302)
-        call_command('merge_illustrator', first_name='Przemek', last_name='Świszcz', pseudonym='Graphos',
-                     apply=True, stdout=StringIO())
-        self.assertEqual(Illustrator.objects.count(), count - 1)
-        self.assertFalse(Illustrator.objects.filter(pk=duplicate.pk).exists())
-        self.assertNotContains(self.client.get(reverse('illustrations:illustrator_list')), '(ID ')
+        self.assertEqual(Illustrator.objects.get(pk=artist.pk).email, 'updated@example.test')

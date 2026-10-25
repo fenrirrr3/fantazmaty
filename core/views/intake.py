@@ -1,3 +1,4 @@
+from core.filtering import positive_id
 from core.public_authors import name_matches
 from core.translation_scope import frontend_scope, non_abandoned
 from core.author_contact import stored_author_phone
@@ -100,8 +101,8 @@ def recruitment_edit(request, pk=None):
 def _author_initial(request):
     """Dane autora wybranego parametrem ?author= (formularz pojedynczego zgłoszenia)."""
     from authors.models import Author
-    raw = request.GET.get('author', '')
-    selected = Author.objects.filter(pk=raw).first() if raw.isascii() and raw.isdecimal() and len(raw) < 19 else None
+    author_id = positive_id(request.GET.get('author'))
+    selected = Author.objects.filter(pk=author_id).first() if author_id else None
     if selected is None:
         return {}
     pseudonym = selected.pseudonym.strip()

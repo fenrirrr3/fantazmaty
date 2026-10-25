@@ -77,7 +77,9 @@ class AnthologyChecklistTests(TestCase):
                     WorkflowStage.objects.create(text=text, stage_type=stage_type)
                 text.anthology = self.book
                 if allowed:
-                    text.clean()
+                    # Poprzednia antologia, status nowej i jedno zapytanie o niezakończony workflow.
+                    with self.assertNumQueries(3):
+                        text.clean()
                 else:
                     with self.assertRaisesMessage(ValidationError, 'Nie można przenieść niedokończonego tekstu'):
                         text.clean()

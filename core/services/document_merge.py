@@ -21,14 +21,10 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 from lxml import etree
 
-from .document_rebuild import COMMENTS_EXTENDED, SETTINGS_AFTER_NOTES
+from .document_rebuild import COMMENTS_EXTENDED, SETTINGS_AFTER_NOTES, W15
+from .document_xml import MC, R, W, mc, parse_part, serialize_part, w
 
-W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
-R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
 W14 = '{http://schemas.microsoft.com/office/word/2010/wordml}'
-W15 = '{http://schemas.microsoft.com/office/word/2012/wordml}'
-MC = '{http://schemas.openxmlformats.org/markup-compatibility/2006}'
-PARSER = etree.XMLParser(resolve_entities=False, no_network=True, load_dtd=False, remove_blank_text=False)
 DOCUMENT = 'word/document.xml'
 PACKAGE_RELS = 'http://schemas.openxmlformats.org/package/2006/relationships'
 CONTENT_TYPES = 'http://schemas.openxmlformats.org/package/2006/content-types'
@@ -50,13 +46,43 @@ class MergeError(ValueError):
     pass
 
 
-def w(name):
-    return f'{{{W}}}{name}'
+class _Package:
+    """Scalany plik otwarty raz: archiwum, ścieżki części z relacji dokumentu (typ relacji → ścieżka)
+    i wczytane już części poboczne (przypisy, komentarze – tylko do odczytu).
 
+    document() czyta treść za każdym razem od nowa: drzewa treści wszystkich plików naraz zajęłyby
+    za dużo pamięci.
+    """
 
-def _document(payload):
-    with ZipFile(BytesIO(payload)) as archive:
-        return etree.fromstring(archive.read(DOCUMENT), PARSER)
+    def __init__(self, payload):
+        self.archive = ZipFile(BytesIO(payload))
+        self.names = set(self.archive.namelist())
+        self.paths = _part_paths(self.read(DOCUMENT_RELS))
+        self._parts = {}
+
+    def read(self, name):
+        """Bajty części albo None, gdy jej nie ma."""
+        return self.archive.read(name) if name in self.names else None
+
+    def document(self):
+        return parse_part(self.archive.read(DOCUMENT))
+
+    def tree(self, path):
+        """Drzewo części (wczytane raz); None, gdy części nie ma w pakiecie."""
+        if path not in self.names:
+            return None
+        if path not in self._parts:
+            self._parts[path] = parse_part(self.archive.read(path))
+        return self._parts[path]
+
+    def part(self, reltype):
+        """Drzewo części o danym typie relacji; None, gdy relacji albo części brak."""
+        return self.tree(self.paths.get(reltype))
+
+    def note_parts(self):
+        """Rodzaj przypisów → ścieżka części w pakiecie."""
+        return {kind: path for kind in NOTE_KINDS for reltype, path in self.paths.items()
+                if reltype.endswith(f'/{kind}s')}
 
 
 def _content(root):
@@ -153,14 +179,10 @@ def _start_on_new_page(elements):
     return elements
 
 
-def _xml(root):
-    return etree.tostring(root, xml_declaration=True, encoding='UTF-8', standalone=True)
-
-
 def _part_paths(rels):
-    """Typ relacji → ścieżka części w pakiecie (z relacji dokumentu, bajty albo None)."""
+    """Typ relacji → ścieżka części w pakiecie (z relacji dokumentu: bajty albo None)."""
     found = {}
-    for relationship in etree.fromstring(rels, PARSER) if rels is not None else ():
+    for relationship in parse_part(rels) if rels is not None else ():
         target = relationship.get('Target', '')
         if relationship.get('TargetMode') != 'External' and target.strip('/'):
             target = target.lstrip('/')
@@ -168,26 +190,19 @@ def _part_paths(rels):
     return found
 
 
-def _note_parts(archive):
-    """Rodzaj przypisów → ścieżka części w pakiecie (z relacji dokumentu)."""
-    rels = archive.read(DOCUMENT_RELS) if DOCUMENT_RELS in archive.namelist() else None
-    return {kind: path for kind in NOTE_KINDS for reltype, path in _part_paths(rels).items()
-            if reltype.endswith(f'/{kind}s')}
-
-
 def _relate(files, path, content_type, reltype):
     """Nowa część dokumentu: wpis w [Content_Types].xml i relacja z wolnym rId."""
-    types = etree.fromstring(files['[Content_Types].xml'], PARSER)
+    types = parse_part(files['[Content_Types].xml'])
     types.append(etree.Element(f'{{{CONTENT_TYPES}}}Override', PartName='/' + path, ContentType=content_type))
-    files['[Content_Types].xml'] = _xml(types)
-    relationships = etree.fromstring(files[DOCUMENT_RELS], PARSER)
+    files['[Content_Types].xml'] = serialize_part(types)
+    relationships = parse_part(files[DOCUMENT_RELS])
     taken = {node.get('Id') for node in relationships}
     number = len(taken) + 1
     while f'rId{number}' in taken:
         number += 1
     relationships.append(etree.Element(f'{{{PACKAGE_RELS}}}Relationship', Id=f'rId{number}',
                                        Target=path.removeprefix('word/'), Type=reltype))
-    files[DOCUMENT_RELS] = _xml(relationships)
+    files[DOCUMENT_RELS] = serialize_part(relationships)
 
 
 def _add_styles(files, donor, wanted):
@@ -195,9 +210,9 @@ def _add_styles(files, donor, wanted):
     dawcy (bajty); bez części stylów po którejś stronie – nic."""
     if donor is None or 'word/styles.xml' not in files:
         return
-    styles = etree.fromstring(files['word/styles.xml'], PARSER)
+    styles = parse_part(files['word/styles.xml'])
     known = {style.get(w('styleId')) for style in styles.findall(w('style'))}
-    offered = {style.get(w('styleId')): style for style in etree.fromstring(donor, PARSER).findall(w('style'))}
+    offered = {style.get(w('styleId')): style for style in parse_part(donor).findall(w('style'))}
     wanted = list(wanted)
     while wanted:
         style_id = wanted.pop()
@@ -206,12 +221,7 @@ def _add_styles(files, donor, wanted):
         known.add(style_id)
         styles.append(deepcopy(offered[style_id]))
         wanted.extend(node.get(w('val')) for node in offered[style_id].findall(w('basedOn')))
-    files['word/styles.xml'] = _xml(styles)
-
-
-def _donor_styles(payload):
-    with ZipFile(BytesIO(payload)) as archive:
-        return archive.read('word/styles.xml') if 'word/styles.xml' in archive.namelist() else None
+    files['word/styles.xml'] = serialize_part(styles)
 
 
 class _Notes:
@@ -221,18 +231,16 @@ class _Notes:
         self.notes = {kind: [] for kind in NOTE_KINDS}
         self.donors = {}
 
-    def collect(self, payload, elements, ids):
+    def collect(self, package, elements, ids):
         """Przypisy, do których odsyłają elementy pliku, z nowymi w:id zmian i komentarzy (ids)."""
-        with ZipFile(BytesIO(payload)) as archive:
-            paths = _note_parts(archive)
-            available = {}
-            for kind, path in paths.items():
-                if path not in archive.namelist():
-                    continue
-                root = etree.fromstring(archive.read(path), PARSER)
-                self.donors.setdefault(kind, (payload, path))
-                available[kind] = {note.get(w('id')): note for note in root.findall(w(kind))
-                                   if note.get(w('type'), 'normal') == 'normal'}
+        available = {}
+        for kind, path in package.note_parts().items():
+            root = package.tree(path)
+            if root is None:
+                continue
+            self.donors.setdefault(kind, (package, path))
+            available[kind] = {note.get(w('id')): note for note in root.findall(w(kind))
+                               if note.get(w('type'), 'normal') == 'normal'}
         for element in elements:
             for node in element.iter(*NOTE_REFERENCES):
                 kind = NOTE_REFERENCES[node.tag]
@@ -250,40 +258,38 @@ class _Notes:
     def write(self, files, base):
         """Części przypisów wyniku (pliki pakietu base); brakującą część z relacją, ustawieniami
         i stylami bierzemy od dawcy."""
-        with ZipFile(BytesIO(base)) as archive:
-            paths = _note_parts(archive)
+        paths = base.note_parts()
         for kind in NOTE_KINDS:
             if not self.notes[kind]:
                 continue
-            payload, donor_path = self.donors[kind]
+            donor, donor_path = self.donors[kind]
             path = paths.get(kind)
             if path is None or path not in files:
-                path = self._add_part(files, kind, payload, donor_path)
-            root = etree.fromstring(files[path], PARSER)
+                path = self._add_part(files, kind, donor, donor_path)
+            root = parse_part(files[path])
             for note in root.findall(w(kind)):
                 if note.get(w('type'), 'normal') == 'normal':
                     root.remove(note)
             root.extend(self.notes[kind])
-            files[path] = _xml(root)
+            files[path] = serialize_part(root)
 
-    def _add_part(self, files, kind, payload, donor_path):
-        with ZipFile(BytesIO(payload)) as archive:
-            donor = {name: archive.read(name) for name in (donor_path, 'word/settings.xml', 'word/styles.xml')
-                     if name in archive.namelist()}
+    def _add_part(self, files, kind, package, donor_path):
+        donor = {name: package.archive.read(name) for name in (donor_path, 'word/settings.xml', 'word/styles.xml')
+                 if name in package.names}
         path = donor_path
         files[path] = donor[path]
         _relate(files, path, WORD_PART.format(kind + 's'),
                 f'http://schemas.openxmlformats.org/officeDocument/2006/relationships/{kind}s')
         if 'word/settings.xml' in donor and 'word/settings.xml' in files:
-            properties = etree.fromstring(donor['word/settings.xml'], PARSER).find(w(kind + 'Pr'))
-            settings = etree.fromstring(files['word/settings.xml'], PARSER)
+            properties = parse_part(donor['word/settings.xml']).find(w(kind + 'Pr'))
+            settings = parse_part(files['word/settings.xml'])
             if properties is not None and settings.find(w(kind + 'Pr')) is None:
                 anchor = next((node for node in settings if node.tag in SETTINGS_AFTER_NOTES), None)
                 if anchor is None:
                     settings.append(properties)
                 else:
                     anchor.addprevious(properties)
-                files['word/settings.xml'] = _xml(settings)
+                files['word/settings.xml'] = serialize_part(settings)
         # Style przypisów (tekst i odsyłacz), których wynik jeszcze nie ma.
         _add_styles(files, donor.get('word/styles.xml'),
                     [node.get(w('val')) for note in self.notes[kind] for node in note.iter(w('pStyle'), w('rStyle'))])
@@ -305,23 +311,17 @@ class _Comments:
             self.para += 1
         return f'{self.para:08X}'
 
-    def file(self, payload):
+    def file(self, package):
         """Komentarze kolejnego pliku: number(stary w:id) → nowy w:id; finish() przenosi jego wątki."""
-        with ZipFile(BytesIO(payload)) as archive:
-            paths = _part_paths(archive.read(DOCUMENT_RELS) if DOCUMENT_RELS in archive.namelist() else None)
-            names = archive.namelist()
-            comments = paths.get(COMMENTS)
-            extended = paths.get(COMMENTS_EXTENDED)
-            source = {node.get(w('id')): node for node in etree.fromstring(archive.read(comments), PARSER)
-                      .findall(w('comment'))} if comments in names else {}
-            threads = list(etree.fromstring(archive.read(extended), PARSER).iter(W15 + 'commentEx')) \
-                if extended in names else []
-        return _FileComments(self, payload, source, threads)
+        comments, extended = package.part(COMMENTS), package.part(COMMENTS_EXTENDED)
+        source = {} if comments is None else {node.get(w('id')): node for node in comments.findall(w('comment'))}
+        threads = [] if extended is None else list(extended.iter(W15 + 'commentEx'))
+        return _FileComments(self, package, source, threads)
 
 
 class _FileComments:
-    def __init__(self, merged, payload, source, threads):
-        self.merged, self.payload, self.source, self.threads = merged, payload, source, threads
+    def __init__(self, merged, package, source, threads):
+        self.merged, self.package, self.source, self.threads = merged, package, source, threads
         self.numbers, self.paragraphs = {}, {}
 
     def number(self, old):
@@ -340,7 +340,7 @@ class _FileComments:
                     self.paragraphs[paragraph.get(W14 + 'paraId')] = new
                     paragraph.set(W14 + 'paraId', new)
             self.merged.comments.append(comment)
-            self.merged.donor = self.merged.donor or self.payload
+            self.merged.donor = self.merged.donor or self.package
         return self.numbers[old]
 
     def finish(self):
@@ -359,42 +359,37 @@ class _FileComments:
 def _write_comments(files, base, comments):
     """Części komentarzy wyniku: nowe treści w częściach pierwszego pliku albo nowe części (z relacją
     i stylami komentarzy od dawcy)."""
-    with ZipFile(BytesIO(base)) as archive:
-        paths = _part_paths(archive.read(DOCUMENT_RELS) if DOCUMENT_RELS in archive.namelist() else None)
     for reltype, kind, name, nsmap, entries in (
-            (COMMENTS, 'comments', w('comments'), {'w': W, 'w14': W14[1:-1], 'mc': MC[1:-1]}, comments.comments),
-            (COMMENTS_EXTENDED, 'commentsExtended', W15 + 'commentsEx', {'w15': W15[1:-1], 'mc': MC[1:-1]},
+            (COMMENTS, 'comments', w('comments'), {'w': W, 'w14': W14[1:-1], 'mc': MC}, comments.comments),
+            (COMMENTS_EXTENDED, 'commentsExtended', W15 + 'commentsEx', {'w15': W15[1:-1], 'mc': MC},
              comments.extended)):
-        path = paths.get(reltype)
+        path = base.paths.get(reltype)
         if not entries and (path is None or path not in files):
             continue
         if path is None or path not in files:
             path = f'word/{kind}.xml'
             _relate(files, path, WORD_PART.format(kind), reltype)
         root = etree.Element(name, nsmap=nsmap)
-        root.set(MC + 'Ignorable', 'w14' if kind == 'comments' else 'w15')
+        root.set(mc('Ignorable'), 'w14' if kind == 'comments' else 'w15')
         root.extend(entries)
-        files[path] = _xml(root)
+        files[path] = serialize_part(root)
     if comments.comments:
-        _add_styles(files, _donor_styles(comments.donor), {'CommentReference'} | {
+        _add_styles(files, comments.donor.read('word/styles.xml'), {'CommentReference'} | {
             node.get(w('val')) for comment in comments.comments for node in comment.iter(w('pStyle'), w('rStyle'))})
 
 
-def _survey(parts):
+def _survey(packages):
     """Liczba komentarzy wszystkich plików (pierwszy wolny w:id po nich) i w14:paraId akapitów treści i przypisów."""
     count, taken = 0, set()
-    for payload in parts:
-        with ZipFile(BytesIO(payload)) as archive:
-            paths = _part_paths(archive.read(DOCUMENT_RELS) if DOCUMENT_RELS in archive.namelist() else None)
-            for reltype, path in paths.items():
-                if path not in archive.namelist():
-                    continue
-                if reltype == COMMENTS:
-                    count += len(etree.fromstring(archive.read(path), PARSER).findall(w('comment')))
-                elif reltype.endswith(('/footnotes', '/endnotes')):
-                    taken.update(etree.fromstring(archive.read(path), PARSER).xpath('//@w14:paraId', namespaces={
-                        'w14': W14[1:-1]}))
-        taken.update(_document(payload).xpath('//@w14:paraId', namespaces={'w14': W14[1:-1]}))
+    for package in packages:
+        for reltype, path in package.paths.items():
+            if path not in package.names:
+                continue
+            if reltype == COMMENTS:
+                count += len(package.tree(path).findall(w('comment')))
+            elif reltype.endswith(('/footnotes', '/endnotes')):
+                taken.update(package.tree(path).xpath('//@w14:paraId', namespaces={'w14': W14[1:-1]}))
+        taken.update(package.document().xpath('//@w14:paraId', namespaces={'w14': W14[1:-1]}))
     return count, taken
 
 
@@ -402,21 +397,23 @@ def merge_documents(parts):
     """Jeden DOCX (bajty) z listy przebudowanych DOCX (bajty), w podanej kolejności."""
     if not parts:
         raise MergeError('Brak dokumentów do scalenia.')
-    root = _document(parts[0])
+    packages = [_Package(payload) for payload in parts]
+    base = packages[0]
+    root = base.document()
     body, merged, section = _content(root)
-    count, taken = _survey(parts)
+    count, taken = _survey(packages)
     ids, notes, comments = _Ids(count), _Notes(), _Comments(taken)
-    for index, payload in enumerate(parts):
+    for index, package in enumerate(packages):
         if index:
-            _, elements, _ = _content(_document(payload))
+            _, elements, _ = _content(package.document())
             elements = [deepcopy(element) for element in elements]
         else:
             elements = merged
         _check(elements)
-        own = comments.file(payload)
+        own = comments.file(package)
         ids.file(own)
         ids.renumber(elements)
-        notes.collect(payload, elements, ids)
+        notes.collect(package, elements, ids)
         own.finish()
         if index:
             merged.extend(_start_on_new_page(elements))
@@ -425,14 +422,13 @@ def merge_documents(parts):
     body.extend(merged)
     if section is not None:
         body.append(section)
-    with ZipFile(BytesIO(parts[0])) as source:
-        files = {item.filename: source.read(item.filename) for item in source.infolist()}
-        order = [item.filename for item in source.infolist()]
-    files[DOCUMENT] = _xml(root)
-    notes.write(files, parts[0])
-    _write_comments(files, parts[0], comments)
+    files = {item.filename: base.archive.read(item.filename) for item in base.archive.infolist()}
+    files[DOCUMENT] = serialize_part(root)
+    notes.write(files, base)
+    _write_comments(files, base, comments)
     output = BytesIO()
     with ZipFile(output, 'w', ZIP_DEFLATED) as target:
-        for name in order + [name for name in files if name not in order]:
-            target.writestr(name, files[name], compress_type=ZIP_DEFLATED)
+        # Nowe części trafiają na koniec, po częściach pierwszego pliku w ich kolejności.
+        for name, data in files.items():
+            target.writestr(name, data, compress_type=ZIP_DEFLATED)
     return output.getvalue()

@@ -50,9 +50,8 @@ class MyVacationsPageTests(VacationPageFixtures):
         self.assertRedirects(response, self.url, fetch_redirect_response=False)
         self.assertEqual(self.message(response), 'Zgłoszono urlop.')
         vacation = Vacation.objects.get()
-        self.assertEqual(vacation.person, self.member.person_profile)
-        self.member.person_profile.refresh_from_db()
-        self.assertEqual(self.member.person_profile.leave_start_date, self.today + timedelta(days=2))
+        self.assertEqual((vacation.person, vacation.start_date), (self.member.person_profile,
+                                                                  self.today + timedelta(days=2)))
 
     def test_invalid_or_overlapping_vacation_is_returned_with_errors(self):
         self.client.force_login(self.member)
@@ -215,7 +214,9 @@ class VacationAdminTests(VacationPageFixtures):
         self.admin = create_superuser('urlop-superuser')
         self.client.force_login(self.admin)
 
-    def test_admin_adds_vacation_for_active_member_and_syncs_profile(self):
+    def test_admin_adds_vacation_for_active_member_and_person_page_shows_it(self):
+        """Urlop dodany w panelu widać na ekranie osoby (pola tylko do odczytu wyliczane z urlopów)."""
+        from django.utils import formats
         url = reverse('admin:people_vacation_add')
         former = Person.objects.create(first_name='Była', last_name='Osoba', is_active=False)
         data = {'start_date': self.day(0), 'until_revoked': 'on', '_save': 'Zapisz'}
@@ -224,9 +225,11 @@ class VacationAdminTests(VacationPageFixtures):
         self.assertIn('nie jest już w zespole', str(page.context['adminform'].form.errors['person']))
         response = self.client.post(url, {**data, 'person': self.member.person_profile.pk})
         self.assertEqual(response.status_code, 302)
-        self.member.person_profile.refresh_from_db()
-        self.assertEqual(self.member.person_profile.leave_start_date, self.today)
-        self.assertTrue(self.member.person_profile.leave_until_revoked)
+        page = self.client.get(reverse('admin:people_person_change', args=[self.member.person_profile.pk]))
+        leave = html.fromstring(page.content.decode()).xpath('//fieldset[.//h2[text()="Urlop"]]')[0]
+        values = [' '.join(node.text_content().split()) for node in leave.xpath('.//div[@class="readonly"]')]
+        self.assertEqual(values[:2], [formats.localize(self.today), '-'])
+        self.assertEqual(leave.xpath('.//div[@class="readonly"]/img/@alt'), ['True'])
 
     def test_only_planned_vacation_can_be_deleted_also_for_former_member(self):
         started = self.vacation(self.member, 0)
@@ -238,5 +241,3 @@ class VacationAdminTests(VacationPageFixtures):
             self.assertEqual(response.status_code, status)
         self.assertFalse(Vacation.objects.filter(pk=planned.pk).exists())
         self.assertTrue(Vacation.objects.filter(pk=started.pk).exists())
-        self.colleague.person_profile.refresh_from_db()
-        self.assertIsNone(self.colleague.person_profile.leave_start_date)

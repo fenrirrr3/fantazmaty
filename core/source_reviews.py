@@ -30,7 +30,7 @@ def validate_source_review_link(text, review, *, coauthors=None, confirm_mismatc
     if not review or review.status in (Review.Status.REJECTED, Review.Status.WITHDRAWN) or (
             review.status != Review.Status.ACCEPTED and not review.old_reviews):
         raise ValidationError('Wybierz przyjęte zgłoszenie. Odrzuconych i wycofanych nie można powiązać.')
-    from texts.services import normalize_author_name
+    from core.services.reviews import review_names_author
     text_authors = list(text.authors.all())
     text_author_ids = {author.pk for author in text_authors}
     review_author_ids = {a.pk for a in coauthors} if coauthors is not None else set(review.coauthors.values_list('pk', flat=True))
@@ -40,9 +40,8 @@ def validate_source_review_link(text, review, *, coauthors=None, confirm_mismatc
     else:
         # An unlinked submission may still identify an existing author. Profile
         # IDs remain authoritative whenever the submission already has a link.
-        expected_name = normalize_author_name(f'{review.author_first_name} {review.author_last_name}')
         possible_primary = [author for author in text_authors
-            if normalize_author_name(str(author)) == expected_name
+            if review_names_author(review, author)
             and (not review.email or (author.email or '').strip().casefold() == review.email.strip().casefold())]
         authors_mismatch = not any(review_author_ids | {author.pk} == text_author_ids
                                   for author in possible_primary)
@@ -68,12 +67,10 @@ def link_source_review(*, user, text_id, review_id, confirm_mismatch=False):
     if existing and existing != chosen.pk:
         previous = locked[existing]
         previous.copied_text = None
-        previous.publication_detached = True
-        previous.save(update_fields=['copied_text', 'publication_detached'])
+        previous.save(update_fields=['copied_text'])  # Review.save oznacza odłączenie (publication_detached)
     if chosen.copied_text_id != text.pk:
         chosen.copied_text = text
-        chosen.publication_detached = False
-        chosen.save(update_fields=['copied_text', 'publication_detached'])
+        chosen.save(update_fields=['copied_text'])
         from core.edit_versions import bump
         bump('texts.text',text.pk,text._state.db)
     return chosen
@@ -87,8 +84,7 @@ def unlink_source_review(*, user, text_id, review_id):
     if not review or review.pk != review_id:
         raise ValidationError('Powiązanie już się zmieniło. Odśwież formularz.')
     review.copied_text = None
-    review.publication_detached = True
-    review.save(update_fields=['copied_text', 'publication_detached'])
+    review.save(update_fields=['copied_text'])  # Review.save oznacza odłączenie (publication_detached)
     from core.edit_versions import bump
     bump('texts.text', text.pk, text._state.db)
     return review

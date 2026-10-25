@@ -81,6 +81,25 @@ def _render(request, context, status=200):
                   status=status)
 
 
+def _failed(request, context, batch, error, test_form=None):
+    """Strona z błędem wysyłki: lista kontrolna partii albo – bez partii – formularz od nowa."""
+    if batch is None:
+        return _render(request, {**context, 'form': SplitMailingForm(), 'error': str(error)}, status=400)
+    return _render(request, {**context, **_checklist(request, batch, test_form), 'error': str(error)}, status=400)
+
+
+def _mailbox(context):
+    """Skrzynka wysyłkowa albo MailingError z powodem jej braku."""
+    if context['mailbox'] is None:
+        raise mailing.MailingError(context['mailbox_error'])
+    return context['mailbox']
+
+
+def _test_form(request, test_form=None):
+    """Formularz maila testowego z adresem zapamiętanym w sesji."""
+    return test_form or TestMailForm(initial={'test_address': request.session.get(TEST_ADDRESS, '')})
+
+
 def _record_activity(request, action, target):
     """Wpis w dzienniku aktywności: antologia i liczby (test – adres właściciela) – bez treści wiadomości."""
     from core.activity_spool import enqueue_activity
@@ -138,13 +157,9 @@ def split_mailing(request, token):
     if action == 'send':
         try:
             batch = mailing.checked_batch(folder, request.user, request.POST.get('batch'))
-            if mailbox is None:
-                raise mailing.MailingError(mailbox_error)
-            report = mailing.send(folder, batch, set(request.POST.getlist('rows')), mailbox)
+            report = mailing.send(folder, batch, set(request.POST.getlist('rows')), _mailbox(context))
         except mailing.MailingError as error:
-            if batch is None:
-                return _render(request, {**context, 'form': SplitMailingForm(), 'error': str(error)}, status=400)
-            return _render(request, {**context, **_checklist(request, batch), 'error': str(error)}, status=400)
+            return _failed(request, context, batch, error)
         _record_send(request, LABELS['split_mailing'], report)
         if report['sent']:
             # Raport pokazuje strona partii (PRG): odświeżenie nie wysyła ponownie.
@@ -156,12 +171,9 @@ def split_mailing(request, token):
             batch = mailing.checked_batch(folder, request.user, request.POST.get('batch'))
             if not test_form.is_valid():
                 return _render(request, {**context, **_checklist(request, batch, test_form)}, status=400)
-            _send_test(request, folder, batch, mailbox, mailbox_error, test_form)
+            _send_test(request, folder, batch, context, test_form)
         except mailing.MailingError as error:
-            if batch is None:
-                return _render(request, {**context, 'form': SplitMailingForm(), 'error': str(error)}, status=400)
-            return _render(request, {**context, **_checklist(request, batch, test_form), 'error': str(error)},
-                           status=400)
+            return _failed(request, context, batch, error, test_form)
         return redirect(_url(token))
     if action not in (None, 'change'):
         return _render(request, {**context, 'error': 'Nieprawidłowa akcja.'}, status=400)
@@ -172,15 +184,14 @@ def split_mailing(request, token):
 
 def _record_send(request, action, report):
     """Wpis w dzienniku dla jednej próby wysyłki (pierwszej albo ponowienia) – liczby tej próby."""
-    last = report.get('last', report)
+    last = report['last']
     _record_activity(request, action, f'{report["anthology_title"]}: wiadomości {last["mails"]}, '
                                       f'pliki {last["sent"]} z {last["sent"] + last["failed"]}')
 
 
-def _send_test(request, folder, batch, mailbox, mailbox_error, test_form):
+def _send_test(request, folder, batch, context, test_form):
     """Mail testowy na adres z formularza; MailingError przy braku skrzynki lub błędzie wysyłki."""
-    if mailbox is None:
-        raise mailing.MailingError(mailbox_error)
+    mailbox = _mailbox(context)
     address = test_form.cleaned_data['test_address']
     request.session[TEST_ADDRESS] = address
     file = mailing.send_test(folder, batch, address, mailbox)
@@ -196,8 +207,7 @@ def _report_page(request, folder, report, batch, context, action):
     def page(error='', test_form=None, status=200):
         extra = {}
         if not complete and batch is not None:
-            extra = {'batch_token': mailing.batch_token(request.user, batch),
-                     'test_form': test_form or TestMailForm(initial={'test_address': request.session.get(TEST_ADDRESS, '')})}
+            extra = {'batch_token': mailing.batch_token(request.user, batch), 'test_form': _test_form(request, test_form)}
         return _render(request, {**context, **extra, 'report': report, 'complete': complete, 'error': error},
                        status=status)
 
@@ -211,12 +221,10 @@ def _report_page(request, folder, report, batch, context, action):
         if action == 'test':
             if not test_form.is_valid():
                 return page(test_form=test_form, status=400)
-            _send_test(request, folder, batch, context['mailbox'], context['mailbox_error'], test_form)
+            _send_test(request, folder, batch, context, test_form)
             return redirect(_url(token))
-        if context['mailbox'] is None:
-            raise mailing.MailingError(context['mailbox_error'])
         report = mailing.send(folder, batch, {str(index) for index in mailing.failed_indices(report)},
-                              context['mailbox'])
+                              _mailbox(context))
     except mailing.MailingError as error:
         return page(str(error), test_form, status=400)
     _record_send(request, RETRY_ACTION, report)
@@ -234,5 +242,4 @@ def _checklist(request, batch, test_form=None):
     rows = [{**row, **dict(zip(('mail', 'mail_subject'), planned.get(row['index'], (None, ''))))}
             for row in batch['rows']]
     return {'batch': batch, 'rows': rows, 'batch_token': mailing.batch_token(request.user, batch),
-            'ready_count': len(planned), 'mail_count': len(mails),
-            'test_form': test_form or TestMailForm(initial={'test_address': request.session.get(TEST_ADDRESS, '')})}
+            'ready_count': len(planned), 'mail_count': len(mails), 'test_form': _test_form(request, test_form)}

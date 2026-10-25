@@ -1,4 +1,6 @@
 """Explicit status correction, preserving recorded work and its performers."""
+from contextlib import contextmanager
+
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from texts.models import Text
@@ -11,17 +13,47 @@ from workflow.anthology_policy import require_working_anthology
 from core.edit_versions import version_of
 
 
-def set_admin_status(text_id, kind, actor, expected_version):
+STALE_FORM = 'Dane zmieniły się. Odśwież formularz.'
+
+
+@contextmanager
+def admin_correction(actor, version, *, text_id=None, of=None, history=True, working_anthology=True):
+    """Wspólny początek korekty w adminie; zwraca zablokowany tekst.
+
+    Kolejno: tylko aktywny superuser, wpis do dziennika jako korekta historii (history), transakcja,
+    blokada tekstu (podanego wprost albo przez `of` = (model etapu lub przypisania, pk)), aktualna
+    wersja formularza i antologia w przygotowaniu (working_anthology).
+    """
     if not actor.is_active or not actor.is_superuser:
-        raise PermissionDenied('Tylko superuser może ręcznie zmienić status.')
-    order = [k for k, _ in active_stage_choices()]
-    if kind not in order:
-        raise ValidationError('Nieprawidłowy etap.')
+        raise PermissionDenied
+    if history:
+        from core.workflow_events import history_correction
+        history_correction()
     with transaction.atomic():
+        if of is not None:
+            model, pk = of
+            text_id = model.objects.values_list('text_id', flat=True).get(pk=pk)
         text = Text.objects.select_for_update().get(pk=text_id)
-        if version_of(text) != expected_version:
-            raise ValidationError('Tekst zmienił się. Odśwież stronę przed zmianą statusu.')
-        require_working_anthology(text)
+        if version_of(text) != version:
+            raise ValidationError(STALE_FORM)
+        if working_anthology:
+            require_working_anthology(text)
+        yield text
+
+
+def save_undated_assignment(assignment):
+    """Zapisuje nowy przydział z korekty w adminie bez daty przypisania – korekta nie wymyśla dzisiejszej daty."""
+    assignment.save()
+    A.objects.filter(pk=assignment.pk).update(assigned_at=None)
+    assignment.assigned_at = None
+
+
+def set_admin_status(text_id, kind, actor, expected_version):
+    # Zmiana statusu jest zdarzeniem workflow (z powiadomieniami), nie korektą historii.
+    with admin_correction(actor, expected_version, text_id=text_id, history=False) as text:
+        order = [k for k, _ in active_stage_choices()]
+        if kind not in order:
+            raise ValidationError('Nieprawidłowy etap.')
         require_stage_allowed(text, kind)
         ensure_verification_not_completed(text, kind)
         if text.repetitions.filter(completed_at__isnull=True, canceled_at__isnull=True).exists():
@@ -51,8 +83,7 @@ def set_admin_status(text_id, kind, actor, expected_version):
             assignment = A(text=text, workflow_cycle=text.current_workflow_cycle, role=target_role,
                            execution_number=next_assignment_execution(text, target_role))
             assignment.full_clean()
-            assignment.save()
-            A.objects.filter(pk=assignment.pk).update(assigned_at=None)
+            save_undated_assignment(assignment)
         # Etap z rolą dziedziczy numer przydziału; bez roli (np. „Gotowe”) liczy własne wykonania.
         execution = (stage_execution_for(assignment) if assignment is not None
                      else next_stage_execution(text, kind))

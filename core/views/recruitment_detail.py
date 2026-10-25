@@ -7,6 +7,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
 from django.utils import timezone
+from core.account_identity import person_name
 from core.models import Recruitment, RecruitmentRoleDecision
 from core.permissions import coordinator_required
 from core.recruitment_message import form_fields
@@ -27,7 +28,7 @@ class RecruitmentDecisionForm(forms.ModelForm):
 @coordinator_required
 def recruitment_detail(request, pk):
     record = get_object_or_404(Recruitment, pk=pk)
-    roles = record_roles(record.mail_roles, record.department)
+    roles = record_roles(record.mail_roles)
     selected_role = request.POST.get('role', '') if request.method == 'POST' else ''
     decisions = {row.role: row for row in record.role_decisions.all() if row.role in roles}
     if request.method == 'POST' and selected_role not in decisions:
@@ -47,14 +48,13 @@ def recruitment_detail(request, pk):
                 with transaction.atomic():
                     parent = get_object_or_404(Recruitment.objects.select_for_update(), pk=pk)
                     current = get_object_or_404(RecruitmentRoleDecision.objects.select_for_update(), recruitment_id=pk, role=role)
-                    if role not in record_roles(parent.mail_roles, parent.department) or version != current.updated_at.isoformat():
+                    if role not in record_roles(parent.mail_roles) or version != current.updated_at.isoformat():
                         form.add_error(None, 'Decyzja dla tej roli zmieniła się w międzyczasie. Skopiuj wpisane dane i odśwież formularz.')
                         status = 409
                     else:
                         if current.decision_reason != form.cleaned_data['decision_reason']:
                             current.reason_author = request.user
-                            profile = getattr(request.user, 'person_profile', None)
-                            current.reason_author_name = (str(profile) if profile else (request.user.get_full_name() or request.user.username))[:255]
+                            current.reason_author_name = person_name(request.user)[:255]
                             current.reason_updated_at = timezone.now()
                         for field in form.Meta.fields:
                             setattr(current, field, form.cleaned_data[field])

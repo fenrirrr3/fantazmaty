@@ -162,7 +162,7 @@ class ManualStatusGapTests(StatusAssignmentFixtures):
             ('etap tylko z importu', lambda: self.status('editing_review'), ValidationError, 'Nieprawidłowy etap'),
             ('nieaktualny formularz', lambda: set_admin_status(self.text.pk, 'editing', self.admin,
                                                                version_of(self.text) - 1),
-             ValidationError, 'Tekst zmienił się'),
+             ValidationError, 'Dane zmieniły się. Odśwież formularz.'),
         )
         for label, operation, error, message in cases:
             with self.subTest(label), self.assertRaisesMessage(error, message):

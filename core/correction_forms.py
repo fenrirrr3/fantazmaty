@@ -1,3 +1,4 @@
+from core.filtering import positive_id
 from core.translation_scope import frontend_scope
 import uuid
 from django import forms
@@ -28,8 +29,8 @@ class CorrectionForm(forms.ModelForm):
             Q(status__in=("ready",)) | current).order_by("title", "pk")
         self.fields["text"].widget.attrs["data-texts-url"] = reverse("core:correction_texts")
         anthology = self.data.get(self.add_prefix("anthology")) if self.is_bound else self.initial.get("anthology", self.instance.anthology_id)
-        if str(anthology or "").isdecimal() and len(str(anthology)) < 19:
-            self.fields["text"].queryset = frontend_scope(Text.objects).filter(anthology_id=anthology).order_by("title", "pk")
+        if anthology_id := positive_id(str(anthology or "")):
+            self.fields["text"].queryset = frontend_scope(Text.objects).filter(anthology_id=anthology_id).order_by("title", "pk")
 
     def clean(self):
         data = super().clean()

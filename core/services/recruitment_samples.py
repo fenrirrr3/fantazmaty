@@ -52,7 +52,8 @@ def plain_body(message):
     return value.replace('\x00', '').strip()
 
 
-def parse_sample(raw):
+def read_sample(raw):
+    """(wiadomość MIME, pola zgłoszenia) – jedno parsowanie wiadomości."""
     try:
         message = BytesParser(policy=policy.default).parsebytes(raw)
         sender = str(message.get('Reply-To') or message.get('From') or '')[:2000]
@@ -74,7 +75,7 @@ def parse_sample(raw):
             received = None
         body = plain_body(message)
         fields = form_fields(body)
-        return dict(mail_subject=subject, mail_sender=sender, email=fields.get('email') or address,
+        return message, dict(mail_subject=subject, mail_sender=sender, email=fields.get('email') or address,
             applicant_name=fields.get('name', ''), mail_body=body, mail_received_at=received,
             mail_roles=fields.get('roles') or roles_in_subject(subject),
             mail_fingerprint=hashlib.sha256(raw).hexdigest())
@@ -82,21 +83,37 @@ def parse_sample(raw):
         raise MailboxError('Nie udało się odczytać struktury wiadomości. Niczego nie zapisano.') from error
 
 
-def store_samples(config, validity, messages, *, downloaded=False, downloaded_uids=None):
-    """Caller holds one transaction: all selected records succeed or all roll back."""
+def parse_sample(raw):
+    """Pola zgłoszenia z surowej wiadomości."""
+    return read_sample(raw)[1]
+
+
+def read_samples(rows):
+    """Wiadomości z serwera ({'uid', 'raw'}) parsowane raz: dochodzi 'message' (MIME) i 'data' (pola zgłoszenia)."""
+    samples = []
+    for row in rows:
+        message, data = read_sample(row['raw'])
+        samples.append({**row, 'message': message, 'data': data})
+    return samples
+
+
+def store_samples(config, validity, samples, *, downloaded_uids=()):
+    """Caller holds one transaction: all selected records succeed or all roll back.
+
+    `samples` – z read_samples; wiadomości z `downloaded_uids` dostają znacznik pobrania."""
     key = mailbox_key(config)
     current = MailboxConnection.objects.select_for_update().filter(pk=config.pk).first()
     if current is None or not current.is_active or current.purpose != MailboxConnection.Purpose.RECRUITMENT or mailbox_key(current) != key:
         raise MailboxError('Zmieniono ustawienia skrzynki. Pobierz nagłówki ponownie.')
     records = []
     with batched_bumps():
-        for row in messages:
-            records.append(_store_sample(row, key, validity, downloaded, downloaded_uids))
+        for row in samples:
+            records.append(_store_sample(row, key, validity, downloaded_uids))
     return records
 
 
-def _store_sample(row, key, validity, downloaded, downloaded_uids):
-    data = parse_sample(row['raw'])
+def _store_sample(row, key, validity, downloaded_uids):
+    data = dict(row['data'])
     source = RecruitmentMailSource.objects.select_for_update().filter(mailbox_key=key, uid_validity=validity, uid=row['uid']).first()
     if source:
         record = source.recruitment
@@ -108,7 +125,7 @@ def _store_sample(row, key, validity, downloaded, downloaded_uids):
             data['submitted_at'] = timezone.localdate(data['mail_received_at'])
         record, _ = Recruitment.objects.get_or_create(mail_fingerprint=fingerprint, defaults=data)
         source = RecruitmentMailSource.objects.create(recruitment=record, mailbox_key=key, uid_validity=validity, uid=row['uid'])
-    if downloaded or (downloaded_uids is not None and row["uid"] in downloaded_uids):
+    if row['uid'] in downloaded_uids:
         source.downloaded_at = timezone.now()
         source.save(update_fields=['downloaded_at'])
         MailboxDownload.objects.update_or_create(mailbox_key=key, uid_validity=validity, uid=row['uid'], defaults={})
@@ -122,18 +139,18 @@ def safe_archive_name(value, fallback):
     return value
 
 
-def attachment_archive(messages, *, downloaded_uids=None):
+def attachment_archive(samples, *, downloaded_uids=None):
+    """ZIP z załącznikami wiadomości z read_samples (folder na osobę); None, gdy żadna nie ma załączników."""
     stream = BytesIO()
     files_written = 0
     try:
         with ZipFile(stream, 'w', ZIP_DEFLATED) as archive:
             used_folders = set()
-            for row in messages:
-                msg = BytesParser(policy=policy.default).parsebytes(row['raw'])
-                files = list(attachments(msg))
+            for row in samples:
+                files = list(attachments(row['message']))
                 if not files:
                     continue
-                parsed = parse_sample(row['raw'])
+                parsed = row['data']
                 candidate = name_in_subject(parsed['mail_subject']) or parsed['applicant_name'] or parseaddr(parsed['mail_sender'])[0]
                 folder = safe_archive_name(candidate, f'wiadomosc-{row["uid"]}')
                 base = folder

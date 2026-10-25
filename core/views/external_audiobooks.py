@@ -7,6 +7,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 
 from core.audiobook_validators import validate_mega_url
+from core.filtering import positive_id
 from core.models import Audiobook, PublicAudiobookSettings
 from core.pagination import paginate_items
 from core.public_guidelines import PublicGuidelines, external_page_headers
@@ -46,7 +47,7 @@ def external_audiobooks(request):
     choices = rows.order_by('anthology__title').values('anthology_id', 'anthology__title').distinct()
     anthology = request.GET.get('anthology', '')
     if anthology:
-        rows = rows.filter(anthology_id=int(anthology)) if anthology.isascii() and anthology.isdecimal() and len(anthology) <= 18 else rows.none()
+        rows = rows.filter(anthology_id=anthology_id) if (anthology_id := positive_id(anthology)) else rows.none()
     query = request.GET.get('q', '').strip()[:200]
     if query:
         rows = rows.filter(Q(title__plcontains=query) | Q(tags__plcontains=query)

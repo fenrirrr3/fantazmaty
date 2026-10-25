@@ -164,11 +164,11 @@ class RecruitmentDashboardTests(TestCase):
                 # Ogólna rola „Koordynator” (dawna) nadal daje dostęp do kolejki.
                 person.roles.add(Role.objects.get_or_create(name='Koordynator')[0])
         cls.multi = Recruitment.objects.create(mail_subject='Kilka ról', mail_roles=['editors', 'reviewers', 'editors'])
-        Recruitment.objects.create(first_name='Ręcznie', department='editors')
-        Recruitment.objects.create(first_name='Dźwięk', department='sound')
+        Recruitment.objects.create(first_name='Ręcznie', mail_roles=['editors'])
+        Recruitment.objects.create(first_name='Dźwięk', mail_roles=['sound'])
         Recruitment.objects.create(mail_subject='Bez roli')
-        Recruitment.objects.create(mail_roles=['editors'], status='accepted')
-        Recruitment.objects.create(mail_roles=['editors'], status='rejected')
+        for decision in ('accepted', 'rejected'):
+            set_all_decisions(Recruitment.objects.create(mail_roles=['editors']), decision)
 
     def test_counts_and_links_match_pending_records_for_both_privileged_roles(self):
         for user in (self.admin, self.coordinator):

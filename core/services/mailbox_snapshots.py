@@ -6,18 +6,16 @@ from django.utils.dateparse import parse_datetime
 
 from core.mailbox_date import DEFAULT_SENT_SINCE
 from core.models import MailboxConnection, MailboxHeaderSnapshot, RecruitmentMailSource
-from core.services.mailbox import MailboxError, read_headers
-from core.services.mailbox_import import default_mailbox, mailbox_key, receipts
+from core.services.mailbox import MailboxError, active_mailbox, read_headers
+from core.services.mailbox_import import default_mailbox, downloaded_uids, mailbox_key, receipts
 
 logger = logging.getLogger(__name__)
 UNEXPECTED_ERROR = 'Nieoczekiwany błąd podczas pobierania nagłówków. Szczegóły są w logu zadania.'
 
 
 def recruitment_connection():
-    boxes = list(MailboxConnection.objects.filter(purpose=MailboxConnection.Purpose.RECRUITMENT, is_active=True)[:2])
-    if len(boxes) != 1:
-        raise MailboxError('Ustaw w panelu administratora jedną aktywną skrzynkę z przeznaczeniem „Rekrutacja do zespołu”.')
-    return boxes[0]
+    return active_mailbox(MailboxConnection.Purpose.RECRUITMENT,
+                          'Ustaw w panelu administratora jedną aktywną skrzynkę z przeznaczeniem „Rekrutacja do zespołu”.')
 
 
 def imported_uids(config, validity):
@@ -27,8 +25,7 @@ def imported_uids(config, validity):
 
 def _submission_headers(config, sent_since):
     """Jak domyślny przycisk na ekranie zgłoszeń: bez naboru, bez już pobranych."""
-    return read_headers(config, excluded=lambda validity: receipts(config, validity).values_list('uid', flat=True),
-                        sent_since=sent_since)
+    return read_headers(config, excluded=downloaded_uids(config), sent_since=sent_since)
 
 
 def _recruitment_headers(config, sent_since):

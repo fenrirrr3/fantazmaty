@@ -103,16 +103,12 @@ class Command(BaseCommand):
             keys = [key for _, _, _, key in records]
             existing = set(UserActivity.objects.filter(source_key__in=keys).values_list('source_key', flat=True))
             fresh = [(data, stamp, key) for _, data, stamp, key in records if key not in existing]
+            # Czas wpisu to chwila żądania zapisana w kolejce, nie chwila przeniesienia.
             UserActivity.objects.bulk_create([
-                UserActivity(source_key=key, **{**data, 'user_id': data['user_id'] if data['user_id'] in known_users else None})
+                UserActivity(source_key=key, created_at=stamp,
+                             **{**data, 'user_id': data['user_id'] if data['user_id'] in known_users else None})
                 for data, stamp, key in fresh
             ])
-            # created_at uses auto_now_add, so the original request time is restored afterwards.
-            stamps = {key: stamp for _, stamp, key in fresh}
-            saved = list(UserActivity.objects.filter(source_key__in=stamps).only('pk', 'source_key', 'created_at'))
-            for entry in saved:
-                entry.created_at = stamps[entry.source_key]
-            UserActivity.objects.bulk_update(saved, ['created_at'])
         for path, _, _, _ in records:
             path.unlink(missing_ok=True)
         self.count += len(records)

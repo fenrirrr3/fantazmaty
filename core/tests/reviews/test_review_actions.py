@@ -173,12 +173,15 @@ class ReviewPageActionTests(ReviewFixtures):
                                        phone_number='111', has_contract=True)
         self.client.force_login(self.admin)
         page = self.client.get(self.detail_url())
-        self.assertEqual(page.context['matching_author'], {'pk': author.pk, 'has_contract': True})
+        self.assertTrue(page.context['matching_author'])
         self.assertTrue(page.context['author_has_contract'])
         self.assertEqual(page.context['copy_profile_phone'], '111')
         self.assertTrue(page.context['copy_phone_differs'])
+        with self.assertNumQueries(12):
+            # Dopasowany profil autora pobierany raz (bez drugiego zapytania o ten sam rekord).
+            self.client.get(self.detail_url())
         Author.objects.filter(pk=author.pk).update(last_name='Inny')
-        self.assertIsNone(self.client.get(self.detail_url()).context['matching_author'])
+        self.assertFalse(self.client.get(self.detail_url()).context['matching_author'])
 
 
 class MyReviewsAccessTests(ReviewFixtures):

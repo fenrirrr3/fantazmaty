@@ -10,6 +10,7 @@ from django.utils import timezone
 from core.edit_versions import version_of
 from core.selectors.texts import _annotated_texts, text_detail_context
 from fantazmaty.testing import create_member, create_superuser
+from fantazmaty.testing.workflow import start_reserved_first_verification
 from texts.models import Anthology, Text
 from workflow.admin_add_stage import add_missing_stage
 from workflow.admin_stage_edit import edit_stage
@@ -18,7 +19,7 @@ from workflow.read_queries import dashboard_querysets
 from workflow.reservation_repair import restore_first_verification_reservation
 from workflow.services import (
     completed_stage_exists, send_to_first_verification, send_to_second_verification,
-    start_first_verification, complete_stage, resume_editing,
+    complete_stage, resume_editing,
 )
 
 from .support import EditingInProgressFixtures, add_roles, importing
@@ -64,9 +65,9 @@ class FirstVerificationReservationTests(EditingInProgressFixtures):
         with self.assertRaises(ValidationError):
             send_to_second_verification(self.text, self.member, self.today)
         with self.assertRaises(ValidationError):
-            start_first_verification(self.text, self.other, self.today)
+            start_reserved_first_verification(self.text, self.other, self.today)
         send_to_first_verification(self.text, self.member, self.today)
-        started = start_first_verification(self.text, self.other, self.today)
+        started = start_reserved_first_verification(self.text, self.other, self.today)
         self.assertEqual(started.pk, first.pk)
         complete_stage(started, self.other, self.today)
         resume_editing(self.text, self.member, self.today)
@@ -176,7 +177,7 @@ class FirstVerificationReservationTests(EditingInProgressFixtures):
         self.assertFalse(self.editing.is_completed)
         self.assertEqual(_annotated_texts().get(pk=self.text.pk).current_stage_type, 'editing')
         with self.assertRaises(ValidationError):
-            start_first_verification(self.text, self.other, self.today)
+            start_reserved_first_verification(self.text, self.other, self.today)
 
     def test_admin_add_form_reuses_pending_first_stage_and_assignment_for_new_person(self):
         first = self.reserve()

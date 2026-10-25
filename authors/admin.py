@@ -87,15 +87,6 @@ class AuthorAdminForm(NormalizedFormMixin, forms.ModelForm):
             "blacklist_notes",
         )
 
-    def clean_first_name(self):
-        return " ".join(self.cleaned_data["first_name"].split())
-
-    def clean_last_name(self):
-        return " ".join(self.cleaned_data["last_name"].split())
-
-    def clean_pseudonym(self):
-        return " ".join(self.cleaned_data["pseudonym"].split())
-
     def clean_email(self):
         email = self.cleaned_data["email"].strip()
 
@@ -400,9 +391,6 @@ class AuthorAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         ] + super().get_urls()
 
     def blacklist_view(self, request):
-        if not self.has_view_permission(request):
-            raise PermissionDenied
-
         changelist_url = reverse(
             f"{self.admin_site.name}:authors_author_changelist"
         )
@@ -428,9 +416,6 @@ class AuthorAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
         )
 
     def save_formset(self, request, form, formset, change):
-        if not self.has_change_permission(request, form.instance):
-            raise PermissionDenied
-
         instances = formset.save(commit=False)
 
         for deleted_instance in formset.deleted_objects:
@@ -461,15 +446,10 @@ class BlacklistedAuthorAdmin(AuthorAdmin):
         return notes_preview(obj.blacklist_notes) or "–"
 
     def add_view(self, request, form_url="", extra_context=None):
-        if not self.has_add_permission(request):
-            raise PermissionDenied
         return HttpResponseRedirect(reverse(f"{self.admin_site.name}:authors_blacklistentry_add"))
 
     def get_queryset(self, request):
         return super().get_queryset(request).filter(is_blacklisted=True)
-
-    def has_add_permission(self, request):
-        return self.has_superuser_access(request)
 
     def get_urls(self):
         # Nie rejestruj drugi raz adresu authors_author_blacklist.
@@ -527,9 +507,6 @@ class AuthorNoteAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     show_full_result_count = False
 
     def save_model(self, request, obj, form, change):
-        if not self.has_superuser_access(request):
-            raise PermissionDenied
-
         if obj._state.adding:
             obj.created_by = request.user
 

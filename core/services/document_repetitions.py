@@ -17,15 +17,16 @@ from docx.text.run import Run
 from docx.enum.text import WD_COLOR_INDEX
 from lxml import etree
 
-# The converter worker runs this module without the package context.
-try:
+if __package__:
     from .document_progress import report as report_progress
     from .document_errors import DocumentInputError
     from .document_stories import document_stories
-except ImportError:
+    from .document_xml import W
+else:
     from document_progress import report as report_progress
     from document_errors import DocumentInputError
     from document_stories import document_stories
+    from document_xml import W
 
 WINDOW_SIZE = 35
 MIN_WORD_LENGTH = 4
@@ -74,14 +75,6 @@ def _lemma_from_doc(doc, fallback: str) -> str:
 def _form(word: str) -> str:
     """Klucz słowa: małe litery w postaci NFC (np. „ę” zapisane jako „e” + ogonek)."""
     return unicodedata.normalize('NFC', word.lower())
-
-
-def _get_lemma_lower(word: str) -> str:
-    return _lemma_map([word])[_form(word)]
-
-
-def get_lemma(word: str) -> str:
-    return _get_lemma_lower(word.lower())
 
 
 def dark_rgb() -> RGBColor:
@@ -306,7 +299,7 @@ def _lemma_map(forms):
     unique = dict.fromkeys(_form(form) for form in forms)
     if not unique:
         return {}
-    # Klucz zawiera nazwę modelu. Cache jest współdzielony z get_lemma().
+    # Klucz zawiera nazwę modelu.
     with _LEMMA_LOCK:
         result, missing = {}, []
         for word in unique:
@@ -481,24 +474,24 @@ def _apply_layout_marks(layout, marks, styles=None):
         _apply_run_colors(run, tokens, styles)
 
 
-def _extra_checks(paragraphs, lemmas, ignored, tracked, options, layouts=None, apply_marks=True, sentence_spans=None):
+def _extra_checks(paragraphs, lemmas, ignored, tracked, options, layouts, sentence_spans):
+    """Zakresy dodatkowych oznaczeń każdego akapitu: [(początek, koniec, rodzaj z MARK_STYLES)].
+
+    layouts – układ akapitów (_document_layout), sentence_spans – granice zdań z analizy kontekstu.
+    """
     checks = {**CHECK_DEFAULTS, **options}
-    layouts = _document_layout(paragraphs) if layouts is None else layouts
     texts = [layout[0] for layout in layouts]
     marks = [[] for _ in paragraphs]
-    report = {key: 0 for key in MARK_STYLES}
     previous = None
     for p_index, text in enumerate(texts):
         lexemes = list(LEXICAL_RE.finditer(text))
         if checks['long_paragraphs'] and len(lexemes) > checks['paragraph_limit']:
             marks[p_index].append((0, len(text), 'long_paragraphs'))
-            report['long_paragraphs'] += 1
         for word in lexemes:
             form = _form(word[0])
             lemma = lemmas.get(form, form)
             if lemma in tracked and lemma not in ignored:
                 marks[p_index].append((word.start(), word.end(), 'tracked'))
-                report['tracked'] += 1
             if checks['duplicates'] and previous is not None:
                 old_p, old_word, old_lemma = previous
                 # Sąsiedztwo przez białe znaki, również przez granicę akapitu.
@@ -511,7 +504,6 @@ def _extra_checks(paragraphs, lemmas, ignored, tracked, options, layouts=None, a
                 if separator and separator.isspace() and lemma == old_lemma and lemma not in ignored:
                     marks[old_p].append((old_word.start(), old_word.end(), 'duplicates'))
                     marks[p_index].append((word.start(), word.end(), 'duplicates'))
-                    report['duplicates'] += 1
             previous = (p_index, word, lemma)
         # Pusty akapit lub nietekstowy blok przerywa kontrolę sąsiedztwa.
         if not lexemes:
@@ -519,22 +511,12 @@ def _extra_checks(paragraphs, lemmas, ignored, tracked, options, layouts=None, a
         if checks['empty_pairs']:
             for match in EMPTY_PAIRS_RE.finditer(text):
                 marks[p_index].append((match.start(), match.end(), 'empty_pairs'))
-                report['empty_pairs'] += 1
     if checks['long_sentences']:
-        if sentence_spans is None:
-            # Model rozpoznaje zdania w kontekście, zamiast dzielić przy każdej kropce.
-            sentence_spans = [spans for _, spans in _context_analysis(texts, sentences=True)]
         for index, (text, spans) in enumerate(zip(texts, sentence_spans)):
             for start, end in spans:
                 if len(LEXICAL_RE.findall(text[start:end])) > checks['sentence_limit']:
                     marks[index].append((start, end, 'long_sentences'))
-                    report['long_sentences'] += 1
-    if apply_marks:
-        for layout, ranges in zip(layouts, marks):
-            converted = [(a, b, None, MARK_STYLES[k][1], MARK_STYLES[k][0]) for a, b, k in ranges]
-            _apply_layout_marks(layout, converted)
-        return report
-    return report, marks
+    return marks
 
 
 def color_document(source, *, window_size=35, min_word_length=4,
@@ -565,9 +547,8 @@ def color_document(source, *, window_size=35, min_word_length=4,
     # analysis_unlimited: tylko zadania superusera (ustawiane przez serwer, nie z formularza).
     if not analysis_unlimited and (sum(lengths) > 500000 or any(n > 20000 for n in lengths)):
         raise DocumentInputError('analysis_limit')
-    namespaces = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
     if any(etree._Element.xpath(story.root, './/w:ins | .//w:del | .//w:moveFrom | .//w:moveTo',
-                                namespaces=namespaces) for story in stories):
+                                namespaces={'w': W}) for story in stories):
         raise DocumentInputError('tracked_changes')
     layouts = [_document_layout(story.paragraphs) for story in stories]
     story_words = []
@@ -611,10 +592,9 @@ def color_document(source, *, window_size=35, min_word_length=4,
         for token, (index, start, end) in zip(words, locations):
             if token.color is not None:
                 marks[index].append((start, end, token.color, None, 0))
-        _, extra_marks = _extra_checks(
-            story.paragraphs, lemmas, ignored, tracked, options, layouts=story_layouts, apply_marks=False,
-            sentence_spans=[spans for _, spans in context],
-        )
+        # Granice zdań z tej samej analizy kontekstu: model rozpoznaje zdania, zamiast dzielić przy każdej kropce.
+        extra_marks = _extra_checks(story.paragraphs, lemmas, ignored, tracked, options, story_layouts,
+                                    [spans for _, spans in context])
         for target, ranges in zip(marks, extra_marks):
             target.extend((a, b, None, MARK_STYLES[k][1], MARK_STYLES[k][0]) for a, b, k in ranges)
         # Od końca: akapit pola tekstowego leży wewnątrz runu akapitu, który

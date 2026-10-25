@@ -2,13 +2,14 @@
 from datetime import datetime, timedelta
 
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.db import transaction
 from django.test import SimpleTestCase, TestCase, tag
 from django.utils import timezone
 
 from core.edit_versions import version_of
 from core.selectors.texts import text_detail_context
 from core.services.texts import start_assigned_stage
-from fantazmaty.testing.workflow import WorkflowTestDataMixin
+from fantazmaty.testing.workflow import WorkflowTestDataMixin, start_reserved_first_verification
 from people.models import Person
 from texts.models import Text
 from workflow.admin_add_stage import add_missing_stage
@@ -26,7 +27,6 @@ from workflow.services import (
     send_text_to_author,
     send_to_first_verification,
     send_to_second_verification,
-    start_first_verification,
     user_can_complete_stage,
     validate_assignment_start_date,
 )
@@ -104,11 +104,7 @@ class EditingAndVerificationFlowTests(WorkflowTestDataMixin, TestCase):
         self.assertIsNone(verification.started_at)
 
         with self.assertRaises(ValidationError):
-            start_first_verification(
-                self.text,
-                self.verifier_1,
-                started_at=self.today,
-            )
+            start_reserved_first_verification(self.text, self.verifier_1, started_at=self.today)
 
     def test_first_verification_can_wait_for_assignment_after_handover(self):
         text = self.text
@@ -339,10 +335,7 @@ class EditingAndVerificationFlowTests(WorkflowTestDataMixin, TestCase):
             self.verifier_1,
         )
         send_to_first_verification(self.text, self.editor)
-        verification = start_first_verification(
-            self.text,
-            self.verifier_1,
-        )
+        verification = start_reserved_first_verification(self.text, self.verifier_1)
         complete_stage(verification, self.verifier_1, self.today)
 
         count_before = current_stage_queryset(self.text).count()
@@ -436,7 +429,7 @@ class WorkflowPermissionTests(WorkflowTestDataMixin, TestCase):
         send_to_first_verification(self.text, self.editor)
 
         with self.assertRaises(PermissionDenied):
-            start_first_verification(self.text, self.verifier_2)
+            start_reserved_first_verification(self.text, self.verifier_2)
 
     def test_styling_claim_and_stage_completion_rights(self):
         """Stylowanie przejmuje i zamyka tylko superuser; zamknąć można tylko trwający etap z rolą,
@@ -484,7 +477,7 @@ class WorkflowPermissionTests(WorkflowTestDataMixin, TestCase):
 
 
 class FirstVerificationStartTests(WorkflowTestDataMixin, TestCase):
-    """Pierwsza weryfikacja nie może ruszyć, póki trwa praca redakcyjna (oba wejścia: usługa i strona)."""
+    """Pierwsza weryfikacja nie może ruszyć, póki trwa praca redakcyjna."""
 
     def pending_first(self, editorial_type):
         self.initial_stage.is_current = False
@@ -495,32 +488,25 @@ class FirstVerificationStartTests(WorkflowTestDataMixin, TestCase):
         first = S.objects.create(text=self.text, stage_type='first_verification', assignment=verifier)
         return editorial, first
 
-    def assert_start_blocked(self, kind):
-        editorial, first = self.pending_first(kind)
-        for start in (
-            lambda: start_first_verification(self.text, self.verifier_1, self.today),
-            lambda: start_assigned_stage(user=self.verifier_1, stage_id=first.pk,
-                                         started_at=self.today),
-        ):
-            with self.assertRaises(ValidationError):
-                start()
-            first.refresh_from_db()
-            editorial.refresh_from_db()
-            self.assertIsNone(first.started_at)
-            self.assertFalse(editorial.is_completed)
-
-    def test_both_entry_points_block_pending_editing(self):
-        self.assert_start_blocked('editing')
-
-    def test_both_entry_points_block_pending_author_editing(self):
-        self.assert_start_blocked('author_editing')
+    def test_open_editing_or_author_stage_blocks_first_verification_start(self):
+        """W1 nie rozpocznie się, dopóki redakcja lub praca autora jest otwarta; nic się nie zmienia."""
+        for kind in ('editing', 'author_editing'):
+            with self.subTest(kind=kind), transaction.atomic():
+                editorial, first = self.pending_first(kind)
+                with self.assertRaisesMessage(ValidationError, 'Tekst nadal znajduje się u redaktora lub autora.'):
+                    start_assigned_stage(user=self.verifier_1, stage_id=first.pk, started_at=self.today)
+                first.refresh_from_db()
+                editorial.refresh_from_db()
+                self.assertIsNone(first.started_at)
+                self.assertFalse(editorial.is_completed)
+                transaction.set_rollback(True)
 
     def test_completed_editorial_work_allows_first_verification(self):
         editorial, first = self.pending_first('editing')
         editorial.started_at = editorial.ended_at = timezone.localdate()
         editorial.is_completed = True
         editorial.save()
-        started = start_first_verification(self.text, self.verifier_1, self.today)
+        started = start_assigned_stage(user=self.verifier_1, stage_id=first.pk, started_at=self.today)
         self.assertEqual(started.pk, first.pk)
         self.assertEqual(started.started_at, self.today)
 

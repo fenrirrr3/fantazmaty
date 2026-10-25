@@ -11,15 +11,29 @@ from uuid import uuid4
 
 CURRENT_STAGE = 'DOCX'
 if __package__:
+    from .document_errors import MESSAGES, DocumentInputError
+    from .document_html import (HEADING_STYLE_MAP, PAGE_BREAK_STYLE, heading_label, list_paragraphs, mammoth_source,
+                                matched_paragraph, paragraph_queues, scene_break, split_page_breaks)
+    from .document_images import force_polish, strip_images, unlink_external_images
+    from .document_pdf import render_pdf
+    from .document_preparation import prepare_docx
     from .document_progress import configure, report as report_progress
+    from .document_rebuild import inspect_docx
+    from .document_repetitions import color_document
     from .document_styles import paragraph_properties
-    from .document_html import (PAGE_BREAK_STYLE, heading_label, list_paragraphs, mammoth_source, matched_paragraph,
-                                paragraph_queues, scene_break, split_page_breaks)
+    from .odkurzacz import DEFAULT_EDITORIAL_RULES
 else:
+    from document_errors import MESSAGES, DocumentInputError
+    from document_html import (HEADING_STYLE_MAP, PAGE_BREAK_STYLE, heading_label, list_paragraphs, mammoth_source,
+                               matched_paragraph, paragraph_queues, scene_break, split_page_breaks)
+    from document_images import force_polish, strip_images, unlink_external_images
+    from document_pdf import render_pdf
+    from document_preparation import prepare_docx
     from document_progress import configure, report as report_progress
+    from document_rebuild import inspect_docx
+    from document_repetitions import color_document
     from document_styles import paragraph_properties
-    from document_html import (PAGE_BREAK_STYLE, heading_label, list_paragraphs, mammoth_source, matched_paragraph,
-                               paragraph_queues, scene_break, split_page_breaks)
+    from odkurzacz import DEFAULT_EDITORIAL_RULES
 
 CSS = '''
 body { font-family: "Times New Roman", serif; font-size: 12pt; line-height: 1.5; }
@@ -39,8 +53,6 @@ hr.page-break { border: 0; height: 0; margin: 3em 0 0; }
 '''
 # Znaki dozwolone w URL bez kodowania (RFC 3986: zarezerwowane, niezarezerwowane i „%” istniejących kodów).
 URL_SAFE = "%:/?#[]@!$&'()*+,;=-._~"
-# Nagłówki o polskiej nazwie stylu („Nagłówek 1”, bez angielskiej nazwy wbudowanej) – jak domyślne „Heading N”.
-HEADING_STYLE_MAP = '\n'.join(f"p[style-name='Nagłówek {level}'] => h{level}:fresh" for level in range(1, 7))
 TAGS = set('p h1 h2 h3 h4 h5 h6 strong em u s del sup sub table thead tbody tfoot tr td th caption blockquote ol ul li br hr span a img pre code'.split())
 
 
@@ -76,16 +88,14 @@ def sanitize_html(fragment, assets):
                 allowed = value.isascii() and value.isdecimal() and 1 <= int(value) <= 100
             if not allowed:
                 del element.attrib[key]
-    headings = []
+    # Kotwice nagłówków dla spisu treści EPUB (split_chapters).
     for number, element in enumerate(root.xpath(".//h1 | .//h2 | .//h3"), 1):
         if not element.get("id"):
             element.set("id", "section-" + str(number))
-        headings.append((element.get("id"), element.text_content()[:200]))
     # Serialize children as HTML; EbookLib normalizes the chapter to XHTML.
-    content = (escape_html.escape(root.text) if root.text else "") + "".join(
+    return (escape_html.escape(root.text) if root.text else "") + "".join(
         html.tostring(child, encoding="unicode") for child in root
     )
-    return content, headings
 
 
 WARNING_PATTERNS = (
@@ -248,10 +258,6 @@ def convert(source, directory, formats, title):
         nonlocal total_image_bytes
         with image.open() as stream:
             data = stream.read(20 * 1024 * 1024 + 1)
-        if __package__:
-            from .document_errors import DocumentInputError
-        else:
-            from document_errors import DocumentInputError
         if len(data) > 20 * 1024 * 1024:
             raise DocumentInputError("image_too_large")
         try:
@@ -293,7 +299,7 @@ def convert(source, directory, formats, title):
     warnings = notes + polish_warnings(
         str(message.message)[:500] for message in result.messages if message.type == "warning"
     )
-    content, headings = sanitize_html(result.value, assets)
+    content = sanitize_html(result.value, assets)
     # Mammoth deliberately omits paragraph geometry. Restore alignment from DOCX
     # after sanitization; only our own allowlisted classes reach the EPUB.
     from docx import Document
@@ -365,12 +371,8 @@ def convert(source, directory, formats, title):
     if "pdf" in formats:
         CURRENT_STAGE = "PDF"
         report_progress("Przygotowanie PDF")
-        if __package__:
-            from .document_pdf import render_pdf
-        else:
-            from document_pdf import render_pdf
         try:
-            warnings.extend(render_pdf(source, directory / "document.pdf", content, assets, title, document))
+            warnings.extend(render_pdf(document, directory / "document.pdf", content, assets, title))
         except Exception as error:
             # Gotowy EPUB zostaje: błąd składu PDF nie może zabrać użytkownikowi e-booka.
             if "epub" not in formats or isinstance(error, (ImportError, MemoryError)):
@@ -385,10 +387,6 @@ def convert(source, directory, formats, title):
 def _unlink_images(source):
     """Usuwa połączenia obrazów z plikami zewnętrznymi w pliku `source` (w miejscu); zwraca liczbę
     usuniętych obrazów tylko połączonych. Nic nie jest pobierane spoza dokumentu."""
-    if __package__:
-        from .document_images import unlink_external_images
-    else:
-        from document_images import unlink_external_images
     original = source.read_bytes()
     unlinked, count = unlink_external_images(original)
     if unlinked.getvalue() != original:
@@ -402,6 +400,7 @@ def main():
     configure(directory)
     report_progress("Przygotowanie DOCX")
     config = json.loads((directory / "job.json").read_text(encoding="utf-8"))
+    source = directory / "source.docx"
     formats = config["formats"]
     if (not formats and not config.get("include_docx") and not config.get("inspect")
             and not config.get("split")) or set(formats) - {"pdf", "epub"}:
@@ -412,14 +411,15 @@ def main():
             # (każdy plik dostaje tylko te, których używa jego fragment).
             CURRENT_STAGE = "Podział"
             report_progress("Podział według Nagłówków 1")
+            # Podziału nie ma w programie lokalnym (tools/redaktor_docx/build.py), więc import zostaje tutaj.
             if __package__:
                 from .document_split import NoHeadingError, split_document
             else:
                 from document_split import NoHeadingError, split_document
-            linked_images = _unlink_images(directory / "source.docx")
+            linked_images = _unlink_images(source)
             try:
                 with (directory / "document.zip").open("wb") as output:
-                    report = split_document(directory / "source.docx", output)
+                    report = split_document(source, output)
             except NoHeadingError:
                 (directory / "document.zip").unlink(missing_ok=True)
                 report = {"error": "no_heading"}
@@ -431,11 +431,6 @@ def main():
         # a cały dokument jest polski. Liczba usuniętych obrazów trafia do images.json; obrazy
         # tylko połączone z plikami zewnętrznymi (usunięte razem z linkiem) liczymy osobno.
         report_progress("Usuwanie obrazów i ustawianie języka polskiego")
-        if __package__:
-            from .document_images import force_polish, strip_images
-        else:
-            from document_images import force_polish, strip_images
-        source = directory / "source.docx"
         linked_images = _unlink_images(source)
         with source.open("rb") as document:
             stripped, removed_images = strip_images(document)
@@ -445,20 +440,10 @@ def main():
             images["linked_images"] = linked_images
         (directory / "images.json").write_text(json.dumps(images), encoding="utf-8")
         if config.get("prepare") or config.get("inspect"):
-            if __package__:
-                from .document_preparation import prepare_docx, DEFAULT_EDITORIAL_RULES
-                from .document_rebuild import inspect_docx
-            else:
-                from document_preparation import prepare_docx, DEFAULT_EDITORIAL_RULES
-                from document_rebuild import inspect_docx
-            source = directory / "source.docx"
             keep_page_format = bool(config.get("keep_page_format", False))
             if config.get("inspect"):
                 with source.open("rb") as document:
-                    if keep_page_format:
-                        inspect_docx(document, keep_page_format=True)
-                    else:
-                        inspect_docx(document)
+                    inspect_docx(document, keep_page_format=keep_page_format)
                 return 0
             rules = config.get("cleaner_rules") if config.get("clean") else ()
             if rules is None:
@@ -492,11 +477,6 @@ def main():
         if config.get("repetitions") is not None:
             CURRENT_STAGE = "Powtórzenia"
             report_progress("Analiza i kolorowanie powtórzeń")
-            if __package__:
-                from .document_repetitions import color_document
-            else:
-                from document_repetitions import color_document
-            source = directory / "source.docx"
             with (
                 source.open("rb") as document,
                 color_document(
@@ -509,7 +489,7 @@ def main():
                 payload = marked.read()
             source.write_bytes(payload)
         if formats:
-            convert(directory / "source.docx", directory, formats, config["title"])
+            convert(source, directory, formats, config["title"])
     except Exception as error:
         # Never record exception messages, locals, source lines or document text.
         versions = {}
@@ -528,22 +508,7 @@ def main():
                 versions[package] = version(package)
             except PackageNotFoundError:
                 versions[package] = "not installed"
-        frames = [
-            {"file": Path(frame.filename).name, "line": frame.lineno, "function": frame.name}
-            for frame in traceback.extract_tb(error.__traceback__)
-        ]
-        report = {
-            "stage": CURRENT_STAGE,
-            "error": type(error).__name__,
-            "omissions": getattr(error, "omissions", []),
-            "frames": frames,
-            "python": sys.version.split()[0],
-            "versions": versions,
-        }
-        try:
-            from .document_errors import DocumentInputError, MESSAGES
-        except ImportError:
-            from document_errors import DocumentInputError, MESSAGES
+        report = {**failure_report(error), "omissions": getattr(error, "omissions", []), "versions": versions}
         if isinstance(error, DocumentInputError) and error.public_code in MESSAGES:
             report["public_code"] = error.public_code
         try:

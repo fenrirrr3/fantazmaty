@@ -21,12 +21,13 @@ from django.views.decorators.http import require_GET, require_http_methods
 from core.permissions import superuser_required
 from core.site_catalog import (PLAN_SALT, anthology_entry, apply_add, apply_update, apply_update_all,
                                candidate_anthologies, catalog_anthologies, catalog_counts, catalog_payload,
-                               catalog_warnings, count_text, plan_add, plan_digest, plan_update, plan_update_all,
-                               plans_digest, record_catalog_fetch, update_blocked_reason)
-from core.site_listen import (add_anthology, candidate_anthologies as listen_candidates, count_text as recording_text,
-                              link_listen_to_cms, listen_counts, listen_data, listen_payload, record_listen_fetch)
-from core.site_models import SiteCatalogAnthology, SiteTeamSettings, validate_site_url
-from core.site_team import record_fetch, team_payload, team_sections, team_warnings
+                               catalog_warnings, plan_add, plan_digest, plan_update, plan_update_all,
+                               plans_digest, update_blocked_reason)
+from core.inflection import count_text
+from core.site_listen import (RECORDING_FORMS, add_anthology, candidate_anthologies as listen_candidates,
+                              link_listen_to_cms, listen_counts, listen_data, listen_payload)
+from core.site_models import SiteCatalogAnthology, SiteTeamSettings, record_fetch, validate_site_url
+from core.site_team import people_by_role, team_payload, team_sections, team_warnings
 from texts.models import Anthology
 
 JSON_PARAMS = {'ensure_ascii': False}
@@ -38,11 +39,11 @@ def _json(data, status=200):
     return response
 
 
-def _site_api(request, build_payload, record):
+def _site_api(request, build_payload, fetch_prefix):
     """GET bez logowania; wymaga nagłówka X-Site-Key równego SITE_API_KEY. Brak klucza w konfiguracji – 503.
 
     ``ETag`` to wersja danych; zgodny ``If-None-Match`` daje 304 bez treści. Każde pobranie (200 i 304) zapisuje
-    ślad z wersją, którą strona ma po tym żądaniu."""
+    ślad z wersją, którą strona ma po tym żądaniu (``record_fetch`` z przedrostkiem pól ``fetch_prefix``)."""
     key = settings.SITE_API_KEY
     if not key:
         return _json({'blad': 'Brak klucza SITE_API_KEY w konfiguracji.'}, status=503)
@@ -50,7 +51,7 @@ def _site_api(request, build_payload, record):
     if not hmac.compare_digest(provided.encode(), key.encode()):
         return _json({'blad': 'Brak dostępu.'}, status=403)
     payload = build_payload()
-    record(payload['wersja'])
+    record_fetch(fetch_prefix, payload['wersja'])
     response = _json(payload)
     response['ETag'] = f'"{payload["wersja"]}"'
     return get_conditional_response(request, etag=response['ETag'], response=response)
@@ -59,19 +60,19 @@ def _site_api(request, build_payload, record):
 @never_cache
 @require_GET
 def site_team_api(request):
-    return _site_api(request, team_payload, record_fetch)
+    return _site_api(request, team_payload, 'last')
 
 
 @never_cache
 @require_GET
 def site_catalog_api(request):
-    return _site_api(request, catalog_payload, record_catalog_fetch)
+    return _site_api(request, catalog_payload, 'catalog')
 
 
 @never_cache
 @require_GET
 def site_listen_api(request):
-    return _site_api(request, listen_payload, record_listen_fetch)
+    return _site_api(request, listen_payload, 'listen')
 
 
 class SiteTeamSettingsForm(forms.ModelForm):
@@ -95,9 +96,10 @@ def site_www(request):
             form.save()
             messages.success(request, 'Ustawienia strony zapisane.')
             return redirect('core:site_www')
-    sections = team_sections(include_disabled=True)
+    by_role = people_by_role()
+    sections = team_sections(include_disabled=True, by_role=by_role)
     return render(request, 'core/site_www.html', {
-        'form': form, 'sections': sections, 'warnings': team_warnings(sections),
+        'form': form, 'sections': sections, 'warnings': team_warnings(sections, by_role),
         'team_settings': team_settings, 'has_api_key': bool(settings.SITE_API_KEY),
     }, status=400 if form.errors else 200)
 
@@ -115,17 +117,11 @@ class CatalogAddForm(forms.Form):
     anthology = forms.ModelChoiceField(label='Antologia z CMS-u', queryset=Anthology.objects.none(),
                                        empty_label='– wybierz –')
     url = forms.URLField(label='Adres antologii na stronie', max_length=500, assume_scheme='https',
-                         help_text='https://fantazmaty.pl/czytaj/antologie/…/')
+                         validators=[validate_site_url], help_text='https://fantazmaty.pl/czytaj/antologie/…/')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields['anthology'].queryset = candidate_anthologies()
-
-    def clean_url(self):
-        url = self.cleaned_data['url']
-        if not url.startswith('https://fantazmaty.pl/'):
-            raise forms.ValidationError('Adres musi zaczynać się od https://fantazmaty.pl/.')
-        return url
 
 
 def _plan_token(plan, digest=plan_digest):
@@ -139,9 +135,9 @@ def _plan_matches(token, plan, digest=plan_digest):
         return False
 
 
-def _catalog_rows():
+def _catalog_rows(items):
     rows = []
-    for item in catalog_anthologies(include_disabled=True):
+    for item in items:
         stories = list(item.stories.all())
         anthology = item.anthology
         rows.append({'item': item, 'stories': len(stories), 'novel': bool(anthology and anthology.is_novel),
@@ -184,13 +180,16 @@ def site_catalog(request):
                 status = 409
         else:
             status = 400
-    payload = catalog_payload()
+    # Jedno pobranie katalogu (z prefetchami) dla liczników, tabeli i ostrzeżeń.
+    items = list(catalog_anthologies(include_disabled=True))
+    counts = catalog_payload(items)['liczby']
+    warnings = catalog_warnings(items)
     return render(request, 'core/site_catalog.html', {
         'settings_form': settings_form, 'add_form': add_form, 'add_plan': add_plan,
         'add_plan_token': _plan_token(add_plan) if add_plan else '',
-        'counts': payload['liczby'], 'counts_text': _counts_text(payload['liczby']),
-        'rows': _catalog_rows(), 'warnings': catalog_warnings(), 'site_settings': site_settings,
-        'has_api_key': bool(settings.SITE_API_KEY), 'has_candidates': candidate_anthologies().exists(),
+        'counts': counts, 'counts_text': _counts_text(counts),
+        'rows': _catalog_rows(items), 'warnings': warnings, 'site_settings': site_settings,
+        'has_api_key': bool(settings.SITE_API_KEY), 'has_candidates': bool(warnings['candidates']),
     }, status=status)
 
 
@@ -325,7 +324,7 @@ def site_listen(request):
         with transaction.atomic():
             linked = link_listen_to_cms()
         messages.success(request, f'Dopasowano: {count_text(linked["antologie"], ANTHOLOGY_FORMS)}, '
-                                  f'{recording_text(linked["nagrania"])}.')
+                                  f'{count_text(linked["nagrania"], RECORDING_FORMS)}.')
         return redirect('core:site_listen')
     elif action:
         status = 400
@@ -333,7 +332,7 @@ def site_listen(request):
     payload = listen_payload(data)
     return render(request, 'core/site_listen.html', {
         'settings_form': settings_form, 'add_form': add_form, 'counts': data['liczniki'],
-        'counts_text': recording_text(data['liczniki']['nagrania']), 'warnings': data['ostrzezenia'],
+        'counts_text': count_text(data['liczniki']['nagrania'], RECORDING_FORMS), 'warnings': data['ostrzezenia'],
         'rows': [{'item': item, 'counts': listen_counts([item])} for item in data['antologie']], 'preview': json.dumps(payload, ensure_ascii=False, indent=2),
         'site_settings': site_settings, 'has_api_key': bool(settings.SITE_API_KEY),
         'has_candidates': listen_candidates().exists(),

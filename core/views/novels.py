@@ -8,6 +8,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_http_methods
 
 from core.anthology_tasks import AnthologyNotificationsForm
+from core.filtering import positive_id
 from core.novel_forms import NovelForm, ChapterForm, ChapterRangeForm, AssignmentForm, CoverForm
 from core.pagination import paginate_items
 from core.permissions import team_member_required, coordinator_required, is_coordinator, is_superuser, require_superuser
@@ -105,10 +106,9 @@ def novel_detail(request, novel_id):
                     elif action == 'assign':
                         assignment_form = AssignmentForm(request.POST, prefix='assign')
                         forms['assignment_form'] = assignment_form
-                        raw_ids = request.POST.getlist('chapters')
-                        if any(not value.isascii() or not value.isdecimal() or len(value) > 18 for value in raw_ids):
+                        ids = [positive_id(value) for value in request.POST.getlist('chapters')]
+                        if None in ids:
                             raise ValidationError('Nieprawidłowy wybór rozdziałów.')
-                        ids = [int(value) for value in raw_ids]
                         forms['selected_chapter_ids'] = ids
                         if not assignment_form.is_valid():
                             raise ValidationError('Wybierz rolę i członka zespołu z uprawnieniami do tej roli.')

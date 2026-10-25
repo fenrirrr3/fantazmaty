@@ -14,7 +14,7 @@ from django.utils import timezone
 from lxml import html
 
 from core.admin import AudiobookAdmin
-from core.discord_notifications import person_name
+from core.account_identity import person_name
 from core.models import AudioContributor, Audiobook, AudiobookStage, DiscordNotification, NotificationRule, WorkflowEvent
 from core.selectors.texts import text_list_context
 from fantazmaty.testing import form_value
@@ -132,7 +132,7 @@ class ProductionWorkflowTests(AudiobookProductionTestData, TestCase):
             self.finish(self.reader)
         return sent
 
-    @override_settings(DISCORD_WEBHOOKS={'Testowy': 'https://discord.com/api/webhooks/1/dawny-kanal',
+    @override_settings(DISCORD_WEBHOOK_SECRETS={'Testowy': 'https://discord.com/api/webhooks/1/dawny-kanal',
                                          'Audiobooki': 'https://discord.com/api/webhooks/2/audiobooki',
                                          'Kanał': 'https://discord.com/api/webhooks/3/reguly'})
     def test_each_production_change_is_logged_and_sent_only_by_the_audiobook_rule(self):

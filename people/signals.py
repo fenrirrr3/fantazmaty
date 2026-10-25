@@ -1,4 +1,4 @@
-from django.db.models.signals import m2m_changed, post_delete, post_save, pre_delete, pre_save
+from django.db.models.signals import m2m_changed, post_delete, post_save, pre_save
 from django.dispatch import receiver
 from .models import Person, Role
 from people.coordinator_access import revoke_coordinator, revoking
@@ -11,9 +11,10 @@ from people.roles import coordinator_role_q, is_coordinator_role_name
 
 
 @receiver(pre_save, sender=Person)
-def track_coordinator_flag(sender, instance, using, **kwargs):
-    old = sender.objects.using(using).filter(pk=instance.pk).values_list('is_coordinator', flat=True).first() if instance.pk else False
-    instance._revoke_coordinator = bool(old and not instance.is_coordinator)
+def track_coordinator_flag(sender, instance, **kwargs):
+    # Poprzedni stan wiersza: people.models.remember_person_row.
+    previous = instance._previous_row
+    instance._revoke_coordinator = bool(previous and previous['is_coordinator'] and not instance.is_coordinator)
 
 
 @receiver(post_save, sender=Person)
@@ -41,21 +42,13 @@ def revoke_removed_roles(sender, instance, action, reverse, pk_set, using, **kwa
                 revoke_coordinator(person)
 
 
-@receiver(pre_save, sender=Role)
-@receiver(pre_delete, sender=Role)
-def remember_coordinator_members(sender, instance, **kwargs):
-    old_name = sender.objects.filter(pk=instance.pk).values_list('name', flat=True).first() if instance.pk else None
-    if not old_name or not is_coordinator_role_name(old_name):
-        instance._coordinator_members = []
-    else:
-        instance._coordinator_members = list(instance.people.values_list('pk', flat=True))
-
-
 @receiver(post_save, sender=Role)
 @receiver(post_delete, sender=Role)
 def revoke_lost_is_coordinator_role_name(sender, instance, signal, **kwargs):
-    if revoking.get() or (signal is post_save and is_coordinator_role_name(instance.name)):
+    # Dotychczasowa nazwa i osoby roli: people.models.remember_role_people.
+    if (revoking.get() or (signal is post_save and is_coordinator_role_name(instance.name))
+            or not is_coordinator_role_name(instance._previous_name)):
         return
-    for person in Person.objects.filter(pk__in=getattr(instance, '_coordinator_members', [])):
+    for person in Person.objects.filter(pk__in=instance._role_people):
         if not person.legacy_coordinator_access and not person.roles.filter(coordinator_role_q()).exists():
             revoke_coordinator(person)

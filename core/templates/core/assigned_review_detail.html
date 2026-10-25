@@ -118,7 +118,7 @@
         </dl>
     </section>
 
-    {% if can_view_author_data %}
+    {% if can_view_authors %}
         <section class="details-card" aria-labelledby="review-author-heading">
             <h2 id="review-author-heading">Dane autora</h2>
 
@@ -465,7 +465,7 @@
         </section>
     {% endif %}
 
-    {% if can_view_author_data %}
+    {% if can_view_authors %}
         {% if can_notify_author and author_notification_form %}
             <section class="details-card" aria-labelledby="author-notification-heading">
                 <h2 id="author-notification-heading">Powiadomienie autora</h2>

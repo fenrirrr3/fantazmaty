@@ -26,33 +26,6 @@ def sorted_request(sort, user=None):
     return request
 
 
-class DictTableSortingTests(SimpleTestCase):
-    def test_inactivity_rows_sort_by_nested_paths_and_methods(self):
-        """Wiersze raportu przestojów sortują się po tytule, antologii (także pustej) i nazwie etapu."""
-        rows = [
-            {'text': {'title': 'Beta', 'anthology': None}, 'stage': {'get_stage_type_display': lambda: 'Redakcja'},
-             'days': 3},
-            {'text': {'title': 'Alfa', 'anthology': {'title': 'Zbiór'}},
-             'stage': {'get_stage_type_display': lambda: 'Korekta'}, 'days': 9},
-        ]
-        cases = {'title': ['Alfa', 'Beta'], '-title': ['Beta', 'Alfa'], 'status': ['Alfa', 'Beta'],
-                 'anthology': ['Alfa', 'Beta']}
-        for sort, expected in cases.items():
-            with self.subTest(sort=sort):
-                items, columns = prepare_table_sort(sorted_request(sort), rows)
-                self.assertEqual([row['text']['title'] for row in items], expected)
-        self.assertEqual(columns['Etap'], 'status')
-
-    def test_anthology_task_rows_expose_task_columns(self):
-        rows = [{'task': 1, 'anthology_title': 'B', 'name': 'Skład', 'person': 'Zofia', 'status': 'Zlecone',
-                 'date': None},
-                {'task': 2, 'anthology_title': 'A', 'name': 'Blurb', 'person': 'Adam', 'status': 'Gotowe',
-                 'date': None}]
-        items, columns = prepare_table_sort(sorted_request('person'), rows)
-        self.assertEqual([row['person'] for row in items], ['Adam', 'Zofia'])
-        self.assertEqual((columns['Zadanie'], columns['Osoba'], columns['Data zlecenia']), ('name', 'person', 'date'))
-
-
 class QueryTableSortingTests(TestCase):
     def test_team_activity_without_action_column(self):
         member = create_member('aktywny', 'Redaktor')

@@ -1,12 +1,6 @@
-from urllib.parse import urlsplit
-from django.core.exceptions import ValidationError
+from core.audiobook_validators import validate_allowed_url
 
 
 def validate_drive_url(value):
-    try:
-        parsed = urlsplit(value)
-        valid = parsed.scheme == 'https' and parsed.hostname in ('drive.google.com', 'docs.google.com') and not parsed.username and not parsed.password and parsed.port in (None, 443)
-    except ValueError:
-        valid = False
-    if not valid:
-        raise ValidationError('Wklej link HTTPS z drive.google.com lub docs.google.com.')
+    validate_allowed_url(value, ('drive.google.com', 'docs.google.com'),
+                         'Wklej link HTTPS z drive.google.com lub docs.google.com.')

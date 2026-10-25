@@ -112,17 +112,32 @@ def _require_own_assignment(assignments, user):
     return assignment
 
 
+def _form_errors(form):
+    """Błędy formularza jako jedna lista komunikatów (bez podziału na pola)."""
+    return ValidationError([str(error) for errors in form.errors.values() for error in errors])
+
+
 def _validate_form(form):
     if not form.is_valid():
-        raise ValidationError(
-            [
-                str(error)
-                for errors in form.errors.values()
-                for error in errors
-            ]
-        )
+        raise _form_errors(form)
 
     return form.cleaned_data
+
+
+def review_names_author(review, author):
+    """Czy imię i nazwisko ze zgłoszenia zgadzają się z profilem autora (bez wielkości liter i nadmiarowych spacji)."""
+    return (normalize_author_name(f"{review.author_first_name} {review.author_last_name}")
+            == normalize_author_name(f"{author.first_name} {author.last_name}"))
+
+
+def _release_assignment(review, assignments, assignment, refusal):
+    """Usuwa przydział bez oddanej opinii; zgłoszenie bez recenzentów wraca do „Do recenzji”."""
+    if assignment.opinion not in ("", Reviewers.Opinion.READING):
+        raise ValidationError(refusal)
+    assignment.delete()
+    if len(assignments) == 1 and review.status == Review.Status.IN_REVIEW:
+        review.status = Review.Status.NEW
+        review.save(update_fields=["status"])
 
 
 @transaction.atomic
@@ -197,15 +212,7 @@ def unassign_reviewer(*, user, review_id):
     if assignment is None:
         return False
 
-    if assignment.opinion not in ("", Reviewers.Opinion.READING):
-        raise ValidationError("Po oddaniu opinii nie można zrezygnować z recenzji.")
-
-    assignment.delete()
-
-    if len(assignments) == 1 and review.status == Review.Status.IN_REVIEW:
-        review.status = Review.Status.NEW
-        review.save(update_fields=["status"])
-
+    _release_assignment(review, assignments, assignment, "Po oddaniu opinii nie można zrezygnować z recenzji.")
     return True
 
 
@@ -221,12 +228,7 @@ def release_reviewer_slot(*, user, review_id, assignment_id):
     assignment = next((item for item in assignments if item.pk == assignment_id), None)
     if assignment is None:
         raise ValidationError("Recenzent nie jest już przypisany. Odśwież stronę.")
-    if assignment.opinion not in ("", Reviewers.Opinion.READING):
-        raise ValidationError("Recenzent oddał już opinię – jego miejsca nie można zwolnić.")
-    assignment.delete()
-    if len(assignments) == 1 and review.status == Review.Status.IN_REVIEW:
-        review.status = Review.Status.NEW
-        review.save(update_fields=["status"])
+    _release_assignment(review, assignments, assignment, "Recenzent oddał już opinię – jego miejsca nie można zwolnić.")
     return assignment
 
 
@@ -256,19 +258,16 @@ def save_reviewer_opinion(
         )
     )
 
-    update_fields = ["opinion", "notes"]
-    if assignment.opinion != cleaned["opinion"]:
-        assignment.opinion_changed_at = timezone.localdate()
-        update_fields.append("opinion_changed_at")
-        if cleaned["opinion"] == Reviewers.Opinion.NOT_READ:
-            # Nowa ocena „Nie doczytałem” blokuje pobieranie także po wcześniejszym odblokowaniu.
-            review.reading_blocked_at = timezone.now()
-            review.save(update_fields=["reading_blocked_at"])
+    if cleaned["opinion"] == Reviewers.Opinion.NOT_READ and assignment.opinion != cleaned["opinion"]:
+        # Nowa ocena „Nie doczytałem” blokuje pobieranie także po wcześniejszym odblokowaniu.
+        review.reading_blocked_at = timezone.now()
+        review.save(update_fields=["reading_blocked_at"])
 
     assignment.opinion = cleaned["opinion"]
     assignment.notes = cleaned["notes"]
     assignment.full_clean()
-    assignment.save(update_fields=update_fields)
+    # Datę zmiany oceny (opinion_changed_at) ustawia ReviewAssignment.save.
+    assignment.save(update_fields=["opinion", "notes"])
 
     review.content_warnings = cleaned["content_warnings"]
     # Sprawdzamy tylko zmieniane pole: brak gatunku czy e-maila w zgłoszeniu (sprawa koordynatora)
@@ -311,11 +310,7 @@ def save_review_content_warnings(*, user, review_id, content_warnings):
     if not can_manage_reviews(user):
         _require_own_assignment(assignments, user)
 
-    form = ReviewContentWarningsForm(
-        {"content_warnings": content_warnings},
-        instance=review,
-    )
-    cleaned = _validate_form(form)
+    cleaned = _validate_form(ReviewContentWarningsForm({"content_warnings": content_warnings}))
 
     review.content_warnings = cleaned["content_warnings"]
     review.save(update_fields=["content_warnings"])
@@ -484,13 +479,7 @@ def _resolve_copy_author(review, *, contract_received, update_author_phone=False
         )
 
         if author is not None:
-            expected_name = normalize_author_name(
-                f"{review.author_first_name} {review.author_last_name}"
-            )
-            actual_name = normalize_author_name(
-                f"{author.first_name} {author.last_name}"
-            )
-            if expected_name != actual_name:
+            if not review_names_author(review, author):
                 raise ValidationError(
                     "Adres e-mail pasuje do autora o innych danych. "
                     "Zweryfikuj powiązanie w panelu administracyjnym."
@@ -635,7 +624,7 @@ def attach_review_to_text(review, text, *, contract_received=False, confirmed_co
     return text
 
 
-def validate_review_publication(review, *, contracts=False):
+def validate_review_publication(review):
     """Shared gates for the normal transfer and the admin popup."""
     if review.publication_detached:
         raise ValidationError("Zgłoszenie świadomie odłączono od istniejącego tekstu. Powiąż je ponownie albo odznacz tę informację w panelu administratora przed utworzeniem nowego tekstu.")
@@ -645,14 +634,6 @@ def validate_review_publication(review, *, contracts=False):
         raise ValidationError("Najpierw oznacz powiadomienie autora.")
     from workflow.anthology_policy import require_working_anthology
     require_working_anthology(review)
-    if contracts:
-        authors = list(review.coauthors.all())
-        primary = review.author or Author.objects.filter(email__iexact=review.email).first()
-        if primary is None:
-            raise ValidationError("Najpierw utwórz profil autora i potwierdź otrzymanie umowy.")
-        authors.append(primary)
-        if any(not author.has_contract for author in authors):
-            raise ValidationError("Najpierw potwierdź umowy autora i wszystkich współautorów.")
 
 
 def _refresh_import_form(original, checked):
@@ -688,13 +669,7 @@ def import_reviews(*, user, form):
 
     if not checked.is_valid():
         _refresh_import_form(form, checked)
-        raise ValidationError(
-            [
-                str(error)
-                for errors in checked.errors.values()
-                for error in errors
-            ]
-        )
+        raise _form_errors(checked)
 
     with transaction.atomic():
         # Jeden wspólny rekord serializuje importy między naborami.
@@ -737,13 +712,7 @@ def import_reviews(*, user, form):
         checked._validated_records = parsed
         if not checked.is_valid():
             _refresh_import_form(form, checked)
-            raise ValidationError(
-                [
-                    str(error)
-                    for errors in checked.errors.values()
-                    for error in errors
-                ]
-            )
+            raise _form_errors(checked)
 
         final_author_ids = {
             record["author_id"]

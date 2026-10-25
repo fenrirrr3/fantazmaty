@@ -1,5 +1,5 @@
 {% load workspace_tags %}
-{% recruitment_mailbox_allowed user as can_notify %}
+{% allowed "recruitment_mailbox" user as can_notify %}
 {% if can_notify %}
 <div class="recruitment-notified">
     {% if record %}{% recruitment_notified_token user record as notified_version %}{% endif %}

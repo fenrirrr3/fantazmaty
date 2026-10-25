@@ -2,6 +2,7 @@
 from django.db.models import Exists, OuterRef, Prefetch, Q
 from django.urls import reverse
 
+from core.account_identity import person_name
 from core.models import Audiobook, AudiobookStage
 from people.roles import AUDIOBOOK_PROOFREADER
 from texts.models import Text
@@ -46,16 +47,13 @@ def proofreading_scope(texts, user, coordinator, *, hide_completed=False):
     return texts.prefetch_related(Prefetch('audiobook_stages', queryset=corrections(), to_attr='audio_corrections'))
 
 
-def can_assign_proofreader(audio, history):
+def can_assign_proofreader(audio):
     # Tylko bieżąca (niezakończona) korekta – zakończonych nie da się przepisać na inną osobę.
     return bool(audio and audio.status in OPEN_PROOFREADING and audio.active_stage_id)
 
 
 def performer_label(user):
-    if not user:
-        return 'Nie zapisano wykonawcy'
-    person = getattr(user, 'person_profile', None)
-    return str(person) if person else (user.get_full_name() or user.username)
+    return person_name(user) if user else 'Nie zapisano wykonawcy'
 
 
 def correction_rows(audio, history, *, viewer=None):

@@ -99,16 +99,6 @@ class DetailSelectorTests(TestCase):
         return S.objects.create(text=self.text, stage_type=kind, started_at=self.today,
                                 ended_at=self.today, is_completed=True, **extra)
 
-    def test_coordinator_sees_obsolete_verification_placeholder_as_history(self):
-        self.done('editing')
-        self.done('first_verification')
-        placeholder = S.objects.create(text=self.text, stage_type='first_verification', iteration=2)
-        context = self.detail(self.coordinator)
-        self.assertNotIn(placeholder.pk, [row['pk'] for row in context['stages']])
-        archived = next(row for row in context['archived_stages'] if row['pk'] == placeholder.pk)
-        self.assertFalse(archived['can_start'] or archived['can_complete'])
-        self.assertIsNone(archived['assigned_user'])
-
     def test_editor_control_and_styling_rows_follow_their_owners(self):
         editor = A.objects.create(text=self.text, role='editor', assigned_to=self.editor)
         control = S.objects.create(text=self.text, stage_type='editor_control', assignment=editor)

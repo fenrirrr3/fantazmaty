@@ -3,16 +3,15 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
-from django.core import signing
 from django.db.models import Count, Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_http_methods
 
-from core.edit_versions import version_of
+from core.edit_versions import object_token, object_token_matches
 from core.models import AudioContributor, Audiobook
-from core.pagination import paginate_queryset
+from core.pagination import paginate_items
 from core.permissions import coordinator_required, team_member_required, is_coordinator
 
 
@@ -36,17 +35,6 @@ class ContributorForm(forms.ModelForm):
         return data
 
 
-def edit_token(user, person):
-    return signing.dumps([user.pk, person.pk, version_of(person)], salt='audio-contact')
-
-
-def token_matches(token, user, person):
-    try:
-        return signing.loads(token, salt='audio-contact', max_age=86400) == [user.pk, person.pk, version_of(person)]
-    except signing.BadSignature:
-        return False
-
-
 @never_cache
 @login_required
 @require_GET
@@ -61,7 +49,7 @@ def audio_contributor_list(request):
     rows = rows.annotate(narrated=Count('narrated_books', distinct=True),
                          engineered=Count('engineered_books', distinct=True)).order_by('name', 'pk')
     return render(request, 'core/audio_contributor_list.html', {
-        'page_obj': paginate_queryset(request, rows), 'query': query, 'show_inactive': show_inactive})
+        'page_obj': paginate_items(request, rows), 'query': query, 'show_inactive': show_inactive})
 
 
 @never_cache
@@ -69,13 +57,13 @@ def audio_contributor_list(request):
 @require_http_methods(['GET', 'POST'])
 @team_member_required
 def audio_contributor(request, pk=None):
-    from core.views.audiobook_production import authors_display, require_audiobook_access
+    from core.views.audiobook_production import require_audiobook_access
     require_audiobook_access(request.user)
     coordinator = is_coordinator(request.user)
     if pk is None and not coordinator:
         raise PermissionDenied('Wpisy spisu dodaje koordynator.')
     person = get_object_or_404(AudioContributor, pk=pk) if pk is not None else AudioContributor()
-    form = ContributorForm(instance=person, initial={'version': edit_token(request.user, person) if person.pk else ''}) \
+    form = ContributorForm(instance=person, initial={'version': object_token(request.user, person, 'audio-contact') if person.pk else ''}) \
         if coordinator else None
     status = 200
     if request.method == 'POST':
@@ -87,7 +75,7 @@ def audio_contributor(request, pk=None):
             form = ContributorForm(request.POST, instance=person)
             status = 400
             valid = form.is_valid()
-            if person.pk and not token_matches(request.POST.get('version', ''), request.user, person):
+            if person.pk and not object_token_matches(request.POST.get('version', ''), request.user, person, 'audio-contact'):
                 form.add_error(None, 'Dane zmieniły się lub formularz wygasł. Zachowaj wpisaną treść i odśwież stronę.')
                 status = 409
             elif valid:
@@ -99,7 +87,7 @@ def audio_contributor(request, pk=None):
             'text__authors', 'text__translation__foreign_authors').order_by('text__anthology__title', 'text__title', 'pk')) \
         if person.pk else []
     for audio in works:
-        audio.author_display = authors_display(audio.text)
+        audio.author_display = audio.text.source_authors_display
     published = [audio for audio in works if audio.is_published]
     current = [audio for audio in works if not audio.is_published]
     return render(request, 'core/audio_contributor.html', {'person': person, 'works': published,

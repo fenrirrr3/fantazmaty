@@ -8,8 +8,8 @@ from datetime import timedelta
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from core.discord_notifications import configured_channel_names, parse_mention, rule_problems
-from core.models import DiscordNotification, DiscordRole, NotificationRule, WorkflowEvent
+from core.discord_notifications import configured_channel_names, discord_roles, parse_mention, rule_problems
+from core.models import DiscordNotification, NotificationRule, WorkflowEvent
 from texts.models import Anthology
 
 HISTORY = 10
@@ -28,7 +28,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         out = self.stdout.write
         configured = configured_channel_names()
-        roles = {r.name.lower(): r.role_id for r in DiscordRole.objects.all()}
+        roles = discord_roles()
         if configured is None:
             out('Kanały na serwerze (DISCORD_WEBHOOKS): BŁĘDNA KONFIGURACJA – żadna wiadomość nie wyjdzie.')
         else:

@@ -9,10 +9,8 @@ def review_template_data(review, *, include_author):
     Dzięki temu nie może dotrzeć do autora przez relacje Review,
     copied_text, przydziały lub formularz powiązany z instancją.
     """
-    anthology = review.anthology
     data = {
         "pk": review.pk,
-        "id": review.pk,
         "title": review.title,
         "genre": review.genre,
         "length": review.length,
@@ -21,49 +19,20 @@ def review_template_data(review, *, include_author):
         "get_status_display": review.display_status,
         "created_at": review.created_at,
         "decision_at": review.decision_at,
-        "old_reviews": review.old_reviews,
         "is_archived": review.is_archived,
         "is_hidden": review.is_hidden,
         "copied_text_id": review.copied_text_id,
-        "anthology_id": review.anthology_id,
-        "anthology": (
-            {
-                "pk": anthology.pk,
-                "id": anthology.pk,
-                "title": anthology.title,
-            }
-            if anthology is not None
-            else None
-        ),
+        "anthology": {"title": review.anthology.title} if review.anthology_id is not None else None,
     }
 
     if include_author:
-        author = review.author
         data.update(
             {
                 "author_display_name": review.author_display_name,
-                "author_first_name": review.author_first_name,
-                "author_last_name": review.author_last_name,
                 "email": review.email,
                 "phone_number": review.phone_number,
                 "file_url": review.file_url,
-                "author_notified_at": review.author_notified_at,
                 "authors": review.display_authors,
-                "author_id": review.author_id,
-                "author": (
-                    {
-                        "pk": author.pk,
-                        "id": author.pk,
-                        "display_name": author.display_name,
-                        "first_name": author.first_name,
-                        "last_name": author.last_name,
-                        "pseudonym": author.pseudonym,
-                        "email": author.email,
-                        "has_contract": author.has_contract,
-                    }
-                    if author is not None
-                    else None
-                ),
             }
         )
 
@@ -85,34 +54,28 @@ def review_assignment_data(review, user):
         None,
     )
 
-    opinions = []
-
-    for assignment in assignments:
-        opinions.append(
-            {
-                "pk": assignment.pk,
-                "position": assignment.position,
-                "slot": assignment.position,
-                "reviewer_name": assignment.reviewer_display_name,
-                "opinion_value": assignment.opinion,
-                "opinion": assignment.get_opinion_display(),
-                "opinion_display": assignment.get_opinion_display(),
-                "notes": assignment.notes,
-                "assigned_at": assignment.assigned_at,
-                "status_changed_at": assignment.opinion_changed_at,
-                "opinion_changed_at": assignment.opinion_changed_at,
-                "is_own": assignment.user_id == user.pk,
-            }
-        )
+    # Opinie pozostałych recenzentów – tylko pola czytane przez szablon.
+    other_opinions = [
+        {
+            "pk": assignment.pk,
+            "position": assignment.position,
+            "reviewer_name": assignment.reviewer_display_name,
+            "opinion_value": assignment.opinion,
+            "opinion_display": assignment.get_opinion_display(),
+            "notes": assignment.notes,
+            "assigned_at": assignment.assigned_at,
+            "opinion_changed_at": assignment.opinion_changed_at,
+        }
+        for assignment in assignments
+        if assignment.user_id != user.pk
+    ]
 
     opinion_summary = {
-        value: sum(item["opinion_value"] == value for item in opinions)
-        for value, _label in Reviewers.Opinion.choices
+        "assigned": len(assignments),
+        "completed": sum(
+            assignment.opinion not in {"", Reviewers.Opinion.READING}
+            for assignment in assignments
+        ),
     }
-    opinion_summary["assigned"] = len(assignments)
-    opinion_summary["completed"] = sum(
-        assignment.opinion not in {"", Reviewers.Opinion.READING}
-        for assignment in assignments
-    )
 
-    return assignments, own_assignment, opinions, opinion_summary
+    return assignments, own_assignment, other_opinions, opinion_summary

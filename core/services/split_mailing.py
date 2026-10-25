@@ -26,6 +26,7 @@ from django.db.models import F, Q
 
 from core.models import MailboxConnection
 from core.services import program_jobs as jobs
+from core.services.mailbox import active_mailbox
 
 SALT = 'split-mailing-batch-v1'
 BATCH = 'mailing.json'
@@ -60,10 +61,7 @@ class MailingError(ValueError):
 
 def mailing_mailbox():
     """Jedyna aktywna skrzynka z przeznaczeniem „Wysyłka plików autorom”."""
-    boxes = list(MailboxConnection.objects.filter(purpose=MailboxConnection.Purpose.SPLIT_MAILING, is_active=True)[:2])
-    if len(boxes) != 1:
-        raise MailingError(MANY_MAILBOXES if boxes else NO_MAILBOX)
-    return boxes[0]
+    return active_mailbox(MailboxConnection.Purpose.SPLIT_MAILING, NO_MAILBOX, MANY_MAILBOXES, error=MailingError)
 
 
 def normalized_title(value):
@@ -82,15 +80,19 @@ def anthology_texts(anthology):
             .order_by(F('chapter_number').asc(nulls_last=True), 'title', 'pk'))
 
 
+def _people(text, translated, relation):
+    """Autorzy tekstu, a w antologii tłumaczonej – osoby przekładu z relacji `relation` (brak przekładu – nikt)."""
+    if not translated:
+        return list(text.authors.all())
+    try:
+        return list(getattr(text.translation, relation).all())
+    except ObjectDoesNotExist:
+        return []
+
+
 def recipients(text, translated):
     """Osoby, do których idzie plik: autorzy tekstu, a w antologii tłumaczonej – tłumacze."""
-    if translated:
-        try:
-            people = list(text.translation.translators.all())
-        except ObjectDoesNotExist:
-            people = []
-    else:
-        people = list(text.authors.all())
+    people = _people(text, translated, 'translators')
     emails = list(dict.fromkeys((person.email or '').strip() for person in people if (person.email or '').strip()))
     missing = [person.display_name for person in people if not (person.email or '').strip()]
     return [person.display_name for person in people], emails, missing
@@ -98,14 +100,7 @@ def recipients(text, translated):
 
 def signature(text, translated):
     """Podpis autorów jak w stopce: autorzy tekstu, w antologii tłumaczonej – autorzy oryginału."""
-    if translated:
-        try:
-            people = list(text.translation.foreign_authors.all())
-        except ObjectDoesNotExist:
-            people = []
-    else:
-        people = list(text.authors.all())
-    return [person.display_name for person in people]
+    return [person.display_name for person in _people(text, translated, 'foreign_authors')]
 
 
 def unknown_tags(value):
@@ -146,6 +141,22 @@ def _heading(part):
     return title or Path(part['file']).stem.split(' ', 1)[-1]
 
 
+def _matched_rows(parts, by_key, ambiguous):
+    """Wiersze listy kontrolnej (jeszcze bez dopasowania) z jednoznacznym kandydatem części albo None.
+
+    Nagłówek pasujący do kilku kandydatów (`ambiguous`) albo powtórzony w kilku częściach – bez kandydata."""
+    keys = [normalized_title(_heading(part)) for part in parts]
+    for index, (part, key) in enumerate(zip(parts, keys)):
+        row = {'index': index, 'file': part['file'], 'heading': _heading(part), 'text_id': None, 'title': '',
+               'people': [], 'authors': [], 'emails': [], 'missing': [], 'status': NO_MATCH, 'note': ''}
+        candidates = by_key.get(key, []) if key else []
+        if len(candidates) > 1:
+            row['note'] = ambiguous
+        elif candidates and keys.count(key) > 1:
+            row['note'] = 'Ten sam nagłówek ma kilka części dokumentu.'
+        yield row, (candidates[0] if candidates and not row['note'] else None)
+
+
 def build_rows(parts, anthology):
     """Lista kontrolna: część podziału ↔ tekst antologii o tym samym tytule (bez dopasowań „na siłę”).
 
@@ -158,18 +169,9 @@ def build_rows(parts, anthology):
     by_title = {}
     for text in anthology_texts(anthology):
         by_title.setdefault(normalized_title(text.title), []).append(text)
-    keys = [normalized_title(_heading(part)) for part in parts]
     rows = []
-    for index, (part, key) in enumerate(zip(parts, keys)):
-        row = {'index': index, 'file': part['file'], 'heading': _heading(part), 'text_id': None, 'title': '',
-               'people': [], 'authors': [], 'emails': [], 'missing': [], 'status': NO_MATCH, 'note': ''}
-        candidates = by_title.get(key, []) if key else []
-        if len(candidates) > 1:
-            row['note'] = 'Kilka tekstów antologii ma ten tytuł.'
-        elif candidates and keys.count(key) > 1:
-            row['note'] = 'Ten sam nagłówek ma kilka części dokumentu.'
-        elif candidates:
-            text = candidates[0]
+    for row, text in _matched_rows(parts, by_title, 'Kilka tekstów antologii ma ten tytuł.'):
+        if text is not None:
             people, emails, missing = recipients(text, translated)
             row.update(text_id=text.pk, title=text.title, people=people, emails=emails, missing=missing,
                        authors=signature(text, translated), status=READY if emails else NO_ADDRESS)
@@ -207,27 +209,21 @@ def build_extract_rows(parts, anthology):
     for entry in extract_entries(anthology):
         for key in _author_keys(entry):
             by_key.setdefault(key, []).append(entry)
-    keys = [normalized_title(_heading(part)) for part in parts]
-    found = {}
-    for key in keys:
-        if len(by_key.get(key, [])) == 1:
-            entry = by_key[key][0]
-            found[key] = (entry, ((entry.email or '').strip() or (entry.author.email or '').strip()))
-    blocked = blacklisted_addresses([value for entry, email in found.values()
-                                     for value in (email, entry.author.email or '')])
+    matched = list(_matched_rows(parts, by_key, 'Nagłówek pasuje do kilku autorów naboru.'))
+
+    def address(entry):
+        """E-mail wpisu, a gdy pusty – e-mail autora."""
+        return (entry.email or '').strip() or (entry.author.email or '').strip()
+
+    blocked = blacklisted_addresses([value for _, entry in matched if entry is not None
+                                     for value in (address(entry), entry.author.email or '')])
     rows = []
-    for index, (part, key) in enumerate(zip(parts, keys)):
-        row = {'index': index, 'file': part['file'], 'heading': _heading(part), 'text_id': None, 'title': '',
-               'titles': [], 'people': [], 'authors': [], 'emails': [], 'missing': [], 'status': NO_MATCH, 'note': ''}
-        candidates = by_key.get(key, []) if key else []
-        if len(candidates) > 1:
-            row['note'] = 'Nagłówek pasuje do kilku autorów naboru.'
-        elif candidates and keys.count(key) > 1:
-            row['note'] = 'Ten sam nagłówek ma kilka części dokumentu.'
-        elif candidates and not split_list(candidates[0].accepted_titles):
+    for row, entry in matched:
+        row['titles'] = []
+        if entry is not None and not split_list(entry.accepted_titles):
             row['note'] = 'Autor nie ma przyjętych tekstów w tym naborze.'
-        elif candidates:
-            entry, email = found[key]
+        elif entry is not None:
+            email = address(entry)
             titles, name = split_list(entry.accepted_titles), entry.author.display_name
             row.update(extract_id=entry.pk, title=join_list(titles), titles=titles, people=[name], authors=[name],
                        emails=[email] if email else [], missing=[] if email else [name],
@@ -249,20 +245,21 @@ def read_parts(folder):
     return parts
 
 
-def read_batch(folder):
+def _read_rows(path):
+    """Plik zadania ze słownikiem z listą 'rows' (partia albo raport); brak lub zły zapis – None."""
     try:
-        batch = jobs.read_json(folder / BATCH)
+        value = jobs.read_json(path)
     except (OSError, ValueError):
         return None
-    return batch if isinstance(batch, dict) and isinstance(batch.get('rows'), list) else None
+    return value if isinstance(value, dict) and isinstance(value.get('rows'), list) else None
+
+
+def read_batch(folder):
+    return _read_rows(folder / BATCH)
 
 
 def read_report(folder):
-    try:
-        report = jobs.read_json(folder / REPORT)
-    except (OSError, ValueError):
-        return None
-    return report if isinstance(report, dict) and isinstance(report.get('rows'), list) else None
+    return _read_rows(folder / REPORT)
 
 
 def recipient_key(emails):
@@ -431,17 +428,13 @@ def _send_locked(folder, batch, selected, mailbox):
                     results[row['index']] = {'sent': False, 'error': 'Brak pliku w archiwum podziału.', 'mail': None}
             plan = mail_plan([row for row in rows if row['file'] in names],
                              lambda row: archive.getinfo(row['file']).file_size)
-            connection = smtp_connection(mailbox)
-            connection.open()
-            try:
+            with smtp_connection(mailbox) as connection:
                 for number, group in enumerate(plan, offset + 1):
                     error = _send_mail(archive, connection, mailbox, *mail_content(batch, group),
                                        group[0]['emails'], [row['file'] for row in group])
                     mails += not error
                     results.update({row['index']: {'sent': not error, 'error': error, 'mail': number}
                                     for row in group})
-            finally:
-                connection.close()
     except (OSError, BadZipFile, smtplib.SMTPException, InvalidToken) as error:
         if isinstance(error, (BadZipFile, FileNotFoundError)):
             message = 'Nie można odczytać plików podziału. Uruchom podział ponownie.'
@@ -501,13 +494,9 @@ def send_test(folder, batch, address, mailbox):
             if not with_file:
                 raise MailingError('Brak plików do wysłania w teście.')
             row = random.choice(ready or with_file)
-            connection = smtp_connection(mailbox)
-            connection.open()
-            try:
+            with smtp_connection(mailbox) as connection:
                 error = _send_mail(archive, connection, mailbox, *mail_content(batch, [row], TEST_PREFIX),
                                    [address], [row['file']])
-            finally:
-                connection.close()
     except (BadZipFile, FileNotFoundError):
         raise MailingError('Nie można odczytać plików podziału. Uruchom podział ponownie.') from None
     except (OSError, smtplib.SMTPException, InvalidToken) as error:

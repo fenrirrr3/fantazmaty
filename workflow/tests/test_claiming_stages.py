@@ -12,12 +12,12 @@ from django.urls import reverse
 from django.utils import timezone
 from lxml import html
 
-from core.selectors.texts import _annotated_texts, text_detail_context, text_list_context
+from core.selectors.texts import text_detail_context, text_list_context
 from core.models import WorkflowEvent
 from core.services.texts import TAKE_LOCK_EVENTS, change_scheduled_stage, start_assigned_stage, toggle_take_lock
 from core.translation_scope import frontend_scope
 from fantazmaty.testing import create_member, create_superuser, edit_token
-from fantazmaty.testing.workflow import StatusAssignmentFixtures
+from fantazmaty.testing.workflow import StatusAssignmentFixtures, start_reserved_first_verification
 from people.models import Person, Vacation
 from texts.models import Anthology, Text
 from texts.novels import assign_chapters, edit_token as novel_token, locked_book, new_chapter
@@ -27,9 +27,9 @@ from workflow.read_queries import available_stages
 from workflow.repetitions import repeat_stages
 from workflow.services import (
     claim_ready_for_editing, claim_stage, complete_stage, create_pending_stage, resume_editing,
-    send_to_first_verification, send_to_second_verification, start_first_verification, TAKE_LOCKED_MESSAGE,
+    send_to_first_verification, send_to_second_verification, TAKE_LOCKED_MESSAGE,
 )
-from workflow.state import current_stage, stage_is_active
+from workflow.state import stage_is_active
 
 from .support import AnthologyWorkflowMixin, add_roles, importing
 
@@ -105,7 +105,7 @@ class ClaimFormsTests(AnthologyWorkflowMixin, TestCase):
         editing.refresh_from_db()
         self.assertFalse(editing.is_completed)
         send_to_first_verification(self.text, self.editor, self.today)
-        first = start_first_verification(self.text, self.verifier_1, self.today)
+        first = start_reserved_first_verification(self.text, self.verifier_1, self.today)
         complete_stage(first, self.verifier_1, self.today)
         resume_editing(self.text, self.editor, self.today)
         response = self.detail()
@@ -188,11 +188,25 @@ class CompletedVerificationClaimTests(TestCase):
         self.assertTrue(completed.is_completed)
         self.assertIsNone(completed.started_at)
 
-    def test_trusted_pending_creation_cannot_repeat_completed_verification(self):
-        self.imported('first_verification', role='verifier_1')
-        with self.assertRaisesMessage(ValidationError, 'już zakończona'):
-            create_pending_stage(self.text, 'first_verification')
-        self.assertEqual(S.objects.filter(text=self.text, stage_type='first_verification').count(), 1)
+    def test_completed_verification_is_never_recreated_as_empty_stage(self):
+        """Ani zaufane tworzenie oczekującego etapu, ani zmiana statusu w adminie nie dodają pustej W1/W2
+        po zakończonej weryfikacji tego typu w bieżącym przebiegu – także gdy jej wykonanie jest już
+        niebieżące (po powrocie do redakcji). Odczyty nie ukrywają takich etapów, więc nie mogą one powstać."""
+        from core.edit_versions import version_of
+        from workflow.admin_status import set_admin_status
+        creators = {
+            'create_pending_stage': lambda kind: create_pending_stage(self.text, kind),
+            'set_admin_status': lambda kind: set_admin_status(self.text.pk, kind, self.admin, version_of(self.text)),
+        }
+        for kind, role in (('first_verification', 'verifier_1'), ('second_verification', 'verifier_2')):
+            for current in (True, False):
+                for name, create in creators.items():
+                    with self.subTest(kind=kind, current=current, path=name), transaction.atomic():
+                        self.imported(kind, role=role, current=current)
+                        with self.assertRaisesMessage(ValidationError, 'już zakończona'):
+                            create(kind)
+                        self.assertEqual(S.objects.filter(text=self.text, stage_type=kind).count(), 1)
+                        transaction.set_rollback(True)
 
     def test_claim_with_historical_assignment_uses_next_execution_number(self):
         old = self.imported('first_proofreading', role='proofreader_1', current=False)
@@ -225,32 +239,6 @@ class CompletedVerificationClaimTests(TestCase):
         self.assertEqual(assignment_label(pending.assignment), 'Korektor 1 (wyk. 2)')
         self.assertTrue(snapshot(self.text.pk, 'default')['stages'][pending.pk][0]
                         .startswith('Pierwsza korekta – wykonanie 2'))
-
-    def test_old_empty_first_does_not_block_continued_editing_or_misreport_status(self):
-        completed, obsolete = self.obsolete_first()
-        editor = A.objects.create(text=self.text, role='editor', assigned_to=self.user)
-        editing = S.objects.create(text=self.text, stage_type='editing', iteration=2, assignment=editor)
-        detail = text_detail_context(user=self.user, text=self.text)
-        self.assertTrue(detail['can_resume_editing'])
-        self.assertEqual(current_stage(self.text.workflow_stages.all()).pk, editing.pk)
-        self.assertEqual(_annotated_texts().get(pk=self.text.pk).current_stage_type, 'editing')
-        start_assigned_stage(user=self.user, stage_id=editing.pk, started_at=self.today)
-        editing.refresh_from_db()
-        self.assertEqual(editing.started_at, self.today)
-        detail = text_detail_context(user=self.user, text=self.text)
-        self.assertFalse(detail['can_send_to_first_verification'])
-        self.assertTrue(detail['can_send_to_second_verification'])
-        self.assertTrue(detail['can_send_to_author'])
-        obsolete.refresh_from_db()
-        self.assertIsNone(obsolete.started_at)
-        completed.refresh_from_db()
-        self.assertTrue(completed.is_completed)
-
-    def test_resume_ignores_empty_duplicate_but_keeps_actual_verification_gate(self):
-        self.obsolete_first()
-        A.objects.create(text=self.text, role='editor', assigned_to=self.user)
-        editing = resume_editing(self.text, self.user)
-        self.assertEqual(editing.started_at, self.today)
 
     def test_completed_second_is_not_available_again(self):
         self.imported('first_verification', role='verifier_1')
@@ -573,7 +561,7 @@ class TakeLockTests(AnthologyWorkflowMixin, TestCase):
             ('przejęcie W2', second_verification, self.verifier_2, self.text,
              lambda user: claim_stage(self.text, 'second_verification', user)),
             ('rozpoczęcie W1', handed_over, self.verifier_1, self.text,
-             lambda user: start_first_verification(self.text, user, self.today)),
+             lambda user: start_reserved_first_verification(self.text, user, self.today)),
             ('rozpoczęcie przypisanego etapu przez koordynatora', handed_over, self.coordinator, self.text,
              start_assigned),
             ('wznowienie redakcji', self.finish_first_verification, self.editor, self.text,

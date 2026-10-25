@@ -9,12 +9,11 @@ from django.test import Client, SimpleTestCase, TestCase, tag
 from django.urls import reverse
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
-from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
+from docx.oxml import OxmlElement, parse_xml
+from docx.oxml.ns import nsdecls, qn
 from docx.shared import RGBColor
 from lxml import etree, html
 
-from core.program_test_support import run_program
 from core.services import program_jobs as jobs
 from core.services.document_images import linked_images_note
 from core.services.document_preparation import prepare_docx
@@ -24,12 +23,11 @@ from core.services.odkurzacz import (
 )
 from fantazmaty.testing import create_member
 
-from .support import (
-    IMAGE_NAMESPACES, IMAGE_REL, LINKED_IMAGE, NOTE_PARTS, PICTURE_DRAWING, IsolatedProgramDirsMixin, add_internal_link,
-    add_page_break, add_text_box, docx_bytes, downloaded, downloaded_document, external_images, footnote_text,
-    formatted_docx, noted_document, noted_text, saved, set_default_language, set_language, text_run,
-    tracked_changes_document, upload, whole_document, with_footnote,
-)
+from .support import (IMAGE_NAMESPACES, IMAGE_REL, LINKED_IMAGE, NOTE_PARTS, NUMBERING_OFF, PICTURE_DRAWING,
+                      IsolatedProgramDirsMixin, add_internal_link, add_page_break, add_text_box, docx_bytes, downloaded, downloaded_document,
+                      external_images, footnote_text, formatted_docx, noted_document, noted_text, run_program, saved,
+                      set_default_language, set_language, text_run, tracked_changes_document, upload, whole_document,
+                      with_footnote)
 
 
 def soft_whitespace_document():
@@ -200,6 +198,23 @@ class CleanDocxStructureTests(SimpleTestCase):
         result = Document(clean_docx(saved(document), ['empty_paragraphs']))
         self.assertEqual(len(result.paragraphs), len(document.paragraphs) - 1)
         self.assertEqual(result.paragraphs[2].paragraph_format.page_break_before, True)
+
+    def test_empty_list_items_follow_the_outline_rule(self):
+        """Drugi pusty akapit z rzędu zostaje, gdy jest punktem listy według reguły list (document_styles) – także
+        z numeracją ze stylu; z wyłączoną numeracją (numId 0) albo numPr bez numId to zwykły pusty akapit."""
+        for label, style, own, kept in (('numeracja ze stylu', 'List Number', '', True),
+                                        ('numId 0', None, NUMBERING_OFF, False),
+                                        ('numPr bez numId', None, '<w:numPr><w:ilvl w:val="0"/></w:numPr>', False)):
+            with self.subTest(label):
+                document = Document()
+                document.add_paragraph('A')
+                document.add_paragraph()
+                empty = document.add_paragraph(style=style)
+                if own:
+                    empty._p.get_or_add_pPr().append(parse_xml(own.replace('<w:numPr>', f'<w:numPr {nsdecls("w")}>')))
+                document.add_paragraph('B')
+                result = Document(clean_docx(saved(document), ['empty_paragraphs']))
+                self.assertEqual(len(result.paragraphs), 4 if kept else 3)
 
     def test_unknown_rule_is_refused(self):
         with self.assertRaisesMessage(ValueError, 'Nieznana reguła'):

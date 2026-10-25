@@ -20,7 +20,7 @@ from core.services import document_conversion_worker as worker
 from core.services import document_preparation as preparation
 from core.services import document_repetitions as repetitions
 from core.services import program_jobs as jobs
-from core.services.document_converter import TIME_LIMIT, ConversionError, convert_document
+from core.services.document_converter import TIME_LIMIT, TIMEOUT_MESSAGE, ConversionError, convert_document
 from core.services.document_errors import DocumentInputError
 from fantazmaty.testing import create_member, create_superuser
 
@@ -370,17 +370,6 @@ class ChangeSummaryTests(IsolatedProgramDirsMixin, TestCase):
         self.assertEqual(state['removed_images'], 3)
         self.assertNotIn('replacements', state)
 
-    def test_damaged_replacements_and_image_count_in_state_are_ignored(self):
-        folder = jobs.root() / ('b' * 32)
-        folder.mkdir(parents=True)
-        jobs.write_json(folder / 'state.json', {'state': 'done', 'replacements': 'x', 'removed_images': 'dużo'})
-        state = jobs.status(folder)
-        self.assertEqual((state['replacements'], state['removed_images']), ([], 0))
-        self.assertEqual(jobs.replacement_rows({'replacements': [{'source': 'a', 'target': 'b', 'count': 0},
-                                                                  {'source': 'a', 'target': 'b', 'count': True},
-                                                                  {'source': 'a', 'target': 'b', 'count': 2}]}),
-                         [{'source': 'a', 'target': 'b', 'count': 2}])
-
     def test_no_changes_and_summary_off(self):
         page = self.run_job({'cleaner_summary': 'on'}, {})
         self.assertEqual(page.context['state']['summary'], [])
@@ -389,15 +378,11 @@ class ChangeSummaryTests(IsolatedProgramDirsMixin, TestCase):
         self.assertNotIn('summary', page.context['state'])
         self.assertNotContains(page, 'Podsumowanie zmian')
 
-    def test_damaged_summary_in_state_is_ignored(self):
-        folder = jobs.root() / ('a' * 32)
-        folder.mkdir(parents=True)
-        jobs.write_json(folder / 'state.json', {'state': 'done', 'summary': 'zepsute'})
-        self.assertEqual(jobs.status(folder)['summary'], [])
-
-    def test_summary_rows_skip_empty_counts_and_keep_unknown_rules_last(self):
+    def test_summary_rows_follow_the_rule_order_with_unknown_rules_last(self):
+        """Wiersze podsumowania w kolejności reguł formularza, nieznany klucz na końcu z kluczem jako podpisem;
+        lista zamian słownikowych nie jest wierszem."""
         self.assertIsNone(jobs.summary_rows(None))
-        self.assertEqual(jobs.summary_rows({'nowa': 1, 'spaces': 0, 'trim': 2}),
+        self.assertEqual(jobs.summary_rows({'nowa': 1, 'trim': 2, 'replacements': []}),
                          [{'rule': 'trim', 'label': 'Spacje na początku i końcu akapitu', 'count': 2},
                           {'rule': 'nowa', 'label': 'nowa', 'count': 1}])
 
@@ -422,10 +407,12 @@ class PreparationTests(SimpleTestCase):
                 self.assertEqual(result.read(), b'docx')
         return dict(calls)
 
-    def test_defaults_are_not_passed_on(self):
+    def test_defaults_reach_the_cleaner_and_rebuild(self):
+        """Bez nowych opcji Odkurzacz i przebudowa dostają swoje wartości domyślne."""
         calls = self.run_prepare(rebuild=True, use_cleaner=True, cleaner_rules=['spaces'])
-        self.assertEqual(calls['rebuild_docx'], {'allow_omissions': False})
-        self.assertEqual(calls['clean_docx'], {'rules': ['spaces']})
+        self.assertEqual(calls['rebuild_docx'], {'allow_omissions': False, 'keep_page_format': False})
+        self.assertEqual(calls['clean_docx'], {'rules': ['spaces'], 'track_changes': False, 'replacements': None,
+                                               'summary': None})
 
     def test_new_options_reach_the_cleaner_and_rebuild(self):
         summary = {}
@@ -457,7 +444,7 @@ class ConverterConfigurationTests(SimpleTestCase):
     def test_new_keys_reach_the_worker_and_summary_comes_back(self):
         seen = {}
 
-        def worker_run(directory, timeout):
+        def worker_run(directory, timeout, **_):
             seen.update(json.loads((directory / 'job.json').read_text(encoding='utf-8')))
             (directory / 'summary.json').write_text(json.dumps({
                 'spaces': 3, 'trim': 0, 'x': 'tekst', 'y': True,
@@ -493,7 +480,7 @@ class ConverterConfigurationTests(SimpleTestCase):
     def test_defaults_keep_the_previous_configuration(self):
         seen = {}
 
-        def worker_run(directory, timeout):
+        def worker_run(directory, timeout, **_):
             seen.update(json.loads((directory / 'job.json').read_text(encoding='utf-8')))
             seen['timeout'] = timeout
 
@@ -508,11 +495,13 @@ class ConverterConfigurationTests(SimpleTestCase):
         self.assertLessEqual(seen['timeout'], TIME_LIMIT)
 
     def test_superuser_time_limit_is_used_and_reported(self):
+        """Limit zadania superusera wydłuża czas konwertera, a komunikat o przekroczeniu podaje ten limit
+        (krótszy limit – jak domyślny, najwyżej MAX_TIME_LIMIT)."""
         seen = {}
 
-        def too_slow(directory, timeout):
+        def too_slow(directory, timeout, *, control, limit):
             seen['timeout'] = timeout
-            raise ConversionError('Konwersja przekroczyła limit 90 sekund. Podziel dokument lub wybierz mniej formatów.')
+            raise ConversionError(TIMEOUT_MESSAGE.format(limit))
 
         with TemporaryDirectory() as temporary, self.settings(DOCUMENT_CONVERSION_DIR=Path(temporary)), \
                 patch('core.services.document_converter.run_converter', side_effect=too_slow), \
@@ -550,8 +539,8 @@ class WorkerConfigurationTests(SimpleTestCase):
             (directory / 'source.docx').write_bytes(formatted_docx())
             (directory / 'job.json').write_text(json.dumps({'formats': [], 'include_docx': True, 'title': 'T', **config}))
             with patch.object(sys, 'argv', ['worker', str(directory)]), \
-                    patch('core.services.document_preparation.prepare_docx', side_effect=prepare), \
-                    patch('core.services.document_repetitions.color_document', side_effect=color):
+                    patch('core.services.document_conversion_worker.prepare_docx', side_effect=prepare), \
+                    patch('core.services.document_conversion_worker.color_document', side_effect=color):
                 code = worker.main()
             summary = directory / 'summary.json'
             calls['summary'] = json.loads(summary.read_text()) if summary.exists() else None
@@ -581,7 +570,7 @@ class WorkerConfigurationTests(SimpleTestCase):
                                                             'prepare': True, 'clean': True, 'cleaner_summary': True,
                                                             'cleaner_rules': ['user_word_corrections']}))
             with patch.object(sys, 'argv', ['worker', str(directory)]), \
-                    patch('core.services.document_preparation.prepare_docx', side_effect=prepare):
+                    patch('core.services.document_conversion_worker.prepare_docx', side_effect=prepare):
                 self.assertEqual(worker.main(), 0)
             summary = json.loads((directory / 'summary.json').read_text())
         self.assertEqual(summary['spaces'], 1)

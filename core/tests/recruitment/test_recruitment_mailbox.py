@@ -1,6 +1,7 @@
 """Skrzynka rekrutacyjna (próbki): filtry ról, podgląd wiadomości jako tekst, dodawanie zgłoszeń, pobieranie załączników w ZIP, decyzje zbiorcze i uprawnienia."""
 from datetime import timedelta
 from email.message import EmailMessage
+from email.parser import BytesParser
 from io import BytesIO
 from unittest.mock import patch
 from zipfile import ZipFile
@@ -17,7 +18,7 @@ from core.models import MailboxConnection, MailboxDownload, MailboxHeaderSnapsho
 from core.recruitment_message import name_in_subject
 from core.recruitment_roles import ROLE_CHOICES
 from core.services.mailbox_import import default_mailbox, mailbox_key
-from core.services.recruitment_samples import attachment_archive, safe_archive_name
+from core.services.recruitment_samples import attachment_archive, read_samples, safe_archive_name
 from core.views.recruitment_mailbox import SALT
 from fantazmaty.testing import create_member
 from fantazmaty.testing.data import sample
@@ -45,7 +46,8 @@ class SampleArchiveTests(SimpleTestCase):
         forwarded.add_attachment(b'nested', maintype='application', subtype='pdf', filename='wewnetrzny.pdf')
         msg.add_attachment(forwarded, filename='przekazana.eml')
         downloaded = set()
-        with attachment_archive([{'uid': 1, 'raw': msg.as_bytes()}], downloaded_uids=downloaded) as stream, ZipFile(stream) as z:
+        with attachment_archive(read_samples([{'uid': 1, 'raw': msg.as_bytes()}]), downloaded_uids=downloaded) as stream, \
+                ZipFile(stream) as z:
             names = z.namelist()
             self.assertEqual(len(names), 7)
             self.assertEqual(z.read('Jan Nowak/stary.doc'), b'stary.doc')
@@ -55,15 +57,14 @@ class SampleArchiveTests(SimpleTestCase):
         self.assertEqual(downloaded, {1})
 
     def test_no_attachments_means_no_archive_or_placeholder_folder(self):
-        no = sample(1)
-        yes = sample(2, attachment=True)
+        no, yes = read_samples([sample(1), sample(2, attachment=True)])
         self.assertIsNone(attachment_archive([no]))
         with attachment_archive([no, yes]) as stream, ZipFile(stream) as z:
             self.assertEqual(z.namelist(), ['Kandydat/próbka.docx'])
         # Link w treści nie jest załącznikiem MIME i nie jest pobierany automatycznie.
         msg = EmailMessage()
         msg.set_content('Plik 1: https://example.test/próbka.doc')
-        self.assertIsNone(attachment_archive([{'uid': 3, 'raw': msg.as_bytes()}]))
+        self.assertIsNone(attachment_archive(read_samples([{'uid': 3, 'raw': msg.as_bytes()}])))
 
     def test_names_and_flat_safe_files_without_overwrites(self):
         self.assertEqual(name_in_subject('Nowe zgłoszenie do Fantazmatów – Jan Nowak-Kowalski – Redakcja, Korekta'),
@@ -76,7 +77,8 @@ class SampleArchiveTests(SimpleTestCase):
         for value in (b'one', b'two'):
             msg.add_attachment(value, maintype='application', subtype='octet-stream', filename='../../próbka.docx')
         raw = msg.as_bytes()
-        with attachment_archive([{'uid': 1, 'raw': raw}, {'uid': 2, 'raw': raw}]) as stream, ZipFile(stream) as archive:
+        with attachment_archive(read_samples([{'uid': 1, 'raw': raw}, {'uid': 2, 'raw': raw}])) as stream, \
+                ZipFile(stream) as archive:
             names = archive.namelist()
             self.assertEqual(names[:2], ['Jan Nowak/próbka.docx', 'Jan Nowak/próbka (2).docx'])
             self.assertEqual(len(set(names)), 4)
@@ -102,7 +104,7 @@ class SampleArchiveTests(SimpleTestCase):
                 patch('core.services.recruitment_samples.attachments',
                       side_effect=[[('a.docx', b'x')], RuntimeError('uszkodzony załącznik')]), \
                 self.assertRaisesMessage(RuntimeError, 'uszkodzony załącznik'):
-            attachment_archive([sample(1), sample(2)])
+            attachment_archive(read_samples([sample(1), sample(2)]))
         self.assertTrue(streams[0].closed)
 
 
@@ -198,10 +200,13 @@ class RecruitmentSamplesTests(RecruitmentMailboxMixin, TestCase):
         fetch.assert_not_called()
 
     def test_mixed_download_zips_only_attachments_and_registers_every_message(self):
-        """Pobranie wiadomości z załącznikiem i bez: ZIP ma tylko załączniki, a znacznik pobrania dostaje tylko ta z plikami."""
-        with patch('core.views.recruitment_mailbox.fetch_messages', return_value=[sample(12), sample(13, attachment=True)]):
+        """Pobranie wiadomości z załącznikiem i bez: ZIP ma tylko załączniki, a znacznik pobrania dostaje tylko ta
+        z plikami. Każda wiadomość jest parsowana raz (do archiwum i do zapisu w bazie)."""
+        with patch('core.views.recruitment_mailbox.fetch_messages', return_value=[sample(12), sample(13, attachment=True)]), \
+                patch('core.services.recruitment_samples.BytesParser', wraps=BytesParser) as parser:
             response = self.client.post(self.url, self.payload('download', uids=(12, 13)))
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(parser.call_count, 2)
         with ZipFile(BytesIO(b''.join(response.streaming_content))) as archive:
             self.assertEqual(archive.namelist(), ['Kandydat/próbka.docx'])
             self.assertEqual(archive.read(archive.namelist()[0]), b'sample-document')

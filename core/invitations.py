@@ -15,7 +15,7 @@ from django.utils.http import base36_to_int, urlsafe_base64_encode
 
 
 def invitation_days():
-    return int(getattr(settings, 'ACCOUNT_INVITATION_DAYS', 7))
+    return settings.ACCOUNT_INVITATION_DAYS
 
 
 class InvitationTokenGenerator(PasswordResetTokenGenerator):

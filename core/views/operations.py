@@ -1,5 +1,5 @@
 from core.translation_scope import frontend_scope
-from core.filtering import facet_queryset
+from core.filtering import facet_queryset, positive_id
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
@@ -59,7 +59,7 @@ def corrections(request):
     anthology = request.GET.get("anthology", "")
     if query:
         items = items.filter(Q(story_title__plcontains=query) | Q(problem__plcontains=query) | Q(fragment__plcontains=query) | Q(suggestion__plcontains=query))
-    anthology_ids = [int(anthology)] if anthology.isdecimal() and len(anthology) < 19 else []
+    anthology_ids = [anthology_id] if (anthology_id := positive_id(anthology)) else []
     items, facets = facet_queryset(items, {
         'status': ('status', statuses), 'anthology': ('anthology_id', anthology_ids),
     })
@@ -76,10 +76,10 @@ def corrections(request):
 @require_GET
 @team_member_required
 def correction_texts(request):
-    anthology = request.GET.get("anthology", "")
-    if not anthology.isdecimal() or len(anthology) > 18:
+    anthology_id = positive_id(request.GET.get("anthology"))
+    if anthology_id is None:
         return JsonResponse({"texts": []})
-    texts = frontend_scope(Text.objects).filter(anthology_id=anthology, anthology__status__in=("ready",)).order_by("title", "pk").values("id", "title")
+    texts = frontend_scope(Text.objects).filter(anthology_id=anthology_id, anthology__status__in=("ready",)).order_by("title", "pk").values("id", "title")
     return JsonResponse({"texts": list(texts)})
 
 
@@ -89,13 +89,13 @@ def correction_texts(request):
 @superuser_required
 @transaction.atomic
 def correction_status(request):
-    ids = request.POST.getlist("selected")
+    ids = [positive_id(value) for value in request.POST.getlist("selected")]
     status = request.POST.get("status")
-    if not ids or len(ids) > 1000 or any(not v.isdecimal() or len(v) > 18 for v in ids) or status not in AnthologyCorrection.Status.values:
+    if not ids or len(ids) > 1000 or None in ids or status not in AnthologyCorrection.Status.values:
         messages.error(request, "Zaznacz uwagi i wybierz poprawny status.")
         return redirect("core:anthology_corrections")
     rows = list(frontend_scope(AnthologyCorrection.objects).select_for_update().filter(pk__in=ids).order_by("pk"))
-    if {row.pk for row in rows} != {int(value) for value in ids}:
+    if {row.pk for row in rows} != set(ids):
         return render(request, "core/edit_conflict.html", status=409)
     if any(row.is_resolved for row in rows):
         messages.error(request, "Rozpatrzonych uwag nie można zmieniać. Żadna uwaga nie została zmieniona.")

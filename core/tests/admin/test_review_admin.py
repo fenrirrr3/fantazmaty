@@ -12,7 +12,7 @@ from authors.models import Author
 from core.tests.people.support import admin_form_data
 from fantazmaty.testing import create_member, create_superuser
 from people.models import Person
-from texts.admin import ReviewAdmin, ReviewAssignmentAdminForm, TextNoteAdmin
+from texts.admin import ReviewAdmin, ReviewAssignmentAdminForm
 from texts.archive_dates import validate_archive_dates
 from texts.models import MAX_REVIEWERS, Anthology, Review, ReviewAssignment, Text, TextNote
 
@@ -440,10 +440,6 @@ class AuthorDetailsViewTests(ReviewAdminData):
                 response = self.client.get(url)
                 self.assertEqual(response.status_code, 302)
                 self.assertNotIn(b'anna@example.com', response.content)
-        request = RequestFactory().get(url)
-        request.user = staff
-        with self.assertRaises(PermissionDenied):
-            ReviewAdmin(Review, site).author_details_view(request, author.pk)
 
 
 class TextNoteAdminTests(TestCase):
@@ -470,10 +466,6 @@ class TextNoteAdminTests(TestCase):
         self.assertEqual(self.client.post(change, data).status_code, 302)
         note.refresh_from_db()
         self.assertEqual((note.content, note.author), ('Poprawiona uwaga', self.admin))
-        request = RequestFactory().post(url)
-        request.user = get_user_model().objects.create_user('notes-staff', is_staff=True)
-        with self.assertRaises(PermissionDenied):
-            TextNoteAdmin(TextNote, site).save_model(request, TextNote(text=self.text, content='x'), None, False)
 
     def test_bulk_delete_removes_only_selected_notes(self):
         notes = [TextNote.objects.create(text=self.text, author=self.admin, content=f'Uwaga {n}') for n in range(3)]

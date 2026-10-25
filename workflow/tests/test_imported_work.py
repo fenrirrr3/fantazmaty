@@ -15,11 +15,13 @@ from texts.models import Text, Anthology
 from workflow.models import WorkflowStage as S, WorkflowRoleAssignment as A
 from workflow.catalog import IMPORT_ONLY_STAGE_TYPES, IMPORT_ONLY_ROLES, active_stage_choices, active_role_choices
 from fantazmaty.testing.history import import_completed_workflow
-from workflow.read_queries import annotate_my_work, dashboard_querysets
+from workflow.read_queries import dashboard_querysets
 from workflow.repetitions import repeat_stages
 from workflow.archive_executions import SOURCE as ARCHIVE_SOURCE
 from workflow.labels import assignment_label, stage_label
 from workflow.services import claim_stage, create_pending_stage, user_can_complete_stage
+
+from .support import work_state
 
 
 class ImportedWorkTests(TestCase):
@@ -97,13 +99,13 @@ class ImportedWorkTests(TestCase):
         self.load()
         self.assertFalse(S.objects.filter(stage_type="editing_control").exists())
         for person in self.people[:2]:
-            work = annotate_my_work(Text.objects.all(), person.user, timezone.localdate()).get(pk=self.text.pk)
+            work = work_state(person.user, self.text)
             self.assertTrue(work.work_completed)
             self.assertFalse(work.work_active or work.work_waiting)
         run = repeat_stages(self.text, ["editing"], self.admin)
         self.assertEqual(list(run.stages.values_list("stage_type", flat=True)), ["editing"])
         for person in self.people[:2]:
-            self.assertFalse(annotate_my_work(Text.objects.all(), person.user, timezone.localdate()).get(pk=self.text.pk).work_completed)
+            self.assertFalse(work_state(person.user, self.text).work_completed)
         self.assertEqual(S.objects.filter(stage_type__in=IMPORT_ONLY_STAGE_TYPES).count(), 2)
 
     def test_import_only_work_is_in_profile_summary_but_not_assignments_or_work_lists(self):

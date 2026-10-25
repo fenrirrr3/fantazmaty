@@ -165,7 +165,7 @@ def has_role(user, role_name):
 
 
 def can_use_recruitment_mailbox(user):
-    return is_superuser(user) or has_role(user, roles.RECRUITMENT_COORDINATOR)
+    return has_role(user, roles.RECRUITMENT_COORDINATOR)
 
 
 def require_recruitment_mailbox(user):
@@ -188,7 +188,7 @@ def can_self_assign_reviews(user):
 
 
 def can_mark_review_for_decision(user):
-    return is_superuser(user) or has_role(user, roles.REVIEW_COORDINATOR)
+    return has_role(user, roles.REVIEW_COORDINATOR)
 
 
 def can_manage_reviews(user):
@@ -280,10 +280,7 @@ def _permission_decorator(check):
     def decorator(view):
         @wraps(view)
         def wrapped(request, *args, **kwargs):
-            if request.method in {"GET", "HEAD"}:
-                with read_access_scope():
-                    check(request.user)
-                    return view(request, *args, **kwargs)
+            # Wspólną pamięć uprawnień dla GET/HEAD otwiera ReadAccessScopeMiddleware.
             check(request.user)
             return view(request, *args, **kwargs)
 
@@ -309,10 +306,9 @@ def is_reviewer(user):
 
 def is_reviewer_only(user):
     person = get_active_person_profile(user)
-    if not person or user.is_superuser or is_coordinator(user) or not is_reviewer(user):
+    if not person or is_coordinator(user) or not is_reviewer(user):
         return False
-    names = _role_names(person)
-    return {name.casefold().strip() for name in names} == {roles.REVIEWER.casefold()}
+    return {name.strip() for name in _role_names(person)} == {roles.REVIEWER.casefold()}
 
 
 def can_view_my_reviews(user):

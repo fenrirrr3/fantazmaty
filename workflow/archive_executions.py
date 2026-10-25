@@ -16,5 +16,6 @@ def archive_work_label(text, kind, number):
     role = all_stage_roles().get(kind, kind)
     label = dict(WorkflowRoleAssignment.Role.choices).get(role)
     if label:
-        return f'{label} (wyk. {number})' if number > 1 else label
+        from workflow.labels import execution_label
+        return execution_label(label, number)
     return None

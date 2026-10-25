@@ -39,7 +39,7 @@
             {% if user.is_authenticated and user.is_active %}
                 <div class="header-actions">
                 {% header_search user %}
-                {% email_copy_allowed user as email_copy %}{% if email_copy %}{% include "core/includes/email_copy.html" %}{% endif %}
+                {% allowed "email_copy" user as email_copy %}{% if email_copy %}{% include "core/includes/email_copy.html" %}{% endif %}
                 <button
                     id="menu-button"
                     class="menu-button"

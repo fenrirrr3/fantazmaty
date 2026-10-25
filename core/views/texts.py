@@ -1,3 +1,4 @@
+from core.filtering import positive_id
 from core.public_authors import review_name_matches
 from django.conf import settings
 from django.contrib import messages
@@ -90,8 +91,13 @@ def _render_text_detail_page(request, text, *, bound_forms=None, status=200):
     Selektor ogranicza dane autora i recenzji źródłowej do superusera.
     Widok udostępnia osobno wyłącznie adresy e-mail autorów tego tekstu
     osobom mającym przy nim przypisanie, również w historii.
+
+    Przy GET wywołujący przekazuje świeżo pobrany tekst (z antologią). Po odrzuconym
+    formularzu (POST) tekst jest blokowany i pobierany ponownie – formularz mógł zmienić
+    obiekt w pamięci.
     """
-    text = (Text.objects.select_for_update() if request.method == "POST" else Text.objects).select_related("anthology").get(pk=text.pk)
+    if request.method == "POST":
+        text = Text.objects.select_for_update().select_related("anthology").get(pk=text.pk)
     # Nowe notatki liczymy tylko przy zwykłym wejściu (GET 200), nie po odrzuconym formularzu.
     track_visit = request.method == "GET" and status == 200 and not bound_forms
     visited_at = timezone.now()
@@ -107,16 +113,17 @@ def _render_text_detail_page(request, text, *, bound_forms=None, status=200):
         # Podgląd jako inny użytkownik jest tylko do odczytu – nie zapisuje jego wizyty.
         if not getattr(request, "is_user_preview", False):
             record_text_visit(request.user, text.pk, visited_at)
-    context.update(_permission_context(request.user))
-    context['is_extract_volume'] = text.import_source == 'extract-volume-v2'
+    # Uprawnienia do notatek i workflow (can_add_note, can_manage_workflow, is_assigned…) liczy selektor.
+    context['can_view_authors'] = can_view_author_data(request.user)
+    context['is_extract_volume'] = context['text']['is_extract_volume']
     context['is_novel'] = bool(text.anthology_id and text.anthology.is_novel)
-    context['is_translation'] = bool(text.anthology_id and text.anthology.is_translated)
+    context['is_translation'] = context['text']['is_translation']
     if context['is_translation']:
         from core.translation_forms import TranslationForm
         from texts.models import TextTranslation
         record = TextTranslation.objects.filter(text=text).first()
         context['translation_form'] = TranslationForm(instance=record) if request.user.is_superuser else None
-        context['translators'] = list(record.translators.all()) if record else []
+        context['translators'] = context['text']['translators']
         context['original_verifier'] = record.original_verifier if record else ''
     if request.user.is_superuser:
         from core.supervision import text_credit_groups
@@ -124,13 +131,9 @@ def _render_text_detail_page(request, text, *, bound_forms=None, status=200):
     from core.workflow_tokens import make_token
     context['workflow_token'] = make_token(text, request.user)
 
-    coordinator_access = is_coordinator(request.user)
-    is_assigned = WorkflowRoleAssignment.objects.current_cycle().filter(
-        text_id=text.pk,
-        workflow_cycle=text.current_workflow_cycle,
-        assigned_to_id=request.user.pk,
-    ).exists()
-    can_contribute = coordinator_access or is_assigned
+    coordinator_access = context['can_manage_workflow']
+    is_assigned = context['is_assigned']
+    can_contribute = context['can_add_note']
     from core.file_forms import TextFileForm
     context['file_url'] = text.file_url
     context['text_tags_form'] = TextTagsForm(instance=text)
@@ -151,7 +154,7 @@ def _render_text_detail_page(request, text, *, bound_forms=None, status=200):
         from illustrations.services import missing_illustration_texts
         context['can_create_text_illustration'] = missing_illustration_texts().filter(pk=text.pk).exists()
     context['text_file_form'] = TextFileForm(instance=text) if request.user.is_superuser else None
-    context['dropbox_chooser_app_key'] = getattr(settings, 'DROPBOX_CHOOSER_APP_KEY', '') if request.user.is_superuser else ''
+    context['dropbox_chooser_app_key'] = settings.DROPBOX_CHOOSER_APP_KEY if request.user.is_superuser else ''
     # Only this text's email addresses are revealed, never source-review identity.
     email_access = coordinator_access or is_assigned or (
         WorkflowRoleAssignment.objects.filter(text=text, assigned_to=request.user).exists()
@@ -161,10 +164,7 @@ def _render_text_detail_page(request, text, *, bound_forms=None, status=200):
 
     context.update(
         {
-            "is_assigned": is_assigned,
-            "can_add_note": can_contribute,
             "can_edit_content_warnings": can_contribute,
-            "can_edit_coordinator_note": coordinator_access,
             "text_note_form": TextNoteForm() if can_contribute else None,
             "coordinator_note_form": (
                 CoordinatorNoteForm(instance=text)
@@ -378,8 +378,6 @@ def update_coordinator_note(request, text_id):
             saved = False
 
     if not saved:
-        text.refresh_from_db()
-
         return _render_text_detail(
             request,
             text,
@@ -417,8 +415,6 @@ def update_text_content_warnings(request, text_id):
             saved = False
 
     if not saved:
-        text.refresh_from_db()
-
         return _render_text_detail(
             request,
             text,
@@ -517,15 +513,17 @@ def link_text_review(request, text_id):
         candidates = candidates.filter(Q(title__plcontains=query) | review_name_matches(query))
     if request.method == 'POST':
         try:
-            review_id = int(request.POST.get('review_id',''))
+            review_id = positive_id(request.POST.get('review_id'))
+            if review_id is None:
+                raise ValidationError('Wybierz zgłoszenie.')
             if request.POST.get('action') == 'unlink':
                 if request.POST.get('confirm_unlink') != 'on':
                     raise ValidationError('Potwierdź usunięcie powiązania.')
                 unlink_source_review(user=request.user, text_id=text.pk, review_id=review_id)
             else:
                 link_source_review(user=request.user,text_id=text.pk,review_id=review_id,confirm_mismatch=request.POST.get('confirm_mismatch') == 'on')
-        except (ValueError,ValidationError) as error:
-            messages.error(request,' '.join(error.messages) if isinstance(error,ValidationError) else 'Wybierz zgłoszenie.')
+        except ValidationError as error:
+            messages.error(request, ' '.join(error.messages))
         else:
             messages.success(request, 'Usunięto powiązanie. Zgłoszenie i opinie zachowano.' if request.POST.get('action') == 'unlink' else 'Zapisano powiązanie z recenzjami. Pozostanie zachowane po zmianie tytułu.')
             return redirect('core:assigned_text_detail',text_id=text.pk)

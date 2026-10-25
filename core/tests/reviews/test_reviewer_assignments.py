@@ -231,9 +231,10 @@ class NotReadOpinionTests(ReviewFixtures):
             unblock_review_reading(user=self.admin, review_id=self.make_review(title='Wolne').pk)
 
     def test_not_read_is_neither_vote_nor_pending_task(self):
-        """„Nie doczytałem” nie liczy się do TAK ani NIE w podsumowaniu, a przydział nie wisi jako zaległy."""
+        """„Nie doczytałem” to oddana ocena w podsumowaniu (przydzielone/oddane), a przydział nie wisi jako zaległy."""
         self.assign(self.reviewer, 30)
         save_reviewer_opinion(user=self.reviewer, review_id=self.review.pk, opinion='not_read', notes='')
-        _, _, _, summary = review_assignment_data(self.review, self.coordinator)
-        self.assertEqual((summary['not_read'], summary['yes'], summary['no'], summary['completed']), (1, 0, 0, 1))
+        _, _, others, summary = review_assignment_data(self.review, self.coordinator)
+        self.assertEqual(summary, {'assigned': 1, 'completed': 1})
+        self.assertEqual([item['opinion_value'] for item in others], ['not_read'])
         self.assertEqual(overdue_review_rows(), [])

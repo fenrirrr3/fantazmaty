@@ -1,25 +1,16 @@
 """Explicit superuser data corrections, not workflow transitions."""
-from django.core.exceptions import PermissionDenied, ValidationError
-from django.db import transaction
+from django.core.exceptions import ValidationError
 from django.db.models import Q
 from django.utils import timezone
-from texts.models import Text
+from workflow.admin_status import admin_correction
 from workflow.models import WorkflowRoleAssignment as A, WorkflowStage as S, WorkflowHandoff, WorkflowRepetition
 from workflow.import_context import importing_completed
-from core.edit_versions import version_of, bump
+from core.edit_versions import bump
 
 
 def correct_assignment(pk, actor, version, *, action, performer=None):
-    if not actor.is_active or not actor.is_superuser:
-        raise PermissionDenied
-    with transaction.atomic():
-        text_id = A.objects.values_list('text_id', flat=True).get(pk=pk)
-        text = Text.objects.select_for_update().get(pk=text_id)
-        from workflow.anthology_policy import require_working_anthology
-        require_working_anthology(text)
+    with admin_correction(actor, version, of=(A, pk), history=False) as text:
         assignment = A.objects.select_for_update().get(pk=pk)
-        if version_of(text) != version:
-            raise ValidationError('Dane zmieniły się. Odśwież formularz.')
         stages = S.objects.filter(assignment=assignment)
         if assignment.repetition_id or stages.filter(repetition__isnull=False).exists() or any(
             assignment.pk in (run.previous_assignment_ids or [])

@@ -34,6 +34,15 @@ class AccountGroupMirrorTests(TestCase):
         user.refresh_from_db()
         self.assertEqual((user.first_name, user.last_name), ('Nowa', 'Osoba'))
 
+    def test_person_save_and_role_change_read_previous_state_once(self):
+        """Odbiorcy sygnałów czytają poprzedni stan osoby raz na zapis; status koordynatora po zmianie ról liczony raz."""
+        self.person.first_name = 'Inna'
+        with self.assertNumQueries(10):
+            self.person.save()
+        role = Role.objects.get_or_create(name='Korektor')[0]
+        with self.assertNumQueries(9):
+            self.person.roles.add(role)
+
     def test_profile_is_the_single_source_of_names_and_roles(self):
         """Nazwisko z osoby trafia do konta; grupy konta nie zmieniają ról osoby, a role nie zmieniają grup."""
         self.person.last_name = 'Nowe'

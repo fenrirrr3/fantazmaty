@@ -2,35 +2,8 @@
 from workflow.catalog import active_stage_choices
 from django.db.models import Case, When, Value, IntegerField
 from django.utils import timezone
-from workflow.models import WorkflowStage
 
 ORDER = {value: index for index, (value, _) in enumerate(active_stage_choices())}
-
-def operational_stages(stages):
-    """Ignore empty legacy verification duplicates; keep performed work intact."""
-    stages = list(stages)
-    completed = {(s.text_id, s.workflow_cycle, s.stage_type) for s in stages
-                 if s.is_completed and not s.is_skipped
-                 and (not s.repetition_id or not s.repetition.canceled_at)}
-    candidates = [s for s in stages if s.is_current and not s.repetition_id
-                  and not s.is_completed and s.stage_type in ('first_verification', 'second_verification')
-                  and s.started_at is None and s.ended_at is None]
-    completed.update((s.text_id, s.workflow_cycle, s.stage_type) for s in candidates
-                     if getattr(s, '_has_completed_verification', False))
-    candidates = [s for s in candidates if not hasattr(s, '_has_completed_verification')]
-    if candidates:
-        completed.update(WorkflowStage.objects.using(candidates[0]._state.db).filter(
-            text_id__in={s.text_id for s in candidates},
-            workflow_cycle__in={s.workflow_cycle for s in candidates},
-            stage_type__in=('first_verification', 'second_verification'),
-            is_completed=True, is_skipped=False,
-        ).exclude(repetition__canceled_at__isnull=False).values_list('text_id', 'workflow_cycle', 'stage_type'))
-    return [s for s in stages if not (
-        s.is_current and not s.repetition_id and not s.is_completed
-        and s.stage_type in ('first_verification', 'second_verification')
-        and s.started_at is None and s.ended_at is None
-        and (s.text_id, s.workflow_cycle, s.stage_type) in completed
-    )]
 
 def state_key(stage):
     kind = stage.stage_type
@@ -49,8 +22,7 @@ def state_key(stage):
     return category, -ORDER.get(kind, -1), -stage.iteration, -stage.pk
 
 
-def current_stage(stages, *, prepared=False):
-    stages = stages if prepared else operational_stages(stages)
+def current_stage(stages):
     stages = [s for s in stages if s.is_current and s.is_released and s.stage_type in ORDER]
     opened = [s for s in stages if not s.is_completed and s.ended_at is None]
     if opened:
@@ -58,6 +30,33 @@ def current_stage(stages, *, prepared=False):
     # A correction can remove the pending continuation. Report the last
     # completed checkpoint without reopening it or inventing a new execution.
     return max(stages, key=lambda s: (ORDER[s.stage_type], s.iteration, s.pk), default=None)
+
+
+def current_stage_subquery(stages, field):
+    """SQL odpowiednik current_stage(): pole `field` otwartego etapu o najwyższym priorytecie,
+    a gdy otwartych brak – ostatniego wg kolejności procesu.
+
+    `stages` – etapy bieżącego cyklu skorelowane z tekstem (OuterRef).
+    """
+    from django.db.models import Subquery
+    from django.db.models.functions import Coalesce
+    candidates = stages.filter(is_released=True, stage_type__in=ORDER).annotate(**state_annotations())
+    return Coalesce(
+        Subquery(candidates.filter(is_completed=False, ended_at__isnull=True)
+                 .order_by('state_priority', '-state_order', '-iteration', '-pk').values(field)[:1]),
+        Subquery(candidates.order_by('-state_order', '-iteration', '-pk').values(field)[:1]),
+    )
+
+
+def stage_order(default=-1, field='stage_type'):
+    """Pozycja etapu w katalogu procesu (ORDER) jako wyrażenie SQL; etap spoza katalogu – default.
+
+    ``field`` – pole z rodzajem etapu (np. adnotacja ``current_stage_type`` listy tekstów)."""
+    return Case(
+        *[When(**{field: kind}, then=Value(index)) for kind, index in ORDER.items()],
+        default=Value(default),
+        output_field=IntegerField(),
+    )
 
 
 def state_annotations():
@@ -71,11 +70,7 @@ def state_annotations():
             default=Value(5),
             output_field=IntegerField(),
         ),
-        "state_order": Case(
-            *[When(stage_type=kind, then=Value(index)) for kind, index in ORDER.items()],
-            default=Value(-1),
-            output_field=IntegerField(),
-        ),
+        "state_order": stage_order(),
     }
 
 

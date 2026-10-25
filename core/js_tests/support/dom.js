@@ -230,15 +230,17 @@ function fakeFetch() {
 
 const flush = () => new Promise(resolve => setImmediate(resolve));
 
-// Uruchamia skrypt z core/static/core w izolowanym kontekście; window === kontekst globalny.
-function runScript(name, document, extra = {}) {
-    const source = fs.readFileSync(path.resolve(__dirname, '../../static/core', name), 'utf8');
-    const context = {document, Event, CustomEvent, URL, URLSearchParams, AbortController, location: {origin: 'https://cms.example', pathname: '/'},
+// Uruchamia skrypt (albo kilka po kolei, np. ['lookup.js', 'author-search.js']) z core/static/core w jednym
+// izolowanym kontekście; window === kontekst globalny.
+function runScript(names, document, extra = {}) {
+    const context = vm.createContext({document, Event, CustomEvent, URL, URLSearchParams, AbortController, location: {origin: 'https://cms.example', pathname: '/'},
         Option: function Option(text, value) { return document.option(text, value); },
         setTimeout: () => { throw new Error('Test musi podać setTimeout.'); }, clearTimeout: () => {},
-        console, ...extra};
+        console, ...extra});
     context.window = context;
-    vm.runInNewContext(source, context);
+    for (const name of [].concat(names)) {
+        vm.runInContext(fs.readFileSync(path.resolve(__dirname, '../../static/core', name), 'utf8'), context);
+    }
     return context;
 }
 const ready = document => document.dispatchEvent(new Event('DOMContentLoaded'));

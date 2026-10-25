@@ -1,23 +1,23 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core import signing
 from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
+from core.edit_versions import signed_state, signed_state_matches
 from core.models import Recruitment
 from core.permissions import superuser_required
+
+SALT = 'recruitment-delete'
 
 
 def deletion_snapshot(user, record):
     return [user.pk, record.pk, record.updated_at.isoformat(),
-            list(record.role_decisions.order_by('pk').values_list('pk', 'updated_at'))]
+            [[pk, value.isoformat()] for pk, value in record.role_decisions.order_by('pk').values_list('pk', 'updated_at')]]
 
 
 def deletion_token(user, record):
-    snapshot = deletion_snapshot(user, record)
-    snapshot[3] = [[pk, value.isoformat()] for pk, value in snapshot[3]]
-    return signing.dumps(snapshot, salt='recruitment-delete')
+    return signed_state(deletion_snapshot(user, record), SALT)
 
 
 @never_cache
@@ -29,12 +29,7 @@ def recruitment_delete(request, pk):
         record = get_object_or_404(Recruitment.objects.select_for_update(), pk=pk)
         status, error = 200, ''
         if request.method == 'POST':
-            try:
-                expected = signing.loads(request.POST.get('version', ''), salt='recruitment-delete', max_age=86400)
-                current = signing.loads(deletion_token(request.user, record), salt='recruitment-delete')
-            except (signing.BadSignature, TypeError):
-                expected, current = None, True
-            if expected != current:
+            if not signed_state_matches(request.POST.get('version', ''), deletion_snapshot(request.user, record), SALT):
                 status, error = 409, 'Zgłoszenie zmieniło się lub potwierdzenie wygasło. Sprawdź dane przed usunięciem.'
             else:
                 record.delete()

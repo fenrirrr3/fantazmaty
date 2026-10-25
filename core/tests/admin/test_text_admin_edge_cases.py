@@ -16,7 +16,7 @@ from core.edit_versions import version_of
 from core.tests.people.support import admin_form_data
 from fantazmaty.testing import create_member, create_superuser, edit_token
 from illustrations.models import Illustration
-from texts.admin import ReviewAdmin, TextAdmin
+from texts.admin import TextAdmin
 from texts.models import Anthology, Review, ReviewAssignment, Text, TextNote, Translator
 from workflow.models import WorkflowStage
 
@@ -217,17 +217,15 @@ class TextWorkflowToolGapTests(TextAdminGapData):
     def test_add_stage_and_status_forms_refuse_stale_version(self):
         stale = version_of(self.text) - 1
         cases = {
-            'dodanie etapu': ('admin:texts_text_add_stage', {'kind': 'editing', 'version': stale},
-                              'Workflow zmienił się'),
-            'zmiana statusu': ('admin:texts_text_manual_status', {'stage': 'editing', 'version': stale, 'confirm': 'on'},
-                               'Tekst zmienił się'),
+            'dodanie etapu': ('admin:texts_text_add_stage', {'kind': 'editing', 'version': stale}),
+            'zmiana statusu': ('admin:texts_text_manual_status', {'stage': 'editing', 'version': stale, 'confirm': 'on'}),
         }
-        for case, (name, data, message) in cases.items():
+        for case, (name, data) in cases.items():
             with self.subTest(case):
                 url = reverse(name, args=[self.text.pk])
                 self.assertEqual(self.client.get(url).status_code, 200)
                 response = self.client.post(url, data)
-                self.assertContains(response, message)
+                self.assertContains(response, 'Dane zmieniły się. Odśwież formularz.')
         self.assertFalse(WorkflowStage.objects.filter(text=self.text).exists())
 
     def test_purge_reports_illustration_added_after_check(self):
@@ -258,22 +256,18 @@ class TextWorkflowToolGapTests(TextAdminGapData):
         self.assertTrue(Text.objects.filter(pk=self.text.pk).exists())
 
     def test_views_refuse_account_without_superuser_even_if_site_check_is_bypassed(self):
-        """Obrona w głębi: same widoki odmawiają, gdyby strona admina przepuściła konto bez superusera."""
+        """Obrona w głębi (SuperuserOnlyAdminMixin): uprawnienia modelu odmawiają, gdyby strona admina
+        przepuściła konto bez superusera."""
         staff = get_user_model().objects.create_user('text-gaps-staff', is_staff=True)
         request = RequestFactory().post('/', {'review_id': self.review().pk})
         request.user = staff
         request.session = {}
-        text_admin, review_admin = TextAdmin(Text, site), ReviewAdmin(Review, site)
+        text_admin = TextAdmin(Text, site)
         get = RequestFactory().get('/')
         get.user = staff
         calls = {
             'powtórzenie etapów': lambda: text_admin.repeat_form(get, self.text.pk),
-            'usunięcie z historią': lambda: text_admin.purge_view(request, str(self.text.pk)),
-            'dodanie etapu': lambda: text_admin.add_stage_view(request, str(self.text.pk)),
-            'zmiana statusu': lambda: text_admin.change_status_view(request, str(self.text.pk)),
             'czarna lista audiobooków': lambda: text_admin.block_audiobooks(request, Text.objects.all()),
-            'przygotowanie tekstu': lambda: review_admin.prepare_text_view(request),
-            'zapis recenzji': lambda: review_admin.save_model(request, Review(title='x'), None, False),
         }
         for case, call in calls.items():
             with self.subTest(case), self.assertRaises(PermissionDenied):

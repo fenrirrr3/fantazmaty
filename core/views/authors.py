@@ -1,6 +1,5 @@
 from core.public_authors import name_matches
 from core.translation_scope import frontend_scope
-from core.selectors.texts import _annotated_texts
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
@@ -169,13 +168,14 @@ def author_list(request):
     accepted_only = request.GET.get("accepted", "1").strip() != "0"
     authors = Author.objects.all()
     if accepted_only:
-        ready_texts = _annotated_texts().filter(
-
-            anthology__isnull=False,
-        )
+        # Teksty w antologiach – bez tłumaczeń, powieści i porzuconych antologii.
+        ready_texts = (Text.objects.exclude(anthology__is_translated=True).exclude(anthology__is_novel=True)
+                       .exclude(anthology__status='abandoned').filter(anthology__isnull=False))
         if selected_anthology_ids:
             ready_texts = ready_texts.filter(anthology_id__in=selected_anthology_ids)
         authors = authors.filter(pk__in=ready_texts.order_by().values("authors__pk"))
+    elif selected_anthology_ids:
+        authors = authors.filter(texts__anthology_id__in=selected_anthology_ids).distinct()
 
     # Każdy człon zapytania musi pasować do przynajmniej jednego pola.
     # Obsługuje to również wyszukiwanie po pełnym imieniu i nazwisku.
@@ -196,11 +196,6 @@ def author_list(request):
         )
 
     anthology_options = frontend_scope(Anthology.objects).all()
-
-    if selected_anthology_ids:
-        authors = authors.filter(
-            texts__anthology_id__in=selected_anthology_ids,
-        ).distinct()
 
     authors = authors.order_by(
         "last_name",

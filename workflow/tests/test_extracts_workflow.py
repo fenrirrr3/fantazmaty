@@ -4,10 +4,8 @@ Wyłączone etapy nie są oferowane w karcie tekstu, „Teksty do wzięcia” an
 a zaległe (sprzed zmiany) prowadzą po zakończeniu do najbliższego dozwolonego etapu.
 """
 from datetime import timedelta
-from io import StringIO
 
 from django.core.exceptions import ValidationError
-from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
 from lxml import html
@@ -330,32 +328,6 @@ class ExtractsWorkflowTests(WorkflowTestDataMixin, TestCase):
             claim_stage(self.text, stage.stage_type, stage.assignment.assigned_to, self.today, stage_id=stage.pk)
             complete_stage(stage, self.superuser, self.today)
         self.assertEqual(self.open_kinds(), ['first_proofreading'])
-
-    # --- raport ------------------------------------------------------------------------------------
-
-    def test_report_lists_only_extracts_with_open_disabled_stages(self):
-        """Komenda raportu wypisuje zaległe wyłączone etapy Ekstraktów (bez zwykłych antologii) i nic nie zmienia."""
-        output = StringIO()
-        call_command('extracts_workflow_report', stdout=output)
-        self.assertEqual(output.getvalue().strip(), 'Żaden tekst Ekstraktów nie ma otwartego wyłączonego etapu.')
-        self.legacy(('first_verification', 'done'), ('second_verification', 'active'))
-        other = Anthology.objects.create(title='Ekstrakty 10', is_extracts=True).texts.get()
-        self.legacy(('first_proofreading', 'done'), ('second_proofreading', 'pending'), text=other)
-        ordinary = Text.objects.create(title='Zwykły', length=100, anthology=Anthology.objects.create(title='Zwykła'))
-        self.legacy(('first_verification', 'done'), ('second_verification', 'active'), text=ordinary)
-        before = list(S.objects.order_by('pk').values_list('pk', 'stage_type', 'is_completed'))
-        output = StringIO()
-        call_command('extracts_workflow_report', stdout=output)
-        lines = output.getvalue().strip().splitlines()
-        self.assertEqual(len(lines), 3)
-        self.assertIn('Ekstrakty 10', lines[0])
-        self.assertIn('Druga korekta – nieprzypisany – ustaw status w panelu admina', lines[0])
-        self.assertIn('po zakończeniu → Gotowe', lines[0])
-        self.assertIn('Ekstrakty 9', lines[1])
-        self.assertIn('Druga weryfikacja – rozpoczęty', lines[1])
-        self.assertIn('po zakończeniu → Pierwsza korekta', lines[1])
-        self.assertEqual(lines[2], 'Otwarte wyłączone etapy: 2.')
-        self.assertEqual(list(S.objects.order_by('pk').values_list('pk', 'stage_type', 'is_completed')), before)
 
 
 class OrdinaryAnthologyUnchangedTests(WorkflowTestDataMixin, TestCase):

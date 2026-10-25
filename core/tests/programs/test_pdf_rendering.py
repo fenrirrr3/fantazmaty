@@ -46,7 +46,7 @@ class PdfRenderingTests(SimpleTestCase):
         document.save(source)
         captured = []
         with pdf_html_spy(captured):
-            render_pdf(source, self.directory / 'result.pdf', content, assets or {}, 'Test')
+            render_pdf(Document(source), self.directory / 'result.pdf', content, assets or {}, 'Test')
         pdf = (self.directory / 'result.pdf').read_bytes()
         self.assertTrue(pdf.startswith(b'%PDF'))
         tree = html_parser.fragment_fromstring(''.join(part for part, _ in captured), create_parent='div')
@@ -307,7 +307,7 @@ class PdfPageFurnitureTests(SimpleTestCase):
             return original(pdf, name, level, strict)
         with page_furniture_spy(records), pdf_html_spy(captured), \
                 patch.object(FPDF, 'start_section', section_spy), patch.object(FPDF, 'cell', cell_spy):
-            render_pdf(source, self.directory / 'result.pdf', content, {}, 'Test')
+            render_pdf(Document(source), self.directory / 'result.pdf', content, {}, 'Test')
         pdf = (self.directory / 'result.pdf').read_bytes()
         self.pdf = pdf
         return records, sections, len(re.findall(rb'/Type /Page\b(?!s)', pdf)), captured

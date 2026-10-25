@@ -10,15 +10,12 @@ from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_COLOR_INDEX
 
 from core.odkurzacz_forms import RepetitionsForm
-from core.program_test_support import run_program
 from core.services.document_converter import convert_document
 from core.services.document_repetitions import LEXICAL_RE, _get_nlp, _unused_pipes, color_document
 from fantazmaty.testing import create_member
 
-from .support import (
-    REPETITION_FIELDS, REPETITION_PARAMETERS, IsolatedProgramDirsMixin, docx_with_paragraph_xml,
-    downloaded_document, footnote_text, saved, text_run, whole_document,
-)
+from .support import (REPETITION_FIELDS, REPETITION_PARAMETERS, IsolatedProgramDirsMixin, docx_with_paragraph_xml,
+                      downloaded_document, footnote_text, run_program, saved, text_run, whole_document)
 
 ONLY_REPETITIONS = {'duplicates': False, 'long_sentences': False, 'long_paragraphs': False, 'empty_pairs': False}
 

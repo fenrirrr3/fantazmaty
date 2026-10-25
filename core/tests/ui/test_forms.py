@@ -13,7 +13,7 @@ from lxml import html
 
 from authors.models import Author
 from core.forms import (AuthorNoteForm, AuthorNotificationForm, CompleteStageForm,
-                        ReviewBulkImportForm, ReviewContentWarningsForm,
+                        ReviewBulkImportForm,
                         VacationForm)
 from core.models import MailboxConnection, PostLayoutAssignment
 from core.post_layout import selection_token
@@ -254,9 +254,7 @@ class FormValidationRulesTests(TestCase):
 
     def test_author_notification_date_follows_checkbox_and_allowed_range(self):
         notified = self.today - timedelta(days=3)
-        form = AuthorNotificationForm(review=SimpleNamespace(author_notified_at=notified))
-        self.assertEqual((form.initial['author_notified'], form.initial['author_notified_at']), (True, notified))
-        self.assertFalse(AuthorNotificationForm(review=SimpleNamespace(author_notified_at=None)).initial['author_notified'])
+        self.assertEqual(AuthorNotificationForm().initial['author_notified_at'], self.today)
         form = AuthorNotificationForm({'author_notified_at': notified.isoformat()})
         self.assertTrue(form.is_valid())
         self.assertIsNone(form.cleaned_data['author_notified_at'])
@@ -274,8 +272,6 @@ class FormValidationRulesTests(TestCase):
         form = AuthorNoteForm({'content': '  Nowa  '}, instance=existing)
         self.assertTrue(form.is_valid())
         self.assertEqual(form.cleaned_data['content'], 'Nowa')
-        review = SimpleNamespace(content_warnings='Przemoc')
-        self.assertEqual(ReviewContentWarningsForm(instance=review).initial['content_warnings'], 'Przemoc')
 
     def import_form(self, records, user=None, **data):
         return ReviewBulkImportForm({'anthology': self.book.pk, 'records': records, **data},

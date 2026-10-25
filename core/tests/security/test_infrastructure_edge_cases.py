@@ -109,12 +109,14 @@ class ActivityLoggingFailureTests(TemporaryActivitySpoolMixin, TestCase):
 
 
 class ActivityPresentationTests(SimpleTestCase):
-    def test_unknown_path_keeps_legacy_action_names_readable(self):
-        legacy = UserActivity(action='review list', target='', path='/usunieta-strona/', method='GET')
-        unknown = UserActivity(action='Coś innego', target='', path='/usunieta-strona/', method='GET')
-        present_activities([legacy, unknown])
-        self.assertEqual(legacy.display_action, 'Recenzje')
-        self.assertEqual(unknown.display_action, 'Coś innego')
+    def test_unknown_path_keeps_stored_action_and_target(self):
+        """Wpis z adresem, którego już nie ma, pokazuje działanie i obiekt tak, jak je zapisano
+        (dawne nazwy adresów nie są tłumaczone na etykiety)."""
+        for action in ('save review', 'discord_test', 'review list', 'Coś innego'):
+            with self.subTest(action=action):
+                entry = UserActivity(action=action, target='user_id: #5', path='/usunieta-strona/', method='GET')
+                present_activities([entry])
+                self.assertEqual((entry.display_action, entry.display_target), (action, 'user_id: #5'))
 
     def test_object_name_stops_after_three_levels_of_relations(self):
         def node(**fields):
@@ -157,7 +159,8 @@ class SmallInfrastructureGapTests(TestCase):
         Permission.objects.get(codename='view_user').user_set.add(user)
         self.assertGreater(version_of(user), before)
 
-    def test_polish_admin_app_list_and_nested_legacy_routes(self):
+    def test_polish_admin_app_list_and_nested_routes(self):
+        """Sekcja panelu ma polski adres; zagnieżdżone trasy są tłumaczone, a dawne angielskie nie istnieją."""
         admin = create_superuser('panel-admin')
         self.client.force_login(admin)
         response = self.client.get(reverse('admin:app_list', args=['authors']))
@@ -170,10 +173,10 @@ class SmallInfrastructureGapTests(TestCase):
 
         patterns = polish_admin_patterns([path('authors/', include([path('author/', include([
             path('<int:pk>/', view, name='inner')]))]))])
-        alias = patterns[-1]
-        self.assertEqual(str(alias.pattern), 'authors/')
-        nested = alias.url_patterns[0]
+        self.assertEqual([str(pattern.pattern) for pattern in patterns], ['autorzy/'])
+        nested = patterns[0].url_patterns[0]
         self.assertIsInstance(nested, URLResolver)
-        self.assertIsNone(nested.url_patterns[0].name)
-        self.assertEqual(alias.resolve('authors/author/5/').kwargs, {'pk': 5})
+        self.assertEqual(nested.url_patterns[0].name, 'inner')
+        self.assertEqual(patterns[0].resolve('autorzy/autor/5/').kwargs, {'pk': 5})
+        self.assertEqual(self.client.get('/panel/authors/').status_code, 404)
 

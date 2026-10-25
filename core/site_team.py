@@ -2,9 +2,8 @@
 
 Do JSON-a trafiają wyłącznie imiona i nazwiska – nigdy e-maile, konta ani role wewnętrzne.
 """
-from django.utils import timezone
 
-from core.odkurzacz_forms import plural
+from core.inflection import count_text
 from core.site_models import SiteTeamGroup, SiteTeamSection, SiteTeamSettings, with_version
 from core.site_note import clean_note
 from core.sort_keys import text_key
@@ -13,17 +12,10 @@ from people.models import Person
 
 # Role wykonawcze, których brak w działach nie jest ostrzeżeniem (nie pokazujemy ich na stronie).
 HIDDEN_ROLES = frozenset({roles.TRANSLATOR, roles.SOCIAL_MEDIA, roles.EMPEROR})
+PEOPLE_FORMS = ('osoba', 'osoby', 'osób')
 
 
-def people_count_text(count):
-    return f'{count} {plural(count, "osoba", "osoby", "osób")}'
-
-
-def person_name(person):
-    return f'{person.first_name} {person.last_name}'.strip()
-
-
-def _people_by_role():
+def people_by_role():
     """{nazwa roli: [(klucz sortowania, imię i nazwisko)]} dla aktywnych, niezewnętrznych osób."""
     by_role = {}
     rows = Person.objects.filter(is_active=True, is_external=False).values_list(
@@ -48,9 +40,10 @@ def _with_manual(names, manual):
     return list(dict.fromkeys([*names, *manual]))
 
 
-def team_sections(include_disabled=False):
-    """Działy z grupami i nazwiskami; ``include_disabled`` dołącza też wyłączone (dla podglądu)."""
-    by_role = _people_by_role()
+def team_sections(include_disabled=False, by_role=None):
+    """Działy z grupami i nazwiskami; ``include_disabled`` dołącza też wyłączone (dla podglądu). ``by_role`` – wynik
+    ``people_by_role()``, jeśli już jest pobrany."""
+    by_role = people_by_role() if by_role is None else by_role
     sections = SiteTeamSection.objects.prefetch_related('coordinator_roles', 'groups__roles')
     if not include_disabled:
         sections = sections.filter(is_enabled=True)
@@ -69,7 +62,7 @@ def team_sections(include_disabled=False):
             'wlaczony': section.is_enabled,
             'w_nawigacji': section.in_navigation, 'etykieta_nawigacji': section.navigation_label or section.title,
             'liczba': unique if section.show_count else None,
-            'liczba_tekst': people_count_text(unique) if section.show_count else '',
+            'liczba_tekst': count_text(unique, PEOPLE_FORMS) if section.show_count else '',
             'koordynacja': _with_manual(
                 _names_for_roles(by_role, [role.name for role in section.coordinator_roles.all()]),
                 section.manual_coordinator_list),
@@ -90,26 +83,19 @@ def team_payload():
     return with_version({'prowadzacy': settings.lead_editor, 'strona': settings.site_person, 'dzialy': sections})
 
 
-def record_fetch(version):
-    """Zapis śladu pobrania przez stronę (bez zapisu całego rekordu ustawień)."""
-    SiteTeamSettings.load()
-    SiteTeamSettings.objects.filter(pk=1).update(last_fetched_at=timezone.now(), last_fetch_version=version[:40])
-
-
-def team_warnings(sections):
-    """Ostrzeżenia podglądu: osoby z rolą wykonawczą poza działami i działy z ról bez osób."""
+def team_warnings(sections, by_role):
+    """Ostrzeżenia podglądu: osoby z rolą wykonawczą poza działami i działy z ról bez osób (``by_role`` – wynik
+    ``people_by_role()`` użyty do zbudowania działów)."""
     listed = {name for section in sections if section['wlaczony']
               for group in section['grupy'] for name in group['osoby']}
     listed |= {name for section in sections if section['wlaczony'] for name in section['koordynacja']}
     missing = {}
-    rows = Person.objects.filter(is_active=True, is_external=False, roles__isnull=False).values_list(
-        'pk', 'first_name', 'last_name', 'roles__name').order_by('last_name', 'first_name', 'pk')
-    for pk, first_name, last_name, role in rows:
+    for role, people in by_role.items():
         if role in HIDDEN_ROLES or roles.is_coordinator_role_name(role):
             continue
-        name = f'{first_name} {last_name}'.strip()
-        if name not in listed:
-            missing.setdefault((text_key(last_name), text_key(first_name), name), set()).add(role)
+        for (last_name, first_name, _), name in people.values():
+            if name not in listed:
+                missing.setdefault((last_name, first_name, name), set()).add(role)
     missing_people = [f'{key[2]} ({", ".join(sorted(role_names))})' for key, role_names in sorted(missing.items())]
     empty = [section['tytul'] for section in sections if section['wlaczony'] and not section['notka']
              and any(group['zrodlo'] == SiteTeamGroup.Source.ROLES and not group['osoby']

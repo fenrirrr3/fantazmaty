@@ -1,4 +1,4 @@
-// person-select.js: wyszukiwalny select jednej osoby (przypisania, korekta, scalanie haseł) – polskie znaki,
+// person-select.js (z lookup.js): wyszukiwalny select jednej osoby (przypisania, korekta, scalanie haseł) – polskie znaki,
 // duplikaty nazw, dokładne wpisanie, klawiatura, limit 30 wyników, filtr według roli i reset formularza.
 const assert = require('node:assert/strict');
 const {Document, fakeTimers, runScript} = require('./support/dom.js');
@@ -23,12 +23,25 @@ function start(f, presetValue) {
     if (presetValue !== undefined) f.select.value = presetValue;
     const timers = fakeTimers(), changes = [];
     f.select.addEventListener('change', () => changes.push(f.select.value));
-    runScript('person-select.js', f.doc, {setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout});
+    runScript(['lookup.js', 'person-select.js'], f.doc, {setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout});
     const input = f.doc.getElementById('id_person_search');
     const list = f.doc.getElementById('id_person_suggestions'), status = f.doc.querySelector('.lookup-status');
     const type = value => { input.value = value; input.fire('input', {bubbles: true}); };
     const key = name => input.fire('keydown', {key: name});
     return Object.assign(f, {timers, changes, input, list, status, type, key, labels: () => list.children.map(b => b.textContent)});
+}
+
+// Panel admina: skrypt z Media ładuje się w <head>, zanim powstanie formularz – widżet powstaje po DOMContentLoaded,
+// a ponowne uruchomienie (np. drugi skrypt na stronie) nie dubluje pola.
+{
+    const g = fixture(); g.doc.readyState = 'loading';
+    const timers = fakeTimers();
+    const context = runScript(['lookup.js', 'person-select.js'], g.doc, {setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout});
+    assert.equal(g.doc.getElementById('id_person_search'), null);
+    g.doc.readyState = 'interactive'; g.doc.dispatchEvent(new context.Event('DOMContentLoaded'));
+    assert.ok(g.doc.getElementById('id_person_search'));
+    g.doc.dispatchEvent(new context.Event('DOMContentLoaded'));
+    assert.equal(g.doc.querySelectorAll('.lookup-status').length, 1);
 }
 
 // Stan początkowy: zapisana wartość widoczna w polu, wymaganie przeniesione z selecta na pole, etykieta przepięta.

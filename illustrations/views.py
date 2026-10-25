@@ -10,77 +10,21 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods, require_POST
 
 from authors.models import Author
-from core.pagination import paginate_queryset
-from core.permissions import get_active_person_profile, is_coordinator, can_view_illustrations
+from core.pagination import paginate_items
+from core.permissions import is_coordinator, can_view_illustrations, team_member_required
 from texts.models import Anthology, Text
-from texts.production import active_production_texts
 
 from .forms import CoverProposalForm
 from .models import CoverProposal, Illustration, Illustrator
-from .editing import FORMS, can_edit_illustration, edit_forms, token_matches
-
-
-ILLUSTRATION_SORT_FIELDS = {
-    "anthology": (
-        "text__anthology__title",
-        "text__title",
-    ),
-    "title": (
-        "text__title",
-        "text__anthology__title",
-    ),
-    "illustrator": (
-        "artist_sort",
-    ),
-    "status": ("status",),
-    "assigned_at": ("assigned_at",),
-}
-
-
-def has_coordinator_access(user):
-    return is_coordinator(user)
-
-
-def _ensure_team_access(user):
-    if not (
-        user.is_authenticated
-        and user.is_active
-        and (
-            user.is_superuser
-            or get_active_person_profile(user) is not None
-        )
-    ):
-        raise PermissionDenied(
-            "Dostęp wymaga aktywnego konta i przynależności do zespołu."
-        )
-
-
-
-
-def _illustration_ordering(request):
-    selected_sort = request.GET.get("sort", "anthology").strip()
-    descending = selected_sort.startswith("-")
-    field_name = selected_sort[1:] if descending else selected_sort
-
-    if field_name not in ILLUSTRATION_SORT_FIELDS:
-        field_name = "anthology"
-        descending = False
-
-    prefix = "-" if descending else ""
-    ordering = [
-        f"{prefix}{field}"
-        for field in ILLUSTRATION_SORT_FIELDS[field_name]
-    ]
-    ordering.append(f"{prefix}pk")
-
-    return ordering
+from .editing import FORMS, edit_forms, token_matches
+from .public import visible_illustrations
 
 
 @never_cache
 @login_required
 @require_http_methods(['GET', 'POST'])
+@team_member_required
 def illustration_list(request):
-    _ensure_team_access(request.user)
     if not can_view_illustrations(request.user):
         raise PermissionDenied("Ilustracje są dostępne dla koordynatorów i ilustratorów.")
 
@@ -120,16 +64,13 @@ def illustration_list(request):
         selected_status = ""
 
     hide_published = request.GET.get("hide_published", "1") != "0"
-    ordering = _illustration_ordering(request)
     can_view_authors = request.user.is_superuser
 
     # GET nie tworzy ani nie aktualizuje rekordów.
     # Ilustracje powstają przez istniejące sygnały przy zmianach danych.
+    # Kolejność z nagłówka tabeli ustawia paginate_items (core.table_sorting); domyślnie antologia i tytuł.
     illustrations = (
-        frontend_scope(Illustration.objects).filter(
-            text_id__in=active_production_texts(Text.objects.all()).values("pk"),
-            text__anthology__has_illustrations=True,
-        )
+        visible_illustrations(hide_published=hide_published)
         .select_related(
             "text",
             "text__anthology",
@@ -138,11 +79,8 @@ def illustration_list(request):
         .annotate(artist_sort=Subquery(Illustrator.objects.filter(illustrations=OuterRef('pk'))
             .annotate(artist_name=Illustrator.display_name_expression()).order_by('artist_name', 'pk').values('artist_name')[:1]))
         .prefetch_related('illustrators')
-        .order_by(*ordering)
+        .order_by("text__anthology__title", "text__title", "pk")
     )
-
-    if hide_published:
-        illustrations = illustrations.exclude(text__anthology__status=Anthology.Status.READY)
 
     illustrations, facets = facet_queryset(illustrations, {
         'status': ('status', selected_statuses),
@@ -167,7 +105,7 @@ def illustration_list(request):
 
     if hide_published:
         anthologies = anthologies.exclude(status=Anthology.Status.READY)
-    page_obj = paginate_queryset(request, illustrations)
+    page_obj = paginate_items(request, illustrations)
 
     return render(
         request,
@@ -192,8 +130,8 @@ def illustration_list(request):
 @never_cache
 @login_required
 @require_http_methods(['GET', 'POST'])
+@team_member_required
 def illustration_detail(request, illustration_id):
-    _ensure_team_access(request.user)
     if not can_view_illustrations(request.user):
         raise PermissionDenied('Ilustracje są dostępne dla koordynatorów i ilustratorów.')
     with transaction.atomic():
@@ -202,7 +140,7 @@ def illustration_detail(request, illustration_id):
             query = query.select_for_update()
         illustration = get_object_or_404(query, pk=illustration_id,
             text__anthology__has_illustrations=True)
-        editable = can_edit_illustration(request.user, illustration)
+        editable = is_coordinator(request.user)
         forms = edit_forms(request.user, illustration) if editable else {}
         response_status = 200
         if request.method == 'POST':
@@ -236,12 +174,12 @@ def illustration_detail(request, illustration_id):
 @never_cache
 @login_required
 @require_POST
+@team_member_required
 def create_illustration(request, text_id):
     """Zakłada brakujący wpis ilustracji tekstu (koordynator, superuser) i otwiera go do edycji.
 
     Wpisy powstają same tylko w antologiach „W przygotowaniu”; tekst ze starej (np. importowanej, już Gotowej)
     antologii ilustrowanej mógł go nie dostać – wtedy nie dało się dopisać ilustratora."""
-    _ensure_team_access(request.user)
     if not is_coordinator(request.user):
         raise PermissionDenied('Wpis ilustracji może założyć koordynator lub superuser.')
     from .services import missing_illustration_texts
@@ -261,9 +199,8 @@ def create_illustration(request, text_id):
 @never_cache
 @login_required
 @require_http_methods(["GET", "POST"])
+@team_member_required
 def cover_proposal_list(request):
-    _ensure_team_access(request.user)
-
     form = CoverProposalForm(
         request.POST if request.method == "POST" else None
     )
@@ -286,7 +223,7 @@ def cover_proposal_list(request):
         frontend_scope(CoverProposal.objects).select_related("submitted_by")
         .order_by("-submitted_at", "-pk")
     )
-    page_obj = paginate_queryset(request, proposals)
+    page_obj = paginate_items(request, proposals)
 
     return render(
         request,
@@ -296,7 +233,7 @@ def cover_proposal_list(request):
             "proposals": page_obj,
             "page_obj": page_obj,
             "status_choices": CoverProposal.Status.choices,
-            "can_manage_proposals": has_coordinator_access(request.user),
+            "can_manage_proposals": is_coordinator(request.user),
         },
     )
 
@@ -304,10 +241,9 @@ def cover_proposal_list(request):
 @never_cache
 @login_required
 @require_POST
+@team_member_required
 def update_cover_proposal_status(request, proposal_id):
-    _ensure_team_access(request.user)
-
-    if not has_coordinator_access(request.user):
+    if not is_coordinator(request.user):
         raise PermissionDenied(
             "Tylko koordynator może zmieniać status propozycji."
         )

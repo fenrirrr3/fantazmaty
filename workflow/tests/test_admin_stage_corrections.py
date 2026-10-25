@@ -18,12 +18,11 @@ from workflow.admin_stage_edit import edit_stage
 from workflow.import_context import importing_completed
 from workflow.handoffs import handoff_stage
 from workflow.models import WorkflowRepetition, WorkflowStage as S, WorkflowRoleAssignment as A
-from workflow.read_queries import annotate_my_work
 from workflow.repetitions import repeat_stages
 from workflow.services import claim_stage, complete_stage
 from workflow.state import current_stage
 
-from .support import importing
+from .support import importing, work_state
 
 
 class ReopenStageTests(TestCase):
@@ -59,7 +58,7 @@ class ReopenStageTests(TestCase):
         self.assertEqual(self.stage.execution_number, 1)
         self.assertEqual(S.objects.filter(text=self.text).count(), 1)
         self.assertGreater(version_of(self.text), old_version)
-        row = annotate_my_work(Text.objects.all(), self.member, self.today).get(pk=self.text.pk)
+        row = work_state(self.member, self.text)
         self.assertTrue(row.work_active)
         self.assertFalse(row.work_completed)
         self.assertEqual(_annotated_texts().get(pk=self.text.pk).current_stage_type, self.stage.stage_type)

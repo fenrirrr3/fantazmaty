@@ -2,6 +2,7 @@
 import imaplib
 import ssl
 from email.message import EmailMessage
+from email.parser import BytesParser
 from unittest.mock import patch
 
 from cryptography.fernet import InvalidToken
@@ -10,7 +11,7 @@ from django.test import SimpleTestCase, TestCase, tag
 from core.models import MailboxConnection, MailboxDownload
 from core.services.mailbox import MailboxError, encode_folder, read_headers
 from core.services.mailbox_email_copy import sender_emails
-from core.services.mailbox_import import default_mailbox, fetch_messages, parse_message, prepare_forms
+from core.services.mailbox_import import default_mailbox, fetch_messages, mailbox_key, parse_message, prepare_forms
 from fantazmaty.testing import create_superuser
 from fantazmaty.testing.data import sample
 
@@ -185,7 +186,7 @@ class MessageFetchTests(TestCase):
         cls.box.set_password('test')
         cls.box.save()
 
-    @patch('core.services.mailbox_import.imaplib.IMAP4_SSL')
+    @patch('core.services.mailbox.imaplib.IMAP4_SSL')
     def test_fetch_readonly_peek_raw_mode_and_uidvalidity(self, imap):
         raw = csv_mail()
         no_attachments = EmailMessage()
@@ -213,7 +214,7 @@ class MessageFetchTests(TestCase):
         with self.assertRaises(MailboxError):
             fetch_messages(self.box, 8, [12])
 
-    @patch('core.services.mailbox_import.imaplib.IMAP4_SSL')
+    @patch('core.services.mailbox.imaplib.IMAP4_SSL')
     def test_partial_fetch_skips_empty_attachment_and_malformed_submission(self, imap):
         empty = EmailMessage()
         empty['Reply-To'] = 'empty@example.com'
@@ -232,7 +233,7 @@ class MessageFetchTests(TestCase):
         self.assertFalse(client.store.called)
         self.assertFalse(client.expunge.called)
 
-    @patch('core.services.mailbox_import.imaplib.IMAP4_SSL')
+    @patch('core.services.mailbox.imaplib.IMAP4_SSL')
     def test_submissions_limited_to_twenty_and_raw_samples_to_fifty(self, imap):
         raw = named_mail()
         client = fake_imap(imap, exists=b'50')
@@ -246,7 +247,7 @@ class MessageFetchTests(TestCase):
         self.assertIn('od 1 do 20', str(error.exception))
         imap.assert_not_called()
 
-    @patch('core.services.mailbox_import.imaplib.IMAP4_SSL')
+    @patch('core.services.mailbox.imaplib.IMAP4_SSL')
     def test_redownload_after_folder_change_without_parsing_submission(self, imap):
         """Wiadomość pobrana z innego folderu (inny klucz skrzynki) jest rozpoznana po odcisku treści."""
         raw = identity_mail()
@@ -265,6 +266,29 @@ class MessageFetchTests(TestCase):
         self.assertFalse(client.store.called)
         self.assertFalse(client.expunge.called)
 
+    @patch('core.services.mailbox.imaplib.IMAP4_SSL')
+    def test_each_message_is_parsed_once_with_one_receipt_query(self, imap):
+        """Wiadomość jest parsowana raz, a sprawdzenie „już pobrana” (ten sam UID albo odcisk treści) to jedno
+        zapytanie – także dla nowej wiadomości; pobrana wcześniej nie dostaje danych zgłoszenia."""
+        raw = csv_mail()
+        fingerprint = parse_message(12, raw, submission=False)['fingerprint']
+        client = fake_imap(imap)
+        client.uid.side_effect = sized_fetch(raw)
+        for name, receipt, submission in (
+            ('nowa', None, True),
+            ('ten sam UID', {'mailbox_key': mailbox_key(self.box), 'uid_validity': 7, 'uid': 12}, False),
+            ('ten sam odcisk z innej skrzynki', {'mailbox_key': 'inna', 'uid_validity': 1, 'uid': 1,
+                                                 'fingerprint': fingerprint}, False),
+        ):
+            with self.subTest(name):
+                MailboxDownload.objects.all().delete()
+                if receipt:
+                    MailboxDownload.objects.create(**receipt)
+                with patch('core.services.mailbox_import.BytesParser', wraps=BytesParser) as parser, \
+                        self.assertNumQueries(1):
+                    rows = fetch_messages(self.box, 7, [12])
+                self.assertEqual(parser.call_count, 1)
+                self.assertEqual('record' in rows[0], submission)
 
 
 class FolderEncodingTests(SimpleTestCase):
@@ -441,18 +465,18 @@ class MessageFetchErrorTests(TestCase):
     def test_starttls_and_unsupported_security(self):
         raw = csv_mail()
         self.box.security = 'starttls'
-        with patch('core.services.mailbox_import.imaplib.IMAP4') as imap:
+        with patch('core.services.mailbox.imaplib.IMAP4') as imap:
             imap.error = imaplib.IMAP4_SSL.error
             client = fake_imap(imap)
             client.uid.side_effect = sized_fetch(raw)
             self.assertEqual(fetch_messages(self.box, 7, [12], raw_messages=True), [{'uid': 12, 'raw': raw}])
         client.starttls.assert_called_once()
         self.box.security = 'plain'
-        with patch('core.services.mailbox_import.imaplib.IMAP4_SSL') as imap:
+        with patch('core.services.mailbox.imaplib.IMAP4_SSL') as imap:
             self.assertIn('Nieobsługiwany sposób szyfrowania', self.fetch([12]))
         imap.assert_not_called()
 
-    @patch('core.services.mailbox_import.imaplib.IMAP4_SSL')
+    @patch('core.services.mailbox.imaplib.IMAP4_SSL')
     def test_folder_size_and_incomplete_body_errors(self, imap):
         raw = csv_mail()
         client = fake_imap(imap)
@@ -473,7 +497,7 @@ class MessageFetchErrorTests(TestCase):
         self.assertIn('Serwer zwrócił inną wiadomość', self.fetch([12]))
         self.assertEqual(client.logout.call_count, 5)
 
-    @patch('core.services.mailbox_import.imaplib.IMAP4_SSL')
+    @patch('core.services.mailbox.imaplib.IMAP4_SSL')
     def test_skipped_errors_collect_unavailable_and_incomplete_messages(self, imap):
         raw = csv_mail()
 
@@ -492,22 +516,22 @@ class MessageFetchErrorTests(TestCase):
                                   'Wiadomość 13: nie udało się pobrać całej wiadomości.'])
 
     @patch('core.services.mailbox_import.MAX_BATCH', 100)
-    @patch('core.services.mailbox_import.imaplib.IMAP4_SSL')
+    @patch('core.services.mailbox.imaplib.IMAP4_SSL')
     def test_batch_size_limit(self, imap):
         client = fake_imap(imap)
         client.uid.return_value = ('OK', [b'1 (UID 12 RFC822.SIZE 101)'])
         self.assertIn('łącznie 50 MB', self.fetch([12], []))
 
-    @patch('core.services.mailbox_import.imaplib.IMAP4_SSL')
+    @patch('core.services.mailbox.imaplib.IMAP4_SSL')
     def test_invalid_submission_raises_without_skip_list(self, imap):
         client = fake_imap(imap)
         client.uid.side_effect = sized_fetch(csv_mail(line='Brak zgłoszenia'))
         self.assertIn('oczekiwano jednego zgłoszenia', self.fetch([12]))
 
-    @patch('core.services.mailbox_import.imaplib.IMAP4_SSL')
+    @patch('core.services.mailbox.imaplib.IMAP4_SSL')
     def test_connection_errors_are_translated_and_logout_errors_ignored(self, imap):
         imap.side_effect = ConnectionRefusedError()
-        self.assertIn('Sprawdź połączenie', self.fetch([12]))
+        self.assertIn('Serwer pocztowy nie odpowiada', self.fetch([12]))
         imap.side_effect = None
         client = fake_imap(imap)
         client.uid.side_effect = sized_fetch(csv_mail())

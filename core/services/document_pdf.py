@@ -12,13 +12,15 @@ from pathlib import Path
 if __package__:
     from .document_progress import report
     from .document_styles import paragraph_properties, paragraph_style, style_chain
-    from .document_html import (CHOICE, WORD, list_paragraphs, matched_paragraph, paragraph_queues, scene_break,
+    from .document_html import (list_paragraphs, matched_paragraph, normalize_text, paragraph_queues, scene_break,
                                 split_page_breaks)
+    from .document_xml import CHOICE, WORD
 else:
     from document_progress import report
     from document_styles import paragraph_properties, paragraph_style, style_chain
-    from document_html import (CHOICE, WORD, list_paragraphs, matched_paragraph, paragraph_queues, scene_break,
+    from document_html import (list_paragraphs, matched_paragraph, normalize_text, paragraph_queues, scene_break,
                                split_page_breaks)
+    from document_xml import CHOICE, WORD
 
 BLOCKS = ("p", "h1", "h2", "h3", "h4", "h5", "h6")
 # Znaczniki, które fpdf2 przyjmuje w komórce tabeli, o ile obejmują cały jej tekst.
@@ -396,14 +398,12 @@ def _pdf_texts(root):
             element.tail = element.tail.translate(PDF_CHARACTERS)
 
 
-def render_pdf(source, target, content, assets, title, document=None):
-    from docx import Document
+def render_pdf(document, target, content, assets, title):
+    """PDF z HTML Mammotha (content) i geometrii dokumentu python-docx; zwraca uwagi dla użytkownika."""
     from fpdf import FPDF
     from fpdf.fonts import TextStyle
     from fpdf.html import HTML2FPDF
     from lxml import html
-    if document is None:
-        document = Document(source)
     sections = document.sections
     section = sections[0] if len(sections) else None
     width, height, margins = _page_geometry(section)
@@ -417,7 +417,7 @@ def render_pdf(source, target, content, assets, title, document=None):
             values = dict(attrs)
             if tag == 'p' and self.td_th is not None and values.get('align'):
                 self.td_th['align'] = values['align']
-            if tag in ('p','h1','h2','h3','h4','h5','h6') and self._paragraph is not None:
+            if tag in BLOCKS and self._paragraph is not None:
                 self._paragraph.first_line_indent = float(values.get('data-indent', 0))
                 self._paragraph.top_margin = float(values.get('data-before', 0))
                 self._paragraph.line_height = float(values.get('line-height', 1.5))
@@ -498,8 +498,6 @@ def render_pdf(source, target, content, assets, title, document=None):
     pdf.add_page()
     pdf.set_font("Document", size=12)
     supported = pdf.fonts['document'].cmap
-    def normalize(value):
-        return " ".join(value.split())
     paragraphs = paragraph_queues(document)
     root = html.fragment_fromstring(content or "<p></p>", create_parent="div")
     list_paragraphs(root)
@@ -518,7 +516,7 @@ def render_pdf(source, target, content, assets, title, document=None):
             )
     # Resolve every paragraph, including those nested in lists and tables.
     for node in root.iterdescendants():
-        if node.tag not in ("p", "h1", "h2", "h3", "h4", "h5", "h6"):
+        if node.tag not in BLOCKS:
             continue
         paragraph = matched_paragraph(paragraphs, node)
         size, line_height, before, after, indent = 12, 1.5, 0, 0, 12.5
@@ -541,21 +539,14 @@ def render_pdf(source, target, content, assets, title, document=None):
             if spacing is not None:
                 line_height = spacing.pt / size if hasattr(spacing, "pt") else float(spacing)
                 line_height = max(0.8, min(line_height, 4))
-            for attr in ("space_before", "space_after"):
-                value = properties[attr]
-                if value is not None:
-                    if attr == "space_before":
-                        before = value.mm
-                    else:
-                        after = value.mm
+            if properties["space_before"] is not None:
+                before = properties["space_before"].mm
+            if properties["space_after"] is not None:
+                after = properties["space_after"].mm
             value = properties["first_line_indent"]
             if value is not None:
                 indent = max(0, min(value.mm, 40))
-            align = properties["alignment"]
-            if node.tag in ("p", "h1", "h2", "h3", "h4", "h5", "h6"):
-                node.set(
-                    "align", {0: "left", 1: "center", 2: "right", 3: "justify"}.get(align, "left")
-                )
+            node.set("align", {0: "left", 1: "center", 2: "right", 3: "justify"}.get(properties["alignment"], "left"))
             if properties["page_break_before"]:
                 node.set("data-page-break", "1")
         if node.getparent() is root and scene_break(node):
@@ -566,10 +557,9 @@ def render_pdf(source, target, content, assets, title, document=None):
                 for child in list(node):
                     node.remove(child)
                 node.text = SCENE_BREAK_TEXT  # ozdobnik spoza czcionki (❦, ⁂, ✻…)
-        if node.tag in ("p", "h1", "h2", "h3", "h4", "h5", "h6"):
-            node.set("line-height", str(line_height))
-            node.set("data-indent", str(indent))
-            node.set("data-before", str(before))
+        node.set("line-height", str(line_height))
+        node.set("data-indent", str(indent))
+        node.set("data-before", str(before))
         node.set("data-size", str(size))
         node.set("data-after", str(after))
     _pdf_texts(root)
@@ -584,16 +574,11 @@ def render_pdf(source, target, content, assets, title, document=None):
 
     def fits(table):
         """Czy każdy wiersz tabeli mieści się na stronie: próbny skład na czystej stronie osobnego PDF."""
-        if not scratch:
-            scratch.append(new_pdf(FPDF))
+        if not scratch or scratch[0].page >= 50:  # próbne strony tylko zajmują pamięć
+            scratch[:] = [new_pdf(FPDF)]
             scratch[0].set_margins(*margins[:3])
             scratch[0].set_auto_page_break(True, margins[3])
         trial = scratch[0]
-        if trial.page >= 50:  # próbne strony tylko zajmują pamięć
-            scratch[0] = new_pdf(FPDF)
-            scratch[0].set_margins(*margins[:3])
-            scratch[0].set_auto_page_break(True, margins[3])
-            trial = scratch[0]
         trial.add_page()
         trial.set_font("Document", size=12)
         try:
@@ -613,7 +598,7 @@ def render_pdf(source, target, content, assets, title, document=None):
                 b_margin=after,
                 l_margin=left,
             )
-            for tag in ("p", "h1", "h2", "h3", "h4", "h5", "h6", "pre", "code")
+            for tag in BLOCKS + ("pre", "code")
         }
 
     blocks = list(root)
@@ -632,7 +617,7 @@ def render_pdf(source, target, content, assets, title, document=None):
             if TALL_TABLE_NOTE not in notes:
                 notes.append(TALL_TABLE_NOTE)
             continue
-        text = normalize(node.text_content())
+        text = normalize_text(node.text_content())
         breaks = int(node.get("data-page-break") or 0)
         if breaks:
             # Kilka podziałów z rzędu: każdy następny to pusta strona, jak w Wordzie.

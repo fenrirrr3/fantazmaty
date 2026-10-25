@@ -18,9 +18,9 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 from lxml import etree
 
-W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
+from .document_xml import parse_part, serialize_part, w
+
 TEMPLATE_PATH = Path(__file__).resolve().parents[1] / 'resources' / 'TEKST Szablon 10-2025.dotx'
-PARSER = etree.XMLParser(resolve_entities=False, no_network=True, load_dtd=False, remove_blank_text=False)
 STYLES = 'word/styles.xml'
 FONTS = 'word/fontTable.xml'
 # Kopia stylów dla Worda 2007 – po podmianie stylów byłaby z nimi sprzeczna, więc ją usuwamy.
@@ -30,14 +30,6 @@ DOCUMENT_RELATIONS = 'word/_rels/document.xml.rels'
 # Odwołanie do stylu → typ stylu, do którego może prowadzić.
 REFERENCES = {'pStyle': 'paragraph', 'rStyle': 'character', 'tblStyle': 'table'}
 FONT_ATTRIBUTES = ('ascii', 'hAnsi', 'eastAsia', 'cs')
-
-
-def w(name):
-    return f'{{{W}}}{name}'
-
-
-def _xml(root):
-    return etree.tostring(root, xml_declaration=True, encoding='UTF-8', standalone=True)
 
 
 def _styles(root):
@@ -143,37 +135,37 @@ def _fonts(result, template, used):
 
 def _without_styles_with_effects(data):
     """[Content_Types].xml albo relacje dokumentu bez wpisu stylesWithEffects.xml."""
-    root = etree.fromstring(data, PARSER)
+    root = parse_part(data)
     for node in list(root):
         if (node.get('PartName') == '/' + STYLES_WITH_EFFECTS
                 or node.get('Target') == STYLES_WITH_EFFECTS.removeprefix('word/')):
             root.remove(node)
-    return _xml(root)
+    return serialize_part(root)
 
 
 def apply_template_styles(payload, template_path=TEMPLATE_PATH):
     """DOCX (bajty) ze stylami szablonu w miejsce dotychczasowych; treść i formatowanie bez zmian."""
     with ZipFile(template_path) as package:
-        template_styles = etree.fromstring(package.read(STYLES), PARSER)
-        template_fonts = etree.fromstring(package.read(FONTS), PARSER)
+        template_styles = parse_part(package.read(STYLES))
+        template_fonts = parse_part(package.read(FONTS))
     with ZipFile(BytesIO(payload)) as source:
         names = source.namelist()
-        styles = _StyleMap(etree.fromstring(source.read(STYLES), PARSER), template_styles)
+        styles = _StyleMap(parse_part(source.read(STYLES)), template_styles)
         parts = {}
         # Odwołania do stylów: treść i inne części (np. numeracja wiąże poziomy list ze stylami).
         for name in names:
             if (name.startswith('word/') and name.endswith('.xml') and '/' not in name[5:]
                     and name not in (STYLES, STYLES_WITH_EFFECTS, FONTS)):
-                root = etree.fromstring(source.read(name), PARSER)
+                root = parse_part(source.read(name))
                 if any(True for _ in root.iter(*(w(item) for item in REFERENCES))):
                     _remap(root, styles)
-                    parts[name] = _xml(root)
+                    parts[name] = serialize_part(root)
         styles.finish()
-        parts[STYLES] = _xml(template_styles)
+        parts[STYLES] = serialize_part(template_styles)
         if FONTS in names:
-            fonts = etree.fromstring(source.read(FONTS), PARSER)
+            fonts = parse_part(source.read(FONTS))
             _fonts(fonts, template_fonts, _font_names(template_styles))
-            parts[FONTS] = _xml(fonts)
+            parts[FONTS] = serialize_part(fonts)
         if STYLES_WITH_EFFECTS in names:
             for name in (CONTENT_TYPES, DOCUMENT_RELATIONS):
                 parts[name] = _without_styles_with_effects(source.read(name))

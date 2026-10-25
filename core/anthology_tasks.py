@@ -88,8 +88,7 @@ class NewTaskPersonForm(forms.Form):
             person = Illustrator(first_name=first, last_name=last, email=None, is_active=False, covers=True)
             person.full_clean()
             person.save()
-            self.anthology.cover_illustrator = person
-            self.anthology.cover_author = str(person)
+            self.anthology.cover_illustrator = person  # podpis okładki (cover_author) ustawia Anthology.save
             self.anthology.cover_status = 'in_progress'
             self.anthology.save(update_fields=['cover_illustrator', 'cover_author', 'cover_status'])
         else:

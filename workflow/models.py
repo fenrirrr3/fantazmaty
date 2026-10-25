@@ -213,10 +213,10 @@ class WorkflowStage(models.Model):
             label = archive_work_label(self.text, self.stage_type, self.execution_number)
             if label:
                 return f"{self.text.title}: {label}"
-        return (
-            f"{self.text.title}: {self.get_stage_type_display()} – "
-            f"przebieg {self.workflow_cycle}"
-            + (f" (wyk. {self.execution_number})" if self.execution_number > 1 else "")
+        from workflow.labels import execution_label
+        return execution_label(
+            f"{self.text.title}: {self.get_stage_type_display()} – przebieg {self.workflow_cycle}",
+            self.execution_number,
         )
 
     def _validate_import_origin(self):
@@ -229,11 +229,10 @@ class WorkflowStage(models.Model):
                 raise ValidationError("Ten rodzaj pracy jest dostępny wyłącznie jako zakończona praca z importu, poza kolejką workflow.")
             if not self.assignment_id:
                 raise ValidationError("Zakończona praca z importu wymaga powiązanego przypisania wykonawcy.")
-            if self.assignment_id:
-                assignment = self.assignment
-                if (assignment.role != IMPORT_ONLY_STAGE_ROLES[self.stage_type]
-                        or assignment.text_id != self.text_id or assignment.workflow_cycle != self.workflow_cycle):
-                    raise ValidationError("Przypisanie nie odpowiada importowanemu etapowi i tekstowi.")
+            assignment = self.assignment
+            if (assignment.role != IMPORT_ONLY_STAGE_ROLES[self.stage_type]
+                    or assignment.text_id != self.text_id or assignment.workflow_cycle != self.workflow_cycle):
+                raise ValidationError("Przypisanie nie odpowiada importowanemu etapowi i tekstowi.")
         if not importing_completed.get() and (self.stage_type in IMPORT_ONLY_STAGE_TYPES
                 or previous and previous["stage_type"] in IMPORT_ONLY_STAGE_TYPES):
             if not previous or previous["stage_type"] != self.stage_type or previous["assignment_id"] != self.assignment_id:

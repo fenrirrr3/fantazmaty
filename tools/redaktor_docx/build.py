@@ -16,12 +16,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SERVICES = ROOT / 'core' / 'services'
 # Kolejność: moduł może korzystać tylko z wcześniejszych (nazwy są wspólne w jednym pliku).
-MODULES = ('document_errors', 'document_progress', 'document_stories', 'document_styles', 'document_whitespace',
-           'document_formatting', 'document_images', 'document_rebuild', 'document_html', 'document_pdf',
-           'odkurzacz', 'document_repetitions', 'document_conversion_worker', 'document_preparation')
+MODULES = ('document_xml', 'document_errors', 'document_progress', 'document_stories', 'document_styles',
+           'document_whitespace', 'document_formatting', 'document_images', 'document_rebuild', 'document_html',
+           'document_pdf', 'odkurzacz', 'document_repetitions', 'document_conversion_worker', 'document_preparation')
 # Nazwy, które w dwóch modułach znaczą co innego – w scalonym pliku dostają osobne nazwy.
-RENAMES = {'document_images': {'MC': 'MC_URI', '_target': '_relationship_target'},
-           'document_repetitions': {'WORD_RE': 'REPETITION_WORD_RE'}}
+RENAMES = {'document_repetitions': {'WORD_RE': 'REPETITION_WORD_RE'}}
 # Funkcje serwera, których program lokalny nie używa (nie są kopiowane).
 DROPPED = {'document_conversion_worker': {'main'}}
 FONT_FILES = ('NimbusRoman-Regular.ttf', 'NimbusRoman-Bold.ttf', 'NimbusRoman-Italic.ttf', 'NimbusRoman-BoldItalic.ttf')

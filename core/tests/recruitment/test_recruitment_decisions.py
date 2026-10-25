@@ -145,7 +145,7 @@ class RoleDecisionTests(RecruitmentTeamMixin, TestCase):
         self.assertEqual(self.client.post(self.url, self.payload('editors', 'mixed')).status_code, 400)
 
     def test_single_role_collapsed_and_bulk_preserves_notes_invalidates_forms(self):
-        one = Recruitment.objects.create(department='sound')
+        one = Recruitment.objects.create(mail_roles=['sound'])
         doc = html.fromstring(self.client.get(reverse('core:recruitment_detail', args=[one.pk])).content)
         self.assertEqual(len(doc.xpath('//details[contains(@class,"recruitment-role-decision")]')), 1)
         self.assertFalse(doc.xpath('//details[contains(@class,"recruitment-role-decision")][@open]'))
@@ -165,8 +165,9 @@ class RoleDecisionTests(RecruitmentTeamMixin, TestCase):
         self.record.notes = 'Nowe dane'
         self.record.save()
         self.assertEqual(self.record.role_decisions.get(role='editors').status, 'accepted')
-        manual = Recruitment.objects.create(department='sound', status='accepted')
-        manual.department = 'designers'
+        manual = Recruitment.objects.create(mail_roles=['sound'])
+        set_all_decisions(manual, 'accepted')
+        manual.mail_roles = ['designers']
         manual.save()
         self.assertEqual(manual.status, 'new')
         self.assertEqual(manual.role_decisions.get(role='sound').status, 'accepted')
@@ -213,7 +214,7 @@ class RecruitmentNotifiedTests(RecruitmentTeamMixin, TestCase):
 
     def test_notified_permission_cannot_be_bypassed_by_post_or_edit_form(self):
         record = Recruitment.objects.create(first_name='Jan', last_name='Kandydat', email='candidate@example.test',
-                                            department='editors', mail_roles=['editors'])
+                                            mail_roles=['editors'])
         url = reverse('core:recruitment_notified', args=[record.pk])
         self.client.force_login(self.coordinator)
         self.assertNotContains(self.client.get(reverse('core:recruitment_list')), 'data-recruitment-notified')

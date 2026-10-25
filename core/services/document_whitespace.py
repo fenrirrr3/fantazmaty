@@ -15,7 +15,13 @@ import re
 from zipfile import ZipFile
 from lxml import etree
 
-WORD = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
+if __package__:
+    from .document_styles import ParagraphOutline
+    from .document_xml import WORD, parse_part, serialize_part
+else:
+    from document_styles import ParagraphOutline
+    from document_xml import WORD, parse_part, serialize_part
+
 SPACE = '{http://www.w3.org/XML/1998/namespace}space'
 PART = re.compile(r'word/(document|header\d*|footer\d*|footnotes|endnotes)\.xml\Z')
 # Usunięty tekst (śledzone zmiany) nie wyznacza granic akapitów po akceptacji zmian.
@@ -27,7 +33,6 @@ NONBREAKING = str.maketrans(dict.fromkeys('\u00a0\u202f\u2007', ' '))
 WORD_ID = WORD+'id'
 # Atrybut w:id="…" (komentarze, zakładki, zmiany) i element <w:id w:val="…"/> (kontrolki zawartości).
 ID_RE = re.compile(rb'\bw:id="(\d+)"|<w:id\s+w:val="(\d+)"')
-HEADING_NAME = re.compile(r'(?:heading|nagłówek|naglowek)\s*\d', re.IGNORECASE)
 
 
 class _Ids:
@@ -107,61 +112,6 @@ def _split_inline(node, ids, boundaries, *, paragraph=False):
     return result
 
 
-def _keeps_lines(paragraph, styles):
-    """Punkt listy albo nagłówek (bezpośrednio lub ze stylu): miękki enter zostaje."""
-    props = paragraph.find(WORD+'pPr')
-    if props is None:
-        style = None
-    else:
-        numbering = props.find(WORD+'numPr')
-        if numbering is not None:
-            number = numbering.find(WORD+'numId')
-            return number is None or number.get(WORD+'val') != '0'
-        if props.find(WORD+'outlineLvl') is not None:
-            return props.find(WORD+'outlineLvl').get(WORD+'val') != '9'
-        style = props.find(WORD+'pStyle')
-        style = style.get(WORD+'val') if style is not None else None
-    return styles(style)
-
-
-def _style_lookup(styles_xml):
-    """Funkcja: id stylu akapitu (None = domyślny) → czy to nagłówek lub styl listy."""
-    if styles_xml is None:
-        return lambda style_id: False
-    root = etree.fromstring(styles_xml, parser=etree.XMLParser(resolve_entities=False, no_network=True))
-    styles, default = {}, None
-    for style in root.iter(WORD+'style'):
-        if style.get(WORD+'type') != 'paragraph':
-            continue
-        style_id = style.get(WORD+'styleId')
-        name = style.find(WORD+'name')
-        name = name.get(WORD+'val', '') if name is not None else ''
-        based = style.find(WORD+'basedOn')
-        props = style.find(WORD+'pPr')
-        level = props.find(WORD+'outlineLvl') if props is not None else None
-        numbering = props.find(WORD+'numPr') if props is not None else None
-        own = (bool(HEADING_NAME.match(name) or HEADING_NAME.match(style_id or ''))
-               or (level is not None and level.get(WORD+'val') != '9')
-               or (numbering is not None and numbering.find(WORD+'numId') is not None
-                   and numbering.find(WORD+'numId').get(WORD+'val') != '0'))
-        styles[style_id] = (based.get(WORD+'val') if based is not None else None, own)
-        if style.get(WORD+'default') in ('1', 'true', 'on'):
-            default = style_id
-    cache = {}
-
-    def lookup(style_id):
-        style_id = style_id or default
-        if style_id not in cache:
-            seen, current, found = set(), style_id, False
-            while current in styles and current not in seen and not found:
-                seen.add(current)
-                current, found = styles[current]
-            cache[style_id] = found
-        return cache[style_id]
-
-    return lookup
-
-
 def _drop_empty_revisions(part):
     """Puste opakowania zmian (w:ins bez tekstu – najwyżej z pustymi przebiegami) zostawione przez podział;
     znaczniki znaku akapitu (w:pPr/w:rPr/w:ins) są puste z definicji i zostają."""
@@ -197,10 +147,11 @@ def _new_paragraph_mark(part, boundary, ids):
     mark.insert(0, revision)
 
 
-def _paragraphs_from_soft_breaks(root, ids, styles=lambda style_id: False):
+def _paragraphs_from_soft_breaks(root, ids, outline):
     # Innermost paragraphs first, including text boxes, tables and footnotes.
     for paragraph in reversed(list(root.iter(WORD+'p'))):
-        if _keeps_lines(paragraph, styles):
+        # Nagłówek i punkt listy (document_styles.ParagraphOutline): miękki enter zostaje.
+        if outline.heading_level(paragraph) is not None or outline.is_list_item(paragraph):
             continue
         breaks = [node for node in paragraph.iter() if (_soft_break(node)
                   or node.tag == WORD+'t' and '\u2028' in (node.text or ''))
@@ -245,11 +196,11 @@ def normalize_spacing_docx(source):
             raise ValueError('Dokument przekracza limit rozpakowanej zawartości.')
         ids = _Ids(archive)
         names = set(archive.namelist())
-        styles = _style_lookup(archive.read('word/styles.xml') if 'word/styles.xml' in names else None)
+        outline = ParagraphOutline(parse_part(archive.read('word/styles.xml')) if 'word/styles.xml' in names else None)
         for entry in archive.infolist():
             data = archive.read(entry)
             if PART.fullmatch(entry.filename):
-                root = etree.fromstring(data, parser=etree.XMLParser(resolve_entities=False, no_network=True))
+                root = parse_part(data)
                 for node in root.iter(WORD+'t'):
                     text = node.text or ''
                     normalized = text.translate(NONBREAKING)
@@ -257,8 +208,8 @@ def normalize_spacing_docx(source):
                     if normalized != text and not any(parent.tag in DELETED for parent in node.iterancestors()):
                         node.text = normalized
                         node.set(SPACE, 'preserve')
-                _paragraphs_from_soft_breaks(root, ids, styles)
-                data = etree.tostring(root, xml_declaration=True, encoding='UTF-8', standalone=True)
+                _paragraphs_from_soft_breaks(root, ids, outline)
+                data = serialize_part(root)
             target.writestr(entry, data)
     output.seek(0)
     return output

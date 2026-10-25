@@ -1,8 +1,9 @@
 """Ludzie w panelu admina: konta użytkowników i profil osoby, łączenie kontaktów audio, czarna lista i wybór osób."""
 from django.contrib.auth import get_user_model
 from django.contrib.messages import get_messages
-from django.db import transaction
+from django.db import connection, transaction
 from django.test import SimpleTestCase, TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from core.admin_navigation import grouped_app_list
@@ -66,7 +67,12 @@ class AccountAdminTests(TestCase):
     def test_account_names_flow_into_linked_profile_and_link_is_shown(self):
         url = reverse('admin:auth_user_change', args=[self.member.pk])
         person = self.member.person_profile
-        page = self.client.get(url)
+        # Pole aktywności i odnośnik do profilu korzystają z jednego odczytu osoby konta.
+        profile_lookup = '{}.{} = {}'.format(connection.ops.quote_name('people_person'),
+                                             connection.ops.quote_name('user_id'), self.member.pk)
+        with CaptureQueriesContext(connection) as queries:
+            page = self.client.get(url)
+        self.assertEqual(sum(profile_lookup in query['sql'] for query in queries), 1)
         self.assertContains(page, reverse('admin:people_person_change', args=[person.pk]))
         self.assertContains(self.client.get(reverse('admin:auth_user_change', args=[self.bare.pk])),
                             'Brak powiązanego profilu')
@@ -167,7 +173,7 @@ class AdminGroupingTests(SimpleTestCase):
         groups = grouped_app_list([{'app_label': 'x', 'models': [other]}])
         self.assertEqual([g['app_label'] for g in groups], ['history'])
         self.assertEqual(groups[0]['subgroups'][0]['models'], [other])
-        review = {'object_name': 'Review', 'name': 'Review', 'admin_url': '/admin/texts/review/'}
-        groups = grouped_app_list([{'app_label': 'texts', 'models': [review]}, {'app_label': 'x', 'models': [other]}])
-        self.assertEqual([g['app_label'] for g in groups], ['history', 'submissions'])
-        self.assertEqual(groups[1]['models'][0]['name'], 'Recenzje')
+        person = {'object_name': 'Person', 'name': 'Osoby', 'admin_url': '/admin/people/person/'}
+        groups = grouped_app_list([{'app_label': 'people', 'models': [person]}, {'app_label': 'x', 'models': [other]}])
+        self.assertEqual([g['app_label'] for g in groups], ['history', 'people'])
+        self.assertEqual(groups[1]['models'][0]['name'], 'Zespół')

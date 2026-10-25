@@ -4,6 +4,7 @@ from django import forms
 from django.contrib.auth import get_user_model
 
 from authors.models import Author
+from core.account_identity import person_name
 from texts.models import Anthology, NovelProfile, Text
 from workflow.catalog import workflow_role_choices
 from texts.vocabulary import canonicalize
@@ -136,8 +137,7 @@ class ChapterRangeForm(forms.Form):
 
 class AssigneeChoices(forms.ModelChoiceField):
     def label_from_instance(self, obj):
-        person = getattr(obj, 'person_profile', None)
-        return str(person) if person else (obj.get_full_name() or obj.get_username())
+        return person_name(obj)
 
 
 class RoleAssigneeSelect(forms.Select):

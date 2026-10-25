@@ -27,7 +27,7 @@ def _mail_url(request, token, state):
 def _render_page(request, token, state, *, status=200):
     return render(request, 'core/program_job.html', {
         'state': state, 'token': token, 'mail_url': _mail_url(request, token, state),
-        'refresh': state.get('state') in ACTIVE_STATES + ('cancelling',),
+        'refresh': state.get('state') in ACTIVE_STATES,
         'download_url': reverse('core:program_job', args=[token]) + '?download=1',
     }, status=status)
 
@@ -78,7 +78,7 @@ def program_job(request, token):
         mail_url = _mail_url(request, token, state)
         return JsonResponse({**state, 'mail_url': mail_url} if mail_url else state)
     except jobs.JobError as error:
-        if download and str(error).startswith('Zadanie wygasło'):
+        if download and isinstance(error, jobs.JobExpired):
             error = jobs.JobError('Plik został już pobrany i usunięty z serwera albo zadanie wygasło. '
                                   'Uruchom program ponownie, jeśli potrzebujesz kolejnej kopii.')
         if page:

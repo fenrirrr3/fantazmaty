@@ -8,16 +8,13 @@ w people.dropbox_import):
   w Dropboxie) albo „odbierz dostęp, potem usuń” (zwykła synchronizacja; folder znika dopiero, gdy odbiór się udał);
 - brak konfiguracji albo błąd API (UNKNOWN) – tylko „przestań zarządzać” po potwierdzeniu.
 """
-import hashlib
-import json
 import logging
 from dataclasses import dataclass
 
 from django.db import transaction
-from django.db.models import Q
 
 from people import dropbox_sharing
-from people.dropbox_access import sync
+from people.dropbox_access import log_activity, revoke_rows, state_digest, sync
 from people.dropbox_sharing import DropboxClient, DropboxError
 from people.models import DropboxAccess, DropboxFolder
 
@@ -100,7 +97,7 @@ def _state(client, folder):
 
 
 def checks_digest(checks):
-    return hashlib.sha256(json.dumps([check.signature() for check in checks]).encode()).hexdigest()[:32]
+    return state_digest([check.signature() for check in checks])
 
 
 def remove(check, mode, *, actor=None):
@@ -109,8 +106,7 @@ def remove(check, mode, *, actor=None):
         return False, []
     if check.state == EXISTS and mode == REVOKE:
         rows = DropboxAccess.objects.filter(folder=check.folder)
-        rows.filter(wanted=True).update(wanted=False)  # bez sygnałów – synchronizacja od razu, poniżej
-        results = sync(rows.filter(~Q(granted_email="") | ~Q(state=DropboxAccess.State.REMOVED)), actor=actor)
+        results = sync(revoke_rows(rows), actor=actor)  # bez sygnałów – synchronizacja od razu
         failed = [result for result in results if result.error]
         if failed or rows.exclude(granted_email="").exists():
             return False, failed
@@ -120,19 +116,10 @@ def remove(check, mode, *, actor=None):
     with transaction.atomic():
         DropboxAccess.objects.filter(folder=check.folder).delete()
         DropboxFolder.objects.filter(pk=check.folder.pk).delete()
-        transaction.on_commit(lambda: _log(actor, check.folder, how))
+        transaction.on_commit(lambda: log_activity(
+            actor, f"Dropbox: usunięcie folderu z listy ({how})", check.folder.path, "/dropbox/remove_folder",
+            "Nie udało się zapisać usunięcia folderu Dropbox w dzienniku aktywności.", logger))
     return True, []
-
-
-def _log(actor, folder, how):
-    from core.activity_spool import enqueue_activity
-    account = (getattr(actor, "email", "") or actor.get_username()) if getattr(actor, "pk", None) else "CMS (automatycznie)"
-    try:
-        enqueue_activity(user_id=actor.pk if getattr(actor, "pk", None) else None, actor=account[:254], method="POST",
-                         action=f"Dropbox: usunięcie folderu z listy ({how})"[:255], target=folder.path[:255],
-                         path="/dropbox/remove_folder", status_code=200)
-    except OSError:
-        logger.exception("Nie udało się zapisać usunięcia folderu Dropbox w dzienniku aktywności.")
 
 
 def missing_in_listing(listing, root):

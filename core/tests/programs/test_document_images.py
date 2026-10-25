@@ -238,9 +238,9 @@ class WorkerImageTests(SimpleTestCase):
             (directory / 'source.docx').write_bytes(source.getvalue())
             (directory / 'job.json').write_text(json.dumps({'formats': [], 'include_docx': True, 'title': 'T', **config}))
             with patch.object(sys, 'argv', ['worker', str(directory)]), \
-                    patch('core.services.document_preparation.prepare_docx', side_effect=capture('prepare', None)), \
-                    patch('core.services.document_rebuild.inspect_docx', side_effect=capture('inspect', 0)), \
-                    patch('core.services.document_repetitions.color_document', side_effect=capture('color', None)):
+                    patch('core.services.document_conversion_worker.prepare_docx', side_effect=capture('prepare', None)), \
+                    patch('core.services.document_conversion_worker.inspect_docx', side_effect=capture('inspect', 0)), \
+                    patch('core.services.document_conversion_worker.color_document', side_effect=capture('color', None)):
                 code = worker.main()
             self.assertEqual(code, 0)
             seen['images'] = json.loads((directory / 'images.json').read_text())

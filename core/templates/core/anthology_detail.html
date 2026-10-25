@@ -53,4 +53,4 @@
 {% if show_credits %}<section class="card"><div class="card-body"><h2>Osoby i wykonane prace</h2><p>Ukończone prace, także zapisane bez dat. Każda osoba pojawia się raz w danej kategorii.</p><ul class="credits-list">{% for row in credits %}<li><strong>{{ row.label }}:</strong> {{ row.names|join:", "|default:"–" }}</li>{% endfor %}</ul></div></section>{% endif %}
 {% endblock %}
 
-{% block scripts %}{{ block.super }}<script src="{% static 'core/dialogs.js' %}" defer></script><script src="{% static 'core/person-select.js' %}" defer></script><script src="{% static 'core/contact-suggestions.js' %}" defer></script>{% endblock %}
+{% block scripts %}{{ block.super }}<script src="{% static 'core/dialogs.js' %}" defer></script><script src="{% static 'core/lookup.js' %}" defer></script><script src="{% static 'core/person-select.js' %}" defer></script><script src="{% static 'core/contact-suggestions.js' %}" defer></script>{% endblock %}

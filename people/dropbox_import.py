@@ -12,19 +12,20 @@ Dopasowanie członka do osoby:
 - adres pasujący do kilku osób, dostęp przez folder nadrzędny, poziom bez odpowiednika w CMS-ie i wpisy w CMS-ie
   w innym stanie trafiają tylko do raportu.
 """
-import hashlib
-import json
 from dataclasses import dataclass, field
 
 from django.db import transaction
 from django.utils import timezone
 
+from core.filtering import positive_id
+from core.inflection import count_text
 from people import dropbox_sharing
-from people.dropbox_access import LEVEL_LABELS, _log, person_is_member, report_to, schedule
+from people.dropbox_access import LEVEL_LABELS, _log, person_is_member, report_to, schedule, state_digest
 from people.dropbox_sharing import DropboxClient, DropboxError
 from people.models import DropboxAccess, DropboxFolder, Person
 
 State = DropboxAccess.State
+ACCESS_FORMS = ("dostęp", "dostępy", "dostępów")
 
 GROUPS = (
     ("import", "Do przejęcia",
@@ -106,6 +107,7 @@ def plan_folders(folders, client=None):
     """Plany przejęcia folderów (odczyt z Dropboxa, bez zapisu). Błąd Dropboxa trafia do planu folderu.
     Brak konfiguracji – DropboxNotConfigured z konstruktora klienta."""
     if client is None:
+        # Jawnie (a nie tylko w konstruktorze klienta): testy podmieniają DropboxClient.
         if not dropbox_sharing.is_configured():
             raise dropbox_sharing.DropboxNotConfigured(dropbox_sharing.NOT_CONFIGURED, "not_configured")
         client = DropboxClient()
@@ -204,8 +206,7 @@ def _classify(entry, *, others):
 
 def plans_digest(plans):
     """Skrót planów: zastosowanie wymaga tego samego stanu Dropboxa i bazy co podgląd."""
-    data = [plan.signature() for plan in plans]
-    return hashlib.sha256(json.dumps(data, default=str).encode()).hexdigest()[:32]
+    return state_digest([plan.signature() for plan in plans])
 
 
 # Zastosowanie
@@ -271,17 +272,10 @@ def summary(plan, count, *, planned=False):
     if plan.not_shared:
         return f"Folder {plan.folder.name} nie jest udostępniony w Dropboxie – brak członków do przejęcia."
     if planned:
-        return f"Do przejęcia: {count} {_plural(count)} w folderze {plan.folder.name}."
-    return f"Przejęto {count} {_plural(count)} w folderze {plan.folder.name}."
-
-
-def _plural(count):
-    last, two = count % 10, count % 100
-    if count == 1:
-        return "dostęp"
-    return "dostępy" if 2 <= last <= 4 and not 12 <= two <= 14 else "dostępów"
+        return f"Do przejęcia: {count_text(count, ACCESS_FORMS)} w folderze {plan.folder.name}."
+    return f"Przejęto {count_text(count, ACCESS_FORMS)} w folderze {plan.folder.name}."
 
 
 def folders_by_ids(ids):
-    pks = [int(pk) for pk in ids if str(pk).strip().isdigit()]
+    pks = [pk for pk in map(positive_id, ids) if pk]
     return list(DropboxFolder.objects.filter(pk__in=pks).order_by("name", "pk"))

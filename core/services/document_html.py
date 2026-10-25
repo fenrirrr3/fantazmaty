@@ -10,12 +10,12 @@ from io import BytesIO
 from zipfile import ZIP_DEFLATED, ZipFile
 
 if __package__:
-    from .document_styles import merge_drop_caps
+    from .document_styles import ParagraphOutline, merge_drop_caps
+    from .document_xml import CHOICE, FALLBACK, WORD, parse_part, serialize_part
 else:
-    from document_styles import merge_drop_caps
+    from document_styles import ParagraphOutline, merge_drop_caps
+    from document_xml import CHOICE, FALLBACK, WORD, parse_part, serialize_part
 
-WORD = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
-CHOICE = '{http://schemas.openxmlformats.org/markup-compatibility/2006}Choice'
 # Treść, której Mammoth nie wstawia do akapitu (usunięte poprawki, kod pola,
 # pole proste w:fldSimple, akapity pól tekstowych liczone osobno, właściwości).
 _SKIPPED = {WORD + name for name in ('del', 'moveFrom', 'p', 'pPr', 'rPr', 'instrText', 'delText', 'fldSimple')} | {CHOICE}
@@ -30,7 +30,6 @@ _MAMMOTH_UNWRAPPED = {WORD + name for name in ('fldSimple', 'dir', 'bdo')}
 _MAMMOTH_DROPPED = {WORD + name for name in ('fldData', 'smartTagPr', 'customXmlPr')}
 _MAMMOTH_RENAMED = {WORD + 'cr': WORD + 'br', WORD + 'ptab': WORD + 'tab'}
 _GRAPHIC_DATA = '{http://schemas.openxmlformats.org/drawingml/2006/main}graphicData'
-_FALLBACK = '{http://schemas.openxmlformats.org/markup-compatibility/2006}Fallback'
 # Rysunki bez obrazu i tekstu dla Mammotha: wykres, SmartArt, nowy wykres Office 2016.
 _GRAPHIC_KINDS = ('/chart', '/diagram', '/chartex')
 MAMMOTH_NOTES = {
@@ -38,6 +37,74 @@ MAMMOTH_NOTES = {
     'hidden': 'Pominięto tekst ukryty w Wordzie (efekt czcionki „Ukryty”) – jak przy wydruku.',
     'graphic': 'Pominięto wykres lub diagram SmartArt – e-book i PDF go nie zawierają.',
 }
+
+
+# Nagłówki w e-booku i PDF (h1–h6 dla spisu treści EPUB, rozdziałów i konspektu PDF) według jednej reguły
+# (document_styles.ParagraphOutline; poziomy 7–9 to zwykły akapit). Mammoth rozpoznaje nagłówek tylko po nazwie
+# lub id stylu akapitu (bez dziedziczenia), więc akapit, któremu jego styl dałby w domyślnej mapie Mammotha inny
+# wynik, dostaje w kopii (mammoth_source) styl pochodny o jednej z tych nazw – oparty na swoim stylu, więc
+# formatowanie (wyrównanie, odstępy, czcionka w PDF) zostaje bez zmian.
+HEADING_STYLE_NAMES = {**{level: f'Fantazmaty h{level}' for level in range(1, 7)}, None: 'Fantazmaty p'}
+HEADING_STYLE_MAP = '\n'.join(f"p[style-name='{name}'] => {f'h{level}' if level else 'p'}:fresh"
+                              for level, name in HEADING_STYLE_NAMES.items())
+# Nagłówki domyślnej mapy stylów Mammotha w jej kolejności: (rodzaj, wartość, poziom).
+_MAMMOTH_HEADINGS = (*(('id', f'Heading{level}', level) for level in range(1, 7)),
+                     *(('name', f'{prefix} {level}', level) for prefix in ('Heading', 'heading') for level in range(1, 7)),
+                     ('id', 'Heading', 1), ('name', 'Heading', 1))
+
+
+def _mammoth_level(style_id, outline):
+    """Poziom h, który akapitowi w stylu style_id nadałaby domyślna mapa Mammotha (po id albo nazwie stylu)."""
+    style = outline.styles.get(style_id)
+    name = style.find(WORD + 'name') if style is not None else None
+    values = {'id': style_id, 'name': name.get(WORD + 'val') if name is not None else None}
+    return next((level for kind, value, level in _MAMMOTH_HEADINGS if values[kind] == value), None)
+
+
+def _mark_headings(roots, styles):
+    """Akapity, którym Mammoth nadałby inny poziom nagłówka niż reguła, dostają styl pochodny (HEADING_STYLE_NAMES);
+    zwraca nazwy zmienionych części (z word/styles.xml). Bez części stylów nic się nie zmienia."""
+    changed = set()
+    if styles is None:
+        return changed
+    outline = ParagraphOutline(styles)
+    derived, taken = {}, {style.get(WORD + 'styleId') for style in styles.iter(WORD + 'style')}
+
+    def derived_style(base, level):
+        if (base, level) not in derived:
+            number = len(derived) + 1
+            while f'Fantazmaty{number}' in taken:
+                number += 1
+            style_id = f'Fantazmaty{number}'
+            taken.add(style_id)
+            style = styles.makeelement(WORD + 'style', {WORD + 'type': 'paragraph', WORD + 'styleId': style_id})
+            style.append(style.makeelement(WORD + 'name', {WORD + 'val': HEADING_STYLE_NAMES[level]}))
+            if base is not None:
+                style.append(style.makeelement(WORD + 'basedOn', {WORD + 'val': base}))
+            styles.append(style)
+            derived[base, level] = style_id
+        return derived[base, level]
+
+    for name, root in roots.items():
+        for paragraph in root.iter(WORD + 'p'):
+            level = outline.heading_level(paragraph)
+            level = level if level is not None and level <= 6 else None
+            properties = paragraph.find(WORD + 'pPr')
+            node = properties.find(WORD + 'pStyle') if properties is not None else None
+            style_id = node.get(WORD + 'val') if node is not None else None
+            if level == (_mammoth_level(style_id, outline) if style_id else None):
+                continue
+            # Styl bez definicji Word i python-docx zastępują domyślnym – na nim opieramy styl pochodny.
+            base = style_id if style_id in outline.styles else outline.default
+            if properties is None:
+                properties = paragraph.makeelement(WORD + 'pPr', {})
+                paragraph.insert(0, properties)
+            if node is None:
+                node = properties.makeelement(WORD + 'pStyle', {})
+                properties.insert(0, node)
+            node.set(WORD + 'val', derived_style(base, level))
+            changed.update((name, 'word/styles.xml'))
+    return changed
 
 
 def _hidden(properties, hidden_styles):
@@ -57,18 +124,17 @@ def mammoth_source(data):
     Mammoth pomija w:fldSimple, w:dir i w:bdo razem z treścią (numer podpisu, pole korespondencji, tekst
     od prawej do lewej), skleja słowa wokół w:cr i w:ptab, pokazuje tekst ukryty i przerywa pracę na
     odsyłaczu do nieistniejącego przypisu. W kopii treść tych elementów to zwykłe przebiegi, w:cr to w:br,
-    w:ptab to w:tab, ukrytych przebiegów (poza znacznikami pól) i odsyłaczy donikąd nie ma, a inicjał
-    wraca do swojego akapitu. DOCX wynikowy zostaje bez zmian. Uwagi mówią o tym, czego nie będzie
+    w:ptab to w:tab, ukrytych przebiegów (poza znacznikami pól) i odsyłaczy donikąd nie ma, inicjał
+    wraca do swojego akapitu, a nagłówki są oznaczone stylami pochodnymi (HEADING_STYLE_NAMES, z mapą
+    HEADING_STYLE_MAP). DOCX wynikowy zostaje bez zmian. Uwagi mówią o tym, czego nie będzie
     w e-booku i PDF (także o wykresach i diagramach, które Mammoth pomija bez ostrzeżenia).
     """
     from collections import Counter
-    from lxml import etree
 
-    parser = etree.XMLParser(resolve_entities=False, no_network=True)
     with ZipFile(BytesIO(data)) as archive:
         names = set(archive.namelist())
-        roots = {name: etree.fromstring(archive.read(name), parser) for name in MAMMOTH_PARTS if name in names}
-        styles = etree.fromstring(archive.read('word/styles.xml'), parser) if 'word/styles.xml' in names else None
+        roots = {name: parse_part(archive.read(name)) for name in MAMMOTH_PARTS if name in names}
+        styles = parse_part(archive.read('word/styles.xml')) if 'word/styles.xml' in names else None
     hidden_styles = set() if styles is None else {
         style.get(WORD + 'styleId') for style in styles.iter(WORD + 'style')
         if style.get(WORD + 'type') == 'character' and _hidden(style.find(WORD + 'rPr'), ())}
@@ -77,9 +143,12 @@ def mammoth_source(data):
         root = roots.get(f'word/{kind}s.xml')
         notes[kind] = set() if root is None else {
             note.get(WORD + 'id') for note in root.iter(WORD + kind) if note.get(WORD + 'type', 'normal') == 'normal'}
-    counts, changed = Counter(), set()
+    counts = Counter()
+    # Inicjał wraca do swojego akapitu, zanim reguła nagłówków oceni akapity.
+    changed = {name for name, root in roots.items() if merge_drop_caps(root)}
+    changed |= _mark_headings(roots, styles)
     for name, root in roots.items():
-        edits = merge_drop_caps(root)
+        edits = 0
         for run in list(root.iter(WORD + 'r')):
             if (run.getparent() is not None and _hidden(run.find(WORD + 'rPr'), hidden_styles)
                     and run.find(WORD + 'fldChar') is None):
@@ -108,7 +177,7 @@ def mammoth_source(data):
             edits += 1
         counts['graphic'] += sum(1 for node in root.iter(_GRAPHIC_DATA)
                                  if node.get('uri', '').endswith(_GRAPHIC_KINDS)
-                                 and not any(ancestor.tag == _FALLBACK for ancestor in node.iterancestors()))
+                                 and not any(ancestor.tag == FALLBACK for ancestor in node.iterancestors()))
         if edits:
             changed.add(name)
     warnings = [text if counts[key] == 1 else f'{text} ({counts[key]} razy)'
@@ -120,8 +189,7 @@ def mammoth_source(data):
         for item in source.infolist():
             payload = source.read(item.filename)
             if item.filename in changed:
-                payload = etree.tostring(roots[item.filename], xml_declaration=True, encoding='UTF-8',
-                                         standalone=True)
+                payload = serialize_part(styles if item.filename == 'word/styles.xml' else roots[item.filename])
             target.writestr(item, payload, compress_type=ZIP_DEFLATED)
     return output.getvalue(), warnings
 
@@ -144,7 +212,7 @@ def list_paragraphs(root):
             item.append(paragraph)
 
 
-def _normalize(value):
+def normalize_text(value):
     return ' '.join(value.split())
 
 
@@ -167,7 +235,7 @@ def docx_paragraph_key(element):
                 walk(child)
 
     walk(element)
-    return _normalize(''.join(parts))
+    return normalize_text(''.join(parts))
 
 
 def html_paragraph_key(node):
@@ -186,7 +254,7 @@ def html_paragraph_key(node):
                 parts.append(child.tail)
 
     walk(node)
-    return _normalize(''.join(parts))
+    return normalize_text(''.join(parts))
 
 
 def paragraph_queues(document):

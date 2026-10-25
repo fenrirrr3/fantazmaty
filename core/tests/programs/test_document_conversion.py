@@ -19,7 +19,6 @@ from docx.oxml import OxmlElement
 from lxml import etree
 from lxml import html as html_parser
 
-from core.program_test_support import run_program
 from core.services.document_conversion_worker import convert
 from core.services.document_converter import (
     ConversionError, RebuildConfirmationRequired, conversion_filename, convert_document, converter_python,
@@ -28,7 +27,7 @@ from core.services.document_converter import (
 from core.services.document_errors import MESSAGES
 from fantazmaty.testing import create_member
 
-from .support import IsolatedProgramDirsMixin, downloaded, formatted_docx, saved, typography_sample
+from .support import IsolatedProgramDirsMixin, downloaded, formatted_docx, run_program, saved, typography_sample
 
 RELATIONSHIPS = 'word/_rels/document.xml.rels'
 
@@ -100,7 +99,7 @@ class ConverterServiceTests(IsolatedProgramDirsMixin, SimpleTestCase):
              {'preserve_filename': True}),
         )
         for extension, content, source, options in cases:
-            def worker(directory, timeout):
+            def worker(directory, timeout, **_):
                 (directory / f'document.{extension}').write_bytes(content)
                 (directory / 'warnings.json').write_text(json.dumps(['Pominięto nieobsługiwany element.']))
 
@@ -152,10 +151,10 @@ class ConverterServiceTests(IsolatedProgramDirsMixin, SimpleTestCase):
         doc.add_paragraph()
         doc.add_paragraph('Drugi.').alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
 
-        def inspect_worker(directory, timeout):
+        def inspect_worker(directory, timeout, **options):
             self.assertEqual([p.text for p in Document(directory / 'source.docx').paragraphs],
                              ['Pierwszy.', '', '', 'Drugi.'])
-            return run_converter(directory, timeout)
+            return run_converter(directory, timeout, **options)
 
         with patch('core.services.document_converter.run_converter', side_effect=inspect_worker):
             output, _, _ = convert_document(saved(doc), ['pdf'], use_cleaner=True)
@@ -163,7 +162,7 @@ class ConverterServiceTests(IsolatedProgramDirsMixin, SimpleTestCase):
             self.assertTrue(output.read().startswith(b'%PDF'))
         source = self.work_dir / 'input.docx'
         doc.save(source)
-        with patch('core.services.document_pdf.render_pdf') as pdf:
+        with patch('core.services.document_conversion_worker.render_pdf') as pdf:
             convert(source, self.work_dir, ['pdf'], 'Test')
         html = pdf.call_args.args[2]
         paragraphs = html_parser.fragment_fromstring(html, create_parent='div').xpath('.//p')
@@ -312,6 +311,8 @@ class RunConverterTests(IsolatedProgramDirsMixin, SimpleTestCase):
                 self.assertRaises(RebuildConfirmationRequired) as caught:
             self.finished(3, {'error': 'RebuildUnsupported', 'omissions': ['tabele (liczba: 1)']})
         self.assertIn('W nowym DOCX zostaną pominięte: tabele (liczba: 1).', str(caught.exception))
+        # Scalanie bierze same pominięcia z wyjątku, bez rozbierania komunikatu.
+        self.assertEqual(caught.exception.omissions, ['tabele (liczba: 1)'])
 
     def test_process_over_time_limit_is_killed(self):
         sleeper = [sys.executable, '-c', 'import time; time.sleep(30)']
@@ -344,7 +345,7 @@ class ConvertDocumentResultTests(IsolatedProgramDirsMixin, SimpleTestCase):
                 self.assertRaisesMessage(ConversionError, 'nie utworzyła poprawnego pliku'):
             convert_document(BytesIO(formatted_docx()), ['pdf'])
 
-        def worker(directory, timeout):
+        def worker(directory, timeout, **_):
             (directory / 'document.pdf').write_bytes(b'%PDF')
 
         source = formatted_docx()  # jeden egzemplarz – DOCX zbudowany sekundę później ma inne znaczniki czasu w ZIP-ie
@@ -356,7 +357,7 @@ class ConvertDocumentResultTests(IsolatedProgramDirsMixin, SimpleTestCase):
             self.assertEqual(archive.read('document.docx'), source)
 
     def test_failed_pdf_does_not_take_away_the_ready_epub(self):
-        def worker(directory, timeout):
+        def worker(directory, timeout, **_):
             (directory / 'document.epub').write_bytes(b'PK epub')
             (directory / 'pdf_error.json').write_text('{"error": "ValueError"}', encoding='utf-8')
 
@@ -368,7 +369,7 @@ class ConvertDocumentResultTests(IsolatedProgramDirsMixin, SimpleTestCase):
             self.assertEqual(result.read(), b'PK epub')
 
     def test_result_finished_after_the_deadline_is_discarded(self):
-        def worker(directory, timeout):
+        def worker(directory, timeout, **_):
             (directory / 'document.pdf').write_bytes(b'%PDF')
 
         clock = iter([0, 0, 0, 10_000])

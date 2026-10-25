@@ -17,14 +17,12 @@ import hashlib
 import json
 import unicodedata
 
+from django.apps import apps as django_apps
 from django.db import transaction
 from django.db.models import Prefetch
-from django.utils import timezone
 
-from core.discord_notifications import text_authors
-from core.odkurzacz_forms import plural
-from core.site_models import SiteCatalogAnthology, SiteCatalogStory, SiteTeamSettings, with_version
-from texts.models import Anthology, Text
+from core.site_models import SiteCatalogAnthology, SiteCatalogStory, with_version
+from texts.models import Anthology, Text, authors_signature
 from texts.production import active_production_texts
 from texts.vocabulary import tokens
 
@@ -122,20 +120,14 @@ def catalog_counts(anthologies):
     return {'antologie': len(anthologies), 'opowiadania': len(stories), 'gatunki': len(genres), 'tagi': len(tags)}
 
 
-def catalog_payload():
-    """Słownik wysyłany stronie: dokładnie format bloku ``#fzs-data`` plus ``liczby`` i ``wersja`` (skrót treści)."""
-    anthologies = [anthology_entry(item) for item in catalog_anthologies()]
+def catalog_payload(items=None):
+    """Słownik wysyłany stronie: dokładnie format bloku ``#fzs-data`` plus ``liczby`` i ``wersja`` (skrót treści).
+
+    ``items`` – wpisy katalogu pobrane już przez ``catalog_anthologies(include_disabled=True)`` (wyłączone są pomijane).
+    """
+    items = catalog_anthologies() if items is None else [item for item in items if item.is_enabled]
+    anthologies = [anthology_entry(item) for item in items]
     return with_version({'liczby': catalog_counts(anthologies), 'antologie': anthologies})
-
-
-def record_catalog_fetch(version):
-    SiteTeamSettings.load()
-    SiteTeamSettings.objects.filter(pk=1).update(catalog_fetched_at=timezone.now(),
-                                                  catalog_fetch_version=version[:40])
-
-
-def count_text(count, forms):
-    return f'{count} {plural(count, *forms)}'
 
 
 # --- dopasowanie do CMS-u -----------------------------------------------------------------------------------------
@@ -148,6 +140,27 @@ def _unique_keys(pairs):
     return {key: pks[0] for key, pks in keys.items() if len(pks) == 1}
 
 
+def cms_models(apps, *labels):
+    """Modele bieżące albo – w migracji – historyczne z rejestru ``apps`` (etykiety ``'aplikacja.Model'``)."""
+    registry = apps or django_apps
+    return [registry.get_model(label) for label in labels]
+
+
+def link_anthologies(anthology_model, entry_model):
+    """Wiąże wpisy strony bez powiązania z antologiami CMS-u po tytule (rzymskie I–IV = 1–4). Tytuł pasujący
+    do kilku antologii albo antologia powiązana już z innym wpisem – bez powiązania. Zwraca liczbę nowych powiązań."""
+    taken = set(entry_model.objects.exclude(anthology__isnull=True).values_list('anthology_id', flat=True))
+    by_title = _unique_keys((anthology_key(title), pk) for pk, title in anthology_model.objects.values_list('pk', 'title'))
+    linked = 0
+    for pk, title in entry_model.objects.filter(anthology__isnull=True).values_list('pk', 'title'):
+        match = by_title.get(anthology_key(title))
+        if match and match not in taken:
+            entry_model.objects.filter(pk=pk).update(anthology_id=match)
+            taken.add(match)
+            linked += 1
+    return linked
+
+
 def link_catalog_to_cms(apps=None):
     """Dopasowuje wpisy katalogu bez powiązania do antologii (po tytule, rzymskie I–IV = 1–4) i tekstów CMS-u
     (po antologii i tytule, z ujednoliconymi cudzysłowami). Niedopasowane zostają bez powiązania.
@@ -156,22 +169,9 @@ def link_catalog_to_cms(apps=None):
     ``apps`` to rejestr modeli historycznych z migracji; bez niego używane są modele bieżące.
     Zwraca liczbę nowo powiązanych antologii i opowiadań.
     """
-    if apps is None:
-        anthology_model, text_model = Anthology, Text
-        catalog_model, story_model = SiteCatalogAnthology, SiteCatalogStory
-    else:
-        anthology_model, text_model = apps.get_model('texts', 'Anthology'), apps.get_model('texts', 'Text')
-        catalog_model = apps.get_model('core', 'SiteCatalogAnthology')
-        story_model = apps.get_model('core', 'SiteCatalogStory')
-    linked = {'antologie': 0, 'opowiadania': 0}
-    taken = set(catalog_model.objects.exclude(anthology__isnull=True).values_list('anthology_id', flat=True))
-    by_title = _unique_keys((anthology_key(title), pk) for pk, title in anthology_model.objects.values_list('pk', 'title'))
-    for pk, title in catalog_model.objects.filter(anthology__isnull=True).values_list('pk', 'title'):
-        match = by_title.get(anthology_key(title))
-        if match and match not in taken:
-            catalog_model.objects.filter(pk=pk).update(anthology_id=match)
-            taken.add(match)
-            linked['antologie'] += 1
+    anthology_model, text_model, catalog_model, story_model = cms_models(
+        apps, 'texts.Anthology', 'texts.Text', 'core.SiteCatalogAnthology', 'core.SiteCatalogStory')
+    linked = {'antologie': link_anthologies(anthology_model, catalog_model), 'opowiadania': 0}
     used = set(story_model.objects.exclude(text__isnull=True).values_list('text_id', flat=True))
     for catalog_pk, anthology_id in catalog_model.objects.exclude(anthology__isnull=True).values_list('pk', 'anthology_id'):
         stories = list(story_model.objects.filter(anthology_id=catalog_pk, text__isnull=True).values_list('pk', 'title'))
@@ -190,31 +190,32 @@ def link_catalog_to_cms(apps=None):
 
 # --- synchronizacja z CMS-em ----------------------------------------------------------------------------------------
 
+def import_blocked_reason(anthology):
+    """Z CMS-u importujemy tylko antologie Gotowe, które nie są Ekstraktami (powieści – tak, w całości); zwraca
+    powód odmowy albo pusty napis."""
+    if anthology.is_extracts:
+        return 'Ekstrakty nie trafiają do katalogu szukajki.'
+    if anthology.status != Anthology.Status.READY:
+        return 'Antologia niegotowa – import z CMS-u po nadaniu jej statusu „Gotowa”.'
+    return ''
+
+
 def is_importable(anthology):
-    """Z CMS-u importujemy tylko antologie Gotowe, które nie są Ekstraktami (powieści – tak, w całości)."""
-    return bool(anthology and anthology.status == Anthology.Status.READY and not anthology.is_extracts)
+    return anthology is not None and not import_blocked_reason(anthology)
 
 
 def update_blocked_reason(catalog_anthology):
     """Dlaczego wpisu katalogu nie da się aktualizować z CMS-u; pusty napis – da się."""
-    anthology = catalog_anthology.anthology
-    if anthology is None:
+    if catalog_anthology.anthology is None:
         return 'Antologia nie jest powiązana z CMS-em – powiąż ją w panelu administracyjnym.'
-    if anthology.is_extracts:
-        return 'Ekstrakty nie trafiają do katalogu szukajki.'
-    if not is_importable(anthology):
-        return 'Antologia niegotowa – aktualizacja po ukończeniu antologii w CMS-ie.'
-    return ''
+    return import_blocked_reason(catalog_anthology.anthology)
 
 
 def require_importable(anthology):
-    if anthology is None:
-        raise ValueError('Wpis katalogu nie jest powiązany z antologią w CMS-ie.')
-    if anthology.is_extracts:
-        raise ValueError('Ekstrakty nie trafiają do katalogu szukajki.')
-    if anthology.status != Anthology.Status.READY:
-        raise ValueError('Antologia w CMS-ie nie ma statusu „Gotowa” – import gatunków i tagów jest możliwy dopiero po jej '
-                         'ukończeniu.')
+    reason = ('Wpis katalogu nie jest powiązany z antologią w CMS-ie.' if anthology is None
+              else import_blocked_reason(anthology))
+    if reason:
+        raise ValueError(reason)
 
 
 def cms_texts(anthology):
@@ -239,7 +240,7 @@ def story_warnings(entry):
 
 def cms_entry(text):
     """Opowiadanie z CMS-u w formacie katalogu (autor jak w stopce: pseudonim albo imię i nazwisko)."""
-    entry = {'text_id': text.pk, 'tytul': text.title, 'autor': text_authors(text),
+    entry = {'text_id': text.pk, 'tytul': text.title, 'autor': text.source_authors_display,
              'gatunki': split_genres(text.genre), 'tagi': split_tags(text.tags)}
     entry['ostrzezenia'] = story_warnings(entry)
     return entry
@@ -248,12 +249,7 @@ def cms_entry(text):
 def novel_entry(anthology):
     """Powieść jako jedna pozycja: tytuł antologii, autorzy, gatunki i tagi z ``NovelProfile`` (rozdziały pomijane)."""
     profile = getattr(anthology, 'novel', None)
-    names = []
-    for author in (profile.authors.all() if profile else []):
-        name = author.display_name.strip()
-        if name and name not in names:
-            names.append(name)
-    entry = {'text_id': None, 'tytul': anthology.title, 'autor': ', '.join(names),
+    entry = {'text_id': None, 'tytul': anthology.title, 'autor': authors_signature(profile.authors.all() if profile else []),
              'gatunki': split_genres(profile.genre if profile else ''), 'tagi': split_tags(profile.tags if profile else ''),
              'powiesc': True}
     entry['ostrzezenia'] = story_warnings(entry)
@@ -368,13 +364,13 @@ def apply_update_all(plans):
 
 # --- ostrzeżenia -----------------------------------------------------------------------------------------------------
 
-def catalog_warnings():
+def catalog_warnings(items=None):
     """Ostrzeżenia zakładki (na danych, które dostaje strona): antologia włączona bez adresu, opowiadania bez gatunku
     i bez tagów, gotowe antologie CMS-u poza katalogiem, wpisy bez powiązania z CMS-em (informacyjnie), powtórzone
-    tytuły w antologii."""
+    tytuły w antologii. ``items`` – wpisy pobrane już przez ``catalog_anthologies(include_disabled=True)``."""
     warnings = {'no_url': [], 'no_genre': [], 'no_tags': [], 'candidates': [], 'unlinked_anthologies': [],
                 'unlinked_stories': [], 'duplicates': []}
-    for item in catalog_anthologies(include_disabled=True):
+    for item in catalog_anthologies(include_disabled=True) if items is None else items:
         name = item.display_title
         novel = bool(item.anthology_id and item.anthology.is_novel)
         if item.is_enabled and not item.url:

@@ -1,5 +1,5 @@
-"""Przygotowanie dokumentów: dziedziczenie stylów, normalizacja typografii i strony, wyjustowanie, kolejność kroków
-przygotowania oraz zamiana miękkich enterów i twardych spacji."""
+"""Przygotowanie dokumentów: dziedziczenie stylów, reguła nagłówków i list, normalizacja typografii i strony,
+wyjustowanie, kolejność kroków przygotowania oraz zamiana miękkich enterów i twardych spacji."""
 import json
 from io import BytesIO
 from pathlib import Path
@@ -11,20 +11,20 @@ from django.test import SimpleTestCase, tag
 from docx import Document
 from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
+from docx.oxml import OxmlElement, parse_xml
+from docx.oxml.ns import nsdecls, qn
 from docx.shared import Cm, Pt
 from docx.text.paragraph import Paragraph
 
 from core.services.document_conversion_worker import main as conversion_worker_main
 from core.services.document_formatting import normalize_docx
 from core.services.document_preparation import prepare_docx
-from core.services.document_styles import paragraph_properties, paragraph_property
+from core.services.document_styles import ParagraphOutline, document_outline, paragraph_properties
 from core.services.document_whitespace import normalize_spacing_docx
-from core.services.mailbox_import import package_messages
+from core.services.mailbox_import import _package_messages
 from core.services.odkurzacz import clean_docx
 
-from .support import IsolatedProgramDirsMixin, saved, typography_sample
+from .support import OUTLINE_CASES, IsolatedProgramDirsMixin, outline_document, saved, typography_sample
 
 PARA_ID = '{http://schemas.microsoft.com/office/word/2010/wordml}paraId'
 
@@ -58,8 +58,6 @@ class ParagraphStyleTests(SimpleTestCase):
         expected = {'space_after': Pt(0), 'page_break_before': False,
                     'alignment': WD_ALIGN_PARAGRAPH.RIGHT, 'line_spacing': 2}
         self.assertEqual(paragraph_properties(paragraph, expected), expected)
-        for name, value in expected.items():
-            self.assertEqual(paragraph_property(paragraph, name), value)
 
     def test_alignment_values_unknown_to_python_docx_are_resolved(self):
         """Regresja: w:jc „start”/„end” (OOXML Strict z LibreOffice, Google Docs) w akapicie albo stylu
@@ -82,7 +80,23 @@ class ParagraphStyleTests(SimpleTestCase):
                     paragraph._p.get_or_add_pPr().append(OxmlElement('w:jc', {qn('w:val'): own}))
                 self.assertEqual(paragraph_properties(paragraph, ('alignment', 'page_break_before')),
                                  {'alignment': expected, 'page_break_before': None})
-                self.assertEqual(paragraph_property(paragraph, 'alignment'), expected)
+
+    def test_heading_level_and_list_item_follow_one_rule(self):
+        """Reguła nagłówków i list (ParagraphOutline) dla przypadków OUTLINE_CASES: poziom konspektu akapitu, potem
+        styl z poziomem konspektu albo nazwą lub id nagłówka z numerem (z dziedziczeniem, bez pętli); poziom 9 znosi
+        nagłówek, numeracja na niego nie wpływa; lista – pierwszy numId akapitu albo stylu, numId 0 jej nie daje.
+        Bez części stylów nagłówkiem jest tylko styl, którego id pasuje do wzorca."""
+        document = outline_document()
+        outline = document_outline(document)
+        for paragraph in document.paragraphs:
+            _, _, level, listed = OUTLINE_CASES[paragraph.text]
+            with self.subTest(paragraph.text):
+                self.assertEqual((outline.heading_level(paragraph._p), outline.is_list_item(paragraph._p)),
+                                 (level, listed))
+        for style_id, level in (('Heading1', 1), ('Nagwek2', 2), ('NAGLOWEK3', 3), ('Tytul', None), ('', None)):
+            with self.subTest(bez_stylów=style_id):
+                paragraph = parse_xml(f'<w:p {nsdecls("w")}><w:pPr><w:pStyle w:val="{style_id}"/></w:pPr></w:p>')
+                self.assertEqual(ParagraphOutline().heading_level(paragraph), level)
 
     def test_missing_properties_in_cyclic_styles_remain_unset(self):
         document = Document()
@@ -94,7 +108,6 @@ class ParagraphStyleTests(SimpleTestCase):
         paragraph = document.add_paragraph('Test', style=one)
         self.assertEqual(paragraph_properties(paragraph, ('line_spacing', 'page_break_before')),
                          {'line_spacing': 2, 'page_break_before': None})
-        self.assertIsNone(paragraph_property(paragraph, 'page_break_before'))
 
     def test_cyclic_style_chain_is_bounded_during_normalization(self):
         """Regresja: cykl stylów bazowych zapętlał normalizację dokumentu."""
@@ -159,10 +172,10 @@ class NormalizationTests(SimpleTestCase):
     def test_formatting_happens_before_cleaning(self):
         observed = []
 
-        def cleaner(source, rules):
+        def cleaner(source, rules, **options):
             observed.append(Document(source).paragraphs[0].runs[0].font.size.pt)
             source.seek(0)
-            return clean_docx(source, rules)
+            return clean_docx(source, rules, **options)
 
         with (
             TemporaryDirectory() as tmp,
@@ -249,7 +262,7 @@ class JustificationTests(IsolatedProgramDirsMixin, SimpleTestCase):
     @tag('slow')
     def test_mail_conversion_justifies_docx_pdf_and_epub(self):
         row = {'uid': 1, 'folder': 'Tekst', 'files': [('tekst.docx', justification_sample().getvalue())]}
-        with package_messages([row], clean=True, convert=True) as result, ZipFile(result) as archive:
+        with _package_messages([row], clean=True, convert=True) as result, ZipFile(result) as archive:
             self.check_document(BytesIO(archive.read('Tekst/01_tekst.docx')))
             self.assertTrue(archive.read('Tekst/01_tekst.pdf').startswith(b'%PDF'))
             with ZipFile(BytesIO(archive.read('Tekst/01_tekst.epub'))) as epub:
@@ -330,36 +343,19 @@ class SoftWhitespaceTests(SimpleTestCase):
         self.assertEqual(result.text, 'Początek koniec')
         self.assertEqual(len(result._p.xpath('.//w:del//w:br')), 1)
 
-    def test_soft_break_in_list_items_and_headings_is_kept(self):
-        document = Document()
-        heading = document.add_paragraph('Tytuł\u00a0rozdziału', style='Heading 1')
-        heading.runs[0].add_break()
-        heading.add_run('podtytuł')
-        listed = document.add_paragraph('Punkt', style='List Number')
-        listed.runs[0].add_break()
-        listed.add_run('ciąg dalszy')
-        numbered = document.add_paragraph('Własna')
-        properties = numbered._p.get_or_add_pPr()
-        numbering = OxmlElement('w:numPr')
-        for name, value in (('w:ilvl', '0'), ('w:numId', '1')):
-            numbering.append(OxmlElement(name, {qn('w:val'): value}))
-        properties.append(numbering)
-        numbered.runs[0].add_break()
-        numbered.add_run('lista')
-        outline = document.styles.add_style('Rozdział', WD_STYLE_TYPE.PARAGRAPH)
-        outline.element.get_or_add_pPr().append(OxmlElement('w:outlineLvl', {qn('w:val'): '0'}))
-        derived = document.styles.add_style('Rozdział pochodny', WD_STYLE_TYPE.PARAGRAPH)
-        derived.base_style = outline
-        chapter = document.add_paragraph('Rozdział', style='Rozdział pochodny')
-        chapter.runs[0].add_break()
-        chapter.add_run('drugi wiersz')
+    def test_soft_break_stays_in_headings_and_list_items(self):
+        """Miękki enter zostaje w nagłówku i punkcie listy według reguły (OUTLINE_CASES) – także w nagłówku
+        z wyłączoną numeracją (numId 0, zapis LibreOffice), stylu opartym na nagłówku i stylu z poziomem konspektu;
+        w nagłówku z poziomem 9, stylu „Heading” bez numeru i akapicie z numPr bez numId dzieli akapit."""
+        document = outline_document(soft_break=True)
         plain = document.add_paragraph('Zwykły')
         plain.runs[0].add_break()
         plain.add_run('akapit\u2007tekstu')
-        result = self.normalized(document)
-        self.assertEqual([paragraph.text for paragraph in result],
-                         ['Tytuł rozdziału\npodtytuł', 'Punkt\nciąg dalszy', 'Własna\nlista', 'Rozdział\ndrugi wiersz',
-                          'Zwykły', 'akapit tekstu'])
+        expected = []
+        for text, (_, _, level, listed) in OUTLINE_CASES.items():
+            expected += [f'{text}\ndrugi wiersz'] if level or listed else [text, 'drugi wiersz']
+        self.assertEqual([paragraph.text for paragraph in self.normalized(document)],
+                         expected + ['Zwykły', 'akapit tekstu'])
 
     def test_split_tracked_insertion_and_paragraph_mark_get_unique_ids(self):
         document = Document()
@@ -395,6 +391,22 @@ class SoftWhitespaceTests(SimpleTestCase):
 
 class FormattingR9Tests(SimpleTestCase):
     """Listy, nagłówki i komórki tabel zachowują układ; fonty symboliczne zostają."""
+
+    def test_headings_and_list_items_keep_their_indent(self):
+        """Bez wcięcia pierwszego wiersza zostają nagłówki i punkty listy według reguły (OUTLINE_CASES), także
+        w poprzednim formatowaniu zmiany śledzonej; nagłówek z numId 0 jest nagłówkiem, a z poziomem 9, styl
+        „Heading Custom” czy „Nagłówek tabeli” – zwykłym akapitem z wcięciem."""
+        document = outline_document()
+        for paragraph in document.paragraphs:
+            paragraph._p.get_or_add_pPr().append(parse_xml(
+                f'<w:pPrChange {nsdecls("w")} w:id="1" w:author="Redaktor">{paragraph._p.pPr.xml}</w:pPrChange>'))
+        for paragraph in Document(normalize_docx(saved(document))).paragraphs:
+            _, _, level, listed = OUTLINE_CASES[paragraph.text]
+            expected = None if level or listed else '709'
+            with self.subTest(paragraph.text):
+                for properties in (paragraph._p.pPr, paragraph._p.pPr.find(f'{qn("w:pPrChange")}/{qn("w:pPr")}')):
+                    indent = properties.find(qn('w:ind'))
+                    self.assertEqual(None if indent is None else indent.get(qn('w:firstLine')), expected)
 
     def test_lists_headings_tables_and_symbol_fonts_keep_their_layout(self):
         document = Document()

@@ -2,7 +2,6 @@
 from django import forms
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core import signing
 from django.core.exceptions import PermissionDenied
 from django.db import IntegrityError, transaction
 from django.db.models import Q
@@ -10,8 +9,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_http_methods
 
-from core.edit_versions import version_of
-from core.pagination import paginate_queryset
+from core.edit_versions import object_token, object_token_matches
+from core.pagination import paginate_items
 from core.permissions import is_coordinator
 from .models import Illustrator
 
@@ -44,15 +43,7 @@ def check_access(user):
 
 
 def edit_token(user, person):
-    return signing.dumps([user.pk, person.pk, version_of(person)], salt='illustrator-contact')
-
-
-def matches(token, user, person):
-    try:
-        return signing.loads(token, salt='illustrator-contact', max_age=86400) == [
-            user.pk, person.pk, version_of(person)]
-    except signing.BadSignature:
-        return False
+    return object_token(user, person, 'illustrator-contact')
 
 
 @never_cache
@@ -68,7 +59,7 @@ def illustrator_list(request):
     if query:
         rows = rows.filter(Q(first_name__plcontains=query) | Q(last_name__plcontains=query)
                            | Q(pseudonym__plcontains=query) | Q(email__icontains=query) | Q(preferences__plcontains=query))
-    page = paginate_queryset(request, rows)
+    page = paginate_items(request, rows)
     from .contact_forms import duplicate_display_names, identity_key
     duplicates = duplicate_display_names()
     for person in page:
@@ -93,7 +84,7 @@ def illustrator_edit(request, illustrator_id=None):
         status = 200
         if request.method == 'POST':
             valid = form.is_valid()
-            if person.pk and not matches(request.POST.get('version', ''), request.user, person):
+            if person.pk and not object_token_matches(request.POST.get('version', ''), request.user, person, 'illustrator-contact'):
                 form.add_error(None, 'Dane zmieniły się lub formularz wygasł. Zachowaj wpisaną treść i odśwież stronę.')
                 status = 409
             elif valid:

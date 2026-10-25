@@ -10,11 +10,12 @@ from django.utils.html import format_html, format_html_join
 
 from authors.admin import SuperuserOnlyAdminMixin
 from core.discord_notifications import (ANONYMOUS_AUTHOR, AUDIOBOOK, DISABLED_NOTE, DISCORD_LIMIT, EVENT_COMPLETED,
-                                        EVENT_STARTED, REMINDABLE, REMINDER_DAYS, STAGE_EVENTS, WAITING,
-                                        configured_channel_names, mention_text, parse_mention, preview_link,
-                                        render, rule_problems)
+                                        EVENT_STARTED, REMINDABLE, REMINDER_DAYS, REVIEW, STAGE_EVENTS, WAITING,
+                                        configured_channel_names, discord_roles, mention_text, parse_mention,
+                                        preview_link, render, rule_problems, send_item, with_link)
 from core.models import DiscordNotification, DiscordRole, NotificationRule, NotificationTemplate
 from core.notification_models import TEMPLATE_TAGS
+from workflow.models import WorkflowStage
 
 TAGS_HELP = 'Tagi: ' + ', '.join(f'[{tag}] – {label}' for tag, label in TEMPLATE_TAGS.items()) + '.'
 COMPLETED_HELP = ('Jedna wiadomość po rozpoczęciu i po zakończeniu każdego etapu (redakcja – także jej przejęcie '
@@ -33,14 +34,6 @@ AUDIOBOOK_HELP = ('Jedna wiadomość po każdej zmianie w produkcji audiobooka: 
 TRIGGER_HELP = {STAGE_EVENTS: COMPLETED_HELP, AUDIOBOOK: AUDIOBOOK_HELP}
 
 
-def configured_channels():
-    from core.discord_webhook import channels, ConfigurationError
-    try:
-        return list(channels())
-    except ConfigurationError:
-        return []
-
-
 class NotificationRuleForm(forms.ModelForm):
     channel = forms.ChoiceField(label='Kanał', required=False)
 
@@ -50,7 +43,8 @@ class NotificationRuleForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        names = configured_channels()
+        configured = configured_channel_names() or []
+        names = list(configured)
         current = self.instance.channel
         if current and current not in names:
             names.append(current)
@@ -58,7 +52,7 @@ class NotificationRuleForm(forms.ModelForm):
         empty = '– ten sam co w pierwszym powiadomieniu –' if waiting else '– wybierz kanał –'
         self.fields['channel'].choices = [('', empty)] + [(n, n) for n in names]
         self.fields['channel'].help_text = ('Kanały z konfiguracji webhooków serwera (DISCORD_WEBHOOKS).'
-                                            if configured_channels() else
+                                            if configured else
                                             'Na serwerze nie skonfigurowano żadnego webhooka (DISCORD_WEBHOOKS).')
         if waiting:
             self.fields['channel'].help_text += (' Puste – przypomnienie trafia na kanał, na którym ogłoszono tekst '
@@ -85,7 +79,6 @@ class NotificationTemplateInline(admin.StackedInline):
     model = NotificationTemplate
     extra = 1
     fields = ('content',)
-    formfield_overrides = {}
 
     def formfield_for_dbfield(self, db_field, request, **kwargs):
         field = super().formfield_for_dbfield(db_field, request, **kwargs)
@@ -106,8 +99,6 @@ class NotificationRuleAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
     form = NotificationRuleForm
     inlines = (NotificationTemplateInline,)
     list_display = ('__str__', 'enabled', 'channel', 'mention', 'template_count', 'problems')
-    list_display_links = ('__str__',)
-    list_editable = ()
     fields = ('trigger_label', 'enabled', 'channel', 'mention')
     readonly_fields = ('trigger_label', 'reminder_targets')
     change_list_template = 'admin/core/notificationrule/change_list.html'
@@ -171,14 +162,13 @@ class NotificationRuleAdmin(SuperuserOnlyAdminMixin, admin.ModelAdmin):
             else:
                 level, text = send_test(rule, form.cleaned_data, base)
                 messages.add_message(request, level, text)
-            return TemplateResponse(request, 'admin/core/notificationrule/test.html', self.test_context(request, form, rules))
         return TemplateResponse(request, 'admin/core/notificationrule/test.html', self.test_context(request, form, rules))
 
     def test_context(self, request, form, rules):
         def url(value):
             return reverse('admin:core_notificationrule_change', args=[rules[value].pk]) if value in rules else ''
         configured = configured_channel_names()
-        roles = {r.name.lower(): r.role_id for r in DiscordRole.objects.all()}
+        roles = discord_roles()
         buttons = [{'trigger': value, 'label': label, 'rule': rules.get(value), 'url': url(value),
                     'problems': rule_problems(rules[value], configured, roles) if value in rules else []}
                    for value, label in NotificationRule.Trigger.choices if value != WAITING]
@@ -219,11 +209,8 @@ class TestNotificationForm(forms.Form):
     mark_test = forms.BooleanField(label='Dopisz „[TEST]” na początku wiadomości', initial=True, required=False)
 
 
-STAGE_NAMES = {
-    'review_new': 'Recenzja', 'ready_for_editing': 'Do redakcji', 'first_proofreading': 'Pierwsza korekta',
-    'third_proofreading': 'Trzecia korekta', 'first_verification': 'Pierwsza weryfikacja',
-    'second_verification': 'Druga weryfikacja', 'third_verification': 'Trzecia weryfikacja',
-}
+# [etap] wiadomości testowej: nazwa etapu z reguły ogłoszenia (reguły etapów nazywają się jak rodzaj etapu).
+STAGE_NAMES = {REVIEW: 'Recenzja', **dict(WorkflowStage.StageType.choices)}
 
 
 def reminder_target(waiting, base):
@@ -237,7 +224,6 @@ def send_test(rule, data, base=None):
     Dla przypomnienia base to reguła pierwszego powiadomienia (np. pierwsza korekta): daje nazwę etapu
     oraz kanał i oznaczenie, jeśli przypomnienie nie ma własnych.
     """
-    from core.discord_webhook import channels, send_message, ConfigurationError, DeliveryError
     templates = [t.content for t in rule.templates.all()]
     channel, mention, note = rule.channel, rule.mention, ''
     if rule.trigger == WAITING:
@@ -272,28 +258,19 @@ def send_test(rule, data, base=None):
     if data.get('mark_test'):
         content = '[TEST] ' + content
         if len(content) > DISCORD_LIMIT:
-            body = content.replace(link, '').strip()
-            content = f'{body[:DISCORD_LIMIT - len(link) - 1].rstrip()} {link}'
+            content = with_link(content.replace(link, '').strip(), link)
     item = DiscordNotification.objects.create(trigger=rule.trigger, channel=channel, content=content,
                                               role_ids=','.join(role_ids), mention_here=here, status='sending')
-    try:
-        configured = channels()
-        if channel not in configured:
-            item.status = 'disabled'
-            item.save(update_fields=['status'])
-            return messages.ERROR, f'Kanału „{channel}” nie ma w konfiguracji webhooków serwera.'
-        item.message_id = send_message(configured[channel], content, role_ids=role_ids, here=here,
-                                       suppress_embeds=True)
-        item.status = 'sent'
-        item.save(update_fields=['status', 'message_id'])
-        if not rule.enabled:
-            return messages.WARNING, format_html('Wysłano na kanał „{}”{}: {} Uwaga: to powiadomienie jest {}.',
-                                                 channel, note, content, DISABLED_NOTE)
-        return messages.SUCCESS, format_html('Wysłano na kanał „{}”{}: {}', channel, note, content)
-    except (ConfigurationError, DeliveryError) as exc:
-        item.status = 'unknown' if getattr(exc, 'uncertain', False) else 'failed'
-        item.save(update_fields=['status'])
-        return messages.ERROR, f'Nie wysłano: {exc}'
+    item.status, item.message_id, error = send_item(item)
+    item.save(update_fields=['status', 'message_id'])
+    if item.status == 'disabled':
+        return messages.ERROR, f'Kanału „{channel}” nie ma w konfiguracji webhooków serwera.'
+    if error:
+        return messages.ERROR, f'Nie wysłano: {error}'
+    if not rule.enabled:
+        return messages.WARNING, format_html('Wysłano na kanał „{}”{}: {} Uwaga: to powiadomienie jest {}.',
+                                             channel, note, content, DISABLED_NOTE)
+    return messages.SUCCESS, format_html('Wysłano na kanał „{}”{}: {}', channel, note, content)
 
 
 @admin.register(DiscordNotification)

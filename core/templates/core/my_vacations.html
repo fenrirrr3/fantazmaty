@@ -175,7 +175,7 @@
                                         {% if vacation.is_upcoming %}
 <form method="post" action="{% url 'core:cancel_vacation' vacation.pk %}">{% csrf_token %}{% edit_version %}<button class="secondary-button" type="submit">Odwołaj urlop</button></form>
 {% endif %}
-{% if vacation.can_be_ended %}
+{% if vacation.is_active %}
                                             <form
                                                 method="post"
                                                 action="{% url 'core:end_vacation' vacation.pk %}"
@@ -193,7 +193,7 @@
                                             </form>
                                         {% endif %}
 
-                                        {% if not vacation.can_be_edited and not vacation.can_be_ended %}
+                                        {% if not vacation.can_be_edited %}
                                             <span class="muted-text">–</span>
                                         {% endif %}
                                     </div>

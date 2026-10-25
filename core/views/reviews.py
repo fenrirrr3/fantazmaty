@@ -37,6 +37,8 @@ from core.permissions import (
 )
 from core.selectors.reviews import review_list_context
 from core.services.reviews import (
+    DECISION_STATUSES,
+    OPEN_STATUSES,
     assign_reviewer as assign_reviewer_service,
     change_review_status,
     copy_review_to_text as copy_review_to_text_service,
@@ -47,19 +49,12 @@ from core.services.reviews import (
     release_reviewer_slot as release_reviewer_slot_service,
     unassign_reviewer as unassign_reviewer_service,
     unblock_review_reading as unblock_review_reading_service,
+    review_names_author,
     ReviewReadingBlocked,
 )
 from texts.models import Review, ReviewAssignment, Reviewers
 from core.edit_policy import edit_policy
 
-
-CLOSED_REVIEW_STATUSES = frozenset(
-    {
-        Review.Status.ACCEPTED,
-        Review.Status.REJECTED,
-        Review.Status.WITHDRAWN,
-    }
-)
 
 # Serwisy mutujące ponownie sprawdzają uprawnienia i aktualny stan.
 # Blokują najpierw Review, następnie jego przydziały, i wykonują całą
@@ -96,7 +91,7 @@ def _review_is_abandoned(review):
 
 
 def _review_is_locked(review):
-    return review.old_reviews or review.status in CLOSED_REVIEW_STATUSES or _review_is_abandoned(review)
+    return review.old_reviews or review.status in DECISION_STATUSES or _review_is_abandoned(review)
 
 
 def _require_open_review(review):
@@ -156,8 +151,6 @@ def _permission_context(user, *, archived=False):
 
     return {
         "can_view_authors": can_view_authors,
-        "can_view_author_data": can_view_authors,
-        "can_view_all_reviews": can_view_authors,
         "can_view_review_archive": can_view_review_archive(user),
         # Profile autorów są otwarte dla koordynatorów (lista Autorzy), więc i link.
         "can_open_author_profiles": is_coordinator(user),
@@ -239,9 +232,7 @@ def _render_review_detail(
             ),
             "user_notes": own_assignment.notes if own_assignment else None,
             "opinion_form": opinion_form,
-            "other_reviewer_opinions": [
-                item for item in opinions if not item["is_own"]
-            ],
+            "other_reviewer_opinions": opinions,
             "opinion_summary": opinion_summary,
             "general_notes": (
                 Reviewers.objects.filter(review_id=review.pk)
@@ -269,7 +260,7 @@ def _render_review_detail(
             "released_opinion_values": ("", Reviewers.Opinion.READING),
             "can_manage_review_files": file_access,
             "review_file_form": ReviewFileForm(instance=review) if file_access else None,
-            "dropbox_chooser_app_key": getattr(settings, "DROPBOX_CHOOSER_APP_KEY", "") if file_access else "",
+            "dropbox_chooser_app_key": settings.DROPBOX_CHOOSER_APP_KEY if file_access else "",
             "can_edit_content_warnings": can_contribute,
             "review_content_warnings_form": (
                 ReviewContentWarningsForm(
@@ -310,33 +301,24 @@ def _render_review_detail(
                 and review.author_notified_at is not None
             ),
             "is_copied_to_text": review.copied_text_id is not None,
-            "matching_author": (
-                review_data.get("author") if include_author else None
-            ),
-            "author_has_contract": (
-                bool(review.author and review.author.has_contract)
-                if include_author
-                else False
-            ),
         }
     )
 
-    if include_author and not review.author_id:
-        from authors.models import Author
-        from texts.services import normalize_author_name
-        matches = list(Author.objects.filter(email__iexact=review.email.strip()).order_by("pk")[:2])
-        if len(matches) == 1 and normalize_author_name(f"{matches[0].first_name} {matches[0].last_name}") == normalize_author_name(f"{review.author_first_name} {review.author_last_name}"):
-            context["matching_author"] = {"pk": matches[0].pk, "has_contract": matches[0].has_contract}
-            context["author_has_contract"] = matches[0].has_contract
-
     if include_author:
-        context['copy_coauthors'] = review.coauthors.all()
+        # Profil autora: powiązany albo jedyny o adresie e-mail zgłoszenia i tym samym imieniu i nazwisku.
         profile_author = review.author
-        if not profile_author and context.get('matching_author'):
+        if profile_author is None:
             from authors.models import Author
-            profile_author = Author.objects.filter(pk=context['matching_author']['pk']).first()
+            matches = list(Author.objects.filter(email__iexact=review.email.strip()).order_by("pk")[:2])
+            if len(matches) == 1 and review_names_author(review, matches[0]):
+                profile_author = matches[0]
+        context['matching_author'] = profile_author is not None
+        context['author_has_contract'] = bool(profile_author and profile_author.has_contract)
+        context['copy_coauthors'] = review.coauthors.all()
         context['copy_profile_phone'] = profile_author.phone_number if profile_author else ''
         context['copy_phone_differs'] = bool(profile_author and review.phone_number.strip() and review.phone_number.strip() != profile_author.phone_number.strip())
+    else:
+        context['matching_author'] = context['author_has_contract'] = False
     if request.user.is_superuser:
         context['author_message'] = review.author_message
     if bound_forms:
@@ -629,7 +611,7 @@ def update_review_content_warnings(request, review_id):
         return _detail_redirect(review.pk)
 
     # Waliduj istniejące zgłoszenie; formularz udostępnia tylko ostrzeżenia.
-    form = ReviewContentWarningsForm(request.POST, instance=review)
+    form = ReviewContentWarningsForm(request.POST)
 
     if form.is_valid():
         try:
@@ -763,13 +745,9 @@ MY_REVIEW_VIEWS = {
 @team_member_required
 def my_reviews(request):
     from core.permissions import can_view_my_reviews
-    from django.core.exceptions import PermissionDenied
     if not can_view_my_reviews(request.user):
         raise PermissionDenied("Moje recenzje są dostępne tylko dla recenzentów.")
     view = request.GET.get("view", "active")
-    if view in ("archived", "decided", "all"):
-        # Dawne zakładki scalono w „Oddane” – wszystkie oddane recenzje w jednym miejscu.
-        view = "completed"
     if view not in MY_REVIEW_VIEWS:
         view = "active"
     rows = frontend_scope(ReviewAssignment.objects, include_abandoned=True).filter(
@@ -779,7 +757,7 @@ def my_reviews(request):
     # assignments there are not actionable tasks.
     rows = rows.filter(Q(pk__in=frontend_scope(ReviewAssignment.objects).values('pk'))
         | ~Q(opinion__in=('', 'reading')))
-    open_review = Q(review__old_reviews=False, review__status__in=("new", "in_review", "to_decide"))
+    open_review = Q(review__old_reviews=False, review__status__in=OPEN_STATUSES)
     if view == "active":
         rows = rows.filter(open_review, opinion__in=("", "reading"))
     else:

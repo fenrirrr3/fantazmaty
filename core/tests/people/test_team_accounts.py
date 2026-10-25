@@ -3,7 +3,7 @@ from datetime import datetime
 
 from django.contrib.admin.sites import site
 from django.contrib.auth import get_user_model
-from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
@@ -183,15 +183,10 @@ class PersonAdminPageTests(TestCase):
         self.assertEqual(set(person.roles.values_list('name', flat=True)), {'Korektor'})
         self.assertFalse(is_coordinator(coordinator))
 
-    def test_revoke_action_is_superuser_only(self):
-        from people.admin import PersonAdmin
-
+    def test_revoke_action_removes_coordinator_access(self):
+        """Akcja panelu (dostępnego tylko superuserowi) odbiera funkcje koordynatora."""
         coordinator = create_member('coord-action', 'Koordynator recenzji')
         person = coordinator.person_profile
-        request = RequestFactory().post('/')
-        request.user = get_user_model().objects.create_user('staff-ui', is_staff=True)
-        with self.assertRaises(PermissionDenied):
-            PersonAdmin(Person, site).revoke_coordinator_access(request, Person.objects.filter(pk=person.pk))
         self.assertTrue(is_coordinator(coordinator))
         response = self.client.post(reverse('admin:people_person_changelist'), {
             'action': 'revoke_coordinator_access', '_selected_action': [person.pk], 'index': '0'}, follow=True)
@@ -341,8 +336,8 @@ class PersonAccountTests(TestCase):
                 self.assertEqual(account_changes(person, previous=None), {})
 
     def test_superuser_account_is_never_blocked_automatically(self):
-        """Superuser z profilem osoby nie traci logowania po odznaczeniu „wciąż w ekipie” ani przez komendę
-        sync_accounts – administrator nie odetnie sobie dostępu; e-mail nadal podąża za osobą."""
+        """Superuser z profilem osoby nie traci logowania po odznaczeniu „wciąż w ekipie” – administrator nie odetnie
+        sobie dostępu; e-mail nadal podąża za osobą."""
         boss = get_user_model().objects.create_superuser('szef@example.test', 'szef@example.test', self.PASSWORD)
         person = Person.objects.create(user=boss, first_name='Szef', last_name='Admin', email='szef@example.test')
         for update_fields in (None, ['is_active']):
@@ -351,61 +346,7 @@ class PersonAccountTests(TestCase):
                 person.save(update_fields=update_fields)
                 boss.refresh_from_db()
                 self.assertTrue(boss.is_active)
-        from io import StringIO
-        from django.core.management import call_command
-        call_command('sync_accounts', '--apply', stdout=StringIO())
-        boss.refresh_from_db()
-        self.assertTrue(boss.is_active)
         person.email = 'szef.nowy@example.test'
         person.save()
         boss.refresh_from_db()
         self.assertEqual((boss.email, boss.username), ('szef.nowy@example.test',) * 2)
-
-
-class SyncAccountsCommandTests(TestCase):
-    """Komenda sync_accounts wyrównuje stare dane: bez --apply tylko raport, z --apply naprawia; kolizje pomija."""
-
-    @classmethod
-    def setUpTestData(cls):
-        User = get_user_model()
-        cls.superuser = create_superuser('sync-admin')
-        cls.users, cls.people = {}, {}
-        for key, active in (('rozjazd', True), ('byly', False), ('kolizja', True), ('bez-maila', True)):
-            user = User.objects.create_user(f'{key}@example.test', f'{key}@example.test')
-            cls.users[key] = user
-            cls.people[key] = Person.objects.create(user=user, first_name=key, last_name='Sync',
-                                                    email=f'{key}@example.test', dropbox_email=f'{key}-box@example.test')
-        # Stare dane sprzed synchronizacji – zapis z pominięciem sygnałów.
-        people = Person.objects.filter(pk__in=[p.pk for p in cls.people.values()])
-        people.filter(pk=cls.people['rozjazd'].pk).update(email='Nowy.Rozjazd@example.test')
-        people.filter(pk=cls.people['byly'].pk).update(is_active=False)
-        people.filter(pk=cls.people['kolizja'].pk).update(email='sync-admin@example.test')
-        people.filter(pk=cls.people['bez-maila'].pk).update(email=None)
-
-    def run_command(self, *args):
-        from io import StringIO
-        from django.core.management import call_command
-        out = StringIO()
-        call_command('sync_accounts', *args, stdout=out)
-        return out.getvalue()
-
-    def state(self):
-        return {key: get_user_model().objects.values_list('email', 'username', 'is_active').get(pk=user.pk)
-                for key, user in {**self.users, 'superuser': self.superuser}.items()}
-
-    def test_dry_run_reports_and_apply_fixes_except_collisions(self):
-        before = self.state()
-        report = self.run_command()
-        self.assertEqual(self.state(), before)
-        for line in ('Do zmiany: rozjazd Sync', 'nowy.rozjazd@example.test', 'Do zmiany: byly Sync', 'blokada logowania',
-                     'Pominięto: kolizja Sync', 'Pominięto: bez-maila Sync', 'Podgląd – nic nie zapisano'):
-            with self.subTest(line=line):
-                self.assertIn(line, report)
-        report = self.run_command('--apply')
-        self.assertIn('Zapisano. Kont do zmiany: 2, pominiętych: 2.', report)
-        expected = {**before, 'rozjazd': ('nowy.rozjazd@example.test', 'nowy.rozjazd@example.test', True),
-                    'byly': ('byly@example.test', 'byly@example.test', False)}
-        self.assertEqual(self.state(), expected)
-        self.assertEqual(sorted(Person.objects.filter(last_name='Sync').values_list('dropbox_email', flat=True)),
-                         sorted(f'{key}-box@example.test' for key in self.people))
-        self.assertIn('Kont do zmiany: 0', self.run_command())

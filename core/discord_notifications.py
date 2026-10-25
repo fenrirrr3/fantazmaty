@@ -6,7 +6,6 @@ a wysyłka następuje dopiero po zatwierdzeniu transakcji. Błąd wysyłki nigdy
 Ustawienie antologii „Powiadomienia Discord” ogranicza wiadomości o jej tekstach (queue()).
 """
 import logging
-import os
 import random
 import re
 
@@ -15,17 +14,14 @@ from django.db import connections, transaction
 from django.urls import reverse
 from django.utils import timezone
 
+from core.account_identity import person_name
+
 logger = logging.getLogger(__name__)
 DISCORD_LIMIT = 2000
 REVIEWS_PER_COMMIT = 5
-STAGE_TRIGGERS = {
-    'ready_for_editing': 'ready_for_editing',
-    'first_proofreading': 'first_proofreading',
-    'third_proofreading': 'third_proofreading',
-    'first_verification': 'first_verification',
-    'second_verification': 'second_verification',
-    'third_verification': 'third_verification',
-}
+# Etapy ogłaszane po trafieniu do puli „do wzięcia” – nazwa reguły to rodzaj etapu.
+STAGE_TRIGGERS = ('ready_for_editing', 'first_proofreading', 'third_proofreading', 'first_verification',
+                  'second_verification', 'third_verification')
 # Bez wiadomości „Rozpoczęto” ani „Zakończono”: przejęcie tekstu do redakcji (zakończenie „Do redakcji”), Gotowe,
 # wycofanie oraz praca autora (przekazanie pliku autorowi i jego powrót pomija osobno workflow_changes).
 NOT_A_COMPLETION = {'ready_for_editing', 'ready', 'withdrawn', 'author_editing'}
@@ -40,14 +36,19 @@ WAITING = 'stage_waiting'
 REMINDER_DAYS = (7, 14, 21)
 REVIEW = 'review_new'
 # Ogłoszenia, po których przypominamy, gdy nikt się nie zgłosi (tekst do recenzji i etapy do wzięcia).
-REMINDABLE = (REVIEW, *STAGE_TRIGGERS.values())
+REMINDABLE = (REVIEW, *STAGE_TRIGGERS)
 # Po tylu dniach od ogłoszenia przestajemy szukać zaległych przypomnień (np. po dłuższej przerwie w zadaniu cyklicznym).
 REMINDER_WINDOW_DAYS = REMINDER_DAYS[-1] + 7
 
 
+def discord_roles():
+    """{nazwa roli małymi literami: ID roli} z listy „Role Discorda”."""
+    from core.models import DiscordRole
+    return {r.name.lower(): r.role_id for r in DiscordRole.objects.all()}
+
+
 def parse_mention(raw, roles=None):
     """'@redaktor' → (['123…'], False); '@here' → ([], True); '' → ([], False). Błąd → ValueError."""
-    from core.models import DiscordRole
     raw = (raw or '').strip()
     if not raw:
         return [], False
@@ -56,7 +57,7 @@ def parse_mention(raw, roles=None):
     if not raw.startswith('@') or raw.lower() == '@everyone':
         raise ValueError('Wpisz nazwę roli poprzedzoną @, np. @redaktor, albo @here.')
     name = raw[1:].strip()
-    lookup = roles if roles is not None else {r.name.lower(): r.role_id for r in DiscordRole.objects.all()}
+    lookup = roles if roles is not None else discord_roles()
     role_id = lookup.get(name.lower())
     if not role_id:
         raise ValueError(f'Nie ma roli @{name} na liście „Role Discorda”. Dodaj ją tam z ID roli.')
@@ -67,10 +68,10 @@ DISABLED_NOTE = 'WYŁĄCZONE – test z panelu wysyła mimo to, ale zwykłe zdar
 
 
 def configured_channel_names():
-    """Nazwy kanałów z DISCORD_WEBHOOKS (bez adresów); None – konfiguracja serwera jest błędna."""
+    """Nazwy kanałów z DISCORD_WEBHOOKS (bez adresów, w kolejności konfiguracji); None – konfiguracja jest błędna."""
     from core.discord_webhook import channels, ConfigurationError
     try:
-        return set(channels())
+        return list(channels())
     except ConfigurationError:
         return None
 
@@ -106,30 +107,9 @@ def _length(value):
     return f'{value:,}'.replace(',', ' ') if isinstance(value, int) else ''
 
 
-def text_authors(text):
-    """Autorzy tekstu jak w stopce: podpis (pseudonim albo imię i nazwisko) w kolejności podpisu, po przecinku.
-
-    W antologii tłumaczeń – autorzy zagraniczni (jak na stronie tekstu).
-    """
-    if getattr(text, 'pk', None) is None:
-        return ''
-    anthology = getattr(text, 'anthology', None)
-    if getattr(anthology, 'is_translated', False):
-        record = getattr(text, 'translation', None)
-        authors = record.foreign_authors.all() if record else []
-    else:
-        authors = text.authors.all()
-    names = []
-    for author in authors:
-        name = author.display_name.strip()
-        if name and name not in names:
-            names.append(name)
-    return ', '.join(names)
-
-
 def text_context(text):
     anthology = getattr(text, 'anthology', None)
-    return {'tytuł': text.title or '', 'autor': text_authors(text), 'antologia': getattr(anthology, 'title', '') or '',
+    return {'tytuł': text.title or '', 'autor': text.source_authors_display, 'antologia': getattr(anthology, 'title', '') or '',
             'gatunek': getattr(text, 'genre', '') or '', 'długość': _length(getattr(text, 'length', None))}
 
 
@@ -140,17 +120,8 @@ def review_context(review):
             'gatunek': review.genre or '', 'długość': _length(review.length), 'etap': 'Recenzja'}
 
 
-def person_name(user):
-    """Imię i nazwisko z profilu osoby; bez profilu – z konta."""
-    if user is None:
-        return ''
-    person = getattr(user, 'person_profile', None)
-    return (str(person) if person else '') or user.get_full_name() or user.get_username()
-
-
 def base_url():
-    raw = getattr(settings, 'CMS_BASE_URL', None) or os.environ.get('CMS_BASE_URL') or 'https://cms.fantazmaty.pl'
-    return str(raw).rstrip('/')
+    return settings.CMS_BASE_URL.rstrip('/')
 
 
 def preview_link(*, text_id=None, review_id=None, audiobook_id=None):
@@ -200,10 +171,13 @@ def render(template, context, mention='', link=''):
     if mention and 'rola' not in used:
         content = f'{mention} {content}'
     if link and ('link' not in used or len(content) > DISCORD_LIMIT):
-        # Odnośnik musi zostać cały – przy zbyt długiej treści skracamy tekst, nie link.
-        content = content.replace(link, '').strip() if 'link' in used else content
-        content = f'{content[:DISCORD_LIMIT - len(link) - 1].rstrip()} {link}'
+        content = with_link(content.replace(link, '').strip() if 'link' in used else content, link)
     return content[:DISCORD_LIMIT]
+
+
+def with_link(content, link):
+    """Odnośnik na końcu musi zostać cały – przy zbyt długiej treści skracamy tekst, nie link."""
+    return f'{content[:DISCORD_LIMIT - len(link) - 1].rstrip()} {link}'
 
 
 def anthology_allows(trigger, text, using='default'):
@@ -282,27 +256,26 @@ def deliver_after_commit(pk, using='default'):
             logger.error('Could not record notification outcome; notification=%s', pk)
 
 
-def deliver(pk, using='default'):
-    from core.models import DiscordNotification
+def send_item(item):
+    """Wysyła wiadomość z kolejki na jej kanał; zwraca (stan, ID wiadomości, błąd albo None)."""
     from core.discord_webhook import channels, send_message, ConfigurationError, DeliveryError
-    rows = DiscordNotification.objects.using(using)
-    if not rows.filter(pk=pk, status='pending').update(status='sending', sending_started_at=timezone.now()):
-        return
-    item = rows.get(pk=pk)
-    status, message_id = 'failed', ''
     try:
         configured = channels()
         if item.channel not in configured:
-            status = 'disabled'
-        else:
-            role_ids = [r for r in item.role_ids.split(',') if r]
-            message_id = send_message(configured[item.channel], item.content, role_ids=role_ids, here=item.mention_here,
-                                      suppress_embeds=True)
-            status = 'sent'
-    except ConfigurationError:
-        status = 'failed'
-    except DeliveryError as exc:
-        status = 'unknown' if exc.uncertain else 'failed'
+            return 'disabled', '', None
+        role_ids = [r for r in item.role_ids.split(',') if r]
+        return 'sent', send_message(configured[item.channel], item.content, role_ids=role_ids, here=item.mention_here,
+                                    suppress_embeds=True), None
+    except (ConfigurationError, DeliveryError) as exc:
+        return ('unknown' if getattr(exc, 'uncertain', False) else 'failed'), '', exc
+
+
+def deliver(pk, using='default'):
+    from core.models import DiscordNotification
+    rows = DiscordNotification.objects.using(using)
+    if not rows.filter(pk=pk, status='pending').update(status='sending', sending_started_at=timezone.now()):
+        return
+    status, message_id, _ = send_item(rows.get(pk=pk))
     rows.filter(pk=pk, status='sending').update(status=status, message_id=message_id)
 
 
@@ -384,12 +357,11 @@ def workflow_changes(using, text, before, after, actor=''):
 
     for pk, stage in after.items():
         old = before.get(pk)
-        trigger = STAGE_TRIGGERS.get(stage['type'])
         first_handover = (handed_over and stage['type'] == 'first_verification'
                           and stage.get('iteration', 1) == 1)
         newly_available = not (old and stage_available(old)) or first_handover
-        if trigger and stage_available(stage) and newly_available:
-            safe_queue(trigger, using=using, text=text, stage_id=pk, context={**context, 'etap': stage['type_display']})
+        if stage['type'] in STAGE_TRIGGERS and stage_available(stage) and newly_available:
+            safe_queue(stage['type'], using=using, text=text, stage_id=pk, context={**context, 'etap': stage['type_display']})
         if stage['type'] in NOT_A_COMPLETION:
             continue
         if stage['completed'] and not (old and old['completed']):
@@ -437,7 +409,7 @@ def send_waiting_reminders(now=None, using='default'):
         return 0
     now = now or timezone.now()
     announcements = (DiscordNotification.objects.using(using)
-                     .filter(Q(trigger__in=set(STAGE_TRIGGERS.values()), stage__isnull=False)
+                     .filter(Q(trigger__in=STAGE_TRIGGERS, stage__isnull=False)
                              | Q(trigger=REVIEW, review__isnull=False),
                              created_at__gte=now - timedelta(days=REMINDER_WINDOW_DAYS))
                      .select_related('stage__text__anthology', 'stage__assignment', 'review__anthology')

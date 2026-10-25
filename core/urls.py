@@ -376,9 +376,3 @@ urlpatterns = [
         name="workflow_inactivity",
     ),
 ]
-
-# Dawne adresy pozostają zgodne także dla formularzy POST.
-_legacy_routes = {'workflow/<int:stage_id>/pomin/': 'etapy/<int:stage_id>/pomin/', 'workflow/<int:stage_id>/przekaz/': 'etapy/<int:stage_id>/przekaz/', 'workflow/<int:stage_id>/schedule/': 'etapy/<int:stage_id>/termin/', 'dashboard/tasks/': 'pulpit/zadania/', 'etapy-prac/': 'tabelka-zbiorcza/'}
-for _old, _new in _legacy_routes.items():
-    _target = next(p for p in urlpatterns if str(p.pattern) == _new)
-    urlpatterns.append(path(_old, _target.callback, _target.default_args))

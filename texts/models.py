@@ -137,16 +137,7 @@ class Anthology(models.Model):
         if self.is_novel:
             from texts.novels import validate_ready_novel
             validate_ready_novel(self)
-        from workflow.models import WorkflowStage
-        from django.db.models import Exists, OuterRef
-        stages = WorkflowStage.objects.using(using).filter(
-            text_id=OuterRef('pk'), workflow_cycle=OuterRef('current_workflow_cycle'), is_current=True,
-        )
-        unfinished = Text.objects.using(using).filter(anthology_id=self.pk).annotate(
-            closed=Exists(stages.filter(stage_type='ready', is_released=True)),
-            withdrawn=Exists(stages.filter(stage_type='withdrawn', is_released=True)),
-            pending=Exists(stages.exclude(stage_type__in=('ready', 'withdrawn')).filter(is_completed=False)),
-        ).filter(withdrawn=False).filter(models.Q(closed=False) | models.Q(pending=True))
+        unfinished = unfinished_texts(using).filter(anthology_id=self.pk)
         examples = list(unfinished.order_by('pk').values_list('title', 'pk')[:10])
         if examples:
             raise ValidationError({'status': 'Nie można oznaczyć antologii jako gotowej. Niezakończone teksty: '
@@ -525,15 +516,16 @@ class Text(NormalizedModelMixin, models.Model):
         previous = type(self).objects.using(using).filter(pk=self.pk).values_list('anthology_id', flat=True).first() if self.pk else None
         if self.pk and previous == self.anthology_id:
             return
+        self._require_finished_for_ready_anthology(using)
+
+    def _require_finished_for_ready_anthology(self, using):
+        """Do gotowej antologii trafia tylko tekst z zakończonym workflow."""
         if not Anthology.objects.using(using).filter(pk=self.anthology_id, status=Anthology.Status.READY).exists():
             return
-        from workflow.models import WorkflowStage
-        stages = WorkflowStage.objects.using(using).filter(text_id=self.pk,
-            workflow_cycle=self.current_workflow_cycle, is_current=True) if self.pk else WorkflowStage.objects.none()
-        withdrawn = stages.filter(stage_type='withdrawn', is_released=True).exists()
-        finished = stages.filter(stage_type='ready', is_released=True).exists()
-        pending = stages.exclude(stage_type__in=('ready', 'withdrawn')).filter(is_completed=False).exists()
-        if not withdrawn and (not finished or pending):
+        # Ta sama reguła co przy oznaczaniu antologii jako gotowej (unfinished_texts); nowy tekst
+        # nie ma jeszcze zakończonego workflow.
+        if (not self.pk or self._state.adding
+                or unfinished_texts(using, cycle=self.current_workflow_cycle).filter(pk=self.pk).exists()):
             raise ValidationError({'anthology': 'Nie można przenieść niedokończonego tekstu do gotowej antologii. Najpierw zakończ jego workflow albo wybierz antologię w przygotowaniu.'})
 
     def clean(self):
@@ -542,9 +534,15 @@ class Text(NormalizedModelMixin, models.Model):
         self._validate_extract_volume()
         self._validate_chapter()
 
-    def clean_fields(self, exclude=None):
+    def _apply_chapter_title(self):
+        """Rozdział powieści ma tytuł „Rozdział N”; zwraca True, gdy tytuł został ustawiony."""
         if self.chapter_number and self.anthology_id and self.anthology.is_novel:
             self.title = f'Rozdział {self.chapter_number}'
+            return True
+        return False
+
+    def clean_fields(self, exclude=None):
+        self._apply_chapter_title()
         super().clean_fields(exclude=exclude)
         if self.length is None and not self.chapter_number and self.import_source != 'extract-volume-v2' and 'length' not in (exclude or ()):
             raise ValidationError({'length': 'Podaj długość tekstu.'})
@@ -569,8 +567,7 @@ class Text(NormalizedModelMixin, models.Model):
     def save(self, *args, **kwargs):
         using = kwargs.get('using') or router.db_for_write(type(self), instance=self)
         fields = kwargs.get('update_fields')
-        if self.chapter_number and self.anthology_id and self.anthology.is_novel:
-            self.title = f'Rozdział {self.chapter_number}'
+        if self._apply_chapter_title():
             if fields is not None and {'title', 'chapter_number'} & set(fields):
                 fields = set(fields) | {'title'}
                 kwargs['update_fields'] = fields
@@ -589,26 +586,50 @@ class Text(NormalizedModelMixin, models.Model):
             if fields is not None:
                 fields = set(fields) | {'for_recording'}
                 kwargs['update_fields'] = fields
-        if fields is None or 'coordinator_note' in fields:
-            previous_note = type(self).objects.using(using).filter(pk=self.pk).values_list('coordinator_note', flat=True).first() if self.pk else ''
-            if previous_note != self.coordinator_note:
-                self.coordinator_note_updated_at = timezone.now() if self.coordinator_note.strip() else None
-                if fields is not None:
-                    fields = set(fields) | {'coordinator_note_updated_at'}
-                    kwargs['update_fields'] = fields
-        if self.pk and (fields is None or 'anthology' in fields or 'anthology_id' in fields):
-            with transaction.atomic(using=using):
-                previous = type(self).objects.using(using).select_for_update().filter(pk=self.pk).values_list('anthology_id', flat=True).first()
-                if previous != self.anthology_id and self.anthology_id:
-                    Anthology.objects.using(using).select_for_update().get(pk=self.anthology_id)
-                    self._validate_anthology_move(using)
-                return super().save(*args, **kwargs)
-        return super().save(*args, **kwargs)
+        note_saved = fields is None or 'coordinator_note' in fields
+        moving = bool(self.pk) and (fields is None or 'anthology' in fields or 'anthology_id' in fields)
+        if not moving:
+            if note_saved:
+                self._track_coordinator_note(
+                    type(self).objects.using(using).filter(pk=self.pk).values('coordinator_note').first()
+                    if self.pk else {'coordinator_note': ''}, kwargs)
+            return super().save(*args, **kwargs)
+        with transaction.atomic(using=using):
+            # Poprzedni stan czytamy raz, pod blokadą: notatka koordynatora i antologia.
+            previous = type(self).objects.using(using).select_for_update().filter(pk=self.pk).values(
+                'anthology_id', 'coordinator_note').first()
+            if note_saved:
+                self._track_coordinator_note(previous, kwargs)
+            if (previous or {}).get('anthology_id') != self.anthology_id and self.anthology_id:
+                Anthology.objects.using(using).select_for_update().get(pk=self.anthology_id)
+                self._require_finished_for_ready_anthology(using)
+            return super().save(*args, **kwargs)
+
+    def _track_coordinator_note(self, previous, kwargs):
+        """Data zmiany notatki koordynatora: tylko gdy treść różni się od zapisanej (previous)."""
+        if (previous['coordinator_note'] if previous else None) != self.coordinator_note:
+            self.coordinator_note_updated_at = timezone.now() if self.coordinator_note.strip() else None
+            if kwargs.get('update_fields') is not None:
+                kwargs['update_fields'] = set(kwargs['update_fields']) | {'coordinator_note_updated_at'}
 
     @property
     def authors_display(self):
         # Dostęp do danych autorów kontrolują widoki i uprawnienia.
         return ", ".join(author.display_name for author in self.authors.all())
+
+    def source_authors(self):
+        """Autorzy z podpisu tekstu; w antologii tłumaczeń – autorzy zagraniczni (jak na stronie tekstu)."""
+        if self.pk is None:
+            return []
+        if self.anthology_id and self.anthology.is_translated:
+            record = getattr(self, 'translation', None)
+            return list(record.foreign_authors.all()) if record else []
+        return list(self.authors.all())
+
+    @property
+    def source_authors_display(self):
+        """Podpis autorów jak w stopce (pseudonim albo imię i nazwisko), po przecinku, bez powtórzeń."""
+        return authors_signature(self.source_authors())
 
     @property
     def author_emails(self):
@@ -617,6 +638,29 @@ class Text(NormalizedModelMixin, models.Model):
             for author in self.authors.all()
             if author.email
         )
+
+
+def authors_signature(people):
+    """Podpisy osób (``display_name``) po przecinku, w podanej kolejności, bez pustych i powtórzonych."""
+    return ', '.join(dict.fromkeys(name for name in (person.display_name.strip() for person in people) if name))
+
+
+def unfinished_texts(using, *, cycle=None):
+    """Teksty z niezakończonym workflow: niewycofane, bez etapu „Gotowe” albo z otwartą pracą.
+
+    Sprawdza bieżący przebieg każdego tekstu albo – gdy podano `cycle` – wskazany przebieg.
+    """
+    from django.db.models import Exists, OuterRef
+    from workflow.models import WorkflowStage
+    stages = WorkflowStage.objects.using(using).filter(
+        text_id=OuterRef('pk'), workflow_cycle=OuterRef('current_workflow_cycle') if cycle is None else cycle,
+        is_current=True,
+    )
+    return Text.objects.using(using).annotate(
+        closed=Exists(stages.filter(stage_type='ready', is_released=True)),
+        withdrawn=Exists(stages.filter(stage_type='withdrawn', is_released=True)),
+        pending=Exists(stages.exclude(stage_type__in=('ready', 'withdrawn')).filter(is_completed=False)),
+    ).filter(withdrawn=False).filter(models.Q(closed=False) | models.Q(pending=True))
 
 
 class TranslationPerson(models.Model):
@@ -840,7 +884,7 @@ class Review(NormalizedModelMixin, models.Model):
         return self.get_status_display()
     class Status(models.TextChoices):
         NEW = "new", "Do recenzji"
-        IN_REVIEW = "in_review", "W recenzjach"
+        IN_REVIEW = "in_review", "W trakcie"
         TO_DECIDE = "to_decide", "Do decyzji"
         ACCEPTED = "accepted", "Przyjęty"
         REJECTED = "rejected", "Odrzucony"

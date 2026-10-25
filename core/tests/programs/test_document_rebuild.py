@@ -20,24 +20,23 @@ from docx.oxml.ns import nsdecls, qn
 from docx.shared import Cm, Pt, RGBColor
 from lxml import etree
 
-from core.program_test_support import run_program
 from core.services import program_jobs as jobs
 from core.services.document_converter import RebuildConfirmationRequired, convert_document
 from core.services.document_formatting import _SEQUENCES
-from core.services.document_preparation import DEFAULT_EDITORIAL_RULES, prepare_docx
+from core.services.document_preparation import prepare_docx
 from core.services.document_rebuild import (FORMAT_HISTORY_OMISSION, HYPERLINK_OMISSION, LOST_COMMENTS_OMISSION,
                                             PLACEHOLDER_OMISSION, UNKNOWN_FORMAT_OMISSION, RebuildUnsupported,
                                             inspect_docx, rebuild_docx)
-from core.services.mailbox_import import package_messages
+from core.services.mailbox_import import _package_messages
+from core.services.odkurzacz import DEFAULT_EDITORIAL_RULES
 from fantazmaty.testing import create_superuser
 
 from .editor_fixtures import _rels
 from .editor_fixtures_exotic import (_comment_parts, google_docs_extras_docx, libreoffice_review_docx, note_reference,
                                      notes_part, p, r, review_docx, word_docx)
-from .support import (
-    NOTE_PARTS, IsolatedProgramDirsMixin, add_block, add_complex_field, add_text_box, content_control,
-    downloaded_document, noted_document, noted_text, saved, text_run,
-)
+from .support import (NOTE_PARTS, OUTLINE_CASES, IsolatedProgramDirsMixin, add_block, add_complex_field, add_text_box,
+                      content_control, downloaded_document, noted_document, noted_text, outline_document, run_program,
+                      saved, text_run)
 
 NS = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
 W = '{%s}' % NS['w']
@@ -503,6 +502,19 @@ class RebuildFidelityTests(SimpleTestCase):
         self.assertTrue(paragraph.runs[0].font.bold)
         self.assertTrue(paragraph.paragraph_format.keep_with_next)
 
+    def test_heading_styles_and_list_warning_follow_the_outline_rule(self):
+        """Akapit dostaje styl szablonu „Heading N” dokładnie wtedy, gdy reguła nagłówków daje poziom N (OUTLINE_CASES):
+        także styl oparty na nagłówku, styl „Rozdział” i akapit z poziomem konspektu, „Naglowek 1”; nagłówek
+        z poziomem 9 to zwykły akapit. Uwaga o numeracji liczy tylko punkty listy (bez nagłówka z numId 0)."""
+        document = outline_document()
+        listed = sum(1 for *_, is_list in OUTLINE_CASES.values() if is_list)
+        self.assertEqual(omissions_of(document),
+                         [f'automatyczne numerowanie i punktory list (tekst pozycji pozostanie) (liczba: {listed})'])
+        rebuilt = Document(rebuild_docx(saved(document), allow_omissions=True))
+        self.assertEqual({paragraph.text: paragraph.style.name for paragraph in rebuilt.paragraphs},
+                         {text: f'Heading {level}' if level else 'Normal'
+                          for text, (_, _, level, _) in OUTLINE_CASES.items()})
+
     def test_document_and_run_language_are_kept(self):
         document = Document()
         language = document.styles.element.xpath('w:docDefaults//w:lang')[0]
@@ -647,6 +659,7 @@ class RebuildWarningAccuracyTests(SimpleTestCase):
 
     def test_formatting_history_is_kept_when_the_previous_formatting_can_be_rebuilt(self):
         """Zmiana formatowania zostaje (poprzednie formatowanie odtworzone jak obecne: kursywa, wyrównanie, styl
+        nagłówka według reguły nagłówków – także z poziomu konspektu akapitu, a nagłówek z poziomem 9 bez stylu
         nagłówka), a gdy poprzednie formatowanie ma to, czego przebudowa nie przenosi (rozstrzelenie, cieniowanie,
         obramowanie, numeracja), zmiana jest przyjmowana z jedną uwagą na zmianę."""
         history = FORMAT_HISTORY_OMISSION + ' (liczba: {})'
@@ -656,6 +669,10 @@ class RebuildWarningAccuracyTests(SimpleTestCase):
              ['w:r/w:rPr/w:rPrChange/w:rPr/w:i', 'w:pPr/w:pPrChange/w:pPr/w:jc[@w:val="right"]']),
             ('styl nagłówka', '', '<w:pStyle w:val="Heading1"/>', [],
              ['w:r/w:rPr/w:rPrChange', 'w:pPr/w:pPrChange/w:pPr/w:pStyle[@w:val="Heading1"]']),
+            ('poziom konspektu akapitu', '', '<w:outlineLvl w:val="1"/>', [],
+             ['w:r/w:rPr/w:rPrChange', 'w:pPr/w:pPrChange/w:pPr/w:pStyle[@w:val="Heading2"]']),
+            ('nagłówek z poziomem 9', '', '<w:pStyle w:val="Heading1"/><w:outlineLvl w:val="9"/>', [],
+             ['w:r/w:rPr/w:rPrChange', 'w:pPr/w:pPrChange/w:pPr[not(w:pStyle)]']),
             ('rozstrzelenie i obramowanie', '<w:spacing w:val="20"/><w:shd w:fill="FF0000"/>', '<w:pBdr/>',
              [history.format(2)], []),
             ('numeracja', '', '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>', [history.format(1)],
@@ -1072,7 +1089,7 @@ class RebuildConversionTests(IsolatedProgramDirsMixin, SimpleTestCase):
             self.assertEqual(Document(out).core_properties.author, '')
         row = {'uid': 1, 'folder': 'Story', 'files': [('story.docx', payload)]}
         for rebuild in (True, False):
-            with package_messages([row], clean=False, convert=False, rebuild=rebuild) as archive, \
+            with _package_messages([row], clean=False, convert=False, rebuild=rebuild) as archive, \
                     ZipFile(archive) as z:
                 content = z.read(z.namelist()[0])
                 if rebuild:
@@ -1083,7 +1100,7 @@ class RebuildConversionTests(IsolatedProgramDirsMixin, SimpleTestCase):
     def test_original_invalid_docx_is_downloadable_from_mail(self):
         data = b'not a valid docx'
         rows = [{'uid': 1, 'folder': 'Text', 'files': [('text.docx', data)]}]
-        with package_messages(rows, clean=False, convert=False, rebuild=False) as out, ZipFile(out) as archive:
+        with _package_messages(rows, clean=False, convert=False, rebuild=False) as out, ZipFile(out) as archive:
             self.assertEqual(archive.read(archive.namelist()[0]), data)
 
     def test_confirmation_still_builds_new_docx(self):
@@ -1118,10 +1135,10 @@ class RebuildConversionTests(IsolatedProgramDirsMixin, SimpleTestCase):
                 doc.add_paragraph('Pozycja', 'List Number')
             rows.append({'uid': uid, 'folder': kind, 'files': [(kind + '.docx', saved(doc).getvalue())]})
         with self.assertRaises(RebuildConfirmationRequired) as caught:
-            package_messages(rows, clean=False, convert=False)
+            _package_messages(rows, clean=False, convert=False)
         self.assertIn('table.docx', str(caught.exception))
         self.assertIn('list.docx', str(caught.exception))
-        with package_messages(rows, clean=False, convert=False, allow_rebuild_omissions=True) as out, \
+        with _package_messages(rows, clean=False, convert=False, allow_rebuild_omissions=True) as out, \
                 ZipFile(out) as archive:
             self.assertEqual(len(archive.namelist()), 2)
 

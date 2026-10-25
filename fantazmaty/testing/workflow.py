@@ -13,11 +13,22 @@ from texts.models import Anthology, Text
 from workflow.admin_status import set_admin_status
 from workflow.models import WorkflowStage
 from workflow.services import (claim_ready_for_editing, claim_stage, complete_stage, current_stage_queryset,
-                               resume_editing, send_to_first_verification, send_to_second_verification,
-                               start_first_verification)
+                               resume_editing, send_to_first_verification, send_to_second_verification)
 
 User = get_user_model()
 StageType = WorkflowStage.StageType
+
+
+def start_reserved_first_verification(text, user, started_at=None):
+    """Rozpoczęcie oczekującej pierwszej weryfikacji – jak przycisk „Rozpocznij” na stronie tekstu."""
+    from django.core.exceptions import ValidationError
+    from core.services.texts import start_assigned_stage
+    stage = WorkflowStage.objects.current_cycle().filter(
+        text=text, stage_type=StageType.FIRST_VERIFICATION, is_completed=False, started_at__isnull=True,
+    ).order_by('-pk').first()
+    if stage is None:
+        raise ValidationError('Pierwsza weryfikacja nie oczekuje na rozpoczęcie.')
+    return start_assigned_stage(user=user, stage_id=stage.pk, started_at=started_at or timezone.localdate())
 
 
 class WorkflowTestDataMixin:
@@ -78,7 +89,7 @@ class WorkflowTestDataMixin:
             self.editor,
             ended_at=self.today,
         )
-        stage = start_first_verification(
+        stage = start_reserved_first_verification(
             self.text,
             self.verifier_1,
             started_at=self.today,

@@ -34,6 +34,18 @@ class MultipleIllustratorsTests(TestCase):
         self.detail = reverse('illustrations:illustration_detail', args=[self.illustration.pk])
         self.list_url = reverse('illustrations:illustration_list')
 
+    def test_save_reads_stored_entry_once(self):
+        """Zapis wpisu czyta zapisany stan i ilustratorów raz – save() i clean() korzystają z tego samego odczytu."""
+        illustration = Illustration.objects.get(pk=self.illustration.pk)
+        illustration.story_url = 'https://example.com/opowiadanie'
+        with self.assertNumQueries(6):
+            illustration.save()
+        illustration = Illustration.objects.get(pk=self.illustration.pk)
+        illustration._selected_illustrator_ids = {self.first.pk}
+        illustration.status = Illustration.Status.ASSIGNED
+        with self.assertNumQueries(6):
+            illustration.save()
+
     def test_multiple_assignment_and_preserved_selected_inactive_contact(self):
         self.first.is_active = False
         self.first.save()

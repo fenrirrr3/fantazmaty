@@ -26,23 +26,15 @@ GROUPS = (
     ('history', 'Historia i diagnostyka', ('workflow.workflowstage', 'workflow.workflowroleassignment', 'core.workflowevent', 'core.discordnotification', 'core.useractivity')),
 )
 EXPANDED = ('submissions', 'texts', 'publication')
-HIDDEN = ('auth.user', 'auth.group')
+HIDDEN = ('auth.user',)
 DETAIL_MODELS = ('texts.textnote', 'authors.authornote', 'texts.reviewassignment', 'texts.reviewers',
                  'workflow.workflowrepetition', 'workflow.workflowhandoff')
+# Nazwy w menu panelu inne niż nazwa modelu (verbose_name_plural).
 LABELS = {
-    'texts.review': 'Recenzje', 'people.person': 'Zespół', 'texts.extract': 'Ekstrakty',
-    'texts.extractvolume': 'Tomy Ekstraktów', 'core.useractivity': 'Aktywność użytkowników',
-    'core.workflowevent': 'Zmiany workflow', 'texts.vocabularyterm': 'Słownik tagów i gatunków',
-    'texts.anthologytask': 'Zadania antologii',
-    'workflow.workflowstage': 'Etapy pracy', 'workflow.workflowroleassignment': 'Przydziały wykonawców',
-    'texts.reviewassignment': 'Oceny i przydziały recenzentów',
-    'texts.reviewers': 'Ogólne uwagi do zgłoszeń',
-    'core.notificationrule': 'Powiadomienia Discord', 'core.discordrole': 'Role Discorda',
-    'core.discordnotification': 'Historia powiadomień Discord',
-    'core.siteteamsection': 'Strona WWW – działy ekipy', 'core.siteteamsettings': 'Strona WWW – ustawienia',
-    'core.sitecataloganthology': 'Szukajka WWW – katalog opowiadań',
-    'core.sitelistenanthology': 'Słuchaj WWW – antologie i czasy nagrań',
-    'people.dropboxfolder': 'Foldery Dropbox', 'people.dropboxaccess': 'Dostęp do folderów Dropbox',
+    'people.person': 'Zespół', 'core.useractivity': 'Aktywność użytkowników',
+    'workflow.workflowroleassignment': 'Przydziały wykonawców',
+    'texts.reviewassignment': 'Oceny i przydziały recenzentów', 'texts.reviewers': 'Ogólne uwagi do zgłoszeń',
+    'core.notificationrule': 'Powiadomienia Discord', 'core.discordnotification': 'Historia powiadomień Discord',
 }
 
 

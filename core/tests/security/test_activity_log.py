@@ -8,10 +8,9 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.db import DatabaseError, connection
+from django.db import DatabaseError
 from django.test import TestCase
-from django.test.utils import CaptureQueriesContext
-from django.urls import resolve, reverse
+from django.urls import get_resolver, resolve, reverse
 from django.utils import timezone
 
 from core.activity import LABELS, describe_request
@@ -59,10 +58,9 @@ class FlushActivityTests(TemporaryActivitySpoolMixin, TestCase):
     def test_many_entries_use_few_queries(self):
         for i in range(30):
             enqueue_activity(**entry(path=f'/{i}'))
-        with CaptureQueriesContext(connection) as queries:
+        # Stała liczba zapytań na partię (konta, istniejące klucze, jeden zapis z czasem żądania), a nie kilka na wpis.
+        with self.assertNumQueries(4):
             self.flush()
-        # Stała liczba zapytań na partię, a nie kilka na każdy wpis.
-        self.assertLessEqual(len(queries), 8)
         self.assertEqual(UserActivity.objects.count(), 30)
 
     def test_deleted_user_is_kept_as_anonymous_entry(self):
@@ -232,6 +230,15 @@ class ActivityLabelsTests(TestCase):
         for route in [*urlpatterns, *illustration_patterns, *auth_patterns]:
             if route.name:
                 self.assertIn(route.name, LABELS)
+
+        def route_names(patterns):
+            for route in patterns:
+                if hasattr(route, 'url_patterns'):
+                    yield from route_names(route.url_patterns)
+                elif route.name:
+                    yield route.name
+        # Bez etykiet dla adresów, których już nie ma (np. dawne save_review, discord_test).
+        self.assertEqual(set(LABELS) - set(route_names(get_resolver().url_patterns)), set())
         self.assertEqual(
             describe_request(resolve(reverse('illustrations:illustrator_list')), 'GET')[0], 'Ilustratorzy')
         admin_change = resolve(reverse('admin:illustrations_illustrator_change', args=[self.person.pk]))

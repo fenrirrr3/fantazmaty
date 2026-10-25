@@ -10,6 +10,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_http_methods
 
+from core.filtering import positive_id
 from core.pagination import paginate_items
 from core.table_sorting import DisplayTable
 from core.permissions import team_member_required, coordinator_required, is_coordinator
@@ -109,6 +110,10 @@ def vocabulary_suggestions(request):
     return JsonResponse({'results': names})
 
 
+MERGE_COLUMNS = {'Tekst / powieść': ('title', lambda change: change['title']),
+                 'Przed': ('before', lambda change: change['before']), 'Po': ('after', lambda change: change['after'])}
+
+
 @never_cache
 @login_required
 @require_http_methods(['GET', 'POST'])
@@ -120,8 +125,8 @@ def vocabulary_merge(request, term_id):
     token = ''
     error = None
     value = request.POST.get('target') if request.method == 'POST' else request.GET.get('target')
-    if value and value.isascii() and value.isdecimal() and len(value) < 19:
-        target = VocabularyTerm.objects.filter(pk=int(value), kind=source.kind, canonical__isnull=True).exclude(pk=source.pk).first()
+    if target_id := positive_id(value):
+        target = VocabularyTerm.objects.filter(pk=target_id, kind=source.kind, canonical__isnull=True).exclude(pk=source.pk).first()
     if request.method == 'POST' or target:
         try:
             if not target:
@@ -139,6 +144,6 @@ def vocabulary_merge(request, term_id):
     for change in changes or []:
         change['title'] = (titles if change['model'] == 'texts.text' else novels)[change['id']]
     return render(request, 'core/vocabulary/merge.html', {'source': source, 'target': target, 'changes': changes,
-        'change_page': paginate_items(request, changes) if changes is not None else None,
+        'change_page': paginate_items(request, DisplayTable(changes, MERGE_COLUMNS) if changes else []) if changes is not None else None,
         'merge_token': token, 'error': error, 'targets': VocabularyTerm.objects.filter(kind=source.kind, canonical__isnull=True).exclude(pk=source.pk)},
         status=400 if error else 200)

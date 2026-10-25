@@ -107,10 +107,6 @@ class Audiobook(models.Model):
         return super().save(*args, **kwargs)
 
     @property
-    def status_label(self):
-        return dict(self.Status.choices).get(self.status, self.status)
-
-    @property
     def is_published(self):
         return self.status == self.Status.PUBLISHED
 

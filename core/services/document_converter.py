@@ -5,7 +5,6 @@ import sys
 import json
 import logging
 import re
-import posixpath
 import shutil
 import signal
 import subprocess
@@ -18,6 +17,7 @@ from django.conf import settings
 from lxml import etree
 
 from .document_images import is_linked_image, linked_images_note
+from .document_xml import parse_part, part_target, source_part
 
 logger = logging.getLogger(__name__)
 
@@ -34,15 +34,25 @@ TIMEOUT_MESSAGE = "Konwersja przekroczyła limit {} sekund. Podziel dokument lub
 
 
 REBUILD_WARNING = 'W nowym DOCX zostaną pominięte: '
+REBUILD_SUFFIX = '. Po akceptacji powstanie nowy DOCX bez tych elementów. Tekst i obsługiwane formatowanie zostaną przeniesione.'
 
 
 class ConversionError(Exception):
     pass
 
 
-
 class RebuildConfirmationRequired(ConversionError):
-    pass
+    """Przebudowa pominęłaby elementy dokumentu; omissions – same pominięcia (bez wstępu i zakończenia)."""
+
+    def __init__(self, message, omissions=()):
+        super().__init__(message)
+        self.omissions = list(omissions)
+
+    @classmethod
+    def listing(cls, omissions, suffix=REBUILD_SUFFIX):
+        """Komunikat z listą pominięć rozdzielonych średnikami."""
+        omissions = list(omissions)
+        return cls(REBUILD_WARNING + '; '.join(omissions) + suffix, omissions)
 
 
 BUSY_MESSAGE = 'Konwerter przetwarza teraz inny dokument. Spróbuj za chwilę.'
@@ -69,25 +79,22 @@ def _try_lock(lock):
 
 
 @contextmanager
-def conversion_slot(wait=0, on_wait=None):
-    """One conversion per shared project directory, across web workers.
+def exclusive_lock(path, wait, busy, *, interval=1, on_wait=None):
+    """Blokada pliku `path` wspólna dla wszystkich procesów serwera.
 
-    wait > 0: czekaj w kolejce najwyżej tyle sekund; on_wait() jest wołane
-    co sekundę (np. sprawdzenie anulowania i znak życia zadania).
+    Czeka najwyżej `wait` sekund, sprawdzając co `interval` sekund (przed każdą przerwą woła on_wait());
+    potem zgłasza wyjątek `busy`.
     """
-    directory = Path(getattr(settings, 'DOCUMENT_CONVERSION_DIR', settings.BASE_DIR / 'var' / 'conversion'))
-    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-    with (directory / 'conversion.lock').open('a+b') as lock:
+    with Path(path).open('a+b') as lock:
         deadline = time.monotonic() + max(0, wait)
         while not _try_lock(lock):
             if time.monotonic() >= deadline:
-                raise ConversionError(BUSY_MESSAGE if not wait else
-                                      'Konwerter był zajęty innymi dokumentami zbyt długo. Spróbuj ponownie później.')
+                raise busy
             if on_wait is not None:
                 on_wait()
-            time.sleep(1)
+            time.sleep(interval)
         try:
-            yield directory
+            yield
         finally:
             if os.name == "posix":
                 import fcntl
@@ -96,6 +103,21 @@ def conversion_slot(wait=0, on_wait=None):
                 import msvcrt
                 lock.seek(0)
                 msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
+
+
+@contextmanager
+def conversion_slot(wait=0, on_wait=None):
+    """One conversion per shared project directory, across web workers.
+
+    wait > 0: czekaj w kolejce najwyżej tyle sekund; on_wait() jest wołane
+    co sekundę (np. sprawdzenie anulowania i znak życia zadania).
+    """
+    directory = Path(settings.DOCUMENT_CONVERSION_DIR)
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    busy = ConversionError(BUSY_MESSAGE if not wait else
+                           'Konwerter był zajęty innymi dokumentami zbyt długo. Spróbuj ponownie później.')
+    with exclusive_lock(directory / 'conversion.lock', wait, busy, on_wait=on_wait):
+        yield directory
 
 
 # Relacje obrazów i osadzonych plików: proces roboczy usuwa je przed pracą programów, więc brak pliku nie szkodzi.
@@ -148,23 +170,16 @@ def validate_resources(source):
                             raise ConversionError("Nieobsługiwany dokument DOCX.")
                 if name.lower().endswith(".rels"):
                     try:
-                        root = etree.fromstring(
-                            archive.read(name),
-                            etree.XMLParser(resolve_entities=False, no_network=True, load_dtd=False),
-                        )
+                        root = parse_part(archive.read(name))
                     except etree.XMLSyntaxError:
                         raise ConversionError("Nieprawidłowa struktura dokumentu DOCX.") from None
                     if root.getroottree().docinfo.doctype:
                         raise ConversionError("Nieobsługiwany dokument DOCX.")
+                    owner = source_part(name)
                     for relationship in root:
                         target = relationship.get("Target", "")
-                        if relationship.get("TargetMode", "").lower() != "external":
-                            # Ścieżka zaczynająca się od „/” jest w OOXML liczona od korzenia pakietu.
-                            if target.startswith("/") and not target.startswith("//"):
-                                resolved = posixpath.normpath(target.lstrip("/"))
-                            else:
-                                base = posixpath.dirname(posixpath.dirname(name))
-                                resolved = posixpath.normpath(posixpath.join(base, target))
+                        resolved = part_target(owner, relationship)
+                        if resolved is not None:
                             if (
                                 target.startswith(("//", "\\"))
                                 or ":" in target
@@ -175,13 +190,11 @@ def validate_resources(source):
                                 raise ConversionError(
                                     "Dokument zawiera nieprawidłowe odwołanie do pliku."
                                 )
-                            folder, rels_file = posixpath.split(name)
-                            owner = posixpath.join(posixpath.dirname(folder), rels_file[: -len(".rels")])
                             if (target and resolved not in present
                                     and (owner == "" or owner in present)
                                     and not relationship.get("Type", "").endswith(OPTIONAL_TARGETS)):
                                 raise ConversionError(DAMAGED_MESSAGE)
-                        if relationship.get("TargetMode", "").lower() == "external":
+                        else:
                             # Szablon dołączony przez Worda (attachedTemplate) to tylko ścieżka
                             # w ustawieniach – żadna biblioteka go nie pobiera. Obraz połączony
                             # z plikiem zewnętrznym proces roboczy usuwa przed pracą programów
@@ -198,9 +211,7 @@ def validate_resources(source):
 
 def converter_python():
     """WSGI's sys.executable may be uwsgi, not a Python interpreter."""
-    configured = getattr(settings, "DOCUMENT_CONVERTER_PYTHON", "") or os.environ.get(
-        "DOCUMENT_CONVERTER_PYTHON", ""
-    )
+    configured = settings.DOCUMENT_CONVERTER_PYTHON
 
     def usable(path):
         return path.is_file() and (os.name == "nt" or os.access(path, os.X_OK))
@@ -235,9 +246,21 @@ def converter_python():
     )
 
 
-def run_converter(directory, timeout, control=None):
+def _kill(process):
+    """Zabija proces roboczy, na posiksie razem z jego grupą procesów."""
+    if os.name == "posix":
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    else:
+        process.kill()
+
+
+def run_converter(directory, timeout, control=None, *, limit=TIME_LIMIT):
+    """Proces roboczy w katalogu zadania; timeout – pozostały czas, limit – limit zadania podawany w komunikacie."""
     if timeout <= 0:
-        raise ConversionError(TIMEOUT_MESSAGE.format(TIME_LIMIT))
+        raise ConversionError(TIMEOUT_MESSAGE.format(limit))
     # Do not pass project credentials to an external document processor.
     env = {
         key: value
@@ -285,24 +308,12 @@ def run_converter(directory, timeout, control=None):
                             if time.monotonic() >= deadline:
                                 raise
             except subprocess.TimeoutExpired:
-                if os.name == "posix":
-                    try:
-                        os.killpg(process.pid, signal.SIGKILL)
-                    except ProcessLookupError:
-                        pass
-                else:
-                    process.kill()
+                _kill(process)
                 process.wait()
-                raise ConversionError(TIMEOUT_MESSAGE.format(TIME_LIMIT)) from None
+                raise ConversionError(TIMEOUT_MESSAGE.format(limit)) from None
             except BaseException:
                 if process.poll() is None:
-                    if os.name == "posix":
-                        try:
-                            os.killpg(process.pid, signal.SIGKILL)
-                        except ProcessLookupError:
-                            pass
-                    else:
-                        process.kill()
+                    _kill(process)
                 process.wait()
                 raise
     except OSError:
@@ -333,11 +344,7 @@ def run_converter(directory, timeout, control=None):
         kind = report.get("error", "")
         kind = kind if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,80}", kind) else "błąd procesu"
         if kind == "RebuildUnsupported":
-            raise RebuildConfirmationRequired(
-                REBUILD_WARNING
-                + "; ".join(str(item) for item in report.get("omissions", [])[:30])
-                + ". Po akceptacji powstanie nowy DOCX bez tych elementów. Tekst i obsługiwane formatowanie zostaną przeniesione."
-            )
+            raise RebuildConfirmationRequired.listing(str(item) for item in report.get("omissions", [])[:30])
         from .document_errors import MESSAGES
 
         if kind == "MemoryError":
@@ -432,17 +439,10 @@ def convert_document(
                     "analysis_unlimited": bool(analysis_unlimited),
                 },
             )
-            try:
-                if control is None:
-                    run_converter(directory, deadline - time.monotonic())
-                else:
-                    control(directory)
-                    run_converter(directory, deadline - time.monotonic(), control=control)
-            except ConversionError as error:
-                # run_converter zna tylko pozostały czas; komunikat podaje faktyczny limit zadania.
-                if limit > TIME_LIMIT and str(error) == TIMEOUT_MESSAGE.format(TIME_LIMIT):
-                    raise ConversionError(TIMEOUT_MESSAGE.format(int(limit))) from None
-                raise
+            if control is not None:
+                control(directory)
+            # Komunikat o przekroczeniu czasu podaje limit zadania (krótszy limit – jak domyślny).
+            run_converter(directory, deadline - time.monotonic(), control=control, limit=max(TIME_LIMIT, int(limit)))
             warning_file = directory / "warnings.json"
             warnings = (
                 json.loads(warning_file.read_text(encoding="utf-8"))

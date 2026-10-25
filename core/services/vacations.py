@@ -53,7 +53,7 @@ def _lock_vacation(user, vacation_id):
     )
     vacation.person = person
 
-    return person, vacation
+    return vacation
 
 
 def _validate_vacation_form(
@@ -92,62 +92,6 @@ def _validate_vacation_form(
     return vacation
 
 
-def _sync_person_leave(person, *, now):
-    """
-    Synchronizuje pola pomocnicze na podstawie wszystkich urlopów.
-
-    Trwający urlop ma pierwszeństwo przed przyszłym. Gdy nie ma
-    trwającego urlopu, wybieramy najbliższy zaplanowany.
-    """
-    today = timezone.localdate(now)
-    vacations = list(
-        Vacation.objects.select_for_update()
-        .filter(person_id=person.pk)
-        .order_by("start_date", "pk")
-    )
-
-    current = None
-    upcoming = None
-
-    for vacation in vacations:
-        if (
-            not vacation.until_revoked
-            and (
-                vacation.end_date is None
-                or vacation.end_date <= now
-            )
-        ):
-            continue
-
-        if vacation.start_date <= today:
-            if current is None:
-                current = vacation
-        elif upcoming is None:
-            upcoming = vacation
-
-    selected = current or upcoming
-    values = {
-        "leave_start_date": selected.start_date if selected else None,
-        "leave_end_date": (
-            selected.end_date
-            if selected and not selected.until_revoked
-            else None
-        ),
-        "leave_until_revoked": (
-            selected.until_revoked if selected else False
-        ),
-    }
-    changed_fields = []
-
-    for field, value in values.items():
-        if getattr(person, field) != value:
-            setattr(person, field, value)
-            changed_fields.append(field)
-
-    if changed_fields:
-        person.save(update_fields=changed_fields)
-
-
 @transaction.atomic
 def create_vacation(
     *,
@@ -167,8 +111,6 @@ def create_vacation(
         until_revoked=until_revoked,
     )
     vacation.save()
-
-    _sync_person_leave(person, now=timezone.now())
     return vacation
 
 
@@ -182,7 +124,7 @@ def update_vacation(
     until_revoked=False,
 ):
     require_team_member(user)
-    person, vacation = _lock_vacation(user, vacation_id)
+    vacation = _lock_vacation(user, vacation_id)
     now = timezone.now()
 
     if (
@@ -209,15 +151,13 @@ def update_vacation(
             "until_revoked",
         ]
     )
-
-    _sync_person_leave(person, now=timezone.now())
     return vacation
 
 
 @transaction.atomic
 def finish_vacation(*, user, vacation_id):
     require_team_member(user)
-    person, vacation = _lock_vacation(user, vacation_id)
+    vacation = _lock_vacation(user, vacation_id)
     now = timezone.now()
     today = timezone.localdate(now)
 
@@ -233,15 +173,12 @@ def finish_vacation(*, user, vacation_id):
     vacation.end_date = now
     vacation.full_clean()
     vacation.save(update_fields=["until_revoked", "end_date"])
-
-    _sync_person_leave(person, now=now)
     return vacation
+
 
 @transaction.atomic
 def cancel_planned_vacation(*, user, vacation_id):
-    person, vacation = _lock_vacation(user, vacation_id)
-    now = timezone.now()
-    if vacation.start_date <= timezone.localdate(now):
+    vacation = _lock_vacation(user, vacation_id)
+    if vacation.start_date <= timezone.localdate():
         raise ValidationError("Odwołać można wyłącznie urlop, który jeszcze się nie rozpoczął.")
     vacation.delete()
-    _sync_person_leave(person, now=now)

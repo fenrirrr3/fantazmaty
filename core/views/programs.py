@@ -18,6 +18,7 @@ from django.urls import reverse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
 
+from core.filtering import positive_id
 from core.models import ProgramPreferences, ReplacementEntry
 from core.odkurzacz_forms import DocumentConversionForm, MergeForm, OdkurzaczForm, RepetitionsForm, SplitForm
 from core.permissions import is_coordinator, is_superuser, team_member_required
@@ -153,9 +154,8 @@ def credits_context(request):
                'credits_rows': [], 'credits_text': '', 'credits_error': ''}
     if not raw:
         return context
-    anthology = None
-    if raw.isascii() and raw.isdecimal() and len(raw) <= 18:
-        anthology = context['credit_anthologies'].filter(pk=int(raw)).first()
+    anthology_id = positive_id(raw)
+    anthology = context['credit_anthologies'].filter(pk=anthology_id).first() if anthology_id else None
     if anthology is None:
         context['credits_error'] = 'Nie znaleziono wybranej antologii. Wybierz ją ponownie z listy.'
         return context
@@ -175,8 +175,7 @@ def render_programs(request, forms, action=None, *, error='', status=200):
         'repetitions_open': action == 'repetitions', 'merge_open': action == 'merge',
         'split_open': action == 'split', 'program_error': error,
         'can_edit_replacements': is_coordinator(request.user),
-        'superuser_limits': superuser, 'superuser_time_limit': jobs.superuser_time_limit(),
-        'superuser_programs': superuser,
+        'superuser': superuser, 'superuser_time_limit': jobs.superuser_time_limit(),
     }
     if superuser:
         context.update(credits_context(request))

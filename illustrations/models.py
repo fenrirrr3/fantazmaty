@@ -150,13 +150,18 @@ class Illustration(models.Model):
     def __str__(self):
         return self.text.title
 
+    def _stored_state(self):
+        """Zapisany stan wpisu (tekst, status, data przypisania) albo None dla nowego."""
+        return type(self).objects.using(self._state.db or 'default').filter(pk=self.pk).values(
+            'text_id', 'status', 'assigned_at').first() if self.pk else None
+
     def clean(self):
         super().clean()
 
         errors = {}
+        # Przy zapisie (save) stan sprzed zmian i ilustratorzy są już odczytani – bez ponownego zapytania.
+        previous, artists = self.__dict__.get('_saving_state') or (self._stored_state(), None)
         # Existing credits remain editable when their anthology is hidden later.
-        previous = type(self).objects.using(self._state.db or 'default').filter(pk=self.pk).values(
-            'text_id', 'status').first() if self.pk else None
         if self.text_id and self.text_id != (previous or {}).get('text_id'):
             supported = Text.objects.using(self._state.db or 'default').exclude(anthology__is_novel=True).exclude(anthology__is_translated=True)
             if not supported.filter(pk=self.text_id).exists():
@@ -164,7 +169,7 @@ class Illustration(models.Model):
         # Stare (importowane) wpisy bywają niespójne, np. „Oddane” bez ilustratora. Zgodność statusu z przypisaniem
         # sprawdzamy przy zmianie statusu albo ilustratorów – zapis linku, fragmentu czy uwag jej nie wymaga.
         if previous is None or previous['status'] != self.status or hasattr(self, '_selected_illustrator_ids'):
-            has_illustrator = bool(self.artist_ids())
+            has_illustrator = bool(self.artist_ids() if artists is None else artists)
             if self.status != self.Status.UNASSIGNED and not has_illustrator:
                 errors['status'] = 'Status inny niż „Nieprzypisane” wymaga wybrania ilustratora.'
             if self.status == self.Status.UNASSIGNED and has_illustrator:
@@ -174,12 +179,14 @@ class Illustration(models.Model):
             raise ValidationError(errors)
 
     def save(self, *args, preserve_assignment_date=False, **kwargs):
-        previous = (type(self).objects.filter(pk=self.pk)
-                    .values('status', 'assigned_at').first()) if self.pk else None
-        status_changed_to_assigned = bool(self.artist_ids()) and (
+        previous = self._stored_state()
+        artists = self.artist_ids()
+        status_changed_to_assigned = bool(artists) and (
             (previous is None and self.status == self.Status.ASSIGNED)
             or (previous is not None and (
-                self.artist_ids() != {artist.pk for artist in self.illustrators.all()}
+                # Bez nowego wyboru (_selected_illustrator_ids) ilustratorzy są ci sami co zapisani.
+                (hasattr(self, '_selected_illustrator_ids')
+                 and artists != {artist.pk for artist in self.illustrators.all()})
                 or previous['status'] == self.Status.UNASSIGNED
                 or (self.status == self.Status.ASSIGNED and previous['assigned_at'] is None)
             ))
@@ -190,7 +197,11 @@ class Illustration(models.Model):
         elif self.status == self.Status.UNASSIGNED:
             self.assigned_at = None
 
-        self.full_clean()
+        self._saving_state = (previous, artists)
+        try:
+            self.full_clean()
+        finally:
+            del self._saving_state
 
         update_fields = kwargs.get("update_fields")
 

@@ -82,7 +82,7 @@ class PublicationTransferRuleTests(ReviewFixtures):
         self.assertTrue(unsigned.has_contract)
         self.assertEqual(text.authors.count(), 3)
 
-    def test_publication_gates_and_contract_check(self):
+    def test_publication_gates(self):
         cases = [({'publication_detached': True}, 'odłączono'), ({'status': S.REJECTED}, 'wyłącznie przyjęty'),
                  ({'author_notified_at': None}, 'powiadomienie autora')]
         for values, message in cases:
@@ -90,10 +90,4 @@ class PublicationTransferRuleTests(ReviewFixtures):
                                          **values})
             with self.subTest(values=values), self.assertRaisesMessage(ValidationError, message):
                 validate_review_publication(review)
-        with self.assertRaisesMessage(ValidationError, 'utwórz profil autora'):
-            validate_review_publication(self.accepted, contracts=True)
-        author = Author.objects.create(first_name='Autor', last_name='Test', email='author@example.com')
-        with self.assertRaisesMessage(ValidationError, 'potwierdź umowy'):
-            validate_review_publication(self.accepted, contracts=True)
-        Author.objects.filter(pk=author.pk).update(has_contract=True)
-        validate_review_publication(self.accepted, contracts=True)
+        validate_review_publication(self.accepted)

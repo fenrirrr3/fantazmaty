@@ -15,8 +15,8 @@ def normalize_email(value):
 
 
 def login_allowed(person):
-    """Logować się może osoba w ekipie, niebędąca zewnętrzną."""
-    return bool(person.is_active and not person.is_external)
+    """Logować się może osoba w ekipie, niebędąca zewnętrzną (brak osoby – nie)."""
+    return bool(person and person.is_active and not person.is_external)
 
 
 def validate_login_email(value, *, exclude_pk=None, using='default'):
@@ -80,32 +80,3 @@ def apply_account_changes(user_id, changes, using='default'):
     User = get_user_model()
     User.objects.using(using).filter(pk=user_id).update(**changes)
     bump(User._meta.label_lower, user_id, using)
-
-
-def accounts_report(using='default'):
-    """Rozjazdy osoby i konta do naprawy komendą sync_accounts: (zmiany do wprowadzenia, problemy)."""
-    from people.models import Person
-    User = get_user_model()
-    fixes, problems = [], []
-    for person in Person.objects.using(using).select_related('user').exclude(user__isnull=True).order_by('pk'):
-        user = person.user
-        changes = {}
-        email = normalize_email(person.email)
-        if not email:
-            if user.email:
-                problems.append((person, f'osoba nie ma adresu e-mail, konto ma {user.email} – e-maila nie zmieniono'))
-        elif (user.email, user.username) != (email, email):
-            try:
-                validate_login_email(email, exclude_pk=user.pk, using=using)
-            except ValidationError as error:
-                problems.append((person, f'{email}: ' + ' '.join(error.messages)))
-            else:
-                changes.update(email=email, username=email)
-        if user.is_active and not user.is_superuser and not login_allowed(person):
-            changes['is_active'] = False
-        if changes:
-            fixes.append((person, changes))
-    # Lista kont bez osoby tylko informacyjnie – superuserów i innych kont bez osoby komenda nie zmienia.
-    for user in User.objects.using(using).filter(person_profile__isnull=True, is_superuser=False, is_active=True).order_by('pk'):
-        problems.append((user, 'aktywne konto bez osoby – powiąż je na ekranie osoby albo zablokuj'))
-    return fixes, problems

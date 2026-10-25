@@ -179,12 +179,6 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
 # Projekt korzysta z MySQL w środowisku lokalnym, testowym i produkcyjnym.
-DB_ENGINE = os.environ.get("DJANGO_DB_ENGINE", "mysql").strip().lower()
-if DB_ENGINE not in {"mysql", "django.db.backends.mysql"}:
-    raise ImproperlyConfigured(
-        "Projekt wymaga MySQL. Ustaw DJANGO_DB_ENGINE=mysql."
-    )
-
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.mysql",
@@ -261,6 +255,8 @@ if not (
         "AUTH_THROTTLE_CLIENT_IP_HEADER musi mieć wartość REMOTE_ADDR "
         "albo nazwę nagłówka w formacie META, np. HTTP_X_REAL_IP."
     )
+# Limit prób logowania i resetu hasła (core.auth_throttle); false wyłącza go całkowicie.
+AUTH_THROTTLE_ENABLED = env_bool("AUTH_THROTTLE_ENABLED", default=True)
 LOGIN_REDIRECT_URL = "core:home"
 LOGOUT_REDIRECT_URL = "login"
 
@@ -269,6 +265,8 @@ PASSWORD_RESET_TIMEOUT = env_int(
     3600,
     minimum=1,
 )
+# Ważność linku z zaproszenia do CMS-u (dni; core.invitations).
+ACCOUNT_INVITATION_DAYS = env_int("ACCOUNT_INVITATION_DAYS", 7, minimum=1)
 
 SESSION_ENGINE = "django.contrib.sessions.backends.db"
 SESSION_COOKIE_NAME = "fantazmaty_sessionid"
@@ -452,9 +450,13 @@ LOGGING = {
 
 # Temporary files for document conversion.
 DOCUMENT_CONVERSION_DIR = BASE_DIR / 'var' / 'conversion'
+# Interpreter Pythona konwertera (pełna ścieżka); puste – wykrywany automatycznie (core.services.document_converter).
+DOCUMENT_CONVERTER_PYTHON = os.environ.get("DOCUMENT_CONVERTER_PYTHON", "")
 # Ile zadań programów może czekać w kolejce lub działać jednocześnie.
 # Konwerter przetwarza jeden dokument naraz (conversion_slot), pozostałe czekają.
 PROGRAM_MAX_QUEUED_JOBS = env_int("PROGRAM_MAX_QUEUED_JOBS", 5, minimum=1)
+# Katalog kolejki dziennika aktywności (core.activity_spool; opróżnia go komenda flush_activity).
+ACTIVITY_SPOOL_DIR = Path(os.environ.get("ACTIVITY_SPOOL_DIR", "").strip() or BASE_DIR / "var" / "activity-spool")
 
 # Public application key for the Dropbox folder picker (not an app secret).
 DROPBOX_CHOOSER_APP_KEY = os.environ.get("DROPBOX_CHOOSER_APP_KEY", "").strip()
@@ -470,3 +472,10 @@ DROPBOX_ROOT_FOLDER = os.environ.get("DROPBOX_ROOT_FOLDER", "").strip() or "/Fan
 
 # Klucz, którym strona fantazmaty.pl pobiera dane ekipy (nagłówek X-Site-Key). Pusty – endpoint odpowiada 503.
 SITE_API_KEY = os.environ.get("SITE_API_KEY", "").strip()
+
+# Adres CMS-u w odnośnikach powiadomień Discord.
+CMS_BASE_URL = os.environ.get("CMS_BASE_URL", "").strip() or "https://cms.fantazmaty.pl"
+# Kanały Discorda – JSON: {"Nazwa kanału": "https://discord.com/api/webhooks/..."}. Tekst sprawdza wysyłka
+# (core.discord_webhook.channels): błędna konfiguracja wyłącza powiadomienia, ale nie blokuje startu aplikacji.
+# „SECRET” w nazwie ustawienia: Django ukrywa adresy webhooków na stronach błędów w trybie DEBUG.
+DISCORD_WEBHOOK_SECRETS = os.environ.get("DISCORD_WEBHOOKS", "{}")

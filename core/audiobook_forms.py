@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 from django.db.models import Q
 from django.utils import timezone
 
+from core.account_identity import person_name
 from core.audiobook_models import Audiobook
 from people.roles import AUDIOBOOK_PROOFREADER
 
@@ -14,8 +15,7 @@ def eligible_proofreaders():
 
 class ProofreaderChoice(forms.ModelChoiceField):
     def label_from_instance(self, obj):
-        profile = getattr(obj, 'person_profile', None)
-        return str(profile) if profile else (obj.get_full_name() or obj.username)
+        return person_name(obj)
 
 
 class AudiobookProductionForm(forms.ModelForm):

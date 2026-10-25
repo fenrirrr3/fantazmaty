@@ -4,6 +4,7 @@ from django.db.models import Q
 from django.shortcuts import render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
+from core.filtering import positive_id
 from core.pagination import paginate_items
 from core.selectors.texts import _ProjectedRows
 from core.permissions import superuser_required
@@ -24,8 +25,8 @@ def unlinked_reviews(request):
     books = Anthology.objects.filter(pk__in=texts.values('anthology_id')).order_by('title', 'pk')
     query = request.GET.get('q', '').strip()[:200]
     selected = request.GET.get('anthology', '')
-    if selected.isascii() and selected.isdecimal() and len(selected) <= 18:
-        texts = texts.filter(anthology_id=int(selected))
+    if anthology_id := positive_id(selected):
+        texts = texts.filter(anthology_id=anthology_id)
     if query:
         texts = texts.filter(Q(title__plcontains=query) | Q(anthology__title__plcontains=query)
                             | name_matches(query, prefix='authors__')).distinct()

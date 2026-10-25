@@ -138,7 +138,7 @@ def sync_metadata(book, profile):
 
 def new_chapter(book, profile, *, authors=None, **fields):
     require_open(book)
-    fields['title'] = f'Rozdział {fields["chapter_number"]}'
+    # Tytuł „Rozdział N” nadaje model (Text._apply_chapter_title).
     chapter = Text(anthology=book, for_recording=False, tags=profile.tags, genre=profile.genre, **fields)
     chapter.full_clean()
     chapter.save()

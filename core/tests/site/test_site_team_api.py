@@ -5,7 +5,8 @@ from django.urls import reverse
 
 from core.site_models import SiteTeamGroup, SiteTeamSection, SiteTeamSettings
 from core.site_note import clean_note
-from core.site_team import people_count_text
+from core.inflection import count_text
+from core.site_team import PEOPLE_FORMS
 from people import roles
 from people.models import Person, Role
 
@@ -141,7 +142,7 @@ class SiteTeamApiPayloadTests(TestCase):
                                 (12, '12 osób'), (14, '14 osób'), (21, '21 osób'), (22, '22 osoby'), (25, '25 osób'),
                                 (112, '112 osób'), (124, '124 osoby')):
             with self.subTest(count=count):
-                self.assertEqual(people_count_text(count), expected)
+                self.assertEqual(count_text(count, PEOPLE_FORMS), expected)
         roles_group(self.editors, roles.VERIFIER, title='Druga', position=2)
         self.editors.groups.filter(position=1).update(title='Pierwsza')
         editors = self.fetch().json()['dzialy'][0]

@@ -7,11 +7,17 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
 if __package__:
+    from .document_errors import DocumentInputError
     from .document_progress import report as report_progress
     from .document_stories import document_stories
+    from .document_styles import document_outline
+    from .document_xml import FALLBACK
 else:
+    from document_errors import DocumentInputError
     from document_progress import report as report_progress
     from document_stories import document_stories
+    from document_styles import document_outline
+    from document_xml import FALLBACK
 
 # Reguły są wykonywane w ustalonej kolejności, niezależnie od kolejności kliknięć.
 EDITORIAL_RULES = (
@@ -71,6 +77,9 @@ EDITORIAL_RULES += ORTHOGRAPHY_2026_RULES + (
     ('sentence_case', 'Wielka litera po . ? ! – z wyjątkami dla skrótów, liczb i dialogów'),
     ('empty_paragraphs', 'Wielokrotne puste akapity → jeden pusty akapit'))
 ALL_EDITORIAL_RULES = frozenset(key for key, _ in EDITORIAL_RULES)
+# Podpisy liczników podsumowania zmian: reguły i cichy krok _replace_nonbreaking_spaces.
+SUMMARY_LABELS = {**dict(EDITORIAL_RULES),
+                  'nonbreaking_spaces': 'Spacje nierozdzielające i nietypowe zamienione na zwykłe'}
 DEFAULT_EDITORIAL_RULES = ALL_EDITORIAL_RULES - {'pronouns_lower', 'user_word_corrections', 'empty_paragraphs'}
 # Formularz Odkurzacza zaznacza domyślnie także zaimki i zamiany słownikowe;
 # DEFAULT_EDITORIAL_RULES (bez nich) pozostaje dla automatycznego czyszczenia zgłoszeń.
@@ -412,7 +421,6 @@ def _abbreviation_alternatives(values):
 CAPITALIZATION_ABBREVIATION_RE = re.compile(
     r'(?<![^\W\d])(?:\b(?:[' + UPPER + r']\.){2,}|' + _abbreviation_alternatives(SENTENCE_ABBREVIATIONS) + ')',
     re.IGNORECASE)
-ABBREVIATION_RE = CAPITALIZATION_ABBREVIATION_RE
 # Reguła abbreviations: tylko jednoznaczne skróty, których rozstrzelony zapis jest błędem. „t.j.” przed
 # Dz.U. to tekst jednolity, a nie „tj.”. Pozostałe zapisy ze spacją (p. o., Dz. U., b. r.) zostają.
 ABBREVIATION_MERGES = tuple((re.compile(pattern), replacement) for pattern, replacement in (
@@ -758,10 +766,7 @@ ORTHOGRAPHY_2026_STEPS = (('by_separate', _separate_by), ('niby_quasi', _niby_qu
 def _orthography_2026(text, enabled, counts):
     for key, step in ORTHOGRAPHY_2026_STEPS:
         if key in enabled:
-            before = text
-            text = step(text)
-            if counts is not None:
-                _count(counts, key, before, text)
+            text = _tracked(counts, key, text, step(text))
     return text
 
 
@@ -1108,10 +1113,6 @@ def compile_replacements(entries=None):
 _DEFAULT_COMPILED = None
 
 
-def _correct_user_words(text, replacements=None, record=None):
-    return compile_replacements(replacements).apply(text, record)
-
-
 ADDRESS_RE = re.compile(TECHNICAL_RE.pattern.split(r'|\b(?:\d{1,3}\.)')[0], re.IGNORECASE)
 QUOTE_OPENERS = ' \t\n(["[{„“«‹–—-'
 QUOTE_CLOSERS = ' \t\n)]}.,;:!?…”»›–—-'
@@ -1247,20 +1248,15 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
             return match[0] if value is None else mask_value(value)
         text = TIME_RANGE_RE.sub(time_range, text)
     if digits and 'dates_times' in enabled:
-        before = text
-        text = _normalize_dates_times(text)
-        if counts is not None:
-            _count(counts, 'dates_times', before, text)
+        text = _tracked(counts, 'dates_times', text, _normalize_dates_times(text))
     if digits:
         text = TIME_RE.sub(lambda m: mask_value(m[0]), text)
     # Nazwy plików (raport.docx, Node.js) chronimy zawsze, nie tylko przy wielkich literach po kropce.
     text = FILE_NAME_RE.sub(lambda m: mask_value(m[0]), text)
     if 'user_word_corrections' in enabled:
-        before = text
         record = {} if counts is not None else None
-        text = _correct_user_words(text, replacements, record)
+        text = _tracked(counts, 'user_word_corrections', text, compile_replacements(replacements).apply(text, record))
         if counts is not None:
-            _count(counts, 'user_word_corrections', before, text)
             # Zamiany słownikowe do podsumowania: (znaleziony zapis, wynik) → liczba.
             pairs = counts.setdefault('replacements', {})
             for (source, target), number in record.items():
@@ -1268,21 +1264,14 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
                 pairs[key] = pairs.get(key, 0) + number
 
     if 'tabs' in enabled:
-        before = text
-        text = re.sub(r'[ \t\u00a0\u202f]*\t[ \t\u00a0\u202f]*', ' ', text)
-        if counts is not None:
-            _count(counts, 'tabs', before, text)
+        text = _tracked(counts, 'tabs', text, re.sub(r'[ \t\u00a0\u202f]*\t[ \t\u00a0\u202f]*', ' ', text))
     if 'spaces' in enabled:
-        before = text
-        text = re.sub(r' {2,}', ' ', text)
-        if counts is not None:
-            _count(counts, 'spaces', before, text)
+        text = _tracked(counts, 'spaces', text, re.sub(r' {2,}', ' ', text))
     if 'abbreviations' in enabled:
         before = text
         for pattern, replacement in ABBREVIATION_MERGES:
             text = pattern.sub(replacement, text)
-        if counts is not None:
-            _count(counts, 'abbreviations', before, text)
+        text = _tracked(counts, 'abbreviations', before, text)
     if 'quotes' in enabled:
         before = text
         # Cudzysłów maszynowy z dwóch przecinków i apostrofów: ,,tak'' / ,,tak" → „tak”.
@@ -1304,26 +1293,18 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
         text = _pair_straight_quotes(text)
         text = _pair_straight_quotes(text, "'")  # 'tak' jako cudzysłów; apostrof w wyrazie nie ma pary
         text = _nest_polish_quotes(text)
-        if counts is not None:
-            _count(counts, 'quotes', before, text)
+        text = _tracked(counts, 'quotes', before, text)
     if 'apostrophe' in enabled:
-        before = text
-        text = re.sub(r'(?<=[' + LETTERS + r"])'(?=[" + LETTERS + r'])', '’', text)
-        if counts is not None:
-            _count(counts, 'apostrophe', before, text)
+        text = _tracked(counts, 'apostrophe', text, re.sub(r'(?<=[' + LETTERS + r"])'(?=[" + LETTERS + r'])', '’', text))
     if 'inside_quotes' in enabled:
         before = text
         text = re.sub(r'([„“])' + H + r'+', r'\1', text)
         text = re.sub(H + r'+(?=”(?![' + LETTERS + r']))', '', text)
         # Cudzysłów prosty tuż po cyfrze to cal (5" x 7"), nie początek cytatu.
         text = re.sub(r'(?<!\w)"([^"\n]+)"', lambda m: '"' + m[1].strip(' \u00a0\u202f') + '"', text)
-        if counts is not None:
-            _count(counts, 'inside_quotes', before, text)
+        text = _tracked(counts, 'inside_quotes', before, text)
     if 'ellipsis' in enabled:
-        before = text
-        text = re.sub(r'\.{3,}', '…', text)
-        if counts is not None:
-            _count(counts, 'ellipsis', before, text)
+        text = _tracked(counts, 'ellipsis', text, re.sub(r'\.{3,}', '…', text))
     if 'quote_punct' in enabled:
         before = text
         # Polska interpunkcja: przecinek, średnik, dwukropek i kropka stoją zawsze za cudzysłowem
@@ -1333,23 +1314,19 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
         # a kończy zdanie za cudzysłowem w pozostałych wypadkach („tak.”. → „tak”.).
         text = re.sub(r'\.([”»])(?=' + H + r'*[–—]|' + H + r'+[' + LOWER + r'])', r'\1', text)
         text = re.sub(r'\.([”»])\.?', r'\1.', text)
-        if counts is not None:
-            _count(counts, 'quote_punct', before, text)
+        text = _tracked(counts, 'quote_punct', before, text)
     if 'inside_brackets' in enabled:
         before = text
         text = re.sub(r'([(\[{])' + H + r'+', r'\1', text)
         text = re.sub(H + r'+([)\]}])', r'\1', text)
-        if counts is not None:
-            _count(counts, 'inside_brackets', before, text)
+        text = _tracked(counts, 'inside_brackets', before, text)
     if 'outside_brackets' in enabled:
         before = text
         # Formy w rodzaju „zrobił(a)”, „Drogi(a)”, „pan(i)” zostają złączone.
         text = re.sub(r'(?<=[' + LETTERS + r'”])(?=[(\[{])(?![(\[][' + LOWER + r']{1,4}[)\]])', ' ', text)
         text = re.sub(r'(?<=[)\]}])(?=[' + LETTERS + r'])', ' ', text)
-        if counts is not None:
-            _count(counts, 'outside_brackets', before, text)
+        text = _tracked(counts, 'outside_brackets', before, text)
     if 'before_punct' in enabled:
-        before = text
         # Wynik lub proporcja „3 : 1” zachowuje symetryczne odstępy.
         def before_punct(match, source=text):
             ratio = (source[match.end()] == ':' and source[max(0, match.start() - 1):match.start()].isdigit()
@@ -1360,17 +1337,14 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
                 if not left or left[-1] in '–—-„“«("[':
                     return match[0]
             return match[0] if ratio else ''
-        text = re.sub(H + r'+(?=[,.;:?!…])', before_punct, text)
-        if counts is not None:
-            _count(counts, 'before_punct', before, text)
+        text = _tracked(counts, 'before_punct', text, re.sub(H + r'+(?=[,.;:?!…])', before_punct, text))
     if 'duplicate_punct' in enabled:
         before = text
         text = re.sub(r'([,;:])\1+', r'\1', text)
         # Maszynowy zapis ?.. i !.. to ?… i !…; pozostałe podwójne kropki to jedna kropka.
         text = re.sub(r'(?<=[?!])\.{2}(?!\.)', '…', text)
         text = re.sub(r'(?<!\.)\.{2}(?!\.)', '.', text)
-        if counts is not None:
-            _count(counts, 'duplicate_punct', before, text)
+        text = _tracked(counts, 'duplicate_punct', before, text)
     if 'hyphen_dash' in enabled:
         before = text
         # Podwójny łącznik z maszynopisu to myślnik: „tak--powiedział”, „tak -- rzekł”, „-- Wiem”.
@@ -1386,8 +1360,7 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
             lambda match: (match[1] + '– ')
             if trim_start or match[1] == '\n' else match[0], text,
         )
-        if counts is not None:
-            _count(counts, 'hyphen_dash', before, text)
+        text = _tracked(counts, 'hyphen_dash', before, text)
     if 'dash_style' in enabled:
         before = text
         # Minus (U+2212) i pauza cyfrowa (U+2012) tuż przed cyfrą to znak liczby („−5 °C”, „(−3)”) albo
@@ -1399,22 +1372,16 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
         text = text.translate(DASH_TABLE)
         # Powtórzone myślniki (– –, ––) → jeden.
         text = re.sub(r'–(?:' + H + r'*–)+', '–', text)
-        if counts is not None:
-            _count(counts, 'dash_style', before, text)
+        text = _tracked(counts, 'dash_style', before, text)
     if digits and 'range_dash' in enabled:
-        before = text
-        text = re.sub(r'(?<![\w.,\-\u2012\u2212])(\d+)' + H + r'*[-\u2012\u2212]' + H + r'*(\d+)(?![\w\-\u2012\u2212]|[.,]\d)',
-                      lambda m: m[0] if _arithmetic(text, m) else re.sub('[-\u2012\u2212]', '–', m[0]), text)
-        if counts is not None:
-            _count(counts, 'range_dash', before, text)
+        text = _tracked(counts, 'range_dash', text, re.sub(
+            r'(?<![\w.,\-\u2012\u2212])(\d+)' + H + r'*[-\u2012\u2212]' + H + r'*(\d+)(?![\w\-\u2012\u2212]|[.,]\d)',
+            lambda m: m[0] if _arithmetic(text, m) else re.sub('[-\u2012\u2212]', '–', m[0]), text))
     if digits and 'range_spaces' in enabled:
-        before = text
-        text = re.sub(r'(?<![\w.,-])(\d+)' + H + r'*([–-])' + H + r'*(\d+)(?![\w-]|[.,]\d)',
-                      lambda m: m[0] if _arithmetic(text, m) else m[1] + m[2] + m[3], text)
-        if counts is not None:
-            _count(counts, 'range_spaces', before, text)
+        text = _tracked(counts, 'range_spaces', text, re.sub(
+            r'(?<![\w.,-])(\d+)' + H + r'*([–-])' + H + r'*(\d+)(?![\w-]|[.,]\d)',
+            lambda m: m[0] if _arithmetic(text, m) else m[1] + m[2] + m[3], text))
     if 'dash_spaces' in enabled:
-        before = text
         def dash_space(match):
             # Wystarczy najbliższy znak niebędący spacją po obu stronach.
             left = text[max(0, match.start() - CONTEXT):match.start()].rstrip(' \u00a0\u202f')
@@ -1432,24 +1399,17 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
             leading = ' ' if left and not left.endswith('\n') and left[-1] not in '„“«([' else ''
             trailing = ' ' if right and right[0] not in '”»)]–—' else ''
             return leading + match[1] + trailing
-        text = re.sub(H + r'*([–—])' + H + r'*', dash_space, text)
-        if counts is not None:
-            _count(counts, 'dash_spaces', before, text)
+        text = _tracked(counts, 'dash_spaces', text, re.sub(H + r'*([–—])' + H + r'*', dash_space, text))
     if digits and 'decimal' in enabled:
-        before = text
-        text = re.sub(r'(?<![\w.,])(\d+)\.(\d{1,2})(?=' + H + r'*(?:' + UNITS + r'|%|°' + H + r'*[CF])(?!\w))',
-                      r'\1,\2', text)
-        if counts is not None:
-            _count(counts, 'decimal', before, text)
+        text = _tracked(counts, 'decimal', text, re.sub(
+            r'(?<![\w.,])(\d+)\.(\d{1,2})(?=' + H + r'*(?:' + UNITS + r'|%|°' + H + r'*[CF])(?!\w))', r'\1,\2', text))
     if digits and 'unit_space' in enabled:
         before = text
         text = re.sub('(' + NUMBER + r')(?=' + ATTACHED_UNITS + r'(?!\w))', r'\1 ', text)
         text = re.sub(r'(?<=\d' + H + r')([kmcd]?m)([23])(?!\w)',
                       lambda m: m[1] + {'2': '²', '3': '³'}[m[2]], text)
-        if counts is not None:
-            _count(counts, 'unit_space', before, text)
+        text = _tracked(counts, 'unit_space', before, text)
     if digits and 'digit_groups' in enabled:
-        before = text
         def group_digits(match):
             digits = re.sub(H, '', match[0])
             if digits.startswith('0'):
@@ -1460,28 +1420,24 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
             if len(digits) >= 9 and not quantity:
                 return match[0]  # możliwy numer telefonu lub identyfikator
             return _group_number(digits)
-        text = re.sub(r'(?<![\w.,])(\d{1,3}(?:' + H + r'\d{3})+|\d{5,})(?!\w|\.\d)', group_digits, text)
-        if counts is not None:
-            _count(counts, 'digit_groups', before, text)
+        text = _tracked(counts, 'digit_groups', text,
+                        re.sub(r'(?<![\w.,])(\d{1,3}(?:' + H + r'\d{3})+|\d{5,})(?!\w|\.\d)', group_digits, text))
     if digits and 'unit_nbsp' in enabled:
         before = text
         text = re.sub(r'(?<=\d)' + H + r'+(?=' + UNITS + r'(?!\w))', ' ', text)
         text = re.sub(r'(?<=\d)' + H + r'+(?=[%‰])', '', text)
-        if counts is not None:
-            _count(counts, 'unit_nbsp', before, text)
+        text = _tracked(counts, 'unit_nbsp', before, text)
     if digits and 'reference_space' in enabled:
         before = text
         text = re.sub(r'\b(\d{4})(?=r\.)', r'\1 ', text)
         text = re.sub(r'\bnr\.' + H + r'*(?=\d)', 'nr ', text)
         text = re.sub(r'(?<![^\W\d])(' + NUMBER_ABBREVIATIONS + r'|nr)(?=\d)', r'\1 ', text)
-        if counts is not None:
-            _count(counts, 'reference_space', before, text)
+        text = _tracked(counts, 'reference_space', before, text)
     if digits and 'reference_nbsp' in enabled:
         before = text
         text = re.sub(r'\b(\d{4})' + H + r'+(?=r\.)', r'\1 ', text)
         text = re.sub(r'(?<![^\W\d])(' + NUMBER_ABBREVIATIONS + r'|nr)' + H + r'+(?=\d)', r'\1 ', text)
-        if counts is not None:
-            _count(counts, 'reference_nbsp', before, text)
+        text = _tracked(counts, 'reference_nbsp', before, text)
     if 'initials' in enabled:
         # Skrótowce z kropkami (S.A., P.S.) to nie inicjały.
         text = DOTTED_ACRONYM_RE.sub(lambda m: mask_value(m[0]), text)
@@ -1493,15 +1449,13 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
                       text)
         text = re.sub(r'\b([' + UPPER + r']\.)' + H + r'*(?=[' + UPPER + r'][' + LOWER + r']{2,}\b)',
                       r'\1 ', text)
-        if counts is not None:
-            _count(counts, 'initials', before, text)
+        text = _tracked(counts, 'initials', before, text)
     if digits and 'temperature' in enabled:
         before = text
         text = re.sub('(' + NUMBER + r')' + H + r'*°' + H + r'*([CF])(?!\w)', r'\1 °\2', text)
         # Kelwin tylko po odstępie: „4K” to rozdzielczość, nie temperatura.
         text = re.sub('(' + NUMBER + r')' + H + r'+K(?!\w)', r'\1 K', text)
-        if counts is not None:
-            _count(counts, 'temperature', before, text)
+        text = _tracked(counts, 'temperature', before, text)
     if 'after_punct' in enabled:
         gaps = 0
 
@@ -1513,7 +1467,7 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
             gap = ' ' if tail and re.fullmatch('[' + LETTERS + '„“\"]', tail) else ''
             gaps += bool(gap)
             return mask_value(match[0]) + gap
-        text = ABBREVIATION_RE.sub(protect_abbreviation, text)
+        text = CAPITALIZATION_ABBREVIATION_RE.sub(protect_abbreviation, text)
         before = text
         # Cudzysłów prosty tylko otwierający (przed literą); zamykający na końcu akapitu zostaje przy kropce.
         text = re.sub(r'(?<=[,;:!?])(?=[' + LETTERS + r'„“]|"[' + LETTERS + r'])', ' ', text)
@@ -1525,31 +1479,23 @@ def correct_editorial_text(text, enabled=None, trim_start=True, trim_end=True, *
         text = re.sub(r'(?<![\d' + MARKER_CLASS + r']),(?=\d)', ', ', text)
         text = re.sub(r'(?<=[;!?])(?=\d)', ' ', text)
         text = re.sub(r'(?<![\d' + MARKER_CLASS + r']):(?=\d)', ': ', text)
-        if counts is not None:
-            _count(counts, 'after_punct', before, text, gaps)
+        text = _tracked(counts, 'after_punct', before, text, gaps)
     text = _unmask(text, protected)
     if 'pronouns_lower' in enabled:
-        before = text
         # Po przywróceniu masek dostępne są kropki kończące skróty i zdania.
-        text = _lower_personal_pronouns(text)
-        if counts is not None:
-            _count(counts, 'pronouns_lower', before, text)
+        text = _tracked(counts, 'pronouns_lower', text, _lower_personal_pronouns(text))
     # Po zaimkach: „Był Nie najlepszy” → „nie najlepszy” → „nienajlepszy”; przed wielką literą po kropce.
     if enabled & ORTHOGRAPHY_2026_KEYS:
         text = _orthography_2026(text, enabled, counts)
     if 'sentence_case' in enabled:
-        before = text
-        text = _capitalize_sentences(text)
-        if counts is not None:
-            _count(counts, 'sentence_case', before, text)
+        text = _tracked(counts, 'sentence_case', text, _capitalize_sentences(text))
     if 'trim' in enabled:
         before = text
         if trim_start:
             text = re.sub(r'^' + H + r'+', '', text)
         if trim_end:
             text = re.sub(H + r'+$', '', text)
-        if counts is not None:
-            _count(counts, 'trim', before, text)
+        text = _tracked(counts, 'trim', before, text)
     return text
 
 
@@ -1626,10 +1572,13 @@ def _change_regions(original, corrected):
     return result
 
 
-def _count(counts, key, before, after, extra=0):
-    number = extra + (len(_change_regions(before, after)) if before != after else 0)
-    if number:
-        counts[key] = counts.get(key, 0) + number
+def _tracked(counts, key, before, after, extra=0):
+    """Zwraca wynik reguły (after); gdy liczymy (counts), dopisuje liczbę zmienionych miejsc."""
+    if counts is not None:
+        number = extra + (len(_change_regions(before, after)) if before != after else 0)
+        if number:
+            counts[key] = counts.get(key, 0) + number
+    return after
 
 
 TRACK_AUTHOR = 'Odkurzacz'
@@ -1887,20 +1836,19 @@ def _previous_paragraph(paragraph):
     return None
 
 
-def _safe_empty_paragraph(element, tracked=False):
+def _safe_empty_paragraph(element, outline, tracked=False):
     """Pusty akapit, który reguła empty_paragraphs może usunąć.
 
-    Zostają akapity z treścią, zakotwiczonym komentarzem, zakładką, układem strony i listą,
-    a także z usuniętym znakiem akapitu (po przyjęciu zmian i tak łączy się z następnym). Akapit
-    z inną śledzoną zmianą (wstawiony znak akapitu, zmiana formatowania) usuwamy tylko jako śledzone
-    usunięcie – bez śledzenia zniknęłaby cudza zmiana.
+    Zostają akapity z treścią, zakotwiczonym komentarzem, zakładką i układem strony, punkty listy
+    (document_styles.ParagraphOutline: numeracja z akapitu albo ze stylu), a także akapity z usuniętym znakiem
+    akapitu (po przyjęciu zmian i tak łączy się z następnym). Akapit z inną śledzoną zmianą (wstawiony znak
+    akapitu, zmiana formatowania) usuwamy tylko jako śledzone usunięcie – bez śledzenia zniknęłaby cudza zmiana.
     """
-    if element.tag != qn('w:p'):
+    if element.tag != qn('w:p') or outline.is_list_item(element):
         return False
     for child in element:
         if child.tag == qn('w:pPr'):
-            if any(child.find(qn('w:' + name)) is not None
-                   for name in ('sectPr', 'numPr', 'pageBreakBefore')):
+            if any(child.find(qn('w:' + name)) is not None for name in ('sectPr', 'pageBreakBefore')):
                 return False
             changes = _mark_changes(element)
             if any(change.tag in DELETED_CONTAINERS for change in changes):
@@ -2128,7 +2076,6 @@ def _correct_noted_group(group, enabled, tracker, options, boundary=None):
         _rewrite(segment, text, tracker, boundary)
 
 
-FALLBACK_TAG = '{http://schemas.openxmlformats.org/markup-compatibility/2006}Fallback'
 # Podział strony lub kolumny nie kończy zdania ani akapitu: tekst za nim na początku
 # akapitu traktujemy jak początek akapitu (spacja wiodąca, kwestia dialogowa).
 PAGE_BREAK_TYPES = ('page', 'column')
@@ -2136,7 +2083,7 @@ PAGE_BREAK_TYPES = ('page', 'column')
 
 def _in_fallback(element):
     """Kopia zapasowa pola tekstowego (mc:Fallback) – poprawiamy ją, ale nie liczymy drugi raz."""
-    return any(node.tag == FALLBACK_TAG for node in element.iterancestors())
+    return any(node.tag == FALLBACK for node in element.iterancestors())
 
 
 def _replace_nonbreaking_spaces(stories, counts):
@@ -2275,8 +2222,9 @@ def apply_editorial_corrections(doc, enabled=None, *, track_changes=False, repla
     if 'empty_paragraphs' in enabled:
         previous_empty, removed = False, 0
         elements = list(doc._element.body)
+        outline = document_outline(doc)
         for index, element in enumerate(elements):
-            empty = _safe_empty_paragraph(element, tracked=tracker is not None)
+            empty = _safe_empty_paragraph(element, outline, tracked=tracker is not None)
             if empty and previous_empty:
                 removed += 1
                 if tracker is None:
@@ -2419,10 +2367,6 @@ def clean_docx(source, rules, *, track_changes=False, replacements=None, summary
     document = Document(source)
     stories, _ = document_stories(document)
     if any(len(paragraph.text) > 20_000 for story in stories for paragraph in story.paragraphs):
-        if __package__:
-            from .document_errors import DocumentInputError
-        else:
-            from document_errors import DocumentInputError
         raise DocumentInputError('cleaner_paragraph_limit')
     apply_editorial_corrections(document, frozenset(rules), track_changes=track_changes,
                                 replacements=replacements, summary=summary)

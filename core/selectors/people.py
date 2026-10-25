@@ -10,6 +10,7 @@ from datetime import timedelta
 from django.db.models import Q
 from django.utils import timezone
 
+from core.filtering import positive_id
 from core.permissions import get_active_person_profile
 from people.models import Vacation
 
@@ -24,7 +25,7 @@ def user_leave_information(user):
     Użytkownik jest osobą, której dotyczy informacja. Uprawnienia
     odbiorcy sprawdza widok udostępniający te dane.
 
-    Odczyt nie modyfikuje urlopów ani pól profilu osoby.
+    Odczyt nie modyfikuje urlopów.
     """
     person = get_active_person_profile(user)
 
@@ -40,52 +41,28 @@ def user_leave_information(user):
             person__is_active=True,
             start_date__lte=today + timedelta(days=UPCOMING_LEAVE_DAYS),
         )
-        .filter(
-            Q(until_revoked=True)
-            | Q(end_date__gt=now)
-        )
+        .unfinished(now)
         .order_by("start_date", "pk")
         .first()
     )
 
-    return _leave_payload(person, vacation, today)
+    return _leave_payload(vacation, today)
 
 
-def _leave_payload(person, vacation, today):
+def _leave_payload(vacation, today):
+    """Pola urlopu czytane przez szablony (bez relacji ORM prowadzących przez osobę i konto)."""
     if vacation is None:
         return None
 
     # Trwające urlopy mają wcześniejszą datę rozpoczęcia niż przyszłe,
     # więc zaplanowanie kolejnego nie przesłania aktualnej nieobecności.
-    is_active = vacation.start_date <= today
-    is_upcoming = vacation.start_date > today
-
-    # Jawna projekcja nie udostępnia szablonom relacji ORM prowadzących
-    # z urlopu przez osobę i konto do innych danych aplikacji.
-    vacation_data = {
-        "pk": vacation.pk,
-        "id": vacation.pk,
-        "person_id": person.pk,
-        "person": {
-            "pk": person.pk,
-            "first_name": person.first_name,
-            "last_name": person.last_name,
-        },
-        "start_date": vacation.start_date,
-        "end_date": vacation.end_date,
-        "until_revoked": vacation.until_revoked,
-        "created_at": vacation.created_at,
-        "is_active": is_active,
-        "is_upcoming": is_upcoming,
-        "is_finished": False,
-        "can_be_edited": True,
-        "can_be_ended": is_active and vacation.until_revoked,
-    }
-
     return {
-        "vacation": vacation_data,
-        "is_active": is_active,
-        "is_upcoming": is_upcoming,
+        "vacation": {
+            "start_date": vacation.start_date,
+            "end_date": vacation.end_date,
+            "until_revoked": vacation.until_revoked,
+        },
+        "is_active": vacation.start_date <= today,
     }
 
 
@@ -108,7 +85,7 @@ def team_availability(users):
     vacations = defaultdict(list)
     for vacation in (
         Vacation.objects.filter(person__user_id__in=users)
-        .filter(Q(until_revoked=True) | Q(end_date__gt=now))
+        .unfinished(now)
         .select_related("person")
         .order_by("start_date", "pk")
     ):
@@ -129,7 +106,7 @@ def team_availability(users):
         result[pk] = {
             "profile": profile,
             "on_leave": any(item.start_date <= today for item in own),
-            "leave_information": _leave_payload(profile, upcoming, today) if profile is not None else None,
+            "leave_information": _leave_payload(upcoming, today),
         }
     return result
 
@@ -175,14 +152,6 @@ def profile_assignments(person, *, include_authors):
     assignments = []
 
     from workflow.state import stage_is_open, stage_is_active
-    stage_roles = {
-        **STAGE_ROLES,
-        WorkflowStage.StageType.EDITING: WorkflowRoleAssignment.Role.EDITOR,
-        WorkflowStage.StageType.EDITOR_CONTROL: (
-            WorkflowRoleAssignment.Role.EDITOR
-        ),
-    }
-
     for assignment in queryset:
         text = assignment.text
         stages = text.profile_stages
@@ -190,7 +159,7 @@ def profile_assignments(person, *, include_authors):
         matching_stages = [
             stage
             for stage in stages
-            if stage.assignment_id == assignment.pk or (stage.assignment_id is None and assignment.is_current and stage_roles.get(stage.stage_type) == assignment.role)
+            if stage.assignment_id == assignment.pk or (stage.assignment_id is None and assignment.is_current and STAGE_ROLES.get(stage.stage_type) == assignment.role)
         ]
         open_stages = [
             stage
@@ -227,8 +196,7 @@ def profile_assignments(person, *, include_authors):
 
 
         translated = bool(text.anthology_id and text.anthology.is_translated)
-        translation = getattr(text, "translation", None) if translated else None
-        source_authors = translation.foreign_authors.all() if translation else ([] if translated else text.authors.all())
+        source_authors = text.source_authors()
         authors = [
             {"pk": author.pk, "display_name": author.display_name, "first_name": author.first_name,
              "last_name": author.last_name, "pseudonym": author.pseudonym}
@@ -241,7 +209,7 @@ def profile_assignments(person, *, include_authors):
                 "kind": "Tekst",
                 "kind_key": "text",
                 "role": assignment.role,
-                "get_role_display": assignment_label(assignment, show_first=True),
+                "get_role_display": assignment_label(assignment),
                 "assigned_at": assignment.assigned_at,
                 "has_active_work": has_active_work,
                 "has_reserved_work": has_reserved_work,
@@ -332,7 +300,8 @@ def role_names_context(params):
     from core.sort_keys import text_key
     roles = Role.objects.order_by('name')
     selected = params.get('role', '')
-    role = roles.filter(pk=int(selected)).first() if selected.isdecimal() and len(selected) < 19 else None
+    role_id = positive_id(selected)
+    role = roles.filter(pk=role_id).first() if role_id else None
     names = []
     if role is not None:
         people = Person.objects.active().filter(

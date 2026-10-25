@@ -36,11 +36,11 @@ class AuthenticationThrottleMiddleware(MiddlewareMixin):
         match = request.resolver_match
         if request.method != 'POST' or not match or match.url_name not in ('login', 'password_reset'):
             return None
-        if not getattr(settings, 'AUTH_THROTTLE_ENABLED', True):
+        if not settings.AUTH_THROTTLE_ENABLED:
             return None
         # The hosting proxy must overwrite the explicitly trusted header.
         # X-Forwarded-For is deliberately not parsed or trusted.
-        header = getattr(settings, 'AUTH_THROTTLE_CLIENT_IP_HEADER', 'REMOTE_ADDR')
+        header = settings.AUTH_THROTTLE_CLIENT_IP_HEADER
         address = request.META.get(header) or request.META.get('REMOTE_ADDR', '')
         try:
             address = ip_address(address).compressed

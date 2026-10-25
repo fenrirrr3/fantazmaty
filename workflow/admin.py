@@ -70,18 +70,6 @@ class WorkflowStageAdminForm(forms.ModelForm):
         fields = "__all__"
 
 
-class WorkflowRoleAssignmentAdminForm(forms.ModelForm):
-    def clean(self):
-        data = super().clean()
-        from workflow.admin_assignment_rules import protect_assignment
-        protect_assignment(self.instance, data)
-        return data
-
-    class Meta:
-        model = WorkflowRoleAssignment
-        fields = "__all__"
-
-
 
 @admin.register(WorkflowStage)
 class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
@@ -106,8 +94,6 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
         from django.template.response import TemplateResponse
         from core.edit_versions import version_of
         from workflow.admin_stage_dates import StageDatesForm, set_stage_dates
-        if not request.user.is_active or not request.user.is_superuser:
-            raise PermissionDenied
         stage = get_object_or_404(WorkflowStage.objects.select_related('text'), pk=object_id)
         form = StageDatesForm(
             request.POST if request.method == 'POST' else None, stage=stage,
@@ -149,14 +135,12 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
 
     def correct_execution(self,request,object_id):
         from django.contrib.auth import get_user_model
-        from django.core.exceptions import ObjectDoesNotExist, PermissionDenied, ValidationError
+        from django.core.exceptions import ObjectDoesNotExist, ValidationError
         from django.db.models.deletion import ProtectedError, RestrictedError
         from django.shortcuts import get_object_or_404,redirect
         from django.template.response import TemplateResponse
         from core.edit_versions import version_of
         from workflow.admin_stage_edit import edit_stage
-        if not request.user.is_superuser:
-            raise PermissionDenied
         stage = get_object_or_404(WorkflowStage, pk=object_id)
 
         class CorrectionForm(forms.Form):
@@ -247,7 +231,7 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
         )
 
     def get_readonly_fields(self, request, obj=None):
-        if request.user.is_superuser and obj and obj.imported_completed and obj.is_completed:
+        if obj and obj.imported_completed and obj.is_completed:
             return tuple(
                 name for name in self.readonly_fields if name not in {"started_at", "ended_at"}
             )
@@ -255,7 +239,7 @@ class WorkflowStageAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
 
     def get_fieldsets(self, request, obj=None):
         sections = super().get_fieldsets(request, obj)
-        if request.user.is_superuser and obj and obj.imported_completed and obj.is_completed:
+        if obj and obj.imported_completed and obj.is_completed:
             return (
                 *sections,
                 (
@@ -421,15 +405,13 @@ class WorkflowRoleAssignmentAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
 
     def correct_assignment_view(self, request, object_id):
         from django.contrib.auth import get_user_model
-        from django.core.exceptions import ObjectDoesNotExist, PermissionDenied, ValidationError
+        from django.core.exceptions import ObjectDoesNotExist, ValidationError
         from django.db.models.deletion import ProtectedError, RestrictedError
         from django.shortcuts import get_object_or_404, redirect
         from django.template.response import TemplateResponse
         from core.edit_versions import version_of
         from workflow.admin_assignment_edit import correct_assignment
 
-        if not request.user.is_superuser:
-            raise PermissionDenied
         obj = get_object_or_404(WorkflowRoleAssignment, pk=object_id)
 
         class CorrectionForm(forms.Form):
@@ -504,7 +486,6 @@ class WorkflowRoleAssignmentAdmin(OperationalWorkAdminMixin, admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         return False
 
-    form = WorkflowRoleAssignmentAdminForm
     empty_value_display = "Nieprzypisane"
 
     list_display = (

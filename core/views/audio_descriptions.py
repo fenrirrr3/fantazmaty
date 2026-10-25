@@ -1,17 +1,19 @@
 from django import forms
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core import signing
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
+from core.account_identity import person_name
 from core.edit_policy import edit_policy
-from core.models import AudioDescription, AudioDescriptionNote, EditRevision
+from core.edit_versions import edit_tokens
+from core.models import AudioDescription, AudioDescriptionNote
 from core.pagination import paginate_items
-from core.permissions import team_member_required, get_active_person_profile, is_coordinator, is_team_member
+from core.permissions import (team_member_required, get_active_person_profile, is_coordinator,
+                              require_team_member)
 from core.table_sorting import DisplayTable
 from people.models import Person
 from texts.models import Anthology, AnthologyTask
@@ -39,20 +41,10 @@ def require_edit(request, book, kwargs):
         raise PermissionDenied("Edycja wymaga przypisania do audiodeskrypcji lub kontroli.")
 
 
-def may_write(user):
-    """Treść i uwagi zapisuje każdy członek zespołu; etap i przypisanie – wykonawcy i koordynator."""
-    return is_coordinator(user) or is_team_member(user)
-
-
-def require_write(request, book, kwargs):
-    if not may_write(request.user):
-        raise PermissionDenied("Zapis treści i uwag wymaga aktywnego profilu członka zespołu.")
-
-
 def require_action(request, book, kwargs):
     """Treść i uwagi – każdy członek zespołu; etap i przypisanie – osoby przypisane."""
     if request.POST.get("action", "assignment") in ("content", "note"):
-        require_write(request, book, kwargs)
+        require_team_member(request.user)
     else:
         require_edit(request, book, kwargs)
 
@@ -145,11 +137,6 @@ def audio_descriptions(request):
     if hide_completed:
         tasks = tasks.exclude(status__in=AnthologyTask.DONE_STATUSES)
     person = get_active_person_profile(request.user)
-    versions = dict(
-        EditRevision.objects.filter(
-            model_label="texts.anthology", object_id__in=tasks.values("anthology_id")
-        ).values_list("object_id", "version")
-    )
     rows = []
     for task in tasks:
         description = getattr(task.anthology, "audio_description", None)
@@ -168,16 +155,11 @@ def audio_descriptions(request):
                 "can_claim": person is not None
                 and task.assigned_to_id is None
                 and task.status == "not_commissioned",
-                "token": signing.dumps(
-                    [
-                        request.user.pk,
-                        f"texts.anthology:{task.anthology_id}",
-                        versions.get(task.anthology_id, 0),
-                    ],
-                    salt="cms-edit-version",
-                ),
             }
         )
+    tokens = edit_tokens(request.user, "texts.anthology", {row["task"].anthology_id for row in rows})
+    for row in rows:
+        row["token"] = tokens[row["task"].anthology_id]
     page = paginate_items(
         request,
         DisplayTable(
@@ -259,7 +241,6 @@ def audio_description_detail(request, anthology_id):
         completed = description.stage == AudioDescription.Stage.COMPLETED
         manager = is_coordinator(request.user)
         editable = may_edit(request.user, book)
-        writable = may_write(request.user)
         if request.method == "POST":
             require_action(request, book, {})
             if request.POST.get("action", "assignment") == "assignment" and not manager:
@@ -288,13 +269,10 @@ def audio_description_detail(request, anthology_id):
                     form.save()
                     description.controllers.set(form.cleaned_data["controllers"])
                 elif action == "note":
-                    person = get_active_person_profile(request.user)
                     AudioDescriptionNote.objects.create(
                         description=description,
                         author=request.user,
-                        author_name=str(person)
-                        if person
-                        else (request.user.get_full_name() or request.user.get_username()),
+                        author_name=person_name(request.user),
                         content=note_form.cleaned_data["note"],
                     )
                 elif action == "content":
@@ -323,7 +301,6 @@ def audio_description_detail(request, anthology_id):
                 "controllers": description.controllers.all() if description else [],
                 "form": form,
                 "can_edit": editable,
-                "can_write": writable,
                 "can_manage": manager,
                 "is_completed": completed,
             },

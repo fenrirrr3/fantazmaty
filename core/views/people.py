@@ -1,4 +1,3 @@
-from people.role_ordering import ordered_team_roles
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, render
@@ -15,35 +14,12 @@ from people.models import Person
 from texts.models import Review, ReviewAssignment
 
 
-def _filter_data(request):
-    """Zachowuje obsługę wcześniejszych adresów z parametrami q i role."""
-    data = request.GET.copy()
-
-    if "query" not in data and "q" in data:
-        data["query"] = data.get("q", "")
-
-    if "roles" not in data:
-        legacy_roles = [
-            value
-            for value in data.getlist("role")
-            if value.strip()
-        ]
-        if legacy_roles:
-            data.setlist("roles", legacy_roles)
-
-    return data
-
-
-
-
-
-
 @never_cache
 @login_required
 @require_GET
 @team_member_required
 def people_list(request):
-    form = PeopleFilterForm(_filter_data(request))
+    form = PeopleFilterForm(request.GET)
     people = (
         Person.objects.filter(Q(pk__in=Person.objects.active().values('pk')) | Q(is_external=True))
         .select_related("user")
@@ -64,9 +40,6 @@ def people_list(request):
 
         from core.search_people import rank_people
         people = rank_people(people, query)
-
-        # Zachowaj również role bez przypisanych osób, w tym nowego Składacza.
-        form.fields['roles'].queryset = ordered_team_roles()
 
         if selected_role_ids:
             # Wystarczy dowolna z zaznaczonych ról: np. redaktor

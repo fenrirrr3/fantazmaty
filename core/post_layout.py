@@ -9,6 +9,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
+from core.account_identity import person_name
 from core.models import PostLayoutAssignment
 from core.permissions import is_coordinator, require_post_layout
 from people.roles import POST_LAYOUT_PROOFREADER
@@ -26,7 +27,7 @@ def eligible_proofreaders():
 
 class ProofreaderField(forms.ModelChoiceField):
     def label_from_instance(self, obj):
-        return str(getattr(obj, 'person_profile', None) or obj.get_full_name() or obj.username)
+        return person_name(obj)
 
 
 class AssignmentForm(forms.Form):

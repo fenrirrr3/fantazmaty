@@ -5,11 +5,11 @@ jednorazowo, gdy powstaje dla niego osoba.
 """
 from contextvars import ContextVar
 from django.contrib.auth import get_user_model
-from django.db.models.signals import m2m_changed, post_delete, post_save, pre_delete, pre_save
+from django.db.models.signals import m2m_changed, post_delete, post_save, pre_save
 from django.dispatch import receiver
 from people.accounts import account_changes, apply_account_changes
 from people.models import Person, Role
-from people.roles import coordinator_role_q, is_coordinator_role_name, is_general_coordinator_name
+from people.roles import is_coordinator_role_name, is_general_coordinator_name
 
 syncing = ContextVar('syncing_team_identity', default=False)
 
@@ -33,6 +33,7 @@ def sync_person(person, *, copy_groups=False):
             get_user_model().objects.filter(pk=person.user_id).update(
                 first_name=person.first_name, last_name=person.last_name
             )
+        return coordinator
     finally:
         syncing.reset(token)
 
@@ -43,9 +44,9 @@ def prepare_account_sync(sender, instance, raw=False, using=None, update_fields=
     instance._account_changes = {}
     if raw or not instance.user_id:
         return
-    previous = sender.objects.using(using).filter(pk=instance.pk).values(
-        'user_id', 'is_active', 'is_external').first() if instance.pk else None
-    instance._account_changes = account_changes(instance, using=using, update_fields=update_fields, previous=previous)
+    # Poprzedni stan wiersza: people.models.remember_person_row.
+    instance._account_changes = account_changes(instance, using=using, update_fields=update_fields,
+                                                previous=instance._previous_row)
 
 
 @receiver(post_save, sender=Person)
@@ -69,8 +70,7 @@ def profile_roles_changed(sender, instance, action, reverse, pk_set, **kwargs):
                 sync_person(person)
     elif action.startswith("post_"):
         # The flag mirrors roles; it must not re-add a deliberately removed role.
-        instance.is_coordinator = instance.legacy_coordinator_access or instance.roles.filter(coordinator_role_q()).exists()
-        sync_person(instance)
+        instance.is_coordinator = sync_person(instance)
 
 
 @receiver(pre_save, sender=get_user_model())
@@ -82,25 +82,9 @@ def normalize_account_email(sender, instance, **kwargs):
             instance.first_name, instance.last_name = person.first_name, person.last_name
 
 
-@receiver(pre_delete, sender=Role)
-def remember_role_people(sender, instance, **kwargs):
-    instance._cms_role_people = list(instance.people.values_list("pk", flat=True))
-
-
-@receiver(post_delete, sender=Role)
-def deleted_role(sender, instance, **kwargs):
-    for person in Person.objects.filter(pk__in=getattr(instance, "_cms_role_people", ())):
-        sync_person(person)
-
-
-@receiver(pre_save, sender=Role)
-def remember_role_edit(sender, instance, **kwargs):
-    instance._cms_role_people = (
-        list(instance.people.values_list("pk", flat=True)) if instance.pk else []
-    )
-
-
 @receiver(post_save, sender=Role)
+@receiver(post_delete, sender=Role)
 def changed_role(sender, instance, **kwargs):
-    for person in Person.objects.filter(pk__in=getattr(instance, "_cms_role_people", ())):
+    # Osoby roli sprzed zmiany: people.models.remember_role_people.
+    for person in Person.objects.filter(pk__in=instance._role_people):
         sync_person(person)

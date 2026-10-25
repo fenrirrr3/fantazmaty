@@ -156,4 +156,4 @@ class WorkListLabelsTests(TestCase):
             self.assertEqual(_stage_data(WorkflowStage(stage_type=stage_kind, execution_number=2))[
                 'get_stage_type_display'], label + ' (wyk. 2)')
             assignment.execution_number = 1
-            self.assertEqual(assignment_label(assignment, show_first=True), assignment.get_role_display())
+            self.assertEqual(assignment_label(assignment), assignment.get_role_display())

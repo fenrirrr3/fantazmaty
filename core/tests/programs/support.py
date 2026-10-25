@@ -1,14 +1,18 @@
-"""Pomocniki testów programów: pliki DOCX w pamięci i izolowane katalogi robocze."""
+"""Pomocniki testów programów: pliki DOCX w pamięci, izolowane katalogi robocze i zadania bez podprocesu."""
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
 
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.urls import reverse
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Pt
 from PIL import Image
+
+from core.services import program_jobs as jobs
 
 # Poprawne parametry formularza powtórzeń (prefiks dodaje formularz strony programów).
 REPETITION_PARAMETERS = {
@@ -18,6 +22,22 @@ REPETITION_PARAMETERS = {
     'paragraph_limit': 150,
 }
 REPETITION_FIELDS = {f'repetitions-{key}': value for key, value in REPETITION_PARAMETERS.items()}
+
+
+def run_program(client, data, **extra):
+    """Wysyła formularz programu i zwraca odpowiedź z pobraniem wyniku albo stronę z powodem, dla którego go nie ma.
+
+    Widok zawsze tworzy zadanie w tle; tu zadanie biegnie w procesie testu (z prawdziwym konwerterem),
+    a test przechodzi przez stronę stanu do pobrania – jak przeglądarka bez JavaScriptu.
+    """
+    with patch.object(jobs, 'launch', side_effect=jobs.execute):
+        response = client.post(reverse('core:programs'), data, **extra)
+    if response.status_code != 302:
+        return response
+    page = client.get(response['Location'])
+    if page.status_code == 200 and page.context['state'].get('state') == 'done':
+        return client.get(page.context['download_url'])
+    return page
 
 
 def saved(document):
@@ -89,6 +109,71 @@ def typography_sample():
     doc.add_paragraph('Prawo').alignment = WD_ALIGN_PARAGRAPH.RIGHT
     doc.add_table(rows=1, cols=1).cell(0, 0).text = 'Tabela'
     return saved(doc)
+
+
+NUMBERING_OFF = '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="0"/></w:numPr>'
+# Reguła nagłówków i list (document_styles.ParagraphOutline): przypadek (tekst akapitu) → (styl akapitu, własne
+# właściwości w:pPr, oczekiwany poziom nagłówka, czy punkt listy). Style przypadków tworzy outline_document().
+OUTLINE_CASES = {
+    'heading 1': ('Heading 1', '', 1, False),
+    'heading 2': ('Heading 2', '', 2, False),
+    'Nagłówek 1 bez poziomu konspektu': ('Nagłówek 1', '', 1, False),
+    'Naglowek 1': ('Naglowek 1', '', 1, False),
+    'Heading bez numeru': ('Heading', '', None, False),
+    'Heading Custom': ('Heading Custom', '', None, False),
+    'Nagłówek tabeli': ('Nagłówek tabeli', '', None, False),
+    'styl oparty na heading 1': ('Tytuł opowiadania', '', 1, False),
+    'styl Rozdział z poziomem konspektu 0': ('Rozdział', '', 1, False),
+    'id Heading1, inna nazwa, bez poziomu': ('Tytuł rozdziału', '', 1, False),
+    'zwykły akapit z poziomem konspektu 0': (None, '<w:outlineLvl w:val="0"/>', 1, False),
+    'heading 1 z numId 0': ('Heading 1', NUMBERING_OFF, 1, False),
+    'heading 1 z poziomem 9': ('Heading 1', '<w:outlineLvl w:val="9"/>', None, False),
+    'numId 5': (None, '<w:numPr><w:ilvl w:val="0"/><w:numId w:val="5"/></w:numPr>', None, True),
+    'numPr bez numId': (None, '<w:numPr><w:ilvl w:val="0"/></w:numPr>', None, False),
+    'styl listy z numId': ('Lista punktowana', '', None, True),
+    'styl z numId 0 oparty na stylu listy': ('Lista bez numeracji', '', None, False),
+    'zwykły akapit': (None, '', None, False),
+    'pętla basedOn': ('Pętla A', '', None, False),
+}
+
+
+def outline_document(*, soft_break=False):
+    """Dokument z akapitem na każdy przypadek OUTLINE_CASES (tekst akapitu = nazwa przypadku, z miękkim enterem
+    i „drugi wiersz” przy soft_break). Wbudowany „heading 1” ma id Heading1orig – id Heading1 ma styl
+    „Tytuł rozdziału” bez poziomu konspektu."""
+    from docx.enum.style import WD_STYLE_TYPE
+    from docx.oxml import parse_xml
+    from docx.oxml.ns import nsdecls
+
+    def properties(xml):
+        return parse_xml(f'<w:pPr {nsdecls("w")}>{xml}</w:pPr>')
+
+    document = Document()
+    document.styles['Heading 1'].style_id = 'Heading1orig'
+    styles = {}
+    for name, style_id, based, own in (
+            ('Nagłówek 1', 'Nagwek1', None, ''), ('Naglowek 1', 'Naglowek1', None, ''),
+            ('Heading', 'Heading', None, ''), ('Heading Custom', 'HeadingCustom', None, ''),
+            ('Nagłówek tabeli', 'Nagwektabeli', None, ''), ('Tytuł opowiadania', 'Tytulopowiadania', 'Heading 1', ''),
+            ('Rozdział', 'Rozdzial', None, '<w:outlineLvl w:val="0"/>'), ('Tytuł rozdziału', 'Heading1', None, ''),
+            ('Lista punktowana', 'Listapunktowana', None, '<w:numPr><w:numId w:val="7"/></w:numPr>'),
+            ('Lista bez numeracji', 'Listabeznumeracji', 'Lista punktowana', '<w:numPr><w:numId w:val="0"/></w:numPr>'),
+            ('Pętla A', 'PetlaA', None, ''), ('Pętla B', 'PetlaB', 'Pętla A', '')):
+        style = styles[name] = document.styles.add_style(name, WD_STYLE_TYPE.PARAGRAPH)
+        style.style_id = style_id
+        if based:
+            style.base_style = document.styles[based]
+        if own:
+            style.element.append(properties(own))
+    styles['Pętla A'].base_style = styles['Pętla B']
+    for text, (style, own, _, _) in OUTLINE_CASES.items():
+        paragraph = document.add_paragraph(text, style=style)
+        for child in list(properties(own)):
+            paragraph._p.get_or_add_pPr().append(child)
+        if soft_break:
+            paragraph.runs[0].add_break()
+            paragraph.add_run('drugi wiersz')
+    return document
 
 
 FOOTNOTES = (

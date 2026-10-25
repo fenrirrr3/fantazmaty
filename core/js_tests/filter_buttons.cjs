@@ -9,7 +9,7 @@ for(const embedded of [true,false]){
  const callbacks=[],target=new Element();
  const fields=[{name:'filters_applied',value:'1',type:'hidden'},
  {name:'status',value:'new',type:'checkbox',labels:[{textContent:'Do recenzji'}]},
- {name:'status',value:'in_review',type:'checkbox',labels:[{textContent:'W recenzjach'}]},
+ {name:'status',value:'in_review',type:'checkbox',labels:[{textContent:'W trakcie'}]},
  {name:'accepted',value:'0',type:'hidden'},
  {name:'accepted',value:'1',type:'checkbox',labels:[{textContent:'Przyjęci'}]}];
  const form={elements:fields,after(node){this.afterNode=node;},querySelector(selector){return selector==='[data-active-filters-target]' && embedded ? target : null;}};

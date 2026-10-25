@@ -1,8 +1,10 @@
 """Proces roboczy konwertera: start (limit pamięci, brak pamięci, brak modułu resource), odnośniki między
-rozdziałami EPUB, obrazy odrzucane przy konwersji, raport błędu, którego nie da się zapisać, oraz zapis
-rzadszych edytorów: polskie nazwy stylów nagłówków i uwagi o elementach pominiętych w e-booku."""
+rozdziałami EPUB, obrazy odrzucane przy konwersji, raport błędu, którego nie da się zapisać, nagłówki według
+reguły nagłówków oraz zapis rzadszych edytorów: polskie nazwy stylów nagłówków i uwagi o elementach pominiętych
+w e-booku."""
 import json
 import os
+import re
 import runpy
 import struct
 import sys
@@ -15,6 +17,9 @@ from zipfile import ZipFile
 
 from django.test import SimpleTestCase, tag
 from docx import Document
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml import parse_xml
+from docx.oxml.ns import nsdecls
 from PIL import Image
 
 import core.services
@@ -25,7 +30,7 @@ from core.services.document_conversion_worker import convert, cross_chapter_link
 from core.services.document_errors import DocumentInputError
 
 from .editor_fixtures_exotic import localized_style_names
-from .support import png
+from .support import OUTLINE_CASES, outline_document, png
 
 BOOTSTRAP = Path(core.services.__file__).with_name('document_worker_bootstrap.py')
 
@@ -177,6 +182,34 @@ class EditorMarkupConversionTests(WorkerDirectoryMixin, SimpleTestCase):
         self.assertIn('<h1 id="section-1" class="align-left">Rozdział pierwszy</h1>', second)
         self.assertIn('<h2 id="section-2" class="align-left">Podrozdział</h2>', second)
         self.assertEqual(sections, [('Rozdział pierwszy', 0), ('Podrozdział', 1), ('Rozdział drugi', 0)])
+
+    def test_heading_tags_and_pdf_outline_follow_the_outline_rule(self):
+        """h1–h6 w e-booku (i konspekt PDF z h1–h3) dokładnie wtedy, gdy reguła nagłówków daje poziom 1–6
+        (OUTLINE_CASES, do tego styl Nagwek2 bez definicji): także styl oparty na nagłówku, styl „Rozdział” i akapit
+        z poziomem konspektu, „Naglowek 1”; „Heading” bez numeru i nagłówek z poziomem 9 to zwykły akapit.
+        Styl pochodny w kopii dla Mammotha nie zmienia formatowania (wyśrodkowanie ze stylu „Rozdział”)."""
+        document = outline_document()
+        document.styles['Rozdział'].paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        undefined = document.add_paragraph('styl Nagwek2 bez definicji')
+        undefined._p.insert(0, parse_xml(f'<w:pPr {nsdecls("w")}><w:pStyle w:val="Nagwek2"/></w:pPr>'))
+        levels = {text: level for text, (_, _, level, _) in OUTLINE_CASES.items()} | {undefined.text: 2}
+        source = self.directory / 'source.docx'
+        document.save(source)
+        sections, original = [], FPDF.start_section
+
+        def section_spy(pdf, name, level=0, strict=True):
+            sections.append((name, level))
+            return original(pdf, name, level, strict)
+        with patch.object(FPDF, 'start_section', section_spy):
+            convert(source, self.directory, ['epub', 'pdf'], 'Książka')
+        with ZipFile(self.directory / 'document.epub') as epub:
+            markup = ''.join(epub.read(name).decode('utf-8') for name in sorted(epub.namelist())
+                             if name.startswith('EPUB/chapter-'))
+        found = {text: (tag, attributes) for tag, attributes, text in re.findall(r'<(\w+)([^>]*)>([^<]+)</\1>', markup)}
+        self.assertEqual({text: found[text][0] for text in levels},
+                         {text: f'h{level}' if level else 'p' for text, level in levels.items()})
+        self.assertIn('class="align-center"', found['styl Rozdział z poziomem konspektu 0'][1])
+        self.assertEqual(sections, [(text, level - 1) for text, level in levels.items() if level and level <= 3])
 
     def test_warnings_about_equations_attachments_shapes_and_linked_images(self):
         """Uwagi o równaniach, wstawkach altChunk i obrazach połączonych są po polsku; wygląd kształtów VML

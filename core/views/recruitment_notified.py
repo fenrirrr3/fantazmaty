@@ -1,12 +1,12 @@
 """Save the notification flag independently of role decisions and candidate data."""
 from django.contrib.auth.decorators import login_required
-from django.core import signing
 from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
+from core.edit_versions import signed_state, signed_state_matches
 from core.models import Recruitment
 from core.permissions import coordinator_required, require_recruitment_mailbox
 
@@ -22,7 +22,7 @@ def notified_snapshot(user, record):
 
 
 def notified_token(user, record):
-    return signing.dumps(notified_snapshot(user, record), salt=SALT)
+    return signed_state(notified_snapshot(user, record), SALT)
 
 
 def save_notification(record, user, value, token, *, new_mail=False):
@@ -31,10 +31,7 @@ def save_notification(record, user, value, token, *, new_mail=False):
     if new_mail and not token:
         valid = not record.notified and record.notified_at is None
     else:
-        try:
-            valid = signing.loads(token, salt=SALT, max_age=86400) == notified_snapshot(user, record)
-        except (signing.BadSignature, TypeError):
-            valid = False
+        valid = signed_state_matches(token, notified_snapshot(user, record), SALT)
     if not valid:
         raise NotificationConflict('Status powiadomienia zmienił się lub formularz wygasł. Odśwież listę.')
     record.notified = value

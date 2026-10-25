@@ -7,7 +7,8 @@ from django.shortcuts import render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 
-from core.pagination import paginate_queryset
+from core.filtering import positive_id
+from core.pagination import paginate_items
 from core.public_guidelines import PublicGuidelines, external_page_headers
 from core.translation_scope import frontend_scope
 from texts.models import Anthology, Text
@@ -35,12 +36,14 @@ def valid_link_version(user, url, token):
 GUIDELINES = PublicGuidelines('Wytyczne dla ilustratorów', 'wytyczne-ilustracje.pdf', 'illustrations:illustration_guidelines_pdf')
 
 
-def visible_illustrations():
+def visible_illustrations(*, hide_published=True):
+    """Ilustracje tekstów w produkcji w antologiach ilustrowanych; domyślnie bez antologii gotowych (opublikowanych)."""
     from .models import Illustration
-    return frontend_scope(Illustration.objects).filter(
+    rows = frontend_scope(Illustration.objects).filter(
         text_id__in=active_production_texts(Text.objects.all()).values('pk'),
         text__anthology__has_illustrations=True,
-    ).exclude(text__anthology__status=Anthology.Status.READY)
+    )
+    return rows.exclude(text__anthology__status=Anthology.Status.READY) if hide_published else rows
 
 
 @never_cache
@@ -54,7 +57,7 @@ def external_illustrations(request):
     anthology = request.GET.get('anthology', '')
     choices = rows.values('text__anthology_id', 'text__anthology__title').order_by('text__anthology__title').distinct()
     if anthology:
-        rows = rows.filter(text__anthology_id=int(anthology)) if anthology.isascii() and anthology.isdecimal() and len(anthology) <= 18 else rows.none()
+        rows = rows.filter(text__anthology_id=anthology_id) if (anthology_id := positive_id(anthology)) else rows.none()
     status = request.GET.get('status', '')
     if status in ('Dostępne', 'Przypisane'):
         rows = rows.filter(public_status=status)
@@ -66,7 +69,7 @@ def external_illustrations(request):
     # warnings come from the text itself – illustration's own notes stay private.
     rows = rows.order_by('text__anthology__title', 'text__title', 'pk').values(
         'text__anthology__title', 'text__title', 'text__tags', 'text__genre', 'text__content_warnings', 'public_status')
-    page = paginate_queryset(request, rows)
+    page = paginate_items(request, rows)
     config = PublicIllustrationSettings.objects.filter(pk=1).values('drive_url', 'guidelines').first() or {
         'drive_url': '', 'guidelines': ''}
     return external_page_headers(render(request, 'core/external_illustrations.html', {

@@ -21,12 +21,12 @@ from django.urls import reverse
 from docx import Document
 
 from core.odkurzacz_forms import PROGRAM_MAX_UPLOAD_BYTES
-from core.program_test_support import run_program
 from core.services import program_jobs as jobs
 from core.services.document_converter import ConversionError, conversion_slot, run_converter
 from fantazmaty.testing import create_superuser
 
-from .support import REPETITION_FIELDS, IsolatedProgramDirsMixin, docx_with_images, downloaded, saved, sized_docx
+from .support import (REPETITION_FIELDS, IsolatedProgramDirsMixin, docx_with_images, downloaded, run_program, saved,
+                      sized_docx)
 
 
 def document(header=False):
@@ -180,14 +180,6 @@ class ProgramJobTests(IsolatedProgramDirsMixin, TestCase):
         self.assertTrue(response.closed)
         # Bez zaznaczonych reguł tekst wraca bez zmian.
         self.assertEqual(Document(BytesIO(content)).paragraphs[0].text, 'Ala  ma kota. Kot odwiedził ogród.')
-
-    def test_old_state_with_a_warning_count_still_renders(self):
-        """Regresja: stan zapisany przez starszą wersję (liczba uwag zamiast listy) psuł stronę."""
-        folder = jobs.root() / ('a' * 32)
-        folder.mkdir(parents=True)
-        jobs.write_json(folder / 'state.json', {'state': 'done', 'warnings': 2})
-        self.assertEqual(jobs.status(folder)['warnings'], [])
-        json.dumps(jobs.status(folder))
 
     def test_cancel_before_start_never_runs_converter(self):
         url, folder = self.create()

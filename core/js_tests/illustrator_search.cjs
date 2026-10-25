@@ -1,4 +1,4 @@
-// illustrator_search.js: wybór ilustratorów (pola wyboru) przez wyszukiwarkę – min. 2 znaki, wiele słów, polskie
+// illustrator_search.js (z lookup.js): wybór ilustratorów (pola wyboru) przez wyszukiwarkę – min. 2 znaki, wiele słów, polskie
 // znaki, e-mail, limit 10, pomijanie wybranych, usuwanie, klawiatura, reset formularza; nazwy zawsze jako tekst.
 const assert = require('node:assert/strict');
 const {Document, fakeTimers, runScript} = require('./support/dom.js');
@@ -19,7 +19,7 @@ doc.body.append(form);
 const changes = [];
 source.addEventListener('change', event => changes.push(event.target.closest('label').textContent.trim()));
 const timers = fakeTimers();
-runScript('illustrator_search.js', doc, {setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout});
+runScript(['lookup.js', 'illustrator_search.js'], doc, {setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout});
 const box = i => people[i].children[0];
 const type = value => { input.value = value; input.fire('input'); };
 const resultNames = () => results.children.map(row => row.children[0].textContent);
@@ -71,5 +71,5 @@ assert.deepEqual(selectedNames(), ['Grafik 2 · grafik2@example.testUsuń']);
 
 // Bez wymaganych elementów skrypt nic nie robi.
 const empty = new Document(); empty.body.append(empty.el('input', {id: 'illustrator-search'}));
-runScript('illustrator_search.js', empty, {setTimeout() {}});
+runScript(['lookup.js', 'illustrator_search.js'], empty, {setTimeout() {}});
 console.log('Illustrator search: min length, Polish/multi-word/e-mail search, limit, add/remove, keyboard, reset OK');

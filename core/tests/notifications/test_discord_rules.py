@@ -17,7 +17,7 @@ from django.utils import timezone
 from authors.models import Author
 from core.edit_versions import version_of
 from core.discord_notifications import (audiobook_changed, parse_mention, queue, render, send_waiting_reminders,
-                                        text_authors, workflow_changes)
+                                        workflow_changes)
 from core.discord_webhook import DeliveryError, send_message
 from core.models import DiscordNotification, DiscordRole, NotificationRule, WorkflowEvent
 from core.notification_models import validate_template_tags
@@ -27,13 +27,13 @@ from core.services.texts import change_scheduled_stage, start_assigned_stage
 from core.workflow_tokens import make_token
 from core.tests.anthologies.support import AnthologyPageData, admin_form_data
 from fantazmaty.testing import create_member, edit_token
-from fantazmaty.testing.workflow import WorkflowTestDataMixin
+from fantazmaty.testing.workflow import WorkflowTestDataMixin, start_reserved_first_verification
 from texts.models import Anthology, ForeignAuthor, Review, Text, TextTranslation
 from texts.novels import edit_token as novel_edit_token
 from workflow.models import WorkflowStage
 from workflow.services import (claim_stage, complete_stage, current_stage_queryset, finish_editing_to_coordinator,
                                resume_editing, send_text_to_author, send_to_first_verification,
-                               send_to_second_verification, start_first_verification)
+                               send_to_second_verification)
 
 StageType = WorkflowStage.StageType
 URL = 'https://discord.com/api/webhooks/123/abc_DEF-1'
@@ -125,7 +125,7 @@ def enable(trigger, template='[etap]: [tytuł]', mention=''):
 PREVIEW = re.compile(r' \[O, tutaj\]\(<[^>]+>\)$')
 
 
-@override_settings(DISCORD_WEBHOOKS={'Kanał': URL}, CMS_BASE_URL='https://cms.example/')
+@override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': URL}, CMS_BASE_URL='https://cms.example/')
 class WorkflowTriggerTests(WorkflowTestDataMixin, TestCase):
     def setUp(self):
         super().setUp()
@@ -280,7 +280,7 @@ class WorkflowTriggerTests(WorkflowTestDataMixin, TestCase):
         self.assertEqual(self.stage(StageType.EDITING).assignment.assigned_to, self.editor)
         self.assertEqual(set(DiscordNotification.objects.values_list('status', flat=True)), {'unknown'})
 
-    @override_settings(DISCORD_WEBHOOKS={'Kanał': URL, 'Testowy': OLD_CHANNEL_URL})
+    @override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': URL, 'Testowy': OLD_CHANNEL_URL})
     def test_workflow_events_are_logged_but_only_rules_reach_discord(self):
         """Operacja workflow zapisuje WorkflowEvent, ale na Discord idą wyłącznie wiadomości z reguł – dawny kanał
         „Testowy” nie dostaje nic; przy wyłączonych regułach nie ma żadnej wysyłki."""
@@ -294,7 +294,7 @@ class WorkflowTriggerTests(WorkflowTestDataMixin, TestCase):
         with self.captureOnCommitCallbacks(execute=True):
             claim_stage(self.text, StageType.FIRST_VERIFICATION, self.verifier_1)
             send_to_first_verification(self.text, self.editor, ended_at=self.today)
-            stage = start_first_verification(self.text, self.verifier_1, started_at=self.today)
+            stage = start_reserved_first_verification(self.text, self.verifier_1, started_at=self.today)
             complete_stage(stage, self.verifier_1, self.today)
         self.assertGreater(WorkflowEvent.objects.count(), events)
         self.assertEqual(self.sent.call_count, DiscordNotification.objects.count())
@@ -302,7 +302,7 @@ class WorkflowTriggerTests(WorkflowTestDataMixin, TestCase):
         self.assertEqual({call.args[0] for call in self.sent.call_args_list}, {URL})
 
 
-@override_settings(DISCORD_WEBHOOKS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
+@override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
 class ReviewTriggerTests(TestCase):
     def setUp(self):
         enable('review_new', 'Do recenzji: [tytuł] ([gatunek])')
@@ -361,7 +361,7 @@ class ReviewTriggerTests(TestCase):
         self.assertEqual(DiscordNotification.objects.count(), 1)
 
 
-@override_settings(DISCORD_WEBHOOKS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
+@override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
 class AdminPanelTests(TestCase):
     def setUp(self):
         self.admin = get_user_model().objects.create_superuser('admin', 'admin@example.com', 'test')
@@ -491,7 +491,7 @@ class AdminPanelTests(TestCase):
                 self.assertEqual('Uwaga: to powiadomienie jest WYŁĄCZONE' in response.content.decode(), warned)
 
 
-@override_settings(DISCORD_WEBHOOKS={'Kanał': URL})
+@override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': URL})
 class QueueDeliveryTests(TestCase):
     def send(self, rule_channel='Kanał', mention='', effect=None):
         rule = enable('stage_completed', '[etap]: [tytuł]', mention)
@@ -542,7 +542,7 @@ class QueueDeliveryTests(TestCase):
         self.assertIsNone(queue('stage_completed', context=CONTEXT))
 
 
-@override_settings(DISCORD_WEBHOOKS={'Kanał': URL})
+@override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': URL})
 class ResendCommandTests(TestCase):
     """Komenda resend_discord_notifications: które stany i w jakim wieku są ponawiane."""
 
@@ -586,7 +586,7 @@ class ResendCommandTests(TestCase):
         self.assertEqual((item.status, item.message_id), ('sent', '56'))
 
 
-@override_settings(DISCORD_WEBHOOKS={'Kanał': URL})
+@override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': URL})
 class AdminAccessTests(TestCase):
     def test_only_superuser_can_open_settings_and_send_tests(self):
         coordinator = create_member('koordynator', 'Koordynator')
@@ -609,7 +609,7 @@ class AdminAccessTests(TestCase):
         self.assertFalse(DiscordNotification.objects.exists())
 
 
-@override_settings(DISCORD_WEBHOOKS={'Kanał': URL, 'Przypomnienia': URL}, CMS_BASE_URL='https://cms.example')
+@override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': URL, 'Przypomnienia': URL}, CMS_BASE_URL='https://cms.example')
 class WaitingReminderTests(WorkflowTestDataMixin, TestCase):
     """Przypomnienia po 7, 14 i 21 dniach od ogłoszenia, że etap jest do wzięcia."""
 
@@ -705,7 +705,7 @@ class WaitingReminderTests(WorkflowTestDataMixin, TestCase):
         self.assertEqual(self.reminders(), [7])
 
 
-@override_settings(DISCORD_WEBHOOKS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
+@override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
 class WaitingReminderAdminTests(TestCase):
     def setUp(self):
         self.client.force_login(get_user_model().objects.create_superuser('admin', 'admin@example.com', 'test'))
@@ -776,7 +776,7 @@ class WaitingReminderAdminTests(TestCase):
         sent.assert_not_called()
 
 
-@override_settings(DISCORD_WEBHOOKS={'Recenzje': URL}, CMS_BASE_URL='https://cms.example')
+@override_settings(DISCORD_WEBHOOK_SECRETS={'Recenzje': URL}, CMS_BASE_URL='https://cms.example')
 class ReviewReminderTests(TestCase):
     """Zgłoszenie do recenzji, którego nikt nie wziął, też dostaje przypomnienia."""
 
@@ -836,13 +836,13 @@ class AuthorTagTests(TestCase):
             'kilku autorów w kolejności podpisu': ([('Zofia', 'Zięba', ''), ('Adam', 'Abacki', 'Ada')], 'Ada, Zofia Zięba'),
             'ten sam pseudonim dwóch autorów raz': ([('Jan', 'Kowal', 'Mrok'), ('Jan', 'Nowak', 'Mrok')], 'Mrok'),
         }
-        self.assertEqual(text_authors(Text(title='Niezapisany', length=1)), '')
+        self.assertEqual(Text(title='Niezapisany', length=1).source_authors_display, '')
         for case, (people, expected) in cases.items():
             with self.subTest(case):
                 text = Text.objects.create(title=case, length=10)
                 text.authors.set([author(*person) for person in people])
-                self.assertEqual(text_authors(text), expected)
-                self.assertEqual(render('„[tytuł]” – [autor]', {'tytuł': 'T', 'autor': text_authors(text)}),
+                self.assertEqual(text.source_authors_display, expected)
+                self.assertEqual(render('„[tytuł]” – [autor]', {'tytuł': 'T', 'autor': text.source_authors_display}),
                                  f'„T” – {expected or "–"}')
 
     def test_translation_shows_foreign_authors(self):
@@ -850,10 +850,10 @@ class AuthorTagTests(TestCase):
         text = Text.objects.create(title='Przekład', length=10, anthology=book)
         TextTranslation.objects.get_or_create(text=text)[0].foreign_authors.set([
             ForeignAuthor.objects.create(first_name='Ursula', last_name='Le Guin')])
-        self.assertEqual(text_authors(text), 'Ursula Le Guin')
+        self.assertEqual(text.source_authors_display, 'Ursula Le Guin')
 
 
-@override_settings(DISCORD_WEBHOOKS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
+@override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
 class AuthorInNotificationsTests(WorkflowTestDataMixin, TestCase):
     """[autor] jest podstawiany we wszystkich wiadomościach o tekstach; przy zgłoszeniach do recenzji
     (anonimowych dla recenzentów) zawsze „(anonimowo)”."""
@@ -935,7 +935,7 @@ class StageCompletedDefaultTests(TestCase):
                 self.assertEqual(audiobook.content, 'Zakończono montaż: [tytuł]')
 
 
-@override_settings(DISCORD_WEBHOOKS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
+@override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
 class StageCompletedTests(WorkflowTestDataMixin, TestCase):
     """Jedna reguła „Rozpoczęcie i zakończenie etapu” dla wszystkich etapów; każde przekazanie redakcji z celem
     w [etap], bez wiadomości przy przekazaniu pliku autorowi i jego powrocie."""
@@ -1098,7 +1098,7 @@ class StageCompletedTests(WorkflowTestDataMixin, TestCase):
 
 
 @tag('slow')
-@override_settings(DISCORD_WEBHOOKS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
+@override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
 class StageCompletedHttpTests(WorkflowTestDataMixin, TestCase):
     """Jak na produkcji: włączona reguła „Rozpoczęcie i zakończenie etapu” z kanałem i treścią, operacje wyłącznie
     przez żądania HTTP (karta tekstu, „Teksty do wzięcia”, admin). Każdy krok porównuje wiadomości o rozpoczęciu
@@ -1345,7 +1345,7 @@ class StageCompletedHttpTests(WorkflowTestDataMixin, TestCase):
 Setting = Anthology.DiscordNotifications
 
 
-@override_settings(DISCORD_WEBHOOKS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
+@override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
 class AnthologyNotificationSettingTests(WorkflowTestDataMixin, TestCase):
     """Ustawienie antologii „Powiadomienia Discord” (także dla powieści i Ekstraktów – to samo pole): „Włączone”
     – wszystko, „Tylko rozpoczęcia i zakończenia etapów” – tylko ta reguła, „Wyłączone” – nic o tekstach antologii
@@ -1518,7 +1518,7 @@ class AnthologyNotificationFormTests(AnthologyPageData, TestCase):
         self.assertEqual(self.book.discord_notifications, Setting.STAGES)
 
 
-@override_settings(DISCORD_WEBHOOKS={'Kanał': 'https://discord.com/api/webhooks/1/tajny'})
+@override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': 'https://discord.com/api/webhooks/1/tajny'})
 class DiagnoseCommandTests(TestCase):
     """Komenda discord_diagnose: stan reguł, historia wysyłek i dziennik zmian – bez adresów webhooków
     i bez danych osób (tylko tytuły tekstów)."""
@@ -1581,7 +1581,7 @@ class DiagnoseCommandTests(TestCase):
                                                      'Uwagi: błędna konfiguracja kanałów na serwerze (DISCORD_WEBHOOKS)']),
         }
         for case, (webhooks, expected) in cases.items():
-            with self.subTest(case), override_settings(DISCORD_WEBHOOKS=webhooks):
+            with self.subTest(case), override_settings(DISCORD_WEBHOOK_SECRETS=webhooks):
                 out = StringIO()
                 call_command('discord_diagnose', stdout=out)
                 report = out.getvalue()

@@ -5,6 +5,24 @@ from django.core.exceptions import ValidationError
 from core.normalization import NormalizedFormMixin, REVIEW_FIELDS
 from texts.models import Review, Text, Anthology
 
+
+def require_warning_confirmation(form, payload, salt, message):
+    """Potwierdzenie ostrzeżeń zgłoszenia (pola confirm_submission_warnings i submission_warnings_token).
+
+    Podpis wiąże potwierdzenie z pokazanymi ostrzeżeniami i danymi (payload). Bez ważnego potwierdzenia formularz
+    dostaje nowy podpis, odznaczone pole potwierdzenia i błąd z komunikatem.
+    """
+    from core.edit_versions import signed_state_matches
+    data = form.cleaned_data
+    if data.get("confirm_submission_warnings") and signed_state_matches(
+            data.get("submission_warnings_token", ""), payload, salt, max_age=3600):
+        return
+    form.data = form.data.copy()
+    form.data[form.add_prefix("submission_warnings_token")] = signing.dumps(payload, salt=salt, compress=True)
+    form.data[form.add_prefix("confirm_submission_warnings")] = ""
+    form.add_error("confirm_submission_warnings", message)
+
+
 class ReviewAdminForm(NormalizedFormMixin, forms.ModelForm):
     normalization_fields = REVIEW_FIELDS
     confirm_source_mismatch = forms.BooleanField(label='Potwierdzam rozbieżność tytułu lub autorów z wybranym tekstem', required=False)
@@ -179,47 +197,10 @@ class ReviewAdminForm(NormalizedFormMixin, forms.ModelForm):
             "warnings": list(self.submission_warnings),
         }
 
-        previous_payload = None
-        token = cleaned_data.get("submission_warnings_token", "")
-
-        if token:
-            try:
-                previous_payload = signing.loads(
-                    token,
-                    salt=self.WARNING_TOKEN_SALT,
-                    max_age=3600,
-                )
-            except signing.BadSignature:
-                pass
-
-        confirmed = (
-            cleaned_data.get("confirm_submission_warnings")
-            and previous_payload == payload
+        require_warning_confirmation(
+            self, payload, self.WARNING_TOKEN_SALT,
+            " ".join(self.submission_warnings) + " Sprawdź zgłoszenie, zaznacz potwierdzenie i ponownie zapisz formularz.",
         )
-
-        if not confirmed:
-            # Podpis wiąże potwierdzenie z uprzednio pokazanym
-            # ostrzeżeniem oraz konkretnymi danymi zgłoszenia.
-            token = signing.dumps(
-                payload,
-                salt=self.WARNING_TOKEN_SALT,
-                compress=True,
-            )
-            self.data = self.data.copy()
-            self.data[
-                self.add_prefix("submission_warnings_token")
-            ] = token
-            self.data[
-                self.add_prefix("confirm_submission_warnings")
-            ] = ""
-
-            self.add_error(
-                "confirm_submission_warnings",
-                " ".join(self.submission_warnings)
-                + " Sprawdź zgłoszenie, zaznacz potwierdzenie "
-                "i ponownie zapisz formularz.",
-            )
-
         return cleaned_data
 
 

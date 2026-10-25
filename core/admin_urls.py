@@ -22,7 +22,7 @@ SEGMENTS = {
     "core": "organizacja", "anthologycorrection": "uwagi-do-antologii",
     "login": "logowanie", "logout": "wylogowanie", "password_change": "zmiana-hasla",
     "done": "gotowe", "autocomplete": "podpowiedzi", "jsi18n": "tlumaczenia",
-    "auth": "konta", "user": "uzytkownicy", "group": "grupy",
+    "auth": "konta", "user": "uzytkownicy",
     "authors": "autorzy", "author": "autor", "authornote": "notatki-autora",
     "blacklistedauthor": "czarna-lista", "blacklist": "czarna-lista",
     "texts": "teksty", "text": "tekst", "review": "recenzja",
@@ -33,32 +33,26 @@ SEGMENTS = {
     "workflow": "etapy", "workflowstage": "etap-pracy", "workflowroleassignment": "przypisanie-roli",
     "illustrations": "ilustracje", "illustration": "ilustracja", "illustrator": "ilustrator", "coverproposal": "propozycja-okladki",
     "add": "dodaj", "change": "edytuj", "delete": "usun", "history": "historia",
-    "password": "haslo", "author-data": "dane-autora", "author-details": "szczegoly-autora",
+    "password": "haslo", "author-details": "szczegoly-autora",
 }
 
 
+# Polska nazwa sekcji panelu → etykieta aplikacji (lista modeli aplikacji: /panel/<sekcja>/).
+APP_LABELS = {SEGMENTS[label]: label for label in ("core", "authors", "texts", "people", "workflow", "illustrations",
+                                                    "auth")}
+
+
 class PolishAppConverter:
-    regex = "autorzy|teksty|zespol|etapy|ilustracje|konta|organizacja"
+    regex = "|".join(APP_LABELS)
 
     def to_python(self, value):
-        return {"organizacja": "core", "autorzy": "authors", "teksty": "texts", "zespol": "people",
-                "etapy": "workflow", "ilustracje": "illustrations", "konta": "auth"}.get(value, value)
+        return APP_LABELS[value]
 
     def to_url(self, value):
         return SEGMENTS.get(value, value)
 
 
 register_converter(PolishAppConverter, "polish_app")
-
-
-def _unnamed_patterns(patterns):
-    result = []
-    for item in patterns:
-        if isinstance(item, URLResolver):
-            result.append(URLResolver(item.pattern, _unnamed_patterns(item.url_patterns), item.default_kwargs))
-        else:
-            result.append(URLPattern(item.pattern, item.callback, item.default_args))
-    return result
 
 
 def polish_admin_patterns(patterns):
@@ -78,15 +72,4 @@ def polish_admin_patterns(patterns):
                 item.default_kwargs, item.app_name, item.namespace))
         else:
             output.append(URLPattern(pattern, item.callback, item.default_args, item.name))
-    # Canonical Polish routes come first; unnamed aliases preserve old links.
-    for item in patterns:
-        if isinstance(item.pattern, RoutePattern):
-            old = str(item.pattern)
-            translated = "/".join(SEGMENTS.get(part, part) for part in old.split("/"))
-            if old != translated:
-                pattern = RoutePattern(old, is_endpoint=isinstance(item, URLPattern))
-                if isinstance(item, URLResolver):
-                    output.append(URLResolver(pattern, _unnamed_patterns(item.url_patterns), item.default_kwargs))
-                else:
-                    output.append(URLPattern(pattern, item.callback, item.default_args))
     return output

@@ -56,7 +56,9 @@ class ReviewStatusTests(ReviewFixtures):
         self.assertEqual(self.review.get_status_display(), 'Do recenzji')
         assign_reviewer(user=self.reviewer, review_id=self.review.pk)
         self.review.refresh_from_db()
-        self.assertEqual(self.review.get_status_display(), 'W recenzjach')
+        self.assertEqual(self.review.get_status_display(), 'W trakcie')
+        self.assertIn(('in_review', 'W trakcie'),
+                      review_list_context(user=self.coordinator, params=QueryDict())['status_choices'])
         self.client.force_login(self.coordinator)
         page = self.client.get(reverse('core:assigned_review_detail', args=[self.review.pk]))
         response = self.client.post(reverse('core:update_review_status', args=[self.review.pk]),

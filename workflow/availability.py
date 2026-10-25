@@ -8,7 +8,6 @@ def eligible_role_users(role):
     """Candidates for a new assignment, using the same profile roles as writes."""
     from django.contrib.auth import get_user_model
     from django.db.models import Q
-    from django.utils import timezone
     from people.models import Vacation
     from workflow.services import ROLE_GROUPS
 
@@ -24,10 +23,7 @@ def eligible_role_users(role):
     users = users.filter(Q(is_superuser=True) | (Q(person_profile__is_active=True) & permitted))
     if role == A.Role.STYLING:
         users = users.filter(is_superuser=True)
-    now = timezone.now()
-    leave = Vacation.objects.filter(
-        person__user__isnull=False, start_date__lte=timezone.localdate(now),
-    ).filter(Q(until_revoked=True) | Q(end_date__gt=now)).values('person__user_id')
+    leave = Vacation.objects.filter(person__user__isnull=False).active().values('person__user_id')
     return users.exclude(pk__in=leave).distinct().order_by('last_name', 'first_name', 'pk')
 
 
@@ -63,14 +59,14 @@ def role_access_reason(user, role, *, access=None):
 def claim_reason(stage, user, stages, assignments, *, access=None):
     if stage.text.anthology_id and stage.text.anthology.status == 'abandoned':
         return 'Antologia została porzucona.'
-    from workflow.services import STAGE_ROLES
+    from workflow.services import OPPOSITE_VERIFIER, STAGE_ROLE_MAP
     access = claim_access(user) if access is None else access
     if stage.text.anthology_id and stage.text.anthology.status == "ready":
         return "Antologia jest gotowa."
     if not stage.is_current or not stage.is_released:
         return "Etap czeka na zakończenie poprzedniego."
     kind = stage.stage_type
-    role = A.Role.EDITOR if kind == "ready_for_editing" else STAGE_ROLES.get(kind)
+    role = STAGE_ROLE_MAP.get(kind)
     if not access["member"]:
         return "Brak aktywnego dostępu do zespołu."
     if any(s.stage_type in ("ready", "withdrawn") for s in stages):
@@ -93,7 +89,7 @@ def claim_reason(stage, user, stages, assignments, *, access=None):
     occupied = {a.role: a.assigned_to_id for a in assignments if a.assigned_to_id}
     if role in occupied:
         return "Rola ma już przypisanego wykonawcę."
-    opposite = {"verifier_1": "verifier_2", "verifier_2": "verifier_1"}.get(role)
+    opposite = OPPOSITE_VERIFIER.get(role)
     if opposite and occupied.get(opposite) == user.pk:
         return "Pierwszą i drugą weryfikację wykonują różne osoby."
     if stage.repetition_id:
@@ -135,16 +131,22 @@ def can_claim_fourth_proofreading(user):
     )
 
 
-def first_proofreading_work(user):
-    """All executions, including imports and former performers after handoffs."""
+def first_proofreading_assignments():
+    """Wykonana lub rozpoczęta pierwsza korekta: wszystkie wykonania, także z importu
+    i oddane innej osobie w przekazaniu pracy."""
     from django.db.models import Q
     from django.utils import timezone
 
-    return A.objects.filter(role=A.Role.PROOFREADER_1, assigned_to_id=user.pk).filter(
+    return A.objects.filter(role=A.Role.PROOFREADER_1).filter(
         Q(stages__is_completed=True)
         | Q(stages__started_at__lte=timezone.localdate())
         | Q(handoffs_from__isnull=False)
     )
+
+
+def first_proofreading_work(user):
+    """Pierwsza korekta wykonywana przez tę osobę (first_proofreading_assignments)."""
+    return first_proofreading_assignments().filter(assigned_to_id=user.pk)
 
 
 def ensure_distinct_proofreader(text, role, user):

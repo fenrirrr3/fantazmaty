@@ -30,7 +30,7 @@
                             <p>Komentarze i śledzone zmiany zostają w pliku (z nazwiskami autorów i datami). Reguły poprawiają tekst widoczny po przyjęciu zmian – tekstu usuniętego śledzoną zmianą nie zmieniają.</p>
                             <p>Reguły redakcyjne poprawiają cały tekst: treść, tabele, pola tekstowe, nagłówki, stopki i przypisy. Zmiany są wprowadzane bez śledzenia, chyba że wybierzesz pobranie z zaznaczonymi zmianami. Puste akapity pozostają, chyba że wybierzesz ich scalanie.</p>
                             {% include "core/includes/program_document_note.html" %}
-                            <p>Przy większym dokumencie pobieranie może rozpocząć się po chwili{% if superuser_limits %}, a jako superuser możesz czekać do {{ superuser_time_limit }} sekund{% endif %}. Oryginał pozostaje na Twoim komputerze.</p>
+                            <p>Przy większym dokumencie pobieranie może rozpocząć się po chwili{% if superuser %}, a jako superuser możesz czekać do {{ superuser_time_limit }} sekund{% endif %}. Oryginał pozostaje na Twoim komputerze.</p>
                         </div>
                     </details>
                 </div>
@@ -141,7 +141,7 @@
                             <p>Jeden format pobierzesz jako osobny plik, kilka jako archiwum ZIP. Nazwa pliku pozostaje taka jak nazwa dokumentu wejściowego; zmienia się tylko rozszerzenie. Pliki wewnątrz ZIP również zachowują tę nazwę.</p>
                             {% include "core/includes/program_document_note.html" %}
                             <p>Uwagi konwertera (pominięte elementy, uproszczenia) pojawią się na tej stronie po zakończeniu pracy. Wynik jest usuwany z serwera zaraz po pobraniu.</p>
-                            <p>Poczekaj na pobranie pliku. Konwersja może potrwać do {% if superuser_limits %}{{ superuser_time_limit }}{% else %}90{% endif %} sekund; nie wysyłaj formularza ponownie w tym czasie.</p>
+                            <p>Poczekaj na pobranie pliku. Konwersja może potrwać do {% if superuser %}{{ superuser_time_limit }}{% else %}90{% endif %} sekund; nie wysyłaj formularza ponownie w tym czasie.</p>
                         </div>
                     </details>
                 </div>
@@ -158,7 +158,7 @@
                     <div class="help-tip-body">
                         <p>Konwerter ustawia Times New Roman 12 pkt, interlinię 1,5 i wcięcie 1,25 cm, bez odstępów przed i po akapicie. Zachowuje puste akapity, wyrównanie, kursywę i pogrubienia. Wyśrodkowane akapity pozostają bez wcięcia.</p>
                         <p><strong>PDF:</strong> format A4 z marginesami 2,5 cm, czcionka podobna do Times New Roman, nagłówki i stopki dokumentu (bez stopki – numery stron), spis treści z Nagłówków 1–3; podział strony (Ctrl+Enter) zaczyna nową stronę.</p>
-                        <p><strong>EPUB:</strong> pomija nagłówki i stopki, a podział strony i separator sceny (np. * * *) pokazuje jako odstęp. Nagłówki Worda (Nagłówek 1, 2, 3) wyznaczają rozdziały EPUB i spis treści.</p>
+                        <p><strong>EPUB:</strong> pomija nagłówki i stopki, a podział strony i separator sceny (np. * * *) pokazuje jako odstęp. Nagłówki Worda (poziomy 1–3 w panelu nawigacji, np. Nagłówek 1, 2, 3) wyznaczają rozdziały EPUB i spis treści.</p>
                         <p>Złożony układ może się zmienić – sprawdź wynik po pobraniu.</p>
                     </div>
                 </details>
@@ -215,8 +215,8 @@
                             <p>Analiza obejmuje treść z tabelami i polami tekstowymi oraz osobno nagłówki, stopki i przypisy; pomija hiperłącza, pola Worda (np. spis treści, numery stron) i kontrolki zawartości.</p>
                             <p>Powtórzenia mają kolorowe litery, a własne słowa – żółte tło. Pozostałe oznaczenia zależą od wybranych opcji. Kolory mogą różnić się przy kolejnych uruchomieniach. Przejrzyj zaznaczone fragmenty po pobraniu.</p>
                             {% include "core/includes/program_document_note.html" %}
-                            {% if superuser_limits %}<p>Jako superuser nie masz limitu wielkości analizy (zwykle 500 tys. znaków, 20 tys. w akapicie), a przetwarzanie może trwać do {{ superuser_time_limit }} sekund.</p>{% endif %}
-                            <p>Przetwarzanie może potrwać do {% if superuser_limits %}{{ superuser_time_limit }}{% else %}90{% endif %} sekund. Oryginał pozostaje bez zmian.</p>
+                            {% if superuser %}<p>Jako superuser nie masz limitu wielkości analizy (zwykle 500 tys. znaków, 20 tys. w akapicie), a przetwarzanie może trwać do {{ superuser_time_limit }} sekund.</p>{% endif %}
+                            <p>Przetwarzanie może potrwać do {% if superuser %}{{ superuser_time_limit }}{% else %}90{% endif %} sekund. Oryginał pozostaje bez zmian.</p>
                         </div>
                     </details>
                 </div>
@@ -290,7 +290,7 @@
     </div>
     </div>
 </details>
-{% if superuser_programs %}
+{% if superuser %}
 {# ===== Scalanie DOCX (tylko superuser) ===== #}
 <details class="details-card odkurzacz collapsible-card program-tool" id="program-merge" {% if merge_open %}open{% endif %}>
     <summary><h2 class="program-title">Scalanie DOCX</h2>
@@ -385,7 +385,7 @@
 {# ===== Podział DOCX (tylko superuser) ===== #}
 <details class="details-card odkurzacz collapsible-card program-tool" id="program-split" {% if split_open %}open{% endif %}>
     <summary><h2 class="program-title">Podział DOCX</h2>
-        <span class="program-lead">Dzieli dokument na osobne pliki według akapitów ze stylem Nagłówek 1.</span>
+        <span class="program-lead">Dzieli dokument na osobne pliki według Nagłówków 1 (poziom 1 w panelu nawigacji Worda).</span>
         <span class="dropdown-arrow" aria-hidden="true">▾</span></summary>
     <div class="card-body">
     <form method="post" enctype="multipart/form-data" data-program-job>
@@ -398,7 +398,7 @@
                     <label for="{{ split_form.document.id_for_label }}">{{ split_form.document.label }}</label>
                     <details class="help-tip"><summary aria-label="Pomoc: jak działa podział" title="Pomoc"><span aria-hidden="true">?</span></summary>
                         <div class="help-tip-body">
-                            <p>Każdy akapit ze stylem Nagłówek 1 zaczyna nowy plik, który trwa do kolejnego Nagłówka 1. Treść przed pierwszym nagłówkiem (np. strona tytułowa antologii) jest pomijana.</p>
+                            <p>Każdy Nagłówek 1 – akapit, który panel nawigacji Worda pokazuje na poziomie 1 (styl Nagłówek 1, styl na nim oparty albo poziom konspektu 1) – zaczyna nowy plik, który trwa do kolejnego Nagłówka 1. Treść przed pierwszym nagłówkiem (np. strona tytułowa antologii) jest pomijana.</p>
                             <p>Nazwa pliku to numer i tekst nagłówka, np. „01 Tytuł.docx”. Pliki pobierzesz razem jako archiwum ZIP.</p>
                             <p>Po podziale przycisk „Wyślij autorom” dopasuje pliki do tekstów wybranej antologii i – po sprawdzeniu listy kontrolnej – wyśle każdemu autorowi jego plik.</p>
                             <p>Program nie zmienia tekstu: zostają style, numeracja list, obrazy, przypisy, komentarze i śledzone zmiany – każdy plik dostaje tylko te ze swojego fragmentu (komentarz trafia do pliku ze swoim odwołaniem). Obrazy połączone z plikami spoza dokumentu znikają razem z linkiem. Format strony pochodzi z ostatniej sekcji dokumentu.</p>
@@ -467,4 +467,4 @@
 </details>
 {% endif %}
 {% endblock %}
-{% block scripts %}<script src="{% static 'core/odkurzacz.js' %}" defer></script><script src="{% static 'core/program-help.js' %}" defer></script><script src="{% static 'core/program-jobs.js' %}" defer></script>{% if superuser_programs %}<script src="{% static 'core/program-files.js' %}" defer></script>{% endif %}{% endblock %}
+{% block scripts %}<script src="{% static 'core/odkurzacz.js' %}" defer></script><script src="{% static 'core/program-help.js' %}" defer></script><script src="{% static 'core/program-jobs.js' %}" defer></script>{% if superuser %}<script src="{% static 'core/program-files.js' %}" defer></script>{% endif %}{% endblock %}

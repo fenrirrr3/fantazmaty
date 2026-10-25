@@ -13,7 +13,7 @@
         <section class="details-card">
             <h2>Dane zgłoszenia</h2>
             <p><strong>E-mail:</strong> {{ candidate_email|default:'–'|urlize }}</p>
-            <p><strong>Wybrane role:</strong> {% firstof record.mail_roles_display record.get_department_display %}</p>
+            <p><strong>Wybrane role:</strong> {{ record.mail_roles_display }}</p>
             <p><strong>Data nadesłania:</strong> {% if record.mail_received_at %}{{ record.mail_received_at|date:'d.m.Y H:i' }}{% else %}{{ record.submitted_at|date:'d.m.Y' }}{% endif %}</p>
             <p><strong>Powiadomiony:</strong> {{ record.notified|yesno:'Tak,Nie' }}{% if record.notified_at %} ({{ record.notified_at|date:'d.m.Y H:i' }}){% endif %}</p>
             <p><strong>Załączniki pobrane:</strong> {% if attachment_downloads %}Tak ({{ attachment_downloads.0.downloaded_at|date:'d.m.Y H:i' }}){% else %}Nie{% endif %}</p>

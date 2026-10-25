@@ -68,6 +68,8 @@ class VocabularyMergeTests(TestCase):
         response = self.client.get(url, {'target': self.target.pk})
         self.assertContains(response, 'Kosmos')
         self.assertContains(response, 'Zatwierdź scalenie')
+        self.assertEqual(response.context['change_page'].sort_columns,
+                         {'Tekst / powieść': 'title', 'Przed': 'before', 'Po': 'after'})
         self.client.force_login(self.member)
         self.assertEqual(self.client.get(url).status_code, 403)
         response = self.client.post(reverse('core:vocabulary_list'), {'kind': 'tag', 'name': 'test'})

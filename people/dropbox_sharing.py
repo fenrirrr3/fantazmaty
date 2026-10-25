@@ -104,7 +104,7 @@ def is_gone(error):
 
 
 def is_configured():
-    return all(getattr(settings, name, "") for name in ("DROPBOX_APP_KEY", "DROPBOX_APP_SECRET", "DROPBOX_REFRESH_TOKEN"))
+    return all((settings.DROPBOX_APP_KEY, settings.DROPBOX_APP_SECRET, settings.DROPBOX_REFRESH_TOKEN))
 
 
 def message_for(summary):

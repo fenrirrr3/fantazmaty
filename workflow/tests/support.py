@@ -1,6 +1,7 @@
 """Pomocniki testów procesu tekstów używane w kilku plikach tego pakietu."""
 from contextlib import contextmanager
 from datetime import timedelta
+from types import SimpleNamespace
 
 from django.urls import reverse
 from django.utils import timezone
@@ -10,11 +11,11 @@ from core.edit_versions import version_of
 from core.selectors.texts import user_workflow_summary
 from fantazmaty.testing.workflow import StatusAssignmentFixtures, WorkflowTestDataMixin
 from people.models import Role
-from texts.models import Anthology, Text
+from texts.models import Anthology
 from workflow.admin_add_stage import add_missing_stage
 from workflow.import_context import importing_completed
 from workflow.models import WorkflowRoleAssignment, WorkflowStage
-from workflow.read_queries import annotate_my_work
+from workflow.read_queries import classify_work
 
 
 @contextmanager
@@ -25,6 +26,12 @@ def importing():
         yield
     finally:
         importing_completed.reset(token)
+
+
+def work_state(user, text):
+    """Stan pracy osoby przy tekście: work_active, work_waiting, work_completed (jak w „Moich tekstach”)."""
+    states = classify_work(user, timezone.localdate())
+    return SimpleNamespace(**{'work_' + name: text.pk in ids for name, ids in states.items()})
 
 
 def add_roles(user, *names):
@@ -43,8 +50,7 @@ class AnthologyWorkflowMixin(WorkflowTestDataMixin):
 
     def work(self, user=None):
         """Klasyfikacja pracy osoby (w toku / oczekuje / zakończona) dla tekstu testowego."""
-        return annotate_my_work(Text.objects.all(), user or self.editor,
-                                timezone.localdate()).get(pk=self.text.pk)
+        return work_state(user or self.editor, self.text)
 
     def detail(self, user=None):
         self.client.force_login(user or self.editor)

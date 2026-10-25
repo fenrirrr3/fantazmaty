@@ -4,11 +4,10 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction, IntegrityError
-from django.db.models import F
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
 from core.forms import (
     CompleteStageForm,
@@ -62,9 +61,7 @@ def _form_error_message(form):
 
 def _get_current_stage(stage_id):
     return get_object_or_404(
-        WorkflowStage.objects.select_related("text").current_cycle().filter(
-            is_released=True, workflow_cycle=F("text__current_workflow_cycle"),
-        ),
+        WorkflowStage.objects.select_related("text").current_cycle().filter(is_released=True),
         pk=stage_id,
     )
 
@@ -97,30 +94,36 @@ def _lock_current_stage(stage_id):
     return stage
 
 
-def _perform_text_transition(
-    request,
-    text_id,
-    *,
-    transition,
-    date_parameter,
-    success_message,
-):
-    text = get_object_or_404(Text, pk=text_id)
+def _run(request, operation, success_message, denied_message="Nie masz uprawnień do tej operacji."):
+    """Wykonuje operację workflow i pokazuje wynik jako komunikat; zwraca True, gdy się udała.
 
+    Odmowy serwisu (ValidationError, PermissionDenied) stają się komunikatem błędu. Komunikat
+    sukcesu może być funkcją – wtedy powstaje dopiero po wykonaniu operacji.
+    """
     try:
-        with transaction.atomic():
-            text = Text.objects.select_for_update().get(pk=text_id)
-            from core.workflow_tokens import check_token
-            check_token(request.POST.get('workflow_token', ''), text, request.user)
-            transition(text=text, user=request.user, **{date_parameter: timezone.localdate()})
+        operation()
     except ValidationError as error:
         messages.error(request, " ".join(error.messages))
     except PermissionDenied as error:
-        messages.error(request, str(error) or 'Nie masz uprawnień do tej operacji.')
+        messages.error(request, str(error) or denied_message)
     else:
-        messages.success(request, success_message)
+        messages.success(request, success_message() if callable(success_message) else success_message)
+        return True
+    return False
 
-    return _detail_redirect(text.pk)
+
+def _perform_text_transition(request, text_id, *, transition, success_message, date_parameter=None):
+    """Przejście na całym tekście: blokada tekstu, token strony, serwis (z dzisiejszą datą, jeśli ją przyjmuje)."""
+    def operation():
+        with transaction.atomic():
+            text = get_object_or_404(Text.objects.select_for_update(), pk=text_id)
+            from core.workflow_tokens import check_token
+            check_token(request.POST.get('workflow_token', ''), text, request.user)
+            dates = {date_parameter: timezone.localdate()} if date_parameter else {}
+            transition(text=text, user=request.user, **dates)
+
+    _run(request, operation, success_message)
+    return _detail_redirect(text_id)
 
 
 @never_cache
@@ -166,23 +169,15 @@ def complete_workflow_stage(request, stage_id):
         messages.error(request, _form_error_message(form))
         return _detail_redirect(stage.text_id)
 
-    try:
-        # Serwis ponownie sprawdza cykl, daty, stan etapu i uprawnienia
-        # po uzyskaniu blokad. Nie kończy bezpośrednio redakcji ani
-        # etapu pracy autora, które mają osobne przejścia.
-        complete_stage(
-            stage=stage,
-            user=request.user,
-            ended_at=form.cleaned_data["ended_at"],
-            send_to_proofreading=form.cleaned_data.get("send_to_proofreading"),
-        )
-    except ValidationError as error:
-        messages.error(request, " ".join(error.messages))
-    except PermissionDenied as error:
-        messages.error(request, str(error) or 'Nie masz uprawnień do tej operacji.')
-    else:
-        messages.success(request, "Zakończono etap.")
-
+    # Serwis ponownie sprawdza cykl, daty, stan etapu i uprawnienia
+    # po uzyskaniu blokad. Nie kończy bezpośrednio redakcji ani
+    # etapu pracy autora, które mają osobne przejścia.
+    _run(request, lambda: complete_stage(
+        stage=stage,
+        user=request.user,
+        ended_at=form.cleaned_data["ended_at"],
+        send_to_proofreading=form.cleaned_data.get("send_to_proofreading"),
+    ), "Zakończono etap.")
     return _detail_redirect(stage.text_id)
 
 
@@ -198,23 +193,15 @@ def start_assigned_workflow_stage(request, stage_id):
         messages.error(request, _form_error_message(form))
         return _detail_redirect(stage.text_id)
 
-    try:
-        # Serwis blokuje tekst i wskazany etap, sprawdza bieżący cykl
-        # oraz istniejący przydział. Rozpoczyna dokładnie wskazany etap;
-        # nie zastępuje go inną iteracją i nie przejmuje cudzego zadania.
-        # Uwzględnia szczególne reguły redakcji i pierwszej weryfikacji.
-        start_assigned_stage(
-            user=request.user,
-            stage_id=stage.pk,
-            started_at=form.cleaned_data["started_at"],
-        )
-    except ValidationError as error:
-        messages.error(request, " ".join(error.messages))
-    except PermissionDenied as error:
-        messages.error(request, str(error) or 'Nie masz uprawnień do tej operacji.')
-    else:
-        messages.success(request, "Zapisano datę rozpoczęcia etapu.")
-
+    # Serwis blokuje tekst i wskazany etap, sprawdza bieżący cykl
+    # oraz istniejący przydział. Rozpoczyna dokładnie wskazany etap;
+    # nie zastępuje go inną iteracją i nie przejmuje cudzego zadania.
+    # Uwzględnia szczególne reguły redakcji i pierwszej weryfikacji.
+    _run(request, lambda: start_assigned_stage(
+        user=request.user,
+        stage_id=stage.pk,
+        started_at=form.cleaned_data["started_at"],
+    ), "Zapisano datę rozpoczęcia etapu.")
     return _detail_redirect(stage.text_id)
 
 
@@ -241,52 +228,48 @@ def take_workflow_stage(request, stage_id):
 
         started_at = form.cleaned_data["started_at"]
 
-    try:
+    def claim():
         with transaction.atomic():
-            stage = _lock_current_stage(stage_id)
+            locked = _lock_current_stage(stage_id)
 
             if (
-                stage.is_completed
-                or stage.started_at is not None
-                or stage.ended_at is not None
+                locked.is_completed
+                or locked.started_at is not None
+                or locked.ended_at is not None
             ):
                 raise ValidationError(
                     "Ten etap nie jest już dostępny do przejęcia."
                 )
 
-            if stage.stage_type == WorkflowStage.StageType.READY_FOR_EDITING:
+            if locked.stage_type == WorkflowStage.StageType.READY_FOR_EDITING:
                 claim_ready_for_editing(
-                    text=stage.text,
+                    text=locked.text,
                     user=request.user,
                     started_at=started_at,
                 )
             else:
                 claim_stage(
-                    text=stage.text,
-                    stage_type=stage.stage_type,
+                    text=locked.text,
+                    stage_type=locked.stage_type,
                     user=request.user,
                     started_at=started_at,
-                    stage_id=stage.pk,
+                    stage_id=locked.pk,
                 )
 
-    except ValidationError as error:
-        messages.error(request, " ".join(error.messages))
-    except PermissionDenied as error:
-        messages.error(request, str(error) or 'Nie masz uprawnień do tej operacji.')
+    def claimed_message():
+        if is_first_verification and stage.text.workflow_stages.filter(stage_type="first_verification", is_current=True, started_at__isnull=True, is_completed=False).exists():
+            return ("Zarezerwowano pierwszą weryfikację. "
+                    "Zaczekaj na przekazanie tekstu przez redaktora.")
+        return "Przypisano ci etap."
+
+    try:
+        claimed = _run(request, claim, claimed_message)
     except IntegrityError:
         logger.exception('Konflikt przy przejmowaniu etapu workflow %s.', stage_id)
         messages.error(request, 'Nie udało się przejąć etapu: przydziały pracy zmieniły się lub są sprzeczne. Odśwież listę; jeśli problem się powtarza, zgłoś go koordynatorowi.')
-    else:
-        if is_first_verification and stage.text.workflow_stages.filter(stage_type="first_verification", is_current=True, started_at__isnull=True, is_completed=False).exists():
-            messages.success(
-                request,
-                "Zarezerwowano pierwszą weryfikację. "
-                "Zaczekaj na przekazanie tekstu przez redaktora.",
-            )
-        else:
-            messages.success(request, "Przypisano ci etap.")
+        claimed = False
+    if claimed:
         return _detail_redirect(stage.text_id)
-
     return redirect("core:available_texts")
 
 
@@ -422,26 +405,14 @@ def restart_text_workflow(request, text_id):
 @require_POST
 @coordinator_required
 def withdraw_text(request, text_id):
-    text = get_object_or_404(Text, pk=text_id)
-
-    try:
-        # Serwis ponownie sprawdza uprawnienia i blokuje tekst.
-        # Wycofanie zachowuje historię, blokuje dalszą pracę oraz
-        # usuwa tekst z kolejek aktywnych i dostępnych zadań.
-        # Ponowienie żądania nie tworzy kolejnego etapu wycofania.
-        with transaction.atomic():
-            text = Text.objects.select_for_update().get(pk=text_id)
-            from core.workflow_tokens import check_token
-            check_token(request.POST.get('workflow_token', ''), text, request.user)
-            withdraw_text_service(user=request.user, text_id=text.pk)
-    except ValidationError as error:
-        messages.error(request, " ".join(error.messages))
-    except PermissionDenied as error:
-        messages.error(request, str(error) or 'Nie masz uprawnień do tej operacji.')
-    else:
-        messages.success(request, "Tekst jest wycofany z procesu.")
-
-    return _detail_redirect(text.pk)
+    # Serwis ponownie sprawdza uprawnienia i blokuje tekst.
+    # Wycofanie zachowuje historię, blokuje dalszą pracę oraz
+    # usuwa tekst z kolejek aktywnych i dostępnych zadań.
+    # Ponowienie żądania nie tworzy kolejnego etapu wycofania.
+    return _perform_text_transition(
+        request, text_id, success_message="Tekst jest wycofany z procesu.",
+        transition=lambda text, user: withdraw_text_service(user=user, text_id=text.pk),
+    )
 
 
 @never_cache
@@ -449,20 +420,11 @@ def withdraw_text(request, text_id):
 @require_POST
 @superuser_required
 def restore_withdrawn_text(request, text_id):
-    text = get_object_or_404(Text, pk=text_id)
-    try:
-        with transaction.atomic():
-            text = Text.objects.select_for_update().get(pk=text_id)
-            from core.workflow_tokens import check_token
-            check_token(request.POST.get('workflow_token', ''), text, request.user)
-            restore_withdrawn_text_service(user=request.user, text_id=text.pk)
-    except ValidationError as error:
-        messages.error(request, " ".join(error.messages))
-    except PermissionDenied as error:
-        messages.error(request, str(error) or 'Nie masz uprawnień do tej operacji.')
-    else:
-        messages.success(request, "Przywrócono tekst do procesu – praca wraca do stanu sprzed wycofania.")
-    return _detail_redirect(text.pk)
+    return _perform_text_transition(
+        request, text_id,
+        success_message="Przywrócono tekst do procesu – praca wraca do stanu sprzed wycofania.",
+        transition=lambda text, user: restore_withdrawn_text_service(user=user, text_id=text.pk),
+    )
 
 
 @never_cache
@@ -477,15 +439,11 @@ def change_scheduled_workflow_stage(request, stage_id):
     if not cancel and not form.is_valid():
         messages.error(request, _form_error_message(form))
         return _detail_redirect(stage.text_id)
-    try:
-        change_scheduled_stage(user=request.user, stage_id=stage_id,
-                               started_at=None if cancel else form.cleaned_data['started_at'], cancel=cancel)
-    except ValidationError as error:
-        messages.error(request, ' '.join(error.messages))
-    except PermissionDenied as error:
-        messages.error(request, str(error) or 'Nie masz uprawnień do tej zmiany.')
-    else:
-        messages.success(request, 'Cofnięto przydział – etap może przejąć inna osoba.' if cancel else 'Zmieniono datę rozpoczęcia.')
+    _run(request, lambda: change_scheduled_stage(
+        user=request.user, stage_id=stage_id,
+        started_at=None if cancel else form.cleaned_data['started_at'], cancel=cancel,
+    ), 'Cofnięto przydział – etap może przejąć inna osoba.' if cancel else 'Zmieniono datę rozpoczęcia.',
+        denied_message='Nie masz uprawnień do tej zmiany.')
     return _detail_redirect(stage.text_id)
 
 
@@ -511,15 +469,11 @@ def cancel_workflow_repetition(request, text_id, repetition_id):
 @never_cache
 @login_required
 @superuser_required
+@require_http_methods(["GET", "POST"])
 def handoff_workflow_stage(request, stage_id):
     from django import forms
     from workflow.handoffs import handoff_stage, eligible_handoff_users
-    from django.core.exceptions import PermissionDenied
 
-    if request.method not in ("GET", "POST"):
-        from django.http import HttpResponseNotAllowed
-
-        return HttpResponseNotAllowed(["GET", "POST"])
     stage = _get_current_stage(stage_id)
 
     class HandoffPersonField(forms.ModelChoiceField):
@@ -568,12 +522,6 @@ def skip_workflow_stage(request, stage_id):
     from workflow.services import skip_fourth_proofreading
 
     stage = _get_current_stage(stage_id)
-    try:
-        skip_fourth_proofreading(stage, request.user)
-    except ValidationError as error:
-        messages.error(request, " ".join(error.messages))
-    except PermissionDenied as error:
-        messages.error(request, str(error) or 'Nie masz uprawnień do tej operacji.')
-    else:
-        messages.success(request, "Pominięto czwartą korektę. Udostępniono kolejny etap.")
+    _run(request, lambda: skip_fourth_proofreading(stage, request.user),
+         "Pominięto czwartą korektę. Udostępniono kolejny etap.")
     return _detail_redirect(stage.text_id)

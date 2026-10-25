@@ -1,9 +1,7 @@
 """Bounded read-only retrieval, field parsing and private download packaging."""
 import hashlib
-import imaplib
 import json
 import re
-import ssl
 import time
 from tempfile import SpooledTemporaryFile
 from email import policy
@@ -11,19 +9,25 @@ from email.parser import BytesParser
 from email.utils import parseaddr
 from pathlib import PurePosixPath
 from zipfile import ZipFile, ZIP_DEFLATED, BadZipFile
-from lxml.etree import XMLSyntaxError
-from cryptography.fernet import InvalidToken
+from lxml import html
+from lxml.etree import ParserError, XMLSyntaxError
+from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db.models import Q
 from core.models import MailboxConnection, MailboxDownload
 from core.forms import ReviewBulkImportForm
-from core.odkurzacz_forms import OdkurzaczForm
-from core.services.mailbox import MailboxError, encode_folder, story_title, _positive
+from core.odkurzacz_forms import validate_docx_upload
+from core.services.mailbox import MailboxError, active_mailbox, imap_folder, story_title, _positive
 from core.services.document_converter import inspect_document, convert_document, RebuildConfirmationRequired, ConversionError
+from core.services.newsletters import parse_consents
+from core.services.review_import_parser import clean_pasted_submission, encode_submission, mail_submission_rows, unbracket
 from texts.models import Anthology
 
 MAX_MESSAGES = 20
 MAX_MESSAGE = 15 * 1024 * 1024
 MAX_BATCH = 50 * 1024 * 1024
+MAX_DOCX = 10 * 1024 * 1024
+END_MARKER = "--- KONIEC WIADOMOŚCI AUTORA ---"
 
 
 def sender_label(message):
@@ -88,12 +92,10 @@ def describe_import_error(error, sources):
 
 
 def default_mailbox():
-    boxes = list(MailboxConnection.objects.filter(purpose=MailboxConnection.Purpose.SUBMISSIONS, is_active=True, name__iexact='teksty')[:2])
-    if not boxes:
-        boxes = list(MailboxConnection.objects.filter(purpose=MailboxConnection.Purpose.SUBMISSIONS, is_active=True, username__istartswith='teksty@')[:2])
-    if len(boxes) != 1:
-        raise MailboxError('W adminie ustaw jedną aktywną skrzynkę o nazwie „teksty” (lub loginie teksty@…).')
-    return boxes[0]
+    """Skrzynka zgłoszeń o nazwie „teksty”, a gdy żadna się tak nie nazywa – o loginie teksty@…"""
+    return active_mailbox(MailboxConnection.Purpose.SUBMISSIONS,
+                          'W adminie ustaw jedną aktywną skrzynkę o nazwie „teksty” (lub loginie teksty@…).',
+                          narrowing=({'name__iexact': 'teksty'}, {'username__istartswith': 'teksty@'}))
 
 
 def mailbox_key(config):
@@ -108,26 +110,37 @@ def receipts(config, validity):
     return MailboxDownload.objects.filter(mailbox_key=mailbox_key(config), uid_validity=validity)
 
 
+def downloaded_uids(config):
+    """Do `excluded` w read_headers: UID-y wiadomości tej skrzynki już pobranych (w danym UIDVALIDITY)."""
+    return lambda validity: receipts(config, validity).values_list('uid', flat=True)
+
+
+def message_label(message):
+    """Kto wysłał zgłoszenie – na początek komunikatu o tej wiadomości."""
+    return message.get('sender') or message.get('author') or message.get('email') or 'Nieznana osoba'
+
+
 def fetch_messages(config, validity, uids, skipped_errors=None, *, raw_messages=False, max_messages=MAX_MESSAGES):
+    """Wybrane wiadomości (tylko do odczytu, z limitami rozmiaru) – surowe albo rozebrane przez parse_message.
+
+    Wiadomość już pobrana (ten sam UID albo odcisk treści) – bez danych zgłoszenia. Z listą `skipped_errors`
+    wiadomości z błędem są pomijane, a opis błędu trafia na listę."""
     uids = sorted(set(_positive(uid) for uid in uids))
     if not 1 <= len(uids) <= max_messages:
         raise MailboxError(f'Wybierz od 1 do {max_messages} wiadomości.')
-    client = None
-    try:
-        context = ssl.create_default_context()
-        if config.security == 'ssl':
-            client = imaplib.IMAP4_SSL(config.host, config.port, ssl_context=context, timeout=15)
-        elif config.security == 'starttls':
-            client = imaplib.IMAP4(config.host, config.port, timeout=15)
-            client.starttls(ssl_context=context)
-        else:
-            raise MailboxError('Nieobsługiwany sposób szyfrowania.')
-        client.login(config.username, config.get_password())
-        folder = '"' + encode_folder(config.folder).replace('\\', '\\\\').replace('"', '\\"') + '"'
-        if client.select(folder, readonly=True)[0] != 'OK':
-            raise MailboxError('Nie można otworzyć folderu wiadomości.')
-        _, data = client.response('UIDVALIDITY')
-        if not data or int(data[0]) != validity:
+    key = mailbox_key(config)
+
+    def downloaded(metadata):
+        return MailboxDownload.objects.filter(Q(mailbox_key=key, uid_validity=validity, uid=metadata['uid'])
+                                              | Q(fingerprint=metadata['fingerprint'])).exists()
+
+    def skip(error):
+        if skipped_errors is None:
+            raise MailboxError(error)
+        skipped_errors.append(error)
+
+    with imap_folder(config) as (client, current):
+        if current != validity:
             raise MailboxError('Folder pocztowy się zmienił. Pobierz nagłówki ponownie.')
         result, total = [], 0
         for uid in uids:
@@ -135,10 +148,7 @@ def fetch_messages(config, validity, uids, skipped_errors=None, *, raw_messages=
             meta = b' '.join(x for x in data or [] if isinstance(x, bytes))
             size = re.search(rb'RFC822.SIZE (\d+)', meta)
             if status != 'OK' or not size or int(size[1]) > MAX_MESSAGE:
-                error = f'Wiadomość {uid}: jest niedostępna lub przekracza 15 MB.'
-                if skipped_errors is None:
-                    raise MailboxError(error)
-                skipped_errors.append(error)
+                skip(f'Wiadomość {uid}: jest niedostępna lub przekracza 15 MB.')
                 continue
             total += int(size[1])
             if total > MAX_BATCH:
@@ -146,10 +156,7 @@ def fetch_messages(config, validity, uids, skipped_errors=None, *, raw_messages=
             status, data = client.uid('FETCH', str(uid), f'(UID BODY.PEEK[]<0.{MAX_MESSAGE + 1}>)')
             parts = [x for x in data or [] if isinstance(x, tuple) and len(x) == 2 and isinstance(x[1], bytes)]
             if status != 'OK' or len(parts) != 1 or len(parts[0][1]) != int(size[1]):
-                error = f'Wiadomość {uid}: nie udało się pobrać całej wiadomości.'
-                if skipped_errors is None:
-                    raise MailboxError(error)
-                skipped_errors.append(error)
+                skip(f'Wiadomość {uid}: nie udało się pobrać całej wiadomości.')
                 continue
             found_uid = re.search(rb'\bUID (\d+)\b', parts[0][0])
             if not found_uid or int(found_uid[1]) != uid:
@@ -159,36 +166,30 @@ def fetch_messages(config, validity, uids, skipped_errors=None, *, raw_messages=
                 result.append({'uid': uid, 'raw': raw})
                 continue
             try:
-                metadata = parse_message(uid, raw, submission=False)
-                previous = receipts(config, validity).filter(uid=uid).exists() or MailboxDownload.objects.filter(fingerprint=metadata['fingerprint']).exists()
-                result.append(metadata if previous else parse_message(uid, raw))
+                result.append(parse_message(uid, raw, downloaded=downloaded))
             except MailboxError as error:
-                if skipped_errors is None:
-                    raise
-                skipped_errors.append(str(error))
+                skip(str(error))
         return result
-    except MailboxError:
-        raise
-    except (InvalidToken, imaplib.IMAP4.error, OSError, ValueError, TypeError, UnicodeError):
-        raise MailboxError('Nie udało się pobrać wiadomości. Sprawdź połączenie i ustawienia skrzynki.') from None
-    finally:
-        if client:
-            try:
-                client.logout()
-            except (imaplib.IMAP4.error, OSError):
-                pass
 
 
-def parse_message(uid, raw, *, submission=True):
+def parse_message(uid, raw, *, submission=True, downloaded=None):
+    """Wiadomość ze skrzynki zgłoszeń parsowana raz: pliki i tożsamość, a dla nowego zgłoszenia także jego dane.
+
+    Bez danych zgłoszenia: gdy `submission` jest fałszywe albo `downloaded(metadata)` mówi, że wiadomość była już
+    pobrana. Komunikat błędu zaczyna się od nadawcy (bez numeru wiersza rekordu)."""
     message = BytesParser(policy=policy.default).parsebytes(raw)
     try:
-        return _parse_message(uid, raw, message, submission=submission)
+        metadata = _message_metadata(uid, raw, message)
+        if not submission or (downloaded is not None and downloaded(metadata)):
+            return metadata
+        return _submission_fields(message, metadata)
     except MailboxError as error:
-        detail = re.sub(r"^(?:Wiadomość\s+\d+:?\s*|Wiersz\s+\d+[,:]\s*)+", "", str(error))
+        detail = re.sub(r"^(?:Wiersz\s+\d+[,:]\s*)+", "", str(error))
         raise MailboxError(f"{sender_label(message)}: {detail}") from None
 
 
-def _parse_message(uid, raw, message, *, submission=True):
+def _message_metadata(uid, raw, message):
+    """Załączniki (bez obrazów) i tożsamość wiadomości."""
     files, ignored_files = [], []
     for part in message.walk():
         if part.is_multipart() or not part.get_filename():
@@ -200,21 +201,17 @@ def _parse_message(uid, raw, message, *, submission=True):
         data = part.get_payload(decode=True)
         if data is None:
             raise MailboxError(
-                f"Wiadomość {uid}: nie można odczytać zawartości załącznika „{name}”. Sprawdź plik w poczcie lub poproś o ponowne przesłanie."
+                f"nie można odczytać zawartości załącznika „{name}”. Sprawdź plik w poczcie lub poproś o ponowne przesłanie."
             )
         if not data:
             raise MailboxError(
-                f"Wiadomość {uid}: załącznik „{name}” jest pusty (0 bajtów). Poproś nadawcę o ponowne przesłanie pliku. Zgłoszenie nie zostało zaimportowane."
+                f"załącznik „{name}” jest pusty (0 bajtów). Poproś nadawcę o ponowne przesłanie pliku. Zgłoszenie nie zostało zaimportowane."
             )
         files.append((name, data))
     if not files:
-        raise MailboxError(
-            f"Wiadomość {uid}: nie znaleziono załączników z plikami. Sprawdź wiadomość w poczcie."
-        )
+        raise MailboxError("nie znaleziono załączników z plikami. Sprawdź wiadomość w poczcie.")
     if len(files) > 10:
-        raise MailboxError(
-            f"Wiadomość {uid}: znaleziono {len(files)} załączników; limit wynosi 10."
-        )
+        raise MailboxError(f"znaleziono {len(files)} załączników; limit wynosi 10.")
     # A stable identity independent of IMAP folder, UIDVALIDITY and local settings.
     # Include decoded contents to avoid trusting a duplicated Message-ID alone.
     identity = hashlib.sha256()
@@ -233,7 +230,7 @@ def _parse_message(uid, raw, message, *, submission=True):
         ):
             identity.update(len(value).to_bytes(8, "big"))
             identity.update(value)
-    metadata = {
+    return {
         "uid": uid,
         "sender": sender_label(message),
         "digest": hashlib.sha256(raw).hexdigest(),
@@ -244,132 +241,82 @@ def _parse_message(uid, raw, message, *, submission=True):
         "files": files,
         "ignored_files": ignored_files,
     }
-    if not submission:
-        return metadata
+
+
+def _anthology_in_subject(message):
+    """Nazwa antologii z tematu w formacie Nabór: „Tytuł antologii”."""
+    found = re.search(r'Nabór:\s*[„"]([^”"]+)[”"]', str(message.get("Subject", "")), re.IGNORECASE)
+    if not found:
+        raise MailboxError("w temacie brakuje nazwy antologii w formacie Nabór: „Tytuł antologii”.")
+    return found.group(1).strip()
+
+
+def _submission_fields(message, metadata):
+    """Dane zgłoszenia z treści: pola z etykietami (CF7), nowy CSV albo dawny CSV ze średnikami."""
     body = message.get_body(preferencelist=("plain", "html"))
     if body is None:
-        raise MailboxError(f"Wiadomość {uid}: brak danych zgłoszenia w treści.")
+        raise MailboxError("brak danych zgłoszenia w treści.")
     text = body.get_content()
     if body.get_content_type() == "text/html":
-        from lxml import html
-        from lxml.etree import ParserError, XMLSyntaxError
-
         try:
             root = html.fromstring(text)
         except (ParserError, XMLSyntaxError, ValueError):
             raise MailboxError(
-                f"Wiadomość {uid}: treść HTML jest pusta lub nie można jej odczytać. Użyj ręcznego importu z podglądem albo poproś o ponowne przesłanie danych zgłoszenia. Niczego nie zaimportowano."
+                "treść HTML jest pusta lub nie można jej odczytać. Użyj ręcznego importu z podglądem albo poproś o ponowne przesłanie danych zgłoszenia. Niczego nie zaimportowano."
             ) from None
         for node in root.xpath("//br | //p | //div | //tr"):
             node.tail = "\n" + (node.tail or "")
         text = root.text_content()
-    from core.services.review_import_parser import (
-        unbracket,
-        encode_submission,
-        clean_pasted_submission,
-        mail_submission_rows,
-    )
-    from django.core.exceptions import ValidationError
-
     try:
         candidates = list(mail_submission_rows(text))
     except ValidationError as error:
-        raise MailboxError(f"Wiadomość {uid}: " + " ".join(error.messages)) from None
-    lines = clean_pasted_submission(text).splitlines()
+        raise MailboxError(" ".join(error.messages)) from None
     if len(candidates) != 1:
         raise MailboxError(
-            f"Wiadomość {uid}: oczekiwano jednego zgłoszenia z nazwanymi polami albo danych w starszym formacie rozdzielonym średnikami."
+            "oczekiwano jednego zgłoszenia z nazwanymi polami albo danych w starszym formacie rozdzielonym średnikami."
         )
     kind, index, parts = candidates[0]
-    warnings, author_message, choices = "", "", ""
+    pseudonym, warnings, author_message, choices = "", "", "", ""
     if kind == "named":
-        (
-            first_name,
-            last_name,
-            pseudonym,
-            title,
-            genre,
-            warnings,
-            length,
-            email,
-            phone,
-            choices,
-            author_message,
-        ) = parts
+        (first_name, last_name, pseudonym, title, genre, warnings, length, email, phone, choices,
+         author_message) = parts
         author = f"{first_name} {last_name}"
-        recruitment = re.search(
-            r'Nabór:\s*[„"]([^”"]+)[”"]', str(message.get("Subject", "")), re.IGNORECASE
-        )
-        if not recruitment:
-            raise MailboxError(
-                f"Wiadomość {uid}: w temacie brakuje nazwy antologii w formacie Nabór: „Tytuł antologii”."
-            )
-        anthology = recruitment.group(1).strip()
+        anthology = _anthology_in_subject(message)
         record = encode_submission(parts)
     elif kind == "new":
         author, title, genre, warnings, length, email, phone, choices = parts[:8]
-        author_message = ";".join(parts[8:])
-        trailing = lines[index + 1 :]
-        marker = "--- KONIEC WIADOMOŚCI AUTORA ---"
-        if any(line.strip() == marker for line in trailing):
-            stop = next(i for i, line in enumerate(trailing) if line.strip() == marker)
-            author_message = unbracket("\n".join([author_message, *trailing[:stop]]).strip())
-        else:
-            # Marker is optional; without it all remaining lines belong to the author message.
-            author_message = unbracket("\n".join([author_message, *trailing]).strip())
-        recruitment = re.search(
-            r'Nabór:\s*[„"]([^”"]+)[”"]', str(message.get("Subject", "")), re.IGNORECASE
-        )
-        if not recruitment:
-            raise MailboxError(
-                f"Wiadomość {uid}: w temacie brakuje nazwy antologii w formacie Nabór: „Tytuł antologii”."
-            )
-        anthology = recruitment.group(1).strip()
-        record = encode_submission(
-            [author, title, genre, warnings, length, email, phone, choices, author_message]
-        )
+        trailing = clean_pasted_submission(text).splitlines()[index + 1:]
+        # Znacznik końca jest opcjonalny; bez niego cała reszta treści należy do wiadomości autora.
+        stop = next((i for i, line in enumerate(trailing) if line.strip() == END_MARKER), len(trailing))
+        author_message = unbracket("\n".join([";".join(parts[8:]), *trailing[:stop]]).strip())
+        anthology = _anthology_in_subject(message)
+        record = encode_submission([author, title, genre, warnings, length, email, phone, choices, author_message])
     else:
         author, title, genre, length, email, phone, anthology = parts[:7]
         if len(parts) >= 8:
-            from core.services.newsletters import parse_consents
-            from django.core.exceptions import ValidationError
-
             choices = parts[7]
-            try:
-                parse_consents(choices)
-            except ValidationError as error:
-                raise MailboxError(
-                    f"Wiadomość {uid}: nieprawidłowe zgody newsletterowe. "
-                    + " ".join(error.messages)
-                ) from None
-            else:
-                record = encode_submission(
-                    [author, title, genre, "", length, email, phone, parts[7], ""]
-                )
+            record = encode_submission([author, title, genre, "", length, email, phone, choices, ""])
         else:
             record = encode_submission([author, title, genre, length, "", email, phone])
-    from core.services.newsletters import parse_consents
-
     try:
         consent_flags = parse_consents(choices)
     except ValidationError as error:
-        raise MailboxError(f"Wiadomość {uid}: " + " ".join(error.messages)) from None
+        # Dawny CSV ma zgody w ósmym polu – komunikat mówi, którego pola dotyczy błąd.
+        prefix = "" if kind in ("named", "new") else "nieprawidłowe zgody newsletterowe. "
+        raise MailboxError(prefix + " ".join(error.messages)) from None
     # Persist only the declared submission fields, not the full MIME message.
     return {
         **metadata,
-        "uid": uid,
-        "digest": hashlib.sha256(raw).hexdigest(),
         "folder": story_title(str(message.get("Subject", ""))) or title,
         "title": title,
         "author": author,
         "email": email,
         "phone": phone,
-        "author_pseudonym": parts[2] if kind == "named" else "",
+        "author_pseudonym": pseudonym,
         "anthology": anthology,
         "genre": genre,
         "length": length,
         "record": record,
-        "files": files,
         "content_warnings": warnings,
         "author_message": author_message,
         "newsletter_premieres": consent_flags["premieres"],
@@ -378,7 +325,7 @@ def _parse_message(uid, raw, message, *, submission=True):
 
 
 def prepare_forms(messages, config, validity, user, tokens=None, confirmed=False):
-    previous = set(receipts(config, validity).values_list("uid", flat=True))
+    previous = set(receipts(config, validity).filter(uid__in=[m["uid"] for m in messages]).values_list("uid", flat=True))
     fingerprints = set(
         MailboxDownload.objects.filter(
             fingerprint__in=[m.get("fingerprint", "") for m in messages if m.get("fingerprint")]
@@ -400,7 +347,7 @@ def prepare_forms(messages, config, validity, user, tokens=None, confirmed=False
         )
         if len(matches) != 1:
             raise MailboxError(
-                f"{message.get('sender') or message.get('author') or message.get('email') or 'Nieznana osoba'}: nie znaleziono jednoznacznej antologii „{message['anthology']}” ze statusem W przygotowaniu."
+                f"{message_label(message)}: nie znaleziono jednoznacznej antologii „{message['anthology']}” ze statusem W przygotowaniu."
             )
         pk = matches[0].pk
         grouped.setdefault(pk, []).append(message)
@@ -414,27 +361,19 @@ def prepare_forms(messages, config, validity, user, tokens=None, confirmed=False
         }
         form = ReviewBulkImportForm(data, user=user)
         form.is_valid()
-        form.mail_sources = {}
-        line = 1
-        for message in group:
-            form.mail_sources[line] = (
-                message.get("sender")
-                or message.get("author")
-                or message.get("email")
-                or "Nieznana osoba"
-            )
-            line += len(message["record"].splitlines())
-        form.mail_display_warnings = [
-            describe_import_error(warning, form.mail_sources) for warning in form.import_warnings
-        ]
-        # Wiersze wiadomości, które koordynator dodaje do przyszłych odrzuceń (patrz import_reviews).
-        form.future_rejection_lines = set()
+        # Nadawca od pierwszego wiersza swojej wiadomości oraz wiersze wiadomości, które koordynator dodaje
+        # do przyszłych odrzuceń (patrz import_reviews).
+        form.mail_sources, form.future_rejection_lines = {}, set()
         line = 1
         for message in group:
             size = len(message["record"].splitlines())
+            form.mail_sources[line] = message_label(message)
             if message.get("future_rejection"):
                 form.future_rejection_lines.update(range(line, line + size))
             line += size
+        form.mail_display_warnings = [
+            describe_import_error(warning, form.mail_sources) for warning in form.import_warnings
+        ]
         forms.append(form)
     return forms
 
@@ -482,12 +421,12 @@ def package_messages(
     rebuild=True,
     allow_rebuild_omissions=False,
     *,
-    skipped_errors=None,
-    accepted=None,
-    rebuild_warnings=None,
+    skipped_errors,
+    accepted,
+    rebuild_warnings,
 ):
-    if skipped_errors is None:
-        return _package_messages(messages, clean, convert, rebuild, allow_rebuild_omissions)
+    """Paczka ZIP wiadomości; pominięte wiadomości – opis w `skipped_errors`, ostrzeżenia przebudowy –
+    w `rebuild_warnings`, a wiadomości przyjęte (także z ostrzeżeniem) – w `accepted`."""
     # Build each message separately so a failing attachment cannot leak a partial
     # story into the final ZIP. The whole selected batch keeps its resource limits.
     result = SpooledTemporaryFile(max_size=4 * 1024 * 1024, mode="w+b")
@@ -501,12 +440,7 @@ def package_messages(
                     raise MailboxError(
                         "Przetwarzanie paczki przekroczyło 90 sekund. Wybierz mniej wiadomości."
                     )
-                label = (
-                    message.get("sender")
-                    or message.get("author")
-                    or message.get("email")
-                    or "Nieznana osoba"
-                )
+                label = message_label(message)
                 try:
                     output = _package_messages(
                         [message],
@@ -517,11 +451,8 @@ def package_messages(
                         timeout=remaining,
                     )
                 except RebuildConfirmationRequired as error:
-                    if rebuild_warnings is None:
-                        raise
                     rebuild_warnings.append(f"{label}: {error}")
-                    if accepted is not None:
-                        accepted.append(message)
+                    accepted.append(message)
                     continue
                 except (
                     MailboxError,
@@ -545,8 +476,7 @@ def package_messages(
                         archive.writestr(
                             folder + "/" + entry.filename.split("/", 1)[1], source.read(entry)
                         )
-                if accepted is not None:
-                    accepted.append(message)
+                accepted.append(message)
         if time.monotonic() > deadline:
             raise MailboxError(
                 "Przygotowanie paczki przekroczyło 90 sekund. Wybierz mniej wiadomości."
@@ -558,6 +488,15 @@ def package_messages(
         raise
 
 
+def _docx_errors(name, data):
+    """Błędy sprawdzenia DOCX jak w programach (limit MAX_DOCX); pusta lista – plik jest poprawny."""
+    try:
+        validate_docx_upload(SimpleUploadedFile(name, data), MAX_DOCX)
+    except ValidationError as error:
+        return error.messages
+    return []
+
+
 def _package_messages(
     messages, clean=True, convert=True, rebuild=True, allow_rebuild_omissions=False, *, timeout=90
 ):
@@ -565,16 +504,13 @@ def _package_messages(
     used, total = set(), 0
     rebuild_warnings = []
     deadline = time.monotonic() + timeout
+    # Przebudowa bez zgody na pominięcia: najpierw sprawdzamy wszystkie pliki (potem już bez ponownej walidacji).
+    checked = rebuild and not allow_rebuild_omissions
     try:
-        if rebuild and not allow_rebuild_omissions:
+        if checked:
             for message in messages:
                 for name, data in message["files"]:
-                    form = OdkurzaczForm(
-                        {"rules": []},
-                        {"document": SimpleUploadedFile(name, data)},
-                        max_document_bytes=10 * 1024 * 1024,
-                    )
-                    if not form.is_valid():
+                    if _docx_errors(name, data):
                         raise MailboxError(
                             f"Nieprawidłowy DOCX: {name}. Wyłącz przetwarzanie, aby pobrać oryginał."
                         )
@@ -606,19 +542,9 @@ def _package_messages(
                         raise MailboxError(
                             f"„{name}”: Odkurzacz i konwerter obsługują DOCX. Wyłącz Odkurzacz, konwersję i przebudowę, aby pobrać oryginały."
                         )
-                    if is_docx and (clean or convert or rebuild):
-                        form = OdkurzaczForm(
-                            {"rules": []},
-                            {"document": SimpleUploadedFile(name, data)},
-                            max_document_bytes=10 * 1024 * 1024,
-                        )
-                        if not form.is_valid():
-                            raise MailboxError(
-                                f"Nieprawidłowy DOCX: {name}. "
-                                + " ".join(
-                                    str(e) for errors in form.errors.values() for e in errors
-                                )
-                            )
+                    errors = _docx_errors(name, data) if is_docx and (clean or convert or rebuild) and not checked else []
+                    if errors:
+                        raise MailboxError(f"Nieprawidłowy DOCX: {name}. " + " ".join(errors))
                     if not convert and not rebuild:
                         if clean:
                             output, _, _ = convert_document(

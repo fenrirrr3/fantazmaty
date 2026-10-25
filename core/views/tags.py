@@ -1,4 +1,5 @@
 """Accepted texts with their own tags and genre."""
+from core.filtering import positive_id
 from core.translation_scope import frontend_scope
 from core.public_authors import public_name
 from django.contrib.auth.decorators import login_required
@@ -62,10 +63,6 @@ class TagsTable:
         return query.order_by(*ordering, 'pk'), COLUMNS
 
 
-def positive_id(value):
-    return int(value) if value.isascii() and value.isdecimal() and len(value) <= 18 and int(value) > 0 else None
-
-
 @never_cache
 @login_required
 @require_GET
@@ -96,9 +93,9 @@ def tag_list(request):
     if anthology == 'none':
         query = query.filter(anthology__isnull=True)
     elif anthology:
-        query = query.filter(anthology_id=positive_id(anthology)) if positive_id(anthology) else query.none()
+        query = query.filter(anthology_id=anthology_id) if (anthology_id := positive_id(anthology)) else query.none()
     if author:
-        query = query.filter(authors__pk=positive_id(author)) if positive_id(author) else query.none()
+        query = query.filter(authors__pk=author_id) if (author_id := positive_id(author)) else query.none()
     if genre:
         query = query.filter(tag_genre='' if genre == '__missing__' else genre)
     if tag:

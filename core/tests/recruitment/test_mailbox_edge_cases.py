@@ -9,7 +9,6 @@ from django.test import SimpleTestCase, TestCase, tag
 
 from core.models import NewsletterConsent, Recruitment
 from core.recruitment_message import form_fields
-from core.services.document_converter import RebuildConfirmationRequired
 from core.services.mailbox import MailboxError
 from core.services.mailbox_import import (_package_messages, package_messages, parse_message,
                                           prepare_forms)
@@ -58,18 +57,8 @@ class SubmissionPackageLimitTests(SimpleTestCase):
                       return_value=big_zip('folder/01_tekst.docx', TOO_BIG)):
             skipped = []
             with self.assertRaisesMessage(MailboxError, 'Wynik przekracza 150 MB'):
-                package_messages([self.message], skipped_errors=skipped, accepted=[])
+                package_messages([self.message], skipped_errors=skipped, accepted=[], rebuild_warnings=[])
             self.assertEqual(skipped, [])
-
-    def test_rebuild_warning_without_accepted_list_only_collects_warning(self):
-        warnings, skipped = [], []
-        with patch('core.services.mailbox_import._package_messages',
-                   side_effect=RebuildConfirmationRequired('pominięto przypis')):
-            with package_messages([self.message], skipped_errors=skipped, rebuild_warnings=warnings) as archive:
-                self.assertEqual(ZipFile(archive).namelist(), [])
-        self.assertEqual(skipped, [])
-        self.assertEqual(len(warnings), 1)
-        self.assertTrue(warnings[0].endswith(': pominięto przypis'))
 
 
 class SubmissionFormsWithoutFingerprintTests(SubmissionMailboxMixin, TestCase):

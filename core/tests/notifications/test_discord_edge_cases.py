@@ -27,7 +27,7 @@ def configure(trigger, *, channel='Kanał', mention='', template='[etap]: [tytu�
     return rule
 
 
-@override_settings(DISCORD_WEBHOOKS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
+@override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
 class TestPanelGapTests(TestCase):
     """Testowa wysyłka z panelu: błędy oznaczenia, kanału i dostarczenia trafiają do historii z właściwym statusem."""
 
@@ -97,7 +97,7 @@ class RuleFormChannelTests(TestCase):
     def test_rule_problems_name_broken_server_configuration(self):
         """Błędne DISCORD_WEBHOOKS: lista kanałów to None, a reguła dostaje jeden powód zamiast skargi na kanał."""
         rule = configure('first_proofreading')
-        with override_settings(DISCORD_WEBHOOKS=['nie słownik']):
+        with override_settings(DISCORD_WEBHOOK_SECRETS=['nie słownik']):
             configured = configured_channel_names()
         self.assertIsNone(configured)
         self.assertEqual(rule_problems(rule, configured), ['błędna konfiguracja kanałów na serwerze (DISCORD_WEBHOOKS)'])
@@ -113,13 +113,13 @@ class RuleFormChannelTests(TestCase):
                                     'nie skonfigurowano żadnego webhooka'),
         }
         for case, (webhooks, choices, help_text) in cases.items():
-            with self.subTest(case), override_settings(DISCORD_WEBHOOKS=webhooks):
+            with self.subTest(case), override_settings(DISCORD_WEBHOOK_SECRETS=webhooks):
                 field = NotificationRuleForm(instance=rule).fields['channel']
                 self.assertEqual([value for value, _label in field.choices], choices)
                 self.assertIn(help_text, field.help_text)
 
 
-@override_settings(DISCORD_WEBHOOKS={'Kanał': URL})
+@override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': URL})
 class QueueGapTests(TestCase):
     def notification(self, status='pending', channel='Kanał'):
         return DiscordNotification.objects.create(trigger='stage_completed', channel=channel, content='x', status=status)
@@ -133,8 +133,8 @@ class QueueGapTests(TestCase):
 
     def test_delivery_outcomes_for_configuration_and_concurrent_runs(self):
         cases = {
-            'wiadomość już wysyłana gdzie indziej': ('sending', {'DISCORD_WEBHOOKS': {'Kanał': URL}}, 'sending'),
-            'błędna konfiguracja serwera': ('pending', {'DISCORD_WEBHOOKS': ['nie słownik']}, 'failed'),
+            'wiadomość już wysyłana gdzie indziej': ('sending', {'DISCORD_WEBHOOK_SECRETS': {'Kanał': URL}}, 'sending'),
+            'błędna konfiguracja serwera': ('pending', {'DISCORD_WEBHOOK_SECRETS': ['nie słownik']}, 'failed'),
         }
         for case, (status, settings, expected) in cases.items():
             with self.subTest(case), override_settings(**settings), \

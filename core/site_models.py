@@ -6,6 +6,7 @@ import json
 from django.core.exceptions import ValidationError
 from django.core.validators import RegexValidator, URLValidator
 from django.db import models
+from django.utils import timezone
 
 from core.edit_versions import VersionedQuerySet
 from core.site_note import clean_note
@@ -135,8 +136,11 @@ class SiteCatalogAnthology(models.Model):
 
     def clean(self):
         super().clean()
-        if self.url and not self.url.startswith('https://fantazmaty.pl/'):
-            raise ValidationError({'url': 'Adres musi zaczynać się od https://fantazmaty.pl/.'})
+        # Walidator w samej definicji pola wymagałby migracji.
+        try:
+            validate_site_url(self.url)
+        except ValidationError as error:
+            raise ValidationError({'url': error}) from None
 
 
 class SiteCatalogStory(models.Model):
@@ -245,8 +249,17 @@ def refresh_url(url):
 
 
 def validate_site_url(value):
+    """Adres na stronie fantazmaty.pl (puste – bez sprawdzania)."""
     if value and not value.startswith('https://fantazmaty.pl/'):
         raise ValidationError('Adres musi zaczynać się od https://fantazmaty.pl/.')
+
+
+def record_fetch(prefix, version):
+    """Ślad pobrania danych przez stronę: pola ``{prefix}_fetched_at`` i ``{prefix}_fetch_version`` ustawień
+    (``last`` – ekipa, ``catalog`` – szukajka, ``listen`` – „Słuchaj”), bez zapisu całego rekordu."""
+    SiteTeamSettings.load()
+    SiteTeamSettings.objects.filter(pk=1).update(**{f'{prefix}_fetched_at': timezone.now(),
+                                                    f'{prefix}_fetch_version': version[:40]})
 
 
 CARD_ID_RE = r'^[a-zA-Z0-9_-]+$'
@@ -327,5 +340,6 @@ class SiteListenRecording(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.card_id and self.audiobook_id:
-            self.card_id = f'fza-a{self.audiobook_id}-{self.part}'
+            from core.site_listen import card_id
+            self.card_id = card_id(self.audiobook_id, self.part)
         super().save(*args, **kwargs)

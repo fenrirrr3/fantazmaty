@@ -7,7 +7,6 @@ from core.filtering import facet_queryset, positive_id
 from datetime import date, timedelta
 
 from django.db.models import (
-    Exists,
     F,
     Q,
     OuterRef,
@@ -25,9 +24,8 @@ from core.permissions import (
 )
 from texts.models import Anthology, Review, ReviewAssignment, Text, TextNote, TextVisit, ForeignAuthor, Translator
 from workflow.models import HELD_LABEL, WorkflowRoleAssignment, WorkflowStage
-from workflow.services import ROLE_GROUPS
-from core.services.texts import STAGE_ROLE_MAP, TERMINAL_STAGES
-from workflow.state import stage_is_open as _is_open, stage_is_active as _is_active, operational_stages
+from workflow.services import ROLE_GROUPS, STAGE_ROLE_MAP, TERMINAL_STAGES
+from workflow.state import current_stage, stage_is_open as _is_open, stage_is_active as _is_active
 
 
 StageType = WorkflowStage.StageType
@@ -67,6 +65,17 @@ class _Record(dict):
             or self.get("name")
             or ""
         )
+
+
+def param_list(params, name):
+    """Wszystkie wartości parametru: QueryDict.getlist albo jedyna wartość ze zwykłego słownika."""
+    return params.getlist(name) if hasattr(params, "getlist") else [params.get(name, "")]
+
+
+def _without_closed(texts):
+    """Bez tekstów gotowych i wycofanych (bieżący etap tekstu); teksty bez etapu zostają."""
+    return texts.filter(Q(current_stage_type__isnull=True)
+                        | ~Q(current_stage_type__in=(StageType.READY, StageType.WITHDRAWN)))
 
 
 class _ProjectedRows:
@@ -198,8 +207,6 @@ def _text_data(text, include_authors):
         )
         for author in source_authors
     ]
-    translated = bool(text.anthology_id and text.anthology.is_translated)
-    record = getattr(text, "translation", None) if translated else None
     translators = list(record.translators.all()) if record else []
     return _Record(
         is_translation=translated,
@@ -225,31 +232,23 @@ def _text_data(text, include_authors):
     )
 
 
-def _prepared_texts(queryset, include_authors):
-    from workflow.read_queries import completed_verification_history
-
-    stages = WorkflowStage.objects.current_cycle().select_related("assignment__assigned_to__person_profile", "repetition").filter(
-        workflow_cycle=F("text__current_workflow_cycle"),
-    ).annotate(_has_completed_verification=Exists(completed_verification_history())).order_by("-pk")
-    assignments = (
-        WorkflowRoleAssignment.objects.current_cycle().filter(
-            workflow_cycle=F("text__current_workflow_cycle"),
-        )
-        .select_related("assigned_to", "assigned_to__person_profile")
-        .order_by("role", "pk")
-    )
+def _prepared_texts(queryset, include_authors, *, with_assignments=False):
+    """Teksty z etapami bieżącego cyklu i autorami; przydziały ról (selector_assignments) tylko na życzenie."""
+    stages = WorkflowStage.objects.current_cycle().select_related(
+        "assignment__assigned_to__person_profile",
+    ).order_by("-pk")
     queryset = queryset.select_related("anthology").prefetch_related(
-        Prefetch(
-            "workflow_stages",
-            queryset=stages,
-            to_attr="selector_stages",
-        ),
-        Prefetch(
-            "workflow_role_assignments",
-            queryset=assignments,
-            to_attr="selector_assignments",
-        ),
+        Prefetch("workflow_stages", queryset=stages, to_attr="selector_stages"),
     )
+    if with_assignments:
+        assignments = (
+            WorkflowRoleAssignment.objects.current_cycle()
+            .select_related("assigned_to", "assigned_to__person_profile")
+            .order_by("role", "pk")
+        )
+        queryset = queryset.prefetch_related(
+            Prefetch("workflow_role_assignments", queryset=assignments, to_attr="selector_assignments"),
+        )
     author_query = Author.objects.order_by("last_name", "first_name", "pk")
     if not include_authors:
         author_query = author_query.only("pk", "first_name", "last_name", "pseudonym")
@@ -265,42 +264,25 @@ def _terminal(stages):
     return any(stage.stage_type in TERMINAL_STAGES for stage in stages)
 
 
-def _current_stage(stages, *, prepared=False):
-    from workflow.state import current_stage
-    return current_stage(stages, prepared=prepared)
-
-
 def _annotated_texts(*, translated=False, include_translations=False, include_novels=False):
-    from workflow.state import state_annotations, ORDER
-    from workflow.read_queries import exclude_obsolete_verification_placeholders
-    from django.db.models.functions import Coalesce
+    from workflow.state import current_stage_subquery
     stages = WorkflowStage.objects.current_cycle().filter(text_id=OuterRef("pk"),
-        workflow_cycle=OuterRef("current_workflow_cycle"), is_released=True,
-        stage_type__in=ORDER).annotate(**state_annotations())
-    stages = exclude_obsolete_verification_placeholders(stages)
-    current = stages.filter(is_completed=False, ended_at__isnull=True).order_by('state_priority','-state_order','-iteration','-pk').values('stage_type')[:1]
-    last = stages.order_by('-state_order','-iteration','-pk').values('stage_type')[:1]
+                                                          workflow_cycle=OuterRef("current_workflow_cycle"))
     query = Text.objects.all() if include_translations else (Text.objects.filter(anthology__is_translated=True) if translated else Text.objects.exclude(anthology__is_translated=True))
     if not include_novels:
         query = query.exclude(anthology__is_novel=True)
-    return query.exclude(anthology__status='abandoned').annotate(current_stage_type=Coalesce(Subquery(current), Subquery(last)))
+    return query.exclude(anthology__status='abandoned').annotate(
+        current_stage_type=current_stage_subquery(stages, 'stage_type'))
 
 
 def _text_row(text, include_authors):
     result = _text_data(text, include_authors)
-    stages = operational_stages(text.selector_stages)
-    current = _current_stage(stages, prepared=True)
+    current = current_stage(text.selector_stages)
     current_data = _stage_data(current)
     result.update(
         current_stage_type=current.stage_type if current else None,
         current_status=current_data,
-        current_stages=[
-            _stage_data(stage)
-            for stage in stages
-            if _is_open(stage)
-        ],
         current_status_started_at=current.planned_start if current else None,
-        current_status_ended_at=current.ended_at if current else None,
         last_status_change=getattr(text, "last_status_change", None),
     )
     return result
@@ -315,8 +297,7 @@ def text_list_context(*, user, params, scope=None, stage_scope=None, translated=
     author_id = positive_id(author_value) if include_authors else None
     translator_id = positive_id(params.get("translator")) if translated and include_authors else None
     valid_statuses = {value for value, _ in active_stage_choices()} | {"none"}
-    requested = params.getlist("status") if hasattr(params, "getlist") else [params.get("status", "")]
-    statuses = list(dict.fromkeys(v for v in requested if v in valid_statuses))
+    statuses = list(dict.fromkeys(v for v in param_list(params, "status") if v in valid_statuses))
     status = statuses[-1] if statuses else ""
     query = params.get("q", "").strip()[:500]
 
@@ -355,10 +336,7 @@ def text_list_context(*, user, params, scope=None, stage_scope=None, translated=
                     condition |= name_matches(term, 'authors__')
             result = result.filter(condition)
         if hide_ready:
-            result = result.filter(
-                Q(current_stage_type__isnull=True)
-                | ~Q(current_stage_type__in=(StageType.READY, StageType.WITHDRAWN))
-            )
+            result = _without_closed(result)
         return result.distinct()
 
     queryset = filtered()
@@ -456,29 +434,24 @@ def my_texts_context(*, user, selected_view="active", params=None):
         selected_view = "active"
     include_authors = can_view_author_data(user)
     today = timezone.localdate()
-    from workflow.read_queries import annotate_my_work
+    from workflow.read_queries import classify_work
     own_ids = list(_user_texts(user, include_authors).order_by().values_list("pk", flat=True))
+    # Stan pracy liczymy raz dla tekstów osoby (workflow.read_queries._classify); do wierszy
+    # trafia jako proste IN – w widoku „W toku” zawęża też listę.
+    work = classify_work(user, today) if own_ids else {"active": set(), "waiting": set(), "completed": set()}
     if selected_view == "active":
-        # Stan pracy liczymy jednym zapytaniem, tylko dla tekstów osoby; wynik zawęża
-        # listę i trafia do wierszy jako proste IN, bez drugiej, kosztownej klasyfikacji.
-        work = [row for row in annotate_my_work(Text.objects.filter(pk__in=own_ids), user, today).values_list(
-            "pk", "work_active", "work_waiting", "work_completed") if row[1] or row[2]] if own_ids else []
-        own_ids = [row[0] for row in work]
+        own_ids = [pk for pk in own_ids if pk in work["active"] or pk in work["waiting"]]
     # Zbiór własnych tekstów liczymy raz (lista ID). Zagnieżdżanie tak rozbudowanego
     # zapytania w każdym filtrze listy kosztowało ponad sekundę samego budowania SQL.
     scope = Text.objects.filter(pk__in=own_ids)
     params = params.copy() if params is not None else {}
     params.setdefault("hide_ready", "0")
     filters = text_list_context(user=user, params=params, scope=scope, include_translations=True, include_novels=True)
-    texts = filters.pop("filtered_queryset")
-    if selected_view == "active":
-        texts = texts.annotate(**{
-            name: Q(pk__in=[row[0] for row in work if row[index]])
-            for index, name in enumerate(("work_active", "work_waiting", "work_completed"), 1)
-        })
-    else:
-        # Widok „wszystkie”: stan pracy tylko dla wierszy wyświetlanej strony.
-        texts = annotate_my_work(texts, user, today)
+    texts = filters.pop("filtered_queryset").annotate(**{
+        "work_" + name: Q(pk__in=[pk for pk in own_ids if pk in work[name]])
+        for name in ("active", "waiting", "completed")
+    })
+    if selected_view != "active":
         if not params.get("sort"):
             # Domyślnie najpierw teksty, w których osoba najpóźniej zakończyła swój etap;
             # teksty bez daty zakończenia – pod nimi, antologiami i tytułami.
@@ -506,10 +479,6 @@ def my_texts_context(*, user, selected_view="active", params=None):
         row = _text_row(text, include_authors)
         row.update(
             user_assignments=[_assignment_data(item) for item in assignments],
-            visible_assignments=[_assignment_data(item) for item in assignments],
-            current_cycle_stage_history=[
-                _stage_data(stage) for stage in text.selector_stages
-            ],
             has_active_work=text.work_active,
             has_reserved_work=text.work_waiting,
             has_completed_work=text.work_completed,
@@ -581,20 +550,12 @@ def available_stages_for_user(*, user, params=None, with_filters=False):
 def workflow_list_context(*, user, params):
     require_team_member(user)
     include_authors = can_view_author_data(user)
-    requested_anthologies = (
-        params.getlist("anthology") if hasattr(params, "getlist")
-        else [params.get("anthology", "")]
-    )
     anthology_ids = list(dict.fromkeys(
-        identifier for value in requested_anthologies
+        identifier for value in param_list(params, "anthology")
         if (identifier := positive_id(value)) is not None
     ))
-    requested_stages = (
-        params.getlist("stage") if hasattr(params, "getlist")
-        else [params.get("stage", "")]
-    )
     selected_stages = list(dict.fromkeys(
-        value.strip() for value in requested_stages
+        value.strip() for value in param_list(params, "stage")
         if value.strip() in dict(active_stage_choices())
     ))
     query = params.get("q", "").strip()
@@ -603,9 +564,7 @@ def workflow_list_context(*, user, params):
     # Wyszukiwanie po autorze nie jest wykonywane dla koordynatora.
     from django.db.models import Q
 
-    stages = WorkflowStage.objects.current_cycle().select_related("assignment__assigned_to__person_profile").filter(
-        workflow_cycle=F("text__current_workflow_cycle"),
-    )
+    stages = WorkflowStage.objects.current_cycle().select_related("assignment__assigned_to__person_profile")
     stages = stages.exclude(text__anthology__is_novel=True)
     for term in query.split():
         condition = (
@@ -636,10 +595,9 @@ def workflow_list_context(*, user, params):
         text_query = text_query.filter(condition)
     texts = _prepared_texts(text_query.distinct(), include_authors)
     if hide_ready:
-        texts = texts.filter(Q(current_stage_type__isnull=True) |
-                             ~Q(current_stage_type__in=(StageType.READY, StageType.WITHDRAWN)))
+        texts = _without_closed(texts)
     from django.db.models import Min, Max
-    from workflow.read_queries import editorial_approval, exclude_obsolete_verification_placeholders
+    from workflow.read_queries import editorial_approval
     texts = texts.annotate(
         summary_started=Min('workflow_stages__started_at'),
         summary_ended=Max('workflow_stages__ended_at'),
@@ -662,8 +620,7 @@ def workflow_list_context(*, user, params):
         sort = 'anthology'
     texts = texts.order_by(*sorts[sort]).prefetch_related(Prefetch(
         'workflow_stages',
-        queryset=exclude_obsolete_verification_placeholders(
-            WorkflowStage.objects.filter(workflow_cycle=F('text__current_workflow_cycle')))
+        queryset=WorkflowStage.objects.filter(workflow_cycle=F('text__current_workflow_cycle'))
             .select_related('assignment__assigned_to__person_profile')
             .order_by('execution_number', 'iteration', 'pk'),
         to_attr='summary_stages',
@@ -677,7 +634,7 @@ def workflow_list_context(*, user, params):
                     for role, label in workflow_role_choices()]
 
     def project(text):
-        current = _current_stage(text.selector_stages)
+        current = current_stage(text.selector_stages)
         row = _stage_data(current, _text_data(text, include_authors)) if current else _Record(
             text=_text_data(text, include_authors), get_stage_type_display='–')
         from workflow.archive_executions import is_archive_text
@@ -746,11 +703,11 @@ def text_detail_context(*, user, text):
     today = timezone.localdate()
 
     text = get_object_or_404(
-        _prepared_texts(Text.objects.all(), include_authors),
+        _prepared_texts(Text.objects.all(), include_authors, with_assignments=True),
         pk=text.pk,
     )
     text_data = _text_data(text, include_authors)
-    stages = operational_stages(text.selector_stages)
+    stages = text.selector_stages
     assignments = {
         item.role: item for item in text.selector_assignments
     }
@@ -892,7 +849,7 @@ def text_detail_context(*, user, text):
     def stage_row(stage):
         return row_by_id.get(stage.pk) if stage else None
 
-    current = _current_stage(stages)
+    current = current_stage(stages)
     previous = max(
         (stage for stage in stages if stage.is_completed),
         key=lambda stage: (stage.ended_at or date.min, stage.pk),
@@ -908,12 +865,6 @@ def text_detail_context(*, user, text):
             workflow_cycle=text.current_workflow_cycle, is_current=True,
         ).select_related("assignment__assigned_to__person_profile").order_by("-workflow_cycle", "-pk")
         archived = [row for row in stage_rows if row["pk"] not in visible_ids]
-        operational_ids = {stage.pk for stage in stages}
-        for stage in text.selector_stages:
-            if stage.pk not in operational_ids:
-                row = _stage_data(stage, text_data)
-                row.update(can_start=False, can_complete=False, assigned_user=_user_data(stage.assignment.assigned_to) if stage.assignment and stage.assignment.assigned_to else None)
-                archived.append(row)
         for stage in historical_stages:
             row = _stage_data(stage, text_data)
             row.update(can_start=False, can_complete=False, assigned_user=_user_data(stage.assignment.assigned_to) if stage.assignment and stage.assignment.assigned_to else None)
@@ -1151,7 +1102,7 @@ def _text_team_members(text, assignments):
             }
             for role, label in workflow_role_choices() if role != Role.STYLING
         ] + [
-            {"role": item.role, "label": assignment_label(item, show_first=True), "archive_execution": is_archive_text(text),
+            {"role": item.role, "label": assignment_label(item), "archive_execution": is_archive_text(text),
              "is_previous": True, "is_assigned": True, "workflow_cycle": item.workflow_cycle,
              "user": _user_data(item.assigned_to)}
             for item in WorkflowRoleAssignment.objects.filter(text=text, assigned_to__isnull=False).exclude(role__in=(*IMPORT_ONLY_ROLES, Role.STYLING)).exclude(

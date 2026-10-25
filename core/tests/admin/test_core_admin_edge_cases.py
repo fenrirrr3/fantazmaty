@@ -10,8 +10,7 @@ from django.test import RequestFactory, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from authors.admin import AuthorAdmin, BlacklistedAuthorAdmin
-from authors.models import Author, AuthorNote, BlacklistedAuthor
+from authors.models import Author, AuthorNote
 from core.admin import AudioContributorAdmin, VacationAdmin
 from core.models import (AnthologyCorrection, AudioContributor, AudiobookStage, MailboxConnection, NewsletterConsent,
                          Recruitment, RecruitmentRoleDecision, ReplacementEntry, UserActivity)
@@ -229,9 +228,9 @@ class MailboxAdminGapTests(CoreAdminGapData):
 class IntakeAdminGapTests(CoreAdminGapData):
     def test_recruitment_list_filters_by_role(self):
         editor = Recruitment.objects.create(first_name='Ewa', last_name='Redaktorka', email='ewa@example.com',
-                                            department=Recruitment.Department.EDITORS)
+                                            mail_roles=['editors'])
         narrator = Recruitment.objects.create(first_name='Piotr', last_name='Lektor', email='piotr@example.com',
-                                   department=Recruitment.Department.NARRATORS)
+                                   mail_roles=['narrators'])
         url = reverse('admin:core_recruitment_changelist')
         cases = {'znana rola': ('editors', {editor}), 'nieznana rola – bez filtrowania': ('nieznana', {editor, narrator})}
         for case, (role, expected) in cases.items():
@@ -282,25 +281,12 @@ class AuthorNoteAdminGapTests(CoreAdminGapData):
                 note.refresh_from_db()
                 self.assertEqual((note.content, note.created_by), (next(iter(changes.values())), creator))
 
-    def test_author_views_refuse_account_without_superuser_even_if_site_check_is_bypassed(self):
-        staff = get_user_model().objects.create_user('core-gaps-staff', is_staff=True)
-        author = Author.objects.create(first_name='Jan', last_name='Autor', email='jan@example.com')
-        calls = {
-            'zapis notatek autora': lambda: AuthorAdmin(Author, site).save_formset(
-                self.request(staff), type('Form', (), {'instance': author})(), None, True),
-            'dodanie do czarnej listy': lambda: BlacklistedAuthorAdmin(BlacklistedAuthor, site).add_view(
-                self.request(staff)),
-        }
-        for case, call in calls.items():
-            with self.subTest(case), self.assertRaises(PermissionDenied):
-                call()
-
 
 class ModelLabelTests(TestCase):
     def test_labels(self):
         book = Anthology.objects.create(title='Cienie')
         recruitment = Recruitment.objects.create(first_name='Ewa', last_name='Nowa', email='ewa@example.com',
-                                                 department=Recruitment.Department.EDITORS)
+                                                 mail_roles=['editors'])
         consent = NewsletterConsent.objects.create(email='czytelnik@example.com', premieres=True)
         cases = {
             'uwaga do antologii': (AnthologyCorrection(anthology=book, story_title='Latarnik'), 'Cienie – Latarnik'),

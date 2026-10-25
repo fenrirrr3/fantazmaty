@@ -8,9 +8,12 @@ from docx.opc.constants import RELATIONSHIP_TYPE as RT
 from docx.oxml import parse_xml
 from docx.oxml.ns import qn
 from docx.text.paragraph import Paragraph
-from lxml import etree
 
-FALLBACK = '{http://schemas.openxmlformats.org/markup-compatibility/2006}Fallback'
+if __package__:
+    from .document_xml import FALLBACK, serialize_part
+else:
+    from document_xml import FALLBACK, serialize_part
+
 SECONDARY = (RT.HEADER, RT.FOOTER, RT.FOOTNOTES, RT.ENDNOTES)
 
 
@@ -61,6 +64,6 @@ def document_stories(document, *, include_fallback=True):
 
     def commit():
         for part, root in pending:
-            part._blob = etree.tostring(root, xml_declaration=True, encoding='UTF-8', standalone=True)
+            part._blob = serialize_part(root)
 
     return stories, commit

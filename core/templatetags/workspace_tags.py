@@ -1,67 +1,29 @@
 from django import template
-from core.permissions import can_view_illustrations
-from core.permissions import is_coordinator
+
+from core import permissions
+
 register = template.Library()
 
-
-@register.simple_tag
-def post_layout_allowed(user):
-    from core.permissions import can_view_post_layout
-    return can_view_post_layout(user)
-
-
-@register.simple_tag
-def audiobooks_allowed(user):
-    from core.permissions import can_view_audiobooks
-    return can_view_audiobooks(user)
+# Nazwa sprawdzenia w szablonie → reguła dostępu ({% allowed "audiobooks" user as show_audiobooks %}).
+ALLOWED = {
+    "post_layout": "can_view_post_layout", "audiobooks": "can_view_audiobooks",
+    "social_media": "can_view_social_media", "audio_proofreading": "can_view_audio_proofreading",
+    "illustrations": "can_view_illustrations", "coordinator": "is_coordinator", "email_copy": "can_copy_emails",
+    "my_reviews": "can_view_my_reviews", "review_list": "can_browse_reviews",
+    "recruitment_mailbox": "can_use_recruitment_mailbox",
+}
 
 
 @register.simple_tag
-def social_media_allowed(user):
-    from core.permissions import can_view_social_media
-    return can_view_social_media(user)
-
-
-@register.simple_tag
-def audio_proofreading_allowed(user):
-    from core.permissions import can_view_audio_proofreading
-    return can_view_audio_proofreading(user)
+def allowed(name, user):
+    return getattr(permissions, ALLOWED[name])(user)
 
 
 @register.inclusion_tag("core/includes/header_search.html")
 def header_search(user):
     from core.forms import GlobalSearchForm
-    from core.permissions import is_team_member
     return {"header_search_form": GlobalSearchForm(user=user, auto_id="header_%s")
-            if is_team_member(user) else None}
-
-
-@register.simple_tag
-def illustrations_allowed(user):
-    return can_view_illustrations(user)
-
-
-@register.simple_tag
-def coordinator_allowed(user):
-    return is_coordinator(user)
-
-
-@register.simple_tag
-def email_copy_allowed(user):
-    from core.permissions import can_copy_emails
-    return can_copy_emails(user)
-
-
-@register.simple_tag
-def reviewer_allowed(user):
-    from core.permissions import can_view_my_reviews
-    return can_view_my_reviews(user)
-
-
-@register.simple_tag
-def review_list_allowed(user):
-    from core.permissions import can_browse_reviews
-    return can_browse_reviews(user)
+            if permissions.is_team_member(user) else None}
 
 
 @register.simple_tag
@@ -78,12 +40,6 @@ def text_view_url(context, view):
     params["view"] = view
     params.pop("page", None)
     return "?" + params.urlencode()
-
-
-@register.simple_tag
-def recruitment_mailbox_allowed(user):
-    from core.permissions import can_use_recruitment_mailbox
-    return can_use_recruitment_mailbox(user)
 
 
 @register.simple_tag

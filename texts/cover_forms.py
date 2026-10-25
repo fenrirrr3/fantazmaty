@@ -62,7 +62,7 @@ class CoverAssignmentForm(forms.ModelForm):
         widgets = {"cover_notes": forms.Textarea(attrs={"rows": 2})}
 
     class Media:
-        js = ("core/person-select.js",)
+        js = ("core/lookup.js", "core/person-select.js")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -128,9 +128,8 @@ class CoverAssignmentForm(forms.ModelForm):
                 artist.full_clean()
                 artist.save()
             obj.cover_illustrator = artist
-        if obj.cover_illustrator_id:
-            obj.cover_author = str(obj.cover_illustrator)
-        else:
+        # Przy wybranej osobie podpis okładki ustawia Anthology.save; bez niej zostaje dawny wpis albo nic.
+        if not obj.cover_illustrator_id:
             obj.cover_author = (
                 self.legacy_name if not self.cleaned_data.get("clear_legacy_cover") else ""
             )

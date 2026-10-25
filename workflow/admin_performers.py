@@ -1,10 +1,8 @@
 """Correct performers in place; never start work or increment execution numbers."""
-from django.core.exceptions import PermissionDenied, ValidationError
-from django.db import transaction
+from django.core.exceptions import ValidationError
 from django.db.models import Q
-from django.apps import apps
-from core.edit_versions import version_of, bump
-from texts.models import Text
+from core.edit_versions import bump
+from workflow.admin_status import admin_correction, save_undated_assignment
 from workflow.catalog import all_stage_roles, IMPORT_ONLY_ROLES
 from workflow.import_context import importing_completed
 from workflow.models import WorkflowStage as S, WorkflowRoleAssignment as A, WorkflowHandoff
@@ -81,8 +79,7 @@ def performer_plan(text, changes):
         assignment = stage.assignment
         merge_plan = None
         if stage.repetition_id is None:
-            merge_plan, _ = role_group(apps, text._state.db or 'default', text,
-                                       stage.workflow_cycle, role)
+            merge_plan, _ = role_group(text._state.db or 'default', text, stage.workflow_cycle, role)
             if merge_plan:
                 assignment = merge_plan['assignment']
                 assignment.is_current = stage.workflow_cycle == text.current_workflow_cycle
@@ -152,50 +149,43 @@ def performer_plan(text, changes):
     return plan
 
 
-@transaction.atomic
 def correct_stage_performers(text_id, changes, actor, expected_version):
-    if not actor.is_active or not actor.is_superuser:
-        raise PermissionDenied
-    from core.workflow_events import history_correction
-    history_correction()
-    text = Text.objects.select_for_update().get(pk=text_id)
-    if version_of(text) != expected_version:
-        raise ValidationError('Dane zmieniły się. Odśwież formularz.')
-    try:
-        plan = performer_plan(text, changes)
-    except ValidationError as exc:
-        raise ValidationError(exc.messages) from exc
-    from workflow.waiting import performer_snapshot, reset_changed_performers
-    before_performers = performer_snapshot(text)
-    token = importing_completed.set(True)
-    try:
-        # Free both verifier slots before a swap; all writes stay in this transaction.
-        verifier_ids = [item['assignment'].pk for item in plan
-                        if item['assignment'] and item['assignment'].pk
-                        and item['assignment'].role in ('verifier_1', 'verifier_2')]
-        verifier_ids.extend(pk for item in plan if item['role'] in ('verifier_1', 'verifier_2')
-                            for pk in item['merge_ids'])
-        A.objects.filter(pk__in=verifier_ids).update(assigned_to=None)
-        for item in plan:
-            assignment, performer = item['assignment'], item['performer']
-            if assignment is None:
-                continue
-            if item['merge_plan']:
-                write_group(apps, text._state.db or 'default', item['merge_plan'],
-                            user_id=performer.pk if performer else None,
-                            is_current=assignment.is_current)
-                continue
-            if assignment.pk is None:
-                assignment.save()
-                A.objects.filter(pk=assignment.pk).update(assigned_at=None)
-            else:
-                # VersionedQuerySet.update() bumps the assignment and its text.
-                A.objects.filter(pk=assignment.pk).update(assigned_to=performer)
-            for stage in item['stages']:
-                if stage.assignment_id != assignment.pk:
-                    S.objects.filter(pk=stage.pk).update(assignment=assignment)
-        if plan:
-            reset_changed_performers(text, before_performers)
-            bump('texts.text', text.pk, text._state.db or 'default')
-    finally:
-        importing_completed.reset(token)
+    # Antologię sprawdza performer_plan – tylko przy rzeczywistych zmianach.
+    with admin_correction(actor, expected_version, text_id=text_id, working_anthology=False) as text:
+        try:
+            plan = performer_plan(text, changes)
+        except ValidationError as exc:
+            raise ValidationError(exc.messages) from exc
+        from workflow.waiting import performer_snapshot, reset_changed_performers
+        before_performers = performer_snapshot(text)
+        token = importing_completed.set(True)
+        try:
+            # Free both verifier slots before a swap; all writes stay in this transaction.
+            verifier_ids = [item['assignment'].pk for item in plan
+                            if item['assignment'] and item['assignment'].pk
+                            and item['assignment'].role in ('verifier_1', 'verifier_2')]
+            verifier_ids.extend(pk for item in plan if item['role'] in ('verifier_1', 'verifier_2')
+                                for pk in item['merge_ids'])
+            A.objects.filter(pk__in=verifier_ids).update(assigned_to=None)
+            for item in plan:
+                assignment, performer = item['assignment'], item['performer']
+                if assignment is None:
+                    continue
+                if item['merge_plan']:
+                    write_group(text._state.db or 'default', item['merge_plan'],
+                                user_id=performer.pk if performer else None,
+                                is_current=assignment.is_current)
+                    continue
+                if assignment.pk is None:
+                    save_undated_assignment(assignment)
+                else:
+                    # VersionedQuerySet.update() bumps the assignment and its text.
+                    A.objects.filter(pk=assignment.pk).update(assigned_to=performer)
+                for stage in item['stages']:
+                    if stage.assignment_id != assignment.pk:
+                        S.objects.filter(pk=stage.pk).update(assignment=assignment)
+            if plan:
+                reset_changed_performers(text, before_performers)
+                bump('texts.text', text.pk, text._state.db or 'default')
+        finally:
+            importing_completed.reset(token)

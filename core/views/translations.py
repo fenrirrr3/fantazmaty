@@ -13,7 +13,7 @@ from core.pagination import paginate_items
 from core.selectors.texts import text_list_context
 from core.translation_forms import TranslationForm
 from core.views.texts import _permission_context, _render_text_detail
-from texts.models import Text, TextTranslation
+from texts.models import ForeignAuthor, Text, TextTranslation, Translator
 from core.edit_policy import edit_policy
 
 
@@ -22,7 +22,6 @@ from core.edit_policy import edit_policy
 @require_GET
 @superuser_required
 def translation_person_suggestions(request, kind):
-    from texts.models import ForeignAuthor, Translator
     model = {'author': ForeignAuthor, 'translator': Translator}.get(kind)
     if model is None:
         raise Http404
@@ -49,8 +48,6 @@ def translation_person_suggestions(request, kind):
 @require_GET
 @superuser_required
 def translation_person_detail(request, kind, person_id):
-    from django.http import Http404
-    from texts.models import ForeignAuthor, Translator
     models = {'author': ForeignAuthor, 'translator': Translator}
     if kind not in models:
         raise Http404

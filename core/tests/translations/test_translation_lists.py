@@ -1,8 +1,11 @@
 """Widoczność tłumaczeń: lista i szczegóły tłumaczeń, wyłączenie z list zwykłych tekstów, praca osobista i nawigacja."""
+from unittest.mock import patch
 from urllib.parse import parse_qs, urlsplit
 
+from django.db import connection
 from django.http import QueryDict
 from django.test import TestCase, tag
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 from lxml import html
@@ -13,6 +16,16 @@ from texts.models import Anthology
 from workflow.models import WorkflowRoleAssignment
 
 from .support import CompletedTranslationData, TranslatedBookData
+
+
+def main_table(sql):
+    """Główna tabela zapytania SELECT (pomija podzapytania w nawiasach); SQLite i MySQL."""
+    depth = 0
+    for index, char in enumerate(sql):
+        depth += {'(': 1, ')': -1}.get(char, 0)
+        if depth == 0 and sql.startswith(' FROM ', index):
+            return sql[index + 6:].split(None, 1)[0].strip('`"')
+    return None
 
 
 class TranslationVisibilityTests(TranslatedBookData, TestCase):
@@ -83,6 +96,29 @@ class TranslationVisibilityTests(TranslatedBookData, TestCase):
         self.assertEqual(response.status_code, 403)
         self.client.logout()
         self.assertEqual(self.client.get(reverse("core:translation_list")).status_code, 302)
+
+    def test_detail_page_reads_text_and_translators_without_repeating_selector_queries(self):
+        """Budowa strony tłumaczenia: tekst pobiera tylko selektor (widok nie pobiera go ponownie przy GET),
+        tłumaczy – też tylko selektor, a przydział osoby widok bierze z selektora (bez osobnego zapytania)."""
+        from core.views import texts as text_views
+        page = text_views._render_text_detail_page
+        captured = []
+
+        def spy(*args, **kwargs):
+            with CaptureQueriesContext(connection) as queries:
+                response = page(*args, **kwargs)
+            captured.extend(main_table(query['sql']) for query in queries.captured_queries)
+            return response
+
+        self.client.force_login(self.member)
+        with patch('core.views.texts._render_text_detail_page', spy):
+            response = self.client.get(reverse("core:translation_detail", args=[self.text.pk]))
+        self.assertContains(response, "Anna Żak")
+        self.assertEqual({table: captured.count(table) for table in
+                          ('texts_text', 'texts_translator', 'workflow_workflowroleassignment')},
+                         {'texts_text': 1, 'texts_translator': 1, 'workflow_workflowroleassignment': 2})
+        self.assertTrue(response.context['is_assigned'])
+        self.assertTrue(response.context['can_add_note'])
 
     def test_regular_details_redirect_and_translation_route_rejects_normal_text(self):
         response = self.client.get(reverse("core:assigned_text_detail", args=[self.text.pk]))

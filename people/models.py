@@ -21,37 +21,10 @@ def format_local_datetime(value):
 
 
 def normalize_datetime(value):
-    if settings.USE_TZ and timezone.is_naive(value):
-        return timezone.make_aware(
-            value,
-            timezone.get_current_timezone(),
-        )
-
-    if not settings.USE_TZ and timezone.is_aware(value):
-        return timezone.make_naive(
-            value,
-            timezone.get_current_timezone(),
-        )
-
+    """Data i godzina ze strefą czasową (USE_TZ = True); wartość bez strefy – w strefie bieżącej."""
+    if timezone.is_naive(value):
+        return timezone.make_aware(value, timezone.get_current_timezone())
     return value
-
-
-def leave_is_active(start_date, end_date, until_revoked):
-    if not start_date:
-        return False
-
-    now = timezone.now()
-
-    if start_date > get_local_date(now):
-        return False
-
-    if until_revoked:
-        return True
-
-    return bool(
-        end_date
-        and now < normalize_datetime(end_date)
-    )
 
 
 class Role(models.Model):
@@ -140,23 +113,6 @@ class Person(models.Model):
         default=True,
     )
 
-    leave_start_date = models.DateField(
-        "urlop od",
-        null=True,
-        blank=True,
-    )
-
-    leave_end_date = models.DateTimeField(
-        "urlop do",
-        null=True,
-        blank=True,
-    )
-
-    leave_until_revoked = models.BooleanField(
-        "urlop do odwołania",
-        default=False,
-    )
-
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -190,57 +146,39 @@ class Person(models.Model):
                 kwargs['update_fields'] = set(kwargs['update_fields']) | {'is_active'}
         return super().save(*args, **kwargs)
 
-    def clean(self):
-        super().clean()
-
-        errors = {}
-
-        if self.leave_end_date and not self.leave_start_date:
-            errors["leave_start_date"] = (
-                "Podaj datę rozpoczęcia urlopu."
-            )
-
-        if self.leave_until_revoked and not self.leave_start_date:
-            errors["leave_start_date"] = (
-                "Urlop do odwołania wymaga daty rozpoczęcia."
-            )
-
-        if self.leave_until_revoked and self.leave_end_date:
-            errors["leave_end_date"] = (
-                "Urlop do odwołania nie może mieć daty zakończenia."
-            )
-
-        if (
-            self.leave_start_date
-            and not self.leave_until_revoked
-            and not self.leave_end_date
-        ):
-            errors["leave_end_date"] = (
-                "Podaj datę i godzinę zakończenia albo zaznacz "
-                "„urlop do odwołania”."
-            )
-
-        if (
-            self.leave_start_date
-            and self.leave_end_date
-            and get_local_date(self.leave_end_date)
-            < self.leave_start_date
-        ):
-            errors["leave_end_date"] = (
-                "Data zakończenia nie może być wcześniejsza "
-                "niż data rozpoczęcia."
-            )
-
-        if errors:
-            raise ValidationError(errors)
-
     @property
     def can_show_team_contact(self):
         return self.is_active and (self.user_id is None or self.user.is_active)
 
 
+class VacationQuerySet(VersionedQuerySet):
+    def unfinished(self, now=None):
+        """Urlopy niezakończone w chwili `now`: do odwołania albo z końcem później."""
+        return self.filter(models.Q(until_revoked=True) | models.Q(end_date__gt=now or timezone.now()))
+
+    def active(self, now=None):
+        """Urlopy trwające w chwili `now`: rozpoczęte najpóźniej tego dnia i niezakończone."""
+        now = now or timezone.now()
+        return self.unfinished(now).filter(start_date__lte=get_local_date(now))
+
+
+def remember_person_row(sender, instance, using=None, **kwargs):
+    """Poprzedni stan wiersza osoby – jeden odczyt na zapis dla odbiorców z people.signals (koordynacja),
+    people.identity (konto) i people.dropbox_access (dostęp do folderów). Pierwszy odbiorca pre_save osoby
+    (podłączany w PeopleConfig.ready)."""
+    instance._previous_row = sender.objects.using(using).filter(pk=instance.pk).values(
+        "is_coordinator", "user_id", "is_active", "is_external", "dropbox_email").first() if instance.pk else None
+
+
+def remember_role_people(sender, instance, **kwargs):
+    """Dotychczasowa nazwa roli i jej osoby przed zapisem albo usunięciem – jeden odczyt dla people.signals
+    i people.identity (podłączany w PeopleConfig.ready przed ich odbiorcami)."""
+    instance._previous_name = sender.objects.filter(pk=instance.pk).values_list("name", flat=True).first() if instance.pk else None
+    instance._role_people = list(instance.people.values_list("pk", flat=True)) if instance.pk else []
+
+
 class Vacation(models.Model):
-    objects = VersionedQuerySet.as_manager()
+    objects = VacationQuerySet.as_manager()
     person = models.ForeignKey(
         Person,
         on_delete=models.CASCADE,
@@ -330,10 +268,8 @@ class Vacation(models.Model):
 
         if self.person_id and self.start_date and not errors:
             from datetime import datetime, time
-            from django.db.models import Q
             start = timezone.make_aware(datetime.combine(self.start_date, time.min))
-            overlapping = Vacation.objects.filter(person_id=self.person_id).exclude(pk=self.pk)
-            overlapping = overlapping.filter(Q(until_revoked=True) | Q(end_date__gt=start))
+            overlapping = Vacation.objects.filter(person_id=self.person_id).exclude(pk=self.pk).unfinished(start)
             if not self.until_revoked and self.end_date:
                 end = normalize_datetime(self.end_date)
                 last_day = get_local_date(end)
@@ -349,11 +285,10 @@ class Vacation(models.Model):
 
     @property
     def is_active(self):
-        return leave_is_active(
-            self.start_date,
-            self.end_date,
-            self.until_revoked,
-        )
+        now = timezone.now()
+        if not self.start_date or self.start_date > get_local_date(now):
+            return False
+        return self.until_revoked or bool(self.end_date and now < normalize_datetime(self.end_date))
 
     @property
     def is_finished(self):
@@ -373,10 +308,6 @@ class Vacation(models.Model):
     @property
     def can_be_edited(self):
         return self.is_active or self.is_upcoming
-
-    @property
-    def can_be_ended(self):
-        return self.is_active
 
 
 def normalize_dropbox_path(value):

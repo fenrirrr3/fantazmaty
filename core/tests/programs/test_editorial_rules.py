@@ -591,11 +591,6 @@ class ProgramFormTests(SimpleTestCase):
                 self.assertFalse(form.is_valid())
                 self.assertIn('5 MB', str(form.errors['document']))
 
-    def test_mailbox_validator_can_keep_its_existing_ten_mb_limit(self):
-        form = OdkurzaczForm({}, {'document': sized_docx(5 * 1024 * 1024 + 1)},
-                             max_document_bytes=10 * 1024 * 1024)
-        self.assertTrue(form.is_valid(), form.errors)
-
     def test_zip_expansion_limit(self):
         stream = BytesIO()
         with ZipFile(stream, 'w', ZIP_DEFLATED) as archive:

@@ -16,7 +16,7 @@ from django.utils import timezone
 logger = logging.getLogger(__name__)
 
 def spool_directory():
-    return Path(getattr(settings, 'ACTIVITY_SPOOL_DIR', Path(settings.BASE_DIR) / 'var' / 'activity-spool'))
+    return Path(settings.ACTIVITY_SPOOL_DIR)
 
 def enqueue_activity(**data):
     directory = spool_directory()

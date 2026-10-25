@@ -249,9 +249,7 @@ def last_activity(request):
     roles = list(ordered_team_roles())
     role = request.GET.get('role', '')
     role = role if role in {str(item.pk) for item in roles} else ''
-    now = timezone.now()
-    on_leave = Vacation.objects.filter(person_id=OuterRef('pk'), start_date__lte=timezone.localdate(now)).filter(
-        Q(until_revoked=True) | Q(end_date__gt=now))
+    on_leave = Vacation.objects.filter(person_id=OuterRef('pk')).active()
     people = Person.objects.active().annotate(on_leave=Exists(on_leave))
     if role:
         people = people.filter(roles=role)

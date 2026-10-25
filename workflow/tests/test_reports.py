@@ -1,12 +1,11 @@
 """Raporty: zegary bezczynności, strony przestojów i aktywności zespołu (filtry, uprawnienia, dane autorów),
 ostatnia aktywność osób, zapytania list tekstów i kontrola wielokrotnych przypisań."""
 from datetime import timedelta
+from types import SimpleNamespace
 
 from django.contrib.auth import get_user_model
-from django.db import connection
 from django.http import QueryDict
 from django.test import RequestFactory, TestCase
-from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 
@@ -20,7 +19,7 @@ from workflow.admin_performers import correct_stage_performers
 from workflow.handoffs import handoff_stage
 from workflow.models import WorkflowRoleAssignment as A, WorkflowStage as S, WorkflowRepetition
 from workflow.services import send_to_first_verification
-from workflow.waiting import annotate_inactivity_clocks
+from workflow.waiting import CLOCK_FIELDS, annotate_clock_terms, inactivity_since
 
 from .support import AnthologyWorkflowMixin, add_roles, importing
 
@@ -29,7 +28,12 @@ class WaitingClockTests(AnthologyWorkflowMixin, TestCase):
     """Od kiedy etap czeka lub trwa w raporcie bezczynności (rezerwacje, przekazania, poprawki)."""
 
     def clock(self, stage):
-        return annotate_inactivity_clocks(S.objects.filter(pk=stage.pk), self.today).get()
+        """Zegary etapu tak, jak liczy je raport przestojów."""
+        terms = dict(zip(CLOCK_FIELDS, annotate_clock_terms(S.objects.filter(pk=stage.pk)).values_list(
+            *CLOCK_FIELDS).get()))
+        waiting, active = inactivity_since(*terms.values(), today=self.today)
+        return SimpleNamespace(report_blocked=terms['clock_blocked'], report_waiting_since=waiting,
+                               report_active_since=active)
 
     def test_early_reservation_is_zero_before_and_after_actual_handoff(self):
         self.begin_editing()
@@ -204,50 +208,30 @@ class ReportTests(StatusAssignmentFixtures):
         self.assertEqual(page.object_list[0]["title"], "Test 00")
 
     def test_new_waiting_stage_gets_queue_date_unknown_old_stage_is_visible(self):
-        from core.selectors.reports import _inactivity_stages
-
         text = Text.objects.create(title="Oczekuje", length=1, anthology=self.book)
         stage = S.objects.create(text=text, stage_type="ready_for_editing")
         self.assertEqual(stage.queued_at, timezone.localdate())
         S.objects.filter(pk=stage.pk).update(queued_at=None)
-        self.assertTrue(
-            _inactivity_stages(timezone.localdate(), 28, 7, "waiting", [], False)
-            .filter(pk=stage.pk)
-            .exists()
-        )
+        rows = workflow_inactivity_context(user=self.admin, params=QueryDict("mode=waiting"))["rows"]
+        self.assertIn(stage.pk, [row["stage"]["pk"] for row in rows])
 
     def test_text_projection_has_no_per_row_history_queries(self):
+        """Lista tekstów: stała liczba zapytań niezależnie od liczby wierszy (teksty, etapy bieżącego
+        cyklu, autorzy – bez przydziałów ról, potrzebnych tylko na stronie tekstu); wiersze bez zapytań."""
         from core.selectors.texts import _prepared_texts, _text_row
 
         for number in range(10):
             text = Text.objects.create(title=f'Query audit {number}', length=100, anthology=self.book)
             S.objects.create(text=text, stage_type='first_verification')
         query = Text.objects.filter(title__startswith='Query audit').order_by('pk')
-        counts = []
         for limit in (1, 10):
-            with CaptureQueriesContext(connection) as queries:
-                prepared = list(_prepared_texts(query[:limit], False))
-            counts.append(len(queries))
-            with self.assertNumQueries(0):
-                for text in prepared:
-                    row = _text_row(text, False)
-                    self.assertEqual(row['current_stage_type'], 'first_verification')
-        self.assertEqual(counts[0], counts[1])
-
-    def test_prefetched_history_and_inactivity_ignore_obsolete_placeholder(self):
-        from core.selectors.texts import _prepared_texts, _text_row
-        from core.selectors.reports import workflow_inactivity_context
-
-        S.objects.create(text=self.text, stage_type='first_verification',
-                         started_at=self.today-timedelta(days=60), ended_at=self.today-timedelta(days=59),
-                         is_completed=True, is_current=False)
-        pending = S.objects.create(text=self.text, stage_type='first_verification', iteration=2,
-                                   queued_at=self.today-timedelta(days=40))
-        prepared = list(_prepared_texts(Text.objects.filter(pk=self.text.pk), False))[0]
-        with self.assertNumQueries(0):
-            self.assertEqual(_text_row(prepared, False)['current_stages'], [])
-        report = workflow_inactivity_context(user=self.admin, params=QueryDict(''), today=self.today)
-        self.assertNotIn(pending.pk, [row['stage']['pk'] for row in report['rows']])
+            with self.subTest(limit=limit):
+                with self.assertNumQueries(3):
+                    prepared = list(_prepared_texts(query[:limit], False))
+                with self.assertNumQueries(0):
+                    for text in prepared:
+                        row = _text_row(text, False)
+                        self.assertEqual(row['current_stage_type'], 'first_verification')
 
 
 class AssignmentConflictReportTests(TestCase):

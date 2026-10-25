@@ -43,7 +43,7 @@ class PdfGapTests(SimpleTestCase):
             return draw(pdf, lines, y)
 
         with patch.object(FPDF, 'write_html', html_spy), patch.object(document_pdf, '_draw_lines', draw_spy):
-            notes = render_pdf(source, self.directory / 'result.pdf', content, assets or {}, 'Test')
+            notes = render_pdf(Document(source), self.directory / 'result.pdf', content, assets or {}, 'Test')
         pdf = (self.directory / 'result.pdf').read_bytes()
         self.captured = captured
         tree = html_parser.fragment_fromstring(''.join(part for part, _, _ in captured), create_parent='div')

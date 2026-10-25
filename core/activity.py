@@ -21,20 +21,16 @@ LABELS = {
     'review_list': 'Recenzje', 'unlinked_reviews': 'Niepowiązane teksty', 'text_list': 'Wszystkie teksty', 'workflow_list': 'Tabelka zbiorcza',
     'take_workflow_stage': 'Przejęcie etapu', 'complete_workflow_stage': 'Zakończenie etapu',
     'start_assigned_workflow_stage': 'Rozpoczęcie etapu', 'assign_reviewer': 'Przejęcie recenzji',
-    'unassign_reviewer': 'Rezygnacja z recenzji', 'save_review': 'Zapis recenzji',
+    'unassign_reviewer': 'Rezygnacja z recenzji',
     'add_text_note': 'Dodanie notatki', 'edit_text_note': 'Edycja notatki', 'delete_text_note': 'Usunięcie notatki',
     'global_search': 'Wyszukiwanie', 'author_suggestions': 'Podpowiedzi autorów',
     'my_vacations': 'Moje urlopy', 'edit_vacation': 'Edycja urlopu', 'cancel_vacation': 'Odwołanie urlopu',
     'anthology_corrections': 'Uwagi do antologii', 'correction_edit': 'Edycja uwagi', 'correction_delete': 'Usunięcie uwagi',
     'review_create': 'Dodanie zgłoszenia', 'review_bulk_submit': 'Import zbiorczy zgłoszeń',
     'user_activity': 'Aktywność użytkowników', 'login': 'Logowanie', 'logout': 'Wylogowanie',
-}
-
-LABELS.update({
     'external_audiobooks': 'Zewnętrzne audiobooki', 'audiobook_guidelines_pdf': 'Pobranie wytycznych audiobooków',
     'audiobook_guidelines_txt': 'Pobranie wytycznych audiobooków (dawny adres TXT)',
     'external_illustrations': 'Zewnętrzne ilustracje', 'illustration_guidelines_pdf': 'Pobranie wytycznych ilustracji', 'recruitment_delete': 'Usunięcie zgłoszenia rekrutacyjnego',
-    'discord_test': 'Test wysyłki Discord',
     'data_integrity':'Spójność danych', 'person_permissions':'Podgląd uprawnień osoby',
     'anthology_detail':'Podgląd antologii', 'role_names':'Lista osób według roli', 'newsletter_list':'Zgody newsletterowe',
     'update_text_file':'Zmiana odnośnika do pliku tekstu', 'toggle_text_take_lock':'Blokada lub odblokowanie pobierania tekstu',
@@ -52,10 +48,6 @@ LABELS.update({
     'anthology_list':'Antologie', 'end_vacation':'Zakończenie urlopu', 'active_vacations':'Aktywne urlopy',
     'proofreader_activity':'Aktywność korektorów', 'verifier_activity':'Aktywność weryfikatorów', 'reviewer_activity':'Aktywność recenzentów',
     'workflow_inactivity':'Przestoje', 'last_activity':'Ostatnia aktywność',
-})
-
-
-LABELS.update({
     'illustrator_list': 'Ilustratorzy', 'illustrator_add': 'Dodanie ilustratora', 'illustrator_edit': 'Edycja ilustratora',
     'illustration_list': 'Ilustracje', 'illustration_detail': 'Podgląd ilustracji',
     'cover_proposal_list': 'Propozycje okładek', 'update_cover_proposal_status': 'Zmiana statusu propozycji okładki',
@@ -87,7 +79,7 @@ LABELS.update({
     'site_listen': 'Słuchaj WWW', 'site_listen_api': 'Pobranie nagrań strony „Słuchaj” przez stronę WWW',
     'index': 'Panel administracyjny', 'app_list': 'Sekcja panelu administracyjnego',
     'autocomplete': 'Wyszukiwanie w panelu administracyjnym', 'jsi18n': 'Tłumaczenia panelu administracyjnego',
-})
+}
 
 
 def describe_request(match, method):

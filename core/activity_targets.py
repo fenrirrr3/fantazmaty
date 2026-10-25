@@ -2,6 +2,7 @@
 import re
 from django.apps import apps
 from django.urls import resolve, Resolver404
+from core.filtering import positive_id
 
 
 MODEL_KEYS = (
@@ -54,7 +55,7 @@ def object_name(obj, depth=0):
 
 def target_for_match(match, *, lookup=True):
     model, pk = object_for_match(match)
-    if not model or pk is None or not str(pk).isascii() or not str(pk).isdecimal() or len(str(pk)) > 18:
+    if not model or positive_id(str(pk)) is None:
         return ''
     fallback = f'{model._meta.verbose_name}: #{pk}'
     if lookup:
@@ -67,25 +68,20 @@ def target_for_match(match, *, lookup=True):
 
 
 def present_activities(entries):
-    from core.activity import describe_request, LABELS
+    """Działanie i obiekt opisane według bieżącego adresu; wpis z adresem, którego już nie ma, zostaje jak zapisany."""
+    from core.activity import describe_request
     cache = {}
     for entry in entries:
         entry.display_action, entry.display_target = entry.action, entry.target
         try:
             match = resolve(entry.path)
         except (Resolver404, ValueError):
-            match = None
-        if match:
-            label, _ = describe_request(match, entry.method)
-            prefixes = ''.join(re.findall(r'(?:Próba / formularz: |Podgląd user_id #\d+: )', entry.action))
-            entry.display_action = prefixes + label
-            legacy = not entry.target or bool(re.fullmatch(r'(?:\w+_id: )?#\d+', entry.target))
-            if legacy:
-                if entry.path not in cache:
-                    cache[entry.path] = target_for_match(match)
-                entry.display_target = cache[entry.path] or entry.target
-        else:
-            for name, label in LABELS.items():
-                if entry.action in (name, name.replace('_', ' ')):
-                    entry.display_action = label
-                    break
+            continue
+        label, _ = describe_request(match, entry.method)
+        prefixes = ''.join(re.findall(r'(?:Próba / formularz: |Podgląd user_id #\d+: )', entry.action))
+        entry.display_action = prefixes + label
+        legacy = not entry.target or bool(re.fullmatch(r'(?:\w+_id: )?#\d+', entry.target))
+        if legacy:
+            if entry.path not in cache:
+                cache[entry.path] = target_for_match(match)
+            entry.display_target = cache[entry.path] or entry.target

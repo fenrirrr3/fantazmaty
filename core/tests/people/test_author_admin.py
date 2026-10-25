@@ -202,9 +202,5 @@ class AuthorAdminPageTests(TestCase):
         self.assertFalse(model_admin.get_queryset(request).exists())
         with self.assertRaises(PermissionDenied):
             model_admin.history_view(request, str(self.author.pk))
-        with self.assertRaises(PermissionDenied):
-            model_admin.blacklist_view(request)
-        with self.assertRaises(PermissionDenied):
-            AuthorNoteAdmin(AuthorNote, site).save_model(request, AuthorNote(author=self.author), None, False)
         request.user = self.admin
         self.assertEqual(model_admin.history_view(request, str(self.author.pk)).status_code, 200)

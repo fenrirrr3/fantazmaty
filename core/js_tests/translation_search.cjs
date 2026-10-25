@@ -1,4 +1,4 @@
-// translation-search.js: wybór tłumaczy/redaktorów w szczegółach tekstu – debounce, pomijanie już wybranych,
+// translation-search.js (z lookup.js): wybór tłumaczy/redaktorów w szczegółach tekstu – debounce, pomijanie już wybranych,
 // chipy z usuwaniem, klawiatura, przestarzałe odpowiedzi, błędy, zamykanie przy opuszczeniu pola.
 const assert = require('node:assert/strict');
 const {Document, fakeTimers, fakeFetch, flush, runScript, ready} = require('./support/dom.js');
@@ -11,7 +11,7 @@ const outside = doc.el('button', {type: 'button'});
 doc.body.append(doc.el('form', {}, label, select), outside);
 const timers = fakeTimers(), net = fakeFetch(), changes = [];
 select.addEventListener('change', () => changes.push(select.selectedOptions.map(o => o.value)));
-runScript('translation-search.js', doc, {setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout, fetch: net.fetch});
+runScript(['lookup.js', 'translation-search.js'], doc, {setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout, fetch: net.fetch});
 ready(doc);
 const input = doc.getElementById('id_translators_search'), list = doc.getElementById('id_translators_suggestions');
 const status = doc.getElementById('id_translators_status'), chips = doc.querySelector('.selected-authors');

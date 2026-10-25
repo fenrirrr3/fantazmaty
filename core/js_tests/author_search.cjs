@@ -1,13 +1,13 @@
-// author-search.js: wyszukiwarka autora w formularzu pojedynczego zgłoszenia (strona „Dodaj do recenzji”) – debounce, wyniki, klawiatura,
-// wybór wypełnia dane autora, przestarzałe odpowiedzi, błędy sieci, ręczne wpisanie i tryb wielokrotny.
+// author-search.js (z lookup.js): wyszukiwarka autora w formularzu pojedynczego zgłoszenia (strona „Dodaj do recenzji”) –
+// debounce, wyniki, klawiatura, wybór wypełnia dane autora, przestarzałe odpowiedzi, błędy sieci i ręczne wpisanie.
 const assert = require('node:assert/strict');
 const {Document, fakeTimers, fakeFetch, flush, runScript, ready} = require('./support/dom.js');
 
 const FIELDS = ['author_first_name', 'author_last_name', 'author_pseudonym', 'email', 'phone_number'];
-function fixture({multiple = false, required = false, options = []} = {}) {
+function fixture() {
     const doc = new Document();
-    const select = doc.el('select', {id: 'id_author', name: 'author', multiple, required, dataset: {authorSearchUrl: '/autorzy/podpowiedzi/'}},
-        doc.option('---------', ''), ...options);
+    const select = doc.el('select', {id: 'id_author', name: 'author', dataset: {authorSearchUrl: '/autorzy/podpowiedzi/'}},
+        doc.option('---------', ''));
     const label = doc.el('label', {htmlFor: 'id_author'}); select.labels = [label];
     const fields = Object.fromEntries(FIELDS.map(name => [name, doc.el('input', {name})]));
     const form = doc.el('form', {}, label, doc.el('p', {}, select), ...Object.values(fields));
@@ -15,7 +15,7 @@ function fixture({multiple = false, required = false, options = []} = {}) {
     const timers = fakeTimers(), net = fakeFetch(), events = [];
     select.addEventListener('change', () => events.push(['change', select.value]));
     fields.email.addEventListener('input', () => events.push(['email', fields.email.value]));
-    runScript('author-search.js', doc, {setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout, fetch: net.fetch});
+    runScript(['lookup.js', 'author-search.js'], doc, {setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout, fetch: net.fetch});
     ready(doc);
     const input = doc.getElementById('id_author_search'), list = doc.getElementById('id_author_suggestions');
     const status = doc.querySelector('.lookup-status'), manual = doc.querySelector('.author-manual-button');
@@ -28,7 +28,7 @@ const JAN = {id: 6, label: 'Jan Kowalski', first_name: 'Jan', last_name: 'Kowals
 
 (async () => {
     // Budowa kontrolki: select ukryty, pole combobox z etykietą, przycisk ręcznego wpisania przed selectem.
-    let f = fixture();
+    const f = fixture();
     assert.equal(f.select.hidden, true); assert.equal(f.label.htmlFor, 'id_author_search');
     assert.equal(f.input.getAttribute('role'), 'combobox'); assert.equal(f.input.getAttribute('aria-controls'), 'id_author_suggestions');
     assert.equal(f.select.parentNode.children.indexOf(f.manual), f.select.parentNode.children.indexOf(f.select) - 1);
@@ -119,23 +119,8 @@ const JAN = {id: 6, label: 'Jan Kowalski', first_name: 'Jan', last_name: 'Kowals
     const preset = doc2.el('select', {id: 'id_author', dataset: {authorSearchUrl: '/a/'}}, doc2.option('---------', ''), doc2.option('Ewa Lis', '9'));
     preset.value = '9'; preset.labels = [];
     doc2.body.append(doc2.el('form', {}, preset));
-    runScript('author-search.js', doc2, {setTimeout: () => 0, clearTimeout() {}, fetch() {}}); ready(doc2);
+    runScript(['lookup.js', 'author-search.js'], doc2, {setTimeout: () => 0, clearTimeout() {}, fetch() {}}); ready(doc2);
     assert.equal(doc2.getElementById('id_author_search').value, 'Ewa Lis');
 
-    // Tryb wielokrotny: chipy wybranych osób, usuwanie, wymagany wybór sprawdzany przez pole wyszukiwania.
-    f = fixture({multiple: true, required: true});
-    assert.equal(f.manual, null, 'w trybie wielokrotnym brak ręcznego wpisania');
-    assert.equal(f.select.required, false); assert.equal(f.input.validationMessage, 'Wybierz przynajmniej jednego autora.');
-    f.type('Anna'); assert.equal(f.input.validationMessage, 'Wybierz przynajmniej jednego autora.');
-    f.timers.runAll(); f.net.answer(f.net.last(), {results: [ANNA, JAN]}); await flush();
-    f.list.children[0].click();
-    f.type('Jan'); f.timers.runAll(); f.net.answer(f.net.last(), {results: [JAN]}); await flush();
-    f.list.children[0].click();
-    const chips = f.doc.querySelector('.selected-authors');
-    assert.deepEqual(chips.children.map(c => c.children[0].textContent), [ANNA.label, 'Jan Kowalski']);
-    assert.equal(f.input.value, ''); assert.equal(f.input.validationMessage, ''); assert.match(f.status.textContent, /Dodano autora/);
-    assert.equal(f.fields.email.value, '', 'tryb wielokrotny nie wypełnia danych kontaktowych');
-    chips.children[0].children[1].click(); chips.children[0].children[1].click();
-    assert.deepEqual(f.select.selectedOptions, []); assert.equal(f.input.validationMessage, 'Wybierz przynajmniej jednego autora.');
-    console.log('Author search: debounce, results as text, keyboard, selection fills author data, stale/aborted requests, errors, manual entry, multiple mode OK');
+    console.log('Author search: debounce, results as text, keyboard, selection fills author data, stale/aborted requests, errors, manual entry OK');
 })().catch(error => { console.error(error); process.exitCode = 1; });

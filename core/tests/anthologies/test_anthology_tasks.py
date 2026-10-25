@@ -251,6 +251,16 @@ class AnthologyTaskPanelTests(AnthologyPageData, TestCase):
 
 
 class AnthologyTaskStatusTests(AnthologyPageData, TestCase):
+    def test_saving_anthology_checks_existing_tasks_in_one_query_and_restores_missing(self):
+        """Zapis antologii z kompletem zadań sprawdza je jednym zapytaniem; brakujące zadanie dodaje."""
+        from texts.signals import create_anthology_tasks
+        with self.assertNumQueries(1):
+            create_anthology_tasks(Anthology, self.book, 'default')
+        self.book.production_tasks.filter(task_type='blurb').delete()
+        create_anthology_tasks(Anthology, self.book, 'default')
+        self.assertEqual(sorted(self.book.production_tasks.values_list('task_type', flat=True)),
+                         sorted(AnthologyTask.TaskType.values))
+
     def test_not_applicable_is_done_without_an_assignee(self):
         task = self.book.production_tasks.get(task_type='banners')
         task.assigned_to = self.member.person_profile

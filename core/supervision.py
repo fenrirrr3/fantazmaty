@@ -5,7 +5,7 @@ from collections import defaultdict
 from difflib import SequenceMatcher
 import unicodedata
 from django.contrib.auth import get_user_model
-from django.db.models import F, Q, Prefetch
+from django.db.models import Q, Prefetch
 from django.urls import reverse
 from django.utils import timezone
 from core.models import AnthologyCorrection
@@ -34,9 +34,13 @@ def integrity_issues():
     for text in missing.order_by('pk'):
         issues.append(issue('Tekst bez bieżącego etapu', text.title,
             reverse('core:assigned_text_detail', args=[text.pk])))
-    current = WorkflowStage.objects.all().current_cycle().filter(workflow_cycle=F('text__current_workflow_cycle')).select_related('text', 'assignment')
-    assignments = {(a.text_id,a.workflow_cycle,a.role):a for a in WorkflowRoleAssignment.objects.all().current_cycle().filter(workflow_cycle=F('text__current_workflow_cycle')).select_related('assigned_to__person_profile','text')}
-    for stage in current.filter(is_completed=False, ended_at__isnull=True, started_at__lte=timezone.localdate()).exclude(stage_type__in=('ready','withdrawn')):
+    current = list(WorkflowStage.objects.all().current_cycle().select_related('text', 'assignment'))
+    assignments = {(a.text_id,a.workflow_cycle,a.role):a for a in WorkflowRoleAssignment.objects.all().current_cycle().select_related('assigned_to__person_profile','text')}
+    today = timezone.localdate()
+    started = [stage for stage in current if not stage.is_completed and stage.ended_at is None
+               and stage.started_at is not None and stage.started_at <= today
+               and stage.stage_type not in ('ready', 'withdrawn')]
+    for stage in started:
         role = STAGE_ROLES.get(stage.stage_type)
         a = stage.assignment or assignments.get((stage.text_id,stage.workflow_cycle,role))
         if role and (a is None or a.assigned_to_id is None):
@@ -110,7 +114,7 @@ def integrity_issues():
     for person in Person.objects.select_related('user').exclude(user__isnull=True):
         if person.email and person.user.email and person.email.casefold()!=person.user.email.casefold():
             # Nowe zapisy trzymają jeden e-mail; rozjazd zostaje tylko w starych danych.
-            issues.append(issue('Różne e-maile powiązanej osoby i konta',str(person)+' – stare dane: uruchom „manage.py sync_accounts” albo zapisz osobę ponownie',reverse('admin:people_person_change',args=[person.pk])))
+            issues.append(issue('Różne e-maile powiązanej osoby i konta',str(person)+' – stare dane: zapisz osobę ponownie',reverse('admin:people_person_change',args=[person.pk])))
     for text in Text.objects.filter(Q(anthology__is_translated=True, translation__foreign_authors__isnull=True) | (Q(anthology__is_translated=False) | Q(anthology__isnull=True)) & Q(authors__isnull=True)).exclude(
             # Tomy „Ekstrakty” zbierają miniatury bez przypisanego autora tekstu.
             Q(anthology__is_extracts=True) | Q(anthology__extract_volume__isnull=False)
@@ -152,8 +156,8 @@ def duplicate_candidates(title, anthology_id, author_ids, *, exclude_text_id=Non
 def anthology_checklist(anthology):
     rows=[]
     texts=list(Text.objects.filter(anthology=anthology).prefetch_related(
-        'authors', 'translation__foreign_authors', Prefetch('workflow_stages', queryset=WorkflowStage.objects.current_cycle().filter(
-            workflow_cycle=F('text__current_workflow_cycle')), to_attr='checklist_stages')))
+        'authors', 'translation__foreign_authors', Prefetch('workflow_stages', queryset=WorkflowStage.objects.current_cycle(),
+                                                            to_attr='checklist_stages')))
     included=[]
     for text in texts:
         stages=text.checklist_stages
@@ -237,7 +241,8 @@ def _credit_person(person=None, user=None, fallback_id=None):
 def anthology_credits(anthology, *, text=None, include_assignments=False):
     credits = {}
 
-    def add(person, user, role, title, fallback_id=None):
+    def add(person, user, role, title, fallback_id=None, *, kind):
+        # role – etykieta do wyświetlenia, kind – kod roli lub pracy (grupy w anthology_credit_groups).
         identity, name, sort_key = _credit_person(person, user, fallback_id)
         item = credits.setdefault(
             (identity, role),
@@ -246,6 +251,7 @@ def anthology_credits(anthology, *, text=None, include_assignments=False):
                 "name": name,
                 "sort_key": sort_key,
                 "role": role,
+                "kind": kind,
                 "works": set(),
             },
         )
@@ -263,6 +269,7 @@ def anthology_credits(anthology, *, text=None, include_assignments=False):
             a.assigned_to,
             a.get_role_display(),
             stage.text.title,
+            kind=a.role,
         )
     if include_assignments and text is not None:
         # The text's working credit list includes the recipient immediately,
@@ -282,6 +289,7 @@ def anthology_credits(anthology, *, text=None, include_assignments=False):
                 assignment.assigned_to,
                 assignment.get_role_display(),
                 text.title,
+                kind=assignment.role,
             )
         from workflow.models import WorkflowHandoff
 
@@ -303,6 +311,7 @@ def anthology_credits(anthology, *, text=None, include_assignments=False):
                         assignment.assigned_to,
                         assignment.get_role_display(),
                         text.title,
+                        kind=assignment.role,
                     )
     review_scope = (
         Q(review__copied_text=text)
@@ -320,7 +329,7 @@ def anthology_credits(anthology, *, text=None, include_assignments=False):
         person = a.historical_person or (
             getattr(a.user, "person_profile", None) if a.user_id else None
         )
-        add(person, a.user, "Recenzent", a.review.title, a.pk)
+        add(person, a.user, "Recenzent", a.review.title, a.pk, kind="reviewer")
     for task in (
         AnthologyTask.objects.filter(anthology=anthology, status="ready").select_related(
             "assigned_to"
@@ -329,7 +338,7 @@ def anthology_credits(anthology, *, text=None, include_assignments=False):
         else []
     ):
         if task.assigned_to_id:
-            add(task.assigned_to, None, task.get_task_type_display(), anthology.title)
+            add(task.assigned_to, None, task.get_task_type_display(), anthology.title, kind=task.task_type)
     from illustrations.models import Illustration
 
     illustrations = (
@@ -341,7 +350,7 @@ def anthology_credits(anthology, *, text=None, include_assignments=False):
         illustrations = illustrations.filter(text=text)
     for illustration in illustrations:
         for artist in illustration.illustrators.all():
-            add(artist, None, "Ilustrator", illustration.text.title)
+            add(artist, None, "Ilustrator", illustration.text.title, kind="illustrator")
     if text is None and anthology.cover_artist_name.strip():
         name = anthology.cover_artist_name.strip()
         if "@" in name:
@@ -352,6 +361,7 @@ def anthology_credits(anthology, *, text=None, include_assignments=False):
             "name": name,
             "sort_key": (text_key(name.split()[-1]), text_key(name), str(identity)),
             "role": "Okładka",
+            "kind": "cover",
             "works": {anthology.title},
         }
     return [
@@ -379,25 +389,22 @@ def anthology_credit_groups(anthology, *, text=None, include_assignments=False):
             "Ilustracja",
         )
     }
+    Role = WorkflowRoleAssignment.Role
     mapping = {
-        "Redaktor": "Redakcja",
-        "K. redakcji": "Kontrola redakcji",
-        "Kontrola redakcji": "Kontrola redakcji",
-        "K. weryfikacji": "Kontrola weryfikacji",
-        "Stylowanie": "Kontrola przed składem",
-        "Recenzent": "Recenzje",
-        "Ilustrator": "Ilustracja",
-        "Okładka": "Ilustracja",
+        Role.EDITOR: "Redakcja",
+        Role.EDITING_COORDINATOR: "Kontrola redakcji",
+        Role.EDITING_REVIEWER: "Kontrola redakcji",
+        Role.VERIFICATION_COORDINATOR: "Kontrola weryfikacji",
+        Role.STYLING: "Kontrola przed składem",
+        **dict.fromkeys((Role.PROOFREADER_1, Role.PROOFREADER_2, Role.PROOFREADER_3, Role.PROOFREADER_4), "Korekta"),
+        **dict.fromkeys((Role.VERIFIER_1, Role.VERIFIER_2, Role.VERIFIER_3, Role.VERIFIER_4, Role.VERIFIER_5,
+                         Role.VERIFIER_6, Role.VERIFIER_7), "Weryfikacja"),
+        "reviewer": "Recenzje",
+        "illustrator": "Ilustracja",
+        "cover": "Ilustracja",
     }
     for row in anthology_credits(anthology, text=text, include_assignments=include_assignments):
-        role = row["role"]
-        group = (
-            "Korekta"
-            if role.startswith("Korektor ")
-            else "Weryfikacja"
-            if role.startswith("Weryfikator ")
-            else mapping.get(role)
-        )
+        group = mapping.get(row["kind"])
         if group and row["name"].strip():
             groups[group][row["identity"]] = row
     return [

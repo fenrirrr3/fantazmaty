@@ -10,10 +10,11 @@ from django.utils import timezone
 from authors.models import Author, AuthorNote
 from core.audiobook_models import Audiobook
 from core.middleware import aggregate, recover_submitted_values
-from core.models import UserActivity
+from core.models import AudioDescription, UserActivity
 from fantazmaty.testing import create_superuser, edit_token
 from people.models import Person, Vacation
 from texts.models import Anthology, Review, ReviewAssignment, Reviewers, Text, TextNote, TextTranslation
+from workflow.models import WorkflowStage
 
 from .support import TemporaryActivitySpoolMixin
 
@@ -54,6 +55,9 @@ class AggregateTests(TestCase):
              (Review, self.review.pk)),
             (Reviewers.objects.get_or_create(review=self.review)[0], (Review, self.review.pk)),
             (TextTranslation.objects.create(text=self.text), (Text, self.text.pk)),
+            (WorkflowStage.objects.create(text=self.text, stage_type='editing'), (Text, self.text.pk)),
+            (AudioDescription.objects.get_or_create(anthology=self.text.anthology)[0],
+             (Anthology, self.text.anthology_id)),
         )
         for child, parent in cases:
             with self.subTest(model=type(child).__name__):
@@ -90,6 +94,12 @@ class EditingRequestTests(TemporaryActivitySpoolMixin, TestCase):
                 self.assertNotContains(response, 'tajne', status_code=409)
         self.person.refresh_from_db()
         self.assertEqual(self.person.first_name, 'Anna')
+
+    def test_admin_post_reads_record_without_parent_once(self):
+        """POST w panelu: rekord bez rodzica jest czytany raz (z blokadą) – sprawdzenie uprawnień używa tego wiersza."""
+        with self.assertNumQueries(11):
+            response = self.client.post(admin_change(Anthology, self.book.pk), {'title': 'Zmiana'})
+        self.assertContains(response, 'Rekord został zmieniony', status_code=409)
 
     def test_note_moved_to_another_text_meanwhile_is_a_conflict(self):
         note = TextNote.objects.create(text=self.text, content='Notatka')

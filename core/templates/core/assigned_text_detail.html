@@ -741,7 +741,7 @@
 {% endblock %}
 
 {% block scripts %}
-    {% if translation_form %}<script src="{% static 'core/translation-search.js' %}" defer></script><noscript>Wyszukiwanie osób wymaga JavaScript. Osoby można również przypisać przez „Edytuj w adminie”.</noscript>{% endif %}
+    {% if translation_form %}<script src="{% static 'core/lookup.js' %}" defer></script><script src="{% static 'core/translation-search.js' %}" defer></script><noscript>Wyszukiwanie osób wymaga JavaScript. Osoby można również przypisać przez „Edytuj w adminie”.</noscript>{% endif %}
 {{ block.super }}
 {% if user.is_superuser and text_file_form and dropbox_chooser_app_key and text.anthology.status != "ready" %}
 <script src="https://www.dropbox.com/static/api/2/dropins.js" id="dropboxjs" data-app-key="{{ dropbox_chooser_app_key }}"></script>

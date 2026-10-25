@@ -1,7 +1,7 @@
 """Strony tekstów i antologii: stopka tekstu (zasługi), lista osób według roli, zadanie typografii
 okładki i stałe adresy stron."""
 from django.contrib.auth import get_user_model
-from django.urls import resolve, reverse
+from django.urls import reverse
 
 from core.selectors.people import role_names_context
 from core.supervision import text_credit_groups
@@ -62,9 +62,8 @@ class TextPagesTests(StatusAssignmentFixtures):
                                            args=[book.production_tasks.get(task_type='cover_typography').pk]))
         self.assertContains(response, 'Typografia okładki')
 
-    def test_canonical_routes_and_old_aliases(self):
+    def test_canonical_routes(self):
         self.assertEqual(reverse('core:workflow_list'), '/tabelka-zbiorcza/')
-        self.assertEqual(resolve('/etapy-prac/').func, resolve('/tabelka-zbiorcza/').func)
         self.assertEqual(reverse('core:dashboard_tasks'), '/pulpit/zadania/')
         self.assertIn('/skrzynki-zgloszen/', reverse('admin:core_mailboxconnection_changelist'))
         self.assertIn('/popraw/', reverse('admin:workflow_stage_correct', args=[1]))

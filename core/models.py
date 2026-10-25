@@ -82,20 +82,6 @@ class Recruitment(models.Model):
         REJECTED = 'rejected', 'Odrzucone'
         MIXED = 'mixed', 'Różne decyzje'
 
-    class Department(models.TextChoices):
-        EDITORS = 'editors', 'Redaktorzy'
-        PROOFREADERS = 'proofreaders', 'Korektorzy'
-        VERIFIERS = 'verifiers', 'Weryfikatorzy'
-        REVIEWERS = 'reviewers', 'Recenzenci'
-        POST_LAYOUT = 'post_layout', 'Korektorzy poskładowi'
-        AUDIO_PROOFREADERS = 'audio_proofreaders', 'Korektorzy audiobooków'
-        NARRATORS = 'narrators', 'Lektorzy'
-        SOUND = 'sound', 'Dźwiękowcy'
-        ILLUSTRATORS = 'illustrators', 'Ilustratorzy'
-        TYPESETTERS = 'typesetters', 'Składacze'
-        DESIGNERS = 'designers', 'Graficy'
-        OTHER = 'other', 'Inne'
-
     applicant_name = models.CharField('imię i nazwisko z formularza', max_length=300, blank=True)
     decision_reason = models.TextField('uzasadnienie decyzji', blank=True)
     mail_subject = models.CharField('temat wiadomości', max_length=2000, blank=True)
@@ -107,7 +93,6 @@ class Recruitment(models.Model):
 
     first_name = models.CharField('imię', max_length=150, default='')
     last_name = models.CharField('nazwisko', max_length=150, default='')
-    department = models.CharField('dział', max_length=30, choices=Department.choices, default=Department.OTHER)
     submitted_at = models.DateField('data nadesłania', default=timezone.localdate)
     notified = models.BooleanField('czy powiadomiono', default=False)
     notified_at = models.DateTimeField('data powiadomienia', null=True, blank=True, editable=False)
@@ -148,10 +133,10 @@ class Recruitment(models.Model):
                 kwargs['update_fields'] = update_fields
             result = super().save(*args, **kwargs)
             from core.services.recruitment_decisions import ensure_decisions, refresh_summary
-            ensure_decisions(self, initial=previous is None, using=using)
+            ensure_decisions(self, using=using)
             if previous:
                 from core.selectors.recruitment import record_roles
-                changed_roles = record_roles(previous.mail_roles, previous.department) ^ record_roles(self.mail_roles, self.department)
+                changed_roles = record_roles(previous.mail_roles) ^ record_roles(self.mail_roles)
                 if changed_roles:
                     RecruitmentRoleDecision.objects.using(using).filter(recruitment_id=self.pk, role__in=changed_roles).update(updated_at=timezone.now())
             refresh_summary(self, using=using)
@@ -174,13 +159,13 @@ class Recruitment(models.Model):
     def decision_display(self):
         if self.status == self.Status.NEW:
             from core.selectors.recruitment import record_roles
-            return 'nie wszystkie decyzje' if len(record_roles(self.mail_roles, self.department)) > 1 else 'Bez decyzji'
+            return 'nie wszystkie decyzje' if len(record_roles(self.mail_roles)) > 1 else 'Bez decyzji'
         return {self.Status.ACCEPTED: 'Przyjęty', self.Status.REJECTED: 'Odrzucony', self.Status.MIXED: 'Różne decyzje'}.get(self.status, 'Bez decyzji')
 
     @property
     def mail_roles_display(self):
         from core.selectors.recruitment import record_roles, role_choices
-        roles = record_roles(self.mail_roles, self.department)
+        roles = record_roles(self.mail_roles)
         return ', '.join(label for key, label in role_choices() if key in roles)
 
     def __str__(self):
@@ -218,7 +203,8 @@ class UserActivity(models.Model):
     source_key = models.CharField(max_length=32, unique=True, null=True, blank=True, editable=False)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL, related_name='cms_activities', verbose_name='użytkownik')
     actor = models.CharField('konto', max_length=254)
-    created_at = models.DateTimeField('czas', auto_now_add=True, db_index=True)
+    # Czas żądania; flush_activity przepisuje go z kolejki lokalnej.
+    created_at = models.DateTimeField('czas', default=timezone.now, editable=False, db_index=True)
     method = models.CharField('metoda', max_length=10)
     action = models.CharField('działanie', max_length=255)
     target = models.CharField('obiekt', max_length=255, blank=True)

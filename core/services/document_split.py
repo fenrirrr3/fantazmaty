@@ -1,8 +1,10 @@
-"""Podział DOCX na opowiadania według akapitów ze stylem „Nagłówek 1” (Programy → Podział DOCX).
+"""Podział DOCX na opowiadania według Nagłówków 1 (Programy → Podział DOCX).
 
-Działa w izolowanym podprocesie konwertera (document_conversion_worker), więc importuje
-tylko bibliotekę standardową i lxml. Każdy Nagłówek 1 zaczyna opowiadanie, które trwa do
-kolejnego Nagłówka 1; treść przed pierwszym nagłówkiem (np. strona tytułowa) jest pomijana.
+Działa w izolowanym podprocesie konwertera (document_conversion_worker), więc korzysta tylko z lxml
+i modułów programów (document_xml, document_styles). Nagłówek 1 to akapit treści głównej, który Word
+pokazuje w panelu nawigacji na poziomie 1 (document_styles.ParagraphOutline – styl „Nagłówek 1”, styl
+na nim oparty, styl albo akapit z poziomem konspektu 1). Każdy Nagłówek 1 zaczyna opowiadanie, które
+trwa do kolejnego Nagłówka 1; treść przed pierwszym nagłówkiem (np. strona tytułowa) jest pomijana.
 
 Plik opowiadania to kopia pakietu z treścią ograniczoną do fragmentu i ostatnim w:sectPr:
 style, numeracja, motyw i ustawienia zostają, a przypisy, komentarze, obrazy, hiperłącza
@@ -14,7 +16,6 @@ w przypisie); zakres przecięty granicą opowiadań zaczyna się tam na początk
 opowiadaniach jego znaczniki znikają. Zakres przeniesienia, którego drugiej połowy (albo drugiej
 strony przeniesienia) nie ma w opowiadaniu, znika – przeniesiony tekst i jego oznaczenia zostają.
 """
-import posixpath
 import re
 from copy import deepcopy
 from io import BytesIO
@@ -22,13 +23,15 @@ from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
 
 from lxml import etree
 
-W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
-R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+if __package__:
+    from .document_styles import ParagraphOutline
+    from .document_xml import R, is_internal, parse_part, part_target, rels_path, serialize_part, w
+else:
+    from document_styles import ParagraphOutline
+    from document_xml import R, is_internal, parse_part, part_target, rels_path, serialize_part, w
+
 PACKAGE_RELS = 'http://schemas.openxmlformats.org/package/2006/relationships'
 CONTENT_TYPES = 'http://schemas.openxmlformats.org/package/2006/content-types'
-PARSER = etree.XMLParser(resolve_entities=False, no_network=True, load_dtd=False)
-HEADING_NAMES = {'heading 1', 'nagłówek 1'}
-HEADING_IDS = {'heading1', 'nagwek1'}
 # Części, do których treść nie odwołuje się przez r:id – zostają zawsze (style, numeracja, ustawienia…).
 STRUCTURAL = ('/styles', '/stylesWithEffects', '/numbering', '/settings', '/webSettings', '/fontTable',
               '/theme', '/footnotes', '/endnotes', '/comments', '/commentsExtended', '/commentsIds',
@@ -42,45 +45,17 @@ class NoHeadingError(ValueError):
     pass
 
 
-def w(name):
-    return f'{{{W}}}{name}'
-
-
-def _parse(data):
-    return etree.fromstring(data, PARSER)
-
-
-def _serialize(root):
-    return etree.tostring(root, xml_declaration=True, encoding='UTF-8', standalone=True)
-
-
-def _rels_path(part):
-    folder, name = posixpath.split(part)
-    return posixpath.join(folder, '_rels', name + '.rels')
-
-
-def _target(part, relationship):
-    target = relationship.get('Target', '')
-    if target.startswith('/'):
-        return posixpath.normpath(target.lstrip('/'))
-    return posixpath.normpath(posixpath.join(posixpath.dirname(part), target))
-
-
-def _internal(relationship):
-    return relationship.get('TargetMode', '').lower() != 'external'
-
-
 def _relationships(files, part):
-    data = files.get(_rels_path(part))
-    return _parse(data) if data is not None else None
+    data = files.get(rels_path(part))
+    return parse_part(data) if data is not None else None
 
 
 def _main_part(files):
     """Główna część dokumentu z relacji pakietu; bez niej Word nie otworzy pliku, a wynik byłby pusty."""
     rels = _relationships(files, '')
     for relationship in rels if rels is not None else ():
-        if relationship.get('Type', '').endswith('/officeDocument') and _internal(relationship):
-            return _target('', relationship)
+        if relationship.get('Type', '').endswith('/officeDocument') and is_internal(relationship):
+            return part_target('', relationship)
     raise ValueError('Pakiet DOCX nie wskazuje głównej części dokumentu.')
 
 
@@ -90,35 +65,15 @@ def _drop_thumbnail(files):
     for relationship in list(rels):
         if relationship.get('Type', '').endswith('/metadata/thumbnail'):
             rels.remove(relationship)
-    files[_rels_path('')] = _serialize(rels)
+    files[rels_path('')] = serialize_part(rels)
 
 
 def _part_of_type(files, part, suffix):
     rels = _relationships(files, part)
     for relationship in rels if rels is not None else ():
-        if relationship.get('Type', '').endswith(suffix) and _internal(relationship):
-            return _target(part, relationship)
+        if relationship.get('Type', '').endswith(suffix) and is_internal(relationship):
+            return part_target(part, relationship)
     return None
-
-
-def heading_style_ids(styles_xml):
-    """Identyfikatory stylów akapitu „Nagłówek 1” (nazwa stylu albo jego id, bez względu na wielkość liter)."""
-    ids = set()
-    if styles_xml is not None:
-        for style in _parse(styles_xml).iter(w('style')):
-            style_id = style.get(w('styleId')) or ''
-            name = style.find(w('name'))
-            name = (name.get(w('val')) if name is not None else '') or ''
-            if name.casefold() in HEADING_NAMES or style_id.casefold() in HEADING_IDS:
-                ids.add(style_id)
-    return ids | {'Heading1', 'Nagwek1'}
-
-
-def _is_heading(element, ids):
-    if element.tag != w('p'):
-        return False
-    style = element.find(f'{w("pPr")}/{w("pStyle")}')
-    return style is not None and style.get(w('val')) in ids
 
 
 def _text(element):
@@ -169,19 +124,19 @@ def _filter_rels(files, part, used):
     for relationship in list(rels):
         if relationship.get('Id') in used:
             continue
-        if _internal(relationship) and relationship.get('Type', '').endswith(STRUCTURAL):
+        if is_internal(relationship) and relationship.get('Type', '').endswith(STRUCTURAL):
             continue
         rels.remove(relationship)
-    files[_rels_path(part)] = _serialize(rels)
+    files[rels_path(part)] = serialize_part(rels)
 
 
 def _filter_notes(files, part, kind, used):
     """Tylko przypisy użyte we fragmencie; zwraca korzeń części (do odczytu odwołań do komentarzy)."""
-    root = _parse(files[part])
+    root = parse_part(files[part])
     for note in list(root.findall(w(NOTE_TYPES[kind]))):
         if note.get(w('type')) in (None, 'normal') and note.get(w('id')) not in used:
             root.remove(note)
-    files[part] = _serialize(root)
+    files[part] = serialize_part(root)
     _filter_rels(files, part, _referenced([root])['rels'])
     return root
 
@@ -240,11 +195,11 @@ def _filter_comments(files, main, used):
     part = _part_of_type(files, main, '/comments')
     if part is None or part not in files:
         return
-    root = _parse(files[part])
+    root = parse_part(files[part])
     for comment in list(root.findall(w('comment'))):
         if comment.get(w('id')) not in used:
             root.remove(comment)
-    files[part] = _serialize(root)
+    files[part] = serialize_part(root)
     _filter_rels(files, part, _referenced([root])['rels'])
     paragraphs = {_local_attribute(node, 'paraId') for node in root.iter(w('p'))} - {None}
     durable = set()
@@ -252,7 +207,7 @@ def _filter_comments(files, main, used):
         extra = _part_of_type(files, main, suffix)
         if extra is None or extra not in files:
             continue
-        tree = _parse(files[extra])
+        tree = parse_part(files[extra])
         for node in list(tree):
             if isinstance(node.tag, str) and _local_attribute(node, key) not in paragraphs:
                 tree.remove(node)
@@ -263,15 +218,15 @@ def _filter_comments(files, main, used):
                 for name in [name for name in node.attrib if etree.QName(name).localname == 'paraIdParent']:
                     if node.get(name) not in paragraphs:
                         del node.attrib[name]
-        files[extra] = _serialize(tree)
+        files[extra] = serialize_part(tree)
     extensible = _part_of_type(files, main, '/commentsExtensible')
     if extensible is not None and extensible in files:
-        tree = _parse(files[extensible])
+        tree = parse_part(files[extensible])
         for node in list(tree):
             if isinstance(node.tag, str) and etree.QName(node).localname == 'commentExtensible' \
                     and _local_attribute(node, 'durableId') not in durable:
                 tree.remove(node)
-        files[extensible] = _serialize(tree)
+        files[extensible] = serialize_part(tree)
 
 
 def _reachable(files):
@@ -282,10 +237,10 @@ def _reachable(files):
         rels = _relationships(files, part)
         if rels is None:
             continue
-        seen.add(_rels_path(part))
+        seen.add(rels_path(part))
         for relationship in rels:
-            if _internal(relationship):
-                target = _target(part, relationship)
+            if is_internal(relationship):
+                target = part_target(part, relationship)
                 if target in files and target not in seen:
                     seen.add(target)
                     queue.append(target)
@@ -294,11 +249,11 @@ def _reachable(files):
 
 def _package(files, order, compress):
     keep = _reachable(files)
-    types = _parse(files['[Content_Types].xml'])
+    types = parse_part(files['[Content_Types].xml'])
     for override in list(types.findall(f'{{{CONTENT_TYPES}}}Override')):
         if override.get('PartName', '').lstrip('/') not in keep:
             types.remove(override)
-    files['[Content_Types].xml'] = _serialize(types)
+    files['[Content_Types].xml'] = serialize_part(types)
     output = BytesIO()
     with ZipFile(output, 'w', ZIP_DEFLATED) as archive:
         for name in order:
@@ -320,14 +275,14 @@ def split_document(source, output):
     main = _main_part(original)
     _drop_thumbnail(original)
     styles = _part_of_type(original, main, '/styles')
-    ids = heading_style_ids(original.get(styles) if styles else None)
-    root = _parse(original[main])
+    outline = ParagraphOutline(parse_part(original[styles]) if styles in original else None)
+    root = parse_part(original[main])
     body = root.find(w('body'))
     children = list(body) if body is not None else []
     section = children.pop() if children and children[-1].tag == w('sectPr') else None
     stories, intro = [], []
     for element in children:
-        if _is_heading(element, ids):
+        if element.tag == w('p') and outline.heading_level(element) == 1:
             stories.append([element])
         elif stories:
             stories[-1].append(element)
@@ -356,7 +311,7 @@ def split_document(source, output):
                 if part is not None and part in files:
                     notes.append(_filter_notes(files, part, kind, used[kind]))
             _filter_comments(files, main, _review_ranges(content, notes))
-            files[main] = _serialize(root)
+            files[main] = serialize_part(root)
             title = _text(elements[0])
             name = file_name(number, width, title)
             names.append(name)

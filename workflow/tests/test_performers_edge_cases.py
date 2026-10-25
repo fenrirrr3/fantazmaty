@@ -163,3 +163,24 @@ class PerformerInlineGapTests(StatusAssignmentFixtures):
         proofreader.refresh_from_db()
         self.assertEqual(self.editor.assigned_to, self.member)
         self.assertEqual(proofreader.assigned_to, self.other)
+
+    def test_stage_rows_use_a_constant_number_of_queries(self):
+        """Wiersze tabeli etapów: wersję tekstu i bieżące przydziały ról formset pobiera raz,
+        niezależnie od liczby etapów, także bez powiązanego przydziału."""
+        from django.contrib import admin
+        from django.test import RequestFactory
+        from texts.admin import WorkflowStageInline
+        from texts.models import Text
+
+        request = RequestFactory().get(self.url)
+        request.user = self.admin
+        inline = WorkflowStageInline(Text, admin.site)
+        A.objects.create(text=self.text, role='proofreader_1', assigned_to=self.other)
+        for kind in ('first_proofreading', 'second_proofreading', 'third_proofreading'):
+            loose = S.objects.create(text=self.text, stage_type=kind)
+            S.objects.filter(pk=loose.pk).update(assignment=None)
+            formset = inline.get_formset(request, self.text)(instance=self.text,
+                                                             queryset=inline.get_queryset(request))
+            with self.subTest(kind=kind), self.assertNumQueries(3):
+                forms = formset.forms
+            self.assertEqual(forms[-1].fields['workflow_version'].initial, version_of(self.text))

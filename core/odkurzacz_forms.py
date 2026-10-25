@@ -4,6 +4,7 @@ from zipfile import BadZipFile, ZipFile
 
 from django import forms
 
+from core.inflection import count_text
 from core.program_models import ReplacementEntry
 from core.services import odkurzacz
 from core.services.document_errors import MESSAGES, foreign_format
@@ -17,6 +18,7 @@ FORM_DEFAULT_RULE_LIST = [key for key, _ in EDITORIAL_RULES if key in FORM_DEFAU
 # Scalanie DOCX: najwięcej plików naraz i łączny rozmiar wysłanych plików.
 MERGE_MAX_FILES = 30
 MERGE_MAX_TOTAL_BYTES = 50 * 1024 * 1024
+FILE_FORMS = ('plik', 'pliki', 'plików')
 
 
 def validate_docx_upload(upload, max_bytes=PROGRAM_MAX_UPLOAD_BYTES):
@@ -47,9 +49,9 @@ def validate_docx_upload(upload, max_bytes=PROGRAM_MAX_UPLOAD_BYTES):
     return upload
 
 
-def rules_field():
+def rules_field(label="Opcje korekty"):
     return forms.MultipleChoiceField(
-        label="Opcje korekty", choices=EDITORIAL_RULES, initial=list(FORM_DEFAULT_RULE_LIST), required=False,
+        label=label, choices=EDITORIAL_RULES, initial=list(FORM_DEFAULT_RULE_LIST), required=False,
         widget=forms.CheckboxSelectMultiple,
     )
 
@@ -111,10 +113,30 @@ class ProgramSettingsMixin:
         return initial
 
 
-class OdkurzaczForm(ProgramSettingsMixin, forms.Form):
+class ProgramForm(ProgramSettingsMixin, forms.Form):
+    """Formularz programu z zapamiętywanymi ustawieniami (limit wysyłanego DOCX: PROGRAM_MAX_UPLOAD_BYTES)."""
+
+
+class ProgramDocumentForm(ProgramForm):
+    """Formularz programu z jednym plikiem DOCX."""
+
+    document = forms.FileField(label="Dokument DOCX", widget=forms.ClearableFileInput(attrs={"accept": ".docx"}))
+    document_help = ("Maksymalnie {mb} MB. Obrazy są usuwane z dokumentu przed pracą programu. "
+                     "Wynik pobierzesz jako osobny plik.")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["document"].help_text = self.document_help.format(mb=PROGRAM_MAX_UPLOAD_BYTES // (1024 * 1024))
+
+    def clean_document(self):
+        return validate_docx_upload(self.cleaned_data["document"])
+
+
+class CleanerOptionsForm(forms.Form):
+    """Opcje Odkurzacza wspólne dla Odkurzacza i scalania DOCX."""
+
     remove_soft_whitespace = forms.BooleanField(label="Usuń miękkie entery i spacje nieprzenoszące", required=False, initial=True)
     normalize_formatting = forms.BooleanField(label="Ujednolić formatowanie", required=False, initial=False)
-    rebuild = forms.BooleanField(label="Przebuduj do nowego DOCX przed odkurzaniem", required=False, initial=False)
     keep_page_format = forms.BooleanField(
         label="Przy przebudowie zachowaj format strony", required=False, initial=False,
         help_text="Nowy DOCX dostanie rozmiar strony, orientację, marginesy i kolumny pierwszej sekcji oryginału. "
@@ -127,25 +149,16 @@ class OdkurzaczForm(ProgramSettingsMixin, forms.Form):
         label="Pokaż podsumowanie zmian", required=False, initial=False,
         help_text="Po zakończeniu pracy zobaczysz listę reguł z liczbą wprowadzonych zmian "
                   "oraz zamiany ze słownika: co na co i ile razy.")
-    document = forms.FileField(
-        label="Dokument DOCX",
-        help_text="Maksymalnie 5 MB. Wynik pobierzesz jako osobny plik.",
-        widget=forms.ClearableFileInput(attrs={"accept": ".docx"}),
-    )
     rules = rules_field()
 
-    def __init__(self, *args, max_document_bytes=PROGRAM_MAX_UPLOAD_BYTES, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.max_document_bytes = max_document_bytes
-        self.fields["document"].help_text = (f"Maksymalnie {max_document_bytes // (1024 * 1024)} MB. "
-                                             "Obrazy są usuwane z dokumentu przed pracą programu. "
-                                             "Wynik pobierzesz jako osobny plik.")
 
-    def clean_document(self):
-        return validate_docx_upload(self.cleaned_data["document"], self.max_document_bytes)
+class OdkurzaczForm(CleanerOptionsForm, ProgramDocumentForm):
+    rebuild = forms.BooleanField(label="Przebuduj do nowego DOCX przed odkurzaniem", required=False, initial=False)
 
 
-class DocumentConversionForm(OdkurzaczForm):
+class DocumentConversionForm(ProgramDocumentForm):
+    # Miękkie entery usuwa Odkurzacz – w konwerterze działa to razem z „Użyj Odkurzacza”.
+    rules = rules_field('Reguły Odkurzacza')
     formats = forms.MultipleChoiceField(
         label='Formaty docelowe', choices=(('pdf', 'PDF'), ('epub', 'EPUB')),
         widget=forms.CheckboxSelectMultiple, initial=['epub'],
@@ -158,14 +171,6 @@ class DocumentConversionForm(OdkurzaczForm):
 
     settings_exclude = ('document', 'rules_shown')
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # Miękkie entery usuwa Odkurzacz – w konwerterze działa to razem z „Użyj Odkurzacza”.
-        for name in ('remove_soft_whitespace', 'rebuild', 'keep_page_format', 'normalize_formatting',
-                     'track_changes', 'cleaner_summary'):
-            del self.fields[name]
-        self.fields['rules'].label = 'Reguły Odkurzacza'
-
     def clean(self):
         cleaned = super().clean()
         if not cleaned.get('rules') and not cleaned.get('rules_shown') and 'rules' not in self.errors:
@@ -173,7 +178,7 @@ class DocumentConversionForm(OdkurzaczForm):
         return cleaned
 
 
-class RepetitionsForm(OdkurzaczForm):
+class RepetitionsForm(ProgramDocumentForm):
     color_palette = forms.ChoiceField(label='Kolory powtórzeń', choices=[('dark', 'Ciemne'), ('light', 'Jasne')],
         initial='dark', required=False, help_text='Paleta kolorów liter. Kolory tła dodatkowych oznaczeń pozostają bez zmian.')
     window_size = forms.IntegerField(label='Zakres wyszukiwania (słowa)', initial=35, min_value=1, max_value=500)
@@ -189,12 +194,6 @@ class RepetitionsForm(OdkurzaczForm):
     long_paragraphs = forms.BooleanField(label='Długie akapity – szare tło', required=False, initial=True)
     paragraph_limit = forms.IntegerField(label='Próg długiego akapitu (słowa)', initial=150, min_value=1, max_value=10000)
     empty_pairs = forms.BooleanField(label='Puste nawiasy i cudzysłowy – różowe tło', required=False, initial=True)
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        for name in ('remove_soft_whitespace', 'rules', 'rebuild', 'keep_page_format', 'normalize_formatting',
-                     'track_changes', 'cleaner_summary'):
-            del self.fields[name]
 
     def analysis_config(self):
         values = self.cleaned_data
@@ -225,16 +224,8 @@ class MultipleDocxField(forms.FileField):
         return [super(MultipleDocxField, self).clean(item, initial) for item in files]
 
 
-def plural(count, one, few, many):
-    """Polska forma liczebnika: 1 plik, 2–4 (22–24…) pliki, 5–21 (25…) plików."""
-    last, two = count % 10, count % 100
-    if count == 1:
-        return one
-    return few if 2 <= last <= 4 and not 12 <= two <= 14 else many
-
-
-class MergeForm(OdkurzaczForm):
-    """Scalanie DOCX: kilka plików w kolejności wyboru, przebudowa i opcje Odkurzacza."""
+class MergeForm(CleanerOptionsForm, ProgramForm):
+    """Scalanie DOCX: kilka plików w kolejności wyboru i opcje Odkurzacza (przebudowa zawsze włączona)."""
 
     documents = MultipleDocxField(label="Dokumenty DOCX (w kolejności scalania)")
     use_template = forms.BooleanField(
@@ -243,15 +234,12 @@ class MergeForm(OdkurzaczForm):
                   "Gwiazdki, Cytat (motto)), żeby można było je od razu nadawać w Wordzie. Treść i jej formatowanie "
                   "pozostają jak po przebudowie; z szablonu nie jest przenoszone nic poza stylami.")
     settings_exclude = ("documents",)
+    field_order = ("documents",)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Przebudowa jest zawsze włączona: scalamy przebudowane dokumenty.
-        for name in ("document", "rebuild"):
-            del self.fields[name]
-        self.order_fields(["documents"])
         self.fields["documents"].help_text = (
-            f"Od 2 do {MERGE_MAX_FILES} plików, każdy do {self.max_document_bytes // (1024 * 1024)} MB, "
+            f"Od 2 do {MERGE_MAX_FILES} plików, każdy do {PROGRAM_MAX_UPLOAD_BYTES // (1024 * 1024)} MB, "
             f"razem do {MERGE_MAX_TOTAL_BYTES // (1024 * 1024)} MB. Kolejność scalania = kolejność wyboru plików.")
         self.fields["keep_page_format"].help_text = (
             "Wynik dostanie rozmiar strony, orientację, marginesy i kolumny pierwszego pliku. "
@@ -262,7 +250,7 @@ class MergeForm(OdkurzaczForm):
         if len(files) < 2:
             raise forms.ValidationError("Wybierz co najmniej dwa pliki DOCX do scalenia.")
         if len(files) > MERGE_MAX_FILES:
-            raise forms.ValidationError(f"Wybrano {len(files)} {plural(len(files), 'plik', 'pliki', 'plików')}. "
+            raise forms.ValidationError(f"Wybrano {count_text(len(files), FILE_FORMS)}. "
                                         f"Naraz można scalić najwyżej {MERGE_MAX_FILES} plików.")
         if sum(item.size for item in files) > MERGE_MAX_TOTAL_BYTES:
             raise forms.ValidationError(f"Wybrane pliki są razem za duże. Łączny limit to "
@@ -270,7 +258,7 @@ class MergeForm(OdkurzaczForm):
         errors = []
         for item in files:
             try:
-                validate_docx_upload(item, self.max_document_bytes)
+                validate_docx_upload(item)
             except forms.ValidationError as error:
                 errors.extend(f"„{Path(item.name).name}”: {message}" for message in error.messages)
         if errors:
@@ -278,32 +266,17 @@ class MergeForm(OdkurzaczForm):
         return files
 
 
-class SplitForm(OdkurzaczForm):
-    """Podział DOCX według Nagłówków 1 – bez opcji: zostaje tylko pole pliku."""
+class SplitForm(ProgramDocumentForm):
+    """Podział DOCX według Nagłówków 1 – bez opcji: tylko pole pliku."""
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        for name in [name for name in self.fields if name != "document"]:
-            del self.fields[name]
-        self.fields["document"].help_text = (f"Plik do {self.max_document_bytes // (1024 * 1024)} MB. "
-                                             "Wynik pobierzesz jako archiwum ZIP z plikami DOCX.")
+    document_help = "Plik do {mb} MB. Wynik pobierzesz jako archiwum ZIP z plikami DOCX."
 
 
 REPLACEMENT_WORD_MAX = 100
-REPLACEMENT_PATTERN_MAX = 500
-REPLACEMENT_TARGET_MAX = 200
 WORD_SOURCE_RE = re.compile(r"[\w’'\-. ]+")
 EMPTY_MATCH_SAMPLES = ('', ' ', 'a', 'Ala ma kota.', 'ąę – „x”')
 # Odkurzacz bierze najwyżej tyle aktywnych pozycji słownika (dalsze byłyby po cichu pominięte).
-REPLACEMENT_ACTIVE_MAX = getattr(odkurzacz, 'MAX_REPLACEMENTS', 1000)
-
-
-def cleaner_accepts_pattern(source, target):
-    """Czy Odkurzacz użyje tego wzorca (odrzuca błędne i zbyt kosztowne – ryzyko bardzo długiego działania)."""
-    import inspect
-    if len(inspect.signature(odkurzacz._compile_pattern).parameters) >= 2:
-        return odkurzacz._compile_pattern(source, target) is not None
-    return odkurzacz._compile_pattern(source) is not None
+REPLACEMENT_ACTIVE_MAX = odkurzacz.MAX_REPLACEMENTS
 
 
 class ReplacementEntryForm(forms.ModelForm):
@@ -333,8 +306,6 @@ class ReplacementEntryForm(forms.ModelForm):
         if not allow_patterns:
             self.fields['kind'].choices = [(value, label) for value, label in self.fields['kind'].choices
                                            if value == ReplacementEntry.Kind.WORD]
-        self.fields['source'].max_length = REPLACEMENT_PATTERN_MAX
-        self.fields['target'].max_length = REPLACEMENT_TARGET_MAX
 
     def clean_source(self):
         return self.cleaned_data['source'].strip()
@@ -372,8 +343,9 @@ class ReplacementEntryForm(forms.ModelForm):
                 except (re.error, IndexError) as error:
                     self.add_error('target', f'Nieprawidłowa zamiana: {error}.')
                 else:
-                    # Ta sama kontrola co w Odkurzaczu: wzorzec odrzucony tam byłby po cichu pomijany.
-                    if not cleaner_accepts_pattern(source, target):
+                    # Ta sama kontrola co w Odkurzaczu: wzorzec odrzucony tam (błędny albo zbyt kosztowny)
+                    # byłby po cichu pomijany.
+                    if odkurzacz._compile_pattern(source, target) is None:
                         self.add_error('source', 'Odkurzacz nie użyje tego wzorca: może działać bardzo długo '
                                                  '(np. zagnieżdżone powtórzenia jak (a+)+ albo \\w*\\w*). '
                                                  'Uprość wyrażenie.')

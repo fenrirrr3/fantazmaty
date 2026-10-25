@@ -10,19 +10,17 @@ from django.db.models.functions import Cast, Coalesce, Concat, NullIf, Trim
 from django.utils import timezone
 
 from authors.models import Author
+from core.account_identity import person_name
 from core.permissions import can_view_author_data, require_coordinator
+from core.selectors.texts import _ProjectedRows, param_list
 from people.models import Person
 from texts.models import Anthology, Review, ReviewAssignment
 from workflow.models import WorkflowRoleAssignment, WorkflowStage
+from workflow.services import TERMINAL_STAGES
 
 
 MAX_DATABASE_ID = 9_223_372_036_854_775_807
 BATCH_SIZE = 200
-
-TERMINAL_STAGES = (
-    WorkflowStage.StageType.READY,
-    WorkflowStage.StageType.WITHDRAWN,
-)
 
 
 class _NamedRecord(dict):
@@ -257,10 +255,7 @@ def reviewer_activity_context(*, user, params):
         role_name=roles.REVIEWER,
         people_context_name="reviewers",
     )
-    requested = (
-        params.getlist("status") if hasattr(params, "getlist") else [params.get("status", "")]
-    )
-    selected_statuses = [v for v in requested if v in Review.Status.values]
+    selected_statuses = [v for v in param_list(params, "status") if v in Review.Status.values]
     selected_status = selected_statuses[-1] if selected_statuses else ""
 
     archive = params.get("archive", "current")
@@ -445,16 +440,9 @@ def workflow_inactivity_context(
     include_authors = can_view_author_data(user)
     today = today or timezone.localdate()
     query, mode, selected_stages = _inactivity_filters(params, active_days, waiting_days)
-
-    stages = _inactivity_stages(
-        today, active_days, waiting_days, mode, selected_stages, include_authors
-    )
-    rows = _inactivity_rows(stages, query, include_authors, today)
-
-    rows.sort(key=lambda row: _inactivity_sort_key(row["days"], row["text"]["title"], row["stage"]["pk"]))
-
+    found = _inactivity_found(today, active_days, waiting_days, mode, selected_stages)
     return {
-        "rows": rows,
+        "rows": _inactivity_rows(found, include_authors, today, query),
         "query": query,
         "mode": mode,
         "stage_choices": active_stage_choices(),
@@ -466,69 +454,31 @@ def workflow_inactivity_context(
 def inactivity_overview(*, user, params, today=None, active_days=28, waiting_days=7, limit=10):
     """Pierwsze `limit` wierszy raportu przestojów i liczba wszystkich (belka pulpitu koordynatora).
 
-    Te same kryteria i kolejność co workflow_inactivity_context: wspólna podstawa
-    (_inactivity_base), te same warunki zegarów (workflow.waiting) i ten sam klucz
-    sortowania. Zegary są wybierane jako elementarne warunki – każdy raz w SQL –
-    a daty i próg liczone w Pythonie; pełne wiersze (z osobą i autorami) powstają
-    tylko dla pokazywanych etapów.
+    Te same kryteria i kolejność co workflow_inactivity_context (_inactivity_found); pełne
+    wiersze (z osobą i autorami) powstają tylko dla pokazywanych etapów, a przy wyszukiwaniu –
+    dla wszystkich zalegających, bo szukane porównuje się z gotowymi wierszami.
     """
     require_coordinator(user)
     today = today or timezone.localdate()
     query, mode, selected_stages = _inactivity_filters(params, active_days, waiting_days)
-    if query:
-        # Wyszukiwanie porównuje sformatowane wiersze – tylko pełna ścieżka.
-        rows = workflow_inactivity_context(user=user, params=params, today=today, active_days=active_days,
-                                           waiting_days=waiting_days)["rows"]
-        return rows[:limit], len(rows)
-    from workflow.waiting import CLOCK_FIELDS, annotate_clock_terms, inactivity_since
-
     include_authors = can_view_author_data(user)
-    active_limit = today - timedelta(days=active_days)
-    waiting_limit = today - timedelta(days=waiting_days)
-    found = []
-    for pk, title, *clock in annotate_clock_terms(_inactivity_base(selected_stages)).values_list(
-        "pk", "text__title", *CLOCK_FIELDS,
-    ):
-        started_at = clock[0]
-        waiting_since, active_since = inactivity_since(*clock, today=today)
-        # Warunki jak w _inactivity_stages (porównanie z NULL w SQL jest fałszywe).
-        active = (started_at is not None and started_at <= today
-                  and active_since is not None and active_since <= active_limit)
-        waiting = started_at is None and (waiting_since or waiting_limit) <= waiting_limit
-        if not (active if mode == "active" else waiting if mode == "waiting" else active or waiting):
-            continue
-        since = active_since if started_at is not None else waiting_since
-        days = max(0, (today - since).days) if since is not None else None
-        found.append((_inactivity_sort_key(days, title, pk), pk, waiting_since, active_since))
-    found.sort()
-    shown = {pk: (waiting_since, active_since) for _, pk, waiting_since, active_since in found[:limit]}
-    stages = list(_inactivity_select(
-        frontend_scope(WorkflowStage.objects).filter(pk__in=list(shown)), include_authors))
-    for stage in stages:
-        stage.report_waiting_since, stage.report_active_since = shown[stage.pk]
-    rows = [_inactivity_row(stage, include_authors, today) for stage in stages]
-    rows.sort(key=lambda row: _inactivity_sort_key(row["days"], row["text"]["title"], row["stage"]["pk"]))
-    return rows, len(found)
+    found = _inactivity_found(today, active_days, waiting_days, mode, selected_stages)
+    if query:
+        rows = _inactivity_rows(found, include_authors, today, query)
+        return rows[:limit], len(rows)
+    return _inactivity_rows(found[:limit], include_authors, today), len(found)
 
 
-class _ReportRows:
+class _ReportRows(_ProjectedRows):
+    """Wiersze raportu: stronicowany QuerySet z sortowaniem po polach `fields` w SQL."""
+
     def __init__(self, queryset, projector, fields):
-        self.queryset, self.projector, self.fields = queryset, projector, fields
-
-    def count(self):
-        return self.queryset.count()
-
-    def __len__(self):
-        return self.count()
+        super().__init__(queryset, projector)
+        self.fields = fields
 
     def __iter__(self):
         for item in self.queryset.iterator(chunk_size=BATCH_SIZE):
             yield self.projector(item)
-
-    def __getitem__(self, key):
-        if isinstance(key, slice):
-            return [self.projector(item) for item in self.queryset[key]]
-        return self.projector(self.queryset[key])
 
     def sort_table(self, request):
         from core.sort_keys import sql_text_key
@@ -662,10 +612,8 @@ def _cascade_sql(context, base, project, filters, people_key, workflow=False, st
 
 
 def _inactivity_base(selected_stages):
-    """Etapy, które mogą zalegać: otwarte, wydane, bieżącego cyklu, bez etapu końcowego
-    i bez nieaktualnych miejsc na weryfikację. Wspólne dla raportu i belki pulpitu."""
-    from workflow.read_queries import exclude_obsolete_verification_placeholders
-
+    """Etapy, które mogą zalegać: otwarte, wydane, bieżącego cyklu i bez etapu końcowego.
+    Wspólne dla raportu i belki pulpitu."""
     terminal_stage = (
         frontend_scope(WorkflowStage.objects)
         .current_cycle()
@@ -680,7 +628,6 @@ def _inactivity_base(selected_stages):
         frontend_scope(WorkflowStage.objects)
         .current_cycle()
         .filter(
-            workflow_cycle=F("text__current_workflow_cycle"),
             is_completed=False,
             ended_at__isnull=True,
             is_released=True,
@@ -690,7 +637,6 @@ def _inactivity_base(selected_stages):
         )
         .filter(report_terminal=False)
     )
-    stages = exclude_obsolete_verification_placeholders(stages)
     if selected_stages:
         stages = stages.filter(stage_type__in=selected_stages)
     return stages
@@ -704,49 +650,57 @@ def _inactivity_select(stages, include_authors):
     return stages
 
 
-def _inactivity_stages(today, active_days, waiting_days, mode, selected_stages, include_authors):
-    from workflow.waiting import annotate_inactivity_clocks
+def _inactivity_found(today, active_days, waiting_days, mode, selected_stages):
+    """Zalegające etapy jako (klucz sortowania, pk, czeka od, w toku od), w kolejności raportu.
 
-    stages = _inactivity_select(_inactivity_base(selected_stages), include_authors).order_by(
-        "text__title", "stage_type", "pk")
-    stages = annotate_inactivity_clocks(stages, today)
+    Warunki zegarów (workflow.waiting) są wybierane jako elementarne wartości – każdy raz w SQL –
+    a daty, próg i tryb liczone w Pythonie; wiersze raportu buduje dopiero _inactivity_rows.
+    """
+    from workflow.waiting import CLOCK_FIELDS, annotate_clock_terms, inactivity_since
 
     active_limit = today - timedelta(days=active_days)
     waiting_limit = today - timedelta(days=waiting_days)
+    found = []
+    for pk, title, *clock in annotate_clock_terms(_inactivity_base(selected_stages)).values_list(
+        "pk", "text__title", *CLOCK_FIELDS,
+    ):
+        started_at = clock[0]
+        waiting_since, active_since = inactivity_since(*clock, today=today)
+        active = (started_at is not None and started_at <= today
+                  and active_since is not None and active_since <= active_limit)
+        # Brak daty oczekiwania też jest przestojem.
+        waiting = started_at is None and (waiting_since or waiting_limit) <= waiting_limit
+        if not (active if mode == "active" else waiting if mode == "waiting" else active or waiting):
+            continue
+        since = active_since if started_at is not None else waiting_since
+        days = max(0, (today - since).days) if since is not None else None
+        found.append((_inactivity_sort_key(days, title, pk), pk, waiting_since, active_since))
+    found.sort()
+    return found
 
-    active_condition = Q(started_at__lte=today, report_active_since__lte=active_limit)
-    # Brak daty oczekiwania też jest przestojem; COALESCE zastępuje warunek
-    # „<= próg LUB puste” jednym odwołaniem do (rozbudowanego) wyrażenia daty.
-    from django.db.models import DateField
-    from django.db.models.functions import Coalesce
-    stages = stages.alias(_waiting_key=Coalesce("report_waiting_since", Value(waiting_limit), output_field=DateField()))
-    waiting_condition = Q(started_at__isnull=True, _waiting_key__lte=waiting_limit)
 
-    if mode == "active":
-        stages = stages.filter(active_condition)
-    elif mode == "waiting":
-        stages = stages.filter(waiting_condition)
-    else:
-        stages = stages.filter(active_condition | waiting_condition)
-
-    return stages
-
-
-def _inactivity_rows(stages, query, include_authors, today):
+def _inactivity_rows(found, include_authors, today, query=""):
+    """Wiersze raportu dla etapów z _inactivity_found (w tej samej kolejności), pasujące do szukanego."""
+    clocks = {pk: (waiting_since, active_since) for _, pk, waiting_since, active_since in found}
+    position = {pk: index for index, pk in enumerate(clocks)}
+    pks = list(clocks)
     rows = []
-
-    for stage in stages.iterator(chunk_size=BATCH_SIZE):
-        row = _inactivity_row(stage, include_authors, today)
-        text = stage.text
-        if _matches(
-            query,
-            text.title,
-            text.anthology.title if text.anthology else "",
-            row["authors"],
-            stage.get_stage_type_display(),
-        ):
-            rows.append(row)
-
+    for start in range(0, len(pks), BATCH_SIZE):
+        stages = _inactivity_select(WorkflowStage.objects.filter(pk__in=pks[start:start + BATCH_SIZE]),
+                                    include_authors)
+        for stage in stages:
+            stage.report_waiting_since, stage.report_active_since = clocks[stage.pk]
+            row = _inactivity_row(stage, include_authors, today)
+            text = stage.text
+            if _matches(
+                query,
+                text.title,
+                text.anthology.title if text.anthology else "",
+                row["authors"],
+                stage.get_stage_type_display(),
+            ):
+                rows.append(row)
+    rows.sort(key=lambda row: position[row["stage"]["pk"]])
     return rows
 
 
@@ -784,12 +738,11 @@ def _inactivity_row(stage, include_authors, today):
         "is_completed": stage.is_completed,
     }
     assignee = stage.assignment.assigned_to if stage.assignment_id and stage.assignment.assigned_to_id else None
-    person = getattr(assignee, "person_profile", None) if assignee else None
     return {
         "stage": stage_data,
         "text": text_data,
         "authors": authors,
-        "person": (str(person) if person else assignee.get_full_name() or assignee.get_username()) if assignee else "",
+        "person": person_name(assignee),
         "inactivity_type": inactivity_type,
         "since": since,
         "days": max(0, (today - since).days) if since is not None else None,

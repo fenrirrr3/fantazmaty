@@ -29,22 +29,41 @@ mają pierwszeństwo przed plikiem `.env`.
 ## Testy i jakość kodu
 
 ```bash
-# Testy (SQLite w pamięci, konfiguracja produkcyjna poza bazą):
-DJANGO_SETTINGS_MODULE=fantazmaty.test_settings python manage.py test --parallel
-# lub: pytest  (pyproject.toml wskazuje fantazmaty.test_settings)
+# Szybki przebieg lokalny (SQLite w pamięci; bez wolnych testów, migracji danych i prawdziwych DOCX):
+python manage.py test --settings=fantazmaty.test_settings --parallel --exclude-tag slow --exclude-tag migration
 
-# Lint (konfiguracja w pyproject.toml):
+# Tylko testy dotknięte zmianami – skrypt wypisuje gotowe polecenia (--fast dodaje pomijane tagi):
+python tools/ci/affected.py --base origin/main      # albo --base HEAD~1, --files <ścieżki>, --json
+
+# Przed wdrożeniem: wszystko, także na MySQL (osobna baza test_*; Windows: zmienne przez `set`):
+python manage.py test --settings=fantazmaty.test_settings --parallel
+TEST_MYSQL_USER=root TEST_MYSQL_PASSWORD=... python manage.py test --settings=fantazmaty.mysql_integration_settings
+
+# Lint (konfiguracja w pyproject.toml) i style:
 ruff check .
-
-# Testy na MySQL (osobna baza test_*):
-TEST_MYSQL_USER=root TEST_MYSQL_PASSWORD=... \
-DJANGO_SETTINGS_MODULE=fantazmaty.mysql_integration_settings python manage.py test
+npx --yes stylelint@16.10.0 "core/static/core/*.css"
 ```
 
-`fantazmaty/test_settings.py` importuje `fantazmaty/settings.py`, więc testy
-działają z tym samym językiem, middleware i nagłówkami co produkcja. Lokalny
-`.env` jest wtedy pomijany. CI (`.github/workflows/tests.yml`) uruchamia testy
-na SQLite i MySQL, `ruff check`, stylelint oraz `pip-audit`.
+Tagi testów (`@tag` na klasie): `slow` – klasa ≥ 5 s albo test ≥ 1,5 s; `migration` – migracje danych
+(`TransactionTestCase` z `MigrationExecutor`, zawsze razem ze `slow`); `js` – skrypty interfejsu (wymaga Node.js).
+Obszar wybiera się etykietą pakietu (`core.tests.programs`,
+`workflow`, `illustrations`…), tagiem tylko zawęża.
+
+`tools/ci/affected.py` (czysty Python, bez Django) przypisuje zmienione pliki do pakietów testów – tabela `RULES`
+w skrypcie: dokumentacja → nic, CSS → stylelint i `core.tests.ui`, programy dokumentów → `core.tests.programs
+core.tests.recruitment`, testy jednego pakietu → ten pakiet itd. Plik spoza tabeli oznacza pełną suitę; modele,
+migracje, selektory, ustawienia, `workflow/` i zmienione linie z konstrukcjami SQL (`annotate(`, `Subquery`,
+`select_for_update`…) dodają MySQL. Testy skryptu: `python -m unittest tools.ci.test_affected`.
+
+`fantazmaty/test_settings.py` importuje `fantazmaty/settings.py`, więc testy działają z tym samym językiem,
+middleware i nagłówkami co produkcja; lokalny `.env` jest pomijany. `pytest` też działa (pyproject.toml).
+
+CI (`.github/workflows/tests.yml`): zadanie `plan` uruchamia ten sam skrypt względem bazy PR-a albo poprzedniego
+stanu gałęzi, a pozostałe zadania zależą od wyniku. Zawsze: `ruff check` i testy skryptu. Według zmian: stylelint
+(CSS), `php tools/wordpress/test-snippets.php` (snippety), `pip-audit` (`requirements*.txt`), wybrane pakiety na
+Pythonie 3.13 albo pełna suita na 3.12 i 3.13, kontrola wydania (`collectstatic` z manifestem plików statycznych +
+`core.tests.ui core.tests.texts core.tests.security`) przy CSS/JS/szablonach i pełnej suicie, MySQL tylko przy
+zmianach bazy. W poniedziałek nad ranem (harmonogram) i po ręcznym uruchomieniu (*Run workflow*) idzie wszystko.
 
 ## Program lokalny (jeden plik)
 
@@ -79,10 +98,8 @@ EbookLib fpdf2 Pillow rapidfuzz spacy` i modelem `pl_core_news_sm` (polecenia w 
      to 2:00 UTC (3:00 zimą, 4:00 latem); wpisanie 3:00 UTC da 4:00 zimą i 5:00 latem. Polecenie:
      `cd /home/Fenrirrr3/fantazmaty && /home/Fenrirrr3/.virtualenvs/fantazmaty-venv/bin/python manage.py fetch_mailbox_headers`
      Kod wyjścia 1 oznacza, że żadna skrzynka nie odpowiedziała; wynik widać też w adminie („Automatycznie pobrane nagłówki”).
-   Scalenie zdublowanego wpisu w spisie „Lektorzy/montażyści” (źródło znika, nagrania i e-mail przechodzą na cel):
-   `python manage.py merge_audio_contributor "Karolina Stachacz Bartosik" "Karolina Stachacz-Bartosik" --dry-run`,
-   a po sprawdzeniu wyniku to samo bez `--dry-run`. Nazwy muszą być dokładne; przy kilku wpisach o tej samej nazwie
-   komenda poda ich ID – wtedy `--source-id`/`--target-id`.
+   Zdublowane wpisy w spisie „Lektorzy/montażyści” scala akcja w panelu admina „Połącz zaznaczone profile w jeden”
+   (zostaje najstarszy; nagrania i e-mail przechodzą na niego).
    Import decyzji do naboru Ekstraktów z pliku TSV (UTF-8, tabulatory; nagłówek
    `imię i nazwisko | pseudonim | e-mail | tytuły (rozdzielone |) | decyzja`, decyzja „przyjęte” albo „odrzucone”,
    tytuły rozdzielone `|` – przecinki są częścią tytułu): najpierw podgląd
@@ -91,9 +108,7 @@ EbookLib fpdf2 Pillow rapidfuzz spacy` i modelem `pl_core_news_sm` (polecenia w 
    nazwisko = reszta); jego dane nie są zmieniane. Błąd dowolnego wiersza (np. czarna lista, tytuł z przeciwną
    decyzją) oznacza, że nic nie zostanie zapisane. Plików z danymi autorów nie dodawaj do repozytorium (`import_data/`).
    Konta logowania podążają za osobą (e-mail osoby = login i nazwa użytkownika, odznaczenie „wciąż w ekipie”
-   blokuje logowanie). Stare rozjazdy wyrównuje jednorazowo `python manage.py sync_accounts` (sam raport),
-   a po sprawdzeniu `python manage.py sync_accounts --apply`. Kolizji adresów i osób bez e-maila komenda nie zmienia,
-   tylko je wypisuje (popraw je na ekranie osoby i uruchom ponownie); kont bez osoby (np. superuserów) nie rusza.
+   blokuje logowanie).
    Pomocniczy spis zespołu w TSV (wiersz na osobę i rolę; kolumny: nazwisko i imię, e-mail, e-mail Dropbox, funkcja,
    ID osoby, konta i autora) wypisuje `python manage.py export_team_members > zespol.tsv`; z `--include-inactive`
    także dawni członkowie. To tylko raport z identyfikatorami do porównań, nie kopia bazy ani format importu.
