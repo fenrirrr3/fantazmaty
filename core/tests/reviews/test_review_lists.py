@@ -2,12 +2,17 @@
 (stan przydziałów, liczba opinii, wyszukiwanie, antologia, kolejka powiadomień autorów)."""
 from datetime import timedelta
 
-from django.test import TestCase
+from django.contrib.auth import get_user_model
+from django.http import QueryDict
+from django.test import RequestFactory, TestCase
 from django.utils import timezone
 from django.urls import reverse
 from lxml import html
 
+from core.selectors.reports import reviewer_activity_context
+from core.selectors.reviews import review_list_context
 from fantazmaty.testing import create_member, create_superuser
+from people.models import Person
 from texts.models import Anthology, Review, ReviewAssignment, Reviewers, Text
 
 from .support import ReviewFixtures
@@ -70,8 +75,6 @@ class ReviewListByDecisionTests(TestCase):
         self.assertEqual({x.review_id for x in all_page.context['assignments']},
                          {rated.pk, rated_in_review.pk, accepted.pk, historic.pk})
         self.assertEqual(all_page.context['page_obj'].paginator.count, 4)
-        # Dawne zakładki (archived, decided, all) nie są już obsługiwane – pokazują widok domyślny.
-        self.assertEqual(self.client.get(url, {'view': 'archived'}).context['selected_view'], 'active')
 
     def test_profile_archive_uses_decision_and_preserves_hidden_permissions(self):
         accepted = self.make_review('Przyjęty', 'accepted', 'yes')
@@ -171,14 +174,15 @@ class ReviewHistoryTests(TestCase):
 
 class ReviewListSortAndFilterTests(ReviewFixtures):
     def test_sorting_by_author_renders_rows(self):
+        """Sortowanie po autorze (kolumna tylko dla superusera) przy istniejącym wierszu – lista zgłoszeń buduje wiersze
+        zbiorczo także po posortowaniu (kontrakt w ui/test_table_sorting sprawdza tylko odpowiedź bez wierszy)."""
         review = self.make_review(title='Sortowane', status=Review.Status.IN_REVIEW, author_first_name='Ala',
                                   author_last_name='Kot', email='k@example.test')
         self.assign(self.admin, opinion=Reviewers.Opinion.READING, review=review)
         self.client.force_login(self.admin)
         for sort in ('author', '-author'):
-            response = self.client.get(reverse('core:review_list'), {'sort': sort})
-            self.assertEqual(response.status_code, 200)
-            self.assertContains(response, 'Sortowane')
+            with self.subTest(sort=sort):
+                self.assertContains(self.client.get(reverse('core:review_list'), {'sort': sort}), 'Sortowane')
 
     def test_status_filter_offers_only_supported_statuses_and_no_bulk_actions(self):
         self.client.force_login(self.admin)
@@ -254,3 +258,29 @@ class ReviewListSortAndFilterTests(ReviewFixtures):
             with self.subTest(name=name, **params):
                 page = self.client.get(reverse(name), params)
                 self.assertEqual([review.pk for review in page.context['reviews']], expected)
+
+
+class ReviewRowsAndReportTests(ReviewFixtures):
+    def test_review_list_rows_support_len_and_single_item(self):
+        rows = review_list_context(user=self.admin, params=QueryDict())['reviews']
+        self.assertEqual(len(rows), Review.objects.count())
+        self.assertEqual(rows[0]['pk'], rows[0:1][0]['pk'])
+
+    def test_reviewer_report_names_deleted_and_historical_reviewers(self):
+        """Raport opinii zachowuje opinie usuniętych kont i profili historycznych z archiwum."""
+        archived = self.make_review(title='Archiwalne', old_reviews=True, status=Review.Status.REJECTED,
+                                    author_first_name='Zofia', author_last_name='Unikat')
+        historical = Person.objects.create(first_name='Hanna', last_name='Dawna', email='hanna@example.com')
+        ReviewAssignment.objects.create(review=archived, historical_person=historical, position=1, opinion='yes')
+        gone = get_user_model().objects.create_user('gone')
+        ReviewAssignment.objects.create(review=archived, user=gone, position=2, opinion='no')
+        gone.delete()
+        params = QueryDict(mutable=True)
+        params.update({'archive': 'all', 'q': 'Unikat', 'sort': 'position'})
+        context = reviewer_activity_context(user=self.admin, params=params)
+        rows = context['activity_rows']
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]['reviewer_name'], 'Hanna Dawna')
+        sorted_rows, _ = rows.sort_table(RequestFactory().get('/', {'sort': 'position'}))
+        self.assertEqual([row['reviewer_name'] for row in sorted_rows[0:2]], ['Hanna Dawna', 'Usunięte konto'])
+        self.assertEqual([str(person) for person in context['reviewers']], ['Hanna Dawna'])

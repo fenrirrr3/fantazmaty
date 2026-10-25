@@ -70,17 +70,18 @@ class EditingInProgressFixtures(StatusAssignmentFixtures):
     """Tekst „Zabójczyni Snów” w trakcie redakcji; obie osoby zespołu mają role redakcji,
     weryfikacji i korekty."""
 
-    def setUp(self):
-        super().setUp()
-        for user in (self.member, self.other):
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        for user in (cls.member, cls.other):
             add_roles(user, 'Redaktor', 'Weryfikator', 'Korektor')
-        self.text.title = 'Zabójczyni Snów'
-        self.text.save()
-        self.editor = WorkflowRoleAssignment.objects.create(
-            text=self.text, role='editor', assigned_to=self.member)
-        self.editing = WorkflowStage.objects.create(
-            text=self.text, stage_type='editing', assignment=self.editor,
-            started_at=self.today - timedelta(days=24))
+        cls.text.title = 'Zabójczyni Snów'
+        cls.text.save()
+        cls.editor = WorkflowRoleAssignment.objects.create(
+            text=cls.text, role='editor', assigned_to=cls.member)
+        cls.editing = WorkflowStage.objects.create(
+            text=cls.text, stage_type='editing', assignment=cls.editor,
+            started_at=cls.today - timedelta(days=24))
 
     def reserve(self, performer=None, **kwargs):
         """Rezerwacja pierwszej weryfikacji dodana w adminie."""

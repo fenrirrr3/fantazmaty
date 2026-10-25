@@ -1,4 +1,6 @@
 """Panel admina: trwałe usunięcie tekstu razem z etapami i całą historią – i niczym więcej."""
+from unittest.mock import patch
+
 from django.contrib.admin.models import CHANGE, LogEntry
 from django.contrib.contenttypes.models import ContentType
 from django.test import TestCase
@@ -98,6 +100,23 @@ class TextPurgeTests(WorkflowTestDataMixin, TestCase):
         Illustration.objects.create(text=self.text)
         self.assertContains(self.client.get(self.url), 'przypisane ilustracje')
         self.post(confirm='on')
+        self.assertTrue(Text.objects.filter(pk=self.text.pk).exists())
+
+    def test_illustration_added_between_check_and_purge_keeps_text(self):
+        """Ilustracja przypięta między sprawdzeniem a usunięciem: tekst zostaje, formularz pokazuje powód."""
+        from texts import purge
+        original = purge.purge_blocker
+        calls = []
+
+        def blocker_with_race(text, using='default'):
+            calls.append(text.pk)
+            if len(calls) == 2:
+                Illustration.objects.create(text=text)
+            return original(text, using)
+
+        with patch.object(purge, 'purge_blocker', blocker_with_race):
+            response = self.post(confirm='on')
+        self.assertContains(response, 'przypisane ilustracje')
         self.assertTrue(Text.objects.filter(pk=self.text.pk).exists())
 
     def test_only_superuser(self):

@@ -55,7 +55,7 @@ class BundleNamesTests(SimpleTestCase):
         self.assertEqual({name: modules for name, modules in owners.items() if len(modules) > 1}, {})
 
 
-@tag('slow')
+@tag('slow', 'docx')
 class StandaloneBundleTests(SimpleTestCase):
     def test_bundle_builds_and_runs_every_program_without_django(self):
         build = load_build()

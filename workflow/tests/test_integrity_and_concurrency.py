@@ -1,5 +1,5 @@
 """Spójność danych procesu: walidacja i ograniczenia etapów i przypisań (także pracy tylko z importu), daty przypisania,
-opisy rekordów oraz równoczesne przejęcie tekstu."""
+opisy rekordów, numeracja wykonań oraz równoczesne przejęcie tekstu."""
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from threading import Barrier
@@ -28,6 +28,8 @@ User = get_user_model()
 StageType = WorkflowStage.StageType
 Role = WorkflowRoleAssignment.Role
 Assignment = WorkflowRoleAssignment
+S = WorkflowStage
+A = WorkflowRoleAssignment
 
 
 class WorkflowIntegrityTests(WorkflowTestDataMixin, TestCase):
@@ -331,6 +333,9 @@ class RecordValidationTests(TestCase):
                 self.assertEqual(stage.assignment, expected)
 
     def test_records_describe_text_role_person_and_execution(self):
+        """Opisy rekordów: etap z wykonaniem, pusty przydział, powtórzenie i status tekstu z archiwum bez roli
+        (zwykła nazwa etapu)."""
+        from workflow.archive_executions import SOURCE
         from workflow.models import WorkflowRepetition
 
         stage = WorkflowStage.objects.create(text=self.text, stage_type='editing', execution_number=2, iteration=2)
@@ -339,6 +344,64 @@ class RecordValidationTests(TestCase):
         self.assertEqual(str(empty), 'Tekst – Redaktor – nieprzypisane – przebieg 1')
         run = WorkflowRepetition.objects.create(text=self.text)
         self.assertEqual(str(run), f'Tekst – powtórzenie #{run.pk}')
+        archived = Text(title='Archiwalny', import_source=SOURCE, import_source_row=3)
+        for kind, expected in (('editing', 'Archiwalny: Redaktor'), ('ready', 'Archiwalny: Gotowe – przebieg 1')):
+            with self.subTest(kind=kind):
+                stage = WorkflowStage(text=archived, stage_type=kind, imported_completed=True, execution_number=1)
+                self.assertEqual(str(stage), expected)
+
+
+class NumberingTests(TestCase):
+    """Wspólne liczniki z ``workflow.numbering``: zakres tekst + przebieg (+ rola / rodzaj etapu)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.text = Text.objects.create(title='Numerowany', length=100)
+        cls.other_text = Text.objects.create(title='Inny', length=100)
+
+    def test_next_numbers_count_only_matching_text_cycle_and_kind(self):
+        from workflow.numbering import next_assignment_execution, next_stage_execution, next_stage_iteration
+        cases = [
+            ('brak rekordów', [], [], 1, 1, 1),
+            ('jeden rekord', [dict(execution_number=1)], [dict(iteration=1, execution_number=1)], 2, 2, 2),
+            ('nieaktualne też liczą się',
+             [dict(execution_number=3, is_current=False)], [dict(iteration=3, execution_number=2, is_current=False)],
+             4, 4, 3),
+            ('inny przebieg nie liczy się',
+             [dict(execution_number=2, workflow_cycle=2)], [dict(iteration=2, execution_number=2, workflow_cycle=2)],
+             1, 1, 1),
+            ('inna rola / rodzaj etapu nie liczy się',
+             [dict(execution_number=2, role=Role.VERIFIER_2)],
+             [dict(iteration=2, execution_number=2, stage_type=StageType.SECOND_VERIFICATION)],
+             1, 1, 1),
+            ('inny tekst nie liczy się',
+             [dict(execution_number=2, text=self.other_text)],
+             [dict(iteration=2, execution_number=2, text=self.other_text)],
+             1, 1, 1),
+        ]
+        for name, assignments, stages, assignment_next, iteration_next, execution_next in cases:
+            with self.subTest(case=name):
+                for fields in assignments:
+                    A.objects.create(**{'text': self.text, 'role': Role.VERIFIER_1, **fields})
+                for fields in stages:
+                    S.objects.create(**{'text': self.text, 'stage_type': StageType.FIRST_VERIFICATION, **fields})
+                self.assertEqual(next_assignment_execution(self.text, Role.VERIFIER_1), assignment_next)
+                self.assertEqual(next_stage_iteration(self.text, StageType.FIRST_VERIFICATION), iteration_next)
+                self.assertEqual(next_stage_execution(self.text, StageType.FIRST_VERIFICATION), execution_next)
+                S.objects.all().delete()
+                A.objects.all().delete()
+
+    def test_explicit_cycle_and_stage_execution_from_assignment(self):
+        """Jawny przebieg liczy w nim, a numer etapu wynika z przydziału (brak przydziału → 1)."""
+        from workflow.numbering import next_assignment_execution, next_stage_iteration, stage_execution_for
+        A.objects.create(text=self.text, role=Role.EDITOR, workflow_cycle=2, execution_number=2, is_current=False)
+        S.objects.create(text=self.text, stage_type=StageType.EDITING, workflow_cycle=2, iteration=5, is_current=False)
+        self.assertEqual(next_assignment_execution(self.text, Role.EDITOR, cycle=2), 3)
+        self.assertEqual(next_stage_iteration(self.text, StageType.EDITING, cycle=2), 6)
+        self.assertEqual(next_assignment_execution(self.text, Role.EDITOR), 1)
+        self.assertEqual(stage_execution_for(None), 1)
+        self.assertEqual(stage_execution_for(A(execution_number=4)), 4)
+
 
 @tag('slow')
 class WorkflowConcurrencyTests(TransactionTestCase):

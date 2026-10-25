@@ -1,11 +1,11 @@
-"""Reguły korekty Odkurzacza na poziomie tekstu oraz pola i limity formularzy programów."""
+"""Reguły korekty Odkurzacza na poziomie tekstu oraz pola, limity i odrzucane pakiety formularzy programów."""
 import json
 import sys
 import time
 from difflib import SequenceMatcher
 from io import BytesIO
 from unittest.mock import patch
-from zipfile import ZIP_DEFLATED, ZipFile
+from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 from django.test import SimpleTestCase
 from docx import Document
@@ -14,13 +14,26 @@ from core.odkurzacz_forms import (
     REPLACEMENT_WORD_MAX, WORD_SOURCE_RE, DocumentConversionForm, OdkurzaczForm, RepetitionsForm,
 )
 from core.services.odkurzacz import (
-    ABBREVIATION_GROUPS, ALL_EDITORIAL_RULES, CONTEXT, DEFAULT_EDITORIAL_RULES, DEFAULT_REPLACEMENTS, EDITORIAL_RULES,
-    FORM_DEFAULT_EDITORIAL_RULES, MAX_PATTERN_LENGTH, ORTHOGRAPHY_2026_KEYS, ORTHOGRAPHY_2026_RULES,
-    SENTENCE_ABBREVIATIONS, _change_regions, _compile_pattern, USER_WORD_EXACT, USER_WORD_PATTERNS, _edit_opcodes,
-    clean_docx, compile_replacements, correct_editorial_text,
+    ABBREVIATION_GROUPS, ALL_EDITORIAL_RULES, CONTEXT, DEFAULT_EDITORIAL_RULES, DEFAULT_REPLACEMENTS,
+    EDITORIAL_RULES, FORM_DEFAULT_EDITORIAL_RULES, MAX_PATTERN_LENGTH, ORTHOGRAPHY_2026_KEYS,
+    ORTHOGRAPHY_2026_RULES, SENTENCE_ABBREVIATIONS, USER_WORD_EXACT, USER_WORD_PATTERNS, _change_regions,
+    _compile_pattern, _edit_opcodes, clean_docx, compile_replacements, correct_editorial_text,
 )
 
-from .support import REPETITION_PARAMETERS, saved, sized_docx, upload
+from .support import formatted_docx, saved, upload
+
+
+def package(entries, encrypted=False):
+    """Archiwum ZIP z wpisami (nazwa, bajty); encrypted – bit szyfrowania w katalogu centralnym (jak ZipCrypto)."""
+    stream = BytesIO()
+    with ZipFile(stream, 'w') as archive:
+        for name, data in entries:
+            archive.writestr(ZipInfo(name), data)
+    data = bytearray(stream.getvalue())
+    if encrypted:
+        central = data.rindex(b'PK\x01\x02')  # ostatni wpis katalogu centralnego
+        data[central + 8] |= 1
+    return bytes(data)
 
 
 class EditorialTextRuleTests(SimpleTestCase):
@@ -581,24 +594,29 @@ class ProgramFormTests(SimpleTestCase):
         self.assertNotIn('normalize_formatting', DocumentConversionForm().fields)
         self.assertNotIn('normalize_formatting', RepetitionsForm().fields)
 
-    def test_all_program_forms_accept_five_mb_and_reject_one_extra_byte(self):
-        data = {'formats': ['pdf'], **REPETITION_PARAMETERS}
-        for form_class in (OdkurzaczForm, DocumentConversionForm, RepetitionsForm):
-            with self.subTest(form=form_class.__name__):
-                form = form_class(data, {'document': sized_docx(5 * 1024 * 1024)})
-                self.assertTrue(form.is_valid(), form.errors)
-                form = form_class(data, {'document': sized_docx(5 * 1024 * 1024 + 1)})
-                self.assertFalse(form.is_valid())
-                self.assertIn('5 MB', str(form.errors['document']))
-
-    def test_zip_expansion_limit(self):
-        stream = BytesIO()
-        with ZipFile(stream, 'w', ZIP_DEFLATED) as archive:
+    def test_damaged_packages_are_refused(self):
+        """Pakiet rozpakowujący się do ponad 50 MB, z zaszyfrowanym wpisem albo bez word/document.xml."""
+        with ZipFile(BytesIO(formatted_docx())) as archive:
+            parts = [(item.filename, archive.read(item)) for item in archive.infolist()]
+        expanding = BytesIO()
+        with ZipFile(expanding, 'w', ZIP_DEFLATED) as archive:
             archive.writestr('word/document.xml', b'a' * (51 * 1024 * 1024))
             archive.writestr('[Content_Types].xml', b'')
-        form = OdkurzaczForm({}, {'document': upload(stream.getvalue())})
-        self.assertFalse(form.is_valid())
-        self.assertIn('50 MB', str(form.errors))
+        cases = (
+            ('ponad 50 MB po rozpakowaniu', expanding.getvalue(), '50 MB'),
+            ('zaszyfrowany wpis', package(parts, encrypted=True), 'Dokument nie może być zaszyfrowany.'),
+            ('bez word/document.xml', package([part for part in parts if part[0] != 'word/document.xml']),
+             'Ten plik nie jest prawidłowym dokumentem DOCX.'),
+        )
+        for label, data, message in cases:
+            with self.subTest(label):
+                form = OdkurzaczForm({}, {'document': upload(data)})
+                self.assertFalse(form.is_valid())
+                self.assertIn(message, str(form.errors['document']))
+
+    def test_stored_text_settings_of_another_type_are_skipped(self):
+        stored = {'ignored_words': 5, 'tracked_words': 'kot pies', 'color_palette': ['dark']}
+        self.assertEqual(RepetitionsForm.initial_from_settings(stored), {'tracked_words': 'kot pies'})
 
 
 class EditorialRuleR9Tests(SimpleTestCase):

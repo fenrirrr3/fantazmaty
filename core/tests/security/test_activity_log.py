@@ -1,6 +1,7 @@
 """Dziennik aktywności: przenoszenie kolejki do bazy (flush_activity), czyszczenie starych wpisów (prune_activity),
 polskie etykiety wpisów i filtrowanie strony dziennika."""
 import json
+from types import SimpleNamespace
 from datetime import timedelta
 from io import StringIO
 from unittest.mock import patch
@@ -9,13 +10,13 @@ from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import DatabaseError
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.urls import get_resolver, resolve, reverse
 from django.utils import timezone
 
 from core.activity import LABELS, describe_request
 from core.activity_spool import enqueue_activity
-from core.activity_targets import present_activities, target_for_match
+from core.activity_targets import object_name, present_activities, target_for_match
 from core.management.commands.flush_activity import Command
 from core.models import UserActivity
 from fantazmaty.testing import create_member, create_superuser
@@ -319,3 +320,62 @@ class ActivityPageFilterTests(TemporaryActivitySpoolMixin, TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertContains(response, 'nie może być późniejsza', status_code=400)
         self.assertEqual(actions, set())
+
+
+class ActivityLoggingFailureTests(TemporaryActivitySpoolMixin, TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.admin = create_superuser('dziennik-admin')
+
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.admin)
+
+    def test_logging_failures_never_break_the_page(self):
+        """Błąd opisu lub zapisu aktywności trafia do logu, a użytkownik dostaje zwykłą odpowiedź."""
+        url = reverse('core:user_preview')
+        cases = {
+            'opis celu': ('core.activity_targets.target_for_match', 'POST', 'opisać aktywności'),
+            'zapis do kolejki': ('core.activity_spool.enqueue_activity', 'GET', 'zapisać aktywności'),
+        }
+        for name, (target, method, message) in cases.items():
+            with self.subTest(name), patch(target, side_effect=RuntimeError('awaria')), \
+                    self.assertLogs('core.activity', 'ERROR') as logs:
+                response = self.client.post(url, {}) if method == 'POST' else self.client.get(url)
+                self.assertIn(response.status_code, (200, 302))
+                self.assertIn(message, logs.output[0])
+
+    def test_corrupted_visit_timestamp_records_the_visit_again(self):
+        session = self.client.session
+        session['_activity_visit'] = {'user': self.admin.pk, 'at': 'zepsute'}
+        session.save()
+        with patch('core.activity_spool.enqueue_activity') as queue:
+            self.client.get(reverse('core:home'))
+        queue.assert_called_once()
+        self.assertIsInstance(self.client.session['_activity_visit']['at'], float)
+
+    def test_spool_removes_temporary_file_when_rename_fails(self):
+        with patch('core.activity_spool.os.replace', side_effect=OSError('pełny dysk')):
+            with self.assertRaises(OSError):
+                enqueue_activity(user_id=None, actor='a', method='GET', action='Pulpit', target='', path='/',
+                                 status_code=200)
+        from core.activity_spool import spool_directory
+        self.assertEqual(list(spool_directory().iterdir()), [])
+
+
+class ActivityPresentationTests(SimpleTestCase):
+    def test_unknown_path_keeps_stored_action_and_target(self):
+        """Wpis z adresem, którego już nie ma, pokazuje działanie i obiekt tak, jak je zapisano."""
+        for action in ('save review', 'Coś innego'):
+            with self.subTest(action=action):
+                entry = UserActivity(action=action, target='user_id: #5', path='/usunieta-strona/', method='GET')
+                present_activities([entry])
+                self.assertEqual((entry.display_action, entry.display_target), (action, 'user_id: #5'))
+
+    def test_object_name_stops_after_three_levels_of_relations(self):
+        def node(**fields):
+            return SimpleNamespace(_meta=object(), **fields)
+        deep = node(text=node(review=node(anthology=node(title='Za głęboko'))))
+        shallow = node(text=node(review=node(title='Recenzja')))
+        self.assertEqual(object_name(deep), '')
+        self.assertEqual(object_name(shallow), 'Recenzja')

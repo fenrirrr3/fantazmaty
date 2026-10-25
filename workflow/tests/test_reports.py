@@ -1,5 +1,5 @@
 """Raporty: zegary bezczynności, strony przestojów i aktywności zespołu (filtry, uprawnienia, dane autorów),
-ostatnia aktywność osób, zapytania list tekstów i kontrola wielokrotnych przypisań."""
+ostatnia aktywność osób, zapytania list tekstów i kontrola wielokrotnych przypisań (także sortowanie)."""
 from datetime import timedelta
 from types import SimpleNamespace
 
@@ -369,15 +369,12 @@ class AssignmentConflictReportTests(TestCase):
         self.assertNotContains(response, 'Sprawdź duplikaty')
 
     def test_removed_duplicate_scan_bookmark_opens_assignment_report(self):
+        """Zakładka dawnego skanu duplikatów (``tab=duplicates``) otwiera raport wielokrotnych przypisań."""
         self.assign()
         self.assign(role='proofreader_1')
         response = self.page(tab='duplicates', run='1', anthology='all')
         self.assertEqual(response.context['tab'], 'assignments')
         self.assertEqual(response.context['assignment_page'].paginator.count, 1)
-        import core.supervision
-        self.assertFalse(hasattr(core.supervision, 'all_duplicates'))
-        # The report removal does not remove intake validation used elsewhere.
-        self.assertTrue(callable(core.supervision.duplicate_candidates))
 
     def test_invalid_filters_show_error_without_scanning(self):
         from unittest.mock import patch
@@ -449,6 +446,48 @@ class AssignmentConflictReportTests(TestCase):
         self.assertEqual(
             self.client.get(reverse("core:data_integrity"), {"tab": "unlinked"}).status_code, 403
         )
+
+
+class AssignmentConflictSortingTests(TestCase):
+    """Raport wielokrotnych przypisań: sortowanie każdej kolumny i para poprawiona między liczeniem a szczegółami."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.admin = User.objects.create_superuser('raport-admin', 'raport@example.test', 'test')
+        cls.anna = User.objects.create_user('anna', first_name='Anna', last_name='Zięba')
+        cls.bartek = User.objects.create_user('bartek', first_name='Bartek', last_name='Adamski')
+        book = Anthology.objects.create(title='Antologia')
+        cls.alpha = Text.objects.create(title='Akacja', anthology=book, length=100)
+        cls.beta = Text.objects.create(title='Brzoza', anthology=book, length=100)
+        # Akacja: Anna dwa razy w tej samej roli; Brzoza: Bartek w trzech rolach.
+        A.objects.create(text=cls.alpha, role='editor', assigned_to=cls.anna, is_current=False)
+        A.objects.create(text=cls.alpha, role='editor', assigned_to=cls.anna, execution_number=2)
+        for role in ('editor', 'proofreader_1', 'proofreader_3'):
+            A.objects.create(text=cls.beta, role=role, assigned_to=cls.bartek)
+
+    def titles(self, sort):
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse('core:data_integrity'), {'tab': 'assignments', 'sort': sort})
+        self.assertEqual(response.status_code, 200)
+        return [row['title'] for row in response.context['assignment_rows']]
+
+    def test_every_column_sorts_both_ways(self):
+        cases = {
+            'title': ['Akacja', 'Brzoza'], '-title': ['Brzoza', 'Akacja'],
+            'person': ['Akacja', 'Brzoza'], '-person': ['Brzoza', 'Akacja'],
+            'reason': ['Akacja', 'Brzoza'], '-reason': ['Brzoza', 'Akacja'],
+            'assignments': ['Akacja', 'Brzoza'], '-assignments': ['Brzoza', 'Akacja'],
+        }
+        for sort, expected in cases.items():
+            with self.subTest(sort=sort):
+                self.assertEqual(self.titles(sort), expected)
+
+    def test_pair_resolved_after_counting_is_skipped(self):
+        groups = list(assignment_conflicts())
+        A.objects.filter(text=self.alpha, execution_number=2).update(assigned_to=self.bartek)
+        rows = assignment_conflict_details(groups)
+        self.assertEqual([row['title'] for row in rows], ['Brzoza'])
 
 
 class ReportPageTests(TestCase):

@@ -9,6 +9,7 @@ from django.urls import reverse
 from django.utils import timezone
 from lxml import html
 
+from core.services.vacations import cancel_planned_vacation, create_vacation
 from fantazmaty.testing import create_member, create_superuser, edit_token
 from people.models import Person, Vacation
 
@@ -218,6 +219,7 @@ class VacationAdminTests(VacationPageFixtures):
         """Urlop dodany w panelu widać na ekranie osoby (pola tylko do odczytu wyliczane z urlopów)."""
         from django.utils import formats
         url = reverse('admin:people_vacation_add')
+        self.assertEqual(self.client.get(url).status_code, 200)
         former = Person.objects.create(first_name='Była', last_name='Osoba', is_active=False)
         data = {'start_date': self.day(0), 'until_revoked': 'on', '_save': 'Zapisz'}
         page = self.client.post(url, {**data, 'person': former.pk})
@@ -241,3 +243,42 @@ class VacationAdminTests(VacationPageFixtures):
             self.assertEqual(response.status_code, status)
         self.assertFalse(Vacation.objects.filter(pk=planned.pk).exists())
         self.assertTrue(Vacation.objects.filter(pk=started.pk).exists())
+
+    def test_started_vacation_cannot_be_deleted_even_when_permission_check_is_bypassed(self):
+        """delete_model sam sprawdza, czy urlop się nie rozpoczął (wyścig z widokiem albo akcją zbiorczą)."""
+        from django.contrib.admin import site
+        from django.core.exceptions import PermissionDenied
+        from django.test import RequestFactory
+        from core.admin import VacationAdmin
+        vacation = self.vacation(self.member, 0)
+        request = RequestFactory().post('/')
+        request.user = self.admin
+        with self.assertRaisesMessage(PermissionDenied, 'jeszcze się nie rozpoczął'):
+            VacationAdmin(Vacation, site).delete_model(request, vacation)
+        self.assertTrue(Vacation.objects.filter(pk=vacation.pk).exists())
+
+
+class VacationSelectionTests(TestCase):
+    """Urlop przy osobie w panelu: trwający albo najbliższy zaplanowany, liczony z urlopów."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = create_member('urlopowicz', 'Redaktor')
+        cls.person = cls.user.person_profile
+        cls.today = timezone.localdate()
+
+    def end(self, days):
+        return timezone.now() + timedelta(days=days)
+
+    def shown(self):
+        from people.admin import PersonAdmin
+        return PersonAdmin._leave(Person.objects.get(pk=self.person.pk))
+
+    def test_nearest_of_several_planned_vacations_is_shown(self):
+        later = create_vacation(user=self.user, person_id=self.person.pk, start_date=self.today + timedelta(days=20),
+                                end_date=self.end(25))
+        nearest = create_vacation(user=self.user, person_id=self.person.pk,
+                                  start_date=self.today + timedelta(days=5), end_date=self.end(8))
+        self.assertEqual(self.shown(), nearest)
+        cancel_planned_vacation(user=self.user, vacation_id=nearest.pk)
+        self.assertEqual(self.shown(), later)

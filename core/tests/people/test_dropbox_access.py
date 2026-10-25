@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from django.core.cache import cache
 from django.core.management import CommandError, call_command
-from django.test import SimpleTestCase, TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings, tag
 from django.urls import reverse
 
 from core.tests.people.support import admin_form_data
@@ -46,6 +46,7 @@ TOKEN = (200, {'access_token': 'token-1', 'expires_in': 14400, 'token_type': 'be
 
 
 @CONFIGURED
+@tag('external')
 class DropboxClientTests(SimpleTestCase):
     def setUp(self):
         cache.clear()
@@ -300,6 +301,7 @@ class FakeDropbox:
         self.members[shared_id].pop(email, None)
 
 
+@tag('external')
 class DropboxAccessAdminTests(TestCase):
     """Ekran osoby w adminie: poziom dostępu do folderów, synchronizacja po zapisie i odebranie przy usunięciu z zespołu."""
 
@@ -520,6 +522,7 @@ class DropboxAccessAdminTests(TestCase):
                     self.assertEqual(response.status_code == 200, allowed)
 
 
+@tag('external')
 class DropboxFolderAdminTests(TestCase):
     """Lista folderów: pobranie podfolderów /Fantazmaty z oznaczeniem udostępnienia i dodanie zaznaczonych."""
 
@@ -570,6 +573,7 @@ class DropboxFolderAdminTests(TestCase):
         self.assertEqual(folder.path, '/fantazmaty/STARY')
 
 
+@tag('external')
 class SyncCommandTests(TestCase):
     """Komenda sync_dropbox_access: plan bez zmian (--dry-run), nadanie czekających dostępów, brak konfiguracji."""
 
@@ -628,6 +632,7 @@ class SyncCommandTests(TestCase):
         self.assertEqual(DropboxAccess.objects.get().state, State.PENDING)
 
 
+@tag('external')
 class SyncEdgeCaseTests(TestCase):
     """Synchronizacja wierszy (people.dropbox_access.sync) w sytuacjach brzegowych: osoba już w folderze, zmiany
     zrobione ręcznie w Dropboxie, błąd w połowie zmiany adresu, odpowiedź Dropboxa, która nie dotarła."""
@@ -722,6 +727,7 @@ class SyncEdgeCaseTests(TestCase):
         self.assertEqual(self.fake.members['sf-1'], {})
 
 
+@tag('external')
 class DropboxImportTests(TestCase):
     """Przejęcie obecnych członków folderu z Dropboxa (people.dropbox_import, admin folderów, komenda): podgląd bez
     zapisu, dopasowanie osób, zastosowanie bez zaproszeń i zmian w Dropboxie, skrót planu i brak konfiguracji."""
@@ -948,6 +954,7 @@ class DropboxImportTests(TestCase):
         self.assertEqual(self.fake.calls, [])
 
 
+@tag('external')
 class DropboxFolderRemovalTests(TestCase):
     """Usuwanie folderów z listy (people.dropbox_removal, admin folderów): stan w Dropboxie, wybór „przestań zarządzać”
     albo „odbierz dostęp”, skrót stanu, folder usunięty w Dropboxie przy synchronizacji i na liście „Pobierz foldery”."""

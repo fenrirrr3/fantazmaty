@@ -1,4 +1,6 @@
 """Pomocniki testów programów: pliki DOCX w pamięci, izolowane katalogi robocze i zadania bez podprocesu."""
+import subprocess
+import sys
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -286,8 +288,48 @@ def whole_document():
     return with_footnote(document, 'Przypis  z lampą i lampą.')
 
 
+_REAL_POPEN = subprocess.Popen
+# Grupa procesów, której nie ma (powyżej pid_max Linuksa): _kill() konwertera dostaje ProcessLookupError.
+_NO_PROCESS = 4_194_305
+
+
+class InProcessWorker:
+    """Popen dla run_converter: main() procesu roboczego w procesie testu zamiast podprocesu z bootstrapem.
+
+    Ten sam kod konwersji i te same pliki w katalogu zadania (job.json → wynik, error.json), bez kosztu startu
+    interpretera i importów (ok. 0,5 s na plik). Inne polecenia (np. LibreOffice) idą do prawdziwego Popen.
+    Podproces, bootstrap i limit pamięci mają własne testy (klasy z ``in_process_worker = False``)."""
+
+    def __new__(cls, command, *args, **kwargs):
+        if not str(command[1]).endswith('document_worker_bootstrap.py'):
+            return _REAL_POPEN(command, *args, **kwargs)
+        return super().__new__(cls)
+
+    def __init__(self, command, *args, **kwargs):
+        from core.services import document_conversion_worker, document_progress
+
+        self.pid = _NO_PROCESS
+        with patch.object(sys, 'argv', ['document_conversion_worker.py', str(command[-1])]), \
+                patch.object(document_progress, '_target', None):
+            self.returncode = document_conversion_worker.main()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def wait(self, timeout=None):
+        return self.returncode
+
+    poll = wait
+
+
 class IsolatedProgramDirsMixin:
-    """Zadania programów i dziennik aktywności zapisują pliki w prywatnym katalogu testu."""
+    """Zadania programów i dziennik aktywności zapisują pliki w prywatnym katalogu testu; proces roboczy
+    konwertera biegnie w procesie testu (InProcessWorker), chyba że klasa ustawi ``in_process_worker = False``."""
+
+    in_process_worker = True
 
     def setUp(self):
         super().setUp()
@@ -300,6 +342,10 @@ class IsolatedProgramDirsMixin:
         )
         override.enable()
         self.addCleanup(override.disable)
+        if self.in_process_worker:
+            worker = patch('core.services.document_converter.subprocess.Popen', InProcessWorker)
+            worker.start()
+            self.addCleanup(worker.stop)
 
 
 def docx_with_paragraph_xml(*fragments):

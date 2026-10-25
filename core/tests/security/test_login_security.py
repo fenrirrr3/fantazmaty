@@ -265,3 +265,45 @@ class StaleCsrfTokenTests(TestCase):
                 if back:
                     self.assertContains(response, f'href="{back}"', status_code=403)
 
+
+UNKNOWN_LOGIN = {'username': 'nikt@example.test', 'password': 'zle'}
+
+
+def rate_key(value):
+    return salted_hmac('cms-auth-rate', value, algorithm='sha256').hexdigest()
+
+
+class LoginThrottleBoundaryTests(TestCase):
+    """Limity logowania w sytuacjach brzegowych: wyłączone, zły nagłówek adresu, brak loginu, licznik na granicy."""
+
+    @override_settings(AUTH_THROTTLE_ENABLED=False)
+    def test_disabled_throttle_records_nothing(self):
+        for _ in range(12):
+            self.assertEqual(self.client.post(reverse('login'), UNKNOWN_LOGIN).status_code, 200)
+        self.assertFalse(AuthenticationAttempt.objects.exists())
+
+    @override_settings(AUTH_THROTTLE_CLIENT_IP_HEADER='HTTP_X_REAL_IP')
+    def test_invalid_trusted_header_falls_back_to_connection_address(self):
+        self.client.post(reverse('login'), UNKNOWN_LOGIN, REMOTE_ADDR='192.0.2.9', HTTP_X_REAL_IP='to-nie-adres')
+        self.assertTrue(AuthenticationAttempt.objects.filter(key=rate_key('login:ip:192.0.2.9')).exists())
+
+    def test_request_without_identity_counts_only_address_limits(self):
+        self.client.post(reverse('login'), {'password': 'zle'})
+        self.assertEqual(AuthenticationAttempt.objects.count(), 2)
+        self.assertFalse(AuthenticationAttempt.objects.filter(
+            key=rate_key('login:account:')).exists())
+
+    def test_expired_counter_not_yet_purged_starts_again(self):
+        """Licznik, który wygasa dokładnie teraz, nie blokuje i liczy próby od nowa."""
+        now = timezone.now()
+        key = rate_key('login:ip:127.0.0.1')
+        AuthenticationAttempt.objects.create(key=key, attempts=100, expires_at=now)
+        with patch('core.auth_throttle.timezone.now', return_value=now):
+            self.assertEqual(self.client.post(reverse('login'), UNKNOWN_LOGIN).status_code, 200)
+        self.assertEqual(AuthenticationAttempt.objects.get(key=key).attempts, 1)
+
+    def test_account_ceiling_without_password_still_blocks(self):
+        with patch.object(auth_throttle, 'ACCOUNT_LOGIN_LIMIT', 1):
+            data = {'username': 'ofiara@example.test', 'password': ''}
+            self.assertEqual(self.client.post(reverse('login'), data, REMOTE_ADDR='192.0.2.1').status_code, 200)
+            self.assertEqual(self.client.post(reverse('login'), data, REMOTE_ADDR='192.0.2.2').status_code, 429)

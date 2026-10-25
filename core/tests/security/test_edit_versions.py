@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from django.apps import apps
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
 from django.db import IntegrityError, connection
 from django.db.models import QuerySet
 from django.test import SimpleTestCase, TestCase
@@ -216,3 +217,10 @@ class RelatedChangeVersionTests(TestCase):
         with patch.object(QuerySet, 'bulk_create', side_effect=IntegrityError), batched_bumps():
             text = Text.objects.create(title='W partii', length=10, anthology=self.book)
         self.assertEqual(version_of(text), 1)
+
+    def test_permission_granted_from_permission_side_bumps_account_version(self):
+        user = get_user_model().objects.create_user('uprawnienia')
+        before = version_of(user)
+        Permission.objects.get(codename='view_user').user_set.add(user)
+        self.assertGreater(version_of(user), before)
+

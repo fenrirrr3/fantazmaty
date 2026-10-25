@@ -5,7 +5,7 @@ from io import BytesIO
 from unittest.mock import MagicMock, patch
 from urllib.error import HTTPError, URLError
 
-from django.test import SimpleTestCase, override_settings
+from django.test import SimpleTestCase, override_settings, tag
 
 from core.discord_webhook import ConfigurationError, DeliveryError, channels, send_message
 
@@ -40,6 +40,7 @@ class ChannelConfigTests(SimpleTestCase):
             channels()
 
 
+@tag('external')
 class SendMessageTests(SimpleTestCase):
     def opener(self, result=None, error=None):
         opener = MagicMock()

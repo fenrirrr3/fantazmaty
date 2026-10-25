@@ -2,7 +2,7 @@
 from datetime import timedelta
 from unittest.mock import patch
 
-from django.test import TestCase
+from django.test import TestCase, tag
 from django.urls import reverse
 from django.utils import timezone
 from lxml import html
@@ -200,6 +200,7 @@ class OverdueBannerMatchesReportTests(TestCase):
             stage(title, 'first_proofreading' if index % 2 else 'ready_for_editing', queued=days(12))
         stage('Ala', 'second_proofreading', queued=days(12))
 
+    @tag('slow')
     def test_first_rows_and_count_match_the_report(self):
         from django.http import QueryDict
         from core.selectors.reports import inactivity_overview, workflow_inactivity_context

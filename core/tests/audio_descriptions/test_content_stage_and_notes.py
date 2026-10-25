@@ -1,12 +1,15 @@
 """Strona audiodeskrypcji: treść, uwagi, etapy pracy i ich zgodność ze statusem zadania AD."""
+from django.contrib import admin
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 from lxml import html
 
 from core.edit_versions import version_of
-from core.models import AudioDescriptionNote
-from fantazmaty.testing import edit_token
+from core.models import AudioDescription, AudioDescriptionNote
+from fantazmaty.testing import create_member, edit_token
+from texts.models import Anthology, AnthologyTask
 
 from .support import AudioDescriptionTestData
 
@@ -140,3 +143,38 @@ class AudioDescriptionContentTests(AudioDescriptionTestData, TestCase):
         # Ukończony etap jest zablokowany; przypisanie, treść i uwagi pozostają dostępne.
         self.assertEqual(doc.xpath('//form/input[@name="action"]/@value'), ['assignment', 'content', 'note'])
         self.assertTrue(doc.xpath('//select[@name="controllers"][@multiple][@data-person-multiple]'))
+
+
+class AudioDescriptionTaskSyncTests(TestCase):
+    """Etap audiodeskrypcji a zadanie antologii: start od zakończonego, odmowa zakończenia bez wykonawcy,
+    brak zadania w panelu admina."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.writer = create_member('audiodeskrypcja', 'Redaktor').person_profile
+
+    def book(self, title, **task):
+        book = Anthology.objects.create(title=title)
+        AudioDescription.objects.filter(anthology=book).delete()
+        AnthologyTask.objects.filter(anthology=book, task_type='audio_description').update(**task)
+        return book
+
+    def test_new_description_of_finished_task_starts_completed(self):
+        book = self.book('Gotowa', status='ready', assigned_to=self.writer)
+        description = AudioDescription.objects.create(anthology=book)
+        self.assertEqual(description.stage, AudioDescription.Stage.COMPLETED)
+
+    def test_completion_without_writer_is_refused_on_save(self):
+        book = self.book('Bez wykonawcy', assigned_to=None, status='not_commissioned')
+        description = AudioDescription.objects.create(anthology=book)
+        description.stage = AudioDescription.Stage.COMPLETED
+        with self.assertRaisesMessage(ValidationError, 'Zakończenie wymaga przypisania osoby piszącej'):
+            description.save()
+        self.assertEqual(AudioDescription.objects.get(pk=description.pk).stage, AudioDescription.Stage.WRITING)
+
+    def test_admin_list_marks_missing_task(self):
+        book = self.book('Bez zadania')
+        description = AudioDescription.objects.create(anthology=book)
+        AnthologyTask.objects.filter(anthology=book, task_type='audio_description').delete()
+        model_admin = admin.site._registry[AudioDescription]
+        self.assertEqual(model_admin.task_link(description), 'Brak zadania')

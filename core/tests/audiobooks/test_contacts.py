@@ -87,6 +87,18 @@ class AudioContactTests(TestCase):
         self.assertNotContains(page, 'Przypisz w Korekcie audiobooków')
         self.assertNotContains(page, '<legend>Dźwiękowiec</legend>')
 
+    def test_stale_or_forged_version_keeps_entry_unchanged(self):
+        admin_user = create_superuser('lektorzy-admin')
+        self.client.force_login(admin_user)
+        person = AudioContributor.objects.create(name='Lektor Pierwszy', email='lektor@example.test')
+        response = self.client.post(reverse('core:audio_contributor', args=[person.pk]),
+                                    {'name': 'Nowe imię', 'email': 'lektor@example.test', 'is_active': 'on',
+                                     'version': 'podrobiony'})
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('Dane zmieniły się lub formularz wygasł', str(response.context['form'].non_field_errors()))
+        person.refresh_from_db()
+        self.assertEqual(person.name, 'Lektor Pierwszy')
+
 
 class ContactSuggestionTests(TestCase):
     """Podpowiedzi przy dopisywaniu osób spoza spisu: tylko imiona i nazwiska, bez danych kontaktowych."""

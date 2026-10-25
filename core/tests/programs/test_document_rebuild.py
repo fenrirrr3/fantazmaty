@@ -1,5 +1,6 @@
 """Przebudowa dokumentu do nowego DOCX: zachowana treść i formatowanie, usunięte metadane, ostrzeżenia o pominięciach;
-zmiany śledzone i komentarze zostają (także po ujednoliceniu formatowania, zamianie miękkich enterów i Odkurzaczu)."""
+zmiany śledzone i komentarze zostają (także po ujednoliceniu formatowania, zamianie miękkich enterów i Odkurzaczu);
+nietypowe wejście (brak ustawień domyślnych, kolory motywu, nieznane bloki) i zapis rzadszych edytorów."""
 import re
 from copy import deepcopy
 from io import BytesIO
@@ -8,7 +9,6 @@ from unittest.mock import patch
 from zipfile import ZipFile
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-
 from django.test import SimpleTestCase, TestCase, tag
 from django.urls import reverse
 from docx import Document
@@ -24,19 +24,23 @@ from core.services import program_jobs as jobs
 from core.services.document_converter import RebuildConfirmationRequired, convert_document
 from core.services.document_formatting import _SEQUENCES
 from core.services.document_preparation import prepare_docx
-from core.services.document_rebuild import (FORMAT_HISTORY_OMISSION, HYPERLINK_OMISSION, LOST_COMMENTS_OMISSION,
-                                            PLACEHOLDER_OMISSION, UNKNOWN_FORMAT_OMISSION, RebuildUnsupported,
-                                            inspect_docx, rebuild_docx)
+from core.services.document_rebuild import (
+    DROP_CAP_OMISSION, FORMAT_HISTORY_OMISSION, HYPERLINK_OMISSION, LOST_COMMENTS_OMISSION, PLACEHOLDER_OMISSION,
+    UNKNOWN_FORMAT_OMISSION, RebuildUnsupported, inspect_docx, rebuild_docx,
+)
 from core.services.mailbox_import import _package_messages
 from core.services.odkurzacz import DEFAULT_EDITORIAL_RULES
 from fantazmaty.testing import create_superuser
 
 from .editor_fixtures import _rels
-from .editor_fixtures_exotic import (_comment_parts, google_docs_extras_docx, libreoffice_review_docx, note_reference,
-                                     notes_part, p, r, review_docx, word_docx)
-from .support import (NOTE_PARTS, OUTLINE_CASES, IsolatedProgramDirsMixin, add_block, add_complex_field, add_text_box,
-                      content_control, downloaded_document, noted_document, noted_text, outline_document, run_program,
-                      saved, text_run)
+from .editor_fixtures_exotic import (
+    STYLES, _comment_parts, frames_and_drop_cap, google_docs_extras_docx, libreoffice_review_docx,
+    localized_style_names, note_reference, notes_part, p, r, review_docx, word_docx,
+)
+from .support import (
+    NOTE_PARTS, OUTLINE_CASES, IsolatedProgramDirsMixin, add_block, add_complex_field, add_text_box,
+    content_control, downloaded_document, noted_document, noted_text, outline_document, run_program, saved, text_run,
+)
 
 NS = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
 W = '{%s}' % NS['w']
@@ -210,6 +214,7 @@ def review_markup_errors(parts):
 
 
 
+@tag('docx')
 class RebuildTests(SimpleTestCase):
     def test_text_format_empty_paragraphs_and_metadata(self):
         doc = Document()
@@ -311,6 +316,7 @@ class RebuildTests(SimpleTestCase):
         self.assertEqual(rebuilt.paragraphs[0].style.name, 'Heading 1')
 
 
+@tag('docx')
 class RebuildPageLayoutWarningTests(SimpleTestCase):
     """Przebudowa ustawia A4 – inny format książki, orientacja lub kolumny wymagają potwierdzenia."""
 
@@ -347,6 +353,7 @@ class RebuildPageLayoutWarningTests(SimpleTestCase):
                 self.assertAlmostEqual(rebuilt.sections[0].page_width.cm, 21, places=1)
 
 
+@tag('docx')
 class RebuildDetailTests(SimpleTestCase):
     """Elementy wewnątrz akapitów: zachowane (tabulatory, podziały, łączniki, kolory motywu) albo zgłoszone."""
 
@@ -463,6 +470,7 @@ def drop_doc_defaults(document):
         defaults.remove(child)
 
 
+@tag('docx')
 class RebuildFidelityTests(SimpleTestCase):
     """Nowy DOCX nie może wnosić formatowania z szablonu python-docx, którego nie było w źródle."""
 
@@ -557,6 +565,7 @@ class RebuildFidelityTests(SimpleTestCase):
         self.assertEqual(rebuilt.paragraphs[0].runs[0].font.color.rgb, RGBColor(0xFF, 0, 0))
 
 
+@tag('slow', 'docx')
 class RebuildWarningAccuracyTests(SimpleTestCase):
     """Ostrzeżenia liczą to, co użytkownik widzi w dokumencie: bez podwójnego liczenia i bez fałszywych alarmów."""
 
@@ -728,6 +737,7 @@ def note_parts(stream, kind):
     return noted_text(etree.fromstring(files['word/document.xml'])), texts, root, files
 
 
+@tag('docx')
 class RebuildNotesTests(SimpleTestCase):
     """Przypisy dolne i końcowe: odsyłacz na swoim miejscu, treść w nowej części, sanityzowana jak treść główna."""
 
@@ -764,6 +774,7 @@ class RebuildNotesTests(SimpleTestCase):
                 other = 'endnote' if kind == 'footnote' else 'footnote'
                 self.assertNotIn(f'word/{other}s.xml', files)
 
+    @tag('slow')
     def test_note_content_follows_the_rules_of_the_main_text(self):
         """Formatowanie, pominięcia (liczone razem z treścią), kolejność i numeracja, brakujący przypis,
         przypis bez odsyłacza i własny znak odsyłacza."""
@@ -889,6 +900,7 @@ def table(*paragraphs):
             + '</w:tc></w:tr></w:tbl>')
 
 
+@tag('docx')
 class RebuildReviewTests(SimpleTestCase):
     """Zmiany śledzone (wstawki, usunięcia, przeniesienia, znaki akapitu, zmiany formatowania) i komentarze (zakresy,
     odpowiedzi, rozwiązanie) zostają po przebudowie i kolejnych krokach przygotowania bez Odkurzacza."""
@@ -1031,6 +1043,7 @@ def cleaned_review(build, track_changes):
                         allow_omissions=True)
 
 
+@tag('docx')
 class ReviewCleanerChainTests(SimpleTestCase):
     """Pełny łańcuch prepare_docx z Odkurzaczem (ze śledzeniem zmian i bez) na plikach z recenzją."""
 
@@ -1075,6 +1088,7 @@ def _rels_with_link():
                    'https://example.test/', 'External')])
 
 
+@tag('docx')
 class RebuildConversionTests(IsolatedProgramDirsMixin, SimpleTestCase):
     def test_real_worker_docx_and_mail_default(self):
         doc = Document()
@@ -1143,6 +1157,7 @@ class RebuildConversionTests(IsolatedProgramDirsMixin, SimpleTestCase):
             self.assertEqual(len(archive.namelist()), 2)
 
 
+@tag('docx')
 class RebuildPageTests(IsolatedProgramDirsMixin, TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -1173,7 +1188,6 @@ class RebuildPageTests(IsolatedProgramDirsMixin, TestCase):
             self.assertEqual(result.paragraphs[0].text, 'Zdanie. Następne zdanie...')
             self.assertEqual(result.core_properties.author, '' if enabled else 'Private')
 
-    @tag('slow')
     def test_button_download_and_unsupported_error(self):
         for table in (False, True):
             doc = Document()
@@ -1222,6 +1236,7 @@ def texts(document, **options):
     return [p.text for p in Document(rebuild_docx(saved(document), **options)).paragraphs]
 
 
+@tag('docx')
 class RebuildContentControlTests(SimpleTestCase):
     """Kontrolki zawartości znikają, ale ich tekst i formatowanie zostają; tekst zastępczy i spis treści nie."""
 
@@ -1340,6 +1355,7 @@ class RebuildContentControlTests(SimpleTestCase):
                          ['podziały na sekcje i ustawienia ich układu (pozostanie jedna sekcja A4) (liczba: 1)'])
 
 
+@tag('docx')
 class RebuildSimpleFieldTests(SimpleTestCase):
     """Pole proste (w:fldSimple) zachowuje się jak złożone: wynik zostaje zwykłym tekstem."""
 
@@ -1388,6 +1404,7 @@ def book_document():
     return document
 
 
+@tag('docx')
 class RebuildKeepPageFormatTests(SimpleTestCase):
     """keep_page_format=True: wynik ma format strony, marginesy i kolumny pierwszej sekcji źródła."""
 
@@ -1458,3 +1475,110 @@ class RebuildKeepPageFormatTests(SimpleTestCase):
         rebuilt = Document(rebuild_docx(saved(document), allow_omissions=True, keep_page_format=True))
         self.assertEqual(len(rebuilt.sections), 1)
         self.assertAlmostEqual(rebuilt.sections[0].page_width.cm, 14.8, places=1)
+
+
+def color(**attributes):
+    return OxmlElement('w:color', {qn('w:' + key): value for key, value in attributes.items()})
+
+
+@tag('docx')
+class RebuildUnusualInputTests(SimpleTestCase):
+    def test_document_without_defaults_and_default_tab_stop(self):
+        document = Document()
+        document.add_paragraph('Tekst')
+        styles = document.styles.element
+        styles.remove(styles.find(qn('w:docDefaults')))
+        settings = document.settings.element
+        settings.remove(settings.find(qn('w:defaultTabStop')))
+        rebuilt = Document(rebuild_docx(saved(document)))
+        self.assertEqual(rebuilt.paragraphs[0].text, 'Tekst')
+        # Źródło nie miało ustawień domyślnych – wynik też ich nie ma; odstęp tabulatora zostaje z szablonu.
+        self.assertIsNone(rebuilt.styles.element.find(qn('w:docDefaults')))
+        self.assertEqual(rebuilt.settings.element.xpath('w:defaultTabStop/@w:val'), ['720'])
+
+    def test_colors_outside_the_theme_palette_and_invalid_values(self):
+        """Kolor motywu spoza palety: wartość zapisana w w:val; błędny kolor przebiegu: kolor ze stylu."""
+        document = Document()
+        style = document.styles['Normal']
+        style.element.get_or_add_rPr().append(color(val='112233'))
+        document.add_paragraph().add_run('Motyw')._r.get_or_add_rPr().append(color(val='0563C1', themeColor='zzz'))
+        document.add_paragraph().add_run('Błędny')._r.get_or_add_rPr().append(color(val='niebieski'))
+        first, second = (p.runs[0] for p in Document(rebuild_docx(saved(document))).paragraphs)
+        self.assertEqual(first.font.color.rgb, RGBColor(0x05, 0x63, 0xC1))
+        self.assertEqual(second.font.color.rgb, RGBColor(0x11, 0x22, 0x33))
+
+    def test_empty_placeholder_controls_disappear_without_a_warning(self):
+        document = Document()
+        document.add_paragraph('Początek')
+        # Kontrolka bez treści i kontrolka z odstępem obok tekstu zastępczego.
+        add_block(document, parse_xml(f'<w:sdt {nsdecls("w")}><w:sdtPr><w:showingPlcHdr/></w:sdtPr></w:sdt>'))
+        add_block(document, parse_xml(
+            f'<w:sdt {nsdecls("w")}><w:sdtPr><w:showingPlcHdr/></w:sdtPr><w:sdtContent><w:p>'
+            '<w:r><w:t xml:space="preserve"> </w:t></w:r><w:r><w:rPr><w:rStyle w:val="PlaceholderText"/></w:rPr>'
+            '<w:t>Kliknij tutaj.</w:t></w:r></w:p></w:sdtContent></w:sdt>'))
+        self.assertEqual(omissions_of(document), [])
+        self.assertEqual([p.text for p in Document(rebuild_docx(saved(document))).paragraphs], ['Początek'])
+
+    def test_unknown_blocks_empty_header_and_damaged_columns(self):
+        document = Document()
+        document.add_paragraph('Tekst')
+        # Pusty nagłówek (bez tekstu i grafiki) i liczba kolumn, której nie da się odczytać: bez uwag.
+        document.sections[0].header.is_linked_to_previous = False
+        document.sections[0]._sectPr.find(qn('w:cols')).set(qn('w:num'), 'dwie')
+        self.assertEqual(omissions_of(document), [])
+        # Blok własnego XML (Word 2007) Word 2010+ zdejmuje przy otwarciu, zostawiając treść – przebudowa też.
+        add_block(document, parse_xml(f'<w:customXml {nsdecls("w")} w:element="dane"><w:customXmlPr/><w:p><w:r>'
+                                      '<w:t>Dane</w:t></w:r></w:p></w:customXml>'))
+        self.assertEqual(omissions_of(document), [])
+        add_block(document, parse_xml(f'<w:subDoc {nsdecls("w", "r")} r:id="rIdBrak"/>'))
+        self.assertEqual(omissions_of(document), ['blok subDoc wraz z treścią (liczba: 1)'])
+        self.assertEqual([p.text for p in Document(rebuild_docx(saved(document), allow_omissions=True)).paragraphs],
+                         ['Tekst', 'Dane'])
+
+    def test_paragraph_mark_with_only_a_size_or_only_a_font(self):
+        """Znak akapitu przenosi tylko to, co określono: sam rozmiar albo sam krój (gdy domyślnych brak)."""
+        document = Document()
+        styles = document.styles.element
+        styles.remove(styles.find(qn('w:docDefaults')))
+        sized = document.add_paragraph()._p.get_or_add_pPr()
+        sized.append(parse_xml(f'<w:rPr {nsdecls("w")}><w:sz w:val="32"/></w:rPr>'))
+        named = document.add_paragraph()._p.get_or_add_pPr()
+        named.append(parse_xml(f'<w:rPr {nsdecls("w")}><w:rFonts w:ascii="Georgia" w:hAnsi="Georgia"/></w:rPr>'))
+        marks = [p._p.pPr.find(qn('w:rPr')) for p in Document(rebuild_docx(saved(document))).paragraphs]
+        self.assertEqual([child.tag for child in marks[0]], [qn('w:sz')])
+        self.assertEqual(marks[0].find(qn('w:sz')).get(qn('w:val')), str(int(Pt(16).pt * 2)))
+        self.assertEqual([child.tag for child in marks[1]], [qn('w:rFonts')])
+        self.assertEqual(marks[1].find(qn('w:rFonts')).get(qn('w:ascii')), 'Georgia')
+
+
+@tag('docx')
+class RebuildEditorQuirksTests(SimpleTestCase):
+    """Zapis rzadszych edytorów i konwerterów (editor_fixtures_exotic)."""
+
+    def test_polish_heading_names_and_a_style_without_a_name(self):
+        """Regresja: styl o nazwie „Nagłówek 1” (zamiast wbudowanej „heading 1”) tracił w przebudowie status
+        nagłówka bez uwagi, a styl bez w:name przerywał przebudowę (AttributeError)."""
+        rebuilt = Document(rebuild_docx(localized_style_names()))
+        self.assertEqual([(paragraph.text, paragraph.style.name) for paragraph in rebuilt.paragraphs], [
+            ('Tytuł książki', 'Normal'), ('Rozdział pierwszy', 'Heading 1'), ('Treść pierwszego.', 'Normal'),
+            ('Podrozdział', 'Heading 2'), ('Rozdział drugi', 'Heading 1'), ('Treść drugiego.', 'Normal')])
+        unnamed = word_docx(p(r('Akapit w stylu bez nazwy.'), properties='<w:pStyle w:val="Bez"/>'),
+                            styles=STYLES + '<w:style w:type="paragraph" w:styleId="Bez"><w:basedOn w:val="Normalny"/>'
+                                            '</w:style>')
+        self.assertEqual([paragraph.text for paragraph in Document(rebuild_docx(unnamed)).paragraphs],
+                         ['Akapit w stylu bez nazwy.'])
+
+    def test_drop_cap_letter_returns_to_its_paragraph(self):
+        """Regresja: inicjał Worda (pierwsza litera w osobnym akapicie z w:framePr w:dropCap) dawał w nowym DOCX
+        akapit „W” i akapit „ielki…”. Litera wraca do słowa bez powiększenia; zwykła ramka akapitu jest
+        zgłaszana jak dotąd."""
+        try:
+            inspect_docx(frames_and_drop_cap())
+        except RebuildUnsupported as error:
+            omissions = error.omissions
+        self.assertEqual(omissions, [f'{DROP_CAP_OMISSION} (liczba: 1)', 'ramki akapitów (liczba: 1)'])
+        rebuilt = Document(rebuild_docx(frames_and_drop_cap(), allow_omissions=True))
+        self.assertEqual([paragraph.text for paragraph in rebuilt.paragraphs],
+                         ['Wielki inicjał zaczyna ten akapit.', 'Tekst w ramce akapitu.', 'Zwykły akapit.'])
+        # Litera inicjału ma rozmiar akapitu (12 pt z ustawień domyślnych), nie 42 pt inicjału.
+        self.assertEqual([run.font.size for run in rebuilt.paragraphs[0].runs], [Pt(12), Pt(12)])

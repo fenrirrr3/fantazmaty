@@ -10,6 +10,7 @@ from django.urls import reverse
 from django.utils import timezone
 from lxml import html
 
+from core.account_identity import validate_account_email
 from core.auth_backends import EmailBackend
 from core.permissions import get_active_person_profile, has_role, is_coordinator
 from fantazmaty.testing import create_member, create_superuser, form_value
@@ -102,6 +103,12 @@ class TeamAccountTests(TestCase):
             with self.subTest(name=name), self.assertRaises(ValidationError):
                 Role(name=name).full_clean()
         Role(name='Koordynator recenzji 2').full_clean()
+
+    def test_account_email_longer_than_field_is_refused(self):
+        long_email = 'a' * 64 + '@' + ('b' * 63 + '.') * 3 + 'com'
+        with self.assertRaisesMessage(ValidationError, 'Adres e-mail jest zbyt długi.'):
+            validate_account_email(long_email)
+
 
 
 class PersonAdminPageTests(TestCase):

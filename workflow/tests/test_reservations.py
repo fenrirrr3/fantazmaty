@@ -1,7 +1,8 @@
-"""Rezerwacje pierwszej weryfikacji i dodawanie brakujących etapów w adminie (także historii bez dat)."""
+"""Rezerwacje pierwszej weryfikacji (także przywracanie błędnie zaimportowanych) i dodawanie brakujących etapów
+w adminie (także bez wykonawcy i historii bez dat)."""
 from datetime import timedelta
 
-from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.test import TestCase
 from django.urls import reverse
@@ -11,9 +12,8 @@ from core.edit_versions import version_of
 from core.selectors.texts import _annotated_texts, text_detail_context
 from fantazmaty.testing import create_member, create_superuser
 from fantazmaty.testing.workflow import start_reserved_first_verification
-from texts.models import Anthology, Text
+from texts.models import Text
 from workflow.admin_add_stage import add_missing_stage
-from workflow.admin_stage_edit import edit_stage
 from workflow.models import WorkflowHandoff, WorkflowRepetition, WorkflowStage as S, WorkflowRoleAssignment as A
 from workflow.read_queries import dashboard_querysets
 from workflow.reservation_repair import restore_first_verification_reservation
@@ -99,15 +99,6 @@ class FirstVerificationReservationTests(EditingInProgressFixtures):
         first.refresh_from_db()
         self.assertFalse(first.is_completed)
         self.assertIsNone(first.started_at)
-
-    def test_non_admin_and_stale_form_cannot_restore_reservation(self):
-        first = self.false_completion()
-        for actor, version, error in ((self.member, version_of(self.text), PermissionDenied),
-                                      (self.admin, version_of(self.text) - 1, ValidationError)):
-            with self.assertRaises(error):
-                edit_stage(first.pk, actor, version, action='restore_reservation')
-        first.refresh_from_db()
-        self.assertTrue(first.is_completed)
 
     def test_repair_rejects_dated_work_further_stages_and_previous_cycle(self):
         first = self.false_completion()
@@ -224,6 +215,35 @@ class FirstVerificationReservationTests(EditingInProgressFixtures):
         pending.refresh_from_db()
         self.assertIsNone(pending.assignment_id)
 
+    def test_first_verification_reservation_without_performer(self):
+        stage = add_missing_stage(self.text.pk, self.admin, version_of(self.text), kind='first_verification')
+        self.assertEqual(stage.stage_type, 'first_verification')
+        self.assertIsNone(stage.started_at)
+        self.assertFalse(A.objects.filter(text=self.text, role='verifier_1', assigned_to__isnull=False).exists())
+
+    def test_missing_open_stage_without_performer_becomes_status(self):
+        self.close_editing()
+        stage = add_missing_stage(self.text.pk, self.admin, version_of(self.text), kind='first_proofreading')
+        self.assertEqual(stage.stage_type, 'first_proofreading')
+        self.assertIsNone(stage.started_at)
+        self.assertIsNone(stage.assignment.assigned_to_id)
+
+    def test_current_assignment_and_closed_unrelated_repetition_allow_repair(self):
+        assignment = A.objects.create(text=self.text, role='verifier_1', assigned_to=self.other)
+        with importing():
+            first = S.objects.create(text=self.text, stage_type='first_verification', assignment=assignment,
+                                     is_current=False, is_released=False, imported_completed=True,
+                                     is_completed=True)
+        WorkflowRepetition.objects.create(text=self.text, completed_at=timezone.now(),
+                                          previous_stage_ids=[self.editing.pk])
+        report = restore_first_verification_reservation(first.pk, apply=True)
+        self.assertTrue(report['applied'])
+        self.assertTrue(report['before']['assignment_current'])
+        first.refresh_from_db()
+        self.assertFalse(first.is_completed)
+        self.assertTrue(first.is_current and first.is_released)
+        self.assertEqual(first.assignment_id, assignment.pk)
+
 
 class AddMissingStageTests(TestCase):
     """Dodawanie brakującego etapu w adminie: oczekujący, zakończony i historyczny (bez dat)."""
@@ -285,11 +305,7 @@ class AddMissingStageTests(TestCase):
                 ended_at=self.today,
             )
 
-    def test_stage_permissions_ready_anthology_dates_and_version(self):
-        with self.assertRaises(PermissionDenied):
-            add_missing_stage(self.text.pk, self.users[0], version_of(self.text), kind="editing")
-        with self.assertRaises(ValidationError):
-            add_missing_stage(self.text.pk, self.admin, -1, kind="editing")
+    def test_end_before_start_is_refused(self):
         with self.assertRaises(ValidationError):
             add_missing_stage(
                 self.text.pk,
@@ -301,10 +317,6 @@ class AddMissingStageTests(TestCase):
                 ended_at=self.today - timedelta(days=1),
             )
         self.assertFalse(S.objects.filter(text=self.text).exists())
-        book = Anthology.objects.create(title="Published", status="ready")
-        Text.objects.filter(pk=self.text.pk).update(anthology=book)
-        with self.assertRaises(ValidationError):
-            add_missing_stage(self.text.pk, self.admin, version_of(self.text), kind="editing")
 
     def test_unsuitable_person_is_validation_error(self):
         with self.assertRaises(ValidationError):

@@ -26,13 +26,14 @@ from .support import add_roles, importing
 class HandoffCreditTests(StatusAssignmentFixtures):
     """Zasługi przy tekście: osoba przekazująca i przejmująca, bez duplikatów i adresów e-mail."""
 
-    def setUp(self):
-        super().setUp()
-        for user in (self.member, self.other):
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        for user in (cls.member, cls.other):
             add_roles(user, 'Redaktor')
-        self.assignment = A.objects.create(text=self.text, role='editor', assigned_to=self.member)
-        self.stage = S.objects.create(text=self.text, stage_type='editing', assignment=self.assignment,
-                                      started_at=self.today)
+        cls.assignment = A.objects.create(text=cls.text, role='editor', assigned_to=cls.member)
+        cls.stage = S.objects.create(text=cls.text, stage_type='editing', assignment=cls.assignment,
+                                     started_at=cls.today)
 
     def names(self, text=None):
         return {row['label']: row['names'] for row in text_credit_groups(text or self.text)}['Redakcja']
@@ -133,13 +134,14 @@ class HandoffCreditTests(StatusAssignmentFixtures):
 class HandoffRulesTests(StatusAssignmentFixtures):
     """Przekazanie pracy wymaga aktualnego przydziału, innej osoby i otwartego procesu; lista kandydatów to odzwierciedla."""
 
-    def setUp(self):
-        super().setUp()
-        add_roles(self.member, 'Weryfikator')
-        add_roles(self.other, 'Weryfikator')
-        self.v1 = A.objects.create(text=self.text, role='verifier_1', assigned_to=self.member)
-        self.first = S.objects.create(text=self.text, stage_type='first_verification', assignment=self.v1,
-                                      started_at=self.today)
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        add_roles(cls.member, 'Weryfikator')
+        add_roles(cls.other, 'Weryfikator')
+        cls.v1 = A.objects.create(text=cls.text, role='verifier_1', assigned_to=cls.member)
+        cls.first = S.objects.create(text=cls.text, stage_type='first_verification', assignment=cls.v1,
+                                     started_at=cls.today)
 
     def handoff(self, person_id, expected=None):
         return handoff_stage(self.text, self.admin, stage_id=self.first.pk, assigned_to_id=person_id,
@@ -245,17 +247,18 @@ class HandoffPageTests(TestCase):
 class StageReleaseTests(StatusAssignmentFixtures):
     """Oddanie rozpoczętej redakcji, odwołanie rezerwacji weryfikacji i ostrzeżenia na stronie tekstu."""
 
-    def setUp(self):
-        super().setUp()
-        for user in (self.member, self.other):
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        for user in (cls.member, cls.other):
             add_roles(user, 'Redaktor')
-        self.verifier = get_user_model().objects.create_user('ver', 'ver@example.com', 'test')
-        Person.objects.create(user=self.verifier, first_name='Wera', last_name='Weryfikator', email=self.verifier.email)
-        self.editor = A.objects.create(text=self.text, role='editor', assigned_to=self.member)
-        self.editing = S.objects.create(text=self.text, stage_type='editing', assignment=self.editor,
-                                        started_at=self.today)
-        self.v1 = A.objects.create(text=self.text, role='verifier_1', assigned_to=self.verifier)
-        self.first = S.objects.create(text=self.text, stage_type='first_verification', assignment=self.v1)
+        cls.verifier = get_user_model().objects.create_user('ver', 'ver@example.com', 'test')
+        Person.objects.create(user=cls.verifier, first_name='Wera', last_name='Weryfikator', email=cls.verifier.email)
+        cls.editor = A.objects.create(text=cls.text, role='editor', assigned_to=cls.member)
+        cls.editing = S.objects.create(text=cls.text, stage_type='editing', assignment=cls.editor,
+                                       started_at=cls.today)
+        cls.v1 = A.objects.create(text=cls.text, role='verifier_1', assigned_to=cls.verifier)
+        cls.first = S.objects.create(text=cls.text, stage_type='first_verification', assignment=cls.v1)
 
     def detail(self, user):
         self.client.force_login(user)

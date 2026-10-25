@@ -5,7 +5,7 @@ from unittest.mock import patch
 from zipfile import BadZipFile, ZipFile
 
 from django.core.exceptions import ValidationError
-from django.test import TestCase
+from django.test import TestCase, tag
 from django.utils import timezone
 
 from authors.models import Author, BlacklistEntry
@@ -28,6 +28,7 @@ def failing_package(uid, error):
     return package
 
 
+@tag('docx', 'external')
 class SubmissionDownloadTests(SubmissionMailboxMixin, TestCase):
     def confirm(self, payload, preview):
         payload.update(action='confirm', preview=preview.context['preview_token'], approve='on')
@@ -365,6 +366,7 @@ class SubmissionDownloadTests(SubmissionMailboxMixin, TestCase):
 
 
 
+@tag('external')
 class BlacklistedSubmissionTests(SubmissionMailboxMixin, TestCase):
     """Wiadomość od autora z czarnej listy: domyślnie przyszłe odrzucenie bez pobierania pliku, albo świadome „Pobierz plik”."""
 
@@ -444,6 +446,7 @@ class BlacklistedSubmissionTests(SubmissionMailboxMixin, TestCase):
         self.assertContains(page, 'core/mailbox-import')
 
 
+@tag('external')
 class SubmissionMailPreviewTests(SubmissionMailboxMixin, TestCase):
     """Podgląd treści maila na liście pobierania zgłoszeń – ten sam komponent i oczyszczanie co w rekrutacji."""
 

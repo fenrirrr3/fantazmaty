@@ -32,3 +32,10 @@ class NewsletterListTests(TestCase):
         page = paginate_items(request, NewsletterConsent.objects.all())
         self.assertEqual(page.object_list[0].email, '34@example.test')
         self.assertIn('Zgoda na newsletter o premierach', page.sort_columns)
+
+    def test_consent_without_email_is_ignored(self):
+        for email in ('', '   ', None):
+            with self.subTest(email=email):
+                record_consents(email, premieres=True, recruitment=True)
+        self.assertFalse(NewsletterConsent.objects.exists())
+

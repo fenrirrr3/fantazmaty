@@ -4,6 +4,7 @@ dla produkcyjnego MySQL)."""
 from datetime import datetime
 
 from django.contrib.auth import get_user_model
+from django.db.models import F
 from django.template.loader import render_to_string
 from django.db.backends.mysql.base import DatabaseWrapper as MySQLWrapper
 from django.test import RequestFactory, SimpleTestCase, TestCase
@@ -222,3 +223,39 @@ class MySQLPolishContainsTests(SimpleTestCase):
         self.assertIn('CONVERT(LOWER(REPLACE(REPLACE(`authors_author`.`last_name`, %s, %s), %s, %s)) USING utf8mb4)'
                       ' COLLATE `utf8mb4_unicode_ci` LIKE %s', sql)
         self.assertEqual(params, ('ł', 'l', 'Ł', 'L', '%zolc%'))
+
+
+class SearchEdgeTests(TestCase):
+    """Wyszukiwarka: tekst bez antologii i puste zapytanie, porównanie plcontains z kolumną, lista niepowiązanych
+    zgłoszeń z filtrem antologii."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.member = create_member('szukajacy', 'Redaktor')
+
+    def setUp(self):
+        self.client.force_login(self.member)
+
+    def test_text_without_anthology_and_empty_query(self):
+        Text.objects.create(title='Sierota bez zbioru', length=10)
+        response = self.client.get(reverse('core:global_search'), {'q': 'sierota'})
+        self.assertEqual([(row['title'], row['anthology']) for row in response.context['texts']],
+                         [('Sierota bez zbioru', None)])
+        response = self.client.get(reverse('core:global_search'), {'query': '   '})
+        self.assertEqual((response.context['query'], response.context['texts']), ('', []))
+
+    def test_polish_contains_compares_with_other_column(self):
+        book = Anthology.objects.create(title='lodz')
+        Text.objects.create(title='Wielka Łódź', anthology=book, length=10)
+        Text.objects.create(title='Inny tytuł', anthology=book, length=10)
+        found = Text.objects.filter(title__plcontains=F('anthology__title'))
+        self.assertEqual([text.title for text in found], ['Wielka Łódź'])
+
+    def test_unlinked_reviews_filtered_by_anthology(self):
+        self.client.force_login(create_superuser('niepowiazane-admin'))
+        first, second = (Anthology.objects.create(title=title) for title in ('Pierwsza', 'Druga'))
+        for book in (first, second):
+            Text.objects.create(title=f'Tekst {book.title}', anthology=book, length=10)
+        response = self.client.get(reverse('core:unlinked_reviews'), {'anthology': str(first.pk)})
+        self.assertContains(response, 'Tekst Pierwsza')
+        self.assertNotContains(response, 'Tekst Druga')

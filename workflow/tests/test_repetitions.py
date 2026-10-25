@@ -1,10 +1,11 @@
 """Powtórzenia etapów: nowe wykonanie dla innej osoby, zamknięcie bieżącej pracy, walidacja wyboru, kolejka
-powtórzeń i jej zakończenie, anulowanie, podgląd i wejście z admina."""
+powtórzeń i jej zakończenie (także pominięcie czwartej korekty w kolejce), anulowanie, podgląd i wejście z admina."""
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
+from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
@@ -13,22 +14,27 @@ from core.forms import RestartWorkflowForm
 from core.services.texts import start_assigned_stage
 from workflow.models import WorkflowRepetition, WorkflowRoleAssignment as A, WorkflowStage as S
 from workflow.repetitions import cancel_repetition, eligible_repeat_users, repeat_stages
-from workflow.services import complete_stage
-from fantazmaty.testing.workflow import StatusAssignmentFixtures
+from workflow.services import claim_stage, complete_stage, skip_fourth_proofreading
+from fantazmaty.testing import create_member, create_superuser
+from fantazmaty.testing.workflow import StatusAssignmentFixtures, WorkflowTestDataMixin
 
 from .support import add_roles
+
+StageType = S.StageType
+Role = A.Role
 
 
 class RepeatStagesTests(StatusAssignmentFixtures):
     """Tekst w trakcie redakcji (Jan Test); Anna Test może przejąć powtórzenie."""
 
-    def setUp(self):
-        super().setUp()
-        for user in (self.member, self.other):
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        for user in (cls.member, cls.other):
             add_roles(user, 'Redaktor', 'Weryfikator', 'Korektor')
-        self.editor = A.objects.create(text=self.text, role='editor', assigned_to=self.member)
-        self.editing = S.objects.create(text=self.text, stage_type='editing', assignment=self.editor,
-                                        started_at=self.today - timedelta(days=3))
+        cls.editor = A.objects.create(text=cls.text, role='editor', assigned_to=cls.member)
+        cls.editing = S.objects.create(text=cls.text, stage_type='editing', assignment=cls.editor,
+                                       started_at=cls.today - timedelta(days=3))
 
     def change(self, selected=None, assignees=None, **kwargs):
         return repeat_stages(self.text, selected or ['editing'], self.admin,
@@ -350,3 +356,57 @@ class RepeatStagesTests(StatusAssignmentFixtures):
         self.assertEqual(run.assignments.get(role='verifier_2').assigned_to_id, self.member.pk)
         old['verifier_1'].refresh_from_db()
         self.assertEqual(old['verifier_1'].assigned_to_id, self.member.pk)
+
+
+class RepetitionQueueTests(WorkflowTestDataMixin, TestCase):
+    """Kolejka powtórzeń czwartej korekty i stylowania."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.next_coordinator = create_member('kolejny_koordynator_korekty', 'Koordynator korekty')
+        cls.next_admin = create_superuser('kolejny_superuser')
+
+    def setUp(self):
+        super().setUp()
+        S.objects.filter(text=self.text).delete()
+        previous = self.today
+        self.fourth = A.objects.create(text=self.text, role=Role.PROOFREADER_4,
+                                       assigned_to=self.proofreading_coordinator)
+        self.styling = A.objects.create(text=self.text, role=Role.STYLING, assigned_to=self.superuser)
+        for kind, assignment in ((StageType.FOURTH_PROOFREADING, self.fourth),
+                                 (StageType.STYLING, self.styling), (StageType.READY, None)):
+            S.objects.create(text=self.text, stage_type=kind, assignment=assignment,
+                             started_at=previous, ended_at=previous, is_completed=True)
+
+    def repeat(self, assignees=None):
+        return repeat_stages(self.text, [StageType.FOURTH_PROOFREADING, StageType.STYLING],
+                             self.superuser, assignees=assignees)
+
+    def test_ineligible_repeat_performer_is_reported_as_form_error(self):
+        with self.assertRaisesMessage(ValidationError, 'Stylowanie można przypisać tylko superuserowi'):
+            self.repeat({Role.PROOFREADER_4: self.next_coordinator, Role.STYLING: self.editor})
+        self.assertFalse(self.text.repetitions.exists())
+
+    def test_skipping_fourth_in_queue_releases_styling(self):
+        run = self.repeat()
+        fourth = run.stages.get(stage_type=StageType.FOURTH_PROOFREADING)
+        styling = run.stages.get(stage_type=StageType.STYLING)
+        self.assertFalse(styling.is_released)
+        skip_fourth_proofreading(fourth, self.superuser)
+        fourth.refresh_from_db()
+        styling.refresh_from_db()
+        self.assertTrue(fourth.is_skipped)
+        self.assertTrue(fourth.is_completed)
+        self.assertTrue(styling.is_released)
+        run.refresh_from_db()
+        self.assertIsNone(run.completed_at)
+
+    def test_assigned_repeat_performer_starts_once(self):
+        """Osoba wskazana przy powtórzeniu rozpoczyna etap; drugie rozpoczęcie jest odrzucane."""
+        self.repeat({Role.PROOFREADER_4: self.next_coordinator, Role.STYLING: self.next_admin})
+        stage = claim_stage(self.text, StageType.FOURTH_PROOFREADING, self.next_coordinator)
+        self.assertEqual(stage.started_at, self.today)
+        self.assertEqual(stage.assignment.assigned_to, self.next_coordinator)
+        with self.assertRaisesMessage(ValidationError, 'nie oczekuje na rozpoczęcie'):
+            claim_stage(self.text, StageType.FOURTH_PROOFREADING, self.next_coordinator)

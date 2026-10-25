@@ -1,6 +1,6 @@
 """Endpoint ``/api/strona/ekipa/``: klucz, treść JSON-a (działy z ról i ręczne, odmiana liczby osób, sortowanie,
 pomijanie osób nieaktywnych i zewnętrznych), ślad pobrania i oczyszczanie notki."""
-from django.test import SimpleTestCase, TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings, tag
 from django.urls import reverse
 
 from core.site_models import SiteTeamGroup, SiteTeamSection, SiteTeamSettings
@@ -36,6 +36,7 @@ def roles_group(owner, *role_names, title='', position=1):
     return group
 
 
+@tag('external')
 class SiteTeamApiAccessTests(TestCase):
     def test_missing_key_in_settings_gives_503_and_wrong_header_403(self):
         """Bez SITE_API_KEY – 503 z komunikatem; ze złym albo brakującym nagłówkiem – 403; POST – 405."""
@@ -54,6 +55,7 @@ class SiteTeamApiAccessTests(TestCase):
             self.assertEqual(self.client.get(URL, HTTP_X_SITE_KEY='tajny-klucz').status_code, 200)
 
 
+@tag('external')
 @override_settings(SITE_API_KEY='tajny-klucz')
 class SiteTeamApiPayloadTests(TestCase):
     @classmethod

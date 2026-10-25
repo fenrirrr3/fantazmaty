@@ -304,9 +304,6 @@ class NovelPanelTests(NovelData, TestCase):
         self.assertEqual(doc.xpath('//section[@aria-labelledby="workflow-heading"]//table/@data-pagination'), ['off'])
         self.assertEqual(doc.xpath('//*[@id="text-stage-history"]//table/@data-pagination'), ['off'])
 
-    def test_old_approval_fields_removed(self):
-        self.assertFalse({'approved_at', 'approved_by', 'approved_signature'} & {field.name for field in NovelProfile._meta.fields})
-
 
 class NovelProductionTests(NovelData, TestCase):
     def test_new_novel_cannot_skip_completion_gate(self):

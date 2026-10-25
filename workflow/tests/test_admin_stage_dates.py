@@ -1,8 +1,10 @@
 """Daty etapów w adminie: ręczne rozpoczęcie i zakończenie, przejścia redakcji, historia importu i kolejność etapów;
 lista etapów i przypisań w adminie (filtry, akcje zbiorcze, korekta dat zaimportowanej pracy)."""
 from datetime import timedelta
+from unittest import mock
 
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.db.models.deletion import ProtectedError
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -40,10 +42,116 @@ class AdminStageDatesTests(TestCase):
 
     def setUp(self):
         self.client.force_login(self.admin)
+        self.url = reverse('admin:workflow_stage_dates', args=[self.stage.pk])
 
     def save_dates(self, **kwargs):
         data = {'started_at': self.start, 'ended_at': None, **kwargs}
         return set_stage_dates(self.stage.pk, self.admin, version_of(self.text), **data)
+
+    def post(self, **data):
+        return self.client.post(self.url, {'version': version_of(self.text), **data})
+
+    def assert_unchanged(self):
+        self.stage.refresh_from_db()
+        self.assertEqual(self.stage.started_at, self.start)
+        self.assertIsNone(self.stage.ended_at)
+        self.assertFalse(self.stage.is_completed)
+        self.assertEqual(S.objects.filter(text=self.text).count(), 1)
+
+    def test_form_requires_finish_flag_and_both_dates(self):
+        cases = {
+            'data zakończenia bez przekazania': (
+                {'started_at': self.start.isoformat(), 'ended_at': self.today.isoformat()},
+                'ended_at', 'Zaznacz „Zakończ etap i przekaż tekst dalej”.'),
+            'przekazanie bez daty rozpoczęcia': (
+                {'started_at': '', 'ended_at': self.today.isoformat(), 'finish': 'on'},
+                'started_at', 'Zakończenie etapu wymaga obu dat.'),
+        }
+        for label, (data, field, message) in cases.items():
+            with self.subTest(label):
+                response = self.post(**data)
+                self.assertEqual(response.status_code, 200)
+                self.assertFormError(response.context['form'], field, message)
+                self.assert_unchanged()
+
+    def test_completed_stage_form_offers_only_date_correction(self):
+        S.objects.filter(pk=self.stage.pk).update(ended_at=self.today, is_completed=True)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn('finish', response.context['form'].fields)
+        self.assertNotIn('next_stage', response.context['form'].fields)
+
+    def test_future_completion_is_refused_and_rolls_back_new_start(self):
+        """Zakończenie z przyszłą datą: komunikat o dacie (a nie ogólny o uprawnieniach), bez zmian w danych."""
+        tomorrow = (self.today + timedelta(days=1)).isoformat()
+        cases = {'start and end tomorrow': (tomorrow, tomorrow), 'only end tomorrow': (self.today.isoformat(), tomorrow)}
+        for case, (started_at, ended_at) in cases.items():
+            with self.subTest(case):
+                response = self.post(started_at=started_at, ended_at=ended_at, finish='on')
+                self.assertEqual(response.status_code, 200)
+                self.assertFormError(response.context['form'], None, 'Nie można zakończyć pracy z przyszłą datą.')
+                self.assert_unchanged()
+
+    def test_concurrent_changes_are_reported_on_admin_forms(self):
+        """Rekord usunięty lub chroniony w międzyczasie: formularz pokazuje komunikat zamiast błędu serwera."""
+        stage_correct = reverse('admin:workflow_stage_correct', args=[self.stage.pk])
+        assignment_correct = reverse('admin:workflow_assignment_correct', args=[self.assignment.pk])
+        version = version_of(self.text)
+        cases = {
+            'daty – etap usunięty': (
+                'workflow.admin_stage_dates.set_stage_dates', S.DoesNotExist, self.url,
+                {'started_at': self.start.isoformat(), 'version': version},
+                'Rekord został w międzyczasie usunięty lub zmieniony. Odśwież stronę.'),
+            'korekta etapu – etap usunięty': (
+                'workflow.admin_stage_edit.edit_stage', S.DoesNotExist, stage_correct,
+                {'action': 'reopen', 'version': version, 'confirm': 'on'},
+                'Rekord został w międzyczasie usunięty lub zmieniony. Odśwież stronę.'),
+            'korekta przypisania – przypisanie usunięte': (
+                'workflow.admin_assignment_edit.correct_assignment', A.DoesNotExist, assignment_correct,
+                {'action': 'clear', 'version': version, 'confirm': 'on'},
+                'Rekord został w międzyczasie usunięty lub zmieniony. Odśwież stronę.'),
+            'korekta przypisania – nowe chronione powiązanie': (
+                'workflow.admin_assignment_edit.correct_assignment', ProtectedError('chronione', set()),
+                assignment_correct, {'action': 'delete', 'version': version, 'confirm': 'on'},
+                'Rekord ma chronione powiązania i nie został usunięty.'),
+        }
+        for label, (target, error, url, data, message) in cases.items():
+            with self.subTest(label), mock.patch(target, side_effect=error):
+                response = self.client.post(url, data)
+                self.assertEqual(response.status_code, 200)
+                self.assertFormError(response.context['form'], None, message)
+        self.assert_unchanged()
+        self.assertTrue(A.objects.filter(pk=self.assignment.pk, assigned_to=self.member).exists())
+
+    def test_clearing_start_date_keeps_performer(self):
+        set_stage_dates(self.stage.pk, self.admin, version_of(self.text), started_at=None)
+        self.stage.refresh_from_db()
+        self.assertIsNone(self.stage.started_at)
+        self.assertEqual(self.stage.assignment.assigned_to, self.member)
+
+    def test_start_correction_requires_assigned_person(self):
+        A.objects.filter(pk=self.assignment.pk).update(assigned_to=None)
+        with self.assertRaisesMessage(ValidationError, 'Najpierw przypisz osobę do tego etapu.'):
+            set_stage_dates(self.stage.pk, self.admin, version_of(self.text),
+                            started_at=self.start + timedelta(days=1))
+        self.stage.refresh_from_db()
+        self.assertEqual(self.stage.started_at, self.start)
+
+    def test_editing_finish_requires_next_stage(self):
+        editor = A.objects.create(text=self.text, role='editor', assigned_to=self.member)
+        S.objects.filter(pk=self.stage.pk).update(ended_at=self.today, is_completed=True)
+        editing = S.objects.create(text=self.text, stage_type='editing', assignment=editor,
+                                   iteration=1, started_at=self.today)
+        with self.assertRaisesMessage(ValidationError, 'Wybierz kolejny etap redakcji.'):
+            set_stage_dates(editing.pk, self.admin, version_of(self.text), started_at=self.today,
+                            ended_at=self.today, finish=True)
+        editing.refresh_from_db()
+        self.assertFalse(editing.is_completed)
+
+    def test_order_check_ignores_stage_deleted_in_meantime(self):
+        removed = S(pk=self.stage.pk + 1000, text=self.text, stage_type='second_proofreading')
+        self.assertIsNone(preserve_stage_order(removed, self.today, self.today))
+
 
     def test_manual_start_correction_keeps_execution_performer_and_status(self):
         corrected = self.start + timedelta(days=1)
@@ -124,23 +232,7 @@ class AdminStageDatesTests(TestCase):
             self.save_dates(ended_at=self.end, finish=True)
         self.assertEqual(S.objects.filter(text=self.text, stage_type='second_proofreading').count(), 1)
 
-    def test_permission_closed_anthology_and_withdrawal_block_changes(self):
-        with self.assertRaises(PermissionDenied):
-            set_stage_dates(self.stage.pk, self.member, version_of(self.text), started_at=self.start)
-        self.stage.is_completed = True
-        self.stage.ended_at = self.end
-        self.stage.save()
-        marker = S.objects.create(text=self.text, stage_type='ready')
-        self.book.status = Anthology.Status.READY
-        self.book.save()
-        with self.assertRaisesMessage(ValidationError, 'Antologia jest gotowa'):
-            self.save_dates(ended_at=self.end, finish=True)
-        self.book.status = Anthology.Status.IN_PREPARATION
-        self.book.save()
-        marker.delete()
-        self.stage.is_completed = False
-        self.stage.ended_at = None
-        self.stage.save()
+    def test_withdrawal_blocks_changes(self):
         S.objects.create(text=self.text, stage_type='withdrawn')
         with self.assertRaises(ValidationError):
             self.save_dates(ended_at=self.end, finish=True)
@@ -188,7 +280,7 @@ class AdminStageDatesTests(TestCase):
         self.assertEqual(self.stage.started_at, self.start)
 
     def test_admin_links_and_date_form_post(self):
-        url = reverse('admin:workflow_stage_dates', args=[self.stage.pk])
+        url = self.url
         for route, pk in (('admin:texts_text_change', self.text.pk),
                           ('admin:workflow_workflowstage_change', self.stage.pk),
                           ('admin:workflow_workflowstage_changelist', None)):
@@ -206,7 +298,7 @@ class AdminStageDatesTests(TestCase):
         self.assertTrue(self.stage.is_completed)
 
     def test_admin_form_displays_errors_without_partial_changes(self):
-        url = reverse('admin:workflow_stage_dates', args=[self.stage.pk])
+        url = self.url
         response = self.client.post(url, {'started_at': self.start.isoformat(),
             'ended_at': (self.start - timedelta(days=1)).isoformat(),
             'finish': 'on', 'version': version_of(self.text)})
@@ -319,7 +411,7 @@ class AdminStageDatesTests(TestCase):
 
     def test_admin_rejects_post_of_completed_dateless_verification(self):
         self.imported_editing_checkpoints('first_verification')
-        url = reverse('admin:workflow_stage_dates', args=[self.stage.pk])
+        url = self.url
         choices = dict(self.client.get(url).context['form'].fields['next_stage'].choices)
         self.assertNotIn('first_verification', choices)
         self.assertIn('second_verification', choices)

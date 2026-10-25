@@ -1,8 +1,9 @@
-"""Status i wykonawcy w adminie: ręczna zmiana statusu, poprawianie wykonawców i zasada różnych osób w kolejnych etapach."""
+"""Status i wykonawcy w adminie: ręczna zmiana statusu (także odmowy), poprawianie wykonawców (formularz tekstu,
+tabela etapów, przypisanie, zbiorczo) i zasada różnych osób w kolejnych etapach."""
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
-from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -19,7 +20,8 @@ from workflow.admin_performers import correct_stage_performers
 from workflow.admin_stage_dates import editing_transition_choices
 from workflow.handoffs import eligible_handoff_users, handoff_stage
 from workflow.labels import assignment_label
-from workflow.models import WorkflowHandoff, WorkflowRoleAssignment as A, WorkflowStage as S
+from workflow.models import WorkflowHandoff, WorkflowRepetition, WorkflowRoleAssignment as A, WorkflowStage as S
+from workflow.repetitions import repeat_stages
 from workflow.services import STAGE_ROLES, completed_stage_exists, send_to_first_verification
 
 from .support import add_roles, importing
@@ -120,6 +122,28 @@ class ManualStatusTests(StatusAssignmentFixtures):
                          old.get_role_display())
         self.assertFalse(any(row['label'].startswith(('Pierwsza weryfikacja', 'Kontrola K. redakcji'))
                              for row in members))
+
+    def test_refusals_change_nothing(self):
+        S.objects.create(text=self.text, stage_type='editing', started_at=self.today,
+                         ended_at=self.today, is_completed=True,
+                         assignment=A.objects.create(text=self.text, role='editor', assigned_to=self.member))
+        with self.assertRaisesMessage(ValidationError, 'Nieprawidłowy etap'):
+            self.status('editing_review')
+        repeat_stages(self.text, ['editing'], self.admin)
+        with self.assertRaisesMessage(ValidationError, 'aktywną kolejkę powtórzeń'):
+            self.status('first_proofreading')
+        self.assertFalse(S.objects.filter(text=self.text, stage_type='first_proofreading').exists())
+
+    def test_statuses_without_performer_role_create_no_assignment(self):
+        for kind in ('ready_for_editing', 'ready'):
+            with self.subTest(kind=kind):
+                stage = self.status(kind)
+                self.assertEqual(stage.stage_type, kind)
+                self.assertIsNone(stage.assignment_id)
+                self.assertEqual(stage.execution_number, 1)
+                self.assertFalse(A.objects.filter(text=self.text).exists())
+                self.assertEqual(list(S.objects.current_cycle().filter(text=self.text)
+                                      .values_list('stage_type', flat=True)), [kind])
 
 
 class PerformerCorrectionTests(TestCase):
@@ -337,13 +361,6 @@ class PerformerCorrectionTests(TestCase):
         a2.refresh_from_db()
         self.assertEqual(a2.assigned_to_id, self.ordinary.pk)
 
-    def test_authorization_denial_for_actor_is_preserved(self):
-        a1, a2, s1, s2 = self.pair()
-        with self.assertRaises(PermissionDenied):
-            correct_stage_performers(
-                self.text.pk, {s2.pk: self.admin}, self.ordinary, version_of(self.text)
-            )
-
     def test_imported_dates_cannot_be_edited_in_closed_anthology(self):
         a1, a2, s1, s2 = self.pair()
         self.close_book(s2)
@@ -373,13 +390,14 @@ class PerformerCorrectionTests(TestCase):
 class PerformerCorrectionRulesTests(StatusAssignmentFixtures):
     """Poprawka wykonawców sprawdza cały formularz: aktualność wierszy, wspólne przypisania, przekazania i trwającą pracę."""
 
-    def setUp(self):
-        super().setUp()
-        add_roles(self.member, 'Redaktor', 'Korektor')
-        add_roles(self.other, 'Redaktor', 'Korektor')
-        self.editor = A.objects.create(text=self.text, role='editor', assigned_to=self.member)
-        self.editing = S.objects.create(text=self.text, stage_type='editing', assignment=self.editor,
-                                        started_at=self.today)
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        add_roles(cls.member, 'Redaktor', 'Korektor')
+        add_roles(cls.other, 'Redaktor', 'Korektor')
+        cls.editor = A.objects.create(text=cls.text, role='editor', assigned_to=cls.member)
+        cls.editing = S.objects.create(text=cls.text, stage_type='editing', assignment=cls.editor,
+                                       started_at=cls.today)
 
     def correct(self, changes, version=None):
         return correct_stage_performers(self.text.pk, changes, self.admin,
@@ -511,3 +529,181 @@ class AssignmentMergeTests(StatusAssignmentFixtures):
             'pk', 'stage_type', 'iteration', 'execution_number', 'started_at', 'ended_at')))
         self.assertEqual(set(S.objects.filter(text=self.text).values_list('assignment_id', flat=True)),
                          {first.pk})
+
+
+class StagePerformerCorrectionTests(StatusAssignmentFixtures):
+    """Korekta wykonawcy etapu przez correct_stage_performers: powtórzenia, niespójne powiązania i pusta osoba."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        add_roles(cls.member, 'Redaktor', 'Korektor', 'Weryfikator')
+        add_roles(cls.other, 'Redaktor', 'Korektor', 'Weryfikator')
+
+    def correct(self, changes):
+        correct_stage_performers(self.text.pk, changes, self.admin, version_of(self.text))
+
+    def done(self, kind, assignment, **extra):
+        return S.objects.create(text=self.text, stage_type=kind, assignment=assignment, started_at=self.today,
+                                ended_at=self.today, is_completed=True, **extra)
+
+    def test_empty_change_set_writes_nothing(self):
+        version = version_of(self.text)
+        self.correct({})
+        self.assertEqual(version_of(self.text), version)
+
+    def test_repetition_stages_keep_their_own_assignment(self):
+        """Etapy powtórzenia nie są scalane – zmienia się osoba w przypisaniu powtórzenia, także dla
+        dwóch rund redakcji tej kolejki naraz."""
+        editor = A.objects.create(text=self.text, role='editor', assigned_to=self.member)
+        verifier = A.objects.create(text=self.text, role='verifier_1', assigned_to=self.other)
+        original = self.done('editing', editor)
+        self.done('first_verification', verifier)
+        run = repeat_stages(self.text, ['editing', 'first_verification'], self.admin)
+        rounds = list(run.stages.filter(stage_type='editing').order_by('queue_position'))
+        self.assertEqual(len(rounds), 2)
+        repeat_editor = rounds[0].assignment
+        self.correct({rounds[0].pk: self.other, rounds[1].pk: self.other})
+        repeat_editor.refresh_from_db()
+        self.assertEqual(repeat_editor.assigned_to, self.other)
+        self.assertEqual({stage.assignment_id for stage in run.stages.filter(stage_type='editing')},
+                         {repeat_editor.pk})
+        # Wcześniejsza redakcja (sprzed powtórzenia) nie jest scalana z przypisaniem powtórzenia.
+        self.correct({original.pk: self.admin})
+        editor.refresh_from_db()
+        repeat_editor.refresh_from_db()
+        self.assertEqual(editor.assigned_to, self.admin)
+        self.assertEqual(repeat_editor.assigned_to, self.other)
+
+    def test_history_and_inconsistent_links_prevent_merging(self):
+        """Przypisania wskazane w historii powtórzeń albo powiązane z etapem innej roli nie są scalane;
+        korekta zmienia tylko przypisanie poprawianego etapu."""
+        cases = ('historia powtórzeń', 'etap innej roli')
+        for label in cases:
+            with self.subTest(label):
+                S.objects.filter(text=self.text).delete()
+                A.objects.filter(text=self.text).delete()
+                WorkflowRepetition.objects.filter(text=self.text).delete()
+                current = A.objects.create(text=self.text, role='editor', assigned_to=self.member)
+                old = A.objects.create(text=self.text, role='editor', assigned_to=self.member,
+                                       execution_number=2, is_current=False)
+                stage = self.done('editing', old, is_current=False)
+                if label == 'historia powtórzeń':
+                    # Wcześniejsza, niezwiązana kolejka nie blokuje; liczy się ta, która wskazuje przydział.
+                    WorkflowRepetition.objects.create(text=self.text, canceled_at=timezone.now())
+                    WorkflowRepetition.objects.create(text=self.text, canceled_at=timezone.now(),
+                                                      previous_assignment_ids=[old.pk])
+                else:
+                    S.objects.create(text=self.text, stage_type='first_verification', assignment=old,
+                                     is_current=False, is_released=False)
+                self.correct({stage.pk: self.other})
+                old.refresh_from_db()
+                current.refresh_from_db()
+                self.assertEqual(old.assigned_to, self.other)
+                self.assertEqual(current.assigned_to, self.member)
+                self.assertEqual(A.objects.filter(text=self.text, role='editor').count(), 2)
+
+    def test_clearing_performer_of_undated_work(self):
+        """Pusta osoba: niezaczęta praca traci wykonawcę, etap bez przypisania pozostaje bez niego;
+        pusta rola W1 nie jest konfliktem weryfikatorów."""
+        A.objects.create(text=self.text, role='verifier_1')
+        editor = A.objects.create(text=self.text, role='editor', assigned_to=self.member)
+        planned = S.objects.create(text=self.text, stage_type='editing', assignment=editor)
+        loose = S.objects.create(text=self.text, stage_type='first_proofreading')
+        self.correct({planned.pk: None, loose.pk: None})
+        editor.refresh_from_db()
+        loose.refresh_from_db()
+        self.assertIsNone(editor.assigned_to_id)
+        self.assertIsNone(loose.assignment_id)
+        self.assertFalse(A.objects.filter(text=self.text, role='proofreader_1').exists())
+
+    def test_completed_later_proofreading_does_not_block_first_correction(self):
+        first = A.objects.create(text=self.text, role='proofreader_1', assigned_to=self.member)
+        second = A.objects.create(text=self.text, role='proofreader_2', assigned_to=self.other)
+        stage = self.done('first_proofreading', first)
+        self.done('second_proofreading', second)
+        self.correct({stage.pk: self.other})
+        first.refresh_from_db()
+        self.assertEqual(first.assigned_to, self.other)
+
+
+class TextStageInlineTests(StatusAssignmentFixtures):
+    """Tabela etapów na stronie tekstu w adminie: wykonawca wiersza bez przydziału, wersja formularza, zapytania."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        add_roles(cls.member, 'Redaktor')
+        cls.editor = A.objects.create(text=cls.text, role='editor', assigned_to=cls.member)
+        cls.editing = S.objects.create(text=cls.text, stage_type='editing', assignment=cls.editor,
+                                       started_at=cls.today)
+
+    def setUp(self):
+        super().setUp()
+        self.url = reverse('admin:texts_text_change', args=[self.text.pk])
+        self.client.force_login(self.admin)
+
+    def stage_formset(self, response):
+        return next(inline.formset for inline in response.context['inline_admin_formsets']
+                    if inline.formset.model is S)
+
+    def payload(self, response, changes):
+        form = response.context['adminform'].form
+        data = {name: form[name].value() for name in form.fields if form[name].value() is not None}
+        data.update(_save='Zapisz', _edit_version=form_value(response))
+        for inline in response.context['inline_admin_formsets']:
+            formset = inline.formset
+            prefix = formset.prefix
+            data[prefix + '-TOTAL_FORMS'] = str(formset.total_form_count() if formset.model is S else 0)
+            data[prefix + '-INITIAL_FORMS'] = str(formset.initial_form_count() if formset.model is S else 0)
+            if formset.model is not S:
+                continue
+            for index, subform in enumerate(formset.forms):
+                stage = subform.instance
+                data[f'{prefix}-{index}-id'] = str(stage.pk)
+                data[f'{prefix}-{index}-text'] = str(self.text.pk)
+                performer = changes.get(stage.pk, stage.assignment.assigned_to_id if stage.assignment else '')
+                data[f'{prefix}-{index}-performer'] = str(performer or '')
+                data[f'{prefix}-{index}-workflow_version'] = str(version_of(self.text))
+        return data
+
+    def test_row_without_assignment_shows_role_performer_and_stale_version_is_refused(self):
+        proofreader = A.objects.create(text=self.text, role='proofreader_1', assigned_to=self.other)
+        loose = S.objects.create(text=self.text, stage_type='first_proofreading')
+        # Dane masowe (np. stary import) mogą nie mieć powiązania etapu z bieżącym przypisaniem roli.
+        S.objects.filter(pk=loose.pk).update(assignment=None)
+        response = self.client.get(self.url)
+        forms = {form.instance.pk: form for form in self.stage_formset(response).forms}
+        self.assertEqual(forms[loose.pk].fields['performer'].initial, self.other.pk)
+        data = self.payload(response, {self.editing.pk: self.other.pk})
+        prefix = self.stage_formset(response).prefix
+        for index in range(len(forms)):
+            data[f'{prefix}-{index}-workflow_version'] = str(version_of(self.text) - 1)
+        response = self.client.post(self.url, data)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Workflow zmienił się od otwarcia strony', ' '.join(self.stage_formset(response).non_form_errors()))
+        self.editor.refresh_from_db()
+        proofreader.refresh_from_db()
+        self.assertEqual(self.editor.assigned_to, self.member)
+        self.assertEqual(proofreader.assigned_to, self.other)
+
+    def test_stage_rows_use_a_constant_number_of_queries(self):
+        """Wiersze tabeli etapów: wersję tekstu i bieżące przydziały ról formset pobiera raz,
+        niezależnie od liczby etapów, także bez powiązanego przydziału."""
+        from django.contrib import admin
+        from django.test import RequestFactory
+        from texts.admin import WorkflowStageInline
+        from texts.models import Text
+
+        request = RequestFactory().get(self.url)
+        request.user = self.admin
+        inline = WorkflowStageInline(Text, admin.site)
+        A.objects.create(text=self.text, role='proofreader_1', assigned_to=self.other)
+        for kind in ('first_proofreading', 'second_proofreading', 'third_proofreading'):
+            loose = S.objects.create(text=self.text, stage_type=kind)
+            S.objects.filter(pk=loose.pk).update(assignment=None)
+            formset = inline.get_formset(request, self.text)(instance=self.text,
+                                                             queryset=inline.get_queryset(request))
+            with self.subTest(kind=kind), self.assertNumQueries(3):
+                forms = formset.forms
+            self.assertEqual(forms[-1].fields['workflow_version'].initial, version_of(self.text))

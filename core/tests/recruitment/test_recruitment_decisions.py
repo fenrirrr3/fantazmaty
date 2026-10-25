@@ -1,14 +1,12 @@
 """Szczegóły zgłoszenia rekrutacyjnego: niezależne decyzje dla każdej roli, autor uzasadnienia, flaga „powiadomiony”, usuwanie zgłoszenia i ochrona przed nieaktualną edycją."""
 from unittest.mock import patch
 
-from django.contrib import admin
 from django.db import transaction
-from django.test import Client, RequestFactory, TestCase
+from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 from lxml import html
 
-from core.admin import RecruitmentAdmin
 from core.models import Recruitment, RecruitmentMailSource
 from core.selectors.recruitment import pending_by_role
 from core.services.recruitment_decisions import set_all_decisions
@@ -205,6 +203,12 @@ class RoleDecisionTests(RecruitmentTeamMixin, TestCase):
         self.assertNotContains(page, 'name="decision_reason"')
         self.assertNotContains(page, 'name="status"')
 
+    def test_unknown_decision_is_refused(self):
+        record = Recruitment.objects.create(first_name='Jan', last_name='Nowak', email='jan@example.test')
+        with self.assertRaisesMessage(ValueError, 'Nieprawidłowa decyzja'):
+            set_all_decisions(record, 'maybe')
+
+
 
 class RecruitmentNotifiedTests(RecruitmentTeamMixin, TestCase):
     def setUp(self):
@@ -221,9 +225,6 @@ class RecruitmentNotifiedTests(RecruitmentTeamMixin, TestCase):
         self.assertEqual(self.client.post(url, {'notified': 'yes', 'version': notified_token(self.coordinator, record)}).status_code, 403)
         record.refresh_from_db()
         self.assertFalse(record.notified)
-        request = RequestFactory().get('/')
-        request.user = self.coordinator
-        self.assertIn('notified', RecruitmentAdmin(Recruitment, admin.site).get_readonly_fields(request, record))
         edit_url = reverse('core:recruitment_edit', args=[record.pk])
         form = self.client.get(edit_url).context['form']
         data = {name: form[name].value() or '' for name in form.fields}
@@ -256,6 +257,13 @@ class RecruitmentNotifiedTests(RecruitmentTeamMixin, TestCase):
         self.assertEqual(self.client.post(self.url, {'notified': 'yes', 'version': version}).status_code, 200)
         self.record.refresh_from_db()
         self.assertEqual(self.record.notified_at, date)
+
+    def test_save_with_empty_update_fields_writes_nothing(self):
+        """Pusty update_fields kończy zapis bez zmian (także bez przeliczania daty powiadomienia)."""
+        self.record.notes = 'niezapisane'
+        self.record.save(update_fields=[])
+        self.record.refresh_from_db()
+        self.assertEqual(self.record.notes, 'Nie zmieniaj')
 
     def test_permissions_csrf_and_post_only(self):
         self.client.force_login(self.recruiter)

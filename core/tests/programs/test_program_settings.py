@@ -12,9 +12,7 @@ from django.urls import reverse
 from docx import Document
 
 from core.models import ProgramPreferences, ReplacementEntry
-from core.odkurzacz_forms import (
-    FORM_DEFAULT_RULE_LIST, DocumentConversionForm, MergeForm, OdkurzaczForm,
-)
+from core.odkurzacz_forms import FORM_DEFAULT_RULE_LIST, DocumentConversionForm, MergeForm, OdkurzaczForm
 from core.services.odkurzacz import EDITORIAL_RULES, ORTHOGRAPHY_2026_RULES
 from core.services import document_conversion_worker as worker
 from core.services import document_preparation as preparation
@@ -222,7 +220,7 @@ class CleanerOptionsTests(ProgramViewMixin, TestCase):
         super().setUp()
         self.client.force_login(self.member)
 
-    def test_new_cleaner_options_are_off_by_default(self):
+    def test_extra_cleaner_options_are_off_by_default(self):
         options = self.post_job({'program_action': 'clean', 'document': upload(), 'rules': ['spaces']})
         self.assertEqual((options['track_changes'], options['cleaner_summary'], options['keep_page_format']),
                          (False, False, False))
@@ -388,7 +386,8 @@ class ChangeSummaryTests(IsolatedProgramDirsMixin, TestCase):
 
 
 class PreparationTests(SimpleTestCase):
-    """prepare_docx przekazuje nowe opcje do Odkurzacza i przebudowy (interfejsy 1 i 2)."""
+    """prepare_docx przekazuje opcje (śledzenie zmian, zamiany, podsumowanie, format strony) do Odkurzacza
+    i przebudowy."""
 
     def run_prepare(self, **options):
         calls = []
@@ -408,13 +407,13 @@ class PreparationTests(SimpleTestCase):
         return dict(calls)
 
     def test_defaults_reach_the_cleaner_and_rebuild(self):
-        """Bez nowych opcji Odkurzacz i przebudowa dostają swoje wartości domyślne."""
+        """Bez dodatkowych opcji Odkurzacz i przebudowa dostają swoje wartości domyślne."""
         calls = self.run_prepare(rebuild=True, use_cleaner=True, cleaner_rules=['spaces'])
         self.assertEqual(calls['rebuild_docx'], {'allow_omissions': False, 'keep_page_format': False})
         self.assertEqual(calls['clean_docx'], {'rules': ['spaces'], 'track_changes': False, 'replacements': None,
                                                'summary': None})
 
-    def test_new_options_reach_the_cleaner_and_rebuild(self):
+    def test_selected_options_reach_the_cleaner_and_rebuild(self):
         summary = {}
         replacements = [{'kind': 'word', 'source': 'kot', 'target': 'pies'}]
         calls = self.run_prepare(rebuild=True, use_cleaner=True, cleaner_rules=['spaces'], track_changes=True,
@@ -441,7 +440,8 @@ class PreparationTests(SimpleTestCase):
 
 
 class ConverterConfigurationTests(SimpleTestCase):
-    def test_new_keys_reach_the_worker_and_summary_comes_back(self):
+    def test_cleaner_options_reach_the_worker_and_summary_comes_back(self):
+        """Opcje Odkurzacza trafiają do job.json; z summary.json i images.json wracają tylko poprawne wartości."""
         seen = {}
 
         def worker_run(directory, timeout, **_):
@@ -477,7 +477,8 @@ class ConverterConfigurationTests(SimpleTestCase):
             run.assert_not_called()
         validate_resources(BytesIO(formatted_docx()))  # domyślny limit 15 MB
 
-    def test_defaults_keep_the_previous_configuration(self):
+    def test_default_options_are_written_to_the_job(self):
+        """Bez opcji: job.json ma wartości domyślne, a czas procesu roboczego mieści się w limicie."""
         seen = {}
 
         def worker_run(directory, timeout, **_):
@@ -519,7 +520,7 @@ class ConverterConfigurationTests(SimpleTestCase):
 
 
 class WorkerConfigurationTests(SimpleTestCase):
-    """main() podprocesu: odczyt nowych kluczy i zapis summary.json."""
+    """main() procesu roboczego: odczyt opcji przygotowania z job.json i zapis summary.json."""
 
     def run_main(self, config):
         calls = {}
@@ -547,7 +548,7 @@ class WorkerConfigurationTests(SimpleTestCase):
         self.assertEqual(code, 0)
         return calls
 
-    def test_new_options_are_read_and_summary_is_written(self):
+    def test_preparation_options_are_read_and_summary_is_written(self):
         replacements = [{'kind': 'pattern', 'source': 'a+', 'target': 'a'}]
         calls = self.run_main({'prepare': True, 'clean': True, 'cleaner_rules': ['spaces'], 'track_changes': True,
                                'cleaner_summary': True, 'replacements': replacements, 'rebuild': True,
@@ -577,7 +578,7 @@ class WorkerConfigurationTests(SimpleTestCase):
         self.assertEqual(len(summary['replacements']), 200)
         self.assertEqual(summary['replacements'][0], {'source': 's0', 'target': 't', 'count': 1})
 
-    def test_old_configuration_keeps_defaults_and_writes_no_summary(self):
+    def test_job_without_extra_options_uses_defaults_and_writes_no_summary(self):
         calls = self.run_main({'prepare': True, 'clean': True, 'cleaner_rules': ['spaces']})
         options = calls['prepare']
         self.assertEqual((options['track_changes'], options['replacements'], options['summary'], options['keep_page_format']),
@@ -637,6 +638,7 @@ class ReplacementsInJobsTests(ProgramViewMixin, TestCase):
 
 
 
+@tag('docx')
 class RealProgramOptionsTests(IsolatedProgramDirsMixin, TestCase):
     """Całe zadanie z prawdziwym Odkurzaczem i przebudową (bez procesu w tle)."""
 
@@ -658,7 +660,6 @@ class RealProgramOptionsTests(IsolatedProgramDirsMixin, TestCase):
 
     url_programs = reverse('core:programs')
 
-    @tag('slow')
     def test_tracked_changes_and_summary(self):
         doc = Document()
         doc.add_paragraph('Ala  ma "kota".')
@@ -672,7 +673,6 @@ class RealProgramOptionsTests(IsolatedProgramDirsMixin, TestCase):
         self.assertTrue(body.findall(f'.//{namespace}ins'))
         self.assertTrue(body.findall(f'.//{namespace}del'))
 
-    @tag('slow')
     def test_rebuild_keeps_the_page_format_on_request(self):
         from docx.enum.section import WD_ORIENT
         from docx.shared import Cm

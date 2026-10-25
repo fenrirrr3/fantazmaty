@@ -209,6 +209,7 @@ class EditorFixtureFidelityTests(SimpleTestCase):
                 self.assertTrue(document.paragraphs[5].runs[1].italic)
 
 
+@tag('slow', 'docx')
 class EditorChainTests(IsolatedProgramDirsMixin, SimpleTestCase):
     """Każdy wariant przechodzi łańcuch programów działających w tym procesie."""
 
@@ -309,9 +310,11 @@ class EditorChainTests(IsolatedProgramDirsMixin, SimpleTestCase):
                                                       if name.endswith('.xml')))
 
 
-@tag('slow')
+@tag('slow', 'docx')
 class EditorConversionTests(IsolatedProgramDirsMixin, SimpleTestCase):
     """Konwersja do EPUB/PDF (w tym procesie i przez proces roboczy) oraz analiza powtórzeń z modelem."""
+
+    in_process_worker = False  # test_full_conversion_through_the_worker_process: prawdziwy podproces
 
     def test_worker_converts_every_variant_to_epub_and_pdf(self):
         """Regresja: PDF/EPUB bez przebudowy padały na w:jc „start” (ValueError python-docx) – teraz
@@ -471,6 +474,7 @@ class ExoticFixtureFidelityTests(SimpleTestCase):
         self.assertIn(b'<?mso-application progid="Word.Document"?><w:wordDocument', foreign_file('word2003'))
 
 
+@tag('slow', 'docx')
 class ExoticChainTests(SimpleTestCase):
     """Przegląd, przebudowa, Odkurzacz i miękkie entery na każdym scenariuszu – w tym procesie."""
 
@@ -538,7 +542,7 @@ class ExoticRefusedFileTests(SimpleTestCase):
                     self.assertIsNone(self.form_error(data))
 
 
-@tag('slow')
+@tag('slow', 'docx')
 class ExoticConversionTests(SimpleTestCase):
     """Proces roboczy (main w tym procesie, jak przy konwersji z formularza): EPUB i PDF z każdego scenariusza."""
 

@@ -7,6 +7,7 @@ from html import unescape
 
 from django.http import QueryDict
 from django.template.loader import render_to_string
+from django.db.models import Value
 from django.test import RequestFactory, TestCase, tag
 from django.urls import reverse
 from django.utils import timezone
@@ -16,6 +17,7 @@ from core.models import Recruitment, WorkflowEvent
 from core.pagination import paginate_items
 from core.selectors.texts import my_texts_context, text_list_context, workflow_list_context
 from core.table_sorting import DisplayTable, prepare_table_sort
+from fantazmaty.testing import create_member
 from fantazmaty.testing.data import CoreTestDataMixin
 from illustrations.models import Illustrator
 from people.models import Person, Role
@@ -92,12 +94,11 @@ class SortableTablesContractData(CoreTestDataMixin):
                                 self.assertEqual(result.status_code, 200)
 
 
+@tag('slow')
 class TextTablesSortContractTests(SortableTablesContractData, TestCase):
-    @tag('slow')
     def test_text_and_stage_tables_sort_every_data_header_in_both_directions(self):
         self.assert_every_data_header_sorts_in_both_directions(TEXT_TABLE_ROUTES)
 
-    @tag('slow')
     def test_computed_workflow_columns_sort_without_losing_rows(self):
         for context, key in ((workflow_list_context(user=self.superuser, params=QueryDict()), 'stages'),
                              (my_texts_context(user=self.editor, params=QueryDict()), 'texts')):
@@ -109,8 +110,8 @@ class TextTablesSortContractTests(SortableTablesContractData, TestCase):
                     self.assertEqual(len(list(result)), len(list(rows)))
 
 
+@tag('slow')
 class OtherTablesSortContractTests(SortableTablesContractData, TestCase):
-    @tag('slow')
     def test_other_tables_sort_every_data_header_in_both_directions(self):
         self.assert_every_data_header_sorts_in_both_directions(
             [route for route in SORTABLE_ROUTES if route not in TEXT_TABLE_ROUTES])
@@ -208,3 +209,11 @@ class TableSortingTests(CoreTestDataMixin, TestCase):
         })
         self.assertIn('<option value="">Kolejność domyślna</option>', rendered)
         self.assertIn('value="title" selected', rendered)
+
+    def test_team_activity_without_action_column(self):
+        member = create_member('aktywny', 'Redaktor')
+        people = Person.objects.annotate(last_activity_at=Value(None))
+        _, columns = prepare_table_sort(sort_request('', member), people)
+        self.assertEqual(columns['Data działania'], 'last_activity')
+        self.assertNotIn('Działanie', columns)
+

@@ -10,7 +10,7 @@ from authors.models import Author
 from core.permissions import is_coordinator
 from core.selectors.texts import _assignment_data, _stage_data, text_list_context
 from core.views.search import _search_people
-from fantazmaty.testing import create_superuser
+from fantazmaty.testing import create_member, create_superuser
 from fantazmaty.testing.workflow import WorkflowTestDataMixin
 from people.models import Person, Role, Vacation
 from texts.models import Anthology, Text
@@ -157,3 +157,42 @@ class WorkListLabelsTests(TestCase):
                 'get_stage_type_display'], label + ' (wyk. 2)')
             assignment.execution_number = 1
             self.assertEqual(assignment_label(assignment), assignment.get_role_display())
+
+
+class PeopleListFilterTests(TestCase):
+    """Lista zespołu: filtr ról i frazy; błędny filtr daje pustą listę z błędem zamiast całego zespołu."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.editor = create_member('lista-redaktor', 'Redaktor')
+        cls.proofreader = create_member('lista-korektor', 'Korektor')
+        cls.both = create_member('lista-oboje', 'Redaktor')
+        cls.both.person_profile.roles.add(Role.objects.get(name='Korektor'))
+        cls.editor_role = Role.objects.get(name='Redaktor')
+        cls.proofreader_role = Role.objects.get(name='Korektor')
+
+    def setUp(self):
+        self.client.force_login(self.editor)
+
+    def names(self, params, status=200):
+        response = self.client.get(reverse('core:people_list'), params)
+        self.assertEqual(response.status_code, status)
+        return response, sorted(person.first_name for person in response.context['people'])
+
+    def test_role_filters(self):
+        """Filtr ról: osoba z kilkoma rolami pojawia się raz; fraza zawęża listę."""
+        everyone = ['lista-korektor', 'lista-oboje', 'lista-redaktor']
+        cases = {
+            'fraza': ({'query': 'lista-korektor'}, ['lista-korektor']),
+            'kilka ról': ({'roles': [self.editor_role.pk, self.proofreader_role.pk]}, everyone),
+        }
+        for name, (params, expected) in cases.items():
+            with self.subTest(name):
+                self.assertEqual(self.names(params)[1], expected)
+
+    def test_invalid_filter_returns_no_people_instead_of_everyone(self):
+        for params in ({'roles': ['999999']}, {'query': 'x' * 300}):
+            with self.subTest(params=list(params)):
+                response, names = self.names(params, status=400)
+                self.assertEqual(names, [])
+                self.assertTrue(response.context['filter_form'].errors)

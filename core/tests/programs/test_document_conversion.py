@@ -1,6 +1,8 @@
 """Konwerter DOCX → PDF/EPUB po stronie serwera: walidacja pakietu DOCX, wybór interpretera, uruchomienie procesu
-roboczego z limitem czasu, tłumaczenie jego błędów, wynik (plik lub ZIP) i strona programu."""
+roboczego z limitem czasu i wolny konwerter (blokada), tłumaczenie jego błędów, wynik (plik lub ZIP, pliki
+pomocnicze summary.json i images.json, obrazy połączone) i strona programu."""
 import json
+import os
 import subprocess
 import sys
 import warnings
@@ -21,13 +23,18 @@ from lxml import html as html_parser
 
 from core.services.document_conversion_worker import convert
 from core.services.document_converter import (
-    ConversionError, RebuildConfirmationRequired, conversion_filename, convert_document, converter_python,
-    run_converter, validate_resources,
+    ConversionError, RebuildConfirmationRequired, conversion_filename, conversion_slot,
+    convert_document, converter_python, run_converter, validate_resources,
 )
 from core.services.document_errors import MESSAGES
+from core.services.document_images import linked_images_note
 from fantazmaty.testing import create_member
 
-from .support import IsolatedProgramDirsMixin, downloaded, formatted_docx, run_program, saved, typography_sample
+from .support import (
+    IsolatedProgramDirsMixin, docx_with_linked_images, downloaded, formatted_docx, run_program, saved,
+    typography_sample,
+)
+
 
 RELATIONSHIPS = 'word/_rels/document.xml.rels'
 
@@ -54,11 +61,11 @@ def with_relationship(target, mode='', kind='image'):
     return repacked({RELATIONSHIPS: lambda data: data.replace(b'</Relationships>', relationship)})
 
 
-class FakeProcess:
-    """Zakończony proces roboczy o zadanym kodzie wyjścia."""
+class Process:
+    """Proces roboczy: kod wyjścia albo (code=None) proces, który wciąż działa."""
 
-    def __init__(self, code):
-        self.code, self.pid = code, 0
+    def __init__(self, code=None):
+        self.code, self.pid, self.waited = code, 4242, 0
 
     def __enter__(self):
         return self
@@ -67,13 +74,43 @@ class FakeProcess:
         return False
 
     def wait(self, timeout=None):
+        self.waited += 1
+        if self.code is None and timeout is not None:
+            raise subprocess.TimeoutExpired('worker', timeout)
         return self.code
 
     def poll(self):
         return self.code
 
 
-class ConverterServiceTests(IsolatedProgramDirsMixin, SimpleTestCase):
+class Stop(Exception):
+    """Przerwanie zadania zgłoszone przez funkcję kontrolną (np. użytkownik anulował pracę)."""
+
+
+class FakeMsvcrt:
+    """Blokada plikowa Windows: pierwszy LK_NBLCK zajmuje bajt, kolejny zgłasza OSError do LK_UNLCK."""
+    LK_NBLCK, LK_UNLCK = 'nblck', 'unlck'
+
+    def __init__(self):
+        self.locked, self.calls = False, []
+
+    def locking(self, fd, mode, length):
+        self.calls.append((mode, length))
+        if mode == self.LK_NBLCK:
+            if self.locked:
+                raise OSError('zajęte')
+            self.locked = True
+        else:
+            self.locked = False
+
+
+@tag('docx')
+class RealWorkerProcessTests(IsolatedProgramDirsMixin, SimpleTestCase):
+    """Prawdziwy podproces konwertera (bootstrap, środowisko bez danych projektu) – pozostałe testy uruchamiają
+    proces roboczy w procesie testu (support.InProcessWorker)."""
+
+    in_process_worker = False
+
     def test_worker_exposes_only_known_reason_not_document_content(self):
         """Prawdziwy proces roboczy: użytkownik widzi stały komunikat, a nie treść dokumentu ani wyjątku."""
         doc = Document()
@@ -91,6 +128,9 @@ class ConverterServiceTests(IsolatedProgramDirsMixin, SimpleTestCase):
         self.assertEqual(json.loads(report)['public_code'], 'tracked_changes')
         self.assertNotIn('PRYWATNY_FRAGMENT', report)
 
+
+@tag('docx')
+class ConverterServiceTests(IsolatedProgramDirsMixin, SimpleTestCase):
     def test_warnings_are_returned_with_a_single_file_not_an_archive(self):
         """Regresja: uwagi konwertera zamieniały pojedynczy plik w archiwum ZIP."""
         cases = (
@@ -142,7 +182,6 @@ class ConverterServiceTests(IsolatedProgramDirsMixin, SimpleTestCase):
         self.assertEqual([''.join(p.itertext()).strip() for p in paragraphs], ['A', '', '', 'B'])
         self.assertFalse(list((self.work_dir / 'convert').glob('document-*')))
 
-    @tag('slow')
     def test_empty_paragraphs_survive_cleaning_and_html_conversion(self):
         """Regresja: Odkurzacz i konwersja do HTML zjadały puste akapity przed PDF."""
         doc = Document()
@@ -170,6 +209,7 @@ class ConverterServiceTests(IsolatedProgramDirsMixin, SimpleTestCase):
         self.assertIn('align-justify', html)
 
 
+@tag('docx')
 class ConversionPageTests(IsolatedProgramDirsMixin, TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -179,7 +219,6 @@ class ConversionPageTests(IsolatedProgramDirsMixin, TestCase):
         super().setUp()
         self.client.force_login(self.member)
 
-    @tag('slow')
     def test_conversion_preserves_name_for_single_and_multiple_formats(self):
         name = 'Żółw i smok.v2.docx'
         for formats, ext in ((['pdf'], 'pdf'), (['pdf', 'epub'], 'zip')):
@@ -202,11 +241,13 @@ class ConversionPageTests(IsolatedProgramDirsMixin, TestCase):
 class ResourceValidationTests(SimpleTestCase):
     """Konwerter nie pobiera plików spoza DOCX i nie przyjmuje podejrzanie zbudowanych pakietów."""
 
-    def test_safe_document_and_external_hyperlink_are_accepted(self):
+    def test_safe_document_external_hyperlink_and_linked_images_are_accepted(self):
+        """Regresja: plik z obrazem połączonym z plikiem zewnętrznym był odrzucany („Osadź go w DOCX”) – proces
+        roboczy usuwa link (decyzja właściciela); inne podłączone pliki odrzuca test_dangerous_packages_are_refused."""
         validate_resources(repacked())
-        source = with_relationship('https://example.test', 'External', 'hyperlink')
-        validate_resources(source)
-        self.assertEqual(source.tell(), 0)
+        for source in (with_relationship('https://example.test', 'External', 'hyperlink'), docx_with_linked_images()):
+            validate_resources(source)
+            self.assertEqual(source.tell(), 0)
 
     def test_attached_template_and_absolute_internal_targets_are_accepted(self):
         """Regresja: dokument z szablonu Worda (attachedTemplate) i ścieżki „/word/…” były odrzucane."""
@@ -279,7 +320,7 @@ class RunConverterTests(IsolatedProgramDirsMixin, SimpleTestCase):
     def finished(self, code, report=None):
         if report is not None:
             (self.directory / 'error.json').write_text(json.dumps(report), encoding='utf-8')
-        with patch('core.services.document_converter.subprocess.Popen', return_value=FakeProcess(code)):
+        with patch('core.services.document_converter.subprocess.Popen', return_value=Process(code)):
             return run_converter(self.directory, 5)
 
     def test_exhausted_time_or_unstartable_process(self):
@@ -330,6 +371,43 @@ class RunConverterTests(IsolatedProgramDirsMixin, SimpleTestCase):
                 run_converter(self.directory, 0.3, control=control)
             self.assertIsNotNone(processes[0].poll())
 
+    def start(self, process, control):
+        with patch('core.services.document_converter.subprocess.Popen', return_value=process), \
+                patch('core.services.document_converter.os.killpg', side_effect=ProcessLookupError) as kill:
+            try:
+                return run_converter(self.directory, 5, control=control)
+            finally:
+                self.kill = kill
+
+    def test_time_used_by_the_control_function_counts_against_the_limit(self):
+        """Gdy kontrola postępu zużyje cały czas, proces jest zatrzymywany (nawet jeśli już zniknął)."""
+        process = Process()
+        clock = iter([0, 100])
+        with patch('core.services.document_converter.time.monotonic', side_effect=lambda: next(clock)), \
+                self.assertRaisesMessage(ConversionError, 'limit 90 sekund'):
+            self.start(process, lambda directory: None)
+        self.kill.assert_called_once()
+        self.assertEqual(process.waited, 1)
+
+    def test_interrupted_job_kills_only_a_running_process(self):
+        def stop(directory):
+            raise Stop
+
+        for code, killed in ((None, True), (0, False)):
+            process = Process(code)
+            with self.subTest(running=code is None), self.assertRaises(Stop):
+                self.start(process, stop)
+            self.assertEqual(self.kill.called, killed)
+            self.assertEqual(process.waited, 1)
+
+    def test_oversized_error_report_is_not_read(self):
+        (self.directory / 'error.json').write_text(
+            json.dumps({'error': 'DocumentInputError', 'public_code': 'tracked_changes', 'x': 'y' * 40000}))
+        with patch('core.services.document_converter.subprocess.Popen', return_value=Process(3)), \
+                self.assertLogs('core.services.document_converter', 'ERROR'), \
+                self.assertRaisesMessage(ConversionError, '(start: ProcessTerminated)'):
+            run_converter(self.directory, 5)
+
 
 class ConvertDocumentResultTests(IsolatedProgramDirsMixin, SimpleTestCase):
     def test_unknown_format_is_refused_before_conversion(self):
@@ -357,16 +435,28 @@ class ConvertDocumentResultTests(IsolatedProgramDirsMixin, SimpleTestCase):
             self.assertEqual(archive.read('document.docx'), source)
 
     def test_failed_pdf_does_not_take_away_the_ready_epub(self):
+        """Raport błędu PDF trafia do dziennika; gdy nie da się go odczytać, dziennik jest pomijany – w obu
+        przypadkach użytkownik dostaje gotowy EPUB."""
         def worker(directory, timeout, **_):
             (directory / 'document.epub').write_bytes(b'PK epub')
             (directory / 'pdf_error.json').write_text('{"error": "ValueError"}', encoding='utf-8')
 
-        with patch('core.services.document_converter.run_converter', side_effect=worker), \
-                self.assertLogs('core.services.document_converter', 'ERROR'):
-            result, extension, mime = convert_document(BytesIO(formatted_docx()), ['pdf', 'epub'])
-        with result:
-            self.assertEqual((extension, mime), ('epub', 'application/epub+zip'))
-            self.assertEqual(result.read(), b'PK epub')
+        original = Path.read_text
+
+        def unreadable(path, *args, **kwargs):
+            if path.name == 'pdf_error.json':
+                raise OSError('brak dostępu')
+            return original(path, *args, **kwargs)
+
+        cases = (('raport czytelny', self.assertLogs('core.services.document_converter', 'ERROR')),
+                 ('raport nieczytelny', patch.object(Path, 'read_text', unreadable)))
+        for label, context in cases:
+            with self.subTest(label), patch('core.services.document_converter.run_converter', side_effect=worker), \
+                    context:
+                result, extension, mime = convert_document(BytesIO(formatted_docx()), ['pdf', 'epub'])
+            with result:
+                self.assertEqual((extension, mime), ('epub', 'application/epub+zip'))
+                self.assertEqual(result.read(), b'PK epub')
 
     def test_result_finished_after_the_deadline_is_discarded(self):
         def worker(directory, timeout, **_):
@@ -377,3 +467,72 @@ class ConvertDocumentResultTests(IsolatedProgramDirsMixin, SimpleTestCase):
                 patch('core.services.document_converter.time.monotonic', side_effect=lambda: next(clock)), \
                 self.assertRaisesMessage(ConversionError, 'przekroczyło limit czasu'):
             convert_document(BytesIO(formatted_docx()), ['pdf'])
+
+    def test_unexpected_summary_and_image_counts_are_ignored(self):
+        """Granica zaufania: konwerter przepuszcza z summary.json i images.json tylko dodatnie liczby całkowite
+        i poprawne zamiany słownikowe – program_jobs nie sprawdza ich ponownie."""
+        cases = {
+            'lista zamiast słownika': ('[1, 2]', '[3]'),
+            'uszkodzony JSON': ('{"spaces": 2}', '{uszkodzony'),
+            'liczba jako tekst': ('{"spaces": 2, "replacements": "x"}', '{"removed_images": "3"}'),
+            'błędne zamiany': ('{"spaces": 2, "zero": 0, "flaga": true, "replacements": ['
+                               '{"source": "a", "target": "b", "count": 0}, {"source": "a", "target": "b", "count": true},'
+                               '{"source": "a", "target": "b", "count": 2}]}', '{}'),
+        }
+        expected = {'lista zamiast słownika': None, 'uszkodzony JSON': {'spaces': 2},
+                    'liczba jako tekst': {'spaces': 2},
+                    'błędne zamiany': {'spaces': 2, 'replacements': [{'source': 'a', 'target': 'b', 'count': 2}]}}
+        for label, (summary, images) in cases.items():
+            def worker(directory, timeout, summary=summary, images=images, **_):
+                (directory / 'document.epub').write_bytes(b'PK epub')
+                (directory / 'summary.json').write_text(summary, encoding='utf-8')
+                (directory / 'images.json').write_text(images, encoding='utf-8')
+
+            with self.subTest(label), patch('core.services.document_converter.run_converter', side_effect=worker):
+                result, extension, _ = convert_document(BytesIO(formatted_docx()), ['epub'], cleaner_summary=True)
+                result.close()
+            self.assertEqual(extension, 'epub')
+            self.assertEqual(result.cleaner_summary, expected[label])
+            self.assertEqual(result.removed_images, 0)
+
+    def test_linked_images_get_a_note_before_other_warnings(self):
+        """Liczba obrazów tylko połączonych (images.json → linked_images) daje osobną uwagę na początku listy;
+        liczba usuniętych obrazów osadzonych zostaje w removed_images."""
+        for label, images, expected in (
+                ('obrazy połączone', {'removed_images': 1, 'linked_images': 2}, [linked_images_note(2), 'Uwaga']),
+                ('bez obrazów połączonych', {'removed_images': 1}, ['Uwaga'])):
+            def worker(directory, timeout, images=images, **_):
+                (directory / 'document.epub').write_bytes(b'PK epub')
+                (directory / 'warnings.json').write_text(json.dumps(['Uwaga']), encoding='utf-8')
+                (directory / 'images.json').write_text(json.dumps(images), encoding='utf-8')
+
+            with self.subTest(label), patch('core.services.document_converter.run_converter', side_effect=worker):
+                result, _, _ = convert_document(BytesIO(formatted_docx()), ['epub'])
+                result.close()
+                self.assertEqual(result.conversion_warnings, expected)
+                self.assertEqual(result.removed_images, 1)
+
+
+class ConversionSlotTests(IsolatedProgramDirsMixin, SimpleTestCase):
+    def test_windows_lock_is_taken_once_and_released_after_the_slot(self):
+        """Na Windows (msvcrt) zajęty bajt blokady oznacza zajęty konwerter; wyjście ze slotu zwalnia blokadę."""
+        msvcrt = FakeMsvcrt()
+        windows = type('WindowsOs', (), {'name': 'nt', '__getattr__': lambda self, name: getattr(os, name)})()
+        with patch('core.services.document_converter.os', windows), patch.dict(sys.modules, {'msvcrt': msvcrt}):
+            with conversion_slot():
+                with self.assertRaisesMessage(ConversionError, 'przetwarza teraz inny dokument'):
+                    with conversion_slot():
+                        pass
+            self.assertEqual(msvcrt.calls, [('nblck', 1), ('nblck', 1), ('unlck', 1)])
+            self.assertFalse(msvcrt.locked)
+            with conversion_slot():
+                pass
+        self.assertEqual(msvcrt.calls[-2:], [('nblck', 1), ('unlck', 1)])
+
+    def test_slot_is_retried_every_second_without_a_wait_callback(self):
+        with patch('core.services.document_converter._try_lock', side_effect=[False, False, True]) as lock, \
+                patch('core.services.document_converter.time.sleep') as sleep:
+            with conversion_slot(wait=60) as directory:
+                self.assertTrue(directory.is_dir())
+        self.assertEqual(lock.call_count, 3)
+        self.assertEqual([call.args for call in sleep.call_args_list], [(1,), (1,)])

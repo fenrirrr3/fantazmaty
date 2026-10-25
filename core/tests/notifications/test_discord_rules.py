@@ -4,7 +4,7 @@ import json
 import re
 from datetime import timedelta
 from io import StringIO
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -16,14 +16,16 @@ from django.utils import timezone
 
 from authors.models import Author
 from core.edit_versions import version_of
-from core.discord_notifications import (audiobook_changed, parse_mention, queue, render, send_waiting_reminders,
+from core.discord_notifications import (audiobook_changed, deliver, deliver_after_commit,
+                                        parse_mention, queue, render, safe_queue, send_waiting_reminders,
                                         workflow_changes)
-from core.discord_webhook import DeliveryError, send_message
+from core.discord_webhook import DeliveryError, NoRedirect, send_message
 from core.models import DiscordNotification, DiscordRole, NotificationRule, WorkflowEvent
+from core.notification_admin import NotificationRuleForm
 from core.notification_models import validate_template_tags
 from core.workflow_events import event_scope
 from core.services.reviews import assign_reviewer
-from core.services.texts import change_scheduled_stage, start_assigned_stage
+from core.services.texts import change_scheduled_stage
 from core.workflow_tokens import make_token
 from core.tests.anthologies.support import AnthologyPageData, admin_form_data
 from fantazmaty.testing import create_member, edit_token
@@ -42,6 +44,7 @@ LINK = '[O, tutaj](<https://cms.example/t/1/>)'
 CONTEXT = {'tytuł': 'Latarnik', 'antologia': 'Cienie', 'gatunek': 'fantasy', 'długość': '25 000', 'etap': 'Redakcja'}
 
 
+@tag('external')
 class RenderTests(SimpleTestCase):
     def test_tags_and_mention_position(self):
         cases = {
@@ -113,9 +116,10 @@ class MentionTests(TestCase):
                 parse_mention(raw)
 
 
-def enable(trigger, template='[etap]: [tytuł]', mention=''):
+def enable(trigger, template='[etap]: [tytuł]', mention='', *, channel='Kanał'):
+    """Włącza regułę z jedną treścią na podanym kanale."""
     rule = NotificationRule.objects.get(trigger=trigger)
-    rule.enabled, rule.channel, rule.mention = True, 'Kanał', mention
+    rule.enabled, rule.channel, rule.mention = True, channel, mention
     rule.save()
     rule.templates.all().delete()
     rule.templates.create(content=template)
@@ -125,13 +129,22 @@ def enable(trigger, template='[etap]: [tytuł]', mention=''):
 PREVIEW = re.compile(r' \[O, tutaj\]\(<[^>]+>\)$')
 
 
+@tag('external')
 @override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': URL}, CMS_BASE_URL='https://cms.example/')
 class WorkflowTriggerTests(WorkflowTestDataMixin, TestCase):
-    def setUp(self):
-        super().setUp()
+    """Ogłoszenia „do wzięcia” z operacji workflow wywołanych serwisami (pełną ścieżkę przez strony sprawdza
+    StageCompletedHttpTests): ponowne ogłoszenie przy przekazaniu i zwolnieniu, oznaczenie roli, odporność na błąd
+    wysyłki i dziennik zdarzeń."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
         for trigger in NotificationRule.Trigger.values:
             enable(trigger)
         enable('stage_completed', '[zdarzenie] [etap]: [tytuł]')
+
+    def setUp(self):
+        super().setUp()
         sender = patch('core.discord_webhook.send_message', return_value='1')
         self.sent = sender.start()
         self.addCleanup(sender.stop)
@@ -140,32 +153,6 @@ class WorkflowTriggerTests(WorkflowTestDataMixin, TestCase):
         """(zdarzenie, treść) bez odnośnika do podglądu – ten sprawdza osobny test."""
         return [(trigger, PREVIEW.sub('', content))
                 for trigger, content in DiscordNotification.objects.order_by('pk').values_list('trigger', 'content')]
-
-    def test_default_rules_exist_and_are_disabled(self):
-        NotificationRule.objects.update(enabled=False)
-        self.assertEqual(set(NotificationRule.objects.values_list('trigger', flat=True)),
-                         set(NotificationRule.Trigger.values))
-        with self.captureOnCommitCallbacks(execute=True):
-            self.begin_editing()
-        self.assertEqual(self.triggers(), [])
-
-    def test_claiming_editing_announces_first_verification_and_editing_start(self):
-        """Przejęcie tekstu do redakcji: ogłoszenie W1 do wzięcia (rezerwacja) i „Rozpoczęto Redakcja”."""
-        with self.captureOnCommitCallbacks(execute=True):
-            self.begin_editing()
-        self.assertEqual(sorted(self.triggers()), [('first_verification', 'Pierwsza weryfikacja: Tekst do testów workflow'),
-                                                   ('stage_completed', 'Rozpoczęto Redakcja: Tekst do testów workflow')])
-        self.assertEqual(set(DiscordNotification.objects.values_list('status', flat=True)), {'sent'})
-
-    def test_full_verification_path(self):
-        with self.captureOnCommitCallbacks(execute=True):
-            self.finish_second_verification()
-        triggers = [t for t, _ in self.triggers()]
-        self.assertEqual(triggers.count('first_verification'), 1)  # W1 zarezerwowana – koniec redakcji nie ogłasza jej ponownie
-        self.assertEqual(triggers.count('second_verification'), 1)
-        completed = [c for t, c in self.triggers() if t == 'stage_completed']
-        self.assertIn('Zakończono Pierwsza weryfikacja: Tekst do testów workflow', completed)
-        self.assertIn('Zakończono Druga weryfikacja: Tekst do testów workflow', completed)
 
     def test_editing_handoff_announces_first_verification_only_without_verifier(self):
         """Koniec pierwszego przebiegu redakcji bez zarezerwowanego W1 ponownie ogłasza „do wzięcia” (raz,
@@ -202,56 +189,6 @@ class WorkflowTriggerTests(WorkflowTestDataMixin, TestCase):
         DiscordNotification.objects.all().delete()
         return control
 
-    def finish(self, stage_type, user):
-        """Przejmuje etap z puli i od razu go kończy; zwraca nowe powiadomienia tej operacji."""
-        DiscordNotification.objects.all().delete()
-        with self.captureOnCommitCallbacks(execute=True):
-            stage = claim_stage(self.text, stage_type, user, self.today)
-            complete_stage(stage, user, self.today)
-        return sorted(self.triggers())
-
-    def test_editing_control_opens_first_proofreading(self):
-        control = self.editing_control()
-        with self.captureOnCommitCallbacks(execute=True):
-            complete_stage(control, self.coordinator, self.today, send_to_proofreading=True)
-        self.assertEqual(sorted(t for t, _ in self.triggers()), ['first_proofreading', 'stage_completed'])
-
-    def test_further_editing_reports_completed_control_once(self):
-        # Kontrola trafia od razu do historii (nie jest już bieżąca) – zakończenie i tak jest ogłaszane.
-        control = self.editing_control()
-        with self.captureOnCommitCallbacks(execute=True):
-            complete_stage(control, self.coordinator, self.today, send_to_proofreading=False)
-        self.assertEqual(self.triggers(), [('stage_completed', 'Zakończono Kontrola K. redakcji: Tekst do testów workflow')])
-
-    def test_rest_of_workflow_announces_third_verification_and_third_proofreading(self):
-        verifier_3 = create_member('weryfikator_3', 'Weryfikator')
-        control = self.editing_control()
-        complete_stage(control, self.coordinator, self.today, send_to_proofreading=True)
-        title = 'Tekst do testów workflow'
-        steps = [
-            ('pierwsza korekta → druga korekta (tylko KK, bez ogłoszenia)', StageType.FIRST_PROOFREADING, self.proofreader,
-             [], 'Pierwsza korekta'),
-            ('druga korekta → trzecia weryfikacja', StageType.SECOND_PROOFREADING, self.proofreading_coordinator,
-             [('third_verification', f'Trzecia weryfikacja: {title}')], 'Druga korekta'),
-            ('trzecia weryfikacja → kontrola KW', StageType.THIRD_VERIFICATION, verifier_3, [], 'Trzecia weryfikacja'),
-            ('kontrola KW → kontrola redaktora', StageType.COORDINATOR_CONTROL, self.coordinator, [],
-             'Kontr. wer. (koordynator)'),
-        ]
-        for case, stage_type, user, announced, label in steps:
-            with self.subTest(case):
-                # Przejęcie z datą rozpoczyna etap (osobna operacja), zakończenie – kolejna.
-                self.assertEqual(self.finish(stage_type, user), sorted([
-                    *announced, ('stage_completed', f'Rozpoczęto {label}: {title}'),
-                    ('stage_completed', f'Zakończono {label}: {title}')]))
-        DiscordNotification.objects.all().delete()
-        editor_control = self.stage(StageType.EDITOR_CONTROL)
-        with self.captureOnCommitCallbacks(execute=True):
-            start_assigned_stage(user=self.editor, stage_id=editor_control.pk, started_at=self.today)
-            complete_stage(self.stage(StageType.EDITOR_CONTROL), self.editor, self.today)
-        self.assertEqual(sorted(self.triggers()), [('stage_completed', f'Rozpoczęto Kontr. wer. (redaktor): {title}'),
-                                                   ('stage_completed', f'Zakończono Kontr. wer. (redaktor): {title}'),
-                                                   ('third_proofreading', f'Trzecia korekta: {title}')])
-
     def test_released_assignment_is_announced_again(self):
         control = self.editing_control()
         complete_stage(control, self.coordinator, self.today, send_to_proofreading=True)
@@ -275,15 +212,18 @@ class WorkflowTriggerTests(WorkflowTestDataMixin, TestCase):
 
     def test_delivery_problem_never_breaks_workflow(self):
         self.sent.side_effect = RuntimeError('boom')
-        with self.captureOnCommitCallbacks(execute=True):
+        with self.assertLogs('core.discord_notifications', 'ERROR'), self.captureOnCommitCallbacks(execute=True):
             self.begin_editing()
         self.assertEqual(self.stage(StageType.EDITING).assignment.assigned_to, self.editor)
         self.assertEqual(set(DiscordNotification.objects.values_list('status', flat=True)), {'unknown'})
 
     @override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': URL, 'Testowy': OLD_CHANNEL_URL})
     def test_workflow_events_are_logged_but_only_rules_reach_discord(self):
-        """Operacja workflow zapisuje WorkflowEvent, ale na Discord idą wyłącznie wiadomości z reguł – dawny kanał
-        „Testowy” nie dostaje nic; przy wyłączonych regułach nie ma żadnej wysyłki."""
+        """Migracje tworzą regułę dla każdego zdarzenia. Operacja workflow zapisuje WorkflowEvent, ale na Discord idą
+        wyłącznie wiadomości z reguł – dawny kanał „Testowy” nie dostaje nic; przy wyłączonych regułach nie ma żadnej
+        wysyłki."""
+        self.assertEqual(set(NotificationRule.objects.values_list('trigger', flat=True)),
+                         set(NotificationRule.Trigger.values))
         NotificationRule.objects.update(enabled=False)
         with self.captureOnCommitCallbacks(execute=True):
             self.begin_editing()
@@ -302,6 +242,7 @@ class WorkflowTriggerTests(WorkflowTestDataMixin, TestCase):
         self.assertEqual({call.args[0] for call in self.sent.call_args_list}, {URL})
 
 
+@tag('external')
 @override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
 class ReviewTriggerTests(TestCase):
     def setUp(self):
@@ -361,6 +302,7 @@ class ReviewTriggerTests(TestCase):
         self.assertEqual(DiscordNotification.objects.count(), 1)
 
 
+@tag('external')
 @override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
 class AdminPanelTests(TestCase):
     def setUp(self):
@@ -491,6 +433,7 @@ class AdminPanelTests(TestCase):
                 self.assertEqual('Uwaga: to powiadomienie jest WYŁĄCZONE' in response.content.decode(), warned)
 
 
+@tag('external')
 @override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': URL})
 class QueueDeliveryTests(TestCase):
     def send(self, rule_channel='Kanał', mention='', effect=None):
@@ -542,6 +485,7 @@ class QueueDeliveryTests(TestCase):
         self.assertIsNone(queue('stage_completed', context=CONTEXT))
 
 
+@tag('external')
 @override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': URL})
 class ResendCommandTests(TestCase):
     """Komenda resend_discord_notifications: które stany i w jakim wieku są ponawiane."""
@@ -586,6 +530,7 @@ class ResendCommandTests(TestCase):
         self.assertEqual((item.status, item.message_id), ('sent', '56'))
 
 
+@tag('external')
 @override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': URL})
 class AdminAccessTests(TestCase):
     def test_only_superuser_can_open_settings_and_send_tests(self):
@@ -609,6 +554,7 @@ class AdminAccessTests(TestCase):
         self.assertFalse(DiscordNotification.objects.exists())
 
 
+@tag('external')
 @override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': URL, 'Przypomnienia': URL}, CMS_BASE_URL='https://cms.example')
 class WaitingReminderTests(WorkflowTestDataMixin, TestCase):
     """Przypomnienia po 7, 14 i 21 dniach od ogłoszenia, że etap jest do wzięcia."""
@@ -705,6 +651,7 @@ class WaitingReminderTests(WorkflowTestDataMixin, TestCase):
         self.assertEqual(self.reminders(), [7])
 
 
+@tag('external')
 @override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
 class WaitingReminderAdminTests(TestCase):
     def setUp(self):
@@ -776,6 +723,7 @@ class WaitingReminderAdminTests(TestCase):
         sent.assert_not_called()
 
 
+@tag('external')
 @override_settings(DISCORD_WEBHOOK_SECRETS={'Recenzje': URL}, CMS_BASE_URL='https://cms.example')
 class ReviewReminderTests(TestCase):
     """Zgłoszenie do recenzji, którego nikt nie wziął, też dostaje przypomnienia."""
@@ -853,6 +801,7 @@ class AuthorTagTests(TestCase):
         self.assertEqual(text.source_authors_display, 'Ursula Le Guin')
 
 
+@tag('external')
 @override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
 class AuthorInNotificationsTests(WorkflowTestDataMixin, TestCase):
     """[autor] jest podstawiany we wszystkich wiadomościach o tekstach; przy zgłoszeniach do recenzji
@@ -935,6 +884,7 @@ class StageCompletedDefaultTests(TestCase):
                 self.assertEqual(audiobook.content, 'Zakończono montaż: [tytuł]')
 
 
+@tag('external')
 @override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
 class StageCompletedTests(WorkflowTestDataMixin, TestCase):
     """Jedna reguła „Rozpoczęcie i zakończenie etapu” dla wszystkich etapów; każde przekazanie redakcji z celem
@@ -1090,25 +1040,22 @@ class StageCompletedTests(WorkflowTestDataMixin, TestCase):
                         workflow_changes('default', self.text, before, {1: after}, actor='Koordynator')
                     self.assertEqual([PREVIEW.sub('', c) for c in self.completed()], [expected])
 
-    def test_disabled_rule_sends_nothing(self):
-        NotificationRule.objects.filter(pk=self.rule.pk).update(enabled=False)
-        with self.captureOnCommitCallbacks(execute=True):
-            self.finish_first_verification()
-        self.assertEqual(self.completed(), [])
-
-
-@tag('slow')
+@tag('slow', 'external')
 @override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
 class StageCompletedHttpTests(WorkflowTestDataMixin, TestCase):
     """Jak na produkcji: włączona reguła „Rozpoczęcie i zakończenie etapu” z kanałem i treścią, operacje wyłącznie
     przez żądania HTTP (karta tekstu, „Teksty do wzięcia”, admin). Każdy krok porównuje wiadomości o rozpoczęciu
     i zakończeniu z ogłoszeniem następnego etapu w tym samym żądaniu."""
 
-    def setUp(self):
-        super().setUp()
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
         for trigger in NotificationRule.Trigger.values:
             enable(trigger, '[etap]')
         enable('stage_completed', '[zdarzenie] [etap]')
+
+    def setUp(self):
+        super().setUp()
         self.text.anthology = Anthology.objects.create(title='Antologia testowa')
         self.text.save()
         sender = patch('core.discord_webhook.send_message', return_value='1')
@@ -1117,8 +1064,9 @@ class StageCompletedHttpTests(WorkflowTestDataMixin, TestCase):
         self.day = self.today.isoformat()
 
     def post(self, user, name, *args, **data):
+        """Żądanie bez podążania za przekierowaniem – operacje kończą się przekierowaniem, błąd formularza to 200."""
         self.client.force_login(user)
-        return self.client.post(reverse(name, args=args or [self.text.pk]), data, follow=True)
+        return self.client.post(reverse(name, args=args or [self.text.pk]), data)
 
     def text_action(self, user, name):
         """Przycisk przejścia redakcji na karcie tekstu (z tokenem stanu tekstu)."""
@@ -1155,7 +1103,7 @@ class StageCompletedHttpTests(WorkflowTestDataMixin, TestCase):
             with self.captureOnCommitCallbacks(execute=True):
                 response = action()
             with self.subTest(case):
-                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.status_code, 302)
                 rows = DiscordNotification.objects.order_by('pk')
                 self.assertEqual(sorted((item.trigger, PREVIEW.sub('', item.content)) for item in rows),
                                  sorted(expected))
@@ -1250,7 +1198,7 @@ class StageCompletedHttpTests(WorkflowTestDataMixin, TestCase):
             self.take(self.proofreader, 'first_proofreading', started_at=self.day)
             self.client.force_login(self.superuser)
             return self.client.post(reverse('admin:workflow_workflowstage_changelist'),
-                                    {'action': 'finish_selected_stages', '_selected_action': [stage.pk]}, follow=True)
+                                    {'action': 'finish_selected_stages', '_selected_action': [stage.pk]})
 
         self.run_steps([
             ('Daty i przekazanie', self.finish_control,
@@ -1345,6 +1293,7 @@ class StageCompletedHttpTests(WorkflowTestDataMixin, TestCase):
 Setting = Anthology.DiscordNotifications
 
 
+@tag('external')
 @override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
 class AnthologyNotificationSettingTests(WorkflowTestDataMixin, TestCase):
     """Ustawienie antologii „Powiadomienia Discord” (także dla powieści i Ekstraktów – to samo pole): „Włączone”
@@ -1602,3 +1551,163 @@ class DiagnoseCommandTests(TestCase):
             call_command('discord_diagnose', stdout=out)
             with self.subTest(sent=sent):
                 self.assertEqual('nie powstała żadna wiadomość „Rozpoczęcie i zakończenie etapu' in out.getvalue(), hint)
+
+
+@tag('external')
+@override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': URL}, CMS_BASE_URL='https://cms.example')
+class AdminTestPanelErrorTests(TestCase):
+    """Testowa wysyłka z panelu: błędy oznaczenia, kanału i dostarczenia trafiają do historii z właściwym statusem;
+    panel bez części reguł; lista reguł i historia wysyłek."""
+
+    def setUp(self):
+        self.client.force_login(get_user_model().objects.create_superuser('admin', 'admin@example.com', 'test'))
+        self.url = reverse('admin:core_notificationrule_test')
+
+    def send(self, data=None, **patch_kwargs):
+        with patch('core.discord_webhook.send_message', **patch_kwargs) as sent:
+            response = self.client.post(self.url, {'title': 'Próba', 'trigger': 'stage_completed', **(data or {})})
+        return response, sent
+
+    def test_failures_are_reported_and_recorded(self):
+        cases = {
+            'kanał spoza konfiguracji serwera': ({'channel': 'Stary'}, {}, 'nie ma w konfiguracji', 'disabled'),
+            'Discord odrzucił': ({}, {'side_effect': DeliveryError('Discord odrzucił żądanie.')},
+                                 'Nie wysłano: Discord odrzucił', 'failed'),
+            'brak potwierdzenia': ({}, {'side_effect': DeliveryError('Brak potwierdzenia.', uncertain=True)},
+                                   'Nie wysłano: Brak potwierdzenia', 'unknown'),
+        }
+        for case, (rule_changes, effect, message, status) in cases.items():
+            with self.subTest(case):
+                enable('stage_completed', **rule_changes)
+                response, _sent = self.send(**effect)
+                self.assertContains(response, message)
+                self.assertEqual(DiscordNotification.objects.latest('pk').status, status)
+
+    def test_unknown_role_mention_is_refused_before_sending(self):
+        DiscordRole.objects.create(name='usunięta', role_id='1')
+        enable('stage_completed', mention='@usunięta')
+        DiscordRole.objects.all().delete()
+        response, sent = self.send()
+        self.assertContains(response, 'Nie ma roli @usunięta')
+        sent.assert_not_called()
+        self.assertFalse(DiscordNotification.objects.exists())
+
+    def test_test_mark_keeps_whole_link_within_discord_limit(self):
+        enable('stage_completed', template='x' * 2100)
+        response, sent = self.send({'mark_test': 'on'}, return_value='5')
+        content = sent.call_args.args[1]
+        self.assertEqual(len(content), 2000)
+        self.assertTrue(content.startswith('[TEST] xxx'))
+        self.assertTrue(content.endswith(f'(<https://cms.example{reverse("core:assigned_text_detail", args=[0])}>)'))
+        self.assertContains(response, 'Wysłano na kanał')
+
+    def test_panel_without_reminder_rule_or_some_announcement_rules(self):
+        NotificationRule.objects.filter(trigger__in=('stage_waiting', 'review_new')).delete()
+        page = self.client.get(self.url)
+        self.assertEqual((page.context['waiting'], page.context['reminders']), (None, []))
+        NotificationRule.objects.create(trigger='stage_waiting')
+        page = self.client.get(self.url)
+        self.assertNotIn('review_new', [row['trigger'] for row in page.context['reminders']])
+        self.assertIn('first_proofreading', [row['trigger'] for row in page.context['reminders']])
+
+    def test_rule_list_counts_templates_and_history_list_shortens_content(self):
+        enable('stage_completed')
+        DiscordNotification.objects.create(trigger='stage_completed', channel='Kanał', content='y' * 150)
+        rules = self.client.get(reverse('admin:core_notificationrule_changelist'))
+        row = next(rule for rule in rules.context['cl'].result_list if rule.trigger == 'stage_completed')
+        self.assertEqual(rules.context['cl'].model_admin.template_count(row), 1)
+        history = self.client.get(reverse('admin:core_discordnotification_changelist'))
+        self.assertContains(history, '>' + 'y' * 100 + '<')
+        self.assertNotContains(history, 'y' * 101)
+
+
+class RuleFormChannelTests(TestCase):
+    """Wybór kanału reguły i opis problemów przy błędnej konfiguracji DISCORD_WEBHOOKS."""
+
+    def test_channel_choices_follow_server_configuration(self):
+        rule = NotificationRule.objects.get(trigger='first_proofreading')
+        rule.channel = 'Dawny kanał'
+        cases = {
+            'poprawna konfiguracja i dawny kanał reguły': ({'Kanał': URL}, ['', 'Kanał', 'Dawny kanał'],
+                                                           'Kanały z konfiguracji'),
+            'błędna konfiguracja': ({'Kanał': 'http://example.com/hook'}, ['', 'Dawny kanał'],
+                                    'nie skonfigurowano żadnego webhooka'),
+        }
+        for case, (webhooks, choices, help_text) in cases.items():
+            with self.subTest(case), override_settings(DISCORD_WEBHOOK_SECRETS=webhooks):
+                field = NotificationRuleForm(instance=rule).fields['channel']
+                self.assertEqual([value for value, _label in field.choices], choices)
+                self.assertIn(help_text, field.help_text)
+
+
+@tag('external')
+@override_settings(DISCORD_WEBHOOK_SECRETS={'Kanał': URL})
+class QueueErrorTests(TestCase):
+    """Kolejka po zatwierdzeniu transakcji: błędy kolejkowania i zapisu wyniku tylko w logu, wysyłka już trwająca
+    albo przy błędnej konfiguracji, przeniesienie etapu innego niż praca do historii."""
+
+    def notification(self, status='pending', channel='Kanał'):
+        return DiscordNotification.objects.create(trigger='stage_completed', channel=channel, content='x', status=status)
+
+    def test_queue_error_never_breaks_caller(self):
+        enable('stage_completed')
+        with patch('core.discord_notifications.queue', side_effect=RuntimeError('boom')), \
+                self.assertLogs('core.discord_notifications', 'ERROR') as logs:
+            self.assertIsNone(safe_queue('stage_completed', context={}))
+        self.assertIn('Could not queue Discord notification stage_completed', logs.output[0])
+
+    def test_delivery_outcomes_for_configuration_and_concurrent_runs(self):
+        cases = {
+            'wiadomość już wysyłana gdzie indziej': ('sending', {'DISCORD_WEBHOOK_SECRETS': {'Kanał': URL}}, 'sending'),
+            'błędna konfiguracja serwera': ('pending', {'DISCORD_WEBHOOK_SECRETS': ['nie słownik']}, 'failed'),
+        }
+        for case, (status, settings, expected) in cases.items():
+            with self.subTest(case), override_settings(**settings), \
+                    patch('core.discord_webhook.send_message') as sent:
+                item = self.notification(status)
+                deliver(item.pk)
+                item.refresh_from_db()
+                self.assertEqual(item.status, expected)
+                sent.assert_not_called()
+
+    def test_failure_to_record_outcome_is_only_logged(self):
+        item = self.notification()
+        with patch('core.discord_notifications.deliver', side_effect=RuntimeError('boom')), \
+                patch('core.models.DiscordNotification.objects.using', side_effect=RuntimeError('db')), \
+                self.assertLogs('core.discord_notifications', 'ERROR') as logs:
+            deliver_after_commit(item.pk)
+        self.assertIn(f'Could not record notification outcome; notification={item.pk}', logs.output[-1])
+        item.refresh_from_db()
+        self.assertEqual(item.status, 'pending')
+
+    def test_stage_moved_to_history_is_not_a_completion_for_non_work_stages(self):
+        enable('stage_completed')
+        text = Text.objects.create(title='Tekst', length=10)
+        today = timezone.localdate()
+        stage = WorkflowStage.objects.create(text=text, workflow_cycle=1, is_completed=True,
+                                             started_at=today, ended_at=today,
+                                             stage_type=WorkflowStage.StageType.READY_FOR_EDITING)
+        before = {stage.pk: {'type': stage.stage_type, 'completed': False}}
+        workflow_changes('default', text, before, {})
+        self.assertFalse(DiscordNotification.objects.exists())
+
+
+@tag('external')
+class WebhookRedirectTests(TestCase):
+    """Webhook: przekierowanie i nieoczekiwany status to niepewny wynik; etykiety ról i historii wysyłek."""
+
+    def test_redirect_or_unexpected_status_is_not_followed_and_is_uncertain(self):
+        self.assertIsNone(NoRedirect().redirect_request(None, None, 302, 'Found', {}, 'https://example.com/'))
+        response = MagicMock(status=204)
+        response.__enter__.return_value = response
+        with patch('core.discord_webhook.build_opener') as opener, self.assertRaises(DeliveryError) as caught:
+            opener.return_value.open.return_value = response
+            send_message(URL, 'treść')
+        self.assertTrue(caught.exception.uncertain)
+        response.read.assert_not_called()
+
+    def test_labels(self):
+        """Etykiety w panelu: rola jako „@nazwa”, wpis historii jako „reguła → kanał”."""
+        role = DiscordRole.objects.create(name='korektor', role_id='5')
+        item = DiscordNotification(trigger='stage_completed', channel='Kanał', content='x')
+        self.assertEqual((str(role), str(item)), ('@korektor', 'Rozpoczęcie i zakończenie etapu (wszystkie etapy) → Kanał'))

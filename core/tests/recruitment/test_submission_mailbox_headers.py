@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone as dt_timezone
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import Client, TestCase
+from django.test import Client, TestCase, tag
 from django.urls import reverse
 from django.utils import timezone
 
@@ -20,6 +20,7 @@ from fantazmaty.testing import create_superuser
 from .support import SubmissionMailboxMixin, named_mail
 
 
+@tag('external')
 class SubmissionHeadersTests(SubmissionMailboxMixin, TestCase):
     def test_headers_survive_refresh_navigation_and_remain_private(self):
         page = self.fetch_headers(subject_filter='Test', clean='on', convert='on', rebuild='on')
@@ -134,6 +135,16 @@ class SubmissionHeadersTests(SubmissionMailboxMixin, TestCase):
         self.assertEqual(copy.call_args.kwargs['subject_filter'], '')
         self.assertFalse(MailboxDownload.objects.exists())
 
+    def test_cursor_from_other_filters_starts_from_newest_messages(self):
+        page = self.fetch_headers()
+        cursor = page.context['result']['next_cursor']
+        with patch('core.views.mailbox.read_headers', return_value=deepcopy(self.headers)) as read:
+            response = self.client.post(self.url, {'action': 'headers', 'cursor': cursor, 'show_downloaded': 'on'})
+        self.assertEqual(response.status_code, 302)
+        self.assertIsNone(read.call_args.args[1])
+        self.assertIsNone(read.call_args.kwargs['excluded'])
+
+
 
 class MailboxDateFilterTests(TestCase):
     HEADERS = {'validity': 7, 'rows': [dict(uid=12, sender='a@example.test', subject='Redakcja', date='')],
@@ -185,6 +196,7 @@ class MailboxDateFilterTests(TestCase):
                 self.assertContains(page, 'value="2026-11-01"')
 
 
+@tag('external')
 class SubmissionSnapshotTests(SubmissionMailboxMixin, TestCase):
     """Nagłówki z nocnego pobierania (MailboxHeaderSnapshot) na ekranie pobierania zgłoszeń."""
     ROWS = [{'uid': 13, 'sender': 'nowa@example.com', 'subject': 'Nowa', 'date': ''},

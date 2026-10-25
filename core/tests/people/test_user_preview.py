@@ -1,13 +1,17 @@
 """Podgląd jako użytkownik: tylko dla superusera, tylko do odczytu, bez zmiany zalogowanego konta i z ochroną sesji."""
+import asyncio
 from unittest.mock import patch
 
 from django.conf import settings
 from django.contrib.auth import SESSION_KEY as AUTH_SESSION_KEY, get_user_model
-from django.test import Client
+from django.contrib.sessions.backends.signed_cookies import SessionStore
+from django.http import HttpResponse
+from django.test import Client, RequestFactory, TestCase
 from django.urls import reverse
 
 from fantazmaty.testing.workflow import StatusAssignmentFixtures
-from core.user_preview import SESSION_KEY
+from core.user_preview import SESSION_KEY, UserPreviewMiddleware
+from fantazmaty.testing import create_member, create_superuser
 from people.models import Role
 from workflow.models import WorkflowRoleAssignment as A, WorkflowStage as S
 
@@ -173,3 +177,23 @@ class UserPreviewTests(StatusAssignmentFixtures):
         self.assertEqual(recorded["user_id"], self.admin.pk)
         self.assertEqual(recorded["actor"], self.admin.email)
         self.assertIn(f"Podgląd user_id #{self.member.pk}", recorded["action"])
+
+
+class UserPreviewAsyncTests(TestCase):
+    def test_async_user_lookup_returns_previewed_account(self):
+        admin = create_superuser('podglad-admin')
+        member = create_member('podgladany', 'Redaktor')
+        request = RequestFactory().get('/')
+        request.user = admin
+        request.session = SessionStore()
+        request.session[SESSION_KEY] = {'actor': admin.pk, 'target': member.pk}
+        seen = {}
+
+        def view(request):
+            seen['user'] = asyncio.run(request.auser())
+            return HttpResponse('ok')
+
+        response = UserPreviewMiddleware(view)(request)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(seen['user'], member)
+        self.assertEqual(request.preview_actor, admin)

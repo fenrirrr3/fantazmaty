@@ -3,7 +3,7 @@ from io import StringIO
 from unittest.mock import patch
 
 from django.core.management import CommandError, call_command
-from django.test import TestCase
+from django.test import TestCase, tag
 from django.urls import reverse
 
 from core.models import MailboxConnection, MailboxDownload, MailboxHeaderSnapshot, Recruitment, RecruitmentMailSource
@@ -30,6 +30,7 @@ class MailboxSnapshotMixin:
             host='imap.example.test', username='rekrutacja@example.test', encrypted_password='unused')
 
 
+@tag('external')
 class RefreshSnapshotsTests(MailboxSnapshotMixin, TestCase):
     @patch.object(MailboxConnection, 'get_password', return_value='sekret-hasła')
     @patch('core.services.mailbox.imaplib.IMAP4_SSL')

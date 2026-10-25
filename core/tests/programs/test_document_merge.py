@@ -140,6 +140,7 @@ class MergeFormTests(SimpleTestCase):
         self.assertNotIn('rebuild', form.fields)
 
 
+@tag('docx')
 class MergeDocumentsTests(SimpleTestCase):
     def test_content_the_rebuild_never_creates_stops_the_merge(self):
         """Odsyłacze do nieistniejących przypisów i komentarzy, numeracja list, obrazy i hiperłącza w którymkolwiek
@@ -321,6 +322,7 @@ def merged_review(payloads):
     return review_parts(BytesIO(merged)), merged
 
 
+@tag('docx')
 class ReviewMergeTests(SimpleTestCase):
     """Komentarze (z odpowiedziami i rozwiązaniem) i zmiany śledzone wszystkich scalanych plików zostają."""
 
@@ -397,7 +399,7 @@ class MergeReportTests(SimpleTestCase):
         self.assertEqual(jobs._sum_summaries([{'spaces': 1}, {}]), {'spaces': 1})
 
 
-@tag('slow')
+@tag('slow', 'docx')
 class MergeProgramTests(IsolatedProgramDirsMixin, TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -530,11 +532,11 @@ class MergeProgramTests(IsolatedProgramDirsMixin, TestCase):
             first.add_paragraph('Ala  ma kota.').runs[0].italic = True
             return uploads(('1.docx', saved(first).getvalue()), ('2.docx', story('Drugie', 'Kot  pije.')))
 
+        # Dwa zestawy opcji zamiast osobnego przypadku dla każdej (każdy przypadek to cztery konwersje plików).
         cases = (
-            ('domyślne', {}),
-            ('śledzenie zmian', {'track_changes': 'on'}),
-            ('format strony', {'keep_page_format': 'on'}),
-            ('ujednolicenie', {'normalize_formatting': 'on', 'remove_soft_whitespace': 'on'}),
+            ('format strony, bez innych opcji', {'keep_page_format': 'on'}),
+            ('śledzenie zmian i ujednolicenie', {'track_changes': 'on', 'normalize_formatting': 'on',
+                                                 'remove_soft_whitespace': 'on'}),
         )
         for label, options in cases:
             with self.subTest(label):
@@ -630,6 +632,7 @@ class TemplatePackageTests(SimpleTestCase):
         self.assertEqual(theme, [])
 
 
+@tag('docx')
 class TemplateStylesTests(SimpleTestCase):
     @classmethod
     def setUpClass(cls):

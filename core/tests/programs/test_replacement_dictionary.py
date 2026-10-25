@@ -291,6 +291,7 @@ class EntryValidationTests(TestCase):
         self.assertIn('kind', form.errors)
 
 
+@tag('docx')
 class DictionaryInCleanerTests(IsolatedProgramDirsMixin, TestCase):
     """Prawdziwy Odkurzacz używa pozycji ze słownika w CMS."""
 
@@ -310,13 +311,11 @@ class DictionaryInCleanerTests(IsolatedProgramDirsMixin, TestCase):
         self.assertEqual(response.status_code, 200, getattr(response, 'content', b'')[:300])
         return downloaded_document(response).paragraphs[0].text
 
-    @tag('slow')
     def test_entries_are_applied_disabled_ones_are_not(self):
         ReplacementEntry.objects.create(kind='word', source='kotek', target='kocik', position=1)
         ReplacementEntry.objects.filter(source='zapewnie').update(is_active=False)
         self.assertEqual(self.clean('Niechcąco zapewnie Kotek mentlikiem.'), 'Niechcący zapewnie Kocik mętlikiem.')
 
-    @tag('slow')
     def test_empty_dictionary_changes_nothing(self):
         ReplacementEntry.objects.all().delete()
         self.assertEqual(self.clean('Niechcąco mentlikiem.'), 'Niechcąco mentlikiem.')

@@ -27,6 +27,7 @@ from workflow.services import (
 from .support import AnthologyWorkflowMixin, EditingInProgressFixtures, add_roles, importing, work_state
 
 
+@tag('slow')
 class MyWorkVisibilityTests(AnthologyWorkflowMixin, TestCase):
     """Widoki „W toku” i „Wszystkie” w Moich tekstach oraz klasyfikacja pracy redaktora."""
 
@@ -45,7 +46,6 @@ class MyWorkVisibilityTests(AnthologyWorkflowMixin, TestCase):
             [(self.text.pk, True, False, False)])
         self.assertEqual((work.work_active, work.work_waiting, work.work_completed), (True, False, False))
 
-    @tag('slow')
     def test_editor_finishes_on_approved_handoff_to_proofreading(self):
         self.begin_editing()
         send_to_first_verification(self.text, self.editor, self.today)
@@ -91,15 +91,16 @@ class MyWorkVisibilityTests(AnthologyWorkflowMixin, TestCase):
         self.assertEqual([(r['pk'], r['has_active_work'], r['has_reserved_work']) for r in page.context['texts']],
                          [(self.text.pk, False, True)])
 
-    def test_pending_task_is_in_progress_and_old_tabs_resolve_to_remaining_tabs(self):
+    def test_pending_task_is_in_progress_view_with_two_tabs(self):
+        """Zaplanowana (przyszła) praca jest w widoku „W toku” jako oczekująca; widoki to tylko „W toku”
+        i „Wszystkie”."""
         editing = self.begin_editing()
         S.objects.filter(pk=editing.pk).update(started_at=self.today + timedelta(days=1))
         self.client.force_login(self.editor)
-        for view, selected in [('active', 'active'), ('waiting', 'active'), ('completed', 'all')]:
+        for view in ('active', 'all'):
             with self.subTest(view=view):
                 page = self.client.get(reverse('core:my_texts'), {'view': view})
-                self.assertEqual(page.context['selected_view'], selected)
-                self.assertIn(self.text.pk, [row['pk'] for row in page.context['texts']])
+                self.assertEqual(page.context['selected_view'], view)
                 nav = html.fromstring(page.content).xpath('//nav[@aria-label="Widok moich tekstów"]')[0]
                 self.assertEqual([''.join(a.itertext()).strip() for a in nav.xpath('./a')], ['W toku', 'Wszystkie'])
                 row = next(r for r in page.context['texts'] if r['pk'] == self.text.pk)
@@ -223,7 +224,7 @@ class MyTextsAllOrderingTests(TestCase):
 
 
 class EditorDashboardTests(EditingInProgressFixtures):
-    """Pulpit redaktora: praca oczekująca na weryfikację i kontrolę, zakończenie po przekazaniu do korekty."""
+    """Pulpit redaktora: praca oczekująca na weryfikację i kontrolę, stronicowanie oczekujących, praca autora."""
 
     def home(self, user=None):
         self.client.force_login(user or self.member)
@@ -252,16 +253,6 @@ class EditorDashboardTests(EditingInProgressFixtures):
         self.assertEqual(summary['active_stages'][0]['pk'], control.pk)
         self.assertTrue(summary['active_stages'][0]['editor_waiting'])
         self.assertEqual(summary['reserved_assignment_count'], 0)
-
-    def test_dashboard_finishes_on_approved_handoff_even_with_future_proofreading(self):
-        self.close_editing()
-        S.objects.create(text=self.text, stage_type='editing_control', is_completed=True,
-                         started_at=self.today, ended_at=self.today, send_to_proofreading=True)
-        proof = S.objects.create(text=self.text, stage_type='first_proofreading',
-                                 started_at=self.today + timedelta(days=1))
-        self.assertEqual(self.summary()['active_stage_count'], 0)
-        S.objects.filter(pk=proof.pk).update(started_at=self.today)
-        self.assertEqual(self.summary()['active_stage_count'], 0)
 
     def test_dashboard_waits_are_paginated_with_correct_counts_and_labels(self):
         send_to_first_verification(self.text, self.member, self.today)

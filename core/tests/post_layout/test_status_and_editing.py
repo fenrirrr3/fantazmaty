@@ -7,8 +7,10 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
-from core.models import PostLayoutAssignment
+from core.models import PostLayoutAssignment, ProgramPreferences
 from core.post_layout import AssignmentEditForm, StaleAssignment, bulk_change, change_status, edit_assignment, selection_token
+from fantazmaty.testing import create_member
+from texts.models import Anthology
 
 from .support import PostLayoutTestData
 
@@ -192,3 +194,18 @@ class BulkOperationTests(PostLayoutTestData, TestCase):
             bulk_change(user=self.reader, selected=[selection_token(self.reader, item)], operation='delete')
         item.refresh_from_db()
         self.assertEqual((item.proofreader, item.status, item.version, item.deleted_at), (self.reader, 'assigned', 1, None))
+
+
+class PageRangeValidationTests(TestCase):
+    def test_page_range_must_be_positive_and_ascending(self):
+        """Zakres stron przydziału: od 1 i „do” nie mniejsze niż „od”; etykieta ustawień programów osoby."""
+        user = create_member('poskladowa', 'Korektor poskładowy')
+        book = Anthology.objects.create(title='Złożona')
+        for page_from, page_to in ((0, 3), (5, 3)):
+            with self.subTest(pages=(page_from, page_to)):
+                item = PostLayoutAssignment(anthology=book, proofreader=user, created_by=user,
+                                            page_from=page_from, page_to=page_to)
+                with self.assertRaises(ValidationError) as error:
+                    item.clean()
+                self.assertIn('page_to', error.exception.message_dict)
+        self.assertEqual(str(ProgramPreferences(user=user)), 'Ustawienia programów: poskladowa')

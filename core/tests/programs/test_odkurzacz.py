@@ -1,7 +1,9 @@
-"""Odkurzacz: czyszczenie DOCX we wszystkich częściach dokumentu oraz strona programu z pobraniem wyniku."""
+"""Odkurzacz: czyszczenie DOCX we wszystkich częściach dokumentu (także nietypowe przebiegi i śledzone zmiany),
+kontrola wzorców słownika zamian oraz strona programu z pobraniem wyniku."""
+import threading
 from io import BytesIO
-from zipfile import ZipFile
 from unittest.mock import patch
+from zipfile import ZipFile
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -14,20 +16,23 @@ from docx.oxml.ns import nsdecls, qn
 from docx.shared import RGBColor
 from lxml import etree, html
 
+from core.services import odkurzacz
 from core.services import program_jobs as jobs
 from core.services.document_images import linked_images_note
 from core.services.document_preparation import prepare_docx
 from core.services.odkurzacz import (
     ALL_EDITORIAL_RULES, DEFAULT_EDITORIAL_RULES, EDITORIAL_RULES, FORM_DEFAULT_EDITORIAL_RULES,
-    ORTHOGRAPHY_2026_KEYS, clean_docx, correct_editorial_text,
+    ORTHOGRAPHY_2026_KEYS, CompiledReplacements, _compile_pattern, clean_docx, correct_editorial_text,
 )
 from fantazmaty.testing import create_member
 
-from .support import (IMAGE_NAMESPACES, IMAGE_REL, LINKED_IMAGE, NOTE_PARTS, NUMBERING_OFF, PICTURE_DRAWING,
-                      IsolatedProgramDirsMixin, add_internal_link, add_page_break, add_text_box, docx_bytes, downloaded, downloaded_document,
-                      external_images, footnote_text, formatted_docx, noted_document, noted_text, run_program, saved,
-                      set_default_language, set_language, text_run, tracked_changes_document, upload, whole_document,
-                      with_footnote)
+from .support import (
+    IMAGE_NAMESPACES, IMAGE_REL, LINKED_IMAGE, NOTE_PARTS, NUMBERING_OFF, PICTURE_DRAWING, IsolatedProgramDirsMixin,
+    add_internal_link, add_page_break, add_simple_field, add_text_box, docx_bytes, docx_with_paragraph_xml,
+    downloaded, downloaded_document, external_images, footnote_text, formatted_docx, noted_document, noted_text,
+    run_program, saved, set_default_language, set_language, text_run, tracked_changes_document, upload,
+    whole_document, with_footnote,
+)
 
 
 def soft_whitespace_document():
@@ -45,6 +50,7 @@ def soft_whitespace_document():
     return saved(doc).getvalue()
 
 
+@tag('docx')
 class CleanDocxTests(SimpleTestCase):
     def test_correction_across_runs_also_covers_tables_and_headers(self):
         document = Document()
@@ -120,6 +126,7 @@ class CleanDocxTests(SimpleTestCase):
         self.assertEqual([p.text for p in doc.sections[0].header.paragraphs], ['Nagłówek A', 'B'])
 
 
+@tag('docx')
 class CleanDocxMarkerAndOrderTests(SimpleTestCase):
     """Znaczniki Worda bez treści nie dzielą zdania, a Odkurzacz działa po usunięciu miękkich spacji."""
 
@@ -157,6 +164,7 @@ class CleanDocxMarkerAndOrderTests(SimpleTestCase):
                          ['Był w domu i ogrodzie,', 'miał 12 345 zł.'])
 
 
+@tag('docx')
 class CleanDocxStructureTests(SimpleTestCase):
     """Odkurzacz nie zmienia pól Worda ani pustych akapitów, które niosą układ dokumentu."""
 
@@ -264,8 +272,9 @@ def _resolve_revisions(root, accept, authors=None):
 
 def _story_texts(stream, resolve=None):
     """Teksty akapitów wszystkich części (treść, tabele, pola tekstowe, nagłówki, stopki, przypisy)."""
-    from core.services.document_stories import document_stories
     from docx.text.paragraph import Paragraph
+
+    from core.services.document_stories import document_stories
     stream.seek(0)
     stories, _ = document_stories(Document(stream))
     texts = []
@@ -288,6 +297,7 @@ def _revisions(stream):
     return found
 
 
+@tag('docx')
 class TrackChangesTests(SimpleTestCase):
     """track_changes=True: poprawki jako śledzone zmiany Worda we wszystkich częściach dokumentu."""
 
@@ -378,6 +388,7 @@ class TrackChangesTests(SimpleTestCase):
         self.assertEqual(_revisions(tracked), [])
 
 
+@tag('docx')
 class CleanerSummaryTests(SimpleTestCase):
     def test_summary_counts_changes_per_rule_without_changing_the_result(self):
         source = tracked_changes_document().getvalue()
@@ -412,6 +423,7 @@ class CleanerSummaryTests(SimpleTestCase):
         self.assertEqual(summary, {'dates_times': 1})
 
 
+@tag('docx')
 class LanguageTests(SimpleTestCase):
     """Decyzja właściciela: cały dokument jest polski – oznaczenia innego języka niczego nie wyłączają."""
 
@@ -436,6 +448,7 @@ class LanguageTests(SimpleTestCase):
                 self.assertIn('Running head…', [text for story in texts[1:] for text in story])
 
 
+@tag('docx')
 class CleanerR7Tests(SimpleTestCase):
     """Poprawki po przeglądzie r6: spacje nierozdzielające, podsumowanie zamian, śledzone zmiany, podział strony."""
 
@@ -556,6 +569,7 @@ class CleanerR7Tests(SimpleTestCase):
                 self.assertEqual(len(Document(result).element.xpath('//w:br[@w:type="page"]')), 2)
 
 
+@tag('slow', 'docx')
 class OdkurzaczPageTests(IsolatedProgramDirsMixin, TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -650,7 +664,6 @@ class OdkurzaczPageTests(IsolatedProgramDirsMixin, TestCase):
         self.assertContains(response, 'Wróć do programów')
         self.assertNotIn('bad package', response.content.decode())
 
-    @tag('slow')
     def test_soft_whitespace_checkbox_reaches_cleaner_and_conversion_worker(self):
         response = run_program(self.client, {
             'document': SimpleUploadedFile('tekst.docx', soft_whitespace_document()),
@@ -672,7 +685,6 @@ class OdkurzaczPageTests(IsolatedProgramDirsMixin, TestCase):
             ['Ala ma', 'kota!'],  # Odkurzacz usuwa też spację przed wykrzyknikiem.
         )
 
-    @tag('slow')
     def test_linked_image_is_unlinked_instead_of_refusing_the_file(self):
         """Regresja: plik z obrazem połączonym z plikiem zewnętrznym był odrzucany („Osadź go w DOCX”). Odkurzacz
         (także z przebudową) i konwersja usuwają link razem z obrazem, a strona wyniku podaje osobną uwagę."""
@@ -708,6 +720,7 @@ class OdkurzaczPageTests(IsolatedProgramDirsMixin, TestCase):
                 self.assertEqual(Document(result).paragraphs[0].text.strip(), 'Tekst z obrazem')
 
 
+@tag('docx')
 class CleanerR9Tests(SimpleTestCase):
     """Runda 9: korekta widzi tekst w cudzych wstawkach, hiperłączach i kontrolkach; usunięty tekst
     nie przerywa zdania; miękki enter to brzeg linii."""
@@ -780,6 +793,7 @@ def _noted_texts(stream, part='word/document.xml'):
     return noted_text(root)
 
 
+@tag('slow', 'docx')
 class NoteReferenceTests(SimpleTestCase):
     """Odsyłacze przypisów: reguły widzą zdanie ciągłe, a reguła note_references stawia odsyłacz wg norm."""
 
@@ -808,7 +822,6 @@ class NoteReferenceTests(SimpleTestCase):
         'przypis końcowy': (['Koniec.', 1], 'Koniec[1].', 'Koniec.[1]', 'endnote'),
     }
 
-    @tag('slow')
     def test_note_references_keep_continuity_and_follow_polish_rules(self):
         """Każdy przypadek bez śledzenia i ze śledzeniem (po przyjęciu zmian), z regułą i bez niej."""
         for name, (parts, with_rule, without_rule, *kind) in self.CASES.items():
@@ -1069,6 +1082,7 @@ def _foreign_revisions(root):
     return kinds, removed
 
 
+@tag('docx')
 class ForeignRevisionsAndCommentsTests(SimpleTestCase):
     """Decyzja właściciela: komentarze i istniejące zmiany śledzone innych osób zostają po Odkurzaczu.
 
@@ -1283,6 +1297,7 @@ class ForeignRevisionsAndCommentsTests(SimpleTestCase):
                     self.assertEqual(views, [accepted, rejected])
 
 
+@tag('docx')
 class Orthography2026DocxTests(SimpleTestCase):
     """Reguły „Ortografia 2026” w DOCX: wyraz rozcięty na dwa przebiegi, treść przypisu, odsyłacz przypisu,
     śledzenie zmian (najmniejsza zmiana: spacja albo łącznik) i granica cudzego usunięcia."""
@@ -1347,3 +1362,161 @@ class Orthography2026DocxTests(SimpleTestCase):
                         _resolve_revisions(root, True)
                         views.append(noted_text(root.find(f'.//{qn("w:p")}')))
                     self.assertEqual(views, [accepted, rejected])
+
+
+W = nsdecls('w')
+
+
+class EndlessPattern:
+    """Wzorzec, którego dopasowania nigdy się nie kończą (jak katastrofalne nawroty) – do pomiaru czasu."""
+
+    def finditer(self, sample):
+        while True:
+            yield sample
+
+
+class FinitePattern:
+    def __init__(self):
+        self.searched = []
+
+    def finditer(self, sample):
+        self.searched.append(sample)
+        yield from sample[:3]
+
+
+class EditorialTextTests(SimpleTestCase):
+    def test_pronouns_far_from_the_line_start_and_after_addresses(self):
+        cases = {
+            # Ponad 80 znaków odstępu: kontekst sięga początku linii (przecinek – środek zdania).
+            'Zdanie,' + ' ' * 90 + 'Jego dom': 'Zdanie,' + ' ' * 90 + 'jego dom',
+            # Adres przed zaimkiem jest chroniony, ale nie blokuje dalszych poprawek.
+            'Strona www.example.pl, a Jego dom': 'Strona www.example.pl, a jego dom',
+        }
+        for text, expected in cases.items():
+            with self.subTest(text=text.strip()[:30]):
+                self.assertEqual(correct_editorial_text(text, {'pronouns_lower'}), expected)
+
+    def test_time_ranges_are_counted_per_rule(self):
+        rules = {'dates_times', 'range_dash', 'range_spaces'}
+        cases = {
+            'Otwarte 8.00 - 16.00 codziennie.': ('Otwarte 08:00–16:00 codziennie.',
+                                                 {'dates_times': 2, 'range_dash': 1, 'range_spaces': 2}),
+            # Godziny już w dobrym zapisie: liczy się tylko półpauza.
+            'Otwarte 08:00-16:00 codziennie.': ('Otwarte 08:00–16:00 codziennie.', {'range_dash': 1}),
+        }
+        for text, (expected, expected_counts) in cases.items():
+            counts = {}
+            with self.subTest(text=text):
+                self.assertEqual(correct_editorial_text(text, rules, counts=counts), expected)
+                self.assertEqual(counts, expected_counts)
+
+    def test_capital_letter_after_exclamation_and_question_marks(self):
+        self.assertEqual(correct_editorial_text('Hej! jak się masz? dobrze.', {'sentence_case'}),
+                         'Hej! Jak się masz? Dobrze.')
+
+
+class PatternCheckTests(SimpleTestCase):
+    def test_nested_repetitions_in_every_construct_are_refused(self):
+        for source in (r'x(?:a|(b+)+)', r'(?=(a+)+)x', r'(?>(a+)+)x', r'(a)?(?(1)(b+)+|c)'):
+            with self.subTest(source=source):
+                self.assertIsNone(_compile_pattern(source))
+        # Asercje, grupy atomowe i warunki bez zagnieżdżonych powtórzeń są w porządku.
+        for source in (r'(?=a)kot', r'(?>a)kot', r'(a)?(?(1)kot|pies)'):
+            with self.subTest(source=source):
+                self.assertIsNotNone(_compile_pattern(source))
+        for source, target in ((123, ''), ('a' * 501, ''), ('kot', 'x' * 201), ('', '')):
+            with self.subTest(source=str(source)[:10], target=target[:10]):
+                self.assertIsNone(_compile_pattern(source, target))
+
+    def test_timing_probe_is_interrupted_by_an_alarm(self):
+        with self.assertRaises(odkurzacz._PatternTimeout):
+            odkurzacz._exhaust(EndlessPattern(), 'aaaa', 0.01)
+        self.assertTrue(odkurzacz._too_slow(EndlessPattern()))
+
+    def test_timing_probe_outside_the_main_thread_only_measures(self):
+        pattern, results = FinitePattern(), []
+        worker = threading.Thread(target=lambda: results.append(odkurzacz._exhaust(pattern, 'abcdef', 0.01)))
+        worker.start()
+        worker.join()
+        self.assertEqual((results, pattern.searched), ([None], ['abcdef']))
+        # Wzorzec dopasowujący próbki (pętla po wynikach) przechodzi kontrolę także w głównym wątku.
+        self.assertIsNotNone(_compile_pattern(r'\w+'))
+
+
+class ReplacementDictionaryTests(SimpleTestCase):
+    def test_first_entry_of_a_word_wins_and_unchanged_matches_are_not_counted(self):
+        compiled = CompiledReplacements([
+            {'kind': 'word', 'source': 'tonic', 'target': 'tonik'},
+            {'kind': 'word', 'source': 'TONIC', 'target': 'napój'},
+            {'kind': 'pattern', 'source': r'\bkot\b', 'target': 'kot', 'checked': True},
+        ])
+        record = {}
+        self.assertEqual(compiled.apply('Tonic i kot.', record), 'Tonik i kot.')
+        self.assertEqual(record, {('Tonic', 'Tonik'): 1})
+
+
+@tag('docx')
+class CleanDocxUnusualRunsTests(SimpleTestCase):
+    def test_fields_and_empty_text_nodes_split_the_text(self):
+        document = Document()
+        paragraph = document.add_paragraph('Ala  ma ')
+        add_simple_field(paragraph, 'AUTHOR', 'Jan  Nowak')
+        paragraph._p.append(parse_xml(f'<w:r {W}><w:t/><w:t xml:space="preserve"> kota  i psa</w:t></w:r>'))
+        with clean_docx(saved(document), {'spaces'}) as result:
+            cleaned = Document(result).paragraphs[0]._p
+        texts = [node.text for node in cleaned.iter(qn('w:t'))]
+        self.assertEqual(texts, ['Ala ma ', 'Jan  Nowak', None, ' kota i psa'])
+
+    def test_characters_inserted_beside_a_kept_tabulator(self):
+        """Odstępy wokół półpauzy między tabulatorami: tabulatory zostają, nowe spacje trafiają obok nich."""
+        source = docx_with_paragraph_xml('<w:r><w:t>Tekst</w:t><w:tab/><w:t>–</w:t><w:tab/><w:t>dalej</w:t></w:r>')
+        with clean_docx(source, {'dash_spaces'}) as result:
+            paragraph = Document(result).paragraphs[0]
+        self.assertEqual(paragraph.text, 'Tekst\t – \tdalej')
+        self.assertEqual(len(paragraph._p.findall('.//' + qn('w:tab'))), 2)
+
+    def test_tracked_changes_keep_run_attributes_and_join_neighbouring_deletions(self):
+        source = docx_with_paragraph_xml(
+            '<w:r w:rsidR="00AB12CD"><w:t xml:space="preserve">Ala </w:t><w:t xml:space="preserve">ma </w:t>'
+            '<w:t xml:space="preserve">kota  </w:t><w:tab/><w:t>psa</w:t></w:r>')
+        with clean_docx(source, {'spaces', 'tabs'}, track_changes=True) as result:
+            paragraph = Document(result).paragraphs[0]._p
+        runs = paragraph.xpath('.//w:r')
+        self.assertTrue(all(run.get(qn('w:rsidR')) == '00AB12CD' for run in runs))
+        deletions = paragraph.xpath('./w:del')
+        self.assertEqual(len(deletions), 1)  # spacja i tabulator w jednej śledzonej zmianie
+        self.assertEqual([child.tag for run in deletions[0] for child in run], [qn('w:delText'), qn('w:tab')])
+        accepted = ''.join(node.text for node in paragraph.xpath('./w:r/w:t | ./w:ins/w:r/w:t'))
+        self.assertEqual(accepted, 'Ala ma kota psa')
+
+    def test_tracked_removal_of_empty_paragraphs_with_earlier_revisions(self):
+        """Seria pustych akapitów z wcześniejszymi poprawkami Odkurzacza: usuwany jest znak akapitu."""
+        mark = 'w:id="1" w:author="Odkurzacz" w:date="2026-01-01T00:00:00Z"'
+        document = Document()
+        document.add_paragraph('Tekst')
+        first = document.add_paragraph('  ')
+        first._p.append(parse_xml(f'<w:ins {W} {mark}><w:r><w:t xml:space="preserve"> </w:t></w:r></w:ins>'))
+        first._p.get_or_add_pPr().append(parse_xml(f'<w:pPrChange {W} w:id="2" w:author="Redakcja"><w:pPr/>'
+                                                   '</w:pPrChange>'))
+        second = document.add_paragraph()
+        second._p.get_or_add_pPr().append(parse_xml(f'<w:rPr {W}><w:ins {mark.replace("1", "3", 1)}/></w:rPr>'))
+        document.add_paragraph()
+        inserted = document.add_paragraph()
+        inserted._p.append(parse_xml(f'<w:ins {W} {mark.replace("1", "4", 1)}><w:r><w:t>Dopisane</w:t></w:r></w:ins>'))
+        document.add_paragraph()
+        summary = {}
+        with clean_docx(saved(document), {'empty_paragraphs'}, track_changes=True, summary=summary) as result:
+            paragraphs = Document(result).paragraphs
+        self.assertEqual(summary, {'empty_paragraphs': 2})
+        first, second = paragraphs[1]._p, paragraphs[2]._p
+        # Tekst pustego akapitu trafia do w:del jako w:delText, a nasza wcześniejsza wstawka znika.
+        self.assertEqual(first.xpath('./w:del/w:r/w:delText/text()'), ['  '])
+        self.assertEqual(first.xpath('./w:ins'), [])
+        properties = first.find(qn('w:pPr'))
+        self.assertEqual([child.tag for child in properties], [qn('w:rPr'), qn('w:pPrChange')])
+        self.assertIsNotNone(properties.find(f'{qn("w:rPr")}/{qn("w:del")}'))
+        self.assertEqual([child.tag for child in second.find(qn('w:pPr')).find(qn('w:rPr'))],
+                         [qn('w:ins'), qn('w:del')])
+        # Akapit z dopisanym tekstem nie jest pusty i przerywa serię.
+        self.assertEqual(paragraphs[4]._p.xpath('.//w:del'), [])
+        self.assertEqual(len(paragraphs), 6)

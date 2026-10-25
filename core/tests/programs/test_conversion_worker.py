@@ -1,8 +1,13 @@
-"""Proces roboczy konwertera (uruchamiany w tym procesie): bezpieczny HTML, akapity list, rozdziały i obrazy EPUB,
-podziały stron i separatory scen, uwagi po polsku oraz raport błędu bez treści dokumentu."""
+"""Proces roboczy konwertera (uruchamiany w tym procesie): bootstrap i limit pamięci, bezpieczny HTML, akapity list,
+rozdziały, odnośniki i obrazy EPUB, podziały stron i separatory scen, nagłówki według reguły nagłówków, kopia DOCX
+dla Mammotha, uwagi po polsku, raport błędu bez treści dokumentu oraz praca jako skrypt (bez pakietu core.services)."""
 import json
+import os
 import re
 import runpy
+import struct
+import sys
+import zlib
 from contextlib import contextmanager
 from io import BytesIO
 from pathlib import Path
@@ -10,22 +15,76 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 from zipfile import ZipFile
 
+import mammoth
 from django.test import SimpleTestCase, tag
 from docx import Document
-
-from core.services.document_errors import DocumentInputError
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
+from docx.oxml import parse_xml
+from docx.oxml.ns import nsdecls
+from fpdf import FPDF
 from lxml import etree, html
 from PIL import Image
 
 import core.services
 from core.services import document_progress
-from core.services.document_conversion_worker import (PDF_FAILED_NOTE, convert, main, polish_warnings, sanitize_html,
-                                                      split_chapters)
-from core.services.document_html import list_paragraphs, scene_break, split_page_breaks
+from core.services.document_conversion_worker import (
+    PDF_FAILED_NOTE, convert, cross_chapter_links, main, polish_warnings, sanitize_html, split_chapters,
+)
+from core.services.document_errors import DocumentInputError
+from core.services.document_html import (
+    MAMMOTH_NOTES, docx_paragraph_key, list_paragraphs, mammoth_source, paragraph_queues, scene_break,
+    split_page_breaks,
+)
+from core.services.document_stories import document_stories
 
-from .support import (add_footnote_reference, add_leading_break, add_page_break, add_tracked_insertion, png,
-                      with_footnote)
+from .editor_fixtures import R_NS, WORD_PART
+from .editor_fixtures_exotic import (
+    STYLES, chart_and_smart_art, frames_and_drop_cap, localized_style_names, note_reference, notes_part, p, r,
+    word_docx,
+)
+from .support import (
+    OUTLINE_CASES, add_footnote_reference, add_leading_break, add_page_break, add_text_box, add_tracked_insertion,
+    outline_document, png, with_footnote,
+)
+
+
+XHTML = '{http://www.w3.org/1999/xhtml}'
+BOOTSTRAP = Path(core.services.__file__).with_name('document_worker_bootstrap.py')
+SERVICES = BOOTSTRAP.parent
+SCRIPT_MODULES = {path.stem for path in SERVICES.glob('*.py')}
+
+
+class WorkerDirectoryMixin:
+    """Katalog zadania procesu roboczego w katalogu tymczasowym testu."""
+
+    def setUp(self):
+        super().setUp()
+        temporary = TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.directory = Path(temporary.name)
+        # Proces roboczy kieruje raport postępu do katalogu zadania; po teście wyłączamy go.
+        progress = patch.object(document_progress, '_target', None)
+        progress.start()
+        self.addCleanup(progress.stop)
+
+
+def png_chunk(kind, data):
+    return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data) & 0xFFFFFFFF)
+
+
+@contextmanager
+def script_mode(directory):
+    """Katalog core/services na sys.path (jak dla skryptu) i argv procesu; po wyjściu sprzątamy kopie modułów."""
+    before = set(sys.modules)
+    with patch.object(sys, 'path', [str(SERVICES), *sys.path]), \
+            patch.object(sys, 'argv', ['document_worker_bootstrap.py', str(directory)]):
+        try:
+            yield
+        finally:
+            for name in set(sys.modules) - before:
+                if name in SCRIPT_MODULES:
+                    del sys.modules[name]
 
 
 class SanitizedHtmlTests(SimpleTestCase):
@@ -97,70 +156,98 @@ class EpubPresentationTests(SimpleTestCase):
         self.assertEqual(warnings, ['Dokument odwołuje się do nieistniejącego stylu (CommentReference) – '
                                     'pominięto jego formatowanie.'])
 
+    def test_only_links_to_other_chapters_get_a_file_name(self):
+        chapters = [
+            ('chapter-1.xhtml', '<p id="a">A <a href="#a">tutaj</a> <a href="#brak">nigdzie</a></p>'),
+            ('chapter-2.xhtml', '<p>B <a href="#a">do pierwszego</a> <a href="#b">tutaj</a></p><p id="b">C</p>'),
+        ]
+        first, second = cross_chapter_links(chapters)
+        self.assertEqual(first, chapters[0][1])  # rozdział bez odnośników do innych plików zostaje bez zmian
+        self.assertIn('href="chapter-1.xhtml#a"', second)
+        self.assertIn('href="#b"', second)
+        self.assertEqual(cross_chapter_links(chapters[:1]), [chapters[0][1]])
 
-class EmbeddedImageTests(SimpleTestCase):
-    def setUp(self):
-        temporary = TemporaryDirectory()
-        self.addCleanup(temporary.cleanup)
-        self.directory = Path(temporary.name)
+    def test_warnings_about_equations_attachments_shapes_and_linked_images(self):
+        """Uwagi o równaniach, wstawkach altChunk i obrazach połączonych są po polsku; wygląd kształtów VML
+        (wypełnienie, obrys) z zapasowej wersji pola tekstowego – np. z LibreOffice – nie jest zgłaszany."""
+        unrecognised = 'An unrecognised element was ignored: '
+        cases = {
+            unrecognised + '{http://schemas.openxmlformats.org/officeDocument/2006/math}oMathPara':
+                'Pominięto równanie (wzór matematyczny) – e-book i PDF go nie zawierają.',
+            unrecognised + '{http://schemas.openxmlformats.org/officeDocument/2006/math}oMath':
+                'Pominięto równanie (wzór matematyczny) – e-book i PDF go nie zawierają.',
+            unrecognised + 'w:altChunk': 'Pominięto treść dołączoną z innego pliku (w:altChunk) – otwórz dokument '
+                                          'w Wordzie i zapisz go ponownie, aby ją scalić.',
+            "could not open external image 'file:///C:/Obrazy/a.jpg', external file access is disabled":
+                'Pominięto obraz połączony z plikiem spoza dokumentu – wstaw obraz do DOCX.',
+            unrecognised + 'v:fill': None,
+            unrecognised + 'v:stroke': None,
+            unrecognised + 'o:lock': None,
+            unrecognised + 'w10:wrap': None,
+            unrecognised + 'w:ruby': 'Pominięto nieobsługiwany element dokumentu (w:ruby).',
+        }
+        for message, expected in cases.items():
+            with self.subTest(message):
+                self.assertEqual(polish_warnings([message]), [expected] if expected else [])
 
-    def source(self, picture):
+
+@tag('slow', 'docx')
+class EmbeddedImageTests(WorkerDirectoryMixin, SimpleTestCase):
+    def source(self, *pictures):
+        """DOCX z obrazami; ich bajty w paczce zastępujemy podanymi (kolejność plików word/media)."""
         document = Document()
         document.add_paragraph('Ilustracja')
-        document.add_picture(picture)
+        for _ in pictures:
+            document.add_picture(png(4, 4))
+        original = BytesIO()
+        document.save(original)
         path = self.directory / 'source.docx'
-        document.save(path)
+        replacements = iter(pictures)
+        with ZipFile(original) as source, ZipFile(path, 'w') as target:
+            for item in source.infolist():
+                data = source.read(item)
+                if item.filename.startswith('word/media/'):
+                    data = next(replacements)
+                target.writestr(item, data)
         return path
 
     def test_images_are_rasterized_into_epub_and_pdf(self):
-        convert(self.source(png(20, 10)), self.directory, ['epub', 'pdf'], 'Obraz')
+        convert(self.source(png(20, 10).getvalue()), self.directory, ['epub', 'pdf'], 'Obraz')
         with ZipFile(self.directory / 'document.epub') as epub:
             self.assertIn('EPUB/assets/image-1.png', epub.namelist())
             self.assertIn('src="assets/image-1.png"', epub.read('EPUB/content.xhtml').decode())
         self.assertIn(b'/Subtype /Image', (self.directory / 'document.pdf').read_bytes())
 
-    def test_only_raster_formats_are_embedded(self):
-        """Obraz w innym formacie (np. ICO podpisane jako PNG) nie trafia do e-booka."""
-        source = self.source(png(20, 10))
+    def test_unusable_images_are_refused_with_a_public_code(self):
+        """Do e-booka trafiają tylko obrazy rastrowe (nie np. ICO podpisane jako PNG). Regresja: obraz EMF/WMF albo
+        uszkodzony kończył konwersję komunikatem „DOCX: ValueError”; obraz ponad 20 MB lub 20 mln pikseli – za duży."""
         icon = BytesIO()
         Image.new('RGB', (16, 16)).save(icon, 'ICO')
-        packed = self.directory / 'packed.docx'
-        with ZipFile(source) as original, ZipFile(packed, 'w') as target:
-            for item in original.infolist():
-                data = original.read(item)
-                target.writestr(item, icon.getvalue() if item.filename.startswith('word/media/') else data)
-        with self.assertRaisesMessage(DocumentInputError, 'nie obsługuje'):
-            convert(packed, self.directory, ['epub'], 'Obraz')
+        header = png(4, 4).getvalue()[:33]  # sygnatura i IHDR: Pillow otwiera plik, ale nie wczyta danych
+        cases = (
+            ('ICO zamiast PNG', icon.getvalue(), 'unsupported_image'),
+            ('EMF/WMF', b'\x01\x00\x00\x00EMF?', 'unsupported_image'),
+            ('ucięte dane obrazu', header + png_chunk(b'IDAT', zlib.compress(b'\x00' * 3)[:4]), 'unsupported_image'),
+            ('ponad 20 MB', png(4, 4).getvalue() + b'\x00' * (20 * 1024 * 1024), 'image_too_large'),
+            ('ponad 20 mln pikseli', png(5000, 5000).getvalue(), 'image_too_large'),
+        )
+        for label, picture, code in cases:
+            with self.subTest(label), self.assertRaises(DocumentInputError) as raised:
+                convert(self.source(picture), self.directory, ['epub'], 'Obraz')
+            self.assertEqual(raised.exception.public_code, code)
 
-    def test_unreadable_image_gets_a_clear_message(self):
-        """Regresja: obraz EMF/WMF albo uszkodzony kończył konwersję komunikatem „DOCX: ValueError”."""
-        source = self.source(png(20, 10))
-        packed = self.directory / 'packed.docx'
-        with ZipFile(source) as original, ZipFile(packed, 'w') as target:
-            for item in original.infolist():
-                data = original.read(item)
-                target.writestr(item, b'\x01\x00\x00\x00EMF?' if item.filename.startswith('word/media/') else data)
+    def test_images_over_the_total_limit_are_refused(self):
+        """Każdy obraz mieści się w limicie, ale razem po rasteryzacji przekraczają 30 MB."""
+        noise = BytesIO()
+        Image.frombytes('RGB', (2150, 2150), os.urandom(2150 * 2150 * 3)).save(noise, 'PNG', compress_level=0)
         with self.assertRaises(DocumentInputError) as raised:
-            convert(packed, self.directory, ['epub'], 'Obraz')
-        self.assertEqual(raised.exception.public_code, 'unsupported_image')
-        self.assertIn('EMF/WMF', str(raised.exception))
-
-    def test_image_with_huge_dimensions_is_refused(self):
-        with self.assertRaisesMessage(DocumentInputError, 'za duży'):
-            convert(self.source(png(5000, 5000)), self.directory, ['epub'], 'Obraz')
+            convert(self.source(noise.getvalue(), noise.getvalue()), self.directory, ['epub'], 'Obraz')
+        self.assertEqual(raised.exception.public_code, 'too_many_images')
 
 
-class WorkerMainTests(SimpleTestCase):
+@tag('docx')
+class WorkerMainTests(WorkerDirectoryMixin, SimpleTestCase):
     """Wywołanie main() tak jak bootstrap procesu: katalog zadania w argv, wynik w plikach katalogu."""
-
-    def setUp(self):
-        temporary = TemporaryDirectory()
-        self.addCleanup(temporary.cleanup)
-        self.directory = Path(temporary.name)
-        # main() kieruje raport postępu do katalogu zadania; po teście wyłączamy go.
-        progress = patch.object(document_progress, '_target', None)
-        progress.start()
-        self.addCleanup(progress.stop)
 
     def run_worker(self, document, **config):
         document.save(self.directory / 'source.docx')
@@ -211,9 +298,8 @@ class WorkerMainTests(SimpleTestCase):
                     with ZipFile(self.directory / 'document.zip') as result:
                         self.assertEqual(result.namelist(), report['files'])
 
-    @tag('slow')
     def test_repetitions_replace_the_source_with_the_marked_document(self):
-        """Lematy w kontekście liczy prawdziwy model językowy (ładowany kilka sekund), więc test jest wolny."""
+        """Powtórzenia zastępują źródło oznaczonym DOCX; lematy w kontekście liczy prawdziwy model językowy."""
         with self.simple_lemmas():
             code = self.run_worker(self.document(), include_docx=True, repetitions={
                 'analysis_options': {'long_sentences': False, 'long_paragraphs': False}})
@@ -232,30 +318,73 @@ class WorkerMainTests(SimpleTestCase):
         self.assertTrue(all(set(frame) == {'file', 'line', 'function'} for frame in report['frames']))
         self.assertNotIn('PRYWATNY', json.dumps(report))
 
-    def test_bootstrap_records_failures_before_worker_initialization(self):
-        """Regresja: błąd importu przed startem procesu roboczego ujawniał treść wyjątku."""
-        bootstrap = Path(core.services.__file__).with_name('document_worker_bootstrap.py')
-        runner = runpy.run_path
-        with patch('sys.argv', ['bootstrap', str(self.directory)]), \
-                patch('runpy.run_path', side_effect=ImportError('PRIVATE credential')), \
-                patch('resource.setrlimit'), self.assertRaises(SystemExit) as caught:
-            runner(str(bootstrap), run_name='__main__')
-        self.assertEqual(caught.exception.code, 2)
+    def test_missing_library_exits_with_code_two(self):
+        with patch('core.services.document_conversion_worker.convert', side_effect=ImportError('tajne')):
+            self.assertEqual(self.run_worker(self.document(), formats=['pdf'], prepare=True), 2)
         self.assertEqual(self.report()['error'], 'ImportError')
-        self.assertNotIn('PRIVATE', json.dumps(self.report()))
+        self.assertNotIn('tajne', json.dumps(self.report()))
+
+    def test_failure_is_returned_even_when_the_report_cannot_be_saved(self):
+        document = Document()
+        document.add_paragraph('Tekst')
+        document.save(self.directory / 'source.docx')
+        (self.directory / 'job.json').write_text(json.dumps({'formats': ['epub'], 'title': 'T'}))
+        (self.directory / 'error.json').mkdir()  # zapis raportu kończy się błędem systemu plików
+        with patch('sys.argv', ['worker', str(self.directory)]), \
+                patch('core.services.document_conversion_worker.convert', side_effect=RuntimeError):
+            self.assertEqual(main(), 3)
+        self.assertTrue((self.directory / 'error.json').is_dir())
+
+
+class BootstrapTests(WorkerDirectoryMixin, SimpleTestCase):
+    """document_worker_bootstrap.py: limit pamięci procesu i raport błędu startu bez treści wyjątku."""
+
+    def run_bootstrap(self, **patches):
+        """Uruchom bootstrap jako __main__ z podmienionym startem procesu roboczego; zwraca kod wyjścia lub None."""
+        runner = runpy.run_path
+        (self.directory / 'job.json').write_text(json.dumps({}), encoding='utf-8')
+        with patch('sys.argv', ['bootstrap', str(self.directory)]), patch('runpy.run_path', **patches):
+            try:
+                runner(str(BOOTSTRAP), run_name='__main__')
+            except SystemExit as stop:
+                return stop.code
+        return None
+
+    def report(self):
+        return json.loads((self.directory / 'error.json').read_text(encoding='utf-8'))
+
+    def test_startup_failures_are_reported_without_private_details(self):
+        """Regresja: błąd importu przed startem procesu roboczego ujawniał treść wyjątku (kod 2). Brak pamięci –
+        także wtedy, gdy podczas jego obsługi wystąpił kolejny błąd – to raport MemoryError (kod 3)."""
+        def nested(*args, **kwargs):
+            try:
+                raise MemoryError
+            except MemoryError:
+                raise ValueError('PRYWATNE dane z dokumentu') from None
+
+        cases = (('błąd importu', ImportError('PRYWATNE dane logowania'), 2, 'ImportError'),
+                 ('brak pamięci', MemoryError, 3, 'MemoryError'),
+                 ('brak pamięci w trakcie innego błędu', nested, 3, 'MemoryError'))
+        for label, failure, code, error in cases:
+            with self.subTest(label), patch('resource.setrlimit'):
+                self.assertEqual(self.run_bootstrap(side_effect=failure), code)
+                report = self.report()
+                self.assertEqual((report['stage'], report['error']), ('konwersja', error))
+                self.assertTrue(report['frames'])
+                self.assertNotIn('PRYWATNE', json.dumps(report))
 
     def test_bootstrap_limits_the_worker_memory(self):
-        """Mały DOCX z ogromnym XML zjadał gigabajty pamięci serwera: proces dostaje limit przestrzeni adresowej."""
+        """Mały DOCX z ogromnym XML zjadał gigabajty pamięci serwera: proces dostaje limit przestrzeni adresowej
+        (domyślny także przy uszkodzonym job.json)."""
         import resource
-        bootstrap = Path(core.services.__file__).with_name('document_worker_bootstrap.py')
         runner = runpy.run_path
         _, hard = resource.getrlimit(resource.RLIMIT_AS)
         for config, expected in (({}, 1536), ({'memory_limit_mb': 2048}, 2048), ({'memory_limit_mb': True}, 1536),
-                                 ({'memory_limit_mb': 0}, None)):
-            (self.directory / 'job.json').write_text(json.dumps(config))
+                                 ({'memory_limit_mb': 0}, None), ('{uszkodzony', 1536)):
+            (self.directory / 'job.json').write_text(config if isinstance(config, str) else json.dumps(config))
             with self.subTest(config=config), patch('sys.argv', ['bootstrap', str(self.directory)]), \
                     patch('runpy.run_path'), patch('resource.setrlimit') as setrlimit:
-                runner(str(bootstrap), run_name='__main__')
+                runner(str(BOOTSTRAP), run_name='__main__')
                 if expected is None:
                     setrlimit.assert_not_called()
                 else:
@@ -263,23 +392,23 @@ class WorkerMainTests(SimpleTestCase):
                     setrlimit.assert_called_once_with(
                         resource.RLIMIT_AS, (limit if hard == resource.RLIM_INFINITY else min(limit, hard), hard))
 
-    def test_missing_library_exits_with_code_two(self):
-        with patch('core.services.document_conversion_worker.convert', side_effect=ImportError('tajne')):
-            self.assertEqual(self.run_worker(self.document(), formats=['pdf'], prepare=True), 2)
-        self.assertEqual(self.report()['error'], 'ImportError')
-        self.assertNotIn('tajne', json.dumps(self.report()))
+    def test_finite_hard_limit_caps_the_memory_limit(self):
+        import resource
+        hard = 600 * 1024 * 1024
+        with patch('resource.getrlimit', return_value=(hard, hard)), patch('resource.setrlimit') as setrlimit:
+            self.assertIsNone(self.run_bootstrap())
+        setrlimit.assert_called_once_with(resource.RLIMIT_AS, (hard, hard))
+
+    def test_platform_without_resource_module_runs_without_a_limit(self):
+        with patch.dict(sys.modules, {'resource': None}):
+            self.assertIsNone(self.run_bootstrap())
+        self.assertEqual(json.loads((self.directory / 'progress.json').read_text())['stage'], 'start')
+        self.assertFalse((self.directory / 'error.json').exists())
 
 
-XHTML = '{http://www.w3.org/1999/xhtml}'
-
-
-class EpubDocumentTests(SimpleTestCase):
+@tag('docx')
+class EpubDocumentTests(WorkerDirectoryMixin, SimpleTestCase):
     """Pełna konwersja DOCX → EPUB w tym procesie."""
-
-    def setUp(self):
-        temporary = TemporaryDirectory()
-        self.addCleanup(temporary.cleanup)
-        self.directory = Path(temporary.name)
 
     def epub(self, document):
         """{nazwa pliku rozdziału: drzewo XHTML}."""
@@ -328,13 +457,8 @@ class EpubDocumentTests(SimpleTestCase):
             self.assertIn(anchor, ids[target or name], href)
 
 
-class PageBreakAndSceneBreakTests(SimpleTestCase):
-    """Podziały stron Worda i separatory scen: odstęp w EPUB, nowa strona w PDF."""
-
-    def setUp(self):
-        temporary = TemporaryDirectory()
-        self.addCleanup(temporary.cleanup)
-        self.directory = Path(temporary.name)
+class PageBreakMarkupTests(SimpleTestCase):
+    """Separatory scen i znaczniki podziału strony w HTML z Mammotha (bez konwersji pliku)."""
 
     def test_scene_break_paragraphs(self):
         for text in ('*', '* * *', '***', '#', '# # #', '⁂', '~', '~ ~ ~', '— — —', '- - -', '• • •', '§ § §'):
@@ -377,6 +501,24 @@ class PageBreakAndSceneBreakTests(SimpleTestCase):
             '<p data-page-break="2">B</p>',
             '<ul><li><p>Punkt<br>dalej</p></li></ul>',
         ])
+
+    def test_markup_or_list_after_a_break_moves_to_the_next_block(self):
+        cases = (
+            ('znaczniki po podziale', '<p>A<br class="page-break"><strong>B</strong> C</p>',
+             ['<p>A</p>', '<p data-page-break="1"><strong>B</strong> C</p>']),
+            ('lista po podziale', '<p>Koniec<br class="page-break"></p><ul><li>Punkt</li></ul>',
+             ['<p>Koniec</p>', '<ul data-page-break="1"><li>Punkt</li></ul>']),
+        )
+        for label, markup, expected in cases:
+            with self.subTest(label):
+                root = html.fragment_fromstring(markup, create_parent='div')
+                split_page_breaks(root)
+                self.assertEqual([html.tostring(child, encoding='unicode') for child in root], expected)
+
+
+@tag('slow', 'docx')
+class PageBreakAndSceneBreakTests(WorkerDirectoryMixin, SimpleTestCase):
+    """Podziały stron Worda i separatory scen: odstęp w EPUB, nowa strona w PDF."""
 
     def epub(self, document):
         source = self.directory / 'source.docx'
@@ -498,3 +640,196 @@ class PageBreakAndSceneBreakTests(SimpleTestCase):
         pdf = (self.directory / 'document.pdf').read_bytes()
         self.assertEqual(len(re.findall(rb'/Type /Page\b(?!s)', pdf)), 3)
         self.assertFalse((self.directory / 'warnings.json').exists())
+
+
+@tag('docx')
+class HeadingConversionTests(WorkerDirectoryMixin, SimpleTestCase):
+    """Nagłówki w e-booku i konspekcie PDF według reguły nagłówków (także polskie nazwy stylów)."""
+
+    def test_polish_heading_names_make_chapters_and_the_pdf_outline(self):
+        """Regresja: styl „Nagłówek 1” (polska nazwa zamiast wbudowanej „heading 1”) był w e-booku zwykłym
+        akapitem – bez rozdziałów, spisu treści i konspektu PDF."""
+        source = self.directory / 'source.docx'
+        source.write_bytes(localized_style_names().getvalue())
+        sections, original = [], FPDF.start_section
+
+        def section_spy(pdf, name, level=0, strict=True):
+            sections.append((name, level))
+            return original(pdf, name, level, strict)
+        with patch.object(FPDF, 'start_section', section_spy):
+            convert(source, self.directory, ['epub', 'pdf'], 'Książka')
+        with ZipFile(self.directory / 'document.epub') as epub:
+            chapters = sorted(name for name in epub.namelist() if name.startswith('EPUB/chapter-'))
+            second = epub.read(chapters[1]).decode('utf-8')
+        self.assertEqual(len(chapters), 3)  # strona tytułowa i dwa rozdziały
+        self.assertIn('<h1 id="section-1" class="align-left">Rozdział pierwszy</h1>', second)
+        self.assertIn('<h2 id="section-2" class="align-left">Podrozdział</h2>', second)
+        self.assertEqual(sections, [('Rozdział pierwszy', 0), ('Podrozdział', 1), ('Rozdział drugi', 0)])
+
+    def test_heading_tags_and_pdf_outline_follow_the_outline_rule(self):
+        """h1–h6 w e-booku (i konspekt PDF z h1–h3) dokładnie wtedy, gdy reguła nagłówków daje poziom 1–6
+        (OUTLINE_CASES, do tego styl Nagwek2 bez definicji): także styl oparty na nagłówku, styl „Rozdział” i akapit
+        z poziomem konspektu, „Naglowek 1”; „Heading” bez numeru i nagłówek z poziomem 9 to zwykły akapit.
+        Styl pochodny w kopii dla Mammotha nie zmienia formatowania (wyśrodkowanie ze stylu „Rozdział”)."""
+        document = outline_document()
+        document.styles['Rozdział'].paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        undefined = document.add_paragraph('styl Nagwek2 bez definicji')
+        undefined._p.insert(0, parse_xml(f'<w:pPr {nsdecls("w")}><w:pStyle w:val="Nagwek2"/></w:pPr>'))
+        levels = {text: level for text, (_, _, level, _) in OUTLINE_CASES.items()} | {undefined.text: 2}
+        source = self.directory / 'source.docx'
+        document.save(source)
+        sections, original = [], FPDF.start_section
+
+        def section_spy(pdf, name, level=0, strict=True):
+            sections.append((name, level))
+            return original(pdf, name, level, strict)
+        with patch.object(FPDF, 'start_section', section_spy):
+            convert(source, self.directory, ['epub', 'pdf'], 'Książka')
+        with ZipFile(self.directory / 'document.epub') as epub:
+            markup = ''.join(epub.read(name).decode('utf-8') for name in sorted(epub.namelist())
+                             if name.startswith('EPUB/chapter-'))
+        found = {text: (tag, attributes) for tag, attributes, text in re.findall(r'<(\w+)([^>]*)>([^<]+)</\1>', markup)}
+        self.assertEqual({text: found[text][0] for text in levels},
+                         {text: f'h{level}' if level else 'p' for text, level in levels.items()})
+        self.assertIn('class="align-center"', found['styl Rozdział z poziomem konspektu 0'][1])
+        self.assertEqual(sections, [(text, level - 1) for text, level in levels.items() if level and level <= 3])
+
+
+class ParagraphKeyTests(SimpleTestCase):
+    def test_hyphen_characters_are_part_of_the_key(self):
+        paragraph = parse_xml(f'<w:p {nsdecls("w")}><w:r><w:t>e</w:t><w:noBreakHyphen/><w:t>mail</w:t>'
+                              '<w:softHyphen/><w:t>owy</w:t></w:r></w:p>')
+        self.assertEqual(docx_paragraph_key(paragraph), 'e\u2011mail\u00adowy')
+
+    def test_text_box_is_matched_by_its_fallback_copy_only(self):
+        document = Document()
+        add_text_box(document.add_paragraph('Przed polem.'), 'W polu')
+        queues = paragraph_queues(document)
+        # Akapit pola tekstowego liczy się raz (kopia w mc:Choice jest pomijana), a akapit z polem – bez jego treści.
+        self.assertEqual({key: len(queue) for key, queue in queues.items()}, {'Przed polem.': 1, 'W polu': 1})
+
+
+class DocumentStoriesTests(SimpleTestCase):
+    def test_fallback_paragraphs_are_optional_and_shared_parts_are_read_once(self):
+        document = Document()
+        add_text_box(document.add_paragraph('Przed polem.'), 'W polu')
+        header = document.sections[0].header
+        header.paragraphs[0].text = 'Nagłówek'
+        # Druga relacja do tej samej części (np. ten sam nagłówek dla stron parzystych).
+        document.part.rels.add_relationship(RT.HEADER, header.part, 'rIdShared')
+        for include_fallback, expected in ((True, ['Przed polem.', 'W polu', 'W polu']),
+                                           (False, ['Przed polem.', 'W polu'])):
+            with self.subTest(include_fallback=include_fallback):
+                stories, _ = document_stories(document, include_fallback=include_fallback)
+                self.assertEqual([story.name for story in stories], ['body', 'header'])
+                self.assertEqual([p.text for p in stories[0].paragraphs], expected)
+                self.assertEqual([p.text for p in stories[1].paragraphs], ['Nagłówek'])
+
+
+@tag('docx')
+class MammothSourceTests(SimpleTestCase):
+    """Kopia DOCX dla Mammotha: treść elementów, które Mammoth pomija albo skleja, jako zwykłe przebiegi; ukryty
+    tekst i odsyłacze donikąd usunięte z uwagą; plik bez takich elementów zostaje bez zmian."""
+
+    def html(self, data):
+        return mammoth.convert_to_html(BytesIO(data)).value
+
+    def test_markup_mammoth_skips_or_joins_becomes_plain_text(self):
+        """Regresja: e-book i PDF gubiły wynik w:fldSimple (numer podpisu z Worda, pole z OnlyOffice) i tekst
+        w w:dir/w:bdo, sklejały słowa wokół w:cr i w:ptab, a inicjał (w:dropCap) był osobnym akapitem."""
+        ptab = '<w:r><w:ptab w:relativeTo="margin" w:alignment="right" w:leader="none"/></w:r>'
+        cases = {
+            'pole proste': (p(r('Rysunek '), '<w:fldSimple w:instr=" SEQ Rysunek "><w:fldData>AA==</w:fldData>'
+                              + r('1') + '</w:fldSimple>'), '<p>Rysunek 1</p>'),
+            'kierunek tekstu': (p('<w:dir w:val="rtl">' + r('עברית') + '</w:dir>', r(' i '),
+                                  '<w:bdo w:val="ltr">' + r('LTR') + '</w:bdo>'), '<p>עברית i LTR</p>'),
+            'powrót karetki': (p(r('Przed'), '<w:r><w:cr/></w:r>', r('po')), '<p>Przed<br />po</p>'),
+            'tabulator położenia': (p(r('Lewa'), ptab, r('prawa')), '<p>Lewa\tprawa</p>'),
+            'tag inteligentny': (p('<w:smartTag w:element="City"><w:smartTagPr><w:attr w:name="a" w:val="b"/>'
+                                   '</w:smartTagPr>' + r('Warszawa') + '</w:smartTag>'), '<p>Warszawa</p>'),
+        }
+        for label, (body, expected) in cases.items():
+            with self.subTest(label):
+                data, notes = mammoth_source(word_docx(body).getvalue())
+                self.assertEqual(self.html(data), expected)
+                self.assertEqual(notes, [])
+        data, _ = mammoth_source(frames_and_drop_cap().getvalue())
+        self.assertTrue(self.html(data).startswith('<p>Wielki inicjał zaczyna ten akapit.</p>'))
+
+    def test_hidden_runs_and_dangling_note_references_are_dropped_with_notes(self):
+        """Tekst ukryty (własne w:vanish i styl znakowy z w:vanish) nie trafia do e-booka – jak przy wydruku;
+        w:vanish="0" i znaczniki pól zostają. Odsyłacz do przypisu, którego nie ma, przerywał konwersję."""
+        styles = STYLES + ('<w:style w:type="character" w:styleId="Ukryty"><w:name w:val="Ukryty"/><w:rPr><w:vanish/>'
+                           '</w:rPr></w:style>')
+        hidden = '<w:rPr><w:vanish/></w:rPr>'
+        index_entry = (f'<w:r>{hidden}<w:fldChar w:fldCharType="begin"/></w:r><w:r>{hidden}<w:instrText> XE "kot" '
+                       f'</w:instrText></w:r><w:r>{hidden}<w:fldChar w:fldCharType="end"/></w:r>')
+        body = p(r('Widać '), r('ukryte ', '<w:vanish/>'), r('stylem ', '<w:rStyle w:val="Ukryty"/>'),
+                 r('jawne', '<w:vanish w:val="0"/>'), index_entry, note_reference('footnote', 1),
+                 note_reference('footnote', 9), r('.'))
+        footnotes = notes_part('footnote', {1: r(' Przypis.')})
+        source = word_docx(body, styles=styles, parts={'word/footnotes.xml': footnotes},
+                           relationships=[('rIdFoot', f'{R_NS}/footnotes', 'footnotes.xml')],
+                           overrides=[('/word/footnotes.xml', WORD_PART.format('footnotes'))])
+        data, notes = mammoth_source(source.getvalue())
+        html = self.html(data)
+        # Odsyłacz w przebiegu z indeksem górnym: Mammoth dokłada własny <sup>.
+        self.assertTrue(html.startswith('<p>Widać jawne<sup><sup><a href="#footnote-1" id="footnote-ref-1">[1]</a>'
+                                        '</sup></sup>.</p>'), html)
+        for hidden_text in ('ukryte', 'stylem', 'footnote-9'):
+            self.assertNotIn(hidden_text, html)
+        self.assertEqual(notes, [MAMMOTH_NOTES['missing_note'], MAMMOTH_NOTES['hidden'] + ' (3 razy)'])
+
+    def test_charts_are_reported_and_plain_documents_stay_unchanged(self):
+        """Wykres i SmartArt Mammoth pomija bez ostrzeżenia – uwaga mówi o nich użytkownikowi; dokument bez
+        poprawianych elementów wraca bajt w bajt."""
+        charts = chart_and_smart_art().getvalue()
+        self.assertEqual(mammoth_source(charts), (charts, [MAMMOTH_NOTES['graphic'] + ' (2 razy)']))
+        plain = word_docx(p(r('Zwykły tekst.'))).getvalue()
+        self.assertEqual(mammoth_source(plain), (plain, []))
+
+
+@tag('docx')
+class ScriptModeWorkerTests(WorkerDirectoryMixin, SimpleTestCase):
+    def run_job(self, document, **config):
+        """Uruchom bootstrap jako __main__; zwraca kod wyjścia procesu roboczego."""
+        document.save(self.directory / 'source.docx')
+        # memory_limit_mb = 0: bez limitu RLIMIT_AS, który dotyczyłby całego procesu testów.
+        (self.directory / 'job.json').write_text(json.dumps({'title': 'Skrypt', 'memory_limit_mb': 0, **config}),
+                                                 encoding='utf-8')
+        with script_mode(self.directory), self.assertRaises(SystemExit) as caught:
+            runpy.run_path(str(BOOTSTRAP), run_name='__main__')
+        return caught.exception.code
+
+    @tag('slow')
+    def test_full_job_runs_every_step_without_the_package(self):
+        """Odkurzacz, miękkie entery, ujednolicenie, powtórzenia, EPUB i PDF – wszystko z importów skryptu."""
+        document = Document()
+        paragraph = document.add_paragraph('Kot  i kot "siedzą" obok')
+        paragraph.add_run().add_break()
+        paragraph.add_run('drugiej linii.')
+        code = self.run_job(document, formats=['epub', 'pdf'], prepare=True, clean=True, cleaner_rules=None,
+                            remove_soft_whitespace=True, include_docx=True, cleaner_summary=True,
+                            repetitions={'min_word_length': 3, 'analysis_options': {
+                                'long_sentences': False, 'long_paragraphs': False}})
+        self.assertEqual(code, 0)
+        self.assertFalse((self.directory / 'error.json').exists())
+        marked = Document(self.directory / 'source.docx')
+        # Miękki enter dzieli akapit; reguły domyślne poprawiają spacje i cudzysłowy.
+        self.assertEqual([p.text for p in marked.paragraphs], ['Kot i kot „siedzą” obok', 'drugiej linii.'])
+        self.assertTrue(any(run.font.color.rgb for run in marked.paragraphs[0].runs))
+        self.assertGreater(json.loads((self.directory / 'summary.json').read_text(encoding='utf-8'))
+                           ['spaces'], 0)
+        with ZipFile(self.directory / 'document.epub') as epub:
+            self.assertIn('drugiej linii.', epub.read('EPUB/content.xhtml').decode())
+        self.assertTrue((self.directory / 'document.pdf').read_bytes().startswith(b'%PDF'))
+        self.assertEqual(json.loads((self.directory / 'images.json').read_text()), {'removed_images': 0})
+
+    def test_inspection_and_public_errors_without_the_package(self):
+        """Inspekcja przebudowy (z formatem strony) kończy się sukcesem, a błąd dokumentu ma publiczny kod."""
+        self.assertEqual(self.run_job(Document(), formats=[], inspect=True, keep_page_format=True), 0)
+        document = Document()
+        document.add_paragraph('a' * 20_001)
+        self.assertEqual(self.run_job(document, formats=['epub'], prepare=True, clean=True, cleaner_rules=[]), 3)
+        report = json.loads((self.directory / 'error.json').read_text(encoding='utf-8'))
+        self.assertEqual((report['error'], report['public_code']), ('DocumentInputError', 'cleaner_paragraph_limit'))

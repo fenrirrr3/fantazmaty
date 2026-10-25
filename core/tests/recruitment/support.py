@@ -2,7 +2,6 @@
 from copy import deepcopy
 from email.message import EmailMessage
 from io import BytesIO
-from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -12,6 +11,7 @@ from docx import Document
 
 from core.models import MailboxConnection
 from core.services.mailbox_import import mailbox_key
+from core.tests.security.support import TemporaryActivitySpoolMixin
 from core.views.recruitment_mailbox import SALT as RECRUITMENT_SALT
 from fantazmaty.testing import create_member, create_superuser
 from texts.models import Anthology
@@ -130,18 +130,6 @@ def sized_fetch(raw):
             return 'OK', [f'1 (UID {uid} RFC822.SIZE {len(raw)})'.encode()]
         return 'OK', [(f'1 (UID {uid} BODY[] {{{len(raw)}}})'.encode(), raw)]
     return fetch
-
-
-class TemporaryActivitySpoolMixin:
-    """Dziennik aktywności zapisywany do katalogu tymczasowego testu."""
-
-    def setUp(self):
-        super().setUp()
-        temporary = TemporaryDirectory()
-        self.addCleanup(temporary.cleanup)
-        override = self.settings(ACTIVITY_SPOOL_DIR=temporary.name)
-        override.enable()
-        self.addCleanup(override.disable)
 
 
 class RecruitmentMailboxMixin:

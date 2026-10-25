@@ -1,6 +1,8 @@
 """Paginacja tabel (zapamiętany rozmiar strony, skok do strony, parametry list) oraz kopiowanie
 e-maili wszystkich przefiltrowanych wierszy."""
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import AnonymousUser
+from django.contrib.sessions.backends.signed_cookies import SessionStore
 from django.test import Client, RequestFactory, SimpleTestCase, TestCase
 from django.urls import reverse
 from lxml import html
@@ -50,6 +52,15 @@ class PageSizePreferenceTests(SimpleTestCase):
         self.assertEqual(returned.paginator.per_page, 50)
         self.assertEqual(returned.number, 1)
 
+    def test_page_size_rules(self):
+        request = RequestFactory().get('/lista/')
+        request.session = SessionStore()
+        request.session['cms_page_sizes'] = {'/lista/|page_size|': 7}
+        self.assertEqual(get_page_size(request), 25)
+        with self.assertRaisesMessage(ValueError, 'Domyślny rozmiar strony'):
+            get_page_size(request, default=7)
+
+
 
 class PaginationNavigationTests(TestCase):
     @classmethod
@@ -95,6 +106,15 @@ class PaginationNavigationTests(TestCase):
         response = self.client.get(reverse('core:data_integrity'), {'tab': 'unlinked', 'page_size': 100})
         self.assert_jump(response, 1, 1, 'page')
         self.assertContains(response, 'tab=unlinked')
+
+    def test_unordered_queryset_is_paginated_by_primary_key(self):
+        for name in ('Bartek', 'Adam'):
+            Person.objects.create(first_name=name, last_name='Strona')
+        request = RequestFactory().get('/lista/')
+        request.user = AnonymousUser()
+        page = paginate_items(request, Person.objects.order_by())
+        self.assertEqual([person.first_name for person in page], ['Bartek', 'Adam'])
+
 
 
 class EmailCopyTests(TestCase):

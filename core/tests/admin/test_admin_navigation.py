@@ -4,11 +4,14 @@ import re
 from django.contrib import admin
 from django.contrib.admin.options import BaseModelAdmin
 from django.templatetags.static import static
+from django.http import HttpResponse
 from django.test import RequestFactory, TestCase
-from django.urls import NoReverseMatch, reverse
+from django.urls import NoReverseMatch, include, path, reverse
+from django.urls.resolvers import URLResolver
 from django.utils import timezone
 
 from authors.models import Author
+from core.admin_urls import polish_admin_patterns
 from fantazmaty.testing import create_superuser
 from people.models import Person
 from texts.models import Anthology, Review, Text
@@ -158,10 +161,30 @@ class AdminNavigationTests(TestCase):
         ])
 
     def test_custom_admin_site_leaves_django_base_method_unchanged(self):
-        """Chroni przed łataniem BaseModelAdmin przez własny AdminSite i przed powrotem starego widoku zbiorczego."""
+        """Chroni przed łataniem BaseModelAdmin przez własny AdminSite."""
         from core.admin_site import CMSAdminSite
 
         self.assertIsInstance(admin.site, CMSAdminSite)
         self.assertEqual(BaseModelAdmin.formfield_for_foreignkey.__module__, 'django.contrib.admin.options')
-        with self.assertRaises(NoReverseMatch):
-            reverse('core:bulk_text_action')
+
+    def test_polish_admin_app_list_and_nested_routes(self):
+        """Sekcja panelu ma polski adres; zagnieżdżone trasy są tłumaczone, a dawne angielskie nie istnieją."""
+        admin = create_superuser('panel-admin')
+        self.client.force_login(admin)
+        response = self.client.get(reverse('admin:app_list', args=['authors']))
+        self.assertEqual(response.wsgi_request.path, '/panel/autorzy/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['app_label'], 'authors')
+
+        def view(request):
+            return HttpResponse()
+
+        patterns = polish_admin_patterns([path('authors/', include([path('author/', include([
+            path('<int:pk>/', view, name='inner')]))]))])
+        self.assertEqual([str(pattern.pattern) for pattern in patterns], ['autorzy/'])
+        nested = patterns[0].url_patterns[0]
+        self.assertIsInstance(nested, URLResolver)
+        self.assertEqual(nested.url_patterns[0].name, 'inner')
+        self.assertEqual(patterns[0].resolve('autorzy/autor/5/').kwargs, {'pk': 5})
+        self.assertEqual(self.client.get('/panel/authors/').status_code, 404)
+

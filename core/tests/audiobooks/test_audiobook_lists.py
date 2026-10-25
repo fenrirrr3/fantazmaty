@@ -42,9 +42,12 @@ class ProductionTablesTests(AudiobookProductionTestData, TestCase):
         for route in (self.queue_url, self.list_url):
             page = self.client.get(route, {'q': 'Tekst', 'sort': '-title', 'page': 2})
             self.assertEqual([row['title'] for row in page.context['texts']], [f'Tekst {i:02}' for i in range(4, -1, -1)])
-            for sort in ('author', 'status', '-status', 'narrator', 'engineer', 'proofreader', 'recording',
-                         'proofreading', 'corrections', 'editing', 'premiere', 'youtube', 'hearthis', 'authors__email'):
-                self.assertEqual(self.client.get(route, {'sort': sort}).status_code, 200)
+        # Każdą kolumnę listy Audiobooki sortuje kontrakt w core/tests/ui/test_table_sorting.py; tu – Korekta
+        # audiobooków (poza kontraktem) z wieloma wierszami.
+        for sort in ('author', 'status', '-status', 'narrator', 'engineer', 'proofreader', 'recording',
+                     'proofreading', 'corrections', 'editing', 'premiere', 'youtube', 'hearthis', 'authors__email'):
+            with self.subTest(sort=sort):
+                self.assertEqual(self.client.get(self.queue_url, {'sort': sort}).status_code, 200)
         page = self.client.get(self.list_url, {'status': ['proofreading', 'corrections']})
         self.assertEqual(page.context['page_obj'].paginator.count, 31)
         self.assertContains(page, 'audio-status--proofreading')

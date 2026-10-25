@@ -1,5 +1,6 @@
 """Przejmowanie etapów: formularze na liście i w szczegółach, rezerwacje, kandydaci, powody braku możliwości
-przejęcia, blokady zakończonych weryfikacji oraz blokada pobierania ustawiana przez superusera."""
+przejęcia, blokady zakończonych weryfikacji, przejęcie redakcji po statusie z admina oraz blokada pobierania
+ustawiana przez superusera."""
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -7,12 +8,13 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
-from django.test import TestCase
+from django.test import TestCase, tag
 from django.urls import reverse
 from django.utils import timezone
 from lxml import html
 
 from core.selectors.texts import text_detail_context, text_list_context
+from core.edit_versions import version_of
 from core.models import WorkflowEvent
 from core.services.texts import TAKE_LOCK_EVENTS, change_scheduled_stage, start_assigned_stage, toggle_take_lock
 from core.translation_scope import frontend_scope
@@ -21,17 +23,22 @@ from fantazmaty.testing.workflow import StatusAssignmentFixtures, start_reserved
 from people.models import Person, Vacation
 from texts.models import Anthology, Text
 from texts.novels import assign_chapters, edit_token as novel_token, locked_book, new_chapter
+from workflow.admin_status import set_admin_status
 from workflow.availability import claim_access, claim_reason, eligible_role_users, role_access_reason
 from workflow.models import WorkflowRepetition, WorkflowRoleAssignment as A, WorkflowStage as S
 from workflow.read_queries import available_stages
 from workflow.repetitions import repeat_stages
 from workflow.services import (
-    claim_ready_for_editing, claim_stage, complete_stage, create_pending_stage, resume_editing,
+    claim_ready_for_editing, claim_stage, complete_stage, create_pending_stage, current_assignment_queryset,
+    current_stage_queryset, resume_editing,
     send_to_first_verification, send_to_second_verification, TAKE_LOCKED_MESSAGE,
 )
 from workflow.state import stage_is_active
 
 from .support import AnthologyWorkflowMixin, add_roles, importing
+
+StageType = S.StageType
+Role = A.Role
 
 
 class ClaimFormsTests(AnthologyWorkflowMixin, TestCase):
@@ -137,7 +144,7 @@ class CompletedVerificationClaimTests(TestCase):
     def setUp(self):
         self.client.force_login(self.user)
 
-    def imported(self, kind, *, role=None, current=True):
+    def imported(self, kind, role=None, *, current=True):
         assignment = (A.objects.create(text=self.text, role=role, assigned_to=self.other,
                                         is_current=False) if role else None)
         with importing():
@@ -145,38 +152,32 @@ class CompletedVerificationClaimTests(TestCase):
                 is_completed=True, imported_completed=True, is_current=current,
                 started_at=None, ended_at=None)
 
-    def obsolete_first(self):
-        completed = self.imported('first_verification', role='verifier_1')
-        self.imported('editing')
-        pending = S.objects.create(text=self.text, stage_type='first_verification', iteration=2)
-        return completed, pending
-
-    def test_completed_first_hides_legacy_pending_row_and_blocks_claim_policy(self):
-        completed, pending = self.obsolete_first()
-        self.assertFalse(available_stages(self.user, claim_access(self.user)).filter(pk=pending.pk).exists())
-        reason = claim_reason(pending, self.user,
-            list(S.objects.current_cycle().filter(text=self.text)),
-            list(A.objects.current_cycle().filter(text=self.text)))
-        self.assertIn('już zakończona', reason)
-        with self.assertRaisesMessage(ValidationError, 'już zakończona'):
-            claim_stage(self.text, 'first_verification', self.user)
-        completed.refresh_from_db()
-        self.assertTrue(completed.is_completed)
-        self.assertIsNone(completed.started_at)
-        self.assertIsNone(completed.ended_at)
-
-    def test_click_on_obsolete_first_returns_message_without_500_or_new_assignment(self):
-        completed, pending = self.obsolete_first()
-        response = self.client.post(reverse('core:take_workflow_stage', args=[pending.pk]))
-        self.assertRedirects(response, reverse('core:available_texts'), fetch_redirect_response=False)
-        messages = [str(message) for message in response.wsgi_request._messages]
-        self.assertTrue(any('już zakończona' in message for message in messages))
-        pending.refresh_from_db()
-        self.assertIsNone(pending.assignment_id)
-        self.assertIsNone(pending.started_at)
-        self.assertEqual(A.objects.filter(text=self.text, role='verifier_1').count(), 1)
-        completed.refresh_from_db()
-        self.assertEqual(completed.assignment.assigned_to_id, self.other.pk)
+    def test_pending_verification_after_completed_one_cannot_be_claimed(self):
+        """Obrona przed stanem, którego proces już nie tworzy (pusta W1/W2 po zakończonej tego samego przebiegu
+        bez powtórzenia): nie ma jej na liście „Do wzięcia”, powód i usługa mówią „już zakończona”, a kliknięcie
+        kończy się komunikatem bez nowego przydziału."""
+        verifications = (('first_verification', 'verifier_1'), ('second_verification', 'verifier_2'))
+        for index, (kind, role) in enumerate(verifications, 1):
+            with self.subTest(kind=kind), transaction.atomic():
+                completed = [self.imported(*verification) for verification in verifications[:index]][-1]
+                self.imported('editing')
+                pending = S.objects.create(text=self.text, stage_type=kind, iteration=2)
+                self.assertFalse(available_stages(self.user, claim_access(self.user)).filter(pk=pending.pk).exists())
+                reason = claim_reason(pending, self.user, list(S.objects.current_cycle().filter(text=self.text)),
+                                      list(A.objects.current_cycle().filter(text=self.text)))
+                self.assertIn('już zakończona', reason)
+                with self.assertRaisesMessage(ValidationError, 'już zakończona'):
+                    claim_stage(self.text, kind, self.user)
+                response = self.client.post(reverse('core:take_workflow_stage', args=[pending.pk]))
+                self.assertRedirects(response, reverse('core:available_texts'), fetch_redirect_response=False)
+                self.assertTrue(any('już zakończona' in str(message) for message in response.wsgi_request._messages))
+                pending.refresh_from_db()
+                completed.refresh_from_db()
+                self.assertEqual((pending.assignment_id, pending.started_at), (None, None))
+                self.assertEqual(A.objects.filter(text=self.text, role=role).count(), 1)
+                self.assertEqual((completed.is_completed, completed.started_at, completed.ended_at), (True, None, None))
+                self.assertEqual(completed.assignment.assigned_to_id, self.other.pk)
+                transaction.set_rollback(True)
 
     def test_automatic_editing_claim_keeps_completed_first_without_creating_another(self):
         completed = self.imported('first_verification', role='verifier_1')
@@ -240,15 +241,6 @@ class CompletedVerificationClaimTests(TestCase):
         self.assertTrue(snapshot(self.text.pk, 'default')['stages'][pending.pk][0]
                         .startswith('Pierwsza korekta – wykonanie 2'))
 
-    def test_completed_second_is_not_available_again(self):
-        self.imported('first_verification', role='verifier_1')
-        self.imported('second_verification', role='verifier_2')
-        self.imported('editing')
-        pending = S.objects.create(text=self.text, stage_type='second_verification', iteration=2)
-        self.assertFalse(available_stages(self.user, claim_access(self.user)).filter(pk=pending.pk).exists())
-        with self.assertRaisesMessage(ValidationError, 'Druga weryfikacja jest już zakończona'):
-            claim_stage(self.text, 'second_verification', self.user)
-
     def test_explicit_repetition_still_allows_another_first_verification(self):
         self.imported('first_verification', role='verifier_1')
         S.objects.create(text=self.text, stage_type='ready')
@@ -309,6 +301,35 @@ class CompletedVerificationClaimTests(TestCase):
         claim_stage(self.text, 'first_verification', self.user)
         pending.refresh_from_db()
         self.assertEqual(pending.started_at, self.today)
+
+
+class CycleEntryClaimTests(TestCase):
+    """Tekst ustawiony w adminie na „Redakcja” – przejęcie pierwszego etapu przygotowuje rezerwację W1."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.admin = create_superuser('cykl-admin')
+        cls.editor = create_member('cykl-redaktor', 'Redaktor')
+
+    def test_claiming_lone_editing_stage_prepares_first_verification_once(self):
+        """Nowa rezerwacja W1 powstaje tylko wtedy, gdy pierwsza weryfikacja nie została już wykonana."""
+        book = Anthology.objects.create(title='Antologia')
+        for title, verified in (('Wejście w proces', False), ('Powrót po weryfikacji', True)):
+            with self.subTest(title):
+                text = Text.objects.create(title=title, length=100, anthology=book)
+                S.objects.create(text=text, stage_type=StageType.READY_FOR_EDITING)
+                if verified:
+                    S.objects.create(text=text, stage_type=StageType.FIRST_VERIFICATION, is_completed=True,
+                                     started_at=timezone.localdate(), ended_at=timezone.localdate())
+                set_admin_status(text.pk, StageType.EDITING, self.admin, version_of(text))
+                editing = claim_stage(text, StageType.EDITING, self.editor)
+                editing.refresh_from_db()
+                self.assertEqual(editing.started_at, timezone.localdate())
+                self.assertTrue(current_assignment_queryset(text).filter(
+                    role=Role.EDITOR, assigned_to=self.editor).exists())
+                pending = current_stage_queryset(text).filter(stage_type=StageType.FIRST_VERIFICATION)
+                self.assertEqual(pending.exists(), not verified)
+                self.assertFalse(pending.filter(started_at__isnull=False).exists())
 
 
 class CandidateEligibilityTests(StatusAssignmentFixtures):
@@ -478,6 +499,7 @@ class ClaimReasonTests(TestCase):
                                      repetition=run), '')
 
 
+@tag('slow')
 class TakeLockTests(AnthologyWorkflowMixin, TestCase):
     """„Zablokuj tekst”: superuser wstrzymuje pobieranie tekstu do etapów i w tym samym miejscu je przywraca."""
 

@@ -10,7 +10,7 @@ from lxml import html
 
 from core.odkurzacz_forms import OdkurzaczForm
 from fantazmaty.testing import assign_artists, create_member, create_superuser, form_value
-from illustrations.directory import edit_token
+from illustrations.directory import IllustratorForm, edit_token
 from illustrations.editing import AssignmentForm
 from illustrations.models import Illustration, Illustrator
 from people.models import Person, Role
@@ -343,3 +343,29 @@ class IllustratorPseudonymTests(TestCase):
         doc = html.fromstring(self.client.get(
             reverse('admin:illustrations_illustrator_change', args=[self.artist.pk])).content)
         self.assertTrue(doc.xpath('//input[@name="pseudonym"]'))
+
+
+class IllustratorContactRaceTests(TestCase):
+    """Wyścig przy dodawaniu kontaktu do spisu ilustratorów."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.admin = create_superuser('directory-race')
+
+    def test_contact_added_concurrently_with_same_email_is_reported(self):
+        """Wpis z tym samym adresem powstał między walidacją a zapisem: formularz pokazuje błąd, nic się nie psuje."""
+        self.client.force_login(self.admin)
+        original = IllustratorForm.save
+
+        def save_after_concurrent_insert(form, *args, **kwargs):
+            Illustrator.objects.create(first_name='Równoległa', last_name='Osoba', email='rysuje@example.test')
+            return original(form, *args, **kwargs)
+
+        with patch.object(IllustratorForm, 'save', save_after_concurrent_insert), \
+                patch('core.activity_spool.enqueue_activity'):
+            response = self.client.post(reverse('illustrations:illustrator_add'), {
+                'first_name': 'Ewa', 'last_name': 'Rysuje', 'email': 'rysuje@example.test'})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('nie został już dodany', ' '.join(response.context['form'].errors['email']))
+        # Zapis kontaktu został wycofany razem z próbą (równoległy wpis należy do innej transakcji).
+        self.assertFalse(Illustrator.objects.filter(first_name='Ewa').exists())

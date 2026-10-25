@@ -1,7 +1,7 @@
 """Słuchaj WWW – endpoint ``/api/strona/sluchaj/`` (klucz, ślad pobrania), zakładka System → „Słuchaj WWW” (dostęp,
 liczniki, ostrzeżenia, adres strony, dodanie antologii, ponowne dopasowanie, JSON) i panel admina antologii z czasami."""
 from django.contrib import admin
-from django.test import RequestFactory, TestCase, override_settings
+from django.test import RequestFactory, TestCase, override_settings, tag
 from django.urls import reverse
 from lxml import html
 
@@ -17,6 +17,7 @@ API = reverse('core:site_listen_api')
 URL = reverse('core:site_listen')
 
 
+@tag('external')
 class SiteListenApiTests(ListenDataMixin, TestCase):
     def test_key_errors(self):
         """Bez SITE_API_KEY – 503; bez nagłówka, ze złym kluczem albo jego prefiksem – 403; POST – 405."""

@@ -30,7 +30,7 @@ mają pierwszeństwo przed plikiem `.env`.
 
 ```bash
 # Szybki przebieg lokalny (SQLite w pamięci; bez wolnych testów, migracji danych i prawdziwych DOCX):
-python manage.py test --settings=fantazmaty.test_settings --parallel --exclude-tag slow --exclude-tag migration
+python manage.py test --settings=fantazmaty.test_settings --parallel --exclude-tag slow --exclude-tag migration --exclude-tag docx
 
 # Tylko testy dotknięte zmianami – skrypt wypisuje gotowe polecenia (--fast dodaje pomijane tagi):
 python tools/ci/affected.py --base origin/main      # albo --base HEAD~1, --files <ścieżki>, --json
@@ -45,8 +45,9 @@ npx --yes stylelint@16.10.0 "core/static/core/*.css"
 ```
 
 Tagi testów (`@tag` na klasie): `slow` – klasa ≥ 5 s albo test ≥ 1,5 s; `migration` – migracje danych
-(`TransactionTestCase` z `MigrationExecutor`, zawsze razem ze `slow`); `js` – skrypty interfejsu (wymaga Node.js).
-Obszar wybiera się etykietą pakietu (`core.tests.programs`,
+(`TransactionTestCase` z `MigrationExecutor`, zawsze razem ze `slow`); `docx` – konwersja, przebudowa, podział
+i scalanie prawdziwych plików DOCX/PDF/EPUB; `external` – atrapy usług zewnętrznych (IMAP/SMTP, Dropbox, Discord,
+API dla WordPressa); `js` – skrypty interfejsu (wymaga Node.js). Obszar wybiera się etykietą pakietu (`core.tests.programs`,
 `workflow`, `illustrations`…), tagiem tylko zawęża.
 
 `tools/ci/affected.py` (czysty Python, bez Django) przypisuje zmienione pliki do pakietów testów – tabela `RULES`

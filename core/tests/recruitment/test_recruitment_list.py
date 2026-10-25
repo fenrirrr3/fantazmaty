@@ -14,7 +14,7 @@ from core.models import MailboxConnection, Recruitment
 from core.recruitment_message import form_fields
 from core.services.recruitment_decisions import set_all_decisions
 from core.services.mailbox import MailboxError
-from core.services.recruitment_samples import parse_sample
+from core.services.recruitment_samples import parse_sample, plain_body
 from people.models import Person, Role
 
 from .support import FORM_BODY, RecruitmentTeamMixin
@@ -149,6 +149,37 @@ class RecruitmentListTests(RecruitmentTeamMixin, TestCase):
             'recruitment_subjects': '', 'is_active': 'on'})
         self.assertFalse(form.is_valid())
         self.assertIn('tylko jedna skrzynka rekrutacji', str(form.errors))
+
+    def message(self, body, subtype='plain', sender='Kandydat <candidate@example.test>'):
+        msg = EmailMessage()
+        msg['From'] = sender
+        msg['Subject'] = 'Zgłoszenie'
+        msg.set_content(body, subtype=subtype)
+        return msg
+
+    def test_html_body_drops_script_only_document_and_unsafe_links(self):
+        cases = {
+            'dokument złożony z samej ramki': ('<iframe src="https://remote.invalid/"></iframe>', ''),
+            'link javascript bez adresu w treści': ('<p><a href="javascript:alert(1)">Kliknij</a> tutaj</p>',
+                                                    'Kliknij tutaj'),
+            'bezpieczny link z adresem': ('<p><a href="https://example.test/">Portfolio</a></p>',
+                                          'Portfolio (https://example.test/)'),
+        }
+        for name, (body, expected) in cases.items():
+            with self.subTest(name):
+                self.assertEqual(plain_body(self.message(body, 'html')), expected)
+
+    def test_overlong_identity_fields_are_left_empty_instead_of_truncated(self):
+        """Za długie imię lub adres nie są obcinane: rekord dostaje puste pole, treść pozostaje w wiadomości."""
+        long_email = 'a' * 64 + '@' + ('b' * 63 + '.') * 3 + 'com'
+        body = FORM_BODY.replace('Maria Anna Nowak-Kowalska', 'Anna ' * 70).replace('Candidate@Example.test',
+                                                                                     long_email)
+        fields = form_fields(body)
+        self.assertEqual((fields['name'], fields['email']), ('', ''))
+        parsed = parse_sample(self.message('Treść', sender=long_email).as_bytes())
+        self.assertEqual(parsed['email'], '')
+        self.assertIn(long_email, parsed['mail_sender'])
+
 
 
 class RecruitmentDashboardTests(TestCase):

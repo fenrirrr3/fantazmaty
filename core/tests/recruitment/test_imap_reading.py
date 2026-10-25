@@ -18,6 +18,7 @@ from fantazmaty.testing.data import sample
 from .support import csv_mail, fake_imap, identity_mail, named_mail, sized_fetch
 
 
+@tag('external')
 class SubjectFilterTests(SimpleTestCase):
     @patch('core.services.mailbox.imaplib.IMAP4_SSL')
     def test_utf8_subject_search_precedes_pagination_and_is_readonly(self, imap):
@@ -42,6 +43,7 @@ class SubjectFilterTests(SimpleTestCase):
             imap.assert_not_called()
 
 
+@tag('external')
 class HeaderReadingTests(TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -82,7 +84,6 @@ class HeaderReadingTests(TestCase):
             read_headers(self.submissions, sent_since='2026-02-31')
         imap.assert_not_called()
 
-    @tag('slow')
     @patch('core.services.mailbox.imaplib.IMAP4_SSL')
     def test_exact_roles_counts_pagination_copy_multi_role_and_all(self, imap):
         """Filtr „Korekta” nie łapie „Korekta audiobooków”; liczniki i strony liczone po dokładnych rolach."""
@@ -178,6 +179,7 @@ class HeaderReadingTests(TestCase):
         self.assertFalse(MailboxDownload.objects.exists())
 
 
+@tag('external')
 class MessageFetchTests(TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -300,6 +302,7 @@ class FolderEncodingTests(SimpleTestCase):
         self.assertEqual(encode_folder('Zgłoszenia/żółć'), 'Zg&AUI-oszenia/&AXwA8wFCAQc-')
 
 
+@tag('external')
 class HeaderReadingErrorTests(SimpleTestCase):
     """Każdy błąd serwera lub konfiguracji kończy się czytelnym MailboxError, a połączenie jest zamykane."""
 
@@ -426,6 +429,7 @@ class HeaderReadingErrorTests(SimpleTestCase):
         self.assertEqual(client.uid.call_args_list[0].args, ('SEARCH', None, 'UID', '1:30'))
 
 
+@tag('external')
 class SenderCopyErrorTests(SimpleTestCase):
     @patch('core.services.mailbox_email_copy.read_headers')
     def test_changed_folder_or_looping_cursor_stops_copy(self, read):
@@ -439,6 +443,7 @@ class SenderCopyErrorTests(SimpleTestCase):
         self.assertEqual(read.call_count, 3)
 
 
+@tag('external')
 class MessageFetchErrorTests(TestCase):
     """Pobieranie wiadomości: limity rozmiaru, niepełne odpowiedzi i błędy serwera (z listą pominiętych i bez niej)."""
 

@@ -166,6 +166,7 @@ REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
 MS_REL = 'http://schemas.microsoft.com/office'
 
 
+@tag('docx')
 class SplitDocumentTests(SimpleTestCase):
     """split_document() w tym procesie: rozpoznanie nagłówków, nazwy plików, części pakietu i przypadki brzegowe."""
 
@@ -372,7 +373,7 @@ def _without_section(data):
     return root
 
 
-@tag('slow')
+@tag('docx')
 class SplitProgramTests(IsolatedProgramDirsMixin, TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -579,7 +580,7 @@ class SplitMailingMatchTests(SplitMailingData):
                 ('no_match', '', [], ''),
                 ('no_match', '', [], '')]),
             ('powtórzony nagłówek', parts[:1] * 2, [('no_match', '', [], 'Ten sam nagłówek ma kilka części dokumentu.')] * 2),
-            ('stary wynik bez tytułów', [{'file': '01 Pierwsze opowiadanie.docx'}],
+            ('część bez tytułu – nagłówek z nazwy pliku', [{'file': '01 Pierwsze opowiadanie.docx', 'title': ''}],
              [('ready', 'Pierwsze opowiadanie', ['jan@example.test'], '')]),
         )
         for label, rows, expected in cases:
@@ -687,6 +688,7 @@ class SplitMailingMatchTests(SplitMailingData):
                 self.assertEqual(mailing.mail_content(batch, group)[0], expected)
 
 
+@tag('external')
 class SplitMailingGroupTests(SimpleTestCase):
     """Jeden mail na zbiór odbiorców: załączniki tekstów grupy, limit rozmiaru, raport i błąd całej grupy."""
 
@@ -811,6 +813,7 @@ class SplitMailingGroupTests(SimpleTestCase):
                 self.assertLessEqual(len(subject), mailing.SUBJECT_LIMIT)
 
 
+@tag('external')
 class SplitMailingServiceErrorTests(SimpleTestCase):
     """Serwis wysyłki przy uszkodzonym wyniku podziału, po wysłaniu partii i przy błędach SMTP."""
 
@@ -909,6 +912,7 @@ class SplitMailingServiceErrorTests(SimpleTestCase):
                 self.assertEqual(mail.outbox, [])
 
 
+@tag('external')
 class SplitMailingRetryTests(SimpleTestCase):
     """Ponowienie częściowej wysyłki: tylko niewysłane wiersze, znacznik „trwa wysyłka”, archiwum do pełnej wysyłki."""
 
@@ -986,6 +990,7 @@ class SplitMailingRetryTests(SimpleTestCase):
         self.assertEqual(len(mail.outbox), 2)
 
 
+@tag('slow', 'external')
 class SplitMailingViewTests(IsolatedProgramDirsMixin, SplitMailingData):
     """Formularz, lista kontrolna, wysyłka (SMTP podmienione), raport, uprawnienia i ochrona przed podwójną wysyłką."""
 
@@ -1441,7 +1446,7 @@ class SplitMailingViewTests(IsolatedProgramDirsMixin, SplitMailingData):
         self.assertEqual(self.client.get(url).status_code, 200)
 
 
-@tag('slow')
+@tag('docx', 'external')
 class SplitMailingEndToEndTests(IsolatedProgramDirsMixin, TestCase):
     @classmethod
     def setUpTestData(cls):

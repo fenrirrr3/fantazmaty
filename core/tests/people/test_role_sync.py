@@ -1,10 +1,14 @@
 """Role zespołu: profil osoby jest źródłem ról i imion (grupy konta nie są lustrem ról), a utrata roli koordynatorskiej odbiera uprawnienia."""
+import json
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
+from django.core import serializers
 from django.test import TestCase
 
 from core.permissions import is_coordinator
-from fantazmaty.testing import create_member
+from fantazmaty.testing import create_member, create_superuser
+from people.coordinator_access import revoke_coordinator
 from people.models import Person, Role
 
 
@@ -81,6 +85,21 @@ class AccountGroupMirrorTests(TestCase):
         self.assertEqual(self.member.email, 'sync-member@example.com')
 
 
+    def test_fixture_restore_does_not_sync_account_with_profile(self):
+        """Odtwarzanie z kopii (zapis surowy) nie nadpisuje danych konta ani jego grup."""
+        user = get_user_model().objects.create_user('z-kopii', first_name='Konto')
+        group = Group.objects.create(name='Grupa z kopii')
+        user.groups.add(group)
+        payload = json.dumps([{'model': 'people.person', 'pk': 9999,
+                               'fields': {'first_name': 'Profil', 'last_name': 'Kopia', 'user': user.pk}}])
+        for obj in serializers.deserialize('json', payload):
+            obj.save()
+        user.refresh_from_db()
+        self.assertEqual(user.first_name, 'Konto')
+        self.assertEqual(list(user.groups.values_list('name', flat=True)), ['Grupa z kopii'])
+        self.assertTrue(Person.objects.filter(pk=9999, user=user).exists())
+
+
 class CoordinatorRevocationTests(TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -126,3 +145,24 @@ class CoordinatorRevocationTests(TestCase):
         role.name = 'Recenzent tekstów'
         role.save()
         self.assertTrue(is_coordinator(self.coordinator))
+
+    def test_revocation_for_profile_without_account_and_for_superuser(self):
+        """Profil bez konta traci rolę; superużytkownik zachowuje dostęp do panelu administracyjnego."""
+        coordinator_role = Role.objects.get_or_create(name='Koordynator redakcji')[0]
+        external = Person.objects.create(first_name='Bez', last_name='Konta', is_external=True)
+        external.roles.add(coordinator_role)
+        admin = create_superuser('koordynator-admin')
+        admin.is_staff = True
+        admin.save()
+        admin_person = Person.objects.create(user=admin, first_name='Admin', last_name='Koordynator',
+                                             email=admin.email)
+        admin_person.roles.add(coordinator_role)
+        for person in (external, admin_person):
+            with self.subTest(person=str(person)):
+                revoke_coordinator(person)
+                person.refresh_from_db()
+                self.assertFalse(person.is_coordinator)
+                self.assertFalse(person.roles.filter(pk=coordinator_role.pk).exists())
+        admin.refresh_from_db()
+        self.assertTrue(admin.is_staff)
+        self.assertFalse(admin.groups.filter(name='Koordynator redakcji').exists())

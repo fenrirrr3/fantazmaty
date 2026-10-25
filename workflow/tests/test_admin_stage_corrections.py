@@ -25,6 +25,65 @@ from workflow.state import current_stage
 from .support import importing, work_state
 
 
+class AdminCorrectionStartTests(TestCase):
+    """Wspólny początek korekt w adminie (``admin_correction``) w każdej operacji: tylko superuser, aktualna
+    wersja formularza, antologia w przygotowaniu (poprawka wykonawców sprawdza antologię przy zmianie);
+    odmowa niczego nie zmienia."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.today = timezone.localdate()
+        cls.admin = create_superuser()
+        cls.member = create_member('member', 'Korektor')
+        cls.other = create_member('other', 'Korektor')
+        cls.book = Anthology.objects.create(title='Test')
+        cls.text = Text.objects.create(title='Tekst', length=100, anthology=cls.book)
+        cls.assignment = A.objects.create(text=cls.text, role='proofreader_1', assigned_to=cls.member)
+        cls.stage = S.objects.create(text=cls.text, assignment=cls.assignment, stage_type='first_proofreading',
+                                     started_at=cls.today - timedelta(days=10), ended_at=cls.today, is_completed=True)
+
+    def operations(self):
+        from workflow.admin_add_stage import add_missing_stage
+        from workflow.admin_performers import correct_stage_performers
+        from workflow.admin_stage_dates import set_stage_dates
+        from workflow.admin_status import set_admin_status
+        return {
+            'status': lambda actor, version: set_admin_status(self.text.pk, 'editing_control', actor, version),
+            'dodanie etapu': lambda actor, version: add_missing_stage(self.text.pk, actor, version,
+                                                                      kind='second_proofreading'),
+            'przypisanie': lambda actor, version: correct_assignment(self.assignment.pk, actor, version,
+                                                                     action='clear'),
+            'wykonawcy': lambda actor, version: correct_stage_performers(self.text.pk, {self.stage.pk: self.other},
+                                                                         actor, version),
+            'daty': lambda actor, version: set_stage_dates(self.stage.pk, actor, version,
+                                                           started_at=self.stage.started_at, ended_at=self.today),
+            'etap': lambda actor, version: edit_stage(self.stage.pk, actor, version, action='reopen'),
+        }
+
+    @staticmethod
+    def state():
+        return list(S.objects.order_by('pk').values()), list(A.objects.order_by('pk').values())
+
+    def test_every_admin_correction_checks_actor_version_and_anthology(self):
+        version = version_of(self.text)
+        before = self.state()
+        for name, operation in self.operations().items():
+            for case, actor, form_version, error, message in (
+                    ('bez uprawnień', self.member, version, PermissionDenied, ''),
+                    ('nieaktywny superuser', type(self.admin)(pk=self.admin.pk, is_superuser=True, is_active=False),
+                     version, PermissionDenied, ''),
+                    ('nieaktualny formularz', self.admin, version - 1, ValidationError, 'Dane zmieniły się'),
+                    ('gotowa antologia', self.admin, version, ValidationError, 'Antologia jest gotowa')):
+                with self.subTest(name, case=case), transaction.atomic():
+                    if case == 'gotowa antologia':
+                        Anthology.objects.filter(pk=self.book.pk).update(status=Anthology.Status.READY)
+                    with self.assertRaisesMessage(error, message):
+                        operation(actor, form_version)
+                    self.assertEqual(self.state(), before)
+                    transaction.set_rollback(True)
+        self.assertEqual(version_of(self.text), version)
+
+
 class ReopenStageTests(TestCase):
     """Cofnięcie zakończenia etapu przez superusera: ta sama osoba, wykonanie i data rozpoczęcia."""
 
@@ -91,19 +150,6 @@ class ReopenStageTests(TestCase):
                 self.assertTrue(later.is_current)
                 later.delete()
                 assignment.delete()
-
-    def test_closed_anthology_stale_request_and_non_superuser_block_correction(self):
-        with self.assertRaises(PermissionDenied):
-            self.reopen(actor=self.member)
-        with self.assertRaises(ValidationError):
-            self.reopen(version=version_of(self.text) - 1)
-        S.objects.create(text=self.text, stage_type='ready')
-        self.book.status = Anthology.Status.READY
-        self.book.save()
-        with self.assertRaisesMessage(ValidationError, 'Antologia jest gotowa'):
-            self.reopen()
-        self.stage.refresh_from_db()
-        self.assertTrue(self.stage.is_completed)
 
     def test_admin_inline_link_and_post_reopen(self):
         change_url = reverse('admin:texts_text_change', args=[self.text.pk])
@@ -279,24 +325,6 @@ class StageDeletionTests(TestCase):
         self.assertEqual(stage.stage_type, 'second_proofreading')
         self.assertFalse(stage.is_completed)
         self.assertIsNone(stage.started_at)
-
-    def test_stale_form_and_non_superuser_cannot_delete(self):
-        removed = S.objects.create(text=self.text, stage_type='ready_for_editing')
-        old = version_of(self.text)
-        self.completed()
-        with self.assertRaises(ValidationError):
-            edit_stage(removed.pk, self.admin, old, action='delete')
-        with self.assertRaises(PermissionDenied):
-            edit_stage(removed.pk, self.member, version_of(self.text), action='delete')
-        self.assertTrue(S.objects.filter(pk=removed.pk).exists())
-
-    def test_closed_anthology_still_blocks_deletion(self):
-        removed = S.objects.create(text=self.text, stage_type='ready')
-        self.book.status = Anthology.Status.READY
-        self.book.save()
-        with self.assertRaises(ValidationError):
-            edit_stage(removed.pk, self.admin, version_of(self.text), action='delete')
-        self.assertTrue(S.objects.filter(pk=removed.pk).exists())
 
     def test_current_stage_ignores_archived_and_unreleased_work(self):
         last = self.completed()

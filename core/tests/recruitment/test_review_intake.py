@@ -10,12 +10,10 @@ from authors.models import Author
 from core.forms import ReviewBulkImportForm
 from core.intake_forms import SingleReviewForm
 from core.models import MailboxConnection, NewsletterConsent
-from core.review_submission_forms import ReviewAdminForm
 from core.services.review_import_parser import encode_submission
 from core.services.reviews import import_reviews
 from fantazmaty.testing import FormControls, create_member, create_superuser
-from texts.models import Anthology, Extract, Review, Text
-from workflow.models import WorkflowStage
+from texts.models import Anthology, Extract, Review
 
 from .support import LEGACY_EXAMPLE, NAMED_BODY, NAMED_MESSAGE, SUBMISSION_FIELDS, TemporaryActivitySpoolMixin
 
@@ -310,52 +308,6 @@ class SingleReviewSafeguardTests(TemporaryActivitySpoolMixin, TestCase):
         self.assertEqual(list(self.client.get(self.page_url).context['manual']['fallback_authors']), [])
         response = self.client.get(reverse('core:author_suggestions'), {'q': '  '})
         self.assertEqual(response.json(), {'results': []})
-
-
-class ReviewAdminFormTests(TestCase):
-    """Formularz recenzji w adminie: powiązanie z istniejącym tekstem i ostrzeżenia o współautorach."""
-
-    @classmethod
-    def setUpTestData(cls):
-        cls.book = Anthology.objects.create(title='Nabór')
-        cls.text = Text.objects.create(title='Opowieść', anthology=cls.book, length=1)
-        WorkflowStage.objects.create(text=cls.text, stage_type='ready_for_editing')
-        cls.linked = Review.objects.create(anthology=cls.book, title='Opowieść', length=1, copied_text=cls.text,
-                                           author_first_name='Ala', author_last_name='Autor', email='ala@example.com')
-        cls.review = Review.objects.create(anthology=cls.book, title='Druga', length=1, genre='fantasy',
-                                           author_first_name='Ewa', author_last_name='Zakazana', email='ewa@example.com')
-        cls.banned = Author.objects.create(first_name='Ewa', last_name='Zakazana', email='ewa@example.com',
-                                           is_blacklisted=True)
-
-    def form(self, **changes):
-        unbound = ReviewAdminForm(instance=self.review)
-        data = {}
-        for name, field in unbound.fields.items():
-            value = unbound[name].value()
-            if isinstance(value, list):
-                data[name] = value
-            elif value not in (None, False):
-                data[name] = field.prepare_value(value) if hasattr(field, 'prepare_value') else value
-        data.update(changes)
-        form = ReviewAdminForm(data, instance=self.review)
-        form.is_valid()
-        return form
-
-    def test_editing_other_fields_does_not_repeat_identity_warnings(self):
-        """Adres z czarnej listy ostrzega przy zmianie danych autora, a nie przy każdej edycji gatunku."""
-        form = self.form(genre='horror')
-        self.assertTrue(form.is_valid(), form.errors)
-        self.assertIn('czarnej liście', str(self.form(title='Nowy tytuł').errors))
-
-    def test_text_already_linked_needs_confirmation_and_cannot_be_shared(self):
-        errors = self.form(copied_text=self.text.pk).errors
-        self.assertIn('Sprawdź powiązanie', str(errors['confirm_existing_text']))
-        self.assertIn('już powiązany z inną recenzją', str(errors['copied_text']))
-
-    def test_blacklisted_coauthor_requires_confirmation(self):
-        form = self.form(coauthors=[self.banned.pk])
-        self.assertIn('Współautor', str(form.errors['confirm_submission_warnings']))
-        self.assertIn('czarnej liście', str(form.errors['confirm_submission_warnings']))
 
 
 class ExtractListAndFormTests(TestCase):

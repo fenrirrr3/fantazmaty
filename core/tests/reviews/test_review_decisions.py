@@ -53,12 +53,14 @@ class ReviewStatusTests(ReviewFixtures):
         self.assertNotContains(response, 'name="status" value="to_decide"')
 
     def test_assignment_drives_regular_status_and_filters(self):
-        self.assertEqual(self.review.get_status_display(), 'Do recenzji')
+        """Przypisanie recenzenta zmienia status „nowe” na „w trakcie” (filtr listy ma ten status); koordynator
+        przestawia na „do decyzji” – lista filtruje po nim."""
+        self.assertEqual(self.review.status, Review.Status.NEW)
         assign_reviewer(user=self.reviewer, review_id=self.review.pk)
         self.review.refresh_from_db()
-        self.assertEqual(self.review.get_status_display(), 'W trakcie')
-        self.assertIn(('in_review', 'W trakcie'),
-                      review_list_context(user=self.coordinator, params=QueryDict())['status_choices'])
+        self.assertEqual(self.review.status, Review.Status.IN_REVIEW)
+        self.assertIn(Review.Status.IN_REVIEW, dict(
+            review_list_context(user=self.coordinator, params=QueryDict())['status_choices']))
         self.client.force_login(self.coordinator)
         page = self.client.get(reverse('core:assigned_review_detail', args=[self.review.pk]))
         response = self.client.post(reverse('core:update_review_status', args=[self.review.pk]),
@@ -68,7 +70,7 @@ class ReviewStatusTests(ReviewFixtures):
         self.assertEqual(self.review.status, 'to_decide')
         result = review_list_context(user=self.coordinator, params=QueryDict('status=to_decide'))
         self.assertEqual([r['pk'] for r in result['reviews']], [self.review.pk])
-        self.assertIn(('to_decide', 'Do decyzji'), result['status_choices'])
+        self.assertIn('to_decide', dict(result['status_choices']))
 
     def test_superuser_corrects_rejection_before_the_author_is_notified(self):
         self.review.status = Review.Status.REJECTED

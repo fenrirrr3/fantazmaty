@@ -1,5 +1,5 @@
 """Wspólne dane testów recenzji: zespół z rolami recenzenckimi i jedno otwarte zgłoszenie."""
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 
 from django.test import TestCase
 from django.utils import timezone
@@ -27,9 +27,12 @@ class ReviewFixtures(TestCase):
         return Review.objects.create(**data)
 
     def assign(self, user, days=0, opinion=Reviewers.Opinion.READING, position=1, review=None):
-        """Przypisuje recenzenta z datą przypisania cofniętą o podaną liczbę dni."""
+        """Przypisuje recenzenta z datą przypisania cofniętą o podaną liczbę dni kalendarzowych (południe czasu
+        lokalnego – liczba dni nie zależy od godziny uruchomienia ani od zmiany czasu letniego/zimowego)."""
         item = ReviewAssignment.objects.create(review=review or self.review, user=user, opinion=opinion,
                                                position=position)
         if days:
-            ReviewAssignment.objects.filter(pk=item.pk).update(assigned_at=timezone.now() - timedelta(days=days))
+            day = timezone.localdate() - timedelta(days=days)
+            ReviewAssignment.objects.filter(pk=item.pk).update(
+                assigned_at=timezone.make_aware(datetime.combine(day, time(12))))
         return item

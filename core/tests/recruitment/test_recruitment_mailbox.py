@@ -9,7 +9,7 @@ from zipfile import ZipFile
 from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.core import signing
-from django.test import Client, SimpleTestCase, TestCase
+from django.test import Client, SimpleTestCase, TestCase, tag
 from django.urls import reverse
 from django.utils import timezone
 from lxml import html
@@ -108,6 +108,7 @@ class SampleArchiveTests(SimpleTestCase):
         self.assertTrue(streams[0].closed)
 
 
+@tag('external')
 class RecruitmentSamplesTests(RecruitmentMailboxMixin, TestCase):
     def test_all_is_default_and_headers_survive_return_navigation(self):
         self.assertEqual(self.headers.call_args.kwargs['recruitment_roles'], [])
@@ -312,7 +313,25 @@ class RecruitmentSamplesTests(RecruitmentMailboxMixin, TestCase):
         for action in ('add', 'download', 'bulk', 'preview'):
             self.assertEqual(client.post(self.url, self.payload(action, uid=12)).status_code, 403)
 
+    def test_second_notification_for_already_notified_mail_is_conflict(self):
+        with patch('core.views.recruitment_mailbox.fetch_messages', return_value=[sample()]):
+            self.assertEqual(self.client.post(self.url, self.payload('set_notified', notified='yes')).status_code, 200)
+            response = self.client.post(self.url, self.payload('set_notified', notified='no'))
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('Status powiadomienia zmienił się', response.json()['error'])
+        self.assertTrue(Recruitment.objects.get().notified)
 
+    def test_header_list_hides_messages_already_added_as_applications(self):
+        excluded = self.headers.call_args.kwargs['excluded']
+        self.assertEqual(excluded(7), set())
+        with patch('core.views.recruitment_mailbox.fetch_messages', return_value=[sample()]):
+            self.client.post(self.url, self.payload('add'))
+        self.assertEqual(excluded(7), {12})
+        self.assertEqual(excluded(8), set())
+
+
+
+@tag('external')
 class RecruitmentMailboxFiltersTests(RecruitmentMailboxMixin, TestCase):
     @classmethod
     def setUpTestData(cls):
@@ -414,6 +433,7 @@ class RecruitmentMailboxFiltersTests(RecruitmentMailboxMixin, TestCase):
         self.assertFalse(MailboxDownload.objects.exists())
 
 
+@tag('external')
 class RecruitmentSnapshotTests(RecruitmentMailboxMixin, TestCase):
     """Nagłówki z nocnego pobierania na ekranie próbek (po ręcznym pobraniu w setUp nagłówki UID 12 są w sesji)."""
 
@@ -463,6 +483,7 @@ class RecruitmentSnapshotTests(RecruitmentMailboxMixin, TestCase):
                 self.assertEqual(error in page.content.decode() and 'Nocne pobieranie nagłówków' in page.content.decode(), bool(error))
 
 
+@tag('external')
 class RecruiterMailboxAccessTests(TestCase):
     @classmethod
     def setUpTestData(cls):

@@ -124,6 +124,14 @@ class AudioContactMergeTests(TestCase):
         self.keep.refresh_from_db()
         self.assertEqual(self.keep.email, '')
 
+    def test_merge_keeps_own_email_of_oldest_profile(self):
+        """E-mail najstarszego profilu nie jest nadpisywany e-mailem łączonej kopii."""
+        keep = AudioContributor.objects.create(name='Ewa Lektorka', email='ewa@example.test')
+        copy = AudioContributor.objects.create(name='Ewa Lektorka', email='inny@example.test')
+        self.merge(keep, copy)
+        self.assertEqual(list(AudioContributor.objects.filter(name='Ewa Lektorka').values_list('email', flat=True)),
+                         ['ewa@example.test'])
+
     def test_merge_keeps_oldest_profile_and_moves_recordings_and_contact_data(self):
         self.assertEqual(self.merge(self.third, self.copy, self.keep), ['Połączono 3 profile w „Jan Lektor”.'])
         self.assertEqual(list(AudioContributor.objects.all()), [self.keep])

@@ -2,7 +2,7 @@
 przekierowania oraz brak zmian po odrzuconym żądaniu."""
 from datetime import timedelta
 
-from django.test import TestCase
+from django.test import TestCase, tag
 from django.urls import reverse
 from lxml import html
 
@@ -16,6 +16,7 @@ from workflow.services import claim_stage, complete_stage, resume_editing
 from .support import AnthologyWorkflowMixin
 
 
+@tag('slow')
 class StageActionEndpointTests(AnthologyWorkflowMixin, TestCase):
     """Tekst w antologii gotowy do redakcji; osoby z WorkflowTestDataMixin."""
 

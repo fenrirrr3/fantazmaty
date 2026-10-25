@@ -6,10 +6,13 @@ from django.utils import timezone
 
 from authors.models import Author
 from core.services.reviews import copy_review_to_text
-from core.source_reviews import link_source_review, linkable_reviews, validate_source_review_link
+from core.edit_versions import version_of
+from core.source_reviews import link_source_review, linkable_reviews, unlink_source_review, validate_source_review_link
 from fantazmaty.testing import create_member, create_superuser, edit_token, form_value
 from texts.models import Anthology, Review, ReviewAssignment, Text
 from workflow.models import WorkflowRoleAssignment, WorkflowStage
+
+from .support import ReviewFixtures
 
 
 class SourceReviewLinkTests(TestCase):
@@ -168,3 +171,21 @@ class SourceReviewLinkTests(TestCase):
         link_source_review(user=self.admin, text_id=text.pk, review_id=old.pk)
         old.refresh_from_db()
         self.assertFalse(old.publication_detached)
+
+
+class SourceReviewRelinkTests(ReviewFixtures):
+    """Ponowne powiązanie tego samego zgłoszenia i odpięcie na podstawie nieaktualnych danych."""
+
+    def test_relinking_same_review_is_idempotent_and_stale_unlink_is_refused(self):
+        text = Text.objects.create(title='Tekst', length=1000, anthology=self.book)
+        Review.objects.filter(pk=self.review.pk).update(status=Review.Status.ACCEPTED, copied_text=text,
+                                                        decision_at=timezone.localdate())
+        version = version_of(text)
+        self.assertEqual(link_source_review(user=self.admin, text_id=text.pk, review_id=self.review.pk,
+                                            confirm_mismatch=True).copied_text_id, text.pk)
+        # Ponowne powiązanie tego samego zgłoszenia nie zmienia tekstu ani jego wersji edycji.
+        self.assertEqual(version_of(text), version)
+        with self.assertRaisesMessage(ValidationError, 'Powiązanie już się zmieniło'):
+            unlink_source_review(user=self.admin, text_id=text.pk, review_id=self.review.pk + 1)
+        self.review.refresh_from_db()
+        self.assertEqual((self.review.copied_text_id, self.review.publication_detached), (text.pk, False))

@@ -3,7 +3,7 @@ from datetime import timedelta
 
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.http import QueryDict
-from django.test import TestCase
+from django.test import TestCase, tag
 from django.urls import reverse
 from lxml import html
 
@@ -21,6 +21,7 @@ from workflow.services import (
 from .support import AnthologyWorkflowMixin
 
 
+@tag('slow')
 class CoordinatorControlTests(AnthologyWorkflowMixin, TestCase):
     """Decyzja koordynatora redakcji po zakończonej redakcji."""
 

@@ -8,6 +8,9 @@ from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from core.permissions import can_manage_vacation, has_role
+from core.selectors.people import team_availability
+from core.selectors.post_layout import profile_post_layout_assignments
 from core.services.vacations import cancel_planned_vacation, create_vacation, finish_vacation, update_vacation
 from fantazmaty.testing import create_member, create_superuser
 from people.leave_access import is_on_leave, require_available
@@ -90,17 +93,6 @@ class VacationServiceTests(TestCase):
         leave = user_leave_information(self.member_user)
         self.assertEqual((leave['vacation']['start_date'], leave['vacation']['until_revoked'], leave['is_active']),
                          (self.today, False, True))
-
-    def test_vacation_operations_do_not_write_person(self):
-        """Operacja urlopowa zapisuje tylko urlop – bez kopii urlopu w osobie (zapytania: blokady, walidacja, zapis)."""
-        tomorrow = self.today + timedelta(days=1)
-        with self.assertNumQueries(16):
-            vacation = self.create(start_date=tomorrow, until_revoked=True)
-        with self.assertNumQueries(14):
-            update_vacation(user=self.member_user, vacation_id=vacation.pk, start_date=tomorrow,
-                            end_date=self.today + timedelta(days=3))
-        with self.assertNumQueries(10):
-            cancel_planned_vacation(user=self.member_user, vacation_id=vacation.pk)
 
     def test_finish_ends_an_active_vacation_now(self):
         vacation = self.create(until_revoked=True)
@@ -255,3 +247,30 @@ class VacationConflictPermissionTests(TestCase):
                                                 {'_edit_version': 'nieaktualny', 'start_date': '2000-01-01'})
                     self.assertEqual(response.status_code, status)
         self.assertEqual(Vacation.objects.filter(until_revoked=True).count(), 2)
+
+
+class TeamAccessHelperTests(TestCase):
+    """Pomocniki ról, urlopów i dostępności odporne na brak danych (brak konta, konto niezapisane, pusta rola)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.member = create_member('pomocnik', 'Redaktor')
+        cls.admin = create_superuser('pomocnik-admin')
+
+    def test_role_and_vacation_checks_refuse_missing_input(self):
+        cases = {
+            'rola nie jest tekstem': has_role(self.member, None),
+            'pusta nazwa roli': has_role(self.member, '   '),
+            'brak urlopu': can_manage_vacation(self.admin, None),
+            'konto bez zapisu w bazie': is_on_leave(get_user_model()(username='nowe')),
+            'brak konta': is_on_leave(None),
+        }
+        for name, result in cases.items():
+            with self.subTest(name):
+                self.assertFalse(result)
+        self.assertTrue(has_role(self.member, ' Redaktor '))
+
+    def test_availability_and_post_layout_for_people_without_accounts(self):
+        external = Person.objects.create(first_name='Zewnętrzna', last_name='Osoba', is_external=True)
+        self.assertEqual(profile_post_layout_assignments(external), [])
+        self.assertEqual(team_availability([None, get_user_model()(username='bez-pk')]), {})

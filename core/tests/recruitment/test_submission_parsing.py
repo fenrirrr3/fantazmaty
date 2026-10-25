@@ -6,7 +6,7 @@ from itertools import chain, repeat
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
-from zipfile import ZipFile
+from zipfile import ZIP_DEFLATED, ZipFile
 
 from django.test import SimpleTestCase, TestCase, tag
 from docx import Document
@@ -283,8 +283,8 @@ class CsvSubmissionTests(SimpleTestCase):
         self.assertEqual(parse_message(1, msg.as_bytes(), submission=False)['files'], [('stary.doc', b'doc')])
 
 
+@tag('slow', 'docx')
 class SubmissionPackagingTests(SimpleTestCase):
-    @tag('slow')
     def test_original_and_converted_zip(self):
         row = parse_message(12, csv_mail())
         row['folder'] = '../CON'
@@ -377,6 +377,7 @@ def converted(payload=b'docx', warnings=()):
     return output, None, None
 
 
+@tag('docx')
 class PackagingErrorTests(SimpleTestCase):
     """Paczka ZIP: przetwarzanie tylko DOCX, potwierdzenie przebudowy, limity czasu i sprzątanie po błędzie."""
 
@@ -461,3 +462,47 @@ class PackagingErrorTests(SimpleTestCase):
                 self.assertRaisesMessage(MailboxError, '90 sekund'),
             ):
                 package([self.message()], False, False, False)
+
+
+LIMIT = 150 * 1024 * 1024
+TOO_BIG = LIMIT + 1
+
+
+def big_zip(name, size):
+    """Archiwum z jednym plikiem zer o podanym rozmiarze po rozpakowaniu (mały po kompresji)."""
+    stream = BytesIO()
+    with ZipFile(stream, 'w', ZIP_DEFLATED) as archive:
+        archive.writestr(name, bytes(size))
+    stream.seek(0)
+    return stream
+
+
+@tag('slow', 'docx')
+class SubmissionPackageLimitTests(SimpleTestCase):
+    """Limit 150 MB wyniku (przebudowa, konwersja, paczka wielu wiadomości); wolny: kompresja 150 MB zer."""
+
+    def setUp(self):
+        self.message = parse_message(12, csv_mail())
+
+    def test_package_over_150_mb_is_refused_for_every_output_kind(self):
+        """Przebudowany DOCX, wynik konwersji i paczka z wielu wiadomości mają ten sam limit 150 MB."""
+        converted = big_zip('document.docx', 1)
+        with ZipFile(converted, 'a', ZIP_DEFLATED) as archive:
+            archive.writestr('document.pdf', bytes(TOO_BIG))
+        converted.seek(0)
+        cases = {
+            'przebudowa bez konwersji': (dict(convert=False), (BytesIO(bytes(TOO_BIG)), 'docx', '')),
+            'konwersja do PDF i EPUB': (dict(convert=True), (converted, 'zip', '')),
+        }
+        for name, (options, result) in cases.items():
+            with self.subTest(name), patch('core.services.mailbox_import.convert_document', return_value=result):
+                with self.assertRaisesMessage(MailboxError, 'Wynik przekracza 150 MB'):
+                    _package_messages([self.message], clean=False, rebuild=True, allow_rebuild_omissions=True,
+                                      **options)
+        with self.subTest('paczka wielu wiadomości'), \
+                patch('core.services.mailbox_import._package_messages',
+                      return_value=big_zip('folder/01_tekst.docx', TOO_BIG)):
+            skipped = []
+            with self.assertRaisesMessage(MailboxError, 'Wynik przekracza 150 MB'):
+                package_messages([self.message], skipped_errors=skipped, accepted=[], rebuild_warnings=[])
+            self.assertEqual(skipped, [])

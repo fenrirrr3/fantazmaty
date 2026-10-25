@@ -6,7 +6,7 @@ a zaległe (sprzed zmiany) prowadzą po zakończeniu do najbliższego dozwoloneg
 from datetime import timedelta
 
 from django.core.exceptions import ValidationError
-from django.test import TestCase
+from django.test import TestCase, tag
 from django.urls import reverse
 from lxml import html
 
@@ -35,6 +35,7 @@ DISABLED = ('author_editing', 'second_verification', 'editing_control', 'second_
             'fourth_proofreading', 'styling')
 
 
+@tag('slow')
 class ExtractsWorkflowTests(WorkflowTestDataMixin, TestCase):
     """Wspólny tekst tomu „Ekstrakty 9” w stanie „Do redakcji”; osoby z WorkflowTestDataMixin."""
 

@@ -24,7 +24,7 @@ class ReturnSafetyTests(SimpleTestCase):
         request = RequestFactory().get('/')
         for value in ('https://evil.example/teksty/', '//evil.example/teksty/',
                       '/admin/', '/wyloguj/', 'javascript:alert(1)', '/not-a-route/',
-                      '/teksty/\\evil', '/teksty/\n'):
+                      '/teksty/\\evil', '/teksty/\n', 'teksty/'):
             self.assertEqual(list_url(request, value), '', value)
         self.assertEqual(list_url(request, '/teksty/?q=smok&page=3&_back=/admin/'),
                          '/teksty/?q=smok&page=3')
@@ -47,6 +47,15 @@ class ReturnSafetyTests(SimpleTestCase):
         self.assertEqual(result.url, back)
         result = middleware.process_response(request, HttpResponseRedirect('https://evil.example/audiobooki/5/'))
         self.assertEqual(result.url, 'https://evil.example/audiobooki/5/')
+
+    def test_form_on_list_returns_to_referring_list_and_keeps_other_list_redirect(self):
+        request = RequestFactory().post('/recenzje/', HTTP_REFERER='http://testserver/teksty/?page=2')
+        request.navigation_return = origin(request)
+        self.assertEqual(request.navigation_return, '/teksty/?page=2')
+        response = NavigationMiddleware(lambda request: None).process_response(
+            request, HttpResponseRedirect('/recenzje/'))
+        self.assertEqual(response.url, '/recenzje/')
+
 
 
 class DetailNavigationTests(NavigationDataMixin, TestCase):

@@ -179,8 +179,9 @@ class AnonymousAccessTests(TestCase):
 class RoleAccessMatrixTests(TestCase):
     """Dla każdego aktora: 403 dokładnie na trasach, których poziom go nie obejmuje.
 
-    Dostęp do tras zespołu (TEAM, ANY_USER) sprawdzają najsłabsi aktorzy (outsider, former, member); aktorzy z rolami
-    są sprawdzani na trasach, których poziom ich rozróżnia – tak każdy test mieści się w szybkim zestawie.
+    Dostęp do tras zespołu (TEAM, ANY_USER) sprawdzają najsłabsi aktorzy (outsider, former, member) i superuser
+    (jego przejście sprawdza też „no-store” na wszystkich stronach); pozostali aktorzy z rolami są sprawdzani na
+    trasach, których poziom ich rozróżnia.
     """
 
     @classmethod
@@ -202,15 +203,19 @@ class RoleAccessMatrixTests(TestCase):
             *(Role.objects.get_or_create(name=name)[0] for name in SPECIALIST_ROLES[1:]))
 
     def assert_matrix(self, actor):
+        """Sprawdza macierz dla aktora i przy okazji nagłówek „no-store” każdej strony, która odpowiada mu 200 na GET.
+        Superuser przechodzi wszystkie trasy (także zespołu), więc „no-store” jest sprawdzony na każdej stronie."""
         self.client.force_login(self.users[actor])
         routes = all_routes()
         login = reverse(settings.LOGIN_URL)
-        wrong = []
+        wrong, cached = [], []
         for key, allowed in sorted(ROUTE_LEVELS.items()):
-            if actor not in ('outsider', 'former', 'member') and allowed in (TEAM, ANY_USER):
+            if actor not in ('outsider', 'former', 'member', 'superuser') and allowed in (TEAM, ANY_USER):
                 continue
             url = routes[key]
             response = self.client.get(url)
+            if response.status_code == 200 and 'no-store' not in response.get('Cache-Control', ''):
+                cached.append(f'{key} {url}')
             if response.status_code == 405:
                 response = self.client.post(url)
             expected = actor in allowed
@@ -219,6 +224,7 @@ class RoleAccessMatrixTests(TestCase):
             if denied == expected:
                 wrong.append(f'{key} {url} → {response.status_code} (oczekiwano: {"dostęp" if expected else "403"})')
         self.assertEqual(wrong, [], f'Niezgodny dostęp dla: {actor}')
+        self.assertEqual(cached, [], 'Strony bez nagłówka no-store')
 
     def test_logged_in_user_outside_team(self):
         self.assert_matrix('outsider')
@@ -238,21 +244,11 @@ class RoleAccessMatrixTests(TestCase):
     def test_recruitment_coordinator(self):
         self.assert_matrix('recruiter')
 
-    def test_superuser(self):
+    def test_superuser_everywhere_and_pages_are_never_cached(self):
+        """Superuser ma dostęp do każdej trasy, a każda strona wymagająca logowania (GET z odpowiedzią 200) ma
+        nagłówek „no-store”, żeby przeglądarka nie pokazała jej po wylogowaniu ani innej osobie na tym samym
+        komputerze. Jedno przejście po trasach zamiast dwóch."""
         self.assert_matrix('superuser')
-
-    def test_pages_for_logged_in_users_are_never_cached(self):
-        """Każda strona wymagająca logowania (GET z odpowiedzią 200 dla superusera) ma nagłówek „no-store”,
-        żeby przeglądarka nie pokazała jej po wylogowaniu ani innej osobie na tym samym komputerze."""
-        self.client.force_login(self.users['superuser'])
-        cached = []
-        for key, url in sorted(all_routes().items()):
-            if key in PUBLIC:
-                continue
-            response = self.client.get(url)
-            if response.status_code == 200 and 'no-store' not in response.get('Cache-Control', ''):
-                cached.append(f'{key} {url}')
-        self.assertEqual(cached, [])
 
 
 class EmailCopyAccessTests(TestCase):

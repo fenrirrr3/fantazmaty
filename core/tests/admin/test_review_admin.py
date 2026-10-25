@@ -1,5 +1,6 @@
-"""Panel recenzji: przydziały recenzentów (także archiwalne z datami), zapis zgłoszenia, dane autora i notatki do tekstów."""
-from datetime import date, datetime, timedelta
+"""Panel recenzji: przydziały recenzentów (także archiwalne z datami), formularz i zapis zgłoszenia (powiązanie z tekstem,
+ostrzeżenia czarnej listy), lista i usuwanie, dane autora i notatki do tekstów."""
+from datetime import date, datetime, time, timedelta
 
 from django.contrib.admin import site
 from django.contrib.auth import get_user_model
@@ -12,12 +13,24 @@ from authors.models import Author
 from core.tests.people.support import admin_form_data
 from fantazmaty.testing import create_member, create_superuser
 from people.models import Person
-from texts.admin import ReviewAdmin, ReviewAssignmentAdminForm
+from texts.admin import ReviewAdmin, ReviewAdminForm, ReviewAssignmentAdminForm
 from texts.archive_dates import validate_archive_dates
 from texts.models import MAX_REVIEWERS, Anthology, Review, ReviewAssignment, Text, TextNote
+from workflow.models import WorkflowStage
 
 YES = ReviewAssignment.Opinion.YES
 READING = ReviewAssignment.Opinion.READING
+
+
+# Przydziały w danych testowych mają ustaloną datę (południe), a nie domyślne „teraz”: formularz archiwum
+# pokazuje datę w czasie lokalnym, a w godzinie zmiany czasu (ostatnia niedziela października, 2:00–3:00)
+# taka godzina jest niejednoznaczna i formularz odrzuca odesłane dane.
+ASSIGNED_AT = timezone.make_aware(datetime(2026, 3, 10, 12, 0))
+
+
+def local_noon(days):
+    """Południe czasu lokalnego za `days` dni (ujemne – wstecz); nigdy nie wypada w godzinie zmiany czasu."""
+    return timezone.make_aware(datetime.combine(timezone.localdate() + timedelta(days=days), time(12)))
 
 
 def admin_date(value):
@@ -151,7 +164,8 @@ class ArchivedAssignmentAdminTests(ReviewAdminData):
     def setUp(self):
         super().setUp()
         self.review = self.archived()
-        self.item = ReviewAssignment.objects.create(review=self.review, user=self.reviewer, position=1, opinion=YES)
+        self.item = ReviewAssignment.objects.create(review=self.review, user=self.reviewer, position=1, opinion=YES,
+                                                    assigned_at=ASSIGNED_AT)
 
     def row(self, index, **values):
         return {f'assignments-{index}-{name}': value for name, value in values.items()}
@@ -170,11 +184,10 @@ class ArchivedAssignmentAdminTests(ReviewAdminData):
         return ' '.join([*formset.non_form_errors(), *(str(form.errors) for form in formset.forms)])
 
     def test_dates_are_validated_and_saved(self):
-        now = timezone.now()
         today = timezone.localdate()
-        past = now - timedelta(days=30)
+        past = local_noon(-30)
         invalid = [
-            ({'archive_assigned_at': admin_datetime(now + timedelta(days=1))}, 'przydzielenia nie może być w przyszłości'),
+            ({'archive_assigned_at': admin_datetime(local_noon(1))}, 'przydzielenia nie może być w przyszłości'),
             ({'archive_assigned_at': admin_datetime(past), 'archive_opinion_changed_at': admin_date(today - timedelta(days=40))},
              'nie może być wcześniejsza'),
             ({'archive_opinion_changed_at': admin_date(today + timedelta(days=1))}, 'opinii nie może być w przyszłości'),
@@ -187,7 +200,7 @@ class ArchivedAssignmentAdminTests(ReviewAdminData):
                                                          archive_opinion_changed_at=admin_date(today - timedelta(days=2))))
         self.assertEqual(saved.status_code, 302)
         self.item.refresh_from_db()
-        self.assertEqual(self.item.assigned_at.replace(microsecond=0), past.replace(microsecond=0))
+        self.assertEqual(self.item.assigned_at, past)
         self.assertEqual(self.item.opinion_changed_at, today - timedelta(days=2))
         # Puste pola oznaczają nieznaną datę historyczną.
         self.assertEqual(self.post_change(self.review, **self.row(
@@ -211,7 +224,7 @@ class ArchivedAssignmentAdminTests(ReviewAdminData):
                 response = self.post_change(self.review, **self.new_rows(*rows))
                 self.assertIn(message, self.formset_errors(response))
         self.assertEqual(self.review.assignments.count(), 1)
-        past = timezone.now() - timedelta(days=10)
+        past = local_noon(-10)
         historical = Person.objects.create(first_name='Dawny', last_name='Członek')
         response = self.post_change(self.review, **self.new_rows(
             {'position': 2, 'user': '', 'historical_person': historical.pk, 'archive_assigned_at': admin_datetime(past)},
@@ -219,7 +232,7 @@ class ArchivedAssignmentAdminTests(ReviewAdminData):
         self.assertEqual(response.status_code, 302)
         added = self.review.assignments.get(position=2)
         self.assertEqual((added.user_id, added.historical_person_id), (None, historical.pk))
-        self.assertEqual(added.assigned_at.replace(microsecond=0), past.replace(microsecond=0))
+        self.assertEqual(added.assigned_at, past)
         self.assertIsNone(added.opinion_changed_at)
         self.assertEqual(self.review.assignments.get(position=3).user, third)
 
@@ -242,6 +255,52 @@ class ArchivedAssignmentAdminTests(ReviewAdminData):
         self.assertEqual(response.status_code, 302)
         item = current.assignments.get()
         self.assertEqual((item.user, item.notes), (self.reviewer, 'Zmiana'))
+
+
+class ReviewAdminFormTests(TestCase):
+    """Formularz recenzji w adminie: powiązanie z istniejącym tekstem i ostrzeżenia o współautorach."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.book = Anthology.objects.create(title='Nabór')
+        cls.text = Text.objects.create(title='Opowieść', anthology=cls.book, length=1)
+        WorkflowStage.objects.create(text=cls.text, stage_type='ready_for_editing')
+        cls.linked = Review.objects.create(anthology=cls.book, title='Opowieść', length=1, copied_text=cls.text,
+                                           author_first_name='Ala', author_last_name='Autor', email='ala@example.com')
+        cls.review = Review.objects.create(anthology=cls.book, title='Druga', length=1, genre='fantasy',
+                                           author_first_name='Ewa', author_last_name='Zakazana', email='ewa@example.com')
+        cls.banned = Author.objects.create(first_name='Ewa', last_name='Zakazana', email='ewa@example.com',
+                                           is_blacklisted=True)
+
+    def form(self, **changes):
+        unbound = ReviewAdminForm(instance=self.review)
+        data = {}
+        for name, field in unbound.fields.items():
+            value = unbound[name].value()
+            if isinstance(value, list):
+                data[name] = value
+            elif value not in (None, False):
+                data[name] = field.prepare_value(value) if hasattr(field, 'prepare_value') else value
+        data.update(changes)
+        form = ReviewAdminForm(data, instance=self.review)
+        form.is_valid()
+        return form
+
+    def test_editing_other_fields_does_not_repeat_identity_warnings(self):
+        """Adres z czarnej listy ostrzega przy zmianie danych autora, a nie przy każdej edycji gatunku."""
+        form = self.form(genre='horror')
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertIn('czarnej liście', str(self.form(title='Nowy tytuł').errors))
+
+    def test_text_already_linked_needs_confirmation_and_cannot_be_shared(self):
+        errors = self.form(copied_text=self.text.pk).errors
+        self.assertIn('Sprawdź powiązanie', str(errors['confirm_existing_text']))
+        self.assertIn('już powiązany z inną recenzją', str(errors['copied_text']))
+
+    def test_blacklisted_coauthor_requires_confirmation(self):
+        form = self.form(coauthors=[self.banned.pk])
+        self.assertIn('Współautor', str(form.errors['confirm_submission_warnings']))
+        self.assertIn('czarnej liście', str(form.errors['confirm_submission_warnings']))
 
 
 class ReviewAdminSaveTests(ReviewAdminData):
@@ -284,7 +343,8 @@ class ReviewAdminSaveTests(ReviewAdminData):
     def test_archived_identity_change_keeps_decision_and_assignments(self):
         decided = date(2020, 5, 1)
         review = self.archived(decision_at=decided)
-        ReviewAssignment.objects.create(review=review, user=self.reviewer, position=1, opinion=READING)
+        ReviewAssignment.objects.create(review=review, user=self.reviewer, position=1, opinion=READING,
+                                        assigned_at=ASSIGNED_AT)
         banned = Author.objects.create(first_name='Zakazany', last_name='Autor', email='zakazany@example.com',
                                        is_blacklisted=True)
         response = self.confirmed_change(review, author=banned.pk, status=Review.Status.REJECTED)
@@ -294,6 +354,42 @@ class ReviewAdminSaveTests(ReviewAdminData):
                          (Review.Status.REJECTED, decided, False))
         self.assertEqual(review.author, banned)
         self.assertEqual(review.assignments.count(), 1)
+
+
+class ReviewAdminListAndChangeTests(ReviewAdminData):
+    """Lista recenzji (autor, znacznik przeniesienia do tekstów), usuwanie przydziału archiwum w inline
+    i zapis do nieistniejącego zgłoszenia."""
+
+    def test_review_list_shows_author_and_transfer_flag(self):
+        text = Text.objects.create(title='Opowiadanie', anthology=self.book, length=100)
+        self.make_review(title='Przeniesione', copied_text=text, author_pseudonym='Pióro')
+        self.make_review(title='Czekające')
+        response = self.client.get(reverse('admin:texts_review_changelist'))
+        self.assertEqual(response.context['title'], 'Recenzje')
+        rows = {row.title: row for row in response.context['cl'].result_list}
+        model_admin = response.context['cl'].model_admin
+        self.assertEqual({title: model_admin.display_copied_to_text(row) for title, row in rows.items()},
+                         {'Przeniesione': True, 'Czekające': False})
+        self.assertContains(response, rows['Przeniesione'].author_display_name)
+
+    def test_archived_assignment_can_be_deleted_in_inline(self):
+        review = self.archived(title='Archiwalne')
+        removed = ReviewAssignment.objects.create(review=review, user=self.reviewer, position=1, opinion=YES,
+                                                  assigned_at=ASSIGNED_AT)
+        kept = ReviewAssignment.objects.create(review=review, user=self.second, position=2,
+                                               opinion=ReviewAssignment.Opinion.NO, assigned_at=ASSIGNED_AT)
+        data = admin_form_data(self.client, self.url(review), 'review_form')
+        index = {data[f'assignments-{i}-id']: i for i in range(2)}
+        data[f'assignments-{index[str(removed.pk)]}-DELETE'] = 'on'
+        response = self.client.post(self.url(review), {k: v for k, v in data.items() if '__prefix__' not in k})
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(list(review.assignments.all()), [kept])
+
+    def test_post_to_missing_review_changes_nothing(self):
+        """Zapis pod nieistniejący numer (blokada rekordu pomija brakujący obiekt) wraca na stronę główną panelu."""
+        response = self.client.post(reverse('admin:texts_review_change', args=[999999]), {'title': 'Nowa'})
+        self.assertRedirects(response, reverse('admin:index'))
+        self.assertFalse(Review.objects.exists())
 
 
 class ReviewersAdminListTests(ReviewAdminData):
@@ -317,7 +413,8 @@ class ReviewersAdminListTests(ReviewAdminData):
 
 
 class ReviewAdminDeletionTests(ReviewAdminData):
-    """Usuwanie zgłoszeń w adminie: tylko superuser i tylko zgłoszenia bez recenzentów i bez utworzonego tekstu."""
+    """Usuwanie zgłoszeń w adminie: tylko zgłoszenia bez recenzentów i bez utworzonego tekstu (dostęp superusera:
+    test_admin_tools.SuperuserOnlyAdminMixinTests)."""
 
     def request(self, user=None):
         request = RequestFactory().post('/')
@@ -338,15 +435,11 @@ class ReviewAdminDeletionTests(ReviewAdminData):
     def test_delete_permission_per_review(self):
         """Zgłoszenie da się usunąć, dopóki nikt się nie przypisał (nawet bez opinii) i nie powstał z niego tekst."""
         model_admin = ReviewAdmin(Review, site)
-        staff = get_user_model().objects.create_user('review-staff', is_staff=True)
         deletable = {'bez recenzentów', 'archiwalne puste'}
         for name, review in self.reviews_by_case().items():
             with self.subTest(name):
                 self.assertEqual(model_admin.has_delete_permission(self.request(), review), name in deletable)
-                self.assertFalse(model_admin.has_delete_permission(self.request(staff), review))
         self.assertTrue(model_admin.has_delete_permission(self.request()))
-        self.assertIn('delete_selected', model_admin.get_actions(self.request()))
-        self.assertNotIn('delete_selected', model_admin.get_actions(self.request(staff)))
 
     def test_delete_view_and_change_form_for_blocked_and_free_review(self):
         """Zablokowane: brak linku „Usuń” i komunikat zamiast potwierdzenia; wolne: usunięcie po potwierdzeniu."""

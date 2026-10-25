@@ -8,7 +8,7 @@ from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from lxml import html
 
-from fantazmaty.testing import create_superuser
+from fantazmaty.testing import create_member, create_superuser
 from illustrations.models import Illustration, Illustrator, PublicIllustrationSettings
 from illustrations.public import link_version
 from people.models import Person, Role
@@ -179,3 +179,18 @@ class ExternalIllustrationsTests(TestCase):
             Text.objects.create(title=f'Kolejne opowiadanie {number}', anthology=self.book, length=10, content_warnings=f'ostrzeżenie {number}')
         self.assertEqual(Illustration.objects.filter(text__anthology=self.book).count(), 5)
         self.assertEqual(count_queries(), single)
+
+
+class SharedLinkVersionTests(TestCase):
+    """Zapis wspólnego linku GDrive z podrobioną wersją formularza – 409 bez zapisu."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.coordinator = create_member('koord-link', 'Koordynator redakcji')
+
+    def test_shared_link_with_forged_version_is_refused(self):
+        self.client.force_login(self.coordinator)
+        response = self.client.post(reverse('illustrations:illustration_list'), {
+            'drive_url': 'https://drive.google.com/drive/folders/x', 'version': 'podrobiony-token'})
+        self.assertEqual(response.status_code, 409)
+        self.assertFalse(PublicIllustrationSettings.objects.exclude(drive_url='').exists())

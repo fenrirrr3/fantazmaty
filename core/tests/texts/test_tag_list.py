@@ -14,6 +14,7 @@ from texts.models import Text
 from .support import TaggedTextsFixture
 
 
+@tag('slow')
 class TagListTests(TaggedTextsFixture, TestCase):
     def ids(self, **params):
         response = self.client.get(self.list, params)
@@ -45,7 +46,6 @@ class TagListTests(TaggedTextsFixture, TestCase):
         for query in ("Łąka", "magia", "podróż", "Fantasy", "Jan Adamczyk", "Antologia A"):
             self.assertEqual(self.ids(q=query), [self.text.pk])
 
-    @tag('slow')
     def test_filters_combine_and_include_coauthors(self):
         self.assertEqual(
             self.ids(anthology=str(self.book.pk), author=str(self.coauthor.pk), genre="Fantasy",
@@ -73,7 +73,6 @@ class TagListTests(TaggedTextsFixture, TestCase):
         ordered = self.ids(sort="genre")
         self.assertLess(ordered.index(self.other.pk), ordered.index(self.text.pk))
 
-    @tag('slow')
     def test_sort_all_columns_both_directions_without_duplicate_rows(self):
         self.other.tags = "zebra"
         self.other.save(update_fields=["tags"])

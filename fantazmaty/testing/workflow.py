@@ -117,21 +117,29 @@ class WorkflowTestDataMixin:
 
 
 class StatusAssignmentFixtures(TestCase):
+    """Superuser „admin”, dwie osoby zespołu bez ról („member” – Jan Test, „other” – Anna Test), antologia
+    „Test” z tekstem „Tekst”; dane wspólne dla klasy, dziennik aktywności w katalogu tymczasowym."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        User = get_user_model()
+        cls.admin = User.objects.create_superuser('admin', 'admin@example.com', 'test')
+        cls.member = User.objects.create_user('member', 'member@example.com', 'test')
+        Person.objects.create(user=cls.member, first_name='Jan', last_name='Test', email=cls.member.email)
+        cls.other = User.objects.create_user('other', 'other@example.com', 'test')
+        Person.objects.create(user=cls.other, first_name='Anna', last_name='Test', email=cls.other.email)
+        cls.book = Anthology.objects.create(title='Test')
+        cls.text = Text.objects.create(title='Tekst', length=100, anthology=cls.book)
+        cls.today = timezone.localdate()
+
     def setUp(self):
+        super().setUp()
         temporary = TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         settings = self.settings(ACTIVITY_SPOOL_DIR=temporary.name)
         settings.enable()
         self.addCleanup(settings.disable)
-        User = get_user_model()
-        self.admin = User.objects.create_superuser('admin', 'admin@example.com', 'test')
-        self.member = User.objects.create_user('member', 'member@example.com', 'test')
-        Person.objects.create(user=self.member, first_name='Jan', last_name='Test', email=self.member.email)
-        self.other = User.objects.create_user('other', 'other@example.com', 'test')
-        Person.objects.create(user=self.other, first_name='Anna', last_name='Test', email=self.other.email)
-        self.book = Anthology.objects.create(title='Test')
-        self.text = Text.objects.create(title='Tekst', length=100, anthology=self.book)
-        self.today = timezone.localdate()
 
     def status(self, kind, text=None):
         text = text or self.text

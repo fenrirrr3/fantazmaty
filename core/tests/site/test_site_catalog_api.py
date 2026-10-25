@@ -2,7 +2,7 @@
 antologie, kolejność, listy bez pustych i powtórzeń), ``liczby`` jak liczniki na stronie, ślad pobrania, dane na żywo
 z CMS-u dla powiązanych wpisów (bez N+1) oraz ETag/304 wspólny dla endpointów ekipy, katalogu i „Słuchaj”."""
 from django.db import connection
-from django.test import TestCase, override_settings
+from django.test import TestCase, override_settings, tag
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
@@ -27,6 +27,7 @@ def story(owner, title, author='Autor Testowy', genres='', tags='', position=Non
                                            position=position, **fields)
 
 
+@tag('external')
 class SiteCatalogApiAccessTests(TestCase):
     def test_missing_key_gives_503_wrong_header_403_post_405(self):
         """Bez SITE_API_KEY – 503; bez nagłówka, ze złym kluczem, jego prefiksem albo kluczem ze znakami spoza
@@ -47,6 +48,7 @@ class SiteCatalogApiAccessTests(TestCase):
             self.assertEqual(self.client.get(URL, HTTP_X_SITE_KEY='tajny-klucz').status_code, 200)
 
 
+@tag('external')
 @override_settings(SITE_API_KEY='tajny-klucz')
 class SiteCatalogApiPayloadTests(TestCase):
     @classmethod
@@ -194,6 +196,7 @@ class SiteCatalogLiveDataTests(TestCase):
                          ('Ursula Le Guin b', 'Anna Nowak'))
 
 
+@tag('external')
 @override_settings(SITE_API_KEY='tajny-klucz')
 class SiteApiConditionalGetTests(ListenDataMixin, TestCase):
     """ETag i 304 – wspólne dla ``/api/strona/ekipa/``, ``/katalog/`` i ``/sluchaj/``."""

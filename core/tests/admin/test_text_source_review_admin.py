@@ -1,4 +1,4 @@
-"""Tworzenie tekstu ze zgłoszenia w adminie: popup autora, potwierdzenia umów i zgodności źródła."""
+"""Tworzenie tekstu ze zgłoszenia w adminie: popup autora, potwierdzenia umów i zgodności źródła, odmowy popupu."""
 import time
 from unittest.mock import patch
 
@@ -265,3 +265,100 @@ class TextSourceReviewAdminTests(TestCase):
         form = self.admin_link_form(review, self.text, confirm_source_mismatch='on')
         form.is_valid()
         self.assertNotIn('copied_text', form.errors)
+
+
+class SourceReviewPopupRefusalTests(TestCase):
+    """Odmowy popupu „utwórz tekst ze zgłoszenia” i endpointu przygotowania danych; dobór autora po e-mailu."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.admin = create_superuser('popup-refusals')
+        cls.book = Anthology.objects.create(title='Antologia popupu')
+        cls.author = Author.objects.create(first_name='Jan', last_name='Autor', email='jan@example.com',
+                                           has_contract=True)
+        cls.text = Text.objects.create(title='Opowiadanie', length=100, anthology=cls.book)
+        cls.text.authors.add(cls.author)
+
+    def setUp(self):
+        self.client.force_login(self.admin)
+
+    def review(self, **values):
+        data = dict(title='Zgłoszenie', anthology=self.book, author_first_name='Jan', author_last_name='Autor',
+                    email='jan@example.com', length=100, genre='fantasy', status=Review.Status.ACCEPTED,
+                    author_notified_at=timezone.localdate())
+        data.update(values)
+        return Review.objects.create(**data)
+
+    def prefill(self, review, **snapshot):
+        session = self.client.session
+        session['review_text_prefills'] = {'token': {'user': self.admin.pk, 'at': time.time(),
+                                                     'review_id': review.pk, **snapshot}}
+        session.save()
+        return ADD_URL + '?_popup=1&prefill=token'
+
+    def test_popup_refuses_invalid_expired_missing_or_linked_source(self):
+        linked = self.review(title='Już przeniesione', copied_text=self.text)
+        fresh = self.review(title='Świeże')
+        cases = {
+            'wygasły token': (self.prefill(fresh, at=time.time() - 901), 'Dane formularza wygasły'),
+            'nieprawidłowe ID': (ADD_URL + '?source_review=abc', 'Nieprawidłowa recenzja źródłowa.'),
+            'zbyt długie ID': (ADD_URL + '?source_review=' + '9' * 19, 'Nieprawidłowa recenzja źródłowa.'),
+            'brak recenzji': (ADD_URL + '?source_review=999999', 'Recenzja nie istnieje'),
+            'recenzja z tekstem': (ADD_URL + f'?source_review={linked.pk}', 'ma już powiązany tekst'),
+        }
+        count = Text.objects.count()
+        for case, (url, message) in cases.items():
+            with self.subTest(case):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 400)
+                self.assertIn(message, response.content.decode())
+        self.assertEqual(Text.objects.count(), count)
+
+    def test_direct_popup_finds_author_by_unique_email_only(self):
+        review = self.review(title='Bez profilu autora')
+        initial = self.client.get(ADD_URL, {'source_review': review.pk, '_popup': 1}).context['adminform'].form.initial
+        self.assertEqual(initial['authors'], [self.author.pk])
+        unknown = self.review(title='Nieznany adres', email='nikt@example.com')
+        initial = self.client.get(ADD_URL, {'source_review': unknown.pk, '_popup': 1}).context['adminform'].form.initial
+        self.assertEqual(initial['authors'], [])
+
+    def test_popup_text_must_stay_in_review_anthology(self):
+        review = self.review(title='Inna antologia', author=self.author)
+        other = Anthology.objects.create(title='Obca antologia')
+        url = self.prefill(review)
+        page = self.client.get(url)
+        data = {key: value for key, value in page.context['adminform'].form.initial.items() if key != 'source_review_id'}
+        for inline in page.context['inline_admin_formsets']:
+            data.update({inline.formset.prefix + '-TOTAL_FORMS': '0', inline.formset.prefix + '-INITIAL_FORMS': '0'})
+        data.update(anthology=other.pk, source_contract_received='on', _save='Zapisz')
+        response = self.client.post(url, data)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Tekst musi należeć do antologii zapisanej recenzji.',
+                      response.context['adminform'].form.errors['anthology'])
+        review.refresh_from_db()
+        self.assertIsNone(review.copied_text_id)
+
+    def test_prepare_text_endpoint_refusals(self):
+        endpoint = reverse('admin:texts_review_prepare_text')
+        coauthor = Author.objects.create(first_name='Ola', last_name='Współ', email='ola@example.com')
+        ready = self.review(title='Gotowe')
+        ready.coauthors.add(coauthor)
+        cases = {
+            'GET': ('get', {}, 405, 'POST required'),
+            'bez ID': ('post', {'review_id': 'x'}, 400, 'Najpierw zapisz recenzję'),
+            'nieistniejąca': ('post', {'review_id': 999999}, 400, 'Najpierw zapisz recenzję'),
+            'już przeniesiona': ('post', {'review_id': self.review(copied_text=self.text).pk}, 409,
+                                 'ma już powiązany tekst'),
+            'nieprzyjęta': ('post', {'review_id': self.review(status=Review.Status.NEW).pk}, 400,
+                            'wyłącznie przyjęty tekst'),
+            'niezapisani współautorzy': ('post', {'review_id': ready.pk, 'source_coauthors_present': '1'}, 409,
+                                         'zapisz zmiany autorów'),
+            'inny autor w formularzu': ('post', {'review_id': ready.pk, 'source_author_id': self.author.pk}, 409,
+                                        'zapisz zmiany autorów'),
+        }
+        for case, (method, data, status, message) in cases.items():
+            with self.subTest(case):
+                response = getattr(self.client, method)(endpoint, data)
+                self.assertEqual(response.status_code, status)
+                self.assertIn(message, response.json()['error'])
+        self.assertNotIn('review_text_prefills', self.client.session)

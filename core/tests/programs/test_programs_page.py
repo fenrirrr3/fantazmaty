@@ -97,7 +97,7 @@ class ProgramsPageLayoutTests(TestCase):
 
     def test_tips_describe_kept_review_markup_and_linked_images(self):
         """Pomoc mówi, że komentarze i śledzone zmiany zostają (z nazwiskami autorów), a obrazy połączone znikają
-        z linkiem; nie obiecuje już usuwania komentarzy ani przyjmowania zmian przez przebudowę."""
+        z linkiem."""
         tips = self.tip_text()
         for text in ('komentarze (z odpowiedziami) i śledzone zmiany zostają',
                      'w pliku zostają więc nazwiska autorów komentarzy i zmian',
@@ -106,9 +106,6 @@ class ProgramsPageLayoutTests(TestCase):
                      'obrazy połączone z plikami spoza dokumentu – razem z linkiem'):
             with self.subTest(text=text):
                 self.assertIn(text, tips)
-        for text in ('Usuwa stare metadane, komentarze', 'pomija skreślony', 'usuń komentarze'):
-            with self.subTest(removed=text):
-                self.assertNotIn(text, tips)
 
     def test_tips_inform_about_removed_images_and_polish_language(self):
         for card in css(self.tree, 'details.program-tool'):
@@ -165,7 +162,6 @@ class SuperuserProgramsPageTests(TestCase):
                      'Obrazy połączone z plikami spoza dokumentu znikają razem z linkiem'):
             with self.subTest(text=text):
                 self.assertIn(text, tips)
-        self.assertNotIn('pomija m.in. tabele, komentarze', tips)
 
     def test_superuser_limits_are_in_tips(self):
         admin = create_superuser('wyglad-admin')

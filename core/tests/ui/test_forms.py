@@ -6,6 +6,7 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import AnonymousUser
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -15,11 +16,16 @@ from authors.models import Author
 from core.forms import (AuthorNoteForm, AuthorNotificationForm, CompleteStageForm,
                         ReviewBulkImportForm,
                         VacationForm)
+from core.author_access import contact_authors
+from core.intake_forms import ExtractForm
 from core.models import MailboxConnection, PostLayoutAssignment
+from core.novel_forms import AssignmentForm, ChapterRangeForm
 from core.post_layout import selection_token
+from core.templatetags.workspace_tags import account_person
+from core.translation_forms import TranslationForm
 from fantazmaty.testing import FormControls, create_member, create_superuser
 from people.models import Person, Vacation
-from texts.models import Anthology, Review, Text
+from texts.models import Anthology, ForeignAuthor, Review, Text
 from workflow.models import WorkflowStage
 
 
@@ -294,3 +300,44 @@ class FormValidationRulesTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn('confirm_submission_warnings', form.errors)
         self.assertTrue(any('możliwy duplikat' in warning for warning in form.import_warnings))
+
+    def test_translation_form_accepts_plain_dict_data(self):
+        author = ForeignAuthor.objects.create(first_name='Jan', last_name='Obcy')
+        form = TranslationForm({'foreign_authors': str(author.pk)})
+        self.assertEqual(list(form.fields['foreign_authors'].queryset), [author])
+
+    def test_extract_author_without_email_requires_email(self):
+        author = Author.objects.create(first_name='Ewa', last_name='Dawna', email=None)
+        cases = {
+            'autor bez e-maila': ({'author': author.pk}, 'Uzupełnij adres e-mail autora historycznego.'),
+            'bez autora': ({}, None),
+        }
+        for name, (extra, message) in cases.items():
+            with self.subTest(name):
+                form = ExtractForm({'title': 'Miniatura', 'submission_dates': '2020', **extra})
+                form.is_valid()
+                if message:
+                    self.assertEqual(form.errors['email'], [message])
+                    self.assertEqual(form.cleaned_data['full_name'], 'Ewa Dawna')
+                else:
+                    self.assertNotIn('email', form.errors)
+
+    def test_chapter_lengths_skip_empty_items(self):
+        form = ChapterRangeForm({'chapter_numbers': '1-2', 'chapter_lengths': '1: 100,, 2: 200;'})
+        self.assertTrue(form.is_valid(), form.errors)
+        self.assertEqual(form.cleaned_data['chapter_lengths'], {1: 100, 2: 200})
+
+    def test_assignment_requires_person_eligible_for_role(self):
+        proofreader = create_member('korektor-ui', 'Korektor')
+        form = AssignmentForm({'role': 'editor', 'assignee': proofreader.pk})
+        self.assertFalse(form.is_valid())
+        self.assertEqual(form.errors['assignee'], ['Ta osoba nie może pełnić wybranej roli.'])
+        empty = AssignmentForm({'role': '', 'assignee': ''})
+        self.assertFalse(empty.is_valid())
+        self.assertNotIn('__all__', empty.errors)
+
+    def test_helpers_for_anonymous_user(self):
+        Author.objects.create(first_name='Ukryty', last_name='Autor', email=None)
+        self.assertIsNone(account_person(AnonymousUser()))
+        self.assertEqual(list(contact_authors(AnonymousUser())), [])
+

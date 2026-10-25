@@ -1,16 +1,19 @@
-"""Korekta pojedynczego przypisania w adminie (zmiana osoby, odłączenie, usunięcie)."""
+"""Korekta pojedynczego przypisania w adminie (zmiana osoby, odłączenie, usunięcie) i zapis samej notatki przypisania."""
 from datetime import timedelta
 
-from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
 from core.edit_versions import version_of
-from fantazmaty.testing import create_member, create_superuser
+from fantazmaty.testing import create_member, create_superuser, form_value
+from fantazmaty.testing.workflow import StatusAssignmentFixtures
 from texts.models import Anthology, Text
 from workflow.admin_assignment_edit import correct_assignment
 from workflow.models import WorkflowHandoff, WorkflowRepetition, WorkflowRoleAssignment as A, WorkflowStage as S
+
+from .support import importing
 
 
 class AssignmentCorrectionTests(TestCase):
@@ -33,11 +36,7 @@ class AssignmentCorrectionTests(TestCase):
                                   version_of(self.text) if version is None else version,
                                   action=action, performer=performer)
 
-    def test_only_superuser_with_current_form_can_correct(self):
-        with self.assertRaises(PermissionDenied):
-            self.correct('performer', self.other, actor=self.member)
-        with self.assertRaisesMessage(ValidationError, 'Dane zmieniły się'):
-            self.correct('performer', self.other, version=version_of(self.text) - 1)
+    def test_unknown_action_and_missing_performer_are_refused(self):
         with self.assertRaisesMessage(ValidationError, 'Nieprawidłowa operacja'):
             self.correct('merge')
         with self.assertRaisesMessage(ValidationError, 'Wybierz wykonawcę'):
@@ -132,3 +131,30 @@ class AssignmentCorrectionPageTests(TestCase):
                              fetch_redirect_response=False)
         self.assignment.refresh_from_db()
         self.assertIsNone(self.assignment.assigned_to_id)
+
+
+class AssignmentNotesAdminTests(StatusAssignmentFixtures):
+    """W adminie przypisania można zmienić tylko notatkę – także pustej roli i dawnej roli z importu."""
+
+    def save_notes(self, assignment, notes):
+        url = reverse('admin:workflow_workflowroleassignment_change', args=[assignment.pk])
+        self.client.force_login(self.admin)
+        page = self.client.get(url)
+        response = self.client.post(url, {'notes': notes, '_edit_version': form_value(page), '_save': 'Zapisz'})
+        self.assertEqual(response.status_code, 302, getattr(response, 'context', None)
+                         and response.context.get('errors'))
+        assignment.refresh_from_db()
+        return assignment
+
+    def test_notes_are_saved_without_changing_performer(self):
+        with importing():
+            imported = A.objects.create(text=self.text, role='editing_reviewer', assigned_to=self.member,
+                                        is_current=False)
+        empty = A.objects.create(text=self.text, role='proofreader_1')
+        for assignment, performer in ((empty, None), (imported, self.member.pk)):
+            with self.subTest(role=assignment.role):
+                assigned_at = assignment.assigned_at
+                saved = self.save_notes(assignment, 'Uwaga redakcji')
+                self.assertEqual(saved.notes, 'Uwaga redakcji')
+                self.assertEqual(saved.assigned_to_id, performer)
+                self.assertEqual(saved.assigned_at, assigned_at)

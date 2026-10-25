@@ -1,6 +1,7 @@
 """Przeniesienie przyjętego zgłoszenia do procesu wydawniczego: warunki, profil autora, umowy i telefon."""
 
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.db import transaction
 from django.utils import timezone
 
 from authors.models import Author
@@ -91,3 +92,17 @@ class PublicationTransferRuleTests(ReviewFixtures):
             with self.subTest(values=values), self.assertRaisesMessage(ValidationError, message):
                 validate_review_publication(review)
         validate_review_publication(self.accepted)
+
+    def test_validation_only_mode_prepares_author_without_saving(self):
+        """persist=False (formularz admina) zwraca uzupełnionego autora, ale nie zmienia bazy."""
+        author = Author.objects.create(first_name='Autor', last_name='Test', email='author@example.com',
+                                       phone_number='111', has_contract=False)
+        Review.objects.filter(pk=self.review.pk).update(phone_number='222 333 444')
+        self.review.refresh_from_db()
+        with transaction.atomic():
+            resolved, coauthors = resolve_publication_authors(self.review, contract_received=True,
+                                                              update_author_phone=True, persist=False)
+        self.assertEqual((resolved.pk, resolved.has_contract, resolved.phone_number), (author.pk, True, '222 333 444'))
+        self.assertEqual(coauthors, [])
+        author.refresh_from_db()
+        self.assertEqual((author.has_contract, author.phone_number), (False, '111'))

@@ -1,7 +1,8 @@
-"""Autorzy w panelu admina: duplikaty e-maili i nazwisk, notatki z autorem wpisu, czarna lista i dostęp tylko dla superusera."""
+"""Autorzy w panelu admina: duplikaty e-maili i nazwisk, notatki z autorem wpisu, czarna lista i usuwanie
+(dostęp tylko dla superusera: core/tests/admin/test_admin_tools.SuperuserOnlyAdminMixinTests)."""
 from django.contrib.admin.sites import site
 from django.contrib.auth import get_user_model
-from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.exceptions import ValidationError
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
 
@@ -114,6 +115,24 @@ class AuthorAdminPageTests(TestCase):
         self.assertEqual(str(AuthorNote(author=self.author)), 'Anna Kowalska – nieznany autor notatki – bez daty')
         self.assertContains(self.client.get(reverse('admin:authors_authornote_changelist')), 'słowo słowo')
 
+    def test_editing_note_keeps_its_creator(self):
+        """Poprawka notatki (na stronie notatki albo w inline autora) nie zmienia osoby, która ją utworzyła."""
+        creator = get_user_model().objects.create_user('tworca-notatki')
+        note = AuthorNote.objects.create(author=self.author, content='Pierwsza', created_by=creator)
+        cases = {
+            'strona notatki': (reverse('admin:authors_authornote_change', args=[note.pk]), 'authornote_form',
+                               {'content': 'Z panelu notatek'}),
+            'inline w autorze': (reverse('admin:authors_author_change', args=[self.author.pk]), 'author_form',
+                                 {'notes-0-content': 'Z inline autora'}),
+        }
+        for case, (url, form_id, changes) in cases.items():
+            with self.subTest(case):
+                data = admin_form_data(self.client, url, form_id, **changes)
+                self.assertEqual(self.client.post(url, {k: v for k, v in data.items() if '__prefix__' not in k})
+                                 .status_code, 302)
+                note.refresh_from_db()
+                self.assertEqual((note.content, note.created_by), (next(iter(changes.values())), creator))
+
     def test_blacklist_shortcuts_and_lists(self):
         response = self.client.get(reverse('admin:authors_author_blacklist'))
         self.assertRedirects(response, reverse('admin:authors_author_changelist') + '?is_blacklisted__exact=1',
@@ -195,12 +214,3 @@ class AuthorAdminPageTests(TestCase):
         self.assertContains(response, 'Nie można usunąć autora – ma teksty w bazie: Pisarz Jan (1 tekst).')
         self.assertTrue(Author.objects.filter(pk=with_text.pk).exists())
 
-    def test_author_data_is_hidden_from_non_superuser_even_if_called_directly(self):
-        request = RequestFactory().get('/')
-        request.user = get_user_model().objects.create_user('author-staff', is_staff=True)
-        model_admin = AuthorAdmin(Author, site)
-        self.assertFalse(model_admin.get_queryset(request).exists())
-        with self.assertRaises(PermissionDenied):
-            model_admin.history_view(request, str(self.author.pk))
-        request.user = self.admin
-        self.assertEqual(model_admin.history_view(request, str(self.author.pk)).status_code, 200)
