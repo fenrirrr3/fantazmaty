@@ -108,6 +108,8 @@ def job_options(action, form, user=None):
                        replacements=ReplacementEntry.active_replacements())
         if action == 'merge':
             options['use_template'] = data['use_template']
+        else:
+            options['remove_fonts'] = data['remove_fonts']
     elif action == 'convert':
         options = dict(formats=data['formats'], use_cleaner=data['use_cleaner'], preserve_filename=True,
                        remove_soft_whitespace=data['use_cleaner'])

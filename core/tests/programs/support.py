@@ -706,3 +706,44 @@ def external_images(stream):
                         found.append((name, relationship.get('Target')))
     stream.seek(0)
     return found
+
+
+FONT_FILE_BYTES = 40_000
+
+
+def docx_with_embedded_fonts(text='Ala ma kota.'):
+    """DOCX z czcionkami osadzonymi jak przez Worda („Osadź czcionki w pliku”, bez podzbioru znaków).
+
+    Dwa pliki word/fonts/font{1,2}.odttf (po FONT_FILE_BYTES losowych bajtów – nie dają się skompresować)
+    z relacjami /font części fontTable, odwołania w:embedRegular i w:embedBold przy Times New Roman,
+    w:embedTrueTypeFonts i w:saveSubsetFonts w ustawieniach oraz typ odttf w [Content_Types].xml.
+    """
+    import random
+    generator = random.Random(7)
+    font_type = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/font'
+    relationships = ''.join(f'<Relationship Id="rId{index}" Type="{font_type}" Target="fonts/font{index}.odttf"/>'
+                            for index in (1, 2))
+    replace = {
+        'word/fontTable.xml': lambda data: data.replace(
+            b'<w:font w:name="Times New Roman">',
+            b'<w:font w:name="Times New Roman"><w:embedRegular r:id="rId1" w:fontKey="{00000000-0000-0000-0000-000000000001}"/>'
+            b'<w:embedBold r:id="rId2" w:fontKey="{00000000-0000-0000-0000-000000000002}"/>', 1),
+        'word/settings.xml': lambda data: data.replace(b'<w:zoom ', b'<w:embedTrueTypeFonts/><w:saveSubsetFonts/><w:zoom ', 1),
+        '[Content_Types].xml': lambda data: data.replace(
+            b'<Default Extension="xml"', b'<Default Extension="odttf" '
+            b'ContentType="application/vnd.openxmlformats-officedocument.obfuscatedFont"/><Default Extension="xml"', 1),
+    }
+    extra = {'word/_rels/fontTable.xml.rels': (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<Relationships '
+        f'xmlns="http://schemas.openxmlformats.org/package/2006/relationships">{relationships}</Relationships>').encode(),
+        **{f'word/fonts/font{index}.odttf': generator.randbytes(FONT_FILE_BYTES) for index in (1, 2)}}
+    output = BytesIO()
+    with ZipFile(BytesIO(docx_bytes(text))) as source, ZipFile(output, 'w', ZIP_DEFLATED) as target:
+        for item in source.infolist():
+            data = source.read(item)
+            changed = replace.get(item.filename, lambda value: value)(data)
+            assert changed != data or item.filename not in replace, item.filename
+            target.writestr(item, changed, compress_type=ZIP_DEFLATED)
+        for name, data in extra.items():
+            target.writestr(name, data)
+    return output.getvalue()

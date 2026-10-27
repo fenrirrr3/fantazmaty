@@ -5,6 +5,7 @@ from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
+from zipfile import ZipFile
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase, TestCase, tag
@@ -22,7 +23,7 @@ from core.services.document_converter import TIME_LIMIT, TIMEOUT_MESSAGE, Conver
 from core.services.document_errors import DocumentInputError
 from fantazmaty.testing import create_member, create_superuser
 
-from .support import REPETITION_FIELDS, IsolatedProgramDirsMixin, formatted_docx, saved
+from .support import REPETITION_FIELDS, IsolatedProgramDirsMixin, docx_with_embedded_fonts, formatted_docx, saved
 
 
 def upload(name='tekst.docx'):
@@ -251,6 +252,24 @@ class CleanerOptionsTests(ProgramViewMixin, TestCase):
                           self.client.get(self.url).content.decode())
         self.assertNotIn('use_template', self.post_job({'program_action': 'clean', 'document': upload()}))
 
+    def test_embedded_fonts_option_is_on_by_default_and_reaches_the_cleaner_only(self):
+        """„Usuń osadzone czcionki”: domyślnie zaznaczone (także przy ustawieniach zapamiętanych przed dodaniem
+        opcji), wartość trafia do zadania Odkurzacza; scalanie jej nie ma (przebudowa i tak nie przenosi czcionek)."""
+        self.assertIs(OdkurzaczForm()['remove_fonts'].value(), True)
+        self.assertNotIn('remove_fonts', MergeForm().fields)
+        for data, expected in (({'remove_fonts': 'on'}, True), ({}, False)):
+            with self.subTest(data=data):
+                options = self.post_job({'program_action': 'clean', 'document': upload(), **data})
+                self.assertIs(options['remove_fonts'], expected)
+        stored = ProgramPreferences.objects.get(user=self.member)
+        stored.data = {'clean': {'rules': ['spaces']}}
+        stored.save()
+        self.assertInHTML('<input type="checkbox" name="remove_fonts" id="id_remove_fonts" checked>',
+                          self.client.get(self.url).content.decode())
+        self.client.force_login(self.admin)
+        self.assertNotIn('remove_fonts', self.post_job({'program_action': 'merge',
+                                                        'merge-documents': [upload('a.docx'), upload('b.docx')]}))
+
     def test_page_format_is_kept_only_together_with_rebuild(self):
         options = self.post_job({'program_action': 'clean', 'document': upload(), 'keep_page_format': 'on'})
         self.assertIs(options['keep_page_format'], False)
@@ -450,23 +469,23 @@ class ConverterConfigurationTests(SimpleTestCase):
                 'spaces': 3, 'trim': 0, 'x': 'tekst', 'y': True,
                 'replacements': [{'source': 'mentlikiem', 'target': 'mętlikiem', 'count': 2},
                                  {'source': 'zły', 'target': 3, 'count': 1}, 'tekst']}))
-            (directory / 'images.json').write_text(json.dumps({'removed_images': 4}))
+            (directory / 'images.json').write_text(json.dumps({'removed_images': 4, 'removed_fonts': 2048}))
 
         replacements = [{'kind': 'word', 'source': 'kot', 'target': 'pies'}]
         with TemporaryDirectory() as temporary, self.settings(DOCUMENT_CONVERSION_DIR=Path(temporary)), \
                 patch('core.services.document_converter.run_converter', side_effect=worker_run):
             result, extension, _ = convert_document(BytesIO(formatted_docx()), [], include_docx=True, use_cleaner=True,
                                                     track_changes=True, cleaner_summary=True, replacements=replacements,
-                                                    keep_page_format=True, analysis_unlimited=True)
+                                                    keep_page_format=True, analysis_unlimited=True, remove_fonts=True)
             result.close()
         self.assertEqual(extension, 'docx')
         self.assertEqual({key: seen[key] for key in ('track_changes', 'cleaner_summary', 'replacements',
-                                                       'keep_page_format', 'analysis_unlimited')},
+                                                       'keep_page_format', 'analysis_unlimited', 'remove_fonts')},
                          {'track_changes': True, 'cleaner_summary': True, 'replacements': replacements,
-                          'keep_page_format': True, 'analysis_unlimited': True})
+                          'keep_page_format': True, 'analysis_unlimited': True, 'remove_fonts': True})
         self.assertEqual(result.cleaner_summary, {
             'spaces': 3, 'replacements': [{'source': 'mentlikiem', 'target': 'mętlikiem', 'count': 2}]})
-        self.assertEqual(result.removed_images, 4)
+        self.assertEqual((result.removed_images, result.removed_fonts), (4, 2048))
 
     def test_too_large_document_xml_is_refused_before_the_worker(self):
         from core.services.document_converter import validate_resources
@@ -490,9 +509,10 @@ class ConverterConfigurationTests(SimpleTestCase):
             result, _, _ = convert_document(BytesIO(formatted_docx()), [], include_docx=True)
             result.close()
         self.assertEqual((seen['track_changes'], seen['cleaner_summary'], seen['replacements'],
-                          seen['keep_page_format'], seen['analysis_unlimited']), (False, False, None, False, False))
+                          seen['keep_page_format'], seen['analysis_unlimited'], seen['remove_fonts']),
+                         (False, False, None, False, False, False))
         self.assertIsNone(result.cleaner_summary)
-        self.assertEqual(result.removed_images, 0)
+        self.assertEqual((result.removed_images, result.removed_fonts), (0, 0))
         self.assertLessEqual(seen['timeout'], TIME_LIMIT)
 
     def test_superuser_time_limit_is_used_and_reported(self):
@@ -672,6 +692,26 @@ class RealProgramOptionsTests(IsolatedProgramDirsMixin, TestCase):
         namespace = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
         self.assertTrue(body.findall(f'.//{namespace}ins'))
         self.assertTrue(body.findall(f'.//{namespace}del'))
+
+    def test_embedded_fonts_are_removed_with_a_note(self):
+        """Prawdziwe zadanie: z opcją wynik nie ma osadzonych czcionek, a pierwsza uwaga podaje usunięty rozmiar;
+        bez opcji czcionki zostają i uwagi nie ma."""
+        for data, kept in (({'remove_fonts': 'on'}, False), ({}, True)):
+            with self.subTest(data=data):
+                with patch.object(jobs, 'launch', side_effect=jobs.execute):
+                    response = self.client.post(self.url_programs, {
+                        'document': SimpleUploadedFile('tekst.docx', docx_with_embedded_fonts()), 'rules': ['spaces'],
+                        **data})
+                page = self.client.get(response['Location'])
+                state = page.context['state']
+                self.assertEqual(state['state'], 'done', state)
+                notes = [text for text in state['warnings'] if 'osadzone czcionki' in text]
+                self.assertEqual(len(notes), 0 if kept else 1)
+                if not kept:
+                    self.assertTrue(state['warnings'][0].startswith('Usunięto osadzone czcionki (78 KB)'), state)
+                result = self.client.get(page.context['download_url'])
+                with ZipFile(BytesIO(b''.join(result.streaming_content))) as archive:
+                    self.assertEqual('word/fonts/font1.odttf' in archive.namelist(), kept)
 
     def test_rebuild_keeps_the_page_format_on_request(self):
         from docx.enum.section import WD_ORIENT

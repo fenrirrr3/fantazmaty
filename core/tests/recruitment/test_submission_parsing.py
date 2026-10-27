@@ -426,6 +426,23 @@ class PackagingErrorTests(SimpleTestCase):
         self.assertEqual(errors, [])
 
     @patch('core.services.mailbox_import.convert_document')
+    def test_processed_documents_lose_embedded_fonts(self, convert):
+        """Każde przetworzenie DOCX ze skrzynki (Odkurzacz, konwersja, przebudowa) usuwa osadzone czcionki;
+        bez przetwarzania zapisujemy oryginał bez zmian."""
+        convert.side_effect = lambda *args, **kwargs: (BytesIO(b'przetworzony'), None, None)
+        for options in ((True, False, False), (False, False, True)):
+            with self.subTest(options=options):
+                convert.reset_mock()
+                _package_messages([self.message()], *options, True)
+                self.assertIs(convert.call_args.kwargs['remove_fonts'], True)
+        convert.side_effect = lambda *args, **kwargs: converted()
+        _package_messages([self.message()], False, True, False)
+        self.assertIs(convert.call_args.kwargs['remove_fonts'], True)
+        convert.reset_mock()
+        _package_messages([self.message()], False, False, False)
+        convert.assert_not_called()
+
+    @patch('core.services.mailbox_import.convert_document')
     def test_rebuild_only_and_conversion_with_notes(self, convert):
         convert.side_effect = lambda *args, **kwargs: (BytesIO(b'przebudowany'), None, None)
         self.assertEqual(self.names(_package_messages([self.message()], False, False, True, True)),

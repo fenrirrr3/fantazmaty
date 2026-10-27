@@ -137,7 +137,7 @@
     margin-left: auto;
 }
 
-/* Przyciski nagłówka: wyszukiwarka, kopiowanie adresów, menu i logowanie mają jedną wysokość. */
+/* Przyciski nagłówka: wyszukiwarka, kopiowanie adresów i CSV, menu i logowanie mają jedną wysokość. */
 .header-search-toggle,
 .menu-button,
 .admin-button {

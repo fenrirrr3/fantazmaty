@@ -12,10 +12,10 @@ DEFAULT_PAGE_SIZE = 25
 ALLOWED_PAGE_SIZES = frozenset({25, 50, 100, 250, 500})
 
 
-def _can_copy_emails(request):
-    from core.permissions import can_copy_emails
+def _can_copy_tables(request):
+    from core.permissions import can_copy_emails, is_superuser
     user = getattr(request, 'user', None)
-    return bool(user is not None and can_copy_emails(user))
+    return bool(user is not None and (can_copy_emails(user) or is_superuser(user)))
 
 
 def _positive_integer(value, default):
@@ -54,9 +54,10 @@ def get_page_size(request, default=DEFAULT_PAGE_SIZE, *, size_param='page_size')
     requested = _positive_integer(request.GET.get(size_param), None)
     if requested not in ALLOWED_PAGE_SIZES:
         return saved
-    # Pobieranie wszystkich stron przez kopertę (core/email-copy.js) nie zmienia zapamiętanego rozmiaru strony.
-    email_copy = request.headers.get('X-CMS-Email-Copy') == '1' and _can_copy_emails(request)
-    if session is not None and not email_copy and preferences.get(key) != requested:
+    # Pobieranie wszystkich stron przez kopertę i kopiowanie CSV (core/table-data.js) nie zmienia
+    # zapamiętanego rozmiaru strony.
+    table_copy = request.headers.get('X-CMS-Table-Copy') == '1' and _can_copy_tables(request)
+    if session is not None and not table_copy and preferences.get(key) != requested:
         preferences.pop(key, None)
         preferences[key] = requested
         # Detail views can have many different URLs; keep the session bounded.

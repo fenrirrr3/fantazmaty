@@ -1,5 +1,5 @@
-{# Siatka reguł Odkurzacza (przyciski „Zaznacz/Odznacz wszystkie” są w pasku grupy). Parametry: rules (pole reguł), soft (opcjonalnie: pole miękkich enterów). #}
-{{ rules.errors }}{% if soft %}{{ soft.errors }}{% endif %}
+{# Siatka reguł Odkurzacza (przyciski „Zaznacz/Odznacz wszystkie” są w pasku grupy). Parametry: rules (pole reguł), soft (opcjonalnie: pole miękkich enterów), fonts (opcjonalnie: pole osadzonych czcionek). #}
+{{ rules.errors }}{% if soft %}{{ soft.errors }}{% endif %}{% if fonts %}{{ fonts.errors }}{% endif %}
 <div class="odkurzacz-rules">
     {% if soft %}<div class="program-check">
         <label for="{{ soft.id_for_label }}">{{ soft }} <span>{{ soft.label }}</span></label>
@@ -7,6 +7,15 @@
             <div class="help-tip-body">
                 <p>Miękkie entery (Shift+Enter) stają się nowymi akapitami, a spacje nieprzenoszące – zwykłymi spacjami. Działa przed regułami korekty w całym dokumencie: treści, tabelach, polach tekstowych, nagłówkach, stopkach i przypisach. W punktach list i nagłówkach miękki enter zostaje, żeby nie powstawały dodatkowe punkty ani rozdziały.</p>
                 <p>Istniejące podziały stron pozostają.</p>
+            </div>
+        </details>
+    </div>{% endif %}
+    {% if fonts %}<div class="program-check">
+        <label for="{{ fonts.id_for_label }}">{{ fonts }} <span>{{ fonts.label }}</span></label>
+        <details class="help-tip"><summary aria-label="Pomoc: {{ fonts.label }}" title="Pomoc"><span aria-hidden="true">?</span></summary>
+            <div class="help-tip-body">
+                <p>Word z opcją „Osadź czcionki w pliku” zapisuje w dokumencie całe pliki czcionek – kilka stron tekstu może wtedy ważyć kilka megabajtów. Po usunięciu tekst zachowuje nazwy czcionek, a Word użyje czcionek zainstalowanych w systemie.</p>
+                <p>Przebudowa zawsze tworzy dokument bez osadzonych czcionek.</p>
             </div>
         </details>
     </div>{% endif %}

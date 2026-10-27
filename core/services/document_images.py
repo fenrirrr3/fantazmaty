@@ -6,6 +6,8 @@ połączony znika. CMS nigdy nie pobiera takich plików.
 strip_images – usuwa obrazy z każdej części dokumentu (treść, nagłówki, stopki,
 przypisy, komentarze, pola tekstowe, numeracja z obrazkowymi punktorami) razem
 z nieużywanymi plikami mediów, ich relacjami i wpisami [Content_Types].xml.
+strip_embedded_fonts – usuwa czcionki osadzone przez Worda (pliki czcionek, odwołania
+w fontTable i ustawienie osadzania); opcja Odkurzacza i zawsze przy imporcie ze skrzynki.
 force_polish – oznacza cały dokument jako polski (każde w:lang w:val = pl-PL,
 także w stylach i ustawieniach domyślnych).
 
@@ -255,6 +257,74 @@ def strip_images(source):
     if not parts:
         return BytesIO(original), 0
     return _write(original, parts, removed_parts), count
+
+
+# Osadzone czcionki (Word: Opcje → Zapisywanie → „Osadź czcionki w pliku”): pliki czcionek z relacji /font
+# części fontTable, odwołania do nich i ustawienia, które każą Wordowi osadzać czcionki przy kolejnym zapisie.
+FONT_RELATIONSHIP = '/font'
+FONT_EMBEDS = {_q(W, name) for name in ('embedRegular', 'embedBold', 'embedItalic', 'embedBoldItalic')}
+FONT_SETTINGS = {_q(W, name) for name in ('embedTrueTypeFonts', 'embedSystemFonts', 'saveSubsetFonts')}
+FONT_EXTENSIONS = {'odttf', 'ttf', 'otf', 'fntdata'}
+
+
+def strip_embedded_fonts(source):
+    """(BytesIO bez osadzonych czcionek, liczba usuniętych bajtów plików czcionek).
+
+    Nazwy czcionek w tekście i w fontTable zostają – Word użyje czcionek z systemu.
+    Dokument bez osadzonych czcionek wraca bez zmian.
+    """
+    original = _read(source)
+    with ZipFile(BytesIO(original)) as archive:
+        sizes = {item.filename: item.compress_size for item in archive.infolist()}
+        payloads = {name: archive.read(name) for name in sizes
+                    if name.endswith('.rels') or name == '[Content_Types].xml'
+                    or name.endswith(('fontTable.xml', 'settings.xml'))}
+    parts, fonts = {}, set()
+    for rels_name, data in payloads.items():
+        if not rels_name.endswith('.rels') or b'/font"' not in data:
+            continue
+        rels = parse_part(data)
+        part = source_part(rels_name)
+        for relationship in list(rels):
+            if relationship.get('Type', '').endswith(FONT_RELATIONSHIP) and is_internal(relationship):
+                target = part_target(part, relationship)
+                if target in sizes:
+                    fonts.add(target)
+                rels.remove(relationship)
+        parts[rels_name] = serialize_part(rels)
+        if not len(rels):
+            fonts.add(rels_name)
+    for name, data in payloads.items():
+        tags = FONT_EMBEDS if name.endswith('fontTable.xml') else FONT_SETTINGS if name.endswith('settings.xml') else ()
+        if not tags:
+            continue
+        root = parse_part(data)
+        found = [node for node in root.iter() if node.tag in tags]
+        for node in found:
+            _remove(node)
+        if found:
+            parts[name] = serialize_part(root)
+    if not fonts and not parts:
+        return BytesIO(original), 0
+    types = parse_part(payloads['[Content_Types].xml'])
+    remaining = {posixpath.splitext(name)[1].lstrip('.').lower() for name in sizes if name not in fonts}
+    for entry in list(types):
+        if entry.tag == _q(CT, 'Override') and entry.get('PartName', '').lstrip('/') in fonts:
+            types.remove(entry)
+        elif entry.tag == _q(CT, 'Default') and entry.get('Extension', '').lower() in FONT_EXTENSIONS - remaining:
+            types.remove(entry)
+    parts['[Content_Types].xml'] = serialize_part(types)
+    removed = sum(sizes[name] for name in fonts if not name.endswith('.rels'))
+    return _write(original, parts, fonts), removed
+
+
+def embedded_fonts_note(removed):
+    """Uwaga dla użytkownika o usuniętych osadzonych czcionkach ('' – nie było ich)."""
+    if removed <= 0:
+        return ''
+    size = f'{removed / (1024 * 1024):.1f} MB' if removed >= 100 * 1024 else f'{max(1, round(removed / 1024))} KB'
+    return (f'Usunięto osadzone czcionki ({size.replace(".", ",")}) – Word użyje czcionek '
+            'zainstalowanych w systemie.')
 
 
 # Obraz połączony (Wstaw → Obrazy → Połącz z plikiem; pole INCLUDEPICTURE): relacja obrazu z TargetMode="External".

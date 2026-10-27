@@ -17,11 +17,14 @@ from docx.oxml.ns import nsdecls, qn
 from lxml import etree
 
 from core.services import document_conversion_worker as worker
-from core.services.document_images import force_polish, linked_images_note, strip_images, unlink_external_images
+from core.services.document_images import (
+    embedded_fonts_note, force_polish, linked_images_note, strip_embedded_fonts, strip_images, unlink_external_images,
+)
 
 from .support import (
-    IMAGE_NAMESPACES, PICTURE_DRAWING, docx_bytes, docx_with_images, docx_with_linked_images, external_images,
-    footnote_text, png, saved, set_default_language, set_language, with_footnote,
+    FONT_FILE_BYTES, IMAGE_NAMESPACES, PICTURE_DRAWING, docx_bytes, docx_with_embedded_fonts, docx_with_images,
+    docx_with_linked_images, external_images, footnote_text, png, saved, set_default_language, set_language,
+    with_footnote,
 )
 
 R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
@@ -265,6 +268,16 @@ class WorkerImageTests(SimpleTestCase):
                 self.assertStripped(seen[step])
                 self.assertEqual(seen['images'], {'removed_images': 6})
 
+    def test_embedded_fonts_are_removed_only_on_request(self):
+        """remove_fonts (opcja Odkurzacza, import ze skrzynki): program dostaje dokument bez osadzonych czcionek,
+        a images.json – liczbę usuniętych bajtów; bez opcji czcionki zostają."""
+        for config, kept in (({'remove_fonts': True}, False), ({}, True)):
+            with self.subTest(config=config):
+                seen = self.run_main({'prepare': True, **config}, BytesIO(docx_with_embedded_fonts()))
+                with ZipFile(BytesIO(seen['prepare'])) as archive:
+                    self.assertEqual('word/fonts/font1.odttf' in archive.namelist(), kept)
+                self.assertEqual(seen['images'].get('removed_fonts', 0) >= 2 * FONT_FILE_BYTES, not kept)
+
     def test_document_without_images_reports_zero(self):
         seen = self.run_main({'prepare': True}, BytesIO(docx_bytes()))
         self.assertEqual(seen['images'], {'removed_images': 0})
@@ -297,6 +310,46 @@ class WorkerImageTests(SimpleTestCase):
         self.assertIn('r:embed=', body)
         self.assertNotIn('r:link=', body)
 
+
+
+class EmbeddedFontsTests(SimpleTestCase):
+    """strip_embedded_fonts: czcionki osadzone przez Worda znikają razem z odwołaniami, nazwy czcionek zostają."""
+
+    def test_font_files_references_and_settings_are_removed(self):
+        stream, removed = strip_embedded_fonts(BytesIO(docx_with_embedded_fonts()))
+        self.assertGreaterEqual(removed, 2 * FONT_FILE_BYTES)
+        self.assertEqual(package_problems(stream), [])
+        with ZipFile(stream) as archive:
+            names = archive.namelist()
+            fonts, settings = archive.read('word/fontTable.xml'), archive.read('word/settings.xml')
+            types = archive.read('[Content_Types].xml')
+        self.assertFalse([name for name in names if name.startswith('word/fonts/') or 'fontTable.xml.rels' in name])
+        self.assertNotIn(b'w:embed', fonts)
+        self.assertIn(b'w:name="Times New Roman"', fonts)
+        self.assertNotIn(b'embedTrueTypeFonts', settings)
+        self.assertNotIn(b'saveSubsetFonts', settings)
+        self.assertNotIn(b'odttf', types)
+        self.assertEqual(Document(stream).paragraphs[0].text, 'Ala ma kota.')
+
+    def test_document_without_embedded_fonts_is_returned_unchanged(self):
+        """Bez plików czcionek dokument wraca bez zmian; samo ustawienie osadzania (bez plików) jest usuwane,
+        żeby Word nie osadził czcionek przy kolejnym zapisie."""
+        source = docx_bytes()
+        stream, removed = strip_embedded_fonts(BytesIO(source))
+        self.assertEqual((stream.getvalue(), removed), (source, 0))
+        flag_only = repack(source, {'word/settings.xml': lambda data: data.replace(
+            b'<w:zoom ', b'<w:embedTrueTypeFonts/><w:zoom ', 1)})
+        stream, removed = strip_embedded_fonts(BytesIO(flag_only))
+        self.assertEqual(removed, 0)
+        self.assertNotIn('embedTrueTypeFonts', read(stream.getvalue(), 'word/settings.xml'))
+
+    def test_note_gives_the_removed_size(self):
+        for removed, note in ((0, ''), (2048, 'Usunięto osadzone czcionki (2 KB) – Word użyje czcionek zainstalowanych '
+                                               'w systemie.'),
+                              (3052722, 'Usunięto osadzone czcionki (2,9 MB) – Word użyje czcionek zainstalowanych '
+                                        'w systemie.')):
+            with self.subTest(removed=removed):
+                self.assertEqual(embedded_fonts_note(removed), note)
 
 
 @tag('docx')

@@ -14,7 +14,7 @@ if __package__:
     from .document_errors import MESSAGES, DocumentInputError
     from .document_html import (HEADING_STYLE_MAP, PAGE_BREAK_STYLE, heading_label, list_paragraphs, mammoth_source,
                                 matched_paragraph, paragraph_queues, scene_break, split_page_breaks)
-    from .document_images import force_polish, strip_images, unlink_external_images
+    from .document_images import force_polish, strip_embedded_fonts, strip_images, unlink_external_images
     from .document_pdf import render_pdf
     from .document_preparation import prepare_docx
     from .document_progress import configure, report as report_progress
@@ -26,7 +26,7 @@ else:
     from document_errors import MESSAGES, DocumentInputError
     from document_html import (HEADING_STYLE_MAP, PAGE_BREAK_STYLE, heading_label, list_paragraphs, mammoth_source,
                                matched_paragraph, paragraph_queues, scene_break, split_page_breaks)
-    from document_images import force_polish, strip_images, unlink_external_images
+    from document_images import force_polish, strip_embedded_fonts, strip_images, unlink_external_images
     from document_pdf import render_pdf
     from document_preparation import prepare_docx
     from document_progress import configure, report as report_progress
@@ -434,8 +434,11 @@ def main():
         linked_images = _unlink_images(source)
         with source.open("rb") as document:
             stripped, removed_images = strip_images(document)
-        source.write_bytes(force_polish(stripped).getvalue())
         images = {"removed_images": removed_images}
+        # Osadzone czcionki (opcja Odkurzacza, import ze skrzynki) – zwykle megabajty przy kilku stronach tekstu.
+        if config.get("remove_fonts"):
+            stripped, images["removed_fonts"] = strip_embedded_fonts(stripped)
+        source.write_bytes(force_polish(stripped).getvalue())
         if linked_images:
             images["linked_images"] = linked_images
         (directory / "images.json").write_text(json.dumps(images), encoding="utf-8")

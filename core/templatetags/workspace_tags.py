@@ -10,7 +10,7 @@ ALLOWED = {
     "social_media": "can_view_social_media", "audio_proofreading": "can_view_audio_proofreading",
     "illustrations": "can_view_illustrations", "coordinator": "is_coordinator", "email_copy": "can_copy_emails",
     "my_reviews": "can_view_my_reviews", "review_list": "can_browse_reviews",
-    "recruitment_mailbox": "can_use_recruitment_mailbox",
+    "recruitment_mailbox": "can_use_recruitment_mailbox", "table_csv": "is_superuser",
 }
 
 

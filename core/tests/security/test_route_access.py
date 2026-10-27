@@ -252,10 +252,12 @@ class RoleAccessMatrixTests(TestCase):
 
 
 class EmailCopyAccessTests(TestCase):
-    """Koperta w nagłówku (kopiowanie adresów e-mail z tabel strony) – superuser i koordynatorzy, nie pozostali.
+    """Koperta w nagłówku (kopiowanie adresów e-mail z tabel strony) – superuser i koordynatorzy, nie pozostali;
+    ikona CSV (cała tabela do schowka) – tylko superuser.
 
-    Koperta nie ma własnej trasy: to skrypt na stronach, które użytkownik i tak widzi. Pobieranie kolejnych stron listy
-    z nagłówkiem X-CMS-Email-Copy nie zmienia zapamiętanego rozmiaru strony – tylko dla uprawnionych do koperty."""
+    Ani koperta, ani CSV nie mają własnej trasy: to skrypty na stronach, które użytkownik i tak widzi. Pobieranie
+    kolejnych stron listy z nagłówkiem X-CMS-Table-Copy nie zmienia zapamiętanego rozmiaru strony – tylko dla
+    uprawnionych do koperty albo CSV."""
 
     @classmethod
     def setUpTestData(cls):
@@ -279,7 +281,10 @@ class EmailCopyAccessTests(TestCase):
                 self.assertEqual('data-email-copy-toggle' in page.content.decode(), allowed)
                 # Bez rozszerzenia: ManifestStaticFilesStorage (wydanie) dokleja skrót – core/email-copy.<skrót>.js.
                 self.assertEqual('core/email-copy.' in page.content.decode(), allowed)
+                self.assertEqual('data-table-csv-toggle' in page.content.decode(), actor == 'superuser')
+                self.assertEqual('core/table-csv.' in page.content.decode(), actor == 'superuser')
+                self.assertEqual('core/table-data.' in page.content.decode(), allowed)
                 if actor:
-                    self.client.get(reverse('core:people_list'), {'page_size': 500}, HTTP_X_CMS_EMAIL_COPY='1')
+                    self.client.get(reverse('core:people_list'), {'page_size': 500}, HTTP_X_CMS_TABLE_COPY='1')
                     remembered = self.client.session.get('cms_page_sizes', {})
                     self.assertEqual(bool(remembered), not allowed)

@@ -154,6 +154,8 @@ class CleanerOptionsForm(forms.Form):
 
 class OdkurzaczForm(CleanerOptionsForm, ProgramDocumentForm):
     rebuild = forms.BooleanField(label="Przebuduj do nowego DOCX przed odkurzaniem", required=False, initial=False)
+    # Scalanie zawsze przebudowuje pliki, a przebudowa i tak nie przenosi osadzonych czcionek – stąd tylko tutaj.
+    remove_fonts = forms.BooleanField(label="Usuń osadzone czcionki", required=False, initial=True)
 
 
 class DocumentConversionForm(ProgramDocumentForm):

@@ -398,6 +398,7 @@ def convert_document(
     cleaner_summary=False,
     replacements=None,
     keep_page_format=False,
+    remove_fonts=False,
     analysis_unlimited=False,
     control=None,
     wait_for_slot=0,
@@ -436,6 +437,7 @@ def convert_document(
                     "cleaner_summary": bool(cleaner_summary),
                     "replacements": replacements,
                     "keep_page_format": bool(keep_page_format),
+                    "remove_fonts": bool(remove_fonts),
                     "analysis_unlimited": bool(analysis_unlimited),
                 },
             )
@@ -464,6 +466,8 @@ def convert_document(
                         result.cleaner_summary["replacements"] = replacements
             result.removed_images = _removed_images(directory / "images.json")
             # Obrazy tylko połączone z plikami zewnętrznymi (usunięte razem z linkiem) – osobna uwaga.
+            # Bajty usuniętych osadzonych czcionek – uwagę pokazuje strona zadania programu.
+            result.removed_fonts = _removed_images(directory / "images.json", "removed_fonts")
             note = linked_images_note(_removed_images(directory / "images.json", "linked_images"))
             if note:
                 result.conversion_warnings = [note, *warnings][:30]
@@ -541,7 +545,8 @@ def _replacement_list(value):
 
 def _removed_images(path, key="removed_images"):
     """Liczba obrazów usuniętych przez podproces (images.json; key="linked_images" – obrazów tylko
-    połączonych z plikami zewnętrznymi); 0, gdy pliku nie ma lub jest błędny."""
+    połączonych z plikami zewnętrznymi, key="removed_fonts" – bajtów osadzonych czcionek); 0, gdy pliku
+    nie ma lub jest błędny."""
     try:
         if path.is_file() and path.stat().st_size <= 1024:
             value = json.loads(path.read_text(encoding="utf-8")).get(key, 0)

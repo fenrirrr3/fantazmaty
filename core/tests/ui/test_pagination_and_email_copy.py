@@ -134,7 +134,7 @@ class EmailCopyTests(TestCase):
         emails = set()
         for page, expected in [(1, 500), (2, 10)]:
             response = self.client.get(url, {'q': 'Pasuje', 'page_size': 500, 'page': page},
-                                       HTTP_X_CMS_EMAIL_COPY='1')
+                                       HTTP_X_CMS_TABLE_COPY='1')
             self.assertEqual(response.status_code, 200)
             self.assertEqual(len(response.context['items']), expected)
             doc = html.fromstring(response.content)

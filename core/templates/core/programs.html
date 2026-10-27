@@ -78,7 +78,7 @@
                 </details>
                 {% include "core/includes/program_rule_actions.html" %}
             </div>
-            {% include "core/includes/program_rules.html" with rules=form.rules soft=form.remove_soft_whitespace %}
+            {% include "core/includes/program_rules.html" with rules=form.rules soft=form.remove_soft_whitespace fonts=form.remove_fonts %}
         </fieldset>
 
         <details class="program-advanced"{% if form.normalize_formatting.value or form.rebuild.value or form.keep_page_format.value or form.normalize_formatting.errors or form.keep_page_format.errors %} open{% endif %}>

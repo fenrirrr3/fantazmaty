@@ -553,6 +553,7 @@ def _package_messages(
                                 include_docx=True,
                                 use_cleaner=True,
                                 normalize=False,
+                                remove_fonts=True,
                                 timeout=deadline - time.monotonic(),
                                 wait_for_slot=min(30, max(0, deadline - time.monotonic())),
                             )
@@ -574,6 +575,7 @@ def _package_messages(
                                 normalize=convert,
                                 justify=convert,
                                 allow_rebuild_omissions=allow_rebuild_omissions,
+                                remove_fonts=True,
                             )
                         except RebuildConfirmationRequired as error:
                             rebuild_warnings.append(f"{name}: {error}")

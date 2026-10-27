@@ -27,7 +27,7 @@ from .document_converter import (
     MAX_OUTPUT, MAX_TIME_LIMIT, TIME_LIMIT, ConversionError, RebuildConfirmationRequired, conversion_slot,
     convert_document, conversion_filename, converter_python, exclusive_lock, run_converter, validate_resources,
 )
-from .document_images import linked_images_note
+from .document_images import embedded_fonts_note, linked_images_note
 
 TTL = 1800
 STALE_AFTER = 150      # brak znaku życia procesu przez tyle sekund = błąd
@@ -386,8 +386,10 @@ def _run_single(folder, data, options, *, control, waiting):
     if data['action'] != 'convert':
         suffix = '_powtorzenia' if data['action'] == 'repetitions' else ('_nowy' if options.get('rebuild') else '_odkurzony')
         name = Path(name).stem[:120] + suffix + '.docx'
+    # Uwaga o usuniętych osadzonych czcionkach (opcja Odkurzacza) – przed uwagami konwertera.
+    notes = [embedded_fonts_note(getattr(result, 'removed_fonts', 0)), *getattr(result, 'conversion_warnings', [])]
     done = {'state': 'done', 'filename': conversion_filename(name, extension), 'mime': mime,
-            'warnings': list(getattr(result, 'conversion_warnings', []))[:30]}
+            'warnings': [note for note in notes if note][:30]}
     # Liczba obrazów usuniętych z dokumentu przed pracą programu (strona stanu pokazuje komunikat).
     done['removed_images'] = getattr(result, 'removed_images', 0)
     if options.get('cleaner_summary'):

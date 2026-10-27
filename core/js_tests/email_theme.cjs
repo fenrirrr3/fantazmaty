@@ -42,7 +42,7 @@ f = themeFixture('autumn', true); f.autumn.events.click(); assert.equal(f.root.d
         pageParam: 'archive_page', sizeParam: 'archive_size', progress() {}, loadPage: async value => {
             const url = new URL(value); calls.push(url);
             const page = Number(url.searchParams.get('archive_page'));
-            return {page, pages: 3, count: 1001, emails: [`page${page}@example.org`, 'duplicate@example.org']};
+            return {page, pages: 3, count: 1001, items: [`page${page}@example.org`, 'duplicate@example.org']};
         }});
     assert.deepEqual(result, ['page1@example.org', 'duplicate@example.org', 'page2@example.org', 'page3@example.org']);
     assert.equal(calls.length, 3);
@@ -55,10 +55,10 @@ f = themeFixture('autumn', true); f.autumn.events.click(); assert.equal(f.root.d
         loadPage: async value => {
             const page = Number(new URL(value).searchParams.get('page'));
             if (page === 2) throw Error('network failed');
-            return {page, pages: 2, count: 600, emails: ['partial@example.org']};
+            return {page, pages: 2, count: 600, items: ['partial@example.org']};
         }}), /network failed/); // Must never return a partial result as success.
     await assert.rejects(collectServerEmails({url: 'https://cms.invalid/', pageParam: 'page', sizeParam: 'size', progress() {},
         loadPage: async value => ({page: Number(new URL(value).searchParams.get('page')), pages: 2,
-            count: new URL(value).searchParams.get('page') === '1' ? 600 : 599, emails: []})}), /Lista zmieniła/);
+            count: new URL(value).searchParams.get('page') === '1' ? 600 : 599, items: []})}), /Lista zmieniła/);
     console.log('Email extraction, all-page filtering, failures and theme persistence: OK');
 })().catch(error => { console.error(error); process.exitCode = 1; });

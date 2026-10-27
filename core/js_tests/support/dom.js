@@ -74,6 +74,9 @@ class Element {
             remove: (...c) => { el.className = list().filter(x => !c.includes(x)).join(' '); }};
     }
     get textContent() { return this._text + this.children.map(child => child.textContent).join(''); }
+    // Węzły jak w przeglądarce: tekst ustawiony przez textContent to węzeł tekstowy przed dziećmi.
+    get nodeType() { return this.tagName === '#TEXT' ? 3 : this.tagName === '#DOCUMENT' ? 9 : 1; }
+    get childNodes() { return this._text && this.tagName !== '#TEXT' ? [{nodeType: 3, textContent: this._text}, ...this.children] : this.children; }
     set textContent(value) { this._detachAll(); this._text = String(value); }
     set innerHTML(_) { throw new Error('Skrypt nie może używać innerHTML (ryzyko XSS).'); }
     get firstElementChild() { return this.children[0] || null; }
