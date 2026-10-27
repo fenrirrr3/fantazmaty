@@ -38,8 +38,8 @@
             panel.hidden = !panel.hidden; toggle.setAttribute('aria-expanded', String(!panel.hidden));
             if (panel.hidden || busy) return;
             data.closeOtherPanels(panel);
-            tables = [...document.querySelectorAll('main table')].filter(table => table.getClientRects().length &&
-                (tableEmails(table).length || /e-?mail|nadawca/i.test(table.tHead?.textContent || '')));
+            tables = data.visibleTables().filter(table =>
+                tableEmails(table).length || /e-?mail|nadawca/i.test(table.tHead?.textContent || ''));
             select.replaceChildren();
             tables.forEach((table, index) => {
                 const option = document.createElement('option'); option.value = String(index);

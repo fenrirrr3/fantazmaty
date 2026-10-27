@@ -59,6 +59,15 @@
                 return {items: extract(nextTable), page: Number(input?.value), pages: Number(input?.max), count: Number(nextNav?.dataset.resultCount)};
             }});
     }
+    // Tabele, które użytkownik widzi: z wymiarami na stronie i nie w zwiniętej sekcji (<details> bez open –
+    // Chrome podaje wymiary także dla treści zwiniętej sekcji).
+    function visibleTables(root = document) {
+        const collapsed = table => {
+            for (let node = table.parentElement; node; node = node.parentElement) if (node.tagName === 'DETAILS' && !node.open) return true;
+            return false;
+        };
+        return [...root.querySelectorAll('main table')].filter(table => table.getClientRects().length && !collapsed(table));
+    }
     // Podpis tabeli w liście wyboru panelu.
     function tableLabel(table, index, count) {
         return table.caption?.textContent.trim() || table.closest('section')?.querySelector('h2,h3')?.textContent.trim() ||
@@ -82,7 +91,8 @@
             document.querySelector(`[aria-controls="${panel.id}"]`)?.setAttribute('aria-expanded', 'false');
         });
     }
-    const api = {excluded, visibleText, hiddenColumns, paginationFor, collectServerPages, serverPages, tableLabel, copyText, closeOtherPanels};
+    const api = {excluded, visibleText, hiddenColumns, paginationFor, collectServerPages, serverPages, visibleTables, tableLabel, copyText,
+        closeOtherPanels};
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else globalThis.CmsTableData = api;
 })();

@@ -89,8 +89,9 @@ class Element {
     }
     _remove(node) { this.children = this.children.filter(child => child !== node); node.parentNode = null; }
     _detachAll() { this.children.forEach(child => { child.parentNode = null; }); this.children = []; }
-    append(...items) { this.children.push(...this._adopt(items)); }
-    prepend(...items) { this.children.unshift(...this._adopt(items)); }
+    // Najpierw przeniesienie (może zmienić this.children, gdy węzeł już jest w tym rodzicu), potem dopisanie.
+    append(...items) { const nodes = this._adopt(items); this.children.push(...nodes); }
+    prepend(...items) { const nodes = this._adopt(items); this.children.unshift(...nodes); }
     replaceChildren(...items) { this._detachAll(); this._text = ''; this.append(...items); }
     _siblingInsert(items, offset) {
         const parent = this.parentNode;
