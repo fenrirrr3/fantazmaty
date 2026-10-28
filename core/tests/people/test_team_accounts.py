@@ -200,6 +200,27 @@ class PersonAdminPageTests(TestCase):
         self.assertContains(response, 'Usunięto funkcje koordynatora')
         self.assertFalse(is_coordinator(coordinator))
 
+    def test_mark_external_action(self):
+        """Akcja zbiorcza „Oznacz jako zewnętrznych”: jak pole „Zewnętrzny” na ekranie osoby – osoba nieaktywna,
+        konto bez logowania, poza Ostatnią aktywnością; osoby już zewnętrzne są pomijane i policzone w komunikacie."""
+        member = create_member('external-action', 'Redaktor')
+        person = member.person_profile
+        outsider = Person.objects.create(first_name='Już', last_name='Zewnętrzny', is_external=True)
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(reverse('admin:people_person_changelist'), {
+                'action': 'mark_external', '_selected_action': [person.pk, outsider.pk, self.former.pk], 'index': '0'},
+                follow=True)
+        self.assertContains(response, 'Oznaczono jako zewnętrznych: 2. Pominięto już zewnętrznych: 1.')
+        for item in (person, outsider, self.former):
+            with self.subTest(person=str(item)):
+                item.refresh_from_db()
+                self.assertEqual((item.is_external, item.is_active), (True, False))
+        self.assertFalse(EmailBackend().user_can_authenticate(member))
+        activity = self.client.get(reverse('core:last_activity'), {'days': 0, 'mode': 'login'})
+        self.assertNotIn(person, activity.context['people'])
+        changelist = html.fromstring(self.client.get(reverse('admin:people_person_changelist')).content)
+        self.assertIn('mark_external', changelist.xpath('//select[@name="action"]/option/@value'))
+
     def test_changelist_and_role_pages(self):
         page = self.client.get(reverse('admin:people_person_changelist'))
         self.assertContains(page, 'Ala Osoba')

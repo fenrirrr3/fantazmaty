@@ -210,7 +210,7 @@ class PersonAdmin(admin.ModelAdmin):
     readonly_fields = ("account_link", "account_status", "account_date_joined", "account_last_login",
                        "leave_start_date", "leave_end_date", "leave_until_revoked")
 
-    actions = ('revoke_coordinator_access', 'remove_from_team', 'sync_dropbox_access')
+    actions = ('revoke_coordinator_access', 'remove_from_team', 'mark_external', 'sync_dropbox_access')
 
     @admin.action(description="Usuń z zespołu (odznacz „wciąż w ekipie”, odbierz dostęp do Dropboxa)")
     def remove_from_team(self, request, queryset):
@@ -225,6 +225,23 @@ class PersonAdmin(admin.ModelAdmin):
                 person.is_active = False
                 person.save(update_fields=['is_active'])
         self.message_user(request, f"Usunięto z zespołu: {len(people)}.")
+
+    @admin.action(description="Oznacz jako zewnętrznych (bez logowania i raportów aktywności)")
+    def mark_external(self, request, queryset):
+        """Jak zaznaczenie „Zewnętrzny” na ekranie osoby: Person.save odznacza „wciąż w ekipie” (blokada logowania,
+        odebranie folderów Dropbox i rang Discorda); osoby już zewnętrzne są pomijane."""
+        from django.db import transaction
+        from people.dropbox_access import admin_messages, report_to
+        with transaction.atomic():
+            report_to(request, admin_messages(self, request))
+            report_discord(self, request)
+            people = list(queryset.select_for_update().filter(is_external=False).order_by('pk'))
+            for person in people:
+                person.is_external = True
+                person.save(update_fields=['is_external'])
+        skipped = queryset.count() - len(people)
+        self.message_user(request, f"Oznaczono jako zewnętrznych: {len(people)}."
+                          + (f" Pominięto już zewnętrznych: {skipped}." if skipped else ""))
 
     @admin.action(description="Synchronizuj ponownie dostęp do folderów Dropbox")
     def sync_dropbox_access(self, request, queryset):

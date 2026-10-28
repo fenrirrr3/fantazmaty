@@ -409,8 +409,8 @@ class DropboxAccessAdminTests(TestCase):
         self.assertEqual((access.state, access.last_error), (State.GRANTED, ''))
 
     def test_leaving_team_revokes_every_folder(self):
-        """Usunięcie z zespołu (ekran osoby, akcja zbiorcza, usunięcie osoby, usunięcie zbiorcze) odbiera dostęp do
-        wszystkich folderów; osoby dodane w Dropboxie ręcznie zostają."""
+        """Usunięcie z zespołu (ekran osoby, akcje zbiorcze „Usuń z zespołu” i „Oznacz jako zewnętrznych”, usunięcie
+        osoby, usunięcie zbiorcze) odbiera dostęp do wszystkich folderów; osoby dodane w Dropboxie ręcznie zostają."""
         changelist = reverse('admin:people_person_changelist')
 
         def edit(person):
@@ -419,6 +419,10 @@ class DropboxAccessAdminTests(TestCase):
         def bulk(person):
             with self.captureOnCommitCallbacks(execute=True):
                 self.client.post(changelist, {'action': 'remove_from_team', '_selected_action': [person.pk], 'index': '0'})
+
+        def external(person):
+            with self.captureOnCommitCallbacks(execute=True):
+                self.client.post(changelist, {'action': 'mark_external', '_selected_action': [person.pk], 'index': '0'})
 
         def delete(person):
             url = reverse('admin:people_person_delete', args=[person.pk])
@@ -431,6 +435,7 @@ class DropboxAccessAdminTests(TestCase):
                 self.client.post(changelist, {'action': 'delete_selected', '_selected_action': [person.pk], 'post': 'yes'})
 
         for index, (label, leave) in enumerate((('ekran osoby', edit), ('akcja „Usuń z zespołu”', bulk),
+                                                ('akcja „Oznacz jako zewnętrznych”', external),
                                                 ('usunięcie osoby', delete), ('usunięcie zbiorcze', bulk_delete))):
             with self.subTest(label), CONFIGURED:
                 email = f'osoba{index}@example.test'
